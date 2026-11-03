@@ -3,6 +3,7 @@ package mfs.mw.service.template.util;
 import java.lang.reflect.RecordComponent;
 import java.util.Locale;
 import java.util.StringJoiner;
+import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -18,6 +19,14 @@ public final class MaskingPolicy {
   /** Bangladesh mobile numbers in free text: 01XNNNNNNNN, optionally with 880 / +880. */
   private static final Pattern MSISDN_IN_TEXT =
       Pattern.compile("(?<![\\d+])(?:\\+?880|0)1[3-9]\\d{8}(?!\\d)");
+
+  /**
+   * Other standalone runs of 10 to 20 digits (not part of a word, UUID or masked value): 10, 13
+   * and 17 digits are Bangladesh NID lengths and keep the last 3; the rest are taken as account
+   * numbers and keep the last 4. Ambiguous lengths get the stricter NID rule.
+   */
+  private static final Pattern LONG_NUMBER_IN_TEXT =
+      Pattern.compile("(?<![\\w+*-])\\d{10,20}(?![\\w-])");
 
   private MaskingPolicy() {}
 
@@ -38,15 +47,30 @@ public final class MaskingPolicy {
     };
   }
 
-  /** Masks every Bangladesh MSISDN found in free text (safety net for log messages). */
+  /**
+   * Safety net for free text such as log messages (18.3): masks every Bangladesh MSISDN, then
+   * every other 10 to 20 digit number as an NID (10, 13 or 17 digits) or an account number.
+   */
   public static String scrub(String text) {
     if (text == null || text.isEmpty()) {
       return text;
     }
-    Matcher m = MSISDN_IN_TEXT.matcher(text);
+    String msisdnsMasked = replace(MSISDN_IN_TEXT, text, v -> mask(SensitiveType.MSISDN, v));
+    return replace(LONG_NUMBER_IN_TEXT, msisdnsMasked, v -> mask(numberType(v), v));
+  }
+
+  private static SensitiveType numberType(String digits) {
+    return switch (digits.length()) {
+      case 10, 13, 17 -> SensitiveType.NID;
+      default -> SensitiveType.ACCOUNT;
+    };
+  }
+
+  private static String replace(Pattern p, String text, UnaryOperator<String> masker) {
+    Matcher m = p.matcher(text);
     StringBuilder out = new StringBuilder(text.length());
     while (m.find()) {
-      m.appendReplacement(out, Matcher.quoteReplacement(mask(SensitiveType.MSISDN, m.group())));
+      m.appendReplacement(out, Matcher.quoteReplacement(masker.apply(m.group())));
     }
     m.appendTail(out);
     return out.toString();

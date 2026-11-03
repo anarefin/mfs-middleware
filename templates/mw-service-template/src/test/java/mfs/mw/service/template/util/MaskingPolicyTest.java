@@ -78,7 +78,38 @@ class MaskingPolicyTest {
 
   @Test
   void scrubMasksMsisdnsInFreeText() {
-    assertThat(MaskingPolicy.scrub("payer 01712345789 to +8801812345678, ref 123456789012345"))
-        .isEqualTo("payer 0171****789 to +880181****678, ref 123456789012345");
+    assertThat(MaskingPolicy.scrub("payer 01712345789 to +8801812345678, amount 50000"))
+        .isEqualTo("payer 0171****789 to +880181****678, amount 50000");
+  }
+
+  /** Bangladesh NIDs are 10, 13 or 17 digits: last 3 kept, like the NID rule. */
+  @Test
+  void scrubMasksNidsInFreeText() {
+    assertThat(MaskingPolicy.scrub("nid 1990123456789, old 19901234567890123, smart 2345678901."))
+        .isEqualTo("nid ****789, old ****123, smart ****901.");
+  }
+
+  /** Other 11 to 20 digit runs are treated as account numbers: last 4 kept. */
+  @Test
+  void scrubMasksAccountNumbersInFreeText() {
+    assertThat(MaskingPolicy.scrub("from 0011223344556677 to account=123456789012345"))
+        .isEqualTo("from ****6677 to account=****2345");
+  }
+
+  @Test
+  void scrubLeavesShortNumbersAndIdentifiersAlone() {
+    String text =
+        "amount 100000000 attempt 3 txn 0190a7c4-0000-7000-8000-000000000001 key abc12345678901";
+    assertThat(MaskingPolicy.scrub(text)).isEqualTo(text);
+  }
+
+  @Test
+  void configChangeActorsAreMaskedAsNames() {
+    assertThat(
+            MaskingPolicy.describe(
+                new mfs.mw.service.template.dto.ConfigChangedEvent(
+                    1, "partner/gp", null, null, 3, null, null, "rahim.uddin", "karim.ali", "c-1")))
+        .contains("changedBy=R.", "approvedBy=K.")
+        .doesNotContain("rahim", "karim");
   }
 }

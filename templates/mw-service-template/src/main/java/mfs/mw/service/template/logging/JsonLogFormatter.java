@@ -19,7 +19,8 @@ import org.springframework.core.env.Environment;
  * JSON log line with the spec 21.1 fields, one event per line, UTC ISO-8601 {@code ts}. Masking
  * runs here, before output (18.3): every log argument is rendered with {@link
  * MaskingPolicy#describe(Object)} (so {@code @Sensitive} record components are masked) and the
- * whole message, key-value pairs and stack trace are scrubbed for MSISDNs.
+ * whole message, key-value pairs and stack trace are scrubbed for MSISDNs, NIDs and account
+ * numbers ({@link MaskingPolicy#scrub(String)}).
  *
  * <p>Context fields come from the MDC or from SLF4J key-value pairs ({@code
  * log.atInfo().addKeyValue("event", "txn.state.changed")}); key-value pairs win. Wired by {@code
