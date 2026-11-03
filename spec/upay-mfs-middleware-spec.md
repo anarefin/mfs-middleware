@@ -1061,7 +1061,7 @@ Security controls follow the RFP's zone model: nothing in the Application or Dat
 | Data | PostgreSQL, archive store, Vault storage | Application zone service roles only |
 | Operation | APISIX internal, admin UI/API, Keycloak, Vault UI, bastion | Corporate network via VPN + MFA |
 
-On a Compose host each zone is its own user-defined network (`dmz`, `app`, `data`, `ops`), created by the platform project; a container joins only the networks its zone allows, and only APISIX, the SMPP/USSD port and SFTP publish host ports. Host firewall rules are kept in `deploy/` as code and reviewed by security.
+On a Compose host each zone is its own user-defined network (`dmz`, `app`, `data`, `ops`), created by the platform project; a container joins only the networks its zone allows, and only APISIX, the SMPP/USSD port and SFTP publish host ports. Exception: Keycloak (Operation zone) also joins the `data` network to reach its own PostgreSQL database (`keycloak` database and role); this is an MVP single-host deviation from the zone rule, to be replaced by a dedicated database route or proxy when zones move to separate hosts. Host firewall rules are kept in `deploy/` as code and reviewed by security.
 
 ### 18.2 Identity and access
 

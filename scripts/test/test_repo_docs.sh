@@ -78,6 +78,12 @@ test_spec_has_no_static_analysis_or_sast_requirement() {
   spec_has '[Tt]rivy|[Cc]ontainer scan'
 }
 
+test_spec_records_keycloak_on_the_data_network_as_an_mvp_deviation() {
+  spec_has 'Keycloak \(Operation zone\) also joins the `data` network.*PostgreSQL.*MVP single-host deviation'
+  grep -A4 '^  keycloak:' "$REPO_DIR/deploy/compose/platform/compose.yml" | grep -qE 'networks: \[ops, data\]' \
+    || fail "keycloak compose networks changed; update spec 18.1"
+}
+
 test_spec_kafka_contract_matches_the_contract_schemas() {
   # Spec 6.2/6.3 must describe the envelope + payload shape in contracts/events.
   local f="$REPO_DIR/spec/upay-mfs-middleware-spec.md" c="$REPO_DIR/contracts/events"
