@@ -9,6 +9,8 @@
 #   make contracts-lint         lint the root contracts/ folder
 #   make versions-check [M=]    report version drift between module version catalogs
 #   make up [M=]                start the Compose stack (deploy/compose/mvp) or one module's compose.yml
+#   make smoke                  live checks against the running MVP stack (scripts/smoke.sh)
+#   make down [DOWN_ARGS=-v]    stop the MVP stack (-v also drops its volumes)
 #   make e2e [M=] [TAGS=]       Cucumber suite in tests/e2e against the running stack
 #   make perf [M=]              Gatling suite in tests/perf
 #   make security [M=]          dependency, container and secret scans
@@ -21,10 +23,10 @@ SELFTEST ?= 1
 M ?=
 export MW_ROOT
 
-.PHONY: help verify check-isolation contracts-lint versions-check up e2e perf security new-service test-scripts
+.PHONY: help verify check-isolation contracts-lint versions-check up smoke down e2e perf security new-service test-scripts
 
 help:
-	@sed -n '3,17p' $(abspath $(lastword $(MAKEFILE_LIST)))
+	@sed -n '3,19p' $(abspath $(lastword $(MAKEFILE_LIST)))
 
 verify:
 ifeq ($(SELFTEST)$(M),1)
@@ -43,6 +45,12 @@ versions-check:
 
 up:
 	@$(SCRIPTS)/up.sh "$(M)"
+
+smoke:
+	@$(SCRIPTS)/smoke.sh
+
+down:
+	@$(SCRIPTS)/down.sh
 
 e2e:
 	@$(SCRIPTS)/suite.sh e2e "$(M)" "$(TAGS)"

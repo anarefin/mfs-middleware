@@ -1,0 +1,37 @@
+# APISIX static config (spec 8, 20.2): traditional role, routes and SSL objects in etcd.
+# Routes, upstreams and SSL objects are code in deploy/apisix/ and applied by the
+# one-shot apisix-init container (deploy/apisix/apply.sh).
+apisix:
+  node_listen: 9080              # plain HTTP: internal only, never published
+  enable_ipv6: false
+  ssl:
+    enable: true
+    listen:
+      - port: 9443               # published on the host as 443 (MW_HTTPS_PORT)
+    fallback_sni: localhost      # requests without SNI get the edge-default cert
+  status:                        # /status and /status/ready, used by the healthcheck
+    ip: 0.0.0.0
+    port: 7085
+
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  admin:
+    admin_key_required: true
+    admin_key:
+      - name: admin
+        key: ${{APISIX_ADMIN_KEY}}
+        role: admin
+    # The Admin API port 9180 is never published; only containers on the ops network
+    # reach it.
+    allow_admin:
+      - 0.0.0.0/0
+    admin_listen:
+      ip: 0.0.0.0
+      port: 9180
+  etcd:
+    host:
+      - "http://etcd:2379"
+    prefix: /apisix
+    timeout: 30
