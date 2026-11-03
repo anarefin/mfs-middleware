@@ -304,10 +304,16 @@ test_postgres_init_creates_the_keycloak_role_and_database() {
   return 0
 }
 
-test_up_skips_exactly_the_one_shot_services() {
-  # scripts/up.sh waits for every service but the one-shots (restart "no").
-  local want got
-  want="$(compose_json | jq -r '[.services | to_entries[] | select(.value.restart == "no") | .key] | sort | join(" ")')"
-  got="$(sed -n 's/.*MW_UP_ONESHOT:-\([^}]*\)}.*/\1/p' "$REPO_DIR/scripts/up.sh" | tr ' ' '\n' | sort | tr '\n' ' ')"
-  [ "${got% }" = "$want" ] || fail "up.sh one-shots '${got% }' != compose one-shots '$want'"
+test_one_shot_services_are_labelled_and_up_has_no_list() {
+  # scripts/up.sh tells one-shots from the compose label mw.oneshot=true; keep it in sync with
+  # the services that never restart and have no healthcheck.
+  local j labelled noRestart
+  j="$(compose_json)"
+  labelled="$(printf '%s' "$j" | jq -r '[.services | to_entries[] | select(.value.labels["mw.oneshot"] == "true") | .key] | sort | join(" ")')"
+  noRestart="$(printf '%s' "$j" | jq -r '[.services | to_entries[] | select(.value.restart == "no" and .value.healthcheck == null) | .key] | sort | join(" ")')"
+  [ "$labelled" = "$(printf '%s\n' $ONE_SHOT | sort | tr '\n' ' ' | sed 's/ $//')" ] || fail "mw.oneshot=true on '$labelled', expected '$ONE_SHOT'"
+  [ "$labelled" = "$noRestart" ] || fail "labelled one-shots '$labelled' != restart-no services without healthcheck '$noRestart'"
+  grep -q 'MW_UP_ONESHOT' "$REPO_DIR/scripts/up.sh" && fail "up.sh still has a hard-coded one-shot list"
+  grep -q 'mw.oneshot=true' "$REPO_DIR/scripts/up.sh" || fail "up.sh does not read the mw.oneshot label"
+  return 0
 }
