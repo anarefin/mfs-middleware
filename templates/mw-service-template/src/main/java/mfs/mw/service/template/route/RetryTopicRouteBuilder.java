@@ -1,21 +1,23 @@
 package mfs.mw.service.template.route;
 
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
+import java.time.Clock;
 import mfs.mw.service.template.config.KafkaRetryProperties;
 import mfs.mw.service.template.messaging.MwHeaders;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.builder.RouteBuilder;
+import org.apache.camel.component.kafka.KafkaConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Consumes {@link #topic()} and hands each record to {@link #handlerUri()}. When the handler
  * throws, the original record (same key, body and headers) is parked on {@code
- * <topic>.retry.1}; each retry consumer waits for its delay, tries again and moves the record on
- * to the next retry topic, then to {@code <topic>.dlq} (spec 19.2, 6.2). The source partition is
- * never blocked by a failing record.
+ * <topic>.retry.1}; each retry consumer holds the record back until its delay has passed
+ * (pausing the partition, never sleeping on the consumer thread: {@link RetryDelayListener}),
+ * tries again and moves it on to the next retry topic, then to {@code <topic>.dlq} (spec 19.2,
+ * 6.2). The source partition is never blocked by a failing record.
  *
  * <p>Subclass it in {@code route/} once per consumed topic and register it as a bean. Topics
  * {@code <topic>.retry.<n>} and {@code <topic>.dlq} are declared in {@code deploy/kafka/} with the
@@ -26,10 +28,13 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
 
   private static final Logger log = LoggerFactory.getLogger(RetryTopicRouteBuilder.class);
 
-  /** Headers of the consumed record that the producer would otherwise reuse for routing. */
-  private static final String[] CONSUMER_ROUTING_HEADERS = {
-    "kafka.OVERRIDE_TOPIC", "kafka.OVERRIDE_TIMESTAMP", "kafka.PARTITION_KEY"
+  /** Headers that would make the producer route the parked record somewhere else. */
+  private static final String[] PRODUCER_ROUTING_HEADERS = {
+    KafkaConstants.OVERRIDE_TOPIC, KafkaConstants.OVERRIDE_TIMESTAMP, KafkaConstants.PARTITION_KEY
   };
+
+  /** How often a paused retry consumer checks whether its held-back record is due. */
+  private static final long RESUME_CHECK_MS = 500;
 
   private final KafkaRetryProperties retry;
 
@@ -58,11 +63,10 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
 
     for (int n = 1; n <= attempts; n++) {
       int next = n + 1;
-      long delayMs = retry.delay(n).toMillis();
+      RetryDelayListener delay = new RetryDelayListener(retry.delay(n), Clock.systemUTC());
       from("kafka:" + retryTopic(n)
               + "?groupId={{camel.component.kafka.group-id}}.retry." + n
-              + "&maxPollRecords=20"
-              + "&maxPollIntervalMs=" + (delayMs + Duration.ofMinutes(5).toMillis()))
+              + "&pollTimeoutMs=" + RESUME_CHECK_MS)
           .routeId(retryTopic(n) + ".consume")
           .onException(Exception.class)
           .handled(true)
@@ -70,8 +74,10 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
           .process(e -> park(e, next))
           .to("kafka:" + nextTopic(next))
           .end()
-          .process(RetryTopicRouteBuilder::waitUntilDue)
-          .to(handlerUri());
+          .pausable(delay, ignored -> true)
+          .filter(e -> !delay.holdBack(e.getMessage()))
+          .to(handlerUri())
+          .end();
     }
   }
 
@@ -89,7 +95,7 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
     String errorClass = cause == null ? "unknown" : cause.getClass().getName();
     boolean dlq = attempt > retry.attempts();
     Message msg = exchange.getMessage();
-    for (String h : CONSUMER_ROUTING_HEADERS) {
+    for (String h : PRODUCER_ROUTING_HEADERS) {
       msg.removeHeader(h);
     }
     msg.setHeader(MwHeaders.RETRY_ATTEMPT, Integer.toString(attempt));
@@ -109,17 +115,6 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
         .addKeyValue("txnId", text(msg, MwHeaders.TXN_ID))
         .addKeyValue("errorClass", errorClass)
         .log(dlq ? "record moved to DLQ" : "record moved to retry topic");
-  }
-
-  private static void waitUntilDue(Exchange exchange) throws InterruptedException {
-    String notBefore = text(exchange.getMessage(), MwHeaders.RETRY_NOT_BEFORE);
-    if (notBefore == null) {
-      return;
-    }
-    long waitMs = Long.parseLong(notBefore) - System.currentTimeMillis();
-    if (waitMs > 0) {
-      Thread.sleep(waitMs);
-    }
   }
 
   /** Header value as text: Kafka record headers arrive as UTF-8 bytes. */
