@@ -8,6 +8,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.List;
 import java.util.Map;
+import mfs.mw.service.template.TestInfrastructure;
 import mfs.mw.service.template.util.Sensitive;
 import mfs.mw.service.template.util.SensitiveType;
 import org.junit.jupiter.api.Test;
@@ -29,7 +30,7 @@ import tools.jackson.databind.json.JsonMapper;
  * request's correlationId and shows sensitive values masked, never raw (18.3).
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
-@Import(JsonLoggingTest.LoggingController.class)
+@Import({JsonLoggingTest.LoggingController.class, TestInfrastructure.class})
 @ExtendWith(OutputCaptureExtension.class)
 class JsonLoggingTest {
 
