@@ -75,3 +75,19 @@ test_container_runs_as_non_root_with_health_wired_to_compose() {
   grep -q 'read_only: true' "$cf" || fail "compose.yml root FS not read-only"
   grep -q 'restart: unless-stopped' "$cf" || fail "compose.yml restart policy missing"
 }
+
+# Spec 4.3 rule 1: a copy of the template plus contracts/ runs
+# `./gradlew check bootJar && docker build .` from its own directory alone. Slow (the
+# module's full check, Testcontainers included); skipped with a note when Docker is down.
+test_template_copy_checks_and_builds_its_image_alone() {
+  if ! docker info >/dev/null 2>&1; then
+    echo "    SKIP: Docker not running" >&2; return 0
+  fi
+  copy_template "$PWD"
+  (cd "$REPO_DIR/contracts" && tar cf - .) | (cd "$PWD/contracts" && tar xf -)
+  tag="mwtest-template:$$"
+  OUT="$(cd templates/mw-service-template && ./gradlew -q check bootJar 2>&1 && docker build -q -t "$tag" . 2>&1)" \
+    || fail "./gradlew check bootJar && docker build . failed in the copy"
+  docker image inspect "$tag" >/dev/null 2>&1 || fail "image $tag not built"
+  docker rmi -f "$tag" >/dev/null 2>&1 || true
+}

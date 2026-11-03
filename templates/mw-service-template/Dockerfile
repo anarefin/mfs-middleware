@@ -22,9 +22,11 @@ COPY build/reports/cyclonedx-direct/bom.json /app/sbom/bom.json
 # Same JVM flags for the training run and at runtime, or the AOT cache is rejected.
 ENV JAVA_TOOL_OPTIONS="-XX:+UseZGC -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
 
-# AOT cache training run: start the context once, then exit.
-RUN java -XX:AOTCacheOutput=/app/app.aot -Dspring.context.exit=onRefresh -jar app.jar \
-      > /dev/null
+# AOT cache training run: start the context once, then exit. No database or Kafka exists at
+# build time: Flyway is skipped here only (it runs on every real start-up, 16.4); the pool
+# and Kafka clients connect lazily.
+RUN java -XX:AOTCacheOutput=/app/app.aot -Dspring.context.exit=onRefresh \
+      -Dspring.flyway.enabled=false -jar app.jar > /dev/null
 
 USER 10001:10001
 EXPOSE 8080

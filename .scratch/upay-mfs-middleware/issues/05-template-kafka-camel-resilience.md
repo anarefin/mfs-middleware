@@ -9,9 +9,9 @@
 
 **Status:** ready-for-agent
 
-- [ ] A route test proves that a failing message goes through retry.1 → retry.2 → retry.3 → DLQ, with headers kept
-- [ ] A route test proves that a message which succeeds on retry is not sent to the DLQ
-- [ ] A Testcontainers test shows Flyway creating the template's own schema on start-up
-- [ ] Published records carry every required header, and a test asserts this
+- [x] A route test proves that a failing message goes through retry.1 → retry.2 → retry.3 → DLQ, with headers kept
+- [x] A route test proves that a message which succeeds on retry is not sent to the DLQ
+- [x] A Testcontainers test shows Flyway creating the template's own schema on start-up
+- [x] Published records carry every required header, and a test asserts this
 - [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
-- [ ] The template's schema tests load contracts from the root contracts/ folder through mwContractsDir (carried from ticket 04)
+- [x] The template's schema tests load contracts from the root contracts/ folder through mwContractsDir (carried from ticket 04)

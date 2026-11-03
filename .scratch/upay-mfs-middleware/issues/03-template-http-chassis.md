@@ -8,8 +8,7 @@
 
 **Status:** done
 
-- [ ] The template builds, tests and starts from its own directory alone: `./gradlew check bootJar && docker build .`
-  - Left unticked: no test runs `bootJar` or `docker build .`; `make verify` covers `./gradlew check` and ServiceTemplateApplicationTest starts the app context, but the image build is unverified.
+- [x] The template builds, tests and starts from its own directory alone: `./gradlew check bootJar && docker build .`
 - [x] Unit tests cover each masking rule and the mapping from exception to error envelope (code namespaces `MW-VAL`, `MW-AUTH`, `MW-SYS`, …)
 - [x] A log line emitted inside a request carries `correlationId` and has the masked value, never the raw one
 - [x] `make new-service NAME=mw-demo` produces a module with package `mfs.mw.demo` and no reference back to the template, and `make check-isolation` passes on it
