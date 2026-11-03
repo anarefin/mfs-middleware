@@ -1,0 +1,14 @@
+{
+  "name": "edge-healthz",
+  "desc": "Edge health: proxies to the APISIX status API (/status/ready), no auth",
+  "uri": "/healthz",
+  "methods": ["GET"],
+  "plugins": {
+    "proxy-rewrite": { "uri": "/status/ready" }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "nodes": { "127.0.0.1:7085": 1 }
+  }
+}

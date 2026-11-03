@@ -99,7 +99,9 @@ or one with `M=<module>` (e.g. `M=mw-orchestrator`).
 | `make check-isolation [M=]` | module independence rules (fails on cross-module deps, `includeBuild`, convention plugins, paths outside the module except `contracts/`) |
 | `make contracts-lint` | lint `contracts/` |
 | `make versions-check [M=]` | report version drift between module version catalogs (report only, not in `verify`) |
-| `make up [M=]` | Compose stack (`deploy/compose/mvp`) or one module's `compose.yml` |
+| `make up [M=]` | Compose stack (`deploy/compose/mvp`) or one module's `compose.yml`; first generates the gitignored dev credentials in `deploy/compose/platform/.env` (`scripts/gen-dev-env.sh`) |
+| `make smoke` | live checks against the running MVP stack (health, topics, Kafka, PG, Valkey, Keycloak tokens, OpenBao, APISIX `/healthz`) |
+| `make down [DOWN_ARGS=-v]` | stop the MVP stack (`-v` drops its volumes) |
 | `make e2e [M=] [TAGS=@p2p]` | Cucumber suite in `tests/e2e`, filtered by `@<module>` and `TAGS` |
 | `make perf [M=]` | Gatling suite in `tests/perf` |
 | `make security [M=]` | gitleaks, CycloneDX SBOM, trivy (deps and images) |

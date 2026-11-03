@@ -1,0 +1,44 @@
+# APISIX static config (spec 8, 20.2): traditional role, routes and SSL objects in etcd.
+# Routes, upstreams and SSL objects are code in deploy/apisix/ and applied by the
+# one-shot apisix-init container (deploy/apisix/apply.sh).
+apisix:
+  node_listen: 9080              # plain HTTP: internal only, never published
+  enable_ipv6: false
+  ssl:
+    enable: true
+    listen:
+      - port: 9443               # published on the host as 443 (MW_HTTPS_PORT)
+    fallback_sni: localhost      # requests without SNI get the edge-default cert
+  status:                        # /status and /status/ready, used by the healthcheck
+    ip: 0.0.0.0
+    port: 7085
+
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  admin:
+    admin_key_required: true
+    # Key generated per host into deploy/compose/platform/.env (scripts/gen-dev-env.sh);
+    # Compose refuses to start without it.
+    admin_key:
+      - name: admin
+        key: ${{APISIX_ADMIN_KEY}}
+        role: admin
+    # The Admin API port 9180 is never published on the host. Callers must also come
+    # from the ops network's fixed subnet (MW_OPS_SUBNET) or from inside the container;
+    # APISIX also sits on dmz and app, and callers from those networks are refused (403).
+    allow_admin:
+      - 127.0.0.0/8
+      - ${{MW_OPS_SUBNET}}
+    admin_listen:
+      ip: 0.0.0.0
+      port: 9180
+  etcd:
+    host:
+      - "http://etcd:2379"   # on the internal etcd network, shared only with APISIX
+    prefix: /apisix
+    timeout: 30
+    # etcd auth (set up by etcd-init): this user may only use the /apisix prefix
+    user: apisix
+    password: ${{ETCD_APISIX_PASSWORD}}

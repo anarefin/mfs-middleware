@@ -1,0 +1,98 @@
+{
+  "realm": "customers",
+  "displayName": "upay customers and apps",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      {
+        "name": "customer",
+        "description": "Customer app user"
+      },
+      {
+        "name": "agent",
+        "description": "Agent app user"
+      },
+      {
+        "name": "merchant",
+        "description": "Merchant app user"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "mw-app",
+      "name": "upay mobile apps",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "https://localhost/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "protocol": "openid-connect"
+    }
+  ],
+  "users": [
+    {
+      "username": "customer01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Customer",
+      "lastName": "Test",
+      "email": "customer01@example.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dev-only-pass",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "customer"
+      ]
+    },
+    {
+      "username": "agent01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Agent",
+      "lastName": "Test",
+      "email": "agent01@example.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dev-only-pass",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "agent"
+      ]
+    },
+    {
+      "username": "merchant01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Merchant",
+      "lastName": "Test",
+      "email": "merchant01@example.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dev-only-pass",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "merchant"
+      ]
+    }
+  ]
+}

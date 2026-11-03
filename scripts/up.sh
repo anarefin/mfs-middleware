@@ -19,6 +19,7 @@ else
     info "up: deploy/compose/mvp/compose.yml does not exist yet, nothing to start"
     exit 0
   fi
+  "$(dirname "$0")/gen-dev-env.sh"
 fi
 info "up: docker compose -f ${file#"$MW_ROOT"/} up -d"
 docker compose -f "$file" up -d ${COMPOSE_ARGS:-}

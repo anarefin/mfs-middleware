@@ -1,0 +1,27 @@
+# Kafka topics as code (spec 6.1, 6.2), applied by the one-shot kafka-init container
+# through apply-topics.sh. Single broker: replication factor 1, min.insync.replicas 1.
+#
+# Format: <topic> <partitions> <retention> [retry]
+#   retention: <n>d (days) or "compact" (cleanup.policy=compact)
+#   retry:     also create <topic>.retry.1..3 (19.2: 10 s / 1 min / 10 min) and
+#              <topic>.dlq, with the same partition count and 14 d retention (6.2)
+#
+# MVP subset of the 6.2 catalogue. Deferred and therefore left out: the interop and
+# compliance partner families, mw.compliance.instruction.v1, mw.recon.result.v1,
+# dw.txn.event.v1.
+
+mw.txn.request.v1              48 7d retry
+mw.txn.status.v1               48 7d retry
+core.wallet.command.v1         48 7d retry
+core.payment.command.v1        48 7d retry
+core.wallet.event.v1           48 7d retry
+core.payment.event.v1          48 7d retry
+mw.partner.request.telco.v1    24 3d retry
+mw.partner.request.billpay.v1  24 3d retry
+mw.partner.request.bank.v1     24 3d retry
+mw.partner.reply.v1            48 3d retry
+mw.partner.inbound.v1          24 7d retry
+mw.notify.request.v1           24 3d retry
+mw.notify.status.v1            12 7d retry
+mw.audit.event.v1              24 7d retry
+mw.config.changed.v1            6 compact

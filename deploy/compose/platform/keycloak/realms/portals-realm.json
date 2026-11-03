@@ -1,0 +1,98 @@
+{
+  "realm": "portals",
+  "displayName": "upay org and SP portals",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      {
+        "name": "org-maker",
+        "description": "Org portal maker (bulk upload)"
+      },
+      {
+        "name": "org-checker",
+        "description": "Org portal checker (bulk approve)"
+      },
+      {
+        "name": "sp-viewer",
+        "description": "Service provider transaction query"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "mw-portal",
+      "name": "Org and SP portals",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "https://localhost/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "protocol": "openid-connect"
+    }
+  ],
+  "users": [
+    {
+      "username": "org-maker01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Maker",
+      "lastName": "Test",
+      "email": "org-maker01@example.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dev-only-pass",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "org-maker"
+      ]
+    },
+    {
+      "username": "org-checker01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Checker",
+      "lastName": "Test",
+      "email": "org-checker01@example.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dev-only-pass",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "org-checker"
+      ]
+    },
+    {
+      "username": "sp-viewer01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Viewer",
+      "lastName": "Test",
+      "email": "sp-viewer01@example.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dev-only-pass",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "sp-viewer"
+      ]
+    }
+  ]
+}
