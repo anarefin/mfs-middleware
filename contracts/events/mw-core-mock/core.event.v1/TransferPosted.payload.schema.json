@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.upay.mw/events/mw-core-mock/core.event.v1/TransferPosted.payload.schema.json",
+  "title": "core.event.v1 TransferPosted payload",
+  "description": "Success of PostTransfer.",
+  "type": "object"
+}

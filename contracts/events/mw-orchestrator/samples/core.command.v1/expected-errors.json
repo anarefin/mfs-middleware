@@ -1,0 +1,3 @@
+{
+  "invalid-unknown-command-type.json": ["/commandType must be equal to one of the allowed values", "/ value of tag \"commandType\" must be in oneOf"]
+}

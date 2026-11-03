@@ -1,0 +1,4 @@
+{
+  "invalid-pin-without-key-id.json": ["/payload/encryptedPin must have required property 'keyId'"],
+  "invalid-post-transfer-without-pin.json": ["/payload must have required property 'encryptedPin'"]
+}

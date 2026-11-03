@@ -1,0 +1,4 @@
+{
+  "invalid-attempt-zero.json": ["/attempt must be >= 1"],
+  "invalid-undeliverable-without-error.json": ["/ must have required property 'errorCode'"]
+}

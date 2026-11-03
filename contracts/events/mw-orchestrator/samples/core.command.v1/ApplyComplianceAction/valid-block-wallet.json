@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "commandType": "ApplyComplianceAction",
+  "commandId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8d:compliance",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8d",
+  "correlationId": "corr-0003",
+  "issuedAt": "2026-11-03T08:15:30Z",
+  "expiresAt": "2026-11-03T08:15:35Z",
+  "payload": {
+    "complianceAction": "BLOCK",
+    "subject": { "type": "WALLET", "id": "01711000001", "walletType": "CUSTOMER" },
+    "reason": "AML hit"
+  }
+}

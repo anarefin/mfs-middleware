@@ -1,0 +1,3 @@
+{
+  "invalid-unknown-kind.json": ["/payload/kind must be equal to one of the allowed values"]
+}

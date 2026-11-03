@@ -2,44 +2,42 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.upay.mw/events/mw-orchestrator/mw.partner.inbound.v1.schema.json",
   "title": "mw.partner.inbound.v1",
-  "description": "Partner-initiated message (callback, inbound remittance, NPSB credit) published by an adapter after signature check and dedup on partnerRef (spec 6.2, 11.2). Key: txnId (minted by the adapter for new inbound money). Owned by mw-orchestrator, its only consumer.",
+  "description": "Partner-initiated message (callback, inbound remittance, NPSB credit) published by an adapter after signature check and dedup on partnerRef (spec 6.2, 11.2). Key: txnId (minted by the adapter for new inbound money). Owned by mw-orchestrator, its only consumer. The payload is picked by family.",
   "type": "object",
-  "required": ["schemaVersion", "inboundId", "txnId", "correlationId", "partnerId", "kind", "partnerRef", "receivedAt"],
+  "required": ["schemaVersion", "family", "inboundId", "txnId", "correlationId", "partnerId", "partnerRef", "receivedAt", "payload"],
   "properties": {
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
+    "family": { "enum": ["telco", "billpay", "bank", "interop", "compliance"] },
     "inboundId": { "type": "string", "format": "uuid" },
-    "txnId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
-    "correlationId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "txnId": { "$ref": "../../common/defs.v1.schema.json#/$defs/TxnId" },
+    "correlationId": { "$ref": "../../common/defs.v1.schema.json#/$defs/CorrelationId" },
     "partnerId": { "type": "string", "minLength": 1 },
-    "kind": { "enum": ["CALLBACK", "REMITTANCE", "NPSB_CREDIT"] },
     "partnerRef": { "type": "string", "minLength": 1 },
-    "outcome": { "enum": ["SUCCESS", "FAILED", "PENDING"], "description": "CALLBACK: final result of an earlier partner request." },
-    "partnerCode": { "type": "string" },
-    "errorCode": { "type": "string", "pattern": "^MW-PTR-[A-Z0-9_]+-[A-Z0-9_]+$" },
-    "txnType": { "type": "string" },
-    "amount": {
+    "receivedAt": { "type": "string", "format": "date-time" },
+    "payload": {
       "type": "object",
-      "required": ["valueMinor", "currency"],
-      "properties": {
-        "valueMinor": { "type": "integer", "minimum": 0 },
-        "currency": { "const": "BDT" }
-      }
-    },
-    "creditParty": {
-      "type": "object",
-      "required": ["type", "id"],
-      "properties": {
-        "type": { "enum": ["WALLET", "BANK_ACCOUNT", "CARD_TOKEN", "BILLER_ACCOUNT", "MSISDN", "MERCHANT", "ORG"] },
-        "id": { "type": "string", "minLength": 1 },
-        "name": { "type": "string" },
-        "walletType": { "enum": ["CUSTOMER", "AGENT", "MERCHANT", "DISTRIBUTOR", "DSO"] }
-      }
-    },
-    "attributes": { "type": "object", "additionalProperties": { "type": "string" } },
-    "receivedAt": { "type": "string", "format": "date-time" }
+      "description": "Shape depends on family: one payload schema per message type in mw.partner.inbound.v1/."
+    }
   },
-  "allOf": [
-    { "if": { "properties": { "kind": { "const": "CALLBACK" } }, "required": ["kind"] }, "then": { "required": ["outcome"] } },
-    { "if": { "properties": { "kind": { "enum": ["REMITTANCE", "NPSB_CREDIT"] } }, "required": ["kind"] }, "then": { "required": ["txnType", "amount", "creditParty"] } }
+  "discriminator": { "propertyName": "family" },
+  "oneOf": [
+    {
+      "properties": { "family": { "const": "telco" }, "payload": { "$ref": "mw.partner.inbound.v1/telco.payload.schema.json" } }
+    },
+    {
+      "properties": { "family": { "const": "billpay" }, "payload": { "$ref": "mw.partner.inbound.v1/billpay.payload.schema.json" } }
+    },
+    {
+      "properties": { "family": { "const": "bank" }, "payload": { "$ref": "mw.partner.inbound.v1/bank.payload.schema.json" } }
+    },
+    {
+      "properties": { "family": { "const": "interop" }, "payload": { "$ref": "mw.partner.inbound.v1/interop.payload.schema.json" } }
+    },
+    {
+      "properties": {
+        "family": { "const": "compliance" },
+        "payload": { "$ref": "mw.partner.inbound.v1/compliance.payload.schema.json" }
+      }
+    }
   ]
 }

@@ -2,51 +2,163 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.upay.mw/events/mw-core-mock/core.event.v1.schema.json",
   "title": "core.event.v1",
-  "description": "Result event from the core (mw-core-mock in the MVP) for a core command (spec 6.3), on core.wallet.event.v1 and core.payment.event.v1. Key: txnId. A repeated commandId yields the same event.",
+  "description": "Result event from the core (mw-core-mock in the MVP) for a core command (spec 6.3), on core.wallet.event.v1 and core.payment.event.v1. Key: txnId. A repeated commandId yields the same event. The payload is picked by eventType; success events carry outcome SUCCESS, failure events outcome FAILURE and a reasonCode.",
   "type": "object",
-  "required": ["schemaVersion", "eventType", "eventId", "commandId", "txnId", "coreRef", "occurredAt", "outcome"],
+  "required": ["schemaVersion", "eventType", "eventId", "commandId", "txnId", "coreRef", "occurredAt", "outcome", "payload"],
   "properties": {
-    "schemaVersion": { "const": 1 },
-    "eventType": { "enum": ["TransactionValidated", "TransactionRejected", "FundsHeld", "HoldRejected", "HoldCommitted", "CommitFailed", "HoldReleased", "ReleaseFailed", "TransferPosted", "TransferRejected", "WalletCredited", "CreditRejected", "TransactionReversed", "ReversalRejected", "TransactionStatus", "ComplianceActionApplied", "ComplianceActionRejected"] },
+    "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
+    "eventType": {
+      "enum": ["TransactionValidated", "TransactionRejected", "FundsHeld", "HoldRejected", "HoldCommitted", "CommitFailed", "HoldReleased", "ReleaseFailed", "TransferPosted", "TransferRejected", "WalletCredited", "CreditRejected", "TransactionReversed", "ReversalRejected", "TransactionStatus", "ComplianceActionApplied", "ComplianceActionRejected"]
+    },
     "eventId": { "type": "string", "format": "uuid", "description": "Unique per event; consumers dedupe on it (inbox)." },
-    "commandId": { "type": "string", "minLength": 1, "maxLength": 128 },
-    "txnId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "commandId": { "$ref": "../../common/defs.v1.schema.json#/$defs/CommandId" },
+    "txnId": { "$ref": "../../common/defs.v1.schema.json#/$defs/TxnId" },
     "coreRef": { "type": "string", "minLength": 1 },
     "occurredAt": { "type": "string", "format": "date-time" },
     "outcome": { "enum": ["SUCCESS", "FAILURE"] },
     "reasonCode": { "type": "string", "minLength": 1, "description": "Core reason; mapped by the orchestrator to MW-CORE-*." },
     "reasonMessage": { "type": "string" },
-    "holdId": { "type": "string", "minLength": 1 },
-    "fee": { "$ref": "#/$defs/Money" },
-    "charges": { "type": "array", "items": { "type": "object", "required": ["code", "amount"], "properties": { "code": { "type": "string" }, "amount": { "$ref": "#/$defs/Money" } } } },
-    "limitsLeft": { "type": "object", "additionalProperties": { "$ref": "#/$defs/Money" }, "description": "Remaining limit per limit code (TransactionValidated)." },
-    "txnStatus": { "enum": ["NOT_FOUND", "VALIDATED", "HELD", "COMMITTED", "RELEASED", "POSTED", "CREDITED", "REVERSED", "REJECTED"], "description": "TransactionStatus only: the core's view of the transaction." },
     "balancesAfter": {
       "type": "array",
       "description": "Optional; used only for customer messages.",
-      "items": { "type": "object", "required": ["walletId", "balance"], "properties": { "walletId": { "type": "string" }, "balance": { "$ref": "#/$defs/Money" } } }
+      "items": {
+        "type": "object",
+        "required": ["walletId", "balance"],
+        "properties": { "walletId": { "type": "string" }, "balance": { "$ref": "../../common/defs.v1.schema.json#/$defs/Amount" } }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "description": "Shape depends on eventType: one payload schema per message type in core.event.v1/."
     }
   },
-  "allOf": [
+  "discriminator": { "propertyName": "eventType" },
+  "oneOf": [
     {
-      "if": { "properties": { "eventType": { "enum": ["TransactionRejected", "HoldRejected", "CommitFailed", "ReleaseFailed", "TransferRejected", "CreditRejected", "ReversalRejected", "ComplianceActionRejected"] } }, "required": ["eventType"] },
-      "then": { "properties": { "outcome": { "const": "FAILURE" } }, "required": ["reasonCode"] }
-    },
-    {
-      "if": { "properties": { "eventType": { "enum": ["TransactionValidated", "FundsHeld", "HoldCommitted", "HoldReleased", "TransferPosted", "WalletCredited", "TransactionReversed", "ComplianceActionApplied"] } }, "required": ["eventType"] },
-      "then": { "properties": { "outcome": { "const": "SUCCESS" } } }
-    },
-    { "if": { "properties": { "eventType": { "const": "FundsHeld" } }, "required": ["eventType"] }, "then": { "required": ["holdId"] } },
-    { "if": { "properties": { "eventType": { "const": "TransactionStatus" } }, "required": ["eventType"] }, "then": { "required": ["txnStatus"] } }
-  ],
-  "$defs": {
-    "Money": {
-      "type": "object",
-      "required": ["valueMinor", "currency"],
       "properties": {
-        "valueMinor": { "type": "integer" },
-        "currency": { "const": "BDT" }
+        "eventType": { "const": "TransactionValidated" },
+        "payload": { "$ref": "core.event.v1/TransactionValidated.payload.schema.json" },
+        "outcome": { "const": "SUCCESS" }
       }
+    },
+    {
+      "properties": {
+        "eventType": { "const": "TransactionRejected" },
+        "payload": { "$ref": "core.event.v1/TransactionRejected.payload.schema.json" },
+        "outcome": { "const": "FAILURE" }
+      },
+      "required": ["reasonCode"]
+    },
+    {
+      "properties": {
+        "eventType": { "const": "FundsHeld" },
+        "payload": { "$ref": "core.event.v1/FundsHeld.payload.schema.json" },
+        "outcome": { "const": "SUCCESS" }
+      }
+    },
+    {
+      "properties": {
+        "eventType": { "const": "HoldRejected" },
+        "payload": { "$ref": "core.event.v1/HoldRejected.payload.schema.json" },
+        "outcome": { "const": "FAILURE" }
+      },
+      "required": ["reasonCode"]
+    },
+    {
+      "properties": {
+        "eventType": { "const": "HoldCommitted" },
+        "payload": { "$ref": "core.event.v1/HoldCommitted.payload.schema.json" },
+        "outcome": { "const": "SUCCESS" }
+      }
+    },
+    {
+      "properties": {
+        "eventType": { "const": "CommitFailed" },
+        "payload": { "$ref": "core.event.v1/CommitFailed.payload.schema.json" },
+        "outcome": { "const": "FAILURE" }
+      },
+      "required": ["reasonCode"]
+    },
+    {
+      "properties": {
+        "eventType": { "const": "HoldReleased" },
+        "payload": { "$ref": "core.event.v1/HoldReleased.payload.schema.json" },
+        "outcome": { "const": "SUCCESS" }
+      }
+    },
+    {
+      "properties": {
+        "eventType": { "const": "ReleaseFailed" },
+        "payload": { "$ref": "core.event.v1/ReleaseFailed.payload.schema.json" },
+        "outcome": { "const": "FAILURE" }
+      },
+      "required": ["reasonCode"]
+    },
+    {
+      "properties": {
+        "eventType": { "const": "TransferPosted" },
+        "payload": { "$ref": "core.event.v1/TransferPosted.payload.schema.json" },
+        "outcome": { "const": "SUCCESS" }
+      }
+    },
+    {
+      "properties": {
+        "eventType": { "const": "TransferRejected" },
+        "payload": { "$ref": "core.event.v1/TransferRejected.payload.schema.json" },
+        "outcome": { "const": "FAILURE" }
+      },
+      "required": ["reasonCode"]
+    },
+    {
+      "properties": {
+        "eventType": { "const": "WalletCredited" },
+        "payload": { "$ref": "core.event.v1/WalletCredited.payload.schema.json" },
+        "outcome": { "const": "SUCCESS" }
+      }
+    },
+    {
+      "properties": {
+        "eventType": { "const": "CreditRejected" },
+        "payload": { "$ref": "core.event.v1/CreditRejected.payload.schema.json" },
+        "outcome": { "const": "FAILURE" }
+      },
+      "required": ["reasonCode"]
+    },
+    {
+      "properties": {
+        "eventType": { "const": "TransactionReversed" },
+        "payload": { "$ref": "core.event.v1/TransactionReversed.payload.schema.json" },
+        "outcome": { "const": "SUCCESS" }
+      }
+    },
+    {
+      "properties": {
+        "eventType": { "const": "ReversalRejected" },
+        "payload": { "$ref": "core.event.v1/ReversalRejected.payload.schema.json" },
+        "outcome": { "const": "FAILURE" }
+      },
+      "required": ["reasonCode"]
+    },
+    {
+      "properties": {
+        "eventType": { "const": "TransactionStatus" },
+        "payload": { "$ref": "core.event.v1/TransactionStatus.payload.schema.json" }
+      }
+    },
+    {
+      "properties": {
+        "eventType": { "const": "ComplianceActionApplied" },
+        "payload": { "$ref": "core.event.v1/ComplianceActionApplied.payload.schema.json" },
+        "outcome": { "const": "SUCCESS" }
+      }
+    },
+    {
+      "properties": {
+        "eventType": { "const": "ComplianceActionRejected" },
+        "payload": { "$ref": "core.event.v1/ComplianceActionRejected.payload.schema.json" },
+        "outcome": { "const": "FAILURE" }
+      },
+      "required": ["reasonCode"]
     }
-  }
+  ]
 }

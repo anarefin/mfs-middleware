@@ -1,0 +1,3 @@
+{
+  "invalid-credit-without-credit-party.json": ["/payload must have required property 'creditParty'"]
+}

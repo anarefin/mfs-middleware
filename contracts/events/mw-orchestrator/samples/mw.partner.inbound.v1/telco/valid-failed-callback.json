@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "inboundId": "3c2b1a09-8f7e-4d6c-9b5a-4f3e2d1c0b9a",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c",
+  "correlationId": "corr-0002",
+  "partnerId": "gp",
+  "family": "telco",
+  "partnerRef": "GP-778899",
+  "receivedAt": "2026-11-03T08:16:10Z",
+  "payload": { "kind": "CALLBACK", "outcome": "FAILED", "partnerCode": "E104", "errorCode": "MW-PTR-GP-INVALID_MSISDN" }
+}

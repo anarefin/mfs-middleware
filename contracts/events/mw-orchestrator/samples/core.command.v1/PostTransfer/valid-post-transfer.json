@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "commandType": "PostTransfer",
+  "commandId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8b:post",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8b",
+  "correlationId": "corr-0001",
+  "issuedAt": "2026-11-03T08:15:30.500Z",
+  "expiresAt": "2026-11-03T08:15:35.500Z",
+  "payload": {
+    "txnType": "P2P",
+    "debitParty": { "type": "WALLET", "id": "01711000001", "walletType": "CUSTOMER" },
+    "creditParty": { "type": "WALLET", "id": "01811000002", "walletType": "CUSTOMER" },
+    "amount": { "valueMinor": 50000, "currency": "BDT" },
+    "encryptedPin": { "keyId": "core-pin-2026-01", "ciphertext": "ZmFrZS1jaXBoZXJ0ZXh0LW5vdC1hLXBpbg==" },
+    "fee": { "valueMinor": 0, "currency": "BDT" }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.upay.mw/events/mw-orchestrator/mw.partner.request.v1/bank.payload.schema.json",
+  "title": "mw.partner.request.v1 bank payload",
+  "description": "Request to adapter-bank (bank transfers, UCB IMT remittance, ATM). PAY and REVERSE carry an amount.",
+  "type": "object",
+  "required": ["operation", "txnType", "partner", "partnerTxnRef"],
+  "properties": {
+    "operation": { "enum": ["PAY", "INQUIRY", "STATUS_QUERY", "REVERSE", "SCREEN"] },
+    "txnType": { "$ref": "../../../common/defs.v1.schema.json#/$defs/TxnType" },
+    "partner": { "$ref": "../../../common/defs.v1.schema.json#/$defs/PartnerRef" },
+    "partnerTxnRef": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable reference derived from txnId so partner retries are recognised as duplicates (spec 7.3)."
+    },
+    "amount": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Amount" },
+    "debitParty": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Party" },
+    "creditParty": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Party" },
+    "originalPartnerRef": { "type": "string", "description": "For STATUS_QUERY and REVERSE: the partner's reference of the original call." },
+    "attributes": { "$ref": "../../../common/defs.v1.schema.json#/$defs/StringMap" }
+  },
+  "if": { "properties": { "operation": { "enum": ["PAY", "REVERSE"] } }, "required": ["operation"] },
+  "then": { "required": ["amount"] }
+}

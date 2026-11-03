@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.upay.mw/events/mw-orchestrator/core.command.v1/ReverseTransaction.payload.schema.json",
+  "title": "core.command.v1 ReverseTransaction payload",
+  "description": "Compensate a posted transaction.",
+  "type": "object",
+  "required": ["originalTxnId", "amount"],
+  "properties": {
+    "originalTxnId": { "$ref": "../../../common/defs.v1.schema.json#/$defs/TxnId" },
+    "amount": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Amount" },
+    "fee": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Amount" },
+    "reason": { "type": "string" }
+  }
+}

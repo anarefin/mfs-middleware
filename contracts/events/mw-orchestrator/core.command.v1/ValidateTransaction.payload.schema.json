@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.upay.mw/events/mw-orchestrator/core.command.v1/ValidateTransaction.payload.schema.json",
+  "title": "core.command.v1 ValidateTransaction payload",
+  "description": "Check limits, KYC tier, fees and account state without moving money. Needs customer authorisation, so it carries encryptedPin (spec 6.3).",
+  "type": "object",
+  "required": ["txnType", "debitParty", "creditParty", "amount", "encryptedPin"],
+  "properties": {
+    "txnType": { "$ref": "../../../common/defs.v1.schema.json#/$defs/TxnType" },
+    "debitParty": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Party" },
+    "creditParty": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Party" },
+    "amount": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Amount" },
+    "fee": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Amount" },
+    "encryptedPin": { "$ref": "../../../common/defs.v1.schema.json#/$defs/EncryptedPin" },
+    "attributes": { "$ref": "../../../common/defs.v1.schema.json#/$defs/StringMap" }
+  }
+}

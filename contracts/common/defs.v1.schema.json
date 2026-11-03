@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.upay.mw/common/defs.v1.schema.json",
+  "title": "defs.v1",
+  "description": "Shared types for every contract (spec 5.1, 5.3, 6.1, 6.3). Not a message: message schemas $ref these with a relative path, e.g. ../../common/defs.v1.schema.json#/$defs/Amount. Only additive changes within v1.",
+  "$defs": {
+    "SchemaVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Major version of a message schema, mirrored in the mw-schema-version header (spec 6.1). Each message schema pins it with const."
+    },
+    "TxnId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "description": "UUIDv7, lower case, minted by the middleware at first contact (spec 5.1)."
+    },
+    "CorrelationId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Propagated across all hops (X-Correlation-Id, Kafka header mw-correlation-id)."
+    },
+    "IdempotencyKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "From the channel (Idempotency-Key header) or derived (spec 7.3)."
+    },
+    "CommandId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "txnId + step + attempt-independent suffix (spec 7.3); the core is idempotent on it."
+    },
+    "Amount": {
+      "type": "object",
+      "description": "Money on the wire: integer minor units (poisha), never a decimal (spec 5.1).",
+      "required": ["valueMinor", "currency"],
+      "properties": { "valueMinor": { "type": "integer", "minimum": 0 }, "currency": { "const": "BDT" } }
+    },
+    "Msisdn": {
+      "type": "string",
+      "pattern": "^(\\+?880)?01[3-9][0-9]{8}$",
+      "description": "Bangladeshi mobile number, with or without the 880 country code."
+    },
+    "Party": {
+      "type": "object",
+      "description": "Who pays or receives (spec 5.1). Card numbers never appear; only tokens (SEC-02).",
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "enum": ["WALLET", "BANK_ACCOUNT", "CARD_TOKEN", "BILLER_ACCOUNT", "MSISDN", "MERCHANT", "ORG"] },
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "walletType": { "enum": ["CUSTOMER", "AGENT", "MERCHANT", "DISTRIBUTOR", "DSO"] }
+      }
+    },
+    "PartnerRef": {
+      "type": "object",
+      "required": ["partnerId", "productCode"],
+      "properties": {
+        "partnerId": { "type": "string", "minLength": 1 },
+        "productCode": { "type": "string", "minLength": 1 },
+        "billerCode": { "type": "string" }
+      }
+    },
+    "EncryptedPin": {
+      "type": "object",
+      "description": "PIN encrypted with the core's public key keyId (RSA-OAEP, SHA-256); the middleware never decrypts it (spec 6.3).",
+      "required": ["keyId", "ciphertext"],
+      "properties": {
+        "keyId": { "type": "string", "minLength": 1 },
+        "ciphertext": { "type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9+/]+={0,2}$", "contentEncoding": "base64" }
+      }
+    },
+    "Channel": {
+      "enum": ["CUSTOMER_APP", "AGENT_APP", "MERCHANT_APP", "DISTRIBUTOR_APP", "DSO_APP", "PARTNER_APP", "USSD", "WEB_CHECKOUT", "ORG_PORTAL", "SP_PORTAL", "PARTNER_API", "SYSTEM"]
+    },
+    "TxnType": {
+      "enum": ["P2P", "CASH_IN", "CASH_OUT", "ATM_CASH_OUT", "ATM_CASH_IN", "TOPUP", "BILL_PAY", "MERCHANT_PAY", "ADD_MONEY_CARD", "ADD_MONEY_BANK", "C2W", "W2B", "REMIT_IN", "QR_PAY_INTEROP", "BULK_DISBURSE", "REVERSAL"],
+      "description": "Spec 5.2."
+    },
+    "Locale": { "enum": ["bn", "en"] },
+    "StringMap": { "type": "object", "additionalProperties": { "type": "string" } }
+  }
+}

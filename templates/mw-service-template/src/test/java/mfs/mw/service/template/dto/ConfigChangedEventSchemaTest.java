@@ -3,15 +3,13 @@ package mfs.mw.service.template.dto;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.networknt.schema.Error;
-import com.networknt.schema.Schema;
-import com.networknt.schema.SchemaRegistry;
-import com.networknt.schema.SpecificationVersion;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
+import mfs.mw.service.template.contracts.ContractSchemas;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -21,20 +19,21 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Schema test layer (spec 22.1): this service's own type for {@code mw.config.changed.v1} reads
  * every valid contract sample and writes JSON the contract accepts. Contracts come from the root
- * {@code contracts/} folder through the {@code mwContractsDir} Gradle property only (4.3 rule 2).
+ * {@code contracts/} folder through the {@code mwContractsDir} Gradle property only (4.3 rule 2),
+ * loaded by {@link ContractSchemas} so the schema's {@code $ref}s into {@code common/} resolve.
  */
 class ConfigChangedEventSchemaTest {
 
   static final JsonMapper JSON = JsonMapper.builder().build();
 
+  static final String SCHEMA = "events/mw-admin-api/mw.config.changed.v1.schema.json";
+
   static Path contractsDir() {
-    String dir = System.getProperty("mwContractsDir");
-    assertThat(dir).as("mwContractsDir system property (set by build.gradle.kts)").isNotBlank();
-    return Path.of(dir);
+    return ContractSchemas.contractsDir();
   }
 
   static Path schemaFile() {
-    return contractsDir().resolve("events/mw-admin-api/mw.config.changed.v1.schema.json");
+    return contractsDir().resolve(SCHEMA);
   }
 
   static Stream<Path> validSamples() throws Exception {
@@ -47,11 +46,8 @@ class ConfigChangedEventSchemaTest {
     }
   }
 
-  static List<Error> validate(JsonNode node) throws Exception {
-    Schema schema =
-        SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12)
-            .getSchema(Files.readString(schemaFile()));
-    return schema.validate(node);
+  static List<Error> validate(JsonNode node) {
+    return ContractSchemas.schema(SCHEMA).validate(node);
   }
 
   @Test
