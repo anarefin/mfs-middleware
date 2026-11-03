@@ -1086,7 +1086,7 @@ On a Compose host each zone is its own user-defined network (`dmz`, `app`, `data
 ### 18.5 Secure SDLC (SEC-06, SEC-07)
 
 - Threat model (STRIDE) per service and per partner integration, stored in `docs/security/`, refreshed each major release.
-- Pipeline gates (tool choice outside this spec, capability required): SAST, dependency scan (OWASP Dependency-Check or equivalent), container scan (e.g. Trivy), secret scan, IaC/Compose lint, DAST against UAT; critical or high findings block release.
+- Pipeline gates (tool choice outside this spec, capability required): dependency scan (OWASP Dependency-Check or equivalent), container scan (e.g. Trivy), secret scan, IaC/Compose lint, DAST against UAT; critical or high findings block release.
 - Signed images (cosign) and SBOM attached to every image; Compose deploys only signed digests.
 - Independent penetration test before go-live and after each major release.
 
@@ -1113,7 +1113,7 @@ The design targets 1,500 TPS peak with 3x headroom on a single-site deployment w
 | NFR-05 | Scalability | Vertical only | Larger container limits and hosts; no replicas (D11). Services still keep no state that matters across restarts, so this could change later without code change |
 | NFR-06 | Integrity | Zero loss, zero duplicate financial effect | Outbox, idempotent consumers, `acks=all`, idempotency keys, TSQ, recon |
 | NFR-07 | Isolation | One partner's failure affects only that partner | Per-partner bulkheads, circuit breakers, separate request topics per family, consumer concurrency limits |
-| NFR-08 | Maintainability | ≥ 80% line coverage on business logic; zero critical static-analysis issues | Quality gates in pipeline (section 22) |
+| NFR-08 | Maintainability | ≥ 80% line coverage on business logic | Quality gates in pipeline (section 22) |
 | NFR-09 | Portability | Runs on any Linux host with Docker Engine | OCI images, Compose, no cloud-specific services |
 | NFR-10 | Localisation | bn/en messages; Asia/Dhaka; BDT | Locale in canonical model; UTC storage, Dhaka rendering; minor-unit amounts |
 

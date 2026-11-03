@@ -68,3 +68,12 @@ test_spec_records_the_m0_review_decisions() {
   if grep 'make verify' "$f" | grep -qi 'static analysis'; then fail "make verify still lists static analysis"; fi
   if grep -qE 'JUnit 5|junit5' "$f"; then fail "spec still says JUnit 5"; fi
 }
+
+test_spec_has_no_static_analysis_or_sast_requirement() {
+  # M0 decision: no static analysis and no SAST; review, gitleaks and trivy only.
+  local f="$REPO_DIR/spec/upay-mfs-middleware-spec.md" hits
+  hits=$(grep -niE 'static[- ]analysis|\bSAST\b|SpotBugs|FindSecBugs' "$f") \
+    && fail "spec still requires static analysis or SAST: $hits"
+  spec_has 'gitleaks|[Ss]ecret scan'
+  spec_has '[Tt]rivy|[Cc]ontainer scan'
+}
