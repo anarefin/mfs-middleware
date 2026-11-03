@@ -42,6 +42,9 @@ dependencies {
     implementation(libs.spring.boot.starter.flyway)
     implementation(libs.flyway.database.postgresql)
     runtimeOnly(libs.postgresql)
+    // Scheduled jobs run on one instance only (ShedLock on this service's schema, 4.4).
+    implementation(libs.shedlock.spring)
+    implementation(libs.shedlock.provider.jdbc.template)
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.boot.starter.webmvc.test)
