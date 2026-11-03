@@ -3,12 +3,16 @@
 # module compose files join the zone networks defined here.
 #
 # Zones (18.1): dmz = internet-facing edge, app = services + Kafka + Valkey,
-# data = PostgreSQL, ops = Keycloak, OpenBao, etcd, APISIX admin.
+# data = PostgreSQL, ops = Keycloak, OpenBao, APISIX Admin API callers. ops has a fixed
+# subnet (MW_OPS_SUBNET) because the APISIX Admin API only accepts callers from it.
+# etcd sits alone on the internal `etcd` network with APISIX (and its init step).
 # Only APISIX publishes a host port (443 -> 9443; override with MW_HTTPS_PORT). The
 # SMPP/USSD port is published later by mw-ussd / mw-simulators.
 #
-# Images are pinned by tag and digest (20.1). Dev credentials live in env/*.env
-# (obviously fake values); this file references no secret values (18.4).
+# Images are pinned by tag and digest (20.1). This file references no secret values
+# (18.4): fixed dev-only values for local tools live in env/*.env (obviously fake), and
+# the APISIX admin key and etcd passwords are generated per host into the gitignored
+# .env next to this file by scripts/gen-dev-env.sh (`make up` runs it).
 
 x-logging: &logging
   driver: json-file
@@ -21,6 +25,11 @@ networks:
   app:
   data:
   ops:
+    ipam:
+      config:
+        - subnet: ${MW_OPS_SUBNET:-172.31.250.0/24}
+  etcd:
+    internal: true
 
 volumes:
   kafka-data:
@@ -187,7 +196,11 @@ services:
   etcd:
     image: quay.io/coreos/etcd:v3.6.16@sha256:a9c7cc12156f4b26ca41f0b57ba5b76c45037ff6c1e47ea3d68cb7908d48a965
     restart: unless-stopped
-    networks: [ops]
+    networks: [etcd]          # internal network shared only with APISIX; 2379 never published
+    environment:
+      # healthcheck user: no role, so it can read nothing; etcdctl counts "permission
+      # denied" as healthy, and with auth on an anonymous health check is refused
+      ETCDCTL_USER: healthcheck:${ETCD_HEALTH_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
     command:
       - /usr/local/bin/etcd
       - --name=etcd
@@ -211,13 +224,38 @@ services:
         limits: { cpus: "1", memory: 512m }
     logging: *logging
 
+  etcd-init:
+    # Turns on etcd auth: root user, and an apisix user limited to the /apisix prefix.
+    image: curlimages/curl:8.17.0@sha256:935d9100e9ba842cdb060de42472c7ca90cfe9a7c96e4dacb55e79e560b3ff40
+    restart: "no"
+    networks: [etcd]
+    depends_on:
+      etcd: { condition: service_healthy }
+    entrypoint: ["/bin/sh", "/deploy/etcd/init-auth.sh"]
+    environment:
+      ETCD_ENDPOINT: http://etcd:2379
+      ETCD_ROOT_PASSWORD: ${ETCD_ROOT_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      ETCD_APISIX_PASSWORD: ${ETCD_APISIX_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      ETCD_HEALTH_PASSWORD: ${ETCD_HEALTH_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+    volumes:
+      - ./etcd:/deploy/etcd:ro
+    read_only: true
+    tmpfs: [/tmp]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 64m }
+    logging: *logging
+
   apisix:
     image: apache/apisix:3.19.0-debian@sha256:9a7e45dc943fbf10ec916d1232bae4cda9302ae28a4696cfb83c2da01d261141
     restart: unless-stopped
-    networks: [dmz, app, ops]
+    networks: [dmz, app, ops, etcd]
     depends_on:
-      etcd: { condition: service_healthy }
-    env_file: [env/apisix.env]
+      etcd-init: { condition: service_completed_successfully }
+    environment:
+      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?run scripts/gen-dev-env.sh (make up does)}
+      ETCD_APISIX_PASSWORD: ${ETCD_APISIX_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      MW_OPS_SUBNET: ${MW_OPS_SUBNET:-172.31.250.0/24}
     ports:
       - target: 9443
         published: "${MW_HTTPS_PORT:-443}"
@@ -242,10 +280,10 @@ services:
     networks: [ops]
     depends_on:
       apisix: { condition: service_healthy }
-    env_file: [env/apisix.env]
     entrypoint: ["/bin/bash", "/deploy/apisix/apply.sh"]
     environment:
       APISIX_ADMIN: apisix:9180
+      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?run scripts/gen-dev-env.sh (make up does)}
     volumes:
       - ../../apisix:/deploy/apisix:ro
       - apisix-tls:/usr/local/apisix/conf/cert

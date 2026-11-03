@@ -26,12 +26,19 @@ put() {
 }
 
 apply() {
-  local path="$1" body="$2" status
-  status="$(put "$path" "$body")"
-  case "$status" in
-    200|201) echo "apisix-init: PUT $path -> $status" ;;
-    *) echo "apisix-init: PUT $path failed with '$status'" >&2; return 1 ;;
-  esac
+  local path="$1" body="$2" status try
+  # 5xx right after an APISIX or etcd restart (etcd connection still re-authenticating)
+  # is retried for up to a minute; anything else fails at once
+  for try in $(seq 1 30); do
+    status="$(put "$path" "$body")"
+    case "$status" in
+      200|201) echo "apisix-init: PUT $path -> $status"; return 0 ;;
+      5*) sleep 2 ;;
+      *) break ;;
+    esac
+  done
+  echo "apisix-init: PUT $path failed with '$status'" >&2
+  return 1
 }
 
 i=0

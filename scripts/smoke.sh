@@ -13,10 +13,11 @@ set -uo pipefail
 file="$MW_ROOT/deploy/compose/mvp/compose.yml"
 [ -f "$file" ] || die "smoke: deploy/compose/mvp/compose.yml does not exist"
 command -v jq >/dev/null || die "smoke: jq is required"
+"$(dirname "$0")/gen-dev-env.sh"
 
 CURL_IMAGE="curlimages/curl:8.17.0@sha256:935d9100e9ba842cdb060de42472c7ca90cfe9a7c96e4dacb55e79e560b3ff40"
 LONG_RUNNING="kafka postgres valkey keycloak openbao etcd apisix greenmail"
-ONE_SHOT="kafka-init apisix-init"
+ONE_SHOT="kafka-init etcd-init apisix-init"
 
 dc() { docker compose -f "$file" "$@"; }
 project="$(dc config --format json | jq -r .name)"
@@ -112,6 +113,31 @@ done
 https_port="$(dc port apisix 9443 | head -1 | sed 's/.*://')"
 check "apisix https://localhost:$https_port/healthz -> 200" \
   curl -skf --max-time 10 "https://localhost:$https_port/healthz"
+
+# ---- APISIX Admin API and etcd isolation ----
+# Generated credentials (gitignored .env written by gen-dev-env.sh)
+set -a; . "$MW_ROOT/deploy/compose/platform/.env"; set +a
+net_of() { docker network ls --format '{{.Name}}' --filter "label=com.docker.compose.project=$project" --filter "label=com.docker.compose.network=$1" | head -1; }
+app_net="$(net_of app)"
+# admin_status NETWORK: HTTP status of an authenticated Admin API call made from a
+# throwaway container on NETWORK (000 when unreachable)
+admin_status() {
+  docker run --rm --network "$1" "$CURL_IMAGE" -s -o /dev/null -w '%{http_code}' --max-time 5 \
+    -H "X-API-KEY: $APISIX_ADMIN_KEY" http://apisix:9180/apisix/admin/routes
+}
+expect_status() { local want="$1" got; shift; got="$("$@")"; [ "$got" = "$want" ] || { echo "got HTTP $got, want $want"; return 1; }; }
+check "apisix admin API answers callers on the ops subnet (200)" expect_status 200 admin_status "$ops_net"
+check "apisix admin API refuses callers on the app network (403)" expect_status 403 admin_status "$app_net"
+host_admin() { ! curl -s -o /dev/null --max-time 3 http://127.0.0.1:9180/apisix/admin/routes; }
+check "apisix admin API not reachable from the host (127.0.0.1:9180)" host_admin
+no_etcd_from_ops() { ! docker run --rm --network "$ops_net" "$CURL_IMAGE" -s --max-time 5 http://etcd:2379/version; }
+check "etcd not reachable from the ops network" no_etcd_from_ops
+unauth_read() { local out; out="$(dc exec -T -e ETCDCTL_USER= etcd /usr/local/bin/etcdctl get /apisix --prefix --keys-only 2>&1)" && { echo "unauthenticated read succeeded: $out"; return 1; }; echo "$out" | grep -qiE 'user name is empty|permission denied|authentication'; }
+check "etcd rejects unauthenticated reads" unauth_read
+apisix_read() { dc exec -T -e "ETCDCTL_USER=apisix:$ETCD_APISIX_PASSWORD" etcd /usr/local/bin/etcdctl get /apisix/routes --prefix --keys-only | grep -q '^/apisix/routes/'; }
+check "etcd apisix user reads /apisix" apisix_read
+apisix_outside() { local out; out="$(dc exec -T -e "ETCDCTL_USER=apisix:$ETCD_APISIX_PASSWORD" etcd /usr/local/bin/etcdctl get /other 2>&1)" && return 1; echo "$out" | grep -q "permission denied"; }
+check "etcd apisix user is denied outside /apisix" apisix_outside
 
 printf '\nsmoke: %d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]
