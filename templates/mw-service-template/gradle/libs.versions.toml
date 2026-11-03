@@ -8,9 +8,6 @@ resilience4j = "2.4.0"
 testcontainers = "2.0.5"
 networknt = "3.0.8"
 jacoco = "0.8.16"
-spotbugs = "4.10.5"
-gradle-spotbugs = "6.5.13"
-findsecbugs = "1.14.0"
 
 [libraries]
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
@@ -45,9 +42,7 @@ spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-te
 camel-test-spring-junit6 = { module = "org.apache.camel:camel-test-spring-junit6" }
 json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "networknt" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
-findsecbugs = { module = "com.h3xstream.findsecbugs:findsecbugs-plugin", version.ref = "findsecbugs" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
 cyclonedx = { id = "org.cyclonedx.bom", version.ref = "cyclonedx" }
-spotbugs = { id = "com.github.spotbugs", version.ref = "gradle-spotbugs" }

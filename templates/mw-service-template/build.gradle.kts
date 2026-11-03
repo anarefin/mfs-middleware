@@ -5,7 +5,6 @@ plugins {
     jacoco
     alias(libs.plugins.spring.boot)
     alias(libs.plugins.cyclonedx)
-    alias(libs.plugins.spotbugs)
 }
 
 group = "mfs.mw"
@@ -54,8 +53,6 @@ dependencies {
     testImplementation(libs.camel.test.spring.junit6)
     testImplementation(libs.json.schema.validator)
     testRuntimeOnly(libs.junit.platform.launcher)
-
-    spotbugsPlugins(libs.findsecbugs)
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -112,18 +109,6 @@ tasks.jacocoTestCoverageVerification {
     }
 }
 tasks.check { dependsOn(tasks.jacocoTestCoverageVerification, tasks.jacocoTestReport) }
-
-// Static analysis (SAST, spec 18.5): SpotBugs with the FindSecBugs rules on main code, in
-// `check`. Medium confidence and up fails the build; reviewed false positives go in
-// config/spotbugs/exclude.xml with a reason.
-spotbugs {
-    toolVersion = libs.versions.spotbugs.get()
-    effort = com.github.spotbugs.snom.Effort.MAX
-    reportLevel = com.github.spotbugs.snom.Confidence.MEDIUM
-    excludeFilter = file("config/spotbugs/exclude.xml")
-}
-tasks.spotbugsMain { reports.create("html") { required = true } }
-tasks.spotbugsTest { enabled = false }
 
 // SBOM on every build (spec 3, OWN-05), written to build/reports/cyclonedx-direct/ and
 // copied into the image by the Dockerfile.

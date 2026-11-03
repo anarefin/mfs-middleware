@@ -44,3 +44,27 @@ test_pr_template_has_the_spec_definition_of_done() {
   grep -qiE '^- \[ \] .*masking verified for (any|every) new field' "$t" || fail "no 'masking verified' item"
   grep -qiE '^- \[ \] .*metrics.*log events.*alert rule' "$t" || fail "no 'metrics, log events, alert rule' item"
 }
+
+spec_has() {
+  grep -qE -- "$1" "$REPO_DIR/spec/upay-mfs-middleware-spec.md" || fail "spec lacks: $1"
+}
+
+test_spec_records_the_m0_review_decisions() {
+  # Ticket 49 (M0 review, 2026-11-03).
+  local f="$REPO_DIR/spec/upay-mfs-middleware-spec.md"
+  spec_has '^\| Framework \| Spring Boot \| 4\.1\.2 '
+  spec_has '^\| Integration \| Apache Camel .*\| 4\.22\.2 LTS '
+  spec_has '^\| .*Spring Cloud.* \| 2025\.1\.4 '
+  spec_has '^\| Migrations \| Flyway \| 12'
+  spec_has '^\| Scheduling \| ShedLock .*\| 7'
+  spec_has '^\| Testing \| JUnit 6,'
+  spec_has '^\| .*Kafka ACLs.*quotas'
+  spec_has '^\| .*image digest pinning'
+  spec_has '^\| .*OpenBao root token.*data volume.*dev only'
+  spec_has 'effectively-once \(idempotent producer \+ outbox \+ inbox\)'
+  spec_has 'minimum log field set; extra structured fields are allowed when masked'
+  spec_has '^\| Circuit breaker \| 60 s time-based window, minimum 50 calls'
+  if grep -q 'idempotent producers + transactions' "$f"; then fail "spec still says Kafka transactions"; fi
+  if grep 'make verify' "$f" | grep -qi 'static analysis'; then fail "make verify still lists static analysis"; fi
+  if grep -qE 'JUnit 5|junit5' "$f"; then fail "spec still says JUnit 5"; fi
+}

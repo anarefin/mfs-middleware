@@ -102,12 +102,11 @@ test_template_compose_comments_match_the_platform_zones() {
   case "$nets" in *app*ops*) ;; *) fail "platform openbao networks changed: $nets" ;; esac
 }
 
-test_template_check_runs_the_coverage_gate_and_static_analysis() {
+test_template_check_runs_the_coverage_gate() {
   # spec 22.1: >= 80% line coverage (JaCoCo) on service, mapper and client, in `check`
-  # (make verify); static analysis (SpotBugs) in `check` too.
+  # (make verify).
   local b="$TEMPLATE_SRC/build.gradle.kts"
   grep -qE '^[[:space:]]*jacoco$' "$b" || fail "jacoco plugin not applied"
-  grep -qE 'alias\(libs\.plugins\.spotbugs\)' "$b" || fail "spotbugs plugin not applied"
   grep -q 'jacocoTestCoverageVerification' "$b" || fail "no coverage verification task configured"
   grep -qE 'minimum = "?0\.80"?\.toBigDecimal\(\)|minimum = BigDecimal\("0\.80"\)' "$b" || fail "gate is not 0.80"
   grep -qE 'counter = "LINE"' "$b" || fail "gate does not count lines"
@@ -116,4 +115,16 @@ test_template_check_runs_the_coverage_gate_and_static_analysis() {
   done
   grep -qE 'tasks\.check \{[^}]*jacocoTestCoverageVerification' "$b" || fail "coverage gate not wired into check"
   grep -q 'toolVersion = libs.versions.jacoco' "$b" || fail "JaCoCo version not pinned from the catalog"
+}
+
+test_no_static_analysis_tool_in_the_template_docs_or_scripts() {
+  # M0 review (ticket 49): SpotBugs/FindSecBugs dropped; `make verify` runs no static analysis.
+  [ -e "$TEMPLATE_SRC/config/spotbugs" ] && fail "config/spotbugs still present"
+  local hits
+  hits="$(grep -rliE 'spotbugs|findsecbugs' "$TEMPLATE_SRC/build.gradle.kts" "$TEMPLATE_SRC/gradle/libs.versions.toml" \
+    "$TEMPLATE_SRC/CLAUDE.md" "$TEMPLATE_SRC/scaffold.sh" "$REPO_DIR/CLAUDE.md" "$REPO_DIR/.github/pull_request_template.md" \
+    "$REPO_DIR/Makefile" "$REPO_DIR/scripts"/*.sh 2>/dev/null)"
+  [ -z "$hits" ] || fail "SpotBugs still mentioned in: $hits"
+  grep -qi 'static analysis' "$REPO_DIR/scripts/verify.sh" "$REPO_DIR/Makefile" && fail "verify still claims static analysis"
+  return 0
 }

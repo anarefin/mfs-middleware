@@ -110,7 +110,7 @@ Standalone service module (spec 4.2, 4.3). Package \`$pkg\`. Follow the root
 
 | Command | What it does |
 | --- | --- |
-| \`./gradlew check\` | unit, slice and Testcontainers tests (Docker needed for \`*IT\`), JaCoCo gate (80% lines on \`service\`/\`mapper\`/\`client\`), SpotBugs |
+| \`./gradlew check\` | unit, slice and Testcontainers tests (Docker needed for \`*IT\`), JaCoCo gate (80% lines on \`service\`/\`mapper\`/\`client\`) |
 | \`./gradlew check bootJar && docker build -t $name:dev .\` | image, as spec 4.3 rule 1 |
 | \`make verify M=$name\` | isolation + field-injection check + contracts lint + \`./gradlew check\` |
 | \`make up M=$name\` | run this service's \`compose.yml\` (platform project must be up) |
