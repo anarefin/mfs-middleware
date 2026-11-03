@@ -43,5 +43,6 @@ tasks.test {
     useJUnitPlatform()
 }
 
-// SBOM on every build (spec 3, OWN-05), written to build/reports/cyclonedx/.
-tasks.named("assemble") { dependsOn(tasks.named("cyclonedxBom")) }
+// SBOM on every build (spec 3, OWN-05), written to build/reports/cyclonedx-direct/ and
+// copied into the image by the Dockerfile.
+tasks.named("bootJar") { dependsOn(tasks.named("cyclonedxDirectBom")) }

@@ -6,6 +6,9 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -13,13 +16,15 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Every failure becomes the 5.3 envelope; no stack trace or internal message leaks (18.6). */
-@WebMvcTest
+@WebMvcTest(properties = "spring.test.mockmvc.print=none") // capture app logs only
 @Import(GlobalExceptionHandlerTest.FailingController.class)
+@ExtendWith(OutputCaptureExtension.class)
 class GlobalExceptionHandlerTest {
 
   @Autowired MockMvcTester mvc;
@@ -47,6 +52,16 @@ class GlobalExceptionHandlerTest {
     @GetMapping("/test/bug")
     void bug() {
       throw new IllegalStateException("secret internals: db password=hunter2");
+    }
+
+    @GetMapping("/test/wallets/{msisdn}/accounts/{accountNo}")
+    void wallet(@PathVariable String msisdn, @PathVariable String accountNo) {
+      throw new MwException("MW-CORE-NO-WALLET", "No such wallet");
+    }
+
+    @GetMapping("/test/wallets/{msisdn}/broken")
+    void broken(@PathVariable String msisdn) {
+      throw new IllegalStateException("boom");
     }
 
     @PostMapping("/test/transfer")
@@ -136,5 +151,23 @@ class GlobalExceptionHandlerTest {
         .doesNotContain("hunter2")
         .doesNotContain("IllegalStateException")
         .doesNotContain("at mfs.");
+  }
+
+  @Test
+  void errorLogsShowTheRouteTemplateNotTheRawPath(CapturedOutput output) {
+    assertThat(get("/test/wallets/01712345789/accounts/0011223344556677?ref=8801812345678"))
+        .hasStatus(422);
+    assertThat(get("/test/wallets/01712345789/broken?pin=1234")).hasStatus(500);
+    assertThat(get("/test/x/01712345789/0011223344556677")).hasStatus(404);
+    assertThat(mvc.delete().uri("/test/wallets/01712345789/broken").exchange()).hasStatus(405);
+
+    assertThat(output.getOut())
+        .contains("/test/wallets/{msisdn}/accounts/{accountNo}")
+        .contains("/test/wallets/{msisdn}/broken")
+        .contains("<unmatched>")
+        .doesNotContain("01712345789")
+        .doesNotContain("0011223344556677")
+        .doesNotContain("8801812345678")
+        .doesNotContain("pin=1234");
   }
 }

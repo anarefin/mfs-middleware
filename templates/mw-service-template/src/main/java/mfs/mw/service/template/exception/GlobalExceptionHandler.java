@@ -19,6 +19,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -28,6 +29,8 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+  static final String UNMATCHED_ROUTE = "<unmatched>";
 
   private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
@@ -118,17 +121,26 @@ public class GlobalExceptionHandler {
           .addKeyValue("event", "http.request.failed")
           .addKeyValue("errorCode", code)
           .setCause(e)
-          .log("{} {} failed with {}", req.getMethod(), req.getRequestURI(), status.value());
+          .log("{} {} failed with {}", req.getMethod(), route(req), status.value());
     } else {
       log.atWarn()
           .addKeyValue("event", "http.request.rejected")
           .addKeyValue("errorCode", code)
-          .log("{} {} rejected with {}", req.getMethod(), req.getRequestURI(), status.value());
+          .log("{} {} rejected with {}", req.getMethod(), route(req), status.value());
     }
     ErrorEnvelope body =
         new ErrorEnvelope(
             code, message, messageBn, txnId, correlationId(req), retryable, details);
     return ResponseEntity.status(status).body(body);
+  }
+
+  /**
+   * The matched route template (e.g. {@code /accounts/{accountNo}}), never the raw URI or query
+   * string, which can carry MSISDNs and account numbers (spec 18.3).
+   */
+  static String route(HttpServletRequest req) {
+    Object pattern = req.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+    return pattern != null ? pattern.toString() : UNMATCHED_ROUTE;
   }
 
   private static String correlationId(HttpServletRequest req) {

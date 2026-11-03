@@ -27,7 +27,7 @@ class VaultConfigBindingIT {
 
   @Container
   static final GenericContainer<?> OPENBAO =
-      new GenericContainer<>("openbao/openbao:2.6.5")
+      new GenericContainer<>("openbao/openbao:2.7.2")
           .withCommand("server", "-dev", "-dev-root-token-id=" + TOKEN, "-dev-listen-address=0.0.0.0:8200")
           .withExposedPorts(8200)
           .waitingFor(Wait.forHttp("/v1/sys/health").forStatusCode(200));
