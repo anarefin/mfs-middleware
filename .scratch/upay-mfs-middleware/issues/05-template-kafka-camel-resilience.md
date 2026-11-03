@@ -14,3 +14,4 @@
 - [ ] A Testcontainers test shows Flyway creating the template's own schema on start-up
 - [ ] Published records carry every required header, and a test asserts this
 - [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [ ] The template's schema tests load contracts from the root contracts/ folder through mwContractsDir (carried from ticket 04)

@@ -6,9 +6,9 @@
 
 - 01: Repo skeleton and local quality gate
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Every schema has at least one valid and one invalid sample payload, and `make contracts-lint` validates all of them
-- [ ] Every schema carries `schemaVersion`, and amounts use the `valueMinor` integer
-- [ ] `OWNERS.yml` names an owner for every contract file, and lint fails if a file has no owner
-- [ ] The template reads contracts through the `mwContractsDir` Gradle property, and a schema test in the template loads one contract that way
+- [x] Every schema has at least one valid and one invalid sample payload, and `make contracts-lint` validates all of them
+- [x] Every schema carries `schemaVersion`, and amounts use the `valueMinor` integer
+- [x] `OWNERS.yml` names an owner for every contract file, and lint fails if a file has no owner
+- [ ] The template reads contracts through the `mwContractsDir` Gradle property, and a schema test in the template loads one contract that way (carried to ticket 05: template did not exist yet)
