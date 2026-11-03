@@ -5,6 +5,8 @@
 **Blocked by:**
 
 - 06: Template part 2b: outbox, inbox, conformance suite
+- 48: Contracts v1.1: envelope + per-message payload schemas
+- 49: M0 cleanup: spec sync, remove static analysis, dev gaps
 
 **Status:** ready-for-agent
 
