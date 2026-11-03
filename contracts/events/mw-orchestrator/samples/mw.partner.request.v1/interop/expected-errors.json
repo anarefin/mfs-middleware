@@ -1,0 +1,3 @@
+{
+  "invalid-decimal-amount.json": ["/payload/amount/valueMinor must be integer"]
+}

@@ -1,0 +1,3 @@
+{
+  "invalid-unknown-action.json": ["/payload/complianceAction must be equal to one of the allowed values"]
+}

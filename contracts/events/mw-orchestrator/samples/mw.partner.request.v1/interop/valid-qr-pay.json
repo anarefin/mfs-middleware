@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "requestId": "0b6f5a4e-3d2c-4b1a-9e8f-7d6c5b4a3f2e",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c",
+  "correlationId": "corr-0002",
+  "family": "interop",
+  "issuedAt": "2026-11-03T08:15:32Z",
+  "deadlineAt": "2026-11-03T08:16:02Z",
+  "payload": {
+    "operation": "PAY",
+    "txnType": "QR_PAY_INTEROP",
+    "partner": { "partnerId": "npsb", "productCode": "BANGLAQR" },
+    "partnerTxnRef": "UPAY01933B8E7C1A",
+    "amount": { "valueMinor": 75000, "currency": "BDT" },
+    "debitParty": { "type": "WALLET", "id": "01711000001", "walletType": "CUSTOMER" },
+    "creditParty": { "type": "MERCHANT", "id": "MID-0001" }
+  }
+}

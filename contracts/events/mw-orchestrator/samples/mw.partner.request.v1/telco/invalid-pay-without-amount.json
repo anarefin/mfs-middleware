@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "requestId": "0b6f5a4e-3d2c-4b1a-9e8f-7d6c5b4a3f2e",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c",
+  "correlationId": "corr-0002",
+  "family": "telco",
+  "issuedAt": "2026-11-03T08:15:32Z",
+  "deadlineAt": "2026-11-03T08:16:02Z",
+  "payload": {
+    "operation": "PAY",
+    "txnType": "TOPUP",
+    "partner": { "partnerId": "gp", "productCode": "PREPAID" },
+    "partnerTxnRef": "UPAY01933B8E7C1A",
+    "debitParty": { "type": "WALLET", "id": "01711000001" },
+    "creditParty": { "type": "MSISDN", "id": "01711000001" }
+  }
+}

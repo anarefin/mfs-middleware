@@ -1,0 +1,4 @@
+{
+  "invalid-failure-event-with-success-outcome.json": ["/outcome must be equal to constant"],
+  "invalid-rejected-without-reason.json": ["/ must have required property 'reasonCode'"]
+}

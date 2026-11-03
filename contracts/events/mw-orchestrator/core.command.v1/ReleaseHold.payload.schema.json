@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.upay.mw/events/mw-orchestrator/core.command.v1/ReleaseHold.payload.schema.json",
+  "title": "core.command.v1 ReleaseHold payload",
+  "description": "Release a hold after partner failure.",
+  "type": "object",
+  "required": ["holdId"],
+  "properties": { "holdId": { "type": "string", "minLength": 1 }, "reason": { "type": "string" } }
+}

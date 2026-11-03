@@ -1,0 +1,4 @@
+{
+  "invalid-upsert-without-value.json": ["/ must have required property 'value'"],
+  "invalid-wrong-schema-version.json": ["/schemaVersion must be equal to constant"]
+}

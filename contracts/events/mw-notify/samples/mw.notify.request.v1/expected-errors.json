@@ -1,0 +1,5 @@
+{
+  "invalid-empty-recipient.json": ["/recipient must NOT have fewer than 1 properties"],
+  "invalid-no-channels.json": ["/channels must NOT have fewer than 1 items"],
+  "invalid-unknown-priority.json": ["/priority must be equal to one of the allowed values"]
+}

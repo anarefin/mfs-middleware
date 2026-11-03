@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "requestId": "0b6f5a4e-3d2c-4b1a-9e8f-7d6c5b4a3f2e",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c",
+  "correlationId": "corr-0002",
+  "family": "bank",
+  "issuedAt": "2026-11-03T08:15:32Z",
+  "deadlineAt": "2026-11-03T08:16:02Z",
+  "payload": {
+    "operation": "REVERSE",
+    "txnType": "W2B",
+    "partner": { "partnerId": "partner-bank-1", "productCode": "W2B" },
+    "partnerTxnRef": "UPAY01933B8E7C1A",
+    "amount": { "valueMinor": 150000, "currency": "BDT" },
+    "originalPartnerRef": "PB-0001"
+  }
+}

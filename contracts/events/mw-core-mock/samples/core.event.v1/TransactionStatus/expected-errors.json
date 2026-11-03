@@ -1,0 +1,3 @@
+{
+  "invalid-without-txn-status.json": ["/payload must have required property 'txnStatus'"]
+}

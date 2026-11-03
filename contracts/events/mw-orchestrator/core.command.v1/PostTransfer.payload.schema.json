@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.upay.mw/events/mw-orchestrator/core.command.v1/PostTransfer.payload.schema.json",
+  "title": "core.command.v1 PostTransfer payload",
+  "description": "One-step debit and credit when no external party is involved (P2P, cash in/out). Needs customer authorisation, so it carries encryptedPin (spec 6.3).",
+  "type": "object",
+  "required": ["txnType", "debitParty", "creditParty", "amount", "encryptedPin"],
+  "properties": {
+    "txnType": { "$ref": "../../../common/defs.v1.schema.json#/$defs/TxnType" },
+    "debitParty": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Party" },
+    "creditParty": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Party" },
+    "amount": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Amount" },
+    "fee": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Amount" },
+    "encryptedPin": { "$ref": "../../../common/defs.v1.schema.json#/$defs/EncryptedPin" },
+    "attributes": { "$ref": "../../../common/defs.v1.schema.json#/$defs/StringMap" }
+  }
+}

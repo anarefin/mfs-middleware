@@ -1,0 +1,4 @@
+{
+  "invalid-failed-without-error-code.json": ["/payload must have required property 'errorCode'"],
+  "invalid-unknown-outcome-value.json": ["/payload/outcome must be equal to one of the allowed values"]
+}

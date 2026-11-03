@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "eventType": "ReversalRejected",
+  "eventId": "6b1d3c2e-4f5a-4b6c-8d7e-9f0a1b2c3d0e",
+  "commandId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c:reverse",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c",
+  "coreRef": "CORE-20261103-000014",
+  "occurredAt": "2026-11-03T08:15:31Z",
+  "outcome": "FAILURE",
+  "reasonMessage": "Rejected by the core",
+  "payload": {}
+}

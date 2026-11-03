@@ -1,0 +1,4 @@
+{
+  "invalid-decimal-amount.json": ["/payload/amount/valueMinor must be integer"],
+  "invalid-hold-funds-without-pin.json": ["/payload must have required property 'encryptedPin'"]
+}

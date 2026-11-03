@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "commandType": "ReleaseHold",
+  "commandId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c:release",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c",
+  "correlationId": "corr-0002",
+  "issuedAt": "2026-11-03T08:15:40Z",
+  "expiresAt": "2026-11-03T08:16:40Z",
+  "payload": { "holdId": "HOLD-000042", "reason": "partner FAILED" }
+}

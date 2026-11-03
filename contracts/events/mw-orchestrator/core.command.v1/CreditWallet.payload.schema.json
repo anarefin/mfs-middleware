@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.upay.mw/events/mw-orchestrator/core.command.v1/CreditWallet.payload.schema.json",
+  "title": "core.command.v1 CreditWallet payload",
+  "description": "Inbound money (remittance, add money, NPSB credit, C2W). No PIN: the customer is not paying.",
+  "type": "object",
+  "required": ["txnType", "creditParty", "amount"],
+  "properties": {
+    "txnType": { "$ref": "../../../common/defs.v1.schema.json#/$defs/TxnType" },
+    "debitParty": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Party" },
+    "creditParty": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Party" },
+    "amount": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Amount" },
+    "fee": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Amount" },
+    "attributes": { "$ref": "../../../common/defs.v1.schema.json#/$defs/StringMap" }
+  }
+}

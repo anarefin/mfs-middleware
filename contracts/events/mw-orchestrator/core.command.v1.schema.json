@@ -2,86 +2,79 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.upay.mw/events/mw-orchestrator/core.command.v1.schema.json",
   "title": "core.command.v1",
-  "description": "Command from mw-orchestrator to the core (spec 6.3), on core.wallet.command.v1 and core.payment.command.v1. Key: txnId. Idempotent on commandId. ValidateTransaction, HoldFunds and PostTransfer carry payload.encryptedPin; the middleware never decrypts it.",
+  "description": "Command from mw-orchestrator to the core (spec 6.3), on core.wallet.command.v1 and core.payment.command.v1. Key: txnId. Idempotent on commandId. The payload is picked by commandType; ValidateTransaction, HoldFunds and PostTransfer carry payload.encryptedPin, which the middleware never decrypts.",
   "type": "object",
   "required": ["schemaVersion", "commandType", "commandId", "txnId", "correlationId", "issuedAt", "expiresAt", "payload"],
   "properties": {
-    "schemaVersion": { "const": 1 },
-    "commandType": { "enum": ["ValidateTransaction", "HoldFunds", "CommitHold", "ReleaseHold", "PostTransfer", "CreditWallet", "ReverseTransaction", "QueryTransaction", "ApplyComplianceAction"] },
-    "commandId": { "type": "string", "minLength": 1, "maxLength": 128, "description": "txnId + step + attempt-independent suffix (spec 7.3)." },
-    "txnId": { "$ref": "#/$defs/TxnId" },
-    "correlationId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
+    "commandType": {
+      "enum": ["ValidateTransaction", "HoldFunds", "CommitHold", "ReleaseHold", "PostTransfer", "CreditWallet", "ReverseTransaction", "QueryTransaction", "ApplyComplianceAction"]
+    },
+    "commandId": { "$ref": "../../common/defs.v1.schema.json#/$defs/CommandId" },
+    "txnId": { "$ref": "../../common/defs.v1.schema.json#/$defs/TxnId" },
+    "correlationId": { "$ref": "../../common/defs.v1.schema.json#/$defs/CorrelationId" },
     "issuedAt": { "type": "string", "format": "date-time" },
     "expiresAt": { "type": "string", "format": "date-time", "description": "The core drops a command received after this instant." },
     "payload": {
       "type": "object",
-      "properties": {
-        "txnType": { "type": "string", "minLength": 1 },
-        "debitParty": { "$ref": "#/$defs/Party" },
-        "creditParty": { "$ref": "#/$defs/Party" },
-        "amount": { "$ref": "#/$defs/Money" },
-        "fee": { "$ref": "#/$defs/Money" },
-        "encryptedPin": { "$ref": "#/$defs/EncryptedPin" },
-        "holdId": { "type": "string", "minLength": 1 },
-        "originalTxnId": { "$ref": "#/$defs/TxnId" },
-        "queryCommandId": { "type": "string", "minLength": 1 },
-        "complianceAction": { "enum": ["BLOCK", "UNBLOCK", "HOLD"] },
-        "subject": { "$ref": "#/$defs/Party" },
-        "reason": { "type": "string" },
-        "attributes": { "type": "object", "additionalProperties": { "type": "string" } }
-      }
+      "description": "Shape depends on commandType: one payload schema per message type in core.command.v1/."
     }
   },
-  "allOf": [
+  "discriminator": { "propertyName": "commandType" },
+  "oneOf": [
     {
-      "if": { "properties": { "commandType": { "enum": ["ValidateTransaction", "HoldFunds", "PostTransfer"] } }, "required": ["commandType"] },
-      "then": { "properties": { "payload": { "type": "object", "required": ["txnType", "debitParty", "creditParty", "amount", "encryptedPin"] } } }
+      "properties": {
+        "commandType": { "const": "ValidateTransaction" },
+        "payload": { "$ref": "core.command.v1/ValidateTransaction.payload.schema.json" }
+      }
     },
     {
-      "if": { "properties": { "commandType": { "const": "CreditWallet" } }, "required": ["commandType"] },
-      "then": { "properties": { "payload": { "type": "object", "required": ["txnType", "creditParty", "amount"] } } }
+      "properties": {
+        "commandType": { "const": "HoldFunds" },
+        "payload": { "$ref": "core.command.v1/HoldFunds.payload.schema.json" }
+      }
     },
     {
-      "if": { "properties": { "commandType": { "enum": ["CommitHold", "ReleaseHold"] } }, "required": ["commandType"] },
-      "then": { "properties": { "payload": { "type": "object", "required": ["holdId"] } } }
+      "properties": {
+        "commandType": { "const": "CommitHold" },
+        "payload": { "$ref": "core.command.v1/CommitHold.payload.schema.json" }
+      }
     },
     {
-      "if": { "properties": { "commandType": { "const": "ReverseTransaction" } }, "required": ["commandType"] },
-      "then": { "properties": { "payload": { "type": "object", "required": ["originalTxnId", "amount"] } } }
+      "properties": {
+        "commandType": { "const": "ReleaseHold" },
+        "payload": { "$ref": "core.command.v1/ReleaseHold.payload.schema.json" }
+      }
     },
     {
-      "if": { "properties": { "commandType": { "const": "ApplyComplianceAction" } }, "required": ["commandType"] },
-      "then": { "properties": { "payload": { "type": "object", "required": ["complianceAction", "subject"] } } }
+      "properties": {
+        "commandType": { "const": "PostTransfer" },
+        "payload": { "$ref": "core.command.v1/PostTransfer.payload.schema.json" }
+      }
+    },
+    {
+      "properties": {
+        "commandType": { "const": "CreditWallet" },
+        "payload": { "$ref": "core.command.v1/CreditWallet.payload.schema.json" }
+      }
+    },
+    {
+      "properties": {
+        "commandType": { "const": "ReverseTransaction" },
+        "payload": { "$ref": "core.command.v1/ReverseTransaction.payload.schema.json" }
+      }
+    },
+    {
+      "properties": {
+        "commandType": { "const": "QueryTransaction" },
+        "payload": { "$ref": "core.command.v1/QueryTransaction.payload.schema.json" }
+      }
+    },
+    {
+      "properties": {
+        "commandType": { "const": "ApplyComplianceAction" },
+        "payload": { "$ref": "core.command.v1/ApplyComplianceAction.payload.schema.json" }
+      }
     }
-  ],
-  "$defs": {
-    "TxnId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
-    "Money": {
-      "type": "object",
-      "required": ["valueMinor", "currency"],
-      "properties": {
-        "valueMinor": { "type": "integer", "minimum": 0 },
-        "currency": { "const": "BDT" }
-      }
-    },
-    "Party": {
-      "type": "object",
-      "required": ["type", "id"],
-      "properties": {
-        "type": { "enum": ["WALLET", "BANK_ACCOUNT", "CARD_TOKEN", "BILLER_ACCOUNT", "MSISDN", "MERCHANT", "ORG"] },
-        "id": { "type": "string", "minLength": 1 },
-        "name": { "type": "string" },
-        "walletType": { "enum": ["CUSTOMER", "AGENT", "MERCHANT", "DISTRIBUTOR", "DSO"] }
-      }
-    },
-    "EncryptedPin": {
-      "type": "object",
-      "description": "RSA-OAEP (SHA-256) ciphertext of the PIN under the core's public key keyId.",
-      "required": ["keyId", "ciphertext"],
-      "properties": {
-        "keyId": { "type": "string", "minLength": 1 },
-        "ciphertext": { "type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9+/]+={0,2}$", "contentEncoding": "base64" }
-      }
-    }
-  }
+  ]
 }

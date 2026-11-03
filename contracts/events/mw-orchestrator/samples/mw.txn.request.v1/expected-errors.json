@@ -1,0 +1,6 @@
+{
+  "invalid-decimal-amount.json": ["/amount/valueMinor must be integer"],
+  "invalid-idempotency-key-too-long.json": ["/idempotencyKey must NOT have more than 64 characters"],
+  "invalid-missing-schema-version.json": ["/ must have required property 'schemaVersion'"],
+  "invalid-reversal-without-original.json": ["/ must have required property 'originalTxnId'"]
+}

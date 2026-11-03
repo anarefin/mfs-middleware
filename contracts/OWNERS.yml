@@ -1,15 +1,28 @@
 # Owning service per contract file (spec 4.3 rule 4, ground rule "Contract first").
 # Only the owner changes a file; a change is its own WP, reviewed by a human.
-# A file lives under <kind>/<owner>/ and its owner here must match that folder.
-# Sample payloads in <dir>/samples/<name>/ belong to <dir>/<name>.schema.json and
-# need no entry. `make contracts-lint` fails on a file without an owner.
+# A file under <kind>/<owner>/ is owned by that folder's service, and its entry here must say so.
+# `make contracts-lint` fails on a file without an owner. Two kinds of file need no entry:
+#   - samples in <dir>/samples/<topic>/ belong to <dir>/<topic>.schema.json;
+#   - payload schemas in <dir>/<topic>/<Msg>.payload.schema.json belong to the envelope
+#     <dir>/<topic>.schema.json, so the envelope's owner owns every message type of the topic.
 #
 # Ownership rule: the producer owns the message. Where many services produce one
 # message to a single consumer (txn request, partner reply/inbound, notify request,
 # audit event), that consumer owns the contract, as a server owns its API.
 # Core events are owned by mw-core-mock until the core team takes over (open point 1).
+#
+# common/ holds the shared types every schema $refs (Amount, Party, Msisdn, EncryptedPin,
+# TxnId, CorrelationId, SchemaVersion...). It has no service folder, so its owner is named
+# here and may be any service. Owner: mw-orchestrator, because
+#   - it owns 6 of the 11 topics and produces or consumes every financial message, so a change
+#     to a shared type is in practice a change to its contracts first;
+#   - the types are the canonical model of spec 5.1, which the orchestrator's saga speaks;
+#   - a real service keeps the one-owner-per-file rule and the lint's service-name check intact
+#     (no pseudo-owner such as a working group that no module answers for).
+# Other owners propose changes to common/ through mw-orchestrator's WP, reviewed by a human.
 
 files:
+  common/defs.v1.schema.json: mw-orchestrator
   events/mw-orchestrator/mw.txn.request.v1.schema.json: mw-orchestrator
   events/mw-orchestrator/mw.txn.status.v1.schema.json: mw-orchestrator
   events/mw-orchestrator/core.command.v1.schema.json: mw-orchestrator

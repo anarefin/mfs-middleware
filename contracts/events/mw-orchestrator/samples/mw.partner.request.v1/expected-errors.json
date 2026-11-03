@@ -1,0 +1,3 @@
+{
+  "invalid-unknown-family.json": ["/family must be equal to one of the allowed values", "/ value of tag \"family\" must be in oneOf"]
+}

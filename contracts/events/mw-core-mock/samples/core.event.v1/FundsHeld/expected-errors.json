@@ -1,0 +1,4 @@
+{
+  "invalid-funds-held-without-hold-id.json": ["/payload must have required property 'holdId'"],
+  "invalid-success-event-with-failure-outcome.json": ["/outcome must be equal to constant"]
+}

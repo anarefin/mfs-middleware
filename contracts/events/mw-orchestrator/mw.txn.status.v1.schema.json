@@ -6,61 +6,38 @@
   "type": "object",
   "required": ["schemaVersion", "txnId", "correlationId", "channel", "txnType", "status", "amount", "requestedAt", "updatedAt"],
   "properties": {
-    "schemaVersion": { "const": 1 },
-    "txnId": { "$ref": "#/$defs/TxnId" },
-    "idempotencyKey": { "type": "string", "minLength": 1, "maxLength": 64 },
-    "correlationId": { "type": "string", "minLength": 1, "maxLength": 128 },
-    "channel": { "enum": ["CUSTOMER_APP", "AGENT_APP", "MERCHANT_APP", "DISTRIBUTOR_APP", "DSO_APP", "PARTNER_APP", "USSD", "WEB_CHECKOUT", "ORG_PORTAL", "SP_PORTAL", "PARTNER_API", "SYSTEM"] },
-    "txnType": { "enum": ["P2P", "CASH_IN", "CASH_OUT", "ATM_CASH_OUT", "ATM_CASH_IN", "TOPUP", "BILL_PAY", "MERCHANT_PAY", "ADD_MONEY_CARD", "ADD_MONEY_BANK", "C2W", "W2B", "REMIT_IN", "QR_PAY_INTEROP", "BULK_DISBURSE", "REVERSAL"] },
+    "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
+    "txnId": { "$ref": "../../common/defs.v1.schema.json#/$defs/TxnId" },
+    "idempotencyKey": { "$ref": "../../common/defs.v1.schema.json#/$defs/IdempotencyKey" },
+    "correlationId": { "$ref": "../../common/defs.v1.schema.json#/$defs/CorrelationId" },
+    "channel": { "$ref": "../../common/defs.v1.schema.json#/$defs/Channel" },
+    "txnType": { "$ref": "../../common/defs.v1.schema.json#/$defs/TxnType" },
     "status": { "$ref": "#/$defs/Status" },
     "previousStatus": { "$ref": "#/$defs/Status" },
-    "initiator": { "$ref": "#/$defs/Party" },
-    "debitParty": { "$ref": "#/$defs/Party" },
-    "creditParty": { "$ref": "#/$defs/Party" },
-    "amount": { "$ref": "#/$defs/Money" },
-    "fee": { "$ref": "#/$defs/Money" },
-    "partner": { "$ref": "#/$defs/PartnerRef" },
+    "initiator": { "$ref": "../../common/defs.v1.schema.json#/$defs/Party" },
+    "debitParty": { "$ref": "../../common/defs.v1.schema.json#/$defs/Party" },
+    "creditParty": { "$ref": "../../common/defs.v1.schema.json#/$defs/Party" },
+    "amount": { "$ref": "../../common/defs.v1.schema.json#/$defs/Amount" },
+    "fee": { "$ref": "../../common/defs.v1.schema.json#/$defs/Amount" },
+    "partner": { "$ref": "../../common/defs.v1.schema.json#/$defs/PartnerRef" },
     "partnerRef": { "type": "string", "description": "Partner's own reference, filled on partner response." },
     "coreRef": { "type": "string", "description": "Core ledger reference, filled on core event." },
-    "originalTxnId": { "$ref": "#/$defs/TxnId" },
+    "originalTxnId": { "$ref": "../../common/defs.v1.schema.json#/$defs/TxnId" },
     "error": { "$ref": "#/$defs/Error" },
     "requestedAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" },
-    "locale": { "enum": ["bn", "en"] },
-    "attributes": { "type": "object", "additionalProperties": { "type": "string" } }
+    "locale": { "$ref": "../../common/defs.v1.schema.json#/$defs/Locale" },
+    "attributes": { "$ref": "../../common/defs.v1.schema.json#/$defs/StringMap" }
   },
   "allOf": [
-    { "if": { "properties": { "status": { "enum": ["FAILED", "REJECTED", "MANUAL_REVIEW"] } }, "required": ["status"] }, "then": { "required": ["error"] } }
+    {
+      "if": { "properties": { "status": { "enum": ["FAILED", "REJECTED", "MANUAL_REVIEW"] } }, "required": ["status"] },
+      "then": { "required": ["error"] }
+    }
   ],
   "$defs": {
-    "TxnId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
-    "Status": { "enum": ["RECEIVED", "VALIDATING", "HOLDING", "POSTING", "PARTNER_PENDING", "UNKNOWN", "COMMITTING", "RELEASING", "REVERSING", "COMPLETED", "FAILED", "REJECTED", "REVERSED", "MANUAL_REVIEW"] },
-    "Money": {
-      "type": "object",
-      "required": ["valueMinor", "currency"],
-      "properties": {
-        "valueMinor": { "type": "integer", "minimum": 0 },
-        "currency": { "const": "BDT" }
-      }
-    },
-    "Party": {
-      "type": "object",
-      "required": ["type", "id"],
-      "properties": {
-        "type": { "enum": ["WALLET", "BANK_ACCOUNT", "CARD_TOKEN", "BILLER_ACCOUNT", "MSISDN", "MERCHANT", "ORG"] },
-        "id": { "type": "string", "minLength": 1 },
-        "name": { "type": "string" },
-        "walletType": { "enum": ["CUSTOMER", "AGENT", "MERCHANT", "DISTRIBUTOR", "DSO"] }
-      }
-    },
-    "PartnerRef": {
-      "type": "object",
-      "required": ["partnerId", "productCode"],
-      "properties": {
-        "partnerId": { "type": "string", "minLength": 1 },
-        "productCode": { "type": "string", "minLength": 1 },
-        "billerCode": { "type": "string" }
-      }
+    "Status": {
+      "enum": ["RECEIVED", "VALIDATING", "HOLDING", "POSTING", "PARTNER_PENDING", "UNKNOWN", "COMMITTING", "RELEASING", "REVERSING", "COMPLETED", "FAILED", "REJECTED", "REVERSED", "MANUAL_REVIEW"]
     },
     "Error": {
       "type": "object",

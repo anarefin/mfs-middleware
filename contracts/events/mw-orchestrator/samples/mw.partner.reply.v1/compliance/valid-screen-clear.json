@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "requestId": "0b6f5a4e-3d2c-4b1a-9e8f-7d6c5b4a3f2e",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c",
+  "correlationId": "corr-0002",
+  "partnerId": "aml-vendor",
+  "family": "compliance",
+  "repliedAt": "2026-11-03T08:15:33Z",
+  "payload": { "operation": "SCREEN", "outcome": "SUCCESS", "partnerRef": "AML-0001", "attributes": { "hit": "false" } }
+}

@@ -2,57 +2,45 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.upay.mw/events/mw-orchestrator/mw.partner.request.v1.schema.json",
   "title": "mw.partner.request.v1",
-  "description": "Canonical partner request from mw-orchestrator to an adapter (spec 6.2, 11.2), on mw.partner.request.<family>.v1. Key: txnId. The adapter maps it to the partner's API.",
+  "description": "Canonical partner request from mw-orchestrator to an adapter (spec 6.2, 11.2), on mw.partner.request.<family>.v1. Key: txnId. The payload is picked by family; the adapter maps it to the partner's API.",
   "type": "object",
-  "required": ["schemaVersion", "requestId", "txnId", "correlationId", "family", "operation", "txnType", "partner", "partnerTxnRef", "issuedAt", "deadlineAt"],
+  "required": ["schemaVersion", "family", "requestId", "txnId", "correlationId", "issuedAt", "deadlineAt", "payload"],
   "properties": {
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
+    "family": { "enum": ["telco", "billpay", "bank", "interop", "compliance"] },
     "requestId": { "type": "string", "format": "uuid", "description": "Unique per request; echoed on the reply." },
-    "txnId": { "$ref": "#/$defs/TxnId" },
-    "correlationId": { "type": "string", "minLength": 1, "maxLength": 128 },
-    "family": { "enum": ["telco", "billpay", "bank", "interop", "compliance"], "description": "Topic family: mw.partner.request.<family>.v1." },
-    "operation": { "enum": ["PAY", "INQUIRY", "STATUS_QUERY", "REVERSE", "SCREEN"] },
-    "txnType": { "type": "string", "minLength": 1 },
-    "partner": {
-      "type": "object",
-      "required": ["partnerId", "productCode"],
-      "properties": {
-        "partnerId": { "type": "string", "minLength": 1 },
-        "productCode": { "type": "string", "minLength": 1 },
-        "billerCode": { "type": "string" }
-      }
-    },
-    "partnerTxnRef": { "type": "string", "minLength": 1, "description": "Stable reference derived from txnId so partner retries are recognised as duplicates (spec 7.3)." },
-    "amount": { "$ref": "#/$defs/Money" },
-    "debitParty": { "$ref": "#/$defs/Party" },
-    "creditParty": { "$ref": "#/$defs/Party" },
-    "originalPartnerRef": { "type": "string", "description": "For STATUS_QUERY and REVERSE: the partner's reference of the original call." },
-    "attributes": { "type": "object", "additionalProperties": { "type": "string" } },
+    "txnId": { "$ref": "../../common/defs.v1.schema.json#/$defs/TxnId" },
+    "correlationId": { "$ref": "../../common/defs.v1.schema.json#/$defs/CorrelationId" },
     "issuedAt": { "type": "string", "format": "date-time" },
-    "deadlineAt": { "type": "string", "format": "date-time", "description": "After this instant the orchestrator treats the call as UNKNOWN." }
-  },
-  "allOf": [
-    { "if": { "properties": { "operation": { "enum": ["PAY", "REVERSE"] } }, "required": ["operation"] }, "then": { "required": ["amount"] } }
-  ],
-  "$defs": {
-    "TxnId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
-    "Money": {
-      "type": "object",
-      "required": ["valueMinor", "currency"],
-      "properties": {
-        "valueMinor": { "type": "integer", "minimum": 0 },
-        "currency": { "const": "BDT" }
-      }
+    "deadlineAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "After this instant the orchestrator treats the call as UNKNOWN."
     },
-    "Party": {
+    "payload": {
       "type": "object",
-      "required": ["type", "id"],
+      "description": "Shape depends on family: one payload schema per message type in mw.partner.request.v1/."
+    }
+  },
+  "discriminator": { "propertyName": "family" },
+  "oneOf": [
+    {
+      "properties": { "family": { "const": "telco" }, "payload": { "$ref": "mw.partner.request.v1/telco.payload.schema.json" } }
+    },
+    {
+      "properties": { "family": { "const": "billpay" }, "payload": { "$ref": "mw.partner.request.v1/billpay.payload.schema.json" } }
+    },
+    {
+      "properties": { "family": { "const": "bank" }, "payload": { "$ref": "mw.partner.request.v1/bank.payload.schema.json" } }
+    },
+    {
+      "properties": { "family": { "const": "interop" }, "payload": { "$ref": "mw.partner.request.v1/interop.payload.schema.json" } }
+    },
+    {
       "properties": {
-        "type": { "enum": ["WALLET", "BANK_ACCOUNT", "CARD_TOKEN", "BILLER_ACCOUNT", "MSISDN", "MERCHANT", "ORG"] },
-        "id": { "type": "string", "minLength": 1 },
-        "name": { "type": "string" },
-        "walletType": { "enum": ["CUSTOMER", "AGENT", "MERCHANT", "DISTRIBUTOR", "DSO"] }
+        "family": { "const": "compliance" },
+        "payload": { "$ref": "mw.partner.request.v1/compliance.payload.schema.json" }
       }
     }
-  }
+  ]
 }
