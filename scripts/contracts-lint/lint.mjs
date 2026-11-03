@@ -5,7 +5,8 @@
 //   common/<name>.schema.json                         shared types, owned like any other file
 //   events/<owner>/<topic>.schema.json                message schema; an envelope when it has a
 //                                                     discriminator over a oneOf of payloads
-//   events/<owner>/<topic>/<Msg>.payload.schema.json  one payload per message type (owned by the envelope)
+//   events/<owner>/<topic>/<Msg>.payload.schema.json  one payload per message type, or one payload shared by
+//                                                     several types (owned by the envelope)
 //   events/<owner>/samples/<topic>/[<Msg>/]           valid*.json, invalid*.json, expected-errors.json
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
@@ -84,7 +85,7 @@ for (const file of Object.keys(schemas)) {
   }
 }
 
-// 2. Envelopes: the type enum, the oneOf branches and the payload files must name the same types.
+// 2. Envelopes: every type enum value has a oneOf branch on a payload file, and every payload file is used.
 const envelopeTag = (schema) => schema?.discriminator?.propertyName;
 const topicOf = (file) => file.replace(/\.schema\.json$/, "");
 const claimedPayloads = new Set();
@@ -105,15 +106,26 @@ for (const file of messageFiles) {
   const own = payloadFiles.filter((f) => f.startsWith(`${topic}/`) && !f.slice(topic.length + 1).includes("/"));
   own.forEach((f) => claimedPayloads.add(f));
   const names = own.map((f) => f.match(PAYLOAD)[3]);
-  for (const f of own) if (!types.includes(f.match(PAYLOAD)[3])) err(f, `payload file has no ${tag} enum value in ${file}`);
-  for (const t of types) if (!names.includes(t)) err(file, `${tag} ${t} has no payload file ${topic}/${t}.payload.schema.json`);
   const base = topic.split("/").pop();
+  // Each type's branch refs a payload file in <topic>/: its own <Msg>.payload.schema.json when one
+  // exists, otherwise a payload shared with other types (e.g. one payload for all partner families).
+  const referenced = new Set();
   for (const t of types) {
     const branch = (schema.oneOf ?? []).find((b) => b?.properties?.[tag]?.const === t);
     const ref = branch?.properties?.payload?.$ref;
-    if (ref !== `${base}/${t}.payload.schema.json`)
-      err(file, `oneOf branch for ${t} must set payload to {"$ref": "${base}/${t}.payload.schema.json"} (found ${ref ?? "none"})`);
+    const target = typeof ref === "string" ? ref.match(/^([^/]+)\/([^/]+)\.payload\.schema\.json$/) : null;
+    if (!target || target[1] !== base || !names.includes(target[2])) {
+      if (!names.includes(t)) err(file, `${tag} ${t} has no payload file: no oneOf branch refs ${base}/<payload>.payload.schema.json (found ${ref ?? "none"})`);
+      else err(file, `oneOf branch for ${t} must set payload to {"$ref": "${base}/${t}.payload.schema.json"} (found ${ref ?? "none"})`);
+      continue;
+    }
+    if (names.includes(t) && target[2] !== t)
+      err(file, `oneOf branch for ${t} must set payload to {"$ref": "${base}/${t}.payload.schema.json"} (found ${ref}), its own payload file`);
+    referenced.add(target[2]);
   }
+  for (const f of own)
+    if (!referenced.has(f.match(PAYLOAD)[3]))
+      err(f, `payload file is referenced by no oneOf branch (no ${tag} enum value in ${file} uses it)`);
 }
 for (const f of payloadFiles.filter((f) => !claimedPayloads.has(f)))
   err(f, "payload schema has no envelope (expected <dir>/<topic>.schema.json keyed on a discriminator)");

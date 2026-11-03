@@ -11,6 +11,7 @@ common/defs.v1.schema.json                         shared types: Amount, Party, 
                                                    TxnId, CorrelationId, SchemaVersion, ...
 events/<owner>/<topic>.schema.json                 one schema per topic (JSON Schema 2020-12)
 events/<owner>/<topic>/<Msg>.payload.schema.json   multi-type topics: one payload schema per message type
+events/<owner>/<topic>/shared.payload.schema.json  or one payload shared by several types (partner topics)
 events/<owner>/samples/<topic>/                    single-type topics: valid*.json, invalid*.json
 events/<owner>/samples/<topic>/<Msg>/              multi-type topics: samples per message type
 .../expected-errors.json                           next to invalid samples: why each one fails
@@ -30,6 +31,10 @@ field (with `"discriminator": { "propertyName": <type field> }`) picks the paylo
 | `mw.partner.request.<family>.v1` | `events/mw-orchestrator/mw.partner.request.v1` | `family` | telco, billpay, bank, interop, compliance |
 | `mw.partner.reply.v1` | `events/mw-orchestrator/mw.partner.reply.v1` | `family` | same 5 families |
 | `mw.partner.inbound.v1` | `events/mw-orchestrator/mw.partner.inbound.v1` | `family` | same 5 families |
+
+The three partner envelopes keep the `family` enum and one `oneOf` branch per family (each with a
+`const` on `family`), but today every family has the same payload, so all 5 branches `$ref` one
+`<topic>/shared.payload.schema.json`. Samples stay per family (`samples/<topic>/<family>/`).
 
 Other topics: `mw.txn.request.v1`, `mw.txn.status.v1` -> `events/mw-orchestrator/mw.txn.*.v1`;
 `mw.notify.request.v1`, `mw.notify.status.v1` -> `events/mw-notify/`; `mw.audit.event.v1` ->
@@ -51,7 +56,10 @@ network: the lint registers every file first, and the service template's test lo
 - every message schema (single-type or envelope) has a required `schemaVersion` with a `const`;
   payload schemas and `common/` are fragments, not messages, so they carry no `schemaVersion`
 - no `"type": "number"` anywhere: amounts are `{ valueMinor: integer, currency: "BDT" }` (`Amount`)
-- an envelope's type `enum`, its `oneOf` branches and its payload files name exactly the same types
+- every value in an envelope's type `enum` has a `oneOf` branch whose `payload` `$ref`s a payload
+  file in `<topic>/`: its own `<Msg>.payload.schema.json` when that file exists, otherwise a payload
+  shared with other types (`shared.payload.schema.json`); every payload file is referenced by at
+  least one branch
 - every single-type topic and every message type has at least one valid and one invalid sample;
   a sample under `<Msg>/` carries that type in its type field
 - every invalid sample fails with exactly the errors stated for it in `expected-errors.json`
@@ -79,6 +87,21 @@ A contract change is its own WP, made by the topic's owner (ground rule "Contrac
    `{ "invalid-without-pin.json": ["/payload must have required property 'encryptedPin'"] }`.
    Run `make contracts-lint`; on a mismatch it prints the errors the sample actually produced.
 5. No OWNERS.yml entry is needed: the payload belongs to the envelope.
+
+## Splitting a family out of a shared payload
+
+When one partner family needs its own payload (say `bank` on `mw.partner.reply.v1`):
+
+1. Copy `mw.partner.reply.v1/shared.payload.schema.json` to `mw.partner.reply.v1/bank.payload.schema.json`,
+   set its `$id` to `https://contracts.upay.mw/events/mw-orchestrator/mw.partner.reply.v1/bank.payload.schema.json`
+   and its `title`, then change its fields.
+2. In `mw.partner.reply.v1.schema.json`, point only the `bank` branch at it:
+   `{ "properties": { "family": { "const": "bank" }, "payload": { "$ref": "mw.partner.reply.v1/bank.payload.schema.json" } } }`.
+   The `family` enum does not change; the other families keep the shared payload.
+3. Update the samples in `samples/mw.partner.reply.v1/bank/` and their `expected-errors.json`,
+   then run `make contracts-lint`. Once `bank.payload.schema.json` exists the lint requires the
+   `bank` branch to use it, and fails on any payload file no branch references (so if every family
+   has split out, delete `shared.payload.schema.json`).
 
 A new single-type topic is one `events/<owner>/<topic>.schema.json`, its samples folder with
 `expected-errors.json`, and an OWNERS.yml entry. A new shared type goes in `common/defs.v1`

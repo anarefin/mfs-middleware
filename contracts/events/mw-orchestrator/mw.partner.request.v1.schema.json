@@ -19,28 +19,25 @@
     },
     "payload": {
       "type": "object",
-      "description": "Shape depends on family: one payload schema per message type in mw.partner.request.v1/."
+      "description": "One oneOf branch per family; today every family refs the shared mw.partner.request.v1/shared.payload.schema.json (contracts/README.md: splitting a family out)."
     }
   },
   "discriminator": { "propertyName": "family" },
   "oneOf": [
     {
-      "properties": { "family": { "const": "telco" }, "payload": { "$ref": "mw.partner.request.v1/telco.payload.schema.json" } }
+      "properties": { "family": { "const": "telco" }, "payload": { "$ref": "mw.partner.request.v1/shared.payload.schema.json" } }
     },
     {
-      "properties": { "family": { "const": "billpay" }, "payload": { "$ref": "mw.partner.request.v1/billpay.payload.schema.json" } }
+      "properties": { "family": { "const": "billpay" }, "payload": { "$ref": "mw.partner.request.v1/shared.payload.schema.json" } }
     },
     {
-      "properties": { "family": { "const": "bank" }, "payload": { "$ref": "mw.partner.request.v1/bank.payload.schema.json" } }
+      "properties": { "family": { "const": "bank" }, "payload": { "$ref": "mw.partner.request.v1/shared.payload.schema.json" } }
     },
     {
-      "properties": { "family": { "const": "interop" }, "payload": { "$ref": "mw.partner.request.v1/interop.payload.schema.json" } }
+      "properties": { "family": { "const": "interop" }, "payload": { "$ref": "mw.partner.request.v1/shared.payload.schema.json" } }
     },
     {
-      "properties": {
-        "family": { "const": "compliance" },
-        "payload": { "$ref": "mw.partner.request.v1/compliance.payload.schema.json" }
-      }
+      "properties": { "family": { "const": "compliance" }, "payload": { "$ref": "mw.partner.request.v1/shared.payload.schema.json" } }
     }
   ]
 }

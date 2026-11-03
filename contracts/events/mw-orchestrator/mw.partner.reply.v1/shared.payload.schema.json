@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.upay.mw/events/mw-orchestrator/mw.partner.reply.v1/telco.payload.schema.json",
-  "title": "mw.partner.reply.v1 telco payload",
-  "description": "Reply from adapter-telco (airtime top-up). FAILED carries a canonical errorCode (spec 5.3); SUCCESS carries the partner's reference.",
+  "$id": "https://contracts.upay.mw/events/mw-orchestrator/mw.partner.reply.v1/shared.payload.schema.json",
+  "title": "mw.partner.reply.v1 shared payload",
+  "description": "Reply from an adapter of any family (one payload shared by all families until one needs its own). FAILED carries a canonical errorCode (spec 5.3); SUCCESS carries the partner's reference.",
   "type": "object",
   "required": ["operation", "outcome"],
   "properties": {
