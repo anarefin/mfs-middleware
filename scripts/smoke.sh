@@ -19,6 +19,18 @@ CURL_IMAGE="curlimages/curl:8.17.0@sha256:935d9100e9ba842cdb060de42472c7ca90cfe9
 LONG_RUNNING="kafka postgres valkey keycloak openbao etcd apisix greenmail"
 ONE_SHOT="kafka-init etcd-init apisix-init"
 
+# Generated credentials (gitignored .env written by gen-dev-env.sh)
+set -a; . "$MW_ROOT/deploy/compose/platform/.env"; set +a
+# resolve VALUE: a realm file's ${VAR} placeholder -> its generated value (as Keycloak's
+# import does); any other value unchanged
+resolve() {
+  local v
+  case "$1" in
+    '${'*'}') v="${1#??}"; v="${v%?}"; printf '%s' "${!v-}" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
 dc() { docker compose -f "$file" "$@"; }
 project="$(dc config --format json | jq -r .name)"
 
@@ -101,11 +113,11 @@ for realm_file in "$MW_ROOT"/deploy/compose/platform/keycloak/realms/*-realm.jso
   client="$(jq -r '[.clients[] | select(.publicClient and .directAccessGrantsEnabled)][0].clientId // empty' "$realm_file")"
   while read -r user pw; do
     [ -n "$user" ] || continue
-    check "keycloak token $realm/$user" token "$realm" grant_type=password "client_id=$client" "username=$user" "password=$pw"
+    check "keycloak token $realm/$user" token "$realm" grant_type=password "client_id=$client" "username=$user" "password=$(resolve "$pw")"
   done < <(jq -r '.users[] | select(.credentials) | "\(.username) \(.credentials[0].value)"' "$realm_file")
   while read -r cid secret; do
     [ -n "$cid" ] || continue
-    check "keycloak token $realm/$cid (client credentials)" token "$realm" grant_type=client_credentials "client_id=$cid" "client_secret=$secret"
+    check "keycloak token $realm/$cid (client credentials)" token "$realm" grant_type=client_credentials "client_id=$cid" "client_secret=$(resolve "$secret")"
   done < <(jq -r '.clients[] | select(.serviceAccountsEnabled) | "\(.clientId) \(.secret)"' "$realm_file")
 done
 
@@ -115,8 +127,6 @@ check "apisix https://localhost:$https_port/healthz -> 200" \
   curl -skf --max-time 10 "https://localhost:$https_port/healthz"
 
 # ---- APISIX Admin API and etcd isolation ----
-# Generated credentials (gitignored .env written by gen-dev-env.sh)
-set -a; . "$MW_ROOT/deploy/compose/platform/.env"; set +a
 net_of() { docker network ls --format '{{.Name}}' --filter "label=com.docker.compose.project=$project" --filter "label=com.docker.compose.network=$1" | head -1; }
 app_net="$(net_of app)"
 # admin_status NETWORK: HTTP status of an authenticated Admin API call made from a

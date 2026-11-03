@@ -54,7 +54,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "dev-only-pass",
+          "value": "${KC_OPS_TEST_PASSWORD}",
           "temporary": false
         }
       ],
@@ -72,7 +72,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "dev-only-pass",
+          "value": "${KC_OPS_TEST_PASSWORD}",
           "temporary": false
         }
       ],
@@ -91,7 +91,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "dev-only-pass",
+          "value": "${KC_OPS_TEST_PASSWORD}",
           "temporary": false
         }
       ],
@@ -110,7 +110,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "dev-only-pass",
+          "value": "${KC_OPS_TEST_PASSWORD}",
           "temporary": false
         }
       ],
