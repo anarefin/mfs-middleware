@@ -96,7 +96,7 @@ or one with `M=<module>` (e.g. `M=mw-orchestrator`).
 
 | Command | What it does |
 | --- | --- |
-| `make verify [M=]` | isolation check, contracts lint, `./gradlew check` per module; without `M=` also the script self-tests |
+| `make verify [M=]` | isolation check, field-injection check, contracts lint, `./gradlew check` per module (tests, JaCoCo 80% line gate on `service`/`mapper`/`client`, SpotBugs + FindSecBugs); without `M=` also the script self-tests |
 | `make check-isolation [M=]` | module independence rules (fails on cross-module deps, `includeBuild`, convention plugins, paths outside the module except `contracts/`) |
 | `make contracts-lint` | lint `contracts/` |
 | `make versions-check [M=]` | report version drift between module version catalogs (report only, not in `verify`) |

@@ -2,8 +2,10 @@
 // Gradle platforms; every version comes from this module's gradle/libs.versions.toml.
 plugins {
     java
+    jacoco
     alias(libs.plugins.spring.boot)
     alias(libs.plugins.cyclonedx)
+    alias(libs.plugins.spotbugs)
 }
 
 group = "mfs.mw"
@@ -52,6 +54,8 @@ dependencies {
     testImplementation(libs.camel.test.spring.junit6)
     testImplementation(libs.json.schema.validator)
     testRuntimeOnly(libs.junit.platform.launcher)
+
+    spotbugsPlugins(libs.findsecbugs)
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -80,6 +84,46 @@ val conformance by tasks.registering(Test::class) {
     shouldRunAfter(tasks.test)
 }
 tasks.check { dependsOn(conformance) }
+
+// Coverage gate (spec 22.1): >= 80% line coverage per package on service, mapper and client
+// (and their sub-packages), measured over the unit and conformance runs. `check` (make
+// verify) fails below it. Other packages are reported but not gated.
+val basePackage = "mfs.mw.service.template"
+val gatedPackages = listOf("service", "mapper", "client")
+jacoco { toolVersion = libs.versions.jacoco.get() }
+tasks.jacocoTestReport {
+    executionData(tasks.test.get(), conformance.get())
+    dependsOn(tasks.test, conformance)
+    reports { xml.required = true; html.required = true }
+}
+tasks.jacocoTestCoverageVerification {
+    executionData(tasks.test.get(), conformance.get())
+    dependsOn(tasks.test, conformance)
+    violationRules {
+        rule {
+            element = "PACKAGE"
+            includes = gatedPackages.flatMap { listOf("$basePackage.$it", "$basePackage.$it.*") }
+            limit {
+                counter = "LINE"
+                value = "COVEREDRATIO"
+                minimum = "0.80".toBigDecimal()
+            }
+        }
+    }
+}
+tasks.check { dependsOn(tasks.jacocoTestCoverageVerification, tasks.jacocoTestReport) }
+
+// Static analysis (SAST, spec 18.5): SpotBugs with the FindSecBugs rules on main code, in
+// `check`. Medium confidence and up fails the build; reviewed false positives go in
+// config/spotbugs/exclude.xml with a reason.
+spotbugs {
+    toolVersion = libs.versions.spotbugs.get()
+    effort = com.github.spotbugs.snom.Effort.MAX
+    reportLevel = com.github.spotbugs.snom.Confidence.MEDIUM
+    excludeFilter = file("config/spotbugs/exclude.xml")
+}
+tasks.spotbugsMain { reports.create("html") { required = true } }
+tasks.spotbugsTest { enabled = false }
 
 // SBOM on every build (spec 3, OWN-05), written to build/reports/cyclonedx-direct/ and
 // copied into the image by the Dockerfile.
