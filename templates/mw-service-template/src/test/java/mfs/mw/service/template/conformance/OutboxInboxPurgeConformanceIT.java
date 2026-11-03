@@ -19,7 +19,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Outbox and inbox purge (spec 6.4, 16.3): a scheduled job deletes sent outbox rows older than
- * {@code mw.outbox.retention} and inbox rows older than {@code mw.inbox.retention} (7 days by
+ * {@code mw.retention.outbox} and inbox rows older than {@code mw.retention.inbox} (7 days by
  * default), in batches. Unsent outbox rows are never purged, however old. The job is
  * ShedLock-guarded: while another instance holds the lock it does nothing. (ShedLock keeps UTC
  * database time in {@code timestamp} columns, hence {@code timezone('utc', now())} below.)
@@ -28,7 +28,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     // batch size 2 so the 3 old rows of each table need more than one batch
-    properties = "mw.purge.batch-size=2")
+    properties = "mw.retention.batch-size=2")
 @Import(TestInfrastructure.class)
 class OutboxInboxPurgeConformanceIT {
 

@@ -41,26 +41,73 @@ EOF
   mkdir -p deploy/compose/mvp && touch deploy/compose/mvp/compose.yml
 }
 
+# ps lines as up.sh asks for them: service, state, health, exit code, labels. One-shot init
+# containers carry the compose label mw.oneshot=true.
+L='com.docker.compose.project=mvp'
+O="$L,mw.oneshot=true"
+
+# up_with TIMEOUT: run make up against the stubbed docker; output in OUT, status returned.
+up_with() {
+  OUT="$(MW_UP_TIMEOUT="$1" MW_UP_POLL=0 make -s -f "$REPO_DIR/Makefile" MW_ROOT="$PWD" SELFTEST=0 up 2>&1)"
+}
+
 test_up_returns_once_every_long_running_service_is_healthy() {
   stub_compose_ps
-  printf 'kafka\trunning\tstarting\nkafka-init\trunning\t\npostgres\trunning\thealthy\n' >.ps-1
-  printf 'kafka\trunning\thealthy\nkafka-init\texited\t\netcd-init\texited\t\npostgres\trunning\thealthy\n' >.ps-2
-  OUT="$(MW_UP_TIMEOUT=30 MW_UP_POLL=0 make -s -f "$REPO_DIR/Makefile" MW_ROOT="$PWD" SELFTEST=0 up 2>&1)" || fail "up failed"
+  printf 'kafka\trunning\tstarting\t0\t%s\nkafka-init\trunning\t\t0\t%s\npostgres\trunning\thealthy\t0\t%s\n' "$L" "$O" "$L" >.ps-1
+  printf 'kafka\trunning\thealthy\t0\t%s\nkafka-init\texited\t\t0\t%s\netcd-init\texited\t\t0\t%s\npostgres\trunning\thealthy\t0\t%s\n' "$L" "$O" "$O" "$L" >.ps-2
+  up_with 30 || fail "up failed: $OUT"
   [ "$(cat .ps-n)" = 2 ] || fail "did not poll until healthy (polls: $(cat .ps-n))"
   assert_out_contains "healthy"
 }
 
 test_up_fails_naming_the_unhealthy_services_on_timeout() {
   stub_compose_ps
-  printf 'kafka\trunning\thealthy\nkeycloak\trunning\tunhealthy\napisix\trunning\tstarting\nkafka-init\texited\t\nopenbao\texited\t\n' >.ps-1
-  if OUT="$(MW_UP_TIMEOUT=1 MW_UP_POLL=0 make -s -f "$REPO_DIR/Makefile" MW_ROOT="$PWD" SELFTEST=0 up 2>&1)"; then
-    fail "up succeeded with unhealthy services"
-  fi
-  assert_out_contains "keycloak"; assert_out_contains "apisix"; assert_out_contains "openbao"
+  printf 'kafka\trunning\thealthy\t0\t%s\nkeycloak\trunning\tstarting\t0\t%s\napisix\tcreated\t\t0\t%s\nkafka-init\texited\t\t0\t%s\n' "$L" "$L" "$L" "$O" >.ps-1
+  if up_with 1; then fail "up succeeded with services still starting"; fi
+  assert_out_contains "keycloak"; assert_out_contains "apisix"
   assert_out_lacks "kafka-init"
   case "$OUT" in *timed*out*|*timeout*) ;; *) fail "no timeout message" ;; esac
   printf '%s\n' "$OUT" | grep -i 'unhealthy\|not healthy' | grep -q 'kafka,\|kafka ' && fail "healthy kafka named as unhealthy"
   return 0
+}
+
+test_up_fails_fast_naming_a_long_running_service_that_exited_died_or_is_unhealthy() {
+  local state health
+  for state_health in exited: dead: running:unhealthy; do
+    state="${state_health%%:*}"; health="${state_health#*:}"
+    rm -f .ps-* .tool-calls
+    stub_compose_ps
+    printf 'kafka\trunning\tstarting\t0\t%s\nopenbao\t%s\t%s\t1\t%s\n' "$L" "$state" "$health" "$L" >.ps-1
+    if up_with 5; then fail "up succeeded with openbao $state $health"; fi
+    [ "$(cat .ps-n)" = 1 ] || fail "$state/$health: kept polling ($(cat .ps-n) polls) instead of failing fast"
+    assert_out_contains "openbao"
+    assert_out_contains "${health:-$state}"
+    assert_out_lacks "timed out"
+    printf '%s\n' "$OUT" | grep -q 'kafka(' && fail "still-starting kafka named as failed: $OUT"
+  done
+  return 0
+}
+
+test_up_fails_fast_naming_a_one_shot_that_exited_non_zero() {
+  stub_compose_ps
+  printf 'kafka\trunning\thealthy\t0\t%s\nkafka-init\texited\t\t1\t%s\netcd-init\texited\t\t0\t%s\napisix\trunning\tstarting\t0\t%s\n' "$L" "$O" "$O" "$L" >.ps-1
+  if up_with 5; then fail "up succeeded with a failed one-shot"; fi
+  [ "$(cat .ps-n)" = 1 ] || fail "kept polling ($(cat .ps-n) polls) instead of failing fast"
+  assert_out_contains "kafka-init"
+  assert_out_contains "exit 1"
+  assert_out_lacks "etcd-init"
+  assert_out_lacks "timed out"
+}
+
+test_up_reads_one_shots_from_the_compose_label_not_a_list() {
+  # An exited service without the label is long-running (fails); one with it is a one-shot.
+  stub_compose_ps
+  printf 'kafka\trunning\thealthy\t0\t%s\nnew-init\texited\t\t0\t%s\n' "$L" "$O" >.ps-1
+  up_with 30 || fail "labelled one-shot new-init exited 0 was not skipped: $OUT"
+  rm -f .ps-*
+  printf 'kafka\trunning\thealthy\t0\t%s\nkafka-init\texited\t\t0\t%s\n' "$L" "$L" >.ps-1
+  if up_with 30; then fail "unlabelled exited kafka-init treated as a one-shot"; fi
+  assert_out_contains "kafka-init"
 }
 
 test_up_with_M_starts_only_that_module() {

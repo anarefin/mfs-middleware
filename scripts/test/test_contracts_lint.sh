@@ -4,7 +4,8 @@
 #   contracts/OWNERS.yml                                         files: { <path>: <owning service> }
 #   contracts/common/<name>.schema.json                          shared types, $ref'd by others
 #   contracts/events/<svc>/<topic>.schema.json                   message or envelope schema
-#   contracts/events/<svc>/<topic>/<Msg>.payload.schema.json     one payload per message type
+#   contracts/events/<svc>/<topic>/<Msg>.payload.schema.json     one payload per message type (or one
+#       shared by several types, referenced from each of their oneOf branches)
 #   contracts/events/<svc>/samples/<topic>[/<Msg>]/valid*.json   must validate
 #   contracts/events/<svc>/samples/<topic>[/<Msg>]/invalid*.json must fail with exactly the
 #       errors stated for it in expected-errors.json next to it
@@ -85,8 +86,8 @@ test_repo_has_a_decimal_amount_sample_rejected_as_non_integer() {
 test_repo_envelopes_have_one_payload_schema_per_message_type() {
   local e="$REPO_DIR/contracts/events" t n
   for t in "mw-orchestrator/core.command.v1:9" "mw-core-mock/core.event.v1:17" \
-    "mw-orchestrator/mw.partner.request.v1:5" "mw-orchestrator/mw.partner.reply.v1:5" \
-    "mw-orchestrator/mw.partner.inbound.v1:5"; do
+    "mw-orchestrator/mw.partner.request.v1:1" "mw-orchestrator/mw.partner.reply.v1:1" \
+    "mw-orchestrator/mw.partner.inbound.v1:1"; do
     n="$(ls "$e/${t%%:*}"/*.payload.schema.json 2>/dev/null | wc -l | tr -d ' ')"
     [ "$n" = "${t##*:}" ] || fail "${t%%:*}: $n payload schemas, expected ${t##*:}"
     grep -q '"oneOf"' "$e/${t%%:*}.schema.json" || fail "${t%%:*}.schema.json has no oneOf over payloads"
@@ -96,8 +97,15 @@ test_repo_envelopes_have_one_payload_schema_per_message_type() {
     QueryTransaction ApplyComplianceAction; do
     [ -f "$e/mw-orchestrator/core.command.v1/$f.payload.schema.json" ] || fail "no $f payload schema"
   done
-  for f in telco billpay bank interop compliance; do
-    [ -f "$e/mw-orchestrator/mw.partner.request.v1/$f.payload.schema.json" ] || fail "no $f partner request payload"
+  # Partner topics (review of 48): the families share one payload per topic, but keep a family
+  # enum and one oneOf branch per family so a family can get its own payload file later.
+  for t in request reply inbound; do
+    for f in telco billpay bank interop compliance; do
+      grep -qF "\"family\": { \"const\": \"$f\" }, \"payload\": { \"\$ref\": \"mw.partner.$t.v1/shared.payload.schema.json\" }" \
+        "$e/mw-orchestrator/mw.partner.$t.v1.schema.json" || fail "mw.partner.$t.v1: no $f branch on the shared payload"
+      ls "$e/mw-orchestrator/samples/mw.partner.$t.v1/$f"/valid*.json >/dev/null 2>&1 || fail "mw.partner.$t.v1: no valid $f sample"
+      ls "$e/mw-orchestrator/samples/mw.partner.$t.v1/$f"/invalid*.json >/dev/null 2>&1 || fail "mw.partner.$t.v1: no invalid $f sample"
+    done
   done
 }
 
@@ -357,6 +365,50 @@ test_lint_fails_when_a_oneOf_branch_refs_another_message_payload() {
   rm contracts/events/mw-a/*.bak
   assert_fails mw_make "$PWD" contracts-lint
   assert_out_contains "oneOf branch for Beta"
+}
+
+# share_payload SVC TOPIC SHARED MSG...: point the branches of MSG... at one shared payload file
+# <TOPIC>/<SHARED>.payload.schema.json instead of one file each (partner topics, review of 48).
+share_payload() {
+  local svc="$1" topic="$2" shared="$3" m; shift 3
+  plant_payload "$svc" "$topic" "$shared"
+  for m in "$@"; do
+    sed -i.bak "s#\"$topic/$m.payload.schema.json\"#\"$topic/$shared.payload.schema.json\"#" "contracts/events/$svc/$topic.schema.json"
+    rm "contracts/events/$svc/$topic/$m.payload.schema.json"
+  done
+  rm -f contracts/events/"$svc"/*.bak
+}
+
+test_lint_accepts_one_shared_payload_referenced_by_several_enum_values() {
+  plant_envelope mw-a mw.a.cmd.v1 Alpha Beta
+  share_payload mw-a mw.a.cmd.v1 shared Alpha Beta
+  assert_ok mw_make "$PWD" contracts-lint
+  assert_out_contains "3 schema"
+  assert_out_contains "4 sample"
+}
+
+test_lint_accepts_a_family_split_out_of_a_shared_payload() {
+  plant_envelope mw-a mw.a.cmd.v1 Alpha Beta Gamma
+  share_payload mw-a mw.a.cmd.v1 shared Alpha Beta
+  assert_ok mw_make "$PWD" contracts-lint
+}
+
+test_lint_fails_when_an_enum_value_has_no_branch_with_a_shared_payload() {
+  plant_envelope mw-a mw.a.cmd.v1 Alpha Beta
+  share_payload mw-a mw.a.cmd.v1 shared Alpha Beta
+  sed -i.bak 's/"kind": { "enum": \["Alpha", "Beta"\] }/"kind": { "enum": ["Alpha", "Beta", "Delta"] }/' contracts/events/mw-a/mw.a.cmd.v1.schema.json
+  rm contracts/events/mw-a/*.bak
+  plant_msg_samples mw-a mw.a.cmd.v1 Delta
+  assert_fails mw_make "$PWD" contracts-lint
+  assert_out_contains "kind Delta has no payload file"
+}
+
+test_lint_fails_on_a_shared_payload_file_nothing_references() {
+  plant_envelope mw-a mw.a.cmd.v1 Alpha Beta
+  share_payload mw-a mw.a.cmd.v1 shared Alpha Beta
+  plant_payload mw-a mw.a.cmd.v1 unused
+  assert_fails mw_make "$PWD" contracts-lint
+  assert_out_contains "unused.payload.schema.json: payload file is referenced by no oneOf branch"
 }
 
 test_lint_fails_when_a_message_type_has_no_samples() {

@@ -68,3 +68,40 @@ test_spec_records_the_m0_review_decisions() {
   if grep 'make verify' "$f" | grep -qi 'static analysis'; then fail "make verify still lists static analysis"; fi
   if grep -qE 'JUnit 5|junit5' "$f"; then fail "spec still says JUnit 5"; fi
 }
+
+test_spec_has_no_static_analysis_or_sast_requirement() {
+  # M0 decision: no static analysis and no SAST; review, gitleaks and trivy only.
+  local f="$REPO_DIR/spec/upay-mfs-middleware-spec.md" hits
+  hits=$(grep -niE 'static[- ]analysis|\bSAST\b|SpotBugs|FindSecBugs' "$f") \
+    && fail "spec still requires static analysis or SAST: $hits"
+  spec_has 'gitleaks|[Ss]ecret scan'
+  spec_has '[Tt]rivy|[Cc]ontainer scan'
+}
+
+test_spec_records_keycloak_on_the_data_network_as_an_mvp_deviation() {
+  spec_has 'Keycloak \(Operation zone\) also joins the `data` network.*PostgreSQL.*MVP single-host deviation'
+  grep -A4 '^  keycloak:' "$REPO_DIR/deploy/compose/platform/compose.yml" | grep -qE 'networks: \[ops, data\]' \
+    || fail "keycloak compose networks changed; update spec 18.1"
+}
+
+test_spec_kafka_contract_matches_the_contract_schemas() {
+  # Spec 6.2/6.3 must describe the envelope + payload shape in contracts/events.
+  local f="$REPO_DIR/spec/upay-mfs-middleware-spec.md" c="$REPO_DIR/contracts/events"
+  spec_has 'Every event carries the envelope `\{ schemaVersion, eventType, eventId, commandId, txnId, coreRef, occurredAt, outcome, reasonCode\?, reasonMessage\?, balancesAfter\?, payload \}`'
+  spec_has '`payload\.holdId`' ; spec_has '`payload\.txnStatus`' ; spec_has '`payload\.fee`' ; spec_has '`payload\.limitsLeft`'
+  spec_has 'non-negative integer minor units'
+  spec_has '^\| `mw\.partner\.reply\.v1` \|.*`family`'
+  spec_has '^\| `mw\.partner\.inbound\.v1` \|.*`family`'
+  if grep -qF 'Every event carries `{ eventId, commandId' "$f"; then fail "spec still shows the flat event shape"; fi
+  # the facts the spec states, checked against the schemas themselves
+  grep -q '"holdId"' "$c/mw-core-mock/core.event.v1/FundsHeld.payload.schema.json" || fail "FundsHeld payload lost holdId"
+  grep -q '"txnStatus"' "$c/mw-core-mock/core.event.v1/TransactionStatus.payload.schema.json" || fail "TransactionStatus payload lost txnStatus"
+  grep -q '"fee"' "$c/mw-core-mock/core.event.v1/TransactionValidated.payload.schema.json" || fail "TransactionValidated payload lost fee"
+  grep -q '"limitsLeft"' "$c/mw-core-mock/core.event.v1/TransactionValidated.payload.schema.json" || fail "TransactionValidated payload lost limitsLeft"
+  grep -qF '"valueMinor": { "type": "integer", "minimum": 0 }' "$REPO_DIR/contracts/common/defs.v1.schema.json" \
+    || fail "Amount is no longer non-negative minor units"
+  for t in reply inbound; do
+    grep -qF '"family": { "enum": ["telco", "billpay", "bank", "interop", "compliance"] }' \
+      "$c/mw-orchestrator/mw.partner.$t.v1.schema.json" || fail "mw.partner.$t.v1 has no family enum"
+  done
+}

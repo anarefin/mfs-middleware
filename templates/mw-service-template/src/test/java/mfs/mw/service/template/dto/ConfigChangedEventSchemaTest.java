@@ -2,18 +2,15 @@ package mfs.mw.service.template.dto;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.networknt.schema.Error;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 import mfs.mw.service.template.contracts.ContractSchemas;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -28,33 +25,18 @@ class ConfigChangedEventSchemaTest {
 
   static final String SCHEMA = "events/mw-admin-api/mw.config.changed.v1.schema.json";
 
-  static Path contractsDir() {
-    return ContractSchemas.contractsDir();
-  }
+  static final String SAMPLES = "events/mw-admin-api/samples/mw.config.changed.v1";
 
-  static Path schemaFile() {
-    return contractsDir().resolve(SCHEMA);
-  }
-
-  static Stream<Path> validSamples() throws Exception {
-    Path dir = contractsDir().resolve("events/mw-admin-api/samples/mw.config.changed.v1");
-    try (Stream<Path> files = Files.list(dir)) {
-      List<Path> valid =
-          files.filter(p -> p.getFileName().toString().startsWith("valid")).sorted().toList();
-      assertThat(valid).as("valid samples in %s", dir).isNotEmpty();
-      return valid.stream();
-    }
-  }
-
-  static List<Error> validate(JsonNode node) {
-    return ContractSchemas.schema(SCHEMA).validate(node);
+  /** Method source for the parameterised test. */
+  static List<Path> validSamples() {
+    return ContractSchemas.samples(SAMPLES, "valid");
   }
 
   @Test
   void contractsComeFromTheRootContractsFolder() {
-    Path dir = contractsDir();
-    assertThat(dir.resolve("OWNERS.yml")).isRegularFile();
-    assertThat(schemaFile()).isRegularFile();
+    assertThat(ContractSchemas.contractsDir().resolve("OWNERS.yml")).isRegularFile();
+    assertThat(ContractSchemas.fileFor(ContractSchemas.ID_BASE + SCHEMA)).isRegularFile();
+    assertThat(validSamples()).as("valid samples in %s", SAMPLES).isNotEmpty();
   }
 
   @ParameterizedTest
@@ -62,7 +44,9 @@ class ConfigChangedEventSchemaTest {
   void readsEverySampleAndWritesValidJson(Path sample) throws Exception {
     ConfigChangedEvent event = JSON.readValue(Files.readString(sample), ConfigChangedEvent.class);
 
-    assertThat(validate(JSON.valueToTree(event))).as("re-serialised %s", sample).isEmpty();
+    assertThat(ContractSchemas.schema(SCHEMA).validate(JSON.valueToTree(event)))
+        .as("re-serialised %s", sample)
+        .isEmpty();
   }
 
   @Test
@@ -80,7 +64,7 @@ class ConfigChangedEventSchemaTest {
             null,
             null);
 
-    assertThat(validate(JSON.valueToTree(event))).isEmpty();
+    assertThat(ContractSchemas.schema(SCHEMA).validate(JSON.valueToTree(event))).isEmpty();
   }
 
   @Test

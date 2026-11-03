@@ -542,8 +542,8 @@ Kafka carries every financial step between services and to the core, with effect
 | `core.wallet.event.v1` | core | orchestrator, audit-dw | txnId | 48 | 7 d |
 | `core.payment.event.v1` | core | orchestrator, audit-dw | txnId | 48 | 7 d |
 | `mw.partner.request.<family>.v1` | orchestrator | adapter-telco / billpay / bank / interop / compliance | txnId | 24 each | 3 d |
-| `mw.partner.reply.v1` | adapters | orchestrator | txnId | 48 | 3 d |
-| `mw.partner.inbound.v1` | adapters (callbacks, inbound remittance, NPSB credit) | orchestrator | txnId | 24 | 7 d |
+| `mw.partner.reply.v1` | adapters (record carries `family`) | orchestrator | txnId | 48 | 3 d |
+| `mw.partner.inbound.v1` | adapters (callbacks, inbound remittance, NPSB credit; record carries `family`) | orchestrator | txnId | 24 | 7 d |
 | `mw.notify.request.v1` | any | notify | recipient | 24 | 3 d |
 | `mw.notify.status.v1` | notify | audit-dw, admin | messageId | 12 | 7 d |
 | `mw.audit.event.v1` | all services | audit-dw | txnId or actor | 24 | 7 d |
@@ -552,6 +552,8 @@ Kafka carries every financial step between services and to the core, with effect
 | `mw.recon.result.v1` | recon | admin, audit-dw | partnerId | 6 | 30 d |
 | `dw.txn.event.v1` | audit-dw | Data Warehouse | txnId | 24 | 7 d |
 | `<topic>.retry.<n>` / `<topic>.dlq` | Camel error handler | retry consumer / ops | same | = source | 14 d |
+
+The three partner topics share one record shape per topic (`contracts/events/mw-orchestrator/mw.partner.{request,reply,inbound}.v1`): an envelope with a `family` field (`telco`, `billpay`, `bank`, `interop`, `compliance`) and a `payload`. On `mw.partner.reply.v1` and `mw.partner.inbound.v1`, where all adapters share one topic, `family` tells the orchestrator which adapter family sent the record.
 
 ### 6.3 Core command / event contract (proposal to the core team)
 
@@ -569,7 +571,7 @@ The middleware proposes this contract; the core team must confirm field names an
 | `QueryTransaction` | Status inquiry by `txnId` / `commandId` | `TransactionStatus` | n/a |
 | `ApplyComplianceAction` | AML block / unblock / hold on a wallet | `ComplianceActionApplied` | `ComplianceActionRejected` |
 
-Every command carries `{ commandId, txnId, correlationId, issuedAt, expiresAt, payload }`. `expiresAt` lets the core drop a stale command it receives after the middleware has timed out. Every event carries `{ eventId, commandId, txnId, coreRef, occurredAt, outcome, reasonCode?, balancesAfter? }`; `balancesAfter` is optional and used only for customer messages. Commands that need customer authorisation (ValidateTransaction, HoldFunds, PostTransfer) carry encryptedPin { keyId, ciphertext } (RSA-OAEP, SHA-256); the middleware never decrypts it.
+Every command carries `{ schemaVersion, commandType, commandId, txnId, correlationId, issuedAt, expiresAt, payload }`. `expiresAt` lets the core drop a stale command it receives after the middleware has timed out. Every event carries the envelope `{ schemaVersion, eventType, eventId, commandId, txnId, coreRef, occurredAt, outcome, reasonCode?, reasonMessage?, balancesAfter?, payload }`; `balancesAfter` is optional and used only for customer messages, and failure events carry `outcome` FAILURE and a `reasonCode`. Event-specific fields sit under `payload`, one schema per event type (`contracts/events/mw-core-mock/core.event.v1/`): `payload.holdId` (FundsHeld; also on the other hold events and TransactionStatus), `payload.txnStatus` (TransactionStatus), `payload.fee`, `payload.charges` and `payload.limitsLeft` (TransactionValidated). Commands that need customer authorisation (ValidateTransaction, HoldFunds, PostTransfer) carry `payload.encryptedPin` { keyId, ciphertext } (RSA-OAEP, SHA-256); the middleware never decrypts it. Amounts on every topic are `{ valueMinor, currency }`: non-negative integer minor units (poisha), currency BDT.
 
 ### 6.4 Reliable publishing
 
@@ -1059,7 +1061,7 @@ Security controls follow the RFP's zone model: nothing in the Application or Dat
 | Data | PostgreSQL, archive store, Vault storage | Application zone service roles only |
 | Operation | APISIX internal, admin UI/API, Keycloak, Vault UI, bastion | Corporate network via VPN + MFA |
 
-On a Compose host each zone is its own user-defined network (`dmz`, `app`, `data`, `ops`), created by the platform project; a container joins only the networks its zone allows, and only APISIX, the SMPP/USSD port and SFTP publish host ports. Host firewall rules are kept in `deploy/` as code and reviewed by security.
+On a Compose host each zone is its own user-defined network (`dmz`, `app`, `data`, `ops`), created by the platform project; a container joins only the networks its zone allows, and only APISIX, the SMPP/USSD port and SFTP publish host ports. Exception: Keycloak (Operation zone) also joins the `data` network to reach its own PostgreSQL database (`keycloak` database and role); this is an MVP single-host deviation from the zone rule, to be replaced by a dedicated database route or proxy when zones move to separate hosts. Host firewall rules are kept in `deploy/` as code and reviewed by security.
 
 ### 18.2 Identity and access
 
@@ -1086,7 +1088,7 @@ On a Compose host each zone is its own user-defined network (`dmz`, `app`, `data
 ### 18.5 Secure SDLC (SEC-06, SEC-07)
 
 - Threat model (STRIDE) per service and per partner integration, stored in `docs/security/`, refreshed each major release.
-- Pipeline gates (tool choice outside this spec, capability required): SAST, dependency scan (OWASP Dependency-Check or equivalent), container scan (e.g. Trivy), secret scan, IaC/Compose lint, DAST against UAT; critical or high findings block release.
+- Pipeline gates (tool choice outside this spec, capability required): dependency scan (OWASP Dependency-Check or equivalent), container scan (e.g. Trivy), secret scan, IaC/Compose lint, DAST against UAT; critical or high findings block release.
 - Signed images (cosign) and SBOM attached to every image; Compose deploys only signed digests.
 - Independent penetration test before go-live and after each major release.
 
@@ -1113,7 +1115,7 @@ The design targets 1,500 TPS peak with 3x headroom on a single-site deployment w
 | NFR-05 | Scalability | Vertical only | Larger container limits and hosts; no replicas (D11). Services still keep no state that matters across restarts, so this could change later without code change |
 | NFR-06 | Integrity | Zero loss, zero duplicate financial effect | Outbox, idempotent consumers, `acks=all`, idempotency keys, TSQ, recon |
 | NFR-07 | Isolation | One partner's failure affects only that partner | Per-partner bulkheads, circuit breakers, separate request topics per family, consumer concurrency limits |
-| NFR-08 | Maintainability | ≥ 80% line coverage on business logic; zero critical static-analysis issues | Quality gates in pipeline (section 22) |
+| NFR-08 | Maintainability | ≥ 80% line coverage on business logic | Quality gates in pipeline (section 22) |
 | NFR-09 | Portability | Runs on any Linux host with Docker Engine | OCI images, Compose, no cloud-specific services |
 | NFR-10 | Localisation | bn/en messages; Asia/Dhaka; BDT | Locale in canonical model; UTC storage, Dhaka rendering; minor-unit amounts |
 

@@ -128,3 +128,27 @@ test_no_static_analysis_tool_in_the_template_docs_or_scripts() {
   grep -qi 'static analysis' "$REPO_DIR/scripts/verify.sh" "$REPO_DIR/Makefile" && fail "verify still claims static analysis"
   return 0
 }
+
+test_scheduler_jobs_only_call_the_service_layer() {
+  # Spec 4.4 (review of 48/49): scheduler -> service; SQL lives in service/ or repository/.
+  local main="$TEMPLATE_SRC/src/main/java/mfs/mw/service/template" hits
+  hits="$(grep -liE 'JdbcTemplate|delete from|insert into|select .* from' "$main"/scheduler/*.java)"
+  [ -z "$hits" ] || fail "scheduler classes hold SQL or JdbcTemplate: $hits"
+  grep -q 'RetentionService' "$main/scheduler/OutboxInboxPurgeJob.java" || fail "purge job does not call service/RetentionService"
+  [ -f "$main/service/RetentionService.java" ] || fail "no service/RetentionService"
+  # both batch subqueries in key order (inbox has no id column: its key is (consumer, event_id))
+  grep -q 'order by id limit' "$main/service/RetentionService.java" || fail "outbox batch subquery not ordered by id"
+  grep -q 'order by consumer, event_id limit' "$main/service/RetentionService.java" \
+    || fail "inbox batch subquery not ordered by its key like the outbox one"
+}
+
+test_retention_settings_live_under_one_prefix() {
+  local y="$TEMPLATE_SRC/src/main/resources/application.yml" block k
+  block="$(awk '/^  retention:/{f=1;next} f&&/^  [a-z]/{f=0} f' "$y")"
+  for k in 'outbox: 7d' 'inbox: 7d' 'batch-size:' 'cron:'; do
+    printf '%s\n' "$block" | grep -q "^    $k" || fail "mw.retention lacks $k"
+  done
+  grep -qE '^  purge:|^    retention:' "$y" && fail "old mw.purge / mw.<table>.retention keys remain"
+  grep -q 'mw.retention.outbox' "$TEMPLATE_SRC/CLAUDE.md" || fail "template CLAUDE.md does not name mw.retention.*"
+  return 0
+}

@@ -142,14 +142,14 @@ mw:
       enabled: true
       period: 500ms
       batch-size: 100
-    # Sent rows older than this are purged (scheduler/OutboxInboxPurgeJob); unsent rows never.
-    retention: 7d
-  inbox:
-    retention: 7d
-  purge:
-    # ShedLock-guarded, one instance at a time; deletes batch-size rows per statement.
-    period: PT1H
+  retention:
+    # Purge (service/RetentionService via scheduler/OutboxInboxPurgeJob): sent outbox rows and
+    # inbox rows older than these; unsent outbox rows never. ShedLock-guarded, one instance at a
+    # time, batch-size rows per statement, on a Spring cron ("-" switches it off).
+    outbox: 7d
+    inbox: 7d
     batch-size: 1000
+    cron: "0 0 * * * *"
   service:
     name: ${spring.application.name}
     version: ${MW_VERSION:0.1.0-SNAPSHOT}
