@@ -45,6 +45,7 @@ mfs.mw.<service>/
   scheduler/   @Scheduled jobs guarded by ShedLock
   security/    filters, signature/HMAC, JWT converters
   filter/      correlation ID and request logging filters
+  logging/     structured log formatter (21.1 fields, masking before output)
   util/        small static helpers (masking, hashing, crypto envelope)
 ```
 

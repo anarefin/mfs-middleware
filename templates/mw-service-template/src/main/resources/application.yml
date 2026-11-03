@@ -101,7 +101,7 @@ logging:
   structured:
     format:
       # JSON lines with the spec 21.1 fields; masking runs in the formatter (18.3).
-      console: mfs.mw.service.template.config.JsonLogFormatter
+      console: mfs.mw.service.template.logging.JsonLogFormatter
 
 server:
   port: 8080

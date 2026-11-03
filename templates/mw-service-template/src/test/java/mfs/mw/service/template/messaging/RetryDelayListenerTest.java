@@ -1,4 +1,4 @@
-package mfs.mw.service.template.route;
+package mfs.mw.service.template.messaging;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
-import mfs.mw.service.template.messaging.MwHeaders;
 import org.apache.camel.Message;
 import org.apache.camel.component.kafka.KafkaConstants;
 import org.apache.camel.impl.DefaultCamelContext;

@@ -1,4 +1,4 @@
-package mfs.mw.service.template.config;
+package mfs.mw.service.template.logging;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

@@ -1,4 +1,4 @@
-package mfs.mw.service.template.config;
+package mfs.mw.service.template.logging;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.classic.spi.IThrowableProxy;

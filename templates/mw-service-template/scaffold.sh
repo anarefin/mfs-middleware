@@ -97,11 +97,11 @@ Standalone service module (spec 4.2, 4.3). Package \`$pkg\`. Follow the root
   \`ErrorCodes\`, \`GlobalExceptionHandler\` building \`dto/ErrorEnvelope\`. Logs show route
   templates, never raw URIs.
 - \`util/MaskingPolicy\` + \`@Sensitive\`: masking rules of 18.3; mark every personal field.
-- \`config/JsonLogFormatter\`: JSON log lines with the 21.1 fields, masking before output.
+- \`logging/JsonLogFormatter\`: JSON log lines with the 21.1 fields, masking before output.
   Add context with \`log.atInfo().addKeyValue("event", "...")\` or the MDC.
 - \`config/MwServiceProperties\`: config binding; secrets from OpenBao when \`VAULT_ENABLED=true\`.
 - \`messaging/EventPublisher\`: Kafka records with the 6.1 headers, idempotent \`acks=all\` producer.
-- \`route/RetryTopicRouteBuilder\` + \`RetryDelayListener\`: subclass per consumed topic; retry
+- \`route/RetryTopicRouteBuilder\` + \`messaging/RetryDelayListener\`: subclass per consumed topic; retry
   topics 10 s / 1 min / 10 min then DLQ (19.2); per-record commit; no sleeps on Kafka threads.
 - \`application.yml\`: Resilience4j defaults (19.2), own schema \`$snake\` migrated by Flyway on
   start from \`db/migration\` (16.4); rename the schema to the spec 16.2 name if it has one.

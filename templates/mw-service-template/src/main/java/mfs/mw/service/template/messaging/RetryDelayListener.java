@@ -1,4 +1,4 @@
-package mfs.mw.service.template.route;
+package mfs.mw.service.template.messaging;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -7,7 +7,6 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import mfs.mw.service.template.messaging.MwHeaders;
 import org.apache.camel.Message;
 import org.apache.camel.component.kafka.KafkaConstants;
 import org.apache.camel.component.kafka.consumer.errorhandler.KafkaConsumerListener;
@@ -26,13 +25,13 @@ import org.apache.kafka.common.TopicPartition;
  * header means due now. Every method runs on the Kafka consumer thread (Camel calls the
  * listener and the route's first processor there), which is required for {@link Consumer}.
  */
-final class RetryDelayListener extends KafkaConsumerListener {
+public final class RetryDelayListener extends KafkaConsumerListener {
 
   private final Duration delay;
   private final Clock clock;
   private final Map<TopicPartition, Long> pausedUntil = new ConcurrentHashMap<>();
 
-  RetryDelayListener(Duration delay, Clock clock) {
+  public RetryDelayListener(Duration delay, Clock clock) {
     this.delay = delay;
     this.clock = clock;
     setResumableCheck(ignored -> true);
@@ -74,7 +73,7 @@ final class RetryDelayListener extends KafkaConsumerListener {
    * counts; a stale entry left by a rebalance is dropped and the record re-evaluated. The route
    * never commits a held-back record's offset.
    */
-  boolean holdBack(Message msg) {
+  public boolean holdBack(Message msg) {
     TopicPartition tp =
         new TopicPartition(
             msg.getHeader(KafkaConstants.TOPIC, String.class),
