@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "messageId": "m-1",
+  "channel": "SMS",
+  "status": "SENT",
+  "attempt": 0,
+  "at": "2026-11-03T08:15:35Z"
+}

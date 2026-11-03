@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 2,
+  "configKey": "partner/gp",
+  "configType": "PARTNER",
+  "change": "UPSERT",
+  "version": 8,
+  "value": { "enabled": false },
+  "changedAt": "2026-11-03T10:00:00Z",
+  "changedBy": "ops.maker1"
+}

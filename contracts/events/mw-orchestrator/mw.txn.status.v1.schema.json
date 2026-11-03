@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.upay.mw/events/mw-orchestrator/mw.txn.status.v1.schema.json",
+  "title": "mw.txn.status.v1",
+  "description": "Transaction state change published by mw-orchestrator (spec 5.1, 6.2, 7.2). Key: txnId. Consumers: channel services, notify, audit-dw.",
+  "type": "object",
+  "required": ["schemaVersion", "txnId", "correlationId", "channel", "txnType", "status", "amount", "requestedAt", "updatedAt"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "txnId": { "$ref": "#/$defs/TxnId" },
+    "idempotencyKey": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "correlationId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "channel": { "enum": ["CUSTOMER_APP", "AGENT_APP", "MERCHANT_APP", "DISTRIBUTOR_APP", "DSO_APP", "PARTNER_APP", "USSD", "WEB_CHECKOUT", "ORG_PORTAL", "SP_PORTAL", "PARTNER_API", "SYSTEM"] },
+    "txnType": { "enum": ["P2P", "CASH_IN", "CASH_OUT", "ATM_CASH_OUT", "ATM_CASH_IN", "TOPUP", "BILL_PAY", "MERCHANT_PAY", "ADD_MONEY_CARD", "ADD_MONEY_BANK", "C2W", "W2B", "REMIT_IN", "QR_PAY_INTEROP", "BULK_DISBURSE", "REVERSAL"] },
+    "status": { "$ref": "#/$defs/Status" },
+    "previousStatus": { "$ref": "#/$defs/Status" },
+    "initiator": { "$ref": "#/$defs/Party" },
+    "debitParty": { "$ref": "#/$defs/Party" },
+    "creditParty": { "$ref": "#/$defs/Party" },
+    "amount": { "$ref": "#/$defs/Money" },
+    "fee": { "$ref": "#/$defs/Money" },
+    "partner": { "$ref": "#/$defs/PartnerRef" },
+    "partnerRef": { "type": "string", "description": "Partner's own reference, filled on partner response." },
+    "coreRef": { "type": "string", "description": "Core ledger reference, filled on core event." },
+    "originalTxnId": { "$ref": "#/$defs/TxnId" },
+    "error": { "$ref": "#/$defs/Error" },
+    "requestedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "locale": { "enum": ["bn", "en"] },
+    "attributes": { "type": "object", "additionalProperties": { "type": "string" } }
+  },
+  "allOf": [
+    { "if": { "properties": { "status": { "enum": ["FAILED", "REJECTED", "MANUAL_REVIEW"] } }, "required": ["status"] }, "then": { "required": ["error"] } }
+  ],
+  "$defs": {
+    "TxnId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "Status": { "enum": ["RECEIVED", "VALIDATING", "HOLDING", "POSTING", "PARTNER_PENDING", "UNKNOWN", "COMMITTING", "RELEASING", "REVERSING", "COMPLETED", "FAILED", "REJECTED", "REVERSED", "MANUAL_REVIEW"] },
+    "Money": {
+      "type": "object",
+      "required": ["valueMinor", "currency"],
+      "properties": {
+        "valueMinor": { "type": "integer", "minimum": 0 },
+        "currency": { "const": "BDT" }
+      }
+    },
+    "Party": {
+      "type": "object",
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "enum": ["WALLET", "BANK_ACCOUNT", "CARD_TOKEN", "BILLER_ACCOUNT", "MSISDN", "MERCHANT", "ORG"] },
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "walletType": { "enum": ["CUSTOMER", "AGENT", "MERCHANT", "DISTRIBUTOR", "DSO"] }
+      }
+    },
+    "PartnerRef": {
+      "type": "object",
+      "required": ["partnerId", "productCode"],
+      "properties": {
+        "partnerId": { "type": "string", "minLength": 1 },
+        "productCode": { "type": "string", "minLength": 1 },
+        "billerCode": { "type": "string" }
+      }
+    },
+    "Error": {
+      "type": "object",
+      "description": "Error envelope subset (spec 5.3).",
+      "required": ["code", "message", "retryable"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" },
+        "message": { "type": "string" },
+        "messageBn": { "type": "string" },
+        "retryable": { "type": "boolean" }
+      }
+    }
+  }
+}

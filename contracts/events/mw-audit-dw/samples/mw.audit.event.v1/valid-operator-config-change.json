@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "auditId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6e",
+  "correlationId": "corr-admin-7",
+  "actor": { "type": "user", "id": "ops.checker1" },
+  "action": "partner.config.approved",
+  "resource": "partner/gp",
+  "before": { "timeoutMs": 30000 },
+  "after": { "timeoutMs": 20000 },
+  "outcome": "SUCCESS",
+  "at": "2026-11-03T10:00:00Z",
+  "sourceIp": "10.20.0.15",
+  "service": "mw-admin-api"
+}

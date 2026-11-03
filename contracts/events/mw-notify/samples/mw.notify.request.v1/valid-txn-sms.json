@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "messageId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8b:sms:initiator",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8b",
+  "correlationId": "corr-0001",
+  "recipient": { "msisdn": "01711000001" },
+  "templateCode": "TXN_P2P_SENT",
+  "locale": "bn",
+  "params": { "amount": "500.00", "receiver": "0181****002" },
+  "channels": ["SMS"],
+  "priority": "TXN"
+}

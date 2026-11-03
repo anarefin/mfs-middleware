@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.upay.mw/events/mw-audit-dw/mw.audit.event.v1.schema.json",
+  "title": "mw.audit.event.v1",
+  "description": "AuditEvent (spec 14.3). Every service produces it; mw-audit-dw consumes and owns it. Key: txnId or actor id. Payloads are masked before publishing (spec 18.3); raw bodies go to audit.payload via payloadRef.",
+  "type": "object",
+  "required": ["schemaVersion", "auditId", "correlationId", "actor", "action", "resource", "outcome", "at", "service"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "auditId": { "type": "string", "format": "uuid" },
+    "txnId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "correlationId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "actor": {
+      "type": "object",
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "enum": ["system", "user", "partner"] },
+        "id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "action": { "type": "string", "pattern": "^[a-z0-9]+([._][a-z0-9]+)*$", "description": "Stable action name, e.g. txn.state.changed, config.updated." },
+    "resource": { "type": "string", "minLength": 1 },
+    "before": { "type": "object", "description": "Masked state before an operator action." },
+    "after": { "type": "object", "description": "Masked state after an operator action." },
+    "payloadRef": { "type": "string" },
+    "outcome": { "enum": ["SUCCESS", "FAILURE", "DENIED"] },
+    "at": { "type": "string", "format": "date-time" },
+    "sourceIp": { "anyOf": [ { "type": "string", "format": "ipv4" }, { "type": "string", "format": "ipv6" } ] },
+    "service": { "type": "string", "pattern": "^mw-[a-z0-9-]+$" }
+  }
+}

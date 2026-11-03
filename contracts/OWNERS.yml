@@ -1,0 +1,23 @@
+# Owning service per contract file (spec 4.3 rule 4, ground rule "Contract first").
+# Only the owner changes a file; a change is its own WP, reviewed by a human.
+# A file lives under <kind>/<owner>/ and its owner here must match that folder.
+# Sample payloads in <dir>/samples/<name>/ belong to <dir>/<name>.schema.json and
+# need no entry. `make contracts-lint` fails on a file without an owner.
+#
+# Ownership rule: the producer owns the message. Where many services produce one
+# message to a single consumer (txn request, partner reply/inbound, notify request,
+# audit event), that consumer owns the contract, as a server owns its API.
+# Core events are owned by mw-core-mock until the core team takes over (open point 1).
+
+files:
+  events/mw-orchestrator/mw.txn.request.v1.schema.json: mw-orchestrator
+  events/mw-orchestrator/mw.txn.status.v1.schema.json: mw-orchestrator
+  events/mw-orchestrator/core.command.v1.schema.json: mw-orchestrator
+  events/mw-orchestrator/mw.partner.request.v1.schema.json: mw-orchestrator
+  events/mw-orchestrator/mw.partner.reply.v1.schema.json: mw-orchestrator
+  events/mw-orchestrator/mw.partner.inbound.v1.schema.json: mw-orchestrator
+  events/mw-core-mock/core.event.v1.schema.json: mw-core-mock
+  events/mw-notify/mw.notify.request.v1.schema.json: mw-notify
+  events/mw-notify/mw.notify.status.v1.schema.json: mw-notify
+  events/mw-audit-dw/mw.audit.event.v1.schema.json: mw-audit-dw
+  events/mw-admin-api/mw.config.changed.v1.schema.json: mw-admin-api
