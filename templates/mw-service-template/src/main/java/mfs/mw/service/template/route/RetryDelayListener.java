@@ -38,16 +38,21 @@ final class RetryDelayListener extends KafkaConsumerListener {
     setResumableCheck(ignored -> true);
   }
 
-  /** After each poll: resume partitions whose held-back record is now due. */
+  /**
+   * After each poll: resume partitions whose held-back record is now due, and forget entries
+   * the consumer no longer has paused. A rebalance (revoke, reassign, new consumer) drops Kafka's
+   * pause state; the held-back record was never committed, so the partition's new owner, this
+   * consumer included, reads it again from the committed offset and re-evaluates it.
+   */
   @Override
   public boolean afterConsume(Object ignored) {
     Consumer<?, ?> consumer = getConsumer();
     long now = clock.millis();
-    Set<TopicPartition> assigned = consumer.assignment();
+    Set<TopicPartition> paused = consumer.paused();
     for (Iterator<Map.Entry<TopicPartition, Long>> it = pausedUntil.entrySet().iterator(); it.hasNext(); ) {
       Map.Entry<TopicPartition, Long> e = it.next();
-      if (!assigned.contains(e.getKey())) {
-        it.remove(); // revoked: the new owner reads from the committed (held-back) offset
+      if (!paused.contains(e.getKey())) {
+        it.remove();
       } else if (e.getValue() <= now) {
         consumer.resume(Set.of(e.getKey()));
         it.remove();
@@ -64,21 +69,25 @@ final class RetryDelayListener extends KafkaConsumerListener {
 
   /**
    * True when the record in {@code msg} must not be handled now: either it is not due (its
-   * partition is paused and rewound to it) or an earlier record of its partition is held back.
+   * partition is paused and rewound to it) or an earlier record of the same poll batch was held
+   * back (the partition is paused and rewound to that one). Only the consumer's real pause state
+   * counts; a stale entry left by a rebalance is dropped and the record re-evaluated. The route
+   * never commits a held-back record's offset.
    */
   boolean holdBack(Message msg) {
     TopicPartition tp =
         new TopicPartition(
             msg.getHeader(KafkaConstants.TOPIC, String.class),
             msg.getHeader(KafkaConstants.PARTITION, Integer.class));
-    if (pausedUntil.containsKey(tp)) {
+    Consumer<?, ?> consumer = getConsumer();
+    if (consumer.paused().contains(tp)) {
       return true;
     }
+    pausedUntil.remove(tp);
     long due = dueAt(msg);
     if (due <= clock.millis()) {
       return false;
     }
-    Consumer<?, ?> consumer = getConsumer();
     consumer.pause(Set.of(tp));
     consumer.seek(tp, msg.getHeader(KafkaConstants.OFFSET, Long.class));
     pausedUntil.put(tp, due);

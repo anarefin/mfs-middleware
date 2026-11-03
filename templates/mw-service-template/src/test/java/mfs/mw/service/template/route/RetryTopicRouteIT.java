@@ -20,11 +20,14 @@ import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
 import org.apache.camel.component.kafka.KafkaConstants;
 import org.apache.camel.test.spring.junit6.CamelSpringBootTest;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.Header;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,7 +50,7 @@ import org.testcontainers.kafka.KafkaContainer;
 @CamelSpringBootTest
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
-    properties = "mw.kafka.retry.delays=2s,2s,2s")
+    properties = "mw.kafka.retry.delays=2s,2s,6s")
 @Import({TestInfrastructure.class, RetryTopicRouteIT.Routes.class})
 @ExtendWith(OutputCaptureExtension.class)
 class RetryTopicRouteIT {
@@ -216,6 +219,60 @@ class RetryTopicRouteIT {
     assertThat(System.currentTimeMillis() - start).as("sooner than the 2 s delay").isLessThan(2_000);
     assertThat(handler.calls.get("K-GARBAGE")).hasValue(1);
     assertThat(recordsFor(TOPIC + ".dlq", "K-GARBAGE", 1, Duration.ofSeconds(3))).isEmpty();
+  }
+
+  @Test
+  void heldBackRecordSurvivesARebalanceThatKeepsItsPartitionHere() throws Exception {
+    // The new member's client id sorts after Camel's, so the range assignor gives the partition
+    // back to the Camel consumer: Kafka drops its pause, the held-back record is fetched again.
+    long start = System.currentTimeMillis();
+    sendRaw(TOPIC + ".retry.3", "K-KEPT", Long.toString(start + 6_000));
+    Thread.sleep(1_000); // the retry.3 consumer has polled it and is holding it back
+
+    try (KafkaConsumer<String, String> member = groupMember("zzz-member")) {
+      long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
+      while (!handler.succeeded.contains("K-KEPT") && System.nanoTime() < deadline) {
+        assertThat(member.poll(Duration.ofMillis(200))).as("the new member got no records").isEmpty();
+      }
+    }
+    assertHandledOnceAfterDelay("K-KEPT", start);
+  }
+
+  @Test
+  void heldBackRecordSurvivesItsPartitionMovingAwayAndBack() throws Exception {
+    // The new member's client id sorts first: it takes the partition (and never commits), then
+    // leaves, and the partition returns to the Camel consumer.
+    long start = System.currentTimeMillis();
+    sendRaw(TOPIC + ".retry.3", "K-MOVED", Long.toString(start + 6_000));
+    Thread.sleep(1_000);
+
+    try (KafkaConsumer<String, String> member = groupMember("aaa-member")) {
+      long until = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+      while (System.nanoTime() < until) {
+        member.poll(Duration.ofMillis(200));
+      }
+    }
+    assertHandledOnceAfterDelay("K-MOVED", start);
+  }
+
+  KafkaConsumer<String, String> groupMember(String clientId) {
+    Properties p = new Properties();
+    p.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers());
+    p.put(ConsumerConfig.GROUP_ID_CONFIG, "mw-service-template.retry.3");
+    p.put(ConsumerConfig.CLIENT_ID_CONFIG, clientId);
+    p.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+    p.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+    p.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+    KafkaConsumer<String, String> member = new KafkaConsumer<>(p);
+    member.subscribe(List.of(TOPIC + ".retry.3"));
+    return member;
+  }
+
+  void assertHandledOnceAfterDelay(String key, long start) throws Exception {
+    await(() -> handler.succeeded.contains(key), Duration.ofSeconds(60));
+    assertThat(System.currentTimeMillis() - start).as("not before its delay").isGreaterThanOrEqualTo(5_500);
+    Thread.sleep(3_000);
+    assertThat(handler.calls.get(key)).as("handled once").hasValue(1);
   }
 
   /** Writes a record straight onto a retry topic, as a misbehaving producer could. */

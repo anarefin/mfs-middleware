@@ -8,6 +8,7 @@ import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.kafka.KafkaConstants;
+import org.apache.camel.component.kafka.consumer.KafkaManualCommit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,8 +59,10 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
         .useOriginalMessage()
         .process(e -> park(e, 1))
         .to("kafka:" + nextTopic(1))
+        .process(RetryTopicRouteBuilder::commit)
         .end()
-        .to(handlerUri());
+        .to(handlerUri())
+        .process(RetryTopicRouteBuilder::commit);
 
     for (int n = 1; n <= attempts; n++) {
       int next = n + 1;
@@ -73,10 +76,12 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
           .useOriginalMessage()
           .process(e -> park(e, next))
           .to("kafka:" + nextTopic(next))
+          .process(RetryTopicRouteBuilder::commit)
           .end()
           .pausable(delay, ignored -> true)
           .filter(e -> !delay.holdBack(e.getMessage()))
           .to(handlerUri())
+          .process(RetryTopicRouteBuilder::commit)
           .end();
     }
   }
@@ -115,6 +120,20 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
         .addKeyValue("txnId", text(msg, MwHeaders.TXN_ID))
         .addKeyValue("errorClass", errorClass)
         .log(dlq ? "record moved to DLQ" : "record moved to retry topic");
+  }
+
+  /**
+   * Commits this record's offset, synchronously, once it is handled or parked on the next topic
+   * (auto-commit is off, see {@code application.yml}). A held-back record is never committed, nor
+   * is a record polled but not processed when the consumer stops.
+   */
+  private static void commit(Exchange exchange) {
+    KafkaManualCommit commit =
+        exchange.getMessage().getHeader(KafkaConstants.MANUAL_COMMIT, KafkaManualCommit.class);
+    if (commit == null) {
+      throw new IllegalStateException("Kafka manual commit is not enabled for this consumer");
+    }
+    commit.commit();
   }
 
   /** Header value as text: Kafka record headers arrive as UTF-8 bytes. */
