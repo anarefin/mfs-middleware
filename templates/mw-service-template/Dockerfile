@@ -19,13 +19,15 @@ COPY --from=extract /build/extracted/snapshot-dependencies/ ./
 COPY --from=extract /build/extracted/application/ ./
 COPY build/reports/cyclonedx-direct/bom.json /app/sbom/bom.json
 
+# Same JVM flags for the training run and at runtime, or the AOT cache is rejected.
+ENV JAVA_TOOL_OPTIONS="-XX:+UseZGC -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+
 # AOT cache training run: start the context once, then exit.
 RUN java -XX:AOTCacheOutput=/app/app.aot -Dspring.context.exit=onRefresh -jar app.jar \
       > /dev/null
 
 USER 10001:10001
 EXPOSE 8080
-ENV JAVA_TOOL_OPTIONS="-XX:+UseZGC -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
   CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /actuator/health/readiness HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"status\":\"UP\"' <&3"]
