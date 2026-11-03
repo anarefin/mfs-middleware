@@ -5,7 +5,7 @@
 # Checks: every platform container healthy and the one-shots exited 0; only APISIX
 # publishes a host port; every topic in deploy/kafka/topics.txt exists with RF 1 and the
 # planned partition count; Kafka produce/consume; a PostgreSQL connection; a Valkey ping;
-# a Keycloak token for every test user and the partner client (ops users: refused until
+# Keycloak in production mode with its realms in PostgreSQL; a Keycloak token for every test user and the partner client (ops users: refused until
 # TOTP is enrolled, and the ops browser flow requires OTP); an OpenBao KV read; the
 # APISIX /healthz route over HTTPS on the published port.
 set -uo pipefail
@@ -155,6 +155,16 @@ ops_browser_flow_requires_otp() {
     and all(.[]; .requirement != "CONDITIONAL")' >/dev/null || { echo "executions: $ex"; return 1; }
 }
 check "keycloak ops realm browser flow requires OTP" ops_browser_flow_requires_otp
+
+# Keycloak in production mode, its realms stored in its own PostgreSQL database
+kc_prod_mode() { local logs; logs="$(dc logs keycloak 2>&1)"; grep -q 'Profile prod activated' <<<"$logs"; }
+check "keycloak runs in production mode" kc_prod_mode
+kc_realms_in_postgres() {
+  local realms
+  realms="$(dc exec -T postgres sh -c 'PGPASSWORD="$KC_DB_PASSWORD" psql -h 127.0.0.1 -U keycloak -d keycloak -tAc "select name from realm order by name"')" || return 1
+  for r in customers ops partners portals; do printf '%s\n' "$realms" | grep -qx "$r" || { echo "realm $r not in the keycloak database: $realms"; return 1; }; done
+}
+check "keycloak realms stored in PostgreSQL (keycloak database, keycloak role)" kc_realms_in_postgres
 
 # ---- APISIX health route over the published HTTPS port ----
 https_port="$(dc port apisix 9443 | head -1 | sed 's/.*://')"

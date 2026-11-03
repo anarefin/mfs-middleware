@@ -7,7 +7,7 @@ PLATFORM_SERVICES="kafka kafka-init postgres valkey keycloak openbao etcd etcd-i
 ONE_SHOT="kafka-init etcd-init apisix-init"
 SECRET_VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALTH_PASSWORD
   POSTGRES_PASSWORD VALKEY_PASSWORD KC_BOOTSTRAP_ADMIN_PASSWORD KC_PARTNER_SIM_SECRET
-  KC_CUSTOMERS_TEST_PASSWORD KC_OPS_TEST_PASSWORD KC_PORTALS_TEST_PASSWORD"
+  KC_CUSTOMERS_TEST_PASSWORD KC_OPS_TEST_PASSWORD KC_PORTALS_TEST_PASSWORD KC_DB_PASSWORD"
 REALMS_DIR="$REPO_DIR/deploy/compose/platform/keycloak/realms"
 
 # placeholder_env: VAR=t for every generated secret (for `env`).
@@ -267,4 +267,47 @@ test_ops_realm_enforces_totp_for_every_user_and_in_the_browser_flow() {
       and ($ex | all(.requirement != "CONDITIONAL"))' "$f" >/dev/null \
     || fail "browser flow '$flow' does not require auth-otp-form after the password form"
   jq -e '.otpPolicyType == "totp"' "$f" >/dev/null || fail "ops realm OTP policy is not TOTP"
+}
+
+# ---- Keycloak production mode on PostgreSQL (ticket 49) ----
+
+test_keycloak_runs_in_production_mode_on_its_own_postgres_database() {
+  local j k
+  j="$(compose_json)"
+  k="$(printf '%s' "$j" | jq -c '.services.keycloak')"
+  printf '%s' "$k" | jq -e '.command[0] == "start" and (.command | index("--import-realm"))' >/dev/null \
+    || fail "keycloak must run 'start --import-realm' (production mode): $(printf '%s' "$k" | jq -c .command)"
+  printf '%s' "$k" | jq -e '.environment.KC_DB == "postgres"
+    and (.environment.KC_DB_URL | test("^jdbc:postgresql://postgres:5432/keycloak$"))
+    and .environment.KC_DB_USERNAME == "keycloak"
+    and .environment.KC_DB_PASSWORD == "t"' >/dev/null || fail "keycloak DB settings: $(printf '%s' "$k" | jq -c .environment)"
+  printf '%s' "$k" | jq -e '.networks | has("data") and has("ops")' >/dev/null || fail "keycloak must join ops and data"
+  printf '%s' "$k" | jq -e '.depends_on.postgres.condition == "service_healthy"' >/dev/null || fail "keycloak must wait for postgres"
+  # behind APISIX: plain HTTP inside the ops network, X-Forwarded-* trusted, hostname from
+  # the request (no fixed public hostname yet), health on the management port
+  printf '%s' "$k" | jq -e '.environment.KC_HTTP_ENABLED == "true"
+    and .environment.KC_PROXY_HEADERS == "xforwarded"
+    and .environment.KC_HOSTNAME_STRICT == "false"
+    and .environment.KC_HEALTH_ENABLED == "true"' >/dev/null || fail "keycloak proxy/hostname/health settings: $(printf '%s' "$k" | jq -c .environment)"
+  printf '%s' "$j" | jq -e '.services.postgres.environment.KC_DB_PASSWORD == "t"' >/dev/null || fail "postgres init lacks KC_DB_PASSWORD"
+  printf '%s' "$j" | jq -e '[.services.postgres.volumes[] | select(.target == "/docker-entrypoint-initdb.d" and .read_only)] | length == 1' >/dev/null \
+    || fail "postgres has no read-only init script mount"
+}
+
+test_postgres_init_creates_the_keycloak_role_and_database() {
+  local f="$REPO_DIR/deploy/compose/platform/postgres/initdb/10-keycloak.sh"
+  [ -f "$f" ] || fail "no $f"
+  grep -qE 'CREATE ROLE keycloak .*LOGIN' "$f" || fail "no keycloak login role"
+  grep -qE 'CREATE DATABASE keycloak OWNER keycloak' "$f" || fail "no keycloak database owned by the role"
+  grep -q 'KC_DB_PASSWORD' "$f" || fail "role password not from KC_DB_PASSWORD"
+  if grep -qE "PASSWORD '[^:\$]" "$f"; then fail "literal password in $f"; fi
+  return 0
+}
+
+test_up_skips_exactly_the_one_shot_services() {
+  # scripts/up.sh waits for every service but the one-shots (restart "no").
+  local want got
+  want="$(compose_json | jq -r '[.services | to_entries[] | select(.value.restart == "no") | .key] | sort | join(" ")')"
+  got="$(sed -n 's/.*MW_UP_ONESHOT:-\([^}]*\)}.*/\1/p' "$REPO_DIR/scripts/up.sh" | tr ' ' '\n' | sort | tr '\n' ' ')"
+  [ "${got% }" = "$want" ] || fail "up.sh one-shots '${got% }' != compose one-shots '$want'"
 }

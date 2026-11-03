@@ -26,7 +26,7 @@ fi
 info "up: docker compose -f ${file#"$MW_ROOT"/} up -d"
 docker compose -f "$file" up -d ${COMPOSE_ARGS:-}
 
-oneshot=" ${MW_UP_ONESHOT:-kafka-init etcd-init} "
+oneshot=" ${MW_UP_ONESHOT:-kafka-init etcd-init apisix-init} "
 timeout="${MW_UP_TIMEOUT:-300}"
 poll="${MW_UP_POLL:-3}"
 # not_healthy: names of long-running services that are not healthy yet. A service without a
