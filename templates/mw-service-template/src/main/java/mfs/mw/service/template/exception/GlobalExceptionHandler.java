@@ -114,9 +114,16 @@ public class GlobalExceptionHandler {
       HttpStatus status, String code, String message, String messageBn, String txnId,
       boolean retryable, List<ErrorDetail> details, HttpServletRequest req, Exception e) {
     if (status.is5xxServerError()) {
-      log.error("event=http.request.failed errorCode={} status={}", code, status.value(), e);
+      log.atError()
+          .addKeyValue("event", "http.request.failed")
+          .addKeyValue("errorCode", code)
+          .setCause(e)
+          .log("{} {} failed with {}", req.getMethod(), req.getRequestURI(), status.value());
     } else {
-      log.warn("event=http.request.rejected errorCode={} status={}", code, status.value());
+      log.atWarn()
+          .addKeyValue("event", "http.request.rejected")
+          .addKeyValue("errorCode", code)
+          .log("{} {} rejected with {}", req.getMethod(), req.getRequestURI(), status.value());
     }
     ErrorEnvelope body =
         new ErrorEnvelope(
