@@ -25,9 +25,9 @@
 
 **Status:** ready-for-agent
 
-- [ ] Spec text updated for every point in item 1. No "static analysis" remains in the `make verify` ground rule
-- [ ] No `spotbugs` task in the template (`./gradlew tasks --all`). No SpotBugs mention in CLAUDE.md files, scripts or the PR template
-- [ ] `make up` returns only once all long-running services are healthy, and fails with the names of unhealthy services on timeout. Script test covers both cases
-- [ ] Conformance test: sent outbox rows and inbox rows older than retention are purged; recent rows and unsent outbox rows remain. The purge runs on one instance only
-- [ ] Keycloak runs in production mode on PostgreSQL. `make up && make smoke` passes in full on a fresh stack, including the ops-realm OTP checks
-- [ ] `make verify` passes
+- [x] Spec text updated for every point in item 1. No "static analysis" remains in the `make verify` ground rule
+- [x] No `spotbugs` task in the template (`./gradlew tasks --all`). No SpotBugs mention in CLAUDE.md files, scripts or the PR template
+- [x] `make up` returns only once all long-running services are healthy, and fails with the names of unhealthy services on timeout. Script test covers both cases
+- [x] Conformance test: sent outbox rows and inbox rows older than retention are purged; recent rows and unsent outbox rows remain. The purge runs on one instance only
+- [x] Keycloak runs in production mode on PostgreSQL. `make up && make smoke` passes in full on a fresh stack, including the ops-realm OTP checks
+- [x] `make verify` passes
