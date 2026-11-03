@@ -91,3 +91,13 @@ test_template_copy_checks_and_builds_its_image_alone() {
   docker image inspect "$tag" >/dev/null 2>&1 || fail "image $tag not built"
   docker rmi -f "$tag" >/dev/null 2>&1 || true
 }
+
+test_template_compose_comments_match_the_platform_zones() {
+  # OpenBao is on app and ops in the platform (deploy/compose/platform), never on data.
+  if grep -nE '^#.*`data`.*OpenBao|^#.*OpenBao.*`data`' "$TEMPLATE_SRC/compose.yml"; then
+    fail "template compose.yml says OpenBao is on data"
+  fi
+  local nets
+  nets="$(awk '/^  openbao:/{f=1;next} f&&/^  [a-z]/{exit} f&&/networks:/{print;exit}' "$REPO_DIR/deploy/compose/platform/compose.yml")"
+  case "$nets" in *app*ops*) ;; *) fail "platform openbao networks changed: $nets" ;; esac
+}
