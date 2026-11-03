@@ -542,8 +542,8 @@ Kafka carries every financial step between services and to the core, with effect
 | `core.wallet.event.v1` | core | orchestrator, audit-dw | txnId | 48 | 7 d |
 | `core.payment.event.v1` | core | orchestrator, audit-dw | txnId | 48 | 7 d |
 | `mw.partner.request.<family>.v1` | orchestrator | adapter-telco / billpay / bank / interop / compliance | txnId | 24 each | 3 d |
-| `mw.partner.reply.v1` | adapters | orchestrator | txnId | 48 | 3 d |
-| `mw.partner.inbound.v1` | adapters (callbacks, inbound remittance, NPSB credit) | orchestrator | txnId | 24 | 7 d |
+| `mw.partner.reply.v1` | adapters (record carries `family`) | orchestrator | txnId | 48 | 3 d |
+| `mw.partner.inbound.v1` | adapters (callbacks, inbound remittance, NPSB credit; record carries `family`) | orchestrator | txnId | 24 | 7 d |
 | `mw.notify.request.v1` | any | notify | recipient | 24 | 3 d |
 | `mw.notify.status.v1` | notify | audit-dw, admin | messageId | 12 | 7 d |
 | `mw.audit.event.v1` | all services | audit-dw | txnId or actor | 24 | 7 d |
@@ -552,6 +552,8 @@ Kafka carries every financial step between services and to the core, with effect
 | `mw.recon.result.v1` | recon | admin, audit-dw | partnerId | 6 | 30 d |
 | `dw.txn.event.v1` | audit-dw | Data Warehouse | txnId | 24 | 7 d |
 | `<topic>.retry.<n>` / `<topic>.dlq` | Camel error handler | retry consumer / ops | same | = source | 14 d |
+
+The three partner topics share one record shape per topic (`contracts/events/mw-orchestrator/mw.partner.{request,reply,inbound}.v1`): an envelope with a `family` field (`telco`, `billpay`, `bank`, `interop`, `compliance`) and a `payload`. On `mw.partner.reply.v1` and `mw.partner.inbound.v1`, where all adapters share one topic, `family` tells the orchestrator which adapter family sent the record.
 
 ### 6.3 Core command / event contract (proposal to the core team)
 
@@ -569,7 +571,7 @@ The middleware proposes this contract; the core team must confirm field names an
 | `QueryTransaction` | Status inquiry by `txnId` / `commandId` | `TransactionStatus` | n/a |
 | `ApplyComplianceAction` | AML block / unblock / hold on a wallet | `ComplianceActionApplied` | `ComplianceActionRejected` |
 
-Every command carries `{ commandId, txnId, correlationId, issuedAt, expiresAt, payload }`. `expiresAt` lets the core drop a stale command it receives after the middleware has timed out. Every event carries `{ eventId, commandId, txnId, coreRef, occurredAt, outcome, reasonCode?, balancesAfter? }`; `balancesAfter` is optional and used only for customer messages. Commands that need customer authorisation (ValidateTransaction, HoldFunds, PostTransfer) carry encryptedPin { keyId, ciphertext } (RSA-OAEP, SHA-256); the middleware never decrypts it.
+Every command carries `{ schemaVersion, commandType, commandId, txnId, correlationId, issuedAt, expiresAt, payload }`. `expiresAt` lets the core drop a stale command it receives after the middleware has timed out. Every event carries the envelope `{ schemaVersion, eventType, eventId, commandId, txnId, coreRef, occurredAt, outcome, reasonCode?, reasonMessage?, balancesAfter?, payload }`; `balancesAfter` is optional and used only for customer messages, and failure events carry `outcome` FAILURE and a `reasonCode`. Event-specific fields sit under `payload`, one schema per event type (`contracts/events/mw-core-mock/core.event.v1/`): `payload.holdId` (FundsHeld; also on the other hold events and TransactionStatus), `payload.txnStatus` (TransactionStatus), `payload.fee`, `payload.charges` and `payload.limitsLeft` (TransactionValidated). Commands that need customer authorisation (ValidateTransaction, HoldFunds, PostTransfer) carry `payload.encryptedPin` { keyId, ciphertext } (RSA-OAEP, SHA-256); the middleware never decrypts it. Amounts on every topic are `{ valueMinor, currency }`: non-negative integer minor units (poisha), currency BDT.
 
 ### 6.4 Reliable publishing
 
