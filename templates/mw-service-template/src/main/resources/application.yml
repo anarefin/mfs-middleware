@@ -1,0 +1,61 @@
+# Static configuration baked into the image (spec 20.4). Per-environment overrides are
+# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from OpenBao/Vault
+# only (18.4) and are never written here.
+spring:
+  application:
+    name: mw-service-template
+  threads:
+    virtual:
+      enabled: true
+  config:
+    # Spring Cloud Vault reads secrets at start-up (AppRole) when VAULT_ENABLED=true.
+    import: "optional:vault://"
+  cloud:
+    vault:
+      enabled: ${VAULT_ENABLED:false}
+      uri: ${VAULT_ADDR:http://openbao:8200}
+      authentication: APPROLE
+      app-role:
+        role-id: ${VAULT_ROLE_ID:}
+        secret-id: ${VAULT_SECRET_ID:}
+      kv:
+        enabled: true
+        backend: secret
+        default-context: ${spring.application.name}
+  mvc:
+    problemdetails:
+      enabled: false
+
+server:
+  port: 8080
+  shutdown: graceful
+  error:
+    include-stacktrace: never
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+    propagation:
+      type: w3c
+
+mw:
+  service:
+    name: ${spring.application.name}
+    version: ${MW_VERSION:0.1.0-SNAPSHOT}
+    env: ${MW_ENV:local}
