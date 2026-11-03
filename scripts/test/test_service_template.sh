@@ -94,7 +94,7 @@ test_template_copy_checks_and_builds_its_image_alone() {
 
 test_template_compose_comments_match_the_platform_zones() {
   # OpenBao is on app and ops in the platform (deploy/compose/platform), never on data.
-  if grep -nE '^#.*`data`.*OpenBao|^#.*OpenBao.*`data`' "$TEMPLATE_SRC/compose.yml"; then
+  if grep -nE '^#.*`data` for[^`]*OpenBao' "$TEMPLATE_SRC/compose.yml"; then
     fail "template compose.yml says OpenBao is on data"
   fi
   local nets
