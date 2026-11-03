@@ -20,6 +20,7 @@ import mfs.mw.service.template.messaging.KafkaTestConsumer;
 import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
 import org.apache.camel.component.kafka.KafkaConstants;
+import org.apache.camel.spi.InflightRepository;
 import org.apache.camel.test.spring.junit6.CamelSpringBootTest;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.AdminClientConfig;
@@ -57,7 +58,11 @@ import org.testcontainers.kafka.KafkaContainer;
 @CamelSpringBootTest
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
-    properties = "mw.kafka.retry.delays=2s,2s,6s")
+    properties = {
+      "mw.kafka.retry.delays=2s,2s,6s",
+      // lets the test see how long an in-flight exchange has run (InflightRepository.oldest)
+      "camel.main.inflight-repository-browse-enabled=true"
+    })
 @Import({TestInfrastructure.class, RetryTopicRouteIT.Routes.class})
 @ExtendWith(OutputCaptureExtension.class)
 class RetryTopicRouteIT {
@@ -198,11 +203,17 @@ class RetryTopicRouteIT {
         TOPIC, "K-FREE", new EventMetadata("corr-c", "TXN-C", "idem-c", 1), rawJson("{\"case\":\"fail-once\"}"));
     await(() -> handler.calls.containsKey("K-FREE"), Duration.ofSeconds(30));
 
-    // While retry.1 waits out its 2 s delay, no exchange is in flight on that route: the record
-    // is held back by pausing its partition, not by a sleeping consumer thread.
+    // While retry.1 waits out its 2 s delay, no exchange stays in flight on that route: the record
+    // is held back by pausing its partition, not by a sleeping consumer thread. Holding it back
+    // is itself a short exchange (pause and seek, a few ms), so the check is on how long the
+    // oldest in-flight exchange has run; a consumer sleeping out the delay would exceed the bound.
     long until = System.nanoTime() + Duration.ofMillis(1_500).toNanos();
     while (System.nanoTime() < until && handler.calls.get("K-FREE").get() == 1) {
-      assertThat(camel.getInflightRepository().size(TOPIC + ".retry.1.consume")).isZero();
+      InflightRepository.InflightExchange oldest =
+          camel.getInflightRepository().oldest(TOPIC + ".retry.1.consume");
+      if (oldest != null) {
+        assertThat(oldest.getDuration()).as("ms an exchange has been in flight on retry.1").isLessThan(500);
+      }
       Thread.sleep(10);
     }
     await(() -> handler.succeeded.contains("K-FREE"), Duration.ofSeconds(30));
@@ -239,7 +250,7 @@ class RetryTopicRouteIT {
     long start = System.currentTimeMillis();
     HeldRecord held = sendRaw(TOPIC + ".retry.3", "K-KEPT", Long.toString(start + 6_000));
     Thread.sleep(1_000); // the retry.3 consumer has polled it and is holding it back
-    assertNotCommittedPast(held, "while held back");
+    assertNotCommittedPast(held, "K-KEPT", "while held back");
 
     boolean rebalanced = false;
     try (KafkaConsumer<String, String> member = groupMember("zzz-member")) {
@@ -248,9 +259,7 @@ class RetryTopicRouteIT {
         assertThat(member.poll(Duration.ofMillis(200))).as("the new member got no records").isEmpty();
         // Joining the group (a generation was assigned) forces every member to rebalance.
         rebalanced |= member.groupMetadata().generationId() > 0;
-        if (!handler.succeeded.contains("K-KEPT")) {
-          assertNotCommittedPast(held, "across the rebalance");
-        }
+        assertNotCommittedPast(held, "K-KEPT", "across the rebalance");
       }
     }
     assertThat(rebalanced).as("a second member joined the group (forced rebalance)").isTrue();
@@ -264,7 +273,7 @@ class RetryTopicRouteIT {
     long start = System.currentTimeMillis();
     HeldRecord held = sendRaw(TOPIC + ".retry.3", "K-MOVED", Long.toString(start + 6_000));
     Thread.sleep(1_000);
-    assertNotCommittedPast(held, "while held back");
+    assertNotCommittedPast(held, "K-MOVED", "while held back");
 
     boolean movedAway = false;
     try (KafkaConsumer<String, String> member = groupMember("aaa-member")) {
@@ -272,11 +281,11 @@ class RetryTopicRouteIT {
       while (System.nanoTime() < until) {
         member.poll(Duration.ofMillis(200));
         movedAway |= member.assignment().contains(held.partition());
-        assertNotCommittedPast(held, "while the partition is away");
+        assertNotCommittedPast(held, "K-MOVED", "while the partition is away");
       }
     }
     assertThat(movedAway).as("the partition moved to the new member").isTrue();
-    assertNotCommittedPast(held, "after the partition came back");
+    assertNotCommittedPast(held, "K-MOVED", "after the partition came back");
     assertHandledOnceAfterDelay("K-MOVED", start, held);
   }
 
@@ -292,11 +301,18 @@ class RetryTopicRouteIT {
     }
   }
 
-  /** The committed offset is the next record to read: at most the held record's offset. */
-  void assertNotCommittedPast(HeldRecord held, String when) throws Exception {
+  /**
+   * The committed offset (the next record to read) may pass the held record only once the
+   * handler has succeeded on it. Checked in that order, read first: the handler records success
+   * before the route commits, so a commit seen by the read implies success is already visible.
+   * Checking success first and reading second would race the legitimate commit at the due time.
+   */
+  void assertNotCommittedPast(HeldRecord held, String key, String when) throws Exception {
     Long c = committed(held.partition());
-    if (c != null) {
-      assertThat(c).as("committed offset %s (held record at %d)", when, held.offset()).isLessThanOrEqualTo(held.offset());
+    if (c != null && c > held.offset()) {
+      assertThat(handler.succeeded)
+          .as("committed offset %d %s passed the held record at %d before it was handled", c, when, held.offset())
+          .contains(key);
     }
   }
 
