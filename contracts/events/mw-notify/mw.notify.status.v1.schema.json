@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.upay.mw/events/mw-notify/mw.notify.status.v1.schema.json",
+  "title": "mw.notify.status.v1",
+  "description": "Delivery attempt or final status of a notification (spec 10.2-10.4). Key: messageId. Consumers: audit-dw, admin.",
+  "type": "object",
+  "required": ["schemaVersion", "messageId", "channel", "status", "attempt", "at"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "messageId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "txnId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "correlationId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "channel": { "enum": ["SMS", "EMAIL", "PUSH"] },
+    "status": { "enum": ["QUEUED", "SENT", "DELIVERED", "UNDELIVERABLE", "EXPIRED", "BOUNCED", "READ", "FAILED"] },
+    "final": { "type": "boolean", "description": "True when no further attempt or status will follow." },
+    "attempt": { "type": "integer", "minimum": 1 },
+    "templateCode": { "type": "string" },
+    "providerMessageId": { "type": "string", "description": "SMSC message_id, SMTP id or push provider id." },
+    "errorCode": { "type": "string", "pattern": "^MW-[A-Z0-9_-]+$" },
+    "at": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    { "if": { "properties": { "status": { "enum": ["UNDELIVERABLE", "FAILED", "BOUNCED"] } }, "required": ["status"] }, "then": { "required": ["errorCode"] } }
+  ]
+}

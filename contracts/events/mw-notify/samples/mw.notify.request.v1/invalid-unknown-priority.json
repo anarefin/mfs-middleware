@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "messageId": "m-3",
+  "recipient": { "msisdn": "01711000001" },
+  "templateCode": "TXN_P2P_SENT",
+  "locale": "bn",
+  "channels": ["SMS"],
+  "priority": "URGENT"
+}

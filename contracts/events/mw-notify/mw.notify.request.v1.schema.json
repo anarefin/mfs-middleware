@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.upay.mw/events/mw-notify/mw.notify.request.v1.schema.json",
+  "title": "mw.notify.request.v1",
+  "description": "NotificationRequest (spec 10.1). Any service produces it; mw-notify consumes and owns it. Key: recipient. messageId is the idempotency key; duplicates are dropped.",
+  "type": "object",
+  "required": ["schemaVersion", "messageId", "recipient", "templateCode", "locale", "channels", "priority"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "messageId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "txnId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "correlationId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "recipient": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "msisdn": { "type": "string", "pattern": "^(\\+?880)?01[3-9][0-9]{8}$" },
+        "email": { "type": "string", "format": "email" },
+        "pushToken": { "type": "string", "minLength": 1 },
+        "subjectId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "templateCode": { "type": "string", "pattern": "^[A-Z0-9_]+$" },
+    "locale": { "enum": ["bn", "en"] },
+    "params": { "type": "object", "additionalProperties": { "type": "string" } },
+    "channels": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["SMS", "EMAIL", "PUSH"] } },
+    "priority": { "enum": ["OTP", "TXN", "INFO", "PROMO"] },
+    "sendAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time", "description": "Defaults: OTP 2 min, TXN 24 h. Expired messages are recorded as EXPIRED." }
+  }
+}

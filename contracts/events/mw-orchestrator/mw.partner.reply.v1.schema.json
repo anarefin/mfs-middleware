@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.upay.mw/events/mw-orchestrator/mw.partner.reply.v1.schema.json",
+  "title": "mw.partner.reply.v1",
+  "description": "Adapter reply to a partner request (spec 6.2, 11.2). Key: txnId. Produced by every adapter, consumed by mw-orchestrator, which owns the contract.",
+  "type": "object",
+  "required": ["schemaVersion", "requestId", "txnId", "correlationId", "partnerId", "operation", "outcome", "repliedAt"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "requestId": { "type": "string", "format": "uuid" },
+    "txnId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "correlationId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "partnerId": { "type": "string", "minLength": 1 },
+    "operation": { "enum": ["PAY", "INQUIRY", "STATUS_QUERY", "REVERSE", "SCREEN"] },
+    "outcome": { "enum": ["SUCCESS", "FAILED", "UNKNOWN", "PENDING"] },
+    "partnerRef": { "type": "string", "description": "Partner's own reference." },
+    "partnerCode": { "type": "string", "description": "Raw partner result code, for audit." },
+    "errorCode": { "type": "string", "pattern": "^MW-(PTR-[A-Z0-9_]+|TMO|SYS|VAL)-[A-Z0-9_]+$", "description": "Canonical code mapped from the partner code (spec 5.3)." },
+    "message": { "type": "string" },
+    "retryable": { "type": "boolean" },
+    "attributes": { "type": "object", "additionalProperties": { "type": "string" } },
+    "repliedAt": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    { "if": { "properties": { "outcome": { "const": "FAILED" } }, "required": ["outcome"] }, "then": { "required": ["errorCode"] } },
+    { "if": { "properties": { "outcome": { "const": "SUCCESS" } }, "required": ["outcome"] }, "then": { "required": ["partnerRef"] } }
+  ]
+}

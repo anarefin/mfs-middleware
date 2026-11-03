@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.upay.mw/events/mw-admin-api/mw.config.changed.v1.schema.json",
+  "title": "mw.config.changed.v1",
+  "description": "Dynamic business config change, broadcast after maker-checker approval (spec 20.4). Compacted topic keyed by configKey: the latest record per key is the current value; services hold an in-memory snapshot and swap it atomically. A DELETE is followed by a tombstone.",
+  "type": "object",
+  "required": ["schemaVersion", "configKey", "configType", "change", "version", "changedAt", "changedBy"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "configKey": { "type": "string", "pattern": "^[a-z0-9-]+(/[A-Za-z0-9_.-]+)+$", "description": "<configType path>/<id>, e.g. partner/gp." },
+    "configType": { "enum": ["PARTNER", "ROUTE", "TEMPLATE", "USSD_MENU", "LIMIT", "FEATURE_FLAG", "ERROR_MAP"] },
+    "change": { "enum": ["UPSERT", "DELETE"] },
+    "version": { "type": "integer", "minimum": 1, "description": "Monotonic per configKey; consumers ignore a version older than the one they hold." },
+    "value": { "type": "object", "description": "Full new value (not a diff); never contains secret values, only Vault paths." },
+    "changedAt": { "type": "string", "format": "date-time" },
+    "changedBy": { "type": "string", "minLength": 1 },
+    "approvedBy": { "type": "string", "minLength": 1 },
+    "correlationId": { "type": "string", "minLength": 1, "maxLength": 128 }
+  },
+  "allOf": [
+    { "if": { "properties": { "change": { "const": "UPSERT" } }, "required": ["change"] }, "then": { "required": ["value"] } }
+  ]
+}

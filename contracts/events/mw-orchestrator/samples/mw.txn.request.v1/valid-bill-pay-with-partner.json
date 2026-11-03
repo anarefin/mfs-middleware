@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c",
+  "idempotencyKey": "ussd-derived-3f9a",
+  "correlationId": "corr-0002",
+  "channel": "USSD",
+  "txnType": "BILL_PAY",
+  "initiator": { "type": "MSISDN", "id": "01711000001" },
+  "debitParty": { "type": "WALLET", "id": "01711000001", "walletType": "CUSTOMER" },
+  "creditParty": { "type": "BILLER_ACCOUNT", "id": "DESCO-123456" },
+  "amount": { "valueMinor": 125075, "currency": "BDT" },
+  "partner": { "partnerId": "billpay-agg-1", "productCode": "ELECTRICITY", "billerCode": "DESCO" },
+  "requestedAt": "2026-11-03T08:15:30.123+06:00",
+  "attributes": { "billNumber": "BN-000123" },
+  "futureField": "consumers ignore unknown fields"
+}
