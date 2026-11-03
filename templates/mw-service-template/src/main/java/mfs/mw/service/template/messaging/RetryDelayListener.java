@@ -70,13 +70,17 @@ public final class RetryDelayListener extends KafkaConsumerListener {
    * partition is paused and rewound to it) or an earlier record of the same poll batch was held
    * back (the partition is paused and rewound to that one). Only the consumer's real pause state
    * counts; a stale entry left by a rebalance is dropped and the record re-evaluated. The route
-   * never commits a held-back record's offset.
+   * never commits a held-back record's offset. A message without its Kafka topic, partition and
+   * offset cannot be rewound, so it is never held back.
    */
   public boolean holdBack(Message msg) {
-    TopicPartition tp =
-        new TopicPartition(
-            msg.getHeader(KafkaConstants.TOPIC, String.class),
-            msg.getHeader(KafkaConstants.PARTITION, Integer.class));
+    String topic = msg.getHeader(KafkaConstants.TOPIC, String.class);
+    Integer partition = msg.getHeader(KafkaConstants.PARTITION, Integer.class);
+    Long offset = msg.getHeader(KafkaConstants.OFFSET, Long.class);
+    if (topic == null || partition == null || offset == null) {
+      return false;
+    }
+    TopicPartition tp = new TopicPartition(topic, partition);
     Consumer<?, ?> consumer = getConsumer();
     if (consumer.paused().contains(tp)) {
       return true;
@@ -87,7 +91,7 @@ public final class RetryDelayListener extends KafkaConsumerListener {
       return false;
     }
     consumer.pause(Set.of(tp));
-    consumer.seek(tp, msg.getHeader(KafkaConstants.OFFSET, Long.class));
+    consumer.seek(tp, offset);
     pausedUntil.put(tp, due);
     return true;
   }

@@ -98,6 +98,16 @@ class RetryDelayListenerTest {
   }
 
   @Test
+  void recordWithoutKafkaCoordinatesIsHandledNotHeld() {
+    Message msg = heldRecord();
+    msg.removeHeader(KafkaConstants.OFFSET);
+    assertThat(listener.holdBack(msg)).as("cannot be rewound, so never paused").isFalse();
+    msg.removeHeader(KafkaConstants.PARTITION);
+    assertThat(listener.holdBack(msg)).isFalse();
+    assertThat(consumer.paused()).isEmpty();
+  }
+
+  @Test
   void dueRecordIsResumedAndHandled() {
     Message msg = heldRecord();
     assertThat(listener.holdBack(msg)).isTrue();

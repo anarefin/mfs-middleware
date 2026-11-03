@@ -3,6 +3,8 @@ package mfs.mw.service.template.dto;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import mfs.mw.service.template.util.Sensitive;
 import mfs.mw.service.template.util.SensitiveType;
@@ -27,6 +29,11 @@ public record ConfigChangedEvent(
     @Sensitive(SensitiveType.NAME) String changedBy,
     @Sensitive(SensitiveType.NAME) String approvedBy,
     String correlationId) {
+
+  /** {@code value} is copied and read-only (JSON values may be null, so not Map.copyOf). */
+  public ConfigChangedEvent {
+    value = value == null ? null : Collections.unmodifiableMap(new LinkedHashMap<>(value));
+  }
 
   public enum ConfigType {
     PARTNER,
