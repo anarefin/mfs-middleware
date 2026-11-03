@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c",
+  "correlationId": "corr-0002",
+  "channel": "USSD",
+  "txnType": "TOPUP",
+  "status": "REJECTED",
+  "previousStatus": "VALIDATING",
+  "amount": { "valueMinor": 2000, "currency": "BDT" },
+  "partner": { "partnerId": "gp", "productCode": "PREPAID" },
+  "error": { "code": "MW-CORE-INSUFFICIENT_BALANCE", "message": "Insufficient balance", "messageBn": "অপর্যাপ্ত ব্যালেন্স", "retryable": false },
+  "requestedAt": "2026-11-03T08:15:30Z",
+  "updatedAt": "2026-11-03T08:15:30.400Z"
+}

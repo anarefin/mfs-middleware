@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "configKey": "template/TXN_P2P_SENT.bn",
+  "configType": "TEMPLATE",
+  "change": "DELETE",
+  "version": 3,
+  "changedAt": "2026-11-03T10:05:00Z",
+  "changedBy": "ops.maker1",
+  "approvedBy": "ops.checker1"
+}
