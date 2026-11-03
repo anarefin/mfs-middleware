@@ -38,9 +38,15 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
   private static final long RESUME_CHECK_MS = 500;
 
   private final KafkaRetryProperties retry;
+  private final Clock clock;
 
-  protected RetryTopicRouteBuilder(KafkaRetryProperties retry) {
+  /**
+   * @param clock the service's {@link Clock} bean ({@code config/ClockConfig}); stamps {@code
+   *     mw-retry-not-before} and decides when a held-back record is due, so both use one time
+   */
+  protected RetryTopicRouteBuilder(KafkaRetryProperties retry, Clock clock) {
     this.retry = retry;
+    this.clock = clock;
   }
 
   /** Source topic, e.g. {@code mw.txn.request.v1}. */
@@ -66,7 +72,7 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
 
     for (int n = 1; n <= attempts; n++) {
       int next = n + 1;
-      RetryDelayListener delay = new RetryDelayListener(retry.delay(n), Clock.systemUTC());
+      RetryDelayListener delay = new RetryDelayListener(retry.delay(n), clock);
       from("kafka:" + retryTopic(n)
               + "?groupId={{camel.component.kafka.group-id}}.retry." + n
               + "&pollTimeoutMs=" + RESUME_CHECK_MS)
@@ -95,7 +101,7 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
     return attempt <= retry.attempts() ? retryTopic(attempt) : topic() + ".dlq";
   }
 
-  private void park(Exchange exchange, int attempt) {
+  void park(Exchange exchange, int attempt) {
     Exception cause = exchange.getProperty(Exchange.EXCEPTION_CAUGHT, Exception.class);
     String errorClass = cause == null ? "unknown" : cause.getClass().getName();
     boolean dlq = attempt > retry.attempts();
@@ -109,7 +115,7 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
     if (dlq) {
       msg.removeHeader(MwHeaders.RETRY_NOT_BEFORE);
     } else {
-      long notBefore = System.currentTimeMillis() + retry.delay(attempt).toMillis();
+      long notBefore = clock.millis() + retry.delay(attempt).toMillis();
       msg.setHeader(MwHeaders.RETRY_NOT_BEFORE, Long.toString(notBefore));
     }
     log.atWarn()

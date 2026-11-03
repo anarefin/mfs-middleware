@@ -3,6 +3,7 @@ package mfs.mw.service.template.conformance;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -89,8 +90,8 @@ class OutboxRelayRecoveryConformanceIT {
     }
 
     @Bean
-    RetryTopicRouteBuilder recoveryRoute(KafkaRetryProperties retry) {
-      return new RetryTopicRouteBuilder(retry) {
+    RetryTopicRouteBuilder recoveryRoute(KafkaRetryProperties retry, Clock clock) {
+      return new RetryTopicRouteBuilder(retry, clock) {
         @Override
         protected String topic() {
           return TOPIC;

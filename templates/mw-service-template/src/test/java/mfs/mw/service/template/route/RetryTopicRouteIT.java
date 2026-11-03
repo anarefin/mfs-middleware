@@ -3,6 +3,7 @@ package mfs.mw.service.template.route;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -96,8 +97,8 @@ class RetryTopicRouteIT {
     }
 
     @Bean
-    RetryTopicRouteBuilder itRoute(KafkaRetryProperties retry) {
-      return new RetryTopicRouteBuilder(retry) {
+    RetryTopicRouteBuilder itRoute(KafkaRetryProperties retry, Clock clock) {
+      return new RetryTopicRouteBuilder(retry, clock) {
         @Override
         protected String topic() {
           return TOPIC;
