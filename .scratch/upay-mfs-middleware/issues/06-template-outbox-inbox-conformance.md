@@ -6,10 +6,10 @@
 
 - 05: Template part 2a: Kafka/Camel defaults, retry topics, DLQ, Resilience4j, Flyway
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Integration test: when the business transaction is rolled back, no outbox row is written and nothing is published
 - [x] Integration test: the relay publishes pending rows after a simulated crash and restart, with no duplicates past the consumer's inbox
 - [x] Integration test: the same `eventId` delivered twice has its side effect applied once
 - [x] The conformance suite is green on the template and runs as part of `make verify`
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR (n/a: local tracker, no PR; verify passed 99/99 script tests + template check after merge d9a622b)
