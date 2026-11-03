@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import mfs.mw.service.template.TestInfrastructure;
 import mfs.mw.service.template.config.KafkaRetryProperties;
+import mfs.mw.service.template.conformance.Conformance;
 import mfs.mw.service.template.messaging.EventMetadata;
 import mfs.mw.service.template.messaging.EventPublisher;
 import mfs.mw.service.template.messaging.KafkaTestConsumer;
@@ -20,12 +21,17 @@ import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
 import org.apache.camel.component.kafka.KafkaConstants;
 import org.apache.camel.test.spring.junit6.CamelSpringBootTest;
+import org.apache.kafka.clients.admin.Admin;
+import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -47,6 +53,7 @@ import org.testcontainers.kafka.KafkaContainer;
  * shortened to 2 s here; production uses 10 s, 1 min, 10 min. Holding a record back never blocks
  * the consumer thread, and a forged {@code mw-retry-not-before} cannot stall it.
  */
+@Conformance
 @CamelSpringBootTest
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
@@ -221,21 +228,33 @@ class RetryTopicRouteIT {
     assertThat(recordsFor(TOPIC + ".dlq", "K-GARBAGE", 1, Duration.ofSeconds(3))).isEmpty();
   }
 
+  // Rebalance hold-back tests. The group's committed offset is read from the broker (AdminClient)
+  // while the record is held back, across the forced rebalance and until it is handled: it must
+  // never pass the held record, or a restart or new partition owner would skip it.
+
   @Test
   void heldBackRecordSurvivesARebalanceThatKeepsItsPartitionHere() throws Exception {
     // The new member's client id sorts after Camel's, so the range assignor gives the partition
-    // back to the Camel consumer: Kafka drops its pause, the held-back record is fetched again.
+    // back to the Camel consumer.
     long start = System.currentTimeMillis();
-    sendRaw(TOPIC + ".retry.3", "K-KEPT", Long.toString(start + 6_000));
+    HeldRecord held = sendRaw(TOPIC + ".retry.3", "K-KEPT", Long.toString(start + 6_000));
     Thread.sleep(1_000); // the retry.3 consumer has polled it and is holding it back
+    assertNotCommittedPast(held, "while held back");
 
+    boolean rebalanced = false;
     try (KafkaConsumer<String, String> member = groupMember("zzz-member")) {
       long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
       while (!handler.succeeded.contains("K-KEPT") && System.nanoTime() < deadline) {
         assertThat(member.poll(Duration.ofMillis(200))).as("the new member got no records").isEmpty();
+        // Joining the group (a generation was assigned) forces every member to rebalance.
+        rebalanced |= member.groupMetadata().generationId() > 0;
+        if (!handler.succeeded.contains("K-KEPT")) {
+          assertNotCommittedPast(held, "across the rebalance");
+        }
       }
     }
-    assertHandledOnceAfterDelay("K-KEPT", start);
+    assertThat(rebalanced).as("a second member joined the group (forced rebalance)").isTrue();
+    assertHandledOnceAfterDelay("K-KEPT", start, held);
   }
 
   @Test
@@ -243,22 +262,50 @@ class RetryTopicRouteIT {
     // The new member's client id sorts first: it takes the partition (and never commits), then
     // leaves, and the partition returns to the Camel consumer.
     long start = System.currentTimeMillis();
-    sendRaw(TOPIC + ".retry.3", "K-MOVED", Long.toString(start + 6_000));
+    HeldRecord held = sendRaw(TOPIC + ".retry.3", "K-MOVED", Long.toString(start + 6_000));
     Thread.sleep(1_000);
+    assertNotCommittedPast(held, "while held back");
 
+    boolean movedAway = false;
     try (KafkaConsumer<String, String> member = groupMember("aaa-member")) {
       long until = System.nanoTime() + Duration.ofSeconds(3).toNanos();
       while (System.nanoTime() < until) {
         member.poll(Duration.ofMillis(200));
+        movedAway |= member.assignment().contains(held.partition());
+        assertNotCommittedPast(held, "while the partition is away");
       }
     }
-    assertHandledOnceAfterDelay("K-MOVED", start);
+    assertThat(movedAway).as("the partition moved to the new member").isTrue();
+    assertNotCommittedPast(held, "after the partition came back");
+    assertHandledOnceAfterDelay("K-MOVED", start, held);
   }
+
+  /** Where a record was written: its partition and offset. */
+  record HeldRecord(TopicPartition partition, long offset) {}
+
+  /** The retry.3 group's committed offset for the partition, from the broker; null if none. */
+  Long committed(TopicPartition tp) throws Exception {
+    try (Admin admin = Admin.create(Map.of(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers()))) {
+      OffsetAndMetadata o =
+          admin.listConsumerGroupOffsets(RETRY_3_GROUP).partitionsToOffsetAndMetadata().get().get(tp);
+      return o == null ? null : o.offset();
+    }
+  }
+
+  /** The committed offset is the next record to read: at most the held record's offset. */
+  void assertNotCommittedPast(HeldRecord held, String when) throws Exception {
+    Long c = committed(held.partition());
+    if (c != null) {
+      assertThat(c).as("committed offset %s (held record at %d)", when, held.offset()).isLessThanOrEqualTo(held.offset());
+    }
+  }
+
+  static final String RETRY_3_GROUP = "mw-service-template.retry.3";
 
   KafkaConsumer<String, String> groupMember(String clientId) {
     Properties p = new Properties();
     p.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers());
-    p.put(ConsumerConfig.GROUP_ID_CONFIG, "mw-service-template.retry.3");
+    p.put(ConsumerConfig.GROUP_ID_CONFIG, RETRY_3_GROUP);
     p.put(ConsumerConfig.CLIENT_ID_CONFIG, clientId);
     p.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
     p.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
@@ -268,15 +315,16 @@ class RetryTopicRouteIT {
     return member;
   }
 
-  void assertHandledOnceAfterDelay(String key, long start) throws Exception {
+  void assertHandledOnceAfterDelay(String key, long start, HeldRecord held) throws Exception {
     await(() -> handler.succeeded.contains(key), Duration.ofSeconds(60));
     assertThat(System.currentTimeMillis() - start).as("not before its delay").isGreaterThanOrEqualTo(5_500);
     Thread.sleep(3_000);
-    assertThat(handler.calls.get(key)).as("handled once").hasValue(1);
+    assertThat(handler.calls.get(key)).as("handled exactly once").hasValue(1);
+    assertThat(committed(held.partition())).as("committed once handled").isEqualTo(held.offset() + 1);
   }
 
   /** Writes a record straight onto a retry topic, as a misbehaving producer could. */
-  void sendRaw(String topic, String key, String notBefore) throws Exception {
+  HeldRecord sendRaw(String topic, String key, String notBefore) throws Exception {
     Properties p = new Properties();
     p.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers());
     p.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
@@ -286,7 +334,8 @@ class RetryTopicRouteIT {
       record.headers().add("mw-correlation-id", "corr-raw".getBytes(StandardCharsets.UTF_8));
       record.headers().add("mw-retry-attempt", "1".getBytes(StandardCharsets.UTF_8));
       record.headers().add("mw-retry-not-before", notBefore.getBytes(StandardCharsets.UTF_8));
-      producer.send(record).get();
+      RecordMetadata meta = producer.send(record).get();
+      return new HeldRecord(new TopicPartition(meta.topic(), meta.partition()), meta.offset());
     }
   }
 

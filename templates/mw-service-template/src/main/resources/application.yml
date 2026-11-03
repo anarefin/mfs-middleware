@@ -136,6 +136,12 @@ mw:
     retry:
       # Non-blocking retry topics <topic>.retry.1..3, then <topic>.dlq (19.2).
       delays: 10s,1m,10m
+  outbox:
+    relay:
+      # Transactional outbox relay (6.4): publishes unsent rows, then stamps sent_at.
+      enabled: true
+      period: 500ms
+      batch-size: 100
   service:
     name: ${spring.application.name}
     version: ${MW_VERSION:0.1.0-SNAPSHOT}

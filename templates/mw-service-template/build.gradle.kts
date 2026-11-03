@@ -58,13 +58,28 @@ tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.addAll(listOf("-parameters", "-Xlint:all,-processing,-serial", "-Werror"))
 }
 
-tasks.test {
-    useJUnitPlatform()
+tasks.withType<Test>().configureEach {
     // Schema tests read the root contracts/ folder through mwContractsDir only (spec 4.3 rule 2).
     val contracts = layout.projectDirectory.dir(providers.gradleProperty("mwContractsDir").get())
     inputs.dir(contracts).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("mwContracts")
     systemProperty("mwContractsDir", contracts.asFile.absolutePath)
 }
+
+tasks.test {
+    useJUnitPlatform { excludeTags("conformance") }
+}
+
+// Conformance suite (spec 4.3 rule 5, 22.1): tests tagged @Conformance, copied from the template
+// into every service. `./gradlew conformance` runs them alone; `check` (make verify) runs both.
+val conformance by tasks.registering(Test::class) {
+    description = "Runs the conformance suite (@Conformance tests)."
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform { includeTags("conformance") }
+    shouldRunAfter(tasks.test)
+}
+tasks.check { dependsOn(conformance) }
 
 // SBOM on every build (spec 3, OWN-05), written to build/reports/cyclonedx-direct/ and
 // copied into the image by the Dockerfile.

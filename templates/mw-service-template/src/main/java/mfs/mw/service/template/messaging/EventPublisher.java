@@ -18,6 +18,10 @@ import tools.jackson.databind.json.JsonMapper;
  * (idempotent producer, {@code acks=all}; see {@code application.yml}). The partition key is the
  * caller's ({@code txnId} for transaction topics, {@code msisdn} for USSD/notify). Payloads are
  * never logged.
+ *
+ * <p>A service that also changes PostgreSQL state publishes through {@link OutboxWriter}
+ * instead (spec 6.4); {@link OutboxRelay} then sends the stored record with {@link
+ * #publishStored}.
  */
 @Component
 public class EventPublisher {
@@ -48,15 +52,7 @@ public class EventPublisher {
     String body = json.writeValueAsString(payload);
     Span span = tracer.nextSpan().name("kafka publish " + topic).start();
     try {
-      Map<String, Object> headers = new HashMap<>();
-      headers.put(KafkaConstants.KEY, key);
-      headers.put(MwHeaders.CORRELATION_ID, meta.correlationId());
-      headers.put(MwHeaders.TXN_ID, meta.txnId());
-      headers.put(MwHeaders.IDEMPOTENCY_KEY, meta.idempotencyKey());
-      headers.put(MwHeaders.SOURCE, source);
-      headers.put(MwHeaders.SCHEMA_VERSION, Integer.toString(meta.schemaVersion()));
-      propagator.inject(span.context(), headers, (carrier, name, value) -> carrier.put(name, value));
-      producer.sendBodyAndHeaders("kafka:" + topic, body, headers);
+      send(topic, key, headers(meta, span), body);
       log.atDebug()
           .addKeyValue("event", "kafka.published")
           .addKeyValue("topic", topic)
@@ -66,5 +62,43 @@ public class EventPublisher {
     } finally {
       span.end();
     }
+  }
+
+  /**
+   * The 6.1 headers for a record published later by the outbox relay. Its {@code traceparent}
+   * is a child of the current span, so the relayed record continues the business trace.
+   */
+  public Map<String, String> headersFor(String topic, EventMetadata meta) {
+    Span span = tracer.nextSpan().name("outbox append " + topic).start();
+    try {
+      return headers(meta, span);
+    } finally {
+      span.end();
+    }
+  }
+
+  /**
+   * Sends a stored record unchanged (same key, headers and JSON body), synchronously: returns
+   * only once Kafka has acknowledged it, and throws if it did not.
+   */
+  public void publishStored(String topic, String key, Map<String, String> headers, String body) {
+    send(topic, key, headers, body);
+  }
+
+  private Map<String, String> headers(EventMetadata meta, Span span) {
+    Map<String, String> headers = new HashMap<>();
+    headers.put(MwHeaders.CORRELATION_ID, meta.correlationId());
+    headers.put(MwHeaders.TXN_ID, meta.txnId());
+    headers.put(MwHeaders.IDEMPOTENCY_KEY, meta.idempotencyKey());
+    headers.put(MwHeaders.SOURCE, source);
+    headers.put(MwHeaders.SCHEMA_VERSION, Integer.toString(meta.schemaVersion()));
+    propagator.inject(span.context(), headers, (carrier, name, value) -> carrier.put(name, value));
+    return headers;
+  }
+
+  private void send(String topic, String key, Map<String, String> recordHeaders, String body) {
+    Map<String, Object> headers = new HashMap<>(recordHeaders);
+    headers.put(KafkaConstants.KEY, key);
+    producer.sendBodyAndHeaders("kafka:" + topic, body, headers);
   }
 }
