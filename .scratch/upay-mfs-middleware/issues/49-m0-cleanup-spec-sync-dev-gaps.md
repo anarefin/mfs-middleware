@@ -23,7 +23,7 @@
 
 - 06: Template part 2b: outbox, inbox, conformance suite
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Spec text updated for every point in item 1. No "static analysis" remains in the `make verify` ground rule
 - [x] No `spotbugs` task in the template (`./gradlew tasks --all`). No SpotBugs mention in CLAUDE.md files, scripts or the PR template
