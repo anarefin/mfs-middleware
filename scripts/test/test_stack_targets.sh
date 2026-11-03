@@ -23,6 +23,46 @@ test_up_starts_the_mvp_compose_project() {
   grep -q "docker compose -f $PWD/deploy/compose/mvp/compose.yml up -d" .tool-calls || fail "mvp project not started: $(cat .tool-calls)"
 }
 
+# stub_compose_ps: docker stub whose `compose ... ps` prints .ps-<n> on the n-th call
+# (the last file once they run out); every other call is recorded and succeeds.
+stub_compose_ps() {
+  mkdir -p .bin
+  cat >.bin/docker <<EOF
+#!/bin/sh
+echo "docker \$*" >> "$PWD/.tool-calls"
+case "\$*" in
+  *" ps "*|*" ps") n=\$(( \$(cat "$PWD/.ps-n" 2>/dev/null || echo 0) + 1 )); echo \$n > "$PWD/.ps-n"
+    f="$PWD/.ps-\$n"; [ -f "\$f" ] || f="\$(ls "$PWD"/.ps-[0-9]* | sort -t- -k2 -n | tail -1)"; cat "\$f" ;;
+esac
+exit 0
+EOF
+  chmod +x .bin/docker
+  PATH="$PWD/.bin:$PATH"
+  mkdir -p deploy/compose/mvp && touch deploy/compose/mvp/compose.yml
+}
+
+test_up_returns_once_every_long_running_service_is_healthy() {
+  stub_compose_ps
+  printf 'kafka\trunning\tstarting\nkafka-init\trunning\t\npostgres\trunning\thealthy\n' >.ps-1
+  printf 'kafka\trunning\thealthy\nkafka-init\texited\t\netcd-init\texited\t\npostgres\trunning\thealthy\n' >.ps-2
+  OUT="$(MW_UP_TIMEOUT=30 MW_UP_POLL=0 make -s -f "$REPO_DIR/Makefile" MW_ROOT="$PWD" SELFTEST=0 up 2>&1)" || fail "up failed"
+  [ "$(cat .ps-n)" = 2 ] || fail "did not poll until healthy (polls: $(cat .ps-n))"
+  assert_out_contains "healthy"
+}
+
+test_up_fails_naming_the_unhealthy_services_on_timeout() {
+  stub_compose_ps
+  printf 'kafka\trunning\thealthy\nkeycloak\trunning\tunhealthy\napisix\trunning\tstarting\nkafka-init\texited\t\nopenbao\texited\t\n' >.ps-1
+  if OUT="$(MW_UP_TIMEOUT=1 MW_UP_POLL=0 make -s -f "$REPO_DIR/Makefile" MW_ROOT="$PWD" SELFTEST=0 up 2>&1)"; then
+    fail "up succeeded with unhealthy services"
+  fi
+  assert_out_contains "keycloak"; assert_out_contains "apisix"; assert_out_contains "openbao"
+  assert_out_lacks "kafka-init"
+  case "$OUT" in *timed*out*|*timeout*) ;; *) fail "no timeout message" ;; esac
+  printf '%s\n' "$OUT" | grep -i 'unhealthy\|not healthy' | grep -q 'kafka,\|kafka ' && fail "healthy kafka named as unhealthy"
+  return 0
+}
+
 test_up_with_M_starts_only_that_module() {
   stub_tools
   new_module "$PWD" services/mw-a
