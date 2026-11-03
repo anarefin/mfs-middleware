@@ -239,7 +239,7 @@ class RetryTopicRouteIT {
     long start = System.currentTimeMillis();
     HeldRecord held = sendRaw(TOPIC + ".retry.3", "K-KEPT", Long.toString(start + 6_000));
     Thread.sleep(1_000); // the retry.3 consumer has polled it and is holding it back
-    assertNotCommittedPast(held, "while held back");
+    assertNotCommittedPast(held, "K-KEPT", "while held back");
 
     boolean rebalanced = false;
     try (KafkaConsumer<String, String> member = groupMember("zzz-member")) {
@@ -248,9 +248,7 @@ class RetryTopicRouteIT {
         assertThat(member.poll(Duration.ofMillis(200))).as("the new member got no records").isEmpty();
         // Joining the group (a generation was assigned) forces every member to rebalance.
         rebalanced |= member.groupMetadata().generationId() > 0;
-        if (!handler.succeeded.contains("K-KEPT")) {
-          assertNotCommittedPast(held, "across the rebalance");
-        }
+        assertNotCommittedPast(held, "K-KEPT", "across the rebalance");
       }
     }
     assertThat(rebalanced).as("a second member joined the group (forced rebalance)").isTrue();
@@ -264,7 +262,7 @@ class RetryTopicRouteIT {
     long start = System.currentTimeMillis();
     HeldRecord held = sendRaw(TOPIC + ".retry.3", "K-MOVED", Long.toString(start + 6_000));
     Thread.sleep(1_000);
-    assertNotCommittedPast(held, "while held back");
+    assertNotCommittedPast(held, "K-MOVED", "while held back");
 
     boolean movedAway = false;
     try (KafkaConsumer<String, String> member = groupMember("aaa-member")) {
@@ -272,11 +270,11 @@ class RetryTopicRouteIT {
       while (System.nanoTime() < until) {
         member.poll(Duration.ofMillis(200));
         movedAway |= member.assignment().contains(held.partition());
-        assertNotCommittedPast(held, "while the partition is away");
+        assertNotCommittedPast(held, "K-MOVED", "while the partition is away");
       }
     }
     assertThat(movedAway).as("the partition moved to the new member").isTrue();
-    assertNotCommittedPast(held, "after the partition came back");
+    assertNotCommittedPast(held, "K-MOVED", "after the partition came back");
     assertHandledOnceAfterDelay("K-MOVED", start, held);
   }
 
@@ -292,11 +290,18 @@ class RetryTopicRouteIT {
     }
   }
 
-  /** The committed offset is the next record to read: at most the held record's offset. */
-  void assertNotCommittedPast(HeldRecord held, String when) throws Exception {
+  /**
+   * The committed offset (the next record to read) may pass the held record only once the
+   * handler has succeeded on it. Checked in that order, read first: the handler records success
+   * before the route commits, so a commit seen by the read implies success is already visible.
+   * Checking success first and reading second would race the legitimate commit at the due time.
+   */
+  void assertNotCommittedPast(HeldRecord held, String key, String when) throws Exception {
     Long c = committed(held.partition());
-    if (c != null) {
-      assertThat(c).as("committed offset %s (held record at %d)", when, held.offset()).isLessThanOrEqualTo(held.offset());
+    if (c != null && c > held.offset()) {
+      assertThat(handler.succeeded)
+          .as("committed offset %d %s passed the held record at %d before it was handled", c, when, held.offset())
+          .contains(key);
     }
   }
 
