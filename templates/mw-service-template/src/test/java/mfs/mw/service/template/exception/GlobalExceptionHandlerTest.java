@@ -27,7 +27,12 @@ import org.springframework.web.bind.annotation.RestController;
 @ExtendWith(OutputCaptureExtension.class)
 class GlobalExceptionHandlerTest {
 
-  @Autowired MockMvcTester mvc;
+  private final MockMvcTester mvc;
+
+  @Autowired
+  GlobalExceptionHandlerTest(MockMvcTester mvc) {
+    this.mvc = mvc;
+  }
 
   record Transfer(@NotBlank String to, @Positive long amountMinor) {}
 

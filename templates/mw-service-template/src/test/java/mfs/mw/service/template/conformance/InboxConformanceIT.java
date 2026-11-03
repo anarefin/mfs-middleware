@@ -89,9 +89,16 @@ class InboxConformanceIT {
     }
   }
 
-  @Autowired EventPublisher publisher;
-  @Autowired CountingHandler handler;
-  @Autowired JdbcTemplate jdbc;
+  private final EventPublisher publisher;
+  private final CountingHandler handler;
+  private final JdbcTemplate jdbc;
+
+  @Autowired
+  InboxConformanceIT(EventPublisher publisher, CountingHandler handler, JdbcTemplate jdbc) {
+    this.publisher = publisher;
+    this.handler = handler;
+    this.jdbc = jdbc;
+  }
 
   @BeforeAll
   static void effectTable(@Autowired JdbcTemplate jdbc) {

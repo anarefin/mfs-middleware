@@ -16,7 +16,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 @Import(TestInfrastructure.class)
 class FlywayOnStartIT {
 
-  @Autowired JdbcTemplate jdbc;
+  private final JdbcTemplate jdbc;
+
+  @Autowired
+  FlywayOnStartIT(JdbcTemplate jdbc) {
+    this.jdbc = jdbc;
+  }
 
   @Test
   void startUpCreatesTheServiceSchemaAndAppliesMigrations() {

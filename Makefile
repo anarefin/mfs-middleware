@@ -4,8 +4,9 @@
 # mw-orchestrator, or a path such as services/mw-orchestrator).
 # A module is any services/* or templates/* folder with its own settings.gradle(.kts).
 #
-#   make verify [M=]            isolation + contracts lint + ./gradlew check per module (+ script self-tests)
+#   make verify [M=]            isolation + field injection + contracts lint + ./gradlew check per module (+ script self-tests)
 #   make check-isolation [M=]   module independence rules (spec 4.3)
+#   make check-field-injection [M=]  no @Autowired fields under any module's src/
 #   make contracts-lint         lint the root contracts/ folder
 #   make versions-check [M=]    report version drift between module version catalogs
 #   make up [M=]                start the Compose stack (deploy/compose/mvp) or one module's compose.yml
@@ -23,10 +24,10 @@ SELFTEST ?= 1
 M ?=
 export MW_ROOT
 
-.PHONY: help verify check-isolation contracts-lint versions-check up smoke down e2e perf security new-service test-scripts
+.PHONY: help verify check-isolation check-field-injection contracts-lint versions-check up smoke down e2e perf security new-service test-scripts
 
 help:
-	@sed -n '3,19p' $(abspath $(lastword $(MAKEFILE_LIST)))
+	@sed -n '3,20p' $(abspath $(lastword $(MAKEFILE_LIST)))
 
 verify:
 ifeq ($(SELFTEST)$(M),1)
@@ -36,6 +37,9 @@ endif
 
 check-isolation:
 	@$(SCRIPTS)/check-isolation.sh "$(M)"
+
+check-field-injection:
+	@$(SCRIPTS)/check-field-injection.sh "$(M)"
 
 contracts-lint:
 	@$(SCRIPTS)/contracts-lint.sh

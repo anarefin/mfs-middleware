@@ -117,7 +117,8 @@ Definition of done: tests written first, `make verify M=<module>` and the releva
 - Never put secrets in code, config files or tests (use OpenBao/Vault config binding;
   test fixtures use obviously fake values).
 - Never use `System.out` / `System.err` / `printStackTrace`; log through SLF4J.
-- Never use field injection (`@Autowired` on fields); constructor injection only.
+- Never use field injection (`@Autowired` on fields), tests included; constructor injection
+  only (`make verify` runs `scripts/check-field-injection.sh`).
 - Never block on Kafka listener threads (no synchronous waits for replies, sleeps or
   long partner calls on the consumer thread).
 - Never log a PIN or an unmasked MSISDN, NID, account number or name.

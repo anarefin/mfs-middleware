@@ -104,15 +104,28 @@ class OutboxRelayRecoveryConformanceIT {
     }
   }
 
-  @Autowired OutboxWriter outbox;
-  @Autowired OutboxRelay relay;
-  @Autowired EventPublisher publisher;
-  @Autowired OutboxProperties properties;
-  @Autowired JsonMapper json;
-  @Autowired JdbcTemplate jdbc;
-  @Autowired TransactionTemplate tx;
-  @Autowired KafkaContainer kafka;
-  @Autowired EffectHandler handler;
+  private final OutboxWriter outbox;
+  private final OutboxRelay relay;
+  private final EventPublisher publisher;
+  private final OutboxProperties properties;
+  private final JsonMapper json;
+  private final JdbcTemplate jdbc;
+  private final TransactionTemplate tx;
+  private final KafkaContainer kafka;
+  private final EffectHandler handler;
+
+  @Autowired
+  OutboxRelayRecoveryConformanceIT(OutboxWriter outbox, OutboxRelay relay, EventPublisher publisher, OutboxProperties properties, JsonMapper json, JdbcTemplate jdbc, TransactionTemplate tx, KafkaContainer kafka, EffectHandler handler) {
+    this.outbox = outbox;
+    this.relay = relay;
+    this.publisher = publisher;
+    this.properties = properties;
+    this.json = json;
+    this.jdbc = jdbc;
+    this.tx = tx;
+    this.kafka = kafka;
+    this.handler = handler;
+  }
 
   @BeforeAll
   static void effectTable(@Autowired JdbcTemplate jdbc) {

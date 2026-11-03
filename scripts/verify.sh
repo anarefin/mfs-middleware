@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Local quality gate (no CI/CD in the MVP).
 # Usage: scripts/verify.sh [MODULE]
-#   1. isolation check (D13, D14)   2. contracts lint
-#   3. ./gradlew check in each selected module (unit, route, Testcontainers
+#   1. isolation check (D13, D14)   2. no @Autowired field injection   3. contracts lint
+#   4. ./gradlew check in each selected module (unit, route, Testcontainers
 #      integration tests, coverage and static analysis as the module configures them)
 set -eu
 . "$(dirname "$0")/lib/modules.sh"
@@ -11,6 +11,7 @@ m="${1:-}"
 modules="$(selected_modules "$m")"
 
 "$(dirname "$0")/check-isolation.sh" "$m"
+"$(dirname "$0")/check-field-injection.sh" "$m"
 "$(dirname "$0")/contracts-lint.sh"
 
 if [ -z "$modules" ]; then

@@ -111,10 +111,18 @@ class RetryTopicRouteIT {
     }
   }
 
-  @Autowired CamelContext camel;
-  @Autowired EventPublisher publisher;
-  @Autowired KafkaContainer kafka;
-  @Autowired FlakyHandler handler;
+  private final CamelContext camel;
+  private final EventPublisher publisher;
+  private final KafkaContainer kafka;
+  private final FlakyHandler handler;
+
+  @Autowired
+  RetryTopicRouteIT(CamelContext camel, EventPublisher publisher, KafkaContainer kafka, FlakyHandler handler) {
+    this.camel = camel;
+    this.publisher = publisher;
+    this.kafka = kafka;
+    this.handler = handler;
+  }
 
   List<ConsumerRecord<String, String>> recordsFor(String topic, String key, int count) {
     return recordsFor(topic, key, count, Duration.ofSeconds(30));
