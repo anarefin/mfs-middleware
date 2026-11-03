@@ -37,6 +37,23 @@ spring:
   flyway:
     schemas: service_template
 
+# Kafka through Camel (spec 6.1, 19.2). Single KRaft node; topics come from deploy/kafka/.
+camel:
+  main:
+    name: ${spring.application.name}
+  component:
+    kafka:
+      brokers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+      # Producer: exactly one copy per send, every in-sync replica acknowledges (6.1).
+      request-required-acks: all
+      enable-idempotence: true
+      max-in-flight-request: 5
+      # Consumers: one group per service; a failure that cannot even be parked on a retry
+      # topic stops the partition instead of committing past the record.
+      group-id: ${spring.application.name}
+      auto-offset-reset: earliest
+      break-on-first-error: true
+
 logging:
   structured:
     format:
