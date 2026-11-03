@@ -246,3 +246,25 @@ test_make_up_generates_the_dev_env_before_starting_the_mvp_project() {
   PATH="$PWD/.bin:$PATH" mw_make "$PWD" up || fail "make up failed"
   grep -q '^APISIX_ADMIN_KEY=' deploy/compose/platform/.env || fail "make up did not generate deploy/compose/platform/.env"
 }
+
+# ---- Keycloak ops realm MFA (spec 18.2) ----
+
+test_ops_realm_enforces_totp_for_every_user_and_in_the_browser_flow() {
+  local f="$REALMS_DIR/ops-realm.json" flow bad
+  bad="$(jq -r '.users[] | select((.requiredActions // []) | index("CONFIGURE_TOTP") | not) | .username' "$f")"
+  [ -z "$bad" ] || fail "ops users without the CONFIGURE_TOTP required action: $bad"
+  flow="$(jq -r '.browserFlow // empty' "$f")"
+  [ -n "$flow" ] && [ "$flow" != "browser" ] || fail "ops realm keeps the built-in browser flow (OTP only conditional)"
+  # executions reachable from the browser flow: OTP and password forms REQUIRED, and
+  # the sub-flows holding them REQUIRED or ALTERNATIVE (never CONDITIONAL/DISABLED)
+  jq -e --arg top "$flow" '
+    def flows: .authenticationFlows // [] | map({key: .alias, value: .authenticationExecutions}) | from_entries;
+    def walk_exec($fl; $alias): $fl[$alias][] | if .authenticatorFlow then
+        (select(.requirement == "REQUIRED" or .requirement == "ALTERNATIVE") | walk_exec($fl; .flowAlias)) else . end;
+    flows as $fl | [walk_exec($fl; $top)] as $ex
+    | ($ex | any(.authenticator == "auth-otp-form" and .requirement == "REQUIRED"))
+      and ($ex | any(.authenticator == "auth-username-password-form" and .requirement == "REQUIRED"))
+      and ($ex | all(.requirement != "CONDITIONAL"))' "$f" >/dev/null \
+    || fail "browser flow '$flow' does not require auth-otp-form after the password form"
+  jq -e '.otpPolicyType == "totp"' "$f" >/dev/null || fail "ops realm OTP policy is not TOTP"
+}

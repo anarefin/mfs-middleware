@@ -5,7 +5,8 @@
 # Checks: every platform container healthy and the one-shots exited 0; only APISIX
 # publishes a host port; every topic in deploy/kafka/topics.txt exists with RF 1 and the
 # planned partition count; Kafka produce/consume; a PostgreSQL connection; a Valkey ping;
-# a Keycloak token for every test user and the partner client; an OpenBao KV read; the
+# a Keycloak token for every test user and the partner client (ops users: refused until
+# TOTP is enrolled, and the ops browser flow requires OTP); an OpenBao KV read; the
 # APISIX /healthz route over HTTPS on the published port.
 set -uo pipefail
 . "$(dirname "$0")/lib/modules.sh"
@@ -108,18 +109,52 @@ token() { # token REALM FORM...
   docker run --rm --network "$ops_net" "$CURL_IMAGE" -sf "${args[@]}" \
     "http://keycloak:8080/realms/$realm/protocol/openid-connect/token" | jq -e '.access_token | length > 100' >/dev/null
 }
+# totp_pending REALM FORM...: the right password is accepted but no token is issued
+# until the user has enrolled TOTP (CONFIGURE_TOTP required action, spec 18.2); a wrong
+# password would answer "Invalid user credentials" instead
+totp_pending() {
+  local realm="$1"; shift
+  local args=() f out
+  for f in "$@"; do args+=(--data-urlencode "$f"); done
+  out="$(docker run --rm --network "$ops_net" "$CURL_IMAGE" -s "${args[@]}" \
+    "http://keycloak:8080/realms/$realm/protocol/openid-connect/token")"
+  printf '%s' "$out" | jq -e '.access_token == null and .error_description == "Account is not fully set up"' >/dev/null \
+    || { echo "got: $out"; return 1; }
+}
 for realm_file in "$MW_ROOT"/deploy/compose/platform/keycloak/realms/*-realm.json; do
   realm="$(jq -r .realm "$realm_file")"
   client="$(jq -r '[.clients[] | select(.publicClient and .directAccessGrantsEnabled)][0].clientId // empty' "$realm_file")"
-  while read -r user pw; do
+  while read -r user pw mfa; do
     [ -n "$user" ] || continue
-    check "keycloak token $realm/$user" token "$realm" grant_type=password "client_id=$client" "username=$user" "password=$(resolve "$pw")"
-  done < <(jq -r '.users[] | select(.credentials) | "\(.username) \(.credentials[0].value)"' "$realm_file")
+    if [ "$mfa" = mfa ]; then
+      check "keycloak $realm/$user: no token before TOTP enrolment (MFA)" totp_pending "$realm" grant_type=password "client_id=$client" "username=$user" "password=$(resolve "$pw")"
+    else
+      check "keycloak token $realm/$user" token "$realm" grant_type=password "client_id=$client" "username=$user" "password=$(resolve "$pw")"
+    fi
+  done < <(jq -r '.users[] | select(.credentials) | "\(.username) \(.credentials[0].value) \(if (.requiredActions // []) | index("CONFIGURE_TOTP") then "mfa" else "-" end)"' "$realm_file")
   while read -r cid secret; do
     [ -n "$cid" ] || continue
     check "keycloak token $realm/$cid (client credentials)" token "$realm" grant_type=client_credentials "client_id=$cid" "client_secret=$(resolve "$secret")"
   done < <(jq -r '.clients[] | select(.serviceAccountsEnabled) | "\(.clientId) \(.secret)"' "$realm_file")
 done
+
+# ops realm browser flow as imported: password form and OTP form both REQUIRED (18.2)
+ops_browser_flow_requires_otp() {
+  local at flow ex
+  at="$(docker run --rm --network "$ops_net" "$CURL_IMAGE" -sf --data-urlencode grant_type=password \
+    --data-urlencode client_id=admin-cli --data-urlencode "username=$(sed -n 's/^KC_BOOTSTRAP_ADMIN_USERNAME=//p' "$MW_ROOT/deploy/compose/platform/env/keycloak.env")" \
+    --data-urlencode "password=$KC_BOOTSTRAP_ADMIN_PASSWORD" \
+    http://keycloak:8080/realms/master/protocol/openid-connect/token | jq -r .access_token)" || return 1
+  flow="$(docker run --rm --network "$ops_net" "$CURL_IMAGE" -sf -H "Authorization: Bearer $at" \
+    http://keycloak:8080/admin/realms/ops | jq -r .browserFlow)" || return 1
+  [ "$flow" != browser ] || { echo "ops realm uses the built-in browser flow"; return 1; }
+  ex="$(docker run --rm --network "$ops_net" "$CURL_IMAGE" -sf -G -H "Authorization: Bearer $at" \
+    "http://keycloak:8080/admin/realms/ops/authentication/flows/$(jq -rn --arg f "$flow" '$f | @uri')/executions")" || return 1
+  printf '%s' "$ex" | jq -e 'any(.[]; .providerId == "auth-otp-form" and .requirement == "REQUIRED")
+    and any(.[]; .providerId == "auth-username-password-form" and .requirement == "REQUIRED")
+    and all(.[]; .requirement != "CONDITIONAL")' >/dev/null || { echo "executions: $ex"; return 1; }
+}
+check "keycloak ops realm browser flow requires OTP" ops_browser_flow_requires_otp
 
 # ---- APISIX health route over the published HTTPS port ----
 https_port="$(dc port apisix 9443 | head -1 | sed 's/.*://')"
