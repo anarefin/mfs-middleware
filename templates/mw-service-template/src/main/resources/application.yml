@@ -54,6 +54,44 @@ camel:
       auto-offset-reset: earliest
       break-on-first-error: true
 
+# Resilience defaults for client/ calls (19.2). A partner overrides them under
+# resilience4j.<kind>.instances.<partner> (base-config: default). Retry is only for idempotent
+# calls (status inquiry, fetch-bill, GET): never annotate a payment call with @Retry.
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-type: TIME_BASED
+        sliding-window-size: 60
+        minimum-number-of-calls: 50
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 50
+        # 80% of the default partner timeout (30 s, 11.1); partners override both.
+        slow-call-duration-threshold: 24s
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+  bulkhead:
+    configs:
+      default:
+        max-concurrent-calls: 200
+        max-wait-duration: 0
+  timelimiter:
+    configs:
+      default:
+        timeout-duration: 30s
+        cancel-running-future: true
+  retry:
+    configs:
+      default:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        exponential-max-wait-duration: 1s
+        enable-randomized-wait: true
+        randomized-wait-factor: 0.5
+
 logging:
   structured:
     format:
