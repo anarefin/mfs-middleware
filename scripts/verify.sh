@@ -3,7 +3,7 @@
 # Usage: scripts/verify.sh [MODULE]
 #   1. isolation check (D13, D14)   2. no @Autowired field injection   3. contracts lint
 #   4. ./gradlew check in each selected module (unit, route, Testcontainers
-#      integration tests, coverage and static analysis as the module configures them)
+#      integration tests and coverage as the module configures them)
 set -eu
 . "$(dirname "$0")/lib/modules.sh"
 

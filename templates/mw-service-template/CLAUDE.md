@@ -50,17 +50,18 @@ ACLs belong to the platform (`deploy/kafka/`), not this module.
 | `OutboxWriter.append(...)`: call inside the business transaction (refuses to run outside one); stores the 6.1 headers incl. `traceparent` | `messaging/` | 6.4 |
 | `OutboxRelay` + `route/OutboxRelayRouteBuilder` (timer, `mw.outbox.relay.*`): one relay at a time per schema (advisory xact lock), `FOR UPDATE SKIP LOCKED`, id order, marks sent only after Kafka acked; crash/restart re-publishes (at-least-once) | `messaging/`, `route/` | 6.4, 19.3 |
 | `Inbox.processOnce(consumer, eventId, sideEffect)`: inbox row and side effect in one transaction; duplicates are no-ops, a failed side effect leaves no row | `messaging/` | 6.4, 19.3 |
-| Conformance suite: `@Conformance` tests (correlation, error envelope, masking, log fields, Kafka retry/DLQ incl. rebalance hold-back, outbox, inbox). Copy unchanged into every service | `src/test/.../conformance/`, `route/RetryTopicRouteIT` | 4.3, 22.1 |
+| `scheduler/OutboxInboxPurgeJob` (`mw.outbox.retention`, `mw.inbox.retention`, default 7d; `mw.purge.period`/`batch-size`): deletes sent outbox rows and inbox rows past retention in short batches, never unsent rows; ShedLock-guarded (`config/SchedulingConfig`, `shedlock` table in `V3`), so one instance runs it | `scheduler/`, `config/` | 6.4, 16.3 |
+| Conformance suite: `@Conformance` tests (correlation, error envelope, masking, log fields, Kafka retry/DLQ incl. rebalance hold-back, outbox, inbox, purge). Copy unchanged into every service | `src/test/.../conformance/`, `route/RetryTopicRouteIT` | 4.3, 22.1 |
 
 The relay route is off in tests (`src/test/resources/config/application.yml`) because cached
 test contexts would relay each other's rows; a test that needs it on sets
-`mw.outbox.relay.enabled=true` and `@DirtiesContext`. Outbox and inbox rows are not purged yet.
+`mw.outbox.relay.enabled=true` and `@DirtiesContext`.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `./gradlew check` | all tests (`test` + `conformance`; `*IT` use Testcontainers, Docker), the JaCoCo gate (>= 80% lines per `service`/`mapper`/`client` package, 22.1; report in `build/reports/jacoco`) and SpotBugs + FindSecBugs on main code (18.5 SAST; `build/reports/spotbugs`, reviewed exclusions in `config/spotbugs/exclude.xml`) |
+| `./gradlew check` | all tests (`test` + `conformance`; `*IT` use Testcontainers, Docker) and the JaCoCo gate (>= 80% lines per `service`/`mapper`/`client` package, 22.1; report in `build/reports/jacoco`) |
 | `./gradlew conformance` | the conformance suite alone |
 | `make test-scripts` | includes `test_template_copy_checks_and_builds_its_image_alone`: a copy plus `contracts/` runs `./gradlew check bootJar && docker build .` (skipped when Docker is down) |
 | `./gradlew check bootJar && docker build -t mw-service-template:dev .` | spec 4.3 rule 1 |

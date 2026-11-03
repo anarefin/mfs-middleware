@@ -71,7 +71,8 @@ The MVP proves every core pattern of the middleware on one Docker Compose host: 
 | Data | Audit events in PostgreSQL | DW stream and batch, archival |
 | Gateway | APISIX with JWT (Keycloak), HMAC for checkout merchants, rate limits, request validation | mTLS partner callbacks, separate internal gateway |
 | Ops | Health checks, structured JSON logs, `/actuator/prometheus` metrics | Alert rules, runbooks per alert, backup restore drill |
-| Security | TLS on the APISIX edge, Vault for all secrets, Keycloak MFA for admin, non-root containers | mTLS between services, HSM, pen test (before production) |
+| Security | TLS on the APISIX edge, Vault for all secrets, Keycloak MFA for admin, non-root containers | mTLS between services, HSM, pen test (before production); Kafka ACLs and quotas; image digest pinning |
+| Dev secrets | OpenBao root token kept in its data volume (dev only) | Production unseal and root-token handling |
 
 ### Single-host topology
 
@@ -114,7 +115,7 @@ The MVP is built as about 30 small work packages (WPs), each sized for one codin
 - **Repo memory.** The repo root holds `CLAUDE.md` with conventions: package layout (section 4.2), error model (5.3), masking rules (18.3), logging fields (21.1), test commands, and "never" rules (no secrets in code, no `System.out`, no field injection, no blocking on Kafka threads). Each service has its own short `CLAUDE.md` with its responsibilities and the contracts it owns.
 - **Contract first.** Every WP starts from files in the root `contracts/` folder (OpenAPI, AsyncAPI, JSON Schema). Each file has an owning service, recorded in `contracts/OWNERS.yml`; an agent may not change a contract its service does not own; contract changes are their own WP, reviewed by a human.
 - **Definition of done = green tests.** Each WP lists its acceptance tests; the agent writes them first, then the code. With no CI/CD in the MVP, a WP is merged only when `./gradlew check` (or `pnpm test` for the UI) and the relevant e2e scenario pass locally, the agent has attached the test output to the PR, and the reviewer has re-run make verify.
-- **Local quality gate (no CI/CD in the MVP).** Makefile targets replace a pipeline: `make up` (Compose stack + seed data), `make verify` (unit, route and Testcontainers integration tests, coverage, static analysis, isolation and contract checks; `M=<module>` limits it to one module), `make e2e` (Cucumber suite against the stack and simulators), `make security` (dependency, container and secret scans), `make perf` (Gatling). Agents run `verify` and the relevant `e2e` tags before opening a PR and paste the summary into the PR template; the reviewer re-runs `make verify` on the branch before approving.
+- **Local quality gate (no CI/CD in the MVP).** Makefile targets replace a pipeline: `make up` (Compose stack + seed data), `make verify` (unit, route and Testcontainers integration tests, coverage, isolation and contract checks; `M=<module>` limits it to one module), `make e2e` (Cucumber suite against the stack and simulators), `make security` (dependency, container and secret scans), `make perf` (Gatling). Agents run `verify` and the relevant `e2e` tags before opening a PR and paste the summary into the PR template; the reviewer re-runs `make verify` on the branch before approving.
 - **Module isolation (D13, D14).** A module never depends on another `mfs.mw` artifact, never references another module's files at build time and never reads another service's schema. Every new service starts as a copy of `templates/mw-service-template` (`make new-service NAME=mw-x`) and may then diverge. `make check-isolation` (a shell script over the Gradle files, not ArchUnit) fails on any cross-module dependency, `includeBuild`, convention plugin or relative path, except the one allowed reference to the root `contracts/` folder (4.3).
 - **Consistency without shared code.** Cross-cutting behaviour (correlation, error envelope, masking, log fields, Kafka retry/DLQ, outbox, inbox) is defined once in this spec and proved in every service by the conformance suite copied from the template. A fix to the template is rolled into each service as its own small WP.
 - **Small diffs.** Target ≤ 1,500 changed lines per WP; larger work is split. One WP = one branch = one GitHub pull request, approved by an upay engineer before merge.
@@ -321,25 +322,26 @@ Every runtime component is open source under a permissive licence, which satisfi
 | Language | Eclipse Temurin JDK | 25 LTS | GPLv2+CE | Runtime; virtual threads, records, pattern matching |
 | Build | Gradle (Kotlin DSL) with wrapper per module | 9.x with JDK 25 toolchain support (TBC exact) | Apache 2.0 | Build, test, SBOM (CycloneDX Gradle plugin), image (`bootBuildImage` or Dockerfile) |
 | Runtime | Docker Engine + Docker Compose v2 | Compose ≥ 2.20 (`include`) | Apache 2.0 | Runs every component (D12) |
-| Framework | Spring Boot | 4.0.x | Apache 2.0 | Service chassis, config, security, actuator |
-| Integration | Apache Camel (camel-spring-boot) | 4.x LTS compatible with Boot 4 (TBC) | Apache 2.0 | Routes, EIPs, protocol components |
+| Framework | Spring Boot | 4.1.2 | Apache 2.0 | Service chassis, config, security, actuator |
+| Integration | Apache Camel (camel-spring-boot) | 4.22.2 LTS | Apache 2.0 | Routes, EIPs, protocol components |
 | Messaging | Apache Kafka (KRaft) | 4.x | Apache 2.0 | Commands, events, DLQ, DW stream |
 | Serialisation | JSON (Jackson) + JSON Schema files | Jackson 3 (Boot 4 default) | Apache 2.0 | Kafka payloads as JSON; schemas versioned in Git and checked in tests (no registry in MVP) |
 | Gateway | Apache APISIX + etcd | 3.x | Apache 2.0 | North-south gateway, auth, rate limit |
 | Database | PostgreSQL | 18 | PostgreSQL | Middleware state, audit, config, recon |
-| Migrations | Flyway | 11.x | Apache 2.0 | Versioned schema changes |
+| Migrations | Flyway | 12 (Boot-managed) | Apache 2.0 | Versioned schema changes |
 | Cache / locks | Redis-compatible (Valkey) | 8.x | BSD-3 | USSD session, rate counters, short-lived idempotency cache |
 | Resilience | Resilience4j | 2.x | Apache 2.0 | Circuit breaker, bulkhead, retry, time limiter |
-| Scheduling | ShedLock + Spring scheduler | 6.x | Apache 2.0 | Cluster-safe jobs (TSQ sweeps, file pulls) |
+| Scheduling | ShedLock + Spring scheduler | 7 | Apache 2.0 | Cluster-safe jobs (TSQ sweeps, file pulls) |
 | SOAP | Apache CXF (camel-cxf) | 4.x | Apache 2.0 | SOAP client/server, WS-Security |
 | SMPP | camel-smpp (jSMPP) | with Camel | Apache 2.0 | SMSC and SMPP-based USSD |
 | SFTP | camel-sftp (JSch fork) | with Camel | BSD-style | AML, DW, settlement files |
 | ISO 20022 | Prowide ISO 20022 | latest | Apache 2.0 | pacs/pain/camt models for NPSB / BanglaQR |
 | SWIFT MT | Prowide Core (WIFE) | latest | Apache 2.0 | MT940 / MT942 parsing |
 | IAM | Keycloak | 26.x | Apache 2.0 | OAuth2/OIDC for admin users and partners |
+| Config / secrets binding | Spring Cloud (Spring Cloud Vault) | 2025.1.4 | Apache 2.0 | Loads Vault/OpenBao secrets at start, renews leases |
 | Secrets / PKI | HashiCorp Vault or OpenBao | current | BUSL / MPL 2.0 | Secrets, dynamic DB creds, certificate issue (prefer OpenBao for OWN-03) |
 | Admin UI | Next.js + React + TypeScript | 16.3.8 | MIT | Admin console |
-| Testing | JUnit 5, Testcontainers, WireMock, Pact, Gatling | current | EPL/Apache/MIT | Unit, integration, contract, load |
+| Testing | JUnit 6, Testcontainers, WireMock, Pact, Gatling | current | EPL/Apache/MIT | Unit, integration, contract, load |
 
 **Rules.** No GPL/AGPL component without written approval (OWN-03). The JDK's GPLv2 + Classpath Exception is standard and should be noted in the SBOM. Vault's BUSL licence is a commercial-risk flag; OpenBao is the drop-in fallback.
 
@@ -517,7 +519,7 @@ One error envelope for every API: `{ code, message, messageBn?, txnId?, correlat
 
 ## 6. Kafka topics and the core wallet contract
 
-Kafka carries every financial step between services and to the core, with exactly-once semantics inside the middleware (idempotent producers + transactions + outbox) and at-least-once to external consumers, made safe by idempotent handlers (NFR-06).
+Kafka carries every financial step between services and to the core, with effectively-once (idempotent producer + outbox + inbox) delivery inside the middleware, without Kafka transactions, and at-least-once to external consumers, made safe by idempotent handlers (NFR-06).
 
 ### 6.1 Cluster conventions
 
@@ -1120,7 +1122,7 @@ The design targets 1,500 TPS peak with 3x headroom on a single-site deployment w
 | Policy | Default |
 | --- | --- |
 | Time limiter | Partner timeout from 11.1 |
-| Circuit breaker | Sliding window 50 calls / 60 s; open at 50% failure or 50% slow calls (> 80% of timeout); open 30 s; 5 half-open probes |
+| Circuit breaker | 60 s time-based window, minimum 50 calls; open at 50% failure or 50% slow calls (> 80% of timeout); open 30 s; 5 half-open probes |
 | Bulkhead | Semaphore, 200 concurrent calls per partner (sized from partner TPS limit) |
 | Retry | Only for idempotent calls (status inquiry, fetch-bill, GET): 2 retries, 200 ms → 1 s exponential + jitter |
 | Kafka consumer errors | Non-blocking retry topics 10 s, 1 min, 10 min, then DLQ; DLQ replay tool in admin console |
@@ -1200,7 +1202,7 @@ Tooling is outside this spec (D10); this section fixes what every service MUST e
 
 ### 21.1 Logs
 
-- JSON to stdout, one event per line, UTC ISO-8601 timestamps; fields: `ts`, `level`, `service`, `version`, `host`, `env`, `correlationId`, `txnId`, `traceId`, `spanId`, `partnerId`, `channel`, `event`, `message`, `durationMs`, `errorCode`.
+- JSON to stdout, one event per line, UTC ISO-8601 timestamps. These fields are the minimum log field set; extra structured fields are allowed when masked: `ts`, `level`, `service`, `version`, `host`, `env`, `correlationId`, `txnId`, `traceId`, `spanId`, `partnerId`, `channel`, `event`, `message`, `durationMs`, `errorCode`.
 - Masking filter applied before output (SEC-10); payload logging off by default, switchable per partner at DEBUG in non-prod only.
 - Business events use stable `event` names (`txn.state.changed`, `partner.call.completed`, `smpp.bind.down`) for alert rules.
 
@@ -1225,8 +1227,8 @@ No integration is "done" until it passes against its simulator in the pipeline a
 
 | Layer | Tooling | Scope | Gate |
 | --- | --- | --- | --- |
-| Unit | JUnit 5, AssertJ, Mockito | Domain, state machine, mappers, masking | ≥ 80% line coverage (JaCoCo) on `service`, `mapper` and `client` packages; mutation testing (PIT) on the state machine |
-| Camel route | `camel-test-spring-junit5`, AdviceWith, mock endpoints | Every route: happy path, error handler, DLQ, timeouts | Each route has ≥ 1 test per outcome |
+| Unit | JUnit 6, AssertJ, Mockito | Domain, state machine, mappers, masking | ≥ 80% line coverage (JaCoCo) on `service`, `mapper` and `client` packages; mutation testing (PIT) on the state machine |
+| Camel route | `camel-test-spring-junit6`, AdviceWith, mock endpoints | Every route: happy path, error handler, DLQ, timeouts | Each route has ≥ 1 test per outcome |
 | Integration | Testcontainers (Kafka, PostgreSQL 18, Valkey, Vault/OpenBao, Keycloak) | Service with real infra; each module owns its fixtures (no shared test kit) | Required on every merge |
 | Contract | Pact (HTTP, message pacts for Kafka) between channels ↔ orchestrator ↔ adapters; core contract tested against a core stub until the core team provides a provider build | API and event compatibility | Broken pact blocks merge |
 | Schema | JSON Schema validation tests, Spectral/oasdiff, `make contracts-lint` | Event JSON Schemas, OpenAPI in `contracts/`; each consumer's types against them | Block on incompatible change |
