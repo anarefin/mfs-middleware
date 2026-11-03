@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "auditId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+  "correlationId": "corr-0001",
+  "actor": { "type": "robot", "id": "x" },
+  "action": "txn.state.changed",
+  "resource": "txn/1",
+  "outcome": "SUCCESS",
+  "at": "2026-11-03T08:15:31Z",
+  "service": "mw-orchestrator"
+}

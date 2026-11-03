@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "messageId": "m-1",
+  "recipient": {},
+  "templateCode": "TXN_P2P_SENT",
+  "locale": "bn",
+  "channels": ["SMS"],
+  "priority": "TXN"
+}

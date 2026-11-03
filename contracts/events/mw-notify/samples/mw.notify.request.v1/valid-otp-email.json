@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "messageId": "otp-7f3e",
+  "recipient": { "email": "test.user@example.com" },
+  "templateCode": "OTP_LOGIN",
+  "locale": "en",
+  "params": { "otp": "000000" },
+  "channels": ["EMAIL", "SMS"],
+  "priority": "OTP",
+  "expiresAt": "2026-11-03T08:17:30Z"
+}

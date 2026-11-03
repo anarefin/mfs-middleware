@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "configKey": "partner/gp",
+  "configType": "PARTNER",
+  "change": "UPSERT",
+  "version": 7,
+  "value": { "enabled": true, "timeoutMs": 20000, "credentialsRef": "kv/partners/gp" },
+  "changedAt": "2026-11-03T10:00:00Z",
+  "changedBy": "ops.maker1",
+  "approvedBy": "ops.checker1"
+}

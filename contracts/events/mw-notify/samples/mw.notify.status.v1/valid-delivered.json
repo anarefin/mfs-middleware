@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "messageId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8b:sms:initiator",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8b",
+  "channel": "SMS",
+  "status": "DELIVERED",
+  "final": true,
+  "attempt": 1,
+  "templateCode": "TXN_P2P_SENT",
+  "providerMessageId": "smsc-0001",
+  "at": "2026-11-03T08:15:35Z"
+}
