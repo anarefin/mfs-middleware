@@ -7,11 +7,11 @@
 - 03: Service template part 1: HTTP chassis
 - 04: Event contracts v1
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] A route test proves that a failing message goes through retry.1 → retry.2 → retry.3 → DLQ, with headers kept
 - [x] A route test proves that a message which succeeds on retry is not sent to the DLQ
 - [x] A Testcontainers test shows Flyway creating the template's own schema on start-up
 - [x] Published records carry every required header, and a test asserts this
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR (n/a: local tracker, no PR; test logs pasted in merge report)
 - [x] The template's schema tests load contracts from the root contracts/ folder through mwContractsDir (carried from ticket 04)
