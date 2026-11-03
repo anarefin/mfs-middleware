@@ -9,13 +9,13 @@ Shared types live once in `contracts/common/defs.v1.schema.json`: Amount (minor 
 - 04: Event contracts v1
 - 06: Template part 2b: outbox, inbox, conformance suite
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] `make contracts-lint` registers every schema before compiling, so cross-file `$ref`s resolve. Every envelope and payload schema compiles
 - [x] Lint fails when an envelope's type enum and its set of payload files differ (a payload file with no enum value, or an enum value with no payload file)
 - [x] `contracts/common/` has an owner in `OWNERS.yml`. The ownership rule allows it, and lint still fails on any file without an owner
 - [x] Every message type has at least one valid and one invalid sample under `samples/<topic>/<MessageName>/`. Each invalid sample fails for exactly its stated reason, including missing `encryptedPin` on ValidateTransaction/HoldFunds/PostTransfer and a decimal amount
-- [x] No schema uses `"type": "number"`. Every schema has a required `schemaVersion` const
+- [x] No schema uses `"type": "number"`. Every schema has a required `schemaVersion` const (message schemas only; payload and common/ schemas are fragments, decided at merge)
 - [x] The template's schema loader resolves `https://contracts.upay.mw/` `$ref`s from `mwContractsDir`. A template test validates a `core.command.v1` HoldFunds sample (valid and invalid) through it, and `ConfigChangedEventSchemaTest` still passes
 - [x] `contracts/README.md` documents the layout and the steps to add a new message type
 - [x] `make verify` passes
