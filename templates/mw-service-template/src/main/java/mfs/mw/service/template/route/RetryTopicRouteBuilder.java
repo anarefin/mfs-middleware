@@ -1,6 +1,5 @@
 package mfs.mw.service.template.route;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import mfs.mw.service.template.config.KafkaRetryProperties;
 import mfs.mw.service.template.messaging.MwHeaders;
@@ -117,8 +116,8 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
         .addKeyValue("event", dlq ? "kafka.dlq.parked" : "kafka.retry.scheduled")
         .addKeyValue("topic", topic())
         .addKeyValue("attempt", attempt)
-        .addKeyValue("correlationId", text(msg, MwHeaders.CORRELATION_ID))
-        .addKeyValue("txnId", text(msg, MwHeaders.TXN_ID))
+        .addKeyValue("correlationId", MwHeaders.text(msg.getHeader(MwHeaders.CORRELATION_ID)))
+        .addKeyValue("txnId", MwHeaders.text(msg.getHeader(MwHeaders.TXN_ID)))
         .addKeyValue("errorClass", errorClass)
         .log(dlq ? "record moved to DLQ" : "record moved to retry topic");
   }
@@ -135,14 +134,5 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
       throw new IllegalStateException("Kafka manual commit is not enabled for this consumer");
     }
     commit.commit();
-  }
-
-  /** Header value as text: Kafka record headers arrive as UTF-8 bytes. */
-  private static String text(Message msg, String name) {
-    Object v = msg.getHeader(name);
-    if (v instanceof byte[] bytes) {
-      return new String(bytes, StandardCharsets.UTF_8);
-    }
-    return v == null ? null : v.toString();
   }
 }

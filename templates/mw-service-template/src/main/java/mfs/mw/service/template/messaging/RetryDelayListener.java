@@ -1,6 +1,5 @@
 package mfs.mw.service.template.messaging;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Iterator;
@@ -105,10 +104,7 @@ public final class RetryDelayListener extends KafkaConsumerListener {
   }
 
   private static Long parse(Object header) {
-    String text =
-        header instanceof byte[] bytes
-            ? new String(bytes, StandardCharsets.UTF_8)
-            : header == null ? null : header.toString();
+    String text = MwHeaders.text(header);
     if (text == null) {
       return null;
     }
