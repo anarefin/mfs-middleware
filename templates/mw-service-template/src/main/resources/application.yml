@@ -89,6 +89,10 @@ management:
       type: w3c
 
 mw:
+  kafka:
+    retry:
+      # Non-blocking retry topics <topic>.retry.1..3, then <topic>.dlq (19.2).
+      delays: 10s,1m,10m
   service:
     name: ${spring.application.name}
     version: ${MW_VERSION:0.1.0-SNAPSHOT}
