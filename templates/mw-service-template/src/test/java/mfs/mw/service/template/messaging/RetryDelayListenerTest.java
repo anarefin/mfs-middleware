@@ -1,4 +1,4 @@
-package mfs.mw.service.template.route;
+package mfs.mw.service.template.messaging;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
-import mfs.mw.service.template.messaging.MwHeaders;
 import org.apache.camel.Message;
 import org.apache.camel.component.kafka.KafkaConstants;
 import org.apache.camel.impl.DefaultCamelContext;
@@ -96,6 +95,16 @@ class RetryDelayListenerTest {
     assertThat(listener.holdBack(msg)).as("still not due").isTrue();
     assertThat(consumer.paused()).as("paused again, not skipped").containsExactly(TP);
     assertThat(consumer.position(TP)).as("rewound to the held record").isEqualTo(HELD_OFFSET);
+  }
+
+  @Test
+  void recordWithoutKafkaCoordinatesIsHandledNotHeld() {
+    Message msg = heldRecord();
+    msg.removeHeader(KafkaConstants.OFFSET);
+    assertThat(listener.holdBack(msg)).as("cannot be rewound, so never paused").isFalse();
+    msg.removeHeader(KafkaConstants.PARTITION);
+    assertThat(listener.holdBack(msg)).isFalse();
+    assertThat(consumer.paused()).isEmpty();
   }
 
   @Test

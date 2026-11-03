@@ -2,6 +2,7 @@ package mfs.mw.service.template.conformance;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -74,8 +75,8 @@ class InboxConformanceIT {
     }
 
     @Bean
-    RetryTopicRouteBuilder inboxRoute(KafkaRetryProperties retry) {
-      return new RetryTopicRouteBuilder(retry) {
+    RetryTopicRouteBuilder inboxRoute(KafkaRetryProperties retry, Clock clock) {
+      return new RetryTopicRouteBuilder(retry, clock) {
         @Override
         protected String topic() {
           return TOPIC;
@@ -89,9 +90,16 @@ class InboxConformanceIT {
     }
   }
 
-  @Autowired EventPublisher publisher;
-  @Autowired CountingHandler handler;
-  @Autowired JdbcTemplate jdbc;
+  private final EventPublisher publisher;
+  private final CountingHandler handler;
+  private final JdbcTemplate jdbc;
+
+  @Autowired
+  InboxConformanceIT(EventPublisher publisher, CountingHandler handler, JdbcTemplate jdbc) {
+    this.publisher = publisher;
+    this.handler = handler;
+    this.jdbc = jdbc;
+  }
 
   @BeforeAll
   static void effectTable(@Autowired JdbcTemplate jdbc) {

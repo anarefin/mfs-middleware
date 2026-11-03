@@ -54,12 +54,15 @@
       "credentials": [
         {
           "type": "password",
-          "value": "dev-only-pass",
+          "value": "${KC_OPS_TEST_PASSWORD}",
           "temporary": false
         }
       ],
       "realmRoles": [
         "ops-viewer"
+      ],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
       ]
     },
     {
@@ -72,13 +75,16 @@
       "credentials": [
         {
           "type": "password",
-          "value": "dev-only-pass",
+          "value": "${KC_OPS_TEST_PASSWORD}",
           "temporary": false
         }
       ],
       "realmRoles": [
         "ops-viewer",
         "ops-maker"
+      ],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
       ]
     },
     {
@@ -91,13 +97,16 @@
       "credentials": [
         {
           "type": "password",
-          "value": "dev-only-pass",
+          "value": "${KC_OPS_TEST_PASSWORD}",
           "temporary": false
         }
       ],
       "realmRoles": [
         "ops-viewer",
         "ops-checker"
+      ],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
       ]
     },
     {
@@ -110,18 +119,71 @@
       "credentials": [
         {
           "type": "password",
-          "value": "dev-only-pass",
+          "value": "${KC_OPS_TEST_PASSWORD}",
           "temporary": false
         }
       ],
       "realmRoles": [
         "ops-viewer",
         "ops-admin"
+      ],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
       ]
     }
   ],
   "otpPolicyType": "totp",
   "otpPolicyAlgorithm": "HmacSHA256",
   "otpPolicyDigits": 6,
-  "otpPolicyPeriod": 30
+  "otpPolicyPeriod": 30,
+  "browserFlow": "browser-mfa",
+  "authenticatorConfig": [],
+  "authenticationFlows": [
+    {
+      "alias": "browser-mfa",
+      "description": "Ops console login: password and TOTP both required (spec 18.2)",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "authenticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "flowAlias": "browser-mfa forms",
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "browser-mfa forms",
+      "description": "Username/password, then OTP (never conditional)",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-username-password-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "userSetupAllowed": false
+        }
+      ]
+    }
+  ]
 }

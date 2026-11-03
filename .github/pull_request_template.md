@@ -34,6 +34,14 @@ Acceptance tests from the WP and where they live:
 - [ ] No secrets, no `System.out`, no field injection, no blocking on Kafka threads (see `CLAUDE.md`)
 - [ ] Only contracts owned by this service changed
 
+Definition of done (spec 23.2):
+
+- [ ] Unit, route and integration tests green; coverage gate met (JaCoCo >= 80% lines on `service`, `mapper`, `client`; `make verify` enforces it)
+- [ ] Contracts (OpenAPI/AsyncAPI/JSON Schema) updated
+- [ ] Masking verified for any new field (`@Sensitive` on every personal field, with a `MaskingPolicy` test)
+- [ ] Metrics, log events and alert rule (if new failure mode) added
+- [ ] Runbook / ADR updated where behaviour or design changed
+
 ## Reviewer checklist
 
 - [ ] Re-ran `make verify` on this branch and it passed

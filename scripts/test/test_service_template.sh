@@ -91,3 +91,29 @@ test_template_copy_checks_and_builds_its_image_alone() {
   docker image inspect "$tag" >/dev/null 2>&1 || fail "image $tag not built"
   docker rmi -f "$tag" >/dev/null 2>&1 || true
 }
+
+test_template_compose_comments_match_the_platform_zones() {
+  # OpenBao is on app and ops in the platform (deploy/compose/platform), never on data.
+  if grep -nE '^#.*`data` for[^`]*OpenBao' "$TEMPLATE_SRC/compose.yml"; then
+    fail "template compose.yml says OpenBao is on data"
+  fi
+  local nets
+  nets="$(awk '/^  openbao:/{f=1;next} f&&/^  [a-z]/{exit} f&&/networks:/{print;exit}' "$REPO_DIR/deploy/compose/platform/compose.yml")"
+  case "$nets" in *app*ops*) ;; *) fail "platform openbao networks changed: $nets" ;; esac
+}
+
+test_template_check_runs_the_coverage_gate_and_static_analysis() {
+  # spec 22.1: >= 80% line coverage (JaCoCo) on service, mapper and client, in `check`
+  # (make verify); static analysis (SpotBugs) in `check` too.
+  local b="$TEMPLATE_SRC/build.gradle.kts"
+  grep -qE '^[[:space:]]*jacoco$' "$b" || fail "jacoco plugin not applied"
+  grep -qE 'alias\(libs\.plugins\.spotbugs\)' "$b" || fail "spotbugs plugin not applied"
+  grep -q 'jacocoTestCoverageVerification' "$b" || fail "no coverage verification task configured"
+  grep -qE 'minimum = "?0\.80"?\.toBigDecimal\(\)|minimum = BigDecimal\("0\.80"\)' "$b" || fail "gate is not 0.80"
+  grep -qE 'counter = "LINE"' "$b" || fail "gate does not count lines"
+  for p in service mapper client; do
+    grep -q "\"$p\"" "$b" || fail "gate does not cover the $p package"
+  done
+  grep -qE 'tasks\.check \{[^}]*jacocoTestCoverageVerification' "$b" || fail "coverage gate not wired into check"
+  grep -q 'toolVersion = libs.versions.jacoco' "$b" || fail "JaCoCo version not pinned from the catalog"
+}

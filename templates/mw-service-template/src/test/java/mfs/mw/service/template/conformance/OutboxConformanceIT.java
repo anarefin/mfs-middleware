@@ -40,10 +40,18 @@ class OutboxConformanceIT {
 
   static final String TOPIC = "conformance.outbox.event.v1";
 
-  @Autowired OutboxWriter outbox;
-  @Autowired JdbcTemplate jdbc;
-  @Autowired TransactionTemplate tx;
-  @Autowired KafkaContainer kafka;
+  private final OutboxWriter outbox;
+  private final JdbcTemplate jdbc;
+  private final TransactionTemplate tx;
+  private final KafkaContainer kafka;
+
+  @Autowired
+  OutboxConformanceIT(OutboxWriter outbox, JdbcTemplate jdbc, TransactionTemplate tx, KafkaContainer kafka) {
+    this.outbox = outbox;
+    this.jdbc = jdbc;
+    this.tx = tx;
+    this.kafka = kafka;
+  }
 
   @BeforeEach
   void businessTable() {

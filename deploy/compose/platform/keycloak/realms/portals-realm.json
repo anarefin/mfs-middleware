@@ -50,7 +50,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "dev-only-pass",
+          "value": "${KC_PORTALS_TEST_PASSWORD}",
           "temporary": false
         }
       ],
@@ -68,7 +68,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "dev-only-pass",
+          "value": "${KC_PORTALS_TEST_PASSWORD}",
           "temporary": false
         }
       ],
@@ -86,7 +86,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "dev-only-pass",
+          "value": "${KC_PORTALS_TEST_PASSWORD}",
           "temporary": false
         }
       ],

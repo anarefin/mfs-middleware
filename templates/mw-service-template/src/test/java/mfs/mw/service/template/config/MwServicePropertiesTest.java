@@ -13,7 +13,12 @@ import org.springframework.context.annotation.Import;
 @Import(TestInfrastructure.class)
 class MwServicePropertiesTest {
 
-  @Autowired MwServiceProperties props;
+  private final MwServiceProperties props;
+
+  @Autowired
+  MwServicePropertiesTest(MwServiceProperties props) {
+    this.props = props;
+  }
 
   @Test
   void bindsServiceIdentity() {

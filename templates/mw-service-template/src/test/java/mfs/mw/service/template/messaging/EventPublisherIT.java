@@ -24,9 +24,16 @@ import org.testcontainers.kafka.KafkaContainer;
 @Import(TestInfrastructure.class)
 class EventPublisherIT {
 
-  @Autowired EventPublisher publisher;
-  @Autowired KafkaContainer kafka;
-  @Autowired CamelContext camel;
+  private final EventPublisher publisher;
+  private final KafkaContainer kafka;
+  private final CamelContext camel;
+
+  @Autowired
+  EventPublisherIT(EventPublisher publisher, KafkaContainer kafka, CamelContext camel) {
+    this.publisher = publisher;
+    this.kafka = kafka;
+    this.camel = camel;
+  }
 
   @Test
   void publishedRecordCarriesEveryRequiredHeader() {

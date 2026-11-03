@@ -45,6 +45,7 @@ mfs.mw.<service>/
   scheduler/   @Scheduled jobs guarded by ShedLock
   security/    filters, signature/HMAC, JWT converters
   filter/      correlation ID and request logging filters
+  logging/     structured log formatter (21.1 fields, masking before output)
   util/        small static helpers (masking, hashing, crypto envelope)
 ```
 
@@ -95,7 +96,7 @@ or one with `M=<module>` (e.g. `M=mw-orchestrator`).
 
 | Command | What it does |
 | --- | --- |
-| `make verify [M=]` | isolation check, contracts lint, `./gradlew check` per module; without `M=` also the script self-tests |
+| `make verify [M=]` | isolation check, field-injection check, contracts lint, `./gradlew check` per module (tests, JaCoCo 80% line gate on `service`/`mapper`/`client`, SpotBugs + FindSecBugs); without `M=` also the script self-tests |
 | `make check-isolation [M=]` | module independence rules (fails on cross-module deps, `includeBuild`, convention plugins, paths outside the module except `contracts/`) |
 | `make contracts-lint` | lint `contracts/` |
 | `make versions-check [M=]` | report version drift between module version catalogs (report only, not in `verify`) |
@@ -117,7 +118,8 @@ Definition of done: tests written first, `make verify M=<module>` and the releva
 - Never put secrets in code, config files or tests (use OpenBao/Vault config binding;
   test fixtures use obviously fake values).
 - Never use `System.out` / `System.err` / `printStackTrace`; log through SLF4J.
-- Never use field injection (`@Autowired` on fields); constructor injection only.
+- Never use field injection (`@Autowired` on fields), tests included; constructor injection
+  only (`make verify` runs `scripts/check-field-injection.sh`).
 - Never block on Kafka listener threads (no synchronous waits for replies, sleeps or
   long partner calls on the consumer thread).
 - Never log a PIN or an unmasked MSISDN, NID, account number or name.

@@ -20,7 +20,7 @@ and keep `scripts/test/test_service_template.sh` green.
 | Security headers | `filter/SecurityHeadersFilter` | 18.6 |
 | Error envelope, code namespaces -> HTTP status, global advice; logs route templates, not raw URIs | `exception/`, `dto/ErrorEnvelope` | 5.3, 18.6 |
 | `@Sensitive` + `MaskingPolicy` (MSISDN `0171****789`, NID last 3, account last 4, name initial, secrets `****`) | `util/` | 18.3 |
-| JSON logs with the 21.1 fields, masking before output | `config/JsonLogFormatter` | 21.1 |
+| JSON logs with the 21.1 fields, masking before output | `logging/JsonLogFormatter` | 21.1 |
 | Config binding, OpenBao/Vault via Spring Cloud Vault (AppRole, `VAULT_ENABLED`) | `config/MwServiceProperties`, `application.yml` | 18.4, 20.4 |
 | Liveness/readiness, `/actuator/prometheus`, Brave tracing (W3C), virtual threads | `application.yml` | 20.1, 21.2, 21.3 |
 | Image: layered jar, JDK 25 AOT cache, non-root uid 10001, readiness `HEALTHCHECK`, SBOM at `/app/sbom/bom.json` | `Dockerfile` | 20.1 |
@@ -32,7 +32,7 @@ and keep `scripts/test/test_service_template.sh` green.
 | --- | --- | --- |
 | Camel Kafka component: idempotent producer, `acks=all`, group = service name, auto-commit off (per-record commit after handling or parking) | `application.yml` (`camel.component.kafka`) | 6.1 |
 | `EventPublisher`: JSON record with the 6 headers (`mw-correlation-id`, `mw-txn-id`, `mw-idempotency-key`, `mw-source`, `mw-schema-version`, `traceparent`) | `messaging/` | 6.1, 21.3 |
-| `RetryTopicRouteBuilder`: subclass per consumed topic; failures go `<topic>.retry.1..3` (10 s, 1 min, 10 min) then `<topic>.dlq`, key, body and headers kept; delays pause the partition, never sleep on the consumer thread (`RetryDelayListener`); logs ids and exception class only | `route/`, `config/KafkaRetryProperties` | 19.2, 6.2 |
+| `RetryTopicRouteBuilder`: subclass per consumed topic; failures go `<topic>.retry.1..3` (10 s, 1 min, 10 min) then `<topic>.dlq`, key, body and headers kept; delays pause the partition, never sleep on the consumer thread (`messaging/RetryDelayListener`); due times from the injected `Clock` bean (`config/ClockConfig`); logs ids and exception class only | `route/`, `messaging/`, `config/KafkaRetryProperties` | 19.2, 6.2 |
 | Resilience4j defaults (CB 60 s window / 50 calls / 50% failed or slow / 30 s open / 5 probes, bulkhead 200, time limiter 30 s, retry 2x 200 ms -> 1 s jittered, idempotent calls only) | `application.yml` (`resilience4j`) | 19.2 |
 | Own schema `service_template` (renamed by scaffold to the service name in snake case; services may pick the spec 16.2 name), Flyway on start from `db/migration/V<n>__*.sql` | `application.yml`, `src/main/resources/db/migration` | 16.2, 16.4 |
 | Own type for `mw.config.changed.v1`, checked against `contracts/` via `mwContractsDir` | `dto/ConfigChangedEvent`, `ConfigChangedEventSchemaTest` | 20.4, 22.1 |
@@ -59,9 +59,9 @@ test contexts would relay each other's rows; a test that needs it on sets
 
 | Command | What it does |
 | --- | --- |
-| `./gradlew check` | all tests (`test` + `conformance`); `*IT` use Testcontainers (Docker) |
+| `./gradlew check` | all tests (`test` + `conformance`; `*IT` use Testcontainers, Docker), the JaCoCo gate (>= 80% lines per `service`/`mapper`/`client` package, 22.1; report in `build/reports/jacoco`) and SpotBugs + FindSecBugs on main code (18.5 SAST; `build/reports/spotbugs`, reviewed exclusions in `config/spotbugs/exclude.xml`) |
 | `./gradlew conformance` | the conformance suite alone |
 | `make test-scripts` | includes `test_template_copy_checks_and_builds_its_image_alone`: a copy plus `contracts/` runs `./gradlew check bootJar && docker build .` (skipped when Docker is down) |
 | `./gradlew check bootJar && docker build -t mw-service-template:dev .` | spec 4.3 rule 1 |
 | `docker compose up -d --wait` | run it alone (creates/joins `${COMPOSE_PROJECT_NAME:-mw}_app`) |
-| `make verify M=mw-service-template` | isolation + contracts lint + `./gradlew check` |
+| `make verify M=mw-service-template` | isolation + field-injection check + contracts lint + `./gradlew check` |

@@ -36,3 +36,11 @@ test_pr_template_has_test_report_and_reviewer_checklist() {
   grep -qE '^- \[ \] .*make verify' "$t" || fail "no reviewer checklist item to re-run make verify"
   grep -qiE 'reviewer' "$t" || fail "no reviewer checklist"
 }
+
+test_pr_template_has_the_spec_definition_of_done() {
+  t="$REPO_DIR/.github/pull_request_template.md"
+  # spec 23.2 items the agent can tick on a PR
+  grep -qiE '^- \[ \] .*coverage gate' "$t" || fail "no 'coverage gate met' item"
+  grep -qiE '^- \[ \] .*masking verified for (any|every) new field' "$t" || fail "no 'masking verified' item"
+  grep -qiE '^- \[ \] .*metrics.*log events.*alert rule' "$t" || fail "no 'metrics, log events, alert rule' item"
+}

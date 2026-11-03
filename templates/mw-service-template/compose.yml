@@ -4,7 +4,8 @@
 # The zone network is named after the platform project (default `mw`, override with
 # COMPOSE_PROJECT_NAME) so the same definition works both when included in the
 # environment project and when started alone. Join only the zones this service needs
-# (18.1): `app` for Kafka and other services, `data` for PostgreSQL and OpenBao.
+# (18.1): `app` for Kafka, Valkey, OpenBao and other services, `data` for PostgreSQL.
+# (The platform puts OpenBao on `app` and `ops`; services reach it over `app`.)
 networks:
   app:
     name: ${COMPOSE_PROJECT_NAME:-mw}_app

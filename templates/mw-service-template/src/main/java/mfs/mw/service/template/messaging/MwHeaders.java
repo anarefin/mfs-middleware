@@ -1,5 +1,6 @@
 package mfs.mw.service.template.messaging;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /** Kafka record header names (spec 6.1, 21.3) and the retry/DLQ diagnostics this service adds. */
@@ -26,4 +27,15 @@ public final class MwHeaders {
   public static final String ERROR_CLASS = "mw-error-class";
 
   private MwHeaders() {}
+
+  /**
+   * A header value as text: Kafka record headers arrive as UTF-8 bytes, values set inside a route
+   * are plain objects. Null when the header is absent.
+   */
+  public static String text(Object value) {
+    if (value instanceof byte[] bytes) {
+      return new String(bytes, StandardCharsets.UTF_8);
+    }
+    return value == null ? null : value.toString();
+  }
 }

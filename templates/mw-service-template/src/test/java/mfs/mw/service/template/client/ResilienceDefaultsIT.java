@@ -26,10 +26,18 @@ import org.springframework.context.annotation.Import;
 @Import(TestInfrastructure.class)
 class ResilienceDefaultsIT {
 
-  @Autowired CircuitBreakerRegistry circuitBreakers;
-  @Autowired BulkheadRegistry bulkheads;
-  @Autowired RetryRegistry retries;
-  @Autowired TimeLimiterRegistry timeLimiters;
+  private final CircuitBreakerRegistry circuitBreakers;
+  private final BulkheadRegistry bulkheads;
+  private final RetryRegistry retries;
+  private final TimeLimiterRegistry timeLimiters;
+
+  @Autowired
+  ResilienceDefaultsIT(CircuitBreakerRegistry circuitBreakers, BulkheadRegistry bulkheads, RetryRegistry retries, TimeLimiterRegistry timeLimiters) {
+    this.circuitBreakers = circuitBreakers;
+    this.bulkheads = bulkheads;
+    this.retries = retries;
+    this.timeLimiters = timeLimiters;
+  }
 
   @Test
   void circuitBreakerOpensAtHalfFailedOrSlowCallsOverSixtySeconds() {

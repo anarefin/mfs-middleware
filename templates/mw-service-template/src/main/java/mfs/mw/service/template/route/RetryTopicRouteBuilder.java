@@ -1,9 +1,9 @@
 package mfs.mw.service.template.route;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import mfs.mw.service.template.config.KafkaRetryProperties;
 import mfs.mw.service.template.messaging.MwHeaders;
+import mfs.mw.service.template.messaging.RetryDelayListener;
 import org.apache.camel.Exchange;
 import org.apache.camel.Message;
 import org.apache.camel.builder.RouteBuilder;
@@ -38,9 +38,15 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
   private static final long RESUME_CHECK_MS = 500;
 
   private final KafkaRetryProperties retry;
+  private final Clock clock;
 
-  protected RetryTopicRouteBuilder(KafkaRetryProperties retry) {
+  /**
+   * @param clock the service's {@link Clock} bean ({@code config/ClockConfig}); stamps {@code
+   *     mw-retry-not-before} and decides when a held-back record is due, so both use one time
+   */
+  protected RetryTopicRouteBuilder(KafkaRetryProperties retry, Clock clock) {
     this.retry = retry;
+    this.clock = clock;
   }
 
   /** Source topic, e.g. {@code mw.txn.request.v1}. */
@@ -66,7 +72,7 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
 
     for (int n = 1; n <= attempts; n++) {
       int next = n + 1;
-      RetryDelayListener delay = new RetryDelayListener(retry.delay(n), Clock.systemUTC());
+      RetryDelayListener delay = new RetryDelayListener(retry.delay(n), clock);
       from("kafka:" + retryTopic(n)
               + "?groupId={{camel.component.kafka.group-id}}.retry." + n
               + "&pollTimeoutMs=" + RESUME_CHECK_MS)
@@ -95,7 +101,7 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
     return attempt <= retry.attempts() ? retryTopic(attempt) : topic() + ".dlq";
   }
 
-  private void park(Exchange exchange, int attempt) {
+  void park(Exchange exchange, int attempt) {
     Exception cause = exchange.getProperty(Exchange.EXCEPTION_CAUGHT, Exception.class);
     String errorClass = cause == null ? "unknown" : cause.getClass().getName();
     boolean dlq = attempt > retry.attempts();
@@ -109,15 +115,15 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
     if (dlq) {
       msg.removeHeader(MwHeaders.RETRY_NOT_BEFORE);
     } else {
-      long notBefore = System.currentTimeMillis() + retry.delay(attempt).toMillis();
+      long notBefore = clock.millis() + retry.delay(attempt).toMillis();
       msg.setHeader(MwHeaders.RETRY_NOT_BEFORE, Long.toString(notBefore));
     }
     log.atWarn()
         .addKeyValue("event", dlq ? "kafka.dlq.parked" : "kafka.retry.scheduled")
         .addKeyValue("topic", topic())
         .addKeyValue("attempt", attempt)
-        .addKeyValue("correlationId", text(msg, MwHeaders.CORRELATION_ID))
-        .addKeyValue("txnId", text(msg, MwHeaders.TXN_ID))
+        .addKeyValue("correlationId", MwHeaders.text(msg.getHeader(MwHeaders.CORRELATION_ID)))
+        .addKeyValue("txnId", MwHeaders.text(msg.getHeader(MwHeaders.TXN_ID)))
         .addKeyValue("errorClass", errorClass)
         .log(dlq ? "record moved to DLQ" : "record moved to retry topic");
   }
@@ -134,14 +140,5 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
       throw new IllegalStateException("Kafka manual commit is not enabled for this consumer");
     }
     commit.commit();
-  }
-
-  /** Header value as text: Kafka record headers arrive as UTF-8 bytes. */
-  private static String text(Message msg, String name) {
-    Object v = msg.getHeader(name);
-    if (v instanceof byte[] bytes) {
-      return new String(bytes, StandardCharsets.UTF_8);
-    }
-    return v == null ? null : v.toString();
   }
 }
