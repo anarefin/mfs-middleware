@@ -5,3 +5,6 @@ build/
 .idea/
 .DS_Store
 node_modules/
+
+# generated dev credentials (scripts/gen-dev-env.sh)
+/deploy/compose/platform/.env

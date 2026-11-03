@@ -1,0 +1,127 @@
+{
+  "realm": "ops",
+  "displayName": "upay operations",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      {
+        "name": "ops-viewer",
+        "description": "Search transactions and audit"
+      },
+      {
+        "name": "ops-maker",
+        "description": "Raise TSQ, reversal and config changes"
+      },
+      {
+        "name": "ops-checker",
+        "description": "Approve maker requests (second user)"
+      },
+      {
+        "name": "ops-admin",
+        "description": "Manage partners, menus and templates"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "mw-admin-ui",
+      "name": "Admin console",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "https://localhost/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "protocol": "openid-connect"
+    }
+  ],
+  "users": [
+    {
+      "username": "ops-viewer01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Viewer",
+      "lastName": "Test",
+      "email": "ops-viewer01@example.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dev-only-pass",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ops-viewer"
+      ]
+    },
+    {
+      "username": "ops-maker01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Maker",
+      "lastName": "Test",
+      "email": "ops-maker01@example.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dev-only-pass",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ops-viewer",
+        "ops-maker"
+      ]
+    },
+    {
+      "username": "ops-checker01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Checker",
+      "lastName": "Test",
+      "email": "ops-checker01@example.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dev-only-pass",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ops-viewer",
+        "ops-checker"
+      ]
+    },
+    {
+      "username": "ops-admin01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "Test",
+      "email": "ops-admin01@example.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dev-only-pass",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ops-viewer",
+        "ops-admin"
+      ]
+    }
+  ],
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA256",
+  "otpPolicyDigits": 6,
+  "otpPolicyPeriod": 30
+}
