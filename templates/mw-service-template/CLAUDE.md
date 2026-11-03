@@ -39,14 +39,28 @@ and keep `scripts/test/test_service_template.sh` green.
 
 Tests that start the context import `TestInfrastructure` (PostgreSQL 18 + Kafka
 Testcontainers, shared per run). Topic, retry-topic and DLQ declarations and their producer
-ACLs belong to the platform (`deploy/kafka/`), not this module. Outbox/inbox and the
-conformance suite come in ticket 06.
+ACLs belong to the platform (`deploy/kafka/`), not this module.
+
+## Outbox, inbox, conformance suite (WP05 part)
+
+| Piece | Where | Spec |
+| --- | --- | --- |
+| `outbox` and `inbox (consumer, event_id)` tables | `db/migration/V2__outbox_inbox.sql` | 6.4, 16.3 |
+| `OutboxWriter.append(...)`: call inside the business transaction (refuses to run outside one); stores the 6.1 headers incl. `traceparent` | `messaging/` | 6.4 |
+| `OutboxRelay` + `route/OutboxRelayRouteBuilder` (timer, `mw.outbox.relay.*`): one relay at a time per schema (advisory xact lock), `FOR UPDATE SKIP LOCKED`, id order, marks sent only after Kafka acked; crash/restart re-publishes (at-least-once) | `messaging/`, `route/` | 6.4, 19.3 |
+| `Inbox.processOnce(consumer, eventId, sideEffect)`: inbox row and side effect in one transaction; duplicates are no-ops, a failed side effect leaves no row | `messaging/` | 6.4, 19.3 |
+| Conformance suite: `@Conformance` tests (correlation, error envelope, masking, log fields, Kafka retry/DLQ incl. rebalance hold-back, outbox, inbox). Copy unchanged into every service | `src/test/.../conformance/`, `route/RetryTopicRouteIT` | 4.3, 22.1 |
+
+The relay route is off in tests (`src/test/resources/config/application.yml`) because cached
+test contexts would relay each other's rows; a test that needs it on sets
+`mw.outbox.relay.enabled=true` and `@DirtiesContext`. Outbox and inbox rows are not purged yet.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `./gradlew check` | all tests; `*IT` use Testcontainers (Docker) |
+| `./gradlew check` | all tests (`test` + `conformance`); `*IT` use Testcontainers (Docker) |
+| `./gradlew conformance` | the conformance suite alone |
 | `make test-scripts` | includes `test_template_copy_checks_and_builds_its_image_alone`: a copy plus `contracts/` runs `./gradlew check bootJar && docker build .` (skipped when Docker is down) |
 | `./gradlew check bootJar && docker build -t mw-service-template:dev .` | spec 4.3 rule 1 |
 | `docker compose up -d --wait` | run it alone (creates/joins `${COMPOSE_PROJECT_NAME:-mw}_app`) |
