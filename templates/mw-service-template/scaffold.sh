@@ -3,7 +3,7 @@
 # Usage: scaffold.sh mw-<name> DEST_DIR      (normally via `make new-service NAME=mw-<name>`)
 #
 # mw-adapter-telco -> package mfs.mw.adapter.telco, AdapterTelcoApplication,
-# rootProject.name "mw-adapter-telco". The copy keeps no reference back to the template:
+# rootProject.name "mw-adapter-telco", DB schema adapter_telco. The copy keeps no reference back to the template:
 # build output, this script and the template's CLAUDE.md are not copied, and the run
 # fails if any template name survives the rename. bash 3.2 compatible.
 set -eu
@@ -36,6 +36,7 @@ done
 pkg="mfs.mw.$(printf '%s' "$suffix" | tr - .)"
 pkg_path="$(printf '%s' "$pkg" | tr . /)"
 upper="$(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')"
+snake="$(printf '%s' "$suffix" | tr - _)"   # DB schema and role prefix (16.2, 16.4)
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/scaffold.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
@@ -58,13 +59,14 @@ for set in main test; do
 done
 
 # Rewrite names in every text file (most specific first).
-grep -rIlE 'service-template|service\.template|service/template|ServiceTemplate|SERVICE_TEMPLATE' "$out" \
+grep -rIlE 'service-template|service_template|service\.template|service/template|ServiceTemplate|SERVICE_TEMPLATE' "$out" \
   | while IFS= read -r f; do
       sed -e "s#mfs\.mw\.service\.template#$pkg#g" \
           -e "s#mfs/mw/service/template#$pkg_path#g" \
           -e "s#MW_SERVICE_TEMPLATE#$upper#g" \
           -e "s#ServiceTemplate#$pascal#g" \
           -e "s#mw-service-template#$name#g" \
+          -e "s#service_template#$snake#g" \
           "$f" >"$f.scaffold" && mv "$f.scaffold" "$f"
     done
 chmod +x "$out/gradlew"
@@ -109,7 +111,7 @@ Standalone service module (spec 4.2, 4.3). Package \`$pkg\`. Follow the root
 | \`make up M=$name\` | run this service's \`compose.yml\` (platform project must be up) |
 EOF
 
-refs="$(grep -rIlE 'service-template|service\.template|service/template|ServiceTemplate|SERVICE_TEMPLATE|templates/' "$out" || true)"
+refs="$(grep -rIlE 'service-template|service_template|service\.template|service/template|ServiceTemplate|SERVICE_TEMPLATE|templates/' "$out" || true)"
 [ -z "$refs" ] || die "template names left in: $refs"
 
 mkdir -p "$(dirname "$dest")"

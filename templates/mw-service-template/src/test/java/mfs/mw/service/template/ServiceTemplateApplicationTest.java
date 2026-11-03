@@ -10,10 +10,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Import;
 import org.springframework.core.env.Environment;
 
 /** The chassis starts and exposes the endpoints the Compose healthcheck and scraper use (20.1, 21.2). */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
+@Import(TestInfrastructure.class)
 class ServiceTemplateApplicationTest {
 
   private final HttpClient http = HttpClient.newHttpClient();

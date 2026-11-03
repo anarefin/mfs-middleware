@@ -12,7 +12,7 @@ copy_template() {
 
 # back_refs DIR: print text files under DIR that still name the template.
 back_refs() {
-  grep -rIlE 'service-template|service\.template|service/template|ServiceTemplate|SERVICE_TEMPLATE|templates/' "$1" || true
+  grep -rIlE 'service-template|service_template|service\.template|service/template|ServiceTemplate|SERVICE_TEMPLATE|templates/' "$1" || true
 }
 
 test_template_is_a_module_and_passes_isolation() {
@@ -33,6 +33,8 @@ test_new_service_scaffolds_a_clean_copy() {
   grep -q 'rootProject.name = "mw-demo"' $d/settings.gradle.kts || fail "rootProject.name not renamed"
   grep -q 'name: mw-demo' $d/src/main/resources/application.yml || fail "application name not renamed"
   grep -q 'mw-demo:' $d/compose.yml || fail "compose service not renamed"
+  grep -q 'schemas: demo$' $d/src/main/resources/application.yml || fail "DB schema not renamed"
+  grep -q 'COMMENT ON SCHEMA demo ' $d/src/main/resources/db/migration/V1__baseline.sql || fail "migration schema not renamed"
   [ -x $d/gradlew ] || fail "gradlew not executable"
   [ -f $d/gradle/wrapper/gradle-wrapper.jar ] || fail "wrapper jar missing"
   [ ! -e $d/scaffold.sh ] || fail "scaffold.sh copied"
@@ -49,6 +51,7 @@ test_new_service_maps_hyphens_to_package_dots() {
   [ -f $d/src/main/java/mfs/mw/adapter/telco/AdapterTelcoApplication.java ] || fail "wrong package path"
   grep -q '^package mfs.mw.adapter.telco.filter;' $d/src/main/java/mfs/mw/adapter/telco/filter/CorrelationIdFilter.java || fail "sub-package not renamed"
   grep -q 'MW_ADAPTER_TELCO_IMAGE' $d/compose.yml || fail "image variable not renamed"
+  grep -q 'schemas: adapter_telco$' $d/src/main/resources/application.yml || fail "DB schema not snake_case"
   [ -z "$(back_refs $d)" ] || fail "references back to the template"
 }
 

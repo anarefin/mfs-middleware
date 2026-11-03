@@ -25,6 +25,17 @@ spring:
   mvc:
     problemdetails:
       enabled: false
+  # This service's own schema (16.2), migrated by Flyway on start-up from
+  # db/migration/V<n>__*.sql (16.4). Credentials are dynamic from OpenBao's database engine
+  # (role <service>_rw) or DB_USERNAME/DB_PASSWORD; never written here.
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://postgres:5432/mw}
+    username: ${DB_USERNAME:service_template_rw}
+    password: ${DB_PASSWORD:}
+    hikari:
+      schema: service_template
+  flyway:
+    schemas: service_template
 
 logging:
   structured:

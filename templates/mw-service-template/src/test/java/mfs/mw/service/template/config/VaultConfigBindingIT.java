@@ -54,6 +54,8 @@ class VaultConfigBindingIT {
         new SpringApplicationBuilder(ServiceTemplateApplication.class)
             .web(WebApplicationType.NONE)
             .run(
+                // No database here: this test is about config binding only.
+                "--spring.flyway.enabled=false",
                 "--spring.cloud.vault.enabled=true",
                 "--spring.cloud.vault.uri=" + vaultUri(),
                 "--spring.cloud.vault.authentication=TOKEN",
