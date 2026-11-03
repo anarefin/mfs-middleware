@@ -1,6 +1,6 @@
 package mfs.mw.service.template.config;
 
-import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import java.time.Duration;
@@ -8,19 +8,17 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 /**
- * Outbox and inbox retention and the purge job (spec 6.4, 16.3): sent outbox rows older than
- * {@code mw.outbox.retention} and inbox rows older than {@code mw.inbox.retention} are deleted
- * every {@code mw.purge.period}, {@code mw.purge.batch-size} rows per statement. Defaults in
- * {@code application.yml} (7 days each).
+ * Outbox and inbox retention and the purge job (spec 6.4, 16.3), all under {@code mw.retention}:
+ * sent outbox rows older than {@code outbox} and inbox rows older than {@code inbox} are deleted
+ * on the {@code cron} schedule, {@code batch-size} rows per statement. Defaults in {@code
+ * application.yml} (7 days each, hourly).
+ *
+ * @param outbox how long sent outbox rows are kept
+ * @param inbox how long inbox rows are kept
+ * @param batchSize rows deleted per statement
+ * @param cron Spring cron for the purge job ({@code -} switches it off)
  */
 @Validated
-@ConfigurationProperties("mw")
+@ConfigurationProperties("mw.retention")
 public record RetentionProperties(
-    @Valid @NotNull Retention outbox, @Valid @NotNull Retention inbox, @Valid @NotNull Purge purge) {
-
-  /** How long processed rows are kept. */
-  public record Retention(@NotNull Duration retention) {}
-
-  /** The purge job's schedule and batch size. */
-  public record Purge(@NotNull Duration period, @Positive int batchSize) {}
-}
+    @NotNull Duration outbox, @NotNull Duration inbox, @Positive int batchSize, @NotBlank String cron) {}
