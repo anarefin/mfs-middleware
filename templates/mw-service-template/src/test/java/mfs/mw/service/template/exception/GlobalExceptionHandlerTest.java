@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
+import java.util.List;
+import mfs.mw.service.template.dto.ErrorDetail;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
@@ -42,6 +44,15 @@ class GlobalExceptionHandlerTest {
     void core() {
       throw new MwException("MW-CORE-INSUFFICIENT-BAL", "Insufficient balance")
           .withTxnId("0190a7c4-0000-7000-8000-000000000001");
+    }
+
+    @GetMapping("/test/full")
+    void full() {
+      throw new MwException("MW-PTR-GP-17", "Partner rejected")
+          .withMessageBn("অংশীদার প্রত্যাখ্যান করেছে")
+          .withTxnId("0190a7c4-0000-7000-8000-000000000002")
+          .withDetails(List.of(new ErrorDetail("partnerCode", "17")))
+          .withRetryable(true);
     }
 
     @GetMapping("/test/auth")
@@ -117,6 +128,31 @@ class GlobalExceptionHandlerTest {
         .asArray()
         .containsExactlyInAnyOrder("to", "amountMinor");
     assertThat(r).bodyJson().extractingPath("$.details[*].issue").asArray().doesNotContainNull();
+  }
+
+  /** The exact bytes on the wire: field order, omitted optionals, UTF-8 (spec 5.3). */
+  @Test
+  void envelopeBytesAreStable() throws Exception {
+    MvcTestResult full = get("/test/full");
+    assertThat(full).hasStatus(502);
+    assertThat(full.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8))
+        .isEqualTo(
+            "{\"code\":\"MW-PTR-GP-17\",\"message\":\"Partner rejected\","
+                + "\"messageBn\":\"অংশীদার প্রত্যাখ্যান করেছে\","
+                + "\"txnId\":\"0190a7c4-0000-7000-8000-000000000002\",\"correlationId\":\"corr-1\","
+                + "\"retryable\":true,\"details\":[{\"field\":\"partnerCode\",\"issue\":\"17\"}]}");
+
+    MvcTestResult notFound = get("/test/nope");
+    assertThat(notFound.getResponse().getContentAsString())
+        .isEqualTo(
+            "{\"code\":\"MW-VAL-003\",\"message\":\"Not found\",\"correlationId\":\"corr-1\","
+                + "\"retryable\":false,\"details\":[]}");
+
+    MvcTestResult bug = get("/test/bug");
+    assertThat(bug.getResponse().getContentAsString())
+        .isEqualTo(
+            "{\"code\":\"MW-SYS-001\",\"message\":\"Internal error\",\"correlationId\":\"corr-1\","
+                + "\"retryable\":true,\"details\":[]}");
   }
 
   @Test

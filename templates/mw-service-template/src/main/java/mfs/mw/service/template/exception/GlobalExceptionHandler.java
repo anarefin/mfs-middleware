@@ -36,9 +36,7 @@ public class GlobalExceptionHandler {
 
   @ExceptionHandler(MwException.class)
   ResponseEntity<ErrorEnvelope> mw(MwException e, HttpServletRequest req) {
-    return respond(
-        e.status(), e.code(), e.getMessage(), e.messageBn(), e.txnId(), e.retryable(),
-        e.details(), req, e);
+    return respond(e, req, e);
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -82,45 +80,51 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(NoResourceFoundException.class)
   ResponseEntity<ErrorEnvelope> notFound(Exception e, HttpServletRequest req) {
     return respond(
-        HttpStatus.NOT_FOUND, ErrorCodes.VAL_NOT_FOUND, "Not found", null, null, false,
-        List.of(), req, e);
+        new MwException(ErrorCodes.VAL_NOT_FOUND, "Not found").withStatus(HttpStatus.NOT_FOUND),
+        req, e);
   }
 
   @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
   ResponseEntity<ErrorEnvelope> method(Exception e, HttpServletRequest req) {
     return respond(
-        HttpStatus.METHOD_NOT_ALLOWED, ErrorCodes.VAL_METHOD, "Method not allowed", null, null,
-        false, List.of(), req, e);
+        new MwException(ErrorCodes.VAL_METHOD, "Method not allowed")
+            .withStatus(HttpStatus.METHOD_NOT_ALLOWED),
+        req, e);
   }
 
   @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
   ResponseEntity<ErrorEnvelope> mediaType(Exception e, HttpServletRequest req) {
     return respond(
-        HttpStatus.UNSUPPORTED_MEDIA_TYPE, ErrorCodes.VAL_MEDIA_TYPE, "Unsupported media type",
-        null, null, false, List.of(), req, e);
+        new MwException(ErrorCodes.VAL_MEDIA_TYPE, "Unsupported media type")
+            .withStatus(HttpStatus.UNSUPPORTED_MEDIA_TYPE),
+        req, e);
   }
 
   @ExceptionHandler(Exception.class)
   ResponseEntity<ErrorEnvelope> unexpected(Exception e, HttpServletRequest req) {
-    return respond(
-        HttpStatus.INTERNAL_SERVER_ERROR, ErrorCodes.SYS_INTERNAL, "Internal error", null, null,
-        ErrorCategory.SYS.retryable(), List.of(), req, e);
+    return respond(new MwException(ErrorCodes.SYS_INTERNAL, "Internal error"), req, e);
   }
 
   private ResponseEntity<ErrorEnvelope> validation(
       String code, String message, List<ErrorDetail> details, HttpServletRequest req,
       Exception e) {
-    return respond(HttpStatus.BAD_REQUEST, code, message, null, null, false, details, req, e);
+    return respond(new MwException(code, message).withDetails(details), req, e);
   }
 
+  /**
+   * Logs and answers {@code error}: its status, and its code, messages, txnId, retryable flag and
+   * details as the envelope. {@code cause} is the exception actually caught (logged on 5xx only);
+   * for an {@link MwException} it is {@code error} itself.
+   */
   private ResponseEntity<ErrorEnvelope> respond(
-      HttpStatus status, String code, String message, String messageBn, String txnId,
-      boolean retryable, List<ErrorDetail> details, HttpServletRequest req, Exception e) {
+      MwException error, HttpServletRequest req, Exception cause) {
+    HttpStatus status = error.status();
+    String code = error.code();
     if (status.is5xxServerError()) {
       log.atError()
           .addKeyValue("event", "http.request.failed")
           .addKeyValue("errorCode", code)
-          .setCause(e)
+          .setCause(cause)
           .log("{} {} failed with {}", req.getMethod(), route(req), status.value());
     } else {
       log.atWarn()
@@ -130,7 +134,8 @@ public class GlobalExceptionHandler {
     }
     ErrorEnvelope body =
         new ErrorEnvelope(
-            code, message, messageBn, txnId, correlationId(req), retryable, details);
+            code, error.getMessage(), error.messageBn(), error.txnId(), correlationId(req),
+            error.retryable(), error.details());
     return ResponseEntity.status(status).body(body);
   }
 
