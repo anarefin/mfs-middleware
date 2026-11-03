@@ -4,10 +4,10 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `make verify` runs (and passes) against an empty module set and against a single dummy module
-- [ ] `make check-isolation` fails on a planted cross-module Gradle dependency, an `includeBuild` inside a module, a convention plugin, or a relative path outside the module. The only path it allows is the root `contracts/` folder
-- [ ] `make versions-check` reports version drift between two modules' version catalogs
-- [ ] Root `CLAUDE.md` lists package layout, error model, masking, log fields, test commands and the never-rules (no secrets in code, no `System.out`, no field injection, no blocking on Kafka threads)
-- [ ] PR template exists with a test-report section and a checklist for the reviewer re-running `make verify`
+- [x] `make verify` runs (and passes) against an empty module set and against a single dummy module
+- [x] `make check-isolation` fails on a planted cross-module Gradle dependency, an `includeBuild` inside a module, a convention plugin, or a relative path outside the module. The only path it allows is the root `contracts/` folder
+- [x] `make versions-check` reports version drift between two modules' version catalogs
+- [x] Root `CLAUDE.md` lists package layout, error model, masking, log fields, test commands and the never-rules (no secrets in code, no `System.out`, no field injection, no blocking on Kafka threads)
+- [x] PR template exists with a test-report section and a checklist for the reviewer re-running `make verify`
