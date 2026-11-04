@@ -6,11 +6,11 @@
 
 - 18: Unknown outcomes: UNKNOWN, TSQ, MANUAL_REVIEW
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A test instantiates a route template purely from a config record and calls WireMock
-- [ ] A test changes a mapping or timeout via a config-changed event, and the next call uses it without restart
-- [ ] Both auth schemes have apply/verify tests
-- [ ] e2e `@topup` (incl. `@tsq`) stays green unchanged
+- [x] A test instantiates a route template purely from a config record and calls WireMock
+- [x] A test changes a mapping or timeout via a config-changed event, and the next call uses it without restart
+- [x] Both auth schemes have apply/verify tests
+- [x] e2e `@topup` (incl. `@tsq`) stays green unchanged
 - [ ] Masked raw request/response audit and the §21.2 partner metrics are emitted by the framework wrapper
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
