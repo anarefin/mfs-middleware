@@ -84,13 +84,21 @@ public final class MaskingPolicy {
     StringBuilder out = new StringBuilder(text.length());
     int from = 0;
     while (ids.find()) {
-      if (HIDES_A_NUMBER.matcher(ids.group()).find()) {
+      if (hidesANumber(ids.group())) {
         continue;
       }
       out.append(scrubNumbers(text.substring(from, ids.start()))).append(ids.group());
       from = ids.end();
     }
     return out.append(scrubNumbers(text.substring(from))).toString();
+  }
+
+  /**
+   * Whether {@code text} holds a run of 10 or more digits, the length {@link #scrub(String)}
+   * masks. An id of a known shape is left whole only when this is false.
+   */
+  public static boolean hidesANumber(String text) {
+    return HIDES_A_NUMBER.matcher(text).find();
   }
 
   private static String scrubNumbers(String text) {
@@ -118,8 +126,8 @@ public final class MaskingPolicy {
   /**
    * Renders a value for logging: records are rendered like {@code Record.toString()} with every
    * {@link Sensitive} component masked; object arrays, {@link Collection}s, {@link Map}s (keys
-   * and values) and {@link Optional}s are walked like their own {@code toString()} so records inside
-   * them are masked too, at any depth. Every other value, including iterables that are not
+   * and values) and {@link Optional}s are walked like their own {@code toString()} so records
+   * inside them are masked too, at any depth. Every other value, including iterables that are not
    * collections such as {@code Path} or {@code JsonNode}, uses {@code toString()} and then {@link
    * #scrub(String)}. A primitive array shows only its type and length ({@code char[11]}), since
    * element by element a {@code char[]} or {@code byte[]} would show an MSISDN or PIN one digit
