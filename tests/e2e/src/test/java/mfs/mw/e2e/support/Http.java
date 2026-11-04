@@ -48,8 +48,8 @@ public final class Http {
     return send(base(uri, headers).GET().build());
   }
 
-  public static Response delete(URI uri) {
-    return send(base(uri, Map.of()).DELETE().build());
+  public static Response delete(URI uri, Map<String, String> headers) {
+    return send(base(uri, headers).DELETE().build());
   }
 
   public static Response postJson(URI uri, Map<String, String> headers, JsonNode body) {

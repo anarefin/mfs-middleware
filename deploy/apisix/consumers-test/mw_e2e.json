@@ -1,0 +1,7 @@
+{
+  "username": "mw_e2e",
+  "desc": "TEST ONLY (MW_E2E_ROUTES=1): the host e2e suite; key = generated MW_E2E_API_KEY (deploy/compose/platform/.env)",
+  "plugins": {
+    "key-auth": { "key": "@env:MW_E2E_API_KEY" }
+  }
+}

@@ -14,9 +14,10 @@ import javax.crypto.spec.PSource;
 import tools.jackson.databind.JsonNode;
 
 /**
- * mw-core-mock's test/admin API through the dev-only APISIX route {@code /test/core-mock/v1/*}
- * (deploy/apisix/routes/test-core-mock.json): the PIN public key, wallet balances and fault
- * injection. Only in non-production stacks, like core-mock itself.
+ * mw-core-mock's test/admin API through the test-only APISIX route {@code /test/core-mock/v1/*}
+ * (deploy/apisix/routes-test/test-core-mock.json, applied only with {@code MW_E2E_ROUTES=1},
+ * which {@code make e2e} sets): the PIN public key, wallet balances and fault injection. The route
+ * requires key-auth with the generated dev key {@code MW_E2E_API_KEY} (header {@code apikey}).
  */
 public final class CoreMock {
 
@@ -35,7 +36,7 @@ public final class CoreMock {
   public static PinKey pinKey() {
     PinKey k = pinKey;
     if (k == null) {
-      Http.Response r = Http.get(Stack.get().url(BASE + "pin-public-key"), Map.of());
+      Http.Response r = Http.get(Stack.get().url(BASE + "pin-public-key"), auth());
       expectOk(r, "PIN public key");
       k = new PinKey(r.body().get("keyId").asString(), parsePem(r.body().get("publicKeyPem").asString()));
       pinKey = k;
@@ -63,7 +64,7 @@ public final class CoreMock {
   }
 
   public static Balance balance(String walletId) {
-    Http.Response r = Http.get(Stack.get().url(BASE + "wallets/" + walletId), Map.of());
+    Http.Response r = Http.get(Stack.get().url(BASE + "wallets/" + walletId), auth());
     expectOk(r, "balance of " + walletId);
     JsonNode b = r.body();
     return new Balance(
@@ -75,7 +76,7 @@ public final class CoreMock {
 
   /** Injects a fault ({@code {mode, commandType?, txnId?, delayMs?, reasonCode?, times?}}). */
   public static JsonNode injectFault(JsonNode fault) {
-    Http.Response r = Http.postJson(Stack.get().url(BASE + "faults"), Map.of(), fault);
+    Http.Response r = Http.postJson(Stack.get().url(BASE + "faults"), auth(), fault);
     if (r.status() != 201) {
       throw new IllegalStateException("fault not accepted: " + r);
     }
@@ -84,10 +85,14 @@ public final class CoreMock {
 
   /** Removes every injected fault (call after a scenario that injected one). */
   public static void resetFaults() {
-    Http.Response r = Http.delete(Stack.get().url(BASE + "faults"));
+    Http.Response r = Http.delete(Stack.get().url(BASE + "faults"), auth());
     if (r.status() != 204) {
       throw new IllegalStateException("fault reset failed: " + r);
     }
+  }
+
+  private static Map<String, String> auth() {
+    return Map.of("apikey", Stack.get().devCredential("MW_E2E_API_KEY"));
   }
 
   private static void expectOk(Http.Response r, String what) {
