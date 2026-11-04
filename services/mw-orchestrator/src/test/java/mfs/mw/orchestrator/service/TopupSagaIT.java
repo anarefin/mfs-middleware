@@ -94,6 +94,18 @@ class TopupSagaIT {
         .toList();
   }
 
+  /** Core commands on both command topics, in outbox order (ticket 50: hold, commit, release on core.payment). */
+  private List<JsonNode> coreCommands(String txnId) {
+    return jdbc.queryForList(
+            "select payload::text from outbox where topic in ('core.wallet.command.v1', 'core.payment.command.v1')"
+                + " and msg_key = ? order by id",
+            String.class,
+            txnId)
+        .stream()
+        .map(json::readTree)
+        .toList();
+  }
+
   private List<String> statuses(String txnId) {
     return outbox("mw.txn.status.v1", txnId).stream().map(n -> n.path("status").asString()).toList();
   }
@@ -104,11 +116,11 @@ class TopupSagaIT {
   }
 
   private List<String> commandTypes(String txnId) {
-    return outbox("core.wallet.command.v1", txnId).stream().map(c -> c.path("commandType").asString()).toList();
+    return coreCommands(txnId).stream().map(c -> c.path("commandType").asString()).toList();
   }
 
   private JsonNode lastCommand(String txnId) {
-    List<JsonNode> all = outbox("core.wallet.command.v1", txnId);
+    List<JsonNode> all = coreCommands(txnId);
     return all.get(all.size() - 1);
   }
 
@@ -116,7 +128,7 @@ class TopupSagaIT {
     for (JsonNode n : outbox("mw.txn.status.v1", txnId)) {
       assertThat(ContractSchemas.schema(STATUS_SCHEMA).validate(n)).as(n.toString()).isEmpty();
     }
-    for (JsonNode n : outbox("core.wallet.command.v1", txnId)) {
+    for (JsonNode n : coreCommands(txnId)) {
       assertThat(ContractSchemas.schema(COMMAND_SCHEMA).validate(n)).as(n.toString()).isEmpty();
     }
     for (JsonNode n : outbox(PARTNER_TOPIC, txnId)) {
@@ -214,6 +226,10 @@ class TopupSagaIT {
     JsonNode done = lastStatus(txn);
     assertThat(done.path("partnerRef").asString()).isEqualTo("OCS-991");
     assertThat(done.path("fee").path("valueMinor").asLong()).isEqualTo(200);
+    assertThat(outbox("core.wallet.command.v1", txn)).extracting(c -> c.path("commandType").asString())
+        .containsExactly("ValidateTransaction");
+    assertThat(outbox("core.payment.command.v1", txn)).extracting(c -> c.path("commandType").asString())
+        .containsExactly("HoldFunds", "CommitHold");
     assertThat(commandTypes(txn)).containsExactly("ValidateTransaction", "HoldFunds", "CommitHold");
     assertThat(jdbc.queryForObject("select encrypted_pin is null from transaction where txn_id = ?::uuid", Boolean.class, txn)).isTrue();
     assertThat(jdbc.queryForObject("select count(*) from saga_timer", Long.class)).isZero();
@@ -237,6 +253,8 @@ class TopupSagaIT {
     JsonNode failed = lastStatus(txn);
     assertThat(failed.path("error").path("code").asString()).isEqualTo("MW-PTR-GP-TOPUP_REJECTED");
     assertThat(failed.path("error").path("retryable").asBoolean()).isFalse();
+    assertThat(outbox("core.payment.command.v1", txn)).extracting(c -> c.path("commandType").asString())
+        .containsExactly("HoldFunds", "ReleaseHold");
     assertThat(commandTypes(txn)).doesNotContain("CommitHold");
     assertAllValid(txn);
   }
@@ -314,7 +332,7 @@ class TopupSagaIT {
     timers.sweep();
 
     List<JsonNode> queries =
-        outbox("core.wallet.command.v1", txn).stream()
+        coreCommands(txn).stream()
             .filter(c -> "QueryTransaction".equals(c.path("commandType").asString()))
             .toList();
     assertThat(queries).hasSize(2);

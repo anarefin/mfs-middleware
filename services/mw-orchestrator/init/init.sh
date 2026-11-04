@@ -2,7 +2,7 @@
 # One-shot, idempotent provisioning for mw-orchestrator (dev/MVP stack; nothing else creates
 # per-service database roles or OpenBao identities yet):
 #   1. OpenBao KV secret/mw-orchestrator: database password (created once; an existing secret is
-#      never overwritten).
+#      never overwritten) and the Valkey password (synced from VALKEY_PASSWORD on every run).
 #   2. PostgreSQL: login role orchestrator_rw and schema txn owned by it (password synced from
 #      the secret on every run).
 #   3. OpenBao policy + AppRole mw-orchestrator (read that one secret); a fresh secret-id and the
@@ -55,6 +55,18 @@ else
   log "created $KV (database password)"
 fi
 bao kv get -field=spring.datasource.password "$KV" >"$tmp/dbpw"
+
+# 1b. Valkey password (ticket 50: idempotency lock) ------------------------------------------------
+# The platform's dev Valkey password (deploy/compose/platform/.env, scripts/gen-dev-env.sh), synced
+# on every run as spring.data.redis.password, so a regenerated .env takes effect.
+if [ -n "${VALKEY_PASSWORD:-}" ]; then
+  printf '%s' "$VALKEY_PASSWORD" >"$tmp/valkey"
+  bao kv patch "$KV" "spring.data.redis.password=@$tmp/valkey" >/dev/null
+  rm -f "$tmp/valkey"
+  log "Valkey password spring.data.redis.password synced"
+else
+  log "VALKEY_PASSWORD not set: spring.data.redis.password left as it is" >&2
+fi
 
 # 2. database role and schema ---------------------------------------------------------------------
 provision_db() {

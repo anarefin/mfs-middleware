@@ -7,10 +7,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 - Runs P2P, CASH_IN, CASH_OUT, TOPUP, BILL_PAY and ADD_MONEY_BANK transactions, and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14, WP15 part).
   Consumes `mw.txn.request.v1` (`route/TxnRequestRoute`), the core results on
-  `core.wallet.event.v1` (`route/CoreWalletEventRoute`) and partner adapter answers on
+  `core.wallet.event.v1` (`route/CoreWalletEventRoute`) and `core.payment.event.v1` (`route/CorePaymentEventRoute`, same handler) and partner adapter answers on
   `mw.partner.reply.v1` (`route/PartnerReplyRoute`) and partner callbacks on `mw.partner.inbound.v1`
   (`route/PartnerInboundRoute`), all with retry topics and DLQ. Publishes every
-  state change on `mw.txn.status.v1`, core commands on `core.wallet.command.v1` and partner
+  state change on `mw.txn.status.v1`, core commands on `core.payment.command.v1` (HoldFunds, CommitHold,
+  ReleaseHold) or `core.wallet.command.v1` (every other command; `service/CoreTopics`, ticket 50) and partner
   requests on `mw.partner.request.<family>.v1`, all through the transactional outbox, in the same
   transaction as the state change.
 - State machine: plain Java in `service/saga` (`Status` = the 14 states, sealed `SagaEvent`,
@@ -174,8 +175,21 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   a status record for the STORED txnId with the current status and `attributes.requestTxnId` =
   txnId of the repeated request (so a channel waiting on its own txnId can match it); same key
   + other hash: REJECTED status under the new request's txnId with `MW-IDEM-001`, no transaction
-  row. The Valkey 60 s double-tap lock (7.3 rule 4) is not implemented: PostgreSQL is the source
-  of truth and the primary key serialises concurrent first inserts.
+  row. Valkey 60 s double-tap lock (7.3 rule 4, ticket 50, `service/IdempotencyGate` +
+  `client/ValkeyIdempotencyLock`, `config/ValkeyConfig`): before the claim, `SET NX PX 60000` on
+  `mw:orchestrator:idem:<sha256(channel, initiator id, key)>` (no MSISDN in Valkey) with value
+  `<txnId> <request hash hex>`. Held by another txnId: same hash -> duplicate answer of the holder
+  without a claim attempt (its current status, or RECEIVED + `attributes.duplicate` while the
+  holder's row is not committed yet, `StatusMapper.toInFlightDuplicateStatus`), other hash ->
+  `MW-IDEM-001`. Held by the same txnId (a redelivered record), an unreadable value, or Valkey
+  unreachable/slow (200 ms timeouts, commands rejected while disconnected) -> on to the claim;
+  the primary key stays the final guarantee. Valkey trouble never blocks or fails a request:
+  WARN `txn.idempotency.lock_unavailable` + counter `mw.txn.idempotency.lock.unavailable`;
+  Valkey is not in the health groups. The lock is never released early. REVERSAL requests take
+  no lock (the original's row lock serialises them). Settings `mw.orchestrator.idempotency-lock.{enabled,ttl}`
+  (`MW_IDEMPOTENCY_LOCK_ENABLED`; off in the test config, `IdempotencyLockIntakeIT` plugs in an
+  in-memory lock), `spring.data.redis.*` (`VALKEY_HOST`; password `spring.data.redis.password` in
+  `secret/mw-orchestrator`, synced by the init from `VALKEY_PASSWORD`).
   Deviations from 7.3 rule 2 (S7, recorded, not restructured): the final response is not stored,
   a repeat is answered from the live transaction row (current status of the stored txnId), so the
   never-written `idempotency.response` column was dropped (V7); `txn.idempotency` is not
@@ -193,7 +207,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   core reply after a timeout is ignored (state machine refuses it).
 - `commandId` = `<txnId>:validate` / `:post` / `:hold` / `:commit` / `:release` / `:credit`
   (QueryTransaction: above; ReverseTransaction: `<reversalTxnId>:reverse`). `expiresAt` = issuedAt + `command-ttl` (60 s).
-  All wallet commands go to `core.wallet.command.v1`; nothing is sent on `core.payment.*` yet.
+  Topics (ticket 50, M2 gate): `HoldFunds`, `CommitHold` and `ReleaseHold` (also the orphan-hold release) go to
+  `core.payment.command.v1`, their results come back on `core.payment.event.v1`; every other command
+  (Validate, Post, CreditWallet, Reverse, Query) goes to `core.wallet.command.v1` (`service/CoreTopics`,
+  `CoreTopicsTest`; the old `wallet-command-topic` property is gone). Both event topics feed the same
+  `CoreEventListener`. ITs read the outbox of both command topics (`coreCommands`); `messaging/CoreStub`
+  answers on the event topic paired with the command topic.
 - Core reason -> error: `MW-CORE-<reasonCode>` (same pattern as the status contract), message
   English + Bengali for the reasons mw-core-mock emits (`mapper/CoreEventMapper`), not retryable.
   Other codes used: `MW-VAL-010` unsupported txn type, `MW-VAL-011` amount <= 0, `MW-VAL-012`
@@ -202,7 +221,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `MW-TMO-005` (conflicting inquiry answer), reversal `MW-VAL-020..022`, `MW-AUTH-020`, `MW-TMO-020`;
   partner codes come from the adapter's reply.
 - PIN: only ciphertext. It is kept in `transaction.encrypted_pin` (jsonb) because PostTransfer
-  follows ValidateTransaction, and cleared when the transaction becomes terminal. The stored
+  follows ValidateTransaction, and cleared (`TransactionRecord.moved`, the one write path) on every
+  transition into COMPLETED, REJECTED, FAILED, REVERSED or MANUAL_REVIEW (ticket 50, spec 18.3;
+  `entity/TransactionRecordPinTest` walks every state-machine path). The stored
   request never contains it; it is never logged (`@Sensitive`).
 - `mw-reply-to` (7.5): copied from the request record to every status record (and to the answer
   for a repeated request, taken from the repeated request). Stored in `transaction.reply_to`.

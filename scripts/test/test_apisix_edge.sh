@@ -212,6 +212,25 @@ test_app_route_limits_each_consumer_with_counters_in_valkey() {
     || fail "consumer key not set from the token"
 }
 
+# Ticket 50: limit-count stays fail-open (allow_degradation) when Valkey is down, and every
+# request it let through unlimited is logged with one stable error line that smoke and alerts grep.
+test_rate_limited_routes_fail_open_and_log_a_stable_degradation_line() {
+  render || fail "dry run failed"
+  local f n=0 fns
+  for f in out/routes/*.json; do
+    jq -e '.plugins["limit-count"]' "$f" >/dev/null || continue
+    n=$((n + 1))
+    jq -e '.plugins["limit-count"] | .allow_degradation == true and .show_limit_quota_header == true' "$f" >/dev/null \
+      || fail "$f: limit-count must be fail-open and send its quota headers: $(jq -c '.plugins["limit-count"]' "$f")"
+  done
+  [ "$n" -gt 0 ] || fail "no rate-limited route"
+  fns="$(cat out/global_rules/*.json | jq -r '.. | objects | select(.phase == "header_filter") | .functions[]')"
+  printf '%s\n' "$fns" | grep -q 'mw.edge.rate_limit_degraded' || fail "no header_filter logging mw.edge.rate_limit_degraded"
+  printf '%s\n' "$fns" | grep -q 'X-RateLimit-Limit' || fail "degradation not detected from the missing quota header"
+  grep -q 'mw.edge.rate_limit_degraded' "$REPO_DIR/scripts/smoke.sh" || fail "make smoke does not look for the degradation line"
+  grep -q 'mw.edge.rate_limit_degraded' "$REPO_DIR/deploy/apisix/README.md" || fail "degradation alert not documented"
+}
+
 test_app_route_refuses_expired_tokens_without_a_long_grace() {
   render || fail "dry run failed"
   # openid-connect accepts a token until exp + iat_slack, 120 s unless set

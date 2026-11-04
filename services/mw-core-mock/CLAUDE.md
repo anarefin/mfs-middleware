@@ -15,9 +15,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 - **Topic decision (spec 6.3 does not say which command goes where):** the mock accepts every
   command type on either command topic and answers on the paired event topic (wallet command ->
   `core.wallet.event.v1`, payment command -> `core.payment.event.v1`). The handler never looks at
-  the topic otherwise, so the orchestrator may route as it likes; the intended split (not enforced)
-  is: payment topic for `HoldFunds`/`CommitHold`/`ReleaseHold` (transactions with an external call),
-  wallet topic for the rest. A command that is repeated on the other topic is answered from
+  the topic otherwise. The split (M2 gate decision, ticket 50; followed by mw-orchestrator, not enforced
+  here): payment topic for `HoldFunds`/`CommitHold`/`ReleaseHold` (transactions with an external call),
+  wallet topic for every other command. The mock keeps accepting any command on either topic. A command that is repeated on the other topic is answered from
   `command_log`, on the topic it arrived on.
 - `ValidateTransaction` whose credit party is outside the core (`BILLER_ACCOUNT`, `BANK_ACCOUNT`,
   `CARD_TOKEN`; ticket 21, BILL_PAY) checks the payer side only (wallet types, status, PIN,

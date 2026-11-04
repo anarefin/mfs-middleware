@@ -78,6 +78,8 @@ services:
       # C2W bank endpoint; the MVP stack targets the bank simulator
       # (mw-simulators, /c2wbank/v1/*).
       C2WBANK_BASE_URL: ${C2WBANK_BASE_URL:-http://mw-simulators:8080}
+      # Dev stack only: the simulator is plain http. The packaged default allows no http host.
+      MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
     deploy:
       resources:
         limits:

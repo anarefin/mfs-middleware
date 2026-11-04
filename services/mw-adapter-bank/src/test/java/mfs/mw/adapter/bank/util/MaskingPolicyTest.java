@@ -164,6 +164,41 @@ class MaskingPolicyTest {
         .isEqualTo("payer 0171****789 to +880181****678, amount 50000");
   }
 
+  /** MSISDNs written with single spaces or dashes between digit groups (ticket 50). */
+  @Test
+  void scrubMasksMsisdnsWrittenWithSeparators() {
+    assertThat(
+            MaskingPolicy.scrub(
+                "a 01711-234567 b 0171 123 4567 c +880 1711-234567 d 880-1711-234567"
+                    + " e 01711 234 567."))
+        .isEqualTo(
+            "a 0171****567 b 0171****567 c +880171****567 d 880171****567 e 0171****567.")
+        .doesNotContain("234567", "123 4567", "1711-234");
+  }
+
+  @Test
+  void scrubMasksSeparatedMsisdnsGluedToWords() {
+    assertThat(MaskingPolicy.scrub("msisdn=01711-234567, to:0171 123 4567;"))
+        .isEqualTo("msisdn=0171****567, to:0171****567;");
+  }
+
+  /** Separators never join numbers that are not MSISDNs: amounts, dates and times stay. */
+  @Test
+  void scrubLeavesAmountsDatesAndTimesWithSeparatorsAlone() {
+    String text =
+        "amount 1 500 000 BDT 50000 fee 12.50 total 1,500.00 on 2026-11-04 at 10:15:30"
+            + " ts 2026-11-04T10:15:30.123Z due 04-11-2026 01-11-2026 13 11 2026 15:45"
+            + " range 10-20 page 1 of 3 retry 2 attempt 3 qty 100 200 300";
+    assertThat(MaskingPolicy.scrub(text)).isEqualTo(text);
+  }
+
+  /** Two separators in a row or other punctuation do not make a run of groups an MSISDN. */
+  @Test
+  void scrubDoesNotJoinGroupsAcrossDoubleSeparators() {
+    String text = "codes 0171  1234567 and 0171--1234567 and 0171.123.4567";
+    assertThat(MaskingPolicy.scrub(text)).isEqualTo(text);
+  }
+
   /** Bangladesh NIDs are 10, 13 or 17 digits: last 3 kept, like the NID rule. */
   @Test
   void scrubMasksNidsInFreeText() {

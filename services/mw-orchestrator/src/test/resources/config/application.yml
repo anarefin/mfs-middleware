@@ -7,6 +7,10 @@ mw:
       enabled: false
     timer:
       enabled: false
+    # No Valkey in the test infrastructure: the primary key alone (IdempotencyLockIntakeIT plugs in
+    # an in-memory lock).
+    idempotency-lock:
+      enabled: false
     # Partner "tsqfast" has a status-inquiry schedule shortened to seconds (InquirySagaIT reaches
     # MANUAL_REVIEW with it); every other partner keeps the spec 7.4 default.
     inquiry:

@@ -167,8 +167,9 @@ mw:
     security:
       allowed-hosts:
         c2wbank: ${MW_C2WBANK_ALLOWED_HOSTS:mw-simulators}
-      # Plain http only for the simulator; production sets MW_PARTNER_INSECURE_HTTP_HOSTS empty.
-      insecure-http-hosts: ${MW_PARTNER_INSECURE_HTTP_HOSTS:mw-simulators}
+      # Plain http for no host by default (ticket 50); only the dev Compose stack (compose.yml)
+      # and the tests allow the simulator host.
+      insecure-http-hosts: ${MW_PARTNER_INSECURE_HTTP_HOSTS:}
     instances:
       # Generic partner bank for C2W / ADD_MONEY_BANK (wire format: mw-simulators c2wbank).
       # Async-callback template: a debit is accepted (202 PENDING) and its outcome follows as a

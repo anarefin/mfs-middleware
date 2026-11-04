@@ -145,7 +145,7 @@ class BillPaySagaIT {
     assertThat(outbox("mw.partner.request.telco.v1", txn)).isEmpty();
 
     partnerReplies.handle(reply(txn, PartnerRequestMapper.requestId(txn, "PAY"), "PAY", "SUCCESS", null, "AGG-7"));
-    assertThat(last("core.wallet.command.v1", txn).path("commandType").asString()).isEqualTo("CommitHold");
+    assertThat(last("core.payment.command.v1", txn).path("commandType").asString()).isEqualTo("CommitHold");
     coreEvents.handle(event("HoldCommitted", txn, txn + ":commit", "{\"holdId\":\"HOLD-CORE-9\"}"));
 
     assertThat(statuses(txn))
@@ -159,7 +159,7 @@ class BillPaySagaIT {
     String txn = toPartnerPending();
     partnerReplies.handle(
         reply(txn, PartnerRequestMapper.requestId(txn, "PAY"), "PAY", "FAILED", "MW-PTR-BILLAGG-PAYMENT_REFUSED", null));
-    assertThat(last("core.wallet.command.v1", txn).path("commandType").asString()).isEqualTo("ReleaseHold");
+    assertThat(last("core.payment.command.v1", txn).path("commandType").asString()).isEqualTo("ReleaseHold");
     coreEvents.handle(event("HoldReleased", txn, txn + ":release", "{\"holdId\":\"HOLD-CORE-9\"}"));
 
     assertThat(statuses(txn)).endsWith("RELEASING", "FAILED");

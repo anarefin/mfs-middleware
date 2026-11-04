@@ -37,6 +37,17 @@ spring:
       schema: txn
   flyway:
     schemas: txn
+  # Valkey (Lettuce) for the 60 s idempotency lock (spec 7.3 rule 4, ticket 50). The password comes
+  # from OpenBao (secret/mw-orchestrator, spring.data.redis.password), never written here. Short
+  # timeouts: a slow or absent Valkey only costs the lock, never the request (config/ValkeyConfig).
+  data:
+    redis:
+      host: ${VALKEY_HOST:valkey}
+      port: ${VALKEY_PORT:6379}
+      timeout: 200ms
+      connect-timeout: 200ms
+      repositories:
+        enabled: false
 
 # Kafka through Camel (spec 6.1, 19.2). Single KRaft node; topics come from deploy/kafka/.
 camel:
@@ -126,6 +137,9 @@ management:
       enabled: true
     readinessstate:
       enabled: true
+    # A Valkey outage must not take the service out of readiness: the lock falls back (ticket 50).
+    redis:
+      enabled: false
   tracing:
     sampling:
       probability: 1.0
@@ -142,7 +156,10 @@ mw:
     retry-timeout: 5s
     command-ttl: 60s
     idempotency-ttl: 72h
-    wallet-command-topic: core.wallet.command.v1
+    # Valkey double-tap lock per idempotency key before the PostgreSQL claim (7.3 rule 4).
+    idempotency-lock:
+      enabled: ${MW_IDEMPOTENCY_LOCK_ENABLED:true}
+      ttl: 60s
     # Reversal (ticket 19, 7.2): REVERSING resends every retry-timeout, MANUAL_REVIEW after this.
     reversing-timeout: 60s
     # Channels that may send a REVERSAL request (operations; mw-admin-api publishes as SYSTEM).

@@ -8,7 +8,7 @@
     },
     "serverless-pre-function": {
       "phase": "header_filter",
-      "functions": ["@lua:lua/edge-error-headers.lua"]
+      "functions": ["@lua:lua/edge-error-headers.lua", "@lua:lua/edge-limit-degraded.lua"]
     },
     "serverless-post-function": {
       "phase": "body_filter",

@@ -23,9 +23,16 @@ public final class MaskingPolicy {
 
   private static final String STARS = "****";
 
-  /** Bangladesh mobile numbers in free text: 01XNNNNNNNN, optionally with 880 / +880. */
+  /**
+   * Bangladesh mobile numbers in free text: 01XNNNNNNNN, optionally with 880 / +880, with at most
+   * one space or dash between any two digit groups ({@code 01711-234567}, {@code 0171 123 4567},
+   * {@code +880 1711-234567}). Only a number that starts like an MSISDN and has exactly its digit
+   * count is taken, so amounts, dates and times are left alone.
+   */
   private static final Pattern MSISDN_IN_TEXT =
-      Pattern.compile("(?<![\\d+])(?:\\+?880|0)1[3-9]\\d{8}(?!\\d)");
+      Pattern.compile("(?<![\\d+])(?:\\+?880[ -]?|0)1[ -]?[3-9](?:[ -]?\\d){8}(?!\\d)");
+
+  private static final Pattern MSISDN_SEPARATOR = Pattern.compile("[ -]");
 
   /**
    * Other runs of 10 or more digits, bounded by anything but a digit (a number glued to a word,
@@ -120,7 +127,11 @@ public final class MaskingPolicy {
   }
 
   private static String scrubNumbers(String text) {
-    String msisdnsMasked = replace(MSISDN_IN_TEXT, text, v -> mask(SensitiveType.MSISDN, v));
+    String msisdnsMasked =
+        replace(
+            MSISDN_IN_TEXT,
+            text,
+            v -> mask(SensitiveType.MSISDN, MSISDN_SEPARATOR.matcher(v).replaceAll("")));
     return replace(LONG_NUMBER_IN_TEXT, msisdnsMasked, v -> mask(numberType(v), v));
   }
 

@@ -173,8 +173,9 @@ mw:
     security:
       allowed-hosts:
         billagg: ${MW_BILLAGG_ALLOWED_HOSTS:mw-simulators}
-      # Plain http only for the simulator; production sets MW_PARTNER_INSECURE_HTTP_HOSTS empty.
-      insecure-http-hosts: ${MW_PARTNER_INSECURE_HTTP_HOSTS:mw-simulators}
+      # Plain http for no host by default (ticket 50); only the dev Compose stack (compose.yml)
+      # and the tests allow the simulator host.
+      insecure-http-hosts: ${MW_PARTNER_INSECURE_HTTP_HOSTS:}
     instances:
       # Utility bill aggregator REST/JSON (wire format: mw-simulators billagg). Async-callback
       # template (ticket 22): a payment is answered at once (200 SUCCESS / 422 FAILED) or accepted
