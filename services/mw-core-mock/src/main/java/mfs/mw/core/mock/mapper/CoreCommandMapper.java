@@ -50,7 +50,7 @@ public class CoreCommandMapper {
         || p.creditParty() == null
         || blank(p.creditParty().id())
         || p.amount() == null
-        || p.encryptedPin() == null) {
+        || (p.encryptedPin() == null && p.pinRequired())) {
       throw new MwException(ErrorCodes.VAL_INVALID, "transfer payload is incomplete");
     }
     return p;

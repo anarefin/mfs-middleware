@@ -35,6 +35,7 @@ public class TransactionService {
   private static final Logger log = LoggerFactory.getLogger(TransactionService.class);
 
   static final String REVERSAL = "REVERSAL";
+  static final String BULK_DISBURSE = "BULK_DISBURSE";
 
   private final IdempotencyRepository idempotency;
   private final TransactionRepository transactions;
@@ -244,6 +245,11 @@ public class TransactionService {
     if (flow.isEmpty()) {
       return new ErrorInfo(
           ErrorCodes.VAL_UNSUPPORTED_TXN_TYPE, "Transaction type is not supported", null, false);
+    }
+    if (BULK_DISBURSE.equals(req.txnType()) && !properties.bulkChannels().contains(req.channel())) {
+      // no PIN on a bulk child: only the org portal (maker-checker) may send one (ticket 34)
+      return new ErrorInfo(
+          ErrorCodes.AUTH_BULK_CHANNEL, "This channel may not send a bulk disbursement", null, false);
     }
     if (flow.get().partnerCall().isPresent()
         && (req.partner() == null || req.partner().partnerId() == null || req.partner().productCode() == null)) {

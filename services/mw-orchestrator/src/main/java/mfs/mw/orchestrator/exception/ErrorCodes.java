@@ -45,6 +45,8 @@ public final class ErrorCodes {
   public static final String VAL_REVERSAL_AMOUNT = "MW-VAL-022";
   /** REVERSAL from a channel outside {@code mw.orchestrator.reversal-channels}. */
   public static final String AUTH_REVERSAL_CHANNEL = "MW-AUTH-020";
+  /** BULK_DISBURSE from a channel outside {@code mw.orchestrator.bulk-channels} (ticket 34). */
+  public static final String AUTH_BULK_CHANNEL = "MW-AUTH-021";
   /** The core did not confirm ReverseTransaction within {@code reversing-timeout}: MANUAL_REVIEW. */
   public static final String TMO_CORE_REVERSE = "MW-TMO-020";
   /** Unexpected failure; details stay in the log, never in the response. */

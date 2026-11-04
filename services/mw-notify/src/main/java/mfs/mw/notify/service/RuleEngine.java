@@ -32,7 +32,8 @@ import org.springframework.expression.spel.support.SimpleEvaluationContext;
  * not parse, fails or is not boolean never matches. Each match becomes a {@link
  * NotificationRequest} with messageId {@code <txnId>:<channel>:<ruleId>}, so a repeated status
  * event yields the same ids and is dropped as a duplicate. The other party's id is masked in the
- * params (18.3).
+ * params (18.3). Params: amount, fee, txnId, txnType, counterparty, coreRef, partnerRef, partner
+ * (partnerId), biller (billerCode, else partnerId), errorCode.
  */
 public class RuleEngine {
 
@@ -48,7 +49,24 @@ public class RuleEngine {
     this.defaultLocale = defaultLocale;
   }
 
+  /** Who to email: a party's registered address (spec 10.2), or none. */
+  @FunctionalInterface
+  public interface ContactLookup {
+    ContactLookup NONE = id -> Optional.empty();
+
+    Optional<String> emailOf(String partyId);
+  }
+
   public List<NotificationRequest> requestsFor(TxnStatusEvent event, List<RuleRecord> rules) {
+    return requestsFor(event, rules, ContactLookup.NONE);
+  }
+
+  /**
+   * The requests of every matching rule. An SMS rule needs an MSISDN-shaped recipient id; an EMAIL
+   * rule needs a registered address for the recipient ({@code contacts}); otherwise the rule is
+   * skipped.
+   */
+  public List<NotificationRequest> requestsFor(TxnStatusEvent event, List<RuleRecord> rules, ContactLookup contacts) {
     TxnFacts facts = new TxnFacts(event);
     EvaluationContext ctx = SimpleEvaluationContext.forReadOnlyDataBinding().withRootObject(facts).build();
     List<NotificationRequest> out = new ArrayList<>();
@@ -57,13 +75,41 @@ public class RuleEngine {
         continue;
       }
       Party recipient = party(event, rule.recipient());
-      if (recipient == null || recipient.id() == null || !MSISDN.matcher(recipient.id()).matches()) {
+      if (recipient == null || recipient.id() == null) {
         continue;
       }
-      Party other = "CREDIT_PARTY".equals(rule.recipient()) ? event.debitParty() : event.creditParty();
-      out.add(request(event, rule, recipient, other));
+      NotificationRequest.Recipient address;
+      if (Channel.EMAIL.name().equals(rule.channel())) {
+        Optional<String> email = contacts.emailOf(recipient.id());
+        if (email.isEmpty()) {
+          continue;
+        }
+        address = new NotificationRequest.Recipient(null, email.get(), null, null);
+      } else if (MSISDN.matcher(recipient.id()).matches()) {
+        address = new NotificationRequest.Recipient(recipient.id(), null, null, null);
+      } else {
+        continue;
+      }
+      out.add(request(event, rule, address, counterparty(event, rule.recipient())));
     }
     return out;
+  }
+
+  /**
+   * The other side of the transaction for the recipient: the debit party for the credit party, the
+   * credit party for the debit party; for the initiator the side that is not the initiator itself
+   * (an ADD_MONEY_BANK initiator is credited, so its counterparty is the bank account).
+   */
+  private static Party counterparty(TxnStatusEvent e, String role) {
+    return switch (role) {
+      case "CREDIT_PARTY" -> e.debitParty();
+      case "INITIATOR" -> {
+        String self = e.initiator() == null ? null : e.initiator().id();
+        boolean credited = e.creditParty() != null && self != null && self.equals(e.creditParty().id());
+        yield credited ? e.debitParty() : e.creditParty();
+      }
+      default -> e.creditParty();
+    };
   }
 
   private boolean matches(RuleRecord rule, EvaluationContext ctx) {
@@ -89,7 +135,8 @@ public class RuleEngine {
     }
   }
 
-  private NotificationRequest request(TxnStatusEvent e, RuleRecord rule, Party recipient, Party other) {
+  private NotificationRequest request(TxnStatusEvent e, RuleRecord rule, NotificationRequest.Recipient recipient,
+      Party other) {
     Map<String, String> params = new LinkedHashMap<>();
     params.put("amount", money(e.amount()));
     params.put("fee", money(e.fee()));
@@ -104,9 +151,17 @@ public class RuleEngine {
     if (e.partnerRef() != null) {
       params.put("partnerRef", e.partnerRef());
     }
+    if (e.partner() != null && e.partner().partnerId() != null) {
+      params.put("partner", e.partner().partnerId());
+      String biller = e.partner().billerCode();
+      params.put("biller", biller == null || biller.isBlank() ? e.partner().partnerId() : biller);
+    }
+    if (e.error() != null && e.error().code() != null) {
+      params.put("errorCode", e.error().code());
+    }
     Channel channel = Channel.valueOf(rule.channel());
     return new NotificationRequest(1, e.txnId() + ":" + channel.name().toLowerCase(Locale.ROOT) + ":" + rule.ruleId(),
-        e.txnId(), e.correlationId(), new NotificationRequest.Recipient(recipient.id(), null, null, null),
+        e.txnId(), e.correlationId(), recipient,
         rule.templateCode(), e.locale() == null ? defaultLocale : e.locale(), params, List.of(channel),
         Priority.valueOf(rule.priority()), null, null);
   }

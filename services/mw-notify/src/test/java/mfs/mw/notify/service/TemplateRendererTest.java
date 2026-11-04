@@ -69,4 +69,29 @@ class TemplateRendererTest {
   void paramValuesAreNotThemselvesExpanded() {
     assertThat(renderer.render("{{a}}", Map.of("a", "{{b}}", "b", "x"))).isEqualTo("{{b}}");
   }
+
+  @Test
+  void escapesParamsInAnHtmlTemplateButNotTheTemplateItself() {
+    String html =
+        renderer.renderHtml(
+            "<p>Bill <b>{{biller}}</b> paid. TrxID {{txnId}}</p>",
+            Map.of("biller", "A&B <Gas> \"Co\" 'Ltd'", "txnId", "T1"));
+
+    assertThat(html).isEqualTo("<p>Bill <b>A&amp;B &lt;Gas&gt; &quot;Co&quot; &#39;Ltd&#39;</b> paid. TrxID T1</p>");
+  }
+
+  @Test
+  void anHtmlTemplateStillMasksAndRefusesMissingParams() {
+    assertThat(renderer.renderHtml("<i>{{counterparty}}</i>", Map.of("counterparty", "01811000002")))
+        .isEqualTo("<i>0181****002</i>");
+    assertThatThrownBy(() -> renderer.renderHtml("<i>{{amount}}</i>", Map.of()))
+        .isInstanceOf(TemplateException.class);
+  }
+
+  @Test
+  void aCounterpartyTheRuleEngineAlreadyMaskedAsAnAccountIsKept() {
+    // RuleEngine masks the other party by its type: a bank or biller account keeps its last 4.
+    assertThat(renderer.render("{{counterparty}}", Map.of("counterparty", "****7890"))).isEqualTo("****7890");
+    assertThat(renderer.render("{{counterparty}}", Map.of("counterparty", "0171****001"))).isEqualTo("0171****001");
+  }
 }

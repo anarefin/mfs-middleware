@@ -9,6 +9,7 @@ testcontainers = "2.0.5"
 networknt = "3.0.8"
 jacoco = "0.8.16"
 shedlock = "7.10.1"
+jsmpp = "3.0.2"
 
 [libraries]
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
@@ -35,6 +36,9 @@ camel-kafka-starter = { module = "org.apache.camel.springboot:camel-kafka-starte
 resilience4j-spring-boot4 = { module = "io.github.resilience4j:resilience4j-spring-boot4", version.ref = "resilience4j" }
 shedlock-spring = { module = "net.javacrumbs.shedlock:shedlock-spring", version.ref = "shedlock" }
 shedlock-provider-jdbc-template = { module = "net.javacrumbs.shedlock:shedlock-provider-jdbc-template", version.ref = "shedlock" }
+
+# SMPP 3.4 client (spec 3, 9.2): jSMPP, the library under camel-smpp, used directly for TLV control.
+jsmpp = { module = "org.jsmpp:jsmpp", version.ref = "jsmpp" }
 
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-boot-starter-webmvc-test" }

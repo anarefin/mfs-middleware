@@ -71,6 +71,21 @@ public class MenuRepository {
         Timestamp.from(goLiveAt));
   }
 
+  /** The MNO's latest activation, live or still scheduled; empty when it has none. */
+  public Optional<MenuVersion> latestActivation(String mno) {
+    return jdbc.query(
+            """
+            SELECT m.menu_id, m.version, m.tree::text AS tree
+              FROM menu_activation a JOIN menu m ON m.menu_id = a.menu_id AND m.version = a.version
+             WHERE a.mno = ?
+             ORDER BY a.go_live_at DESC LIMIT 1
+            """,
+            ROW,
+            mno)
+        .stream()
+        .findFirst();
+  }
+
   public boolean hasActivation(String mno) {
     Integer n = jdbc.queryForObject("SELECT count(*) FROM menu_activation WHERE mno = ?", Integer.class, mno);
     return n != null && n > 0;

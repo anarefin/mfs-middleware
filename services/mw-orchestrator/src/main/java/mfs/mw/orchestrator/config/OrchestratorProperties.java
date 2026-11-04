@@ -24,6 +24,7 @@ import org.springframework.validation.annotation.Validated;
  * @param timer the timer sweep
  * @param reversingTimeout how long REVERSING resends ReverseTransaction before MANUAL_REVIEW
  * @param reversalChannels the channels that may send a REVERSAL request (operations: SYSTEM)
+ * @param bulkChannels the channels that may send a BULK_DISBURSE child (the org portal, ticket 34)
  * @param idempotencyLock the Valkey double-tap lock in front of the idempotency claim (7.3 rule 4)
  */
 @Validated
@@ -39,6 +40,7 @@ public record OrchestratorProperties(
     @NotNull @DefaultValue Timer timer,
     @NotNull @DefaultValue("60s") Duration reversingTimeout,
     @NotNull @DefaultValue("SYSTEM") Set<String> reversalChannels,
+    @NotNull @DefaultValue("ORG_PORTAL") Set<String> bulkChannels,
     @NotNull @DefaultValue IdempotencyLock idempotencyLock) {
 
   /**

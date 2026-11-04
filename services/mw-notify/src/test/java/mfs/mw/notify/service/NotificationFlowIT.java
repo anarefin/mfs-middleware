@@ -345,7 +345,7 @@ class NotificationFlowIT {
     String noMsisdn = id();
     notifications.accept(new NotificationRequest(1, noMsisdn, null, null,
         new NotificationRequest.Recipient(null, "a@example.com", null, null), "TXN_P2P_SENT", "en",
-        Map.of(), List.of(Channel.EMAIL), Priority.TXN, null, null));
+        Map.of(), List.of(Channel.SMS), Priority.TXN, null, null));
     String unknown = id();
     NotificationRequest r = request(unknown, "01711000001", "en", Priority.TXN);
     notifications.accept(new NotificationRequest(1, unknown, null, null, r.recipient(), "NO_SUCH_TEMPLATE",

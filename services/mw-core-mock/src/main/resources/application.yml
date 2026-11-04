@@ -143,9 +143,15 @@ mw:
       BILL_PAY: 300
       # The customer pays no fee on a merchant payment (merchant discount rate is out of the MVP).
       MERCHANT_PAY: 0
+      # The org pays no fee per bulk payout row (ticket 34).
+      BULK_DISBURSE: 0
     limits:
       per-txn-minor: 500000
       daily-minor: 1500000
+      # Per wallet type daily debit limit (ticket 34): an org pays a whole bulk batch out in a day
+      # (10,000 rows of up to 5,000 taka each).
+      wallet-types:
+        ORG: { daily-minor: 5000000000 }
     seed:
       enabled: true
       # Fake PIN shared by every seeded wallet; test double only.
@@ -159,6 +165,9 @@ mw:
       CASH_IN: { debit: AGENT, credit: CUSTOMER }
       CASH_OUT: { debit: CUSTOMER, credit: AGENT }
       MERCHANT_PAY: { debit: CUSTOMER, credit: MERCHANT }
+      # Org bulk payout child (ticket 34): no PIN (maker-checker in the org portal), so only an org
+      # wallet may pay and only a customer may receive.
+      BULK_DISBURSE: { debit: ORG, credit: CUSTOMER }
     # Consecutive wrong PINs that lock a wallet (spec 9.1); a correct PIN resets the count.
     pin-max-failures: 5
     pin:

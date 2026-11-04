@@ -136,4 +136,29 @@ public final class TestData {
         null,
         NOW);
   }
+
+  /**
+   * One child of an org bulk disbursement (ticket 34): org ORG001 (wallet 01311000001) pays
+   * customer {@code msisdn}; authorised by the portal's maker-checker, so no PIN.
+   */
+  public static TxnRequest bulkChild(String txnId, String idemKey, long amountMinor, String msisdn) {
+    return new TxnRequest(
+        1,
+        txnId,
+        idemKey,
+        "corr-" + txnId.substring(0, 8),
+        "ORG_PORTAL",
+        "BULK_DISBURSE",
+        new Party("ORG", "ORG001", null, null),
+        new Party("ORG", "01311000001", null, null),
+        new Party("WALLET", msisdn, null, "CUSTOMER"),
+        Amount.bdt(amountMinor),
+        null,
+        null,
+        null,
+        "en",
+        null,
+        Map.of("parentTxnId", "01933b8e-0000-7000-8000-000000000001", "lineNo", "2"),
+        NOW);
+  }
 }

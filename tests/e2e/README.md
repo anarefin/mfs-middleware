@@ -26,6 +26,7 @@ Only APISIX is published, so every call goes through it:
 | Org portal API | `/portal/org/v1/*` | the real route (`portal-org-v1.json`); `support/PortalApi` |
 | core-mock test/admin API | `/test/core-mock/v1/*` -> `mw-core-mock:8080/core-mock/v1/*` | `deploy/apisix/routes-test/test-core-mock.json`, TEST ONLY: PIN public key, `wallets/{id}` balances, `faults`. Present only after `make e2e` re-ran `apisix-init` with `MW_E2E_ROUTES=1` (a plain `make up` removes it); key-auth header `apikey` = `MW_E2E_API_KEY` from the generated `.env`, private source addresses only |
 | Simulator control API | `/test/sim/*` -> `mw-simulators:8080/sim/*` | `deploy/apisix/routes-test/test-simulators.json`, TEST ONLY, same key-auth as core-mock; `support/Simulators.setScenario` / `reset` |
+| Dev mail server (GreenMail) | `GET /test/mail/*` -> `greenmail:8080/api/*` | `deploy/apisix/routes-test/test-mail.json`, TEST ONLY, same key-auth; `support/Mailbox.messagesTo(email)` |
 | Audit rows | `docker compose exec -T postgres psql` (superuser, read-only queries) | no API exposes `audit.event` before mw-admin-api (WP23), and the service role cannot read it |
 | Internal requests (REVERSAL) | `docker compose exec -T kafka kafka-console-producer.sh` on `mw.txn.request.v1` | `support/TxnRequests`: plays the operations producer (channel SYSTEM) until mw-admin-api's maker-checker reversal exists (ticket 37); the broker is not published |
 
@@ -78,6 +79,10 @@ Only APISIX is published, so every call goes through it:
   English, amounts in taka), "the first USSD screens were:" (one column, `\n` = line break), "the
   USSD session ends with "..."" (prefix of the last screen), "the USSD session is still open on
   "..."". MNO `robi` is on HTTP; `gp` is SMPP (not served over HTTP).
+  Other USSD flows (`features/ussd-flows.feature`, ticket 28): main menu 1 Send Money, 2 Cash Out
+  (agent number), 3 Mobile Recharge (1 own number = the dialling MNO, 2 other number + operator
+  list 1 gp 2 robi 3 banglalink 4 teletalk), 4 Pay Bill (billers sorted by code, 1 DESCO; the
+  amount due is fetched). "the USSD session is still open on a screen ending with "..."".
 - Device binding (`features/device-binding.feature`, `@device`, ticket 29): `support/Devices` gives
   each user one EC P-256 device for the run, bound on first use (`POST /app/v1/devices`, signed),
   its session reopened after 4 idle minutes; `AppApi` sends `X-Device-Id` on every call and signs
@@ -95,6 +100,15 @@ Only APISIX is published, so every call goes through it:
   was sent as UCS2|GSM7 in N parts". `support/Smsc.messagesTo` reads `GET /sim/smsc/messages`
   through `/test/sim/*`. Texts are the seeded `notify.template` rows (bn when the request has no
   locale), the other party's number masked.
+- Notifications per flow (`features/notify-flows.feature`, `@notify` + flow tags, ticket 25):
+  success / failure / processing SMS of P2P, CASH_IN, CASH_OUT, TOPUP, BILL_PAY, ADD_MONEY_BANK;
+  "<msisdn> gets the SMS \"...\" within N seconds" for late states (UNKNOWN, COMPLETED by status
+  inquiry); "<address> gets the email \"<subject>\"" (multipart/alternative, text + HTML) and
+  "<address> gets no email about the transaction" read GreenMail's REST API through the test-only
+  route `/test/mail/*` -> `greenmail:8080/api/*` (`deploy/apisix/routes-test/test-mail.json`, same
+  key-auth; `support/Mailbox`). Receipts go to registered addresses only: the dev stack seeds
+  `notify.contact` (mw-notify `db/dev`) with the Keycloak users' emails (customer01 ->
+  `customer01@example.test`).
 - MERCHANT_PAY (`features/merchant.feature`, `@merchant`, ticket 30): customer01 pays merchant01
   (wallet `01911000001`, no fee) with the generic "submits MERCHANT_PAY of N poisha with
   counterparty ..." step; "<merchant> lists its collections", "<merchant> sees the transaction in its
@@ -121,6 +135,15 @@ Only APISIX is published, so every call goes through it:
   details name these fields:". Users of realm portals: org-maker01, org-checker01,
   org-makerchecker01 (both roles) of ORG001, org-checker02 of ORG002. A stack whose Keycloak
   database predates ticket 33 needs `make down DOWN_ARGS=-v` (realm import does not update).
+- Org bulk payout (`features/bulk-execution.feature`, `@bulk @mw-portal-api`, ticket 34): "no bulk
+  batch of <user>'s org is still running" (Background: waits for APPROVED/EXECUTING batches of the
+  org), "<user> has uploaded a payout file of N rows of X taka" (`PortalApi.payoutFile`, seeded
+  customers `01711000001..01711001000` in turn) / "... a bulk file with these lines:", "<user>
+  pauses / resumes the batch", "within N minutes <user> sees the batch COMPLETED", "the batch
+  progress shows C completed, F failed and P poisha paid", "<user> sees the batch send no more
+  rows", "<user>'s result file lists all N rows as COMPLETED, each with its own txnId" / "...
+  shows:" (reference, status, errorCode). ORG001 pays from org wallet `01311000001`; at the
+  default 50 rows/s the 10,000-row scenario takes about 4 minutes.
 - `support/Keycloak.customerToken(user)`; `support/AuditTrail.rowsOfTxn` / `verifyChain`;
   `support/Waits.until` for anything asynchronous.
 - Steps (`steps/`, one `ScenarioState` per scenario via PicoContainer): sign in, send P2P,

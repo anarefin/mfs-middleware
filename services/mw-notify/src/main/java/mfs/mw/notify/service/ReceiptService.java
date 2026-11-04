@@ -82,7 +82,7 @@ public class ReceiptService {
 
   private void apply(String providerMessageId, DlrOutcome outcome) {
     SegmentRecord seg = messages.segmentByProviderId(providerMessageId).orElseThrow();
-    MessageRecord m = messages.lock(seg.messageId()).orElseThrow();
+    MessageRecord m = messages.lockSms(seg.messageId()).orElseThrow();
     if (!messages.segmentReceipt(providerMessageId, outcome.name())) {
       log.atInfo()
           .addKeyValue("event", "notify.dlr.duplicate")
@@ -100,7 +100,7 @@ public class ReceiptService {
    */
   @Transactional
   public void settle(String messageId) {
-    messages.lock(messageId).ifPresent(this::settle);
+    messages.lockSms(messageId).ifPresent(this::settle);
   }
 
   private void settle(MessageRecord m) {

@@ -7,8 +7,26 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 
 - USSD channel (spec 9.2, FR-10/11, WP18 part, WP19 part; ticket 26): one menu engine for every
   MNO behind the transport SPI `service/UssdTransport` (`onBegin`, `onContinue`, `onEnd`,
-  `onAbort`, `send`). Built so far: `service/HttpUssdTransport`; `SmppUssdTransport` (GP, WP19)
-  is not built yet.
+  `onAbort`, `send`): `service/HttpUssdTransport` and `service/SmppUssdTransport` (ticket 27).
+  An MNO switches transport by configuration alone (`mw.ussd.mno.<mno>.transport` + its
+  `mw.ussd.smpp.mno.<mno>` endpoint); `UssdMenuWalkSuite` runs the same walk over both.
+- SMPP transport (spec 9.2, 9.2.1, WP19): `client/UssdSmppClient` (bean in `config/UssdSmppConfig`)
+  holds `mw.ussd.smpp.mno.<mno>.binds` transceiver binds `<mno>-1..n` per SMPP MNO
+  (`client/UssdSmppBind`, jSMPP direct as mw-notify): own `enquire_link` every 30 s (jSMPP's
+  sender is off), 3 misses in a row drop the bind, reconnect 1-60 s exponential; `submit_sm`
+  through a window (outstanding) and a TPS throttle, retried after `retry-delays` (500 ms, 1 s,
+  2 s) on `generic_nack`, 0x58 and 0x14 (a timeout is not retried: the screen may have arrived).
+  Events `smpp.bind.up` / `smpp.bind.down` (`reason` closed|enquire_link|bind_failed),
+  `smpp.submit.retry`; gauge `mw.smpp.bind.up{mno,bind}` (`mw_smpp_bind_up`). `deliver_sm` TLVs:
+  `ussd_service_op` (0x0501) 1 PSSR indication = BEGIN, 18 USSR confirm = CONTINUE;
+  `its_session_info` (0x1383: session number; sequence bits 7..1; end-of-session bit 0) with the
+  end bit = ABORT (subscriber release). Screens go out as op 2 USSR request, the last as 17 PSSR
+  response with the end bit, on the bind that received the session (`SmppUssdTransport` keeps the
+  route in memory). Session id `smpp-<number>-<sha256(msisdn) 16 hex>` (no MSISDN in Valkey keys).
+  Each step runs on a virtual thread, never on jSMPP's PDU threads. Text GSM-7 unpacked or UCS-2
+  (`util/UssdText`). Dev: gp binds 2 to `mw-simulators:2776`; robi, banglalink, teletalk
+  endpoints config-ready. `mw.ussd.smpp.enabled=false` binds nothing (tests). SMPP password key
+  `mw.ussd.smpp.mno.<mno>.password` in OpenBao (empty in dev: the simulator accepts any bind).
 - HTTP transport: `POST /ussd/{mno}` (`controller/UssdHttpController`, contract
   `api/mw-ussd/ussd-http.v1.openapi.yaml`), JSON `{sessionId, msisdn, serviceCode?, input?,
   type: BEGIN|CONTINUE|END|ABORT}` -> `{sessionId, message, flag}` with the MNO's flag values
@@ -27,9 +45,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   version it started on); versions are immutable and cached once parsed. `service/MenuValidator`
   refuses a tree with dangling references, missing fields, an unknown validator/flow, a regex that
   does not compile, or a PIN input that is stored or does not lead straight to an ACTION.
-  `service/MenuSeeder` stores the dev seed `menus/main-v1.json` (`mw.ussd.seed-menu`, blank = off)
-  and activates it for every configured MNO without a menu, until the admin console edits menus
-  (WP23, maker-checker).
+  `service/MenuSeeder` stores the dev seed `menus/main-v2.json` (`mw.ussd.seed-menu`, blank = off)
+  and activates it for every configured MNO without a menu or still on an older version of the
+  seed (v1 -> v2; another menu is never replaced), until the admin console edits menus (WP23,
+  maker-checker). Seed (ticket 28): 1 Send Money (P2P), 2 Cash Out (customer to agent), 3 Mobile
+  Recharge (1 own number: option `set` stores `{msisdn}` / `{mno}` as target and operator; 2 other
+  number + DYNAMIC `operators`; product `=PREPAID`), 4 Pay Bill (DYNAMIC `billers`, bill number
+  INPUT with `lookup: bill`, CONFIRM with the fetched amount), 9 language. Every Bangla screen of
+  the seed fits 70 UCS-2 characters (`UssdMenuWalkTest`).
 - Engine (`service/UssdEngine`): one step per request, never throws (a failure ends with the
   menu's `unavailable` text). Language `mw.ussd.default-language` (bn) at dial-in, toggled by a
   MENU option with `switchLanguage` (no profile lookup yet). Validators (`service/InputValidator`):
@@ -38,6 +61,17 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   the validator's `error` (or the menu's `invalid`) above the screen; `max-invalid-attempts` (3)
   in a row end the session. Placeholders `{input}` / `{txnId}` / `{error}` in texts. A screen over
   the MNO limit is cut (TRUNCATE) or paged with the menu's `more` option ("0 More", PAGE).
+  DYNAMIC sources (`service/DynamicLists`): `billers` = mw-adapter-billpay's live catalogue
+  (`service/BillPayDirectory`, sorted by code, label = code, cached `catalogue-ttl` 60 s and kept
+  through an outage); others static from `mw.ussd.lists.<source>` (`operators`). INPUT `lookup`
+  (`service/Lookups`, arguments from the node's `mapping`): `bill` fetches the bill and adds
+  `amount` (taka) and `partnerId` (the biller's aggregator) to the inputs; a refusal asks again
+  with the adapter's message (messageBn in bn), an outage ends with `unavailable`. Bill fetch and
+  catalogue go to `client/BillPayClient` (`mw.ussd.billpay.*`, contract
+  `api/mw-adapter-billpay/billpay.v1.openapi.yaml`, internal HTTP over `app`: the documented
+  read-only exception; read timeout 5 s, Resilience4j circuit breaker `billpay`, no retry).
+  ACTION `mapping` values are input names or literals `=VALUE`; `MenuValidator` checks each flow's
+  required fields (`TxnRequestMapper.REQUIRED_FIELDS`) and each lookup's arguments.
 - Sessions: Valkey `ussd:{mno}:{sessionId}` (`repository/ValkeySessionStore`, JSON
   `dto/UssdSession`: node, path, inputs, language, menu version, pending pages), TTL = MNO session
   timeout + `session-grace` (30 s); a CONTINUE from another MSISDN is treated as expired. The PIN
@@ -48,14 +82,17 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   amountMinor|target)` hex (spec 7.3 rule 1, `service/IdempotencyKeys`; menuPath = the node ids and
   choices taken, e.g. `main:1>p2p.recipient>p2p.amount>p2p.confirm:1>p2p.pin`), UUIDv7 txnId,
   canonical `mw.txn.request.v1` (`mapper/TxnRequestMapper`: channel USSD, initiator MSISDN, debit
-  and credit CUSTOMER wallets, `metadata {ussdSessionId, mno}`, locale = session language)
+  the CUSTOMER wallet; credit per flow: P2P CUSTOMER wallet, CASH_OUT AGENT wallet, TOPUP bare
+  MSISDN + partner {operator, productCode}, BILL_PAY `BILLER_ACCOUNT` + partner {aggregator,
+  `BILL`, billerCode}; `metadata {ussdSessionId, mno}`, locale = session language)
   published with `mw-reply-to = instanceId`; the MNO request's (virtual) thread waits at most
   `sync-budget` (8 s) on `service/ReplyWaiters`, completed by `route/StatusReplyRoute` /
   `messaging/StatusReplyListener` (group `mw-ussd.reply.<instanceId>`, latest offset, never
   blocks). COMPLETED -> the node's `onSuccess`; FAILED/REJECTED -> `onFailure` with the status
   error's text (messageBn in bn); no final status in time -> the menu's `processing` text ("being
   processed", the result by SMS once mw-notify sends it); publish failure -> `unavailable`.
-  Flows: P2P only (`TxnRequestMapper.FLOWS`).
+  Flows: P2P, CASH_OUT, TOPUP, BILL_PAY (`TxnRequestMapper.FLOWS`); agents cash in from the Agent
+  app, not over USSD.
 - Init (`mw-ussd-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role `ussd_rw`,
   schema `ussd`, `secret/mw-ussd` (DB password; Valkey password from `VALKEY_PASSWORD`; the core's
   PIN public key and key id copied from `secret/mw-core-mock`, playing the core team's hand-over),
@@ -71,6 +108,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   `TxnRequestMapperTest`).
 - `events/mw-orchestrator/mw.txn.status.v1` (consumed; own type `dto/StatusMessage`) and the
   orchestrator's `mw-reply-to` / duplicate-answer conventions.
+- `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (called: biller list, bill fetch; own types
+  `dto/Biller`, `dto/Bill`; `client/BillPayClient`, copied from mw-app-gateway).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
@@ -99,4 +138,4 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 | `./gradlew check bootJar && docker build -t mw-ussd:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-ussd` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make up M=mw-ussd` | run this service's `compose.yml` (platform project must be up) |
-| `make e2e TAGS=@ussd` | P2P over the HTTP USSD gateway simulator (`tests/e2e/src/test/resources/features/ussd.feature`) |
+| `make e2e TAGS=@ussd` | P2P, cash-out, top-up and bill pay over the HTTP USSD gateway simulator (`tests/e2e/src/test/resources/features/ussd.feature`, `ussd-flows.feature`) and GP over SMPP (`ussd-smpp.feature`, `@smpp`) |

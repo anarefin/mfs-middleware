@@ -18,6 +18,12 @@ public record FlowRequest(
 
   public static final String CREDIT_PARTY = "creditParty";
   public static final String AMOUNT = "amount";
+  /** TOPUP: the operator; BILL_PAY: the aggregator serving the biller. */
+  public static final String PARTNER_ID = "partnerId";
+  /** TOPUP: the operator's product ({@code PREPAID}). */
+  public static final String PRODUCT_CODE = "productCode";
+  /** BILL_PAY: the biller. */
+  public static final String BILLER_CODE = "billerCode";
 
   public FlowRequest {
     fields = fields == null ? Map.of() : Map.copyOf(fields);
