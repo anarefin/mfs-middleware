@@ -16,6 +16,27 @@ test_up_with_no_stack_and_no_modules_is_a_noop() {
   assert_out_contains "nothing to start"
 }
 
+test_up_builds_missing_service_jars_before_compose_builds_images() {
+  # Images copy build/libs/*.jar: a fresh clone (no jars) must not fail with "lstat /build/libs".
+  stub_tools
+  mkdir -p deploy/compose/mvp && touch deploy/compose/mvp/compose.yml
+  new_module "$PWD" services/mw-a; touch services/mw-a/Dockerfile services/mw-a/compose.yml
+  new_module "$PWD" services/mw-b; touch services/mw-b/Dockerfile services/mw-b/compose.yml
+  mkdir -p services/mw-b/build/libs && touch services/mw-b/build/libs/mw-b-0.1.0.jar
+  assert_ok mw_make "$PWD" up
+  grep -q '^bootJar' services/mw-a/.gradlew-calls 2>/dev/null || fail "mw-a jar not built"
+  [ -f services/mw-b/.gradlew-calls ] && fail "mw-b rebuilt although its jar exists"
+  # COMPOSE_ARGS=--build rebuilds images, so every jar is brought up to date first
+  assert_ok mw_make "$PWD" up COMPOSE_ARGS=--build
+  grep -q '^bootJar' services/mw-b/.gradlew-calls 2>/dev/null || fail "mw-b jar not refreshed for --build"
+  # a failing build stops make up before compose
+  rm -f services/mw-a/.gradlew-calls .tool-calls; rm -rf services/mw-a/build; touch services/mw-a/.gradlew-fail
+  assert_fails mw_make "$PWD" up
+  assert_out_contains "mw-a"
+  grep -q 'compose' .tool-calls 2>/dev/null && fail "compose ran after a failed jar build"
+  return 0
+}
+
 test_up_starts_the_mvp_compose_project() {
   stub_tools
   mkdir -p deploy/compose/mvp && touch deploy/compose/mvp/compose.yml
@@ -58,6 +79,20 @@ test_up_returns_once_every_long_running_service_is_healthy() {
   up_with 30 || fail "up failed: $OUT"
   [ "$(cat .ps-n)" = 2 ] || fail "did not poll until healthy (polls: $(cat .ps-n))"
   assert_out_contains "healthy"
+}
+
+test_up_waits_for_running_one_shots_to_finish() {
+  # Services report healthy before kafka-init has created the topics they use: up must not
+  # return until every one-shot has exited (0).
+  stub_compose_ps
+  printf 'kafka\trunning\thealthy\t0\t%s\nkafka-init\trunning\t\t0\t%s\nnew-init\tcreated\t\t0\t%s\n' "$L" "$O" "$O" >.ps-1
+  printf 'kafka\trunning\thealthy\t0\t%s\nkafka-init\texited\t\t0\t%s\nnew-init\texited\t\t0\t%s\n' "$L" "$O" "$O" >.ps-2
+  up_with 30 || fail "up failed: $OUT"
+  [ "$(cat .ps-n)" = 2 ] || fail "returned while one-shots were still running (polls: $(cat .ps-n))"
+  rm -f .ps-*
+  printf 'kafka\trunning\thealthy\t0\t%s\nkafka-init\trunning\t\t0\t%s\n' "$L" "$O" >.ps-1
+  if up_with 1; then fail "up succeeded with kafka-init still running"; fi
+  assert_out_contains "kafka-init"
 }
 
 test_up_fails_naming_the_unhealthy_services_on_timeout() {
@@ -140,6 +175,37 @@ test_e2e_runs_suite_filtered_by_module_tag() {
   rm tests/e2e/.gradlew-calls
   assert_ok mw_make "$PWD" e2e M=mw-a TAGS=@p2p
   grep -q -- '-Dcucumber.filter.tags=@mw-a and (@p2p)' tests/e2e/.gradlew-calls || fail "tags not passed: $(cat tests/e2e/.gradlew-calls)"
+}
+
+test_e2e_enables_the_test_only_gateway_routes_on_the_running_stack_first() {
+  # The test routes (deploy/apisix/routes-test) exist only while apisix-init last ran with
+  # MW_E2E_ROUTES=1: make e2e re-runs it with the flag and waits for it, then runs the suite.
+  mkdir -p .bin deploy/compose/mvp && touch deploy/compose/mvp/compose.yml
+  cat >.bin/docker <<EOF
+#!/bin/sh
+echo "MW_E2E_ROUTES=\${MW_E2E_ROUTES:-} key=\${MW_E2E_API_KEY:+set} docker \$*" >> "$PWD/.tool-calls"
+exit 0
+EOF
+  chmod +x .bin/docker
+  PATH="$PWD/.bin:$PATH"
+  new_module "$PWD" tests/e2e
+  assert_ok mw_make "$PWD" e2e TAGS=@p2p
+  grep -q '^MW_E2E_ROUTES=1 key=set docker compose .*up -d --no-deps --force-recreate apisix-init' .tool-calls \
+    || fail "apisix-init not re-run with MW_E2E_ROUTES=1: $(cat .tool-calls)"
+  grep -q 'docker compose .*wait apisix-init' .tool-calls || fail "did not wait for apisix-init: $(cat .tool-calls)"
+  grep -q '^test' tests/e2e/.gradlew-calls || fail "suite not run"
+}
+
+test_e2e_fails_when_the_test_routes_cannot_be_enabled() {
+  mkdir -p .bin deploy/compose/mvp && touch deploy/compose/mvp/compose.yml
+  printf '#!/bin/sh\ncase "$*" in *wait*) exit 1 ;; esac\nexit 0\n' >.bin/docker
+  chmod +x .bin/docker
+  PATH="$PWD/.bin:$PATH"
+  new_module "$PWD" tests/e2e
+  assert_fails mw_make "$PWD" e2e
+  assert_out_contains "apisix-init"
+  [ -f tests/e2e/.gradlew-calls ] && fail "suite ran without its routes"
+  return 0
 }
 
 test_perf_runs_gatling_suite() {

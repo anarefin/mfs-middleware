@@ -54,7 +54,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   the stored request JSON instead of separate columns.
 - Init (`mw-orchestrator-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): creates
   role and schema, `secret/mw-orchestrator` (DB password, never overwritten) and the AppRole
-  `mw-orchestrator`; role-id/secret-id land in a volume the service reads as a configtree.
+  `mw-orchestrator`; role-id/secret-id land in a volume the service reads as a configtree. On a
+  fresh stack it waits for OpenBao's `dev-init.json` and retries the database step when another
+  init races it.
 
 ## Contracts owned
 
