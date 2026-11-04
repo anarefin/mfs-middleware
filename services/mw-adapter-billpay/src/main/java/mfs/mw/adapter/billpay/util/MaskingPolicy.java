@@ -68,7 +68,25 @@ public final class MaskingPolicy {
         yield trimmed.isEmpty() ? STARS : trimmed.substring(0, 1).toUpperCase(Locale.ROOT) + ".";
       }
       case SECRET -> STARS;
+      case PARTY_ID -> mask(SensitiveType.ACCOUNT, value);
     };
+  }
+
+  /** Party types whose id is a mobile number (wallet id = MSISDN). */
+  private static final Set<String> MSISDN_PARTY_TYPES = Set.of("WALLET", "MSISDN", "MERCHANT", "ORG");
+
+  private static final Pattern MSISDN_ID = Pattern.compile("^(?:\\+?880|0)1[3-9]\\d{8}$");
+
+  /**
+   * Masks a party id by the party's {@code type} (ticket 23): a mobile number of a wallet-like
+   * party as {@link SensitiveType#MSISDN}, anything else as {@link SensitiveType#ACCOUNT}.
+   */
+  public static String maskPartyId(String partyType, String id) {
+    if (id == null || id.isEmpty()) {
+      return id;
+    }
+    boolean msisdn = partyType != null && MSISDN_PARTY_TYPES.contains(partyType) && MSISDN_ID.matcher(id).matches();
+    return mask(msisdn ? SensitiveType.MSISDN : SensitiveType.ACCOUNT, id);
   }
 
   /**
@@ -198,7 +216,9 @@ public final class MaskingPolicy {
       Object v = read(c, rec);
       Sensitive s = c.getAnnotation(Sensitive.class);
       String rendered;
-      if (s != null) {
+      if (s != null && s.value() == SensitiveType.PARTY_ID) {
+        rendered = v == null ? "null" : maskPartyId(partyType(rec), v.toString());
+      } else if (s != null) {
         rendered = v == null ? "null" : mask(s.value(), v.toString());
       } else {
         rendered = describe(v, inProgress);
@@ -206,6 +226,17 @@ public final class MaskingPolicy {
       parts.add(c.getName() + "=" + rendered);
     }
     return parts.toString();
+  }
+
+  /** The record's {@code type} component as text, null when it has none. */
+  private static String partyType(Record rec) {
+    for (RecordComponent c : rec.getClass().getRecordComponents()) {
+      if ("type".equals(c.getName())) {
+        Object t = read(c, rec);
+        return t == null ? null : t.toString();
+      }
+    }
+    return null;
   }
 
   private static Object read(RecordComponent c, Record rec) {

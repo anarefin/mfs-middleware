@@ -170,7 +170,8 @@ adapter-minted txnId) are still dropped and belong to the REMIT_IN / NPSB ticket
   `ErrorCodes`, `GlobalExceptionHandler` building `dto/ErrorEnvelope`. Logs show route
   templates, never raw URIs.
 - `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3; mark every personal field (bill
-  numbers as ACCOUNT, last 4 only).
+  numbers as ACCOUNT, last 4 only). Party ids are `PARTY_ID` (ticket 23): masked by the party's
+  `type` (wallet/MSISDN as an MSISDN, a bank account or any other type last 4 only).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
 - `messaging/EventPublisher`, outbox/inbox, `route/RetryTopicRouteBuilder` +
