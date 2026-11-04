@@ -1,18 +1,50 @@
 {
   "name": "app-v1",
-  "desc": "Mobile apps API v1 (spec 8.2): Keycloak realm customers bearer JWT, verified with the realm's JWKS, then mw-app-gateway (which verifies it again)",
+  "desc": "Mobile apps API v1 (spec 8.2, 8.3): Keycloak realm customers bearer JWT verified with the realm's JWKS (mw-app-gateway verifies it again), body cap, submit body validated against the app OpenAPI, quota per token subject in Valkey",
   "uri": "/app/v1/*",
   "methods": ["GET", "POST"],
   "plugins": {
+    "client-control": {
+      "max_body_size": 65536
+    },
     "openid-connect": {
       "discovery": "http://keycloak:8080/realms/customers/.well-known/openid-configuration",
       "client_id": "mw-app",
       "bearer_only": true,
       "use_jwks": true,
       "realm": "customers",
+      "iat_slack": 10,
       "set_access_token_header": false,
       "set_userinfo_header": false,
       "set_id_token_header": false
+    },
+    "request-validation": {
+      "_meta": {
+        "priority": 2500,
+        "filter": [["request_method", "==", "POST"], ["uri", "==", "/app/v1/transactions"]]
+      },
+      "body_schema": "@json:schemas/app-v1-transaction-request.json",
+      "rejected_code": 400
+    },
+    "serverless-pre-function": {
+      "phase": "access",
+      "functions": ["@lua:lua/consumer-from-jwt.lua"]
+    },
+    "limit-count": {
+      "count": 120,
+      "time_window": 60,
+      "key_type": "var",
+      "key": "mw_consumer",
+      "group": "app-v1",
+      "rejected_code": 429,
+      "show_limit_quota_header": true,
+      "policy": "redis",
+      "redis_host": "valkey",
+      "redis_port": 6379,
+      "redis_password": "$env://VALKEY_PASSWORD",
+      "redis_database": 0,
+      "redis_timeout": 1000,
+      "allow_degradation": true
     }
   },
   "upstream": {

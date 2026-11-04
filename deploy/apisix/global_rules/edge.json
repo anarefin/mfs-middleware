@@ -1,0 +1,18 @@
+{
+  "plugins": {
+    "request-id": {
+      "_meta": { "pre_function": "@lua:lua/edge-request.lua" },
+      "header_name": "X-Correlation-Id",
+      "include_in_response": true,
+      "algorithm": "uuid"
+    },
+    "serverless-pre-function": {
+      "phase": "header_filter",
+      "functions": ["@lua:lua/edge-error-headers.lua"]
+    },
+    "serverless-post-function": {
+      "phase": "body_filter",
+      "functions": ["@lua:lua/edge-error-body.lua"]
+    }
+  }
+}

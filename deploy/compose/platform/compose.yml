@@ -273,6 +273,8 @@ services:
     environment:
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?run scripts/gen-dev-env.sh (make up does)}
       ETCD_APISIX_PASSWORD: ${ETCD_APISIX_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      # limit-count counters in Valkey (8.3); routes reference it as $env://VALKEY_PASSWORD
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
       MW_OPS_SUBNET: ${MW_OPS_SUBNET:-172.31.250.0/24}
     ports:
       - target: 9443

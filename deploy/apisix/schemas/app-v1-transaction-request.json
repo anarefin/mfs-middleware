@@ -1,0 +1,88 @@
+{
+  "x-mw-derived-from": "api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/TransactionRequest",
+  "type": "object",
+  "required": [
+    "txnType",
+    "creditParty",
+    "amount",
+    "encryptedPin"
+  ],
+  "properties": {
+    "txnType": {
+      "type": "string",
+      "enum": [
+        "P2P"
+      ]
+    },
+    "creditParty": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "WALLET"
+        },
+        "id": {
+          "type": "string"
+        }
+      }
+    },
+    "amount": {
+      "type": "object",
+      "required": [
+        "valueMinor",
+        "currency"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "valueMinor": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "currency": {
+          "type": "string",
+          "const": "BDT"
+        }
+      }
+    },
+    "encryptedPin": {
+      "type": "object",
+      "required": [
+        "keyId",
+        "ciphertext"
+      ],
+      "properties": {
+        "keyId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "ciphertext": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      }
+    },
+    "locale": {
+      "type": "string",
+      "enum": [
+        "bn",
+        "en"
+      ]
+    },
+    "attributes": {
+      "type": "object",
+      "maxProperties": 20,
+      "additionalProperties": false,
+      "properties": {
+        "reference": {
+          "type": "string",
+          "maxLength": 256
+        }
+      }
+    }
+  }
+}
