@@ -43,6 +43,39 @@ class RequestMapperTest {
   }
 
   @Test
+  void anAddMoneyDebitsTheBankAccountAndCreditsTheCallersWallet() {
+    TransactionRequest addMoney =
+        new TransactionRequest(
+            "ADD_MONEY_BANK",
+            null,
+            new Amount(50_000L, "BDT"),
+            new EncryptedPin("core-pin-1", "b3BhcXVlLWNpcGhlcnRleHQ="),
+            null,
+            null,
+            TransactionRequest.Partner.bank("c2wbank"),
+            new TransactionRequest.BankAccount("BANK_ACCOUNT", "1234567890123"));
+
+    TxnRequest req =
+        mapper.toRequest(new AppUser("01711000001", "CUSTOMER_APP", "CUSTOMER"), "key-1", addMoney, TXN_ID, "corr-1", NOW);
+
+    JsonNode tree = JSON.valueToTree(req);
+    assertThat(ContractSchemas.schema("events/mw-orchestrator/mw.txn.request.v1.schema.json").validate(tree))
+        .isEmpty();
+    assertThat(tree.path("txnType").asString()).isEqualTo("ADD_MONEY_BANK");
+    assertThat(tree.path("debitParty").path("type").asString()).isEqualTo("BANK_ACCOUNT");
+    assertThat(tree.path("debitParty").path("id").asString()).isEqualTo("1234567890123");
+    assertThat(tree.path("creditParty").path("type").asString()).isEqualTo("WALLET");
+    assertThat(tree.path("creditParty").path("id").asString()).isEqualTo("01711000001");
+    assertThat(tree.path("partner").path("partnerId").asString()).isEqualTo("c2wbank");
+    assertThat(tree.path("partner").path("productCode").asString()).isEqualTo("C2W");
+    // party ids masked by their type: the account keeps its last 4 only
+    assertThat(mfs.mw.app.gateway.util.MaskingPolicy.describe(req))
+        .doesNotContain("1234567890123", "01711000001")
+        .contains("id=****0123", "id=0171****001");
+    assertThat(mfs.mw.app.gateway.util.MaskingPolicy.describe(addMoney)).doesNotContain("1234567890123");
+  }
+
+  @Test
   void aBillPayPaysTheBillerAccountThroughTheResolvedAggregator() {
     TransactionRequest bill =
         new TransactionRequest(

@@ -71,7 +71,8 @@ class AppGatewayConfigTest {
         .containsEntry("CASH_IN", List.of("AGENT"))
         .containsEntry("CASH_OUT", List.of("CUSTOMER"))
         .containsEntry("TOPUP", List.of("CUSTOMER"))
-        .containsEntry("BILL_PAY", List.of("CUSTOMER"));
+        .containsEntry("BILL_PAY", List.of("CUSTOMER"))
+        .containsEntry("ADD_MONEY_BANK", List.of("CUSTOMER"));
   }
 
   @Test

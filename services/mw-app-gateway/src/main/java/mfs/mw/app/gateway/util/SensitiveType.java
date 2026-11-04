@@ -11,5 +11,12 @@ public enum SensitiveType {
   /** Person name: first initial only. */
   NAME,
   /** PIN ciphertext, keys, tokens: never shown. */
-  SECRET
+  SECRET,
+  /**
+   * The id of a canonical party, masked by the party's type (ticket 23): in a record with a
+   * {@code type} component, {@code WALLET}/{@code MSISDN}/{@code MERCHANT}/{@code ORG} ids that are
+   * mobile numbers as {@link #MSISDN}, everything else (bank, biller, card accounts, unknown
+   * types) as {@link #ACCOUNT}; on its own always as {@link #ACCOUNT}.
+   */
+  PARTY_ID
 }
