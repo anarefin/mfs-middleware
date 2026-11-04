@@ -89,7 +89,7 @@ class MaskingPolicyTest {
         .isEqualTo("nid ****789, old ****123, smart ****901.");
   }
 
-  /** Other 11 to 20 digit runs are treated as account numbers: last 4 kept. */
+  /** Other runs of 11 or more digits are treated as account numbers: last 4 kept. */
   @Test
   void scrubMasksAccountNumbersInFreeText() {
     assertThat(MaskingPolicy.scrub("from 0011223344556677 to account=123456789012345"))
@@ -105,6 +105,16 @@ class MaskingPolicyTest {
                     + " key abc12345678901 intl +4412345678901"))
         .isEqualTo(
             "acct_****6677 ref-****789 A****2345 nid****901 key abc****8901 intl +****901");
+  }
+
+  /** Runs longer than 20 digits are not let through: masked as account numbers, last 4 kept. */
+  @Test
+  void scrubMasksRunsLongerThanTwentyDigits() {
+    assertThat(
+            MaskingPolicy.scrub(
+                "a 123456789012345678901 b 123456789012345678901234567890"
+                    + " acct_123456789012345678901 ref-123456789012345678901234567890x"))
+        .isEqualTo("a ****8901 b ****7890 acct_****8901 ref-****7890x");
   }
 
   @Test
@@ -124,17 +134,29 @@ class MaskingPolicyTest {
   @Test
   void scrubLeavesTraceAndSpanIdsIntact() {
     String text =
-        "traceparent=00-4bf92f3577b34da6a3ce90123456789a-a0123456789012bc-01"
-            + " traceId=4bf92f3577b34da6a3ce90123456789a spanId=a0123456789012bc";
+        "traceparent=00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+            + " traceId=4bf92f3577b34da6a3ce929d0e0e4736 spanId=00f067aa0ba902b7";
     assertThat(MaskingPolicy.scrub(text)).isEqualTo(text);
+  }
+
+  /** Hex shape alone does not protect: an id hiding a 10+ digit run is scrubbed like any text. */
+  @Test
+  void scrubMasksHexIdsThatHideLongNumbers() {
+    assertThat(
+            MaskingPolicy.scrub(
+                "spanId=a012345678901234 traceId=4bf92f3577b34da6a3ce90123456789a"
+                    + " traceparent=00-4bf92f3577b34da6a3ce90123456789a-a0123456789012bc-01"))
+        .isEqualTo(
+            "spanId=a****1234 traceId=4bf92f3577b34da6a3ce****6789a"
+                + " traceparent=00-4bf92f3577b34da6a3ce****6789a-a****012bc-01");
   }
 
   @Test
   void scrubStillMasksNumbersNextToProtectedIds() {
     assertThat(
             MaskingPolicy.scrub(
-                "0190a7c4-0000-7000-8000-000000000001-01712345789 a0123456789012bc_1990123456789"))
-        .isEqualTo("0190a7c4-0000-7000-8000-000000000001-0171****789 a0123456789012bc_****789");
+                "0190a7c4-0000-7000-8000-000000000001-01712345789 00f067aa0ba902b7_1990123456789"))
+        .isEqualTo("0190a7c4-0000-7000-8000-000000000001-0171****789 00f067aa0ba902b7_****789");
   }
 
   @Test

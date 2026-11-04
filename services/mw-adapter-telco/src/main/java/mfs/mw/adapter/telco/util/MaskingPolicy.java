@@ -21,25 +21,27 @@ public final class MaskingPolicy {
       Pattern.compile("(?<![\\d+])(?:\\+?880|0)1[3-9]\\d{8}(?!\\d)");
 
   /**
-   * Other runs of 10 to 20 digits, bounded by anything but a digit (a number glued to a word,
-   * {@code _} or {@code -} is still masked): 10, 13 and 17 digits are Bangladesh NID lengths and
-   * keep the last 3; the rest are taken as account numbers and keep the last 4. Ambiguous lengths
-   * get the stricter NID rule. UUIDs and trace/span ids are protected separately ({@link
-   * #PROTECTED_ID}), not by these bounds.
+   * Other runs of 10 or more digits, bounded by anything but a digit (a number glued to a word,
+   * {@code _} or {@code -} is still masked, and no run is too long to mask): 10, 13 and 17 digits
+   * are Bangladesh NID lengths and keep the last 3; the rest are taken as account numbers and keep
+   * the last 4. Ambiguous lengths get the stricter NID rule. UUIDs and trace/span ids are protected
+   * separately ({@link #PROTECTED_ID}), not by these bounds.
    */
-  private static final Pattern LONG_NUMBER_IN_TEXT = Pattern.compile("(?<!\\d)\\d{10,20}(?!\\d)");
+  private static final Pattern LONG_NUMBER_IN_TEXT = Pattern.compile("(?<!\\d)\\d{10,}(?!\\d)");
 
   /**
    * Ids that are not personal data and are left as they are, so their digit runs are not taken
-   * for numbers: UUIDs (8-4-4-4-12 hex) and W3C trace/span ids (32 or 16 lowercase hex with at
-   * least one letter, also inside a {@code traceparent}). Bounded by anything but a letter or
-   * digit; an id glued to letters or digits is not protected and its digits get scrubbed.
+   * for numbers: UUIDs (8-4-4-4-12 hex; the dashes cap a digit run at 12) and W3C trace/span
+   * ids (32 or 16 lowercase hex, standalone or as the parts of a {@code traceparent}) whose
+   * longest digit run is under 10, so the hex shape alone never hides a number. Bounded by
+   * anything but a letter or digit; an id glued to letters or digits is not protected and its
+   * digits get scrubbed.
    */
   private static final Pattern PROTECTED_ID =
       Pattern.compile(
           "(?<![0-9A-Za-z])"
               + "(?:[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}"
-              + "|(?=[0-9]{0,31}[a-f])(?:[0-9a-f]{32}|[0-9a-f]{16}))"
+              + "|(?![0-9a-f]*\\d{10})(?:[0-9a-f]{32}|[0-9a-f]{16}))"
               + "(?![0-9A-Za-z])");
 
   private MaskingPolicy() {}
@@ -63,7 +65,7 @@ public final class MaskingPolicy {
 
   /**
    * Safety net for free text such as log messages (18.3): outside UUIDs and trace/span ids, masks
-   * every Bangladesh MSISDN, then every other 10 to 20 digit number as an NID (10, 13 or 17
+   * every Bangladesh MSISDN, then every other number of 10 or more digits as an NID (10, 13 or 17
    * digits) or an account number.
    */
   public static String scrub(String text) {
