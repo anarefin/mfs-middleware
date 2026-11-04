@@ -23,14 +23,18 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   18.1), not `ops`.
 - Validation: `Idempotency-Key` required, 1..64 visible ASCII (`MW-VAL-001`, detail field
   `Idempotency-Key`); body by Bean Validation (`MW-VAL-001`, `amount.valueMinor` > 0, PIN
-  ciphertext required); unsupported `txnType` `MW-VAL-010`; `attributes` keys allow-listed
+  ciphertext required); unsupported `txnType` `MW-VAL-010`; for P2P/CASH_IN/CASH_OUT a
+  counterparty equal to the caller's own wallet `MW-VAL-012` (the core enforces the real wallet
+  types per txnType: `MW-CORE-INVALID_COUNTERPARTY`); `attributes` keys allow-listed
   (`mw.app-gateway.allowed-attributes`, only `reference`), so a client can never set reserved
   keys (`duplicate`, `requestTxnId`). MSISDNs accepted as `01XNNNNNNNN`, `8801...`, `+8801...`
   (`util/Msisdn`) and forwarded only in the canonical `01XNNNNNNNN` form.
 - Submit (`service/TransactionService`): mints a UUIDv7 txnId (`util/UuidV7`), maps to the
   canonical `mw.txn.request.v1` (`mapper/RequestMapper`; initiator MSISDN = token wallet; debit = token
-  wallet, credit = body wallet, except CASH_OUT: debit = body (customer) wallet with the
-  customer's PIN, credit = agent wallet; PIN ciphertext copied untouched, never logged), registers a waiter, then
+  wallet, credit = body wallet, except CASH_OUT, which always pays the agent:
+  initiated by an agent, debit = body (customer) wallet with the customer's PIN, credit = agent;
+  initiated by a customer (if `txn-type-roles` allowed it), debit = customer, credit = body wallet
+  as AGENT; PIN ciphertext copied untouched, never logged), registers a waiter, then
   publishes directly (not via the outbox) with header `mw-reply-to = instanceId`. Kafka refusing
   or timing out (`max-block-ms`/`delivery-timeout-ms` 5 s/10 s) -> `503 MW-SYS-010`, retryable,
   nothing recorded. Idempotency is decided by mw-orchestrator (7.3); this service only requires

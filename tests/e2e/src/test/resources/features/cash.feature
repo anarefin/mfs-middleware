@@ -40,6 +40,24 @@ Feature: Agent cash in and cash out from the Agent app through APISIX
     And no core balance changed
     And the app shows the transaction as REJECTED
 
+  Scenario: a cash-in to another agent's wallet is refused by the core and moves no money
+    When agent01 submits CASH_IN of 2000 poisha with counterparty 01811000002 and PIN "1234"
+    Then the response status is 422
+    And the error code is "MW-CORE-INVALID_COUNTERPARTY"
+    And no core balance changed
+
+  Scenario: the agent's own wallet is never a counterparty
+    When agent01 submits CASH_IN of 2000 poisha with counterparty 01811000001 and PIN "1234"
+    Then the response status is 400
+    And the error code is "MW-VAL-012"
+    And no core balance changed
+
+  Scenario: a cash-out with the customer's wrong PIN is rejected and moves no money
+    When agent01 submits CASH_OUT of 2000 poisha with counterparty 01711000010 and PIN "9999"
+    Then the response status is 422
+    And the error code is "MW-CORE-INVALID_PIN"
+    And no core balance changed
+
   Scenario Outline: a customer may not initiate <type>
     When customer01 submits <type> of 2000 poisha with counterparty 01711000010 and PIN "1234"
     Then the response status is 403

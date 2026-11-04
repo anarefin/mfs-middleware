@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 /**
  * App request to the canonical {@code mw.txn.request.v1} (spec 5.1, 9). The initiator is the
  * token's wallet, and so is the payer, except for an agent's {@code CASH_OUT}, where the customer
- * named in the body pays the agent; MSISDNs go out in the canonical form {@code 01XNNNNNNNN} only; the PIN ciphertext is
+ * named in the body pays the agent (a customer's CASH_OUT pays the agent named in the body); MSISDNs go out in the canonical form {@code 01XNNNNNNNN} only; the PIN ciphertext is
  * copied as received, never inspected or changed (18.3).
  */
 @Component
@@ -26,6 +26,7 @@ public class RequestMapper {
   public static final String ACCEPTED_STATUS = "RECEIVED";
 
   private static final String CASH_OUT = "CASH_OUT";
+  private static final String AGENT = "AGENT";
 
   /** Attribute keys set by the middleware (orchestrator reply matching); never from a client. */
   public static final Set<String> RESERVED_ATTRIBUTES =
@@ -38,11 +39,15 @@ public class RequestMapper {
       String txnId,
       String correlationId,
       Instant now) {
+    // CASH_OUT always pays the agent: initiated by an agent, the customer named in the body pays
+    // (with the customer's PIN); initiated by a customer, the customer pays the agent named in
+    // the body. Otherwise the token's wallet pays the wallet in the body. Who may initiate is
+    // mw.app-gateway.txn-type-roles; the core enforces the real wallet types.
+    boolean cashOut = CASH_OUT.equals(body.txnType());
+    boolean ownIsPayee = cashOut && AGENT.equals(user.walletType());
+    String otherType = cashOut && !ownIsPayee ? AGENT : "CUSTOMER";
     Party own = Party.wallet(user.msisdn(), user.walletType());
-    Party other = Party.wallet(canonical(body.creditParty().id()), "CUSTOMER");
-    // CASH_OUT: the agent receives the customer's money (the customer's PIN); otherwise the
-    // token's wallet pays the wallet named in the body.
-    boolean ownIsPayee = CASH_OUT.equals(body.txnType());
+    Party other = Party.wallet(canonical(body.creditParty().id()), otherType);
     return new TxnRequest(
         1,
         txnId,

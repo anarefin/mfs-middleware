@@ -98,6 +98,30 @@ class TransactionServiceTest {
     assertThat(waiters.size()).isZero();
   }
 
+  static TransactionRequest bodyTo(String txnType, String counterparty) {
+    return new TransactionRequest(
+        txnType, new TransactionRequest.CounterParty(null, counterparty), new Amount(100L, "BDT"),
+        new EncryptedPin("k", "c"), null, null);
+  }
+
+  @Test
+  void theCounterpartyMayNotBeTheInitiatorsOwnWallet() {
+    for (var c : List.of(
+        Map.entry(AGENT, "CASH_IN"), Map.entry(AGENT, "CASH_OUT"), Map.entry(USER, "P2P"))) {
+      String self = "+880" + c.getKey().msisdn().substring(1);
+      assertThatThrownBy(() -> service.submit(c.getKey(), "key", bodyTo(c.getValue(), self)))
+          .as(c.getValue())
+          .isInstanceOfSatisfying(
+              MwException.class,
+              e -> {
+                assertThat(e.code()).isEqualTo("MW-VAL-012");
+                assertThat(e.status().value()).isEqualTo(400);
+                assertThat(e.details()).extracting(d -> d.field()).containsExactly("creditParty.id");
+              });
+    }
+    verifyNoInteractions(publisher, repo);
+  }
+
   @Test
   void anAgentMayNotSendP2p() {
     assertThatThrownBy(() -> service.submit(AGENT, "key", body("P2P")))

@@ -24,7 +24,10 @@ paths:
         Who may initiate what follows the token's realm role: `customer` sends P2P, `agent` sends
         CASH_IN (agent wallet pays the customer in `creditParty`) and CASH_OUT (the customer in
         `creditParty` pays the agent wallet; `encryptedPin` is the customer's PIN). Any other
-        combination is 403 MW-AUTH-002.
+        combination is 403 MW-AUTH-002. A counterparty equal to the caller's own wallet is
+        400 MW-VAL-012; the core refuses wallets of the wrong type for CASH_IN/CASH_OUT (422
+        MW-CORE-INVALID_COUNTERPARTY) and locks a wallet after 5 wrong PINs in a row (422
+        MW-CORE-ACCOUNT_LOCKED).
       parameters:
         - name: Idempotency-Key
           in: header

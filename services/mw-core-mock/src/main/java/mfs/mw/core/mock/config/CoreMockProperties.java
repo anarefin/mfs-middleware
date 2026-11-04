@@ -17,6 +17,10 @@ import org.springframework.validation.annotation.Validated;
  * @param limits per-transaction and daily debit limits
  * @param seed what the ledger is seeded with on start
  * @param pin the PIN key pair (private key from OpenBao in a stack)
+ * @param walletTypes per {@code txnType}, the wallet types the debit and the credit wallet must
+ *     have (agent cash in: AGENT -> CUSTOMER, cash out: CUSTOMER -> AGENT); a type not listed is
+ *     not restricted. Refused with {@code INVALID_COUNTERPARTY}.
+ * @param pinMaxFailures consecutive wrong PINs after which a wallet is locked (spec 9.1: 5)
  */
 @Validated
 @ConfigurationProperties("mw.coremock")
@@ -24,7 +28,16 @@ public record CoreMockProperties(
     @NotNull Map<String, Long> fees,
     @Valid @NotNull Limits limits,
     @Valid @NotNull Seed seed,
-    @Valid @NotNull Pin pin) {
+    @Valid @NotNull Pin pin,
+    Map<String, @Valid WalletTypes> walletTypes,
+    @Positive int pinMaxFailures) {
+
+  public CoreMockProperties {
+    walletTypes = Map.copyOf(walletTypes == null ? Map.of() : walletTypes);
+  }
+
+  /** The wallet type the debit and the credit wallet of one {@code txnType} must have. */
+  public record WalletTypes(@NotBlank String debit, @NotBlank String credit) {}
 
   /** Debit limits for every wallet. */
   public record Limits(@Positive long perTxnMinor, @Positive long dailyMinor) {}

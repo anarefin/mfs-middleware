@@ -50,7 +50,7 @@ class PostingOperations {
       return rejected(cmd, "CreditRejected", coreRef, Reason.CREDIT_WALLET_NOT_FOUND);
     }
     Wallet credit = wallets.lock(creditId.get());
-    if (!credit.active()) {
+    if (!credit.canReceive()) {
       return rejected(cmd, "CreditRejected", coreRef, Reason.CREDIT_ACCOUNT_BLOCKED);
     }
     long amount = p.amount().valueMinor();

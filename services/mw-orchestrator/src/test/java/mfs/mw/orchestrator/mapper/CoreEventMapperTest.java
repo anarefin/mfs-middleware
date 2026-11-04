@@ -78,7 +78,7 @@ class CoreEventMapperTest {
   @CsvSource({
     "WALLET_NOT_FOUND", "CREDIT_WALLET_NOT_FOUND", "ACCOUNT_BLOCKED", "CREDIT_ACCOUNT_BLOCKED",
     "SAME_WALLET", "INVALID_PIN", "INVALID_PIN_BLOCK", "INVALID_AMOUNT", "LIMIT_EXCEEDED_PER_TXN",
-    "LIMIT_EXCEEDED_DAILY", "INSUFFICIENT_BALANCE"
+    "LIMIT_EXCEEDED_DAILY", "INSUFFICIENT_BALANCE", "INVALID_COUNTERPARTY", "ACCOUNT_LOCKED"
   })
   void everyCoreMockReasonHasAReadableMessage(String reason) {
     ErrorInfo error = mapper.error(event("TransferRejected", "FAILURE", reason, "{}"));

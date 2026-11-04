@@ -66,11 +66,20 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   system wallets `FEE-POOL` and `SETTLEMENT`. All share the fake seed PIN `1234` (bcrypt). Balances, fees and limits
   are `mw.coremock.*` in `application.yml`; fee is a flat amount per `txnType`, debited from the payer
   on top of the amount; limits are per transaction and per UTC day (sum of transfer debits).
+- Wallet types per `txnType` (`mw.coremock.wallet-types`, debit -> credit): CASH_IN AGENT ->
+  CUSTOMER, CASH_OUT CUSTOMER -> AGENT; other types unrestricted. Wrong types `INVALID_COUNTERPARTY`
+  (validate, post and hold; decided before the PIN, so it never counts a PIN failure).
+- PIN lockout (spec 9.1, rule owned by the core): `wallet.pin_failures` counts consecutive wrong
+  PINs on the debit wallet (validate, post, hold), a correct PIN resets it, the
+  `mw.coremock.pin-max-failures`-th (5) in a row sets status `LOCKED` (log event
+  `wallet.pin.locked`). A LOCKED wallet is refused as payer with `ACCOUNT_LOCKED` (before its PIN
+  is checked) but can still be credited. Counting runs in the command transaction, so a replay
+  answered from `command_log` never counts twice. No unlock API yet (seed reset only).
 - Reason codes (core reasons, mapped by the orchestrator): `WALLET_NOT_FOUND`,
-  `CREDIT_WALLET_NOT_FOUND`, `ACCOUNT_BLOCKED`, `CREDIT_ACCOUNT_BLOCKED`, `SAME_WALLET`,
-  `INVALID_PIN`, `INVALID_PIN_BLOCK`, `INVALID_AMOUNT`, `LIMIT_EXCEEDED_PER_TXN`,
-  `LIMIT_EXCEEDED_DAILY`, `INSUFFICIENT_BALANCE`, plus the hold and reversal reasons above. Check order: wallets, status, PIN,
-  amount, limits, funds.
+  `CREDIT_WALLET_NOT_FOUND`, `INVALID_COUNTERPARTY`, `ACCOUNT_LOCKED`, `ACCOUNT_BLOCKED`,
+  `CREDIT_ACCOUNT_BLOCKED`, `SAME_WALLET`, `INVALID_PIN`, `INVALID_PIN_BLOCK`, `INVALID_AMOUNT`,
+  `LIMIT_EXCEEDED_PER_TXN`, `LIMIT_EXCEEDED_DAILY`, `INSUFFICIENT_BALANCE`, plus the hold and
+  reversal reasons above. Check order: wallets, wallet types, status, PIN, amount, limits, funds.
 - PIN: RSA-OAEP with SHA-256 (hash and MGF1), PKCS#8 private key from OpenBao
   (`mw.coremock.pin.private-key`), checked against the wallet's bcrypt hash. The plaintext is never
   logged or stored. `GET /core-mock/v1/pin-public-key` exports `{keyId, algorithm, publicKeyPem}`.

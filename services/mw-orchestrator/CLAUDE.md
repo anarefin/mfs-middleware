@@ -44,6 +44,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   All wallet commands go to `core.wallet.command.v1`; nothing is sent on `core.payment.*` yet.
 - Core reason -> error: `MW-CORE-<reasonCode>` (same pattern as the status contract), message
   English + Bengali for the reasons mw-core-mock emits (`mapper/CoreEventMapper`), not retryable.
+  A wrong PIN (`MW-CORE-INVALID_PIN`) on a debit wallet that is not the initiator's (an agent's
+  CASH_OUT) is logged as business event `txn.pin.failed.third.party` (txnId, txnType, channel,
+  debit wallet type; no MSISDN); the lockout itself is the core's rule.
   Other codes used: `MW-VAL-010` unsupported txn type, `MW-VAL-011` amount <= 0, `MW-IDEM-001`,
   `MW-TMO-001`.
 - PIN: only ciphertext. It is kept in `transaction.encrypted_pin` (jsonb) because PostTransfer

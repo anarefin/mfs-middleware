@@ -15,6 +15,8 @@ public final class ErrorCodes {
   public static final String VAL_MEDIA_TYPE = "MW-VAL-005";
   /** Transaction type not offered on this channel (same code as mw-orchestrator). */
   public static final String VAL_UNSUPPORTED_TXN_TYPE = "MW-VAL-010";
+  /** The counterparty wallet is the initiator's own wallet (wallet-to-wallet types). */
+  public static final String VAL_SELF_COUNTERPARTY = "MW-VAL-012";
   /** No valid bearer token (missing, expired, bad signature, wrong realm): HTTP 401. */
   public static final String AUTH_UNAUTHENTICATED = "MW-AUTH-001";
   /** Valid token, but no wallet (claim msisdn) or a role this endpoint does not serve: HTTP 403. */

@@ -25,6 +25,7 @@ import mfs.mw.app.gateway.messaging.EventMetadata;
 import mfs.mw.app.gateway.messaging.EventPublisher;
 import mfs.mw.app.gateway.messaging.MwHeaders;
 import mfs.mw.app.gateway.repository.AppTransactionRepository;
+import mfs.mw.app.gateway.util.Msisdn;
 import mfs.mw.app.gateway.util.UuidV7;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,6 +43,9 @@ import org.springframework.stereotype.Service;
 public class TransactionService {
 
   private static final Logger log = LoggerFactory.getLogger(TransactionService.class);
+
+  /** Types whose counterparty is another wallet of this core. */
+  private static final java.util.Set<String> WALLET_TO_WALLET = java.util.Set.of("P2P", "CASH_IN", "CASH_OUT");
 
   private final EventPublisher publisher;
   private final ReplyWaiters waiters;
@@ -74,6 +78,7 @@ public class TransactionService {
           .withStatus(HttpStatus.FORBIDDEN);
     }
     refuseUnknownAttributes(body);
+    refuseOwnWallet(user, body);
     Instant now = clock.instant();
     String txnId = UuidV7.next(clock).toString();
     String correlationId = correlationId();
@@ -117,6 +122,18 @@ public class TransactionService {
             .toList();
     if (!refused.isEmpty()) {
       throw new MwException(ErrorCodes.VAL_INVALID, "Request validation failed").withDetails(refused);
+    }
+  }
+
+  /**
+   * Wallet-to-wallet types never name the initiator's own wallet as counterparty (MW-VAL-012).
+   * The core also refuses debit = credit and the wrong wallet types; this answers early.
+   */
+  private static void refuseOwnWallet(AppUser user, TransactionRequest body) {
+    if (WALLET_TO_WALLET.contains(body.txnType())
+        && user.msisdn().equals(Msisdn.canonical(body.creditParty().id()))) {
+      throw new MwException(ErrorCodes.VAL_SELF_COUNTERPARTY, "The counterparty cannot be your own wallet")
+          .withDetails(List.of(new ErrorDetail("creditParty.id", "is your own wallet")));
     }
   }
 
