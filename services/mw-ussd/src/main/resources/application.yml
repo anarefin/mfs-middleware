@@ -193,7 +193,7 @@ mw:
       public-key: ${MW_USSD_PIN_PUBLIC_KEY:}
     # Per MNO (spec 9.2): transport, short codes, screen limits (GSM-7 / UCS-2), session timeout
     # (MNO limit, TBC), overflow TRUNCATE|PAGE and the HTTP continue/end flag values. GP runs
-    # over SMPP (WP19, not built yet); the others are HTTP until their contracts say otherwise.
+    # over SMPP (WP19, binds in mw.ussd.smpp below); the others are HTTP until their contracts say otherwise.
     mno:
       gp:
         transport: SMPP
@@ -231,3 +231,35 @@ mw:
         overflow: TRUNCATE
         continue-flag: CON
         end-flag: END
+    # SMPP USSD transport (spec 9.2, 9.2.1, WP19, client/UssdSmppClient): one bind group for every
+    # MNO above with transport SMPP; the others are config-ready (switch the MNO's transport to
+    # SMPP to bind). Window, TPS and bind count are MNO contract values (TBC). Passwords from
+    # OpenBao (secret/mw-ussd, mw.ussd.smpp.mno.<mno>.password); the simulator accepts any bind.
+    smpp:
+      enabled: ${MW_USSD_SMPP_ENABLED:true}
+      mno:
+        gp:
+          host: ${MW_USSD_SMPP_GP_HOST:mw-simulators}
+          port: ${MW_USSD_SMPP_GP_PORT:2776}
+          system-id: upay-ussd
+          binds: 2
+          enquire-link: 30s
+          enquire-link-misses: 3
+          transaction-timeout: 5s
+          reconnect-min: 1s
+          reconnect-max: 60s
+          window: 10
+          tps: 50
+          retry-delays: [500ms, 1s, 2s]
+        robi:
+          host: ${MW_USSD_SMPP_ROBI_HOST:mw-simulators}
+          port: ${MW_USSD_SMPP_ROBI_PORT:2776}
+          system-id: upay-ussd
+        banglalink:
+          host: ${MW_USSD_SMPP_BANGLALINK_HOST:mw-simulators}
+          port: ${MW_USSD_SMPP_BANGLALINK_PORT:2776}
+          system-id: upay-ussd
+        teletalk:
+          host: ${MW_USSD_SMPP_TELETALK_HOST:mw-simulators}
+          port: ${MW_USSD_SMPP_TELETALK_PORT:2776}
+          system-id: upay-ussd
