@@ -47,12 +47,30 @@ mfs.mw.<service>/
   filter/      correlation ID and request logging filters
   logging/     structured log formatter (21.1 fields, masking before output)
   util/        small static helpers (masking, hashing, crypto envelope)
+  partner/     adapters only: the adapter framework (spec 12), see below
 ```
 
+The one sanctioned exception to one kind of class per package is the adapter framework
+`partner/` in each adapter (mw-adapter-telco, -billpay, -bank; copied, not a library): its SPI
+(`PartnerAdapter`, `AuthScheme`, `PartnerCall`, `PartnerResponse`, `InboundCall`, ...) and its
+Spring wiring `PartnerFrameworkConfiguration` sit in `partner/` itself, with its own subpackages
+`partner/config/` (partner config records, store, config-changed route and listener),
+`partner/template/` (Camel route templates, registrar, gateway, call wrapper, REST/JSON adapter,
+audit), `partner/auth/` (auth schemes, credential resolver) and `partner/mapping/` (JSONata). The
+three copies stay identical apart from the package; mw-adapter-telco's CLAUDE.md describes it. The
+framework hands its audit to the service's `messaging/PartnerAuditPublisher`; everything else in an
+adapter follows the layered packages above.
+
 Dependencies point one way: `controller`, `messaging`, `route`, `scheduler` -> `service`
--> `repository`, `client`. Entities never leave the service layer. Tests mirror the main
-packages (unit for service/mapper/util, `@WebMvcTest` for controller, `@DataJpaTest` +
-Testcontainers for repository, Camel route tests for route).
+-> `repository`, `client`. One sanctioned exception: `service` may call the outbox and inbox
+writers (`messaging/OutboxWriter`, `messaging/Inbox`) and use the header constants and metadata
+of `messaging/` (`MwHeaders`, `EventMetadata`) inside its own transaction, because the event must
+commit with the business change (spec 6.4). Listeners, relays and routes in `messaging/` still
+depend on `service`, never the other way round otherwise. Entities never leave the service layer.
+Tests mirror the main packages (unit for service/mapper/util, `@WebMvcTest` for controller,
+`*RepositoryIT` for repository: the JDBC repositories run against the module's JVM-scoped
+Testcontainers PostgreSQL from its `TestInfrastructure`, in a `@SpringBootTest` context, as the
+catalogs carry no JDBC slice starter; Camel route tests for route).
 
 ## Error model
 
