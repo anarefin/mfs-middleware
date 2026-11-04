@@ -32,6 +32,8 @@ import mfs.mw.adapter.telco.exception.OcsUnknownOutcomeException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -139,6 +141,20 @@ class OcsClientTest {
     assertThat(client(Duration.ofSeconds(5)).topup(TOPUP))
         .isInstanceOfSatisfying(
             OcsResult.Rejected.class, r -> assertThat(r.code()).isEqualTo("HTTP_400"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {401, 403, 404, 408, 409, 429, 302})
+  void anyStatusOtherThan200400422500IsAnUnknownOutcomeNotARejection(int status) {
+    stubPost(status, "{\"status\":\"FAILED\",\"code\":\"2001\",\"message\":\"x\"}");
+    OcsClient client = client(Duration.ofSeconds(5));
+
+    assertThatThrownBy(() -> client.topup(TOPUP))
+        .isInstanceOfSatisfying(
+            OcsUnknownOutcomeException.class,
+            e ->
+                assertThat(e.reason())
+                    .isEqualTo(OcsUnknownOutcomeException.Reason.UNEXPECTED_STATUS));
   }
 
   @Test

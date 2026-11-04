@@ -12,8 +12,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.telco`. Follo
 - Outcomes (`mapper/PartnerReplyMapper`): SUCCESS (`partnerRef` = OCS ref, `attributes.partnerTxnRef`
   = our reference); FAILED with `MW-PTR-<PARTNER>-<suffix>` (OCS code map in `mw.telco.ocs.error-codes`,
   unlisted -> `UNMAPPED`); FAILED `MW-SYS-PARTNER_{UNAVAILABLE,CIRCUIT_OPEN,BUSY}` when the call never left
-  (retryable); UNKNOWN `MW-TMO-PARTNER_{TIMEOUT,CONNECTION_RESET,HTTP_5XX,MALFORMED_REPLY,AMBIGUOUS_CODE}`
-  (never retryable by itself: status inquiry resolves it); FAILED `MW-VAL-INVALID_PARTNER_REQUEST`
+  (retryable); UNKNOWN `MW-TMO-PARTNER_{TIMEOUT,CONNECTION_RESET,HTTP_5XX,MALFORMED_REPLY,UNEXPECTED_STATUS,AMBIGUOUS_CODE}`
+  (never retryable by itself: status inquiry resolves it). Only 422 with a code and 400 (`HTTP_400`) are
+  definite rejections; 408/409/429, other 4xx and 1xx/3xx are UNKNOWN (fail closed: a rejection releases the hold); FAILED `MW-VAL-INVALID_PARTNER_REQUEST`
   for requests that cannot be mapped (wrong family/operation, amount <= 0, credit party not an MSISDN).
 - Stable partner reference (`service/PartnerReferenceService`, table `partner_reference` in schema
   `partner_ref`, spec 4.1): `UPAY` + txnId hex, upper case, stored on first use. Every request for the same
