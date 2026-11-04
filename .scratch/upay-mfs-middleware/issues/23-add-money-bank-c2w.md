@@ -6,9 +6,9 @@
 
 - 22: Partner callbacks (billpay async)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] e2e `@addmoney`: success credits the wallet once
-- [ ] e2e: bank callback replay is deduplicated, with no double credit
-- [ ] e2e: bank failure and bank timeout → TSQ → resolved
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] e2e `@addmoney`: success credits the wallet once
+- [x] e2e: bank callback replay is deduplicated, with no double credit
+- [x] e2e: bank failure and bank timeout → TSQ → resolved
+- [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
