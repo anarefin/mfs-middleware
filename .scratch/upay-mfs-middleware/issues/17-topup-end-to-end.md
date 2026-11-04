@@ -8,10 +8,10 @@
 - 14: Core-mock full command set + fault injection
 - 16: Thin telco adapter
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Unit tests for the hold path transitions and step reuse
-- [ ] HOLDING timeout → QueryTransaction; if held → RELEASING
-- [ ] e2e `@topup`: success debits once; partner failure releases the hold and the balance is unchanged
-- [ ] e2e: a duplicate request with the same idempotency key never tops up twice
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] Unit tests for the hold path transitions and step reuse
+- [x] HOLDING timeout → QueryTransaction; if held → RELEASING
+- [x] e2e `@topup`: success debits once; partner failure releases the hold and the balance is unchanged
+- [x] e2e: a duplicate request with the same idempotency key never tops up twice
+- [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
