@@ -38,9 +38,27 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.billpay`. Fol
   request's (virtual) thread. Only client: mw-app-gateway, over the `app` network (no APISIX route,
   no published port; the zone is the access control, as for every service-to-service call in the
   MVP). See "Design decision: synchronous bill fetch" below.
-- Not yet: the aggregator callback endpoint and `mw.partner.inbound.v1` (ticket 22; the copied
-  framework already verifies and maps a callback, `PartnerGateway.inbound`); audit events on
-  `mw.audit.event.v1` (the framework audits to the log).
+- Partner callbacks (ticket 22, spec 11.2 inbound path; `controller/PartnerCallbackController`,
+  `service/PartnerCallbackService`, `mapper/PartnerInboundMapper`, own type `dto/PartnerInbound`):
+  `POST /partner/{partnerId}/callback/**`, reached from outside only through the APISIX route of
+  that partner (`deploy/apisix/routes/partner-billagg-callback.json`: ip allow-list, 16 KiB body
+  cap, 600/min per source address in Valkey; path and body forwarded unchanged). Steps: (1) the
+  partner in the URL must have config of its own (no default-partner fallback) else 404; (2) the
+  framework verifies the signature with that partner's auth scheme and maps the body
+  (`PartnerGateway.inbound`, CALLBACK operation): not authentic 401 `MW-AUTH-001`
+  (`security.partner_callback_rejected`), unreadable 400 `MW-VAL-002`; (3) the callback's
+  `reference` must be one this adapter issued for that partner (`partner_reference`), giving the
+  txnId, else 404 `MW-VAL-003`; (4) inbox row (consumer `mw-adapter-billpay.callbacks`, key
+  `inboundId` = name UUID of `<partnerId>:<reference>:<outcome>`) and a synchronous Kafka send
+  (`acks=all`) of `mw.partner.inbound.v1` (family `billpay`, kind `CALLBACK`, key txnId) in one DB
+  transaction, then 200 `{status: ACCEPTED, inboundId, duplicate}`. Kafka down: rolled back, 503
+  `MW-SYS-EVENT_NOT_WRITTEN` (retryable; the partner sends again). A duplicate (same partner,
+  reference, outcome) is acknowledged `duplicate: true` and not published again; a PENDING and the
+  final outcome of one reference are different callbacks. FAILED carries `errorCode`
+  `MW-PTR-<PARTNER>-<suffix>` from the error map; a FAILED with an ambiguous code is published as
+  PENDING (fail closed); `partnerRef` = the aggregator's `paymentRef`, else our reference;
+  `attributes.message` = the partner's message. No audit events on `mw.audit.event.v1` yet (the
+  framework audits to the log).
 - Init (`mw-adapter-billpay-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
   `adapter_billpay_rw` and schema `billpay_ref`, `secret/mw-adapter-billpay` (DB password, never
   overwritten) and the AppRole `mw-adapter-billpay` (configtree volume at `/run/mw/approle`); waits
@@ -63,10 +81,21 @@ catalogue and the fetch. Why:
   gateway on `mw.partner.request.billpay.v1` (orchestrator-owned, produced only by the orchestrator)
   and route INQUIRY replies to a topic the orchestrator consumes (it would see replies for txnIds it
   does not know), or need two new topics and contracts plus per-instance reply routing, for a read.
-- Ticket 22 (async callbacks) builds on the payment path, not on this API: the callback endpoint
-  goes on this module behind the APISIX route `/partner/{partnerId}/callback/*`, verified and
-  mapped by the copied framework (`PartnerGateway.inbound`, `rest-json-async-callback` template,
-  PENDING outcome), deduplicated on the partner reference, published on `mw.partner.inbound.v1`.
+- Ticket 22 (async callbacks) builds on the payment path, not on this API (see "Partner
+  callbacks" above and "Design decision: callback signature" below).
+
+## Design decision: callback signature at the adapter, not APISIX hmac-auth (ticket 22)
+
+Spec 8.2 lists `hmac-auth` / `jwt-auth` / mTLS per partner at the edge; the adapter framework
+already has a per-partner `hmac-sha256` auth scheme. Chosen: **the adapter verifies the
+signature**; APISIX does ip allow-list, body cap and quota only. Why: the partner's wire scheme
+(header names, string to sign, key id, skew) is partner config here and changes with a
+config-changed record, whereas APISIX `hmac-auth` has its own fixed scheme (`Authorization:
+Signature keyId=...`) that real aggregators do not speak; the secret stays in OpenBao
+(`mw.partner-secrets.<instance>.<name>`) instead of a consumer credential in etcd; the 401 is the
+service's 5.3 envelope. Cost: an unsigned flood reaches the adapter (bounded by the quota and the
+allow-list). A partner that speaks APISIX `hmac-auth`/`jwt-auth`/mTLS can get that plugin on its
+own route as an extra layer; the adapter check stays (the `none` scheme refuses every callback).
 
 ## Adapter framework (`partner` package; copied from mw-adapter-telco, D13/D14)
 
@@ -79,14 +108,30 @@ amount due. A fix to the framework must be applied to both copies.
 
 The aggregator is the seed instance `billagg` in `application.yml` (`mw.partners`; wire format of
 the mw-simulators aggregator: `POST /billagg/v1/payments {transactionId, billerCode, billNumber,
-amount:"667.00"}`, `GET /billagg/v1/payments/{reference}`, `POST /billagg/v1/bills/fetch
-{billerCode, billNumber}`), base URL `BILLAGG_BASE_URL`, host allowlist `MW_BILLAGG_ALLOWED_HOSTS`,
+amount:"667.00"}` (200 SUCCESS, 422 FAILED, or 202 PENDING with the outcome by callback),
+`GET /billagg/v1/payments/{reference}`, `POST /billagg/v1/bills/fetch {billerCode, billNumber}`,
+callback `POST /partner/billagg/callback/payments` with the payment body), template
+`rest-json-async-callback` (ticket 22), auth `hmac-sha256` both ways (secret
+`mw.partner-secrets.billagg.hmac-secret`, OpenBao `secret/mw-adapter-billpay`; dev value
+generated as `BILLAGG_HMAC_SECRET` and written by `init/init.sh`; tests use an obviously fake
+one), base URL `BILLAGG_BASE_URL`, host allowlist `MW_BILLAGG_ALLOWED_HOSTS`,
 timeout 25 s (below the orchestrator's 30 s partner deadline; spec 11.1 says 30 s for the
 aggregator), Resilience4j instance `billagg` (bulkhead 100, circuit breaker 20 s slow-call
 threshold), `default-partner: billagg`. Error map: `3001` BILL_NOT_FOUND, `3002`
 BILL_ALREADY_PAID, `3003` PAYMENT_REFUSED, `3004` UNKNOWN_BILLER; `9876` ambiguous. Partner
-secrets would be `mw.partner-secrets.<instance>.<name>` (OpenBao `secret/mw-adapter-billpay`);
-the simulator needs none. Never add a retry to a partner call.
+secrets are `mw.partner-secrets.<instance>.<name>` (OpenBao `secret/mw-adapter-billpay`). Never
+add a retry to a partner call.
+
+What ticket 23 (bank C2W callback replay) builds on: the same chain, copied with the framework
+into mw-adapter-bank: a CALLBACK operation mapping that returns our `reference`, an
+async-callback instance with an inbound-capable auth scheme, a callback controller + service
+like `PartnerCallbackService` (own-config check, reference lookup in the adapter's own table,
+inbox + synchronous publish, 401/404/400/503 answers), `PartnerInboundMapper`'s `inboundId`
+rule, one APISIX route per partner (`/partner/<id>/callback/*`, upstream the owning adapter,
+ip-restriction, client-control, limit-count on `remote_addr`), the simulator's signed callbacks
+(`sim.callback-secrets.<partner>`, `CallbackSigner`) and replay endpoint. The orchestrator's
+`PartnerInboundService` handles kind CALLBACK only; REMITTANCE / NPSB_CREDIT (new inbound money
+with an adapter-minted txnId) are dropped today and are ticket 23's to add.
 
 ## Contracts owned
 
@@ -99,6 +144,9 @@ the simulator needs none. Never add a retry to a partner call.
   billerCode}`, credit party `{type: BILLER_ACCOUNT, id: <bill number>}`.
 - `events/mw-orchestrator/mw.partner.reply.v1` (family `billpay`) out; own type `dto/PartnerReply`.
   `dto/PartnerMessagesSchemaTest` keeps both aligned with the billpay samples.
+- `events/mw-orchestrator/mw.partner.inbound.v1` (family `billpay`, kind `CALLBACK`) out; own type
+  `dto/PartnerInbound`, checked by `mapper/PartnerInboundMapperTest` and
+  `controller/PartnerCallbackIT`.
 - `events/mw-admin-api/mw.config.changed.v1` in (PARTNER records), as telco.
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)

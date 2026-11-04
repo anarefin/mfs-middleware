@@ -2,6 +2,7 @@ package mfs.mw.adapter.billpay.repository;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -29,5 +30,19 @@ public class PartnerReferenceRepository {
         Timestamp.from(now));
     return jdbc.queryForObject(
         "select partner_ref from partner_reference where txn_id = ?", String.class, txnId);
+  }
+
+  /** A reference this adapter issued: the transaction and partner it was sent for. */
+  public record Issued(String txnId, String partnerId) {}
+
+  /** The transaction behind a reference we issued, if any (callbacks name our reference). */
+  public Optional<Issued> findByReference(String partnerRef) {
+    return jdbc
+        .query(
+            "select txn_id, partner_id from partner_reference where partner_ref = ?",
+            (rs, n) -> new Issued(rs.getString("txn_id"), rs.getString("partner_id")),
+            partnerRef)
+        .stream()
+        .findFirst();
   }
 }

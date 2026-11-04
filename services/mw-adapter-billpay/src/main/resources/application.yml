@@ -176,9 +176,12 @@ mw:
       # Plain http only for the simulator; production sets MW_PARTNER_INSECURE_HTTP_HOSTS empty.
       insecure-http-hosts: ${MW_PARTNER_INSECURE_HTTP_HOSTS:mw-simulators}
     instances:
-      # Utility bill aggregator REST/JSON (wire format: mw-simulators billagg).
+      # Utility bill aggregator REST/JSON (wire format: mw-simulators billagg). Async-callback
+      # template (ticket 22): a payment is answered at once (200 SUCCESS / 422 FAILED) or accepted
+      # (202 PENDING) with the outcome following as a signed callback to
+      # /partner/billagg/callback/payments (APISIX -> controller/PartnerCallbackController).
       billagg:
-        template: rest-json-request-reply
+        template: rest-json-async-callback
         base-url: ${BILLAGG_BASE_URL:http://mw-simulators:8080}
         connect-timeout-ms: 3000
         # Aggregator timeout (spec 11.1 says 30 s) is 25 s here so the adapter answers before the
@@ -186,8 +189,13 @@ mw:
         # limiter decides first. Resilience4j bulkhead/circuit breaker: instance "billagg".
         timeout-ms: 25000
         read-timeout-ms: 27000
+        # hmac-sha256 both ways: outbound calls are signed, and a callback is believed only with a
+        # valid signature over method, path, timestamp and body (300 s skew). The shared secret is
+        # the property mw.partner-secrets.billagg.hmac-secret (OpenBao secret/mw-adapter-billpay,
+        # provisioned by init/init.sh from the generated BILLAGG_HMAC_SECRET in dev); never here.
         auth:
-          scheme: none
+          scheme: hmac-sha256
+          credentials-ref: hmac-secret
         # Raw bodies are audited masked: these fields by rule, everything by free-text scrubbing.
         sensitive-fields:
           billNumber: ACCOUNT
@@ -214,6 +222,10 @@ mw:
                 ? (body.status = "SUCCESS" and $type(body.paymentRef) = "string" and body.paymentRef != ""
                     ? {"outcome": "SUCCESS", "partnerRef": body.paymentRef, "code": body.code}
                     : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+              : status = 202
+                ? (body.status = "PENDING"
+                    ? {"outcome": "PENDING", "partnerRef": body.paymentRef, "code": body.code}
+                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
               : status = 422
                 ? ($type(body.code) = "string" and body.code != ""
                     ? {"outcome": "FAILED", "code": body.code, "message": body.message}
@@ -233,10 +245,31 @@ mw:
                     ? {"outcome": "SUCCESS", "partnerRef": body.paymentRef, "code": body.code}
                     : body.status = "FAILED" and $type(body.code) = "string" and body.code != ""
                       ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+                    : body.status = "PENDING"
+                      ? {"outcome": "PENDING", "partnerRef": body.paymentRef, "code": body.code}
                       : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
               : status = 404 and body.status = "NOT_FOUND"
                 ? {"outcome": "NOT_FOUND", "code": body.code, "message": body.message}
               : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          # Callback (ticket 22): POST /partner/billagg/callback/payments with the payment body
+          # {transactionId (our reference), status SUCCESS|FAILED|PENDING, code, message, paymentRef},
+          # signed (auth above). Input {headers, body}; anything without a known status is refused.
+          # The path is where APISIX forwards it; it is never called outbound.
+          "[CALLBACK]":
+            method: POST
+            path: /partner/billagg/callback/payments
+            response: |
+              $type(body.transactionId) != "string" or body.transactionId = "" ? {}
+              : body.status = "SUCCESS" and $type(body.paymentRef) = "string" and body.paymentRef != ""
+                ? {"outcome": "SUCCESS", "partnerRef": body.paymentRef, "reference": body.transactionId,
+                   "code": body.code, "message": body.message}
+              : body.status = "FAILED" and $type(body.code) = "string" and body.code != ""
+                ? {"outcome": "FAILED", "partnerRef": body.paymentRef, "reference": body.transactionId,
+                   "code": body.code, "message": body.message}
+              : body.status = "PENDING"
+                ? {"outcome": "PENDING", "partnerRef": body.paymentRef, "reference": body.transactionId,
+                   "code": body.code, "message": body.message}
+              : {}
           # Bill fetch (ticket 21, internal API only; no money moves):
           # POST /billagg/v1/bills/fetch {billerCode, billNumber}. 200 DUE carries the amount due
           # (decimal string, major units) as attributes; 422 with a code is a refusal (unknown

@@ -24,6 +24,8 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import mfs.mw.adapter.billpay.mapper.PartnerCallMapper;
+import mfs.mw.adapter.billpay.partner.InboundCall;
+import mfs.mw.adapter.billpay.partner.InboundResult;
 import mfs.mw.adapter.billpay.partner.PartnerCall;
 import mfs.mw.adapter.billpay.partner.PartnerResponse;
 import mfs.mw.adapter.billpay.partner.PartnerResponse.NotSentReason;
@@ -390,6 +392,88 @@ class AggregatorTemplateTest {
     agg.stubFor(
         get(urlEqualTo("/billagg/v1/payments/" + REF))
             .willReturn(aResponse().withStatus(status).withHeader("Content-Type", "application/json").withBody(body)));
+  }
+
+  // --- callback-only payments and callbacks (ticket 22) ------------------------------------
+
+  static final String CALLBACK_PATH = "/partner/billagg/callback/payments";
+
+  /** A billagg callback signed with {@code secret} as mw-simulators signs it. */
+  static InboundCall signedCallback(String secret, String body, long epochSeconds) {
+    String ts = Long.toString(epochSeconds);
+    String sig =
+        mfs.mw.adapter.billpay.partner.auth.HmacSha256AuthScheme.sign(
+            secret, "POST", CALLBACK_PATH, ts, body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    return new InboundCall(
+        "billagg", "POST", CALLBACK_PATH,
+        Map.of("X-Signature", sig, "X-Timestamp", ts, "Content-Type", "application/json"),
+        body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+  }
+
+  static InboundCall signedCallback(String body) {
+    return signedCallback("unused", body, java.time.Instant.now().getEpochSecond());
+  }
+
+  @Test
+  void anAcceptedPaymentIsPendingAndTheOutcomeFollowsByCallback() {
+    stubPost(
+        202,
+        "{\"transactionId\":\"" + REF + "\",\"status\":\"PENDING\",\"code\":\"001\",\"message\":\"Accepted\",\"paymentRef\":\"AGG-5\"}");
+
+    assertThat(gateway(Duration.ofSeconds(5)).call(payment())).isEqualTo(new PartnerResponse.Pending("AGG-5", "001"));
+  }
+
+  @Test
+  void outboundCallsAreSignedWithTheAggregatorSecret() {
+    stubPost(200, "{\"status\":\"SUCCESS\",\"code\":\"000\",\"paymentRef\":\"R\"}");
+
+    gateway(Duration.ofSeconds(5)).call(payment());
+
+    agg.verify(
+        postRequestedFor(urlEqualTo("/billagg/v1/payments"))
+            .withHeader("X-Signature", com.github.tomakehurst.wiremock.client.WireMock.matching(".+"))
+            .withHeader("X-Timestamp", com.github.tomakehurst.wiremock.client.WireMock.matching("[0-9]+")));
+  }
+
+  @Test
+  void aSignedSuccessCallbackMapsToTheAggregatorReferenceAndOurs() {
+    String body =
+        "{\"transactionId\":\"" + REF + "\",\"status\":\"SUCCESS\",\"code\":\"000\",\"message\":\"Bill paid\",\"paymentRef\":\"AGG-5\"}";
+
+    InboundResult r = gateway(Duration.ofSeconds(5)).inbound(signedCallback(body));
+
+    assertThat(r).isEqualTo(new InboundResult("AGG-5", REF, "SUCCESS", "000", "Bill paid", Map.of()));
+  }
+
+  @Test
+  void aSignedFailureOrPendingCallbackKeepsItsOutcomeAndCode() {
+    PartnerGateway g = gateway(Duration.ofSeconds(5));
+    String failed = "{\"transactionId\":\"" + REF + "\",\"status\":\"FAILED\",\"code\":\"3003\",\"message\":\"Refused\"}";
+    String pending = "{\"transactionId\":\"" + REF + "\",\"status\":\"PENDING\",\"code\":\"001\",\"paymentRef\":\"AGG-5\"}";
+
+    assertThat(g.inbound(signedCallback(failed)))
+        .isEqualTo(new InboundResult(null, REF, "FAILED", "3003", "Refused", Map.of()));
+    assertThat(g.inbound(signedCallback(pending)).outcome()).isEqualTo("PENDING");
+  }
+
+  @Test
+  void aCallbackWithABadSignatureOrAStaleTimestampIsNotAuthentic() {
+    PartnerGateway g = gateway(Duration.ofSeconds(5));
+    String body = "{\"transactionId\":\"" + REF + "\",\"status\":\"SUCCESS\",\"code\":\"000\",\"paymentRef\":\"AGG-5\"}";
+    long now = java.time.Instant.now().getEpochSecond();
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(() -> g.inbound(signedCallback("other-secret", body, now)))
+        .isInstanceOf(mfs.mw.adapter.billpay.partner.PartnerAuthenticationException.class);
+    org.assertj.core.api.Assertions.assertThatThrownBy(() -> g.inbound(signedCallback("unused", body, now - 3600)))
+        .isInstanceOf(mfs.mw.adapter.billpay.partner.PartnerAuthenticationException.class);
+  }
+
+  @Test
+  void aCallbackWithoutAKnownStatusIsRefusedAsUnreadable() {
+    String body = "{\"transactionId\":\"" + REF + "\",\"status\":\"MAYBE\"}";
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(() -> gateway(Duration.ofSeconds(5)).inbound(signedCallback(body)))
+        .isInstanceOf(mfs.mw.adapter.billpay.partner.mapping.JsonataMapping.MappingException.class);
   }
 
   private void stubPost(int status, String body) {
