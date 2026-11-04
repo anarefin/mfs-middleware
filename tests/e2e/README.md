@@ -71,6 +71,13 @@ Only APISIX is published, so every call goes through it:
   transaction's callback". Money comes from `SETTLEMENT` (no fee). Magic values: account ending
   999 refused (`MW-PTR-C2WBANK-DEBIT_REFUSED`), amount fraction .13 = no answer within 25 s and no
   callback (`@tsq`, COMPLETED by status inquiry after about 60 s).
+- USSD (`features/ussd.feature`, `@ussd`, ticket 26): the USSD gateway simulator in HTTP mode plays
+  the MNO (`support/UssdGateway`, `POST /test/sim/ussdgw/sessions`; it posts every step to
+  `http://apisix:9080/ussd/<mno>`, route `ussd-http` -> mw-ussd). Steps: "<msisdn> dials <code> on
+  <mno> and enters "9, 1, 01711000002, 10, 1, 1234"" (comma-separated inputs; `9` switches to
+  English, amounts in taka), "the first USSD screens were:" (one column, `\n` = line break), "the
+  USSD session ends with "..."" (prefix of the last screen), "the USSD session is still open on
+  "..."". MNO `robi` is on HTTP; `gp` is SMPP (not served over HTTP).
 - Device binding (`features/device-binding.feature`, `@device`, ticket 29): `support/Devices` gives
   each user one EC P-256 device for the run, bound on first use (`POST /app/v1/devices`, signed),
   its session reopened after 4 idle minutes; `AppApi` sends `X-Device-Id` on every call and signs

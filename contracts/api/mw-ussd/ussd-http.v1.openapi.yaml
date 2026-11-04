@@ -1,0 +1,101 @@
+openapi: 3.1.0
+info:
+  title: upay USSD HTTP transport (mw-ussd)
+  version: 1.0.0
+  description: |
+    MNO-facing HTTP USSD API of mw-ussd (spec 9.2, HttpUssdTransport, ticket 26). An MNO whose
+    transport is HTTP (`mw.ussd.mno.<mno>.transport: HTTP`) POSTs every step of a session to
+    `/ussd/{mno}`; the response is the next screen and the MNO's continue/end flag. MVP wire
+    format is this JSON; another per-MNO format (XML, TBC per MNO) maps onto the same fields.
+    Behind the APISIX route `/ussd/*` (ip allow-list, body cap, rate limit; spec 8.2). A screen
+    longer than the MNO's maximum (182 GSM-7 / 70 UCS-2 characters by default) is truncated or
+    paged per MNO. The PIN typed on USSD is encrypted with the core's public key on receipt and
+    never stored or logged. Errors are the 5.3 envelope.
+servers:
+  - url: http://mw-ussd:8080
+paths:
+  /ussd/{mno}:
+    post:
+      operationId: ussdStep
+      summary: One step of a USSD session (dial, reply, end or abort)
+      parameters:
+        - name: mno
+          in: path
+          required: true
+          description: The MNO, one of the configured HTTP MNOs (robi, banglalink, teletalk).
+          schema: { type: string, pattern: "^[a-z]{1,16}$" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UssdStep" }
+      responses:
+        "200":
+          description: The next screen; `flag` says whether the session continues or ends
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UssdScreen" }
+        "400":
+          description: Body invalid or the MSISDN is not a Bangladeshi mobile number (MW-VAL-001/002)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "404":
+          description: The MNO is unknown or not on the HTTP transport (MW-VAL-003)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+components:
+  schemas:
+    UssdStep:
+      type: object
+      required: [sessionId, msisdn, type]
+      properties:
+        sessionId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: The MNO's session id; the same for every step of one session.
+        msisdn:
+          type: string
+          maxLength: 16
+          description: The subscriber (`01XNNNNNNNN`, `8801XNNNNNNNN` or `+8801XNNNNNNNN`).
+        serviceCode:
+          type: string
+          maxLength: 32
+          description: The dialled code (e.g. `*268#`).
+        input:
+          type: string
+          maxLength: 182
+          description: What the subscriber typed on this step (empty on BEGIN). May be a PIN.
+        type:
+          type: string
+          enum: [BEGIN, CONTINUE, END, ABORT]
+    UssdScreen:
+      type: object
+      required: [sessionId, message, flag]
+      properties:
+        sessionId: { type: string }
+        message:
+          type: string
+          description: The screen text (empty after END or ABORT).
+        flag:
+          type: string
+          description: The MNO's continue or end value (`mw.ussd.mno.<mno>.continue-flag` / `end-flag`, default CON / END).
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

@@ -1,0 +1,102 @@
+# mw-ussd
+
+Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the root
+`CLAUDE.md` conventions; this file says what is specific to this service.
+
+## Responsibilities
+
+- USSD channel (spec 9.2, FR-10/11, WP18 part, WP19 part; ticket 26): one menu engine for every
+  MNO behind the transport SPI `service/UssdTransport` (`onBegin`, `onContinue`, `onEnd`,
+  `onAbort`, `send`). Built so far: `service/HttpUssdTransport`; `SmppUssdTransport` (GP, WP19)
+  is not built yet.
+- HTTP transport: `POST /ussd/{mno}` (`controller/UssdHttpController`, contract
+  `api/mw-ussd/ussd-http.v1.openapi.yaml`), JSON `{sessionId, msisdn, serviceCode?, input?,
+  type: BEGIN|CONTINUE|END|ABORT}` -> `{sessionId, message, flag}` with the MNO's flag values
+  (`mw.ussd.mno.<mno>.continue-flag` / `end-flag`, CON / END). Only MNOs with `transport: HTTP`
+  are served (others 404 `MW-VAL-003`); MSISDN `01X...`, `8801X...`, `+8801X...` (else 400
+  `MW-VAL-001`), canonical `01XNNNNNNNN` from there on. Behind APISIX route `ussd-http`
+  (`/ussd/*`, `deploy/apisix/routes/ussd-http.json`: ip allow-list, 4 KiB body cap, quota per
+  source; per-MNO hmac/basic auth comes with each MNO contract).
+- Per MNO (`mw.ussd.mno.<gp|robi|banglalink|teletalk>`, `config/UssdProperties`): transport,
+  short codes, screen limits (182 GSM-7 / 70 UCS-2), session timeout, overflow TRUNCATE|PAGE.
+  Dev: gp SMPP; robi, banglalink HTTP + PAGE; teletalk HTTP + TRUNCATE.
+- Menus are data (`dto/Menu`, `MenuNode`, node types MENU, INPUT, CONFIRM, ACTION, DYNAMIC, END,
+  text `{bn, en}`): versioned JSON in `ussd.menu`, activated per MNO with a go-live time in
+  `ussd.menu_activation` (V4). `service/MenuService` returns the live version for an MNO (latest
+  activation whose go-live passed) or a session's own version (a running session finishes on the
+  version it started on); versions are immutable and cached once parsed. `service/MenuValidator`
+  refuses a tree with dangling references, missing fields, an unknown validator/flow, a regex that
+  does not compile, or a PIN input that is stored or does not lead straight to an ACTION.
+  `service/MenuSeeder` stores the dev seed `menus/main-v1.json` (`mw.ussd.seed-menu`, blank = off)
+  and activates it for every configured MNO without a menu, until the admin console edits menus
+  (WP23, maker-checker).
+- Engine (`service/UssdEngine`): one step per request, never throws (a failure ends with the
+  menu's `unavailable` text). Language `mw.ussd.default-language` (bn) at dial-in, toggled by a
+  MENU option with `switchLanguage` (no profile lookup yet). Validators (`service/InputValidator`):
+  msisdn (canonical, `notSelf`), amount (taka, <= 2 decimals, min/max, stored as `500.00`), pin
+  (4 digits unless `pattern`), numeric (digit count min/max), regex. A bad input re-prompts with
+  the validator's `error` (or the menu's `invalid`) above the screen; `max-invalid-attempts` (3)
+  in a row end the session. Placeholders `{input}` / `{txnId}` / `{error}` in texts. A screen over
+  the MNO limit is cut (TRUNCATE) or paged with the menu's `more` option ("0 More", PAGE).
+- Sessions: Valkey `ussd:{mno}:{sessionId}` (`repository/ValkeySessionStore`, JSON
+  `dto/UssdSession`: node, path, inputs, language, menu version, pending pages), TTL = MNO session
+  timeout + `session-grace` (30 s); a CONTINUE from another MSISDN is treated as expired. The PIN
+  never reaches the session: it is encrypted on receipt (`util/PinCipher`, RSA-OAEP SHA-256 with
+  the core's public key, `mw.ussd.pin.key-id` / `public-key` from OpenBao) and handed straight to
+  the ACTION, forwarded once in `encryptedPin`.
+- ACTION -> `service/KafkaTransactionFlow`: idempotency key `sha256(USSD|msisdn|sessionId|menuPath|
+  amountMinor|target)` hex (spec 7.3 rule 1, `service/IdempotencyKeys`; menuPath = the node ids and
+  choices taken, e.g. `main:1>p2p.recipient>p2p.amount>p2p.confirm:1>p2p.pin`), UUIDv7 txnId,
+  canonical `mw.txn.request.v1` (`mapper/TxnRequestMapper`: channel USSD, initiator MSISDN, debit
+  and credit CUSTOMER wallets, `metadata {ussdSessionId, mno}`, locale = session language)
+  published with `mw-reply-to = instanceId`; the MNO request's (virtual) thread waits at most
+  `sync-budget` (8 s) on `service/ReplyWaiters`, completed by `route/StatusReplyRoute` /
+  `messaging/StatusReplyListener` (group `mw-ussd.reply.<instanceId>`, latest offset, never
+  blocks). COMPLETED -> the node's `onSuccess`; FAILED/REJECTED -> `onFailure` with the status
+  error's text (messageBn in bn); no final status in time -> the menu's `processing` text ("being
+  processed", the result by SMS once mw-notify sends it); publish failure -> `unavailable`.
+  Flows: P2P only (`TxnRequestMapper.FLOWS`).
+- Init (`mw-ussd-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role `ussd_rw`,
+  schema `ussd`, `secret/mw-ussd` (DB password; Valkey password from `VALKEY_PASSWORD`; the core's
+  PIN public key and key id copied from `secret/mw-core-mock`, playing the core team's hand-over),
+  AppRole `mw-ussd`.
+
+## Contracts owned
+
+- `api/mw-ussd/ussd-http.v1.openapi.yaml` (MNO HTTP USSD API).
+
+## Contracts used
+
+- `events/mw-orchestrator/mw.txn.request.v1` (produced; own type `dto/TxnRequest`, validated in
+  `TxnRequestMapperTest`).
+- `events/mw-orchestrator/mw.txn.status.v1` (consumed; own type `dto/StatusMessage`) and the
+  orchestrator's `mw-reply-to` / duplicate-answer conventions.
+
+## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
+
+- `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
+- `filter/SecurityHeadersFilter`: security headers on every response (18.6).
+- `exception/`: `MwException`, `ErrorCategory` (namespace -> HTTP status, retryable),
+  `ErrorCodes`, `GlobalExceptionHandler` building `dto/ErrorEnvelope`. Logs show route
+  templates, never raw URIs.
+- `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3; mark every personal field. Inputs
+  and the PIN ciphertext are `SECRET`.
+- `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
+  Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
+- `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
+- `messaging/EventPublisher`: Kafka records with the 6.1 headers, idempotent `acks=all` producer
+  (max-block 3 s, delivery timeout 5 s: inside the 8 s budget).
+- `route/RetryTopicRouteBuilder` + `messaging/RetryDelayListener`: subclass per consumed topic; retry
+  topics 10 s / 1 min / 10 min then DLQ (19.2); per-record commit; no sleeps on Kafka threads.
+- `application.yml`: Resilience4j defaults (19.2), own schema `ussd` migrated by Flyway on start
+  from `db/migration` (16.4).
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `./gradlew check` | unit, slice and Testcontainers tests (Docker needed for `*IT`: PostgreSQL, Kafka, Valkey), JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
+| `./gradlew check bootJar && docker build -t mw-ussd:dev .` | image, as spec 4.3 rule 1 |
+| `make verify M=mw-ussd` | isolation + field-injection check + contracts lint + `./gradlew check` |
+| `make up M=mw-ussd` | run this service's `compose.yml` (platform project must be up) |
+| `make e2e TAGS=@ussd` | P2P over the HTTP USSD gateway simulator (`tests/e2e/src/test/resources/features/ussd.feature`) |
