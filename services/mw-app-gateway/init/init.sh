@@ -51,7 +51,8 @@ fi
 bao kv get -field=spring.datasource.password "$KV" >"$tmp/dbpw"
 
 # 2. database role and schema ---------------------------------------------------------------------
-psql -v ON_ERROR_STOP=1 -q -v pw="$(cat "$tmp/dbpw")" -v role="$ROLE" -v schema="$SCHEMA" -v db="$PGDATABASE" <<'SQL'
+provision_db() {
+  psql -v ON_ERROR_STOP=1 -q -v pw="$(cat "$tmp/dbpw")" -v role="$ROLE" -v schema="$SCHEMA" -v db="$PGDATABASE" <<'SQL'
 SELECT format('CREATE ROLE %I LOGIN', :'role') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'role') \gexec
 ALTER ROLE :"role" PASSWORD :'pw';
 CREATE SCHEMA IF NOT EXISTS :"schema" AUTHORIZATION :"role";
@@ -59,6 +60,14 @@ ALTER ROLE :"role" IN DATABASE :"db" SET search_path = :"schema";
 REVOKE ALL ON DATABASE :"db" FROM :"role";
 GRANT CONNECT ON DATABASE :"db" TO :"role";
 SQL
+}
+# The other services' init steps change the same database ACL at the same time on a fresh
+# stack ("tuple concurrently updated"): the statements are idempotent, so try again.
+n=0
+until provision_db; do
+  n=$((n + 1)); [ "$n" -lt 5 ] || { log "database provisioning failed" >&2; exit 1; }
+  log "database provisioning raced another init step, retrying"; sleep 2
+done
 log "role $ROLE and schema $SCHEMA ready"
 
 # 3. AppRole --------------------------------------------------------------------------------------

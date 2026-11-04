@@ -1,0 +1,186 @@
+openapi: 3.1.0
+info:
+  title: upay app API (mw-app-gateway)
+  version: 1.0.0
+  description: |
+    Mobile apps API v1 (spec 8.2, 9.1), served by mw-app-gateway behind APISIX route `/app/v1/*`.
+    Bearer JWT from Keycloak realm `customers`; the payer wallet is the token's `msisdn` claim.
+    Every error is the 5.3 envelope. A financial POST waits up to the reply budget (25 s,
+    spec 7.5) for a terminal status: 200 with the result, 202 `PROCESSING` otherwise, then poll GET.
+    ticket 13 derives the APISIX `request-validation` schema from `TransactionRequest`.
+servers:
+  - url: https://localhost
+security:
+  - bearer: []
+paths:
+  /app/v1/transactions:
+    post:
+      operationId: submitTransaction
+      summary: Submit a transaction (P2P only so far)
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: >-
+            1 to 64 visible ASCII characters. Same key (per wallet) and same content returns the
+            stored transaction; same key and other content is 409 MW-IDEM-001 (spec 7.3).
+          schema: { type: string, pattern: "^[\\x21-\\x7E]{1,64}$" }
+        - name: X-Correlation-Id
+          in: header
+          required: false
+          schema: { type: string, pattern: "^[A-Za-z0-9._:-]{1,128}$" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TransactionRequest" }
+      responses:
+        "200":
+          description: Terminal status within the budget (COMPLETED or REVERSED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "202":
+          description: >-
+            No terminal status within the budget (status PROCESSING), or a repeated key whose
+            stored transaction is still running. Poll the Location.
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422":
+          description: Core rejection (MW-CORE-<reason>), with txnId
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "503":
+          description: Kafka unavailable (MW-SYS-010, retryable); nothing was accepted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "504": { $ref: "#/components/responses/Error" }
+  /app/v1/transactions/{txnId}:
+    get:
+      operationId: getTransaction
+      summary: Current status of one of the caller's transactions
+      parameters:
+        - name: txnId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Latest known status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Error:
+      description: Error envelope (spec 5.3)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    Msisdn:
+      type: string
+      description: Accepted forms 01XNNNNNNNN, 8801XNNNNNNNN, +8801XNNNNNNNN; forwarded as 01XNNNNNNNN.
+      pattern: "^(01[3-9][0-9]{8}|\\+?8801[3-9][0-9]{8})$"
+    Amount:
+      type: object
+      required: [valueMinor, currency]
+      additionalProperties: false
+      properties:
+        valueMinor: { type: integer, minimum: 1, description: Poisha; must be greater than zero }
+        currency: { type: string, const: BDT }
+    Money:
+      type: object
+      properties:
+        valueMinor: { type: integer, minimum: 0 }
+        currency: { type: string, const: BDT }
+    Party:
+      type: object
+      properties:
+        type: { type: string }
+        id: { type: string }
+        walletType: { type: string }
+    TransactionRequest:
+      type: object
+      required: [txnType, creditParty, amount, encryptedPin]
+      properties:
+        txnType: { type: string, enum: [P2P] }
+        creditParty:
+          type: object
+          required: [id]
+          properties:
+            type: { type: string, const: WALLET }
+            id: { $ref: "#/components/schemas/Msisdn" }
+        amount: { $ref: "#/components/schemas/Amount" }
+        encryptedPin:
+          type: object
+          required: [keyId, ciphertext]
+          description: >-
+            PIN encrypted by the app with the core's public key (RSA-OAEP, SHA-256 hash and MGF1),
+            base64; passed through untouched.
+          properties:
+            keyId: { type: string, minLength: 1, maxLength: 128 }
+            ciphertext: { type: string, minLength: 1, maxLength: 4096 }
+        locale: { type: string, enum: [bn, en] }
+        attributes:
+          type: object
+          description: Allow-listed keys only (`reference`); any other key is 400 MW-VAL-001.
+          maxProperties: 20
+          propertyNames: { enum: [reference] }
+          additionalProperties: { type: string, maxLength: 256 }
+    Transaction:
+      type: object
+      required: [txnId, status]
+      properties:
+        txnId: { type: string, description: UUIDv7 }
+        status:
+          type: string
+          description: A saga state of mw.txn.status.v1, or PROCESSING on a 202
+        txnType: { type: string }
+        debitParty: { $ref: "#/components/schemas/Party" }
+        creditParty: { $ref: "#/components/schemas/Party" }
+        amount: { $ref: "#/components/schemas/Money" }
+        fee: { $ref: "#/components/schemas/Money" }
+        coreRef: { type: string }
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            messageBn: { type: string }
+            retryable: { type: boolean }
+        requestedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }
