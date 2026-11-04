@@ -1,62 +1,129 @@
 #!/usr/bin/env bash
-# One-shot apisix-init (runs in the APISIX image, which has bash and openssl but no curl):
+# One-shot apisix-init (runs in the APISIX image, which has bash, awk and openssl but no curl):
 #   1. creates a self-signed edge certificate for localhost on first run (dev only; kept in
 #      the apisix-tls volume so it survives restarts; replaced by a real cert later)
 #   2. PUTs it as SSL object "edge-default"
-#   3. PUTs every deploy/apisix/routes/<id>.json as route <id>
-# Idempotent: PUT with a fixed id overwrites. Env: APISIX_ADMIN (host:port), APISIX_ADMIN_KEY.
+#   3. PUTs every deploy/apisix/global_rules/<id>.json as global rule <id>, then every
+#      deploy/apisix/routes/<id>.json as route <id>
+# Before a PUT, string values "@lua:<path>" and "@json:<path>" are replaced by the file at
+# <path> (relative to deploy/apisix): Lua as a JSON string (serverless functions), JSON as is
+# (request-validation schemas derived from contracts/, see scripts/apisix-schemas.sh).
+#
+# Idempotent: PUT with a fixed id stores the same object again, so a second run leaves the
+# configuration as it was (only update_time moves). Objects are never deleted: a removed file
+# leaves its object behind until it is deleted through the Admin API (see README.md).
+#
+# Env: APISIX_ADMIN (host:port), APISIX_ADMIN_KEY.
+# APISIX_DRY_RUN=<dir>: no network, no certificate; writes each body to <dir>/<kind>/<id>.json.
+# APISIX_CONFIG_DIR: the folder holding routes/, global_rules/, lua/, schemas/ (default: here).
 set -euo pipefail
 
+dir="${APISIX_CONFIG_DIR:-$(cd "$(dirname "$0")" && pwd)}"
+dry="${APISIX_DRY_RUN:-}"
 admin="${APISIX_ADMIN:-apisix:9180}"
 host="${admin%:*}"; port="${admin#*:}"
-key="${APISIX_ADMIN_KEY:?APISIX_ADMIN_KEY not set}"
-dir="$(cd "$(dirname "$0")" && pwd)"
 tls="${APISIX_TLS_DIR:-/usr/local/apisix/conf/cert}"
 
-# put PATH BODY: HTTP PUT to the Admin API over bash /dev/tcp; prints the status code.
+# render FILE: FILE with every "@lua:<path>" / "@json:<path>" string replaced by that file.
+# Plain awk (mawk in the image, BSD awk on macOS) and no gsub on the replacement text, so
+# backslashes and '&' in Lua code survive unchanged.
+render() {
+  awk -v base="$dir" '
+    function slurp(path,   line, s, n, rc) {
+      s = ""; n = 0
+      while ((rc = (getline line < path)) > 0) { s = s (n++ ? "\n" : "") line }
+      if (rc < 0) { printf "apisix-init: %s: include %s not found\n", FILENAME, path > "/dev/stderr"; failed = 1; exit 1 }
+      close(path); return s
+    }
+    function jstr(s,   out, i, c) {
+      out = ""
+      for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        if (c == "\\") out = out "\\\\"
+        else if (c == "\"") out = out "\\\""
+        else if (c == "\n") out = out "\\n"
+        else if (c == "\t") out = out "\\t"
+        else if (c == "\r") out = out "\\r"
+        else out = out c
+      }
+      return "\"" out "\""
+    }
+    {
+      line = $0; res = ""
+      while (match(line, /"@(lua|json):[^"]*"/)) {
+        tok = substr(line, RSTART + 1, RLENGTH - 2)
+        res = res substr(line, 1, RSTART - 1)
+        line = substr(line, RSTART + RLENGTH)
+        if (substr(tok, 1, 5) == "@lua:") res = res jstr(slurp(base "/" substr(tok, 6)))
+        else res = res slurp(base "/" substr(tok, 7))
+      }
+      print res line
+    }
+    END { if (failed) exit 1 }
+  ' "$1"
+}
+
+# put PATH BODY: HTTP PUT to the Admin API over bash /dev/tcp; prints the status code on the
+# first line, then the response (headers and body, for the error message).
 put() {
   local path="$1" body="$2" status
   exec 3<>"/dev/tcp/$host/$port"
   printf 'PUT %s HTTP/1.1\r\nHost: %s\r\nX-API-KEY: %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s' \
     "$path" "$host" "$key" "$(printf '%s' "$body" | wc -c)" "$body" >&3
   read -r _ status _ <&3
-  cat <&3 >/dev/null
+  printf '%s\n' "$status"
+  cat <&3
   exec 3<&-
-  printf '%s' "$status"
 }
 
 apply() {
-  local path="$1" body="$2" status try
+  local path="$1" body="$2" status try resp
+  if [ -n "$dry" ]; then
+    mkdir -p "$dry/$(dirname "${path#/apisix/admin/}")"
+    printf '%s\n' "$body" >"$dry/${path#/apisix/admin/}.json"
+    echo "apisix-init: (dry run) PUT $path"
+    return 0
+  fi
   # 5xx right after an APISIX or etcd restart (etcd connection still re-authenticating)
   # is retried for up to a minute; anything else fails at once
   for try in $(seq 1 30); do
-    status="$(put "$path" "$body")"
+    resp="$(put "$path" "$body")"
+    status="${resp%%$'\n'*}"
     case "$status" in
       200|201) echo "apisix-init: PUT $path -> $status"; return 0 ;;
       5*) sleep 2 ;;
       *) break ;;
     esac
   done
-  echo "apisix-init: PUT $path failed with '$status'" >&2
+  # the Admin API's reason is a JSON {"error_msg": ...} line; it never echoes the key
+  echo "apisix-init: PUT $path failed with '$status': $(printf '%s' "$resp" | grep -a 'error_msg' | head -1)" >&2
   return 1
 }
 
-i=0
-until (exec 3<>"/dev/tcp/$host/$port") 2>/dev/null; do
-  i=$((i + 1)); [ "$i" -lt 60 ] || { echo "apisix-init: admin API not reachable" >&2; exit 1; }
-  sleep 1
-done
+if [ -z "$dry" ]; then
+  key="${APISIX_ADMIN_KEY:?APISIX_ADMIN_KEY not set}"
+  i=0
+  until (exec 3<>"/dev/tcp/$host/$port") 2>/dev/null; do
+    i=$((i + 1)); [ "$i" -lt 60 ] || { echo "apisix-init: admin API not reachable" >&2; exit 1; }
+    sleep 1
+  done
 
-if [ ! -s "$tls/edge.crt" ]; then
-  openssl req -x509 -newkey rsa:2048 -nodes -days 825 -subj "/CN=localhost" \
-    -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" \
-    -keyout "$tls/edge.key" -out "$tls/edge.crt" 2>/dev/null
-  echo "apisix-init: generated self-signed edge certificate (dev only)"
+  if [ ! -s "$tls/edge.crt" ]; then
+    openssl req -x509 -newkey rsa:2048 -nodes -days 825 -subj "/CN=localhost" \
+      -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" \
+      -keyout "$tls/edge.key" -out "$tls/edge.crt" 2>/dev/null
+    echo "apisix-init: generated self-signed edge certificate (dev only)"
+  fi
+  json_pem() { awk '{printf "%s\\n", $0}' "$1"; }
+  apply /apisix/admin/ssls/edge-default \
+    "{\"snis\":[\"localhost\"],\"cert\":\"$(json_pem "$tls/edge.crt")\",\"key\":\"$(json_pem "$tls/edge.key")\"}"
 fi
-json_pem() { awk '{printf "%s\\n", $0}' "$1"; }
-apply /apisix/admin/ssls/edge-default \
-  "{\"snis\":[\"localhost\"],\"cert\":\"$(json_pem "$tls/edge.crt")\",\"key\":\"$(json_pem "$tls/edge.key")\"}"
 
-for f in "$dir"/routes/*.json; do
-  apply "/apisix/admin/routes/$(basename "$f" .json)" "$(cat "$f")"
+# global rules first: they hold the correlation ID and error envelope every route relies on
+for kind in global_rules routes; do
+  for f in "$dir/$kind"/*.json; do
+    [ -f "$f" ] || continue
+    body="$(render "$f")"
+    apply "/apisix/admin/$kind/$(basename "$f" .json)" "$body"
+  done
 done

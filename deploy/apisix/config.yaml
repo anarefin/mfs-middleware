@@ -13,6 +13,12 @@ apisix:
     ip: 0.0.0.0
     port: 7085
 
+nginx_config:
+  # Environment variables the workers may read: limit-count's Valkey password is the secret
+  # reference "$env://VALKEY_PASSWORD" in the route, so the password is never stored in etcd.
+  envs:
+    - VALKEY_PASSWORD
+
 deployment:
   role: traditional
   role_traditional:

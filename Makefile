@@ -11,6 +11,7 @@
 #   make versions-check [M=]    report version drift between module version catalogs
 #   make up [M=]                start the Compose stack (deploy/compose/mvp) or one module's compose.yml
 #   make smoke                  live checks against the running MVP stack (scripts/smoke.sh)
+#   make edge-test              live APISIX edge policy tests: 401/400/413/429, headers, idempotent apply
 #   make down [DOWN_ARGS=-v]    stop the MVP stack (-v also drops its volumes)
 #   make e2e [M=] [TAGS=]       Cucumber suite in tests/e2e against the running stack
 #   make perf [M=]              Gatling suite in tests/perf
@@ -24,10 +25,10 @@ SELFTEST ?= 1
 M ?=
 export MW_ROOT
 
-.PHONY: help verify check-isolation check-field-injection contracts-lint versions-check up smoke down e2e perf security new-service test-scripts
+.PHONY: help verify check-isolation check-field-injection contracts-lint versions-check up smoke edge-test down e2e perf security new-service test-scripts
 
 help:
-	@sed -n '3,20p' $(abspath $(lastword $(MAKEFILE_LIST)))
+	@sed -n '3,21p' $(abspath $(lastword $(MAKEFILE_LIST)))
 
 verify:
 ifeq ($(SELFTEST)$(M),1)
@@ -52,6 +53,9 @@ up:
 
 smoke:
 	@$(SCRIPTS)/smoke.sh
+
+edge-test:
+	@$(SCRIPTS)/edge-test.sh
 
 down:
 	@$(SCRIPTS)/down.sh

@@ -7,7 +7,10 @@ info:
     Bearer JWT from Keycloak realm `customers`; the payer wallet is the token's `msisdn` claim.
     Every error is the 5.3 envelope. A financial POST waits up to the reply budget (25 s,
     spec 7.5) for a terminal status: 200 with the result, 202 `PROCESSING` otherwise, then poll GET.
-    ticket 13 derives the APISIX `request-validation` schema from `TransactionRequest`.
+    The APISIX edge validates submit bodies against `TransactionRequest` (derived copy in
+    deploy/apisix/schemas) and answers some errors itself, also as the envelope: 401
+    MW-AUTH-001, 400 MW-VAL-001, 413 MW-VAL-BODY_TOO_LARGE (body over 64 KiB), 429
+    MW-SYS-RATE_LIMITED (per-user quota, retryable).
 servers:
   - url: https://localhost
 security:
@@ -53,6 +56,8 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
         "422":
           description: Core rejection (MW-CORE-<reason>), with txnId
           content:
@@ -81,6 +86,7 @@ paths:
               schema: { $ref: "#/components/schemas/Transaction" }
         "401": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     bearer:
