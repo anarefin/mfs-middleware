@@ -148,10 +148,34 @@ public class CallbackSteps {
     return AuditTrail.rowsOfTxn(txnId).stream().filter(r -> "txn.state.changed".equals(r.action())).toList();
   }
 
+  // --- C2W bank (ticket 23) ------------------------------------------------------------------
+
+  private boolean bankForced;
+
+  @Given("the bank confirms debits by callback")
+  public void bankCallbackOnce() {
+    PartnerCallbacks.bankCallbacks("ONCE", 0);
+    bankForced = true;
+  }
+
+  @Given("the bank confirms debits by callback, sending each callback twice")
+  public void bankCallbackTwice() {
+    PartnerCallbacks.bankCallbacks("DUPLICATE", 0);
+    bankForced = true;
+  }
+
+  @When("the bank replays the transaction's callback")
+  public void bankReplay() {
+    replayStatus = Simulators.replayCallback(PartnerCallbacks.BANK, PartnerCallbacks.reference(state.txnId()));
+  }
+
   @After
   public void resetAggregator() {
     if (aggregatorForced) {
       Simulators.reset("billagg");
+    }
+    if (bankForced) {
+      Simulators.reset(PartnerCallbacks.BANK);
     }
   }
 }

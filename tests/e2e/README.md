@@ -61,6 +61,14 @@ Only APISIX is published, so every call goes through it:
   steps "records a late <OUTCOME> callback", "records a conflicting <OUTCOME> callback", "records
   no late callback", "records the states \"...\" once each" (state rows only). The late
   scenario (`@tsq`) takes about 100 s.
+- ADD_MONEY_BANK / C2W (`features/add-money-bank.feature`, `@addmoney @c2w`, ticket 23): "the bank
+  confirms debits by callback[, sending each callback twice]" points the c2wbank simulator's
+  signed callbacks at `http://apisix:9080/partner/c2wbank/callback/debits` (reset by an `@After`
+  hook); "<user> adds N poisha from bank account <acct> at c2wbank with PIN ..." (body
+  `debitParty` BANK_ACCOUNT, `partner.partnerId`, no `creditParty`); "the bank replays the
+  transaction's callback". Money comes from `SETTLEMENT` (no fee). Magic values: account ending
+  999 refused (`MW-PTR-C2WBANK-DEBIT_REFUSED`), amount fraction .13 = no answer within 25 s and no
+  callback (`@tsq`, COMPLETED by status inquiry after about 60 s).
 - REVERSAL (`features/reversal.feature`, `@reversal`): "operations reverses the transaction"
   publishes a REVERSAL of the scenario's (COMPLETED) transaction; the original then shows
   REVERSED (or MANUAL_REVIEW) in the app view. "the orchestrator has handled the reversal
