@@ -44,7 +44,7 @@ public class IdempotencyRepository {
     }
     int reused =
         jdbc.update(
-            "update idempotency set request_hash = ?, txn_id = ?, response = null, expires_at = ?"
+            "update idempotency set request_hash = ?, txn_id = ?, expires_at = ?"
                 + " where channel = ? and initiator_id = ? and idem_key = ? and expires_at <= ?",
             hash, txnId, Timestamp.from(expiresAt), channel, initiatorId, key, Timestamp.from(now));
     if (reused == 1) {
