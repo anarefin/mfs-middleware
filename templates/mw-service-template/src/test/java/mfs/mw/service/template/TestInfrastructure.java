@@ -16,8 +16,36 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @TestConfiguration(proxyBeanMethods = false)
 public class TestInfrastructure {
 
-  static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18.6-alpine3.24");
-  static final KafkaContainer KAFKA = new KafkaContainer("apache/kafka:4.3.2");
+  /**
+   * The containers live as long as the JVM, not as long as one Spring context: Spring Boot's
+   * Testcontainers support stops a container bean when its context closes (whatever the bean's
+   * destroyMethod says), and every context in the run shares these two. So {@code stop()} is a
+   * no-op here; Testcontainers' Ryuk removes them when the JVM exits.
+   */
+  static final class JvmScopedPostgres extends PostgreSQLContainer {
+    JvmScopedPostgres(String image) {
+      super(image);
+    }
+
+    @Override
+    public void stop() {
+      // shared by all contexts; removed at JVM exit
+    }
+  }
+
+  static final class JvmScopedKafka extends KafkaContainer {
+    JvmScopedKafka(String image) {
+      super(image);
+    }
+
+    @Override
+    public void stop() {
+      // shared by all contexts; removed at JVM exit
+    }
+  }
+
+  static final PostgreSQLContainer POSTGRES = new JvmScopedPostgres("postgres:18.6-alpine3.24");
+  static final KafkaContainer KAFKA = new JvmScopedKafka("apache/kafka:4.3.2");
 
   @Bean(destroyMethod = "")
   @ServiceConnection
