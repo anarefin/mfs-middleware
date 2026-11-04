@@ -52,22 +52,43 @@ class JsonLogFormatterTest {
         .containsEntry("durationMs", 12);
   }
 
-  /** System-generated ids are kept whole when they have their exact shape, digits or not. */
+  /** System-generated ids of their exact shape are kept whole. */
   @Test
   void systemIdsOfTheirExactShapeAreNotScrubbed() {
     Map<String, Object> json =
         format(
             formatter,
             Map.of(
-                "traceId", "4bf92f3577b34da6a3ce90123456789a",
+                "traceId", "4bf92f3577b34da6a3ce929d0e0e4736",
+                "spanId", "00f067aa0ba902b7",
+                "correlationId", "f47ac10b-58cc-4372-a567-0e02b2c3d479"),
+            "txnId", "0190a7c4-1b2e-7c3d-8e4f-5a6b7c8d9e0f");
+    assertThat(json)
+        .containsEntry("traceId", "4bf92f3577b34da6a3ce929d0e0e4736")
+        .containsEntry("spanId", "00f067aa0ba902b7")
+        .containsEntry("correlationId", "f47ac10b-58cc-4372-a567-0e02b2c3d479")
+        .containsEntry("txnId", "0190a7c4-1b2e-7c3d-8e4f-5a6b7c8d9e0f");
+  }
+
+  /**
+   * The shape alone is no exemption: a UUID's last group or a trace id can be all digits, and
+   * correlationId and traceId can come from the caller.
+   */
+  @Test
+  void systemIdsHidingALongNumberAreScrubbed() {
+    Map<String, Object> json =
+        format(
+            formatter,
+            Map.of(
+                "traceId", "12345678901234567890123456789012",
                 "spanId", "a012345678901234",
-                "correlationId", "f47ac10b-58cc-4372-a567-001712345678"),
+                "correlationId", "12345678-1234-1234-1234-001711234567"),
             "txnId", "0190a7c4-0000-7000-8000-000000000001");
     assertThat(json)
-        .containsEntry("traceId", "4bf92f3577b34da6a3ce90123456789a")
-        .containsEntry("spanId", "a012345678901234")
-        .containsEntry("correlationId", "f47ac10b-58cc-4372-a567-001712345678")
-        .containsEntry("txnId", "0190a7c4-0000-7000-8000-000000000001");
+        .containsEntry("traceId", "****9012")
+        .containsEntry("spanId", "a****1234")
+        .containsEntry("correlationId", "12345678-1234-1234-1234-****4567")
+        .containsEntry("txnId", "0190a7c4-0000-7000-8000-****0001");
   }
 
   @Test
