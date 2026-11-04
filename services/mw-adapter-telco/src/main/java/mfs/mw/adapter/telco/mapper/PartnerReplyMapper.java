@@ -3,75 +3,76 @@ package mfs.mw.adapter.telco.mapper;
 import java.time.Clock;
 import java.util.Locale;
 import java.util.Map;
-import mfs.mw.adapter.telco.config.OcsProperties;
-import mfs.mw.adapter.telco.dto.OcsResult;
 import mfs.mw.adapter.telco.dto.PartnerReply;
 import mfs.mw.adapter.telco.dto.PartnerRequest;
-import mfs.mw.adapter.telco.exception.OcsNotSentException;
-import mfs.mw.adapter.telco.exception.OcsUnknownOutcomeException;
+import mfs.mw.adapter.telco.partner.PartnerResponse;
 import org.springframework.stereotype.Component;
 
 /**
- * OCS outcomes to canonical {@code mw.partner.reply.v1} (spec 5.3, 7.4): SUCCESS, FAILED with a
- * mapped {@code MW-PTR-<PARTNER>-*} code (or {@code MW-SYS-*} when the call never left), UNKNOWN
- * with {@code MW-TMO-*} when the top-up may have been applied.
+ * Framework outcomes to canonical {@code mw.partner.reply.v1} (spec 5.3, 7.4): SUCCESS, FAILED
+ * with a mapped {@code MW-PTR-<PARTNER>-*} code (suffix from the partner's error-code map) or
+ * {@code MW-SYS-*} when the call never left, UNKNOWN with {@code MW-TMO-*} when the request may
+ * have been applied, NOT_FOUND for a status inquiry the partner has no record of, PENDING for an
+ * acknowledged async request.
  */
 @Component
 public class PartnerReplyMapper {
 
-  private final OcsProperties props;
   private final Clock clock;
 
-  public PartnerReplyMapper(OcsProperties props, Clock clock) {
-    this.props = props;
+  public PartnerReplyMapper(Clock clock) {
     this.clock = clock;
   }
 
-  public PartnerReply toReply(PartnerRequest request, String partnerRef, OcsResult result) {
+  public PartnerReply toReply(PartnerRequest request, String partnerRef, PartnerResponse result) {
     return switch (result) {
-      case OcsResult.Accepted a ->
-          reply(request, partnerRef, "SUCCESS", a.ocsRef(), a.code(), null, null, null);
-      case OcsResult.Rejected r -> {
-        OcsProperties.ErrorMapping m =
-            props.errorCodes().getOrDefault(r.code(), new OcsProperties.ErrorMapping("UNMAPPED", false));
-        yield reply(
-            request, partnerRef, "FAILED", null, r.code(),
-            "MW-PTR-" + partnerSegment(request) + "-" + m.suffix(), r.message(), m.retryable());
-      }
-      case OcsResult.Ambiguous a ->
+      case PartnerResponse.Success s ->
+          reply(request, partnerRef, "SUCCESS", s.partnerRef(), s.code(), null, null, null);
+      case PartnerResponse.Rejected r ->
+          reply(
+              request, partnerRef, "FAILED", null, r.code(),
+              "MW-PTR-" + partnerSegment(request) + "-" + r.errorSuffix(), r.message(), r.retryable());
+      case PartnerResponse.Ambiguous a ->
           reply(
               request, partnerRef, "UNKNOWN", null, a.code(),
               "MW-TMO-PARTNER_AMBIGUOUS_CODE", a.message(), false);
-      case OcsResult.NotFound n ->
+      case PartnerResponse.NotFound n ->
           reply(request, partnerRef, "NOT_FOUND", null, n.code(), null, n.message(), null);
+      case PartnerResponse.Pending p ->
+          reply(request, partnerRef, "PENDING", p.partnerRef(), p.code(), null, null, null);
+      case PartnerResponse.NotSent n -> notSent(request, partnerRef, n.reason());
+      case PartnerResponse.Unknown u -> unknown(request, partnerRef, u.reason());
     };
   }
 
   /**
-   * Nothing reached the OCS: for a PAY a definite, retryable failure. For a STATUS_QUERY it is no
-   * answer at all, so UNKNOWN (the orchestrator asks again at the next slot): a FAILED inquiry
+   * Nothing reached the partner: for a PAY a definite, retryable failure. For a STATUS_QUERY it is
+   * no answer at all, so UNKNOWN (the orchestrator asks again at the next slot): a FAILED inquiry
    * answer would release a hold the partner may have used.
    */
-  public PartnerReply notSent(PartnerRequest request, String partnerRef, OcsNotSentException e) {
+  private PartnerReply notSent(
+      PartnerRequest request, String partnerRef, PartnerResponse.NotSentReason reason) {
     if (isStatusQuery(request)) {
       return reply(
-          request, partnerRef, "UNKNOWN", null, null, "MW-TMO-PARTNER_" + e.reason().name(),
+          request, partnerRef, "UNKNOWN", null, null, "MW-TMO-PARTNER_" + reason.name(),
           "Status inquiry not sent to the partner", false);
     }
     String code =
-        switch (e.reason()) {
+        switch (reason) {
           case CIRCUIT_OPEN -> "MW-SYS-PARTNER_CIRCUIT_OPEN";
           case BULKHEAD_FULL -> "MW-SYS-PARTNER_BUSY";
           case CONNECT_FAILED -> "MW-SYS-PARTNER_UNAVAILABLE";
+          case DISABLED -> "MW-SYS-PARTNER_DISABLED";
+          case MISCONFIGURED -> "MW-SYS-PARTNER_MISCONFIGURED";
         };
     return reply(request, partnerRef, "FAILED", null, null, code, "Top-up not sent to the partner", true);
   }
 
-  /** The top-up may have been applied: UNKNOWN, resolved later by status inquiry (spec 7.4). */
-  public PartnerReply unknown(
-      PartnerRequest request, String partnerRef, OcsUnknownOutcomeException e) {
+  /** The request may have been applied: UNKNOWN, resolved later by status inquiry (spec 7.4). */
+  private PartnerReply unknown(
+      PartnerRequest request, String partnerRef, PartnerResponse.UnknownReason reason) {
     return reply(
-        request, partnerRef, "UNKNOWN", null, null, "MW-TMO-PARTNER_" + e.reason().name(),
+        request, partnerRef, "UNKNOWN", null, null, "MW-TMO-PARTNER_" + reason.name(),
         "Top-up outcome unknown", false);
   }
 
@@ -98,7 +99,7 @@ public class PartnerReplyMapper {
       PartnerRequest request,
       String partnerRef,
       String outcome,
-      String ocsRef,
+      String theirRef,
       String partnerCode,
       String errorCode,
       String message,
@@ -115,7 +116,7 @@ public class PartnerReplyMapper {
         new PartnerReply.Payload(
             p == null || p.operation() == null ? "PAY" : p.operation(),
             outcome,
-            ocsRef,
+            theirRef,
             partnerCode,
             errorCode,
             message,

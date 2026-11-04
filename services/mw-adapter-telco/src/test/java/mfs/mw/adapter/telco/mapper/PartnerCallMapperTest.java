@@ -4,27 +4,51 @@ import static mfs.mw.adapter.telco.TelcoFixtures.newTxnId;
 import static mfs.mw.adapter.telco.TelcoFixtures.pay;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.Map;
 import java.util.Optional;
-import mfs.mw.adapter.telco.dto.OcsTopupRequest;
 import mfs.mw.adapter.telco.dto.PartnerRequest;
+import mfs.mw.adapter.telco.partner.PartnerCall;
 import org.junit.jupiter.api.Test;
 
-class OcsRequestMapperTest {
+/** The canonical call the partner mappings read (amounts in minor units and as a major-unit string). */
+class PartnerCallMapperTest {
 
-  final OcsRequestMapper mapper = new OcsRequestMapper();
+  final PartnerCallMapper mapper = new PartnerCallMapper();
 
   @Test
-  void mapsMinorUnitsToAMajorUnitDecimalStringAndTheCreditedMsisdn() {
-    OcsTopupRequest ocs = mapper.toOcs(pay(newTxnId(), "01711000001", 2000), "UPAYREF1");
+  void aPayBecomesACanonicalCallWithOurReferenceTheAmountAndTheCreditedMsisdn() {
+    PartnerRequest request = pay(newTxnId(), "01711000001", 2000);
 
-    assertThat(ocs).isEqualTo(new OcsTopupRequest("UPAYREF1", "01711000001", "20.00"));
+    PartnerCall call = mapper.toCall(request, "UPAYREF1");
+
+    assertThat(call.partnerId()).isEqualTo("gp");
+    assertThat(call.operation()).isEqualTo("PAY");
+    assertThat(call.txnType()).isEqualTo("TOPUP");
+    assertThat(call.txnId()).isEqualTo(request.txnId());
+    assertThat(call.correlationId()).isEqualTo("corr-0002");
+    assertThat(call.reference()).isEqualTo("UPAYREF1");
+    assertThat(call.input())
+        .containsEntry("amount", Map.of("valueMinor", 2000L, "currency", "BDT", "major", "20.00"))
+        .containsEntry("creditParty", Map.of("type", "MSISDN", "id", "01711000001"))
+        .containsEntry("partner", Map.of("partnerId", "gp", "productCode", "PREPAID"));
   }
 
   @Test
-  void keepsTheFractionalPart() {
-    assertThat(mapper.toOcs(pay(newTxnId(), "01711000001", 12305), "R").amount())
-        .isEqualTo("123.05");
-    assertThat(mapper.toOcs(pay(newTxnId(), "01711000001", 5), "R").amount()).isEqualTo("0.05");
+  void theMajorUnitAmountKeepsTheFractionalPart() {
+    assertThat(major(12305)).isEqualTo("123.05");
+    assertThat(major(5)).isEqualTo("0.05");
+  }
+
+  @Test
+  void aStatusQueryCarriesOnlyWhatItHas() {
+    PartnerCall call = mapper.toCall(mfs.mw.adapter.telco.TelcoFixtures.statusQuery(newTxnId()), "R");
+    assertThat(call.operation()).isEqualTo("STATUS_QUERY");
+    assertThat(call.reference()).isEqualTo("R");
+  }
+
+  private String major(long minor) {
+    Object amount = mapper.toCall(pay(newTxnId(), "01711000001", minor), "R").input().get("amount");
+    return (String) ((Map<?, ?>) amount).get("major");
   }
 
   @Test

@@ -10,6 +10,7 @@ networknt = "3.0.8"
 jacoco = "0.8.16"
 shedlock = "7.10.1"
 wiremock = "3.13.1"
+jsonata = "0.9.10"
 
 [libraries]
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
@@ -34,6 +35,7 @@ camel-spring-boot-starter = { module = "org.apache.camel.springboot:camel-spring
 camel-kafka-starter = { module = "org.apache.camel.springboot:camel-kafka-starter" }
 resilience4j-spring-boot4 = { module = "io.github.resilience4j:resilience4j-spring-boot4", version.ref = "resilience4j" }
 shedlock-spring = { module = "net.javacrumbs.shedlock:shedlock-spring", version.ref = "shedlock" }
+jsonata = { module = "com.dashjoin:jsonata", version.ref = "jsonata" }
 shedlock-provider-jdbc-template = { module = "net.javacrumbs.shedlock:shedlock-provider-jdbc-template", version.ref = "shedlock" }
 
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }

@@ -97,11 +97,8 @@ resilience4j:
       default:
         timeout-duration: 30s
         cancel-running-future: true
-    instances:
-      # Partner timeout for telco OCS is 20 s (spec 11.1).
-      ocs:
-        base-config: default
-        timeout-duration: 20s
+    # Partner calls take their time limit from partner config (mw.partners.instances.<id>.timeout-ms),
+    # so a config-changed record can change it without a restart; no per-partner instance here.
   retry:
     configs:
       default:
@@ -148,19 +145,86 @@ management:
       type: w3c
 
 mw:
-  telco:
-    # Static OCS config until the adapter framework (ticket 20). The simulator is the default
-    # target; real MNO endpoints come from per-environment overrides.
-    ocs:
-      base-url: ${OCS_BASE_URL:http://mw-simulators:8080}
-      connect-timeout: 3s
-      # A little above the 20 s time limiter, which decides first.
-      read-timeout: 22s
-      # OCS codes that do not say whether the top-up was applied: reply UNKNOWN (spec 7.4).
-      ambiguous-codes: ["9876"]
-      # OCS code -> MW-PTR-<PARTNER>-<suffix>. Unlisted codes become UNMAPPED (not retryable).
-      error-codes:
-        "2001": { suffix: TOPUP_REJECTED, retryable: false }
+  # Adapter framework (spec 12, package partner). Partner instances are config: route template +
+  # endpoint + JSONata mappings + error-code map. These are seeds (version 0); a
+  # mw.config.changed.v1 PARTNER record (configKey partner/<id>, same field names in camelCase)
+  # replaces or adds an instance without a restart. Secrets are never here: auth.credentials-ref
+  # names a property that OpenBao provides (secret/mw-adapter-telco).
+  partners:
+    # Every partnerId without config of its own (gp, robi, banglalink, teletalk) is served by the
+    # OCS instance until the admin console gives it one (ticket 38).
+    default-partner: ocs
+    config-consumer:
+      # Consumer of mw.config.changed.v1 (PartnerConfigRouteBuilder); tests switch it off.
+      enabled: true
+    # Security (static config only; a config-changed record can never widen it). A partner's
+    # baseUrl host must be on its own allowlist, https unless the host is an explicitly allowed
+    # dev/test host, and auth.credentials-ref is a bare secret name read from the property
+    # mw.partner-secrets.<partner>.<name> (OpenBao secret/mw-adapter-telco). A record breaking
+    # a rule is refused (event security.partner_config_refused) and the last good config stays.
+    security:
+      allowed-hosts:
+        ocs: ${MW_OCS_ALLOWED_HOSTS:mw-simulators}
+      # Plain http only for the simulator; production sets MW_PARTNER_INSECURE_HTTP_HOSTS empty.
+      insecure-http-hosts: ${MW_PARTNER_INSECURE_HTTP_HOSTS:mw-simulators}
+    instances:
+      # OCS REST/JSON (wire format: mw-simulators OCS). The simulator is the default target;
+      # real MNO endpoints come from per-environment overrides or config-changed records.
+      ocs:
+        template: rest-json-request-reply
+        base-url: ${OCS_BASE_URL:http://mw-simulators:8080}
+        connect-timeout-ms: 3000
+        # Partner timeout for telco is 20 s (spec 11.1); the read timeout sits a little above so
+        # the time limiter decides first. Resilience4j bulkhead/circuit breaker: instance "ocs".
+        timeout-ms: 20000
+        read-timeout-ms: 22000
+        auth:
+          scheme: none
+        # Raw bodies are audited masked: these fields by rule, everything by free-text scrubbing.
+        sensitive-fields:
+          msisdn: MSISDN
+        # OCS codes that do not say whether the top-up was applied: reply UNKNOWN (spec 7.4).
+        ambiguous-codes: ["9876"]
+        # OCS code -> MW-PTR-<PARTNER>-<suffix>. Unlisted codes become UNMAPPED (not retryable).
+        error-map:
+          "[2001]": { suffix: TOPUP_REJECTED, retryable: false }
+        operations:
+          # POST /ocs/v1/topup {transactionId, msisdn, amount:"20.00"}. Only 422 with a code and
+          # 400 are rejections; any other non-2xx status is UNKNOWN (fail closed).
+          "[PAY]":
+            method: POST
+            path: /ocs/v1/topup
+            definite-statuses: [400, 422]
+            request: |
+              {"transactionId": reference, "msisdn": creditParty.id, "amount": amount.major}
+            response: |
+              status = 200
+                ? (body.status = "SUCCESS" and $type(body.ocsRef) = "string" and body.ocsRef != ""
+                    ? {"outcome": "SUCCESS", "partnerRef": body.ocsRef, "code": body.code}
+                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+              : status = 422
+                ? ($type(body.code) = "string" and body.code != ""
+                    ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+              : status = 400
+                ? {"outcome": "FAILED", "code": "HTTP_400", "message": body.message}
+              : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          # Status inquiry (spec 7.4): GET /ocs/v1/topup/{reference}. NOT_FOUND only for a 404
+          # carrying the OCS' NOT_FOUND body; anything else without a definite answer is UNKNOWN.
+          "[STATUS_QUERY]":
+            method: GET
+            path: /ocs/v1/topup/{reference}
+            definite-statuses: [200, 404]
+            response: |
+              status = 200
+                ? (body.status = "SUCCESS" and $type(body.ocsRef) = "string" and body.ocsRef != ""
+                    ? {"outcome": "SUCCESS", "partnerRef": body.ocsRef, "code": body.code}
+                    : body.status = "FAILED" and $type(body.code) = "string" and body.code != ""
+                      ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+                      : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+              : status = 404 and body.status = "NOT_FOUND"
+                ? {"outcome": "NOT_FOUND", "code": body.code, "message": body.message}
+              : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
   kafka:
     retry:
       # Non-blocking retry topics <topic>.retry.1..3, then <topic>.dlq (19.2).

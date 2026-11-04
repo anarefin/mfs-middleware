@@ -2,27 +2,25 @@ package mfs.mw.adapter.telco.service;
 
 import java.time.Clock;
 import java.util.Optional;
-import mfs.mw.adapter.telco.client.OcsClient;
-import mfs.mw.adapter.telco.dto.OcsResult;
 import mfs.mw.adapter.telco.dto.PartnerReply;
 import mfs.mw.adapter.telco.dto.PartnerRequest;
-import mfs.mw.adapter.telco.exception.OcsNotSentException;
-import mfs.mw.adapter.telco.exception.OcsUnknownOutcomeException;
-import mfs.mw.adapter.telco.mapper.OcsRequestMapper;
+import mfs.mw.adapter.telco.mapper.PartnerCallMapper;
 import mfs.mw.adapter.telco.mapper.PartnerReplyMapper;
 import mfs.mw.adapter.telco.messaging.EventMetadata;
 import mfs.mw.adapter.telco.messaging.Inbox;
 import mfs.mw.adapter.telco.messaging.OutboxWriter;
+import mfs.mw.adapter.telco.partner.template.PartnerGateway;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * One canonical top-up request to one canonical reply (spec WP14): map, call the OCS once with
- * the stable partner reference (PAY: the top-up, refused unsent once its {@code deadlineAt} has
- * passed; STATUS_QUERY: the status inquiry of spec 7.4), map the outcome, then write the reply to the outbox together with
- * the inbox record of the request (effectively-once, 6.4). The OCS call itself is outside any
- * database transaction.
+ * One canonical top-up request to one canonical reply (spec WP14): check it, call the partner once
+ * through the adapter framework with the stable partner reference (PAY: the top-up, refused unsent
+ * once its {@code deadlineAt} has passed; STATUS_QUERY: the status inquiry of spec 7.4), map the
+ * outcome, then write the reply to the outbox together with the inbox record of the request
+ * (effectively-once, 6.4). The partner call itself is outside any database transaction; which
+ * partner endpoint, wire format and error map apply is partner config ({@code partner} package).
  */
 @Service
 public class TopupService {
@@ -32,26 +30,26 @@ public class TopupService {
 
   private static final Logger log = LoggerFactory.getLogger(TopupService.class);
 
-  private final OcsRequestMapper requests;
+  private final PartnerCallMapper requests;
   private final PartnerReplyMapper replies;
   private final PartnerReferenceService references;
-  private final OcsClient ocs;
+  private final PartnerGateway partners;
   private final Inbox inbox;
   private final OutboxWriter outbox;
   private final Clock clock;
 
   public TopupService(
-      OcsRequestMapper requests,
+      PartnerCallMapper requests,
       PartnerReplyMapper replies,
       PartnerReferenceService references,
-      OcsClient ocs,
+      PartnerGateway partners,
       Inbox inbox,
       OutboxWriter outbox,
       Clock clock) {
     this.requests = requests;
     this.replies = replies;
     this.references = references;
-    this.ocs = ocs;
+    this.partners = partners;
     this.inbox = inbox;
     this.outbox = outbox;
     this.clock = clock;
@@ -73,14 +71,7 @@ public class TopupService {
     }
     String partnerId = request.payload().partner().partnerId();
     String ref = references.referenceFor(request.txnId(), partnerId);
-    try {
-      OcsResult result = inquiry ? ocs.status(ref) : ocs.topup(requests.toOcs(request, ref));
-      return replies.toReply(request, ref, result);
-    } catch (OcsNotSentException e) {
-      return replies.notSent(request, ref, e);
-    } catch (OcsUnknownOutcomeException e) {
-      return replies.unknown(request, ref, e);
-    }
+    return replies.toReply(request, ref, partners.call(requests.toCall(request, ref)));
   }
 
   private void publish(PartnerRequest request, PartnerReply reply) {

@@ -5,39 +5,26 @@ import static mfs.mw.adapter.telco.TelcoFixtures.newTxnId;
 import static mfs.mw.adapter.telco.TelcoFixtures.pay;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.net.URI;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.ZoneOffset;
 import java.util.Map;
-import java.util.Set;
 import mfs.mw.adapter.telco.TelcoFixtures;
-import mfs.mw.adapter.telco.config.OcsProperties;
-import mfs.mw.adapter.telco.dto.OcsResult;
 import mfs.mw.adapter.telco.dto.PartnerReply;
 import mfs.mw.adapter.telco.dto.PartnerRequest;
-import mfs.mw.adapter.telco.exception.OcsNotSentException;
-import mfs.mw.adapter.telco.exception.OcsUnknownOutcomeException;
+import mfs.mw.adapter.telco.partner.PartnerResponse;
+import mfs.mw.adapter.telco.partner.PartnerResponse.NotSentReason;
+import mfs.mw.adapter.telco.partner.PartnerResponse.UnknownReason;
 import org.junit.jupiter.api.Test;
 
 /** Expected codes are the contract's samples and the canonical code pattern of spec 5.3. */
 class PartnerReplyMapperTest {
 
-  static final OcsProperties PROPS =
-      new OcsProperties(
-          URI.create("http://ocs.invalid"),
-          Duration.ofSeconds(1),
-          Duration.ofSeconds(1),
-          Set.of("9876"),
-          Map.of("2001", new OcsProperties.ErrorMapping("SUBSCRIBER_BARRED", false)));
-
-  final PartnerReplyMapper mapper =
-      new PartnerReplyMapper(PROPS, Clock.fixed(NOW, ZoneOffset.UTC));
+  final PartnerReplyMapper mapper = new PartnerReplyMapper(Clock.fixed(NOW, ZoneOffset.UTC));
   final PartnerRequest request = pay(newTxnId(), "01711000001", 2000);
 
   @Test
   void successCarriesTheOcsReferenceAndOurStableReference() {
-    PartnerReply reply = mapper.toReply(request, "UPAYREF1", new OcsResult.Accepted("OCS-1", "0000"));
+    PartnerReply reply = mapper.toReply(request, "UPAYREF1", new PartnerResponse.Success("OCS-1", "0000"));
 
     assertThat(reply.family()).isEqualTo("telco");
     assertThat(reply.requestId()).isEqualTo(request.requestId());
@@ -54,7 +41,7 @@ class PartnerReplyMapperTest {
   @Test
   void aStatusQueryAnswerKeepsItsOperation() {
     PartnerRequest query = TelcoFixtures.statusQuery(newTxnId());
-    PartnerReply reply = mapper.toReply(query, "UPAYREF1", new OcsResult.Accepted("OCS-1", "0000"));
+    PartnerReply reply = mapper.toReply(query, "UPAYREF1", new PartnerResponse.Success("OCS-1", "0000"));
     assertThat(reply.payload().operation()).isEqualTo("STATUS_QUERY");
     assertThat(reply.payload().outcome()).isEqualTo("SUCCESS");
   }
@@ -62,7 +49,7 @@ class PartnerReplyMapperTest {
   @Test
   void anOcsWithoutRecordOfTheTopupIsNotFound() {
     PartnerReply reply =
-        mapper.toReply(TelcoFixtures.statusQuery(newTxnId()), "UPAYREF1", new OcsResult.NotFound("4040", "Unknown transaction"));
+        mapper.toReply(TelcoFixtures.statusQuery(newTxnId()), "UPAYREF1", new PartnerResponse.NotFound("4040", "Unknown transaction"));
     assertThat(reply.payload().operation()).isEqualTo("STATUS_QUERY");
     assertThat(reply.payload().outcome()).isEqualTo("NOT_FOUND");
     assertThat(reply.payload().partnerCode()).isEqualTo("4040");
@@ -72,9 +59,9 @@ class PartnerReplyMapperTest {
   @Test
   void aStatusQueryThatCouldNotBeSentIsUnknownNeverFailed() {
     // a FAILED answer to an inquiry would release a hold the partner may have used
-    for (OcsNotSentException.Reason r : OcsNotSentException.Reason.values()) {
+    for (NotSentReason r : NotSentReason.values()) {
       PartnerReply reply =
-          mapper.notSent(TelcoFixtures.statusQuery(newTxnId()), "R", new OcsNotSentException(r, null));
+          mapper.toReply(TelcoFixtures.statusQuery(newTxnId()), "R", new PartnerResponse.NotSent(r));
       assertThat(reply.payload().outcome()).as(r.name()).isEqualTo("UNKNOWN");
       assertThat(reply.payload().errorCode()).isEqualTo("MW-TMO-PARTNER_" + r.name());
     }
@@ -91,7 +78,7 @@ class PartnerReplyMapperTest {
   @Test
   void aMappedRejectionIsFailedWithTheCanonicalPartnerCode() {
     PartnerReply reply =
-        mapper.toReply(request, "R", new OcsResult.Rejected("2001", "Subscriber barred"));
+        mapper.toReply(request, "R", new PartnerResponse.Rejected("2001", "Subscriber barred", "SUBSCRIBER_BARRED", false));
 
     assertThat(reply.payload().outcome()).isEqualTo("FAILED");
     assertThat(reply.payload().errorCode()).isEqualTo("MW-PTR-GP-SUBSCRIBER_BARRED");
@@ -102,7 +89,7 @@ class PartnerReplyMapperTest {
 
   @Test
   void anUnlistedRejectionCodeIsUnmappedAndNotRetryable() {
-    PartnerReply reply = mapper.toReply(request, "R", new OcsResult.Rejected("HTTP_400", null));
+    PartnerReply reply = mapper.toReply(request, "R", new PartnerResponse.Rejected("HTTP_400", null, "UNMAPPED", false));
 
     assertThat(reply.payload().errorCode()).isEqualTo("MW-PTR-GP-UNMAPPED");
     assertThat(reply.payload().retryable()).isFalse();
@@ -117,13 +104,13 @@ class PartnerReplyMapperTest {
                 "PAY", "TOPUP", new PartnerRequest.PartnerRef("robi-axiata", "PREPAID", null), "x",
                 request.payload().amount(), null, request.payload().creditParty(), null, null));
 
-    assertThat(mapper.toReply(odd, "R", new OcsResult.Rejected("2001", "m")).payload().errorCode())
+    assertThat(mapper.toReply(odd, "R", new PartnerResponse.Rejected("2001", "m", "SUBSCRIBER_BARRED", false)).payload().errorCode())
         .isEqualTo("MW-PTR-ROBI_AXIATA-SUBSCRIBER_BARRED");
   }
 
   @Test
   void anAmbiguousCodeIsUnknownAndNeverRetryable() {
-    PartnerReply reply = mapper.toReply(request, "R", new OcsResult.Ambiguous("9876", "odd"));
+    PartnerReply reply = mapper.toReply(request, "R", new PartnerResponse.Ambiguous("9876", "odd"));
 
     assertThat(reply.payload().outcome()).isEqualTo("UNKNOWN");
     assertThat(reply.payload().errorCode()).isEqualTo("MW-TMO-PARTNER_AMBIGUOUS_CODE");
@@ -133,19 +120,21 @@ class PartnerReplyMapperTest {
 
   @Test
   void aTopupThatWasNotSentIsAFailedRetryableSystemError() {
-    assertCode(notSent(OcsNotSentException.Reason.CIRCUIT_OPEN), "MW-SYS-PARTNER_CIRCUIT_OPEN");
-    assertCode(notSent(OcsNotSentException.Reason.BULKHEAD_FULL), "MW-SYS-PARTNER_BUSY");
-    assertCode(notSent(OcsNotSentException.Reason.CONNECT_FAILED), "MW-SYS-PARTNER_UNAVAILABLE");
-    assertThat(notSent(OcsNotSentException.Reason.CIRCUIT_OPEN).payload().outcome())
-        .isEqualTo("FAILED");
-    assertThat(notSent(OcsNotSentException.Reason.CIRCUIT_OPEN).payload().retryable()).isTrue();
+    assertCode(notSent(NotSentReason.CIRCUIT_OPEN), "MW-SYS-PARTNER_CIRCUIT_OPEN");
+    assertCode(notSent(NotSentReason.BULKHEAD_FULL), "MW-SYS-PARTNER_BUSY");
+    assertCode(notSent(NotSentReason.CONNECT_FAILED), "MW-SYS-PARTNER_UNAVAILABLE");
+    assertCode(notSent(NotSentReason.DISABLED), "MW-SYS-PARTNER_DISABLED");
+    assertCode(notSent(NotSentReason.MISCONFIGURED), "MW-SYS-PARTNER_MISCONFIGURED");
+    for (NotSentReason r : NotSentReason.values()) {
+      assertThat(notSent(r).payload().outcome()).isEqualTo("FAILED");
+      assertThat(notSent(r).payload().retryable()).isTrue();
+    }
   }
 
   @Test
   void everyUnknownReasonGivesATimeoutNamespaceCode() {
-    for (OcsUnknownOutcomeException.Reason reason : OcsUnknownOutcomeException.Reason.values()) {
-      PartnerReply reply =
-          mapper.unknown(request, "R", new OcsUnknownOutcomeException(reason, null));
+    for (UnknownReason reason : UnknownReason.values()) {
+      PartnerReply reply = mapper.toReply(request, "R", new PartnerResponse.Unknown(reason));
       assertThat(reply.payload().outcome()).isEqualTo("UNKNOWN");
       assertThat(reply.payload().errorCode()).isEqualTo("MW-TMO-PARTNER_" + reason.name());
     }
@@ -161,8 +150,16 @@ class PartnerReplyMapperTest {
     assertThat(reply.payload().retryable()).isFalse();
   }
 
-  private PartnerReply notSent(OcsNotSentException.Reason reason) {
-    return mapper.notSent(request, "R", new OcsNotSentException(reason, null));
+  @Test
+  void anAcknowledgedAsyncRequestIsPendingWithThePartnerReference() {
+    PartnerReply reply = mapper.toReply(request, "R", new PartnerResponse.Pending("P-1", "0001"));
+    assertThat(reply.payload().outcome()).isEqualTo("PENDING");
+    assertThat(reply.payload().partnerRef()).isEqualTo("P-1");
+    assertThat(reply.payload().errorCode()).isNull();
+  }
+
+  private PartnerReply notSent(NotSentReason reason) {
+    return mapper.toReply(request, "R", new PartnerResponse.NotSent(reason));
   }
 
   private static void assertCode(PartnerReply reply, String code) {
