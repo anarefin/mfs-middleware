@@ -29,7 +29,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   purged after 7 d, so it is not used for this).
 - Masking (18.3): producers mask; before storing, `MaskingPolicy.scrub` runs again over
   `correlationId`, `actor.id`, `resource`, `payloadRef` and every string, number and property
-  name in `before`/`after` (a number the scrub changes is stored as the masked string). The hash
+  name in `before`/`after` (a number the scrub changes is stored as the masked string; property
+  names that mask alike are never overwritten, later ones get `#2`, `#3`... in order). The hash
   covers the masked values.
 - Roles (16.4): the service runs as `audit_writer` (INSERT only on `event` and `event_key`; SELECT/INSERT/UPDATE
   on `chain_head`; EXECUTE `ensure_month_partition`; DML on the chassis `inbox`/`outbox`/

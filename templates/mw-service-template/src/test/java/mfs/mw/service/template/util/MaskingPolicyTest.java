@@ -114,10 +114,20 @@ class MaskingPolicyTest {
   }
 
   @Test
-  void describeMasksArrayElements() {
+  void describeMasksObjectArrayElements() {
     assertThat(MaskingPolicy.describe(new Payer[] {payer(), null}))
         .isEqualTo("[" + MASKED_PAYER + ", null]");
-    assertThat(MaskingPolicy.describe(new long[] {1990123456789L, 7L})).isEqualTo("[****789, 7]");
+    assertThat(MaskingPolicy.describe(new Object[] {payer(), "to 01812345678"}))
+        .isEqualTo("[" + MASKED_PAYER + ", to 0181****678]");
+  }
+
+  /** Element by element, a char[] or byte[] would show an MSISDN or PIN one digit at a time. */
+  @Test
+  void describeShowsOnlyTypeAndLengthOfPrimitiveArrays() {
+    assertThat(MaskingPolicy.describe("01712345789".toCharArray())).isEqualTo("char[11]");
+    assertThat(MaskingPolicy.describe(new byte[256])).isEqualTo("byte[256]");
+    assertThat(MaskingPolicy.describe(new long[] {1990123456789L, 7L})).isEqualTo("long[2]");
+    assertThat(MaskingPolicy.describe(new Object[] {new int[] {1, 2, 3}})).isEqualTo("[int[3]]");
   }
 
   record Batch(List<Payer> payers, Map<String, Optional<Payer>> byRef, String note) {}
@@ -198,9 +208,16 @@ class MaskingPolicyTest {
   @Test
   void scrubLeavesUuidsIntactWhereverTheySit() {
     String text =
-        "txn=0190a7c4-0000-7000-8000-000000000001 ref-0190a7c4-0000-7000-8000-017123457890,"
-            + " id_00000000-0000-0000-0000-001234567890.";
+        "txn=0190a7c4-1b2e-7c3d-8e4f-5a6b7c8d9e0f ref-f47ac10b-58cc-4372-a567-0e02b2c3d479,"
+            + " id_9b2c6e3a-4f1d-4c8b-a2e7-3d5f6a7b8c9d.";
     assertThat(MaskingPolicy.scrub(text)).isEqualTo(text);
+  }
+
+  /** UUID shape alone does not protect: a group hiding a 10+ digit run is scrubbed. */
+  @Test
+  void scrubMasksUuidShapedTokensThatHideLongNumbers() {
+    assertThat(MaskingPolicy.scrub("ref=12345678-1234-1234-1234-001711234567 ok"))
+        .isEqualTo("ref=12345678-1234-1234-1234-****4567 ok");
   }
 
   @Test
@@ -227,13 +244,13 @@ class MaskingPolicyTest {
   void scrubStillMasksNumbersNextToProtectedIds() {
     assertThat(
             MaskingPolicy.scrub(
-                "0190a7c4-0000-7000-8000-000000000001-01712345789 00f067aa0ba902b7_1990123456789"))
-        .isEqualTo("0190a7c4-0000-7000-8000-000000000001-0171****789 00f067aa0ba902b7_****789");
+                "0190a7c4-1b2e-7c3d-8e4f-5a6b7c8d9e0f-01712345789 00f067aa0ba902b7_1990123456789"))
+        .isEqualTo("0190a7c4-1b2e-7c3d-8e4f-5a6b7c8d9e0f-0171****789 00f067aa0ba902b7_****789");
   }
 
   @Test
   void scrubLeavesShortNumbersAndIdentifiersAlone() {
-    String text = "amount 100000000 attempt 3 txn 0190a7c4-0000-7000-8000-000000000001";
+    String text = "amount 100000000 attempt 3 txn 0190a7c4-1b2e-7c3d-8e4f-5a6b7c8d9e0f";
     assertThat(MaskingPolicy.scrub(text)).isEqualTo(text);
   }
 

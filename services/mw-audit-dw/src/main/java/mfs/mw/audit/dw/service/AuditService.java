@@ -150,7 +150,9 @@ public class AuditService {
 
   /**
    * A copy of {@code node} with every string value, number and property name scrubbed (18.3
-   * safety net). A number that the scrub changes becomes the masked string.
+   * safety net). A number that the scrub changes becomes the masked string. Property names that
+   * scrub to a name already used are never overwritten: they get {@code #2}, {@code #3}... in
+   * their original order.
    */
   private static JsonNode masked(JsonNode node) {
     if (node.isString() || node.isNumber()) {
@@ -163,7 +165,7 @@ public class AuditService {
     if (node instanceof ObjectNode obj) {
       ObjectNode out = obj.objectNode();
       obj.properties()
-          .forEach(p -> out.set(MaskingPolicy.scrub(p.getKey()), masked(p.getValue())));
+          .forEach(p -> out.set(unusedName(out, MaskingPolicy.scrub(p.getKey())), masked(p.getValue())));
       return out;
     }
     if (node instanceof ArrayNode arr) {
@@ -172,6 +174,14 @@ public class AuditService {
       return out;
     }
     return node;
+  }
+
+  private static String unusedName(ObjectNode out, String name) {
+    String candidate = name;
+    for (int n = 2; out.has(candidate); n++) {
+      candidate = name + "#" + n;
+    }
+    return candidate;
   }
 
   private static OffsetDateTime utc(Instant i) {

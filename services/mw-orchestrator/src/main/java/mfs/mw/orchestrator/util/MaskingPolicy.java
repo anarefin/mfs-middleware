@@ -37,19 +37,20 @@ public final class MaskingPolicy {
   private static final Pattern LONG_NUMBER_IN_TEXT = Pattern.compile("(?<!\\d)\\d{10,}(?!\\d)");
 
   /**
-   * Ids that are not personal data and are left as they are, so their digit runs are not taken
-   * for numbers: UUIDs (8-4-4-4-12 hex; the dashes cap a digit run at 12) and W3C trace/span
-   * ids (32 or 16 lowercase hex, standalone or as the parts of a {@code traceparent}) whose
-   * longest digit run is under 10, so the hex shape alone never hides a number. Bounded by
-   * anything but a letter or digit; an id glued to letters or digits is not protected and its
-   * digits get scrubbed.
+   * Shapes of ids that are not personal data: UUIDs (8-4-4-4-12 hex) and W3C trace/span ids (32
+   * or 16 lowercase hex, standalone or as the parts of a {@code traceparent}), bounded by anything
+   * but a letter or digit. A match is left as it is only when it holds no run of 10 or more
+   * digits ({@link #HIDES_A_NUMBER}), so the shape alone never hides a number; otherwise it is
+   * scrubbed like any other text.
    */
   private static final Pattern PROTECTED_ID =
       Pattern.compile(
           "(?<![0-9A-Za-z])"
               + "(?:[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}"
-              + "|(?![0-9a-f]*\\d{10})(?:[0-9a-f]{32}|[0-9a-f]{16}))"
+              + "|[0-9a-f]{32}|[0-9a-f]{16})"
               + "(?![0-9A-Za-z])");
+
+  private static final Pattern HIDES_A_NUMBER = Pattern.compile("\\d{10}");
 
   private MaskingPolicy() {}
 
@@ -83,6 +84,9 @@ public final class MaskingPolicy {
     StringBuilder out = new StringBuilder(text.length());
     int from = 0;
     while (ids.find()) {
+      if (HIDES_A_NUMBER.matcher(ids.group()).find()) {
+        continue;
+      }
       out.append(scrubNumbers(text.substring(from, ids.start()))).append(ids.group());
       from = ids.end();
     }
@@ -113,11 +117,13 @@ public final class MaskingPolicy {
 
   /**
    * Renders a value for logging: records are rendered like {@code Record.toString()} with every
-   * {@link Sensitive} component masked; arrays, {@link Collection}s, {@link Map}s (keys and
-   * values) and {@link Optional}s are walked like their own {@code toString()} so records inside
+   * {@link Sensitive} component masked; object arrays, {@link Collection}s, {@link Map}s (keys
+   * and values) and {@link Optional}s are walked like their own {@code toString()} so records inside
    * them are masked too, at any depth. Every other value, including iterables that are not
    * collections such as {@code Path} or {@code JsonNode}, uses {@code toString()} and then {@link
-   * #scrub(String)}. A container that contains itself is rendered as {@code (this)}.
+   * #scrub(String)}. A primitive array shows only its type and length ({@code char[11]}), since
+   * element by element a {@code char[]} or {@code byte[]} would show an MSISDN or PIN one digit
+   * at a time. A container that contains itself is rendered as {@code (this)}.
    */
   public static String describe(Object value) {
     return describe(value, Collections.newSetFromMap(new IdentityHashMap<>()));
@@ -126,6 +132,10 @@ public final class MaskingPolicy {
   private static String describe(Object value, Set<Object> inProgress) {
     if (value == null) {
       return "null";
+    }
+    Class<?> elementType = value.getClass().getComponentType();
+    if (elementType != null && elementType.isPrimitive()) {
+      return elementType.getName() + "[" + Array.getLength(value) + "]";
     }
     boolean container =
         value instanceof Record
@@ -167,8 +177,8 @@ public final class MaskingPolicy {
         parts.add(describe(item, inProgress));
       }
     } else {
-      for (int i = 0; i < Array.getLength(value); i++) {
-        parts.add(describe(Array.get(value, i), inProgress));
+      for (Object item : (Object[]) value) {
+        parts.add(describe(item, inProgress));
       }
     }
     return parts.toString();
