@@ -80,7 +80,7 @@ public class TransactionService {
 
     TransactionRecord rec = requestMapper.toRecord(req, replyTo, now);
     transactions.insert(rec);
-    engine.publishStatus(statusMapper.toStatus(rec), replyTo);
+    engine.created(rec);
 
     ErrorInfo refusal = refusal(req);
     if (refusal != null) {

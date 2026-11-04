@@ -46,6 +46,7 @@ class SagaServiceIT {
 
   private static final String STATUS_SCHEMA = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
   private static final String COMMAND_SCHEMA = "events/mw-orchestrator/core.command.v1.schema.json";
+  private static final String AUDIT_SCHEMA = "events/mw-audit-dw/mw.audit.event.v1.schema.json";
 
   private final TransactionService transactions;
   private final CoreEventService coreEvents;
@@ -99,6 +100,18 @@ class SagaServiceIT {
     return outbox("core.wallet.command.v1", txnId);
   }
 
+  private List<JsonNode> audits(String txnId) {
+    return outbox("mw.audit.event.v1", txnId);
+  }
+
+  /** "from>to" per audit record, "-" when there is no before. */
+  private List<String> auditedMoves(String txnId) {
+    return audits(txnId).stream()
+        .map(a -> (a.has("before") ? a.path("before").path("status").asString() : "-")
+            + ">" + a.path("after").path("status").asString())
+        .toList();
+  }
+
   private JsonNode lastStatus(String txnId) {
     List<JsonNode> all = outbox("mw.txn.status.v1", txnId);
     return all.get(all.size() - 1);
@@ -110,6 +123,9 @@ class SagaServiceIT {
     }
     for (JsonNode n : commands(txnId)) {
       assertThat(ContractSchemas.schema(COMMAND_SCHEMA).validate(n)).as(n.toString()).isEmpty();
+    }
+    for (JsonNode n : audits(txnId)) {
+      assertThat(ContractSchemas.schema(AUDIT_SCHEMA).validate(n)).as(n.toString()).isEmpty();
     }
   }
 
@@ -163,6 +179,67 @@ class SagaServiceIT {
     assertThat(jdbc.queryForObject("select count(*) from saga_timer", Long.class)).isZero();
     assertThat(jdbc.queryForObject("select count(*) from saga_step where txn_id = ?::uuid", Long.class, txn)).isEqualTo(3);
     assertAllValid(txn);
+  }
+
+  // --- audit trail (ticket 12, spec 14.3) ---------------------------------------------------------
+
+  @Test
+  void everyStateAP2pPassesThroughIsAuditedOnce() {
+    String txn = start(5_000);
+    coreEvents.handle(event("TransactionValidated", txn, "validate", null, "{}"));
+    coreEvents.handle(event("TransferPosted", txn, "post", null, "{}"));
+
+    assertThat(auditedMoves(txn))
+        .containsExactly("->RECEIVED", "RECEIVED>VALIDATING", "VALIDATING>POSTING", "POSTING>COMPLETED");
+    List<JsonNode> audits = audits(txn);
+    assertThat(audits).extracting(a -> a.path("auditId").asString()).doesNotHaveDuplicates();
+    for (JsonNode a : audits) {
+      assertThat(a.path("action").asString()).isEqualTo("txn.state.changed");
+      assertThat(a.path("resource").asString()).isEqualTo("txn/" + txn);
+      assertThat(a.path("txnId").asString()).isEqualTo(txn);
+      assertThat(a.path("actor").path("type").asString()).isEqualTo("system");
+      assertThat(a.path("actor").path("id").asString()).isEqualTo("mw-orchestrator");
+      assertThat(a.path("service").asString()).isEqualTo("mw-orchestrator");
+      assertThat(a.path("outcome").asString()).isEqualTo("SUCCESS");
+      // no parties, amounts or PIN: nothing personal to mask
+      assertThat(a.toString()).doesNotContain("encryptedPin", "debitParty", "creditParty", "amount");
+    }
+    assertAllValid(txn);
+  }
+
+  @Test
+  void anAuditRecordIsWrittenWithItsStateChangeAndCarriesTheError() {
+    String txn = start(5_000);
+    coreEvents.handle(event("TransactionRejected", txn, "validate", "INSUFFICIENT_BALANCE", "{}"));
+
+    assertThat(auditedMoves(txn)).containsExactly("->RECEIVED", "RECEIVED>VALIDATING", "VALIDATING>REJECTED");
+    JsonNode rejected = audits(txn).get(2);
+    assertThat(rejected.path("after").path("errorCode").asString()).isEqualTo("MW-CORE-INSUFFICIENT_BALANCE");
+    assertThat(jdbc.queryForObject("select count(*) from saga_step where txn_id = ?::uuid", Long.class, txn))
+        .isEqualTo(audits(txn).size() - 1L);
+    assertAllValid(txn);
+  }
+
+  @Test
+  void aTimeoutIsAuditedAndAnIgnoredEventIsNot() {
+    String txn = start(5_000);
+    clock.advance(Duration.ofSeconds(6));
+    timers.sweep();
+    coreEvents.handle(event("TransactionValidated", txn, "validate", null, "{}")); // late, refused
+
+    assertThat(auditedMoves(txn)).containsExactly("->RECEIVED", "RECEIVED>VALIDATING", "VALIDATING>FAILED");
+    assertAllValid(txn);
+  }
+
+  @Test
+  void aRepeatedRequestChangesNoStateAndIsNotAudited() {
+    TxnRequest first = TestData.p2p(TestData.txnId(), "key-repeat-audit", 5_000);
+    transactions.accept(first, "gw-1");
+    TxnRequest again = TestData.p2p(TestData.txnId(), "key-repeat-audit", 5_000);
+    transactions.accept(again, "gw-1");
+
+    assertThat(audits(first.txnId())).hasSize(2);
+    assertThat(audits(again.txnId())).isEmpty();
   }
 
   @Test
