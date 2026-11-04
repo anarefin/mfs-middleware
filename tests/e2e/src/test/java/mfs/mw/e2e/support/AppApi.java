@@ -1,6 +1,7 @@
 package mfs.mw.e2e.support;
 
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -9,7 +10,8 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * The mobile app API v1 through APISIX ({@code /app/v1/*}, contracts/api/mw-app-gateway/
- * app.v1.openapi.yaml) with a customers-realm bearer token.
+ * app.v1.openapi.yaml) with a customers-realm bearer token, from the user's bound device
+ * ({@link Devices}); submits are signed.
  */
 public final class AppApi {
 
@@ -39,39 +41,58 @@ public final class AppApi {
     return body;
   }
 
-  /** {@code POST /app/v1/transactions} as {@code user} with the given Idempotency-Key. */
+  /** A submit exactly as sent: the body text and every header, signed by the user's device. */
+  public record SignedSubmit(String body, Map<String, String> headers) {}
+
+  /**
+   * Builds {@code POST /app/v1/transactions} as {@code user} with the given Idempotency-Key, signed
+   * by the user's bound device (ticket 29: binds it on first use); send it with {@link #send}.
+   */
+  public static SignedSubmit prepare(String user, String idempotencyKey, ObjectNode body) {
+    String json = Http.JSON.writeValueAsString(body);
+    Map<String, String> headers = new LinkedHashMap<>(Devices.signed(user, "POST", "/" + TRANSACTIONS, json));
+    headers.put("Idempotency-Key", idempotencyKey);
+    headers.put("X-Correlation-Id", "e2e-" + UUID.randomUUID());
+    return new SignedSubmit(json, headers);
+  }
+
+  /** Sends a prepared submit (again: the same bytes, nonce and signature, for replay tests). */
+  public static Http.Response send(SignedSubmit submit) {
+    return Http.postRaw(Stack.get().url(TRANSACTIONS), submit.headers(), submit.body());
+  }
+
+  /** {@code POST /app/v1/transactions} as {@code user} with the given Idempotency-Key, signed. */
   public static Http.Response submit(String user, String idempotencyKey, ObjectNode body) {
-    return Http.postJson(
-        Stack.get().url(TRANSACTIONS),
-        Map.of(
-            "Authorization", "Bearer " + Keycloak.customerToken(user),
-            "Idempotency-Key", idempotencyKey,
-            "X-Correlation-Id", "e2e-" + UUID.randomUUID()),
-        body);
+    return send(prepare(user, idempotencyKey, body));
   }
 
   /** {@code GET /app/v1/billers} as {@code user}. */
   public static Http.Response billers(String user) {
-    return Http.get(
-        Stack.get().url("app/v1/billers"),
-        Map.of("Authorization", "Bearer " + Keycloak.customerToken(user)));
+    return Http.get(Stack.get().url("app/v1/billers"), Devices.headers(user));
+  }
+
+  /** {@code GET /app/v1/merchant/collections} as {@code user} (ticket 30, merchant role only). */
+  public static Http.Response merchantCollections(String user) {
+    return Http.get(Stack.get().url("app/v1/merchant/collections"), Devices.headers(user));
   }
 
   /** {@code POST /app/v1/billers/{code}/fetch-bill} as {@code user}. */
   public static Http.Response fetchBill(String user, String billerCode, String billNumber) {
     return Http.postJson(
         Stack.get().url("app/v1/billers/" + billerCode + "/fetch-bill"),
-        Map.of(
-            "Authorization", "Bearer " + Keycloak.customerToken(user),
-            "X-Correlation-Id", "e2e-" + UUID.randomUUID()),
+        withCorrelationId(Devices.headers(user)),
         Http.JSON.createObjectNode().put("billNumber", billNumber));
   }
 
   /** {@code GET /app/v1/transactions/{txnId}} as {@code user}. */
   public static Http.Response status(String user, String txnId) {
-    return Http.get(
-        Stack.get().url(TRANSACTIONS + "/" + txnId),
-        Map.of("Authorization", "Bearer " + Keycloak.customerToken(user)));
+    return Http.get(Stack.get().url(TRANSACTIONS + "/" + txnId), Devices.headers(user));
+  }
+
+  private static Map<String, String> withCorrelationId(Map<String, String> headers) {
+    Map<String, String> h = new LinkedHashMap<>(headers);
+    h.put("X-Correlation-Id", "e2e-" + UUID.randomUUID());
+    return h;
   }
 
   /**

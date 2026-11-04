@@ -142,6 +142,11 @@ sim:
     enabled: true
     port: 2775
     dlr-delay: 300ms
+  # USSD gateway simulator, HTTP mode (ticket 26): where the simulated MNO POSTs each step
+  # (+ mno), through APISIX's ussd-http route in the stack, and the end flag that stops a session.
+  ussd-gateway:
+    target-url: ${SIM_USSD_TARGET_URL:http://apisix:9080/ussd/}
+    end-flag: END
 
 mw:
   kafka:

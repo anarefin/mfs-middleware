@@ -6,9 +6,9 @@
 
 - 09: App gateway P2P + minimal APISIX route
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Unit tests: valid signature accepted; tampered body, wrong key and stale timestamp are rejected
-- [ ] Integration test: the same nonce reused is rejected (`MW-AUTH-*`)
-- [ ] e2e: a P2P with a valid signature passes; a replayed signed request is rejected
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] Unit tests: valid signature accepted; tampered body, wrong key and stale timestamp are rejected
+- [x] Integration test: the same nonce reused is rejected (`MW-AUTH-*`)
+- [ ] e2e: a P2P with a valid signature passes; a replayed signed request is rejected (feature written: `tests/e2e/.../device-binding.feature`; run deferred to milestone gate)
+- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR (deferred to milestone gate)

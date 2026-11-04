@@ -148,6 +148,29 @@
           "01911000001"
         ]
       }
+    },
+    {
+      "username": "merchant02",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Merchant",
+      "lastName": "Second",
+      "email": "merchant02@example.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_CUSTOMERS_TEST_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "merchant"
+      ],
+      "attributes": {
+        "msisdn": [
+          "01911000002"
+        ]
+      }
     }
   ],
   "components": {

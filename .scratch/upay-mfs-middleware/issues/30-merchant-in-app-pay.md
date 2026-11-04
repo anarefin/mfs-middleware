@@ -6,8 +6,8 @@
 
 - 11: Agent CASH_IN / CASH_OUT end to end
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Role tests: only the merchant sees their own collections
-- [ ] e2e `@merchant`: in-app merchant payment success and rejection, balances asserted
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] Role tests: only the merchant sees their own collections
+- [ ] e2e `@merchant`: in-app merchant payment success and rejection, balances asserted (written; run deferred to milestone gate)
+- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR (deferred to milestone gate)

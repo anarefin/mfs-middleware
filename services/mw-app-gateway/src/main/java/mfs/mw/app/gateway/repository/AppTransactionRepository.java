@@ -2,6 +2,7 @@ package mfs.mw.app.gateway.repository;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import mfs.mw.app.gateway.dto.TransactionView;
@@ -28,26 +29,27 @@ public class AppTransactionRepository {
   public void upsert(String initiatorId, String channel, TransactionView view, Instant updatedAt) {
     jdbc.update(
         """
-        INSERT INTO app_transaction (txn_id, initiator_id, channel, status, view, updated_at)
-        VALUES (?::uuid, ?, ?, ?, ?::jsonb, ?)
+        INSERT INTO app_transaction (txn_id, initiator_id, channel, status, view, updated_at, payee_id)
+        VALUES (?::uuid, ?, ?, ?, ?::jsonb, ?, ?)
         ON CONFLICT (txn_id) DO UPDATE
-          SET status = excluded.status, view = excluded.view, updated_at = excluded.updated_at
+          SET status = excluded.status, view = excluded.view, updated_at = excluded.updated_at,
+              payee_id = coalesce(excluded.payee_id, app_transaction.payee_id)
           WHERE app_transaction.updated_at <= excluded.updated_at
         """,
         view.txnId(), initiatorId, channel, view.status(), json.writeValueAsString(view),
-        Timestamp.from(updatedAt));
+        Timestamp.from(updatedAt), view.merchantPayee());
   }
 
   /** Inserts the row of a just accepted request; a status record that got there first wins. */
   public void insertAccepted(String initiatorId, String channel, TransactionView view, Instant at) {
     jdbc.update(
         """
-        INSERT INTO app_transaction (txn_id, initiator_id, channel, status, view, updated_at)
-        VALUES (?::uuid, ?, ?, ?, ?::jsonb, ?)
+        INSERT INTO app_transaction (txn_id, initiator_id, channel, status, view, updated_at, payee_id)
+        VALUES (?::uuid, ?, ?, ?, ?::jsonb, ?, ?)
         ON CONFLICT (txn_id) DO NOTHING
         """,
         view.txnId(), initiatorId, channel, view.status(), json.writeValueAsString(view),
-        Timestamp.from(at));
+        Timestamp.from(at), view.merchantPayee());
   }
 
   /**
@@ -68,6 +70,23 @@ public class AppTransactionRepository {
         """,
         requestTxnId, initiatorId, channel, storedView.status(), json.writeValueAsString(storedView),
         Timestamp.from(at), storedTxnId);
+  }
+
+  /**
+   * The merchant collections view (ticket 30): MERCHANT_PAY transactions paying {@code
+   * merchantWallet} that reached it (COMPLETED, or REVERSED after a refund), newest first (txnIds
+   * are UUIDv7, so time-ordered), at most {@code limit}.
+   */
+  public List<TransactionView> collections(String merchantWallet, int limit) {
+    return jdbc.query(
+        """
+        SELECT view::text FROM app_transaction
+         WHERE payee_id = ? AND status IN ('COMPLETED', 'REVERSED')
+         ORDER BY txn_id DESC
+         LIMIT ?
+        """,
+        (rs, n) -> json.readValue(rs.getString(1), TransactionView.class),
+        merchantWallet, limit);
   }
 
   /**

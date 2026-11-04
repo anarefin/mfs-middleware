@@ -101,7 +101,7 @@ class ManualReviewExitIT {
 
   @Test
   void flowsThatPostInOneStepRefuseManualCommitAndRelease() {
-    for (String type : List.of("P2P", "CASH_IN", "CASH_OUT")) {
+    for (String type : List.of("P2P", "CASH_IN", "CASH_OUT", "MERCHANT_PAY")) {
       String id = TestData.txnId();
       UUID txnId = inManualReview(ofType(TestData.p2p(id, "key-" + id, 5_000), type));
 

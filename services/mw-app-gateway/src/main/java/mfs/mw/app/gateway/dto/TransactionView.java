@@ -36,6 +36,17 @@ public record TransactionView(
         s.coreRef(), s.error(), s.requestedAt(), s.updatedAt());
   }
 
+  /**
+   * The merchant wallet a MERCHANT_PAY pays (ticket 30, collections view), or null for any other
+   * transaction or credit party.
+   */
+  public String merchantPayee() {
+    if (!"MERCHANT_PAY".equals(txnType) || creditParty == null || !"WALLET".equals(creditParty.type())) {
+      return null;
+    }
+    return creditParty.id();
+  }
+
   public TransactionView withStatus(String newStatus) {
     return new TransactionView(
         txnId, newStatus, txnType, debitParty, creditParty, amount, fee, coreRef, error,

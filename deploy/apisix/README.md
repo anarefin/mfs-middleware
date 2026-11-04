@@ -96,6 +96,13 @@ Route `partner-c2wbank-callback` (`/partner/c2wbank/callback/*`, POST only, tick
 `mw-adapter-bank:8080`: the same four rules (own `limit-count` group
 `partner-c2wbank-callback`); the C2W bank's debit outcome callbacks, verified by mw-adapter-bank.
 
+Route `ussd-http` (`/ussd/*`, POST only, ticket 26) -> `mw-ussd:8080`, path and body unchanged:
+the MNO HTTP USSD gateways (`HttpUssdTransport`, contract `contracts/api/mw-ussd/ussd-http.v1.openapi.yaml`).
+`ip-restriction` (dev: private ranges; production: the MNO's gateway addresses), `client-control`
+4 KiB, `limit-count` 6000 / 60 s per `remote_addr` (group `ussd-http`), upstream read timeout 12 s
+(above mw-ussd's 8 s sync budget). No per-MNO `hmac-auth`/`basic-auth` yet (spec 8.2 says one per
+MNO): added with each MNO's contract.
+
 A new partner gets its own `partner-<id>-callback.json` (upstream: the owning adapter);
 `scripts/edge-test.sh` has the cases to copy (billagg and c2wbank both covered).
 
@@ -143,6 +150,9 @@ validator) into a closed `properties` list, and fails on any keyword it cannot c
   `X-Forwarded-*` are pinned to `keycloak:8080`, so the token's `iss` is
   `http://keycloak:8080/realms/customers`, the issuer `app-v1`'s discovery expects. Revisit when
   a public Keycloak hostname (`KC_HOSTNAME`) is fixed.
+- `routes/auth-portals-token.json` (always applied, ticket 33): the same for realm `portals`
+  (`POST /auth/realms/portals/protocol/openid-connect/token`, public client `mw-portal`), so the
+  token's `iss` is the one `portal-org-v1`'s discovery expects.
 - Test-only objects, `routes-test/` + `consumers-test/`: applied only when `apisix-init` runs with
   `MW_E2E_ROUTES=1`, which `make e2e` does on the running stack (`scripts/suite.sh`); every
   other run (a default `make up`) DELETEs them. Today: `test-core-mock` (`/test/core-mock/v1/*` ->

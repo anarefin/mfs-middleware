@@ -164,6 +164,23 @@ class RequestMapperTest {
   }
 
   @Test
+  void merchantPayDebitsTheCustomerFromTheTokenAndPaysTheMerchantNamedInTheBody() {
+    JsonNode tree =
+        validRequest(
+            mapper.toRequest(
+                new AppUser("01711000002", "CUSTOMER_APP", "CUSTOMER"), "key-1",
+                body("MERCHANT_PAY", "8801911000003", Map.of("reference", "INV-77")), TXN_ID, "corr-1", NOW));
+    assertThat(tree.path("txnType").asString()).isEqualTo("MERCHANT_PAY");
+    assertThat(tree.path("debitParty").path("id").asString()).isEqualTo("01711000002");
+    assertThat(tree.path("debitParty").path("walletType").asString()).isEqualTo("CUSTOMER");
+    assertThat(tree.path("creditParty").path("type").asString()).isEqualTo("WALLET");
+    assertThat(tree.path("creditParty").path("id").asString()).isEqualTo("01911000003");
+    assertThat(tree.path("creditParty").path("walletType").asString()).isEqualTo("MERCHANT");
+    assertThat(tree.path("partner").isMissingNode()).isTrue();
+    assertThat(tree.path("attributes").path("reference").asString()).isEqualTo("INV-77");
+  }
+
+  @Test
   void aTopupGoesOutWithTheCanonicalMsisdnAndThePartner() {
     TransactionRequest topup =
         new TransactionRequest(

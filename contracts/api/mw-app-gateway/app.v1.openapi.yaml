@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: upay app API (mw-app-gateway)
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Mobile apps API v1 (spec 8.2, 9.1), served by mw-app-gateway behind APISIX route `/app/v1/*`.
     Bearer JWT from Keycloak realm `customers`; the payer wallet is the token's `msisdn` claim.
@@ -11,6 +11,20 @@ info:
     deploy/apisix/schemas) and answers some errors itself, also as the envelope: 401
     MW-AUTH-001, 400 MW-VAL-001, 413 MW-VAL-BODY_TOO_LARGE (body over 64 KiB), 429
     MW-SYS-RATE_LIMITED (per-user quota, retryable).
+
+    Device binding (spec 9.1, 18.6, ticket 29). Every request comes from a device bound to the
+    token's wallet (`X-Device-Id`, bound with `POST /app/v1/devices`) with a live session (Valkey
+    `sess:{sub}:{deviceId}`, idle timeout 5 min, extended by every request; `POST /app/v1/sessions`
+    opens a new one). One active device per wallet: binding a device replaces the others and
+    opening a session ends theirs. Signed requests (binding, session open, transaction submit)
+    carry `X-Timestamp` (epoch milliseconds, within ±5 min of the gateway), `X-Nonce` (used once
+    per device) and `X-Signature`: base64 ECDSA P-256 SHA-256 (ASN.1 DER or 64-byte r||s) by the
+    device key over the UTF-8 text of these six lines joined by a line feed: method, path (with
+    "?query" if any), lower-case hex SHA-256 of the exact body bytes (of nothing when there is no
+    body), X-Timestamp, X-Nonce, X-Device-Id. Errors (401): MW-AUTH-003 device missing or not
+    bound (or replaced), MW-AUTH-004 signature missing or not valid, MW-AUTH-005 timestamp outside
+    the window, MW-AUTH-006 nonce already used (replay), MW-AUTH-007 no live session; 503
+    MW-SYS-012 (retryable) when the session store cannot be asked.
 servers:
   - url: https://localhost
 security:
@@ -19,16 +33,19 @@ paths:
   /app/v1/transactions:
     post:
       operationId: submitTransaction
-      summary: Submit a transaction (P2P, CASH_IN, CASH_OUT, TOPUP, BILL_PAY, ADD_MONEY_BANK)
+      summary: Submit a transaction (P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, TOPUP, BILL_PAY, ADD_MONEY_BANK)
       description: >-
         Who may initiate what follows the token's realm role (deny by default): `customer` sends
-        P2P, CASH_OUT (the customer's own wallet pays the agent wallet in `creditParty`), TOPUP,
+        P2P, CASH_OUT (the customer's own wallet pays the agent wallet in `creditParty`),
+        MERCHANT_PAY (the customer's own wallet pays the merchant wallet in `creditParty`), TOPUP,
         BILL_PAY and ADD_MONEY_BANK (the customer's bank account in `debitParty` pays the
         customer's own wallet);
-        `agent` sends CASH_IN (the agent's float pays the customer in `creditParty`). The payer is
+        `agent` sends CASH_IN (the agent's float pays the customer in `creditParty`); `merchant`
+        sends nothing (it reads its collections, GET /app/v1/merchant/collections). The payer is
         the token's wallet (for ADD_MONEY_BANK the receiver) and `encryptedPin` its PIN. Any other combination is 403
-        MW-AUTH-002. For P2P, CASH_IN and CASH_OUT a counterparty equal to the caller's own wallet
-        is 400 MW-VAL-012; the core refuses wallets of the wrong type for CASH_IN/CASH_OUT (422
+        MW-AUTH-002. For P2P, CASH_IN, CASH_OUT and MERCHANT_PAY a counterparty equal to the caller's
+        own wallet is 400 MW-VAL-012; the core refuses wallets of the wrong type for
+        CASH_IN/CASH_OUT/MERCHANT_PAY (422
         MW-CORE-INVALID_COUNTERPARTY) and locks a wallet after 5 wrong PINs in a row (422
         MW-CORE-ACCOUNT_LOCKED).
       parameters:
@@ -39,6 +56,10 @@ paths:
             1 to 64 visible ASCII characters. Same key (per wallet) and same content returns the
             stored transaction; same key and other content is 409 MW-IDEM-001 (spec 7.3).
           schema: { type: string, pattern: "^[\\x21-\\x7E]{1,64}$" }
+        - { $ref: "#/components/parameters/DeviceId" }
+        - { $ref: "#/components/parameters/Timestamp" }
+        - { $ref: "#/components/parameters/Nonce" }
+        - { $ref: "#/components/parameters/Signature" }
         - name: X-Correlation-Id
           in: header
           required: false
@@ -87,10 +108,37 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
         "504": { $ref: "#/components/responses/Error" }
+  /app/v1/merchant/collections:
+    get:
+      operationId: listMerchantCollections
+      summary: The merchant's collections (in-app MERCHANT_PAY payments received), newest first
+      description: >-
+        Merchant app only (realm role `merchant`; any other role 403 MW-AUTH-002). Lists the
+        MERCHANT_PAY transactions whose payee is the token's own wallet and that reached the
+        merchant (COMPLETED, or REVERSED after a refund); a merchant never sees another merchant's
+        collections. The payer's number is shown masked (`0171****789`). Read-only, no money moves.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Most recent collections to return (1 to 100, default 50); other values 400 MW-VAL-001.
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        "200":
+          description: The collections
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CollectionList" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
   /app/v1/billers:
     get:
       operationId: listBillers
       summary: The billers a customer can pay (catalogue of mw-adapter-billpay)
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
       description: >-
         Read-only, no money moves. Answered from mw-adapter-billpay's catalogue (reused for up to
         60 s); 503 MW-SYS-011 (retryable) when it cannot be asked and no earlier copy exists.
@@ -115,6 +163,7 @@ paths:
         MW-PTR-BILLAGG-BILL_NOT_FOUND, MW-PTR-BILLAGG-BILL_ALREADY_PAID); aggregator not reachable
         503 MW-SYS-*; no answer in time 504 MW-TMO-* (both retryable).
       parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
         - name: code
           in: path
           required: true
@@ -143,6 +192,7 @@ paths:
       operationId: getTransaction
       summary: Current status of one of the caller's transactions
       parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
         - name: txnId
           in: path
           required: true
@@ -156,7 +206,85 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
+  /app/v1/devices:
+    post:
+      operationId: bindDevice
+      summary: Bind this device to the token's wallet and open a session
+      description: >-
+        Signed with the private key of the public key in the body (proof of possession). Binding
+        the same X-Device-Id again replaces its key. With one active device per wallet the
+        wallet's other devices are replaced (their requests then get MW-AUTH-003) and their
+        sessions ended. A key that is not EC P-256 is 400 MW-VAL-001 naming `publicKey`.
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+        - { $ref: "#/components/parameters/Timestamp" }
+        - { $ref: "#/components/parameters/Nonce" }
+        - { $ref: "#/components/parameters/Signature" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeviceBindingRequest" }
+      responses:
+        "201":
+          description: Bound; a session is open
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceSession" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /app/v1/sessions:
+    post:
+      operationId: openSession
+      summary: Open a new session on a bound device (no body)
+      description: >-
+        After the idle timeout (MW-AUTH-007), or to move to this device. Signed by the bound
+        device key over an empty body. With one active device per wallet the other devices'
+        sessions end.
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+        - { $ref: "#/components/parameters/Timestamp" }
+        - { $ref: "#/components/parameters/Nonce" }
+        - { $ref: "#/components/parameters/Signature" }
+      responses:
+        "200":
+          description: Session open
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceSession" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
 components:
+  parameters:
+    DeviceId:
+      name: X-Device-Id
+      in: header
+      required: true
+      description: The device bound to the token's wallet (POST /app/v1/devices).
+      schema: { type: string, pattern: "^[A-Za-z0-9._:-]{8,128}$" }
+    Timestamp:
+      name: X-Timestamp
+      in: header
+      required: true
+      description: Signing time, epoch milliseconds; within 5 min of the gateway's clock.
+      schema: { type: string, pattern: "^[0-9]{1,15}$" }
+    Nonce:
+      name: X-Nonce
+      in: header
+      required: true
+      description: Unique per signed request of this device; a reused nonce is 401 MW-AUTH-006.
+      schema: { type: string, pattern: "^[A-Za-z0-9._:-]{16,128}$" }
+    Signature:
+      name: X-Signature
+      in: header
+      required: true
+      description: Base64 ECDSA P-256 SHA-256 signature of the canonical request text (see info).
+      schema: { type: string, maxLength: 256 }
   securitySchemes:
     bearer:
       type: http
@@ -169,6 +297,21 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
   schemas:
+    DeviceBindingRequest:
+      type: object
+      additionalProperties: false
+      required: [publicKey]
+      properties:
+        publicKey:
+          type: string
+          maxLength: 512
+          description: The device's EC P-256 public key, base64 X.509 SubjectPublicKeyInfo (DER).
+    DeviceSession:
+      type: object
+      required: [deviceId, idleTimeoutSeconds]
+      properties:
+        deviceId: { type: string }
+        idleTimeoutSeconds: { type: integer, description: Session idle timeout in seconds }
     Msisdn:
       type: string
       description: Accepted forms 01XNNNNNNNN, 8801XNNNNNNNN, +8801XNNNNNNNN; forwarded as 01XNNNNNNNN.
@@ -237,9 +380,9 @@ components:
       properties:
         txnType:
           type: string
-          enum: [P2P, CASH_IN, CASH_OUT, TOPUP, BILL_PAY, ADD_MONEY_BANK]
+          enum: [P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, TOPUP, BILL_PAY, ADD_MONEY_BANK]
           description: >-
-            P2P, CASH_IN and CASH_OUT pay the wallet of `creditParty.id`. TOPUP recharges the
+            P2P, CASH_IN, CASH_OUT and MERCHANT_PAY pay the wallet of `creditParty.id`. TOPUP recharges the
             mobile number `creditParty.id` with operator and product `partner` (required for
             TOPUP, refused otherwise, 400 MW-VAL-001); a refusal by the operator is 502
             MW-PTR-<OPERATOR>-<reason> after the held funds were released. BILL_PAY pays bill
@@ -254,7 +397,8 @@ components:
         creditParty:
           type: object
           description: >-
-            The payee: a customer wallet for P2P and CASH_IN, an agent wallet for CASH_OUT,
+            The payee: a customer wallet for P2P and CASH_IN, an agent wallet for CASH_OUT, a
+            merchant wallet for MERCHANT_PAY,
             the mobile number for TOPUP, the bill number for BILL_PAY. Required for every type
             except ADD_MONEY_BANK, which refuses it (400 MW-VAL-001).
           required: [id]
@@ -263,7 +407,7 @@ components:
               type: string
               enum: [WALLET, MSISDN, BILLER_ACCOUNT]
               description: >-
-                WALLET for P2P, CASH_IN and CASH_OUT, MSISDN for TOPUP (both optional);
+                WALLET for P2P, CASH_IN, CASH_OUT and MERCHANT_PAY, MSISDN for TOPUP (both optional);
                 BILLER_ACCOUNT, required, for BILL_PAY. Another value is 400 MW-VAL-001.
             id:
               anyOf:
@@ -333,6 +477,24 @@ components:
             message: { type: string }
             messageBn: { type: string }
             retryable: { type: boolean }
+        requestedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CollectionList:
+      type: object
+      required: [collections]
+      properties:
+        collections:
+          type: array
+          items: { $ref: "#/components/schemas/Collection" }
+    Collection:
+      type: object
+      required: [txnId, status, amount, payer, requestedAt]
+      properties:
+        txnId: { type: string, description: UUIDv7 }
+        status: { type: string, enum: [COMPLETED, REVERSED] }
+        amount: { $ref: "#/components/schemas/Money" }
+        payer: { type: string, description: "The paying customer's MSISDN, masked (0171****789)" }
+        coreRef: { type: string }
         requestedAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     ErrorEnvelope:

@@ -1,0 +1,48 @@
+{
+  "name": "portal-org-v1",
+  "desc": "Org portal API v1 (spec 8.2, 9.4): Keycloak realm portals bearer JWT verified with the realm's JWKS (mw-portal-api verifies it again), body cap sized for a bulk file (the service answers a file over 10,000 rows or 2 MiB with MW-VAL-030 itself), quota per token subject in Valkey",
+  "uri": "/portal/org/v1/*",
+  "methods": ["GET", "POST"],
+  "plugins": {
+    "client-control": {
+      "max_body_size": 3145728
+    },
+    "openid-connect": {
+      "discovery": "http://keycloak:8080/realms/portals/.well-known/openid-configuration",
+      "client_id": "mw-portal",
+      "bearer_only": true,
+      "use_jwks": true,
+      "realm": "portals",
+      "iat_slack": 10,
+      "set_access_token_header": false,
+      "set_userinfo_header": false,
+      "set_id_token_header": false
+    },
+    "serverless-pre-function": {
+      "phase": "access",
+      "functions": ["@lua:lua/consumer-from-jwt.lua"]
+    },
+    "limit-count": {
+      "count": 60,
+      "time_window": 60,
+      "key_type": "var",
+      "key": "mw_consumer",
+      "group": "portal-org-v1",
+      "rejected_code": 429,
+      "show_limit_quota_header": true,
+      "policy": "redis",
+      "redis_host": "valkey",
+      "redis_port": 6379,
+      "redis_password": "$env://VALKEY_PASSWORD",
+      "redis_database": 0,
+      "redis_timeout": 1000,
+      "allow_degradation": true
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": { "connect": 5, "send": 30, "read": 60 },
+    "nodes": { "mw-portal-api:8080": 1 }
+  }
+}

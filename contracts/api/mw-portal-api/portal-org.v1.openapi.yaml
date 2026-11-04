@@ -1,0 +1,220 @@
+openapi: 3.1.0
+info:
+  title: upay org portal API (mw-portal-api)
+  version: 1.0.0
+  description: |
+    Org portal API v1 (spec 8.2, 9.4), served by mw-portal-api behind APISIX route
+    `/portal/org/v1/*`. Bearer JWT from Keycloak realm `portals`; the org is the token's `orgId`
+    claim, the user's realm roles decide what they may do: `org-maker` uploads bulk disbursement
+    files, `org-checker` approves or rejects them (maker-checker: never the batch's own maker,
+    even with both roles). A user only ever sees their own org's batches (another org's is 404).
+    Every error is the 5.3 envelope. The APISIX edge answers some errors itself, also as the
+    envelope: 401 MW-AUTH-001, 413 MW-VAL-BODY_TOO_LARGE (body over 3 MiB), 429
+    MW-SYS-RATE_LIMITED (per-user quota, retryable).
+servers:
+  - url: https://localhost
+security:
+  - bearer: []
+paths:
+  /portal/org/v1/bulk/batches:
+    post:
+      operationId: uploadBulkBatch
+      summary: Upload a bulk disbursement file (maker)
+      description: >-
+        CSV, UTF-8 (a byte order mark is ignored), LF or CRLF, header `msisdn,amount,reference`
+        (any case), one payee per line, blank lines skipped, a field may be wrapped in double
+        quotes. `msisdn` 01XNNNNNNNN, 8801XNNNNNNNN or +8801XNNNNNNNN; `amount` in taka, above 0,
+        at most 2 decimals (e.g. `100.50`); `reference` 1 to 32 of `A-Za-z0-9._-`, unique within
+        the file. At most 10,000 data rows and 2 MiB: larger is 400 MW-VAL-030. The file is all
+        or nothing: any bad row is 400 MW-VAL-031 with one `details[]` entry per problem (`field`
+        `line <n>: <column>` or `line <n>`, the header being line 1; the first 100 listed, the
+        message counts them all; values are never echoed) and nothing is stored. A valid file is
+        stored as one batch awaiting approval. Needs role `org-maker`.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema: { type: string }
+            example: |
+              msisdn,amount,reference
+              01711000001,1500.00,SAL-NOV-001
+              01811000002,1250.50,SAL-NOV-002
+      responses:
+        "201":
+          description: Stored, status PENDING_APPROVAL
+          headers:
+            Location:
+              schema: { type: string }
+              description: /portal/org/v1/bulk/batches/{batchId}
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+    get:
+      operationId: listBulkBatches
+      summary: The org's batches, newest first (at most 50)
+      description: Needs role `org-maker` or `org-checker`.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/BatchStatus" }
+      responses:
+        "200":
+          description: The batches
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [batches]
+                properties:
+                  batches:
+                    type: array
+                    items: { $ref: "#/components/schemas/Batch" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /portal/org/v1/bulk/batches/{batchId}:
+    get:
+      operationId: getBulkBatch
+      summary: One batch of the org
+      description: Needs role `org-maker` or `org-checker`; another org's batch is 404 MW-VAL-003.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/BatchId"
+      responses:
+        "200":
+          description: The batch
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /portal/org/v1/bulk/batches/{batchId}/approve:
+    post:
+      operationId: approveBulkBatch
+      summary: Approve a batch awaiting approval (checker)
+      description: >-
+        Needs role `org-checker` (else 403 MW-AUTH-002) and a user other than the batch's maker
+        (else 403 MW-AUTH-030). A batch already approved or rejected is 409 MW-VAL-032; of
+        concurrent decisions exactly one wins.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/BatchId"
+      responses:
+        "200":
+          description: Approved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /portal/org/v1/bulk/batches/{batchId}/reject:
+    post:
+      operationId: rejectBulkBatch
+      summary: Reject a batch awaiting approval (checker)
+      description: Same rules as approve; the reason is required.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/BatchId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              additionalProperties: false
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        "200":
+          description: Rejected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema: { type: string, pattern: "^[A-Za-z0-9._:-]{1,128}$" }
+    BatchId:
+      name: batchId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    Error:
+      description: Error envelope (spec 5.3)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    BatchStatus:
+      type: string
+      description: More states (execution, ticket 34) are added within v1; clients must accept unknown values.
+      enum: [PENDING_APPROVAL, APPROVED, REJECTED]
+    Amount:
+      type: object
+      required: [valueMinor, currency]
+      properties:
+        valueMinor: { type: integer, format: int64, description: Poisha }
+        currency: { type: string, const: BDT }
+    Batch:
+      type: object
+      required: [batchId, orgId, status, rowCount, totalAmount, makerId, createdAt]
+      properties:
+        batchId: { type: string, format: uuid }
+        orgId: { type: string }
+        status: { $ref: "#/components/schemas/BatchStatus" }
+        rowCount: { type: integer, minimum: 1 }
+        totalAmount: { $ref: "#/components/schemas/Amount" }
+        makerId: { type: string, description: Username of the maker }
+        checkerId: { type: string, description: Username of the checker, once decided }
+        reason: { type: string, description: Rejection reason }
+        createdAt: { type: string, format: date-time }
+        decidedAt: { type: string, format: date-time }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }
