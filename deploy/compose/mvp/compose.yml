@@ -13,3 +13,4 @@ include:
   - path: ../platform/compose.yml
   # Module compose files are added here as the modules land, e.g.
   # - path: ../../../services/mw-orchestrator/compose.yml
+  - path: ../../../services/mw-simulators/compose.yml
