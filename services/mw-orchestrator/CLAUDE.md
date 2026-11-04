@@ -16,8 +16,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   only the P2P path is wired (`P2pFlow`, `FlowRegistry` by `txnType`). Effects of unwired flows
   (HoldFunds, partner request, commit, release, reverse, QueryTransaction) are logged
   (`saga.effect.unwired`) and skipped. `SagaEngine.fire` is the single place that applies an
-  event: persist state + `saga_step`, publish status, re-arm the deadline, send the next command.
-  Add the audit event (ticket 12) there.
+  event: persist state + `saga_step`, publish status + audit event, re-arm the deadline, send the
+  next command. `SagaEngine.created` publishes the first state (RECEIVED) the same way.
+- Audit (ticket 12, spec 14.3): one `mw.audit.event.v1` per state a transaction passes through
+  (`mapper/AuditMapper`, own type `dto/AuditEvent`), through the outbox in the same transaction:
+  action `txn.state.changed`, resource `txn/<txnId>`, actor `system`/`mw-orchestrator`, `before`
+  `{status}` (absent for RECEIVED), `after` `{status, errorCode?}`, random `auditId` (also the
+  `mw-idempotency-key` header), key txnId. No parties, amounts or PIN, so nothing to mask. A
+  repeated request or a refused event changes no state and is not audited.
 - Intake (`service/TransactionService`): idempotency in `txn.idempotency`, scope (channel,
   initiator id, key), TTL 72 h (`mw.orchestrator.idempotency-ttl`). The request hash is SHA-256
   over the business content (channel, type, parties, amount, partner, originalTxnId,
@@ -61,6 +67,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 - `events/mw-core-mock/core.event.v1.schema.json`: own type `dto/CoreEvent` (payload read as a
   tree per `eventType`). Unknown fields are ignored.
+- `events/mw-audit-dw/mw.audit.event.v1.schema.json` (produced): own type `dto/AuditEvent`;
+  `SagaServiceIT` and `P2pKafkaIT` validate every audit record against it.
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
