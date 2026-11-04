@@ -15,6 +15,8 @@ import jakarta.validation.constraints.Min;
  * @param callbackMode callback behaviour after a request is applied
  * @param callbackUrl where callbacks are posted
  * @param callbackDelayMs delay of a LATE callback
+ * @param callbackOnly payments are accepted with 202 PENDING and their outcome comes only by
+ *     callback (billagg, ticket 22); the status inquiry still knows the real outcome
  */
 public record Scenario(
     SimMode forceMode,
@@ -24,10 +26,11 @@ public record Scenario(
     @Min(0) Long timeoutDelayMs,
     CallbackMode callbackMode,
     String callbackUrl,
-    @Min(0) long callbackDelayMs) {
+    @Min(0) long callbackDelayMs,
+    boolean callbackOnly) {
 
   public static final Scenario DEFAULT =
-      new Scenario(null, 0, 0.0, false, null, CallbackMode.NONE, null, 0);
+      new Scenario(null, 0, 0.0, false, null, CallbackMode.NONE, null, 0, false);
 
   public Scenario {
     if (callbackMode == null) {
@@ -36,26 +39,30 @@ public record Scenario(
   }
 
   public Scenario withForceMode(SimMode m) {
-    return new Scenario(m, latencyMs, errorRate, outage, timeoutDelayMs, callbackMode, callbackUrl, callbackDelayMs);
+    return new Scenario(m, latencyMs, errorRate, outage, timeoutDelayMs, callbackMode, callbackUrl, callbackDelayMs, callbackOnly);
   }
 
   public Scenario withLatencyMs(long v) {
-    return new Scenario(forceMode, v, errorRate, outage, timeoutDelayMs, callbackMode, callbackUrl, callbackDelayMs);
+    return new Scenario(forceMode, v, errorRate, outage, timeoutDelayMs, callbackMode, callbackUrl, callbackDelayMs, callbackOnly);
   }
 
   public Scenario withErrorRate(double v) {
-    return new Scenario(forceMode, latencyMs, v, outage, timeoutDelayMs, callbackMode, callbackUrl, callbackDelayMs);
+    return new Scenario(forceMode, latencyMs, v, outage, timeoutDelayMs, callbackMode, callbackUrl, callbackDelayMs, callbackOnly);
   }
 
   public Scenario withOutage(boolean v) {
-    return new Scenario(forceMode, latencyMs, errorRate, v, timeoutDelayMs, callbackMode, callbackUrl, callbackDelayMs);
+    return new Scenario(forceMode, latencyMs, errorRate, v, timeoutDelayMs, callbackMode, callbackUrl, callbackDelayMs, callbackOnly);
   }
 
   public Scenario withTimeoutDelayMs(Long v) {
-    return new Scenario(forceMode, latencyMs, errorRate, outage, v, callbackMode, callbackUrl, callbackDelayMs);
+    return new Scenario(forceMode, latencyMs, errorRate, outage, v, callbackMode, callbackUrl, callbackDelayMs, callbackOnly);
+  }
+
+  public Scenario withCallbackOnly(boolean v) {
+    return new Scenario(forceMode, latencyMs, errorRate, outage, timeoutDelayMs, callbackMode, callbackUrl, callbackDelayMs, v);
   }
 
   public Scenario withCallback(CallbackMode mode, String url, long delayMs) {
-    return new Scenario(forceMode, latencyMs, errorRate, outage, timeoutDelayMs, mode, url, delayMs);
+    return new Scenario(forceMode, latencyMs, errorRate, outage, timeoutDelayMs, mode, url, delayMs, callbackOnly);
   }
 }

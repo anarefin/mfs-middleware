@@ -16,9 +16,18 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
     send (applied), `.99` -> unknown code `9876`, `.55` -> malformed body (applied).
   - Control API per partner (`sim.partners`): `POST|GET|DELETE /sim/{partner}/scenario`
     (`forceMode`, `latencyMs`, `errorRate`, `outage`, `timeoutDelayMs`, `callbackMode`
-    NONE|ONCE|DUPLICATE|LATE, `callbackUrl`, `callbackDelayMs`), `GET|DELETE
-    /sim/{partner}/requests[?path=]`, `POST /sim/{partner}/callbacks/{reference}/replay`
-    (optional body `{callbackUrl}`).
+    NONE|ONCE|DUPLICATE|LATE|OUT_OF_ORDER (outcome, then a stale PENDING; billagg),
+    `callbackUrl`, `callbackDelayMs`, `callbackOnly` (billagg: payments answered 202 PENDING,
+    outcome by callback only)), `GET|DELETE /sim/{partner}/requests[?path=]`, `POST
+    /sim/{partner}/callbacks/{reference}/replay` (optional body `{callbackUrl}`; OCS ledger or
+    billagg payments; answers `{reference, targetStatus}`).
+  - Callbacks (`service/CallbackService`, `client/CallbackClient`, `client/CallbackSigner`): the
+    partner's own reply body for the reference, posted to `callbackUrl` off the request thread,
+    signed hmac-sha256 at send time when `sim.callback-secrets.<partner>` is set (string to sign:
+    method, path+query, epoch seconds, hex SHA-256 of the body; `X-Signature`, `X-Timestamp`; the
+    middleware's `hmac-sha256` scheme). In the stack the billagg secret is the generated
+    `BILLAGG_HMAC_SECRET`, written to OpenBao `secret/mw-simulators` by `init/init.sh`; the e2e
+    suite points `callbackUrl` at `http://apisix:9080/partner/billagg/callback/payments`.
   - `filter/RecordingFilter` records every request to `/{partner}/**` (raw bodies, test data;
     Authorization and Cookie headers dropped), last `sim.record-limit` per partner.
 - OCS wire format: `POST /ocs/v1/topup {transactionId, msisdn, amount:"100.00"}`; `GET
@@ -38,8 +47,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   amount fractions as the OCS (`.13` timeout applied, `.77` 500 applied, `.99` 422 `9876`, `.55`
   malformed applied); `GET /billagg/v1/payments/{transactionId}` the real outcome or 404
   NOT_FOUND. Outage / error rate 503 on all three (not applied); `forceMode` applies to payments
-  only. A repeated `transactionId` returns the original outcome. No callbacks yet (ticket 22:
-  `CallbackService` and the replay endpoint still serve the OCS ledger only).
+  only. A repeated `transactionId` returns the original outcome. Callback-only mode (ticket 22,
+  scenario `callbackOnly`): a payment is applied as usual but answered 202 `{status: PENDING,
+  code: "001", paymentRef}` (every repeat too), the outcome goes by callback (`callbackMode`) as
+  `{transactionId, status SUCCESS|FAILED, code, message, paymentRef}`, the status inquiry reports
+  the real outcome; the TIMEOUT hold is skipped in this mode.
 - Adding a simulator: add its name to `sim.partners`, a controller under `/<partner>/...`, reuse
   the store, recorder, `SimMode`/`MagicAmounts` and callback service.
 - Init (`mw-simulators-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role

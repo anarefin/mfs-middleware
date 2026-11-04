@@ -33,10 +33,19 @@ class OcsServiceTest {
           callbacks.add(url + " " + json);
           return 200;
         }
+
+        @Override
+        public int post(String url, String json, java.util.Map<String, String> headers) {
+          return post(url, json);
+        }
       };
   private final OcsMapper mapper = new OcsMapper();
   private final CallbackService callbackService =
-      new CallbackService(ledger, scenarios, client, mapper, JsonMapper.builder().build(), Runnable::run);
+      new CallbackService(
+          ledger, new BillPaymentLedger(), scenarios, client,
+          new mfs.mw.simulators.client.CallbackSigner(new org.springframework.mock.env.MockEnvironment(), java.time.Clock.systemUTC()),
+          mapper, new mfs.mw.simulators.mapper.BillAggregatorMapper(java.time.Clock.systemUTC()),
+          JsonMapper.builder().build(), Runnable::run);
   private double nextRandom = 0.99;
   private final RandomGenerator random =
       new Random() {

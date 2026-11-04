@@ -3,6 +3,7 @@
 # per-service database roles or OpenBao identities yet):
 #   1. OpenBao KV secret/mw-simulators: database password (created once; an existing secret is
 #      never overwritten).
+#   1b. The dev billagg HMAC secret (BILLAGG_HMAC_SECRET) under sim.callback-secrets.billagg in the same KV secret.
 #   2. PostgreSQL: login role simulators_rw and schema simulators owned by it (password synced from
 #      the secret on every run).
 #   3. OpenBao policy + AppRole mw-simulators (read that one secret); a fresh secret-id and the
@@ -55,6 +56,19 @@ else
   log "created $KV (database password)"
 fi
 bao kv get -field=spring.datasource.password "$KV" >"$tmp/dbpw"
+
+# 1b. partner secret (ticket 22) ----------------------------------------------------------------
+# The dev aggregator simulator's hmac-sha256 secret, generated into deploy/compose/platform/.env
+# (scripts/gen-dev-env.sh) and shared by mw-simulators (signs callbacks) and mw-adapter-billpay
+# (verifies them, signs calls). Synced on every run, so a regenerated .env takes effect.
+if [ -n "${BILLAGG_HMAC_SECRET:-}" ]; then
+  printf '%s' "$BILLAGG_HMAC_SECRET" >"$tmp/hmac"
+  bao kv patch "$KV" "sim.callback-secrets.billagg=@$tmp/hmac" >/dev/null
+  rm -f "$tmp/hmac"
+  log "partner secret sim.callback-secrets.billagg synced"
+else
+  log "BILLAGG_HMAC_SECRET not set: partner secret sim.callback-secrets.billagg left as it is" >&2
+fi
 
 # 2. database role and schema ---------------------------------------------------------------------
 provision_db() {

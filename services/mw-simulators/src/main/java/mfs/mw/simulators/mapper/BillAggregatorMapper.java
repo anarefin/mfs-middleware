@@ -20,6 +20,8 @@ public class BillAggregatorMapper {
   public static final String BILL_ALREADY_PAID = "3002";
   public static final String PAYMENT_REFUSED = "3003";
   public static final String UNKNOWN_BILLER = "3004";
+  /** Callback-only payment accepted (202 PENDING). */
+  public static final String ACCEPTED = "001";
 
   private static final DateTimeFormatter PERIOD = DateTimeFormatter.ofPattern("yyyy-MM");
 
@@ -58,16 +60,27 @@ public class BillAggregatorMapper {
 
   /** Only business failure and unknown code fail the payment; every other mode applies it. */
   public BillPaymentRecord toRecord(BillPaymentRequest req, SimMode mode, String ref) {
+    return toRecord(req, mode, ref, false);
+  }
+
+  /** As {@link #toRecord(BillPaymentRequest, SimMode, String)}; {@code callbackOnly} answers 202 PENDING. */
+  public BillPaymentRecord toRecord(BillPaymentRequest req, SimMode mode, String ref, boolean callbackOnly) {
     return switch (mode) {
       case BUSINESS_FAILURE ->
-          record(req, "FAILED", PAYMENT_REFUSED, "Payment refused by biller", ref, mode);
-      case UNKNOWN_CODE -> record(req, "FAILED", "9876", "Unmapped aggregator error", ref, mode);
-      default -> record(req, "SUCCESS", "000", "Bill paid", ref, mode);
+          record(req, "FAILED", PAYMENT_REFUSED, "Payment refused by biller", ref, mode, callbackOnly);
+      case UNKNOWN_CODE -> record(req, "FAILED", "9876", "Unmapped aggregator error", ref, mode, callbackOnly);
+      default -> record(req, "SUCCESS", "000", "Bill paid", ref, mode, callbackOnly);
     };
   }
 
+  /** The 202 answer (and stale callback) of a callback-only payment: accepted, outcome to follow. */
+  public BillPaymentResponse pending(BillPaymentRecord r) {
+    return new BillPaymentResponse(r.transactionId(), "PENDING", ACCEPTED, "Accepted; the outcome follows by callback", r.paymentRef());
+  }
+
   private static BillPaymentRecord record(
-      BillPaymentRequest req, String status, String code, String message, String ref, SimMode mode) {
+      BillPaymentRequest req, String status, String code, String message, String ref, SimMode mode,
+      boolean callbackOnly) {
     return new BillPaymentRecord(
         req.transactionId(),
         req.billerCode(),
@@ -77,7 +90,8 @@ public class BillAggregatorMapper {
         code,
         message,
         ref,
-        mode);
+        mode,
+        callbackOnly);
   }
 
   public BillPaymentResponse toResponse(BillPaymentRecord r) {

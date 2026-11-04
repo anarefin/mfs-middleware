@@ -21,6 +21,10 @@ import org.springframework.stereotype.Service;
  * {@code 000} -> "already paid" (3002), ending {@code 999} -> payment refused by the biller
  * (3003); unknown biller code (3004). Payment amounts follow {@link MagicAmounts}. A forced mode
  * applies to payments only.
+ *
+ * <p>Callback-only mode (scenario {@code callbackOnly}, ticket 22): a payment is applied as usual
+ * but answered 202 PENDING (so is every repeat); the outcome goes by callback ({@link
+ * CallbackService}, scenario {@code callbackMode}), and the status inquiry reports the real one.
  */
 @Service
 public class BillAggregatorService {
@@ -41,18 +45,21 @@ public class BillAggregatorService {
   private final BillAggregatorMapper mapper;
   private final SimulatorProperties props;
   private final RandomGenerator random;
+  private final CallbackService callbacks;
 
   public BillAggregatorService(
       ScenarioStore scenarios,
       BillPaymentLedger ledger,
       BillAggregatorMapper mapper,
       SimulatorProperties props,
-      RandomGenerator random) {
+      RandomGenerator random,
+      CallbackService callbacks) {
     this.scenarios = scenarios;
     this.ledger = ledger;
     this.mapper = mapper;
     this.props = props;
     this.random = random;
+    this.callbacks = callbacks;
   }
 
   public List<Biller> billers() {
@@ -92,12 +99,17 @@ public class BillAggregatorService {
       return reply(existing.get());
     }
     SimMode mode = resolve(req, scenario);
-    BillPaymentRecord record = ledger.putIfAbsent(mapper.toRecord(req, mode, ledger.nextRef()));
+    BillPaymentRecord candidate = mapper.toRecord(req, mode, ledger.nextRef(), scenario.callbackOnly());
+    BillPaymentRecord record = ledger.putIfAbsent(candidate);
+    if (record != candidate) {
+      return reply(record); // a concurrent first payment won
+    }
     log.atInfo()
         .addKeyValue("event", "sim.billagg.payment.applied")
         .addKeyValue("partnerId", PARTNER)
         .log("payment {} mode {} status {}", record.transactionId(), record.mode(), record.status());
-    if (record.mode() == SimMode.TIMEOUT) {
+    callbacks.afterPayment(record);
+    if (record.mode() == SimMode.TIMEOUT && !record.callbackOnly()) {
       sleep(
           scenario.timeoutDelayMs() != null
               ? scenario.timeoutDelayMs()
@@ -135,6 +147,9 @@ public class BillAggregatorService {
   }
 
   private SimReply reply(BillPaymentRecord r) {
+    if (r.callbackOnly()) {
+      return new SimReply(202, mapper.pending(r));
+    }
     return switch (r.mode()) {
       case BUSINESS_FAILURE, UNKNOWN_CODE -> new SimReply(422, mapper.toResponse(r));
       case SERVER_ERROR_AFTER_SEND -> new SimReply(500, mapper.internalError(r.transactionId()));
