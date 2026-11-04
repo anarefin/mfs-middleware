@@ -147,6 +147,19 @@ class RestJsonTemplateTest {
   }
 
   @Test
+  void aSuccessCarriesTheMappedAttributesAsText() {
+    // billpay extension: a read (bill fetch) returns data, not only a reference
+    stubPay(200, "{\"result\":\"OK\",\"id\":\"ACME-78\",\"due\":667,\"period\":\"2026-11\"}");
+    String withData =
+        "{\"outcome\": \"SUCCESS\", \"partnerRef\": body.id, "
+            + "\"attributes\": {\"amount\": body.due, \"billPeriod\": body.period, \"missing\": body.nope}}";
+    PartnerGateway gateway = framework(Map.of("acme", acme(PartnerTemplates.REQUEST_REPLY, withData)), null);
+
+    assertThat(gateway.call(pay("acme")))
+        .isEqualTo(new PartnerResponse.Success("ACME-78", null, Map.of("amount", "667", "billPeriod", "2026-11")));
+  }
+
+  @Test
   void errorCodesAreMappedByTheConfiguredMapAndAmbiguousCodesAreNotRejections() {
     PartnerGateway gateway = framework(Map.of("acme", acme(PartnerTemplates.REQUEST_REPLY, ACME_RESPONSE)), null);
 

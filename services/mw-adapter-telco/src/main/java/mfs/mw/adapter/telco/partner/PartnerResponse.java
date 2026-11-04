@@ -11,8 +11,22 @@ public sealed interface PartnerResponse {
   /** Short outcome name for metrics and logs. */
   String status();
 
-  /** Applied; {@code partnerRef} is the partner's own reference. */
-  record Success(String partnerRef, String code) implements PartnerResponse {
+  /**
+   * Applied; {@code partnerRef} is the partner's own reference. {@code attributes} is what the
+   * response mapping put under {@code attributes} (text values; billpay extension of the copied
+   * framework, used by the bill fetch to return the amount due), empty when none.
+   */
+  record Success(String partnerRef, String code, java.util.Map<String, String> attributes)
+      implements PartnerResponse {
+
+    public Success {
+      attributes = attributes == null ? java.util.Map.of() : java.util.Map.copyOf(attributes);
+    }
+
+    public Success(String partnerRef, String code) {
+      this(partnerRef, code, null);
+    }
+
     @Override
     public String status() {
       return "SUCCESS";

@@ -104,7 +104,8 @@ security rules and the fail-closed rules a mapping cannot override), copied with
 the ticket 20 target-guard fix (safe operation paths, same-origin check, no redirects). One
 billpay extension: `PartnerResponse.Success` carries `attributes` (text values the response
 mapping put under `attributes`; empty otherwise), used by the INQUIRY mapping to return the
-amount due. A fix to the framework must be applied to both copies.
+amount due (since ticket 23 also in mw-adapter-telco's and mw-adapter-bank's copies, so the
+three are identical). A fix to the framework must be applied to all three copies.
 
 The aggregator is the seed instance `billagg` in `application.yml` (`mw.partners`; wire format of
 the mw-simulators aggregator: `POST /billagg/v1/payments {transactionId, billerCode, billNumber,
@@ -122,16 +123,17 @@ BILL_ALREADY_PAID, `3003` PAYMENT_REFUSED, `3004` UNKNOWN_BILLER; `9876` ambiguo
 secrets are `mw.partner-secrets.<instance>.<name>` (OpenBao `secret/mw-adapter-billpay`). Never
 add a retry to a partner call.
 
-What ticket 23 (bank C2W callback replay) builds on: the same chain, copied with the framework
-into mw-adapter-bank: a CALLBACK operation mapping that returns our `reference`, an
+Ticket 23 (bank C2W) copied this chain with the framework into mw-adapter-bank (see its
+CLAUDE.md): a CALLBACK operation mapping that returns our `reference`, an
 async-callback instance with an inbound-capable auth scheme, a callback controller + service
 like `PartnerCallbackService` (own-config check, reference lookup in the adapter's own table,
 inbox + synchronous publish, 401/404/400/503 answers), `PartnerInboundMapper`'s `inboundId`
 rule, one APISIX route per partner (`/partner/<id>/callback/*`, upstream the owning adapter,
 ip-restriction, client-control, limit-count on `remote_addr`), the simulator's signed callbacks
 (`sim.callback-secrets.<partner>`, `CallbackSigner`) and replay endpoint. The orchestrator's
-`PartnerInboundService` handles kind CALLBACK only; REMITTANCE / NPSB_CREDIT (new inbound money
-with an adapter-minted txnId) are dropped today and are ticket 23's to add.
+`PartnerInboundService` handles kind CALLBACK only; C2W confirmations are CALLBACKs of the
+customer's own request (ticket 23), so REMITTANCE / NPSB_CREDIT (new inbound money with an
+adapter-minted txnId) are still dropped and belong to the REMIT_IN / NPSB tickets.
 
 ## Contracts owned
 
