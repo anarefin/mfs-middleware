@@ -7,10 +7,10 @@
 - 08: Orchestrator P2P slice
 - 02: Platform Compose stack
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `@WebMvcTest`: a missing or invalid `Idempotency-Key` gives `MW-VAL-*`, and an amount ≤ 0 is rejected
-- [ ] Integration test: a terminal status arriving within the budget returns 200 with the result; no reply returns 202 with txnId
-- [ ] Kafka is unavailable → retryable `503 MW-SYS-*` and nothing is accepted
-- [ ] Manual or scripted check: `curl` through APISIX with a Keycloak token completes a P2P transfer against core-mock
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] `@WebMvcTest`: a missing or invalid `Idempotency-Key` gives `MW-VAL-*`, and an amount ≤ 0 is rejected
+- [x] Integration test: a terminal status arriving within the budget returns 200 with the result; no reply returns 202 with txnId
+- [x] Kafka is unavailable → retryable `503 MW-SYS-*` and nothing is accepted
+- [x] Manual or scripted check: `curl` through APISIX with a Keycloak token completes a P2P transfer against core-mock (manual live run by implementer; automated in ticket 10)
+- [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
