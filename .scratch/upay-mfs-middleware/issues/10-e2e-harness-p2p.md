@@ -12,4 +12,4 @@
 - [x] Scenario: the same idempotency key sent twice debits once and returns the same txnId
 - [x] Scenario: the same key with a different body gives 409 `MW-IDEM-001`
 - [x] The harness has step definitions that later tickets reuse: obtain a token, encrypt a PIN with the core public key, submit a txn, poll status, read a balance
-- [ ] Running the suite twice in a row is stable (no reliance on leftover state)
+- [x] Running the suite twice in a row is stable (no reliance on leftover state) (implementer ran `make e2e TAGS=@p2p` twice back to back on the same stack, on two separate fresh stacks: 6/6 each run; scenarios use fresh idempotency keys and relative balance checks)
