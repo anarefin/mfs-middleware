@@ -26,8 +26,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   (not applied). A repeated `transactionId` returns the original outcome.
 - Adding a simulator: add its name to `sim.partners`, a controller under `/<partner>/...`, reuse
   the store, recorder and callback service.
-- Known gap: the chassis still migrates a schema on start-up (Flyway); in the Compose stack the
-  `simulators_rw` role is not provisioned by the platform yet (same gap as every service).
+- Init (`mw-simulators-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
+  `simulators_rw` and schema `simulators` (the chassis still migrates one on start-up),
+  `secret/mw-simulators` (DB password, never overwritten) and the AppRole `mw-simulators`
+  (configtree volume at `/run/mw/approle`); waits for OpenBao's `dev-init.json` and retries the
+  database step when another init races it.
 
 ## Contracts owned
 

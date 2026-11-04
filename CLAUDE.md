@@ -103,7 +103,7 @@ or one with `M=<module>` (e.g. `M=mw-orchestrator`).
 | `make up [M=]` | Compose stack (`deploy/compose/mvp`) or one module's `compose.yml`; first generates the gitignored dev credentials in `deploy/compose/platform/.env` (`scripts/gen-dev-env.sh`) |
 | `make smoke` | live checks against the running MVP stack (health, topics, Kafka, PG, Valkey, Keycloak tokens, OpenBao, APISIX `/healthz`) |
 | `make down [DOWN_ARGS=-v]` | stop the MVP stack (`-v` drops its volumes) |
-| `make e2e [M=] [TAGS=@p2p]` | Cucumber suite in `tests/e2e`, filtered by `@<module>` and `TAGS` |
+| `make e2e [M=] [TAGS=@p2p]` | Cucumber suite in `tests/e2e` against the running stack (`make up` first), filtered by `@<module>` and `TAGS`; stack access and reusable steps: `tests/e2e/README.md` |
 | `make perf [M=]` | Gatling suite in `tests/perf` |
 | `make security [M=]` | gitleaks, CycloneDX SBOM, trivy (deps and images) |
 | `make new-service NAME=mw-x` | scaffold a service from the template |

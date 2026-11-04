@@ -17,7 +17,9 @@ include:
   - path: ../../../services/mw-core-mock/compose.yml
     env_file: ../platform/.env
   - path: ../../../services/mw-simulators/compose.yml
+    env_file: ../platform/.env
   - path: ../../../services/mw-adapter-telco/compose.yml
+    env_file: ../platform/.env
   - path: ../../../services/mw-orchestrator/compose.yml
     env_file: ../platform/.env
   - path: ../../../services/mw-audit-dw/compose.yml

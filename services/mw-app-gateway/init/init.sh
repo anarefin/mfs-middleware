@@ -3,7 +3,7 @@
 # per-service database roles or OpenBao identities yet):
 #   1. OpenBao KV secret/mw-app-gateway: database password (created once; an existing secret is
 #      never overwritten).
-#   2. PostgreSQL: login role app_gateway_rw and schema txn owned by it (password synced from
+#   2. PostgreSQL: login role app_gateway_rw and schema app_gateway owned by it (password synced from
 #      the secret on every run).
 #   3. OpenBao policy + AppRole mw-app-gateway (read that one secret); a fresh secret-id and the
 #      role-id are written to /out for the service (Spring configtree: one file per property).
@@ -21,7 +21,13 @@ log() { printf 'mw-app-gateway-init: %s\n' "$*"; }
 
 if [ -z "${BAO_TOKEN:-}" ]; then
   INIT_FILE="${INIT_FILE:?BAO_TOKEN or INIT_FILE is required}"
-  BAO_TOKEN="$(sed -n 's/.*"root_token": *"\([^"]*\)".*/\1/p' "$INIT_FILE" | head -1)"
+  # On a fresh stack OpenBao writes this file on its first start, possibly after this step began.
+  i=0
+  until BAO_TOKEN="$(sed -n 's/.*"root_token": *"\([^"]*\)".*/\1/p' "$INIT_FILE" 2>/dev/null | head -1)" &&
+    [ -n "$BAO_TOKEN" ]; do
+    i=$((i + 1)); [ "$i" -lt 60 ] || break
+    sleep 2
+  done
 fi
 [ -n "$BAO_TOKEN" ] || { log "no OpenBao token" >&2; exit 1; }
 export BAO_TOKEN BAO_ADDR

@@ -56,6 +56,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   has no failure event). A fault matches by `commandType` and/or `txnId` (absent = any) and fires at
   most `times` times (absent = until reset). A replay of an already logged command is answered from
   the log (REJECT does not re-decide), but DELAY/DROP/DUPLICATE still shape that reply.
+- Balances (admin API, not a product contract): `GET /core-mock/v1/wallets/{walletId}` (id or MSISDN)
+  -> `{walletId, type, status, balanceMinor, heldMinor, availableMinor}`, unknown `400 MW-VAL-003`.
+  The e2e suite reads it (and the PIN key and faults) through the dev-only APISIX route
+  `/test/core-mock/v1/*` (`deploy/apisix/routes/test-core-mock.json`).
 - Ledger in schema `coremock` (role `coremock_rw`): `wallet`, `hold`, `entry`, `command_log`, `reversal`.
   Seed (on start, idempotent, `WalletSeeder`): 1,000 customers `01711000001..`, 50 agents
   `01811000001..`, 20 merchants `01911000001..`, 2 orgs `01311000001..` (wallet id = MSISDN) and the
@@ -73,7 +77,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 - Init (`mw-core-mock-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): creates role
   and schema `coremock`, `secret/mw-core-mock` (DB password, PIN key pair, created once and never
   overwritten) and the AppRole `mw-core-mock`; role-id/secret-id land in a volume the service reads
-  as a Spring configtree (`/run/mw/approle`).
+  as a Spring configtree (`/run/mw/approle`). On a fresh stack it waits for OpenBao's
+  `dev-init.json` and retries the database step when another init races it.
 
 ## Contracts owned
 

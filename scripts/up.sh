@@ -5,8 +5,9 @@
 #              which includes the platform and every module's compose.yml)
 #   MODULE:    docker compose up only that module's own compose.yml (it joins the
 #              external zone networks, so the platform project must already be up)
-# Then waits until every long-running service is healthy. One-shot init containers carry the
-# compose label mw.oneshot=true (restart "no", no healthcheck) and are not waited for.
+# Then waits until every long-running service is healthy and every one-shot has finished. One-shot
+# init containers carry the compose label mw.oneshot=true (restart "no", no healthcheck): they
+# count once exited 0 (services can be healthy before e.g. kafka-init has created their topics).
 # Fails at once, naming the service, when a long-running service is exited, dead or unhealthy,
 # or a one-shot exits non-zero. MW_UP_TIMEOUT (s, default 300) and MW_UP_POLL (s, default 3).
 set -eu
@@ -31,7 +32,7 @@ docker compose -f "$file" up -d ${COMPOSE_ARGS:-}
 timeout="${MW_UP_TIMEOUT:-300}"
 poll="${MW_UP_POLL:-3}"
 # check: one line per service, "failed <svc>(<why>)" or "pending <svc>(<state>)"; healthy
-# services and running or finished one-shots print nothing. A long-running service without a
+# services and one-shots that exited 0 print nothing. A long-running service without a
 # healthcheck counts once it is running.
 check() {
   docker compose -f "$file" ps -a --format '{{.Service}}	{{.State}}	{{.Health}}	{{.ExitCode}}	{{.Labels}}' |
@@ -40,8 +41,12 @@ check() {
       [ -n "$svc" ] || continue
       case ",$labels," in
         *,mw.oneshot=true,*)
-          if [ "$state" = exited ] && [ "${code:-0}" != 0 ]; then printf 'failed %s(exit %s)\n' "$svc" "$code"; fi
-          if [ "$state" = dead ]; then printf 'failed %s(dead)\n' "$svc"; fi
+          case "$state" in
+            exited) [ "${code:-0}" = 0 ] || printf 'failed %s(exit %s)\n' "$svc" "$code" ;;
+            dead) printf 'failed %s(dead)\n' "$svc" ;;
+            # still provisioning (e.g. kafka-init creating topics the healthy services need)
+            *) printf 'pending %s(%s)\n' "$svc" "$state" ;;
+          esac
           continue ;;
       esac
       case "$state/$health" in
@@ -60,7 +65,7 @@ while :; do
   failed="$(printf '%s\n' "$status" | names failed)"
   [ -n "$failed" ] && die "up: failed: ${failed% }"
   pending="$(printf '%s\n' "$status" | names pending)"
-  [ -z "$pending" ] && { info "up: all long-running services are healthy"; exit 0; }
+  [ -z "$pending" ] && { info "up: all long-running services are healthy, one-shots done"; exit 0; }
   [ $((SECONDS - start)) -ge "$timeout" ] && die "up: timed out after ${timeout}s; not healthy: ${pending% }"
   sleep "$poll"
 done

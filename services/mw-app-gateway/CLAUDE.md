@@ -47,7 +47,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   not projected. Only the initiator's wallet can read a row; anything else is 404 `MW-VAL-003`.
 - Init (`mw-app-gateway-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
   `app_gateway_rw`, schema `app_gateway`, `secret/mw-app-gateway` (DB password), AppRole; retries
-  the database step when another init races it on a fresh stack.
+  the database step when another init races it on a fresh stack, and waits for OpenBao's
+  `dev-init.json` first.
 
 ## Contracts owned
 

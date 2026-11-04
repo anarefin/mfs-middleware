@@ -60,6 +60,20 @@ test_up_returns_once_every_long_running_service_is_healthy() {
   assert_out_contains "healthy"
 }
 
+test_up_waits_for_running_one_shots_to_finish() {
+  # Services report healthy before kafka-init has created the topics they use: up must not
+  # return until every one-shot has exited (0).
+  stub_compose_ps
+  printf 'kafka\trunning\thealthy\t0\t%s\nkafka-init\trunning\t\t0\t%s\nnew-init\tcreated\t\t0\t%s\n' "$L" "$O" "$O" >.ps-1
+  printf 'kafka\trunning\thealthy\t0\t%s\nkafka-init\texited\t\t0\t%s\nnew-init\texited\t\t0\t%s\n' "$L" "$O" "$O" >.ps-2
+  up_with 30 || fail "up failed: $OUT"
+  [ "$(cat .ps-n)" = 2 ] || fail "returned while one-shots were still running (polls: $(cat .ps-n))"
+  rm -f .ps-*
+  printf 'kafka\trunning\thealthy\t0\t%s\nkafka-init\trunning\t\t0\t%s\n' "$L" "$O" >.ps-1
+  if up_with 1; then fail "up succeeded with kafka-init still running"; fi
+  assert_out_contains "kafka-init"
+}
+
 test_up_fails_naming_the_unhealthy_services_on_timeout() {
   stub_compose_ps
   printf 'kafka\trunning\thealthy\t0\t%s\nkeycloak\trunning\tstarting\t0\t%s\napisix\tcreated\t\t0\t%s\nkafka-init\texited\t\t0\t%s\n' "$L" "$L" "$L" "$O" >.ps-1

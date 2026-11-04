@@ -9,7 +9,8 @@ spring:
       enabled: true
   config:
     # Spring Cloud Vault reads secrets at start-up (AppRole) when VAULT_ENABLED=true.
-    import: "optional:vault://"
+    # The configtree carries the AppRole role-id/secret-id files of a stack (one file per property).
+    import: "optional:configtree:${MW_APPROLE_DIR:/run/mw/approle/},optional:vault://"
   cloud:
     vault:
       enabled: ${VAULT_ENABLED:false}
