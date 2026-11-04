@@ -114,6 +114,18 @@ Only APISIX is published, so every call goes through it:
   counterparty ..." step; "<merchant> lists its collections", "<merchant> sees the transaction in its
   collections with the payer masked as 0171****001" (polls the projection), "<merchant> does not see
   the transaction in its collections" (merchant02, wallet `01911000002`, is the other merchant).
+- Web checkout (`features/checkout.feature`, `@checkout`, ticket 31): `support/CheckoutApi` signs
+  merchant calls for APISIX `hmac-auth` as the test-only consumer `merchant_demo` (key id
+  `merchant-demo`, secret `CHECKOUT_DEMO_MERCHANT_SECRET` from the generated `.env`; Date, Digest,
+  `@request-target`), calls the hosted page API `/checkout/pay/v1/{token}/*` and verifies the
+  signed redirect from the contract (`verifyResult`). Steps: "the merchant creates a checkout
+  session for N poisha", "... signed with a wrong secret" / "... without a signature" (401 at the
+  edge), "the customer asks for an OTP for wallet <msisdn>" (reads the new code from the SMSC
+  simulator, English template CHECKOUT_OTP), "the OTP was sent with OTP priority" (notify.message,
+  read-only psql), "the customer confirms with [a wrong OTP | the OTP] and PIN \"...\"", "the
+  checkout result is X", "the browser is redirected to the merchant's ok|fail URL with a X result
+  the merchant verifies", "the merchant sees the session as X [paid by <masked>]". Merchant wallet
+  01911000001 (merchant01); MERCHANT_PAY has no fee.
 - `support/CoreMock`: `encryptPin` (RSA-OAEP SHA-256 with the core key), `balance`,
   `injectFault` / `resetFaults` (reset in an `@After` hook of the scenarios that inject).
 - Org portal bulk (`features/bulk-upload.feature`, `@bulk @mw-portal-api`, ticket 33): "<user>

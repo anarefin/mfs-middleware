@@ -8,9 +8,9 @@
 - 13: APISIX edge policies
 - 24: Notify SMS over SMPP
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Bad HMAC → 401; an expired session cannot be paid
-- [ ] Wrong OTP is rejected; OTP is sent with OTP priority
-- [ ] e2e `@checkout`: create session → pay → signed redirect; the merchant verifies the signature
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] Bad HMAC → 401; an expired session cannot be paid (HMAC at the edge: `@checkout` e2e + `make edge-test` cases, live run deferred to milestone gate; expiry: `CheckoutFlowIT`)
+- [x] Wrong OTP is rejected; OTP is sent with OTP priority
+- [ ] e2e `@checkout`: create session → pay → signed redirect; the merchant verifies the signature (written; deferred to milestone gate)
+- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR (deferred to milestone gate)

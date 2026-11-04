@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Generates every credential of the local stack (PostgreSQL, Valkey, Keycloak admin,
 # realm test users and clients, Keycloak database, APISIX, etcd, the dev partner-simulator HMAC
-# secrets shared by mw-simulators and mw-adapter-billpay / mw-adapter-bank) into deploy/compose/platform/.env
+# secrets shared by mw-simulators and mw-adapter-billpay / mw-adapter-bank, the dev checkout
+# merchant secret shared by APISIX and mw-checkout) into deploy/compose/platform/.env
 # (gitignored, mode 600), which Compose reads to interpolate the platform file. Existing
 # values are kept, so volumes initialised with them stay usable; only missing variables
 # are added. Called by `make up`, `make smoke` and `make down`. Real environments inject
@@ -12,7 +13,7 @@ set -eu
 VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALTH_PASSWORD
   POSTGRES_PASSWORD VALKEY_PASSWORD KC_BOOTSTRAP_ADMIN_PASSWORD KC_PARTNER_SIM_SECRET
   KC_CUSTOMERS_TEST_PASSWORD KC_OPS_TEST_PASSWORD KC_PORTALS_TEST_PASSWORD KC_DB_PASSWORD
-  MW_E2E_API_KEY BILLAGG_HMAC_SECRET C2WBANK_HMAC_SECRET"
+  MW_E2E_API_KEY BILLAGG_HMAC_SECRET C2WBANK_HMAC_SECRET CHECKOUT_DEMO_MERCHANT_SECRET"
 file="$MW_ROOT/deploy/compose/platform/.env"
 mkdir -p "$(dirname "$file")"
 

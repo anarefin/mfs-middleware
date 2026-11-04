@@ -1,0 +1,63 @@
+{
+  "x-mw-derived-from": "api/mw-checkout/checkout.v1.openapi.yaml#/components/schemas/CreateSessionRequest",
+  "type": "object",
+  "required": [
+    "orderId",
+    "amount",
+    "successUrl",
+    "failUrl",
+    "cancelUrl",
+    "ipnUrl"
+  ],
+  "properties": {
+    "orderId": {
+      "type": "string"
+    },
+    "amount": {
+      "type": "object",
+      "required": [
+        "valueMinor",
+        "currency"
+      ],
+      "properties": {
+        "valueMinor": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "currency": {
+          "type": "string",
+          "enum": [
+            "BDT"
+          ]
+        }
+      }
+    },
+    "successUrl": {
+      "type": "string",
+      "maxLength": 2048
+    },
+    "failUrl": {
+      "type": "string",
+      "maxLength": 2048
+    },
+    "cancelUrl": {
+      "type": "string",
+      "maxLength": 2048
+    },
+    "ipnUrl": {
+      "type": "string",
+      "maxLength": 2048
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 140
+    },
+    "locale": {
+      "type": "string",
+      "enum": [
+        "bn",
+        "en"
+      ]
+    }
+  }
+}
