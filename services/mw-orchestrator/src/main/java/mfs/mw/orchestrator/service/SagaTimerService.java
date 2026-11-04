@@ -21,7 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
  * Deadline sweep (spec 7.1): finds the timers that have passed, with {@code FOR UPDATE SKIP
  * LOCKED} so a second orchestrator instance never handles the same one, and fires {@code
  * DeadlineExpired} on their transactions. The meaning of an expiry comes from the state machine
- * (VALIDATING to FAILED, POSTING to UNKNOWN, ...). Run by {@code scheduler/SagaTimerJob}.
+ * (VALIDATING to FAILED, POSTING to UNKNOWN, ...); an UNKNOWN transaction's inquiry slot goes to
+ * {@link InquiryService}. Run by {@code scheduler/SagaTimerJob}.
  */
 @Service
 public class SagaTimerService {
@@ -31,6 +32,7 @@ public class SagaTimerService {
   private final SagaTimerRepository timers;
   private final TransactionRepository transactions;
   private final SagaEngine engine;
+  private final InquiryService inquiries;
   private final OrchestratorProperties properties;
   private final Clock clock;
 
@@ -38,11 +40,13 @@ public class SagaTimerService {
       SagaTimerRepository timers,
       TransactionRepository transactions,
       SagaEngine engine,
+      InquiryService inquiries,
       OrchestratorProperties properties,
       Clock clock) {
     this.timers = timers;
     this.transactions = transactions;
     this.engine = engine;
+    this.inquiries = inquiries;
     this.properties = properties;
     this.clock = clock;
   }
@@ -59,6 +63,10 @@ public class SagaTimerService {
       }
       TransactionRecord rec = found.get();
       try {
+        if (rec.status() == Status.UNKNOWN && SagaEngine.INQUIRY_TIMER.equals(timer.step())) {
+          inquiries.due(rec, timer.attempt()); // spec 7.4: inquire, or MANUAL_REVIEW at the cut-off
+          continue;
+        }
         if (reversalExhausted(rec)) {
           engine.fire(rec, new SagaEvent.ReversalFailed(), REVERSAL_UNCONFIRMED);
           continue;

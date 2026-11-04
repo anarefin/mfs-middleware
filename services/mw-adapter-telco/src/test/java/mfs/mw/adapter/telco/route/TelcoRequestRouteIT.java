@@ -6,7 +6,13 @@ import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static mfs.mw.adapter.telco.TelcoFixtures.newTxnId;
+import static mfs.mw.adapter.telco.TelcoFixtures.expiredPay;
 import static mfs.mw.adapter.telco.TelcoFixtures.pay;
+import static mfs.mw.adapter.telco.TelcoFixtures.statusQuery;
+import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
@@ -300,6 +306,86 @@ class TelcoRequestRouteIT {
     assertThat(reply.payload().errorCode()).isEqualTo("MW-SYS-PARTNER_CIRCUIT_OPEN");
     assertThat(reply.payload().retryable()).isTrue();
     OCS.verify(4, postRequestedFor(urlEqualTo("/ocs/v1/topup")));
+  }
+
+  // --- status inquiry (ticket 18, spec 7.4) ------------------------------------------------------
+
+  private static String ref(String txnId) {
+    return "UPAY" + txnId.replace("-", "").toUpperCase();
+  }
+
+  private void stubStatus(String txnId, int status, String body) {
+    OCS.stubFor(
+        get(urlEqualTo("/ocs/v1/topup/" + ref(txnId)))
+            .willReturn(aResponse().withStatus(status).withHeader("Content-Type", "application/json").withBody(body)));
+  }
+
+  @Test
+  void aStatusQueryAsksTheOcsWithTheStableReferenceAndReportsTheTrueOutcome() throws Exception {
+    PartnerRequest request = statusQuery(newTxnId());
+    stubStatus(request.txnId(), 200,
+        "{\"transactionId\":\"" + ref(request.txnId()) + "\",\"status\":\"SUCCESS\",\"code\":\"0000\",\"ocsRef\":\"OCS-55\"}");
+
+    send(request);
+    PartnerReply reply = awaitReplies(request.txnId(), 1).getFirst();
+
+    assertThat(reply.requestId()).isEqualTo(request.requestId());
+    assertThat(reply.payload().operation()).isEqualTo("STATUS_QUERY");
+    assertThat(reply.payload().outcome()).isEqualTo("SUCCESS");
+    assertThat(reply.payload().partnerRef()).isEqualTo("OCS-55");
+    OCS.verify(1, getRequestedFor(urlEqualTo("/ocs/v1/topup/" + ref(request.txnId()))));
+    OCS.verify(0, postRequestedFor(urlEqualTo("/ocs/v1/topup")));
+  }
+
+  @Test
+  void aStatusQueryForATopupTheOcsNeverSawIsNotFound() throws Exception {
+    PartnerRequest request = statusQuery(newTxnId());
+    stubStatus(request.txnId(), 404, "{\"status\":\"NOT_FOUND\",\"code\":\"4040\",\"message\":\"Unknown transaction\"}");
+
+    send(request);
+    PartnerReply reply = awaitReplies(request.txnId(), 1).getFirst();
+
+    assertThat(reply.payload().outcome()).isEqualTo("NOT_FOUND");
+    assertThat(reply.payload().partnerCode()).isEqualTo("4040");
+  }
+
+  @Test
+  void aStatusQueryForAFailedTopupIsFailedWithTheMappedCode() throws Exception {
+    PartnerRequest request = statusQuery(newTxnId());
+    stubStatus(request.txnId(), 200, "{\"status\":\"FAILED\",\"code\":\"2001\",\"message\":\"barred\"}");
+
+    send(request);
+    PartnerReply reply = awaitReplies(request.txnId(), 1).getFirst();
+
+    assertThat(reply.payload().outcome()).isEqualTo("FAILED");
+    assertThat(reply.payload().errorCode()).isEqualTo("MW-PTR-GP-TOPUP_REJECTED");
+  }
+
+  @Test
+  void aStatusQueryWithoutADefiniteAnswerIsUnknownNeverFailed() throws Exception {
+    for (int status : new int[] {503, 404}) {
+      OCS.resetAll();
+      PartnerRequest request = statusQuery(newTxnId());
+      // a 404 without the OCS' NOT_FOUND body (a proxy, a wrong path) is not an answer either
+      stubStatus(request.txnId(), status, status == 404 ? "<html>no route</html>" : "{\"status\":\"UNAVAILABLE\"}");
+
+      send(request);
+      PartnerReply reply = awaitReplies(request.txnId(), 1).getFirst();
+
+      assertThat(reply.payload().outcome()).as("HTTP %s", status).isEqualTo("UNKNOWN");
+    }
+  }
+
+  @Test
+  void aPayPastItsDeadlineIsRefusedWithoutCallingTheOcs() throws Exception {
+    PartnerRequest request = expiredPay(newTxnId(), "01711000001", 2000);
+
+    send(request);
+    PartnerReply reply = awaitReplies(request.txnId(), 1).getFirst();
+
+    assertThat(reply.payload().outcome()).isEqualTo("FAILED");
+    assertThat(reply.payload().errorCode()).isEqualTo("MW-SYS-PARTNER_REQUEST_EXPIRED");
+    OCS.verify(0, anyRequestedFor(anyUrl()));
   }
 
   private void stubOcs(int status, String body) {

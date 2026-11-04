@@ -89,10 +89,64 @@ public class OcsClient {
     }
   }
 
+  /**
+   * Status inquiry (spec 7.4): {@code GET /ocs/v1/topup/{reference}} reports the real outcome of an
+   * earlier top-up, whatever its caller saw. Same protection as the top-up; idempotent, but still
+   * one attempt here (the orchestrator asks again at its next slot). Results: {@link
+   * OcsResult.Accepted}, {@link OcsResult.Rejected} / {@link OcsResult.Ambiguous} for a failed
+   * top-up, {@link OcsResult.NotFound} only for a 404 carrying the OCS' NOT_FOUND body; anything
+   * else is an {@link OcsUnknownOutcomeException} (no answer).
+   */
+  public OcsResult status(String reference) {
+    try {
+      return bulkhead.executeSupplier(() -> breaker.executeSupplier(() -> timeLimited(() -> get(reference))));
+    } catch (BulkheadFullException e) {
+      throw new OcsNotSentException(OcsNotSentException.Reason.BULKHEAD_FULL, e);
+    } catch (CallNotPermittedException e) {
+      throw new OcsNotSentException(OcsNotSentException.Reason.CIRCUIT_OPEN, e);
+    }
+  }
+
+  private OcsResult get(String reference) {
+    try {
+      return rest.get()
+          .uri("/ocs/v1/topup/{reference}", reference)
+          .exchange((req, res) -> classifyStatus(res.getStatusCode().value(), res.getBody().readAllBytes()));
+    } catch (ResourceAccessException e) {
+      throw transport(e);
+    }
+  }
+
+  private OcsResult classifyStatus(int status, byte[] body) {
+    if (status >= 500) {
+      throw new OcsUnknownOutcomeException(OcsUnknownOutcomeException.Reason.HTTP_5XX, null);
+    }
+    OcsResponse reply = parse(body);
+    if (status == 404 && reply != null && "NOT_FOUND".equals(reply.status())) {
+      return new OcsResult.NotFound(reply.code(), reply.message());
+    }
+    if (status != 200) {
+      throw new OcsUnknownOutcomeException(OcsUnknownOutcomeException.Reason.UNEXPECTED_STATUS, null);
+    }
+    if (reply != null && "SUCCESS".equals(reply.status()) && !isBlank(reply.ocsRef())) {
+      return new OcsResult.Accepted(reply.ocsRef(), reply.code());
+    }
+    if (reply != null && "FAILED".equals(reply.status()) && !isBlank(reply.code())) {
+      return props.ambiguousCodes().contains(reply.code())
+          ? new OcsResult.Ambiguous(reply.code(), reply.message())
+          : new OcsResult.Rejected(reply.code(), reply.message());
+    }
+    throw malformed(status);
+  }
+
   private OcsResult timeLimited(OcsTopupRequest request) {
+    return timeLimited(() -> send(request));
+  }
+
+  private OcsResult timeLimited(java.util.function.Supplier<OcsResult> call) {
     try {
       return limiter.executeFutureSupplier(
-          () -> CompletableFuture.supplyAsync(() -> send(request), executor));
+          () -> CompletableFuture.supplyAsync(call, executor));
     } catch (TimeoutException e) {
       throw new OcsUnknownOutcomeException(OcsUnknownOutcomeException.Reason.TIMEOUT, e);
     } catch (RuntimeException e) {

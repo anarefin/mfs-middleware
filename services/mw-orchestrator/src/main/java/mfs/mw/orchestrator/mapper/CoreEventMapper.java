@@ -64,10 +64,13 @@ public class CoreEventMapper {
           case "HoldRejected" -> new HoldRejected();
           case "HoldCommitted" -> new CommitAcknowledged();
           case "HoldReleased" -> new ReleaseAcknowledged();
+          // a definite refusal of a commit or release: an operator decides (spec 7.4 conflict)
+          case "CommitFailed" -> new CommitRefused();
+          case "ReleaseFailed" -> new ReleaseRefused();
           case "TransactionReversed" -> new ReversalAcknowledged();
           case "ReversalRejected" -> new ReversalFailed();
           // answer to the QueryTransaction sent after a HOLDING timeout (spec 7.2)
-          case "TransactionStatus" -> new HoldQueryResult("HELD".equals(txnStatus(event)));
+          case "TransactionStatus" -> new HoldQueryResult("HELD".equals(txnStatusOf(event)));
           default -> null;
         });
   }
@@ -78,7 +81,12 @@ public class CoreEventMapper {
     return id == null || !id.isString() || id.asString().isBlank() ? null : id.asString();
   }
 
-  private static String txnStatus(CoreEvent event) {
+  /** {@code payload.txnStatus} of a TransactionStatus event, else null. */
+  public String txnStatus(CoreEvent event) {
+    return txnStatusOf(event);
+  }
+
+  private static String txnStatusOf(CoreEvent event) {
     return event.payload() == null ? null : event.payload().path("txnStatus").asString(null);
   }
 

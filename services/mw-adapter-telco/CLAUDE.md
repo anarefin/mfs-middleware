@@ -26,7 +26,15 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.telco`. Follo
 - The OCS call runs on a virtual-thread executor (`telcoCallExecutor`), never on the Kafka consumer thread.
   The offset is committed when the request is handed over; a crash before the reply is written leaves
   the transaction without a reply and the orchestrator's deadline turns it UNKNOWN (TSQ, spec 7.4).
-- Not yet: status inquiry (`STATUS_QUERY`), callbacks, per-partner config (ticket 20, adapter framework).
+- Status inquiry (ticket 18, spec 7.4): `STATUS_QUERY` -> `GET /ocs/v1/topup/{reference}` with the
+  stable reference, same Resilience4j instance, one attempt. 200 SUCCESS -> SUCCESS (`partnerRef`);
+  200 FAILED -> FAILED with the mapped code (ambiguous code -> UNKNOWN); 404 with the OCS'
+  NOT_FOUND body -> `NOT_FOUND`; anything else, and a call that never left (circuit open, bulkhead,
+  connect) -> UNKNOWN `MW-TMO-PARTNER_*`, never FAILED (a FAILED answer releases a hold the partner
+  may have used). The orchestrator asks again at its next slot.
+- A PAY consumed after its `deadlineAt` is not sent: FAILED `MW-SYS-PARTNER_REQUEST_EXPIRED`
+  (retryable). This is what lets the orchestrator trust a later NOT_FOUND.
+- Not yet: callbacks, per-partner config (ticket 20, adapter framework).
   Any `partnerId` in the request is served by the single static OCS endpoint.
 - Init (`mw-adapter-telco-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
   `adapter_telco_rw` and schema `partner_ref`, `secret/mw-adapter-telco` (DB password, never

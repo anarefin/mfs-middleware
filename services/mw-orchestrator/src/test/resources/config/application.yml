@@ -7,6 +7,13 @@ mw:
       enabled: false
     timer:
       enabled: false
+    # Partner "tsqfast" has a status-inquiry schedule shortened to seconds (InquirySagaIT reaches
+    # MANUAL_REVIEW with it); every other partner keeps the spec 7.4 default.
+    inquiry:
+      partners:
+        tsqfast:
+          schedule: 1s,2s
+          cut-off: 5s
   outbox:
     relay:
       # Off by default in tests: Spring caches test contexts, and a relay left running in one
@@ -16,3 +23,4 @@ mw:
   retention:
     # The purge job's schedule is off in tests; OutboxInboxPurgeConformanceIT calls it directly.
     cron: "-"
+

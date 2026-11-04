@@ -42,11 +42,22 @@ public class PartnerReplyMapper {
           reply(
               request, partnerRef, "UNKNOWN", null, a.code(),
               "MW-TMO-PARTNER_AMBIGUOUS_CODE", a.message(), false);
+      case OcsResult.NotFound n ->
+          reply(request, partnerRef, "NOT_FOUND", null, n.code(), null, n.message(), null);
     };
   }
 
-  /** Nothing reached the OCS: a definite, retryable failure. */
+  /**
+   * Nothing reached the OCS: for a PAY a definite, retryable failure. For a STATUS_QUERY it is no
+   * answer at all, so UNKNOWN (the orchestrator asks again at the next slot): a FAILED inquiry
+   * answer would release a hold the partner may have used.
+   */
   public PartnerReply notSent(PartnerRequest request, String partnerRef, OcsNotSentException e) {
+    if (isStatusQuery(request)) {
+      return reply(
+          request, partnerRef, "UNKNOWN", null, null, "MW-TMO-PARTNER_" + e.reason().name(),
+          "Status inquiry not sent to the partner", false);
+    }
     String code =
         switch (e.reason()) {
           case CIRCUIT_OPEN -> "MW-SYS-PARTNER_CIRCUIT_OPEN";
@@ -62,6 +73,20 @@ public class PartnerReplyMapper {
     return reply(
         request, partnerRef, "UNKNOWN", null, null, "MW-TMO-PARTNER_" + e.reason().name(),
         "Top-up outcome unknown", false);
+  }
+
+  /**
+   * A PAY consumed after its {@code deadlineAt}: never sent, so the orchestrator's status inquiry
+   * can trust a later "not found" (spec 7.4). Definite and retryable.
+   */
+  public PartnerReply expired(PartnerRequest request) {
+    return reply(
+        request, null, "FAILED", null, null, "MW-SYS-PARTNER_REQUEST_EXPIRED",
+        "Top-up not sent: the request expired before it could be sent", true);
+  }
+
+  public static boolean isStatusQuery(PartnerRequest request) {
+    return request.payload() != null && "STATUS_QUERY".equals(request.payload().operation());
   }
 
   public PartnerReply invalid(PartnerRequest request, String problem) {

@@ -65,6 +65,38 @@ Feature: TOPUP airtime from the app (hold, partner, commit or release)
     And the error code is "MW-VAL-001"
     And no core balance changed
 
+  # Unknown outcomes (ticket 18, spec 7.4): the OCS answers after the adapter's 20 s limit, the
+  # adapter reports UNKNOWN, the app gets 202 PROCESSING, and the status inquiry 30 s later asks
+  # the OCS what really happened.
+  @tsq
+  Scenario: an OCS timeout is resolved by status inquiry and the hold is committed
+    When customer01 tops up 2013 poisha gp PREPAID airtime on 01711000002 with PIN "1234"
+    Then the response status is 202
+    And the transaction status is PROCESSING
+    And the app shows the transaction as COMPLETED within 120 seconds
+    And the core balances changed by:
+      | 01711000001 | -2213 |
+      | SETTLEMENT  | 2013  |
+      | FEE-POOL    | 200   |
+    And no funds are held on 01711000001
+
+  @tsq
+  Scenario: an OCS timeout the top-up did not survive is resolved by status inquiry and released
+    Given the OCS answers too late and never applies the top-up
+    When customer01 tops up 2000 poisha gp PREPAID airtime on 01711000002 with PIN "1234"
+    Then the response status is 202
+    And the transaction status is PROCESSING
+    And the OCS behaves normally again
+    And the app shows the transaction as FAILED with error "MW-TMO-003" within 180 seconds
+    And no core balance changed
+    And no funds are held on 01711000001
+
+  @mw-audit-dw @tsq
+  Scenario: a top-up resolved by status inquiry records UNKNOWN in its audit trail
+    When customer01 tops up 2013 poisha gp PREPAID airtime on 01711000002 with PIN "1234"
+    Then the app shows the transaction as COMPLETED within 120 seconds
+    And the audit trail of the transaction records the states "RECEIVED, VALIDATING, HOLDING, PARTNER_PENDING, UNKNOWN, COMMITTING, COMPLETED"
+
   @mw-audit-dw
   Scenario: a completed top-up leaves an audit trail of the hold path
     When customer01 tops up 2000 poisha gp PREPAID airtime on 01711000002 with PIN "1234"

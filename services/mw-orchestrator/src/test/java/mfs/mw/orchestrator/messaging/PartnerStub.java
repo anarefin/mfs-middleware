@@ -23,7 +23,9 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * The orchestrator's own stand-in for the telco adapter (ticket 17): reads {@code
  * mw.partner.request.telco.v1} and answers on {@code mw.partner.reply.v1}. A credit MSISDN ending
- * in {@code 999} is refused ({@code MW-PTR-<PARTNER>-TOPUP_REJECTED}), anything else succeeds.
+ * in {@code 999} is refused ({@code MW-PTR-<PARTNER>-TOPUP_REJECTED}), anything else succeeds. For
+ * a credit MSISDN ending in {@code 888} the PAY reply is lost (an adapter crash after hand-over,
+ * ticket 16): nothing is answered, and a later STATUS_QUERY reports the top-up as done.
  */
 public final class PartnerStub implements AutoCloseable {
 
@@ -61,16 +63,24 @@ public final class PartnerStub implements AutoCloseable {
       for (ConsumerRecord<String, String> r : consumer.poll(Duration.ofMillis(200))) {
         JsonNode req = json.readTree(r.value());
         requests.add(req);
+        if (lost(req)) {
+          continue;
+        }
         producer.send(new ProducerRecord<>("mw.partner.reply.v1", r.key(), json.writeValueAsString(answer(req))));
       }
     }
+  }
+
+  private static boolean lost(JsonNode req) {
+    return "PAY".equals(req.path("payload").path("operation").asString())
+        && req.path("payload").path("creditParty").path("id").asString().endsWith("888");
   }
 
   private Map<String, Object> answer(JsonNode req) {
     String partnerId = req.path("payload").path("partner").path("partnerId").asString();
     boolean refuse = req.path("payload").path("creditParty").path("id").asString().endsWith("999");
     Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("operation", "PAY");
+    payload.put("operation", req.path("payload").path("operation").asString());
     payload.put("outcome", refuse ? "FAILED" : "SUCCESS");
     if (refuse) {
       payload.put("errorCode", "MW-PTR-" + partnerId.toUpperCase() + "-TOPUP_REJECTED");

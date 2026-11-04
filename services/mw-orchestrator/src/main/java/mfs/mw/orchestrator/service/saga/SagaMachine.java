@@ -65,21 +65,26 @@ public final class SagaMachine {
           };
       case UNKNOWN ->
           switch (event) {
-            case InquirySucceeded e -> go(from, Status.COMMITTING, Effect.SEND_COMMIT);
-            case InquiryFailed e -> go(from, Status.RELEASING, Effect.SEND_RELEASE);
+            case InquirySucceeded e when e.held() -> go(from, Status.COMMITTING, Effect.SEND_COMMIT);
+            case InquirySucceeded e -> go(from, Status.COMPLETED, Effect.NONE);
+            case InquiryFailed e when e.held() -> go(from, Status.RELEASING, Effect.SEND_RELEASE);
+            case InquiryFailed e -> go(from, Status.FAILED, Effect.NONE);
             case InquiryExhausted e -> go(from, Status.MANUAL_REVIEW, Effect.NONE);
-            case DeadlineExpired e -> go(from, Status.UNKNOWN, Effect.SEND_QUERY);
+            case DeadlineExpired e -> go(from, Status.UNKNOWN, Effect.SEND_INQUIRY);
             default -> null;
           };
       case COMMITTING ->
           switch (event) {
             case CommitAcknowledged e -> go(from, Status.COMPLETED, Effect.NONE);
+            // a definite refusal; resending the same commandId gets the same answer (7.4 conflict)
+            case CommitRefused e -> go(from, Status.MANUAL_REVIEW, Effect.NONE);
             case DeadlineExpired e -> go(from, Status.COMMITTING, Effect.SEND_COMMIT);
             default -> null;
           };
       case RELEASING ->
           switch (event) {
             case ReleaseAcknowledged e -> go(from, Status.FAILED, Effect.NONE);
+            case ReleaseRefused e -> go(from, Status.MANUAL_REVIEW, Effect.NONE);
             case DeadlineExpired e -> go(from, Status.RELEASING, Effect.SEND_RELEASE);
             default -> null;
           };

@@ -22,7 +22,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * TOPUP over real Kafka and PostgreSQL (ticket 17) against the orchestrator's own core and partner
- * stubs: the partner reply route closes the loop, a success commits and a refusal releases.
+ * stubs: the partner reply route closes the loop, a success commits and a refusal releases. The
+ * partner timeout and the first inquiry slot are shortened to seconds (ticket 18).
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
@@ -30,6 +31,8 @@ import tools.jackson.databind.json.JsonMapper;
       "mw.orchestrator.consumers.enabled=true",
       "mw.orchestrator.timer.enabled=true",
       "mw.orchestrator.timer.period=200ms",
+      "mw.orchestrator.partner-timeout=2s",
+      "mw.orchestrator.inquiry.schedule=1s",
       "mw.outbox.relay.enabled=true",
       "mw.kafka.retry.delays=1s,1s,1s"
     })
@@ -109,6 +112,27 @@ class TopupKafkaIT {
     assertThat(sent).hasSize(1);
     assertThat(ContractSchemas.schema(PARTNER_SCHEMA).validate(sent.get(0))).isEmpty();
     assertThat(KafkaTestConsumer.headers(got.get(5))).containsKeys(MwHeaders.REQUIRED.toArray(String[]::new));
+  }
+
+  @Test
+  void aLostPartnerReplyIsRecoveredByStatusInquiry() {
+    TxnRequest req = request("01711000888");
+
+    List<ConsumerRecord<String, String>> got = statuses(req.txnId(), 7);
+
+    assertThat(names(got))
+        .containsExactly(
+            "RECEIVED", "VALIDATING", "HOLDING", "PARTNER_PENDING", "UNKNOWN", "COMMITTING", "COMPLETED");
+    assertThat(commandTypes(req.txnId())).containsExactly("ValidateTransaction", "HoldFunds", "CommitHold");
+    List<String> operations =
+        partner.requests().stream()
+            .filter(p -> req.txnId().equals(p.path("txnId").asString()))
+            .map(p -> p.path("payload").path("operation").asString())
+            .toList();
+    assertThat(operations).containsExactly("PAY", "STATUS_QUERY");
+    for (JsonNode sent : partner.requests()) {
+      assertThat(ContractSchemas.schema(PARTNER_SCHEMA).validate(sent)).as(sent.toString()).isEmpty();
+    }
   }
 
   @Test

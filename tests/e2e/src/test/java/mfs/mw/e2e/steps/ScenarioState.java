@@ -29,6 +29,9 @@ public class ScenarioState {
   /** A core fault was injected; an {@code @After} hook resets the faults. */
   boolean faultsInjected;
 
+  /** A partner simulator scenario was forced; an {@code @After} hook resets it. */
+  boolean simulatorForced;
+
   /** Idempotency keys of the REVERSAL requests the scenario sent, in order. */
   final List<String> reversalKeys = new ArrayList<>();
 

@@ -36,18 +36,21 @@ public class CoreEventService {
   private final CoreEventMapper mapper;
   private final FlowRegistry flows;
   private final SagaEngine engine;
+  private final InquiryService inquiries;
 
   public CoreEventService(
       Inbox inbox,
       TransactionRepository transactions,
       CoreEventMapper mapper,
       FlowRegistry flows,
-      SagaEngine engine) {
+      SagaEngine engine,
+      InquiryService inquiries) {
     this.inbox = inbox;
     this.transactions = transactions;
     this.mapper = mapper;
     this.flows = flows;
     this.engine = engine;
+    this.inquiries = inquiries;
   }
 
   @Transactional
@@ -67,6 +70,10 @@ public class CoreEventService {
       return;
     }
     TransactionRecord rec = found.get();
+    if ("TransactionStatus".equals(event.eventType()) && rec.status() == Status.UNKNOWN) {
+      inquiryAnswer(rec, event);
+      return;
+    }
     boolean needsHold = flows.find(rec.request().txnType()).map(f -> f.needsHold()).orElse(false);
     Optional<SagaEvent> saga = mapper.toSagaEvent(event, needsHold);
     if (saga.isEmpty()) {
@@ -102,6 +109,21 @@ public class CoreEventService {
           ErrorCodes.TMO_CORE_HOLD, "The core did not confirm the hold in time; nothing was moved", null, true);
     }
     return "FAILURE".equals(event.outcome()) ? mapper.error(event) : null;
+  }
+
+  /**
+   * The core's answer to the status inquiry of a flow without a partner leg (P2P, spec 7.4). A
+   * flow with a partner asks the partner, so a TransactionStatus reaching it in UNKNOWN is the
+   * late answer to its HOLDING query and is ignored.
+   */
+  private void inquiryAnswer(TransactionRecord rec, CoreEvent event) {
+    boolean partnerLeg =
+        flows.find(rec.request().txnType()).flatMap(f -> f.partnerCall()).isPresent();
+    if (partnerLeg) {
+      drop(event, "saga.event.ignored", "core status answer for a transaction that asks its partner; ignored");
+      return;
+    }
+    inquiries.coreAnswer(rec.withCore(event.coreRef(), null), mapper.txnStatus(event));
   }
 
   /** States a transaction ends in without ever using a hold (REJECTED, FAILED). */

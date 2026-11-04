@@ -32,6 +32,20 @@ public class SagaTimerRepository {
         retry);
   }
 
+  /**
+   * Arms {@code step} with an explicit attempt number (the status-inquiry slot, spec 7.4: the
+   * sweep deletes a timer before handling it, so the caller carries the count over).
+   */
+  public void armAttempt(UUID txnId, String step, Instant dueAt, int attempt) {
+    jdbc.update(
+        "insert into saga_timer (txn_id, step, due_at, attempt) values (?, ?, ?, ?)"
+            + " on conflict (txn_id, step) do update set due_at = excluded.due_at, attempt = excluded.attempt",
+        txnId,
+        step,
+        Timestamp.from(dueAt),
+        attempt);
+  }
+
   public void clear(UUID txnId) {
     jdbc.update("delete from saga_timer where txn_id = ?", txnId);
   }

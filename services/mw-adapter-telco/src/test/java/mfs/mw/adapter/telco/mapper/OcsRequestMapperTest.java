@@ -33,6 +33,19 @@ class OcsRequestMapperTest {
   }
 
   @Test
+  void aStatusQueryNeedsOnlyItsPartner() {
+    PartnerRequest q = mfs.mw.adapter.telco.TelcoFixtures.statusQuery(newTxnId());
+    assertThat(mapper.problem(q)).isEmpty();
+    PartnerRequest.Payload p = q.payload();
+    PartnerRequest bare =
+        withPayload(q, new PartnerRequest.Payload("STATUS_QUERY", "TOPUP", p.partner(), "x", null, null, null, null, null));
+    assertThat(mapper.problem(bare)).isEmpty();
+    PartnerRequest noPartner =
+        withPayload(q, new PartnerRequest.Payload("STATUS_QUERY", "TOPUP", null, "x", null, null, null, null, null));
+    assertThat(mapper.problem(noPartner)).contains("partner is required");
+  }
+
+  @Test
   void reportsWhatIsWrongWithARequestThatCannotBeSent() {
     PartnerRequest ok = pay(newTxnId(), "01711000001", 2000);
 

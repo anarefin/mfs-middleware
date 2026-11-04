@@ -103,6 +103,27 @@ public class AppSteps {
     assertThat(r.body().path("status").asString(null)).as("%s", r).isEqualTo(status);
   }
 
+  /**
+   * For outcomes that resolve late (status inquiry, spec 7.4: the first inquiry is 30 s after the
+   * outcome became unknown). With an error code, the final status must carry it.
+   */
+  @Then("the app shows the transaction as {word} within {int} seconds")
+  public void appShowsWithin(String status, int seconds) {
+    appShowsWithError(status, null, seconds);
+  }
+
+  @Then("the app shows the transaction as {word} with error {string} within {int} seconds")
+  public void appShowsWithError(String status, String code, int seconds) {
+    Http.Response r =
+        AppApi.pollStatus(
+            state.user, state.txnId(), x -> status.equals(x.body().path("status").asString(null)),
+            Duration.ofSeconds(seconds));
+    assertThat(r.body().path("status").asString(null)).as("%s", r).isEqualTo(status);
+    if (code != null) {
+      assertThat(r.body().path("error").path("code").asString(null)).as("%s", r).isEqualTo(code);
+    }
+  }
+
   private void submit(String user, String idempotencyKey, ObjectNode body) {
     state.user = user;
     state.idempotencyKey = idempotencyKey;

@@ -120,6 +120,24 @@ public class TransactionRepository {
         Timestamp.from(at));
   }
 
+  /** When the transaction last entered {@code status} (from the step history), if it did. */
+  public Optional<Instant> enteredAt(UUID txnId, Status status) {
+    return jdbc
+        .query(
+            "select at from saga_step where txn_id = ? and to_status = ? order by id desc limit 1",
+            (rs, i) -> rs.getTimestamp("at").toInstant(),
+            txnId,
+            status.name())
+        .stream()
+        .findFirst();
+  }
+
+  /** How many transactions are in {@code status} now (backlog gauges, spec 21). */
+  public long countByStatus(Status status) {
+    Long n = jdbc.queryForObject("select count(*) from transaction where status = ?", Long.class, status.name());
+    return n == null ? 0 : n;
+  }
+
   private TransactionRecord map(ResultSet rs, int row) throws SQLException {
     String code = rs.getString("error_code");
     ErrorInfo error =
