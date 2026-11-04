@@ -5,27 +5,39 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 
 ## Responsibilities
 
-- Customer notifications (spec 10, WP17 part, ticket 24). MVP: SMS over SMPP 3.4 only; email,
-  push, quiet hours and channel fallback come later (a request without SMS to an MSISDN is
-  recorded FAILED `MW-VAL-101`).
+- Customer notifications (spec 10, WP17, tickets 24 and 25): SMS over SMPP 3.4 and email over
+  SMTP; push, quiet hours and channel fallback come later. One `notify.message` row per requested
+  channel, key (message_id, channel); a channel without its address (SMS: msisdn, EMAIL: email)
+  or PUSH is recorded FAILED `MW-VAL-101`; a request naming no channel is a FAILED SMS.
 - Intake (`service/NotificationService`): `mw.notify.request.v1` (`route/NotifyRequestRoute`,
   `messaging/NotifyRequestListener`) and rules on `mw.txn.status.v1` (`route/TxnStatusRoute`,
-  `service/TxnStatusService`, `service/RuleEngine`). `messageId` is the idempotency key (PK of
-  `notify.message`, duplicates dropped, event `notify.duplicate`); rule-built ids are
-  `<txnId>:sms:<ruleId>`. `expiresAt` defaults by priority (`dto/Priority`: OTP 2 min, TXN 24 h,
+  `service/TxnStatusService`, `service/RuleEngine`). `messageId` is the idempotency key (with the
+  channel the PK of `notify.message`, duplicates dropped, event `notify.duplicate`); rule-built ids
+  are `<txnId>:<sms|email>:<ruleId>`. `expiresAt` defaults by priority (`dto/Priority`: OTP 2 min, TXN 24 h,
   INFO 24 h, PROMO 72 h); an expired message is recorded EXPIRED and never sent. Listeners only
   store; nothing is sent on a Kafka thread.
-- Rules (`notify.rule`, seeds in `V5`): `condition` is SpEL in a `SimpleEvaluationContext`
+- Template `CHECKOUT_OTP` (bn/en SMS, `V8`, ticket 31): mw-checkout's OTP, params otp, amount, merchant.
+- Rules (`notify.rule`, seeds in `V5` and `V7`: P2P, CASH_IN, CASH_OUT, TOPUP, BILL_PAY,
+  ADD_MONEY_BANK on success COMPLETED, failure FAILED|REJECTED and processing
+  UNKNOWN|MANUAL_REVIEW; failure and processing go to the INITIATOR; BILL_PAY and ADD_MONEY_BANK
+  success also EMAIL the initiator): `condition` is SpEL in a `SimpleEvaluationContext`
   (read-only getters of `RuleEngine.TxnFacts`: status, txnType, channel, amountMinor,
   initiatorId, debitPartyId, creditPartyId, debitPartyType, creditPartyType; no types, beans or
-  constructors); `recipient` INITIATOR|DEBIT_PARTY|CREDIT_PARTY (an MSISDN-shaped id only).
-  Params: amount, fee (taka, 2 decimals), txnId, txnType, counterparty (the other party, masked
-  by type), coreRef, partnerRef. Locale: the event's, else `mw.notify.default-locale` (bn).
+  constructors); `recipient` INITIATOR|DEBIT_PARTY|CREDIT_PARTY. An SMS rule needs an
+  MSISDN-shaped id; an EMAIL rule needs the party's address in `notify.contact` (party_id ->
+  email; maintained by the admin console later; dev seed `db/dev/R__dev_contacts.sql`, applied
+  only when `MW_NOTIFY_FLYWAY_LOCATIONS` adds `classpath:db/dev`, as the module's compose.yml
+  does), else the rule is skipped. Params: amount, fee (taka, 2 decimals), txnId, txnType,
+  counterparty (the other side, masked by type: for the INITIATOR the side that is not itself, so
+  an ADD_MONEY_BANK shows the bank account), coreRef, partnerRef, partner (partnerId), biller
+  (billerCode, else partnerId), errorCode. Locale: the event's, else `mw.notify.default-locale` (bn).
 - Templates (`notify.template`, highest ACTIVE version with `valid_from <= now`): logic-less
   `{{name}}` (`service/TemplateRenderer`; sections refused, a missing param fails the message
   `MW-VAL-102`); params masked first by name (`service/ParamMasker`: msisdn, receiver, sender,
   counterparty, agent -> MSISDN; account, accountNumber -> last 4; nid -> last 3; name,
-  receiverName, senderName -> initial; pin -> ****). `sender_id` per template (default `upay`).
+  receiverName, senderName -> initial; pin -> ****; a value already containing `****` is kept).
+  `sender_id` per template (default `upay`). EMAIL templates: `subject` and `body` (text part)
+  required, `html_body` optional (HTML part, params HTML-escaped, `TemplateRenderer.renderHtml`).
 - Encoding (`service/SmsEncoder`): GSM-7 (GSM 03.38 + extension table, unpacked, data_coding 0)
   when every character fits, else UCS-2 (data_coding 8); one SMS up to 160 septets / 70 units,
   else parts of 153 / 67 with the UDH `05 00 03 ref total seq` (esm_class UDHI); escape and
@@ -37,6 +49,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   of the pool, then FAILED `MW-SYS-102`; each transient failure is published FAILED final=false
   `MW-SYS-104`; other command statuses fail at once `MW-SYS-101`. Only parts without a message_id
   are resent.
+- Email (`client/SmtpEmailSender`, Spring `JavaMailSender`, `spring.mail.*`: `SMTP_HOST` /
+  `SMTP_PORT`, default GreenMail `greenmail:3025`; STARTTLS required and server identity checked by default (`config/MailTlsDefaultsTest`), off only by the explicit dev override `SMTP_STARTTLS_REQUIRED=false` in compose.yml and the test config;
+  From `mw.notify.email.from` / `MAIL_FROM`; SMTP credentials, if any, from OpenBao): one
+  multipart/alternative message, SENT is final (no bounce handling yet), providerMessageId = the
+  Message-ID. Same retries as SMS (2/10/30 s, `MW-SYS-104` / `MW-SYS-102`); a 5xx reply fails at
+  once `MW-SYS-101`. `mw.notify.email.enabled=false` -> `client/DisabledEmailSender`.
 - SMPP (`client/SmppSmsSender`, `client/SmppBind`, jSMPP direct): transceiver binds per priority
   (`mw.notify.smpp.binds`), enquire_link 30 s, reconnect 1-60 s exponential, events
   `smpp.bind.up` / `smpp.bind.down`; submit_sm asks for DLRs. Password from OpenBao
@@ -48,8 +66,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   DLR before its part is stored waits in `notify.receipt` (applied each cycle, dropped after
   `receipt-buffer-ttl`).
 - Status: every attempt and final status to `mw.notify.status.v1` via the outbox
-  (`service/StatusEvents`; SENT, FAILED, DELIVERED, UNDELIVERABLE, EXPIRED). `mw-txn-id` header =
-  txnId, else messageId.
+  (`service/StatusEvents`; SENT, FAILED, DELIVERED, UNDELIVERABLE, EXPIRED; `channel` names the
+  row). `mw-txn-id` header = txnId, else messageId.
 - Init (`mw-notify-init`, `init/init.sh`, dev only): role `notify_rw`, schema `notify`,
   `secret/mw-notify` (DB and SMPP passwords), AppRole `mw-notify`.
 
@@ -66,7 +84,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 
 - `service/SmsEncoderTest`, `TemplateRendererTest`, `RuleEngineTest` (units);
   `service/NotificationFlowIT` (PostgreSQL, `client/FakeSmsSender`, `MutableClock`: dedup, expiry,
-  priority order, 2/10/30 s retries, DLR outcomes); `SmscFlowIT` (Kafka in, real SMPP to the
+  priority order, 2/10/30 s retries, DLR outcomes); `service/EmailFlowIT` (in-process GreenMail:
+  subject, text and HTML parts, SMS+EMAIL request, SMTP down retried); `service/FlowNotificationsIT`
+  (every seeded flow state -> exact SMS texts and email receipts, rule/template completeness);
+  `SmscFlowIT` (Kafka in, real SMPP to the
   in-test `client/SmscStub`, DLRs, `mw.notify.status.v1` out); `dto/NotifyContractsSchemaTest`.
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)

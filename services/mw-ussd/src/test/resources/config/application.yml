@@ -5,6 +5,9 @@ mw:
     # most tests (and would need Kafka). UssdHttpFlowIT switches it on.
     consumers:
       enabled: false
+    # No SMPP binds by default in tests (gp is on SMPP); UssdSmppMenuWalkIT binds to its stub.
+    smpp:
+      enabled: false
   outbox:
     relay:
       # Off by default in tests: Spring caches test contexts, and a relay left running in one

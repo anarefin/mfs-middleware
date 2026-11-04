@@ -18,7 +18,7 @@ public class MessageRepository {
   private static final String COLUMNS =
       "message_id, txn_id, correlation_id, channel, recipient_msisdn, template_code, template_version, locale,"
           + " priority, sender_id, body, concat_ref, segment_count, status, attempts, next_attempt_at, expires_at,"
-          + " error_code";
+          + " error_code, recipient_email, subject, html_body";
 
   private final JdbcTemplate jdbc;
 
@@ -26,39 +26,40 @@ public class MessageRepository {
     this.jdbc = jdbc;
   }
 
-  /** Inserts the message unless its id exists (10.1 idempotency); true when inserted. */
+  /** Inserts the message unless its (id, channel) exists (10.1 idempotency); true when inserted. */
   public boolean insertIfAbsent(MessageRecord m, int priorityRank) {
     return jdbc.update(
             "insert into message (" + COLUMNS + ", priority_rank) values"
-                + " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict (message_id) do nothing",
+                + " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                + " on conflict (message_id, channel) do nothing",
             m.messageId(), m.txnId(), m.correlationId(), m.channel(), m.recipientMsisdn(), m.templateCode(),
             m.templateVersion(), m.locale(), m.priority(), m.senderId(), m.body(), m.concatRef(),
             m.segmentCount(), m.status(), m.attempts(), ts(m.nextAttemptAt()), ts(m.expiresAt()),
-            m.errorCode(), priorityRank)
+            m.errorCode(), m.recipientEmail(), m.subject(), m.htmlBody(), priorityRank)
         == 1;
   }
 
-  /** Ids due at {@code now} for one priority, oldest first (no lock; see {@link #lockDue}). */
-  public List<String> dueIds(int priorityRank, Instant now, int limit) {
-    return jdbc.queryForList(
-        "select message_id from message where priority_rank = ? and status in ('QUEUED', 'RETRY')"
+  /** Keys due at {@code now} for one priority, oldest first (no lock; see {@link #lockDue}). */
+  public List<MessageRecord.Key> dueKeys(int priorityRank, Instant now, int limit) {
+    return jdbc.query(
+        "select message_id, channel from message where priority_rank = ? and status in ('QUEUED', 'RETRY')"
             + " and next_attempt_at <= ? order by next_attempt_at, created_at limit ?",
-        String.class, priorityRank, ts(now), limit);
+        (rs, i) -> new MessageRecord.Key(rs.getString(1), rs.getString(2)), priorityRank, ts(now), limit);
   }
 
   /** Locks the message if it is still due, skipping one another dispatcher holds. */
-  public Optional<MessageRecord> lockDue(String messageId, Instant now) {
+  public Optional<MessageRecord> lockDue(MessageRecord.Key key, Instant now) {
     return jdbc.query(
-            "select " + COLUMNS + " from message where message_id = ? and status in ('QUEUED', 'RETRY')"
-                + " and next_attempt_at <= ? for update skip locked",
-            MessageRepository::message, messageId, ts(now))
+            "select " + COLUMNS + " from message where message_id = ? and channel = ?"
+                + " and status in ('QUEUED', 'RETRY') and next_attempt_at <= ? for update skip locked",
+            MessageRepository::message, key.messageId(), key.channel(), ts(now))
         .stream()
         .findFirst();
   }
 
-  /** Locks the message (waits for a dispatcher holding it). */
-  public Optional<MessageRecord> lock(String messageId) {
-    return jdbc.query("select " + COLUMNS + " from message where message_id = ? for update",
+  /** Locks the SMS message (waits for a dispatcher holding it); DLRs only concern SMS. */
+  public Optional<MessageRecord> lockSms(String messageId) {
+    return jdbc.query("select " + COLUMNS + " from message where message_id = ? and channel = 'SMS' for update",
             MessageRepository::message, messageId)
         .stream()
         .findFirst();
@@ -67,8 +68,8 @@ public class MessageRepository {
   public void update(MessageRecord m, Instant now) {
     jdbc.update(
         "update message set status = ?, attempts = ?, next_attempt_at = ?, error_code = ?, updated_at = ?"
-            + " where message_id = ?",
-        m.status(), m.attempts(), ts(m.nextAttemptAt()), m.errorCode(), ts(now), m.messageId());
+            + " where message_id = ? and channel = ?",
+        m.status(), m.attempts(), ts(m.nextAttemptAt()), m.errorCode(), ts(now), m.messageId(), m.channel());
   }
 
   public void insertSegments(String messageId, int count) {
@@ -106,12 +107,13 @@ public class MessageRepository {
         == 1;
   }
 
-  public void attempt(String messageId, int attemptNo, String bind, String outcome, String errorCode,
+  /** Records an attempt; {@code bind} is the SMPP bind, or null for email. */
+  public void attempt(MessageRecord.Key key, int attemptNo, String bind, String outcome, String errorCode,
       Integer smppStatus, Instant at) {
     jdbc.update(
-        "insert into attempt (message_id, attempt_no, bind_name, outcome, error_code, smpp_status, at)"
-            + " values (?, ?, ?, ?, ?, ?, ?) on conflict do nothing",
-        messageId, attemptNo, bind, outcome, errorCode, smppStatus, ts(at));
+        "insert into attempt (message_id, channel, attempt_no, bind_name, outcome, error_code, smpp_status, at)"
+            + " values (?, ?, ?, ?, ?, ?, ?, ?) on conflict do nothing",
+        key.messageId(), key.channel(), attemptNo, bind, outcome, errorCode, smppStatus, ts(at));
   }
 
   /** Buffers a DLR whose segment is not known yet. */
@@ -147,7 +149,8 @@ public class MessageRepository {
         rs.getString("sender_id"), rs.getString("body"), (Integer) rs.getObject("concat_ref"),
         (Integer) rs.getObject("segment_count"), rs.getString("status"), rs.getInt("attempts"),
         instant(rs.getTimestamp("next_attempt_at")), instant(rs.getTimestamp("expires_at")),
-        rs.getString("error_code"));
+        rs.getString("error_code"), rs.getString("recipient_email"), rs.getString("subject"),
+        rs.getString("html_body"));
   }
 
   private static Timestamp ts(Instant i) {

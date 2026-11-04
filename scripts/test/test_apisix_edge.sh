@@ -65,7 +65,7 @@ test_test_only_objects_are_not_applied_by_default_and_removed_if_present() {
 }
 
 test_e2e_flag_applies_the_test_route_behind_key_auth_from_private_networks() {
-  MW_E2E_ROUTES=1 MW_E2E_API_KEY=k3yFromDotEnv render || fail "dry run failed: $OUT"
+  MW_E2E_ROUTES=1 MW_E2E_API_KEY=k3yFromDotEnv CHECKOUT_DEMO_MERCHANT_SECRET=s3cretFromDotEnv render || fail "dry run failed: $OUT"
   local r=out/routes/test-core-mock.json c=out/consumers/mw_e2e.json
   [ -f "$r" ] || fail "test route not applied with MW_E2E_ROUTES=1 (have: $(ls out/*))"
   jq -e '.plugins["key-auth"] and .plugins["consumer-restriction"].whitelist == ["mw_e2e"]' "$r" >/dev/null \
@@ -75,6 +75,28 @@ test_e2e_flag_applies_the_test_route_behind_key_auth_from_private_networks() {
   [ "$(jq -r '.plugins["key-auth"].key' "$c")" = k3yFromDotEnv ] || fail "consumer key not from MW_E2E_API_KEY: $(cat "$c")"
   assert_out_lacks "k3yFromDotEnv"
   assert_out_lacks "DELETE /apisix/admin/routes/test-core-mock"
+}
+
+# Ticket 31: the dev checkout merchant is a test-only hmac-auth consumer whose secret comes from
+# the generated .env; the merchant API routes authenticate with hmac-auth and forward the
+# consumer name, the hosted page route has no auth plugin but a quota per source address.
+test_checkout_routes_use_hmac_auth_and_the_dev_merchant_is_test_only() {
+  MW_E2E_ROUTES=1 MW_E2E_API_KEY=k CHECKOUT_DEMO_MERCHANT_SECRET=s3cretFromDotEnv render || fail "dry run failed: $OUT"
+  local c=out/consumers/merchant_demo.json r
+  [ "$(jq -r '.plugins["hmac-auth"].secret_key' "$c")" = s3cretFromDotEnv ] || fail "merchant secret not from CHECKOUT_DEMO_MERCHANT_SECRET: $(cat "$c")"
+  assert_out_lacks "s3cretFromDotEnv"
+  for r in checkout-v1-sessions checkout-v1-session-get; do
+    jq -e '.plugins["hmac-auth"].allowed_algorithms == ["hmac-sha256"] and (.plugins["hmac-auth"].signed_headers | index("@request-target") and index("date"))' "out/routes/$r.json" >/dev/null \
+      || fail "$r: hmac-auth must sign method, path and Date: $(jq -c '.plugins["hmac-auth"]' "out/routes/$r.json")"
+    jq -e '.plugins["proxy-rewrite"].headers.set["X-Mw-Merchant-Id"] == "$consumer_name" and .plugins["limit-count"].key == "consumer_name"' "out/routes/$r.json" >/dev/null \
+      || fail "$r: consumer name not forwarded / not the quota key"
+  done
+  jq -e '.plugins["hmac-auth"].validate_request_body == true and (.plugins["hmac-auth"].signed_headers | index("digest")) and .plugins["request-validation"].body_schema.required' \
+    out/routes/checkout-v1-sessions.json >/dev/null || fail "create session: body digest not checked or no body schema"
+  jq -e '(.plugins | keys) == ["client-control", "limit-count"] and .plugins["limit-count"].key == "remote_addr"' out/routes/checkout-pay.json >/dev/null \
+    || fail "checkout-pay: $(jq -c '.plugins | keys' out/routes/checkout-pay.json)"
+  MW_E2E_ROUTES= MW_E2E_API_KEY= render || fail "dry run failed: $OUT"
+  assert_out_contains "DELETE /apisix/admin/consumers/merchant_demo"
 }
 
 test_e2e_flag_without_a_key_fails() {

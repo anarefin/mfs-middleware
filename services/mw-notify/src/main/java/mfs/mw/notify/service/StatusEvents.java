@@ -37,18 +37,25 @@ public class StatusEvents {
         errorCode, at);
     String correlation = blankTo(m.correlationId(), m.messageId());
     EventMetadata meta = new EventMetadata(correlation, blankTo(m.txnId(), m.messageId()),
-        m.messageId() + ":" + status + ":" + shownAttempt, 1);
+        idempotencyKey(m, status, shownAttempt), 1);
     outbox.append(TOPIC, m.messageId(), meta, event);
     log.atInfo()
         .addKeyValue("event", "notify.status")
         .addKeyValue("messageId", m.messageId())
         .addKeyValue("txnId", m.txnId())
+        .addKeyValue("channel", m.channel())
         .addKeyValue("correlationId", correlation)
         .addKeyValue("status", status)
         .addKeyValue("final", isFinal)
         .addKeyValue("attempt", shownAttempt)
         .addKeyValue("errorCode", errorCode)
         .log("notification status");
+  }
+
+  /** One per (message, channel, status, attempt); SMS keeps its ticket 24 form. */
+  static String idempotencyKey(MessageRecord m, NotifyStatus status, int attempt) {
+    String channel = Channel.SMS.name().equals(m.channel()) ? "" : m.channel() + ":";
+    return m.messageId() + ":" + channel + status + ":" + attempt;
   }
 
   private static String blankTo(String value, String fallback) {

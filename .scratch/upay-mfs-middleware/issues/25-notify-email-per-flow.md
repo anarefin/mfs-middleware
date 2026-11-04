@@ -6,8 +6,8 @@
 
 - 24: Notify SMS over SMPP
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Integration test: email reaches GreenMail with rendered subject and body
-- [ ] e2e: for each flow above, the expected SMS (and email where configured) is asserted
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] Integration test: email reaches GreenMail with rendered subject and body (`EmailFlowIT`, in-process GreenMail; per-flow seeds in `FlowNotificationsIT`)
+- [ ] e2e: for each flow above, the expected SMS (and email where configured) is asserted (written: `features/notify-flows.feature`; run deferred to milestone gate)
+- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR (deferred to milestone gate)

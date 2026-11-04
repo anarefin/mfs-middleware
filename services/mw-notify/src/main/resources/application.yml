@@ -37,6 +37,24 @@ spring:
       schema: notify
   flyway:
     schemas: notify
+    # db/dev (dev seed data: test contacts) is added only by the dev stack's compose.yml.
+    locations: ${MW_NOTIFY_FLYWAY_LOCATIONS:classpath:db/migration}
+  # Email over SMTP (spec 10.2). STARTTLS is required and the server's certificate must match its
+  # host name, so a server (or a man in the middle) cannot downgrade the session to plain text.
+  # Only a dev stack turns it off, explicitly (SMTP_STARTTLS_REQUIRED=false in the module's
+  # compose.yml for the GreenMail simulator). A username and password, where the server needs
+  # them, come from OpenBao (secret/mw-notify: spring.mail.username / .password).
+  mail:
+    host: ${SMTP_HOST:greenmail}
+    port: ${SMTP_PORT:3025}
+    default-encoding: UTF-8
+    properties:
+      mail.smtp.starttls.enable: true
+      mail.smtp.starttls.required: ${SMTP_STARTTLS_REQUIRED:true}
+      mail.smtp.ssl.checkserveridentity: true
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
 
 # Kafka through Camel (spec 6.1, 19.2). Single KRaft node; topics come from deploy/kafka/.
 camel:
@@ -167,6 +185,9 @@ mw:
       period: 200ms
     consumers:
       enabled: true
+    email:
+      enabled: ${EMAIL_ENABLED:true}
+      from: ${MAIL_FROM:upay <no-reply@upay.local>}
     smpp:
       # SMPP 3.4 to the SMSC (10.2); MVP: the SMSC simulator in mw-simulators. The bind password
       # comes from OpenBao (secret/mw-notify, mw.notify.smpp.password).

@@ -19,6 +19,8 @@
 #     mw-adapter-billpay, over 16 KiB -> 413, POST only, unrouted partner 404, ip allow-list and
 #     per-source quota configured
 #   - C2W bank callback route (ticket 23): the same cases against mw-adapter-bank
+#   - checkout (ticket 31): unsigned / badly signed merchant calls -> 401 at the edge; the hosted
+#     page API reaches mw-checkout without login
 #   - Valkey down (ticket 50): limit-count fails open and APISIX logs mw.edge.rate_limit_degraded
 #   - applying deploy/apisix twice is a no-op (Admin API objects identical but update_time)
 # The quota check spends merchant01's quota for the rest of the window (60 s).
@@ -317,6 +319,22 @@ bank_policies() {
   printf '%s' "$r" | jq -e '.upstream.nodes | has("mw-adapter-bank:8080")' >/dev/null || { echo "upstream: $(printf '%s' "$r" | jq -c .upstream)"; return 1; }
 }
 check "bank callback route: ip allow-list, quota per source address in Valkey, upstream mw-adapter-bank" bank_policies
+
+# ---- checkout merchant API (ticket 31): hmac-auth at the edge; hosted page API without login ----
+co_body='{"orderId":"EDGE-1","amount":{"valueMinor":1000,"currency":"BDT"},"successUrl":"https://shop.example.test/ok","failUrl":"https://shop.example.test/fail","cancelUrl":"https://shop.example.test/cancel","ipnUrl":"https://shop.example.test/ipn"}'
+co_unsigned() { call POST /checkout/v1/sessions -H 'Content-Type: application/json' -d "$co_body" && envelope 401 MW-AUTH-001; }
+check "checkout session without an HMAC signature -> 401 MW-AUTH-001 at the edge" co_unsigned
+co_bad_signature() {
+  local d; d="$(LC_ALL=C TZ=GMT date '+%a, %d %b %Y %H:%M:%S GMT')"
+  call POST /checkout/v1/sessions -H 'Content-Type: application/json' -H "Date: $d" \
+    -H 'Authorization: Signature keyId="merchant-demo",algorithm="hmac-sha256",headers="@request-target date",signature="bm90IGEgc2lnbmF0dXJl"' \
+    -d "$co_body" && envelope 401 MW-AUTH-001
+}
+check "checkout session with a bad HMAC signature -> 401 MW-AUTH-001 at the edge" co_bad_signature
+co_get_unsigned() { call GET "/checkout/v1/sessions/$(uniq_id s)" && envelope 401 MW-AUTH-001; }
+check "checkout session read without an HMAC signature -> 401 MW-AUTH-001 at the edge" co_get_unsigned
+co_page_unknown() { call GET "/checkout/pay/v1/$(uniq_id tok)" && envelope 404 MW-VAL-003; }
+check "hosted page API reaches mw-checkout without login (unknown token -> 404 MW-VAL-003)" co_page_unknown
 
 # ---- rate limiter fails open with an alert line when Valkey is down (ticket 50) ----
 # Stops Valkey for a few seconds (the services fall back: the orchestrator's idempotency lock to

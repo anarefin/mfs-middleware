@@ -1,0 +1,39 @@
+{
+  "name": "checkout-v1-session-get",
+  "desc": "Checkout merchant API: read a session (spec 8.2, 9.3, ticket 31) to mw-checkout. hmac-auth (merchant consumer; method, path and Date signed; no body), the consumer name forwarded as X-Mw-Merchant-Id, quota per merchant",
+  "uri": "/checkout/v1/sessions/*",
+  "methods": ["GET"],
+  "plugins": {
+    "hmac-auth": {
+      "allowed_algorithms": ["hmac-sha256"],
+      "clock_skew": 300,
+      "signed_headers": ["@request-target", "date"],
+      "hide_credentials": true
+    },
+    "proxy-rewrite": {
+      "headers": { "set": { "X-Mw-Merchant-Id": "$consumer_name" } }
+    },
+    "limit-count": {
+      "count": 1200,
+      "time_window": 60,
+      "key_type": "var",
+      "key": "consumer_name",
+      "group": "checkout-v1-session-get",
+      "rejected_code": 429,
+      "show_limit_quota_header": true,
+      "policy": "redis",
+      "redis_host": "valkey",
+      "redis_port": 6379,
+      "redis_password": "$env://VALKEY_PASSWORD",
+      "redis_database": 0,
+      "redis_timeout": 1000,
+      "allow_degradation": true
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": { "connect": 5, "send": 10, "read": 10 },
+    "nodes": { "mw-checkout:8080": 1 }
+  }
+}

@@ -10,6 +10,7 @@ networknt = "3.0.8"
 jacoco = "0.8.16"
 shedlock = "7.10.1"
 jsmpp = "3.0.2"
+greenmail = "2.1.15"
 
 [libraries]
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
@@ -39,6 +40,9 @@ shedlock-provider-jdbc-template = { module = "net.javacrumbs.shedlock:shedlock-p
 # SMPP 3.4 client (spec 3, 10.2): jSMPP, the library under camel-smpp.
 jsmpp = { module = "org.jsmpp:jsmpp", version.ref = "jsmpp" }
 
+spring-boot-starter-mail = { module = "org.springframework.boot:spring-boot-starter-mail" }
+angus-mail = { module = "org.eclipse.angus:angus-mail" }
+greenmail-junit5 = { module = "com.icegreen:greenmail-junit5", version.ref = "greenmail" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-boot-starter-webmvc-test" }
 testcontainers = { module = "org.testcontainers:testcontainers" }

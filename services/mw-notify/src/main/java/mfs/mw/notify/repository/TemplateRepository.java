@@ -20,11 +20,11 @@ public class TemplateRepository {
   /** The highest ACTIVE version valid at {@code now}. */
   public Optional<TemplateRecord> findActive(String code, String channel, String locale, Instant now) {
     return jdbc.query(
-            "select code, channel, locale, version, subject, body, sender_id from template"
+            "select code, channel, locale, version, subject, body, sender_id, html_body from template"
                 + " where code = ? and channel = ? and locale = ? and status = 'ACTIVE' and valid_from <= ?"
                 + " order by version desc limit 1",
             (rs, i) -> new TemplateRecord(rs.getString("code"), rs.getString("channel"), rs.getString("locale"),
-                rs.getInt("version"), rs.getString("subject"), rs.getString("body"), rs.getString("sender_id")),
+                rs.getInt("version"), rs.getString("subject"), rs.getString("body"), rs.getString("sender_id"), rs.getString("html_body")),
             code, channel, locale, Timestamp.from(now))
         .stream()
         .findFirst();

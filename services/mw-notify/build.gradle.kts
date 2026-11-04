@@ -48,6 +48,10 @@ dependencies {
 
     // SMPP 3.4 to the SMSC (spec 10.2, 9.2.1): binds per priority, submit_sm, deliver_sm DLRs.
     implementation(libs.jsmpp)
+    // Email over SMTP (spec 10.2): HTML + text, STARTTLS when the server offers it; GreenMail in dev.
+    implementation(libs.spring.boot.starter.mail)
+    // SMTP reply codes (SMTPSendFailedException & co.) to tell transient from permanent failures.
+    implementation(libs.angus.mail)
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.boot.starter.webmvc.test)
@@ -58,6 +62,8 @@ dependencies {
     testImplementation(libs.spring.boot.testcontainers)
     testImplementation(libs.camel.test.spring.junit6)
     testImplementation(libs.json.schema.validator)
+    // In-process SMTP server for the email integration tests.
+    testImplementation(libs.greenmail.junit5)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
