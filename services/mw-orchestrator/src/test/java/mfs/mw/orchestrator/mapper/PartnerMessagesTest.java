@@ -72,6 +72,23 @@ class PartnerMessagesTest {
   }
 
   @Test
+  void everyValidInboundSampleReadsIntoTheOwnType() throws Exception {
+    int read = 0;
+    for (String family : new String[] {"billpay", "telco", "bank", "interop", "compliance"}) {
+      for (Path p : ContractSchemas.samples("events/mw-orchestrator/samples/mw.partner.inbound.v1/" + family, "valid")) {
+        mfs.mw.orchestrator.dto.PartnerInbound in =
+            json.readValue(Files.readString(p), mfs.mw.orchestrator.dto.PartnerInbound.class);
+        assertThat(in.inboundId()).as(p.toString()).isNotBlank();
+        assertThat(in.txnId()).as(p.toString()).isNotBlank();
+        assertThat(in.family()).as(p.toString()).isEqualTo(family);
+        assertThat(in.payload().kind()).as(p.toString()).isNotBlank();
+        read++;
+      }
+    }
+    assertThat(read).isGreaterThanOrEqualTo(5);
+  }
+
+  @Test
   void replyErrorsKeepContractCodesAndReplaceOthers() {
     PartnerReplyMapper mapper = new PartnerReplyMapper();
     ErrorInfo kept = mapper.error(reply("FAILED", "MW-SYS-PARTNER_UNAVAILABLE", true, "gp"));

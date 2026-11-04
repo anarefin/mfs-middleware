@@ -25,7 +25,9 @@ import tools.jackson.databind.json.JsonMapper;
  * mw.partner.request.telco.v1} and answers on {@code mw.partner.reply.v1}. A credit MSISDN ending
  * in {@code 999} is refused ({@code MW-PTR-<PARTNER>-TOPUP_REJECTED}), anything else succeeds. For
  * a credit MSISDN ending in {@code 888} the PAY reply is lost (an adapter crash after hand-over,
- * ticket 16): nothing is answered, and a later STATUS_QUERY reports the top-up as done.
+ * ticket 16): nothing is answered, and a later STATUS_QUERY reports the top-up as done. For one
+ * ending in {@code 777} the PAY is answered PENDING and the success follows as a CALLBACK on
+ * {@code mw.partner.inbound.v1} (ticket 22).
  */
 public final class PartnerStub implements AutoCloseable {
 
@@ -66,6 +68,16 @@ public final class PartnerStub implements AutoCloseable {
         if (lost(req)) {
           continue;
         }
+        if (callbackOnly(req)) {
+          Map<String, Object> pending = answer(req);
+          @SuppressWarnings("unchecked")
+          Map<String, Object> payload = (Map<String, Object>) pending.get("payload");
+          payload.put("outcome", "PENDING");
+          payload.remove("partnerRef");
+          producer.send(new ProducerRecord<>("mw.partner.reply.v1", r.key(), json.writeValueAsString(pending)));
+          producer.send(new ProducerRecord<>("mw.partner.inbound.v1", r.key(), json.writeValueAsString(callback(req))));
+          continue;
+        }
         producer.send(new ProducerRecord<>("mw.partner.reply.v1", r.key(), json.writeValueAsString(answer(req))));
       }
     }
@@ -74,6 +86,25 @@ public final class PartnerStub implements AutoCloseable {
   private static boolean lost(JsonNode req) {
     return "PAY".equals(req.path("payload").path("operation").asString())
         && req.path("payload").path("creditParty").path("id").asString().endsWith("888");
+  }
+
+  private static boolean callbackOnly(JsonNode req) {
+    return "PAY".equals(req.path("payload").path("operation").asString())
+        && req.path("payload").path("creditParty").path("id").asString().endsWith("777");
+  }
+
+  private Map<String, Object> callback(JsonNode req) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("schemaVersion", 1);
+    m.put("family", req.path("family").asString());
+    m.put("inboundId", UUID.randomUUID().toString());
+    m.put("txnId", req.path("txnId").asString());
+    m.put("correlationId", req.path("correlationId").asString());
+    m.put("partnerId", req.path("payload").path("partner").path("partnerId").asString());
+    m.put("partnerRef", "CB-STUB-" + req.path("txnId").asString().substring(0, 8));
+    m.put("receivedAt", Instant.now().toString());
+    m.put("payload", Map.of("kind", "CALLBACK", "outcome", "SUCCESS"));
+    return m;
   }
 
   private Map<String, Object> answer(JsonNode req) {
