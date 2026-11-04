@@ -24,8 +24,14 @@ ENV JAVA_TOOL_OPTIONS="-XX:+UseZGC -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemor
 
 # AOT cache training run: start the context once, then exit. No database or Kafka exists at
 # build time: Flyway is skipped here only (it runs on every real start-up, 16.4); the pool
-# and Kafka clients connect lazily.
-RUN java -XX:AOTCacheOutput=/app/app.aot -Dspring.context.exit=onRefresh \
+# and Kafka clients connect lazily. The core's PIN public key comes from OpenBao at run time and
+# is validated at start-up, so the training run (only) reads a throwaway public key, committed
+# as aot-training-pin-public-key.pem (its private key was discarded; a public key is no secret).
+# It is bind-mounted, never copied: the image sets no key and a real start without the OpenBao
+# value still fails fast.
+RUN --mount=type=bind,source=aot-training-pin-public-key.pem,target=/tmp/aot-pin.pem \
+    MW_USSD_PIN_PUBLIC_KEY="$(cat /tmp/aot-pin.pem)" \
+      java -XX:AOTCacheOutput=/app/app.aot -Dspring.context.exit=onRefresh \
       -Dspring.flyway.enabled=false -jar app.jar > /dev/null
 
 USER 10001:10001
