@@ -55,10 +55,18 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
   /** Endpoint that handles one record and throws on failure, e.g. {@code bean:x?method=y}. */
   protected abstract String handlerUri();
 
+  /**
+   * Endpoint options of the main topic's consumer only, e.g. {@code ?consumersCount=4}; the retry
+   * topics always have one consumer (their hold-back pauses it). Default none.
+   */
+  protected String mainConsumerOptions() {
+    return "";
+  }
+
   @Override
   public void configure() {
     int attempts = retry.attempts();
-    from("kafka:" + topic())
+    from("kafka:" + topic() + mainConsumerOptions())
         .routeId(topic() + ".consume")
         .onException(Exception.class)
         .handled(true)

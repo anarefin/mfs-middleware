@@ -2,6 +2,7 @@ package mfs.mw.core.mock.route;
 
 import java.time.Clock;
 import mfs.mw.core.mock.config.KafkaRetryProperties;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -15,8 +16,18 @@ public class CorePaymentCommandRoute extends RetryTopicRouteBuilder {
 
   public static final String TOPIC = "core.payment.command.v1";
 
-  public CorePaymentCommandRoute(KafkaRetryProperties retry, Clock clock) {
+  private final int consumers;
+
+  /** {@code consumers} = {@code mw.coremock.consumer.count}, as {@link CoreWalletCommandRoute}. */
+  public CorePaymentCommandRoute(
+      KafkaRetryProperties retry, Clock clock, @Value("${mw.coremock.consumer.count:4}") int consumers) {
     super(retry, clock);
+    this.consumers = consumers;
+  }
+
+  @Override
+  protected String mainConsumerOptions() {
+    return "?consumersCount=" + consumers;
   }
 
   @Override

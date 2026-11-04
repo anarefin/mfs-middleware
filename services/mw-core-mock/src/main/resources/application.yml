@@ -35,6 +35,9 @@ spring:
     password: ${DB_PASSWORD:}
     hikari:
       schema: coremock
+      # mw.coremock.consumer.count threads on each of the two command topics, plus the outbox
+      # relay, retry topics and the admin API.
+      maximum-pool-size: 16
   flyway:
     schemas: coremock
 
@@ -134,6 +137,11 @@ management:
 
 mw:
   coremock:
+    consumer:
+      # Consumer threads on each command topic (route/CoreWalletCommandRoute, CorePaymentCommandRoute;
+      # the retry topics keep one). One thread handles ~40 commands/s; the middleware's default bulk
+      # rate (50 children/s, a validate and a post each) needs more than twice that.
+      count: ${MW_COREMOCK_CONSUMERS:4}
     # Rules kept simple and configurable (spec "Core mock"); amounts in minor units (poisha).
     fees:
       P2P: 500
