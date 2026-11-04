@@ -15,9 +15,11 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Seeds the default menu ({@code mw.ussd.seed-menu}, classpath JSON) into {@code ussd.menu} on
- * start-up and activates it for every configured MNO that has no menu yet. Until the admin
- * console edits menus (WP23, maker-checker), this is how a menu gets live; it never changes an
- * existing version or activation. Blank switches it off.
+ * start-up and activates it (go-live now) for every configured MNO that has no menu yet or whose
+ * latest activation is an older version of the same seed menu (a dev stack moves from main v1 to
+ * v2). Until the admin console edits menus (WP23, maker-checker), this is how a menu gets live; it
+ * never changes an existing version or activation, nor replaces another menu. Blank switches it
+ * off.
  */
 @Component
 public class MenuSeeder implements ApplicationRunner {
@@ -58,7 +60,11 @@ public class MenuSeeder implements ApplicationRunner {
           .log("default menu stored");
     }
     for (String mno : props.mno().keySet()) {
-      if (!menus.hasActivation(mno)) {
+      boolean supersede =
+          menus.latestActivation(mno)
+              .map(v -> v.menuId().equals(menu.menuId()) && v.version() < menu.version())
+              .orElse(true);
+      if (supersede) {
         menus.activate(mno, menu.menuId(), menu.version(), clock.instant());
         log.atInfo()
             .addKeyValue("event", "ussd.menu.activated")

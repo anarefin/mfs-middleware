@@ -55,6 +55,19 @@ class MenuRepositoryIT {
   void theSeederMadeTheDefaultMenuLiveForEveryConfiguredMno() {
     for (String mno : new String[] {"gp", "robi", "banglalink", "teletalk"}) {
       assertThat(menus.active(mno, Instant.now()).map(MenuVersion::menuId)).contains("main");
+      assertThat(menus.active(mno, Instant.now()).map(MenuVersion::version)).contains(2);
     }
+  }
+
+  @Test
+  void theLatestActivationIsFoundWhetherOrNotItsGoLiveHasPassed() {
+    String mno = "t" + UUID.randomUUID().toString().substring(0, 8);
+    String id = "m-" + mno;
+    menus.insertIfAbsent(id, 1, TREE.formatted(id, 1));
+    menus.insertIfAbsent(id, 2, TREE.formatted(id, 2));
+    assertThat(menus.latestActivation(mno)).isEmpty();
+    menus.activate(mno, id, 1, Instant.parse("2026-11-01T00:00:00Z"));
+    menus.activate(mno, id, 2, Instant.parse("2099-01-01T00:00:00Z"));
+    assertThat(menus.latestActivation(mno).map(MenuVersion::version)).contains(2);
   }
 }

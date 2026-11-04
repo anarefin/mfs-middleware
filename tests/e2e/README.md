@@ -78,6 +78,10 @@ Only APISIX is published, so every call goes through it:
   English, amounts in taka), "the first USSD screens were:" (one column, `\n` = line break), "the
   USSD session ends with "..."" (prefix of the last screen), "the USSD session is still open on
   "..."". MNO `robi` is on HTTP; `gp` is SMPP (not served over HTTP).
+  Other USSD flows (`features/ussd-flows.feature`, ticket 28): main menu 1 Send Money, 2 Cash Out
+  (agent number), 3 Mobile Recharge (1 own number = the dialling MNO, 2 other number + operator
+  list 1 gp 2 robi 3 banglalink 4 teletalk), 4 Pay Bill (billers sorted by code, 1 DESCO; the
+  amount due is fetched). "the USSD session is still open on a screen ending with "..."".
 - Device binding (`features/device-binding.feature`, `@device`, ticket 29): `support/Devices` gives
   each user one EC P-256 device for the run, bound on first use (`POST /app/v1/devices`, signed),
   its session reopened after 4 idle minutes; `AppApi` sends `X-Device-Id` on every call and signs

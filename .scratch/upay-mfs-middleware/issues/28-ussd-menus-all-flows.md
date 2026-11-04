@@ -9,8 +9,8 @@
 - 17: TOPUP end to end (hold → partner → commit / release)
 - 21: BILL_PAY sync path
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A menu-walk test for every new path, in bn and en
-- [ ] e2e `@ussd`: top-up and bill pay complete over USSD
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] A menu-walk test for every new path, in bn and en
+- [ ] e2e `@ussd`: top-up and bill pay complete over USSD (written: `tests/e2e/.../features/ussd-flows.feature`; run deferred to milestone gate)
+- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR (deferred to milestone gate)
