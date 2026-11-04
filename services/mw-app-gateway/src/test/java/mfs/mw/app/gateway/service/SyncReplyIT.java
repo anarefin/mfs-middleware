@@ -214,6 +214,42 @@ class SyncReplyIT {
     assertThat(body(running).path("status").asString()).isEqualTo("PROCESSING");
   }
 
+  /**
+   * S3: the answer to a repeated key comes after the reply budget, so the 202 carries the txnId
+   * minted for the repeat. That id must not stay RECEIVED for ever: once the duplicate answer
+   * names the stored transaction, GET on it shows the stored transaction, up to its final status.
+   */
+  @Test
+  void aRepeatAnsweredAfterTheBudgetGives202WithAnIdThatReachesTheFinalStatus() throws Exception {
+    String key = key();
+    MvcTestResult first = submit(key, OrchestratorStub.DUPLICATE_SLOW);
+    assertThat(first).hasStatus(202);
+    String stored = body(first).path("txnId").asString();
+
+    MvcTestResult repeat = submit(key, OrchestratorStub.DUPLICATE_SLOW);
+    assertThat(repeat).hasStatus(202);
+    String minted = body(repeat).path("txnId").asString();
+    assertThat(minted).matches(UUID_V7).isNotEqualTo(stored);
+
+    long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+    JsonNode view = null;
+    while (System.nanoTime() < deadline) {
+      MvcTestResult got = mvc.get().uri("/app/v1/transactions/" + minted).with(user(PAYER)).exchange();
+      assertThat(got).hasStatus(200);
+      view = body(got);
+      if ("COMPLETED".equals(view.path("status").asString())) {
+        break;
+      }
+      Thread.sleep(200);
+    }
+    assertThat(view.path("status").asString()).isEqualTo("COMPLETED");
+    assertThat(view.path("txnId").asString()).isEqualTo(stored);
+    assertThat(view.path("coreRef").asString()).isEqualTo("CORE-STUB-1");
+
+    MvcTestResult other = mvc.get().uri("/app/v1/transactions/" + minted).with(user("01711000099")).exchange();
+    assertThat(other).hasStatus(404);
+  }
+
   @Test
   void sameKeyOtherContentIs409() throws Exception {
     MvcTestResult r = submit(key(), OrchestratorStub.IDEM_CONFLICT);

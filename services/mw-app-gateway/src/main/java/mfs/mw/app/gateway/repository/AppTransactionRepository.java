@@ -50,11 +50,39 @@ public class AppTransactionRepository {
         Timestamp.from(at));
   }
 
-  /** The view of {@code txnId} if it belongs to {@code initiatorId}. */
+  /**
+   * Links the txnId minted for a repeated Idempotency-Key to the transaction stored under the key
+   * (the orchestrator's duplicate answer). The row of the repeat is created when the answer
+   * outruns {@link #insertAccepted}, which then leaves it alone; its view is the answer's view of
+   * the stored transaction, shown only while the stored row itself is missing.
+   */
+  public void linkRepeat(
+      UUID requestTxnId, UUID storedTxnId, String initiatorId, String channel, TransactionView storedView,
+      Instant at) {
+    jdbc.update(
+        """
+        INSERT INTO app_transaction (txn_id, initiator_id, channel, status, view, updated_at, stored_txn_id)
+        VALUES (?, ?, ?, ?, ?::jsonb, ?, ?)
+        ON CONFLICT (txn_id) DO UPDATE SET stored_txn_id = excluded.stored_txn_id
+          WHERE app_transaction.initiator_id = excluded.initiator_id
+        """,
+        requestTxnId, initiatorId, channel, storedView.status(), json.writeValueAsString(storedView),
+        Timestamp.from(at), storedTxnId);
+  }
+
+  /**
+   * The view of {@code txnId} if it belongs to {@code initiatorId}; for the txnId of a repeated
+   * request linked by {@link #linkRepeat}, the stored transaction's view.
+   */
   public Optional<TransactionView> find(UUID txnId, String initiatorId) {
     return jdbc
         .query(
-            "SELECT view::text FROM app_transaction WHERE txn_id = ? AND initiator_id = ?",
+            """
+            SELECT coalesce(s.view, a.view)::text
+              FROM app_transaction a
+              LEFT JOIN app_transaction s ON s.txn_id = a.stored_txn_id AND s.initiator_id = a.initiator_id
+             WHERE a.txn_id = ? AND a.initiator_id = ?
+            """,
             (rs, n) -> json.readValue(rs.getString(1), TransactionView.class),
             txnId, initiatorId)
         .stream()

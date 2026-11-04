@@ -88,8 +88,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   STORED txnId.
 - Status view (`GET`): table `app_transaction` (own schema `app_gateway`), the latest status of
   every app-channel transaction, kept by `route/StatusProjectionRoute` (shared group
-  `mw-app-gateway`, retry topics + DLQ) and seeded with RECEIVED at submit. Duplicate answers are
-  not projected. Only the initiator's wallet can read a row; anything else is 404 `MW-VAL-003`.
+  `mw-app-gateway`, retry topics + DLQ) and seeded with RECEIVED at submit. A duplicate answer is
+  not projected as a status; it links the txnId minted for the repeat (`attributes.requestTxnId`)
+  to the stored txnId (`app_transaction.stored_txn_id`, V5), so when the answer comes after the
+  reply budget the 202's txnId still resolves: GET on it returns the stored transaction's view
+  (its txnId, up to its final status), 404 for anyone else (S3). Only the initiator's wallet can read a row; anything else is 404 `MW-VAL-003`.
 - Init (`mw-app-gateway-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
   `app_gateway_rw`, schema `app_gateway`, `secret/mw-app-gateway` (DB password), AppRole; retries
   the database step when another init races it on a fresh stack, and waits for OpenBao's
