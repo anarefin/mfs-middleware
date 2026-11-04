@@ -34,7 +34,10 @@ class CoreEventMapperTest {
     "HoldCommitted,CommitAcknowledged",
     "HoldReleased,ReleaseAcknowledged",
     "TransactionReversed,ReversalAcknowledged",
-    "ReversalRejected,ReversalFailed"
+    "ReversalRejected,ReversalFailed",
+    // CreditWallet is the commit step of inbound money (ADD_MONEY_BANK, ticket 23)
+    "WalletCredited,CommitAcknowledged",
+    "CreditRejected,CommitRefused"
   })
   void coreResultsBecomeSagaEvents(String eventType, String expected) {
     Optional<SagaEvent> got = mapper.toSagaEvent(event(eventType, "SUCCESS", null, "{}"), false);
@@ -48,6 +51,8 @@ class CoreEventMapperTest {
         .contains(new Validated(true));
     assertThat(mapper.toSagaEvent(event("TransactionValidated", "SUCCESS", null, "{}"), false))
         .contains(new Validated(false));
+    assertThat(mapper.toSagaEvent(event("TransactionValidated", "SUCCESS", null, "{}"), false, true))
+        .contains(new Validated(false, true));
   }
 
   @Test

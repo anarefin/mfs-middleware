@@ -64,6 +64,25 @@ class CoreCommandMapperTest {
   }
 
   @Test
+  void creditWalletIsAValidCommandForTheCreditPartyWithoutPin() {
+    TransactionRecord addMoney =
+        new RequestMapper(json)
+            .toRecord(TestData.addMoneyBank(TestData.txnId(), "key-c", 50_000, "1234567890123"), null, TestData.NOW);
+
+    CoreCommand c = mapper.credit(addMoney, TestData.NOW, Duration.ofSeconds(60));
+
+    assertThat(c.commandType()).isEqualTo("CreditWallet");
+    assertThat(c.commandId()).isEqualTo(addMoney.txnId() + ":credit");
+    var payload = json.valueToTree(c).path("payload");
+    assertThat(payload.path("txnType").asString()).isEqualTo("ADD_MONEY_BANK");
+    assertThat(payload.path("creditParty").path("id").asString()).isEqualTo("01711000001");
+    assertThat(payload.path("debitParty").path("type").asString()).isEqualTo("BANK_ACCOUNT");
+    assertThat(payload.path("amount").path("valueMinor").asLong()).isEqualTo(50_000);
+    assertThat(json.writeValueAsString(c)).doesNotContain("encryptedPin", "ZmFrZS1jaXBoZXJ0ZXh0");
+    assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(c))).isEmpty();
+  }
+
+  @Test
   void reverseTransactionNeedsAReversalTxnId() {
     org.assertj.core.api.Assertions.assertThatThrownBy(() -> mapper.reverse(rec, TestData.NOW, Duration.ofSeconds(60)))
         .isInstanceOf(IllegalStateException.class);

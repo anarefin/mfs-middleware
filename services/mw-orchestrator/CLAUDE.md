@@ -5,7 +5,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 ## Responsibilities
 
-- Runs P2P, CASH_IN, CASH_OUT, TOPUP and BILL_PAY transactions, and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14, WP15 part).
+- Runs P2P, CASH_IN, CASH_OUT, TOPUP, BILL_PAY and ADD_MONEY_BANK transactions, and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14, WP15 part).
   Consumes `mw.txn.request.v1` (`route/TxnRequestRoute`), the core results on
   `core.wallet.event.v1` (`route/CoreWalletEventRoute`) and partner adapter answers on
   `mw.partner.reply.v1` (`route/PartnerReplyRoute`) and partner callbacks on `mw.partner.inbound.v1`
@@ -24,7 +24,24 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `PartnerCall` billpay on `mw.partner.request.billpay.v1` (partner `{partnerId: <aggregator>,
   productCode: BILL, billerCode}` and credit party `BILLER_ACCOUNT` as the app gateway sets them;
   same 30 s partner deadline, TSQ on UNKNOWN and NOT_FOUND rules as TOPUP; the sync bill fetch
-  never reaches the orchestrator: mw-app-gateway asks mw-adapter-billpay over HTTP). QUERY is allowed for every flow that holds,
+  never reaches the orchestrator: mw-app-gateway asks mw-adapter-billpay over HTTP).
+  `AddMoneyBankFlow` (ticket 23, ADD_MONEY_BANK / C2W, WP16) is inbound money: `needsHold()` false,
+  `creditsWallet()` true, steps VALIDATE + CALL_PARTNER + COMMIT, `PartnerCall` bank on
+  `mw.partner.request.bank.v1` (partner `{partnerId: c2wbank, productCode: C2W}`, debit party
+  `BANK_ACCOUNT`, credit party the customer's WALLET, as the app gateway sets them). Path:
+  VALIDATING -`Validated(needsHold=false, callPartner=true)`-> PARTNER_PENDING (PAY = debit the
+  account; no hold) -> SUCCESS (reply or, usually, the bank's CALLBACK) -> COMMITTING, whose commit
+  step for this flow is CreditWallet (`<txnId>:credit`, payload txnType, debit and credit party,
+  amount, no PIN; resent with the same commandId every `retry-timeout` until answered) ->
+  WalletCredited COMPLETED; CreditRejected -> MANUAL_REVIEW `MW-CORE-<reason>` (the bank already
+  collected the money). A refusal (`PartnerFailed(held=false)`) goes PARTNER_PENDING -> FAILED with
+  the partner's error, nothing to release; UNKNOWN / no callback within 30 s -> UNKNOWN -> partner
+  STATUS_QUERY: SUCCESS -> COMMITTING (credit), FAILED / NOT_FOUND -> FAILED. A late or replayed
+  callback follows the ticket 22 rules (replays are dropped by the inbox, a contradicting one is
+  `txn.outcome.conflict`). Deviations from the 7.2 table, documented here: VALIDATING ->
+  PARTNER_PENDING and PARTNER_PENDING -> FAILED (no hold), and COMMITTING sends CreditWallet for
+  inbound money (spec 6.3 lists CreditWallet for "add money, C2W"; POSTING is "no partner").
+  QUERY is allowed for every flow that holds,
   INQUIRE (status inquiry of an UNKNOWN outcome) for every flow.
   A new flow implements `txnType()`, `needsHold()` and, with a partner leg, `partnerCall()`.
   `SagaEngine.perform` runs the step behind a transition's effect only when the flow has it
@@ -68,8 +85,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `mw_manual_review_open` (`service/BacklogMetrics`, count per scrape). MANUAL_REVIEW arms no timer
   (the daily ageing alert is not built); ManualCommit / ManualRelease come with the admin API.
 - Partner callbacks (ticket 22, spec 11.2, `service/PartnerInboundService`, own type
-  `dto/PartnerInbound`): kind CALLBACK only (REMITTANCE / NPSB_CREDIT logged
-  `partner.inbound.unsupported` and dropped until ticket 23). Inbox key `inboundId` (the adapter
+  `dto/PartnerInbound`): kind CALLBACK only, families telco/billpay/bank (REMITTANCE / NPSB_CREDIT logged
+  `partner.inbound.unsupported` and dropped; C2W needs none: its confirmation is a CALLBACK of the customer's own request, decision in mw-adapter-bank's CLAUDE.md). Inbox key `inboundId` (the adapter
   derives it from partner, reference and outcome, so a duplicate callback is dropped). Ownership
   first (security review): applied only when the outcome is SUCCESS/FAILED/PENDING, the flow has
   a partner leg, `partnerId` equals the transaction's partner (`SagaEngine.partnerId`), `family`
@@ -139,7 +156,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   ReleaseHold / ReverseTransaction (same commandId; REVERSING gives up after `reversing-timeout`),
   UNKNOWN on the inquiry schedule (above). MANUAL_REVIEW and terminal states arm no timer. A late
   core reply after a timeout is ignored (state machine refuses it).
-- `commandId` = `<txnId>:validate` / `:post` / `:hold` / `:commit` / `:release`
+- `commandId` = `<txnId>:validate` / `:post` / `:hold` / `:commit` / `:release` / `:credit`
   (QueryTransaction: above; ReverseTransaction: `<reversalTxnId>:reverse`). `expiresAt` = issuedAt + `command-ttl` (60 s).
   All wallet commands go to `core.wallet.command.v1`; nothing is sent on `core.payment.*` yet.
 - Core reason -> error: `MW-CORE-<reasonCode>` (same pattern as the status contract), message
@@ -190,7 +207,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - `exception/`: `MwException`, `ErrorCategory` (namespace -> HTTP status, retryable),
   `ErrorCodes`, `GlobalExceptionHandler` building `dto/ErrorEnvelope`. Logs show route
   templates, never raw URIs.
-- `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3; mark every personal field.
+- `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3; mark every personal field. Party ids are
+  `PARTY_ID` (ticket 23): masked by the party's `type` (wallet/MSISDN as an MSISDN, a bank account or any
+  other type last 4 only).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.

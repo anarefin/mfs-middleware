@@ -75,7 +75,8 @@ public class CoreEventService {
       return;
     }
     boolean needsHold = flows.find(rec.request().txnType()).map(f -> f.needsHold()).orElse(false);
-    Optional<SagaEvent> saga = mapper.toSagaEvent(event, needsHold);
+    boolean inbound = flows.find(rec.request().txnType()).map(f -> f.creditsWallet()).orElse(false);
+    Optional<SagaEvent> saga = mapper.toSagaEvent(event, needsHold, inbound);
     if (saga.isEmpty()) {
       drop(event, "core.event.unmapped", "core event type not used by any wired flow");
       return;

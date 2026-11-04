@@ -120,7 +120,7 @@ public class PartnerInboundService {
   }
 
   private void resolvePending(TransactionRecord rec, PartnerReply answer) {
-    Optional<SagaEvent> saga = mapper.toSagaEvent(answer);
+    Optional<SagaEvent> saga = mapper.toSagaEvent(answer, InquiryService.holds(flows, rec));
     if (saga.isEmpty()) {
       log.atInfo()
           .addKeyValue("event", "partner.callback.pending")

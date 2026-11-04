@@ -67,6 +67,31 @@ public final class TestData {
   }
 
   /**
+   * An ADD_MONEY_BANK (C2W) of {@code amountMinor} from bank account {@code account} at bank
+   * c2wbank into customer wallet 01711000001, authorised with the wallet's PIN (ticket 23).
+   */
+  public static TxnRequest addMoneyBank(String txnId, String idemKey, long amountMinor, String account) {
+    return new TxnRequest(
+        1,
+        txnId,
+        idemKey,
+        "corr-" + txnId.substring(0, 8),
+        "CUSTOMER_APP",
+        "ADD_MONEY_BANK",
+        new Party("MSISDN", "01711000001", null, null),
+        new Party("BANK_ACCOUNT", account, null, null),
+        new Party("WALLET", "01711000001", null, "CUSTOMER"),
+        Amount.bdt(amountMinor),
+        new PartnerRef("c2wbank", "C2W", null),
+        null,
+        new EncryptedPin("core-pin-test-1", "ZmFrZS1jaXBoZXJ0ZXh0"),
+        "en",
+        null,
+        null,
+        NOW);
+  }
+
+  /**
    * A REVERSAL of {@code originalTxnId} asked by operations (channel SYSTEM): the parties are the
    * original P2P's, swapped; no PIN.
    */
