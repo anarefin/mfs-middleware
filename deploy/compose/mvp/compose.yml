@@ -13,3 +13,6 @@ include:
   - path: ../platform/compose.yml
   # Module compose files are added here as the modules land, e.g.
   # - path: ../../../services/mw-orchestrator/compose.yml
+  # A module that needs platform credentials (POSTGRES_PASSWORD...) also takes the generated env.
+  - path: ../../../services/mw-core-mock/compose.yml
+    env_file: ../platform/.env

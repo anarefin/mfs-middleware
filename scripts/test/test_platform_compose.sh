@@ -19,6 +19,15 @@ copy_deploy() {
   [ -d deploy ] && return 0
   cp -R "$REPO_DIR/deploy" deploy
   rm -f deploy/compose/platform/.env
+  # the MVP project includes module compose files (with the platform .env as their env_file):
+  # copy those too, and an empty .env so the include resolves without developer secrets
+  local f
+  for f in "$REPO_DIR"/services/*/compose.yml; do
+    [ -f "$f" ] || continue
+    mkdir -p "services/$(basename "$(dirname "$f")")"
+    cp "$f" "services/$(basename "$(dirname "$f")")/compose.yml"
+  done
+  : >deploy/compose/platform/.env
 }
 
 # compose_json: the resolved MVP project as JSON (default env, so MW_HTTPS_PORT=443),
@@ -83,7 +92,8 @@ test_every_container_restarts_has_limits_log_rotation_and_a_healthcheck() {
 
 test_platform_images_are_pinned_by_digest() {
   local bad
-  bad="$(compose_json | jq -r '.services | to_entries[] | select(.value.image | test("@sha256:[0-9a-f]{64}$") | not) | .key')"
+  # platform services only: mw-* module images are built from the repo, not pulled
+  bad="$(compose_json | jq -r '.services | to_entries[] | select(.key | startswith("mw-") | not) | select(.value.image | test("@sha256:[0-9a-f]{64}$") | not) | .key')"
   [ -z "$bad" ] || fail "not pinned by digest: $bad"
 }
 
@@ -309,8 +319,9 @@ test_one_shot_services_are_labelled_and_up_has_no_list() {
   # the services that never restart and have no healthcheck.
   local j labelled noRestart
   j="$(compose_json)"
-  labelled="$(printf '%s' "$j" | jq -r '[.services | to_entries[] | select(.value.labels["mw.oneshot"] == "true") | .key] | sort | join(" ")')"
-  noRestart="$(printf '%s' "$j" | jq -r '[.services | to_entries[] | select(.value.restart == "no" and .value.healthcheck == null) | .key] | sort | join(" ")')"
+  # platform services only: module one-shots (mw-*) carry the label too but are not in ONE_SHOT
+  labelled="$(printf '%s' "$j" | jq -r '[.services | to_entries[] | select(.key | startswith("mw-") | not) | select(.value.labels["mw.oneshot"] == "true") | .key] | sort | join(" ")')"
+  noRestart="$(printf '%s' "$j" | jq -r '[.services | to_entries[] | select(.key | startswith("mw-") | not) | select(.value.restart == "no" and .value.healthcheck == null) | .key] | sort | join(" ")')"
   [ "$labelled" = "$(printf '%s\n' $ONE_SHOT | sort | tr '\n' ' ' | sed 's/ $//')" ] || fail "mw.oneshot=true on '$labelled', expected '$ONE_SHOT'"
   [ "$labelled" = "$noRestart" ] || fail "labelled one-shots '$labelled' != restart-no services without healthcheck '$noRestart'"
   grep -q 'MW_UP_ONESHOT' "$REPO_DIR/scripts/up.sh" && fail "up.sh still has a hard-coded one-shot list"
