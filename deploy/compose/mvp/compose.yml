@@ -16,3 +16,5 @@ include:
   # A module that needs platform credentials (POSTGRES_PASSWORD...) also takes the generated env.
   - path: ../../../services/mw-core-mock/compose.yml
     env_file: ../platform/.env
+  - path: ../../../services/mw-simulators/compose.yml
+  - path: ../../../services/mw-adapter-telco/compose.yml

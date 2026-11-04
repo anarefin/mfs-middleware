@@ -1,0 +1,59 @@
+# This service only (spec 20.2). Included by deploy/compose/<env>/compose.yml, or run on
+# its own with `make up M=mw-simulators` once the platform project is up.
+#
+# The zone network is named after the platform project (default `mw`, override with
+# COMPOSE_PROJECT_NAME) so the same definition works both when included in the
+# environment project and when started alone. Join only the zones this service needs
+# (18.1): `app` for Kafka, Valkey, OpenBao and other services, `data` for PostgreSQL.
+# (The platform puts OpenBao on `app` and `ops`; services reach it over `app`.)
+networks:
+  app:
+    name: ${COMPOSE_PROJECT_NAME:-mw}_app
+  data:
+    name: ${COMPOSE_PROJECT_NAME:-mw}_data
+
+services:
+  mw-simulators:
+    image: ${MW_SIMULATORS_IMAGE:-mw-simulators:dev}
+    build: .
+    restart: unless-stopped
+    networks: [app, data]
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      MW_ENV: ${MW_ENV:-local}
+      # Secrets come from OpenBao via Spring Cloud Vault (18.4); no secret values here.
+      VAULT_ENABLED: ${VAULT_ENABLED:-false}
+      VAULT_ADDR: ${VAULT_ADDR:-http://openbao:8200}
+      # Own schema in the shared PostgreSQL (16.2); credentials from OpenBao, not here.
+      DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/mw}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+    healthcheck:
+      # Readiness (20.1); the image has bash but no curl or wget.
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/8080 &&
+          printf 'GET /actuator/health/readiness HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"status":"UP"' <&3
+      interval: 10s
+      timeout: 3s
+      start_period: 30s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -6,9 +6,9 @@
 
 - 06: Template part 2b: outbox, inbox, conformance suite
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Each OCS scenario (success, business failure, timeout, 5xx-after-send, unknown code, malformed) can be reached by a test
-- [ ] Status inquiry returns the real outcome of an earlier top-up, including one that timed out
-- [ ] Recorded requests can be queried and reset through the control API
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] Each OCS scenario (success, business failure, timeout, 5xx-after-send, unknown code, malformed) can be reached by a test
+- [x] Status inquiry returns the real outcome of an earlier top-up, including one that timed out
+- [x] Recorded requests can be queried and reset through the control API
+- [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR

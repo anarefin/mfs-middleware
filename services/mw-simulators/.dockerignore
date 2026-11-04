@@ -1,0 +1,3 @@
+*
+!build/libs/*.jar
+!build/reports/cyclonedx-direct/bom.json
