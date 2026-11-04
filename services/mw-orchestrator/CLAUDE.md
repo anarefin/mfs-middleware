@@ -5,7 +5,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 ## Responsibilities
 
-- Runs P2P and TOPUP transactions, and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14).
+- Runs P2P, CASH_IN, CASH_OUT and TOPUP transactions, and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14).
   Consumes `mw.txn.request.v1` (`route/TxnRequestRoute`), the core results on
   `core.wallet.event.v1` (`route/CoreWalletEventRoute`) and partner adapter answers on
   `mw.partner.reply.v1` (`route/PartnerReplyRoute`), all with retry topics and DLQ. Publishes every
@@ -17,7 +17,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `InvalidTransitionException`). All transitions of the 7.2 table are modelled and unit-tested;
   flows (`Flow`, one per `txnType`, found by `FlowRegistry`) are sets of reusable `Step`s
   (VALIDATE, POST, HOLD, CALL_PARTNER, COMMIT, RELEASE, REVERSE, QUERY; `Step.of(effect)`).
-  `P2pFlow` = validate + post. `TopupFlow` = validate + hold + callPartner (`PartnerCall` telco,
+  `P2pFlow`, `CashInFlow`, `CashOutFlow` = validate + post (parties as the channel set them:
+  CASH_IN agent -> customer, CASH_OUT customer -> agent; the core enforces the wallet types). `TopupFlow` = validate + hold + callPartner (`PartnerCall` telco,
   `mw.partner.request.telco.v1`) + commit + release; QUERY is allowed for every flow that holds.
   A new flow implements `txnType()`, `needsHold()` and, with a partner leg, `partnerCall()`.
   `SagaEngine.perform` runs the step behind a transition's effect only when the flow has it

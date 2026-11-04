@@ -152,6 +152,12 @@ mw:
       agent-balance-minor: 10000000
       merchant-balance-minor: 0
       org-balance-minor: 100000000
+    # Wallet types per txnType (debit -> credit); others unrestricted. INVALID_COUNTERPARTY.
+    wallet-types:
+      CASH_IN: { debit: AGENT, credit: CUSTOMER }
+      CASH_OUT: { debit: CUSTOMER, credit: AGENT }
+    # Consecutive wrong PINs that lock a wallet (spec 9.1); a correct PIN resets the count.
+    pin-max-failures: 5
     pin:
       key-id: core-pin-dev-1
       # PKCS#8 private key; from OpenBao (secret/mw-core-mock, key mw.coremock.pin.private-key).

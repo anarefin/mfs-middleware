@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Test;
 class TransactionServiceTest {
 
   static final AppUser USER = new AppUser("01711000001", "CUSTOMER_APP", "CUSTOMER");
+  static final AppUser AGENT = new AppUser("01811000001", "AGENT_APP", "AGENT");
 
   final EventPublisher publisher = mock(EventPublisher.class);
   final AppTransactionRepository repo = mock(AppTransactionRepository.class);
@@ -41,7 +42,12 @@ class TransactionServiceTest {
           publisher, waiters, new RequestMapper(), repo,
           new AppGatewayProperties(
               Duration.ofMillis(50), "gw-unit", "mw.txn.request.v1", "mw.txn.status.v1",
-              List.of("P2P"), List.of("reference"), new AppGatewayProperties.Jwt("http://kc/certs", "/realms/customers")),
+              List.of("P2P", "CASH_IN", "CASH_OUT", "BILL_PAY"), List.of("reference"),
+              new AppGatewayProperties.Jwt("http://kc/certs", "/realms/customers"),
+              Map.of(
+                  "P2P", List.of("CUSTOMER"),
+                  "CASH_IN", List.of("AGENT"),
+                  "CASH_OUT", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC));
 
   static TransactionRequest body(String txnType) {
@@ -74,7 +80,8 @@ class TransactionServiceTest {
           publisher, waiters, new RequestMapper(), repo,
           new AppGatewayProperties(
               Duration.ofMillis(50), "gw-unit", "mw.txn.request.v1", "mw.txn.status.v1",
-              List.of("P2P", "TOPUP"), List.of("reference"), new AppGatewayProperties.Jwt("http://kc/certs", "/realms/customers")),
+              List.of("P2P", "TOPUP"), List.of("reference"), new AppGatewayProperties.Jwt("http://kc/certs", "/realms/customers"),
+              Map.of("P2P", List.of("CUSTOMER"), "TOPUP", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC));
 
   static TransactionRequest flow(String txnType, String creditType, TransactionRequest.Partner partner) {
@@ -116,10 +123,86 @@ class TransactionServiceTest {
   }
 
   @Test
+  void aSupportedTypeWithoutARoleEntryIsRefusedForEveryRole() {
+    for (AppUser user : List.of(USER, AGENT)) {
+      assertThatThrownBy(() -> service.submit(user, "key", body("BILL_PAY")))
+          .as(user.walletType())
+          .isInstanceOfSatisfying(
+              MwException.class,
+              e -> {
+                assertThat(e.code()).isEqualTo("MW-AUTH-002");
+                assertThat(e.status().value()).isEqualTo(403);
+              });
+    }
+    verifyNoInteractions(publisher, repo);
+  }
+
+  @Test
   void unsupportedTxnTypeIsMwVal010AndNothingIsPublished() {
-    assertThatThrownBy(() -> service.submit(USER, "key", body("CASH_OUT")))
+    assertThatThrownBy(() -> service.submit(USER, "key", body("ATM_CASH_OUT")))
         .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-VAL-010"));
     verifyNoInteractions(publisher, repo);
+  }
+
+  @Test
+  void aCustomerMayNotCashInAndAnAgentMayNotCashOut() {
+    for (var c : List.of(Map.entry(USER, "CASH_IN"), Map.entry(AGENT, "CASH_OUT"))) {
+      assertThatThrownBy(() -> service.submit(c.getKey(), "key", body(c.getValue())))
+          .as(c.getValue())
+          .isInstanceOfSatisfying(
+              MwException.class,
+              e -> {
+                assertThat(e.code()).isEqualTo("MW-AUTH-002");
+                assertThat(e.status().value()).isEqualTo(403);
+              });
+    }
+    verifyNoInteractions(publisher, repo);
+    assertThat(waiters.size()).isZero();
+  }
+
+  static TransactionRequest bodyTo(String txnType, String counterparty) {
+    return new TransactionRequest(
+        txnType, new TransactionRequest.CounterParty(null, counterparty), new Amount(100L, "BDT"),
+        new EncryptedPin("k", "c"), null, null);
+  }
+
+  @Test
+  void theCounterpartyMayNotBeTheInitiatorsOwnWallet() {
+    for (var c : List.of(
+        Map.entry(AGENT, "CASH_IN"), Map.entry(USER, "CASH_OUT"), Map.entry(USER, "P2P"))) {
+      String self = "+880" + c.getKey().msisdn().substring(1);
+      assertThatThrownBy(() -> service.submit(c.getKey(), "key", bodyTo(c.getValue(), self)))
+          .as(c.getValue())
+          .isInstanceOfSatisfying(
+              MwException.class,
+              e -> {
+                assertThat(e.code()).isEqualTo("MW-VAL-012");
+                assertThat(e.status().value()).isEqualTo(400);
+                assertThat(e.details()).extracting(d -> d.field()).containsExactly("creditParty.id");
+              });
+    }
+    verifyNoInteractions(publisher, repo);
+  }
+
+  @Test
+  void anAgentMayNotSendP2p() {
+    assertThatThrownBy(() -> service.submit(AGENT, "key", body("P2P")))
+        .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-AUTH-002"));
+    verifyNoInteractions(publisher, repo);
+  }
+
+  @Test
+  void anAgentCashInIsPublishedFromTheAgentChannel() {
+    var result = service.submit(AGENT, "key", body("CASH_IN"));
+    assertThat(result.done()).isFalse();
+    var sent = org.mockito.ArgumentCaptor.forClass(Object.class);
+    verify(publisher).publish(anyString(), anyString(), any(), sent.capture(), anyMap());
+    var req = (mfs.mw.app.gateway.dto.TxnRequest) sent.getValue();
+    assertThat(req.channel()).isEqualTo("AGENT_APP");
+    assertThat(req.txnType()).isEqualTo("CASH_IN");
+    assertThat(req.initiator().id()).isEqualTo("01811000001");
+    verify(repo).insertAccepted(org.mockito.ArgumentMatchers.eq("01811000001"),
+        org.mockito.ArgumentMatchers.eq("AGENT_APP"), any(), any());
   }
 
   @Test

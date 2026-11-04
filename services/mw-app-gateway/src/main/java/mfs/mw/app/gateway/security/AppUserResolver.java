@@ -13,8 +13,9 @@ import org.springframework.stereotype.Component;
 /**
  * Turns a validated Keycloak token into the {@link AppUser}: the wallet is the {@code msisdn}
  * claim (user attribute {@code msisdn}, mapped by the realm's {@code mw-app} client), the channel
- * follows the realm role. Only the {@code customer} role is served so far; agent and merchant
- * apps come with spec WP20.
+ * follows the realm role: {@code customer} is the customer app, {@code agent} the agent app
+ * (spec WP20; which role may initiate which {@code txnType} is checked at submit). Other roles
+ * (merchant) are not served yet.
  */
 @Component
 public class AppUserResolver {
@@ -26,10 +27,14 @@ public class AppUserResolver {
     if (msisdn == null) {
       throw forbidden("Token carries no wallet");
     }
-    if (!realmRoles(jwt).contains("customer")) {
-      throw forbidden("This app role cannot use this operation");
+    Collection<?> roles = realmRoles(jwt);
+    if (roles.contains("customer")) {
+      return new AppUser(msisdn, "CUSTOMER_APP", "CUSTOMER");
     }
-    return new AppUser(msisdn, "CUSTOMER_APP", "CUSTOMER");
+    if (roles.contains("agent")) {
+      return new AppUser(msisdn, "AGENT_APP", "AGENT");
+    }
+    throw forbidden("This app role cannot use this operation");
   }
 
   private static Collection<?> realmRoles(Jwt jwt) {

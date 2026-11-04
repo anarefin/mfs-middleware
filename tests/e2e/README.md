@@ -6,6 +6,7 @@ It runs on the host against a running MVP stack and talks to it over the network
 ```
 make up                       # the stack (fresh: make down DOWN_ARGS=-v first)
 make e2e TAGS=@p2p            # every @p2p scenario
+make e2e TAGS=@cash           # agent01 cash-in, customer01 cash-out to agent01
 make e2e M=mw-audit-dw TAGS=@p2p   # @mw-audit-dw and (@p2p)
 ```
 
@@ -44,7 +45,8 @@ Only APISIX is published, so every call goes through it:
 - `support/Keycloak.customerToken(user)`; `support/AuditTrail.rowsOfTxn` / `verifyChain`;
   `support/Waits.until` for anything asynchronous.
 - Steps (`steps/`, one `ScenarioState` per scenario via PicoContainer): sign in, send P2P,
-  status/error/txnId assertions, "the app shows the transaction as X", balances noted / changed
+  `<user> submits <TYPE> of <n> poisha with counterparty <msisdn> and PIN "<pin>"` (any type
+  whose body is the plain request), status/error/txnId assertions, "the app shows the transaction as X", balances noted / changed
   by / unchanged, audit states and chain. Add flow steps next to them; keep step text generic.
 - Stability rule: never rely on leftover state. Fresh Idempotency-Key per request, balances
   compared before/after (never absolute), amounts small (seeded customers hold 10,000 BDT with a

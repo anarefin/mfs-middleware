@@ -36,6 +36,15 @@ public class AppSteps {
     submit(user, state.idempotencyKey, AppApi.request("P2P", credit, amountMinor, pin));
   }
 
+  /**
+   * Any txnType whose body is the plain request (P2P, CASH_IN, CASH_OUT): the counterparty is the
+   * body's {@code creditParty} wallet, the payee (an agent for CASH_OUT).
+   */
+  @When("{word} submits {word} of {long} poisha with counterparty {word} and PIN {string}")
+  public void submits(String user, String txnType, long amountMinor, String counterparty, String pin) {
+    submit(user, AppApi.newIdempotencyKey(), AppApi.request(txnType, counterparty, amountMinor, pin));
+  }
+
   @When("{word} tops up {long} poisha {word} {word} airtime on {word} with PIN {string}")
   public void topsUp(String user, long amountMinor, String operator, String product, String msisdn, String pin) {
     ObjectNode body = AppApi.request("TOPUP", msisdn, amountMinor, pin);

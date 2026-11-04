@@ -5,6 +5,8 @@ enum Reason {
   WALLET_NOT_FOUND("Debit wallet not found"),
   CREDIT_WALLET_NOT_FOUND("Credit wallet not found"),
   ACCOUNT_BLOCKED("Debit wallet is not active"),
+  ACCOUNT_LOCKED("Debit wallet is locked after too many wrong PINs"),
+  INVALID_COUNTERPARTY("Wallet types do not fit the transaction type"),
   CREDIT_ACCOUNT_BLOCKED("Credit wallet is not active"),
   SAME_WALLET("Debit and credit wallet are the same"),
   INVALID_PIN("Wrong PIN"),

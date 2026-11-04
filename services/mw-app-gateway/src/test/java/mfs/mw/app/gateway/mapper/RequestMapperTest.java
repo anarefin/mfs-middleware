@@ -29,8 +29,12 @@ class RequestMapperTest {
   }
 
   TransactionRequest body(String payee, Map<String, String> attributes) {
+    return body("P2P", payee, attributes);
+  }
+
+  TransactionRequest body(String txnType, String payee, Map<String, String> attributes) {
     return new TransactionRequest(
-        "P2P",
+        txnType,
         new TransactionRequest.CounterParty(null, payee),
         new Amount(12_345L, "BDT"),
         new EncryptedPin("core-pin-1", "b3BhcXVlLWNpcGhlcnRleHQ="),
@@ -56,6 +60,44 @@ class RequestMapperTest {
     assertThat(tree.path("encryptedPin").path("ciphertext").asString()).isEqualTo("b3BhcXVlLWNpcGhlcnRleHQ=");
     assertThat(tree.path("attributes").path("reference").asString()).isEqualTo("lunch");
     assertThat(tree.path("requestedAt").asString()).isEqualTo("2026-11-04T06:00:00Z");
+  }
+
+  static final AppUser AGENT = new AppUser("01811000001", "AGENT_APP", "AGENT");
+
+  JsonNode validRequest(TxnRequest req) {
+    JsonNode tree = JSON.valueToTree(req);
+    assertThat(ContractSchemas.schema("events/mw-orchestrator/mw.txn.request.v1.schema.json").validate(tree))
+        .isEmpty();
+    return tree;
+  }
+
+  @Test
+  void cashInDebitsTheAgentAndCreditsTheCustomer() {
+    JsonNode tree =
+        validRequest(
+            mapper.toRequest(AGENT, "key-1", body("CASH_IN", "8801711000002", null), TXN_ID, "corr-1", NOW));
+    assertThat(tree.path("channel").asString()).isEqualTo("AGENT_APP");
+    assertThat(tree.path("initiator").path("id").asString()).isEqualTo("01811000001");
+    assertThat(tree.path("debitParty").path("id").asString()).isEqualTo("01811000001");
+    assertThat(tree.path("debitParty").path("walletType").asString()).isEqualTo("AGENT");
+    assertThat(tree.path("creditParty").path("id").asString()).isEqualTo("01711000002");
+    assertThat(tree.path("creditParty").path("walletType").asString()).isEqualTo("CUSTOMER");
+  }
+
+  @Test
+  void cashOutDebitsTheCustomerFromTheTokenAndPaysTheAgentNamedInTheBody() {
+    JsonNode tree =
+        validRequest(
+            mapper.toRequest(
+                new AppUser("01711000002", "CUSTOMER_APP", "CUSTOMER"), "key-1",
+                body("CASH_OUT", "+8801811000001", null), TXN_ID, "corr-1", NOW));
+    assertThat(tree.path("channel").asString()).isEqualTo("CUSTOMER_APP");
+    assertThat(tree.path("encryptedPin").path("ciphertext").asString()).isEqualTo("b3BhcXVlLWNpcGhlcnRleHQ=");
+    assertThat(tree.path("initiator").path("id").asString()).isEqualTo("01711000002");
+    assertThat(tree.path("debitParty").path("id").asString()).isEqualTo("01711000002");
+    assertThat(tree.path("debitParty").path("walletType").asString()).isEqualTo("CUSTOMER");
+    assertThat(tree.path("creditParty").path("id").asString()).isEqualTo("01811000001");
+    assertThat(tree.path("creditParty").path("walletType").asString()).isEqualTo("AGENT");
   }
 
   @Test
