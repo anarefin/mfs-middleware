@@ -48,7 +48,7 @@ class JsonLoggingTest {
     String logSomething() {
       log.atInfo()
           .addKeyValue("event", "txn.state.changed")
-          .addKeyValue("txnId", "0190a7c4-0000-7000-8000-000000000002")
+          .addKeyValue("txnId", "0190a7c4-1b2e-7c3d-8e4f-5a6b7c8d9e02")
           .log("payer {} paid, callback to " + RAW_MSISDN, new Payer(RAW_MSISDN, "Rahim Uddin"));
       return "ok";
     }
@@ -77,7 +77,7 @@ class JsonLoggingTest {
     assertThat(json)
         .containsEntry("correlationId", "corr-log-1")
         .containsEntry("event", "txn.state.changed")
-        .containsEntry("txnId", "0190a7c4-0000-7000-8000-000000000002")
+        .containsEntry("txnId", "0190a7c4-1b2e-7c3d-8e4f-5a6b7c8d9e02")
         .containsEntry("level", "INFO")
         .containsEntry("service", "mw-app-gateway")
         .containsKeys("ts", "version", "host", "env", "traceId", "spanId");
