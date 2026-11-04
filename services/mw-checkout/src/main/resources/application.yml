@@ -92,6 +92,11 @@ resilience4j:
       default:
         timeout-duration: 30s
         cancel-running-future: true
+    instances:
+      # One IPN attempt (client/MerchantIpnClient); a slow merchant is retried on the IPN schedule.
+      merchant-ipn:
+        base-config: default
+        timeout-duration: 10s
   retry:
     configs:
       default:
@@ -188,3 +193,16 @@ mw:
       merchant_demo:
         wallet: "01911000001"
         name: Demo Shop
+    # Signed IPN to the merchant's ipnUrl (spec 9.3 step 3, ticket 32): attempt 1 at once, then
+    # after each failure the next of retry-delays, until a 2xx or the last attempt. Every attempt is a
+    # checkout.ipn_delivery row; the job (ShedLock) polls for due rows. The call is bounded by the
+    # time limiter resilience4j.timelimiter.instances.merchant-ipn.
+    ipn:
+      enabled: true
+      poll-period: ${MW_CHECKOUT_IPN_POLL_PERIOD:5s}
+      retry-delays: ${MW_CHECKOUT_IPN_RETRY_DELAYS:1m,5m,30m,2h,6h}
+      batch-size: 50
+      connect-timeout: 3s
+      # https only and no private/loopback/link-local target, except these hosts (dev/test
+      # simulators; empty by default, never in production). The dev Compose stack sets the simulator.
+      dev-hosts: ${MW_CHECKOUT_IPN_DEV_HOSTS:}

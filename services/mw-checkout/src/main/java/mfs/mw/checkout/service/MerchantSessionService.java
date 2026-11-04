@@ -2,10 +2,12 @@ package mfs.mw.checkout.service;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import mfs.mw.checkout.config.CheckoutProperties;
 import mfs.mw.checkout.dto.Amount;
 import mfs.mw.checkout.dto.CreateSessionRequest;
+import mfs.mw.checkout.dto.ErrorDetail;
 import mfs.mw.checkout.dto.MerchantSessionView;
 import mfs.mw.checkout.dto.SessionCreated;
 import mfs.mw.checkout.dto.SessionStatus;
@@ -13,6 +15,7 @@ import mfs.mw.checkout.entity.CheckoutSession;
 import mfs.mw.checkout.exception.ErrorCodes;
 import mfs.mw.checkout.exception.MwException;
 import mfs.mw.checkout.repository.SessionRepository;
+import mfs.mw.checkout.security.IpnUrlPolicy;
 import mfs.mw.checkout.util.MaskingPolicy;
 import mfs.mw.checkout.util.OtpCodes;
 import mfs.mw.checkout.util.SensitiveType;
@@ -34,11 +37,14 @@ public class MerchantSessionService {
 
   private final SessionRepository sessions;
   private final CheckoutProperties props;
+  private final IpnUrlPolicy ipnUrls;
   private final Clock clock;
 
-  public MerchantSessionService(SessionRepository sessions, CheckoutProperties props, Clock clock) {
+  public MerchantSessionService(
+      SessionRepository sessions, CheckoutProperties props, IpnUrlPolicy ipnUrls, Clock clock) {
     this.sessions = sessions;
     this.props = props;
+    this.ipnUrls = ipnUrls;
     this.clock = clock;
   }
 
@@ -47,6 +53,10 @@ public class MerchantSessionService {
 
   public Created create(String merchantId, CreateSessionRequest req) {
     CheckoutProperties.Merchant merchant = merchant(merchantId);
+    ipnUrls.refusal(req.ipnUrl()).ifPresent(reason -> {
+      throw new MwException(ErrorCodes.VAL_INVALID, "Request validation failed")
+          .withDetails(List.of(new ErrorDetail("ipnUrl", reason)));
+    });
     Instant now = clock.instant();
     CheckoutSession s =
         new CheckoutSession(

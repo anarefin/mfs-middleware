@@ -54,7 +54,8 @@ public final class CheckoutApi {
     b.put("successUrl", "https://shop.example.test/checkout/ok?cart=7");
     b.put("failUrl", "https://shop.example.test/checkout/fail");
     b.put("cancelUrl", "https://shop.example.test/checkout/cancel");
-    b.put("ipnUrl", "https://shop.example.test/checkout/ipn");
+    // the merchant IPN receiver simulator (ticket 32); every session's IPN lands there
+    b.put("ipnUrl", MerchantIpn.URL);
     b.put("description", "e2e order " + orderId);
     b.put("locale", "en");
     return Http.JSON.writeValueAsString(b);

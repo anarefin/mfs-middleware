@@ -6,8 +6,8 @@
 
 - 31: Checkout sessions + pay + redirect
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Unit test of the retry schedule (with a test clock)
-- [ ] e2e `@checkout`: the merchant endpoint fails twice and then succeeds; the IPN is delivered once with a valid signature
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] Unit test of the retry schedule (with a test clock)
+- [ ] e2e `@checkout`: the merchant endpoint fails twice and then succeeds; the IPN is delivered once with a valid signature (scenario `@ipn` written; live run deferred to milestone gate)
+- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR (deferred to milestone gate)

@@ -401,6 +401,22 @@ class CheckoutFlowIT {
   }
 
   @Test
+  void anIpnUrlOverPlainHttpOrAtAnInternalAddressIsRefused() throws Exception {
+    for (String url : List.of("http://shop.example.test/ipn", "http://mw-simulators:8080/merchant/ipn",
+        "https://169.254.169.254/latest/meta-data", "https://127.0.0.1/ipn", "https://[::1]/ipn")) {
+      ObjectNode b = sessionBody("ORD-" + UUID.randomUUID(), 1000);
+      b.put("ipnUrl", url);
+      MvcTestResult r =
+          http.post().uri("/checkout/v1/sessions").header("X-Mw-Merchant-Id", MERCHANT)
+              .contentType(MediaType.APPLICATION_JSON).content(JSON.writeValueAsString(b)).exchange();
+      assertThat(r).as(url).hasStatus(400);
+      JsonNode e = body(r);
+      assertThat(e.path("code").asString()).isEqualTo("MW-VAL-001");
+      assertThat(e.path("details").valueStream().map(d -> d.path("field").asString())).containsExactly("ipnUrl");
+    }
+  }
+
+  @Test
   void anUnknownTokenIsNotFound() throws Exception {
     assertThat(http.get().uri("/checkout/pay/v1/{t}", "x".repeat(43)).exchange()).hasStatus(404);
   }

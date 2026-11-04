@@ -97,6 +97,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   queueFullNext, genericNackNext, silentEnquireLink, screenTimeoutMs}` (replaces; `{}` resets;
   refused submits answer 0x58 / 0x14 / generic_nack), `POST /sim/ussdgw/smpp/drop` (closes every
   bind), `GET /sim/ussdgw/smpp/binds` -> `{bound, binds, enquireLinks, refused}`.
+- Merchant IPN receiver (ticket 32, `controller/MerchantIpnController`, `service/MerchantIpnService`):
+  plays a checkout merchant's server. `POST /merchant/ipn/**` (stack: mw-checkout sessions' `ipnUrl`
+  `http://mw-simulators:8080/merchant/ipn/...`, allowed by mw-checkout's dev-hosts) answers 200 and
+  records `{seq, receivedAt, path, ipnId (X-Upay-Ipn-Id), headers (lower-case, no Authorization/
+  Cookie), body, answeredStatus}`; no secret here (the e2e suite verifies the signature). Control:
+  `POST /sim/merchant/ipn/scenario {failNext, failStatus? (default 500), ipnId? (only that IPN)}`,
+  `GET /sim/merchant/ipn/received[?ipnId=]`, `DELETE /sim/merchant/ipn/received` (resets all). Not in
+  `sim.partners`.
 - Adding a simulator: add its name to `sim.partners`, a controller under `/<partner>/...`, reuse
   the store, recorder, `SimMode`/`MagicAmounts` and callback service.
 - Init (`mw-simulators-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
