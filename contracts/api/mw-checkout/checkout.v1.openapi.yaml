@@ -1,0 +1,364 @@
+openapi: 3.1.0
+info:
+  title: upay web checkout (mw-checkout)
+  version: 1.0.0
+  description: |
+    Web checkout (spec 9.3, ticket 31). Two APIs:
+
+    - Merchant API `/checkout/v1/*`, server to server, behind the APISIX routes `checkout-v1-*`
+      with `hmac-auth` (spec 8.2): every request carries `Date`, `Authorization: Signature
+      keyId="<key id>",algorithm="hmac-sha256",headers="@request-target date[ digest]",
+      signature="<base64>"` and, on POST, `Digest: SHA-256=<base64 sha256 of the body>` (signed).
+      A missing or bad signature is answered 401 `MW-AUTH-001` by the edge. The merchant creates a
+      session (amount, order id, return URLs, IPN URL), sends the customer to `checkoutUrl` and
+      reads the session's status.
+    - Hosted page API `/checkout/pay/v1/{token}/*`, called by the checkout page in the customer's
+      browser (route `checkout-pay`, no login: the pay token from `checkoutUrl` is the bearer).
+      The customer names the paying wallet, receives an OTP by SMS, then confirms with the OTP and
+      the PIN encrypted with the core's public key (RSA-OAEP SHA-256; `pinKey` of the page view),
+      which submits one MERCHANT_PAY to the merchant's wallet.
+
+    A session can be paid for 15 minutes (then EXPIRED, 410 `MW-VAL-020` on every pay action); an
+    OTP is valid 2 minutes, 3 wrong OTPs void it, a session sends at most 3 OTPs. One payment per
+    session: a failed payment ends the session (FAILED); the merchant creates a new one.
+
+    Signed result (the browser's return to the merchant): on a terminal status (PAID, FAILED,
+    CANCELLED, EXPIRED) the page sends the browser to the merchant URL (PAID -> successUrl,
+    CANCELLED -> cancelUrl, FAILED and EXPIRED -> failUrl), the merchant's own query kept, with
+    the query parameters `sessionId`, `orderId`, `status`, `txnId` (if any), `amount` (minor
+    units), `currency`, `errorCode` (FAILED only), `ts` (epoch seconds) and `signature`:
+    lower-case hex HMAC-SHA256, key = the merchant's checkout secret, over the UTF-8 text
+
+        upay-checkout-result.v1\n<sessionId>\n<orderId>\n<status>\n<txnId or empty>\n<amount>\n<currency>\n<errorCode or empty>\n<ts>
+
+    (no trailing newline). The merchant recomputes it, compares in constant time and should
+    refuse an old `ts`. The result is a convenience for the browser; the merchant's source of
+    truth is `GET /checkout/v1/sessions/{sessionId}` (and the signed IPN, ticket 32).
+    Errors are the 5.3 envelope.
+servers:
+  - url: http://mw-checkout:8080
+paths:
+  /checkout/v1/sessions:
+    post:
+      operationId: createSession
+      summary: Create a checkout session for one merchant order
+      parameters:
+        - $ref: "#/components/parameters/MerchantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSessionRequest" }
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionCreated" }
+        "200":
+          description: The order already has a session with the same amount; that session is returned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionCreated" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NotAMerchant" }
+        "409":
+          description: The order already has a session with another amount (MW-IDEM-002)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  /checkout/v1/sessions/{sessionId}:
+    get:
+      operationId: getSession
+      summary: The merchant's view of one of its sessions
+      parameters:
+        - $ref: "#/components/parameters/MerchantId"
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MerchantSessionView" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NotAMerchant" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /checkout/pay/v1/{token}:
+    get:
+      operationId: getPage
+      summary: What the hosted page shows (merchant, amount, status, PIN key; redirectUrl once terminal)
+      parameters:
+        - $ref: "#/components/parameters/Token"
+      responses:
+        "200":
+          description: The page view
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PageView" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /checkout/pay/v1/{token}/otp:
+    post:
+      operationId: sendOtp
+      summary: Send an OTP by SMS to the paying wallet (OTP priority)
+      parameters:
+        - $ref: "#/components/parameters/Token"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OtpRequest" }
+      responses:
+        "202":
+          description: OTP sent (asynchronously, through mw-notify)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OtpSent" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/NotOpen" }
+        "410": { $ref: "#/components/responses/Expired" }
+        "429":
+          description: The session sent its maximum number of OTPs (MW-VAL-022)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  /checkout/pay/v1/{token}/confirm:
+    post:
+      operationId: confirmPayment
+      summary: Check the OTP and pay with the encrypted PIN (MERCHANT_PAY)
+      parameters:
+        - $ref: "#/components/parameters/Token"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConfirmRequest" }
+      responses:
+        "200":
+          description: Final outcome PAID or FAILED, with the signed redirectUrl
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PayResult" }
+        "202":
+          description: Outcome not known within the budget (PAYING); poll GET /checkout/pay/v1/{token}
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PayResult" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401":
+          description: Wrong OTP (MW-AUTH-010), no or expired OTP (MW-AUTH-011), too many wrong OTPs (MW-AUTH-012)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/NotOpen" }
+        "410": { $ref: "#/components/responses/Expired" }
+        "503":
+          description: The payment could not be sent (MW-SYS-010, retryable); nothing was paid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  /checkout/pay/v1/{token}/cancel:
+    post:
+      operationId: cancelSession
+      summary: The customer cancels; the signed redirectUrl points at the cancelUrl
+      parameters:
+        - $ref: "#/components/parameters/Token"
+      responses:
+        "200":
+          description: CANCELLED
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PayResult" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/NotOpen" }
+        "410": { $ref: "#/components/responses/Expired" }
+  /checkout/pay/v1/{token}/return:
+    get:
+      operationId: returnToMerchant
+      summary: Browser redirect (303) to the merchant URL with the signed result
+      parameters:
+        - $ref: "#/components/parameters/Token"
+      responses:
+        "303":
+          description: Location = the signed merchant URL
+          headers:
+            Location:
+              schema: { type: string, format: uri }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/NotOpen" }
+components:
+  parameters:
+    MerchantId:
+      name: X-Mw-Merchant-Id
+      in: header
+      required: false
+      description: Set by APISIX from the hmac-auth consumer name; a client's own value is stripped at the edge.
+      schema: { type: string, maxLength: 64 }
+    Token:
+      name: token
+      in: path
+      required: true
+      description: The pay token from checkoutUrl (43 base64url characters).
+      schema: { type: string, maxLength: 128 }
+  responses:
+    Invalid:
+      description: Body or field invalid (MW-VAL-001, field in details), body malformed (MW-VAL-002)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Unauthenticated:
+      description: No authenticated merchant (MW-AUTH-001)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotAMerchant:
+      description: The APISIX consumer is not a checkout merchant (MW-AUTH-002)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: No such session for this merchant / token (MW-VAL-003)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotOpen:
+      description: The session is paying, paid, failed or cancelled (MW-VAL-021)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Expired:
+      description: The session expired (MW-VAL-020)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    Amount:
+      type: object
+      required: [valueMinor, currency]
+      properties:
+        valueMinor: { type: integer, minimum: 1, description: "Poisha" }
+        currency: { type: string, enum: [BDT] }
+    HttpsUrl:
+      type: string
+      maxLength: 2048
+      pattern: "^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[^\\s#]*)?(\\?[^\\s#]*)?$"
+    SessionStatus:
+      type: string
+      enum: [OPEN, PAYING, PAID, FAILED, CANCELLED, EXPIRED]
+    CreateSessionRequest:
+      type: object
+      required: [orderId, amount, successUrl, failUrl, cancelUrl, ipnUrl]
+      properties:
+        orderId:
+          type: string
+          pattern: "^[A-Za-z0-9._:-]{1,64}$"
+          description: The merchant's order; one session per order.
+        amount: { $ref: "#/components/schemas/Amount" }
+        successUrl: { $ref: "#/components/schemas/HttpsUrl" }
+        failUrl: { $ref: "#/components/schemas/HttpsUrl" }
+        cancelUrl: { $ref: "#/components/schemas/HttpsUrl" }
+        ipnUrl: { $ref: "#/components/schemas/HttpsUrl" }
+        description: { type: string, maxLength: 140 }
+        locale: { type: string, enum: [bn, en], description: "Page and SMS language (default bn)" }
+    SessionCreated:
+      type: object
+      required: [sessionId, checkoutUrl, status, expiresAt]
+      properties:
+        sessionId: { type: string, format: uuid }
+        checkoutUrl: { type: string, format: uri, description: "Send the customer's browser here" }
+        status: { $ref: "#/components/schemas/SessionStatus" }
+        expiresAt: { type: string, format: date-time }
+    MerchantSessionView:
+      type: object
+      required: [sessionId, orderId, status, amount, createdAt, expiresAt, updatedAt]
+      properties:
+        sessionId: { type: string, format: uuid }
+        orderId: { type: string }
+        status: { $ref: "#/components/schemas/SessionStatus" }
+        amount: { $ref: "#/components/schemas/Amount" }
+        txnId: { type: string, format: uuid }
+        payer: { type: string, description: "Masked, e.g. 0171****789" }
+        errorCode: { type: string, description: "FAILED only, e.g. MW-CORE-INSUFFICIENT_BALANCE" }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PageView:
+      type: object
+      required: [merchantName, orderId, amount, status, expiresAt, pinKey]
+      properties:
+        merchantName: { type: string }
+        orderId: { type: string }
+        description: { type: string }
+        amount: { $ref: "#/components/schemas/Amount" }
+        status: { $ref: "#/components/schemas/SessionStatus" }
+        expiresAt: { type: string, format: date-time }
+        wallet: { type: string, description: "The paying wallet once named, masked" }
+        pinKey:
+          type: object
+          required: [keyId]
+          properties:
+            keyId: { type: string }
+            publicKey: { type: string, description: "The core's RSA public key (PEM); encrypt the PIN with RSA-OAEP SHA-256" }
+        txnId: { type: string, format: uuid }
+        redirectUrl: { type: string, format: uri, description: "Set once terminal: the signed merchant URL" }
+    OtpRequest:
+      type: object
+      required: [wallet]
+      properties:
+        wallet:
+          type: string
+          pattern: "^(01[3-9][0-9]{8}|\\+?8801[3-9][0-9]{8})$"
+    OtpSent:
+      type: object
+      required: [wallet, otpExpiresAt, sendsLeft]
+      properties:
+        wallet: { type: string, description: "Masked" }
+        otpExpiresAt: { type: string, format: date-time }
+        sendsLeft: { type: integer, minimum: 0 }
+    ConfirmRequest:
+      type: object
+      required: [otp, encryptedPin]
+      properties:
+        otp: { type: string, pattern: "^[0-9]{6}$" }
+        encryptedPin:
+          type: object
+          required: [keyId, ciphertext]
+          properties:
+            keyId: { type: string, maxLength: 128 }
+            ciphertext: { type: string, maxLength: 4096, description: "Base64 RSA-OAEP SHA-256 ciphertext" }
+    PayResult:
+      type: object
+      required: [status]
+      properties:
+        status: { $ref: "#/components/schemas/SessionStatus" }
+        txnId: { type: string, format: uuid }
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            messageBn: { type: string }
+            retryable: { type: boolean }
+        redirectUrl: { type: string, format: uri }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

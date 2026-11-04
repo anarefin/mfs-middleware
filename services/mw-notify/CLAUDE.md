@@ -15,6 +15,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   `<txnId>:sms:<ruleId>`. `expiresAt` defaults by priority (`dto/Priority`: OTP 2 min, TXN 24 h,
   INFO 24 h, PROMO 72 h); an expired message is recorded EXPIRED and never sent. Listeners only
   store; nothing is sent on a Kafka thread.
+- Template `CHECKOUT_OTP` (bn/en, `V6_1`, ticket 31): mw-checkout's OTP SMS, params otp, amount, merchant.
 - Rules (`notify.rule`, seeds in `V5`): `condition` is SpEL in a `SimpleEvaluationContext`
   (read-only getters of `RuleEngine.TxnFacts`: status, txnType, channel, amountMinor,
   initiatorId, debitPartyId, creditPartyId, debitPartyType, creditPartyType; no types, beans or

@@ -150,6 +150,22 @@ class NotificationFlowIT {
   }
 
   @Test
+  void theCheckoutOtpIsRenderedUnmaskedWithTheMerchantAndAmount() {
+    String id = id();
+    notifications.accept(
+        new NotificationRequest(
+            1, id, null, "corr-" + id, new NotificationRequest.Recipient("01711000001", null, null, null),
+            "CHECKOUT_OTP", "en", Map.of("otp", "042917", "amount", "25.50", "merchant", "Demo Shop"),
+            List.of(Channel.SMS), Priority.OTP, null, null));
+
+    dispatcher.dispatchDue();
+
+    assertThat(smsc.sent()).hasSize(1);
+    assertThat(new String(smsc.sent().getFirst().part().shortMessage(), StandardCharsets.US_ASCII))
+        .isEqualTo("Your upay code is 042917 to pay Tk 25.50 to Demo Shop. Valid 2 minutes. Never share it.");
+  }
+
+  @Test
   void aBanglaSmsGoesAsUcs2InConcatenatedPartsAndIsDeliveredWhenEveryPartIs() {
     String id = id();
     notifications.accept(request(id, "01711000001", "bn", Priority.TXN));

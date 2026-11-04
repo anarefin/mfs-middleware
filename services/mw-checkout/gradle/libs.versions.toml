@@ -1,0 +1,51 @@
+# This module's own pinned versions (spec 3, D14). No shared catalog.
+[versions]
+spring-boot = "4.1.2"
+spring-cloud = "2025.1.4"
+camel = "4.22.2"
+cyclonedx = "3.5.1"
+resilience4j = "2.4.0"
+testcontainers = "2.0.5"
+networknt = "3.0.8"
+jacoco = "0.8.16"
+shedlock = "7.10.1"
+
+[libraries]
+spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
+spring-cloud-bom = { module = "org.springframework.cloud:spring-cloud-dependencies", version.ref = "spring-cloud" }
+camel-bom = { module = "org.apache.camel.springboot:camel-spring-boot-bom", version.ref = "camel" }
+resilience4j-bom = { module = "io.github.resilience4j:resilience4j-bom", version.ref = "resilience4j" }
+testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
+
+spring-boot-starter-webmvc = { module = "org.springframework.boot:spring-boot-starter-webmvc" }
+spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
+spring-boot-starter-validation = { module = "org.springframework.boot:spring-boot-starter-validation" }
+spring-boot-micrometer-tracing-brave = { module = "org.springframework.boot:spring-boot-micrometer-tracing-brave" }
+micrometer-tracing-bridge-brave = { module = "io.micrometer:micrometer-tracing-bridge-brave" }
+micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus" }
+spring-cloud-starter-vault-config = { module = "org.springframework.cloud:spring-cloud-starter-vault-config" }
+spring-boot-starter-jdbc = { module = "org.springframework.boot:spring-boot-starter-jdbc" }
+spring-boot-starter-flyway = { module = "org.springframework.boot:spring-boot-starter-flyway" }
+spring-boot-starter-aspectj = { module = "org.springframework.boot:spring-boot-starter-aspectj" }
+flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
+postgresql = { module = "org.postgresql:postgresql" }
+camel-spring-boot-starter = { module = "org.apache.camel.springboot:camel-spring-boot-starter" }
+camel-kafka-starter = { module = "org.apache.camel.springboot:camel-kafka-starter" }
+resilience4j-spring-boot4 = { module = "io.github.resilience4j:resilience4j-spring-boot4", version.ref = "resilience4j" }
+shedlock-spring = { module = "net.javacrumbs.shedlock:shedlock-spring", version.ref = "shedlock" }
+shedlock-provider-jdbc-template = { module = "net.javacrumbs.shedlock:shedlock-provider-jdbc-template", version.ref = "shedlock" }
+
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-boot-starter-webmvc-test" }
+testcontainers = { module = "org.testcontainers:testcontainers" }
+testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter" }
+testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
+testcontainers-kafka = { module = "org.testcontainers:testcontainers-kafka" }
+spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
+camel-test-spring-junit6 = { module = "org.apache.camel:camel-test-spring-junit6" }
+json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "networknt" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
+cyclonedx = { id = "org.cyclonedx.bom", version.ref = "cyclonedx" }

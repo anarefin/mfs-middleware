@@ -309,6 +309,8 @@ services:
       # re-runs this one-shot with MW_E2E_ROUTES=1; off also removes them.
       MW_E2E_ROUTES: ${MW_E2E_ROUTES:-0}
       MW_E2E_API_KEY: ${MW_E2E_API_KEY:?run scripts/gen-dev-env.sh (make up does)}
+      # hmac-auth secret of the test-only checkout merchant consumer merchant_demo (ticket 31).
+      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?run scripts/gen-dev-env.sh (make up does)}
     volumes:
       - ../../apisix:/deploy/apisix:ro
       - apisix-tls:/usr/local/apisix/conf/cert
