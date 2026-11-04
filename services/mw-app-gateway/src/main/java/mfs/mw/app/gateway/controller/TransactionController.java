@@ -7,6 +7,7 @@ import mfs.mw.app.gateway.dto.SubmitResult;
 import mfs.mw.app.gateway.dto.TransactionRequest;
 import mfs.mw.app.gateway.dto.TransactionView;
 import mfs.mw.app.gateway.security.AppUserResolver;
+import mfs.mw.app.gateway.security.DeviceGate;
 import mfs.mw.app.gateway.service.TransactionService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -34,8 +35,12 @@ public class TransactionController {
     this.users = users;
   }
 
-  /** 200 with the terminal result, or 202 {@code PROCESSING} when the budget runs out (7.5). */
+  /**
+   * 200 with the terminal result, or 202 {@code PROCESSING} when the budget runs out (7.5). Moves
+   * money: signed by the bound device (ticket 29).
+   */
   @PostMapping
+  @DeviceGate(DeviceGate.Level.SIGNED)
   public ResponseEntity<TransactionView> submit(
       @AuthenticationPrincipal Jwt jwt,
       @RequestHeader(IDEMPOTENCY_KEY)

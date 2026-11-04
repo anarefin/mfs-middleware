@@ -141,10 +141,13 @@ expired_token() {
 check "expired bearer token -> 401 MW-AUTH-001 envelope" expired_token
 
 # ---- correlation ID, upstream reached ----
+# mw-app-gateway answers an app request without X-Device-Id with its own 401 MW-AUTH-003 (device
+# gate, ticket 29); APISIX never sends that code, so it proves the request reached the upstream.
+gateway_gate() { [ "$status" = 401 ] && [ "$(jq -r .code "$tmp/b" 2>/dev/null)" = MW-AUTH-003 ]; }
 cid_generated() {
   local cid
   call GET "/app/v1/transactions/$(uniq_id txn)" -H "Authorization: Bearer $customer"
-  [ "$status" = 404 ] || { echo "HTTP $status from mw-app-gateway, want its 404: $(head -c 300 "$tmp/b")"; return 1; }
+  gateway_gate || { echo "HTTP $status from mw-app-gateway, want its 401 MW-AUTH-003: $(head -c 300 "$tmp/b")"; return 1; }
   cid="$(resp_header X-Correlation-Id)"
   printf '%s' "$cid" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' || { echo "generated id '$cid' is not a UUID"; return 1; }
   [ "$(jq -r .correlationId "$tmp/b")" = "$cid" ] || { echo "mw-app-gateway saw $(jq -r .correlationId "$tmp/b"), client got $cid"; return 1; }
@@ -216,10 +219,10 @@ malformed_400() {
   envelope 400 MW-VAL-001
 }
 check "malformed JSON -> 400 MW-VAL-001" malformed_400
-valid_passes() { # no Idempotency-Key: mw-app-gateway's own 400 (detail field Idempotency-Key) proves the body got through
+valid_passes() { # no device headers: mw-app-gateway's own 401 MW-AUTH-003 proves the body got through
   local cid; cid="$(uniq_id ok)"
   call POST /app/v1/transactions -H "Authorization: Bearer $customer" -H 'Content-Type: application/json' -H "X-Correlation-Id: $cid" -d "$valid_body"
-  [ "$status" = 400 ] && jq -e '.details[0].field == "Idempotency-Key"' "$tmp/b" >/dev/null \
+  gateway_gate \
     || { echo "HTTP $status: $(head -c 300 "$tmp/b")"; return 1; }
   gateway_logged "$cid" || { echo "mw-app-gateway did not log $cid"; return 1; }
 }
@@ -247,7 +250,7 @@ quota() {
   jq -e '.retryable == true' "$tmp/b" >/dev/null || { echo "429 not retryable"; return 1; }
   # another consumer still passes
   call GET "/app/v1/transactions/$(uniq_id txn)" -H "Authorization: Bearer $customer"
-  [ "$status" = 404 ] || { echo "customer01 got HTTP $status after merchant01 hit the quota"; return 1; }
+  gateway_gate || { echo "customer01 got HTTP $status after merchant01 hit the quota"; return 1; }
   sub="$(claims "$merchant" | jq -r .sub)"
   keys="$(dc exec -T valkey valkey-cli --scan --pattern "*sub:$sub*")"
   [ -n "$keys" ] || { echo "no Valkey counter for sub:$sub"; return 1; }
@@ -319,7 +322,7 @@ limiter_degraded() {
   cid="$(uniq_id degraded)"
   call GET "/app/v1/transactions/$(uniq_id txn)" -H "Authorization: Bearer $customer" -H "X-Correlation-Id: $cid"
   dc start valkey >/dev/null 2>&1
-  [ "$status" = 404 ] || { echo "with Valkey down got HTTP $status, want the gateway's 404 (fail-open)"; return 1; }
+  gateway_gate || { echo "with Valkey down got HTTP $status, want the gateway's 401 MW-AUTH-003 (fail-open)"; return 1; }
   [ -z "$(resp_header X-RateLimit-Limit)" ] || { echo "quota header present although Valkey was down"; return 1; }
   for i in $(seq 0 10); do
     dc logs --no-log-prefix --since 2m apisix 2>&1 | grep 'mw.edge.rate_limit_degraded' | grep -q 'route=app-v1' && break
