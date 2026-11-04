@@ -183,6 +183,23 @@ public class AppSteps {
     state.user = user;
     state.idempotencyKey = idempotencyKey;
     state.lastRequest = body;
-    state.responses.add(AppApi.submit(user, idempotencyKey, body));
+    state.lastSubmit = AppApi.prepare(user, idempotencyKey, body);
+    state.responses.add(AppApi.send(state.lastSubmit));
+  }
+
+  /** Ticket 29: the exact bytes, nonce and signature of the last submit sent once more. */
+  @When("{word} replays the last signed request")
+  public void replays(String user) {
+    state.responses.add(AppApi.send(state.lastSubmit));
+  }
+
+  /** Ticket 29: a signed P2P whose body is changed after signing (amount raised). */
+  @When("{word} sends {long} poisha P2P to {word} with PIN {string} with the body changed after signing")
+  public void sendsTampered(String user, long amountMinor, String credit, String pin) {
+    state.user = user;
+    AppApi.SignedSubmit signed =
+        AppApi.prepare(user, AppApi.newIdempotencyKey(), AppApi.request("P2P", credit, amountMinor, pin));
+    String tampered = signed.body().replace("\"valueMinor\":" + amountMinor, "\"valueMinor\":" + (amountMinor + 1));
+    state.responses.add(AppApi.send(new AppApi.SignedSubmit(tampered, signed.headers())));
   }
 }

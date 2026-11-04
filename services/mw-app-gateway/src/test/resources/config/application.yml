@@ -5,6 +5,10 @@ mw:
     # records another test is checking. Tests that need them switch them on.
     consumers:
       enabled: false
+    # Off by default in tests that are not about it (they send no device headers);
+    # DeviceBindingIT switches it on with real Valkey.
+    device-binding:
+      enabled: false
   outbox:
     relay:
       # Off by default in tests: Spring caches test contexts, and a relay left running in one

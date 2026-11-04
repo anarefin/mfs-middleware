@@ -69,6 +69,12 @@ Only APISIX is published, so every call goes through it:
   transaction's callback". Money comes from `SETTLEMENT` (no fee). Magic values: account ending
   999 refused (`MW-PTR-C2WBANK-DEBIT_REFUSED`), amount fraction .13 = no answer within 25 s and no
   callback (`@tsq`, COMPLETED by status inquiry after about 60 s).
+- Device binding (`features/device-binding.feature`, `@device`, ticket 29): `support/Devices` gives
+  each user one EC P-256 device for the run, bound on first use (`POST /app/v1/devices`, signed),
+  its session reopened after 4 idle minutes; `AppApi` sends `X-Device-Id` on every call and signs
+  every submit (`AppApi.prepare` / `send`). Steps "<user> replays the last signed request" (same
+  bytes, nonce, signature: 401 `MW-AUTH-006`) and "... with the body changed after signing" (401
+  `MW-AUTH-004`). A run binds new devices, so the previous run's devices are replaced.
 - REVERSAL (`features/reversal.feature`, `@reversal`): "operations reverses the transaction"
   publishes a REVERSAL of the scenario's (COMPLETED) transaction; the original then shows
   REVERSED (or MANUAL_REVIEW) in the app view. "the orchestrator has handled the reversal
