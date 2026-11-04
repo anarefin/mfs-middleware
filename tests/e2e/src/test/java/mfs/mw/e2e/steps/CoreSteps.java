@@ -31,15 +31,6 @@ public class CoreSteps {
     }
   }
 
-  /** One-shot REJECT fault: the next command of this type (any txn) fails with this reason. */
-  @Given("the core rejects the next {word} with reason {word}")
-  public void rejectsNext(String commandType, String reasonCode) {
-    ObjectNode fault = Http.JSON.createObjectNode();
-    fault.put("mode", "REJECT").put("commandType", commandType).put("reasonCode", reasonCode).put("times", 1);
-    state.faultsInjected = true;
-    CoreMock.injectFault(fault);
-  }
-
   /** The core applies the next {@code commandType} but never answers it (fault DROP_REPLY, once). */
   @Given("the core drops its reply to the next {word}")
   public void dropReply(String commandType) {
