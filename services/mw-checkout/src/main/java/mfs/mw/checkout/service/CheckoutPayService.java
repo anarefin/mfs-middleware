@@ -131,15 +131,21 @@ public class CheckoutPayService {
     CheckoutSession s = byToken(token);
     Instant now = clock.instant();
     requireOpen(s, now);
+    int max = props.otpMaxAttempts();
+    if (s.otpAttempts() >= max) {
+      throw otpLocked();
+    }
     if (s.otpHash() == null || s.otpExpiresAt() == null || !now.isBefore(s.otpExpiresAt())) {
       throw new MwException(ErrorCodes.AUTH_OTP_EXPIRED, "Request a new OTP");
     }
-    if (s.otpAttempts() >= props.otpMaxAttempts()) {
-      throw new MwException(ErrorCodes.AUTH_OTP_LOCKED, "Too many wrong OTPs, request a new one");
+    // Every guess takes one of the OTP's checks atomically before it is compared: parallel
+    // guesses cannot get more than max comparisons (a row count of 0 means none is left).
+    if (!sessions.reserveOtpAttempt(s.sessionId(), s.otpHash(), max, now)) {
+      throw refusedCheck(token, now);
     }
     String hash = OtpCodes.hash(s.sessionId(), req.otp());
     if (!OtpCodes.matches(s.otpHash(), hash)) {
-      sessions.otpFailed(s.sessionId(), now);
+      sessions.voidOtpIfExhausted(s.sessionId(), s.otpHash(), max, now);
       log.atInfo()
           .addKeyValue("event", "checkout.otp.wrong")
           .addKeyValue("sessionId", s.sessionId().toString())
@@ -147,9 +153,8 @@ public class CheckoutPayService {
       throw new MwException(ErrorCodes.AUTH_OTP_WRONG, "Wrong OTP");
     }
     UUID txnId = UuidV7.next(clock);
-    if (!sessions.claimForPayment(s.sessionId(), s.otpHash(), txnId, now)) {
-      requireOpen(byToken(token), now);
-      throw new MwException(ErrorCodes.AUTH_OTP_EXPIRED, "Request a new OTP");
+    if (!sessions.claimForPayment(s.sessionId(), s.otpHash(), txnId, max, now)) {
+      throw refusedCheck(token, now);
     }
     CheckoutSession paying = byToken(token);
     String correlationId = correlationId();
@@ -248,6 +253,23 @@ public class CheckoutPayService {
   private String merchantName(CheckoutSession s) {
     CheckoutProperties.Merchant m = props.merchant(s.merchantId());
     return m == null ? s.merchantId() : m.name();
+  }
+
+  /**
+   * Why an atomic OTP check or claim was refused: the session state first (410/409), then no
+   * check left on the OTP (locked), else the OTP was replaced or spent meanwhile.
+   */
+  private MwException refusedCheck(String token, Instant now) {
+    CheckoutSession again = byToken(token);
+    requireOpen(again, now);
+    if (again.otpAttempts() >= props.otpMaxAttempts()) {
+      return otpLocked();
+    }
+    return new MwException(ErrorCodes.AUTH_OTP_EXPIRED, "Request a new OTP");
+  }
+
+  private static MwException otpLocked() {
+    return new MwException(ErrorCodes.AUTH_OTP_LOCKED, "Too many wrong OTPs, request a new one");
   }
 
   private static MwException otpLimit() {

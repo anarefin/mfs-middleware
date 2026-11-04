@@ -27,8 +27,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   `otp-ttl` 2 min; at most `otp-max-sends` 3 per session `429 MW-VAL-022`) sent as
   `mw.notify.request.v1` (template `CHECKOUT_OTP` seeded in mw-notify, priority OTP, SMS, expiresAt
   = OTP expiry, messageId `checkout-otp:<sessionId>:<n>`) through the outbox with the session update;
-  `POST .../confirm {otp, encryptedPin}`: no/expired OTP `401 MW-AUTH-011`, wrong `401 MW-AUTH-010`
-  (counted), after `otp-max-attempts` 3 wrong `401 MW-AUTH-012` until a new OTP; then OPEN -> PAYING
+  `POST .../confirm {otp, encryptedPin}`: no/expired OTP `401 MW-AUTH-011`, wrong `401 MW-AUTH-010`,
+  after `otp-max-attempts` 3 checks `401 MW-AUTH-012` until a new OTP. Every guess first reserves one
+  check atomically (`SessionRepository.reserveOtpAttempt`: `otp_attempts < max` in the UPDATE, row
+  count 0 = locked), so parallel guesses never get more than 3 comparisons; the wrong guess that used
+  the last check voids the OTP hash, and the claim also requires `otp_attempts <= max`. Then OPEN -> PAYING
   (conditional update, OTP spent) and MERCHANT_PAY (`mapper/CheckoutMapper`: channel WEB_CHECKOUT,
   initiator/debit the customer wallet CUSTOMER, credit the merchant wallet MERCHANT, PIN ciphertext
   untouched, idempotency key `checkout:<sessionId>`, metadata checkoutSessionId/merchantId/orderId)

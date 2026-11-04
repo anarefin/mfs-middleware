@@ -80,22 +80,40 @@ public class SessionRepository {
         == 1;
   }
 
-  /** Counts a wrong OTP. */
-  public void otpFailed(UUID sessionId, Instant now) {
-    jdbc.sql("update session set otp_attempts = otp_attempts + 1, updated_at = ? where session_id = ?")
-        .params(ts(now), sessionId)
+  /**
+   * Takes one of the current OTP's {@code max} checks before the guess is compared, in one atomic
+   * statement: parallel guesses cannot all be compared before the counter moves, so at most
+   * {@code max} guesses are ever evaluated per OTP. False: no check left (or the OTP was replaced,
+   * spent or voided, or the session is no longer OPEN).
+   */
+  public boolean reserveOtpAttempt(UUID sessionId, String otpHash, int max, Instant now) {
+    return jdbc.sql(
+                "update session set otp_attempts = otp_attempts + 1, updated_at = ?"
+                    + " where session_id = ? and status = 'OPEN' and otp_hash = ? and otp_attempts < ?")
+            .params(ts(now), sessionId, otpHash, max)
+            .update()
+        == 1;
+  }
+
+  /** After a wrong guess that used the last check, the OTP is voided (a new one must be requested). */
+  public void voidOtpIfExhausted(UUID sessionId, String otpHash, int max, Instant now) {
+    jdbc.sql(
+            "update session set otp_hash = null, updated_at = ?"
+                + " where session_id = ? and otp_hash = ? and otp_attempts >= ?")
+        .params(ts(now), sessionId, otpHash, max)
         .update();
   }
 
   /**
-   * OPEN -> PAYING with the payment's txnId, only if still OPEN, unexpired and the OTP checked is
-   * still the current one. The OTP is spent: it cannot be used again.
+   * OPEN -> PAYING with the payment's txnId, only if still OPEN, unexpired, the OTP checked is
+   * still the current one and its check was within the {@code max} reserved ones. The OTP is spent.
    */
-  public boolean claimForPayment(UUID sessionId, String otpHash, UUID txnId, Instant now) {
+  public boolean claimForPayment(UUID sessionId, String otpHash, UUID txnId, int max, Instant now) {
     return jdbc.sql(
                 "update session set status = 'PAYING', txn_id = ?, otp_hash = null, updated_at = ?"
-                    + " where session_id = ? and status = 'OPEN' and expires_at > ? and otp_hash = ?")
-            .params(txnId, ts(now), sessionId, ts(now), otpHash)
+                    + " where session_id = ? and status = 'OPEN' and expires_at > ? and otp_hash = ?"
+                    + " and otp_attempts <= ?")
+            .params(txnId, ts(now), sessionId, ts(now), otpHash, max)
             .update()
         == 1;
   }

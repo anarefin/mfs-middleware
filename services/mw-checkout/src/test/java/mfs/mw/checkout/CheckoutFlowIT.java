@@ -233,6 +233,47 @@ class CheckoutFlowIT {
   }
 
   @Test
+  void parallelWrongOtpsAreCheckedAtMostThreeTimesAndTheRightOneIsThenRefused() throws Exception {
+    JsonNode s = body(createSession(MERCHANT, "ORD-" + UUID.randomUUID(), OrchestratorStub.COMPLETES));
+    String token = s.path("checkoutUrl").asString().substring(PAGE.length());
+    String otp = requestOtp(token, s.path("sessionId").asString(), 1);
+    // twenty distinct wrong guesses at once
+    List<String> guesses = new java.util.ArrayList<>();
+    for (int i = 0; guesses.size() < 20; i++) {
+      String g = String.format("%06d", i);
+      if (!g.equals(otp)) {
+        guesses.add(g);
+      }
+    }
+    java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+    List<String> codes;
+    try (var pool = java.util.concurrent.Executors.newFixedThreadPool(guesses.size())) {
+      List<java.util.concurrent.Future<String>> answers = new java.util.ArrayList<>();
+      for (String g : guesses) {
+        answers.add(pool.submit(() -> {
+          start.await();
+          return body(confirm(token, g)).path("code").asString();
+        }));
+      }
+      start.countDown();
+      codes = new java.util.ArrayList<>();
+      for (var a : answers) {
+        codes.add(a.get());
+      }
+    }
+
+    assertThat(codes.stream().filter("MW-AUTH-010"::equals).count()).as("wrong OTPs evaluated: %s", codes)
+        .isEqualTo(3);
+    assertThat(codes).allMatch(c -> c.equals("MW-AUTH-010") || c.equals("MW-AUTH-012"));
+    MvcTestResult right = confirm(token, otp);
+    assertThat(right).hasStatus(401);
+    assertThat(body(right).path("code").asString()).isEqualTo("MW-AUTH-012");
+    assertThat(orchestrator.requests().stream()
+            .filter(r -> r.value().contains("checkout:" + s.path("sessionId").asString())))
+        .as("no payment after lockout").isEmpty();
+  }
+
+  @Test
   void aSessionSendsAtMostThreeOtps() throws Exception {
     JsonNode s = body(createSession(MERCHANT, "ORD-" + UUID.randomUUID(), OrchestratorStub.COMPLETES));
     String token = s.path("checkoutUrl").asString().substring(PAGE.length());
