@@ -72,8 +72,13 @@ Route `app-v1` (`/app/v1/*`), in plugin order:
    accepts a token 120 s past `exp`).
 3. `request-validation` only for `POST /app/v1/transactions` (`_meta.filter`), after auth
    (`_meta.priority` 2500 < openid-connect's 2599), schema `schemas/app-v1-transaction-request.json`.
-4. `serverless-pre-function` (access, `lua/consumer-from-jwt.lua`): `ctx.var.mw_consumer` =
-   `sub:<token sub>`, the per-consumer key.
+   The plugin re-encodes a valid JSON body before forwarding it (APISIX and the upstream then parse
+   the same JSON), so the upstream never sees the bytes the app signed.
+4. `serverless-pre-function` (access, priority 10000, so before `request-validation`):
+   `lua/consumer-from-jwt.lua` sets `ctx.var.mw_consumer` = `sub:<token sub>`, the per-consumer
+   key; `lua/app-body-sha256.lua` forwards `X-Mw-Body-Sha256` = hex SHA-256 of the body exactly as
+   the client sent it (every POST), the body hash in mw-app-gateway's device signature check
+   (ticket 29). The edge strips client `X-Mw-*` headers first, so only the edge can set it.
 5. `limit-count` 120 requests / 60 s per consumer, counters in Valkey (`policy: redis`,
    password `$env://VALKEY_PASSWORD`, so it is never stored in etcd; `config.yaml` exposes the
    variable to nginx), `allow_degradation: true` (Valkey down: requests pass, APISIX logs it,

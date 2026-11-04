@@ -244,6 +244,19 @@ test_app_route_limits_each_consumer_with_counters_in_valkey() {
     || fail "consumer key not set from the token"
 }
 
+# Ticket 29: request-validation forwards a re-encoded body, so the device signature's body hash is
+# taken by the edge from the client's bytes, in the access phase (pre-function priority 10000 runs
+# before request-validation's 2500).
+test_app_route_forwards_the_hash_of_the_body_the_client_sent() {
+  render || fail "dry run failed"
+  local fns
+  fns="$(obj routes app-v1 | jq -r '.plugins["serverless-pre-function"].functions[]')"
+  printf '%s\n' "$fns" | grep -q 'X-Mw-Body-Sha256' || fail "no X-Mw-Body-Sha256 set on the app route"
+  printf '%s\n' "$fns" | grep -q 'core.request.get_body' || fail "the body hash does not read the client body"
+  obj routes app-v1 | jq -e '.plugins["request-validation"]._meta.priority < 10000' >/dev/null \
+    || fail "request-validation must run after the access-phase pre-function"
+}
+
 # Ticket 50: limit-count stays fail-open (allow_degradation) when Valkey is down, and every
 # request it let through unlimited is logged with one stable error line that smoke and alerts grep.
 test_rate_limited_routes_fail_open_and_log_a_stable_degradation_line() {

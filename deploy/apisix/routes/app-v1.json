@@ -28,7 +28,7 @@
     },
     "serverless-pre-function": {
       "phase": "access",
-      "functions": ["@lua:lua/consumer-from-jwt.lua"]
+      "functions": ["@lua:lua/consumer-from-jwt.lua", "@lua:lua/app-body-sha256.lua"]
     },
     "limit-count": {
       "count": 120,

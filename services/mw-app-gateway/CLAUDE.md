@@ -34,7 +34,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   `POST /app/v1/transactions` (`@DeviceGate(SIGNED)`) also needs `X-Timestamp` (epoch ms, ±`clock-skew` 5 min,
   `MW-AUTH-005`), `X-Nonce` (once per device: Valkey `nonce:{deviceId}:{nonce}` SET NX, TTL 2x skew,
   `MW-AUTH-006`) and `X-Signature` (ECDSA P-256 SHA-256, DER or P1363, over `METHOD\nPATH\nhex(sha256(body))\n
-  TIMESTAMP\nNONCE\nDEVICE-ID`; `MW-AUTH-004`). The body is hashed from `filter/CachedBodyFilter`. Order:
+  TIMESTAMP\nNONCE\nDEVICE-ID`; `MW-AUTH-004`). The body hash is the edge's `X-Mw-Body-Sha256` (APISIX hashes the client's bytes before
+  request-validation re-encodes the JSON; `deploy/apisix/lua/app-body-sha256.lua`; client `X-Mw-*` headers are
+  stripped at the edge), else the received body from `filter/CachedBodyFilter` (direct calls, tests). Order:
   device, timestamp, signature, nonce, session. `POST /app/v1/devices {publicKey}` binds (signed with that key,
   re-bind replaces the key) and opens a session; `POST /app/v1/sessions` (signed, empty body) opens a new one.
   `single-active-device` (true): binding replaces the wallet's other devices (REPLACED) and binding/opening

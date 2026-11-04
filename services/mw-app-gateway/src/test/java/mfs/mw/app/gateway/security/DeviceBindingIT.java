@@ -195,6 +195,52 @@ class DeviceBindingIT {
     assertCode(post("/app/v1/transactions", P2P.replace("1000", "9000"), signed, "key-t"), 401, "MW-AUTH-004");
   }
 
+  /** What APISIX request-validation forwards: the same JSON, re-encoded (other order, no spaces). */
+  static final String P2P_REENCODED =
+      "{\"amount\":{\"currency\":\"BDT\",\"valueMinor\":1000},\"txnType\":\"P2P\","
+          + "\"encryptedPin\":{\"ciphertext\":\"Y2lwaGVy\",\"keyId\":\"core-pin-1\"},\"creditParty\":{\"id\":\"01711000002\"}}";
+
+  MvcTestResult postViaEdge(String forwardedBody, String clientBody, Signed signed) {
+    return mvc.post().uri("/app/v1/transactions").with(token()).contentType(MediaType.APPLICATION_JSON)
+        .content(forwardedBody)
+        .header("X-Device-Id", signed.deviceId())
+        .header("X-Timestamp", signed.timestamp())
+        .header("X-Nonce", signed.nonce())
+        .header("X-Signature", signed.signature())
+        .header(SignedRequests.EDGE_BODY_SHA256,
+            RequestSignatures.sha256Hex(clientBody.getBytes(StandardCharsets.UTF_8)))
+        .header("Idempotency-Key", "key-" + UUID.randomUUID())
+        .exchange();
+  }
+
+  @Test
+  void aBodyTheEdgeReEncodedIsVerifiedAgainstTheHashOfTheBytesTheClientSigned() throws Exception {
+    Device d = Device.create();
+    bind(d);
+    Signed signed = sign(d, "POST", "/app/v1/transactions", P2P);
+
+    assertThat(postViaEdge(P2P_REENCODED, P2P, signed)).hasStatus(202);
+    verify(transactions, times(1)).submit(any(), any(), any());
+  }
+
+  @Test
+  void aBodyTheClientDidNotSignIsRejectedEvenWithTheEdgeHash() throws Exception {
+    Device d = Device.create();
+    bind(d);
+    Signed signed = sign(d, "POST", "/app/v1/transactions", P2P);
+    String tampered = P2P.replace("1000", "9000");
+
+    assertCode(postViaEdge(P2P_REENCODED.replace("1000", "9000"), tampered, signed), 401, "MW-AUTH-004");
+  }
+
+  @Test
+  void aReEncodedBodyWithoutTheEdgeHashIsRejected() throws Exception {
+    Device d = Device.create();
+    bind(d);
+    Signed signed = sign(d, "POST", "/app/v1/transactions", P2P);
+    assertCode(post("/app/v1/transactions", P2P_REENCODED, signed, "key-r"), 401, "MW-AUTH-004");
+  }
+
   @Test
   void anUnsignedSubmitIsRejected() throws Exception {
     Device d = Device.create();
