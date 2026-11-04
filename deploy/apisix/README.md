@@ -78,6 +78,21 @@ Route `app-v1` (`/app/v1/*`), in plugin order:
    variable to nginx), `allow_degradation: true` (Valkey down: requests pass, APISIX logs it).
    A perf run with one test user needs more users or a higher count.
 
+Route `partner-billagg-callback` (`/partner/billagg/callback/*`, POST only, ticket 22) ->
+`mw-adapter-billpay:8080`, path and body unchanged (the partner signed them):
+
+1. `ip-restriction`: dev/MVP loopback and private ranges (the simulator posts from the `app`
+   network, the host e2e suite through Docker's NAT); production lists the partner's egress
+   addresses.
+2. `client-control` `max_body_size` 16 KiB (413).
+3. `limit-count` 600 / 60 s per `remote_addr`, Valkey as on `app-v1`.
+4. No `hmac-auth`: the adapter verifies the partner's `hmac-sha256` signature with the secret in
+   OpenBao and answers 401 `MW-AUTH-001` itself (decision in `services/mw-adapter-billpay/CLAUDE.md`).
+   No `request-validation`: the aggregator's wire format is partner-specific, not a contract.
+
+A new partner gets its own `partner-<id>-callback.json` (upstream: the owning adapter, e.g.
+`mw-adapter-bank` for ticket 23); `scripts/edge-test.sh` has the cases to copy.
+
 ## Request-validation schemas
 
 `schemas/*.json` are generated, never edited: each names its source in `x-mw-derived-from`
