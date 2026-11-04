@@ -38,6 +38,32 @@ public class CoreEventMapper {
     return event(cmd, failureType, coreRef, CoreEvent.Outcome.FAILURE, reasonCode, message, null, Map.of());
   }
 
+  /** A success event of any command type, with the given payload and optional balances. */
+  public CoreEvent succeeded(
+      CoreCommand cmd, String type, String coreRef, List<CoreEvent.BalanceAfter> balances, Map<String, Object> payload) {
+    return event(cmd, type, coreRef, CoreEvent.Outcome.SUCCESS, null, null, balances, payload);
+  }
+
+  /** The failure event type of a command (spec 6.3), or {@code null} for QueryTransaction. */
+  public static String failureType(String commandType) {
+    return switch (commandType) {
+      case "ValidateTransaction" -> "TransactionRejected";
+      case "PostTransfer" -> "TransferRejected";
+      case "HoldFunds" -> "HoldRejected";
+      case "CommitHold" -> "CommitFailed";
+      case "ReleaseHold" -> "ReleaseFailed";
+      case "CreditWallet" -> "CreditRejected";
+      case "ReverseTransaction" -> "ReversalRejected";
+      default -> null;
+    };
+  }
+
+  /** A failure event that also carries a payload (the holdId of a hold command). */
+  public CoreEvent rejected(
+      CoreCommand cmd, String failureType, String coreRef, String reasonCode, String message, Map<String, Object> payload) {
+    return event(cmd, failureType, coreRef, CoreEvent.Outcome.FAILURE, reasonCode, message, null, payload);
+  }
+
   private CoreEvent event(
       CoreCommand cmd,
       String type,

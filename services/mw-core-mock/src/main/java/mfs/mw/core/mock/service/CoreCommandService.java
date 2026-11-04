@@ -12,6 +12,7 @@ import mfs.mw.core.mock.config.CoreMockProperties;
 import mfs.mw.core.mock.dto.Amount;
 import mfs.mw.core.mock.dto.CoreCommand;
 import mfs.mw.core.mock.dto.CoreEvent;
+import mfs.mw.core.mock.dto.Fault;
 import mfs.mw.core.mock.dto.TransferPayload;
 import mfs.mw.core.mock.entity.Wallet;
 import mfs.mw.core.mock.mapper.CoreCommandMapper;
@@ -21,51 +22,31 @@ import mfs.mw.core.mock.messaging.OutboxWriter;
 import mfs.mw.core.mock.repository.CommandLogRepository;
 import mfs.mw.core.mock.repository.LedgerRepository;
 import mfs.mw.core.mock.repository.WalletRepository;
-import mfs.mw.core.mock.security.PinCipher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The core wallet for P2P (spec 6.3): {@code ValidateTransaction} checks without moving money,
- * {@code PostTransfer} moves amount and fee in double entry. Every command is idempotent on {@code
- * commandId}: the first result event is stored verbatim in {@code command_log}, in the same
- * transaction as the ledger change and the outbox row, and a repeated command is answered with that
- * same event again. Rule order: wallets, status, PIN, amount, limits, funds.
+ * The core (spec 6.3): validate, post, hold, commit, release, credit, reverse and query. Every
+ * command is idempotent on {@code commandId}: the first result event is stored verbatim in {@code
+ * command_log}, in the same transaction as the ledger change and the outbox row, and a repeated
+ * command is answered with that same event again. Injected faults ({@link FaultRegistry}) change
+ * how the reply travels (delayed, dropped, duplicated) or refuse the command; the ledger and the
+ * command log stay the truth, so QueryTransaction can tell what really happened.
  */
 @Service
 public class CoreCommandService {
 
   public static final String EVENT_TOPIC = "core.wallet.event.v1";
+  public static final String PAYMENT_EVENT_TOPIC = "core.payment.event.v1";
   static final String VALIDATE = "ValidateTransaction";
   static final String POST = "PostTransfer";
-  private static final Set<String> HANDLED = Set.of(VALIDATE, POST);
+  private static final Set<String> HANDLED =
+      Set.of(VALIDATE, POST, "HoldFunds", "CommitHold", "ReleaseHold", "CreditWallet", "ReverseTransaction", "QueryTransaction");
 
   private static final Logger log = LoggerFactory.getLogger(CoreCommandService.class);
-
-  /** Why the core refuses a request; the code travels as {@code reasonCode}. */
-  enum Reason {
-    WALLET_NOT_FOUND("Debit wallet not found"),
-    CREDIT_WALLET_NOT_FOUND("Credit wallet not found"),
-    ACCOUNT_BLOCKED("Debit wallet is not active"),
-    CREDIT_ACCOUNT_BLOCKED("Credit wallet is not active"),
-    SAME_WALLET("Debit and credit wallet are the same"),
-    INVALID_PIN("Wrong PIN"),
-    INVALID_PIN_BLOCK("PIN block cannot be decrypted"),
-    INVALID_AMOUNT("Amount must be positive BDT"),
-    LIMIT_EXCEEDED_PER_TXN("Per-transaction limit exceeded"),
-    LIMIT_EXCEEDED_DAILY("Daily limit exceeded"),
-    INSUFFICIENT_BALANCE("Balance does not cover amount and fee");
-
-    final String message;
-
-    Reason(String message) {
-      this.message = message;
-    }
-  }
 
   private final CoreMockProperties props;
   private final WalletRepository wallets;
@@ -73,8 +54,11 @@ public class CoreCommandService {
   private final CommandLogRepository commandLog;
   private final CoreCommandMapper commands;
   private final CoreEventMapper events;
-  private final PinCipher pins;
-  private final PasswordEncoder encoder;
+  private final TransferRules rules;
+  private final HoldOperations holdOps;
+  private final PostingOperations postingOps;
+  private final StatusOperations statusOps;
+  private final FaultRegistry faults;
   private final OutboxWriter outbox;
   private final JsonMapper json;
   private final Clock clock;
@@ -87,8 +71,11 @@ public class CoreCommandService {
       CommandLogRepository commandLog,
       CoreCommandMapper commands,
       CoreEventMapper events,
-      PinCipher pins,
-      PasswordEncoder encoder,
+      TransferRules rules,
+      HoldOperations holdOps,
+      PostingOperations postingOps,
+      StatusOperations statusOps,
+      FaultRegistry faults,
       OutboxWriter outbox,
       JsonMapper json,
       Clock clock) {
@@ -98,8 +85,11 @@ public class CoreCommandService {
     this.commandLog = commandLog;
     this.commands = commands;
     this.events = events;
-    this.pins = pins;
-    this.encoder = encoder;
+    this.rules = rules;
+    this.holdOps = holdOps;
+    this.postingOps = postingOps;
+    this.statusOps = statusOps;
+    this.faults = faults;
     this.outbox = outbox;
     this.json = json;
     this.clock = clock;
@@ -107,44 +97,60 @@ public class CoreCommandService {
 
   /** Parses a Kafka record body and handles it (own transaction: no self-invocation proxying). */
   @Transactional
-  public Optional<CoreEvent> handle(String body) {
-    return handle(commands.command(body));
+  public Optional<CoreEvent> handle(String body, String eventTopic) {
+    return handle(commands.command(body), eventTopic);
+  }
+
+  /** As {@link #handle(CoreCommand, String)}, answering on the wallet event topic. */
+  @Transactional
+  public Optional<CoreEvent> handle(CoreCommand cmd) {
+    return handle(cmd, EVENT_TOPIC);
   }
 
   /**
-   * Handles one command and queues its result event on {@link #EVENT_TOPIC}. Empty (no event) for
-   * a command type outside this slice and for a command that expired before it was first seen.
+   * Handles one command and queues its result event on {@code eventTopic} (unless a fault drops
+   * it). Returns the event the core decided on, empty (no event) for a command type the core does
+   * not know and for a command that expired before it was first seen.
    */
   @Transactional
-  public Optional<CoreEvent> handle(CoreCommand cmd) {
+  public Optional<CoreEvent> handle(CoreCommand cmd, String eventTopic) {
     if (!HANDLED.contains(cmd.commandType())) {
       log.atWarn()
           .addKeyValue("event", "core.command.ignored")
           .addKeyValue("txnId", cmd.txnId())
           .addKeyValue("commandType", cmd.commandType())
-          .log("command type not implemented by core-mock yet");
+          .log("command type not implemented by core-mock");
       return Optional.empty();
     }
     commandLog.lock(cmd.commandId());
     Optional<String> prior = commandLog.findEvent(cmd.commandId());
+    if (prior.isEmpty() && cmd.expiresAt() != null && cmd.expiresAt().isBefore(clock.instant())) {
+      log.atWarn()
+          .addKeyValue("event", "core.command.expired")
+          .addKeyValue("txnId", cmd.txnId())
+          .addKeyValue("commandType", cmd.commandType())
+          .log("command expired before it was handled, dropped");
+      return Optional.empty();
+    }
+    List<Fault> hit = faults.consume(cmd.commandType(), cmd.txnId());
     CoreEvent event;
     if (prior.isPresent()) {
       event = json.readValue(prior.get(), CoreEvent.class);
     } else {
-      if (cmd.expiresAt() != null && cmd.expiresAt().isBefore(clock.instant())) {
-        log.atWarn()
-            .addKeyValue("event", "core.command.expired")
-            .addKeyValue("txnId", cmd.txnId())
-            .addKeyValue("commandType", cmd.commandType())
-            .log("command expired before it was handled, dropped");
-        return Optional.empty();
+      Optional<Fault> reject =
+          hit.stream().filter(f -> f.mode() == Fault.FaultMode.REJECT).findFirst();
+      String failureType = CoreEventMapper.failureType(cmd.commandType());
+      CoreEvent decided;
+      if (reject.isPresent() && failureType != null) {
+        decided = events.rejected(cmd, failureType, coreRef(), reject.get().reasonCode(), "Injected rejection");
+      } else {
+        decided = execute(cmd);
       }
-      String stored = json.writeValueAsString(execute(cmd));
+      String stored = json.writeValueAsString(decided);
       commandLog.save(cmd.commandId(), cmd.commandType(), cmd.txnId(), stored);
       event = json.readValue(stored, CoreEvent.class);
     }
-    String correlation = cmd.correlationId() == null || cmd.correlationId().isBlank() ? cmd.txnId() : cmd.correlationId();
-    outbox.append(EVENT_TOPIC, cmd.txnId(), new EventMetadata(correlation, cmd.txnId(), cmd.commandId(), 1), event);
+    publish(cmd, event, eventTopic, hit);
     log.atInfo()
         .addKeyValue("event", "core.command.handled")
         .addKeyValue("txnId", cmd.txnId())
@@ -153,14 +159,47 @@ public class CoreCommandService {
         .addKeyValue("outcome", event.outcome().name())
         .addKeyValue("errorCode", event.reasonCode())
         .addKeyValue("replay", prior.isPresent())
+        .addKeyValue("faults", hit.stream().map(f -> f.mode().name()).toList().toString())
         .log("core command handled");
     return Optional.of(event);
   }
 
+  /** Queues the reply, shaped by the faults that hit the command. */
+  private void publish(CoreCommand cmd, CoreEvent event, String eventTopic, List<Fault> hit) {
+    if (hit.stream().anyMatch(f -> f.mode() == Fault.FaultMode.DROP_REPLY)) {
+      return;
+    }
+    Instant availableAt =
+        hit.stream()
+            .filter(f -> f.mode() == Fault.FaultMode.DELAY)
+            .map(f -> clock.instant().plusMillis(f.delayMs()))
+            .max(Instant::compareTo)
+            .orElse(null);
+    String correlation = cmd.correlationId() == null || cmd.correlationId().isBlank() ? cmd.txnId() : cmd.correlationId();
+    EventMetadata meta = new EventMetadata(correlation, cmd.txnId(), cmd.commandId(), 1);
+    outbox.append(eventTopic, cmd.txnId(), meta, event, availableAt);
+    if (hit.stream().anyMatch(f -> f.mode() == Fault.FaultMode.DUPLICATE_REPLY)) {
+      outbox.append(eventTopic, cmd.txnId(), meta, event, availableAt);
+    }
+  }
+
   private CoreEvent execute(CoreCommand cmd) {
+    String coreRef = coreRef();
+    return switch (cmd.commandType()) {
+      case "HoldFunds" -> holdOps.hold(cmd, coreRef);
+      case "CommitHold" -> holdOps.commit(cmd, coreRef);
+      case "ReleaseHold" -> holdOps.release(cmd, coreRef);
+      case "CreditWallet" -> postingOps.credit(cmd, coreRef);
+      case "ReverseTransaction" -> postingOps.reverse(cmd, coreRef);
+      case "QueryTransaction" -> statusOps.query(cmd, coreRef);
+      default -> transfer(cmd, coreRef);
+    };
+  }
+
+  /** ValidateTransaction and PostTransfer. */
+  private CoreEvent transfer(CoreCommand cmd, String coreRef) {
     boolean post = POST.equals(cmd.commandType());
     TransferPayload p = commands.transfer(cmd);
-    String coreRef = coreRef();
     String failureType = post ? "TransferRejected" : "TransactionRejected";
 
     Optional<String> debitId = wallets.resolveId(p.debitParty().id());
@@ -186,11 +225,11 @@ public class CoreCommandService {
     }
 
     long amount = p.amount().valueMinor();
-    long fee = props.fees().getOrDefault(p.txnType(), 0L);
+    long fee = rules.fee(p.txnType());
     Instant dayStart = clock.instant().truncatedTo(ChronoUnit.DAYS);
     long usedToday = wallets.debitedSince(debit.id(), dayStart);
 
-    Optional<Reason> refusal = check(p, debit, credit, amount, fee, usedToday);
+    Optional<Reason> refusal = rules.check(p, debit, credit, amount, fee, usedToday);
     if (refusal.isPresent()) {
       return reject(cmd, failureType, coreRef, refusal.get());
     }
@@ -215,36 +254,6 @@ public class CoreCommandService {
         cmd,
         coreRef,
         List.of(balanceOf(debit.id()), balanceOf(credit.id())));
-  }
-
-  private Optional<Reason> check(
-      TransferPayload p, Wallet debit, Wallet credit, long amount, long fee, long usedToday) {
-    if (!debit.active()) {
-      return Optional.of(Reason.ACCOUNT_BLOCKED);
-    }
-    if (!credit.active()) {
-      return Optional.of(Reason.CREDIT_ACCOUNT_BLOCKED);
-    }
-    Optional<String> pin = pins.decrypt(p.encryptedPin());
-    if (pin.isEmpty()) {
-      return Optional.of(Reason.INVALID_PIN_BLOCK);
-    }
-    if (!encoder.matches(pin.get(), debit.pinHash())) {
-      return Optional.of(Reason.INVALID_PIN);
-    }
-    if (amount <= 0 || !Amount.BDT.equals(p.amount().currency())) {
-      return Optional.of(Reason.INVALID_AMOUNT);
-    }
-    if (amount > props.limits().perTxnMinor()) {
-      return Optional.of(Reason.LIMIT_EXCEEDED_PER_TXN);
-    }
-    if (usedToday + amount > props.limits().dailyMinor()) {
-      return Optional.of(Reason.LIMIT_EXCEEDED_DAILY);
-    }
-    if (debit.availableMinor() < amount + fee) {
-      return Optional.of(Reason.INSUFFICIENT_BALANCE);
-    }
-    return Optional.empty();
   }
 
   private CoreEvent reject(CoreCommand cmd, String failureType, String coreRef, Reason reason) {

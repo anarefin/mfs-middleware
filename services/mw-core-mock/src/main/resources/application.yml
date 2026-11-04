@@ -139,6 +139,8 @@ mw:
       P2P: 500
       CASH_IN: 0
       CASH_OUT: 1000
+      TOPUP: 200
+      BILL_PAY: 300
     limits:
       per-txn-minor: 500000
       daily-minor: 1500000

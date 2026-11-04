@@ -78,7 +78,7 @@ public class OutboxRelay {
       List<Row> rows =
           jdbc.query(
               "select id, topic, msg_key, headers::text, payload::text from outbox"
-                  + " where sent_at is null order by id limit ? for update skip locked",
+                  + " where sent_at is null and available_at <= now() order by id limit ? for update skip locked",
               (rs, i) ->
                   new Row(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5)),
               batchSize);
