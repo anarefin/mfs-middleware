@@ -6,9 +6,9 @@
 
 - 17: TOPUP end to end (hold → partner → commit / release)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Unit tests: reversing a non-COMPLETED txn is rejected; a second reversal of the same txn is idempotent
-- [ ] e2e `@reversal`: P2P completed → reversal → balances restored
-- [ ] Core ReversalRejected → MANUAL_REVIEW with an audit entry
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] Unit tests: reversing a non-COMPLETED txn is rejected; a second reversal of the same txn is idempotent
+- [x] e2e `@reversal`: P2P completed → reversal → balances restored
+- [x] Core ReversalRejected → MANUAL_REVIEW with an audit entry
+- [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
