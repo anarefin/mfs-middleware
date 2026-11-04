@@ -118,6 +118,26 @@ class CoreCommandsIT {
     assertThat(post.reasonCode()).isEqualTo("CREDIT_WALLET_NOT_FOUND");
   }
 
+  // --- TOPUP: the credit side is the mobile number to recharge, not a wallet (ticket 17) ----
+
+  private CoreCommand topupValidate(String txn, String msisdn) {
+    var p = cmds.transfer("TOPUP", A, A, 2_000, "1234");
+    p.put("creditParty", new mfs.mw.core.mock.dto.Party("MSISDN", msisdn, null, null));
+    return cmds.command("ValidateTransaction", txn, txn + ":validate", p);
+  }
+
+  @Test
+  void aTopupOfThePayersOwnNumberValidatesTheDebitSideOnly() {
+    CoreEvent e = handle(topupValidate(txn(), A));
+    assertThat(e.eventType()).isEqualTo("TransactionValidated");
+    assertThat(json.valueToTree(e.payload()).path("fee").path("valueMinor").asLong()).isEqualTo(200);
+  }
+
+  @Test
+  void aTopupOfANumberWithoutAWalletValidates() {
+    assertThat(handle(topupValidate(txn(), "01799999999")).eventType()).isEqualTo("TransactionValidated");
+  }
+
   // --- ADD_MONEY_BANK: the debit side is outside the core (ticket 23) -----------------------
 
   private CoreCommand addMoney(String txn, String payee, long minor, String pin) {

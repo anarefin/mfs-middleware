@@ -45,6 +45,12 @@ public class CoreCommandService {
   static final String POST = "PostTransfer";
   /** Party types that are never a wallet of this core: paid outside it by a partner. */
   static final Set<String> EXTERNAL_CREDIT_TYPES = Set.of("BILLER_ACCOUNT", "BANK_ACCOUNT", "CARD_TOKEN");
+  /**
+   * Payees validated on the payer side only: the external parties plus {@code MSISDN}, the mobile
+   * number a TOPUP recharges (airtime from the operator, the money goes to SETTLEMENT): it need not
+   * have a wallet, and may be the payer's own number.
+   */
+  static final Set<String> PAYER_SIDE_ONLY_PAYEES = Set.of("BILLER_ACCOUNT", "BANK_ACCOUNT", "CARD_TOKEN", "MSISDN");
   private static final Set<String> HANDLED =
       Set.of(VALIDATE, POST, "HoldFunds", "CommitHold", "ReleaseHold", "CreditWallet", "ReverseTransaction", "QueryTransaction");
 
@@ -214,9 +220,10 @@ public class CoreCommandService {
     if (debitId.isEmpty()) {
       return events.rejected(cmd, failureType, coreRef, Reason.WALLET_NOT_FOUND.name(), Reason.WALLET_NOT_FOUND.message);
     }
-    if (!post && EXTERNAL_CREDIT_TYPES.contains(p.creditParty().type())) {
-      // The payee is outside this core (a biller or bank account, paid by a partner after a
-      // hold): only the payer side can be validated. PostTransfer still needs a wallet.
+    if (!post && PAYER_SIDE_ONLY_PAYEES.contains(p.creditParty().type())) {
+      // The payee is outside this core (a biller or bank account, or the number a top-up
+      // recharges; paid by a partner after a hold): only the payer side can be validated.
+      // PostTransfer still needs a wallet.
       return validateDebitOnly(cmd, p, debitId.get(), coreRef);
     }
     Optional<String> creditId = wallets.resolveId(p.creditParty().id());
