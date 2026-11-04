@@ -8,11 +8,11 @@
 - 48: Contracts v1.1: envelope + per-message payload schemas
 - 49: M0 cleanup: spec sync, remove static analysis, dev gaps
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Contract test per command: valid → success event; wrong PIN, insufficient funds and over limit → failure event with a reason code
-- [ ] The same `commandId` sent twice gives one ledger effect and two identical result events
-- [ ] Balance invariant test: the sum of all balances is unchanged by any number of transfers
-- [ ] The seed loads on start and is reproducible; the public key is exportable for channels and tests
-- [ ] PIN plaintext never appears in logs (the test captures log output)
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] Contract test per command: valid → success event; wrong PIN, insufficient funds and over limit → failure event with a reason code
+- [x] The same `commandId` sent twice gives one ledger effect and two identical result events
+- [x] Balance invariant test: the sum of all balances is unchanged by any number of transfers
+- [x] The seed loads on start and is reproducible; the public key is exportable for channels and tests
+- [x] PIN plaintext never appears in logs (the test captures log output)
+- [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
