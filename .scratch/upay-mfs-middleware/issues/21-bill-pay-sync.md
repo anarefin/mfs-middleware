@@ -6,10 +6,10 @@
 
 - 20: Adapter framework inside telco (prefactor)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Each aggregator sim scenario can be reached by a test
-- [ ] Fetch-bill returns the amount due from the sim, and an unknown bill number gives a mapped `MW-PTR-*` error
-- [ ] e2e `@billpay`: success, biller failure (hold released), timeout → TSQ → commit
-- [ ] The billpay module passes `check-isolation`: the framework is a copy, not a dependency
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] Each aggregator sim scenario can be reached by a test
+- [x] Fetch-bill returns the amount due from the sim, and an unknown bill number gives a mapped `MW-PTR-*` error
+- [x] e2e `@billpay`: success, biller failure (hold released), timeout → TSQ → commit
+- [x] The billpay module passes `check-isolation`: the framework is a copy, not a dependency
+- [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
