@@ -67,6 +67,10 @@ public class SagaTimerService {
           inquiries.due(rec, timer.attempt()); // spec 7.4: inquire, or MANUAL_REVIEW at the cut-off
           continue;
         }
+        if (reversalExhausted(rec)) {
+          engine.fire(rec, new SagaEvent.ReversalFailed(), REVERSAL_UNCONFIRMED);
+          continue;
+        }
         engine.fire(rec, new SagaEvent.DeadlineExpired(), expiryError(rec.status()));
       } catch (InvalidTransitionException e) {
         log.atInfo()
@@ -78,6 +82,24 @@ public class SagaTimerService {
     }
     return due.size();
   }
+
+  /**
+   * REVERSING resends ReverseTransaction every {@code retry-timeout} (spec 7.2 "retry; alert") but
+   * not forever: once the core has not confirmed for {@code reversing-timeout} since the
+   * transaction entered REVERSING (its {@code updatedAt}; resends do not change it), the reversal
+   * goes to MANUAL_REVIEW for operations, the same way a core refusal does.
+   */
+  private boolean reversalExhausted(TransactionRecord rec) {
+    return rec.status() == Status.REVERSING
+        && !clock.instant().isBefore(rec.updatedAt().plus(properties.reversingTimeout()));
+  }
+
+  private static final ErrorInfo REVERSAL_UNCONFIRMED =
+      new ErrorInfo(
+          ErrorCodes.TMO_CORE_REVERSE,
+          "The core did not confirm the reversal in time; operations will review it",
+          null,
+          false);
 
   /** The error to report when the expiry ends the transaction (only VALIDATING does: FAILED). */
   private static ErrorInfo expiryError(Status status) {

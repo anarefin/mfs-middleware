@@ -52,6 +52,26 @@ public class WalletRepository {
     jdbc.update("update wallet set held_minor = held_minor + ? where id = ?", deltaMinor, id);
   }
 
+  /**
+   * Counts one more consecutive wrong PIN and locks the wallet (status {@code LOCKED}) when the
+   * count reaches {@code maxFailures}. Returns true when this call locked it.
+   */
+  public boolean recordPinFailure(String id, int maxFailures) {
+    // Only reached for an ACTIVE wallet (a LOCKED one is refused before its PIN is checked).
+    String status =
+        jdbc.queryForObject(
+            "update wallet set pin_failures = pin_failures + 1, "
+                + "status = case when pin_failures + 1 >= ? and status = 'ACTIVE' then 'LOCKED' else status end "
+                + "where id = ? returning status",
+            String.class, maxFailures, id);
+    return "LOCKED".equals(status);
+  }
+
+  /** A correct PIN: the consecutive failure count starts again. */
+  public void resetPinFailures(String id) {
+    jdbc.update("update wallet set pin_failures = 0 where id = ? and pin_failures > 0", id);
+  }
+
   /** Sum of transfer debits of the wallet since {@code since}. */
   public long debitedSince(String id, Instant since) {
     Long sum =

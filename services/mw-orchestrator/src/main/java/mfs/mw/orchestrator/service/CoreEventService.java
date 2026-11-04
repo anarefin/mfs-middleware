@@ -59,7 +59,12 @@ public class CoreEventService {
   }
 
   private void apply(CoreEvent event) {
-    Optional<TransactionRecord> found = transactions.findForUpdate(UUID.fromString(event.txnId()));
+    UUID txnId = UUID.fromString(event.txnId());
+    Optional<TransactionRecord> found = transactions.findForUpdate(txnId);
+    if (found.isEmpty()) {
+      // ReverseTransaction is answered under the REVERSAL request's txnId
+      found = transactions.findForUpdateByReversal(txnId);
+    }
     if (found.isEmpty()) {
       drop(event, "txn.unknown", "core event for an unknown transaction");
       return;

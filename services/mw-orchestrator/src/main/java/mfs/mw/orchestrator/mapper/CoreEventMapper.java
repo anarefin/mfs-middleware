@@ -37,7 +37,15 @@ public class CoreEventMapper {
           Map.entry("INVALID_AMOUNT", new Text("Invalid amount", "অবৈধ পরিমাণ")),
           Map.entry("LIMIT_EXCEEDED_PER_TXN", new Text("Per-transaction limit exceeded", "প্রতি লেনদেনের সীমা অতিক্রম")),
           Map.entry("LIMIT_EXCEEDED_DAILY", new Text("Daily limit exceeded", "দৈনিক সীমা অতিক্রম")),
-          Map.entry("INSUFFICIENT_BALANCE", new Text("Insufficient balance", "অপর্যাপ্ত ব্যালেন্স")));
+          Map.entry("INSUFFICIENT_BALANCE", new Text("Insufficient balance", "অপর্যাপ্ত ব্যালেন্স")),
+          Map.entry(
+              "INVALID_COUNTERPARTY",
+              new Text("This wallet cannot be used for this transaction", "এই লেনদেনে এই ওয়ালেট ব্যবহার করা যাবে না")),
+          Map.entry(
+              "ACCOUNT_LOCKED",
+              new Text(
+                  "Account is locked after too many wrong PINs",
+                  "বারবার ভুল পিন দেওয়ায় অ্যাকাউন্ট লক করা হয়েছে")));
 
   /**
    * The saga event for a core result; empty for event types no wired flow consumes yet.

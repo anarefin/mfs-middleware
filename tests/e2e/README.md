@@ -6,6 +6,7 @@ It runs on the host against a running MVP stack and talks to it over the network
 ```
 make up                       # the stack (fresh: make down DOWN_ARGS=-v first)
 make e2e TAGS=@p2p            # every @p2p scenario
+make e2e TAGS=@cash           # agent01 cash-in, customer01 cash-out to agent01
 make e2e M=mw-audit-dw TAGS=@p2p   # @mw-audit-dw and (@p2p)
 ```
 
@@ -24,6 +25,7 @@ Only APISIX is published, so every call goes through it:
 | core-mock test/admin API | `/test/core-mock/v1/*` -> `mw-core-mock:8080/core-mock/v1/*` | `deploy/apisix/routes-test/test-core-mock.json`, TEST ONLY: PIN public key, `wallets/{id}` balances, `faults`. Present only after `make e2e` re-ran `apisix-init` with `MW_E2E_ROUTES=1` (a plain `make up` removes it); key-auth header `apikey` = `MW_E2E_API_KEY` from the generated `.env`, private source addresses only |
 | Simulator control API | `/test/sim/*` -> `mw-simulators:8080/sim/*` | `deploy/apisix/routes-test/test-simulators.json`, TEST ONLY, same key-auth as core-mock; `support/Simulators.setScenario` / `reset` |
 | Audit rows | `docker compose exec -T postgres psql` (superuser, read-only queries) | no API exposes `audit.event` before mw-admin-api (WP23), and the service role cannot read it |
+| Internal requests (REVERSAL) | `docker compose exec -T kafka kafka-console-producer.sh` on `mw.txn.request.v1` | `support/TxnRequests`: plays the operations producer (channel SYSTEM) until mw-admin-api's maker-checker reversal exists (ticket 37); the broker is not published |
 
 ## Reuse in later flows (TOPUP, cash-in/out, bill pay, ...)
 
@@ -40,12 +42,18 @@ Only APISIX is published, so every call goes through it:
   OCS behaves normally again" and by an `@After` hook); "the core drops its reply to the next
   PostTransfer" loses a P2P reply that QueryTransaction then finds. "no funds are held on <wallet>"
   compares the core's held amount with the noted one.
+- REVERSAL (`features/reversal.feature`, `@reversal`): "operations reverses the transaction"
+  publishes a REVERSAL of the scenario's (COMPLETED) transaction; the original then shows
+  REVERSED (or MANUAL_REVIEW) in the app view. "the orchestrator has handled the reversal
+  request" waits for the request's idempotency row (a repeated reversal leaves no other trace).
+  "the core rejects the next <Command> with reason <R>" injects a REJECT fault.
 - `support/CoreMock`: `encryptPin` (RSA-OAEP SHA-256 with the core key), `balance`,
   `injectFault` / `resetFaults` (reset in an `@After` hook of the scenarios that inject).
 - `support/Keycloak.customerToken(user)`; `support/AuditTrail.rowsOfTxn` / `verifyChain`;
   `support/Waits.until` for anything asynchronous.
 - Steps (`steps/`, one `ScenarioState` per scenario via PicoContainer): sign in, send P2P,
-  status/error/txnId assertions, "the app shows the transaction as X", balances noted / changed
+  `<user> submits <TYPE> of <n> poisha with counterparty <msisdn> and PIN "<pin>"` (any type
+  whose body is the plain request), status/error/txnId assertions, "the app shows the transaction as X", balances noted / changed
   by / unchanged, audit states and chain. Add flow steps next to them; keep step text generic.
 - Stability rule: never rely on leftover state. Fresh Idempotency-Key per request, balances
   compared before/after (never absolute), amounts small (seeded customers hold 10,000 BDT with a

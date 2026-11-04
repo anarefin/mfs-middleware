@@ -32,6 +32,9 @@ public class ScenarioState {
   /** A partner simulator scenario was forced; an {@code @After} hook resets it. */
   boolean simulatorForced;
 
+  /** Idempotency keys of the REVERSAL requests the scenario sent, in order. */
+  final List<String> reversalKeys = new ArrayList<>();
+
   /** Balances noted before the action, by wallet id. */
   final Map<String, CoreMock.Balance> notedBalances = new LinkedHashMap<>();
 

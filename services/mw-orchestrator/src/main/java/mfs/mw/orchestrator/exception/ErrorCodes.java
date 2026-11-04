@@ -37,6 +37,16 @@ public final class ErrorCodes {
   public static final String TMO_INQUIRY_EXHAUSTED = "MW-TMO-004";
   /** Status inquiry got an answer that fits no outcome of the transaction: MANUAL_REVIEW. */
   public static final String TMO_INQUIRY_CONFLICT = "MW-TMO-005";
+  /** REVERSAL: {@code originalTxnId} names no transaction of this middleware. */
+  public static final String VAL_ORIGINAL_NOT_FOUND = "MW-VAL-020";
+  /** REVERSAL: the original is not COMPLETED (spec 7.2: only COMPLETED goes to REVERSING). */
+  public static final String VAL_NOT_REVERSIBLE = "MW-VAL-021";
+  /** REVERSAL: the amount differs from the original's (no partial reversal in the MVP). */
+  public static final String VAL_REVERSAL_AMOUNT = "MW-VAL-022";
+  /** REVERSAL from a channel outside {@code mw.orchestrator.reversal-channels}. */
+  public static final String AUTH_REVERSAL_CHANNEL = "MW-AUTH-020";
+  /** The core did not confirm ReverseTransaction within {@code reversing-timeout}: MANUAL_REVIEW. */
+  public static final String TMO_CORE_REVERSE = "MW-TMO-020";
   /** Unexpected failure; details stay in the log, never in the response. */
   public static final String SYS_INTERNAL = "MW-SYS-001";
 

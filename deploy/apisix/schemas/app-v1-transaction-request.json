@@ -12,6 +12,8 @@
       "type": "string",
       "enum": [
         "P2P",
+        "CASH_IN",
+        "CASH_OUT",
         "TOPUP"
       ]
     },

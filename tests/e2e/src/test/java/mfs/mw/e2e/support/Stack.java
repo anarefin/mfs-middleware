@@ -98,16 +98,28 @@ public final class Stack {
   public String compose(String... args) {
     List<String> cmd = new ArrayList<>(List.of("docker", "compose", "-f", root.resolve("deploy/compose/mvp/compose.yml").toString()));
     cmd.addAll(List.of(args));
-    return run(cmd);
+    return run(cmd, null);
   }
 
-  private String run(List<String> cmd) {
+  /** As {@link #compose}, with {@code input} written to the command's stdin. */
+  public String composeWithInput(String input, String... args) {
+    List<String> cmd = new ArrayList<>(List.of("docker", "compose", "-f", root.resolve("deploy/compose/mvp/compose.yml").toString()));
+    cmd.addAll(List.of(args));
+    return run(cmd, input);
+  }
+
+  private String run(List<String> cmd, String input) {
     try {
       ProcessBuilder pb = new ProcessBuilder(cmd);
       // Compose interpolates the platform file with the generated credentials, as make up does.
       pb.environment().putAll(devEnv);
       pb.redirectErrorStream(false);
       Process p = pb.start();
+      try (var stdin = p.getOutputStream()) {
+        if (input != null) {
+          stdin.write(input.getBytes(StandardCharsets.UTF_8));
+        }
+      }
       byte[] out = p.getInputStream().readAllBytes();
       byte[] err = p.getErrorStream().readAllBytes();
       if (!p.waitFor(120, TimeUnit.SECONDS)) {

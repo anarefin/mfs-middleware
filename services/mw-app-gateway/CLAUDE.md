@@ -5,21 +5,29 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 
 ## Responsibilities
 
-- App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P and TOPUP,
-  `mw.app-gateway.supported-txn-types`) and `GET /app/v1/transactions/{txnId}` behind the APISIX
+- App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P, CASH_IN, CASH_OUT
+  and TOPUP, `mw.app-gateway.supported-txn-types`) and `GET /app/v1/transactions/{txnId}` behind the APISIX
   route `/app/v1/*` (`deploy/apisix/routes/app-v1.json`, `openid-connect` bearer-only on realm
   `customers`).
 - Auth (`config/SecurityConfig`, `security/`): bearer JWT of Keycloak realm `customers` on
   `/app/**`, verified again here (JWKS `mw.app-gateway.jwt.jwk-set-uri`, expiry, issuer must end
   with `/realms/customers`: the host part follows the URL the client used). The payer wallet is
   the `msisdn` claim (user attribute + `mw-app` client mapper in `customers-realm.json`), the
-  channel follows the realm role: only `customer` -> `CUSTOMER_APP` so far (agent/merchant: WP20).
-  No token / bad token `401 MW-AUTH-001`; no wallet or other role `403 MW-AUTH-002`. Other paths
+  channel follows the realm role: `customer` -> `CUSTOMER_APP`/`CUSTOMER`, `agent` ->
+  `AGENT_APP`/`AGENT` (WP20; merchant not served yet; a token with both roles is the customer).
+  Role per `txnType` (`mw.app-gateway.txn-type-roles`, checked at submit after the type check):
+  P2P, CASH_OUT and TOPUP customer only, CASH_IN agent only (switch here, nowhere else). Deny by
+  default: a type with no entry is refused for every role; `AppGatewayConfigTest` fails when a
+  txnType of the OpenAPI enum has no entry.
+  No token / bad token `401 MW-AUTH-001`; no wallet, other role or a type the role may not
+  initiate `403 MW-AUTH-002`, nothing published. Other paths
   (actuator) are open inside the app network. Keycloak is reached over `data` (MVP deviation of
   18.1), not `ops`.
 - Validation: `Idempotency-Key` required, 1..64 visible ASCII (`MW-VAL-001`, detail field
   `Idempotency-Key`); body by Bean Validation (`MW-VAL-001`, `amount.valueMinor` > 0, PIN
-  ciphertext required); unsupported `txnType` `MW-VAL-010`; `attributes` keys allow-listed
+  ciphertext required); unsupported `txnType` `MW-VAL-010`; for P2P/CASH_IN/CASH_OUT a
+  counterparty equal to the caller's own wallet `MW-VAL-012` (the core enforces the real wallet
+  types per txnType: `MW-CORE-INVALID_COUNTERPARTY`); `attributes` keys allow-listed
   (`mw.app-gateway.allowed-attributes`, only `reference`), so a client can never set reserved
   keys (`duplicate`, `requestTxnId`). MSISDNs accepted as `01XNNNNNNNN`, `8801...`, `+8801...`
   (`util/Msisdn`) and forwarded only in the canonical `01XNNNNNNNN` form.
@@ -29,8 +37,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   `partner` and credit party `{type: MSISDN, id}`. An operator refusal arrives as FAILED with
   `MW-PTR-<OPERATOR>-*` and is answered 502.
 - Submit (`service/TransactionService`): mints a UUIDv7 txnId (`util/UuidV7`), maps to the
-  canonical `mw.txn.request.v1` (`mapper/RequestMapper`; initiator MSISDN, debit = token wallet,
-  credit = body wallet; PIN ciphertext copied untouched, never logged), registers a waiter, then
+  canonical `mw.txn.request.v1` (`mapper/RequestMapper`; initiator MSISDN = token wallet; debit = token
+  wallet (its own PIN), credit = body wallet (walletType AGENT for CASH_OUT, else CUSTOMER); PIN ciphertext copied untouched, never logged), registers a waiter, then
   publishes directly (not via the outbox) with header `mw-reply-to = instanceId`. Kafka refusing
   or timing out (`max-block-ms`/`delivery-timeout-ms` 5 s/10 s) -> `503 MW-SYS-010`, retryable,
   nothing recorded. Idempotency is decided by mw-orchestrator (7.3); this service only requires

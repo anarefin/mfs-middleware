@@ -157,9 +157,9 @@ public class SagaEngine {
   /**
    * Performs the step behind {@code effect} for the transaction's flow (spec 7.1): every flow is
    * built from the same steps, and a step the flow does not have, or one whose ticket is not
-   * built yet (reversal), is logged as {@code saga.effect.unwired} and skipped. Entering UNKNOWN
-   * arms the first status-inquiry slot (spec 7.4); later slots are armed by {@link
-   * InquiryService} as each inquiry goes out.
+   * built yet, is logged as {@code saga.effect.unwired} and skipped. Entering UNKNOWN arms the
+   * first status-inquiry slot (spec 7.4); later slots are armed by {@link InquiryService} as each
+   * inquiry goes out.
    */
   private void perform(Effect effect, TransactionRecord rec, Instant now) {
     if (effect == Effect.NONE) {
@@ -185,18 +185,20 @@ public class SagaEngine {
       case QUERY -> send(commandMapper.query(rec, now, ttl));
       case CALL_PARTNER -> callPartner(rec, flow.get().partnerCall().orElseThrow(), now);
       case INQUIRE -> inquire(rec, flow.get(), now);
-      case REVERSE -> unwired(effect, rec);
+      case REVERSE -> send(commandMapper.reverse(rec, now, ttl));
     }
   }
 
   /**
-   * The flow's own steps; QUERY belongs to every flow that holds (HOLDING timeout), INQUIRE to
-   * every flow (any flow can reach UNKNOWN, spec 7.4).
+   * The flow's own steps; QUERY belongs to every flow that holds (HOLDING timeout), REVERSE to
+   * every flow (any COMPLETED transaction can be compensated once, spec 7.2), INQUIRE to every
+   * flow (any flow can reach UNKNOWN, spec 7.4).
    */
   private static boolean allowed(Flow flow, Step step) {
     return flow.steps().contains(step)
-        || (step == Step.QUERY && flow.steps().contains(Step.HOLD))
-        || step == Step.INQUIRE;
+        || step == Step.REVERSE
+        || step == Step.INQUIRE
+        || (step == Step.QUERY && flow.steps().contains(Step.HOLD));
   }
 
   /** The step name of the status-inquiry timer in {@code saga_timer}. */

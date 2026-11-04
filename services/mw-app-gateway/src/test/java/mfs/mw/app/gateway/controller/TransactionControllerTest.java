@@ -163,7 +163,7 @@ class TransactionControllerTest {
   }
 
   @Test
-  void tokenWithoutMsisdnOrCustomerRoleIsForbidden() {
+  void tokenWithoutMsisdnOrServedRoleIsForbidden() {
     MvcTestResult noMsisdn =
         post(
             jwt().jwt(j -> j.claim("realm_access", Map.of("roles", List.of("customer")))),
@@ -172,18 +172,36 @@ class TransactionControllerTest {
     assertThat(noMsisdn).hasStatus(403);
     assertThat(noMsisdn).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-002");
 
-    MvcTestResult agent =
+    MvcTestResult merchant =
         post(
             jwt()
                 .jwt(
                     j ->
-                        j.claim("msisdn", "01811000001")
-                            .claim("realm_access", Map.of("roles", List.of("agent")))),
+                        j.claim("msisdn", "01911000001")
+                            .claim("realm_access", Map.of("roles", List.of("merchant")))),
             "k",
             BODY.formatted(100));
-    assertThat(agent).hasStatus(403);
-    assertThat(agent).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-002");
+    assertThat(merchant).hasStatus(403);
+    assertThat(merchant).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-002");
     verify(service, never()).submit(any(), any(), any());
+  }
+
+  @Test
+  void agentTokenIsServedAsTheAgentApp() {
+    AppUser agent = new AppUser("01811000001", "AGENT_APP", "AGENT");
+    when(service.submit(eq(agent), eq("key-agent"), any()))
+        .thenReturn(SubmitResult.done(TransactionView.processing(TXN_ID).withStatus("COMPLETED")));
+    MvcTestResult r =
+        post(
+            jwt()
+                .jwt(
+                    j ->
+                        j.claim("msisdn", "8801811000001")
+                            .claim("realm_access", Map.of("roles", List.of("agent")))),
+            "key-agent",
+            BODY.formatted(100).replace("\"P2P\"", "\"CASH_IN\""));
+    assertThat(r).hasStatus(200);
+    verify(service).submit(eq(agent), eq("key-agent"), any());
   }
 
   @Test
