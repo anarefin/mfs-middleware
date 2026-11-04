@@ -43,6 +43,8 @@ public class CoreCommandService {
   public static final String PAYMENT_EVENT_TOPIC = "core.payment.event.v1";
   static final String VALIDATE = "ValidateTransaction";
   static final String POST = "PostTransfer";
+  /** Party types that are never a wallet of this core: paid outside it by a partner. */
+  static final Set<String> EXTERNAL_CREDIT_TYPES = Set.of("BILLER_ACCOUNT", "BANK_ACCOUNT", "CARD_TOKEN");
   private static final Set<String> HANDLED =
       Set.of(VALIDATE, POST, "HoldFunds", "CommitHold", "ReleaseHold", "CreditWallet", "ReverseTransaction", "QueryTransaction");
 
@@ -206,6 +208,11 @@ public class CoreCommandService {
     if (debitId.isEmpty()) {
       return events.rejected(cmd, failureType, coreRef, Reason.WALLET_NOT_FOUND.name(), Reason.WALLET_NOT_FOUND.message);
     }
+    if (!post && EXTERNAL_CREDIT_TYPES.contains(p.creditParty().type())) {
+      // The payee is outside this core (a biller or bank account, paid by a partner after a
+      // hold): only the payer side can be validated. PostTransfer still needs a wallet.
+      return validateDebitOnly(cmd, p, debitId.get(), coreRef);
+    }
     Optional<String> creditId = wallets.resolveId(p.creditParty().id());
     if (creditId.isEmpty()) {
       return events.rejected(cmd, failureType, coreRef, Reason.CREDIT_WALLET_NOT_FOUND.name(), Reason.CREDIT_WALLET_NOT_FOUND.message);
@@ -254,6 +261,21 @@ public class CoreCommandService {
         cmd,
         coreRef,
         List.of(balanceOf(debit.id()), balanceOf(credit.id())));
+  }
+
+  private CoreEvent validateDebitOnly(CoreCommand cmd, TransferPayload p, String debitId, String coreRef) {
+    Wallet debit = wallets.lock(debitId);
+    long amount = p.amount().valueMinor();
+    long fee = rules.fee(p.txnType());
+    long usedToday = wallets.debitedSince(debit.id(), clock.instant().truncatedTo(ChronoUnit.DAYS));
+    Optional<Reason> refusal = rules.check(p, debit, null, amount, fee, usedToday);
+    if (refusal.isPresent()) {
+      return reject(cmd, "TransactionRejected", coreRef, refusal.get());
+    }
+    Map<String, Amount> left = new LinkedHashMap<>();
+    left.put("PER_TXN", Amount.bdt(props.limits().perTxnMinor()));
+    left.put("DAILY", Amount.bdt(props.limits().dailyMinor() - usedToday - amount));
+    return events.validated(cmd, coreRef, fee, left);
   }
 
   private CoreEvent reject(CoreCommand cmd, String failureType, String coreRef, Reason reason) {

@@ -92,6 +92,32 @@ class CoreCommandsIT {
         .isEqualTo(jdbc.queryForObject("select coalesce(sum(amount_minor + fee_minor),0) from hold where status = 'HELD'", Long.class));
   }
 
+  // --- BILL_PAY: the credit side is outside the core (ticket 21) -----------------------------
+
+  private CoreCommand billPay(String type, String step, String txn, long minor) {
+    var p = cmds.transfer("BILL_PAY", A, A, minor, "1234");
+    p.put("creditParty", new mfs.mw.core.mock.dto.Party("BILLER_ACCOUNT", "DESCO-1234567", null, null));
+    return cmds.command(type, txn, txn + ":" + step, p);
+  }
+
+  @Test
+  void aBillPayToABillerAccountValidatesTheDebitSideOnlyWithTheBillPayFee() {
+    CoreEvent e = handle(billPay("ValidateTransaction", "validate", txn(), 50_000));
+    assertThat(e.eventType()).isEqualTo("TransactionValidated");
+    assertThat(json.valueToTree(e.payload()).path("fee").path("valueMinor").asLong()).isEqualTo(300);
+  }
+
+  @Test
+  void aBillPayToABillerAccountIsHeldAndNeverPostedDirectly() {
+    String txn = txn();
+    CoreEvent held = handle(billPay("HoldFunds", "hold", txn, 50_000));
+    assertThat(held.eventType()).isEqualTo("FundsHeld");
+    assertThat(held(A)).isEqualTo(50_300);
+    CoreEvent post = handle(billPay("PostTransfer", "post", txn(), 50_000));
+    assertThat(post.eventType()).isEqualTo("TransferRejected");
+    assertThat(post.reasonCode()).isEqualTo("CREDIT_WALLET_NOT_FOUND");
+  }
+
   // --- HoldFunds / CommitHold / ReleaseHold -------------------------------------------------
 
   @Test
