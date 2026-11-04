@@ -12,5 +12,6 @@
 - [x] A test changes a mapping or timeout via a config-changed event, and the next call uses it without restart
 - [x] Both auth schemes have apply/verify tests
 - [x] e2e `@topup` (incl. `@tsq`) stays green unchanged
-- [ ] Masked raw request/response audit and the §21.2 partner metrics are emitted by the framework wrapper
+- [x] Masked raw request/response audit and the §21.2 partner metrics are emitted by the framework wrapper
+  (audit on `mw.audit.event.v1` via the outbox: code-review fix S6, commit aece63d)
 - [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
