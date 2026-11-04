@@ -18,7 +18,23 @@ public final class TelcoFixtures {
     return "01933b8e-7c1a-7b2e-9f3d-" + tail;
   }
 
+  /** A PAY whose deadline is still ahead (an expired PAY is refused unsent, ticket 18). */
   public static PartnerRequest pay(String txnId, String msisdn, long valueMinor) {
+    return request("PAY", txnId, msisdn, valueMinor, Instant.now().plusSeconds(300));
+  }
+
+  /** A PAY whose deadline has passed. */
+  public static PartnerRequest expiredPay(String txnId, String msisdn, long valueMinor) {
+    return request("PAY", txnId, msisdn, valueMinor, Instant.now().minusSeconds(1));
+  }
+
+  /** A STATUS_QUERY about the PAY of {@code txnId} (spec 7.4). */
+  public static PartnerRequest statusQuery(String txnId) {
+    return request("STATUS_QUERY", txnId, "01711000001", 2000, Instant.now().plusSeconds(300));
+  }
+
+  private static PartnerRequest request(
+      String operation, String txnId, String msisdn, long valueMinor, Instant deadlineAt) {
     return new PartnerRequest(
         1,
         "telco",
@@ -26,9 +42,9 @@ public final class TelcoFixtures {
         txnId,
         "corr-0002",
         NOW,
-        NOW.plusSeconds(30),
+        deadlineAt,
         new PartnerRequest.Payload(
-            "PAY",
+            operation,
             "TOPUP",
             new PartnerRequest.PartnerRef("gp", "PREPAID", null),
             "UPAY-IGNORED",

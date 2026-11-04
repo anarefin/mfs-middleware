@@ -11,6 +11,7 @@ import java.time.Duration;
 import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Set;
+import mfs.mw.adapter.telco.TelcoFixtures;
 import mfs.mw.adapter.telco.config.OcsProperties;
 import mfs.mw.adapter.telco.dto.OcsResult;
 import mfs.mw.adapter.telco.dto.PartnerReply;
@@ -48,6 +49,43 @@ class PartnerReplyMapperTest {
         .isEqualTo(
             new PartnerReply.Payload(
                 "PAY", "SUCCESS", "OCS-1", "0000", null, null, null, Map.of("partnerTxnRef", "UPAYREF1")));
+  }
+
+  @Test
+  void aStatusQueryAnswerKeepsItsOperation() {
+    PartnerRequest query = TelcoFixtures.statusQuery(newTxnId());
+    PartnerReply reply = mapper.toReply(query, "UPAYREF1", new OcsResult.Accepted("OCS-1", "0000"));
+    assertThat(reply.payload().operation()).isEqualTo("STATUS_QUERY");
+    assertThat(reply.payload().outcome()).isEqualTo("SUCCESS");
+  }
+
+  @Test
+  void anOcsWithoutRecordOfTheTopupIsNotFound() {
+    PartnerReply reply =
+        mapper.toReply(TelcoFixtures.statusQuery(newTxnId()), "UPAYREF1", new OcsResult.NotFound("4040", "Unknown transaction"));
+    assertThat(reply.payload().operation()).isEqualTo("STATUS_QUERY");
+    assertThat(reply.payload().outcome()).isEqualTo("NOT_FOUND");
+    assertThat(reply.payload().partnerCode()).isEqualTo("4040");
+    assertThat(reply.payload().errorCode()).isNull();
+  }
+
+  @Test
+  void aStatusQueryThatCouldNotBeSentIsUnknownNeverFailed() {
+    // a FAILED answer to an inquiry would release a hold the partner may have used
+    for (OcsNotSentException.Reason r : OcsNotSentException.Reason.values()) {
+      PartnerReply reply =
+          mapper.notSent(TelcoFixtures.statusQuery(newTxnId()), "R", new OcsNotSentException(r, null));
+      assertThat(reply.payload().outcome()).as(r.name()).isEqualTo("UNKNOWN");
+      assertThat(reply.payload().errorCode()).isEqualTo("MW-TMO-PARTNER_" + r.name());
+    }
+  }
+
+  @Test
+  void anExpiredPayIsFailedAsNotSent() {
+    PartnerReply reply = mapper.expired(request);
+    assertThat(reply.payload().outcome()).isEqualTo("FAILED");
+    assertThat(reply.payload().errorCode()).isEqualTo("MW-SYS-PARTNER_REQUEST_EXPIRED");
+    assertThat(reply.payload().retryable()).isTrue();
   }
 
   @Test

@@ -11,4 +11,7 @@ public sealed interface OcsResult {
 
   /** The OCS answered with a code that does not say whether the top-up was applied. */
   record Ambiguous(String code, String message) implements OcsResult {}
+
+  /** Status inquiry only: the OCS has no top-up under this reference (HTTP 404, status NOT_FOUND). */
+  record NotFound(String code, String message) implements OcsResult {}
 }

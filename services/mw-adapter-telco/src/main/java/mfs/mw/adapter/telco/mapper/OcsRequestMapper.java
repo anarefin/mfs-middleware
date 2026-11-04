@@ -7,7 +7,7 @@ import mfs.mw.adapter.telco.dto.OcsTopupRequest;
 import mfs.mw.adapter.telco.dto.PartnerRequest;
 import org.springframework.stereotype.Component;
 
-/** Canonical partner request (PAY) to the OCS wire format. */
+/** Canonical partner request (PAY, STATUS_QUERY) to the OCS wire format. */
 @Component
 public class OcsRequestMapper {
 
@@ -22,11 +22,14 @@ public class OcsRequestMapper {
     if (p == null) {
       return Optional.of("payload is required");
     }
-    if (!"PAY".equals(p.operation())) {
+    if (!"PAY".equals(p.operation()) && !"STATUS_QUERY".equals(p.operation())) {
       return Optional.of("unsupported operation");
     }
     if (p.partner() == null || p.partner().partnerId() == null || p.partner().partnerId().isBlank()) {
       return Optional.of("partner is required");
+    }
+    if ("STATUS_QUERY".equals(p.operation())) {
+      return Optional.empty(); // the OCS is asked by our stable reference only
     }
     if (p.amount() == null || p.amount().valueMinor() == null || p.amount().valueMinor() <= 0) {
       return Optional.of("amount must be positive");
