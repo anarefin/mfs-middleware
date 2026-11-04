@@ -50,7 +50,8 @@ import org.jsmpp.util.MessageId;
 /**
  * A minimal in-test SMSC (SMPP 3.4 server on jSMPP): accepts any bind, answers {@code submit_sm}
  * with a message_id and sends a DELIVRD receipt on the same session shortly after. {@link
- * #throttle} makes the next submits to a number fail with ESME_RTHROTTLED (0x58). The module's own
+ * #throttle} makes the next submits to a number fail with ESME_RTHROTTLED (0x58), {@link #refuse}
+ * with any other command status. The module's own
  * stand-in for the SMSC simulator in mw-simulators (no dependency on another module, spec 4.3).
  */
 public final class SmscStub implements AutoCloseable {
@@ -62,7 +63,9 @@ public final class SmscStub implements AutoCloseable {
   private final SMPPServerSessionListener listener;
   private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
   private final List<Received> received = Collections.synchronizedList(new ArrayList<>());
-  private final Map<String, AtomicInteger> throttled = new ConcurrentHashMap<>();
+  private record Refusal(AtomicInteger left, int status) {}
+
+  private final Map<String, Refusal> refusals = new ConcurrentHashMap<>();
   private final AtomicInteger ids = new AtomicInteger();
   private final AtomicInteger binds = new AtomicInteger();
   private volatile boolean running = true;
@@ -95,7 +98,12 @@ public final class SmscStub implements AutoCloseable {
 
   /** The next {@code times} submits to {@code destination} are refused with 0x58. */
   public void throttle(String destination, int times) {
-    throttled.put(destination, new AtomicInteger(times));
+    refuse(destination, times, SMPPConstant.STAT_ESME_RTHROTTLED);
+  }
+
+  /** The next {@code times} submits to {@code destination} are refused with {@code commandStatus}. */
+  public void refuse(String destination, int times, int commandStatus) {
+    refusals.put(destination, new Refusal(new AtomicInteger(times), commandStatus));
   }
 
   /** Text of a single-part message as GSM-7 (ASCII subset) or UCS-2. */
@@ -131,9 +139,9 @@ public final class SmscStub implements AutoCloseable {
 
     @Override
     public SubmitSmResult onAcceptSubmitSm(SubmitSm sm, SMPPServerSession session) throws ProcessRequestException {
-      AtomicInteger left = throttled.get(sm.getDestAddress());
-      if (left != null && left.getAndDecrement() > 0) {
-        throw new ProcessRequestException("throttled", SMPPConstant.STAT_ESME_RTHROTTLED);
+      Refusal refusal = refusals.get(sm.getDestAddress());
+      if (refusal != null && refusal.left().getAndDecrement() > 0) {
+        throw new ProcessRequestException("refused", refusal.status());
       }
       String id = "stub-" + ids.incrementAndGet();
       received.add(new Received(sm.getDestAddress(), sm.getSourceAddr(), sm.getDataCoding(), sm.getEsmClass(),
