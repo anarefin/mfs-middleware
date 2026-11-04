@@ -170,6 +170,52 @@ class BulkBatchApiIT {
     assertThat(b.get("decidedAt").asString()).isNotBlank();
   }
 
+  // --- execution controls and result file (ticket 34) ------------------------------------------
+
+  @Test
+  void aCheckerPausesAndResumesAnApprovedBatch() {
+    String id = uploaded(MAKER, rows(2));
+    assertThat(approve(CHECKER, id)).hasStatusOk();
+    MvcTestResult makerTries = mvc.post().uri(BATCHES + "/{id}/pause", id).with(MAKER).exchange();
+    assertThat(makerTries).hasStatus(403);
+    assertThat(body(makerTries).get("code").asString()).isEqualTo("MW-AUTH-002");
+
+    MvcTestResult paused = mvc.post().uri(BATCHES + "/{id}/pause", id).with(CHECKER).exchange();
+    assertThat(paused).hasStatusOk();
+    assertThat(body(paused).get("status").asString()).isEqualTo("PAUSED");
+    assertThat(body(paused).get("parentTxnId").asString()).isNotBlank();
+    assertThat(body(paused).get("progress").get("pending").asInt()).isEqualTo(2);
+
+    MvcTestResult again = mvc.post().uri(BATCHES + "/{id}/pause", id).with(CHECKER).exchange();
+    assertThat(again).hasStatus(409);
+    assertThat(body(again).get("code").asString()).isEqualTo("MW-VAL-033");
+
+    MvcTestResult resumed = mvc.post().uri(BATCHES + "/{id}/resume", id).with(CHECKER).exchange();
+    assertThat(resumed).hasStatusOk();
+    assertThat(body(resumed).get("status").asString()).isEqualTo("EXECUTING");
+  }
+
+  @Test
+  void theResultFileIsCsvWithMaskedMsisdns() {
+    String id = uploaded(MAKER, rows(2));
+    MvcTestResult early = mvc.get().uri(BATCHES + "/{id}/result", id).with(MAKER).exchange();
+    assertThat(early).hasStatus(409);
+    assertThat(body(early).get("code").asString()).isEqualTo("MW-VAL-035");
+
+    assertThat(approve(CHECKER, id)).hasStatusOk();
+    MvcTestResult r = mvc.get().uri(BATCHES + "/{id}/result", id).with(MAKER).exchange();
+    assertThat(r).hasStatusOk();
+    assertThat(r).hasContentType("text/csv");
+    assertThat(r).headers().hasValue("Content-Disposition", "attachment; filename=\"bulk-" + id + "-result.csv\"");
+    assertThat(r)
+        .bodyText()
+        .isEqualTo(
+            "line,msisdn,amount,reference,status,txnId,errorCode\n"
+                + "2,0171****001,1.25,SAL-1,PENDING,,\n"
+                + "3,0171****002,1.25,SAL-2,PENDING,,\n");
+    assertThat(mvc.get().uri(BATCHES + "/{id}/result", id).with(OTHER_ORG_CHECKER).exchange()).hasStatus(404);
+  }
+
   @Test
   void aDifferentCheckerRejectsWithAReason() {
     String id = uploaded(MAKER, rows(3));

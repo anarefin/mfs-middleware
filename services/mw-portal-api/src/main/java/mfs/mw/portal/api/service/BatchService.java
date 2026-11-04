@@ -15,8 +15,10 @@ import mfs.mw.portal.api.entity.BatchStatus;
 import mfs.mw.portal.api.exception.ErrorCodes;
 import mfs.mw.portal.api.exception.MwException;
 import mfs.mw.portal.api.mapper.BatchMapper;
+import mfs.mw.portal.api.mapper.ResultFile;
 import mfs.mw.portal.api.repository.BatchRepository;
 import mfs.mw.portal.api.security.PortalUserResolver;
+import mfs.mw.portal.api.util.BulkIds;
 import mfs.mw.portal.api.util.UuidV7;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,7 +82,65 @@ public class BatchService {
   @Transactional(readOnly = true)
   public BatchView get(PortalUser user, String batchId) {
     requireAny(user);
-    return BatchMapper.view(load(user, batchId));
+    return viewWithProgress(load(user, batchId));
+  }
+
+  /** Stops sending further rows of a running batch; children already sent still settle. Checker. */
+  @Transactional
+  public BatchView pause(PortalUser checker, String batchId) {
+    require(checker, props.roles().checker());
+    Batch batch = load(checker, batchId);
+    if (!batches.pause(batch.batchId(), checker.orgId())) {
+      throw notRunning("Only an approved or executing batch can be paused");
+    }
+    logControl("bulk.batch.paused", batch, checker);
+    return viewWithProgress(load(checker, batchId));
+  }
+
+  /** Sends the remaining rows of a paused batch again. Checker. */
+  @Transactional
+  public BatchView resume(PortalUser checker, String batchId) {
+    require(checker, props.roles().checker());
+    Batch batch = load(checker, batchId);
+    if (!batches.resume(batch.batchId(), checker.orgId())) {
+      throw notRunning("Only a paused batch can be resumed");
+    }
+    logControl("bulk.batch.resumed", batch, checker);
+    return viewWithProgress(load(checker, batchId));
+  }
+
+  /**
+   * The result file of an approved batch (CSV, one line per row in file order): line, masked
+   * MSISDN (18.3), amount in taka, reference, row status, child txnId and error code. Final once
+   * the batch is COMPLETED; while it runs it shows the rows' current state.
+   */
+  @Transactional(readOnly = true)
+  public String resultFile(PortalUser user, String batchId) {
+    requireAny(user);
+    Batch batch = load(user, batchId);
+    if (!batch.status().approved()) {
+      throw new MwException(ErrorCodes.VAL_NO_RESULT, "The batch was not approved, so it has no result")
+          .withStatus(HttpStatus.CONFLICT);
+    }
+    return ResultFile.of(batches.items(batch.batchId()));
+  }
+
+  private BatchView viewWithProgress(Batch batch) {
+    return BatchMapper.view(
+        batch, batch.status().approved() ? batches.progress(batch.batchId(), batch.currency()) : null);
+  }
+
+  private static void logControl(String event, Batch batch, PortalUser user) {
+    log.atInfo()
+        .addKeyValue("event", event)
+        .addKeyValue("batchId", batch.batchId())
+        .addKeyValue("orgId", batch.orgId())
+        .addKeyValue("actor", user.username())
+        .log(event);
+  }
+
+  private static MwException notRunning(String message) {
+    return new MwException(ErrorCodes.VAL_BATCH_NOT_RUNNING, message).withStatus(HttpStatus.CONFLICT);
   }
 
   @Transactional(readOnly = true)
@@ -106,11 +166,21 @@ public class BatchService {
       throw new MwException(ErrorCodes.AUTH_MAKER_IS_CHECKER, "The maker of a batch cannot approve or reject it")
           .withStatus(HttpStatus.FORBIDDEN);
     }
+    String wallet = props.bulk().orgWallets().get(batch.orgId());
+    if (decision == BatchStatus.APPROVED && wallet == null) {
+      throw new MwException(ErrorCodes.VAL_NO_PAYOUT_WALLET, "The org has no payout wallet configured")
+          .withStatus(HttpStatus.CONFLICT);
+    }
     if (batch.status() != BatchStatus.PENDING_APPROVAL
         || !batches.decide(
             batch.batchId(), checker.orgId(), decision, checker.subject(), checker.username(), reason,
             clock.instant())) {
       throw notPending();
+    }
+    if (decision == BatchStatus.APPROVED) {
+      // the parent BULK_DISBURSE txn (spec 9.4): its id ties every child together; the dispatcher
+      // starts sending the rows (BulkExecutionService)
+      batches.startPayout(batch.batchId(), BulkIds.parentTxnId(batch.batchId()), wallet);
     }
     log.atInfo()
         .addKeyValue("event", "bulk.batch.decided")
@@ -118,7 +188,7 @@ public class BatchService {
         .addKeyValue("orgId", batch.orgId())
         .addKeyValue("decision", decision.name())
         .log("Bulk batch " + decision.name().toLowerCase(java.util.Locale.ROOT));
-    return BatchMapper.view(load(checker, batchId));
+    return viewWithProgress(load(checker, batchId));
   }
 
   private Batch load(PortalUser user, String batchId) {

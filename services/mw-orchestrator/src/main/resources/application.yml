@@ -164,6 +164,8 @@ mw:
     reversing-timeout: 60s
     # Channels that may send a REVERSAL request (operations; mw-admin-api publishes as SYSTEM).
     reversal-channels: SYSTEM
+    # Channels that may send a BULK_DISBURSE child (ticket 34): the org portal, after maker-checker.
+    bulk-channels: ORG_PORTAL
     # Daily MANUAL_REVIEW ageing check (scheduler/ManualReviewAgeingJob, UTC, "-" switches it off).
     manual-review-ageing-cron: "0 0 6 * * *"
     consumers:

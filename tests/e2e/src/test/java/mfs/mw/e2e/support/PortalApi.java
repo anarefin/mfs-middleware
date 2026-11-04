@@ -35,6 +35,38 @@ public final class PortalApi {
         Http.JSON.createObjectNode().put("reason", reason));
   }
 
+  public static Http.Response list(String user) {
+    return Http.get(Stack.get().url(BATCHES), auth(user));
+  }
+
+  public static Http.Response pause(String user, String batchId) {
+    return Http.postText(Stack.get().url(BATCHES + "/" + batchId + "/pause"), auth(user), "application/json", "");
+  }
+
+  public static Http.Response resume(String user, String batchId) {
+    return Http.postText(Stack.get().url(BATCHES + "/" + batchId + "/resume"), auth(user), "application/json", "");
+  }
+
+  /** The result file (CSV) of a batch (ticket 34). */
+  public static Http.Response result(String user, String batchId) {
+    return Http.get(Stack.get().url(BATCHES + "/" + batchId + "/result"), auth(user));
+  }
+
+  /**
+   * A valid file of {@code rows} payouts of {@code taka} each to the core mock's seeded customers
+   * {@code 01711000001..01711001000} in turn (row i pays customer ((i - 1) mod 1000) + 1), fresh
+   * references (ticket 34).
+   */
+  public static String payoutFile(int rows, String taka) {
+    String run = Long.toString(System.nanoTime(), 36);
+    StringBuilder b = new StringBuilder("msisdn,amount,reference\n");
+    for (int i = 1; i <= rows; i++) {
+      b.append("0171100").append(String.format("%04d", (i - 1) % 1000 + 1)).append(',').append(taka)
+          .append(",PAY-").append(run).append('-').append(i).append('\n');
+    }
+    return b.toString();
+  }
+
   /** A valid file of {@code rows} payees (1.00 taka each), references unique per call. */
   public static String file(int rows) {
     String run = Long.toString(System.nanoTime(), 36);

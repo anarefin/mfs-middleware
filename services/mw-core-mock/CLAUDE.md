@@ -79,8 +79,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   are `mw.coremock.*` in `application.yml`; fee is a flat amount per `txnType`, debited from the payer
   on top of the amount; limits are per transaction and per UTC day (sum of transfer debits).
 - Wallet types per `txnType` (`mw.coremock.wallet-types`, debit -> credit): CASH_IN AGENT ->
-  CUSTOMER, CASH_OUT CUSTOMER -> AGENT, MERCHANT_PAY CUSTOMER -> MERCHANT (ticket 30, fee 0); other types
-  unrestricted. Wrong types `INVALID_COUNTERPARTY`
+  CUSTOMER, CASH_OUT CUSTOMER -> AGENT, MERCHANT_PAY CUSTOMER -> MERCHANT (ticket 30, fee 0),
+  BULK_DISBURSE ORG -> CUSTOMER (ticket 34, fee 0); other types unrestricted. BULK_DISBURSE carries
+  no PIN (contract: the org authorised the batch by maker-checker; `TransferPayload.pinRequired`),
+  so no PIN check or lockout for it; any other transfer without `encryptedPin` is malformed.
+  `limits.wallet-types.<type>.daily-minor` overrides the daily debit limit per wallet type (ORG
+  50,000,000 taka: a whole 10,000-row batch in a day); the per-transaction limit applies to all. Wrong types `INVALID_COUNTERPARTY`
   (validate, post and hold; decided before the PIN, so it never counts a PIN failure).
 - PIN lockout (spec 9.1, rule owned by the core): `wallet.pin_failures` counts consecutive wrong
   PINs on the debit wallet (validate, post, hold), a correct PIN resets it, the

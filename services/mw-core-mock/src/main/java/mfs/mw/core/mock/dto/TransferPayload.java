@@ -8,4 +8,16 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record TransferPayload(
-    String txnType, Party debitParty, Party creditParty, Amount amount, EncryptedPin encryptedPin) {}
+    String txnType, Party debitParty, Party creditParty, Amount amount, EncryptedPin encryptedPin) {
+
+  /**
+   * The org bulk payout child (ticket 34): the org authorised the batch by maker-checker in the
+   * org portal, so the contract carries no PIN for it.
+   */
+  public static final String BULK_DISBURSE = "BULK_DISBURSE";
+
+  /** Whether this transfer is authorised by the payer's PIN (contract: every type but BULK_DISBURSE). */
+  public boolean pinRequired() {
+    return !BULK_DISBURSE.equals(txnType);
+  }
+}

@@ -19,6 +19,12 @@ public final class ErrorCodes {
   public static final String VAL_BULK_INVALID_ROWS = "MW-VAL-031";
   /** The batch is no longer awaiting approval (already approved or rejected): HTTP 409. */
   public static final String VAL_BATCH_NOT_PENDING = "MW-VAL-032";
+  /** Pause of a batch that is not running, or resume of one that is not paused: HTTP 409. */
+  public static final String VAL_BATCH_NOT_RUNNING = "MW-VAL-033";
+  /** Approval for an org without a configured payout wallet ({@code bulk.org-wallets}): HTTP 409. */
+  public static final String VAL_NO_PAYOUT_WALLET = "MW-VAL-034";
+  /** Result file of a batch that was never approved (no rows were paid): HTTP 409. */
+  public static final String VAL_NO_RESULT = "MW-VAL-035";
   /** No valid bearer token (missing, expired, bad signature, wrong realm): HTTP 401. */
   public static final String AUTH_UNAUTHENTICATED = "MW-AUTH-001";
   /** Valid token, but no org (claim orgId) or not the role this operation needs: HTTP 403. */
