@@ -39,8 +39,26 @@ public record CoreMockProperties(
   /** The wallet type the debit and the credit wallet of one {@code txnType} must have. */
   public record WalletTypes(@NotBlank String debit, @NotBlank String credit) {}
 
-  /** Debit limits for every wallet. */
-  public record Limits(@Positive long perTxnMinor, @Positive long dailyMinor) {}
+  /**
+   * Debit limits for every wallet; {@code walletTypes} overrides the daily limit per wallet type
+   * (an org pays out a whole bulk batch in a day, ticket 34).
+   */
+  public record Limits(
+      @Positive long perTxnMinor, @Positive long dailyMinor, Map<String, @Valid TypeLimit> walletTypes) {
+
+    public Limits {
+      walletTypes = Map.copyOf(walletTypes == null ? Map.of() : walletTypes);
+    }
+
+    /** The daily debit limit of a wallet of {@code walletType}. */
+    public long dailyMinor(String walletType) {
+      TypeLimit t = walletTypes.get(walletType);
+      return t == null ? dailyMinor : t.dailyMinor();
+    }
+  }
+
+  /** The daily debit limit of one wallet type. */
+  public record TypeLimit(@Positive long dailyMinor) {}
 
   /**
    * Seed settings. The PIN is a fake, shared by all seeded wallets (test double only).

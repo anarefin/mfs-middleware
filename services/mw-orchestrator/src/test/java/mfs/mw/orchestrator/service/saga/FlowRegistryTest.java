@@ -45,6 +45,14 @@ class FlowRegistryTest {
   }
 
   @Test
+  void bulkDisburseIsRegisteredAndPostsWithoutHold() {
+    Flow flow = wired().find("BULK_DISBURSE").orElseThrow();
+    assertThat(flow.needsHold()).isFalse();
+    assertThat(flow.steps()).containsExactlyInAnyOrder(Step.VALIDATE, Step.POST);
+    assertThat(flow.partnerCall()).isEmpty();
+  }
+
+  @Test
   void billPayHoldsAndCallsTheBillpayPartner() {
     Flow flow = wired().find("BILL_PAY").orElseThrow();
     assertThat(flow.needsHold()).isTrue();

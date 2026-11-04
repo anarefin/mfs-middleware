@@ -5,10 +5,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import mfs.mw.e2e.support.Http;
 import mfs.mw.e2e.support.PortalApi;
+import mfs.mw.e2e.support.Waits;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Org portal bulk upload and maker-checker (ticket 33). Every response goes to {@link
@@ -76,6 +82,119 @@ public class PortalSteps {
   @Then("the batch was decided by {word}")
   public void decidedBy(String user) {
     assertThat(state.response().body().path("checkerId").asString(null)).as("%s", state.response()).isEqualTo(user);
+  }
+
+  // --- execution and result file (ticket 34) --------------------------------------------------
+
+  private static final Set<String> SENDING = Set.of("APPROVED", "EXECUTING");
+
+  /** Waits until no batch of the user's org is still sending rows (a paused one sends nothing). */
+  @Given("no bulk batch of {word}'s org is still running")
+  public void noBatchRunning(String user) {
+    Http.Response r =
+        Waits.until(
+            () -> PortalApi.list(user),
+            resp -> {
+              for (JsonNode b : resp.body().path("batches")) {
+                if (SENDING.contains(b.path("status").asString())) {
+                  return false;
+                }
+              }
+              return resp.status() == 200;
+            },
+            Duration.ofMinutes(15));
+    assertThat(r.status()).as("%s", r).isEqualTo(200);
+  }
+
+  @Given("{word} has uploaded a payout file of {int} rows of {word} taka")
+  public void hasUploadedPayout(String user, int rows, String taka) {
+    Http.Response r = record(PortalApi.upload(user, PortalApi.payoutFile(rows, taka)));
+    assertThat(r.status()).as("%s", r).isEqualTo(201);
+    state.batchId = r.body().path("batchId").asString();
+  }
+
+  @Given("{word} has uploaded a bulk file with these lines:")
+  public void hasUploadedLines(String user, List<String> lines) {
+    Http.Response r = record(PortalApi.upload(user, String.join("\n", lines) + "\n"));
+    assertThat(r.status()).as("%s", r).isEqualTo(201);
+    state.batchId = r.body().path("batchId").asString();
+  }
+
+  @When("{word} pauses the batch")
+  public void pauses(String user) {
+    record(PortalApi.pause(user, state.batchId));
+  }
+
+  @When("{word} resumes the batch")
+  public void resumes(String user) {
+    record(PortalApi.resume(user, state.batchId));
+  }
+
+  @Then("within {int} minutes {word} sees the batch {word}")
+  public void eventuallyStatus(int minutes, String user, String status) {
+    Http.Response r =
+        Waits.until(
+            () -> PortalApi.get(user, state.batchId),
+            resp -> status.equals(resp.body().path("status").asString(null)),
+            Duration.ofMinutes(minutes));
+    record(r);
+    assertThat(r.body().path("status").asString(null)).as("%s", r).isEqualTo(status);
+  }
+
+  @Then("the batch progress shows {int} completed, {int} failed and {long} poisha paid")
+  public void progress(int completed, int failed, long paidMinor) {
+    JsonNode p = state.response().body().path("progress");
+    assertThat(p.path("completed").asInt()).as("%s", state.response()).isEqualTo(completed);
+    assertThat(p.path("failed").asInt()).as("%s", state.response()).isEqualTo(failed);
+    assertThat(p.path("pending").asInt()).as("%s", state.response()).isZero();
+    assertThat(p.path("inFlight").asInt()).as("%s", state.response()).isZero();
+    assertThat(p.path("paidAmount").path("valueMinor").asLong()).as("%s", state.response()).isEqualTo(paidMinor);
+  }
+
+  /** The batch sends nothing more for 3 s, with rows still unsent. */
+  @Then("{word} sees the batch send no more rows")
+  public void sendsNoMore(String user) {
+    int before = PortalApi.get(user, state.batchId).body().path("progress").path("pending").asInt();
+    assertThat(before).as("rows still unsent when paused").isPositive();
+    Waits.until(() -> 0, x -> false, Duration.ofSeconds(3));
+    int after = PortalApi.get(user, state.batchId).body().path("progress").path("pending").asInt();
+    assertThat(after).isEqualTo(before);
+  }
+
+  @Then("{word}'s result file lists all {int} rows as COMPLETED, each with its own txnId")
+  public void resultAllCompleted(String user, int rows) {
+    List<String[]> lines = resultLines(user);
+    assertThat(lines).hasSize(rows);
+    Set<String> txnIds = new HashSet<>();
+    for (String[] l : lines) {
+      assertThat(l[4]).as("row %s", l[0]).isEqualTo("COMPLETED");
+      assertThat(l[1]).as("masked msisdn").matches("01\\d{2}\\*{4}\\d{3}");
+      txnIds.add(l[5]);
+    }
+    assertThat(txnIds).hasSize(rows);
+  }
+
+  @Then("{word}'s result file shows:")
+  public void resultShows(String user, List<Map<String, String>> expected) {
+    List<Map<String, String>> actual = new ArrayList<>();
+    for (String[] l : resultLines(user)) {
+      actual.add(Map.of("reference", l[3], "status", l[4], "errorCode", l.length > 6 ? l[6] : ""));
+    }
+    List<Map<String, String>> wanted = new ArrayList<>();
+    for (Map<String, String> e : expected) {
+      wanted.add(Map.of("reference", e.get("reference"), "status", e.get("status"),
+          "errorCode", e.get("errorCode") == null ? "" : e.get("errorCode")));
+    }
+    assertThat(actual).containsExactlyElementsOf(wanted);
+  }
+
+  /** The data lines of the result file, split into columns (header checked). */
+  private List<String[]> resultLines(String user) {
+    Http.Response r = record(PortalApi.result(user, state.batchId));
+    assertThat(r.status()).as("%s", r).isEqualTo(200);
+    List<String> lines = r.raw().lines().toList();
+    assertThat(lines.get(0)).isEqualTo("line,msisdn,amount,reference,status,txnId,errorCode");
+    return lines.subList(1, lines.size()).stream().map(l -> l.split(",", -1)).toList();
   }
 
   @Then("the error details name these fields:")

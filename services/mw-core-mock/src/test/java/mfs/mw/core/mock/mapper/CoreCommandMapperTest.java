@@ -33,8 +33,22 @@ class CoreCommandMapperTest {
   void readsEveryValidTransferSample(Path sample) throws Exception {
     CoreCommand cmd = mapper.command(Files.readString(sample));
 
-    assertThat(mapper.transfer(cmd).encryptedPin().ciphertext()).isNotBlank();
+    if (mapper.transfer(cmd).pinRequired()) {
+      assertThat(mapper.transfer(cmd).encryptedPin().ciphertext()).isNotBlank();
+    } else {
+      assertThat(mapper.transfer(cmd).encryptedPin()).isNull(); // BULK_DISBURSE, ticket 34
+    }
     assertThat(mapper.transfer(cmd).debitParty().id()).isNotBlank();
+  }
+
+  @Test
+  void aTransferWithoutPinIsRejectedUnlessItIsABulkDisbursement() {
+    String body =
+        "{\"commandType\":\"PostTransfer\",\"commandId\":\"c\",\"txnId\":\"t\",\"payload\":{\"txnType\":\"%s\","
+            + "\"debitParty\":{\"type\":\"ORG\",\"id\":\"01311000001\"},\"creditParty\":{\"type\":\"WALLET\","
+            + "\"id\":\"01711000001\"},\"amount\":{\"valueMinor\":100,\"currency\":\"BDT\"}}}";
+    assertThatThrownBy(() -> mapper.transfer(mapper.command(body.formatted("P2P")))).isInstanceOf(MwException.class);
+    assertThat(mapper.transfer(mapper.command(body.formatted("BULK_DISBURSE"))).encryptedPin()).isNull();
   }
 
   @Test

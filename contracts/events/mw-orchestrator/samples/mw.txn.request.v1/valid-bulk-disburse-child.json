@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c",
+  "idempotencyKey": "bulk-01933b8e-0000-7000-8000-000000000002-2",
+  "correlationId": "bulk-01933b8e-0000-7000-8000-000000000002",
+  "channel": "ORG_PORTAL",
+  "txnType": "BULK_DISBURSE",
+  "initiator": { "type": "ORG", "id": "ORG001" },
+  "debitParty": { "type": "ORG", "id": "01311000001" },
+  "creditParty": { "type": "WALLET", "id": "01711000002", "walletType": "CUSTOMER" },
+  "amount": { "valueMinor": 10000, "currency": "BDT" },
+  "requestedAt": "2026-11-03T08:15:30Z",
+  "attributes": {
+    "parentTxnId": "01933b8e-0000-7000-8000-000000000001",
+    "batchId": "01933b8e-0000-7000-8000-000000000002",
+    "lineNo": "2",
+    "reference": "PAYROLL-0001"
+  }
+}

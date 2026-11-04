@@ -249,7 +249,7 @@ public class CoreCommandService {
     if (!post) {
       Map<String, Amount> left = new LinkedHashMap<>();
       left.put("PER_TXN", Amount.bdt(props.limits().perTxnMinor()));
-      left.put("DAILY", Amount.bdt(props.limits().dailyMinor() - usedToday - amount));
+      left.put("DAILY", Amount.bdt(props.limits().dailyMinor(debit.type()) - usedToday - amount));
       return events.validated(cmd, coreRef, fee, left);
     }
 
@@ -280,7 +280,7 @@ public class CoreCommandService {
     }
     Map<String, Amount> left = new LinkedHashMap<>();
     left.put("PER_TXN", Amount.bdt(props.limits().perTxnMinor()));
-    left.put("DAILY", Amount.bdt(props.limits().dailyMinor() - usedToday - amount));
+    left.put("DAILY", Amount.bdt(props.limits().dailyMinor(debit.type()) - usedToday - amount));
     return events.validated(cmd, coreRef, fee, left);
   }
 

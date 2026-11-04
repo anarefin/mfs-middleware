@@ -6,6 +6,13 @@ mw:
       # would publish rows another test is checking. Tests that need it switch it on and close
       # their context afterwards (@DirtiesContext).
       enabled: false
+  portal-api:
+    # Off by default in tests: they call BulkExecutionService directly (dispatch, apply).
+    consumers:
+      enabled: false
+    bulk:
+      dispatch:
+        enabled: false
   retention:
     # The purge job's schedule is off in tests; OutboxInboxPurgeConformanceIT calls it directly.
     cron: "-"

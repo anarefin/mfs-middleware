@@ -8,8 +8,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
 - Org portal bulk disbursement, upload and maker-checker (spec 9.4, WP22 part, ticket 33) behind
   the APISIX route `/portal/org/v1/*` (`deploy/apisix/routes/portal-org-v1.json`,
   `openid-connect` bearer-only on realm `portals`, body cap 3 MiB, 60 req/min per token subject).
-  Execution of an approved batch (parent `BULK_DISBURSE`, throttled child txns, result file) is
-  ticket 34; SP queries and SFTP drop are later tickets.
+  Execution of an approved batch (ticket 34, below); SP queries and SFTP drop are later tickets.
 - Auth (`config/SecurityConfig`, `security/`): bearer JWT of realm `portals` on `/portal/**`, verified
   again here (JWKS `mw.portal-api.jwt.jwk-set-uri`, issuer must end with `/realms/portals`). The
   org is the `orgId` claim (user attribute + `mw-portal` client mapper in `portals-realm.json`);
@@ -30,6 +29,38 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   not pending `409 MW-VAL-032`; one conditional UPDATE, so of racing checkers exactly one wins.
   Another org's batch is `404 MW-VAL-003` everywhere. No expiry of pending batches yet (15.3's
   72 h applies to admin change requests).
+- Execution (ticket 34, spec 9.4, WP22 part; `service/BulkExecutionService`, schema V5). Approval
+  needs the org's payout wallet in `bulk.org-wallets` (orgId -> core wallet; ORG001/ORG002 ->
+  the core mock's `01311000001`/`...002`), else `409 MW-VAL-034`, and stores the parent
+  `BULK_DISBURSE` txnId (`batch.parent_txn_id`, `util/BulkIds.parentTxnId`) and the wallet.
+  **Decision:** the parent is the batch's own record and id, not an orchestrator saga (it moves no
+  money); every child carries it in `attributes.parentTxnId` (+ `batchId`, `lineNo`, `reference`).
+  `scheduler/BulkDispatchJob` (ShedLock `bulk-dispatch`, every `bulk.dispatch.period` 200 ms) ->
+  `dispatch()`: token bucket at `bulk.dispatch.rate-per-second` (`MW_BULK_RATE_PER_SECOND`, default
+  50) over all running batches, holding at most one period's worth (an idle dispatcher saves no
+  burst); locks that many PENDING rows of APPROVED/EXECUTING batches (`FOR NO KEY UPDATE OF i, b
+  SKIP LOCKED`, oldest approval first, file order; the batch row lock makes a pause wait for a
+  running dispatch), writes one `mw.txn.request.v1` record per row to the outbox (channel
+  `ORG_PORTAL`, txnType `BULK_DISBURSE`, initiator `{ORG, orgId}`, debit `{ORG, wallet}`, credit
+  `{WALLET, msisdn, CUSTOMER}`, no PIN, correlationId `bulk-<batchId>`) and marks the rows
+  SUBMITTED with their txnId, in one transaction; APPROVED -> EXECUTING. txnId (UUIDv7 shape:
+  the batch id's timestamp + SHA-256 of `bulk:<batchId>:<line>`) and key `bulk-<batchId>-<line>`
+  are derived, so a re-run after a crash sends the same request and the orchestrator answers it
+  from its idempotency record (never pays twice; `BulkExecutionIT`). Throttle measured on a test
+  clock in `BulkExecutionIT`. `POST .../pause` (checker; APPROVED/EXECUTING -> PAUSED) and
+  `.../resume` (PAUSED -> EXECUTING), else `409 MW-VAL-033`; rows already sent still settle.
+  `route/TxnStatusRoute` + `messaging/TxnStatusListener` consume `mw.txn.status.v1` (group
+  `mw-portal-api`, retry topics + DLQ; `mw.portal-api.consumers.enabled`) -> `apply()`: only
+  ORG_PORTAL BULK_DISBURSE records, only settled states (`entity/ItemStatus.settledBy`: COMPLETED,
+  FAILED, REJECTED, REVERSED, MANUAL_REVIEW), one conditional UPDATE by txn_id (FAILED/REJECTED/
+  REVERSED final, COMPLETED only to REVERSED), so redeliveries are no-ops without an inbox row;
+  then the batch is COMPLETED (+ `completed_at`) once no row is PENDING/SUBMITTED (MANUAL_REVIEW
+  counts as settled). Views of approved batches carry `parentTxnId`, `progress` (pending,
+  inFlight, completed, failed, manualReview, paidAmount), `completedAt`. `GET .../result`
+  (`mapper/ResultFile`, maker or checker, `text/csv`, attachment): `line,msisdn,amount,reference,
+  status,txnId,errorCode`, MSISDN masked (18.3), current state while running; before approval
+  `409 MW-VAL-035`. No re-send of a SUBMITTED row that never settles (Kafka and the outbox keep
+  the record; such a row shows SUBMITTED in the result file).
 - Init (`mw-portal-api-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
   `portal_api_rw`, schema `bulk`, `secret/mw-portal-api` (DB password), AppRole.
 
@@ -40,7 +71,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
 
 ## Contracts used
 
-- None yet (ticket 34 produces `mw.txn.request.v1` and consumes `mw.txn.status.v1`).
+- `events/mw-orchestrator/mw.txn.request.v1` (produced, own type `dto/TxnRequest`;
+  `BulkExecutionIT` validates every child against it) and `mw.txn.status.v1` (consumed, own type
+  `dto/StatusMessage`; `StatusMessageContractTest` reads every valid sample).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 

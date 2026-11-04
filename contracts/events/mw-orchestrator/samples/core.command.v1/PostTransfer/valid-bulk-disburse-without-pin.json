@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "commandType": "PostTransfer",
+  "commandId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c:post",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c",
+  "correlationId": "corr-0002",
+  "issuedAt": "2026-11-03T08:15:30.500Z",
+  "expiresAt": "2026-11-03T08:15:35.500Z",
+  "payload": {
+    "txnType": "BULK_DISBURSE",
+    "debitParty": { "type": "ORG", "id": "01311000001" },
+    "creditParty": { "type": "WALLET", "id": "01711000002", "walletType": "CUSTOMER" },
+    "amount": { "valueMinor": 10000, "currency": "BDT" },
+    "fee": { "valueMinor": 0, "currency": "BDT" }
+  }
+}
