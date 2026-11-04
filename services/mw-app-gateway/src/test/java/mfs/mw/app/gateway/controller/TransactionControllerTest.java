@@ -117,20 +117,29 @@ class TransactionControllerTest {
     verify(service, never()).submit(any(), any(), any());
   }
 
+  /** The schema check (formerly at the edge) answers first; Bean Validation checks the formats. */
   @Test
   void missingPinOrBadMsisdnIsMwVal() {
-    MvcTestResult r =
+    MvcTestResult noPin =
         post(
             customer(),
             "key-2",
             "{\"txnType\":\"P2P\",\"creditParty\":{\"id\":\"12345\"},"
                 + "\"amount\":{\"valueMinor\":100,\"currency\":\"BDT\"}}");
-    assertThat(r).hasStatus(400);
-    assertThat(r)
-        .bodyJson()
-        .extractingPath("$.details[*].field")
-        .asArray()
-        .containsExactlyInAnyOrder("creditParty.id", "encryptedPin");
+    assertThat(noPin).hasStatus(400);
+    assertThat(noPin).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-001");
+    assertThat(noPin).bodyJson().extractingPath("$.details[*].field").asArray().containsExactly("encryptedPin");
+
+    MvcTestResult badMsisdn =
+        post(
+            customer(),
+            "key-2",
+            "{\"txnType\":\"P2P\",\"creditParty\":{\"id\":\"12345\"},"
+                + "\"amount\":{\"valueMinor\":100,\"currency\":\"BDT\"},"
+                + "\"encryptedPin\":{\"keyId\":\"core-pin-1\",\"ciphertext\":\"Y2lwaGVy\"}}");
+    assertThat(badMsisdn).hasStatus(400);
+    assertThat(badMsisdn).bodyJson().extractingPath("$.details[*].field").asArray().containsExactly("creditParty.id");
+    verify(service, never()).submit(any(), any(), any());
   }
 
   @Test

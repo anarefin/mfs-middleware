@@ -12,7 +12,7 @@ routes-test/<id>.json      TEST ONLY, see "Test-only objects" below
 consumers-test/<name>.json TEST ONLY consumers of those routes
 lua/*.lua                  serverless / _meta.pre_function code, inlined as "@lua:lua/<file>"
                            (edge-limit-degraded.lua: the rate-limiter degradation alert, ticket 50)
-schemas/*.json             request-validation schemas derived from contracts/, inlined as "@json:schemas/<file>"
+schemas/*.json             request-validation schemas derived from contracts/, inlined as "@json:schemas/<file>" (the app submit schema lives in mw-app-gateway)
 ```
 
 ## Format decision: Admin API JSON, not ADC YAML
@@ -55,7 +55,7 @@ Edge error codes:
 
 | HTTP | Code | Retryable | Produced by |
 | --- | --- | --- | --- |
-| 400 | `MW-VAL-001` (reason in `details[0].issue`) | no | `request-validation`, malformed JSON, bad `Authorization` header |
+| 400 | `MW-VAL-001` (reason in `details[0].issue`) | no | `request-validation` (checkout), malformed JSON, bad `Authorization` header |
 | 401 | `MW-AUTH-001` | no | `openid-connect`: no, invalid, badly signed or expired token |
 | 403 | `MW-AUTH-002` | no | `openid-connect` scope/audience checks |
 | 404 | `MW-VAL-003` | no | no route |
@@ -70,15 +70,16 @@ Route `app-v1` (`/app/v1/*`), in plugin order:
 1. `client-control` `max_body_size` 64 KiB (413).
 2. `openid-connect` bearer-only, realm `customers` JWKS, `iat_slack` 10 s (the plugin's default
    accepts a token 120 s past `exp`).
-3. `request-validation` only for `POST /app/v1/transactions` (`_meta.filter`), after auth
-   (`_meta.priority` 2500 < openid-connect's 2599), schema `schemas/app-v1-transaction-request.json`.
-   The plugin re-encodes a valid JSON body before forwarding it (APISIX and the upstream then parse
-   the same JSON), so the upstream never sees the bytes the app signed.
-4. `serverless-pre-function` (access, priority 10000, so before `request-validation`):
-   `lua/consumer-from-jwt.lua` sets `ctx.var.mw_consumer` = `sub:<token sub>`, the per-consumer
-   key; `lua/app-body-sha256.lua` forwards `X-Mw-Body-Sha256` = hex SHA-256 of the body exactly as
-   the client sent it (every POST), the body hash in mw-app-gateway's device signature check
-   (ticket 29). The edge strips client `X-Mw-*` headers first, so only the edge can set it.
+3. No `request-validation`: the submit body (`POST /app/v1/transactions`) is signed by the app's
+   bound device (ticket 29), and request-validation forwards a JSON body it validated re-encoded
+   (APISIX 3.x `set_body_data`, not configurable), so the gateway could no longer verify the
+   signature over the bytes the device sent. mw-app-gateway checks the same derived schema
+   (`services/mw-app-gateway/src/main/resources/derived-schemas/app-v1-transaction-request.json`,
+   kept in sync by `scripts/apisix-schemas.sh`) on the exact bytes it hashes and parses, after the
+   token and before the device gate, with duplicate keys refused; errors stay 400 MW-VAL-001. No
+   plugin on this route may rewrite the body (`test_apisix_edge.sh`).
+4. `serverless-pre-function` (access, `lua/consumer-from-jwt.lua`): `ctx.var.mw_consumer` =
+   `sub:<token sub>`, the per-consumer key.
 5. `limit-count` 120 requests / 60 s per consumer, counters in Valkey (`policy: redis`,
    password `$env://VALKEY_PASSWORD`, so it is never stored in etcd; `config.yaml` exposes the
    variable to nginx), `allow_degradation: true` (Valkey down: requests pass, APISIX logs it,
@@ -210,7 +211,8 @@ validator) into a closed `properties` list, and fails on any keyword it cannot c
 3. Body schema: add `schemas/<id>-<op>.json` with only `x-mw-derived-from`, run
    `scripts/apisix-schemas.sh --write`, reference it as `"@json:schemas/<file>"` in a
    `request-validation` limited by `_meta.filter` to the operation, `_meta.priority` below the
-   auth plugin's.
+   auth plugin's. Not for a body the client signs over its bytes and the upstream verifies
+   (request-validation re-encodes it): the service checks the derived schema itself (app-v1).
 4. `client-control` `max_body_size` sized for the route (bulk upload routes need more).
 5. Partner/MNO routes: `ip-restriction` (8.3) before auth.
 6. Add the route's cases to `scripts/edge-test.sh` and run `make edge-test`.

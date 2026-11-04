@@ -8,9 +8,9 @@ import java.io.IOException;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Keeps the body of {@code /app/**} POSTs in memory ({@link CachedBodyRequest}) so the device
- * signature check (ticket 29) hashes the bytes the client signed. Registered by {@code
- * config/DeviceBindingConfig} only when device binding is on.
+ * Keeps the body of {@code /app/**} POSTs in memory ({@link CachedBodyRequest}) so the submit
+ * schema check, the device signature hash (ticket 29) and the controller read the same bytes, the
+ * ones the client sent. Registered by {@code config/SubmitSchemaConfig}.
  */
 public class CachedBodyFilter extends OncePerRequestFilter {
 

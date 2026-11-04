@@ -1,7 +1,9 @@
 // apisix-schemas: request-validation schemas for the APISIX edge (spec 8.3), derived from the
 // OpenAPI contracts in contracts/ (ticket 13). Usage: node apisix-schemas.mjs --check|--write <repo-root>
 //
-// Every deploy/apisix/schemas/*.json names its source in "x-mw-derived-from"
+// Every deploy/apisix/schemas/*.json, and every services/<module>/src/main/resources/derived-schemas/*.json
+// (a service that checks a derived schema itself: mw-app-gateway's submit body, which the edge must
+// not re-encode because the device signs its bytes, ticket 29), names its source in "x-mw-derived-from"
 // ("<contracts-relative file>#<JSON pointer>"). --check fails when a file is not exactly what
 // the derivation gives today; --write rewrites the files. To add one, create the file with only
 // { "x-mw-derived-from": "..." } and run scripts/apisix-schemas.sh --write.
@@ -81,8 +83,14 @@ function derive(node, doc, where, seen = []) {
   return out;
 }
 
-const dir = join(root, "deploy", "apisix", "schemas");
-if (!existsSync(dir)) process.exit(0);
+const dirs = [join("deploy", "apisix", "schemas")];
+const services = join(root, "services");
+if (existsSync(services)) {
+  for (const m of readdirSync(services).sort()) {
+    const d = join("services", m, "src", "main", "resources", "derived-schemas");
+    if (existsSync(join(root, d))) dirs.push(d);
+  }
+}
 const docs = new Map();
 const load = (file) => {
   if (!docs.has(file)) {
@@ -96,8 +104,11 @@ const load = (file) => {
 
 const problems = [];
 let n = 0;
-for (const name of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
-  const file = `deploy/apisix/schemas/${name}`;
+for (const rel of dirs) {
+  const dir = join(root, rel);
+  if (!existsSync(dir)) continue;
+  for (const name of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
+  const file = `${rel}/${name}`;
   try {
     const current = readFileSync(join(dir, name), "utf8");
     const source = JSON.parse(current)[SOURCE];
@@ -115,6 +126,7 @@ for (const name of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
     }
   } catch (e) {
     problems.push(`${file}: ${e.message}`);
+  }
   }
 }
 if (problems.length) {

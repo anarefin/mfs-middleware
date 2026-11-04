@@ -9,8 +9,9 @@
 # Checks (ticket 13 acceptance, plus the 5.3 envelope on every edge error):
 #   - no, garbage, badly signed or expired bearer token -> 401 MW-AUTH-001 envelope with a
 #     correlationId; unknown path 404 and unreachable upstream 502 also get the envelope
-#   - a submit body that breaks the schema -> 400 MW-VAL-001, never reaches mw-app-gateway;
-#     a valid body does reach it; an oversized body -> 413
+#   - a submit body that breaks the schema -> 400 MW-VAL-001 (checked by mw-app-gateway on the
+#     bytes the device signed: the edge must not re-encode it, ticket 29); a valid body reaches it
+#     byte for byte; an oversized body -> 413 at the edge
 #   - more requests than the per-consumer quota -> 429 MW-SYS-RATE_LIMITED, counter in Valkey,
 #     another consumer unaffected
 #   - client X-Mw-* headers never reach the upstream; X-Correlation-Id generated when absent
@@ -212,15 +213,14 @@ schema_400() {
     -d '{"txnType":"P2P","creditParty":{"id":"01711000002"},"encryptedPin":{"keyId":"k1","ciphertext":"x"}}'
   envelope 400 MW-VAL-001 || return 1
   jq -e '.details[0].issue | test("amount")' "$tmp/b" >/dev/null || { echo "no reason in details: $(cat "$tmp/b")"; return 1; }
-  if gateway_logged "$cid" 3; then echo "mw-app-gateway logged $cid: the request reached the upstream"; return 1; fi
 }
-check "body breaking the schema -> 400 MW-VAL-001, never reaches mw-app-gateway" schema_400
+check "body breaking the schema -> 400 MW-VAL-001 (mw-app-gateway's schema check)" schema_400
 attribute_400() {
   call POST /app/v1/transactions -H "Authorization: Bearer $customer" -H 'Content-Type: application/json' \
     -H "Idempotency-Key: $(uniq_id key)" -d "${valid_body%\}},\"attributes\":{\"duplicate\":\"true\"}}"
   envelope 400 MW-VAL-001
 }
-check "attribute outside the allow-list -> 400 MW-VAL-001 at the edge" attribute_400
+check "attribute outside the allow-list -> 400 MW-VAL-001" attribute_400
 malformed_400() {
   call POST /app/v1/transactions -H "Authorization: Bearer $customer" -H 'Content-Type: application/json' -d '{"txnType":'
   envelope 400 MW-VAL-001
