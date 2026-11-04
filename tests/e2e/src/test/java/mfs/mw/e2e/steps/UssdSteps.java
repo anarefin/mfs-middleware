@@ -44,6 +44,14 @@ public class UssdSteps {
     assertThat(s.last().message()).isEqualTo(unescape(text));
   }
 
+  @Then("the USSD session is still open on a screen ending with {string}")
+  public void openOnEndingWith(String text) {
+    UssdGateway.Session s = state.session();
+    assertThat(s.ended()).as("session still open, screens " + s.screens()).isFalse();
+    assertThat(s.last().flag()).isEqualTo("CON");
+    assertThat(s.last().message()).endsWith(unescape(text));
+  }
+
   @Then("the first USSD screens were:")
   public void screensWere(List<String> expected) {
     List<String> shown = state.session().screens().stream().map(UssdGateway.Screen::message).toList();

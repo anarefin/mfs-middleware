@@ -14,6 +14,7 @@ import mfs.mw.ussd.dto.EncryptedPin;
 import mfs.mw.ussd.dto.ErrorInfo;
 import mfs.mw.ussd.dto.FlowOutcome;
 import mfs.mw.ussd.dto.FlowRequest;
+import mfs.mw.ussd.dto.LookupOutcome;
 import mfs.mw.ussd.dto.Menu;
 import mfs.mw.ussd.dto.MenuNode;
 import mfs.mw.ussd.dto.MenuOption;
@@ -41,6 +42,8 @@ public class UssdEngine {
   private static final Logger log = LoggerFactory.getLogger(UssdEngine.class);
 
   private static final Pattern PLACEHOLDER = Pattern.compile("\\{([A-Za-z0-9_.]+)}");
+  /** An ACTION mapping value starting with this is a literal, not an input name ({@code =PREPAID}). */
+  public static final String LITERAL = "=";
   private static final String UNAVAILABLE_FALLBACK = "Service temporarily unavailable. Please try later.";
 
   private final MenuCatalog menus;
@@ -50,6 +53,7 @@ public class UssdEngine {
   private final TransactionFlow flow;
   private final PinCipher pins;
   private final DynamicLists lists;
+  private final Lookups lookups;
   private final UssdProperties props;
   private final Clock clock;
 
@@ -61,6 +65,7 @@ public class UssdEngine {
       TransactionFlow flow,
       PinCipher pins,
       DynamicLists lists,
+      Lookups lookups,
       UssdProperties props,
       Clock clock) {
     this.menus = menus;
@@ -70,6 +75,7 @@ public class UssdEngine {
     this.flow = flow;
     this.pins = pins;
     this.lists = lists;
+    this.lookups = lookups;
     this.props = props;
     this.clock = clock;
   }
@@ -142,7 +148,15 @@ public class UssdEngine {
       return invalid(menu, s, node);
     }
     String lang = option.switchLanguage() ? toggle(s.language()) : s.language();
-    return enter(menu, s.at(option.next(), append(s.path(), s.nodeId() + ":" + option.key()), s.inputs(), lang),
+    Map<String, String> inputs = s.inputs();
+    if (!option.set().isEmpty()) {
+      Map<String, String> own = Map.of("msisdn", s.msisdn(), "mno", s.mno());
+      inputs = new HashMap<>(s.inputs());
+      for (Map.Entry<String, String> e : option.set().entrySet()) {
+        inputs.put(e.getKey(), interpolate(e.getValue(), s.inputs(), own));
+      }
+    }
+    return enter(menu, s.at(option.next(), append(s.path(), s.nodeId() + ":" + option.key()), inputs, lang),
         Map.of(), null);
   }
 
@@ -176,17 +190,36 @@ public class UssdEngine {
     }
     Map<String, String> inputs = new HashMap<>(s.inputs());
     inputs.put(node.store(), valid.get());
+    if (node.lookup() != null) {
+      Map<String, String> args = new HashMap<>();
+      node.mapping().forEach((arg, inputName) -> args.put(arg, inputs.get(inputName)));
+      LookupOutcome found = lookups.run(node.lookup(), args);
+      switch (found.kind()) {
+        case FOUND -> inputs.putAll(found.values());
+        case REFUSED -> {
+          return invalid(menu, s, node, errorText(found.error(), s.language()));
+        }
+        case UNAVAILABLE -> {
+          return endWith(menu, s, Menu.UNAVAILABLE);
+        }
+      }
+    }
     return enter(menu, s.at(node.next(), path, inputs, s.language()), Map.of(), null);
   }
 
   private UssdResponse invalid(Menu menu, UssdSession s, MenuNode node) {
+    Text error = node.validator() == null ? null : node.validator().error();
+    String prefix = error == null ? menu.message(Menu.INVALID, s.language()) : error.in(s.language());
+    return invalid(menu, s, node, prefix);
+  }
+
+  /** Asks the same node again with {@code prefix} above it, or ends after too many attempts. */
+  private UssdResponse invalid(Menu menu, UssdSession s, MenuNode node, String prefix) {
     UssdSession next = s.withInvalidAttempt();
     if (next.invalidAttempts() >= props.maxInvalidAttempts()) {
       sessions.delete(s.mno(), s.sessionId());
       return new UssdResponse(s.sessionId(), menu.message(Menu.TOO_MANY_ATTEMPTS, s.language()), true);
     }
-    Text error = node.validator() == null ? null : node.validator().error();
-    String prefix = error == null ? menu.message(Menu.INVALID, s.language()) : error.in(s.language());
     return show(menu, next, prefix + "\n" + render(node, next, Map.of()), false);
   }
 
@@ -201,7 +234,12 @@ public class UssdEngine {
 
   private UssdResponse act(Menu menu, UssdSession s, MenuNode node, EncryptedPin pin) {
     Map<String, String> fields = new HashMap<>();
-    node.mapping().forEach((field, inputName) -> fields.put(field, s.inputs().get(inputName)));
+    node.mapping().forEach((field, source) -> {
+      String value = source.startsWith(LITERAL) ? source.substring(LITERAL.length()) : s.inputs().get(source);
+      if (value != null) {
+        fields.put(field, value);
+      }
+    });
     FlowOutcome outcome = flow.submit(new FlowRequest(node.flow(), s, String.join(">", s.path()), fields, pin));
     Map<String, String> vars = new HashMap<>();
     if (outcome.txnId() != null) {

@@ -18,7 +18,7 @@ class MenuValidatorTest {
 
   @Test
   void theSeededMenuIsValid() {
-    assertThat(MenuValidator.problems(MenuParser.parseResource(JSON, "menus/main-v1.json"))).isEmpty();
+    assertThat(MenuValidator.problems(MenuParser.parseResource(JSON, "menus/main-v2.json"))).isEmpty();
   }
 
   @Test
@@ -50,6 +50,30 @@ class MenuValidatorTest {
         .anyMatch(p -> p.startsWith("a: a validator of"))
         .contains("b: regex pattern does not compile")
         .anyMatch(p -> p.startsWith("c: flow must be one of"));
+  }
+
+  @Test
+  void anActionMustMapEveryFieldItsFlowNeeds() {
+    Menu m =
+        menu(
+            "\"a\":{\"type\":\"ACTION\",\"flow\":\"TOPUP\",\"mapping\":{\"creditParty\":\"t\",\"amount\":\"x\"},"
+                + "\"onSuccess\":\"d\",\"onFailure\":\"d\"},"
+                + "\"d\":{\"type\":\"END\",\"text\":{\"en\":\"x\"}}");
+    assertThat(MenuValidator.problems(m))
+        .containsExactly("a: flow TOPUP needs a mapping for [partnerId, productCode]");
+  }
+
+  @Test
+  void aLookupMustBeKnownAndGetItsArguments() {
+    Menu m =
+        menu(
+            "\"a\":{\"type\":\"INPUT\",\"validator\":{\"type\":\"numeric\"},\"store\":\"n\",\"lookup\":\"bill\","
+                + "\"mapping\":{\"billNumber\":\"n\"},\"next\":\"b\"},"
+                + "\"b\":{\"type\":\"INPUT\",\"validator\":{\"type\":\"numeric\"},\"store\":\"m\",\"lookup\":\"weather\",\"next\":\"d\"},"
+                + "\"d\":{\"type\":\"END\",\"text\":{\"en\":\"x\"}}");
+    assertThat(MenuValidator.problems(m))
+        .containsExactlyInAnyOrder(
+            "a: lookup bill needs a mapping for [billerCode]", "b: lookup must be one of [bill]");
   }
 
   @Test
