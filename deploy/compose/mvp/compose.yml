@@ -22,3 +22,5 @@ include:
     env_file: ../platform/.env
   - path: ../../../services/mw-audit-dw/compose.yml
     env_file: ../platform/.env
+  - path: ../../../services/mw-app-gateway/compose.yml
+    env_file: ../platform/.env

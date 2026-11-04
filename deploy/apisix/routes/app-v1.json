@@ -1,0 +1,24 @@
+{
+  "name": "app-v1",
+  "desc": "Mobile apps API v1 (spec 8.2): Keycloak realm customers bearer JWT, verified with the realm's JWKS, then mw-app-gateway (which verifies it again)",
+  "uri": "/app/v1/*",
+  "methods": ["GET", "POST"],
+  "plugins": {
+    "openid-connect": {
+      "discovery": "http://keycloak:8080/realms/customers/.well-known/openid-configuration",
+      "client_id": "mw-app",
+      "bearer_only": true,
+      "use_jwks": true,
+      "realm": "customers",
+      "set_access_token_header": false,
+      "set_userinfo_header": false,
+      "set_id_token_header": false
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": { "connect": 5, "send": 10, "read": 35 },
+    "nodes": { "mw-app-gateway:8080": 1 }
+  }
+}

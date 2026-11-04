@@ -34,3 +34,4 @@ files:
   events/mw-notify/mw.notify.status.v1.schema.json: mw-notify
   events/mw-audit-dw/mw.audit.event.v1.schema.json: mw-audit-dw
   events/mw-admin-api/mw.config.changed.v1.schema.json: mw-admin-api
+  api/mw-app-gateway/app.v1.openapi.yaml: mw-app-gateway
