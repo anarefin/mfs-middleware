@@ -42,6 +42,7 @@ class P2pKafkaIT {
 
   private static final String STATUS_SCHEMA = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
   private static final String COMMAND_SCHEMA = "events/mw-orchestrator/core.command.v1.schema.json";
+  private static final String AUDIT_SCHEMA = "events/mw-audit-dw/mw.audit.event.v1.schema.json";
 
   private static CoreStub core;
 
@@ -115,6 +116,18 @@ class P2pKafkaIT {
     }
     assertThat(jdbc.queryForObject("select status from transaction where txn_id = ?::uuid", String.class, req.txnId()))
         .isEqualTo("COMPLETED");
+
+    // ticket 12: one audit event per state, on mw.audit.event.v1, valid against its contract
+    List<ConsumerRecord<String, String>> audits =
+        KafkaTestConsumer.read(
+            kafka.getBootstrapServers(), "mw.audit.event.v1", 4, Duration.ofSeconds(60), r -> req.txnId().equals(r.key()));
+    assertThat(audits)
+        .extracting(r -> json.readTree(r.value()).path("after").path("status").asString())
+        .containsExactly("RECEIVED", "VALIDATING", "POSTING", "COMPLETED");
+    for (ConsumerRecord<String, String> r : audits) {
+      assertThat(ContractSchemas.schema(AUDIT_SCHEMA).validate(json.readTree(r.value()))).as(r.value()).isEmpty();
+      assertThat(KafkaTestConsumer.headers(r)).containsKeys(MwHeaders.REQUIRED.toArray(String[]::new));
+    }
   }
 
   @Test

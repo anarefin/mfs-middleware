@@ -4,10 +4,12 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Map;
 import mfs.mw.orchestrator.config.OrchestratorProperties;
+import mfs.mw.orchestrator.dto.AuditEvent;
 import mfs.mw.orchestrator.dto.CoreCommand;
 import mfs.mw.orchestrator.dto.ErrorInfo;
 import mfs.mw.orchestrator.dto.StatusMessage;
 import mfs.mw.orchestrator.entity.TransactionRecord;
+import mfs.mw.orchestrator.mapper.AuditMapper;
 import mfs.mw.orchestrator.mapper.CoreCommandMapper;
 import mfs.mw.orchestrator.mapper.StatusMapper;
 import mfs.mw.orchestrator.messaging.EventMetadata;
@@ -19,6 +21,7 @@ import mfs.mw.orchestrator.service.saga.Effect;
 import mfs.mw.orchestrator.service.saga.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.SagaMachine;
+import mfs.mw.orchestrator.service.saga.Status;
 import mfs.mw.orchestrator.service.saga.Transition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,8 +34,9 @@ import org.springframework.stereotype.Service;
  * Deliberately not {@code @Transactional}: an {@link InvalidTransitionException} must not mark the
  * caller's transaction rollback-only, and the outbox refuses to run outside a transaction anyway.
  *
- * <p>Every state change is published here and nowhere else, so this is the one place that also
- * emits the audit event of ticket 12.
+ * <p>Every state change is published here and nowhere else ({@link #created} for the first state,
+ * {@link #fire} for every later one), each with its audit event on {@code mw.audit.event.v1}
+ * (spec 14.3), so the audit trail has one record per state a transaction passed through.
  */
 @Service
 public class SagaEngine {
@@ -40,12 +44,14 @@ public class SagaEngine {
   private static final Logger log = LoggerFactory.getLogger(SagaEngine.class);
 
   public static final String STATUS_TOPIC = "mw.txn.status.v1";
+  public static final String AUDIT_TOPIC = "mw.audit.event.v1";
 
   private final TransactionRepository transactions;
   private final SagaTimerRepository timers;
   private final OutboxWriter outbox;
   private final StatusMapper statusMapper;
   private final CoreCommandMapper commandMapper;
+  private final AuditMapper auditMapper;
   private final OrchestratorProperties properties;
   private final Clock clock;
 
@@ -55,6 +61,7 @@ public class SagaEngine {
       OutboxWriter outbox,
       StatusMapper statusMapper,
       CoreCommandMapper commandMapper,
+      AuditMapper auditMapper,
       OrchestratorProperties properties,
       Clock clock) {
     this.transactions = transactions;
@@ -62,8 +69,15 @@ public class SagaEngine {
     this.outbox = outbox;
     this.statusMapper = statusMapper;
     this.commandMapper = commandMapper;
+    this.auditMapper = auditMapper;
     this.properties = properties;
     this.clock = clock;
+  }
+
+  /** Publishes the first state (RECEIVED) of a transaction just inserted, and audits it. */
+  public void created(TransactionRecord rec) {
+    publishStatus(statusMapper.toStatus(rec), rec.replyTo());
+    audit(rec, null, rec.updatedAt());
   }
 
   /**
@@ -83,6 +97,7 @@ public class SagaEngine {
       transactions.update(next);
       transactions.recordStep(rec.txnId(), t.from(), t.to(), event.getClass().getSimpleName(), now);
       publishStatus(statusMapper.toStatus(next), next.replyTo());
+      audit(next, t.from(), now);
       log.atInfo()
           .addKeyValue("event", "txn.state.changed")
           .addKeyValue("txnId", rec.txnId().toString())
@@ -104,6 +119,12 @@ public class SagaEngine {
         new EventMetadata(msg.correlationId(), msg.txnId(), msg.idempotencyKey(), 1),
         msg,
         replyTo == null ? Map.of() : Map.of(MwHeaders.REPLY_TO, replyTo));
+  }
+
+  private void audit(TransactionRecord rec, Status from, Instant at) {
+    AuditEvent e = auditMapper.stateChanged(rec, from, at);
+    outbox.append(
+        AUDIT_TOPIC, e.txnId(), new EventMetadata(e.correlationId(), e.txnId(), e.auditId(), 1), e);
   }
 
   private void rearm(TransactionRecord rec, Transition t, Instant now) {
