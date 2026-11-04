@@ -22,6 +22,7 @@ Only APISIX is published, so every call goes through it:
 | App API | `/app/v1/*` | the real channel route (`deploy/apisix/routes/app-v1.json`) |
 | Tokens (realm customers) | `POST /auth/realms/customers/protocol/openid-connect/token` | `auth-customers-token.json`; pins Host/X-Forwarded-* to `keycloak:8080` so `iss` = `http://keycloak:8080/realms/customers`, the issuer APISIX's openid-connect discovery expects. Password = `KC_CUSTOMERS_TEST_PASSWORD` from the generated `deploy/compose/platform/.env` |
 | core-mock test/admin API | `/test/core-mock/v1/*` -> `mw-core-mock:8080/core-mock/v1/*` | `deploy/apisix/routes-test/test-core-mock.json`, TEST ONLY: PIN public key, `wallets/{id}` balances, `faults`. Present only after `make e2e` re-ran `apisix-init` with `MW_E2E_ROUTES=1` (a plain `make up` removes it); key-auth header `apikey` = `MW_E2E_API_KEY` from the generated `.env`, private source addresses only |
+| Simulator control API | `/test/sim/*` -> `mw-simulators:8080/sim/*` | `deploy/apisix/routes-test/test-simulators.json`, TEST ONLY, same key-auth as core-mock; `support/Simulators.setScenario` / `reset` |
 | Audit rows | `docker compose exec -T postgres psql` (superuser, read-only queries) | no API exposes `audit.event` before mw-admin-api (WP23), and the service role cannot read it |
 
 ## Reuse in later flows (TOPUP, cash-in/out, bill pay, ...)
@@ -31,7 +32,13 @@ Only APISIX is published, so every call goes through it:
 - TOPUP (`features/topup.feature`, `@topup`): step "tops up N poisha <operator> <product> airtime
   on <msisdn>"; money lands on the core's `SETTLEMENT` wallet (fee 200 on `FEE-POOL`); the OCS
   simulator refuses MSISDNs ending in `999` (other magic values: amount fraction .13 timeout,
-  .77 5xx, .99 ambiguous, .55 malformed, all UNKNOWN, ticket 18). "no funds are held on <wallet>"
+  .77 5xx, .99 ambiguous, .55 malformed, all UNKNOWN, resolved by status inquiry).
+- Unknown outcomes (`@tsq`, ticket 18): the response is 202 `PROCESSING`; assert the end with "the
+  app shows the transaction as X [with error "C"] within N seconds" (first inquiry 30 s after
+  UNKNOWN; a NOT_FOUND counts only ~60 s after the PAY, so a release takes ~2 min). "the OCS
+  answers too late and never applies the top-up" forces a 25 s, not-applied OCS (reset with "the
+  OCS behaves normally again" and by an `@After` hook); "the core drops its reply to the next
+  PostTransfer" loses a P2P reply that QueryTransaction then finds. "no funds are held on <wallet>"
   compares the core's held amount with the noted one.
 - `support/CoreMock`: `encryptPin` (RSA-OAEP SHA-256 with the core key), `balance`,
   `injectFault` / `resetFaults` (reset in an `@After` hook of the scenarios that inject).

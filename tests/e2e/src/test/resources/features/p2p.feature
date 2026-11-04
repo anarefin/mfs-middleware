@@ -61,3 +61,17 @@ Feature: P2P send money from the app through APISIX
     Then the response status is 200
     And the audit trail of the transaction records the states "RECEIVED, VALIDATING, POSTING, COMPLETED"
     And the audit hash chain of the transaction's month verifies
+
+  # Unknown outcome on the core side (ticket 18, spec 7.4): the core applies the transfer but its
+  # reply is lost; POSTING times out to UNKNOWN and QueryTransaction finds the transfer posted.
+  @tsq
+  Scenario: a transfer whose core reply is lost is found by QueryTransaction and completes
+    Given the core drops its reply to the next PostTransfer
+    When customer01 sends 1000 poisha P2P to 01711000002 with PIN "1234"
+    Then the response status is 202
+    And the transaction status is PROCESSING
+    And the app shows the transaction as COMPLETED within 90 seconds
+    And the core balances changed by:
+      | 01711000001 | -1500 |
+      | 01711000002 | 1000  |
+      | FEE-POOL    | 500   |

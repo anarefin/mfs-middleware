@@ -18,11 +18,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   flows (`Flow`, one per `txnType`, found by `FlowRegistry`) are sets of reusable `Step`s
   (VALIDATE, POST, HOLD, CALL_PARTNER, COMMIT, RELEASE, REVERSE, QUERY; `Step.of(effect)`).
   `P2pFlow` = validate + post. `TopupFlow` = validate + hold + callPartner (`PartnerCall` telco,
-  `mw.partner.request.telco.v1`) + commit + release; QUERY is allowed for every flow that holds.
+  `mw.partner.request.telco.v1`) + commit + release; QUERY is allowed for every flow that holds,
+  INQUIRE (status inquiry of an UNKNOWN outcome) for every flow.
   A new flow implements `txnType()`, `needsHold()` and, with a partner leg, `partnerCall()`.
   `SagaEngine.perform` runs the step behind a transition's effect only when the flow has it;
-  REVERSE (ticket 19), SCHEDULE_INQUIRY (ticket 18) and steps outside the flow are logged
-  (`saga.effect.unwired`) and skipped. `SagaEngine.fire` is the single place that applies an
+  REVERSE (ticket 19) and steps outside the flow are logged (`saga.effect.unwired`) and skipped;
+  SCHEDULE_INQUIRY arms the first inquiry slot. `SagaEngine.fire` is the single place that applies an
   event: persist state + `saga_step`, publish status + audit event, re-arm the deadline, send the
   next command. `SagaEngine.created` publishes the first state (RECEIVED) the same way.
 - Hold path (TOPUP): FundsHeld stores `holdId` (`transaction.hold_id`), PARTNER_PENDING sends PAY
@@ -31,10 +32,35 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   PIN). `service/PartnerReplyService` (inbox key `requestId:outcome`): SUCCESS -> COMMITTING
   (partner's `partnerRef` stored in `transaction.partner_ref`, shown on the status), FAILED ->
   RELEASING with the reply's canonical error (kept into FAILED; a code outside the status
-  pattern becomes `MW-PTR-<PARTNER>-UNMAPPED`), UNKNOWN -> UNKNOWN (inquiry is ticket 18),
-  PENDING ignored. HoldRejected -> REJECTED (`MW-CORE-*`). CommitFailed / ReleaseFailed are not
-  mapped: the deadline resends the command until the core acknowledges (7.2 "retry until
-  acknowledged"; the 60 s alert is not built).
+  pattern becomes `MW-PTR-<PARTNER>-UNMAPPED`), UNKNOWN -> UNKNOWN (status inquiry), PENDING
+  ignored. HoldRejected -> REJECTED (`MW-CORE-*`). The deadline resends CommitHold / ReleaseHold
+  until the core answers (7.2 "retry until acknowledged"; the 60 s alert is not built); a definite
+  refusal (CommitFailed: partner paid but the hold is gone; ReleaseFailed: hold already
+  committed) goes to MANUAL_REVIEW with `MW-CORE-<reason>` (`CommitRefused` / `ReleaseRefused`;
+  deviation from the 7.2 table, which lists no exit for a refusal).
+- Unknown outcomes (ticket 18, spec 7.4, `service/InquiryService`, `service/saga/InquirySchedule`):
+  entering UNKNOWN (partner UNKNOWN reply, PARTNER_PENDING 30 s, POSTING 5 s) publishes UNKNOWN
+  (the app shows 202 PROCESSING) and arms the `UNKNOWN` timer at the first slot. Each slot sends
+  one inquiry and arms the next (`saga_timer.attempt` = inquiries sent): with a partner leg a
+  `STATUS_QUERY` on the partner topic (`requestId` = name UUID of `<txnId>:STATUS_QUERY:<epoch
+  ms>`, fresh per inquiry; same `partnerTxnRef`; `originalPartnerRef` = stored partnerRef), else a
+  core QueryTransaction (fresh commandId, as the HOLDING query). Schedule
+  `mw.orchestrator.inquiry.*`: `schedule` 30s,1m,2m,5m,15m,1h (waits between inquiries),
+  `repeat-every` 6h, `cut-off` 24h after entering UNKNOWN (stands in for the partner's settlement
+  cut-off), `partners.<partnerId>.{schedule,repeat-every,cut-off}` overrides. The expiry at the
+  cut-off asks nothing: MANUAL_REVIEW `MW-TMO-004`. Answers (any reply for an UNKNOWN txn, the
+  STATUS_QUERY answer or a late PAY reply): SUCCESS -> COMMITTING (partnerRef stored); FAILED ->
+  RELEASING with the reply's error; NOT_FOUND -> RELEASING `MW-TMO-003` only once PARTNER_PENDING
+  entry + `partner-timeout` + `not-found-grace` (30 s) has passed (the adapter refuses an expired
+  PAY unsent), else pending; PENDING / UNKNOWN -> pending (next slot). Core answers (P2P): POSTED /
+  CREDITED -> COMPLETED; REJECTED -> FAILED `MW-TMO-003`; NOT_FOUND / VALIDATED -> FAILED
+  `MW-TMO-003` once POSTING entry + `command-ttl` + grace has passed (the core drops expired
+  commands), else pending; anything else (HELD, ...) -> MANUAL_REVIEW `MW-TMO-005`. A
+  TransactionStatus for an UNKNOWN txn with a partner leg is a stale HOLDING answer: ignored. A
+  STATUS_QUERY answer after the txn left UNKNOWN changes nothing; one contradicting the
+  resolution is logged `txn.outcome.conflict`. Gauges `mw_txn_unknown_open` and
+  `mw_manual_review_open` (`service/BacklogMetrics`, count per scrape). MANUAL_REVIEW arms no timer
+  (the daily ageing alert is not built); ManualCommit / ManualRelease come with the admin API.
 - HOLDING timeout (5 s): QueryTransaction without `queryCommandId`, commandId
   `<txnId>:query:<epoch ms>` (a fresh one per attempt, so the core never answers from its command
   log), re-asked every `holding-timeout` until answered. TransactionStatus `HELD` -> RELEASING
@@ -61,15 +87,17 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `mw.orchestrator.*-timeout`: VALIDATING 5 s -> FAILED (`MW-TMO-001`, retryable), POSTING 5 s ->
   UNKNOWN, HOLDING 5 s -> QueryTransaction (stays HOLDING), PARTNER_PENDING 30 s -> UNKNOWN,
   COMMITTING / RELEASING every `retry-timeout` (5 s) -> resend CommitHold / ReleaseHold (same
-  commandId). UNKNOWN, MANUAL_REVIEW and terminal states arm no timer yet (the 7.4 inquiry
-  schedule is ticket 18). A late core reply after a timeout is ignored (state machine refuses it).
+  commandId), UNKNOWN on the inquiry schedule (above). MANUAL_REVIEW and terminal states arm no
+  timer. A late core reply after a timeout is ignored (state machine refuses it).
 - `commandId` = `<txnId>:validate` / `:post` / `:hold` / `:commit` / `:release` (QueryTransaction:
   above). `expiresAt` = issuedAt + `command-ttl` (60 s).
   All wallet commands go to `core.wallet.command.v1`; nothing is sent on `core.payment.*` yet.
 - Core reason -> error: `MW-CORE-<reasonCode>` (same pattern as the status contract), message
   English + Bengali for the reasons mw-core-mock emits (`mapper/CoreEventMapper`), not retryable.
   Other codes used: `MW-VAL-010` unsupported txn type, `MW-VAL-011` amount <= 0, `MW-VAL-012`
-  partner missing for a flow with a partner leg, `MW-IDEM-001`, `MW-TMO-001`, `MW-TMO-002`;
+  partner missing for a flow with a partner leg, `MW-IDEM-001`, `MW-TMO-001`, `MW-TMO-002`,
+  `MW-TMO-003` (not found by inquiry, retryable), `MW-TMO-004` (inquiry exhausted),
+  `MW-TMO-005` (conflicting inquiry answer);
   partner codes come from the adapter's reply.
 - PIN: only ciphertext. It is kept in `transaction.encrypted_pin` (jsonb) because PostTransfer
   follows ValidateTransaction, and cleared when the transaction becomes terminal. The stored
@@ -96,8 +124,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 - `events/mw-core-mock/core.event.v1.schema.json`: own type `dto/CoreEvent` (payload read as a
   tree per `eventType`). Unknown fields are ignored.
-- Own partner contracts: `dto/PartnerRequest` (produced, `PartnerMessagesTest` and `TopupSagaIT`
-  validate it) and `dto/PartnerReply` (consumed; the telco samples read into it).
+- Own partner contracts: `dto/PartnerRequest` (produced, `PartnerMessagesTest`, `TopupSagaIT` and
+  `InquirySagaIT` validate it) and `dto/PartnerReply` (consumed; the telco samples read into it).
+  Reply `outcome` `NOT_FOUND` (ticket 18) answers a STATUS_QUERY only.
 - `events/mw-audit-dw/mw.audit.event.v1.schema.json` (produced): own type `dto/AuditEvent`;
   `SagaServiceIT` and `P2pKafkaIT` validate every audit record against it.
 

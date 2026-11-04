@@ -29,6 +29,9 @@ public class ScenarioState {
   /** A core fault was injected; an {@code @After} hook resets the faults. */
   boolean faultsInjected;
 
+  /** A partner simulator scenario was forced; an {@code @After} hook resets it. */
+  boolean simulatorForced;
+
   /** Balances noted before the action, by wallet id. */
   final Map<String, CoreMock.Balance> notedBalances = new LinkedHashMap<>();
 
