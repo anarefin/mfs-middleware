@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
+import mfs.mw.orchestrator.config.InquiryProperties;
 import mfs.mw.orchestrator.config.OrchestratorProperties;
 import mfs.mw.orchestrator.dto.AuditEvent;
 import mfs.mw.orchestrator.dto.CoreCommand;
@@ -63,6 +64,7 @@ public class SagaEngine {
   private final PartnerRequestMapper partnerMapper;
   private final FlowRegistry flows;
   private final OrchestratorProperties properties;
+  private final InquiryProperties inquiry;
   private final Clock clock;
 
   public SagaEngine(
@@ -75,6 +77,7 @@ public class SagaEngine {
       PartnerRequestMapper partnerMapper,
       FlowRegistry flows,
       OrchestratorProperties properties,
+      InquiryProperties inquiry,
       Clock clock) {
     this.transactions = transactions;
     this.timers = timers;
@@ -85,6 +88,7 @@ public class SagaEngine {
     this.partnerMapper = partnerMapper;
     this.flows = flows;
     this.properties = properties;
+    this.inquiry = inquiry;
     this.clock = clock;
   }
 
@@ -153,10 +157,16 @@ public class SagaEngine {
   /**
    * Performs the step behind {@code effect} for the transaction's flow (spec 7.1): every flow is
    * built from the same steps, and a step the flow does not have, or one whose ticket is not
-   * built yet (reversal, inquiry schedule), is logged as {@code saga.effect.unwired} and skipped.
+   * built yet (reversal), is logged as {@code saga.effect.unwired} and skipped. Entering UNKNOWN
+   * arms the first status-inquiry slot (spec 7.4); later slots are armed by {@link
+   * InquiryService} as each inquiry goes out.
    */
   private void perform(Effect effect, TransactionRecord rec, Instant now) {
     if (effect == Effect.NONE) {
+      return;
+    }
+    if (effect == Effect.SCHEDULE_INQUIRY) {
+      scheduleFirstInquiry(rec, now);
       return;
     }
     Optional<Step> step = Step.of(effect);
@@ -174,13 +184,55 @@ public class SagaEngine {
       case RELEASE -> send(commandMapper.release(rec, now, ttl));
       case QUERY -> send(commandMapper.query(rec, now, ttl));
       case CALL_PARTNER -> callPartner(rec, flow.get().partnerCall().orElseThrow(), now);
+      case INQUIRE -> inquire(rec, flow.get(), now);
       case REVERSE -> unwired(effect, rec);
     }
   }
 
-  /** The flow's own steps; QUERY belongs to every flow that holds (HOLDING timeout). */
+  /**
+   * The flow's own steps; QUERY belongs to every flow that holds (HOLDING timeout), INQUIRE to
+   * every flow (any flow can reach UNKNOWN, spec 7.4).
+   */
   private static boolean allowed(Flow flow, Step step) {
-    return flow.steps().contains(step) || (step == Step.QUERY && flow.steps().contains(Step.HOLD));
+    return flow.steps().contains(step)
+        || (step == Step.QUERY && flow.steps().contains(Step.HOLD))
+        || step == Step.INQUIRE;
+  }
+
+  /** The step name of the status-inquiry timer in {@code saga_timer}. */
+  public static final String INQUIRY_TIMER = Status.UNKNOWN.name();
+
+  private void scheduleFirstInquiry(TransactionRecord rec, Instant now) {
+    timers.armAttempt(rec.txnId(), INQUIRY_TIMER, inquiry.scheduleFor(partnerId(rec)).first(now), 0);
+  }
+
+  /** The partner of the transaction, null for flows without one. */
+  static String partnerId(TransactionRecord rec) {
+    return rec.request().partner() == null ? null : rec.request().partner().partnerId();
+  }
+
+  /**
+   * Asks whoever knows the outcome (spec 7.4): with a partner leg the partner (STATUS_QUERY with
+   * the PAY's reference), else the core (QueryTransaction, fresh commandId per inquiry).
+   */
+  private void inquire(TransactionRecord rec, Flow flow, Instant now) {
+    Optional<PartnerCall> call = flow.partnerCall();
+    if (call.isPresent()) {
+      PartnerRequest request = partnerMapper.statusQuery(rec, call.get(), now, properties.partnerTimeout());
+      outbox.append(
+          call.get().topic(),
+          request.txnId(),
+          new EventMetadata(request.correlationId(), request.txnId(), request.requestId(), 1),
+          request);
+    } else {
+      send(commandMapper.query(rec, now, properties.commandTtl()));
+    }
+    log.atInfo()
+        .addKeyValue("event", "saga.inquiry.sent")
+        .addKeyValue("txnId", rec.txnId().toString())
+        .addKeyValue("partnerId", partnerId(rec))
+        .addKeyValue("target", call.isPresent() ? "partner" : "core")
+        .log("status inquiry sent for an unknown outcome");
   }
 
   private void unwired(Effect effect, TransactionRecord rec) {

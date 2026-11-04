@@ -28,6 +28,15 @@ public final class ErrorCodes {
    * or it held nothing; either way nothing was moved and the payer may try again.
    */
   public static final String TMO_CORE_HOLD = "MW-TMO-002";
+  /**
+   * Status inquiry (spec 7.4): the partner or the core has no record of the original call, and it
+   * can no longer arrive; nothing was moved (the hold is released) and the payer may try again.
+   */
+  public static final String TMO_INQUIRY_NOT_FOUND = "MW-TMO-003";
+  /** Status inquiry ran past the cut-off without an answer: MANUAL_REVIEW (spec 7.4). */
+  public static final String TMO_INQUIRY_EXHAUSTED = "MW-TMO-004";
+  /** Status inquiry got an answer that fits no outcome of the transaction: MANUAL_REVIEW. */
+  public static final String TMO_INQUIRY_CONFLICT = "MW-TMO-005";
   /** Unexpected failure; details stay in the log, never in the response. */
   public static final String SYS_INTERNAL = "MW-SYS-001";
 

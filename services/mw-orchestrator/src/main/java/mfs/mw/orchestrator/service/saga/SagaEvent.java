@@ -29,15 +29,30 @@ public sealed interface SagaEvent {
 
   record PartnerUnknown() implements SagaEvent {}
 
-  record InquirySucceeded() implements SagaEvent {}
+  /**
+   * Status inquiry (spec 7.4) found the original call done. {@code held}: the transaction holds
+   * funds (the partner leg succeeded, commit the hold); otherwise the core posted it (completed).
+   */
+  record InquirySucceeded(boolean held) implements SagaEvent {}
 
-  record InquiryFailed() implements SagaEvent {}
+  /**
+   * Status inquiry found the original call refused or confirmed it never arrived. {@code held}:
+   * release the hold; otherwise nothing was posted (failed).
+   */
+  record InquiryFailed(boolean held) implements SagaEvent {}
 
+  /** The inquiry schedule ran out, or the answers contradict each other: an operator decides. */
   record InquiryExhausted() implements SagaEvent {}
 
   record CommitAcknowledged() implements SagaEvent {}
 
+  /** The core refused CommitHold (CommitFailed): the partner was paid but the hold is gone. */
+  record CommitRefused() implements SagaEvent {}
+
   record ReleaseAcknowledged() implements SagaEvent {}
+
+  /** The core refused ReleaseHold (ReleaseFailed): the hold was already committed. */
+  record ReleaseRefused() implements SagaEvent {}
 
   record ReversalRequested() implements SagaEvent {}
 

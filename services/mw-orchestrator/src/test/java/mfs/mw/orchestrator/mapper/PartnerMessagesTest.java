@@ -60,7 +60,12 @@ class PartnerMessagesTest {
     for (Path p : ContractSchemas.samples("events/mw-orchestrator/samples/mw.partner.reply.v1/telco", "valid")) {
       PartnerReply reply = json.readValue(Files.readString(p), PartnerReply.class);
       assertThat(reply.requestId()).isNotBlank();
-      assertThat(mapper.toSagaEvent(reply)).as(p.toString()).isPresent();
+      if ("PAY".equals(reply.payload().operation())) {
+        assertThat(mapper.toSagaEvent(reply)).as(p.toString()).isPresent();
+      } else {
+        // STATUS_QUERY answers (including NOT_FOUND) are read by InquiryService, not as PAY events
+        assertThat(reply.payload().operation()).as(p.toString()).isEqualTo("STATUS_QUERY");
+      }
       read++;
     }
     assertThat(read).isPositive();

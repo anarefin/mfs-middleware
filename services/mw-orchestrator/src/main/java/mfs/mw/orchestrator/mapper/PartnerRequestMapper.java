@@ -20,6 +20,7 @@ import org.springframework.stereotype.Component;
 public class PartnerRequestMapper {
 
   public static final String PAY = "PAY";
+  public static final String STATUS_QUERY = "STATUS_QUERY";
 
   /** Stable request id of {@code operation} for {@code txnId} (UUID, as the contract requires). */
   public static String requestId(String txnId, String operation) {
@@ -40,5 +41,21 @@ public class PartnerRequestMapper {
         new PartnerRequest.Payload(
             PAY, req.txnType(), req.partner(), partnerTxnRef(txnId), req.amount(), req.debitParty(),
             req.creditParty(), null, req.attributes()));
+  }
+
+  /**
+   * A status inquiry about the PAY of an UNKNOWN transaction (spec 7.4). Each inquiry is a new
+   * request ({@code requestId} of {@code <txnId>:STATUS_QUERY:<epoch ms>}), since the adapter
+   * answers a requestId once; the partner reference is the PAY's, so the partner finds it.
+   */
+  public PartnerRequest statusQuery(TransactionRecord rec, PartnerCall call, Instant now, Duration deadline) {
+    String txnId = rec.txnId().toString();
+    TxnRequest req = rec.request();
+    return new PartnerRequest(
+        1, call.family(), requestId(txnId, STATUS_QUERY + ":" + now.toEpochMilli()), txnId,
+        req.correlationId(), now, now.plus(deadline),
+        new PartnerRequest.Payload(
+            STATUS_QUERY, req.txnType(), req.partner(), partnerTxnRef(txnId), req.amount(),
+            req.debitParty(), req.creditParty(), rec.partnerRef(), req.attributes()));
   }
 }

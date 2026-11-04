@@ -17,7 +17,9 @@ public enum Step {
   RELEASE,
   REVERSE,
   /** QueryTransaction to the core (after a HOLDING timeout). */
-  QUERY;
+  QUERY,
+  /** Status inquiry of an UNKNOWN outcome (spec 7.4): partner STATUS_QUERY or core query. */
+  INQUIRE;
 
   /** The step that performs {@code effect}; empty for effects that send nothing. */
   public static Optional<Step> of(Effect effect) {
@@ -31,6 +33,7 @@ public enum Step {
           case SEND_RELEASE -> RELEASE;
           case SEND_REVERSE -> REVERSE;
           case SEND_QUERY -> QUERY;
+          case SEND_INQUIRY -> INQUIRE;
           case NONE, SCHEDULE_INQUIRY -> null;
         });
   }
