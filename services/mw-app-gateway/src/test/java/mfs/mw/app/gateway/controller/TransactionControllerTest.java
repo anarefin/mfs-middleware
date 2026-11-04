@@ -191,18 +191,38 @@ class TransactionControllerTest {
     assertThat(noMsisdn).hasStatus(403);
     assertThat(noMsisdn).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-002");
 
-    MvcTestResult merchant =
+    MvcTestResult distributor =
+        post(
+            jwt()
+                .jwt(
+                    j ->
+                        j.claim("msisdn", "01911000001")
+                            .claim("realm_access", Map.of("roles", List.of("distributor")))),
+            "k",
+            BODY.formatted(100));
+    assertThat(distributor).hasStatus(403);
+    assertThat(distributor).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-002");
+    verify(service, never()).submit(any(), any(), any());
+  }
+
+  @Test
+  void merchantTokenIsServedAsTheMerchantApp() {
+    AppUser merchant = new AppUser("01911000001", "MERCHANT_APP", "MERCHANT");
+    when(service.submit(eq(merchant), eq("key-merchant"), any()))
+        .thenThrow(
+            new MwException("MW-AUTH-002", "This app role cannot initiate this transaction type")
+                .withStatus(HttpStatus.FORBIDDEN));
+    MvcTestResult r =
         post(
             jwt()
                 .jwt(
                     j ->
                         j.claim("msisdn", "01911000001")
                             .claim("realm_access", Map.of("roles", List.of("merchant")))),
-            "k",
+            "key-merchant",
             BODY.formatted(100));
-    assertThat(merchant).hasStatus(403);
-    assertThat(merchant).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-002");
-    verify(service, never()).submit(any(), any(), any());
+    assertThat(r).hasStatus(403);
+    verify(service).submit(eq(merchant), eq("key-merchant"), any());
   }
 
   @Test

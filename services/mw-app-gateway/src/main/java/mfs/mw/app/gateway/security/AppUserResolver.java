@@ -13,9 +13,10 @@ import org.springframework.stereotype.Component;
 /**
  * Turns a validated Keycloak token into the {@link AppUser}: the wallet is the {@code msisdn}
  * claim (user attribute {@code msisdn}, mapped by the realm's {@code mw-app} client), the channel
- * follows the realm role: {@code customer} is the customer app, {@code agent} the agent app
- * (spec WP20; which role may initiate which {@code txnType} is checked at submit). Other roles
- * (merchant) are not served yet.
+ * follows the realm role: {@code customer} is the customer app, {@code agent} the agent app,
+ * {@code merchant} the merchant app (spec WP20; which role may initiate which {@code txnType} is
+ * checked at submit, the merchant collections view by {@code CollectionService}). A token with
+ * several of these roles is served by the first in that order; any other role is refused.
  */
 @Component
 public class AppUserResolver {
@@ -33,6 +34,9 @@ public class AppUserResolver {
     }
     if (roles.contains("agent")) {
       return new AppUser(msisdn, "AGENT_APP", "AGENT");
+    }
+    if (roles.contains("merchant")) {
+      return new AppUser(msisdn, "MERCHANT_APP", "MERCHANT");
     }
     throw forbidden("This app role cannot use this operation");
   }

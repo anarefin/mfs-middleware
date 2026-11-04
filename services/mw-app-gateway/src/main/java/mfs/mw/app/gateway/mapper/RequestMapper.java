@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 /**
  * App request to the canonical {@code mw.txn.request.v1} (spec 5.1, 9). The initiator and payer is
  * the token's wallet (customer for P2P and CASH_OUT, agent float for CASH_IN), the payee the
- * wallet named in the body (an agent for CASH_OUT). MSISDNs go out in the canonical form
+ * wallet named in the body (an agent for CASH_OUT, a merchant for MERCHANT_PAY). MSISDNs go out in the canonical form
  * {@code 01XNNNNNNNN} only; the PIN ciphertext is
  * copied as received, never inspected or changed (18.3).
  */
@@ -28,6 +28,8 @@ public class RequestMapper {
   public static final String ACCEPTED_STATUS = "RECEIVED";
 
   private static final String CASH_OUT = "CASH_OUT";
+  /** In-app merchant payment (ticket 30): the customer pays the merchant wallet named in the body. */
+  public static final String MERCHANT_PAY = "MERCHANT_PAY";
   /** Airtime top-up: credit party is an MSISDN, {@code partner} names the operator. */
   public static final String TOPUP = "TOPUP";
   /** Bill payment: credit party is the bill number, {@code partner} the biller's aggregator. */
@@ -103,7 +105,8 @@ public class RequestMapper {
   }
 
   /**
-   * A wallet (canonical MSISDN as wallet id; an agent's for CASH_OUT, a customer's otherwise; the
+   * A wallet (canonical MSISDN as wallet id; an agent's for CASH_OUT, a merchant's for
+   * MERCHANT_PAY, a customer's otherwise; the
    * core checks the real wallet types per txnType), for TOPUP the bare MSISDN to recharge, for
    * BILL_PAY the bill number as a {@code BILLER_ACCOUNT}.
    */
@@ -115,7 +118,14 @@ public class RequestMapper {
     if (TOPUP.equals(body.txnType())) {
       return new Party("MSISDN", id, null, null);
     }
-    return Party.wallet(id, CASH_OUT.equals(body.txnType()) ? "AGENT" : "CUSTOMER");
+    return Party.wallet(id, payeeWalletType(body.txnType()));
+  }
+
+  private static String payeeWalletType(String txnType) {
+    if (CASH_OUT.equals(txnType)) {
+      return "AGENT";
+    }
+    return MERCHANT_PAY.equals(txnType) ? "MERCHANT" : "CUSTOMER";
   }
 
   private static String canonical(String msisdn) {

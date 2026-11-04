@@ -69,6 +69,15 @@ public final class Http {
             .build());
   }
 
+  /** POST of a text body with its content type (bulk CSV files, ticket 33). */
+  public static Response postText(URI uri, Map<String, String> headers, String contentType, String text) {
+    return send(
+        base(uri, headers)
+            .header("Content-Type", contentType)
+            .POST(HttpRequest.BodyPublishers.ofString(text, StandardCharsets.UTF_8))
+            .build());
+  }
+
   public static Response postForm(URI uri, Map<String, String> form) {
     String encoded =
         form.entrySet().stream()

@@ -33,6 +33,7 @@ class TransactionServiceTest {
 
   static final AppUser USER = new AppUser("01711000001", "CUSTOMER_APP", "CUSTOMER");
   static final AppUser AGENT = new AppUser("01811000001", "AGENT_APP", "AGENT");
+  static final AppUser MERCHANT = new AppUser("01911000001", "MERCHANT_APP", "MERCHANT");
 
   final EventPublisher publisher = mock(EventPublisher.class);
   final AppTransactionRepository repo = mock(AppTransactionRepository.class);
@@ -43,12 +44,13 @@ class TransactionServiceTest {
           publisher, waiters, new RequestMapper(), repo,
           new AppGatewayProperties(
               Duration.ofMillis(50), "gw-unit", "mw.txn.request.v1", "mw.txn.status.v1",
-              List.of("P2P", "CASH_IN", "CASH_OUT", "BILL_PAY"), List.of("reference"),
+              List.of("P2P", "CASH_IN", "CASH_OUT", "BILL_PAY", "MERCHANT_PAY"), List.of("reference"),
               new AppGatewayProperties.Jwt("http://kc/certs", "/realms/customers"),
               Map.of(
                   "P2P", List.of("CUSTOMER"),
                   "CASH_IN", List.of("AGENT"),
-                  "CASH_OUT", List.of("CUSTOMER"))),
+                  "CASH_OUT", List.of("CUSTOMER"),
+                  "MERCHANT_PAY", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
           billers);
 
@@ -354,7 +356,8 @@ class TransactionServiceTest {
   @Test
   void theCounterpartyMayNotBeTheInitiatorsOwnWallet() {
     for (var c : List.of(
-        Map.entry(AGENT, "CASH_IN"), Map.entry(USER, "CASH_OUT"), Map.entry(USER, "P2P"))) {
+        Map.entry(AGENT, "CASH_IN"), Map.entry(USER, "CASH_OUT"), Map.entry(USER, "P2P"),
+        Map.entry(USER, "MERCHANT_PAY"))) {
       String self = "+880" + c.getKey().msisdn().substring(1);
       assertThatThrownBy(() -> service.submit(c.getKey(), "key", bodyTo(c.getValue(), self)))
           .as(c.getValue())
@@ -366,6 +369,50 @@ class TransactionServiceTest {
                 assertThat(e.details()).extracting(d -> d.field()).containsExactly("creditParty.id");
               });
     }
+    verifyNoInteractions(publisher, repo);
+  }
+
+  // --- MERCHANT_PAY (ticket 30) --------------------------------------------------------------
+
+  @Test
+  void onlyACustomerMayPayAMerchantAndAMerchantInitiatesNothing() {
+    for (var c : List.of(
+        Map.entry(AGENT, "MERCHANT_PAY"), Map.entry(MERCHANT, "MERCHANT_PAY"),
+        Map.entry(MERCHANT, "P2P"), Map.entry(MERCHANT, "CASH_IN"), Map.entry(MERCHANT, "CASH_OUT"))) {
+      assertThatThrownBy(() -> service.submit(c.getKey(), "key", bodyTo(c.getValue(), "01711000009")))
+          .as(c.getKey().walletType() + " " + c.getValue())
+          .isInstanceOfSatisfying(
+              MwException.class,
+              e -> {
+                assertThat(e.code()).isEqualTo("MW-AUTH-002");
+                assertThat(e.status().value()).isEqualTo(403);
+              });
+    }
+    verifyNoInteractions(publisher, repo);
+    assertThat(waiters.size()).isZero();
+  }
+
+  @Test
+  void aCustomerMerchantPaymentIsPublishedToTheMerchantWallet() {
+    var result = service.submit(USER, "key", bodyTo("MERCHANT_PAY", "01911000001"));
+    assertThat(result.done()).isFalse();
+    var sent = org.mockito.ArgumentCaptor.forClass(Object.class);
+    verify(publisher).publish(anyString(), anyString(), any(), sent.capture(), anyMap());
+    var req = (mfs.mw.app.gateway.dto.TxnRequest) sent.getValue();
+    assertThat(req.channel()).isEqualTo("CUSTOMER_APP");
+    assertThat(req.txnType()).isEqualTo("MERCHANT_PAY");
+    assertThat(req.debitParty().id()).isEqualTo("01711000001");
+    assertThat(req.creditParty().id()).isEqualTo("01911000001");
+    assertThat(req.creditParty().walletType()).isEqualTo("MERCHANT");
+  }
+
+  @Test
+  void aMerchantPaymentTakesNoPartner() {
+    assertThatThrownBy(
+            () -> service.submit(USER, "key", flow("MERCHANT_PAY", null, new TransactionRequest.Partner("gp", "PREPAID"))))
+        .isInstanceOfSatisfying(
+            MwException.class,
+            e -> assertThat(e.details()).extracting(d -> d.field()).containsExactly("partner"));
     verifyNoInteractions(publisher, repo);
   }
 

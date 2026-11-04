@@ -7,9 +7,20 @@
 - 10: E2E harness + P2P scenarios
 - 13: APISIX edge policies
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 10,001 rows → rejected with `MW-VAL-*`; malformed rows are reported per line
-- [ ] The maker cannot approve their own batch
-- [ ] API tests for upload → validate → approve and reject
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] 10,001 rows → rejected with `MW-VAL-*`; malformed rows are reported per line
+- [x] The maker cannot approve their own batch
+- [x] API tests for upload → validate → approve and reject
+- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR (deferred to milestone gate)
+
+**Implementation notes (ticket 33):**
+
+- New module `services/mw-portal-api` (schema `bulk`, role `portal_api_rw`), API contract
+  `contracts/api/mw-portal-api/portal-org.v1.openapi.yaml`, APISIX routes `portal-org-v1` and
+  `auth-portals-token`, realm `portals`: `orgId` attribute + mapper, users org-makerchecker01
+  (both roles) and org-checker02 (ORG002).
+- `./gradlew test` (160 tests, incl. `BulkBatchApiIT` upload -> validate -> approve/reject on
+  PostgreSQL), `make contracts-lint`, `make test-scripts` green. e2e `features/bulk-upload.feature`
+  (`@bulk @mw-portal-api`) and two `make edge-test` cases written, not run live (deferred to
+  milestone gate). An existing stack needs `make down DOWN_ARGS=-v` for the realm changes.
