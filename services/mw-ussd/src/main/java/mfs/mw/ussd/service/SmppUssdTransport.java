@@ -1,5 +1,6 @@
 package mfs.mw.ussd.service;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -56,6 +57,11 @@ public class SmppUssdTransport implements UssdTransport, UssdSmppListener {
     this.client = client;
     this.props = props;
     this.clock = clock;
+  }
+
+  /** Registers with the binds before they start (SmartLifecycle runs after initialisation). */
+  @PostConstruct
+  void register() {
     client.listen(this);
   }
 

@@ -71,8 +71,8 @@ public abstract class UssdMenuWalkSuite {
 
     assertThat(w.screens().subList(0, 6))
         .containsExactly(
-            "upay\n1 সেন্ড মানি\n9 English",
-            "upay\n1 Send Money\n9 বাংলা",
+            "upay\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English",
+            "upay\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা",
             "Enter recipient upay number",
             "Enter amount (Tk)",
             "Send Tk 10.00 to 01812345678?\n1 Confirm\n2 Cancel",
@@ -88,6 +88,18 @@ public abstract class UssdMenuWalkSuite {
 
     assertThat(w.ended()).isTrue();
     assertThat(w.last()).isEqualTo("01812345678 নম্বরে 10.00 টাকা পাঠানো হয়েছে।");
+  }
+
+  @Test
+  void aTopUpOfTheOwnNumberReachesItsConfirmation() {
+    Walk w = walk(List.of("9", "3", "1", "10"));
+
+    assertThat(w.ended()).isFalse();
+    assertThat(w.screens().subList(2, 5))
+        .containsExactly(
+            "Mobile Recharge\n1 Own number\n2 Other number",
+            "Enter recharge amount (Tk)",
+            "Recharge Tk 10.00 to 01712345678?\n1 Confirm\n2 Cancel");
   }
 
   @Test

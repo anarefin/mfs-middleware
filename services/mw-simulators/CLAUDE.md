@@ -84,7 +84,19 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   APISIX route `ussd-http` -> mw-ussd; wire format `contracts/api/mw-ussd/ussd-http.v1.openapi.yaml`)
   and stops when mw-ussd answers the end flag (`sim.ussd-gateway.end-flag`, END); answers
   `{sessionId, screens: [{status, message, flag}], ended}`. Not a partner in `sim.partners` (no
-  recording: inputs carry PINs). SMPP mode comes with SmppUssdTransport (WP19).
+  recording: inputs carry PINs).
+- USSD gateway simulator, SMPP mode (ticket 27, `client/UssdSmppGateway`): SMPP 3.4 server on
+  `sim.ussd-gateway.smpp.port` (2776, internal network; `sim.ussd-gateway.smpp.enabled`, off in
+  tests except `UssdSmppGatewayIT`) that mw-ussd binds to as transceiver (any bind accepted).
+  MNOs in `sim.ussd-gateway.smpp.mnos` ([gp]) are played over SMPP by the same `POST
+  /sim/ussdgw/sessions`: `deliver_sm` with `ussd_service_op` 1 (dial, short message = service
+  code) then 18 per input, `its_session_info` session number 1-128 (round robin over the bound
+  sessions); each `submit_sm` of that session is a screen `{status: 200, message, flag}` (END when
+  op 17 or the end-of-session bit, else CON); no screen within `screen-timeout` (15 s) or no bind
+  -> `{status: -1}` and the play stops. Control: `POST /sim/ussdgw/smpp/scenario {throttleNext,
+  queueFullNext, genericNackNext, silentEnquireLink, screenTimeoutMs}` (replaces; `{}` resets;
+  refused submits answer 0x58 / 0x14 / generic_nack), `POST /sim/ussdgw/smpp/drop` (closes every
+  bind), `GET /sim/ussdgw/smpp/binds` -> `{bound, binds, enquireLinks, refused}`.
 - Adding a simulator: add its name to `sim.partners`, a controller under `/<partner>/...`, reuse
   the store, recorder, `SimMode`/`MagicAmounts` and callback service.
 - Init (`mw-simulators-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role

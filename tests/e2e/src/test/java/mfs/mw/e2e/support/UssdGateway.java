@@ -45,4 +45,36 @@ public final class UssdGateway {
     }
     return new Session(r.body().path("sessionId").asString(), List.copyOf(screens), r.body().path("ended").asBoolean());
   }
+
+  // --- SMPP mode (ticket 27): the simulator plays gp over SMPP, mw-ussd binds to it ---
+
+  /** State of the simulator's SMPP binds. */
+  public record SmppBinds(int bound, int binds, int enquireLinks, int refused) {}
+
+  /** Replaces the SMPP misbehaviour scenario, e.g. {@code {"throttleNext":2}}; {@code {}} resets. */
+  public static void smppScenario(String json) {
+    Http.Response r = Http.postRaw(Stack.get().url("test/sim/ussdgw/smpp/scenario"), apiKey(), json);
+    if (r.status() != 204) {
+      throw new IllegalStateException("SMPP scenario refused: " + r);
+    }
+  }
+
+  /** Closes every SMPP bind of the simulator; mw-ussd reconnects with back-off. */
+  public static void dropSmppBinds() {
+    Http.Response r = Http.postRaw(Stack.get().url("test/sim/ussdgw/smpp/drop"), apiKey(), "{}");
+    if (r.status() != 204) {
+      throw new IllegalStateException("SMPP drop refused: " + r);
+    }
+  }
+
+  public static SmppBinds smppBinds() {
+    Http.Response r = Http.get(Stack.get().url("test/sim/ussdgw/smpp/binds"), apiKey());
+    JsonNode b = r.body();
+    return new SmppBinds(b.path("bound").asInt(), b.path("binds").asInt(), b.path("enquireLinks").asInt(),
+        b.path("refused").asInt());
+  }
+
+  private static Map<String, String> apiKey() {
+    return Map.of("apikey", Stack.get().devCredential("MW_E2E_API_KEY"));
+  }
 }
