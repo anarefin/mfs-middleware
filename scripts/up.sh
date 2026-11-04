@@ -26,21 +26,28 @@ else
   fi
   "$(dirname "$0")/gen-dev-env.sh"
 fi
-# Images copy build/libs/*.jar (+ the SBOM), so build the jar of every service in the stack that
-# has none; with COMPOSE_ARGS=--build (images rebuilt) bring every jar up to date first. One
-# module at a time (parallel Gradle daemons are unreliable here).
-case " ${COMPOSE_ARGS:-} " in *" --build "*) rebuild=1 ;; *) rebuild=0 ;; esac
-if [ -n "$m" ]; then stack_mods="$mod"; else stack_mods="$(cd "$MW_ROOT" && ls -d services/*/ 2>/dev/null | sed 's#/$##')"; fi
-for s in $stack_mods; do
-  [ -f "$MW_ROOT/$s/Dockerfile" ] && [ -f "$MW_ROOT/$s/compose.yml" ] && [ -x "$MW_ROOT/$s/gradlew" ] || continue
-  if [ "$rebuild" = 1 ] || ! ls "$MW_ROOT/$s"/build/libs/*.jar >/dev/null 2>&1; then
+# Never run stale code: an existing jar or mw-x:dev / mw-x-init:dev image may predate the
+# source. So every stack module's jar is rebuilt (images copy build/libs/*.jar + the SBOM;
+# Gradle is incremental, so this is cheap when nothing changed), one module at a time (parallel
+# Gradle daemons are unreliable here), and compose rebuilds every image it builds (services and
+# their init images; the layer cache keeps it cheap). MW_UP_NO_BUILD=1 skips both (faster, at
+# your own risk: whatever jars and images exist are used).
+build_args="--build"
+if [ "${MW_UP_NO_BUILD:-0}" = 1 ]; then
+  info "up: MW_UP_NO_BUILD=1: using existing jars and images as they are"
+  build_args=""
+else
+  if [ -n "$m" ]; then stack_mods="$mod"; else stack_mods="$(cd "$MW_ROOT" && ls -d services/*/ 2>/dev/null | sed 's#/$##')"; fi
+  for s in $stack_mods; do
+    [ -f "$MW_ROOT/$s/Dockerfile" ] && [ -f "$MW_ROOT/$s/compose.yml" ] && [ -x "$MW_ROOT/$s/gradlew" ] || continue
     info "up: $s ./gradlew bootJar"
     (cd "$MW_ROOT/$s" && ./gradlew bootJar -q) || die "up: $s: bootJar failed"
-  fi
-done
+  done
+fi
+case " ${COMPOSE_ARGS:-} " in *" --build "*) build_args="" ;; esac
 
-info "up: docker compose -f ${file#"$MW_ROOT"/} up -d"
-docker compose -f "$file" up -d ${COMPOSE_ARGS:-}
+info "up: docker compose -f ${file#"$MW_ROOT"/} up -d $build_args ${COMPOSE_ARGS:-}"
+docker compose -f "$file" up -d $build_args ${COMPOSE_ARGS:-}
 
 timeout="${MW_UP_TIMEOUT:-300}"
 poll="${MW_UP_POLL:-3}"

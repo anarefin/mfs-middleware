@@ -16,8 +16,10 @@ test_up_with_no_stack_and_no_modules_is_a_noop() {
   assert_out_contains "nothing to start"
 }
 
-test_up_builds_missing_service_jars_before_compose_builds_images() {
-  # Images copy build/libs/*.jar: a fresh clone (no jars) must not fail with "lstat /build/libs".
+test_up_always_rebuilds_service_jars_and_images_unless_opted_out() {
+  # Never run stale code: an existing jar or an existing mw-x:dev / mw-x-init:dev image may
+  # predate the source. Every stack module's bootJar runs (Gradle is incremental) and compose
+  # builds every image (layer cache) on each make up; MW_UP_NO_BUILD=1 skips both.
   stub_tools
   mkdir -p deploy/compose/mvp && touch deploy/compose/mvp/compose.yml
   new_module "$PWD" services/mw-a; touch services/mw-a/Dockerfile services/mw-a/compose.yml
@@ -25,10 +27,23 @@ test_up_builds_missing_service_jars_before_compose_builds_images() {
   mkdir -p services/mw-b/build/libs && touch services/mw-b/build/libs/mw-b-0.1.0.jar
   assert_ok mw_make "$PWD" up
   grep -q '^bootJar' services/mw-a/.gradlew-calls 2>/dev/null || fail "mw-a jar not built"
-  [ -f services/mw-b/.gradlew-calls ] && fail "mw-b rebuilt although its jar exists"
-  # COMPOSE_ARGS=--build rebuilds images, so every jar is brought up to date first
+  grep -q '^bootJar' services/mw-b/.gradlew-calls 2>/dev/null || fail "mw-b jar not refreshed although one exists"
+  grep -q "compose -f $PWD/deploy/compose/mvp/compose.yml up -d --build" .tool-calls || fail "images not rebuilt: $(cat .tool-calls)"
+  # --build given once even when COMPOSE_ARGS has it too
+  rm -f .tool-calls
   assert_ok mw_make "$PWD" up COMPOSE_ARGS=--build
-  grep -q '^bootJar' services/mw-b/.gradlew-calls 2>/dev/null || fail "mw-b jar not refreshed for --build"
+  [ "$(grep -o -- '--build' .tool-calls | wc -l | tr -d ' ')" = 1 ] || fail "--build repeated: $(cat .tool-calls)"
+  # M= rebuilds that module only
+  rm -f .tool-calls services/mw-*/.gradlew-calls
+  assert_ok mw_make "$PWD" up M=mw-a
+  grep -q '^bootJar' services/mw-a/.gradlew-calls 2>/dev/null || fail "M=mw-a jar not built"
+  [ -f services/mw-b/.gradlew-calls ] && fail "M=mw-a also built mw-b"
+  grep -q "compose -f $PWD/services/mw-a/compose.yml up -d --build" .tool-calls || fail "M=mw-a image not rebuilt"
+  # opt-out
+  rm -f .tool-calls services/mw-*/.gradlew-calls
+  MW_UP_NO_BUILD=1 mw_make "$PWD" up || fail "up with MW_UP_NO_BUILD=1 failed: $OUT"
+  [ -f services/mw-a/.gradlew-calls ] && fail "MW_UP_NO_BUILD=1 still built jars"
+  grep -q -- '--build' .tool-calls && fail "MW_UP_NO_BUILD=1 still rebuilt images"
   # a failing build stops make up before compose
   rm -f services/mw-a/.gradlew-calls .tool-calls; rm -rf services/mw-a/build; touch services/mw-a/.gradlew-fail
   assert_fails mw_make "$PWD" up
