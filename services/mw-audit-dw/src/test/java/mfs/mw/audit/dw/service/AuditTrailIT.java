@@ -176,6 +176,55 @@ class AuditTrailIT {
   }
 
   @Test
+  void numbersAndPropertyNamesAreMaskedBeforeTheyAreStored() {
+    AuditEvent e =
+        JSON.readValue(
+            """
+            {"schemaVersion":1,"auditId":"%s","correlationId":"corr-3",
+             "actor":{"type":"user","id":"u-1"},"action":"wallet.linked","resource":"wallet",
+             "before":{"msisdn":8801712345789,"amount":500},
+             "after":{"account":123456789012345,"01812345678":{"linked":true},"ids":[1990123456789]},
+             "outcome":"SUCCESS","at":"2026-11-03T08:15:31Z","service":"mw-admin-api"}
+            """
+                .formatted(UUID.randomUUID()),
+            AuditEvent.class);
+    audit.record(e);
+
+    Map<String, Object> row =
+        jdbc.queryForMap("select before::text before, after::text after from event");
+    assertThat((String) row.get("before"))
+        .isEqualTo("{\"amount\": 500, \"msisdn\": \"880171****789\"}");
+    assertThat((String) row.get("after"))
+        .isEqualTo(
+            "{\"ids\": [\"****789\"], \"account\": \"****2345\","
+                + " \"0181****678\": {\"linked\": true}}");
+    assertThat(verifier.verify("2026-11").intact()).isTrue();
+  }
+
+  /** Keys that mask alike all survive: a later one gets #2, #3... on its own name, in order. */
+  @Test
+  void propertyNamesThatMaskAlikeAreKeptApart() {
+    AuditEvent e =
+        JSON.readValue(
+            """
+            {"schemaVersion":1,"auditId":"%s","correlationId":"corr-4",
+             "actor":{"type":"user","id":"u-1"},"action":"wallet.linked","resource":"wallet",
+             "after":{"01711000001":"first","01711999001":"second","0171****001#2":"literal"},
+             "outcome":"SUCCESS","at":"2026-11-03T08:15:31Z","service":"mw-admin-api"}
+            """
+                .formatted(UUID.randomUUID()),
+            AuditEvent.class);
+    audit.record(e);
+
+    String after = jdbc.queryForObject("select after::text from event", String.class);
+    assertThat(after)
+        .isEqualTo(
+            "{\"0171****001\": \"first\", \"0171****001#2\": \"second\","
+                + " \"0171****001#2#2\": \"literal\"}");
+    assertThat(verifier.verify("2026-11").intact()).isTrue();
+  }
+
+  @Test
   void anEventWithoutItsRequiredFieldsIsRefused() {
     AuditEvent e =
         JSON.readValue(
