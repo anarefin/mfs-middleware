@@ -4,7 +4,7 @@
 # The zone network is named after the platform project (default `mw`, override with
 # COMPOSE_PROJECT_NAME) so the same definition works both when included in the
 # environment project and when started alone. Join only the zones this service needs
-# (18.1): `app` for Kafka, Valkey, OpenBao, the SMSC (simulator) and other services, `data`
+# (18.1): `app` for Kafka, Valkey, OpenBao, the SMSC (simulator), GreenMail and other services, `data`
 # for PostgreSQL. (The platform puts OpenBao on `app` and `ops`; services reach it over `app`.)
 networks:
   app:
@@ -76,6 +76,14 @@ services:
       # SMSC over SMPP 3.4 (10.2): the simulator in the MVP stack (internal network, no host port).
       SMPP_HOST: ${SMPP_HOST:-mw-simulators}
       SMPP_PORT: ${SMPP_PORT:-2775}
+      # Email over SMTP (10.2): the platform's GreenMail (internal network, no auth, no TLS).
+      SMTP_HOST: ${SMTP_HOST:-greenmail}
+      SMTP_PORT: ${SMTP_PORT:-3025}
+      # DEV ONLY: GreenMail offers no STARTTLS. The service's own default requires it.
+      SMTP_STARTTLS_REQUIRED: ${SMTP_STARTTLS_REQUIRED:-false}
+      MAIL_FROM: ${MAIL_FROM:-upay <no-reply@upay.test>}
+      # Dev/MVP stack only: also apply db/dev (registered emails of the seeded test users).
+      MW_NOTIFY_FLYWAY_LOCATIONS: ${MW_NOTIFY_FLYWAY_LOCATIONS:-classpath:db/migration,classpath:db/dev}
     deploy:
       resources:
         limits:

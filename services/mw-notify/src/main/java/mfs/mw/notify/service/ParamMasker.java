@@ -47,8 +47,17 @@ public final class ParamMasker {
     params.forEach(
         (k, v) -> {
           SensitiveType type = policy.get(k.toLowerCase(Locale.ROOT));
-          out.put(k, type == null ? v : MaskingPolicy.mask(type, v));
+          out.put(k, type == null || alreadyMasked(v) ? v : MaskingPolicy.mask(type, v));
         });
     return out;
+  }
+
+  /**
+   * A value that already carries the mask ({@code ****}) passes as it is: the rule engine masks the
+   * other party by its type (an account keeps its last 4, an MSISDN its edges), which masking it
+   * again by name would change.
+   */
+  private static boolean alreadyMasked(String v) {
+    return v != null && v.contains("****");
   }
 }
