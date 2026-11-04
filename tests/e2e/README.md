@@ -42,6 +42,15 @@ Only APISIX is published, so every call goes through it:
   OCS behaves normally again" and by an `@After` hook); "the core drops its reply to the next
   PostTransfer" loses a P2P reply that QueryTransaction then finds. "no funds are held on <wallet>"
   compares the core's held amount with the noted one.
+- BILL_PAY (`features/billpay.feature`, `@billpay`, ticket 21): "<user> lists the billers" /
+  "the billers include DESCO"; "<user> fetches bill <n> of biller <code>" / "the amount due is N
+  poisha" (sync fetch through mw-app-gateway -> mw-adapter-billpay internal API -> aggregator
+  simulator `billagg`); "<user> pays N poisha on bill <n> of biller <code> with PIN ..." (credit
+  party BILLER_ACCOUNT, `partner.billerCode`). Money lands on `SETTLEMENT` (fee 300 on
+  `FEE-POOL`). Simulator magic values: amount due = 100 taka + last three digits of the bill
+  number (1234567 -> 66700 poisha); bill numbers ending 404 unknown (`MW-PTR-BILLAGG-BILL_NOT_FOUND`),
+  ending 999 refused on payment (`MW-PTR-BILLAGG-PAYMENT_REFUSED`); amount fraction .13 times out
+  past the adapter's 25 s limit (202, then COMPLETED by status inquiry, `@tsq`).
 - REVERSAL (`features/reversal.feature`, `@reversal`): "operations reverses the transaction"
   publishes a REVERSAL of the scenario's (COMPLETED) transaction; the original then shows
   REVERSED (or MANUAL_REVIEW) in the app view. "the orchestrator has handled the reversal

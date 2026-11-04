@@ -50,6 +50,23 @@ public final class AppApi {
         body);
   }
 
+  /** {@code GET /app/v1/billers} as {@code user}. */
+  public static Http.Response billers(String user) {
+    return Http.get(
+        Stack.get().url("app/v1/billers"),
+        Map.of("Authorization", "Bearer " + Keycloak.customerToken(user)));
+  }
+
+  /** {@code POST /app/v1/billers/{code}/fetch-bill} as {@code user}. */
+  public static Http.Response fetchBill(String user, String billerCode, String billNumber) {
+    return Http.postJson(
+        Stack.get().url("app/v1/billers/" + billerCode + "/fetch-bill"),
+        Map.of(
+            "Authorization", "Bearer " + Keycloak.customerToken(user),
+            "X-Correlation-Id", "e2e-" + UUID.randomUUID()),
+        Http.JSON.createObjectNode().put("billNumber", billNumber));
+  }
+
   /** {@code GET /app/v1/transactions/{txnId}} as {@code user}. */
   public static Http.Response status(String user, String txnId) {
     return Http.get(

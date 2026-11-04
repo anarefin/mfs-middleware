@@ -53,6 +53,48 @@ public class AppSteps {
     submit(user, AppApi.newIdempotencyKey(), body);
   }
 
+  /** BILL_PAY (ticket 21): the bill number is the BILLER_ACCOUNT credit party, the biller the partner. */
+  @When("{word} pays {long} poisha on bill {word} of biller {word} with PIN {string}")
+  public void paysBill(String user, long amountMinor, String billNumber, String biller, String pin) {
+    ObjectNode body = AppApi.request("BILL_PAY", billNumber, amountMinor, pin);
+    ((ObjectNode) body.get("creditParty")).put("type", "BILLER_ACCOUNT");
+    body.putObject("partner").put("billerCode", biller);
+    submit(user, AppApi.newIdempotencyKey(), body);
+  }
+
+  @When("{word} pays {long} poisha on bill {word} without a biller")
+  public void paysBillWithoutBiller(String user, long amountMinor, String billNumber) {
+    ObjectNode body = AppApi.request("BILL_PAY", billNumber, amountMinor, "1234");
+    ((ObjectNode) body.get("creditParty")).put("type", "BILLER_ACCOUNT");
+    submit(user, AppApi.newIdempotencyKey(), body);
+  }
+
+  @When("{word} lists the billers")
+  public void listsBillers(String user) {
+    state.user = user;
+    state.responses.add(AppApi.billers(user));
+  }
+
+  @When("{word} fetches bill {word} of biller {word}")
+  public void fetchesBill(String user, String billNumber, String biller) {
+    state.user = user;
+    state.responses.add(AppApi.fetchBill(user, biller, billNumber));
+  }
+
+  @Then("the billers include {word}")
+  public void billersInclude(String code) {
+    assertThat(state.response().body().path("billers").findValuesAsString("code"))
+        .as("%s", state.response())
+        .contains(code);
+  }
+
+  @Then("the amount due is {long} poisha")
+  public void amountDue(long minor) {
+    assertThat(state.response().body().path("amount").path("valueMinor").asLong())
+        .as("%s", state.response())
+        .isEqualTo(minor);
+  }
+
   @When("{word} tops up {long} poisha airtime on {word} without an operator")
   public void topsUpWithoutOperator(String user, long amountMinor, String msisdn) {
     ObjectNode body = AppApi.request("TOPUP", msisdn, amountMinor, "1234");
