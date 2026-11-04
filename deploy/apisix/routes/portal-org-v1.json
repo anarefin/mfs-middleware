@@ -1,6 +1,6 @@
 {
   "name": "portal-org-v1",
-  "desc": "Org portal API v1 (spec 8.2, 9.4): Keycloak realm portals bearer JWT verified with the realm's JWKS (mw-portal-api verifies it again), body cap sized for a bulk file (the service answers a file over 10,000 rows or 2 MiB with MW-VAL-030 itself), quota per token subject in Valkey",
+  "desc": "Org portal API v1 (spec 8.2, 9.4): portals realm bearer JWT checked via JWKS (mw-portal-api checks it again), body cap sized for a bulk file (the service itself refuses >10,000 rows or >2 MiB, MW-VAL-030), quota per token subject in Valkey",
   "uri": "/portal/org/v1/*",
   "methods": ["GET", "POST"],
   "plugins": {

@@ -1,6 +1,6 @@
 {
   "name": "checkout-v1-sessions",
-  "desc": "Checkout merchant API: create a session (spec 8.2, 9.3, ticket 31) to mw-checkout. hmac-auth (merchant consumer; method, path, Date and body Digest signed, body checked), body schema from the checkout OpenAPI, the consumer name forwarded as X-Mw-Merchant-Id, quota per merchant",
+  "desc": "Checkout merchant API: create a session (spec 8.2, 9.3, ticket 31) to mw-checkout. hmac-auth (method, path, Date and body Digest signed), body schema from the checkout OpenAPI, consumer name sent as X-Mw-Merchant-Id, quota per merchant",
   "uri": "/checkout/v1/sessions",
   "methods": ["POST"],
   "plugins": {

@@ -29,6 +29,16 @@ test_dry_run_renders_every_object_as_valid_json() {
   return 0
 }
 
+test_every_desc_fits_the_admin_api_limit() {
+  # The Admin API refuses an object whose desc is over 256 characters (apisix-init then fails).
+  local f long
+  for f in $(find "$REPO_DIR/deploy/apisix" -name '*.json'); do
+    long="$(jq -r '[.. | objects | select(has("desc")) | .desc | select(length > 256)] | length' "$f")"
+    [ "$long" = "0" ] || fail "$f has a desc over 256 characters"
+  done
+  return 0
+}
+
 test_lua_and_json_includes_are_inlined_verbatim() {
   mkdir -p fx/routes fx/lua fx/schemas
   printf 'return function(conf, ctx)\n\t-- "quoted" \\ back\\slash & amp\n  return nil\nend\n' >fx/lua/f.lua

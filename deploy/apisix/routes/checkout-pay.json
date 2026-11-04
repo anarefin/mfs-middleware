@@ -1,6 +1,6 @@
 {
   "name": "checkout-pay",
-  "desc": "Checkout hosted page API (spec 8.2, 9.3, ticket 31) to mw-checkout: no login (the pay token in the path is the bearer), small bodies, quota per source address. No CORS plugin: no cross-origin access is granted (strictest); the page is served from the same origin",
+  "desc": "Checkout hosted page API (spec 8.2, 9.3, ticket 31) to mw-checkout: no login (the pay token in the path is the bearer), small bodies, quota per source address. No CORS plugin, so no cross-origin access; the page is same-origin",
   "uri": "/checkout/pay/v1/*",
   "methods": ["GET", "POST"],
   "plugins": {
