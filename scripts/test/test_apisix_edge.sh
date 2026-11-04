@@ -103,10 +103,11 @@ test_app_submit_schema_is_the_openapi_transaction_request_minus_value_echoing_ke
   [ -f "$s" ] || fail "no $s"
   jq -e '."x-mw-derived-from" == "api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/TransactionRequest"' "$s" >/dev/null \
     || fail "source not recorded"
-  jq -e '.required == ["txnType", "creditParty", "amount", "encryptedPin"]
+  jq -e '.required == ["txnType", "amount", "encryptedPin"]
     and (.properties.txnType.enum | index("P2P") != null and index("TOPUP") != null)
     and .properties.partner.additionalProperties == false
-    and .properties.partner.properties.partnerId.enum == ["gp", "robi", "banglalink", "teletalk"]
+    and .properties.partner.properties.partnerId.enum == ["gp", "robi", "banglalink", "teletalk", "c2wbank"]
+    and .properties.debitParty.required == ["type", "id"] and .properties.debitParty.additionalProperties == false
     and .properties.amount.required == ["valueMinor", "currency"]
     and .properties.amount.additionalProperties == false
     and .properties.amount.properties.valueMinor.minimum == 1
@@ -124,7 +125,7 @@ test_app_submit_schema_is_the_openapi_transaction_request_minus_value_echoing_ke
 
 test_a_contract_change_makes_the_check_fail_until_written() {
   fixture_schemas
-  sed -i.bak 's/required: \[txnType, creditParty, amount, encryptedPin\]/required: [txnType, creditParty, amount, encryptedPin, locale]/' \
+  sed -i.bak 's/required: \[txnType, amount, encryptedPin\]/required: [txnType, amount, encryptedPin, locale]/' \
     contracts/api/mw-app-gateway/app.v1.openapi.yaml
   grep -q 'encryptedPin, locale]' contracts/api/mw-app-gateway/app.v1.openapi.yaml || fail "fixture edit did not apply"
   if schemas --check; then fail "check passed on a stale schema"; fi
