@@ -135,16 +135,28 @@ class PartnerCallbackSagaIT {
 
   /** A callback as mw-adapter-billpay publishes it; validated against the owned contract. */
   private PartnerInbound callback(String txnId, String outcome, String partnerRef, String errorCode) {
-    String inboundId = UUID.nameUUIDFromBytes(("billagg:" + txnId + ":" + outcome).getBytes()).toString();
+    String body = callbackBody(txnId, outcome, partnerRef, errorCode, "billagg", "billpay");
+    assertThat(ContractSchemas.schema(INBOUND_SCHEMA).validate(json.readTree(body))).as(body).isEmpty();
+    return json.readValue(body, PartnerInbound.class);
+  }
+
+  /** Any callback, also ones the contract or the transaction would not allow (not validated). */
+  private PartnerInbound callback(
+      String txnId, String outcome, String partnerRef, String errorCode, String partnerId, String family) {
+    return json.readValue(callbackBody(txnId, outcome, partnerRef, errorCode, partnerId, family), PartnerInbound.class);
+  }
+
+  private String callbackBody(
+      String txnId, String outcome, String partnerRef, String errorCode, String partnerId, String family) {
+    String inboundId = UUID.nameUUIDFromBytes((partnerId + ":" + txnId + ":" + outcome + ":" + family).getBytes()).toString();
     String body =
-        "{\"schemaVersion\":1,\"family\":\"billpay\",\"inboundId\":\"" + inboundId + "\",\"txnId\":\"" + txnId
-            + "\",\"correlationId\":\"corr-cb\",\"partnerId\":\"billagg\",\"partnerRef\":\"" + partnerRef
+        "{\"schemaVersion\":1,\"family\":\"" + family + "\",\"inboundId\":\"" + inboundId + "\",\"txnId\":\"" + txnId
+            + "\",\"correlationId\":\"corr-cb\",\"partnerId\":\"" + partnerId + "\",\"partnerRef\":\"" + partnerRef
             + "\",\"receivedAt\":\"2026-11-03T08:15:40Z\",\"payload\":{\"kind\":\"CALLBACK\",\"outcome\":\""
             + outcome + "\",\"partnerCode\":\"" + ("FAILED".equals(outcome) ? "3003" : "000") + "\""
             + (errorCode == null ? "" : ",\"errorCode\":\"" + errorCode + "\"")
             + ",\"attributes\":{\"message\":\"from the aggregator\"}}}";
-    assertThat(ContractSchemas.schema(INBOUND_SCHEMA).validate(json.readTree(body))).as(body).isEmpty();
-    return json.readValue(body, PartnerInbound.class);
+    return body;
   }
 
   private String toPartnerPending() {
@@ -282,5 +294,88 @@ class PartnerCallbackSagaIT {
 
     assertThat(outbox("mw.audit.event.v1", txn)).isEmpty();
     assertThat(outbox("mw.txn.status.v1", txn)).isEmpty();
+  }
+
+  // --- a callback must belong to the transaction (security review) --------------------------
+
+  private String status(String txnId) {
+    return jdbc.queryForObject("select status from transaction where txn_id = ?::uuid", String.class, txnId);
+  }
+
+  private void assertRejected(String txn, String statusBefore, int statusRecords, String reason) {
+    assertThat(status(txn)).isEqualTo(statusBefore);
+    assertThat(statuses(txn)).hasSize(statusRecords);
+    List<JsonNode> audits = auditsOtherThanStates(txn);
+    assertThat(audits).hasSize(1);
+    JsonNode a = audits.getFirst();
+    assertThat(a.path("action").asString()).isEqualTo("partner.callback.rejected");
+    assertThat(a.path("outcome").asString()).isEqualTo("DENIED");
+    assertThat(a.path("after").path("reason").asString()).isEqualTo(reason);
+    assertAllValid(txn);
+  }
+
+  @Test
+  void aCallbackFromAnotherPartnerIsRejectedAndChangesNothing() {
+    String txn = toPartnerPending();
+    int before = statuses(txn).size();
+
+    callbacks.handle(callback(txn, "SUCCESS", "OCS-1", null, "ocs", "billpay"));
+
+    assertRejected(txn, "PARTNER_PENDING", before, "PARTNER_MISMATCH");
+    assertThat(outbox("core.wallet.command.v1", txn).stream().map(c -> c.path("commandType").asString()))
+        .doesNotContain("CommitHold");
+  }
+
+  @Test
+  void aCallbackOfAnotherFamilyIsRejectedAndChangesNothing() {
+    String txn = toPartnerPending();
+    int before = statuses(txn).size();
+
+    callbacks.handle(callback(txn, "SUCCESS", "AGG-7", null, "billagg", "telco"));
+
+    assertRejected(txn, "PARTNER_PENDING", before, "FAMILY_MISMATCH");
+  }
+
+  @Test
+  void aCallbackNamingAnotherPartnerReferenceIsRejectedAndChangesNothing() {
+    String txn = completed(); // partner_ref AGG-7 stored
+    int before = statuses(txn).size();
+
+    callbacks.handle(callback(txn, "FAILED", "AGG-99", "MW-PTR-BILLAGG-PAYMENT_REFUSED"));
+
+    assertRejected(txn, "COMPLETED", before, "PARTNER_REF_MISMATCH");
+  }
+
+  @Test
+  void aCallbackCarryingOurOwnReferenceStillMatchesAStoredPartnerRef() {
+    String txn = completed();
+
+    callbacks.handle(callback(txn, "FAILED", PartnerRequestMapper.partnerTxnRef(txn), "MW-PTR-BILLAGG-PAYMENT_REFUSED"));
+
+    assertThat(auditsOtherThanStates(txn)).extracting(a -> a.path("action").asString())
+        .containsExactly("txn.outcome.conflict");
+  }
+
+  @Test
+  void aCallbackForATransactionWithoutAPartnerLegIsRejectedAndChangesNothing() {
+    TxnRequest req = TestData.p2p(TestData.txnId(), "key-" + TestData.txnId(), 1_000);
+    transactions.accept(req, "gw-1");
+    String txn = req.txnId();
+    String before = status(txn);
+    int records = statuses(txn).size();
+
+    callbacks.handle(callback(txn, "SUCCESS", "AGG-1", null, "billagg", "billpay"));
+
+    assertRejected(txn, before, records, "NO_PARTNER_LEG");
+  }
+
+  @Test
+  void aCallbackWithAnOutcomeOtherThanSuccessFailedPendingIsRejectedAndChangesNothing() {
+    String txn = toPartnerPending();
+    int before = statuses(txn).size();
+
+    callbacks.handle(callback(txn, "UNKNOWN", "AGG-7", null, "billagg", "billpay"));
+
+    assertRejected(txn, "PARTNER_PENDING", before, "UNKNOWN_OUTCOME");
   }
 }

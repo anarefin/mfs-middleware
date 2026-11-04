@@ -36,9 +36,10 @@ class PartnerCallbackServiceTest {
   final PartnerGateway gateway = mock(PartnerGateway.class);
   final PartnerReferenceRepository references = mock(PartnerReferenceRepository.class);
   final Inbox inbox = mock(Inbox.class);
+  final EventPublisher publisher = mock(EventPublisher.class);
   final PartnerCallbackService service =
       new PartnerCallbackService(
-          store, gateway, references, new PartnerInboundMapper(), inbox, mock(EventPublisher.class),
+          store, gateway, references, new PartnerInboundMapper(), inbox, publisher,
           Clock.fixed(Instant.parse("2026-11-03T08:15:40Z"), ZoneOffset.UTC));
   final InboundCall call = new InboundCall("billagg", "POST", "/partner/billagg/callback/payments", Map.of(), new byte[0]);
 
@@ -62,6 +63,28 @@ class PartnerCallbackServiceTest {
           assertThat(e.code()).isEqualTo("MW-SYS-EVENT_NOT_WRITTEN");
           assertThat(e.status().value()).isEqualTo(503);
         });
+  }
+
+  @Test
+  void thePublishedPartnerIsTheAuthenticatedRoutesNeverTheBodys() {
+    knownPartnerAndReference();
+    // the body names someone else everywhere it can; only the URL's partner signed it
+    when(gateway.inbound(call))
+        .thenReturn(new InboundResult("AGG-1", REF, "SUCCESS", "000", null, Map.of("partnerId", "ocs")));
+    when(inbox.processOnce(eq(PartnerCallbackService.CONSUMER), anyString(), any()))
+        .thenAnswer(inv -> {
+          ((Runnable) inv.getArgument(2)).run();
+          return true;
+        });
+
+    service.receive(call);
+
+    org.mockito.ArgumentCaptor<mfs.mw.adapter.billpay.dto.PartnerInbound> sent =
+        org.mockito.ArgumentCaptor.forClass(mfs.mw.adapter.billpay.dto.PartnerInbound.class);
+    org.mockito.Mockito.verify(publisher)
+        .publish(eq(PartnerCallbackService.TOPIC), eq("01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c"), any(), sent.capture());
+    assertThat(sent.getValue().partnerId()).isEqualTo("billagg");
+    assertThat(sent.getValue().family()).isEqualTo("billpay");
   }
 
   @Test

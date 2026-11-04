@@ -57,6 +57,32 @@ public class AuditMapper {
         SERVICE);
   }
 
+  /** A callback that does not belong to the transaction (ownership check failed). */
+  public static final String CALLBACK_REJECTED = "partner.callback.rejected";
+
+  /**
+   * A partner callback refused because it does not belong to the transaction: outcome DENIED,
+   * {@code after} the unchanged status, the callback's outcome and the reason code.
+   */
+  public AuditEvent callbackRejected(
+      TransactionRecord rec, String partnerId, String correlationId, String callbackOutcome, String reason,
+      Instant at) {
+    String txnId = rec.txnId().toString();
+    return new AuditEvent(
+        1,
+        UUID.randomUUID().toString(),
+        txnId,
+        correlationId == null || correlationId.isBlank() ? rec.request().correlationId() : correlationId,
+        new AuditEvent.Actor("partner", partnerId == null || partnerId.isBlank() ? "unknown" : partnerId),
+        CALLBACK_REJECTED,
+        "txn/" + txnId,
+        Map.of("status", rec.status().name()),
+        Map.of("status", rec.status().name(), "callbackOutcome", String.valueOf(callbackOutcome), "reason", reason),
+        "DENIED",
+        at,
+        SERVICE);
+  }
+
   public AuditEvent stateChanged(TransactionRecord rec, Status from, Instant at) {
     Map<String, String> after = new HashMap<>();
     after.put("status", rec.status().name());

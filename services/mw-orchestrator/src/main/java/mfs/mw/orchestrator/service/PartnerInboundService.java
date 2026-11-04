@@ -10,11 +10,15 @@ import mfs.mw.orchestrator.dto.PartnerReply;
 import mfs.mw.orchestrator.entity.TransactionRecord;
 import mfs.mw.orchestrator.mapper.AuditMapper;
 import mfs.mw.orchestrator.mapper.PartnerReplyMapper;
+import mfs.mw.orchestrator.mapper.PartnerRequestMapper;
 import mfs.mw.orchestrator.messaging.EventMetadata;
 import mfs.mw.orchestrator.messaging.Inbox;
 import mfs.mw.orchestrator.messaging.OutboxWriter;
 import mfs.mw.orchestrator.repository.TransactionRepository;
+import mfs.mw.orchestrator.service.saga.Flow;
+import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.service.saga.InvalidTransitionException;
+import mfs.mw.orchestrator.service.saga.PartnerCall;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.Status;
 import org.slf4j.Logger;
@@ -36,7 +40,12 @@ import org.springframework.transaction.annotation.Transactional;
  *       contradicts the resolution, also logged as an error for operations and reconciliation).
  * </ul>
  *
- * Effectively once: the inbox drops a redelivered {@code inboundId} (the adapter derives it from
+ * Ownership first: a callback is applied only when its partner, family and (once stored) partner
+ * reference match the transaction, the flow has a partner leg and the outcome is SUCCESS, FAILED
+ * or PENDING; otherwise nothing changes and it is recorded as {@code partner.callback.rejected}
+ * (outcome DENIED, event {@code security.partner_callback_mismatch}).
+ *
+ * <p>Effectively once: the inbox drops a redelivered {@code inboundId} (the adapter derives it from
  * partner, reference and outcome, so a duplicate callback has the same one). REMITTANCE and
  * NPSB_CREDIT (new inbound money, ticket 23) are not handled yet: logged and dropped.
  */
@@ -45,6 +54,7 @@ public class PartnerInboundService {
 
   static final String CONSUMER = "orchestrator.partner-inbound";
   static final String CALLBACK = "CALLBACK";
+  static final java.util.Set<String> OUTCOMES = java.util.Set.of("SUCCESS", "FAILED", "PENDING");
 
   private static final Logger log = LoggerFactory.getLogger(PartnerInboundService.class);
 
@@ -55,6 +65,7 @@ public class PartnerInboundService {
   private final InquiryService inquiries;
   private final AuditMapper audits;
   private final OutboxWriter outbox;
+  private final FlowRegistry flows;
   private final Clock clock;
 
   public PartnerInboundService(
@@ -65,6 +76,7 @@ public class PartnerInboundService {
       InquiryService inquiries,
       AuditMapper audits,
       OutboxWriter outbox,
+      FlowRegistry flows,
       Clock clock) {
     this.inbox = inbox;
     this.transactions = transactions;
@@ -73,6 +85,7 @@ public class PartnerInboundService {
     this.inquiries = inquiries;
     this.audits = audits;
     this.outbox = outbox;
+    this.flows = flows;
     this.clock = clock;
   }
 
@@ -93,6 +106,11 @@ public class PartnerInboundService {
       return;
     }
     TransactionRecord rec = found.get();
+    Optional<String> mismatch = mismatch(rec, inbound);
+    if (mismatch.isPresent()) {
+      reject(rec, inbound, mismatch.get());
+      return;
+    }
     PartnerReply answer = asReply(inbound);
     switch (rec.status()) {
       case UNKNOWN -> inquiries.partnerAnswer(rec, answer);
@@ -122,6 +140,54 @@ public class PartnerInboundService {
           .addKeyValue("status", e.from().name())
           .log("partner callback does not fit the transaction's state; ignored");
     }
+  }
+
+  /**
+   * Why the callback does not belong to this transaction, if it does not (security review,
+   * ticket 22): a valid signature only proves which partner sent it, so the partner, the family,
+   * the flow's partner leg and, once one is stored, the partner reference must all match the
+   * transaction; and only SUCCESS, FAILED and PENDING are outcomes. The reference matches when it
+   * is the stored partner reference or our own reference for this transaction ({@code UPAY} + its
+   * txnId, from which the adapter resolved the txnId).
+   */
+  private Optional<String> mismatch(TransactionRecord rec, PartnerInbound in) {
+    if (!OUTCOMES.contains(String.valueOf(in.payload().outcome()))) {
+      return Optional.of("UNKNOWN_OUTCOME");
+    }
+    Optional<PartnerCall> leg = flows.find(rec.request().txnType()).flatMap(Flow::partnerCall);
+    String partnerId = SagaEngine.partnerId(rec);
+    if (leg.isEmpty() || partnerId == null) {
+      return Optional.of("NO_PARTNER_LEG");
+    }
+    if (!partnerId.equals(in.partnerId())) {
+      return Optional.of("PARTNER_MISMATCH");
+    }
+    if (!leg.get().family().equals(in.family())) {
+      return Optional.of("FAMILY_MISMATCH");
+    }
+    String stored = rec.partnerRef();
+    String ours = PartnerRequestMapper.partnerTxnRef(rec.txnId().toString());
+    if (stored != null && !stored.isBlank() && !stored.equals(in.partnerRef()) && !ours.equals(in.partnerRef())) {
+      return Optional.of("PARTNER_REF_MISMATCH");
+    }
+    return Optional.empty();
+  }
+
+  /** Not this transaction's callback: nothing changes; security event and a DENIED audit record. */
+  private void reject(TransactionRecord rec, PartnerInbound inbound, String reason) {
+    AuditEvent e =
+        audits.callbackRejected(
+            rec, inbound.partnerId(), inbound.correlationId(), inbound.payload().outcome(), reason, clock.instant());
+    outbox.append(
+        SagaEngine.AUDIT_TOPIC, e.txnId(), new EventMetadata(e.correlationId(), e.txnId(), e.auditId(), 1), e);
+    log.atWarn()
+        .addKeyValue("event", "security.partner_callback_mismatch")
+        .addKeyValue("txnId", inbound.txnId())
+        .addKeyValue("partnerId", inbound.partnerId())
+        .addKeyValue("family", inbound.family())
+        .addKeyValue("status", rec.status().name())
+        .addKeyValue("reason", reason)
+        .log("partner callback does not belong to the transaction; rejected, nothing changes");
   }
 
   /** The transaction left PARTNER_PENDING / UNKNOWN before the callback came: record only. */

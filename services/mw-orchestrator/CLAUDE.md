@@ -70,7 +70,15 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - Partner callbacks (ticket 22, spec 11.2, `service/PartnerInboundService`, own type
   `dto/PartnerInbound`): kind CALLBACK only (REMITTANCE / NPSB_CREDIT logged
   `partner.inbound.unsupported` and dropped until ticket 23). Inbox key `inboundId` (the adapter
-  derives it from partner, reference and outcome, so a duplicate callback is dropped). The callback
+  derives it from partner, reference and outcome, so a duplicate callback is dropped). Ownership
+  first (security review): applied only when the outcome is SUCCESS/FAILED/PENDING, the flow has
+  a partner leg, `partnerId` equals the transaction's partner (`SagaEngine.partnerId`), `family`
+  equals the leg's family and, once a partner reference is stored, the callback's `partnerRef` is
+  that reference or our own `UPAY<txnId hex>`; otherwise nothing changes, event
+  `security.partner_callback_mismatch` and audit `partner.callback.rejected` outcome DENIED with
+  `after.reason` UNKNOWN_OUTCOME / NO_PARTNER_LEG / PARTNER_MISMATCH / FAMILY_MISMATCH /
+  PARTNER_REF_MISMATCH. The adapter sets `partnerId` from the authenticated route (the URL's
+  partner, whose secret verified the signature), never from the body. The callback
   is read as a definite partner answer (operation `CALLBACK`): PARTNER_PENDING -> SUCCESS
   COMMITTING (partnerRef stored), FAILED RELEASING with the callback's `errorCode`, PENDING
   nothing; UNKNOWN -> `InquiryService.partnerAnswer` (same rules as a STATUS_QUERY answer); any
