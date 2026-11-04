@@ -22,6 +22,8 @@ Only APISIX is published, so every call goes through it:
 | --- | --- | --- |
 | App API | `/app/v1/*` | the real channel route (`deploy/apisix/routes/app-v1.json`) |
 | Tokens (realm customers) | `POST /auth/realms/customers/protocol/openid-connect/token` | `auth-customers-token.json`; pins Host/X-Forwarded-* to `keycloak:8080` so `iss` = `http://keycloak:8080/realms/customers`, the issuer APISIX's openid-connect discovery expects. Password = `KC_CUSTOMERS_TEST_PASSWORD` from the generated `deploy/compose/platform/.env` |
+| Tokens (realm portals) | `POST /auth/realms/portals/protocol/openid-connect/token` | `auth-portals-token.json` (ticket 33), same pinning; client `mw-portal`, password `KC_PORTALS_TEST_PASSWORD`; `support/Keycloak.portalToken(user)` |
+| Org portal API | `/portal/org/v1/*` | the real route (`portal-org-v1.json`); `support/PortalApi` |
 | core-mock test/admin API | `/test/core-mock/v1/*` -> `mw-core-mock:8080/core-mock/v1/*` | `deploy/apisix/routes-test/test-core-mock.json`, TEST ONLY: PIN public key, `wallets/{id}` balances, `faults`. Present only after `make e2e` re-ran `apisix-init` with `MW_E2E_ROUTES=1` (a plain `make up` removes it); key-auth header `apikey` = `MW_E2E_API_KEY` from the generated `.env`, private source addresses only |
 | Simulator control API | `/test/sim/*` -> `mw-simulators:8080/sim/*` | `deploy/apisix/routes-test/test-simulators.json`, TEST ONLY, same key-auth as core-mock; `support/Simulators.setScenario` / `reset` |
 | Audit rows | `docker compose exec -T postgres psql` (superuser, read-only queries) | no API exposes `audit.event` before mw-admin-api (WP23), and the service role cannot read it |
@@ -76,6 +78,13 @@ Only APISIX is published, so every call goes through it:
   "the core rejects the next <Command> with reason <R>" injects a REJECT fault.
 - `support/CoreMock`: `encryptPin` (RSA-OAEP SHA-256 with the core key), `balance`,
   `injectFault` / `resetFaults` (reset in an `@After` hook of the scenarios that inject).
+- Org portal bulk (`features/bulk-upload.feature`, `@bulk @mw-portal-api`, ticket 33): "<user>
+  uploads a bulk file of N rows" (`PortalApi.file`, 1.00 taka per row, fresh references), "...
+  with these lines:", "<user> approves the batch" / "rejects the batch because "..."" / "looks
+  at the batch", "the batch status is X", "the batch has N rows totalling M poisha", "the error
+  details name these fields:". Users of realm portals: org-maker01, org-checker01,
+  org-makerchecker01 (both roles) of ORG001, org-checker02 of ORG002. A stack whose Keycloak
+  database predates ticket 33 needs `make down DOWN_ARGS=-v` (realm import does not update).
 - `support/Keycloak.customerToken(user)`; `support/AuditTrail.rowsOfTxn` / `verifyChain`;
   `support/Waits.until` for anything asynchronous.
 - Steps (`steps/`, one `ScenarioState` per scenario via PicoContainer): sign in, send P2P,
