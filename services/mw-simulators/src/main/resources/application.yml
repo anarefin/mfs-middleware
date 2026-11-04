@@ -147,6 +147,13 @@ sim:
   ussd-gateway:
     target-url: ${SIM_USSD_TARGET_URL:http://apisix:9080/ussd/}
     end-flag: END
+    # SMPP mode (ticket 27): mw-ussd binds here as transceiver for the MNOs listed in mnos (gp,
+    # as mw-ussd's mw.ussd.mno.gp.transport); other MNOs are played over HTTP.
+    smpp:
+      enabled: true
+      port: 2776
+      mnos: [gp]
+      screen-timeout: 15s
 
 mw:
   kafka:

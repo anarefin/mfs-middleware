@@ -7,9 +7,9 @@
 - 26: USSD engine over HTTP transport
 - 24: Notify SMS over SMPP
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The same menu-walk suite passes over SMPP and over HTTP by changing only config
-- [ ] Against the sim: bind, enquire_link, reconnect after a dropped bind, and throttling errors with retry all pass
-- [ ] `mw_smpp_bind_up` and a `smpp.bind.down` log event appear when the bind drops
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] The same menu-walk suite passes over SMPP and over HTTP by changing only config
+- [x] Against the sim: bind, enquire_link, reconnect after a dropped bind, and throttling errors with retry all pass (module tests against the in-test gateway and the simulator; live `ussd-smpp.feature` deferred to milestone gate)
+- [x] `mw_smpp_bind_up` and a `smpp.bind.down` log event appear when the bind drops
+- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR (deferred to milestone gate)

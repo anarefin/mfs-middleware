@@ -92,6 +92,15 @@ resilience4j:
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 5
         automatic-transition-from-open-to-half-open-enabled: true
+    instances:
+      # mw-adapter-billpay internal API (client/BillPayClient). Only unavailability counts; the
+      # adapter's error envelope is a normal answer.
+      billpay:
+        base-config: default
+        minimum-number-of-calls: 20
+        slow-call-duration-threshold: 4s
+        record-exceptions: mfs.mw.ussd.exception.BillPayUnavailableException
+        ignore-exceptions: mfs.mw.ussd.exception.BillPayRefusedException
   bulkhead:
     configs:
       default:
@@ -184,8 +193,24 @@ mw:
     instance-id: ${HOSTNAME:}
     request-topic: mw.txn.request.v1
     status-topic: mw.txn.status.v1
-    # Dev seed: stored in ussd.menu and activated for MNOs without a menu (service/MenuSeeder).
-    seed-menu: menus/main-v1.json
+    # Dev seed: stored in ussd.menu and activated for MNOs without a menu or still on an older
+    # version of the seed (service/MenuSeeder).
+    seed-menu: menus/main-v2.json
+    # mw-adapter-billpay internal API (DYNAMIC billers, bill lookup; read-only), over the app zone
+    # network. Short read timeout: the MNO holds the USSD step open while the bill is fetched.
+    billpay:
+      base-url: ${MW_BILLPAY_BASE_URL:http://mw-adapter-billpay:8080}
+      connect-timeout: 2s
+      read-timeout: 5s
+      catalogue-ttl: 60s
+    # Static lists of DYNAMIC nodes (service/DynamicLists); the value is what the node stores.
+    lists:
+      # TOPUP of another number: the operator is the partnerId of mw-adapter-telco.
+      operators:
+        - { value: gp, label: { bn: গ্রামীণফোন, en: Grameenphone } }
+        - { value: robi, label: { bn: রবি, en: Robi } }
+        - { value: banglalink, label: { bn: বাংলালিংক, en: Banglalink } }
+        - { value: teletalk, label: { bn: টেলিটক, en: Teletalk } }
     pin:
       # The core's PIN key (M11). key-id and public-key come from OpenBao (secret/mw-ussd,
       # mw.ussd.pin.key-id / mw.ussd.pin.public-key), copied there from the core's export.
@@ -193,7 +218,7 @@ mw:
       public-key: ${MW_USSD_PIN_PUBLIC_KEY:}
     # Per MNO (spec 9.2): transport, short codes, screen limits (GSM-7 / UCS-2), session timeout
     # (MNO limit, TBC), overflow TRUNCATE|PAGE and the HTTP continue/end flag values. GP runs
-    # over SMPP (WP19, not built yet); the others are HTTP until their contracts say otherwise.
+    # over SMPP (WP19, binds in mw.ussd.smpp below); the others are HTTP until their contracts say otherwise.
     mno:
       gp:
         transport: SMPP
@@ -231,3 +256,35 @@ mw:
         overflow: TRUNCATE
         continue-flag: CON
         end-flag: END
+    # SMPP USSD transport (spec 9.2, 9.2.1, WP19, client/UssdSmppClient): one bind group for every
+    # MNO above with transport SMPP; the others are config-ready (switch the MNO's transport to
+    # SMPP to bind). Window, TPS and bind count are MNO contract values (TBC). Passwords from
+    # OpenBao (secret/mw-ussd, mw.ussd.smpp.mno.<mno>.password); the simulator accepts any bind.
+    smpp:
+      enabled: ${MW_USSD_SMPP_ENABLED:true}
+      mno:
+        gp:
+          host: ${MW_USSD_SMPP_GP_HOST:mw-simulators}
+          port: ${MW_USSD_SMPP_GP_PORT:2776}
+          system-id: upay-ussd
+          binds: 2
+          enquire-link: 30s
+          enquire-link-misses: 3
+          transaction-timeout: 5s
+          reconnect-min: 1s
+          reconnect-max: 60s
+          window: 10
+          tps: 50
+          retry-delays: [500ms, 1s, 2s]
+        robi:
+          host: ${MW_USSD_SMPP_ROBI_HOST:mw-simulators}
+          port: ${MW_USSD_SMPP_ROBI_PORT:2776}
+          system-id: upay-ussd
+        banglalink:
+          host: ${MW_USSD_SMPP_BANGLALINK_HOST:mw-simulators}
+          port: ${MW_USSD_SMPP_BANGLALINK_PORT:2776}
+          system-id: upay-ussd
+        teletalk:
+          host: ${MW_USSD_SMPP_TELETALK_HOST:mw-simulators}
+          port: ${MW_USSD_SMPP_TELETALK_PORT:2776}
+          system-id: upay-ussd

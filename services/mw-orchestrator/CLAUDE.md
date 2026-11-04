@@ -5,7 +5,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 ## Responsibilities
 
-- Runs P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, TOPUP, BILL_PAY and ADD_MONEY_BANK transactions, and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14, WP15 part).
+- Runs P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, BULK_DISBURSE (child), TOPUP, BILL_PAY and ADD_MONEY_BANK transactions, and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14, WP15 part).
   Consumes `mw.txn.request.v1` (`route/TxnRequestRoute`), the core results on
   `core.wallet.event.v1` (`route/CoreWalletEventRoute`) and `core.payment.event.v1` (`route/CorePaymentEventRoute`, same handler) and partner adapter answers on
   `mw.partner.reply.v1` (`route/PartnerReplyRoute`) and partner callbacks on `mw.partner.inbound.v1`
@@ -20,7 +20,15 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   flows (`Flow`, one per `txnType`, found by `FlowRegistry`) are sets of reusable `Step`s
   (VALIDATE, POST, HOLD, CALL_PARTNER, COMMIT, RELEASE, REVERSE, QUERY, INQUIRE; `Step.of(effect)`).
   `P2pFlow`, `CashInFlow`, `CashOutFlow`, `MerchantPayFlow` (ticket 30) = validate + post (parties as the channel set them:
-  CASH_IN agent -> customer, CASH_OUT customer -> agent, MERCHANT_PAY customer -> merchant; the core enforces the wallet types). `TopupFlow` = validate + hold + callPartner (`PartnerCall` telco,
+  CASH_IN agent -> customer, CASH_OUT customer -> agent, MERCHANT_PAY customer -> merchant; the core enforces the wallet types).
+  `BulkDisburseFlow` (ticket 34, one child of an org bulk batch, sent by mw-portal-api) is validate +
+  post too: debit `{ORG, <org wallet>}`, credit the customer's WALLET, **no PIN** (the org
+  authorised the batch by maker-checker; `core.command.v1` ValidateTransaction/PostTransfer require
+  `encryptedPin` for every txnType but BULK_DISBURSE). Only channels in
+  `mw.orchestrator.bulk-channels` (default `ORG_PORTAL`) may send one, else REJECTED `MW-AUTH-021`
+  (`BulkDisburseSagaIT`); the core restricts it to ORG -> CUSTOMER. The portal derives txnId and
+  key per row, so a resent child is answered from the idempotency record. The batch's parent
+  BULK_DISBURSE txn is not a saga here (portal-side record, `attributes.parentTxnId`). `TopupFlow` = validate + hold + callPartner (`PartnerCall` telco,
   `mw.partner.request.telco.v1`) + commit + release; `BillPayFlow` (ticket 21) is the same with
   `PartnerCall` billpay on `mw.partner.request.billpay.v1` (partner `{partnerId: <aggregator>,
   productCode: BILL, billerCode}` and credit party `BILLER_ACCOUNT` as the app gateway sets them;
@@ -218,7 +226,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   Other codes used: `MW-VAL-010` unsupported txn type, `MW-VAL-011` amount <= 0, `MW-VAL-012`
   partner missing for a flow with a partner leg, `MW-IDEM-001`, `MW-TMO-001`, `MW-TMO-002`,
   `MW-TMO-003` (not found by inquiry, retryable), `MW-TMO-004` (inquiry exhausted),
-  `MW-TMO-005` (conflicting inquiry answer), reversal `MW-VAL-020..022`, `MW-AUTH-020`, `MW-TMO-020`;
+  `MW-TMO-005` (conflicting inquiry answer), reversal `MW-VAL-020..022`, `MW-AUTH-020`, `MW-TMO-020`, bulk channel `MW-AUTH-021`;
   partner codes come from the adapter's reply.
 - PIN: only ciphertext. It is kept in `transaction.encrypted_pin` (jsonb) because PostTransfer
   follows ValidateTransaction, and cleared (`TransactionRecord.moved`, the one write path) on every

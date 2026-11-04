@@ -79,6 +79,10 @@ Only APISIX is published, so every call goes through it:
   English, amounts in taka), "the first USSD screens were:" (one column, `\n` = line break), "the
   USSD session ends with "..."" (prefix of the last screen), "the USSD session is still open on
   "..."". MNO `robi` is on HTTP; `gp` is SMPP (not served over HTTP).
+  Other USSD flows (`features/ussd-flows.feature`, ticket 28): main menu 1 Send Money, 2 Cash Out
+  (agent number), 3 Mobile Recharge (1 own number = the dialling MNO, 2 other number + operator
+  list 1 gp 2 robi 3 banglalink 4 teletalk), 4 Pay Bill (billers sorted by code, 1 DESCO; the
+  amount due is fetched). "the USSD session is still open on a screen ending with "..."".
 - Device binding (`features/device-binding.feature`, `@device`, ticket 29): `support/Devices` gives
   each user one EC P-256 device for the run, bound on first use (`POST /app/v1/devices`, signed),
   its session reopened after 4 idle minutes; `AppApi` sends `X-Device-Id` on every call and signs
@@ -119,6 +123,15 @@ Only APISIX is published, so every call goes through it:
   details name these fields:". Users of realm portals: org-maker01, org-checker01,
   org-makerchecker01 (both roles) of ORG001, org-checker02 of ORG002. A stack whose Keycloak
   database predates ticket 33 needs `make down DOWN_ARGS=-v` (realm import does not update).
+- Org bulk payout (`features/bulk-execution.feature`, `@bulk @mw-portal-api`, ticket 34): "no bulk
+  batch of <user>'s org is still running" (Background: waits for APPROVED/EXECUTING batches of the
+  org), "<user> has uploaded a payout file of N rows of X taka" (`PortalApi.payoutFile`, seeded
+  customers `01711000001..01711001000` in turn) / "... a bulk file with these lines:", "<user>
+  pauses / resumes the batch", "within N minutes <user> sees the batch COMPLETED", "the batch
+  progress shows C completed, F failed and P poisha paid", "<user> sees the batch send no more
+  rows", "<user>'s result file lists all N rows as COMPLETED, each with its own txnId" / "...
+  shows:" (reference, status, errorCode). ORG001 pays from org wallet `01311000001`; at the
+  default 50 rows/s the 10,000-row scenario takes about 4 minutes.
 - `support/Keycloak.customerToken(user)`; `support/AuditTrail.rowsOfTxn` / `verifyChain`;
   `support/Waits.until` for anything asynchronous.
 - Steps (`steps/`, one `ScenarioState` per scenario via PicoContainer): sign in, send P2P,

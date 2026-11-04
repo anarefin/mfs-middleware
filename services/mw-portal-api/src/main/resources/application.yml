@@ -162,6 +162,20 @@ mw:
       # answers a 10,001-row file; APISIX caps the route body just above (portal-org-v1).
       max-rows: 10000
       max-bytes: 2MB
+      # Core wallet each org pays its batches from (ticket 34; orgId claim -> wallet id). The dev
+      # orgs of realm portals pay from the core mock's seeded org wallets.
+      org-wallets:
+        ORG001: "01311000001"
+        ORG002: "01311000002"
+      dispatch:
+        # Child txns streamed to the orchestrator (spec 9.4 "at a configured rate"), over all
+        # running batches; scheduler/BulkDispatchJob runs every period under ShedLock.
+        enabled: ${MW_BULK_DISPATCH_ENABLED:true}
+        rate-per-second: ${MW_BULK_RATE_PER_SECOND:50}
+        period: 200ms
+    consumers:
+      # route/TxnStatusRoute: the children's mw.txn.status.v1 records (tests switch it off)
+      enabled: true
     jwt:
       # Keycloak realm `portals` (spec 8.2). Keys are fetched on the first token.
       jwk-set-uri: ${MW_PORTAL_JWK_SET_URI:http://keycloak:8080/realms/portals/protocol/openid-connect/certs}

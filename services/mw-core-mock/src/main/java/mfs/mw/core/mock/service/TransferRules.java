@@ -101,7 +101,9 @@ class TransferRules {
     if (credit != null && !credit.canReceive()) {
       return Optional.of(Reason.CREDIT_ACCOUNT_BLOCKED);
     }
-    Optional<Reason> wrongPin = checkPin(p, debit);
+    // BULK_DISBURSE carries no PIN (maker-checker in the org portal); its wallet types (ORG ->
+    // CUSTOMER) are configured, so no other payer passes here without a PIN
+    Optional<Reason> wrongPin = p.pinRequired() ? checkPin(p, debit) : Optional.empty();
     if (wrongPin.isPresent()) {
       return wrongPin;
     }
@@ -111,7 +113,7 @@ class TransferRules {
     if (amount > props.limits().perTxnMinor()) {
       return Optional.of(Reason.LIMIT_EXCEEDED_PER_TXN);
     }
-    if (usedToday + amount > props.limits().dailyMinor()) {
+    if (usedToday + amount > props.limits().dailyMinor(debit.type())) {
       return Optional.of(Reason.LIMIT_EXCEEDED_DAILY);
     }
     if (debit.availableMinor() < amount + fee) {

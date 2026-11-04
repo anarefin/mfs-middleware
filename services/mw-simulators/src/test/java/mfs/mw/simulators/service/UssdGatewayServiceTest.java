@@ -52,7 +52,10 @@ class UssdGatewayServiceTest {
 
   UssdGatewayService service() {
     return new UssdGatewayService(
-        new UssdGatewayClient(JSON), "http://127.0.0.1:" + server.getAddress().getPort() + "/ussd", "END");
+        new UssdGatewayClient(JSON),
+        new mfs.mw.simulators.client.UssdSmppGateway(
+            new mfs.mw.simulators.config.UssdSmppGatewayProperties(false, 0, java.util.List.of("gp"), null)),
+        "http://127.0.0.1:" + server.getAddress().getPort() + "/ussd", "END");
   }
 
   @Test

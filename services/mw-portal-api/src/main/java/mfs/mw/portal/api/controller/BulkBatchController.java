@@ -8,6 +8,8 @@ import mfs.mw.portal.api.dto.RejectRequest;
 import mfs.mw.portal.api.entity.BatchStatus;
 import mfs.mw.portal.api.security.PortalUserResolver;
 import mfs.mw.portal.api.service.BatchService;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -58,6 +60,28 @@ public class BulkBatchController {
   @PostMapping("/{batchId}/approve")
   public BatchView approve(@AuthenticationPrincipal Jwt jwt, @PathVariable String batchId) {
     return service.approve(users.resolve(jwt), batchId);
+  }
+
+  /** Stops sending further rows (checker); 409 MW-VAL-033 when the batch is not running. */
+  @PostMapping("/{batchId}/pause")
+  public BatchView pause(@AuthenticationPrincipal Jwt jwt, @PathVariable String batchId) {
+    return service.pause(users.resolve(jwt), batchId);
+  }
+
+  /** Continues a paused batch (checker); 409 MW-VAL-033 when it is not paused. */
+  @PostMapping("/{batchId}/resume")
+  public BatchView resume(@AuthenticationPrincipal Jwt jwt, @PathVariable String batchId) {
+    return service.resume(users.resolve(jwt), batchId);
+  }
+
+  /** The result file (CSV) of an approved batch; 409 MW-VAL-035 before approval. */
+  @GetMapping("/{batchId}/result")
+  public ResponseEntity<String> result(@AuthenticationPrincipal Jwt jwt, @PathVariable String batchId) {
+    String csv = service.resultFile(users.resolve(jwt), batchId);
+    return ResponseEntity.ok()
+        .contentType(MediaType.parseMediaType(CSV))
+        .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"bulk-" + batchId + "-result.csv\"")
+        .body(csv);
   }
 
   @PostMapping("/{batchId}/reject")

@@ -14,3 +14,7 @@ sim:
     # The SMPP listener is off in tests (cached contexts would fight over the port);
     # SmscSimulatorIT switches it on with a free port.
     enabled: false
+  ussd-gateway:
+    smpp:
+      # Off in tests (port clashes between cached contexts); UssdSmppGatewayIT switches it on.
+      enabled: false

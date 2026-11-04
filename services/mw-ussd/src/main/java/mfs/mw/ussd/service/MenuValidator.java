@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 import mfs.mw.ussd.dto.Menu;
 import mfs.mw.ussd.dto.MenuNode;
@@ -81,10 +82,19 @@ public final class MenuValidator {
         } else if (n.store() == null || n.store().isBlank()) {
           p.add(id + ": store is required");
         }
+        if (n.lookup() != null) {
+          if (v.isPin() || !Lookups.ARGUMENTS.containsKey(n.lookup())) {
+            p.add(id + ": lookup must be one of " + new TreeSet<>(Lookups.ARGUMENTS.keySet()));
+          } else {
+            missing(id, "lookup " + n.lookup(), Lookups.ARGUMENTS.get(n.lookup()), n, p);
+          }
+        }
       }
       case ACTION -> {
         if (!TxnRequestMapper.FLOWS.contains(n.flow())) {
-          p.add(id + ": flow must be one of " + TxnRequestMapper.FLOWS);
+          p.add(id + ": flow must be one of " + new TreeSet<>(TxnRequestMapper.FLOWS));
+        } else {
+          missing(id, "flow " + n.flow(), TxnRequestMapper.REQUIRED_FIELDS.get(n.flow()), n, p);
         }
         ref(id, "onSuccess", n.onSuccess(), nodes, p);
         ref(id, "onFailure", n.onFailure(), nodes, p);
@@ -101,6 +111,14 @@ public final class MenuValidator {
         }
       }
       default -> p.add(id + ": unknown type");
+    }
+  }
+
+  private static void missing(String id, String what, Set<String> needed, MenuNode n, List<String> p) {
+    Set<String> absent = new TreeSet<>(needed);
+    absent.removeAll(n.mapping().keySet());
+    if (!absent.isEmpty()) {
+      p.add(id + ": " + what + " needs a mapping for " + absent);
     }
   }
 
