@@ -46,21 +46,22 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.testcontainers.kafka.KafkaContainer;
 
 /**
  * Kafka consumer errors go to non-blocking retry topics, then the DLQ (spec 19.2, 6.2): a record
  * that keeps failing travels {@code <topic>.retry.1 -> .retry.2 -> .retry.3 -> .dlq} with its key
  * and 6.1 headers kept; a record that succeeds on a retry never reaches the DLQ. Delays are
- * shortened to 2 s here; production uses 10 s, 1 min, 10 min. Holding a record back never blocks
- * the consumer thread, and a forged {@code mw-retry-not-before} cannot stall it.
+ * shortened here to 1 s, 1 s, 6 s (production: 10 s, 1 min, 10 min); retry.3 stays long enough
+ * for the rebalance tests to move its partition while a record is still held back. Holding a
+ * record back never blocks the consumer thread, and a forged {@code mw-retry-not-before} cannot
+ * stall it.
  */
 @Conformance
 @CamelSpringBootTest
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = {
-      "mw.kafka.retry.delays=2s,2s,6s",
+      "mw.kafka.retry.delays=" + RetryTopicRouteIT.DELAYS,
       // lets the test see how long an in-flight exchange has run (InflightRepository.oldest)
       "camel.main.inflight-repository-browse-enabled=true"
     })
@@ -69,6 +70,11 @@ import org.testcontainers.kafka.KafkaContainer;
 class RetryTopicRouteIT {
 
   static final String TOPIC = "it.retry.event.v1";
+  static final String DELAYS = "1s,1s,6s";
+  static final long RETRY_1_MS = 1_000;
+  static final long RETRY_3_MS = 6_000;
+  /** Long enough past a due time that a wrong extra delivery or send would have shown up. */
+  static final Duration SETTLE = Duration.ofMillis(1_500);
   static final String SECRET_MSISDN = "01712345789";
 
   /** A test listener: records with "fail-always" always throw, "fail-once" throw on first try. */
@@ -114,14 +120,12 @@ class RetryTopicRouteIT {
 
   private final CamelContext camel;
   private final EventPublisher publisher;
-  private final KafkaContainer kafka;
   private final FlakyHandler handler;
 
   @Autowired
-  RetryTopicRouteIT(CamelContext camel, EventPublisher publisher, KafkaContainer kafka, FlakyHandler handler) {
+  RetryTopicRouteIT(CamelContext camel, EventPublisher publisher, FlakyHandler handler) {
     this.camel = camel;
     this.publisher = publisher;
-    this.kafka = kafka;
     this.handler = handler;
   }
 
@@ -132,7 +136,12 @@ class RetryTopicRouteIT {
   List<ConsumerRecord<String, String>> recordsFor(
       String topic, String key, int count, Duration timeout) {
     return KafkaTestConsumer.read(
-        kafka.getBootstrapServers(), topic, count, timeout, r -> key.equals(r.key()));
+        TestInfrastructure.kafkaBootstrapServers(), topic, count, timeout, r -> key.equals(r.key()));
+  }
+
+  /** Every record already on {@code topic} with {@code key}; returns without waiting. */
+  List<ConsumerRecord<String, String>> recordsOn(String topic, String key) {
+    return KafkaTestConsumer.readToEnd(TestInfrastructure.kafkaBootstrapServers(), topic, r -> key.equals(r.key()));
   }
 
   static String header(ConsumerRecord<?, ?> r, String name) {
@@ -168,7 +177,7 @@ class RetryTopicRouteIT {
       if (previous != null) {
         assertThat(r.timestamp() - previous.timestamp())
             .as("retry.%d waits for its delay", n)
-            .isGreaterThanOrEqualTo(2_000);
+            .isGreaterThanOrEqualTo(RETRY_1_MS);
       }
       previous = r;
     }
@@ -200,10 +209,10 @@ class RetryTopicRouteIT {
     assertThat(recordsFor(TOPIC + ".retry.1", "K-ONCE", 1)).hasSize(1);
 
     // Longer than the next retry delay: nothing more may follow.
-    Thread.sleep(3_000);
+    Thread.sleep(SETTLE.toMillis());
     assertThat(handler.calls.get("K-ONCE")).hasValue(2);
-    assertThat(recordsFor(TOPIC + ".retry.2", "K-ONCE", 1, Duration.ofSeconds(3))).isEmpty();
-    assertThat(recordsFor(TOPIC + ".dlq", "K-ONCE", 1, Duration.ofSeconds(3))).isEmpty();
+    assertThat(recordsOn(TOPIC + ".retry.2", "K-ONCE")).isEmpty();
+    assertThat(recordsOn(TOPIC + ".dlq", "K-ONCE")).isEmpty();
   }
 
   @Test
@@ -212,7 +221,7 @@ class RetryTopicRouteIT {
         TOPIC, "K-FREE", new EventMetadata("corr-c", "TXN-C", "idem-c", 1), rawJson("{\"case\":\"fail-once\"}"));
     await(() -> handler.calls.containsKey("K-FREE"), Duration.ofSeconds(30));
 
-    // While retry.1 waits out its 2 s delay, no exchange stays in flight on that route: the record
+    // While retry.1 waits out its 1 s delay, no exchange stays in flight on that route: the record
     // is held back by pausing its partition, not by a sleeping consumer thread. Holding it back
     // is itself a short exchange (pause and seek, a few ms), so the check is on how long the
     // oldest in-flight exchange has run; a consumer sleeping out the delay would exceed the bound.
@@ -243,9 +252,9 @@ class RetryTopicRouteIT {
     sendRaw(TOPIC + ".retry.1", "K-GARBAGE", "not-a-number");
 
     await(() -> handler.succeeded.contains("K-GARBAGE"), Duration.ofSeconds(30));
-    assertThat(System.currentTimeMillis() - start).as("sooner than the 2 s delay").isLessThan(2_000);
+    assertThat(System.currentTimeMillis() - start).as("sooner than the 1 s delay").isLessThan(RETRY_1_MS);
     assertThat(handler.calls.get("K-GARBAGE")).hasValue(1);
-    assertThat(recordsFor(TOPIC + ".dlq", "K-GARBAGE", 1, Duration.ofSeconds(3))).isEmpty();
+    assertThat(recordsOn(TOPIC + ".dlq", "K-GARBAGE")).isEmpty();
   }
 
   // Rebalance hold-back tests. The group's committed offset is read from the broker (AdminClient)
@@ -257,7 +266,7 @@ class RetryTopicRouteIT {
     // The new member's client id sorts after Camel's, so the range assignor gives the partition
     // back to the Camel consumer.
     long start = System.currentTimeMillis();
-    HeldRecord held = sendRaw(TOPIC + ".retry.3", "K-KEPT", Long.toString(start + 6_000));
+    HeldRecord held = sendRaw(TOPIC + ".retry.3", "K-KEPT", Long.toString(start + RETRY_3_MS));
     Thread.sleep(1_000); // the retry.3 consumer has polled it and is holding it back
     assertNotCommittedPast(held, "K-KEPT", "while held back");
 
@@ -280,7 +289,7 @@ class RetryTopicRouteIT {
     // The new member's client id sorts first: it takes the partition (and never commits), then
     // leaves, and the partition returns to the Camel consumer.
     long start = System.currentTimeMillis();
-    HeldRecord held = sendRaw(TOPIC + ".retry.3", "K-MOVED", Long.toString(start + 6_000));
+    HeldRecord held = sendRaw(TOPIC + ".retry.3", "K-MOVED", Long.toString(start + RETRY_3_MS));
     Thread.sleep(1_000);
     assertNotCommittedPast(held, "K-MOVED", "while held back");
 
@@ -303,7 +312,7 @@ class RetryTopicRouteIT {
 
   /** The retry.3 group's committed offset for the partition, from the broker; null if none. */
   Long committed(TopicPartition tp) throws Exception {
-    try (Admin admin = Admin.create(Map.of(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers()))) {
+    try (Admin admin = Admin.create(Map.of(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, TestInfrastructure.kafkaBootstrapServers()))) {
       OffsetAndMetadata o =
           admin.listConsumerGroupOffsets(RETRY_3_GROUP).partitionsToOffsetAndMetadata().get().get(tp);
       return o == null ? null : o.offset();
@@ -329,7 +338,7 @@ class RetryTopicRouteIT {
 
   KafkaConsumer<String, String> groupMember(String clientId) {
     Properties p = new Properties();
-    p.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers());
+    p.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, TestInfrastructure.kafkaBootstrapServers());
     p.put(ConsumerConfig.GROUP_ID_CONFIG, RETRY_3_GROUP);
     p.put(ConsumerConfig.CLIENT_ID_CONFIG, clientId);
     p.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
@@ -342,16 +351,22 @@ class RetryTopicRouteIT {
 
   void assertHandledOnceAfterDelay(String key, long start, HeldRecord held) throws Exception {
     await(() -> handler.succeeded.contains(key), Duration.ofSeconds(60));
-    assertThat(System.currentTimeMillis() - start).as("not before its delay").isGreaterThanOrEqualTo(5_500);
-    Thread.sleep(3_000);
-    assertThat(handler.calls.get(key)).as("handled exactly once").hasValue(1);
+    assertThat(System.currentTimeMillis() - start).as("not before its delay").isGreaterThanOrEqualTo(RETRY_3_MS - 500);
+    long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+    while (!Long.valueOf(held.offset() + 1).equals(committed(held.partition())) && System.nanoTime() < deadline) {
+      Thread.sleep(100);
+    }
     assertThat(committed(held.partition())).as("committed once handled").isEqualTo(held.offset() + 1);
+    // A redelivery (a lost hold-back or a seek back past the commit) would follow within a poll.
+    Thread.sleep(SETTLE.toMillis());
+    assertThat(handler.calls.get(key)).as("handled exactly once").hasValue(1);
+    assertThat(committed(held.partition())).as("still committed once").isEqualTo(held.offset() + 1);
   }
 
   /** Writes a record straight onto a retry topic, as a misbehaving producer could. */
   HeldRecord sendRaw(String topic, String key, String notBefore) throws Exception {
     Properties p = new Properties();
-    p.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers());
+    p.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, TestInfrastructure.kafkaBootstrapServers());
     p.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
     p.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
     try (KafkaProducer<String, String> producer = new KafkaProducer<>(p)) {

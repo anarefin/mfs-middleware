@@ -38,7 +38,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.kafka.KafkaContainer;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -112,11 +111,10 @@ class OutboxRelayRecoveryConformanceIT {
   private final JsonMapper json;
   private final JdbcTemplate jdbc;
   private final TransactionTemplate tx;
-  private final KafkaContainer kafka;
   private final EffectHandler handler;
 
   @Autowired
-  OutboxRelayRecoveryConformanceIT(OutboxWriter outbox, OutboxRelay relay, EventPublisher publisher, OutboxProperties properties, JsonMapper json, JdbcTemplate jdbc, TransactionTemplate tx, KafkaContainer kafka, EffectHandler handler) {
+  OutboxRelayRecoveryConformanceIT(OutboxWriter outbox, OutboxRelay relay, EventPublisher publisher, OutboxProperties properties, JsonMapper json, JdbcTemplate jdbc, TransactionTemplate tx, EffectHandler handler) {
     this.outbox = outbox;
     this.relay = relay;
     this.publisher = publisher;
@@ -124,7 +122,6 @@ class OutboxRelayRecoveryConformanceIT {
     this.json = json;
     this.jdbc = jdbc;
     this.tx = tx;
-    this.kafka = kafka;
     this.handler = handler;
   }
 
@@ -165,7 +162,13 @@ class OutboxRelayRecoveryConformanceIT {
 
   List<ConsumerRecord<String, String>> published(String prefix, int atLeast, Duration timeout) {
     return KafkaTestConsumer.read(
-        kafka.getBootstrapServers(), TOPIC, atLeast, timeout, r -> r.key().startsWith("TXN-" + prefix));
+        TestInfrastructure.kafkaBootstrapServers(), TOPIC, atLeast, timeout, r -> r.key().startsWith("TXN-" + prefix));
+  }
+
+  /** Every record already on the topic for {@code prefix}; returns without waiting. */
+  List<ConsumerRecord<String, String>> publishedSoFar(String prefix) {
+    return KafkaTestConsumer.readToEnd(
+        TestInfrastructure.kafkaBootstrapServers(), TOPIC, r -> r.key().startsWith("TXN-" + prefix));
   }
 
   int effects(String eventId) {
@@ -209,7 +212,7 @@ class OutboxRelayRecoveryConformanceIT {
 
     // Nothing is left to relay: a later run publishes nothing more.
     relay.relayPending();
-    assertThat(published("crash-", 5, Duration.ofSeconds(3))).hasSize(4);
+    assertThat(publishedSoFar("crash-")).hasSize(4);
   }
 
   @Test
@@ -248,7 +251,8 @@ class OutboxRelayRecoveryConformanceIT {
       pool.shutdownNow();
     }
 
-    List<ConsumerRecord<String, String>> onKafka = published("multi-", rows + 1, Duration.ofSeconds(10));
+    // Both relays have returned and publishing is synchronous: everything sent is on Kafka now.
+    List<ConsumerRecord<String, String>> onKafka = publishedSoFar("multi-");
     assertThat(onKafka).hasSize(rows);
     assertThat(onKafka).extracting(ConsumerRecord::key).doesNotHaveDuplicates();
   }

@@ -69,36 +69,36 @@ tasks.withType<Test>().configureEach {
     systemProperty("mwContractsDir", contracts.asFile.absolutePath)
 }
 
+// `test` runs every test, the conformance suite included, in one JVM: the Testcontainers and
+// the cached Spring contexts are started once per `check` (make verify), not once per task.
 tasks.test {
-    useJUnitPlatform { excludeTags("conformance") }
+    useJUnitPlatform()
 }
 
 // Conformance suite (spec 4.3 rule 5, 22.1): tests tagged @Conformance, copied from the template
-// into every service. `./gradlew conformance` runs them alone; `check` (make verify) runs both.
+// into every service. `./gradlew conformance` runs them alone; `check` runs them as part of `test`.
 val conformance by tasks.registering(Test::class) {
-    description = "Runs the conformance suite (@Conformance tests)."
+    description = "Runs the conformance suite (@Conformance tests) alone."
     group = LifecycleBasePlugin.VERIFICATION_GROUP
     testClassesDirs = sourceSets.test.get().output.classesDirs
     classpath = sourceSets.test.get().runtimeClasspath
     useJUnitPlatform { includeTags("conformance") }
-    shouldRunAfter(tasks.test)
 }
-tasks.check { dependsOn(conformance) }
 
 // Coverage gate (spec 22.1): >= 80% line coverage per package on service, mapper and client
-// (and their sub-packages), measured over the unit and conformance runs. `check` (make
+// (and their sub-packages), measured over the `test` run (unit and conformance tests). `check` (make
 // verify) fails below it. Other packages are reported but not gated.
 val basePackage = "mfs.mw.service.template"
 val gatedPackages = listOf("service", "mapper", "client")
 jacoco { toolVersion = libs.versions.jacoco.get() }
 tasks.jacocoTestReport {
-    executionData(tasks.test.get(), conformance.get())
-    dependsOn(tasks.test, conformance)
+    executionData(tasks.test.get())
+    dependsOn(tasks.test)
     reports { xml.required = true; html.required = true }
 }
 tasks.jacocoTestCoverageVerification {
-    executionData(tasks.test.get(), conformance.get())
-    dependsOn(tasks.test, conformance)
+    executionData(tasks.test.get())
+    dependsOn(tasks.test)
     violationRules {
         rule {
             element = "PACKAGE"

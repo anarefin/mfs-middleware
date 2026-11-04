@@ -39,7 +39,9 @@ and keep `scripts/test/test_service_template.sh` green.
 | Test-side schema loader: reads every `https://contracts.upay.mw/` `$id` from `mwContractsDir`, so `$ref`s between envelope, payload and `common/` schemas resolve offline | `src/test/.../contracts/ContractSchemas` | 4.3, 22.1 |
 
 Tests that start the context import `TestInfrastructure` (PostgreSQL 18 + Kafka
-Testcontainers, shared per run). Topic, retry-topic and DLQ declarations and their producer
+Testcontainers, JVM-wide singletons, not Spring beans: a closed context must not stop them).
+Tests that talk to Kafka directly use `TestInfrastructure.kafkaBootstrapServers()`, and assert
+"nothing was published" with `KafkaTestConsumer.readToEnd` rather than a timed wait. Topic, retry-topic and DLQ declarations and their producer
 ACLs belong to the platform (`deploy/kafka/`), not this module.
 
 ## Outbox, inbox, conformance suite (WP05 part)
@@ -61,7 +63,7 @@ test contexts would relay each other's rows; a test that needs it on sets
 
 | Command | What it does |
 | --- | --- |
-| `./gradlew check` | all tests (`test` + `conformance`; `*IT` use Testcontainers, Docker) and the JaCoCo gate (>= 80% lines per `service`/`mapper`/`client` package, 22.1; report in `build/reports/jacoco`) |
+| `./gradlew check` | all tests in one JVM (`test` includes the `@Conformance` suite; `*IT` use Testcontainers, Docker) and the JaCoCo gate (>= 80% lines per `service`/`mapper`/`client` package, 22.1; report in `build/reports/jacoco`) |
 | `./gradlew conformance` | the conformance suite alone |
 | `make test-scripts` | includes `test_template_copy_checks_and_builds_its_image_alone`: a copy plus `contracts/` runs `./gradlew check bootJar && docker build .` (skipped when Docker is down) |
 | `./gradlew check bootJar && docker build -t mw-service-template:dev .` | spec 4.3 rule 1 |

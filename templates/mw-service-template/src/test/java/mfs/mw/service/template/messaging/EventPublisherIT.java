@@ -14,7 +14,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
-import org.testcontainers.kafka.KafkaContainer;
 
 /**
  * Every record this service publishes carries the spec 6.1 headers, keeps its partition key, and
@@ -25,13 +24,11 @@ import org.testcontainers.kafka.KafkaContainer;
 class EventPublisherIT {
 
   private final EventPublisher publisher;
-  private final KafkaContainer kafka;
   private final CamelContext camel;
 
   @Autowired
-  EventPublisherIT(EventPublisher publisher, KafkaContainer kafka, CamelContext camel) {
+  EventPublisherIT(EventPublisher publisher, CamelContext camel) {
     this.publisher = publisher;
-    this.kafka = kafka;
     this.camel = camel;
   }
 
@@ -44,7 +41,7 @@ class EventPublisherIT {
         Map.of("schemaVersion", 1, "status", "OK"));
 
     List<ConsumerRecord<String, String>> got =
-        KafkaTestConsumer.read(kafka.getBootstrapServers(), "it.publish.event.v1", 1, Duration.ofSeconds(20));
+        KafkaTestConsumer.read(TestInfrastructure.kafkaBootstrapServers(), "it.publish.event.v1", 1, Duration.ofSeconds(20));
 
     assertThat(got).hasSize(1);
     ConsumerRecord<String, String> record = got.getFirst();
