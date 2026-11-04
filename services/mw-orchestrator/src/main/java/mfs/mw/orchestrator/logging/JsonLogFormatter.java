@@ -8,6 +8,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import mfs.mw.orchestrator.util.MaskingPolicy;
 import org.slf4j.event.KeyValuePair;
 import org.slf4j.helpers.MessageFormatter;
@@ -20,7 +21,10 @@ import org.springframework.core.env.Environment;
  * runs here, before output (18.3): every log argument is rendered with {@link
  * MaskingPolicy#describe(Object)} (so {@code @Sensitive} record components are masked) and the
  * whole message, key-value pairs and stack trace are scrubbed for MSISDNs, NIDs and account
- * numbers ({@link MaskingPolicy#scrub(String)}).
+ * numbers ({@link MaskingPolicy#scrub(String)}). Numeric field values are scrubbed as text too
+ * and written as the masked string when masking changes them. The system-generated ids
+ * ({@code correlationId}, {@code txnId}: lowercase UUID; {@code traceId}: 32 and {@code spanId}:
+ * 16 lowercase hex) are written unscrubbed only when they have exactly that shape.
  *
  * <p>Context fields come from the MDC or from SLF4J key-value pairs ({@code
  * log.atInfo().addKeyValue("event", "txn.state.changed")}); key-value pairs win. Wired by {@code
@@ -34,6 +38,16 @@ public class JsonLogFormatter implements StructuredLogFormatter<ILoggingEvent> {
           "correlationId", "txnId", "traceId", "spanId", "partnerId", "channel", "event");
 
   private static final List<String> TRAILING_FIELDS = List.of("durationMs", "errorCode");
+
+  private static final Pattern UUID = Pattern.compile("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
+
+  /** Fields that carry ids the middleware generates, with the exact shape that is left whole. */
+  private static final Map<String, Pattern> SYSTEM_IDS =
+      Map.of(
+          "correlationId", UUID,
+          "txnId", UUID,
+          "traceId", Pattern.compile("[0-9a-f]{32}"),
+          "spanId", Pattern.compile("[0-9a-f]{16}"));
 
   private final JsonWriter<Map<String, Object>> writer = JsonWriter.<Map<String, Object>>standard()
       .withNewLineAtEnd();
@@ -102,8 +116,16 @@ public class JsonLogFormatter implements StructuredLogFormatter<ILoggingEvent> {
     if (value == null) {
       return;
     }
-    if (value instanceof Number || value instanceof Boolean) {
+    if (value instanceof Boolean) {
       out.put(key, value);
+    } else if (value instanceof Number) {
+      String text = value.toString();
+      String scrubbed = MaskingPolicy.scrub(text);
+      out.put(key, text.equals(scrubbed) ? value : scrubbed);
+    } else if (value instanceof String id
+        && SYSTEM_IDS.containsKey(key)
+        && SYSTEM_IDS.get(key).matcher(id).matches()) {
+      out.put(key, id);
     } else {
       out.put(key, MaskingPolicy.describe(value));
     }
