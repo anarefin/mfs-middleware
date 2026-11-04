@@ -70,14 +70,16 @@ class AppGatewayConfigTest {
         .containsEntry("P2P", List.of("CUSTOMER"))
         .containsEntry("CASH_IN", List.of("AGENT"))
         .containsEntry("CASH_OUT", List.of("CUSTOMER"))
-        .containsEntry("TOPUP", List.of("CUSTOMER"));
+        .containsEntry("TOPUP", List.of("CUSTOMER"))
+        .containsEntry("BILL_PAY", List.of("CUSTOMER"));
   }
 
   @Test
   void aTypeWithoutAnEntryIsDeniedForEveryRole() throws IOException {
     AppGatewayProperties props = shipped();
 
-    assertThat(props.mayInitiate("CUSTOMER", "BILL_PAY")).isFalse();
+    assertThat(props.mayInitiate("CUSTOMER", "MERCHANT_PAY")).isFalse();
+    assertThat(props.mayInitiate("AGENT", "MERCHANT_PAY")).isFalse();
     assertThat(props.mayInitiate("AGENT", "BILL_PAY")).isFalse();
     assertThat(props.mayInitiate("AGENT", "CASH_IN")).isTrue();
     assertThat(props.mayInitiate("CUSTOMER", "CASH_IN")).isFalse();

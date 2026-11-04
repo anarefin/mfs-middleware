@@ -30,6 +30,8 @@ public class RequestMapper {
   private static final String CASH_OUT = "CASH_OUT";
   /** Airtime top-up: credit party is an MSISDN, {@code partner} names the operator. */
   public static final String TOPUP = "TOPUP";
+  /** Bill payment: credit party is the bill number, {@code partner} the biller's aggregator. */
+  public static final String BILL_PAY = "BILL_PAY";
 
   /** Attribute keys set by the middleware (orchestrator reply matching); never from a client. */
   public static final Set<String> RESERVED_ATTRIBUTES =
@@ -42,6 +44,25 @@ public class RequestMapper {
       String txnId,
       String correlationId,
       Instant now) {
+    PartnerRef partner =
+        body.partner() == null
+            ? null
+            : new PartnerRef(body.partner().partnerId(), body.partner().productCode());
+    return toRequest(user, idempotencyKey, body, txnId, correlationId, now, partner);
+  }
+
+  /**
+   * As above with the canonical partner decided by the caller (BILL_PAY: the aggregator serving
+   * the biller, from the catalogue).
+   */
+  public TxnRequest toRequest(
+      AppUser user,
+      String idempotencyKey,
+      TransactionRequest body,
+      String txnId,
+      String correlationId,
+      Instant now,
+      PartnerRef partner) {
     Party payer = Party.wallet(user.msisdn(), user.walletType());
     return new TxnRequest(
         1,
@@ -54,9 +75,7 @@ public class RequestMapper {
         payer,
         creditParty(body),
         body.amount(),
-        body.partner() == null
-            ? null
-            : new PartnerRef(body.partner().partnerId(), body.partner().productCode()),
+        partner,
         body.encryptedPin(),
         body.locale(),
         null,
@@ -66,9 +85,13 @@ public class RequestMapper {
 
   /**
    * A wallet (canonical MSISDN as wallet id; an agent's for CASH_OUT, a customer's otherwise; the
-   * core checks the real wallet types per txnType), or for TOPUP the bare MSISDN to recharge.
+   * core checks the real wallet types per txnType), for TOPUP the bare MSISDN to recharge, for
+   * BILL_PAY the bill number as a {@code BILLER_ACCOUNT}.
    */
   private static Party creditParty(TransactionRequest body) {
+    if (BILL_PAY.equals(body.txnType())) {
+      return new Party("BILLER_ACCOUNT", body.creditParty().id(), null, null);
+    }
     String id = canonical(body.creditParty().id());
     if (TOPUP.equals(body.txnType())) {
       return new Party("MSISDN", id, null, null);

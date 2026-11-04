@@ -37,6 +37,7 @@ class TransactionServiceTest {
   final EventPublisher publisher = mock(EventPublisher.class);
   final AppTransactionRepository repo = mock(AppTransactionRepository.class);
   final ReplyWaiters waiters = new ReplyWaiters();
+  final BillerService billers = mock(BillerService.class);
   final TransactionService service =
       new TransactionService(
           publisher, waiters, new RequestMapper(), repo,
@@ -48,7 +49,8 @@ class TransactionServiceTest {
                   "P2P", List.of("CUSTOMER"),
                   "CASH_IN", List.of("AGENT"),
                   "CASH_OUT", List.of("CUSTOMER"))),
-          Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC));
+          Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
+          billers);
 
   static TransactionRequest body(String txnType) {
     return body(txnType, null);
@@ -82,7 +84,8 @@ class TransactionServiceTest {
               Duration.ofMillis(50), "gw-unit", "mw.txn.request.v1", "mw.txn.status.v1",
               List.of("P2P", "TOPUP"), List.of("reference"), new AppGatewayProperties.Jwt("http://kc/certs", "/realms/customers"),
               Map.of("P2P", List.of("CUSTOMER"), "TOPUP", List.of("CUSTOMER"))),
-          Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC));
+          Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
+          billers);
 
   static TransactionRequest flow(String txnType, String creditType, TransactionRequest.Partner partner) {
     return new TransactionRequest(
@@ -120,6 +123,79 @@ class TransactionServiceTest {
     var r = withTopup.submit(USER, "key", flow("TOPUP", "MSISDN", new TransactionRequest.Partner("gp", "PREPAID")));
     assertThat(r.view().status()).isEqualTo("PROCESSING");
     verify(publisher).publish(anyString(), anyString(), any(), any(), anyMap());
+  }
+
+  // --- BILL_PAY (ticket 21) ------------------------------------------------------------------
+
+  final TransactionService withBillPay =
+      new TransactionService(
+          publisher, waiters, new RequestMapper(), repo,
+          new AppGatewayProperties(
+              Duration.ofMillis(50), "gw-unit", "mw.txn.request.v1", "mw.txn.status.v1",
+              List.of("P2P", "BILL_PAY"), List.of("reference"),
+              new AppGatewayProperties.Jwt("http://kc/certs", "/realms/customers"),
+              Map.of("P2P", List.of("CUSTOMER"), "BILL_PAY", List.of("CUSTOMER"))),
+          Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
+          billers);
+
+  static TransactionRequest bill(String creditType, String id, TransactionRequest.Partner partner) {
+    return new TransactionRequest(
+        "BILL_PAY", new TransactionRequest.CounterParty(creditType, id), new Amount(66_700L, "BDT"),
+        new EncryptedPin("k", "c"), null, null, partner);
+  }
+
+  void assertBillRefused(TransactionRequest body, String field) {
+    assertThatThrownBy(() -> withBillPay.submit(USER, "key", body))
+        .isInstanceOfSatisfying(
+            MwException.class,
+            e -> {
+              assertThat(e.code()).isEqualTo("MW-VAL-001");
+              assertThat(e.details()).extracting(d -> d.field()).containsExactly(field);
+            });
+  }
+
+  @Test
+  void aBillPayNeedsABillerCodeAndABillerAccount() {
+    assertBillRefused(bill(null, "1234567", null), "partner.billerCode");
+    assertBillRefused(bill(null, "1234567", new TransactionRequest.Partner("gp", "PREPAID")), "partner.billerCode");
+    assertBillRefused(bill("WALLET", "1234567", TransactionRequest.Partner.biller("DESCO")), "creditParty.type");
+    assertBillRefused(bill(null, "1234567", TransactionRequest.Partner.biller("DESCO")), "creditParty.type");
+    verifyNoInteractions(publisher, repo, billers);
+  }
+
+  @Test
+  void otherFlowsTakeNoBillerCodeNorABillerAccount() {
+    assertBillRefused(flow("P2P", null, TransactionRequest.Partner.biller("DESCO")), "partner");
+    assertBillRefused(flow("P2P", "BILLER_ACCOUNT", null), "creditParty.type");
+    verifyNoInteractions(publisher, repo);
+  }
+
+  @Test
+  void aValidBillPayIsPublishedThroughTheBillersAggregator() {
+    org.mockito.Mockito.when(billers.partnerFor("DESCO"))
+        .thenReturn(new mfs.mw.app.gateway.dto.PartnerRef("billagg", "BILL", "DESCO"));
+
+    var r = withBillPay.submit(USER, "key", bill("BILLER_ACCOUNT", "1234567", TransactionRequest.Partner.biller("DESCO")));
+
+    assertThat(r.view().status()).isEqualTo("PROCESSING");
+    var sent = org.mockito.ArgumentCaptor.forClass(Object.class);
+    verify(publisher).publish(anyString(), anyString(), any(), sent.capture(), anyMap());
+    var req = (mfs.mw.app.gateway.dto.TxnRequest) sent.getValue();
+    assertThat(req.partner().partnerId()).isEqualTo("billagg");
+    assertThat(req.partner().billerCode()).isEqualTo("DESCO");
+    assertThat(req.creditParty().type()).isEqualTo("BILLER_ACCOUNT");
+    assertThat(req.debitParty().id()).isEqualTo(USER.msisdn());
+  }
+
+  @Test
+  void anUnknownBillerIsRefusedBeforeAnythingIsPublished() {
+    org.mockito.Mockito.when(billers.partnerFor("NOPE"))
+        .thenThrow(new MwException("MW-VAL-001", "Request validation failed"));
+    assertThatThrownBy(
+            () -> withBillPay.submit(USER, "key", bill("BILLER_ACCOUNT", "1234567", TransactionRequest.Partner.biller("NOPE"))))
+        .isInstanceOf(MwException.class);
+    verifyNoInteractions(publisher, repo);
+    assertThat(waiters.size()).isZero();
   }
 
   @Test

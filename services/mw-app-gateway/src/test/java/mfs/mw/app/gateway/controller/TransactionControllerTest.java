@@ -153,6 +153,25 @@ class TransactionControllerTest {
   }
 
   @Test
+  void aBillNumberIsAnIdOnlyForABillerAccount() {
+    String bill =
+        "{\"txnType\":\"BILL_PAY\",\"creditParty\":{\"type\":\"%s\",\"id\":\"%s\"},"
+            + "\"partner\":{\"billerCode\":\"DESCO\"},"
+            + "\"amount\":{\"valueMinor\":66700,\"currency\":\"BDT\"},"
+            + "\"encryptedPin\":{\"keyId\":\"core-pin-1\",\"ciphertext\":\"Y2lwaGVy\"}}";
+    when(service.submit(any(), eq("key-b"), any()))
+        .thenReturn(SubmitResult.processing(TransactionView.processing(TXN_ID)));
+
+    assertThat(post(customer(), "key-b", bill.formatted("BILLER_ACCOUNT", "1234567"))).hasStatus(202);
+    for (String[] bad : new String[][] {{"WALLET", "1234567"}, {"BILLER_ACCOUNT", "12 34"}}) {
+      MvcTestResult r = post(customer(), "key-x", bill.formatted(bad[0], bad[1]));
+      assertThat(r).as(bad[0] + " " + bad[1]).hasStatus(400);
+      assertThat(r).bodyJson().extractingPath("$.details[*].field").asArray().containsExactly("creditParty.id");
+    }
+    verify(service, never()).submit(any(), eq("key-x"), any());
+  }
+
+  @Test
   void msisdnFormsTheMaskerDoesNotKnowAreRejected() {
     for (String payee : List.of("88001711000002", "+88001711000002", "1711000002")) {
       MvcTestResult r = post(customer(), "key-3", BODY.formatted(100).replace("01711000002", payee));

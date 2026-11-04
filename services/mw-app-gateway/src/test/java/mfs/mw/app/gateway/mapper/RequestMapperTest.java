@@ -43,6 +43,36 @@ class RequestMapperTest {
   }
 
   @Test
+  void aBillPayPaysTheBillerAccountThroughTheResolvedAggregator() {
+    TransactionRequest bill =
+        new TransactionRequest(
+            "BILL_PAY",
+            new TransactionRequest.CounterParty(null, "1234567"),
+            new Amount(66_700L, "BDT"),
+            new EncryptedPin("core-pin-1", "b3BhcXVlLWNpcGhlcnRleHQ="),
+            null,
+            null,
+            TransactionRequest.Partner.biller("DESCO"));
+
+    TxnRequest req =
+        mapper.toRequest(
+            new AppUser("01711000001", "CUSTOMER_APP", "CUSTOMER"), "key-1", bill, TXN_ID, "corr-1", NOW,
+            new mfs.mw.app.gateway.dto.PartnerRef("billagg", "BILL", "DESCO"));
+
+    JsonNode tree = JSON.valueToTree(req);
+    assertThat(ContractSchemas.schema("events/mw-orchestrator/mw.txn.request.v1.schema.json").validate(tree))
+        .isEmpty();
+    assertThat(tree.path("txnType").asString()).isEqualTo("BILL_PAY");
+    assertThat(tree.path("creditParty").path("type").asString()).isEqualTo("BILLER_ACCOUNT");
+    assertThat(tree.path("creditParty").path("id").asString()).isEqualTo("1234567");
+    assertThat(tree.path("creditParty").has("walletType")).isFalse();
+    assertThat(tree.path("partner").path("partnerId").asString()).isEqualTo("billagg");
+    assertThat(tree.path("partner").path("productCode").asString()).isEqualTo("BILL");
+    assertThat(tree.path("partner").path("billerCode").asString()).isEqualTo("DESCO");
+    assertThat(tree.path("debitParty").path("id").asString()).isEqualTo("01711000001");
+  }
+
+  @Test
   void requestFollowsTheContractWithThePayerFromTheToken() {
     TxnRequest req =
         mapper.toRequest(

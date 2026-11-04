@@ -82,6 +82,14 @@ resilience4j:
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 5
         automatic-transition-from-open-to-half-open-enabled: true
+    instances:
+      # mw-adapter-billpay internal API (client/BillPayClient). Only unavailability counts; the
+      # adapter's error envelope is a normal answer.
+      billpay:
+        base-config: default
+        minimum-number-of-calls: 20
+        record-exceptions: mfs.mw.app.gateway.exception.BillPayUnavailableException
+        ignore-exceptions: mfs.mw.app.gateway.exception.BillPayRefusedException
   bulkhead:
     configs:
       default:
@@ -102,6 +110,12 @@ resilience4j:
         exponential-max-wait-duration: 1s
         enable-randomized-wait: true
         randomized-wait-factor: 0.5
+    instances:
+      # Biller list and bill fetch are idempotent reads (19.2: 2 retries, 200 ms -> 1 s).
+      billpay:
+        base-config: default
+        retry-exceptions: mfs.mw.app.gateway.exception.BillPayUnavailableException
+        ignore-exceptions: mfs.mw.app.gateway.exception.BillPayRefusedException
 
 logging:
   structured:
@@ -168,7 +182,7 @@ mw:
     instance-id: ${HOSTNAME:}
     request-topic: mw.txn.request.v1
     status-topic: mw.txn.status.v1
-    supported-txn-types: P2P,CASH_IN,CASH_OUT,TOPUP
+    supported-txn-types: P2P,CASH_IN,CASH_OUT,TOPUP,BILL_PAY
     # Which app role (wallet type) may initiate which txnType (spec WP20). Deny by default: a
     # supported type with no entry is refused for every role (403 MW-AUTH-002).
     txn-type-roles:
@@ -176,8 +190,16 @@ mw:
       CASH_IN: AGENT
       CASH_OUT: CUSTOMER
       TOPUP: CUSTOMER
+      BILL_PAY: CUSTOMER
     # attributes keys an app may send (a free-text payment reference only, so far)
     allowed-attributes: reference
+    # Internal API of mw-adapter-billpay (biller catalogue, bill fetch; ticket 21), over the
+    # app zone network. Read timeout above the adapter's 25 s partner limit so it decides first.
+    billpay:
+      base-url: ${MW_BILLPAY_BASE_URL:http://mw-adapter-billpay:8080}
+      connect-timeout: 2s
+      read-timeout: 28s
+      catalogue-ttl: 60s
     jwt:
       # Keycloak realm `customers` (spec 9.1). Keys are fetched on the first token.
       jwk-set-uri: ${MW_APP_JWK_SET_URI:http://keycloak:8080/realms/customers/protocol/openid-connect/certs}
