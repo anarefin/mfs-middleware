@@ -9,7 +9,8 @@ spring:
       enabled: true
   config:
     # Spring Cloud Vault reads secrets at start-up (AppRole) when VAULT_ENABLED=true.
-    import: "optional:vault://"
+    # The configtree carries the AppRole role-id/secret-id files of a stack (one file per property).
+    import: "optional:configtree:${MW_APPROLE_DIR:/run/mw/approle/},optional:vault://"
   cloud:
     vault:
       enabled: ${VAULT_ENABLED:false}
@@ -168,6 +169,8 @@ mw:
     request-topic: mw.txn.request.v1
     status-topic: mw.txn.status.v1
     supported-txn-types: P2P
+    # attributes keys an app may send (a free-text payment reference only, so far)
+    allowed-attributes: reference
     jwt:
       # Keycloak realm `customers` (spec 9.1). Keys are fetched on the first token.
       jwk-set-uri: ${MW_APP_JWK_SET_URI:http://keycloak:8080/realms/customers/protocol/openid-connect/certs}

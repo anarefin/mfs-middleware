@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.Map;
+import mfs.mw.app.gateway.util.Msisdn;
 import mfs.mw.app.gateway.util.Sensitive;
 import mfs.mw.app.gateway.util.SensitiveType;
 
@@ -29,7 +30,7 @@ public record TransactionRequest(
   public record CounterParty(
       @Pattern(regexp = "WALLET") String type,
       @NotBlank
-          @Pattern(regexp = "(\\+?880)?01[3-9][0-9]{8}")
+          @Pattern(regexp = Msisdn.PATTERN)
           @Sensitive(SensitiveType.MSISDN)
           String id) {}
 }

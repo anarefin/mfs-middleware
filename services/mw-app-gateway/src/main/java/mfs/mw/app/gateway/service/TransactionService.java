@@ -2,6 +2,7 @@ package mfs.mw.app.gateway.service;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -10,6 +11,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import mfs.mw.app.gateway.config.AppGatewayProperties;
 import mfs.mw.app.gateway.dto.AppUser;
+import mfs.mw.app.gateway.dto.ErrorDetail;
 import mfs.mw.app.gateway.dto.ErrorInfo;
 import mfs.mw.app.gateway.dto.StatusMessage;
 import mfs.mw.app.gateway.dto.SubmitResult;
@@ -67,12 +69,14 @@ public class TransactionService {
     if (!props.supportedTxnTypes().contains(body.txnType())) {
       throw new MwException(ErrorCodes.VAL_UNSUPPORTED_TXN_TYPE, "Transaction type is not supported");
     }
+    refuseUnknownAttributes(body);
     Instant now = clock.instant();
     String txnId = UuidV7.next(clock).toString();
     String correlationId = correlationId();
     TxnRequest req = mapper.toRequest(user, idempotencyKey, body, txnId, correlationId, now);
 
-    CompletableFuture<StatusMessage> answer = waiters.register(txnId);
+    CompletableFuture<StatusMessage> answer =
+        waiters.register(txnId, idempotencyKey, req.initiator().id());
     try {
       publisher.publish(
           props.requestTopic(), txnId, new EventMetadata(correlationId, txnId, idempotencyKey, 1),
@@ -94,6 +98,22 @@ public class TransactionService {
       return SubmitResult.processing(TransactionView.processing(txnId));
     }
     return answerFor(status);
+  }
+
+  /** Only allow-listed attribute keys (MW-VAL-001 naming each other key). */
+  private void refuseUnknownAttributes(TransactionRequest body) {
+    if (body.attributes() == null) {
+      return;
+    }
+    List<ErrorDetail> refused =
+        body.attributes().keySet().stream()
+            .filter(k -> !props.allowedAttributes().contains(k))
+            .sorted()
+            .map(k -> new ErrorDetail("attributes." + k, "is not allowed"))
+            .toList();
+    if (!refused.isEmpty()) {
+      throw new MwException(ErrorCodes.VAL_INVALID, "Request validation failed").withDetails(refused);
+    }
   }
 
   public TransactionView find(AppUser user, String txnId) {

@@ -18,6 +18,9 @@ import org.springframework.validation.annotation.Validated;
  * @param instanceId value of the {@code mw-reply-to} header and suffix of the reply consumer
  *     group; blank means a random id per start
  * @param supportedTxnTypes the {@code txnType}s the app may submit (P2P only so far)
+ * @param allowedAttributes the {@code attributes} keys the app may send; any other key is
+ *     refused, so a client can never set keys the middleware reserves (e.g. {@code duplicate},
+ *     {@code requestTxnId})
  */
 @Validated
 @ConfigurationProperties("mw.app-gateway")
@@ -27,12 +30,14 @@ public record AppGatewayProperties(
     @NotBlank String requestTopic,
     @NotBlank String statusTopic,
     @NotEmpty List<String> supportedTxnTypes,
+    List<String> allowedAttributes,
     @Valid @NotNull Jwt jwt) {
 
   public AppGatewayProperties {
     instanceId =
         instanceId == null || instanceId.isBlank() ? UUID.randomUUID().toString() : instanceId;
     supportedTxnTypes = List.copyOf(supportedTxnTypes == null ? List.of() : supportedTxnTypes);
+    allowedAttributes = List.copyOf(allowedAttributes == null ? List.of() : allowedAttributes);
   }
 
   /**

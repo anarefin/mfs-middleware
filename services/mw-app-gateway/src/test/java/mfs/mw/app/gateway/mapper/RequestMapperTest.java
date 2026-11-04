@@ -25,9 +25,13 @@ class RequestMapperTest {
   final RequestMapper mapper = new RequestMapper();
 
   TransactionRequest body(Map<String, String> attributes) {
+    return body("01711000002", attributes);
+  }
+
+  TransactionRequest body(String payee, Map<String, String> attributes) {
     return new TransactionRequest(
         "P2P",
-        new TransactionRequest.CounterParty(null, "01711000002"),
+        new TransactionRequest.CounterParty(null, payee),
         new Amount(12_345L, "BDT"),
         new EncryptedPin("core-pin-1", "b3BhcXVlLWNpcGhlcnRleHQ="),
         "en",
@@ -39,7 +43,7 @@ class RequestMapperTest {
     TxnRequest req =
         mapper.toRequest(
             new AppUser("01711000001", "CUSTOMER_APP", "CUSTOMER"), "key-1",
-            body(Map.of("note", "lunch")), TXN_ID, "corr-1", NOW);
+            body("+8801711000002", Map.of("reference", "lunch")), TXN_ID, "corr-1", NOW);
 
     JsonNode tree = JSON.valueToTree(req);
     assertThat(ContractSchemas.schema("events/mw-orchestrator/mw.txn.request.v1.schema.json").validate(tree))
@@ -50,8 +54,18 @@ class RequestMapperTest {
     assertThat(tree.path("debitParty").path("walletType").asString()).isEqualTo("CUSTOMER");
     assertThat(tree.path("creditParty").path("id").asString()).isEqualTo("01711000002");
     assertThat(tree.path("encryptedPin").path("ciphertext").asString()).isEqualTo("b3BhcXVlLWNpcGhlcnRleHQ=");
-    assertThat(tree.path("attributes").path("note").asString()).isEqualTo("lunch");
+    assertThat(tree.path("attributes").path("reference").asString()).isEqualTo("lunch");
     assertThat(tree.path("requestedAt").asString()).isEqualTo("2026-11-04T06:00:00Z");
+  }
+
+  @Test
+  void reservedAttributeKeysAreNeverForwarded() {
+    TxnRequest req =
+        mapper.toRequest(
+            new AppUser("01711000001", "CUSTOMER_APP", "CUSTOMER"), "key-1",
+            body(Map.of("duplicate", "true", "requestTxnId", "x", "reference", "r")), TXN_ID,
+            "corr-1", NOW);
+    assertThat(req.attributes()).containsOnlyKeys("reference");
   }
 
   @Test

@@ -41,13 +41,32 @@ class TransactionServiceTest {
           publisher, waiters, new RequestMapper(), repo,
           new AppGatewayProperties(
               Duration.ofMillis(50), "gw-unit", "mw.txn.request.v1", "mw.txn.status.v1",
-              List.of("P2P"), new AppGatewayProperties.Jwt("http://kc/certs", "/realms/customers")),
+              List.of("P2P"), List.of("reference"), new AppGatewayProperties.Jwt("http://kc/certs", "/realms/customers")),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC));
 
   static TransactionRequest body(String txnType) {
+    return body(txnType, null);
+  }
+
+  static TransactionRequest body(String txnType, Map<String, String> attributes) {
     return new TransactionRequest(
         txnType, new TransactionRequest.CounterParty(null, "01711000002"), new Amount(100L, "BDT"),
-        new EncryptedPin("k", "c"), null, null);
+        new EncryptedPin("k", "c"), null, attributes);
+  }
+
+  @Test
+  void attributesOutsideTheAllowListAreMwValAndNothingIsPublished() {
+    for (String key : List.of("duplicate", "requestTxnId", "billNumber")) {
+      assertThatThrownBy(() -> service.submit(USER, "key", body("P2P", Map.of(key, "v"))))
+          .isInstanceOfSatisfying(
+              MwException.class,
+              e -> {
+                assertThat(e.code()).isEqualTo("MW-VAL-001");
+                assertThat(e.details()).extracting(d -> d.field()).containsExactly("attributes." + key);
+              });
+    }
+    verifyNoInteractions(publisher, repo);
+    assertThat(waiters.size()).isZero();
   }
 
   @Test
@@ -74,7 +93,8 @@ class TransactionServiceTest {
               String txnId = inv.getArgument(1);
               waiters.offer(
                   new StatusMessage(
-                      1, txnId, "key", "c", "CUSTOMER_APP", "P2P", "FAILED", "VALIDATING", null,
+                      1, txnId, "key", "c", "CUSTOMER_APP", "P2P", "FAILED", "VALIDATING",
+                      new mfs.mw.app.gateway.dto.Party("MSISDN", USER.msisdn(), null, null),
                       null, null, null, null, null,
                       new mfs.mw.app.gateway.dto.ErrorInfo("MW-TMO-001", "Timed out", null, true),
                       null, null, null, null));

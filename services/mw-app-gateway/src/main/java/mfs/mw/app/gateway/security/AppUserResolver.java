@@ -2,10 +2,10 @@ package mfs.mw.app.gateway.security;
 
 import java.util.Collection;
 import java.util.Map;
-import java.util.regex.Pattern;
 import mfs.mw.app.gateway.dto.AppUser;
 import mfs.mw.app.gateway.exception.ErrorCodes;
 import mfs.mw.app.gateway.exception.MwException;
+import mfs.mw.app.gateway.util.Msisdn;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
@@ -20,11 +20,10 @@ import org.springframework.stereotype.Component;
 public class AppUserResolver {
 
   static final String MSISDN_CLAIM = "msisdn";
-  private static final Pattern MSISDN = Pattern.compile("01[3-9][0-9]{8}");
 
   public AppUser resolve(Jwt jwt) {
-    String msisdn = jwt.getClaimAsString(MSISDN_CLAIM);
-    if (msisdn == null || !MSISDN.matcher(msisdn).matches()) {
+    String msisdn = Msisdn.canonical(jwt.getClaimAsString(MSISDN_CLAIM));
+    if (msisdn == null) {
       throw forbidden("Token carries no wallet");
     }
     if (!realmRoles(jwt).contains("customer")) {
