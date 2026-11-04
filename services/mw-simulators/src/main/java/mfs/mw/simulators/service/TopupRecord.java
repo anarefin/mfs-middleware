@@ -1,6 +1,6 @@
 package mfs.mw.simulators.service;
 
-import mfs.mw.simulators.dto.OcsMode;
+import mfs.mw.simulators.dto.SimMode;
 import mfs.mw.simulators.util.Sensitive;
 import mfs.mw.simulators.util.SensitiveType;
 
@@ -13,4 +13,4 @@ public record TopupRecord(
     String code,
     String message,
     String ocsRef,
-    OcsMode mode) {}
+    SimMode mode) {}

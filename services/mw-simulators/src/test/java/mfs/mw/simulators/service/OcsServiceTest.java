@@ -10,8 +10,8 @@ import java.util.random.RandomGenerator;
 import mfs.mw.simulators.client.CallbackClient;
 import mfs.mw.simulators.config.SimulatorProperties;
 import mfs.mw.simulators.dto.CallbackMode;
-import mfs.mw.simulators.dto.OcsMode;
-import mfs.mw.simulators.dto.OcsReply;
+import mfs.mw.simulators.dto.SimMode;
+import mfs.mw.simulators.dto.SimReply;
 import mfs.mw.simulators.dto.OcsResponse;
 import mfs.mw.simulators.dto.OcsTopupRequest;
 import mfs.mw.simulators.dto.Scenario;
@@ -52,13 +52,13 @@ class OcsServiceTest {
     return new OcsTopupRequest(id, msisdn, amount);
   }
 
-  private OcsResponse body(OcsReply r) {
+  private OcsResponse body(SimReply r) {
     return (OcsResponse) r.body();
   }
 
   @Test
   void success() {
-    OcsReply r = service.topup(req("T-1", "01712345678", "100.00"));
+    SimReply r = service.topup(req("T-1", "01712345678", "100.00"));
     assertThat(r.httpStatus()).isEqualTo(200);
     assertThat(body(r).status()).isEqualTo("SUCCESS");
     assertThat(body(r).code()).isEqualTo("0000");
@@ -66,7 +66,7 @@ class OcsServiceTest {
 
   @Test
   void businessFailureIs422AndInquiryShowsFailed() {
-    OcsReply r = service.topup(req("T-2", "01712345999", "100.00"));
+    SimReply r = service.topup(req("T-2", "01712345999", "100.00"));
     assertThat(r.httpStatus()).isEqualTo(422);
     assertThat(body(r).status()).isEqualTo("FAILED");
     assertThat(body(service.statusReply("T-2")).status()).isEqualTo("FAILED");
@@ -75,7 +75,7 @@ class OcsServiceTest {
   @Test
   void timeoutDelaysThenAnswersButTheTopupWasApplied() {
     long t0 = System.nanoTime();
-    OcsReply r = service.topup(req("T-3", "01712345678", "100.13"));
+    SimReply r = service.topup(req("T-3", "01712345678", "100.13"));
     assertThat(Duration.ofNanos(System.nanoTime() - t0)).isGreaterThanOrEqualTo(Duration.ofMillis(25));
     assertThat(r.httpStatus()).isEqualTo(200);
     assertThat(body(service.statusReply("T-3")).status()).isEqualTo("SUCCESS");
@@ -91,21 +91,21 @@ class OcsServiceTest {
 
   @Test
   void serverErrorAfterSendIs500ButTheTopupWasApplied() {
-    OcsReply r = service.topup(req("T-4", "01712345678", "100.77"));
+    SimReply r = service.topup(req("T-4", "01712345678", "100.77"));
     assertThat(r.httpStatus()).isEqualTo(500);
     assertThat(body(service.statusReply("T-4")).status()).isEqualTo("SUCCESS");
   }
 
   @Test
   void unknownCodeIs422WithAnUnmappedCode() {
-    OcsReply r = service.topup(req("T-5", "01712345678", "100.99"));
+    SimReply r = service.topup(req("T-5", "01712345678", "100.99"));
     assertThat(r.httpStatus()).isEqualTo(422);
     assertThat(body(r).code()).isEqualTo("9876");
   }
 
   @Test
   void malformedAnswers200WithABodyThatIsNotJson() {
-    OcsReply r = service.topup(req("T-6", "01712345678", "100.55"));
+    SimReply r = service.topup(req("T-6", "01712345678", "100.55"));
     assertThat(r.httpStatus()).isEqualTo(200);
     assertThat(r.body()).isInstanceOf(String.class);
     assertThat((String) r.body()).doesNotEndWith("}");
@@ -155,7 +155,7 @@ class OcsServiceTest {
   void statusReplyIs404ForUnknownAnd200ForKnown() {
     service.topup(req("T-12", "01712345678", "100.00"));
     assertThat(service.statusReply("T-12").httpStatus()).isEqualTo(200);
-    OcsReply missing = service.statusReply("T-zzz");
+    SimReply missing = service.statusReply("T-zzz");
     assertThat(missing.httpStatus()).isEqualTo(404);
     assertThat(body(missing).status()).isEqualTo("NOT_FOUND");
   }
@@ -176,7 +176,7 @@ class OcsServiceTest {
 
   @Test
   void forcedModeAppliesToEveryRequest() {
-    scenarios.set("ocs", Scenario.DEFAULT.withForceMode(OcsMode.BUSINESS_FAILURE));
+    scenarios.set("ocs", Scenario.DEFAULT.withForceMode(SimMode.BUSINESS_FAILURE));
     assertThat(service.topup(req("T-15", "01712345678", "100.00")).httpStatus()).isEqualTo(422);
   }
 }

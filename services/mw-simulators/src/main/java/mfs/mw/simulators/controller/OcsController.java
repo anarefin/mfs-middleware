@@ -1,7 +1,7 @@
 package mfs.mw.simulators.controller;
 
 import jakarta.validation.Valid;
-import mfs.mw.simulators.dto.OcsReply;
+import mfs.mw.simulators.dto.SimReply;
 import mfs.mw.simulators.dto.OcsTopupRequest;
 import mfs.mw.simulators.service.OcsService;
 import org.springframework.http.MediaType;
@@ -32,7 +32,7 @@ public class OcsController {
     return toResponse(service.statusReply(transactionId));
   }
 
-  private static ResponseEntity<Object> toResponse(OcsReply reply) {
+  private static ResponseEntity<Object> toResponse(SimReply reply) {
     return ResponseEntity.status(reply.httpStatus())
         .contentType(MediaType.APPLICATION_JSON)
         .body(reply.body());

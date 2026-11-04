@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.Duration;
 import java.util.List;
 import mfs.mw.simulators.config.SimulatorProperties;
-import mfs.mw.simulators.dto.OcsMode;
+import mfs.mw.simulators.dto.SimMode;
 import mfs.mw.simulators.dto.Scenario;
 import mfs.mw.simulators.exception.MwException;
 import org.junit.jupiter.api.Test;
@@ -23,7 +23,7 @@ class ScenarioStoreTest {
 
   @Test
   void setReplacesAndResetRestores() {
-    Scenario s = Scenario.DEFAULT.withForceMode(OcsMode.TIMEOUT);
+    Scenario s = Scenario.DEFAULT.withForceMode(SimMode.TIMEOUT);
     store.set("ocs", s);
     assertThat(store.get("ocs")).isEqualTo(s);
     store.reset("ocs");
