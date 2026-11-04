@@ -19,3 +19,9 @@ mw:
       enabled: false
     consumers:
       enabled: false
+spring:
+  mail:
+    properties:
+      # The in-process GreenMail of the email tests offers no STARTTLS (explicit test override; the
+      # shipped default requires it, MailTlsDefaultsTest).
+      mail.smtp.starttls.required: false

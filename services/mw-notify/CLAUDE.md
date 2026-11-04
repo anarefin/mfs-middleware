@@ -49,7 +49,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   `MW-SYS-104`; other command statuses fail at once `MW-SYS-101`. Only parts without a message_id
   are resent.
 - Email (`client/SmtpEmailSender`, Spring `JavaMailSender`, `spring.mail.*`: `SMTP_HOST` /
-  `SMTP_PORT`, default GreenMail `greenmail:3025`; STARTTLS when offered, `SMTP_STARTTLS_REQUIRED`;
+  `SMTP_PORT`, default GreenMail `greenmail:3025`; STARTTLS required and server identity checked by default (`config/MailTlsDefaultsTest`), off only by the explicit dev override `SMTP_STARTTLS_REQUIRED=false` in compose.yml and the test config;
   From `mw.notify.email.from` / `MAIL_FROM`; SMTP credentials, if any, from OpenBao): one
   multipart/alternative message, SENT is final (no bounce handling yet), providerMessageId = the
   Message-ID. Same retries as SMS (2/10/30 s, `MW-SYS-104` / `MW-SYS-102`); a 5xx reply fails at
