@@ -28,6 +28,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.telco`. Follo
   the transaction without a reply and the orchestrator's deadline turns it UNKNOWN (TSQ, spec 7.4).
 - Not yet: status inquiry (`STATUS_QUERY`), callbacks, per-partner config (ticket 20, adapter framework).
   Any `partnerId` in the request is served by the single static OCS endpoint.
+- Init (`mw-adapter-telco-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
+  `adapter_telco_rw` and schema `partner_ref`, `secret/mw-adapter-telco` (DB password, never
+  overwritten) and the AppRole `mw-adapter-telco` (configtree volume at `/run/mw/approle`); waits
+  for OpenBao's `dev-init.json` and retries the database step when another init races it.
 
 ## Contracts owned
 

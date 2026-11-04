@@ -5,15 +5,22 @@
 #   2. PUTs it as SSL object "edge-default"
 #   3. PUTs every deploy/apisix/global_rules/<id>.json as global rule <id>, then every
 #      deploy/apisix/routes/<id>.json as route <id>
+#   4. test-only objects for the host e2e suite: with MW_E2E_ROUTES=1 PUTs
+#      consumers-test/<username>.json and routes-test/<id>.json; without it DELETEs them, so a
+#      default `make up` never leaves a test route behind (`make e2e` re-runs this with the flag)
 # Before a PUT, string values "@lua:<path>" and "@json:<path>" are replaced by the file at
 # <path> (relative to deploy/apisix): Lua as a JSON string (serverless functions), JSON as is
-# (request-validation schemas derived from contracts/, see scripts/apisix-schemas.sh).
+# (request-validation schemas derived from contracts/, see scripts/apisix-schemas.sh);
+# "@env:<NAME>" by that environment variable as a JSON string (secrets such as the e2e key,
+# never in the repo; unset or empty fails the apply).
 #
 # Idempotent: PUT with a fixed id stores the same object again, so a second run leaves the
-# configuration as it was (only update_time moves). Objects are never deleted: a removed file
-# leaves its object behind until it is deleted through the Admin API (see README.md).
+# configuration as it was (only update_time moves). Objects are never deleted (except the
+# test-only ones above): a removed file leaves its object behind until it is deleted through
+# the Admin API (see README.md).
 #
-# Env: APISIX_ADMIN (host:port), APISIX_ADMIN_KEY.
+# Env: APISIX_ADMIN (host:port), APISIX_ADMIN_KEY; MW_E2E_ROUTES (1 = apply the test-only
+# objects), MW_E2E_API_KEY (their consumer key, required with MW_E2E_ROUTES=1).
 # APISIX_DRY_RUN=<dir>: no network, no certificate; writes each body to <dir>/<kind>/<id>.json.
 # APISIX_CONFIG_DIR: the folder holding routes/, global_rules/, lua/, schemas/ (default: here).
 set -euo pipefail
@@ -50,11 +57,16 @@ render() {
     }
     {
       line = $0; res = ""
-      while (match(line, /"@(lua|json):[^"]*"/)) {
+      while (match(line, /"@(lua|json|env):[^"]*"/)) {
         tok = substr(line, RSTART + 1, RLENGTH - 2)
         res = res substr(line, 1, RSTART - 1)
         line = substr(line, RSTART + RLENGTH)
         if (substr(tok, 1, 5) == "@lua:") res = res jstr(slurp(base "/" substr(tok, 6)))
+        else if (substr(tok, 1, 5) == "@env:") {
+          name = substr(tok, 6)
+          if (ENVIRON[name] == "") { printf "apisix-init: %s: %s is not set\n", FILENAME, name > "/dev/stderr"; failed = 1; exit 1 }
+          res = res jstr(ENVIRON[name])
+        }
         else res = res slurp(base "/" substr(tok, 7))
       }
       print res line
@@ -63,13 +75,13 @@ render() {
   ' "$1"
 }
 
-# put PATH BODY: HTTP PUT to the Admin API over bash /dev/tcp; prints the status code on the
-# first line, then the response (headers and body, for the error message).
+# put PATH BODY [METHOD]: HTTP PUT (or METHOD) to the Admin API over bash /dev/tcp; prints the
+# status code on the first line, then the response (headers and body, for the error message).
 put() {
-  local path="$1" body="$2" status
+  local path="$1" body="$2" method="${3:-PUT}" status
   exec 3<>"/dev/tcp/$host/$port"
-  printf 'PUT %s HTTP/1.1\r\nHost: %s\r\nX-API-KEY: %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s' \
-    "$path" "$host" "$key" "$(printf '%s' "$body" | wc -c)" "$body" >&3
+  printf '%s %s HTTP/1.1\r\nHost: %s\r\nX-API-KEY: %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s' \
+    "$method" "$path" "$host" "$key" "$(printf '%s' "$body" | wc -c)" "$body" >&3
   read -r _ status _ <&3
   printf '%s\n' "$status"
   cat <&3
@@ -100,6 +112,21 @@ apply() {
   return 1
 }
 
+# remove PATH: DELETE an object if it exists (404 is fine).
+remove() {
+  local path="$1" resp status
+  if [ -n "$dry" ]; then
+    echo "apisix-init: (dry run) DELETE $path"
+    return 0
+  fi
+  resp="$(put "$path" "" DELETE)"
+  status="${resp%%$'\n'*}"
+  case "$status" in
+    200|404) echo "apisix-init: DELETE $path -> $status" ;;
+    *) echo "apisix-init: DELETE $path failed with '$status': $(printf '%s' "$resp" | grep -a 'error_msg' | head -1)" >&2; return 1 ;;
+  esac
+}
+
 if [ -z "$dry" ]; then
   key="${APISIX_ADMIN_KEY:?APISIX_ADMIN_KEY not set}"
   i=0
@@ -127,3 +154,22 @@ for kind in global_rules routes; do
     apply "/apisix/admin/$kind/$(basename "$f" .json)" "$body"
   done
 done
+
+# test-only objects (host e2e suite): consumers first, then the routes that name them
+if [ "${MW_E2E_ROUTES:-0}" = 1 ]; then
+  [ -n "${MW_E2E_API_KEY:-}" ] || { echo "apisix-init: MW_E2E_ROUTES=1 needs MW_E2E_API_KEY (scripts/gen-dev-env.sh)" >&2; exit 1; }
+  for kind in consumers routes; do
+    for f in "$dir/$kind-test"/*.json; do
+      [ -f "$f" ] || continue
+      body="$(render "$f")"
+      apply "/apisix/admin/$kind/$(basename "$f" .json)" "$body"
+    done
+  done
+else
+  for kind in routes consumers; do
+    for f in "$dir/$kind-test"/*.json; do
+      [ -f "$f" ] || continue
+      remove "/apisix/admin/$kind/$(basename "$f" .json)"
+    done
+  done
+fi

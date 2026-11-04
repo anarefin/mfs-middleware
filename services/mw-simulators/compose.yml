@@ -12,12 +12,50 @@ networks:
   data:
     name: ${COMPOSE_PROJECT_NAME:-mw}_data
 
+volumes:
+  # Same volume as the platform's OpenBao data (dev root token for the init step, read-only).
+  openbao-data:
+    name: ${COMPOSE_PROJECT_NAME:-mw}_openbao-data
+  # role-id / secret-id written by the init step, read by the service (Spring configtree).
+  simulators-approle:
+
 services:
+  # Idempotent one-shot (init/init.sh): database role + own schema, the database password in
+  # OpenBao (secret/mw-simulators) and the AppRole the service logs in with. Dev/MVP only. Needs
+  # POSTGRES_USER/PASSWORD/DB: `make up` gets them from deploy/compose/platform/.env through the
+  # include's env_file; for `make up M=mw-simulators` export POSTGRES_PASSWORD first.
+  mw-simulators-init:
+    image: ${MW_SIMULATORS_INIT_IMAGE:-mw-simulators-init:dev}
+    build: ./init
+    restart: "no"
+    labels: { mw.oneshot: "true" } # one-shot: scripts/up.sh does not wait for its health
+    networks: [app, data]
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-mw_admin}
+      PGDATABASE: ${POSTGRES_DB:-mw}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      BAO_ADDR: ${VAULT_ADDR:-http://openbao:8200}
+      INIT_FILE: /openbao/file/dev-init.json
+      OUT_DIR: /out
+    volumes:
+      - openbao-data:/openbao/file:ro
+      - simulators-approle:/out
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128M }
+
   mw-simulators:
     image: ${MW_SIMULATORS_IMAGE:-mw-simulators:dev}
     build: .
     restart: unless-stopped
     networks: [app, data]
+    depends_on:
+      mw-simulators-init: { condition: service_completed_successfully }
+    volumes:
+      - simulators-approle:/run/mw/approle:ro
     user: "10001:10001"
     read_only: true
     tmpfs:
@@ -28,7 +66,9 @@ services:
     environment:
       MW_ENV: ${MW_ENV:-local}
       # Secrets come from OpenBao via Spring Cloud Vault (18.4); no secret values here.
-      VAULT_ENABLED: ${VAULT_ENABLED:-false}
+      # On: the DB password comes from secret/mw-simulators, the AppRole credentials from the
+      # configtree at /run/mw/approle (application.yml).
+      VAULT_ENABLED: ${VAULT_ENABLED:-true}
       VAULT_ADDR: ${VAULT_ADDR:-http://openbao:8200}
       # Own schema in the shared PostgreSQL (16.2); credentials from OpenBao, not here.
       DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/mw}

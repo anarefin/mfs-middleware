@@ -39,7 +39,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   `event`. A superuser can still bypass everything, which the chain detects (`AuditTrailIT`).
 - Init (`mw-audit-dw-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): roles
   `audit_dw_rw` and `audit_writer`, schema `audit`, `secret/mw-audit-dw` (both DB passwords,
-  never overwritten) and the AppRole `mw-audit-dw` (configtree volume).
+  never overwritten) and the AppRole `mw-audit-dw` (configtree volume). On a fresh stack it waits
+  for OpenBao's `dev-init.json` and retries the database step when another init races it.
 
 ## Contracts owned
 

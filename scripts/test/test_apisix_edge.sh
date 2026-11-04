@@ -53,6 +53,35 @@ test_a_missing_include_fails_the_apply() {
   assert_out_contains "nope.lua"
 }
 
+# ---- test-only objects (routes-test/, consumers-test/): only with MW_E2E_ROUTES=1 ----
+
+test_test_only_objects_are_not_applied_by_default_and_removed_if_present() {
+  MW_E2E_ROUTES= MW_E2E_API_KEY= render || fail "dry run failed: $OUT"
+  [ -f out/routes/test-core-mock.json ] && fail "test route applied without MW_E2E_ROUTES=1"
+  [ -d out/consumers ] && fail "test consumer applied without MW_E2E_ROUTES=1"
+  assert_out_contains "DELETE /apisix/admin/routes/test-core-mock"
+  assert_out_contains "DELETE /apisix/admin/consumers/mw_e2e"
+  [ -f out/routes/app-v1.json ] || fail "regular routes must still be applied"
+}
+
+test_e2e_flag_applies_the_test_route_behind_key_auth_from_private_networks() {
+  MW_E2E_ROUTES=1 MW_E2E_API_KEY=k3yFromDotEnv render || fail "dry run failed: $OUT"
+  local r=out/routes/test-core-mock.json c=out/consumers/mw_e2e.json
+  [ -f "$r" ] || fail "test route not applied with MW_E2E_ROUTES=1 (have: $(ls out/*))"
+  jq -e '.plugins["key-auth"] and .plugins["consumer-restriction"].whitelist == ["mw_e2e"]' "$r" >/dev/null \
+    || fail "test route lacks key-auth for mw_e2e: $(jq -c .plugins "$r")"
+  jq -e '.plugins["ip-restriction"].whitelist | index("0.0.0.0/0") | not' "$r" >/dev/null \
+    || fail "test route open to every address"
+  [ "$(jq -r '.plugins["key-auth"].key' "$c")" = k3yFromDotEnv ] || fail "consumer key not from MW_E2E_API_KEY: $(cat "$c")"
+  assert_out_lacks "k3yFromDotEnv"
+  assert_out_lacks "DELETE /apisix/admin/routes/test-core-mock"
+}
+
+test_e2e_flag_without_a_key_fails() {
+  if MW_E2E_ROUTES=1 MW_E2E_API_KEY= render; then fail "applied the test route without a key"; fi
+  assert_out_contains "MW_E2E_API_KEY"
+}
+
 # ---- request-validation schemas derived from contracts/ (scripts/apisix-schemas.sh) ----
 
 # fixture_schemas: a root with contracts/ and deploy/apisix/schemas copied from the repo
