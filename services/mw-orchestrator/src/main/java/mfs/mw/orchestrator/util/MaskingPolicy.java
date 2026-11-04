@@ -21,12 +21,26 @@ public final class MaskingPolicy {
       Pattern.compile("(?<![\\d+])(?:\\+?880|0)1[3-9]\\d{8}(?!\\d)");
 
   /**
-   * Other standalone runs of 10 to 20 digits (not part of a word, UUID or masked value): 10, 13
-   * and 17 digits are Bangladesh NID lengths and keep the last 3; the rest are taken as account
-   * numbers and keep the last 4. Ambiguous lengths get the stricter NID rule.
+   * Other runs of 10 to 20 digits, bounded by anything but a digit (a number glued to a word,
+   * {@code _} or {@code -} is still masked): 10, 13 and 17 digits are Bangladesh NID lengths and
+   * keep the last 3; the rest are taken as account numbers and keep the last 4. Ambiguous lengths
+   * get the stricter NID rule. UUIDs and trace/span ids are protected separately ({@link
+   * #PROTECTED_ID}), not by these bounds.
    */
-  private static final Pattern LONG_NUMBER_IN_TEXT =
-      Pattern.compile("(?<![\\w+*-])\\d{10,20}(?![\\w-])");
+  private static final Pattern LONG_NUMBER_IN_TEXT = Pattern.compile("(?<!\\d)\\d{10,20}(?!\\d)");
+
+  /**
+   * Ids that are not personal data and are left as they are, so their digit runs are not taken
+   * for numbers: UUIDs (8-4-4-4-12 hex) and W3C trace/span ids (32 or 16 lowercase hex with at
+   * least one letter, also inside a {@code traceparent}). Bounded by anything but a letter or
+   * digit; an id glued to letters or digits is not protected and its digits get scrubbed.
+   */
+  private static final Pattern PROTECTED_ID =
+      Pattern.compile(
+          "(?<![0-9A-Za-z])"
+              + "(?:[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}"
+              + "|(?=[0-9]{0,31}[a-f])(?:[0-9a-f]{32}|[0-9a-f]{16}))"
+              + "(?![0-9A-Za-z])");
 
   private MaskingPolicy() {}
 
@@ -48,13 +62,25 @@ public final class MaskingPolicy {
   }
 
   /**
-   * Safety net for free text such as log messages (18.3): masks every Bangladesh MSISDN, then
-   * every other 10 to 20 digit number as an NID (10, 13 or 17 digits) or an account number.
+   * Safety net for free text such as log messages (18.3): outside UUIDs and trace/span ids, masks
+   * every Bangladesh MSISDN, then every other 10 to 20 digit number as an NID (10, 13 or 17
+   * digits) or an account number.
    */
   public static String scrub(String text) {
     if (text == null || text.isEmpty()) {
       return text;
     }
+    Matcher ids = PROTECTED_ID.matcher(text);
+    StringBuilder out = new StringBuilder(text.length());
+    int from = 0;
+    while (ids.find()) {
+      out.append(scrubNumbers(text.substring(from, ids.start()))).append(ids.group());
+      from = ids.end();
+    }
+    return out.append(scrubNumbers(text.substring(from))).toString();
+  }
+
+  private static String scrubNumbers(String text) {
     String msisdnsMasked = replace(MSISDN_IN_TEXT, text, v -> mask(SensitiveType.MSISDN, v));
     return replace(LONG_NUMBER_IN_TEXT, msisdnsMasked, v -> mask(numberType(v), v));
   }

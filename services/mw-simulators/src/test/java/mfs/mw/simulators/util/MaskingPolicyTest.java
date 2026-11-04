@@ -96,10 +96,50 @@ class MaskingPolicyTest {
         .isEqualTo("from ****6677 to account=****2345");
   }
 
+  /** A number glued to a word, `_` or `-` is still a number: only digits bound the run. */
+  @Test
+  void scrubMasksNumbersGluedToIdentifiers() {
+    assertThat(
+            MaskingPolicy.scrub(
+                "acct_0011223344556677 ref-1990123456789 A123456789012345 nid2345678901"
+                    + " key abc12345678901 intl +4412345678901"))
+        .isEqualTo(
+            "acct_****6677 ref-****789 A****2345 nid****901 key abc****8901 intl +****901");
+  }
+
+  @Test
+  void scrubMasksMsisdnsGluedToIdentifiers() {
+    assertThat(MaskingPolicy.scrub("msisdn01712345789 acct_01812345678 ref-8801912345678"))
+        .isEqualTo("msisdn0171****789 acct_0181****678 ref-880191****678");
+  }
+
+  @Test
+  void scrubLeavesUuidsIntactWhereverTheySit() {
+    String text =
+        "txn=0190a7c4-0000-7000-8000-000000000001 ref-0190a7c4-0000-7000-8000-017123457890,"
+            + " id_00000000-0000-0000-0000-001234567890.";
+    assertThat(MaskingPolicy.scrub(text)).isEqualTo(text);
+  }
+
+  @Test
+  void scrubLeavesTraceAndSpanIdsIntact() {
+    String text =
+        "traceparent=00-4bf92f3577b34da6a3ce90123456789a-a0123456789012bc-01"
+            + " traceId=4bf92f3577b34da6a3ce90123456789a spanId=a0123456789012bc";
+    assertThat(MaskingPolicy.scrub(text)).isEqualTo(text);
+  }
+
+  @Test
+  void scrubStillMasksNumbersNextToProtectedIds() {
+    assertThat(
+            MaskingPolicy.scrub(
+                "0190a7c4-0000-7000-8000-000000000001-01712345789 a0123456789012bc_1990123456789"))
+        .isEqualTo("0190a7c4-0000-7000-8000-000000000001-0171****789 a0123456789012bc_****789");
+  }
+
   @Test
   void scrubLeavesShortNumbersAndIdentifiersAlone() {
-    String text =
-        "amount 100000000 attempt 3 txn 0190a7c4-0000-7000-8000-000000000001 key abc12345678901";
+    String text = "amount 100000000 attempt 3 txn 0190a7c4-0000-7000-8000-000000000001";
     assertThat(MaskingPolicy.scrub(text)).isEqualTo(text);
   }
 
