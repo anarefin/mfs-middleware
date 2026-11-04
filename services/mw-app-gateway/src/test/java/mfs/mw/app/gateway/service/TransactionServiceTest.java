@@ -47,7 +47,7 @@ class TransactionServiceTest {
               Map.of(
                   "P2P", List.of("CUSTOMER"),
                   "CASH_IN", List.of("AGENT"),
-                  "CASH_OUT", List.of("AGENT"))),
+                  "CASH_OUT", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC));
 
   static TransactionRequest body(String txnType) {
@@ -83,10 +83,10 @@ class TransactionServiceTest {
   }
 
   @Test
-  void aCustomerMayNotInitiateCashInOrCashOut() {
-    for (String type : List.of("CASH_IN", "CASH_OUT")) {
-      assertThatThrownBy(() -> service.submit(USER, "key", body(type)))
-          .as(type)
+  void aCustomerMayNotCashInAndAnAgentMayNotCashOut() {
+    for (var c : List.of(Map.entry(USER, "CASH_IN"), Map.entry(AGENT, "CASH_OUT"))) {
+      assertThatThrownBy(() -> service.submit(c.getKey(), "key", body(c.getValue())))
+          .as(c.getValue())
           .isInstanceOfSatisfying(
               MwException.class,
               e -> {
@@ -107,7 +107,7 @@ class TransactionServiceTest {
   @Test
   void theCounterpartyMayNotBeTheInitiatorsOwnWallet() {
     for (var c : List.of(
-        Map.entry(AGENT, "CASH_IN"), Map.entry(AGENT, "CASH_OUT"), Map.entry(USER, "P2P"))) {
+        Map.entry(AGENT, "CASH_IN"), Map.entry(USER, "CASH_OUT"), Map.entry(USER, "P2P"))) {
       String self = "+880" + c.getKey().msisdn().substring(1);
       assertThatThrownBy(() -> service.submit(c.getKey(), "key", bodyTo(c.getValue(), self)))
           .as(c.getValue())

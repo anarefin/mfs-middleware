@@ -174,7 +174,7 @@ mw:
     txn-type-roles:
       P2P: CUSTOMER
       CASH_IN: AGENT
-      CASH_OUT: AGENT
+      CASH_OUT: CUSTOMER
     # attributes keys an app may send (a free-text payment reference only, so far)
     allowed-attributes: reference
     jwt:

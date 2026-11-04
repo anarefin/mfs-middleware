@@ -16,7 +16,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   channel follows the realm role: `customer` -> `CUSTOMER_APP`/`CUSTOMER`, `agent` ->
   `AGENT_APP`/`AGENT` (WP20; merchant not served yet; a token with both roles is the customer).
   Role per `txnType` (`mw.app-gateway.txn-type-roles`, checked at submit after the type check):
-  P2P customer only, CASH_IN/CASH_OUT agent only; a type not listed is open to every served role.
+  P2P and CASH_OUT customer only, CASH_IN agent only (switch here, nowhere else); a type not listed is open to every served role.
   No token / bad token `401 MW-AUTH-001`; no wallet, other role or a type the role may not
   initiate `403 MW-AUTH-002`, nothing published. Other paths
   (actuator) are open inside the app network. Keycloak is reached over `data` (MVP deviation of
@@ -31,10 +31,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   (`util/Msisdn`) and forwarded only in the canonical `01XNNNNNNNN` form.
 - Submit (`service/TransactionService`): mints a UUIDv7 txnId (`util/UuidV7`), maps to the
   canonical `mw.txn.request.v1` (`mapper/RequestMapper`; initiator MSISDN = token wallet; debit = token
-  wallet, credit = body wallet, except CASH_OUT, which always pays the agent:
-  initiated by an agent, debit = body (customer) wallet with the customer's PIN, credit = agent;
-  initiated by a customer (if `txn-type-roles` allowed it), debit = customer, credit = body wallet
-  as AGENT; PIN ciphertext copied untouched, never logged), registers a waiter, then
+  wallet (its own PIN), credit = body wallet (walletType AGENT for CASH_OUT, else CUSTOMER); PIN ciphertext copied untouched, never logged), registers a waiter, then
   publishes directly (not via the outbox) with header `mw-reply-to = instanceId`. Kafka refusing
   or timing out (`max-block-ms`/`delivery-timeout-ms` 5 s/10 s) -> `503 MW-SYS-010`, retryable,
   nothing recorded. Idempotency is decided by mw-orchestrator (7.3); this service only requires

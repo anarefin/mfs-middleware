@@ -6,7 +6,7 @@ It runs on the host against a running MVP stack and talks to it over the network
 ```
 make up                       # the stack (fresh: make down DOWN_ARGS=-v first)
 make e2e TAGS=@p2p            # every @p2p scenario
-make e2e TAGS=@cash           # agent cash in / cash out (agent01, customer 01711000010)
+make e2e TAGS=@cash           # agent01 cash-in, customer01 cash-out to agent01
 make e2e M=mw-audit-dw TAGS=@p2p   # @mw-audit-dw and (@p2p)
 ```
 

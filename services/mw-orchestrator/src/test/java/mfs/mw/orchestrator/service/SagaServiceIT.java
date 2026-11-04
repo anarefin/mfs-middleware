@@ -33,7 +33,6 @@ import tools.jackson.databind.json.JsonMapper;
       "mw.orchestrator.timer.enabled=false"
     })
 @Import({TestInfrastructure.class, SagaServiceIT.TestClock.class})
-@org.junit.jupiter.api.extension.ExtendWith(org.springframework.boot.test.system.OutputCaptureExtension.class)
 class SagaServiceIT {
 
   @TestConfiguration(proxyBeanMethods = false)
@@ -262,38 +261,6 @@ class SagaServiceIT {
     assertThat(rejected.path("error").path("code").asString()).isEqualTo("MW-CORE-INSUFFICIENT_BALANCE");
     assertThat(rejected.path("error").path("retryable").asBoolean()).isFalse();
     assertThat(commands(txn)).hasSize(1);
-    assertAllValid(txn);
-  }
-
-  /** An agent's CASH_OUT: initiator agent, debit = customer wallet whose PIN was entered. */
-  private String startCashOut() {
-    TxnRequest p2p = TestData.p2p(TestData.txnId(), "key-" + TestData.txnId(), 5_000);
-    TxnRequest req =
-        new TxnRequest(1, p2p.txnId(), p2p.idempotencyKey(), p2p.correlationId(), "AGENT_APP", "CASH_OUT",
-            new mfs.mw.orchestrator.dto.Party("MSISDN", "01811000001", null, null),
-            new mfs.mw.orchestrator.dto.Party("WALLET", "01711000001", null, "CUSTOMER"),
-            new mfs.mw.orchestrator.dto.Party("WALLET", "01811000001", null, "AGENT"),
-            p2p.amount(), null, null, p2p.encryptedPin(), "en", null, null, p2p.requestedAt());
-    transactions.accept(req, "gw-1");
-    return req.txnId();
-  }
-
-  @Test
-  void aWrongPinOnAWalletOtherThanTheInitiatorsIsABusinessEvent(
-      org.springframework.boot.test.system.CapturedOutput output) {
-    String own = start(5_000);
-    coreEvents.handle(event("TransactionRejected", own, "validate", "INVALID_PIN", "{}"));
-    assertThat(output.getOut()).doesNotContain("txn.pin.failed.third.party");
-
-    String txn = startCashOut();
-    coreEvents.handle(event("TransactionRejected", txn, "validate", "INVALID_PIN", "{}"));
-
-    assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING", "REJECTED");
-    assertThat(lastStatus(txn).path("error").path("code").asString()).isEqualTo("MW-CORE-INVALID_PIN");
-    String line =
-        output.getOut().lines().filter(l -> l.contains("txn.pin.failed.third.party")).findFirst().orElseThrow();
-    assertThat(line).contains(txn).contains("CASH_OUT").contains("AGENT_APP");
-    assertThat(line).doesNotContain("01711000001").doesNotContain("01811000001");
     assertAllValid(txn);
   }
 

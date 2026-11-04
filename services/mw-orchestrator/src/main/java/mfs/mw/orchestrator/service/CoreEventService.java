@@ -28,7 +28,6 @@ public class CoreEventService {
   private static final Logger log = LoggerFactory.getLogger(CoreEventService.class);
 
   static final String CONSUMER = "orchestrator.core-events";
-  private static final String INVALID_PIN = "MW-CORE-INVALID_PIN";
 
   private final Inbox inbox;
   private final TransactionRepository transactions;
@@ -68,9 +67,6 @@ public class CoreEventService {
       return;
     }
     ErrorInfo error = "FAILURE".equals(event.outcome()) ? mapper.error(event) : null;
-    if (error != null && INVALID_PIN.equals(error.code())) {
-      flagThirdPartyPin(rec, event);
-    }
     try {
       engine.fire(rec.withCore(event.coreRef(), mapper.feeMinor(event)), saga.get(), error);
     } catch (InvalidTransitionException e) {
@@ -81,26 +77,6 @@ public class CoreEventService {
           .addKeyValue("eventType", event.eventType())
           .log("core event does not fit the transaction's state; ignored");
     }
-  }
-
-  /**
-   * A wrong PIN for a wallet that is not the initiator's (an agent entering a customer's PIN for
-   * CASH_OUT) is a fraud signal: business event {@code txn.pin.failed.third.party}, without any
-   * MSISDN. The lockout itself is the core's rule (spec 9.1).
-   */
-  private static void flagThirdPartyPin(TransactionRecord rec, CoreEvent event) {
-    var req = rec.request();
-    if (req.initiator() == null || req.debitParty() == null
-        || java.util.Objects.equals(req.initiator().id(), req.debitParty().id())) {
-      return;
-    }
-    log.atWarn()
-        .addKeyValue("event", "txn.pin.failed.third.party")
-        .addKeyValue("txnId", event.txnId())
-        .addKeyValue("txnType", req.txnType())
-        .addKeyValue("channel", req.channel())
-        .addKeyValue("debitWalletType", req.debitParty().walletType())
-        .log("wrong PIN for a wallet other than the initiator's");
   }
 
   private static void drop(CoreEvent event, String name, String message) {

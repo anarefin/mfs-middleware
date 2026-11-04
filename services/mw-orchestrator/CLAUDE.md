@@ -15,7 +15,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `InvalidTransitionException`). All transitions of the 7.2 table are modelled and unit-tested;
   only the no-hold path is wired (`FlowRegistry` by `txnType`: `P2pFlow`, `CashInFlow`,
   `CashOutFlow`, all validate -> PostTransfer, no partner; the parties come from the request
-  as the channel set them, e.g. CASH_OUT debits the customer and credits the agent). Effects of unwired flows
+  as the channel set them: CASH_IN agent -> customer, CASH_OUT customer -> agent). Effects of unwired flows
   (HoldFunds, partner request, commit, release, reverse, QueryTransaction) are logged
   (`saga.effect.unwired`) and skipped. `SagaEngine.fire` is the single place that applies an
   event: persist state + `saga_step`, publish status + audit event, re-arm the deadline, send the
@@ -44,9 +44,6 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   All wallet commands go to `core.wallet.command.v1`; nothing is sent on `core.payment.*` yet.
 - Core reason -> error: `MW-CORE-<reasonCode>` (same pattern as the status contract), message
   English + Bengali for the reasons mw-core-mock emits (`mapper/CoreEventMapper`), not retryable.
-  A wrong PIN (`MW-CORE-INVALID_PIN`) on a debit wallet that is not the initiator's (an agent's
-  CASH_OUT) is logged as business event `txn.pin.failed.third.party` (txnId, txnType, channel,
-  debit wallet type; no MSISDN); the lockout itself is the core's rule.
   Other codes used: `MW-VAL-010` unsupported txn type, `MW-VAL-011` amount <= 0, `MW-IDEM-001`,
   `MW-TMO-001`.
 - PIN: only ciphertext. It is kept in `transaction.encrypted_pin` (jsonb) because PostTransfer

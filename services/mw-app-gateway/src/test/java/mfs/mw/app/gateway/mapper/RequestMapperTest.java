@@ -85,25 +85,14 @@ class RequestMapperTest {
   }
 
   @Test
-  void cashOutDebitsTheCustomerAndCreditsTheAgent() {
-    JsonNode tree =
-        validRequest(
-            mapper.toRequest(AGENT, "key-1", body("CASH_OUT", "+8801711000002", null), TXN_ID, "corr-1", NOW));
-    assertThat(tree.path("initiator").path("id").asString()).isEqualTo("01811000001");
-    assertThat(tree.path("debitParty").path("id").asString()).isEqualTo("01711000002");
-    assertThat(tree.path("debitParty").path("walletType").asString()).isEqualTo("CUSTOMER");
-    assertThat(tree.path("creditParty").path("id").asString()).isEqualTo("01811000001");
-    assertThat(tree.path("creditParty").path("walletType").asString()).isEqualTo("AGENT");
-    assertThat(tree.path("encryptedPin").path("ciphertext").asString()).isEqualTo("b3BhcXVlLWNpcGhlcnRleHQ=");
-  }
-
-  @Test
-  void aCustomerInitiatedCashOutPaysTheAgentNamedInTheBody() {
+  void cashOutDebitsTheCustomerFromTheTokenAndPaysTheAgentNamedInTheBody() {
     JsonNode tree =
         validRequest(
             mapper.toRequest(
                 new AppUser("01711000002", "CUSTOMER_APP", "CUSTOMER"), "key-1",
-                body("CASH_OUT", "01811000001", null), TXN_ID, "corr-1", NOW));
+                body("CASH_OUT", "+8801811000001", null), TXN_ID, "corr-1", NOW));
+    assertThat(tree.path("channel").asString()).isEqualTo("CUSTOMER_APP");
+    assertThat(tree.path("encryptedPin").path("ciphertext").asString()).isEqualTo("b3BhcXVlLWNpcGhlcnRleHQ=");
     assertThat(tree.path("initiator").path("id").asString()).isEqualTo("01711000002");
     assertThat(tree.path("debitParty").path("id").asString()).isEqualTo("01711000002");
     assertThat(tree.path("debitParty").path("walletType").asString()).isEqualTo("CUSTOMER");
