@@ -1,0 +1,15 @@
+package mfs.mw.core.mock.entity;
+
+/** A ledger wallet row (own schema only). Balances are minor units. */
+public record Wallet(
+    String id, String msisdn, String type, String status, long balanceMinor, long heldMinor, String pinHash) {
+
+  public boolean active() {
+    return "ACTIVE".equals(status);
+  }
+
+  /** Funds that can be spent: balance minus what a hold reserves. */
+  public long availableMinor() {
+    return balanceMinor - heldMinor;
+  }
+}
