@@ -50,7 +50,7 @@ class WalletSeederIT {
         .containsEntry("AGENT", 50L)
         .containsEntry("MERCHANT", 20L)
         .containsEntry("ORG", 2L)
-        .containsEntry("SYSTEM", 1L);
+        .containsEntry("SYSTEM", 2L);
   }
 
   @Test

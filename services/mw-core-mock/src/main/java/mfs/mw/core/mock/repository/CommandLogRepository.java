@@ -33,4 +33,15 @@ public class CommandLogRepository {
         txnId,
         eventJson);
   }
+
+  /** The result event of the latest command of {@code txnId}, status inquiries excluded. */
+  public Optional<String> latestEventOfTxn(String txnId) {
+    return jdbc.query(
+            "select event::text from command_log where txn_id = ? and command_type <> 'QueryTransaction' "
+                + "order by seq desc limit 1",
+            (rs, i) -> rs.getString(1),
+            txnId)
+        .stream()
+        .findFirst();
+  }
 }

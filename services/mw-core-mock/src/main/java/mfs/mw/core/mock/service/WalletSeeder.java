@@ -10,8 +10,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Seeds the ledger: 1,000 customers ({@code 01711000001..}), 50 agents ({@code 01811000001..}),
- * 20 merchants ({@code 01911000001..}), 2 orgs ({@code 01311000001..}) and one system wallet
- * ({@link #FEE_WALLET}) that collects fees. Ids, types and balances are fixed, so the seed is
+ * 20 merchants ({@code 01911000001..}), 2 orgs ({@code 01311000001..}) and two system wallets
+ * ({@link #FEE_WALLET} collects fees, {@link #SETTLEMENT_WALLET} is the outside world). Ids, types and balances are fixed, so the seed is
  * identical on every run; all wallets share one fake PIN (its bcrypt hash is computed once).
  */
 @Service
@@ -19,6 +19,11 @@ public class WalletSeeder {
 
   /** Collects the fees; part of the balance invariant like any other wallet. */
   public static final String FEE_WALLET = "FEE-POOL";
+
+  /** The outside world: partners' settlement and inbound money. Funded so credits can draw on it. */
+  public static final String SETTLEMENT_WALLET = "SETTLEMENT";
+
+  public static final long SETTLEMENT_SEED_MINOR = 1_000_000_000_000L;
 
   private static final Logger log = LoggerFactory.getLogger(WalletSeeder.class);
 
@@ -46,12 +51,18 @@ public class WalletSeeder {
             + "values (?, null, 'SYSTEM', 0, ?) on conflict do nothing",
         FEE_WALLET,
         pinHash);
+    jdbc.update(
+        "insert into wallet (id, msisdn, type, balance_minor, pin_hash) "
+            + "values (?, null, 'SYSTEM', ?, ?) on conflict do nothing",
+        SETTLEMENT_WALLET,
+        SETTLEMENT_SEED_MINOR,
+        pinHash);
   }
 
   /** Wipes the ledger (wallets, entries, holds, command log) and seeds it again. */
   @Transactional
   public void reset() {
-    jdbc.execute("truncate entry, hold, command_log, wallet");
+    jdbc.execute("truncate entry, hold, command_log, reversal, wallet");
     seed();
     log.atInfo().addKeyValue("event", "coremock.seed.reset").log("ledger reset to the seed");
   }

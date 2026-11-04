@@ -27,16 +27,23 @@ public class OutboxWriter {
 
   /** Stores {@code payload} (as JSON) for {@code topic}, partition key {@code key}. */
   public void append(String topic, String key, EventMetadata meta, Object payload) {
+    append(topic, key, meta, payload, null);
+  }
+
+  /** As {@link #append(String, String, EventMetadata, Object)}, published only once {@code availableAt} has passed. */
+  public void append(String topic, String key, EventMetadata meta, Object payload, java.time.Instant availableAt) {
     if (!TransactionSynchronizationManager.isActualTransactionActive()) {
       throw new IllegalStateException(
           "outbox append needs the business transaction: call it from a @Transactional service method");
     }
     Map<String, String> headers = publisher.headersFor(topic, meta);
     jdbc.update(
-        "insert into outbox (topic, msg_key, headers, payload) values (?, ?, ?::jsonb, ?::jsonb)",
+        "insert into outbox (topic, msg_key, headers, payload, available_at) "
+            + "values (?, ?, ?::jsonb, ?::jsonb, coalesce(?::timestamptz, now()))",
         topic,
         key,
         json.writeValueAsString(headers),
-        json.writeValueAsString(payload));
+        json.writeValueAsString(payload),
+        availableAt == null ? null : java.sql.Timestamp.from(availableAt));
   }
 }
