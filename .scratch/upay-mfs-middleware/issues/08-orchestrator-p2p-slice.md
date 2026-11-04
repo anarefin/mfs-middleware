@@ -6,11 +6,11 @@
 
 - 07: Core-mock P2P slice
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Unit tests cover 100% of the transitions in the §7.2 table, including invalid ones being rejected
-- [ ] Same idempotency key + same request hash returns the stored txnId and status; same key + different hash gives `MW-IDEM-001`
-- [ ] Timer test: a missing core reply moves VALIDATING → FAILED and POSTING → UNKNOWN after the configured deadline
-- [ ] Integration test with Testcontainers Kafka + PG and the orchestrator's own core stub: P2P reaches COMPLETED, and a core rejection reaches REJECTED
+- [x] Unit tests cover 100% of the transitions in the §7.2 table, including invalid ones being rejected
+- [x] Same idempotency key + same request hash returns the stored txnId and status; same key + different hash gives `MW-IDEM-001`
+- [x] Timer test: a missing core reply moves VALIDATING → FAILED and POSTING → UNKNOWN after the configured deadline
+- [x] Integration test with Testcontainers Kafka + PG and the orchestrator's own core stub: P2P reaches COMPLETED, and a core rejection reaches REJECTED
 - [ ] Against the running stack, a P2P request on `mw.txn.request.v1` completes against `mw-core-mock` and the balances move
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
