@@ -10,7 +10,7 @@ import mfs.mw.orchestrator.mapper.CoreEventMapper;
 import mfs.mw.orchestrator.messaging.Inbox;
 import mfs.mw.orchestrator.repository.TransactionRepository;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
-import mfs.mw.orchestrator.service.saga.InvalidTransitionException;
+import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.Status;
 import org.slf4j.Logger;

@@ -26,7 +26,7 @@ import mfs.mw.orchestrator.service.saga.Effect;
 import mfs.mw.orchestrator.service.saga.Flow;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.service.saga.PartnerCall;
-import mfs.mw.orchestrator.service.saga.InvalidTransitionException;
+import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.SagaMachine;
 import mfs.mw.orchestrator.service.saga.Status;
@@ -103,7 +103,7 @@ public class SagaEngine {
    *
    * @param error set on a move to REJECTED or FAILED
    * @return the updated record
-   * @throws mfs.mw.orchestrator.service.saga.InvalidTransitionException if the state does not
+   * @throws mfs.mw.orchestrator.exception.InvalidTransitionException if the state does not
    *     accept the event; nothing has been written then
    */
   public TransactionRecord fire(TransactionRecord rec, SagaEvent event, ErrorInfo error) {

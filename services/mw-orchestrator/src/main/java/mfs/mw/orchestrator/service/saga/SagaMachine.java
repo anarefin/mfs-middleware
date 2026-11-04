@@ -1,5 +1,6 @@
 package mfs.mw.orchestrator.service.saga;
 
+import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.SagaEvent.*;
 
 /**

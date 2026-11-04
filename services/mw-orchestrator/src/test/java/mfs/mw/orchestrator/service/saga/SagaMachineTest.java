@@ -1,5 +1,6 @@
 package mfs.mw.orchestrator.service.saga;
 
+import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
