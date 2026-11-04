@@ -1,0 +1,85 @@
+package mfs.mw.orchestrator.service;
+
+import java.time.Clock;
+import java.util.List;
+import java.util.Optional;
+import mfs.mw.orchestrator.config.OrchestratorProperties;
+import mfs.mw.orchestrator.dto.ErrorInfo;
+import mfs.mw.orchestrator.entity.TransactionRecord;
+import mfs.mw.orchestrator.exception.ErrorCodes;
+import mfs.mw.orchestrator.repository.SagaTimerRepository;
+import mfs.mw.orchestrator.repository.TransactionRepository;
+import mfs.mw.orchestrator.service.saga.InvalidTransitionException;
+import mfs.mw.orchestrator.service.saga.SagaEvent;
+import mfs.mw.orchestrator.service.saga.Status;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * Deadline sweep (spec 7.1): finds the timers that have passed, with {@code FOR UPDATE SKIP
+ * LOCKED} so a second orchestrator instance never handles the same one, and fires {@code
+ * DeadlineExpired} on their transactions. The meaning of an expiry comes from the state machine
+ * (VALIDATING to FAILED, POSTING to UNKNOWN, ...). Run by {@code scheduler/SagaTimerJob}.
+ */
+@Service
+public class SagaTimerService {
+
+  private static final Logger log = LoggerFactory.getLogger(SagaTimerService.class);
+
+  private final SagaTimerRepository timers;
+  private final TransactionRepository transactions;
+  private final SagaEngine engine;
+  private final OrchestratorProperties properties;
+  private final Clock clock;
+
+  public SagaTimerService(
+      SagaTimerRepository timers,
+      TransactionRepository transactions,
+      SagaEngine engine,
+      OrchestratorProperties properties,
+      Clock clock) {
+    this.timers = timers;
+    this.transactions = transactions;
+    this.engine = engine;
+    this.properties = properties;
+    this.clock = clock;
+  }
+
+  /** One sweep, one database transaction. Returns the number of timers handled. */
+  @Transactional
+  public int sweep() {
+    List<SagaTimerRepository.Due> due = timers.lockDue(clock.instant(), properties.timer().batchSize());
+    for (SagaTimerRepository.Due timer : due) {
+      timers.delete(timer.txnId(), timer.step());
+      Optional<TransactionRecord> found = transactions.findForUpdate(timer.txnId());
+      if (found.isEmpty()) {
+        continue;
+      }
+      TransactionRecord rec = found.get();
+      try {
+        engine.fire(rec, new SagaEvent.DeadlineExpired(), expiryError(rec.status()));
+      } catch (InvalidTransitionException e) {
+        log.atInfo()
+            .addKeyValue("event", "saga.timer.ignored")
+            .addKeyValue("txnId", rec.txnId().toString())
+            .addKeyValue("status", rec.status().name())
+            .log("deadline passed for a transaction that no longer waits; ignored");
+      }
+    }
+    return due.size();
+  }
+
+  /** The error to report when the expiry ends the transaction (only VALIDATING does: FAILED). */
+  private static ErrorInfo expiryError(Status status) {
+    if (status == Status.VALIDATING) {
+      return new ErrorInfo(
+          ErrorCodes.TMO_CORE_VALIDATE,
+          "The core did not answer in time; nothing was moved",
+          null,
+          true);
+    }
+    return null;
+  }
+}
