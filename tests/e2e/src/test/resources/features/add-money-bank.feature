@@ -28,6 +28,7 @@ Feature: ADD_MONEY_BANK (C2W): add money from a linked bank account (ticket 23, 
       | FEE-POOL    | 0      |
     And no funds are held on 01711000001
     And the audit trail of the transaction records the states "RECEIVED, VALIDATING, PARTNER_PENDING, COMMITTING, COMPLETED" once each
+    And the audit trail of the transaction records the partner call by mw-adapter-bank
 
   @callback
   Scenario: a replayed bank callback has no second effect

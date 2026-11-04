@@ -53,6 +53,20 @@ public final class AuditTrail {
     return query("txn_id = '" + id + "'");
   }
 
+  /** Action of the orchestrator's one-row-per-state audit (spec 14.3). */
+  public static final String STATE_CHANGED = "txn.state.changed";
+
+  /** Action of the adapters' audit of one partner call (spec 12.2, 17). */
+  public static final String PARTNER_CALL = "partner.call.completed";
+
+  /**
+   * The {@code txn.state.changed} rows of one transaction in chain order: a transaction's trail
+   * also holds partner-call and callback rows, which carry no state.
+   */
+  public static List<Row> stateRowsOfTxn(String txnId) {
+    return rowsOfTxn(txnId).stream().filter(r -> STATE_CHANGED.equals(r.action())).toList();
+  }
+
   /**
    * Verifies the whole hash chain of {@code month} ({@code yyyy-MM}); returns {@code null} when it
    * is intact, else why it is broken.

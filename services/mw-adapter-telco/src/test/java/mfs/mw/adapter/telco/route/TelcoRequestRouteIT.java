@@ -71,6 +71,8 @@ class TelcoRequestRouteIT {
   static final String REPLY_TOPIC = "mw.partner.reply.v1";
   static final String REPLY_SCHEMA = "events/mw-orchestrator/mw.partner.reply.v1.schema.json";
   static final JsonMapper JSON = JsonMapper.builder().build();
+  static final String AUDIT_TOPIC = "mw.audit.event.v1";
+  static final String AUDIT_SCHEMA = "events/mw-audit-dw/mw.audit.event.v1.schema.json";
 
   static final WireMockServer OCS =
       new WireMockServer(WireMockConfiguration.options().dynamicPort());
@@ -128,6 +130,40 @@ class TelcoRequestRouteIT {
             .withRequestBody(
                 equalToJson(
                     "{\"transactionId\":\"" + ref + "\",\"msisdn\":\"01711000001\",\"amount\":\"20.00\"}")));
+  }
+
+  /**
+   * S6 (spec 12.2, 17): the framework wrapper audits every partner call on mw.audit.event.v1
+   * through the outbox, masked (the raw personal value never appears), within the audit contract.
+   */
+  @Test
+  void everyPartnerCallIsAuditedMaskedOnTheAuditTopic() throws Exception {
+    stubOcs(200, "{\"status\":\"SUCCESS\",\"code\":\"0000\",\"message\":\"ok\",\"ocsRef\":\"OCS-778899\"}");
+    PartnerRequest request = pay(newTxnId(), "01711000001", 2000);
+
+    send(request);
+    awaitReplies(request.txnId(), 1);
+
+    List<ConsumerRecord<String, String>> audits =
+        KafkaTestConsumer.read(
+            kafka.getBootstrapServers(), AUDIT_TOPIC, 1, Duration.ofSeconds(30), r -> request.txnId().equals(r.key()));
+    assertThat(audits).hasSize(1);
+    tools.jackson.databind.JsonNode audit = JSON.readTree(audits.getFirst().value());
+    assertThat(ContractSchemas.schema(AUDIT_SCHEMA).validate(audit)).as(audit.toString()).isEmpty();
+    assertThat(audit.path("action").asString()).isEqualTo("partner.call.completed");
+    assertThat(audit.path("txnId").asString()).isEqualTo(request.txnId());
+    assertThat(audit.path("correlationId").asString()).isEqualTo(request.correlationId());
+    assertThat(audit.path("actor").path("type").asString()).isEqualTo("system");
+    assertThat(audit.path("actor").path("id").asString()).isEqualTo("mw-adapter-telco");
+    assertThat(audit.path("service").asString()).isEqualTo("mw-adapter-telco");
+    assertThat(audit.path("resource").asString()).isEqualTo("partner/gp/PAY");
+    assertThat(audit.path("outcome").asString()).isEqualTo("SUCCESS");
+    assertThat(audit.path("after").path("httpStatus").asString()).isEqualTo("200");
+    assertThat(audit.path("after").path("partnerOutcome").asString()).isEqualTo("SUCCESS");
+    assertThat(audit.path("after").path("request").asString()).contains("transactionId");
+    assertThat(audit.path("after").path("response").asString()).contains("0000");
+    assertThat(audit.toString()).doesNotContain("01711000001");
+    assertThat(KafkaTestConsumer.headers(audits.getFirst())).containsEntry("mw-source", "mw-adapter-telco");
   }
 
   @Test

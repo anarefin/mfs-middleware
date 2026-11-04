@@ -44,6 +44,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.bank`. Follow
   (same partner, reference, outcome) is acknowledged `duplicate: true` and not published again;
   FAILED carries `errorCode` `MW-PTR-<PARTNER>-<suffix>`; an ambiguous FAILED code is published
   as PENDING (fail closed); `partnerRef` = the bank's `debitRef`, else our reference.
+- Partner-call audit (S6, spec 12.2, 17): `PartnerAudit.publishing` (wired in
+  `PartnerFrameworkConfiguration`) logs `partner.call.audit` and hands every masked entry to
+  `messaging/PartnerAuditPublisher`, which writes an `AuditEvent` (`dto/AuditEvent`, contract
+  `mw.audit.event.v1` owned by mw-audit-dw, unchanged) to the outbox in its own transaction
+  (REQUIRES_NEW): action `partner.call.completed`, actor `system`/<service>, resource
+  `partner/<partnerId>/<operation>`, outcome SUCCESS (partner SUCCESS/PENDING) else FAILURE,
+  `after` = `partnerInstance`, `httpMethod`, `path`, `httpStatus`, `partnerOutcome`, `durationMs`
+  and the `request`/`response` bodies as the framework masked them (`sensitive-fields`, scrub, 4 KB);
+  raw bodies never, no `payloadRef`. Key txnId (else partnerId). A failing publisher is logged
+  `partner.call.audit_failed` and never fails the call. Identical in telco, billpay and bank.
 - Init (`mw-adapter-bank-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
   `adapter_bank_rw` and schema `bank_ref`, `secret/mw-adapter-bank` (DB password, never
   overwritten; `mw.partner-secrets.c2wbank.hmac-secret` synced from the generated

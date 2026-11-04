@@ -57,8 +57,17 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.billpay`. Fol
   final outcome of one reference are different callbacks. FAILED carries `errorCode`
   `MW-PTR-<PARTNER>-<suffix>` from the error map; a FAILED with an ambiguous code is published as
   PENDING (fail closed); `partnerRef` = the aggregator's `paymentRef`, else our reference;
-  `attributes.message` = the partner's message. No audit events on `mw.audit.event.v1` yet (the
-  framework audits to the log).
+  `attributes.message` = the partner's message.
+- Partner-call audit (S6, spec 12.2, 17): `PartnerAudit.publishing` (wired in
+  `PartnerFrameworkConfiguration`) logs `partner.call.audit` and hands every masked entry to
+  `messaging/PartnerAuditPublisher`, which writes an `AuditEvent` (`dto/AuditEvent`, contract
+  `mw.audit.event.v1` owned by mw-audit-dw, unchanged) to the outbox in its own transaction
+  (REQUIRES_NEW): action `partner.call.completed`, actor `system`/<service>, resource
+  `partner/<partnerId>/<operation>`, outcome SUCCESS (partner SUCCESS/PENDING) else FAILURE,
+  `after` = `partnerInstance`, `httpMethod`, `path`, `httpStatus`, `partnerOutcome`, `durationMs`
+  and the `request`/`response` bodies as the framework masked them (`sensitive-fields`, scrub, 4 KB);
+  raw bodies never, no `payloadRef`. Key txnId (else partnerId: a bill fetch has no txnId and is audited under the biller's aggregator). A failing publisher is logged
+  `partner.call.audit_failed` and never fails the call. Identical in telco, billpay and bank.
 - Init (`mw-adapter-billpay-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
   `adapter_billpay_rw` and schema `billpay_ref`, `secret/mw-adapter-billpay` (DB password, never
   overwritten) and the AppRole `mw-adapter-billpay` (configtree volume at `/run/mw/approle`); waits
@@ -70,7 +79,7 @@ The app's `POST /app/v1/billers/{code}/fetch-bill` needs an answer within the HT
 partner topics run orchestrator -> adapter -> orchestrator and `mw.partner.reply.v1` is consumed
 by mw-orchestrator only. Chosen: **mw-app-gateway calls this adapter's internal HTTP API** for the
 catalogue and the fetch. Why:
-- A fetch moves no money and has no saga: it needs no idempotency key, txnId, outbox or audit, and
+- A fetch moves no money and has no saga: it needs no idempotency key, txnId or saga (its partner call is still audited, S6), and
   spec 2.1's "no direct service-to-service calls on the money path" does not apply. The payment
   itself still goes app -> Kafka -> orchestrator -> `mw.partner.request.billpay.v1` -> this adapter.
 - No Kafka thread ever waits: the gateway waits on its HTTP (virtual) thread, this adapter calls

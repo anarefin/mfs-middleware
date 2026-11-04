@@ -102,3 +102,4 @@ Feature: TOPUP airtime from the app (hold, partner, commit or release)
     When customer01 tops up 2000 poisha gp PREPAID airtime on 01711000002 with PIN "1234"
     Then the response status is 200
     And the audit trail of the transaction records the states "RECEIVED, VALIDATING, HOLDING, PARTNER_PENDING, COMMITTING, COMPLETED"
+    And the audit trail of the transaction records the partner call by mw-adapter-telco

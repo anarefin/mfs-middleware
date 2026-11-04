@@ -82,3 +82,4 @@ Feature: BILL_PAY from the app (bill fetch, then hold, partner, commit or releas
     When customer01 pays 5000 poisha on bill 1234567 of biller DESCO with PIN "1234"
     Then the response status is 200
     And the audit trail of the transaction records the states "RECEIVED, VALIDATING, HOLDING, PARTNER_PENDING, COMMITTING, COMPLETED"
+    And the audit trail of the transaction records the partner call by mw-adapter-billpay

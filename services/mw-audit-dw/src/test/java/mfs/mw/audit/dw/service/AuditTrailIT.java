@@ -154,6 +154,36 @@ class AuditTrailIT {
     assertThat(verifier.verify("2026-12").intact()).isTrue();
   }
 
+  /** S6: the adapters' partner-call audit (spec 17) is stored and chained like any other event. */
+  @Test
+  void aPartnerCallAuditFromAnAdapterIsStoredInTheChain() {
+    String txnId = "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8b";
+    AuditEvent e =
+        JSON.readValue(
+            """
+            {"schemaVersion":1,"auditId":"%s","txnId":"%s","correlationId":"corr-3",
+             "actor":{"type":"system","id":"mw-adapter-telco"},"action":"partner.call.completed",
+             "resource":"partner/gp/PAY","after":{"partnerInstance":"ocs","httpStatus":"200",
+             "partnerOutcome":"SUCCESS","durationMs":"42","request":"msisdn 0171****001",
+             "response":"status SUCCESS code 0000"},
+             "outcome":"SUCCESS","at":"2026-11-03T08:15:31Z","service":"mw-adapter-telco"}
+            """
+                .formatted(UUID.randomUUID(), txnId),
+            AuditEvent.class);
+
+    assertThat(audit.record(e)).isTrue();
+
+    Map<String, Object> row =
+        jdbc.queryForMap(
+            "select action, service, resource, after->>'partnerOutcome' po, after->>'request' req from event");
+    assertThat(row.get("action")).isEqualTo("partner.call.completed");
+    assertThat(row.get("service")).isEqualTo("mw-adapter-telco");
+    assertThat(row.get("resource")).isEqualTo("partner/gp/PAY");
+    assertThat(row.get("po")).isEqualTo("SUCCESS");
+    assertThat((String) row.get("req")).contains("0171****001");
+    assertThat(verifier.verify("2026-11").intact()).isTrue();
+  }
+
   @Test
   void personalDataIsMaskedBeforeItIsStored() {
     AuditEvent e =
