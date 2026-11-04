@@ -1,0 +1,173 @@
+# Static configuration baked into the image (spec 20.4). Per-environment overrides are
+# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from OpenBao/Vault
+# only (18.4) and are never written here.
+spring:
+  application:
+    name: mw-orchestrator
+  threads:
+    virtual:
+      enabled: true
+  config:
+    # Spring Cloud Vault reads secrets at start-up (AppRole) when VAULT_ENABLED=true.
+    # The configtree carries the AppRole role-id/secret-id files of a stack (one file per property).
+    import: "optional:configtree:${MW_APPROLE_DIR:/run/mw/approle/},optional:vault://"
+  cloud:
+    vault:
+      enabled: ${VAULT_ENABLED:false}
+      uri: ${VAULT_ADDR:http://openbao:8200}
+      authentication: APPROLE
+      app-role:
+        role-id: ${VAULT_ROLE_ID:}
+        secret-id: ${VAULT_SECRET_ID:}
+      kv:
+        enabled: true
+        backend: secret
+        default-context: ${spring.application.name}
+  mvc:
+    problemdetails:
+      enabled: false
+  # This service's own schema (16.2), migrated by Flyway on start-up from
+  # db/migration/V<n>__*.sql (16.4). Credentials are dynamic from OpenBao's database engine
+  # (role <service>_rw) or DB_USERNAME/DB_PASSWORD; never written here.
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://postgres:5432/mw}
+    username: ${DB_USERNAME:orchestrator_rw}
+    password: ${DB_PASSWORD:}
+    hikari:
+      schema: txn
+  flyway:
+    schemas: txn
+
+# Kafka through Camel (spec 6.1, 19.2). Single KRaft node; topics come from deploy/kafka/.
+camel:
+  main:
+    name: ${spring.application.name}
+  component:
+    kafka:
+      brokers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+      # Producer: exactly one copy per send, every in-sync replica acknowledges (6.1).
+      request-required-acks: all
+      enable-idempotence: true
+      max-in-flight-request: 5
+      # Consumers: one group per service; a failure that cannot even be parked on a retry
+      # topic stops the partition instead of committing past the record.
+      group-id: ${spring.application.name}
+      auto-offset-reset: earliest
+      break-on-first-error: true
+      # Offsets are committed per record, only after it is handled or parked on its retry
+      # topic (RetryTopicRouteBuilder); never on poll or close. Routes that consume Kafka must
+      # commit through the CamelKafkaManualCommit header.
+      auto-commit-enable: false
+      allow-manual-commit: true
+
+# Resilience defaults for client/ calls (19.2). A partner overrides them under
+# resilience4j.<kind>.instances.<partner> (base-config: default). Retry is only for idempotent
+# calls (status inquiry, fetch-bill, GET): never annotate a payment call with @Retry.
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-type: TIME_BASED
+        sliding-window-size: 60
+        minimum-number-of-calls: 50
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 50
+        # 80% of the default partner timeout (30 s, 11.1); partners override both.
+        slow-call-duration-threshold: 24s
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+  bulkhead:
+    configs:
+      default:
+        max-concurrent-calls: 200
+        max-wait-duration: 0
+  timelimiter:
+    configs:
+      default:
+        timeout-duration: 30s
+        cancel-running-future: true
+  retry:
+    configs:
+      default:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        exponential-max-wait-duration: 1s
+        enable-randomized-wait: true
+        randomized-wait-factor: 0.5
+
+logging:
+  structured:
+    format:
+      # JSON lines with the spec 21.1 fields; masking runs in the formatter (18.3).
+      console: mfs.mw.orchestrator.logging.JsonLogFormatter
+
+server:
+  port: 8080
+  shutdown: graceful
+  error:
+    include-stacktrace: never
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+    propagation:
+      type: w3c
+
+mw:
+  orchestrator:
+    # Saga deadlines (spec 7.2), command lifetime (6.3), idempotency TTL (7.3), timer sweep (7.1).
+    validating-timeout: 5s
+    holding-timeout: 5s
+    posting-timeout: 5s
+    partner-timeout: 30s
+    retry-timeout: 5s
+    command-ttl: 60s
+    idempotency-ttl: 72h
+    wallet-command-topic: core.wallet.command.v1
+    consumers:
+      enabled: true
+    timer:
+      enabled: true
+      period: 1s
+      batch-size: 50
+  kafka:
+    retry:
+      # Non-blocking retry topics <topic>.retry.1..3, then <topic>.dlq (19.2).
+      delays: 10s,1m,10m
+  outbox:
+    relay:
+      # Transactional outbox relay (6.4): publishes unsent rows, then stamps sent_at.
+      enabled: true
+      period: 500ms
+      batch-size: 100
+  retention:
+    # Purge (service/RetentionService via scheduler/OutboxInboxPurgeJob): sent outbox rows and
+    # inbox rows older than these; unsent outbox rows never. ShedLock-guarded, one instance at a
+    # time, batch-size rows per statement, on a Spring cron ("-" switches it off).
+    outbox: 7d
+    inbox: 7d
+    batch-size: 1000
+    cron: "0 0 * * * *"
+  service:
+    name: ${spring.application.name}
+    version: ${MW_VERSION:0.1.0-SNAPSHOT}
+    env: ${MW_ENV:local}
