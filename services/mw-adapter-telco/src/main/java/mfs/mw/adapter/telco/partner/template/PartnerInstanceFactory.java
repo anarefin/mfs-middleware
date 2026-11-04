@@ -41,10 +41,11 @@ public class PartnerInstanceFactory {
   public PartnerInstance create(String id, long version, PartnerConfig config) {
     List<String> security = new ArrayList<>(policy.problems(id, config.baseUrl()));
     List<String> problems = new ArrayList<>(config.problems());
-    boolean refRefused = problems.removeIf(p -> p.startsWith("auth.credentialsRef"));
-    if (refRefused) {
-      security.add("auth.credentialsRef must be a secret name of this partner");
-    }
+    problems.stream()
+        .filter(p -> p.startsWith(PartnerConfig.SECURITY))
+        .map(p -> p.substring(PartnerConfig.SECURITY.length()))
+        .forEach(security::add);
+    problems.removeIf(p -> p.startsWith(PartnerConfig.SECURITY));
     if (!security.isEmpty() || !problems.isEmpty()) {
       List<String> all = new ArrayList<>(security);
       all.addAll(problems);
@@ -54,7 +55,12 @@ public class PartnerInstanceFactory {
         TimeLimiter.of(
             "partner-" + id,
             TimeLimiterConfig.custom().timeoutDuration(config.timeout()).cancelRunningFuture(true).build());
-    HttpClient http = HttpClient.newBuilder().connectTimeout(config.connectTimeout()).build();
+    // never follow a redirect: it could carry the request and its credentials to another host
+    HttpClient http =
+        HttpClient.newBuilder()
+            .connectTimeout(config.connectTimeout())
+            .followRedirects(HttpClient.Redirect.NEVER)
+            .build();
     String resilience = config.resilience() == null || config.resilience().isBlank() ? id : config.resilience();
     CredentialRef ref =
         config.auth().credentialsRef() == null

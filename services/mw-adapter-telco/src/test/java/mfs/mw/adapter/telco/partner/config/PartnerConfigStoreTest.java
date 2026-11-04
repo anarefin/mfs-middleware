@@ -265,4 +265,40 @@ class PartnerConfigStoreTest {
           assertThat(all).doesNotContain("spring.datasource.password").doesNotContain("fake");
         });
   }
+
+  // --- security: operation paths cannot move the request to another host ------------------------
+
+  static String withPath(String path) {
+    return GP_V1.replace("\"path\": \"/ocs/v1/topup\"", "\"path\": \"" + path.replace("\\", "\\\\") + "\"");
+  }
+
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(
+      strings = {
+        "@evil.com/x", ":8443@evil/x", "/..//evil", "//evil.com/x", "/a/../b", "/a//b", "/x?y=1",
+        "/x#frag", "/a\\b", "/x@evil.com", "/x:1", "x/no-leading-slash", "", "/%2e%2e/x"
+      })
+  void anOperationPathThatCouldChangeTheTargetIsRefusedAsASecurityProblem(String path) {
+    store.apply(upsert("partner/gp", 1, GP_V1));
+
+    assertThat(store.apply(upsert("partner/gp", 2, withPath(path)))).as(path).isFalse();
+    assertThat(store.instance("gp")).get().extracting(i -> i.version()).isEqualTo(1L);
+    assertThatThrownBy(() -> FACTORY.create("gp", 3, config(withPath(path))))
+        .isInstanceOfSatisfying(PartnerConfigRefusedException.class, e -> assertThat(e.security()).isTrue());
+  }
+
+  @Test
+  void ordinaryPathsWithTheReferencePlaceholderAreAccepted() {
+    assertThat(store.apply(upsert("partner/gp", 1, withPath("/ocs/v1/topup/{reference}")))).isTrue();
+    assertThat(store.apply(upsert("partner/gp", 2, withPath("/api/v2.1/pay_now-x~y")))).isTrue();
+  }
+
+  @Test
+  void partnerHttpClientsNeverFollowRedirects() {
+    store.apply(upsert("partner/gp", 1, GP_V1));
+
+    assertThat(store.instance("gp")).get()
+        .extracting(i -> i.http().followRedirects())
+        .isEqualTo(java.net.http.HttpClient.Redirect.NEVER);
+  }
 }

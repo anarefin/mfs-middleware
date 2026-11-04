@@ -80,6 +80,11 @@ Security (config-changed records come from Kafka and ACLs are deferred, so they 
   `MW_PARTNER_INSECURE_HTTP_HOSTS`, set it empty in production). Everything else needs https, no user info.
   Instance ids are `^[a-z0-9][a-z0-9-]{0,63}$`. Adding a partner by config therefore needs its host on the
   static allowlist first (`MW_OCS_ALLOWED_HOSTS` for the seed).
+- Operation paths must match `^/[A-Za-z0-9._~/{}-]*$` with no `..` segment and no `//` (so no `@ : ? # \ %`);
+  anything else is a security refusal. At call time `RestJsonAdapter.target` re-checks that the request URI
+  keeps the baseUrl's scheme, host and port, has no user info and stays under the base path, else the call
+  is NOT_SENT `MISCONFIGURED` (`security.partner_target_refused`). Partner HTTP clients never follow
+  redirects (`Redirect.NEVER`): a 3xx is UNKNOWN `UNEXPECTED_STATUS`.
 - Seeds and config-changed records pass the same `PartnerEndpointPolicy`; a broken seed fails start-up, a
   refused record keeps the last good config and logs `security.partner_config_refused` (configKey, version,
   changedBy/approvedBy, reasons; never secret values or the refused ref). So a record can change operational
@@ -108,10 +113,15 @@ and `default-partner: ocs`, so gp/robi/banglalink/teletalk are all served by it 
 `partner/<id>` record. Never add a retry to a partner call.
 
 Copying it into another adapter (tickets 21, 23): copy `partner/` with its tests
-(`src/test/.../partner/`), rename the package, add `jsonata` to the module's version catalog and
-build, copy the `mw.partners` block shape into `application.yml` with that adapter's seed partners and
-Resilience4j instances, and keep `mw.partners.config-consumer.enabled: false` in the test config. The
-service layer stays the adapter's own (request checks, reference, reply mapping, inbox/outbox).
+(`src/test/.../partner/`, including the `PartnerFramework` harness and the security tests), rename the
+package, add `jsonata` to the module's version catalog and build, copy the `mw.partners` block shape into
+`application.yml` with that adapter's seed partners, `security.allowed-hosts` per instance (and
+`insecure-http-hosts` for its simulator only) and Resilience4j instances, keep secrets under
+`mw.partner-secrets.<instance>.<name>` in OpenBao, and in the test config set
+`mw.partners.config-consumer.enabled: false` and allow localhost. Keep operation paths plain (no query
+strings: put parameters in the body or a `{reference}` segment). Never relax the path rule, the target
+guard or `Redirect.NEVER`. The service layer stays the adapter's own (request checks, reference, reply
+mapping, inbox/outbox).
 
 ## Contracts owned
 

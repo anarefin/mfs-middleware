@@ -56,6 +56,16 @@ public record PartnerConfig(
 
   private static final Pattern SUFFIX = Pattern.compile("^[A-Z0-9_]+$");
 
+  /** Prefix of a problem that breaks a security rule (logged as a security event when refused). */
+  public static final String SECURITY = "security: ";
+
+  /**
+   * An operation path: absolute, plain characters and the {@code {reference}} placeholder only. No
+   * {@code @ : ? # \ %}, no {@code ..} segment, no {@code //}: nothing that could move the request
+   * to another host, port or user info once appended to the base URL.
+   */
+  static final Pattern SAFE_PATH = Pattern.compile("^/[A-Za-z0-9._~/{}-]*$");
+
   public PartnerConfig {
     enabled = enabled == null || enabled;
     template = template == null || template.isBlank() ? PartnerTemplates.REQUEST_REPLY : template;
@@ -138,7 +148,8 @@ public record PartnerConfig(
         && !mfs.mw.adapter.telco.partner.CredentialRef.NAME.matcher(auth.credentialsRef()).matches()) {
       // the value is not echoed: it may be an attempt to name another secret
       problems.add(
-          "auth.credentialsRef must be a secret name of this partner (lower-case letters, digits, hyphen)");
+          SECURITY
+              + "auth.credentialsRef must be a secret name of this partner (lower-case letters, digits, hyphen)");
     }
     return problems;
   }
@@ -191,14 +202,25 @@ public record PartnerConfig(
       if (method == null || method.isBlank()) {
         problems.add("operations." + name + ".method is required");
       }
-      if (path == null || !path.startsWith("/")) {
-        problems.add("operations." + name + ".path must start with /");
+      if (!safePath(path)) {
+        // the value is not echoed: it may be an attempt to reach another host
+        problems.add(
+            SECURITY
+                + "operations." + name + ".path must be an absolute path of letters, digits, . _ ~ - /"
+                + " and {reference}, without .. segments or //");
       }
       if (response == null || response.isBlank()) {
         problems.add("operations." + name + ".response mapping is required");
       }
       compiles("operations." + name + ".request", request, problems);
       compiles("operations." + name + ".response", response, problems);
+    }
+
+    static boolean safePath(String path) {
+      return path != null
+          && SAFE_PATH.matcher(path).matches()
+          && !path.contains("//")
+          && java.util.Arrays.stream(path.split("/")).noneMatch(".."::equals);
     }
 
     private static void compiles(String field, String source, List<String> problems) {
