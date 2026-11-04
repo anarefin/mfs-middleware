@@ -231,6 +231,81 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
+  /portal/org/v1/transactions:
+    get:
+      operationId: searchOrgTransactions
+      summary: The org's own transactions, newest first (SP query, ticket 35)
+      description: >-
+        Needs role `org-maker` or `org-checker`. Only transactions the token's org initiated (its
+        bulk children) are listed; there is no org parameter. Customer data is masked (MSISDN
+        `0171****789`). Errors: 400 MW-VAL-001 (bad filter); 404 MW-VAL-003 (`batchId` not a batch of
+        the org); 503 MW-SYS-040 (query temporarily unavailable, retryable).
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: batchId
+          in: query
+          description: Only the children of this batch of the org
+          schema: { type: string, format: uuid }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/TxnStatus" } }
+        - { name: from, in: query, description: Inclusive lower bound of createdAt, schema: { type: string, format: date-time } }
+        - { name: to, in: query, description: Exclusive upper bound of createdAt, schema: { type: string, format: date-time } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 100000, default: 0 } }
+      responses:
+        "200":
+          description: One page of the org's transactions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, limit, offset]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/OrgTxn" }
+                  limit: { type: integer }
+                  offset: { type: integer }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /portal/org/v1/transactions/{txnId}:
+    get:
+      operationId: getOrgTransaction
+      summary: One of the org's transactions with its state changes in order
+      description: >-
+        Needs role `org-maker` or `org-checker`. Another org's transaction is 404 MW-VAL-003, as
+        is an unknown one. 503 MW-SYS-040 when the query is temporarily unavailable (retryable).
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - { name: txnId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The transaction and its timeline
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [transaction, timeline]
+                properties:
+                  transaction: { $ref: "#/components/schemas/OrgTxn" }
+                  timeline:
+                    type: array
+                    items:
+                      type: object
+                      required: [from, to, at]
+                      properties:
+                        from: { $ref: "#/components/schemas/TxnStatus" }
+                        to: { $ref: "#/components/schemas/TxnStatus" }
+                        at: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     bearer:
@@ -255,6 +330,43 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
   schemas:
+    TxnStatus:
+      type: string
+      description: Saga state of a transaction (mw.txn.status.v1).
+      enum:
+        [RECEIVED, VALIDATING, HOLDING, POSTING, PARTNER_PENDING, UNKNOWN, COMMITTING, RELEASING,
+         REVERSING, COMPLETED, FAILED, REJECTED, REVERSED, MANUAL_REVIEW]
+    OrgTxn:
+      type: object
+      required: [txnId, txnType, status, createdAt, updatedAt, amount]
+      properties:
+        txnId: { type: string, format: uuid }
+        txnType: { type: string, description: BULK_DISBURSE for a batch child }
+        status: { $ref: "#/components/schemas/TxnStatus" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        amount: { $ref: "#/components/schemas/Amount" }
+        fee: { $ref: "#/components/schemas/Amount" }
+        debitParty: { $ref: "#/components/schemas/MaskedParty" }
+        creditParty: { $ref: "#/components/schemas/MaskedParty" }
+        reversalTxnId: { type: string, format: uuid }
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            messageBn: { type: string }
+            retryable: { type: boolean }
+        attributes:
+          type: object
+          description: parentTxnId, batchId, lineNo and reference of a batch child
+          additionalProperties: { type: string }
+    MaskedParty:
+      type: object
+      properties:
+        type: { type: string }
+        id: { type: string, description: "Masked: MSISDN 0171****789, other ids last 4" }
+        walletType: { type: string }
     BatchStatus:
       type: string
       description: >-

@@ -52,6 +52,18 @@ public final class PortalApi {
     return Http.get(Stack.get().url(BATCHES + "/" + batchId + "/result"), auth(user));
   }
 
+  private static final String TXNS = "portal/org/v1/transactions";
+
+  /** The SP transaction query (ticket 35): the org's own transactions, optionally of one batch. */
+  public static Http.Response transactions(String user, String batchId) {
+    return Http.get(Stack.get().url(TXNS + (batchId == null ? "" : "?batchId=" + batchId)), auth(user));
+  }
+
+  /** One of the org's transactions with its timeline (ticket 35). */
+  public static Http.Response transaction(String user, String txnId) {
+    return Http.get(Stack.get().url(TXNS + "/" + txnId), auth(user));
+  }
+
   /**
    * A valid file of {@code rows} payouts of {@code taka} each to the core mock's seeded customers
    * {@code 01711000001..01711001000} in turn (row i pays customer ((i - 1) mod 1000) + 1), fresh

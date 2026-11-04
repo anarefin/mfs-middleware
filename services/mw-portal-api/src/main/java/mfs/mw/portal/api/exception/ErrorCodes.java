@@ -33,6 +33,8 @@ public final class ErrorCodes {
   public static final String AUTH_MAKER_IS_CHECKER = "MW-AUTH-030";
   /** Unexpected failure; details stay in the log, never in the response. */
   public static final String SYS_INTERNAL = "MW-SYS-001";
+  /** mw-orchestrator's query API is unreachable or answered unusably (ticket 35): 503, retryable. */
+  public static final String SYS_ORCHESTRATOR_UNAVAILABLE = "MW-SYS-040";
 
   private ErrorCodes() {}
 }

@@ -52,6 +52,7 @@ class PartnerCallbackSagaIT {
   private final MutableClock clock;
   private final JdbcTemplate jdbc;
   private final JsonMapper json;
+  private final TransactionQueryService queries;
 
   @Autowired
   PartnerCallbackSagaIT(
@@ -62,7 +63,9 @@ class PartnerCallbackSagaIT {
       SagaTimerService timers,
       Clock clock,
       JdbcTemplate jdbc,
-      JsonMapper json) {
+      JsonMapper json,
+      TransactionQueryService queries) {
+    this.queries = queries;
     this.transactions = transactions;
     this.coreEvents = coreEvents;
     this.partnerReplies = partnerReplies;
@@ -191,6 +194,21 @@ class PartnerCallbackSagaIT {
     assertThat(last("core.payment.command.v1", txn).path("commandType").asString()).isEqualTo("CommitHold");
     assertThat(last("mw.txn.status.v1", txn).path("partnerRef").asString()).isEqualTo("AGG-7");
     assertAllValid(txn);
+  }
+
+  @Test
+  void anAcceptedCallbackIsOnTheSagaTimelineAfterThePayRequest() {
+    String txn = toPartnerPending();
+
+    callbacks.handle(callback(txn, "SUCCESS", "AGG-7", null));
+
+    List<mfs.mw.orchestrator.dto.TxnDetail.PartnerCallView> calls =
+        queries.detail(UUID.fromString(txn), null).partnerCalls();
+    assertThat(calls).extracting(c -> c.operation()).containsExactly("PAY", "CALLBACK");
+    assertThat(calls.get(0).outcome()).isEqualTo("PENDING"); // the adapter's interim answer
+    assertThat(calls.get(1).outcome()).isEqualTo("SUCCESS");
+    assertThat(calls.get(1).partnerRef()).isEqualTo("AGG-7");
+    assertThat(calls.get(1).answeredAt()).isNotNull();
   }
 
   @Test
@@ -324,6 +342,9 @@ class PartnerCallbackSagaIT {
     assertRejected(txn, "PARTNER_PENDING", before, "PARTNER_MISMATCH");
     assertThat(outbox("core.payment.command.v1", txn).stream().map(c -> c.path("commandType").asString()))
         .doesNotContain("CommitHold");
+    assertThat(queries.detail(UUID.fromString(txn), null).partnerCalls())
+        .extracting(c -> c.operation())
+        .containsExactly("PAY");
   }
 
   @Test

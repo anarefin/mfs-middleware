@@ -1,0 +1,106 @@
+openapi: 3.1.0
+info:
+  title: upay audit search internal API (mw-audit-dw)
+  version: 1.0.0
+  description: |
+    Internal, read-only API of mw-audit-dw (ticket 35, spec 14.3, 16.2): search of the audit
+    trail. Its client is mw-admin-api, over the `app` zone network (`http://mw-audit-dw:8080`);
+    it is not routed by APISIX and has no edge route. It reads as the read-only role
+    `audit_reader`. Values are returned as stored, i.e. already masked (spec 18.3); operator
+    usernames (actor.id of a `user`) are staff data and are not masked. MSISDN search is done on
+    the transaction (mw-orchestrator `txn-query.v1`, keyed hash), then the audit trail by txnId.
+    Every error is the 5.3 envelope.
+servers:
+  - url: http://mw-audit-dw:8080
+paths:
+  /internal/v1/audit/events:
+    get:
+      operationId: searchAuditEvents
+      summary: Search audit events, in the order they happened
+      description: >-
+        Every filter is optional; filters are ANDed. Ordered by `at`, then chain order. Errors:
+        400 MW-VAL-001 (bad filter, limit outside 1..500, from not before to).
+      parameters:
+        - { name: txnId, in: query, schema: { type: string, format: uuid } }
+        - { name: actorType, in: query, schema: { type: string, minLength: 1, maxLength: 32 } }
+        - { name: actorId, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: action, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: resource, in: query, schema: { type: string, minLength: 1, maxLength: 256 } }
+        - { name: outcome, in: query, schema: { type: string, minLength: 1, maxLength: 32 } }
+        - name: from
+          in: query
+          description: Inclusive lower bound of `at`
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          description: Exclusive upper bound of `at`
+          schema: { type: string, format: date-time }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 100000, default: 0 } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: One page of audit events
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditPage" }
+        "400": { $ref: "#/components/responses/Error" }
+components:
+  responses:
+    Error:
+      description: Error envelope (spec 5.3)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    AuditEntry:
+      type: object
+      required: [auditId, month, seq, recordedAt, at, correlationId, actor, action, resource, outcome, service]
+      properties:
+        auditId: { type: string, format: uuid }
+        month: { type: string, description: "yyyy-MM: the hash chain the event belongs to" }
+        seq: { type: integer, description: Position in the month's chain }
+        recordedAt: { type: string, format: date-time }
+        at: { type: string, format: date-time }
+        txnId: { type: string, format: uuid }
+        correlationId: { type: string }
+        actor:
+          type: object
+          required: [type, id]
+          properties:
+            type: { type: string }
+            id: { type: string }
+        action: { type: string }
+        resource: { type: string }
+        outcome: { type: string }
+        service: { type: string }
+        sourceIp: { type: string }
+        payloadRef: { type: string }
+        before: { type: object }
+        after: { type: object }
+    AuditPage:
+      type: object
+      required: [items, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AuditEntry" }
+        limit: { type: integer }
+        offset: { type: integer }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }
