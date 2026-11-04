@@ -18,6 +18,7 @@
 #   - partner callback route (ticket 22): unsigned / badly signed -> 401 MW-AUTH-001 from
 #     mw-adapter-billpay, over 16 KiB -> 413, POST only, unrouted partner 404, ip allow-list and
 #     per-source quota configured
+#   - C2W bank callback route (ticket 23): the same cases against mw-adapter-bank
 #   - applying deploy/apisix twice is a no-op (Admin API objects identical but update_time)
 # The quota check spends merchant01's quota for the rest of the window (60 s).
 set -uo pipefail
@@ -279,6 +280,33 @@ cb_policies() {
   printf '%s' "$r" | jq -e '.upstream.nodes | has("mw-adapter-billpay:8080")' >/dev/null || { echo "upstream: $(printf '%s' "$r" | jq -c .upstream)"; return 1; }
 }
 check "partner callback route: ip allow-list, quota per source address in Valkey, upstream mw-adapter-billpay" cb_policies
+
+# ---- C2W bank callback route (ticket 23): same edge policies, upstream mw-adapter-bank ----
+bank_path=/partner/c2wbank/callback/debits
+bank_body='{"transactionId":"UPAY00000000000000000000000000000000","status":"SUCCESS","code":"000","debitRef":"C2W-1"}'
+bank_unsigned() { call POST "$bank_path" -H 'Content-Type: application/json' -d "$bank_body" && envelope 401 MW-AUTH-001; }
+check "bank callback without a signature -> 401 MW-AUTH-001 (mw-adapter-bank)" bank_unsigned
+bank_bad_signature() {
+  call POST "$bank_path" -H 'Content-Type: application/json' -H "X-Timestamp: $(date +%s)" \
+    -H 'X-Signature: bm90IGEgc2lnbmF0dXJl' -d "$bank_body" && envelope 401 MW-AUTH-001
+}
+check "bank callback with a bad signature -> 401 MW-AUTH-001 (mw-adapter-bank)" bank_bad_signature
+bank_too_large() {
+  head -c 20000 /dev/zero | tr '\0' 'a' | awk '{ printf "{\"transactionId\":\"%s\"}", $0 }' >"$tmp/bank-big"
+  call POST "$bank_path" -H 'Content-Type: application/json' --data-binary "@$tmp/bank-big" && envelope 413 MW-VAL-BODY_TOO_LARGE
+}
+check "bank callback body over 16 KiB -> 413 at the edge" bank_too_large
+bank_get() { call GET "$bank_path" && envelope 404 MW-VAL-003; }
+check "bank callback route takes POST only (GET -> 404 envelope)" bank_get
+bank_policies() {
+  local r; r="$(admin GET routes/partner-c2wbank-callback | jq -c '.value')"
+  printf '%s' "$r" | jq -e '.plugins["ip-restriction"].whitelist | length > 0 and (index("0.0.0.0/0") | not)' >/dev/null \
+    || { echo "ip-restriction: $(printf '%s' "$r" | jq -c '.plugins["ip-restriction"]')"; return 1; }
+  printf '%s' "$r" | jq -e '.plugins["limit-count"] | .key == "remote_addr" and .policy == "redis" and .redis_password == "$env://VALKEY_PASSWORD" and .group == "partner-c2wbank-callback"' >/dev/null \
+    || { echo "limit-count: $(printf '%s' "$r" | jq -c '.plugins["limit-count"]')"; return 1; }
+  printf '%s' "$r" | jq -e '.upstream.nodes | has("mw-adapter-bank:8080")' >/dev/null || { echo "upstream: $(printf '%s' "$r" | jq -c .upstream)"; return 1; }
+}
+check "bank callback route: ip allow-list, quota per source address in Valkey, upstream mw-adapter-bank" bank_policies
 
 # ---- idempotent apply ----
 dump() { for k in global_rules routes ssls; do admin GET "$k"; done | jq -S -s '[.[].list[]? | .value | del(.update_time)] | sort_by(.id)'; }

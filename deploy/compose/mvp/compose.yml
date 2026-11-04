@@ -22,6 +22,8 @@ include:
     env_file: ../platform/.env
   - path: ../../../services/mw-adapter-billpay/compose.yml
     env_file: ../platform/.env
+  - path: ../../../services/mw-adapter-bank/compose.yml
+    env_file: ../platform/.env
   - path: ../../../services/mw-orchestrator/compose.yml
     env_file: ../platform/.env
   - path: ../../../services/mw-audit-dw/compose.yml
