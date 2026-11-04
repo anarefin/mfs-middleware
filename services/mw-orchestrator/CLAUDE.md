@@ -5,7 +5,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 ## Responsibilities
 
-- Runs P2P, CASH_IN, CASH_OUT, TOPUP, BILL_PAY and ADD_MONEY_BANK transactions, and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14, WP15 part).
+- Runs P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, TOPUP, BILL_PAY and ADD_MONEY_BANK transactions, and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14, WP15 part).
   Consumes `mw.txn.request.v1` (`route/TxnRequestRoute`), the core results on
   `core.wallet.event.v1` (`route/CoreWalletEventRoute`) and `core.payment.event.v1` (`route/CorePaymentEventRoute`, same handler) and partner adapter answers on
   `mw.partner.reply.v1` (`route/PartnerReplyRoute`) and partner callbacks on `mw.partner.inbound.v1`
@@ -19,8 +19,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `exception/InvalidTransitionException`). All transitions of the 7.2 table are modelled and unit-tested;
   flows (`Flow`, one per `txnType`, found by `FlowRegistry`) are sets of reusable `Step`s
   (VALIDATE, POST, HOLD, CALL_PARTNER, COMMIT, RELEASE, REVERSE, QUERY, INQUIRE; `Step.of(effect)`).
-  `P2pFlow`, `CashInFlow`, `CashOutFlow` = validate + post (parties as the channel set them:
-  CASH_IN agent -> customer, CASH_OUT customer -> agent; the core enforces the wallet types). `TopupFlow` = validate + hold + callPartner (`PartnerCall` telco,
+  `P2pFlow`, `CashInFlow`, `CashOutFlow`, `MerchantPayFlow` (ticket 30) = validate + post (parties as the channel set them:
+  CASH_IN agent -> customer, CASH_OUT customer -> agent, MERCHANT_PAY customer -> merchant; the core enforces the wallet types). `TopupFlow` = validate + hold + callPartner (`PartnerCall` telco,
   `mw.partner.request.telco.v1`) + commit + release; `BillPayFlow` (ticket 21) is the same with
   `PartnerCall` billpay on `mw.partner.request.billpay.v1` (partner `{partnerId: <aggregator>,
   productCode: BILL, billerCode}` and credit party `BILLER_ACCOUNT` as the app gateway sets them;
@@ -49,7 +49,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   (`Flow.allows(Step)`: REVERSE and INQUIRE belong to every flow, QUERY to every flow that holds);
   SCHEDULE_INQUIRY arms the first inquiry slot. A transition whose effect is a step the flow lacks
   is refused by `SagaEngine.fire` as an `InvalidTransitionException` before anything is written
-  (S2: ManualCommit of P2P/CASH_IN/CASH_OUT, ManualRelease of ADD_MONEY_BANK); only an unknown
+  (S2: ManualCommit of P2P/CASH_IN/CASH_OUT/MERCHANT_PAY, ManualRelease of ADD_MONEY_BANK); only an unknown
   txnType is logged `saga.effect.unwired` and skipped. `SagaEngine.fire` is the single place that applies an
   event: persist state + `saga_step`, publish status + audit event, re-arm the deadline, send the
   next command. `SagaEngine.created` publishes the first state (RECEIVED) the same way.

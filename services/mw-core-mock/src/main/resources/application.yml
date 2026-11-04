@@ -141,6 +141,8 @@ mw:
       CASH_OUT: 1000
       TOPUP: 200
       BILL_PAY: 300
+      # The customer pays no fee on a merchant payment (merchant discount rate is out of the MVP).
+      MERCHANT_PAY: 0
     limits:
       per-txn-minor: 500000
       daily-minor: 1500000
@@ -156,6 +158,7 @@ mw:
     wallet-types:
       CASH_IN: { debit: AGENT, credit: CUSTOMER }
       CASH_OUT: { debit: CUSTOMER, credit: AGENT }
+      MERCHANT_PAY: { debit: CUSTOMER, credit: MERCHANT }
     # Consecutive wrong PINs that lock a wallet (spec 9.1); a correct PIN resets the count.
     pin-max-failures: 5
     pin:

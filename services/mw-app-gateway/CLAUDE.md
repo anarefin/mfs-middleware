@@ -5,9 +5,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 
 ## Responsibilities
 
-- App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P, CASH_IN, CASH_OUT, ADD_MONEY_BANK,
+- App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, ADD_MONEY_BANK,
   TOPUP and BILL_PAY, `mw.app-gateway.supported-txn-types`), `GET /app/v1/transactions/{txnId}`,
-  `GET /app/v1/billers` and `POST /app/v1/billers/{code}/fetch-bill` behind the APISIX
+  `GET /app/v1/billers`, `POST /app/v1/billers/{code}/fetch-bill` and `GET /app/v1/merchant/collections` behind the APISIX
   route `/app/v1/*` (`deploy/apisix/routes/app-v1.json`, `openid-connect` bearer-only on realm
   `customers`).
 - Auth (`config/SecurityConfig`, `security/`): bearer JWT of Keycloak realm `customers` on
@@ -15,9 +15,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   with `/realms/customers`: the host part follows the URL the client used). The payer wallet is
   the `msisdn` claim (user attribute + `mw-app` client mapper in `customers-realm.json`), the
   channel follows the realm role: `customer` -> `CUSTOMER_APP`/`CUSTOMER`, `agent` ->
-  `AGENT_APP`/`AGENT` (WP20; merchant not served yet; a token with both roles is the customer).
+  `AGENT_APP`/`AGENT`, `merchant` -> `MERCHANT_APP`/`MERCHANT` (WP20, ticket 30; a token with several of
+  these roles is served by the first in that order, any other role is 403).
   Role per `txnType` (`mw.app-gateway.txn-type-roles`, checked at submit after the type check):
-  P2P, CASH_OUT, TOPUP, BILL_PAY and ADD_MONEY_BANK customer only, CASH_IN agent only (switch here, nowhere else). Deny by
+  P2P, CASH_OUT, MERCHANT_PAY, TOPUP, BILL_PAY and ADD_MONEY_BANK customer only, CASH_IN agent only; the merchant
+  initiates nothing (`AppGatewayConfigTest` checks no type lists MERCHANT) (switch here, nowhere else). Deny by
   default: a type with no entry is refused for every role; `AppGatewayConfigTest` fails when a
   txnType of the OpenAPI enum has no entry.
   No token / bad token `401 MW-AUTH-001`; no wallet, other role or a type the role may not
@@ -43,7 +45,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   (no OTP step yet: open point).
 - Validation: `Idempotency-Key` required, 1..64 visible ASCII (`MW-VAL-001`, detail field
   `Idempotency-Key`); body by Bean Validation (`MW-VAL-001`, `amount.valueMinor` > 0, PIN
-  ciphertext required); unsupported `txnType` `MW-VAL-010`; for P2P/CASH_IN/CASH_OUT a
+  ciphertext required); unsupported `txnType` `MW-VAL-010`; for P2P/CASH_IN/CASH_OUT/MERCHANT_PAY a
   counterparty equal to the caller's own wallet `MW-VAL-012` (the core enforces the real wallet
   types per txnType: `MW-CORE-INVALID_COUNTERPARTY`); `attributes` keys allow-listed
   (`mw.app-gateway.allowed-attributes`, only `reference`), so a client can never set reserved
@@ -87,7 +89,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   dependency; Kafka request/reply would misuse orchestrator-owned partner topics).
 - Submit (`service/TransactionService`): mints a UUIDv7 txnId (`util/UuidV7`), maps to the
   canonical `mw.txn.request.v1` (`mapper/RequestMapper`; initiator MSISDN = token wallet; debit = token
-  wallet (its own PIN), credit = body wallet (walletType AGENT for CASH_OUT, else CUSTOMER); PIN ciphertext copied untouched, never logged), registers a waiter, then
+  wallet (its own PIN), credit = body wallet (walletType AGENT for CASH_OUT, MERCHANT for MERCHANT_PAY, else CUSTOMER); PIN ciphertext copied untouched, never logged), registers a waiter, then
   publishes directly (not via the outbox) with header `mw-reply-to = instanceId`. Kafka refusing
   or timing out (`max-block-ms`/`delivery-timeout-ms` 5 s/10 s) -> `503 MW-SYS-010`, retryable,
   nothing recorded. Idempotency is decided by mw-orchestrator (7.3); this service only requires
@@ -110,6 +112,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   to the stored txnId (`app_transaction.stored_txn_id`, V5), so when the answer comes after the
   reply budget the 202's txnId still resolves: GET on it returns the stored transaction's view
   (its txnId, up to its final status), 404 for anyone else (S3). Only the initiator's wallet can read a row; anything else is 404 `MW-VAL-003`.
+- MERCHANT_PAY and collections (ticket 30, WP20): the customer pays the merchant wallet named in
+  `creditParty` (no partner, no fee in mw-core-mock, which checks CUSTOMER -> MERCHANT:
+  `MW-CORE-INVALID_COUNTERPARTY`). `GET /app/v1/merchant/collections?limit=1..100` (default 50,
+  `MW-VAL-001` otherwise; `controller/MerchantController`, `service/CollectionService`,
+  `mapper/CollectionMapper`): merchant role only (`403 MW-AUTH-002`), wallet from the token, so a
+  merchant only ever sees payments to its own wallet. Rows: `app_transaction.payee_id` (V7, the
+  merchant wallet of a MERCHANT_PAY, set by the projection and at submit,
+  `TransactionView.merchantPayee`), status COMPLETED or REVERSED only, newest first (UUIDv7 txnId
+  order). Each entry `{txnId, status, amount, payer, coreRef, requestedAt, updatedAt}` with the payer's
+  MSISDN masked (`0171****789`); no fee, no PIN.
 - Init (`mw-app-gateway-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
   `app_gateway_rw`, schema `app_gateway`, `secret/mw-app-gateway` (DB password), AppRole; retries
   the database step when another init races it on a fresh stack, and waits for OpenBao's

@@ -118,4 +118,51 @@ class AppTransactionRepositoryIT {
 
     assertThat(repo.find(minted, PAYER)).map(TransactionView::txnId).contains(minted.toString());
   }
+
+  // --- merchant collections (ticket 30) ------------------------------------------------------
+
+  private static final String MERCHANT = "01911000001";
+  private static final String OTHER_MERCHANT = "01911000002";
+
+  private static TransactionView payment(UUID txnId, String status, String payer, String merchant, long minor) {
+    return new TransactionView(
+        txnId.toString(), status, "MERCHANT_PAY",
+        mfs.mw.app.gateway.dto.Party.wallet(payer, "CUSTOMER"),
+        mfs.mw.app.gateway.dto.Party.wallet(merchant, "MERCHANT"),
+        new mfs.mw.app.gateway.dto.Amount(minor, "BDT"), null, "CR-" + minor, null, T0, T0);
+  }
+
+  @Test
+  void aMerchantSeesOnlyTheCompletedOrReversedPaymentsToItsOwnWalletNewestFirst() {
+    UUID older = mfs.mw.app.gateway.util.UuidV7.next(java.time.Clock.fixed(T0, java.time.ZoneOffset.UTC));
+    UUID newer = mfs.mw.app.gateway.util.UuidV7.next(java.time.Clock.fixed(T0.plusSeconds(5), java.time.ZoneOffset.UTC));
+    UUID reversed = mfs.mw.app.gateway.util.UuidV7.next(java.time.Clock.fixed(T0.plusSeconds(9), java.time.ZoneOffset.UTC));
+    UUID rejected = UUID.randomUUID();
+    UUID running = UUID.randomUUID();
+    UUID toOther = UUID.randomUUID();
+    UUID p2pToMerchantNumber = UUID.randomUUID();
+
+    repo.insertAccepted(PAYER, "CUSTOMER_APP", payment(older, "RECEIVED", PAYER, MERCHANT, 100), T0);
+    repo.upsert(PAYER, "CUSTOMER_APP", payment(older, "COMPLETED", PAYER, MERCHANT, 100), T0.plusSeconds(1));
+    repo.upsert("01711000002", "CUSTOMER_APP", payment(newer, "COMPLETED", "01711000002", MERCHANT, 200), T0.plusSeconds(6));
+    repo.upsert(PAYER, "CUSTOMER_APP", payment(reversed, "REVERSED", PAYER, MERCHANT, 300), T0.plusSeconds(10));
+    repo.upsert(PAYER, "CUSTOMER_APP", payment(rejected, "REJECTED", PAYER, MERCHANT, 400), T0.plusSeconds(1));
+    repo.upsert(PAYER, "CUSTOMER_APP", payment(running, "POSTING", PAYER, MERCHANT, 500), T0.plusSeconds(1));
+    repo.upsert(PAYER, "CUSTOMER_APP", payment(toOther, "COMPLETED", PAYER, OTHER_MERCHANT, 600), T0.plusSeconds(1));
+    repo.upsert(
+        PAYER, "CUSTOMER_APP",
+        new TransactionView(
+            p2pToMerchantNumber.toString(), "COMPLETED", "P2P", mfs.mw.app.gateway.dto.Party.wallet(PAYER, "CUSTOMER"),
+            mfs.mw.app.gateway.dto.Party.wallet(MERCHANT, "CUSTOMER"), new mfs.mw.app.gateway.dto.Amount(700L, "BDT"),
+            null, null, null, T0, T0),
+        T0.plusSeconds(1));
+
+    assertThat(repo.collections(MERCHANT, 50))
+        .extracting(TransactionView::txnId)
+        .containsExactly(reversed.toString(), newer.toString(), older.toString());
+    assertThat(repo.collections(MERCHANT, 2)).hasSize(2);
+    assertThat(repo.collections(OTHER_MERCHANT, 50)).extracting(TransactionView::txnId).containsExactly(toOther.toString());
+    // a customer's own wallet number collects nothing
+    assertThat(repo.collections(PAYER, 50)).isEmpty();
+  }
 }

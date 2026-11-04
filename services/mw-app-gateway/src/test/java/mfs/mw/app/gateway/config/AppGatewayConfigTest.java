@@ -72,14 +72,18 @@ class AppGatewayConfigTest {
         .containsEntry("CASH_OUT", List.of("CUSTOMER"))
         .containsEntry("TOPUP", List.of("CUSTOMER"))
         .containsEntry("BILL_PAY", List.of("CUSTOMER"))
-        .containsEntry("ADD_MONEY_BANK", List.of("CUSTOMER"));
+        .containsEntry("ADD_MONEY_BANK", List.of("CUSTOMER"))
+        .containsEntry("MERCHANT_PAY", List.of("CUSTOMER"));
+    // the merchant app only reads its collections; it initiates nothing (ticket 30)
+    props.txnTypeRoles().forEach((type, roles) -> assertThat(roles).as(type).doesNotContain("MERCHANT"));
   }
 
   @Test
   void aTypeWithoutAnEntryIsDeniedForEveryRole() throws IOException {
     AppGatewayProperties props = shipped();
 
-    assertThat(props.mayInitiate("CUSTOMER", "MERCHANT_PAY")).isFalse();
+    assertThat(props.mayInitiate("CUSTOMER", "W2B")).isFalse();
+    assertThat(props.mayInitiate("AGENT", "W2B")).isFalse();
     assertThat(props.mayInitiate("AGENT", "MERCHANT_PAY")).isFalse();
     assertThat(props.mayInitiate("AGENT", "BILL_PAY")).isFalse();
     assertThat(props.mayInitiate("AGENT", "CASH_IN")).isTrue();
