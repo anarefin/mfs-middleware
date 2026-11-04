@@ -38,4 +38,6 @@ files:
   api/mw-adapter-billpay/billpay.v1.openapi.yaml: mw-adapter-billpay
   api/mw-ussd/ussd-http.v1.openapi.yaml: mw-ussd
   api/mw-portal-api/portal-org.v1.openapi.yaml: mw-portal-api
+  api/mw-orchestrator/txn-query.v1.openapi.yaml: mw-orchestrator
+  api/mw-audit-dw/audit-query.v1.openapi.yaml: mw-audit-dw
   api/mw-checkout/checkout.v1.openapi.yaml: mw-checkout

@@ -2,7 +2,8 @@
 # One-shot, idempotent provisioning for mw-orchestrator (dev/MVP stack; nothing else creates
 # per-service database roles or OpenBao identities yet):
 #   1. OpenBao KV secret/mw-orchestrator: database password (created once; an existing secret is
-#      never overwritten) and the Valkey password (synced from VALKEY_PASSWORD on every run).
+#      never overwritten), the Valkey password (synced from VALKEY_PASSWORD on every run) and the
+#      search hash key (created once, never overwritten).
 #   2. PostgreSQL: login role orchestrator_rw and schema txn owned by it (password synced from
 #      the secret on every run).
 #   3. OpenBao policy + AppRole mw-orchestrator (read that one secret); a fresh secret-id and the
@@ -66,6 +67,17 @@ if [ -n "${VALKEY_PASSWORD:-}" ]; then
   log "Valkey password spring.data.redis.password synced"
 else
   log "VALKEY_PASSWORD not set: spring.data.redis.password left as it is" >&2
+fi
+
+# 1c. search hash key (ticket 35: initiator_hash for MSISDN search) ----------------------------------
+# Created once and never rotated by this script: a new key would orphan every stored hash.
+if bao kv get -field=mw.orchestrator.search.hash-key "$KV" >/dev/null 2>&1; then
+  log "search hash key exists, keeping it"
+else
+  LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48 >"$tmp/hashkey"
+  bao kv patch "$KV" "mw.orchestrator.search.hash-key=@$tmp/hashkey" >/dev/null
+  rm -f "$tmp/hashkey"
+  log "created search hash key mw.orchestrator.search.hash-key"
 fi
 
 # 2. database role and schema ---------------------------------------------------------------------

@@ -77,6 +77,13 @@ resilience4j:
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 5
         automatic-transition-from-open-to-half-open-enabled: true
+    instances:
+      # mw-orchestrator's internal query API (client/OrchestratorQueryClient, ticket 35): only
+      # unavailability counts.
+      orchestrator:
+        base-config: default
+        minimum-number-of-calls: 20
+        record-exceptions: mfs.mw.portal.api.exception.OrchestratorUnavailableException
   bulkhead:
     configs:
       default:
@@ -97,6 +104,10 @@ resilience4j:
         exponential-max-wait-duration: 1s
         enable-randomized-wait: true
         randomized-wait-factor: 0.5
+    instances:
+      orchestrator:
+        base-config: default
+        retry-exceptions: mfs.mw.portal.api.exception.OrchestratorUnavailableException
 
 logging:
   structured:
@@ -176,6 +187,12 @@ mw:
     consumers:
       # route/TxnStatusRoute: the children's mw.txn.status.v1 records (tests switch it off)
       enabled: true
+    # mw-orchestrator's internal query API (SP transaction query, ticket 35), over the app network;
+    # not routed by APISIX.
+    orchestrator:
+      base-url: ${MW_ORCHESTRATOR_BASE_URL:http://mw-orchestrator:8080}
+      connect-timeout: 2s
+      read-timeout: 5s
     jwt:
       # Keycloak realm `portals` (spec 8.2). Keys are fetched on the first token.
       jwk-set-uri: ${MW_PORTAL_JWK_SET_URI:http://keycloak:8080/realms/portals/protocol/openid-connect/certs}

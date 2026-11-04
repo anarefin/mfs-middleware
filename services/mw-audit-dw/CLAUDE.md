@@ -5,8 +5,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 
 ## Responsibilities
 
-- Audit trail only in the MVP (spec 14.3, WP10; no DW stream, SFTP export, `audit.payload` or
-  search API yet). Consumes `mw.audit.event.v1` (`route/AuditEventRoute` ->
+- Audit trail in the MVP (spec 14.3, WP10; no DW stream, SFTP export or `audit.payload` yet).
+- Internal audit search (ticket 35, contract `api/mw-audit-dw/audit-query.v1.openapi.yaml`;
+  `controller/AuditSearchController` -> `service/AuditSearchService` -> `repository/AuditSearchRepository`):
+  `GET /internal/v1/audit/events` (txnId, actorType, actorId, action, resource, outcome, `[from, to)` on
+  `at`, limit 1..500, offset; ordered by `at`, then chain order), for mw-admin-api over the `app`
+  network, **no APISIX route**. Reads as `audit_reader` (`config/AuditSearchConfig`: its own lazy
+  read-only pool `audit-search`, max 4, same reader credentials `mw.audit-dw.chain-verify.reader-*`;
+  not a `DataSource` bean). Values come back as stored (already masked); operator usernames are not
+  masked. No MSISDN filter: events carry no keyed hash, so an operator finds the txn by MSISDN on
+  mw-orchestrator's query API, then its audit by txnId. `AuditSearchApiIT`. Consumes `mw.audit.event.v1` (`route/AuditEventRoute` ->
   `messaging/AuditEventListener` -> `service/AuditService.record`) with retry topics and DLQ; an
   unreadable event or one missing a required field throws and ends on the DLQ.
 - `audit.event`: append-only, RANGE-partitioned by month on `recorded_at` (the writer's clock,
@@ -60,6 +68,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 
 - `events/mw-audit-dw/mw.audit.event.v1.schema.json` (+ samples): own type `dto/AuditEvent`,
   checked by `AuditEventSchemaTest`. Produced by every service, consumed here.
+- `api/mw-audit-dw/audit-query.v1.openapi.yaml` (internal audit search, ticket 35).
 
 ## Contracts used
 

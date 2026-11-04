@@ -20,6 +20,7 @@ import mfs.mw.orchestrator.mapper.StatusMapper;
 import mfs.mw.orchestrator.messaging.EventMetadata;
 import mfs.mw.orchestrator.messaging.MwHeaders;
 import mfs.mw.orchestrator.messaging.OutboxWriter;
+import mfs.mw.orchestrator.repository.PartnerCallRepository;
 import mfs.mw.orchestrator.repository.SagaTimerRepository;
 import mfs.mw.orchestrator.repository.TransactionRepository;
 import mfs.mw.orchestrator.service.saga.Effect;
@@ -65,6 +66,7 @@ public class SagaEngine {
   private final FlowRegistry flows;
   private final OrchestratorProperties properties;
   private final InquiryProperties inquiry;
+  private final PartnerCallRepository partnerCalls;
   private final Clock clock;
 
   public SagaEngine(
@@ -78,6 +80,7 @@ public class SagaEngine {
       FlowRegistry flows,
       OrchestratorProperties properties,
       InquiryProperties inquiry,
+      PartnerCallRepository partnerCalls,
       Clock clock) {
     this.transactions = transactions;
     this.timers = timers;
@@ -89,6 +92,7 @@ public class SagaEngine {
     this.flows = flows;
     this.properties = properties;
     this.inquiry = inquiry;
+    this.partnerCalls = partnerCalls;
     this.clock = clock;
   }
 
@@ -228,12 +232,7 @@ public class SagaEngine {
   private void inquire(TransactionRecord rec, Flow flow, Instant now) {
     Optional<PartnerCall> call = flow.partnerCall();
     if (call.isPresent()) {
-      PartnerRequest request = partnerMapper.statusQuery(rec, call.get(), now, properties.partnerTimeout());
-      outbox.append(
-          call.get().topic(),
-          request.txnId(),
-          new EventMetadata(request.correlationId(), request.txnId(), request.requestId(), 1),
-          request);
+      sendToPartner(rec, call.get(), partnerMapper.statusQuery(rec, call.get(), now, properties.partnerTimeout()), now);
     } else {
       send(commandMapper.query(rec, now, properties.commandTtl()));
     }
@@ -268,12 +267,18 @@ public class SagaEngine {
   }
 
   private void callPartner(TransactionRecord rec, PartnerCall call, Instant now) {
-    PartnerRequest request = partnerMapper.pay(rec, call, now, properties.partnerTimeout());
+    sendToPartner(rec, call, partnerMapper.pay(rec, call, now, properties.partnerTimeout()), now);
+  }
+
+  /** Sends a partner request through the outbox and records it on the saga timeline (ticket 35). */
+  private void sendToPartner(TransactionRecord rec, PartnerCall call, PartnerRequest request, Instant now) {
     outbox.append(
         call.topic(),
         request.txnId(),
         new EventMetadata(request.correlationId(), request.txnId(), request.requestId(), 1),
         request);
+    partnerCalls.sent(
+        request.requestId(), rec.txnId(), request.payload().operation(), call.family(), partnerId(rec), now);
   }
 
   private void send(CoreCommand command) {

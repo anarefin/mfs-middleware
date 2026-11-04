@@ -4,13 +4,18 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import mfs.mw.orchestrator.dto.EncryptedPin;
 import mfs.mw.orchestrator.dto.ErrorInfo;
+import mfs.mw.orchestrator.dto.TxnDetail;
 import mfs.mw.orchestrator.dto.TxnRequest;
+import mfs.mw.orchestrator.dto.TxnSearchCriteria;
 import mfs.mw.orchestrator.entity.TransactionRecord;
 import mfs.mw.orchestrator.service.saga.Status;
+import mfs.mw.orchestrator.util.SearchHash;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.json.JsonMapper;
@@ -26,19 +31,22 @@ public class TransactionRepository {
 
   private final JdbcTemplate jdbc;
   private final JsonMapper json;
+  private final SearchHash searchHash;
 
-  public TransactionRepository(JdbcTemplate jdbc, JsonMapper json) {
+  public TransactionRepository(JdbcTemplate jdbc, JsonMapper json, SearchHash searchHash) {
     this.jdbc = jdbc;
     this.json = json;
+    this.searchHash = searchHash;
   }
 
+  /** Inserts a new transaction with the keyed hash of its initiator id (ticket 35 search). */
   public void insert(TransactionRecord rec) {
     TxnRequest r = rec.request();
     jdbc.update(
         "insert into transaction (txn_id, created_at, updated_at, requested_at, channel, txn_type,"
-            + " status, previous_status, initiator_id, correlation_id, idempotency_key, reply_to,"
-            + " amount_minor, currency, encrypted_pin, request)"
-            + " values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb)",
+            + " status, previous_status, initiator_id, initiator_hash, correlation_id, idempotency_key,"
+            + " reply_to, amount_minor, currency, encrypted_pin, request)"
+            + " values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb)",
         rec.txnId(),
         Timestamp.from(rec.createdAt()),
         Timestamp.from(rec.updatedAt()),
@@ -48,6 +56,7 @@ public class TransactionRepository {
         rec.status().name(),
         null,
         r.initiator().id(),
+        searchHash.of(r.initiator().id()),
         r.correlationId(),
         r.idempotencyKey(),
         rec.replyTo(),
@@ -146,6 +155,67 @@ public class TransactionRepository {
   public long countByStatus(Status status) {
     Long n = jdbc.queryForObject("select count(*) from transaction where status = ?", Long.class, status.name());
     return n == null ? 0 : n;
+  }
+
+  /**
+   * Internal search (ticket 35), newest first. MSISDN and org id are matched through {@code
+   * initiator_hash}, never through {@code initiator_id}; {@code parentTxnId} through the stored
+   * request's attributes (bulk children, ticket 34).
+   */
+  public List<TransactionRecord> search(TxnSearchCriteria c) {
+    StringBuilder sql = new StringBuilder("select " + COLUMNS + " from transaction where true");
+    List<Object> args = new ArrayList<>();
+    if (c.txnId() != null) {
+      sql.append(" and txn_id = ?");
+      args.add(c.txnId());
+    }
+    if (c.msisdn() != null) {
+      sql.append(" and initiator_hash = ?");
+      args.add(searchHash.of(c.msisdn()));
+    }
+    if (c.orgId() != null) {
+      sql.append(" and initiator_hash = ?");
+      args.add(searchHash.of(c.orgId()));
+    }
+    if (c.partnerRef() != null) {
+      sql.append(" and partner_ref = ?");
+      args.add(c.partnerRef());
+    }
+    if (c.status() != null) {
+      sql.append(" and status = ?");
+      args.add(c.status());
+    }
+    if (c.txnType() != null) {
+      sql.append(" and txn_type = ?");
+      args.add(c.txnType());
+    }
+    if (c.parentTxnId() != null) {
+      sql.append(" and request -> 'attributes' ->> 'parentTxnId' = ?");
+      args.add(c.parentTxnId());
+    }
+    if (c.from() != null) {
+      sql.append(" and created_at >= ?");
+      args.add(Timestamp.from(c.from()));
+    }
+    if (c.to() != null) {
+      sql.append(" and created_at < ?");
+      args.add(Timestamp.from(c.to()));
+    }
+    sql.append(" order by created_at desc, txn_id desc limit ? offset ?");
+    args.add(c.limit());
+    args.add(c.offset());
+    return jdbc.query(sql.toString(), this::map, args.toArray());
+  }
+
+  /** The saga timeline: every state change of {@code txnId} in the order it happened. */
+  public List<TxnDetail.TimelineStep> steps(UUID txnId) {
+    return jdbc.query(
+        "select from_status, to_status, trigger, at from saga_step where txn_id = ? order by id",
+        (rs, i) ->
+            new TxnDetail.TimelineStep(
+                rs.getString("from_status"), rs.getString("to_status"), rs.getString("trigger"),
+                rs.getTimestamp("at").toInstant()),
+        txnId);
   }
 
   private TransactionRecord map(ResultSet rs, int row) throws SQLException {
