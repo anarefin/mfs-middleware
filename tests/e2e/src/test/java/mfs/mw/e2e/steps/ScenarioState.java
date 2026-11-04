@@ -39,6 +39,9 @@ public class ScenarioState {
   /** Idempotency keys of the REVERSAL requests the scenario sent, in order. */
   final List<String> reversalKeys = new ArrayList<>();
 
+  /** batchId of the last bulk batch the scenario uploaded (org portal, ticket 33). */
+  String batchId;
+
   /** Balances noted before the action, by wallet id. */
   final Map<String, CoreMock.Balance> notedBalances = new LinkedHashMap<>();
 

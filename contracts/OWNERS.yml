@@ -36,3 +36,4 @@ files:
   events/mw-admin-api/mw.config.changed.v1.schema.json: mw-admin-api
   api/mw-app-gateway/app.v1.openapi.yaml: mw-app-gateway
   api/mw-adapter-billpay/billpay.v1.openapi.yaml: mw-adapter-billpay
+  api/mw-portal-api/portal-org.v1.openapi.yaml: mw-portal-api
