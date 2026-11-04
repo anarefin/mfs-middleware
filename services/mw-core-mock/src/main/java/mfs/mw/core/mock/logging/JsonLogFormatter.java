@@ -24,7 +24,9 @@ import org.springframework.core.env.Environment;
  * numbers ({@link MaskingPolicy#scrub(String)}). Numeric field values are scrubbed as text too
  * and written as the masked string when masking changes them. The system-generated ids
  * ({@code correlationId}, {@code txnId}: lowercase UUID; {@code traceId}: 32 and {@code spanId}:
- * 16 lowercase hex) are written unscrubbed only when they have exactly that shape.
+ * 16 lowercase hex) are written unscrubbed only when they have exactly that shape and hold no run
+ * of 10 or more digits ({@link MaskingPolicy#hidesANumber(String)}): a UUID's last group or a
+ * trace id can be all digits, and correlationId and traceId can come from the caller.
  *
  * <p>Context fields come from the MDC or from SLF4J key-value pairs ({@code
  * log.atInfo().addKeyValue("event", "txn.state.changed")}); key-value pairs win. Wired by {@code
@@ -39,9 +41,10 @@ public class JsonLogFormatter implements StructuredLogFormatter<ILoggingEvent> {
 
   private static final List<String> TRAILING_FIELDS = List.of("durationMs", "errorCode");
 
-  private static final Pattern UUID = Pattern.compile("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
+  private static final Pattern UUID =
+      Pattern.compile("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
 
-  /** Fields that carry ids the middleware generates, with the exact shape that is left whole. */
+  /** Fields that carry ids the middleware generates, with the shape that may stay whole. */
   private static final Map<String, Pattern> SYSTEM_IDS =
       Map.of(
           "correlationId", UUID,
@@ -124,7 +127,8 @@ public class JsonLogFormatter implements StructuredLogFormatter<ILoggingEvent> {
       out.put(key, text.equals(scrubbed) ? value : scrubbed);
     } else if (value instanceof String id
         && SYSTEM_IDS.containsKey(key)
-        && SYSTEM_IDS.get(key).matcher(id).matches()) {
+        && SYSTEM_IDS.get(key).matcher(id).matches()
+        && !MaskingPolicy.hidesANumber(id)) {
       out.put(key, id);
     } else {
       out.put(key, MaskingPolicy.describe(value));
