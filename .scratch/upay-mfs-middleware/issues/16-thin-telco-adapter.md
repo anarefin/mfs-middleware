@@ -6,10 +6,10 @@
 
 - 15: Simulators module + OCS simulator
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Route tests against WireMock: each outcome maps to the right reply status and code
-- [ ] Circuit opens after the configured failure rate and replies FAILED/UNKNOWN fast while open
-- [ ] A duplicate request for the same txnId reuses the same partner reference
-- [ ] No automatic retry of the non-idempotent top-up call
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] Route tests against WireMock: each outcome maps to the right reply status and code
+- [x] Circuit opens after the configured failure rate and replies FAILED/UNKNOWN fast while open
+- [x] A duplicate request for the same txnId reuses the same partner reference
+- [x] No automatic retry of the non-idempotent top-up call
+- [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
