@@ -6,10 +6,10 @@
 
 - 08: Orchestrator P2P slice
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Tamper-detection test: changing or deleting any row (as superuser) makes chain verification fail at that row
-- [ ] A permission test proves the writer role cannot UPDATE or DELETE
-- [ ] The same `auditId` delivered twice is stored once
-- [ ] e2e: a P2P txn produces audit rows for every state it passed through
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] Tamper-detection test: changing or deleting any row (as superuser) makes chain verification fail at that row
+- [x] A permission test proves the writer role cannot UPDATE or DELETE
+- [x] The same `auditId` delivered twice is stored once
+- [ ] e2e: a P2P txn produces audit rows for every state it passed through (deferred: covered by ticket 10's e2e P2P scenario, which asserts the audit rows)
+- [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
