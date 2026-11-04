@@ -136,10 +136,17 @@ public class OcsClient {
         throw malformed(status);
       }
       code = reply.code();
-    } else if (status >= 400) {
-      code = "HTTP_" + status;
+    } else if (status == 400) {
+      code = "HTTP_400";
     } else {
-      throw malformed(status);
+      // 408, 409, 429, other 4xx, 1xx, 3xx: not a definite answer, the top-up may have been
+      // applied, so never a rejection (a rejection releases the hold).
+      log.atWarn()
+          .addKeyValue("event", "partner.call.unexpected_status")
+          .addKeyValue("httpStatus", status)
+          .log("OCS answered with an unexpected status");
+      throw new OcsUnknownOutcomeException(
+          OcsUnknownOutcomeException.Reason.UNEXPECTED_STATUS, null);
     }
     String message = reply == null ? null : reply.message();
     return props.ambiguousCodes().contains(code)

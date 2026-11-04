@@ -7,7 +7,9 @@ public class OcsUnknownOutcomeException extends RuntimeException {
     TIMEOUT,
     CONNECTION_RESET,
     HTTP_5XX,
-    MALFORMED_REPLY
+    MALFORMED_REPLY,
+    /** Any status that is not a definite answer (408, 409, 429, other 4xx, 1xx, 3xx). */
+    UNEXPECTED_STATUS
   }
 
   private final Reason reason;

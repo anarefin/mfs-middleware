@@ -164,6 +164,22 @@ class TelcoRequestRouteIT {
   }
 
   @Test
+  void conflictAndTooManyRequestsAreUnknownNotFailed() throws Exception {
+    for (int status : new int[] {409, 429}) {
+      OCS.resetAll();
+      stubOcs(status, "{\"status\":\"FAILED\",\"code\":\"2001\"}");
+      PartnerRequest request = pay(newTxnId(), "01711000001", 2000);
+
+      send(request);
+      PartnerReply reply = awaitReplies(request.txnId(), 1).getFirst();
+
+      assertThat(reply.payload().outcome()).as("HTTP %s", status).isEqualTo("UNKNOWN");
+      assertThat(reply.payload().errorCode()).isEqualTo("MW-TMO-PARTNER_UNEXPECTED_STATUS");
+      assertThat(reply.payload().retryable()).isFalse();
+    }
+  }
+
+  @Test
   void aConnectionResetAfterSendIsUnknown() throws Exception {
     OCS.stubFor(
         post(urlEqualTo("/ocs/v1/topup")).willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
