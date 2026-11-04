@@ -71,6 +71,17 @@ Only APISIX is published, so every call goes through it:
   transaction's callback". Money comes from `SETTLEMENT` (no fee). Magic values: account ending
   999 refused (`MW-PTR-C2WBANK-DEBIT_REFUSED`), amount fraction .13 = no answer within 25 s and no
   callback (`@tsq`, COMPLETED by status inquiry after about 60 s).
+- USSD (`features/ussd.feature`, `@ussd`, ticket 26): the USSD gateway simulator in HTTP mode plays
+  the MNO (`support/UssdGateway`, `POST /test/sim/ussdgw/sessions`; it posts every step to
+  `http://apisix:9080/ussd/<mno>`, route `ussd-http` -> mw-ussd). Steps: "<msisdn> dials <code> on
+  <mno> and enters "9, 1, 01711000002, 10, 1, 1234"" (comma-separated inputs; `9` switches to
+  English, amounts in taka), "the first USSD screens were:" (one column, `\n` = line break), "the
+  USSD session ends with "..."" (prefix of the last screen), "the USSD session is still open on
+  "..."". MNO `robi` is on HTTP; `gp` is SMPP (not served over HTTP).
+  Other USSD flows (`features/ussd-flows.feature`, ticket 28): main menu 1 Send Money, 2 Cash Out
+  (agent number), 3 Mobile Recharge (1 own number = the dialling MNO, 2 other number + operator
+  list 1 gp 2 robi 3 banglalink 4 teletalk), 4 Pay Bill (billers sorted by code, 1 DESCO; the
+  amount due is fetched). "the USSD session is still open on a screen ending with "..."".
 - Device binding (`features/device-binding.feature`, `@device`, ticket 29): `support/Devices` gives
   each user one EC P-256 device for the run, bound on first use (`POST /app/v1/devices`, signed),
   its session reopened after 4 idle minutes; `AppApi` sends `X-Device-Id` on every call and signs
@@ -82,6 +93,12 @@ Only APISIX is published, so every call goes through it:
   REVERSED (or MANUAL_REVIEW) in the app view. "the orchestrator has handled the reversal
   request" waits for the request's idempotency row (a repeated reversal leaves no other trace).
   "the core rejects the next <Command> with reason <R>" injects a REJECT fault.
+- Notifications (`features/notify.feature`, `@p2p @notify`, ticket 24): "<msisdn> gets the SMS
+  \"...\"" waits (30 s) for that exact text at the SMSC simulator with a DELIVRD receipt
+  (`{txnId}` stands for the scenario's transaction); "the SMS to <msisdn> about the transaction
+  was sent as UCS2|GSM7 in N parts". `support/Smsc.messagesTo` reads `GET /sim/smsc/messages`
+  through `/test/sim/*`. Texts are the seeded `notify.template` rows (bn when the request has no
+  locale), the other party's number masked.
 - MERCHANT_PAY (`features/merchant.feature`, `@merchant`, ticket 30): customer01 pays merchant01
   (wallet `01911000001`, no fee) with the generic "submits MERCHANT_PAY of N poisha with
   counterparty ..." step; "<merchant> lists its collections", "<merchant> sees the transaction in its
