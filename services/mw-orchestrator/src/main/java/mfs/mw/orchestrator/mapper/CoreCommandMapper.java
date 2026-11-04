@@ -2,7 +2,9 @@ package mfs.mw.orchestrator.mapper;
 
 import java.time.Duration;
 import java.time.Instant;
+import mfs.mw.orchestrator.dto.Amount;
 import mfs.mw.orchestrator.dto.CoreCommand;
+import mfs.mw.orchestrator.dto.ReversePayload;
 import mfs.mw.orchestrator.dto.HoldPayload;
 import mfs.mw.orchestrator.dto.QueryPayload;
 import mfs.mw.orchestrator.dto.TransferPayload;
@@ -22,6 +24,7 @@ public class CoreCommandMapper {
   public static final String STEP_COMMIT = "commit";
   public static final String STEP_RELEASE = "release";
   public static final String STEP_QUERY = "query";
+  public static final String STEP_REVERSE = "reverse";
 
   public String commandId(String txnId, String step) {
     return txnId + ":" + step;
@@ -48,6 +51,24 @@ public class CoreCommandMapper {
   /** ReleaseHold; a resend keeps the commandId, so the core applies it once. */
   public CoreCommand release(TransactionRecord rec, Instant now, Duration ttl) {
     return onHold("ReleaseHold", STEP_RELEASE, rec, now, ttl);
+  }
+
+  /**
+   * ReverseTransaction of a completed transaction, sent under the REVERSAL request's own txnId
+   * (the core books the compensating entries under it): {@code <reversalTxnId>:reverse}, stable
+   * across resends. Amount and fee are the original's; the core undoes every entry once.
+   */
+  public CoreCommand reverse(TransactionRecord rec, Instant now, Duration ttl) {
+    if (rec.reversalTxnId() == null) {
+      throw new IllegalStateException("ReverseTransaction needs a reversal txnId; transaction " + rec.txnId() + " has none");
+    }
+    String reversalTxnId = rec.reversalTxnId().toString();
+    return new CoreCommand(
+        1, "ReverseTransaction", commandId(reversalTxnId, STEP_REVERSE), reversalTxnId,
+        rec.request().correlationId(), now, now.plus(ttl),
+        new ReversePayload(
+            rec.txnId().toString(), rec.request().amount(),
+            rec.feeMinor() == null ? null : Amount.bdt(rec.feeMinor()), null));
   }
 
   /**

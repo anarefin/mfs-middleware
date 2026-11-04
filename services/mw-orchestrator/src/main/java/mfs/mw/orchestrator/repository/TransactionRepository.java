@@ -22,7 +22,7 @@ public class TransactionRepository {
   private static final String COLUMNS =
       "txn_id, created_at, updated_at, status, previous_status, reply_to, fee_minor, core_ref,"
           + " error_code, error_message, error_message_bn, error_retryable, encrypted_pin::text,"
-          + " request::text, hold_id, partner_ref";
+          + " request::text, hold_id, partner_ref, reversal_txn_id";
 
   private final JdbcTemplate jdbc;
   private final JsonMapper json;
@@ -63,7 +63,7 @@ public class TransactionRepository {
         "update transaction set updated_at = ?, status = ?, previous_status = ?, fee_minor = ?,"
             + " core_ref = ?, error_code = ?, error_message = ?, error_message_bn = ?,"
             + " error_retryable = ?, encrypted_pin = ?::jsonb, hold_id = ?, partner_ref = ?,"
-            + " version = version + 1"
+            + " reversal_txn_id = ?, version = version + 1"
             + " where txn_id = ?",
         Timestamp.from(rec.updatedAt()),
         rec.status().name(),
@@ -77,6 +77,7 @@ public class TransactionRepository {
         rec.encryptedPin() == null ? null : json.writeValueAsString(rec.encryptedPin()),
         rec.holdId(),
         rec.partnerRef(),
+        rec.reversalTxnId(),
         rec.txnId());
   }
 
@@ -91,6 +92,20 @@ public class TransactionRepository {
   public Optional<TransactionRecord> findForUpdate(UUID txnId) {
     return jdbc
         .query("select " + COLUMNS + " from transaction where txn_id = ? for update", this::map, txnId)
+        .stream()
+        .findFirst();
+  }
+
+  /**
+   * Loads and row-locks the transaction that the REVERSAL request {@code reversalTxnId}
+   * compensates: the core answers ReverseTransaction under the reversal's own txnId.
+   */
+  public Optional<TransactionRecord> findForUpdateByReversal(UUID reversalTxnId) {
+    return jdbc
+        .query(
+            "select " + COLUMNS + " from transaction where reversal_txn_id = ? for update",
+            this::map,
+            reversalTxnId)
         .stream()
         .findFirst();
   }
@@ -129,6 +144,7 @@ public class TransactionRepository {
         error,
         pin == null ? null : json.readValue(pin, EncryptedPin.class),
         rs.getString("hold_id"),
-        rs.getString("partner_ref"));
+        rs.getString("partner_ref"),
+        rs.getObject("reversal_txn_id", UUID.class));
   }
 }

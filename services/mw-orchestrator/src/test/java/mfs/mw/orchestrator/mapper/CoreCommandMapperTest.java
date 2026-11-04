@@ -44,4 +44,28 @@ class CoreCommandMapperTest {
     assertThat(c.commandId()).isEqualTo(rec.txnId() + ":post");
     assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(c))).isEmpty();
   }
+
+  @Test
+  void reverseTransactionGoesUnderTheReversalTxnIdAndNamesTheOriginal() {
+    java.util.UUID reversal = java.util.UUID.fromString(TestData.txnId());
+    TransactionRecord completed = rec.withCore("CORE-1", 500L).withReversal(reversal);
+
+    CoreCommand c = mapper.reverse(completed, TestData.NOW, Duration.ofSeconds(60));
+
+    assertThat(c.commandType()).isEqualTo("ReverseTransaction");
+    assertThat(c.txnId()).isEqualTo(reversal.toString());
+    assertThat(c.commandId()).isEqualTo(reversal + ":reverse");
+    var payload = json.valueToTree(c).path("payload");
+    assertThat(payload.path("originalTxnId").asString()).isEqualTo(rec.txnId().toString());
+    assertThat(payload.path("amount").path("valueMinor").asLong()).isEqualTo(5_000);
+    assertThat(payload.path("fee").path("valueMinor").asLong()).isEqualTo(500);
+    assertThat(json.writeValueAsString(c)).doesNotContain("encryptedPin");
+    assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(c))).isEmpty();
+  }
+
+  @Test
+  void reverseTransactionNeedsAReversalTxnId() {
+    org.assertj.core.api.Assertions.assertThatThrownBy(() -> mapper.reverse(rec, TestData.NOW, Duration.ofSeconds(60)))
+        .isInstanceOf(IllegalStateException.class);
+  }
 }

@@ -11,7 +11,8 @@ import mfs.mw.orchestrator.service.saga.Status;
  * One row of {@code txn.transaction}: the request as accepted plus the saga state. Never leaves
  * the service layer (spec 4.4). The PIN ciphertext is kept only until the transaction is terminal.
  * {@code holdId} is the core's hold (flows that hold), {@code partnerRef} the partner's own
- * reference after a successful partner call.
+ * reference after a successful partner call, {@code reversalTxnId} the txnId of the REVERSAL
+ * request that compensates this transaction (set when it moves to REVERSING).
  */
 public record TransactionRecord(
     UUID txnId,
@@ -26,19 +27,22 @@ public record TransactionRecord(
     ErrorInfo error,
     EncryptedPin encryptedPin,
     String holdId,
-    String partnerRef) {
+    String partnerRef,
+    UUID reversalTxnId) {
 
   public TransactionRecord moved(Status to, Instant at, ErrorInfo newError) {
     return new TransactionRecord(
         txnId, createdAt, at, request, to, status, replyTo, feeMinor, coreRef,
-        newError != null ? newError : error, to.terminal() ? null : encryptedPin, holdId, partnerRef);
+        newError != null ? newError : error, to.terminal() ? null : encryptedPin, holdId, partnerRef,
+        reversalTxnId);
   }
 
   public TransactionRecord withCore(String newCoreRef, Long newFeeMinor) {
     return new TransactionRecord(
         txnId, createdAt, updatedAt, request, status, previousStatus, replyTo,
         newFeeMinor != null ? newFeeMinor : feeMinor,
-        newCoreRef != null ? newCoreRef : coreRef, error, encryptedPin, holdId, partnerRef);
+        newCoreRef != null ? newCoreRef : coreRef, error, encryptedPin, holdId, partnerRef,
+        reversalTxnId);
   }
 
   /** The core's hold id, when an event carried one (kept otherwise). */
@@ -47,7 +51,7 @@ public record TransactionRecord(
         ? this
         : new TransactionRecord(
             txnId, createdAt, updatedAt, request, status, previousStatus, replyTo, feeMinor,
-            coreRef, error, encryptedPin, newHoldId, partnerRef);
+            coreRef, error, encryptedPin, newHoldId, partnerRef, reversalTxnId);
   }
 
   /** The partner's reference, when a reply carried one (kept otherwise). */
@@ -56,6 +60,13 @@ public record TransactionRecord(
         ? this
         : new TransactionRecord(
             txnId, createdAt, updatedAt, request, status, previousStatus, replyTo, feeMinor,
-            coreRef, error, encryptedPin, holdId, newPartnerRef);
+            coreRef, error, encryptedPin, holdId, newPartnerRef, reversalTxnId);
+  }
+
+  /** The REVERSAL request that compensates this transaction. */
+  public TransactionRecord withReversal(UUID newReversalTxnId) {
+    return new TransactionRecord(
+        txnId, createdAt, updatedAt, request, status, previousStatus, replyTo, feeMinor, coreRef,
+        error, encryptedPin, holdId, partnerRef, newReversalTxnId);
   }
 }
