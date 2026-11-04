@@ -67,7 +67,23 @@ Partners of a known kind are config, not code. Layout:
 - `partner/mapping/JsonataMapping` (com.dashjoin:jsonata), `partner/auth/` (`none`, `api-key` (header
   param, default `X-Api-Key`), `hmac-sha256` (Base64 HMAC over method, path+query, epoch-seconds
   timestamp, hex SHA-256 of body; `X-Signature`, `X-Timestamp`, optional `X-Key-Id`; 300 s skew),
-  `EnvironmentCredentialResolver` (secret = Spring property named by the ref, filled from OpenBao)).
+  `EnvironmentCredentialResolver` (secret = Spring property named by the ref, filled from OpenBao;
+  refuses anything outside `mw.partner-secrets.`)).
+
+Security (config-changed records come from Kafka and ACLs are deferred, so they are untrusted):
+- `auth.credentials-ref` is a bare secret name (`^[a-z0-9][a-z0-9-]{0,63}$`), resolved as the property
+  `mw.partner-secrets.<instance>.<name>` (OpenBao `secret/mw-adapter-telco`). A partner cannot name another
+  partner's secret or any other property (DB password, Vault token); the resolver re-checks the prefix.
+- `mw.partners.security` is static config only (application.yml, per-environment overrides, OpenBao):
+  `allowed-hosts.<instance>` (hosts its `baseUrl` may name; no entry = the partner cannot be configured)
+  and `insecure-http-hosts` (plain http allowed; default `mw-simulators` via
+  `MW_PARTNER_INSECURE_HTTP_HOSTS`, set it empty in production). Everything else needs https, no user info.
+  Instance ids are `^[a-z0-9][a-z0-9-]{0,63}$`. Adding a partner by config therefore needs its host on the
+  static allowlist first (`MW_OCS_ALLOWED_HOSTS` for the seed).
+- Seeds and config-changed records pass the same `PartnerEndpointPolicy`; a broken seed fails start-up, a
+  refused record keeps the last good config and logs `security.partner_config_refused` (configKey, version,
+  changedBy/approvedBy, reasons; never secret values or the refused ref). So a record can change operational
+  fields (enabled, timeouts, mappings, error maps, secret names) but not leave the allowlists.
 
 Rules the framework enforces whatever the mapping says (fail closed): 5xx -> UNKNOWN before mapping;
 SUCCESS/PENDING only on a 2xx (PENDING only for the async template, SUCCESS needs a partnerRef); FAILED

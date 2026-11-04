@@ -157,6 +157,16 @@ mw:
     config-consumer:
       # Consumer of mw.config.changed.v1 (PartnerConfigRouteBuilder); tests switch it off.
       enabled: true
+    # Security (static config only; a config-changed record can never widen it). A partner's
+    # baseUrl host must be on its own allowlist, https unless the host is an explicitly allowed
+    # dev/test host, and auth.credentials-ref is a bare secret name read from the property
+    # mw.partner-secrets.<partner>.<name> (OpenBao secret/mw-adapter-telco). A record breaking
+    # a rule is refused (event security.partner_config_refused) and the last good config stays.
+    security:
+      allowed-hosts:
+        ocs: ${MW_OCS_ALLOWED_HOSTS:mw-simulators}
+      # Plain http only for the simulator; production sets MW_PARTNER_INSECURE_HTTP_HOSTS empty.
+      insecure-http-hosts: ${MW_PARTNER_INSECURE_HTTP_HOSTS:mw-simulators}
     instances:
       # OCS REST/JSON (wire format: mw-simulators OCS). The simulator is the default target;
       # real MNO endpoints come from per-environment overrides or config-changed records.

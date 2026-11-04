@@ -4,11 +4,14 @@ import io.github.resilience4j.timelimiter.TimeLimiter;
 import io.github.resilience4j.timelimiter.TimeLimiterConfig;
 import java.net.http.HttpClient;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 import mfs.mw.adapter.telco.partner.CredentialRef;
 import mfs.mw.adapter.telco.partner.CredentialResolver;
 import mfs.mw.adapter.telco.partner.auth.AuthSchemes;
 import mfs.mw.adapter.telco.partner.config.PartnerConfig;
+import mfs.mw.adapter.telco.partner.config.PartnerConfigRefusedException;
+import mfs.mw.adapter.telco.partner.config.PartnerEndpointPolicy;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -19,20 +22,33 @@ public class PartnerInstanceFactory {
   private final CredentialResolver credentials;
   private final Clock clock;
   private final JsonMapper json;
+  private final PartnerEndpointPolicy policy;
 
-  public PartnerInstanceFactory(CredentialResolver credentials, Clock clock, JsonMapper json) {
+  public PartnerInstanceFactory(
+      CredentialResolver credentials, Clock clock, JsonMapper json, PartnerEndpointPolicy policy) {
     this.credentials = credentials;
     this.clock = clock;
     this.json = json;
+    this.policy = policy;
   }
 
   /**
-   * @throws IllegalArgumentException listing what is wrong with the config
+   * Validates the config (completeness, mappings compile) and the security rules (endpoint
+   * allowlist, https, credentials refs), then builds the instance.
+   *
+   * @throws PartnerConfigRefusedException listing what is wrong with the config
    */
   public PartnerInstance create(String id, long version, PartnerConfig config) {
-    List<String> problems = config.problems();
-    if (!problems.isEmpty()) {
-      throw new IllegalArgumentException("partner " + id + ": " + String.join("; ", problems));
+    List<String> security = new ArrayList<>(policy.problems(id, config.baseUrl()));
+    List<String> problems = new ArrayList<>(config.problems());
+    boolean refRefused = problems.removeIf(p -> p.startsWith("auth.credentialsRef"));
+    if (refRefused) {
+      security.add("auth.credentialsRef must be a secret name of this partner");
+    }
+    if (!security.isEmpty() || !problems.isEmpty()) {
+      List<String> all = new ArrayList<>(security);
+      all.addAll(problems);
+      throw new PartnerConfigRefusedException(id, all, !security.isEmpty());
     }
     TimeLimiter limiter =
         TimeLimiter.of(
@@ -41,7 +57,9 @@ public class PartnerInstanceFactory {
     HttpClient http = HttpClient.newBuilder().connectTimeout(config.connectTimeout()).build();
     String resilience = config.resilience() == null || config.resilience().isBlank() ? id : config.resilience();
     CredentialRef ref =
-        config.auth().credentialsRef() == null ? CredentialRef.NONE : new CredentialRef(config.auth().credentialsRef());
+        config.auth().credentialsRef() == null
+            ? CredentialRef.NONE
+            : CredentialRef.of(id, config.auth().credentialsRef());
     return new PartnerInstance(
         id,
         version,

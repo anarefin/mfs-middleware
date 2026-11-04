@@ -134,6 +134,12 @@ public record PartnerConfig(
     } else if (!"none".equals(auth.scheme()) && auth.credentialsRef() == null) {
       problems.add("auth scheme " + auth.scheme() + " needs a credentialsRef");
     }
+    if (auth.credentialsRef() != null
+        && !mfs.mw.adapter.telco.partner.CredentialRef.NAME.matcher(auth.credentialsRef()).matches()) {
+      // the value is not echoed: it may be an attempt to name another secret
+      problems.add(
+          "auth.credentialsRef must be a secret name of this partner (lower-case letters, digits, hyphen)");
+    }
     return problems;
   }
 
@@ -148,7 +154,8 @@ public record PartnerConfig(
 
   /**
    * @param scheme {@code none} (default), {@code api-key}, {@code hmac-sha256}
-   * @param credentialsRef where the secret lives (Vault/OpenBao property), never the secret
+   * @param credentialsRef name of one of this partner's secrets ({@code api-key}), resolved as
+   *     {@code mw.partner-secrets.<partner>.<name>}; never the secret, never a property path
    * @param params non-secret scheme parameters (header names, key id, max skew)
    */
   @JsonIgnoreProperties(ignoreUnknown = true)

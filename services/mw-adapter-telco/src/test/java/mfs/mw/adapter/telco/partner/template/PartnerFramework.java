@@ -14,6 +14,7 @@ import java.util.concurrent.Executors;
 import mfs.mw.adapter.telco.partner.CredentialResolver;
 import mfs.mw.adapter.telco.partner.config.PartnerConfig;
 import mfs.mw.adapter.telco.partner.config.PartnerConfigStore;
+import mfs.mw.adapter.telco.partner.config.PartnerEndpointPolicy;
 import mfs.mw.adapter.telco.partner.config.PartnerProperties;
 import org.apache.camel.CamelContext;
 import org.apache.camel.impl.DefaultCamelContext;
@@ -35,6 +36,14 @@ final class PartnerFramework implements AutoCloseable {
 
   static final JsonMapper JSON = JsonMapper.builder().build();
 
+  /** Test allowlist: the partners used in these tests may call WireMock on localhost over http. */
+  static final PartnerProperties.Security LOCAL =
+      new PartnerProperties.Security(
+          Map.of(
+              "ocs", List.of("localhost"), "gp", List.of("localhost"),
+              "acme", List.of("localhost"), "other", List.of("localhost")),
+          List.of("localhost"));
+
   final CamelContext camel = new DefaultCamelContext();
   final SimpleMeterRegistry meters = new SimpleMeterRegistry();
   final List<PartnerAudit.Entry> audits = new CopyOnWriteArrayList<>();
@@ -50,8 +59,9 @@ final class PartnerFramework implements AutoCloseable {
       BulkheadConfig bulkhead,
       CredentialResolver credentials,
       Clock clock) {
-    PartnerInstanceFactory factory = new PartnerInstanceFactory(credentials, clock, JSON);
-    store = new PartnerConfigStore(new PartnerProperties(defaultPartner, instances), factory, JSON);
+    PartnerInstanceFactory factory =
+        new PartnerInstanceFactory(credentials, clock, JSON, new PartnerEndpointPolicy(LOCAL));
+    store = new PartnerConfigStore(new PartnerProperties(defaultPartner, instances, LOCAL), factory, JSON);
     breakers = CircuitBreakerRegistry.of(cb);
     PartnerCallWrapper wrapper =
         new PartnerCallWrapper(

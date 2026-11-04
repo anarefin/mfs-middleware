@@ -10,6 +10,12 @@ mw:
       # Off in tests: every context would replay mw.config.changed.v1 in a group of its own.
       # PartnerConfigReloadIT switches it on.
       enabled: false
+    security:
+      # WireMock runs on localhost over http.
+      allowed-hosts:
+        ocs: mw-simulators,localhost
+        gp: localhost
+      insecure-http-hosts: mw-simulators,localhost
   outbox:
     relay:
       # Off by default in tests: Spring caches test contexts, and a relay left running in one

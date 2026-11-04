@@ -79,7 +79,7 @@ class RestJsonTemplateTest {
         5000L,
         null,
         Map.of("X-Channel", "upay"),
-        new PartnerConfig.Auth("api-key", "partners.acme.api-key", Map.of("header", "X-Acme-Key")),
+        new PartnerConfig.Auth("api-key", "api-key", Map.of("header", "X-Acme-Key")),
         Map.of(
             "PAY",
             new PartnerConfig.Operation(
@@ -105,7 +105,7 @@ class RestJsonTemplateTest {
         new PartnerFramework(
             defaultPartner, instances, CircuitBreakerConfig.ofDefaults(), BulkheadConfig.ofDefaults(),
             ref -> {
-              if (!"partners.acme.api-key".equals(ref.path())) {
+              if (!"mw.partner-secrets.acme.api-key".equals(ref.path())) {
                 throw new IllegalStateException("no secret stored under " + ref.path());
               }
               return SECRET;
@@ -200,7 +200,7 @@ class RestJsonTemplateTest {
     PartnerConfig hmac =
         new PartnerConfig(
             true, base.template(), base.baseUrl(), null, null, null, Map.of(),
-            new PartnerConfig.Auth("hmac-sha256", "partners.acme.api-key", Map.of()),
+            new PartnerConfig.Auth("hmac-sha256", "api-key", Map.of()),
             ops, base.errorMap(), base.ambiguousCodes(), base.sensitiveFields(), null);
     PartnerGateway gateway = framework(Map.of("acme", hmac), null);
     String body = "{\"ref\":\"UPAYREF1\",\"id\":\"ACME-9\",\"result\":\"OK\"}";
@@ -248,7 +248,7 @@ class RestJsonTemplateTest {
     PartnerCall inquiry = new PartnerCall("acme", "STATUS_QUERY", "BILL_PAY", "t", "c", "R", Map.of());
     assertThat(gateway.call(inquiry)).isEqualTo(new PartnerResponse.NotSent(NotSentReason.MISCONFIGURED));
 
-    apply("acme", 2, withAuthRef(acme(PartnerTemplates.REQUEST_REPLY, ACME_RESPONSE), "partners.nobody"));
+    apply("acme", 2, withAuthRef(acme(PartnerTemplates.REQUEST_REPLY, ACME_RESPONSE), "no-such-secret"));
     assertThat(gateway.call(pay("acme"))).isEqualTo(new PartnerResponse.NotSent(NotSentReason.MISCONFIGURED));
 
     apply("acme", 3, disabled(acme(PartnerTemplates.REQUEST_REPLY, ACME_RESPONSE)));

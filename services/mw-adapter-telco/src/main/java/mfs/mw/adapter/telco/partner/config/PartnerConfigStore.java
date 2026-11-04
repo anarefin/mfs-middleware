@@ -21,7 +21,12 @@ import tools.jackson.databind.json.JsonMapper;
  * {@code partner/<id>}). Each change builds a new immutable map and swaps it in one step, so a
  * call sees either the old or the new config of a partner, never a mix. A record whose version is
  * not newer than the one held is ignored; an UPSERT whose value is incomplete or does not compile
- * is rejected and the old config stays.
+ * is rejected and the old config stays. Every value also passes the static security rules ({@link
+ * PartnerEndpointPolicy}: endpoint host allowlist, https, credentials only under the partner's own
+ * secrets); a record that breaks them is refused with a {@code security.partner_config_refused}
+ * event, so a config-changed record can change operational fields (enabled, timeouts, mappings,
+ * error maps) but cannot point a partner, or its credentials, anywhere the static config does not
+ * allow.
  */
 @Component
 public class PartnerConfigStore {
@@ -109,6 +114,27 @@ public class PartnerConfigStore {
         try {
           PartnerConfig config = json.convertValue(event.value(), PartnerConfig.class);
           next = new Entry(event.version(), factory.create(id, event.version(), config));
+        } catch (PartnerConfigRefusedException e) {
+          if (e.security()) {
+            // security event: the record tried to leave the static allowlists (no secret values)
+            log.atWarn()
+                .addKeyValue("event", "security.partner_config_refused")
+                .addKeyValue("configKey", event.configKey())
+                .addKeyValue("version", event.version())
+                .addKeyValue("changedBy", event.changedBy())
+                .addKeyValue("approvedBy", event.approvedBy())
+                .addKeyValue("correlationId", event.correlationId())
+                .addKeyValue("detail", e.getMessage())
+                .log("partner config refused by security policy, previous config kept");
+          } else {
+            log.atWarn()
+                .addKeyValue("event", "config.rejected")
+                .addKeyValue("configKey", event.configKey())
+                .addKeyValue("version", event.version())
+                .addKeyValue("detail", e.getMessage())
+                .log("partner config rejected, previous config kept");
+          }
+          return false;
         } catch (RuntimeException e) {
           log.atWarn()
               .addKeyValue("event", "config.rejected")
