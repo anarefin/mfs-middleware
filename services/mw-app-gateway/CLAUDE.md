@@ -24,6 +24,23 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   initiate `403 MW-AUTH-002`, nothing published. Other paths
   (actuator) are open inside the app network. Keycloak is reached over `data` (MVP deviation of
   18.1), not `ops`.
+- Device binding (ticket 29, spec 9.1/18.6; `config/DeviceBindingConfig`, `security/DeviceBindingInterceptor`
+  + `@DeviceGate`, `service/DeviceBindingService`, `service/RequestSignatures`, `client/DeviceSessionStore`,
+  table `app_device` V6): after the JWT, every `/app/**` handler needs `X-Device-Id` of a device ACTIVE for the
+  token's wallet (`401 MW-AUTH-003`) and a live Valkey session `sess:{sub}:{deviceId}` (sliding idle timeout
+  `mw.app-gateway.device-binding.idle-timeout` 5 min, per channel `idle-timeout-by-channel`; `401 MW-AUTH-007`).
+  `POST /app/v1/transactions` (`@DeviceGate(SIGNED)`) also needs `X-Timestamp` (epoch ms, ±`clock-skew` 5 min,
+  `MW-AUTH-005`), `X-Nonce` (once per device: Valkey `nonce:{deviceId}:{nonce}` SET NX, TTL 2x skew,
+  `MW-AUTH-006`) and `X-Signature` (ECDSA P-256 SHA-256, DER or P1363, over `METHOD\nPATH\nhex(sha256(body))\n
+  TIMESTAMP\nNONCE\nDEVICE-ID`; `MW-AUTH-004`). The body is hashed from `filter/CachedBodyFilter`. Order:
+  device, timestamp, signature, nonce, session. `POST /app/v1/devices {publicKey}` binds (signed with that key,
+  re-bind replaces the key) and opens a session; `POST /app/v1/sessions` (signed, empty body) opens a new one.
+  `single-active-device` (true): binding replaces the wallet's other devices (REPLACED) and binding/opening
+  ends their sessions. Valkey unreachable: `503 MW-SYS-012` (fail closed; not in health groups). Valkey
+  password `spring.data.redis.password` synced into `secret/mw-app-gateway` by the init step. Tests not
+  about it run with `device-binding.enabled=false` (test `config/application.yml`); `DeviceBindingIT` runs it
+  on real PostgreSQL + Valkey (`ValkeyInfrastructure`). Device registration is self-service with the token
+  (no OTP step yet: open point).
 - Validation: `Idempotency-Key` required, 1..64 visible ASCII (`MW-VAL-001`, detail field
   `Idempotency-Key`); body by Bean Validation (`MW-VAL-001`, `amount.valueMinor` > 0, PIN
   ciphertext required); unsupported `txnType` `MW-VAL-010`; for P2P/CASH_IN/CASH_OUT a

@@ -33,6 +33,9 @@ dependencies {
     // Keycloak JWT (realm customers) on /app/v1/** (spec 9.1, 18.2).
     implementation(libs.spring.boot.starter.security.oauth2.resource.server)
 
+    // Valkey (Lettuce): device sessions and the signed-request nonce cache (spec 9.1, 18.6).
+    implementation(libs.spring.boot.starter.data.redis)
+
     // Kafka through Camel (spec 6.1, 19.2): idempotent producer, retry topics, DLQ.
     implementation(libs.camel.spring.boot.starter)
     implementation(libs.camel.kafka.starter)
