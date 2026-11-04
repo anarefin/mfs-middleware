@@ -60,6 +60,15 @@ public final class Http {
             .build());
   }
 
+  /** POST of an exact JSON text (for signed bodies: the bytes sent are the bytes signed). */
+  public static Response postRaw(URI uri, Map<String, String> headers, String json) {
+    return send(
+        base(uri, headers)
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
+            .build());
+  }
+
   public static Response postForm(URI uri, Map<String, String> form) {
     String encoded =
         form.entrySet().stream()

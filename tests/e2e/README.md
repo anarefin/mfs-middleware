@@ -51,6 +51,16 @@ Only APISIX is published, so every call goes through it:
   number (1234567 -> 66700 poisha); bill numbers ending 404 unknown (`MW-PTR-BILLAGG-BILL_NOT_FOUND`),
   ending 999 refused on payment (`MW-PTR-BILLAGG-PAYMENT_REFUSED`); amount fraction .13 times out
   past the adapter's 25 s limit (202, then COMPLETED by status inquiry, `@tsq`).
+- Partner callbacks (`features/billpay-callback.feature`, `@billpay @callback`, ticket 22): "the
+  aggregator confirms payments only by callback[, sending each callback twice | , out of order |
+  , N seconds late]" puts billagg in callback-only mode (202 PENDING, signed callback to
+  `http://apisix:9080/partner/billagg/callback/payments`; reset by an `@After` hook); "the
+  aggregator replays the transaction's callback" (simulator replay); "the aggregator calls back
+  <STATUS> with code <C> for the transaction" signs with `BILLAGG_HMAC_SECRET` from the generated
+  `.env` (`support/PartnerCallbacks`), "... with a bad signature" signs with a wrong key; audit
+  steps "records a late <OUTCOME> callback", "records a conflicting <OUTCOME> callback", "records
+  no late callback", "records the states \"...\" once each" (state rows only). The late
+  scenario (`@tsq`) takes about 100 s.
 - REVERSAL (`features/reversal.feature`, `@reversal`): "operations reverses the transaction"
   publishes a REVERSAL of the scenario's (COMPLETED) transaction; the original then shows
   REVERSED (or MANUAL_REVIEW) in the app view. "the orchestrator has handled the reversal

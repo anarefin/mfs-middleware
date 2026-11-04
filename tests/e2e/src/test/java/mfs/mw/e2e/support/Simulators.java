@@ -31,6 +31,20 @@ public final class Simulators {
     }
   }
 
+  /**
+   * {@code POST /sim/{partner}/callbacks/{reference}/replay}: the simulator sends the callback of
+   * that reference again (to the scenario's URL); returns the HTTP status the target answered.
+   */
+  public static int replayCallback(String partner, String reference) {
+    Http.Response r =
+        Http.postJson(
+            Stack.get().url(BASE + partner + "/callbacks/" + reference + "/replay"), auth(), Http.JSON.createObjectNode());
+    if (r.status() != 200) {
+      throw new IllegalStateException("simulator replay failed: " + r);
+    }
+    return r.body().path("targetStatus").asInt(-1);
+  }
+
   private static Map<String, String> auth() {
     return Map.of("apikey", Stack.get().devCredential("MW_E2E_API_KEY"));
   }
