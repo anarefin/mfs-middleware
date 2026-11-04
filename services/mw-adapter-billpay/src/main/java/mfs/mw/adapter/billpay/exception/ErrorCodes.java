@@ -16,5 +16,10 @@ public final class ErrorCodes {
   /** Unexpected failure; details stay in the log, never in the response. */
   public static final String SYS_INTERNAL = "MW-SYS-001";
 
+  /** A partner callback whose signature (or timestamp) does not verify (ticket 22). */
+  public static final String AUTH_SIGNATURE = "MW-AUTH-001";
+  /** A callback could not be written to Kafka: not acknowledged, the partner sends it again. */
+  public static final String SYS_EVENT_NOT_WRITTEN = "MW-SYS-EVENT_NOT_WRITTEN";
+
   private ErrorCodes() {}
 }

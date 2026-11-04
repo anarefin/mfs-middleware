@@ -136,6 +136,18 @@ class TopupKafkaIT {
   }
 
   @Test
+  void aPayThePartnerAcceptsAsPendingIsCompletedByItsCallback() {
+    TxnRequest req = request("01711000777");
+
+    List<ConsumerRecord<String, String>> got = statuses(req.txnId(), 6);
+
+    assertThat(names(got))
+        .containsExactly("RECEIVED", "VALIDATING", "HOLDING", "PARTNER_PENDING", "COMMITTING", "COMPLETED");
+    assertThat(json.readTree(got.get(5).value()).path("partnerRef").asString()).startsWith("CB-STUB-");
+    assertThat(commandTypes(req.txnId())).containsExactly("ValidateTransaction", "HoldFunds", "CommitHold");
+  }
+
+  @Test
   void aTopupThePartnerRefusesReleasesTheHold() {
     TxnRequest req = request("01711000999");
 

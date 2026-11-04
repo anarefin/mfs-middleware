@@ -8,7 +8,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - Runs P2P, CASH_IN, CASH_OUT, TOPUP and BILL_PAY transactions, and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14, WP15 part).
   Consumes `mw.txn.request.v1` (`route/TxnRequestRoute`), the core results on
   `core.wallet.event.v1` (`route/CoreWalletEventRoute`) and partner adapter answers on
-  `mw.partner.reply.v1` (`route/PartnerReplyRoute`), all with retry topics and DLQ. Publishes every
+  `mw.partner.reply.v1` (`route/PartnerReplyRoute`) and partner callbacks on `mw.partner.inbound.v1`
+  (`route/PartnerInboundRoute`), all with retry topics and DLQ. Publishes every
   state change on `mw.txn.status.v1`, core commands on `core.wallet.command.v1` and partner
   requests on `mw.partner.request.<family>.v1`, all through the transactional outbox, in the same
   transaction as the state change.
@@ -66,6 +67,30 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   resolution is logged `txn.outcome.conflict`. Gauges `mw_txn_unknown_open` and
   `mw_manual_review_open` (`service/BacklogMetrics`, count per scrape). MANUAL_REVIEW arms no timer
   (the daily ageing alert is not built); ManualCommit / ManualRelease come with the admin API.
+- Partner callbacks (ticket 22, spec 11.2, `service/PartnerInboundService`, own type
+  `dto/PartnerInbound`): kind CALLBACK only (REMITTANCE / NPSB_CREDIT logged
+  `partner.inbound.unsupported` and dropped until ticket 23). Inbox key `inboundId` (the adapter
+  derives it from partner, reference and outcome, so a duplicate callback is dropped). Ownership
+  first (security review): applied only when the outcome is SUCCESS/FAILED/PENDING, the flow has
+  a partner leg, `partnerId` equals the transaction's partner (`SagaEngine.partnerId`), `family`
+  equals the leg's family and, once a partner reference is stored, the callback's `partnerRef` is
+  that reference or our own `UPAY<txnId hex>`; otherwise nothing changes, event
+  `security.partner_callback_mismatch` and audit `partner.callback.rejected` outcome DENIED with
+  `after.reason` UNKNOWN_OUTCOME / NO_PARTNER_LEG / PARTNER_MISMATCH / FAMILY_MISMATCH /
+  PARTNER_REF_MISMATCH. The adapter sets `partnerId` from the authenticated route (the URL's
+  partner, whose secret verified the signature), never from the body. The callback
+  is read as a definite partner answer (operation `CALLBACK`): PARTNER_PENDING -> SUCCESS
+  COMMITTING (partnerRef stored), FAILED RELEASING with the callback's `errorCode`, PENDING
+  nothing; UNKNOWN -> `InquiryService.partnerAnswer` (same rules as a STATUS_QUERY answer); any
+  other state (resolved by the deadline, a status inquiry or an earlier callback) -> no state
+  change, recorded on `mw.audit.event.v1` (`AuditMapper.lateCallback`: actor `partner`/<partnerId>,
+  `before`/`after` `{status}` unchanged plus `after.callbackOutcome`, `errorCode`): action
+  `partner.callback.late` outcome SUCCESS, or `txn.outcome.conflict` outcome FAILURE (also an
+  ERROR log) when it contradicts the resolution (SUCCESS for RELEASING/FAILED, FAILED for
+  COMMITTING/COMPLETED/REVERSING/REVERSED). A terminal state is never left on a callback: the
+  conflict goes to operations and reconciliation (spec 15 STATUS_MISMATCH -> maker-checker
+  proposal), not to MANUAL_REVIEW, which the 7.2 table only enters from non-terminal states.
+  An unknown txnId is logged `txn.unknown` and dropped.
 - HOLDING timeout (5 s): QueryTransaction without `queryCommandId`, commandId
   `<txnId>:query:<epoch ms>` (a fresh one per attempt, so the core never answers from its command
   log), re-asked every `holding-timeout` until answered. TransactionStatus `HELD` -> RELEASING
@@ -149,6 +174,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 - `events/mw-core-mock/core.event.v1.schema.json`: own type `dto/CoreEvent` (payload read as a
   tree per `eventType`). Unknown fields are ignored.
+- `mw.partner.inbound.v1` (owned, consumed): own type `dto/PartnerInbound`;
+  `PartnerMessagesTest` reads every valid sample, `PartnerCallbackSagaIT` validates the callbacks
+  it feeds in.
 - Own partner contracts: `dto/PartnerRequest` (produced, `PartnerMessagesTest`, `TopupSagaIT` and
   `InquirySagaIT` validate it) and `dto/PartnerReply` (consumed; the telco samples read into it).
   Reply `outcome` `NOT_FOUND` (ticket 18) answers a STATUS_QUERY only.

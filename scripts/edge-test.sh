@@ -15,6 +15,9 @@
 #     another consumer unaffected
 #   - client X-Mw-* headers never reach the upstream; X-Correlation-Id generated when absent
 #     (or unsafe), kept when valid, returned to the client and present in the upstream's log
+#   - partner callback route (ticket 22): unsigned / badly signed -> 401 MW-AUTH-001 from
+#     mw-adapter-billpay, over 16 KiB -> 413, POST only, unrouted partner 404, ip allow-list and
+#     per-source quota configured
 #   - applying deploy/apisix twice is a no-op (Admin API objects identical but update_time)
 # The quota check spends merchant01's quota for the rest of the window (60 s).
 set -uo pipefail
@@ -247,6 +250,35 @@ quota() {
   [ -n "$keys" ] || { echo "no Valkey counter for sub:$sub"; return 1; }
 }
 check "over the per-consumer quota -> 429 MW-SYS-RATE_LIMITED; counter in Valkey; others unaffected" quota
+
+# ---- partner callback route (ticket 22): edge policies, signature checked by the adapter ----
+cb_path=/partner/billagg/callback/payments
+cb_body='{"transactionId":"UPAY00000000000000000000000000000000","status":"SUCCESS","code":"000","paymentRef":"AGG-1"}'
+cb_unsigned() { call POST "$cb_path" -H 'Content-Type: application/json' -d "$cb_body" && envelope 401 MW-AUTH-001; }
+check "partner callback without a signature -> 401 MW-AUTH-001 (mw-adapter-billpay)" cb_unsigned
+cb_bad_signature() {
+  call POST "$cb_path" -H 'Content-Type: application/json' -H "X-Timestamp: $(date +%s)" \
+    -H 'X-Signature: bm90IGEgc2lnbmF0dXJl' -d "$cb_body" && envelope 401 MW-AUTH-001
+}
+check "partner callback with a bad signature -> 401 MW-AUTH-001 (mw-adapter-billpay)" cb_bad_signature
+cb_too_large() {
+  head -c 20000 /dev/zero | tr '\0' 'a' | awk '{ printf "{\"transactionId\":\"%s\"}", $0 }' >"$tmp/cb-big"
+  call POST "$cb_path" -H 'Content-Type: application/json' --data-binary "@$tmp/cb-big" && envelope 413 MW-VAL-BODY_TOO_LARGE
+}
+check "partner callback body over 16 KiB -> 413 at the edge" cb_too_large
+cb_get() { call GET "$cb_path" && envelope 404 MW-VAL-003; }
+check "partner callback route takes POST only (GET -> 404 envelope)" cb_get
+cb_unrouted() { call POST /partner/nope/callback/payments -H 'Content-Type: application/json' -d "$cb_body" && envelope 404 MW-VAL-003; }
+check "callback of a partner without a route -> 404 at the edge" cb_unrouted
+cb_policies() {
+  local r; r="$(admin GET routes/partner-billagg-callback | jq -c '.value')"
+  printf '%s' "$r" | jq -e '.plugins["ip-restriction"].whitelist | length > 0 and (index("0.0.0.0/0") | not)' >/dev/null \
+    || { echo "ip-restriction: $(printf '%s' "$r" | jq -c '.plugins["ip-restriction"]')"; return 1; }
+  printf '%s' "$r" | jq -e '.plugins["limit-count"] | .key == "remote_addr" and .policy == "redis" and .redis_password == "$env://VALKEY_PASSWORD"' >/dev/null \
+    || { echo "limit-count: $(printf '%s' "$r" | jq -c '.plugins["limit-count"]')"; return 1; }
+  printf '%s' "$r" | jq -e '.upstream.nodes | has("mw-adapter-billpay:8080")' >/dev/null || { echo "upstream: $(printf '%s' "$r" | jq -c .upstream)"; return 1; }
+}
+check "partner callback route: ip allow-list, quota per source address in Valkey, upstream mw-adapter-billpay" cb_policies
 
 # ---- idempotent apply ----
 dump() { for k in global_rules routes ssls; do admin GET "$k"; done | jq -S -s '[.[].list[]? | .value | del(.update_time)] | sort_by(.id)'; }

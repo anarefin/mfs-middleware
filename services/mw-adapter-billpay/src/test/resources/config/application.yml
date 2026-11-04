@@ -5,6 +5,10 @@ mw:
       # Off by default in tests for the same reason as the relay: a cached context would compete
       # for the request topic. BillpayRequestRouteIT switches it on.
       enabled: false
+  # Obviously fake test secret for the billagg hmac-sha256 scheme (the real one comes from OpenBao).
+  partner-secrets:
+    billagg:
+      hmac-secret: fake-billagg-hmac-secret-for-tests
   partners:
     config-consumer:
       # Off in tests: every context would replay mw.config.changed.v1 in a group of its own.

@@ -18,14 +18,19 @@ public class CallbackClient {
   private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
 
   public int post(String url, String json) {
+    return post(url, json, java.util.Map.of());
+  }
+
+  /** As {@link #post(String, String)} with extra headers (the callback signature). */
+  public int post(String url, String json, java.util.Map<String, String> headers) {
     try {
-      HttpRequest req =
+      HttpRequest.Builder b =
           HttpRequest.newBuilder(URI.create(url))
               .timeout(Duration.ofSeconds(5))
               .header("Content-Type", "application/json")
-              .POST(HttpRequest.BodyPublishers.ofString(json))
-              .build();
-      return http.send(req, HttpResponse.BodyHandlers.discarding()).statusCode();
+              .POST(HttpRequest.BodyPublishers.ofString(json));
+      headers.forEach(b::header);
+      return http.send(b.build(), HttpResponse.BodyHandlers.discarding()).statusCode();
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       return -1;
