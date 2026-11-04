@@ -6,11 +6,11 @@
 
 - 17: TOPUP end to end (hold → partner → commit / release)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Unit tests over the TSQ schedule and every UNKNOWN exit
-- [ ] e2e `@topup @tsq`: OCS timeout → TSQ → commit; OCS timeout → TSQ → release
-- [ ] e2e: a core reply dropped by fault injection resolves through QueryTransaction
-- [ ] A test with schedule overrides shortened to seconds reaches MANUAL_REVIEW
-- [ ] Metrics `mw_txn_unknown_open` and `mw_manual_review_open` reflect the backlog
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] Unit tests over the TSQ schedule and every UNKNOWN exit
+- [x] e2e `@topup @tsq`: OCS timeout → TSQ → commit; OCS timeout → TSQ → release
+- [x] e2e: a core reply dropped by fault injection resolves through QueryTransaction
+- [x] A test with schedule overrides shortened to seconds reaches MANUAL_REVIEW
+- [x] Metrics `mw_txn_unknown_open` and `mw_manual_review_open` reflect the backlog
+- [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
