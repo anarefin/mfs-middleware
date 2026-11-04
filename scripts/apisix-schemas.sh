@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# APISIX request-validation schemas (deploy/apisix/schemas/*.json) derived from the OpenAPI
+# APISIX request-validation schemas (deploy/apisix/schemas/*.json) and the derived schemas a
+# service checks itself (services/*/src/main/resources/derived-schemas/*.json) derived from the OpenAPI
 # contracts (spec 8.3, ticket 13). See scripts/contracts-lint/apisix-schemas.mjs for the rules.
 # Usage: scripts/apisix-schemas.sh --check   fail when a schema differs from its contract
 #        scripts/apisix-schemas.sh --write   rewrite the schemas from their contracts

@@ -12,6 +12,9 @@ version = "0.1.0-SNAPSHOT"
 
 java {
     toolchain { languageVersion = JavaLanguageVersion.of(25) }
+    // Tests run on the versions the boot jar ships: a test-only library must not raise a shared
+    // dependency (Jackson) above the runtime one and hide a runtime bug.
+    consistentResolution { useRuntimeClasspathVersions() }
 }
 
 repositories { mavenCentral() }
@@ -35,6 +38,15 @@ dependencies {
 
     // Valkey (Lettuce): device sessions and the signed-request nonce cache (spec 9.1, 18.6).
     implementation(libs.spring.boot.starter.data.redis)
+
+    // Submit body schema check (service/SubmitBodySchema, ticket 29). The validator is built on a
+    // newer Jackson 3 than Boot manages; keep Boot's (the contract schema tests pass on it), so this
+    // library does not change Jackson for the whole service.
+    implementation(libs.json.schema.validator) {
+        exclude(group = "tools.jackson.core")
+        exclude(group = "tools.jackson.dataformat")
+        exclude(group = "tools.jackson", module = "jackson-bom")
+    }
 
     // Kafka through Camel (spec 6.1, 19.2): idempotent producer, retry topics, DLQ.
     implementation(libs.camel.spring.boot.starter)
@@ -60,7 +72,6 @@ dependencies {
     testImplementation(libs.testcontainers.kafka)
     testImplementation(libs.spring.boot.testcontainers)
     testImplementation(libs.camel.test.spring.junit6)
-    testImplementation(libs.json.schema.validator)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 

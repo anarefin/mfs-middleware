@@ -57,6 +57,42 @@ class SmtpEmailSenderTest {
     return new MailSendException(Map.of(new Object(), send));
   }
 
+  /** A mail sender that keeps the message instead of sending it. */
+  private static final class Capturing extends JavaMailSenderImpl {
+    MimeMessage sent;
+
+    @Override
+    public void send(MimeMessage mimeMessage) {
+      sent = mimeMessage;
+    }
+  }
+
+  @Test
+  void aReceiptWithHtmlIsOneMultipartAlternativeOfTextThenHtml() throws Exception {
+    Capturing mail = new Capturing();
+    new SmtpEmailSender(mail, PROPS).send(EMAIL);
+
+    mail.sent.saveChanges();
+    assertThat(mail.sent.getContentType()).startsWith("multipart/alternative");
+    jakarta.mail.Multipart parts = (jakarta.mail.Multipart) mail.sent.getContent();
+    assertThat(parts.getCount()).isEqualTo(2);
+    assertThat(parts.getBodyPart(0).getContentType()).startsWith("text/plain").containsIgnoringCase("utf-8");
+    assertThat(parts.getBodyPart(0).getContent()).isEqualTo("Tk 500.00 paid");
+    assertThat(parts.getBodyPart(1).getContentType()).startsWith("text/html").containsIgnoringCase("utf-8");
+    assertThat(parts.getBodyPart(1).getContent()).isEqualTo("<p>Tk 500.00 paid</p>");
+    assertThat(mail.sent.getSubject()).isEqualTo("Bill paid");
+  }
+
+  @Test
+  void aReceiptWithoutHtmlIsPlainText() throws Exception {
+    Capturing mail = new Capturing();
+    new SmtpEmailSender(mail, PROPS).send(new EmailMessage("customer@example.test", "Bill paid", "Tk 500.00 paid", null));
+
+    mail.sent.saveChanges();
+    assertThat(mail.sent.getContentType()).startsWith("text/plain");
+    assertThat(mail.sent.getContent()).isEqualTo("Tk 500.00 paid");
+  }
+
   @Test
   void aRefusedRecipient5xxIsPermanentWithItsReplyCode() throws Exception {
     MailSendException refused = refusedRecipient(550);

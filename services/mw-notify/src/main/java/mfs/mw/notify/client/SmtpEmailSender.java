@@ -1,7 +1,9 @@
 package mfs.mw.notify.client;
 
 import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.internet.MimeMultipart;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -44,12 +46,22 @@ public class SmtpEmailSender implements EmailSender {
   public String send(EmailMessage email) throws EmailSendException {
     MimeMessage mime = mail.createMimeMessage();
     try {
-      MimeMessageHelper helper = new MimeMessageHelper(mime, email.html() != null, StandardCharsets.UTF_8.name());
+      MimeMessageHelper helper = new MimeMessageHelper(mime, false, StandardCharsets.UTF_8.name());
       helper.setFrom(props.from());
       helper.setTo(email.to());
       helper.setSubject(email.subject());
       if (email.html() != null) {
-        helper.setText(email.text(), email.html());
+        // MimeMessageHelper's multipart modes nest the alternative in multipart/mixed (or
+        // related); a receipt has no attachments, so it is a top-level multipart/alternative of
+        // the text part then the HTML part (the client shows the last one it can render).
+        MimeMultipart alternative = new MimeMultipart("alternative");
+        MimeBodyPart text = new MimeBodyPart();
+        text.setText(email.text(), StandardCharsets.UTF_8.name());
+        MimeBodyPart html = new MimeBodyPart();
+        html.setText(email.html(), StandardCharsets.UTF_8.name(), "html");
+        alternative.addBodyPart(text);
+        alternative.addBodyPart(html);
+        mime.setContent(alternative);
       } else {
         helper.setText(email.text(), false);
       }

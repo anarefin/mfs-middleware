@@ -119,8 +119,10 @@ test_e2e_flag_without_a_key_fails() {
 # fixture_schemas: a root with contracts/ and deploy/apisix/schemas copied from the repo
 fixture_schemas() {
   cp -R "$REPO_DIR/contracts/." contracts/
-  mkdir -p deploy/apisix
+  mkdir -p deploy/apisix services/mw-app-gateway/src/main/resources
   cp -R "$REPO_DIR/deploy/apisix/schemas" deploy/apisix/schemas
+  cp -R "$REPO_DIR/services/mw-app-gateway/src/main/resources/derived-schemas" \
+    services/mw-app-gateway/src/main/resources/derived-schemas
 }
 
 schemas() { OUT="$(MW_ROOT="$PWD" "$REPO_DIR/scripts/apisix-schemas.sh" "$@" 2>&1)"; }
@@ -131,7 +133,7 @@ test_repo_edge_schemas_match_their_contracts() {
 }
 
 test_app_submit_schema_is_the_openapi_transaction_request_minus_value_echoing_keywords() {
-  local s="$REPO_DIR/deploy/apisix/schemas/app-v1-transaction-request.json"
+  local s="$REPO_DIR/services/mw-app-gateway/src/main/resources/derived-schemas/app-v1-transaction-request.json"
   [ -f "$s" ] || fail "no $s"
   jq -e '."x-mw-derived-from" == "api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/TransactionRequest"' "$s" >/dev/null \
     || fail "source not recorded"
@@ -163,7 +165,7 @@ test_a_contract_change_makes_the_check_fail_until_written() {
   if schemas --check; then fail "check passed on a stale schema"; fi
   assert_out_contains "app-v1-transaction-request.json"
   schemas --write || fail "write failed"
-  jq -e '.required | index("locale")' deploy/apisix/schemas/app-v1-transaction-request.json >/dev/null || fail "not rewritten"
+  jq -e '.required | index("locale")' services/mw-app-gateway/src/main/resources/derived-schemas/app-v1-transaction-request.json >/dev/null || fail "not rewritten"
   schemas --check || fail "check fails after write"
 }
 
@@ -178,7 +180,7 @@ test_an_unsupported_keyword_fails_the_derivation() {
 test_contracts_lint_runs_the_edge_schema_check() {
   fixture_schemas
   printf '{ "x-mw-derived-from": "api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/TransactionRequest" }\n' \
-    >deploy/apisix/schemas/app-v1-transaction-request.json
+    >services/mw-app-gateway/src/main/resources/derived-schemas/app-v1-transaction-request.json
   assert_fails mw_make "$PWD" contracts-lint
   assert_out_contains "app-v1-transaction-request.json"
 }
@@ -270,18 +272,20 @@ test_app_route_refuses_expired_tokens_without_a_long_grace() {
     || fail "iat_slack: $(obj routes app-v1 | jq -c '.plugins["openid-connect"].iat_slack')"
 }
 
-test_app_route_validates_the_submit_body_after_auth() {
+# Ticket 29: request-validation forwards a validated JSON body re-encoded, so mw-app-gateway could
+# not verify the device signature over the bytes the app sent. The submit schema is checked by the
+# gateway on those bytes (derived copy in the module, kept in sync by apisix-schemas.sh); the edge
+# keeps the body cap and must not rewrite the body.
+test_app_route_leaves_the_signed_body_untouched() {
   render || fail "dry run failed"
   local r
   r="$(obj routes app-v1)"
-  [ "$(printf '%s' "$r" | jq -c '.plugins["request-validation"].body_schema')" = \
-    "$(jq -c . "$REPO_DIR/deploy/apisix/schemas/app-v1-transaction-request.json")" ] || fail "body_schema is not the derived schema"
-  printf '%s' "$r" | jq -e '.plugins["request-validation"] | .rejected_code == 400
-    and (._meta.filter | tostring | test("POST")) and (._meta.filter | tostring | test("/app/v1/transactions"))' >/dev/null \
-    || fail "validation not limited to POST /app/v1/transactions: $(printf '%s' "$r" | jq -c '.plugins["request-validation"]._meta')"
-  # openid-connect has priority 2599: validate only authenticated requests
-  printf '%s' "$r" | jq -e '.plugins["request-validation"]._meta.priority < 2599' >/dev/null || fail "validation runs before auth"
+  printf '%s' "$r" | jq -e '.plugins | has("request-validation") | not' >/dev/null \
+    || fail "request-validation re-encodes the body the device signed"
+  printf '%s' "$r" | jq -e '.plugins | (has("body-transformer") or has("proxy-rewrite") and (.["proxy-rewrite"] | has("body"))) | not' >/dev/null \
+    || fail "a plugin rewrites the app body"
   printf '%s' "$r" | jq -e '.plugins["client-control"].max_body_size > 0' >/dev/null || fail "no body size cap"
+  [ -f "$REPO_DIR/services/mw-app-gateway/src/main/resources/derived-schemas/app-v1-transaction-request.json" ] || fail "mw-app-gateway has no derived submit schema"
 }
 
 test_the_edge_never_logs_bodies() {

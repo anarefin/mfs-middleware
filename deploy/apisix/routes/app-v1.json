@@ -1,6 +1,6 @@
 {
   "name": "app-v1",
-  "desc": "Mobile apps API v1 (spec 8.2, 8.3): Keycloak realm customers bearer JWT verified with the realm's JWKS (mw-app-gateway verifies it again), body cap, submit body validated against the app OpenAPI, quota per token subject in Valkey",
+  "desc": "Mobile apps API v1 (spec 8.2, 8.3): Keycloak realm customers bearer JWT verified with the realm's JWKS (verified again upstream), body cap (mw-app-gateway checks the submit body schema on the bytes the device signed), quota per token subject in Valkey",
   "uri": "/app/v1/*",
   "methods": ["GET", "POST"],
   "plugins": {
@@ -17,14 +17,6 @@
       "set_access_token_header": false,
       "set_userinfo_header": false,
       "set_id_token_header": false
-    },
-    "request-validation": {
-      "_meta": {
-        "priority": 2500,
-        "filter": [["request_method", "==", "POST"], ["uri", "==", "/app/v1/transactions"]]
-      },
-      "body_schema": "@json:schemas/app-v1-transaction-request.json",
-      "rejected_code": 400
     },
     "serverless-pre-function": {
       "phase": "access",

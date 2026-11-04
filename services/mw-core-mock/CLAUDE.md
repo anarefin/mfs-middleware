@@ -22,7 +22,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 - `ValidateTransaction` whose credit party is outside the core (`BILLER_ACCOUNT`, `BANK_ACCOUNT`,
   `CARD_TOKEN`; ticket 21, BILL_PAY) checks the payer side only (wallet types, status, PIN,
   limits, funds with the type's fee); `PostTransfer` still needs a credit wallet
-  (`CREDIT_WALLET_NOT_FOUND`): such flows hold, then commit to `SETTLEMENT`.
+  (`CREDIT_WALLET_NOT_FOUND`): such flows hold, then commit to `SETTLEMENT`. A TOPUP's credit
+  party `MSISDN` (the number recharged; `PAYER_SIDE_ONLY_PAYEES`) is validated the same way: it
+  need not have a wallet and may be the payer's own number (no `SAME_WALLET`).
 - `ValidateTransaction` whose debit party is outside the core (`BANK_ACCOUNT`, `CARD_TOKEN`,
   `BILLER_ACCOUNT`; ticket 23, ADD_MONEY_BANK / C2W) checks the receiving wallet only: it exists
   (`CREDIT_WALLET_NOT_FOUND`), not LOCKED (`ACCOUNT_LOCKED`) or blocked

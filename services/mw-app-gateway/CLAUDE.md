@@ -34,7 +34,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   `POST /app/v1/transactions` (`@DeviceGate(SIGNED)`) also needs `X-Timestamp` (epoch ms, ±`clock-skew` 5 min,
   `MW-AUTH-005`), `X-Nonce` (once per device: Valkey `nonce:{deviceId}:{nonce}` SET NX, TTL 2x skew,
   `MW-AUTH-006`) and `X-Signature` (ECDSA P-256 SHA-256, DER or P1363, over `METHOD\nPATH\nhex(sha256(body))\n
-  TIMESTAMP\nNONCE\nDEVICE-ID`; `MW-AUTH-004`). The body is hashed from `filter/CachedBodyFilter`. Order:
+  TIMESTAMP\nNONCE\nDEVICE-ID`; `MW-AUTH-004`). The body hashed is the received body (`filter/CachedBodyFilter`): exactly the bytes the
+  schema check and the controller parse; no hash is taken from a header. That is why APISIX runs no
+  request-validation on this route (it forwards a validated body re-encoded). Order:
   device, timestamp, signature, nonce, session. `POST /app/v1/devices {publicKey}` binds (signed with that key,
   re-bind replaces the key) and opens a session; `POST /app/v1/sessions` (signed, empty body) opens a new one.
   `single-active-device` (true): binding replaces the wallet's other devices (REPLACED) and binding/opening
@@ -43,8 +45,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   about it run with `device-binding.enabled=false` (test `config/application.yml`); `DeviceBindingIT` runs it
   on real PostgreSQL + Valkey (`ValkeyInfrastructure`). Device registration is self-service with the token
   (no OTP step yet: open point).
-- Validation: `Idempotency-Key` required, 1..64 visible ASCII (`MW-VAL-001`, detail field
-  `Idempotency-Key`); body by Bean Validation (`MW-VAL-001`, `amount.valueMinor` > 0, PIN
+- Validation: submit body schema first (`service/SubmitBodySchema` via `filter/SubmitSchemaInterceptor`,
+  `config/SubmitSchemaConfig`; after the JWT, before the device gate; ticket 29, formerly APISIX
+  request-validation): `derived-schemas/app-v1-transaction-request.json`, derived from the contract's
+  `TransactionRequest` by `scripts/apisix-schemas.sh --write` (`make contracts-lint` fails on drift), validated
+  with json-schema-validator (runtime dependency, on Boot's Jackson) on the cached bytes; duplicate keys,
+  trailing content or a non-object `400 MW-VAL-001`, schema errors `400 MW-VAL-001` with dotted fields (no
+  pattern/format in the schema, so no request value in a message). Then `Idempotency-Key` required, 1..64
+  visible ASCII (`MW-VAL-001`, detail field `Idempotency-Key`); body by Bean Validation (`MW-VAL-001`, `amount.valueMinor` > 0, PIN
   ciphertext required); unsupported `txnType` `MW-VAL-010`; for P2P/CASH_IN/CASH_OUT/MERCHANT_PAY a
   counterparty equal to the caller's own wallet `MW-VAL-012` (the core enforces the real wallet
   types per txnType: `MW-CORE-INVALID_COUNTERPARTY`); `attributes` keys allow-listed
@@ -129,10 +137,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 
 ## Contracts owned
 
-- `api/mw-app-gateway/app.v1.openapi.yaml` (app API v1). APISIX validates submit bodies with
-  `deploy/apisix/schemas/app-v1-transaction-request.json`, derived from `TransactionRequest`
+- `api/mw-app-gateway/app.v1.openapi.yaml` (app API v1). This service checks submit bodies against
+  `src/main/resources/derived-schemas/app-v1-transaction-request.json`, derived from `TransactionRequest`
   (`scripts/apisix-schemas.sh --write` after changing it; `make contracts-lint` fails until
-  then). The edge also answers 401/413/429 itself (`deploy/apisix/README.md`).
+  then). The edge answers 401/413/429 itself (`deploy/apisix/README.md`).
 
 ## Contracts used
 
