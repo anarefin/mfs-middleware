@@ -6,10 +6,10 @@
 
 - 09: App gateway P2P + minimal APISIX route
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `make e2e TAGS=@p2p` passes on a fresh `make up`
-- [ ] Scenario: the same idempotency key sent twice debits once and returns the same txnId
-- [ ] Scenario: the same key with a different body gives 409 `MW-IDEM-001`
-- [ ] The harness has step definitions that later tickets reuse: obtain a token, encrypt a PIN with the core public key, submit a txn, poll status, read a balance
+- [x] `make e2e TAGS=@p2p` passes on a fresh `make up`
+- [x] Scenario: the same idempotency key sent twice debits once and returns the same txnId
+- [x] Scenario: the same key with a different body gives 409 `MW-IDEM-001`
+- [x] The harness has step definitions that later tickets reuse: obtain a token, encrypt a PIN with the core public key, submit a txn, poll status, read a balance
 - [ ] Running the suite twice in a row is stable (no reliance on leftover state)
