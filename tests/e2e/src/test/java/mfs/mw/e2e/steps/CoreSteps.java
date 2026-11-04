@@ -2,12 +2,15 @@ package mfs.mw.e2e.steps;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.cucumber.java.After;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import mfs.mw.e2e.support.CoreMock;
+import mfs.mw.e2e.support.Http;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Steps on the core's ledger (mw-core-mock's test API): note balances before an action, then
@@ -25,6 +28,22 @@ public class CoreSteps {
   public void noteBalances(List<String> wallets) {
     for (String w : wallets) {
       state.notedBalances.put(w, CoreMock.balance(w));
+    }
+  }
+
+  /** The core applies the next {@code commandType} but never answers it (fault DROP_REPLY, once). */
+  @Given("the core drops its reply to the next {word}")
+  public void dropReply(String commandType) {
+    ObjectNode fault = Http.JSON.createObjectNode();
+    fault.put("mode", "DROP_REPLY").put("commandType", commandType).put("times", 1);
+    CoreMock.injectFault(fault);
+    state.faultsInjected = true;
+  }
+
+  @After
+  public void resetFaults() {
+    if (state.faultsInjected) {
+      CoreMock.resetFaults();
     }
   }
 

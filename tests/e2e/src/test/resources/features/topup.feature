@@ -38,6 +38,15 @@ Feature: TOPUP airtime from the app (hold, partner, commit or release)
     And the error code is "MW-CORE-INVALID_PIN"
     And no core balance changed
 
+  Scenario: a hold whose reply is lost is found by a status query and released
+    Given the core drops its reply to the next HoldFunds
+    When customer01 tops up 2000 poisha gp PREPAID airtime on 01711000002 with PIN "1234"
+    Then the response status is 504
+    And the error code is "MW-TMO-002"
+    And no core balance changed
+    And no funds are held on 01711000001
+    And the app shows the transaction as FAILED
+
   Scenario: the same idempotency key sent twice tops up once and returns the same txnId
     When customer01 tops up 2000 poisha gp PREPAID airtime on 01711000002 with PIN "1234"
     And customer01 sends the same request again with the same idempotency key
