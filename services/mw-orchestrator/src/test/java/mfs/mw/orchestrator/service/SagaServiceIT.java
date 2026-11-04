@@ -280,7 +280,7 @@ class SagaServiceIT {
   void aTypeWithoutAFlowIsRejectedAtOnce() {
     TxnRequest p2p = TestData.p2p(TestData.txnId(), "k-topup", 5_000);
     TxnRequest topup =
-        new TxnRequest(1, p2p.txnId(), "k-topup", p2p.correlationId(), p2p.channel(), "TOPUP",
+        new TxnRequest(1, p2p.txnId(), "k-topup", p2p.correlationId(), p2p.channel(), "ATM_CASH_IN",
             p2p.initiator(), p2p.debitParty(), p2p.creditParty(), p2p.amount(), null, null,
             p2p.encryptedPin(), null, null, null, p2p.requestedAt());
     transactions.accept(topup, null);

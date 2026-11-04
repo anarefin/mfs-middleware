@@ -22,7 +22,7 @@ public class TransactionRepository {
   private static final String COLUMNS =
       "txn_id, created_at, updated_at, status, previous_status, reply_to, fee_minor, core_ref,"
           + " error_code, error_message, error_message_bn, error_retryable, encrypted_pin::text,"
-          + " request::text";
+          + " request::text, hold_id, partner_ref";
 
   private final JdbcTemplate jdbc;
   private final JsonMapper json;
@@ -62,7 +62,8 @@ public class TransactionRepository {
     jdbc.update(
         "update transaction set updated_at = ?, status = ?, previous_status = ?, fee_minor = ?,"
             + " core_ref = ?, error_code = ?, error_message = ?, error_message_bn = ?,"
-            + " error_retryable = ?, encrypted_pin = ?::jsonb, version = version + 1"
+            + " error_retryable = ?, encrypted_pin = ?::jsonb, hold_id = ?, partner_ref = ?,"
+            + " version = version + 1"
             + " where txn_id = ?",
         Timestamp.from(rec.updatedAt()),
         rec.status().name(),
@@ -74,6 +75,8 @@ public class TransactionRepository {
         rec.error() == null ? null : rec.error().messageBn(),
         rec.error() == null ? null : rec.error().retryable(),
         rec.encryptedPin() == null ? null : json.writeValueAsString(rec.encryptedPin()),
+        rec.holdId(),
+        rec.partnerRef(),
         rec.txnId());
   }
 
@@ -124,6 +127,8 @@ public class TransactionRepository {
         fee,
         rs.getString("core_ref"),
         error,
-        pin == null ? null : json.readValue(pin, EncryptedPin.class));
+        pin == null ? null : json.readValue(pin, EncryptedPin.class),
+        rs.getString("hold_id"),
+        rs.getString("partner_ref"));
   }
 }

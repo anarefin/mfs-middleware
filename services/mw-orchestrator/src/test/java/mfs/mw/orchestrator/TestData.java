@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.UUID;
 import mfs.mw.orchestrator.dto.Amount;
 import mfs.mw.orchestrator.dto.EncryptedPin;
+import mfs.mw.orchestrator.dto.PartnerRef;
 import mfs.mw.orchestrator.dto.Party;
 import mfs.mw.orchestrator.dto.TxnRequest;
 
@@ -19,6 +20,28 @@ public final class TestData {
   public static String txnId() {
     String u = UUID.randomUUID().toString();
     return u.substring(0, 14) + "7" + u.substring(15, 19) + "8" + u.substring(20);
+  }
+
+  /** A TOPUP of {@code msisdn} (operator gp, prepaid) paid from customer 01711000001's wallet. */
+  public static TxnRequest topup(String txnId, String idemKey, long amountMinor, String msisdn) {
+    return new TxnRequest(
+        1,
+        txnId,
+        idemKey,
+        "corr-" + txnId.substring(0, 8),
+        "CUSTOMER_APP",
+        "TOPUP",
+        new Party("MSISDN", "01711000001", null, null),
+        new Party("WALLET", "01711000001", null, "CUSTOMER"),
+        new Party("MSISDN", msisdn, null, null),
+        Amount.bdt(amountMinor),
+        new PartnerRef("gp", "PREPAID", null),
+        null,
+        new EncryptedPin("core-pin-test-1", "ZmFrZS1jaXBoZXJ0ZXh0"),
+        "en",
+        null,
+        null,
+        NOW);
   }
 
   public static TxnRequest p2p(String txnId, String idemKey, long amountMinor) {

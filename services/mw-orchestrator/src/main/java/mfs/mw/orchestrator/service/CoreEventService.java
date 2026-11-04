@@ -5,12 +5,14 @@ import java.util.UUID;
 import mfs.mw.orchestrator.dto.CoreEvent;
 import mfs.mw.orchestrator.dto.ErrorInfo;
 import mfs.mw.orchestrator.entity.TransactionRecord;
+import mfs.mw.orchestrator.exception.ErrorCodes;
 import mfs.mw.orchestrator.mapper.CoreEventMapper;
 import mfs.mw.orchestrator.messaging.Inbox;
 import mfs.mw.orchestrator.repository.TransactionRepository;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.service.saga.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
+import mfs.mw.orchestrator.service.saga.Status;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -66,10 +68,16 @@ public class CoreEventService {
       drop(event, "core.event.unmapped", "core event type not used by any wired flow");
       return;
     }
-    ErrorInfo error = "FAILURE".equals(event.outcome()) ? mapper.error(event) : null;
+    ErrorInfo error = errorFor(event, saga.get());
+    TransactionRecord current =
+        rec.withCore(event.coreRef(), mapper.feeMinor(event)).withHold(mapper.holdId(event));
     try {
-      engine.fire(rec.withCore(event.coreRef(), mapper.feeMinor(event)), saga.get(), error);
+      engine.fire(current, saga.get(), error);
     } catch (InvalidTransitionException e) {
+      if (saga.get() instanceof SagaEvent.HoldPlaced && gaveUp(rec.status()) && mapper.holdId(event) != null) {
+        engine.releaseOrphanHold(rec, mapper.holdId(event));
+        return;
+      }
       log.atInfo()
           .addKeyValue("event", "saga.event.ignored")
           .addKeyValue("txnId", event.txnId())
@@ -77,6 +85,23 @@ public class CoreEventService {
           .addKeyValue("eventType", event.eventType())
           .log("core event does not fit the transaction's state; ignored");
     }
+  }
+
+  /**
+   * The core's reason for a failure event; for the answer to a HOLDING-timeout query, the timeout
+   * itself (whether the hold is then released or was never placed, nothing moved).
+   */
+  private ErrorInfo errorFor(CoreEvent event, SagaEvent saga) {
+    if (saga instanceof SagaEvent.HoldQueryResult) {
+      return new ErrorInfo(
+          ErrorCodes.TMO_CORE_HOLD, "The core did not confirm the hold in time; nothing was moved", null, true);
+    }
+    return "FAILURE".equals(event.outcome()) ? mapper.error(event) : null;
+  }
+
+  /** States a transaction ends in without ever using a hold (REJECTED, FAILED). */
+  private static boolean gaveUp(Status status) {
+    return status == Status.REJECTED || status == Status.FAILED;
   }
 
   private static void drop(CoreEvent event, String name, String message) {

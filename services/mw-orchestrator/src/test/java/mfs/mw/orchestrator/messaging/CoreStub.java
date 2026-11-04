@@ -25,7 +25,8 @@ import tools.jackson.databind.json.JsonMapper;
  * and answers on {@code core.wallet.event.v1} by a fixed rule, with no knowledge of mw-core-mock.
  * ValidateTransaction and PostTransfer succeed, except that an amount of {@link #REJECT_AMOUNT}
  * is refused at validation with INSUFFICIENT_BALANCE and {@link #SILENT_AMOUNT} gets no answer to
- * PostTransfer (a core that never replies).
+ * PostTransfer (a core that never replies). HoldFunds, CommitHold and ReleaseHold always succeed
+ * (ticket 17).
  */
 public final class CoreStub implements AutoCloseable {
 
@@ -86,6 +87,9 @@ public final class CoreStub implements AutoCloseable {
         switch (type) {
           case "ValidateTransaction" -> reject ? "TransactionRejected" : "TransactionValidated";
           case "PostTransfer" -> "TransferPosted";
+          case "HoldFunds" -> "FundsHeld";
+          case "CommitHold" -> "HoldCommitted";
+          case "ReleaseHold" -> "HoldReleased";
           default -> null;
         };
     if (eventType == null) {
@@ -106,9 +110,11 @@ public final class CoreStub implements AutoCloseable {
     }
     e.put(
         "payload",
-        "TransactionValidated".equals(eventType)
-            ? Map.of("fee", Map.of("valueMinor", 500, "currency", "BDT"))
-            : Map.of());
+        switch (eventType) {
+          case "TransactionValidated" -> Map.of("fee", Map.of("valueMinor", 500, "currency", "BDT"));
+          case "FundsHeld" -> Map.of("holdId", "HOLD-" + cmd.path("txnId").asString().substring(0, 8));
+          default -> Map.of();
+        });
     return e;
   }
 

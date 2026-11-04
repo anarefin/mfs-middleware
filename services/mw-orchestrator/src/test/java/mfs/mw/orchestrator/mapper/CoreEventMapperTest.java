@@ -52,7 +52,7 @@ class CoreEventMapperTest {
 
   @Test
   void eventTypesWithoutAFlowYetAreNotMapped() {
-    assertThat(mapper.toSagaEvent(event("TransactionStatus", "SUCCESS", null, "{}"), false)).isEmpty();
+    assertThat(mapper.toSagaEvent(event("ComplianceActionApplied", "SUCCESS", null, "{}"), false)).isEmpty();
     assertThat(mapper.toSagaEvent(event("SomethingNew", "SUCCESS", null, "{}"), false)).isEmpty();
   }
 

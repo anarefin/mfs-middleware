@@ -11,7 +11,8 @@
     "txnType": {
       "type": "string",
       "enum": [
-        "P2P"
+        "P2P",
+        "TOPUP"
       ]
     },
     "creditParty": {
@@ -22,10 +23,39 @@
       "properties": {
         "type": {
           "type": "string",
-          "const": "WALLET"
+          "enum": [
+            "WALLET",
+            "MSISDN"
+          ]
         },
         "id": {
           "type": "string"
+        }
+      }
+    },
+    "partner": {
+      "type": "object",
+      "required": [
+        "partnerId",
+        "productCode"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "partnerId": {
+          "type": "string",
+          "enum": [
+            "gp",
+            "robi",
+            "banglalink",
+            "teletalk"
+          ]
+        },
+        "productCode": {
+          "type": "string",
+          "enum": [
+            "PREPAID",
+            "POSTPAID"
+          ]
         }
       }
     },

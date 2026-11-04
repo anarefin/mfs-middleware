@@ -19,7 +19,7 @@ paths:
   /app/v1/transactions:
     post:
       operationId: submitTransaction
-      summary: Submit a transaction (P2P only so far)
+      summary: Submit a transaction (P2P, TOPUP)
       parameters:
         - name: Idempotency-Key
           in: header
@@ -60,6 +60,13 @@ paths:
         "429": { $ref: "#/components/responses/Error" }
         "422":
           description: Core rejection (MW-CORE-<reason>), with txnId
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "502":
+          description: >-
+            Partner refusal (MW-PTR-<PARTNER>-<reason>), with txnId; the held funds were released.
+            A partner that could not be reached is MW-SYS-* (500, retryable)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
@@ -126,13 +133,31 @@ components:
       type: object
       required: [txnType, creditParty, amount, encryptedPin]
       properties:
-        txnType: { type: string, enum: [P2P] }
+        txnType:
+          type: string
+          enum: [P2P, TOPUP]
+          description: >-
+            P2P pays the wallet of `creditParty.id`. TOPUP recharges the mobile number
+            `creditParty.id` with operator and product `partner` (required for TOPUP, refused
+            otherwise, 400 MW-VAL-001); a refusal by the operator is 502 MW-PTR-<OPERATOR>-<reason>
+            after the held funds were released.
         creditParty:
           type: object
           required: [id]
           properties:
-            type: { type: string, const: WALLET }
+            type:
+              type: string
+              enum: [WALLET, MSISDN]
+              description: Optional; WALLET for P2P, MSISDN for TOPUP (another value is 400 MW-VAL-001).
             id: { $ref: "#/components/schemas/Msisdn" }
+        partner:
+          type: object
+          required: [partnerId, productCode]
+          additionalProperties: false
+          description: TOPUP only. The mobile operator and its product.
+          properties:
+            partnerId: { type: string, enum: [gp, robi, banglalink, teletalk] }
+            productCode: { type: string, enum: [PREPAID, POSTPAID] }
         amount: { $ref: "#/components/schemas/Amount" }
         encryptedPin:
           type: object

@@ -5,7 +5,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 
 ## Responsibilities
 
-- App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P only,
+- App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P and TOPUP,
   `mw.app-gateway.supported-txn-types`) and `GET /app/v1/transactions/{txnId}` behind the APISIX
   route `/app/v1/*` (`deploy/apisix/routes/app-v1.json`, `openid-connect` bearer-only on realm
   `customers`).
@@ -23,6 +23,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   (`mw.app-gateway.allowed-attributes`, only `reference`), so a client can never set reserved
   keys (`duplicate`, `requestTxnId`). MSISDNs accepted as `01XNNNNNNNN`, `8801...`, `+8801...`
   (`util/Msisdn`) and forwarded only in the canonical `01XNNNNNNNN` form.
+- TOPUP (ticket 17): body `partner {partnerId: gp|robi|banglalink|teletalk, productCode:
+  PREPAID|POSTPAID}` is required, `creditParty.type` absent or `MSISDN`; any other type takes no
+  `partner` and only `WALLET` (`MW-VAL-001` naming `partner` / `creditParty.type`). Forwarded as
+  `partner` and credit party `{type: MSISDN, id}`. An operator refusal arrives as FAILED with
+  `MW-PTR-<OPERATOR>-*` and is answered 502.
 - Submit (`service/TransactionService`): mints a UUIDv7 txnId (`util/UuidV7`), maps to the
   canonical `mw.txn.request.v1` (`mapper/RequestMapper`; initiator MSISDN, debit = token wallet,
   credit = body wallet; PIN ciphertext copied untouched, never logged), registers a waiter, then

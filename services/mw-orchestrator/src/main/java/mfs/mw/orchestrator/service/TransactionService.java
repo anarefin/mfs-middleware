@@ -14,6 +14,7 @@ import mfs.mw.orchestrator.mapper.RequestMapper;
 import mfs.mw.orchestrator.mapper.StatusMapper;
 import mfs.mw.orchestrator.repository.IdempotencyRepository;
 import mfs.mw.orchestrator.repository.TransactionRepository;
+import mfs.mw.orchestrator.service.saga.Flow;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import org.slf4j.Logger;
@@ -122,9 +123,15 @@ public class TransactionService {
   }
 
   private ErrorInfo refusal(TxnRequest req) {
-    if (flows.find(req.txnType()).isEmpty()) {
+    Optional<Flow> flow = flows.find(req.txnType());
+    if (flow.isEmpty()) {
       return new ErrorInfo(
           ErrorCodes.VAL_UNSUPPORTED_TXN_TYPE, "Transaction type is not supported", null, false);
+    }
+    if (flow.get().partnerCall().isPresent()
+        && (req.partner() == null || req.partner().partnerId() == null || req.partner().productCode() == null)) {
+      return new ErrorInfo(
+          ErrorCodes.VAL_PARTNER_REQUIRED, "Partner and product are required for this transaction type", null, false);
     }
     if (req.amount().valueMinor() <= 0) {
       return new ErrorInfo(ErrorCodes.VAL_AMOUNT, "Amount must be greater than zero", null, false);

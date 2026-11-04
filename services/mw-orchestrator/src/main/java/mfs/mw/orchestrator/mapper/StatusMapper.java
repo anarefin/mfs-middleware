@@ -39,7 +39,7 @@ public class StatusMapper {
     return new StatusMessage(
         1, req.txnId(), req.idempotencyKey(), req.correlationId(), req.channel(), req.txnType(),
         Status.REJECTED.name(), null, req.initiator(), req.debitParty(), req.creditParty(),
-        req.amount(), null, req.partner(), null, req.originalTxnId(), error, req.locale(),
+        req.amount(), null, req.partner(), null, null, req.originalTxnId(), error, req.locale(),
         req.attributes(), req.requestedAt(), now);
   }
 
@@ -50,7 +50,8 @@ public class StatusMapper {
         req.txnType(), rec.status().name(),
         rec.previousStatus() == null ? null : rec.previousStatus().name(), req.initiator(),
         req.debitParty(), req.creditParty(), req.amount(),
-        rec.feeMinor() == null ? null : Amount.bdt(rec.feeMinor()), req.partner(), rec.coreRef(),
+        rec.feeMinor() == null ? null : Amount.bdt(rec.feeMinor()), req.partner(), rec.partnerRef(),
+        rec.coreRef(),
         req.originalTxnId(), rec.error(), req.locale(), attributes, req.requestedAt(),
         rec.updatedAt());
   }

@@ -40,6 +40,19 @@ public class CoreSteps {
     assertThat(deltas()).isEqualTo(none);
   }
 
+  /**
+   * The wallet's held amount is what it was when noted: a hold placed by the scenario was
+   * committed or released, never left behind.
+   */
+  @Then("no funds are held on {word}")
+  public void noFundsHeld(String wallet) {
+    CoreMock.Balance before = state.notedBalances.get(wallet);
+    if (before == null) {
+      throw new IllegalStateException("the balance of " + wallet + " was not noted before the action");
+    }
+    assertThat(CoreMock.balance(wallet).heldMinor()).as("held on %s", wallet).isEqualTo(before.heldMinor());
+  }
+
   /** Ledger balance now minus the noted one, for every noted wallet. */
   private Map<String, Long> deltas() {
     if (state.notedBalances.isEmpty()) {

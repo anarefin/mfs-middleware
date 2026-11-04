@@ -21,6 +21,7 @@ public record StatusMessage(
     Amount amount,
     Amount fee,
     PartnerRef partner,
+    String partnerRef,
     String coreRef,
     String originalTxnId,
     ErrorInfo error,
