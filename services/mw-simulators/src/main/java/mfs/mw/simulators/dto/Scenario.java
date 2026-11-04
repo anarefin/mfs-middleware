@@ -17,7 +17,7 @@ import jakarta.validation.constraints.Min;
  * @param callbackDelayMs delay of a LATE callback
  */
 public record Scenario(
-    OcsMode forceMode,
+    SimMode forceMode,
     @Min(0) long latencyMs,
     @DecimalMin("0.0") @DecimalMax("1.0") double errorRate,
     boolean outage,
@@ -35,7 +35,7 @@ public record Scenario(
     }
   }
 
-  public Scenario withForceMode(OcsMode m) {
+  public Scenario withForceMode(SimMode m) {
     return new Scenario(m, latencyMs, errorRate, outage, timeoutDelayMs, callbackMode, callbackUrl, callbackDelayMs);
   }
 

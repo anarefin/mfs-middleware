@@ -3,8 +3,8 @@ package mfs.mw.simulators.service;
 import java.util.Optional;
 import java.util.random.RandomGenerator;
 import mfs.mw.simulators.config.SimulatorProperties;
-import mfs.mw.simulators.dto.OcsMode;
-import mfs.mw.simulators.dto.OcsReply;
+import mfs.mw.simulators.dto.SimMode;
+import mfs.mw.simulators.dto.SimReply;
 import mfs.mw.simulators.dto.OcsTopupRequest;
 import mfs.mw.simulators.dto.Scenario;
 import mfs.mw.simulators.mapper.OcsMapper;
@@ -42,18 +42,18 @@ public class OcsService {
     this.random = random;
   }
 
-  public OcsReply topup(OcsTopupRequest req) {
+  public SimReply topup(OcsTopupRequest req) {
     Scenario scenario = scenarios.get(PARTNER);
     sleep(scenario.latencyMs());
     if (scenario.outage()
         || (scenario.errorRate() > 0 && random.nextDouble() < scenario.errorRate())) {
-      return new OcsReply(503, mapper.unavailable(req.transactionId()));
+      return new SimReply(503, mapper.unavailable(req.transactionId()));
     }
     Optional<TopupRecord> existing = ledger.find(req.transactionId());
     if (existing.isPresent()) {
       return reply(existing.get());
     }
-    OcsMode mode = resolver.resolve(req, scenario);
+    SimMode mode = resolver.resolve(req, scenario);
     TopupRecord record = mapper.toRecord(req, mode, ledger.nextRef());
     ledger.put(record);
     log.atInfo()
@@ -61,7 +61,7 @@ public class OcsService {
         .addKeyValue("partnerId", PARTNER)
         .log("top-up {} mode {} status {}", record.transactionId(), mode, record.status());
     callbacks.afterTopup(record);
-    if (mode == OcsMode.TIMEOUT) {
+    if (mode == SimMode.TIMEOUT) {
       sleep(
           scenario.timeoutDelayMs() != null
               ? scenario.timeoutDelayMs()
@@ -71,25 +71,25 @@ public class OcsService {
   }
 
   /** Status inquiry: the real outcome of an earlier top-up, whatever the caller saw. */
-  public OcsReply statusReply(String transactionId) {
+  public SimReply statusReply(String transactionId) {
     Scenario scenario = scenarios.get(PARTNER);
     sleep(scenario.latencyMs());
     if (scenario.outage()) {
-      return new OcsReply(503, mapper.unavailable(transactionId));
+      return new SimReply(503, mapper.unavailable(transactionId));
     }
     return ledger
         .find(transactionId)
-        .map(r -> new OcsReply(200, mapper.toResponse(r)))
-        .orElseGet(() -> new OcsReply(404, mapper.notFound(transactionId)));
+        .map(r -> new SimReply(200, mapper.toResponse(r)))
+        .orElseGet(() -> new SimReply(404, mapper.notFound(transactionId)));
   }
 
-  private OcsReply reply(TopupRecord r) {
+  private SimReply reply(TopupRecord r) {
     return switch (r.mode()) {
-      case BUSINESS_FAILURE, UNKNOWN_CODE -> new OcsReply(422, mapper.toResponse(r));
-      case SERVER_ERROR_AFTER_SEND -> new OcsReply(500, mapper.internalError(r.transactionId()));
+      case BUSINESS_FAILURE, UNKNOWN_CODE -> new SimReply(422, mapper.toResponse(r));
+      case SERVER_ERROR_AFTER_SEND -> new SimReply(500, mapper.internalError(r.transactionId()));
       case MALFORMED ->
-          new OcsReply(200, "{\"transactionId\":\"" + r.transactionId() + "\",\"status\":\"SUC");
-      case SUCCESS, TIMEOUT -> new OcsReply(200, mapper.toResponse(r));
+          new SimReply(200, "{\"transactionId\":\"" + r.transactionId() + "\",\"status\":\"SUC");
+      case SUCCESS, TIMEOUT -> new SimReply(200, mapper.toResponse(r));
     };
   }
 

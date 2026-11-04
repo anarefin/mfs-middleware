@@ -35,3 +35,4 @@ files:
   events/mw-audit-dw/mw.audit.event.v1.schema.json: mw-audit-dw
   events/mw-admin-api/mw.config.changed.v1.schema.json: mw-admin-api
   api/mw-app-gateway/app.v1.openapi.yaml: mw-app-gateway
+  api/mw-adapter-billpay/billpay.v1.openapi.yaml: mw-adapter-billpay

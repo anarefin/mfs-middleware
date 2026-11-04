@@ -9,7 +9,7 @@ import java.util.List;
 import mfs.mw.simulators.client.CallbackClient;
 import mfs.mw.simulators.config.SimulatorProperties;
 import mfs.mw.simulators.dto.CallbackMode;
-import mfs.mw.simulators.dto.OcsMode;
+import mfs.mw.simulators.dto.SimMode;
 import mfs.mw.simulators.dto.OcsTopupRequest;
 import mfs.mw.simulators.dto.Scenario;
 import mfs.mw.simulators.exception.MwException;
@@ -37,7 +37,7 @@ class CallbackServiceTest {
 
   private TopupRecord record() {
     TopupRecord r =
-        mapper.toRecord(new OcsTopupRequest("T-1", "01712345678", "10.00"), OcsMode.SUCCESS, "R-1");
+        mapper.toRecord(new OcsTopupRequest("T-1", "01712345678", "10.00"), SimMode.SUCCESS, "R-1");
     ledger.put(r);
     return r;
   }

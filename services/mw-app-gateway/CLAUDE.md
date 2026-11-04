@@ -5,8 +5,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 
 ## Responsibilities
 
-- App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P, CASH_IN, CASH_OUT
-  and TOPUP, `mw.app-gateway.supported-txn-types`) and `GET /app/v1/transactions/{txnId}` behind the APISIX
+- App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P, CASH_IN, CASH_OUT,
+  TOPUP and BILL_PAY, `mw.app-gateway.supported-txn-types`), `GET /app/v1/transactions/{txnId}`,
+  `GET /app/v1/billers` and `POST /app/v1/billers/{code}/fetch-bill` behind the APISIX
   route `/app/v1/*` (`deploy/apisix/routes/app-v1.json`, `openid-connect` bearer-only on realm
   `customers`).
 - Auth (`config/SecurityConfig`, `security/`): bearer JWT of Keycloak realm `customers` on
@@ -16,7 +17,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   channel follows the realm role: `customer` -> `CUSTOMER_APP`/`CUSTOMER`, `agent` ->
   `AGENT_APP`/`AGENT` (WP20; merchant not served yet; a token with both roles is the customer).
   Role per `txnType` (`mw.app-gateway.txn-type-roles`, checked at submit after the type check):
-  P2P, CASH_OUT and TOPUP customer only, CASH_IN agent only (switch here, nowhere else). Deny by
+  P2P, CASH_OUT, TOPUP and BILL_PAY customer only, CASH_IN agent only (switch here, nowhere else). Deny by
   default: a type with no entry is refused for every role; `AppGatewayConfigTest` fails when a
   txnType of the OpenAPI enum has no entry.
   No token / bad token `401 MW-AUTH-001`; no wallet, other role or a type the role may not
@@ -36,6 +37,29 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   `partner` and only `WALLET` (`MW-VAL-001` naming `partner` / `creditParty.type`). Forwarded as
   `partner` and credit party `{type: MSISDN, id}`. An operator refusal arrives as FAILED with
   `MW-PTR-<OPERATOR>-*` and is answered 502.
+- BILL_PAY (ticket 21): body `creditParty {type: BILLER_ACCOUNT (required), id: <bill number>}` and
+  `partner {billerCode}` only (no partnerId/productCode: the middleware picks the aggregator);
+  `MW-VAL-001` naming `partner.billerCode` / `creditParty.type` otherwise; `creditParty.id` is
+  checked by its type (`dto/CounterPartyId`: bill number `[0-9A-Za-z-]{1,32}` for BILLER_ACCOUNT,
+  an accepted MSISDN for every other type). The canonical partner is `{partnerId: <aggregator of
+  the biller>, productCode: BILL, billerCode}` from the catalogue (`service/BillerService.partnerFor`;
+  unknown biller `MW-VAL-001` on `partner.billerCode`, catalogue unavailable `503 MW-SYS-011`),
+  credit party `{type: BILLER_ACCOUNT, id}`. A refusal is FAILED `MW-PTR-<AGGREGATOR>-*` -> 502.
+- Billers and bill fetch (ticket 21, `controller/BillerController`, `service/BillerService`,
+  `client/BillPayClient`): read-only calls to mw-adapter-billpay's internal API
+  (`contracts/api/mw-adapter-billpay/billpay.v1.openapi.yaml`, `mw.app-gateway.billpay.base-url`
+  `http://mw-adapter-billpay:8080` over the `app` network, read timeout 28 s > the adapter's 25 s
+  partner limit). `GET /app/v1/billers` -> `{billers: [{code, name, category}]}` (the aggregator
+  is not shown); the catalogue is reused for `catalogue-ttl` (60 s) and the last copy kept when the
+  adapter cannot be asked. `POST /app/v1/billers/{code}/fetch-bill {billNumber}` -> `{billerCode,
+  billNumber, amount, dueDate, billPeriod}`; the adapter's envelope passes through with its code and
+  status (404 `MW-VAL-003`, 502 `MW-PTR-*`, 503 `MW-SYS-*`, 504 `MW-TMO-*`); adapter unreachable or
+  unreadable `503 MW-SYS-011` (retryable). Resilience4j instance `billpay`: retry (2 retries, these
+  are idempotent reads) and circuit breaker on `BillPayUnavailableException` only; the envelope
+  (`BillPayRefusedException`) is a normal answer. Any authenticated app user with a wallet may call
+  them. Why HTTP and not Kafka: see "Design decision: synchronous bill fetch" in
+  mw-adapter-billpay's CLAUDE.md (no money moves; no Kafka thread waits; contract, not code,
+  dependency; Kafka request/reply would misuse orchestrator-owned partner topics).
 - Submit (`service/TransactionService`): mints a UUIDv7 txnId (`util/UuidV7`), maps to the
   canonical `mw.txn.request.v1` (`mapper/RequestMapper`; initiator MSISDN = token wallet; debit = token
   wallet (its own PIN), credit = body wallet (walletType AGENT for CASH_OUT, else CUSTOMER); PIN ciphertext copied untouched, never logged), registers a waiter, then
@@ -72,6 +96,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 
 ## Contracts used
 
+- `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (client; own types `dto/Biller`, `dto/Bill`).
 - `events/mw-orchestrator/mw.txn.request.v1` (produced; own type `dto/TxnRequest`, validated
   against the schema in `RequestMapperTest` and `SyncReplyIT`).
 - `events/mw-orchestrator/mw.txn.status.v1` (consumed; own type `dto/StatusMessage`, unknown

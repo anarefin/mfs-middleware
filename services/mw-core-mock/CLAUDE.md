@@ -19,6 +19,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   is: payment topic for `HoldFunds`/`CommitHold`/`ReleaseHold` (transactions with an external call),
   wallet topic for the rest. A command that is repeated on the other topic is answered from
   `command_log`, on the topic it arrived on.
+- `ValidateTransaction` whose credit party is outside the core (`BILLER_ACCOUNT`, `BANK_ACCOUNT`,
+  `CARD_TOKEN`; ticket 21, BILL_PAY) checks the payer side only (wallet types, status, PIN,
+  limits, funds with the type's fee); `PostTransfer` still needs a credit wallet
+  (`CREDIT_WALLET_NOT_FOUND`): such flows hold, then commit to `SETTLEMENT`.
 - Emits the result events (`TransactionValidated`/`TransactionRejected`, `FundsHeld`/`HoldRejected`,
   `HoldCommitted`/`CommitFailed`, `HoldReleased`/`ReleaseFailed`, `TransferPosted`/`TransferRejected`,
   `WalletCredited`/`CreditRejected`, `TransactionReversed`/`ReversalRejected`, `TransactionStatus`)

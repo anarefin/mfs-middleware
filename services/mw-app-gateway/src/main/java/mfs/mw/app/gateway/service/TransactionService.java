@@ -13,6 +13,7 @@ import mfs.mw.app.gateway.config.AppGatewayProperties;
 import mfs.mw.app.gateway.dto.AppUser;
 import mfs.mw.app.gateway.dto.ErrorDetail;
 import mfs.mw.app.gateway.dto.ErrorInfo;
+import mfs.mw.app.gateway.dto.PartnerRef;
 import mfs.mw.app.gateway.dto.StatusMessage;
 import mfs.mw.app.gateway.dto.SubmitResult;
 import mfs.mw.app.gateway.dto.TransactionRequest;
@@ -53,6 +54,7 @@ public class TransactionService {
   private final AppTransactionRepository transactions;
   private final AppGatewayProperties props;
   private final Clock clock;
+  private final BillerService billers;
 
   public TransactionService(
       EventPublisher publisher,
@@ -60,13 +62,15 @@ public class TransactionService {
       RequestMapper mapper,
       AppTransactionRepository transactions,
       AppGatewayProperties props,
-      Clock clock) {
+      Clock clock,
+      BillerService billers) {
     this.publisher = publisher;
     this.waiters = waiters;
     this.mapper = mapper;
     this.transactions = transactions;
     this.props = props;
     this.clock = clock;
+    this.billers = billers;
   }
 
   public SubmitResult submit(AppUser user, String idempotencyKey, TransactionRequest body) {
@@ -80,10 +84,16 @@ public class TransactionService {
     refuseUnknownAttributes(body);
     refuseFieldsOfOtherFlows(body);
     refuseOwnWallet(user, body);
+    PartnerRef partner =
+        RequestMapper.BILL_PAY.equals(body.txnType())
+            ? billers.partnerFor(body.partner().billerCode())
+            : body.partner() == null
+                ? null
+                : new PartnerRef(body.partner().partnerId(), body.partner().productCode());
     Instant now = clock.instant();
     String txnId = UuidV7.next(clock).toString();
     String correlationId = correlationId();
-    TxnRequest req = mapper.toRequest(user, idempotencyKey, body, txnId, correlationId, now);
+    TxnRequest req = mapper.toRequest(user, idempotencyKey, body, txnId, correlationId, now, partner);
 
     CompletableFuture<StatusMessage> answer =
         waiters.register(txnId, idempotencyKey, req.initiator().id());
@@ -127,24 +137,32 @@ public class TransactionService {
   }
 
   /**
-   * TOPUP needs {@code partner} and recharges an MSISDN ({@code creditParty.type} absent or
-   * {@code MSISDN}); every other type pays a wallet and takes no partner (MW-VAL-001 naming the
-   * field).
+   * TOPUP needs {@code partner} (operator and product) and recharges an MSISDN; BILL_PAY needs
+   * {@code partner.billerCode} only and pays a bill number ({@code BILLER_ACCOUNT}); every other
+   * type pays a wallet and takes no partner. {@code creditParty.type} may be left out except for
+   * BILL_PAY (the flow's type is used). MW-VAL-001 naming the field.
    */
   private static void refuseFieldsOfOtherFlows(TransactionRequest body) {
     boolean topup = RequestMapper.TOPUP.equals(body.txnType());
+    boolean bill = RequestMapper.BILL_PAY.equals(body.txnType());
+    String expected = topup ? "MSISDN" : bill ? "BILLER_ACCOUNT" : "WALLET";
     String type = body.creditParty().type();
+    TransactionRequest.Partner partner = body.partner();
     String issue = null;
     String field = null;
-    if (topup && body.partner() == null) {
+    if (topup && (partner == null || !partner.isOperator())) {
       field = "partner";
-      issue = "is required for TOPUP";
-    } else if (!topup && body.partner() != null) {
+      issue = "partnerId and productCode are required for TOPUP";
+    } else if (bill && (partner == null || !partner.isBiller())) {
+      field = "partner.billerCode";
+      issue = "is required for BILL_PAY, without partnerId or productCode";
+    } else if (!topup && !bill && partner != null) {
       field = "partner";
-      issue = "is only allowed for TOPUP";
-    } else if (type != null && !type.equals(topup ? "MSISDN" : "WALLET")) {
+      issue = "is only allowed for TOPUP and BILL_PAY";
+    } else if ((type != null || bill) && !expected.equals(type)) {
+      // BILL_PAY names its type: the id is checked as a bill number only for BILLER_ACCOUNT
       field = "creditParty.type";
-      issue = "must be " + (topup ? "MSISDN" : "WALLET") + " for " + body.txnType();
+      issue = "must be " + expected + " for " + body.txnType();
     }
     if (field != null) {
       throw new MwException(ErrorCodes.VAL_INVALID, "Request validation failed")

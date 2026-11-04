@@ -1,7 +1,7 @@
 package mfs.mw.simulators.dto;
 
-/** The OCS outcomes a test can reach (ticket 15, spec 11.3). */
-public enum OcsMode {
+/** The outcomes a simulated partner call can take (tickets 15, 21; spec 11.3). */
+public enum SimMode {
   SUCCESS,
   BUSINESS_FAILURE,
   /** Top-up applied, reply held past the caller's time limit. */

@@ -36,6 +36,15 @@ class FlowRegistryTest {
   }
 
   @Test
+  void billPayHoldsAndCallsTheBillpayPartner() {
+    Flow flow = wired().find("BILL_PAY").orElseThrow();
+    assertThat(flow.needsHold()).isTrue();
+    assertThat(flow.partnerCall()).contains(new PartnerCall("billpay", "mw.partner.request.billpay.v1"));
+    assertThat(flow.steps())
+        .containsExactlyInAnyOrder(Step.VALIDATE, Step.HOLD, Step.CALL_PARTNER, Step.COMMIT, Step.RELEASE);
+  }
+
+  @Test
   void p2pStaysRegisteredAndUnknownTypesAreNot() {
     FlowRegistry registry = wired();
     assertThat(registry.find("P2P")).map(Flow::needsHold).contains(false);

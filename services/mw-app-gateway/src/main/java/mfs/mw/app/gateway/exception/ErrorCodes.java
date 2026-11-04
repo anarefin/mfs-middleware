@@ -23,6 +23,8 @@ public final class ErrorCodes {
   public static final String AUTH_FORBIDDEN = "MW-AUTH-002";
   /** Kafka did not accept the request in time; nothing was accepted, the app may retry: 503. */
   public static final String SYS_UNAVAILABLE = "MW-SYS-010";
+  /** mw-adapter-billpay could not be asked (biller list, bill fetch); retryable: 503. */
+  public static final String SYS_BILLPAY_UNAVAILABLE = "MW-SYS-011";
   /** Unexpected failure; details stay in the log, never in the response. */
   public static final String SYS_INTERNAL = "MW-SYS-001";
 

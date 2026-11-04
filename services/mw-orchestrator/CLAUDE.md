@@ -5,7 +5,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 ## Responsibilities
 
-- Runs P2P, CASH_IN, CASH_OUT and TOPUP transactions, and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14).
+- Runs P2P, CASH_IN, CASH_OUT, TOPUP and BILL_PAY transactions, and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14, WP15 part).
   Consumes `mw.txn.request.v1` (`route/TxnRequestRoute`), the core results on
   `core.wallet.event.v1` (`route/CoreWalletEventRoute`) and partner adapter answers on
   `mw.partner.reply.v1` (`route/PartnerReplyRoute`), all with retry topics and DLQ. Publishes every
@@ -19,7 +19,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   (VALIDATE, POST, HOLD, CALL_PARTNER, COMMIT, RELEASE, REVERSE, QUERY, INQUIRE; `Step.of(effect)`).
   `P2pFlow`, `CashInFlow`, `CashOutFlow` = validate + post (parties as the channel set them:
   CASH_IN agent -> customer, CASH_OUT customer -> agent; the core enforces the wallet types). `TopupFlow` = validate + hold + callPartner (`PartnerCall` telco,
-  `mw.partner.request.telco.v1`) + commit + release; QUERY is allowed for every flow that holds,
+  `mw.partner.request.telco.v1`) + commit + release; `BillPayFlow` (ticket 21) is the same with
+  `PartnerCall` billpay on `mw.partner.request.billpay.v1` (partner `{partnerId: <aggregator>,
+  productCode: BILL, billerCode}` and credit party `BILLER_ACCOUNT` as the app gateway sets them;
+  same 30 s partner deadline, TSQ on UNKNOWN and NOT_FOUND rules as TOPUP; the sync bill fetch
+  never reaches the orchestrator: mw-app-gateway asks mw-adapter-billpay over HTTP). QUERY is allowed for every flow that holds,
   INQUIRE (status inquiry of an UNKNOWN outcome) for every flow.
   A new flow implements `txnType()`, `needsHold()` and, with a partner leg, `partnerCall()`.
   `SagaEngine.perform` runs the step behind a transition's effect only when the flow has it

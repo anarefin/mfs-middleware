@@ -2,7 +2,7 @@ package mfs.mw.simulators.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import mfs.mw.simulators.dto.OcsMode;
+import mfs.mw.simulators.dto.SimMode;
 import mfs.mw.simulators.dto.OcsTopupRequest;
 import mfs.mw.simulators.dto.Scenario;
 import org.junit.jupiter.api.Test;
@@ -29,13 +29,13 @@ class OcsScenarioResolverTest {
     "01712345999, 100.13, BUSINESS_FAILURE",
     "01712345678, 7, SUCCESS"
   })
-  void magicValuesPickTheMode(String msisdn, String amount, OcsMode expected) {
+  void magicValuesPickTheMode(String msisdn, String amount, SimMode expected) {
     assertThat(resolver.resolve(req(msisdn, amount), Scenario.DEFAULT)).isEqualTo(expected);
   }
 
   @Test
   void aForcedModeWinsOverMagicValues() {
-    Scenario forced = Scenario.DEFAULT.withForceMode(OcsMode.MALFORMED);
-    assertThat(resolver.resolve(req("01712345999", "100.13"), forced)).isEqualTo(OcsMode.MALFORMED);
+    Scenario forced = Scenario.DEFAULT.withForceMode(SimMode.MALFORMED);
+    assertThat(resolver.resolve(req("01712345999", "100.13"), forced)).isEqualTo(SimMode.MALFORMED);
   }
 }

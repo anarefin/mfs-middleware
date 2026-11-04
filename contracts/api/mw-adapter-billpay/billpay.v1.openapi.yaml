@@ -1,0 +1,117 @@
+openapi: 3.1.0
+info:
+  title: upay bill pay internal API (mw-adapter-billpay)
+  version: 1.0.0
+  description: |
+    Internal, read-only API of mw-adapter-billpay (ticket 21): the biller catalogue and the
+    synchronous bill fetch. Its only client is mw-app-gateway, over the `app` zone network
+    (`http://mw-adapter-billpay:8080`); it is not routed by APISIX and has no edge route. No
+    money moves here: a bill is paid with a BILL_PAY transaction through Kafka
+    (mw.txn.request.v1 -> mw-orchestrator -> mw.partner.request.billpay.v1).
+    Every error is the 5.3 envelope. Both calls are idempotent and may be retried by the client.
+servers:
+  - url: http://mw-adapter-billpay:8080
+paths:
+  /billpay/v1/billers:
+    get:
+      operationId: listBillers
+      summary: The biller catalogue and the aggregator serving each biller
+      responses:
+        "200":
+          description: Billers, sorted by code
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Biller" }
+  /billpay/v1/billers/{code}/bills/fetch:
+    post:
+      operationId: fetchBill
+      summary: Ask the biller's aggregator for the amount due on a bill
+      description: >-
+        One call to the aggregator (operation INQUIRY of the adapter framework, same circuit
+        breaker and bulkhead as its payments, time limit of the partner instance). Errors: 400
+        MW-VAL-001 (bad code or bill number); 404 MW-VAL-003 (unknown biller); 502
+        MW-PTR-<AGGREGATOR>-<suffix> (definite refusal mapped by the aggregator's error map, e.g.
+        BILL_NOT_FOUND, BILL_ALREADY_PAID, UNKNOWN_BILLER; UNMAPPED otherwise); 503
+        MW-SYS-PARTNER_<reason> (not sent: CIRCUIT_OPEN, BUSY, UNAVAILABLE, DISABLED,
+        MISCONFIGURED; retryable); 504 MW-TMO-PARTNER_<reason> (no usable answer: TIMEOUT,
+        CONNECTION_RESET, HTTP_5XX, MALFORMED_REPLY, UNEXPECTED_STATUS, AMBIGUOUS_CODE; retryable).
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[A-Z0-9_]{1,32}$" }
+        - name: X-Correlation-Id
+          in: header
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [billNumber]
+              properties:
+                billNumber: { type: string, pattern: "^[0-9A-Za-z-]{1,32}$" }
+      responses:
+        "200":
+          description: The bill
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Bill" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+        "504": { $ref: "#/components/responses/Error" }
+components:
+  responses:
+    Error:
+      description: Error envelope (spec 5.3)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    Biller:
+      type: object
+      required: [code, name, partnerId]
+      properties:
+        code: { type: string, pattern: "^[A-Z0-9_]{1,32}$" }
+        name: { type: string }
+        category: { type: string }
+        partnerId:
+          type: string
+          description: The partner instance (aggregator) that serves the biller; the canonical partner.partnerId of a BILL_PAY.
+    Bill:
+      type: object
+      required: [billerCode, billNumber, amount]
+      properties:
+        billerCode: { type: string }
+        billNumber: { type: string }
+        amount:
+          type: object
+          required: [valueMinor, currency]
+          properties:
+            valueMinor: { type: integer, minimum: 0, description: Poisha }
+            currency: { type: string, const: BDT }
+        dueDate: { type: string, format: date }
+        billPeriod: { type: string, description: YYYY-MM }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

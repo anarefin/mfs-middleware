@@ -1,6 +1,6 @@
 package mfs.mw.simulators.mapper;
 
-import mfs.mw.simulators.dto.OcsMode;
+import mfs.mw.simulators.dto.SimMode;
 import mfs.mw.simulators.dto.OcsResponse;
 import mfs.mw.simulators.dto.OcsTopupRequest;
 import mfs.mw.simulators.service.TopupRecord;
@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 public class OcsMapper {
 
   /** Only business failure and unknown code fail the top-up; every other mode applies it. */
-  public TopupRecord toRecord(OcsTopupRequest req, OcsMode mode, String ocsRef) {
+  public TopupRecord toRecord(OcsTopupRequest req, SimMode mode, String ocsRef) {
     return switch (mode) {
       case BUSINESS_FAILURE ->
           new TopupRecord(req.transactionId(), req.msisdn(), req.amount(), "FAILED", "2001",

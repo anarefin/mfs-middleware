@@ -14,7 +14,8 @@
         "P2P",
         "CASH_IN",
         "CASH_OUT",
-        "TOPUP"
+        "TOPUP",
+        "BILL_PAY"
       ]
     },
     "creditParty": {
@@ -27,21 +28,38 @@
           "type": "string",
           "enum": [
             "WALLET",
-            "MSISDN"
+            "MSISDN",
+            "BILLER_ACCOUNT"
           ]
         },
         "id": {
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "string"
+            }
+          ]
         }
       }
     },
     "partner": {
       "type": "object",
-      "required": [
-        "partnerId",
-        "productCode"
-      ],
       "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "partnerId",
+            "productCode"
+          ]
+        },
+        {
+          "required": [
+            "billerCode"
+          ]
+        }
+      ],
       "properties": {
         "partnerId": {
           "type": "string",
@@ -58,6 +76,9 @@
             "PREPAID",
             "POSTPAID"
           ]
+        },
+        "billerCode": {
+          "type": "string"
         }
       }
     },

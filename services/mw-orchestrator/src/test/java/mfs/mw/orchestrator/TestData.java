@@ -44,6 +44,28 @@ public final class TestData {
         NOW);
   }
 
+  /** A BILL_PAY of DESCO bill {@code billNumber} through aggregator billagg, from 01711000001. */
+  public static TxnRequest billPay(String txnId, String idemKey, long amountMinor, String billNumber) {
+    return new TxnRequest(
+        1,
+        txnId,
+        idemKey,
+        "corr-" + txnId.substring(0, 8),
+        "CUSTOMER_APP",
+        "BILL_PAY",
+        new Party("MSISDN", "01711000001", null, null),
+        new Party("WALLET", "01711000001", null, "CUSTOMER"),
+        new Party("BILLER_ACCOUNT", billNumber, null, null),
+        Amount.bdt(amountMinor),
+        new PartnerRef("billagg", "BILL", "DESCO"),
+        null,
+        new EncryptedPin("core-pin-test-1", "ZmFrZS1jaXBoZXJ0ZXh0"),
+        "en",
+        null,
+        null,
+        NOW);
+  }
+
   /**
    * A REVERSAL of {@code originalTxnId} asked by operations (channel SYSTEM): the parties are the
    * original P2P's, swapped; no PIN.
