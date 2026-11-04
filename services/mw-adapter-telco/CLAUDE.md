@@ -5,41 +5,97 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.telco`. Follo
 
 ## Responsibilities
 
-- Thin telco adapter (spec WP14 part, 7.3 rule 5, 7.4, 11): consumes `mw.partner.request.telco.v1`,
-  maps a `PAY` / `TOPUP` request to the OCS REST/JSON wire format of the OCS simulator
-  (`POST /ocs/v1/topup {transactionId, msisdn, amount:"20.00"}`) and publishes
+- Telco adapter (spec WP14 part, 7.3 rule 5, 7.4, 11): consumes `mw.partner.request.telco.v1`,
+  checks a `PAY` / `STATUS_QUERY` request (`mapper/PartnerCallMapper`), calls the partner once through
+  the adapter framework (`partner` package, below) with our stable reference, and publishes
   `mw.partner.reply.v1` through the outbox (inbox-deduplicated on `requestId`).
-- Outcomes (`mapper/PartnerReplyMapper`): SUCCESS (`partnerRef` = OCS ref, `attributes.partnerTxnRef`
-  = our reference); FAILED with `MW-PTR-<PARTNER>-<suffix>` (OCS code map in `mw.telco.ocs.error-codes`,
-  unlisted -> `UNMAPPED`); FAILED `MW-SYS-PARTNER_{UNAVAILABLE,CIRCUIT_OPEN,BUSY}` when the call never left
+- Outcomes (`mapper/PartnerReplyMapper`): SUCCESS (`partnerRef` = partner ref, `attributes.partnerTxnRef`
+  = our reference); FAILED with `MW-PTR-<PARTNER>-<suffix>` (partner's `error-map`, unlisted -> `UNMAPPED`);
+  FAILED `MW-SYS-PARTNER_{UNAVAILABLE,CIRCUIT_OPEN,BUSY,DISABLED,MISCONFIGURED}` when the call never left
   (retryable); UNKNOWN `MW-TMO-PARTNER_{TIMEOUT,CONNECTION_RESET,HTTP_5XX,MALFORMED_REPLY,UNEXPECTED_STATUS,AMBIGUOUS_CODE}`
-  (never retryable by itself: status inquiry resolves it). Only 422 with a code and 400 (`HTTP_400`) are
-  definite rejections; 408/409/429, other 4xx and 1xx/3xx are UNKNOWN (fail closed: a rejection releases the hold); FAILED `MW-VAL-INVALID_PARTNER_REQUEST`
+  (never retryable by itself: status inquiry resolves it); PENDING for an async-callback partner's ack.
+  For the OCS only 422 with a code and 400 (`HTTP_400`) are definite rejections; 408/409/429, other 4xx and
+  1xx/3xx are UNKNOWN (fail closed: a rejection releases the hold). FAILED `MW-VAL-INVALID_PARTNER_REQUEST`
   for requests that cannot be mapped (wrong family/operation, amount <= 0, credit party not an MSISDN).
 - Stable partner reference (`service/PartnerReferenceService`, table `partner_reference` in schema
   `partner_ref`, spec 4.1): `UPAY` + txnId hex, upper case, stored on first use. Every request for the same
   txnId sends the same reference; the OCS returns the original outcome for a repeated one. The
   orchestrator's `partnerTxnRef` is ignored.
-- `client/OcsClient`: Resilience4j instance `ocs` (bulkhead 100, circuit breaker, time limiter 20 s;
-  see `application.yml`). Exactly one HTTP attempt per call: never add `@Retry` to the top-up. Only
-  transport errors, 5xx, timeouts and unreadable replies count towards the circuit; business rejections do not.
-- The OCS call runs on a virtual-thread executor (`telcoCallExecutor`), never on the Kafka consumer thread.
+- The partner call runs on a virtual-thread executor (`telcoCallExecutor` hands the request off,
+  `partnerCallExecutor` runs the HTTP call under the time limiter), never on the Kafka consumer thread.
   The offset is committed when the request is handed over; a crash before the reply is written leaves
   the transaction without a reply and the orchestrator's deadline turns it UNKNOWN (TSQ, spec 7.4).
-- Status inquiry (ticket 18, spec 7.4): `STATUS_QUERY` -> `GET /ocs/v1/topup/{reference}` with the
+- Status inquiry (ticket 18, spec 7.4): `STATUS_QUERY` -> OCS `GET /ocs/v1/topup/{reference}` with the
   stable reference, same Resilience4j instance, one attempt. 200 SUCCESS -> SUCCESS (`partnerRef`);
   200 FAILED -> FAILED with the mapped code (ambiguous code -> UNKNOWN); 404 with the OCS'
   NOT_FOUND body -> `NOT_FOUND`; anything else, and a call that never left (circuit open, bulkhead,
-  connect) -> UNKNOWN `MW-TMO-PARTNER_*`, never FAILED (a FAILED answer releases a hold the partner
-  may have used). The orchestrator asks again at its next slot.
+  connect, disabled) -> UNKNOWN `MW-TMO-PARTNER_*`, never FAILED (a FAILED answer releases a hold the
+  partner may have used). A fresh `requestId` per inquiry is the orchestrator's; the reply carries it.
+  The orchestrator asks again at its next slot.
 - A PAY consumed after its `deadlineAt` is not sent: FAILED `MW-SYS-PARTNER_REQUEST_EXPIRED`
   (retryable). This is what lets the orchestrator trust a later NOT_FOUND.
-- Not yet: callbacks, per-partner config (ticket 20, adapter framework).
-  Any `partnerId` in the request is served by the single static OCS endpoint.
+- Not yet: the callback HTTP endpoint and `mw.partner.inbound.v1` (ticket 22; the framework already
+  verifies and maps a callback, `PartnerGateway.inbound`); audit events on `mw.audit.event.v1` (the
+  framework audits to the log, see below).
 - Init (`mw-adapter-telco-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
   `adapter_telco_rw` and schema `partner_ref`, `secret/mw-adapter-telco` (DB password, never
   overwritten) and the AppRole `mw-adapter-telco` (configtree volume at `/run/mw/approle`); waits
   for OpenBao's `dev-init.json` and retries the database step when another init races it.
+
+## Adapter framework (`partner` package, spec 12, WP11; copied, not a library: D13/D14)
+
+Partners of a known kind are config, not code. Layout:
+
+- `partner/` SPI: `PartnerAdapter` (`execute`, `inquire`, `onInbound`), `AuthScheme` (`apply`/`verify`),
+  `PartnerCall` (canonical call: partnerId, operation, txnType, reference, `input` document),
+  `PartnerResponse` (Success, Rejected, Ambiguous, NotFound, Pending, NotSent, Unknown), `PartnerContext`,
+  `InboundCall`/`InboundResult`, `CredentialRef`/`CredentialResolver`, `PartnerFrameworkConfiguration`
+  (Spring wiring; every other class is a plain constructor so tests assemble it without Spring).
+- `partner/template/`: `PartnerRouteTemplates` (Camel Java-DSL route templates `rest-json-request-reply`
+  and `rest-json-async-callback`, parameter `partner`, endpoint `direct:partner-<id>`),
+  `PartnerRouteRegistrar` (one route per partner instance via `TemplatedRouteBuilder`, re-created on a
+  template change, removed on delete), `PartnerGateway` (entry point: resolves partnerId -> instance,
+  else `mw.partners.default-partner`, else NOT_SENT DISABLED), `PartnerCallWrapper` (bulkhead -> circuit
+  breaker -> time limiter, one attempt, metrics, audit), `RestJsonAdapter` (HTTP + JSONata + fail-closed
+  classification), `PartnerInstance(Factory)`, `PartnerAudit`.
+- `partner/config/`: `PartnerConfig` (one instance; same field names in `mw.partners.instances.<id>` and in
+  a config-changed `value`), `PartnerConfigStore` (immutable snapshot swapped atomically; newer
+  `version` wins; a value that is incomplete or does not compile is rejected and the old config stays;
+  seeds are version 0), `PartnerConfigRouteBuilder` + `PartnerConfigListener` (`mw.config.changed.v1`,
+  plain Kafka route: own consumer group per start, from the beginning, no commits, never throws; the
+  topic has no retry/DLQ topics), `PartnerProperties` (seeds).
+- `partner/mapping/JsonataMapping` (com.dashjoin:jsonata), `partner/auth/` (`none`, `api-key` (header
+  param, default `X-Api-Key`), `hmac-sha256` (Base64 HMAC over method, path+query, epoch-seconds
+  timestamp, hex SHA-256 of body; `X-Signature`, `X-Timestamp`, optional `X-Key-Id`; 300 s skew),
+  `EnvironmentCredentialResolver` (secret = Spring property named by the ref, filled from OpenBao)).
+
+Rules the framework enforces whatever the mapping says (fail closed): 5xx -> UNKNOWN before mapping;
+SUCCESS/PENDING only on a 2xx (PENDING only for the async template, SUCCESS needs a partnerRef); FAILED
+only with a code and on an operation's `definite-statuses`; NOT_FOUND only for `STATUS_QUERY` and on a
+definite status; an `ambiguous-codes` code -> AMBIGUOUS; anything else -> UNKNOWN. A refused/timed-out
+connect, an open circuit, a full bulkhead, a disabled partner, a missing operation/credential or a failing
+request mapping -> NOT_SENT (nothing left). Only exceptions count towards the circuit.
+
+Response mapping contract: input `{status, body}` (`body` null when not JSON), output `{outcome, partnerRef,
+code, message, reason}`. Request mapping input: `PartnerCall.input` + `reference`, `operation`, `txnId`.
+`{reference}` in an operation path is replaced (URL-encoded). Headers sent: static `headers`,
+`X-Correlation-Id`, the auth scheme's.
+
+Wrapper output: metrics `mw_partner_call_total`, `mw_partner_call_duration_seconds` (histogram; labels
+`partner`, `txn_type`, `operation`, `status`), `mw_partner_circuit_state` (0 closed, 1 open, 2 half-open);
+one `partner.call.audit` log event per call with the raw request/response masked (`sensitive-fields` by
+rule, then free-text scrubbing; headers never), cut at 4 KB.
+
+The OCS is the seed instance `ocs` in `application.yml` (`mw.partners`, base URL from `OCS_BASE_URL`,
+timeout 20 s, Resilience4j instance `ocs`: bulkhead 100, circuit breaker with 16 s slow-call threshold)
+and `default-partner: ocs`, so gp/robi/banglalink/teletalk are all served by it until they get their own
+`partner/<id>` record. Never add a retry to a partner call.
+
+Copying it into another adapter (tickets 21, 23): copy `partner/` with its tests
+(`src/test/.../partner/`), rename the package, add `jsonata` to the module's version catalog and
+build, copy the `mw.partners` block shape into `application.yml` with that adapter's seed partners and
+Resilience4j instances, and keep `mw.partners.config-consumer.enabled: false` in the test config. The
+service layer stays the adapter's own (request checks, reference, reply mapping, inbox/outbox).
 
 ## Contracts owned
 
@@ -51,6 +107,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.telco`. Follo
   `dto/PartnerRequest`.
 - `events/mw-orchestrator/mw.partner.reply.v1` (family `telco`, shared payload) out; own type
   `dto/PartnerReply`. `dto/PartnerMessagesSchemaTest` keeps both aligned with the samples.
+- `events/mw-admin-api/mw.config.changed.v1` in (PARTNER records, `configKey` `partner/<id>`, `value` =
+  a full `PartnerConfig`); own type `dto/ConfigChangedEvent`. The `value` shape is this adapter's reading
+  of an open object; mw-admin-api (ticket 38) must publish it in this shape.
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 

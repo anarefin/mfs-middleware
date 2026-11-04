@@ -67,11 +67,4 @@ class PartnerMessagesSchemaTest {
 
     assertThat(described).doesNotContain("01711000001").contains("0171****001");
   }
-
-  @Test
-  void ocsTopupMsisdnIsMaskedWhenDescribed() {
-    String described = MaskingPolicy.describe(new OcsTopupRequest("UPAYX", "01711000001", "20.00"));
-
-    assertThat(described).doesNotContain("01711000001").contains("0171****001");
-  }
 }

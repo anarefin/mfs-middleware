@@ -56,8 +56,8 @@ import tools.jackson.databind.json.JsonMapper;
       "mw.telco.request-consumer.enabled=true",
       "mw.outbox.relay.enabled=true",
       "mw.outbox.relay.period=100ms",
-      "mw.telco.ocs.read-timeout=4s",
-      "resilience4j.timelimiter.instances.ocs.timeout-duration=1500ms",
+      "mw.partners.instances.ocs.read-timeout-ms=4000",
+      "mw.partners.instances.ocs.timeout-ms=1500",
       "resilience4j.circuitbreaker.instances.ocs.sliding-window-type=COUNT_BASED",
       "resilience4j.circuitbreaker.instances.ocs.sliding-window-size=4",
       "resilience4j.circuitbreaker.instances.ocs.minimum-number-of-calls=4",
@@ -81,7 +81,7 @@ class TelcoRequestRouteIT {
 
   @DynamicPropertySource
   static void ocsUrl(DynamicPropertyRegistry registry) {
-    registry.add("mw.telco.ocs.base-url", () -> "http://localhost:" + OCS.port());
+    registry.add("mw.partners.instances.ocs.base-url", () -> "http://localhost:" + OCS.port());
   }
 
   private final EventPublisher publisher;

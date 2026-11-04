@@ -45,6 +45,8 @@ dependencies {
     // Scheduled jobs run on one instance only (ShedLock on this service's schema, 4.4).
     implementation(libs.shedlock.spring)
     implementation(libs.shedlock.provider.jdbc.template)
+    // Adapter framework (spec 12): partner request/response mappings in JSONata.
+    implementation(libs.jsonata)
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.boot.starter.webmvc.test)
