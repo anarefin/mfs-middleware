@@ -74,6 +74,12 @@ Only APISIX is published, so every call goes through it:
   REVERSED (or MANUAL_REVIEW) in the app view. "the orchestrator has handled the reversal
   request" waits for the request's idempotency row (a repeated reversal leaves no other trace).
   "the core rejects the next <Command> with reason <R>" injects a REJECT fault.
+- Notifications (`features/notify.feature`, `@p2p @notify`, ticket 24): "<msisdn> gets the SMS
+  \"...\"" waits (30 s) for that exact text at the SMSC simulator with a DELIVRD receipt
+  (`{txnId}` stands for the scenario's transaction); "the SMS to <msisdn> about the transaction
+  was sent as UCS2|GSM7 in N parts". `support/Smsc.messagesTo` reads `GET /sim/smsc/messages`
+  through `/test/sim/*`. Texts are the seeded `notify.template` rows (bn when the request has no
+  locale), the other party's number masked.
 - `support/CoreMock`: `encryptPin` (RSA-OAEP SHA-256 with the core key), `balance`,
   `injectFault` / `resetFaults` (reset in an `@After` hook of the scenarios that inject).
 - `support/Keycloak.customerToken(user)`; `support/AuditTrail.rowsOfTxn` / `verifyChain`;

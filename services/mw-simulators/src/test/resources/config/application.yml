@@ -9,3 +9,8 @@ mw:
   retention:
     # The purge job's schedule is off in tests; OutboxInboxPurgeConformanceIT calls it directly.
     cron: "-"
+sim:
+  smsc:
+    # The SMPP listener is off in tests (cached contexts would fight over the port);
+    # SmscSimulatorIT switches it on with a free port.
+    enabled: false

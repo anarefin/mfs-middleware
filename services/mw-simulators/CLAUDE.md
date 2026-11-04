@@ -67,6 +67,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   `sim.callback-secrets.c2wbank` (stack: `C2WBANK_HMAC_SECRET`, written by `init/init.sh`); the
   e2e suite points `callbackUrl` at `http://apisix:9080/partner/c2wbank/callback/debits`; replay
   through the shared `POST /sim/c2wbank/callbacks/{reference}/replay`.
+- SMSC (ticket 24, `messaging/SmscServer` on jSMPP, `service/SmscService`,
+  `controller/SmscController`): SMPP 3.4 server on `sim.smsc.port` (2775, internal network only;
+  `sim.smsc.enabled`, off in tests except `SmscSimulatorIT`). Accepts any bind (no credential
+  check); every `submit_sm` gets `SMSC-n`; GSM-7 (data_coding 0, unpacked) and UCS-2 (8)
+  decoded, concatenated parts (UDH IE 0x00/0x08) reassembled. A DLR (`deliver_sm`, SMSC delivery
+  receipt, `id:... stat:...`) goes back on the same session after `sim.smsc.dlr-delay` (300 ms).
+  Destination magic suffixes: `999` DLR UNDELIV, `998` DLR EXPIRED, `997` first two submits
+  refused 0x58 (throttled) then accepted, `996` refused 0x0B, `995` no DLR; else DELIVRD.
+  Control API: `GET /sim/smsc/messages[?msisdn=]` -> `[{destination, source, text, encoding
+  GSM7|UCS2, segments, messageIds, dlrStatus, receivedAt}]`, `DELETE /sim/smsc/messages`.
 - Adding a simulator: add its name to `sim.partners`, a controller under `/<partner>/...`, reuse
   the store, recorder, `SimMode`/`MagicAmounts` and callback service.
 - Init (`mw-simulators-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role

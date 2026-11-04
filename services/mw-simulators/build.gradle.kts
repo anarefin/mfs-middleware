@@ -45,6 +45,8 @@ dependencies {
     // Scheduled jobs run on one instance only (ShedLock on this service's schema, 4.4).
     implementation(libs.shedlock.spring)
     implementation(libs.shedlock.provider.jdbc.template)
+    // SMSC simulator: SMPP 3.4 server (spec 22.2, ticket 24).
+    implementation(libs.jsmpp)
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.boot.starter.webmvc.test)
