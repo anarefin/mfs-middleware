@@ -13,6 +13,7 @@
         "P2P",
         "CASH_IN",
         "CASH_OUT",
+        "MERCHANT_PAY",
         "TOPUP",
         "BILL_PAY",
         "ADD_MONEY_BANK"

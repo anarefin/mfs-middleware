@@ -57,6 +57,13 @@ public final class AppApi {
         Map.of("Authorization", "Bearer " + Keycloak.customerToken(user)));
   }
 
+  /** {@code GET /app/v1/merchant/collections} as {@code user} (ticket 30, merchant role only). */
+  public static Http.Response merchantCollections(String user) {
+    return Http.get(
+        Stack.get().url("app/v1/merchant/collections"),
+        Map.of("Authorization", "Bearer " + Keycloak.customerToken(user)));
+  }
+
   /** {@code POST /app/v1/billers/{code}/fetch-bill} as {@code user}. */
   public static Http.Response fetchBill(String user, String billerCode, String billNumber) {
     return Http.postJson(

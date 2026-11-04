@@ -74,6 +74,11 @@ Only APISIX is published, so every call goes through it:
   REVERSED (or MANUAL_REVIEW) in the app view. "the orchestrator has handled the reversal
   request" waits for the request's idempotency row (a repeated reversal leaves no other trace).
   "the core rejects the next <Command> with reason <R>" injects a REJECT fault.
+- MERCHANT_PAY (`features/merchant.feature`, `@merchant`, ticket 30): customer01 pays merchant01
+  (wallet `01911000001`, no fee) with the generic "submits MERCHANT_PAY of N poisha with
+  counterparty ..." step; "<merchant> lists its collections", "<merchant> sees the transaction in its
+  collections with the payer masked as 0171****001" (polls the projection), "<merchant> does not see
+  the transaction in its collections" (merchant02, wallet `01911000002`, is the other merchant).
 - `support/CoreMock`: `encryptPin` (RSA-OAEP SHA-256 with the core key), `balance`,
   `injectFault` / `resetFaults` (reset in an `@After` hook of the scenarios that inject).
 - `support/Keycloak.customerToken(user)`; `support/AuditTrail.rowsOfTxn` / `verifyChain`;

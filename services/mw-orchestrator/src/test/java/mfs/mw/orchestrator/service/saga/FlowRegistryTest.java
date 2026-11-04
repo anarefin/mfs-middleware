@@ -36,6 +36,15 @@ class FlowRegistryTest {
   }
 
   @Test
+  void merchantPayIsRegisteredAndPostsWithoutHold() {
+    Flow flow = wired().find("MERCHANT_PAY").orElseThrow();
+    assertThat(flow.txnType()).isEqualTo("MERCHANT_PAY");
+    assertThat(flow.needsHold()).isFalse();
+    assertThat(flow.steps()).containsExactlyInAnyOrder(Step.VALIDATE, Step.POST);
+    assertThat(flow.partnerCall()).isEmpty();
+  }
+
+  @Test
   void billPayHoldsAndCallsTheBillpayPartner() {
     Flow flow = wired().find("BILL_PAY").orElseThrow();
     assertThat(flow.needsHold()).isTrue();

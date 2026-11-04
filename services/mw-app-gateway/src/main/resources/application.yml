@@ -182,13 +182,15 @@ mw:
     instance-id: ${HOSTNAME:}
     request-topic: mw.txn.request.v1
     status-topic: mw.txn.status.v1
-    supported-txn-types: P2P,CASH_IN,CASH_OUT,TOPUP,BILL_PAY,ADD_MONEY_BANK
+    supported-txn-types: P2P,CASH_IN,CASH_OUT,MERCHANT_PAY,TOPUP,BILL_PAY,ADD_MONEY_BANK
     # Which app role (wallet type) may initiate which txnType (spec WP20). Deny by default: a
     # supported type with no entry is refused for every role (403 MW-AUTH-002).
     txn-type-roles:
       P2P: CUSTOMER
       CASH_IN: AGENT
       CASH_OUT: CUSTOMER
+      # the customer pays the merchant; the merchant app initiates nothing (collections view only)
+      MERCHANT_PAY: CUSTOMER
       TOPUP: CUSTOMER
       BILL_PAY: CUSTOMER
       ADD_MONEY_BANK: CUSTOMER

@@ -35,6 +35,7 @@ class WalletRulesIT {
   static final String CUSTOMER_B = "01711000002";
   static final String AGENT = "01811000001";
   static final String AGENT_2 = "01811000002";
+  static final String MERCHANT = "01911000001";
 
   private final CoreCommandService service;
   private final WalletSeeder seeder;
@@ -109,6 +110,23 @@ class WalletRulesIT {
     assertThat(validate("CASH_OUT", CUSTOMER_A, AGENT, "1234")).isEqualTo("OK");
     assertThat(validate("CASH_OUT", AGENT, CUSTOMER_A, "1234")).isEqualTo("INVALID_COUNTERPARTY");
     assertThat(validate("CASH_OUT", CUSTOMER_A, CUSTOMER_B, "1234")).isEqualTo("INVALID_COUNTERPARTY");
+  }
+
+  @Test
+  void merchantPayRunsOnlyFromACustomerToAMerchant() {
+    assertThat(validate("MERCHANT_PAY", CUSTOMER_A, MERCHANT, "1234")).isEqualTo("OK");
+    assertThat(validate("MERCHANT_PAY", CUSTOMER_A, CUSTOMER_B, "1234")).isEqualTo("INVALID_COUNTERPARTY");
+    assertThat(validate("MERCHANT_PAY", CUSTOMER_A, AGENT, "1234")).isEqualTo("INVALID_COUNTERPARTY");
+    assertThat(validate("MERCHANT_PAY", AGENT, MERCHANT, "1234")).isEqualTo("INVALID_COUNTERPARTY");
+    assertThat(validate("MERCHANT_PAY", MERCHANT, CUSTOMER_A, "1234")).isEqualTo("INVALID_COUNTERPARTY");
+  }
+
+  @Test
+  void aMerchantPaymentMovesTheAmountToTheMerchantWithoutAFee() {
+    CoreEvent e = handle(command("PostTransfer", "MERCHANT_PAY", CUSTOMER_A, MERCHANT, 25_000, "1234"));
+    assertThat(e.eventType()).isEqualTo("TransferPosted");
+    assertThat(balance(CUSTOMER_A)).isEqualTo(1_000_000 - 25_000);
+    assertThat(balance(MERCHANT)).isEqualTo(25_000);
   }
 
   @Test
