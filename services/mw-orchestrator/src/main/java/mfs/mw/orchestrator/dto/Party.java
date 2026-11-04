@@ -10,6 +10,6 @@ import mfs.mw.orchestrator.util.SensitiveType;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record Party(
     String type,
-    @Sensitive(SensitiveType.MSISDN) String id,
+    @Sensitive(SensitiveType.PARTY_ID) String id,
     @Sensitive(SensitiveType.NAME) String name,
     String walletType) {}

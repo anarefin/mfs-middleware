@@ -187,6 +187,115 @@ class TransactionServiceTest {
     assertThat(req.debitParty().id()).isEqualTo(USER.msisdn());
   }
 
+  // --- ADD_MONEY_BANK (ticket 23) -------------------------------------------------------------
+
+  final TransactionService withAddMoney =
+      new TransactionService(
+          publisher, waiters, new RequestMapper(), repo,
+          new AppGatewayProperties(
+              Duration.ofMillis(50), "gw-unit", "mw.txn.request.v1", "mw.txn.status.v1",
+              List.of("P2P", "ADD_MONEY_BANK"), List.of("reference"),
+              new AppGatewayProperties.Jwt("http://kc/certs", "/realms/customers"),
+              Map.of("P2P", List.of("CUSTOMER"), "ADD_MONEY_BANK", List.of("CUSTOMER"))),
+          Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
+          billers);
+
+  static TransactionRequest addMoney(
+      TransactionRequest.CounterParty credit, TransactionRequest.BankAccount debit, TransactionRequest.Partner partner) {
+    return new TransactionRequest(
+        "ADD_MONEY_BANK", credit, new Amount(50_000L, "BDT"), new EncryptedPin("k", "c"), null, null, partner, debit);
+  }
+
+  static final TransactionRequest.BankAccount ACCOUNT = new TransactionRequest.BankAccount("BANK_ACCOUNT", "1234567890123");
+
+  void assertAddMoneyRefused(TransactionRequest body, String field) {
+    assertThatThrownBy(() -> withAddMoney.submit(USER, "key", body))
+        .isInstanceOfSatisfying(
+            MwException.class,
+            e -> {
+              assertThat(e.code()).isEqualTo("MW-VAL-001");
+              assertThat(e.details()).extracting(d -> d.field()).containsExactly(field);
+            });
+  }
+
+  @Test
+  void anAddMoneyNeedsABankAccountAndABankAndNoCounterparty() {
+    TransactionRequest.Partner bank = TransactionRequest.Partner.bank("c2wbank");
+    assertAddMoneyRefused(addMoney(null, null, bank), "debitParty");
+    assertAddMoneyRefused(addMoney(null, ACCOUNT, null), "partner.partnerId");
+    assertAddMoneyRefused(addMoney(null, ACCOUNT, new TransactionRequest.Partner("gp", "PREPAID")), "partner.partnerId");
+    assertAddMoneyRefused(addMoney(null, ACCOUNT, TransactionRequest.Partner.biller("DESCO")), "partner.partnerId");
+    assertAddMoneyRefused(
+        addMoney(new TransactionRequest.CounterParty(null, "01711000002"), ACCOUNT, bank), "creditParty");
+    verifyNoInteractions(publisher, repo, billers);
+  }
+
+  @Test
+  void otherFlowsTakeNoBankAccountAndNeedACounterparty() {
+    TransactionRequest p2pWithAccount =
+        new TransactionRequest(
+            "P2P", new TransactionRequest.CounterParty(null, "01711000002"), new Amount(100L, "BDT"),
+            new EncryptedPin("k", "c"), null, null, null, ACCOUNT);
+    assertAddMoneyRefused(p2pWithAccount, "debitParty");
+    TransactionRequest p2pWithoutPayee =
+        new TransactionRequest("P2P", null, new Amount(100L, "BDT"), new EncryptedPin("k", "c"), null, null, null, null);
+    assertAddMoneyRefused(p2pWithoutPayee, "creditParty");
+    assertAddMoneyRefused(flowWith("P2P", TransactionRequest.Partner.bank("c2wbank")), "partner");
+    verifyNoInteractions(publisher, repo);
+  }
+
+  @Test
+  void aTopupCannotNameABankAsOperator() {
+    TransactionService withTopup =
+        new TransactionService(
+            publisher, waiters, new RequestMapper(), repo,
+            new AppGatewayProperties(
+                Duration.ofMillis(50), "gw-unit", "mw.txn.request.v1", "mw.txn.status.v1",
+                List.of("TOPUP"), List.of("reference"),
+                new AppGatewayProperties.Jwt("http://kc/certs", "/realms/customers"),
+                Map.of("TOPUP", List.of("CUSTOMER"))),
+            Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
+            billers);
+    TransactionRequest topup =
+        new TransactionRequest(
+            "TOPUP", new TransactionRequest.CounterParty("MSISDN", "01711000002"), new Amount(100L, "BDT"),
+            new EncryptedPin("k", "c"), null, null, new TransactionRequest.Partner("c2wbank", "PREPAID"));
+    assertThatThrownBy(() -> withTopup.submit(USER, "key", topup))
+        .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-VAL-001"));
+  }
+
+  @Test
+  void aValidAddMoneyIsPublishedFromTheBankAccountIntoTheCallersWallet() {
+    var r = withAddMoney.submit(USER, "key", addMoney(null, ACCOUNT, TransactionRequest.Partner.bank("c2wbank")));
+
+    assertThat(r.view().status()).isEqualTo("PROCESSING");
+    var sent = org.mockito.ArgumentCaptor.forClass(Object.class);
+    verify(publisher).publish(anyString(), anyString(), any(), sent.capture(), anyMap());
+    var req = (mfs.mw.app.gateway.dto.TxnRequest) sent.getValue();
+    assertThat(req.txnType()).isEqualTo("ADD_MONEY_BANK");
+    assertThat(req.partner().partnerId()).isEqualTo("c2wbank");
+    assertThat(req.partner().productCode()).isEqualTo("C2W");
+    assertThat(req.debitParty().type()).isEqualTo("BANK_ACCOUNT");
+    assertThat(req.debitParty().id()).isEqualTo("1234567890123");
+    assertThat(req.creditParty().type()).isEqualTo("WALLET");
+    assertThat(req.creditParty().id()).isEqualTo(USER.msisdn());
+    assertThat(req.initiator().id()).isEqualTo(USER.msisdn());
+  }
+
+  @Test
+  void anAgentMayNotAddMoneyFromABank() {
+    assertThatThrownBy(
+            () -> withAddMoney.submit(AGENT, "key", addMoney(null, ACCOUNT, TransactionRequest.Partner.bank("c2wbank"))))
+        .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-AUTH-002"));
+    verifyNoInteractions(publisher, repo);
+  }
+
+  static TransactionRequest flowWith(String txnType, TransactionRequest.Partner partner) {
+    return new TransactionRequest(
+        txnType, new TransactionRequest.CounterParty(null, "01711000002"), new Amount(100L, "BDT"),
+        new EncryptedPin("k", "c"), null, null, partner);
+  }
+
   @Test
   void anUnknownBillerIsRefusedBeforeAnythingIsPublished() {
     org.mockito.Mockito.when(billers.partnerFor("NOPE"))

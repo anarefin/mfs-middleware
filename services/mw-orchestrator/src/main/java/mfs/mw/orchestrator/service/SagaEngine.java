@@ -180,7 +180,9 @@ public class SagaEngine {
       case VALIDATE -> send(commandMapper.validate(rec, now, ttl));
       case POST -> send(commandMapper.post(rec, now, ttl));
       case HOLD -> send(commandMapper.hold(rec, now, ttl));
-      case COMMIT -> send(commandMapper.commit(rec, now, ttl));
+      // inbound money (ADD_MONEY_BANK) has no hold: its commit is crediting the wallet
+      case COMMIT ->
+          send(flow.get().creditsWallet() ? commandMapper.credit(rec, now, ttl) : commandMapper.commit(rec, now, ttl));
       case RELEASE -> send(commandMapper.release(rec, now, ttl));
       case QUERY -> send(commandMapper.query(rec, now, ttl));
       case CALL_PARTNER -> callPartner(rec, flow.get().partnerCall().orElseThrow(), now);

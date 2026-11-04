@@ -278,7 +278,17 @@ public final class RestJsonAdapter implements PartnerAdapter {
         if (isBlank(partnerRef)) {
           throw malformed(status);
         }
-        yield new PartnerResponse.Success(partnerRef, code);
+        Map<String, String> attributes = new LinkedHashMap<>();
+        if (answer.get("attributes") instanceof Map<?, ?> attrs) {
+          attrs.forEach(
+              (k, v) -> {
+                String t = text(v);
+                if (t != null) {
+                  attributes.put(String.valueOf(k), t);
+                }
+              });
+        }
+        yield new PartnerResponse.Success(partnerRef, code, attributes);
       }
       case "PENDING" -> {
         if (!callbacks) {

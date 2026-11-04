@@ -204,6 +204,12 @@ public class CoreCommandService {
     TransferPayload p = commands.transfer(cmd);
     String failureType = post ? "TransferRejected" : "TransactionRejected";
 
+    if (!post && EXTERNAL_CREDIT_TYPES.contains(p.debitParty().type())) {
+      // The payer is outside this core (a bank account debited by the partner, ADD_MONEY_BANK;
+      // ticket 23): only the receiving wallet can be validated. The money arrives later by
+      // CreditWallet; PostTransfer and HoldFunds still need a debit wallet.
+      return validateCreditOnly(cmd, p, coreRef);
+    }
     Optional<String> debitId = wallets.resolveId(p.debitParty().id());
     if (debitId.isEmpty()) {
       return events.rejected(cmd, failureType, coreRef, Reason.WALLET_NOT_FOUND.name(), Reason.WALLET_NOT_FOUND.message);
@@ -276,6 +282,21 @@ public class CoreCommandService {
     left.put("PER_TXN", Amount.bdt(props.limits().perTxnMinor()));
     left.put("DAILY", Amount.bdt(props.limits().dailyMinor() - usedToday - amount));
     return events.validated(cmd, coreRef, fee, left);
+  }
+
+  private CoreEvent validateCreditOnly(CoreCommand cmd, TransferPayload p, String coreRef) {
+    Optional<String> creditId = wallets.resolveId(p.creditParty().id());
+    if (creditId.isEmpty()) {
+      return reject(cmd, "TransactionRejected", coreRef, Reason.CREDIT_WALLET_NOT_FOUND);
+    }
+    Wallet credit = wallets.lock(creditId.get());
+    Optional<Reason> refusal = rules.checkPayee(p, credit, p.amount().valueMinor());
+    if (refusal.isPresent()) {
+      return reject(cmd, "TransactionRejected", coreRef, refusal.get());
+    }
+    Map<String, Amount> left = new LinkedHashMap<>();
+    left.put("PER_TXN", Amount.bdt(props.limits().perTxnMinor()));
+    return events.validated(cmd, coreRef, rules.fee(p.txnType()), left);
   }
 
   private CoreEvent reject(CoreCommand cmd, String failureType, String coreRef, Reason reason) {

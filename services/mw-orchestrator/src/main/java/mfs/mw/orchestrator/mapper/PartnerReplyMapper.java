@@ -27,11 +27,19 @@ public class PartnerReplyMapper {
    * asked later) and anything else change nothing.
    */
   public Optional<SagaEvent> toSagaEvent(PartnerReply reply) {
+    return toSagaEvent(reply, true);
+  }
+
+  /**
+   * As {@link #toSagaEvent(PartnerReply)}; {@code held}: the transaction holds funds a refusal
+   * releases (false for inbound money, ADD_MONEY_BANK: a refusal simply fails it).
+   */
+  public Optional<SagaEvent> toSagaEvent(PartnerReply reply, boolean held) {
     String outcome = reply.payload() == null || reply.payload().outcome() == null ? "" : reply.payload().outcome();
     return Optional.ofNullable(
         switch (outcome) {
           case "SUCCESS" -> new SagaEvent.PartnerSucceeded();
-          case "FAILED" -> new SagaEvent.PartnerFailed();
+          case "FAILED" -> new SagaEvent.PartnerFailed(held);
           case "UNKNOWN" -> new SagaEvent.PartnerUnknown();
           default -> null;
         });

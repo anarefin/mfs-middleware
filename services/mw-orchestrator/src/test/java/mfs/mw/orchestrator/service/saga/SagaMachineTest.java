@@ -29,6 +29,8 @@ class SagaMachineTest {
 
     row(Status.VALIDATING, new Validated(false), Status.POSTING, Effect.SEND_POST);
     row(Status.VALIDATING, new Validated(true), Status.HOLDING, Effect.SEND_HOLD);
+    // inbound money (ADD_MONEY_BANK, ticket 23): nothing to hold, the partner is asked first
+    row(Status.VALIDATING, new Validated(false, true), Status.PARTNER_PENDING, Effect.SEND_PARTNER_REQUEST);
     row(Status.VALIDATING, new ValidationRejected(), Status.REJECTED, Effect.NONE);
     row(Status.VALIDATING, new DeadlineExpired(), Status.FAILED, Effect.NONE);
 
@@ -44,6 +46,8 @@ class SagaMachineTest {
 
     row(Status.PARTNER_PENDING, new PartnerSucceeded(), Status.COMMITTING, Effect.SEND_COMMIT);
     row(Status.PARTNER_PENDING, new PartnerFailed(), Status.RELEASING, Effect.SEND_RELEASE);
+    // no hold (ADD_MONEY_BANK): a refusal leaves nothing to release
+    row(Status.PARTNER_PENDING, new PartnerFailed(false), Status.FAILED, Effect.NONE);
     row(Status.PARTNER_PENDING, new PartnerUnknown(), Status.UNKNOWN, Effect.SCHEDULE_INQUIRY);
     row(Status.PARTNER_PENDING, new DeadlineExpired(), Status.UNKNOWN, Effect.SCHEDULE_INQUIRY);
 
@@ -75,10 +79,10 @@ class SagaMachineTest {
 
   private static List<SagaEvent> allEvents() {
     return List.of(
-        new ValidationStarted(), new RequestRejected(), new Validated(false), new Validated(true),
+        new ValidationStarted(), new RequestRejected(), new Validated(false), new Validated(true), new Validated(false, true),
         new ValidationRejected(), new HoldPlaced(), new HoldRejected(), new HoldQueryResult(true),
         new HoldQueryResult(false), new PostSucceeded(), new PostRejected(), new PartnerSucceeded(),
-        new PartnerFailed(), new PartnerUnknown(), new InquirySucceeded(true), new InquirySucceeded(false),
+        new PartnerFailed(), new PartnerFailed(false), new PartnerUnknown(), new InquirySucceeded(true), new InquirySucceeded(false),
         new InquiryFailed(true), new InquiryFailed(false), new InquiryExhausted(),
         new CommitAcknowledged(), new CommitRefused(), new ReleaseAcknowledged(), new ReleaseRefused(),
         new ReversalRequested(), new ReversalAcknowledged(), new ReversalFailed(),
@@ -94,7 +98,7 @@ class SagaMachineTest {
 
   @Test
   void everyListedTransitionIsTakenWithItsEffect() {
-    assertThat(TABLE).hasSize(36);
+    assertThat(TABLE).hasSize(38);
     TABLE.forEach(
         (key, expect) -> {
           Transition t = SagaMachine.apply(key.from(), key.event());

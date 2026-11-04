@@ -23,11 +23,24 @@ public interface Flow {
   }
 
   /**
+   * True for inbound money from a partner (ADD_MONEY_BANK, ticket 23): nothing is held, the
+   * partner is asked right after validation, and the commit step is CreditWallet (the money the
+   * partner collected goes into the credit wallet) instead of CommitHold.
+   */
+  default boolean creditsWallet() {
+    return false;
+  }
+
+  /**
    * The steps this flow uses. The default follows {@link #needsHold()}: validate + post, or
-   * validate + hold + callPartner (when there is a partner leg) + commit + release. Reversal
-   * (ticket 19) and the core status query of a hold are not flow-specific and always allowed.
+   * validate + hold + callPartner (when there is a partner leg) + commit + release; inbound money
+   * ({@link #creditsWallet()}) is validate + callPartner + commit. Reversal (ticket 19) and the
+   * core status query of a hold are not flow-specific and always allowed.
    */
   default Set<Step> steps() {
+    if (creditsWallet()) {
+      return EnumSet.of(Step.VALIDATE, Step.CALL_PARTNER, Step.COMMIT);
+    }
     if (!needsHold()) {
       return EnumSet.of(Step.VALIDATE, Step.POST);
     }

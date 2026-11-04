@@ -102,9 +102,11 @@ public class InquiryService {
   public void partnerAnswer(TransactionRecord rec, PartnerReply reply) {
     String outcome = reply.payload() == null ? "" : String.valueOf(reply.payload().outcome());
     boolean held = held(rec);
+    // a commit step follows a partner success: commit the hold, or credit inbound money
+    boolean commits = held || flows.find(rec.request().txnType()).map(Flow::creditsWallet).orElse(false);
     switch (outcome) {
       case "SUCCESS" ->
-          resolve(rec.withPartnerRef(reply.payload().partnerRef()), new SagaEvent.InquirySucceeded(held), null, outcome);
+          resolve(rec.withPartnerRef(reply.payload().partnerRef()), new SagaEvent.InquirySucceeded(commits), null, outcome);
       case "FAILED" -> resolve(rec, new SagaEvent.InquiryFailed(held), replies.error(reply), outcome);
       case "NOT_FOUND" -> {
         Instant lastArrival =
@@ -175,6 +177,11 @@ public class InquiryService {
   }
 
   private boolean held(TransactionRecord rec) {
+    return holds(flows, rec);
+  }
+
+  /** Whether the transaction's flow holds funds (a refusal then releases them). */
+  static boolean holds(FlowRegistry flows, TransactionRecord rec) {
     return flows.find(rec.request().txnType()).map(Flow::needsHold).orElse(rec.holdId() != null);
   }
 

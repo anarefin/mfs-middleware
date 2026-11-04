@@ -9,6 +9,7 @@ import mfs.mw.orchestrator.mapper.PartnerReplyMapper;
 import mfs.mw.orchestrator.mapper.PartnerRequestMapper;
 import mfs.mw.orchestrator.messaging.Inbox;
 import mfs.mw.orchestrator.repository.TransactionRepository;
+import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.service.saga.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.Status;
@@ -37,18 +38,21 @@ public class PartnerReplyService {
   private final PartnerReplyMapper mapper;
   private final SagaEngine engine;
   private final InquiryService inquiries;
+  private final FlowRegistry flows;
 
   public PartnerReplyService(
       Inbox inbox,
       TransactionRepository transactions,
       PartnerReplyMapper mapper,
       SagaEngine engine,
-      InquiryService inquiries) {
+      InquiryService inquiries,
+      FlowRegistry flows) {
     this.inbox = inbox;
     this.transactions = transactions;
     this.mapper = mapper;
     this.engine = engine;
     this.inquiries = inquiries;
+    this.flows = flows;
   }
 
   /**
@@ -75,7 +79,7 @@ public class PartnerReplyService {
       lateInquiryAnswer(found.get(), reply);
       return;
     }
-    Optional<SagaEvent> saga = mapper.toSagaEvent(reply);
+    Optional<SagaEvent> saga = mapper.toSagaEvent(reply, InquiryService.holds(flows, found.get()));
     if (saga.isEmpty()) {
       drop(reply, "partner.reply.pending", "partner reply without a final outcome; nothing changes");
       return;

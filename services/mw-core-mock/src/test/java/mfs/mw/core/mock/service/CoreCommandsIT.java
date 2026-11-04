@@ -118,6 +118,56 @@ class CoreCommandsIT {
     assertThat(post.reasonCode()).isEqualTo("CREDIT_WALLET_NOT_FOUND");
   }
 
+  // --- ADD_MONEY_BANK: the debit side is outside the core (ticket 23) -----------------------
+
+  private CoreCommand addMoney(String txn, String payee, long minor, String pin) {
+    var p = cmds.transfer("ADD_MONEY_BANK", A, payee, minor, pin);
+    p.put("debitParty", new mfs.mw.core.mock.dto.Party("BANK_ACCOUNT", "1234567890123", null, null));
+    return cmds.command("ValidateTransaction", txn, txn + ":validate", p);
+  }
+
+  @Test
+  void anAddMoneyFromABankAccountValidatesThePayeeWalletAndItsPinAndMovesNothing() {
+    long before = balance(A);
+    CoreEvent e = handle(addMoney(txn(), A, 50_000, "1234"));
+    assertThat(e.eventType()).isEqualTo("TransactionValidated");
+    assertThat(json.valueToTree(e.payload()).path("fee").path("valueMinor").asLong()).isZero();
+    assertThat(balance(A)).isEqualTo(before);
+    assertThat(held(A)).isZero();
+  }
+
+  @Test
+  void anAddMoneyIsRefusedForAWrongPinOfThePayeeWallet() {
+    CoreEvent e = handle(addMoney(txn(), A, 50_000, "9999"));
+    assertThat(e.eventType()).isEqualTo("TransactionRejected");
+    assertThat(e.reasonCode()).isEqualTo("INVALID_PIN");
+    assertThat(jdbc.queryForObject("select pin_failures from wallet where id = ?", Integer.class, A)).isEqualTo(1);
+  }
+
+  @Test
+  void anAddMoneyToAnUnknownWalletIsRefused() {
+    CoreEvent e = handle(addMoney(txn(), "01799999999", 50_000, "1234"));
+    assertThat(e.eventType()).isEqualTo("TransactionRejected");
+    assertThat(e.reasonCode()).isEqualTo("CREDIT_WALLET_NOT_FOUND");
+  }
+
+  @Test
+  void anAddMoneyAboveThePerTransactionLimitIsRefusedWhateverTheWalletHolds() {
+    CoreEvent e = handle(addMoney(txn(), A, 100_000_000, "1234"));
+    assertThat(e.eventType()).isEqualTo("TransactionRejected");
+    assertThat(e.reasonCode()).isEqualTo("LIMIT_EXCEEDED_PER_TXN");
+  }
+
+  @Test
+  void anAddMoneyIsNeverPostedDirectlyFromABankAccount() {
+    String txn = txn();
+    var p = cmds.transfer("ADD_MONEY_BANK", A, A, 50_000, "1234");
+    p.put("debitParty", new mfs.mw.core.mock.dto.Party("BANK_ACCOUNT", "1234567890123", null, null));
+    CoreEvent post = handle(cmds.command("PostTransfer", txn, txn + ":post", p));
+    assertThat(post.eventType()).isEqualTo("TransferRejected");
+    assertThat(post.reasonCode()).isEqualTo("WALLET_NOT_FOUND");
+  }
+
   // --- HoldFunds / CommitHold / ReleaseHold -------------------------------------------------
 
   @Test

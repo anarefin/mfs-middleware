@@ -8,7 +8,7 @@ ONE_SHOT="kafka-init etcd-init apisix-init"
 SECRET_VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALTH_PASSWORD
   POSTGRES_PASSWORD VALKEY_PASSWORD KC_BOOTSTRAP_ADMIN_PASSWORD KC_PARTNER_SIM_SECRET
   KC_CUSTOMERS_TEST_PASSWORD KC_OPS_TEST_PASSWORD KC_PORTALS_TEST_PASSWORD KC_DB_PASSWORD
-  MW_E2E_API_KEY BILLAGG_HMAC_SECRET"
+  MW_E2E_API_KEY BILLAGG_HMAC_SECRET C2WBANK_HMAC_SECRET"
 REALMS_DIR="$REPO_DIR/deploy/compose/platform/keycloak/realms"
 
 # placeholder_env: VAR=t for every generated secret (for `env`).
@@ -158,6 +158,18 @@ test_gen_dev_env_generates_random_values_once_and_keeps_them() {
   env MW_ROOT="$PWD" "$REPO_DIR/scripts/gen-dev-env.sh" >/dev/null
   [ "$(cat "$f")" = "$first" ] || fail "re-run changed existing secrets"
   grep -qx '/deploy/compose/platform/.env' "$REPO_DIR/.gitignore" || fail ".env is not gitignored"
+}
+
+test_gen_dev_env_adds_a_new_variable_to_an_existing_env_and_keeps_the_rest() {
+  mkdir -p deploy/compose/platform
+  local f=deploy/compose/platform/.env
+  # an .env written before ticket 23: every variable but the C2W bank secret
+  printf '# old\nPOSTGRES_PASSWORD=keepmekeepmekeepmekeepmekeepme1234\n' >"$f"
+  chmod 600 "$f"
+  assert_ok env MW_ROOT="$PWD" "$REPO_DIR/scripts/gen-dev-env.sh"
+  grep -qx 'POSTGRES_PASSWORD=keepmekeepmekeepmekeepmekeepme1234' "$f" || fail "existing value changed"
+  grep -qE '^C2WBANK_HMAC_SECRET=[A-Za-z0-9]{32,}$' "$f" || fail "C2WBANK_HMAC_SECRET not added to an existing .env"
+  [ "$(grep -c '^POSTGRES_PASSWORD=' "$f")" = 1 ] || fail "existing variable duplicated"
 }
 
 test_etcd_is_on_a_dedicated_internal_network_shared_only_with_apisix() {

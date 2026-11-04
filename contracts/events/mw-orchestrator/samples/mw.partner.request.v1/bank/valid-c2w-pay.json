@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "requestId": "6e5d4c3b-2a1f-4e0d-9c8b-7a6f5e4d3c2b",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a9e",
+  "correlationId": "corr-0023",
+  "family": "bank",
+  "issuedAt": "2026-11-04T10:00:00Z",
+  "deadlineAt": "2026-11-04T10:00:30Z",
+  "payload": {
+    "operation": "PAY",
+    "txnType": "ADD_MONEY_BANK",
+    "partner": { "partnerId": "c2wbank", "productCode": "C2W" },
+    "partnerTxnRef": "UPAY01933B8E7C1A7B2E9F3D2A4C5E6F7A9E",
+    "amount": { "valueMinor": 50000, "currency": "BDT" },
+    "debitParty": { "type": "BANK_ACCOUNT", "id": "1234567890123" },
+    "creditParty": { "type": "WALLET", "id": "01711000001", "walletType": "CUSTOMER" }
+  }
+}

@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import mfs.mw.orchestrator.dto.Amount;
 import mfs.mw.orchestrator.dto.CoreCommand;
+import mfs.mw.orchestrator.dto.CreditPayload;
 import mfs.mw.orchestrator.dto.ReversePayload;
 import mfs.mw.orchestrator.dto.HoldPayload;
 import mfs.mw.orchestrator.dto.QueryPayload;
@@ -22,6 +23,7 @@ public class CoreCommandMapper {
   public static final String STEP_POST = "post";
   public static final String STEP_HOLD = "hold";
   public static final String STEP_COMMIT = "commit";
+  public static final String STEP_CREDIT = "credit";
   public static final String STEP_RELEASE = "release";
   public static final String STEP_QUERY = "query";
   public static final String STEP_REVERSE = "reverse";
@@ -46,6 +48,18 @@ public class CoreCommandMapper {
   /** CommitHold; a resend keeps the commandId, so the core applies it once. */
   public CoreCommand commit(TransactionRecord rec, Instant now, Duration ttl) {
     return onHold("CommitHold", STEP_COMMIT, rec, now, ttl);
+  }
+
+  /**
+   * CreditWallet: the commit step of inbound money (ADD_MONEY_BANK, ticket 23), once the partner
+   * collected it. {@code <txnId>:credit}, stable across resends, so the core credits once. No PIN.
+   */
+  public CoreCommand credit(TransactionRecord rec, Instant now, Duration ttl) {
+    String txnId = rec.txnId().toString();
+    var req = rec.request();
+    return new CoreCommand(
+        1, "CreditWallet", commandId(txnId, STEP_CREDIT), txnId, req.correlationId(), now, now.plus(ttl),
+        new CreditPayload(req.txnType(), req.debitParty(), req.creditParty(), req.amount()));
   }
 
   /** ReleaseHold; a resend keeps the commandId, so the core applies it once. */

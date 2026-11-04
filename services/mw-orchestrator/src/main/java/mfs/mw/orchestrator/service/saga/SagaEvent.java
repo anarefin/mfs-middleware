@@ -7,8 +7,17 @@ public sealed interface SagaEvent {
 
   record RequestRejected() implements SagaEvent {}
 
-  /** The core accepted ValidateTransaction; {@code needsHold} comes from the flow of the txn type. */
-  record Validated(boolean needsHold) implements SagaEvent {}
+  /**
+   * The core accepted ValidateTransaction; {@code needsHold} comes from the flow of the txn type.
+   * {@code callPartner}: inbound money (ADD_MONEY_BANK, ticket 23) holds nothing and asks the
+   * partner straight away.
+   */
+  record Validated(boolean needsHold, boolean callPartner) implements SagaEvent {
+
+    public Validated(boolean needsHold) {
+      this(needsHold, false);
+    }
+  }
 
   record ValidationRejected() implements SagaEvent {}
 
@@ -25,13 +34,23 @@ public sealed interface SagaEvent {
 
   record PartnerSucceeded() implements SagaEvent {}
 
-  record PartnerFailed() implements SagaEvent {}
+  /**
+   * The partner refused. {@code held}: the transaction holds funds to release; false for inbound
+   * money (ADD_MONEY_BANK), where nothing moved and the transaction simply fails.
+   */
+  record PartnerFailed(boolean held) implements SagaEvent {
+
+    public PartnerFailed() {
+      this(true);
+    }
+  }
 
   record PartnerUnknown() implements SagaEvent {}
 
   /**
-   * Status inquiry (spec 7.4) found the original call done. {@code held}: the transaction holds
-   * funds (the partner leg succeeded, commit the hold); otherwise the core posted it (completed).
+   * Status inquiry (spec 7.4) found the original call done. {@code held}: a commit step follows
+   * (the partner leg succeeded: commit the hold, or for inbound money credit the wallet);
+   * otherwise the core posted it (completed).
    */
   record InquirySucceeded(boolean held) implements SagaEvent {}
 

@@ -7,6 +7,7 @@ import mfs.mw.simulators.dto.CallbackMode;
 import mfs.mw.simulators.dto.Scenario;
 import mfs.mw.simulators.exception.ErrorCodes;
 import mfs.mw.simulators.exception.MwException;
+import mfs.mw.simulators.mapper.BankDebitMapper;
 import mfs.mw.simulators.mapper.BillAggregatorMapper;
 import mfs.mw.simulators.mapper.OcsMapper;
 import org.springframework.http.HttpStatus;
@@ -32,9 +33,12 @@ public class CallbackService {
   private final CallbackSigner signer;
   private final OcsMapper mapper;
   private final BillAggregatorMapper billMapper;
+  private final BankDebitLedger debits;
+  private final BankDebitMapper bankMapper;
   private final JsonMapper json;
   private final Executor executor;
 
+  @SuppressWarnings("java:S107")
   public CallbackService(
       OcsLedger ledger,
       BillPaymentLedger payments,
@@ -43,6 +47,8 @@ public class CallbackService {
       CallbackSigner signer,
       OcsMapper mapper,
       BillAggregatorMapper billMapper,
+      BankDebitLedger debits,
+      BankDebitMapper bankMapper,
       JsonMapper json,
       Executor callbackExecutor) {
     this.ledger = ledger;
@@ -52,8 +58,21 @@ public class CallbackService {
     this.signer = signer;
     this.mapper = mapper;
     this.billMapper = billMapper;
+    this.debits = debits;
+    this.bankMapper = bankMapper;
     this.json = json;
     this.executor = callbackExecutor;
+  }
+
+  /**
+   * Sends what the current c2wbank scenario asks for after a debit was applied (ticket 23);
+   * OUT_OF_ORDER follows the outcome with a stale PENDING.
+   */
+  public void afterDebit(BankDebitRecord record) {
+    send(
+        BankC2wService.PARTNER,
+        json.writeValueAsString(bankMapper.toResponse(record)),
+        json.writeValueAsString(bankMapper.pending(record)));
   }
 
   /** Sends what the current scenario asks for after a top-up was applied. */
@@ -97,9 +116,13 @@ public class CallbackService {
   public int replay(String partner, String reference, String urlOverride) {
     scenarios.require(partner);
     String body =
-        BillAggregatorService.PARTNER.equals(partner)
-            ? payments.find(reference).map(r -> json.writeValueAsString(billMapper.toResponse(r))).orElse(null)
-            : ledger.find(reference).map(r -> json.writeValueAsString(mapper.toResponse(r))).orElse(null);
+        switch (partner) {
+          case BillAggregatorService.PARTNER ->
+              payments.find(reference).map(r -> json.writeValueAsString(billMapper.toResponse(r))).orElse(null);
+          case BankC2wService.PARTNER ->
+              debits.find(reference).map(r -> json.writeValueAsString(bankMapper.toResponse(r))).orElse(null);
+          default -> ledger.find(reference).map(r -> json.writeValueAsString(mapper.toResponse(r))).orElse(null);
+        };
     if (body == null) {
       throw new MwException(ErrorCodes.VAL_NOT_FOUND, "No such reference " + reference)
           .withStatus(HttpStatus.NOT_FOUND);

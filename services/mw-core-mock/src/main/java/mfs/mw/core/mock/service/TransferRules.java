@@ -39,6 +39,51 @@ class TransferRules {
     return props.fees().getOrDefault(txnType, 0L);
   }
 
+  /**
+   * The checks on the receiving wallet of money coming from outside the core (ADD_MONEY_BANK: a
+   * bank account debited by the partner, ticket 23). The customer authorises it with the wallet's
+   * own PIN, so the PIN and its lockout count apply to that wallet; there are no funds or daily
+   * debit limits to check, only the per-transaction limit.
+   */
+  Optional<Reason> checkPayee(TransferPayload p, Wallet credit, long amount) {
+    if (credit.locked()) {
+      return Optional.of(Reason.ACCOUNT_LOCKED);
+    }
+    if (!credit.active()) {
+      return Optional.of(Reason.CREDIT_ACCOUNT_BLOCKED);
+    }
+    Optional<Reason> wrongPin = checkPin(p, credit);
+    if (wrongPin.isPresent()) {
+      return wrongPin;
+    }
+    if (amount <= 0 || !Amount.BDT.equals(p.amount().currency())) {
+      return Optional.of(Reason.INVALID_AMOUNT);
+    }
+    if (amount > props.limits().perTxnMinor()) {
+      return Optional.of(Reason.LIMIT_EXCEEDED_PER_TXN);
+    }
+    return Optional.empty();
+  }
+
+  /** The PIN of {@code wallet}, with the lockout count (spec 9.1). */
+  private Optional<Reason> checkPin(TransferPayload p, Wallet wallet) {
+    Optional<String> pin = pins.decrypt(p.encryptedPin());
+    if (pin.isEmpty()) {
+      return Optional.of(Reason.INVALID_PIN_BLOCK);
+    }
+    if (!encoder.matches(pin.get(), wallet.pinHash())) {
+      if (wallets.recordPinFailure(wallet.id(), props.pinMaxFailures())) {
+        log.atWarn()
+            .addKeyValue("event", "wallet.pin.locked")
+            .addKeyValue("walletType", wallet.type())
+            .log("wallet locked after too many consecutive wrong PINs");
+      }
+      return Optional.of(Reason.INVALID_PIN);
+    }
+    wallets.resetPinFailures(wallet.id());
+    return Optional.empty();
+  }
+
   /** @param credit the receiving wallet, or {@code null} when it is not a wallet of this core (hold) */
   Optional<Reason> check(
       TransferPayload p, Wallet debit, Wallet credit, long amount, long fee, long usedToday) {
@@ -56,20 +101,10 @@ class TransferRules {
     if (credit != null && !credit.canReceive()) {
       return Optional.of(Reason.CREDIT_ACCOUNT_BLOCKED);
     }
-    Optional<String> pin = pins.decrypt(p.encryptedPin());
-    if (pin.isEmpty()) {
-      return Optional.of(Reason.INVALID_PIN_BLOCK);
+    Optional<Reason> wrongPin = checkPin(p, debit);
+    if (wrongPin.isPresent()) {
+      return wrongPin;
     }
-    if (!encoder.matches(pin.get(), debit.pinHash())) {
-      if (wallets.recordPinFailure(debit.id(), props.pinMaxFailures())) {
-        log.atWarn()
-            .addKeyValue("event", "wallet.pin.locked")
-            .addKeyValue("walletType", debit.type())
-            .log("wallet locked after too many consecutive wrong PINs");
-      }
-      return Optional.of(Reason.INVALID_PIN);
-    }
-    wallets.resetPinFailures(debit.id());
     if (amount <= 0 || !Amount.BDT.equals(p.amount().currency())) {
       return Optional.of(Reason.INVALID_AMOUNT);
     }

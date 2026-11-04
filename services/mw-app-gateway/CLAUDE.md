@@ -5,7 +5,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 
 ## Responsibilities
 
-- App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P, CASH_IN, CASH_OUT,
+- App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P, CASH_IN, CASH_OUT, ADD_MONEY_BANK,
   TOPUP and BILL_PAY, `mw.app-gateway.supported-txn-types`), `GET /app/v1/transactions/{txnId}`,
   `GET /app/v1/billers` and `POST /app/v1/billers/{code}/fetch-bill` behind the APISIX
   route `/app/v1/*` (`deploy/apisix/routes/app-v1.json`, `openid-connect` bearer-only on realm
@@ -17,7 +17,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   channel follows the realm role: `customer` -> `CUSTOMER_APP`/`CUSTOMER`, `agent` ->
   `AGENT_APP`/`AGENT` (WP20; merchant not served yet; a token with both roles is the customer).
   Role per `txnType` (`mw.app-gateway.txn-type-roles`, checked at submit after the type check):
-  P2P, CASH_OUT, TOPUP and BILL_PAY customer only, CASH_IN agent only (switch here, nowhere else). Deny by
+  P2P, CASH_OUT, TOPUP, BILL_PAY and ADD_MONEY_BANK customer only, CASH_IN agent only (switch here, nowhere else). Deny by
   default: a type with no entry is refused for every role; `AppGatewayConfigTest` fails when a
   txnType of the OpenAPI enum has no entry.
   No token / bad token `401 MW-AUTH-001`; no wallet, other role or a type the role may not
@@ -45,6 +45,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   the biller>, productCode: BILL, billerCode}` from the catalogue (`service/BillerService.partnerFor`;
   unknown biller `MW-VAL-001` on `partner.billerCode`, catalogue unavailable `503 MW-SYS-011`),
   credit party `{type: BILLER_ACCOUNT, id}`. A refusal is FAILED `MW-PTR-<AGGREGATOR>-*` -> 502.
+- ADD_MONEY_BANK (ticket 23, C2W): body `debitParty {type: BANK_ACCOUNT, id: [0-9]{6,20}}`
+  (required, masked last 4) and `partner {partnerId: c2wbank}` only (`TransactionRequest.BANKS`);
+  `creditParty` is refused (the money goes to the caller's own wallet). `MW-VAL-001` naming
+  `debitParty` / `partner.partnerId` / `creditParty` otherwise; every other type refuses
+  `debitParty` and requires `creditParty` (no longer `required` in the OpenAPI schema, checked
+  here). Forwarded as debit party `{type: BANK_ACCOUNT, id}`, credit party the token's wallet
+  (its PIN authorises), partner `{partnerId, productCode: C2W}` (`RequestMapper.partnerOf`). A
+  bank refusal is FAILED `MW-PTR-C2WBANK-*` -> 502; an outcome not known within the budget 202.
 - Billers and bill fetch (ticket 21, `controller/BillerController`, `service/BillerService`,
   `client/BillPayClient`): read-only calls to mw-adapter-billpay's internal API
   (`contracts/api/mw-adapter-billpay/billpay.v1.openapi.yaml`, `mw.app-gateway.billpay.base-url`
@@ -109,7 +117,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 - `exception/`: `MwException`, `ErrorCategory` (namespace -> HTTP status, retryable),
   `ErrorCodes`, `GlobalExceptionHandler` building `dto/ErrorEnvelope`. Logs show route
   templates, never raw URIs.
-- `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3; mark every personal field.
+- `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3; mark every personal field. Party ids are
+  `PARTY_ID` (ticket 23): masked by the party's `type` (wallet/MSISDN as an MSISDN, a bank account or any
+  other type last 4 only).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.

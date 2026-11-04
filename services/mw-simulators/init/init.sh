@@ -69,6 +69,15 @@ if [ -n "${BILLAGG_HMAC_SECRET:-}" ]; then
 else
   log "BILLAGG_HMAC_SECRET not set: partner secret sim.callback-secrets.billagg left as it is" >&2
 fi
+# The dev C2W bank simulator's hmac-sha256 secret (ticket 23), shared with mw-adapter-bank.
+if [ -n "${C2WBANK_HMAC_SECRET:-}" ]; then
+  printf '%s' "$C2WBANK_HMAC_SECRET" >"$tmp/hmac"
+  bao kv patch "$KV" "sim.callback-secrets.c2wbank=@$tmp/hmac" >/dev/null
+  rm -f "$tmp/hmac"
+  log "partner secret sim.callback-secrets.c2wbank synced"
+else
+  log "C2WBANK_HMAC_SECRET not set: partner secret sim.callback-secrets.c2wbank left as it is" >&2
+fi
 
 # 2. database role and schema ---------------------------------------------------------------------
 provision_db() {

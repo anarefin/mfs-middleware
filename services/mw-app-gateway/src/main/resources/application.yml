@@ -182,7 +182,7 @@ mw:
     instance-id: ${HOSTNAME:}
     request-topic: mw.txn.request.v1
     status-topic: mw.txn.status.v1
-    supported-txn-types: P2P,CASH_IN,CASH_OUT,TOPUP,BILL_PAY
+    supported-txn-types: P2P,CASH_IN,CASH_OUT,TOPUP,BILL_PAY,ADD_MONEY_BANK
     # Which app role (wallet type) may initiate which txnType (spec WP20). Deny by default: a
     # supported type with no entry is refused for every role (403 MW-AUTH-002).
     txn-type-roles:
@@ -191,6 +191,7 @@ mw:
       CASH_OUT: CUSTOMER
       TOPUP: CUSTOMER
       BILL_PAY: CUSTOMER
+      ADD_MONEY_BANK: CUSTOMER
     # attributes keys an app may send (a free-text payment reference only, so far)
     allowed-attributes: reference
     # Internal API of mw-adapter-billpay (biller catalogue, bill fetch; ticket 21), over the

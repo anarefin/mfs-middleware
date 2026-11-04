@@ -65,6 +65,24 @@ public final class PartnerCallbacks {
     Simulators.setScenario("billagg", s);
   }
 
+  // --- C2W bank (ticket 23) ------------------------------------------------------------------
+
+  /** The C2W bank simulator's partner id, and where it posts its debit callbacks. */
+  public static final String BANK = "c2wbank";
+
+  public static final String BANK_PATH = "/partner/c2wbank/callback/debits";
+
+  /**
+   * The bank simulator posts each debit's outcome, signed with {@code C2WBANK_HMAC_SECRET}, through
+   * the edge as {@code mode} says (ONCE, DUPLICATE, ...). Debits are always accepted with 202.
+   */
+  public static void bankCallbacks(String mode, long delayMs) {
+    ObjectNode s = Http.JSON.createObjectNode();
+    s.put("latencyMs", 0).put("errorRate", 0.0).put("outage", false)
+        .put("callbackMode", mode).put("callbackUrl", "http://apisix:9080" + BANK_PATH).put("callbackDelayMs", delayMs);
+    Simulators.setScenario(BANK, s);
+  }
+
   static String sign(String secret, String method, String path, String timestamp, String body) {
     try {
       String bodyHash =

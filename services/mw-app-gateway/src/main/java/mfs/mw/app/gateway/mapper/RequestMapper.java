@@ -32,6 +32,21 @@ public class RequestMapper {
   public static final String TOPUP = "TOPUP";
   /** Bill payment: credit party is the bill number, {@code partner} the biller's aggregator. */
   public static final String BILL_PAY = "BILL_PAY";
+  /** Add money from a linked bank account (C2W, ticket 23): debit party is the bank account. */
+  public static final String ADD_MONEY_BANK = "ADD_MONEY_BANK";
+  /** The canonical product of a C2W debit. */
+  public static final String C2W_PRODUCT = "C2W";
+
+  /**
+   * The canonical partner of the body's {@code partner}: operator and product for TOPUP, the bank
+   * with product {@code C2W} for ADD_MONEY_BANK. (BILL_PAY's comes from the biller catalogue.)
+   */
+  public static PartnerRef partnerOf(TransactionRequest body) {
+    if (ADD_MONEY_BANK.equals(body.txnType())) {
+      return new PartnerRef(body.partner().partnerId(), C2W_PRODUCT);
+    }
+    return new PartnerRef(body.partner().partnerId(), body.partner().productCode());
+  }
 
   /** Attribute keys set by the middleware (orchestrator reply matching); never from a client. */
   public static final Set<String> RESERVED_ATTRIBUTES =
@@ -47,7 +62,7 @@ public class RequestMapper {
     PartnerRef partner =
         body.partner() == null
             ? null
-            : new PartnerRef(body.partner().partnerId(), body.partner().productCode());
+            : RequestMapper.partnerOf(body);
     return toRequest(user, idempotencyKey, body, txnId, correlationId, now, partner);
   }
 
@@ -63,7 +78,11 @@ public class RequestMapper {
       String correlationId,
       Instant now,
       PartnerRef partner) {
-    Party payer = Party.wallet(user.msisdn(), user.walletType());
+    Party own = Party.wallet(user.msisdn(), user.walletType());
+    boolean addMoney = ADD_MONEY_BANK.equals(body.txnType());
+    // ADD_MONEY_BANK: the bank account pays, the caller's own wallet (its PIN) receives
+    Party debit = addMoney ? new Party("BANK_ACCOUNT", body.debitParty().id(), null, null) : own;
+    Party credit = addMoney ? own : creditParty(body);
     return new TxnRequest(
         1,
         txnId,
@@ -72,8 +91,8 @@ public class RequestMapper {
         user.channel(),
         body.txnType(),
         new Party("MSISDN", user.msisdn(), null, null),
-        payer,
-        creditParty(body),
+        debit,
+        credit,
         body.amount(),
         partner,
         body.encryptedPin(),

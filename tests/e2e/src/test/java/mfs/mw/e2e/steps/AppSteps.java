@@ -62,6 +62,19 @@ public class AppSteps {
     submit(user, AppApi.newIdempotencyKey(), body);
   }
 
+  /**
+   * ADD_MONEY_BANK (ticket 23): the linked bank account is the debit party, the caller's own wallet
+   * receives (no creditParty in the body), the bank is the partner.
+   */
+  @When("{word} adds {long} poisha from bank account {word} at {word} with PIN {string}")
+  public void addsMoney(String user, long amountMinor, String account, String bank, String pin) {
+    ObjectNode body = AppApi.request("ADD_MONEY_BANK", "unused", amountMinor, pin);
+    body.remove("creditParty");
+    body.putObject("debitParty").put("type", "BANK_ACCOUNT").put("id", account);
+    body.putObject("partner").put("partnerId", bank);
+    submit(user, AppApi.newIdempotencyKey(), body);
+  }
+
   @When("{word} pays {long} poisha on bill {word} without a biller")
   public void paysBillWithoutBiller(String user, long amountMinor, String billNumber) {
     ObjectNode body = AppApi.request("BILL_PAY", billNumber, amountMinor, "1234");

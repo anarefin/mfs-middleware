@@ -45,6 +45,7 @@ class OcsServiceTest {
           ledger, new BillPaymentLedger(), scenarios, client,
           new mfs.mw.simulators.client.CallbackSigner(new org.springframework.mock.env.MockEnvironment(), java.time.Clock.systemUTC()),
           mapper, new mfs.mw.simulators.mapper.BillAggregatorMapper(java.time.Clock.systemUTC()),
+          new BankDebitLedger(), new mfs.mw.simulators.mapper.BankDebitMapper(),
           JsonMapper.builder().build(), Runnable::run);
   private double nextRandom = 0.99;
   private final RandomGenerator random =

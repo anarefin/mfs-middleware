@@ -112,6 +112,12 @@ timeout 20 s, Resilience4j instance `ocs`: bulkhead 100, circuit breaker with 16
 and `default-partner: ocs`, so gp/robi/banglalink/teletalk are all served by it until they get their own
 `partner/<id>` record. Never add a retry to a partner call.
 
+Copies live in mw-adapter-billpay (ticket 21) and mw-adapter-bank (ticket 23). Billpay's one extension,
+`PartnerResponse.Success.attributes` (text values a response mapping puts under `attributes`, empty
+otherwise; `RestJsonTemplateTest.aSuccessCarriesTheMappedAttributesAsText`), was applied here too in
+ticket 23, so the three `partner` packages are identical apart from package names; a framework fix goes
+into all three.
+
 Copying it into another adapter (tickets 21, 23): copy `partner/` with its tests
 (`src/test/.../partner/`, including the `PartnerFramework` harness and the security tests), rename the
 package, add `jsonata` to the module's version catalog and build, copy the `mw.partners` block shape into

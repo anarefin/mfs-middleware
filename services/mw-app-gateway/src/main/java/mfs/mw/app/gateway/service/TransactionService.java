@@ -89,7 +89,7 @@ public class TransactionService {
             ? billers.partnerFor(body.partner().billerCode())
             : body.partner() == null
                 ? null
-                : new PartnerRef(body.partner().partnerId(), body.partner().productCode());
+                : RequestMapper.partnerOf(body);
     Instant now = clock.instant();
     String txnId = UuidV7.next(clock).toString();
     String correlationId = correlationId();
@@ -145,12 +145,31 @@ public class TransactionService {
   private static void refuseFieldsOfOtherFlows(TransactionRequest body) {
     boolean topup = RequestMapper.TOPUP.equals(body.txnType());
     boolean bill = RequestMapper.BILL_PAY.equals(body.txnType());
+    boolean addMoney = RequestMapper.ADD_MONEY_BANK.equals(body.txnType());
     String expected = topup ? "MSISDN" : bill ? "BILLER_ACCOUNT" : "WALLET";
-    String type = body.creditParty().type();
+    String type = body.creditParty() == null ? null : body.creditParty().type();
     TransactionRequest.Partner partner = body.partner();
     String issue = null;
     String field = null;
-    if (topup && (partner == null || !partner.isOperator())) {
+    if (addMoney) {
+      // ADD_MONEY_BANK (ticket 23): from the caller's bank account into the caller's own wallet
+      if (body.debitParty() == null) {
+        field = "debitParty";
+        issue = "the bank account (type BANK_ACCOUNT) is required for ADD_MONEY_BANK";
+      } else if (partner == null || !partner.isBank()) {
+        field = "partner.partnerId";
+        issue = "a partner bank is required for ADD_MONEY_BANK, without productCode or billerCode";
+      } else if (body.creditParty() != null) {
+        field = "creditParty";
+        issue = "is not allowed for ADD_MONEY_BANK: the money goes to your own wallet";
+      }
+    } else if (body.debitParty() != null) {
+      field = "debitParty";
+      issue = "is only allowed for ADD_MONEY_BANK";
+    } else if (body.creditParty() == null) {
+      field = "creditParty";
+      issue = "is required for " + body.txnType();
+    } else if (topup && (partner == null || !partner.isOperator())) {
       field = "partner";
       issue = "partnerId and productCode are required for TOPUP";
     } else if (bill && (partner == null || !partner.isBiller())) {
@@ -158,7 +177,7 @@ public class TransactionService {
       issue = "is required for BILL_PAY, without partnerId or productCode";
     } else if (!topup && !bill && partner != null) {
       field = "partner";
-      issue = "is only allowed for TOPUP and BILL_PAY";
+      issue = "is only allowed for TOPUP, BILL_PAY and ADD_MONEY_BANK";
     } else if ((type != null || bill) && !expected.equals(type)) {
       // BILL_PAY names its type: the id is checked as a bill number only for BILLER_ACCOUNT
       field = "creditParty.type";

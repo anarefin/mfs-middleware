@@ -53,10 +53,22 @@ public class CoreEventMapper {
    * @param needsHold whether the transaction's flow holds funds after validation
    */
   public Optional<SagaEvent> toSagaEvent(CoreEvent event, boolean needsHold) {
+    return toSagaEvent(event, needsHold, false);
+  }
+
+  /**
+   * As {@link #toSagaEvent(CoreEvent, boolean)}; {@code callPartner}: the flow takes inbound money
+   * (ADD_MONEY_BANK), so validation is followed by the partner call, and WalletCredited /
+   * CreditRejected answer its commit step (CreditWallet).
+   */
+  public Optional<SagaEvent> toSagaEvent(CoreEvent event, boolean needsHold, boolean callPartner) {
     String type = event.eventType() == null ? "" : event.eventType();
     return Optional.ofNullable(
         switch (type) {
-          case "TransactionValidated" -> new Validated(needsHold);
+          case "TransactionValidated" -> new Validated(needsHold, callPartner);
+          case "WalletCredited" -> new CommitAcknowledged();
+          // the core refused to credit money the partner already collected: an operator decides
+          case "CreditRejected" -> new CommitRefused();
           case "TransactionRejected" -> new ValidationRejected();
           case "TransferPosted" -> new PostSucceeded();
           case "TransferRejected" -> new PostRejected();

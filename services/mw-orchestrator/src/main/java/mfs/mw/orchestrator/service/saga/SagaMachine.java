@@ -33,6 +33,7 @@ public final class SagaMachine {
           };
       case VALIDATING ->
           switch (event) {
+            case Validated e when e.callPartner() -> go(from, Status.PARTNER_PENDING, Effect.SEND_PARTNER_REQUEST);
             case Validated e when e.needsHold() -> go(from, Status.HOLDING, Effect.SEND_HOLD);
             case Validated e -> go(from, Status.POSTING, Effect.SEND_POST);
             case ValidationRejected e -> go(from, Status.REJECTED, Effect.NONE);
@@ -58,6 +59,7 @@ public final class SagaMachine {
       case PARTNER_PENDING ->
           switch (event) {
             case PartnerSucceeded e -> go(from, Status.COMMITTING, Effect.SEND_COMMIT);
+            case PartnerFailed e when !e.held() -> go(from, Status.FAILED, Effect.NONE);
             case PartnerFailed e -> go(from, Status.RELEASING, Effect.SEND_RELEASE);
             case PartnerUnknown e -> go(from, Status.UNKNOWN, Effect.SCHEDULE_INQUIRY);
             case DeadlineExpired e -> go(from, Status.UNKNOWN, Effect.SCHEDULE_INQUIRY);

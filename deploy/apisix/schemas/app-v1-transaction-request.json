@@ -3,7 +3,6 @@
   "type": "object",
   "required": [
     "txnType",
-    "creditParty",
     "amount",
     "encryptedPin"
   ],
@@ -15,7 +14,8 @@
         "CASH_IN",
         "CASH_OUT",
         "TOPUP",
-        "BILL_PAY"
+        "BILL_PAY",
+        "ADD_MONEY_BANK"
       ]
     },
     "creditParty": {
@@ -44,6 +44,25 @@
         }
       }
     },
+    "debitParty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "BANK_ACCOUNT"
+          ]
+        },
+        "id": {
+          "type": "string"
+        }
+      }
+    },
     "partner": {
       "type": "object",
       "additionalProperties": false,
@@ -58,6 +77,11 @@
           "required": [
             "billerCode"
           ]
+        },
+        {
+          "required": [
+            "partnerId"
+          ]
         }
       ],
       "properties": {
@@ -67,7 +91,8 @@
             "gp",
             "robi",
             "banglalink",
-            "teletalk"
+            "teletalk",
+            "c2wbank"
           ]
         },
         "productCode": {

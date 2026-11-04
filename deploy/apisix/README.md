@@ -90,8 +90,12 @@ Route `partner-billagg-callback` (`/partner/billagg/callback/*`, POST only, tick
    OpenBao and answers 401 `MW-AUTH-001` itself (decision in `services/mw-adapter-billpay/CLAUDE.md`).
    No `request-validation`: the aggregator's wire format is partner-specific, not a contract.
 
-A new partner gets its own `partner-<id>-callback.json` (upstream: the owning adapter, e.g.
-`mw-adapter-bank` for ticket 23); `scripts/edge-test.sh` has the cases to copy.
+Route `partner-c2wbank-callback` (`/partner/c2wbank/callback/*`, POST only, ticket 23) ->
+`mw-adapter-bank:8080`: the same four rules (own `limit-count` group
+`partner-c2wbank-callback`); the C2W bank's debit outcome callbacks, verified by mw-adapter-bank.
+
+A new partner gets its own `partner-<id>-callback.json` (upstream: the owning adapter);
+`scripts/edge-test.sh` has the cases to copy (billagg and c2wbank both covered).
 
 ## Request-validation schemas
 

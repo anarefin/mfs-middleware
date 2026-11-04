@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "inboundId": "5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a9e",
+  "correlationId": "corr-0023",
+  "partnerId": "c2wbank",
+  "family": "bank",
+  "partnerRef": "C2W-17",
+  "receivedAt": "2026-11-04T10:00:05Z",
+  "payload": {
+    "kind": "CALLBACK",
+    "outcome": "SUCCESS",
+    "partnerCode": "000",
+    "attributes": { "message": "Account debited" }
+  }
+}
