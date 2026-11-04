@@ -27,6 +27,7 @@ public class CoreCommandMapper {
   public static final String STEP_RELEASE = "release";
   public static final String STEP_QUERY = "query";
   public static final String STEP_REVERSE = "reverse";
+  public static final String STEP_REVERSE_QUERY = "reverse-query";
 
   public String commandId(String txnId, String step) {
     return txnId + ":" + step;
@@ -95,6 +96,24 @@ public class CoreCommandMapper {
     return new CoreCommand(
         1, "QueryTransaction", commandId(txnId, STEP_QUERY) + ":" + now.toEpochMilli(), txnId,
         rec.request().correlationId(), now, now.plus(ttl), new QueryPayload(null));
+  }
+
+  /**
+   * QueryTransaction asking whether a REVERSING transaction was reversed, sent once every
+   * ReverseTransaction has expired: under the ORIGINAL's txnId (the core reports REVERSED for a
+   * transaction it compensated), commandId {@code <txnId>:reverse-query:<epoch ms>}, fresh per
+   * query, so its TransactionStatus answer is told apart from a HOLDING or inquiry answer.
+   */
+  public CoreCommand reversalQuery(TransactionRecord rec, Instant now, Duration ttl) {
+    String txnId = rec.txnId().toString();
+    return new CoreCommand(
+        1, "QueryTransaction", commandId(txnId, STEP_REVERSE_QUERY) + ":" + now.toEpochMilli(), txnId,
+        rec.request().correlationId(), now, now.plus(ttl), new QueryPayload(null));
+  }
+
+  /** True for the commandId of a {@link #reversalQuery}. */
+  public boolean isReversalQuery(String commandId) {
+    return commandId != null && commandId.contains(":" + STEP_REVERSE_QUERY + ":");
   }
 
   private CoreCommand onHold(String type, String step, TransactionRecord rec, Instant now, Duration ttl) {

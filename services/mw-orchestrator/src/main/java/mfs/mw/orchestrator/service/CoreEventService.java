@@ -6,6 +6,7 @@ import mfs.mw.orchestrator.dto.CoreEvent;
 import mfs.mw.orchestrator.dto.ErrorInfo;
 import mfs.mw.orchestrator.entity.TransactionRecord;
 import mfs.mw.orchestrator.exception.ErrorCodes;
+import mfs.mw.orchestrator.mapper.CoreCommandMapper;
 import mfs.mw.orchestrator.mapper.CoreEventMapper;
 import mfs.mw.orchestrator.messaging.Inbox;
 import mfs.mw.orchestrator.repository.TransactionRepository;
@@ -37,6 +38,8 @@ public class CoreEventService {
   private final FlowRegistry flows;
   private final SagaEngine engine;
   private final InquiryService inquiries;
+  private final CoreCommandMapper commands;
+  private final SagaAlerts alerts;
 
   public CoreEventService(
       Inbox inbox,
@@ -44,13 +47,17 @@ public class CoreEventService {
       CoreEventMapper mapper,
       FlowRegistry flows,
       SagaEngine engine,
-      InquiryService inquiries) {
+      InquiryService inquiries,
+      CoreCommandMapper commands,
+      SagaAlerts alerts) {
     this.inbox = inbox;
     this.transactions = transactions;
     this.mapper = mapper;
     this.flows = flows;
     this.engine = engine;
     this.inquiries = inquiries;
+    this.commands = commands;
+    this.alerts = alerts;
   }
 
   @Transactional
@@ -70,6 +77,10 @@ public class CoreEventService {
       return;
     }
     TransactionRecord rec = found.get();
+    if ("TransactionStatus".equals(event.eventType()) && commands.isReversalQuery(event.commandId())) {
+      reversalAnswer(rec, event);
+      return;
+    }
     if ("TransactionStatus".equals(event.eventType()) && rec.status() == Status.UNKNOWN) {
       inquiryAnswer(rec, event);
       return;
@@ -86,6 +97,9 @@ public class CoreEventService {
         rec.withCore(event.coreRef(), mapper.feeMinor(event)).withHold(mapper.holdId(event));
     try {
       engine.fire(current, saga.get(), error);
+      if (saga.get() instanceof SagaEvent.CommitRefused || saga.get() instanceof SagaEvent.ReleaseRefused) {
+        alerts.refused(rec.status(), rec.txnId(), error);
+      }
     } catch (InvalidTransitionException e) {
       if (saga.get() instanceof SagaEvent.HoldPlaced && gaveUp(rec.status()) && mapper.holdId(event) != null) {
         engine.releaseOrphanHold(rec, mapper.holdId(event));
@@ -126,6 +140,27 @@ public class CoreEventService {
     }
     inquiries.coreAnswer(rec.withCore(event.coreRef(), null), mapper.txnStatus(event));
   }
+
+  /**
+   * The core's answer to the QueryTransaction sent once every ReverseTransaction of a REVERSING
+   * transaction had expired (S1): REVERSED ends it REVERSED, anything else hands it to operations
+   * ({@code MW-TMO-020}). Outside REVERSING / MANUAL_REVIEW the answer is stale and ignored.
+   */
+  private void reversalAnswer(TransactionRecord rec, CoreEvent event) {
+    boolean reversed = "REVERSED".equals(mapper.txnStatus(event));
+    try {
+      engine.fire(rec, new SagaEvent.ReversalQueryResult(reversed), reversed ? null : REVERSAL_NOT_APPLIED);
+    } catch (InvalidTransitionException e) {
+      drop(event, "saga.event.ignored", "reversal query answer does not fit the transaction's state; ignored");
+    }
+  }
+
+  static final ErrorInfo REVERSAL_NOT_APPLIED =
+      new ErrorInfo(
+          ErrorCodes.TMO_CORE_REVERSE,
+          "The core did not confirm the reversal in time; operations will review it",
+          null,
+          false);
 
   /** States a transaction ends in without ever using a hold (REJECTED, FAILED). */
   private static boolean gaveUp(Status status) {

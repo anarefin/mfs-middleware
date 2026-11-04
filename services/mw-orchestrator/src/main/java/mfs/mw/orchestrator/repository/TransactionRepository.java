@@ -132,6 +132,16 @@ public class TransactionRepository {
         .findFirst();
   }
 
+  /**
+   * The earliest {@code updated_at} among transactions in {@code status}: when the one waiting
+   * longest entered it (a state change sets {@code updated_at}); empty when none is in it.
+   */
+  public Optional<Instant> oldestUpdateInStatus(Status status) {
+    java.sql.Timestamp t =
+        jdbc.queryForObject("select min(updated_at) from transaction where status = ?", java.sql.Timestamp.class, status.name());
+    return Optional.ofNullable(t).map(java.sql.Timestamp::toInstant);
+  }
+
   /** How many transactions are in {@code status} now (backlog gauges, spec 21). */
   public long countByStatus(Status status) {
     Long n = jdbc.queryForObject("select count(*) from transaction where status = ?", Long.class, status.name());

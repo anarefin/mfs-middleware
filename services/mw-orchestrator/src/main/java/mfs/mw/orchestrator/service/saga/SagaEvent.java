@@ -79,6 +79,18 @@ public sealed interface SagaEvent {
 
   record ReversalFailed() implements SagaEvent {}
 
+  /**
+   * REVERSING reached {@code reversing-timeout} without an answer: no more resends; the service
+   * waits until the last ReverseTransaction it sent has expired (the core drops it then).
+   */
+  record ReversalResendsStopped() implements SagaEvent {}
+
+  /** Every ReverseTransaction sent has expired unanswered: ask the core whether it reversed. */
+  record ReversalUnconfirmed() implements SagaEvent {}
+
+  /** The core's answer to that QueryTransaction: {@code reversed} when it reports REVERSED. */
+  record ReversalQueryResult(boolean reversed) implements SagaEvent {}
+
   /** Maker-checker decision on a MANUAL_REVIEW transaction. */
   record ManualCommit() implements SagaEvent {}
 

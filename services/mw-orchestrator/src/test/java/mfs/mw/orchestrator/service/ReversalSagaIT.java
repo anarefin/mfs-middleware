@@ -204,35 +204,131 @@ class ReversalSagaIT {
     assertAllValid(original, reversal);
   }
 
-  @Test
-  void reversingResendsTheSameCommandThenGivesUpToManualReview() {
-    String original = completedP2p(5_000);
-    String reversal = reverse(original, 5_000, "rev-" + original);
+  private List<JsonNode> reversalQueries(String original) {
+    return allCommands().stream()
+        .filter(c -> "QueryTransaction".equals(c.path("commandType").asString()))
+        .filter(c -> c.path("commandId").asString().startsWith(original + ":reverse-query:"))
+        .toList();
+  }
 
-    clock.advance(java.time.Duration.ofSeconds(5));
+  private CoreEvent txnStatus(String txnId, String commandId, String txnStatus) {
+    return json.readValue(
+        "{\"schemaVersion\":1,\"eventType\":\"TransactionStatus\",\"eventId\":\"evt-" + commandId
+            + "\",\"commandId\":\"" + commandId + "\",\"txnId\":\"" + txnId
+            + "\",\"coreRef\":\"CORE-9\",\"occurredAt\":\"2026-11-03T08:15:31Z\",\"outcome\":\"SUCCESS\""
+            + ",\"payload\":{\"txnStatus\":\"" + txnStatus + "\"}}",
+        CoreEvent.class);
+  }
+
+  private void advanceAndSweep(int seconds) {
+    clock.advance(java.time.Duration.ofSeconds(seconds));
     timers.sweep();
-    assertThat(status(original)).isEqualTo("REVERSING");
+  }
+
+  /**
+   * Resends every retry-timeout until reversing-timeout (60 s), then stops, waits until the last
+   * resend has expired (command-ttl, 60 s) and asks the core whether the original was reversed.
+   */
+  private String reversalPastItsResends(String original) {
+    String reversal = reverse(original, 5_000, "rev-" + original);
+    advanceAndSweep(5);
     assertThat(reverseCommands()).hasSize(2)
         .allSatisfy(c -> assertThat(c.path("commandId").asString()).isEqualTo(reversal + ":reverse"));
-
-    clock.advance(java.time.Duration.ofSeconds(60));
-    timers.sweep();
-    assertThat(status(original)).isEqualTo("MANUAL_REVIEW");
-    assertThat(lastStatus(original).path("error").path("code").asString()).isEqualTo("MW-TMO-020");
+    advanceAndSweep(60); // reversing-timeout passed: no more resends
+    assertThat(status(original)).isEqualTo("REVERSING");
     assertThat(reverseCommands()).hasSize(2);
-    assertThat(auditedMoves(original)).endsWith("COMPLETED>REVERSING", "REVERSING>MANUAL_REVIEW");
+    assertThat(reversalQueries(original)).isEmpty();
+    return reversal;
+  }
+
+  @Test
+  void reversingStopsResendingThenAsksTheCoreOnceTheLastCommandHasExpired() {
+    String original = completedP2p(5_000);
+    String reversal = reversalPastItsResends(original);
+
+    advanceAndSweep(30); // the last resend can still reach the core: no query yet
+    assertThat(reversalQueries(original)).isEmpty();
+    assertThat(status(original)).isEqualTo("REVERSING");
+
+    advanceAndSweep(30); // every ReverseTransaction has expired: ask
+    List<JsonNode> queries = reversalQueries(original);
+    assertThat(queries).hasSize(1);
+    assertThat(queries.get(0).path("txnId").asString()).isEqualTo(original);
+    assertThat(reverseCommands()).hasSize(2);
+    assertThat(status(original)).isEqualTo("REVERSING");
     assertAllValid(original, reversal);
   }
 
   @Test
-  void aLateTransactionReversedAfterManualReviewChangesNothing() {
+  void aQueryThatFindsTheOriginalNotReversedHandsItToManualReview() {
+    String original = completedP2p(5_000);
+    String reversal = reversalPastItsResends(original);
+    advanceAndSweep(60);
+    String queryId = reversalQueries(original).get(0).path("commandId").asString();
+
+    coreEvents.handle(txnStatus(original, queryId, "POSTED"));
+
+    assertThat(status(original)).isEqualTo("MANUAL_REVIEW");
+    assertThat(lastStatus(original).path("error").path("code").asString()).isEqualTo("MW-TMO-020");
+    assertThat(auditedMoves(original)).endsWith("COMPLETED>REVERSING", "REVERSING>MANUAL_REVIEW");
+    assertThat(jdbc.queryForObject("select count(*) from saga_timer", Integer.class)).isZero();
+    assertAllValid(original, reversal);
+  }
+
+  @Test
+  void aQueryThatFindsTheOriginalReversedEndsReversed() {
+    String original = completedP2p(5_000);
+    reversalPastItsResends(original);
+    advanceAndSweep(60);
+    String queryId = reversalQueries(original).get(0).path("commandId").asString();
+
+    coreEvents.handle(txnStatus(original, queryId, "REVERSED"));
+
+    assertThat(status(original)).isEqualTo("REVERSED");
+    assertThat(auditedMoves(original)).endsWith("COMPLETED>REVERSING", "REVERSING>REVERSED");
+  }
+
+  @Test
+  void theLastResendAppliedAfterTheTimeoutEndsReversed() {
+    String original = completedP2p(5_000);
+    String reversal = reversalPastItsResends(original);
+
+    // the resend sent just before reversing-timeout is applied by the core after it
+    coreEvents.handle(event("TransactionReversed", reversal, reversal + ":reverse", null));
+
+    assertThat(status(original)).isEqualTo("REVERSED");
+    assertThat(auditedMoves(original)).endsWith("COMPLETED>REVERSING", "REVERSING>REVERSED");
+    assertThat(jdbc.queryForObject("select count(*) from saga_timer", Integer.class)).isZero();
+  }
+
+  @Test
+  void aCoreThatNeverAnswersTheQueryEndsInManualReviewAndALateReversalStillCounts() {
+    String original = completedP2p(5_000);
+    String reversal = reversalPastItsResends(original);
+    advanceAndSweep(60); // first query
+    advanceAndSweep(5); // asked again while the query window lasts
+    assertThat(reversalQueries(original)).hasSize(2);
+
+    advanceAndSweep(60); // no answer within command-ttl of asking: operations decide
+    assertThat(status(original)).isEqualTo("MANUAL_REVIEW");
+    assertThat(lastStatus(original).path("error").path("code").asString()).isEqualTo("MW-TMO-020");
+    assertThat(reverseCommands()).hasSize(2);
+
+    coreEvents.handle(event("TransactionReversed", reversal, reversal + ":reverse-late", null));
+    assertThat(status(original)).isEqualTo("REVERSED");
+    assertThat(auditedMoves(original)).endsWith("REVERSING>MANUAL_REVIEW", "MANUAL_REVIEW>REVERSED");
+    assertAllValid(original, reversal);
+  }
+
+  @Test
+  void aTransactionReversedAfterAReversalManualReviewEndsReversed() {
     String original = completedP2p(5_000);
     String reversal = reverse(original, 5_000, "rev-" + original);
     coreEvents.handle(event("ReversalRejected", reversal, reversal + ":reverse", "INSUFFICIENT_BALANCE"));
 
     coreEvents.handle(event("TransactionReversed", reversal, reversal + ":reverse-late", null));
 
-    assertThat(status(original)).isEqualTo("MANUAL_REVIEW");
+    assertThat(status(original)).isEqualTo("REVERSED");
   }
 
   // --- refusals ------------------------------------------------------------------------------

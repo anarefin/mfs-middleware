@@ -71,11 +71,19 @@ class SagaMachineTest {
     row(Status.REVERSING, new ReversalAcknowledged(), Status.REVERSED, Effect.NONE);
     row(Status.REVERSING, new ReversalFailed(), Status.MANUAL_REVIEW, Effect.NONE);
     row(Status.REVERSING, new DeadlineExpired(), Status.REVERSING, Effect.SEND_REVERSE);
+    // resends stop at reversing-timeout; once the last one has expired the core is asked (S1)
+    row(Status.REVERSING, new ReversalResendsStopped(), Status.REVERSING, Effect.NONE);
+    row(Status.REVERSING, new ReversalUnconfirmed(), Status.REVERSING, Effect.SEND_REVERSAL_QUERY);
+    row(Status.REVERSING, new ReversalQueryResult(true), Status.REVERSED, Effect.NONE);
+    row(Status.REVERSING, new ReversalQueryResult(false), Status.MANUAL_REVIEW, Effect.NONE);
 
     row(Status.COMPLETED, new ReversalRequested(), Status.REVERSING, Effect.SEND_REVERSE);
 
     row(Status.MANUAL_REVIEW, new ManualCommit(), Status.COMMITTING, Effect.SEND_COMMIT);
     row(Status.MANUAL_REVIEW, new ManualRelease(), Status.RELEASING, Effect.SEND_RELEASE);
+    // a transaction handed over from REVERSING whose reversal the core applied after all
+    row(Status.MANUAL_REVIEW, new ReversalAcknowledged(), Status.REVERSED, Effect.NONE);
+    row(Status.MANUAL_REVIEW, new ReversalQueryResult(true), Status.REVERSED, Effect.NONE);
   }
 
   private static List<SagaEvent> allEvents() {
@@ -87,6 +95,7 @@ class SagaMachineTest {
         new InquiryFailed(true), new InquiryFailed(false), new InquiryExhausted(),
         new CommitAcknowledged(), new CommitRefused(), new ReleaseAcknowledged(), new ReleaseRefused(),
         new ReversalRequested(), new ReversalAcknowledged(), new ReversalFailed(),
+        new ReversalResendsStopped(), new ReversalUnconfirmed(), new ReversalQueryResult(true), new ReversalQueryResult(false),
         new ManualCommit(), new ManualRelease(), new DeadlineExpired());
   }
 
@@ -99,7 +108,7 @@ class SagaMachineTest {
 
   @Test
   void everyListedTransitionIsTakenWithItsEffect() {
-    assertThat(TABLE).hasSize(38);
+    assertThat(TABLE).hasSize(44);
     TABLE.forEach(
         (key, expect) -> {
           Transition t = SagaMachine.apply(key.from(), key.event());
