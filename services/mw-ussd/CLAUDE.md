@@ -7,8 +7,26 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 
 - USSD channel (spec 9.2, FR-10/11, WP18 part, WP19 part; ticket 26): one menu engine for every
   MNO behind the transport SPI `service/UssdTransport` (`onBegin`, `onContinue`, `onEnd`,
-  `onAbort`, `send`). Built so far: `service/HttpUssdTransport`; `SmppUssdTransport` (GP, WP19)
-  is not built yet.
+  `onAbort`, `send`): `service/HttpUssdTransport` and `service/SmppUssdTransport` (ticket 27).
+  An MNO switches transport by configuration alone (`mw.ussd.mno.<mno>.transport` + its
+  `mw.ussd.smpp.mno.<mno>` endpoint); `UssdMenuWalkSuite` runs the same walk over both.
+- SMPP transport (spec 9.2, 9.2.1, WP19): `client/UssdSmppClient` (bean in `config/UssdSmppConfig`)
+  holds `mw.ussd.smpp.mno.<mno>.binds` transceiver binds `<mno>-1..n` per SMPP MNO
+  (`client/UssdSmppBind`, jSMPP direct as mw-notify): own `enquire_link` every 30 s (jSMPP's
+  sender is off), 3 misses in a row drop the bind, reconnect 1-60 s exponential; `submit_sm`
+  through a window (outstanding) and a TPS throttle, retried after `retry-delays` (500 ms, 1 s,
+  2 s) on `generic_nack`, 0x58 and 0x14 (a timeout is not retried: the screen may have arrived).
+  Events `smpp.bind.up` / `smpp.bind.down` (`reason` closed|enquire_link|bind_failed),
+  `smpp.submit.retry`; gauge `mw.smpp.bind.up{mno,bind}` (`mw_smpp_bind_up`). `deliver_sm` TLVs:
+  `ussd_service_op` (0x0501) 1 PSSR indication = BEGIN, 18 USSR confirm = CONTINUE;
+  `its_session_info` (0x1383: session number; sequence bits 7..1; end-of-session bit 0) with the
+  end bit = ABORT (subscriber release). Screens go out as op 2 USSR request, the last as 17 PSSR
+  response with the end bit, on the bind that received the session (`SmppUssdTransport` keeps the
+  route in memory). Session id `smpp-<number>-<sha256(msisdn) 16 hex>` (no MSISDN in Valkey keys).
+  Each step runs on a virtual thread, never on jSMPP's PDU threads. Text GSM-7 unpacked or UCS-2
+  (`util/UssdText`). Dev: gp binds 2 to `mw-simulators:2776`; robi, banglalink, teletalk
+  endpoints config-ready. `mw.ussd.smpp.enabled=false` binds nothing (tests). SMPP password key
+  `mw.ussd.smpp.mno.<mno>.password` in OpenBao (empty in dev: the simulator accepts any bind).
 - HTTP transport: `POST /ussd/{mno}` (`controller/UssdHttpController`, contract
   `api/mw-ussd/ussd-http.v1.openapi.yaml`), JSON `{sessionId, msisdn, serviceCode?, input?,
   type: BEGIN|CONTINUE|END|ABORT}` -> `{sessionId, message, flag}` with the MNO's flag values
@@ -120,4 +138,4 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 | `./gradlew check bootJar && docker build -t mw-ussd:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-ussd` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make up M=mw-ussd` | run this service's `compose.yml` (platform project must be up) |
-| `make e2e TAGS=@ussd` | P2P, cash-out, top-up and bill pay over the HTTP USSD gateway simulator (`tests/e2e/src/test/resources/features/ussd.feature`, `ussd-flows.feature`) |
+| `make e2e TAGS=@ussd` | P2P, cash-out, top-up and bill pay over the HTTP USSD gateway simulator (`tests/e2e/src/test/resources/features/ussd.feature`, `ussd-flows.feature`) and GP over SMPP (`ussd-smpp.feature`, `@smpp`) |

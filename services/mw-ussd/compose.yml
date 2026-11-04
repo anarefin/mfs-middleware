@@ -81,6 +81,9 @@ services:
       VALKEY_HOST: ${VALKEY_HOST:-valkey}
       # Final status awaited this long before the menu ends with "being processed" (9.2).
       MW_USSD_SYNC_BUDGET: ${MW_USSD_SYNC_BUDGET:-8s}
+      # GP USSD over SMPP (WP19): binds to the USSD gateway simulator's SMPP port in dev.
+      MW_USSD_SMPP_GP_HOST: ${MW_USSD_SMPP_GP_HOST:-mw-simulators}
+      MW_USSD_SMPP_GP_PORT: ${MW_USSD_SMPP_GP_PORT:-2776}
     deploy:
       resources:
         limits:

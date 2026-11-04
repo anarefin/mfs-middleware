@@ -47,6 +47,9 @@ dependencies {
     implementation(libs.shedlock.provider.jdbc.template)
     // Valkey (Lettuce): USSD session state ussd:{mno}:{sessionId} (spec 9.2).
     implementation(libs.spring.boot.starter.data.redis)
+    // SMPP USSD transport (spec 9.2, 9.2.1): deliver_sm in, submit_sm out, ussd_service_op and
+    // its_session_info TLVs; jSMPP direct (as mw-notify) for TLV and enquire_link control.
+    implementation(libs.jsmpp)
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.boot.starter.webmvc.test)
