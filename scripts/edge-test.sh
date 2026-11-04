@@ -1,0 +1,265 @@
+#!/usr/bin/env bash
+# Gateway tests for the APISIX edge policies (spec 8.3, WP09, ticket 13), against the running
+# MVP stack (`make up`; honours COMPOSE_PROJECT_NAME). Usage: make edge-test
+#
+# Requests go to the published HTTPS port like any client. Tokens, the Admin API, Valkey and
+# the mw-app-gateway log are reached from inside the project (throwaway curl containers on the
+# ops network, docker compose exec/logs), as scripts/smoke.sh does.
+#
+# Checks (ticket 13 acceptance, plus the 5.3 envelope on every edge error):
+#   - no, garbage, badly signed or expired bearer token -> 401 MW-AUTH-001 envelope with a
+#     correlationId; unknown path 404 and unreachable upstream 502 also get the envelope
+#   - a submit body that breaks the schema -> 400 MW-VAL-001, never reaches mw-app-gateway;
+#     a valid body does reach it; an oversized body -> 413
+#   - more requests than the per-consumer quota -> 429 MW-SYS-RATE_LIMITED, counter in Valkey,
+#     another consumer unaffected
+#   - client X-Mw-* headers never reach the upstream; X-Correlation-Id generated when absent
+#     (or unsafe), kept when valid, returned to the client and present in the upstream's log
+#   - applying deploy/apisix twice is a no-op (Admin API objects identical but update_time)
+# The quota check spends merchant01's quota for the rest of the window (60 s).
+set -uo pipefail
+. "$(dirname "$0")/lib/modules.sh"
+
+file="$MW_ROOT/deploy/compose/mvp/compose.yml"
+[ -f "$file" ] || die "edge-test: deploy/compose/mvp/compose.yml does not exist"
+command -v jq >/dev/null || die "edge-test: jq is required"
+[ -f "$MW_ROOT/deploy/compose/platform/.env" ] || die "edge-test: no generated credentials; run make up first"
+set -a; . "$MW_ROOT/deploy/compose/platform/.env"; set +a
+
+CURL_IMAGE="curlimages/curl:8.17.0@sha256:935d9100e9ba842cdb060de42472c7ca90cfe9a7c96e4dacb55e79e560b3ff40"
+dc() { docker compose -f "$file" "$@"; }
+project="$(dc config --format json | jq -r .name)"
+https_port="$(dc port apisix 9443 2>/dev/null | head -1 | sed 's/.*://')"
+[ -n "$https_port" ] || die "edge-test: apisix is not running in project $project (make up)"
+ops_net="$(docker network ls --format '{{.Name}}' --filter "label=com.docker.compose.project=$project" --filter "label=com.docker.compose.network=ops" | head -1)"
+base="https://localhost:$https_port"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/edge-test.XXXXXX")"
+# temporary objects, removed on exit (named here: checks run in subshells)
+echo_route="mw-edge-test-echo-$$"
+kc_client="mw-edge-test-$$"
+
+passed=0; failed=0
+ok() { passed=$((passed + 1)); printf 'ok   %s\n' "$*"; }
+ko() { failed=$((failed + 1)); printf 'FAIL %s\n' "$*"; }
+check() { local name="$1" out; shift; if out="$("$@" 2>&1)"; then ok "$name"; else ko "$name"; printf '%s\n' "$out" | tail -8 | sed 's/^/     | /'; fi; }
+
+# ---- helpers ----
+ops_curl() { docker run --rm --network "$ops_net" "$CURL_IMAGE" -s --max-time 20 "$@"; }
+admin() { local m="$1" p="$2"; shift 2; ops_curl -X "$m" -H "X-API-KEY: $APISIX_ADMIN_KEY" "$@" "http://apisix:9180/apisix/admin/$p"; }
+token() { # token USER [CLIENT]
+  ops_curl --data-urlencode grant_type=password --data-urlencode "client_id=${2:-mw-app}" \
+    --data-urlencode "username=$1" --data-urlencode "password=$KC_CUSTOMERS_TEST_PASSWORD" \
+    http://keycloak:8080/realms/customers/protocol/openid-connect/token | jq -r '.access_token // empty'
+}
+claims() { printf '%s' "$1" | cut -d. -f2 | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | base64 -d 2>/dev/null; }
+# call METHOD PATH [curl args...]: response status in $status, headers in $tmp/h, body in $tmp/b
+call() {
+  local m="$1" p="$2"; shift 2
+  status="$(curl -sk --max-time 40 -X "$m" -D "$tmp/h" -o "$tmp/b" -w '%{http_code}' "$@" "$base$p")"
+}
+resp_header() { tr -d '\r' <"$tmp/h" | awk -v n="$(printf '%s' "$1" | tr 'A-Z' 'a-z')" -F': ' 'tolower($1) == n { print $2 }' | tail -1; }
+# envelope STATUS CODE: the last response is STATUS with the 5.3 envelope carrying CODE, its
+# correlationId equal to the X-Correlation-Id response header
+envelope() {
+  [ "$status" = "$1" ] || { echo "HTTP $status, want $1: $(head -c 400 "$tmp/b")"; return 1; }
+  jq -e --arg c "$2" '.code == $c and (.message | type == "string" and length > 0)
+    and (.correlationId | type == "string" and length > 0) and (.retryable | type == "boolean")
+    and (.details | type == "array")' "$tmp/b" >/dev/null \
+    || { echo "not the 5.3 envelope with $2: $(head -c 400 "$tmp/b")"; return 1; }
+  [ "$(resp_header Content-Type)" = "application/json" ] || { echo "content type: $(resp_header Content-Type)"; return 1; }
+  [ "$(jq -r .correlationId "$tmp/b")" = "$(resp_header X-Correlation-Id)" ] \
+    || { echo "correlationId $(jq -r .correlationId "$tmp/b") != header $(resp_header X-Correlation-Id)"; return 1; }
+}
+# gateway_logged CID [WAIT]: mw-app-gateway logged a line with correlationId CID (polls WAIT s)
+gateway_logged() {
+  local i
+  for i in $(seq 0 "${2:-10}"); do
+    dc logs --no-log-prefix --since 10m mw-app-gateway 2>/dev/null | grep -q "\"correlationId\":\"$1\"" && return 0
+    [ "${2:-10}" -gt 0 ] && sleep 1
+  done
+  return 1
+}
+uniq_id() { printf 'edge-test-%s-%s' "$1" "$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')"; }
+
+cleanup() {
+  local at id
+  admin DELETE "routes/$echo_route" -o /dev/null
+  at="$(kc_admin_token)"
+  id="$(ops_curl -H "Authorization: Bearer $at" "http://keycloak:8080/admin/realms/customers/clients?clientId=$kc_client" | jq -r '.[0].id // empty')"
+  [ -n "$id" ] && ops_curl -o /dev/null -X DELETE -H "Authorization: Bearer $at" "http://keycloak:8080/admin/realms/customers/clients/$id"
+  rm -rf "$tmp"
+}
+trap cleanup EXIT
+
+kc_admin_token() {
+  ops_curl --data-urlencode grant_type=password --data-urlencode client_id=admin-cli \
+    --data-urlencode "username=$(sed -n 's/^KC_BOOTSTRAP_ADMIN_USERNAME=//p' "$MW_ROOT/deploy/compose/platform/env/keycloak.env")" \
+    --data-urlencode "password=$KC_BOOTSTRAP_ADMIN_PASSWORD" \
+    http://keycloak:8080/realms/master/protocol/openid-connect/token | jq -r '.access_token // empty'
+}
+
+info "edge-test: project $project, $base"
+customer="$(token customer01)"; merchant="$(token merchant01)"
+[ -n "$customer" ] && [ -n "$merchant" ] || die "edge-test: no Keycloak token for customer01/merchant01"
+valid_body='{"txnType":"P2P","creditParty":{"type":"WALLET","id":"01711000002"},"amount":{"valueMinor":100,"currency":"BDT"},"encryptedPin":{"keyId":"k1","ciphertext":"dGVzdA=="}}'
+
+# ---- 401 ----
+no_token() { call GET /app/v1/transactions/x && envelope 401 MW-AUTH-001; }
+check "no bearer token -> 401 MW-AUTH-001 envelope" no_token
+garbage_token() { call GET /app/v1/transactions/x -H "Authorization: Bearer not.a.jwt" && envelope 401 MW-AUTH-001; }
+check "garbage bearer token -> 401 MW-AUTH-001 envelope" garbage_token
+tampered_token() { # customer01's token with merchant01's signature: bad signature
+  call GET /app/v1/transactions/x -H "Authorization: Bearer ${customer%.*}.${merchant##*.}" && envelope 401 MW-AUTH-001
+}
+check "token with a bad signature -> 401 MW-AUTH-001 envelope" tampered_token
+
+# expired: a token from a temporary public client whose tokens live 1 s
+expired_token() {
+  local at cid="$kc_client" t exp now slack
+  # openid-connect accepts a token until exp + iat_slack (clock skew; plugin default 120 s)
+  slack="$(jq -r '.plugins["openid-connect"].iat_slack // 120' "$MW_ROOT/deploy/apisix/routes/app-v1.json")"
+  at="$(kc_admin_token)"; [ -n "$at" ] || { echo "no Keycloak admin token"; return 1; }
+  ops_curl -o /dev/null -H "Authorization: Bearer $at" -H 'Content-Type: application/json' \
+    -d "{\"clientId\":\"$cid\",\"publicClient\":true,\"directAccessGrantsEnabled\":true,\"standardFlowEnabled\":false,\"attributes\":{\"access.token.lifespan\":\"1\"}}" \
+    http://keycloak:8080/admin/realms/customers/clients
+  t="$(token customer01 "$cid")"; [ -n "$t" ] || { echo "no token from the temporary client"; return 1; }
+  exp="$(claims "$t" | jq -r .exp)"
+  now="$(date +%s)"; [ "$exp" -le $((now + 2)) ] || { echo "token lives until $exp (now $now)"; return 1; }
+  # control: within the grace the edge lets the same token through (mw-app-gateway answers)
+  call GET /app/v1/transactions/x -H "Authorization: Bearer $t"
+  [ "$status" != 401 ] || { echo "token refused before it expired: $(head -c 300 "$tmp/b")"; return 1; }
+  now="$(date +%s)"
+  sleep $((exp - now + slack + 2))
+  call GET /app/v1/transactions/x -H "Authorization: Bearer $t" && envelope 401 MW-AUTH-001
+}
+check "expired bearer token -> 401 MW-AUTH-001 envelope" expired_token
+
+# ---- correlation ID, upstream reached ----
+cid_generated() {
+  local cid
+  call GET "/app/v1/transactions/$(uniq_id txn)" -H "Authorization: Bearer $customer"
+  [ "$status" = 404 ] || { echo "HTTP $status from mw-app-gateway, want its 404: $(head -c 300 "$tmp/b")"; return 1; }
+  cid="$(resp_header X-Correlation-Id)"
+  printf '%s' "$cid" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' || { echo "generated id '$cid' is not a UUID"; return 1; }
+  [ "$(jq -r .correlationId "$tmp/b")" = "$cid" ] || { echo "mw-app-gateway saw $(jq -r .correlationId "$tmp/b"), client got $cid"; return 1; }
+  gateway_logged "$cid" || { echo "no mw-app-gateway log line with correlationId $cid"; return 1; }
+}
+check "no X-Correlation-Id -> one generated, forwarded upstream, returned, in the upstream log" cid_generated
+cid_kept() {
+  local cid; cid="$(uniq_id cid)"
+  call GET "/app/v1/transactions/$(uniq_id txn)" -H "Authorization: Bearer $customer" -H "X-Correlation-Id: $cid"
+  [ "$(resp_header X-Correlation-Id)" = "$cid" ] && [ "$(jq -r .correlationId "$tmp/b")" = "$cid" ] \
+    || { echo "sent $cid, got header $(resp_header X-Correlation-Id) body $(jq -r .correlationId "$tmp/b")"; return 1; }
+  gateway_logged "$cid" || { echo "no mw-app-gateway log line with correlationId $cid"; return 1; }
+}
+check "valid X-Correlation-Id -> kept end to end" cid_kept
+
+# ---- what the upstream receives: a temporary route (deleted on exit) whose .../echo answers,
+# right before proxying (before_proxy), with the request headers it would forward; any other
+# path goes to an upstream that is not listening ----
+echo_setup() {
+  admin PUT "routes/$echo_route" -o /dev/null -H 'Content-Type: application/json' -d "{
+    \"uri\": \"/mw-edge-test/$$/*\",
+    \"plugins\": { \"serverless-post-function\": { \"_meta\": { \"filter\": [[\"uri\", \"~~\", \"/echo$\"]] },
+      \"phase\": \"before_proxy\", \"functions\": [
+      \"return function(conf, ctx) require('apisix.core').response.exit(200, ngx.req.get_headers(0)) end\" ] } },
+    \"upstream\": { \"type\": \"roundrobin\", \"nodes\": { \"127.0.0.1:9\": 1 } } }"
+  for _ in $(seq 1 20); do call GET "/mw-edge-test/$$/echo"; [ "$status" = 200 ] && return 0; sleep 0.5; done
+  echo "echo route answered $status"; return 1
+}
+check "temporary echo route for the forwarded headers" echo_setup
+strip_internal() {
+  local hdrs
+  call GET "/mw-edge-test/$$/echo" -H 'X-Mw-Reply-To: forged' -H 'x-mw-source: forged' -H 'X-MW-Txn-Id: forged' -H 'X-Other: kept'
+  [ "$status" = 200 ] || { echo "echo route answered $status"; return 1; }
+  hdrs="$(jq -c . "$tmp/b")"
+  printf '%s' "$hdrs" | jq -e 'keys | map(ascii_downcase) | any(startswith("x-mw-")) | not' >/dev/null || { echo "forwarded: $hdrs"; return 1; }
+  printf '%s' "$hdrs" | jq -e '.["x-other"] == "kept" and (.["x-correlation-id"] | length > 0)' >/dev/null || { echo "forwarded: $hdrs"; return 1; }
+}
+check "client X-Mw-* headers never reach the upstream (other headers do)" strip_internal
+cid_unsafe_replaced() {
+  local fwd
+  call GET "/mw-edge-test/$$/echo" -H 'X-Correlation-Id: bad id<script>'
+  fwd="$(jq -r '.["x-correlation-id"]' "$tmp/b")"
+  printf '%s' "$fwd" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' || { echo "forwarded unsafe id: '$fwd'"; return 1; }
+  [ "$(resp_header X-Correlation-Id)" = "$fwd" ] || { echo "client got $(resp_header X-Correlation-Id), upstream $fwd"; return 1; }
+}
+check "unsafe X-Correlation-Id -> replaced by a generated one before the upstream" cid_unsafe_replaced
+upstream_down() { call GET "/mw-edge-test/$$/dead" && envelope 502 MW-SYS-UPSTREAM_UNAVAILABLE && jq -e '.retryable' "$tmp/b" >/dev/null; }
+check "upstream unreachable -> 502 MW-SYS-UPSTREAM_UNAVAILABLE envelope (retryable)" upstream_down
+
+# ---- 400 / 413 ----
+schema_400() {
+  local cid; cid="$(uniq_id bad)"
+  call POST /app/v1/transactions -H "Authorization: Bearer $customer" -H 'Content-Type: application/json' \
+    -H "Idempotency-Key: $(uniq_id key)" -H "X-Correlation-Id: $cid" \
+    -d '{"txnType":"P2P","creditParty":{"id":"01711000002"},"encryptedPin":{"keyId":"k1","ciphertext":"x"}}'
+  envelope 400 MW-VAL-001 || return 1
+  jq -e '.details[0].issue | test("amount")' "$tmp/b" >/dev/null || { echo "no reason in details: $(cat "$tmp/b")"; return 1; }
+  if gateway_logged "$cid" 3; then echo "mw-app-gateway logged $cid: the request reached the upstream"; return 1; fi
+}
+check "body breaking the schema -> 400 MW-VAL-001, never reaches mw-app-gateway" schema_400
+attribute_400() {
+  call POST /app/v1/transactions -H "Authorization: Bearer $customer" -H 'Content-Type: application/json' \
+    -H "Idempotency-Key: $(uniq_id key)" -d "${valid_body%\}},\"attributes\":{\"duplicate\":\"true\"}}"
+  envelope 400 MW-VAL-001
+}
+check "attribute outside the allow-list -> 400 MW-VAL-001 at the edge" attribute_400
+malformed_400() {
+  call POST /app/v1/transactions -H "Authorization: Bearer $customer" -H 'Content-Type: application/json' -d '{"txnType":'
+  envelope 400 MW-VAL-001
+}
+check "malformed JSON -> 400 MW-VAL-001" malformed_400
+valid_passes() { # no Idempotency-Key: mw-app-gateway's own 400 (detail field Idempotency-Key) proves the body got through
+  local cid; cid="$(uniq_id ok)"
+  call POST /app/v1/transactions -H "Authorization: Bearer $customer" -H 'Content-Type: application/json' -H "X-Correlation-Id: $cid" -d "$valid_body"
+  [ "$status" = 400 ] && jq -e '.details[0].field == "Idempotency-Key"' "$tmp/b" >/dev/null \
+    || { echo "HTTP $status: $(head -c 300 "$tmp/b")"; return 1; }
+  gateway_logged "$cid" || { echo "mw-app-gateway did not log $cid"; return 1; }
+}
+check "valid body -> passes the edge (mw-app-gateway answers, JSON untouched)" valid_passes
+too_large() {
+  head -c 70000 /dev/zero | tr '\0' 'a' | awk '{ printf "{\"txnType\":\"%s\"}", $0 }' >"$tmp/big"
+  call POST /app/v1/transactions -H "Authorization: Bearer $customer" -H 'Content-Type: application/json' --data-binary "@$tmp/big"
+  envelope 413 MW-VAL-BODY_TOO_LARGE
+}
+check "body over 64 KiB -> 413 MW-VAL-BODY_TOO_LARGE" too_large
+not_found() { call GET /no/such/route && envelope 404 MW-VAL-003; }
+check "unknown path -> 404 MW-VAL-003 envelope" not_found
+
+# ---- 429 per consumer, counters in Valkey ----
+quota() {
+  local limit codes sub keys urls=()
+  call GET /app/v1/transactions/x -H "Authorization: Bearer $merchant"
+  limit="$(resp_header X-RateLimit-Limit)"
+  [ -n "$limit" ] || { echo "no X-RateLimit-Limit header (HTTP $status)"; return 1; }
+  for _ in $(seq 1 $((limit + 5))); do urls+=(-o /dev/null "$base/app/v1/transactions/x"); done
+  codes="$(curl -sk --max-time 60 -w '%{http_code}\n' -H "Authorization: Bearer $merchant" "${urls[@]}")"
+  printf '%s\n' "$codes" | grep -qx 429 || { echo "no 429 in $((limit + 5)) requests (limit $limit): $(printf '%s\n' "$codes" | sort | uniq -c | tr '\n' ' ')"; return 1; }
+  call GET /app/v1/transactions/x -H "Authorization: Bearer $merchant"
+  envelope 429 MW-SYS-RATE_LIMITED || return 1
+  jq -e '.retryable == true' "$tmp/b" >/dev/null || { echo "429 not retryable"; return 1; }
+  # another consumer still passes
+  call GET "/app/v1/transactions/$(uniq_id txn)" -H "Authorization: Bearer $customer"
+  [ "$status" = 404 ] || { echo "customer01 got HTTP $status after merchant01 hit the quota"; return 1; }
+  sub="$(claims "$merchant" | jq -r .sub)"
+  keys="$(dc exec -T valkey valkey-cli --scan --pattern "*sub:$sub*")"
+  [ -n "$keys" ] || { echo "no Valkey counter for sub:$sub"; return 1; }
+}
+check "over the per-consumer quota -> 429 MW-SYS-RATE_LIMITED; counter in Valkey; others unaffected" quota
+
+# ---- idempotent apply ----
+dump() { for k in global_rules routes ssls; do admin GET "$k"; done | jq -S -s '[.[].list[]? | .value | del(.update_time)] | sort_by(.id)'; }
+idempotent() {
+  local before after
+  dc run --rm --no-deps apisix-init >"$tmp/apply1" 2>&1 || { tail -5 "$tmp/apply1"; return 1; }
+  before="$(dump)"
+  dc run --rm --no-deps apisix-init >"$tmp/apply2" 2>&1 || { tail -5 "$tmp/apply2"; return 1; }
+  after="$(dump)"
+  [ "$(printf '%s' "$before" | jq length)" -gt 0 ] || { echo "nothing applied"; return 1; }
+  [ "$before" = "$after" ] || { diff <(printf '%s\n' "$before") <(printf '%s\n' "$after") | head -20; return 1; }
+}
+check "applying deploy/apisix twice is a no-op (objects identical but update_time)" idempotent
+
+printf '\nedge-test: %d passed, %d failed\n' "$passed" "$failed"
+[ "$failed" -eq 0 ]

@@ -51,8 +51,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 
 ## Contracts owned
 
-- `api/mw-app-gateway/app.v1.openapi.yaml` (app API v1; ticket 13 derives APISIX
-  `request-validation` from `TransactionRequest`).
+- `api/mw-app-gateway/app.v1.openapi.yaml` (app API v1). APISIX validates submit bodies with
+  `deploy/apisix/schemas/app-v1-transaction-request.json`, derived from `TransactionRequest`
+  (`scripts/apisix-schemas.sh --write` after changing it; `make contracts-lint` fails until
+  then). The edge also answers 401/413/429 itself (`deploy/apisix/README.md`).
 
 ## Contracts used
 
