@@ -112,7 +112,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
       # postgres/initdb/10-keycloak.sh creates the keycloak role and database with it
       KC_DB_PASSWORD: ${KC_DB_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
-    command: ["postgres", "-c", "synchronous_commit=on"]
+    # One shared dev instance serves Keycloak and every service's pool (Hikari default 10 each,
+    # plus extra pools such as audit-dw's reader); the default 100 slots run out with 12 services.
+    command: ["postgres", "-c", "synchronous_commit=on", "-c", "max_connections=300"]
     volumes:
       - postgres-data:/var/lib/postgresql
       - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
