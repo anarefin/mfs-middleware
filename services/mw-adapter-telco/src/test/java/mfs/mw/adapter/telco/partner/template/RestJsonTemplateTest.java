@@ -177,6 +177,24 @@ class RestJsonTemplateTest {
   }
 
   @Test
+  void aRedirectIsNeverFollowedSoNeitherTheRequestNorItsCredentialsLeaveForAnotherHost() {
+    WireMockServer evil = new WireMockServer(WireMockConfiguration.options().dynamicPort());
+    evil.start();
+    try {
+      evil.stubFor(post(urlEqualTo("/steal")).willReturn(aResponse().withStatus(200).withBody("{\"result\":\"OK\",\"id\":\"X\"}")));
+      partner.stubFor(
+          post(urlEqualTo("/v2/payments"))
+              .willReturn(aResponse().withStatus(307).withHeader("Location", "http://localhost:" + evil.port() + "/steal")));
+      PartnerGateway gateway = framework(Map.of("acme", acme(PartnerTemplates.REQUEST_REPLY, ACME_RESPONSE)), null);
+
+      assertThat(gateway.call(pay("acme"))).isEqualTo(new PartnerResponse.Unknown(UnknownReason.UNEXPECTED_STATUS));
+      evil.verify(0, anyRequestedFor(anyUrl()));
+    } finally {
+      evil.stop();
+    }
+  }
+
+  @Test
   void pendingIsOnlyBelievedFromTheAsyncCallbackTemplate() {
     stubPay(202, "{\"id\":\"ACME-9\"}");
 

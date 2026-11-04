@@ -171,10 +171,9 @@ public final class RestJsonAdapter implements PartnerAdapter {
         throw new PartnerNotSentException(NotSentReason.MISCONFIGURED, e);
       }
     }
-    String base = config.baseUrl().toString().replaceAll("/+$", "");
     String reference = call.reference() == null ? "" : call.reference();
     String path = op.path().replace("{reference}", URLEncoder.encode(reference, StandardCharsets.UTF_8));
-    OutboundCall outbound = new OutboundCall(op.method(), URI.create(base + path), body);
+    OutboundCall outbound = new OutboundCall(op.method(), target(config.baseUrl(), path), body);
     outbound.header("Accept", "application/json");
     if (body.length > 0) {
       outbound.header("Content-Type", "application/json");
@@ -184,6 +183,42 @@ public final class RestJsonAdapter implements PartnerAdapter {
       outbound.header(CORRELATION_HEADER, call.correlationId());
     }
     return outbound;
+  }
+
+  /**
+   * The request URI: base URL path + operation path, refused unsent unless it keeps the base URL's
+   * scheme, host and port, has no user info and stays under the base path. Config validation
+   * already refuses unsafe paths; this guard holds even for a config that bypassed it, so neither
+   * the request nor its credentials can be sent anywhere but the allowlisted endpoint.
+   */
+  static URI target(URI baseUrl, String path) {
+    String base = baseUrl.toString().replaceAll("/+$", "");
+    URI target;
+    try {
+      target = new URI(base + path).normalize();
+    } catch (java.net.URISyntaxException | RuntimeException e) {
+      throw refusedTarget(e);
+    }
+    String basePath = baseUrl.getRawPath() == null ? "" : baseUrl.getRawPath().replaceAll("/+$", "");
+    boolean same =
+        baseUrl.getScheme().equalsIgnoreCase(String.valueOf(target.getScheme()))
+            && target.getHost() != null
+            && baseUrl.getHost().equalsIgnoreCase(target.getHost())
+            && baseUrl.getPort() == target.getPort()
+            && target.getRawUserInfo() == null
+            && target.getRawPath() != null
+            && target.getRawPath().startsWith(basePath + "/");
+    if (!same) {
+      throw refusedTarget(null);
+    }
+    return target;
+  }
+
+  private static PartnerNotSentException refusedTarget(Exception cause) {
+    log.atWarn()
+        .addKeyValue("event", "security.partner_target_refused")
+        .log("partner request would leave the configured endpoint; not sent");
+    return new PartnerNotSentException(NotSentReason.MISCONFIGURED, cause);
   }
 
   private static HttpResponse<byte[]> exchange(PartnerContext ctx, HttpRequest request) {
