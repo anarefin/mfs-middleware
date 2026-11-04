@@ -127,8 +127,8 @@ class UssdHttpFlowIT {
     List<String> screens = walkToPin(session, true, "10");
     assertThat(screens)
         .containsExactly(
-            "upay\n1 সেন্ড মানি\n9 English",
-            "upay\n1 Send Money\n9 বাংলা",
+            "upay\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English",
+            "upay\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা",
             "Enter recipient upay number",
             "Enter amount (Tk)",
             "Send Tk 10.00 to 01812345678?\n1 Confirm\n2 Cancel",

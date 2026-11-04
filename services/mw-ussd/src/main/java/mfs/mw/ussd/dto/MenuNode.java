@@ -9,8 +9,12 @@ import java.util.Map;
  * MENU and CONFIRM, validator/store/next for INPUT, flow/mapping/onSuccess/onFailure for ACTION,
  * source/store/next for DYNAMIC, text only for END.
  *
- * @param mapping ACTION: canonical field ({@code creditParty}, {@code amount}) to input name
+ * @param mapping ACTION: canonical field ({@code creditParty}, {@code amount}, {@code partnerId},
+ *     {@code productCode}, {@code billerCode}) to input name, or a literal written {@code =VALUE};
+ *     INPUT with a {@code lookup}: the lookup's argument to input name
  * @param source DYNAMIC: the name of the lookup that lists the options
+ * @param lookup INPUT: a read-only lookup run once the input is valid ({@code bill}, see {@code
+ *     service/Lookups}), whose values join the inputs; a refusal asks again with its message
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record MenuNode(
@@ -24,7 +28,8 @@ public record MenuNode(
     Map<String, String> mapping,
     String onSuccess,
     String onFailure,
-    String source) {
+    String source,
+    String lookup) {
 
   public MenuNode {
     options = options == null ? List.of() : List.copyOf(options);

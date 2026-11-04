@@ -34,7 +34,8 @@ class UssdEngineTest {
   static final String PAYEE = "01812345678";
 
   static final JsonMapper JSON = JsonMapper.builder().build();
-  static final Menu MENU = MenuParser.parseResource(JSON, "menus/main-v1.json");
+  static final BillDirectory BILLS = new UssdMenuWalkTest.FakeBills();
+  static final Menu MENU = MenuParser.parseResource(JSON, "menus/main-v2.json");
 
   /** Sessions as Valkey would hold them: serialised JSON, so a test can look inside. */
   static final class InMemorySessions implements UssdSessionStore {
@@ -97,7 +98,7 @@ class UssdEngineTest {
     };
     return new UssdEngine(
         catalog, sessions, new InputValidator(), new ScreenFormatter(), flow,
-        new PinCipher("core-pin-test", TestPinKeys.pem()), new DynamicLists(p), p,
+        new PinCipher("core-pin-test", TestPinKeys.pem()), new DynamicLists(p, BILLS), new Lookups(BILLS), p,
         Clock.fixed(Instant.parse("2026-11-04T10:00:00Z"), ZoneOffset.UTC));
   }
 
@@ -111,7 +112,7 @@ class UssdEngineTest {
 
   @Test
   void p2pMenuWalkInBangla() throws Exception {
-    assertThat(dial("s1").text()).isEqualTo("upay\n1 সেন্ড মানি\n9 English");
+    assertThat(dial("s1").text()).isEqualTo("upay\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English");
     assertThat(send("s1", "1").text()).isEqualTo("প্রাপকের upay নম্বর দিন");
     assertThat(send("s1", PAYEE).text()).isEqualTo("টাকার পরিমাণ দিন");
     assertThat(send("s1", "500").text()).isEqualTo("01812345678 নম্বরে 500.00 টাকা পাঠাবেন?\n1 নিশ্চিত করুন\n2 বাতিল");
@@ -135,7 +136,7 @@ class UssdEngineTest {
   @Test
   void p2pMenuWalkInEnglishAfterTheLanguageSwitch() {
     dial("s2");
-    assertThat(send("s2", "9").text()).isEqualTo("upay\n1 Send Money\n9 বাংলা");
+    assertThat(send("s2", "9").text()).isEqualTo("upay\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা");
     assertThat(send("s2", "1").text()).isEqualTo("Enter recipient upay number");
     assertThat(send("s2", "8801812345678").text()).isEqualTo("Enter amount (Tk)");
     assertThat(send("s2", "120.5").text()).isEqualTo("Send Tk 120.50 to 01812345678?\n1 Confirm\n2 Cancel");
@@ -170,7 +171,7 @@ class UssdEngineTest {
   void sessionTtlIsTheMnoTimeoutPlusThirtySeconds() {
     dial("s4");
     assertThat(sessions.ttls.get("ussd:robi:s4")).isEqualTo(Duration.ofSeconds(150));
-    assertThat(sessions.values.get("ussd:robi:s4")).contains("\"menuVersion\":1").contains("\"language\":\"bn\"");
+    assertThat(sessions.values.get("ussd:robi:s4")).contains("\"menuVersion\":2").contains("\"language\":\"bn\"");
   }
 
   @Test
@@ -190,7 +191,7 @@ class UssdEngineTest {
   @Test
   void anUnknownMenuChoiceIsPromptedAgain() {
     dial("s6");
-    assertThat(send("s6", "7").text()).isEqualTo("ভুল ইনপুট।\nupay\n1 সেন্ড মানি\n9 English");
+    assertThat(send("s6", "7").text()).startsWith("ভুল ইনপুট।\nupay\n1 সেন্ড মানি").endsWith("0 আরও");
   }
 
   @Test
