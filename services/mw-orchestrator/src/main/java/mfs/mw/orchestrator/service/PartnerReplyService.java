@@ -5,12 +5,14 @@ import java.util.UUID;
 import mfs.mw.orchestrator.dto.ErrorInfo;
 import mfs.mw.orchestrator.dto.PartnerReply;
 import mfs.mw.orchestrator.entity.TransactionRecord;
+import mfs.mw.orchestrator.mapper.AuditMapper;
 import mfs.mw.orchestrator.mapper.PartnerReplyMapper;
 import mfs.mw.orchestrator.mapper.PartnerRequestMapper;
 import mfs.mw.orchestrator.messaging.Inbox;
 import mfs.mw.orchestrator.repository.TransactionRepository;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.exception.InvalidTransitionException;
+import mfs.mw.orchestrator.service.saga.Outcome;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.Status;
 import org.slf4j.Logger;
@@ -79,7 +81,7 @@ public class PartnerReplyService {
       lateInquiryAnswer(found.get(), reply);
       return;
     }
-    Optional<SagaEvent> saga = mapper.toSagaEvent(reply, InquiryService.holds(flows, found.get()));
+    Optional<SagaEvent> saga = mapper.toSagaEvent(reply, found.get().holdsFunds(flows));
     if (saga.isEmpty()) {
       drop(reply, "partner.reply.pending", "partner reply without a final outcome; nothing changes");
       return;
@@ -89,6 +91,10 @@ public class PartnerReplyService {
     try {
       engine.fire(rec, saga.get(), error);
     } catch (InvalidTransitionException e) {
+      if (PartnerReplyMapper.outcome(reply).map(o -> o.contradicts(e.from())).orElse(false)) {
+        conflict(found.get(), reply, "partner reply contradicts the transaction's state; state kept, recorded for operations");
+        return;
+      }
       log.atInfo()
           .addKeyValue("event", "saga.event.ignored")
           .addKeyValue("txnId", reply.txnId())
@@ -105,21 +111,38 @@ public class PartnerReplyService {
    * {@code txn.outcome.conflict} for operations and reconciliation.
    */
   private static void lateInquiryAnswer(TransactionRecord rec, PartnerReply reply) {
-    String outcome = String.valueOf(reply.payload() == null ? null : reply.payload().outcome());
-    boolean paid = rec.status() == Status.COMMITTING || rec.status() == Status.COMPLETED;
-    boolean refunded = rec.status() == Status.RELEASING || rec.status() == Status.FAILED;
-    boolean conflict =
-        ("SUCCESS".equals(outcome) && refunded) || (("FAILED".equals(outcome) || "NOT_FOUND".equals(outcome)) && paid);
-    var event = conflict ? log.atError() : log.atInfo();
-    event
-        .addKeyValue("event", conflict ? "txn.outcome.conflict" : "saga.inquiry.late_answer")
+    if (PartnerReplyMapper.outcome(reply).map(o -> o.contradicts(rec.status())).orElse(false)) {
+      conflict(rec, reply, "status inquiry answer contradicts the transaction's resolution");
+      return;
+    }
+    log.atInfo()
+        .addKeyValue("event", "saga.inquiry.late_answer")
         .addKeyValue("txnId", reply.txnId())
         .addKeyValue("partnerId", reply.partnerId())
         .addKeyValue("status", rec.status().name())
-        .addKeyValue("outcome", outcome)
-        .log(conflict
-            ? "status inquiry answer contradicts the transaction's resolution"
-            : "status inquiry answer after the transaction left UNKNOWN; ignored");
+        .addKeyValue("outcome", outcome(reply))
+        .log("status inquiry answer after the transaction left UNKNOWN; ignored");
+  }
+
+  /**
+   * A definite partner answer that contradicts where the transaction stands ({@link
+   * Outcome#contradicts}: a late PAY SUCCESS after MANUAL_REVIEW or a refund, a refusal after a
+   * payment): no state change, ERROR {@code txn.outcome.conflict} for operations and
+   * reconciliation, as for a late callback.
+   */
+  private static void conflict(TransactionRecord rec, PartnerReply reply, String message) {
+    log.atError()
+        .addKeyValue("event", AuditMapper.OUTCOME_CONFLICT)
+        .addKeyValue("txnId", reply.txnId())
+        .addKeyValue("partnerId", reply.partnerId())
+        .addKeyValue("status", rec.status().name())
+        .addKeyValue("operation", operation(reply))
+        .addKeyValue("outcome", outcome(reply))
+        .log(message);
+  }
+
+  private static String outcome(PartnerReply reply) {
+    return reply.payload() == null ? null : reply.payload().outcome();
   }
 
   private static String operation(PartnerReply reply) {

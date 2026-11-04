@@ -5,6 +5,8 @@ import java.util.UUID;
 import mfs.mw.orchestrator.dto.EncryptedPin;
 import mfs.mw.orchestrator.dto.ErrorInfo;
 import mfs.mw.orchestrator.dto.TxnRequest;
+import mfs.mw.orchestrator.service.saga.Flow;
+import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.service.saga.Status;
 
 /**
@@ -61,6 +63,14 @@ public record TransactionRecord(
         : new TransactionRecord(
             txnId, createdAt, updatedAt, request, status, previousStatus, replyTo, feeMinor,
             coreRef, error, encryptedPin, holdId, newPartnerRef, reversalTxnId);
+  }
+
+  /**
+   * Whether this transaction holds funds a refusal must release: its flow holds (TOPUP,
+   * BILL_PAY), or, for a txnType no flow runs, whether the core reported a hold.
+   */
+  public boolean holdsFunds(FlowRegistry flows) {
+    return flows.find(request.txnType()).map(Flow::needsHold).orElse(holdId != null);
   }
 
   /** The REVERSAL request that compensates this transaction. */

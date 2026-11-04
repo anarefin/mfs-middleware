@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 import mfs.mw.orchestrator.dto.ErrorInfo;
 import mfs.mw.orchestrator.dto.PartnerReply;
+import mfs.mw.orchestrator.service.saga.Outcome;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import org.springframework.stereotype.Component;
 
@@ -35,14 +36,18 @@ public class PartnerReplyMapper {
    * releases (false for inbound money, ADD_MONEY_BANK: a refusal simply fails it).
    */
   public Optional<SagaEvent> toSagaEvent(PartnerReply reply, boolean held) {
-    String outcome = reply.payload() == null || reply.payload().outcome() == null ? "" : reply.payload().outcome();
-    return Optional.ofNullable(
-        switch (outcome) {
-          case "SUCCESS" -> new SagaEvent.PartnerSucceeded();
-          case "FAILED" -> new SagaEvent.PartnerFailed(held);
-          case "UNKNOWN" -> new SagaEvent.PartnerUnknown();
-          default -> null;
-        });
+    return outcome(reply).flatMap(o -> Optional.ofNullable(
+        switch (o) {
+          case SUCCESS -> new SagaEvent.PartnerSucceeded();
+          case FAILED -> new SagaEvent.PartnerFailed(held);
+          case UNKNOWN -> new SagaEvent.PartnerUnknown();
+          case NOT_FOUND, PENDING -> null;
+        }));
+  }
+
+  /** The reply's {@code payload.outcome}; empty when absent or not a contract value. */
+  public static Optional<Outcome> outcome(PartnerReply reply) {
+    return Outcome.parse(reply.payload() == null ? null : reply.payload().outcome());
   }
 
   /** The error of a FAILED reply, kept on the transaction through RELEASING into FAILED. */
