@@ -9,6 +9,7 @@ import mfs.mw.orchestrator.mapper.AuditMapper;
 import mfs.mw.orchestrator.mapper.PartnerReplyMapper;
 import mfs.mw.orchestrator.mapper.PartnerRequestMapper;
 import mfs.mw.orchestrator.messaging.Inbox;
+import mfs.mw.orchestrator.repository.PartnerCallRepository;
 import mfs.mw.orchestrator.repository.TransactionRepository;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.exception.InvalidTransitionException;
@@ -41,6 +42,7 @@ public class PartnerReplyService {
   private final SagaEngine engine;
   private final InquiryService inquiries;
   private final FlowRegistry flows;
+  private final PartnerCallRepository partnerCalls;
 
   public PartnerReplyService(
       Inbox inbox,
@@ -48,13 +50,15 @@ public class PartnerReplyService {
       PartnerReplyMapper mapper,
       SagaEngine engine,
       InquiryService inquiries,
-      FlowRegistry flows) {
+      FlowRegistry flows,
+      PartnerCallRepository partnerCalls) {
     this.inbox = inbox;
     this.transactions = transactions;
     this.mapper = mapper;
     this.engine = engine;
     this.inquiries = inquiries;
     this.flows = flows;
+    this.partnerCalls = partnerCalls;
   }
 
   /**
@@ -73,6 +77,7 @@ public class PartnerReplyService {
       drop(reply, "txn.unknown", "partner reply for an unknown transaction");
       return;
     }
+    recordAnswer(reply);
     if (found.get().status() == Status.UNKNOWN) {
       inquiries.partnerAnswer(found.get(), reply); // STATUS_QUERY answer or a late PAY reply (7.4)
       return;
@@ -103,6 +108,15 @@ public class PartnerReplyService {
           .addKeyValue("outcome", reply.payload().outcome())
           .log("partner reply does not fit the transaction's state; ignored");
     }
+  }
+
+  /** The answer on the saga timeline (ticket 35), whatever the state machine makes of it. */
+  private void recordAnswer(PartnerReply reply) {
+    PartnerReply.Payload p = reply.payload();
+    if (p == null || reply.repliedAt() == null) {
+      return;
+    }
+    partnerCalls.answered(reply.requestId(), p.outcome(), p.partnerRef(), p.errorCode(), reply.repliedAt());
   }
 
   /**

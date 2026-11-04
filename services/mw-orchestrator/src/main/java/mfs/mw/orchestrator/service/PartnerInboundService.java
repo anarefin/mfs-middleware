@@ -14,6 +14,7 @@ import mfs.mw.orchestrator.mapper.PartnerRequestMapper;
 import mfs.mw.orchestrator.messaging.EventMetadata;
 import mfs.mw.orchestrator.messaging.Inbox;
 import mfs.mw.orchestrator.messaging.OutboxWriter;
+import mfs.mw.orchestrator.repository.PartnerCallRepository;
 import mfs.mw.orchestrator.repository.TransactionRepository;
 import mfs.mw.orchestrator.service.saga.Flow;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
@@ -67,6 +68,7 @@ public class PartnerInboundService {
   private final AuditMapper audits;
   private final OutboxWriter outbox;
   private final FlowRegistry flows;
+  private final PartnerCallRepository partnerCalls;
   private final Clock clock;
 
   public PartnerInboundService(
@@ -78,6 +80,7 @@ public class PartnerInboundService {
       AuditMapper audits,
       OutboxWriter outbox,
       FlowRegistry flows,
+      PartnerCallRepository partnerCalls,
       Clock clock) {
     this.inbox = inbox;
     this.transactions = transactions;
@@ -87,6 +90,7 @@ public class PartnerInboundService {
     this.audits = audits;
     this.outbox = outbox;
     this.flows = flows;
+    this.partnerCalls = partnerCalls;
     this.clock = clock;
   }
 
@@ -112,6 +116,9 @@ public class PartnerInboundService {
       reject(rec, inbound, mismatch.get());
       return;
     }
+    partnerCalls.callback(
+        inbound.inboundId(), rec.txnId(), inbound.family(), inbound.partnerId(), inbound.payload().outcome(),
+        inbound.partnerRef(), inbound.payload().errorCode(), clock.instant());
     PartnerReply answer = asReply(inbound);
     switch (rec.status()) {
       case UNKNOWN -> inquiries.partnerAnswer(rec, answer);

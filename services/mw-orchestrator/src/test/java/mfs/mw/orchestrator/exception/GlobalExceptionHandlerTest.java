@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Every failure becomes the 5.3 envelope; no stack trace or internal message leaks (18.6). */
-@WebMvcTest(properties = "spring.test.mockmvc.print=none") // capture app logs only
+@WebMvcTest(controllers = GlobalExceptionHandlerTest.FailingController.class, properties = "spring.test.mockmvc.print=none") // capture app logs only
 @Import(GlobalExceptionHandlerTest.FailingController.class)
 @ExtendWith(OutputCaptureExtension.class)
 class GlobalExceptionHandlerTest {

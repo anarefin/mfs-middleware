@@ -8,7 +8,21 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
 - Org portal bulk disbursement, upload and maker-checker (spec 9.4, WP22 part, ticket 33) behind
   the APISIX route `/portal/org/v1/*` (`deploy/apisix/routes/portal-org-v1.json`,
   `openid-connect` bearer-only on realm `portals`, body cap 3 MiB, 60 req/min per token subject).
-  Execution of an approved batch (ticket 34, below); SP queries and SFTP drop are later tickets.
+  Execution of an approved batch (ticket 34, below); SP transaction query (ticket 35, below); SFTP
+  drop is a later ticket.
+- SP transaction query (ticket 35, WP22; `controller/OrgTransactionController` ->
+  `service/OrgTransactionService` -> `client/OrchestratorQueryClient`): `GET /portal/org/v1/transactions`
+  (`batchId` (a batch of the org, else 404 MW-VAL-003; never approved -> empty), `status`, `[from, to)`,
+  limit 1..200, offset) and `GET /portal/org/v1/transactions/{txnId}` (transaction + `timeline` of
+  state changes; another org's or unknown txn 404 MW-VAL-003), maker or checker. The SP is the org:
+  the client always sends the **token's** `orgId` to mw-orchestrator's internal query API
+  (`api/mw-orchestrator/txn-query.v1`, `mw.portal-api.orchestrator.base-url`, default
+  `http://mw-orchestrator:8080`, read timeout 5 s), never a request parameter, and never reads the
+  `txn` schema. Resilience4j `orchestrator` (retry + circuit breaker on
+  `OrchestratorUnavailableException` only); unreachable / non-200 / unreadable -> `503 MW-SYS-040`
+  (retryable). The view (`dto/OrgTxn`) drops correlation id, channel, initiator and partner calls;
+  customer data arrives masked. Same edge route `/portal/org/v1/*`. `OrgTransactionApiIT` (stub
+  orchestrator).
 - Auth (`config/SecurityConfig`, `security/`): bearer JWT of realm `portals` on `/portal/**`, verified
   again here (JWKS `mw.portal-api.jwt.jwk-set-uri`, issuer must end with `/realms/portals`). The
   org is the `orgId` claim (user attribute + `mw-portal` client mapper in `portals-realm.json`);
@@ -74,6 +88,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
 - `events/mw-orchestrator/mw.txn.request.v1` (produced, own type `dto/TxnRequest`;
   `BulkExecutionIT` validates every child against it) and `mw.txn.status.v1` (consumed, own type
   `dto/StatusMessage`; `StatusMessageContractTest` reads every valid sample).
+- `api/mw-orchestrator/txn-query.v1.openapi.yaml` (client, own type `dto/OrgTxn`, unknown fields
+  ignored).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 

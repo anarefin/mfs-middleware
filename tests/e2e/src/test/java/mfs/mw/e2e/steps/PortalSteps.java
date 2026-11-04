@@ -197,6 +197,55 @@ public class PortalSteps {
     return lines.subList(1, lines.size()).stream().map(l -> l.split(",", -1)).toList();
   }
 
+  // --- SP transaction query (ticket 35) -----------------------------------------------------
+
+  private String firstListedTxnId;
+
+  @When("{word} lists the org's transactions of the batch")
+  public void listsBatchTransactions(String user) {
+    Http.Response r = record(PortalApi.transactions(user, state.batchId));
+    if (r.status() == 200 && !r.body().path("items").isEmpty()) {
+      firstListedTxnId = r.body().path("items").get(0).path("txnId").asString();
+    }
+  }
+
+  @When("{word} lists the org's transactions")
+  public void listsTransactions(String user) {
+    record(PortalApi.transactions(user, null));
+  }
+
+  @Then("the transaction list has {int} {word} {word} transaction paying {word}")
+  public void transactionList(int count, String status, String txnType, String maskedMsisdn) {
+    Http.Response r = state.response();
+    JsonNode items = r.body().path("items");
+    assertThat(items.size()).as("%s", r).isEqualTo(count);
+    for (JsonNode t : items) {
+      assertThat(t.path("status").asString()).as("%s", r).isEqualTo(status);
+      assertThat(t.path("txnType").asString()).as("%s", r).isEqualTo(txnType);
+      assertThat(t.path("creditParty").path("id").asString()).as("%s", r).isEqualTo(maskedMsisdn);
+      assertThat(t.path("attributes").path("batchId").asString(null)).as("%s", r).isEqualTo(state.batchId);
+    }
+  }
+
+  @When("{word} opens the first listed transaction")
+  public void opensFirst(String user) {
+    assertThat(firstListedTxnId).as("a transaction was listed before").isNotNull();
+    record(PortalApi.transaction(user, firstListedTxnId));
+  }
+
+  @Then("the timeline ends {string}")
+  public void timelineEnds(String chain) {
+    JsonNode steps = state.response().body().path("timeline");
+    List<String> states = new ArrayList<>();
+    for (JsonNode s : steps) {
+      if (states.isEmpty()) {
+        states.add(s.path("from").asString());
+      }
+      states.add(s.path("to").asString());
+    }
+    assertThat(String.join(" -> ", states)).as("%s", state.response()).endsWith(chain);
+  }
+
   @Then("the error details name these fields:")
   public void detailFields(List<String> fields) {
     List<String> actual = new ArrayList<>();
