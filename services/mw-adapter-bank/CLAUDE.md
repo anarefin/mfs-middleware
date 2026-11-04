@@ -31,7 +31,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.bank`. Follow
   type `dto/PartnerInbound`): `POST /partner/{partnerId}/callback/**`, reached from outside only
   through the APISIX route of that partner (`deploy/apisix/routes/partner-c2wbank-callback.json`:
   ip allow-list, 16 KiB body cap, 600/min per source address in Valkey; path and body forwarded
-  unchanged). Steps: (1) the partner in the URL must have config of its own (no default-partner
+  unchanged). Steps: (0) the path's partner id must
+  match `^[a-z0-9][a-z0-9-]{0,63}$` (`@Pattern` on the path variable; else 400 `MW-VAL-001`, detail
+  `partnerId`), and `mapper/InboundCallMapper` builds the framework's `InboundCall` (T7); (1) the partner in the URL must have config of its own (no default-partner
   fallback) else 404; (2) the framework verifies the signature with that partner's auth scheme
   and maps the body (CALLBACK operation, returns our `reference`): not authentic 401 `MW-AUTH-001`
   (`security.partner_callback_rejected`), unreadable 400 `MW-VAL-002`; (3) the callback's
@@ -44,6 +46,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.bank`. Follow
   (same partner, reference, outcome) is acknowledged `duplicate: true` and not published again;
   FAILED carries `errorCode` `MW-PTR-<PARTNER>-<suffix>`; an ambiguous FAILED code is published
   as PENDING (fail closed); `partnerRef` = the bank's `debitRef`, else our reference.
+- Partner-call audit (S6, spec 12.2, 17): `PartnerAudit.publishing` (wired in
+  `PartnerFrameworkConfiguration`) logs `partner.call.audit` and hands every masked entry to
+  `messaging/PartnerAuditPublisher`, which writes an `AuditEvent` (`dto/AuditEvent`, contract
+  `mw.audit.event.v1` owned by mw-audit-dw, unchanged) to the outbox in its own transaction
+  (REQUIRES_NEW): action `partner.call.completed`, actor `system`/<service>, resource
+  `partner/<partnerId>/<operation>`, outcome SUCCESS (partner SUCCESS/PENDING) else FAILURE,
+  `after` = `partnerInstance`, `httpMethod`, `path`, `httpStatus`, `partnerOutcome`, `durationMs`
+  and the `request`/`response` bodies as the framework masked them (`sensitive-fields`, scrub, 4 KB);
+  raw bodies never, no `payloadRef`. Key txnId (else partnerId). A failing publisher is logged
+  `partner.call.audit_failed` and never fails the call. Identical in telco, billpay and bank.
 - Init (`mw-adapter-bank-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
   `adapter_bank_rw` and schema `bank_ref`, `secret/mw-adapter-bank` (DB password, never
   overwritten; `mw.partner-secrets.c2wbank.hmac-secret` synced from the generated

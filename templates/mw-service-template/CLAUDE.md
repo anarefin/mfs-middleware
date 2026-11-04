@@ -19,7 +19,7 @@ and keep `scripts/test/test_service_template.sh` green.
 | Correlation ID filter (`X-Correlation-Id`, generated if absent or unsafe, MDC `correlationId`) | `filter/CorrelationIdFilter` | 2.2, 21.3 |
 | Security headers | `filter/SecurityHeadersFilter` | 18.6 |
 | Error envelope, code namespaces -> HTTP status, global advice; logs route templates, not raw URIs | `exception/`, `dto/ErrorEnvelope` | 5.3, 18.6 |
-| `@Sensitive` + `MaskingPolicy` (MSISDN `0171****789`, NID last 3, account last 4, name initial, secrets `****`) | `util/` | 18.3 |
+| `@Sensitive` + `MaskingPolicy` (MSISDN `0171****789`, NID last 3, account last 4, name initial, secrets `****`, `PARTY_ID` by the party's `type`: wallet/MSISDN ids as an MSISDN, anything else last 4) | `util/` | 18.3 |
 | JSON logs with the 21.1 fields, masking before output | `logging/JsonLogFormatter` | 21.1 |
 | Config binding, OpenBao/Vault via Spring Cloud Vault (AppRole, `VAULT_ENABLED`) | `config/MwServiceProperties`, `application.yml` | 18.4, 20.4 |
 | Liveness/readiness, `/actuator/prometheus`, Brave tracing (W3C), virtual threads | `application.yml` | 20.1, 21.2, 21.3 |

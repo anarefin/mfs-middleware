@@ -49,6 +49,7 @@ class TopupSagaIT {
   private final MutableClock clock;
   private final JdbcTemplate jdbc;
   private final JsonMapper json;
+  private final io.micrometer.core.instrument.MeterRegistry meters;
 
   @Autowired
   TopupSagaIT(
@@ -58,7 +59,8 @@ class TopupSagaIT {
       SagaTimerService timers,
       Clock clock,
       JdbcTemplate jdbc,
-      JsonMapper json) {
+      JsonMapper json,
+      io.micrometer.core.instrument.MeterRegistry meters) {
     this.transactions = transactions;
     this.coreEvents = coreEvents;
     this.partnerReplies = partnerReplies;
@@ -66,6 +68,12 @@ class TopupSagaIT {
     this.clock = (MutableClock) clock;
     this.jdbc = jdbc;
     this.json = json;
+    this.meters = meters;
+  }
+
+  private double counter(String name) {
+    var c = meters.find(name).counter();
+    return c == null ? 0 : c.count();
   }
 
   @BeforeEach
@@ -352,6 +360,31 @@ class TopupSagaIT {
   }
 
   @Test
+  void aCommitUnacknowledgedForSixtySecondsIsAlertedOnce() {
+    String txn = startToPartnerPending(2_000);
+    partnerReplies.handle(reply(txn, "SUCCESS", null, "OCS-1"));
+    double before = counter("mw.txn.commit.unacknowledged");
+    for (int i = 0; i < 14; i++) { // resends every 5 s for 70 s
+      clock.advance(Duration.ofSeconds(5));
+      timers.sweep();
+    }
+    assertThat(status(txn)).isEqualTo("COMMITTING");
+    assertThat(counter("mw.txn.commit.unacknowledged")).isEqualTo(before + 1);
+  }
+
+  @Test
+  void aCommitFailedIsCountedAsASevOneAlert() {
+    String txn = startToPartnerPending(2_000);
+    partnerReplies.handle(reply(txn, "SUCCESS", null, "OCS-1"));
+    double before = counter("mw.txn.commit.failed");
+
+    coreEvents.handle(event("CommitFailed", txn, txn + ":commit", "HOLD_NOT_FOUND", "{}"));
+
+    assertThat(status(txn)).isEqualTo("MANUAL_REVIEW");
+    assertThat(counter("mw.txn.commit.failed")).isEqualTo(before + 1);
+  }
+
+  @Test
   void releaseIsResentOnItsDeadlineUntilAcknowledged() {
     String txn = startToPartnerPending(2_000);
     partnerReplies.handle(reply(txn, "FAILED", "MW-PTR-GP-TOPUP_REJECTED", null));
@@ -364,6 +397,36 @@ class TopupSagaIT {
   }
 
   // --- partner reply edge cases ----------------------------------------------------------------
+
+  @Test
+  void aLatePaySuccessAfterManualReviewIsAnOutcomeConflictAndChangesNothing() {
+    String txn = startToPartnerPending(2_000);
+    jdbc.update("update transaction set status = 'MANUAL_REVIEW' where txn_id = ?::uuid", txn);
+    jdbc.update("delete from saga_timer");
+    int statusesBefore = statuses(txn).size();
+    ch.qos.logback.classic.Logger logger =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(PartnerReplyService.class);
+    var logs = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+    logs.start();
+    logger.addAppender(logs);
+    try {
+      partnerReplies.handle(reply(txn, "SUCCESS", null, "OCS-LATE"));
+    } finally {
+      logger.detachAppender(logs);
+    }
+
+    assertThat(status(txn)).isEqualTo("MANUAL_REVIEW");
+    assertThat(statuses(txn)).hasSize(statusesBefore);
+    assertThat(commandTypes(txn)).doesNotContain("CommitHold");
+    assertThat(logs.list)
+        .anySatisfy(e -> {
+          assertThat(e.getLevel()).isEqualTo(ch.qos.logback.classic.Level.ERROR);
+          assertThat(e.getKeyValuePairs()).anySatisfy(kv -> {
+            assertThat(kv.key).isEqualTo("event");
+            assertThat(kv.value).isEqualTo("txn.outcome.conflict");
+          });
+        });
+  }
 
   @Test
   void aRedeliveredPartnerReplyIsAppliedOnce() {

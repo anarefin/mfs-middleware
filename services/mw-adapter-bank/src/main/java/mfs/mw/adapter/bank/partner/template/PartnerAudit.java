@@ -20,7 +20,8 @@ import tools.jackson.databind.json.JsonMapper;
  * fields listed in the partner's {@code sensitiveFields} are masked by their rule, then the whole
  * text is scrubbed (MSISDNs, NIDs, account numbers; 18.3). Headers are never audited (they carry
  * credentials). Bodies are cut at {@value #MAX_BODY} characters. The default sink writes one
- * {@code partner.call.audit} JSON log line per call.
+ * {@code partner.call.audit} JSON log line per call; {@link #publishing} also hands every entry to
+ * the service's audit publisher ({@code mw.audit.event.v1} through the outbox, spec 17).
  */
 public final class PartnerAudit {
 
@@ -54,6 +55,29 @@ public final class PartnerAudit {
   /** Audit that logs {@code partner.call.audit} events. */
   public static PartnerAudit logging(JsonMapper json) {
     return new PartnerAudit(json, PartnerAudit::log);
+  }
+
+  /**
+   * Audit that logs {@code partner.call.audit} and then hands the masked entry to {@code
+   * publisher}. A failing publisher is logged ({@code partner.call.audit_failed}) and never fails
+   * the partner call, whose outcome is already decided.
+   */
+  public static PartnerAudit publishing(JsonMapper json, Consumer<Entry> publisher) {
+    return new PartnerAudit(
+        json,
+        e -> {
+          log(e);
+          try {
+            publisher.accept(e);
+          } catch (RuntimeException ex) {
+            log.atError()
+                .addKeyValue("event", "partner.call.audit_failed")
+                .addKeyValue("partnerId", e.partnerId())
+                .addKeyValue("txnId", e.txnId())
+                .addKeyValue("operation", e.operation())
+                .log("partner call audit could not be published: {}", ex.getClass().getSimpleName());
+          }
+        });
   }
 
   public void record(

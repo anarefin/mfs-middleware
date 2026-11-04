@@ -17,8 +17,9 @@ import mfs.mw.orchestrator.messaging.OutboxWriter;
 import mfs.mw.orchestrator.repository.TransactionRepository;
 import mfs.mw.orchestrator.service.saga.Flow;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
-import mfs.mw.orchestrator.service.saga.InvalidTransitionException;
+import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.PartnerCall;
+import mfs.mw.orchestrator.service.saga.Outcome;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.Status;
 import org.slf4j.Logger;
@@ -54,7 +55,7 @@ public class PartnerInboundService {
 
   static final String CONSUMER = "orchestrator.partner-inbound";
   static final String CALLBACK = "CALLBACK";
-  static final java.util.Set<String> OUTCOMES = java.util.Set.of("SUCCESS", "FAILED", "PENDING");
+  static final java.util.Set<Outcome> OUTCOMES = java.util.EnumSet.of(Outcome.SUCCESS, Outcome.FAILED, Outcome.PENDING);
 
   private static final Logger log = LoggerFactory.getLogger(PartnerInboundService.class);
 
@@ -120,7 +121,7 @@ public class PartnerInboundService {
   }
 
   private void resolvePending(TransactionRecord rec, PartnerReply answer) {
-    Optional<SagaEvent> saga = mapper.toSagaEvent(answer, InquiryService.holds(flows, rec));
+    Optional<SagaEvent> saga = mapper.toSagaEvent(answer, rec.holdsFunds(flows));
     if (saga.isEmpty()) {
       log.atInfo()
           .addKeyValue("event", "partner.callback.pending")
@@ -151,7 +152,7 @@ public class PartnerInboundService {
    * txnId, from which the adapter resolved the txnId).
    */
   private Optional<String> mismatch(TransactionRecord rec, PartnerInbound in) {
-    if (!OUTCOMES.contains(String.valueOf(in.payload().outcome()))) {
+    if (Outcome.parse(in.payload().outcome()).filter(OUTCOMES::contains).isEmpty()) {
       return Optional.of("UNKNOWN_OUTCOME");
     }
     Optional<PartnerCall> leg = flows.find(rec.request().txnType()).flatMap(Flow::partnerCall);
@@ -194,12 +195,7 @@ public class PartnerInboundService {
   private void late(TransactionRecord rec, PartnerInbound inbound) {
     String outcome = inbound.payload().outcome();
     String errorCode = inbound.payload().errorCode();
-    boolean paid = switch (rec.status()) {
-      case COMMITTING, COMPLETED, REVERSING, REVERSED -> true;
-      default -> false;
-    };
-    boolean refunded = rec.status() == Status.RELEASING || rec.status() == Status.FAILED;
-    boolean conflict = ("SUCCESS".equals(outcome) && refunded) || ("FAILED".equals(outcome) && paid);
+    boolean conflict = Outcome.parse(outcome).map(o -> o.contradicts(rec.status())).orElse(false);
     AuditEvent e =
         audits.lateCallback(
             rec, inbound.partnerId(), inbound.correlationId(), outcome, errorCode, conflict, clock.instant());

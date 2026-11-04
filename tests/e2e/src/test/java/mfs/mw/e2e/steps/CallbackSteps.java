@@ -145,7 +145,7 @@ public class CallbackSteps {
   }
 
   private static List<AuditTrail.Row> stateRows(String txnId) {
-    return AuditTrail.rowsOfTxn(txnId).stream().filter(r -> "txn.state.changed".equals(r.action())).toList();
+    return AuditTrail.stateRowsOfTxn(txnId);
   }
 
   // --- C2W bank (ticket 23) ------------------------------------------------------------------

@@ -32,6 +32,19 @@ public interface Flow {
   }
 
   /**
+   * Whether this flow can perform {@code step}: its own steps, plus REVERSE and INQUIRE for every
+   * flow (any COMPLETED transaction can be compensated once, spec 7.2; any flow can reach UNKNOWN,
+   * 7.4) and QUERY for every flow that holds (HOLDING timeout).
+   */
+  default boolean allows(Step step) {
+    Set<Step> own = steps();
+    return own.contains(step)
+        || step == Step.REVERSE
+        || step == Step.INQUIRE
+        || (step == Step.QUERY && own.contains(Step.HOLD));
+  }
+
+  /**
    * The steps this flow uses. The default follows {@link #needsHold()}: validate + post, or
    * validate + hold + callPartner (when there is a partner leg) + commit + release; inbound money
    * ({@link #creditsWallet()}) is validate + callPartner + commit. Reversal (ticket 19) and the

@@ -12,7 +12,10 @@ import mfs.mw.orchestrator.exception.ErrorCodes;
 import mfs.mw.orchestrator.mapper.PartnerReplyMapper;
 import mfs.mw.orchestrator.repository.SagaTimerRepository;
 import mfs.mw.orchestrator.repository.TransactionRepository;
+import java.util.Optional;
+import mfs.mw.orchestrator.service.saga.CoreTxnStatus;
 import mfs.mw.orchestrator.service.saga.Flow;
+import mfs.mw.orchestrator.service.saga.Outcome;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.service.saga.InquirySchedule;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
@@ -100,21 +103,22 @@ public class InquiryService {
    * which is as definite.
    */
   public void partnerAnswer(TransactionRecord rec, PartnerReply reply) {
-    String outcome = reply.payload() == null ? "" : String.valueOf(reply.payload().outcome());
-    boolean held = held(rec);
+    Optional<Outcome> outcome = PartnerReplyMapper.outcome(reply);
+    String answer = reply.payload() == null ? "" : String.valueOf(reply.payload().outcome());
+    boolean held = rec.holdsFunds(flows);
     // a commit step follows a partner success: commit the hold, or credit inbound money
     boolean commits = held || flows.find(rec.request().txnType()).map(Flow::creditsWallet).orElse(false);
-    switch (outcome) {
-      case "SUCCESS" ->
-          resolve(rec.withPartnerRef(reply.payload().partnerRef()), new SagaEvent.InquirySucceeded(commits), null, outcome);
-      case "FAILED" -> resolve(rec, new SagaEvent.InquiryFailed(held), replies.error(reply), outcome);
-      case "NOT_FOUND" -> {
+    switch (outcome.orElse(Outcome.PENDING)) {
+      case SUCCESS ->
+          resolve(rec.withPartnerRef(reply.payload().partnerRef()), new SagaEvent.InquirySucceeded(commits), null, answer);
+      case FAILED -> resolve(rec, new SagaEvent.InquiryFailed(held), replies.error(reply), answer);
+      case NOT_FOUND -> {
         Instant lastArrival =
             transactions.enteredAt(rec.txnId(), Status.PARTNER_PENDING).orElse(unknownSince(rec))
                 .plus(properties.partnerTimeout());
         notFound(rec, held, lastArrival);
       }
-      default -> pending(rec, outcome);
+      case PENDING, UNKNOWN -> pending(rec, answer);
     }
   }
 
@@ -125,16 +129,16 @@ public class InquiryService {
    */
   public void coreAnswer(TransactionRecord rec, String txnStatus) {
     String s = txnStatus == null ? "" : txnStatus;
-    switch (s) {
-      case "POSTED", "CREDITED" -> resolve(rec, new SagaEvent.InquirySucceeded(false), null, s);
-      case "REJECTED" ->
+    switch (CoreTxnStatus.parse(txnStatus).orElse(null)) {
+      case POSTED, CREDITED -> resolve(rec, new SagaEvent.InquirySucceeded(false), null, s);
+      case REJECTED ->
           resolve(rec, new SagaEvent.InquiryFailed(false), notFoundError("The core refused the transfer; nothing was moved"), s);
-      case "NOT_FOUND", "VALIDATED" -> {
+      case NOT_FOUND, VALIDATED -> {
         Instant lastArrival =
             transactions.enteredAt(rec.txnId(), Status.POSTING).orElse(unknownSince(rec)).plus(properties.commandTtl());
         notFound(rec, false, lastArrival);
       }
-      default -> {
+      case null, default -> {
         engine.fire(rec, new SagaEvent.InquiryExhausted(), error(ErrorCodes.TMO_INQUIRY_CONFLICT,
             "The status inquiry answer fits no outcome of the transaction; an operator will resolve it", false));
         log.atError()
@@ -174,15 +178,6 @@ public class InquiryService {
         .addKeyValue("partnerId", SagaEngine.partnerId(rec))
         .addKeyValue("answer", answer)
         .log("status inquiry gave no final answer; the next slot asks again");
-  }
-
-  private boolean held(TransactionRecord rec) {
-    return holds(flows, rec);
-  }
-
-  /** Whether the transaction's flow holds funds (a refusal then releases them). */
-  static boolean holds(FlowRegistry flows, TransactionRecord rec) {
-    return flows.find(rec.request().txnType()).map(Flow::needsHold).orElse(rec.holdId() != null);
   }
 
   private Instant unknownSince(TransactionRecord rec) {

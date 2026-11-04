@@ -1,4 +1,7 @@
-package mfs.mw.orchestrator.service.saga;
+package mfs.mw.orchestrator.exception;
+
+import mfs.mw.orchestrator.service.saga.SagaEvent;
+import mfs.mw.orchestrator.service.saga.Status;
 
 /** The event is not allowed in this state (spec 7.2). */
 public class InvalidTransitionException extends RuntimeException {

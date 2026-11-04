@@ -31,7 +31,7 @@ public enum Step {
           case SEND_PARTNER_REQUEST -> CALL_PARTNER;
           case SEND_COMMIT -> COMMIT;
           case SEND_RELEASE -> RELEASE;
-          case SEND_REVERSE -> REVERSE;
+          case SEND_REVERSE, SEND_REVERSAL_QUERY -> REVERSE;
           case SEND_QUERY -> QUERY;
           case SEND_INQUIRY -> INQUIRE;
           case NONE, SCHEDULE_INQUIRY -> null;

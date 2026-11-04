@@ -13,6 +13,8 @@ public enum Effect {
   SEND_COMMIT,
   SEND_RELEASE,
   SEND_REVERSE,
+  /** QueryTransaction asking whether a REVERSING transaction was reversed (part of the reverse step). */
+  SEND_REVERSAL_QUERY,
   /** QueryTransaction to the core (status inquiry). */
   SEND_QUERY,
   SEND_PARTNER_REQUEST,

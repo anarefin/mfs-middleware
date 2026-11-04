@@ -26,7 +26,7 @@ import mfs.mw.orchestrator.service.saga.Effect;
 import mfs.mw.orchestrator.service.saga.Flow;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.service.saga.PartnerCall;
-import mfs.mw.orchestrator.service.saga.InvalidTransitionException;
+import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.SagaMachine;
 import mfs.mw.orchestrator.service.saga.Status;
@@ -103,11 +103,12 @@ public class SagaEngine {
    *
    * @param error set on a move to REJECTED or FAILED
    * @return the updated record
-   * @throws mfs.mw.orchestrator.service.saga.InvalidTransitionException if the state does not
+   * @throws mfs.mw.orchestrator.exception.InvalidTransitionException if the state does not
    *     accept the event; nothing has been written then
    */
   public TransactionRecord fire(TransactionRecord rec, SagaEvent event, ErrorInfo error) {
     Transition t = SagaMachine.apply(rec.status(), event);
+    refuseStepOutsideFlow(rec, event, t);
     Instant now = clock.instant();
     TransactionRecord next = t.changesState() ? rec.moved(t.to(), now, error) : rec;
 
@@ -127,6 +128,19 @@ public class SagaEngine {
     rearm(next, t, now);
     perform(t.effect(), next, now);
     return next;
+  }
+
+  /**
+   * A transition whose effect is a step the transaction's flow does not have (ManualCommit of a
+   * P2P, ManualRelease of an ADD_MONEY_BANK) is refused like any other invalid transition: it would
+   * enter a state whose command is never sent and whose deadline resends nothing for ever.
+   */
+  private void refuseStepOutsideFlow(TransactionRecord rec, SagaEvent event, Transition t) {
+    Optional<Step> step = Step.of(t.effect());
+    Optional<Flow> flow = flows.find(rec.request().txnType());
+    if (step.isPresent() && flow.isPresent() && !flow.get().allows(step.get())) {
+      throw new InvalidTransitionException(rec.status(), event);
+    }
   }
 
   /** Publishes a status on the status topic with the record's reply-to header. */
@@ -156,8 +170,9 @@ public class SagaEngine {
 
   /**
    * Performs the step behind {@code effect} for the transaction's flow (spec 7.1): every flow is
-   * built from the same steps, and a step the flow does not have, or one whose ticket is not
-   * built yet, is logged as {@code saga.effect.unwired} and skipped. Entering UNKNOWN arms the
+   * built from the same steps ({@link Flow#allows}); a step the flow does not have was refused by
+   * {@link #fire} already, and an unknown txnType is logged as {@code saga.effect.unwired} and
+   * skipped. Entering UNKNOWN arms the
    * first status-inquiry slot (spec 7.4); later slots are armed by {@link InquiryService} as each
    * inquiry goes out.
    */
@@ -171,7 +186,7 @@ public class SagaEngine {
     }
     Optional<Step> step = Step.of(effect);
     Optional<Flow> flow = flows.find(rec.request().txnType());
-    if (step.isEmpty() || flow.isEmpty() || !allowed(flow.get(), step.get())) {
+    if (step.isEmpty() || flow.isEmpty() || !flow.get().allows(step.get())) {
       unwired(effect, rec);
       return;
     }
@@ -187,20 +202,11 @@ public class SagaEngine {
       case QUERY -> send(commandMapper.query(rec, now, ttl));
       case CALL_PARTNER -> callPartner(rec, flow.get().partnerCall().orElseThrow(), now);
       case INQUIRE -> inquire(rec, flow.get(), now);
-      case REVERSE -> send(commandMapper.reverse(rec, now, ttl));
+      case REVERSE ->
+          send(effect == Effect.SEND_REVERSAL_QUERY
+              ? commandMapper.reversalQuery(rec, now, ttl)
+              : commandMapper.reverse(rec, now, ttl));
     }
-  }
-
-  /**
-   * The flow's own steps; QUERY belongs to every flow that holds (HOLDING timeout), REVERSE to
-   * every flow (any COMPLETED transaction can be compensated once, spec 7.2), INQUIRE to every
-   * flow (any flow can reach UNKNOWN, spec 7.4).
-   */
-  private static boolean allowed(Flow flow, Step step) {
-    return flow.steps().contains(step)
-        || step == Step.REVERSE
-        || step == Step.INQUIRE
-        || (step == Step.QUERY && flow.steps().contains(Step.HOLD));
   }
 
   /** The step name of the status-inquiry timer in {@code saga_timer}. */

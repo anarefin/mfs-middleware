@@ -42,7 +42,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.billpay`. Fol
   `service/PartnerCallbackService`, `mapper/PartnerInboundMapper`, own type `dto/PartnerInbound`):
   `POST /partner/{partnerId}/callback/**`, reached from outside only through the APISIX route of
   that partner (`deploy/apisix/routes/partner-billagg-callback.json`: ip allow-list, 16 KiB body
-  cap, 600/min per source address in Valkey; path and body forwarded unchanged). Steps: (1) the
+  cap, 600/min per source address in Valkey; path and body forwarded unchanged). Steps: (0) the path's partner id must
+  match `^[a-z0-9][a-z0-9-]{0,63}$` (`@Pattern` on the path variable; else 400 `MW-VAL-001`, detail
+  `partnerId`), and `mapper/InboundCallMapper` builds the framework's `InboundCall` (T7); (1) the
   partner in the URL must have config of its own (no default-partner fallback) else 404; (2) the
   framework verifies the signature with that partner's auth scheme and maps the body
   (`PartnerGateway.inbound`, CALLBACK operation): not authentic 401 `MW-AUTH-001`
@@ -57,8 +59,17 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.billpay`. Fol
   final outcome of one reference are different callbacks. FAILED carries `errorCode`
   `MW-PTR-<PARTNER>-<suffix>` from the error map; a FAILED with an ambiguous code is published as
   PENDING (fail closed); `partnerRef` = the aggregator's `paymentRef`, else our reference;
-  `attributes.message` = the partner's message. No audit events on `mw.audit.event.v1` yet (the
-  framework audits to the log).
+  `attributes.message` = the partner's message.
+- Partner-call audit (S6, spec 12.2, 17): `PartnerAudit.publishing` (wired in
+  `PartnerFrameworkConfiguration`) logs `partner.call.audit` and hands every masked entry to
+  `messaging/PartnerAuditPublisher`, which writes an `AuditEvent` (`dto/AuditEvent`, contract
+  `mw.audit.event.v1` owned by mw-audit-dw, unchanged) to the outbox in its own transaction
+  (REQUIRES_NEW): action `partner.call.completed`, actor `system`/<service>, resource
+  `partner/<partnerId>/<operation>`, outcome SUCCESS (partner SUCCESS/PENDING) else FAILURE,
+  `after` = `partnerInstance`, `httpMethod`, `path`, `httpStatus`, `partnerOutcome`, `durationMs`
+  and the `request`/`response` bodies as the framework masked them (`sensitive-fields`, scrub, 4 KB);
+  raw bodies never, no `payloadRef`. Key txnId (else partnerId: a bill fetch has no txnId and is audited under the biller's aggregator). A failing publisher is logged
+  `partner.call.audit_failed` and never fails the call. Identical in telco, billpay and bank.
 - Init (`mw-adapter-billpay-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
   `adapter_billpay_rw` and schema `billpay_ref`, `secret/mw-adapter-billpay` (DB password, never
   overwritten) and the AppRole `mw-adapter-billpay` (configtree volume at `/run/mw/approle`); waits
@@ -70,7 +81,7 @@ The app's `POST /app/v1/billers/{code}/fetch-bill` needs an answer within the HT
 partner topics run orchestrator -> adapter -> orchestrator and `mw.partner.reply.v1` is consumed
 by mw-orchestrator only. Chosen: **mw-app-gateway calls this adapter's internal HTTP API** for the
 catalogue and the fetch. Why:
-- A fetch moves no money and has no saga: it needs no idempotency key, txnId, outbox or audit, and
+- A fetch moves no money and has no saga: it needs no idempotency key, txnId or saga (its partner call is still audited, S6), and
   spec 2.1's "no direct service-to-service calls on the money path" does not apply. The payment
   itself still goes app -> Kafka -> orchestrator -> `mw.partner.request.billpay.v1` -> this adapter.
 - No Kafka thread ever waits: the gateway waits on its HTTP (virtual) thread, this adapter calls
@@ -159,7 +170,8 @@ adapter-minted txnId) are still dropped and belong to the REMIT_IN / NPSB ticket
   `ErrorCodes`, `GlobalExceptionHandler` building `dto/ErrorEnvelope`. Logs show route
   templates, never raw URIs.
 - `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3; mark every personal field (bill
-  numbers as ACCOUNT, last 4 only).
+  numbers as ACCOUNT, last 4 only). Party ids are `PARTY_ID` (ticket 23): masked by the party's
+  `type` (wallet/MSISDN as an MSISDN, a bank account or any other type last 4 only).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
 - `messaging/EventPublisher`, outbox/inbox, `route/RetryTopicRouteBuilder` +

@@ -1,5 +1,6 @@
 package mfs.mw.orchestrator.service.saga;
 
+import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.SagaEvent.*;
 
 /**
@@ -95,6 +96,10 @@ public final class SagaMachine {
             case ReversalAcknowledged e -> go(from, Status.REVERSED, Effect.NONE);
             case ReversalFailed e -> go(from, Status.MANUAL_REVIEW, Effect.NONE);
             case DeadlineExpired e -> go(from, Status.REVERSING, Effect.SEND_REVERSE);
+            case ReversalResendsStopped e -> go(from, Status.REVERSING, Effect.NONE);
+            case ReversalUnconfirmed e -> go(from, Status.REVERSING, Effect.SEND_REVERSAL_QUERY);
+            case ReversalQueryResult e when e.reversed() -> go(from, Status.REVERSED, Effect.NONE);
+            case ReversalQueryResult e -> go(from, Status.MANUAL_REVIEW, Effect.NONE);
             default -> null;
           };
       case COMPLETED ->
@@ -105,6 +110,10 @@ public final class SagaMachine {
           switch (event) {
             case ManualCommit e -> go(from, Status.COMMITTING, Effect.SEND_COMMIT);
             case ManualRelease e -> go(from, Status.RELEASING, Effect.SEND_RELEASE);
+            // only a transaction handed over from REVERSING has a reversal the core can confirm
+            // (TransactionReversed answers a ReverseTransaction only): the core's truth wins
+            case ReversalAcknowledged e -> go(from, Status.REVERSED, Effect.NONE);
+            case ReversalQueryResult e when e.reversed() -> go(from, Status.REVERSED, Effect.NONE);
             default -> null;
           };
       case FAILED, REJECTED, REVERSED -> null;

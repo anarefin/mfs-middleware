@@ -11,8 +11,8 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class SagaTimerRepository {
 
-  /** A deadline that has passed. */
-  public record Due(UUID txnId, String step, int attempt) {}
+  /** A deadline that has passed; {@code dueAt} is when it was due. */
+  public record Due(UUID txnId, String step, int attempt, Instant dueAt) {}
 
   private final JdbcTemplate jdbc;
 
@@ -57,9 +57,10 @@ public class SagaTimerRepository {
    */
   public List<Due> lockDue(Instant now, int limit) {
     return jdbc.query(
-        "select txn_id, step, attempt from saga_timer where due_at <= ? order by due_at limit ?"
+        "select txn_id, step, attempt, due_at from saga_timer where due_at <= ? order by due_at limit ?"
             + " for update skip locked",
-        (rs, i) -> new Due(rs.getObject("txn_id", UUID.class), rs.getString("step"), rs.getInt("attempt")),
+        (rs, i) -> new Due(rs.getObject("txn_id", UUID.class), rs.getString("step"), rs.getInt("attempt"),
+            rs.getTimestamp("due_at").toInstant()),
         Timestamp.from(now),
         limit);
   }

@@ -6,6 +6,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import mfs.mw.adapter.billpay.partner.config.PartnerConfigStore;
+import mfs.mw.adapter.billpay.messaging.PartnerAuditPublisher;
 import mfs.mw.adapter.billpay.partner.template.PartnerAudit;
 import mfs.mw.adapter.billpay.partner.template.PartnerCallWrapper;
 import mfs.mw.adapter.billpay.partner.template.PartnerGateway;
@@ -34,8 +35,8 @@ public class PartnerFrameworkConfiguration {
   }
 
   @Bean
-  PartnerAudit partnerAudit(JsonMapper json) {
-    return PartnerAudit.logging(json);
+  PartnerAudit partnerAudit(JsonMapper json, PartnerAuditPublisher publisher) {
+    return PartnerAudit.publishing(json, publisher);
   }
 
   @Bean

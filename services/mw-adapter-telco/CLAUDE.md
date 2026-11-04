@@ -35,8 +35,17 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.telco`. Follo
 - A PAY consumed after its `deadlineAt` is not sent: FAILED `MW-SYS-PARTNER_REQUEST_EXPIRED`
   (retryable). This is what lets the orchestrator trust a later NOT_FOUND.
 - Not yet: the callback HTTP endpoint and `mw.partner.inbound.v1` (ticket 22; the framework already
-  verifies and maps a callback, `PartnerGateway.inbound`); audit events on `mw.audit.event.v1` (the
-  framework audits to the log, see below).
+  verifies and maps a callback, `PartnerGateway.inbound`).
+- Partner-call audit (S6, spec 12.2, 17): `PartnerAudit.publishing` (wired in
+  `PartnerFrameworkConfiguration`) logs `partner.call.audit` and hands every masked entry to
+  `messaging/PartnerAuditPublisher`, which writes an `AuditEvent` (`dto/AuditEvent`, contract
+  `mw.audit.event.v1` owned by mw-audit-dw, unchanged) to the outbox in its own transaction
+  (REQUIRES_NEW): action `partner.call.completed`, actor `system`/<service>, resource
+  `partner/<partnerId>/<operation>`, outcome SUCCESS (partner SUCCESS/PENDING) else FAILURE,
+  `after` = `partnerInstance`, `httpMethod`, `path`, `httpStatus`, `partnerOutcome`, `durationMs`
+  and the `request`/`response` bodies as the framework masked them (`sensitive-fields`, scrub, 4 KB);
+  raw bodies never, no `payloadRef`. Key txnId (else partnerId). A failing publisher is logged
+  `partner.call.audit_failed` and never fails the call. Identical in telco, billpay and bank.
 - Init (`mw-adapter-telco-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
   `adapter_telco_rw` and schema `partner_ref`, `secret/mw-adapter-telco` (DB password, never
   overwritten) and the AppRole `mw-adapter-telco` (configtree volume at `/run/mw/approle`); waits
@@ -105,7 +114,8 @@ code, message, reason}`. Request mapping input: `PartnerCall.input` + `reference
 Wrapper output: metrics `mw_partner_call_total`, `mw_partner_call_duration_seconds` (histogram; labels
 `partner`, `txn_type`, `operation`, `status`), `mw_partner_circuit_state` (0 closed, 1 open, 2 half-open);
 one `partner.call.audit` log event per call with the raw request/response masked (`sensitive-fields` by
-rule, then free-text scrubbing; headers never), cut at 4 KB.
+rule, then free-text scrubbing; headers never), cut at 4 KB, and the same entry as a
+`partner.call.completed` audit event on `mw.audit.event.v1` (above).
 
 The OCS is the seed instance `ocs` in `application.yml` (`mw.partners`, base URL from `OCS_BASE_URL`,
 timeout 20 s, Resilience4j instance `ocs`: bulkhead 100, circuit breaker with 16 s slow-call threshold)
@@ -150,7 +160,9 @@ mapping, inbox/outbox).
 - `exception/`: `MwException`, `ErrorCategory` (namespace -> HTTP status, retryable),
   `ErrorCodes`, `GlobalExceptionHandler` building `dto/ErrorEnvelope`. Logs show route
   templates, never raw URIs.
-- `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3; mark every personal field.
+- `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3; mark every personal field. Party ids are
+  `PARTY_ID` (ticket 23): masked by the party's `type` (wallet/MSISDN as an MSISDN, a bank account or any
+  other type last 4 only).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.

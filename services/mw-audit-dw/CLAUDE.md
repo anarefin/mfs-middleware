@@ -24,6 +24,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 - Verification: `service/AuditChainVerifier.verify(month)` -> `ChainVerification` (intact, or the
   first broken `seq` and why). Not a bean: the service role cannot read `audit.event`; construct
   it with a reading role's `JdbcTemplate` (owner, auditor).
+- Producers today: mw-orchestrator (`txn.state.changed`, `partner.callback.late`,
+  `txn.outcome.conflict`, `partner.callback.rejected`) and the three adapters
+  (`partner.call.completed`, S6: masked partner request/response in `after`). The consumer
+  accepts any action that fits the contract; `AuditTrailIT` stores a partner-call event.
 - Dedup: `audit.event_key` (auditId primary key, never purged, INSERT-only for the writer) in the
   same transaction, so a redelivery is refused however late it comes (the chassis inbox is
   purged after 7 d, so it is not used for this).
@@ -58,7 +62,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 - `exception/`: `MwException`, `ErrorCategory` (namespace -> HTTP status, retryable),
   `ErrorCodes`, `GlobalExceptionHandler` building `dto/ErrorEnvelope`. Logs show route
   templates, never raw URIs.
-- `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3; mark every personal field.
+- `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3; mark every personal field. Party ids are
+  `PARTY_ID` (ticket 23): masked by the party's `type` (wallet/MSISDN as an MSISDN, a bank account or any
+  other type last 4 only).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.

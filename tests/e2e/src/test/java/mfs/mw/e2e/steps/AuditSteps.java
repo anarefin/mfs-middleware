@@ -24,12 +24,29 @@ public class AuditSteps {
     String txnId = state.txnId();
     // audited asynchronously (outbox -> Kafka -> mw-audit-dw)
     List<AuditTrail.Row> rows =
-        Waits.until(() -> AuditTrail.rowsOfTxn(txnId), r -> r.size() >= expected.size(), Duration.ofSeconds(30));
+        Waits.until(() -> AuditTrail.stateRowsOfTxn(txnId), r -> r.size() >= expected.size(), Duration.ofSeconds(30));
     assertThat(rows).as("audit rows of %s", txnId).allSatisfy(r -> {
       assertThat(r.action()).isEqualTo("txn.state.changed");
       assertThat(r.resource()).isEqualTo("txn/" + txnId);
     });
     assertThat(rows).extracting(AuditTrail.Row::afterStatus).as("audit rows of %s", txnId).containsExactlyElementsOf(expected);
+  }
+
+  /** S6: the adapter audits its partner call, masked, on the same trail. */
+  @Then("the audit trail of the transaction records the partner call by {word}")
+  public void recordsPartnerCall(String service) {
+    String txnId = state.txnId();
+    List<AuditTrail.Row> rows =
+        Waits.until(
+            () -> AuditTrail.rowsOfTxn(txnId).stream().filter(r -> AuditTrail.PARTNER_CALL.equals(r.action())).toList(),
+            r -> !r.isEmpty(),
+            Duration.ofSeconds(30));
+    assertThat(rows).as("partner call audit rows of %s", txnId).isNotEmpty().allSatisfy(r -> {
+      assertThat(r.service()).isEqualTo(service);
+      assertThat(r.actorType()).isEqualTo("system");
+      assertThat(r.resource()).startsWith("partner/").endsWith("/PAY");
+      assertThat(r.after()).contains("partnerOutcome");
+    });
   }
 
   @Then("the audit hash chain of the transaction's month verifies")

@@ -1,6 +1,7 @@
 package mfs.mw.orchestrator.service;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import mfs.mw.orchestrator.config.OrchestratorProperties;
@@ -9,7 +10,7 @@ import mfs.mw.orchestrator.entity.TransactionRecord;
 import mfs.mw.orchestrator.exception.ErrorCodes;
 import mfs.mw.orchestrator.repository.SagaTimerRepository;
 import mfs.mw.orchestrator.repository.TransactionRepository;
-import mfs.mw.orchestrator.service.saga.InvalidTransitionException;
+import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.Status;
 import org.slf4j.Logger;
@@ -33,6 +34,7 @@ public class SagaTimerService {
   private final TransactionRepository transactions;
   private final SagaEngine engine;
   private final InquiryService inquiries;
+  private final SagaAlerts alerts;
   private final OrchestratorProperties properties;
   private final Clock clock;
 
@@ -41,12 +43,14 @@ public class SagaTimerService {
       TransactionRepository transactions,
       SagaEngine engine,
       InquiryService inquiries,
+      SagaAlerts alerts,
       OrchestratorProperties properties,
       Clock clock) {
     this.timers = timers;
     this.transactions = transactions;
     this.engine = engine;
     this.inquiries = inquiries;
+    this.alerts = alerts;
     this.properties = properties;
     this.clock = clock;
   }
@@ -67,11 +71,18 @@ public class SagaTimerService {
           inquiries.due(rec, timer.attempt()); // spec 7.4: inquire, or MANUAL_REVIEW at the cut-off
           continue;
         }
-        if (reversalExhausted(rec)) {
-          engine.fire(rec, new SagaEvent.ReversalFailed(), REVERSAL_UNCONFIRMED);
+        if (rec.status() == Status.REVERSING) {
+          reversingDeadline(rec);
           continue;
         }
         engine.fire(rec, new SagaEvent.DeadlineExpired(), expiryError(rec.status()));
+        if (rec.status() == Status.COMMITTING || rec.status() == Status.RELEASING) {
+          // the previous attempt armed this deadline at dueAt - retry-timeout (spec 7.2 alert)
+          alerts.stillUnacknowledged(
+              rec.status(), rec.txnId(),
+              transactions.enteredAt(rec.txnId(), rec.status()).orElse(rec.updatedAt()),
+              timer.dueAt().minus(properties.retryTimeout()), clock.instant());
+        }
       } catch (InvalidTransitionException e) {
         log.atInfo()
             .addKeyValue("event", "saga.timer.ignored")
@@ -84,14 +95,38 @@ public class SagaTimerService {
   }
 
   /**
-   * REVERSING resends ReverseTransaction every {@code retry-timeout} (spec 7.2 "retry; alert") but
-   * not forever: once the core has not confirmed for {@code reversing-timeout} since the
-   * transaction entered REVERSING (its {@code updatedAt}; resends do not change it), the reversal
-   * goes to MANUAL_REVIEW for operations, the same way a core refusal does.
+   * A REVERSING deadline (spec 7.2 "retry; alert"), measured from when the transaction entered
+   * REVERSING. A ReverseTransaction resent late can still be applied by the core until it
+   * expires, so the transaction is never handed to an operator while one is live:
+   *
+   * <ol>
+   *   <li>before {@code reversing-timeout}: resend (same commandId);
+   *   <li>then: stop resending ({@code txn.reversal.retry_exhausted}) and wait until every
+   *       command sent has expired ({@code + command-ttl}; the core drops an expired command);
+   *   <li>then, for one more {@code command-ttl}: ask the core every {@code retry-timeout}
+   *       whether the original was reversed (QueryTransaction); REVERSED ends it REVERSED, any
+   *       other answer MANUAL_REVIEW ({@code CoreEventService});
+   *   <li>no answer by then: MANUAL_REVIEW {@code MW-TMO-020}. A TransactionReversed that still
+   *       arrives later moves it to REVERSED (the machine accepts it in MANUAL_REVIEW).
+   * </ol>
    */
-  private boolean reversalExhausted(TransactionRecord rec) {
-    return rec.status() == Status.REVERSING
-        && !clock.instant().isBefore(rec.updatedAt().plus(properties.reversingTimeout()));
+  private void reversingDeadline(TransactionRecord rec) {
+    Instant now = clock.instant();
+    Instant began = transactions.enteredAt(rec.txnId(), Status.REVERSING).orElse(rec.updatedAt());
+    Instant resendsEnd = began.plus(properties.reversingTimeout());
+    Instant lastExpiry = resendsEnd.plus(properties.commandTtl());
+    Instant queriesEnd = lastExpiry.plus(properties.commandTtl());
+    if (now.isBefore(resendsEnd)) {
+      engine.fire(rec, new SagaEvent.DeadlineExpired(), null);
+    } else if (now.isBefore(lastExpiry)) {
+      engine.fire(rec, new SagaEvent.ReversalResendsStopped(), null);
+      timers.arm(rec.txnId(), Status.REVERSING.name(), lastExpiry, true);
+      alerts.reversalRetriesExhausted(rec.txnId(), began, now);
+    } else if (now.isBefore(queriesEnd)) {
+      engine.fire(rec, new SagaEvent.ReversalUnconfirmed(), null);
+    } else {
+      engine.fire(rec, new SagaEvent.ReversalFailed(), REVERSAL_UNCONFIRMED);
+    }
   }
 
   private static final ErrorInfo REVERSAL_UNCONFIRMED =

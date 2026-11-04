@@ -147,6 +147,8 @@ mw:
     reversing-timeout: 60s
     # Channels that may send a REVERSAL request (operations; mw-admin-api publishes as SYSTEM).
     reversal-channels: SYSTEM
+    # Daily MANUAL_REVIEW ageing check (scheduler/ManualReviewAgeingJob, UTC, "-" switches it off).
+    manual-review-ageing-cron: "0 0 6 * * *"
     consumers:
       enabled: true
     timer:

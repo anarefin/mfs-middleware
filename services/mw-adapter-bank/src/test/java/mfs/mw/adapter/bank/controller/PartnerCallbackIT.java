@@ -161,6 +161,19 @@ class PartnerCallbackIT {
     assertThat(a.body().path("code").asString()).isEqualTo("MW-VAL-003");
   }
 
+  /** T7: the partner id in the path is checked by Bean Validation (@Pattern), before the service. */
+  @Test
+  void aCallbackToAMalformedPartnerIdIsRefusedAsInvalid() throws Exception {
+    String txnId = newTxnId();
+
+    Answer a = post("/partner/Bad_Id/callback/debits", body(issued(txnId), "SUCCESS", "000", "REF-45"), SECRET, Instant.now().getEpochSecond());
+
+    assertThat(a.status()).as(a.toString()).isEqualTo(400);
+    assertThat(a.body().path("code").asString()).isEqualTo("MW-VAL-001");
+    assertThat(a.body().path("details").get(0).path("field").asString()).isEqualTo("partnerId");
+    assertThat(published(txnId, 1, Duration.ofSeconds(3))).isEmpty();
+  }
+
   @Test
   void aCallbackToAPartnerWithoutConfigOfItsOwnIsNotFound() throws Exception {
     String txnId = newTxnId();

@@ -44,6 +44,14 @@ public final class OrchestratorStub implements AutoCloseable {
   public static final long IDEM_CONFLICT = 6_000;
   /** Completes, but addressed to another gateway instance. */
   public static final long OTHER_INSTANCE = 7_000;
+  /**
+   * First request of a key: RECEIVED only. A repeat of the key: the duplicate answer (stored
+   * txnId, POSTING) comes after {@link #SLOW_DUPLICATE_DELAY}, longer than the tests' reply
+   * budget, followed by the stored transaction's COMPLETED.
+   */
+  public static final long DUPLICATE_SLOW = 8_000;
+
+  public static final Duration SLOW_DUPLICATE_DELAY = Duration.ofMillis(4_500);
 
   public static final String STORED_TXN_ID = "019a0000-0000-7000-8000-00000000abcd";
 
@@ -55,6 +63,8 @@ public final class OrchestratorStub implements AutoCloseable {
   private final Thread thread;
   private final List<ConsumerRecord<String, String>> requests =
       Collections.synchronizedList(new ArrayList<>());
+  /** idempotency key -> txnId of its first request (DUPLICATE_SLOW). */
+  private final Map<String, String> firstByKey = new java.util.concurrent.ConcurrentHashMap<>();
 
   public OrchestratorStub(String bootstrap) {
     Properties c = new Properties();
@@ -108,6 +118,31 @@ public final class OrchestratorStub implements AutoCloseable {
       send(STORED_TXN_ID, s, replyTo);
       return;
     }
+    if (amount == DUPLICATE_SLOW) {
+      String stored = firstByKey.putIfAbsent(req.path("idempotencyKey").asString(), txnId);
+      if (stored == null) {
+        send(txnId, status(req, txnId, "RECEIVED"), replyTo);
+        return;
+      }
+      Thread.ofVirtual().start(() -> {
+        try {
+          Thread.sleep(SLOW_DUPLICATE_DELAY);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          return;
+        }
+        ObjectNode dup = status(req, stored, "POSTING");
+        ObjectNode attrs = dup.putObject("attributes");
+        attrs.put("requestTxnId", txnId);
+        attrs.put("duplicate", "true");
+        send(stored, dup, replyTo);
+        ObjectNode done = status(req, stored, "COMPLETED");
+        done.putObject("fee").put("valueMinor", 500).put("currency", "BDT");
+        done.put("coreRef", "CORE-STUB-1");
+        send(stored, done, replyTo);
+      });
+      return;
+    }
     if (amount == IDEM_CONFLICT) {
       ObjectNode s = status(req, txnId, "REJECTED");
       error(s, "MW-IDEM-001", "Idempotency key was already used with a different request");
@@ -155,7 +190,7 @@ public final class OrchestratorStub implements AutoCloseable {
     s.putObject("error").put("code", code).put("message", message).put("retryable", false);
   }
 
-  private void send(String key, ObjectNode status, String replyTo) {
+  private synchronized void send(String key, ObjectNode status, String replyTo) {
     ProducerRecord<String, String> rec =
         new ProducerRecord<>("mw.txn.status.v1", key, JSON.writeValueAsString(status));
     Map<String, String> headers = new LinkedHashMap<>();

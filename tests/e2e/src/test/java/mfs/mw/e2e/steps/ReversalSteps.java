@@ -79,7 +79,7 @@ public class ReversalSteps {
     String txnId = state.txnId();
     List<AuditTrail.Row> rows =
         Waits.until(
-            () -> AuditTrail.rowsOfTxn(txnId),
+            () -> AuditTrail.stateRowsOfTxn(txnId),
             r -> r.stream().anyMatch(x -> status.equals(x.afterStatus())),
             Duration.ofSeconds(30));
     AuditTrail.Row row =

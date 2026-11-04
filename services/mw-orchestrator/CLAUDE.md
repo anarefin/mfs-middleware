@@ -15,7 +15,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   transaction as the state change.
 - State machine: plain Java in `service/saga` (`Status` = the 14 states, sealed `SagaEvent`,
   `SagaMachine.apply(status, event)` -> `Transition(from, to, effect)` or
-  `InvalidTransitionException`). All transitions of the 7.2 table are modelled and unit-tested;
+  `exception/InvalidTransitionException`). All transitions of the 7.2 table are modelled and unit-tested;
   flows (`Flow`, one per `txnType`, found by `FlowRegistry`) are sets of reusable `Step`s
   (VALIDATE, POST, HOLD, CALL_PARTNER, COMMIT, RELEASE, REVERSE, QUERY, INQUIRE; `Step.of(effect)`).
   `P2pFlow`, `CashInFlow`, `CashOutFlow` = validate + post (parties as the channel set them:
@@ -45,8 +45,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   INQUIRE (status inquiry of an UNKNOWN outcome) for every flow.
   A new flow implements `txnType()`, `needsHold()` and, with a partner leg, `partnerCall()`.
   `SagaEngine.perform` runs the step behind a transition's effect only when the flow has it
-  (REVERSE and INQUIRE belong to every flow); SCHEDULE_INQUIRY arms the first inquiry slot; steps
-  outside the flow are logged (`saga.effect.unwired`) and skipped. `SagaEngine.fire` is the single place that applies an
+  (`Flow.allows(Step)`: REVERSE and INQUIRE belong to every flow, QUERY to every flow that holds);
+  SCHEDULE_INQUIRY arms the first inquiry slot. A transition whose effect is a step the flow lacks
+  is refused by `SagaEngine.fire` as an `InvalidTransitionException` before anything is written
+  (S2: ManualCommit of P2P/CASH_IN/CASH_OUT, ManualRelease of ADD_MONEY_BANK); only an unknown
+  txnType is logged `saga.effect.unwired` and skipped. `SagaEngine.fire` is the single place that applies an
   event: persist state + `saga_step`, publish status + audit event, re-arm the deadline, send the
   next command. `SagaEngine.created` publishes the first state (RECEIVED) the same way.
 - Hold path (TOPUP): FundsHeld stores `holdId` (`transaction.hold_id`), PARTNER_PENDING sends PAY
@@ -57,10 +60,26 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   RELEASING with the reply's canonical error (kept into FAILED; a code outside the status
   pattern becomes `MW-PTR-<PARTNER>-UNMAPPED`), UNKNOWN -> UNKNOWN (status inquiry), PENDING
   ignored. HoldRejected -> REJECTED (`MW-CORE-*`). The deadline resends CommitHold / ReleaseHold
-  until the core answers (7.2 "retry until acknowledged"; the 60 s alert is not built); a definite
+  until the core answers (7.2 "retry until acknowledged"; still unanswered 60 s after entering the
+  state: WARN `txn.commit.unacknowledged` / `txn.release.unacknowledged` + counter, once); a definite
   refusal (CommitFailed: partner paid but the hold is gone; ReleaseFailed: hold already
   committed) goes to MANUAL_REVIEW with `MW-CORE-<reason>` (`CommitRefused` / `ReleaseRefused`;
-  deviation from the 7.2 table, which lists no exit for a refusal).
+  deviation from the 7.2 table, which lists no exit for a refusal), alerted ERROR `txn.commit.failed`
+  (severity SEV-1; CreditRejected too) / `txn.release.failed` + counters.
+- Alerts (S4, `service/SagaAlerts`, spec 6.3/7.2/21): stable `event` log lines and Micrometer meters
+  `mw.txn.commit.unacknowledged`, `mw.txn.release.unacknowledged`, `mw.txn.commit.failed`,
+  `mw.txn.release.failed`, `mw.txn.reversal.retry.exhausted` (counters) and
+  `mw.manual.review.oldest.age` (gauge, seconds). Daily MANUAL_REVIEW ageing check:
+  `scheduler/ManualReviewAgeingJob` (ShedLock `manual-review-ageing`, cron
+  `mw.orchestrator.manual-review-ageing-cron`, default 06:00 UTC) -> `service/ManualReviewAgeingService`
+  -> WARN `txn.manual_review.ageing` with `count` and `oldestAgeSeconds` (age since its `updated_at`).
+- Partner outcomes are read through `service/saga/Outcome` (SUCCESS, FAILED, UNKNOWN, NOT_FOUND,
+  PENDING) and the core's TransactionStatus `txnStatus` through `service/saga/CoreTxnStatus`; DTOs keep
+  the raw strings. `Outcome.contradicts(Status)` is the one conflict rule (late callbacks, late
+  STATUS_QUERY answers, late PAY replies): SUCCESS against RELEASING/FAILED/MANUAL_REVIEW,
+  FAILED/NOT_FOUND against COMMITTING/COMPLETED/REVERSING/REVERSED/MANUAL_REVIEW. A late PAY reply that
+  contradicts (e.g. SUCCESS after MANUAL_REVIEW, S5) changes nothing and logs ERROR
+  `txn.outcome.conflict`. `TransactionRecord.holdsFunds(FlowRegistry)` says whether a refusal releases.
 - Unknown outcomes (ticket 18, spec 7.4, `service/InquiryService`, `service/saga/InquirySchedule`):
   entering UNKNOWN (partner UNKNOWN reply, PARTNER_PENDING 30 s, POSTING 5 s) publishes UNKNOWN
   (the app shows 202 PROCESSING) and arms the `UNKNOWN` timer at the first slot. Each slot sends
@@ -83,7 +102,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   STATUS_QUERY answer after the txn left UNKNOWN changes nothing; one contradicting the
   resolution is logged `txn.outcome.conflict`. Gauges `mw_txn_unknown_open` and
   `mw_manual_review_open` (`service/BacklogMetrics`, count per scrape). MANUAL_REVIEW arms no timer
-  (the daily ageing alert is not built); ManualCommit / ManualRelease come with the admin API.
+  (the daily ageing check above reports it); ManualCommit / ManualRelease come with the admin API and
+  are refused for a flow without the step (S2).
 - Partner callbacks (ticket 22, spec 11.2, `service/PartnerInboundService`, own type
   `dto/PartnerInbound`): kind CALLBACK only, families telco/billpay/bank (REMITTANCE / NPSB_CREDIT logged
   `partner.inbound.unsupported` and dropped; C2W needs none: its confirmation is a CALLBACK of the customer's own request, decision in mw-adapter-bank's CLAUDE.md). Inbox key `inboundId` (the adapter
@@ -103,8 +123,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   change, recorded on `mw.audit.event.v1` (`AuditMapper.lateCallback`: actor `partner`/<partnerId>,
   `before`/`after` `{status}` unchanged plus `after.callbackOutcome`, `errorCode`): action
   `partner.callback.late` outcome SUCCESS, or `txn.outcome.conflict` outcome FAILURE (also an
-  ERROR log) when it contradicts the resolution (SUCCESS for RELEASING/FAILED, FAILED for
-  COMMITTING/COMPLETED/REVERSING/REVERSED). A terminal state is never left on a callback: the
+  ERROR log) when it contradicts the resolution (`Outcome.contradicts`: SUCCESS for
+  RELEASING/FAILED/MANUAL_REVIEW, FAILED for COMMITTING/COMPLETED/REVERSING/REVERSED/MANUAL_REVIEW). A terminal state is never left on a callback: the
   conflict goes to operations and reconciliation (spec 15 STATUS_MISMATCH -> maker-checker
   proposal), not to MANUAL_REVIEW, which the 7.2 table only enters from non-terminal states.
   An unknown txnId is logged `txn.unknown` and dropped.
@@ -121,8 +141,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   payload `originalTxnId`, the original's amount and fee), because mw-core-mock books the
   compensating entries under the reversal's own txnId; its answer is found through
   `reversal_txn_id`. TransactionReversed -> REVERSED; ReversalRejected -> MANUAL_REVIEW
-  (`MW-CORE-<reason>`); no answer: resent every `retry-timeout`, MANUAL_REVIEW (`MW-TMO-020`,
-  same `ReversalFailed` event) once `reversing-timeout` (60 s) has passed since REVERSING began.
+  (`MW-CORE-<reason>`). No answer (S1, `SagaTimerService.reversingDeadline`, measured from entering
+  REVERSING): resent every `retry-timeout` until `reversing-timeout` (60 s); then resends stop
+  (`ReversalResendsStopped`, WARN `txn.reversal.retry_exhausted`) and the transaction waits until the
+  last ReverseTransaction has expired (`+ command-ttl`; the core drops an expired command); then
+  QueryTransaction under the original txnId, commandId `<txnId>:reverse-query:<epoch ms>`
+  (`ReversalUnconfirmed`, asked again every `retry-timeout` for one more `command-ttl`): `REVERSED`
+  -> REVERSED, any other txnStatus -> MANUAL_REVIEW `MW-TMO-020` (`ReversalQueryResult`); still no
+  answer -> MANUAL_REVIEW `MW-TMO-020` (`ReversalFailed`). MANUAL_REVIEW accepts a TransactionReversed
+  (or a REVERSED query answer) and moves to REVERSED: only a transaction handed over from REVERSING
+  has a reversal the core can confirm, and the core's truth wins (deviation from the 7.2 table).
   Every status of the original from then on carries `attributes.reversalTxnId`. Only channels
   in `mw.orchestrator.reversal-channels` (default `SYSTEM`: operations, i.e. mw-admin-api after
   maker-checker, ticket 37) may reverse. Refused with a REJECTED status under the request's txnId
@@ -148,12 +176,19 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   + other hash: REJECTED status under the new request's txnId with `MW-IDEM-001`, no transaction
   row. The Valkey 60 s double-tap lock (7.3 rule 4) is not implemented: PostgreSQL is the source
   of truth and the primary key serialises concurrent first inserts.
+  Deviations from 7.3 rule 2 (S7, recorded, not restructured): the final response is not stored,
+  a repeat is answered from the live transaction row (current status of the stored txnId), so the
+  never-written `idempotency.response` column was dropped (V7); `txn.idempotency` is not
+  partitioned, so there is no purge by partition drop; an expired key (`expires_at` passed) is
+  reclaimed in place by the next request with it, and no job deletes expired rows yet
+  (`RetentionService` purges only outbox and inbox).
 - Timers: `txn.saga_timer` (one row per txn and state), swept by `scheduler/SagaTimerJob` every
   second under ShedLock; `SagaTimerService.sweep` uses `FOR UPDATE SKIP LOCKED`. Deadlines are
   `mw.orchestrator.*-timeout`: VALIDATING 5 s -> FAILED (`MW-TMO-001`, retryable), POSTING 5 s ->
   UNKNOWN, HOLDING 5 s -> QueryTransaction (stays HOLDING), PARTNER_PENDING 30 s -> UNKNOWN,
   COMMITTING / RELEASING / REVERSING every `retry-timeout` (5 s) -> resend CommitHold /
-  ReleaseHold / ReverseTransaction (same commandId; REVERSING gives up after `reversing-timeout`),
+  ReleaseHold / ReverseTransaction (same commandId; REVERSING stops resending after
+  `reversing-timeout` and asks the core, above),
   UNKNOWN on the inquiry schedule (above). MANUAL_REVIEW and terminal states arm no timer. A late
   core reply after a timeout is ignored (state machine refuses it).
 - `commandId` = `<txnId>:validate` / `:post` / `:hold` / `:commit` / `:release` / `:credit`
@@ -172,7 +207,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - `mw-reply-to` (7.5): copied from the request record to every status record (and to the answer
   for a repeated request, taken from the repeated request). Stored in `transaction.reply_to`.
 - Schema `txn` (role `orchestrator_rw`): `transaction`, `saga_step`, `saga_timer`, `idempotency`
-  (+ `outbox`, `inbox`, `shedlock`); migrations V1..V6 (V6 `reversal_txn_id`). `transaction` is not partitioned yet and keeps parties in
+  (+ `outbox`, `inbox`, `shedlock`); migrations V1..V7 (V6 `reversal_txn_id`, V7 drops
+  `idempotency.response`). Repository ITs: `repository/TransactionRepositoryIT` (round trip, row
+  lock, unique `reversal_txn_id`, step history, backlog queries) and
+  `IdempotencyAndTimerRepositoryIT` (claim, scope, expired key, timers incl. SKIP LOCKED). `transaction` is not partitioned yet and keeps parties in
   the stored request JSON instead of separate columns.
 - Init (`mw-orchestrator-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): creates
   role and schema, `secret/mw-orchestrator` (DB password, never overwritten) and the AppRole
