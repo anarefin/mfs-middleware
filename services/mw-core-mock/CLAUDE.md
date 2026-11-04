@@ -23,6 +23,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   `CARD_TOKEN`; ticket 21, BILL_PAY) checks the payer side only (wallet types, status, PIN,
   limits, funds with the type's fee); `PostTransfer` still needs a credit wallet
   (`CREDIT_WALLET_NOT_FOUND`): such flows hold, then commit to `SETTLEMENT`.
+- `ValidateTransaction` whose debit party is outside the core (`BANK_ACCOUNT`, `CARD_TOKEN`,
+  `BILLER_ACCOUNT`; ticket 23, ADD_MONEY_BANK / C2W) checks the receiving wallet only: it exists
+  (`CREDIT_WALLET_NOT_FOUND`), not LOCKED (`ACCOUNT_LOCKED`) or blocked
+  (`CREDIT_ACCOUNT_BLOCKED`), its own PIN (the customer authorises the add money; lockout counts
+  on that wallet), amount, per-transaction limit; no funds or daily debit check, fee of the type
+  (none configured). Moves nothing: the money arrives by `CreditWallet` from `SETTLEMENT` once the
+  bank confirmed the debit. `PostTransfer` / `HoldFunds` from such a party are refused
+  `WALLET_NOT_FOUND`.
 - Emits the result events (`TransactionValidated`/`TransactionRejected`, `FundsHeld`/`HoldRejected`,
   `HoldCommitted`/`CommitFailed`, `HoldReleased`/`ReleaseFailed`, `TransferPosted`/`TransferRejected`,
   `WalletCredited`/`CreditRejected`, `TransactionReversed`/`ReversalRejected`, `TransactionStatus`)
