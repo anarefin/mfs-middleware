@@ -36,6 +36,7 @@ class WalletRulesIT {
   static final String AGENT = "01811000001";
   static final String AGENT_2 = "01811000002";
   static final String MERCHANT = "01911000001";
+  static final String ORG = "01311000001";
 
   private final CoreCommandService service;
   private final WalletSeeder seeder;
@@ -67,7 +68,9 @@ class WalletRulesIT {
     payload.put("debitParty", new Party("WALLET", from, null, null));
     payload.put("creditParty", new Party("WALLET", to, null, null));
     payload.put("amount", Amount.bdt(minor));
-    payload.put("encryptedPin", TestPins.encrypt(keys.publicKeyPem(), keys.keyId(), pin));
+    if (pin != null) {
+      payload.put("encryptedPin", TestPins.encrypt(keys.publicKeyPem(), keys.keyId(), pin));
+    }
     String suffix = "PostTransfer".equals(commandType) ? ":post" : ":validate";
     Instant now = Instant.now();
     return new CoreCommand(
@@ -136,6 +139,26 @@ class WalletRulesIT {
     assertThat(e.reasonCode()).isEqualTo("INVALID_COUNTERPARTY");
     assertThat(balance(AGENT)).isEqualTo(10_000_000);
     assertThat(balance(CUSTOMER_A)).isEqualTo(1_000_000);
+  }
+
+  // --- BULK_DISBURSE (ticket 34): org -> customer, authorised by maker-checker, no PIN --------
+
+  @Test
+  void bulkDisburseRunsOnlyFromAnOrgToACustomerWithoutAPin() {
+    assertThat(validate("BULK_DISBURSE", ORG, CUSTOMER_A, null)).isEqualTo("OK");
+    assertThat(validate("BULK_DISBURSE", CUSTOMER_A, CUSTOMER_B, null)).isEqualTo("INVALID_COUNTERPARTY");
+    assertThat(validate("BULK_DISBURSE", ORG, AGENT, null)).isEqualTo("INVALID_COUNTERPARTY");
+  }
+
+  @Test
+  void anOrgPaysOutMoreInADayThanAWalletLimitAllows() {
+    long perTxn = 500_000; // the per-transaction cap of every wallet
+    for (int i = 0; i < 4; i++) { // 4 x 5,000 taka > the 15,000 taka daily limit of a customer
+      CoreEvent e = handle(command("PostTransfer", "BULK_DISBURSE", ORG, CUSTOMER_B, perTxn, null));
+      assertThat(e.eventType()).as("payout %d", i).isEqualTo("TransferPosted");
+    }
+    assertThat(balance(ORG)).isEqualTo(100_000_000 - 4 * perTxn);
+    assertThat(balance(CUSTOMER_B)).isEqualTo(1_000_000 + 4 * perTxn);
   }
 
   @Test
