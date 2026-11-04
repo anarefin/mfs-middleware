@@ -153,7 +153,7 @@ public class SagaEngine {
   /**
    * Performs the step behind {@code effect} for the transaction's flow (spec 7.1): every flow is
    * built from the same steps, and a step the flow does not have, or one whose ticket is not
-   * built yet (reversal, inquiry schedule), is logged as {@code saga.effect.unwired} and skipped.
+   * built yet (inquiry schedule), is logged as {@code saga.effect.unwired} and skipped.
    */
   private void perform(Effect effect, TransactionRecord rec, Instant now) {
     if (effect == Effect.NONE) {
@@ -174,13 +174,18 @@ public class SagaEngine {
       case RELEASE -> send(commandMapper.release(rec, now, ttl));
       case QUERY -> send(commandMapper.query(rec, now, ttl));
       case CALL_PARTNER -> callPartner(rec, flow.get().partnerCall().orElseThrow(), now);
-      case REVERSE -> unwired(effect, rec);
+      case REVERSE -> send(commandMapper.reverse(rec, now, ttl));
     }
   }
 
-  /** The flow's own steps; QUERY belongs to every flow that holds (HOLDING timeout). */
+  /**
+   * The flow's own steps; QUERY belongs to every flow that holds (HOLDING timeout), REVERSE to
+   * every flow (any COMPLETED transaction can be compensated once, spec 7.2).
+   */
   private static boolean allowed(Flow flow, Step step) {
-    return flow.steps().contains(step) || (step == Step.QUERY && flow.steps().contains(Step.HOLD));
+    return flow.steps().contains(step)
+        || step == Step.REVERSE
+        || (step == Step.QUERY && flow.steps().contains(Step.HOLD));
   }
 
   private void unwired(Effect effect, TransactionRecord rec) {

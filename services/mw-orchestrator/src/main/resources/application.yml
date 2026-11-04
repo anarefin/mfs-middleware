@@ -143,6 +143,10 @@ mw:
     command-ttl: 60s
     idempotency-ttl: 72h
     wallet-command-topic: core.wallet.command.v1
+    # Reversal (ticket 19, 7.2): REVERSING resends every retry-timeout, MANUAL_REVIEW after this.
+    reversing-timeout: 60s
+    # Channels that may send a REVERSAL request (operations; mw-admin-api publishes as SYSTEM).
+    reversal-channels: SYSTEM
     consumers:
       enabled: true
     timer:

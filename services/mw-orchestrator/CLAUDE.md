@@ -5,7 +5,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 ## Responsibilities
 
-- Runs P2P and TOPUP transactions as persisted sagas (spec 7, WP07 part, WP13 part, WP14).
+- Runs P2P and TOPUP transactions, and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14).
   Consumes `mw.txn.request.v1` (`route/TxnRequestRoute`), the core results on
   `core.wallet.event.v1` (`route/CoreWalletEventRoute`) and partner adapter answers on
   `mw.partner.reply.v1` (`route/PartnerReplyRoute`), all with retry topics and DLQ. Publishes every
@@ -20,9 +20,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `P2pFlow` = validate + post. `TopupFlow` = validate + hold + callPartner (`PartnerCall` telco,
   `mw.partner.request.telco.v1`) + commit + release; QUERY is allowed for every flow that holds.
   A new flow implements `txnType()`, `needsHold()` and, with a partner leg, `partnerCall()`.
-  `SagaEngine.perform` runs the step behind a transition's effect only when the flow has it;
-  REVERSE (ticket 19), SCHEDULE_INQUIRY (ticket 18) and steps outside the flow are logged
-  (`saga.effect.unwired`) and skipped. `SagaEngine.fire` is the single place that applies an
+  `SagaEngine.perform` runs the step behind a transition's effect only when the flow has it
+  (REVERSE belongs to every flow); SCHEDULE_INQUIRY (ticket 18) and steps outside the flow are
+  logged (`saga.effect.unwired`) and skipped. `SagaEngine.fire` is the single place that applies an
   event: persist state + `saga_step`, publish status + audit event, re-arm the deadline, send the
   next command. `SagaEngine.created` publishes the first state (RECEIVED) the same way.
 - Hold path (TOPUP): FundsHeld stores `holdId` (`transaction.hold_id`), PARTNER_PENDING sends PAY
@@ -41,6 +41,25 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   (holdId from the answer), anything else -> REJECTED; both carry `MW-TMO-002` (retryable). A
   FundsHeld that arrives after the transaction ended REJECTED/FAILED gets a ReleaseHold
   (`saga.hold.orphan_released`) and changes no state.
+- Reversal (ticket 19, spec 7.2): a `mw.txn.request.v1` request with `txnType=REVERSAL` and
+  `originalTxnId` does not become a transaction of its own; it moves the ORIGINAL (row-locked)
+  from COMPLETED to REVERSING and stores the request's txnId in `transaction.reversal_txn_id`
+  (unique). ReverseTransaction goes under that txnId (`commandId` `<reversalTxnId>:reverse`,
+  payload `originalTxnId`, the original's amount and fee), because mw-core-mock books the
+  compensating entries under the reversal's own txnId; its answer is found through
+  `reversal_txn_id`. TransactionReversed -> REVERSED; ReversalRejected -> MANUAL_REVIEW
+  (`MW-CORE-<reason>`); no answer: resent every `retry-timeout`, MANUAL_REVIEW (`MW-TMO-020`,
+  same `ReversalFailed` event) once `reversing-timeout` (60 s) has passed since REVERSING began.
+  Every status of the original from then on carries `attributes.reversalTxnId`. Only channels
+  in `mw.orchestrator.reversal-channels` (default `SYSTEM`: operations, i.e. mw-admin-api after
+  maker-checker, ticket 37) may reverse. Refused with a REJECTED status under the request's txnId
+  (no row, key not consumed): channel `MW-AUTH-020`, unknown original `MW-VAL-020`, original not
+  COMPLETED `MW-VAL-021`, amount other than the original's `MW-VAL-022` (no partial reversal).
+  Each transaction is reversed once: a further REVERSAL of a transaction already
+  REVERSING/REVERSED/MANUAL_REVIEW (after a reversal), under any key, gets the original's current
+  status as a duplicate answer (`attributes.duplicate`, `requestTxnId`) and changes nothing; the
+  idempotency key is stored with the ORIGINAL's txnId. Reversal is core-only: no partner REVERSE
+  is sent (a reversed TOPUP gives the money back, not the airtime).
 - Audit (ticket 12, spec 14.3): one `mw.audit.event.v1` per state a transaction passes through
   (`mapper/AuditMapper`, own type `dto/AuditEvent`), through the outbox in the same transaction:
   action `txn.state.changed`, resource `txn/<txnId>`, actor `system`/`mw-orchestrator`, `before`
@@ -60,16 +79,17 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   second under ShedLock; `SagaTimerService.sweep` uses `FOR UPDATE SKIP LOCKED`. Deadlines are
   `mw.orchestrator.*-timeout`: VALIDATING 5 s -> FAILED (`MW-TMO-001`, retryable), POSTING 5 s ->
   UNKNOWN, HOLDING 5 s -> QueryTransaction (stays HOLDING), PARTNER_PENDING 30 s -> UNKNOWN,
-  COMMITTING / RELEASING every `retry-timeout` (5 s) -> resend CommitHold / ReleaseHold (same
-  commandId). UNKNOWN, MANUAL_REVIEW and terminal states arm no timer yet (the 7.4 inquiry
+  COMMITTING / RELEASING / REVERSING every `retry-timeout` (5 s) -> resend CommitHold /
+  ReleaseHold / ReverseTransaction (same commandId; REVERSING gives up after `reversing-timeout`). UNKNOWN, MANUAL_REVIEW and terminal states arm no timer yet (the 7.4 inquiry
   schedule is ticket 18). A late core reply after a timeout is ignored (state machine refuses it).
-- `commandId` = `<txnId>:validate` / `:post` / `:hold` / `:commit` / `:release` (QueryTransaction:
-  above). `expiresAt` = issuedAt + `command-ttl` (60 s).
+- `commandId` = `<txnId>:validate` / `:post` / `:hold` / `:commit` / `:release`
+  (QueryTransaction: above; ReverseTransaction: `<reversalTxnId>:reverse`). `expiresAt` = issuedAt + `command-ttl` (60 s).
   All wallet commands go to `core.wallet.command.v1`; nothing is sent on `core.payment.*` yet.
 - Core reason -> error: `MW-CORE-<reasonCode>` (same pattern as the status contract), message
   English + Bengali for the reasons mw-core-mock emits (`mapper/CoreEventMapper`), not retryable.
   Other codes used: `MW-VAL-010` unsupported txn type, `MW-VAL-011` amount <= 0, `MW-VAL-012`
-  partner missing for a flow with a partner leg, `MW-IDEM-001`, `MW-TMO-001`, `MW-TMO-002`;
+  partner missing for a flow with a partner leg, `MW-IDEM-001`, `MW-TMO-001`, `MW-TMO-002`,
+  reversal `MW-VAL-020..022`, `MW-AUTH-020`, `MW-TMO-020`;
   partner codes come from the adapter's reply.
 - PIN: only ciphertext. It is kept in `transaction.encrypted_pin` (jsonb) because PostTransfer
   follows ValidateTransaction, and cleared when the transaction becomes terminal. The stored
@@ -77,7 +97,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - `mw-reply-to` (7.5): copied from the request record to every status record (and to the answer
   for a repeated request, taken from the repeated request). Stored in `transaction.reply_to`.
 - Schema `txn` (role `orchestrator_rw`): `transaction`, `saga_step`, `saga_timer`, `idempotency`
-  (+ `outbox`, `inbox`, `shedlock`). `transaction` is not partitioned yet and keeps parties in
+  (+ `outbox`, `inbox`, `shedlock`); migrations V1..V6 (V6 `reversal_txn_id`). `transaction` is not partitioned yet and keeps parties in
   the stored request JSON instead of separate columns.
 - Init (`mw-orchestrator-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): creates
   role and schema, `secret/mw-orchestrator` (DB password, never overwritten) and the AppRole

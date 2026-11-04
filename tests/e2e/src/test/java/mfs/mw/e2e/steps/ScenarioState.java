@@ -29,6 +29,9 @@ public class ScenarioState {
   /** A core fault was injected; an {@code @After} hook resets the faults. */
   boolean faultsInjected;
 
+  /** Idempotency keys of the REVERSAL requests the scenario sent, in order. */
+  final List<String> reversalKeys = new ArrayList<>();
+
   /** Balances noted before the action, by wallet id. */
   final Map<String, CoreMock.Balance> notedBalances = new LinkedHashMap<>();
 

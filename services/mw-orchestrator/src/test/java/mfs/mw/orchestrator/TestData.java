@@ -44,6 +44,31 @@ public final class TestData {
         NOW);
   }
 
+  /**
+   * A REVERSAL of {@code originalTxnId} asked by operations (channel SYSTEM): the parties are the
+   * original P2P's, swapped; no PIN.
+   */
+  public static TxnRequest reversal(String txnId, String idemKey, String originalTxnId, long amountMinor) {
+    return new TxnRequest(
+        1,
+        txnId,
+        idemKey,
+        "corr-" + txnId.substring(0, 8),
+        "SYSTEM",
+        "REVERSAL",
+        new Party("ORG", "upay-ops", null, null),
+        new Party("WALLET", "01711000002", null, "CUSTOMER"),
+        new Party("WALLET", "01711000001", null, "CUSTOMER"),
+        Amount.bdt(amountMinor),
+        null,
+        originalTxnId,
+        null,
+        "en",
+        null,
+        Map.of("reason", "customer dispute"),
+        NOW);
+  }
+
   public static TxnRequest p2p(String txnId, String idemKey, long amountMinor) {
     return new TxnRequest(
         1,
