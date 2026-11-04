@@ -15,6 +15,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class StatusMapper {
 
+  public static final String REVERSAL_TXN_ID = "reversalTxnId";
+
   public StatusMessage toStatus(TransactionRecord rec) {
     return build(rec, rec.request().attributes());
   }
@@ -43,8 +45,20 @@ public class StatusMapper {
         req.attributes(), req.requestedAt(), now);
   }
 
-  private StatusMessage build(TransactionRecord rec, Map<String, String> attributes) {
+  /**
+   * A transaction being (or having been) reversed names the REVERSAL request in
+   * {@code attributes.reversalTxnId}, so whoever asked for the reversal can follow it.
+   */
+  private StatusMessage build(TransactionRecord rec, Map<String, String> requestAttributes) {
     TxnRequest req = rec.request();
+    Map<String, String> attributes = requestAttributes;
+    if (rec.reversalTxnId() != null) {
+      attributes = new HashMap<>();
+      if (requestAttributes != null) {
+        attributes.putAll(requestAttributes);
+      }
+      attributes.put(REVERSAL_TXN_ID, rec.reversalTxnId().toString());
+    }
     return new StatusMessage(
         1, rec.txnId().toString(), req.idempotencyKey(), req.correlationId(), req.channel(),
         req.txnType(), rec.status().name(),

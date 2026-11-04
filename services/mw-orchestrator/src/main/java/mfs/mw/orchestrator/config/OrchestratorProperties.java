@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.Set;
 import mfs.mw.orchestrator.service.saga.Status;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
@@ -23,6 +24,8 @@ import org.springframework.validation.annotation.Validated;
  * @param idempotencyTtl how long an idempotency key is remembered
  * @param walletCommandTopic where wallet commands go
  * @param timer the timer sweep
+ * @param reversingTimeout how long REVERSING resends ReverseTransaction before MANUAL_REVIEW
+ * @param reversalChannels the channels that may send a REVERSAL request (operations: SYSTEM)
  */
 @Validated
 @ConfigurationProperties("mw.orchestrator")
@@ -35,7 +38,9 @@ public record OrchestratorProperties(
     @NotNull @DefaultValue("60s") Duration commandTtl,
     @NotNull @DefaultValue("72h") Duration idempotencyTtl,
     @NotBlank @DefaultValue("core.wallet.command.v1") String walletCommandTopic,
-    @NotNull @DefaultValue Timer timer) {
+    @NotNull @DefaultValue Timer timer,
+    @NotNull @DefaultValue("60s") Duration reversingTimeout,
+    @NotNull @DefaultValue("SYSTEM") Set<String> reversalChannels) {
 
   /**
    * @param enabled runs the sweep job (tests switch it off and call the service)
