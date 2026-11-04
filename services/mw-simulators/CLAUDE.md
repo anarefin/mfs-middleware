@@ -67,6 +67,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   `sim.callback-secrets.c2wbank` (stack: `C2WBANK_HMAC_SECRET`, written by `init/init.sh`); the
   e2e suite points `callbackUrl` at `http://apisix:9080/partner/c2wbank/callback/debits`; replay
   through the shared `POST /sim/c2wbank/callbacks/{reference}/replay`.
+- USSD gateway simulator, HTTP mode (ticket 26, `controller/UssdGatewayController`,
+  `service/UssdGatewayService`, `client/UssdGatewayClient`): plays an MNO whose USSD transport is
+  HTTP. `POST /sim/ussdgw/sessions {mno, msisdn, serviceCode?, sessionId?, inputs[]}` sends BEGIN,
+  then one CONTINUE per input to `sim.ussd-gateway.target-url` + mno (stack: `http://apisix:9080/ussd/`,
+  APISIX route `ussd-http` -> mw-ussd; wire format `contracts/api/mw-ussd/ussd-http.v1.openapi.yaml`)
+  and stops when mw-ussd answers the end flag (`sim.ussd-gateway.end-flag`, END); answers
+  `{sessionId, screens: [{status, message, flag}], ended}`. Not a partner in `sim.partners` (no
+  recording: inputs carry PINs). SMPP mode comes with SmppUssdTransport (WP19).
 - Adding a simulator: add its name to `sim.partners`, a controller under `/<partner>/...`, reuse
   the store, recorder, `SimMode`/`MagicAmounts` and callback service.
 - Init (`mw-simulators-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
@@ -81,7 +89,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 
 ## Contracts used
 
-- None. (Later tickets add the core stub: `core.*.command` in, `core.*.event` out, spec 22.2.)
+- `api/mw-ussd/ussd-http.v1.openapi.yaml` (client, USSD gateway simulator; own types `dto/UssdScreen`).
+- Otherwise none. (Later tickets add the core stub: `core.*.command` in, `core.*.event` out, spec 22.2.)
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
