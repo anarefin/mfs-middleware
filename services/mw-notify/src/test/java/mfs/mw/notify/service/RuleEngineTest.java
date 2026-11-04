@@ -3,12 +3,16 @@ package mfs.mw.notify.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import mfs.mw.notify.dto.Channel;
 import mfs.mw.notify.dto.NotificationRequest;
 import mfs.mw.notify.dto.Priority;
 import mfs.mw.notify.dto.TxnStatusEvent;
 import mfs.mw.notify.dto.TxnStatusEvent.Amount;
 import mfs.mw.notify.dto.TxnStatusEvent.Party;
+import mfs.mw.notify.dto.TxnStatusEvent.PartnerRef;
+import mfs.mw.notify.dto.TxnStatusEvent.TxnError;
 import mfs.mw.notify.entity.RuleRecord;
 import org.junit.jupiter.api.Test;
 
@@ -30,7 +34,7 @@ class RuleEngineTest {
   static TxnStatusEvent p2p(String status, String from, String to) {
     return new TxnStatusEvent(TXN, "corr-1", "CUSTOMER_APP", "P2P", status,
         new Party("MSISDN", from, null), new Party("WALLET", from, "CUSTOMER"), new Party("WALLET", to, "CUSTOMER"),
-        new Amount(50000, "BDT"), new Amount(500, "BDT"), "CORE-1", null, "en");
+        new Amount(50000, "BDT"), new Amount(500, "BDT"), "CORE-1", null, "en", null, null);
   }
 
   @Test
@@ -77,7 +81,7 @@ class RuleEngineTest {
   void aRecipientThatIsNotAMobileNumberGetsNoSms() {
     TxnStatusEvent e = new TxnStatusEvent(TXN, "c", "CUSTOMER_APP", "P2P", "COMPLETED", null,
         new Party("BANK_ACCOUNT", "1234567890", null), new Party("WALLET", "01811000002", null),
-        new Amount(100, "BDT"), null, null, null, null);
+        new Amount(100, "BDT"), null, null, null, null, null, null);
 
     List<NotificationRequest> requests = engine.requestsFor(e, RULES);
 
@@ -99,5 +103,68 @@ class RuleEngineTest {
             new RuleRecord("notbool", "mw.txn.status.v1", "status", "X", "DEBIT_PARTY", "SMS", "TXN"));
 
     assertThat(engine.requestsFor(p2p("COMPLETED", "01711000001", "01811000002"), rules)).isEmpty();
+  }
+
+  static TxnStatusEvent addMoney(String status, String customer) {
+    return new TxnStatusEvent(TXN, "corr-2", "CUSTOMER_APP", "ADD_MONEY_BANK", status,
+        new Party("MSISDN", customer, null), new Party("BANK_ACCOUNT", "2001234567890", null),
+        new Party("WALLET", customer, "CUSTOMER"), new Amount(100000, "BDT"), null, null, "BANK-9", "en",
+        new PartnerRef("c2wbank", "C2W", null),
+        "FAILED".equals(status) ? new TxnError("MW-PTR-C2WBANK-DEBIT_REFUSED") : null);
+  }
+
+  @Test
+  void theInitiatorsCounterpartyIsTheOtherSideEvenWhenTheInitiatorIsCredited() {
+    RuleRecord failed = new RuleRecord("addmoney-failed", "mw.txn.status.v1",
+        "(status == 'FAILED' or status == 'REJECTED') and txnType == 'ADD_MONEY_BANK'", "TXN_ADD_MONEY_FAILED",
+        "INITIATOR", "SMS", "TXN");
+
+    List<NotificationRequest> requests = engine.requestsFor(addMoney("FAILED", "01711000001"), List.of(failed));
+
+    assertThat(requests).singleElement().satisfies(r -> {
+      assertThat(r.recipient().msisdn()).isEqualTo("01711000001");
+      assertThat(r.params())
+          .containsEntry("counterparty", "****7890")
+          .containsEntry("partner", "c2wbank")
+          .containsEntry("biller", "c2wbank")
+          .containsEntry("errorCode", "MW-PTR-C2WBANK-DEBIT_REFUSED")
+          .containsEntry("partnerRef", "BANK-9");
+    });
+  }
+
+  @Test
+  void aBillPayNamesTheBillerCode() {
+    TxnStatusEvent e = new TxnStatusEvent(TXN, "c", "CUSTOMER_APP", "BILL_PAY", "COMPLETED",
+        new Party("MSISDN", "01711000001", null), new Party("WALLET", "01711000001", "CUSTOMER"),
+        new Party("BILLER_ACCOUNT", "1234567", null), new Amount(66700, "BDT"), new Amount(300, "BDT"), null,
+        null, "en", new PartnerRef("billagg", "BILL", "DESCO"), null);
+    RuleRecord rule = new RuleRecord("billpay-success", "mw.txn.status.v1", "status == 'COMPLETED'",
+        "TXN_BILL_PAY_SUCCESS", "INITIATOR", "SMS", "TXN");
+
+    assertThat(engine.requestsFor(e, List.of(rule)).getFirst().params())
+        .containsEntry("biller", "DESCO")
+        .containsEntry("counterparty", "****4567");
+  }
+
+  @Test
+  void anEmailRuleGoesToTheRecipientsRegisteredAddressOnly() {
+    RuleRecord email = new RuleRecord("addmoney-success-email", "mw.txn.status.v1",
+        "status == 'COMPLETED' and txnType == 'ADD_MONEY_BANK'", "TXN_ADD_MONEY_SUCCESS", "INITIATOR", "EMAIL",
+        "TXN");
+    Map<String, String> contacts = Map.of("01711000001", "customer01@example.test");
+    RuleEngine.ContactLookup lookup = id -> Optional.ofNullable(contacts.get(id));
+
+    List<NotificationRequest> known = engine.requestsFor(addMoney("COMPLETED", "01711000001"), List.of(email), lookup);
+    List<NotificationRequest> unknown =
+        engine.requestsFor(addMoney("COMPLETED", "01711000009"), List.of(email), lookup);
+
+    assertThat(known).singleElement().satisfies(r -> {
+      assertThat(r.messageId()).isEqualTo(TXN + ":email:addmoney-success-email");
+      assertThat(r.channels()).containsExactly(Channel.EMAIL);
+      assertThat(r.recipient().email()).isEqualTo("customer01@example.test");
+      assertThat(r.recipient().msisdn()).isNull();
+    });
+    assertThat(unknown).isEmpty();
+    assertThat(engine.requestsFor(addMoney("COMPLETED", "01711000001"), List.of(email))).isEmpty();
   }
 }

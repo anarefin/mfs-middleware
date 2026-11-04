@@ -23,7 +23,17 @@ public record TxnStatusEvent(
     Amount fee,
     String coreRef,
     String partnerRef,
-    String locale) {
+    String locale,
+    PartnerRef partner,
+    TxnError error) {
+
+  /** The partner of a partner flow (TOPUP, BILL_PAY, ADD_MONEY_BANK). */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record PartnerRef(String partnerId, String productCode, String billerCode) {}
+
+  /** The error of a FAILED / REJECTED / MANUAL_REVIEW state: its code only. */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record TxnError(String code) {}
 
   /** Party (spec 5.1); the id is masked by type in logs. */
   @JsonIgnoreProperties(ignoreUnknown = true)

@@ -13,6 +13,8 @@ mw:
     # No SMSC, dispatcher or consumers in tests unless a test switches them on.
     smpp:
       enabled: false
+    email:
+      enabled: false
     dispatch:
       enabled: false
     consumers:

@@ -26,6 +26,7 @@ Only APISIX is published, so every call goes through it:
 | Org portal API | `/portal/org/v1/*` | the real route (`portal-org-v1.json`); `support/PortalApi` |
 | core-mock test/admin API | `/test/core-mock/v1/*` -> `mw-core-mock:8080/core-mock/v1/*` | `deploy/apisix/routes-test/test-core-mock.json`, TEST ONLY: PIN public key, `wallets/{id}` balances, `faults`. Present only after `make e2e` re-ran `apisix-init` with `MW_E2E_ROUTES=1` (a plain `make up` removes it); key-auth header `apikey` = `MW_E2E_API_KEY` from the generated `.env`, private source addresses only |
 | Simulator control API | `/test/sim/*` -> `mw-simulators:8080/sim/*` | `deploy/apisix/routes-test/test-simulators.json`, TEST ONLY, same key-auth as core-mock; `support/Simulators.setScenario` / `reset` |
+| Dev mail server (GreenMail) | `GET /test/mail/*` -> `greenmail:8080/api/*` | `deploy/apisix/routes-test/test-mail.json`, TEST ONLY, same key-auth; `support/Mailbox.messagesTo(email)` |
 | Audit rows | `docker compose exec -T postgres psql` (superuser, read-only queries) | no API exposes `audit.event` before mw-admin-api (WP23), and the service role cannot read it |
 | Internal requests (REVERSAL) | `docker compose exec -T kafka kafka-console-producer.sh` on `mw.txn.request.v1` | `support/TxnRequests`: plays the operations producer (channel SYSTEM) until mw-admin-api's maker-checker reversal exists (ticket 37); the broker is not published |
 
@@ -95,6 +96,15 @@ Only APISIX is published, so every call goes through it:
   was sent as UCS2|GSM7 in N parts". `support/Smsc.messagesTo` reads `GET /sim/smsc/messages`
   through `/test/sim/*`. Texts are the seeded `notify.template` rows (bn when the request has no
   locale), the other party's number masked.
+- Notifications per flow (`features/notify-flows.feature`, `@notify` + flow tags, ticket 25):
+  success / failure / processing SMS of P2P, CASH_IN, CASH_OUT, TOPUP, BILL_PAY, ADD_MONEY_BANK;
+  "<msisdn> gets the SMS \"...\" within N seconds" for late states (UNKNOWN, COMPLETED by status
+  inquiry); "<address> gets the email \"<subject>\"" (multipart/alternative, text + HTML) and
+  "<address> gets no email about the transaction" read GreenMail's REST API through the test-only
+  route `/test/mail/*` -> `greenmail:8080/api/*` (`deploy/apisix/routes-test/test-mail.json`, same
+  key-auth; `support/Mailbox`). Receipts go to registered addresses only: the dev stack seeds
+  `notify.contact` (mw-notify `db/dev`) with the Keycloak users' emails (customer01 ->
+  `customer01@example.test`).
 - MERCHANT_PAY (`features/merchant.feature`, `@merchant`, ticket 30): customer01 pays merchant01
   (wallet `01911000001`, no fee) with the generic "submits MERCHANT_PAY of N poisha with
   counterparty ..." step; "<merchant> lists its collections", "<merchant> sees the transaction in its

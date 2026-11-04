@@ -20,6 +20,8 @@ public class FakeSmsSender implements SmsSender {
   private final List<Sent> sent = Collections.synchronizedList(new ArrayList<>());
   private final Deque<SmsSendException> failures = new ArrayDeque<>();
   private final AtomicInteger ids = new AtomicInteger();
+  // Unique per instance: test contexts with their own fake share one database (segment ids are unique).
+  private final String prefix = "fake-" + java.util.UUID.randomUUID().toString().substring(0, 8) + "-";
 
   @Override
   public synchronized SubmitResult submit(Priority priority, SmsPart part) throws SmsSendException {
@@ -27,7 +29,7 @@ public class FakeSmsSender implements SmsSender {
     if (failure != null) {
       throw failure;
     }
-    String id = "fake-" + ids.incrementAndGet();
+    String id = prefix + ids.incrementAndGet();
     sent.add(new Sent(priority, part, id));
     return new SubmitResult("fake-" + priority.name().toLowerCase(java.util.Locale.ROOT), id);
   }
