@@ -37,6 +37,8 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
       # Dev billagg hmac-sha256 secret (ticket 22), written to OpenBao as sim.callback-secrets.billagg.
       BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      # Dev C2W bank hmac-sha256 secret (ticket 23), written as sim.callback-secrets.c2wbank.
+      C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?run scripts/gen-dev-env.sh (make up does)}
       BAO_ADDR: ${VAULT_ADDR:-http://openbao:8200}
       INIT_FILE: /openbao/file/dev-init.json
       OUT_DIR: /out

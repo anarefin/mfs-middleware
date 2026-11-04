@@ -136,7 +136,7 @@ sim:
   # Simulator settings (spec 22.2). timeout-delay must exceed the caller's time limit (OCS: 20 s).
   timeout-delay: 30s
   record-limit: 1000
-  partners: ocs,billagg
+  partners: ocs,billagg,c2wbank
 
 mw:
   kafka:

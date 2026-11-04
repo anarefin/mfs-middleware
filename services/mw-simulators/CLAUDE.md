@@ -6,7 +6,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 ## Responsibilities
 
 - Partner simulators for tests only (spec 22.2, WP12), one generic contract per partner type.
-  Today: OCS (prepaid top-up) and the utility bill aggregator `billagg` (ticket 21). State is in
+  Today: OCS (prepaid top-up), the utility bill aggregator `billagg` (ticket 21) and the C2W bank
+  `c2wbank` (ticket 23). State is in
   memory (a restart resets it); never deployed to production projects. Outcomes are
   `dto/SimMode` (SUCCESS, BUSINESS_FAILURE, TIMEOUT, SERVER_ERROR_AFTER_SEND, UNKNOWN_CODE,
   MALFORMED; the control API's `forceMode`), amount magic values in `service/MagicAmounts`.
@@ -52,6 +53,20 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   code: "001", paymentRef}` (every repeat too), the outcome goes by callback (`callbackMode`) as
   `{transactionId, status SUCCESS|FAILED, code, message, paymentRef}`, the status inquiry reports
   the real outcome; the TIMEOUT hold is skipped in this mode.
+- C2W bank wire format (`c2wbank`, ticket 23, `controller/BankC2wController`,
+  `service/BankC2wService`, `BankDebitLedger`, `mapper/BankDebitMapper`): `POST /c2wbank/v1/debits
+  {transactionId, accountNumber ([0-9]{6,20}, else 400), amount}` -> always 202 `{transactionId,
+  status: PENDING, code: "100", message, debitRef: "C2W-n"}` (every repeat too, one debit per
+  `transactionId`); the outcome goes by callback (`callbackMode`; ONCE, DUPLICATE, LATE,
+  OUT_OF_ORDER) as `{transactionId, status SUCCESS|FAILED, code, message, debitRef}`: success
+  `000`; account ending `999` -> FAILED `4002` debit refused; amount fractions `.13` timeout (debit
+  applied, 202 held `sim.timeout-delay`, NO callback: only the status inquiry learns it), `.77`
+  500 (applied, callback sent), `.99` FAILED `9876` (ambiguous), `.55` malformed 202 body
+  (applied, callback sent). `GET /c2wbank/v1/debits/{transactionId}` the real outcome or 404
+  NOT_FOUND. Outage / error rate 503 (not applied). Callbacks signed with
+  `sim.callback-secrets.c2wbank` (stack: `C2WBANK_HMAC_SECRET`, written by `init/init.sh`); the
+  e2e suite points `callbackUrl` at `http://apisix:9080/partner/c2wbank/callback/debits`; replay
+  through the shared `POST /sim/c2wbank/callbacks/{reference}/replay`.
 - Adding a simulator: add its name to `sim.partners`, a controller under `/<partner>/...`, reuse
   the store, recorder, `SimMode`/`MagicAmounts` and callback service.
 - Init (`mw-simulators-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
