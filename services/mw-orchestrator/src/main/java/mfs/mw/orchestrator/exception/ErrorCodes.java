@@ -21,6 +21,13 @@ public final class ErrorCodes {
   public static final String IDEM_CONFLICT = "MW-IDEM-001";
   /** The core did not answer ValidateTransaction in time; nothing was moved (spec 7.2). */
   public static final String TMO_CORE_VALIDATE = "MW-TMO-001";
+  /** A flow with a partner leg (TOPUP) was requested without {@code partner}. */
+  public static final String VAL_PARTNER_REQUIRED = "MW-VAL-012";
+  /**
+   * The core did not answer HoldFunds in time (spec 7.2): a hold it then reported was released,
+   * or it held nothing; either way nothing was moved and the payer may try again.
+   */
+  public static final String TMO_CORE_HOLD = "MW-TMO-002";
   /** Unexpected failure; details stay in the log, never in the response. */
   public static final String SYS_INTERNAL = "MW-SYS-001";
 

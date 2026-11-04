@@ -20,6 +20,7 @@ public record TxnRequest(
     Party debitParty,
     Party creditParty,
     Amount amount,
+    PartnerRef partner,
     EncryptedPin encryptedPin,
     String locale,
     Map<String, String> metadata,

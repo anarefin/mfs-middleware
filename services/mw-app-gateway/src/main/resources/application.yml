@@ -168,7 +168,7 @@ mw:
     instance-id: ${HOSTNAME:}
     request-topic: mw.txn.request.v1
     status-topic: mw.txn.status.v1
-    supported-txn-types: P2P
+    supported-txn-types: P2P,TOPUP
     # attributes keys an app may send (a free-text payment reference only, so far)
     allowed-attributes: reference
     jwt:

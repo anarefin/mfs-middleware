@@ -104,7 +104,9 @@ test_app_submit_schema_is_the_openapi_transaction_request_minus_value_echoing_ke
   jq -e '."x-mw-derived-from" == "api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/TransactionRequest"' "$s" >/dev/null \
     || fail "source not recorded"
   jq -e '.required == ["txnType", "creditParty", "amount", "encryptedPin"]
-    and .properties.txnType.enum == ["P2P"]
+    and (.properties.txnType.enum | index("P2P") != null and index("TOPUP") != null)
+    and .properties.partner.additionalProperties == false
+    and .properties.partner.properties.partnerId.enum == ["gp", "robi", "banglalink", "teletalk"]
     and .properties.amount.required == ["valueMinor", "currency"]
     and .properties.amount.additionalProperties == false
     and .properties.amount.properties.valueMinor.minimum == 1

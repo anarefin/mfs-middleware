@@ -69,6 +69,52 @@ class TransactionServiceTest {
     assertThat(waiters.size()).isZero();
   }
 
+  final TransactionService withTopup =
+      new TransactionService(
+          publisher, waiters, new RequestMapper(), repo,
+          new AppGatewayProperties(
+              Duration.ofMillis(50), "gw-unit", "mw.txn.request.v1", "mw.txn.status.v1",
+              List.of("P2P", "TOPUP"), List.of("reference"), new AppGatewayProperties.Jwt("http://kc/certs", "/realms/customers")),
+          Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC));
+
+  static TransactionRequest flow(String txnType, String creditType, TransactionRequest.Partner partner) {
+    return new TransactionRequest(
+        txnType, new TransactionRequest.CounterParty(creditType, "01711000002"), new Amount(100L, "BDT"),
+        new EncryptedPin("k", "c"), null, null, partner);
+  }
+
+  void assertRefused(TransactionRequest body, String field) {
+    assertThatThrownBy(() -> withTopup.submit(USER, "key", body))
+        .isInstanceOfSatisfying(
+            MwException.class,
+            e -> {
+              assertThat(e.code()).isEqualTo("MW-VAL-001");
+              assertThat(e.details()).extracting(d -> d.field()).containsExactly(field);
+            });
+  }
+
+  @Test
+  void aTopupNeedsAPartnerAndAnMsisdnCreditParty() {
+    assertRefused(flow("TOPUP", null, null), "partner");
+    assertRefused(flow("TOPUP", "WALLET", new TransactionRequest.Partner("gp", "PREPAID")), "creditParty.type");
+    verifyNoInteractions(publisher, repo);
+    assertThat(waiters.size()).isZero();
+  }
+
+  @Test
+  void aP2pTakesNeitherAPartnerNorAnMsisdnCreditParty() {
+    assertRefused(flow("P2P", null, new TransactionRequest.Partner("gp", "PREPAID")), "partner");
+    assertRefused(flow("P2P", "MSISDN", null), "creditParty.type");
+    verifyNoInteractions(publisher, repo);
+  }
+
+  @Test
+  void aValidTopupIsPublished() {
+    var r = withTopup.submit(USER, "key", flow("TOPUP", "MSISDN", new TransactionRequest.Partner("gp", "PREPAID")));
+    assertThat(r.view().status()).isEqualTo("PROCESSING");
+    verify(publisher).publish(anyString(), anyString(), any(), any(), anyMap());
+  }
+
   @Test
   void unsupportedTxnTypeIsMwVal010AndNothingIsPublished() {
     assertThatThrownBy(() -> service.submit(USER, "key", body("CASH_OUT")))

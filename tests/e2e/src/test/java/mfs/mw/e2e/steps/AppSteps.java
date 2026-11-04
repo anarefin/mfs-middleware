@@ -36,6 +36,21 @@ public class AppSteps {
     submit(user, state.idempotencyKey, AppApi.request("P2P", credit, amountMinor, pin));
   }
 
+  @When("{word} tops up {long} poisha {word} {word} airtime on {word} with PIN {string}")
+  public void topsUp(String user, long amountMinor, String operator, String product, String msisdn, String pin) {
+    ObjectNode body = AppApi.request("TOPUP", msisdn, amountMinor, pin);
+    ((ObjectNode) body.get("creditParty")).put("type", "MSISDN");
+    body.putObject("partner").put("partnerId", operator).put("productCode", product);
+    submit(user, AppApi.newIdempotencyKey(), body);
+  }
+
+  @When("{word} tops up {long} poisha airtime on {word} without an operator")
+  public void topsUpWithoutOperator(String user, long amountMinor, String msisdn) {
+    ObjectNode body = AppApi.request("TOPUP", msisdn, amountMinor, "1234");
+    ((ObjectNode) body.get("creditParty")).put("type", "MSISDN");
+    submit(user, AppApi.newIdempotencyKey(), body);
+  }
+
   @When("{word} sends the same request again with the same idempotency key")
   public void repeats(String user) {
     submit(user, state.idempotencyKey, state.lastRequest);

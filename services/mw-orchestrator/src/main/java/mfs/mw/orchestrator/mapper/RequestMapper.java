@@ -61,6 +61,6 @@ public class RequestMapper {
   public TransactionRecord toRecord(TxnRequest r, String replyTo, Instant now) {
     return new TransactionRecord(
         UUID.fromString(r.txnId()), now, now, r.withoutPin(), Status.RECEIVED, null, replyTo, null,
-        null, null, r.encryptedPin());
+        null, null, r.encryptedPin(), null, null);
   }
 }

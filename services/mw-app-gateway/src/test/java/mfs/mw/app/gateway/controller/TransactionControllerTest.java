@@ -134,6 +134,25 @@ class TransactionControllerTest {
   }
 
   @Test
+  void anUnknownOperatorOrProductIsMwVal() {
+    MvcTestResult r =
+        post(
+            customer(),
+            "key-4",
+            "{\"txnType\":\"TOPUP\",\"creditParty\":{\"type\":\"MSISDN\",\"id\":\"01711000002\"},"
+                + "\"partner\":{\"partnerId\":\"acme\",\"productCode\":\"DATA\"},"
+                + "\"amount\":{\"valueMinor\":2000,\"currency\":\"BDT\"},"
+                + "\"encryptedPin\":{\"keyId\":\"core-pin-1\",\"ciphertext\":\"Y2lwaGVy\"}}");
+    assertThat(r).hasStatus(400);
+    assertThat(r)
+        .bodyJson()
+        .extractingPath("$.details[*].field")
+        .asArray()
+        .containsExactlyInAnyOrder("partner.partnerId", "partner.productCode");
+    verify(service, never()).submit(any(), any(), any());
+  }
+
+  @Test
   void msisdnFormsTheMaskerDoesNotKnowAreRejected() {
     for (String payee : List.of("88001711000002", "+88001711000002", "1711000002")) {
       MvcTestResult r = post(customer(), "key-3", BODY.formatted(100).replace("01711000002", payee));

@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import mfs.mw.app.gateway.dto.AppUser;
+import mfs.mw.app.gateway.dto.PartnerRef;
 import mfs.mw.app.gateway.dto.Party;
 import mfs.mw.app.gateway.dto.StatusMessage;
 import mfs.mw.app.gateway.dto.TransactionRequest;
@@ -23,6 +24,9 @@ public class RequestMapper {
 
   /** The status the app sees for an accepted request until the first status record arrives. */
   public static final String ACCEPTED_STATUS = "RECEIVED";
+
+  /** Airtime top-up: credit party is an MSISDN, {@code partner} names the operator. */
+  public static final String TOPUP = "TOPUP";
 
   /** Attribute keys set by the middleware (orchestrator reply matching); never from a client. */
   public static final Set<String> RESERVED_ATTRIBUTES =
@@ -45,13 +49,24 @@ public class RequestMapper {
         body.txnType(),
         new Party("MSISDN", user.msisdn(), null, null),
         payer,
-        Party.wallet(canonical(body.creditParty().id()), "CUSTOMER"),
+        creditParty(body),
         body.amount(),
+        body.partner() == null
+            ? null
+            : new PartnerRef(body.partner().partnerId(), body.partner().productCode()),
         body.encryptedPin(),
         body.locale(),
         null,
         forwardable(body.attributes()),
         now);
+  }
+
+  /** A wallet (canonical MSISDN as wallet id), or for TOPUP the bare MSISDN to recharge. */
+  private static Party creditParty(TransactionRequest body) {
+    String id = canonical(body.creditParty().id());
+    return TOPUP.equals(body.txnType())
+        ? new Party("MSISDN", id, null, null)
+        : Party.wallet(id, "CUSTOMER");
   }
 
   private static String canonical(String msisdn) {
