@@ -66,8 +66,20 @@ public class CoreEventMapper {
           case "HoldReleased" -> new ReleaseAcknowledged();
           case "TransactionReversed" -> new ReversalAcknowledged();
           case "ReversalRejected" -> new ReversalFailed();
+          // answer to the QueryTransaction sent after a HOLDING timeout (spec 7.2)
+          case "TransactionStatus" -> new HoldQueryResult("HELD".equals(txnStatus(event)));
           default -> null;
         });
+  }
+
+  /** {@code payload.holdId} (FundsHeld, TransactionStatus of a held txn, ...), else null. */
+  public String holdId(CoreEvent event) {
+    JsonNode id = event.payload() == null ? null : event.payload().get("holdId");
+    return id == null || !id.isString() || id.asString().isBlank() ? null : id.asString();
+  }
+
+  private static String txnStatus(CoreEvent event) {
+    return event.payload() == null ? null : event.payload().path("txnStatus").asString(null);
   }
 
   /** {@code payload.fee.valueMinor} of a TransactionValidated event, else null. */

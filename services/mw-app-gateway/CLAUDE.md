@@ -5,8 +5,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 
 ## Responsibilities
 
-- App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P, CASH_IN,
-  CASH_OUT: `mw.app-gateway.supported-txn-types`) and `GET /app/v1/transactions/{txnId}` behind the APISIX
+- App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P, CASH_IN, CASH_OUT
+  and TOPUP, `mw.app-gateway.supported-txn-types`) and `GET /app/v1/transactions/{txnId}` behind the APISIX
   route `/app/v1/*` (`deploy/apisix/routes/app-v1.json`, `openid-connect` bearer-only on realm
   `customers`).
 - Auth (`config/SecurityConfig`, `security/`): bearer JWT of Keycloak realm `customers` on
@@ -16,7 +16,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   channel follows the realm role: `customer` -> `CUSTOMER_APP`/`CUSTOMER`, `agent` ->
   `AGENT_APP`/`AGENT` (WP20; merchant not served yet; a token with both roles is the customer).
   Role per `txnType` (`mw.app-gateway.txn-type-roles`, checked at submit after the type check):
-  P2P and CASH_OUT customer only, CASH_IN agent only (switch here, nowhere else); a type not listed is open to every served role.
+  P2P, CASH_OUT and TOPUP customer only, CASH_IN agent only (switch here, nowhere else). Deny by
+  default: a type with no entry is refused for every role; `AppGatewayConfigTest` fails when a
+  txnType of the OpenAPI enum has no entry.
   No token / bad token `401 MW-AUTH-001`; no wallet, other role or a type the role may not
   initiate `403 MW-AUTH-002`, nothing published. Other paths
   (actuator) are open inside the app network. Keycloak is reached over `data` (MVP deviation of
@@ -29,6 +31,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   (`mw.app-gateway.allowed-attributes`, only `reference`), so a client can never set reserved
   keys (`duplicate`, `requestTxnId`). MSISDNs accepted as `01XNNNNNNNN`, `8801...`, `+8801...`
   (`util/Msisdn`) and forwarded only in the canonical `01XNNNNNNNN` form.
+- TOPUP (ticket 17): body `partner {partnerId: gp|robi|banglalink|teletalk, productCode:
+  PREPAID|POSTPAID}` is required, `creditParty.type` absent or `MSISDN`; any other type takes no
+  `partner` and only `WALLET` (`MW-VAL-001` naming `partner` / `creditParty.type`). Forwarded as
+  `partner` and credit party `{type: MSISDN, id}`. An operator refusal arrives as FAILED with
+  `MW-PTR-<OPERATOR>-*` and is answered 502.
 - Submit (`service/TransactionService`): mints a UUIDv7 txnId (`util/UuidV7`), maps to the
   canonical `mw.txn.request.v1` (`mapper/RequestMapper`; initiator MSISDN = token wallet; debit = token
   wallet (its own PIN), credit = body wallet (walletType AGENT for CASH_OUT, else CUSTOMER); PIN ciphertext copied untouched, never logged), registers a waiter, then

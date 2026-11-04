@@ -10,6 +10,8 @@ import mfs.mw.orchestrator.service.saga.Status;
 /**
  * One row of {@code txn.transaction}: the request as accepted plus the saga state. Never leaves
  * the service layer (spec 4.4). The PIN ciphertext is kept only until the transaction is terminal.
+ * {@code holdId} is the core's hold (flows that hold), {@code partnerRef} the partner's own
+ * reference after a successful partner call.
  */
 public record TransactionRecord(
     UUID txnId,
@@ -22,18 +24,38 @@ public record TransactionRecord(
     Long feeMinor,
     String coreRef,
     ErrorInfo error,
-    EncryptedPin encryptedPin) {
+    EncryptedPin encryptedPin,
+    String holdId,
+    String partnerRef) {
 
   public TransactionRecord moved(Status to, Instant at, ErrorInfo newError) {
     return new TransactionRecord(
         txnId, createdAt, at, request, to, status, replyTo, feeMinor, coreRef,
-        newError != null ? newError : error, to.terminal() ? null : encryptedPin);
+        newError != null ? newError : error, to.terminal() ? null : encryptedPin, holdId, partnerRef);
   }
 
   public TransactionRecord withCore(String newCoreRef, Long newFeeMinor) {
     return new TransactionRecord(
         txnId, createdAt, updatedAt, request, status, previousStatus, replyTo,
         newFeeMinor != null ? newFeeMinor : feeMinor,
-        newCoreRef != null ? newCoreRef : coreRef, error, encryptedPin);
+        newCoreRef != null ? newCoreRef : coreRef, error, encryptedPin, holdId, partnerRef);
+  }
+
+  /** The core's hold id, when an event carried one (kept otherwise). */
+  public TransactionRecord withHold(String newHoldId) {
+    return newHoldId == null
+        ? this
+        : new TransactionRecord(
+            txnId, createdAt, updatedAt, request, status, previousStatus, replyTo, feeMinor,
+            coreRef, error, encryptedPin, newHoldId, partnerRef);
+  }
+
+  /** The partner's reference, when a reply carried one (kept otherwise). */
+  public TransactionRecord withPartnerRef(String newPartnerRef) {
+    return newPartnerRef == null
+        ? this
+        : new TransactionRecord(
+            txnId, createdAt, updatedAt, request, status, previousStatus, replyTo, feeMinor,
+            coreRef, error, encryptedPin, holdId, newPartnerRef);
   }
 }

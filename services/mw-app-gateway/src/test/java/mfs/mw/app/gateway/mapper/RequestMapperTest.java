@@ -101,6 +101,41 @@ class RequestMapperTest {
   }
 
   @Test
+  void aTopupGoesOutWithTheCanonicalMsisdnAndThePartner() {
+    TransactionRequest topup =
+        new TransactionRequest(
+            "TOPUP",
+            new TransactionRequest.CounterParty("MSISDN", "8801711000002"),
+            new Amount(2_000L, "BDT"),
+            new EncryptedPin("core-pin-1", "b3BhcXVlLWNpcGhlcnRleHQ="),
+            null,
+            null,
+            new TransactionRequest.Partner("gp", "PREPAID"));
+
+    TxnRequest req =
+        mapper.toRequest(new AppUser("01711000001", "CUSTOMER_APP", "CUSTOMER"), "key-1", topup, TXN_ID, "corr-1", NOW);
+
+    JsonNode tree = JSON.valueToTree(req);
+    assertThat(ContractSchemas.schema("events/mw-orchestrator/mw.txn.request.v1.schema.json").validate(tree))
+        .isEmpty();
+    assertThat(tree.path("txnType").asString()).isEqualTo("TOPUP");
+    assertThat(tree.path("creditParty").path("type").asString()).isEqualTo("MSISDN");
+    assertThat(tree.path("creditParty").path("id").asString()).isEqualTo("01711000002");
+    assertThat(tree.path("creditParty").has("walletType")).isFalse();
+    assertThat(tree.path("partner").path("partnerId").asString()).isEqualTo("gp");
+    assertThat(tree.path("partner").path("productCode").asString()).isEqualTo("PREPAID");
+    assertThat(mapper.accepted(req).creditParty().type()).isEqualTo("MSISDN");
+  }
+
+  @Test
+  void aP2pCarriesNoPartner() {
+    TxnRequest req =
+        mapper.toRequest(
+            new AppUser("01711000001", "CUSTOMER_APP", "CUSTOMER"), "key-1", body(null), TXN_ID, "corr-1", NOW);
+    assertThat(JSON.valueToTree(req).has("partner")).isFalse();
+  }
+
+  @Test
   void reservedAttributeKeysAreNeverForwarded() {
     TxnRequest req =
         mapper.toRequest(

@@ -36,13 +36,22 @@ public class CoreSteps {
   public void rejectsNext(String commandType, String reasonCode) {
     ObjectNode fault = Http.JSON.createObjectNode();
     fault.put("mode", "REJECT").put("commandType", commandType).put("reasonCode", reasonCode).put("times", 1);
-    state.faultInjected = true;
+    state.faultsInjected = true;
     CoreMock.injectFault(fault);
+  }
+
+  /** The core applies the next {@code commandType} but never answers it (fault DROP_REPLY, once). */
+  @Given("the core drops its reply to the next {word}")
+  public void dropReply(String commandType) {
+    ObjectNode fault = Http.JSON.createObjectNode();
+    fault.put("mode", "DROP_REPLY").put("commandType", commandType).put("times", 1);
+    CoreMock.injectFault(fault);
+    state.faultsInjected = true;
   }
 
   @After
   public void resetFaults() {
-    if (state.faultInjected) {
+    if (state.faultsInjected) {
       CoreMock.resetFaults();
     }
   }
@@ -57,6 +66,19 @@ public class CoreSteps {
     Map<String, Long> none = new LinkedHashMap<>();
     state.notedBalances.keySet().forEach(w -> none.put(w, 0L));
     assertThat(deltas()).isEqualTo(none);
+  }
+
+  /**
+   * The wallet's held amount is what it was when noted: a hold placed by the scenario was
+   * committed or released, never left behind.
+   */
+  @Then("no funds are held on {word}")
+  public void noFundsHeld(String wallet) {
+    CoreMock.Balance before = state.notedBalances.get(wallet);
+    if (before == null) {
+      throw new IllegalStateException("the balance of " + wallet + " was not noted before the action");
+    }
+    assertThat(CoreMock.balance(wallet).heldMinor()).as("held on %s", wallet).isEqualTo(before.heldMinor());
   }
 
   /** Ledger balance now minus the noted one, for every noted wallet. */

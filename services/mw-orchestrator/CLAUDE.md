@@ -5,21 +5,43 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 ## Responsibilities
 
-- Runs P2P, CASH_IN and CASH_OUT transactions as a persisted saga (spec 7, WP07). Consumes `mw.txn.request.v1`
-  (`route/TxnRequestRoute`) and the core results on `core.wallet.event.v1`
-  (`route/CoreWalletEventRoute`), both with retry topics and DLQ. Publishes every state change on
-  `mw.txn.status.v1` and sends `ValidateTransaction` / `PostTransfer` on `core.wallet.command.v1`,
-  all through the transactional outbox, in the same transaction as the state change.
+- Runs P2P, CASH_IN, CASH_OUT and TOPUP transactions as persisted sagas (spec 7, WP07 part, WP13 part, WP14).
+  Consumes `mw.txn.request.v1` (`route/TxnRequestRoute`), the core results on
+  `core.wallet.event.v1` (`route/CoreWalletEventRoute`) and partner adapter answers on
+  `mw.partner.reply.v1` (`route/PartnerReplyRoute`), all with retry topics and DLQ. Publishes every
+  state change on `mw.txn.status.v1`, core commands on `core.wallet.command.v1` and partner
+  requests on `mw.partner.request.<family>.v1`, all through the transactional outbox, in the same
+  transaction as the state change.
 - State machine: plain Java in `service/saga` (`Status` = the 14 states, sealed `SagaEvent`,
   `SagaMachine.apply(status, event)` -> `Transition(from, to, effect)` or
   `InvalidTransitionException`). All transitions of the 7.2 table are modelled and unit-tested;
-  only the no-hold path is wired (`FlowRegistry` by `txnType`: `P2pFlow`, `CashInFlow`,
-  `CashOutFlow`, all validate -> PostTransfer, no partner; the parties come from the request
-  as the channel set them: CASH_IN agent -> customer, CASH_OUT customer -> agent). Effects of unwired flows
-  (HoldFunds, partner request, commit, release, reverse, QueryTransaction) are logged
+  flows (`Flow`, one per `txnType`, found by `FlowRegistry`) are sets of reusable `Step`s
+  (VALIDATE, POST, HOLD, CALL_PARTNER, COMMIT, RELEASE, REVERSE, QUERY; `Step.of(effect)`).
+  `P2pFlow`, `CashInFlow`, `CashOutFlow` = validate + post (parties as the channel set them:
+  CASH_IN agent -> customer, CASH_OUT customer -> agent; the core enforces the wallet types). `TopupFlow` = validate + hold + callPartner (`PartnerCall` telco,
+  `mw.partner.request.telco.v1`) + commit + release; QUERY is allowed for every flow that holds.
+  A new flow implements `txnType()`, `needsHold()` and, with a partner leg, `partnerCall()`.
+  `SagaEngine.perform` runs the step behind a transition's effect only when the flow has it;
+  REVERSE (ticket 19), SCHEDULE_INQUIRY (ticket 18) and steps outside the flow are logged
   (`saga.effect.unwired`) and skipped. `SagaEngine.fire` is the single place that applies an
   event: persist state + `saga_step`, publish status + audit event, re-arm the deadline, send the
   next command. `SagaEngine.created` publishes the first state (RECEIVED) the same way.
+- Hold path (TOPUP): FundsHeld stores `holdId` (`transaction.hold_id`), PARTNER_PENDING sends PAY
+  (`mapper/PartnerRequestMapper`: `requestId` = name-based UUID of `<txnId>:PAY`, stable across
+  resends; `partnerTxnRef` `UPAY<txnId hex>`; `deadlineAt` = now + `partner-timeout`; never the
+  PIN). `service/PartnerReplyService` (inbox key `requestId:outcome`): SUCCESS -> COMMITTING
+  (partner's `partnerRef` stored in `transaction.partner_ref`, shown on the status), FAILED ->
+  RELEASING with the reply's canonical error (kept into FAILED; a code outside the status
+  pattern becomes `MW-PTR-<PARTNER>-UNMAPPED`), UNKNOWN -> UNKNOWN (inquiry is ticket 18),
+  PENDING ignored. HoldRejected -> REJECTED (`MW-CORE-*`). CommitFailed / ReleaseFailed are not
+  mapped: the deadline resends the command until the core acknowledges (7.2 "retry until
+  acknowledged"; the 60 s alert is not built).
+- HOLDING timeout (5 s): QueryTransaction without `queryCommandId`, commandId
+  `<txnId>:query:<epoch ms>` (a fresh one per attempt, so the core never answers from its command
+  log), re-asked every `holding-timeout` until answered. TransactionStatus `HELD` -> RELEASING
+  (holdId from the answer), anything else -> REJECTED; both carry `MW-TMO-002` (retryable). A
+  FundsHeld that arrives after the transaction ended REJECTED/FAILED gets a ReleaseHold
+  (`saga.hold.orphan_released`) and changes no state.
 - Audit (ticket 12, spec 14.3): one `mw.audit.event.v1` per state a transaction passes through
   (`mapper/AuditMapper`, own type `dto/AuditEvent`), through the outbox in the same transaction:
   action `txn.state.changed`, resource `txn/<txnId>`, actor `system`/`mw-orchestrator`, `before`
@@ -38,14 +60,18 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - Timers: `txn.saga_timer` (one row per txn and state), swept by `scheduler/SagaTimerJob` every
   second under ShedLock; `SagaTimerService.sweep` uses `FOR UPDATE SKIP LOCKED`. Deadlines are
   `mw.orchestrator.*-timeout`: VALIDATING 5 s -> FAILED (`MW-TMO-001`, retryable), POSTING 5 s ->
-  UNKNOWN. UNKNOWN, MANUAL_REVIEW and terminal states arm no timer yet (the 7.4 inquiry schedule
-  is ticket 18). A late core reply after a timeout is ignored (state machine refuses it).
-- `commandId` = `<txnId>:validate` / `<txnId>:post`. `expiresAt` = issuedAt + `command-ttl` (60 s).
+  UNKNOWN, HOLDING 5 s -> QueryTransaction (stays HOLDING), PARTNER_PENDING 30 s -> UNKNOWN,
+  COMMITTING / RELEASING every `retry-timeout` (5 s) -> resend CommitHold / ReleaseHold (same
+  commandId). UNKNOWN, MANUAL_REVIEW and terminal states arm no timer yet (the 7.4 inquiry
+  schedule is ticket 18). A late core reply after a timeout is ignored (state machine refuses it).
+- `commandId` = `<txnId>:validate` / `:post` / `:hold` / `:commit` / `:release` (QueryTransaction:
+  above). `expiresAt` = issuedAt + `command-ttl` (60 s).
   All wallet commands go to `core.wallet.command.v1`; nothing is sent on `core.payment.*` yet.
 - Core reason -> error: `MW-CORE-<reasonCode>` (same pattern as the status contract), message
   English + Bengali for the reasons mw-core-mock emits (`mapper/CoreEventMapper`), not retryable.
-  Other codes used: `MW-VAL-010` unsupported txn type, `MW-VAL-011` amount <= 0, `MW-IDEM-001`,
-  `MW-TMO-001`.
+  Other codes used: `MW-VAL-010` unsupported txn type, `MW-VAL-011` amount <= 0, `MW-VAL-012`
+  partner missing for a flow with a partner leg, `MW-IDEM-001`, `MW-TMO-001`, `MW-TMO-002`;
+  partner codes come from the adapter's reply.
 - PIN: only ciphertext. It is kept in `transaction.encrypted_pin` (jsonb) because PostTransfer
   follows ValidateTransaction, and cleared when the transaction becomes terminal. The stored
   request never contains it; it is never logged (`@Sensitive`).
@@ -71,6 +97,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 - `events/mw-core-mock/core.event.v1.schema.json`: own type `dto/CoreEvent` (payload read as a
   tree per `eventType`). Unknown fields are ignored.
+- Own partner contracts: `dto/PartnerRequest` (produced, `PartnerMessagesTest` and `TopupSagaIT`
+  validate it) and `dto/PartnerReply` (consumed; the telco samples read into it).
 - `events/mw-audit-dw/mw.audit.event.v1.schema.json` (produced): own type `dto/AuditEvent`;
   `SagaServiceIT` and `P2pKafkaIT` validate every audit record against it.
 

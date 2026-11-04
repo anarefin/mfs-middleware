@@ -1,16 +1,20 @@
 package mfs.mw.orchestrator.service;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import mfs.mw.orchestrator.config.OrchestratorProperties;
 import mfs.mw.orchestrator.dto.AuditEvent;
 import mfs.mw.orchestrator.dto.CoreCommand;
 import mfs.mw.orchestrator.dto.ErrorInfo;
+import mfs.mw.orchestrator.dto.PartnerRequest;
 import mfs.mw.orchestrator.dto.StatusMessage;
 import mfs.mw.orchestrator.entity.TransactionRecord;
 import mfs.mw.orchestrator.mapper.AuditMapper;
 import mfs.mw.orchestrator.mapper.CoreCommandMapper;
+import mfs.mw.orchestrator.mapper.PartnerRequestMapper;
 import mfs.mw.orchestrator.mapper.StatusMapper;
 import mfs.mw.orchestrator.messaging.EventMetadata;
 import mfs.mw.orchestrator.messaging.MwHeaders;
@@ -18,10 +22,14 @@ import mfs.mw.orchestrator.messaging.OutboxWriter;
 import mfs.mw.orchestrator.repository.SagaTimerRepository;
 import mfs.mw.orchestrator.repository.TransactionRepository;
 import mfs.mw.orchestrator.service.saga.Effect;
+import mfs.mw.orchestrator.service.saga.Flow;
+import mfs.mw.orchestrator.service.saga.FlowRegistry;
+import mfs.mw.orchestrator.service.saga.PartnerCall;
 import mfs.mw.orchestrator.service.saga.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.SagaMachine;
 import mfs.mw.orchestrator.service.saga.Status;
+import mfs.mw.orchestrator.service.saga.Step;
 import mfs.mw.orchestrator.service.saga.Transition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,6 +60,8 @@ public class SagaEngine {
   private final StatusMapper statusMapper;
   private final CoreCommandMapper commandMapper;
   private final AuditMapper auditMapper;
+  private final PartnerRequestMapper partnerMapper;
+  private final FlowRegistry flows;
   private final OrchestratorProperties properties;
   private final Clock clock;
 
@@ -62,6 +72,8 @@ public class SagaEngine {
       StatusMapper statusMapper,
       CoreCommandMapper commandMapper,
       AuditMapper auditMapper,
+      PartnerRequestMapper partnerMapper,
+      FlowRegistry flows,
       OrchestratorProperties properties,
       Clock clock) {
     this.transactions = transactions;
@@ -70,6 +82,8 @@ public class SagaEngine {
     this.statusMapper = statusMapper;
     this.commandMapper = commandMapper;
     this.auditMapper = auditMapper;
+    this.partnerMapper = partnerMapper;
+    this.flows = flows;
     this.properties = properties;
     this.clock = clock;
   }
@@ -136,21 +150,71 @@ public class SagaEngine {
         .ifPresent(d -> timers.arm(rec.txnId(), t.to().name(), now.plus(d), !t.changesState()));
   }
 
+  /**
+   * Performs the step behind {@code effect} for the transaction's flow (spec 7.1): every flow is
+   * built from the same steps, and a step the flow does not have, or one whose ticket is not
+   * built yet (reversal, inquiry schedule), is logged as {@code saga.effect.unwired} and skipped.
+   */
   private void perform(Effect effect, TransactionRecord rec, Instant now) {
-    switch (effect) {
-      case NONE -> {}
-      case SEND_VALIDATE -> send(commandMapper.validate(rec, now, properties.commandTtl()), rec);
-      case SEND_POST -> send(commandMapper.post(rec, now, properties.commandTtl()), rec);
-      default ->
-          log.atWarn()
-              .addKeyValue("event", "saga.effect.unwired")
-              .addKeyValue("txnId", rec.txnId().toString())
-              .addKeyValue("effect", effect.name())
-              .log("effect belongs to a flow that is not wired yet; nothing sent");
+    if (effect == Effect.NONE) {
+      return;
+    }
+    Optional<Step> step = Step.of(effect);
+    Optional<Flow> flow = flows.find(rec.request().txnType());
+    if (step.isEmpty() || flow.isEmpty() || !allowed(flow.get(), step.get())) {
+      unwired(effect, rec);
+      return;
+    }
+    Duration ttl = properties.commandTtl();
+    switch (step.get()) {
+      case VALIDATE -> send(commandMapper.validate(rec, now, ttl));
+      case POST -> send(commandMapper.post(rec, now, ttl));
+      case HOLD -> send(commandMapper.hold(rec, now, ttl));
+      case COMMIT -> send(commandMapper.commit(rec, now, ttl));
+      case RELEASE -> send(commandMapper.release(rec, now, ttl));
+      case QUERY -> send(commandMapper.query(rec, now, ttl));
+      case CALL_PARTNER -> callPartner(rec, flow.get().partnerCall().orElseThrow(), now);
+      case REVERSE -> unwired(effect, rec);
     }
   }
 
-  private void send(CoreCommand command, TransactionRecord rec) {
+  /** The flow's own steps; QUERY belongs to every flow that holds (HOLDING timeout). */
+  private static boolean allowed(Flow flow, Step step) {
+    return flow.steps().contains(step) || (step == Step.QUERY && flow.steps().contains(Step.HOLD));
+  }
+
+  private void unwired(Effect effect, TransactionRecord rec) {
+    log.atWarn()
+        .addKeyValue("event", "saga.effect.unwired")
+        .addKeyValue("txnId", rec.txnId().toString())
+        .addKeyValue("effect", effect.name())
+        .log("effect belongs to a step that is not wired yet; nothing sent");
+  }
+
+  /**
+   * A hold the core placed after the transaction stopped waiting for it (a late FundsHeld after a
+   * HOLDING timeout ended REJECTED): release it so the payer's funds are not left reserved. The
+   * transaction's state does not change; the core's HoldReleased is then ignored.
+   */
+  public void releaseOrphanHold(TransactionRecord rec, String holdId) {
+    send(commandMapper.release(rec.withHold(holdId), clock.instant(), properties.commandTtl()));
+    log.atWarn()
+        .addKeyValue("event", "saga.hold.orphan_released")
+        .addKeyValue("txnId", rec.txnId().toString())
+        .addKeyValue("status", rec.status().name())
+        .log("hold placed after the transaction ended; releasing it");
+  }
+
+  private void callPartner(TransactionRecord rec, PartnerCall call, Instant now) {
+    PartnerRequest request = partnerMapper.pay(rec, call, now, properties.partnerTimeout());
+    outbox.append(
+        call.topic(),
+        request.txnId(),
+        new EventMetadata(request.correlationId(), request.txnId(), request.requestId(), 1),
+        request);
+  }
+
+  private void send(CoreCommand command) {
     outbox.append(
         properties.walletCommandTopic(),
         command.txnId(),

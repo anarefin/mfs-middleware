@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import mfs.mw.app.gateway.dto.AppUser;
+import mfs.mw.app.gateway.dto.PartnerRef;
 import mfs.mw.app.gateway.dto.Party;
 import mfs.mw.app.gateway.dto.StatusMessage;
 import mfs.mw.app.gateway.dto.TransactionRequest;
@@ -27,6 +28,8 @@ public class RequestMapper {
   public static final String ACCEPTED_STATUS = "RECEIVED";
 
   private static final String CASH_OUT = "CASH_OUT";
+  /** Airtime top-up: credit party is an MSISDN, {@code partner} names the operator. */
+  public static final String TOPUP = "TOPUP";
 
   /** Attribute keys set by the middleware (orchestrator reply matching); never from a client. */
   public static final Set<String> RESERVED_ATTRIBUTES =
@@ -39,9 +42,7 @@ public class RequestMapper {
       String txnId,
       String correlationId,
       Instant now) {
-    // The token's wallet always pays the wallet named in the body; for CASH_OUT that payee is an
-    // agent (the core checks the real wallet types per txnType).
-    String payeeType = CASH_OUT.equals(body.txnType()) ? "AGENT" : "CUSTOMER";
+    Party payer = Party.wallet(user.msisdn(), user.walletType());
     return new TxnRequest(
         1,
         txnId,
@@ -50,14 +51,29 @@ public class RequestMapper {
         user.channel(),
         body.txnType(),
         new Party("MSISDN", user.msisdn(), null, null),
-        Party.wallet(user.msisdn(), user.walletType()),
-        Party.wallet(canonical(body.creditParty().id()), payeeType),
+        payer,
+        creditParty(body),
         body.amount(),
+        body.partner() == null
+            ? null
+            : new PartnerRef(body.partner().partnerId(), body.partner().productCode()),
         body.encryptedPin(),
         body.locale(),
         null,
         forwardable(body.attributes()),
         now);
+  }
+
+  /**
+   * A wallet (canonical MSISDN as wallet id; an agent's for CASH_OUT, a customer's otherwise; the
+   * core checks the real wallet types per txnType), or for TOPUP the bare MSISDN to recharge.
+   */
+  private static Party creditParty(TransactionRequest body) {
+    String id = canonical(body.creditParty().id());
+    if (TOPUP.equals(body.txnType())) {
+      return new Party("MSISDN", id, null, null);
+    }
+    return Party.wallet(id, CASH_OUT.equals(body.txnType()) ? "AGENT" : "CUSTOMER");
   }
 
   private static String canonical(String msisdn) {

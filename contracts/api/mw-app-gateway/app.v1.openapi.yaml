@@ -19,13 +19,14 @@ paths:
   /app/v1/transactions:
     post:
       operationId: submitTransaction
-      summary: Submit a transaction (P2P, CASH_IN, CASH_OUT so far)
+      summary: Submit a transaction (P2P, CASH_IN, CASH_OUT, TOPUP)
       description: >-
-        Who may initiate what follows the token's realm role: `customer` sends P2P and CASH_OUT
-        (the customer's own wallet pays the agent wallet in `creditParty`), `agent` sends CASH_IN
-        (the agent's float pays the customer in `creditParty`). The payer is always the token's
-        wallet and `encryptedPin` its PIN. Any other combination is 403 MW-AUTH-002. A counterparty equal to the caller's own wallet is
-        400 MW-VAL-012; the core refuses wallets of the wrong type for CASH_IN/CASH_OUT (422
+        Who may initiate what follows the token's realm role (deny by default): `customer` sends
+        P2P, CASH_OUT (the customer's own wallet pays the agent wallet in `creditParty`) and TOPUP;
+        `agent` sends CASH_IN (the agent's float pays the customer in `creditParty`). The payer is
+        always the token's wallet and `encryptedPin` its PIN. Any other combination is 403
+        MW-AUTH-002. For P2P, CASH_IN and CASH_OUT a counterparty equal to the caller's own wallet
+        is 400 MW-VAL-012; the core refuses wallets of the wrong type for CASH_IN/CASH_OUT (422
         MW-CORE-INVALID_COUNTERPARTY) and locks a wallet after 5 wrong PINs in a row (422
         MW-CORE-ACCOUNT_LOCKED).
       parameters:
@@ -68,6 +69,13 @@ paths:
         "429": { $ref: "#/components/responses/Error" }
         "422":
           description: Core rejection (MW-CORE-<reason>), with txnId
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "502":
+          description: >-
+            Partner refusal (MW-PTR-<PARTNER>-<reason>), with txnId; the held funds were released.
+            A partner that could not be reached is MW-SYS-* (500, retryable)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
@@ -134,15 +142,34 @@ components:
       type: object
       required: [txnType, creditParty, amount, encryptedPin]
       properties:
-        txnType: { type: string, enum: [P2P, CASH_IN, CASH_OUT] }
+        txnType:
+          type: string
+          enum: [P2P, CASH_IN, CASH_OUT, TOPUP]
+          description: >-
+            P2P, CASH_IN and CASH_OUT pay the wallet of `creditParty.id`. TOPUP recharges the
+            mobile number `creditParty.id` with operator and product `partner` (required for
+            TOPUP, refused otherwise, 400 MW-VAL-001); a refusal by the operator is 502
+            MW-PTR-<OPERATOR>-<reason> after the held funds were released.
         creditParty:
           type: object
           description: >-
-            The payee wallet: a customer for P2P and CASH_IN, an agent for CASH_OUT.
+            The payee: a customer wallet for P2P and CASH_IN, an agent wallet for CASH_OUT,
+            the mobile number for TOPUP.
           required: [id]
           properties:
-            type: { type: string, const: WALLET }
+            type:
+              type: string
+              enum: [WALLET, MSISDN]
+              description: Optional; WALLET for P2P, MSISDN for TOPUP (another value is 400 MW-VAL-001).
             id: { $ref: "#/components/schemas/Msisdn" }
+        partner:
+          type: object
+          required: [partnerId, productCode]
+          additionalProperties: false
+          description: TOPUP only. The mobile operator and its product.
+          properties:
+            partnerId: { type: string, enum: [gp, robi, banglalink, teletalk] }
+            productCode: { type: string, enum: [PREPAID, POSTPAID] }
         amount: { $ref: "#/components/schemas/Amount" }
         encryptedPin:
           type: object

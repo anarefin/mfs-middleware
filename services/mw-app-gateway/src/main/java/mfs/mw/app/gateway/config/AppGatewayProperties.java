@@ -23,8 +23,8 @@ import org.springframework.validation.annotation.Validated;
  *     refused, so a client can never set keys the middleware reserves (e.g. {@code duplicate},
  *     {@code requestTxnId})
  * @param txnTypeRoles per {@code txnType}, the wallet types (from the token's realm role:
- *     {@code CUSTOMER}, {@code AGENT}) that may initiate it (spec WP20); a type not listed is open
- *     to every role this service serves
+ *     {@code CUSTOMER}, {@code AGENT}) that may initiate it (spec WP20); a type not listed is refused
+ *     for every role (deny by default)
  */
 @Validated
 @ConfigurationProperties("mw.app-gateway")
@@ -46,10 +46,9 @@ public record AppGatewayProperties(
     txnTypeRoles = Map.copyOf(txnTypeRoles == null ? Map.of() : txnTypeRoles);
   }
 
-  /** True when a user of this wallet type may initiate this transaction type. */
+  /** True when a user of this wallet type may initiate this transaction type (deny by default). */
   public boolean mayInitiate(String walletType, String txnType) {
-    List<String> roles = txnTypeRoles.get(txnType);
-    return roles == null || roles.contains(walletType);
+    return txnTypeRoles.getOrDefault(txnType, List.of()).contains(walletType);
   }
 
   /**

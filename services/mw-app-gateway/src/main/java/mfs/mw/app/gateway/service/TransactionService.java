@@ -78,6 +78,7 @@ public class TransactionService {
           .withStatus(HttpStatus.FORBIDDEN);
     }
     refuseUnknownAttributes(body);
+    refuseFieldsOfOtherFlows(body);
     refuseOwnWallet(user, body);
     Instant now = clock.instant();
     String txnId = UuidV7.next(clock).toString();
@@ -122,6 +123,32 @@ public class TransactionService {
             .toList();
     if (!refused.isEmpty()) {
       throw new MwException(ErrorCodes.VAL_INVALID, "Request validation failed").withDetails(refused);
+    }
+  }
+
+  /**
+   * TOPUP needs {@code partner} and recharges an MSISDN ({@code creditParty.type} absent or
+   * {@code MSISDN}); every other type pays a wallet and takes no partner (MW-VAL-001 naming the
+   * field).
+   */
+  private static void refuseFieldsOfOtherFlows(TransactionRequest body) {
+    boolean topup = RequestMapper.TOPUP.equals(body.txnType());
+    String type = body.creditParty().type();
+    String issue = null;
+    String field = null;
+    if (topup && body.partner() == null) {
+      field = "partner";
+      issue = "is required for TOPUP";
+    } else if (!topup && body.partner() != null) {
+      field = "partner";
+      issue = "is only allowed for TOPUP";
+    } else if (type != null && !type.equals(topup ? "MSISDN" : "WALLET")) {
+      field = "creditParty.type";
+      issue = "must be " + (topup ? "MSISDN" : "WALLET") + " for " + body.txnType();
+    }
+    if (field != null) {
+      throw new MwException(ErrorCodes.VAL_INVALID, "Request validation failed")
+          .withDetails(List.of(new ErrorDetail(field, issue)));
     }
   }
 

@@ -38,11 +38,26 @@ public class AppSteps {
 
   /**
    * Any txnType whose body is the plain request (P2P, CASH_IN, CASH_OUT): the counterparty is the
-   * body's {@code creditParty} wallet (the payee, or for CASH_OUT the paying customer).
+   * body's {@code creditParty} wallet, the payee (an agent for CASH_OUT).
    */
   @When("{word} submits {word} of {long} poisha with counterparty {word} and PIN {string}")
   public void submits(String user, String txnType, long amountMinor, String counterparty, String pin) {
     submit(user, AppApi.newIdempotencyKey(), AppApi.request(txnType, counterparty, amountMinor, pin));
+  }
+
+  @When("{word} tops up {long} poisha {word} {word} airtime on {word} with PIN {string}")
+  public void topsUp(String user, long amountMinor, String operator, String product, String msisdn, String pin) {
+    ObjectNode body = AppApi.request("TOPUP", msisdn, amountMinor, pin);
+    ((ObjectNode) body.get("creditParty")).put("type", "MSISDN");
+    body.putObject("partner").put("partnerId", operator).put("productCode", product);
+    submit(user, AppApi.newIdempotencyKey(), body);
+  }
+
+  @When("{word} tops up {long} poisha airtime on {word} without an operator")
+  public void topsUpWithoutOperator(String user, long amountMinor, String msisdn) {
+    ObjectNode body = AppApi.request("TOPUP", msisdn, amountMinor, "1234");
+    ((ObjectNode) body.get("creditParty")).put("type", "MSISDN");
+    submit(user, AppApi.newIdempotencyKey(), body);
   }
 
   @When("{word} sends the same request again with the same idempotency key")

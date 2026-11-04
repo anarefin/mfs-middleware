@@ -22,6 +22,8 @@ class FlowRegistryTest {
     Flow flow = wired().find("CASH_IN").orElseThrow();
     assertThat(flow.txnType()).isEqualTo("CASH_IN");
     assertThat(flow.needsHold()).isFalse();
+    assertThat(flow.steps()).containsExactlyInAnyOrder(Step.VALIDATE, Step.POST);
+    assertThat(flow.partnerCall()).isEmpty();
   }
 
   @Test
@@ -29,6 +31,8 @@ class FlowRegistryTest {
     Flow flow = wired().find("CASH_OUT").orElseThrow();
     assertThat(flow.txnType()).isEqualTo("CASH_OUT");
     assertThat(flow.needsHold()).isFalse();
+    assertThat(flow.steps()).containsExactlyInAnyOrder(Step.VALIDATE, Step.POST);
+    assertThat(flow.partnerCall()).isEmpty();
   }
 
   @Test

@@ -29,6 +29,11 @@ Only APISIX is published, so every call goes through it:
 
 - `support/AppApi`: `request(txnType, creditParty, amountMinor, pin)` (add flow fields to the
   returned node), `submit`, `status`, `pollStatus`, `newIdempotencyKey()`, `FINAL`.
+- TOPUP (`features/topup.feature`, `@topup`): step "tops up N poisha <operator> <product> airtime
+  on <msisdn>"; money lands on the core's `SETTLEMENT` wallet (fee 200 on `FEE-POOL`); the OCS
+  simulator refuses MSISDNs ending in `999` (other magic values: amount fraction .13 timeout,
+  .77 5xx, .99 ambiguous, .55 malformed, all UNKNOWN, ticket 18). "no funds are held on <wallet>"
+  compares the core's held amount with the noted one.
 - `support/CoreMock`: `encryptPin` (RSA-OAEP SHA-256 with the core key), `balance`,
   `injectFault` / `resetFaults` (reset in an `@After` hook of the scenarios that inject).
 - `support/Keycloak.customerToken(user)`; `support/AuditTrail.rowsOfTxn` / `verifyChain`;
