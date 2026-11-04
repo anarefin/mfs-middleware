@@ -126,6 +126,14 @@ Only APISIX is published, so every call goes through it:
   checkout result is X", "the browser is redirected to the merchant's ok|fail URL with a X result
   the merchant verifies", "the merchant sees the session as X [paid by <masked>]". Merchant wallet
   01911000001 (merchant01); MERCHANT_PAY has no fee.
+  Signed IPN (`@checkout @ipn`, ticket 32): every suite session's `ipnUrl` is the merchant IPN
+  receiver simulator (`support/MerchantIpn.URL`, `http://mw-simulators:8080/merchant/ipn/e2e`; the
+  dev stack allows that host and compresses the retry schedule to 10s,20s,30s,1m,2m). Steps: "the
+  merchant's IPN endpoint fails the next N IPNs of the session with status S" (reset by an `@After`
+  hook), "within N seconds the merchant has received the session's IPN K times, answering \"...\"",
+  "the merchant accepted exactly one IPN of the session, a PAID result with a valid signature"
+  (`MerchantIpn.verify`, written from the contract), "the merchant receives no further IPN of the
+  session within N seconds".
 - `support/CoreMock`: `encryptPin` (RSA-OAEP SHA-256 with the core key), `balance`,
   `injectFault` / `resetFaults` (reset in an `@After` hook of the scenarios that inject).
 - Org portal bulk (`features/bulk-upload.feature`, `@bulk @mw-portal-api`, ticket 33): "<user>

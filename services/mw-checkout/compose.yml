@@ -79,6 +79,13 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
       # Where the hosted checkout page lives (front-end TBC, spec open point 16).
       MW_CHECKOUT_PAGE_BASE_URL: ${MW_CHECKOUT_PAGE_BASE_URL:-https://localhost/checkout/page/}
+      # Dev stack only: the merchant IPN receiver simulator is plain http at a private address
+      # (http://mw-simulators:8080/merchant/ipn/...). The packaged default allows no such host.
+      MW_CHECKOUT_IPN_DEV_HOSTS: ${MW_CHECKOUT_IPN_DEV_HOSTS:-mw-simulators}
+      # Dev stack only: a compressed IPN retry schedule so e2e sees retries in seconds. The
+      # packaged default is the spec's 1m,5m,30m,2h,6h (set this to it to try the real one).
+      MW_CHECKOUT_IPN_RETRY_DELAYS: ${MW_CHECKOUT_IPN_RETRY_DELAYS:-10s,20s,30s,1m,2m}
+      MW_CHECKOUT_IPN_POLL_PERIOD: ${MW_CHECKOUT_IPN_POLL_PERIOD:-2s}
     deploy:
       resources:
         limits:

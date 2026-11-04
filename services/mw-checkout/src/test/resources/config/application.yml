@@ -6,6 +6,9 @@ mw:
     consumers:
       enabled: false
     page-base-url: https://checkout.example.test/pay/
+    # The IPN job is off in tests; IpnDeliveryIT calls IpnDeliveryService.deliverDue() itself.
+    ipn:
+      enabled: false
     pin:
       key-id: core-pin-test-1
       public-key: not-a-real-key

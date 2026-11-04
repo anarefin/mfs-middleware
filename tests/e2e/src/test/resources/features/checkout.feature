@@ -40,6 +40,20 @@ Feature: Web checkout: session, OTP and PIN, MERCHANT_PAY, signed redirect (tick
     And the browser is redirected to the merchant's fail URL with a FAILED result the merchant verifies
     And the merchant sees the session as FAILED
 
+  # Ticket 32. The dev stack compresses the IPN retry schedule to 10s, 20s, 30s, 1m, 2m (compose.yml
+  # MW_CHECKOUT_IPN_RETRY_DELAYS); the spec schedule 1m, 5m, 30m, 2h, 6h is IpnRetryScheduleTest / IpnDeliveryIT.
+  @ipn
+  Scenario: the merchant's IPN endpoint fails twice, then the signed IPN is delivered once
+    Given the merchant creates a checkout session for 1200 poisha
+    And the merchant's IPN endpoint fails the next 2 IPNs of the session with status 503
+    When the customer asks for an OTP for wallet 01711000001
+    And the customer confirms with the OTP and PIN "1234"
+    Then the response status is 200
+    And the checkout result is PAID
+    And within 90 seconds the merchant has received the session's IPN 3 times, answering "503, 503, 200"
+    And the merchant accepted exactly one IPN of the session, a PAID result with a valid signature
+    And the merchant receives no further IPN of the session within 15 seconds
+
   Scenario: a merchant request with a bad HMAC signature is refused at the edge
     When the merchant creates a checkout session signed with a wrong secret
     Then the response status is 401

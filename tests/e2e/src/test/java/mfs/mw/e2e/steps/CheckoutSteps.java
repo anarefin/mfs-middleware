@@ -2,6 +2,7 @@ package mfs.mw.e2e.steps;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.cucumber.java.After;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
@@ -14,6 +15,7 @@ import java.util.regex.Pattern;
 import mfs.mw.e2e.support.CheckoutApi;
 import mfs.mw.e2e.support.CoreMock;
 import mfs.mw.e2e.support.Http;
+import mfs.mw.e2e.support.MerchantIpn;
 import mfs.mw.e2e.support.Smsc;
 import mfs.mw.e2e.support.Stack;
 import mfs.mw.e2e.support.Waits;
@@ -144,6 +146,58 @@ public class CheckoutSteps {
     Http.Response r = CheckoutApi.getSession(sessionId);
     assertThat(r.status()).as("%s", r).isEqualTo(200);
     assertThat(r.body().path("status").asString()).isEqualTo(status);
+  }
+
+  // ---- signed IPN (ticket 32) -----------------------------------------------------------------
+
+  @After("@ipn")
+  public void merchantAcceptsAgain() {
+    MerchantIpn.acceptAll();
+  }
+
+  @Given("the merchant's IPN endpoint fails the next {int} IPNs of the session with status {int}")
+  public void ipnFails(int count, int status) {
+    MerchantIpn.failNext(sessionId, count, status);
+  }
+
+  @Then("within {int} seconds the merchant has received the session's IPN {int} times, answering {string}")
+  public void ipnReceived(int seconds, int times, String answers) {
+    List<MerchantIpn.Received> got =
+        Waits.until(() -> MerchantIpn.received(sessionId), l -> l.size() >= times, Duration.ofSeconds(seconds));
+    assertThat(got).as("IPNs of session %s", sessionId).hasSize(times);
+    List<Integer> expected =
+        java.util.Arrays.stream(answers.split(",")).map(String::trim).map(Integer::valueOf).toList();
+    assertThat(got).extracting(MerchantIpn.Received::answeredStatus).containsExactlyElementsOf(expected);
+    assertThat(got).extracting(MerchantIpn.Received::attempt)
+        .containsExactlyElementsOf(java.util.stream.IntStream.rangeClosed(1, times).boxed().toList());
+  }
+
+  @Then("the merchant accepted exactly one IPN of the session, a {word} result with a valid signature")
+  public void ipnDeliveredOnce(String status) {
+    List<MerchantIpn.Received> got = MerchantIpn.received(sessionId);
+    List<MerchantIpn.Received> accepted = got.stream().filter(r -> r.answeredStatus() / 100 == 2).toList();
+    assertThat(accepted).as("accepted IPNs of session %s", sessionId).hasSize(1);
+    MerchantIpn.Received ipn = accepted.getFirst();
+    assertThat(MerchantIpn.verify(ipn, CheckoutApi.secret())).as("IPN signature").isTrue();
+    MerchantIpn.Received tampered =
+        new MerchantIpn.Received(ipn.attempt(), ipn.timestamp(), ipn.signature(), ipn.body().replace(status, "X"), 200);
+    assertThat(MerchantIpn.verify(tampered, CheckoutApi.secret())).as("a tampered IPN").isFalse();
+    assertThat(got).allSatisfy(r -> assertThat(MerchantIpn.verify(r, CheckoutApi.secret())).isTrue());
+    assertThat(got).extracting(MerchantIpn.Received::body).as("the same body on every attempt").containsOnly(ipn.body());
+    var body = Http.JSON.readTree(ipn.body());
+    assertThat(body.path("sessionId").asString()).isEqualTo(sessionId);
+    assertThat(body.path("orderId").asString()).isEqualTo(orderId);
+    assertThat(body.path("status").asString()).isEqualTo(status);
+    assertThat(body.path("amount").path("valueMinor").asLong()).isEqualTo(amountMinor);
+    assertThat(body.path("txnId").asString(null)).isNotNull();
+  }
+
+  @Then("the merchant receives no further IPN of the session within {int} seconds")
+  public void noFurtherIpn(int seconds) {
+    int before = MerchantIpn.received(sessionId).size();
+    List<MerchantIpn.Received> later =
+        Waits.until(() -> MerchantIpn.received(sessionId), l -> l.size() > before, Duration.ofSeconds(seconds));
+    assertThat(later).hasSize(before);
   }
 
   /** The OTP codes of this session's amount that {@code wallet} received, oldest first. */
