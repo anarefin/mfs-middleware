@@ -30,6 +30,18 @@ case "$suite" in
     [ -n "$name" ] && filter="@$name"
     if [ -n "$tags" ]; then filter="${filter:+$filter and }($tags)"; fi
     [ -n "$filter" ] && args+=("-Dcucumber.filter.tags=$filter")
+    # The suite's test-only gateway routes (deploy/apisix/routes-test: core-mock's test API
+    # behind key-auth) are applied only when apisix-init runs with MW_E2E_ROUTES=1; a default
+    # `make up` removes them. Re-run it on the running stack with the flag and wait for it.
+    file="$MW_ROOT/deploy/compose/mvp/compose.yml"
+    if [ -f "$file" ]; then
+      "$(dirname "$0")/gen-dev-env.sh"
+      set -a; . "$MW_ROOT/deploy/compose/platform/.env"; set +a
+      info "e2e: enabling the test-only gateway routes (apisix-init with MW_E2E_ROUTES=1)"
+      MW_E2E_ROUTES=1 docker compose -f "$file" up -d --no-deps --force-recreate apisix-init >/dev/null
+      docker compose -f "$file" wait apisix-init >/dev/null \
+        || die "e2e: apisix-init failed to apply the test routes (docker compose logs apisix-init); is the stack up (make up)?"
+    fi
     ;;
   perf)
     args=(gatlingRun)
