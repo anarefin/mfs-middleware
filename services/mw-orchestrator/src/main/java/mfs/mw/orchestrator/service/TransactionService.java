@@ -24,8 +24,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Intake of {@code mw.txn.request.v1} (spec 7.3): records the idempotency key, creates the
- * transaction in RECEIVED and starts its flow. Everything happens in one database transaction
+ * Intake of {@code mw.txn.request.v1} (spec 7.3): takes the Valkey idempotency lock
+ * ({@link IdempotencyGate}, rule 4), records the idempotency key, creates the transaction in
+ * RECEIVED and starts its flow. Everything happens in one database transaction
  * together with the outbox rows, so a request is either fully accepted or not at all.
  */
 @Service
@@ -41,6 +42,7 @@ public class TransactionService {
   private final StatusMapper statusMapper;
   private final FlowRegistry flows;
   private final SagaEngine engine;
+  private final IdempotencyGate gate;
   private final OrchestratorProperties properties;
   private final Clock clock;
 
@@ -51,6 +53,7 @@ public class TransactionService {
       StatusMapper statusMapper,
       FlowRegistry flows,
       SagaEngine engine,
+      IdempotencyGate gate,
       OrchestratorProperties properties,
       Clock clock) {
     this.idempotency = idempotency;
@@ -59,6 +62,7 @@ public class TransactionService {
     this.statusMapper = statusMapper;
     this.flows = flows;
     this.engine = engine;
+    this.gate = gate;
     this.properties = properties;
     this.clock = clock;
   }
@@ -76,6 +80,21 @@ public class TransactionService {
     Instant now = clock.instant();
     UUID txnId = UUID.fromString(req.txnId());
     byte[] hash = requestMapper.requestHash(req);
+
+    // 7.3 rule 4: the Valkey lock absorbs a concurrent double-tap before the claim.
+    switch (gate.enter(req.channel(), req.initiator().id(), req.idempotencyKey(), txnId, hash)) {
+      case IdempotencyGate.Decision.Duplicate d -> {
+        answerDuplicate(req, d.holderTxnId(), replyTo, now, "lock");
+        return;
+      }
+      case IdempotencyGate.Decision.Conflict c -> {
+        answerConflict(req, replyTo, now);
+        return;
+      }
+      case IdempotencyGate.Decision.Proceed p -> {
+        // on to the primary key
+      }
+    }
 
     Optional<IdempotencyRepository.Stored> earlier =
         idempotency.claim(
@@ -102,15 +121,32 @@ public class TransactionService {
   private void answerRepeat(
       TxnRequest req, IdempotencyRepository.Stored stored, byte[] hash, String replyTo, Instant now) {
     if (stored.sameRequest(hash)) {
-      TransactionRecord existing = transactions.find(stored.txnId()).orElseThrow();
-      engine.publishStatus(statusMapper.toDuplicateStatus(existing, req.txnId()), replyTo);
-      log.atInfo()
-          .addKeyValue("event", "txn.idempotent.replay")
-          .addKeyValue("txnId", stored.txnId().toString())
-          .addKeyValue("correlationId", req.correlationId())
-          .log("repeated request answered with the stored transaction");
-      return;
+      answerDuplicate(req, stored.txnId(), replyTo, now, "primary-key");
+    } else {
+      answerConflict(req, replyTo, now);
     }
+  }
+
+  /**
+   * Same key and content as {@code storedTxnId}: its current status, or RECEIVED while the first
+   * request (holding the Valkey lock) has not committed its row yet.
+   */
+  private void answerDuplicate(TxnRequest req, UUID storedTxnId, String replyTo, Instant now, String source) {
+    StatusMessage status =
+        transactions
+            .find(storedTxnId)
+            .map(existing -> statusMapper.toDuplicateStatus(existing, req.txnId()))
+            .orElseGet(() -> statusMapper.toInFlightDuplicateStatus(req, storedTxnId, now));
+    engine.publishStatus(status, replyTo);
+    log.atInfo()
+        .addKeyValue("event", "txn.idempotent.replay")
+        .addKeyValue("txnId", storedTxnId.toString())
+        .addKeyValue("correlationId", req.correlationId())
+        .addKeyValue("source", source)
+        .log("repeated request answered with the stored transaction");
+  }
+
+  private void answerConflict(TxnRequest req, String replyTo, Instant now) {
     StatusMessage refused =
         statusMapper.toRefusedStatus(
             req,

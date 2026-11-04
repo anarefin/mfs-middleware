@@ -7,7 +7,7 @@
 # planned partition count; Kafka produce/consume; a PostgreSQL connection; a Valkey ping;
 # Keycloak in production mode with its realms in PostgreSQL; a Keycloak token for every test user and the partner client (ops users: refused until
 # TOTP is enrolled, and the ops browser flow requires OTP); an OpenBao KV read; the
-# APISIX /healthz route over HTTPS on the published port.
+# APISIX /healthz route over HTTPS on the published port; no rate-limiter degradation logged.
 set -uo pipefail
 . "$(dirname "$0")/lib/modules.sh"
 
@@ -170,6 +170,17 @@ check "keycloak realms stored in PostgreSQL (keycloak database, keycloak role)" 
 https_port="$(dc port apisix 9443 | head -1 | sed 's/.*://')"
 check "apisix https://localhost:$https_port/healthz -> 200" \
   curl -skf --max-time 10 "https://localhost:$https_port/healthz"
+
+# ---- rate-limiter degradation alert (ticket 50) ----
+# limit-count fails open when Valkey is down; deploy/apisix/lua/edge-limit-degraded.lua logs
+# every request it let through unlimited as "mw.edge.rate_limit_degraded" (deploy/apisix/README.md).
+# Last SMOKE_LIMITER_WINDOW (default 5m), so the brief outage make edge-test causes ages out.
+limiter_not_degraded() {
+  local lines
+  lines="$(dc logs --no-log-prefix --since "${SMOKE_LIMITER_WINDOW:-5m}" apisix 2>&1 | grep 'mw.edge.rate_limit_degraded')"
+  [ -z "$lines" ] || { echo "$(printf '%s\n' "$lines" | wc -l | tr -d ' ') request(s) passed without rate limiting (Valkey unreachable?); last:"; printf '%s\n' "$lines" | tail -3; return 1; }
+}
+check "apisix rate limiter not degraded (no mw.edge.rate_limit_degraded in the APISIX log, last ${SMOKE_LIMITER_WINDOW:-5m})" limiter_not_degraded
 
 # ---- APISIX Admin API and etcd isolation ----
 net_of() { docker network ls --format '{{.Name}}' --filter "label=com.docker.compose.project=$project" --filter "label=com.docker.compose.network=$1" | head -1; }

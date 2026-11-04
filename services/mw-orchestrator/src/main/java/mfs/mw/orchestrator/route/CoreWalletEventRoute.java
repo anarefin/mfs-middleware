@@ -2,6 +2,7 @@ package mfs.mw.orchestrator.route;
 
 import java.time.Clock;
 import mfs.mw.orchestrator.config.KafkaRetryProperties;
+import mfs.mw.orchestrator.service.CoreTopics;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -10,7 +11,7 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "mw.orchestrator.consumers.enabled", havingValue = "true", matchIfMissing = true)
 public class CoreWalletEventRoute extends RetryTopicRouteBuilder {
 
-  public static final String TOPIC = "core.wallet.event.v1";
+  public static final String TOPIC = CoreTopics.WALLET_EVENTS;
 
   public CoreWalletEventRoute(KafkaRetryProperties retry, Clock clock) {
     super(retry, clock);

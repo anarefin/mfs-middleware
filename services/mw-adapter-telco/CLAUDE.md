@@ -85,8 +85,11 @@ Security (config-changed records come from Kafka and ACLs are deferred, so they 
   partner's secret or any other property (DB password, Vault token); the resolver re-checks the prefix.
 - `mw.partners.security` is static config only (application.yml, per-environment overrides, OpenBao):
   `allowed-hosts.<instance>` (hosts its `baseUrl` may name; no entry = the partner cannot be configured)
-  and `insecure-http-hosts` (plain http allowed; default `mw-simulators` via
-  `MW_PARTNER_INSECURE_HTTP_HOSTS`, set it empty in production). Everything else needs https, no user info.
+  and `insecure-http-hosts` (plain http allowed; `MW_PARTNER_INSECURE_HTTP_HOSTS`, empty by default in
+  `application.yml` (ticket 50); only this module's `compose.yml` (dev stack) sets `mw-simulators` and the
+  test config allows `mw-simulators,localhost`; `PartnerSecurityDefaultsTest` guards the default, identical
+  in all three adapters). Everything else needs https, no user info. A seed with an http `baseUrl` therefore
+  fails start-up outside the dev stack.
   Instance ids are `^[a-z0-9][a-z0-9-]{0,63}$`. Adding a partner by config therefore needs its host on the
   static allowlist first (`MW_OCS_ALLOWED_HOSTS` for the seed).
 - Operation paths must match `^/[A-Za-z0-9._~/{}-]*$` with no `..` segment and no `//` (so no `@ : ? # \ %`);

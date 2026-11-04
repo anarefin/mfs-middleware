@@ -36,6 +36,8 @@ services:
       PGUSER: ${POSTGRES_USER:-mw_admin}
       PGDATABASE: ${POSTGRES_DB:-mw}
       PGPASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      # Synced into secret/mw-orchestrator as spring.data.redis.password (idempotency lock).
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
       BAO_ADDR: ${VAULT_ADDR:-http://openbao:8200}
       INIT_FILE: /openbao/file/dev-init.json
       OUT_DIR: /out
@@ -74,6 +76,8 @@ services:
       # Own schema in the shared PostgreSQL (16.2); credentials from OpenBao, not here.
       DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/mw}
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      # Valkey for the idempotency lock (7.3 rule 4); its password comes from OpenBao.
+      VALKEY_HOST: ${VALKEY_HOST:-valkey}
     deploy:
       resources:
         limits:

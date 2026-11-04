@@ -22,7 +22,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The orchestrator's own stand-in for the core (ticket 08): reads {@code core.wallet.command.v1}
- * and answers on {@code core.wallet.event.v1} by a fixed rule, with no knowledge of mw-core-mock.
+ * and {@code core.payment.command.v1} and answers on the paired event topic (ticket 50) by a fixed rule, with no knowledge of mw-core-mock.
  * ValidateTransaction and PostTransfer succeed, except that an amount of {@link #REJECT_AMOUNT}
  * is refused at validation with INSUFFICIENT_BALANCE and {@link #SILENT_AMOUNT} gets no answer to
  * PostTransfer (a core that never replies). HoldFunds, CommitHold and ReleaseHold always succeed
@@ -53,7 +53,7 @@ public final class CoreStub implements AutoCloseable {
     p.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
     p.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
     producer = new KafkaProducer<>(p);
-    consumer.subscribe(List.of("core.wallet.command.v1"));
+    consumer.subscribe(List.of("core.wallet.command.v1", "core.payment.command.v1"));
     thread = Thread.ofPlatform().daemon().name("core-stub").start(this::loop);
   }
 
@@ -70,10 +70,14 @@ public final class CoreStub implements AutoCloseable {
         Map<String, Object> event = answer(cmd);
         if (event != null) {
           producer.send(
-              new ProducerRecord<>("core.wallet.event.v1", r.key(), json.writeValueAsString(event)));
+              new ProducerRecord<>(eventTopic(r.topic()), r.key(), json.writeValueAsString(event)));
         }
       }
     }
+  }
+
+  private static String eventTopic(String commandTopic) {
+    return commandTopic.replace(".command.", ".event.");
   }
 
   private Map<String, Object> answer(JsonNode cmd) {

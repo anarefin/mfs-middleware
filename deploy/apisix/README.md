@@ -11,6 +11,7 @@ routes/<id>.json           one route per file, PUT as route <id>
 routes-test/<id>.json      TEST ONLY, see "Test-only objects" below
 consumers-test/<name>.json TEST ONLY consumers of those routes
 lua/*.lua                  serverless / _meta.pre_function code, inlined as "@lua:lua/<file>"
+                           (edge-limit-degraded.lua: the rate-limiter degradation alert, ticket 50)
 schemas/*.json             request-validation schemas derived from contracts/, inlined as "@json:schemas/<file>"
 ```
 
@@ -75,8 +76,9 @@ Route `app-v1` (`/app/v1/*`), in plugin order:
    `sub:<token sub>`, the per-consumer key.
 5. `limit-count` 120 requests / 60 s per consumer, counters in Valkey (`policy: redis`,
    password `$env://VALKEY_PASSWORD`, so it is never stored in etcd; `config.yaml` exposes the
-   variable to nginx), `allow_degradation: true` (Valkey down: requests pass, APISIX logs it).
-   A perf run with one test user needs more users or a higher count.
+   variable to nginx), `allow_degradation: true` (Valkey down: requests pass, APISIX logs it,
+   see "Rate-limiter degradation alert" below). A perf run with one test user needs more users
+   or a higher count.
 
 Route `partner-billagg-callback` (`/partner/billagg/callback/*`, POST only, ticket 22) ->
 `mw-adapter-billpay:8080`, path and body unchanged (the partner signed them):
@@ -96,6 +98,32 @@ Route `partner-c2wbank-callback` (`/partner/c2wbank/callback/*`, POST only, tick
 
 A new partner gets its own `partner-<id>-callback.json` (upstream: the owning adapter);
 `scripts/edge-test.sh` has the cases to copy (billagg and c2wbank both covered).
+
+## Rate-limiter degradation alert (ticket 50)
+
+`limit-count` stays fail-open (`allow_degradation: true`, M2 gate decision): a Valkey outage must
+not take the edge down. So that an outage is never silent, the global rule's header_filter also
+runs `lua/edge-limit-degraded.lua`: a request that reached the upstream on a route with
+`limit-count` (`show_limit_quota_header: true`, required on every limited route) but carries no
+`X-RateLimit-Limit` header was let through uncounted, and APISIX writes one **error** log line
+
+```
+mw.edge.rate_limit_degraded route=<route id> status=<HTTP status> (limit-count failed open: Valkey unreachable or slow)
+```
+
+next to limit-count's own `failed to limit count: ...` line. The `mw.edge.rate_limit_degraded`
+prefix is the stable signal: alert on any occurrence (one per uncounted request; no headers,
+bodies or personal data). Requests stopped before the limiter (401, 400, 413) and limit-count's
+own 429 never match. Where to see it:
+
+- `make smoke` fails "apisix rate limiter not degraded" while the APISIX log of the last 5 minutes
+  (`SMOKE_LIMITER_WINDOW`) holds such a line (so the outage `make edge-test` causes ages out);
+- `make edge-test` stops Valkey briefly and checks that a request passes unlimited and the line
+  is logged for `app-v1`;
+- `scripts/test/test_apisix_edge.sh` checks every limited route is fail-open with quota headers
+  and the function is in the global rule.
+
+A new rate-limited route needs nothing extra beyond `show_limit_quota_header: true`.
 
 ## Request-validation schemas
 
@@ -130,7 +158,8 @@ validator) into a closed `properties` list, and fails on any keyword it cannot c
 1. `routes/<id>.json`: `uri`, `methods`, the auth plugin for the route group (spec 8.2), and the
    upstream by Compose DNS name (APISIX is on `app`). The global rule already gives it the
    correlation ID, the `X-Mw-*` strip and the error envelope.
-2. Quota: copy the `limit-count` block with its own `group` and `count`. Keyed per consumer:
+2. Quota: copy the `limit-count` block with its own `group` and `count` (keep
+   `allow_degradation: true` and `show_limit_quota_header: true`: the degradation alert needs it). Keyed per consumer:
    on `openid-connect` routes reuse `lua/consumer-from-jwt.lua`; on `hmac-auth`/`key-auth`/
    `jwt-auth` routes APISIX sets a consumer, so use `"key": "consumer_name"`.
 3. Body schema: add `schemas/<id>-<op>.json` with only `x-mw-derived-from`, run

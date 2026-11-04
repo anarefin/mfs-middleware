@@ -9,10 +9,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * Recomputes one month's hash chain from {@code audit.event} and checks it against
- * {@code audit.chain_head} (spec 14.3). Deliberately not a Spring bean: the service connects as
- * {@code audit_writer}, which may only INSERT into {@code audit.event} and cannot read it, so a
- * verifier runs with a reading role (owner, {@code audit_dw_ro} or an auditor's break-glass
- * account) and is given that role's {@link JdbcTemplate}.
+ * {@code audit.chain_head} (spec 14.3). The service connects as {@code audit_writer}, which may
+ * only INSERT into {@code audit.event} and cannot read it, so a verifier is given a reading
+ * role's {@link JdbcTemplate}: the read-only {@code audit_reader} for the scheduled check
+ * ({@code config/AuditReaderConfig}, ticket 50), or the owner or an auditor's account.
  */
 public class AuditChainVerifier {
 
@@ -20,6 +20,11 @@ public class AuditChainVerifier {
 
   public AuditChainVerifier(JdbcTemplate jdbc) {
     this.jdbc = jdbc;
+  }
+
+  /** Every month that has a chain ({@code yyyy-MM}, oldest first). */
+  public List<String> months() {
+    return jdbc.queryForList("select month from chain_head order by month", String.class);
   }
 
   /** @param month {@code yyyy-MM} */

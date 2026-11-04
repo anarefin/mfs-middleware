@@ -19,6 +19,7 @@
 #     mw-adapter-billpay, over 16 KiB -> 413, POST only, unrouted partner 404, ip allow-list and
 #     per-source quota configured
 #   - C2W bank callback route (ticket 23): the same cases against mw-adapter-bank
+#   - Valkey down (ticket 50): limit-count fails open and APISIX logs mw.edge.rate_limit_degraded
 #   - applying deploy/apisix twice is a no-op (Admin API objects identical but update_time)
 # The quota check spends merchant01's quota for the rest of the window (60 s).
 set -uo pipefail
@@ -87,6 +88,7 @@ uniq_id() { printf 'edge-test-%s-%s' "$1" "$(od -An -N6 -tx1 /dev/urandom | tr -
 
 cleanup() {
   local at id
+  dc start valkey >/dev/null 2>&1
   admin DELETE "routes/$echo_route" -o /dev/null
   at="$(kc_admin_token)"
   id="$(ops_curl -H "Authorization: Bearer $at" "http://keycloak:8080/admin/realms/customers/clients?clientId=$kc_client" | jq -r '.[0].id // empty')"
@@ -307,6 +309,30 @@ bank_policies() {
   printf '%s' "$r" | jq -e '.upstream.nodes | has("mw-adapter-bank:8080")' >/dev/null || { echo "upstream: $(printf '%s' "$r" | jq -c .upstream)"; return 1; }
 }
 check "bank callback route: ip allow-list, quota per source address in Valkey, upstream mw-adapter-bank" bank_policies
+
+# ---- rate limiter fails open with an alert line when Valkey is down (ticket 50) ----
+# Stops Valkey for a few seconds (the services fall back: the orchestrator's idempotency lock to
+# the PostgreSQL primary key); cleanup starts it again if this check dies half-way.
+limiter_degraded() {
+  local cid i
+  dc stop valkey >/dev/null 2>&1 || { echo "could not stop valkey"; return 1; }
+  cid="$(uniq_id degraded)"
+  call GET "/app/v1/transactions/$(uniq_id txn)" -H "Authorization: Bearer $customer" -H "X-Correlation-Id: $cid"
+  dc start valkey >/dev/null 2>&1
+  [ "$status" = 404 ] || { echo "with Valkey down got HTTP $status, want the gateway's 404 (fail-open)"; return 1; }
+  [ -z "$(resp_header X-RateLimit-Limit)" ] || { echo "quota header present although Valkey was down"; return 1; }
+  for i in $(seq 0 10); do
+    dc logs --no-log-prefix --since 2m apisix 2>&1 | grep 'mw.edge.rate_limit_degraded' | grep -q 'route=app-v1' && break
+    [ "$i" = 10 ] && { echo "no mw.edge.rate_limit_degraded route=app-v1 line in the APISIX log"; return 1; }
+    sleep 1
+  done
+  for i in $(seq 0 30); do
+    dc exec -T valkey valkey-cli ping 2>/dev/null | grep -qx PONG && return 0
+    sleep 1
+  done
+  echo "valkey did not come back"; return 1
+}
+check "Valkey down -> request passes unlimited and APISIX logs mw.edge.rate_limit_degraded" limiter_degraded
 
 # ---- idempotent apply ----
 dump() { for k in global_rules routes ssls; do admin GET "$k"; done | jq -S -s '[.[].list[]? | .value | del(.update_time)] | sort_by(.id)'; }

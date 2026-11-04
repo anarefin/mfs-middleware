@@ -69,4 +69,17 @@ class StatusMapperTest {
     assertThat(msg.previousStatus()).isNull();
     assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(msg))).isEmpty();
   }
+
+  /** Ticket 50: a repeat answered from the Valkey lock before the first request committed. */
+  @Test
+  void anInFlightDuplicateIsReceivedUnderTheFirstRequestsTxnId() {
+    String first = TestData.txnId();
+    var again = TestData.p2p(TestData.txnId(), "key-1", 5_000);
+    StatusMessage msg = mapper.toInFlightDuplicateStatus(again, java.util.UUID.fromString(first), TestData.NOW);
+
+    assertThat(msg.txnId()).isEqualTo(first);
+    assertThat(msg.status()).isEqualTo("RECEIVED");
+    assertThat(msg.attributes()).containsEntry("requestTxnId", again.txnId()).containsEntry("duplicate", "true");
+    assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(msg))).isEmpty();
+  }
 }

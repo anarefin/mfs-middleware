@@ -46,7 +46,6 @@ class InquirySagaIT {
   private static final String PARTNER_SCHEMA = "events/mw-orchestrator/mw.partner.request.v1.schema.json";
   private static final String REPLY_SCHEMA = "events/mw-orchestrator/mw.partner.reply.v1.schema.json";
   private static final String PARTNER_TOPIC = "mw.partner.request.telco.v1";
-  private static final String COMMAND_TOPIC = "core.wallet.command.v1";
 
   private final TransactionService transactions;
   private final CoreEventService coreEvents;
@@ -95,6 +94,18 @@ class InquirySagaIT {
         .toList();
   }
 
+  /** Core commands on both command topics, in outbox order (ticket 50: hold, commit, release on core.payment). */
+  private List<JsonNode> coreCommands(String txnId) {
+    return jdbc.queryForList(
+            "select payload::text from outbox where topic in ('core.wallet.command.v1', 'core.payment.command.v1')"
+                + " and msg_key = ? order by id",
+            String.class,
+            txnId)
+        .stream()
+        .map(json::readTree)
+        .toList();
+  }
+
   private List<String> statuses(String txnId) {
     return outbox("mw.txn.status.v1", txnId).stream().map(n -> n.path("status").asString()).toList();
   }
@@ -105,11 +116,11 @@ class InquirySagaIT {
   }
 
   private List<String> commandTypes(String txnId) {
-    return outbox(COMMAND_TOPIC, txnId).stream().map(c -> c.path("commandType").asString()).toList();
+    return coreCommands(txnId).stream().map(c -> c.path("commandType").asString()).toList();
   }
 
   private JsonNode lastCommand(String txnId) {
-    List<JsonNode> all = outbox(COMMAND_TOPIC, txnId);
+    List<JsonNode> all = coreCommands(txnId);
     return all.get(all.size() - 1);
   }
 
@@ -123,7 +134,7 @@ class InquirySagaIT {
     for (JsonNode n : outbox("mw.txn.status.v1", txnId)) {
       assertThat(ContractSchemas.schema(STATUS_SCHEMA).validate(n)).as(n.toString()).isEmpty();
     }
-    for (JsonNode n : outbox(COMMAND_TOPIC, txnId)) {
+    for (JsonNode n : coreCommands(txnId)) {
       assertThat(ContractSchemas.schema(COMMAND_SCHEMA).validate(n)).as(n.toString()).isEmpty();
     }
     for (JsonNode n : outbox(PARTNER_TOPIC, txnId)) {

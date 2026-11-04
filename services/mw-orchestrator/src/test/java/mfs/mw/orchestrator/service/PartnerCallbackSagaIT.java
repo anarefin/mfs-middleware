@@ -188,7 +188,7 @@ class PartnerCallbackSagaIT {
     callbacks.handle(callback(txn, "SUCCESS", "AGG-7", null));
 
     assertThat(statuses(txn)).endsWith("PARTNER_PENDING", "COMMITTING");
-    assertThat(last("core.wallet.command.v1", txn).path("commandType").asString()).isEqualTo("CommitHold");
+    assertThat(last("core.payment.command.v1", txn).path("commandType").asString()).isEqualTo("CommitHold");
     assertThat(last("mw.txn.status.v1", txn).path("partnerRef").asString()).isEqualTo("AGG-7");
     assertAllValid(txn);
   }
@@ -200,7 +200,7 @@ class PartnerCallbackSagaIT {
     callbacks.handle(callback(txn, "FAILED", "AGG-8", "MW-PTR-BILLAGG-PAYMENT_REFUSED"));
 
     assertThat(statuses(txn)).endsWith("PARTNER_PENDING", "RELEASING");
-    assertThat(last("core.wallet.command.v1", txn).path("commandType").asString()).isEqualTo("ReleaseHold");
+    assertThat(last("core.payment.command.v1", txn).path("commandType").asString()).isEqualTo("ReleaseHold");
     assertThat(last("mw.txn.status.v1", txn).path("error").path("code").asString())
         .isEqualTo("MW-PTR-BILLAGG-PAYMENT_REFUSED");
     assertAllValid(txn);
@@ -241,7 +241,7 @@ class PartnerCallbackSagaIT {
     callbacks.handle(cb);
 
     assertThat(statuses(txn)).containsOnlyOnce("COMMITTING");
-    assertThat(outbox("core.wallet.command.v1", txn).stream().map(c -> c.path("commandType").asString()))
+    assertThat(outbox("core.payment.command.v1", txn).stream().map(c -> c.path("commandType").asString()))
         .containsOnlyOnce("CommitHold");
     assertThat(auditsOtherThanStates(txn)).isEmpty();
   }
@@ -322,7 +322,7 @@ class PartnerCallbackSagaIT {
     callbacks.handle(callback(txn, "SUCCESS", "OCS-1", null, "ocs", "billpay"));
 
     assertRejected(txn, "PARTNER_PENDING", before, "PARTNER_MISMATCH");
-    assertThat(outbox("core.wallet.command.v1", txn).stream().map(c -> c.path("commandType").asString()))
+    assertThat(outbox("core.payment.command.v1", txn).stream().map(c -> c.path("commandType").asString()))
         .doesNotContain("CommitHold");
   }
 

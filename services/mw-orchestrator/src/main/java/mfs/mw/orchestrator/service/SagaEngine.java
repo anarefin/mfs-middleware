@@ -278,7 +278,7 @@ public class SagaEngine {
 
   private void send(CoreCommand command) {
     outbox.append(
-        properties.walletCommandTopic(),
+        CoreTopics.commandTopic(command.commandType()),
         command.txnId(),
         new EventMetadata(command.correlationId(), command.txnId(), command.commandId(), 1),
         command);

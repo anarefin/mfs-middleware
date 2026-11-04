@@ -1,6 +1,5 @@
 package mfs.mw.orchestrator.config;
 
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import java.time.Duration;
@@ -22,10 +21,10 @@ import org.springframework.validation.annotation.Validated;
  * @param retryTimeout COMMITTING, RELEASING and REVERSING resend interval
  * @param commandTtl {@code expiresAt - issuedAt} of a core command
  * @param idempotencyTtl how long an idempotency key is remembered
- * @param walletCommandTopic where wallet commands go
  * @param timer the timer sweep
  * @param reversingTimeout how long REVERSING resends ReverseTransaction before MANUAL_REVIEW
  * @param reversalChannels the channels that may send a REVERSAL request (operations: SYSTEM)
+ * @param idempotencyLock the Valkey double-tap lock in front of the idempotency claim (7.3 rule 4)
  */
 @Validated
 @ConfigurationProperties("mw.orchestrator")
@@ -37,10 +36,17 @@ public record OrchestratorProperties(
     @NotNull @DefaultValue("5s") Duration retryTimeout,
     @NotNull @DefaultValue("60s") Duration commandTtl,
     @NotNull @DefaultValue("72h") Duration idempotencyTtl,
-    @NotBlank @DefaultValue("core.wallet.command.v1") String walletCommandTopic,
     @NotNull @DefaultValue Timer timer,
     @NotNull @DefaultValue("60s") Duration reversingTimeout,
-    @NotNull @DefaultValue("SYSTEM") Set<String> reversalChannels) {
+    @NotNull @DefaultValue("SYSTEM") Set<String> reversalChannels,
+    @NotNull @DefaultValue IdempotencyLock idempotencyLock) {
+
+  /**
+   * @param enabled asks Valkey (tests without Valkey switch it off; the primary key alone then)
+   * @param ttl how long the lock absorbs double-taps
+   */
+  public record IdempotencyLock(
+      @DefaultValue("true") boolean enabled, @NotNull @DefaultValue("60s") Duration ttl) {}
 
   /**
    * @param enabled runs the sweep job (tests switch it off and call the service)

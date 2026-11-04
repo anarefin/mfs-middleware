@@ -22,8 +22,17 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   locked `FOR UPDATE` to append (one writer per month at a time) and anchors the tail, so a
   deleted last row is detected too. Daily anchor export to WORM is not built (spec: TBC).
 - Verification: `service/AuditChainVerifier.verify(month)` -> `ChainVerification` (intact, or the
-  first broken `seq` and why). Not a bean: the service role cannot read `audit.event`; construct
-  it with a reading role's `JdbcTemplate` (owner, auditor).
+  first broken `seq` and why); `months()` lists the chains. The service role cannot read
+  `audit.event`, so the verifier gets a reading role's `JdbcTemplate`.
+- Scheduled verification (ticket 50): `scheduler/AuditChainVerifyJob` (ShedLock `audit-chain-verify`,
+  cron `mw.audit-dw.chain-verify.cron`, hourly at :30, `-` off as in tests) -> `service/ChainVerifyService.verifyAll()`
+  verifies every month as the read-only role `audit_reader` (`config/AuditReaderConfig`: a lazy
+  one-connection read-only Hikari pool on the service's JDBC URL, deliberately not a `DataSource`/
+  `JdbcTemplate` bean; `mw.audit-dw.chain-verify.{enabled,reader-username,reader-password}`, password
+  in OpenBao). A broken chain or an unreadable month -> ERROR `audit.chain.broken` (month, failedSeq,
+  reason) and gauge `mw.audit.chain.broken` (broken months of the last run, 0 = intact); every run logs
+  `audit.chain.verified`. `AuditChainVerifyIT` tampers a row as superuser and checks the reader can only
+  read and the writer still cannot SELECT.
 - Producers today: mw-orchestrator (`txn.state.changed`, `partner.callback.late`,
   `txn.outcome.conflict`, `partner.callback.rejected`) and the three adapters
   (`partner.call.completed`, S6: masked partner request/response in `after`). The consumer
@@ -39,11 +48,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 - Roles (16.4): the service runs as `audit_writer` (INSERT only on `event` and `event_key`; SELECT/INSERT/UPDATE
   on `chain_head`; EXECUTE `ensure_month_partition`; DML on the chassis `inbox`/`outbox`/
   `shedlock`). Flyway runs as the schema owner `audit_dw_rw` (`SPRING_FLYWAY_USER` +
-  `spring.flyway.password` from OpenBao); V4 grants the writer. Nobody holds UPDATE/DELETE on
+  `spring.flyway.password` from OpenBao); V4 grants the writer. `audit_reader` (V5): USAGE on the
+  schema and SELECT on `event` and `chain_head` only. Nobody holds UPDATE/DELETE on
   `event`. A superuser can still bypass everything, which the chain detects (`AuditTrailIT`).
 - Init (`mw-audit-dw-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): roles
-  `audit_dw_rw` and `audit_writer`, schema `audit`, `secret/mw-audit-dw` (both DB passwords,
-  never overwritten) and the AppRole `mw-audit-dw` (configtree volume). On a fresh stack it waits
+  `audit_dw_rw`, `audit_writer` and `audit_reader`, schema `audit`, `secret/mw-audit-dw` (the three DB
+  passwords, never overwritten; the reader's is `mw.audit-dw.chain-verify.reader-password`) and the AppRole `mw-audit-dw` (configtree volume). On a fresh stack it waits
   for OpenBao's `dev-init.json` and retries the database step when another init races it.
 
 ## Contracts owned

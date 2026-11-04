@@ -3,6 +3,7 @@ package mfs.mw.orchestrator.mapper;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import mfs.mw.orchestrator.dto.Amount;
 import mfs.mw.orchestrator.dto.ErrorInfo;
 import mfs.mw.orchestrator.dto.StatusMessage;
@@ -34,6 +35,26 @@ public class StatusMapper {
     attributes.put("requestTxnId", requestTxnId);
     attributes.put("duplicate", "true");
     return build(stored, attributes);
+  }
+
+  /**
+   * The answer to a concurrent repeat whose first request holds the idempotency lock but has not
+   * committed its transaction yet (7.3 rule 4): RECEIVED under the first request's txnId, from the
+   * repeat's own (identical) content, with the same {@code requestTxnId} / {@code duplicate}
+   * attributes as {@link #toDuplicateStatus}.
+   */
+  public StatusMessage toInFlightDuplicateStatus(TxnRequest req, UUID storedTxnId, Instant now) {
+    Map<String, String> attributes = new HashMap<>();
+    if (req.attributes() != null) {
+      attributes.putAll(req.attributes());
+    }
+    attributes.put("requestTxnId", req.txnId());
+    attributes.put("duplicate", "true");
+    return new StatusMessage(
+        1, storedTxnId.toString(), req.idempotencyKey(), req.correlationId(), req.channel(),
+        req.txnType(), Status.RECEIVED.name(), null, req.initiator(), req.debitParty(),
+        req.creditParty(), req.amount(), null, req.partner(), null, null, req.originalTxnId(),
+        null, req.locale(), attributes, req.requestedAt(), now);
   }
 
   /** REJECTED for a request that never became a transaction (key reused with other content). */
