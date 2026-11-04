@@ -2,6 +2,12 @@ package mfs.mw.orchestrator.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /** Masking rules, spec 18.3 (SEC-10). Expected values are the spec's own examples. */
@@ -74,6 +80,72 @@ class MaskingPolicyTest {
         .isEqualTo(
             "Wrapper[payer=Payer[msisdn=0171****789, name=R., nid=null, account=null,"
                 + " encryptedPin=null, channel=APP], count=2]");
+  }
+
+  private static final String MASKED_PAYER =
+      "Payer[msisdn=0171****789, name=R., nid=null, account=null, encryptedPin=null,"
+          + " channel=APP]";
+
+  private static Payer payer() {
+    return new Payer("01712345789", "Rahim Uddin", null, null, null, "APP");
+  }
+
+  @Test
+  void describeMasksRecordsInsideCollections() {
+    assertThat(MaskingPolicy.describe(List.of(payer(), payer())))
+        .isEqualTo("[" + MASKED_PAYER + ", " + MASKED_PAYER + "]");
+    assertThat(MaskingPolicy.describe(Set.of(payer()))).isEqualTo("[" + MASKED_PAYER + "]");
+  }
+
+  @Test
+  void describeMasksMapKeysAndValues() {
+    Map<Object, Object> map = new LinkedHashMap<>();
+    map.put("payer", payer());
+    map.put(payer(), "to 01812345678");
+    assertThat(MaskingPolicy.describe(map))
+        .isEqualTo("{payer=" + MASKED_PAYER + ", " + MASKED_PAYER + "=to 0181****678}");
+  }
+
+  @Test
+  void describeMasksOptionalContents() {
+    assertThat(MaskingPolicy.describe(Optional.of(payer())))
+        .isEqualTo("Optional[" + MASKED_PAYER + "]");
+    assertThat(MaskingPolicy.describe(Optional.empty())).isEqualTo("Optional.empty");
+  }
+
+  @Test
+  void describeMasksArrayElements() {
+    assertThat(MaskingPolicy.describe(new Payer[] {payer(), null}))
+        .isEqualTo("[" + MASKED_PAYER + ", null]");
+    assertThat(MaskingPolicy.describe(new long[] {1990123456789L, 7L})).isEqualTo("[****789, 7]");
+  }
+
+  record Batch(List<Payer> payers, Map<String, Optional<Payer>> byRef, String note) {}
+
+  @Test
+  void describeMasksRecordsNestedInContainersInsideRecords() {
+    Batch batch =
+        new Batch(List.of(payer()), Map.of("r1", Optional.of(payer())), "for 01712345789");
+    assertThat(MaskingPolicy.describe(batch))
+        .isEqualTo(
+            "Batch[payers=[" + MASKED_PAYER + "], byRef={r1=Optional[" + MASKED_PAYER + "]},"
+                + " note=for 0171****789]")
+        .doesNotContain("Rahim", "Uddin");
+  }
+
+  /** Iterables that are not collections (Path, JsonNode) keep their own text, scrubbed. */
+  @Test
+  void describeKeepsTheTextOfIterablesThatAreNotCollections() {
+    assertThat(MaskingPolicy.describe(java.nio.file.Path.of("in", "01712345789.csv")))
+        .isEqualTo("in/0171****789.csv");
+  }
+
+  @Test
+  void describeSurvivesSelfReferencingContainers() {
+    List<Object> list = new ArrayList<>();
+    list.add(payer());
+    list.add(list);
+    assertThat(MaskingPolicy.describe(list)).isEqualTo("[" + MASKED_PAYER + ", (this)]");
   }
 
   @Test

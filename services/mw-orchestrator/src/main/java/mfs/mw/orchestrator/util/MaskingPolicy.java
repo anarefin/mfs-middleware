@@ -1,7 +1,14 @@
 package mfs.mw.orchestrator.util;
 
+import java.lang.reflect.Array;
 import java.lang.reflect.RecordComponent;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
@@ -106,20 +113,68 @@ public final class MaskingPolicy {
 
   /**
    * Renders a value for logging: records are rendered like {@code Record.toString()} with every
-   * {@link Sensitive} component masked (nested records too); other values use {@code toString()}
-   * and then {@link #scrub(String)}.
+   * {@link Sensitive} component masked; arrays, {@link Collection}s, {@link Map}s (keys and
+   * values) and {@link Optional}s are walked like their own {@code toString()} so records inside
+   * them are masked too, at any depth. Every other value, including iterables that are not
+   * collections such as {@code Path} or {@code JsonNode}, uses {@code toString()} and then {@link
+   * #scrub(String)}. A container that contains itself is rendered as {@code (this)}.
    */
   public static String describe(Object value) {
+    return describe(value, Collections.newSetFromMap(new IdentityHashMap<>()));
+  }
+
+  private static String describe(Object value, Set<Object> inProgress) {
     if (value == null) {
       return "null";
     }
-    if (value instanceof Record rec) {
-      return describeRecord(rec);
+    boolean container =
+        value instanceof Record
+            || value instanceof Collection<?>
+            || value instanceof Map<?, ?>
+            || value instanceof Optional<?>
+            || value.getClass().isArray();
+    if (!container) {
+      return scrub(value.toString());
     }
-    return scrub(value.toString());
+    if (!inProgress.add(value)) {
+      return "(this)";
+    }
+    try {
+      return describeContainer(value, inProgress);
+    } finally {
+      inProgress.remove(value);
+    }
   }
 
-  private static String describeRecord(Record rec) {
+  private static String describeContainer(Object value, Set<Object> inProgress) {
+    if (value instanceof Record rec) {
+      return describeRecord(rec, inProgress);
+    }
+    if (value instanceof Optional<?> opt) {
+      return opt.map(v -> "Optional[" + describe(v, inProgress) + "]").orElse("Optional.empty");
+    }
+    StringJoiner parts;
+    if (value instanceof Map<?, ?> map) {
+      parts = new StringJoiner(", ", "{", "}");
+      for (Map.Entry<?, ?> e : map.entrySet()) {
+        parts.add(describe(e.getKey(), inProgress) + "=" + describe(e.getValue(), inProgress));
+      }
+      return parts.toString();
+    }
+    parts = new StringJoiner(", ", "[", "]");
+    if (value instanceof Collection<?> items) {
+      for (Object item : items) {
+        parts.add(describe(item, inProgress));
+      }
+    } else {
+      for (int i = 0; i < Array.getLength(value); i++) {
+        parts.add(describe(Array.get(value, i), inProgress));
+      }
+    }
+    return parts.toString();
+  }
+
+  private static String describeRecord(Record rec, Set<Object> inProgress) {
     StringJoiner parts = new StringJoiner(", ", rec.getClass().getSimpleName() + "[", "]");
     for (RecordComponent c : rec.getClass().getRecordComponents()) {
       Object v = read(c, rec);
@@ -128,7 +183,7 @@ public final class MaskingPolicy {
       if (s != null) {
         rendered = v == null ? "null" : mask(s.value(), v.toString());
       } else {
-        rendered = describe(v);
+        rendered = describe(v, inProgress);
       }
       parts.add(c.getName() + "=" + rendered);
     }

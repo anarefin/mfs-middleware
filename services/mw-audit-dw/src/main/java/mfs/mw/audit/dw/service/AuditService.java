@@ -148,16 +148,22 @@ public class AuditService {
     return node == null || node.isNull() ? null : json.writeValueAsString(masked(node));
   }
 
-  /** A copy of {@code node} with every string value scrubbed (18.3 safety net). */
+  /**
+   * A copy of {@code node} with every string value, number and property name scrubbed (18.3
+   * safety net). A number that the scrub changes becomes the masked string.
+   */
   private static JsonNode masked(JsonNode node) {
-    if (node.isString()) {
-      return node.asString().equals(MaskingPolicy.scrub(node.asString()))
+    if (node.isString() || node.isNumber()) {
+      String text = node.asString();
+      String scrubbed = MaskingPolicy.scrub(text);
+      return text.equals(scrubbed)
           ? node
-          : JsonMapper.shared().getNodeFactory().stringNode(MaskingPolicy.scrub(node.asString()));
+          : JsonMapper.shared().getNodeFactory().stringNode(scrubbed);
     }
     if (node instanceof ObjectNode obj) {
       ObjectNode out = obj.objectNode();
-      obj.properties().forEach(p -> out.set(p.getKey(), masked(p.getValue())));
+      obj.properties()
+          .forEach(p -> out.set(MaskingPolicy.scrub(p.getKey()), masked(p.getValue())));
       return out;
     }
     if (node instanceof ArrayNode arr) {

@@ -28,8 +28,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   same transaction, so a redelivery is refused however late it comes (the chassis inbox is
   purged after 7 d, so it is not used for this).
 - Masking (18.3): producers mask; before storing, `MaskingPolicy.scrub` runs again over
-  `correlationId`, `actor.id`, `resource`, `payloadRef` and every string in `before`/`after`
-  (numbers are not touched). The hash covers the masked values.
+  `correlationId`, `actor.id`, `resource`, `payloadRef` and every string, number and property
+  name in `before`/`after` (a number the scrub changes is stored as the masked string). The hash
+  covers the masked values.
 - Roles (16.4): the service runs as `audit_writer` (INSERT only on `event` and `event_key`; SELECT/INSERT/UPDATE
   on `chain_head`; EXECUTE `ensure_month_partition`; DML on the chassis `inbox`/`outbox`/
   `shedlock`). Flyway runs as the schema owner `audit_dw_rw` (`SPRING_FLYWAY_USER` +
