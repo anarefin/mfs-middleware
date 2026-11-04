@@ -6,9 +6,9 @@
 
 - 10: E2E harness + P2P scenarios
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Unit tests for both flow definitions in the flow registry
-- [ ] Role test: a customer token trying CASH_IN and an agent token trying CASH_OUT are rejected with `MW-AUTH-*`
-- [ ] e2e `@cash`: agent cash-in and customer cash-out success, plus insufficient agent float rejection; balances asserted
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] Unit tests for both flow definitions in the flow registry
+- [x] Role test: a customer token trying CASH_IN and an agent token trying CASH_OUT are rejected with `MW-AUTH-*`
+- [x] e2e `@cash`: agent cash-in and customer cash-out success, plus insufficient agent float rejection; balances asserted (simulated via core-mock fault injection; a real float drain is blocked by the per-txn limit)
+- [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
