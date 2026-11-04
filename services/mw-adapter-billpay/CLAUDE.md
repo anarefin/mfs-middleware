@@ -42,7 +42,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.billpay`. Fol
   `service/PartnerCallbackService`, `mapper/PartnerInboundMapper`, own type `dto/PartnerInbound`):
   `POST /partner/{partnerId}/callback/**`, reached from outside only through the APISIX route of
   that partner (`deploy/apisix/routes/partner-billagg-callback.json`: ip allow-list, 16 KiB body
-  cap, 600/min per source address in Valkey; path and body forwarded unchanged). Steps: (1) the
+  cap, 600/min per source address in Valkey; path and body forwarded unchanged). Steps: (0) the path's partner id must
+  match `^[a-z0-9][a-z0-9-]{0,63}$` (`@Pattern` on the path variable; else 400 `MW-VAL-001`, detail
+  `partnerId`), and `mapper/InboundCallMapper` builds the framework's `InboundCall` (T7); (1) the
   partner in the URL must have config of its own (no default-partner fallback) else 404; (2) the
   framework verifies the signature with that partner's auth scheme and maps the body
   (`PartnerGateway.inbound`, CALLBACK operation): not authentic 401 `MW-AUTH-001`

@@ -31,7 +31,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.bank`. Follow
   type `dto/PartnerInbound`): `POST /partner/{partnerId}/callback/**`, reached from outside only
   through the APISIX route of that partner (`deploy/apisix/routes/partner-c2wbank-callback.json`:
   ip allow-list, 16 KiB body cap, 600/min per source address in Valkey; path and body forwarded
-  unchanged). Steps: (1) the partner in the URL must have config of its own (no default-partner
+  unchanged). Steps: (0) the path's partner id must
+  match `^[a-z0-9][a-z0-9-]{0,63}$` (`@Pattern` on the path variable; else 400 `MW-VAL-001`, detail
+  `partnerId`), and `mapper/InboundCallMapper` builds the framework's `InboundCall` (T7); (1) the partner in the URL must have config of its own (no default-partner
   fallback) else 404; (2) the framework verifies the signature with that partner's auth scheme
   and maps the body (CALLBACK operation, returns our `reference`): not authentic 401 `MW-AUTH-001`
   (`security.partner_callback_rejected`), unreadable 400 `MW-VAL-002`; (3) the callback's
