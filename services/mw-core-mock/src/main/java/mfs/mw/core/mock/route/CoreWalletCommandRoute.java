@@ -23,6 +23,6 @@ public class CoreWalletCommandRoute extends RetryTopicRouteBuilder {
 
   @Override
   protected String handlerUri() {
-    return "bean:coreCommandListener?method=handle";
+    return "bean:coreCommandListener?method=handleWallet";
   }
 }

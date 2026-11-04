@@ -298,8 +298,8 @@ class CoreCommandServiceIT {
   }
 
   @Test
-  void commandsOutsideThisSliceAreIgnored() {
-    CoreCommand c = command("HoldFunds", "h-1", CUSTOMER_A, CUSTOMER_B, 100, "1234");
+  void commandTypesTheCoreMockDoesNotKnowAreIgnored() {
+    CoreCommand c = command("ApplyComplianceAction", "h-1", CUSTOMER_A, CUSTOMER_B, 100, "1234");
 
     assertThat(service.handle(c)).isEmpty();
   }

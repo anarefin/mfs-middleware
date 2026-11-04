@@ -48,6 +48,10 @@ public class WalletRepository {
     jdbc.update("update wallet set balance_minor = balance_minor + ? where id = ?", deltaMinor, id);
   }
 
+  public void adjustHeld(String id, long deltaMinor) {
+    jdbc.update("update wallet set held_minor = held_minor + ? where id = ?", deltaMinor, id);
+  }
+
   /** Sum of transfer debits of the wallet since {@code since}. */
   public long debitedSince(String id, Instant since) {
     Long sum =
