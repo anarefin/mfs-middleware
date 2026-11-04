@@ -16,7 +16,8 @@ import jakarta.validation.constraints.Min;
  * @param callbackUrl where callbacks are posted
  * @param callbackDelayMs delay of a LATE callback
  * @param callbackOnly payments are accepted with 202 PENDING and their outcome comes only by
- *     callback (billagg, ticket 22); the status inquiry still knows the real outcome
+ *     callback (billagg, ticket 22); the status inquiry still knows the real outcome. Nullable
+ *     (absent = false) so control bodies written before it existed are still accepted.
  */
 public record Scenario(
     SimMode forceMode,
@@ -27,7 +28,7 @@ public record Scenario(
     CallbackMode callbackMode,
     String callbackUrl,
     @Min(0) long callbackDelayMs,
-    boolean callbackOnly) {
+    Boolean callbackOnly) {
 
   public static final Scenario DEFAULT =
       new Scenario(null, 0, 0.0, false, null, CallbackMode.NONE, null, 0, false);
@@ -36,6 +37,7 @@ public record Scenario(
     if (callbackMode == null) {
       callbackMode = CallbackMode.NONE;
     }
+    callbackOnly = Boolean.TRUE.equals(callbackOnly);
   }
 
   public Scenario withForceMode(SimMode m) {
