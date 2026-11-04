@@ -36,6 +36,15 @@ public class AppSteps {
     submit(user, state.idempotencyKey, AppApi.request("P2P", credit, amountMinor, pin));
   }
 
+  /**
+   * Any txnType whose body is the plain request (P2P, CASH_IN, CASH_OUT): the counterparty is the
+   * body's {@code creditParty} wallet (the payee, or for CASH_OUT the paying customer).
+   */
+  @When("{word} submits {word} of {long} poisha with counterparty {word} and PIN {string}")
+  public void submits(String user, String txnType, long amountMinor, String counterparty, String pin) {
+    submit(user, AppApi.newIdempotencyKey(), AppApi.request(txnType, counterparty, amountMinor, pin));
+  }
+
   @When("{word} sends the same request again with the same idempotency key")
   public void repeats(String user) {
     submit(user, state.idempotencyKey, state.lastRequest);

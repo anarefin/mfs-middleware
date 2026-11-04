@@ -69,6 +69,10 @@ public class TransactionService {
     if (!props.supportedTxnTypes().contains(body.txnType())) {
       throw new MwException(ErrorCodes.VAL_UNSUPPORTED_TXN_TYPE, "Transaction type is not supported");
     }
+    if (!props.mayInitiate(user.walletType(), body.txnType())) {
+      throw new MwException(ErrorCodes.AUTH_FORBIDDEN, "This app role cannot initiate this transaction type")
+          .withStatus(HttpStatus.FORBIDDEN);
+    }
     refuseUnknownAttributes(body);
     Instant now = clock.instant();
     String txnId = UuidV7.next(clock).toString();

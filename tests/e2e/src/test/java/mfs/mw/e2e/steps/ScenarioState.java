@@ -26,6 +26,9 @@ public class ScenarioState {
   /** Every submit response in order; the last one is "the response". */
   final List<Http.Response> responses = new ArrayList<>();
 
+  /** True once the scenario injected a core fault (reset after the scenario). */
+  boolean faultInjected;
+
   /** Balances noted before the action, by wallet id. */
   final Map<String, CoreMock.Balance> notedBalances = new LinkedHashMap<>();
 

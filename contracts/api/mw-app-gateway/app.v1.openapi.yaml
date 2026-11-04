@@ -19,7 +19,12 @@ paths:
   /app/v1/transactions:
     post:
       operationId: submitTransaction
-      summary: Submit a transaction (P2P only so far)
+      summary: Submit a transaction (P2P, CASH_IN, CASH_OUT so far)
+      description: >-
+        Who may initiate what follows the token's realm role: `customer` sends P2P, `agent` sends
+        CASH_IN (agent wallet pays the customer in `creditParty`) and CASH_OUT (the customer in
+        `creditParty` pays the agent wallet; `encryptedPin` is the customer's PIN). Any other
+        combination is 403 MW-AUTH-002.
       parameters:
         - name: Idempotency-Key
           in: header
@@ -126,9 +131,12 @@ components:
       type: object
       required: [txnType, creditParty, amount, encryptedPin]
       properties:
-        txnType: { type: string, enum: [P2P] }
+        txnType: { type: string, enum: [P2P, CASH_IN, CASH_OUT] }
         creditParty:
           type: object
+          description: >-
+            The customer wallet on the other side: the payee for P2P and CASH_IN, the payer
+            for CASH_OUT.
           required: [id]
           properties:
             type: { type: string, const: WALLET }

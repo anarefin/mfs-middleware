@@ -168,7 +168,13 @@ mw:
     instance-id: ${HOSTNAME:}
     request-topic: mw.txn.request.v1
     status-topic: mw.txn.status.v1
-    supported-txn-types: P2P
+    supported-txn-types: P2P,CASH_IN,CASH_OUT
+    # Which app role (wallet type) may initiate which txnType (spec WP20); a type not listed is
+    # open to every served role.
+    txn-type-roles:
+      P2P: CUSTOMER
+      CASH_IN: AGENT
+      CASH_OUT: AGENT
     # attributes keys an app may send (a free-text payment reference only, so far)
     allowed-attributes: reference
     jwt:

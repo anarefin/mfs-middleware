@@ -11,7 +11,9 @@
     "txnType": {
       "type": "string",
       "enum": [
-        "P2P"
+        "P2P",
+        "CASH_IN",
+        "CASH_OUT"
       ]
     },
     "creditParty": {

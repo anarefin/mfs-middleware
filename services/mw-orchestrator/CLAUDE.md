@@ -5,7 +5,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 ## Responsibilities
 
-- Runs a P2P transaction as a persisted saga (spec 7, WP07 part). Consumes `mw.txn.request.v1`
+- Runs P2P, CASH_IN and CASH_OUT transactions as a persisted saga (spec 7, WP07). Consumes `mw.txn.request.v1`
   (`route/TxnRequestRoute`) and the core results on `core.wallet.event.v1`
   (`route/CoreWalletEventRoute`), both with retry topics and DLQ. Publishes every state change on
   `mw.txn.status.v1` and sends `ValidateTransaction` / `PostTransfer` on `core.wallet.command.v1`,
@@ -13,7 +13,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - State machine: plain Java in `service/saga` (`Status` = the 14 states, sealed `SagaEvent`,
   `SagaMachine.apply(status, event)` -> `Transition(from, to, effect)` or
   `InvalidTransitionException`). All transitions of the 7.2 table are modelled and unit-tested;
-  only the P2P path is wired (`P2pFlow`, `FlowRegistry` by `txnType`). Effects of unwired flows
+  only the no-hold path is wired (`FlowRegistry` by `txnType`: `P2pFlow`, `CashInFlow`,
+  `CashOutFlow`, all validate -> PostTransfer, no partner; the parties come from the request
+  as the channel set them, e.g. CASH_OUT debits the customer and credits the agent). Effects of unwired flows
   (HoldFunds, partner request, commit, release, reverse, QueryTransaction) are logged
   (`saga.effect.unwired`) and skipped. `SagaEngine.fire` is the single place that applies an
   event: persist state + `saga_step`, publish status + audit event, re-arm the deadline, send the
