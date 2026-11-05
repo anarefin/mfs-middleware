@@ -162,6 +162,38 @@ class CorrelationIdFilterTest {
     assertThat(logs.list).isEmpty();
   }
 
+  /**
+   * A traceparent whose trace or parent id the scrub would change (an MSISDN split by single
+   * separators, no 6-digit run) is dropped too.
+   */
+  @Test
+  void traceparentHidingASplitMsisdnIsDroppedBeforeTracing() throws Exception {
+    for (String crafted :
+        List.of(
+            "00-4bf92f3577b34da6a3cea0171.2345.678a-00f067aa0ba902b7-01",
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-a0171_2345_678aaa-01")) {
+      MockHttpServletRequest req = new MockHttpServletRequest("GET", "/x");
+      req.addHeader("traceparent", crafted);
+      req.addHeader("tracestate", "k=v");
+      run(req);
+      assertThat(seenRequest.get().getHeader("traceparent")).isNull();
+      assertThat(seenRequest.get().getHeader("tracestate")).isNull();
+    }
+    MockHttpServletRequest dotted = new MockHttpServletRequest("GET", "/x");
+    dotted.addHeader("traceparent", "00-4bf92f3577b34da6a3cea0171.2345.678a-00f067aa0ba902b7-01");
+    run(dotted);
+    assertThat(seenRequest.get().getHeader("traceparent")).isNull();
+    assertThat(logs.list)
+        .anySatisfy(e -> assertThat(String.valueOf(e.getKeyValuePairs())).contains("traceparent.dropped"))
+        .noneSatisfy(e -> assertThat(e.getFormattedMessage()).contains("2345"));
+
+    MockHttpServletRequest ok = new MockHttpServletRequest("GET", "/x");
+    ok.addHeader("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
+    run(ok);
+    assertThat(seenRequest.get().getHeader("traceparent"))
+        .isEqualTo("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
+  }
+
   @Test
   void idWithShorterDigitRunsIsKept() throws Exception {
     MockHttpServletRequest req = new MockHttpServletRequest("GET", "/x");

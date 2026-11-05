@@ -60,9 +60,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   has no UUID exemption, so only system ids escape it: a `resource` that is exactly
   `<type>/<uuid>` (type `[a-z][a-z0-9-]*`, a lower-case RFC 9562 UUID, version 1-8, variant 8-b;
   producers build these from system ids) and a `correlationId` that is such a UUID are stored as
-  they are only when the scrub also leaves them unchanged; any other resource or correlation id,
-  e.g. `txn/<crafted uuid shape>`, `foo/01712345678` or a valid UUID spreading an MSISDN over its
-  groups (`aaaa0171-2345-678a-…`), is scrubbed. `txnId` is parsed as a UUID. `AuditTrailIT` pins it. The hash
+  they are, on shape alone (`CorrelationIdFilter` is the gate: it replaces a caller correlation id
+  with a 6+ digit run or one the scrub would change, e.g. a UUID spreading an MSISDN over its groups);
+  any other resource, e.g. `txn/<crafted uuid shape>` or `foo/01712345678`, is scrubbed. `txnId` is parsed as a UUID. `AuditTrailIT` pins it. The hash
   covers the masked values.
 - Roles (16.4): the service runs as `audit_writer` (INSERT only on `event` and `event_key`; SELECT/INSERT/UPDATE
   on `chain_head`; EXECUTE `ensure_month_partition`; DML on the chassis `inbox`/`outbox`/
@@ -89,8 +89,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, unsafe or holding a
   run of 6+ digits or one the scrub would change (WARN `correlation.id.replaced`), MDC
-  `correlationId`; drops a caller
-  `traceparent` with such a run.
+  `correlationId`; drops a caller `traceparent` whose trace or parent id is such a value.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
 - `exception/`: `MwException`, `ErrorCategory` (namespace -> HTTP status, retryable),
   `ErrorCodes`, `GlobalExceptionHandler` building `dto/ErrorEnvelope`. Logs show route
