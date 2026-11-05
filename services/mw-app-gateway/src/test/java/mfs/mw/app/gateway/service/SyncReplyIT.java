@@ -88,7 +88,7 @@ class SyncReplyIT {
         .uri("/app/v1/transactions")
         .with(user(PAYER))
         .header("Idempotency-Key", key)
-        .header("X-Correlation-Id", "corr-" + key)
+        .header("X-Correlation-Id", corr(key))
         .contentType(MediaType.APPLICATION_JSON)
         .content(
             """
@@ -101,6 +101,15 @@ class SyncReplyIT {
 
   static String key() {
     return "it-" + UUID.randomUUID();
+  }
+
+  /**
+   * A caller correlation id without digits: {@code CorrelationIdFilter} replaces a caller id that
+   * {@code MaskingPolicy.scrub} would change, and a random UUID's digit groups sometimes read as an
+   * MSISDN, which made this test fail at random.
+   */
+  static String corr(String key) {
+    return "corr-" + key.replaceAll("[0-9]", "x");
   }
 
   JsonNode body(MvcTestResult r) throws Exception {
@@ -135,7 +144,7 @@ class SyncReplyIT {
     assertThat(req.path("txnId").asString()).isEqualTo(b.path("txnId").asString());
     assertThat(req.path("channel").asString()).isEqualTo("CUSTOMER_APP");
     assertThat(req.path("txnType").asString()).isEqualTo("P2P");
-    assertThat(req.path("correlationId").asString()).isEqualTo("corr-" + key);
+    assertThat(req.path("correlationId").asString()).isEqualTo(corr(key));
     assertThat(req.path("initiator").path("id").asString()).isEqualTo(PAYER);
     assertThat(req.path("debitParty").path("id").asString()).isEqualTo(PAYER);
     assertThat(req.path("creditParty").path("id").asString()).isEqualTo(PAYEE);
