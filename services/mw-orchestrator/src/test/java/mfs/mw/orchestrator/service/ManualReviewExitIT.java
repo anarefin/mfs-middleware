@@ -182,6 +182,30 @@ class ManualReviewExitIT {
     assertThat(commandTypes()).containsExactly("QueryTransaction", "CreditWallet", "QueryTransaction");
   }
 
+  @Test
+  void aLateAnswerToAnOlderCreditCheckNeitherCreditsNorCompletesTheCurrentRound() {
+    String id = TestData.txnId();
+    UUID txnId = inManualReview(TestData.addMoneyBank(id, "key-" + id, 5_000, "1234567890123"));
+    decide(txnId, new SagaEvent.ManualCommit());
+    String firstCheck = lastCommandId();
+    coreEvents.handle(event("TransactionStatus", id, firstCheck, "{\"txnStatus\":\"NOT_FOUND\"}"));
+    coreEvents.handle(event("CreditRejected", id, id + ":credit:manual-1", "{}"));
+    assertThat(status(txnId)).isEqualTo("MANUAL_REVIEW");
+    clock.set(TestData.NOW.plusSeconds(30));
+    decide(txnId, new SagaEvent.ManualCommit());
+    String secondCheck = lastCommandId();
+    assertThat(secondCheck).isNotEqualTo(firstCheck).startsWith(id + ":credit-check:");
+
+    coreEvents.handle(event("TransactionStatus", id, firstCheck, "{\"txnStatus\":\"NOT_FOUND\"}"));
+    coreEvents.handle(event("TransactionStatus", id, firstCheck, "{\"txnStatus\":\"CREDITED\"}"));
+
+    assertThat(status(txnId)).isEqualTo("COMMITTING");
+    assertThat(commandTypes()).containsExactly("QueryTransaction", "CreditWallet", "QueryTransaction");
+
+    coreEvents.handle(event("TransactionStatus", id, secondCheck, "{\"txnStatus\":\"REJECTED\"}"));
+    assertThat(lastCommandId()).isEqualTo(id + ":credit:manual-2");
+  }
+
   private String status(UUID txnId) {
     return jdbc.queryForObject("select status from transaction where txn_id = ?", String.class, txnId);
   }

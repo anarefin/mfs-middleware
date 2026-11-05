@@ -134,8 +134,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   only; elsewhere stale, ignored): CREDITED / POSTED -> COMPLETED with no new credit; NOT_FOUND /
   VALIDATED / REJECTED -> stays COMMITTING with `Effect.SEND_CREDIT`, which sends
   `<txnId>:credit:manual-<n>`; any other answer -> MANUAL_REVIEW `MW-TMO-005`. Each COMMITTING deadline
-  of a forced credit asks again instead of resending blind; a late NOT_CREDITED answer only resends
-  the same round's id (the core deduplicates it). The saga's own credit (round 0, `<txnId>:credit`)
+  of a forced credit asks again instead of resending blind. Only the answer to the LATEST check counts
+  (`CoreCallRepository.latestCreditCheck`: last `:credit-check:` commandId of the txn in `core_call`
+  send order, the one decision the saga takes from that table): a late answer to an older check (an
+  earlier round, or one superseded by a deadline re-check) is logged `saga.event.ignored` and changes
+  nothing; a redelivered answer to the latest one only resends the same round's id (the core
+  deduplicates it). The saga's own credit (round 0, `<txnId>:credit`)
   sends no check. Defence in depth: mw-core-mock credits a txnId once whatever the commandId (an
   already credited one is answered WalletCredited without effect). An action the state or flow does not allow, or an unknown action, changes nothing. Every
   action is audited in the same transaction: `txn.operator.action`, actor `user`/checkerId, before
