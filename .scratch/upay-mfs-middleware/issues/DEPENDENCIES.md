@@ -3,7 +3,7 @@
 # Status here is authoritative, not in the tickets. Earlier tickets 01-35, 48-50: done.
 # ticket                                    blocked-by        status   elapsed  diffstat   commits
 
-53-fast-gate-contract-manifests             —                 todo     —        —          —
+53-fast-gate-contract-manifests             —                 done     75m      161 files, +8515 −743  b807db7..d7d7916
 36-admin-api-rbac-search                    35,53             todo     —        —          —
 37-maker-checker-engine-tsq-reversal        36,18,19          todo     —        —          —
 52-ops-wallet-unlock                        37                todo     —        —          —

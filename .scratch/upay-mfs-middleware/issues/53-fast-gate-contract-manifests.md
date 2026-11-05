@@ -30,7 +30,7 @@
 
 **Blocked by:**
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Every module has `contracts.yml`, and `make contracts-lint` validates them (the self-test covers a missing file, a missing `#Msg` and an orphan schema)
 - [x] `./gradlew test` passes in every module with Docker stopped
