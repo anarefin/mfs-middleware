@@ -243,25 +243,13 @@ class MaskingPolicyTest {
   /**
    * Free text keeps digit-only bounds even inside a letter-and-digit token: a token bound would
    * let {@code nid2345678901} or {@code wallet01712345789} through, and over-masking a hex id in
-   * a message costs only readability (id fields are written with {@link
-   * MaskingPolicy#scrubId(String)} instead).
+   * a message costs only readability (id fields of a strict system shape are exempted by the log
+   * formatter instead).
    */
   @Test
   void scrubMasksDigitRunsInsideAlphanumericTokens() {
     assertThat(MaskingPolicy.scrub("abc6948355579fa wallet01712345789x nid2345678901z"))
         .isEqualTo("abc****579fa wallet0171****789x nid****901z");
-  }
-
-  @Test
-  void scrubIdKeepsLongDigitRunsButMasksMsisdns() {
-    assertThat(MaskingPolicy.scrubId("edge-test-cid-6948355579fa"))
-        .isEqualTo("edge-test-cid-6948355579fa");
-    assertThat(MaskingPolicy.scrubId("12345678901234567890123456789012"))
-        .isEqualTo("12345678901234567890123456789012");
-    assertThat(MaskingPolicy.scrubId("corr-01712345789")).isEqualTo("corr-0171****789");
-    assertThat(MaskingPolicy.scrubId("cid+880 1711-234567")).isEqualTo("cid+880171****567");
-    assertThat(MaskingPolicy.scrubId("")).isEmpty();
-    assertThat(MaskingPolicy.scrubId(null)).isNull();
   }
 
   @Test
@@ -272,11 +260,31 @@ class MaskingPolicyTest {
     assertThat(MaskingPolicy.scrub(text)).isEqualTo(text);
   }
 
-  /** UUID shape alone does not protect: a group hiding a 10+ digit run is scrubbed. */
+  /**
+   * A token that is exactly a UUID is a system id (txn ids, audit resources) and stays whole even
+   * when a group holds a 10-digit run (about one random UUID in 40); masking applies around it.
+   */
   @Test
-  void scrubMasksUuidShapedTokensThatHideLongNumbers() {
+  void scrubKeepsExactUuidTokensWithLongDigitRunsWhole() {
+    assertThat(MaskingPolicy.scrub("txn/01a1aa26-3303-7169-8282-0e6132984047"))
+        .isEqualTo("txn/01a1aa26-3303-7169-8282-0e6132984047");
+    assertThat(
+            MaskingPolicy.scrub(
+                "txn/01a1aa26-3303-7169-8282-0e6132984047 nid 2345678901234 to 01712345789"))
+        .isEqualTo("txn/01a1aa26-3303-7169-8282-0e6132984047 nid ****234 to 0171****789");
     assertThat(MaskingPolicy.scrub("ref=12345678-1234-1234-1234-001711234567 ok"))
-        .isEqualTo("ref=12345678-1234-1234-1234-****4567 ok");
+        .isEqualTo("ref=12345678-1234-1234-1234-001711234567 ok");
+  }
+
+  /** Only the exact 8-4-4-4-12 shape is exempt: a wrong group length is scrubbed like any text. */
+  @Test
+  void scrubMasksUuidLikeTokensOfTheWrongShape() {
+    assertThat(MaskingPolicy.scrub("txn/01a1aa26-3303-7169-8282-0e61329840471"))
+        .isEqualTo("txn/01a1aa26-3303-7169-8282-0e****0471");
+    assertThat(MaskingPolicy.scrub("txn/01a1aa2-3303-7169-8282-0e6132984047"))
+        .isEqualTo("txn/01a1aa2-3303-7169-8282-0e****047");
+    assertThat(MaskingPolicy.scrub("x 1-01a1aa26-3303-7169-8282-0e6132984047"))
+        .isEqualTo("x 1-01a1aa26-3303-7169-8282-0e****047");
   }
 
   @Test

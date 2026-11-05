@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import mfs.mw.core.mock.util.MaskingPolicy;
 import org.slf4j.event.KeyValuePair;
 import org.slf4j.helpers.MessageFormatter;
@@ -24,8 +25,10 @@ import org.springframework.core.env.Environment;
  * numbers ({@link MaskingPolicy#scrub(String)}). Numeric field values are scrubbed as text too
  * and written as the masked string when masking changes them. The 21.1 id fields ({@code
  * correlationId}, {@code txnId}, {@code traceId}, {@code spanId}, {@code partnerId}) are traced
- * by exact match, so they get {@link MaskingPolicy#scrubId(String)} instead: a digit run in them
- * stays whole and only an MSISDN is masked, as correlationId and traceId are chosen by the caller.
+ * by exact match, so one whose value is a String of a strict system shape (a UUID, a W3C trace
+ * or span id; {@link #SYSTEM_ID}) is written unmasked, digit runs and all. Any other value in an
+ * id field is scrubbed like free text, as correlationId and traceId are chosen by the caller and
+ * may carry an NID, account number or MSISDN.
  *
  * <p>Context fields come from the MDC or from SLF4J key-value pairs ({@code
  * log.atInfo().addKeyValue("event", "txn.state.changed")}); key-value pairs win. Wired by {@code
@@ -40,9 +43,17 @@ public class JsonLogFormatter implements StructuredLogFormatter<ILoggingEvent> {
 
   private static final List<String> TRAILING_FIELDS = List.of("durationMs", "errorCode");
 
-  /** The 21.1 id fields, written with {@link MaskingPolicy#scrubId(String)}. */
+  /** The 21.1 id fields, written unmasked when they have a {@link #SYSTEM_ID} shape. */
   private static final Set<String> ID_FIELDS =
       Set.of("correlationId", "txnId", "traceId", "spanId", "partnerId");
+
+  /**
+   * Strict shapes of system ids: a UUID (8-4-4-4-12 hex, any case), a W3C trace id (32 lowercase
+   * hex) or span id (16 lowercase hex), the whole value and nothing else.
+   */
+  private static final Pattern SYSTEM_ID =
+      Pattern.compile(
+          "[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}|[0-9a-f]{32}|[0-9a-f]{16}");
 
   private final JsonWriter<Map<String, Object>> writer = JsonWriter.<Map<String, Object>>standard()
       .withNewLineAtEnd();
@@ -117,8 +128,10 @@ public class JsonLogFormatter implements StructuredLogFormatter<ILoggingEvent> {
       String text = value.toString();
       String scrubbed = MaskingPolicy.scrub(text);
       out.put(key, text.equals(scrubbed) ? value : scrubbed);
-    } else if (ID_FIELDS.contains(key)) {
-      out.put(key, MaskingPolicy.scrubId(value.toString()));
+    } else if (ID_FIELDS.contains(key)
+        && value instanceof String id
+        && SYSTEM_ID.matcher(id).matches()) {
+      out.put(key, id);
     } else {
       out.put(key, MaskingPolicy.describe(value));
     }
