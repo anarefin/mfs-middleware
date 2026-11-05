@@ -34,6 +34,9 @@ public class BodySchema {
   /** {@code POST /admin/v1/transactions/{txnId}/change-requests} (ticket 37). */
   public static final String CHANGE_REQUEST = "derived-schemas/admin-v1-txn-change-request.json";
 
+  /** {@code POST /admin/v1/wallets/{walletId}/change-requests} (ticket 52). */
+  public static final String WALLET_CHANGE_REQUEST = "derived-schemas/admin-v1-wallet-change-request.json";
+
   /** {@code POST /admin/v1/change-requests/{id}/reject} (ticket 37). */
   public static final String REJECT = "derived-schemas/admin-v1-reject-request.json";
 

@@ -1,5 +1,6 @@
 package mfs.mw.admin.api.mapper;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -9,15 +10,20 @@ import mfs.mw.admin.api.dto.AuditEvent;
 import mfs.mw.admin.api.dto.ChangeRequestView;
 import mfs.mw.admin.api.dto.ReversalRequest;
 import mfs.mw.admin.api.dto.TxnAction;
+import mfs.mw.admin.api.dto.UnlockWalletCommand;
 import mfs.mw.admin.api.entity.ChangeRequest;
 import mfs.mw.admin.api.util.MaskingPolicy;
+import mfs.mw.admin.api.util.SensitiveType;
 
 /**
  * Change requests (ticket 37, spec 15.3) to their {@code admin.v1} view, their audit events on
  * {@code mw.audit.event.v1} and the messages an approval sends to mw-orchestrator. Audit: action
  * {@code admin.change_request.<created|approved|rejected|expired>}, resource {@code
  * transaction/<txnId>} (so the request shows in the transaction's audit trail), {@code before} /
- * {@code after} the request status and the transaction status; reasons are scrubbed free text.
+ * {@code after} the request status and the transaction status; reasons are scrubbed free text. A
+ * wallet request (UNLOCK, ticket 52) is audited as {@code wallet/<masked MSISDN>} with txnId its
+ * {@code unlockTxnId} and {@code walletStatus} in place of {@code txnStatus}; its approval sends
+ * {@code UnlockWallet} to the core.
  */
 public final class ChangeRequestMapper {
 
@@ -26,6 +32,8 @@ public final class ChangeRequestMapper {
   public static final String APPROVED = "admin.change_request.approved";
   public static final String REJECTED = "admin.change_request.rejected";
   public static final String EXPIRED = "admin.change_request.expired";
+  /** Payload key of a wallet request's txnId (ticket 52). */
+  public static final String UNLOCK_TXN_ID = "unlockTxnId";
 
   /** The organisation a REVERSAL names as its parties (no customer data in the request). */
   static final ReversalRequest.Party OPS = new ReversalRequest.Party("ORG", "upay-ops");
@@ -34,7 +42,7 @@ public final class ChangeRequestMapper {
 
   public static ChangeRequestView view(ChangeRequest cr) {
     return new ChangeRequestView(
-        cr.id().toString(), cr.resourceType(), cr.resourceId(), cr.action(), cr.payload(), cr.diff(), cr.makerId(),
+        cr.id().toString(), cr.resourceType(), shownId(cr), cr.action(), cr.payload(), cr.diff(), cr.makerId(),
         cr.status().name(), cr.checkerId(), cr.reason(), cr.decisionReason(), cr.createdAt(), cr.decidedAt(),
         cr.expiresAt());
   }
@@ -48,13 +56,13 @@ public final class ChangeRequestMapper {
     Map<String, Object> after = base(cr, "PENDING");
     after.put("expiresAt", cr.expiresAt().toString());
     after.put("reason", MaskingPolicy.scrub(cr.reason()));
-    return event(cr, correlationId, "user", cr.makerId(), CREATED, Map.of("txnStatus", cr.statusBefore()), after,
+    return event(cr, correlationId, "user", cr.makerId(), CREATED, Map.of(statusKey(cr), cr.statusBefore()), after,
         cr.createdAt());
   }
 
   public static AuditEvent approved(ChangeRequest cr, String checkerId, String sentAs, String correlationId, Instant at) {
     Map<String, Object> after = base(cr, "APPROVED");
-    after.put("txnStatus", cr.statusAfter());
+    after.put(statusKey(cr), cr.statusAfter());
     after.put("makerId", cr.makerId());
     after.put("sentAs", sentAs);
     return event(cr, correlationId, "user", checkerId, APPROVED, pendingBefore(cr), after, at);
@@ -62,7 +70,7 @@ public final class ChangeRequestMapper {
 
   public static AuditEvent rejected(ChangeRequest cr, String checkerId, String reason, String correlationId, Instant at) {
     Map<String, Object> after = base(cr, "REJECTED");
-    after.put("txnStatus", cr.statusBefore());
+    after.put(statusKey(cr), cr.statusBefore());
     after.put("makerId", cr.makerId());
     after.put("reason", MaskingPolicy.scrub(reason));
     return event(cr, correlationId, "user", checkerId, REJECTED, pendingBefore(cr), after, at);
@@ -93,8 +101,43 @@ public final class ChangeRequestMapper {
         Map.of("changeRequestId", cr.id().toString(), "makerId", cr.makerId(), "checkerId", checkerId));
   }
 
+  /**
+   * The approved wallet unlock for the core ({@code UnlockWallet} on {@code core.command.v1},
+   * ticket 52): txnId the request's {@code unlockTxnId}, commandId {@code <changeRequestId>:unlock}.
+   */
+  public static UnlockWalletCommand unlock(
+      ChangeRequest cr, String checkerId, String correlationId, Instant at, Duration ttl) {
+    return new UnlockWalletCommand(
+        1, UnlockWalletCommand.TYPE, unlockCommandId(cr), unlockTxnId(cr), correlationId, at, at.plus(ttl),
+        new UnlockWalletCommand.Payload(
+            new UnlockWalletCommand.Subject("WALLET", cr.resourceId()), cr.id().toString(), cr.makerId(), checkerId));
+  }
+
+  /** The core command id of a wallet unlock: the core is idempotent on it. */
+  public static String unlockCommandId(ChangeRequest cr) {
+    return cr.id() + ":unlock";
+  }
+
+  /** The UUIDv7 a wallet request carries as txnId (core command and audit), minted at creation. */
+  public static String unlockTxnId(ChangeRequest cr) {
+    return String.valueOf(cr.payload().get(UNLOCK_TXN_ID));
+  }
+
+  /** The resource id as views and audits show it: a wallet id (an MSISDN) masked. */
+  public static String shownId(ChangeRequest cr) {
+    return wallet(cr) ? MaskingPolicy.mask(SensitiveType.MSISDN, cr.resourceId()) : cr.resourceId();
+  }
+
+  private static boolean wallet(ChangeRequest cr) {
+    return ChangeRequest.WALLET.equals(cr.resourceType());
+  }
+
+  private static String statusKey(ChangeRequest cr) {
+    return wallet(cr) ? "walletStatus" : "txnStatus";
+  }
+
   private static Map<String, Object> pendingBefore(ChangeRequest cr) {
-    return Map.of("status", "PENDING", "txnStatus", cr.statusBefore());
+    return Map.of("status", "PENDING", statusKey(cr), cr.statusBefore());
   }
 
   private static Map<String, Object> base(ChangeRequest cr, String status) {
@@ -111,11 +154,11 @@ public final class ChangeRequestMapper {
     return new AuditEvent(
         1,
         UUID.randomUUID().toString(),
-        cr.resourceId(),
+        wallet(cr) ? unlockTxnId(cr) : cr.resourceId(),
         correlationId == null || correlationId.isBlank() ? "admin-" + UUID.randomUUID() : correlationId,
         new AuditEvent.Actor(actorType, actorId),
         action,
-        cr.resourceType() + "/" + cr.resourceId(),
+        cr.resourceType() + "/" + shownId(cr),
         before,
         after,
         "SUCCESS",

@@ -107,6 +107,11 @@ Only APISIX is published, so every call goes through it:
   admin audit trail of the transaction records the <APPROVED|REJECTED> change request" (via
   mw-audit-dw). A TOPUP lands in MANUAL_REVIEW with "the core rejects the next CommitHold with
   reason INJECTED_REJECT"; the forced commit is a fresh core command, so it is not refused again.
+- Wallet unlock (`features/wallet-unlock.feature`, `@wallet-unlock @mw-admin-api`, ticket 52):
+  "<maker> asks to unlock wallet <msisdn> because "..."" (then the change request steps above),
+  "the core shows wallet <id> as <ACTIVE|LOCKED>" and "... within N seconds" (mw-core-mock's
+  wallet view). It locks customer02 (01711000002), never customer01; an aborted run leaves it
+  LOCKED until the next fresh stack (`make down DOWN_ARGS=-v`) or an unlock.
 - Notifications (`features/notify.feature`, `@p2p @notify`, ticket 24): "<msisdn> gets the SMS
   \"...\"" waits (30 s) for that exact text at the SMSC simulator with a DELIVRD receipt
   (`{txnId}` stands for the scenario's transaction); "the SMS to <msisdn> about the transaction

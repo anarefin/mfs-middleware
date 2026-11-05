@@ -13,8 +13,8 @@
 
 **Status:** ready-for-agent
 
-- [ ] Contract samples for the new command and events validate (`make contracts-lint`)
-- [ ] A core-mock test shows a locked wallet is unlocked once, and an unlock of a wallet that isn't locked is rejected
-- [ ] An admin API test shows maker ≠ checker is enforced, and approval sends `UnlockWallet` exactly once
-- [ ] e2e: 5 wrong PINs lock the wallet, an approved unlock lets the next correct-PIN P2P succeed
-- [ ] `make verify` passes for every module touched
+- [x] Contract samples for the new command and events validate (`make contracts-lint`)
+- [x] A core-mock test shows a locked wallet is unlocked once, and an unlock of a wallet that isn't locked is rejected
+- [x] An admin API test shows maker ≠ checker is enforced, and approval sends `UnlockWallet` exactly once
+- [ ] e2e: 5 wrong PINs lock the wallet, an approved unlock lets the next correct-PIN P2P succeed (written: `tests/e2e/src/test/resources/features/wallet-unlock.feature`, `@wallet-unlock`; runs at the milestone gate)
+- [ ] `make verify` passes for every module touched (deferred to milestone gate)
