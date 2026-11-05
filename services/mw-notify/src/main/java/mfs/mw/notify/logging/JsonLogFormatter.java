@@ -8,7 +8,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Pattern;
 import mfs.mw.notify.util.MaskingPolicy;
 import org.slf4j.event.KeyValuePair;
@@ -23,12 +22,15 @@ import org.springframework.core.env.Environment;
  * MaskingPolicy#describe(Object)} (so {@code @Sensitive} record components are masked) and the
  * whole message, key-value pairs and stack trace are scrubbed for MSISDNs, NIDs and account
  * numbers ({@link MaskingPolicy#scrub(String)}). Numeric field values are scrubbed as text too
- * and written as the masked string when masking changes them. The 21.1 id fields ({@code
- * correlationId}, {@code txnId}, {@code traceId}, {@code spanId}, {@code partnerId}) are traced
- * by exact match, so one whose value is a String of a strict system shape (a UUID, a W3C trace
- * or span id; {@link #SYSTEM_ID}) is written unmasked, digit runs and all. Any other value in an
- * id field is scrubbed like free text, as correlationId and traceId are chosen by the caller and
- * may carry an NID, account number or MSISDN.
+ * and written as the masked string when masking changes them. The 21.1 id fields are traced by
+ * exact match, so system ids among them are written unmasked, digit runs and all ({@link
+ * #isSystemId}): a {@code txnId} that is a valid RFC 9562 UUID (services log only parsed or
+ * generated txn ids), a {@code correlationId} that is such a UUID, and a {@code traceId} /
+ * {@code spanId} of the W3C hex shape (the filter drops a caller {@code traceparent} with a run of
+ * 6+ digits). Any other value, {@code partnerId} always, is scrubbed like free text, so an NID,
+ * account number or MSISDN hidden in an id is still masked. A caller correlation id reaches here
+ * only without a run of 6+ digits (the edge and {@code CorrelationIdFilter} replace it
+ * otherwise), so the scrub leaves it whole unless it spells a dashed MSISDN.
  *
  * <p>Context fields come from the MDC or from SLF4J key-value pairs ({@code
  * log.atInfo().addKeyValue("event", "txn.state.changed")}); key-value pairs win. Wired by {@code
@@ -43,17 +45,17 @@ public class JsonLogFormatter implements StructuredLogFormatter<ILoggingEvent> {
 
   private static final List<String> TRAILING_FIELDS = List.of("durationMs", "errorCode");
 
-  /** The 21.1 id fields, written unmasked when they have a {@link #SYSTEM_ID} shape. */
-  private static final Set<String> ID_FIELDS =
-      Set.of("correlationId", "txnId", "traceId", "spanId", "partnerId");
-
   /**
-   * Strict shapes of system ids: a UUID (8-4-4-4-12 hex, any case), a W3C trace id (32 lowercase
-   * hex) or span id (16 lowercase hex), the whole value and nothing else.
+   * A lower-case RFC 9562 UUID: version nibble 1-8, variant 8-b. What {@code UUID.randomUUID()}
+   * and the txn id generators produce.
    */
-  private static final Pattern SYSTEM_ID =
+  private static final Pattern RFC_UUID =
       Pattern.compile(
-          "[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}|[0-9a-f]{32}|[0-9a-f]{16}");
+          "[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}");
+
+  private static final Pattern TRACE_ID = Pattern.compile("[0-9a-f]{32}");
+
+  private static final Pattern SPAN_ID = Pattern.compile("[0-9a-f]{16}");
 
   private final JsonWriter<Map<String, Object>> writer = JsonWriter.<Map<String, Object>>standard()
       .withNewLineAtEnd();
@@ -128,13 +130,21 @@ public class JsonLogFormatter implements StructuredLogFormatter<ILoggingEvent> {
       String text = value.toString();
       String scrubbed = MaskingPolicy.scrub(text);
       out.put(key, text.equals(scrubbed) ? value : scrubbed);
-    } else if (ID_FIELDS.contains(key)
-        && value instanceof String id
-        && SYSTEM_ID.matcher(id).matches()) {
+    } else if (value instanceof String id && isSystemId(key, id)) {
       out.put(key, id);
     } else {
       out.put(key, MaskingPolicy.describe(value));
     }
+  }
+
+  /** Whether {@code id} in field {@code key} is a system id, written unmasked (21.1). */
+  private static boolean isSystemId(String key, String id) {
+    return switch (key) {
+      case "txnId", "correlationId" -> RFC_UUID.matcher(id).matches();
+      case "traceId" -> TRACE_ID.matcher(id).matches();
+      case "spanId" -> SPAN_ID.matcher(id).matches();
+      default -> false;
+    };
   }
 
   private static String hostName() {

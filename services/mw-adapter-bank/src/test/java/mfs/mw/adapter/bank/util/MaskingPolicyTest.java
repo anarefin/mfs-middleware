@@ -243,8 +243,8 @@ class MaskingPolicyTest {
   /**
    * Free text keeps digit-only bounds even inside a letter-and-digit token: a token bound would
    * let {@code nid2345678901} or {@code wallet01712345789} through, and over-masking a hex id in
-   * a message costs only readability (id fields of a strict system shape are exempted by the log
-   * formatter instead).
+   * a message costs only readability (system ids are exempted by the log formatter's id fields
+   * instead).
    */
   @Test
   void scrubMasksDigitRunsInsideAlphanumericTokens() {
@@ -261,30 +261,27 @@ class MaskingPolicyTest {
   }
 
   /**
-   * A token that is exactly a UUID is a system id (txn ids, audit resources) and stays whole even
-   * when a group holds a 10-digit run (about one random UUID in 40); masking applies around it.
+   * Free text has no UUID or id-shape exemption: a caller can craft an id that hides an NID or
+   * MSISDN, so a digit run inside a UUID is masked like any other (about one random UUID in 40 is
+   * cut; accepted). System ids are exempted only in the log id fields and the audit resource.
    */
   @Test
-  void scrubKeepsExactUuidTokensWithLongDigitRunsWhole() {
+  void scrubMasksDigitRunsInsideUuids() {
     assertThat(MaskingPolicy.scrub("txn/01a1aa26-3303-7169-8282-0e6132984047"))
-        .isEqualTo("txn/01a1aa26-3303-7169-8282-0e6132984047");
+        .isEqualTo("txn/01a1aa26-3303-7169-8282-0e****047");
     assertThat(
             MaskingPolicy.scrub(
                 "txn/01a1aa26-3303-7169-8282-0e6132984047 nid 2345678901234 to 01712345789"))
-        .isEqualTo("txn/01a1aa26-3303-7169-8282-0e6132984047 nid ****234 to 0171****789");
+        .isEqualTo("txn/01a1aa26-3303-7169-8282-0e****047 nid ****234 to 0171****789");
     assertThat(MaskingPolicy.scrub("ref=12345678-1234-1234-1234-001711234567 ok"))
-        .isEqualTo("ref=12345678-1234-1234-1234-001711234567 ok");
+        .isEqualTo("ref=12345678-1234-1234-1234-****4567 ok");
   }
 
-  /** Only the exact 8-4-4-4-12 shape is exempt: a wrong group length is scrubbed like any text. */
+  /** A dashed MSISDN across the groups of a UUID-shaped token is masked too. */
   @Test
-  void scrubMasksUuidLikeTokensOfTheWrongShape() {
-    assertThat(MaskingPolicy.scrub("txn/01a1aa26-3303-7169-8282-0e61329840471"))
-        .isEqualTo("txn/01a1aa26-3303-7169-8282-0e****0471");
-    assertThat(MaskingPolicy.scrub("txn/01a1aa2-3303-7169-8282-0e6132984047"))
-        .isEqualTo("txn/01a1aa2-3303-7169-8282-0e****047");
-    assertThat(MaskingPolicy.scrub("x 1-01a1aa26-3303-7169-8282-0e6132984047"))
-        .isEqualTo("x 1-01a1aa26-3303-7169-8282-0e****047");
+  void scrubMasksMsisdnsSpreadOverUuidGroups() {
+    assertThat(MaskingPolicy.scrub("id 01712345-678a-4bcd-8ef0-abcdefabcdef"))
+        .isEqualTo("id 0171****678a-4bcd-8ef0-abcdefabcdef");
   }
 
   @Test
