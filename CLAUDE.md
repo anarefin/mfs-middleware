@@ -15,6 +15,9 @@ owned, contracts used).
 - `templates/mw-service-template/`: copied by `make new-service NAME=mw-x`; never a dependency.
 - `services/mw-<name>/`: standalone Gradle build with its own wrapper,
   `gradle/libs.versions.toml`, `Dockerfile`, `compose.yml`, `CLAUDE.md`.
+- `ui/mw-admin-ui/`: the Next.js admin console (spec 4.2), own `package.json` (pnpm), `Dockerfile`,
+  `compose.yml`, `CLAUDE.md`; tests `pnpm test` and `pnpm test:e2e` (Playwright, self-contained).
+  Not a Gradle module, so the Makefile module targets skip it.
 - `deploy/` (Compose, APISIX, Kafka topics), `tests/` (e2e, perf; black-box), `docs/`.
 
 Module isolation (4.3, D13, D14): a module never depends on another `mfs.mw` artifact,

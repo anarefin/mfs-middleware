@@ -15,7 +15,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `security/RealmIssuerValidator`). **MFA is the realm's**: the `ops` browser flow requires password +
   TOTP and every user has `CONFIGURE_TOTP` (no token before enrolment); the service does not inspect
   `acr`/`amr` (Keycloak sets no OTP marker without extra LoA config). Decision: conservative and
-  enough while realm `ops` is the only issuer accepted.
+  enough while realm `ops` is the only issuer accepted. Tokens from the console's login (ticket 40,
+  `ui/mw-admin-ui`) carry the public issuer `https://localhost/realms/ops`, others
+  `http://keycloak:8080/realms/ops`; both end with `/realms/ops`.
 - Roles (`security/AdminRole`, the spec 15.4 names as realm roles in `realm_access.roles`; any other
   role name grants nothing): `READ_TRANSACTIONS` = viewer, ops-maker, ops-checker, ops-emergency,
   recon-maker, recon-checker, compliance-officer, auditor (not integration-*, security-admin: least
