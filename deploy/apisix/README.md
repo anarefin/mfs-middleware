@@ -272,6 +272,21 @@ TOTP), quota 300/min per token subject. The roles of spec 15.4 are checked by mw
 here. Spec 15.1 puts the console on the internal gateway only; the MVP has one APISIX, so the route
 is on it (known gap: no network split until a second, internal APISIX exists).
 
+## Admin console routes (ticket 40)
+
+- `routes/admin-ui.json` (`GET`/`HEAD`/`POST /console`, `/console/*` -> `mw-admin-ui:3000`): no auth
+  plugin (the console logs operators in itself with Auth.js, realm `ops`, Authorization Code + PKCE),
+  64 KiB bodies, quota 600/min per source address. The console sets its own CSP, HSTS and
+  X-Frame-Options DENY.
+- `routes/auth-ops-browser.json` (`/realms/ops/*`, `/resources/*` -> `keycloak:8080`): the
+  browser's Keycloak login and OTP pages. `proxy-rewrite` sets `X-Forwarded-Host: $host`,
+  `X-Forwarded-Proto: https`, `X-Forwarded-Port: 443` (APISIX would send its listener port 9443),
+  so Keycloak builds public URLs and issues tokens with `iss` `https://localhost/realms/ops`;
+  mw-admin-ui sends the same headers on its in-stack token calls. Port 443 only.
+- `admin-v1` therefore accepts two issuers (`claim_validator.issuer.valid_issuers`): the in-stack
+  `http://keycloak:8080/realms/ops` (tokens asked for directly, e2e) and the public one. Without the
+  list APISIX accepts only the discovery document's issuer.
+
 ## Adding a route (tickets 22, 31, 33, ...)
 
 1. `routes/<id>.json`: `uri`, `methods`, the auth plugin for the route group (spec 8.2), and the
