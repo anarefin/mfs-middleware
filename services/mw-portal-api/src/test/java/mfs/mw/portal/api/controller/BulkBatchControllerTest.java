@@ -2,6 +2,7 @@ package mfs.mw.portal.api.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -69,5 +70,41 @@ class BulkBatchControllerTest {
     assertThat(r).hasStatus(415);
     assertThat(r).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-005");
     verify(service, never()).upload(any(), any());
+  }
+
+  MvcTestResult reject(String body) {
+    return mvc.post()
+        .uri("/portal/org/v1/bulk/batches/{id}/reject", "b-1")
+        .with(jwt().jwt(j -> j.subject("u2").claim("orgId", "ORG001")
+            .claim("realm_access", Map.of("roles", List.of("org-checker")))))
+        .contentType(MediaType.APPLICATION_JSON)
+        .content(body)
+        .exchange();
+  }
+
+  @Test
+  void aValidRejectBodyReachesTheService() {
+    assertThat(reject("{\"reason\":\"wrong month\"}")).hasStatusOk();
+    verify(service).reject(any(), eq("b-1"), eq("wrong month"));
+  }
+
+  /** The contract-derived schema runs on the received bytes before binding (A6): 400 MW-VAL-001. */
+  @Test
+  void aRejectBodyBreakingTheSchemaIsRefusedBeforeTheService() {
+    for (String body :
+        new String[] {
+          "{}", "{\"reason\":\"\"}", "{\"reason\":7}", "{\"reason\":\"" + "x".repeat(201) + "\"}",
+          "{\"reason\":\"a\",\"note\":\"b\"}", "{\"reason\":\"a\",\"reason\":\"b\"}", "{\"reason\":\"a\"} {}", "[]", "{",
+        }) {
+      assertThat(reject(body)).as(body).hasStatus(400).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-001");
+    }
+    verify(service, never()).reject(any(), any(), any());
+  }
+
+  @Test
+  void anOversizedRejectBodyIsRefusedWith413() {
+    MvcTestResult r = reject("{\"reason\":\"" + "x".repeat(70_000) + "\"}");
+    assertThat(r).hasStatus(413).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-BODY_TOO_LARGE");
+    verify(service, never()).reject(any(), any(), any());
   }
 }

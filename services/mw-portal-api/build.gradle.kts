@@ -50,6 +50,14 @@ dependencies {
     // Scheduled jobs run on one instance only (ShedLock on this service's schema, 4.4).
     implementation(libs.shedlock.spring)
     implementation(libs.shedlock.provider.jdbc.template)
+    // Request body schema check (service/BodySchema; body schemas are checked in the service, never
+    // at the edge, review A6). The validator is built on a newer Jackson 3 than Boot manages; keep
+    // Boot's, so this library does not change Jackson for the whole service (as mw-app-gateway).
+    implementation(libs.json.schema.validator) {
+        exclude(group = "tools.jackson.core")
+        exclude(group = "tools.jackson.dataformat")
+        exclude(group = "tools.jackson", module = "jackson-bom")
+    }
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.boot.starter.webmvc.test)
@@ -60,7 +68,6 @@ dependencies {
     testImplementation(libs.testcontainers.kafka)
     testImplementation(libs.spring.boot.testcontainers)
     testImplementation(libs.camel.test.spring.junit6)
-    testImplementation(libs.json.schema.validator)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 

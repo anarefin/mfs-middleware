@@ -118,8 +118,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
 
 ## Contracts owned
 
-- `api/mw-portal-api/portal-org.v1.openapi.yaml` (org portal API v1). No APISIX body schema (the
-  body is CSV); the edge answers 401/413/429 itself (`deploy/apisix/README.md`).
+- `api/mw-portal-api/portal-org.v1.openapi.yaml` (org portal API v1). APISIX checks no body (review
+  A6); the edge answers 401/413/429 itself (`deploy/apisix/README.md`). The only JSON body, reject
+  `{reason}`, is checked here before binding against
+  `src/main/resources/derived-schemas/portal-org-v1-reject-request.json` (derived from the contract's
+  inline reject body schema; `scripts/derived-schemas.sh --write` after changing it, `make
+  contracts-lint` fails on drift) by `filter/BodySchemaAdvice` -> `service/BodySchema` (copied from
+  mw-app-gateway: duplicate keys, trailing content, non-objects refused; `400 MW-VAL-001`; over 64 KiB
+  `413 MW-VAL-BODY_TOO_LARGE`); then Bean Validation. approve/pause/resume take no body. The CSV
+  upload is not JSON: `BulkCsvParser` and its caps (above) check it. A new JSON body type needs its
+  derived schema added to the advice.
 
 ## Contracts used
 
