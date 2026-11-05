@@ -6,7 +6,7 @@
 
 - 43: E2E acceptance suite completion (criteria 1–5)
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] The script reports zero non-terminal txns after recovery for every killed container (deferred to milestone gate: needs a live run on a fresh stack; the check itself is built and self-tested in `scripts/test/test_chaos.sh`)
 - [ ] No double debit or credit in core-mock after any kill (deferred to milestone gate: live run; the ledger checks are built and self-tested)
