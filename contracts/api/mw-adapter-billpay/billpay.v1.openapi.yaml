@@ -4,7 +4,8 @@ info:
   version: 1.0.0
   description: |
     Internal, read-only API of mw-adapter-billpay (ticket 21): the biller catalogue and the
-    synchronous bill fetch. Its only client is mw-app-gateway, over the `app` zone network
+    synchronous bill fetch. Its clients are mw-app-gateway (app fetch-bill) and mw-ussd (Pay Bill
+    menu: biller list and bill lookup), over the `app` zone network
     (`http://mw-adapter-billpay:8080`); it is not routed by APISIX and has no edge route. No
     money moves here: a bill is paid with a BILL_PAY transaction through Kafka
     (mw.txn.request.v1 -> mw-orchestrator -> mw.partner.request.billpay.v1).

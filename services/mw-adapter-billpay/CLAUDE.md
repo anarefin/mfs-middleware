@@ -35,7 +35,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.billpay`. Fol
   reference, no txnId, nothing written). Errors: unknown biller 404 `MW-VAL-003`; refusal 502
   `MW-PTR-<AGGREGATOR>-<suffix>` (e.g. `BILL_NOT_FOUND`); not sent 503 `MW-SYS-PARTNER_*`; timeout,
   ambiguous code, unreadable amount 504 `MW-TMO-PARTNER_*` (both retryable). Runs on the HTTP
-  request's (virtual) thread. Only client: mw-app-gateway, over the `app` network (no APISIX route,
+  request's (virtual) thread. Clients: mw-app-gateway (`POST /app/v1/billers/{code}/fetch-bill`) and
+  mw-ussd (Pay Bill menu: `billers` list and the `bill` lookup, `client/BillPayClient`), over the
+  `app` network (no APISIX route,
   no published port; the zone is the access control, as for every service-to-service call in the
   MVP). See "Design decision: synchronous bill fetch" below.
 - Partner callbacks (ticket 22, spec 11.2 inbound path; `controller/PartnerCallbackController`,
@@ -80,7 +82,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.billpay`. Fol
 The app's `POST /app/v1/billers/{code}/fetch-bill` needs an answer within the HTTP call, but the
 partner topics run orchestrator -> adapter -> orchestrator and `mw.partner.reply.v1` is consumed
 by mw-orchestrator only. Chosen: **mw-app-gateway calls this adapter's internal HTTP API** for the
-catalogue and the fetch. Why:
+catalogue and the fetch (mw-ussd's Pay Bill menu later reused the same API for the same reasons). Why:
 - A fetch moves no money and has no saga: it needs no idempotency key, txnId or saga (its partner call is still audited, S6), and
   spec 2.1's "no direct service-to-service calls on the money path" does not apply. The payment
   itself still goes app -> Kafka -> orchestrator -> `mw.partner.request.billpay.v1` -> this adapter.
@@ -148,7 +150,7 @@ adapter-minted txnId) are still dropped and belong to the REMIT_IN / NPSB ticket
 
 ## Contracts owned
 
-- `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (internal API; client mw-app-gateway).
+- `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (internal API; clients mw-app-gateway and mw-ussd).
 
 ## Contracts used
 
