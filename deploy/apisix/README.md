@@ -248,6 +248,11 @@ over.
 - `routes/auth-portals-token.json` (always applied, ticket 33): the same for realm `portals`
   (`POST /auth/realms/portals/protocol/openid-connect/token`, public client `mw-portal`), so the
   token's `iss` is the one `portal-org-v1`'s discovery expects.
+- `routes/auth-ops-token.json` (always applied, ticket 37): the same for realm `ops` (public client
+  `mw-admin-ui`), so the token's `iss` is the one `admin-v1`'s discovery expects. The realm still
+  demands TOTP on this grant (built-in direct-grant flow, conditional OTP): only users with an
+  enrolled OTP get a token, i.e. the dev-only e2e operators `ops-e2e-maker01` / `ops-e2e-checker01`
+  (secret `KC_OPS_TEST_TOTP_SECRET`); every other ops user must enrol TOTP in the browser first.
 - Test-only objects, `routes-test/` + `consumers-test/`: applied only when `apisix-init` runs with
   `MW_E2E_ROUTES=1`, which `make e2e` does on the running stack (`scripts/suite.sh`); every
   other run (a default `make up`) DELETEs them. Today: `test-core-mock` (`/test/core-mock/v1/*` ->

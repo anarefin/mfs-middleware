@@ -20,6 +20,18 @@ info:
     (already masked). Every error is the 5.3 envelope: 401 MW-AUTH-001 (no or bad token), 403
     MW-AUTH-002 (role), 400 MW-VAL-001, 404 MW-VAL-003, 503 MW-SYS-040 (a query API is down,
     retryable).
+
+    Maker-checker (ticket 37, spec 15.3): an operator action on a transaction (manual TSQ, force
+    commit / release from MANUAL_REVIEW, reversal of a COMPLETED one) is never applied directly. The
+    maker (`ops-maker`) creates a change request; a checker (`ops-checker`) who is a different user
+    (token subject and username) approves or rejects it; a request not decided within 72 h
+    expires. On approval the request is marked APPROVED, audited (before/after) and the action is
+    sent to mw-orchestrator in one database transaction (`mw.txn.action.v1`, or a REVERSAL on
+    `mw.txn.request.v1`); the orchestrator then moves the transaction, which the detail view shows.
+    Every decision (create, approve, reject, expire) is audited on `mw.audit.event.v1` with
+    `before`/`after`. Codes: 403 MW-AUTH-030 (the maker decides own request), 409 MW-VAL-030 (the
+    action does not fit the transaction's current state), 409 MW-VAL-031 (the transaction already
+    has an open request), 409 MW-VAL-032 (expired), 409 MW-VAL-033 (already decided).
 servers:
   - url: https://localhost
 security:
@@ -78,6 +90,130 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /admin/v1/transactions/{txnId}/change-requests:
+    post:
+      operationId: requestTransactionAction
+      summary: Ask for an operator action on a transaction (maker)
+      description: >-
+        Role `ops-maker`. Allowed actions per current status: INQUIRE in UNKNOWN or MANUAL_REVIEW;
+        FORCE_COMMIT / FORCE_RELEASE in MANUAL_REVIEW; REVERSE in COMPLETED (not reversed yet, full
+        amount). Nothing is applied until a different user approves. One open request per
+        transaction. The request expires 72 h after creation.
+      parameters:
+        - { name: txnId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, reason]
+              additionalProperties: false
+              properties:
+                action: { $ref: "#/components/schemas/TxnAction" }
+                reason: { type: string, minLength: 1, maxLength: 500, description: Why (free text; masked in logs) }
+      responses:
+        "201":
+          description: The change request, PENDING
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /admin/v1/change-requests:
+    get:
+      operationId: listChangeRequests
+      summary: Change requests, newest first
+      description: Roles that may read transactions. Filters are ANDed.
+      parameters:
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/ChangeRequestStatus" } }
+        - { name: resourceId, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 100000, default: 0 } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: One page of change requests
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequestPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /admin/v1/change-requests/{id}:
+    get:
+      operationId: getChangeRequest
+      summary: One change request
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The change request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /admin/v1/change-requests/{id}/approve:
+    post:
+      operationId: approveChangeRequest
+      summary: Approve a pending change request (checker) and apply it
+      description: >-
+        Role `ops-checker`, and not the maker (403 MW-AUTH-030). The transaction must still be in a
+        status the action fits (409 MW-VAL-030, the request stays PENDING). An expired request is
+        marked EXPIRED and refused (409 MW-VAL-032). No request body.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The change request, APPROVED (the action is on its way to the orchestrator)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /admin/v1/change-requests/{id}/reject:
+    post:
+      operationId: rejectChangeRequest
+      summary: Reject a pending change request (checker); nothing is applied
+      description: Role `ops-checker`, and not the maker (403 MW-AUTH-030).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              additionalProperties: false
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "200":
+          description: The change request, REJECTED
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     opsBearer:
@@ -228,6 +364,48 @@ components:
         revealed:
           type: boolean
           description: true when MSISDN party ids are unmasked (and the reveal was audited)
+    TxnAction:
+      type: string
+      enum: [INQUIRE, FORCE_COMMIT, FORCE_RELEASE, REVERSE]
+    ChangeRequestStatus:
+      type: string
+      enum: [PENDING, APPROVED, REJECTED, EXPIRED]
+    ChangeRequest:
+      type: object
+      description: >-
+        An `admin.change_request` (spec 15.3). `diff` is the transaction status the maker saw and
+        the one the action leads to; `payload` what will be (or was) sent: for REVERSE the amount
+        and, once approved, `reversalTxnId`; for the other actions, once approved, `actionId`.
+      required: [id, resourceType, resourceId, action, payload, diff, makerId, status, reason, createdAt, expiresAt]
+      properties:
+        id: { type: string, format: uuid }
+        resourceType: { type: string, enum: [transaction] }
+        resourceId: { type: string }
+        action: { $ref: "#/components/schemas/TxnAction" }
+        payload: { type: object }
+        diff:
+          type: object
+          required: [before, after]
+          properties:
+            before: { type: object, properties: { status: { $ref: "#/components/schemas/Status" } } }
+            after: { type: object, properties: { status: { $ref: "#/components/schemas/Status" } } }
+        makerId: { type: string }
+        status: { $ref: "#/components/schemas/ChangeRequestStatus" }
+        checkerId: { type: string }
+        reason: { type: string, description: The maker's reason }
+        decisionReason: { type: string, description: The checker's reason for a rejection }
+        createdAt: { type: string, format: date-time }
+        decidedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+    ChangeRequestPage:
+      type: object
+      required: [items, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ChangeRequest" }
+        limit: { type: integer }
+        offset: { type: integer }
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]

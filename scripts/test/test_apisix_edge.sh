@@ -178,7 +178,7 @@ schemas() { OUT="$(MW_ROOT="$PWD" "$REPO_DIR/scripts/derived-schemas.sh" "$@" 2>
 test_repo_derived_schemas_match_their_contracts() {
   fixture_schemas
   schemas --check || fail "derived schemas drifted from contracts/"
-  assert_out_contains "9 derived schema(s)"
+  assert_out_contains "11 derived schema(s)"
 }
 
 # Review A6: every public JSON body behind an APISIX route has a derived schema in its service

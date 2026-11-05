@@ -204,9 +204,13 @@ public class SagaEngine {
       case POST -> send(rec, commandMapper.post(rec, now, ttl));
       case HOLD -> send(rec, commandMapper.hold(rec, now, ttl));
       // inbound money (ADD_MONEY_BANK) has no hold: its commit is crediting the wallet
-      case COMMIT ->
-          send(rec, flow.get().creditsWallet() ? commandMapper.credit(rec, now, ttl) : commandMapper.commit(rec, now, ttl));
-      case RELEASE -> send(rec, commandMapper.release(rec, now, ttl));
+      case COMMIT -> {
+        int round = manualRound(rec, SagaEvent.ManualCommit.class);
+        send(rec, flow.get().creditsWallet()
+            ? commandMapper.credit(rec, now, ttl, round)
+            : commandMapper.commit(rec, now, ttl, round));
+      }
+      case RELEASE -> send(rec, commandMapper.release(rec, now, ttl, manualRound(rec, SagaEvent.ManualRelease.class)));
       case QUERY -> send(rec, commandMapper.query(rec, now, ttl));
       case CALL_PARTNER -> callPartner(rec, flow.get().partnerCall().orElseThrow(), now);
       case INQUIRE -> inquire(rec, flow.get(), now);
@@ -215,6 +219,14 @@ public class SagaEngine {
               ? commandMapper.reversalQuery(rec, now, ttl)
               : commandMapper.reverse(rec, now, ttl));
     }
+  }
+
+  /**
+   * How many operator decisions of this kind the transaction has had (ticket 37): each forced
+   * commit / release is its own core command round, so the core re-decides it.
+   */
+  private int manualRound(TransactionRecord rec, Class<? extends SagaEvent> decision) {
+    return transactions.countSteps(rec.txnId(), decision.getSimpleName());
   }
 
   /** The step name of the status-inquiry timer in {@code saga_timer}. */

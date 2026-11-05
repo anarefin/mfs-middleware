@@ -21,6 +21,7 @@ produces:
 consumes:
   events:
     - events/mw-orchestrator/mw.txn.request.v1.schema.json
+    - events/mw-admin-api/mw.txn.action.v1.schema.json
     - events/mw-core-mock/core.event.v1.schema.json#TransactionValidated
     - events/mw-core-mock/core.event.v1.schema.json#TransactionRejected
     - events/mw-core-mock/core.event.v1.schema.json#TransferPosted

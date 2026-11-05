@@ -1,0 +1,25 @@
+{
+  "name": "auth-ops-token",
+  "desc": "Realm ops token endpoint for clients outside the stack (e2e, ticket 37; password + TOTP, the realm's direct-grant OTP). Host/X-Forwarded-* pinned to keycloak:8080 so iss matches admin-v1's discovery issuer; revisit with a public KC_HOSTNAME",
+  "uri": "/auth/realms/ops/protocol/openid-connect/token",
+  "methods": ["POST"],
+  "plugins": {
+    "proxy-rewrite": {
+      "uri": "/realms/ops/protocol/openid-connect/token",
+      "host": "keycloak:8080",
+      "headers": {
+        "set": {
+          "X-Forwarded-Host": "keycloak",
+          "X-Forwarded-Port": "8080",
+          "X-Forwarded-Proto": "http"
+        }
+      }
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": { "connect": 5, "send": 10, "read": 10 },
+    "nodes": { "keycloak:8080": 1 }
+  }
+}

@@ -24,6 +24,21 @@ public final class ErrorCodes {
    * retryable (the same code mw-portal-api uses for the orchestrator query).
    */
   public static final String SYS_QUERY_UNAVAILABLE = "MW-SYS-040";
+  /** A JSON request body over the service's own cap: HTTP 413. */
+  public static final String VAL_BODY_TOO_LARGE = "MW-VAL-BODY_TOO_LARGE";
+
+  // --- maker-checker (ticket 37, spec 15.3) ---
+
+  /** The maker tries to approve or reject own change request: HTTP 403. */
+  public static final String AUTH_OWN_REQUEST = "MW-AUTH-030";
+  /** The action does not fit the transaction's current status: HTTP 409. */
+  public static final String VAL_ACTION_NOT_ALLOWED = "MW-VAL-030";
+  /** The resource already has a PENDING change request: HTTP 409. */
+  public static final String VAL_REQUEST_OPEN = "MW-VAL-031";
+  /** The change request expired (72 h) before a decision: HTTP 409. */
+  public static final String VAL_REQUEST_EXPIRED = "MW-VAL-032";
+  /** The change request was already approved or rejected: HTTP 409. */
+  public static final String VAL_REQUEST_DECIDED = "MW-VAL-033";
 
   private ErrorCodes() {}
 }

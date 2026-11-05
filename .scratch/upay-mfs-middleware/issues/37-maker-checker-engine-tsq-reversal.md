@@ -10,8 +10,15 @@
 
 **Status:** ready-for-agent
 
-- [ ] API test: maker ≠ checker is enforced; an expired request cannot be approved
-- [ ] API test: an approved reversal reaches REVERSED; a rejected one changes nothing
-- [ ] e2e: a txn in MANUAL_REVIEW is force-committed after approval
-- [ ] Every decision is audited with before/after
+- [x] API test: maker ≠ checker is enforced; an expired request cannot be approved
+  (`mw-admin-api` `ChangeRequestApiIT`)
+- [x] API test: an approved reversal reaches REVERSED; a rejected one changes nothing
+  (`ChangeRequestApiIT`: the approval sends one schema-valid full-amount REVERSAL, a rejection
+  sends nothing; REVERSAL -> REVERSED is mw-orchestrator's `ReversalSagaIT`; end to end in
+  `tests/e2e/.../admin-maker-checker.feature`)
+- [ ] e2e: a txn in MANUAL_REVIEW is force-committed after approval (written:
+  `admin-maker-checker.feature`, `@admin @mw-admin-api`; runs at the milestone gate)
+- [x] Every decision is audited with before/after (admin-api `admin.change_request.*`, orchestrator
+  `txn.operator.action`)
 - [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+  (deferred to milestone gate)

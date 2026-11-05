@@ -43,6 +43,11 @@ public final class ErrorCodes {
   public static final String VAL_NOT_REVERSIBLE = "MW-VAL-021";
   /** REVERSAL: the amount differs from the original's (no partial reversal in the MVP). */
   public static final String VAL_REVERSAL_AMOUNT = "MW-VAL-022";
+  /**
+   * An operator action ({@code mw.txn.action.v1}, ticket 37) the transaction's state or flow does
+   * not allow (force commit of a P2P, release of a COMPLETED one): nothing changes, audited FAILURE.
+   */
+  public static final String VAL_ACTION_NOT_ALLOWED = "MW-VAL-023";
   /** REVERSAL from a channel outside {@code mw.orchestrator.reversal-channels}. */
   public static final String AUTH_REVERSAL_CHANNEL = "MW-AUTH-020";
   /** BULK_DISBURSE from a channel outside {@code mw.orchestrator.bulk-channels} (ticket 34). */

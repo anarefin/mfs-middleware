@@ -48,7 +48,22 @@ public class CoreCommandMapper {
 
   /** CommitHold; a resend keeps the commandId, so the core applies it once. */
   public CoreCommand commit(TransactionRecord rec, Instant now, Duration ttl) {
-    return onHold("CommitHold", STEP_COMMIT, rec, now, ttl);
+    return commit(rec, now, ttl, 0);
+  }
+
+  /**
+   * CommitHold of the {@code manualRound}-th operator decision (ticket 37): {@code
+   * <txnId>:commit:manual-<n>}, so the core decides the operator's commit afresh instead of
+   * replaying the refusal it gave the saga's own commit; resends within the round keep the id.
+   * Round 0 is the saga's own commit ({@code <txnId>:commit}).
+   */
+  public CoreCommand commit(TransactionRecord rec, Instant now, Duration ttl, int manualRound) {
+    return onHold("CommitHold", round(STEP_COMMIT, manualRound), rec, now, ttl);
+  }
+
+  /** The step part of a commandId: {@code step}, or {@code step:manual-<n>} for an operator round. */
+  static String round(String step, int manualRound) {
+    return manualRound <= 0 ? step : step + ":manual-" + manualRound;
   }
 
   /**
@@ -56,16 +71,26 @@ public class CoreCommandMapper {
    * collected it. {@code <txnId>:credit}, stable across resends, so the core credits once. No PIN.
    */
   public CoreCommand credit(TransactionRecord rec, Instant now, Duration ttl) {
+    return credit(rec, now, ttl, 0);
+  }
+
+  /** CreditWallet of an operator round, as {@link #commit(TransactionRecord, Instant, Duration, int)}. */
+  public CoreCommand credit(TransactionRecord rec, Instant now, Duration ttl, int manualRound) {
     String txnId = rec.txnId().toString();
     var req = rec.request();
     return new CoreCommand(
-        1, "CreditWallet", commandId(txnId, STEP_CREDIT), txnId, req.correlationId(), now, now.plus(ttl),
+        1, "CreditWallet", commandId(txnId, round(STEP_CREDIT, manualRound)), txnId, req.correlationId(), now, now.plus(ttl),
         new CreditPayload(req.txnType(), req.debitParty(), req.creditParty(), req.amount()));
   }
 
   /** ReleaseHold; a resend keeps the commandId, so the core applies it once. */
   public CoreCommand release(TransactionRecord rec, Instant now, Duration ttl) {
-    return onHold("ReleaseHold", STEP_RELEASE, rec, now, ttl);
+    return release(rec, now, ttl, 0);
+  }
+
+  /** ReleaseHold of an operator round, as {@link #commit(TransactionRecord, Instant, Duration, int)}. */
+  public CoreCommand release(TransactionRecord rec, Instant now, Duration ttl, int manualRound) {
+    return onHold("ReleaseHold", round(STEP_RELEASE, manualRound), rec, now, ttl);
   }
 
   /**

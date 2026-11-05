@@ -181,6 +181,8 @@ services:
       KC_PARTNER_SIM_SECRET: ${KC_PARTNER_SIM_SECRET:?run scripts/gen-dev-env.sh (make up does)}
       KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
       KC_OPS_TEST_PASSWORD: ${KC_OPS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      # TOTP secret of the dev-only e2e operators ops-e2e-maker01 / ops-e2e-checker01 (ticket 37)
+      KC_OPS_TEST_TOTP_SECRET: ${KC_OPS_TEST_TOTP_SECRET:?run scripts/gen-dev-env.sh (make up does)}
       KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
       # realm services: internal API clients (/internal/v1/** of mw-orchestrator, mw-audit-dw)
       KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
