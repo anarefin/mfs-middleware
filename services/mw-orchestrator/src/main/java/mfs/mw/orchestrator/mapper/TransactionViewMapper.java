@@ -29,9 +29,15 @@ public final class TransactionViewMapper {
   private TransactionViewMapper() {}
 
   public static TxnView toView(TransactionRecord rec) {
+    return toView(rec, null);
+  }
+
+  /** @param role the viewing org's role ({@code INITIATOR} / {@code PAYEE}), null when unscoped */
+  public static TxnView toView(TransactionRecord rec, String role) {
     TxnRequest r = rec.request();
     String currency = r.amount() == null ? Amount.BDT : r.amount().currency();
     return new TxnView(
+        role,
         rec.txnId().toString(),
         r.txnType(),
         r.channel(),

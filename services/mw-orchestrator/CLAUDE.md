@@ -236,8 +236,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - `mw-reply-to` (7.5): copied from the request record to every status record (and to the answer
   for a repeated request, taken from the repeated request). Stored in `transaction.reply_to`.
 - Schema `txn` (role `orchestrator_rw`): `transaction`, `saga_step`, `saga_timer`, `idempotency`
-  (+ `outbox`, `inbox`, `shedlock`); migrations V1..V8 (V6 `reversal_txn_id`, V7 drops
-  `idempotency.response`, V8 `initiator_hash` + `partner_call`, ticket 35). Repository ITs: `repository/TransactionRepositoryIT` (round trip, row
+  (+ `outbox`, `inbox`, `shedlock`, `partner_call`, `core_call`); migrations V1..V10 (V6 `reversal_txn_id`, V7 drops
+  `idempotency.response`, V8 `initiator_hash` + `partner_call`, ticket 35; V9 `initiator_type`,
+  `payee_hash`, `timeline_seq` + `saga_step.seq`, `core_call`; V10 = Java migration
+  `repository/SearchHashMigration`, a Spring bean Flyway picks up, re-hashing every older row as
+  `HMAC(<type>:<id>)` from its raw `initiator_id` and stored request, `SearchHashMigrationIT`). Repository ITs: `repository/TransactionRepositoryIT` (round trip, row
   lock, unique `reversal_txn_id`, step history, backlog queries) and
   `IdempotencyAndTimerRepositoryIT` (claim, scope, expired key, timers incl. SKIP LOCKED). `transaction` is not partitioned yet and keeps parties in
   the stored request JSON instead of separate columns.
@@ -245,19 +248,35 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `controller/TransactionQueryController` -> `service/TransactionQueryService`): `GET
   /internal/v1/transactions` (filters txnId, msisdn, orgId, partnerRef, status, txnType, parentTxnId,
   `[from, to)` on createdAt, limit 1..200, offset; newest first) and `GET /internal/v1/transactions/{txnId}`
-  (`?orgId=` scopes it: another initiator's txn is 404 MW-VAL-003) with `timeline` (every `saga_step`
-  in order) and `partnerCalls` (`txn.partner_call`, V8: one row per PAY / STATUS_QUERY sent by
+  (`?orgId=` scopes it: a txn of neither role is 404 MW-VAL-003) with `timeline` (B13: every
+  `saga_step` as `kind` STATE {from, to, trigger, at} and every core command as `kind` CORE
+  {command, commandId, at = first send, sends, result = core event type, outcome, reasonCode,
+  resultAt}, interleaved in the order they happened by the shared `timeline_seq`; `txn.core_call`
+  is written by `SagaEngine.send` (a resend under the same commandId counts in `sends`; a
+  ReverseTransaction is filed under the original's txnId) and answered by `CoreEventService` before
+  the state machine runs, so an ignored late result still shows; first result kept) and
+  `partnerCalls` (`txn.partner_call`, V8: one row per PAY / STATUS_QUERY sent by
   `SagaEngine.sendToPartner`, answered by `PartnerReplyService` (outcome, partnerRef, errorCode,
   `repliedAt`), plus one CALLBACK row per callback that passed the ownership checks). Clients are
   mw-admin-api and mw-portal-api over the `app` network; **no APISIX route**. MSISDN and org id are
-  matched through `transaction.initiator_hash` (V8; `util/SearchHash` = HMAC-SHA256 of the canonical
-  id, MSISDN in any form -> `01XNNNNNNNN`; key `mw.orchestrator.search.hash-key`, >= 32 chars, in
-  `secret/mw-orchestrator`, created once by the init; `config/SearchProperties`), so `initiator_id` is
-  never indexed. Rows from before V8 have no hash (found by the other filters only). Views
+  matched through `transaction.initiator_hash` (V8; `util/SearchHash` = HMAC-SHA256 of
+  `<type>:<canonical id>` (A2), MSISDN in any form -> `01XNNNNNNNN`; key
+  `mw.orchestrator.search.hash-key`, >= 32 chars, in `secret/mw-orchestrator`, created once by the
+  init; `config/SearchProperties`), so `initiator_id` is never indexed, and the initiator type
+  (`initiator_type`, V9) is checked as well: `msisdn` matches initiator types MSISDN/WALLET only,
+  `orgId` type ORG only, so an org id never matches an MSISDN. Org scope (A3, `util/SearchKeys`):
+  `orgId` also returns the transactions the org is the **payee** of, matched through
+  `transaction.payee_hash` (V9, indexed like the initiator hash; `BILLER:<billerCode>` of a BILL_PAY,
+  `MERCHANT:<wallet>` of a credit to a MERCHANT wallet, else null) against the org's payees in
+  `mw.orchestrator.search.org-payees` (`<orgId>: [BILLER:<code>, MERCHANT:<msisdn>]`, checked at
+  start; none in the main config, the dev ones (ORG002: DESCO and 01911000001) in `compose.yml` as
+  `SPRING_APPLICATION_JSON`, test ones in the test config). Each org-scoped item carries `role`
+  INITIATOR (wins) or PAYEE; unscoped results carry none. Rows from before V8 had no hash and V8
+  rows an untyped one: V10 re-hashes them all, so none is left behind. Views
   (`mapper/TransactionViewMapper`): parties masked by type, names to the initial, error text and the
   SP `reference` scrubbed, only the bulk attributes (`parentTxnId`, `batchId`, `lineNo`, `reference`);
-  no PIN, idempotency key or raw request. `TransactionQueryApiIT` (TSQ'd top-up timeline, masking,
-  org scope).
+  no PIN, idempotency key or raw request. `TransactionQueryApiIT` (TSQ'd top-up timeline with core
+  commands, resend count and failure reason, masking, typed org scope, payee roles).
 - Init (`mw-orchestrator-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): creates
   role and schema, `secret/mw-orchestrator` (DB password, never overwritten; search hash key, created once) and the AppRole
   `mw-orchestrator`; role-id/secret-id land in a volume the service reads as a configtree. On a

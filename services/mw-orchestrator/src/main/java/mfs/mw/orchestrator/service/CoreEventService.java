@@ -1,5 +1,6 @@
 package mfs.mw.orchestrator.service;
 
+import java.time.Clock;
 import java.util.Optional;
 import java.util.UUID;
 import mfs.mw.orchestrator.dto.CoreEvent;
@@ -9,6 +10,7 @@ import mfs.mw.orchestrator.exception.ErrorCodes;
 import mfs.mw.orchestrator.mapper.CoreCommandMapper;
 import mfs.mw.orchestrator.mapper.CoreEventMapper;
 import mfs.mw.orchestrator.messaging.Inbox;
+import mfs.mw.orchestrator.repository.CoreCallRepository;
 import mfs.mw.orchestrator.repository.TransactionRepository;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.exception.InvalidTransitionException;
@@ -40,6 +42,8 @@ public class CoreEventService {
   private final InquiryService inquiries;
   private final CoreCommandMapper commands;
   private final SagaAlerts alerts;
+  private final CoreCallRepository coreCalls;
+  private final Clock clock;
 
   public CoreEventService(
       Inbox inbox,
@@ -49,7 +53,11 @@ public class CoreEventService {
       SagaEngine engine,
       InquiryService inquiries,
       CoreCommandMapper commands,
-      SagaAlerts alerts) {
+      SagaAlerts alerts,
+      CoreCallRepository coreCalls,
+      Clock clock) {
+    this.coreCalls = coreCalls;
+    this.clock = clock;
     this.inbox = inbox;
     this.transactions = transactions;
     this.mapper = mapper;
@@ -77,6 +85,10 @@ public class CoreEventService {
       return;
     }
     TransactionRecord rec = found.get();
+    if (event.commandId() != null) {
+      // the saga timeline shows every result, also one the state machine then ignores (B13)
+      coreCalls.answered(event.commandId(), event.eventType(), event.outcome(), event.reasonCode(), clock.instant());
+    }
     if ("TransactionStatus".equals(event.eventType()) && commands.isReversalQuery(event.commandId())) {
       reversalAnswer(rec, event);
       return;
