@@ -6,7 +6,7 @@
 
 - 35: Internal query APIs + SP txn query
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Role tests per endpoint, including viewer read-only
 - [x] An unmasked reveal by an allowed role writes an audit event; other roles get masked values

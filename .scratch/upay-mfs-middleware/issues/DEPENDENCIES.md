@@ -4,7 +4,7 @@
 # ticket                                    blocked-by        status   elapsed  diffstat   commits
 
 53-fast-gate-contract-manifests             —                 done     75m      161 files, +8515 −743  b807db7..d7d7916
-36-admin-api-rbac-search                    35,53             todo     —        —          —
+36-admin-api-rbac-search                    35,53             done     29m       132 files 10090  36  3bc49e3..4792c86
 37-maker-checker-engine-tsq-reversal        36,18,19          todo     —        —          —
 52-ops-wallet-unlock                        37                todo     —        —          —
 38-partner-config-maker-checker             37,20             todo     —        —          —
