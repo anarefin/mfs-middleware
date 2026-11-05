@@ -7,7 +7,7 @@
 - 43: E2E acceptance suite completion (criteria 1–5)
 - 42: Admin UI partner config, USSD menu editor, template editor
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] `make security` passes with no open critical or high findings (offline stages green on 2026-11-06 with every image built from the branch: `MW_IMAGE_TAG=sec46 SECURITY_LIVE=0 make security`; the live stages, ZAP baseline on APISIX and the log scan, deferred to milestone gate: `make up && make e2e && SECURITY_LIVE=1 make security`)
 - [ ] The log scan over a full e2e run finds no PIN and no unmasked MSISDN (built and self-tested: `scripts/log-scan.sh`, stage of `make security`; deferred to milestone gate, needs the running stack after `make e2e`)

@@ -13,10 +13,10 @@
 41-admin-ui-approvals-reversal              40,37,52          done     9m       21 files + 1041 − 31  983998c..fcc58df
 42-admin-ui-partner-ussd-template-editors   41,38,39          done     18m      29 files + 2392 − 26  fa6a799..b5a718a
 51-m2-gate-spec-sync                        —                 done     5m       spec only              55957cc..f8a90cc
-# --- M5 gate: make verify-changed BASE=04875ae JOBS=3 (stack down), fresh-stack e2e
+# --- M5 gate DONE (2026-11-06): verify-changed 14 modules 9 min (1 flaky IT fixed 0a9e33f); make up fixes cfa5cf9 (AOT fake secret), 2e49e02 (configtree); e2e 138/140, the 2 @bulk fails were Docker contention (MW-TMO-001 in 2 minutes), @bulk re-run green
 43-e2e-acceptance-suite                     23,25,27,28,32,34,37  done 12m  20 files + 846 − 3  0f63e38..25bb2de
 44-chaos-kill-mid-flow                      43                done     12m      5 files + 413 − 5  0a9e33f..9adf0f3
 45-gatling-100-tps                          43                done     34m      39 files + 3088 − 16  2e49e02..ebfc691
-46-security-pass                            43,42             todo     —        —          —
+46-security-pass                            43,42             done     73m      96 files + 1308 − 90  8ef342a..27b26da
 47-docs-clean-host-bringup                  44,45,46          todo     —        —          —
 # --- M6 gate: verify-changed + fresh-stack e2e, then ONE full make verify
