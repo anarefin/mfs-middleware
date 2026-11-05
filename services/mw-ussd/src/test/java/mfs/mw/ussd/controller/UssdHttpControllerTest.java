@@ -10,7 +10,7 @@ import mfs.mw.ussd.config.UssdProperties;
 import mfs.mw.ussd.dto.UssdEvent;
 import mfs.mw.ussd.dto.UssdRequest;
 import mfs.mw.ussd.dto.UssdResponse;
-import mfs.mw.ussd.service.HttpUssdTransport;
+import mfs.mw.ussd.transport.HttpUssdTransport;
 import mfs.mw.ussd.service.UssdEngine;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -98,6 +98,49 @@ class UssdHttpControllerTest {
         .hasStatus(HttpStatus.BAD_REQUEST);
     assertThat(post("robi", "{\"sessionId\":\"s\",\"msisdn\":\"01712345678\",\"type\":\"JUMP\"}"))
         .hasStatus(HttpStatus.BAD_REQUEST);
+    verify(engine, never()).handle(any());
+  }
+
+  static final String STEP = "{\"sessionId\":\"s-1\",\"msisdn\":\"01712345678\",\"input\":\"1\",\"type\":\"CONTINUE\"}";
+
+  /**
+   * The contract-derived schema runs on the received bytes before binding (APISIX validates no
+   * body, review A6): duplicate keys, trailing content, wrong types and non-objects are 400
+   * MW-VAL-001 and the engine never sees the step.
+   */
+  @Test
+  void aBodyBreakingTheSchemaIsRefusedBeforeTheEngine() {
+    for (String body :
+        new String[] {
+          STEP.replace("\"input\":\"1\"", "\"input\":\"1\",\"input\":\"2\""),
+          STEP.replace("\"type\":\"CONTINUE\"", "\"type\":\"CONTINUE\",\"type\":\"ABORT\""),
+          STEP + " {}",
+          STEP.replace("\"input\":\"1\"", "\"input\":1"),
+          STEP.replace("\"input\":\"1\"", "\"input\":\"" + "1".repeat(183) + "\""),
+          STEP.replace("\"s-1\"", "\"\""),
+          "[]",
+          "{\"sessionId\":",
+        }) {
+      assertThat(post("robi", body)).as(body).hasStatus(HttpStatus.BAD_REQUEST)
+          .bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-001");
+    }
+    verify(engine, never()).handle(any());
+  }
+
+  /** {@code input} may be a PIN: a schema error never repeats it. */
+  @Test
+  void aSchemaErrorDoesNotEchoTheInput() {
+    MvcTestResult r = post("robi", STEP.replace("\"input\":\"1\"", "\"input\":{\"pin\":\"97531\"}"));
+
+    assertThat(r).hasStatus(HttpStatus.BAD_REQUEST);
+    assertThat(r.getResponse().getContentAsByteArray()).asString().doesNotContain("97531");
+  }
+
+  @Test
+  void anOversizedBodyIsRefusedWith413() {
+    MvcTestResult r = post("robi", STEP.replace("\"s-1\"", "\"" + "s".repeat(70_000) + "\""));
+
+    assertThat(r).hasStatus(413).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-BODY_TOO_LARGE");
     verify(engine, never()).handle(any());
   }
 }

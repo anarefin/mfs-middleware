@@ -5,15 +5,22 @@ every `make up` and PUTs everything here to the APISIX Admin API.
 
 ```
 config.yaml                static config (listeners, etcd, Admin API, nginx env)
-apply.sh                   edge cert + SSL object, then global_rules/*.json, then routes/*.json
+apply.sh                   edge cert + SSL object, then global_rules/*.json, consumers/*.json,
+                           routes/*.json, then DELETEs what retired.txt lists
 global_rules/edge.json     policies on every route (correlation ID, X-Mw-* strip, error envelope)
+consumers/<name>.json      real consumers, PUT as consumer <name> (the MNO USSD gateways)
 routes/<id>.json           one route per file, PUT as route <id>
+retired.txt                "<kind>/<id>" of objects whose file was removed: deleted on every apply
 routes-test/<id>.json      TEST ONLY, see "Test-only objects" below
 consumers-test/<name>.json TEST ONLY consumers of those routes
 lua/*.lua                  serverless / _meta.pre_function code, inlined as "@lua:lua/<file>"
                            (edge-limit-degraded.lua: the rate-limiter degradation alert, ticket 50)
-schemas/*.json             request-validation schemas derived from contracts/, inlined as "@json:schemas/<file>" (the app submit schema lives in mw-app-gateway)
 ```
+
+Values: `"@env:<NAME>"` is an environment variable as a string (secrets, never in the repo),
+`"@list:<NAME>"` a comma-separated variable as a string array (address lists); unset or empty
+fails the apply. There are no body schemas here: **body schemas are checked in the service,
+never at the edge** (M3 gate decision). APISIX keeps size caps, header checks and auth.
 
 ## Format decision: Admin API JSON, not ADC YAML
 
@@ -32,8 +39,9 @@ Spec 8.1 says "declarative YAML applied by ADC". The MVP keeps Admin API JSON ap
 - **Exact schema.** The JSON files are exactly what the Admin API validates; no translation
   layer whose APISIX 3.19 support has to be checked first.
 
-Cost: `apply.sh` never deletes. Removing a file leaves its object in etcd; delete it through
-the Admin API (from the ops network) or drop the volumes (`make down DOWN_ARGS=-v`). Moving to
+Cost: `apply.sh` deletes only what `retired.txt` lists. Removing or renaming a file therefore
+means adding its old `<kind>/<id>` there (as `routes/ussd-http`); otherwise its object stays in
+etcd until deleted through the Admin API or the volumes are dropped (`make down DOWN_ARGS=-v`). Moving to
 ADC later is mechanical (one route file = one ADC route); revisit when the internal gateway
 group or production pipeline arrives.
 
@@ -55,9 +63,9 @@ Edge error codes:
 
 | HTTP | Code | Retryable | Produced by |
 | --- | --- | --- | --- |
-| 400 | `MW-VAL-001` (reason in `details[0].issue`) | no | `request-validation` (checkout), malformed JSON, bad `Authorization` header |
-| 401 | `MW-AUTH-001` | no | `openid-connect`: no, invalid, badly signed or expired token |
-| 403 | `MW-AUTH-002` | no | `openid-connect` scope/audience checks |
+| 400 | `MW-VAL-001` (reason in `details[0].issue`) | no | malformed JSON, bad `Authorization` header (body schemas: the services) |
+| 401 | `MW-AUTH-001` | no | `openid-connect`, `hmac-auth`, `basic-auth`: no, invalid, badly signed or expired credential |
+| 403 | `MW-AUTH-002` | no | `openid-connect` scope/audience checks, `consumer-restriction` (another MNO's credential), `ip-restriction` |
 | 404 | `MW-VAL-003` | no | no route |
 | 413 | `MW-VAL-BODY_TOO_LARGE` | no | `client-control` `max_body_size` |
 | 429 | `MW-SYS-RATE_LIMITED` | yes | `limit-count` |
@@ -73,10 +81,11 @@ Route `app-v1` (`/app/v1/*`), in plugin order:
 3. No `request-validation`: the submit body (`POST /app/v1/transactions`) is signed by the app's
    bound device (ticket 29), and request-validation forwards a JSON body it validated re-encoded
    (APISIX 3.x `set_body_data`, not configurable), so the gateway could no longer verify the
-   signature over the bytes the device sent. mw-app-gateway checks the same derived schema
-   (`services/mw-app-gateway/src/main/resources/derived-schemas/app-v1-transaction-request.json`,
-   kept in sync by `scripts/apisix-schemas.sh`) on the exact bytes it hashes and parses, after the
-   token and before the device gate, with duplicate keys refused; errors stay 400 MW-VAL-001. No
+   signature over the bytes the device sent. mw-app-gateway checks every `app.v1` JSON body
+   against its derived schema (`services/mw-app-gateway/src/main/resources/derived-schemas/`, kept
+   in sync by `scripts/derived-schemas.sh`; table in "Body schemas (in the services)") on the exact
+   bytes it hashes and parses, after the token and before the device gate, with duplicate keys
+   refused; errors stay 400 MW-VAL-001. No
    plugin on this route may rewrite the body (`test_apisix_edge.sh`).
 4. `serverless-pre-function` (access, `lua/consumer-from-jwt.lua`): `ctx.var.mw_consumer` =
    `sub:<token sub>`, the per-consumer key.
@@ -102,12 +111,36 @@ Route `partner-c2wbank-callback` (`/partner/c2wbank/callback/*`, POST only, tick
 `mw-adapter-bank:8080`: the same four rules (own `limit-count` group
 `partner-c2wbank-callback`); the C2W bank's debit outcome callbacks, verified by mw-adapter-bank.
 
-Route `ussd-http` (`/ussd/*`, POST only, ticket 26) -> `mw-ussd:8080`, path and body unchanged:
-the MNO HTTP USSD gateways (`HttpUssdTransport`, contract `contracts/api/mw-ussd/ussd-http.v1.openapi.yaml`).
-`ip-restriction` (dev: private ranges; production: the MNO's gateway addresses), `client-control`
-4 KiB, `limit-count` 6000 / 60 s per `remote_addr` (group `ussd-http`), upstream read timeout 12 s
-(above mw-ussd's 8 s sync budget). No per-MNO `hmac-auth`/`basic-auth` yet (spec 8.2 says one per
-MNO): added with each MNO's contract.
+Routes `ussd-http-<mno>` (`/ussd/<mno>` for gp, robi, bl, teletalk; POST only; ticket 26, M3 gate)
+-> `mw-ussd:8080`, path and body unchanged: the MNO HTTP USSD gateways (`HttpUssdTransport`,
+contract `contracts/api/mw-ussd/ussd-http.v1.openapi.yaml`). One route and one consumer per MNO:
+
+1. `ip-restriction` with `"@list:USSD_<MNO>_ALLOWED_CIDRS"`: the MNO's gateway addresses, from the
+   apisix-init environment. Required, with no fallback: `deploy/compose/platform/compose.yml` uses
+   `${USSD_<MNO>_ALLOWED_CIDRS:?...}` and `apply.sh` fails on an unset or empty list, so a missing
+   list stops the stack instead of opening the route. Dev values are written once into the
+   gitignored `.env` by `scripts/gen-dev-env.sh`: loopback and Docker's default address pools
+   (`172.16.0.0/12`, `192.168.0.0/16`), where the compose networks and the Docker Desktop host
+   gateway live (the compose networks have no fixed subnet). Edit the `.env` line if your Docker
+   uses other pools. Production lists each MNO's egress addresses.
+2. `client-control` 4 KiB (413). The step body's schema is checked by mw-ussd (`UssdStep`), not here.
+3. `basic-auth` (`hide_credentials`: mw-ussd never sees it) against consumer `consumers/ussd_<mno>.json`,
+   user `ussd-<mno>`, password `"@env:USSD_<MNO>_GATEWAY_SECRET"`: generated by
+   `scripts/gen-dev-env.sh` into the `.env`, also written to OpenBao `secret/mw-simulators` as
+   `sim.ussd-gateway.credentials.<mno>` by `mw-simulators-init` (the simulator plays the MNO). No
+   credential 401 `MW-AUTH-001`.
+4. `consumer-restriction` whitelist `[ussd_<mno>]`, 403: the consumer is bound to the `{mno}` path
+   segment, so a GP credential on `/ussd/robi` is refused `MW-AUTH-002`.
+5. `serverless-pre-function` (access, `lua/ussd-msisdn-key.lua`): `ctx.var.mw_ussd_msisdn` =
+   `<mno>:<sha256 hex of the canonical 01X... MSISDN>` read from the step body (the body is read,
+   not changed; no MSISDN in Valkey keys).
+6. `limit-count` 120 steps / 60 s per MSISDN (group `ussd-http-<mno>`, Valkey, fail-open as every
+   limited route; a step without a readable msisdn is counted per source address). A subscriber
+   types far slower; 120 leaves room for the e2e suite's one test MSISDN. MNO contract value, TBC.
+
+Upstream read timeout 12 s (above mw-ussd's 8 s sync budget). The former single route `ussd-http`
+(`/ussd/*`, no auth) is in `retired.txt`. An SMPP MNO (gp in dev) does not use its route until its
+transport is switched to HTTP.
 
 Checkout (ticket 31, spec 8.2/9.3, contract `contracts/api/mw-checkout/checkout.v1.openapi.yaml`)
 -> `mw-checkout:8080`, three routes:
@@ -115,13 +148,15 @@ Checkout (ticket 31, spec 8.2/9.3, contract `contracts/api/mw-checkout/checkout.
 - `checkout-v1-sessions` (`POST /checkout/v1/sessions`): `client-control` 16 KiB, `hmac-auth`
   (`hmac-sha256` only, `clock_skew` 300 s, signed headers `@request-target`, `date`, `digest`;
   `validate_request_body`: the `Digest: SHA-256=<base64>` must match the body;
-  `hide_credentials`), `request-validation` with `schemas/checkout-v1-create-session.json`
-  (after auth), `proxy-rewrite` setting `X-Mw-Merchant-Id: $consumer_name` (the global rule strips
+  `hide_credentials`), no `request-validation` (mw-checkout checks the body schema itself on the
+  exact bytes, `services/mw-checkout/src/main/resources/derived-schemas/checkout-v1-create-session.json`;
+  400 `MW-VAL-001` from the service), `proxy-rewrite` setting `X-Mw-Merchant-Id: $consumer_name` (the global rule strips
   any client `X-Mw-*` first), `limit-count` 600 / 60 s per consumer (group `checkout-v1-sessions`).
 - `checkout-v1-session-get` (`GET /checkout/v1/sessions/*`): the same without body checks
   (signed headers `@request-target`, `date`), 1200 / 60 s per consumer.
 - `checkout-pay` (`GET|POST /checkout/pay/v1/*`, the hosted page in the browser): no auth plugin
-  (the pay token in the path is the bearer), `client-control` 8 KiB, 300 / 60 s per
+  (the pay token in the path is the bearer), `client-control` 8 KiB (the otp and confirm bodies are
+  schema-checked by mw-checkout, not here), 300 / 60 s per
   `remote_addr`, read timeout 35 s (mw-checkout waits up to 25 s for the payment). Spec 8.2 also
   names `csrf` and strict CORS: no `cors` plugin is configured, so no cross-origin access is
   granted (the page must be served from this origin); `csrf` is left out because the API takes
@@ -167,15 +202,40 @@ own 429 never match. Where to see it:
 
 A new rate-limited route needs nothing extra beyond `show_limit_quota_header: true`.
 
-## Request-validation schemas
+## Body schemas (in the services)
 
-`schemas/*.json` are generated, never edited: each names its source in `x-mw-derived-from`
-(`<file under contracts/>#<JSON pointer>`). `scripts/apisix-schemas.sh --write` regenerates them;
-`make contracts-lint` (so `make verify`) fails when one no longer matches its contract. The
-derivation inlines `$ref`s, drops documentation keywords and `pattern`/`format` (APISIX's Lua
-validator writes a failed pattern with the offending value, e.g. an MSISDN, to the error log;
-the owning service still checks them), turns `propertyNames: { enum }` (ignored by the Lua
-validator) into a closed `properties` list, and fails on any keyword it cannot carry over.
+No route uses `request-validation` (`test_apisix_edge.sh` fails if one does): it forwards a body
+it validated re-encoded, so a service could not verify a signature over the bytes the client sent,
+and the M3 gate decided that body schemas always live in the service. Each service that checks a
+body keeps the schema derived from its OpenAPI contract in
+`services/<module>/src/main/resources/derived-schemas/*.json` and validates the exact bytes before
+binding them (duplicate keys, trailing content and non-objects refused; 400 `MW-VAL-001` from the
+service; each keeps its own body cap, 413 `MW-VAL-BODY_TOO_LARGE`). Every public JSON body (review A6):
+
+| Route | Endpoint | Service: check | Derived schema (contract source) |
+| --- | --- | --- | --- |
+| `app-v1` | `POST /app/v1/transactions` | mw-app-gateway: `BodySchemaInterceptor` (cached bytes, the ones the device signs) | `app-v1-transaction-request.json` (`TransactionRequest`) |
+| `app-v1` | `POST /app/v1/devices/otp` (body optional) | mw-app-gateway, as above | `app-v1-device-otp-request.json` (`DeviceOtpRequest`) |
+| `app-v1` | `POST /app/v1/devices` | mw-app-gateway, as above | `app-v1-device-binding-request.json` (`DeviceBindingRequest`) |
+| `app-v1` | `POST /app/v1/billers/{code}/fetch-bill` | mw-app-gateway, as above | `app-v1-fetch-bill-request.json` (`FetchBillRequest`) |
+| `checkout-v1-sessions` | `POST /checkout/v1/sessions` | mw-checkout: `BodySchemaAdvice` | `checkout-v1-create-session.json` (`CreateSessionRequest`) |
+| `checkout-pay` | `POST /checkout/pay/v1/{token}/otp` | mw-checkout, as above | `checkout-pay-v1-otp.json` (`OtpRequest`) |
+| `checkout-pay` | `POST /checkout/pay/v1/{token}/confirm` | mw-checkout, as above | `checkout-pay-v1-confirm.json` (`ConfirmRequest`) |
+| `portal-org-v1` | `POST /portal/org/v1/bulk/batches/{batchId}/reject` | mw-portal-api: `BodySchemaAdvice` | `portal-org-v1-reject-request.json` (inline reject body) |
+| `ussd-http-<mno>` | `POST /ussd/{mno}` | mw-ussd: `BodySchemaAdvice` | `ussd-http-v1-step.json` (`UssdStep`) |
+
+No body, so no schema: `POST /app/v1/sessions`, `POST /checkout/pay/v1/{token}/cancel`, portal
+approve/pause/resume. Not JSON: the portal CSV upload (`POST /portal/org/v1/bulk/batches`, `text/csv`),
+checked by mw-portal-api's `BulkCsvParser` (header, rows, row and byte caps). Partner callbacks
+(`partner-billagg-callback`, `partner-c2wbank-callback`) have a partner-specific wire format, not a
+contract: the adapters verify them. `test_apisix_edge.sh` checks every row of the table. The files are
+generated, never edited: each names its source in `x-mw-derived-from` (`<file under
+contracts/>#<JSON pointer>`); `scripts/derived-schemas.sh --write` regenerates them and `make
+contracts-lint` (so `make verify`) fails when one no longer matches its contract. The derivation
+inlines `$ref`s, drops documentation keywords and `pattern`/`format` (a validator message for them
+repeats the value, e.g. an MSISDN; the service's Bean Validation still checks them), turns
+`propertyNames: { enum }` into a closed `properties` list, and fails on any keyword it cannot carry
+over.
 
 ## Host routes for the e2e suite (ticket 10)
 
@@ -208,11 +268,12 @@ validator) into a closed `properties` list, and fails on any keyword it cannot c
    `allow_degradation: true` and `show_limit_quota_header: true`: the degradation alert needs it). Keyed per consumer:
    on `openid-connect` routes reuse `lua/consumer-from-jwt.lua`; on `hmac-auth`/`key-auth`/
    `jwt-auth` routes APISIX sets a consumer, so use `"key": "consumer_name"`.
-3. Body schema: add `schemas/<id>-<op>.json` with only `x-mw-derived-from`, run
-   `scripts/apisix-schemas.sh --write`, reference it as `"@json:schemas/<file>"` in a
-   `request-validation` limited by `_meta.filter` to the operation, `_meta.priority` below the
-   auth plugin's. Not for a body the client signs over its bytes and the upstream verifies
-   (request-validation re-encodes it): the service checks the derived schema itself (app-v1).
+3. Body schema: never here. The owning service adds
+   `src/main/resources/derived-schemas/<id>-<op>.json` with only `x-mw-derived-from`, runs
+   `scripts/derived-schemas.sh --write` and checks it on the exact bytes (its `service/BodySchema`
+   from `filter/BodySchemaAdvice`, or mw-app-gateway's `config/BodySchemaConfig`), then adds a row
+   to the table in "Body schemas (in the services)" and to `test_apisix_edge.sh`.
 4. `client-control` `max_body_size` sized for the route (bulk upload routes need more).
 5. Partner/MNO routes: `ip-restriction` (8.3) before auth.
 6. Add the route's cases to `scripts/edge-test.sh` and run `make edge-test`.
+7. Renaming or removing a route or consumer file: add its old `<kind>/<id>` to `retired.txt`.

@@ -13,6 +13,10 @@ public final class ErrorCodes {
   public static final String VAL_METHOD = "MW-VAL-004";
   /** Content type not supported. */
   public static final String VAL_MEDIA_TYPE = "MW-VAL-005";
+  /** Internal API: no valid client-credentials token (missing, expired, bad signature, issuer, audience): 401. */
+  public static final String AUTH_UNAUTHENTICATED = "MW-AUTH-001";
+  /** Internal API: the calling client may not ask: 403. */
+  public static final String AUTH_FORBIDDEN = "MW-AUTH-002";
   /** Unexpected failure; details stay in the log, never in the response. */
   public static final String SYS_INTERNAL = "MW-SYS-001";
 

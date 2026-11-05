@@ -12,6 +12,9 @@ version = "0.1.0-SNAPSHOT"
 
 java {
     toolchain { languageVersion = JavaLanguageVersion.of(25) }
+    // Tests run on the versions the boot jar ships: a test-only library (json-schema-validator)
+    // must not raise a shared dependency (Jackson) above the runtime one and hide a runtime bug.
+    consistentResolution { useRuntimeClasspathVersions() }
 }
 
 repositories { mavenCentral() }
@@ -37,6 +40,9 @@ dependencies {
     // Resilience4j for client/ calls (19.2); annotations need AspectJ.
     implementation(libs.resilience4j.spring.boot4)
     implementation(libs.spring.boot.starter.aspectj)
+    // Merchant IPN client (review A7): connects to the addresses IpnUrlPolicy checked (pinned DNS),
+    // keeping the merchant's name for Host, TLS SNI and hostname verification. Version from Boot's BOM.
+    implementation(libs.httpclient5)
     // Own schema, migrated by Flyway on start-up (16.4).
     implementation(libs.spring.boot.starter.jdbc)
     implementation(libs.spring.boot.starter.flyway)
@@ -45,6 +51,14 @@ dependencies {
     // Scheduled jobs run on one instance only (ShedLock on this service's schema, 4.4).
     implementation(libs.shedlock.spring)
     implementation(libs.shedlock.provider.jdbc.template)
+    // Request body schema checks (service/BodySchema; body schemas are checked in the
+    // service, never at the edge). The validator is built on a newer Jackson 3 than Boot manages;
+    // keep Boot's, so this library does not change Jackson for the whole service (as mw-app-gateway).
+    implementation(libs.json.schema.validator) {
+        exclude(group = "tools.jackson.core")
+        exclude(group = "tools.jackson.dataformat")
+        exclude(group = "tools.jackson", module = "jackson-bom")
+    }
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.boot.starter.webmvc.test)
@@ -54,7 +68,6 @@ dependencies {
     testImplementation(libs.testcontainers.kafka)
     testImplementation(libs.spring.boot.testcontainers)
     testImplementation(libs.camel.test.spring.junit6)
-    testImplementation(libs.json.schema.validator)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 

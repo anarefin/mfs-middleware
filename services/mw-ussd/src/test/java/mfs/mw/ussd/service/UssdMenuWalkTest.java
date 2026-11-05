@@ -70,8 +70,11 @@ class UssdMenuWalkTest {
     return new UssdProperties(
         "test-instance", "mw.txn.request.v1", "mw.txn.status.v1", Duration.ofSeconds(8), Duration.ofSeconds(30),
         "bn", 3, new UssdProperties.Pin("core-pin-test", TestPinKeys.pem()),
-        Map.of("robi", new UssdProperties.Mno(UssdProperties.Transport.HTTP, List.of("*268#"), 182, 70,
-            Duration.ofSeconds(120), UssdProperties.Overflow.PAGE, "CON", "END")),
+        Map.of(
+            "robi", new UssdProperties.Mno(UssdProperties.Transport.HTTP, List.of("*268#"), 182, 70,
+                Duration.ofSeconds(120), UssdProperties.Overflow.PAGE, "CON", "END", null),
+            "bl", new UssdProperties.Mno(UssdProperties.Transport.HTTP, List.of("*268#"), 182, 70,
+                Duration.ofSeconds(120), UssdProperties.Overflow.PAGE, "CON", "END", "banglalink")),
         Map.of("operators", List.of(
             new UssdProperties.ListItem("gp", new Text("গ্রামীণফোন", "Grameenphone")),
             new UssdProperties.ListItem("robi", new Text("রবি", "Robi")),
@@ -179,6 +182,23 @@ class UssdMenuWalkTest {
         .containsEntry("partnerId", "robi")
         .containsEntry("productCode", "PREPAID");
     assertThat(req.menuPath()).isEqualTo("main:3>tu.whom:1>tu.amount>tu.confirm:1>tu.pin");
+  }
+
+  /**
+   * The MNO key is {@code bl} (spec 9.2 {@code ussd.mno.<gp|robi|teletalk|bl>}); its top-up
+   * operator is mw-adapter-telco's partnerId {@code banglalink} ({@code mw.ussd.mno.bl.operator}).
+   */
+  @Test
+  void topUpOfTheOwnNumberOnBlGoesToTheBanglalinkOperator() {
+    engine.handle(new UssdRequest("bl", "t9", CUSTOMER, UssdEvent.BEGIN, "*268#"));
+    for (String input : new String[] {"3", "1", "50", "1", "4826"}) {
+      engine.handle(new UssdRequest("bl", "t9", CUSTOMER, UssdEvent.CONTINUE, input));
+    }
+
+    FlowRequest req = flow.requests.getFirst();
+    assertThat(req.flow()).isEqualTo("TOPUP");
+    assertThat(req.fields()).containsEntry("creditParty", CUSTOMER).containsEntry("partnerId", "banglalink");
+    assertThat(req.session().mno()).isEqualTo("bl");
   }
 
   @Test

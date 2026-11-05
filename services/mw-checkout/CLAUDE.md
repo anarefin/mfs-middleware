@@ -9,9 +9,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   MERCHANT_PAY per session, the signed redirect, the signed IPN with retries (ticket 32). Not
   built yet: refunds (`POST /checkout/v1/refunds`), the page front-end (open point 16).
 - Merchant API (`controller/MerchantSessionController`, `service/MerchantSessionService`) behind the
-  APISIX routes `checkout-v1-sessions` (POST, hmac-auth with body Digest + body schema) and
+  APISIX routes `checkout-v1-sessions` (POST, hmac-auth with body Digest, 16 KiB cap) and
   `checkout-v1-session-get` (GET, hmac-auth); APISIX forwards the consumer name in `X-Mw-Merchant-Id`
-  (`deploy/apisix/README.md`). No header `401 MW-AUTH-001`; a consumer that is not in
+  (`deploy/apisix/README.md`). The create body is checked against the derived schema on the exact
+  bytes before binding (`filter/BodySchemaAdvice` -> `service/BodySchema`, copied from
+  mw-app-gateway: duplicate keys, trailing content, non-objects refused; `400 MW-VAL-001`; over 64 KiB
+  `413 MW-VAL-BODY_TOO_LARGE`), then Bean Validation (patterns). The same advice checks the hosted
+  page bodies (`OtpRequest`, `ConfirmRequest`; `cancel` has no body); a new body type needs its
+  derived schema added to the advice. No header `401 MW-AUTH-001`; a consumer that is not in
   `mw.checkout.merchants.<id>` (wallet, name, secret) `403 MW-AUTH-002`.
   `POST /checkout/v1/sessions {orderId, amount, successUrl, failUrl, cancelUrl, ipnUrl (https only,
   no fragment; `security/IpnUrlPolicy`: http and internal addresses `400 MW-VAL-001` field ipnUrl
@@ -28,6 +33,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   `otp-ttl` 2 min; at most `otp-max-sends` 3 per session `429 MW-VAL-022`) sent as
   `mw.notify.request.v1` (template `CHECKOUT_OTP` seeded in mw-notify, priority OTP, SMS, expiresAt
   = OTP expiry, messageId `checkout-otp:<sessionId>:<n>`) through the outbox with the session update;
+  the statement that marks the row sent also removes its `params.otp` (review A8: `messaging/OutboxRelay.markSent`,
+  the only checkout-specific change to the copied batched relay; V6 scrubbed rows relayed before), so no OTP
+  stays in clear for the 7 day purge; an unacknowledged row keeps it for the next attempt;
   `POST .../confirm {otp, encryptedPin}`: no/expired OTP `401 MW-AUTH-011`, wrong `401 MW-AUTH-010`,
   after `otp-max-attempts` 3 checks `401 MW-AUTH-012` until a new OTP. Every guess first reserves one
   check atomically (`SessionRepository.reserveOtpAttempt`: `otp_attempts < max` in the UPDATE, row
@@ -44,7 +52,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   `410 MW-VAL-020` on otp/confirm/cancel; not OPEN `409 MW-VAL-021`. One payment per session: a
   failed one ends it (FAILED); the merchant creates a new session.
 - Outcomes (`service/SessionOutcomes`): PAYING -> PAID (COMPLETED) / FAILED (FAILED, REJECTED, with
-  the error code), from the paying request or from `route/StatusProjectionRoute` (shared group
+  the error code; statuses compared only through `dto/TerminalStatus`), from the paying request or from `route/StatusProjectionRoute` (shared group
   `mw-checkout` on `mw.txn.status.v1`, channel WEB_CHECKOUT only, retry topics + DLQ) for late answers;
   first one wins. Every `service/SessionOutcomeListener` bean is called in that same transaction
   with the finished session (never calls out over the network).
@@ -52,13 +60,19 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   (V5, one row per attempt; body `dto/IpnPayload` via `mapper/IpnMapper`, stored as the exact signed
   text) with the outcome. `scheduler/IpnDeliveryJob` (ShedLock `checkout-ipn-delivery`, every
   `mw.checkout.ipn.poll-period`; `enabled=false` in tests) runs `service/IpnDeliveryService.deliverDue`:
-  per due row, `IpnUrlPolicy.refusalAfterLookup` (https only; no loopback/private/link-local/CGNAT/
-  unspecified/multicast address, literal or resolved, unless a dev host), the merchant's current
-  secret, headers `X-Upay-Ipn-Id` (sessionId), `X-Upay-Attempt`, `X-Upay-Timestamp` (epoch s of the
+  per due row, `IpnUrlPolicy.lookup` (https only; the host resolved once and every address checked: no
+  loopback/private/link-local/CGNAT/unspecified/multicast IPv4, literal or resolved, unless a dev host;
+  IPv6 (review A7): the IPv4 inside NAT64 `64:ff9b::/96`, 6to4 `2002::/16` and IPv4-compatible `::/96` is
+  extracted and checked, NAT64 local-use `64:ff9b:1::/48` refused outright (its embedding depends on a
+  local prefix length), else only global unicast `2000::/3` minus `2001:db8::/32` and `2001::/23`
+  (`100::/64` and the rest refused)), the merchant's current secret, headers `X-Upay-Ipn-Id` (sessionId), `X-Upay-Attempt`, `X-Upay-Timestamp` (epoch s of the
   attempt), `X-Upay-Signature` = `security/IpnSigner` (hex HMAC-SHA256 over `upay-checkout-ipn.v1\n`
-  + ts + `\n` + body), one POST by `client/MerchantIpnClient` (JDK HttpClient, no redirects, connect
-  timeout, Resilience4j time limiter `merchant-ipn` 10 s). 2xx DELIVERED; else FAILED with
-  `http_status`/`error` (`HTTP_<n>`, TIMEOUT, CONNECT_FAILED, IO_ERROR, NO_SECRET, `URL_REFUSED: ...`)
+  + ts + `\n` + body), one POST by `client/MerchantIpnClient` (Apache HttpClient 5, a new client per call
+  whose DNS answers the URL's host with the checked addresses only, so DNS rebinding cannot move the
+  connect; the name stays the Host header, the TLS SNI name and the name the certificate is verified
+  against (default hostname verifier, JVM trust store bean `merchantIpnTls`); no redirects, proxy,
+  cookies or retries; connect timeout, Resilience4j time limiter `merchant-ipn` 10 s). 2xx DELIVERED; else FAILED with
+  `http_status`/`error` (`HTTP_<n>`, TIMEOUT, CONNECT_FAILED, TLS_FAILED, IO_ERROR, NO_SECRET, `URL_REFUSED: ...`)
   and the next row due after `service/IpnRetrySchedule` (`retry-delays` 1m,5m,30m,2h,6h; 6 attempts).
   CANCELLED and EXPIRED sessions get no IPN (no payment was made; the merchant's GET shows them). Logs: `checkout.ipn.delivered|failed|
   exhausted` with the host only. Dev stack (`compose.yml`): dev host `mw-simulators` (merchant IPN
@@ -78,9 +92,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 ## Contracts owned
 
 - `api/mw-checkout/checkout.v1.openapi.yaml` (merchant API, hosted page API, signed result, signed
-  IPN: webhook `ipn`, schema `Ipn`, `IpnUrl`). The
-  edge validates create-session bodies with `deploy/apisix/schemas/checkout-v1-create-session.json`
-  (`scripts/apisix-schemas.sh --write` after changing `CreateSessionRequest`).
+  IPN: webhook `ipn`, schema `Ipn`, `IpnUrl`). The service (not the edge) validates request
+  bodies with `src/main/resources/derived-schemas/` `checkout-v1-create-session.json`
+  (`CreateSessionRequest`), `checkout-pay-v1-otp.json` (`OtpRequest`) and
+  `checkout-pay-v1-confirm.json` (`ConfirmRequest`) (`scripts/derived-schemas.sh --write` after
+  changing one; `make contracts-lint` fails on drift).
 
 ## Contracts used
 
@@ -94,9 +110,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   the notify request, wrong/expired/locked OTP, pay, core rejection, late answer via projection,
   cancel, expiry, merchant auth, idempotent create, refused IPN URLs); `IpnDeliveryIT` (local merchant
   HTTP server, `MutableClock`: fail twice then 2xx on the schedule, six attempts then none, timeout,
-  internal target refused); `service/IpnRetryScheduleTest`, `security/IpnUrlPolicyTest`,
-  `security/IpnSignerTest` (openssl vector); `repository/SessionRepositoryIT`;
-  `security/ResultSignerTest` (vector from openssl); `mapper/CheckoutMapperTest` (contract schemas).
+  internal target refused); `client/MerchantIpnClientTest` (pinned address, Host kept),
+  `client/MerchantIpnTlsTest` (keytool certificates: SNI and certificate checked against the name);
+  `service/IpnRetryScheduleTest`, `security/IpnUrlPolicyTest` (one case per IPv6 rule),
+  `security/IpnSignerTest` (openssl vector); `repository/SessionRepositoryIT`; `messaging/OutboxRelayOtpIT`
+  (OTP on Kafka, gone from the row once relayed, other topics untouched);
+  `security/ResultSignerTest` (vector from openssl); `mapper/CheckoutMapperTest` (contract schemas);
+  `service/SessionBodySchemaTest`, `controller/MerchantSessionControllerTest`,
+  `controller/HostedPageControllerTest` (schema before the service).
 - e2e `@checkout` (`tests/e2e/src/test/resources/features/checkout.feature`).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)

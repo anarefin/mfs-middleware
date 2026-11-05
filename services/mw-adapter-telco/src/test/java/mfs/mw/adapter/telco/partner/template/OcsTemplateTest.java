@@ -37,7 +37,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Characterisation of the OCS partner (ticket 16 / 18 behaviour) after the move behind the
- * adapter framework: the OCS seed config of application.yml, instantiated from the {@code
+ * adapter framework: the OCS seed config of application-dev.yml, instantiated from the {@code
  * rest-json-request-reply} template, against the mw-simulators OCS wire format stubbed with
  * WireMock. Every way a call can end maps to one {@link PartnerResponse}, and the non-idempotent
  * top-up is never sent twice.

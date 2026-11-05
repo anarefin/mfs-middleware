@@ -47,6 +47,17 @@ public class MessageRepository {
         (rs, i) -> new MessageRecord.Key(rs.getString(1), rs.getString(2)), priorityRank, ts(now), limit);
   }
 
+  /**
+   * Keys due at {@code now} for one priority whose expiry has passed, oldest first: during PROMO
+   * quiet hours only these are taken, to record them EXPIRED.
+   */
+  public List<MessageRecord.Key> expiredDueKeys(int priorityRank, Instant now, int limit) {
+    return jdbc.query(
+        "select message_id, channel from message where priority_rank = ? and status in ('QUEUED', 'RETRY')"
+            + " and next_attempt_at <= ? and expires_at <= ? order by next_attempt_at, created_at limit ?",
+        (rs, i) -> new MessageRecord.Key(rs.getString(1), rs.getString(2)), priorityRank, ts(now), ts(now), limit);
+  }
+
   /** Locks the message if it is still due, skipping one another dispatcher holds. */
   public Optional<MessageRecord> lockDue(MessageRecord.Key key, Instant now) {
     return jdbc.query(

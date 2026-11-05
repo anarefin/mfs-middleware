@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import mfs.mw.checkout.config.CheckoutProperties;
 import mfs.mw.checkout.config.OutboxProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +47,8 @@ import tools.jackson.databind.json.JsonMapper;
  *       commit, rollback or a dropped connection), rows locked {@code FOR UPDATE SKIP LOCKED}: a
  *       second instance or an overlapping run neither publishes a row twice concurrently nor
  *       reorders a key's events.
+ *   <li>No OTP at rest once relayed (review A8): {@link #markSent} strips {@code params.otp} from
+ *       the checkout's notify requests as it marks them sent.
  * </ul>
  */
 @Component
@@ -59,18 +62,21 @@ public class OutboxRelay {
   private final EventPublisher publisher;
   private final JsonMapper json;
   private final int batchSize;
+  private final String notifyTopic;
 
   public OutboxRelay(
       JdbcTemplate jdbc,
       TransactionTemplate tx,
       EventPublisher publisher,
       JsonMapper json,
-      OutboxProperties properties) {
+      OutboxProperties properties,
+      CheckoutProperties checkout) {
     this.jdbc = jdbc;
     this.tx = tx;
     this.publisher = publisher;
     this.json = json;
     this.batchSize = properties.batchSize();
+    this.notifyTopic = checkout == null ? null : checkout.notifyTopic();
   }
 
   private record Row(long id, String topic, String key, String headers, String payload) {}
@@ -203,13 +209,23 @@ public class OutboxRelay {
     }
   }
 
-  /** Marks the acknowledged rows of a batch sent, in one statement of the relay's transaction. */
+  /**
+   * Marks the acknowledged rows of a batch sent, in one statement of the relay's transaction. The
+   * same statement removes {@code params.otp} from the checkout's OTP SMS requests (topic {@code
+   * mw.checkout.notify-topic}; review A8): Kafka has the code now, so the stored row never keeps it
+   * in clear until the purge. A row not acknowledged keeps it for the next attempt.
+   */
   protected void markSent(List<Long> ids) {
     jdbc.update(
         con -> {
           PreparedStatement ps =
-              con.prepareStatement("update outbox set sent_at = now() where id = any(?)");
-          ps.setArray(1, con.createArrayOf("bigint", ids.toArray()));
+              con.prepareStatement(
+                  "update outbox set sent_at = now(),"
+                      + " payload = case when topic = ? and payload->'params' ?? 'otp'"
+                      + " then payload #- '{params,otp}' else payload end"
+                      + " where id = any(?)");
+          ps.setString(1, notifyTopic);
+          ps.setArray(2, con.createArrayOf("bigint", ids.toArray()));
           return ps;
         });
   }

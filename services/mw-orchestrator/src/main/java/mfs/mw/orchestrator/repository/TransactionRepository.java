@@ -16,6 +16,7 @@ import mfs.mw.orchestrator.dto.TxnSearchCriteria;
 import mfs.mw.orchestrator.entity.TransactionRecord;
 import mfs.mw.orchestrator.service.saga.Status;
 import mfs.mw.orchestrator.util.SearchHash;
+import mfs.mw.orchestrator.util.SearchKeys;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.json.JsonMapper;
@@ -39,14 +40,17 @@ public class TransactionRepository {
     this.searchHash = searchHash;
   }
 
-  /** Inserts a new transaction with the keyed hash of its initiator id (ticket 35 search). */
+  /**
+   * Inserts a new transaction with the keyed hashes of its typed initiator id and of its payee
+   * (ticket 35 search, A2/A3).
+   */
   public void insert(TransactionRecord rec) {
     TxnRequest r = rec.request();
     jdbc.update(
         "insert into transaction (txn_id, created_at, updated_at, requested_at, channel, txn_type,"
-            + " status, previous_status, initiator_id, initiator_hash, correlation_id, idempotency_key,"
-            + " reply_to, amount_minor, currency, encrypted_pin, request)"
-            + " values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb)",
+            + " status, previous_status, initiator_id, initiator_type, initiator_hash, payee_hash,"
+            + " correlation_id, idempotency_key, reply_to, amount_minor, currency, encrypted_pin, request)"
+            + " values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb)",
         rec.txnId(),
         Timestamp.from(rec.createdAt()),
         Timestamp.from(rec.updatedAt()),
@@ -56,7 +60,9 @@ public class TransactionRepository {
         rec.status().name(),
         null,
         r.initiator().id(),
-        searchHash.of(r.initiator().id()),
+        r.initiator().type(),
+        SearchKeys.initiator(r).map(searchHash::of).orElse(null),
+        SearchKeys.payee(r).map(searchHash::of).orElse(null),
         r.correlationId(),
         r.idempotencyKey(),
         rec.replyTo(),
@@ -158,11 +164,12 @@ public class TransactionRepository {
   }
 
   /**
-   * Internal search (ticket 35), newest first. MSISDN and org id are matched through {@code
-   * initiator_hash}, never through {@code initiator_id}; {@code parentTxnId} through the stored
-   * request's attributes (bulk children, ticket 34).
+   * Internal search (ticket 35), newest first. MSISDN and org id are matched through the typed
+   * {@code initiator_hash} and the initiator type, never through {@code initiator_id} (A2); with
+   * an org id, also the transactions paying one of {@code orgPayees} through {@code payee_hash}
+   * (A3). {@code parentTxnId} through the stored request's attributes (bulk children, ticket 34).
    */
-  public List<TransactionRecord> search(TxnSearchCriteria c) {
+  public List<TransactionRecord> search(TxnSearchCriteria c, List<SearchKeys.Key> orgPayees) {
     StringBuilder sql = new StringBuilder("select " + COLUMNS + " from transaction where true");
     List<Object> args = new ArrayList<>();
     if (c.txnId() != null) {
@@ -170,12 +177,20 @@ public class TransactionRepository {
       args.add(c.txnId());
     }
     if (c.msisdn() != null) {
-      sql.append(" and initiator_hash = ?");
-      args.add(searchHash.of(c.msisdn()));
+      String marks = placeholders(SearchKeys.MSISDN_TYPES.size());
+      sql.append(" and initiator_type in (").append(marks).append(") and initiator_hash in (").append(marks).append(")");
+      args.addAll(SearchKeys.MSISDN_TYPES);
+      SearchKeys.MSISDN_TYPES.forEach(t -> args.add(searchHash.of(t, c.msisdn())));
     }
     if (c.orgId() != null) {
-      sql.append(" and initiator_hash = ?");
-      args.add(searchHash.of(c.orgId()));
+      sql.append(" and ((initiator_type = ? and initiator_hash = ?)");
+      args.add(SearchKeys.ORG);
+      args.add(searchHash.of(SearchKeys.ORG, c.orgId()));
+      if (!orgPayees.isEmpty()) {
+        sql.append(" or payee_hash in (").append(placeholders(orgPayees.size())).append(")");
+        orgPayees.forEach(p -> args.add(searchHash.of(p)));
+      }
+      sql.append(")");
     }
     if (c.partnerRef() != null) {
       sql.append(" and partner_ref = ?");
@@ -207,14 +222,32 @@ public class TransactionRepository {
     return jdbc.query(sql.toString(), this::map, args.toArray());
   }
 
-  /** The saga timeline: every state change of {@code txnId} in the order it happened. */
-  public List<TxnDetail.TimelineStep> steps(UUID txnId) {
+  private static String placeholders(int n) {
+    return String.join(", ", java.util.Collections.nCopies(n, "?"));
+  }
+
+  /**
+   * The saga timeline (ticket 35, B13): every state change and every core command of {@code
+   * txnId} with its result, in the order they happened ({@code timeline_seq}).
+   */
+  public List<TxnDetail.TimelineEntry> timeline(UUID txnId) {
     return jdbc.query(
-        "select from_status, to_status, trigger, at from saga_step where txn_id = ? order by id",
-        (rs, i) ->
-            new TxnDetail.TimelineStep(
-                rs.getString("from_status"), rs.getString("to_status"), rs.getString("trigger"),
-                rs.getTimestamp("at").toInstant()),
+        "select seq, 'STATE' as kind, from_status, to_status, trigger, at, null as command_type,"
+            + " null as command_id, null::int as sends, null as result, null as outcome, null as reason_code,"
+            + " null::timestamptz as answered_at from saga_step where txn_id = ?"
+            + " union all"
+            + " select seq, 'CORE', null, null, null, sent_at, command_type, command_id, sends, result, outcome,"
+            + " reason_code, answered_at from core_call where txn_id = ?"
+            + " order by seq",
+        (rs, i) -> {
+          Timestamp answered = rs.getTimestamp("answered_at");
+          return new TxnDetail.TimelineEntry(
+              rs.getString("kind"), rs.getString("from_status"), rs.getString("to_status"), rs.getString("trigger"),
+              rs.getString("command_type"), rs.getString("command_id"), rs.getObject("sends", Integer.class),
+              rs.getString("result"), rs.getString("outcome"), rs.getString("reason_code"),
+              rs.getTimestamp("at").toInstant(), answered == null ? null : answered.toInstant());
+        },
+        txnId,
         txnId);
   }
 

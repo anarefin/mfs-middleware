@@ -25,13 +25,19 @@ plan() {
           cfg="retention.ms=$((days * DAY_MS))" ;;
       *) echo "error: $name: bad retention '$retention'" >&2; return 1 ;;
     esac
-    case "${flag:-}" in ''|retry) ;; *) echo "error: $name: unknown flag '$flag'" >&2; return 1 ;; esac
+    groups=""
+    case "${flag:-}" in
+      '') ;;
+      retry=*) groups="$(printf '%s' "${flag#retry=}" | tr ',' ' ')"
+               case "${flag#retry=}" in ''|,*|*,|*,,*|*[!a-z0-9,-]*) echo "error: $name: bad consumer group list '$flag'" >&2; return 1 ;; esac ;;
+      *) echo "error: $name: unknown flag '$flag' (retry needs its consumer groups: retry=<group>[,<group>])" >&2; return 1 ;;
+    esac
     [ -z "${rest:-}" ] || { echo "error: $name: trailing fields '$rest'" >&2; return 1; }
     echo "$name partitions=$parts $cfg"
-    if [ "${flag:-}" = retry ]; then
-      for n in $RETRY_TIERS; do echo "$name.retry.$n partitions=$parts retention.ms=$RETRY_RETENTION_MS"; done
-      echo "$name.dlq partitions=$parts retention.ms=$RETRY_RETENTION_MS"
-    fi
+    for g in $groups; do
+      for n in $RETRY_TIERS; do echo "$name.$g.retry.$n partitions=$parts retention.ms=$RETRY_RETENTION_MS"; done
+      echo "$name.$g.dlq partitions=$parts retention.ms=$RETRY_RETENTION_MS"
+    done
   done <"$file"
 }
 

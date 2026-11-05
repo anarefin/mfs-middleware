@@ -320,7 +320,7 @@ class BillpayRequestRouteIT {
     AGG.verify(1, postRequestedFor(urlEqualTo("/billagg/v1/payments")));
     assertThat(
             KafkaTestConsumer.read(
-                kafka.getBootstrapServers(), REQUEST_TOPIC + ".retry.1", 1, Duration.ofSeconds(1),
+                kafka.getBootstrapServers(), RetryTopicRouteBuilder.retryTopic(REQUEST_TOPIC, "mw-adapter-billpay", 1), 1, Duration.ofSeconds(1),
                 r -> request.txnId().equals(r.key())))
         .isEmpty();
   }

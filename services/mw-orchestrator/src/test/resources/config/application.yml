@@ -1,5 +1,8 @@
 # Test-only overrides, merged over src/main/resources/application.yml.
 mw:
+  internal-auth:
+    # Test-only issuer of security/InternalTokens (TestInfrastructure registers its JWKS).
+    issuer: http://keycloak.test/realms/services
   orchestrator:
     # Off by default in tests: a consumer or sweeper left running in a cached context would take
     # records and timers that another test is checking. Tests that need them switch them on.
@@ -14,6 +17,9 @@ mw:
     # Obviously fake search hash key (ticket 35); the real one comes from OpenBao.
     search:
       hash-key: test-only-search-hash-key-not-a-secret-0001
+      # ORG002 collects for biller DESCO and merchant wallet 01911000001 (payee scope, A3).
+      org-payees:
+        ORG002: ["BILLER:DESCO", "MERCHANT:01911000001"]
     # Partner "tsqfast" has a status-inquiry schedule shortened to seconds (InquirySagaIT reaches
     # MANUAL_REVIEW with it); every other partner keeps the spec 7.4 default.
     inquiry:

@@ -320,7 +320,7 @@ class BankRequestRouteIT {
     BANK.verify(1, postRequestedFor(urlEqualTo("/c2wbank/v1/debits")));
     assertThat(
             KafkaTestConsumer.read(
-                kafka.getBootstrapServers(), REQUEST_TOPIC + ".retry.1", 1, Duration.ofSeconds(1),
+                kafka.getBootstrapServers(), RetryTopicRouteBuilder.retryTopic(REQUEST_TOPIC, "mw-adapter-bank", 1), 1, Duration.ofSeconds(1),
                 r -> request.txnId().equals(r.key())))
         .isEmpty();
   }

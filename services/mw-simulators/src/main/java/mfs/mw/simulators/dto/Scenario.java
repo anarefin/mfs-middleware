@@ -21,19 +21,28 @@ import jakarta.validation.constraints.Min;
  */
 public record Scenario(
     SimMode forceMode,
-    @Min(0) long latencyMs,
-    @DecimalMin("0.0") @DecimalMax("1.0") double errorRate,
-    boolean outage,
+    @Min(0) Long latencyMs,
+    @DecimalMin("0.0") @DecimalMax("1.0") Double errorRate,
+    Boolean outage,
     @Min(0) Long timeoutDelayMs,
     CallbackMode callbackMode,
     String callbackUrl,
-    @Min(0) long callbackDelayMs,
+    @Min(0) Long callbackDelayMs,
     Boolean callbackOnly) {
 
   public static final Scenario DEFAULT =
-      new Scenario(null, 0, 0.0, false, null, CallbackMode.NONE, null, 0, false);
+      new Scenario(null, 0L, 0.0, false, null, CallbackMode.NONE, null, 0L, false);
 
+  /**
+   * A field left out of a scenario request takes its default. The numeric and flag fields are
+   * boxed so a partial body binds on the runtime Jackson, which refuses a missing primitive
+   * (D21: the tests used to run on a newer Jackson that hid this).
+   */
   public Scenario {
+    latencyMs = latencyMs == null ? 0L : latencyMs;
+    errorRate = errorRate == null ? 0.0 : errorRate;
+    outage = Boolean.TRUE.equals(outage);
+    callbackDelayMs = callbackDelayMs == null ? 0L : callbackDelayMs;
     if (callbackMode == null) {
       callbackMode = CallbackMode.NONE;
     }

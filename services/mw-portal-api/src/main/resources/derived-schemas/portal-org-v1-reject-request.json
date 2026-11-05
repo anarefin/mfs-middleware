@@ -1,0 +1,15 @@
+{
+  "x-mw-derived-from": "api/mw-portal-api/portal-org.v1.openapi.yaml#/paths/~1portal~1org~1v1~1bulk~1batches~1{batchId}~1reject/post/requestBody/content/application~1json/schema",
+  "type": "object",
+  "required": [
+    "reason"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    }
+  }
+}

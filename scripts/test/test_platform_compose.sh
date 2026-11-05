@@ -8,11 +8,20 @@ ONE_SHOT="kafka-init etcd-init apisix-init"
 SECRET_VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALTH_PASSWORD
   POSTGRES_PASSWORD VALKEY_PASSWORD KC_BOOTSTRAP_ADMIN_PASSWORD KC_PARTNER_SIM_SECRET
   KC_CUSTOMERS_TEST_PASSWORD KC_OPS_TEST_PASSWORD KC_PORTALS_TEST_PASSWORD KC_DB_PASSWORD
-  MW_E2E_API_KEY BILLAGG_HMAC_SECRET C2WBANK_HMAC_SECRET CHECKOUT_DEMO_MERCHANT_SECRET"
+  MW_E2E_API_KEY BILLAGG_HMAC_SECRET C2WBANK_HMAC_SECRET CHECKOUT_DEMO_MERCHANT_SECRET
+  KC_MW_PORTAL_API_SECRET KC_MW_ADMIN_API_SECRET
+  USSD_GP_GATEWAY_SECRET USSD_ROBI_GATEWAY_SECRET USSD_BL_GATEWAY_SECRET USSD_TELETALK_GATEWAY_SECRET"
+# Not secrets, but generated into the same .env and required by the platform file (no fallback):
+# each MNO's USSD source allow-list (comma-separated CIDRs, item A4).
+ADDRESS_VARS="USSD_GP_ALLOWED_CIDRS USSD_ROBI_ALLOWED_CIDRS USSD_BL_ALLOWED_CIDRS USSD_TELETALK_ALLOWED_CIDRS"
 REALMS_DIR="$REPO_DIR/deploy/compose/platform/keycloak/realms"
 
-# placeholder_env: VAR=t for every generated secret (for `env`).
-placeholder_env() { local v; for v in $SECRET_VARS; do printf '%s=t\n' "$v"; done; }
+# placeholder_env: VAR=t for every generated secret, a test range for every address list (for `env`).
+placeholder_env() {
+  local v
+  for v in $SECRET_VARS; do printf '%s=t\n' "$v"; done
+  for v in $ADDRESS_VARS; do printf '%s=10.9.0.0/16\n' "$v"; done
+}
 
 # copy_deploy: a copy of deploy/ in the fixture root without the generated (gitignored)
 # secrets file, so the tests never depend on or read a developer's local secrets.
@@ -172,6 +181,35 @@ test_gen_dev_env_adds_a_new_variable_to_an_existing_env_and_keeps_the_rest() {
   [ "$(grep -c '^POSTGRES_PASSWORD=' "$f")" = 1 ] || fail "existing variable duplicated"
 }
 
+test_compose_config_fails_without_a_ussd_allow_list() {
+  copy_deploy
+  local v
+  for v in $ADDRESS_VARS; do
+    OUT="$(env $(placeholder_env) "$v=" \
+      docker compose -f deploy/compose/mvp/compose.yml config -q 2>&1)" && fail "config passed without $v (fails open)"
+    assert_out_contains "$v"
+  done
+  [ "$(compose_json | jq -r '.services["apisix-init"].environment.USSD_ROBI_ALLOWED_CIDRS')" = "10.9.0.0/16" ] \
+    || fail "apisix-init does not get USSD_ROBI_ALLOWED_CIDRS from the .env"
+}
+
+test_gen_dev_env_writes_the_dev_ussd_allow_lists_once_and_keeps_edits() {
+  mkdir -p deploy/compose/platform
+  local f=deploy/compose/platform/.env v
+  printf 'USSD_GP_ALLOWED_CIDRS=10.7.0.0/24\n' >"$f"
+  chmod 600 "$f"
+  assert_ok env MW_ROOT="$PWD" "$REPO_DIR/scripts/gen-dev-env.sh"
+  grep -qx 'USSD_GP_ALLOWED_CIDRS=10.7.0.0/24' "$f" || fail "an edited allow-list was overwritten"
+  for v in USSD_ROBI_ALLOWED_CIDRS USSD_BL_ALLOWED_CIDRS USSD_TELETALK_ALLOWED_CIDRS; do
+    grep -qE "^$v=[0-9a-f.:/,]+$" "$f" || fail "$v not written as a CIDR list: $(grep "^$v=" "$f")"
+    [ "$(grep -c "^$v=" "$f")" = 1 ] || fail "$v duplicated"
+  done
+  # never every address
+  if grep -E '_ALLOWED_CIDRS=(.*,)?(0[.]0[.]0[.]0/0|::/0)' "$f"; then fail "dev allow-list admits every address"; fi
+  env MW_ROOT="$PWD" "$REPO_DIR/scripts/gen-dev-env.sh" >/dev/null
+  [ "$(grep -c '_ALLOWED_CIDRS=' "$f")" = 4 ] || fail "re-run added allow-lists again"
+}
+
 test_etcd_is_on_a_dedicated_internal_network_shared_only_with_apisix() {
   local j members
   j="$(compose_json)"
@@ -228,18 +266,58 @@ test_topic_plan_has_the_mvp_catalogue_with_spec_partitions_and_retention() {
   assert_plan_has "mw.config.changed.v1 partitions=6 cleanup.policy=compact"
 }
 
-test_topic_plan_adds_three_retry_tiers_and_a_dlq_with_source_partitions_and_14d() {
+test_topic_plan_adds_three_retry_tiers_and_a_dlq_per_consumer_group_with_source_partitions_and_14d() {
   assert_ok plan
-  # 19.2: Kafka retry 10 s / 1 min / 10 min then DLQ; 6.2: same partitions, 14 d
-  assert_plan_has "mw.txn.request.v1.retry.1 partitions=48 retention.ms=1209600000"
-  assert_plan_has "mw.txn.request.v1.retry.2 partitions=48 retention.ms=1209600000"
-  assert_plan_has "mw.txn.request.v1.retry.3 partitions=48 retention.ms=1209600000"
-  assert_plan_has "mw.txn.request.v1.dlq partitions=48 retention.ms=1209600000"
-  assert_plan_has "mw.notify.status.v1.dlq partitions=12 retention.ms=1209600000"
-  assert_plan_has "mw.partner.request.bank.v1.retry.2 partitions=24 retention.ms=1209600000"
+  # 19.2: Kafka retry 10 s / 1 min / 10 min then DLQ; 6.2: same partitions, 14 d. One set per
+  # consumer group (B10): <topic>.<group>.retry.<n>, <topic>.<group>.dlq.
+  assert_plan_has "mw.txn.request.v1.mw-orchestrator.retry.1 partitions=48 retention.ms=1209600000"
+  assert_plan_has "mw.txn.request.v1.mw-orchestrator.retry.2 partitions=48 retention.ms=1209600000"
+  assert_plan_has "mw.txn.request.v1.mw-orchestrator.retry.3 partitions=48 retention.ms=1209600000"
+  assert_plan_has "mw.txn.request.v1.mw-orchestrator.dlq partitions=48 retention.ms=1209600000"
+  assert_plan_has "mw.partner.request.bank.v1.mw-adapter-bank.retry.2 partitions=24 retention.ms=1209600000"
   [ "$(printf '%s\n' "$OUT" | grep -c '\.retry\.4 ')" = 0 ] || fail "unexpected 4th retry tier"
-  printf '%s\n' "$OUT" | grep -q '^mw.config.changed.v1.retry' && fail "compacted config topic must not get retry topics"
+  printf '%s\n' "$OUT" | grep -q '^mw.config.changed.v1\..*retry' && fail "compacted config topic must not get retry topics"
+  # no shared, group-less retry or DLQ topic is left
+  printf '%s\n' "$OUT" | grep -qE '^[a-z.]+\.v1\.(retry\.[0-9]+|dlq) ' && fail "group-less retry/DLQ topic in plan"
   return 0
+}
+
+test_topic_plan_gives_each_status_consumer_its_own_retry_topics() {
+  # mw-notify and mw-app-gateway (and checkout, portal-api) all consume mw.txn.status.v1: each
+  # group parks on its own topics, so none re-reads another's failed records (B10).
+  local g
+  assert_ok plan
+  for g in mw-app-gateway mw-checkout mw-notify mw-portal-api; do
+    assert_plan_has "mw.txn.status.v1.$g.retry.1 partitions=48 retention.ms=1209600000"
+    assert_plan_has "mw.txn.status.v1.$g.dlq partitions=48 retention.ms=1209600000"
+  done
+}
+
+test_topic_plan_has_retry_topics_for_every_retry_route_in_the_services() {
+  # Every RetryTopicRouteBuilder subclass parks on <topic>.<module>.retry.<n>/.dlq; the platform
+  # must declare them (topics are not auto-created). Topic = the class's TOPIC string literal or
+  # an orchestrator CoreTopics constant.
+  local f module lit const topic
+  assert_ok plan
+  for f in $(grep -rl 'extends RetryTopicRouteBuilder' "$REPO_DIR"/services/*/src/main/java); do
+    module="${f#"$REPO_DIR"/services/}"; module="${module%%/*}"
+    lit="$(sed -n 's/.*String TOPIC = "\([^"]*\)".*/\1/p' "$f" | head -1)"
+    if [ -z "$lit" ]; then
+      const="$(sed -n 's/.*String TOPIC = CoreTopics\.\([A-Z_]*\);.*/\1/p' "$f" | head -1)"
+      [ -n "$const" ] || fail "cannot find the TOPIC of $f"
+      lit="$(grep -rh "String $const = " "$REPO_DIR/services/$module/src/main/java" | sed -n 's/.*= "\([^"]*\)".*/\1/p' | head -1)"
+    fi
+    for topic in "$lit.$module.retry.1" "$lit.$module.retry.2" "$lit.$module.retry.3" "$lit.$module.dlq"; do
+      printf '%s\n' "$OUT" | grep -q "^$topic " || fail "$f: $topic not in deploy/kafka/topics.txt"
+    done
+  done
+  return 0
+}
+
+test_topic_plan_rejects_a_retry_flag_without_a_group() {
+  printf 'some.topic.v1 3 7d retry\n' >topics.txt
+  OUT="$("$REPO_DIR/deploy/kafka/apply-topics.sh" --dry-run topics.txt 2>&1)" && fail "accepted retry without a group"
+  assert_out_contains "some.topic.v1"
 }
 
 test_topic_plan_leaves_out_deferred_topics() {
@@ -339,5 +417,26 @@ test_one_shot_services_are_labelled_and_up_has_no_list() {
   [ "$labelled" = "$noRestart" ] || fail "labelled one-shots '$labelled' != restart-no services without healthcheck '$noRestart'"
   grep -q 'MW_UP_ONESHOT' "$REPO_DIR/scripts/up.sh" && fail "up.sh still has a hard-coded one-shot list"
   grep -q 'mw.oneshot=true' "$REPO_DIR/scripts/up.sh" || fail "up.sh does not read the mw.oneshot label"
+  return 0
+}
+
+# ---- PostgreSQL connection budget (D24) ----
+
+test_every_service_sets_an_explicit_pool_and_the_sum_fits_max_connections() {
+  # Each service's Hikari pool is explicit; every pool plus Keycloak's, summed, stays well under
+  # postgres max_connections (sizing written next to it in deploy/compose/platform/compose.yml).
+  local f n sum=0 max kc
+  for f in "$REPO_DIR"/services/*/src/main/resources/application.yml; do
+    n="$(sed -n 's/^ *maximum-pool-size: *\([0-9][0-9]*\).*/\1/p' "$f" | head -1)"
+    [ -n "$n" ] || fail "no spring.datasource.hikari.maximum-pool-size in $f"
+    [ "$n" -le 10 ] || fail "pool $n in $f: above 10 needs a sizing update in deploy/"
+    sum=$((sum + n))
+  done
+  kc="$(sed -n 's/^KC_DB_POOL_MAX_SIZE=\([0-9][0-9]*\)$/\1/p' "$REPO_DIR/deploy/compose/platform/env/keycloak.env")"
+  [ -n "$kc" ] || fail "Keycloak pool not capped (KC_DB_POOL_MAX_SIZE in env/keycloak.env)"
+  max="$(sed -n 's/.*"max_connections=\([0-9][0-9]*\)".*/\1/p' "$REPO_DIR/deploy/compose/platform/compose.yml")"
+  [ -n "$max" ] || fail "postgres max_connections not set in compose.yml"
+  # audit-dw's own search (4) and reader (1) pools, plus headroom for init jobs and psql
+  [ $((sum + kc + 5 + 20)) -le "$max" ] || fail "pools $sum + keycloak $kc + 25 exceed max_connections $max"
   return 0
 }

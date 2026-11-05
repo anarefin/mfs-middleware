@@ -35,6 +35,9 @@ spring:
     password: ${DB_PASSWORD:}
     hikari:
       schema: ussd
+      # Explicit, small pool (Kafka-driven or light on the database). PostgreSQL
+      # max_connections sizing: deploy/compose/platform/compose.yml (postgres).
+      maximum-pool-size: 5
   flyway:
     schemas: ussd
   # Valkey (Lettuce) holds the USSD sessions ussd:{mno}:{sessionId} (spec 9.2). The password comes
@@ -162,7 +165,7 @@ management:
 mw:
   kafka:
     retry:
-      # Non-blocking retry topics <topic>.retry.1..3, then <topic>.dlq (19.2).
+      # Non-blocking retry topics <topic>.<group>.retry.1..3, then <topic>.<group>.dlq (19.2).
       delays: 10s,1m,10m
   outbox:
     relay:
@@ -240,7 +243,7 @@ mw:
         overflow: PAGE
         continue-flag: CON
         end-flag: END
-      banglalink:
+      bl:
         transport: HTTP
         short-codes: ["*268#"]
         max-length-gsm: 182
@@ -249,6 +252,8 @@ mw:
         overflow: PAGE
         continue-flag: CON
         end-flag: END
+        # spec 9.2 names the MNO bl; mw-adapter-telco's top-up partnerId is banglalink
+        operator: banglalink
       teletalk:
         transport: HTTP
         short-codes: ["*268#"]
@@ -282,9 +287,9 @@ mw:
           host: ${MW_USSD_SMPP_ROBI_HOST:mw-simulators}
           port: ${MW_USSD_SMPP_ROBI_PORT:2776}
           system-id: upay-ussd
-        banglalink:
-          host: ${MW_USSD_SMPP_BANGLALINK_HOST:mw-simulators}
-          port: ${MW_USSD_SMPP_BANGLALINK_PORT:2776}
+        bl:
+          host: ${MW_USSD_SMPP_BL_HOST:mw-simulators}
+          port: ${MW_USSD_SMPP_BL_PORT:2776}
           system-id: upay-ussd
         teletalk:
           host: ${MW_USSD_SMPP_TELETALK_HOST:mw-simulators}

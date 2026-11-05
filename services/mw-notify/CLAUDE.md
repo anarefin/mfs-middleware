@@ -6,7 +6,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 ## Responsibilities
 
 - Customer notifications (spec 10, WP17, tickets 24 and 25): SMS over SMPP 3.4 and email over
-  SMTP; push, quiet hours and channel fallback come later. One `notify.message` row per requested
+  SMTP; push and channel fallback come later. One `notify.message` row per requested
   channel, key (message_id, channel); a channel without its address (SMS: msisdn, EMAIL: email)
   or PUSH is recorded FAILED `MW-VAL-101`; a request naming no channel is a FAILED SMS.
 - Intake (`service/NotificationService`): `mw.notify.request.v1` (`route/NotifyRequestRoute`,
@@ -17,6 +17,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   INFO 24 h, PROMO 72 h); an expired message is recorded EXPIRED and never sent. Listeners only
   store; nothing is sent on a Kafka thread.
 - Template `CHECKOUT_OTP` (bn/en SMS, `V8`, ticket 31): mw-checkout's OTP, params otp, amount, merchant.
+- Templates `DEVICE_BIND_OTP` (param otp, priority OTP) and `DEVICE_BOUND` (no params, TXN) (bn/en SMS, `V9`,
+  review A5): mw-app-gateway's device binding OTP and the "a new device was bound" notice.
 - Rules (`notify.rule`, seeds in `V5` and `V7`: P2P, CASH_IN, CASH_OUT, TOPUP, BILL_PAY,
   ADD_MONEY_BANK on success COMPLETED, failure FAILED|REJECTED and processing
   UNKNOWN|MANUAL_REVIEW; failure and processing go to the INITIATOR; BILL_PAY and ADD_MONEY_BANK
@@ -48,7 +50,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   timeouts, I/O, no bind) retry after `mw.notify.retry-backoff` (2 s, 10 s, 30 s) on the next bind
   of the pool, then FAILED `MW-SYS-102`; each transient failure is published FAILED final=false
   `MW-SYS-104`; other command statuses fail at once `MW-SYS-101`. Only parts without a message_id
-  are resent.
+  are resent. PROMO quiet hours (spec 10.1, review B14; `mw.notify.quiet-hours`: enabled, start,
+  end, zone, default 22:00-08:00 Asia/Dhaka, env `MW_NOTIFY_QUIET_HOURS_*`; end before start spans
+  midnight): PROMO is held while quiet (only its expired rows are taken, recorded EXPIRED, never
+  sent) and goes after; other priorities are not affected.
 - Email (`client/SmtpEmailSender`, Spring `JavaMailSender`, `spring.mail.*`: `SMTP_HOST` /
   `SMTP_PORT`, default GreenMail `greenmail:3025`; STARTTLS required and server identity checked by default (`config/MailTlsDefaultsTest`), off only by the explicit dev override `SMTP_STARTTLS_REQUIRED=false` in compose.yml and the test config;
   From `mw.notify.email.from` / `MAIL_FROM`; SMTP credentials, if any, from OpenBao): one
@@ -84,7 +89,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 
 - `service/SmsEncoderTest`, `TemplateRendererTest`, `RuleEngineTest` (units);
   `service/NotificationFlowIT` (PostgreSQL, `client/FakeSmsSender`, `MutableClock`: dedup, expiry,
-  priority order, 2/10/30 s retries, DLR outcomes); `service/EmailFlowIT` (in-process GreenMail:
+  priority order, 2/10/30 s retries, DLR outcomes, PROMO quiet hours); `config/QuietHoursTest`; `service/EmailFlowIT` (in-process GreenMail:
   subject, text and HTML parts, SMS+EMAIL request, SMTP down retried); `service/FlowNotificationsIT`
   (every seeded flow state -> exact SMS texts and email receipts, rule/template completeness);
   `SmscFlowIT` (Kafka in, real SMPP to the

@@ -171,14 +171,17 @@ paths:
       operationId: getBulkBatchResult
       summary: The result file of an approved batch
       description: >-
-        CSV (UTF-8, LF), header `line,msisdn,amount,reference,status,txnId,errorCode`, one line
-        per row in file order (`line` as in the upload, header = line 1). `msisdn` is masked
-        (`0171****789`; match rows by `reference`), `amount` in taka as uploaded. `status` is the
-        row's state: PENDING (not sent yet), SUBMITTED (running), COMPLETED (paid), FAILED,
-        REJECTED, REVERSED (not paid; `errorCode` says why) or MANUAL_REVIEW (outcome being
-        checked by operations). Final once the batch is COMPLETED; before that it shows the
-        current state. Needs role `org-maker` or `org-checker`; a batch that was never approved
-        is 409 MW-VAL-035.
+        CSV (UTF-8, LF), header `line,msisdn,amount,reference,status,txnId,errorCode,batchStatus`,
+        one line per row in file order (`line` as in the upload, header = line 1). `msisdn` is
+        masked (`0171****789`; match rows by `reference`), `amount` in taka as uploaded. `status`
+        is the row's state: PENDING (not sent yet), SUBMITTED (running), COMPLETED (paid), FAILED,
+        REJECTED, REVERSED (not paid; `errorCode` says why), MANUAL_REVIEW (outcome being checked
+        by operations) or UNRESOLVED (no outcome known long after it was sent; operations
+        reconcile it). `batchStatus` is the batch's status on every line: COMPLETED_WITH_EXCEPTIONS
+        when any row is MANUAL_REVIEW or UNRESOLVED. Final once the batch is COMPLETED or
+        COMPLETED_WITH_EXCEPTIONS; before that it shows the current state. Needs role `org-maker`
+        or `org-checker`; a batch that was never approved (also REJECTED, EXPIRED) is 409
+        MW-VAL-035.
       parameters:
         - $ref: "#/components/parameters/CorrelationId"
         - $ref: "#/components/parameters/BatchId"
@@ -193,9 +196,10 @@ paths:
             text/csv:
               schema: { type: string }
               example: |
-                line,msisdn,amount,reference,status,txnId,errorCode
-                2,0171****001,1500.00,SAL-NOV-001,COMPLETED,01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c,
-                3,0181****002,1250.50,SAL-NOV-002,REJECTED,01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8d,MW-CORE-CREDIT_ACCOUNT_BLOCKED
+                line,msisdn,amount,reference,status,txnId,errorCode,batchStatus
+                2,0171****001,1500.00,SAL-NOV-001,COMPLETED,01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c,,COMPLETED_WITH_EXCEPTIONS
+                3,0181****002,1250.50,SAL-NOV-002,REJECTED,01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8d,MW-CORE-CREDIT_ACCOUNT_BLOCKED,COMPLETED_WITH_EXCEPTIONS
+                4,0191****003,800.00,SAL-NOV-003,MANUAL_REVIEW,01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8e,MW-TMO-004,COMPLETED_WITH_EXCEPTIONS
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
@@ -236,8 +240,10 @@ paths:
       operationId: searchOrgTransactions
       summary: The org's own transactions, newest first (SP query, ticket 35)
       description: >-
-        Needs role `org-maker` or `org-checker`. Only transactions the token's org initiated (its
-        bulk children) are listed; there is no org parameter. Customer data is masked (MSISDN
+        Needs role `org-maker` or `org-checker`. Lists the transactions the token's org initiated
+        (its bulk children, `role` INITIATOR) and those it is the payee of (payments to a biller or
+        merchant wallet it collects for, `role` PAYEE); there is no org parameter. With `batchId`
+        only that batch's children. Customer data is masked (MSISDN
         `0171****789`). Errors: 400 MW-VAL-001 (bad filter); 404 MW-VAL-003 (`batchId` not a batch of
         the org); 503 MW-SYS-040 (query temporarily unavailable, retryable).
       parameters:
@@ -276,8 +282,9 @@ paths:
       operationId: getOrgTransaction
       summary: One of the org's transactions with its state changes in order
       description: >-
-        Needs role `org-maker` or `org-checker`. Another org's transaction is 404 MW-VAL-003, as
-        is an unknown one. 503 MW-SYS-040 when the query is temporarily unavailable (retryable).
+        Needs role `org-maker` or `org-checker`. A transaction the org neither initiated nor is
+        the payee of is 404 MW-VAL-003, as is an unknown one. The timeline lists state changes
+        only (the middleware's core commands stay internal). 503 MW-SYS-040 when the query is temporarily unavailable (retryable).
       parameters:
         - $ref: "#/components/parameters/CorrelationId"
         - { name: txnId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -338,10 +345,16 @@ components:
          REVERSING, COMPLETED, FAILED, REJECTED, REVERSED, MANUAL_REVIEW]
     OrgTxn:
       type: object
-      required: [txnId, txnType, status, createdAt, updatedAt, amount]
+      required: [role, txnId, txnType, status, createdAt, updatedAt, amount]
       properties:
+        role:
+          type: string
+          enum: [INITIATOR, PAYEE]
+          description: >-
+            The org's part: INITIATOR (it initiated it, e.g. a bulk child) or PAYEE (it collects
+            the payment, e.g. a bill payment to its biller or a payment to its merchant wallet)
         txnId: { type: string, format: uuid }
-        txnType: { type: string, description: BULK_DISBURSE for a batch child }
+        txnType: { type: string, description: "BULK_DISBURSE for a batch child; BILL_PAY or MERCHANT_PAY as payee" }
         status: { $ref: "#/components/schemas/TxnStatus" }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -370,20 +383,23 @@ components:
     BatchStatus:
       type: string
       description: >-
-        PENDING_APPROVAL -> APPROVED or REJECTED (maker-checker); APPROVED -> EXECUTING (first
-        row sent) <-> PAUSED -> COMPLETED (every row settled). More states may be added within v1;
-        clients must accept unknown values.
-      enum: [PENDING_APPROVAL, APPROVED, REJECTED, EXECUTING, PAUSED, COMPLETED]
+        PENDING_APPROVAL -> APPROVED or REJECTED (maker-checker), or EXPIRED when no checker decided
+        within 72 h of the upload; APPROVED -> EXECUTING (first row sent) <-> PAUSED -> COMPLETED
+        (every row settled) or COMPLETED_WITH_EXCEPTIONS (every row settled or given up, at least
+        one MANUAL_REVIEW or UNRESOLVED). More states may be added within v1; clients must accept
+        unknown values.
+      enum: [PENDING_APPROVAL, APPROVED, REJECTED, EXPIRED, EXECUTING, PAUSED, COMPLETED, COMPLETED_WITH_EXCEPTIONS]
     BatchProgress:
       type: object
       description: Row counts of an approved batch.
-      required: [pending, inFlight, completed, failed, manualReview, paidAmount]
+      required: [pending, inFlight, completed, failed, manualReview, unresolved, paidAmount]
       properties:
         pending: { type: integer, minimum: 0, description: Not sent yet }
         inFlight: { type: integer, minimum: 0, description: Sent, outcome not known yet }
         completed: { type: integer, minimum: 0, description: Paid }
         failed: { type: integer, minimum: 0, description: Not paid (FAILED, REJECTED, REVERSED) }
         manualReview: { type: integer, minimum: 0, description: Outcome being checked by operations }
+        unresolved: { type: integer, minimum: 0, description: "No outcome known long after it was sent (UNRESOLVED)" }
         paidAmount: { $ref: "#/components/schemas/Amount" }
     Amount:
       type: object

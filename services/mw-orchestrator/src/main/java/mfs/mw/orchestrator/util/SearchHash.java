@@ -7,8 +7,10 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
- * Keyed search hash (spec 14.3, 16.3 {@code initiator_hash}): HMAC-SHA256 under a key from
- * OpenBao over the canonical form of an id. An MSISDN in any accepted form ({@code 01...}, {@code
+ * Keyed search hash (spec 14.3, 16.3 {@code initiator_hash}, {@code payee_hash}): HMAC-SHA256
+ * under a key from OpenBao over {@code <type>:<canonical id>}. The type is part of the input, so an
+ * id of one type never matches the same text of another (an org id written like an MSISDN never
+ * finds that customer's transactions). An MSISDN in any accepted form ({@code 01...}, {@code
  * 880...}, {@code +880...}, with spaces or dashes) is hashed as {@code 01XNNNNNNNN}, so a search
  * finds it however it was written, and the raw number never needs an index.
  */
@@ -29,15 +31,26 @@ public final class SearchHash {
     this.key = new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), ALGORITHM);
   }
 
-  /** The 32-byte hash of {@code id} in its canonical form. */
-  public byte[] of(String id) {
+  /**
+   * The 32-byte hash of {@code id} of type {@code type} (a party type such as {@code MSISDN} or
+   * {@code ORG}, or a payee type of {@link SearchKeys}), the id in its canonical form.
+   */
+  public byte[] of(String type, String id) {
+    if (type == null || type.isBlank()) {
+      throw new IllegalArgumentException("search hash type is required");
+    }
     try {
       Mac mac = Mac.getInstance(ALGORITHM);
       mac.init(key);
-      return mac.doFinal(canonical(id).getBytes(StandardCharsets.UTF_8));
+      return mac.doFinal((type.strip() + ":" + canonical(id)).getBytes(StandardCharsets.UTF_8));
     } catch (GeneralSecurityException e) {
       throw new IllegalStateException("HmacSHA256 unavailable", e);
     }
+  }
+
+  /** The hash of a search key. */
+  public byte[] of(SearchKeys.Key key) {
+    return of(key.type(), key.id());
   }
 
   /** An MSISDN as {@code 01XNNNNNNNN}; any other id stripped of surrounding blanks. */

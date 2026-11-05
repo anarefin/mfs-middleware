@@ -66,6 +66,28 @@ public final class TestData {
         NOW);
   }
 
+  /** A MERCHANT_PAY of {@code amountMinor} from customer 01711000001 to merchant wallet {@code merchant}. */
+  public static TxnRequest merchantPay(String txnId, String idemKey, long amountMinor, String merchant) {
+    return new TxnRequest(
+        1,
+        txnId,
+        idemKey,
+        "corr-" + txnId.substring(0, 8),
+        "CUSTOMER_APP",
+        "MERCHANT_PAY",
+        new Party("MSISDN", "01711000001", null, null),
+        new Party("WALLET", "01711000001", null, "CUSTOMER"),
+        new Party("WALLET", merchant, null, "MERCHANT"),
+        Amount.bdt(amountMinor),
+        null,
+        null,
+        new EncryptedPin("core-pin-test-1", "ZmFrZS1jaXBoZXJ0ZXh0"),
+        "en",
+        null,
+        null,
+        NOW);
+  }
+
   /**
    * An ADD_MONEY_BANK (C2W) of {@code amountMinor} from bank account {@code account} at bank
    * c2wbank into customer wallet 01711000001, authorised with the wallet's PIN (ticket 23).

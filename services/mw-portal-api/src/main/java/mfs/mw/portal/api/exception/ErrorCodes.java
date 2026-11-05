@@ -13,6 +13,8 @@ public final class ErrorCodes {
   public static final String VAL_METHOD = "MW-VAL-004";
   /** Content type not supported. */
   public static final String VAL_MEDIA_TYPE = "MW-VAL-005";
+  /** JSON body over the service's own cap (the edge's code for the same refusal): 413. */
+  public static final String VAL_BODY_TOO_LARGE = "MW-VAL-BODY_TOO_LARGE";
   /** Bulk file over the row cap (10,000 data rows) or the byte cap: nothing stored (spec 9.4). */
   public static final String VAL_BULK_TOO_LARGE = "MW-VAL-030";
   /** Bulk file with a bad header, no rows or malformed rows; {@code details[]} name each line. */

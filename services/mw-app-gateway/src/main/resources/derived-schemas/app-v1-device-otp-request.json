@@ -1,0 +1,14 @@
+{
+  "x-mw-derived-from": "api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/DeviceOtpRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "locale": {
+      "type": "string",
+      "enum": [
+        "bn",
+        "en"
+      ]
+    }
+  }
+}

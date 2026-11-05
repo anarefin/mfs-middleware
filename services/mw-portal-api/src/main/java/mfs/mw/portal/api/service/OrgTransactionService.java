@@ -22,8 +22,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 /**
- * The SP transaction query (ticket 35, WP22): the SP is the org, and it sees only the
- * transactions it initiated (its bulk children). The org is always the token's {@code orgId},
+ * The SP transaction query (ticket 35, WP22): the SP is the org, and it sees the transactions it
+ * initiated (its bulk children, role {@code INITIATOR}) and those it is the payee of (bill and
+ * merchant payments it collects, role {@code PAYEE}; the orchestrator decides which, from its own
+ * org payee config). The org is always the token's {@code orgId},
  * never a request parameter; the data comes from mw-orchestrator's internal query API, never
  * from its schema. Maker or checker may query.
  */
@@ -79,6 +81,7 @@ public class OrgTransactionService {
     try {
       return orchestrator
           .detail(user.orgId(), txnId)
+          .map(OrgTxn.Detail::statesOnly)
           .orElseThrow(
               () -> new MwException(ErrorCodes.VAL_NOT_FOUND, "No such transaction").withStatus(HttpStatus.NOT_FOUND));
     } catch (OrchestratorUnavailableException e) {

@@ -53,7 +53,7 @@ class MenuRepositoryIT {
 
   @Test
   void theSeederMadeTheDefaultMenuLiveForEveryConfiguredMno() {
-    for (String mno : new String[] {"gp", "robi", "banglalink", "teletalk"}) {
+    for (String mno : new String[] {"gp", "robi", "bl", "teletalk"}) {
       assertThat(menus.active(mno, Instant.now()).map(MenuVersion::menuId)).contains("main");
       assertThat(menus.active(mno, Instant.now()).map(MenuVersion::version)).contains(2);
     }

@@ -23,7 +23,7 @@ class SubmitBodySchemaTest {
        "encryptedPin":{"keyId":"core-pin-1","ciphertext":"Y2lwaGVy"},
        "attributes":{"reference":"r-1"}}""";
 
-  private final SubmitBodySchema schema = new SubmitBodySchema(JsonMapper.builder().build());
+  private final BodySchema schema = new BodySchema(JsonMapper.builder().build(), BodySchema.TRANSACTION);
 
   MwException refused(String body) {
     MwException e =

@@ -35,6 +35,9 @@ spring:
     password: ${DB_PASSWORD:}
     hikari:
       schema: bulk
+      # Explicit, small pool (Kafka-driven or light on the database). PostgreSQL
+      # max_connections sizing: deploy/compose/platform/compose.yml (postgres).
+      maximum-pool-size: 5
   flyway:
     schemas: bulk
 
@@ -146,7 +149,7 @@ management:
 mw:
   kafka:
     retry:
-      # Non-blocking retry topics <topic>.retry.1..3, then <topic>.dlq (19.2).
+      # Non-blocking retry topics <topic>.<group>.retry.1..3, then <topic>.<group>.dlq (19.2).
       delays: 10s,1m,10m
   outbox:
     relay:
@@ -186,6 +189,22 @@ mw:
         enabled: ${MW_BULK_DISPATCH_ENABLED:true}
         rate-per-second: ${MW_BULK_RATE_PER_SECOND:50}
         period: 200ms
+      expiry:
+        # A batch nobody approved or rejected within 72 h becomes EXPIRED (M3 gate decision);
+        # scheduler/BulkExpiryJob under ShedLock, audited as bulk.batch.expired.
+        enabled: ${MW_BULK_EXPIRY_ENABLED:true}
+        after: 72h
+        period: 5m
+        batch-size: 500
+      reconcile:
+        # SUBMITTED rows without a settled state after `after` are looked up on the orchestrator's
+        # internal query API (scheduler/BulkReconcileJob under ShedLock); still unsettled after
+        # give-up-after they become UNRESOLVED and the batch ends COMPLETED_WITH_EXCEPTIONS.
+        enabled: ${MW_BULK_RECONCILE_ENABLED:true}
+        after: 10m
+        give-up-after: 24h
+        period: 1m
+        batch-size: 200
     consumers:
       # route/TxnStatusRoute: the children's mw.txn.status.v1 records (tests switch it off)
       enabled: true
@@ -195,6 +214,12 @@ mw:
       base-url: ${MW_ORCHESTRATOR_BASE_URL:http://mw-orchestrator:8080}
       connect-timeout: 2s
       read-timeout: 5s
+      # Client credentials of Keycloak realm `services` (M3 gate: /internal/v1/** needs a token for
+      # audience mw-orchestrator). The secret comes from OpenBao (secret/mw-portal-api,
+      # mw.portal-api.orchestrator.auth.client-secret, synced by the init from KC_MW_PORTAL_API_SECRET).
+      auth:
+        token-uri: ${MW_INTERNAL_TOKEN_URI:http://keycloak:8080/realms/services/protocol/openid-connect/token}
+        client-id: mw-portal-api
     jwt:
       # Keycloak realm `portals` (spec 8.2). Keys are fetched on the first token.
       jwk-set-uri: ${MW_PORTAL_JWK_SET_URI:http://keycloak:8080/realms/portals/protocol/openid-connect/certs}

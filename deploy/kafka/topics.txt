@@ -1,27 +1,31 @@
 # Kafka topics as code (spec 6.1, 6.2), applied by the one-shot kafka-init container
 # through apply-topics.sh. Single broker: replication factor 1, min.insync.replicas 1.
 #
-# Format: <topic> <partitions> <retention> [retry]
+# Format: <topic> <partitions> <retention> [retry=<group>[,<group>...]]
 #   retention: <n>d (days) or "compact" (cleanup.policy=compact)
-#   retry:     also create <topic>.retry.1..3 (19.2: 10 s / 1 min / 10 min) and
-#              <topic>.dlq, with the same partition count and 14 d retention (6.2)
+#   retry:     for each consumer group (= the consuming service's name, its Camel Kafka
+#              group-id) also create <topic>.<group>.retry.1..3 (19.2: 10 s / 1 min / 10 min)
+#              and <topic>.<group>.dlq, with the same partition count and 14 d retention (6.2).
+#              Per group, so two services consuming one topic never re-read each other's
+#              parked records (B10). List every service with a RetryTopicRouteBuilder on the
+#              topic (scripts/test/test_platform_compose.sh checks it).
 #
 # MVP subset of the 6.2 catalogue. Deferred and therefore left out: the interop and
 # compliance partner families, mw.compliance.instruction.v1, mw.recon.result.v1,
 # dw.txn.event.v1.
 
-mw.txn.request.v1              48 7d retry
-mw.txn.status.v1               48 7d retry
-core.wallet.command.v1         48 7d retry
-core.payment.command.v1        48 7d retry
-core.wallet.event.v1           48 7d retry
-core.payment.event.v1          48 7d retry
-mw.partner.request.telco.v1    24 3d retry
-mw.partner.request.billpay.v1  24 3d retry
-mw.partner.request.bank.v1     24 3d retry
-mw.partner.reply.v1            48 3d retry
-mw.partner.inbound.v1          24 7d retry
-mw.notify.request.v1           24 3d retry
-mw.notify.status.v1            12 7d retry
-mw.audit.event.v1              24 7d retry
+mw.txn.request.v1              48 7d retry=mw-orchestrator
+mw.txn.status.v1               48 7d retry=mw-app-gateway,mw-checkout,mw-notify,mw-portal-api
+core.wallet.command.v1         48 7d retry=mw-core-mock
+core.payment.command.v1        48 7d retry=mw-core-mock
+core.wallet.event.v1           48 7d retry=mw-orchestrator
+core.payment.event.v1          48 7d retry=mw-orchestrator
+mw.partner.request.telco.v1    24 3d retry=mw-adapter-telco
+mw.partner.request.billpay.v1  24 3d retry=mw-adapter-billpay
+mw.partner.request.bank.v1     24 3d retry=mw-adapter-bank
+mw.partner.reply.v1            48 3d retry=mw-orchestrator
+mw.partner.inbound.v1          24 7d retry=mw-orchestrator
+mw.notify.request.v1           24 3d retry=mw-notify
+mw.notify.status.v1            12 7d
+mw.audit.event.v1              24 7d retry=mw-audit-dw
 mw.config.changed.v1            6 compact

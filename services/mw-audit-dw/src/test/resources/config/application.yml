@@ -1,5 +1,8 @@
 # Test-only overrides, merged over src/main/resources/application.yml.
 mw:
+  internal-auth:
+    # Test-only issuer of security/InternalTokens (TestInfrastructure registers its JWKS).
+    issuer: http://keycloak.test/realms/services
   audit-dw:
     # The mw.audit.event.v1 consumer is off unless a test switches it on (AuditEventKafkaIT).
     consumers:

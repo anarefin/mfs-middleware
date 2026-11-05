@@ -12,6 +12,9 @@ version = "0.1.0-SNAPSHOT"
 
 java {
     toolchain { languageVersion = JavaLanguageVersion.of(25) }
+    // Tests run on the versions the boot jar ships: a test-only library (json-schema-validator)
+    // must not raise a shared dependency (Jackson) above the runtime one and hide a runtime bug.
+    consistentResolution { useRuntimeClasspathVersions() }
 }
 
 repositories { mavenCentral() }
@@ -26,6 +29,8 @@ dependencies {
     implementation(libs.spring.boot.starter.webmvc)
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.validation)
+    // Client-credentials JWT on the internal query API (/internal/v1/**, spec 18.2).
+    implementation(libs.spring.boot.starter.security.oauth2.resource.server)
     implementation(libs.spring.boot.micrometer.tracing.brave)
     implementation(libs.micrometer.tracing.bridge.brave)
     implementation(libs.micrometer.registry.prometheus)
@@ -48,6 +53,7 @@ dependencies {
 
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.boot.starter.webmvc.test)
+    testImplementation(libs.spring.security.test)
     testImplementation(libs.testcontainers)
     testImplementation(libs.testcontainers.junit.jupiter)
     testImplementation(libs.testcontainers.postgresql)

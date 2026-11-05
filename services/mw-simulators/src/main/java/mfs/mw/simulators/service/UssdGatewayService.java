@@ -47,13 +47,13 @@ public class UssdGatewayService {
     String session = req.sessionId() == null || req.sessionId().isBlank() ? "sim-" + UUID.randomUUID() : req.sessionId();
     String url = targetUrl + req.mno();
     List<UssdScreen> screens = new ArrayList<>();
-    UssdScreen s = client.step(url, session, req.msisdn(), req.serviceCode(), "BEGIN", "");
+    UssdScreen s = client.step(req.mno(), url, session, req.msisdn(), req.serviceCode(), "BEGIN", "");
     screens.add(s);
     for (String input : req.inputs()) {
       if (s.status() != 200 || endFlag.equals(s.flag())) {
         break;
       }
-      s = client.step(url, session, req.msisdn(), req.serviceCode(), "CONTINUE", input);
+      s = client.step(req.mno(), url, session, req.msisdn(), req.serviceCode(), "CONTINUE", input);
       screens.add(s);
     }
     return new UssdDialResult(session, List.copyOf(screens), s.status() == 200 && endFlag.equals(s.flag()));

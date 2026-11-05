@@ -7,11 +7,20 @@ mw:
       # their context afterwards (@DirtiesContext).
       enabled: false
   portal-api:
+    orchestrator:
+      auth:
+        # Obviously fake; the real one comes from OpenBao. ITs with a stub orchestrator serve a token.
+        client-secret: test-only-client-secret-not-a-secret
     # Off by default in tests: they call BulkExecutionService directly (dispatch, apply).
     consumers:
       enabled: false
     bulk:
       dispatch:
+        enabled: false
+      # Off in tests: BulkLifecycleIT calls the services directly.
+      expiry:
+        enabled: false
+      reconcile:
         enabled: false
   retention:
     # The purge job's schedule is off in tests; OutboxInboxPurgeConformanceIT calls it directly.

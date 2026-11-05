@@ -320,7 +320,7 @@ class TelcoRequestRouteIT {
     OCS.verify(1, postRequestedFor(urlEqualTo("/ocs/v1/topup")));
     assertThat(
             KafkaTestConsumer.read(
-                kafka.getBootstrapServers(), REQUEST_TOPIC + ".retry.1", 1, Duration.ofSeconds(1),
+                kafka.getBootstrapServers(), RetryTopicRouteBuilder.retryTopic(REQUEST_TOPIC, "mw-adapter-telco", 1), 1, Duration.ofSeconds(1),
                 r -> request.txnId().equals(r.key())))
         .isEmpty();
   }

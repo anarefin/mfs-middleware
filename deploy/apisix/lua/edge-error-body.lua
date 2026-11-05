@@ -1,7 +1,8 @@
 -- Edge error envelope, part 2 of 2 (spec 5.3), global rule edge, body_filter phase.
 -- Replaces the body of a response marked by edge-error-headers.lua with the envelope. For a
--- 400 the original text (request-validation's or openid-connect's reason, never a request
--- value: deploy/apisix/schemas carry no pattern or format) becomes details[0].issue.
+-- 400 the original text (an edge plugin's own reason, e.g. openid-connect's; the edge validates
+-- no body, the services check their schemas, so it carries no request value) becomes
+-- details[0].issue.
 local cjson = require("cjson.safe")
 
 return function(conf, ctx)

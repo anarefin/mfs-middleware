@@ -12,6 +12,7 @@ import mfs.mw.ussd.config.UssdProperties;
 import mfs.mw.ussd.dto.FlowOutcome;
 import mfs.mw.ussd.dto.FlowRequest;
 import mfs.mw.ussd.dto.StatusMessage;
+import mfs.mw.ussd.dto.TerminalStatus;
 import mfs.mw.ussd.dto.TxnRequest;
 import mfs.mw.ussd.mapper.TxnRequestMapper;
 import mfs.mw.ussd.messaging.EventMetadata;
@@ -86,13 +87,13 @@ public class KafkaTransactionFlow implements TransactionFlow {
         .log("transaction request published");
 
     StatusMessage status = await(answer, txnId);
-    if (status == null || !status.terminal()) {
+    TerminalStatus end = status == null ? null : status.terminalStatus().orElse(null);
+    if (end == null) {
       return new FlowOutcome(FlowOutcome.Kind.PROCESSING, status == null ? txnId : status.txnId(), null);
     }
-    return switch (status.status()) {
-      case "COMPLETED" -> new FlowOutcome(FlowOutcome.Kind.COMPLETED, status.txnId(), null);
-      default -> new FlowOutcome(FlowOutcome.Kind.FAILED, status.txnId(), status.error());
-    };
+    return end.success()
+        ? new FlowOutcome(FlowOutcome.Kind.COMPLETED, status.txnId(), null)
+        : new FlowOutcome(FlowOutcome.Kind.FAILED, status.txnId(), status.error());
   }
 
   private StatusMessage await(CompletableFuture<StatusMessage> answer, String txnId) {

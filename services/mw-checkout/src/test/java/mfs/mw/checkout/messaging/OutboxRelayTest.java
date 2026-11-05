@@ -68,7 +68,7 @@ class OutboxRelayTest {
     int polls;
 
     ScriptedRelay(int batchSize, Integer... results) {
-      super(null, null, null, null, new OutboxProperties(true, Duration.ofMillis(500), batchSize));
+      super(null, null, null, null, new OutboxProperties(true, Duration.ofMillis(500), batchSize), null);
       this.results = new ArrayDeque<>(List.of(results));
     }
 

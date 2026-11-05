@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * SMSC simulator logic (spec 22.2, ticket 24), independent of the SMPP plumbing ({@code
- * messaging/SmscServer}). Every {@code submit_sm} gets a message_id; text is decoded from GSM-7
+ * client/SmscServer}). Every {@code submit_sm} gets a message_id; text is decoded from GSM-7
  * (data_coding 0, one septet per byte) or UCS-2 (8), and parts carrying a concatenation UDH
  * (esm_class UDHI, IE 0x00 or 0x08) are reassembled. Destination magic suffixes: {@code 999} DLR
  * UNDELIV, {@code 998} DLR EXPIRED, {@code 997} the first two submits refused with

@@ -85,7 +85,9 @@ since ticket 23 (applied to telco too, so the three stay identical). A fix to th
 be applied to all three copies (`diff -r` of the `partner` packages, package names aside, shows
 only test fixtures).
 
-The C2W bank is the seed instance `c2wbank` in `application.yml` (`mw.partners`; wire format of
+The C2W bank is the seed instance `c2wbank`, a dev seed in `application-dev.yml` (profile `dev`, D23: set by this module's `compose.yml`
+and the test config; the packaged `application.yml` seeds no partner, so a production start has none
+until a `partner/<id>` record arrives, and the image's AOT training run needs no http override) (`mw.partners`; wire format of
 the mw-simulators bank: `POST /c2wbank/v1/debits {transactionId, accountNumber, amount:"500.00"}`
 (202 PENDING `{status, code: "100", debitRef}`; 200 SUCCESS and 422 FAILED are understood too),
 `GET /c2wbank/v1/debits/{reference}` (200 the real outcome, 404 NOT_FOUND), callback `POST

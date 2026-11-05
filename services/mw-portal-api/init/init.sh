@@ -2,7 +2,7 @@
 # One-shot, idempotent provisioning for mw-portal-api (dev/MVP stack; nothing else creates
 # per-service database roles or OpenBao identities yet):
 #   1. OpenBao KV secret/mw-portal-api: database password (created once; an existing secret is
-#      never overwritten).
+#      never overwritten); the realm `services` client secret synced from KC_MW_PORTAL_API_SECRET.
 #   2. PostgreSQL: login role portal_api_rw and schema bulk (spec 16.2) owned by it (password synced from
 #      the secret on every run).
 #   3. OpenBao policy + AppRole mw-portal-api (read that one secret); a fresh secret-id and the
@@ -55,6 +55,16 @@ else
   log "created $KV (database password)"
 fi
 bao kv get -field=spring.datasource.password "$KV" >"$tmp/dbpw"
+
+# 1b. the realm services client secret (internal query API, M3 gate) ------------------------------
+if [ -n "${KC_MW_PORTAL_API_SECRET:-}" ]; then
+  printf '%s' "$KC_MW_PORTAL_API_SECRET" >"$tmp/clientsecret"
+  bao kv patch "$KV" "mw.portal-api.orchestrator.auth.client-secret=@$tmp/clientsecret" >/dev/null
+  rm -f "$tmp/clientsecret"
+  log "client secret mw.portal-api.orchestrator.auth.client-secret synced"
+else
+  log "KC_MW_PORTAL_API_SECRET not set: mw.portal-api.orchestrator.auth.client-secret left as it is" >&2
+fi
 
 # 2. database role and schema ---------------------------------------------------------------------
 provision_db() {

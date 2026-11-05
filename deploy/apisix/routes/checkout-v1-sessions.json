@@ -1,26 +1,33 @@
 {
   "name": "checkout-v1-sessions",
-  "desc": "Checkout merchant API: create a session (spec 8.2, 9.3, ticket 31) to mw-checkout. hmac-auth (method, path, Date and body Digest signed), body schema from the checkout OpenAPI, consumer name sent as X-Mw-Merchant-Id, quota per merchant",
+  "desc": "Checkout merchant API: create a session (spec 8.2, 9.3, ticket 31) to mw-checkout. hmac-auth (method, path, Date and body Digest signed), consumer name sent as X-Mw-Merchant-Id, quota per merchant; mw-checkout checks the body schema on the exact bytes",
   "uri": "/checkout/v1/sessions",
-  "methods": ["POST"],
+  "methods": [
+    "POST"
+  ],
   "plugins": {
     "client-control": {
       "max_body_size": 16384
     },
     "hmac-auth": {
-      "allowed_algorithms": ["hmac-sha256"],
+      "allowed_algorithms": [
+        "hmac-sha256"
+      ],
       "clock_skew": 300,
-      "signed_headers": ["@request-target", "date", "digest"],
+      "signed_headers": [
+        "@request-target",
+        "date",
+        "digest"
+      ],
       "validate_request_body": true,
       "hide_credentials": true
     },
-    "request-validation": {
-      "_meta": { "priority": 2500 },
-      "body_schema": "@json:schemas/checkout-v1-create-session.json",
-      "rejected_code": 400
-    },
     "proxy-rewrite": {
-      "headers": { "set": { "X-Mw-Merchant-Id": "$consumer_name" } }
+      "headers": {
+        "set": {
+          "X-Mw-Merchant-Id": "$consumer_name"
+        }
+      }
     },
     "limit-count": {
       "count": 600,
@@ -42,7 +49,13 @@
   "upstream": {
     "type": "roundrobin",
     "scheme": "http",
-    "timeout": { "connect": 5, "send": 10, "read": 10 },
-    "nodes": { "mw-checkout:8080": 1 }
+    "timeout": {
+      "connect": 5,
+      "send": 10,
+      "read": 10
+    },
+    "nodes": {
+      "mw-checkout:8080": 1
+    }
   }
 }

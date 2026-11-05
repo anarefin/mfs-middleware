@@ -150,7 +150,7 @@ class OutboxRelayRecoveryConformanceIT {
 
   /** A relay instance whose process "dies" right after Kafka acknowledged its whole batch. */
   OutboxRelay crashingRelay() {
-    return new OutboxRelay(jdbc, tx, publisher, json, properties) {
+    return new OutboxRelay(jdbc, tx, publisher, json, properties, null) {
       @Override
       protected void markSent(List<Long> ids) {
         throw new SimulatedCrash();

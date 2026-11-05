@@ -46,7 +46,7 @@ class OrgTransactionApiIT {
   /** What the orchestrator stub answers; masked as the real one masks (contract txn-query.v1). */
   static final String TXN_JSON =
       """
-      {"txnId":"%s","txnType":"BULK_DISBURSE","channel":"ORG_PORTAL","status":"COMPLETED",
+      {"role":"INITIATOR","txnId":"%s","txnType":"BULK_DISBURSE","channel":"ORG_PORTAL","status":"COMPLETED",
        "createdAt":"2026-11-03T08:15:30Z","updatedAt":"2026-11-03T08:15:32Z","correlationId":"bulk-1",
        "amount":{"valueMinor":1000,"currency":"BDT"},
        "initiator":{"type":"ORG","id":"****G001"},"debitParty":{"type":"ORG","id":"0131****001"},
@@ -55,6 +55,7 @@ class OrgTransactionApiIT {
       """
           .formatted(OWN_TXN);
 
+  static final String TOKEN = "service-token-1";
   static final List<String> QUERIES = new CopyOnWriteArrayList<>();
   static volatile boolean orchestratorDown;
   static final HttpServer ORCHESTRATOR = startStub();
@@ -63,6 +64,10 @@ class OrgTransactionApiIT {
     try {
       HttpServer s = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
       s.createContext("/internal/v1/transactions", OrgTransactionApiIT::answer);
+      // Keycloak realm services stand-in: the client-credentials token the client must send
+      s.createContext(
+          "/token",
+          ex -> respond(ex, 200, "{\"access_token\":\"" + TOKEN + "\",\"expires_in\":300}"));
       s.start();
       return s;
     } catch (IOException e) {
@@ -74,7 +79,9 @@ class OrgTransactionApiIT {
     String path = ex.getRequestURI().getPath();
     String query = ex.getRequestURI().getRawQuery() == null ? "" : ex.getRequestURI().getRawQuery();
     QUERIES.add(path + "?" + query);
-    if (orchestratorDown) {
+    if (!("Bearer " + TOKEN).equals(ex.getRequestHeaders().getFirst("Authorization"))) {
+      respond(ex, 401, "{\"code\":\"MW-AUTH-001\",\"message\":\"x\",\"correlationId\":\"c\",\"retryable\":false,\"details\":[]}");
+    } else if (orchestratorDown) {
       respond(ex, 500, "{\"code\":\"MW-SYS-001\",\"message\":\"Internal error\",\"correlationId\":\"c\",\"retryable\":true,\"details\":[]}");
     } else if (path.endsWith("/transactions")) {
       respond(ex, 200, "{\"items\":[" + TXN_JSON + "],\"limit\":50,\"offset\":0}");
@@ -83,8 +90,9 @@ class OrgTransactionApiIT {
           ex,
           200,
           "{\"transaction\":" + TXN_JSON + ",\"timeline\":["
-              + "{\"from\":\"RECEIVED\",\"to\":\"VALIDATING\",\"trigger\":\"ValidationStarted\",\"at\":\"2026-11-03T08:15:30Z\"},"
-              + "{\"from\":\"VALIDATING\",\"to\":\"POSTING\",\"trigger\":\"Validated\",\"at\":\"2026-11-03T08:15:31Z\"},"
+              + "{\"kind\":\"STATE\",\"from\":\"RECEIVED\",\"to\":\"VALIDATING\",\"trigger\":\"ValidationStarted\",\"at\":\"2026-11-03T08:15:30Z\"},"
+              + "{\"kind\":\"CORE\",\"command\":\"ValidateTransaction\",\"commandId\":\"x:validate\",\"sends\":1,\"result\":\"TransactionValidated\",\"outcome\":\"SUCCESS\",\"at\":\"2026-11-03T08:15:30Z\",\"resultAt\":\"2026-11-03T08:15:31Z\"},"
+              + "{\"kind\":\"STATE\",\"from\":\"VALIDATING\",\"to\":\"POSTING\",\"trigger\":\"Validated\",\"at\":\"2026-11-03T08:15:31Z\"},"
               + "{\"from\":\"POSTING\",\"to\":\"COMPLETED\",\"trigger\":\"Posted\",\"at\":\"2026-11-03T08:15:32Z\"}],"
               + "\"partnerCalls\":[]}");
     } else {
@@ -109,6 +117,9 @@ class OrgTransactionApiIT {
   static void orchestrator(DynamicPropertyRegistry registry) {
     registry.add(
         "mw.portal-api.orchestrator.base-url", () -> "http://127.0.0.1:" + ORCHESTRATOR.getAddress().getPort());
+    registry.add(
+        "mw.portal-api.orchestrator.auth.token-uri",
+        () -> "http://127.0.0.1:" + ORCHESTRATOR.getAddress().getPort() + "/token");
   }
 
   private final MockMvcTester mvc;
@@ -160,6 +171,7 @@ class OrgTransactionApiIT {
     JsonNode item = page.path("items").get(0);
     assertThat(item.path("txnId").asString()).isEqualTo(OWN_TXN);
     assertThat(item.path("status").asString()).isEqualTo("COMPLETED");
+    assertThat(item.path("role").asString()).isEqualTo("INITIATOR");
     assertThat(item.path("creditParty").path("id").asString()).isEqualTo("0171****003");
     assertThat(item.path("attributes").path("parentTxnId").asString())
         .isEqualTo("01933b8e-0000-7000-8000-000000000001");
@@ -182,6 +194,9 @@ class OrgTransactionApiIT {
     assertThat(detail.path("transaction").path("txnId").asString()).isEqualTo(OWN_TXN);
     assertThat(detail.path("timeline").valueStream().map(s -> s.path("to").asString()).toList())
         .containsExactly("VALIDATING", "POSTING", "COMPLETED");
+    // the SP sees state changes only: the middleware's core commands stay internal
+    assertThat(detail.path("timeline").toString()).doesNotContain("ValidateTransaction").doesNotContain("commandId");
+    assertThat(detail.path("transaction").path("role").asString()).isEqualTo("INITIATOR");
     assertThat(detail.has("partnerCalls")).isFalse();
     assertThat(QUERIES.get(0)).contains("orgId=ORG001");
 

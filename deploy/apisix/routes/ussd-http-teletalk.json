@@ -1,0 +1,61 @@
+{
+  "name": "ussd-http-teletalk",
+  "desc": "MNO teletalk HTTP USSD gateway (spec 8.2, 9.2) to mw-ussd: allow-list USSD_TELETALK_ALLOWED_CIDRS, basic-auth as consumer ussd_teletalk only (another MNO's credential: 403), 4 KiB cap, quota per MSISDN; path and body unchanged",
+  "uri": "/ussd/teletalk",
+  "methods": [
+    "POST"
+  ],
+  "plugins": {
+    "ip-restriction": {
+      "whitelist": "@list:USSD_TELETALK_ALLOWED_CIDRS"
+    },
+    "client-control": {
+      "max_body_size": 4096
+    },
+    "basic-auth": {
+      "hide_credentials": true
+    },
+    "consumer-restriction": {
+      "type": "consumer_name",
+      "whitelist": [
+        "ussd_teletalk"
+      ],
+      "rejected_code": 403,
+      "rejected_msg": "This credential is not allowed on this MNO's route"
+    },
+    "serverless-pre-function": {
+      "phase": "access",
+      "functions": [
+        "@lua:lua/ussd-msisdn-key.lua"
+      ]
+    },
+    "limit-count": {
+      "count": 120,
+      "time_window": 60,
+      "key_type": "var",
+      "key": "mw_ussd_msisdn",
+      "group": "ussd-http-teletalk",
+      "rejected_code": 429,
+      "show_limit_quota_header": true,
+      "policy": "redis",
+      "redis_host": "valkey",
+      "redis_port": 6379,
+      "redis_password": "$env://VALKEY_PASSWORD",
+      "redis_database": 0,
+      "redis_timeout": 1000,
+      "allow_degradation": true
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": {
+      "connect": 5,
+      "send": 10,
+      "read": 12
+    },
+    "nodes": {
+      "mw-ussd:8080": 1
+    }
+  }
+}

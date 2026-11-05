@@ -74,7 +74,9 @@ Only APISIX is published, so every call goes through it:
   callback (`@tsq`, COMPLETED by status inquiry after about 60 s).
 - USSD (`features/ussd.feature`, `@ussd`, ticket 26): the USSD gateway simulator in HTTP mode plays
   the MNO (`support/UssdGateway`, `POST /test/sim/ussdgw/sessions`; it posts every step to
-  `http://apisix:9080/ussd/<mno>`, route `ussd-http` -> mw-ussd). Steps: "<msisdn> dials <code> on
+  `http://apisix:9080/ussd/<mno>`, route `ussd-http-<mno>` -> mw-ussd, with that MNO's basic-auth
+  credential: the simulator reads `sim.ussd-gateway.credentials.<mno>` from OpenBao, synced from the
+  generated `USSD_<MNO>_GATEWAY_SECRET`). Steps: "<msisdn> dials <code> on
   <mno> and enters "9, 1, 01711000002, 10, 1, 1234"" (comma-separated inputs; `9` switches to
   English, amounts in taka), "the first USSD screens were:" (one column, `\n` = line break), "the
   USSD session ends with "..."" (prefix of the last screen), "the USSD session is still open on
@@ -84,7 +86,8 @@ Only APISIX is published, so every call goes through it:
   list 1 gp 2 robi 3 banglalink 4 teletalk), 4 Pay Bill (billers sorted by code, 1 DESCO; the
   amount due is fetched). "the USSD session is still open on a screen ending with "..."".
 - Device binding (`features/device-binding.feature`, `@device`, ticket 29): `support/Devices` gives
-  each user one EC P-256 device for the run, bound on first use (`POST /app/v1/devices`, signed),
+  each user one EC P-256 device for the run, bound on first use (`POST /app/v1/devices`, signed, with the binding OTP: `POST /app/v1/devices/otp`, then the
+  code read from the English `DEVICE_BIND_OTP` SMS at the SMSC simulator for the token's `msisdn`),
   its session reopened after 4 idle minutes; `AppApi` sends `X-Device-Id` on every call and signs
   every submit (`AppApi.prepare` / `send`). Steps "<user> replays the last signed request" (same
   bytes, nonce, signature: 401 `MW-AUTH-006`) and "... with the body changed after signing" (401
@@ -150,8 +153,25 @@ Only APISIX is published, so every call goes through it:
   pauses / resumes the batch", "within N minutes <user> sees the batch COMPLETED", "the batch
   progress shows C completed, F failed and P poisha paid", "<user> sees the batch send no more
   rows", "<user>'s result file lists all N rows as COMPLETED, each with its own txnId" / "...
-  shows:" (reference, status, errorCode). ORG001 pays from org wallet `01311000001`; at the
+  shows:" (reference, status, errorCode), "<user>'s result file names the batch status X" (the
+  `batchStatus` column, M3 gate). ORG001 pays from org wallet `01311000001`; at the
   default 50 rows/s the 10,000-row scenario takes about 4 minutes.
+- Batch states of the M3 gate: "<user> lists the org's batches with status X" + "every listed
+  batch has status X" (EXPIRED, COMPLETED_WITH_EXCEPTIONS are listable; reaching them needs 72 h or
+  MANUAL_REVIEW / UNRESOLVED rows, so mw-portal-api's `BulkLifecycleIT` drives them on a test clock),
+  "within N seconds the audit trail of the batch shows:" (action, actor; `AuditTrail.rowsOfBatch`
+  reads resource `bulk-batch/<batchId>`, operator usernames unmasked). No step calls an internal
+  `/internal/v1/**` API: those need a realm `services` client-credentials token (clients
+  mw-portal-api, mw-admin-api); the suite checks them through the portal and the audit table.
+- SP transaction query (`features/sp-query.feature`, `@sp-query @mw-portal-api`, ticket 35, review
+  fix A3): "<user> lists the org's transactions [of the batch]", "the transaction list has N S T
+  transaction paying <masked>", "every listed transaction is tagged INITIATOR|PAYEE", "the org's
+  transaction list has the transaction tagged PAYEE" / "does not have the transaction" (the
+  scenario's own txnId), "<user> opens the transaction" / "opens the first listed transaction",
+  "the opened transaction is tagged PAYEE", "the timeline ends "A -> B"" (state changes only;
+  the portal drops the orchestrator's core-command entries). Payee scope in the dev stack:
+  ORG002 collects for biller DESCO and merchant wallet 01911000001 (mw-orchestrator `compose.yml`,
+  `mw.orchestrator.search.org-payees`).
 - `support/Keycloak.customerToken(user)`; `support/AuditTrail.rowsOfTxn` / `verifyChain`;
   `support/Waits.until` for anything asynchronous.
 - Steps (`steps/`, one `ScenarioState` per scenario via PicoContainer): sign in, send P2P,

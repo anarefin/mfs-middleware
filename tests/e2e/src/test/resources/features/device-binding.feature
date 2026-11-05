@@ -2,7 +2,8 @@
 Feature: Sensitive app requests come only from a bound device, signed, never replayed
   The app binds its device (EC P-256 key) to the wallet, then signs every transaction submit over
   method, path, body hash, timestamp and a one-time nonce (spec 9.1, 18.6; ticket 29). The suite's
-  AppApi binds a device per user on first use and signs every submit (support/Devices).
+  AppApi binds a device per user on first use, with the OTP the wallet received by SMS (review A5),
+  and signs every submit (support/Devices).
 
   Background:
     Given customer01 is signed in to the app

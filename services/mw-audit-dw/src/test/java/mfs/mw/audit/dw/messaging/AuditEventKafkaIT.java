@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
 import mfs.mw.audit.dw.TestInfrastructure;
+import mfs.mw.audit.dw.route.RetryTopicRouteBuilder;
 import mfs.mw.audit.dw.service.AuditChainVerifier;
 import mfs.mw.audit.dw.service.ChainVerification;
 import org.junit.jupiter.api.Test;
@@ -102,7 +103,7 @@ class AuditEventKafkaIT {
 
     assertThat(
             KafkaTestConsumer.read(
-                kafka.getBootstrapServers(), TOPIC + ".dlq", 1, Duration.ofSeconds(60), r -> key.equals(r.key())))
+                kafka.getBootstrapServers(), RetryTopicRouteBuilder.dlqTopic(TOPIC, "mw-audit-dw"), 1, Duration.ofSeconds(60), r -> key.equals(r.key())))
         .hasSize(1);
   }
 }

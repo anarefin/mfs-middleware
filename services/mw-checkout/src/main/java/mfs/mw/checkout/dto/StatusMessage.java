@@ -56,9 +56,6 @@ public record StatusMessage(
 
   /** States after which nothing changes any more for the app (spec 7.2). */
   public boolean terminal() {
-    return switch (status == null ? "" : status) {
-      case "COMPLETED", "FAILED", "REJECTED", "REVERSED" -> true;
-      default -> false;
-    };
+    return TerminalStatus.of(status).isPresent();
   }
 }

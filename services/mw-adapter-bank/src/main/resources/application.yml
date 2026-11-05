@@ -35,6 +35,9 @@ spring:
     password: ${DB_PASSWORD:}
     hikari:
       schema: bank_ref
+      # Explicit, small pool (Kafka-driven or light on the database). PostgreSQL
+      # max_connections sizing: deploy/compose/platform/compose.yml (postgres).
+      maximum-pool-size: 5
   flyway:
     schemas: bank_ref
 
@@ -170,103 +173,12 @@ mw:
       # Plain http for no host by default (ticket 50); only the dev Compose stack (compose.yml)
       # and the tests allow the simulator host.
       insecure-http-hosts: ${MW_PARTNER_INSECURE_HTTP_HOSTS:}
-    instances:
-      # Generic partner bank for C2W / ADD_MONEY_BANK (wire format: mw-simulators c2wbank).
-      # Async-callback template: a debit is accepted (202 PENDING) and its outcome follows as a
-      # signed callback to /partner/c2wbank/callback/debits (APISIX ->
-      # controller/PartnerCallbackController); a 200 SUCCESS / 422 FAILED answer is also understood.
-      c2wbank:
-        template: rest-json-async-callback
-        base-url: ${C2WBANK_BASE_URL:http://mw-simulators:8080}
-        connect-timeout-ms: 3000
-        # Bank timeout (spec 11.1 says 30 s) is 25 s here so the adapter answers before the
-        # orchestrator's 30 s partner deadline; the read timeout sits a little above so the time
-        # limiter decides first. Resilience4j bulkhead/circuit breaker: instance "c2wbank".
-        timeout-ms: 25000
-        read-timeout-ms: 27000
-        # hmac-sha256 both ways (spec 11.1 "signature"; mTLS per bank is TBC): outbound calls are
-        # signed, and a callback is believed only with a valid signature over method, path,
-        # timestamp and body (300 s skew). The shared secret is the property
-        # mw.partner-secrets.c2wbank.hmac-secret (OpenBao secret/mw-adapter-bank, provisioned by
-        # init/init.sh from the generated C2WBANK_HMAC_SECRET in dev); never here.
-        auth:
-          scheme: hmac-sha256
-          credentials-ref: hmac-secret
-        # Raw bodies are audited masked: these fields by rule, everything by free-text scrubbing.
-        sensitive-fields:
-          accountNumber: ACCOUNT
-        # Bank codes that do not say whether the debit was applied: reply UNKNOWN.
-        ambiguous-codes: ["9876"]
-        # Bank code -> MW-PTR-C2WBANK-<suffix>. Unlisted codes become UNMAPPED.
-        error-map:
-          "[4001]": { suffix: ACCOUNT_NOT_LINKED, retryable: false }
-          "[4002]": { suffix: DEBIT_REFUSED, retryable: false }
-          "[4003]": { suffix: INSUFFICIENT_FUNDS, retryable: false }
-        operations:
-          # POST /c2wbank/v1/debits {transactionId, accountNumber, amount:"500.00"}.
-          # Only 422 with a code and 400 are rejections; any other non-2xx is UNKNOWN (fail closed).
-          "[PAY]":
-            method: POST
-            path: /c2wbank/v1/debits
-            definite-statuses: [400, 422]
-            request: |
-              {"transactionId": reference, "accountNumber": debitParty.id, "amount": amount.major}
-            response: |
-              status = 200
-                ? (body.status = "SUCCESS" and $type(body.debitRef) = "string" and body.debitRef != ""
-                    ? {"outcome": "SUCCESS", "partnerRef": body.debitRef, "code": body.code}
-                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
-              : status = 202
-                ? (body.status = "PENDING"
-                    ? {"outcome": "PENDING", "partnerRef": body.debitRef, "code": body.code}
-                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
-              : status = 422
-                ? ($type(body.code) = "string" and body.code != ""
-                    ? {"outcome": "FAILED", "code": body.code, "message": body.message}
-                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
-              : status = 400
-                ? {"outcome": "FAILED", "code": "HTTP_400", "message": body.message}
-              : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
-          # Status inquiry (spec 7.4): GET /c2wbank/v1/debits/{reference}. NOT_FOUND only for a
-          # 404 carrying the bank's NOT_FOUND body; anything else indefinite is UNKNOWN.
-          "[STATUS_QUERY]":
-            method: GET
-            path: /c2wbank/v1/debits/{reference}
-            definite-statuses: [200, 404]
-            response: |
-              status = 200
-                ? (body.status = "SUCCESS" and $type(body.debitRef) = "string" and body.debitRef != ""
-                    ? {"outcome": "SUCCESS", "partnerRef": body.debitRef, "code": body.code}
-                    : body.status = "FAILED" and $type(body.code) = "string" and body.code != ""
-                      ? {"outcome": "FAILED", "code": body.code, "message": body.message}
-                    : body.status = "PENDING"
-                      ? {"outcome": "PENDING", "partnerRef": body.debitRef, "code": body.code}
-                      : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
-              : status = 404 and body.status = "NOT_FOUND"
-                ? {"outcome": "NOT_FOUND", "code": body.code, "message": body.message}
-              : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
-          # Callback: POST /partner/c2wbank/callback/debits with the debit body {transactionId
-          # (our reference), status SUCCESS|FAILED|PENDING, code, message, debitRef}, signed (auth
-          # above). Input {headers, body}; anything without a known status is refused. The path is
-          # where APISIX forwards it; it is never called outbound.
-          "[CALLBACK]":
-            method: POST
-            path: /partner/c2wbank/callback/debits
-            response: |
-              $type(body.transactionId) != "string" or body.transactionId = "" ? {}
-              : body.status = "SUCCESS" and $type(body.debitRef) = "string" and body.debitRef != ""
-                ? {"outcome": "SUCCESS", "partnerRef": body.debitRef, "reference": body.transactionId,
-                   "code": body.code, "message": body.message}
-              : body.status = "FAILED" and $type(body.code) = "string" and body.code != ""
-                ? {"outcome": "FAILED", "partnerRef": body.debitRef, "reference": body.transactionId,
-                   "code": body.code, "message": body.message}
-              : body.status = "PENDING"
-                ? {"outcome": "PENDING", "partnerRef": body.debitRef, "reference": body.transactionId,
-                   "code": body.code, "message": body.message}
-              : {}
+    # No partner instances here: a production start has none until mw-admin-api publishes a
+    # partner/<id> record. The dev seeds (simulator URLs) are in application-dev.yml, active
+    # only with the dev profile (SPRING_PROFILES_ACTIVE=dev in compose.yml, and the tests).
   kafka:
     retry:
-      # Non-blocking retry topics <topic>.retry.1..3, then <topic>.dlq (19.2).
+      # Non-blocking retry topics <topic>.<group>.retry.1..3, then <topic>.<group>.dlq (19.2).
       delays: 10s,1m,10m
   outbox:
     relay:

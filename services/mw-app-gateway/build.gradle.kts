@@ -39,7 +39,7 @@ dependencies {
     // Valkey (Lettuce): device sessions and the signed-request nonce cache (spec 9.1, 18.6).
     implementation(libs.spring.boot.starter.data.redis)
 
-    // Submit body schema check (service/SubmitBodySchema, ticket 29). The validator is built on a
+    // Request body schema checks (service/BodySchema, ticket 29, A6). The validator is built on a
     // newer Jackson 3 than Boot manages; keep Boot's (the contract schema tests pass on it), so this
     // library does not change Jackson for the whole service.
     implementation(libs.json.schema.validator) {

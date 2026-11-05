@@ -1,0 +1,12 @@
+{
+  "x-mw-derived-from": "api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/FetchBillRequest",
+  "type": "object",
+  "required": [
+    "billNumber"
+  ],
+  "properties": {
+    "billNumber": {
+      "type": "string"
+    }
+  }
+}

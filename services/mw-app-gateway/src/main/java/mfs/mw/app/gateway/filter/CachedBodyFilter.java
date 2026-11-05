@@ -5,14 +5,27 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import mfs.mw.app.gateway.exception.MwException;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.servlet.HandlerExceptionResolver;
 
 /**
- * Keeps the body of {@code /app/**} POSTs in memory ({@link CachedBodyRequest}) so the submit
- * schema check, the device signature hash (ticket 29) and the controller read the same bytes, the
- * ones the client sent. Registered by {@code config/SubmitSchemaConfig}.
+ * Keeps the body of {@code /app/**} POSTs in memory ({@link CachedBodyRequest}) so the body
+ * schema checks, the device signature hash (ticket 29) and the controller read the same bytes, the
+ * ones the client sent. A body over {@link CachedBodyRequest#MAX_BODY} is answered 413
+ * MW-VAL-BODY_TOO_LARGE with the 5.3 envelope (through the global handler, as the security entry
+ * points do) and goes no further. Runs after Spring Security, so an unauthenticated request is 401
+ * first. Registered by {@code config/BodySchemaConfig}.
  */
 public class CachedBodyFilter extends OncePerRequestFilter {
+
+  private final HandlerExceptionResolver errors;
+  private final int limit;
+
+  public CachedBodyFilter(HandlerExceptionResolver errors, int limit) {
+    this.errors = errors;
+    this.limit = limit;
+  }
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -22,6 +35,13 @@ public class CachedBodyFilter extends OncePerRequestFilter {
   @Override
   protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
-    chain.doFilter(new CachedBodyRequest(request), response);
+    CachedBodyRequest cached;
+    try {
+      cached = new CachedBodyRequest(request, limit);
+    } catch (MwException tooLarge) {
+      errors.resolveException(request, response, null, tooLarge);
+      return;
+    }
+    chain.doFilter(cached, response);
   }
 }

@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
@@ -25,6 +26,7 @@ import org.apache.camel.spi.InflightRepository;
 import org.apache.camel.test.spring.junit6.CamelSpringBootTest;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -34,6 +36,7 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -50,8 +53,9 @@ import org.testcontainers.kafka.KafkaContainer;
 
 /**
  * Kafka consumer errors go to non-blocking retry topics, then the DLQ (spec 19.2, 6.2): a record
- * that keeps failing travels {@code <topic>.retry.1 -> .retry.2 -> .retry.3 -> .dlq} with its key
- * and 6.1 headers kept; a record that succeeds on a retry never reaches the DLQ. Delays are
+ * that keeps failing travels {@code <topic>.<group>.retry.1 -> .retry.2 -> .retry.3 -> .dlq} with
+ * its key and 6.1 headers kept (the topics carry this service's consumer group, so services sharing
+ * a source topic never share parked records); a record that succeeds on a retry never reaches the DLQ. Delays are
  * shortened to 2 s here; production uses 10 s, 1 min, 10 min. Holding a record back never blocks
  * the consumer thread, and a forged {@code mw-retry-not-before} cannot stall it.
  */
@@ -69,6 +73,9 @@ import org.testcontainers.kafka.KafkaContainer;
 class RetryTopicRouteIT {
 
   static final String TOPIC = "it.retry.event.v1";
+  /** This service's consumer group, part of its retry and DLQ topic names. */
+  static final String GROUP = "mw-core-mock";
+  static final String DLQ = TOPIC + "." + GROUP + ".dlq";
   static final String SECRET_MSISDN = "01712345789";
 
   /** A test listener: records with "fail-always" always throw, "fail-once" throw on first try. */
@@ -96,8 +103,16 @@ class RetryTopicRouteIT {
       return new FlakyHandler();
     }
 
+    /**
+     * The topics exist before the route's consumers subscribe, as the platform declares them
+     * ({@code deploy/kafka/topics.txt}). Left to auto-creation on first send, a consumer would
+     * only see a new retry topic at its next metadata refresh, and how long a test waited would
+     * depend on which test happened to park a record first.
+     */
     @Bean
-    RetryTopicRouteBuilder itRoute(KafkaRetryProperties retry, Clock clock) {
+    RetryTopicRouteBuilder itRoute(KafkaRetryProperties retry, Clock clock, KafkaContainer kafka)
+        throws Exception {
+      createTopics(kafka);
       return new RetryTopicRouteBuilder(retry, clock) {
         @Override
         protected String topic() {
@@ -109,6 +124,24 @@ class RetryTopicRouteIT {
           return "bean:flakyHandler?method=handle";
         }
       };
+    }
+  }
+
+  static void createTopics(KafkaContainer kafka) throws Exception {
+    List<NewTopic> topics =
+        List.of(TOPIC, retryTopic(1), retryTopic(2), retryTopic(3), DLQ).stream()
+            .map(name -> new NewTopic(name, 1, (short) 1))
+            .toList();
+    try (Admin admin = Admin.create(Map.of(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers()))) {
+      for (NewTopic topic : topics) {
+        try {
+          admin.createTopics(List.of(topic)).all().get();
+        } catch (ExecutionException e) {
+          if (!(e.getCause() instanceof TopicExistsException)) {
+            throw e;
+          }
+        }
+      }
     }
   }
 
@@ -135,6 +168,17 @@ class RetryTopicRouteIT {
         kafka.getBootstrapServers(), topic, count, timeout, r -> key.equals(r.key()));
   }
 
+  /** {@code <topic>.<group>.retry.<n>}, the name the route parks on (B10). */
+  static String retryTopic(int n) {
+    return TOPIC + "." + GROUP + ".retry." + n;
+  }
+
+  @Test
+  void retryAndDlqTopicNamesCarryTheConsumerGroup() {
+    assertThat(RetryTopicRouteBuilder.retryTopic(TOPIC, GROUP, 2)).isEqualTo(retryTopic(2));
+    assertThat(RetryTopicRouteBuilder.dlqTopic(TOPIC, GROUP)).isEqualTo(DLQ);
+  }
+
   static String header(ConsumerRecord<?, ?> r, String name) {
     Header h = r.headers().lastHeader(name);
     return h == null ? null : new String(h.value(), StandardCharsets.UTF_8);
@@ -155,12 +199,12 @@ class RetryTopicRouteIT {
     String body = "{\"schemaVersion\":1,\"case\":\"fail-always\",\"msisdn\":\"" + SECRET_MSISDN + "\"}";
     publisher.publish(TOPIC, "K-ALWAYS", new EventMetadata("corr-a", "TXN-A", "idem-a", 1), rawJson(body));
 
-    List<ConsumerRecord<String, String>> dlq = recordsFor(TOPIC + ".dlq", "K-ALWAYS", 1);
+    List<ConsumerRecord<String, String>> dlq = recordsFor(DLQ, "K-ALWAYS", 1);
     assertThat(dlq).hasSize(1);
 
     ConsumerRecord<String, String> previous = null;
     for (int n = 1; n <= 3; n++) {
-      List<ConsumerRecord<String, String>> retry = recordsFor(TOPIC + ".retry." + n, "K-ALWAYS", 1);
+      List<ConsumerRecord<String, String>> retry = recordsFor(retryTopic(n), "K-ALWAYS", 1);
       assertThat(retry).as("record on retry.%d", n).hasSize(1);
       ConsumerRecord<String, String> r = retry.getFirst();
       assertThat(header(r, "mw-retry-attempt")).isEqualTo(Integer.toString(n));
@@ -197,13 +241,13 @@ class RetryTopicRouteIT {
         TOPIC, "K-ONCE", new EventMetadata("corr-b", "TXN-B", "idem-b", 1), rawJson("{\"case\":\"fail-once\"}"));
 
     await(() -> handler.succeeded.contains("K-ONCE"), Duration.ofSeconds(30));
-    assertThat(recordsFor(TOPIC + ".retry.1", "K-ONCE", 1)).hasSize(1);
+    assertThat(recordsFor(retryTopic(1), "K-ONCE", 1)).hasSize(1);
 
     // Longer than the next retry delay: nothing more may follow.
     Thread.sleep(3_000);
     assertThat(handler.calls.get("K-ONCE")).hasValue(2);
-    assertThat(recordsFor(TOPIC + ".retry.2", "K-ONCE", 1, Duration.ofSeconds(3))).isEmpty();
-    assertThat(recordsFor(TOPIC + ".dlq", "K-ONCE", 1, Duration.ofSeconds(3))).isEmpty();
+    assertThat(recordsFor(retryTopic(2), "K-ONCE", 1, Duration.ofSeconds(3))).isEmpty();
+    assertThat(recordsFor(DLQ, "K-ONCE", 1, Duration.ofSeconds(3))).isEmpty();
   }
 
   @Test
@@ -231,7 +275,7 @@ class RetryTopicRouteIT {
   @Test
   void forgedFarFutureNotBeforeIsCappedAtTheConfiguredDelay() throws Exception {
     long start = System.currentTimeMillis();
-    sendRaw(TOPIC + ".retry.1", "K-FORGED", Long.toString(start + Duration.ofHours(1).toMillis()));
+    sendRaw(retryTopic(1), "K-FORGED", Long.toString(start + Duration.ofHours(1).toMillis()));
 
     await(() -> handler.succeeded.contains("K-FORGED"), Duration.ofSeconds(30));
     assertThat(System.currentTimeMillis() - start).isLessThan(5_000);
@@ -240,12 +284,12 @@ class RetryTopicRouteIT {
   @Test
   void garbageNotBeforeIsDueNowAndNotSentToDlq() throws Exception {
     long start = System.currentTimeMillis();
-    sendRaw(TOPIC + ".retry.1", "K-GARBAGE", "not-a-number");
+    sendRaw(retryTopic(1), "K-GARBAGE", "not-a-number");
 
     await(() -> handler.succeeded.contains("K-GARBAGE"), Duration.ofSeconds(30));
     assertThat(System.currentTimeMillis() - start).as("sooner than the 2 s delay").isLessThan(2_000);
     assertThat(handler.calls.get("K-GARBAGE")).hasValue(1);
-    assertThat(recordsFor(TOPIC + ".dlq", "K-GARBAGE", 1, Duration.ofSeconds(3))).isEmpty();
+    assertThat(recordsFor(DLQ, "K-GARBAGE", 1, Duration.ofSeconds(3))).isEmpty();
   }
 
   // Rebalance hold-back tests. The group's committed offset is read from the broker (AdminClient)
@@ -257,7 +301,7 @@ class RetryTopicRouteIT {
     // The new member's client id sorts after Camel's, so the range assignor gives the partition
     // back to the Camel consumer.
     long start = System.currentTimeMillis();
-    HeldRecord held = sendRaw(TOPIC + ".retry.3", "K-KEPT", Long.toString(start + 6_000));
+    HeldRecord held = sendRaw(retryTopic(3), "K-KEPT", Long.toString(start + 6_000));
     Thread.sleep(1_000); // the retry.3 consumer has polled it and is holding it back
     assertNotCommittedPast(held, "K-KEPT", "while held back");
 
@@ -278,18 +322,20 @@ class RetryTopicRouteIT {
   @Test
   void heldBackRecordSurvivesItsPartitionMovingAwayAndBack() throws Exception {
     // The new member's client id sorts first: it takes the partition (and never commits), then
-    // leaves, and the partition returns to the Camel consumer.
+    // leaves, and the partition returns to the Camel consumer. The member polls until it really
+    // holds the partition: how long the rebalance takes depends on when the Camel member's next
+    // heartbeat (every 3 s) tells it to rejoin, so a fixed window was a race (D25).
     long start = System.currentTimeMillis();
-    HeldRecord held = sendRaw(TOPIC + ".retry.3", "K-MOVED", Long.toString(start + 6_000));
+    HeldRecord held = sendRaw(retryTopic(3), "K-MOVED", Long.toString(start + 6_000));
     Thread.sleep(1_000);
     assertNotCommittedPast(held, "K-MOVED", "while held back");
 
     boolean movedAway = false;
     try (KafkaConsumer<String, String> member = groupMember("aaa-member")) {
-      long until = System.nanoTime() + Duration.ofSeconds(3).toNanos();
-      while (System.nanoTime() < until) {
+      long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
+      while (!movedAway && System.nanoTime() < deadline) {
         member.poll(Duration.ofMillis(200));
-        movedAway |= member.assignment().contains(held.partition());
+        movedAway = member.assignment().contains(held.partition());
         assertNotCommittedPast(held, "K-MOVED", "while the partition is away");
       }
     }
@@ -336,7 +382,7 @@ class RetryTopicRouteIT {
     p.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
     p.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
     KafkaConsumer<String, String> member = new KafkaConsumer<>(p);
-    member.subscribe(List.of(TOPIC + ".retry.3"));
+    member.subscribe(List.of(retryTopic(3)));
     return member;
   }
 

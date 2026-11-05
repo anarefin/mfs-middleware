@@ -1,0 +1,10 @@
+{
+  "username": "ussd_gp",
+  "desc": "MNO USSD gateway gp (spec 8.2): basic-auth user ussd-gp, password = USSD_GP_GATEWAY_SECRET (generated .env in dev, OpenBao secret/mw-simulators for the simulator); only route ussd-http-gp admits it",
+  "plugins": {
+    "basic-auth": {
+      "username": "ussd-gp",
+      "password": "@env:USSD_GP_GATEWAY_SECRET"
+    }
+  }
+}

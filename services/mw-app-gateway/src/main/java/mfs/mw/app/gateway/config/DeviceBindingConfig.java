@@ -14,7 +14,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
  * The device gate on {@code /app/**} (spec 9.1, 18.6, ticket 29): the interceptor (the body it
- * hashes is cached by {@code SubmitSchemaConfig}'s filter). On unless {@code mw.app-gateway.device-binding.enabled=false} (tests
+ * hashes is cached by {@code BodySchemaConfig}'s filter). On unless {@code mw.app-gateway.device-binding.enabled=false} (tests
  * not about it). Valkey (sessions, nonces) fails fast while disconnected; the gate then answers
  * 503 MW-SYS-012 instead of letting requests through, and Valkey is kept out of the health groups
  * so the rest of the API (none, today) is not taken out of readiness with it.

@@ -1,0 +1,10 @@
+{
+  "username": "ussd_robi",
+  "desc": "MNO USSD gateway robi (spec 8.2): basic-auth user ussd-robi, password = USSD_ROBI_GATEWAY_SECRET (generated .env in dev, OpenBao secret/mw-simulators for the simulator); only route ussd-http-robi admits it",
+  "plugins": {
+    "basic-auth": {
+      "username": "ussd-robi",
+      "password": "@env:USSD_ROBI_GATEWAY_SECRET"
+    }
+  }
+}

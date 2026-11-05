@@ -14,11 +14,22 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   `service/OrgTransactionService` -> `client/OrchestratorQueryClient`): `GET /portal/org/v1/transactions`
   (`batchId` (a batch of the org, else 404 MW-VAL-003; never approved -> empty), `status`, `[from, to)`,
   limit 1..200, offset) and `GET /portal/org/v1/transactions/{txnId}` (transaction + `timeline` of
-  state changes; another org's or unknown txn 404 MW-VAL-003), maker or checker. The SP is the org:
+  state changes; another org's or unknown txn 404 MW-VAL-003), maker or checker. The org sees what
+  it initiated (bulk children) and what it collects as payee (bill / merchant payments), each with
+  `role` INITIATOR|PAYEE as the orchestrator tags it (review fix A3; which billers and merchant
+  wallets an org collects for is the orchestrator's `mw.orchestrator.search.org-payees`, never a
+  portal parameter). The timeline keeps only `kind` STATE entries (`OrgTxn.Detail.statesOnly`): the
+  orchestrator's core-command entries (B13) stay internal. The SP is the org:
   the client always sends the **token's** `orgId` to mw-orchestrator's internal query API
   (`api/mw-orchestrator/txn-query.v1`, `mw.portal-api.orchestrator.base-url`, default
   `http://mw-orchestrator:8080`, read timeout 5 s), never a request parameter, and never reads the
-  `txn` schema. Resilience4j `orchestrator` (retry + circuit breaker on
+  `txn` schema. Every call carries this service's Keycloak client-credentials token (realm
+  `services`, client `mw-portal-api`, M3 gate decision; `client/ServiceTokenClient`: HTTP Basic client
+  auth to `mw.portal-api.orchestrator.auth.token-uri` (`MW_INTERNAL_TOKEN_URI`), cached until 30 s
+  before `expires_in`, dropped when the orchestrator answers 401; secret
+  `mw.portal-api.orchestrator.auth.client-secret` in `secret/mw-portal-api`, synced by the init from
+  `KC_MW_PORTAL_API_SECRET` of `scripts/gen-dev-env.sh`). No token -> `503 MW-SYS-040`.
+  `OrchestratorClientAuthTest`. Resilience4j `orchestrator` (retry + circuit breaker on
   `OrchestratorUnavailableException` only); unreachable / non-200 / unreadable -> `503 MW-SYS-040`
   (retryable). The view (`dto/OrgTxn`) drops correlation id, channel, initiator and partner calls;
   customer data arrives masked. Same edge route `/portal/org/v1/*`. `OrgTransactionApiIT` (stub
@@ -41,8 +52,22 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
 - Decide `POST .../{batchId}/approve` and `.../reject {reason}`: the maker of a batch can never
   decide it, even holding both roles (`403 MW-AUTH-030`; also a CHECK constraint in the schema);
   not pending `409 MW-VAL-032`; one conditional UPDATE, so of racing checkers exactly one wins.
-  Another org's batch is `404 MW-VAL-003` everywhere. No expiry of pending batches yet (15.3's
-  72 h applies to admin change requests).
+  Another org's batch is `404 MW-VAL-003` everywhere. List filter `?status=` is a String mapped in
+  the service (`BatchStatus.parse`; unknown `400 MW-VAL-001`); the controller binds no entity type.
+- Expiry (M3 gate decision; `service/BatchExpiryService`, `scheduler/BulkExpiryJob`, ShedLock
+  `bulk-expiry`, every `bulk.expiry.period` 5 min, `MW_BULK_EXPIRY_ENABLED`): a batch still
+  `PENDING_APPROVAL` `bulk.expiry.after` (72 h) after its upload becomes `EXPIRED` (`decided_at` =
+  expiry time, one conditional UPDATE `FOR UPDATE SKIP LOCKED`, at most `batch-size` per run); then
+  approve/reject `409 MW-VAL-032`, result `409 MW-VAL-035`.
+- Audit (M3 gate decision; `service/BatchAudit` -> `mapper/BatchAuditMapper`, own type `dto/AuditEvent`):
+  upload, approve, reject, expire, pause and resume each write one `mw.audit.event.v1` record to the
+  outbox in the action's transaction (a refused action writes none): action `bulk.batch.<uploaded|
+  approved|rejected|expired|paused|resumed>`, resource `bulk-batch/<batchId>`, actor `user`/<operator's
+  `preferred_username`> (staff id, **not masked**) or `system`/`mw-portal-api` for the expiry, `before`
+  `{status}` (absent on upload), `after` `{status, orgId, rowCount, totalMinor, currency, reason?}`
+  (a rejection's reason through `MaskingPolicy.scrub`), `txnId` the parent txn once approved, key the
+  actor id. The rows (MSISDNs) are never copied into an audit event. `BulkLifecycleIT` validates
+  every event against the contract.
 - Execution (ticket 34, spec 9.4, WP22 part; `service/BulkExecutionService`, schema V5). Approval
   needs the org's payout wallet in `bulk.org-wallets` (orgId -> core wallet; ORG001/ORG002 ->
   the core mock's `01311000001`/`...002`), else `409 MW-VAL-034`, and stores the parent
@@ -68,22 +93,46 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   ORG_PORTAL BULK_DISBURSE records, only settled states (`entity/ItemStatus.settledBy`: COMPLETED,
   FAILED, REJECTED, REVERSED, MANUAL_REVIEW), one conditional UPDATE by txn_id (FAILED/REJECTED/
   REVERSED final, COMPLETED only to REVERSED), so redeliveries are no-ops without an inbox row;
-  then the batch is COMPLETED (+ `completed_at`) once no row is PENDING/SUBMITTED (MANUAL_REVIEW
-  counts as settled). Views of approved batches carry `parentTxnId`, `progress` (pending,
-  inFlight, completed, failed, manualReview, paidAmount), `completedAt`. `GET .../result`
+  then the batch is COMPLETED (+ `completed_at`) once no row is PENDING/SUBMITTED, or
+  `COMPLETED_WITH_EXCEPTIONS` when any row is MANUAL_REVIEW or UNRESOLVED (M3 gate decision). Which
+  txn states settle a row is said once, in `entity/ItemStatus` (`settledBy`, `exception()`), never
+  as string literals elsewhere.
+- Reconcile (M3 gate decision; `service/BulkReconcileService`, `scheduler/BulkReconcileJob`, ShedLock
+  `bulk-reconcile`, every `bulk.reconcile.period` 1 min, `MW_BULK_RECONCILE_ENABLED`): up to
+  `batch-size` (200) SUBMITTED rows sent more than `bulk.reconcile.after` (10 min) ago, least recently
+  checked first (`batch_item.reconciled_at`, V6), are looked up with `GET /internal/v1/transactions/
+  {txnId}?orgId=<batch org>` (the authenticated client above). A settled state settles the row as the
+  status record would (`BulkExecutionService.settle`); a row still unsettled or unknown to the
+  orchestrator `give-up-after` (24 h) after it was sent becomes `UNRESOLVED` (WARN `bulk.row.unresolved`;
+  a later status record still settles it, the batch keeps its final status). An unavailable
+  orchestrator ends the run with nothing changed. Nothing is re-sent.
+- Views of approved batches carry `parentTxnId`, `progress` (pending, inFlight, completed, failed, manualReview, unresolved, paidAmount), `completedAt`. `GET .../result`
   (`mapper/ResultFile`, maker or checker, `text/csv`, attachment): `line,msisdn,amount,reference,
-  status,txnId,errorCode`, MSISDN masked (18.3), current state while running; before approval
-  `409 MW-VAL-035`. No re-send of a SUBMITTED row that never settles (Kafka and the outbox keep
-  the record; such a row shows SUBMITTED in the result file).
+  status,txnId,errorCode,batchStatus` (`batchStatus` = the batch's status on every line, e.g.
+  COMPLETED_WITH_EXCEPTIONS), MSISDN masked (18.3), current state while running; before approval
+  `409 MW-VAL-035`. No re-send of a SUBMITTED row that never settles (the reconcile job above settles
+  or gives it up).
 - Init (`mw-portal-api-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
-  `portal_api_rw`, schema `bulk`, `secret/mw-portal-api` (DB password), AppRole.
+  `portal_api_rw`, schema `bulk`, `secret/mw-portal-api` (DB password; realm `services` client
+  secret from `KC_MW_PORTAL_API_SECRET`), AppRole.
 
 ## Contracts owned
 
-- `api/mw-portal-api/portal-org.v1.openapi.yaml` (org portal API v1). No APISIX body schema (the
-  body is CSV); the edge answers 401/413/429 itself (`deploy/apisix/README.md`).
+- `api/mw-portal-api/portal-org.v1.openapi.yaml` (org portal API v1). APISIX checks no body (review
+  A6); the edge answers 401/413/429 itself (`deploy/apisix/README.md`). The only JSON body, reject
+  `{reason}`, is checked here before binding against
+  `src/main/resources/derived-schemas/portal-org-v1-reject-request.json` (derived from the contract's
+  inline reject body schema; `scripts/derived-schemas.sh --write` after changing it, `make
+  contracts-lint` fails on drift) by `filter/BodySchemaAdvice` -> `service/BodySchema` (copied from
+  mw-app-gateway: duplicate keys, trailing content, non-objects refused; `400 MW-VAL-001`; over 64 KiB
+  `413 MW-VAL-BODY_TOO_LARGE`); then Bean Validation. approve/pause/resume take no body. The CSV
+  upload is not JSON: `BulkCsvParser` and its caps (above) check it. A new JSON body type needs its
+  derived schema added to the advice.
 
 ## Contracts used
+
+- `events/mw-audit-dw/mw.audit.event.v1` (produced, own type `dto/AuditEvent`; `BulkLifecycleIT`
+  validates every batch audit event against it).
 
 - `events/mw-orchestrator/mw.txn.request.v1` (produced, own type `dto/TxnRequest`;
   `BulkExecutionIT` validates every child against it) and `mw.txn.status.v1` (consumed, own type
