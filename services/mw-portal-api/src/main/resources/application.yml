@@ -193,6 +193,12 @@ mw:
       base-url: ${MW_ORCHESTRATOR_BASE_URL:http://mw-orchestrator:8080}
       connect-timeout: 2s
       read-timeout: 5s
+      # Client credentials of Keycloak realm `services` (M3 gate: /internal/v1/** needs a token for
+      # audience mw-orchestrator). The secret comes from OpenBao (secret/mw-portal-api,
+      # mw.portal-api.orchestrator.auth.client-secret, synced by the init from KC_MW_PORTAL_API_SECRET).
+      auth:
+        token-uri: ${MW_INTERNAL_TOKEN_URI:http://keycloak:8080/realms/services/protocol/openid-connect/token}
+        client-id: mw-portal-api
     jwt:
       # Keycloak realm `portals` (spec 8.2). Keys are fetched on the first token.
       jwk-set-uri: ${MW_PORTAL_JWK_SET_URI:http://keycloak:8080/realms/portals/protocol/openid-connect/certs}

@@ -18,7 +18,13 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   the client always sends the **token's** `orgId` to mw-orchestrator's internal query API
   (`api/mw-orchestrator/txn-query.v1`, `mw.portal-api.orchestrator.base-url`, default
   `http://mw-orchestrator:8080`, read timeout 5 s), never a request parameter, and never reads the
-  `txn` schema. Resilience4j `orchestrator` (retry + circuit breaker on
+  `txn` schema. Every call carries this service's Keycloak client-credentials token (realm
+  `services`, client `mw-portal-api`, M3 gate decision; `client/ServiceTokenClient`: HTTP Basic client
+  auth to `mw.portal-api.orchestrator.auth.token-uri` (`MW_INTERNAL_TOKEN_URI`), cached until 30 s
+  before `expires_in`, dropped when the orchestrator answers 401; secret
+  `mw.portal-api.orchestrator.auth.client-secret` in `secret/mw-portal-api`, synced by the init from
+  `KC_MW_PORTAL_API_SECRET` of `scripts/gen-dev-env.sh`). No token -> `503 MW-SYS-040`.
+  `OrchestratorClientAuthTest`. Resilience4j `orchestrator` (retry + circuit breaker on
   `OrchestratorUnavailableException` only); unreachable / non-200 / unreadable -> `503 MW-SYS-040`
   (retryable). The view (`dto/OrgTxn`) drops correlation id, channel, initiator and partner calls;
   customer data arrives masked. Same edge route `/portal/org/v1/*`. `OrgTransactionApiIT` (stub
@@ -76,7 +82,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   `409 MW-VAL-035`. No re-send of a SUBMITTED row that never settles (Kafka and the outbox keep
   the record; such a row shows SUBMITTED in the result file).
 - Init (`mw-portal-api-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
-  `portal_api_rw`, schema `bulk`, `secret/mw-portal-api` (DB password), AppRole.
+  `portal_api_rw`, schema `bulk`, `secret/mw-portal-api` (DB password; realm `services` client
+  secret from `KC_MW_PORTAL_API_SECRET`), AppRole.
 
 ## Contracts owned
 

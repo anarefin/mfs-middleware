@@ -55,6 +55,7 @@ class OrgTransactionApiIT {
       """
           .formatted(OWN_TXN);
 
+  static final String TOKEN = "service-token-1";
   static final List<String> QUERIES = new CopyOnWriteArrayList<>();
   static volatile boolean orchestratorDown;
   static final HttpServer ORCHESTRATOR = startStub();
@@ -63,6 +64,10 @@ class OrgTransactionApiIT {
     try {
       HttpServer s = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
       s.createContext("/internal/v1/transactions", OrgTransactionApiIT::answer);
+      // Keycloak realm services stand-in: the client-credentials token the client must send
+      s.createContext(
+          "/token",
+          ex -> respond(ex, 200, "{\"access_token\":\"" + TOKEN + "\",\"expires_in\":300}"));
       s.start();
       return s;
     } catch (IOException e) {
@@ -74,7 +79,9 @@ class OrgTransactionApiIT {
     String path = ex.getRequestURI().getPath();
     String query = ex.getRequestURI().getRawQuery() == null ? "" : ex.getRequestURI().getRawQuery();
     QUERIES.add(path + "?" + query);
-    if (orchestratorDown) {
+    if (!("Bearer " + TOKEN).equals(ex.getRequestHeaders().getFirst("Authorization"))) {
+      respond(ex, 401, "{\"code\":\"MW-AUTH-001\",\"message\":\"x\",\"correlationId\":\"c\",\"retryable\":false,\"details\":[]}");
+    } else if (orchestratorDown) {
       respond(ex, 500, "{\"code\":\"MW-SYS-001\",\"message\":\"Internal error\",\"correlationId\":\"c\",\"retryable\":true,\"details\":[]}");
     } else if (path.endsWith("/transactions")) {
       respond(ex, 200, "{\"items\":[" + TXN_JSON + "],\"limit\":50,\"offset\":0}");
@@ -109,6 +116,9 @@ class OrgTransactionApiIT {
   static void orchestrator(DynamicPropertyRegistry registry) {
     registry.add(
         "mw.portal-api.orchestrator.base-url", () -> "http://127.0.0.1:" + ORCHESTRATOR.getAddress().getPort());
+    registry.add(
+        "mw.portal-api.orchestrator.auth.token-uri",
+        () -> "http://127.0.0.1:" + ORCHESTRATOR.getAddress().getPort() + "/token");
   }
 
   private final MockMvcTester mvc;

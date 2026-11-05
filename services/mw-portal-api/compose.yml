@@ -37,6 +37,8 @@ services:
       PGUSER: ${POSTGRES_USER:-mw_admin}
       PGDATABASE: ${POSTGRES_DB:-mw}
       PGPASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      # Keycloak realm `services` client secret, synced into secret/mw-portal-api (internal API token)
+      KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
       BAO_ADDR: ${VAULT_ADDR:-http://openbao:8200}
       INIT_FILE: /openbao/file/dev-init.json
       OUT_DIR: /out

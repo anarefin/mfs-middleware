@@ -172,6 +172,9 @@ services:
       KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
       KC_OPS_TEST_PASSWORD: ${KC_OPS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
       KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      # realm services: internal API clients (/internal/v1/** of mw-orchestrator, mw-audit-dw)
+      KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
       JAVA_OPTS_KC_HEAP: -Xms256m -Xmx768m
     volumes:
       - ./keycloak/realms:/opt/keycloak/data/import:ro
