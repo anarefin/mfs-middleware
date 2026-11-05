@@ -42,6 +42,21 @@ public class CoreSteps {
     state.faultsInjected = true;
   }
 
+  /**
+   * The core refuses the next {@code commandType} without effect and that refusal is never
+   * answered (faults REJECT and DROP_REPLY on the same command, once each): the outcome is unknown
+   * to the middleware, and QueryTransaction later reports REJECTED, so the status inquiry ends the
+   * transaction with nothing applied (the timeout -> TSQ -> release path of a flow without a hold).
+   */
+  @Given("the core refuses the next {word} and its reply is lost")
+  public void refusalLost(String commandType) {
+    ObjectNode reject = Http.JSON.createObjectNode();
+    reject.put("mode", "REJECT").put("commandType", commandType).put("times", 1);
+    CoreMock.injectFault(reject);
+    state.faultsInjected = true;
+    dropReply(commandType);
+  }
+
   @After
   public void resetFaults() {
     if (state.faultsInjected) {
