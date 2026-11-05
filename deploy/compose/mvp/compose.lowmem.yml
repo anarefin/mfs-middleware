@@ -22,7 +22,7 @@
 #   greenmail            192         123  (heap 96m)
 #   openbao              160          92
 #   etcd 96 (43), valkey 64 (9)
-#   long-running total   7520 of the 10240 guard
+#   long-running total   7904 of the 10240 guard (mw-admin-api added at 384, ticket 36, not yet measured)
 #   one-shots (exit before their service starts): *-init 128, kafka-init 512 (3 parallel CLI
 #   JVMs; 8 were OOM-killed at 384), apisix-init 256, etcd-init 64
 #
@@ -137,4 +137,7 @@ services:
     deploy: *limit-svc
   mw-checkout:
     environment: { <<: *jvm-small, SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "4" }
+    deploy: *limit-svc
+  mw-admin-api:
+    environment: { <<: *jvm-small, SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "2" }
     deploy: *limit-svc

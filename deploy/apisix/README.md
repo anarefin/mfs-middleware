@@ -259,6 +259,14 @@ over.
   `scripts/gen-dev-env.sh` into the gitignored `deploy/compose/platform/.env`, never in the repo.
   `scripts/test/test_apisix_edge.sh` proves the default apply skips (and removes) them.
 
+## Admin route (ticket 36)
+
+`routes/admin-v1.json` (`GET`/`POST /admin/v1/*` -> mw-admin-api): `client-control` 1 MiB,
+`openid-connect` bearer-only on realm `ops` (client `mw-admin-ui`; every ops user needs password +
+TOTP), quota 300/min per token subject. The roles of spec 15.4 are checked by mw-admin-api, not
+here. Spec 15.1 puts the console on the internal gateway only; the MVP has one APISIX, so the route
+is on it (known gap: no network split until a second, internal APISIX exists).
+
 ## Adding a route (tickets 22, 31, 33, ...)
 
 1. `routes/<id>.json`: `uri`, `methods`, the auth plugin for the route group (spec 8.2), and the

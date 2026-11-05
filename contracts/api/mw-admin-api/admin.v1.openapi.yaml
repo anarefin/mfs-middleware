@@ -1,0 +1,247 @@
+openapi: 3.1.0
+info:
+  title: upay admin API v1 (mw-admin-api)
+  version: 1.0.0
+  description: |
+    Operations console API (ticket 36, spec 15). Reached by mw-admin-ui server-side through the
+    internal APISIX route `/admin/v1/*` (Keycloak realm `ops`, password + TOTP); never by a browser
+    directly. mw-admin-api checks the bearer token again (signature, expiry, issuer realm `ops`).
+    Roles are the realm roles of spec 15.4 (`realm_access.roles`); a role name outside 15.4 grants
+    nothing:
+      - transactions (search, detail with saga timeline and audit trail): viewer, ops-maker,
+        ops-checker, ops-emergency, recon-maker, recon-checker, compliance-officer, auditor;
+      - `viewer` and `auditor` are read-only: any method other than GET/HEAD/OPTIONS under
+        `/admin/**` is 403 MW-AUTH-002 unless the operator also holds a role that may write;
+      - unmasked MSISDN (`reveal=true` on the detail): compliance-officer and auditor only; every
+        reveal is audited (`mw.audit.event.v1`, action `admin.txn.msisdn.revealed`). Other roles
+        asking for a reveal get the masked view (`revealed: false`) and no audit record.
+    Customer data is masked (spec 18.3) as mw-orchestrator returns it: MSISDN `0171****789`,
+    accounts last 4, names to the initial. Audit entries are returned as mw-audit-dw stores them
+    (already masked). Every error is the 5.3 envelope: 401 MW-AUTH-001 (no or bad token), 403
+    MW-AUTH-002 (role), 400 MW-VAL-001, 404 MW-VAL-003, 503 MW-SYS-040 (a query API is down,
+    retryable).
+servers:
+  - url: https://localhost
+security:
+  - opsBearer: []
+paths:
+  /admin/v1/transactions:
+    get:
+      operationId: searchTransactions
+      summary: Search transactions, newest first
+      description: >-
+        Every filter is optional; filters are ANDed. `msisdn` in any accepted form (01..., 880...,
+        +880..., with spaces or dashes) matches the initiator through the orchestrator's keyed hash.
+      parameters:
+        - { name: txnId, in: query, schema: { type: string, format: uuid } }
+        - { name: msisdn, in: query, schema: { type: string, pattern: "^\\+?[0-9 -]{8,20}$" } }
+        - { name: partnerRef, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/Status" } }
+        - { name: txnType, in: query, schema: { type: string, pattern: "^[A-Z0-9_]{1,32}$" } }
+        - { name: from, in: query, description: Inclusive lower bound of createdAt, schema: { type: string, format: date-time } }
+        - { name: to, in: query, description: Exclusive upper bound of createdAt, schema: { type: string, format: date-time } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 100000, default: 0 } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: One page of transactions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TxnPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /admin/v1/transactions/{txnId}:
+    get:
+      operationId: getTransaction
+      summary: One transaction with its saga timeline, partner calls and audit trail
+      description: >-
+        `timeline` lists every state change (kind STATE) and core command (kind CORE) in order;
+        `partnerCalls` every partner call; `auditTrail` the transaction's audit events in the order
+        they happened (first 500). With `reveal=true` a compliance-officer or auditor gets MSISDN
+        party ids unmasked (`revealed: true`) and the reveal is audited; anyone else gets the masked
+        view (`revealed: false`).
+      parameters:
+        - { name: txnId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: reveal, in: query, schema: { type: boolean, default: false } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The transaction, its timeline and its audit trail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TxnDetail" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    opsBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token of Keycloak realm `ops` (Authorization Code + PKCE, TOTP required)
+  responses:
+    Error:
+      description: Error envelope (spec 5.3)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    Status:
+      type: string
+      enum:
+        [RECEIVED, VALIDATING, HOLDING, POSTING, PARTNER_PENDING, COMMITTING, RELEASING, UNKNOWN,
+         COMPLETED, REJECTED, FAILED, REVERSING, REVERSED, MANUAL_REVIEW]
+    Amount:
+      type: object
+      required: [valueMinor, currency]
+      properties:
+        valueMinor: { type: integer, minimum: 0, description: Poisha }
+        currency: { type: string, const: BDT }
+    Party:
+      type: object
+      description: A party; id masked by type unless revealed, name reduced to the initial.
+      properties:
+        type: { type: string }
+        id: { type: string }
+        name: { type: string }
+        walletType: { type: string }
+    Txn:
+      type: object
+      required: [txnId, txnType, channel, status, createdAt, updatedAt, amount]
+      properties:
+        txnId: { type: string, format: uuid }
+        txnType: { type: string }
+        channel: { type: string }
+        status: { $ref: "#/components/schemas/Status" }
+        previousStatus: { $ref: "#/components/schemas/Status" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        correlationId: { type: string }
+        amount: { $ref: "#/components/schemas/Amount" }
+        fee: { $ref: "#/components/schemas/Amount" }
+        initiator: { $ref: "#/components/schemas/Party" }
+        debitParty: { $ref: "#/components/schemas/Party" }
+        creditParty: { $ref: "#/components/schemas/Party" }
+        partner:
+          type: object
+          properties:
+            partnerId: { type: string }
+            productCode: { type: string }
+            billerCode: { type: string }
+        partnerRef: { type: string }
+        coreRef: { type: string }
+        originalTxnId: { type: string }
+        reversalTxnId: { type: string }
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            messageBn: { type: string }
+            retryable: { type: boolean }
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+    TxnPage:
+      type: object
+      required: [items, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Txn" }
+        limit: { type: integer }
+        offset: { type: integer }
+    TimelineEntry:
+      type: object
+      required: [kind, at]
+      properties:
+        kind: { type: string, enum: [STATE, CORE] }
+        from: { $ref: "#/components/schemas/Status" }
+        to: { $ref: "#/components/schemas/Status" }
+        trigger: { type: string }
+        command: { type: string }
+        commandId: { type: string }
+        sends: { type: integer, minimum: 1 }
+        result: { type: string }
+        outcome: { type: string, enum: [SUCCESS, FAILURE] }
+        reasonCode: { type: string }
+        at: { type: string, format: date-time }
+        resultAt: { type: string, format: date-time }
+    PartnerCall:
+      type: object
+      required: [requestId, operation, family, sentAt]
+      properties:
+        requestId: { type: string }
+        operation: { type: string, enum: [PAY, STATUS_QUERY, CALLBACK] }
+        family: { type: string }
+        partnerId: { type: string }
+        sentAt: { type: string, format: date-time }
+        outcome: { type: string }
+        partnerRef: { type: string }
+        errorCode: { type: string }
+        answeredAt: { type: string, format: date-time }
+    AuditEntry:
+      type: object
+      required: [auditId, at, correlationId, actor, action, resource, outcome, service]
+      properties:
+        auditId: { type: string, format: uuid }
+        month: { type: string }
+        seq: { type: integer }
+        recordedAt: { type: string, format: date-time }
+        at: { type: string, format: date-time }
+        txnId: { type: string, format: uuid }
+        correlationId: { type: string }
+        actor:
+          type: object
+          required: [type, id]
+          properties:
+            type: { type: string }
+            id: { type: string }
+        action: { type: string }
+        resource: { type: string }
+        outcome: { type: string }
+        service: { type: string }
+        sourceIp: { type: string }
+        payloadRef: { type: string }
+        before: { type: object }
+        after: { type: object }
+    TxnDetail:
+      type: object
+      required: [transaction, timeline, partnerCalls, auditTrail, revealed]
+      properties:
+        transaction: { $ref: "#/components/schemas/Txn" }
+        timeline:
+          type: array
+          items: { $ref: "#/components/schemas/TimelineEntry" }
+        partnerCalls:
+          type: array
+          items: { $ref: "#/components/schemas/PartnerCall" }
+        auditTrail:
+          type: array
+          items: { $ref: "#/components/schemas/AuditEntry" }
+        revealed:
+          type: boolean
+          description: true when MSISDN party ids are unmasked (and the reveal was audited)
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

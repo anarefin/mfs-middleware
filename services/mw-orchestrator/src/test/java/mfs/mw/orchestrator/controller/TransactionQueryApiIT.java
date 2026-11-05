@@ -467,4 +467,25 @@ class TransactionQueryApiIT {
     assertThat(get("/internal/v1/transactions/" + child + "?orgId=ORG002").statusCode()).isEqualTo(404);
     assertThat(get("/internal/v1/transactions/" + other + "?orgId=ORG001").statusCode()).isEqualTo(404);
   }
+
+  // --- reveal (ticket 36) ---------------------------------------------------------------------
+
+  @Test
+  void aRevealedDetailCarriesTheUnmaskedMsisdnsAndNothingElseUnmasked() throws Exception {
+    String txn = p2p();
+
+    JsonNode masked = ok("/internal/v1/transactions/" + txn).path("transaction");
+    assertThat(masked.path("initiator").path("id").asString()).isEqualTo("0171****001");
+
+    JsonNode revealed = ok("/internal/v1/transactions/" + txn + "?reveal=true").path("transaction");
+    assertThat(revealed.path("initiator").path("id").asString()).isEqualTo("01711000001");
+    assertThat(revealed.path("creditParty").path("id").asString()).isEqualTo("01711000002");
+    // names stay reduced to the initial even when revealed
+    String name = revealed.path("creditParty").path("name").asString("");
+    assertThat(name.length()).isLessThanOrEqualTo(2);
+
+    assertThat(ok("/internal/v1/transactions/" + txn + "?reveal=false").path("transaction").path("initiator")
+            .path("id").asString())
+        .isEqualTo("0171****001");
+  }
 }

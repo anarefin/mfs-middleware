@@ -84,6 +84,14 @@ class InternalApiAuthIT {
   }
 
   @Test
+  void onlyARevealClientMayAskForUnmaskedValues() throws Exception {
+    assertEnvelope(get(DETAIL + "?orgId=ORG001&reveal=true", InternalTokens.bearer("mw-portal-api")), 403, "MW-AUTH-002");
+    assertEnvelope(get(SEARCH + "?orgId=ORG001&reveal=true", InternalTokens.bearer("mw-portal-api")), 403, "MW-AUTH-002");
+    // the admin API may: authorised, then simply not found
+    assertEnvelope(get(DETAIL + "?reveal=true", InternalTokens.bearer("mw-admin-api")), 404, "MW-VAL-003");
+  }
+
+  @Test
   void probesStayOpen() throws Exception {
     assertThat(get("/actuator/health/liveness", null).statusCode()).isEqualTo(200);
   }

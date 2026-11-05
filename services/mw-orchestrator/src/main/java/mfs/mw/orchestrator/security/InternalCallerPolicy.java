@@ -15,19 +15,23 @@ import org.springframework.security.oauth2.jwt.Jwt;
  * The caller rules of {@code /internal/v1/**} (spec 18.2, M3 gate decision). A token must name this
  * service in {@code aud} ({@link #audience}); the calling client ({@code azp}, Keycloak's client id
  * of a client-credentials token) must be allowed, and an org-scoped client (mw-portal-api) must
- * always send a non-blank {@code orgId}, so it can only ever read its own org's data.
+ * always send a non-blank {@code orgId}, so it can only ever read its own org's data. Only a
+ * reveal client (mw-admin-api, ticket 36) may send {@code reveal} (any value but {@code false}).
  */
 public final class InternalCallerPolicy {
 
   static final String ORG_PARAM = "orgId";
+  static final String REVEAL_PARAM = "reveal";
   private static final Logger log = LoggerFactory.getLogger(InternalCallerPolicy.class);
 
   private final Set<String> allowedClients;
   private final Set<String> orgScopedClients;
+  private final Set<String> revealClients;
 
-  public InternalCallerPolicy(Set<String> allowedClients, Set<String> orgScopedClients) {
+  public InternalCallerPolicy(Set<String> allowedClients, Set<String> orgScopedClients, Set<String> revealClients) {
     this.allowedClients = Set.copyOf(allowedClients);
     this.orgScopedClients = Set.copyOf(orgScopedClients);
+    this.revealClients = Set.copyOf(revealClients);
   }
 
   /** Whether the authenticated client may make this request. */
@@ -41,6 +45,9 @@ public final class InternalCallerPolicy {
     } else if (orgScopedClients.contains(client) && isBlank(request.getParameter(ORG_PARAM))) {
       allowed = false;
       reason = "ORG_REQUIRED";
+    } else if (asksReveal(request) && !revealClients.contains(client)) {
+      allowed = false;
+      reason = "REVEAL_NOT_ALLOWED";
     } else {
       allowed = true;
       reason = null;
@@ -64,6 +71,11 @@ public final class InternalCallerPolicy {
           : OAuth2TokenValidatorResult.failure(
               new OAuth2Error(OAuth2ErrorCodes.INVALID_TOKEN, "token is not for this service", null));
     };
+  }
+
+  private static boolean asksReveal(HttpServletRequest request) {
+    String v = request.getParameter(REVEAL_PARAM);
+    return v != null && !"false".equalsIgnoreCase(v.trim());
   }
 
   private static boolean isBlank(String s) {
