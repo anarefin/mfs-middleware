@@ -162,7 +162,13 @@ mapping, inbox/outbox).
   `dto/PartnerReply`. `dto/PartnerMessagesSchemaTest` keeps both aligned with the samples.
 - `events/mw-admin-api/mw.config.changed.v1` in (PARTNER records, `configKey` `partner/<id>`, `value` =
   a full `PartnerConfig`); own type `dto/ConfigChangedEvent`. The `value` shape is this adapter's reading
-  of an open object; mw-admin-api (ticket 38) must publish it in this shape.
+  of an open object; mw-admin-api publishes it in this shape since ticket 38 (`dto/PartnerConfigValue`
+  there; its dev seed `ocs` is a copy of this module's `application-dev.yml` seed, keep them identical).
+  An approved DISABLE makes the next call NOT_SENT -> FAILED `MW-SYS-PARTNER_DISABLED` without a
+  restart; a changed `timeoutMs` builds a new time limiter for the next call. `PartnerConfigReloadIT`
+  (record while running) and `PartnerConfigStartupIT` (records already on the topic when the config
+  consumer starts: it ends on the latest version; ticket 38) cover both; the test config allows
+  `robi: localhost` for the latter.
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 

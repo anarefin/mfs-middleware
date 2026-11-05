@@ -19,6 +19,8 @@ mw:
       allowed-hosts:
         ocs: mw-simulators,localhost
         gp: localhost
+        # PartnerConfigStartupIT (ticket 38)
+        robi: localhost
       insecure-http-hosts: mw-simulators,localhost
   outbox:
     relay:

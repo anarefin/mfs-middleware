@@ -1,0 +1,9 @@
+# Dev profile only (SPRING_PROFILES_ACTIVE=dev, set by this module's compose.yml for the dev stack).
+# The partner seeds mirror the dev seed partners of the adapters (mw-adapter-telco's
+# application-dev.yml `ocs`): stored once at version 0 and never published, so the console can
+# disable the partner or change its timeouts (ticket 38) and publish the full config as version 1.
+# Keep a seed identical to the adapter's, or the first approved change publishes the difference.
+mw:
+  partners:
+    seeds:
+      - classpath:partner-seeds/dev/ocs.json

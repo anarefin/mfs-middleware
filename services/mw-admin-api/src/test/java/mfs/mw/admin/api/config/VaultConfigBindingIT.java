@@ -56,6 +56,7 @@ class VaultConfigBindingIT {
             .run(
                 // No database here: this test is about config binding only.
                 "--spring.flyway.enabled=false",
+                "--mw.partners.seeds=",
                 "--spring.cloud.vault.enabled=true",
                 "--spring.cloud.vault.uri=" + vaultUri(),
                 "--spring.cloud.vault.authentication=TOKEN",

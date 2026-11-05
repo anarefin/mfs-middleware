@@ -1,0 +1,31 @@
+{
+  "partnerId": "ocs",
+  "family": "telco",
+  "config": {
+    "enabled": true,
+    "template": "rest-json-request-reply",
+    "baseUrl": "http://mw-simulators:8080",
+    "connectTimeoutMs": 3000,
+    "timeoutMs": 20000,
+    "readTimeoutMs": 22000,
+    "auth": { "scheme": "none" },
+    "sensitiveFields": { "msisdn": "MSISDN" },
+    "ambiguousCodes": ["9876"],
+    "errorMap": { "2001": { "suffix": "TOPUP_REJECTED", "retryable": false } },
+    "operations": {
+      "PAY": {
+        "method": "POST",
+        "path": "/ocs/v1/topup",
+        "definiteStatuses": [400, 422],
+        "request": "{\"transactionId\": reference, \"msisdn\": creditParty.id, \"amount\": amount.major}\n",
+        "response": "status = 200\n  ? (body.status = \"SUCCESS\" and $type(body.ocsRef) = \"string\" and body.ocsRef != \"\"\n      ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.ocsRef, \"code\": body.code}\n      : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: status = 422\n  ? ($type(body.code) = \"string\" and body.code != \"\"\n      ? {\"outcome\": \"FAILED\", \"code\": body.code, \"message\": body.message}\n      : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: status = 400\n  ? {\"outcome\": \"FAILED\", \"code\": \"HTTP_400\", \"message\": body.message}\n: {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}\n"
+      },
+      "STATUS_QUERY": {
+        "method": "GET",
+        "path": "/ocs/v1/topup/{reference}",
+        "definiteStatuses": [200, 404],
+        "response": "status = 200\n  ? (body.status = \"SUCCESS\" and $type(body.ocsRef) = \"string\" and body.ocsRef != \"\"\n      ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.ocsRef, \"code\": body.code}\n      : body.status = \"FAILED\" and $type(body.code) = \"string\" and body.code != \"\"\n        ? {\"outcome\": \"FAILED\", \"code\": body.code, \"message\": body.message}\n        : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: status = 404 and body.status = \"NOT_FOUND\"\n  ? {\"outcome\": \"NOT_FOUND\", \"code\": body.code, \"message\": body.message}\n: {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}\n"
+      }
+    }
+  }
+}

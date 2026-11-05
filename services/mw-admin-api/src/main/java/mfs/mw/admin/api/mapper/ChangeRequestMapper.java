@@ -48,13 +48,23 @@ public final class ChangeRequestMapper {
     Map<String, Object> after = base(cr, "PENDING");
     after.put("expiresAt", cr.expiresAt().toString());
     after.put("reason", MaskingPolicy.scrub(cr.reason()));
-    return event(cr, correlationId, "user", cr.makerId(), CREATED, Map.of("txnStatus", cr.statusBefore()), after,
-        cr.createdAt());
+    Map<String, Object> before;
+    if (txn(cr)) {
+      before = Map.of("txnStatus", cr.statusBefore());
+    } else {
+      before = new LinkedHashMap<>(Map.of("config", side(cr, "before")));
+      after.put("config", side(cr, "after"));
+    }
+    return event(cr, correlationId, "user", cr.makerId(), CREATED, before, after, cr.createdAt());
   }
 
   public static AuditEvent approved(ChangeRequest cr, String checkerId, String sentAs, String correlationId, Instant at) {
     Map<String, Object> after = base(cr, "APPROVED");
-    after.put("txnStatus", cr.statusAfter());
+    if (txn(cr)) {
+      after.put("txnStatus", cr.statusAfter());
+    } else {
+      after.put("config", side(cr, "after"));
+    }
     after.put("makerId", cr.makerId());
     after.put("sentAs", sentAs);
     return event(cr, correlationId, "user", checkerId, APPROVED, pendingBefore(cr), after, at);
@@ -62,7 +72,9 @@ public final class ChangeRequestMapper {
 
   public static AuditEvent rejected(ChangeRequest cr, String checkerId, String reason, String correlationId, Instant at) {
     Map<String, Object> after = base(cr, "REJECTED");
-    after.put("txnStatus", cr.statusBefore());
+    if (txn(cr)) {
+      after.put("txnStatus", cr.statusBefore());
+    }
     after.put("makerId", cr.makerId());
     after.put("reason", MaskingPolicy.scrub(reason));
     return event(cr, correlationId, "user", checkerId, REJECTED, pendingBefore(cr), after, at);
@@ -94,7 +106,19 @@ public final class ChangeRequestMapper {
   }
 
   private static Map<String, Object> pendingBefore(ChangeRequest cr) {
-    return Map.of("status", "PENDING", "txnStatus", cr.statusBefore());
+    return txn(cr)
+        ? Map.of("status", "PENDING", "txnStatus", cr.statusBefore())
+        : Map.of("status", "PENDING", "config", side(cr, "before"));
+  }
+
+  private static boolean txn(ChangeRequest cr) {
+    return ChangeRequest.TRANSACTION.equals(cr.resourceType());
+  }
+
+  /** One side of a non-transaction diff (changed fields; never secrets). */
+  private static Object side(ChangeRequest cr, String key) {
+    Object v = cr.diff().get(key);
+    return v == null ? Map.of() : v;
   }
 
   private static Map<String, Object> base(ChangeRequest cr, String status) {
@@ -111,7 +135,7 @@ public final class ChangeRequestMapper {
     return new AuditEvent(
         1,
         UUID.randomUUID().toString(),
-        cr.resourceId(),
+        txn(cr) ? cr.resourceId() : null,
         correlationId == null || correlationId.isBlank() ? "admin-" + UUID.randomUUID() : correlationId,
         new AuditEvent.Actor(actorType, actorId),
         action,

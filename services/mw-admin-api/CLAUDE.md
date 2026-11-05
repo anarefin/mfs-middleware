@@ -57,7 +57,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   username: `403 MW-AUTH-030`, even when the maker also holds ops-checker); the txn is read again on
   approval (moved on: `409 MW-VAL-030`, request stays PENDING); expired: marked EXPIRED + audited,
   `409 MW-VAL-032`; decided already `409 MW-VAL-033` (the `status = 'PENDING'` update guard).
-  `GET /admin/v1/change-requests[?status&resourceId&limit&offset]`, `GET .../{id}` (READ_TRANSACTIONS).
+  `GET /admin/v1/change-requests[?status&resourceType&resourceId&limit&offset]`, `GET .../{id}`
+  (`READ_CHANGE_REQUESTS`: the transaction readers and integration-maker/checker, ticket 38; an
+  operator without `READ_TRANSACTIONS` sees partner requests only: transaction ones are left out of
+  the list, `?resourceType=transaction` and their detail are 403).
   Approval = ONE database transaction: row APPROVED + the message to mw-orchestrator + the audit,
   through the outbox: INQUIRE/FORCE_* -> `mw.txn.action.v1` (own contract, `dto/TxnAction`, key
   txnId, idempotency header = actionId, stored in `payload.actionId`); REVERSE -> REVERSAL on
@@ -77,6 +80,44 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   recon-*, not ops-emergency: its post-approval flow is for partner changes, ticket 38); a reject by
   the maker (withdrawal) is not offered. The orchestrator's resulting state is not tracked here: the
   detail view and audit trail show it.
+- Partner config (ticket 38, spec 15.2 Partners, 15.3, 16.2, 20.4; `controller/PartnerController` ->
+  `service/PartnerConfigService` (reads, maker) and `service/PartnerChangeHandler` (approval) ->
+  `repository/PartnerRepository`, schema `partner` (own, V5: `partner`, `endpoint`, `mapping`,
+  `error_map`; Flyway `schemas: admin,partner`, history table in `admin`), `entity/Partner`,
+  `dto/PartnerConfigValue` = the adapters' `PartnerConfig` field names (camelCase), `mapper/PartnerMapper`):
+  `GET /admin/v1/partners[/{partnerId}]` (`AdminRole.READ_PARTNERS` = transaction readers +
+  integration-maker/checker); `POST /admin/v1/partners/{partnerId}/change-requests {action, reason,
+  family?, timeouts?, config?}` (`PARTNER_MAKER` = ops-maker, integration-maker): ENABLE / DISABLE /
+  SET_TIMEOUTS (existing partner, else 404; `timeouts` only with SET_TIMEOUTS) or UPSERT (full config;
+  `family` telco|billpay|bank needed for a new partner, never changes). Fields not belonging to the
+  action, an invalid config (`PartnerConfigService.validate`: absolute http(s) baseUrl without user
+  info/query/fragment, operation method/safe path/response, credentialsRef a bare secret name, error-map
+  suffix, scheme needs a ref, positive timeouts, readTimeoutMs >= timeoutMs; messages never repeat a
+  value) -> 400 MW-VAL-001; a change that changes nothing -> 409 MW-VAL-030. The change request
+  (resourceType `partner`, resourceId the partner id) stores `payload {family, baseVersion?, config}`
+  (full config) and `diff {before, after}` (changed top-level fields). Approve/reject on the shared
+  `/admin/v1/change-requests/{id}/...` (`PARTNER_CHECKER` = ops-checker, integration-checker; never the
+  maker). `ChangeRequestService` keeps the shared rules and calls the resource's
+  `service/ResourceChangeHandler` (ticket 39 adds its own): approval = ONE database transaction: the
+  partner row locked and still at `baseVersion` (absent: still not existing; else 409 MW-VAL-030, stays
+  PENDING), tables replaced, version + 1 (seed 0 -> 1), outbox `mw.config.changed.v1` PARTNER UPSERT
+  (key `partner/<id>`, value the full config, changedBy maker, approvedBy checker, idempotency header
+  `partner/<id>@<version>`, 6.1 txn header the change request id), `payload.version`, the request
+  APPROVED and its audit. Audit for partners: resource `partner/<id>`, no txnId (key the resource),
+  before/after carry `config` (the diff sides; never secrets). The compacted topic replays the latest
+  record per partner to every adapter start (the adapters consume from the beginning in a group of
+  their own). Seeds: `mw.partners.seeds` (resource list, `config/PartnerSeedProperties`,
+  `scheduler/PartnerSeedJob` at start-up, insert-if-absent at version 0, never published); only the dev
+  profile (`application-dev.yml`, `SPRING_PROFILES_ACTIVE=dev` in `compose.yml`) seeds
+  `partner-seeds/dev/ocs.json`, a copy of mw-adapter-telco's dev seed `ocs` (keep them identical; the
+  test config seeds it too). Decisions (no product owner available): ops-maker/ops-checker may change
+  partners as well as integration-* (an incident disable is an operations task); the ops-emergency
+  direct change with 24 h post-approval (15.3) is not built; DELETE / tombstones are not offered (disable
+  instead); the admin does not compile JSONata or know the adapters' host allowlists, so an adapter may
+  still refuse an approved config (`security.partner_config_refused` / `config.rejected`, previous
+  config kept) and the admin's tables then differ from what runs; records go to every adapter (configKey
+  has no family), and an adapter without an allowlist entry for the id refuses them; nothing republishes
+  the snapshot after a Kafka volume loss (approve a change to republish).
 - Internal API identity (M3 gate decision; `client/ServiceTokenClient`, `client/InternalApiCaller`):
   Keycloak realm `services` client `mw-admin-api` (client credentials, HTTP Basic, token carries
   audiences mw-orchestrator and mw-audit-dw), cached until 30 s before `expires_in`, dropped on a
@@ -84,7 +125,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   from `KC_MW_ADMIN_API_SECRET`. Resilience4j `orchestrator` and `audit-dw` (retry + breaker on
   `QueryUnavailableException` only).
 - Init (`mw-admin-api-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
-  `admin_api_rw`, schema `admin` (spec 16.2), `secret/mw-admin-api` (DB password; client secret),
+  `admin_api_rw`, schemas `admin` and `partner` (spec 16.2), `secret/mw-admin-api` (DB password; client secret),
   AppRole. Stack: included in `deploy/compose/mvp/compose.yml`, low-mem limit 384 MiB, Hikari pool 2.
 - Keycloak realm `ops` (`deploy/compose/platform/keycloak/realms/ops-realm.json`) carries the 15.4
   roles; dev users `ops-viewer01` (viewer), `ops-maker01`, `ops-checker01`, `ops-admin01`
@@ -102,7 +143,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   change) registered in `filter/BodySchemaAdvice`.
 - `events/mw-admin-api/mw.txn.action.v1` (ticket 37): approved INQUIRE / FORCE_COMMIT /
   FORCE_RELEASE for mw-orchestrator (Kafka topic 6 partitions, 7 d, retry group mw-orchestrator).
-- `events/mw-admin-api/mw.config.changed.v1` (owned, not produced yet: ticket 38).
+- `events/mw-admin-api/mw.config.changed.v1` (ticket 38): approved partner configs, PARTNER UPSERT,
+  key `partner/<id>`, value the adapters' `PartnerConfig` shape (compacted topic, 6 partitions).
 
 ## Contracts used
 
@@ -110,7 +152,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `contracts/ProducedContractsTest`, and `AdminTransactionApiIT` validates the outbox row),
   `events/mw-admin-api/mw.txn.action.v1` (`dto/TxnAction`) and a REVERSAL on
   `events/mw-orchestrator/mw.txn.request.v1` (`dto/ReversalRequest`; `ChangeRequestApiIT`
-  validates both outbox rows), serves
+  validates both outbox rows), `events/mw-admin-api/mw.config.changed.v1` (`dto/ConfigChangedEvent`;
+  `PartnerConfigApiIT` validates the outbox row), serves
   `admin.v1`; consumes `api/mw-orchestrator/txn-query.v1` (own type `dto/AdminTxn`) and
   `api/mw-audit-dw/audit-query.v1` (own type `dto/AuditTrail`), unknown fields ignored
   (`contracts/ApiContractsTest` reads contract-shaped answers). No consumed events.
@@ -138,7 +181,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 | Command | What it does |
 | --- | --- |
 | `./gradlew test` | unit, slice and contract tests, no Docker |
-| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker); `AdminTransactionApiIT` (stub orchestrator + audit-dw), `ChangeRequestApiIT` (maker-checker, stub orchestrator) |
+| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker); `AdminTransactionApiIT` (stub orchestrator + audit-dw), `ChangeRequestApiIT` (maker-checker, stub orchestrator), `PartnerConfigApiIT` (partner change requests, outbox config records) |
 | `./gradlew conformance` | the `@Conformance` suite |
 | `./gradlew check` | all three plus the JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
 | `./gradlew check bootJar && docker build -t mw-admin-api:dev .` | image, as spec 4.3 rule 1 |

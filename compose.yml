@@ -734,6 +734,7 @@ services:
       - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
       - MW_ADMIN_JWK_SET_URI=${MW_ADMIN_JWK_SET_URI:-http://keycloak:8080/realms/ops/protocol/openid-connect/certs}
       - MW_ENV=${MW_ENV:-local}
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-dev}
       - VAULT_ADDR=${VAULT_ADDR:-http://openbao:8200}
       - VAULT_ENABLED=${VAULT_ENABLED:-true}
       - JAVA_TOOL_OPTIONS=-XX:+UseSerialGC -Xms32m -Xmx160m -XX:MaxMetaspaceSize=160m

@@ -1,0 +1,228 @@
+{
+  "x-mw-derived-from": "api/mw-admin-api/admin.v1.openapi.yaml#/paths/~1admin~1v1~1partners~1{partnerId}~1change-requests/post/requestBody/content/application~1json/schema",
+  "type": "object",
+  "required": [
+    "action",
+    "reason"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "ENABLE",
+        "DISABLE",
+        "SET_TIMEOUTS",
+        "UPSERT"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "family": {
+      "type": "string",
+      "enum": [
+        "telco",
+        "billpay",
+        "bank"
+      ]
+    },
+    "timeouts": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "connectTimeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120000
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120000
+        },
+        "readTimeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 125000
+        }
+      }
+    },
+    "config": {
+      "type": "object",
+      "required": [
+        "baseUrl",
+        "operations"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "template": {
+          "type": "string",
+          "enum": [
+            "rest-json-request-reply",
+            "rest-json-async-callback"
+          ]
+        },
+        "baseUrl": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 512
+        },
+        "connectTimeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120000
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120000
+        },
+        "readTimeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 125000
+        },
+        "headers": {
+          "type": "object",
+          "maxProperties": 20,
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 256
+          }
+        },
+        "auth": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "scheme": {
+              "type": "string",
+              "enum": [
+                "none",
+                "api-key",
+                "hmac-sha256"
+              ]
+            },
+            "credentialsRef": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "params": {
+              "type": "object",
+              "maxProperties": 20,
+              "additionalProperties": {
+                "type": "string",
+                "maxLength": 256
+              }
+            }
+          }
+        },
+        "operations": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 20,
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "method",
+              "path",
+              "response"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "method": {
+                "type": "string",
+                "enum": [
+                  "GET",
+                  "POST",
+                  "PUT",
+                  "PATCH",
+                  "DELETE"
+                ]
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "definiteStatuses": {
+                "type": "array",
+                "maxItems": 20,
+                "items": {
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 599
+                }
+              },
+              "request": {
+                "type": "string",
+                "maxLength": 8000
+              },
+              "response": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8000
+              }
+            }
+          }
+        },
+        "errorMap": {
+          "type": "object",
+          "maxProperties": 500,
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "suffix"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "suffix": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "retryable": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "ambiguousCodes": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "sensitiveFields": {
+          "type": "object",
+          "maxProperties": 100,
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "MSISDN",
+              "NID",
+              "ACCOUNT",
+              "NAME",
+              "SECRET",
+              "PARTY_ID"
+            ]
+          }
+        },
+        "resilience": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      }
+    }
+  }
+}

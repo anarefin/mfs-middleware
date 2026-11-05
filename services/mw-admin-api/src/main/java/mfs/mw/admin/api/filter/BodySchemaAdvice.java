@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.util.Map;
 import mfs.mw.admin.api.dto.ChangeRequestBody;
+import mfs.mw.admin.api.dto.PartnerChangeRequestBody;
 import mfs.mw.admin.api.dto.RejectBody;
 import mfs.mw.admin.api.exception.ErrorCodes;
 import mfs.mw.admin.api.exception.MwException;
@@ -20,7 +21,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdviceAd
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Checks every JSON request body of {@code admin.v1} ({@link ChangeRequestBody}, {@link RejectBody})
+ * Checks every JSON request body of {@code admin.v1} ({@link ChangeRequestBody}, {@link RejectBody}, {@link PartnerChangeRequestBody})
  * against its {@link BodySchema} before Jackson binds it (copied from mw-portal-api): the bytes are read once (at
  * most {@link #MAX_BODY} bytes, else 413 MW-VAL-BODY_TOO_LARGE), checked, and the same bytes are
  * handed to the converter, so what is validated is exactly what is bound. A failure is an {@code
@@ -30,7 +31,7 @@ import tools.jackson.databind.json.JsonMapper;
 @ControllerAdvice
 public class BodySchemaAdvice extends RequestBodyAdviceAdapter {
 
-  /** JSON bodies here are a few hundred bytes; the edge caps admin bodies at 1 MiB. */
+  /** JSON bodies here are a few KB at most (a full partner config); the edge caps admin bodies at 1 MiB. */
   static final int MAX_BODY = 64 * 1024;
 
   private final Map<Type, BodySchema> schemas;
@@ -39,7 +40,8 @@ public class BodySchemaAdvice extends RequestBodyAdviceAdapter {
     this.schemas =
         Map.of(
             ChangeRequestBody.class, new BodySchema(json, BodySchema.CHANGE_REQUEST),
-            RejectBody.class, new BodySchema(json, BodySchema.REJECT));
+            RejectBody.class, new BodySchema(json, BodySchema.REJECT),
+            PartnerChangeRequestBody.class, new BodySchema(json, BodySchema.PARTNER_CHANGE_REQUEST));
   }
 
   @Override
