@@ -266,6 +266,51 @@ public class PortalSteps {
     }
   }
 
+  @Then("every listed transaction is tagged {word}")
+  public void everyListedTagged(String role) {
+    Http.Response r = state.response();
+    JsonNode items = r.body().path("items");
+    assertThat(items.isEmpty()).as("%s", r).isFalse();
+    for (JsonNode t : items) {
+      assertThat(t.path("role").asString()).as("%s", r).isEqualTo(role);
+    }
+  }
+
+  /** The scenario's own transaction (e.g. a bill payment) in the last org list, if listed. */
+  private JsonNode listed() {
+    String txnId = state.txnId();
+    for (JsonNode t : state.response().body().path("items")) {
+      if (txnId.equals(t.path("txnId").asString())) {
+        return t;
+      }
+    }
+    return null;
+  }
+
+  @Then("the org's transaction list has the transaction tagged {word}")
+  public void listHasTransaction(String role) {
+    JsonNode t = listed();
+    assertThat(t).as("transaction %s in %s", state.txnId(), state.response()).isNotNull();
+    assertThat(t.path("role").asString()).as("%s", t).isEqualTo(role);
+  }
+
+  @Then("the org's transaction list does not have the transaction")
+  public void listLacksTransaction() {
+    assertThat(listed()).as("transaction %s in %s", state.txnId(), state.response()).isNull();
+  }
+
+  @When("{word} opens the transaction")
+  public void opensScenarioTransaction(String user) {
+    record(PortalApi.transaction(user, state.txnId()));
+  }
+
+  @Then("the opened transaction is tagged {word}")
+  public void openedTagged(String role) {
+    assertThat(state.response().body().path("transaction").path("role").asString())
+        .as("%s", state.response())
+        .isEqualTo(role);
+  }
+
   @When("{word} opens the first listed transaction")
   public void opensFirst(String user) {
     assertThat(firstListedTxnId).as("a transaction was listed before").isNotNull();

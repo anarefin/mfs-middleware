@@ -7,10 +7,13 @@ import java.util.Map;
 /**
  * One transaction as the internal query API shows it (ticket 35, contract {@code
  * txn-query.v1.openapi.yaml}). Customer data is already masked (spec 18.3): party ids by type,
- * names to the initial; no PIN, no idempotency key, no raw request.
+ * names to the initial; no PIN, no idempotency key, no raw request. {@code role} is set only for an
+ * org-scoped query (A3): {@code INITIATOR} when the org initiated it, {@code PAYEE} when the org
+ * collects for its biller or merchant wallet.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record TxnView(
+    String role,
     String txnId,
     String txnType,
     String channel,

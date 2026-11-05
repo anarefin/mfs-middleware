@@ -90,7 +90,9 @@ class TransactionQueryApiIT {
   void clean() {
     clock.set(TestData.NOW);
     for (String t :
-        List.of("outbox", "inbox", "saga_timer", "saga_step", "partner_call", "idempotency", "transaction")) {
+        List.of(
+            "outbox", "inbox", "saga_timer", "saga_step", "partner_call", "core_call", "idempotency",
+            "transaction")) {
       jdbc.update("delete from " + t);
     }
   }
@@ -130,6 +132,22 @@ class TransactionQueryApiIT {
     TxnRequest req = TestData.bulkChild(TestData.txnId(), "key-" + TestData.txnId(), 1_000, msisdn);
     transactions.accept(req, null);
     return req.txnId();
+  }
+
+  private String billPay() {
+    TxnRequest req = TestData.billPay(TestData.txnId(), "key-" + TestData.txnId(), 66_700, "1234567");
+    transactions.accept(req, "gw-1");
+    return req.txnId();
+  }
+
+  private String merchantPay(String merchant) {
+    TxnRequest req = TestData.merchantPay(TestData.txnId(), "key-" + TestData.txnId(), 2_500, merchant);
+    transactions.accept(req, "gw-1");
+    return req.txnId();
+  }
+
+  private static List<String> roles(JsonNode page) {
+    return page.path("items").valueStream().map(n -> n.path("role").asString()).toList();
   }
 
   private CoreEvent coreEvent(String type, String txnId, String commandId, String payload) {
@@ -253,6 +271,79 @@ class TransactionQueryApiIT {
   }
 
   @Test
+  void anOrgIdNeverMatchesAnMsisdnInitiatorWithTheSameText() throws Exception {
+    String p2p = p2p(); // initiator {MSISDN, 01711000001}
+
+    assertThat(txnIds(ok("/internal/v1/transactions?orgId=01711000001"))).isEmpty();
+    assertThat(get("/internal/v1/transactions/" + p2p + "?orgId=01711000001").statusCode()).isEqualTo(404);
+    assertThat(txnIds(ok("/internal/v1/transactions?msisdn=01711000001"))).containsExactly(p2p);
+  }
+
+  @Test
+  void anMsisdnSearchNeverMatchesAnOrgInitiatorWhoseIdLooksLikeAnMsisdn() throws Exception {
+    TxnRequest base = TestData.bulkChild(TestData.txnId(), "key-" + TestData.txnId(), 1_000, "01711000003");
+    TxnRequest req =
+        new TxnRequest(
+            base.schemaVersion(), base.txnId(), base.idempotencyKey(), base.correlationId(), base.channel(),
+            base.txnType(), new mfs.mw.orchestrator.dto.Party("ORG", "01711000009", null, null), base.debitParty(),
+            base.creditParty(), base.amount(), base.partner(), base.originalTxnId(), base.encryptedPin(),
+            base.locale(), base.metadata(), base.attributes(), base.requestedAt());
+    transactions.accept(req, null);
+
+    assertThat(txnIds(ok("/internal/v1/transactions?msisdn=01711000009"))).isEmpty();
+    assertThat(txnIds(ok("/internal/v1/transactions?orgId=01711000009"))).containsExactly(req.txnId());
+  }
+
+  @Test
+  void anOrgSeesWhatItInitiatedAndWhatItWasPaidEachTaggedWithItsRole() throws Exception {
+    String child = bulkChild("01711000003");
+    clock.advance(Duration.ofSeconds(1));
+    String bill = billPay();
+    clock.advance(Duration.ofSeconds(1));
+    String merchant = merchantPay("01911000001");
+    clock.advance(Duration.ofSeconds(1));
+    merchantPay("01911000002"); // another merchant: not ORG002's
+    p2p();
+
+    JsonNode org2 = ok("/internal/v1/transactions?orgId=ORG002");
+    assertThat(txnIds(org2)).containsExactly(merchant, bill);
+    assertThat(roles(org2)).containsExactly("PAYEE", "PAYEE");
+    assertThat(org2.toString()).doesNotContain("01711000001").doesNotContain("01911000001");
+
+    JsonNode org1 = ok("/internal/v1/transactions?orgId=ORG001");
+    assertThat(txnIds(org1)).containsExactly(child);
+    assertThat(roles(org1)).containsExactly("INITIATOR");
+
+    // other filters still apply to the payee side
+    assertThat(txnIds(ok("/internal/v1/transactions?orgId=ORG002&txnType=BILL_PAY"))).containsExactly(bill);
+    // an unscoped search tags nothing
+    assertThat(ok("/internal/v1/transactions?txnId=" + bill).path("items").get(0).has("role")).isFalse();
+
+    JsonNode detail = ok("/internal/v1/transactions/" + bill + "?orgId=ORG002");
+    assertThat(detail.path("transaction").path("role").asString()).isEqualTo("PAYEE");
+    assertThat(ok("/internal/v1/transactions/" + child + "?orgId=ORG001").path("transaction").path("role").asString())
+        .isEqualTo("INITIATOR");
+    assertThat(get("/internal/v1/transactions/" + bill + "?orgId=ORG001").statusCode()).isEqualTo(404);
+    assertThat(get("/internal/v1/transactions/" + child + "?orgId=ORG002").statusCode()).isEqualTo(404);
+  }
+
+  @Test
+  void thePayeeHashIsStoredForBillsAndMerchantPaymentsOnly() {
+    String bill = billPay();
+    String merchant = merchantPay("01911000001");
+    String p2p = p2p();
+
+    String q = "select payee_hash from transaction where txn_id = ?::uuid";
+    assertThat(jdbc.queryForObject(q, byte[].class, bill)).hasSize(32);
+    assertThat(jdbc.queryForObject(q, byte[].class, merchant)).hasSize(32);
+    assertThat(jdbc.queryForObject(q, byte[].class, p2p)).isNull();
+    List<String> indexed =
+        jdbc.queryForList(
+            "select indexdef from pg_indexes where schemaname = 'txn' and tablename = 'transaction'", String.class);
+    assertThat(indexed).anyMatch(d -> d.contains("payee_hash"));
+  }
+
+  @Test
   void badFiltersAreTheValidationEnvelope() throws Exception {
     for (String q :
         List.of("status=NOPE", "txnId=not-a-uuid", "limit=0", "limit=201", "from=yesterday",
@@ -273,14 +364,30 @@ class TransactionQueryApiIT {
 
     assertThat(detail.path("transaction").path("status").asString()).isEqualTo("COMPLETED");
     assertThat(detail.path("transaction").path("partnerRef").asString()).isEqualTo("OCS-TSQ-1");
-    List<String> changes =
+    List<String> entries =
         detail.path("timeline").valueStream()
-            .map(s -> s.path("from").asString() + ">" + s.path("to").asString())
+            .map(
+                s ->
+                    s.path("kind").asString().equals("STATE")
+                        ? s.path("from").asString() + ">" + s.path("to").asString()
+                        : s.path("command").asString() + "=" + s.path("result").asString() + "/"
+                            + s.path("outcome").asString())
             .toList();
-    assertThat(changes)
+    assertThat(entries)
         .containsExactly(
-            "RECEIVED>VALIDATING", "VALIDATING>HOLDING", "HOLDING>PARTNER_PENDING", "PARTNER_PENDING>UNKNOWN",
-            "UNKNOWN>COMMITTING", "COMMITTING>COMPLETED");
+            "RECEIVED>VALIDATING",
+            "ValidateTransaction=TransactionValidated/SUCCESS",
+            "VALIDATING>HOLDING",
+            "HoldFunds=FundsHeld/SUCCESS",
+            "HOLDING>PARTNER_PENDING",
+            "PARTNER_PENDING>UNKNOWN",
+            "UNKNOWN>COMMITTING",
+            "CommitHold=HoldCommitted/SUCCESS",
+            "COMMITTING>COMPLETED");
+    JsonNode hold = detail.path("timeline").get(3);
+    assertThat(hold.path("commandId").asString()).isEqualTo(txn + ":hold");
+    assertThat(hold.path("sends").asInt()).isEqualTo(1);
+    assertThat(hold.has("resultAt")).isTrue();
     List<Instant> at =
         detail.path("timeline").valueStream().map(s -> Instant.parse(s.path("at").asString())).toList();
     assertThat(at).isSorted();
@@ -301,6 +408,46 @@ class TransactionQueryApiIT {
         .doesNotContain("01711000001")
         .doesNotContain("01711000002")
         .doesNotContain("encryptedPin");
+  }
+
+  @Test
+  void aResentCoreCommandIsOneTimelineEntryWithItsSendCountAndTheFailureReason() throws Exception {
+    TxnRequest req = TestData.topup(TestData.txnId(), "key-" + TestData.txnId(), 2_000, "01711000002");
+    transactions.accept(req, "gw-1");
+    String txn = req.txnId();
+    coreEvents.handle(
+        coreEvent("TransactionValidated", txn, txn + ":validate", "{\"fee\":{\"valueMinor\":0,\"currency\":\"BDT\"}}"));
+    coreEvents.handle(coreEvent("FundsHeld", txn, txn + ":hold", "{\"holdId\":\"HOLD-CORE-7\"}"));
+    partnerReplies.handle(
+        reply(txn, PartnerRequestMapper.requestId(txn, "PAY"), "PAY", "FAILED",
+            ",\"errorCode\":\"MW-PTR-GP-NUMBER_BARRED\""));
+    clock.advance(Duration.ofSeconds(6));
+    timers.sweep(); // RELEASING unanswered: ReleaseHold resent under the same commandId
+
+    JsonNode pending = ok("/internal/v1/transactions/" + txn).path("timeline");
+    JsonNode release = pending.get(pending.size() - 1);
+    assertThat(release.path("command").asString()).isEqualTo("ReleaseHold");
+    assertThat(release.path("sends").asInt()).isEqualTo(2);
+    assertThat(release.has("result")).isFalse();
+
+    coreEvents.handle(
+        json.readValue(
+            "{\"schemaVersion\":1,\"eventType\":\"ReleaseFailed\",\"eventId\":\"evt-" + UUID.randomUUID()
+                + "\",\"commandId\":\"" + txn + ":release\",\"txnId\":\"" + txn
+                + "\",\"occurredAt\":\"2026-11-03T08:15:40Z\",\"outcome\":\"FAILURE\","
+                + "\"reasonCode\":\"HOLD_ALREADY_COMMITTED\",\"payload\":{}}",
+            CoreEvent.class));
+
+    JsonNode timeline = ok("/internal/v1/transactions/" + txn).path("timeline");
+    JsonNode answered =
+        timeline.valueStream()
+            .filter(e -> "ReleaseHold".equals(e.path("command").asString()))
+            .findFirst()
+            .orElseThrow();
+    assertThat(answered.path("result").asString()).isEqualTo("ReleaseFailed");
+    assertThat(answered.path("outcome").asString()).isEqualTo("FAILURE");
+    assertThat(answered.path("reasonCode").asString()).isEqualTo("HOLD_ALREADY_COMMITTED");
+    assertThat(timeline.get(timeline.size() - 1).path("to").asString()).isEqualTo("MANUAL_REVIEW");
   }
 
   @Test

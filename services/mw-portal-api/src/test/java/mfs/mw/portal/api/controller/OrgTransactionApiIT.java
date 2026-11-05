@@ -46,7 +46,7 @@ class OrgTransactionApiIT {
   /** What the orchestrator stub answers; masked as the real one masks (contract txn-query.v1). */
   static final String TXN_JSON =
       """
-      {"txnId":"%s","txnType":"BULK_DISBURSE","channel":"ORG_PORTAL","status":"COMPLETED",
+      {"role":"INITIATOR","txnId":"%s","txnType":"BULK_DISBURSE","channel":"ORG_PORTAL","status":"COMPLETED",
        "createdAt":"2026-11-03T08:15:30Z","updatedAt":"2026-11-03T08:15:32Z","correlationId":"bulk-1",
        "amount":{"valueMinor":1000,"currency":"BDT"},
        "initiator":{"type":"ORG","id":"****G001"},"debitParty":{"type":"ORG","id":"0131****001"},
@@ -90,8 +90,9 @@ class OrgTransactionApiIT {
           ex,
           200,
           "{\"transaction\":" + TXN_JSON + ",\"timeline\":["
-              + "{\"from\":\"RECEIVED\",\"to\":\"VALIDATING\",\"trigger\":\"ValidationStarted\",\"at\":\"2026-11-03T08:15:30Z\"},"
-              + "{\"from\":\"VALIDATING\",\"to\":\"POSTING\",\"trigger\":\"Validated\",\"at\":\"2026-11-03T08:15:31Z\"},"
+              + "{\"kind\":\"STATE\",\"from\":\"RECEIVED\",\"to\":\"VALIDATING\",\"trigger\":\"ValidationStarted\",\"at\":\"2026-11-03T08:15:30Z\"},"
+              + "{\"kind\":\"CORE\",\"command\":\"ValidateTransaction\",\"commandId\":\"x:validate\",\"sends\":1,\"result\":\"TransactionValidated\",\"outcome\":\"SUCCESS\",\"at\":\"2026-11-03T08:15:30Z\",\"resultAt\":\"2026-11-03T08:15:31Z\"},"
+              + "{\"kind\":\"STATE\",\"from\":\"VALIDATING\",\"to\":\"POSTING\",\"trigger\":\"Validated\",\"at\":\"2026-11-03T08:15:31Z\"},"
               + "{\"from\":\"POSTING\",\"to\":\"COMPLETED\",\"trigger\":\"Posted\",\"at\":\"2026-11-03T08:15:32Z\"}],"
               + "\"partnerCalls\":[]}");
     } else {
@@ -170,6 +171,7 @@ class OrgTransactionApiIT {
     JsonNode item = page.path("items").get(0);
     assertThat(item.path("txnId").asString()).isEqualTo(OWN_TXN);
     assertThat(item.path("status").asString()).isEqualTo("COMPLETED");
+    assertThat(item.path("role").asString()).isEqualTo("INITIATOR");
     assertThat(item.path("creditParty").path("id").asString()).isEqualTo("0171****003");
     assertThat(item.path("attributes").path("parentTxnId").asString())
         .isEqualTo("01933b8e-0000-7000-8000-000000000001");
@@ -192,6 +194,9 @@ class OrgTransactionApiIT {
     assertThat(detail.path("transaction").path("txnId").asString()).isEqualTo(OWN_TXN);
     assertThat(detail.path("timeline").valueStream().map(s -> s.path("to").asString()).toList())
         .containsExactly("VALIDATING", "POSTING", "COMPLETED");
+    // the SP sees state changes only: the middleware's core commands stay internal
+    assertThat(detail.path("timeline").toString()).doesNotContain("ValidateTransaction").doesNotContain("commandId");
+    assertThat(detail.path("transaction").path("role").asString()).isEqualTo("INITIATOR");
     assertThat(detail.has("partnerCalls")).isFalse();
     assertThat(QUERIES.get(0)).contains("orgId=ORG001");
 

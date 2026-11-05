@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: upay transaction query internal API (mw-orchestrator)
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Internal, read-only API of mw-orchestrator (ticket 35, spec 15.2, 16.2): transaction search
     and the saga timeline. Clients: mw-admin-api (operators) and mw-portal-api (an org sees only
@@ -10,8 +10,13 @@ info:
     schema directly.
     Customer data is masked in every response (spec 18.3): party ids by party type (MSISDN
     `0171****789`, accounts last 4), names to the initial; no PIN, no idempotency key. The MSISDN
-    filter is matched through the keyed hash `initiator_hash` (HMAC-SHA256, key in OpenBao), so the
-    raw number is never indexed. Every error is the 5.3 envelope.
+    filter is matched through the keyed hash `initiator_hash` (HMAC-SHA256 over `<type>:<id>`, key
+    in OpenBao), so the raw number is never indexed and an org id never matches an MSISDN. Every
+    error is the 5.3 envelope.
+    Org scope: with `orgId` a transaction belongs to the org when the org initiated it (initiator
+    `{ORG, orgId}`) or when it pays a biller or merchant wallet the org collects for (orchestrator
+    config `mw.orchestrator.search.org-payees`); each such transaction carries `role` INITIATOR or
+    PAYEE.
 servers:
   - url: http://mw-orchestrator:8080
 security:
@@ -22,9 +27,11 @@ paths:
       operationId: searchTransactions
       summary: Search transactions, newest first
       description: >-
-        Every filter is optional; filters are ANDed. `msisdn` and `orgId` match the initiator
-        (MSISDN in any accepted form: 01..., 880..., +880..., with spaces or dashes). Errors: 400
-        MW-VAL-001 (bad filter, limit outside 1..200, from not before to).
+        Every filter is optional; filters are ANDed. `msisdn` matches an initiator of type MSISDN
+        or WALLET (MSISDN in any accepted form: 01..., 880..., +880..., with spaces or dashes).
+        `orgId` matches the transactions the org initiated (initiator type ORG) or is the payee
+        of, each tagged with `role`. Errors: 400 MW-VAL-001 (bad filter, limit outside 1..200,
+        from not before to).
       parameters:
         - { name: txnId, in: query, schema: { type: string, format: uuid } }
         - { name: msisdn, in: query, schema: { type: string, pattern: "^\\+?[0-9 -]{8,20}$" } }
@@ -61,10 +68,13 @@ paths:
       operationId: getTransaction
       summary: One transaction with its saga timeline
       description: >-
-        The timeline lists every state change in the order it happened and every partner call
-        (PAY, STATUS_QUERY, CALLBACK) with its answer. With `orgId`, a transaction that org did
-        not initiate is 404, exactly like one that does not exist. Errors: 400 MW-VAL-001 (bad
-        txnId); 404 MW-VAL-003.
+        The timeline lists every state change (`kind` STATE) and every core command with its
+        result (`kind` CORE: ValidateTransaction, PostTransfer, HoldFunds, CommitHold, ReleaseHold,
+        CreditWallet, ReverseTransaction, QueryTransaction) in the order they happened;
+        `partnerCalls` lists every partner call (PAY, STATUS_QUERY, CALLBACK) with its answer.
+        With `orgId`, a transaction that org neither initiated nor is the payee of is 404, exactly
+        like one that does not exist; otherwise the transaction carries the org's `role`. Errors:
+        400 MW-VAL-001 (bad txnId); 404 MW-VAL-003.
       parameters:
         - { name: txnId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: orgId, in: query, schema: { type: string, minLength: 1, maxLength: 64 } }
@@ -122,6 +132,12 @@ components:
       type: object
       required: [txnId, txnType, channel, status, createdAt, updatedAt, amount]
       properties:
+        role:
+          type: string
+          enum: [INITIATOR, PAYEE]
+          description: >-
+            Only with `orgId`: INITIATOR when the org initiated the transaction, PAYEE when it pays
+            a biller or merchant wallet the org collects for (INITIATOR wins when both hold).
         txnId: { type: string, format: uuid }
         txnType: { type: string }
         channel: { type: string }
@@ -172,14 +188,7 @@ components:
         transaction: { $ref: "#/components/schemas/Txn" }
         timeline:
           type: array
-          items:
-            type: object
-            required: [from, to, trigger, at]
-            properties:
-              from: { $ref: "#/components/schemas/Status" }
-              to: { $ref: "#/components/schemas/Status" }
-              trigger: { type: string, description: The saga event that caused the change }
-              at: { type: string, format: date-time }
+          items: { $ref: "#/components/schemas/TimelineEntry" }
         partnerCalls:
           type: array
           items:
@@ -195,6 +204,31 @@ components:
               partnerRef: { type: string }
               errorCode: { type: string }
               answeredAt: { type: string, format: date-time }
+    TimelineEntry:
+      type: object
+      description: >-
+        One saga timeline entry, ordered as it happened. STATE: a state change (`from`, `to`,
+        `trigger`, `at`). CORE: a core command (`command`, `commandId`, first sent `at`, `sends` in
+        all, resends keep the commandId) and, once the core answered, its `result` (the core event
+        type, e.g. FundsHeld, HoldRejected, HoldCommitted), `outcome`, `reasonCode` and `resultAt`.
+      required: [kind, at]
+      properties:
+        kind: { type: string, enum: [STATE, CORE] }
+        from: { $ref: "#/components/schemas/Status" }
+        to: { $ref: "#/components/schemas/Status" }
+        trigger: { type: string, description: The saga event that caused the change }
+        command:
+          type: string
+          enum:
+            [ValidateTransaction, PostTransfer, HoldFunds, CommitHold, ReleaseHold, CreditWallet,
+             ReverseTransaction, QueryTransaction]
+        commandId: { type: string }
+        sends: { type: integer, minimum: 1 }
+        result: { type: string, description: Core event type; absent until the core answered }
+        outcome: { type: string, enum: [SUCCESS, FAILURE] }
+        reasonCode: { type: string }
+        at: { type: string, format: date-time }
+        resultAt: { type: string, format: date-time }
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]

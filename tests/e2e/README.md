@@ -160,6 +160,15 @@ Only APISIX is published, so every call goes through it:
   reads resource `bulk-batch/<batchId>`, operator usernames unmasked). No step calls an internal
   `/internal/v1/**` API: those need a realm `services` client-credentials token (clients
   mw-portal-api, mw-admin-api); the suite checks them through the portal and the audit table.
+- SP transaction query (`features/sp-query.feature`, `@sp-query @mw-portal-api`, ticket 35, review
+  fix A3): "<user> lists the org's transactions [of the batch]", "the transaction list has N S T
+  transaction paying <masked>", "every listed transaction is tagged INITIATOR|PAYEE", "the org's
+  transaction list has the transaction tagged PAYEE" / "does not have the transaction" (the
+  scenario's own txnId), "<user> opens the transaction" / "opens the first listed transaction",
+  "the opened transaction is tagged PAYEE", "the timeline ends "A -> B"" (state changes only;
+  the portal drops the orchestrator's core-command entries). Payee scope in the dev stack:
+  ORG002 collects for biller DESCO and merchant wallet 01911000001 (mw-orchestrator `compose.yml`,
+  `mw.orchestrator.search.org-payees`).
 - `support/Keycloak.customerToken(user)`; `support/AuditTrail.rowsOfTxn` / `verifyChain`;
   `support/Waits.until` for anything asynchronous.
 - Steps (`steps/`, one `ScenarioState` per scenario via PicoContainer): sign in, send P2P,

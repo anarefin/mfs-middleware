@@ -78,6 +78,11 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
       # Valkey for the idempotency lock (7.3 rule 4); its password comes from OpenBao.
       VALKEY_HOST: ${VALKEY_HOST:-valkey}
+      # Dev only (A3): org ORG002 of realm portals collects for biller DESCO and merchant
+      # 01911000001 (the core mock's merchant01), so the SP query shows those payments as PAYEE.
+      # The main config has no org payees (JSON, as env var names would lower-case the org ids).
+      SPRING_APPLICATION_JSON: >-
+        {"mw":{"orchestrator":{"search":{"org-payees":{"ORG002":["BILLER:DESCO","MERCHANT:01911000001"]}}}}}
     deploy:
       resources:
         limits:

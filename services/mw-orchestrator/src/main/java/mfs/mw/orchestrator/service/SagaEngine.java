@@ -20,6 +20,7 @@ import mfs.mw.orchestrator.mapper.StatusMapper;
 import mfs.mw.orchestrator.messaging.EventMetadata;
 import mfs.mw.orchestrator.messaging.MwHeaders;
 import mfs.mw.orchestrator.messaging.OutboxWriter;
+import mfs.mw.orchestrator.repository.CoreCallRepository;
 import mfs.mw.orchestrator.repository.PartnerCallRepository;
 import mfs.mw.orchestrator.repository.SagaTimerRepository;
 import mfs.mw.orchestrator.repository.TransactionRepository;
@@ -67,6 +68,7 @@ public class SagaEngine {
   private final OrchestratorProperties properties;
   private final InquiryProperties inquiry;
   private final PartnerCallRepository partnerCalls;
+  private final CoreCallRepository coreCalls;
   private final Clock clock;
 
   public SagaEngine(
@@ -81,6 +83,7 @@ public class SagaEngine {
       OrchestratorProperties properties,
       InquiryProperties inquiry,
       PartnerCallRepository partnerCalls,
+      CoreCallRepository coreCalls,
       Clock clock) {
     this.transactions = transactions;
     this.timers = timers;
@@ -93,6 +96,7 @@ public class SagaEngine {
     this.properties = properties;
     this.inquiry = inquiry;
     this.partnerCalls = partnerCalls;
+    this.coreCalls = coreCalls;
     this.clock = clock;
   }
 
@@ -196,18 +200,18 @@ public class SagaEngine {
     }
     Duration ttl = properties.commandTtl();
     switch (step.get()) {
-      case VALIDATE -> send(commandMapper.validate(rec, now, ttl));
-      case POST -> send(commandMapper.post(rec, now, ttl));
-      case HOLD -> send(commandMapper.hold(rec, now, ttl));
+      case VALIDATE -> send(rec, commandMapper.validate(rec, now, ttl));
+      case POST -> send(rec, commandMapper.post(rec, now, ttl));
+      case HOLD -> send(rec, commandMapper.hold(rec, now, ttl));
       // inbound money (ADD_MONEY_BANK) has no hold: its commit is crediting the wallet
       case COMMIT ->
-          send(flow.get().creditsWallet() ? commandMapper.credit(rec, now, ttl) : commandMapper.commit(rec, now, ttl));
-      case RELEASE -> send(commandMapper.release(rec, now, ttl));
-      case QUERY -> send(commandMapper.query(rec, now, ttl));
+          send(rec, flow.get().creditsWallet() ? commandMapper.credit(rec, now, ttl) : commandMapper.commit(rec, now, ttl));
+      case RELEASE -> send(rec, commandMapper.release(rec, now, ttl));
+      case QUERY -> send(rec, commandMapper.query(rec, now, ttl));
       case CALL_PARTNER -> callPartner(rec, flow.get().partnerCall().orElseThrow(), now);
       case INQUIRE -> inquire(rec, flow.get(), now);
       case REVERSE ->
-          send(effect == Effect.SEND_REVERSAL_QUERY
+          send(rec, effect == Effect.SEND_REVERSAL_QUERY
               ? commandMapper.reversalQuery(rec, now, ttl)
               : commandMapper.reverse(rec, now, ttl));
     }
@@ -234,7 +238,7 @@ public class SagaEngine {
     if (call.isPresent()) {
       sendToPartner(rec, call.get(), partnerMapper.statusQuery(rec, call.get(), now, properties.partnerTimeout()), now);
     } else {
-      send(commandMapper.query(rec, now, properties.commandTtl()));
+      send(rec, commandMapper.query(rec, now, properties.commandTtl()));
     }
     log.atInfo()
         .addKeyValue("event", "saga.inquiry.sent")
@@ -258,7 +262,7 @@ public class SagaEngine {
    * transaction's state does not change; the core's HoldReleased is then ignored.
    */
   public void releaseOrphanHold(TransactionRecord rec, String holdId) {
-    send(commandMapper.release(rec.withHold(holdId), clock.instant(), properties.commandTtl()));
+    send(rec, commandMapper.release(rec.withHold(holdId), clock.instant(), properties.commandTtl()));
     log.atWarn()
         .addKeyValue("event", "saga.hold.orphan_released")
         .addKeyValue("txnId", rec.txnId().toString())
@@ -281,11 +285,16 @@ public class SagaEngine {
         request.requestId(), rec.txnId(), request.payload().operation(), call.family(), partnerId(rec), now);
   }
 
-  private void send(CoreCommand command) {
+  /**
+   * Sends a core command through the outbox and records it on the saga timeline (B13) under the
+   * transaction's own txnId (a ReverseTransaction goes under the reversal's txnId).
+   */
+  private void send(TransactionRecord rec, CoreCommand command) {
     outbox.append(
         CoreTopics.commandTopic(command.commandType()),
         command.txnId(),
         new EventMetadata(command.correlationId(), command.txnId(), command.commandId(), 1),
         command);
+    coreCalls.sent(command.commandId(), rec.txnId(), command.commandType(), command.issuedAt());
   }
 }

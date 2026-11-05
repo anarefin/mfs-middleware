@@ -240,8 +240,10 @@ paths:
       operationId: searchOrgTransactions
       summary: The org's own transactions, newest first (SP query, ticket 35)
       description: >-
-        Needs role `org-maker` or `org-checker`. Only transactions the token's org initiated (its
-        bulk children) are listed; there is no org parameter. Customer data is masked (MSISDN
+        Needs role `org-maker` or `org-checker`. Lists the transactions the token's org initiated
+        (its bulk children, `role` INITIATOR) and those it is the payee of (payments to a biller or
+        merchant wallet it collects for, `role` PAYEE); there is no org parameter. With `batchId`
+        only that batch's children. Customer data is masked (MSISDN
         `0171****789`). Errors: 400 MW-VAL-001 (bad filter); 404 MW-VAL-003 (`batchId` not a batch of
         the org); 503 MW-SYS-040 (query temporarily unavailable, retryable).
       parameters:
@@ -280,8 +282,9 @@ paths:
       operationId: getOrgTransaction
       summary: One of the org's transactions with its state changes in order
       description: >-
-        Needs role `org-maker` or `org-checker`. Another org's transaction is 404 MW-VAL-003, as
-        is an unknown one. 503 MW-SYS-040 when the query is temporarily unavailable (retryable).
+        Needs role `org-maker` or `org-checker`. A transaction the org neither initiated nor is
+        the payee of is 404 MW-VAL-003, as is an unknown one. The timeline lists state changes
+        only (the middleware's core commands stay internal). 503 MW-SYS-040 when the query is temporarily unavailable (retryable).
       parameters:
         - $ref: "#/components/parameters/CorrelationId"
         - { name: txnId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -342,10 +345,16 @@ components:
          REVERSING, COMPLETED, FAILED, REJECTED, REVERSED, MANUAL_REVIEW]
     OrgTxn:
       type: object
-      required: [txnId, txnType, status, createdAt, updatedAt, amount]
+      required: [role, txnId, txnType, status, createdAt, updatedAt, amount]
       properties:
+        role:
+          type: string
+          enum: [INITIATOR, PAYEE]
+          description: >-
+            The org's part: INITIATOR (it initiated it, e.g. a bulk child) or PAYEE (it collects
+            the payment, e.g. a bill payment to its biller or a payment to its merchant wallet)
         txnId: { type: string, format: uuid }
-        txnType: { type: string, description: BULK_DISBURSE for a batch child }
+        txnType: { type: string, description: "BULK_DISBURSE for a batch child; BILL_PAY or MERCHANT_PAY as payee" }
         status: { $ref: "#/components/schemas/TxnStatus" }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
