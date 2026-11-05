@@ -12,6 +12,7 @@ import mfs.mw.orchestrator.mapper.CoreEventMapper;
 import mfs.mw.orchestrator.messaging.Inbox;
 import mfs.mw.orchestrator.repository.CoreCallRepository;
 import mfs.mw.orchestrator.repository.TransactionRepository;
+import mfs.mw.orchestrator.service.saga.CoreTxnStatus;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
@@ -93,6 +94,10 @@ public class CoreEventService {
       reversalAnswer(rec, event);
       return;
     }
+    if ("TransactionStatus".equals(event.eventType()) && commands.isCreditCheck(event.commandId())) {
+      creditCheckAnswer(rec, event);
+      return;
+    }
     if ("TransactionStatus".equals(event.eventType()) && rec.status() == Status.UNKNOWN) {
       inquiryAnswer(rec, event);
       return;
@@ -166,6 +171,40 @@ public class CoreEventService {
       drop(event, "saga.event.ignored", "reversal query answer does not fit the transaction's state; ignored");
     }
   }
+
+  /**
+   * The core's answer to a forced credit's check (ticket 37): CREDITED / POSTED completes it with no
+   * new credit, NOT_FOUND / VALIDATED / REJECTED lets the fresh-round CreditWallet go, anything
+   * else hands it back to operations. Outside COMMITTING the answer is stale and ignored.
+   */
+  private void creditCheckAnswer(TransactionRecord rec, CoreEvent event) {
+    // only the answer to the latest check counts: a late answer to an older one (an earlier round
+    // or an earlier deadline) describes a state the saga has since acted on
+    if (!coreCalls.latestCreditCheck(rec.txnId()).map(event.commandId()::equals).orElse(false)) {
+      drop(event, "saga.event.ignored", "answer to an older credit check; ignored");
+      return;
+    }
+    SagaEvent.CreditCheckResult.Credit credit =
+        switch (CoreTxnStatus.parse(mapper.txnStatus(event)).orElse(null)) {
+          case CREDITED, POSTED -> SagaEvent.CreditCheckResult.Credit.CREDITED;
+          case NOT_FOUND, VALIDATED, REJECTED -> SagaEvent.CreditCheckResult.Credit.NOT_CREDITED;
+          case null, default -> SagaEvent.CreditCheckResult.Credit.CONFLICT;
+        };
+    try {
+      engine.fire(
+          rec.withCore(event.coreRef(), null), new SagaEvent.CreditCheckResult(credit),
+          credit == SagaEvent.CreditCheckResult.Credit.CONFLICT ? CREDIT_CHECK_CONFLICT : null);
+    } catch (InvalidTransitionException e) {
+      drop(event, "saga.event.ignored", "credit check answer does not fit the transaction's state; ignored");
+    }
+  }
+
+  static final ErrorInfo CREDIT_CHECK_CONFLICT =
+      new ErrorInfo(
+          ErrorCodes.TMO_INQUIRY_CONFLICT,
+          "The core's status of the transaction fits no outcome of the forced credit; operations will review it",
+          null,
+          false);
 
   static final ErrorInfo REVERSAL_NOT_APPLIED =
       new ErrorInfo(

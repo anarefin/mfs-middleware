@@ -203,12 +203,20 @@ public class SagaEngine {
       case VALIDATE -> send(rec, commandMapper.validate(rec, now, ttl));
       case POST -> send(rec, commandMapper.post(rec, now, ttl));
       case HOLD -> send(rec, commandMapper.hold(rec, now, ttl));
-      // inbound money (ADD_MONEY_BANK) has no hold: its commit is crediting the wallet
+      // inbound money (ADD_MONEY_BANK) has no hold: its commit is crediting the wallet. A forced
+      // credit (operator round >= 1) has a fresh commandId the core does not deduplicate against
+      // the earlier credits, so it first asks the core (credit check) and credits only on a
+      // NOT_CREDITED answer (SEND_CREDIT); each deadline asks again rather than resending blind.
+      // A forced CommitHold needs no check: the core commits a hold once whatever the commandId.
       case COMMIT -> {
         int round = manualRound(rec, SagaEvent.ManualCommit.class);
-        send(rec, flow.get().creditsWallet()
-            ? commandMapper.credit(rec, now, ttl, round)
-            : commandMapper.commit(rec, now, ttl, round));
+        if (!flow.get().creditsWallet()) {
+          send(rec, commandMapper.commit(rec, now, ttl, round));
+        } else if (round == 0 || effect == Effect.SEND_CREDIT) {
+          send(rec, commandMapper.credit(rec, now, ttl, round));
+        } else {
+          send(rec, commandMapper.creditCheck(rec, now, ttl));
+        }
       }
       case RELEASE -> send(rec, commandMapper.release(rec, now, ttl, manualRound(rec, SagaEvent.ManualRelease.class)));
       case QUERY -> send(rec, commandMapper.query(rec, now, ttl));

@@ -73,7 +73,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `transaction/<txnId>`, so it shows in the txn's trail): `admin.change_request.created` (maker;
   before `{txnStatus}`), `.approved` / `.rejected` (checker; before `{status: PENDING, txnStatus}`,
   after `{status, txnStatus, action, changeRequestId, makerId, ...}`), `.expired` (actor system);
-  reasons only scrubbed (`MaskingPolicy.scrub`), never logged. `scheduler/ChangeRequestExpiryJob`
+  reasons only scrubbed (`MaskingPolicy.scrub`), never logged. The `admin.v1` view
+  (`ChangeRequestMapper.view`) scrubs them too, and every string in `payload` / `diff` at any depth
+  except a whole UUID (the system ids this service writes: actionId, reversalTxnId, unlockTxnId)
+  (security review; `mapper/ChangeRequestMapperTest`): change requests have no reveal path. `scheduler/ChangeRequestExpiryJob`
   (ShedLock `change-request-expiry`, `mw.change-requests.expiry-cron` every 5 min, batch
   `expiry-batch`) expires due requests. Bodies are checked against `derived-schemas/` by
   `filter/BodySchemaAdvice` + `service/BodySchema` (copied from mw-portal-api; json-schema-validator
@@ -153,7 +156,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   (integration-maker, security-admin), `ops-compliance01`, `ops-auditor01`, all TOTP-required; the
   dev-only e2e operators `ops-e2e-maker01` (ops-maker) and `ops-e2e-checker01` (ops-checker) have a
   seeded TOTP credential instead (secret `KC_OPS_TEST_TOTP_SECRET`, token route
-  `deploy/apisix/routes/auth-ops-token.json`; ticket 37). A
+  `deploy/apisix/routes-test/auth-ops-token.json`, test-only; ticket 37). A
   running stack keeps its old realm (import skips existing realms): `make down DOWN_ARGS=-v` first.
 
 ## Contracts owned

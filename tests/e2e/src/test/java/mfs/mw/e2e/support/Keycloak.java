@@ -37,7 +37,8 @@ public final class Keycloak {
 
   /**
    * A bearer token for a dev-only e2e operator of realm ops (ops-e2e-maker01, ops-e2e-checker01;
-   * ticket 37), through {@code /auth/realms/ops/...} (deploy/apisix/routes/auth-ops-token.json):
+   * ticket 37), through the test-only {@code /auth/realms/ops/...} (deploy/apisix/routes-test/
+   * auth-ops-token.json: key-auth with {@code MW_E2E_API_KEY}, 10 requests/min per address):
    * password grant of the public client {@code mw-admin-ui} plus the current TOTP code, computed
    * from the users' seeded secret {@code KC_OPS_TEST_TOTP_SECRET} (the realm demands it). Cached per
    * user: Keycloak refuses a TOTP code a user has already used.
@@ -63,10 +64,12 @@ public final class Keycloak {
             "grant_type", "password",
             "username", username,
             "password", stack.devCredential(passwordVar)));
+    Map<String, String> headers = Map.of();
     if (totp) {
       form.put("totp", Totp.now(stack.devCredential("KC_OPS_TEST_TOTP_SECRET")));
+      headers = Map.of("apikey", stack.devCredential("MW_E2E_API_KEY"));
     }
-    Http.Response r = Http.postForm(stack.url(path), form);
+    Http.Response r = Http.postForm(stack.url(path), headers, form);
     if (r.status() != 200 || !r.body().hasNonNull("access_token")) {
       throw new IllegalStateException("no token for " + username + ": HTTP " + r.status());
     }

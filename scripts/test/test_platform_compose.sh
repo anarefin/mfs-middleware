@@ -377,6 +377,16 @@ test_ops_realm_enforces_totp_for_every_user_and_in_the_browser_flow() {
   jq -e '.otpPolicyType == "totp"' "$f" >/dev/null || fail "ops realm OTP policy is not TOTP"
 }
 
+# Brute-force detection on the ops realm (security review, ticket 37): its direct grant is reachable
+# from the host e2e route, so wrong passwords / TOTP codes lock the user out after a few tries.
+test_ops_realm_locks_a_user_out_after_a_few_failures() {
+  local f="$REALMS_DIR/ops-realm.json"
+  jq -e '.bruteForceProtected == true and .failureFactor <= 5 and .failureFactor >= 1
+    and .waitIncrementSeconds >= 60 and .maxFailureWaitSeconds >= 900
+    and .quickLoginCheckMilliSeconds >= 1000 and .minimumQuickLoginWaitSeconds >= 60' "$f" >/dev/null \
+    || fail "ops realm brute-force detection is off or lax: $(jq -c '{bruteForceProtected, failureFactor, waitIncrementSeconds, maxFailureWaitSeconds, quickLoginCheckMilliSeconds, minimumQuickLoginWaitSeconds}' "$f")"
+}
+
 # ---- Keycloak production mode on PostgreSQL (ticket 49) ----
 
 test_keycloak_runs_in_production_mode_on_its_own_postgres_database() {

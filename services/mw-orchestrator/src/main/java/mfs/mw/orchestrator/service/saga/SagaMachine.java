@@ -83,6 +83,12 @@ public final class SagaMachine {
             // a definite refusal; resending the same commandId gets the same answer (7.4 conflict)
             case CommitRefused e -> go(from, Status.MANUAL_REVIEW, Effect.NONE);
             case DeadlineExpired e -> go(from, Status.COMMITTING, Effect.SEND_COMMIT);
+            // a forced credit asks the core first (ticket 37): never credit a txn twice
+            case CreditCheckResult e when e.credit() == CreditCheckResult.Credit.CREDITED ->
+                go(from, Status.COMPLETED, Effect.NONE);
+            case CreditCheckResult e when e.credit() == CreditCheckResult.Credit.NOT_CREDITED ->
+                go(from, Status.COMMITTING, Effect.SEND_CREDIT);
+            case CreditCheckResult e -> go(from, Status.MANUAL_REVIEW, Effect.NONE);
             default -> null;
           };
       case RELEASING ->

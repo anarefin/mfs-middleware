@@ -6,8 +6,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import mfs.mw.core.mock.TestInfrastructure;
+import mfs.mw.core.mock.dto.Amount;
 import mfs.mw.core.mock.dto.CoreCommand;
 import mfs.mw.core.mock.dto.CoreEvent;
+import mfs.mw.core.mock.dto.Party;
 import mfs.mw.core.mock.security.PinKeyProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -341,6 +343,42 @@ class CoreCommandsIT {
     assertThat(handle(cmds.creditWallet(txn(), B, 100)).reasonCode()).isEqualTo("CREDIT_ACCOUNT_BLOCKED");
     assertThat(handle(cmds.creditWallet(txn(), A, 0)).reasonCode()).isEqualTo("INVALID_AMOUNT");
     assertThat(balance(A)).isEqualTo(1_000_000);
+  }
+
+  @Test
+  void aSecondCreditWalletForAnAlreadyCreditedTxnUnderANewCommandIdCreditsNothing() {
+    String txn = txn();
+    handle(cmds.creditWallet(txn, A, 250_000));
+    long total = total();
+
+    CoreCommand manual = cmds.command(
+        "CreditWallet", txn, txn + ":credit:manual-1", Map.of(
+            "txnType", "ADD_MONEY_BANK", "creditParty", new Party("WALLET", A, null, "CUSTOMER"),
+            "amount", Amount.bdt(250_000)));
+    CoreEvent e = handle(manual);
+
+    assertThat(e.eventType()).isEqualTo("WalletCredited");
+    assertThat(balance(A)).isEqualTo(1_250_000);
+    assertThat(total()).isEqualTo(total);
+    assertThat(jdbc.queryForObject("select count(*) from entry where txn_id = ?", Long.class, txn)).isEqualTo(2L);
+    assertInvariants();
+  }
+
+  @Test
+  void aCreditWalletForAReversedTxnIsRefused() {
+    String txn = txn();
+    handle(cmds.creditWallet(txn, A, 250_000));
+    jdbc.update("insert into reversal (original_txn_id, reversal_txn_id) values (?, ?)", txn, txn());
+
+    CoreCommand manual = cmds.command(
+        "CreditWallet", txn, txn + ":credit:manual-1", Map.of(
+            "txnType", "ADD_MONEY_BANK", "creditParty", new Party("WALLET", A, null, "CUSTOMER"),
+            "amount", Amount.bdt(250_000)));
+    CoreEvent e = handle(manual);
+
+    assertThat(e.eventType()).isEqualTo("CreditRejected");
+    assertThat(e.reasonCode()).isEqualTo("ALREADY_REVERSED");
+    assertThat(balance(A)).isEqualTo(1_250_000);
   }
 
   // --- ReverseTransaction -------------------------------------------------------------------

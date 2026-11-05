@@ -41,6 +41,8 @@ class ManualReviewExitIT {
   private final TransactionTemplate tx;
   private final mfs.mw.orchestrator.scheduler.ManualReviewAgeingJob ageing;
   private final io.micrometer.core.instrument.MeterRegistry meters;
+  private final CoreEventService coreEvents;
+  private final tools.jackson.databind.json.JsonMapper json;
 
   @Autowired
   ManualReviewExitIT(
@@ -51,7 +53,11 @@ class ManualReviewExitIT {
       JdbcTemplate jdbc,
       TransactionTemplate tx,
       mfs.mw.orchestrator.scheduler.ManualReviewAgeingJob ageing,
-      io.micrometer.core.instrument.MeterRegistry meters) {
+      io.micrometer.core.instrument.MeterRegistry meters,
+      CoreEventService coreEvents,
+      tools.jackson.databind.json.JsonMapper json) {
+    this.coreEvents = coreEvents;
+    this.json = json;
     this.intake = intake;
     this.transactions = transactions;
     this.engine = engine;
@@ -111,19 +117,117 @@ class ManualReviewExitIT {
   }
 
   @Test
-  void addMoneyBankRefusesManualReleaseButCreditsOnManualCommit() {
+  void addMoneyBankRefusesManualReleaseAndAsksTheCoreBeforeAForcedCredit() {
     String id = TestData.txnId();
     UUID txnId = inManualReview(TestData.addMoneyBank(id, "key-" + id, 5_000, "1234567890123"));
 
     assertRefusedUntouched(txnId, new SagaEvent.ManualRelease());
 
     decide(txnId, new SagaEvent.ManualCommit());
-    assertThat(jdbc.queryForObject("select status from transaction where txn_id = ?", String.class, txnId))
-        .isEqualTo("COMMITTING");
-    assertThat(
-            jdbc.queryForList(
-                "select payload->>'commandType' from outbox where topic = 'core.wallet.command.v1'", String.class))
-        .containsExactly("CreditWallet");
+    assertThat(status(txnId)).isEqualTo("COMMITTING");
+    assertThat(commandTypes()).containsExactly("QueryTransaction");
+    assertThat(lastCommandId()).startsWith(id + ":credit-check:");
+  }
+
+  @Test
+  void aForcedCreditIsSentOnlyOnceTheCoreSaysTheTxnIsNotCredited() {
+    String id = TestData.txnId();
+    UUID txnId = inManualReview(TestData.addMoneyBank(id, "key-" + id, 5_000, "1234567890123"));
+    decide(txnId, new SagaEvent.ManualCommit());
+
+    coreEvents.handle(event("TransactionStatus", id, lastCommandId(), "{\"txnStatus\":\"REJECTED\"}"));
+
+    assertThat(status(txnId)).isEqualTo("COMMITTING");
+    assertThat(commandTypes()).containsExactly("QueryTransaction", "CreditWallet");
+    assertThat(lastCommandId()).isEqualTo(id + ":credit:manual-1");
+
+    coreEvents.handle(event("WalletCredited", id, id + ":credit:manual-1", "{}"));
+    assertThat(status(txnId)).isEqualTo("COMPLETED");
+  }
+
+  @Test
+  void aForcedCreditOfATxnTheCoreAlreadyCreditedCompletesWithoutANewCredit() {
+    String id = TestData.txnId();
+    UUID txnId = inManualReview(TestData.addMoneyBank(id, "key-" + id, 5_000, "1234567890123"));
+    decide(txnId, new SagaEvent.ManualCommit());
+
+    coreEvents.handle(event("TransactionStatus", id, lastCommandId(), "{\"txnStatus\":\"CREDITED\"}"));
+
+    assertThat(status(txnId)).isEqualTo("COMPLETED");
+    assertThat(commandTypes()).containsExactly("QueryTransaction");
+  }
+
+  @Test
+  void aCreditCheckAnswerThatFitsNoOutcomeHandsTheTxnBackWithoutACredit() {
+    String id = TestData.txnId();
+    UUID txnId = inManualReview(TestData.addMoneyBank(id, "key-" + id, 5_000, "1234567890123"));
+    decide(txnId, new SagaEvent.ManualCommit());
+
+    coreEvents.handle(event("TransactionStatus", id, lastCommandId(), "{\"txnStatus\":\"REVERSED\"}"));
+
+    assertThat(status(txnId)).isEqualTo("MANUAL_REVIEW");
+    assertThat(commandTypes()).containsExactly("QueryTransaction");
+  }
+
+  @Test
+  void aForcedCreditDeadlineAsksTheCoreAgainRatherThanResendingBlind() {
+    String id = TestData.txnId();
+    UUID txnId = inManualReview(TestData.addMoneyBank(id, "key-" + id, 5_000, "1234567890123"));
+    decide(txnId, new SagaEvent.ManualCommit());
+    coreEvents.handle(event("TransactionStatus", id, lastCommandId(), "{\"txnStatus\":\"NOT_FOUND\"}"));
+    clock.set(TestData.NOW.plusSeconds(1));
+
+    decide(txnId, new SagaEvent.DeadlineExpired());
+
+    assertThat(commandTypes()).containsExactly("QueryTransaction", "CreditWallet", "QueryTransaction");
+  }
+
+  @Test
+  void aLateAnswerToAnOlderCreditCheckNeitherCreditsNorCompletesTheCurrentRound() {
+    String id = TestData.txnId();
+    UUID txnId = inManualReview(TestData.addMoneyBank(id, "key-" + id, 5_000, "1234567890123"));
+    decide(txnId, new SagaEvent.ManualCommit());
+    String firstCheck = lastCommandId();
+    coreEvents.handle(event("TransactionStatus", id, firstCheck, "{\"txnStatus\":\"NOT_FOUND\"}"));
+    coreEvents.handle(event("CreditRejected", id, id + ":credit:manual-1", "{}"));
+    assertThat(status(txnId)).isEqualTo("MANUAL_REVIEW");
+    clock.set(TestData.NOW.plusSeconds(30));
+    decide(txnId, new SagaEvent.ManualCommit());
+    String secondCheck = lastCommandId();
+    assertThat(secondCheck).isNotEqualTo(firstCheck).startsWith(id + ":credit-check:");
+
+    coreEvents.handle(event("TransactionStatus", id, firstCheck, "{\"txnStatus\":\"NOT_FOUND\"}"));
+    coreEvents.handle(event("TransactionStatus", id, firstCheck, "{\"txnStatus\":\"CREDITED\"}"));
+
+    assertThat(status(txnId)).isEqualTo("COMMITTING");
+    assertThat(commandTypes()).containsExactly("QueryTransaction", "CreditWallet", "QueryTransaction");
+
+    coreEvents.handle(event("TransactionStatus", id, secondCheck, "{\"txnStatus\":\"REJECTED\"}"));
+    assertThat(lastCommandId()).isEqualTo(id + ":credit:manual-2");
+  }
+
+  private String status(UUID txnId) {
+    return jdbc.queryForObject("select status from transaction where txn_id = ?", String.class, txnId);
+  }
+
+  private List<String> commandTypes() {
+    return jdbc.queryForList(
+        "select payload->>'commandType' from outbox where topic = 'core.wallet.command.v1' order by id", String.class);
+  }
+
+  private String lastCommandId() {
+    List<String> ids = jdbc.queryForList(
+        "select payload->>'commandId' from outbox where topic = 'core.wallet.command.v1' order by id", String.class);
+    return ids.get(ids.size() - 1);
+  }
+
+  private mfs.mw.orchestrator.dto.CoreEvent event(String type, String txnId, String commandId, String payload) {
+    return json.readValue(
+        "{\"schemaVersion\":1,\"eventType\":\"" + type + "\",\"eventId\":\"evt-" + UUID.randomUUID()
+            + "\",\"commandId\":\"" + commandId + "\",\"txnId\":\"" + txnId
+            + "\",\"coreRef\":\"CORE-7\",\"occurredAt\":\"2026-11-03T08:15:31Z\",\"outcome\":\"SUCCESS\""
+            + ",\"payload\":" + payload + "}",
+        mfs.mw.orchestrator.dto.CoreEvent.class);
   }
 
   @Test

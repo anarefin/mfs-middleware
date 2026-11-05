@@ -11,6 +11,11 @@ public enum Effect {
   SEND_HOLD,
   SEND_POST,
   SEND_COMMIT,
+  /**
+   * CreditWallet of a forced credit, once the core confirmed the txn is not credited (part of the
+   * commit step; {@link #SEND_COMMIT} of a forced credit asks the core first).
+   */
+  SEND_CREDIT,
   SEND_RELEASE,
   SEND_REVERSE,
   /** QueryTransaction asking whether a REVERSING transaction was reversed (part of the reverse step). */
