@@ -12,6 +12,9 @@ version = "0.1.0-SNAPSHOT"
 
 java {
     toolchain { languageVersion = JavaLanguageVersion.of(25) }
+    // Tests run on the versions the boot jar ships: a test-only library (json-schema-validator)
+    // must not raise a shared dependency (Jackson) above the runtime one and hide a runtime bug.
+    consistentResolution { useRuntimeClasspathVersions() }
 }
 
 repositories { mavenCentral() }
