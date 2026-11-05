@@ -12,6 +12,8 @@ COPY build/libs/*.jar app.jar
 RUN java -Djarmode=tools -jar app.jar extract --layers --destination extracted
 
 FROM ${JRE_IMAGE}
+# Security pass (ticket 46): Ubuntu fixes newer than the base image (trivy image, HIGH/CRITICAL).
+RUN apt-get update && apt-get -y upgrade && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=extract /build/extracted/dependencies/ ./
 COPY --from=extract /build/extracted/spring-boot-loader/ ./

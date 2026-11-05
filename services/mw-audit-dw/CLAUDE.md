@@ -92,6 +92,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
+- Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
+  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
+  `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
+  `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  `:dev` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, unsafe or holding a
   run of 6+ digits or one the scrub would change (WARN `correlation.id.replaced`), MDC
   `correlationId`; drops a caller `traceparent` whose trace or parent id is such a value.

@@ -1,0 +1,32 @@
+# ZAP baseline decisions (ticket 46, scripts/lib/zap-gate.py): pluginid<TAB>accept|fix<TAB>reason.
+# High always fails. "fix" = the edge or the service sets it, so an alert means a regression and fails.
+# "accept" = listed with its reason, does not fail. An alert not listed here fails the gate.
+# Register with context: docs/security-findings.md.
+10035	fix	HSTS: APISIX adds Strict-Transport-Security to every HTTPS response (lua/edge-security-headers.lua)
+10036	fix	Server version leak: APISIX runs with enable_server_tokens false
+10021	fix	X-Content-Type-Options: services (SecurityHeadersFilter), the admin UI and the edge (edge errors) set nosniff
+10020	fix	Anti-clickjacking: X-Frame-Options DENY from services, admin UI and edge errors
+10038	fix	CSP: services and edge errors send default-src none; the admin UI sends its own CSP
+10037	fix	X-Powered-By: the admin UI disables it (poweredByHeader false); services send none
+10010	fix	Cookie without HttpOnly: the admin UI session cookie is HttpOnly
+10011	fix	Cookie without Secure: the admin UI session cookie is Secure (HTTPS only edge)
+10054	fix	Cookie without SameSite: the admin UI session cookie is SameSite
+10049	accept	Storable/cacheable content: informational; APIs send Cache-Control no-store, static UI assets may be cached
+10015	accept	Re-examine cache directives: static admin UI assets are immutable and cacheable on purpose
+10027	accept	Information disclosure suspicious comments: hits are in the minified Next.js framework bundle, not ours
+10096	accept	Timestamp disclosure: response fields carry ISO timestamps by design (createdAt, ts)
+10109	accept	Modern web application: informational (the admin UI is a Next.js app)
+10112	accept	Session management response identified: informational
+10111	accept	Authentication request identified: informational (Keycloak login through the edge)
+10094	accept	Base64 disclosure: correlation ids, ETags and Next.js build ids, no secret material
+10063	accept	Permissions-Policy missing: APIs return JSON only; no browser feature is used. Revisit for the admin UI after MVP
+90004	accept	Spectre site isolation (COOP/COEP/CORP) missing: no cross-origin embedding or shared memory; revisit after MVP
+10017	accept	Cross-domain JavaScript source: none expected; accepted only for the Keycloak login page assets
+10055	accept	CSP directive notes (wildcard/unsafe-inline style): Next.js needs inline styles; script-src is nonce/self
+10098	accept	Cross-domain misconfiguration: no CORS allow-all on our routes; Keycloak well-known endpoints are public by design
+90022	accept	Application error disclosure: edge 4xx/5xx bodies are the 5.3 envelope without stack traces
+10202	accept	Absence of anti-CSRF tokens: the admin UI uses SameSite cookies + server actions origin check; APIs are bearer-token only
+10031	accept	User-controllable HTML attribute: reflected values are escaped by React
+10104	accept	User agent fuzzer: informational
+50001	accept	Third-party content (Keycloak theme): informational
+10116	accept	ZAP is out of date: the image is pinned on purpose (MW_ZAP_IMAGE in scripts/security.sh); bump it with the other pins

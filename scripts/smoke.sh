@@ -17,7 +17,7 @@ compose_files "$file"
 command -v jq >/dev/null || die "smoke: jq is required"
 "$(dirname "$0")/gen-dev-env.sh"
 
-CURL_IMAGE="curlimages/curl:8.17.0@sha256:935d9100e9ba842cdb060de42472c7ca90cfe9a7c96e4dacb55e79e560b3ff40"
+CURL_IMAGE="curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93"
 LONG_RUNNING="kafka postgres valkey keycloak openbao etcd apisix greenmail"
 ONE_SHOT="kafka-init etcd-init apisix-init"
 

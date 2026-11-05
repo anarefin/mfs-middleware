@@ -1,5 +1,9 @@
 # This module's own pinned versions (spec 3, D14). No shared catalog.
 [versions]
+# Security pass (ticket 46): HIGH CVE fixes above what the BOMs pin (patch releases only)
+security-jackson2 = "2.22.3"
+security-lz4 = "1.11.4"
+security-snappy = "1.1.10.9"
 spring-boot = "4.1.2"
 spring-cloud = "2025.1.4"
 camel = "4.22.2"
@@ -13,6 +17,10 @@ jsmpp = "3.0.2"
 greenmail = "2.1.15"
 
 [libraries]
+# Security pass (ticket 46): patch releases of transitive libraries with HIGH CVEs, see build.gradle.kts
+jackson2-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "security-jackson2" }
+lz4-java = { module = "at.yawk.lz4:lz4-java", version.ref = "security-lz4" }
+snappy-java = { module = "org.xerial.snappy:snappy-java", version.ref = "security-snappy" }
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
 spring-cloud-bom = { module = "org.springframework.cloud:spring-cloud-dependencies", version.ref = "spring-cloud" }
 camel-bom = { module = "org.apache.camel.springboot:camel-spring-boot-bom", version.ref = "camel" }

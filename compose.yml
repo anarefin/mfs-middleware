@@ -205,7 +205,7 @@ services:
         up does)}
       ETCD_ROOT_PASSWORD: ${ETCD_ROOT_PASSWORD:?run scripts/gen-dev-env.sh (make up
         does)}
-    image: curlimages/curl:8.17.0@sha256:935d9100e9ba842cdb060de42472c7ca90cfe9a7c96e4dacb55e79e560b3ff40
+    image: curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93
     labels:
       mw.oneshot: "true"
     logging:
@@ -1847,7 +1847,7 @@ services:
         - CMD-SHELL
         - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
       timeout: 5s
-    image: postgres:18.6-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+    image: postgres:18.6-alpine@sha256:8a334ab9502c8ccb8d7dec4e83b36b5ce8ed7b396e585f1c86b0e69c416f4fca
     logging:
       driver: json-file
       options:

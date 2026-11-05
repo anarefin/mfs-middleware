@@ -3,6 +3,7 @@
 # one-shot apisix-init container (deploy/apisix/apply.sh).
 apisix:
   node_listen: 9080              # plain HTTP: internal only, never published
+  enable_server_tokens: false    # Server: APISIX without its version (ZAP 10036, ticket 46)
   enable_ipv6: false
   ssl:
     enable: true

@@ -20,7 +20,8 @@
 #   make e2e [M=] [TAGS=]       Cucumber suite in tests/e2e against the running stack
 #   make e2e-changed [BASE=main] [TAGS=]  rebuild only modules changed since BASE into the running stack, then e2e (no verify)
 #   make perf [M=]              Gatling suite in tests/perf
-#   make security [M=]          dependency, container and secret scans
+#   make security [M=]          secret, dependency and image scans; with the stack up also ZAP baseline + log scan
+#   make log-scan               scan every container log of the running MVP stack for PIN / unmasked MSISDN / NID
 #   make new-service NAME=mw-x  copy templates/mw-service-template to services/mw-x
 #   make test-scripts           shell tests for this Makefile and scripts/
 
@@ -32,7 +33,7 @@ BASE ?=
 JOBS ?= 3
 export MW_ROOT
 
-.PHONY: help verify verify-changed check-isolation check-field-injection contracts-lint versions-check compose-flat compose-check up smoke edge-test chaos down e2e e2e-changed perf security new-service test-scripts
+.PHONY: help verify verify-changed check-isolation check-field-injection contracts-lint versions-check compose-flat compose-check up smoke edge-test chaos down e2e e2e-changed perf security log-scan new-service test-scripts
 
 help:
 	@sed -n '3,26p' $(abspath $(lastword $(MAKEFILE_LIST)))
@@ -90,6 +91,9 @@ perf:
 
 security:
 	@$(SCRIPTS)/security.sh "$(M)"
+
+log-scan:
+	@$(SCRIPTS)/log-scan.sh
 
 new-service:
 	@$(SCRIPTS)/new-service.sh "$(NAME)"

@@ -21,6 +21,14 @@ repositories { mavenCentral() }
 
 dependencies {
     implementation(platform(libs.spring.boot.bom))
+    // Security pass (ticket 46, docs/security-findings.md): patch releases of transitive libraries
+    // with HIGH CVEs, above what the BOMs pin (Jackson 2 from Kafka/Camel, lz4 and snappy from
+    // kafka-clients). Drop each once the Boot / Camel BOM ships it.
+    implementation(platform(libs.jackson2.bom))
+    constraints {
+        implementation(libs.lz4.java)
+        implementation(libs.snappy.java)
+    }
     implementation(platform(libs.spring.cloud.bom))
     implementation(platform(libs.camel.bom))
     implementation(platform(libs.resilience4j.bom))

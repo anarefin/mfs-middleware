@@ -1,6 +1,6 @@
 # mw-admin-ui
 
-Operations console (spec 15.1, WP24, ticket 40): Next.js 16.3.8 App Router, React Server
+Operations console (spec 15.1, WP24, ticket 40): Next.js 16.4.1 App Router (16.3.8 until the ticket 46 security pass: CRITICAL/HIGH CVEs fixed in 16.4.1), React Server
 Components, TypeScript strict, pnpm. A UI module, not a Gradle build: it lives under `ui/` (spec
 4.2), so the Gradle scripts (`make verify`, `check-isolation`, `changed-modules`, `e2e-changed`)
 do not see it. Module isolation still holds: nothing outside this folder is referenced except the
@@ -150,3 +150,7 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
 | `docker build -t mw-admin-ui:dev .` | image |
 
 Test fixtures use fake values only (`fake-test-password`, OTP `123456`, fake secret).
+
+Security pass (ticket 46, `docs/security-findings.md`): the runtime image keeps node only (npm, npx and
+corepack removed: their bundled undici / brace-expansion carry HIGH CVEs) and runs `apk upgrade`;
+`make security M=mw-admin-ui` scans `pnpm-lock.yaml` and the `mw-admin-ui:dev` image.
