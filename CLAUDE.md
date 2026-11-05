@@ -67,7 +67,12 @@ Dependencies point one way: `controller`, `messaging`, `route`, `scheduler`, `tr
 -> `repository`, `client`. One sanctioned exception: `service` may call the outbox and inbox
 writers (`messaging/OutboxWriter`, `messaging/Inbox`) and use the header constants and metadata
 of `messaging/` (`MwHeaders`, `EventMetadata`) inside its own transaction, because the event must
-commit with the business change (spec 6.4). Listeners, relays and routes in `messaging/` still
+commit with the business change (spec 6.4). The same exception covers `messaging/EventPublisher`
+when a request changes no local state the event must commit with (mw-app-gateway
+`TransactionService` / `DeviceOtpService`, mw-checkout `CheckoutPayService`, mw-ussd
+`KafkaTransactionFlow` publish a command and wait for its reply asynchronously; an OTP is sent
+straight to Kafka so it is never stored): a port interface would have one implementation in
+`messaging/` and leave the dependency direction as it is, so it is not added. Listeners, relays and routes in `messaging/` still
 depend on `service`, never the other way round otherwise. Entities never leave the service layer.
 Tests mirror the main packages (unit for service/mapper/util, `@WebMvcTest` for controller,
 `*RepositoryIT` for repository: the JDBC repositories run against the module's JVM-scoped
