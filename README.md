@@ -25,7 +25,7 @@ runs in Docker.
 | Linux or macOS host, 4+ CPU cores, 16 GB RAM, 40 GB free disk | the stack's memory limits add up to about 7.5 GB (`make compose-check` caps them at 10 GB); images and Gradle caches take about 15 GB | `nproc` / `sysctl -n hw.ncpu` |
 | Docker Engine with the Compose v2 plugin, 2.20 or newer (Compose `include`); on macOS Docker Desktop with at least 10 GB memory for its VM | every container | `docker compose version` |
 | JDK 25 (Temurin or any other build) on `PATH` or in `JAVA_HOME` | `make up` builds each service jar on the host with its own Gradle wrapper; the wrappers download Gradle itself | `java -version` |
-| bash, GNU make or BSD make, git, curl, jq | the Makefile and `scripts/`; jq for `make smoke`, `make edge-test`, `make security` | `jq --version` |
+| bash, make (GNU or BSD), git, curl, jq | the Makefile and `scripts/`; jq for `make smoke`, `make edge-test`, `make security` | `jq --version` |
 | Node.js 22+ (optional) | only `make contracts-lint`, `make compose-flat` and `make compose-check`; the admin console builds inside Docker | `node --version` |
 | Internet access on the first run | images, Gradle distributions and dependencies, the console's pnpm packages | |
 | Host port 443 free | APISIX is the only container that publishes a port (443 -> 9443) | `lsof -i :443` |
