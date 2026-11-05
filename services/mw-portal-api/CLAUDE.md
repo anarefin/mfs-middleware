@@ -14,7 +14,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   `service/OrgTransactionService` -> `client/OrchestratorQueryClient`): `GET /portal/org/v1/transactions`
   (`batchId` (a batch of the org, else 404 MW-VAL-003; never approved -> empty), `status`, `[from, to)`,
   limit 1..200, offset) and `GET /portal/org/v1/transactions/{txnId}` (transaction + `timeline` of
-  state changes; another org's or unknown txn 404 MW-VAL-003), maker or checker. The SP is the org:
+  state changes; another org's or unknown txn 404 MW-VAL-003), maker or checker. The org sees what
+  it initiated (bulk children) and what it collects as payee (bill / merchant payments), each with
+  `role` INITIATOR|PAYEE as the orchestrator tags it (review fix A3; which billers and merchant
+  wallets an org collects for is the orchestrator's `mw.orchestrator.search.org-payees`, never a
+  portal parameter). The timeline keeps only `kind` STATE entries (`OrgTxn.Detail.statesOnly`): the
+  orchestrator's core-command entries (B13) stay internal. The SP is the org:
   the client always sends the **token's** `orgId` to mw-orchestrator's internal query API
   (`api/mw-orchestrator/txn-query.v1`, `mw.portal-api.orchestrator.base-url`, default
   `http://mw-orchestrator:8080`, read timeout 5 s), never a request parameter, and never reads the

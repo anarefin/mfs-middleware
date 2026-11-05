@@ -152,6 +152,15 @@ Only APISIX is published, so every call goes through it:
   rows", "<user>'s result file lists all N rows as COMPLETED, each with its own txnId" / "...
   shows:" (reference, status, errorCode). ORG001 pays from org wallet `01311000001`; at the
   default 50 rows/s the 10,000-row scenario takes about 4 minutes.
+- SP transaction query (`features/sp-query.feature`, `@sp-query @mw-portal-api`, ticket 35, review
+  fix A3): "<user> lists the org's transactions [of the batch]", "the transaction list has N S T
+  transaction paying <masked>", "every listed transaction is tagged INITIATOR|PAYEE", "the org's
+  transaction list has the transaction tagged PAYEE" / "does not have the transaction" (the
+  scenario's own txnId), "<user> opens the transaction" / "opens the first listed transaction",
+  "the opened transaction is tagged PAYEE", "the timeline ends "A -> B"" (state changes only;
+  the portal drops the orchestrator's core-command entries). Payee scope in the dev stack:
+  ORG002 collects for biller DESCO and merchant wallet 01911000001 (mw-orchestrator `compose.yml`,
+  `mw.orchestrator.search.org-payees`).
 - `support/Keycloak.customerToken(user)`; `support/AuditTrail.rowsOfTxn` / `verifyChain`;
   `support/Waits.until` for anything asynchronous.
 - Steps (`steps/`, one `ScenarioState` per scenario via PicoContainer): sign in, send P2P,
