@@ -391,6 +391,25 @@ test_ops_realm_locks_a_user_out_after_a_few_failures() {
     || fail "ops realm brute-force detection is off or lax: $(jq -c '{bruteForceProtected, failureFactor, waitIncrementSeconds, maxFailureWaitSeconds, quickLoginCheckMilliSeconds, minimumQuickLoginWaitSeconds}' "$f")"
 }
 
+# Security review (sec-ops): the console's client takes the browser login only (Authorization
+# Code + PKCE S256, no direct grant); the e2e operators' password grant has its own dev-only
+# public client, no browser flow and no redirect URIs.
+test_ops_realm_console_client_has_no_direct_grant_and_e2e_has_its_own_client() {
+  local f="$REALMS_DIR/ops-realm.json"
+  jq -e '.clients[] | select(.clientId == "mw-admin-ui") | .publicClient and .standardFlowEnabled
+    and .directAccessGrantsEnabled == false and (.implicitFlowEnabled // false) == false
+    and .attributes["pkce.code.challenge.method"] == "S256"' "$f" >/dev/null \
+    || fail "mw-admin-ui: $(jq -c '.clients[] | select(.clientId == "mw-admin-ui")' "$f")"
+  jq -e '.clients[] | select(.clientId == "mw-e2e-ops") | .publicClient and .directAccessGrantsEnabled
+    and .standardFlowEnabled == false and (.implicitFlowEnabled // false) == false
+    and ((.redirectUris // []) | length == 0) and (.serviceAccountsEnabled // false) == false' "$f" >/dev/null \
+    || fail "no dev-only direct-grant client mw-e2e-ops: $(jq -c '[.clients[].clientId]' "$f")"
+  jq -e '[.clients[] | select(.directAccessGrantsEnabled) | .clientId] == ["mw-e2e-ops"]' "$f" >/dev/null \
+    || fail "direct grant on: $(jq -c '[.clients[] | select(.directAccessGrantsEnabled) | .clientId]' "$f")"
+  grep -q '"mw-e2e-ops"' "$REPO_DIR/tests/e2e/src/test/java/mfs/mw/e2e/support/Keycloak.java" \
+    || fail "tests/e2e Keycloak.opsToken does not use mw-e2e-ops"
+}
+
 # ---- Keycloak production mode on PostgreSQL (ticket 49) ----
 
 test_keycloak_runs_in_production_mode_on_its_own_postgres_database() {

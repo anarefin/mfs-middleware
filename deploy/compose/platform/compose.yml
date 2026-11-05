@@ -325,6 +325,9 @@ services:
       # Test-only objects (deploy/apisix/routes-test, consumers-test): off unless `make e2e`
       # re-runs this one-shot with MW_E2E_ROUTES=1; off also removes them.
       MW_E2E_ROUTES: ${MW_E2E_ROUTES:-0}
+      # Public host of the edge (route auth-ops-browser: the only Host it answers for, and the
+      # X-Forwarded-Host Keycloak sees, never the client's); the edge certificate's name.
+      MW_PUBLIC_HOST: ${MW_PUBLIC_HOST:-localhost}
       MW_E2E_API_KEY: ${MW_E2E_API_KEY:?run scripts/gen-dev-env.sh (make up does)}
       # hmac-auth secret of the test-only checkout merchant consumer merchant_demo (ticket 31).
       CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?run scripts/gen-dev-env.sh (make up does)}

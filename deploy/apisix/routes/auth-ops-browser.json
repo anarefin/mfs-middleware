@@ -1,19 +1,25 @@
 {
   "name": "auth-ops-browser",
-  "desc": "Realm ops browser login for the admin console (ticket 40). X-Forwarded-* pinned to the public host (port 443) so Keycloak issues https://<host>/realms/ops, as on mw-admin-ui's in-stack calls. README 'Admin console routes'",
+  "desc": "Realm ops browser login for the admin console (ticket 40). Public host only (MW_PUBLIC_HOST); X-Forwarded-* pinned to it, port 443, never the client Host. Token endpoint: code/refresh grants only. README 'Admin console routes'",
   "uris": ["/realms/ops/*", "/resources/*"],
+  "host": "@env:MW_PUBLIC_HOST",
   "methods": ["GET", "POST"],
   "plugins": {
     "client-control": {
       "max_body_size": 65536
     },
+    "serverless-pre-function": {
+      "phase": "access",
+      "functions": ["@lua:lua/ops-token-grant.lua"]
+    },
     "proxy-rewrite": {
       "headers": {
         "set": {
-          "X-Forwarded-Host": "$host",
+          "X-Forwarded-Host": "@env:MW_PUBLIC_HOST",
           "X-Forwarded-Proto": "https",
           "X-Forwarded-Port": "443"
-        }
+        },
+        "remove": ["Forwarded", "X-Forwarded-Prefix"]
       }
     },
     "limit-count": {

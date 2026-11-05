@@ -20,6 +20,7 @@ render() {
     USSD_ROBI_ALLOWED_CIDRS="${USSD_ROBI_ALLOWED_CIDRS-10.2.0.0/16,192.168.0.0/16}" \
     USSD_BL_ALLOWED_CIDRS="${USSD_BL_ALLOWED_CIDRS-10.3.0.0/16}" \
     USSD_TELETALK_ALLOWED_CIDRS="${USSD_TELETALK_ALLOWED_CIDRS-10.4.0.0/16}" \
+    MW_PUBLIC_HOST="${MW_PUBLIC_HOST-localhost}" \
     APISIX_DRY_RUN="$PWD/out" APISIX_CONFIG_DIR="$dir" bash "$APPLY" 2>&1)"
 }
 
@@ -196,7 +197,11 @@ schemas() { OUT="$(MW_ROOT="$PWD" "$REPO_DIR/scripts/derived-schemas.sh" "$@" 2>
 test_repo_derived_schemas_match_their_contracts() {
   fixture_schemas
   schemas --check || fail "derived schemas drifted from contracts/"
-  assert_out_contains "15 derived schema(s)"
+  # every file on disk is checked (the count grows with each route, so it is counted, not fixed)
+  local n
+  n="$(ls services/*/src/main/resources/derived-schemas/*.json 2>/dev/null | wc -l | tr -d ' ')"
+  [ "$n" -gt 0 ] || fail "no derived schemas found in services/"
+  assert_out_contains "$n derived schema(s)"
 }
 
 # Review A6: every public JSON body behind an APISIX route has a derived schema in its service
@@ -491,9 +496,49 @@ test_admin_console_login_routes_and_issuers() {
     and (.plugins | has("openid-connect") | not) and .plugins["limit-count"].key == "remote_addr"' >/dev/null \
     || fail "admin-ui: $(obj routes admin-ui | jq -c '{uris, plugins: (.plugins | keys)}')"
   obj routes auth-ops-browser | jq -e '(.uris | index("/realms/ops/*")) and .upstream.nodes["keycloak:8080"] == 1
-    and .plugins["proxy-rewrite"].headers.set == {"X-Forwarded-Host": "$host", "X-Forwarded-Proto": "https", "X-Forwarded-Port": "443"}' >/dev/null \
+    and .plugins["proxy-rewrite"].headers.set == {"X-Forwarded-Host": "localhost", "X-Forwarded-Proto": "https", "X-Forwarded-Port": "443"}' >/dev/null \
     || fail "auth-ops-browser: $(obj routes auth-ops-browser | jq -c '.plugins["proxy-rewrite"]')"
   obj routes admin-v1 | jq -e '.plugins["openid-connect"].claim_validator.issuer.valid_issuers
     == ["http://keycloak:8080/realms/ops", "https://localhost/realms/ops"]' >/dev/null \
     || fail "admin-v1 issuers: $(obj routes admin-v1 | jq -c '.plugins["openid-connect"].claim_validator')"
+}
+
+# Security review (sec-ops): the client's Host never reaches Keycloak on the ops login route
+# (password-reset / link poisoning). The route answers only for the configured public host
+# (MW_PUBLIC_HOST, default localhost), pins X-Forwarded-Host to it whatever the client sent,
+# and drops the forwarding headers Keycloak could otherwise read.
+test_ops_login_route_pins_the_public_host_and_never_reflects_the_client_host() {
+  MW_PUBLIC_HOST=console.example.test render || fail "dry run failed: $OUT"
+  local r=out/routes/auth-ops-browser.json
+  jq -e '.host == "console.example.test" and (has("hosts") | not)' "$r" >/dev/null \
+    || fail "auth-ops-browser not restricted to the public host: $(jq -c '{host, hosts}' "$r")"
+  jq -e '.plugins["proxy-rewrite"].headers.set["X-Forwarded-Host"] == "console.example.test"' "$r" >/dev/null \
+    || fail "X-Forwarded-Host not pinned: $(jq -c '.plugins["proxy-rewrite"]' "$r")"
+  jq -e '.plugins["proxy-rewrite"].headers.remove | index("Forwarded") and index("X-Forwarded-Prefix")' "$r" >/dev/null \
+    || fail "client Forwarded / X-Forwarded-Prefix not removed: $(jq -c '.plugins["proxy-rewrite"]' "$r")"
+  if grep -q '[$]host' "$REPO_DIR/deploy/apisix/routes/auth-ops-browser.json"; then fail "auth-ops-browser still reflects the client host"; fi
+  if MW_PUBLIC_HOST= render; then fail "applied without MW_PUBLIC_HOST"; fi
+  assert_out_contains "MW_PUBLIC_HOST is not set"
+}
+
+# The apisix-init one-shot gets the public host from the environment (default localhost, the
+# edge certificate's name and the redirect URIs of client mw-admin-ui).
+test_apisix_init_gets_the_public_host() {
+  grep -A40 -E '^  apisix-init:' "$REPO_DIR/deploy/compose/platform/compose.yml" \
+    | grep -qE 'MW_PUBLIC_HOST: [$][{]MW_PUBLIC_HOST:-localhost[}]' || fail "apisix-init lacks MW_PUBLIC_HOST"
+}
+
+# Security review (sec-ops): on the public ops login route the token endpoint takes only the
+# grants of the browser login (authorization_code, refresh_token); a password, client
+# credentials or any other grant is refused at the edge (the e2e password grant has its own
+# test-only route), and the other token sub-endpoints (introspection) are not public.
+test_ops_login_route_refuses_non_browser_grants_on_the_token_endpoint() {
+  render || fail "dry run failed: $OUT"
+  local r=out/routes/auth-ops-browser.json lua
+  lua="$(jq -r '.plugins["serverless-pre-function"] | select(.phase == "access") | .functions[0]' "$r")"
+  [ "$lua" = "$(cat "$REPO_DIR/deploy/apisix/lua/ops-token-grant.lua")" ] \
+    || fail "auth-ops-browser lacks lua/ops-token-grant.lua in the access phase: $(jq -c '.plugins | keys' "$r")"
+  printf '%s' "$lua" | grep -q 'authorization_code = true' || fail "authorization_code not allowed"
+  printf '%s' "$lua" | grep -q 'refresh_token = true' || fail "refresh_token not allowed"
+  if printf '%s' "$lua" | grep -qE '(password|client_credentials) = true'; then fail "a non-browser grant is allowed"; fi
 }

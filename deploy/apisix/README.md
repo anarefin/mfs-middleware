@@ -250,8 +250,9 @@ over.
   token's `iss` is the one `portal-org-v1`'s discovery expects.
 - `routes-test/auth-ops-token.json` (TEST ONLY, ticket 37; moved out of `routes/` after the
   security review: the ops realm's direct grant is never on the public gateway): the same for realm
-  `ops` (public client `mw-admin-ui`), so the token's `iss` is the one `admin-v1`'s discovery
-  expects. Applied only with `MW_E2E_ROUTES=1` like the other test-only objects below, with the same
+  `ops` (dev-only public client `mw-e2e-ops`, direct grant only, no browser flow; the console's
+  client `mw-admin-ui` has no direct grant, security review), so the token's `iss` is the one
+  `admin-v1`'s discovery expects. Applied only with `MW_E2E_ROUTES=1` like the other test-only objects below, with the same
   `ip-restriction` / `key-auth` (`mw_e2e`, header `apikey`, sent by `tests/e2e` `Keycloak.opsToken`)
   and a strict `limit-count` of 10 requests per minute per `remote_addr` (429 beyond). The realm
   demands TOTP on this grant (built-in direct-grant flow, conditional OTP): only users with an
@@ -286,10 +287,29 @@ is on it (known gap: no network split until a second, internal APISIX exists).
   64 KiB bodies, quota 600/min per source address. The console sets its own CSP, HSTS and
   X-Frame-Options DENY.
 - `routes/auth-ops-browser.json` (`/realms/ops/*`, `/resources/*` -> `keycloak:8080`): the
-  browser's Keycloak login and OTP pages. `proxy-rewrite` sets `X-Forwarded-Host: $host`,
-  `X-Forwarded-Proto: https`, `X-Forwarded-Port: 443` (APISIX would send its listener port 9443),
-  so Keycloak builds public URLs and issues tokens with `iss` `https://localhost/realms/ops`;
-  mw-admin-ui sends the same headers on its in-stack token calls. Port 443 only.
+  browser's Keycloak login and OTP pages. Security review (sec-ops), host-header injection: the
+  route answers only for the public host (`"host": "@env:MW_PUBLIC_HOST"`, apisix-init env, default
+  `localhost`; any other `Host` -> 404 at the edge), and `proxy-rewrite` pins
+  `X-Forwarded-Host` to the same value (never `$host`, so a client Host can never shape Keycloak's
+  links, reset mails or issuer), `X-Forwarded-Proto: https`, `X-Forwarded-Port: 443` (APISIX would
+  send its listener port 9443), and removes a client `Forwarded` / `X-Forwarded-Prefix`. Keycloak
+  builds public URLs and issues tokens with `iss` `https://localhost/realms/ops`; mw-admin-ui sends
+  the same headers on its in-stack token calls. Port 443 only; `MW_PUBLIC_HOST` must match
+  `MW_ADMIN_UI_PUBLIC_URL`'s host.
+- Token endpoint on this route (`lua/ops-token-grant.lua`, access phase): `POST
+  /realms/ops/protocol/openid-connect/token` must be a form with one `grant_type`,
+  `authorization_code` or `refresh_token` (the browser login: client `mw-admin-ui` is Authorization
+  Code + PKCE only, direct grant off; Keycloak's account console); any other grant (password,
+  client credentials, token exchange, device, CIBA) -> 403 `MW-AUTH-002`, a non-form body -> 400,
+  other methods 405, sub-paths such as `.../token/introspect` -> 404. The path is folded as
+  Keycloak routes it (case, `;` path parameters, repeated slashes). mw-admin-ui itself exchanges
+  codes and refreshes in the stack (`http://keycloak:8080`), not through this route.
+- Keycloak hostname (decision): `KC_HOSTNAME` stays unset and `KC_HOSTNAME_STRICT=false`, because
+  the in-stack callers (APISIX discovery/JWKS, services realm client credentials, e2e token routes)
+  rely on `http://keycloak:8080` issuers; a fixed hostname would move every realm's issuer. The edge
+  pinning above is what keeps a client Host out. `make edge-test` checks it live (foreign Host 404,
+  client X-Forwarded-Host ignored, password grant 403, code grant reaches Keycloak, introspection
+  404, mw-admin-ui direct grant refused by Keycloak).
 - `admin-v1` therefore accepts two issuers (`claim_validator.issuer.valid_issuers`): the in-stack
   `http://keycloak:8080/realms/ops` (tokens asked for directly, e2e) and the public one. Without the
   list APISIX accepts only the discovery document's issuer.
