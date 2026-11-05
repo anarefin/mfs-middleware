@@ -8,7 +8,7 @@
 - 38: Partner config via maker-checker
 - 39: USSD menu + SMS template management
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Playwright test per screen covering edit → approve → effect visible
-- [ ] Template preview renders bn text with sample params, masked
+- [x] Playwright test per screen covering edit → approve → effect visible
+- [x] Template preview renders bn text with sample params, masked

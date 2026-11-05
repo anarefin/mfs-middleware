@@ -100,6 +100,34 @@ describe("admin API client, change requests (tickets 41, 52)", () => {
     ]);
   });
 
+  it("reads and proposes partners, USSD menus and templates at the admin.v1 paths", async () => {
+    const sent: Sent[] = [];
+    const api = createAdminApi({ baseUrl: "http://x", fetch: recorder(200, {}, sent) });
+    const k = { code: "TXN_CASH_OUT_SENT", channel: "SMS", locale: "bn" } as const;
+    const menu = { start: "a", messages: {}, nodes: { a: { type: "END" as const } } };
+    await api.listPartners("tok");
+    await api.getPartner("tok", "ocs");
+    await api.requestPartnerChange("tok", "ocs", { action: "DISABLE", reason: "incident" });
+    await api.listMenuVersions("tok", "main");
+    await api.getMenuVersion("tok", "main", 2);
+    await api.proposeMenu("tok", "main", { menu, activations: [{ mno: "gp" }], reason: "r" });
+    await api.listTemplateVersions("tok", k);
+    await api.getTemplateVersion("tok", k, 3);
+    await api.proposeTemplate("tok", k, { body: "b", reason: "r" });
+    expect(sent.map((s) => [s.method, s.url])).toEqual([
+      ["GET", "http://x/admin/v1/partners"],
+      ["GET", "http://x/admin/v1/partners/ocs"],
+      ["POST", "http://x/admin/v1/partners/ocs/change-requests"],
+      ["GET", "http://x/admin/v1/ussd-menus/main/versions?limit=20"],
+      ["GET", "http://x/admin/v1/ussd-menus/main/versions/2"],
+      ["POST", "http://x/admin/v1/ussd-menus/main/change-requests"],
+      ["GET", "http://x/admin/v1/notify-templates/TXN_CASH_OUT_SENT/SMS/bn/versions?limit=20"],
+      ["GET", "http://x/admin/v1/notify-templates/TXN_CASH_OUT_SENT/SMS/bn/versions/3"],
+      ["POST", "http://x/admin/v1/notify-templates/TXN_CASH_OUT_SENT/SMS/bn/change-requests"],
+    ]);
+    expect(sent[2]?.body).toBe(JSON.stringify({ action: "DISABLE", reason: "incident" }));
+  });
+
   it("hands back the envelope of a refused write", async () => {
     const own = { code: "MW-AUTH-030", message: "The maker cannot decide", correlationId: "c", retryable: false, details: [] };
     const api = createAdminApi({ baseUrl: "http://x", fetch: recorder(403, own, []) });
