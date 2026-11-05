@@ -30,10 +30,19 @@
 **Status:** done
 
 - [x] A Valkey lock test shows the second concurrent first request is answered as a duplicate without a second claim attempt, and a Valkey-down test shows requests still succeed on the primary key (`IdempotencyGateTest`, `ValkeyIdempotencyLockTest`, `IdempotencyLockIntakeIT`)
-- [ ] Hold, commit and release travel on `core.payment.*` (done: `CoreTopicsTest`, `TopupSagaIT`), and the `@topup`, `@billpay`, `@tsq` and `@reversal` e2e scenarios pass unchanged: e2e deferred to milestone gate
-- [x] The limiter-error alert is observable and documented (`mw.edge.rate_limit_degraded`, `deploy/apisix/README.md`; the live `make smoke` / `make edge-test` checks are deferred to milestone gate)
+- [x] Hold, commit and release travel on `core.payment.*` (done: `CoreTopicsTest`, `TopupSagaIT`), and the `@topup`, `@billpay`, `@tsq` and `@reversal` e2e scenarios pass unchanged: green at the milestone gate (below)
+- [x] The limiter-error alert is observable and documented (`mw.edge.rate_limit_degraded`, `deploy/apisix/README.md`; the live `make smoke` / `make edge-test` checks are green at the milestone gate)
 - [x] The audit chain verify job detects a tampered row using `audit_reader`, and the writer still cannot SELECT (`AuditChainVerifyIT`, `ChainVerifyServiceTest`)
 - [x] Scrubber tests cover the separator formats and the non-MSISDN numbers, and every `MaskingPolicy` copy is identical apart from the package
 - [x] PIN ciphertext is null on every terminal path (tests) (`TransactionRecordPinTest`; MANUAL_REVIEW did not clear it before, fixed)
 - [x] Adapters refuse plain http to the simulator unless the dev stack or a test enables it (`PartnerSecurityDefaultsTest` in all three adapters)
-- [ ] `make verify` passes for every module touched, and the full `make e2e` passes on a fresh stack: deferred to milestone gate
+- [x] `make verify` passes for every module touched, and the full `make e2e` passes on a fresh stack: green at the milestone gate (below)
+
+## Milestone gate (2026-11-05, integration branch `spec/upay-mfs-middleware`)
+
+- `make verify` (all 13 modules, at 9b73ac2 after the review fixes; later gate fixes verified per module): `==> verify passed: 13 module(s)`, exit 0
+- Fresh stack at fcd51ef (`make down DOWN_ARGS=-v && make up`):
+  - `make smoke`: `smoke: 46 passed, 0 failed`
+  - `make edge-test`: `edge-test: 42 passed, 0 failed`
+  - `make e2e` (full suite): `110 scenarios, 0 failed, 0 skipped`, `BUILD SUCCESSFUL in 21m 10s`
+- Gate fixes and user decisions: see the merge commits after 70f7add and memory `upay-m3-decisions`.
