@@ -10,7 +10,7 @@
 38-partner-config-maker-checker             37,20             todo     —        —          —
 39-ussd-menu-sms-template-management        37,26,24          todo     —        —          —
 40-admin-ui-shell-search                    36                done     40m      58 files + 3837 − 13  863f494..9bd4d32
-41-admin-ui-approvals-reversal              40,37,52          todo     —        —          —
+41-admin-ui-approvals-reversal              40,37,52          done     9m       21 files + 1041 − 31  983998c..fcc58df
 42-admin-ui-partner-ussd-template-editors   41,38,39          todo     —        —          —
 51-m2-gate-spec-sync                        —                 done     5m       spec only              55957cc..f8a90cc
 # --- M5 gate: make verify-changed BASE=04875ae JOBS=3 (stack down), fresh-stack e2e
