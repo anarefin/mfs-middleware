@@ -16,7 +16,7 @@
 # --- M5 gate: make verify-changed BASE=04875ae JOBS=3 (stack down), fresh-stack e2e
 43-e2e-acceptance-suite                     23,25,27,28,32,34,37  done 12m  20 files + 846 − 3  0f63e38..25bb2de
 44-chaos-kill-mid-flow                      43                done     12m      5 files + 413 − 5  0a9e33f..9adf0f3
-45-gatling-100-tps                          43                todo     —        —          —
+45-gatling-100-tps                          43                done     34m      39 files + 3088 − 16  2e49e02..ebfc691
 46-security-pass                            43,42             todo     —        —          —
 47-docs-clean-host-bringup                  44,45,46          todo     —        —          —
 # --- M6 gate: verify-changed + fresh-stack e2e, then ONE full make verify
