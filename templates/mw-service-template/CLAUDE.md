@@ -83,3 +83,11 @@ modules listing it. A service that produces or consumes events adds `contracts/P
 validated against its schema; an entry without a fixture fails) and `ConsumedContractsTest` (every
 valid sample of each `consumes.events` entry reads into its own DTO), plain JUnit on
 `contracts/ContractSchemas`, no Spring context, no Docker (ticket 53).
+
+## Security pass
+
+- Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
+  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
+  `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
+  `apt-get upgrade` in the runtime stage. `make security M=<this module>` scans the SBOM and the
+  `:dev` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).

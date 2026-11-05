@@ -42,7 +42,7 @@ command -v jq >/dev/null || die "edge-test: jq is required"
 [ -f "$MW_ROOT/deploy/compose/platform/.env" ] || die "edge-test: no generated credentials; run make up first"
 set -a; . "$MW_ROOT/deploy/compose/platform/.env"; set +a
 
-CURL_IMAGE="curlimages/curl:8.17.0@sha256:935d9100e9ba842cdb060de42472c7ca90cfe9a7c96e4dacb55e79e560b3ff40"
+CURL_IMAGE="curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93"
 dc() { docker compose "${DC_F[@]}" "$@"; }
 project="$(dc config --format json | jq -r .name)"
 https_port="$(dc port apisix 9443 2>/dev/null | head -1 | sed 's/.*://')"

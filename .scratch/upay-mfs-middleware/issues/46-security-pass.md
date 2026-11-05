@@ -9,6 +9,6 @@
 
 **Status:** ready-for-agent
 
-- [ ] `make security` passes with no open critical or high findings
-- [ ] The log scan over a full e2e run finds no PIN and no unmasked MSISDN
-- [ ] Every finding below high is listed with a decision
+- [ ] `make security` passes with no open critical or high findings (offline stages green on 2026-11-06 with every image built from the branch: `MW_IMAGE_TAG=sec46 SECURITY_LIVE=0 make security`; the live stages, ZAP baseline on APISIX and the log scan, deferred to milestone gate: `make up && make e2e && SECURITY_LIVE=1 make security`)
+- [ ] The log scan over a full e2e run finds no PIN and no unmasked MSISDN (built and self-tested: `scripts/log-scan.sh`, stage of `make security`; deferred to milestone gate, needs the running stack after `make e2e`)
+- [x] Every finding below high is listed with a decision (`docs/security-findings.md`; ZAP alerts in `deploy/zap/decisions.tsv`, any alert without a decision fails the gate)

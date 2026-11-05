@@ -1,0 +1,13 @@
+# Accepted HIGH/CRITICAL findings in what this repo builds (make security, ticket 46).
+# Each entry: the narrowest scope, the reason, and an expiry after which the scan fails again.
+# Register: docs/security-findings.md. Third-party images: deploy/trivyignore-third-party.yaml.
+vulnerabilities:
+  - id: CVE-2026-116587
+    paths:
+      - "usr/local/bin/bao"
+    statement: >-
+      go-jose v4.1.4 in the OpenBao CLI copied into the dev-only mw-*-init one-shots (DoS via
+      crafted RSA parameters in a JWK). No fixed OpenBao release yet (2.7.2 is the latest); the
+      CLI only talks to the local OpenBao during make up and never parses a foreign JWK.
+      Re-pin when OpenBao ships go-jose >= 4.1.6.
+    expired_at: 2027-02-01

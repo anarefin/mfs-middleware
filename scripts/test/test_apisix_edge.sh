@@ -542,3 +542,18 @@ test_ops_login_route_refuses_non_browser_grants_on_the_token_endpoint() {
   printf '%s' "$lua" | grep -q 'refresh_token = true' || fail "refresh_token not allowed"
   if printf '%s' "$lua" | grep -qE '(password|client_credentials) = true'; then fail "a non-browser grant is allowed"; fi
 }
+
+# Ticket 46 (ZAP baseline): HSTS and nosniff on every edge response, the service header set on
+# edge-produced errors, and no APISIX version in the Server header.
+test_edge_sets_security_headers_and_hides_its_version() {
+  render || fail "dry run failed"
+  local fns
+  fns="$(cat out/global_rules/*.json | jq -r '.. | objects | select(.phase == "header_filter") | .functions[]')"
+  printf '%s\n' "$fns" | grep -q 'Strict-Transport-Security' || fail "no HSTS at the edge"
+  printf '%s\n' "$fns" | grep -q 'X-Content-Type-Options' || fail "no nosniff at the edge"
+  printf '%s\n' "$fns" | grep -q "default-src 'none'" || fail "no CSP on edge errors"
+  # the headers run after the envelope function, which marks edge errors in ctx.mw_edge_error
+  cat out/global_rules/*.json | jq -r '.. | objects | select(.phase == "header_filter") | .functions | (map(test("correlationId")) | index(true)) < (map(test("Strict-Transport-Security")) | index(true))' \
+    | grep -q true || fail "security headers must run after the envelope function"
+  grep -Eq '^ +enable_server_tokens: false' "$REPO_DIR/deploy/apisix/config.yaml" || fail "APISIX version not hidden"
+}
