@@ -17,6 +17,11 @@ mw:
     bulk:
       dispatch:
         enabled: false
+      # Off in tests: BulkLifecycleIT calls the services directly.
+      expiry:
+        enabled: false
+      reconcile:
+        enabled: false
   retention:
     # The purge job's schedule is off in tests; OutboxInboxPurgeConformanceIT calls it directly.
     cron: "-"

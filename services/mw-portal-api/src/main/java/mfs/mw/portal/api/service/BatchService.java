@@ -44,12 +44,15 @@ public class BatchService {
   private final BulkCsvParser parser;
   private final PortalApiProperties props;
   private final Clock clock;
+  private final BatchAudit audit;
 
-  public BatchService(BatchRepository batches, BulkCsvParser parser, PortalApiProperties props, Clock clock) {
+  public BatchService(
+      BatchRepository batches, BulkCsvParser parser, PortalApiProperties props, Clock clock, BatchAudit audit) {
     this.batches = batches;
     this.parser = parser;
     this.props = props;
     this.clock = clock;
+    this.audit = audit;
   }
 
   @Transactional
@@ -70,6 +73,7 @@ public class BatchService {
             UuidV7.next(clock), maker.orgId(), BatchStatus.PENDING_APPROVAL, rows.size(), total, CURRENCY,
             sha256(file), maker.subject(), maker.username(), null, null, null, clock.instant(), null);
     batches.insert(batch, rows);
+    audit.record(batch, "uploaded", maker.username(), null, BatchStatus.PENDING_APPROVAL, null);
     log.atInfo()
         .addKeyValue("event", "bulk.batch.uploaded")
         .addKeyValue("batchId", batch.batchId())
@@ -94,6 +98,7 @@ public class BatchService {
       throw notRunning("Only an approved or executing batch can be paused");
     }
     logControl("bulk.batch.paused", batch, checker);
+    audit.record(batch, "paused", checker.username(), batch.status(), BatchStatus.PAUSED, null);
     return viewWithProgress(load(checker, batchId));
   }
 
@@ -106,13 +111,15 @@ public class BatchService {
       throw notRunning("Only a paused batch can be resumed");
     }
     logControl("bulk.batch.resumed", batch, checker);
+    audit.record(batch, "resumed", checker.username(), BatchStatus.PAUSED, BatchStatus.EXECUTING, null);
     return viewWithProgress(load(checker, batchId));
   }
 
   /**
    * The result file of an approved batch (CSV, one line per row in file order): line, masked
-   * MSISDN (18.3), amount in taka, reference, row status, child txnId and error code. Final once
-   * the batch is COMPLETED; while it runs it shows the rows' current state.
+   * MSISDN (18.3), amount in taka, reference, row status, child txnId, error code and the batch's
+   * status (COMPLETED_WITH_EXCEPTIONS when a row is MANUAL_REVIEW or UNRESOLVED). Final once the
+   * batch is COMPLETED or COMPLETED_WITH_EXCEPTIONS; while it runs it shows the rows' current state.
    */
   @Transactional(readOnly = true)
   public String resultFile(PortalUser user, String batchId) {
@@ -122,7 +129,7 @@ public class BatchService {
       throw new MwException(ErrorCodes.VAL_NO_RESULT, "The batch was not approved, so it has no result")
           .withStatus(HttpStatus.CONFLICT);
     }
-    return ResultFile.of(batches.items(batch.batchId()));
+    return ResultFile.of(batch.status(), batches.items(batch.batchId()));
   }
 
   private BatchView viewWithProgress(Batch batch) {
@@ -144,9 +151,14 @@ public class BatchService {
   }
 
   @Transactional(readOnly = true)
-  public List<BatchView> list(PortalUser user, BatchStatus status) {
+  public List<BatchView> list(PortalUser user, String status) {
     requireAny(user);
-    return batches.list(user.orgId(), status, LIST_LIMIT).stream().map(BatchMapper::view).toList();
+    BatchStatus filter =
+        status == null
+            ? null
+            : BatchStatus.parse(status)
+                .orElseThrow(() -> new MwException(ErrorCodes.VAL_INVALID, "Unknown batch status"));
+    return batches.list(user.orgId(), filter, LIST_LIMIT).stream().map(BatchMapper::view).toList();
   }
 
   @Transactional
@@ -182,13 +194,17 @@ public class BatchService {
       // starts sending the rows (BulkExecutionService)
       batches.startPayout(batch.batchId(), BulkIds.parentTxnId(batch.batchId()), wallet);
     }
+    Batch decided = load(checker, batchId);
+    audit.record(
+        decided, decision == BatchStatus.APPROVED ? "approved" : "rejected", checker.username(),
+        BatchStatus.PENDING_APPROVAL, decision, reason);
     log.atInfo()
         .addKeyValue("event", "bulk.batch.decided")
         .addKeyValue("batchId", batch.batchId())
         .addKeyValue("orgId", batch.orgId())
         .addKeyValue("decision", decision.name())
         .log("Bulk batch " + decision.name().toLowerCase(java.util.Locale.ROOT));
-    return viewWithProgress(load(checker, batchId));
+    return viewWithProgress(decided);
   }
 
   private Batch load(PortalUser user, String batchId) {

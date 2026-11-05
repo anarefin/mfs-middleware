@@ -47,7 +47,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   read and the writer still cannot SELECT.
 - Producers today: mw-orchestrator (`txn.state.changed`, `partner.callback.late`,
   `txn.outcome.conflict`, `partner.callback.rejected`) and the three adapters
-  (`partner.call.completed`, S6: masked partner request/response in `after`). The consumer
+  (`partner.call.completed`, S6: masked partner request/response in `after`), and mw-portal-api
+  (`bulk.batch.uploaded|approved|rejected|expired|paused|resumed`, actor the operator). The consumer
   accepts any action that fits the contract; `AuditTrailIT` stores a partner-call event.
 - Dedup: `audit.event_key` (auditId primary key, never purged, INSERT-only for the writer) in the
   same transaction, so a redelivery is refused however late it comes (the chassis inbox is

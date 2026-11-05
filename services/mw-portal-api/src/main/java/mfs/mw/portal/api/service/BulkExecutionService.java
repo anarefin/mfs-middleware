@@ -133,21 +133,48 @@ public class BulkExecutionService {
     } catch (IllegalArgumentException e) {
       return;
     }
-    String errorCode = s.error() == null ? null : s.error().code();
+    settle(txnId, settled.get(), s.error() == null ? null : s.error().code());
+  }
+
+  /**
+   * Settles the row of child {@code txnId} (the status record's rules: final states stay) and
+   * completes its batch once nothing is unsent or running. Returns whether the row changed.
+   */
+  public boolean settle(UUID txnId, ItemStatus status, String errorCode) {
     Instant now = clock.instant();
-    tx.executeWithoutResult(
-        status ->
-            batches
-                .settle(txnId, settled.get(), errorCode, now)
-                .ifPresent(
-                    batchId -> {
-                      if (batches.completeIfSettled(batchId, now)) {
-                        log.atInfo()
-                            .addKeyValue("event", "bulk.batch.completed")
-                            .addKeyValue("batchId", batchId)
-                            .log("Bulk batch completed: every row settled");
-                      }
-                    }));
+    Boolean changed =
+        tx.execute(
+            t -> {
+              Optional<UUID> batchId = batches.settle(txnId, status, errorCode, now);
+              batchId.ifPresent(id -> complete(id, now));
+              return batchId.isPresent();
+            });
+    return Boolean.TRUE.equals(changed);
+  }
+
+  /** Gives up a SUBMITTED row (UNRESOLVED) and completes its batch if that was the last one open. */
+  public boolean giveUp(UUID txnId) {
+    Instant now = clock.instant();
+    Boolean changed =
+        tx.execute(
+            t -> {
+              Optional<UUID> batchId = batches.markUnresolved(txnId, now);
+              batchId.ifPresent(id -> complete(id, now));
+              return batchId.isPresent();
+            });
+    return Boolean.TRUE.equals(changed);
+  }
+
+  private void complete(UUID batchId, Instant now) {
+    batches
+        .completeIfSettled(batchId, now)
+        .ifPresent(
+            st ->
+                log.atInfo()
+                    .addKeyValue("event", "bulk.batch.completed")
+                    .addKeyValue("batchId", batchId)
+                    .addKeyValue("status", st.name())
+                    .log("Bulk batch " + st.name() + ": every row settled"));
   }
 
   private static double seconds(Duration d) {

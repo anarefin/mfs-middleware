@@ -15,6 +15,7 @@ import mfs.mw.portal.api.entity.BatchItem;
 import mfs.mw.portal.api.entity.BatchStatus;
 import mfs.mw.portal.api.entity.ItemStatus;
 import mfs.mw.portal.api.entity.PendingChild;
+import mfs.mw.portal.api.entity.SubmittedChild;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -219,17 +220,86 @@ public class BatchRepository {
         .findFirst();
   }
 
-  /** Completes a running or paused batch once no row is unsent or running. */
-  public boolean completeIfSettled(UUID batchId, Instant at) {
-    return jdbc.update(
+  /**
+   * Completes a running or paused batch once no row is unsent or running: COMPLETED, or
+   * COMPLETED_WITH_EXCEPTIONS when a row is MANUAL_REVIEW or UNRESOLVED (M3 gate decision). Returns
+   * the status it completed in, or empty when it is not complete (or was already).
+   */
+  public Optional<BatchStatus> completeIfSettled(UUID batchId, Instant at) {
+    return jdbc.query(
             """
-            UPDATE batch SET status = 'COMPLETED', completed_at = ?
+            UPDATE batch SET completed_at = ?,
+                   status = CASE WHEN EXISTS (SELECT 1 FROM batch_item x
+                                              WHERE x.batch_id = ? AND x.status IN ('MANUAL_REVIEW', 'UNRESOLVED'))
+                                 THEN 'COMPLETED_WITH_EXCEPTIONS' ELSE 'COMPLETED' END
             WHERE batch_id = ? AND status IN ('EXECUTING', 'PAUSED')
               AND NOT EXISTS (SELECT 1 FROM batch_item i
                               WHERE i.batch_id = ? AND i.status IN ('PENDING', 'SUBMITTED'))
+            RETURNING status
             """,
-            ts(at), batchId, batchId)
-        == 1;
+            (rs, n) -> BatchStatus.valueOf(rs.getString("status")),
+            ts(at), batchId, batchId, batchId)
+        .stream()
+        .findFirst();
+  }
+
+  // --- expiry and reconcile (M3 gate) ----------------------------------------------------------
+
+  /**
+   * Expires up to {@code limit} batches still PENDING_APPROVAL that were uploaded before {@code
+   * cutoff} (status EXPIRED, decided_at {@code at}); returns them as they are now. Call inside the
+   * transaction that audits them; rows a concurrent checker holds are skipped.
+   */
+  public List<Batch> expirePending(Instant cutoff, Instant at, int limit) {
+    return jdbc.query(
+        """
+        UPDATE batch SET status = 'EXPIRED', decided_at = ?
+        WHERE batch_id IN (SELECT batch_id FROM batch
+                           WHERE status = 'PENDING_APPROVAL' AND created_at < ?
+                           ORDER BY created_at LIMIT ? FOR UPDATE SKIP LOCKED)
+          AND status = 'PENDING_APPROVAL'
+        RETURNING\s"""
+            + COLUMNS,
+        BatchRepository::map,
+        ts(at), ts(cutoff), limit);
+  }
+
+  /**
+   * Up to {@code limit} SUBMITTED rows sent before {@code cutoff}, least recently reconciled first,
+   * stamped as reconciled at {@code at} so a stuck row does not hold the window on the next run.
+   */
+  public List<SubmittedChild> claimStaleSubmitted(Instant cutoff, Instant at, int limit) {
+    return jdbc.query(
+        """
+        UPDATE batch_item i SET reconciled_at = ?
+        FROM batch b
+        WHERE b.batch_id = i.batch_id
+          AND (i.batch_id, i.line_no) IN (
+            SELECT batch_id, line_no FROM batch_item
+            WHERE status = 'SUBMITTED' AND submitted_at < ?
+            ORDER BY coalesce(reconciled_at, submitted_at), batch_id, line_no
+            LIMIT ? FOR UPDATE SKIP LOCKED)
+        RETURNING i.batch_id, i.line_no, i.txn_id, i.submitted_at, b.org_id
+        """,
+        (rs, n) ->
+            new SubmittedChild(
+                rs.getObject("batch_id", UUID.class),
+                rs.getInt("line_no"),
+                rs.getObject("txn_id", UUID.class),
+                rs.getString("org_id"),
+                instant(rs, "submitted_at")),
+        ts(at), ts(cutoff), limit);
+  }
+
+  /** A SUBMITTED row given up by the reconcile job; returns its batch when it changed. */
+  public Optional<UUID> markUnresolved(UUID txnId, Instant at) {
+    return jdbc.query(
+            "UPDATE batch_item SET status = 'UNRESOLVED', updated_at = ? WHERE txn_id = ? AND status = 'SUBMITTED'"
+                + " RETURNING batch_id",
+            (rs, n) -> rs.getObject("batch_id", UUID.class),
+            ts(at), txnId)
+        .stream()
+        .findFirst();
   }
 
   /** Row counts of the batch and the amount of its COMPLETED rows. */
@@ -241,13 +311,14 @@ public class BatchRepository {
                count(*) FILTER (WHERE status = 'COMPLETED') AS completed,
                count(*) FILTER (WHERE status IN ('FAILED', 'REJECTED', 'REVERSED')) AS failed,
                count(*) FILTER (WHERE status = 'MANUAL_REVIEW') AS manual_review,
+               count(*) FILTER (WHERE status = 'UNRESOLVED') AS unresolved,
                coalesce(sum(amount_minor) FILTER (WHERE status = 'COMPLETED'), 0) AS paid
         FROM batch_item WHERE batch_id = ?
         """,
         (rs, n) ->
             new BatchProgress(
                 rs.getInt("pending"), rs.getInt("in_flight"), rs.getInt("completed"), rs.getInt("failed"),
-                rs.getInt("manual_review"), new Amount(rs.getLong("paid"), currency)),
+                rs.getInt("manual_review"), rs.getInt("unresolved"), new Amount(rs.getLong("paid"), currency)),
         batchId);
   }
 

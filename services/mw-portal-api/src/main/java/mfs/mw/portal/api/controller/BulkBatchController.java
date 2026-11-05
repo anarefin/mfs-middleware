@@ -5,7 +5,6 @@ import java.net.URI;
 import mfs.mw.portal.api.dto.BatchList;
 import mfs.mw.portal.api.dto.BatchView;
 import mfs.mw.portal.api.dto.RejectRequest;
-import mfs.mw.portal.api.entity.BatchStatus;
 import mfs.mw.portal.api.security.PortalUserResolver;
 import mfs.mw.portal.api.service.BatchService;
 import org.springframework.http.HttpHeaders;
@@ -46,9 +45,10 @@ public class BulkBatchController {
     return ResponseEntity.created(URI.create("/portal/org/v1/bulk/batches/" + view.batchId())).body(view);
   }
 
+  /** The org's batches; {@code status} is a contract batch status (400 MW-VAL-001 otherwise). */
   @GetMapping
   public BatchList list(
-      @AuthenticationPrincipal Jwt jwt, @RequestParam(required = false) BatchStatus status) {
+      @AuthenticationPrincipal Jwt jwt, @RequestParam(required = false) String status) {
     return new BatchList(service.list(users.resolve(jwt), status));
   }
 

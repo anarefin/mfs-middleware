@@ -184,6 +184,22 @@ mw:
         enabled: ${MW_BULK_DISPATCH_ENABLED:true}
         rate-per-second: ${MW_BULK_RATE_PER_SECOND:50}
         period: 200ms
+      expiry:
+        # A batch nobody approved or rejected within 72 h becomes EXPIRED (M3 gate decision);
+        # scheduler/BulkExpiryJob under ShedLock, audited as bulk.batch.expired.
+        enabled: ${MW_BULK_EXPIRY_ENABLED:true}
+        after: 72h
+        period: 5m
+        batch-size: 500
+      reconcile:
+        # SUBMITTED rows without a settled state after `after` are looked up on the orchestrator's
+        # internal query API (scheduler/BulkReconcileJob under ShedLock); still unsettled after
+        # give-up-after they become UNRESOLVED and the batch ends COMPLETED_WITH_EXCEPTIONS.
+        enabled: ${MW_BULK_RECONCILE_ENABLED:true}
+        after: 10m
+        give-up-after: 24h
+        period: 1m
+        batch-size: 200
     consumers:
       # route/TxnStatusRoute: the children's mw.txn.status.v1 records (tests switch it off)
       enabled: true
