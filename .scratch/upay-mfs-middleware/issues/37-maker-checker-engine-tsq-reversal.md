@@ -8,7 +8,7 @@
 - 18: Unknown outcomes: UNKNOWN, TSQ, MANUAL_REVIEW
 - 19: Reversal flow
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] API test: maker ≠ checker is enforced; an expired request cannot be approved
   (`mw-admin-api` `ChangeRequestApiIT`)
