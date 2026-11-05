@@ -11,7 +11,7 @@
 
 - 37: Maker-checker engine + manual TSQ / reversal
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Contract samples for the new command and events validate (`make contracts-lint`)
 - [x] A core-mock test shows a locked wallet is unlocked once, and an unlock of a wallet that isn't locked is rejected
