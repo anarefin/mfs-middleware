@@ -5,7 +5,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.regex.Pattern;
-import mfs.mw.app.gateway.client.DeviceSessionStore;
+import mfs.mw.app.gateway.repository.DeviceSessionStore;
 import mfs.mw.app.gateway.config.DeviceBindingProperties;
 import mfs.mw.app.gateway.dto.AppUser;
 import mfs.mw.app.gateway.dto.DeviceSession;

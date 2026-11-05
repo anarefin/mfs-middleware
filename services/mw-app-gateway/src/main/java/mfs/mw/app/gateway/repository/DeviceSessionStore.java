@@ -1,4 +1,4 @@
-package mfs.mw.app.gateway.client;
+package mfs.mw.app.gateway.repository;
 
 import java.time.Duration;
 import java.util.function.Supplier;
@@ -6,7 +6,7 @@ import mfs.mw.app.gateway.exception.ErrorCodes;
 import mfs.mw.app.gateway.exception.MwException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Repository;
 
 /**
  * Sessions and the nonce cache in Valkey (spec 9.1, 18.6). Session key {@code
@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
  * set once ({@code SET NX PX}). Fails closed: Valkey not answering is 503 MW-SYS-012 (retryable),
  * never a request let through unchecked.
  */
-@Component
+@Repository
 public class DeviceSessionStore {
 
   private final StringRedisTemplate valkey;

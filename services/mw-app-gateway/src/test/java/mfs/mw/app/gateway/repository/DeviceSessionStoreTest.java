@@ -1,4 +1,4 @@
-package mfs.mw.app.gateway.client;
+package mfs.mw.app.gateway.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
