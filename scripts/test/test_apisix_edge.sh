@@ -178,7 +178,34 @@ schemas() { OUT="$(MW_ROOT="$PWD" "$REPO_DIR/scripts/derived-schemas.sh" "$@" 2>
 test_repo_derived_schemas_match_their_contracts() {
   fixture_schemas
   schemas --check || fail "derived schemas drifted from contracts/"
-  assert_out_contains "2 derived schema(s)"
+  assert_out_contains "9 derived schema(s)"
+}
+
+# Review A6: every public JSON body behind an APISIX route has a derived schema in its service
+# (partner callbacks excluded: the adapters verify their partner-specific wire format).
+test_every_public_json_body_has_a_derived_schema_in_its_service() {
+  local row file src req
+  for row in \
+    "mw-app-gateway/app-v1-transaction-request.json|api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/TransactionRequest|txnType" \
+    "mw-app-gateway/app-v1-device-otp-request.json|api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/DeviceOtpRequest|" \
+    "mw-app-gateway/app-v1-device-binding-request.json|api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/DeviceBindingRequest|otp" \
+    "mw-app-gateway/app-v1-fetch-bill-request.json|api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/FetchBillRequest|billNumber" \
+    "mw-checkout/checkout-v1-create-session.json|api/mw-checkout/checkout.v1.openapi.yaml#/components/schemas/CreateSessionRequest|orderId" \
+    "mw-checkout/checkout-pay-v1-otp.json|api/mw-checkout/checkout.v1.openapi.yaml#/components/schemas/OtpRequest|wallet" \
+    "mw-checkout/checkout-pay-v1-confirm.json|api/mw-checkout/checkout.v1.openapi.yaml#/components/schemas/ConfirmRequest|encryptedPin" \
+    "mw-portal-api/portal-org-v1-reject-request.json|api/mw-portal-api/portal-org.v1.openapi.yaml#/paths/~1portal~1org~1v1~1bulk~1batches~1{batchId}~1reject/post/requestBody/content/application~1json/schema|reason" \
+    "mw-ussd/ussd-http-v1-step.json|api/mw-ussd/ussd-http.v1.openapi.yaml#/components/schemas/UssdStep|sessionId"; do
+    IFS='|' read -r file src req <<<"$row"
+    file="$REPO_DIR/services/${file%%/*}/src/main/resources/derived-schemas/${file#*/}"
+    [ -f "$file" ] || fail "no $file"
+    jq -e --arg s "$src" '."x-mw-derived-from" == $s and .type == "object"' "$file" >/dev/null || fail "$file: not derived from $src"
+    if [ -n "$req" ]; then
+      jq -e --arg r "$req" '.required | index($r) != null' "$file" >/dev/null || fail "$file: $req not required"
+    fi
+    if jq -e '[.. | objects | select(has("pattern") or has("format") or has("$ref"))] | length > 0' "$file" >/dev/null; then
+      fail "pattern/format/\$ref left in $file"
+    fi
+  done
 }
 
 test_app_submit_schema_is_the_openapi_transaction_request_minus_value_echoing_keywords() {
