@@ -27,6 +27,7 @@ runs in Docker.
 | JDK 25 (Temurin or any other build) on `PATH` or in `JAVA_HOME` | `make up` builds each service jar on the host with its own Gradle wrapper; the wrappers download Gradle itself | `java -version` |
 | bash, make (GNU or BSD), git, curl, jq | the Makefile and `scripts/`; jq for `make smoke`, `make edge-test`, `make security` | `jq --version` |
 | Node.js 22+ (optional) | only `make contracts-lint`, `make compose-flat` and `make compose-check`; the admin console builds inside Docker | `node --version` |
+| Node.js 24 + pnpm (optional) | only the admin console's own tests (`pnpm test`, `pnpm test:e2e` in `ui/mw-admin-ui`) | `pnpm --version` |
 | Internet access on the first run | images, Gradle distributions and dependencies, the console's pnpm packages | |
 | Host port 443 free | APISIX is the only container that publishes a port (443 -> 9443) | `lsof -i :443` |
 
@@ -125,12 +126,13 @@ modules, or for one with `M=<module>`. `make help` prints the list.
 | --- | --- |
 | `cd services/mw-x && ./gradlew test` | unit and slice tests, no Docker (the fast tier) |
 | `cd services/mw-x && ./gradlew integrationTest` | the `*IT` classes: Testcontainers PostgreSQL 18 and Kafka (needs Docker) |
+| `cd services/mw-x && ./gradlew conformance` | the `@Conformance` suite copied from the template (correlation, envelope, masking, outbox, inbox, retry/DLQ) |
 | `cd services/mw-x && ./gradlew check` | `test` + `integrationTest` + the `@Conformance` suite + JaCoCo (80 % lines on `service`, `mapper`, `client`) |
 | `make verify [M=]` | isolation check, field-injection check, contracts lint, `make compose-check`, then `./gradlew check` per module; without `M=` also the script self-tests. Slow for all modules (hours): use `make verify-changed` |
 | `make verify-changed [BASE=main] [JOBS=3]` | the same gate for the modules changed since `BASE` plus their contract neighbours, `JOBS` at a time (logs in `build/verify-changed/`). A changed contract selects the modules whose `services/mw-*/contracts.yml` lists it; run it with the stack down (Docker memory) |
 | `make check-isolation [M=]` | module independence: no cross-module dependency, `includeBuild`, convention plugin or path outside the module except `contracts/` |
 | `make check-field-injection [M=]` | no `@Autowired` field anywhere, tests included |
-| `make contracts-lint` | lint `contracts/` (Node.js) |
+| `make contracts-lint` | lint `contracts/` and every module's `contracts.yml` (Node.js) |
 | `make versions-check [M=]` | report version drift between the modules' version catalogs |
 | `make test-scripts` | shell self-tests of the Makefile and `scripts/` (this README's commands included) |
 | `make new-service NAME=mw-x` | scaffold a service from `templates/mw-service-template` |
