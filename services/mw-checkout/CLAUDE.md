@@ -44,7 +44,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   `410 MW-VAL-020` on otp/confirm/cancel; not OPEN `409 MW-VAL-021`. One payment per session: a
   failed one ends it (FAILED); the merchant creates a new session.
 - Outcomes (`service/SessionOutcomes`): PAYING -> PAID (COMPLETED) / FAILED (FAILED, REJECTED, with
-  the error code), from the paying request or from `route/StatusProjectionRoute` (shared group
+  the error code; statuses compared only through `dto/TerminalStatus`), from the paying request or from `route/StatusProjectionRoute` (shared group
   `mw-checkout` on `mw.txn.status.v1`, channel WEB_CHECKOUT only, retry topics + DLQ) for late answers;
   first one wins. Every `service/SessionOutcomeListener` bean is called in that same transaction
   with the finished session (never calls out over the network).
@@ -52,13 +52,19 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   (V5, one row per attempt; body `dto/IpnPayload` via `mapper/IpnMapper`, stored as the exact signed
   text) with the outcome. `scheduler/IpnDeliveryJob` (ShedLock `checkout-ipn-delivery`, every
   `mw.checkout.ipn.poll-period`; `enabled=false` in tests) runs `service/IpnDeliveryService.deliverDue`:
-  per due row, `IpnUrlPolicy.refusalAfterLookup` (https only; no loopback/private/link-local/CGNAT/
-  unspecified/multicast address, literal or resolved, unless a dev host), the merchant's current
-  secret, headers `X-Upay-Ipn-Id` (sessionId), `X-Upay-Attempt`, `X-Upay-Timestamp` (epoch s of the
+  per due row, `IpnUrlPolicy.lookup` (https only; the host resolved once and every address checked: no
+  loopback/private/link-local/CGNAT/unspecified/multicast IPv4, literal or resolved, unless a dev host;
+  IPv6 (review A7): the IPv4 inside NAT64 `64:ff9b::/96`, 6to4 `2002::/16` and IPv4-compatible `::/96` is
+  extracted and checked, NAT64 local-use `64:ff9b:1::/48` refused outright (its embedding depends on a
+  local prefix length), else only global unicast `2000::/3` minus `2001:db8::/32` and `2001::/23`
+  (`100::/64` and the rest refused)), the merchant's current secret, headers `X-Upay-Ipn-Id` (sessionId), `X-Upay-Attempt`, `X-Upay-Timestamp` (epoch s of the
   attempt), `X-Upay-Signature` = `security/IpnSigner` (hex HMAC-SHA256 over `upay-checkout-ipn.v1\n`
-  + ts + `\n` + body), one POST by `client/MerchantIpnClient` (JDK HttpClient, no redirects, connect
-  timeout, Resilience4j time limiter `merchant-ipn` 10 s). 2xx DELIVERED; else FAILED with
-  `http_status`/`error` (`HTTP_<n>`, TIMEOUT, CONNECT_FAILED, IO_ERROR, NO_SECRET, `URL_REFUSED: ...`)
+  + ts + `\n` + body), one POST by `client/MerchantIpnClient` (Apache HttpClient 5, a new client per call
+  whose DNS answers the URL's host with the checked addresses only, so DNS rebinding cannot move the
+  connect; the name stays the Host header, the TLS SNI name and the name the certificate is verified
+  against (default hostname verifier, JVM trust store bean `merchantIpnTls`); no redirects, proxy,
+  cookies or retries; connect timeout, Resilience4j time limiter `merchant-ipn` 10 s). 2xx DELIVERED; else FAILED with
+  `http_status`/`error` (`HTTP_<n>`, TIMEOUT, CONNECT_FAILED, TLS_FAILED, IO_ERROR, NO_SECRET, `URL_REFUSED: ...`)
   and the next row due after `service/IpnRetrySchedule` (`retry-delays` 1m,5m,30m,2h,6h; 6 attempts).
   CANCELLED and EXPIRED sessions get no IPN (no payment was made; the merchant's GET shows them). Logs: `checkout.ipn.delivered|failed|
   exhausted` with the host only. Dev stack (`compose.yml`): dev host `mw-simulators` (merchant IPN
@@ -94,7 +100,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   the notify request, wrong/expired/locked OTP, pay, core rejection, late answer via projection,
   cancel, expiry, merchant auth, idempotent create, refused IPN URLs); `IpnDeliveryIT` (local merchant
   HTTP server, `MutableClock`: fail twice then 2xx on the schedule, six attempts then none, timeout,
-  internal target refused); `service/IpnRetryScheduleTest`, `security/IpnUrlPolicyTest`,
+  internal target refused); `client/MerchantIpnClientTest` (pinned address, Host kept),
+  `client/MerchantIpnTlsTest` (keytool certificates: SNI and certificate checked against the name);
+  `service/IpnRetryScheduleTest`, `security/IpnUrlPolicyTest` (one case per IPv6 rule),
   `security/IpnSignerTest` (openssl vector); `repository/SessionRepositoryIT`;
   `security/ResultSignerTest` (vector from openssl); `mapper/CheckoutMapperTest` (contract schemas).
 - e2e `@checkout` (`tests/e2e/src/test/resources/features/checkout.feature`).

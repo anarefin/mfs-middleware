@@ -80,4 +80,100 @@ class IpnUrlPolicyTest {
   void malformedUrlsAreRefused(String url) {
     assertThat(dev.refusal(url)).isPresent();
   }
+
+  // --- IPv6 (review A7): embedded IPv4 extracted and checked, else global unicast 2000::/3 only ---
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+    // NAT64 well-known prefix 64:ff9b::/96 with an internal IPv4 inside
+    "https://[64:ff9b::a00:1]/ipn", "https://[64:ff9b::7f00:1]/ipn", "https://[64:ff9b::a9fe:a9fe]/ipn",
+    // NAT64 local-use 64:ff9b:1::/48 (RFC 8215): where the IPv4 sits depends on the local prefix
+    // length, so no embedding can be trusted; refused whatever it carries (10.0.0.1 as for /48 and
+    // /96 prefixes, 8.8.8.8 as for a /48 one)
+    "https://[64:ff9b:1:a00:0:100::]/ipn", "https://[64:ff9b:1::a00:1]/ipn", "https://[64:ff9b:1:808:8:800::]/ipn",
+    // 6to4 2002::/16 with 10.0.0.1 and 127.0.0.1
+    "https://[2002:a00:1::1]/ipn", "https://[2002:7f00:1::]/ipn",
+    // IPv4-compatible ::/96 with 10.0.0.1 and 192.168.1.1
+    "https://[::a00:1]/ipn", "https://[::c0a8:101]/ipn"
+  })
+  void anInternalIpv4EmbeddedInAnIpv6AddressIsRefused(String url) {
+    assertThat(strict.refusal(url)).isPresent();
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+    "https://[64:ff9b::808:808]/ipn", "https://[2002:808:808::1]/ipn",
+    "https://[::808:808]/ipn"
+  })
+  void aPublicIpv4EmbeddedInAnIpv6AddressIsAllowed(String url) {
+    assertThat(strict.refusal(url)).isEmpty();
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+    // discard-only 100::/64, documentation 2001:db8::/32
+    "https://[100::1]/ipn", "https://[2001:db8::1]/ipn", "https://[2001:db8:ffff::5]/ipn",
+    // outside global unicast 2000::/3
+    "https://[4000::1]/ipn", "https://[e000::1]/ipn",
+    // IETF protocol assignments 2001::/23 (Teredo 2001::/32, benchmarking 2001:2::/48, ORCHID)
+    "https://[2001::1]/ipn", "https://[2001:2::1]/ipn", "https://[2001:10::1]/ipn"
+  })
+  void ipv6OutsidePublicGlobalUnicastIsRefused(String url) {
+    assertThat(strict.refusal(url)).isPresent();
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"https://[2606:4700:4700::1111]/ipn", "https://[2a00:1450:4001::200e]/ipn",
+    "https://[3fff:ffff::1]/ipn"})
+  void publicGlobalUnicastIpv6IsAllowed(String url) {
+    assertThat(strict.refusal(url)).isEmpty();
+  }
+
+  @Test
+  void theLookupResolvesOnceAndHandsBackEveryCheckedAddress() throws Exception {
+    java.util.concurrent.atomic.AtomicInteger lookups = new java.util.concurrent.atomic.AtomicInteger();
+    InetAddress a = InetAddress.getByName("203.0.113.10");
+    InetAddress b = InetAddress.getByName("2606:4700:4700::1111");
+    IpnUrlPolicy policy = new IpnUrlPolicy(List.of(), host -> {
+      lookups.incrementAndGet();
+      return new InetAddress[] {a, b};
+    });
+
+    IpnUrlPolicy.Decision d = policy.lookup("https://shop.example.test:8443/ipn?x=1");
+
+    assertThat(d.refused()).isFalse();
+    assertThat(d.uri().getHost()).isEqualTo("shop.example.test");
+    assertThat(d.addresses()).containsExactly(a, b);
+    assertThat(lookups.get()).isEqualTo(1);
+  }
+
+  @Test
+  void oneInternalAddressAmongPublicOnesRefusesTheHost() throws Exception {
+    InetAddress[] mixed = {InetAddress.getByName("203.0.113.10"), InetAddress.getByName("64:ff9b::a00:1")};
+    IpnUrlPolicy policy = new IpnUrlPolicy(List.of(), host -> mixed);
+    IpnUrlPolicy.Decision d = policy.lookup("https://shop.example.test/ipn");
+    assertThat(d.refused()).isTrue();
+    assertThat(d.addresses()).isEmpty();
+  }
+
+  @Test
+  void aNameResolvingToADocumentationIpv6IsRefusedAtDelivery() throws Exception {
+    InetAddress doc = InetAddress.getByName("2001:db8::5");
+    IpnUrlPolicy policy = new IpnUrlPolicy(List.of(), host -> new InetAddress[] {doc});
+    assertThat(policy.refusalAfterLookup("https://shop.example.test/ipn")).isPresent();
+  }
+
+  @Test
+  void aDevHostIsResolvedAndPinnedWithoutTheAddressChecks() {
+    IpnUrlPolicy.Decision d = dev.lookup("http://mw-simulators:8080/merchant/ipn");
+    assertThat(d.refused()).isFalse();
+    assertThat(d.addresses()).extracting(InetAddress::getHostAddress).containsExactly("172.18.0.5");
+  }
+
+  @Test
+  void aLiteralAddressIsItsOwnPinnedAddress() {
+    IpnUrlPolicy.Decision d = strict.lookup("https://[2606:4700:4700::1111]/ipn");
+    assertThat(d.refused()).isFalse();
+    assertThat(d.addresses()).extracting(InetAddress::getHostAddress).containsExactly("2606:4700:4700:0:0:0:0:1111");
+  }
 }
