@@ -18,7 +18,8 @@ import org.springframework.stereotype.Service;
  * of a session to mw-ussd ({@code sim.ussd-gateway.target-url} + mno, through APISIX in the
  * stack). BEGIN with the service code, then one CONTINUE per input, until mw-ussd ends the
  * session or the inputs run out (then the session is left open, like a subscriber who stopped
- * typing, or ended with END when {@code hangUp}). An MNO in {@code sim.ussd-gateway.smpp.mnos}
+ * typing, or ended with END when {@code hangUp}). With {@code resume} (and a {@code sessionId}) it
+ * continues a session left open by an earlier call: no BEGIN, one CONTINUE per input. An MNO in {@code sim.ussd-gateway.smpp.mnos}
  * is played over SMPP instead ({@link UssdSmppGateway}, ticket 27): same request, same result.
  */
 @Service
@@ -47,10 +48,13 @@ public class UssdGatewayService {
     String session = req.sessionId() == null || req.sessionId().isBlank() ? "sim-" + UUID.randomUUID() : req.sessionId();
     String url = targetUrl + req.mno();
     List<UssdScreen> screens = new ArrayList<>();
-    UssdScreen s = client.step(req.mno(), url, session, req.msisdn(), req.serviceCode(), "BEGIN", "");
-    screens.add(s);
+    boolean resume = Boolean.TRUE.equals(req.resume()) && req.sessionId() != null && !req.sessionId().isBlank() && !req.inputs().isEmpty();
+    UssdScreen s = resume ? null : client.step(req.mno(), url, session, req.msisdn(), req.serviceCode(), "BEGIN", "");
+    if (s != null) {
+      screens.add(s);
+    }
     for (String input : req.inputs()) {
-      if (s.status() != 200 || endFlag.equals(s.flag())) {
+      if (s != null && (s.status() != 200 || endFlag.equals(s.flag()))) {
         break;
       }
       s = client.step(req.mno(), url, session, req.msisdn(), req.serviceCode(), "CONTINUE", input);

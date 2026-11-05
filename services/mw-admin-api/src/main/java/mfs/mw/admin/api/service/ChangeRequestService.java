@@ -257,6 +257,7 @@ public class ChangeRequestService {
           if (!requests.decide(id, ChangeRequest.Status.REJECTED, checker.username(), checker.subject(), reason, cr.payload(), now)) {
             throw decided();
           }
+          closed(cr, ChangeRequest.Status.REJECTED, checker.username(), now);
           audit(ChangeRequestMapper.rejected(cr, checker.username(), reason, correlationId(), now), cr);
         });
     logDecision("admin.change_request.rejected", cr, checker.username());
@@ -376,6 +377,7 @@ public class ChangeRequestService {
 
   private void expireOne(ChangeRequest cr, Instant now) {
     if (requests.decide(cr.id(), ChangeRequest.Status.EXPIRED, null, null, null, cr.payload(), now)) {
+      closed(cr, ChangeRequest.Status.EXPIRED, null, now);
       audit(ChangeRequestMapper.expired(cr, correlationId(), now), cr);
       logDecision("admin.change_request.expired", cr, null);
     }
@@ -403,6 +405,14 @@ public class ChangeRequestService {
     String key = e.txnId() != null ? e.txnId() : e.resource();
     String txn = e.txnId() != null ? e.txnId() : cr.id().toString();
     outbox.append(AUDIT_TOPIC, key, new EventMetadata(e.correlationId(), txn, e.auditId(), 1), e);
+  }
+
+  /** Tells the resource type's handler (if any) that its request was rejected or expired. */
+  private void closed(ChangeRequest cr, ChangeRequest.Status status, String checkerId, Instant now) {
+    ResourceChangeHandler h = handlers.get(cr.resourceType());
+    if (h != null) {
+      h.closed(cr, status, checkerId, now);
+    }
   }
 
   private ResourceChangeHandler handler(String resourceType) {

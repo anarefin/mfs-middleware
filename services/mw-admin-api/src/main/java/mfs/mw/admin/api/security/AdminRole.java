@@ -68,6 +68,15 @@ public enum AdminRole {
   /** Decide some change request (the service checks the resource type's own checker set). */
   public static final Set<AdminRole> ANY_CHECKER = Set.copyOf(EnumSet.of(OPS_CHECKER, INTEGRATION_CHECKER));
 
+  /**
+   * Propose a new version of a USSD menu or a notify template (spec 15.2 USSD, Notifications;
+   * customer-facing text, maker-checker; ticket 39). Decision: the ops roles, as for transactions.
+   */
+  public static final Set<AdminRole> CONTENT_MAKER = Set.copyOf(EnumSet.of(OPS_MAKER));
+
+  /** Approve or reject such a version; never the maker's own (spec 15.3). */
+  public static final Set<AdminRole> CONTENT_CHECKER = Set.copyOf(EnumSet.of(OPS_CHECKER));
+
   /** Never change anything: no method but GET/HEAD/OPTIONS (spec 15.4: viewer; auditor read-only). */
   public static final Set<AdminRole> READ_ONLY = Set.copyOf(EnumSet.of(VIEWER, AUDITOR));
 

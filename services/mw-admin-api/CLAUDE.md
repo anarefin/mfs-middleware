@@ -8,7 +8,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 - Operations console API (spec 15, WP23 part, ticket 36) for `mw-admin-ui` (server-side calls only)
   behind APISIX route `/admin/v1/*` (`deploy/apisix/routes/admin-v1.json`, `openid-connect`
   bearer-only on realm `ops`, 1 MiB body cap, 300 req/min per token subject). Later tickets add the
-  change-request engine (37, below), partner config (38), USSD menus / SMS templates (39); 38/39
+  change-request engine (37, below), partner config (38), USSD menus / SMS templates (39, below); 38/39
   reuse `ChangeRequestService`'s rules (a new `resourceType`, its own maker/checker role sets).
 - Auth (`config/SecurityConfig`, `security/`): bearer JWT of realm `ops`, verified again here (JWKS
   `mw.admin-api.jwt.jwk-set-uri` / `MW_ADMIN_JWK_SET_URI`, issuer must end with `/realms/ops`,
@@ -142,6 +142,42 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   config kept) and the admin's tables then differ from what runs; records go to every adapter (configKey
   has no family), and an adapter without an allowlist entry for the id refuses them; nothing republishes
   the snapshot after a Kafka volume loss (approve a change to republish).
+- USSD menus and notify templates (ticket 39, spec 9.2, 10.3, 15.2; `controller/ContentController` ->
+  `service/ContentChangeService` -> `repository/ContentVersionRepository`, table
+  `admin.content_version` V6, `entity/ContentVersion`, `mapper/ContentChangeMapper`; roles
+  `AdminRole.CONTENT_MAKER` = ops-maker, `CONTENT_CHECKER` = ops-checker). `POST
+  /admin/v1/ussd-menus/{menuId}/change-requests {menu: {start, messages, nodes}, activations: [{mno,
+  goLiveAt?}], reason}` and `POST /admin/v1/notify-templates/{code}/{SMS|EMAIL}/{bn|en}/change-requests
+  {body, subject?, htmlBody?, senderId?, validFrom?, reason}` -> 201 PENDING change request
+  (resourceType `ussd_menu` / `notify_template`, resourceId menuId / `<code>/<channel>/<locale>`,
+  action `PUBLISH`, payload = the version, diff `{before: {configKey, version?}, after: {configKey,
+  version}}`) plus a PENDING `content_version` row (version = max + 1 per configKey), audited, in one
+  transaction; one open request per resource (`409 MW-VAL-031`). Checked at maker time, `400
+  MW-VAL-040` with one `details` entry per problem: menus by `service/MenuValidator` (a copy of
+  mw-ussd's rules over copied `dto/Menu`, `MenuNode`, `MenuOption`, `Text`, `ValidatorSpec`,
+  `NodeType` and `mapper/MenuParser`; keep aligned: dangling references, missing fields, unknown
+  validator/flow/lookup, bad regex, PIN rules, plus every text, option label, validator error and the
+  six engine messages in both bn and en), each MNO once and in `mw.content.mnos` (gp, robi, bl,
+  teletalk); templates by `service/TemplateValidator` (only plain `{{name}}`, EMAIL needs a subject,
+  SMS no subject/HTML, senderId 1-11 alphanumerics/spaces). Approve / reject / expire are the
+  generic change-request endpoints and job: `ChangeRequestService` hands them to the
+  `service/ResourceChangeHandler`s `UssdMenuChangeHandler` / `TemplateChangeHandler` (base
+  `ContentChangeHandler`; checker role `CONTENT_CHECKER`, maker != checker unchanged; the handler's
+  `closed` hook, added here, marks a rejected / expired version); approval = ONE transaction: request APPROVED, version
+  PUBLISHED, `mw.config.changed.v1` (key configKey `ussd-menu/<menuId>` or
+  `template/<code>/<channel>/<locale>`, configType USSD_MENU / TEMPLATE, version = the admin version,
+  value = the full version, changedBy maker, approvedBy checker; header mw-txn-id and idempotency key
+  from the change request id) and the audit (resource `ussd_menu/<menuId>` /
+  `notify_template/<...>`, no txnId, before / after `config` = the diff side {configKey, version}); go-live times (`goLiveAt`,
+  `validFrom`) before the approval become the approval time. Rejected / expired versions are marked
+  so and never published. Reads (any 15.4 role): `GET .../versions[?limit&offset]` (no value) and
+  `.../versions/{version}` (with value). Body cap raised to 256 KiB (`filter/BodySchemaAdvice`; a
+  menu tree is some 15 KiB). Decisions (no product owner): ops-maker / ops-checker own customer-facing
+  text; one version carries its own per-MNO schedule (no activation-only request); version numbers
+  here are the admin's, mw-ussd / mw-notify number their own rows; the seeded first versions live
+  only in those services (the admin lists only versions made here); the compacted topic keeps only
+  the latest record per key, so a consumer starting on an empty database gets the latest version
+  only (fine for the single-instance MVP with persistent databases).
 - Internal API identity (M3 gate decision; `client/ServiceTokenClient`, `client/InternalApiCaller`):
   Keycloak realm `services` client `mw-admin-api` (client credentials, HTTP Basic, token carries
   audiences mw-orchestrator and mw-audit-dw), cached until 30 s before `expires_in`, dropped on a
@@ -170,6 +206,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   FORCE_RELEASE for mw-orchestrator (Kafka topic 6 partitions, 7 d, retry group mw-orchestrator).
 - `events/mw-admin-api/mw.config.changed.v1` (ticket 38): approved partner configs, PARTNER UPSERT,
   key `partner/<id>`, value the adapters' `PartnerConfig` shape (compacted topic, 6 partitions).
+- `events/mw-admin-api/mw.config.changed.v1` (ticket 39): approved USSD menu and template versions,
+  USSD_MENU (key `ussd-menu/<menuId>`) and TEMPLATE (key `template/<code>/<channel>/<locale>`) UPSERTs;
+  value shapes in `mapper/ContentChangeMapper` and the samples `valid-ussd-menu-upsert.json`,
+  `valid-template-upsert.json`; retry groups mw-ussd and mw-notify.
 
 ## Contracts used
 
@@ -180,7 +220,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `events/mw-admin-api/mw.txn.action.v1` (`dto/TxnAction`) and a REVERSAL on
   `events/mw-orchestrator/mw.txn.request.v1` (`dto/ReversalRequest`; `ChangeRequestApiIT`
   validates both outbox rows), `events/mw-admin-api/mw.config.changed.v1` (`dto/ConfigChangedEvent`;
-  `PartnerConfigApiIT` validates the outbox row), serves
+  `PartnerConfigApiIT` and `ContentChangeApiIT` validate the outbox rows), serves
   `admin.v1`; consumes `api/mw-orchestrator/txn-query.v1` (own type `dto/AdminTxn`) and
   `api/mw-audit-dw/audit-query.v1` (own type `dto/AuditTrail`), unknown fields ignored
   (`contracts/ApiContractsTest` reads contract-shaped answers). No consumed events.
@@ -208,7 +248,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 | Command | What it does |
 | --- | --- |
 | `./gradlew test` | unit, slice and contract tests, no Docker |
-| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker); `AdminTransactionApiIT` (stub orchestrator + audit-dw), `ChangeRequestApiIT` (maker-checker, stub orchestrator), `PartnerConfigApiIT` (partner change requests, outbox config records), `WalletUnlockApiIT` (ticket 52) |
+| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker); `AdminTransactionApiIT` (stub orchestrator + audit-dw), `ChangeRequestApiIT` (maker-checker, stub orchestrator), `PartnerConfigApiIT` (partner change requests, outbox config records), `WalletUnlockApiIT` (ticket 52), `ContentChangeApiIT` (menus and templates, ticket 39) |
 | `./gradlew conformance` | the `@Conformance` suite |
 | `./gradlew check` | all three plus the JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
 | `./gradlew check bootJar && docker build -t mw-admin-api:dev .` | image, as spec 4.3 rule 1 |

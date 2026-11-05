@@ -1,0 +1,39 @@
+{
+  "x-mw-derived-from": "api/mw-admin-api/admin.v1.openapi.yaml#/paths/~1admin~1v1~1notify-templates~1{code}~1{channel}~1{locale}~1change-requests/post/requestBody/content/application~1json/schema",
+  "type": "object",
+  "required": [
+    "body",
+    "reason"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "body": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "htmlBody": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20000
+    },
+    "senderId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 11
+    },
+    "validFrom": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    }
+  }
+}

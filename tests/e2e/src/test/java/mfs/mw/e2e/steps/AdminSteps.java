@@ -4,12 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import mfs.mw.e2e.support.AdminApi;
 import mfs.mw.e2e.support.Http;
 import mfs.mw.e2e.support.Waits;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Operator actions with maker-checker through the admin API (ticket 37, spec 15.3, acceptance
@@ -34,11 +38,48 @@ public class AdminSteps {
     changeRequestId = last.body().path("id").asString();
   }
 
+  // --- USSD menus and SMS templates (ticket 39) -------------------------------------------------
+
+  /** The shipped main menu (fixture copy) with the main screen's title in both languages. */
+  @When("{word} proposes the main USSD menu for {word} with the title {string}")
+  public void proposeMenu(String user, String mno, String title) throws IOException {
+    ObjectNode tree;
+    try (InputStream in = getClass().getClassLoader().getResourceAsStream("menus/main-e2e.json")) {
+      tree = (ObjectNode) Http.JSON.readTree(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+    }
+    tree.remove("menuId");
+    tree.remove("version");
+    String t = title.replace("{token}", state.token);
+    ((ObjectNode) tree.path("nodes").path("main").path("text")).put("bn", t).put("en", t);
+    ObjectNode body = Http.JSON.createObjectNode();
+    body.set("menu", tree);
+    body.putArray("activations").addObject().put("mno", mno);
+    body.put("reason", "e2e title change " + state.token);
+    last = AdminApi.proposeMenu(user, "main", body);
+    assertThat(last.status()).as("%s", last.body()).isEqualTo(201);
+    changeRequestId = last.body().path("id").asString();
+  }
+
   @When("{word} asks to unlock wallet {word} because {string}")
   public void askUnlock(String user, String walletId, String reason) {
     last = AdminApi.askWallet(user, walletId, "UNLOCK", reason);
     assertThat(last.status()).as("%s", last.body()).isEqualTo(201);
     changeRequestId = last.body().path("id").asString();
+  }
+
+  @When("{word} proposes the {word} template {word} in {word} as {string}")
+  public void proposeTemplate(String user, String channel, String code, String locale, String text) {
+    ObjectNode body = Http.JSON.createObjectNode();
+    body.put("body", text.replace("{token}", state.token)).put("senderId", "upay").put("reason", "e2e wording " + state.token);
+    last = AdminApi.proposeTemplate(user, code, channel, locale, body);
+    assertThat(last.status()).as("%s", last.body()).isEqualTo(201);
+    changeRequestId = last.body().path("id").asString();
+  }
+
+  /** The approval reaches mw-ussd / mw-notify on mw.config.changed.v1 asynchronously. */
+  @When("the services have had {int} seconds to take the published version")
+  public void settle(int seconds) throws InterruptedException {
+    Thread.sleep(Duration.ofSeconds(seconds));
   }
 
   @When("{word} approves the change request")

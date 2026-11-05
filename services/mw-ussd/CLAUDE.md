@@ -55,12 +55,25 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   does not compile, or a PIN input that is stored or does not lead straight to an ACTION.
   `service/MenuSeeder` stores the dev seed `menus/main-v2.json` (`mw.ussd.seed-menu`, blank = off)
   and activates it for every configured MNO without a menu or still on an older version of the
-  seed (v1 -> v2; another menu is never replaced), until the admin console edits menus (WP23,
-  maker-checker). Seed (ticket 28): 1 Send Money (P2P), 2 Cash Out (customer to agent), 3 Mobile
+  seed (v1 -> v2; another menu is never replaced). Seed (ticket 28): 1 Send Money (P2P), 2 Cash Out (customer to agent), 3 Mobile
   Recharge (1 own number: option `set` stores `{msisdn}` / `{mno}` as target and operator; 2 other
   number + DYNAMIC `operators`; product `=PREPAID`), 4 Pay Bill (DYNAMIC `billers`, bill number
   INPUT with `lookup: bill`, CONFIRM with the fetched amount), 9 language. Every Bangla screen of
   the seed fits 70 UCS-2 characters (`UssdMenuWalkTest`).
+- Published menus (ticket 39, spec 9.2, 20.4): mw-admin-api's approved versions arrive on
+  `mw.config.changed.v1` (compacted; `route/ConfigChangedRoute`, a `RetryTopicRouteBuilder`, group
+  mw-ussd, retry topics then DLQ; `messaging/ConfigChangedListener`, tombstones skipped) and
+  `service/MenuPublisher` takes configType USSD_MENU UPSERTs (value `{menuId, version, menu,
+  activations: [{mno, goLiveAt}]}`; other types / DELETE ignored): in one transaction the tree is
+  stored as a new immutable version (numbered here: above every stored version and at least 100, so
+  never a seed's number; the admin version kept in `ussd.menu.config_version`, V5, unique per menu:
+  a redelivered or replayed record is stored once, an older one ignored) with one activation per
+  configured MNO at its go-live (unknown MNO skipped, event `ussd.menu.activation_skipped`). The tree
+  is checked again by `MenuValidator.publishProblems` (the base rules plus every text, option label,
+  validator error and engine message in bn and en, as mw-admin-api checked at maker time); an
+  unusable one is logged `ussd.menu.rejected` and dropped. Sessions starting after the go-live get
+  it; a running session keeps its version (`MenuPublisherIT`, on a test-only MNO `itmenu`). Events
+  `ussd.menu.published`, `ussd.menu.activated`, `ussd.menu.publish_skipped`.
 - Engine (`service/UssdEngine`): one step per request, never throws (a failure ends with the
   menu's `unavailable` text). Language `mw.ussd.default-language` (bn) at dial-in, toggled by a
   MENU option with `switchLanguage` (no profile lookup yet). Validators (`service/InputValidator`):
@@ -118,6 +131,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   into the own DTO) and `contracts/ApiContractsTest` (USSD HTTP API responses and the billpay client's requests).
 - `events/mw-orchestrator/mw.txn.request.v1` (produced; own type `dto/TxnRequest`, validated in
   `TxnRequestMapperTest`).
+- `events/mw-admin-api/mw.config.changed.v1` (consumed, ticket 39; own type `dto/ConfigChangedEvent`;
+  `ConsumedContractsTest` runs every valid sample through `ConfigChangedListener`).
 - `events/mw-orchestrator/mw.txn.status.v1` (consumed; own type `dto/StatusMessage`) and the
   orchestrator's `mw-reply-to` / duplicate-answer conventions.
 - `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (called: biller list, bill fetch; own types

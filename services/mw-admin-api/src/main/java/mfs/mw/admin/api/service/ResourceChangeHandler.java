@@ -30,6 +30,14 @@ public interface ResourceChangeHandler {
   Approval prepare(ChangeRequest cr, Operator checker, Instant now, String correlationId);
 
   /**
+   * Called inside the decision transaction when a request of this type is rejected or expires
+   * (ticket 39: the PENDING content version is marked so). Nothing by default.
+   *
+   * @param checkerId the checker who rejected it; null on expiry
+   */
+  default void closed(ChangeRequest cr, ChangeRequest.Status status, String checkerId, Instant now) {}
+
+  /**
    * @param payload the request's payload as stored after the approval
    * @param sentAs the topic the change went out on (audited)
    * @param apply the change itself, run inside the decision transaction; returns entries added to

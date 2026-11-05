@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "configKey": "template/TXN_P2P_RECEIVED/SMS/en",
+  "configType": "TEMPLATE",
+  "change": "UPSERT",
+  "version": 2,
+  "value": {
+    "code": "TXN_P2P_RECEIVED",
+    "channel": "SMS",
+    "locale": "en",
+    "version": 2,
+    "body": "You got Tk {{amount}} from {{counterparty}}. TrxID {{txnId}}",
+    "senderId": "upay",
+    "validFrom": "2026-11-05T10:00:00Z"
+  },
+  "changedAt": "2026-11-05T10:00:00Z",
+  "changedBy": "ops.maker1",
+  "approvedBy": "ops.checker1"
+}

@@ -3,5 +3,6 @@ produces:
   events: [events/mw-notify/mw.notify.status.v1.schema.json]
   apis:   []
 consumes:
-  events: [events/mw-notify/mw.notify.request.v1.schema.json, events/mw-orchestrator/mw.txn.status.v1.schema.json]
+  events: [events/mw-notify/mw.notify.request.v1.schema.json, events/mw-orchestrator/mw.txn.status.v1.schema.json,
+           events/mw-admin-api/mw.config.changed.v1.schema.json]
   apis:   []
