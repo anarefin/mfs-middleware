@@ -10,18 +10,33 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import mfs.mw.app.gateway.exception.ErrorCodes;
+import mfs.mw.app.gateway.exception.MwException;
+import org.springframework.http.HttpStatus;
 
 /**
  * A request whose body was read once into memory, so the signature check can hash the exact bytes
- * and the controller can still bind them. Bodies are small: APISIX caps them at 64 KiB.
+ * and the controller can still bind them. At most {@link #MAX_BODY} bytes are kept, as APISIX
+ * caps the route: the gateway does not rely on the edge for that and never reads more than one byte
+ * past the cap ({@code readNBytes(limit + 1)}), so a larger body is 413 MW-VAL-BODY_TOO_LARGE
+ * without being buffered.
  */
 public class CachedBodyRequest extends HttpServletRequestWrapper {
 
+  /** 64 KiB, the edge's {@code client-control max_body_size} on {@code /app/v1/*}. */
+  public static final int MAX_BODY = 64 * 1024;
+
   private final byte[] body;
 
-  public CachedBodyRequest(HttpServletRequest request) throws IOException {
+  /** Reads the body; a body over {@code limit} bytes is an {@link MwException} answered 413. */
+  public CachedBodyRequest(HttpServletRequest request, int limit) throws IOException {
     super(request);
-    this.body = request.getInputStream().readAllBytes();
+    byte[] read = request.getInputStream().readNBytes(limit + 1);
+    if (read.length > limit) {
+      throw new MwException(ErrorCodes.VAL_BODY_TOO_LARGE, "Request body too large")
+          .withStatus(HttpStatus.CONTENT_TOO_LARGE);
+    }
+    this.body = read;
   }
 
   public byte[] body() {

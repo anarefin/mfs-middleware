@@ -83,6 +83,28 @@ class TransactionControllerTest {
   }
 
   @Test
+  void aBodyOver64KibIs413WithTheEnvelopeAndNothingSubmitted() {
+    String big = "{\"txnType\":\"P2P\",\"pad\":\"" + "x".repeat(64 * 1024) + "\"}";
+    MvcTestResult r = post(customer(), "key-big", big);
+    assertThat(r).hasStatus(413);
+    assertThat(r).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-BODY_TOO_LARGE");
+    assertThat(r).bodyJson().extractingPath("$.retryable").isEqualTo(false);
+    assertThat(r).bodyJson().extractingPath("$.correlationId").isEqualTo("corr-ctl");
+    verify(service, never()).submit(any(), any(), any());
+  }
+
+  @Test
+  void aBodyOfExactly64KibIsRead() {
+    String prefix = "{\"txnType\":\"P2P\",\"pad\":\"";
+    String body = prefix + "x".repeat(64 * 1024 - prefix.length() - 2) + "\"}";
+    assertThat(body.length()).isEqualTo(64 * 1024);
+    MvcTestResult r = post(customer(), "key-64k", body);
+    // read in full and refused by the schema (unknown property), not by the size cap
+    assertThat(r).hasStatus(400);
+    assertThat(r).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-001");
+  }
+
+  @Test
   void missingIdempotencyKeyIsMwVal() {
     MvcTestResult r = post(customer(), null, BODY.formatted(1000));
     assertThat(r).hasStatus(400);

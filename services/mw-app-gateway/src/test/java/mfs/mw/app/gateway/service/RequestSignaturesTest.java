@@ -132,9 +132,20 @@ class RequestSignaturesTest {
   }
 
   @Test
-  void theEdgesOfTheWindowAreAccepted() throws Exception {
+  void theWindowIsStrictItsEdgesAreRejected() throws Exception {
     KeyPair key = keyPair();
     for (Instant ts : new Instant[] {NOW.minusSeconds(300), NOW.plusSeconds(300)}) {
+      SignedRequest req = signed(key, "POST", "/app/v1/transactions", BODY, ts);
+      assertThatThrownBy(() -> signatures.verify(parse(key), req, NOW))
+          .as(ts.toString())
+          .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-AUTH-005"));
+    }
+  }
+
+  @Test
+  void justInsideTheWindowIsAccepted() throws Exception {
+    KeyPair key = keyPair();
+    for (Instant ts : new Instant[] {NOW.minusMillis(299_999), NOW.plusMillis(299_999)}) {
       SignedRequest req = signed(key, "POST", "/app/v1/transactions", BODY, ts);
       assertThatCode(() -> signatures.verify(parse(key), req, NOW)).doesNotThrowAnyException();
     }

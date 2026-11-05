@@ -102,9 +102,10 @@ public class IpnDeliveryService {
   }
 
   private MerchantIpnClient.Result send(IpnDelivery d, Instant at) {
-    Optional<String> refused = policy.refusalAfterLookup(d.ipnUrl());
-    if (refused.isPresent()) {
-      return new MerchantIpnClient.Result(null, "URL_REFUSED: " + refused.get(), 0);
+    // resolved and checked once; the client connects to exactly these addresses (review A7)
+    IpnUrlPolicy.Decision target = policy.lookup(d.ipnUrl());
+    if (target.refused()) {
+      return new MerchantIpnClient.Result(null, "URL_REFUSED: " + target.refusal(), 0);
     }
     CheckoutProperties.Merchant m = checkout.merchant(d.merchantId());
     if (m == null || m.secret() == null || m.secret().isBlank()) {
@@ -116,7 +117,7 @@ public class IpnDeliveryService {
     headers.put(HEADER_ATTEMPT, Integer.toString(d.attempt()));
     headers.put(HEADER_TIMESTAMP, Long.toString(ts));
     headers.put(HEADER_SIGNATURE, IpnSigner.sign(m.secret(), ts, d.payload()));
-    return client.post(URI.create(d.ipnUrl()), headers, d.payload());
+    return client.post(target, headers, d.payload());
   }
 
   /** Only the host goes to the logs: a merchant's URL may carry its own tokens in the query. */

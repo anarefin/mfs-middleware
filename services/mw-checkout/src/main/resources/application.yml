@@ -157,6 +157,10 @@ mw:
       enabled: true
       period: 500ms
       batch-size: 100
+    # Relayed notify rows lose params.otp (the checkout OTP) on this Spring cron, so the code stays
+    # in clear for seconds, not until the purge (review A8; messaging/OutboxOtpScrubber, ShedLock).
+    otp-scrub:
+      cron: "*/5 * * * * *"
   retention:
     # Purge (service/RetentionService via scheduler/OutboxInboxPurgeJob): sent outbox rows and
     # inbox rows older than these; unsent outbox rows never. ShedLock-guarded, one instance at a

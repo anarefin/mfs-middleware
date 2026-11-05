@@ -19,7 +19,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.net.InetAddress;
+import javax.net.ssl.SSLContext;
 import mfs.mw.checkout.config.IpnProperties;
+import mfs.mw.checkout.security.IpnUrlPolicy;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +34,9 @@ import org.junit.jupiter.api.Test;
 class MerchantIpnClientTest {
 
   private static final Duration LIMIT = Duration.ofMillis(500);
+  static final IpnProperties PROPS =
+      new IpnProperties(false, Duration.ofSeconds(1), List.of(Duration.ofMinutes(1)), 10, Duration.ofMillis(500),
+          List.of("127.0.0.1"));
 
   /** A request the merchant got. */
   private record Seen(String path, String contentType, String signature, String timestamp, String body) {}
@@ -41,7 +47,7 @@ class MerchantIpnClientTest {
   private MerchantIpnClient client;
 
   @BeforeEach
-  void setUp() throws IOException {
+  void setUp() throws Exception {
     merchant = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
     merchant.setExecutor(Executors.newCachedThreadPool());
     merchant.createContext("/ok", ex -> answer(ex, 200));
@@ -65,9 +71,7 @@ class MerchantIpnClientTest {
     merchant.start();
     TimeLimiterRegistry limiters =
         TimeLimiterRegistry.of(TimeLimiterConfig.custom().timeoutDuration(LIMIT).cancelRunningFuture(true).build());
-    client = new MerchantIpnClient(limiters,
-        new IpnProperties(false, Duration.ofSeconds(1), List.of(Duration.ofMinutes(1)), 10, Duration.ofMillis(500),
-            List.of("127.0.0.1")));
+    client = new MerchantIpnClient(limiters, PROPS, SSLContext.getDefault());
   }
 
   @AfterEach
@@ -89,8 +93,13 @@ class MerchantIpnClientTest {
     ex.close();
   }
 
-  private URI url(String path) {
-    return URI.create("http://127.0.0.1:" + merchant.getAddress().getPort() + path);
+  private IpnUrlPolicy.Decision url(String path) {
+    return pinned("http://127.0.0.1:" + merchant.getAddress().getPort() + path);
+  }
+
+  /** A checked target: the URL and the one address it may connect to (here: loopback). */
+  static IpnUrlPolicy.Decision pinned(String url) {
+    return new IpnUrlPolicy.Decision(null, URI.create(url), List.of(InetAddress.getLoopbackAddress()));
   }
 
   private static final Map<String, String> SIGNED =
@@ -142,7 +151,7 @@ class MerchantIpnClientTest {
       port = s.getLocalPort();
     }
 
-    MerchantIpnClient.Result r = client.post(URI.create("http://127.0.0.1:" + port + "/ipn"), SIGNED, "{}");
+    MerchantIpnClient.Result r = client.post(pinned("http://127.0.0.1:" + port + "/ipn"), SIGNED, "{}");
 
     assertThat(r.error()).isEqualTo("CONNECT_FAILED");
     assertThat(r.httpStatus()).isNull();
@@ -160,7 +169,7 @@ class MerchantIpnClientTest {
       });
 
       MerchantIpnClient.Result r =
-          client.post(URI.create("http://127.0.0.1:" + dropper.getLocalPort() + "/ipn"), SIGNED, "{}");
+          client.post(pinned("http://127.0.0.1:" + dropper.getLocalPort() + "/ipn"), SIGNED, "{}");
 
       assertThat(r.error()).isEqualTo("IO_ERROR");
       assertThat(r.httpStatus()).isNull();
@@ -188,5 +197,24 @@ class MerchantIpnClientTest {
     assertThat(new MerchantIpnClient.Result(204, null, 1).delivered()).isTrue();
     assertThat(new MerchantIpnClient.Result(300, null, 1).delivered()).isFalse();
     assertThat(new MerchantIpnClient.Result(null, "TIMEOUT", 1).delivered()).isFalse();
+  }
+
+  /**
+   * The name is never looked up again: the call goes to the checked address only, while the Host
+   * header keeps the merchant's name (review A7). The name here resolves nowhere.
+   */
+  @Test
+  void theCallGoesToTheCheckedAddressWithTheMerchantsHostHeader() {
+    java.util.concurrent.atomic.AtomicReference<String> host = new java.util.concurrent.atomic.AtomicReference<>();
+    merchant.createContext("/host", ex -> {
+      host.set(ex.getRequestHeaders().getFirst("Host"));
+      answer(ex, 204);
+    });
+    int port = merchant.getAddress().getPort();
+
+    MerchantIpnClient.Result r = client.post(pinned("http://merchant.invalid:" + port + "/host"), SIGNED, "{}");
+
+    assertThat(r.httpStatus()).isEqualTo(204);
+    assertThat(host.get()).isEqualTo("merchant.invalid:" + port);
   }
 }

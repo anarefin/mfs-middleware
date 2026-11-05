@@ -166,6 +166,34 @@ class NotificationFlowIT {
   }
 
   @Test
+  void theDeviceBindingOtpAndTheNewDeviceNoticeAreRendered() {
+    notifications.accept(
+        new NotificationRequest(
+            1, id(), null, "corr-d1", new NotificationRequest.Recipient("01711000001", null, null, null),
+            "DEVICE_BIND_OTP", "en", Map.of("otp", "042917"), List.of(Channel.SMS), Priority.OTP, null, null));
+    notifications.accept(
+        new NotificationRequest(
+            1, id(), null, "corr-d2", new NotificationRequest.Recipient("01711000001", null, null, null),
+            "DEVICE_BOUND", "en", Map.of(), List.of(Channel.SMS), Priority.TXN, null, null));
+
+    dispatcher.dispatchDue();
+
+    assertThat(smsc.sent()).extracting(s -> new String(s.part().shortMessage(), StandardCharsets.US_ASCII))
+        .containsExactly(
+            "Your upay code to bind a new device is 042917. Valid 2 minutes. Never share it.",
+            "A new device was bound to your upay wallet. If this was not you, call upay support now.");
+  }
+
+  @Test
+  void theDeviceTemplatesHaveABanglaVersion() {
+    for (String code : List.of("DEVICE_BIND_OTP", "DEVICE_BOUND")) {
+      assertThat(jdbc.queryForObject(
+          "select count(*) from template where code = ? and locale = 'bn' and channel = 'SMS'", Integer.class, code))
+          .as(code).isEqualTo(1);
+    }
+  }
+
+  @Test
   void aBanglaSmsGoesAsUcs2InConcatenatedPartsAndIsDeliveredWhenEveryPartIs() {
     String id = id();
     notifications.accept(request(id, "01711000001", "bn", Priority.TXN));

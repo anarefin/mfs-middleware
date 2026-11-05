@@ -17,6 +17,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   INFO 24 h, PROMO 72 h); an expired message is recorded EXPIRED and never sent. Listeners only
   store; nothing is sent on a Kafka thread.
 - Template `CHECKOUT_OTP` (bn/en SMS, `V8`, ticket 31): mw-checkout's OTP, params otp, amount, merchant.
+- Templates `DEVICE_BIND_OTP` (param otp, priority OTP) and `DEVICE_BOUND` (no params, TXN) (bn/en SMS, `V9`,
+  review A5): mw-app-gateway's device binding OTP and the "a new device was bound" notice.
 - Rules (`notify.rule`, seeds in `V5` and `V7`: P2P, CASH_IN, CASH_OUT, TOPUP, BILL_PAY,
   ADD_MONEY_BANK on success COMPLETED, failure FAILED|REJECTED and processing
   UNKNOWN|MANUAL_REVIEW; failure and processing go to the INITIATOR; BILL_PAY and ADD_MONEY_BANK

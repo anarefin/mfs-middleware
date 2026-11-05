@@ -5,6 +5,7 @@ import java.util.UUID;
 import mfs.mw.checkout.dto.ErrorInfo;
 import mfs.mw.checkout.dto.SessionStatus;
 import mfs.mw.checkout.dto.StatusMessage;
+import mfs.mw.checkout.dto.TerminalStatus;
 import mfs.mw.checkout.entity.CheckoutSession;
 import mfs.mw.checkout.repository.SessionRepository;
 import org.slf4j.Logger;
@@ -48,11 +49,15 @@ public class SessionOutcomes {
     } catch (IllegalArgumentException e) {
       return;
     }
+    TerminalStatus terminal = TerminalStatus.of(status.status()).orElse(null);
+    if (terminal == null) {
+      return;
+    }
     SessionStatus outcome =
-        switch (status.status()) {
-          case "COMPLETED" -> SessionStatus.PAID;
-          case "FAILED", "REJECTED" -> SessionStatus.FAILED;
-          default -> null; // REVERSED: refunds are a later ticket; the session keeps PAID
+        switch (terminal) {
+          case COMPLETED -> SessionStatus.PAID;
+          case FAILED, REJECTED -> SessionStatus.FAILED;
+          case REVERSED -> null; // refunds are a later ticket; the session keeps PAID
         };
     if (outcome == null) {
       return;

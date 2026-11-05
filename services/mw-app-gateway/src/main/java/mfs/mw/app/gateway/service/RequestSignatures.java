@@ -35,7 +35,7 @@ import mfs.mw.app.gateway.exception.MwException;
  * </pre>
  *
  * with ECDSA SHA-256; the signature is base64, ASN.1 DER or the 64-byte P1363 {@code r||s}. The
- * timestamp must be within {@code clockSkew} of the gateway's clock; the nonce is checked for reuse
+ * timestamp must be strictly less than {@code clockSkew} away from the gateway's clock; the nonce is checked for reuse
  * by the caller (the cache in Valkey), after the signature verified.
  */
 public class RequestSignatures {
@@ -86,7 +86,7 @@ public class RequestSignatures {
     } catch (NumberFormatException | NullPointerException e) {
       throw new MwException(ErrorCodes.AUTH_STALE_TIMESTAMP, "Request timestamp is not readable");
     }
-    if (Duration.between(at, now).abs().compareTo(clockSkew) > 0) {
+    if (Duration.between(at, now).abs().compareTo(clockSkew) >= 0) {
       throw new MwException(ErrorCodes.AUTH_STALE_TIMESTAMP, "Request timestamp is outside the allowed window");
     }
     if (!signatureHolds(key, r)) {

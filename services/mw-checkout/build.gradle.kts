@@ -40,6 +40,9 @@ dependencies {
     // Resilience4j for client/ calls (19.2); annotations need AspectJ.
     implementation(libs.resilience4j.spring.boot4)
     implementation(libs.spring.boot.starter.aspectj)
+    // Merchant IPN client (review A7): connects to the addresses IpnUrlPolicy checked (pinned DNS),
+    // keeping the merchant's name for Host, TLS SNI and hostname verification. Version from Boot's BOM.
+    implementation(libs.httpclient5)
     // Own schema, migrated by Flyway on start-up (16.4).
     implementation(libs.spring.boot.starter.jdbc)
     implementation(libs.spring.boot.starter.flyway)

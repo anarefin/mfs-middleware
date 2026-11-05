@@ -27,24 +27,37 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   (actuator) are open inside the app network. Keycloak is reached over `data` (MVP deviation of
   18.1), not `ops`.
 - Device binding (ticket 29, spec 9.1/18.6; `config/DeviceBindingConfig`, `security/DeviceBindingInterceptor`
-  + `@DeviceGate`, `service/DeviceBindingService`, `service/RequestSignatures`, `client/DeviceSessionStore`,
+  + `@DeviceGate`, `service/DeviceBindingService`, `service/RequestSignatures`, `repository/DeviceSessionStore`,
   table `app_device` V6): after the JWT, every `/app/**` handler needs `X-Device-Id` of a device ACTIVE for the
   token's wallet (`401 MW-AUTH-003`) and a live Valkey session `sess:{sub}:{deviceId}` (sliding idle timeout
   `mw.app-gateway.device-binding.idle-timeout` 5 min, per channel `idle-timeout-by-channel`; `401 MW-AUTH-007`).
-  `POST /app/v1/transactions` (`@DeviceGate(SIGNED)`) also needs `X-Timestamp` (epoch ms, ±`clock-skew` 5 min,
-  `MW-AUTH-005`), `X-Nonce` (once per device: Valkey `nonce:{deviceId}:{nonce}` SET NX, TTL 2x skew,
-  `MW-AUTH-006`) and `X-Signature` (ECDSA P-256 SHA-256, DER or P1363, over `METHOD\nPATH\nhex(sha256(body))\n
-  TIMESTAMP\nNONCE\nDEVICE-ID`; `MW-AUTH-004`). The body hashed is the received body (`filter/CachedBodyFilter`): exactly the bytes the
+  `POST /app/v1/transactions` (`@DeviceGate(SIGNED)`) also needs `X-Timestamp` (epoch ms, strictly less than
+  `clock-skew` 5 min either way, `MW-AUTH-005`), `X-Nonce` (once per device: Valkey `nonce:{deviceId}:{nonce}` SET NX,
+  TTL 2x skew + 30 s, above the 2x skew acceptance window; `MW-AUTH-006`) and `X-Signature` (ECDSA P-256 SHA-256, DER or P1363, over `METHOD\nPATH\nhex(sha256(body))\n
+  TIMESTAMP\nNONCE\nDEVICE-ID`; `MW-AUTH-004`). The body hashed is the received body (`filter/CachedBodyFilter`, at most 64 KiB read with
+  `readNBytes(limit+1)`, a larger one `413 MW-VAL-BODY_TOO_LARGE` as at the edge): exactly the bytes the
   schema check and the controller parse; no hash is taken from a header. That is why APISIX runs no
   request-validation on this route (it forwards a validated body re-encoded). Order:
-  device, timestamp, signature, nonce, session. `POST /app/v1/devices {publicKey}` binds (signed with that key,
+  device, timestamp, signature, nonce, session. `POST /app/v1/devices {publicKey, otp}` binds (signed with that key, OTP below,
   re-bind replaces the key) and opens a session; `POST /app/v1/sessions` (signed, empty body) opens a new one.
   `single-active-device` (true): binding replaces the wallet's other devices (REPLACED) and binding/opening
   ends their sessions. Valkey unreachable: `503 MW-SYS-012` (fail closed; not in health groups). Valkey
   password `spring.data.redis.password` synced into `secret/mw-app-gateway` by the init step. Tests not
   about it run with `device-binding.enabled=false` (test `config/application.yml`); `DeviceBindingIT` runs it
-  on real PostgreSQL + Valkey (`ValkeyInfrastructure`). Device registration is self-service with the token
-  (no OTP step yet: open point).
+  on real PostgreSQL + Valkey (`ValkeyInfrastructure`).
+- Binding OTP (review A5; `service/DeviceOtpService`, `repository/DeviceOtpRepository`, table `app_device_otp` V8,
+  `mapper/DeviceNotificationMapper`, `mw.app-gateway.device-binding.otp.*`): `POST /app/v1/devices/otp`
+  (`X-Device-Id`, unsigned, optional `{locale: bn|en}`) -> `202 {wallet (masked), otpExpiresAt, sendsLeft}`; a
+  6-digit OTP (`util/OtpCodes`, stored only as SHA-256 of `wallet:device:otp`) goes by SMS to the token's wallet:
+  `mw.notify.request.v1` template `DEVICE_BIND_OTP`, priority OTP, published straight to Kafka (never through the
+  outbox, so the code is never at rest in clear; Kafka down `503 MW-SYS-010`). A new OTP replaces the wallet's
+  previous one. `POST /app/v1/devices` then needs `{publicKey, otp}`; after the signature and nonce each guess
+  reserves one of `max-attempts` (3) checks with a conditional UPDATE before it is compared (as mw-checkout's
+  ticket 31 fix), the third wrong one voids it; a match is spent (conditional UPDATE, once, only for the device it
+  was asked for, before `ttl` 2 min) in the binding's transaction, which also writes the "new device bound" SMS
+  (`DEVICE_BOUND`, TXN priority) to the outbox. Errors: wrong `401 MW-AUTH-010`, none for this device / expired /
+  spent `MW-AUTH-011`, checks used up `MW-AUTH-012`, more than `max-sends` (5, dev compose 20) OTPs per wallet in
+  `send-window` (15 min) `429 MW-VAL-022`. Templates live in mw-notify (`V9`).
 - Validation: submit body schema first (`service/SubmitBodySchema` via `filter/SubmitSchemaInterceptor`,
   `config/SubmitSchemaConfig`; after the JWT, before the device gate; ticket 29, formerly APISIX
   request-validation): `derived-schemas/app-v1-transaction-request.json`, derived from the contract's
@@ -147,6 +160,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 - `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (client; own types `dto/Biller`, `dto/Bill`).
 - `events/mw-orchestrator/mw.txn.request.v1` (produced; own type `dto/TxnRequest`, validated
   against the schema in `RequestMapperTest` and `SyncReplyIT`).
+- `events/mw-notify/mw.notify.request.v1` (produced: the binding OTP and the new device SMS; own type
+  `dto/NotificationRequest`, validated against the schema in `DeviceNotificationMapperTest`).
 - `events/mw-orchestrator/mw.txn.status.v1` (consumed; own type `dto/StatusMessage`, unknown
   fields ignored) and the orchestrator's `mw-reply-to` / duplicate-answer conventions.
 

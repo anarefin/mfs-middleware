@@ -84,7 +84,8 @@ Only APISIX is published, so every call goes through it:
   list 1 gp 2 robi 3 banglalink 4 teletalk), 4 Pay Bill (billers sorted by code, 1 DESCO; the
   amount due is fetched). "the USSD session is still open on a screen ending with "..."".
 - Device binding (`features/device-binding.feature`, `@device`, ticket 29): `support/Devices` gives
-  each user one EC P-256 device for the run, bound on first use (`POST /app/v1/devices`, signed),
+  each user one EC P-256 device for the run, bound on first use (`POST /app/v1/devices`, signed, with the binding OTP: `POST /app/v1/devices/otp`, then the
+  code read from the English `DEVICE_BIND_OTP` SMS at the SMSC simulator for the token's `msisdn`),
   its session reopened after 4 idle minutes; `AppApi` sends `X-Device-Id` on every call and signs
   every submit (`AppApi.prepare` / `send`). Steps "<user> replays the last signed request" (same
   bytes, nonce, signature: 401 `MW-AUTH-006`) and "... with the body changed after signing" (401

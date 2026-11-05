@@ -5,28 +5,35 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.regex.Pattern;
-import mfs.mw.app.gateway.client.DeviceSessionStore;
+import mfs.mw.app.gateway.repository.DeviceSessionStore;
 import mfs.mw.app.gateway.config.DeviceBindingProperties;
 import mfs.mw.app.gateway.dto.AppUser;
+import mfs.mw.app.gateway.dto.DeviceOtpSent;
 import mfs.mw.app.gateway.dto.DeviceSession;
+import mfs.mw.app.gateway.dto.NotificationRequest;
 import mfs.mw.app.gateway.dto.SignedRequest;
 import mfs.mw.app.gateway.entity.AppDevice;
 import mfs.mw.app.gateway.exception.ErrorCodes;
 import mfs.mw.app.gateway.exception.MwException;
+import mfs.mw.app.gateway.mapper.DeviceNotificationMapper;
+import mfs.mw.app.gateway.messaging.EventMetadata;
+import mfs.mw.app.gateway.messaging.OutboxWriter;
 import mfs.mw.app.gateway.repository.AppDeviceRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Device binding, signed requests and sessions (spec 9.1, 18.6, ticket 29).
  *
  * <ul>
  *   <li>Bind ({@code POST /app/v1/devices}): the request is signed with the key being registered
- *       (proof of possession); the device becomes ACTIVE for the token's wallet and a session is
- *       opened. With a single active device per wallet, the wallet's other devices are REPLACED
- *       and their sessions ended.
+ *       (proof of possession) and carries the OTP sent by SMS to the token's wallet for this device
+ *       ({@link DeviceOtpService}, review A5); the device becomes ACTIVE for the token's wallet and a
+ *       session is opened. With a single active device per wallet, the wallet's other devices are
+ *       REPLACED and their sessions ended. The OTP is spent and a "new device bound" SMS queued
+ *       (outbox, mw-notify) in the binding's transaction.
  *   <li>Signed request (submit, session open): device bound and active (MW-AUTH-003), timestamp
  *       within the skew (MW-AUTH-005), signature by the bound key (MW-AUTH-004), nonce never seen
  *       for this device (MW-AUTH-006).
@@ -45,26 +52,59 @@ public class DeviceBindingService {
   private final DeviceSessionStore sessions;
   private final DeviceBindingProperties props;
   private final RequestSignatures signatures;
+  private final DeviceOtpService otps;
+  private final DeviceNotificationMapper notifications;
+  private final OutboxWriter outbox;
+  private final TransactionTemplate tx;
   private final Clock clock;
 
   public DeviceBindingService(
-      AppDeviceRepository devices, DeviceSessionStore sessions, DeviceBindingProperties props, Clock clock) {
+      AppDeviceRepository devices,
+      DeviceSessionStore sessions,
+      DeviceBindingProperties props,
+      DeviceOtpService otps,
+      DeviceNotificationMapper notifications,
+      OutboxWriter outbox,
+      TransactionTemplate tx,
+      Clock clock) {
     this.devices = devices;
     this.sessions = sessions;
     this.props = props;
     this.signatures = new RequestSignatures(props.clockSkew());
+    this.otps = otps;
+    this.notifications = notifications;
+    this.outbox = outbox;
+    this.tx = tx;
     this.clock = clock;
   }
 
-  @Transactional
-  public DeviceSession bind(String subject, AppUser user, String publicKey, SignedRequest req) {
+  /** A binding OTP for the device in {@code X-Device-Id}, by SMS to the token's wallet. */
+  public DeviceOtpSent sendOtp(AppUser user, String deviceId, String locale) {
+    return otps.send(user.msisdn(), deviceId(deviceId), locale);
+  }
+
+  /**
+   * Signature and nonce first, then the OTP (each check reserved atomically, committed whatever
+   * the outcome); only a matching OTP opens the binding's transaction, which spends it.
+   */
+  public DeviceSession bind(String subject, AppUser user, String publicKey, String otp, SignedRequest req) {
     String deviceId = deviceId(req.deviceId());
     PublicKey key = RequestSignatures.parsePublicKey(publicKey);
     verify(key, req);
+    DeviceOtpService.Checked checked = otps.check(user.msisdn(), deviceId, otp);
     Instant now = clock.instant();
-    devices.bind(user.msisdn(), deviceId, subject, publicKey, now);
+    tx.executeWithoutResult(status -> {
+      otps.consume(user.msisdn(), deviceId, checked);
+      devices.bind(user.msisdn(), deviceId, subject, publicKey, now);
+      if (props.singleActiveDevice()) {
+        devices.replaceOthers(user.msisdn(), deviceId, now);
+      }
+      String correlationId = DeviceOtpService.correlationId();
+      NotificationRequest notice = notifications.bound(user.msisdn(), checked.locale(), correlationId);
+      outbox.append(props.notifyTopic(), user.msisdn(),
+          new EventMetadata(correlationId, notice.messageId(), notice.messageId(), 1), notice);
+    });
     if (props.singleActiveDevice()) {
-      devices.replaceOthers(user.msisdn(), deviceId, now);
       endOtherSessions(user, deviceId);
     }
     Duration idle = props.idleTimeout(user.channel());
