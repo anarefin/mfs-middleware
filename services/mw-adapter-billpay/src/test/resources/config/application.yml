@@ -1,0 +1,35 @@
+# Test-only overrides, merged over src/main/resources/application.yml.
+spring:
+  profiles:
+    # The tests run on the dev seed partners (application-dev.yml); prod config has none.
+    active: dev
+mw:
+  billpay:
+    request-consumer:
+      # Off by default in tests for the same reason as the relay: a cached context would compete
+      # for the request topic. BillpayRequestRouteIT switches it on.
+      enabled: false
+  # Obviously fake test secret for the billagg hmac-sha256 scheme (the real one comes from OpenBao).
+  partner-secrets:
+    billagg:
+      hmac-secret: fake-billagg-hmac-secret-for-tests
+  partners:
+    config-consumer:
+      # Off in tests: every context would replay mw.config.changed.v1 in a group of its own.
+      # PartnerConfigReloadIT switches it on.
+      enabled: false
+    security:
+      # WireMock runs on localhost over http.
+      allowed-hosts:
+        billagg: mw-simulators,localhost
+        gp: localhost
+      insecure-http-hosts: mw-simulators,localhost
+  outbox:
+    relay:
+      # Off by default in tests: Spring caches test contexts, and a relay left running in one
+      # would publish rows another test is checking. Tests that need it switch it on and close
+      # their context afterwards (@DirtiesContext).
+      enabled: false
+  retention:
+    # The purge job's schedule is off in tests; OutboxInboxPurgeConformanceIT calls it directly.
+    cron: "-"

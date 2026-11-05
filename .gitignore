@@ -8,3 +8,6 @@ node_modules/
 
 # generated dev credentials (scripts/gen-dev-env.sh)
 /deploy/compose/platform/.env
+
+# Claude Code agent worktrees (local only)
+.claude/worktrees/

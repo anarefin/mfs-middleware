@@ -112,7 +112,19 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
       # postgres/initdb/10-keycloak.sh creates the keycloak role and database with it
       KC_DB_PASSWORD: ${KC_DB_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
-    command: ["postgres", "-c", "synchronous_commit=on"]
+    # One shared dev instance serves Keycloak and every service's pool. max_connections sizing
+    # (sum of the worst case, one replica each; keep it below max_connections minus the 3
+    # superuser_reserved_connections when a pool or a replica is added):
+    #   Hikari spring.datasource.hikari.maximum-pool-size, set in each service's application.yml:
+    #     10 each: mw-orchestrator, mw-app-gateway, mw-checkout                          =  30
+    #      5 each: adapter-telco/-billpay/-bank, notify, core-mock, audit-dw, portal-api,
+    #              ussd, simulators                                                     =  45
+    #   audit-dw extra pools: audit-search 4, chain-verify reader 1                      =   5
+    #   Flyway as a separate owner role at start (audit-dw), short-lived                 =   1
+    #   Keycloak (KC_DB_POOL_MAX_SIZE in env/keycloak.env)                               =  20
+    #   total ~100, so 300 leaves room for psql sessions, init jobs and replicas of a service.
+    # Production sizes max_connections the same way per instance (pool x replicas, summed).
+    command: ["postgres", "-c", "synchronous_commit=on", "-c", "max_connections=300"]
     volumes:
       - postgres-data:/var/lib/postgresql
       - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
@@ -170,6 +182,9 @@ services:
       KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
       KC_OPS_TEST_PASSWORD: ${KC_OPS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
       KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      # realm services: internal API clients (/internal/v1/** of mw-orchestrator, mw-audit-dw)
+      KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
       JAVA_OPTS_KC_HEAP: -Xms256m -Xmx768m
     volumes:
       - ./keycloak/realms:/opt/keycloak/data/import:ro
@@ -273,6 +288,8 @@ services:
     environment:
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?run scripts/gen-dev-env.sh (make up does)}
       ETCD_APISIX_PASSWORD: ${ETCD_APISIX_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      # limit-count counters in Valkey (8.3); routes reference it as $env://VALKEY_PASSWORD
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
       MW_OPS_SUBNET: ${MW_OPS_SUBNET:-172.31.250.0/24}
     ports:
       - target: 9443
@@ -303,6 +320,25 @@ services:
     environment:
       APISIX_ADMIN: apisix:9180
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?run scripts/gen-dev-env.sh (make up does)}
+      # Test-only objects (deploy/apisix/routes-test, consumers-test): off unless `make e2e`
+      # re-runs this one-shot with MW_E2E_ROUTES=1; off also removes them.
+      MW_E2E_ROUTES: ${MW_E2E_ROUTES:-0}
+      MW_E2E_API_KEY: ${MW_E2E_API_KEY:?run scripts/gen-dev-env.sh (make up does)}
+      # hmac-auth secret of the test-only checkout merchant consumer merchant_demo (ticket 31).
+      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      # MNO USSD gateways (consumers ussd_<mno>, routes ussd-http-<mno>): basic-auth passwords from
+      # the generated .env (the simulator gets the same values via OpenBao), and each MNO's
+      # source allow-list (comma-separated CIDRs, required: no fallback, so a missing list stops the
+      # stack instead of opening the route). Dev values: written by gen-dev-env.sh; production lists
+      # each MNO's gateway addresses.
+      USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_TELETALK_GATEWAY_SECRET: ${USSD_TELETALK_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_GP_ALLOWED_CIDRS: ${USSD_GP_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_ROBI_ALLOWED_CIDRS: ${USSD_ROBI_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_BL_ALLOWED_CIDRS: ${USSD_BL_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_TELETALK_ALLOWED_CIDRS: ${USSD_TELETALK_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh (make up does)}
     volumes:
       - ../../apisix:/deploy/apisix:ro
       - apisix-tls:/usr/local/apisix/conf/cert

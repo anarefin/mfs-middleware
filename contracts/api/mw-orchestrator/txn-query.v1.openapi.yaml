@@ -1,0 +1,248 @@
+openapi: 3.1.0
+info:
+  title: upay transaction query internal API (mw-orchestrator)
+  version: 1.1.0
+  description: |
+    Internal, read-only API of mw-orchestrator (ticket 35, spec 15.2, 16.2): transaction search
+    and the saga timeline. Clients: mw-admin-api (operators) and mw-portal-api (an org sees only
+    its own transactions: it always passes `orgId`), over the `app` zone network
+    (`http://mw-orchestrator:8080`). Not routed by APISIX; no edge route. Nobody reads the `txn`
+    schema directly.
+    Customer data is masked in every response (spec 18.3): party ids by party type (MSISDN
+    `0171****789`, accounts last 4), names to the initial; no PIN, no idempotency key. The MSISDN
+    filter is matched through the keyed hash `initiator_hash` (HMAC-SHA256 over `<type>:<id>`, key
+    in OpenBao), so the raw number is never indexed and an org id never matches an MSISDN. Every
+    error is the 5.3 envelope.
+    Org scope: with `orgId` a transaction belongs to the org when the org initiated it (initiator
+    `{ORG, orgId}`) or when it pays a biller or merchant wallet the org collects for (orchestrator
+    config `mw.orchestrator.search.org-payees`); each such transaction carries `role` INITIATOR or
+    PAYEE.
+servers:
+  - url: http://mw-orchestrator:8080
+security:
+  - internalClientCredentials: []
+paths:
+  /internal/v1/transactions:
+    get:
+      operationId: searchTransactions
+      summary: Search transactions, newest first
+      description: >-
+        Every filter is optional; filters are ANDed. `msisdn` matches an initiator of type MSISDN
+        or WALLET (MSISDN in any accepted form: 01..., 880..., +880..., with spaces or dashes).
+        `orgId` matches the transactions the org initiated (initiator type ORG) or is the payee
+        of, each tagged with `role`. Errors: 400 MW-VAL-001 (bad filter, limit outside 1..200,
+        from not before to).
+      parameters:
+        - { name: txnId, in: query, schema: { type: string, format: uuid } }
+        - { name: msisdn, in: query, schema: { type: string, pattern: "^\\+?[0-9 -]{8,20}$" } }
+        - { name: orgId, in: query, schema: { type: string, minLength: 1, maxLength: 64 } }
+        - { name: partnerRef, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/Status" } }
+        - { name: txnType, in: query, schema: { type: string, pattern: "^[A-Z0-9_]{1,32}$" } }
+        - name: parentTxnId
+          in: query
+          description: Children of one org bulk batch (`attributes.parentTxnId`, ticket 34)
+          schema: { type: string, minLength: 1, maxLength: 64 }
+        - name: from
+          in: query
+          description: Inclusive lower bound of createdAt
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          description: Exclusive upper bound of createdAt
+          schema: { type: string, format: date-time }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 100000, default: 0 } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: One page of transactions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TxnPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /internal/v1/transactions/{txnId}:
+    get:
+      operationId: getTransaction
+      summary: One transaction with its saga timeline
+      description: >-
+        The timeline lists every state change (`kind` STATE) and every core command with its
+        result (`kind` CORE: ValidateTransaction, PostTransfer, HoldFunds, CommitHold, ReleaseHold,
+        CreditWallet, ReverseTransaction, QueryTransaction) in the order they happened;
+        `partnerCalls` lists every partner call (PAY, STATUS_QUERY, CALLBACK) with its answer.
+        With `orgId`, a transaction that org neither initiated nor is the payee of is 404, exactly
+        like one that does not exist; otherwise the transaction carries the org's `role`. Errors:
+        400 MW-VAL-001 (bad txnId); 404 MW-VAL-003.
+      parameters:
+        - { name: txnId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: orgId, in: query, schema: { type: string, minLength: 1, maxLength: 64 } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The transaction and its timeline
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TxnDetail" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    internalClientCredentials:
+      type: oauth2
+      description: >-
+        Keycloak realm `services` client-credentials JWT (spec 18.2, M3 gate decision). The
+        service checks signature, expiry, exact issuer and that `aud` contains `mw-orchestrator`;
+        the caller (`azp`) must be mw-portal-api (which must send `orgId` on every call) or mw-admin-api. No or bad token: 401 MW-AUTH-001;
+        another client or mw-portal-api without `orgId`: 403 MW-AUTH-002.
+      flows:
+        clientCredentials:
+          tokenUrl: http://keycloak:8080/realms/services/protocol/openid-connect/token
+          scopes: {}
+  responses:
+    Error:
+      description: Error envelope (spec 5.3)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    Status:
+      type: string
+      enum:
+        [RECEIVED, VALIDATING, HOLDING, POSTING, PARTNER_PENDING, COMMITTING, RELEASING, UNKNOWN,
+         COMPLETED, REJECTED, FAILED, REVERSING, REVERSED, MANUAL_REVIEW]
+    Amount:
+      type: object
+      required: [valueMinor, currency]
+      properties:
+        valueMinor: { type: integer, minimum: 0, description: Poisha }
+        currency: { type: string, const: BDT }
+    Party:
+      type: object
+      description: A party with its id masked by type and its name reduced to the initial.
+      properties:
+        type: { type: string }
+        id: { type: string }
+        name: { type: string }
+        walletType: { type: string }
+    Txn:
+      type: object
+      required: [txnId, txnType, channel, status, createdAt, updatedAt, amount]
+      properties:
+        role:
+          type: string
+          enum: [INITIATOR, PAYEE]
+          description: >-
+            Only with `orgId`: INITIATOR when the org initiated the transaction, PAYEE when it pays
+            a biller or merchant wallet the org collects for (INITIATOR wins when both hold).
+        txnId: { type: string, format: uuid }
+        txnType: { type: string }
+        channel: { type: string }
+        status: { $ref: "#/components/schemas/Status" }
+        previousStatus: { $ref: "#/components/schemas/Status" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        correlationId: { type: string }
+        amount: { $ref: "#/components/schemas/Amount" }
+        fee: { $ref: "#/components/schemas/Amount" }
+        initiator: { $ref: "#/components/schemas/Party" }
+        debitParty: { $ref: "#/components/schemas/Party" }
+        creditParty: { $ref: "#/components/schemas/Party" }
+        partner:
+          type: object
+          properties:
+            partnerId: { type: string }
+            productCode: { type: string }
+            billerCode: { type: string }
+        partnerRef: { type: string }
+        coreRef: { type: string }
+        originalTxnId: { type: string }
+        reversalTxnId: { type: string }
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            messageBn: { type: string }
+            retryable: { type: boolean }
+        attributes:
+          type: object
+          description: Only the bulk links (parentTxnId, batchId, lineNo) and the SP's row reference.
+          additionalProperties: { type: string }
+    TxnPage:
+      type: object
+      required: [items, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Txn" }
+        limit: { type: integer }
+        offset: { type: integer }
+    TxnDetail:
+      type: object
+      required: [transaction, timeline, partnerCalls]
+      properties:
+        transaction: { $ref: "#/components/schemas/Txn" }
+        timeline:
+          type: array
+          items: { $ref: "#/components/schemas/TimelineEntry" }
+        partnerCalls:
+          type: array
+          items:
+            type: object
+            required: [requestId, operation, family, sentAt]
+            properties:
+              requestId: { type: string }
+              operation: { type: string, enum: [PAY, STATUS_QUERY, CALLBACK] }
+              family: { type: string }
+              partnerId: { type: string }
+              sentAt: { type: string, format: date-time }
+              outcome: { type: string, description: Absent until the partner answered }
+              partnerRef: { type: string }
+              errorCode: { type: string }
+              answeredAt: { type: string, format: date-time }
+    TimelineEntry:
+      type: object
+      description: >-
+        One saga timeline entry, ordered as it happened. STATE: a state change (`from`, `to`,
+        `trigger`, `at`). CORE: a core command (`command`, `commandId`, first sent `at`, `sends` in
+        all, resends keep the commandId) and, once the core answered, its `result` (the core event
+        type, e.g. FundsHeld, HoldRejected, HoldCommitted), `outcome`, `reasonCode` and `resultAt`.
+      required: [kind, at]
+      properties:
+        kind: { type: string, enum: [STATE, CORE] }
+        from: { $ref: "#/components/schemas/Status" }
+        to: { $ref: "#/components/schemas/Status" }
+        trigger: { type: string, description: The saga event that caused the change }
+        command:
+          type: string
+          enum:
+            [ValidateTransaction, PostTransfer, HoldFunds, CommitHold, ReleaseHold, CreditWallet,
+             ReverseTransaction, QueryTransaction]
+        commandId: { type: string }
+        sends: { type: integer, minimum: 1 }
+        result: { type: string, description: Core event type; absent until the core answered }
+        outcome: { type: string, enum: [SUCCESS, FAILURE] }
+        reasonCode: { type: string }
+        at: { type: string, format: date-time }
+        resultAt: { type: string, format: date-time }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

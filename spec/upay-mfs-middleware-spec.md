@@ -551,7 +551,7 @@ Kafka carries every financial step between services and to the core, with effect
 | `mw.compliance.instruction.v1` | compliance (AML block/hold) | orchestrator, core | subjectId | 6 | 30 d |
 | `mw.recon.result.v1` | recon | admin, audit-dw | partnerId | 6 | 30 d |
 | `dw.txn.event.v1` | audit-dw | Data Warehouse | txnId | 24 | 7 d |
-| `<topic>.retry.<n>` / `<topic>.dlq` | Camel error handler | retry consumer / ops | same | = source | 14 d |
+| `<topic>.<group>.retry.<n>` / `<topic>.<group>.dlq` (one set per consuming service; `<group>` = its consumer group, the service name) | Camel error handler | that service's retry consumer / ops | same | = source | 14 d |
 
 The three partner topics share one record shape per topic (`contracts/events/mw-orchestrator/mw.partner.{request,reply,inbound}.v1`): an envelope with a `family` field (`telco`, `billpay`, `bank`, `interop`, `compliance`) and a `payload`. On `mw.partner.reply.v1` and `mw.partner.inbound.v1`, where all adapters share one topic, `family` tells the orchestrator which adapter family sent the record.
 

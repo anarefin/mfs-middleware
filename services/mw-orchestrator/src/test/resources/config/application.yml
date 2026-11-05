@@ -1,0 +1,39 @@
+# Test-only overrides, merged over src/main/resources/application.yml.
+mw:
+  internal-auth:
+    # Test-only issuer of security/InternalTokens (TestInfrastructure registers its JWKS).
+    issuer: http://keycloak.test/realms/services
+  orchestrator:
+    # Off by default in tests: a consumer or sweeper left running in a cached context would take
+    # records and timers that another test is checking. Tests that need them switch them on.
+    consumers:
+      enabled: false
+    timer:
+      enabled: false
+    # No Valkey in the test infrastructure: the primary key alone (IdempotencyLockIntakeIT plugs in
+    # an in-memory lock).
+    idempotency-lock:
+      enabled: false
+    # Obviously fake search hash key (ticket 35); the real one comes from OpenBao.
+    search:
+      hash-key: test-only-search-hash-key-not-a-secret-0001
+      # ORG002 collects for biller DESCO and merchant wallet 01911000001 (payee scope, A3).
+      org-payees:
+        ORG002: ["BILLER:DESCO", "MERCHANT:01911000001"]
+    # Partner "tsqfast" has a status-inquiry schedule shortened to seconds (InquirySagaIT reaches
+    # MANUAL_REVIEW with it); every other partner keeps the spec 7.4 default.
+    inquiry:
+      partners:
+        tsqfast:
+          schedule: 1s,2s
+          cut-off: 5s
+  outbox:
+    relay:
+      # Off by default in tests: Spring caches test contexts, and a relay left running in one
+      # would publish rows another test is checking. Tests that need it switch it on and close
+      # their context afterwards (@DirtiesContext).
+      enabled: false
+  retention:
+    # The purge job's schedule is off in tests; OutboxInboxPurgeConformanceIT calls it directly.
+    cron: "-"
+

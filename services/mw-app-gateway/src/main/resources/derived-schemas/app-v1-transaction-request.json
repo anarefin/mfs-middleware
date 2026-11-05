@@ -1,0 +1,167 @@
+{
+  "x-mw-derived-from": "api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/TransactionRequest",
+  "type": "object",
+  "required": [
+    "txnType",
+    "amount",
+    "encryptedPin"
+  ],
+  "properties": {
+    "txnType": {
+      "type": "string",
+      "enum": [
+        "P2P",
+        "CASH_IN",
+        "CASH_OUT",
+        "MERCHANT_PAY",
+        "TOPUP",
+        "BILL_PAY",
+        "ADD_MONEY_BANK"
+      ]
+    },
+    "creditParty": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "WALLET",
+            "MSISDN",
+            "BILLER_ACCOUNT"
+          ]
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    "debitParty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "BANK_ACCOUNT"
+          ]
+        },
+        "id": {
+          "type": "string"
+        }
+      }
+    },
+    "partner": {
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "partnerId",
+            "productCode"
+          ]
+        },
+        {
+          "required": [
+            "billerCode"
+          ]
+        },
+        {
+          "required": [
+            "partnerId"
+          ]
+        }
+      ],
+      "properties": {
+        "partnerId": {
+          "type": "string",
+          "enum": [
+            "gp",
+            "robi",
+            "banglalink",
+            "teletalk",
+            "c2wbank"
+          ]
+        },
+        "productCode": {
+          "type": "string",
+          "enum": [
+            "PREPAID",
+            "POSTPAID"
+          ]
+        },
+        "billerCode": {
+          "type": "string"
+        }
+      }
+    },
+    "amount": {
+      "type": "object",
+      "required": [
+        "valueMinor",
+        "currency"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "valueMinor": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "currency": {
+          "type": "string",
+          "const": "BDT"
+        }
+      }
+    },
+    "encryptedPin": {
+      "type": "object",
+      "required": [
+        "keyId",
+        "ciphertext"
+      ],
+      "properties": {
+        "keyId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "ciphertext": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      }
+    },
+    "locale": {
+      "type": "string",
+      "enum": [
+        "bn",
+        "en"
+      ]
+    },
+    "attributes": {
+      "type": "object",
+      "maxProperties": 20,
+      "additionalProperties": false,
+      "properties": {
+        "reference": {
+          "type": "string",
+          "maxLength": 256
+        }
+      }
+    }
+  }
+}

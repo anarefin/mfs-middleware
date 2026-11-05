@@ -1,0 +1,109 @@
+# This service only (spec 20.2). Included by deploy/compose/<env>/compose.yml, or run on
+# its own with `make up M=mw-simulators` once the platform project is up.
+#
+# The zone network is named after the platform project (default `mw`, override with
+# COMPOSE_PROJECT_NAME) so the same definition works both when included in the
+# environment project and when started alone. Join only the zones this service needs
+# (18.1): `app` for Kafka, Valkey, OpenBao and other services, `data` for PostgreSQL.
+# (The platform puts OpenBao on `app` and `ops`; services reach it over `app`.)
+networks:
+  app:
+    name: ${COMPOSE_PROJECT_NAME:-mw}_app
+  data:
+    name: ${COMPOSE_PROJECT_NAME:-mw}_data
+
+volumes:
+  # Same volume as the platform's OpenBao data (dev root token for the init step, read-only).
+  openbao-data:
+    name: ${COMPOSE_PROJECT_NAME:-mw}_openbao-data
+  # role-id / secret-id written by the init step, read by the service (Spring configtree).
+  simulators-approle:
+
+services:
+  # Idempotent one-shot (init/init.sh): database role + own schema, the database password in
+  # OpenBao (secret/mw-simulators) and the AppRole the service logs in with. Dev/MVP only. Needs
+  # POSTGRES_USER/PASSWORD/DB: `make up` gets them from deploy/compose/platform/.env through the
+  # include's env_file; for `make up M=mw-simulators` export POSTGRES_PASSWORD first.
+  mw-simulators-init:
+    image: ${MW_SIMULATORS_INIT_IMAGE:-mw-simulators-init:dev}
+    build: ./init
+    restart: "no"
+    labels: { mw.oneshot: "true" } # one-shot: scripts/up.sh does not wait for its health
+    networks: [app, data]
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-mw_admin}
+      PGDATABASE: ${POSTGRES_DB:-mw}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      # Dev billagg hmac-sha256 secret (ticket 22), written to OpenBao as sim.callback-secrets.billagg.
+      BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      # Dev C2W bank hmac-sha256 secret (ticket 23), written as sim.callback-secrets.c2wbank.
+      C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      # Dev MNO USSD gateway basic-auth passwords at APISIX (route ussd-http-<mno>), written as
+      # sim.ussd-gateway.credentials.<mno>.
+      USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_TELETALK_GATEWAY_SECRET: ${USSD_TELETALK_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      BAO_ADDR: ${VAULT_ADDR:-http://openbao:8200}
+      INIT_FILE: /openbao/file/dev-init.json
+      OUT_DIR: /out
+    volumes:
+      - openbao-data:/openbao/file:ro
+      - simulators-approle:/out
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128M }
+
+  mw-simulators:
+    image: ${MW_SIMULATORS_IMAGE:-mw-simulators:dev}
+    build: .
+    restart: unless-stopped
+    networks: [app, data]
+    depends_on:
+      mw-simulators-init: { condition: service_completed_successfully }
+    volumes:
+      - simulators-approle:/run/mw/approle:ro
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      MW_ENV: ${MW_ENV:-local}
+      # Secrets come from OpenBao via Spring Cloud Vault (18.4); no secret values here.
+      # On: the DB password comes from secret/mw-simulators, the AppRole credentials from the
+      # configtree at /run/mw/approle (application.yml).
+      VAULT_ENABLED: ${VAULT_ENABLED:-true}
+      VAULT_ADDR: ${VAULT_ADDR:-http://openbao:8200}
+      # Own schema in the shared PostgreSQL (16.2); credentials from OpenBao, not here.
+      DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/mw}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+    healthcheck:
+      # Readiness (20.1); the image has bash but no curl or wget.
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/8080 &&
+          printf 'GET /actuator/health/readiness HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"status":"UP"' <&3
+      interval: 10s
+      timeout: 3s
+      start_period: 30s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

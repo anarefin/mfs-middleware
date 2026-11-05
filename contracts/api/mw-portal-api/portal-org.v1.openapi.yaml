@@ -1,0 +1,446 @@
+openapi: 3.1.0
+info:
+  title: upay org portal API (mw-portal-api)
+  version: 1.0.0
+  description: |
+    Org portal API v1 (spec 8.2, 9.4), served by mw-portal-api behind APISIX route
+    `/portal/org/v1/*`. Bearer JWT from Keycloak realm `portals`; the org is the token's `orgId`
+    claim, the user's realm roles decide what they may do: `org-maker` uploads bulk disbursement
+    files, `org-checker` approves or rejects them (maker-checker: never the batch's own maker,
+    even with both roles). A user only ever sees their own org's batches (another org's is 404).
+    Every error is the 5.3 envelope. The APISIX edge answers some errors itself, also as the
+    envelope: 401 MW-AUTH-001, 413 MW-VAL-BODY_TOO_LARGE (body over 3 MiB), 429
+    MW-SYS-RATE_LIMITED (per-user quota, retryable).
+servers:
+  - url: https://localhost
+security:
+  - bearer: []
+paths:
+  /portal/org/v1/bulk/batches:
+    post:
+      operationId: uploadBulkBatch
+      summary: Upload a bulk disbursement file (maker)
+      description: >-
+        CSV, UTF-8 (a byte order mark is ignored), LF or CRLF, header `msisdn,amount,reference`
+        (any case), one payee per line, blank lines skipped, a field may be wrapped in double
+        quotes. `msisdn` 01XNNNNNNNN, 8801XNNNNNNNN or +8801XNNNNNNNN; `amount` in taka, above 0,
+        at most 2 decimals (e.g. `100.50`); `reference` 1 to 32 of `A-Za-z0-9._-`, unique within
+        the file. At most 10,000 data rows and 2 MiB: larger is 400 MW-VAL-030. The file is all
+        or nothing: any bad row is 400 MW-VAL-031 with one `details[]` entry per problem (`field`
+        `line <n>: <column>` or `line <n>`, the header being line 1; the first 100 listed, the
+        message counts them all; values are never echoed) and nothing is stored. A valid file is
+        stored as one batch awaiting approval. Needs role `org-maker`.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema: { type: string }
+            example: |
+              msisdn,amount,reference
+              01711000001,1500.00,SAL-NOV-001
+              01811000002,1250.50,SAL-NOV-002
+      responses:
+        "201":
+          description: Stored, status PENDING_APPROVAL
+          headers:
+            Location:
+              schema: { type: string }
+              description: /portal/org/v1/bulk/batches/{batchId}
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+    get:
+      operationId: listBulkBatches
+      summary: The org's batches, newest first (at most 50)
+      description: Needs role `org-maker` or `org-checker`.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/BatchStatus" }
+      responses:
+        "200":
+          description: The batches
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [batches]
+                properties:
+                  batches:
+                    type: array
+                    items: { $ref: "#/components/schemas/Batch" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /portal/org/v1/bulk/batches/{batchId}:
+    get:
+      operationId: getBulkBatch
+      summary: One batch of the org
+      description: Needs role `org-maker` or `org-checker`; another org's batch is 404 MW-VAL-003.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/BatchId"
+      responses:
+        "200":
+          description: The batch
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /portal/org/v1/bulk/batches/{batchId}/approve:
+    post:
+      operationId: approveBulkBatch
+      summary: Approve a batch awaiting approval (checker)
+      description: >-
+        Needs role `org-checker` (else 403 MW-AUTH-002) and a user other than the batch's maker
+        (else 403 MW-AUTH-030). A batch already approved or rejected is 409 MW-VAL-032; of
+        concurrent decisions exactly one wins.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/BatchId"
+      responses:
+        "200":
+          description: Approved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /portal/org/v1/bulk/batches/{batchId}/pause:
+    post:
+      operationId: pauseBulkBatch
+      summary: Stop sending further rows of a running batch (checker)
+      description: >-
+        An approved batch is paid out row by row: one child BULK_DISBURSE transaction per row,
+        streamed to the core at a configured rate, each with an id derived from the batch and the
+        row, so a row is never paid twice. Pause stops sending further rows; rows already sent
+        still settle. Needs role `org-checker`. A batch that is not APPROVED or EXECUTING is 409
+        MW-VAL-033.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/BatchId"
+      responses:
+        "200":
+          description: Paused
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /portal/org/v1/bulk/batches/{batchId}/resume:
+    post:
+      operationId: resumeBulkBatch
+      summary: Continue a paused batch (checker)
+      description: Needs role `org-checker`. A batch that is not PAUSED is 409 MW-VAL-033.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/BatchId"
+      responses:
+        "200":
+          description: Executing again
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /portal/org/v1/bulk/batches/{batchId}/result:
+    get:
+      operationId: getBulkBatchResult
+      summary: The result file of an approved batch
+      description: >-
+        CSV (UTF-8, LF), header `line,msisdn,amount,reference,status,txnId,errorCode,batchStatus`,
+        one line per row in file order (`line` as in the upload, header = line 1). `msisdn` is
+        masked (`0171****789`; match rows by `reference`), `amount` in taka as uploaded. `status`
+        is the row's state: PENDING (not sent yet), SUBMITTED (running), COMPLETED (paid), FAILED,
+        REJECTED, REVERSED (not paid; `errorCode` says why), MANUAL_REVIEW (outcome being checked
+        by operations) or UNRESOLVED (no outcome known long after it was sent; operations
+        reconcile it). `batchStatus` is the batch's status on every line: COMPLETED_WITH_EXCEPTIONS
+        when any row is MANUAL_REVIEW or UNRESOLVED. Final once the batch is COMPLETED or
+        COMPLETED_WITH_EXCEPTIONS; before that it shows the current state. Needs role `org-maker`
+        or `org-checker`; a batch that was never approved (also REJECTED, EXPIRED) is 409
+        MW-VAL-035.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/BatchId"
+      responses:
+        "200":
+          description: The result file
+          headers:
+            Content-Disposition:
+              schema: { type: string }
+              description: attachment; filename="bulk-{batchId}-result.csv"
+          content:
+            text/csv:
+              schema: { type: string }
+              example: |
+                line,msisdn,amount,reference,status,txnId,errorCode,batchStatus
+                2,0171****001,1500.00,SAL-NOV-001,COMPLETED,01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c,,COMPLETED_WITH_EXCEPTIONS
+                3,0181****002,1250.50,SAL-NOV-002,REJECTED,01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8d,MW-CORE-CREDIT_ACCOUNT_BLOCKED,COMPLETED_WITH_EXCEPTIONS
+                4,0191****003,800.00,SAL-NOV-003,MANUAL_REVIEW,01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8e,MW-TMO-004,COMPLETED_WITH_EXCEPTIONS
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /portal/org/v1/bulk/batches/{batchId}/reject:
+    post:
+      operationId: rejectBulkBatch
+      summary: Reject a batch awaiting approval (checker)
+      description: Same rules as approve; the reason is required.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/BatchId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              additionalProperties: false
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        "200":
+          description: Rejected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /portal/org/v1/transactions:
+    get:
+      operationId: searchOrgTransactions
+      summary: The org's own transactions, newest first (SP query, ticket 35)
+      description: >-
+        Needs role `org-maker` or `org-checker`. Lists the transactions the token's org initiated
+        (its bulk children, `role` INITIATOR) and those it is the payee of (payments to a biller or
+        merchant wallet it collects for, `role` PAYEE); there is no org parameter. With `batchId`
+        only that batch's children. Customer data is masked (MSISDN
+        `0171****789`). Errors: 400 MW-VAL-001 (bad filter); 404 MW-VAL-003 (`batchId` not a batch of
+        the org); 503 MW-SYS-040 (query temporarily unavailable, retryable).
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - name: batchId
+          in: query
+          description: Only the children of this batch of the org
+          schema: { type: string, format: uuid }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/TxnStatus" } }
+        - { name: from, in: query, description: Inclusive lower bound of createdAt, schema: { type: string, format: date-time } }
+        - { name: to, in: query, description: Exclusive upper bound of createdAt, schema: { type: string, format: date-time } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 100000, default: 0 } }
+      responses:
+        "200":
+          description: One page of the org's transactions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, limit, offset]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/OrgTxn" }
+                  limit: { type: integer }
+                  offset: { type: integer }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /portal/org/v1/transactions/{txnId}:
+    get:
+      operationId: getOrgTransaction
+      summary: One of the org's transactions with its state changes in order
+      description: >-
+        Needs role `org-maker` or `org-checker`. A transaction the org neither initiated nor is
+        the payee of is 404 MW-VAL-003, as is an unknown one. The timeline lists state changes
+        only (the middleware's core commands stay internal). 503 MW-SYS-040 when the query is temporarily unavailable (retryable).
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - { name: txnId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The transaction and its timeline
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [transaction, timeline]
+                properties:
+                  transaction: { $ref: "#/components/schemas/OrgTxn" }
+                  timeline:
+                    type: array
+                    items:
+                      type: object
+                      required: [from, to, at]
+                      properties:
+                        from: { $ref: "#/components/schemas/TxnStatus" }
+                        to: { $ref: "#/components/schemas/TxnStatus" }
+                        at: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema: { type: string, pattern: "^[A-Za-z0-9._:-]{1,128}$" }
+    BatchId:
+      name: batchId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    Error:
+      description: Error envelope (spec 5.3)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    TxnStatus:
+      type: string
+      description: Saga state of a transaction (mw.txn.status.v1).
+      enum:
+        [RECEIVED, VALIDATING, HOLDING, POSTING, PARTNER_PENDING, UNKNOWN, COMMITTING, RELEASING,
+         REVERSING, COMPLETED, FAILED, REJECTED, REVERSED, MANUAL_REVIEW]
+    OrgTxn:
+      type: object
+      required: [role, txnId, txnType, status, createdAt, updatedAt, amount]
+      properties:
+        role:
+          type: string
+          enum: [INITIATOR, PAYEE]
+          description: >-
+            The org's part: INITIATOR (it initiated it, e.g. a bulk child) or PAYEE (it collects
+            the payment, e.g. a bill payment to its biller or a payment to its merchant wallet)
+        txnId: { type: string, format: uuid }
+        txnType: { type: string, description: "BULK_DISBURSE for a batch child; BILL_PAY or MERCHANT_PAY as payee" }
+        status: { $ref: "#/components/schemas/TxnStatus" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        amount: { $ref: "#/components/schemas/Amount" }
+        fee: { $ref: "#/components/schemas/Amount" }
+        debitParty: { $ref: "#/components/schemas/MaskedParty" }
+        creditParty: { $ref: "#/components/schemas/MaskedParty" }
+        reversalTxnId: { type: string, format: uuid }
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            messageBn: { type: string }
+            retryable: { type: boolean }
+        attributes:
+          type: object
+          description: parentTxnId, batchId, lineNo and reference of a batch child
+          additionalProperties: { type: string }
+    MaskedParty:
+      type: object
+      properties:
+        type: { type: string }
+        id: { type: string, description: "Masked: MSISDN 0171****789, other ids last 4" }
+        walletType: { type: string }
+    BatchStatus:
+      type: string
+      description: >-
+        PENDING_APPROVAL -> APPROVED or REJECTED (maker-checker), or EXPIRED when no checker decided
+        within 72 h of the upload; APPROVED -> EXECUTING (first row sent) <-> PAUSED -> COMPLETED
+        (every row settled) or COMPLETED_WITH_EXCEPTIONS (every row settled or given up, at least
+        one MANUAL_REVIEW or UNRESOLVED). More states may be added within v1; clients must accept
+        unknown values.
+      enum: [PENDING_APPROVAL, APPROVED, REJECTED, EXPIRED, EXECUTING, PAUSED, COMPLETED, COMPLETED_WITH_EXCEPTIONS]
+    BatchProgress:
+      type: object
+      description: Row counts of an approved batch.
+      required: [pending, inFlight, completed, failed, manualReview, unresolved, paidAmount]
+      properties:
+        pending: { type: integer, minimum: 0, description: Not sent yet }
+        inFlight: { type: integer, minimum: 0, description: Sent, outcome not known yet }
+        completed: { type: integer, minimum: 0, description: Paid }
+        failed: { type: integer, minimum: 0, description: Not paid (FAILED, REJECTED, REVERSED) }
+        manualReview: { type: integer, minimum: 0, description: Outcome being checked by operations }
+        unresolved: { type: integer, minimum: 0, description: "No outcome known long after it was sent (UNRESOLVED)" }
+        paidAmount: { $ref: "#/components/schemas/Amount" }
+    Amount:
+      type: object
+      required: [valueMinor, currency]
+      properties:
+        valueMinor: { type: integer, format: int64, description: Poisha }
+        currency: { type: string, const: BDT }
+    Batch:
+      type: object
+      required: [batchId, orgId, status, rowCount, totalAmount, makerId, createdAt]
+      properties:
+        batchId: { type: string, format: uuid }
+        orgId: { type: string }
+        status: { $ref: "#/components/schemas/BatchStatus" }
+        rowCount: { type: integer, minimum: 1 }
+        totalAmount: { $ref: "#/components/schemas/Amount" }
+        makerId: { type: string, description: Username of the maker }
+        checkerId: { type: string, description: Username of the checker, once decided }
+        reason: { type: string, description: Rejection reason }
+        createdAt: { type: string, format: date-time }
+        decidedAt: { type: string, format: date-time }
+        parentTxnId:
+          type: string
+          format: uuid
+          description: The parent BULK_DISBURSE transaction of an approved batch; every child carries it
+        progress: { $ref: "#/components/schemas/BatchProgress" }
+        completedAt: { type: string, format: date-time, description: When the last row settled }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

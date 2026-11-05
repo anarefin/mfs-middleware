@@ -1,0 +1,7 @@
+{
+  "username": "merchant_demo",
+  "desc": "TEST ONLY (MW_E2E_ROUTES=1): dev checkout merchant (mw.checkout.merchants.merchant_demo); hmac-auth key id merchant-demo, secret = generated CHECKOUT_DEMO_MERCHANT_SECRET (platform .env). Real merchants are onboarded via mw-admin-api",
+  "plugins": {
+    "hmac-auth": { "key_id": "merchant-demo", "secret_key": "@env:CHECKOUT_DEMO_MERCHANT_SECRET" }
+  }
+}

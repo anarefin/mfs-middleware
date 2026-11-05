@@ -1,0 +1,20 @@
+# Test-only overrides, merged over src/main/resources/application.yml.
+mw:
+  app-gateway:
+    # Off by default in tests: status consumers left running in a cached context would take
+    # records another test is checking. Tests that need them switch them on.
+    consumers:
+      enabled: false
+    # Off by default in tests that are not about it (they send no device headers);
+    # DeviceBindingIT switches it on with real Valkey.
+    device-binding:
+      enabled: false
+  outbox:
+    relay:
+      # Off by default in tests: Spring caches test contexts, and a relay left running in one
+      # would publish rows another test is checking. Tests that need it switch it on and close
+      # their context afterwards (@DirtiesContext).
+      enabled: false
+  retention:
+    # The purge job's schedule is off in tests; OutboxInboxPurgeConformanceIT calls it directly.
+    cron: "-"

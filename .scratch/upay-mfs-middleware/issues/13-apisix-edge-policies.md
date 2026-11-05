@@ -6,10 +6,10 @@
 
 - 09: App gateway P2P + minimal APISIX route
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Gateway test: no or expired JWT → 401
-- [ ] Gateway test: exceeding the per-consumer quota → 429
-- [ ] Gateway test: a body that breaks the schema → 400 and never reaches the upstream
-- [ ] Gateway test: a client-sent `X-Mw-*` header is stripped, and `X-Correlation-Id` is generated when absent and appears in upstream logs
-- [ ] Applying the config twice is a no-op (idempotent ADC sync)
+- [x] Gateway test: no or expired JWT → 401
+- [x] Gateway test: exceeding the per-consumer quota → 429
+- [x] Gateway test: a body that breaks the schema → 400 and never reaches the upstream
+- [x] Gateway test: a client-sent `X-Mw-*` header is stripped, and `X-Correlation-Id` is generated when absent and appears in upstream logs
+- [x] Applying the config twice is a no-op (idempotent ADC sync)

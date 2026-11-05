@@ -1,0 +1,33 @@
+{
+  "name": "checkout-pay",
+  "desc": "Checkout hosted page API (spec 8.2, 9.3, ticket 31) to mw-checkout: no login (the pay token in the path is the bearer), small bodies, quota per source address. No CORS plugin, so no cross-origin access; the page is same-origin",
+  "uri": "/checkout/pay/v1/*",
+  "methods": ["GET", "POST"],
+  "plugins": {
+    "client-control": {
+      "max_body_size": 8192
+    },
+    "limit-count": {
+      "count": 300,
+      "time_window": 60,
+      "key_type": "var",
+      "key": "remote_addr",
+      "group": "checkout-pay",
+      "rejected_code": 429,
+      "show_limit_quota_header": true,
+      "policy": "redis",
+      "redis_host": "valkey",
+      "redis_port": 6379,
+      "redis_password": "$env://VALKEY_PASSWORD",
+      "redis_database": 0,
+      "redis_timeout": 1000,
+      "allow_degradation": true
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": { "connect": 5, "send": 10, "read": 35 },
+    "nodes": { "mw-checkout:8080": 1 }
+  }
+}

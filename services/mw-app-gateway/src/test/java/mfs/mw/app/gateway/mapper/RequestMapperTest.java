@@ -1,0 +1,242 @@
+package mfs.mw.app.gateway.mapper;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.time.Instant;
+import java.util.Map;
+import mfs.mw.app.gateway.contracts.ContractSchemas;
+import mfs.mw.app.gateway.dto.Amount;
+import mfs.mw.app.gateway.dto.AppUser;
+import mfs.mw.app.gateway.dto.EncryptedPin;
+import mfs.mw.app.gateway.dto.TransactionRequest;
+import mfs.mw.app.gateway.dto.TransactionView;
+import mfs.mw.app.gateway.dto.TxnRequest;
+import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
+/** The canonical request is valid against the orchestrator's contract and keeps the PIN as sent. */
+class RequestMapperTest {
+
+  static final JsonMapper JSON = JsonMapper.builder().build();
+  static final String TXN_ID = "019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c0d";
+  static final Instant NOW = Instant.parse("2026-11-04T06:00:00Z");
+
+  final RequestMapper mapper = new RequestMapper();
+
+  TransactionRequest body(Map<String, String> attributes) {
+    return body("01711000002", attributes);
+  }
+
+  TransactionRequest body(String payee, Map<String, String> attributes) {
+    return body("P2P", payee, attributes);
+  }
+
+  TransactionRequest body(String txnType, String payee, Map<String, String> attributes) {
+    return new TransactionRequest(
+        txnType,
+        new TransactionRequest.CounterParty(null, payee),
+        new Amount(12_345L, "BDT"),
+        new EncryptedPin("core-pin-1", "b3BhcXVlLWNpcGhlcnRleHQ="),
+        "en",
+        attributes);
+  }
+
+  @Test
+  void anAddMoneyDebitsTheBankAccountAndCreditsTheCallersWallet() {
+    TransactionRequest addMoney =
+        new TransactionRequest(
+            "ADD_MONEY_BANK",
+            null,
+            new Amount(50_000L, "BDT"),
+            new EncryptedPin("core-pin-1", "b3BhcXVlLWNpcGhlcnRleHQ="),
+            null,
+            null,
+            TransactionRequest.Partner.bank("c2wbank"),
+            new TransactionRequest.BankAccount("BANK_ACCOUNT", "1234567890123"));
+
+    TxnRequest req =
+        mapper.toRequest(new AppUser("01711000001", "CUSTOMER_APP", "CUSTOMER"), "key-1", addMoney, TXN_ID, "corr-1", NOW);
+
+    JsonNode tree = JSON.valueToTree(req);
+    assertThat(ContractSchemas.schema("events/mw-orchestrator/mw.txn.request.v1.schema.json").validate(tree))
+        .isEmpty();
+    assertThat(tree.path("txnType").asString()).isEqualTo("ADD_MONEY_BANK");
+    assertThat(tree.path("debitParty").path("type").asString()).isEqualTo("BANK_ACCOUNT");
+    assertThat(tree.path("debitParty").path("id").asString()).isEqualTo("1234567890123");
+    assertThat(tree.path("creditParty").path("type").asString()).isEqualTo("WALLET");
+    assertThat(tree.path("creditParty").path("id").asString()).isEqualTo("01711000001");
+    assertThat(tree.path("partner").path("partnerId").asString()).isEqualTo("c2wbank");
+    assertThat(tree.path("partner").path("productCode").asString()).isEqualTo("C2W");
+    // party ids masked by their type: the account keeps its last 4 only
+    assertThat(mfs.mw.app.gateway.util.MaskingPolicy.describe(req))
+        .doesNotContain("1234567890123", "01711000001")
+        .contains("id=****0123", "id=0171****001");
+    assertThat(mfs.mw.app.gateway.util.MaskingPolicy.describe(addMoney)).doesNotContain("1234567890123");
+  }
+
+  @Test
+  void aBillPayPaysTheBillerAccountThroughTheResolvedAggregator() {
+    TransactionRequest bill =
+        new TransactionRequest(
+            "BILL_PAY",
+            new TransactionRequest.CounterParty(null, "1234567"),
+            new Amount(66_700L, "BDT"),
+            new EncryptedPin("core-pin-1", "b3BhcXVlLWNpcGhlcnRleHQ="),
+            null,
+            null,
+            TransactionRequest.Partner.biller("DESCO"));
+
+    TxnRequest req =
+        mapper.toRequest(
+            new AppUser("01711000001", "CUSTOMER_APP", "CUSTOMER"), "key-1", bill, TXN_ID, "corr-1", NOW,
+            new mfs.mw.app.gateway.dto.PartnerRef("billagg", "BILL", "DESCO"));
+
+    JsonNode tree = JSON.valueToTree(req);
+    assertThat(ContractSchemas.schema("events/mw-orchestrator/mw.txn.request.v1.schema.json").validate(tree))
+        .isEmpty();
+    assertThat(tree.path("txnType").asString()).isEqualTo("BILL_PAY");
+    assertThat(tree.path("creditParty").path("type").asString()).isEqualTo("BILLER_ACCOUNT");
+    assertThat(tree.path("creditParty").path("id").asString()).isEqualTo("1234567");
+    assertThat(tree.path("creditParty").has("walletType")).isFalse();
+    assertThat(tree.path("partner").path("partnerId").asString()).isEqualTo("billagg");
+    assertThat(tree.path("partner").path("productCode").asString()).isEqualTo("BILL");
+    assertThat(tree.path("partner").path("billerCode").asString()).isEqualTo("DESCO");
+    assertThat(tree.path("debitParty").path("id").asString()).isEqualTo("01711000001");
+  }
+
+  @Test
+  void requestFollowsTheContractWithThePayerFromTheToken() {
+    TxnRequest req =
+        mapper.toRequest(
+            new AppUser("01711000001", "CUSTOMER_APP", "CUSTOMER"), "key-1",
+            body("+8801711000002", Map.of("reference", "lunch")), TXN_ID, "corr-1", NOW);
+
+    JsonNode tree = JSON.valueToTree(req);
+    assertThat(ContractSchemas.schema("events/mw-orchestrator/mw.txn.request.v1.schema.json").validate(tree))
+        .isEmpty();
+    assertThat(tree.path("initiator").path("type").asString()).isEqualTo("MSISDN");
+    assertThat(tree.path("initiator").path("id").asString()).isEqualTo("01711000001");
+    assertThat(tree.path("debitParty").path("type").asString()).isEqualTo("WALLET");
+    assertThat(tree.path("debitParty").path("walletType").asString()).isEqualTo("CUSTOMER");
+    assertThat(tree.path("creditParty").path("id").asString()).isEqualTo("01711000002");
+    assertThat(tree.path("encryptedPin").path("ciphertext").asString()).isEqualTo("b3BhcXVlLWNpcGhlcnRleHQ=");
+    assertThat(tree.path("attributes").path("reference").asString()).isEqualTo("lunch");
+    assertThat(tree.path("requestedAt").asString()).isEqualTo("2026-11-04T06:00:00Z");
+  }
+
+  static final AppUser AGENT = new AppUser("01811000001", "AGENT_APP", "AGENT");
+
+  JsonNode validRequest(TxnRequest req) {
+    JsonNode tree = JSON.valueToTree(req);
+    assertThat(ContractSchemas.schema("events/mw-orchestrator/mw.txn.request.v1.schema.json").validate(tree))
+        .isEmpty();
+    return tree;
+  }
+
+  @Test
+  void cashInDebitsTheAgentAndCreditsTheCustomer() {
+    JsonNode tree =
+        validRequest(
+            mapper.toRequest(AGENT, "key-1", body("CASH_IN", "8801711000002", null), TXN_ID, "corr-1", NOW));
+    assertThat(tree.path("channel").asString()).isEqualTo("AGENT_APP");
+    assertThat(tree.path("initiator").path("id").asString()).isEqualTo("01811000001");
+    assertThat(tree.path("debitParty").path("id").asString()).isEqualTo("01811000001");
+    assertThat(tree.path("debitParty").path("walletType").asString()).isEqualTo("AGENT");
+    assertThat(tree.path("creditParty").path("id").asString()).isEqualTo("01711000002");
+    assertThat(tree.path("creditParty").path("walletType").asString()).isEqualTo("CUSTOMER");
+  }
+
+  @Test
+  void cashOutDebitsTheCustomerFromTheTokenAndPaysTheAgentNamedInTheBody() {
+    JsonNode tree =
+        validRequest(
+            mapper.toRequest(
+                new AppUser("01711000002", "CUSTOMER_APP", "CUSTOMER"), "key-1",
+                body("CASH_OUT", "+8801811000001", null), TXN_ID, "corr-1", NOW));
+    assertThat(tree.path("channel").asString()).isEqualTo("CUSTOMER_APP");
+    assertThat(tree.path("encryptedPin").path("ciphertext").asString()).isEqualTo("b3BhcXVlLWNpcGhlcnRleHQ=");
+    assertThat(tree.path("initiator").path("id").asString()).isEqualTo("01711000002");
+    assertThat(tree.path("debitParty").path("id").asString()).isEqualTo("01711000002");
+    assertThat(tree.path("debitParty").path("walletType").asString()).isEqualTo("CUSTOMER");
+    assertThat(tree.path("creditParty").path("id").asString()).isEqualTo("01811000001");
+    assertThat(tree.path("creditParty").path("walletType").asString()).isEqualTo("AGENT");
+  }
+
+  @Test
+  void merchantPayDebitsTheCustomerFromTheTokenAndPaysTheMerchantNamedInTheBody() {
+    JsonNode tree =
+        validRequest(
+            mapper.toRequest(
+                new AppUser("01711000002", "CUSTOMER_APP", "CUSTOMER"), "key-1",
+                body("MERCHANT_PAY", "8801911000003", Map.of("reference", "INV-77")), TXN_ID, "corr-1", NOW));
+    assertThat(tree.path("txnType").asString()).isEqualTo("MERCHANT_PAY");
+    assertThat(tree.path("debitParty").path("id").asString()).isEqualTo("01711000002");
+    assertThat(tree.path("debitParty").path("walletType").asString()).isEqualTo("CUSTOMER");
+    assertThat(tree.path("creditParty").path("type").asString()).isEqualTo("WALLET");
+    assertThat(tree.path("creditParty").path("id").asString()).isEqualTo("01911000003");
+    assertThat(tree.path("creditParty").path("walletType").asString()).isEqualTo("MERCHANT");
+    assertThat(tree.path("partner").isMissingNode()).isTrue();
+    assertThat(tree.path("attributes").path("reference").asString()).isEqualTo("INV-77");
+  }
+
+  @Test
+  void aTopupGoesOutWithTheCanonicalMsisdnAndThePartner() {
+    TransactionRequest topup =
+        new TransactionRequest(
+            "TOPUP",
+            new TransactionRequest.CounterParty("MSISDN", "8801711000002"),
+            new Amount(2_000L, "BDT"),
+            new EncryptedPin("core-pin-1", "b3BhcXVlLWNpcGhlcnRleHQ="),
+            null,
+            null,
+            new TransactionRequest.Partner("gp", "PREPAID"));
+
+    TxnRequest req =
+        mapper.toRequest(new AppUser("01711000001", "CUSTOMER_APP", "CUSTOMER"), "key-1", topup, TXN_ID, "corr-1", NOW);
+
+    JsonNode tree = JSON.valueToTree(req);
+    assertThat(ContractSchemas.schema("events/mw-orchestrator/mw.txn.request.v1.schema.json").validate(tree))
+        .isEmpty();
+    assertThat(tree.path("txnType").asString()).isEqualTo("TOPUP");
+    assertThat(tree.path("creditParty").path("type").asString()).isEqualTo("MSISDN");
+    assertThat(tree.path("creditParty").path("id").asString()).isEqualTo("01711000002");
+    assertThat(tree.path("creditParty").has("walletType")).isFalse();
+    assertThat(tree.path("partner").path("partnerId").asString()).isEqualTo("gp");
+    assertThat(tree.path("partner").path("productCode").asString()).isEqualTo("PREPAID");
+    assertThat(mapper.accepted(req).creditParty().type()).isEqualTo("MSISDN");
+  }
+
+  @Test
+  void aP2pCarriesNoPartner() {
+    TxnRequest req =
+        mapper.toRequest(
+            new AppUser("01711000001", "CUSTOMER_APP", "CUSTOMER"), "key-1", body(null), TXN_ID, "corr-1", NOW);
+    assertThat(JSON.valueToTree(req).has("partner")).isFalse();
+  }
+
+  @Test
+  void reservedAttributeKeysAreNeverForwarded() {
+    TxnRequest req =
+        mapper.toRequest(
+            new AppUser("01711000001", "CUSTOMER_APP", "CUSTOMER"), "key-1",
+            body(Map.of("duplicate", "true", "requestTxnId", "x", "reference", "r")), TXN_ID,
+            "corr-1", NOW);
+    assertThat(req.attributes()).containsOnlyKeys("reference");
+  }
+
+  @Test
+  void emptyAttributesAreLeftOutAndTheAcceptedViewIsReceived() {
+    TxnRequest req =
+        mapper.toRequest(
+            new AppUser("01711000001", "CUSTOMER_APP", "CUSTOMER"), "key-1", body(Map.of()), TXN_ID,
+            "corr-1", NOW);
+    assertThat(req.attributes()).isNull();
+
+    TransactionView v = mapper.accepted(req);
+    assertThat(v.status()).isEqualTo("RECEIVED");
+    assertThat(v.txnId()).isEqualTo(TXN_ID);
+    assertThat(v.amount().valueMinor()).isEqualTo(12_345L);
+    assertThat(JSON.writeValueAsString(v)).doesNotContain("ciphertext");
+  }
+}

@@ -5,8 +5,10 @@
 #              which includes the platform and every module's compose.yml)
 #   MODULE:    docker compose up only that module's own compose.yml (it joins the
 #              external zone networks, so the platform project must already be up)
-# Then waits until every long-running service is healthy. One-shot init containers carry the
-# compose label mw.oneshot=true (restart "no", no healthcheck) and are not waited for.
+#   MW_UP_ONLY="mw-a mw-b" (no MODULE): only those modules, recreated inside the MVP project
+# Then waits until every long-running service is healthy and every one-shot has finished. One-shot
+# init containers carry the compose label mw.oneshot=true (restart "no", no healthcheck): they
+# count once exited 0 (services can be healthy before e.g. kafka-init has created their topics).
 # Fails at once, naming the service, when a long-running service is exited, dead or unhealthy,
 # or a one-shot exits non-zero. MW_UP_TIMEOUT (s, default 300) and MW_UP_POLL (s, default 3).
 set -eu
@@ -25,13 +27,53 @@ else
   fi
   "$(dirname "$0")/gen-dev-env.sh"
 fi
-info "up: docker compose -f ${file#"$MW_ROOT"/} up -d"
-docker compose -f "$file" up -d ${COMPOSE_ARGS:-}
+# MW_UP_ONLY="mw-a mw-b" (no MODULE): rebuild only those modules' jars and recreate only their
+# services (<module>-init, <module>) inside the running MVP project, with --no-deps. Use this, not
+# MODULE, to swap a changed service into the full stack: a module's own compose.yml runs as a
+# separate compose project (named after its folder), next to the copy the MVP project started.
+svc_args=""
+only_mods=""
+if [ -n "${MW_UP_ONLY:-}" ]; then
+  [ -z "$m" ] || die "up: MW_UP_ONLY applies to the MVP project; leave out M=$m"
+  for o in $MW_UP_ONLY; do
+    s="$(selected_modules "$o")"
+    case "$s" in services/*) ;; *) die "up: MW_UP_ONLY: $o is not a stack module (services/*)" ;; esac
+    n="$(basename "$s")"
+    only_mods="$only_mods $s"
+    grep -q "^  $n-init:" "$MW_ROOT/$s/compose.yml" 2>/dev/null && svc_args="$svc_args $n-init"
+    svc_args="$svc_args $n"
+  done
+  svc_args="--no-deps$svc_args"
+fi
+# Never run stale code: an existing jar or mw-x:dev / mw-x-init:dev image may predate the
+# source. So every stack module's jar is rebuilt (images copy build/libs/*.jar + the SBOM;
+# Gradle is incremental, so this is cheap when nothing changed), one module at a time (parallel
+# Gradle daemons are unreliable here), and compose rebuilds every image it builds (services and
+# their init images; the layer cache keeps it cheap). MW_UP_NO_BUILD=1 skips both (faster, at
+# your own risk: whatever jars and images exist are used).
+build_args="--build"
+if [ "${MW_UP_NO_BUILD:-0}" = 1 ]; then
+  info "up: MW_UP_NO_BUILD=1: using existing jars and images as they are"
+  build_args=""
+else
+  if [ -n "$m" ]; then stack_mods="$mod"
+  elif [ -n "${MW_UP_ONLY:-}" ]; then stack_mods="$only_mods"
+  else stack_mods="$(cd "$MW_ROOT" && ls -d services/*/ 2>/dev/null | sed 's#/$##')"; fi
+  for s in $stack_mods; do
+    [ -f "$MW_ROOT/$s/Dockerfile" ] && [ -f "$MW_ROOT/$s/compose.yml" ] && [ -x "$MW_ROOT/$s/gradlew" ] || continue
+    info "up: $s ./gradlew bootJar"
+    (cd "$MW_ROOT/$s" && ./gradlew bootJar -q) || die "up: $s: bootJar failed"
+  done
+fi
+case " ${COMPOSE_ARGS:-} " in *" --build "*) build_args="" ;; esac
+
+info "up: docker compose -f ${file#"$MW_ROOT"/} up -d $build_args ${COMPOSE_ARGS:-} $svc_args"
+docker compose -f "$file" up -d $build_args ${COMPOSE_ARGS:-} $svc_args
 
 timeout="${MW_UP_TIMEOUT:-300}"
 poll="${MW_UP_POLL:-3}"
 # check: one line per service, "failed <svc>(<why>)" or "pending <svc>(<state>)"; healthy
-# services and running or finished one-shots print nothing. A long-running service without a
+# services and one-shots that exited 0 print nothing. A long-running service without a
 # healthcheck counts once it is running.
 check() {
   docker compose -f "$file" ps -a --format '{{.Service}}	{{.State}}	{{.Health}}	{{.ExitCode}}	{{.Labels}}' |
@@ -40,8 +82,12 @@ check() {
       [ -n "$svc" ] || continue
       case ",$labels," in
         *,mw.oneshot=true,*)
-          if [ "$state" = exited ] && [ "${code:-0}" != 0 ]; then printf 'failed %s(exit %s)\n' "$svc" "$code"; fi
-          if [ "$state" = dead ]; then printf 'failed %s(dead)\n' "$svc"; fi
+          case "$state" in
+            exited) [ "${code:-0}" = 0 ] || printf 'failed %s(exit %s)\n' "$svc" "$code" ;;
+            dead) printf 'failed %s(dead)\n' "$svc" ;;
+            # still provisioning (e.g. kafka-init creating topics the healthy services need)
+            *) printf 'pending %s(%s)\n' "$svc" "$state" ;;
+          esac
           continue ;;
       esac
       case "$state/$health" in
@@ -60,7 +106,7 @@ while :; do
   failed="$(printf '%s\n' "$status" | names failed)"
   [ -n "$failed" ] && die "up: failed: ${failed% }"
   pending="$(printf '%s\n' "$status" | names pending)"
-  [ -z "$pending" ] && { info "up: all long-running services are healthy"; exit 0; }
+  [ -z "$pending" ] && { info "up: all long-running services are healthy, one-shots done"; exit 0; }
   [ $((SECONDS - start)) -ge "$timeout" ] && die "up: timed out after ${timeout}s; not healthy: ${pending% }"
   sleep "$poll"
 done

@@ -1,0 +1,18 @@
+{
+  "x-mw-derived-from": "api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/DeviceBindingRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "publicKey",
+    "otp"
+  ],
+  "properties": {
+    "publicKey": {
+      "type": "string",
+      "maxLength": 512
+    },
+    "otp": {
+      "type": "string"
+    }
+  }
+}

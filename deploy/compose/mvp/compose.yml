@@ -13,3 +13,28 @@ include:
   - path: ../platform/compose.yml
   # Module compose files are added here as the modules land, e.g.
   # - path: ../../../services/mw-orchestrator/compose.yml
+  # A module that needs platform credentials (POSTGRES_PASSWORD...) also takes the generated env.
+  - path: ../../../services/mw-core-mock/compose.yml
+    env_file: ../platform/.env
+  - path: ../../../services/mw-simulators/compose.yml
+    env_file: ../platform/.env
+  - path: ../../../services/mw-adapter-telco/compose.yml
+    env_file: ../platform/.env
+  - path: ../../../services/mw-adapter-billpay/compose.yml
+    env_file: ../platform/.env
+  - path: ../../../services/mw-adapter-bank/compose.yml
+    env_file: ../platform/.env
+  - path: ../../../services/mw-orchestrator/compose.yml
+    env_file: ../platform/.env
+  - path: ../../../services/mw-audit-dw/compose.yml
+    env_file: ../platform/.env
+  - path: ../../../services/mw-app-gateway/compose.yml
+    env_file: ../platform/.env
+  - path: ../../../services/mw-notify/compose.yml
+    env_file: ../platform/.env
+  - path: ../../../services/mw-ussd/compose.yml
+    env_file: ../platform/.env
+  - path: ../../../services/mw-portal-api/compose.yml
+    env_file: ../platform/.env
+  - path: ../../../services/mw-checkout/compose.yml
+    env_file: ../platform/.env

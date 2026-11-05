@@ -6,11 +6,11 @@
 
 - 07: Core-mock P2P slice
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Contract test per command, success and failure event
-- [ ] Hold reduces available balance but not the ledger balance; commit moves money; release restores availability
-- [ ] QueryTransaction returns the true outcome of a command whose reply was dropped
-- [ ] Each fault mode can be triggered by a test and is cleared by a reset call
-- [ ] Balance invariants still hold across hold/commit/release/reverse sequences
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] Contract test per command, success and failure event
+- [x] Hold reduces available balance but not the ledger balance; commit moves money; release restores availability
+- [x] QueryTransaction returns the true outcome of a command whose reply was dropped
+- [x] Each fault mode can be triggered by a test and is cleared by a reset call
+- [x] Balance invariants still hold across hold/commit/release/reverse sequences
+- [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR

@@ -2,12 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.upay.mw/events/mw-orchestrator/mw.partner.reply.v1/shared.payload.schema.json",
   "title": "mw.partner.reply.v1 shared payload",
-  "description": "Reply from an adapter of any family (one payload shared by all families until one needs its own). FAILED carries a canonical errorCode (spec 5.3); SUCCESS carries the partner's reference.",
+  "description": "Reply from an adapter of any family (one payload shared by all families until one needs its own). FAILED carries a canonical errorCode (spec 5.3); SUCCESS carries the partner's reference. NOT_FOUND answers a STATUS_QUERY only: the partner has no record of the original request (spec 7.4).",
   "type": "object",
   "required": ["operation", "outcome"],
   "properties": {
     "operation": { "enum": ["PAY", "INQUIRY", "STATUS_QUERY", "REVERSE", "SCREEN"] },
-    "outcome": { "enum": ["SUCCESS", "FAILED", "UNKNOWN", "PENDING"] },
+    "outcome": { "enum": ["SUCCESS", "FAILED", "UNKNOWN", "PENDING", "NOT_FOUND"] },
     "partnerRef": { "type": "string", "description": "Partner's own reference." },
     "partnerCode": { "type": "string", "description": "Raw partner result code, for audit." },
     "errorCode": {
@@ -27,6 +27,10 @@
     {
       "if": { "properties": { "outcome": { "const": "SUCCESS" } }, "required": ["outcome"] },
       "then": { "required": ["partnerRef"] }
+    },
+    {
+      "if": { "properties": { "outcome": { "const": "NOT_FOUND" } }, "required": ["outcome"] },
+      "then": { "properties": { "operation": { "const": "STATUS_QUERY" } } }
     }
   ]
 }

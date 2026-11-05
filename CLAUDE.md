@@ -41,18 +41,43 @@ mfs.mw.<service>/
   exception/   exceptions, error codes, global @RestControllerAdvice
   messaging/   Kafka listeners/publishers, outbox relay, inbox dedup, retry/DLQ
   route/       Camel RouteBuilders and YAML route templates (no XML DSL)
-  client/      outbound calls (partners, SMSC), with Resilience4j
+  client/      outbound calls (partners, SMSC), with Resilience4j; in mw-simulators also the
+               simulated SMPP servers (SMSC, USSD gateway)
+  transport/   channel transports: mw-ussd's HTTP and SMPP USSD transports (MNO wire <-> engine)
   scheduler/   @Scheduled jobs guarded by ShedLock
   security/    filters, signature/HMAC, JWT converters
   filter/      correlation ID and request logging filters
   logging/     structured log formatter (21.1 fields, masking before output)
   util/        small static helpers (masking, hashing, crypto envelope)
+  partner/     adapters only: the adapter framework (spec 12), see below
 ```
 
-Dependencies point one way: `controller`, `messaging`, `route`, `scheduler` -> `service`
--> `repository`, `client`. Entities never leave the service layer. Tests mirror the main
-packages (unit for service/mapper/util, `@WebMvcTest` for controller, `@DataJpaTest` +
-Testcontainers for repository, Camel route tests for route).
+The one sanctioned exception to one kind of class per package is the adapter framework
+`partner/` in each adapter (mw-adapter-telco, -billpay, -bank; copied, not a library): its SPI
+(`PartnerAdapter`, `AuthScheme`, `PartnerCall`, `PartnerResponse`, `InboundCall`, ...) and its
+Spring wiring `PartnerFrameworkConfiguration` sit in `partner/` itself, with its own subpackages
+`partner/config/` (partner config records, store, config-changed route and listener),
+`partner/template/` (Camel route templates, registrar, gateway, call wrapper, REST/JSON adapter,
+audit), `partner/auth/` (auth schemes, credential resolver) and `partner/mapping/` (JSONata). The
+three copies stay identical apart from the package; mw-adapter-telco's CLAUDE.md describes it. The
+framework hands its audit to the service's `messaging/PartnerAuditPublisher`; everything else in an
+adapter follows the layered packages above.
+
+Dependencies point one way: `controller`, `messaging`, `route`, `scheduler`, `transport` -> `service`
+-> `repository`, `client`. One sanctioned exception: `service` may call the outbox and inbox
+writers (`messaging/OutboxWriter`, `messaging/Inbox`) and use the header constants and metadata
+of `messaging/` (`MwHeaders`, `EventMetadata`) inside its own transaction, because the event must
+commit with the business change (spec 6.4). The same exception covers `messaging/EventPublisher`
+when a request changes no local state the event must commit with (mw-app-gateway
+`TransactionService` / `DeviceOtpService`, mw-checkout `CheckoutPayService`, mw-ussd
+`KafkaTransactionFlow` publish a command and wait for its reply asynchronously; an OTP is sent
+straight to Kafka so it is never stored): a port interface would have one implementation in
+`messaging/` and leave the dependency direction as it is, so it is not added. Listeners, relays and routes in `messaging/` still
+depend on `service`, never the other way round otherwise. Entities never leave the service layer.
+Tests mirror the main packages (unit for service/mapper/util, `@WebMvcTest` for controller,
+`*RepositoryIT` for repository: the JDBC repositories run against the module's JVM-scoped
+Testcontainers PostgreSQL from its `TestInfrastructure`, in a `@SpringBootTest` context, as the
+catalogs carry no JDBC slice starter; Camel route tests for route).
 
 ## Error model
 
@@ -78,6 +103,14 @@ field marked `@Sensitive`:
 - NID: last 3 digits only
 - Account number: last 4 only
 - Names: first initial only
+- Ids: free-text `scrub` has no UUID/id-shape exemption; only system ids stay whole, on their shape
+  (digit runs and all): in logs a `txnId`/`correlationId` that is an RFC 9562 UUID and a W3C
+  `traceId`/`spanId`, in the audit trail a `<type>/<uuid>` resource and a UUID correlationId.
+  `CorrelationIdFilter` is the gate: a caller `X-Correlation-Id` (edge: 6+ digit rule only) or
+  `traceparent` trace/parent id with a run of 6+ digits, or that `scrub` would change, is
+  replaced/dropped. `scrub` masks an MSISDN (11 digits `01…`, or with
+  `880`/`+880`) whose digits are joined by single `-`, `.`, `_`, `:` or spaces, e.g. spread over UUID
+  groups (`aaaa0171-2345-678a-…`).
 - PIN: never logged or stored; the middleware only ever handles ciphertext (RSA-OAEP,
   SHA-256 with the core's public key). Card PAN never enters the middleware.
 
@@ -100,10 +133,12 @@ or one with `M=<module>` (e.g. `M=mw-orchestrator`).
 | `make check-isolation [M=]` | module independence rules (fails on cross-module deps, `includeBuild`, convention plugins, paths outside the module except `contracts/`) |
 | `make contracts-lint` | lint `contracts/` |
 | `make versions-check [M=]` | report version drift between module version catalogs (report only, not in `verify`) |
-| `make up [M=]` | Compose stack (`deploy/compose/mvp`) or one module's `compose.yml`; first generates the gitignored dev credentials in `deploy/compose/platform/.env` (`scripts/gen-dev-env.sh`) |
+| `make up [M=]` | Compose stack (`deploy/compose/mvp`) or one module's `compose.yml`; first generates the gitignored dev credentials in `deploy/compose/platform/.env` (`scripts/gen-dev-env.sh`), always rebuilds every stack module jar (`bootJar`) and its images (`up --build`; `MW_UP_NO_BUILD=1` skips both), then waits until services are healthy and one-shot inits exited 0 |
 | `make smoke` | live checks against the running MVP stack (health, topics, Kafka, PG, Valkey, Keycloak tokens, OpenBao, APISIX `/healthz`) |
+| `make edge-test` | live APISIX edge policy tests on the running stack (401/400/413/429 envelopes, X-Mw-* strip, correlation ID, idempotent apply); edge config rules in `deploy/apisix/README.md` |
 | `make down [DOWN_ARGS=-v]` | stop the MVP stack (`-v` drops its volumes) |
-| `make e2e [M=] [TAGS=@p2p]` | Cucumber suite in `tests/e2e`, filtered by `@<module>` and `TAGS` |
+| `make e2e [M=] [TAGS=@p2p]` | Cucumber suite in `tests/e2e` against the running stack (`make up` first), filtered by `@<module>` and `TAGS`; first re-runs `apisix-init` with `MW_E2E_ROUTES=1` (test-only routes, key-auth); stack access and reusable steps: `tests/e2e/README.md` |
+| `make e2e-changed [BASE=main] [TAGS=]` | fast feedback after a change, no `verify`: rebuilds (`bootJar`, no tests) only the modules changed since `BASE` (commits, staged, unstaged, untracked) and recreates just their services in the running MVP project (`MW_UP_ONLY`); the whole stack when it is down or `contracts/`/`deploy/` changed; then the full e2e suite (`E2E_SCOPE=modules` runs only `@<changed-module>` scenarios). Not a substitute for `make up M=` (that runs the module as a separate compose project) or for the gate |
 | `make perf [M=]` | Gatling suite in `tests/perf` |
 | `make security [M=]` | gitleaks, CycloneDX SBOM, trivy (deps and images) |
 | `make new-service NAME=mw-x` | scaffold a service from the template |

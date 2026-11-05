@@ -7,10 +7,10 @@
 - 21: BILL_PAY sync path
 - 13: APISIX edge policies
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A bad signature is rejected with 401 and nothing is published
-- [ ] e2e: callback-only bill pay completes
-- [ ] e2e: a duplicate callback has no second effect
-- [ ] e2e: a late callback after TSQ already resolved the txn is recorded but does not change the terminal state (conflicting results → MANUAL_REVIEW)
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] A bad signature is rejected with 401 and nothing is published
+- [x] e2e: callback-only bill pay completes
+- [x] e2e: a duplicate callback has no second effect
+- [x] e2e: a late callback after TSQ already resolved the txn is recorded but does not change the terminal state (decision 2026-11-04: conflicting results keep the terminal state and raise `txn.outcome.conflict` at ERROR with an audit entry for ops and reconciliation, instead of MANUAL_REVIEW)
+- [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR

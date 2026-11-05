@@ -1,0 +1,99 @@
+{
+  "realm": "services",
+  "displayName": "upay internal services (client credentials)",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      {
+        "name": "internal-api",
+        "description": "Service calling another service's internal API (/internal/v1/**)"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "mw-portal-api",
+      "name": "mw-portal-api (SP transaction query on mw-orchestrator)",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_MW_PORTAL_API_SECRET}",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "fullScopeAllowed": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "aud-mw-orchestrator",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "mw-orchestrator",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "mw-admin-api",
+      "name": "mw-admin-api (operations: transaction and audit search)",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_MW_ADMIN_API_SECRET}",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "fullScopeAllowed": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "aud-mw-orchestrator",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "mw-orchestrator",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "aud-mw-audit-dw",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "mw-audit-dw",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-mw-portal-api",
+      "enabled": true,
+      "serviceAccountClientId": "mw-portal-api",
+      "realmRoles": [
+        "internal-api"
+      ]
+    },
+    {
+      "username": "service-account-mw-admin-api",
+      "enabled": true,
+      "serviceAccountClientId": "mw-admin-api",
+      "realmRoles": [
+        "internal-api"
+      ]
+    }
+  ]
+}

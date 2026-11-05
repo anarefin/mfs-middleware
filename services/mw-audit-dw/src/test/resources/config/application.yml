@@ -1,0 +1,23 @@
+# Test-only overrides, merged over src/main/resources/application.yml.
+mw:
+  internal-auth:
+    # Test-only issuer of security/InternalTokens (TestInfrastructure registers its JWKS).
+    issuer: http://keycloak.test/realms/services
+  audit-dw:
+    # The mw.audit.event.v1 consumer is off unless a test switches it on (AuditEventKafkaIT).
+    consumers:
+      enabled: false
+    # The verify job's schedule is off in tests; AuditChainVerifyIT calls the service directly with
+    # this test-only reader password (not a real secret).
+    chain-verify:
+      cron: "-"
+      reader-password: test-only-reader-pw
+  outbox:
+    relay:
+      # Off by default in tests: Spring caches test contexts, and a relay left running in one
+      # would publish rows another test is checking. Tests that need it switch it on and close
+      # their context afterwards (@DirtiesContext).
+      enabled: false
+  retention:
+    # The purge job's schedule is off in tests; OutboxInboxPurgeConformanceIT calls it directly.
+    cron: "-"

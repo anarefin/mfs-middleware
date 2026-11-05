@@ -2,6 +2,8 @@
 # Lints the root contracts/ folder: every JSON Schema compiles (draft 2020-12),
 # every sample payload validates (valid*) or is rejected (invalid*), and
 # OWNERS.yml names an owner for every contract file. See scripts/contracts-lint/lint.mjs.
+# Then checks that the body schemas the services derive from their contracts still match them
+# (scripts/derived-schemas.sh --check).
 #
 # Needs Node (>= 22). Dependencies are pinned in scripts/contracts-lint/package-lock.json
 # and installed locally (npm ci) on first use; no global installs.
@@ -22,4 +24,6 @@ if [ ! -f "$tool/node_modules/.package-lock.json" ] || [ "$tool/package-lock.jso
   (cd "$tool" && npm ci --silent --no-audit --no-fund) || die "contracts-lint: npm ci failed in $tool"
 fi
 
-exec node "$tool/lint.mjs" "$dir"
+node "$tool/lint.mjs" "$dir"
+# the services' derived body schemas (services/*/src/main/resources/derived-schemas)
+exec "$(dirname "$0")/derived-schemas.sh" --check

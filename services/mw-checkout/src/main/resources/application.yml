@@ -1,0 +1,214 @@
+# Static configuration baked into the image (spec 20.4). Per-environment overrides are
+# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from OpenBao/Vault
+# only (18.4) and are never written here.
+spring:
+  application:
+    name: mw-checkout
+  threads:
+    virtual:
+      enabled: true
+  config:
+    # Spring Cloud Vault reads secrets at start-up (AppRole) when VAULT_ENABLED=true.
+    # The configtree carries the AppRole role-id/secret-id files of a stack (one file per property).
+    import: "optional:configtree:${MW_APPROLE_DIR:/run/mw/approle/},optional:vault://"
+  cloud:
+    vault:
+      enabled: ${VAULT_ENABLED:false}
+      uri: ${VAULT_ADDR:http://openbao:8200}
+      authentication: APPROLE
+      app-role:
+        role-id: ${VAULT_ROLE_ID:}
+        secret-id: ${VAULT_SECRET_ID:}
+      kv:
+        enabled: true
+        backend: secret
+        default-context: ${spring.application.name}
+  mvc:
+    problemdetails:
+      enabled: false
+  # This service's own schema (16.2), migrated by Flyway on start-up from
+  # db/migration/V<n>__*.sql (16.4). Credentials are dynamic from OpenBao's database engine
+  # (role <service>_rw) or DB_USERNAME/DB_PASSWORD; never written here.
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://postgres:5432/mw}
+    username: ${DB_USERNAME:checkout_rw}
+    password: ${DB_PASSWORD:}
+    hikari:
+      schema: checkout
+      # Explicit pool: 10, above the usual 5, because every checkout page, pay and OTP call (HTTP, virtual threads) reads
+      # or writes its schema. PostgreSQL
+      # max_connections sizing: deploy/compose/platform/compose.yml (postgres).
+      maximum-pool-size: 10
+  flyway:
+    schemas: checkout
+
+# Kafka through Camel (spec 6.1, 19.2). Single KRaft node; topics come from deploy/kafka/.
+camel:
+  main:
+    name: ${spring.application.name}
+  component:
+    kafka:
+      brokers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+      # Producer: exactly one copy per send, every in-sync replica acknowledges (6.1).
+      request-required-acks: all
+      enable-idempotence: true
+      max-in-flight-request: 5
+      # A pay request waits for the publish: when Kafka is down it must fail fast with
+      # 503 MW-SYS-010 (nothing sent) instead of blocking for the client defaults (60 s, 2 min).
+      max-block-ms: 5000
+      request-timeout-ms: 5000
+      delivery-timeout-ms: 10000
+      # Consumers: one group per service; a failure that cannot even be parked on a retry
+      # topic stops the partition instead of committing past the record.
+      group-id: ${spring.application.name}
+      auto-offset-reset: earliest
+      break-on-first-error: true
+      # Offsets are committed per record, only after it is handled or parked on its retry
+      # topic (RetryTopicRouteBuilder); never on poll or close. Routes that consume Kafka must
+      # commit through the CamelKafkaManualCommit header.
+      auto-commit-enable: false
+      allow-manual-commit: true
+
+# Resilience defaults for client/ calls (19.2). A partner overrides them under
+# resilience4j.<kind>.instances.<partner> (base-config: default). Retry is only for idempotent
+# calls (status inquiry, fetch-bill, GET): never annotate a payment call with @Retry.
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-type: TIME_BASED
+        sliding-window-size: 60
+        minimum-number-of-calls: 50
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 50
+        # 80% of the default partner timeout (30 s, 11.1); partners override both.
+        slow-call-duration-threshold: 24s
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+  bulkhead:
+    configs:
+      default:
+        max-concurrent-calls: 200
+        max-wait-duration: 0
+  timelimiter:
+    configs:
+      default:
+        timeout-duration: 30s
+        cancel-running-future: true
+    instances:
+      # One IPN attempt (client/MerchantIpnClient); a slow merchant is retried on the IPN schedule.
+      merchant-ipn:
+        base-config: default
+        timeout-duration: 10s
+  retry:
+    configs:
+      default:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        exponential-max-wait-duration: 1s
+        enable-randomized-wait: true
+        randomized-wait-factor: 0.5
+
+logging:
+  structured:
+    format:
+      # JSON lines with the spec 21.1 fields; masking runs in the formatter (18.3).
+      console: mfs.mw.checkout.logging.JsonLogFormatter
+
+server:
+  port: 8080
+  shutdown: graceful
+  error:
+    include-stacktrace: never
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+    propagation:
+      type: w3c
+
+mw:
+  kafka:
+    retry:
+      # Non-blocking retry topics <topic>.<group>.retry.1..3, then <topic>.<group>.dlq (19.2).
+      delays: 10s,1m,10m
+  outbox:
+    relay:
+      # Transactional outbox relay (6.4): claims up to batch-size unsent rows, sends them all
+      # without waiting, then stamps sent_at on the acknowledged ones in one statement. Polls
+      # again at once while batches come back full; waits one period once the outbox is drained.
+      enabled: true
+      period: 500ms
+      batch-size: 500
+  retention:
+    # Purge (service/RetentionService via scheduler/OutboxInboxPurgeJob): sent outbox rows and
+    # inbox rows older than these; unsent outbox rows never. ShedLock-guarded, one instance at a
+    # time, batch-size rows per statement, on a Spring cron ("-" switches it off).
+    outbox: 7d
+    inbox: 7d
+    batch-size: 1000
+    cron: "0 0 * * * *"
+  service:
+    name: ${spring.application.name}
+    version: ${MW_VERSION:0.1.0-SNAPSHOT}
+    env: ${MW_ENV:local}
+  checkout:
+    # mw-reply-to value and reply consumer group suffix; the container hostname in Compose.
+    instance-id: ${HOSTNAME:}
+    request-topic: mw.txn.request.v1
+    status-topic: mw.txn.status.v1
+    notify-topic: mw.notify.request.v1
+    # A session can be paid this long after it was created (spec 9.3).
+    session-ttl: 15m
+    # OTP validity (the OTP default expiry of mw-notify), wrong OTPs before it is void, OTPs per session.
+    otp-ttl: 2m
+    otp-max-attempts: 3
+    otp-max-sends: 3
+    # A pay request waits this long for the final status, then answers 202 PAYING (spec 7.5).
+    reply-budget: ${MW_CHECKOUT_REPLY_BUDGET:25s}
+    # The hosted page (front-end not built here, spec open point 16); checkoutUrl = this + pay token.
+    page-base-url: ${MW_CHECKOUT_PAGE_BASE_URL:https://localhost/checkout/page/}
+    pin:
+      # The core's PIN key (M11), handed to the hosted page to encrypt the PIN. key-id and
+      # public-key come from OpenBao (secret/mw-checkout), copied there from the core's export.
+      key-id: ${MW_CHECKOUT_PIN_KEY_ID:core-pin-dev-1}
+      public-key: ${MW_CHECKOUT_PIN_PUBLIC_KEY:}
+    # Checkout merchants by APISIX hmac-auth consumer name. Onboarding through mw-admin-api comes
+    # later; until then one dev merchant. Its secret (signs the redirect result and, ticket 32, the
+    # IPN) comes from OpenBao only: mw.checkout.merchants.<id>.secret in secret/mw-checkout.
+    merchants:
+      merchant_demo:
+        wallet: "01911000001"
+        name: Demo Shop
+    # Signed IPN to the merchant's ipnUrl (spec 9.3 step 3, ticket 32): attempt 1 at once, then
+    # after each failure the next of retry-delays, until a 2xx or the last attempt. Every attempt is a
+    # checkout.ipn_delivery row; the job (ShedLock) polls for due rows. The call is bounded by the
+    # time limiter resilience4j.timelimiter.instances.merchant-ipn.
+    ipn:
+      enabled: true
+      poll-period: ${MW_CHECKOUT_IPN_POLL_PERIOD:5s}
+      retry-delays: ${MW_CHECKOUT_IPN_RETRY_DELAYS:1m,5m,30m,2h,6h}
+      batch-size: 50
+      connect-timeout: 3s
+      # https only and no private/loopback/link-local target, except these hosts (dev/test
+      # simulators; empty by default, never in production). The dev Compose stack sets the simulator.
+      dev-hosts: ${MW_CHECKOUT_IPN_DEV_HOSTS:}

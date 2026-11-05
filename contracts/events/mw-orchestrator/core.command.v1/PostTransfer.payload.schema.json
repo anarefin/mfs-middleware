@@ -2,9 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.upay.mw/events/mw-orchestrator/core.command.v1/PostTransfer.payload.schema.json",
   "title": "core.command.v1 PostTransfer payload",
-  "description": "One-step debit and credit when no external party is involved (P2P, cash in/out). Needs customer authorisation, so it carries encryptedPin (spec 6.3).",
+  "description": "One-step debit and credit when no external party is involved (P2P, cash in/out). Needs customer authorisation, so it carries encryptedPin (spec 6.3), except BULK_DISBURSE: the org authorised the whole batch by maker-checker in the org portal (ticket 34), so a bulk child carries no PIN.",
   "type": "object",
-  "required": ["txnType", "debitParty", "creditParty", "amount", "encryptedPin"],
+  "required": ["txnType", "debitParty", "creditParty", "amount"],
+  "if": { "properties": { "txnType": { "not": { "const": "BULK_DISBURSE" } } } },
+  "then": { "required": ["encryptedPin"] },
   "properties": {
     "txnType": { "$ref": "../../../common/defs.v1.schema.json#/$defs/TxnType" },
     "debitParty": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Party" },
