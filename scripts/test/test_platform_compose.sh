@@ -11,10 +11,17 @@ SECRET_VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALT
   MW_E2E_API_KEY BILLAGG_HMAC_SECRET C2WBANK_HMAC_SECRET CHECKOUT_DEMO_MERCHANT_SECRET
   KC_MW_PORTAL_API_SECRET KC_MW_ADMIN_API_SECRET
   USSD_GP_GATEWAY_SECRET USSD_ROBI_GATEWAY_SECRET USSD_BL_GATEWAY_SECRET USSD_TELETALK_GATEWAY_SECRET"
+# Not secrets, but generated into the same .env and required by the platform file (no fallback):
+# each MNO's USSD source allow-list (comma-separated CIDRs, item A4).
+ADDRESS_VARS="USSD_GP_ALLOWED_CIDRS USSD_ROBI_ALLOWED_CIDRS USSD_BL_ALLOWED_CIDRS USSD_TELETALK_ALLOWED_CIDRS"
 REALMS_DIR="$REPO_DIR/deploy/compose/platform/keycloak/realms"
 
-# placeholder_env: VAR=t for every generated secret (for `env`).
-placeholder_env() { local v; for v in $SECRET_VARS; do printf '%s=t\n' "$v"; done; }
+# placeholder_env: VAR=t for every generated secret, a test range for every address list (for `env`).
+placeholder_env() {
+  local v
+  for v in $SECRET_VARS; do printf '%s=t\n' "$v"; done
+  for v in $ADDRESS_VARS; do printf '%s=10.9.0.0/16\n' "$v"; done
+}
 
 # copy_deploy: a copy of deploy/ in the fixture root without the generated (gitignored)
 # secrets file, so the tests never depend on or read a developer's local secrets.
@@ -172,6 +179,35 @@ test_gen_dev_env_adds_a_new_variable_to_an_existing_env_and_keeps_the_rest() {
   grep -qx 'POSTGRES_PASSWORD=keepmekeepmekeepmekeepmekeepme1234' "$f" || fail "existing value changed"
   grep -qE '^C2WBANK_HMAC_SECRET=[A-Za-z0-9]{32,}$' "$f" || fail "C2WBANK_HMAC_SECRET not added to an existing .env"
   [ "$(grep -c '^POSTGRES_PASSWORD=' "$f")" = 1 ] || fail "existing variable duplicated"
+}
+
+test_compose_config_fails_without_a_ussd_allow_list() {
+  copy_deploy
+  local v
+  for v in $ADDRESS_VARS; do
+    OUT="$(env $(placeholder_env) "$v=" \
+      docker compose -f deploy/compose/mvp/compose.yml config -q 2>&1)" && fail "config passed without $v (fails open)"
+    assert_out_contains "$v"
+  done
+  [ "$(compose_json | jq -r '.services["apisix-init"].environment.USSD_ROBI_ALLOWED_CIDRS')" = "10.9.0.0/16" ] \
+    || fail "apisix-init does not get USSD_ROBI_ALLOWED_CIDRS from the .env"
+}
+
+test_gen_dev_env_writes_the_dev_ussd_allow_lists_once_and_keeps_edits() {
+  mkdir -p deploy/compose/platform
+  local f=deploy/compose/platform/.env v
+  printf 'USSD_GP_ALLOWED_CIDRS=10.7.0.0/24\n' >"$f"
+  chmod 600 "$f"
+  assert_ok env MW_ROOT="$PWD" "$REPO_DIR/scripts/gen-dev-env.sh"
+  grep -qx 'USSD_GP_ALLOWED_CIDRS=10.7.0.0/24' "$f" || fail "an edited allow-list was overwritten"
+  for v in USSD_ROBI_ALLOWED_CIDRS USSD_BL_ALLOWED_CIDRS USSD_TELETALK_ALLOWED_CIDRS; do
+    grep -qE "^$v=[0-9a-f.:/,]+$" "$f" || fail "$v not written as a CIDR list: $(grep "^$v=" "$f")"
+    [ "$(grep -c "^$v=" "$f")" = 1 ] || fail "$v duplicated"
+  done
+  # never every address
+  if grep -E '_ALLOWED_CIDRS=(.*,)?(0[.]0[.]0[.]0/0|::/0)' "$f"; then fail "dev allow-list admits every address"; fi
+  env MW_ROOT="$PWD" "$REPO_DIR/scripts/gen-dev-env.sh" >/dev/null
+  [ "$(grep -c '_ALLOWED_CIDRS=' "$f")" = 4 ] || fail "re-run added allow-lists again"
 }
 
 test_etcd_is_on_a_dedicated_internal_network_shared_only_with_apisix() {

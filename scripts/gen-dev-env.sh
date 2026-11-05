@@ -31,4 +31,14 @@ added=""
 for v in $VARS; do
   grep -q "^$v=" "$file" || { printf '%s=%s\n' "$v" "$(random)" >>"$file"; added="$added $v"; }
 done
+# Not secrets: each MNO's USSD source allow-list, required by the platform compose file (no
+# fallback there, so a missing list stops the apply instead of opening the route). Dev: loopback
+# and Docker's default address pools (172.16.0.0/12, 192.168.0.0/16), where the compose networks
+# and the Docker Desktop host gateway (edge-test, e2e from the host) live; the compose networks
+# have no fixed subnet, so narrower is not portable. Edit the line in .env if your Docker uses
+# other pools; an existing line is kept. Production lists each MNO's gateway addresses.
+DEV_USSD_CIDRS="127.0.0.0/8,::1/128,172.16.0.0/12,192.168.0.0/16"
+for v in USSD_GP_ALLOWED_CIDRS USSD_ROBI_ALLOWED_CIDRS USSD_BL_ALLOWED_CIDRS USSD_TELETALK_ALLOWED_CIDRS; do
+  grep -q "^$v=" "$file" || { printf '%s=%s\n' "$v" "$DEV_USSD_CIDRS" >>"$file"; added="$added $v"; }
+done
 [ -z "$added" ] || info "gen-dev-env: generated$added in ${file#"$MW_ROOT"/}"

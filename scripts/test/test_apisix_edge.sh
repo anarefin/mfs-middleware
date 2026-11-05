@@ -272,9 +272,14 @@ test_each_ussd_route_takes_its_ip_allow_list_from_config() {
   [ "$(jq -c '.plugins["ip-restriction"].whitelist' out/routes/ussd-http-robi.json)" = '["10.2.0.0/16","192.168.0.0/16"]' ] \
     || fail "robi allow-list: $(jq -c '.plugins["ip-restriction"]' out/routes/ussd-http-robi.json)"
   [ "$(jq -c '.plugins["ip-restriction"].whitelist' out/routes/ussd-http-gp.json)" = '["10.1.0.0/16"]' ] || fail "gp allow-list"
-  # dev defaults: the compose networks (private ranges), set in the platform compose file
-  grep -E 'USSD_ROBI_ALLOWED_CIDRS: [$][{]USSD_ROBI_ALLOWED_CIDRS:-[^}]*172.16.0.0/12' "$REPO_DIR/deploy/compose/platform/compose.yml" >/dev/null \
-    || fail "no dev default allow-list for robi in the platform compose file"
+  # no fallback in the platform compose file: an unset list stops the stack (and the apply),
+  # never opens the route; the dev ranges come from the generated .env (scripts/gen-dev-env.sh)
+  local mno
+  for mno in GP ROBI BL TELETALK; do
+    grep -qE "USSD_${mno}_ALLOWED_CIDRS: [\$][{]USSD_${mno}_ALLOWED_CIDRS:[?]" "$REPO_DIR/deploy/compose/platform/compose.yml" \
+      || fail "USSD_${mno}_ALLOWED_CIDRS is not required in the platform compose file"
+    grep -q "USSD_${mno}_ALLOWED_CIDRS" "$REPO_DIR/scripts/gen-dev-env.sh" || fail "USSD_${mno}_ALLOWED_CIDRS not generated"
+  done
 }
 
 test_each_ussd_route_limits_each_msisdn_without_storing_it() {
@@ -286,6 +291,11 @@ test_each_ussd_route_limits_each_msisdn_without_storing_it() {
   fn="$(jq -r '.plugins["serverless-pre-function"] | select(.phase == "access") | .functions[0]' "$r")"
   printf '%s' "$fn" | grep -q 'ctx.var.mw_ussd_msisdn' || fail "no per-MSISDN key set"
   printf '%s' "$fn" | grep -q 'resty.sha256' || fail "the MSISDN is not hashed before it becomes a Valkey key"
+}
+
+test_a_missing_ussd_allow_list_fails_the_apply() {
+  if USSD_TELETALK_ALLOWED_CIDRS= render; then fail "applied the teletalk route without an allow-list"; fi
+  assert_out_contains "USSD_TELETALK_ALLOWED_CIDRS"
 }
 
 test_a_missing_ussd_secret_fails_the_apply() {
