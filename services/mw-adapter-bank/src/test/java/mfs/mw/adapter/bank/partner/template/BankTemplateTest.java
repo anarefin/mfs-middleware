@@ -38,7 +38,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * The C2W bank (ticket 23): the c2wbank seed config of application.yml, instantiated from the
+ * The C2W bank (ticket 23): the c2wbank seed config of application-dev.yml, instantiated from the
  * {@code rest-json-async-callback} template, against the mw-simulators bank wire format stubbed
  * with WireMock. Every way a call can end maps to one {@link PartnerResponse}, the non-idempotent
  * debit is never sent twice, and signed callbacks map to our reference.

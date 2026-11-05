@@ -38,7 +38,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * The utility bill aggregator (ticket 21): the billagg seed config of application.yml,
+ * The utility bill aggregator (ticket 21): the billagg seed config of application-dev.yml,
  * instantiated from the {@code rest-json-request-reply} template, against the mw-simulators
  * aggregator wire format stubbed with WireMock. Every way a call can end maps to one {@link
  * PartnerResponse}, the non-idempotent payment is never sent twice, and the bill fetch (INQUIRY)

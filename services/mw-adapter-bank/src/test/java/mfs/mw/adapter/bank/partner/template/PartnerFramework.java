@@ -22,7 +22,6 @@ import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.ConfigurationPropertySources;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.core.env.MutablePropertySources;
-import org.springframework.core.env.PropertySource;
 import org.springframework.boot.context.properties.bind.PropertySourcesPlaceholdersResolver;
 import org.springframework.core.io.ClassPathResource;
 import tools.jackson.databind.json.JsonMapper;
@@ -83,17 +82,18 @@ final class PartnerFramework implements AutoCloseable {
         ref -> "fake-secret-for-tests", Clock.systemUTC());
   }
 
-  /** The aggregator seed exactly as application.yml defines it (mappings, error map, timeouts). */
+  /** The aggregator seed exactly as application-dev.yml defines it (mappings, error map, timeouts). */
   static PartnerConfig c2wbankSeed() {
     return seed().instances().get("c2wbank");
   }
 
   static PartnerProperties seed() {
     try {
-      List<PropertySource<?>> sources =
-          new YamlPropertySourceLoader().load("application", new ClassPathResource("application.yml"));
+      // The seeds live in the dev profile (application-dev.yml, D23), over the packaged config.
+      YamlPropertySourceLoader loader = new YamlPropertySourceLoader();
       MutablePropertySources all = new MutablePropertySources();
-      sources.forEach(all::addLast);
+      loader.load("application-dev", new ClassPathResource("application-dev.yml")).forEach(all::addLast);
+      loader.load("application", new ClassPathResource("application.yml")).forEach(all::addLast);
       return new Binder(
               ConfigurationPropertySources.from(all), new PropertySourcesPlaceholdersResolver(all))
           .bind("mw.partners", PartnerProperties.class)
