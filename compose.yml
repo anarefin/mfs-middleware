@@ -23,7 +23,7 @@ networks:
     ipam:
       config:
         - subnet: ${MW_OPS_SUBNET:-172.31.250.0/24}
-    name: mw_ops
+    name: ${COMPOSE_PROJECT_NAME:-mw}_ops
 services:
   apisix:
     depends_on:
@@ -811,6 +811,49 @@ services:
         target: /out
         type: volume
         volume: {}
+  mw-admin-ui:
+    build:
+      context: ./ui/mw-admin-ui
+      dockerfile: Dockerfile
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    environment:
+      ADMIN_API_URL: http://apisix:9080
+      AUTH_KEYCLOAK_ID: mw-admin-ui
+      AUTH_KEYCLOAK_INTERNAL_URL: http://keycloak:8080
+      AUTH_KEYCLOAK_ISSUER: ${MW_ADMIN_UI_PUBLIC_URL:-https://localhost}/realms/ops
+      AUTH_SECRET: ${MW_ADMIN_UI_AUTH_SECRET:?run scripts/gen-dev-env.sh (make up
+        does)}
+      AUTH_URL: ${MW_ADMIN_UI_PUBLIC_URL:-https://localhost}/console/api/auth
+    healthcheck:
+      interval: 10s
+      retries: 3
+      start_period: 20s
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:3000/console/api/health | grep -q UP
+      timeout: 3s
+    image: ${MW_ADMIN_UI_IMAGE:-mw-admin-ui:dev}
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: 10m
+    networks:
+      ops: null
+    read_only: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache
+    user: 10001:10001
   mw-app-gateway:
     build:
       context: ./services/mw-app-gateway

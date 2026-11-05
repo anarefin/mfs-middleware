@@ -9,7 +9,7 @@ SECRET_VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALT
   POSTGRES_PASSWORD VALKEY_PASSWORD KC_BOOTSTRAP_ADMIN_PASSWORD KC_PARTNER_SIM_SECRET
   KC_CUSTOMERS_TEST_PASSWORD KC_OPS_TEST_PASSWORD KC_PORTALS_TEST_PASSWORD KC_DB_PASSWORD
   MW_E2E_API_KEY BILLAGG_HMAC_SECRET C2WBANK_HMAC_SECRET CHECKOUT_DEMO_MERCHANT_SECRET
-  KC_MW_PORTAL_API_SECRET KC_MW_ADMIN_API_SECRET
+  KC_MW_PORTAL_API_SECRET KC_MW_ADMIN_API_SECRET MW_ADMIN_UI_AUTH_SECRET
   USSD_GP_GATEWAY_SECRET USSD_ROBI_GATEWAY_SECRET USSD_BL_GATEWAY_SECRET USSD_TELETALK_GATEWAY_SECRET"
 # Not secrets, but generated into the same .env and required by the platform file (no fallback):
 # each MNO's USSD source allow-list (comma-separated CIDRs, item A4).
@@ -32,10 +32,12 @@ copy_deploy() {
   # the MVP project includes module compose files (with the platform .env as their env_file):
   # copy those too, and an empty .env so the include resolves without developer secrets
   local f
-  for f in "$REPO_DIR"/services/*/compose.yml; do
+  local parent
+  for f in "$REPO_DIR"/services/*/compose.yml "$REPO_DIR"/ui/*/compose.yml; do
     [ -f "$f" ] || continue
-    mkdir -p "services/$(basename "$(dirname "$f")")"
-    cp "$f" "services/$(basename "$(dirname "$f")")/compose.yml"
+    parent="$(basename "$(dirname "$(dirname "$f")")")"
+    mkdir -p "$parent/$(basename "$(dirname "$f")")"
+    cp "$f" "$parent/$(basename "$(dirname "$f")")/compose.yml"
   done
   : >deploy/compose/platform/.env
 }

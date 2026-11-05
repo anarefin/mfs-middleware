@@ -4,7 +4,7 @@
 # secrets shared by mw-simulators and mw-adapter-billpay / mw-adapter-bank, the dev checkout
 # merchant secret shared by APISIX and mw-checkout, the realm `services` client secrets of
 # mw-portal-api / mw-admin-api, also put into OpenBao by their init steps, the MNO USSD gateway
-# passwords shared by APISIX and mw-simulators) into deploy/compose/platform/.env
+# passwords shared by APISIX and mw-simulators, the session-cookie key of mw-admin-ui) into deploy/compose/platform/.env
 # (gitignored, mode 600), which Compose reads to interpolate the platform file. Existing
 # values are kept, so volumes initialised with them stay usable; only missing variables
 # are added. Called by `make up`, `make smoke` and `make down`. Real environments inject
@@ -16,7 +16,7 @@ VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALTH_PASSW
   POSTGRES_PASSWORD VALKEY_PASSWORD KC_BOOTSTRAP_ADMIN_PASSWORD KC_PARTNER_SIM_SECRET
   KC_CUSTOMERS_TEST_PASSWORD KC_OPS_TEST_PASSWORD KC_PORTALS_TEST_PASSWORD KC_DB_PASSWORD
   MW_E2E_API_KEY BILLAGG_HMAC_SECRET C2WBANK_HMAC_SECRET CHECKOUT_DEMO_MERCHANT_SECRET
-  KC_MW_PORTAL_API_SECRET KC_MW_ADMIN_API_SECRET
+  KC_MW_PORTAL_API_SECRET KC_MW_ADMIN_API_SECRET MW_ADMIN_UI_AUTH_SECRET
   USSD_GP_GATEWAY_SECRET USSD_ROBI_GATEWAY_SECRET USSD_BL_GATEWAY_SECRET USSD_TELETALK_GATEWAY_SECRET"
 file="$MW_ROOT/deploy/compose/platform/.env"
 mkdir -p "$(dirname "$file")"

@@ -44,3 +44,6 @@ include:
     env_file: ../platform/.env
   - path: ../../../services/mw-admin-api/compose.yml
     env_file: ../platform/.env
+  # the admin console (Next.js, ticket 40); a UI module lives under ui/, not services/
+  - path: ../../../ui/mw-admin-ui/compose.yml
+    env_file: ../platform/.env
