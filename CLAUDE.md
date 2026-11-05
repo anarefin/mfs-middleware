@@ -123,6 +123,7 @@ or one with `M=<module>` (e.g. `M=mw-orchestrator`).
 | `make edge-test` | live APISIX edge policy tests on the running stack (401/400/413/429 envelopes, X-Mw-* strip, correlation ID, idempotent apply); edge config rules in `deploy/apisix/README.md` |
 | `make down [DOWN_ARGS=-v]` | stop the MVP stack (`-v` drops its volumes) |
 | `make e2e [M=] [TAGS=@p2p]` | Cucumber suite in `tests/e2e` against the running stack (`make up` first), filtered by `@<module>` and `TAGS`; first re-runs `apisix-init` with `MW_E2E_ROUTES=1` (test-only routes, key-auth); stack access and reusable steps: `tests/e2e/README.md` |
+| `make e2e-changed [BASE=main] [TAGS=]` | fast feedback after a change, no `verify`: rebuilds (`bootJar`, no tests) only the modules changed since `BASE` (commits, staged, unstaged, untracked) and recreates just their services in the running MVP project (`MW_UP_ONLY`); the whole stack when it is down or `contracts/`/`deploy/` changed; then the full e2e suite (`E2E_SCOPE=modules` runs only `@<changed-module>` scenarios). Not a substitute for `make up M=` (that runs the module as a separate compose project) or for the gate |
 | `make perf [M=]` | Gatling suite in `tests/perf` |
 | `make security [M=]` | gitleaks, CycloneDX SBOM, trivy (deps and images) |
 | `make new-service NAME=mw-x` | scaffold a service from the template |

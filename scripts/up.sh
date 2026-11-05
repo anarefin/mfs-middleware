@@ -5,6 +5,7 @@
 #              which includes the platform and every module's compose.yml)
 #   MODULE:    docker compose up only that module's own compose.yml (it joins the
 #              external zone networks, so the platform project must already be up)
+#   MW_UP_ONLY="mw-a mw-b" (no MODULE): only those modules, recreated inside the MVP project
 # Then waits until every long-running service is healthy and every one-shot has finished. One-shot
 # init containers carry the compose label mw.oneshot=true (restart "no", no healthcheck): they
 # count once exited 0 (services can be healthy before e.g. kafka-init has created their topics).
@@ -26,6 +27,24 @@ else
   fi
   "$(dirname "$0")/gen-dev-env.sh"
 fi
+# MW_UP_ONLY="mw-a mw-b" (no MODULE): rebuild only those modules' jars and recreate only their
+# services (<module>-init, <module>) inside the running MVP project, with --no-deps. Use this, not
+# MODULE, to swap a changed service into the full stack: a module's own compose.yml runs as a
+# separate compose project (named after its folder), next to the copy the MVP project started.
+svc_args=""
+only_mods=""
+if [ -n "${MW_UP_ONLY:-}" ]; then
+  [ -z "$m" ] || die "up: MW_UP_ONLY applies to the MVP project; leave out M=$m"
+  for o in $MW_UP_ONLY; do
+    s="$(selected_modules "$o")"
+    case "$s" in services/*) ;; *) die "up: MW_UP_ONLY: $o is not a stack module (services/*)" ;; esac
+    n="$(basename "$s")"
+    only_mods="$only_mods $s"
+    grep -q "^  $n-init:" "$MW_ROOT/$s/compose.yml" 2>/dev/null && svc_args="$svc_args $n-init"
+    svc_args="$svc_args $n"
+  done
+  svc_args="--no-deps$svc_args"
+fi
 # Never run stale code: an existing jar or mw-x:dev / mw-x-init:dev image may predate the
 # source. So every stack module's jar is rebuilt (images copy build/libs/*.jar + the SBOM;
 # Gradle is incremental, so this is cheap when nothing changed), one module at a time (parallel
@@ -37,7 +56,9 @@ if [ "${MW_UP_NO_BUILD:-0}" = 1 ]; then
   info "up: MW_UP_NO_BUILD=1: using existing jars and images as they are"
   build_args=""
 else
-  if [ -n "$m" ]; then stack_mods="$mod"; else stack_mods="$(cd "$MW_ROOT" && ls -d services/*/ 2>/dev/null | sed 's#/$##')"; fi
+  if [ -n "$m" ]; then stack_mods="$mod"
+  elif [ -n "${MW_UP_ONLY:-}" ]; then stack_mods="$only_mods"
+  else stack_mods="$(cd "$MW_ROOT" && ls -d services/*/ 2>/dev/null | sed 's#/$##')"; fi
   for s in $stack_mods; do
     [ -f "$MW_ROOT/$s/Dockerfile" ] && [ -f "$MW_ROOT/$s/compose.yml" ] && [ -x "$MW_ROOT/$s/gradlew" ] || continue
     info "up: $s ./gradlew bootJar"
@@ -46,8 +67,8 @@ else
 fi
 case " ${COMPOSE_ARGS:-} " in *" --build "*) build_args="" ;; esac
 
-info "up: docker compose -f ${file#"$MW_ROOT"/} up -d $build_args ${COMPOSE_ARGS:-}"
-docker compose -f "$file" up -d $build_args ${COMPOSE_ARGS:-}
+info "up: docker compose -f ${file#"$MW_ROOT"/} up -d $build_args ${COMPOSE_ARGS:-} $svc_args"
+docker compose -f "$file" up -d $build_args ${COMPOSE_ARGS:-} $svc_args
 
 timeout="${MW_UP_TIMEOUT:-300}"
 poll="${MW_UP_POLL:-3}"
