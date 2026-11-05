@@ -1,5 +1,8 @@
 # Test-only overrides, merged over src/main/resources/application.yml.
 mw:
+  internal-auth:
+    # Test-only issuer of security/InternalTokens (TestInfrastructure registers its JWKS).
+    issuer: http://keycloak.test/realms/services
   orchestrator:
     # Off by default in tests: a consumer or sweeper left running in a cached context would take
     # records and timers that another test is checking. Tests that need them switch them on.

@@ -138,6 +138,15 @@ management:
       type: w3c
 
 mw:
+  # Internal audit search /internal/v1/** (spec 18.2, M3 gate): Keycloak client-credentials JWT of
+  # realm `services` (config/SecurityConfig). Only mw-admin-api: the search has no org filter, so
+  # mw-portal-api (org-scoped) is not allowed.
+  internal-auth:
+    jwk-set-uri: ${MW_INTERNAL_JWK_SET_URI:http://keycloak:8080/realms/services/protocol/openid-connect/certs}
+    issuer: ${MW_INTERNAL_ISSUER:http://keycloak:8080/realms/services}
+    audience: mw-audit-dw
+    allowed-clients: mw-admin-api
+    org-scoped-clients: mw-portal-api
   kafka:
     retry:
       # Non-blocking retry topics <topic>.<group>.retry.1..3, then <topic>.<group>.dlq (19.2).

@@ -25,12 +25,16 @@ public record PortalApiProperties(
    * @param orgWallets the core wallet each org pays its bulk batches from (orgId -> wallet id); an
    *     org without one cannot have a batch approved (ticket 34)
    * @param dispatch how child txns are streamed to the orchestrator
+   * @param expiry how long a batch may wait for its checker (M3 gate: 72 h)
+   * @param reconcile how SUBMITTED rows that never settled are looked up (M3 gate)
    */
   public record Bulk(
       @Positive int maxRows,
       @NotNull DataSize maxBytes,
       Map<String, String> orgWallets,
-      @Valid @NotNull Dispatch dispatch) {
+      @Valid @NotNull Dispatch dispatch,
+      @Valid @NotNull Expiry expiry,
+      @Valid @NotNull Reconcile reconcile) {
 
     public Bulk {
       orgWallets = Map.copyOf(orgWallets == null ? Map.of() : orgWallets);
@@ -43,6 +47,28 @@ public record PortalApiProperties(
    * @param period how often the dispatcher runs; each run sends what the rate allowed since the last
    */
   public record Dispatch(boolean enabled, @Positive int ratePerSecond, @NotNull Duration period) {}
+
+  /**
+   * @param enabled runs the expiry job (tests switch it off and call the service)
+   * @param after a PENDING_APPROVAL batch older than this becomes EXPIRED
+   * @param period how often the job looks
+   * @param batchSize most batches expired per run
+   */
+  public record Expiry(boolean enabled, @NotNull Duration after, @NotNull Duration period, @Positive int batchSize) {}
+
+  /**
+   * @param enabled runs the reconcile job (tests switch it off and call the service)
+   * @param after a SUBMITTED row older than this is looked up on the orchestrator's query API
+   * @param giveUpAfter a row still without a settled state this long after it was sent is UNRESOLVED
+   * @param period how often the job looks
+   * @param batchSize most rows looked up per run
+   */
+  public record Reconcile(
+      boolean enabled,
+      @NotNull Duration after,
+      @NotNull Duration giveUpAfter,
+      @NotNull Duration period,
+      @Positive int batchSize) {}
 
   /**
    * @param jwkSetUri the realm's signing keys, fetched lazily on the first token

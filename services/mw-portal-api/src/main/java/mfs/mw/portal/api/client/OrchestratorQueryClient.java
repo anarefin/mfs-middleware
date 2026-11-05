@@ -27,7 +27,8 @@ import tools.jackson.databind.json.JsonMapper;
  * txn-query.v1.openapi.yaml}, ticket 35). Every call carries the caller's {@code orgId}, so the
  * orchestrator only ever returns that org's transactions. Idempotent reads: Resilience4j instance
  * {@code orchestrator} retries and breaks the circuit on {@link OrchestratorUnavailableException}
- * only. Runs on the HTTP request's (virtual) thread.
+ * only. Runs on the HTTP request's (virtual) thread. Authenticated with this service's
+ * client-credentials token ({@link ServiceTokenClient}); a 401 drops the cached token.
  */
 @Component
 public class OrchestratorQueryClient {
@@ -37,10 +38,12 @@ public class OrchestratorQueryClient {
   private final OrchestratorClientProperties props;
   private final JsonMapper json;
   private final HttpClient http;
+  private final ServiceTokenClient tokens;
 
-  public OrchestratorQueryClient(OrchestratorClientProperties props, JsonMapper json) {
+  public OrchestratorQueryClient(OrchestratorClientProperties props, JsonMapper json, ServiceTokenClient tokens) {
     this.props = props;
     this.json = json;
+    this.tokens = tokens;
     this.http =
         HttpClient.newBuilder()
             .connectTimeout(props.connectTimeout())
@@ -92,19 +95,27 @@ public class OrchestratorQueryClient {
         HttpRequest.newBuilder(URI.create(base + pathAndQuery))
             .timeout(props.readTimeout())
             .header("Accept", "application/json")
+            .header("Authorization", "Bearer " + tokens.token())
             .GET();
     String correlationId = MDC.get("correlationId");
     if (correlationId != null) {
       b.header("X-Correlation-Id", correlationId);
     }
+    HttpResponse<byte[]> res;
     try {
-      return http.send(b.build(), HttpResponse.BodyHandlers.ofByteArray());
+      res = http.send(b.build(), HttpResponse.BodyHandlers.ofByteArray());
     } catch (IOException e) {
       throw new OrchestratorUnavailableException("orchestrator not reachable", e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new OrchestratorUnavailableException("interrupted", e);
     }
+    if (res.statusCode() == 401) {
+      // expired or revoked early: the retry fetches a fresh token
+      tokens.invalidate();
+      throw new OrchestratorUnavailableException("orchestrator refused the service token", null);
+    }
+    return res;
   }
 
   private <T> T read(byte[] body, Class<T> type) {

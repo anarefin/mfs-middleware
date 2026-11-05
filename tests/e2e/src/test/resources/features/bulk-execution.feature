@@ -21,6 +21,7 @@ Feature: Org portal bulk payout: throttled child txns, pause and resume, result 
     And within 15 minutes org-checker01 sees the batch COMPLETED
     And the batch progress shows 10000 completed, 0 failed and 1000000 poisha paid
     And org-maker01's result file lists all 10000 rows as COMPLETED, each with its own txnId
+    And org-maker01's result file names the batch status COMPLETED
     And the core balances changed by:
       | 01311000001 | -1000000 |
       | 01711000001 | 1000     |
@@ -41,6 +42,7 @@ Feature: Org portal bulk payout: throttled child txns, pause and resume, result 
       | reference | status    | errorCode                       |
       | OK-1      | COMPLETED |                                 |
       | NOPE-2    | REJECTED  | MW-CORE-CREDIT_WALLET_NOT_FOUND |
+    And org-maker01's result file names the batch status COMPLETED
     And the core balances changed by:
       | 01311000001 | -200 |
       | 01711000002 | 200  |
@@ -61,5 +63,11 @@ Feature: Org portal bulk payout: throttled child txns, pause and resume, result 
     And the batch status is EXECUTING
     And within 5 minutes org-checker01 sees the batch COMPLETED
     And the batch progress shows 2000 completed, 0 failed and 200000 poisha paid
+    And within 60 seconds the audit trail of the batch shows:
+      | action              | actor         |
+      | bulk.batch.uploaded | org-maker01   |
+      | bulk.batch.approved | org-checker01 |
+      | bulk.batch.paused   | org-checker01 |
+      | bulk.batch.resumed  | org-checker01 |
     And the core balances changed by:
       | 01311000001 | -200000 |

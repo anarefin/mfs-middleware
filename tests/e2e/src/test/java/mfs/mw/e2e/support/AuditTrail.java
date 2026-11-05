@@ -53,6 +53,12 @@ public final class AuditTrail {
     return query("txn_id = '" + id + "'");
   }
 
+  /** The audit rows of one org bulk batch (resource {@code bulk-batch/<batchId>}) in chain order. */
+  public static List<Row> rowsOfBatch(String batchId) {
+    UUID id = UUID.fromString(batchId); // also keeps the SQL literal safe
+    return query("resource = 'bulk-batch/" + id + "'");
+  }
+
   /** Action of the orchestrator's one-row-per-state audit (spec 14.3). */
   public static final String STATE_CHANGED = "txn.state.changed";
 

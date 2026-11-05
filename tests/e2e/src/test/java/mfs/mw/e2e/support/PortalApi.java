@@ -39,6 +39,11 @@ public final class PortalApi {
     return Http.get(Stack.get().url(BATCHES), auth(user));
   }
 
+  /** The org's batches of one status (a contract BatchStatus name). */
+  public static Http.Response list(String user, String status) {
+    return Http.get(Stack.get().url(BATCHES + "?status=" + status), auth(user));
+  }
+
   public static Http.Response pause(String user, String batchId) {
     return Http.postText(Stack.get().url(BATCHES + "/" + batchId + "/pause"), auth(user), "application/json", "");
   }

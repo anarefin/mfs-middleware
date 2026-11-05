@@ -210,9 +210,9 @@ class BulkBatchApiIT {
     assertThat(r)
         .bodyText()
         .isEqualTo(
-            "line,msisdn,amount,reference,status,txnId,errorCode\n"
-                + "2,0171****001,1.25,SAL-1,PENDING,,\n"
-                + "3,0171****002,1.25,SAL-2,PENDING,,\n");
+            "line,msisdn,amount,reference,status,txnId,errorCode,batchStatus\n"
+                + "2,0171****001,1.25,SAL-1,PENDING,,,APPROVED\n"
+                + "3,0171****002,1.25,SAL-2,PENDING,,,APPROVED\n");
     assertThat(mvc.get().uri(BATCHES + "/{id}/result", id).with(OTHER_ORG_CHECKER).exchange()).hasStatus(404);
   }
 
@@ -301,6 +301,19 @@ class BulkBatchApiIT {
     JsonNode pending =
         body(mvc.get().uri(BATCHES + "?status=PENDING_APPROVAL").with(CHECKER).exchange()).get("batches");
     assertThat(pending).singleElement().satisfies(b -> assertThat(b.get("batchId").asString()).isEqualTo(second));
+  }
+
+  @Test
+  void anUnknownStatusFilterIs400AndEveryContractStatusIsAccepted() {
+    MvcTestResult bad = mvc.get().uri(BATCHES + "?status=NOPE").with(CHECKER).exchange();
+    assertThat(bad).hasStatus(400);
+    assertThat(body(bad).get("code").asString()).isEqualTo("MW-VAL-001");
+    for (String s :
+        List.of(
+            "PENDING_APPROVAL", "APPROVED", "REJECTED", "EXECUTING", "PAUSED", "COMPLETED",
+            "COMPLETED_WITH_EXCEPTIONS", "EXPIRED")) {
+      assertThat(mvc.get().uri(BATCHES + "?status=" + s).with(CHECKER).exchange()).as(s).hasStatusOk();
+    }
   }
 
   @Test

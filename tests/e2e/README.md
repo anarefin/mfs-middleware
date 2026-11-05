@@ -150,8 +150,16 @@ Only APISIX is published, so every call goes through it:
   pauses / resumes the batch", "within N minutes <user> sees the batch COMPLETED", "the batch
   progress shows C completed, F failed and P poisha paid", "<user> sees the batch send no more
   rows", "<user>'s result file lists all N rows as COMPLETED, each with its own txnId" / "...
-  shows:" (reference, status, errorCode). ORG001 pays from org wallet `01311000001`; at the
+  shows:" (reference, status, errorCode), "<user>'s result file names the batch status X" (the
+  `batchStatus` column, M3 gate). ORG001 pays from org wallet `01311000001`; at the
   default 50 rows/s the 10,000-row scenario takes about 4 minutes.
+- Batch states of the M3 gate: "<user> lists the org's batches with status X" + "every listed
+  batch has status X" (EXPIRED, COMPLETED_WITH_EXCEPTIONS are listable; reaching them needs 72 h or
+  MANUAL_REVIEW / UNRESOLVED rows, so mw-portal-api's `BulkLifecycleIT` drives them on a test clock),
+  "within N seconds the audit trail of the batch shows:" (action, actor; `AuditTrail.rowsOfBatch`
+  reads resource `bulk-batch/<batchId>`, operator usernames unmasked). No step calls an internal
+  `/internal/v1/**` API: those need a realm `services` client-credentials token (clients
+  mw-portal-api, mw-admin-api); the suite checks them through the portal and the audit table.
 - `support/Keycloak.customerToken(user)`; `support/AuditTrail.rowsOfTxn` / `verifyChain`;
   `support/Waits.until` for anything asynchronous.
 - Steps (`steps/`, one `ScenarioState` per scenario via PicoContainer): sign in, send P2P,

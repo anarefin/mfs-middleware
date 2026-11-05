@@ -14,6 +14,10 @@ Feature: Org portal bulk upload with maker-checker through APISIX
     Then the response status is 200
     And the batch status is APPROVED
     And the batch was decided by org-checker01
+    And within 60 seconds the audit trail of the batch shows:
+      | action              | actor         |
+      | bulk.batch.uploaded | org-maker01   |
+      | bulk.batch.approved | org-checker01 |
 
   Scenario: a checker rejects a batch
     Given org-maker01 has uploaded a bulk file of 2 rows
@@ -23,6 +27,10 @@ Feature: Org portal bulk upload with maker-checker through APISIX
     When org-checker01 approves the batch
     Then the response status is 409
     And the error code is "MW-VAL-032"
+    And within 60 seconds the audit trail of the batch shows:
+      | action              | actor         |
+      | bulk.batch.uploaded | org-maker01   |
+      | bulk.batch.rejected | org-checker01 |
 
   Scenario: the maker cannot approve their own batch, even with the checker role
     Given org-makerchecker01 has uploaded a bulk file of 2 rows
@@ -37,6 +45,19 @@ Feature: Org portal bulk upload with maker-checker through APISIX
     When org-checker02 approves the batch
     Then the response status is 404
     And the error code is "MW-VAL-003"
+
+  Scenario: the org lists its batches by any batch status, the M3 ones included
+    # EXPIRED (no decision within 72 h) and COMPLETED_WITH_EXCEPTIONS (a MANUAL_REVIEW or
+    # UNRESOLVED row) need hours or core faults to reach; BulkLifecycleIT drives them on a test clock.
+    When org-checker01 lists the org's batches with status EXPIRED
+    Then the response status is 200
+    And every listed batch has status EXPIRED
+    When org-checker01 lists the org's batches with status COMPLETED_WITH_EXCEPTIONS
+    Then the response status is 200
+    And every listed batch has status COMPLETED_WITH_EXCEPTIONS
+    When org-checker01 lists the org's batches with status NOPE
+    Then the response status is 400
+    And the error code is "MW-VAL-001"
 
   Scenario: 10,000 rows are accepted
     When org-maker01 uploads a bulk file of 10000 rows

@@ -307,10 +307,11 @@ class BulkExecutionIT {
     String csv = batches.resultFile(MAKER, id);
     assertThat(csv.lines().toList())
         .containsExactly(
-            "line,msisdn,amount,reference,status,txnId,errorCode",
-            "2,0171****001,1.25,SAL-1,COMPLETED," + reqs.get(0).path("txnId").asString() + ",",
-            "3,0171****002,1.25,SAL-2,REJECTED," + reqs.get(1).path("txnId").asString() + ",MW-CORE-INSUFFICIENT_BALANCE",
-            "4,0171****003,1.25,SAL-3,COMPLETED," + reqs.get(2).path("txnId").asString() + ",");
+            "line,msisdn,amount,reference,status,txnId,errorCode,batchStatus",
+            "2,0171****001,1.25,SAL-1,COMPLETED," + reqs.get(0).path("txnId").asString() + ",,COMPLETED",
+            "3,0171****002,1.25,SAL-2,REJECTED," + reqs.get(1).path("txnId").asString()
+                + ",MW-CORE-INSUFFICIENT_BALANCE,COMPLETED",
+            "4,0171****003,1.25,SAL-3,COMPLETED," + reqs.get(2).path("txnId").asString() + ",,COMPLETED");
   }
 
   @Test

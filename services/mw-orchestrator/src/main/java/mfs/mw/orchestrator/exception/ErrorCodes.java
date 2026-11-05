@@ -49,6 +49,10 @@ public final class ErrorCodes {
   public static final String AUTH_BULK_CHANNEL = "MW-AUTH-021";
   /** The core did not confirm ReverseTransaction within {@code reversing-timeout}: MANUAL_REVIEW. */
   public static final String TMO_CORE_REVERSE = "MW-TMO-020";
+  /** Internal API: no valid client-credentials token (missing, expired, bad signature, issuer, audience): 401. */
+  public static final String AUTH_UNAUTHENTICATED = "MW-AUTH-001";
+  /** Internal API: the calling client may not ask (not allowed, or mw-portal-api without orgId): 403. */
+  public static final String AUTH_FORBIDDEN = "MW-AUTH-002";
   /** Unexpected failure; details stay in the log, never in the response. */
   public static final String SYS_INTERNAL = "MW-SYS-001";
 

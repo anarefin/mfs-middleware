@@ -11,6 +11,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import mfs.mw.e2e.support.AuditTrail;
 import mfs.mw.e2e.support.Http;
 import mfs.mw.e2e.support.PortalApi;
 import mfs.mw.e2e.support.Waits;
@@ -188,12 +189,50 @@ public class PortalSteps {
     assertThat(actual).containsExactlyElementsOf(wanted);
   }
 
+  /** Every line of the result file carries the batch's status (COMPLETED_WITH_EXCEPTIONS, M3 gate). */
+  @Then("{word}'s result file names the batch status {word}")
+  public void resultBatchStatus(String user, String status) {
+    List<String[]> lines = resultLines(user);
+    assertThat(lines).isNotEmpty();
+    for (String[] l : lines) {
+      assertThat(l[7]).as("row %s", l[0]).isEqualTo(status);
+    }
+  }
+
+  @When("{word} lists the org's batches with status {word}")
+  public void listsByStatus(String user, String status) {
+    record(PortalApi.list(user, status));
+  }
+
+  @Then("every listed batch has status {word}")
+  public void everyListed(String status) {
+    for (JsonNode b : state.response().body().path("batches")) {
+      assertThat(b.path("status").asString()).as("%s", state.response()).isEqualTo(status);
+    }
+  }
+
+  /**
+   * The batch's operator actions reached the audit trail (mw.audit.event.v1 -> mw-audit-dw, M3 gate):
+   * action and actor of each row, in order. The actor is the operator's username, unmasked.
+   */
+  @Then("within {int} seconds the audit trail of the batch shows:")
+  public void batchAudit(int seconds, List<Map<String, String>> expected) {
+    List<Map<String, String>> wanted = expected.stream().map(e -> Map.of("action", e.get("action"), "actor", e.get("actor"))).toList();
+    List<AuditTrail.Row> rows =
+        Waits.until(
+            () -> AuditTrail.rowsOfBatch(state.batchId),
+            r -> r.size() >= wanted.size(),
+            Duration.ofSeconds(seconds));
+    assertThat(rows.stream().map(r -> Map.of("action", r.action(), "actor", r.actorId())).toList())
+        .containsExactlyElementsOf(wanted);
+  }
+
   /** The data lines of the result file, split into columns (header checked). */
   private List<String[]> resultLines(String user) {
     Http.Response r = record(PortalApi.result(user, state.batchId));
     assertThat(r.status()).as("%s", r).isEqualTo(200);
     List<String> lines = r.raw().lines().toList();
-    assertThat(lines.get(0)).isEqualTo("line,msisdn,amount,reference,status,txnId,errorCode");
+    assertThat(lines.get(0)).isEqualTo("line,msisdn,amount,reference,status,txnId,errorCode,batchStatus");
     return lines.subList(1, lines.size()).stream().map(l -> l.split(",", -1)).toList();
   }
 

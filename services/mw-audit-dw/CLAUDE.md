@@ -10,7 +10,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   `controller/AuditSearchController` -> `service/AuditSearchService` -> `repository/AuditSearchRepository`):
   `GET /internal/v1/audit/events` (txnId, actorType, actorId, action, resource, outcome, `[from, to)` on
   `at`, limit 1..500, offset; ordered by `at`, then chain order), for mw-admin-api over the `app`
-  network, **no APISIX route**. Reads as `audit_reader` (`config/AuditSearchConfig`: its own lazy
+  network, **no APISIX route**. Auth (M3 gate decision, `config/SecurityConfig`,
+  `security/InternalCallerPolicy`, `mw.internal-auth.*`, same as mw-orchestrator's): Keycloak
+  client-credentials JWT of realm `services`, exact issuer, `aud` containing `mw-audit-dw`, `azp`
+  mw-admin-api only (the search has no org filter, so mw-portal-api is refused); no / bad token
+  `401 MW-AUTH-001`, other client `403 MW-AUTH-002`; `InternalApiAuthIT`. Reads as `audit_reader` (`config/AuditSearchConfig`: its own lazy
   read-only pool `audit-search`, max 4, same reader credentials `mw.audit-dw.chain-verify.reader-*`;
   not a `DataSource` bean). Values come back as stored (already masked); operator usernames are not
   masked. No MSISDN filter: events carry no keyed hash, so an operator finds the txn by MSISDN on
@@ -43,7 +47,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   read and the writer still cannot SELECT.
 - Producers today: mw-orchestrator (`txn.state.changed`, `partner.callback.late`,
   `txn.outcome.conflict`, `partner.callback.rejected`) and the three adapters
-  (`partner.call.completed`, S6: masked partner request/response in `after`). The consumer
+  (`partner.call.completed`, S6: masked partner request/response in `after`), and mw-portal-api
+  (`bulk.batch.uploaded|approved|rejected|expired|paused|resumed`, actor the operator). The consumer
   accepts any action that fits the contract; `AuditTrailIT` stores a partner-call event.
 - Dedup: `audit.event_key` (auditId primary key, never purged, INSERT-only for the writer) in the
   same transaction, so a redelivery is refused however late it comes (the chassis inbox is

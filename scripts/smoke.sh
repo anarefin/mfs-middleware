@@ -162,7 +162,7 @@ check "keycloak runs in production mode" kc_prod_mode
 kc_realms_in_postgres() {
   local realms
   realms="$(dc exec -T postgres sh -c 'PGPASSWORD="$KC_DB_PASSWORD" psql -h 127.0.0.1 -U keycloak -d keycloak -tAc "select name from realm order by name"')" || return 1
-  for r in customers ops partners portals; do printf '%s\n' "$realms" | grep -qx "$r" || { echo "realm $r not in the keycloak database: $realms"; return 1; }; done
+  for r in customers ops partners portals services; do printf '%s\n' "$realms" | grep -qx "$r" || { echo "realm $r not in the keycloak database: $realms"; return 1; }; done
 }
 check "keycloak realms stored in PostgreSQL (keycloak database, keycloak role)" kc_realms_in_postgres
 
