@@ -7,7 +7,7 @@
 - 37: Maker-checker engine + manual TSQ / reversal
 - 20: Adapter framework inside telco (prefactor)
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] e2e: disable the telco partner → top-up rejected; re-enable → works, with no adapter restart (written: `tests/e2e/.../features/partner-config.feature`, `@partner-config`; runs at the milestone gate)
 - [ ] e2e: a lowered timeout takes effect on the next call (written: same feature, `@tsq`; runs at the milestone gate)

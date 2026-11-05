@@ -7,7 +7,7 @@
 36-admin-api-rbac-search                    35,53             done     29m       132 files 10090  36  3bc49e3..4792c86
 37-maker-checker-engine-tsq-reversal        36,18,19          done     30m      68 files + 2855 − 43  50b8ef6..9c419f5
 52-ops-wallet-unlock                        37                done     17m      52 files + 1001 − 48  1260c19..2e8a6f6
-38-partner-config-maker-checker             37,20             todo     —        —          —
+38-partner-config-maker-checker             37,20             done     27m      46 files + 2553 − 62  6e58ae4..b09e3c9
 39-ussd-menu-sms-template-management        37,26,24          todo     —        —          —
 40-admin-ui-shell-search                    36                done     40m      58 files + 3837 − 13  863f494..9bd4d32
 41-admin-ui-approvals-reversal              40,37,52          done     9m       21 files + 1041 − 31  983998c..fcc58df
