@@ -54,6 +54,47 @@ Feature: Web checkout: session, OTP and PIN, MERCHANT_PAY, signed redirect (tick
     And the merchant accepted exactly one IPN of the session, a PAID result with a valid signature
     And the merchant receives no further IPN of the session within 15 seconds
 
+  # Ticket 43 (criterion 2): the paid session refuses a second confirmation; the customer pays once.
+  Scenario: a second confirmation of a paid session is refused and pays nothing again
+    Given the merchant creates a checkout session for 1300 poisha
+    When the customer asks for an OTP for wallet 01711000001
+    And the customer confirms with the OTP and PIN "1234"
+    Then the response status is 200
+    And the checkout result is PAID
+    When the customer confirms with the OTP and PIN "1234"
+    Then the response status is 409
+    And the error code is "MW-VAL-021"
+    And the core balances changed by:
+      | 01711000001 | -1300 |
+      | 01911000001 | 1300  |
+    And the merchant sees the session as PAID paid by 0171****001
+
+  # Ticket 43 (criterion 1): unknown core outcomes of a checkout payment. The confirmation answers
+  # 202 (PAYING) after its 25 s budget; the status inquiry settles the session later.
+  @tsq
+  Scenario: a checkout payment whose core reply is lost is found by QueryTransaction and paid
+    Given the merchant creates a checkout session for 1400 poisha
+    And the core drops its reply to the next PostTransfer
+    When the customer asks for an OTP for wallet 01711000001
+    And the customer confirms with the OTP and PIN "1234"
+    Then the response status is 202
+    And the merchant sees the session as PAID within 120 seconds
+    And the core balances changed by:
+      | 01711000001 | -1400 |
+      | 01911000001 | 1400  |
+    And the browser is redirected to the merchant's ok URL with a PAID result the merchant verifies
+
+  @tsq
+  Scenario: a checkout payment whose core refusal is lost is found by QueryTransaction and fails
+    Given the merchant creates a checkout session for 1600 poisha
+    And the core refuses the next PostTransfer and its reply is lost
+    When the customer asks for an OTP for wallet 01711000001
+    And the customer confirms with the OTP and PIN "1234"
+    Then the response status is 202
+    And the merchant sees the session as FAILED within 120 seconds
+    And no core balance changed
+    And the browser is redirected to the merchant's fail URL with a FAILED result the merchant verifies
+
   Scenario: a merchant request with a bad HMAC signature is refused at the edge
     When the merchant creates a checkout session signed with a wrong secret
     Then the response status is 401

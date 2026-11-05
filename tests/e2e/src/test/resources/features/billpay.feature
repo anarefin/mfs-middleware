@@ -83,3 +83,31 @@ Feature: BILL_PAY from the app (bill fetch, then hold, partner, commit or releas
     Then the response status is 200
     And the audit trail of the transaction records the states "RECEIVED, VALIDATING, HOLDING, PARTNER_PENDING, COMMITTING, COMPLETED"
     And the audit trail of the transaction records the partner call by mw-adapter-billpay
+
+  # Ticket 43 (criterion 2): the repeat is answered from the idempotency record, the biller is paid once.
+  @mw-orchestrator @mw-core-mock
+  Scenario: a bill payment sent twice with the same idempotency key pays the bill once
+    When customer01 pays 10000 poisha on bill 1234567 of biller DESCO with PIN "1234"
+    And customer01 sends the same request again with the same idempotency key
+    Then the response status is 200
+    And every response carries the same txnId
+    And the transaction status is COMPLETED
+    And the core balances changed by:
+      | 01711000001 | -10300 |
+      | SETTLEMENT  | 10000  |
+      | FEE-POOL    | 300    |
+    And no funds are held on 01711000001
+
+  # Ticket 43 (criterion 1, timeout -> TSQ -> release): the aggregator answers after the adapter's
+  # limit with a 503 and never applies the payment; its status inquiry answers NOT_FOUND, and once
+  # the partner time limit and grace have passed the hold is released.
+  @mw-orchestrator @mw-core-mock @tsq
+  Scenario: an aggregator timeout the payment did not survive is resolved by status inquiry and released
+    Given the aggregator answers too late and never applies the payment
+    When customer01 pays 10000 poisha on bill 1234567 of biller DESCO with PIN "1234"
+    Then the response status is 202
+    And the transaction status is PROCESSING
+    And the aggregator behaves normally again
+    And the app shows the transaction as FAILED with error "MW-TMO-003" within 180 seconds
+    And no core balance changed
+    And no funds are held on 01711000001

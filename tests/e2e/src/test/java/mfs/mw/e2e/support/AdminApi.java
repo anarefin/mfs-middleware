@@ -20,6 +20,16 @@ public final class AdminApi {
     return Http.get(Stack.get().url("admin/v1/transactions/" + txnId), auth(user));
   }
 
+  /**
+   * {@code GET /admin/v1/transactions?<filter>=<value>[&txnType=]} (ticket 36): newest first, one
+   * page of at most 50. {@code filter} is {@code txnId} or {@code msisdn}.
+   */
+  public static Http.Response search(String user, String filter, String value, String txnType) {
+    String q = filter + "=" + java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8)
+        + (txnType == null ? "" : "&txnType=" + txnType) + "&limit=50";
+    return Http.get(Stack.get().url("admin/v1/transactions?" + q), auth(user));
+  }
+
   public static Http.Response ask(String user, String txnId, String action, String reason) {
     return Http.postJson(
         Stack.get().url("admin/v1/transactions/" + txnId + "/change-requests"),

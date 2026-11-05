@@ -141,6 +141,17 @@ public class CheckoutSteps {
     assertThat(r.body().path("txnId").asString(null)).isNotNull();
   }
 
+  /** For an outcome that resolves after the confirm answered 202 (status inquiry, spec 7.4). */
+  @Then("the merchant sees the session as {word} within {int} seconds")
+  public void merchantSeesStatusWithin(String status, int seconds) {
+    Http.Response r =
+        Waits.until(
+            () -> CheckoutApi.getSession(sessionId),
+            x -> status.equals(x.body().path("status").asString(null)),
+            Duration.ofSeconds(seconds));
+    assertThat(r.body().path("status").asString(null)).as("%s", r).isEqualTo(status);
+  }
+
   @Then("the merchant sees the session as {word}")
   public void merchantSeesStatus(String status) {
     Http.Response r = CheckoutApi.getSession(sessionId);

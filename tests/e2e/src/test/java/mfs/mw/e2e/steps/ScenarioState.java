@@ -36,6 +36,12 @@ public class ScenarioState {
   /** A partner simulator scenario was forced; an {@code @After} hook resets it. */
   boolean simulatorForced;
 
+  /**
+   * Other partner simulators (billagg, c2wbank) whose scenario was forced, with the last request
+   * {@code seq} they had recorded then; reset by an {@code @After} hook.
+   */
+  final Map<String, Long> forcedPartners = new LinkedHashMap<>();
+
   /** Idempotency keys of the REVERSAL requests the scenario sent, in order. */
   final List<String> reversalKeys = new ArrayList<>();
 

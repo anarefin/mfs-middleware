@@ -45,6 +45,20 @@ public final class Simulators {
     return r.body().path("targetStatus").asInt(-1);
   }
 
+  /** {@code GET /sim/{partner}/requests}: the requests it recorded (once answered), oldest first. */
+  public static java.util.List<JsonNode> requests(String partner) {
+    Http.Response r = Http.get(Stack.get().url(BASE + partner + "/requests"), auth());
+    if (r.status() != 200) {
+      throw new IllegalStateException("simulator requests not readable: " + r);
+    }
+    return r.body().valueStream().toList();
+  }
+
+  /** Highest {@code seq} the partner has recorded, 0 when none. */
+  public static long lastSeq(String partner) {
+    return requests(partner).stream().mapToLong(n -> n.path("seq").asLong()).max().orElse(0L);
+  }
+
   private static Map<String, String> auth() {
     return Map.of("apikey", Stack.get().devCredential("MW_E2E_API_KEY"));
   }

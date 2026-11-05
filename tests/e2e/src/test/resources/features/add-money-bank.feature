@@ -79,3 +79,27 @@ Feature: ADD_MONEY_BANK (C2W): add money from a linked bank account (ticket 23, 
       | FEE-POOL    | 0      |
     And no funds are held on 01711000001
     And the audit trail of the transaction records the states "RECEIVED, VALIDATING, PARTNER_PENDING, UNKNOWN, COMMITTING, COMPLETED" once each
+
+  # Ticket 43 (criterion 2): the repeat is answered from the idempotency record; the bank debits
+  # once and the wallet is credited once.
+  Scenario: an add-money request sent twice with the same idempotency key credits the wallet once
+    When customer01 adds 53000 poisha from bank account 1234567890123 at c2wbank with PIN "1234"
+    And customer01 sends the same request again with the same idempotency key
+    Then every response carries the same txnId
+    And the app shows the transaction as COMPLETED within 25 seconds
+    And the core balances changed by:
+      | 01711000001 | 53000  |
+      | SETTLEMENT  | -53000 |
+      | FEE-POOL    | 0      |
+
+  # Ticket 43 (criterion 1, timeout -> TSQ -> release): the bank answers after the adapter's limit
+  # with a 503 and never debits the account; its status inquiry answers NOT_FOUND, so the
+  # transaction fails and nothing is credited (inbound money: there is no hold to release).
+  @tsq
+  Scenario: a bank timeout the debit did not survive is resolved by status inquiry and fails
+    Given the bank answers too late and never applies the debit
+    When customer01 adds 50000 poisha from bank account 1234567890123 at c2wbank with PIN "1234"
+    Then the bank behaves normally again
+    And the app shows the transaction as FAILED within 180 seconds
+    And no core balance changed
+    And no funds are held on 01711000001

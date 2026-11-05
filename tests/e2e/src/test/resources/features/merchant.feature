@@ -65,3 +65,39 @@ Feature: In-app merchant payment (Customer app) and the merchant's collections (
       | user       |
       | customer01 |
       | agent01    |
+
+  # Ticket 43 (criteria 1 and 2): a repeat with the same key, and unknown core outcomes resolved by
+  # QueryTransaction (reply lost: applied, COMPLETED; refusal lost: nothing applied, FAILED).
+  Scenario: a merchant payment sent twice with the same idempotency key pays the merchant once
+    Given customer01 is signed in to the app
+    When customer01 submits MERCHANT_PAY of 2500 poisha with counterparty 01911000001 and PIN "1234"
+    And customer01 sends the same request again with the same idempotency key
+    Then the response status is 200
+    And every response carries the same txnId
+    And the transaction status is COMPLETED
+    And the core balances changed by:
+      | 01711000001 | -2500 |
+      | 01911000001 | 2500  |
+      | FEE-POOL    | 0     |
+
+  @tsq
+  Scenario: a merchant payment whose core reply is lost is found by QueryTransaction and completes
+    Given customer01 is signed in to the app
+    And the core drops its reply to the next PostTransfer
+    When customer01 submits MERCHANT_PAY of 2500 poisha with counterparty 01911000001 and PIN "1234"
+    Then the response status is 202
+    And the app shows the transaction as COMPLETED within 90 seconds
+    And the core balances changed by:
+      | 01711000001 | -2500 |
+      | 01911000001 | 2500  |
+      | FEE-POOL    | 0     |
+    And merchant01 sees the transaction in its collections with the payer masked as 0171****001
+
+  @tsq
+  Scenario: a merchant payment whose core refusal is lost is found by QueryTransaction and fails
+    Given customer01 is signed in to the app
+    And the core refuses the next PostTransfer and its reply is lost
+    When customer01 submits MERCHANT_PAY of 2500 poisha with counterparty 01911000001 and PIN "1234"
+    Then the response status is 202
+    And the app shows the transaction as FAILED with error "MW-TMO-003" within 90 seconds
+    And no core balance changed
