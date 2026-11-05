@@ -15,6 +15,7 @@
 #   make compose-check          fail when compose.yml is stale or the memory budget (10 GB) is exceeded
 #   make smoke                  live checks against the running MVP stack (scripts/smoke.sh)
 #   make edge-test              live APISIX edge policy tests: 401/400/413/429, headers, idempotent apply
+#   make chaos [TARGETS=]       kill each mw-* container, kafka, postgres mid-flow; no stuck txns, ledger consistent (scripts/chaos.sh)
 #   make down [DOWN_ARGS=-v]    stop the MVP stack (-v also drops its volumes)
 #   make e2e [M=] [TAGS=]       Cucumber suite in tests/e2e against the running stack
 #   make e2e-changed [BASE=main] [TAGS=]  rebuild only modules changed since BASE into the running stack, then e2e (no verify)
@@ -32,7 +33,7 @@ BASE ?=
 JOBS ?= 3
 export MW_ROOT
 
-.PHONY: help verify verify-changed check-isolation check-field-injection contracts-lint versions-check compose-flat compose-check up smoke edge-test down e2e e2e-changed perf security log-scan new-service test-scripts
+.PHONY: help verify verify-changed check-isolation check-field-injection contracts-lint versions-check compose-flat compose-check up smoke edge-test chaos down e2e e2e-changed perf security log-scan new-service test-scripts
 
 help:
 	@sed -n '3,26p' $(abspath $(lastword $(MAKEFILE_LIST)))
@@ -72,6 +73,9 @@ smoke:
 
 edge-test:
 	@$(SCRIPTS)/edge-test.sh
+
+chaos:
+	@CHAOS_TARGETS="$(or $(TARGETS),$(CHAOS_TARGETS))" $(SCRIPTS)/chaos.sh
 
 down:
 	@$(SCRIPTS)/down.sh

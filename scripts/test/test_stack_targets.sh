@@ -227,6 +227,40 @@ test_perf_runs_gatling_suite() {
   new_module "$PWD" tests/perf
   assert_ok mw_make "$PWD" perf
   grep -q 'gatlingRun' tests/perf/.gradlew-calls || fail "gatling not run"
+  grep -q '^perfOverhead' tests/perf/.gradlew-calls || fail "overhead report not run: $(cat tests/perf/.gradlew-calls)"
+}
+
+test_perf_reports_the_overhead_even_when_gatling_fails_and_then_fails() {
+  # A failed Gatling assertion is a finding: the overhead breakdown must still be written.
+  new_module "$PWD" tests/perf
+  touch tests/perf/.gradlew-fail
+  assert_fails mw_make "$PWD" perf
+  grep -q '^gatlingRun' tests/perf/.gradlew-calls || fail "gatling not run"
+  grep -q '^perfOverhead' tests/perf/.gradlew-calls || fail "overhead report skipped after a failed run"
+}
+
+test_perf_passes_extra_settings_to_both_runs() {
+  new_module "$PWD" tests/perf
+  MW_PERF_ARGS="-Dmw.perf.steady=10m -Dmw.perf.tps=150" mw_make "$PWD" perf >/dev/null 2>&1 || fail "perf failed"
+  [ "$(grep -c -- '-Dmw.perf.steady=10m -Dmw.perf.tps=150' tests/perf/.gradlew-calls)" = 2 ] \
+    || fail "settings not passed: $(cat tests/perf/.gradlew-calls)"
+}
+
+test_perf_enables_the_test_only_gateway_routes_first() {
+  # The run's setup needs the core's PIN key and the SMSC simulator (binding OTPs): test routes.
+  mkdir -p .bin deploy/compose/mvp && touch deploy/compose/mvp/compose.yml
+  cat >.bin/docker <<EOF
+#!/bin/sh
+echo "MW_E2E_ROUTES=\${MW_E2E_ROUTES:-} docker \$*" >> "$PWD/.tool-calls"
+exit 0
+EOF
+  chmod +x .bin/docker
+  PATH="$PWD/.bin:$PATH"
+  new_module "$PWD" tests/perf
+  assert_ok mw_make "$PWD" perf
+  grep -q '^MW_E2E_ROUTES=1 docker compose .*up -d --no-deps --force-recreate apisix-init' .tool-calls \
+    || fail "apisix-init not re-run with MW_E2E_ROUTES=1: $(cat .tool-calls 2>/dev/null)"
+  grep -q '^gatlingRun' tests/perf/.gradlew-calls || fail "gatling not run"
 }
 
 test_e2e_with_unknown_M_fails() {

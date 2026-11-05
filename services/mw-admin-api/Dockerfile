@@ -26,9 +26,9 @@ ENV JAVA_TOOL_OPTIONS="-XX:+UseZGC -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemor
 
 # AOT cache training run: start the context once, then exit. No database or Kafka exists at
 # build time: Flyway is skipped here only (it runs on every real start-up, 16.4); the pool
-# and Kafka clients connect lazily. The internal-API client secret (OpenBao at run time,
-# validated at start-up) gets an obviously fake value for the training run only (found by the
-# ticket 46 image build: without it the training run, and so the image build, failed).
+# and Kafka clients connect lazily. The internal-auth client secret comes from OpenBao at run
+# time and is validated at start-up, so the training run (only) gets an obviously fake value;
+# the image sets none and a real start without the OpenBao value still fails fast.
 RUN MW_ADMINAPI_INTERNALAUTH_CLIENTSECRET=aot-training-only-fake-client-secret-not-a-secret \
       java -XX:AOTCacheOutput=/app/app.aot -Dspring.context.exit=onRefresh \
       -Dspring.flyway.enabled=false -jar app.jar > /dev/null

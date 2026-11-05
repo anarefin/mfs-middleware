@@ -6,7 +6,7 @@
 
 - 43: E2E acceptance suite completion (criteria 1–5)
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] The Gatling report meets 100 TPS and p95 overhead < 150 ms, or the gap is documented with findings
 - [ ] No errors other than intended business failures during the run

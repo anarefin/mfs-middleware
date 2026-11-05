@@ -1,0 +1,19 @@
+# The perf suite's own pinned versions (no shared catalog).
+[versions]
+gatling-plugin = "3.16.0"
+junit = "5.14.2"
+jackson = "3.1.7"
+assertj = "3.27.7"
+slf4j = "2.0.17"
+
+[libraries]
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+jackson-databind = { module = "tools.jackson.core:jackson-databind", version.ref = "jackson" }
+assertj = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
+
+[plugins]
+gatling = { id = "io.gatling.gradle", version.ref = "gatling-plugin" }
