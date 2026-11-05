@@ -23,14 +23,13 @@ import org.springframework.core.env.Environment;
  * whole message, key-value pairs and stack trace are scrubbed for MSISDNs, NIDs and account
  * numbers ({@link MaskingPolicy#scrub(String)}). Numeric field values are scrubbed as text too
  * and written as the masked string when masking changes them. The 21.1 id fields are traced by
- * exact match, so system ids among them are written unmasked, digit runs and all ({@link
- * #isSystemId}): a {@code txnId} that is a valid RFC 9562 UUID (services log only parsed or
- * generated txn ids), a {@code correlationId} that is such a UUID, and a {@code traceId} /
- * {@code spanId} of the W3C hex shape (the filter drops a caller {@code traceparent} with a run of
- * 6+ digits). Any other value, {@code partnerId} always, is scrubbed like free text, so an NID,
- * account number or MSISDN hidden in an id is still masked. A caller correlation id reaches here
- * only without a run of 6+ digits (the edge and {@code CorrelationIdFilter} replace it
- * otherwise), so the scrub leaves it whole unless it spells a dashed MSISDN.
+ * exact match, so system ids among them are written unmasked ({@link #isSystemId}): a value that
+ * has the system shape of its field (a {@code txnId} or {@code correlationId} that is a valid
+ * lower-case RFC 9562 UUID, a {@code traceId} / {@code spanId} of the W3C hex shape) AND that
+ * {@link MaskingPolicy#scrub(String)} leaves unchanged. Any other value, {@code partnerId}
+ * always, is written scrubbed, so an NID, account number or MSISDN hidden in an id, including one
+ * spread over the groups of a valid UUID, is still masked (cost: the rare random id with a 10+
+ * digit run is logged cut).
  *
  * <p>Context fields come from the MDC or from SLF4J key-value pairs ({@code
  * log.atInfo().addKeyValue("event", "txn.state.changed")}); key-value pairs win. Wired by {@code
@@ -137,8 +136,16 @@ public class JsonLogFormatter implements StructuredLogFormatter<ILoggingEvent> {
     }
   }
 
-  /** Whether {@code id} in field {@code key} is a system id, written unmasked (21.1). */
+  /**
+   * Whether {@code id} in field {@code key} is a system id, written unmasked (21.1): it has the
+   * system shape of its field and the scrub leaves it unchanged (a crafted id of the right shape
+   * can still spread an MSISDN over its groups).
+   */
   private static boolean isSystemId(String key, String id) {
+    return hasSystemShape(key, id) && MaskingPolicy.scrub(id).equals(id);
+  }
+
+  private static boolean hasSystemShape(String key, String id) {
     return switch (key) {
       case "txnId", "correlationId" -> RFC_UUID.matcher(id).matches();
       case "traceId" -> TRACE_ID.matcher(id).matches();

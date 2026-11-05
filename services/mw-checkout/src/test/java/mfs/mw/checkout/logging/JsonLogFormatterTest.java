@@ -71,13 +71,12 @@ class JsonLogFormatterTest {
   }
 
   /**
-   * System ids are kept whole however long their digit runs: a txnId that is a valid RFC 9562
-   * UUID (services only log parsed or generated ones), a correlationId that is such a UUID (the
-   * boundary replaces any caller id with a run of 6+ digits), and a traceId / spanId of the W3C
-   * shape (the boundary drops a caller traceparent with such a run). partnerId gets no exemption.
+   * An id field is kept whole only when it has the system shape and the scrub leaves it unchanged:
+   * a UUID, trace id or span id of the right shape that still holds a 10+ digit run or a (split)
+   * MSISDN is written scrubbed. partnerId gets no exemption.
    */
   @Test
-  void systemIdsKeepLongDigitRunsWhole() {
+  void systemShapedIdsThatTheScrubWouldChangeAreScrubbed() {
     Map<String, Object> json =
         format(
             formatter,
@@ -88,11 +87,25 @@ class JsonLogFormatterTest {
             "txnId", "01a1aa26-3303-7169-8282-0e6132984047",
             "partnerId", "0190a7c4-0000-7000-8000-000000000002");
     assertThat(json)
-        .containsEntry("traceId", "12345678901234567890123456789012")
-        .containsEntry("spanId", "a012345678901234")
-        .containsEntry("correlationId", "01a1aa26-3303-7169-8282-0e6132984047")
-        .containsEntry("txnId", "01a1aa26-3303-7169-8282-0e6132984047")
+        .containsEntry("traceId", "****9012")
+        .containsEntry("spanId", "a****1234")
+        .containsEntry("correlationId", "01a1aa26-3303-7169-8282-0e****047")
+        .containsEntry("txnId", "01a1aa26-3303-7169-8282-0e****047")
         .containsEntry("partnerId", "0190a7c4-0000-7000-8000-****0002");
+  }
+
+  /** A valid RFC UUID that spreads an MSISDN over its groups (no 6-digit run) is scrubbed. */
+  @Test
+  void aValidUuidHidingASplitMsisdnIsScrubbed() {
+    Map<String, Object> json =
+        format(
+            formatter,
+            Map.of("correlationId", "aaaa0171-2345-678a-8bcd-ef0123abcdef"),
+            "txnId", "abcdef01-7123-4567-8abc-def012345abc");
+    assertThat(json)
+        .containsEntry("correlationId", "aaaa0171****678a-8bcd-ef0123abcdef")
+        .containsEntry("txnId", "abcdef0171****678abc-def012345abc");
+    assertThat(json.toString()).doesNotContain("2345-678", "7123-4567");
   }
 
   /**

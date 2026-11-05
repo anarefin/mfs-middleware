@@ -33,8 +33,9 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>Masking: every text field and {@code before}/{@code after} go through {@link
  * MaskingPolicy#scrub(String)}, with two system-id exemptions so ids stay traceable: a {@code
  * resource} that is exactly {@code <type>/<uuid>} ({@link #SYSTEM_RESOURCE}; producers build these
- * from system ids) and a {@code correlationId} that is a UUID ({@link #RFC_UUID}; a caller id
- * holds no run of 6+ digits after the edge and the services' filter, so the scrub leaves it whole).
+ * from system ids) and a {@code correlationId} that is a UUID ({@link #RFC_UUID}), each only when
+ * the scrub also leaves it unchanged; a valid UUID that hides a 10+ digit run or spreads an MSISDN
+ * over its groups is stored scrubbed.
  * {@code txnId} is parsed as a UUID.
  */
 @Service
@@ -161,9 +162,17 @@ public class AuditService {
     return true;
   }
 
-  /** {@code value} as it is when it is exactly a {@code systemId}, otherwise scrubbed. */
+  /**
+   * {@code value} as it is when it has exactly the {@code systemId} shape and the scrub leaves it
+   * unchanged (a crafted id of that shape can still spread an MSISDN over its groups), otherwise
+   * scrubbed.
+   */
   private static String keptIf(Pattern systemId, String value) {
-    return systemId.matcher(value).matches() ? value : MaskingPolicy.scrub(value);
+    if (value == null) {
+      return null;
+    }
+    String scrubbed = MaskingPolicy.scrub(value);
+    return systemId.matcher(value).matches() && scrubbed.equals(value) ? value : scrubbed;
   }
 
   private String jsonText(JsonNode node) {

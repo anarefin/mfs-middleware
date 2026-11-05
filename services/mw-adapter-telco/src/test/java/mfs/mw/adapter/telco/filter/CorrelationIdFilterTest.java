@@ -7,6 +7,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -114,6 +115,51 @@ class CorrelationIdFilterTest {
     six.addHeader("X-Correlation-Id", "c-123456-x");
     run(six);
     assertThat(seenInMdc.get()).matches("[0-9a-f-]{36}");
+  }
+
+  /**
+   * A caller id the scrub would change is replaced too, even a valid RFC UUID with no 6-digit run:
+   * it can spread an MSISDN over its groups.
+   */
+  @Test
+  void validUuidHidingASplitMsisdnIsReplacedAndWarnedWithoutTheValue() throws Exception {
+    for (String crafted :
+        List.of(
+            "aaaa0171-2345-678a-8bcd-ef0123abcdef",
+            "abcdef01-7123-4567-8abc-def012345abc",
+            "cid-0171.2345.678")) {
+      logs.list.clear();
+      MockHttpServletRequest req = new MockHttpServletRequest("GET", "/x");
+      req.addHeader("X-Correlation-Id", crafted);
+      MockHttpServletResponse res = run(req);
+      assertThat(seenInMdc.get())
+          .isNotEqualTo(crafted)
+          .matches("[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}");
+      assertThat(res.getHeader("X-Correlation-Id")).isEqualTo(seenInMdc.get());
+      assertThat(logs.list)
+          .singleElement()
+          .satisfies(
+              e -> {
+                assertThat(e.getLevel().toString()).isEqualTo("WARN");
+                assertThat(e.getKeyValuePairs())
+                    .anySatisfy(
+                        kv -> {
+                          assertThat(kv.key).isEqualTo("event");
+                          assertThat(kv.value).isEqualTo("correlation.id.replaced");
+                        });
+                assertThat(e.getFormattedMessage()).doesNotContain(crafted);
+                assertThat(String.valueOf(e.getKeyValuePairs())).doesNotContain(crafted);
+              });
+    }
+  }
+
+  @Test
+  void ordinaryRandomUuidIsKept() throws Exception {
+    MockHttpServletRequest req = new MockHttpServletRequest("GET", "/x");
+    req.addHeader("X-Correlation-Id", "f47ac10b-58cc-4372-a567-0e02b2c3d479");
+    run(req);
+    assertThat(seenInMdc.get()).isEqualTo("f47ac10b-58cc-4372-a567-0e02b2c3d479");
+    assertThat(logs.list).isEmpty();
   }
 
   @Test

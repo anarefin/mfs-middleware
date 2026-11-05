@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import mfs.mw.core.mock.util.MaskingPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -27,8 +28,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
  *
  * <p>Correlation and trace ids are logged unmasked (they are traced by exact match), so a caller
  * value that could hide an NID, account number or MSISDN is not let in: a caller id with a run of
- * 6 or more digits is replaced by a generated UUID like an unsafe one (the APISIX edge applies the
- * same rule), and a {@code traceparent} whose trace id or parent id holds such a run is dropped
+ * 6 or more digits (the APISIX edge applies the same rule), or one that {@link
+ * MaskingPolicy#scrub(String)} would change (such as a valid UUID that spreads an MSISDN over its
+ * groups), is replaced by a generated UUID like an unsafe one, and a {@code traceparent} whose trace id or parent id holds such a run is dropped
  * with its {@code tracestate}, so tracing starts a new trace. This filter runs before the server
  * observation filter, which is what reads {@code traceparent}.
  */
@@ -55,11 +57,13 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
     String id;
     if (incoming == null || !SAFE.matcher(incoming).matches()) {
       id = UUID.randomUUID().toString();
-    } else if (SIX_DIGITS.matcher(incoming).find()) {
+    } else if (SIX_DIGITS.matcher(incoming).find()
+        || !MaskingPolicy.scrub(incoming).equals(incoming)) {
       id = UUID.randomUUID().toString();
       log.atWarn()
           .addKeyValue("event", "correlation.id.replaced")
-          .log("caller correlation id holds a run of 6+ digits; replaced by a generated one");
+          .log("caller correlation id holds a run of 6+ digits or a number the scrub masks;"
+              + " replaced by a generated one");
     } else {
       id = incoming;
     }
