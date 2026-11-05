@@ -150,7 +150,7 @@ test_every_make_target_in_the_docs_exists() {
   local f t targets
   targets=" $(makefile_targets | tr '\n' ' ') "
   for f in $(op_docs); do
-    for t in $(grep -oE '(^|[^a-z-])make [a-z][a-z-]*' "$REPO_DIR/$f" | sed 's/.*make //' | sort -u); do
+    for t in $(grep -oE '(^|[^a-z0-9-])make [a-z][a-z0-9-]*' "$REPO_DIR/$f" | sed 's/.*make //' | sort -u); do
       case "$targets" in *" $t "*) ;; *) fail "$f names make $t, which the Makefile has no target for" ;; esac
     done
   done
@@ -162,6 +162,8 @@ test_every_repo_path_in_the_docs_exists() {
     # backticked repo paths (placeholders such as <x> or globs end the match and are skipped)
     for p in $(grep -oE '`(scripts|deploy|services|tests|docs|contracts|ui|spec|templates)/[A-Za-z0-9._/-]*`' "$REPO_DIR/$f" \
                | tr -d '`' | sed 's#/$##' | sort -u); do
+      # generated output (build/, the dev .env) is gitignored and appears only after a run
+      git -C "$REPO_DIR" check-ignore -q --no-index "$p" 2>/dev/null && continue
       [ -e "$REPO_DIR/$p" ] || fail "$f names $p, which does not exist"
     done
     # relative markdown links
