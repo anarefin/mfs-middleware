@@ -31,6 +31,17 @@ function Resource({ cr }: { cr: ChangeRequest }) {
   if (cr.resourceType === "transaction") {
     return <Link className="mono" href={`/transactions/${cr.resourceId}`}>{cr.resourceId}</Link>;
   }
+  if (cr.resourceType === "partner") {
+    return <Link className="mono" href={`/partners/${encodeURIComponent(cr.resourceId)}`}>partner {cr.resourceId}</Link>;
+  }
+  if (cr.resourceType === "ussd_menu") {
+    return <Link className="mono" href={`/ussd?menuId=${encodeURIComponent(cr.resourceId)}`}>ussd_menu {cr.resourceId}</Link>;
+  }
+  if (cr.resourceType === "notify_template") {
+    const [code, channel, locale] = cr.resourceId.split("/");
+    const q = new URLSearchParams({ code: code ?? "", channel: channel ?? "", locale: locale ?? "" });
+    return <Link className="mono" href={`/templates?${q}`}>notify_template {cr.resourceId}</Link>;
+  }
   return <span className="mono">{cr.resourceType} {cr.resourceId}</span>;
 }
 
@@ -41,6 +52,11 @@ function Payload({ cr }: { cr: ChangeRequest }) {
   if (typeof p.reversalTxnId === "string") parts.push(`reversal ${p.reversalTxnId}`);
   if (typeof p.actionId === "string") parts.push(`action ${p.actionId}`);
   if (typeof p.commandId === "string") parts.push(`command ${p.commandId}`);
+  if (cr.resourceType === "partner" && typeof p.version === "number") parts.push(`published v${p.version}`);
+  if ((cr.resourceType === "ussd_menu" || cr.resourceType === "notify_template") && typeof p.version === "number") {
+    parts.push(`${cr.status === "APPROVED" ? "published" : "version"} v${p.version}`);
+  }
+  if (cr.resourceType === "notify_template" && typeof p.body === "string") parts.push(p.body);
   return <span className="mono">{parts.join(" / ") || "-"}</span>;
 }
 

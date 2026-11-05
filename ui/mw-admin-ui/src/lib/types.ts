@@ -82,14 +82,24 @@ export type TxnAction = "INQUIRE" | "FORCE_COMMIT" | "FORCE_RELEASE" | "REVERSE"
 export type WalletAction = "UNLOCK";
 export type ChangeRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
 
-/** An `admin.change_request` (spec 15.3, tickets 37 and 52); a wallet's resourceId arrives masked. */
+export type PartnerAction = "ENABLE" | "DISABLE" | "SET_TIMEOUTS" | "UPSERT";
+export type ContentAction = "PUBLISH";
+export type ResourceType = "transaction" | "wallet" | "partner" | "ussd_menu" | "notify_template";
+
+/**
+ * One side of a change request's diff: a transaction / wallet `status`; a partner's changed config
+ * fields; a menu / template `configKey` and `version`.
+ */
+export type ChangeSide = { status?: string; configKey?: string; version?: number } & Record<string, unknown>;
+
+/** An `admin.change_request` (spec 15.3, tickets 37, 38, 39, 52); a wallet's resourceId arrives masked. */
 export type ChangeRequest = {
   id: string;
-  resourceType: "transaction" | "wallet";
+  resourceType: ResourceType;
   resourceId: string;
-  action: TxnAction | WalletAction;
+  action: TxnAction | WalletAction | PartnerAction | ContentAction;
   payload: Record<string, unknown>;
-  diff: { before: { status?: string }; after: { status?: string } };
+  diff: { before: ChangeSide; after: ChangeSide };
   makerId: string;
   status: ChangeRequestStatus;
   checkerId?: string;
@@ -101,6 +111,48 @@ export type ChangeRequest = {
 };
 
 export type ChangeRequestPage = { items: ChangeRequest[]; limit: number; offset: number };
+
+// --- partners (ticket 38) ---
+export type PartnerFamily = "telco" | "billpay" | "bank";
+export type PartnerTimeouts = { connectTimeoutMs?: number; timeoutMs?: number; readTimeoutMs?: number };
+export type PartnerOperation = { method: string; path: string; definiteStatuses?: number[]; request?: string; response: string };
+/** The adapters' PartnerConfig (never a secret: `auth.credentialsRef` names one). */
+export type PartnerConfig = PartnerTimeouts & {
+  enabled?: boolean;
+  template?: string;
+  baseUrl: string;
+  headers?: Record<string, string>;
+  auth?: { scheme?: string; credentialsRef?: string; params?: Record<string, string> };
+  operations: Record<string, PartnerOperation>;
+  errorMap?: Record<string, { suffix: string; retryable?: boolean }>;
+  ambiguousCodes?: string[];
+  sensitiveFields?: Record<string, string>;
+  resilience?: string;
+};
+export type Partner = {
+  partnerId: string;
+  family: PartnerFamily;
+  version: number;
+  config: PartnerConfig;
+  updatedAt: string;
+  updatedBy: string;
+  approvedBy?: string;
+};
+export type PartnerPage = { items: Partner[] };
+
+// --- USSD menus and notification templates (ticket 39) ---
+export type ContentVersion = {
+  configKey: string;
+  version: number;
+  status: "PENDING" | "PUBLISHED" | "REJECTED" | "EXPIRED";
+  changeRequestId: string;
+  makerId: string;
+  checkerId?: string;
+  createdAt: string;
+  decidedAt?: string;
+  value?: Record<string, unknown>;
+};
+export type ContentVersionPage = { items: ContentVersion[]; limit: number; offset: number };
 
 export type ErrorEnvelope = {
   code: string;

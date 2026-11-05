@@ -11,7 +11,7 @@
 39-ussd-menu-sms-template-management        37,26,24          done     39m      82 files + 4432 − 54  91e15b3..0d41ba1
 40-admin-ui-shell-search                    36                done     40m      58 files + 3837 − 13  863f494..9bd4d32
 41-admin-ui-approvals-reversal              40,37,52          done     9m       21 files + 1041 − 31  983998c..fcc58df
-42-admin-ui-partner-ussd-template-editors   41,38,39          todo     —        —          —
+42-admin-ui-partner-ussd-template-editors   41,38,39          done     18m      29 files + 2392 − 26  fa6a799..b5a718a
 51-m2-gate-spec-sync                        —                 done     5m       spec only              55957cc..f8a90cc
 # --- M5 gate: make verify-changed BASE=04875ae JOBS=3 (stack down), fresh-stack e2e
 43-e2e-acceptance-suite                     23,25,27,28,32,34,37  done 12m  20 files + 846 − 3  0f63e38..25bb2de

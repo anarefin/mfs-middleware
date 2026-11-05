@@ -23,6 +23,9 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
           <Link href="/transactions">Transactions</Link>
           <Link href="/approvals">Approvals</Link>
           <Link href="/wallets">Wallets</Link>
+          <Link href="/partners">Partners</Link>
+          <Link href="/ussd">USSD menus</Link>
+          <Link href="/templates">Templates</Link>
         </nav>
         <span className="spacer" />
         <span className="who" data-testid="operator">

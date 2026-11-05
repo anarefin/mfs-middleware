@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canMake, diffLabel, mayDecide, parseReason, parseWalletId, txnActionsFor } from "./approvals";
+import { canMake, canMakePartner, diffLabel, mayDecide, parseReason, parseTimeouts, parseWalletId, txnActionsFor } from "./approvals";
 import type { ChangeRequest, Txn } from "./types";
 
 const txn = (over: Partial<Txn>): Txn => ({
@@ -72,5 +72,41 @@ describe("diff view", () => {
   it("shows the status before and the one the action leads to", () => {
     expect(diffLabel(cr({}))).toEqual({ before: "COMPLETED", after: "REVERSING" });
     expect(diffLabel(cr({ diff: { before: { status: "MANUAL_REVIEW" }, after: {} } }))).toEqual({ before: "MANUAL_REVIEW", after: "-" });
+  });
+});
+
+describe("partner and content requests (tickets 38, 39, 42)", () => {
+  const partner = cr({
+    resourceType: "partner", resourceId: "ocs", action: "SET_TIMEOUTS",
+    diff: { before: { timeoutMs: 8000, enabled: true }, after: { timeoutMs: 5000, enabled: false } },
+  });
+  const menu = cr({
+    resourceType: "ussd_menu", resourceId: "main", action: "PUBLISH",
+    diff: { before: { configKey: "ussd-menu/main", version: 1 }, after: { configKey: "ussd-menu/main", version: 2 } },
+  });
+
+  it("integration-* make and decide partner changes too, content is ops-maker / ops-checker only", () => {
+    expect(canMakePartner(["integration-maker"])).toBe(true);
+    expect(canMakePartner(["ops-maker"])).toBe(true);
+    expect(canMakePartner(["viewer", "integration-checker"])).toBe(false);
+    expect(mayDecide(partner, "ops-admin01", ["integration-checker"])).toBe(true);
+    expect(mayDecide(menu, "ops-admin01", ["integration-checker"])).toBe(false);
+    expect(mayDecide(menu, "ops-checker01", ["ops-checker"])).toBe(true);
+    expect(mayDecide(cr({}), "ops-admin01", ["integration-checker"])).toBe(false);
+  });
+
+  it("shows the changed fields of a partner and the versions of a menu / template", () => {
+    expect(diffLabel(partner)).toEqual({ before: "enabled=true, timeoutMs=8000", after: "enabled=false, timeoutMs=5000" });
+    expect(diffLabel(menu)).toEqual({ before: "v1", after: "v2" });
+    expect(diffLabel({ ...menu, diff: { before: {}, after: { configKey: "ussd-menu/main", version: 1 } } })).toEqual({ before: "-", after: "v1" });
+  });
+
+  it("parses partner timeouts as the contract allows (readTimeoutMs >= timeoutMs)", () => {
+    expect(parseTimeouts({ connectTimeoutMs: "2000", timeoutMs: "5000", readTimeoutMs: "" })).toEqual({ ok: true, timeouts: { connectTimeoutMs: 2000, timeoutMs: 5000 } });
+    expect(parseTimeouts({ connectTimeoutMs: "", timeoutMs: "", readTimeoutMs: "" })).toEqual({ ok: false, field: "timeouts", issue: "at least one timeout" });
+    expect(parseTimeouts({ timeoutMs: "0" })).toEqual({ ok: false, field: "timeoutMs", issue: "a whole number 1 to 120000" });
+    expect(parseTimeouts({ timeoutMs: "1.5" })).toEqual({ ok: false, field: "timeoutMs", issue: "a whole number 1 to 120000" });
+    expect(parseTimeouts({ readTimeoutMs: "125001" })).toEqual({ ok: false, field: "readTimeoutMs", issue: "a whole number 1 to 125000" });
+    expect(parseTimeouts({ timeoutMs: "9000", readTimeoutMs: "8000" })).toEqual({ ok: false, field: "readTimeoutMs", issue: "at least timeoutMs" });
   });
 });
