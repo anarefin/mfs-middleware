@@ -39,6 +39,24 @@ public final class AdminApi {
         auth(user), body);
   }
 
+  /** A partner config (ticket 38). */
+  public static Http.Response partner(String user, String partnerId) {
+    return Http.get(Stack.get().url("admin/v1/partners/" + partnerId), auth(user));
+  }
+
+  /** A partner change request (ticket 38): {@code {action, reason, timeouts?}}. */
+  public static Http.Response askPartner(String user, String partnerId, tools.jackson.databind.node.ObjectNode body) {
+    return Http.postJson(Stack.get().url("admin/v1/partners/" + partnerId + "/change-requests"), auth(user), body);
+  }
+
+  /** Ticket 52: a maker asks to UNLOCK a PIN-locked wallet. */
+  public static Http.Response askWallet(String user, String walletId, String action, String reason) {
+    return Http.postJson(
+        Stack.get().url("admin/v1/wallets/" + walletId + "/change-requests"),
+        auth(user),
+        Http.JSON.createObjectNode().put("action", action).put("reason", reason));
+  }
+
   public static Http.Response changeRequest(String user, String id) {
     return Http.get(Stack.get().url("admin/v1/change-requests/" + id), auth(user));
   }

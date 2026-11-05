@@ -6,6 +6,7 @@ import mfs.mw.core.mock.dto.HoldPayload;
 import mfs.mw.core.mock.dto.QueryPayload;
 import mfs.mw.core.mock.dto.ReversePayload;
 import mfs.mw.core.mock.dto.TransferPayload;
+import mfs.mw.core.mock.dto.UnlockPayload;
 import mfs.mw.core.mock.exception.ErrorCodes;
 import mfs.mw.core.mock.exception.MwException;
 import org.springframework.stereotype.Component;
@@ -87,6 +88,15 @@ public class CoreCommandMapper {
   public QueryPayload query(CoreCommand cmd) {
     QueryPayload p = read(cmd, QueryPayload.class);
     return p == null ? new QueryPayload(null) : p;
+  }
+
+  /** The payload of UnlockWallet: the subject must be a wallet. */
+  public UnlockPayload unlock(CoreCommand cmd) {
+    UnlockPayload p = read(cmd, UnlockPayload.class);
+    if (p == null || p.subject() == null || !"WALLET".equals(p.subject().type()) || blank(p.subject().id())) {
+      throw new MwException(ErrorCodes.VAL_INVALID, "unlock payload is incomplete");
+    }
+    return p;
   }
 
   private <T> T read(CoreCommand cmd, Class<T> type) {

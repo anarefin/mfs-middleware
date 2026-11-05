@@ -60,6 +60,13 @@ public class AdminSteps {
     changeRequestId = last.body().path("id").asString();
   }
 
+  @When("{word} asks to unlock wallet {word} because {string}")
+  public void askUnlock(String user, String walletId, String reason) {
+    last = AdminApi.askWallet(user, walletId, "UNLOCK", reason);
+    assertThat(last.status()).as("%s", last.body()).isEqualTo(201);
+    changeRequestId = last.body().path("id").asString();
+  }
+
   @When("{word} proposes the {word} template {word} in {word} as {string}")
   public void proposeTemplate(String user, String channel, String code, String locale, String text) {
     ObjectNode body = Http.JSON.createObjectNode();

@@ -94,6 +94,24 @@ test_a_missing_include_fails_the_apply() {
 
 # ---- test-only objects (routes-test/, consumers-test/): only with MW_E2E_ROUTES=1 ----
 
+# The ops realm's direct-grant token endpoint (ticket 37 e2e operators) is never public: test-only,
+# key-auth for mw_e2e from private networks, a strict quota per source address (security review).
+test_the_ops_token_route_is_test_only_behind_key_auth_and_a_strict_quota() {
+  [ -f "$REPO_DIR/deploy/apisix/routes/auth-ops-token.json" ] && fail "auth-ops-token must not be a regular route"
+  MW_E2E_ROUTES= MW_E2E_API_KEY= render || fail "dry run failed: $OUT"
+  [ -f out/routes/auth-ops-token.json ] && fail "ops token route applied without MW_E2E_ROUTES=1"
+  assert_out_contains "DELETE /apisix/admin/routes/auth-ops-token"
+  MW_E2E_ROUTES=1 MW_E2E_API_KEY=k3yFromDotEnv CHECKOUT_DEMO_MERCHANT_SECRET=s3cretFromDotEnv render || fail "dry run failed: $OUT"
+  local r=out/routes/auth-ops-token.json
+  [ -f "$r" ] || fail "ops token route not applied with MW_E2E_ROUTES=1"
+  jq -e '.plugins["key-auth"] and .plugins["consumer-restriction"].whitelist == ["mw_e2e"]' "$r" >/dev/null \
+    || fail "ops token route lacks key-auth for mw_e2e: $(jq -c .plugins "$r")"
+  jq -e '.plugins["ip-restriction"].whitelist | index("0.0.0.0/0") | not' "$r" >/dev/null \
+    || fail "ops token route open to every address"
+  jq -e '.plugins["limit-count"] | .key == "remote_addr" and .count <= 10 and .rejected_code == 429' "$r" >/dev/null \
+    || fail "ops token route lacks a strict per-address quota: $(jq -c '.plugins["limit-count"]' "$r")"
+}
+
 test_test_only_objects_are_not_applied_by_default_and_removed_if_present() {
   MW_E2E_ROUTES= MW_E2E_API_KEY= render || fail "dry run failed: $OUT"
   [ -f out/routes/test-core-mock.json ] && fail "test route applied without MW_E2E_ROUTES=1"
@@ -178,7 +196,7 @@ schemas() { OUT="$(MW_ROOT="$PWD" "$REPO_DIR/scripts/derived-schemas.sh" "$@" 2>
 test_repo_derived_schemas_match_their_contracts() {
   fixture_schemas
   schemas --check || fail "derived schemas drifted from contracts/"
-  assert_out_contains "13 derived schema(s)"
+  assert_out_contains "15 derived schema(s)"
 }
 
 # Review A6: every public JSON body behind an APISIX route has a derived schema in its service
@@ -461,4 +479,21 @@ test_apisix_reads_the_valkey_password_from_its_environment() {
     || fail "apisix service does not get VALKEY_PASSWORD from the generated env"
   if grep -rn 'redis_password' "$REPO_DIR/deploy/apisix" | grep -v '\$env://'; then fail "literal redis password"; fi
   return 0
+}
+
+# ---- admin console (ticket 40) ----
+
+# The console's login goes through the edge (realm ops pages) with the public host pinned, so its
+# tokens carry the public issuer; admin-v1 must accept that one besides the in-stack issuer.
+test_admin_console_login_routes_and_issuers() {
+  render || fail "dry run failed"
+  obj routes admin-ui | jq -e '(.uris | index("/console/*")) and .upstream.nodes["mw-admin-ui:3000"] == 1
+    and (.plugins | has("openid-connect") | not) and .plugins["limit-count"].key == "remote_addr"' >/dev/null \
+    || fail "admin-ui: $(obj routes admin-ui | jq -c '{uris, plugins: (.plugins | keys)}')"
+  obj routes auth-ops-browser | jq -e '(.uris | index("/realms/ops/*")) and .upstream.nodes["keycloak:8080"] == 1
+    and .plugins["proxy-rewrite"].headers.set == {"X-Forwarded-Host": "$host", "X-Forwarded-Proto": "https", "X-Forwarded-Port": "443"}' >/dev/null \
+    || fail "auth-ops-browser: $(obj routes auth-ops-browser | jq -c '.plugins["proxy-rewrite"]')"
+  obj routes admin-v1 | jq -e '.plugins["openid-connect"].claim_validator.issuer.valid_issuers
+    == ["http://keycloak:8080/realms/ops", "https://localhost/realms/ops"]' >/dev/null \
+    || fail "admin-v1 issuers: $(obj routes admin-v1 | jq -c '.plugins["openid-connect"].claim_validator')"
 }

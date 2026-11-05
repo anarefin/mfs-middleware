@@ -54,6 +54,7 @@ public class CoreEventMapper {
       case "ReleaseHold" -> "ReleaseFailed";
       case "CreditWallet" -> "CreditRejected";
       case "ReverseTransaction" -> "ReversalRejected";
+      case "UnlockWallet" -> "UnlockRejected";
       default -> null;
     };
   }

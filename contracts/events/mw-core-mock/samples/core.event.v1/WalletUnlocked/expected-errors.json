@@ -1,0 +1,4 @@
+{
+  "invalid-success-event-with-failure-outcome.json": ["/outcome must be equal to constant"],
+  "invalid-unlocked-without-wallet-id.json": ["/payload must have required property 'walletId'"]
+}

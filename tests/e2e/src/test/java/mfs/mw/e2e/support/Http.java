@@ -79,12 +79,16 @@ public final class Http {
   }
 
   public static Response postForm(URI uri, Map<String, String> form) {
+    return postForm(uri, Map.of(), form);
+  }
+
+  public static Response postForm(URI uri, Map<String, String> headers, Map<String, String> form) {
     String encoded =
         form.entrySet().stream()
             .map(e -> enc(e.getKey()) + "=" + enc(e.getValue()))
             .collect(Collectors.joining("&"));
     return send(
-        base(uri, Map.of())
+        base(uri, headers)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .POST(HttpRequest.BodyPublishers.ofString(encoded))
             .build());

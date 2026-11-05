@@ -2,13 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.upay.mw/events/mw-orchestrator/core.command.v1.schema.json",
   "title": "core.command.v1",
-  "description": "Command from mw-orchestrator to the core (spec 6.3), on core.wallet.command.v1 and core.payment.command.v1. Key: txnId. Idempotent on commandId. The payload is picked by commandType; ValidateTransaction, HoldFunds and PostTransfer carry payload.encryptedPin, which the middleware never decrypts.",
+  "description": "Command from mw-orchestrator to the core (spec 6.3; UnlockWallet from mw-admin-api after maker-checker approval, ticket 52, its txnId a fresh UUIDv7 of the unlock), on core.wallet.command.v1 and core.payment.command.v1. Key: txnId. Idempotent on commandId. The payload is picked by commandType; ValidateTransaction, HoldFunds and PostTransfer carry payload.encryptedPin, which the middleware never decrypts.",
   "type": "object",
   "required": ["schemaVersion", "commandType", "commandId", "txnId", "correlationId", "issuedAt", "expiresAt", "payload"],
   "properties": {
     "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
     "commandType": {
-      "enum": ["ValidateTransaction", "HoldFunds", "CommitHold", "ReleaseHold", "PostTransfer", "CreditWallet", "ReverseTransaction", "QueryTransaction", "ApplyComplianceAction"]
+      "enum": ["ValidateTransaction", "HoldFunds", "CommitHold", "ReleaseHold", "PostTransfer", "CreditWallet", "ReverseTransaction", "QueryTransaction", "ApplyComplianceAction", "UnlockWallet"]
     },
     "commandId": { "$ref": "../../common/defs.v1.schema.json#/$defs/CommandId" },
     "txnId": { "$ref": "../../common/defs.v1.schema.json#/$defs/TxnId" },
@@ -74,6 +74,12 @@
       "properties": {
         "commandType": { "const": "ApplyComplianceAction" },
         "payload": { "$ref": "core.command.v1/ApplyComplianceAction.payload.schema.json" }
+      }
+    },
+    {
+      "properties": {
+        "commandType": { "const": "UnlockWallet" },
+        "payload": { "$ref": "core.command.v1/UnlockWallet.payload.schema.json" }
       }
     }
   ]

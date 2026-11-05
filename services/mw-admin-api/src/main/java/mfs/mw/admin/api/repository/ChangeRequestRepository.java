@@ -83,12 +83,17 @@ public class ChangeRequestRepository {
   }
 
   /** Newest first; null filters are left out. */
-  public List<ChangeRequest> list(ChangeRequest.Status status, String resourceId, int limit, int offset) {
+  public List<ChangeRequest> list(
+      ChangeRequest.Status status, String resourceType, String resourceId, int limit, int offset) {
     StringBuilder sql = new StringBuilder("select " + COLUMNS + " from change_request where true");
     List<Object> args = new ArrayList<>();
     if (status != null) {
       sql.append(" and status = ?");
       args.add(status.name());
+    }
+    if (resourceType != null) {
+      sql.append(" and resource_type = ?");
+      args.add(resourceType);
     }
     if (resourceId != null) {
       sql.append(" and resource_id = ?");

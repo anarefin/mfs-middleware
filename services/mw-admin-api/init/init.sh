@@ -3,8 +3,8 @@
 # per-service database roles or OpenBao identities yet):
 #   1. OpenBao KV secret/mw-admin-api: database password (created once; an existing secret is
 #      never overwritten); the realm `services` client secret synced from KC_MW_ADMIN_API_SECRET.
-#   2. PostgreSQL: login role admin_api_rw and schema admin (spec 16.2) owned by it (password synced from
-#      the secret on every run).
+#   2. PostgreSQL: login role admin_api_rw and schemas admin and partner (spec 16.2; partner config,
+#      ticket 38) owned by it (password synced from the secret on every run).
 #   3. OpenBao policy + AppRole mw-admin-api (read that one secret); a fresh secret-id and the
 #      role-id are written to /out for the service (Spring configtree: one file per property).
 # DEV ONLY: the OpenBao root token is read from the openbao-data volume (see dev-unseal.sh).
@@ -13,6 +13,8 @@ set -eu
 SVC=mw-admin-api
 ROLE=admin_api_rw
 SCHEMA=admin
+# second own schema (spec 16.2 `partner`, ticket 38); Flyway migrates both
+SCHEMA2=partner
 KV="secret/$SVC"
 OUT="${OUT_DIR:-/out}"
 : "${PGHOST:?}" "${PGUSER:?}" "${PGDATABASE:?}" "${PGPASSWORD:?}" "${BAO_ADDR:?}"
@@ -68,10 +70,11 @@ fi
 
 # 2. database role and schema ---------------------------------------------------------------------
 provision_db() {
-  psql -v ON_ERROR_STOP=1 -q -v pw="$(cat "$tmp/dbpw")" -v role="$ROLE" -v schema="$SCHEMA" -v db="$PGDATABASE" <<'SQL'
+  psql -v ON_ERROR_STOP=1 -q -v pw="$(cat "$tmp/dbpw")" -v role="$ROLE" -v schema="$SCHEMA" -v schema2="$SCHEMA2" -v db="$PGDATABASE" <<'SQL'
 SELECT format('CREATE ROLE %I LOGIN', :'role') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'role') \gexec
 ALTER ROLE :"role" PASSWORD :'pw';
 CREATE SCHEMA IF NOT EXISTS :"schema" AUTHORIZATION :"role";
+CREATE SCHEMA IF NOT EXISTS :"schema2" AUTHORIZATION :"role";
 ALTER ROLE :"role" IN DATABASE :"db" SET search_path = :"schema";
 REVOKE ALL ON DATABASE :"db" FROM :"role";
 GRANT CONNECT ON DATABASE :"db" TO :"role";
@@ -84,7 +87,7 @@ until provision_db; do
   n=$((n + 1)); [ "$n" -lt 5 ] || { log "database provisioning failed" >&2; exit 1; }
   log "database provisioning raced another init step, retrying"; sleep 2
 done
-log "role $ROLE and schema $SCHEMA ready"
+log "role $ROLE and schemas $SCHEMA, $SCHEMA2 ready"
 
 # 3. AppRole --------------------------------------------------------------------------------------
 bao policy write "$SVC" - >/dev/null <<EOF

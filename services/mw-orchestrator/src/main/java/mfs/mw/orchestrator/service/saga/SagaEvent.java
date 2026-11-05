@@ -103,6 +103,17 @@ public sealed interface SagaEvent {
    */
   record ManualInquiry() implements SagaEvent {}
 
+  /**
+   * The core's answer to the QueryTransaction a forced credit (ManualCommit of an ADD_MONEY_BANK,
+   * ticket 37) sends before its fresh-round CreditWallet: CREDITED (core CREDITED / POSTED) ends it
+   * COMPLETED without a new credit, NOT_CREDITED (NOT_FOUND / VALIDATED / REJECTED) sends the
+   * credit, CONFLICT (any other answer) hands it back to MANUAL_REVIEW.
+   */
+  record CreditCheckResult(Credit credit) implements SagaEvent {
+
+    public enum Credit { CREDITED, NOT_CREDITED, CONFLICT }
+  }
+
   /** The deadline stored in {@code saga_timer} passed; the meaning depends on the state. */
   record DeadlineExpired() implements SagaEvent {}
 }

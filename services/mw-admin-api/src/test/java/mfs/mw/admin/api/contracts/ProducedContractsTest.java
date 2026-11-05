@@ -2,6 +2,7 @@ package mfs.mw.admin.api.contracts;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +16,7 @@ import mfs.mw.admin.api.entity.ChangeRequest;
 import mfs.mw.admin.api.entity.ContentVersion;
 import mfs.mw.admin.api.mapper.ContentChangeMapper;
 import mfs.mw.admin.api.mapper.ChangeRequestMapper;
+import mfs.mw.admin.api.mapper.PartnerMapper;
 import mfs.mw.admin.api.mapper.RevealAuditMapper;
 import mfs.mw.admin.api.util.UuidV7;
 import mfs.mw.admin.api.security.AdminRole;
@@ -43,6 +45,20 @@ class ProducedContractsTest {
         null, null, "customer 01712345678 complained", null, AT, null, AT.plusSeconds(72 * 3600));
   }
 
+  /** A PENDING partner change (ticket 38): DISABLE of the seed ocs. */
+  static ChangeRequest partnerRequest() {
+    return new ChangeRequest(
+        UUID.fromString("0d6c3f0e-1111-4b5e-9a1e-000000000002"), "partner", "ocs", "DISABLE",
+        Map.of("family", "telco", "baseVersion", 0, "config", CONFIG),
+        PartnerMapper.diff(Map.of("enabled", true), Map.of("enabled", false)), "ops-maker01", "sub-maker",
+        ChangeRequest.Status.PENDING, null, null, "OCS incident", null, AT, null, AT.plusSeconds(72 * 3600));
+  }
+
+  static final Map<String, Object> CONFIG =
+      Map.of(
+          "enabled", false, "baseUrl", "http://mw-simulators:8080", "timeoutMs", 20000,
+          "operations", Map.of("PAY", Map.of("method", "POST", "path", "/ocs/v1/topup", "response", "{}")));
+
   /** A PENDING USSD menu version request (ticket 39). */
   static ChangeRequest menuRequest() {
     return new ChangeRequest(
@@ -70,6 +86,15 @@ class ProducedContractsTest {
                       "mw.txn.action.v1", "corr-1", AT),
                   ChangeRequestMapper.rejected(request("REVERSE", "COMPLETED", "REVERSING"), "ops-checker01", "no", null, AT),
                   ChangeRequestMapper.expired(request("INQUIRE", "UNKNOWN", "UNKNOWN"), "corr-1", AT),
+                  // a wallet unlock (ticket 52): wallet/<masked MSISDN>, txnId the unlockTxnId
+                  ChangeRequestMapper.created(unlockRequest(), "corr-1"),
+                  ChangeRequestMapper.approved(unlockRequest(), "ops-checker01", "core.wallet.command.v1", "corr-1", AT),
+                  ChangeRequestMapper.rejected(unlockRequest(), "ops-checker01", "no", null, AT),
+                  ChangeRequestMapper.expired(unlockRequest(), "corr-1", AT),
+                  ChangeRequestMapper.created(partnerRequest(), "corr-1"),
+                  ChangeRequestMapper.approved(partnerRequest(), "ops-checker01", "mw.config.changed.v1", "corr-1", AT),
+                  ChangeRequestMapper.rejected(partnerRequest(), "ops-checker01", "no", "corr-1", AT),
+                  ChangeRequestMapper.expired(partnerRequest(), "corr-1", AT),
                   ChangeRequestMapper.created(menuRequest(), "corr-1"),
                   ChangeRequestMapper.approved(menuRequest(), "ops-checker01", "mw.config.changed.v1", "corr-1", AT),
                   ChangeRequestMapper.rejected(menuRequest(), "ops-checker01", "no", "corr-1", AT),
@@ -77,6 +102,8 @@ class ProducedContractsTest {
           "events/mw-admin-api/mw.config.changed.v1.schema.json",
           () ->
               List.of(
+                  PartnerMapper.configChanged("ocs", 1, CONFIG, "ops-maker01", "ops-checker01", "corr-1", AT),
+                  PartnerMapper.configChanged("robi", 7, CONFIG, "int-maker01", "int-checker01", "admin-" + UUID.randomUUID(), AT),
                   ContentChangeMapper.published(
                       version("ussd-menu/main", ContentVersion.USSD_MENU, Map.of("menuId", "main", "version", 3,
                           "menu", Map.of("menuId", "main", "version", 3, "start", "main", "nodes", Map.of()),
@@ -98,7 +125,22 @@ class ProducedContractsTest {
           () ->
               List.of(
                   ChangeRequestMapper.reversal(request("REVERSE", "COMPLETED", "REVERSING"), UuidV7.at(AT),
-                      new AdminTxn.Amount(5000, "BDT"), "ops-checker01", "corr-1", AT)));
+                      new AdminTxn.Amount(5000, "BDT"), "ops-checker01", "corr-1", AT)),
+          "events/mw-orchestrator/core.command.v1.schema.json#UnlockWallet",
+          () ->
+              List.of(
+                  ChangeRequestMapper.unlock(unlockRequest(), "ops-checker01", "corr-1", AT, Duration.ofHours(1)),
+                  ChangeRequestMapper.unlock(unlockRequest(), "ops-checker01", "admin-" + UUID.randomUUID(), AT,
+                      Duration.ofMinutes(5))));
+
+  /** A PENDING wallet unlock as the maker leaves it (ticket 52). */
+  static ChangeRequest unlockRequest() {
+    return new ChangeRequest(
+        UUID.fromString("0d6c3f0e-2222-4b5e-9a1e-000000000003"), ChangeRequest.WALLET, "01711000123", "UNLOCK",
+        Map.of(ChangeRequestMapper.UNLOCK_TXN_ID, UuidV7.at(AT).toString()), ChangeRequestMapper.diff("LOCKED", "ACTIVE"),
+        "ops-maker01", "sub-maker", ChangeRequest.Status.PENDING, null, null, "verified at branch", null, AT, null,
+        AT.plusSeconds(72 * 3600));
+  }
 
   static final List<String> ENTRIES = ContractManifest.load().producedEvents();
 

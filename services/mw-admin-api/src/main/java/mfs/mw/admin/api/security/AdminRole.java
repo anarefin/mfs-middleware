@@ -46,6 +46,29 @@ public enum AdminRole {
   public static final Set<AdminRole> TXN_CHECKER = Set.copyOf(EnumSet.of(OPS_CHECKER));
 
   /**
+   * Ask for a partner config change: enable / disable, timeouts, onboard or replace the config
+   * (spec 15.2 Partners, maker-checker; ticket 38). Operations staff disable a partner during an
+   * incident; integration staff onboard one.
+   */
+  public static final Set<AdminRole> PARTNER_MAKER = Set.copyOf(EnumSet.of(OPS_MAKER, INTEGRATION_MAKER));
+
+  /** Approve or reject a partner change request; never the maker's own (spec 15.3). */
+  public static final Set<AdminRole> PARTNER_CHECKER = Set.copyOf(EnumSet.of(OPS_CHECKER, INTEGRATION_CHECKER));
+
+  /** See partner configs (no secrets in them): the transaction readers and integration staff. */
+  public static final Set<AdminRole> READ_PARTNERS =
+      Set.copyOf(
+          EnumSet.of(
+              VIEWER, OPS_MAKER, OPS_CHECKER, OPS_EMERGENCY, INTEGRATION_MAKER, INTEGRATION_CHECKER, RECON_MAKER,
+              RECON_CHECKER, COMPLIANCE_OFFICER, AUDITOR));
+
+  /** See change requests: whoever may read transactions or partners. */
+  public static final Set<AdminRole> READ_CHANGE_REQUESTS = READ_PARTNERS;
+
+  /** Decide some change request (the service checks the resource type's own checker set). */
+  public static final Set<AdminRole> ANY_CHECKER = Set.copyOf(EnumSet.of(OPS_CHECKER, INTEGRATION_CHECKER));
+
+  /**
    * Propose a new version of a USSD menu or a notify template (spec 15.2 USSD, Notifications;
    * customer-facing text, maker-checker; ticket 39). Decision: the ops roles, as for transactions.
    */

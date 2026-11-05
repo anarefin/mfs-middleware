@@ -21,7 +21,8 @@ enum Reason {
   ORIGINAL_NOT_FOUND("No posted transaction with that id"),
   ORIGINAL_NOT_REVERSIBLE("A reversal cannot be reversed"),
   ALREADY_REVERSED("Transaction was already reversed"),
-  AMOUNT_MISMATCH("Amount differs from the original transfer");
+  AMOUNT_MISMATCH("Amount differs from the original transfer"),
+  WALLET_NOT_LOCKED("Wallet is not locked");
 
   final String message;
 

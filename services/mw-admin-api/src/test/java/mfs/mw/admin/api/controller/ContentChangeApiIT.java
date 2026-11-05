@@ -197,7 +197,7 @@ class ContentChangeApiIT {
     assertEvent(AUDIT_SCHEMA, audit);
     assertThat(audit.path("resource").asString()).isEqualTo("ussd_menu/main");
     assertThat(audit.has("txnId")).isFalse();
-    assertThat(audit.path("after").path("version").asInt()).isEqualTo(1);
+    assertThat(audit.path("after").path("config").path("version").asInt()).isEqualTo(1);
 
     MvcTestResult versions = mvc.get().uri("/admin/v1/ussd-menus/main/versions").with(CHECKER).exchange();
     assertThat(versions).hasStatus(200);

@@ -5,6 +5,13 @@
   "sslRequired": "external",
   "registrationAllowed": false,
   "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "maxDeltaTimeSeconds": 43200,
+  "quickLoginCheckMilliSeconds": 1000,
+  "minimumQuickLoginWaitSeconds": 60,
   "accessTokenLifespan": 300,
   "roles": {
     "realm": [
@@ -68,6 +75,10 @@
       "webOrigins": [
         "+"
       ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://localhost/console/*"
+      },
       "protocol": "openid-connect"
     }
   ],

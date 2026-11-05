@@ -11,7 +11,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   (`route/CorePaymentCommandRoute`), both with retry topics + DLQ. Handled: `ValidateTransaction`
   (fee, limits, PIN, account status; moves no money), `PostTransfer` (double-entry debit/credit plus
   fee), `HoldFunds`, `CommitHold`, `ReleaseHold`, `CreditWallet`, `ReverseTransaction`,
-  `QueryTransaction`. `ApplyComplianceAction` and unknown types are logged and ignored.
+  `QueryTransaction`, `UnlockWallet` (ticket 52). `ApplyComplianceAction` and unknown types are
+  logged and ignored.
 - **Topic decision (spec 6.3 does not say which command goes where):** the mock accepts every
   command type on either command topic and answers on the paired event topic (wallet command ->
   `core.wallet.event.v1`, payment command -> `core.payment.event.v1`). The handler never looks at
@@ -35,8 +36,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   `WALLET_NOT_FOUND`.
 - Emits the result events (`TransactionValidated`/`TransactionRejected`, `FundsHeld`/`HoldRejected`,
   `HoldCommitted`/`CommitFailed`, `HoldReleased`/`ReleaseFailed`, `TransferPosted`/`TransferRejected`,
-  `WalletCredited`/`CreditRejected`, `TransactionReversed`/`ReversalRejected`, `TransactionStatus`)
-  through the transactional outbox, in the same transaction as the ledger change and the
+  `WalletCredited`/`CreditRejected`, `TransactionReversed`/`ReversalRejected`, `TransactionStatus`,
+  `WalletUnlocked`/`UnlockRejected`) through the transactional outbox, in the same transaction as the ledger change and the
   `command_log` row. Idempotent on `commandId`: the first result event is stored verbatim and a
   repeated command gets the same event again (a second outbox row, one ledger effect). A command
   whose `expiresAt` passed before it was first seen is dropped without an event.
@@ -49,7 +50,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   `HOLD_RELEASED`, release of a committed one `HOLD_ALREADY_COMMITTED`, unknown ids `HOLD_NOT_FOUND`.
   `holdId` is `HOLD-<coreRef>`.
 - `CreditWallet`: money from the `SETTLEMENT` wallet (seeded with 10^12 poisha so the sum of all
-  balances is constant), no PIN, no fee. `ReverseTransaction`: undoes every entry (fee included) of
+  balances is constant), no PIN, no fee. A txn is credited once whatever the commandId (an operator's
+  fresh `<txnId>:credit:manual-<n>` round): an already credited txn is answered `WalletCredited` without
+  effect, a reversed one refused `ALREADY_REVERSED`. `ReverseTransaction`: undoes every entry (fee included) of
   `originalTxnId` once, under the reversal's own txnId, with `REVERSAL` entries; the amount must
   equal the original transfer amount (`AMOUNT_MISMATCH`), the original must have entries
   (`ORIGINAL_NOT_FOUND`: a merely held txn has none), must not be a reversal
@@ -93,12 +96,23 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   `mw.coremock.pin-max-failures`-th (5) in a row sets status `LOCKED` (log event
   `wallet.pin.locked`). A LOCKED wallet is refused as payer with `ACCOUNT_LOCKED` (before its PIN
   is checked) but can still be credited. Counting runs in the command transaction, so a replay
-  answered from `command_log` never counts twice. No unlock API yet (seed reset only).
+  answered from `command_log` never counts twice.
+- Unlock (ticket 52, M2 gate decision): `UnlockWallet` (sent by mw-admin-api after maker-checker
+  approval, payload `subject` WALLET + `changeRequestId`, `makerId`, `checkerId`) sets a LOCKED wallet
+  back to ACTIVE with `pin_failures` 0 (`WalletRepository.unlock`, guarded by `status = 'LOCKED'`;
+  log event `wallet.pin.unlocked`) and answers `WalletUnlocked {walletId}`. A wallet that is not
+  LOCKED (ACTIVE, or BLOCKED for another reason: an unlock never lifts a block) gets `UnlockRejected
+  WALLET_NOT_LOCKED`, an unknown one `WALLET_NOT_FOUND`; nothing changes. Idempotent on `commandId`
+  like every command (a replay is answered from `command_log`, even after the wallet locked again).
+  A subject that is not a WALLET is malformed (retry topics, DLQ). The events go on the paired event
+  topic (`core.wallet.event.v1`); mw-orchestrator drops them (`txn.unknown`) and mw-admin-api does
+  not consume them. Reject faults apply (`UnlockRejected`). QueryTransaction of an unlock's txnId is
+  not meaningful (reported REJECTED; nobody asks).
 - Reason codes (core reasons, mapped by the orchestrator): `WALLET_NOT_FOUND`,
   `CREDIT_WALLET_NOT_FOUND`, `INVALID_COUNTERPARTY`, `ACCOUNT_LOCKED`, `ACCOUNT_BLOCKED`,
   `CREDIT_ACCOUNT_BLOCKED`, `SAME_WALLET`, `INVALID_PIN`, `INVALID_PIN_BLOCK`, `INVALID_AMOUNT`,
   `LIMIT_EXCEEDED_PER_TXN`, `LIMIT_EXCEEDED_DAILY`, `INSUFFICIENT_BALANCE`, plus the hold and
-  reversal reasons above. Check order: wallets, wallet types, status, PIN, amount, limits, funds.
+  reversal reasons above and `WALLET_NOT_LOCKED` (unlock). Check order: wallets, wallet types, status, PIN, amount, limits, funds.
 - PIN: RSA-OAEP with SHA-256 (hash and MGF1), PKCS#8 private key from OpenBao
   (`mw.coremock.pin.private-key`), checked against the wallet's bcrypt hash. The plaintext is never
   logged or stored. `GET /core-mock/v1/pin-public-key` exports `{keyId, algorithm, publicKeyPem}`.
@@ -112,7 +126,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 
 - `events/mw-core-mock/core.event.v1.schema.json` and its per-event payload schemas (topics
   `core.wallet.event.v1`, `core.payment.event.v1`). Tests validate every emitted event against it.
-- Machine-readable list: `contracts.yml` (produces 15 `core.event.v1` types, consumes the 8 handled
+- Machine-readable list: `contracts.yml` (produces 17 `core.event.v1` types, consumes the 9 handled
   `core.command.v1` types; `ApplyComplianceAction` is ignored, so neither it nor `ComplianceAction*` is
   listed), checked by `make contracts-lint`, tested by `contracts/ProducedContractsTest` /
   `ConsumedContractsTest` (no Spring, no Docker). No OpenAPI: the admin API is not a product contract.
@@ -121,7 +135,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 
 - `events/mw-orchestrator/core.command.v1.schema.json` (+ the payload of each handled command),
   own types in `dto/CoreCommand`, `dto/TransferPayload`, `HoldPayload`, `CreditPayload`,
-  `ReversePayload`, `QueryPayload`; `common/defs.v1` shapes. Tests build every command through the
+  `ReversePayload`, `QueryPayload`, `UnlockPayload`; `common/defs.v1` shapes. Tests build every command through the
   schema (`CoreCommandsTestSupport`).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)

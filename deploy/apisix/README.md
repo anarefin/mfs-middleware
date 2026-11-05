@@ -248,11 +248,18 @@ over.
 - `routes/auth-portals-token.json` (always applied, ticket 33): the same for realm `portals`
   (`POST /auth/realms/portals/protocol/openid-connect/token`, public client `mw-portal`), so the
   token's `iss` is the one `portal-org-v1`'s discovery expects.
-- `routes/auth-ops-token.json` (always applied, ticket 37): the same for realm `ops` (public client
-  `mw-admin-ui`), so the token's `iss` is the one `admin-v1`'s discovery expects. The realm still
+- `routes-test/auth-ops-token.json` (TEST ONLY, ticket 37; moved out of `routes/` after the
+  security review: the ops realm's direct grant is never on the public gateway): the same for realm
+  `ops` (public client `mw-admin-ui`), so the token's `iss` is the one `admin-v1`'s discovery
+  expects. Applied only with `MW_E2E_ROUTES=1` like the other test-only objects below, with the same
+  `ip-restriction` / `key-auth` (`mw_e2e`, header `apikey`, sent by `tests/e2e` `Keycloak.opsToken`)
+  and a strict `limit-count` of 10 requests per minute per `remote_addr` (429 beyond). The realm
   demands TOTP on this grant (built-in direct-grant flow, conditional OTP): only users with an
   enrolled OTP get a token, i.e. the dev-only e2e operators `ops-e2e-maker01` / `ops-e2e-checker01`
-  (secret `KC_OPS_TEST_TOTP_SECRET`); every other ops user must enrol TOTP in the browser first.
+  (secret `KC_OPS_TEST_TOTP_SECRET`); every other ops user must enrol TOTP in the browser first. The
+  ops realm has brute-force detection on (`ops-realm.json`: 5 failures, wait from 60 s up to 15 min,
+  quick-login check 1 s; `scripts/test/test_platform_compose.sh`). Keycloak imports a realm only when
+  it does not exist yet, so an existing dev stack picks the settings up after `make down DOWN_ARGS=-v`.
 - Test-only objects, `routes-test/` + `consumers-test/`: applied only when `apisix-init` runs with
   `MW_E2E_ROUTES=1`, which `make e2e` does on the running stack (`scripts/suite.sh`); every
   other run (a default `make up`) DELETEs them. Today: `test-core-mock` (`/test/core-mock/v1/*` ->
@@ -271,6 +278,21 @@ over.
 TOTP), quota 300/min per token subject. The roles of spec 15.4 are checked by mw-admin-api, not
 here. Spec 15.1 puts the console on the internal gateway only; the MVP has one APISIX, so the route
 is on it (known gap: no network split until a second, internal APISIX exists).
+
+## Admin console routes (ticket 40)
+
+- `routes/admin-ui.json` (`GET`/`HEAD`/`POST /console`, `/console/*` -> `mw-admin-ui:3000`): no auth
+  plugin (the console logs operators in itself with Auth.js, realm `ops`, Authorization Code + PKCE),
+  64 KiB bodies, quota 600/min per source address. The console sets its own CSP, HSTS and
+  X-Frame-Options DENY.
+- `routes/auth-ops-browser.json` (`/realms/ops/*`, `/resources/*` -> `keycloak:8080`): the
+  browser's Keycloak login and OTP pages. `proxy-rewrite` sets `X-Forwarded-Host: $host`,
+  `X-Forwarded-Proto: https`, `X-Forwarded-Port: 443` (APISIX would send its listener port 9443),
+  so Keycloak builds public URLs and issues tokens with `iss` `https://localhost/realms/ops`;
+  mw-admin-ui sends the same headers on its in-stack token calls. Port 443 only.
+- `admin-v1` therefore accepts two issuers (`claim_validator.issuer.valid_issuers`): the in-stack
+  `http://keycloak:8080/realms/ops` (tokens asked for directly, e2e) and the public one. Without the
+  list APISIX accepts only the discovery document's issuer.
 
 ## Adding a route (tickets 22, 31, 33, ...)
 

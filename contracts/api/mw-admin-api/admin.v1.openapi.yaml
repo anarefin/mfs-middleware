@@ -32,6 +32,15 @@ info:
     `before`/`after`. Codes: 403 MW-AUTH-030 (the maker decides own request), 409 MW-VAL-030 (the
     action does not fit the transaction's current state), 409 MW-VAL-031 (the transaction already
     has an open request), 409 MW-VAL-032 (expired), 409 MW-VAL-033 (already decided).
+    Partner config (ticket 38, spec 15.2 Partners, 15.3, 20.4): partners (schema `partner`) are
+    changed only through a change request (resourceType `partner`): ENABLE, DISABLE, SET_TIMEOUTS
+    or UPSERT (onboard / replace the full config). Makers `ops-maker` or `integration-maker`,
+    checkers `ops-checker` or `integration-checker` (never the maker). On approval the partner
+    tables are updated, the version goes up by one and the full config is published on the
+    compacted topic `mw.config.changed.v1` (key `partner/<id>`), all in one database transaction;
+    the adapters swap it in without a restart. A disabled partner refuses new calls unsent
+    (`MW-SYS-PARTNER_DISABLED`). 409 MW-VAL-030 also means the change would change nothing or the
+    partner changed after the request was made (the request stays PENDING).
 
     USSD menus and notification templates (ticket 39, spec 9.2, 10.3, 15.2): customer-facing text
     goes through the same maker-checker. An `ops-maker` proposes a version (checked at once: 400
@@ -134,13 +143,118 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /admin/v1/wallets/{walletId}/change-requests:
+    post:
+      operationId: requestWalletAction
+      summary: Ask for an operator action on a wallet (maker)
+      description: >-
+        Role `ops-maker` (ticket 52). UNLOCK clears the PIN lockout of a wallet locked after 5 wrong
+        PINs. Nothing is applied until a different user (`ops-checker`) approves; the approval sends
+        `UnlockWallet` to the core, which refuses it when the wallet is not locked. One open request
+        per wallet. The request expires 72 h after creation. The wallet id is shown masked in every
+        answer.
+      parameters:
+        - { name: walletId, in: path, required: true, schema: { type: string, pattern: "^01[3-9][0-9]{8}$" }, description: The wallet id (its MSISDN, 11 digits) }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, reason]
+              additionalProperties: false
+              properties:
+                action: { $ref: "#/components/schemas/WalletAction" }
+                reason: { type: string, minLength: 1, maxLength: 500, description: Why (free text; masked in logs) }
+      responses:
+        "201":
+          description: The change request, PENDING
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /admin/v1/partners:
+    get:
+      operationId: listPartners
+      summary: Partner configs (ticket 38)
+      description: Roles that may read transactions, and integration-maker / integration-checker.
+      parameters:
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Every partner, by id
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PartnerPage" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /admin/v1/partners/{partnerId}:
+    get:
+      operationId: getPartner
+      summary: One partner config, as published
+      parameters:
+        - { name: partnerId, in: path, required: true, schema: { $ref: "#/components/schemas/PartnerId" } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The partner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Partner" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /admin/v1/partners/{partnerId}/change-requests:
+    post:
+      operationId: requestPartnerChange
+      summary: Ask for a partner config change (maker)
+      description: >-
+        Role `ops-maker` or `integration-maker`. ENABLE / DISABLE / SET_TIMEOUTS change an existing
+        partner (404 MW-VAL-003 otherwise); SET_TIMEOUTS needs `timeouts`; UPSERT needs `config`
+        (the full config) and, for a new partner, `family`. A change that changes nothing is 409
+        MW-VAL-030. One open request per partner (409 MW-VAL-031). `diff` shows the changed fields
+        before and after; `payload.config` the full config that is published on approval.
+      parameters:
+        - { name: partnerId, in: path, required: true, schema: { $ref: "#/components/schemas/PartnerId" } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, reason]
+              additionalProperties: false
+              properties:
+                action: { $ref: "#/components/schemas/PartnerAction" }
+                reason: { type: string, minLength: 1, maxLength: 500, description: Why (free text; masked in logs) }
+                family: { $ref: "#/components/schemas/PartnerFamily" }
+                timeouts: { $ref: "#/components/schemas/PartnerTimeouts" }
+                config: { $ref: "#/components/schemas/PartnerConfig" }
+      responses:
+        "201":
+          description: The change request, PENDING
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /admin/v1/change-requests:
     get:
       operationId: listChangeRequests
       summary: Change requests, newest first
-      description: Roles that may read transactions. Filters are ANDed.
+      description: Roles that may read transactions or partners. Filters are ANDed.
       parameters:
         - { name: status, in: query, schema: { $ref: "#/components/schemas/ChangeRequestStatus" } }
+        - { name: resourceType, in: query, schema: { $ref: "#/components/schemas/ResourceType" } }
         - { name: resourceId, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
         - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 100000, default: 0 } }
@@ -176,8 +290,9 @@ paths:
       operationId: approveChangeRequest
       summary: Approve a pending change request (checker) and apply it
       description: >-
-        Role `ops-checker`, and not the maker (403 MW-AUTH-030). The transaction must still be in a
-        status the action fits (409 MW-VAL-030, the request stays PENDING). An expired request is
+        Role `ops-checker` (transactions; partners also `integration-checker`), and not the maker
+        (403 MW-AUTH-030). The transaction must still be in a status the action fits, a partner
+        still at the version the maker saw (409 MW-VAL-030, the request stays PENDING). An expired request is
         marked EXPIRED and refused (409 MW-VAL-032). No request body.
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -198,7 +313,9 @@ paths:
     post:
       operationId: rejectChangeRequest
       summary: Reject a pending change request (checker); nothing is applied
-      description: Role `ops-checker`, and not the maker (403 MW-AUTH-030).
+      description: >-
+        Role `ops-checker` (transactions; partners also `integration-checker`), and not the maker
+        (403 MW-AUTH-030).
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
@@ -559,25 +676,40 @@ components:
     TxnAction:
       type: string
       enum: [INQUIRE, FORCE_COMMIT, FORCE_RELEASE, REVERSE]
+    WalletAction:
+      type: string
+      enum: [UNLOCK]
+    WalletStatus:
+      type: string
+      description: The wallet's PIN-lock state an UNLOCK expects (LOCKED) and leads to (ACTIVE); the core decides.
+      enum: [LOCKED, ACTIVE]
     ChangeRequestStatus:
       type: string
       enum: [PENDING, APPROVED, REJECTED, EXPIRED]
     ChangeRequest:
       type: object
       description: >-
-        An `admin.change_request` (spec 15.3). `diff` is the transaction status the maker saw and
-        the one the action leads to; `payload` what will be (or was) sent: for REVERSE the amount
-        and, once approved, `reversalTxnId`; for the other actions, once approved, `actionId`.
+        An `admin.change_request` (spec 15.3). For a transaction `diff` is the status the maker saw
+        and the one the action leads to; `payload` what will be (or was) sent: for REVERSE the
+        amount and, once approved, `reversalTxnId`; for the other actions, once approved,
+        `actionId`. For a partner `diff` holds the changed config fields before and after;
+        `payload` the `family`, the `baseVersion` the maker saw, the full `config` and, once
+        approved, the published `version`.
+        A `wallet` request (UNLOCK, ticket 52): `resourceId` the masked wallet id, `diff` LOCKED ->
+        ACTIVE, `payload.unlockTxnId` (the UUIDv7 the core command and the audit carry) and, once
+        approved, `commandId`. A `ussd_menu` / `notify_template` request (ticket 39, action PUBLISH):
+        `payload` the version to publish and, once approved, its `configKey` and `version`.
       required: [id, resourceType, resourceId, action, payload, diff, makerId, status, reason, createdAt, expiresAt]
       properties:
         id: { type: string, format: uuid }
-        resourceType: { type: string, enum: [transaction, ussd_menu, notify_template] }
-        resourceId: { type: string, description: "txnId; menuId; or <code>/<channel>/<locale>" }
+        resourceType: { $ref: "#/components/schemas/ResourceType" }
+        resourceId: { type: string, description: "txnId; wallet id (masked); partnerId; menuId; or <code>/<channel>/<locale>" }
         action:
-          description: A transaction action, or PUBLISH for a menu / template version (ticket 39)
           anyOf:
             - { $ref: "#/components/schemas/TxnAction" }
-            - { type: string, const: PUBLISH }
+            - { $ref: "#/components/schemas/WalletAction" }
+            - { $ref: "#/components/schemas/PartnerAction" }
+            - { $ref: "#/components/schemas/ContentAction" }
         payload: { type: object }
         diff:
           type: object
@@ -596,10 +728,14 @@ components:
     ChangeSide:
       type: object
       description: >-
-        A transaction request: the transaction `status`. A menu / template request: its `configKey`
-        and `version` (before: the latest published version made here, absent for the first).
+        A transaction or wallet request: the `status`. A partner request: the changed config
+        fields. A menu / template request (ticket 39): its `configKey` and `version` (before: the
+        latest published version made here, absent for the first).
       properties:
-        status: { $ref: "#/components/schemas/Status" }
+        status:
+          anyOf:
+            - { $ref: "#/components/schemas/Status" }
+            - { $ref: "#/components/schemas/WalletStatus" }
         configKey: { type: string }
         version: { type: integer, minimum: 1 }
     ContentVersion:
@@ -638,6 +774,117 @@ components:
           items: { $ref: "#/components/schemas/ChangeRequest" }
         limit: { type: integer }
         offset: { type: integer }
+    ResourceType:
+      type: string
+      enum: [transaction, wallet, partner, ussd_menu, notify_template]
+    ContentAction:
+      type: string
+      description: A USSD menu or notify template version to publish (ticket 39)
+      enum: [PUBLISH]
+    PartnerAction:
+      type: string
+      enum: [ENABLE, DISABLE, SET_TIMEOUTS, UPSERT]
+    PartnerId:
+      type: string
+      pattern: "^[a-z0-9][a-z0-9-]{0,63}$"
+    PartnerFamily:
+      type: string
+      enum: [telco, billpay, bank]
+      description: The adapter that serves the partner
+    PartnerTimeouts:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        connectTimeoutMs: { type: integer, minimum: 1, maximum: 120000 }
+        timeoutMs: { type: integer, minimum: 1, maximum: 120000, description: Time limit of one call (past it UNKNOWN) }
+        readTimeoutMs: { type: integer, minimum: 1, maximum: 125000, description: Socket read timeout (default timeoutMs + 2000) }
+    PartnerOperation:
+      type: object
+      required: [method, path, response]
+      additionalProperties: false
+      properties:
+        method: { type: string, enum: [GET, POST, PUT, PATCH, DELETE] }
+        path: { type: string, minLength: 1, maxLength: 256, pattern: "^/[A-Za-z0-9._~/{}-]*$" }
+        definiteStatuses:
+          type: array
+          maxItems: 20
+          items: { type: integer, minimum: 100, maximum: 599 }
+        request: { type: string, maxLength: 8000, description: JSONata from the canonical call to the request body }
+        response: { type: string, minLength: 1, maxLength: 8000, description: "JSONata from {status, body} to {outcome, partnerRef, code, message, reason}" }
+    PartnerConfig:
+      type: object
+      description: >-
+        The full config of one partner instance, in the field names of the adapters' partner
+        framework (spec 12.1); published unchanged as the `value` of `mw.config.changed.v1`. Never a
+        secret: `auth.credentialsRef` names one of the partner's secrets in OpenBao. The adapters
+        check it again (endpoint host allowlist, https, JSONata compiles) and keep the previous
+        config when they refuse it.
+      required: [baseUrl, operations]
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean, description: "false: every new call is refused unsent (default true)" }
+        template: { type: string, enum: [rest-json-request-reply, rest-json-async-callback] }
+        baseUrl: { type: string, minLength: 8, maxLength: 512, format: uri }
+        connectTimeoutMs: { type: integer, minimum: 1, maximum: 120000 }
+        timeoutMs: { type: integer, minimum: 1, maximum: 120000 }
+        readTimeoutMs: { type: integer, minimum: 1, maximum: 125000 }
+        headers:
+          type: object
+          maxProperties: 20
+          additionalProperties: { type: string, maxLength: 256 }
+        auth:
+          type: object
+          additionalProperties: false
+          properties:
+            scheme: { type: string, enum: [none, api-key, hmac-sha256] }
+            credentialsRef: { type: string, maxLength: 64, pattern: "^[a-z0-9][a-z0-9-]{0,63}$" }
+            params:
+              type: object
+              maxProperties: 20
+              additionalProperties: { type: string, maxLength: 256 }
+        operations:
+          type: object
+          minProperties: 1
+          maxProperties: 20
+          additionalProperties: { $ref: "#/components/schemas/PartnerOperation" }
+        errorMap:
+          type: object
+          maxProperties: 500
+          additionalProperties:
+            type: object
+            required: [suffix]
+            additionalProperties: false
+            properties:
+              suffix: { type: string, minLength: 1, maxLength: 64, pattern: "^[A-Z0-9_]+$" }
+              retryable: { type: boolean }
+        ambiguousCodes:
+          type: array
+          maxItems: 100
+          items: { type: string, minLength: 1, maxLength: 64 }
+        sensitiveFields:
+          type: object
+          maxProperties: 100
+          additionalProperties: { type: string, enum: [MSISDN, NID, ACCOUNT, NAME, SECRET, PARTY_ID] }
+        resilience: { type: string, minLength: 1, maxLength: 64 }
+    Partner:
+      type: object
+      required: [partnerId, family, version, config, updatedAt, updatedBy]
+      properties:
+        partnerId: { $ref: "#/components/schemas/PartnerId" }
+        family: { $ref: "#/components/schemas/PartnerFamily" }
+        version: { type: integer, minimum: 0, description: "Last published version (0: seed, never published)" }
+        config: { $ref: "#/components/schemas/PartnerConfig" }
+        updatedAt: { type: string, format: date-time }
+        updatedBy: { type: string, description: The maker of the last change }
+        approvedBy: { type: string, description: The checker of the last change }
+    PartnerPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Partner" }
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]

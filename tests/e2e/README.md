@@ -29,7 +29,7 @@ Only APISIX is published, so every call goes through it:
 | Dev mail server (GreenMail) | `GET /test/mail/*` -> `greenmail:8080/api/*` | `deploy/apisix/routes-test/test-mail.json`, TEST ONLY, same key-auth; `support/Mailbox.messagesTo(email)` |
 | Audit rows | `docker compose exec -T postgres psql` (superuser, read-only queries) | no API exposes `audit.event` before mw-admin-api (WP23), and the service role cannot read it |
 | Internal requests (REVERSAL) | `docker compose exec -T kafka kafka-console-producer.sh` on `mw.txn.request.v1` | `support/TxnRequests`: plays the operations producer (channel SYSTEM) in `reversal.feature`; the broker is not published. The maker-checker path through mw-admin-api is `admin-maker-checker.feature` (ticket 37) |
-| Tokens (realm ops) | `POST /auth/realms/ops/protocol/openid-connect/token` | `auth-ops-token.json` (ticket 37), same pinning; client `mw-admin-ui`, password `KC_OPS_TEST_PASSWORD` plus the TOTP code from `KC_OPS_TEST_TOTP_SECRET` (`support/Totp`, HmacSHA256); dev-only users `ops-e2e-maker01` (ops-maker), `ops-e2e-checker01` (ops-checker); `support/Keycloak.opsToken(user)`. A stack whose Keycloak predates ticket 37 needs `make down DOWN_ARGS=-v` |
+| Tokens (realm ops) | `POST /auth/realms/ops/protocol/openid-connect/token` | `routes-test/auth-ops-token.json` (ticket 37, test-only: `MW_E2E_ROUTES=1`, key-auth `apikey` = `MW_E2E_API_KEY`, 10/min per address), same pinning; client `mw-admin-ui`, password `KC_OPS_TEST_PASSWORD` plus the TOTP code from `KC_OPS_TEST_TOTP_SECRET` (`support/Totp`, HmacSHA256); dev-only users `ops-e2e-maker01` (ops-maker), `ops-e2e-checker01` (ops-checker); `support/Keycloak.opsToken(user)`. A stack whose Keycloak predates ticket 37 needs `make down DOWN_ARGS=-v` |
 | Admin API | `/admin/v1/*` | the real route (`admin-v1.json`); `support/AdminApi` |
 
 ## Reuse in later flows (TOPUP, cash-in/out, bill pay, ...)
@@ -107,6 +107,19 @@ Only APISIX is published, so every call goes through it:
   admin audit trail of the transaction records the <APPROVED|REJECTED> change request" (via
   mw-audit-dw). A TOPUP lands in MANUAL_REVIEW with "the core rejects the next CommitHold with
   reason INJECTED_REJECT"; the forced commit is a fresh core command, so it is not refused again.
+- Partner config (`features/partner-config.feature`, `@partner-config @mw-admin-api
+  @mw-adapter-telco`, ticket 38; `steps/PartnerConfigSteps`): "the operators <disable|enable> partner
+  <id>", "the operators set the time limit of partner <id> to <n> ms" (ops-e2e-maker01 asks, the
+  maker's own approval is checked to be 403, ops-e2e-checker01 approves, the published version
+  goes up), "the partner change has reached the adapters" (5 s for outbox relay + config consumer),
+  "the OCS answers every top-up after <n> seconds" (applies it; reset by "the OCS behaves normally
+  again" or the `@After`). An `@After` hook puts every changed partner back to its seed (enabled,
+  20 s); the seed `ocs` comes from mw-admin-api's dev profile.
+- Wallet unlock (`features/wallet-unlock.feature`, `@wallet-unlock @mw-admin-api`, ticket 52):
+  "<maker> asks to unlock wallet <msisdn> because "..."" (then the change request steps above),
+  "the core shows wallet <id> as <ACTIVE|LOCKED>" and "... within N seconds" (mw-core-mock's
+  wallet view). It locks customer02 (01711000002), never customer01; an aborted run leaves it
+  LOCKED until the next fresh stack (`make down DOWN_ARGS=-v`) or an unlock.
 - Menus and templates (`features/admin-content.feature`, `@admin @mw-admin-api @mw-ussd @mw-notify`,
   ticket 39): `{token}` is a random 4-digit marker per scenario (`ScenarioState.token`).
   "<maker> proposes the main USSD menu for <mno> with the title "..."" (fixture

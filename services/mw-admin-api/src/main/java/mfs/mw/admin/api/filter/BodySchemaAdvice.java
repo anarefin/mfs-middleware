@@ -6,9 +6,11 @@ import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.util.Map;
 import mfs.mw.admin.api.dto.ChangeRequestBody;
+import mfs.mw.admin.api.dto.PartnerChangeRequestBody;
 import mfs.mw.admin.api.dto.RejectBody;
 import mfs.mw.admin.api.dto.TemplateChangeBody;
 import mfs.mw.admin.api.dto.UssdMenuChangeBody;
+import mfs.mw.admin.api.dto.WalletChangeRequestBody;
 import mfs.mw.admin.api.exception.ErrorCodes;
 import mfs.mw.admin.api.exception.MwException;
 import mfs.mw.admin.api.service.BodySchema;
@@ -22,7 +24,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestBodyAdviceAd
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Checks every JSON request body of {@code admin.v1} ({@link ChangeRequestBody}, {@link RejectBody})
+ * Checks every JSON request body of {@code admin.v1} ({@link ChangeRequestBody}, {@link RejectBody}, {@link PartnerChangeRequestBody})
  * against its {@link BodySchema} before Jackson binds it (copied from mw-portal-api): the bytes are read once (at
  * most {@link #MAX_BODY} bytes, else 413 MW-VAL-BODY_TOO_LARGE), checked, and the same bytes are
  * handed to the converter, so what is validated is exactly what is bound. A failure is an {@code
@@ -33,7 +35,7 @@ import tools.jackson.databind.json.JsonMapper;
 public class BodySchemaAdvice extends RequestBodyAdviceAdapter {
 
   /**
-   * Most JSON bodies here are a few hundred bytes, a USSD menu tree some 15 KiB (ticket 39); the
+   * Most JSON bodies here are a few KB at most (a full partner config), a USSD menu tree some 15 KiB (ticket 39); the
    * edge caps admin bodies at 1 MiB.
    */
   static final int MAX_BODY = 256 * 1024;
@@ -44,7 +46,9 @@ public class BodySchemaAdvice extends RequestBodyAdviceAdapter {
     this.schemas =
         Map.of(
             ChangeRequestBody.class, new BodySchema(json, BodySchema.CHANGE_REQUEST),
+            WalletChangeRequestBody.class, new BodySchema(json, BodySchema.WALLET_CHANGE_REQUEST),
             RejectBody.class, new BodySchema(json, BodySchema.REJECT),
+            PartnerChangeRequestBody.class, new BodySchema(json, BodySchema.PARTNER_CHANGE_REQUEST),
             UssdMenuChangeBody.class, new BodySchema(json, BodySchema.USSD_MENU_CHANGE),
             TemplateChangeBody.class, new BodySchema(json, BodySchema.TEMPLATE_CHANGE));
   }

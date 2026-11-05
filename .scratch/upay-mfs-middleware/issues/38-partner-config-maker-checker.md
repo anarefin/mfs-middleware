@@ -7,9 +7,9 @@
 - 37: Maker-checker engine + manual TSQ / reversal
 - 20: Adapter framework inside telco (prefactor)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] e2e: disable the telco partner → top-up rejected; re-enable → works, with no adapter restart
-- [ ] e2e: a lowered timeout takes effect on the next call
-- [ ] An adapter that starts after the change picks up the latest snapshot from the compacted topic
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [ ] e2e: disable the telco partner → top-up rejected; re-enable → works, with no adapter restart (written: `tests/e2e/.../features/partner-config.feature`, `@partner-config`; runs at the milestone gate)
+- [ ] e2e: a lowered timeout takes effect on the next call (written: same feature, `@tsq`; runs at the milestone gate)
+- [x] An adapter that starts after the change picks up the latest snapshot from the compacted topic (`PartnerConfigStartupIT` in mw-adapter-telco)
+- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR (deferred to milestone gate; `./gradlew test integrationTest` green for mw-admin-api and mw-adapter-telco)

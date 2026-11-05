@@ -1,0 +1,42 @@
+{
+  "name": "auth-ops-browser",
+  "desc": "Realm ops browser login for the admin console (ticket 40). X-Forwarded-* pinned to the public host (port 443) so Keycloak issues https://<host>/realms/ops, as on mw-admin-ui's in-stack calls. README 'Admin console routes'",
+  "uris": ["/realms/ops/*", "/resources/*"],
+  "methods": ["GET", "POST"],
+  "plugins": {
+    "client-control": {
+      "max_body_size": 65536
+    },
+    "proxy-rewrite": {
+      "headers": {
+        "set": {
+          "X-Forwarded-Host": "$host",
+          "X-Forwarded-Proto": "https",
+          "X-Forwarded-Port": "443"
+        }
+      }
+    },
+    "limit-count": {
+      "count": 300,
+      "time_window": 60,
+      "key_type": "var",
+      "key": "remote_addr",
+      "group": "auth-ops-browser",
+      "rejected_code": 429,
+      "show_limit_quota_header": true,
+      "policy": "redis",
+      "redis_host": "valkey",
+      "redis_port": 6379,
+      "redis_password": "$env://VALKEY_PASSWORD",
+      "redis_database": 0,
+      "redis_timeout": 1000,
+      "allow_degradation": true
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": { "connect": 5, "send": 10, "read": 10 },
+    "nodes": { "keycloak:8080": 1 }
+  }
+}

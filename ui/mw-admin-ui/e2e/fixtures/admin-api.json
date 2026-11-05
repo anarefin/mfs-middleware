@@ -1,0 +1,103 @@
+{
+  "_comment": "Answers of the stub mw-admin-api (e2e/mock/server.mjs), shaped as contracts/api/mw-admin-api/admin.v1 (checked by src/lib/contract.test.ts). msisdnIndex maps a fake test MSISDN to the transactions it initiated, as the orchestrator's keyed hash would.",
+  "msisdnIndex": {
+    "01712345678": ["3f1c2b9e-7a4d-4c1e-9b8a-2d6f0e5a1c33", "8b2d4e61-1f3a-4b7c-a9d0-5e6f7a8b9c0d"]
+  },
+  "revealedMsisdn": {
+    "3f1c2b9e-7a4d-4c1e-9b8a-2d6f0e5a1c33": "01712345678"
+  },
+  "transactions": [
+    {
+      "txnId": "3f1c2b9e-7a4d-4c1e-9b8a-2d6f0e5a1c33",
+      "txnType": "P2P",
+      "channel": "APP",
+      "status": "COMPLETED",
+      "previousStatus": "POSTING",
+      "createdAt": "2026-11-05T09:30:00.000Z",
+      "updatedAt": "2026-11-05T09:30:02.412Z",
+      "correlationId": "5d0e1c3a-9b7f-4e2d-8a6c-1f0e2d3c4b5a",
+      "amount": { "valueMinor": 150050, "currency": "BDT" },
+      "fee": { "valueMinor": 0, "currency": "BDT" },
+      "initiator": { "type": "CUSTOMER", "id": "0171****678", "name": "R.", "walletType": "CUSTOMER" },
+      "debitParty": { "type": "CUSTOMER", "id": "0171****678", "name": "R." },
+      "creditParty": { "type": "CUSTOMER", "id": "0181****321", "name": "K." },
+      "coreRef": "CORE-77001"
+    },
+    {
+      "txnId": "8b2d4e61-1f3a-4b7c-a9d0-5e6f7a8b9c0d",
+      "txnType": "TOPUP",
+      "channel": "USSD",
+      "status": "FAILED",
+      "previousStatus": "RELEASING",
+      "createdAt": "2026-11-04T18:02:10.000Z",
+      "updatedAt": "2026-11-04T18:02:41.000Z",
+      "amount": { "valueMinor": 5000, "currency": "BDT" },
+      "initiator": { "type": "CUSTOMER", "id": "0171****678", "name": "R." },
+      "partner": { "partnerId": "ocs-gp", "productCode": "PREPAID" },
+      "partnerRef": "GP-TOPUP-9921",
+      "error": { "code": "MW-PTR-GP-REJECTED", "message": "Operator rejected the top-up", "retryable": false }
+    },
+    {
+      "txnId": "c4e5f6a7-8b9c-4d0e-9f1a-2b3c4d5e6f70",
+      "txnType": "BILLPAY",
+      "channel": "APP",
+      "status": "MANUAL_REVIEW",
+      "previousStatus": "UNKNOWN",
+      "createdAt": "2026-11-05T11:00:00.000Z",
+      "updatedAt": "2026-11-05T11:20:00.000Z",
+      "amount": { "valueMinor": 85000, "currency": "BDT" },
+      "initiator": { "type": "CUSTOMER", "id": "0191****555", "name": "S." },
+      "partner": { "partnerId": "desco", "billerCode": "DESCO-PRE" },
+      "error": { "code": "MW-TMO-002", "message": "Partner outcome unknown after retries", "retryable": false }
+    }
+  ],
+  "details": {
+    "3f1c2b9e-7a4d-4c1e-9b8a-2d6f0e5a1c33": {
+      "timeline": [
+        { "kind": "STATE", "to": "RECEIVED", "trigger": "TxnRequested", "at": "2026-11-05T09:30:00.010Z" },
+        { "kind": "STATE", "from": "RECEIVED", "to": "VALIDATING", "trigger": "Accepted", "at": "2026-11-05T09:30:00.020Z" },
+        { "kind": "STATE", "from": "VALIDATING", "to": "POSTING", "trigger": "Validated", "at": "2026-11-05T09:30:00.300Z" },
+        { "kind": "CORE", "command": "PostTransfer", "commandId": "a1b2c3d4-0000-4000-8000-000000000001", "sends": 1, "result": "TransferPosted", "outcome": "SUCCESS", "at": "2026-11-05T09:30:00.310Z", "resultAt": "2026-11-05T09:30:02.400Z" },
+        { "kind": "STATE", "from": "POSTING", "to": "COMPLETED", "trigger": "TransferPosted", "at": "2026-11-05T09:30:02.412Z" }
+      ],
+      "partnerCalls": [],
+      "auditTrail": [
+        {
+          "auditId": "c0ffee00-1111-4222-8333-444455556666",
+          "at": "2026-11-05T09:30:02.412Z",
+          "txnId": "3f1c2b9e-7a4d-4c1e-9b8a-2d6f0e5a1c33",
+          "correlationId": "5d0e1c3a-9b7f-4e2d-8a6c-1f0e2d3c4b5a",
+          "actor": { "type": "customer", "id": "0171****678" },
+          "action": "txn.completed",
+          "resource": "transaction/3f1c2b9e-7a4d-4c1e-9b8a-2d6f0e5a1c33",
+          "outcome": "SUCCESS",
+          "service": "mw-orchestrator"
+        }
+      ]
+    },
+    "8b2d4e61-1f3a-4b7c-a9d0-5e6f7a8b9c0d": {
+      "timeline": [
+        { "kind": "STATE", "to": "RECEIVED", "trigger": "TxnRequested", "at": "2026-11-04T18:02:10.010Z" },
+        { "kind": "STATE", "from": "RECEIVED", "to": "HOLDING", "trigger": "Validated", "at": "2026-11-04T18:02:10.200Z" },
+        { "kind": "CORE", "command": "HoldFunds", "commandId": "a1b2c3d4-0000-4000-8000-000000000002", "sends": 1, "result": "FundsHeld", "outcome": "SUCCESS", "at": "2026-11-04T18:02:10.210Z", "resultAt": "2026-11-04T18:02:10.900Z" },
+        { "kind": "STATE", "from": "HOLDING", "to": "PARTNER_PENDING", "trigger": "FundsHeld", "at": "2026-11-04T18:02:10.910Z" },
+        { "kind": "STATE", "from": "PARTNER_PENDING", "to": "RELEASING", "trigger": "PartnerRejected", "at": "2026-11-04T18:02:40.000Z" },
+        { "kind": "CORE", "command": "ReleaseFunds", "commandId": "a1b2c3d4-0000-4000-8000-000000000003", "sends": 2, "result": "FundsReleased", "outcome": "SUCCESS", "at": "2026-11-04T18:02:40.010Z", "resultAt": "2026-11-04T18:02:41.000Z" },
+        { "kind": "STATE", "from": "RELEASING", "to": "FAILED", "trigger": "FundsReleased", "at": "2026-11-04T18:02:41.000Z" }
+      ],
+      "partnerCalls": [
+        { "requestId": "req-0001", "operation": "PAY", "family": "telco", "partnerId": "ocs-gp", "sentAt": "2026-11-04T18:02:11.000Z", "outcome": "FAILED", "partnerRef": "GP-TOPUP-9921", "errorCode": "MW-PTR-GP-REJECTED", "answeredAt": "2026-11-04T18:02:39.800Z" }
+      ],
+      "auditTrail": []
+    },
+    "c4e5f6a7-8b9c-4d0e-9f1a-2b3c4d5e6f70": {
+      "timeline": [
+        { "kind": "STATE", "to": "RECEIVED", "trigger": "TxnRequested", "at": "2026-11-05T11:00:00.010Z" },
+        { "kind": "STATE", "from": "PARTNER_PENDING", "to": "UNKNOWN", "trigger": "PartnerTimeout", "at": "2026-11-05T11:01:00.000Z" },
+        { "kind": "STATE", "from": "UNKNOWN", "to": "MANUAL_REVIEW", "trigger": "InquiryExhausted", "at": "2026-11-05T11:20:00.000Z" }
+      ],
+      "partnerCalls": [],
+      "auditTrail": []
+    }
+  }
+}

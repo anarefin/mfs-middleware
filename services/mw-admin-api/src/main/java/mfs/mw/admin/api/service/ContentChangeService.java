@@ -52,7 +52,8 @@ import tools.jackson.databind.json.JsonMapper;
  *       problem), then stored PENDING in {@code admin.content_version} with its change request (one
  *       open request per menu / template) and audited, in one transaction.
  *   <li>A checker ({@link AdminRole#CONTENT_CHECKER}, not the maker) approves it through {@link
- *       ChangeRequestService}, which calls {@link #publish} inside its transaction: the version is
+ *       ChangeRequestService}, whose {@link ContentChangeHandler} calls {@link #publish} inside its
+ *       transaction: the version is
  *       PUBLISHED and its full value goes on {@code mw.config.changed.v1} (key configKey, compacted)
  *       through the outbox. Go-live times (menu per MNO, template {@code validFrom}) earlier than
  *       the approval become the approval time. mw-ussd and mw-notify take it from there.
@@ -221,9 +222,9 @@ public class ContentChangeService {
 
   /**
    * Publishes the version of an approved request: PUBLISHED, and {@code mw.config.changed.v1}
-   * through the outbox (the caller's transaction). Returns the topic it was sent on.
+   * through the outbox (the caller's transaction). Returns what joins the request's payload.
    */
-  String publish(ChangeRequest cr, String checkerId, String correlationId, Instant now) {
+  Map<String, Object> publish(ChangeRequest cr, String checkerId, String correlationId, Instant now) {
     ContentVersion v =
         versions.byChangeRequest(cr.id()).orElseThrow(() -> new IllegalStateException("no content version for " + cr.id()));
     Map<String, Object> value = resolved(v, now);
@@ -235,7 +236,7 @@ public class ContentChangeService {
         .addKeyValue("configKey", v.configKey())
         .addKeyValue("configVersion", v.version())
         .log("content version published");
-    return CONFIG_TOPIC;
+    return Map.of("configKey", v.configKey(), "version", v.version());
   }
 
   /** Marks the version of a rejected or expired request (the caller's transaction). */

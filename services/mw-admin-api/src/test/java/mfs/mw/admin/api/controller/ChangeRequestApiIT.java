@@ -429,7 +429,15 @@ class ChangeRequestApiIT {
     assertThat(page.path("items").get(0).path("id").asString()).isEqualTo(id);
     assertThat(page.path("items").get(0).path("makerId").asString()).isEqualTo("ops-maker01");
     assertThat(mvc.get().uri("/admin/v1/change-requests/{id}", MISSING).with(CHECKER).exchange()).hasStatus(404);
-    assertThat(mvc.get().uri("/admin/v1/change-requests").with(operator("int01", "integration-maker")).exchange())
+    // integration staff read partner change requests only (ticket 38): no transaction request shown
+    RequestPostProcessor integration = operator("int01", "integration-maker");
+    MvcTestResult partnersOnly = mvc.get().uri("/admin/v1/change-requests").with(integration).exchange();
+    assertThat(partnersOnly).hasStatus(200);
+    assertThat(body(partnersOnly).path("items")).isEmpty();
+    assertThat(mvc.get().uri("/admin/v1/change-requests?resourceType=transaction").with(integration).exchange())
+        .hasStatus(403);
+    assertThat(mvc.get().uri("/admin/v1/change-requests/{id}", id).with(integration).exchange()).hasStatus(403);
+    assertThat(mvc.get().uri("/admin/v1/change-requests").with(operator("sec01", "security-admin")).exchange())
         .hasStatus(403);
   }
 }

@@ -45,6 +45,16 @@ class PostingOperations {
 
   CoreEvent credit(CoreCommand cmd, String coreRef) {
     CreditPayload p = commands.credit(cmd);
+    // A txn is credited once whatever the commandId (an operator's fresh round, ticket 37):
+    // a reversed one is refused, an already credited one answered as credited without effect.
+    if (ledger.isReversed(cmd.txnId())) {
+      return rejected(cmd, "CreditRejected", coreRef, Reason.ALREADY_REVERSED);
+    }
+    Optional<String> already = ledger.entriesOf(cmd.txnId()).stream()
+        .filter(e -> !e.debit() && "TRANSFER".equals(e.kind())).map(LedgerEntry::walletId).findFirst();
+    if (already.isPresent()) {
+      return events.succeeded(cmd, "WalletCredited", coreRef, List.of(balanceOf(already.get())), Map.of());
+    }
     Optional<String> creditId = wallets.resolveId(p.creditParty().id());
     if (creditId.isEmpty()) {
       return rejected(cmd, "CreditRejected", coreRef, Reason.CREDIT_WALLET_NOT_FOUND);
