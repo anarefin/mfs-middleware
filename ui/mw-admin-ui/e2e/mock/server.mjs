@@ -12,8 +12,9 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import {
-  approveAnswer, createStore, detailAnswer, errorAnswer, listRequestsAnswer, rejectAnswer, searchAnswer,
-  txnRequestAnswer, walletRequestAnswer,
+  approveAnswer, createStore, detailAnswer, errorAnswer, listRequestsAnswer, menuProposeAnswer, partnerAnswer,
+  partnerRequestAnswer, partnersAnswer, rejectAnswer, searchAnswer, templateProposeAnswer, txnRequestAnswer,
+  versionAnswer, versionsAnswer, walletRequestAnswer,
 } from "./admin-api-stub.mjs";
 
 const IDP_PORT = Number(process.env.MOCK_IDP_PORT ?? 4010);
@@ -29,6 +30,8 @@ const USERS = {
   "ops-checker01": ["ops-checker"],
   // holds both roles: may decide requests of others, never their own (ticket 41)
   "ops-lead01": ["ops-maker", "ops-checker"],
+  // the integration roles (ticket 38): partner changes only
+  "ops-integration01": ["integration-maker", "integration-checker"],
 };
 
 const { publicKey, privateKey } = await generateKeyPair("RS256");
@@ -190,6 +193,12 @@ const api = createServer(async (req, res) => {
     if (w) return reply(txnRequestAnswer(store, w[1], body, op, correlationId));
     w = path.match(/^\/admin\/v1\/wallets\/([^/]+)\/change-requests$/);
     if (w) return reply(walletRequestAnswer(store, decodeURIComponent(w[1]), body, op, correlationId));
+    w = path.match(/^\/admin\/v1\/partners\/([^/]+)\/change-requests$/);
+    if (w) return reply(partnerRequestAnswer(store, decodeURIComponent(w[1]), body, op, correlationId));
+    w = path.match(/^\/admin\/v1\/ussd-menus\/([^/]+)\/change-requests$/);
+    if (w) return reply(menuProposeAnswer(store, decodeURIComponent(w[1]), body, op, correlationId));
+    w = path.match(/^\/admin\/v1\/notify-templates\/([^/]+)\/(SMS|EMAIL)\/(bn|en)\/change-requests$/);
+    if (w) return reply(templateProposeAnswer(store, decodeURIComponent(w[1]), w[2], w[3], body, op, correlationId));
     w = path.match(/^\/admin\/v1\/change-requests\/([0-9a-f-]{36})\/(approve|reject)$/);
     if (w && w[2] === "approve") return reply(approveAnswer(store, w[1], op, correlationId));
     if (w) return reply(rejectAnswer(store, w[1], body, op, correlationId));
@@ -197,6 +206,19 @@ const api = createServer(async (req, res) => {
   }
   if (req.method !== "GET") return reply(errorAnswer(403, "MW-AUTH-002", "Forbidden", correlationId));
   if (path === "/admin/v1/change-requests") return reply(listRequestsAnswer(store, url.searchParams, correlationId));
+  if (path === "/admin/v1/partners") return reply(partnersAnswer(store));
+  let g = path.match(/^\/admin\/v1\/partners\/([^/]+)$/);
+  if (g) return reply(partnerAnswer(store, decodeURIComponent(g[1]), correlationId));
+  g = path.match(/^\/admin\/v1\/ussd-menus\/([^/]+)\/versions(?:\/(\d+))?$/);
+  if (g) {
+    const key = `ussd-menu/${decodeURIComponent(g[1])}`;
+    return reply(g[2] ? versionAnswer(store, key, Number(g[2]), correlationId) : versionsAnswer(store, key, url.searchParams));
+  }
+  g = path.match(/^\/admin\/v1\/notify-templates\/([^/]+)\/([^/]+)\/([^/]+)\/versions(?:\/(\d+))?$/);
+  if (g) {
+    const key = `template/${decodeURIComponent(g[1])}/${g[2]}/${g[3]}`;
+    return reply(g[4] ? versionAnswer(store, key, Number(g[4]), correlationId) : versionsAnswer(store, key, url.searchParams));
+  }
   if (url.pathname === "/admin/v1/transactions") return reply(searchAnswer(store, url.searchParams, correlationId));
   const m = url.pathname.match(/^\/admin\/v1\/transactions\/([0-9a-f-]{36})$/);
   if (m) {

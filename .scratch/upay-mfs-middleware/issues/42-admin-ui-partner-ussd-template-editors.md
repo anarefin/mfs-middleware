@@ -10,5 +10,5 @@
 
 **Status:** ready-for-agent
 
-- [ ] Playwright test per screen covering edit → approve → effect visible
-- [ ] Template preview renders bn text with sample params, masked
+- [x] Playwright test per screen covering edit → approve → effect visible
+- [x] Template preview renders bn text with sample params, masked
