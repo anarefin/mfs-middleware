@@ -131,7 +131,16 @@ class ProducedContractsTest {
               EVENT + "#TransactionStatus",
               () -> EVENTS.succeeded(
                   command("QueryTransaction", "query"), "TransactionStatus", CORE_REF, null,
-                  status("HELD", HOLD_ID))));
+                  status("HELD", HOLD_ID))),
+          Map.entry(
+              EVENT + "#WalletUnlocked",
+              () -> EVENTS.succeeded(
+                  command("UnlockWallet", "unlock"), "WalletUnlocked", CORE_REF, null, Map.of("walletId", "01711000001"))),
+          Map.entry(
+              EVENT + "#UnlockRejected",
+              () -> EVENTS.rejected(
+                  command("UnlockWallet", "unlock"), CoreEventMapper.failureType("UnlockWallet"), CORE_REF,
+                  "WALLET_NOT_LOCKED", "Wallet is not locked")));
 
   /** As CoreCommandService: stored in command_log as JSON, read back, appended to the outbox. */
   static JsonNode asPublished(CoreEvent decided) {

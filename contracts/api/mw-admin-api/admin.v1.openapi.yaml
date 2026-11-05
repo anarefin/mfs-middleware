@@ -125,6 +125,40 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /admin/v1/wallets/{walletId}/change-requests:
+    post:
+      operationId: requestWalletAction
+      summary: Ask for an operator action on a wallet (maker)
+      description: >-
+        Role `ops-maker` (ticket 52). UNLOCK clears the PIN lockout of a wallet locked after 5 wrong
+        PINs. Nothing is applied until a different user (`ops-checker`) approves; the approval sends
+        `UnlockWallet` to the core, which refuses it when the wallet is not locked. One open request
+        per wallet. The request expires 72 h after creation. The wallet id is shown masked in every
+        answer.
+      parameters:
+        - { name: walletId, in: path, required: true, schema: { type: string, pattern: "^01[3-9][0-9]{8}$" }, description: The wallet id (its MSISDN, 11 digits) }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, reason]
+              additionalProperties: false
+              properties:
+                action: { $ref: "#/components/schemas/WalletAction" }
+                reason: { type: string, minLength: 1, maxLength: 500, description: Why (free text; masked in logs) }
+      responses:
+        "201":
+          description: The change request, PENDING
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /admin/v1/change-requests:
     get:
       operationId: listChangeRequests
@@ -367,6 +401,13 @@ components:
     TxnAction:
       type: string
       enum: [INQUIRE, FORCE_COMMIT, FORCE_RELEASE, REVERSE]
+    WalletAction:
+      type: string
+      enum: [UNLOCK]
+    WalletStatus:
+      type: string
+      description: The wallet's PIN-lock state an UNLOCK expects (LOCKED) and leads to (ACTIVE); the core decides.
+      enum: [LOCKED, ACTIVE]
     ChangeRequestStatus:
       type: string
       enum: [PENDING, APPROVED, REJECTED, EXPIRED]
@@ -376,19 +417,37 @@ components:
         An `admin.change_request` (spec 15.3). `diff` is the transaction status the maker saw and
         the one the action leads to; `payload` what will be (or was) sent: for REVERSE the amount
         and, once approved, `reversalTxnId`; for the other actions, once approved, `actionId`.
+        A `wallet` request (UNLOCK, ticket 52): `resourceId` the masked wallet id, `diff` LOCKED ->
+        ACTIVE, `payload.unlockTxnId` (the UUIDv7 the core command and the audit carry) and, once
+        approved, `commandId`.
       required: [id, resourceType, resourceId, action, payload, diff, makerId, status, reason, createdAt, expiresAt]
       properties:
         id: { type: string, format: uuid }
-        resourceType: { type: string, enum: [transaction] }
+        resourceType: { type: string, enum: [transaction, wallet] }
         resourceId: { type: string }
-        action: { $ref: "#/components/schemas/TxnAction" }
+        action:
+          anyOf:
+            - { $ref: "#/components/schemas/TxnAction" }
+            - { $ref: "#/components/schemas/WalletAction" }
         payload: { type: object }
         diff:
           type: object
           required: [before, after]
           properties:
-            before: { type: object, properties: { status: { $ref: "#/components/schemas/Status" } } }
-            after: { type: object, properties: { status: { $ref: "#/components/schemas/Status" } } }
+            before:
+              type: object
+              properties:
+                status:
+                  anyOf:
+                    - { $ref: "#/components/schemas/Status" }
+                    - { $ref: "#/components/schemas/WalletStatus" }
+            after:
+              type: object
+              properties:
+                status:
+                  anyOf:
+                    - { $ref: "#/components/schemas/Status" }
+                    - { $ref: "#/components/schemas/WalletStatus" }
         makerId: { type: string }
         status: { $ref: "#/components/schemas/ChangeRequestStatus" }
         checkerId: { type: string }

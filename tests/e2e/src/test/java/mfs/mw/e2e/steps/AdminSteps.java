@@ -34,6 +34,13 @@ public class AdminSteps {
     changeRequestId = last.body().path("id").asString();
   }
 
+  @When("{word} asks to unlock wallet {word} because {string}")
+  public void askUnlock(String user, String walletId, String reason) {
+    last = AdminApi.askWallet(user, walletId, "UNLOCK", reason);
+    assertThat(last.status()).as("%s", last.body()).isEqualTo(201);
+    changeRequestId = last.body().path("id").asString();
+  }
+
   @When("{word} approves the change request")
   public void approve(String user) {
     last = AdminApi.approve(user, changeRequestId);

@@ -2,6 +2,7 @@ package mfs.mw.admin.api.contracts;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -55,7 +56,12 @@ class ProducedContractsTest {
                   ChangeRequestMapper.approved(request("FORCE_COMMIT", "MANUAL_REVIEW", "COMMITTING"), "ops-checker01",
                       "mw.txn.action.v1", "corr-1", AT),
                   ChangeRequestMapper.rejected(request("REVERSE", "COMPLETED", "REVERSING"), "ops-checker01", "no", null, AT),
-                  ChangeRequestMapper.expired(request("INQUIRE", "UNKNOWN", "UNKNOWN"), "corr-1", AT)),
+                  ChangeRequestMapper.expired(request("INQUIRE", "UNKNOWN", "UNKNOWN"), "corr-1", AT),
+                  // a wallet unlock (ticket 52): wallet/<masked MSISDN>, txnId the unlockTxnId
+                  ChangeRequestMapper.created(unlockRequest(), "corr-1"),
+                  ChangeRequestMapper.approved(unlockRequest(), "ops-checker01", "core.wallet.command.v1", "corr-1", AT),
+                  ChangeRequestMapper.rejected(unlockRequest(), "ops-checker01", "no", null, AT),
+                  ChangeRequestMapper.expired(unlockRequest(), "corr-1", AT)),
           "events/mw-admin-api/mw.txn.action.v1.schema.json",
           () ->
               List.of(
@@ -67,7 +73,22 @@ class ProducedContractsTest {
           () ->
               List.of(
                   ChangeRequestMapper.reversal(request("REVERSE", "COMPLETED", "REVERSING"), UuidV7.at(AT),
-                      new AdminTxn.Amount(5000, "BDT"), "ops-checker01", "corr-1", AT)));
+                      new AdminTxn.Amount(5000, "BDT"), "ops-checker01", "corr-1", AT)),
+          "events/mw-orchestrator/core.command.v1.schema.json#UnlockWallet",
+          () ->
+              List.of(
+                  ChangeRequestMapper.unlock(unlockRequest(), "ops-checker01", "corr-1", AT, Duration.ofHours(1)),
+                  ChangeRequestMapper.unlock(unlockRequest(), "ops-checker01", "admin-" + UUID.randomUUID(), AT,
+                      Duration.ofMinutes(5))));
+
+  /** A PENDING wallet unlock as the maker leaves it (ticket 52). */
+  static ChangeRequest unlockRequest() {
+    return new ChangeRequest(
+        UUID.fromString("0d6c3f0e-2222-4b5e-9a1e-000000000003"), ChangeRequest.WALLET, "01711000123", "UNLOCK",
+        Map.of(ChangeRequestMapper.UNLOCK_TXN_ID, UuidV7.at(AT).toString()), ChangeRequestMapper.diff("LOCKED", "ACTIVE"),
+        "ops-maker01", "sub-maker", ChangeRequest.Status.PENDING, null, null, "verified at branch", null, AT, null,
+        AT.plusSeconds(72 * 3600));
+  }
 
   static final List<String> ENTRIES = ContractManifest.load().producedEvents();
 

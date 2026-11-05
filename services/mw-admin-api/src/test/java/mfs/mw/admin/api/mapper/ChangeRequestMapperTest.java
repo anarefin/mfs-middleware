@@ -40,6 +40,7 @@ class ChangeRequestMapperTest {
   void theViewScrubsFreeTextInPayloadAndDiffAtAnyDepthAndKeepsTheRest() {
     Map<String, Object> payload = Map.of(
         "note", "refund to 01712345789",
+        "actionId", "01712345-6789-4abc-8def-123456789012",
         "nested", Map.of("items", List.of("acct 1234567890123456", 42)),
         "amount", Map.of("value", 5000, "currency", "BDT"));
     Map<String, Object> diff = Map.of(
@@ -49,6 +50,8 @@ class ChangeRequestMapperTest {
     ChangeRequestView v = ChangeRequestMapper.view(request(payload, diff));
 
     assertThat(v.payload().get("note")).isEqualTo("refund to 0171****789");
+    // a whole UUID is a system id the service wrote (actionId, reversalTxnId, unlockTxnId): kept
+    assertThat(v.payload().get("actionId")).isEqualTo("01712345-6789-4abc-8def-123456789012");
     assertThat(v.payload().get("nested")).isEqualTo(Map.of("items", List.of("acct ****3456", 42)));
     assertThat(v.payload().get("amount")).isEqualTo(Map.of("value", 5000, "currency", "BDT"));
     assertThat(v.diff().get("before")).isEqualTo(Map.of("status", "MANUAL_REVIEW", "comment", "payer 0191****678"));

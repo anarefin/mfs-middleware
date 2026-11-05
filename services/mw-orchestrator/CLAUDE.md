@@ -336,7 +336,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   payloads), `mw.partner.request.v1`, `mw.partner.reply.v1`, `mw.partner.inbound.v1`,
   `api/mw-orchestrator/txn-query.v1.openapi.yaml` (internal query API, ticket 35), and
   `common/defs.v1` (see `contracts/OWNERS.yml`). Tests validate every status and command the
-  service emits against them.
+  service emits against them. `core.command.v1#UnlockWallet` (ticket 52) is in this contract but
+  produced by mw-admin-api (ops unlock after maker-checker), not by the orchestrator; its results
+  `WalletUnlocked` / `UnlockRejected` carry a txnId the orchestrator does not know and are dropped
+  (`txn.unknown`).
 
 ## Contracts used
 
