@@ -19,6 +19,8 @@ dependencies {
     testImplementation(libs.cucumber.picocontainer)
     testImplementation(libs.cucumber.junit.platform.engine)
     testImplementation(libs.junit.platform.suite)
+    // Offline checks of the suite itself (TraceabilityTest), no stack needed.
+    testImplementation(libs.junit.jupiter)
     testImplementation(libs.jackson.databind)
     testImplementation(libs.assertj)
     testRuntimeOnly(libs.junit.platform.launcher)

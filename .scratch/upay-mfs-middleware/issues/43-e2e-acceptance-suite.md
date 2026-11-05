@@ -12,8 +12,8 @@
 - 34: Bulk execution + result file
 - 37: Maker-checker engine + manual TSQ / reversal
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `make e2e` is green on the MVP host from a fresh `make up`
-- [ ] A traceability table maps each scenario to acceptance criteria 1–5
-- [ ] The suite runs twice in a row with no flakiness
+- [ ] `make e2e` is green on the MVP host from a fresh `make up` (deferred to milestone gate: needs the live stack)
+- [x] A traceability table maps each scenario to acceptance criteria 1–5 (`tests/e2e/TRACEABILITY.md`, kept honest by the offline `TraceabilityTest`)
+- [ ] The suite runs twice in a row with no flakiness (deferred to milestone gate: needs the live stack)

@@ -27,6 +27,9 @@
 #   - USSD (M3 gate): no / wrong credential -> 401, another MNO's credential -> 403, the MNO's own
 #     reaches mw-ussd with a quota per hashed MSISDN, unrouted MNO 404
 #   - Valkey down (ticket 50): limit-count fails open and APISIX logs mw.edge.rate_limit_degraded
+#   - ops login route (security review): a foreign Host -> 404, client X-Forwarded-*/Forwarded
+#     ignored (issuer stays the public host), password grant / introspection refused at the edge,
+#     authorization_code passes; client mw-admin-ui has no direct grant in Keycloak
 #   - applying deploy/apisix twice is a no-op (Admin API objects identical but update_time)
 # The quota check spends merchant01's quota for the rest of the window (60 s).
 set -uo pipefail
@@ -430,6 +433,46 @@ limiter_degraded() {
   echo "valkey did not come back"; return 1
 }
 check "Valkey down -> request passes unlimited and APISIX logs mw.edge.rate_limit_degraded" limiter_degraded
+
+# ---- ops login route (security review sec-ops): public host pinned, browser grants only ----
+pub_host="${MW_PUBLIC_HOST:-localhost}"
+ops_disco=/realms/ops/.well-known/openid-configuration
+ops_token=/realms/ops/protocol/openid-connect/token
+ops_foreign_host() { call GET "$ops_disco" -H "Host: evil.example" && envelope 404 MW-VAL-003; }
+check "ops login route with a foreign Host -> 404 at the edge (never reaches Keycloak)" ops_foreign_host
+ops_forwarded_host_ignored() {
+  call GET "$ops_disco" -H "Host: $pub_host" -H "X-Forwarded-Host: evil.example" -H "Forwarded: host=evil.example" \
+    -H "X-Forwarded-Prefix: /evil"
+  [ "$status" = 200 ] || { echo "HTTP $status: $(head -c 300 "$tmp/b")"; return 1; }
+  jq -e --arg i "https://$pub_host/realms/ops" '.issuer == $i' "$tmp/b" >/dev/null || { echo "issuer: $(jq -r .issuer "$tmp/b")"; return 1; }
+  if grep -q evil "$tmp/b"; then echo "client host reflected: $(head -c 300 "$tmp/b")"; return 1; fi
+}
+check "ops login route: client X-Forwarded-Host/Forwarded/Prefix ignored, issuer is the public host" ops_forwarded_host_ignored
+ops_password_grant_refused() {
+  call POST "$ops_token" -H "Host: $pub_host" --data-urlencode grant_type=password --data-urlencode client_id=mw-e2e-ops \
+    --data-urlencode username=ops-e2e-maker01 --data-urlencode "password=$KC_OPS_TEST_PASSWORD" && envelope 403 MW-AUTH-002
+}
+check "ops login route: password grant on the public token endpoint -> 403 MW-AUTH-002 at the edge" ops_password_grant_refused
+ops_matrix_password_grant_refused() {
+  call POST "$ops_token;x=1" -H "Host: $pub_host" --data-urlencode grant_type=password --data-urlencode client_id=mw-e2e-ops \
+    --data-urlencode username=ops-e2e-maker01 --data-urlencode "password=$KC_OPS_TEST_PASSWORD" && envelope 403 MW-AUTH-002
+}
+check "ops login route: password grant via ';' path parameters -> 403 at the edge" ops_matrix_password_grant_refused
+ops_code_grant_reaches_keycloak() { # a bogus code: Keycloak's own JSON error, not the edge's 403
+  call POST "$ops_token" -H "Host: $pub_host" --data-urlencode grant_type=authorization_code --data-urlencode client_id=mw-admin-ui \
+    --data-urlencode code=bogus --data-urlencode redirect_uri="https://$pub_host/console/api/auth/callback/keycloak"
+  [ "$status" = 400 ] && jq -e '.error == "invalid_grant" or .error == "invalid_request"' "$tmp/b" >/dev/null \
+    || { echo "HTTP $status: $(head -c 300 "$tmp/b")"; return 1; }
+}
+check "ops login route: authorization_code grant passes the edge (Keycloak answers)" ops_code_grant_reaches_keycloak
+ops_introspect_hidden() { call POST "$ops_token/introspect" -H "Host: $pub_host" --data-urlencode token=x && envelope 404 MW-VAL-003; }
+check "ops login route: token introspection is not public -> 404" ops_introspect_hidden
+ops_console_no_direct_grant() { # in the stack, past the edge: Keycloak itself refuses the console client's password grant
+  ops_curl --data-urlencode grant_type=password --data-urlencode client_id=mw-admin-ui \
+    --data-urlencode username=ops-e2e-maker01 --data-urlencode "password=$KC_OPS_TEST_PASSWORD" \
+    "http://keycloak:8080$ops_token" | jq -e '.access_token == null and .error == "unauthorized_client"' >/dev/null
+}
+check "keycloak: client mw-admin-ui has no direct grant (unauthorized_client)" ops_console_no_direct_grant
 
 # ---- idempotent apply ----
 dump() { for k in global_rules routes ssls; do admin GET "$k"; done | jq -S -s '[.[].list[]? | .value | del(.update_time)] | sort_by(.id)'; }

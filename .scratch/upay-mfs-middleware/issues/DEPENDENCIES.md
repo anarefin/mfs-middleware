@@ -14,7 +14,7 @@
 42-admin-ui-partner-ussd-template-editors   41,38,39          todo     —        —          —
 51-m2-gate-spec-sync                        —                 done     5m       spec only              55957cc..f8a90cc
 # --- M5 gate: make verify-changed BASE=04875ae JOBS=3 (stack down), fresh-stack e2e
-43-e2e-acceptance-suite                     23,25,27,28,32,34,37  todo —        —          —
+43-e2e-acceptance-suite                     23,25,27,28,32,34,37  done 12m  20 files + 846 − 3  0f63e38..25bb2de
 44-chaos-kill-mid-flow                      43                todo     —        —          —
 45-gatling-100-tps                          43                todo     —        —          —
 46-security-pass                            43,42             todo     —        —          —

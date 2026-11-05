@@ -39,12 +39,13 @@ public final class Keycloak {
    * A bearer token for a dev-only e2e operator of realm ops (ops-e2e-maker01, ops-e2e-checker01;
    * ticket 37), through the test-only {@code /auth/realms/ops/...} (deploy/apisix/routes-test/
    * auth-ops-token.json: key-auth with {@code MW_E2E_API_KEY}, 10 requests/min per address):
-   * password grant of the public client {@code mw-admin-ui} plus the current TOTP code, computed
+   * password grant of the dev-only public client {@code mw-e2e-ops} (the console client {@code
+   * mw-admin-ui} has no direct grant) plus the current TOTP code, computed
    * from the users' seeded secret {@code KC_OPS_TEST_TOTP_SECRET} (the realm demands it). Cached per
    * user: Keycloak refuses a TOTP code a user has already used.
    */
   public static String opsToken(String username) {
-    return token(OPS_TOKEN_PATH, "mw-admin-ui", "KC_OPS_TEST_PASSWORD", "ops/" + username);
+    return token(OPS_TOKEN_PATH, "mw-e2e-ops", "KC_OPS_TEST_PASSWORD", "ops/" + username);
   }
 
   private static String token(String path, String client, String passwordVar, String cacheKey) {

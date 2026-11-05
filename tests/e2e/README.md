@@ -29,7 +29,7 @@ Only APISIX is published, so every call goes through it:
 | Dev mail server (GreenMail) | `GET /test/mail/*` -> `greenmail:8080/api/*` | `deploy/apisix/routes-test/test-mail.json`, TEST ONLY, same key-auth; `support/Mailbox.messagesTo(email)` |
 | Audit rows | `docker compose exec -T postgres psql` (superuser, read-only queries) | no API exposes `audit.event` before mw-admin-api (WP23), and the service role cannot read it |
 | Internal requests (REVERSAL) | `docker compose exec -T kafka kafka-console-producer.sh` on `mw.txn.request.v1` | `support/TxnRequests`: plays the operations producer (channel SYSTEM) in `reversal.feature`; the broker is not published. The maker-checker path through mw-admin-api is `admin-maker-checker.feature` (ticket 37) |
-| Tokens (realm ops) | `POST /auth/realms/ops/protocol/openid-connect/token` | `routes-test/auth-ops-token.json` (ticket 37, test-only: `MW_E2E_ROUTES=1`, key-auth `apikey` = `MW_E2E_API_KEY`, 10/min per address), same pinning; client `mw-admin-ui`, password `KC_OPS_TEST_PASSWORD` plus the TOTP code from `KC_OPS_TEST_TOTP_SECRET` (`support/Totp`, HmacSHA256); dev-only users `ops-e2e-maker01` (ops-maker), `ops-e2e-checker01` (ops-checker); `support/Keycloak.opsToken(user)`. A stack whose Keycloak predates ticket 37 needs `make down DOWN_ARGS=-v` |
+| Tokens (realm ops) | `POST /auth/realms/ops/protocol/openid-connect/token` | `routes-test/auth-ops-token.json` (ticket 37, test-only: `MW_E2E_ROUTES=1`, key-auth `apikey` = `MW_E2E_API_KEY`, 10/min per address), same pinning; dev-only public client `mw-e2e-ops` (the console client `mw-admin-ui` has no direct grant, security review), password `KC_OPS_TEST_PASSWORD` plus the TOTP code from `KC_OPS_TEST_TOTP_SECRET` (`support/Totp`, HmacSHA256); dev-only users `ops-e2e-maker01` (ops-maker), `ops-e2e-checker01` (ops-checker); `support/Keycloak.opsToken(user)`. A stack whose Keycloak predates ticket 37 (or the `mw-e2e-ops` client) needs `make down DOWN_ARGS=-v` |
 | Admin API | `/admin/v1/*` | the real route (`admin-v1.json`); `support/AdminApi` |
 
 ## Reuse in later flows (TOPUP, cash-in/out, bill pay, ...)
@@ -172,6 +172,30 @@ Only APISIX is published, so every call goes through it:
   "the merchant accepted exactly one IPN of the session, a PAID result with a valid signature"
   (`MerchantIpn.verify`, written from the contract), "the merchant receives no further IPN of the
   session within N seconds".
+- Acceptance traceability (ticket 43): `TRACEABILITY.md` maps every scenario to MVP acceptance
+  criteria 1-5 (criterion 3 is ticket 44's chaos script) with a "Covers" item per flow, channel and
+  outcome; `TraceabilityTest` (JUnit Jupiter, offline, runs with every `./gradlew test`) fails when
+  a scenario is missing from the table, a row names no scenario, or a required item (every MVP flow
+  x success / failure / tsq-commit / tsq-release / idempotent, USSD flows, operator search /
+  timeline / audit / approved reversal, both USSD transports) is claimed by no scenario. A new
+  scenario needs its row. Offline checks: `./gradlew test --tests mfs.mw.e2e.TraceabilityTest`;
+  steps resolve: add `cucumber.execution.dry-run=true` to `junit-platform.properties` for one run.
+- Timeout -> TSQ -> release without a hold (P2P, CASH_IN, CASH_OUT, MERCHANT_PAY app and checkout):
+  "the core refuses the next <Command> and its reply is lost" (core-mock REJECT + DROP_REPLY, once
+  each): POSTING times out, QueryTransaction finds REJECTED, the txn ends FAILED `MW-TMO-003` with
+  no balance changed (about 40 s). Partner releases: "the aggregator answers too late and never
+  applies the payment" / "the bank answers too late and never applies the debit" (billagg /
+  c2wbank held 28 s, past the adapters' 27 s read limit, then 503 unapplied); "the aggregator |
+  bank behaves normally again" waits until the simulator answered that request (`GET
+  /sim/<partner>/requests`, seq noted when forced), then resets it (an `@After` hook resets too).
+  Checkout: "the merchant sees the session as X within N seconds" (the confirm answers 202 PAYING).
+- Operator console (`features/operator-console.feature`, `@admin @operator`, criterion 4;
+  `steps/OperatorSteps`, `AdminApi.search`): "<user> searches the transactions by txnId", "<user>
+  searches the <TYPE> transactions by MSISDN <any form>", "the search lists only the transaction",
+  "the search finds the transaction as X with the initiator masked as 0171****001", "<user> opens
+  the transaction in the admin view", "the admin timeline shows the states "..."" (STATE entries'
+  `to`, in order, ending with the last), "the admin timeline shows the core command <Command>",
+  "the admin audit trail shows the states "..."" (`txn.state.changed` entries of the detail view).
 - `support/CoreMock`: `encryptPin` (RSA-OAEP SHA-256 with the core key), `balance`,
   `injectFault` / `resetFaults` (reset in an `@After` hook of the scenarios that inject).
 - Org portal bulk (`features/bulk-upload.feature`, `@bulk @mw-portal-api`, ticket 33): "<user>

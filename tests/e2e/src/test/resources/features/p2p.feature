@@ -75,3 +75,15 @@ Feature: P2P send money from the app through APISIX
       | 01711000001 | -1500 |
       | 01711000002 | 1000  |
       | FEE-POOL    | 500   |
+
+  # Timeout -> TSQ -> release for a flow without a hold (ticket 43): the core refuses the transfer
+  # but its refusal is lost; POSTING times out to UNKNOWN and QueryTransaction finds it REJECTED,
+  # so the transaction fails with nothing applied.
+  @tsq
+  Scenario: a transfer whose core refusal is lost is found by QueryTransaction and fails
+    Given the core refuses the next PostTransfer and its reply is lost
+    When customer01 sends 1000 poisha P2P to 01711000002 with PIN "1234"
+    Then the response status is 202
+    And the transaction status is PROCESSING
+    And the app shows the transaction as FAILED with error "MW-TMO-003" within 90 seconds
+    And no core balance changed
