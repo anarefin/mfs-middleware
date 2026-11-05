@@ -59,6 +59,17 @@ public final class MaskingPolicy {
 
   private static final Pattern HIDES_A_NUMBER = Pattern.compile("\\d{10}");
 
+  /**
+   * A token that is exactly a UUID (8-4-4-4-12 hex, any case), bounded by anything but a hex
+   * digit or {@code -}, or by the ends of the text. It is a system id (txn ids, audit resources
+   * such as {@code txn/<uuid>}) and is left whole even when a group holds a 10-digit run, which
+   * one random UUID in about 40 does. Text around it is scrubbed as usual; since the bounds are
+   * never digits, a number next to it is never cut.
+   */
+  private static final Pattern UUID_TOKEN =
+      Pattern.compile(
+          "(?<![0-9A-Fa-f-])[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}(?![0-9A-Fa-f-])");
+
   private MaskingPolicy() {}
 
   /** Masks one value according to its type. {@code null} and empty stay as they are. */
@@ -97,12 +108,28 @@ public final class MaskingPolicy {
   }
 
   /**
-   * Safety net for free text such as log messages (18.3): outside UUIDs and trace/span ids, masks
-   * every Bangladesh MSISDN, then every other number of 10 or more digits as an NID (10, 13 or 17
-   * digits) or an account number.
+   * Safety net for free text such as log messages and audit text (18.3): outside exact UUID
+   * tokens ({@link #UUID_TOKEN}, always whole) and trace/span ids (whole when they hide no long
+   * number), masks every Bangladesh MSISDN, then every other number of 10 or more digits as an
+   * NID (10, 13 or 17 digits) or an account number.
    */
   public static String scrub(String text) {
     if (text == null || text.isEmpty()) {
+      return text;
+    }
+    Matcher uuids = UUID_TOKEN.matcher(text);
+    StringBuilder out = new StringBuilder(text.length());
+    int from = 0;
+    while (uuids.find()) {
+      out.append(scrubOutsideUuids(text.substring(from, uuids.start()))).append(uuids.group());
+      from = uuids.end();
+    }
+    return out.append(scrubOutsideUuids(text.substring(from))).toString();
+  }
+
+  /** {@link #scrub(String)} for text that holds no exact UUID token. */
+  private static String scrubOutsideUuids(String text) {
+    if (text.isEmpty()) {
       return text;
     }
     Matcher ids = PROTECTED_ID.matcher(text);
@@ -116,21 +143,6 @@ public final class MaskingPolicy {
       from = ids.end();
     }
     return out.append(scrubNumbers(text.substring(from))).toString();
-  }
-
-  /**
-   * Masking for the structured id fields of a log line ({@code correlationId}, {@code txnId},
-   * {@code traceId}, {@code spanId}, {@code partnerId}): masks Bangladesh MSISDNs as {@link
-   * #scrub(String)} does and keeps every other digit run whole. Ids are traced by exact match and
-   * a random id often holds a run of 10 digits (a 12-character hex suffix about once in 40),
-   * while the MSISDN shape, which a caller may put in a correlation id or trace id it chooses,
-   * turns up in a random id about once in ten thousand.
-   */
-  public static String scrubId(String id) {
-    if (id == null || id.isEmpty()) {
-      return id;
-    }
-    return maskMsisdns(id);
   }
 
   /**

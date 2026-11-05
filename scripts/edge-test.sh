@@ -90,7 +90,11 @@ gateway_logged() {
   done
   return 1
 }
-uniq_id() { printf 'edge-test-%s-%s' "$1" "$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')"; }
+# Random 12-letter suffix (hex with the digits mapped to g-p), never a digit: these ids are
+# caller-chosen, so a correlation id that is not a UUID is scrubbed like free text in the
+# services' JSON logs (MaskingPolicy masks runs of 10+ digits as NIDs/account numbers), and
+# gateway_logged greps the log for the id exactly as it was sent.
+uniq_id() { printf 'edge-test-%s-%s' "$1" "$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n' | tr '0-9' 'g-p')"; }
 
 cleanup() {
   local at id

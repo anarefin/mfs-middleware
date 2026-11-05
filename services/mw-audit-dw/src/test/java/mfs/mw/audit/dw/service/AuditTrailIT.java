@@ -125,6 +125,33 @@ class AuditTrailIT {
     assertThat(verifier.verify("2026-11").intact()).isTrue();
   }
 
+  /**
+   * A txn id whose last group holds a 10-digit run (about one UUID in 40) is kept whole in the
+   * scrubbed resource, while an NID or MSISDN next to it in free text is still masked.
+   */
+  @Test
+  void aTxnResourceKeepsItsUuidWholeThroughTheScrub() {
+    String txnId = "01a1aa26-3303-7169-8282-0e6132984047";
+    audit.record(
+        JSON.readValue(
+            """
+            {"schemaVersion":1,"auditId":"%s","txnId":"%s","correlationId":"%s",
+             "actor":{"type":"system","id":"mw-orchestrator"},"action":"txn.state.changed",
+             "resource":"txn/%s","before":{"status":"RECEIVED"},
+             "after":{"status":"FAILED","reason":"nid 2345678901234 msisdn 01712345789"},
+             "outcome":"SUCCESS","at":"2026-11-03T08:15:31.5Z","service":"mw-orchestrator"}
+            """
+                .formatted(UUID.randomUUID(), txnId, txnId, txnId),
+            AuditEvent.class));
+
+    Map<String, Object> row =
+        jdbc.queryForMap("select resource, correlation_id, after->>'reason' reason from event");
+    assertThat(row)
+        .containsEntry("resource", "txn/" + txnId)
+        .containsEntry("correlation_id", txnId)
+        .containsEntry("reason", "nid ****234 msisdn 0171****789");
+  }
+
   @Test
   void aRedeliveryMonthsLaterIsStillRefused() {
     UUID id = UUID.randomUUID();
