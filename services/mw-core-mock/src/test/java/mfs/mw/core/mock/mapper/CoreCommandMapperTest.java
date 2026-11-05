@@ -44,7 +44,7 @@ class CoreCommandMapperTest {
   @Test
   void aTransferWithoutPinIsRejectedUnlessItIsABulkDisbursement() {
     String body =
-        "{\"commandType\":\"PostTransfer\",\"commandId\":\"c\",\"txnId\":\"t\",\"payload\":{\"txnType\":\"%s\","
+        "{\"schemaVersion\":1,\"commandType\":\"PostTransfer\",\"commandId\":\"c\",\"txnId\":\"t\",\"payload\":{\"txnType\":\"%s\","
             + "\"debitParty\":{\"type\":\"ORG\",\"id\":\"01311000001\"},\"creditParty\":{\"type\":\"WALLET\","
             + "\"id\":\"01711000001\"},\"amount\":{\"valueMinor\":100,\"currency\":\"BDT\"}}}";
     assertThatThrownBy(() -> mapper.transfer(mapper.command(body.formatted("P2P")))).isInstanceOf(MwException.class);
@@ -61,7 +61,7 @@ class CoreCommandMapperTest {
   void incompleteTransferPayloadsAreRejected() {
     CoreCommand cmd =
         mapper.command(
-            "{\"commandType\":\"PostTransfer\",\"commandId\":\"c\",\"txnId\":\"t\",\"payload\":{\"txnType\":\"P2P\"}}");
+            "{\"schemaVersion\":1,\"commandType\":\"PostTransfer\",\"commandId\":\"c\",\"txnId\":\"t\",\"payload\":{\"txnType\":\"P2P\"}}");
 
     assertThatThrownBy(() -> mapper.transfer(cmd)).isInstanceOf(MwException.class);
   }
@@ -70,7 +70,7 @@ class CoreCommandMapperTest {
   void aPayloadOfTheWrongShapeIsRejected() {
     CoreCommand cmd =
         mapper.command(
-            "{\"commandType\":\"PostTransfer\",\"commandId\":\"c\",\"txnId\":\"t\",\"payload\":{\"amount\":\"lots\"}}");
+            "{\"schemaVersion\":1,\"commandType\":\"PostTransfer\",\"commandId\":\"c\",\"txnId\":\"t\",\"payload\":{\"amount\":\"lots\"}}");
 
     assertThatThrownBy(() -> mapper.transfer(cmd)).isInstanceOf(MwException.class);
   }
