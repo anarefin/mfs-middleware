@@ -76,7 +76,7 @@ class UssdEngineTest {
         "test-instance", "mw.txn.request.v1", "mw.txn.status.v1", Duration.ofSeconds(8), Duration.ofSeconds(30),
         "bn", 3, new UssdProperties.Pin("core-pin-test", TestPinKeys.pem()),
         Map.of("robi", new UssdProperties.Mno(UssdProperties.Transport.HTTP, List.of("*247#"), gsm, 70,
-            Duration.ofSeconds(120), overflow, "CON", "END")),
+            Duration.ofSeconds(120), overflow, "CON", "END", null)),
         Map.of());
   }
 

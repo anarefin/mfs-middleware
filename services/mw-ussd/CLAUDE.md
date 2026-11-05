@@ -24,7 +24,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   response with the end bit, on the bind that received the session (`SmppUssdTransport` keeps the
   route in memory). Session id `smpp-<number>-<sha256(msisdn) 16 hex>` (no MSISDN in Valkey keys).
   Each step runs on a virtual thread, never on jSMPP's PDU threads. Text GSM-7 unpacked or UCS-2
-  (`util/UssdText`). Dev: gp binds 2 to `mw-simulators:2776`; robi, banglalink, teletalk
+  (`util/UssdText`). Dev: gp binds 2 to `mw-simulators:2776`; robi, bl, teletalk
   endpoints config-ready. `mw.ussd.smpp.enabled=false` binds nothing (tests). SMPP password key
   `mw.ussd.smpp.mno.<mno>.password` in OpenBao (empty in dev: the simulator accepts any bind).
 - HTTP transport: `POST /ussd/{mno}` (`controller/UssdHttpController`, contract
@@ -35,9 +35,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   `MW-VAL-001`), canonical `01XNNNNNNNN` from there on. Behind APISIX route `ussd-http`
   (`/ussd/*`, `deploy/apisix/routes/ussd-http.json`: ip allow-list, 4 KiB body cap, quota per
   source; per-MNO hmac/basic auth comes with each MNO contract).
-- Per MNO (`mw.ussd.mno.<gp|robi|banglalink|teletalk>`, `config/UssdProperties`): transport,
+- Per MNO (`mw.ussd.mno.<gp|robi|bl|teletalk>`, spec 9.2; `config/UssdProperties`): transport,
   short codes, screen limits (182 GSM-7 / 70 UCS-2), session timeout, overflow TRUNCATE|PAGE.
-  Dev: gp SMPP; robi, banglalink HTTP + PAGE; teletalk HTTP + TRUNCATE.
+  Dev: gp SMPP; robi, bl HTTP + PAGE; teletalk HTTP + TRUNCATE. `operator` = the MNO's top-up partnerId
+  at mw-adapter-telco, filled into `{mno}` of an own-number top-up (bl: `banglalink`; default the key).
 - Menus are data (`dto/Menu`, `MenuNode`, node types MENU, INPUT, CONFIRM, ACTION, DYNAMIC, END,
   text `{bn, en}`): versioned JSON in `ussd.menu`, activated per MNO with a go-live time in
   `ussd.menu_activation` (V4). `service/MenuService` returns the live version for an MNO (latest

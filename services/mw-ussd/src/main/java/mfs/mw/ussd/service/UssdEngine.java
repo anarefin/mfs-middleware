@@ -150,7 +150,10 @@ public class UssdEngine {
     String lang = option.switchLanguage() ? toggle(s.language()) : s.language();
     Map<String, String> inputs = s.inputs();
     if (!option.set().isEmpty()) {
-      Map<String, String> own = Map.of("msisdn", s.msisdn(), "mno", s.mno());
+      // {mno} is the session MNO's top-up operator (the telco partnerId, e.g. bl -> banglalink)
+      UssdProperties.Mno mno = props.mno().get(s.mno());
+      Map<String, String> own =
+          Map.of("msisdn", s.msisdn(), "mno", mno == null ? s.mno() : mno.operatorOr(s.mno()));
       inputs = new HashMap<>(s.inputs());
       for (Map.Entry<String, String> e : option.set().entrySet()) {
         inputs.put(e.getKey(), interpolate(e.getValue(), s.inputs(), own));

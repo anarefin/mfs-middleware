@@ -22,7 +22,7 @@ paths:
         - name: mno
           in: path
           required: true
-          description: The MNO, one of the configured HTTP MNOs (robi, banglalink, teletalk).
+          description: The MNO, one of the configured HTTP MNOs (robi, bl, teletalk).
           schema: { type: string, pattern: "^[a-z]{1,16}$" }
       requestBody:
         required: true
