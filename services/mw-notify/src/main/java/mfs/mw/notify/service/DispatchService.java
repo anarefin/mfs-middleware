@@ -31,7 +31,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * to the SMSC. A transient error schedules the next attempt after 2 s, 10 s, 30 s (each attempt
  * takes the next bind of the pool), then the message fails; a permanent refusal fails it at once.
  * An email goes to the SMTP server in one piece with the same retries; it is final once SENT (no
- * delivery receipts for email). Runs on the scheduler thread, never on a Kafka listener thread.
+ * delivery receipts for email). PROMO messages are held during the quiet hours ({@code
+ * mw.notify.quiet-hours}, default 22:00-08:00 Asia/Dhaka) and go after them, unless they expire
+ * first (then EXPIRED, never sent). Runs on the scheduler thread, never on a Kafka listener thread.
  */
 @Service
 public class DispatchService {
@@ -69,8 +71,13 @@ public class DispatchService {
   /** Sends what is due; returns the number of messages handled. */
   public int dispatchDue() {
     int handled = 0;
+    Instant now = clock.instant();
+    boolean quiet = props.quietHours().contains(now);
     for (Priority p : Priority.values()) {
-      List<MessageRecord.Key> due = messages.dueKeys(p.rank(), clock.instant(), props.dispatchBatch());
+      // PROMO in quiet hours: held; only the expired ones are taken, to record them EXPIRED.
+      List<MessageRecord.Key> due = quiet && p == Priority.PROMO
+          ? messages.expiredDueKeys(p.rank(), now, props.dispatchBatch())
+          : messages.dueKeys(p.rank(), now, props.dispatchBatch());
       for (MessageRecord.Key key : due) {
         Boolean done = tx.execute(s -> sendOne(key));
         if (Boolean.TRUE.equals(done)) {

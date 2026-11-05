@@ -183,6 +183,13 @@ mw:
     default-sender: upay
     default-locale: bn
     receipt-buffer-ttl: 1d
+    # PROMO is held from start to end local time (spec 10.1) and sent after, unless it expires
+    # first; a window whose end is before its start spans midnight.
+    quiet-hours:
+      enabled: ${MW_NOTIFY_QUIET_HOURS_ENABLED:true}
+      start: ${MW_NOTIFY_QUIET_HOURS_START:22:00}
+      end: ${MW_NOTIFY_QUIET_HOURS_END:08:00}
+      zone: ${MW_NOTIFY_QUIET_HOURS_ZONE:Asia/Dhaka}
     dispatch:
       enabled: true
       period: 200ms

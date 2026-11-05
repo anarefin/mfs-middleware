@@ -398,4 +398,58 @@ class NotificationFlowIT {
     dispatcher.dispatchDue();
     assertThat(smsc.sent()).hasSize(1);
   }
+
+  // Quiet hours for PROMO (spec 10.1): 22:00-08:00 Asia/Dhaka (UTC+6) by default, so 16:00Z-02:00Z.
+  static final Instant DHAKA_23_00 = Instant.parse("2026-11-04T17:00:00Z");
+
+  @Test
+  void aPromoQueuedInQuietHoursWaitsUntilTheyEndWhileOtherPrioritiesGo() {
+    clock.set(DHAKA_23_00);
+    String promo = id();
+    String txn = id();
+    notifications.accept(request(promo, "01711000004", "en", Priority.PROMO));
+    notifications.accept(request(txn, "01711000002", "en", Priority.TXN));
+
+    dispatcher.dispatchDue();
+    assertThat(smsc.sent()).extracting(s -> s.priority()).containsExactly(Priority.TXN);
+
+    clock.set(Instant.parse("2026-11-05T01:59:59Z")); // 07:59:59 in Dhaka, past midnight
+    dispatcher.dispatchDue();
+    assertThat(smsc.sent()).hasSize(1);
+    assertThat(statusNames(promo)).isEmpty();
+
+    clock.set(Instant.parse("2026-11-05T02:00:00Z")); // 08:00 in Dhaka
+    dispatcher.dispatchDue();
+    assertThat(smsc.sent()).extracting(s -> s.priority()).containsExactly(Priority.TXN, Priority.PROMO);
+    assertThat(statusNames(promo)).containsExactly("SENT");
+  }
+
+  @Test
+  void aPromoThatExpiresDuringQuietHoursIsRecordedExpiredAndNeverSent() {
+    clock.set(DHAKA_23_00);
+    String id = id();
+    NotificationRequest r = request(id, "01711000004", "en", Priority.PROMO);
+    notifications.accept(new NotificationRequest(1, id, null, null, r.recipient(), r.templateCode(), "en",
+        r.params(), r.channels(), Priority.PROMO, null, DHAKA_23_00.plus(Duration.ofHours(2))));
+
+    dispatcher.dispatchDue();
+    assertThat(statusNames(id)).isEmpty();
+
+    clock.set(DHAKA_23_00.plus(Duration.ofHours(2))); // 01:00 in Dhaka, still quiet
+    dispatcher.dispatchDue();
+
+    assertThat(smsc.sent()).isEmpty();
+    assertThat(statusNames(id)).containsExactly("EXPIRED!");
+  }
+
+  @Test
+  void aPromoJustBeforeQuietHoursStartIsSent() {
+    clock.set(Instant.parse("2026-11-04T15:59:59Z")); // 21:59:59 in Dhaka
+    String promo = id();
+    notifications.accept(request(promo, "01711000004", "en", Priority.PROMO));
+
+    dispatcher.dispatchDue();
+
+    assertThat(smsc.sent()).extracting(s -> s.priority()).containsExactly(Priority.PROMO);
+  }
 }
