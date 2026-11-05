@@ -35,7 +35,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Every numbered point above is reflected in the spec, with a "Decision 2026-11-04" note where it overrides earlier text
 - [x] No spec text still says APISIX ADC, APISIX hmac-auth for callbacks, PIN "never stored" without the ciphertext exception, or agent-initiated CASH_OUT

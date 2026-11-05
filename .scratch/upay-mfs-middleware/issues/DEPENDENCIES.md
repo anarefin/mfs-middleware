@@ -12,7 +12,7 @@
 40-admin-ui-shell-search                    36                todo     —        —          —
 41-admin-ui-approvals-reversal              40,37,52          todo     —        —          —
 42-admin-ui-partner-ussd-template-editors   41,38,39          todo     —        —          —
-51-m2-gate-spec-sync                        —                 todo     —        —          —
+51-m2-gate-spec-sync                        —                 done     5m       spec only              55957cc..f8a90cc
 # --- M5 gate: make verify-changed BASE=04875ae JOBS=3 (stack down), fresh-stack e2e
 43-e2e-acceptance-suite                     23,25,27,28,32,34,37  todo —        —          —
 44-chaos-kill-mid-flow                      43                todo     —        —          —
