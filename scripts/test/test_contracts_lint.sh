@@ -84,17 +84,26 @@ test_repo_has_a_decimal_amount_sample_rejected_as_non_integer() {
 
 # Ticket 48: one envelope per topic, one payload schema per message type.
 test_repo_envelopes_have_one_payload_schema_per_message_type() {
-  local e="$REPO_DIR/contracts/events" t n
-  for t in "mw-orchestrator/core.command.v1:9" "mw-core-mock/core.event.v1:17" \
-    "mw-orchestrator/mw.partner.request.v1:1" "mw-orchestrator/mw.partner.reply.v1:1" \
-    "mw-orchestrator/mw.partner.inbound.v1:1"; do
-    n="$(ls "$e/${t%%:*}"/*.payload.schema.json 2>/dev/null | wc -l | tr -d ' ')"
-    [ "$n" = "${t##*:}" ] || fail "${t%%:*}: $n payload schemas, expected ${t##*:}"
-    grep -q '"oneOf"' "$e/${t%%:*}.schema.json" || fail "${t%%:*}.schema.json has no oneOf over payloads"
-    grep -q '"if"' "$e/${t%%:*}.schema.json" && fail "${t%%:*}.schema.json still picks payload rules with if/then"
+  local e="$REPO_DIR/contracts/events" t n refs r
+  # one payload file on disk per oneOf branch of the envelope (counted, not fixed: tickets add
+  # message types), and every branch's $ref names a file that exists
+  for t in mw-orchestrator/core.command.v1 mw-core-mock/core.event.v1 \
+    mw-orchestrator/mw.partner.request.v1 mw-orchestrator/mw.partner.reply.v1 \
+    mw-orchestrator/mw.partner.inbound.v1; do
+    n="$(ls "$e/$t"/*.payload.schema.json 2>/dev/null | wc -l | tr -d ' ')"
+    refs="$(jq -r '[.. | objects | select(has("oneOf")) | .oneOf[] | .. | objects | select(has("$ref")) | ."$ref"
+      | select(endswith(".payload.schema.json"))] | unique | .[]' "$e/$t.schema.json")"
+    [ "$n" -gt 0 ] || fail "$t: no payload schemas"
+    [ "$n" = "$(printf '%s\n' "$refs" | grep -c .)" ] \
+      || fail "$t: $n payload schemas on disk, $(printf '%s\n' "$refs" | grep -c .) referenced by the envelope's oneOf"
+    for r in $refs; do
+      [ -f "$e/${t%/*}/$r" ] || fail "$t: oneOf names a missing $r"
+    done
+    grep -q '"oneOf"' "$e/$t.schema.json" || fail "$t.schema.json has no oneOf over payloads"
+    grep -q '"if"' "$e/$t.schema.json" && fail "$t.schema.json still picks payload rules with if/then"
   done
   for f in HoldFunds ValidateTransaction PostTransfer CommitHold ReleaseHold CreditWallet ReverseTransaction \
-    QueryTransaction ApplyComplianceAction; do
+    QueryTransaction ApplyComplianceAction UnlockWallet; do
     [ -f "$e/mw-orchestrator/core.command.v1/$f.payload.schema.json" ] || fail "no $f payload schema"
   done
   # Partner topics (review of 48): the families share one payload per topic, but keep a family

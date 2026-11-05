@@ -68,7 +68,8 @@
       "enabled": true,
       "publicClient": true,
       "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
       "redirectUris": [
         "https://localhost/*"
       ],
@@ -79,6 +80,19 @@
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "https://localhost/console/*"
       },
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "mw-e2e-ops",
+      "name": "e2e operators (dev only, password + TOTP grant via the test-only route auth-ops-token)",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [],
+      "webOrigins": [],
       "protocol": "openid-connect"
     }
   ],

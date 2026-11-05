@@ -98,6 +98,7 @@ services:
         (make up does)}
       MW_E2E_API_KEY: ${MW_E2E_API_KEY:?run scripts/gen-dev-env.sh (make up does)}
       MW_E2E_ROUTES: ${MW_E2E_ROUTES:-0}
+      MW_PUBLIC_HOST: ${MW_PUBLIC_HOST:-localhost}
       USSD_BL_ALLOWED_CIDRS: ${USSD_BL_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh (make
         up does)}
       USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?run scripts/gen-dev-env.sh
