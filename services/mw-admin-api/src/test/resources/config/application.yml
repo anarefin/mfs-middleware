@@ -13,3 +13,6 @@ mw:
   retention:
     # The purge job's schedule is off in tests; OutboxInboxPurgeConformanceIT calls it directly.
     cron: "-"
+  change-requests:
+    # The expiry job is off in tests; ChangeRequestApiIT calls it directly.
+    expiry-cron: "-"

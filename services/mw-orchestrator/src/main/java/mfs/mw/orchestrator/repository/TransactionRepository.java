@@ -135,6 +135,14 @@ public class TransactionRepository {
         Timestamp.from(at));
   }
 
+  /** How many steps of the transaction's history {@code trigger} caused. */
+  public int countSteps(UUID txnId, String trigger) {
+    Integer n =
+        jdbc.queryForObject(
+            "select count(*) from saga_step where txn_id = ? and trigger = ?", Integer.class, txnId, trigger);
+    return n == null ? 0 : n;
+  }
+
   /** When the transaction last entered {@code status} (from the step history), if it did. */
   public Optional<Instant> enteredAt(UUID txnId, Status status) {
     return jdbc

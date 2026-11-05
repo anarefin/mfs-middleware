@@ -36,6 +36,15 @@ public enum AdminRole {
   /** See an unmasked MSISDN; every reveal is audited (spec 15.4). In order of preference for the audit. */
   public static final Set<AdminRole> REVEAL_MSISDN = Set.copyOf(EnumSet.of(COMPLIANCE_OFFICER, AUDITOR));
 
+  /**
+   * Ask for an operator action on a transaction: manual TSQ, force commit / release, reversal
+   * (spec 15.2 Transactions, maker-checker; ticket 37).
+   */
+  public static final Set<AdminRole> TXN_MAKER = Set.copyOf(EnumSet.of(OPS_MAKER));
+
+  /** Approve or reject such a request; never the maker's own (spec 15.3). */
+  public static final Set<AdminRole> TXN_CHECKER = Set.copyOf(EnumSet.of(OPS_CHECKER));
+
   /** Never change anything: no method but GET/HEAD/OPTIONS (spec 15.4: viewer; auditor read-only). */
   public static final Set<AdminRole> READ_ONLY = Set.copyOf(EnumSet.of(VIEWER, AUDITOR));
 

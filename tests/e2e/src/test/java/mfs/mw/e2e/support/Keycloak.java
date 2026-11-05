@@ -15,6 +15,7 @@ public final class Keycloak {
 
   private static final String TOKEN_PATH = "auth/realms/customers/protocol/openid-connect/token";
   private static final String PORTALS_TOKEN_PATH = "auth/realms/portals/protocol/openid-connect/token";
+  private static final String OPS_TOKEN_PATH = "auth/realms/ops/protocol/openid-connect/token";
   private static final Map<String, Token> CACHE = new ConcurrentHashMap<>();
 
   private record Token(String value, Instant refreshAt) {}
@@ -34,25 +35,38 @@ public final class Keycloak {
     return token(PORTALS_TOKEN_PATH, "mw-portal", "KC_PORTALS_TEST_PASSWORD", "portals/" + username);
   }
 
+  /**
+   * A bearer token for a dev-only e2e operator of realm ops (ops-e2e-maker01, ops-e2e-checker01;
+   * ticket 37), through {@code /auth/realms/ops/...} (deploy/apisix/routes/auth-ops-token.json):
+   * password grant of the public client {@code mw-admin-ui} plus the current TOTP code, computed
+   * from the users' seeded secret {@code KC_OPS_TEST_TOTP_SECRET} (the realm demands it). Cached per
+   * user: Keycloak refuses a TOTP code a user has already used.
+   */
+  public static String opsToken(String username) {
+    return token(OPS_TOKEN_PATH, "mw-admin-ui", "KC_OPS_TEST_PASSWORD", "ops/" + username);
+  }
+
   private static String token(String path, String client, String passwordVar, String cacheKey) {
     Token t = CACHE.get(cacheKey);
     if (t == null || Instant.now().isAfter(t.refreshAt())) {
-      t = fetch(path, client, passwordVar, cacheKey.substring(cacheKey.indexOf('/') + 1));
+      t = fetch(path, client, passwordVar, cacheKey.substring(cacheKey.indexOf('/') + 1), cacheKey.startsWith("ops/"));
       CACHE.put(cacheKey, t);
     }
     return t.value();
   }
 
-  private static Token fetch(String path, String client, String passwordVar, String username) {
+  private static Token fetch(String path, String client, String passwordVar, String username, boolean totp) {
     Stack stack = Stack.get();
-    Http.Response r =
-        Http.postForm(
-            stack.url(path),
-            Map.of(
-                "client_id", client,
-                "grant_type", "password",
-                "username", username,
-                "password", stack.devCredential(passwordVar)));
+    Map<String, String> form = new java.util.HashMap<>(
+        Map.of(
+            "client_id", client,
+            "grant_type", "password",
+            "username", username,
+            "password", stack.devCredential(passwordVar)));
+    if (totp) {
+      form.put("totp", Totp.now(stack.devCredential("KC_OPS_TEST_TOTP_SECRET")));
+    }
+    Http.Response r = Http.postForm(stack.url(path), form);
     if (r.status() != 200 || !r.body().hasNonNull("access_token")) {
       throw new IllegalStateException("no token for " + username + ": HTTP " + r.status());
     }

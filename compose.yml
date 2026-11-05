@@ -377,6 +377,8 @@ services:
         (make up does)}
       - KC_OPS_TEST_PASSWORD=${KC_OPS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make
         up does)}
+      - KC_OPS_TEST_TOTP_SECRET=${KC_OPS_TEST_TOTP_SECRET:?run scripts/gen-dev-env.sh
+        (make up does)}
       - KC_PARTNER_SIM_SECRET=${KC_PARTNER_SIM_SECRET:?run scripts/gen-dev-env.sh
         (make up does)}
       - KC_PORTALS_TEST_PASSWORD=${KC_PORTALS_TEST_PASSWORD:?run scripts/gen-dev-env.sh

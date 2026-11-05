@@ -15,6 +15,7 @@
 # dw.txn.event.v1.
 
 mw.txn.request.v1              48 7d retry=mw-orchestrator
+mw.txn.action.v1                6 7d retry=mw-orchestrator
 mw.txn.status.v1               48 7d retry=mw-app-gateway,mw-checkout,mw-notify,mw-portal-api
 core.wallet.command.v1         48 7d retry=mw-core-mock
 core.payment.command.v1        48 7d retry=mw-core-mock

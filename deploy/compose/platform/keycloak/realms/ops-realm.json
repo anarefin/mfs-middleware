@@ -201,6 +201,56 @@
       "requiredActions": [
         "CONFIGURE_TOTP"
       ]
+    },
+    {
+      "username": "ops-e2e-maker01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "E2e",
+      "lastName": "Maker",
+      "email": "ops-e2e-maker01@example.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_OPS_TEST_PASSWORD}",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "e2e (dev only)",
+          "secretData": "{\"value\":\"${KC_OPS_TEST_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA256\"}"
+        }
+      ],
+      "realmRoles": [
+        "viewer",
+        "ops-maker"
+      ]
+    },
+    {
+      "username": "ops-e2e-checker01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "E2e",
+      "lastName": "Checker",
+      "email": "ops-e2e-checker01@example.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_OPS_TEST_PASSWORD}",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "e2e (dev only)",
+          "secretData": "{\"value\":\"${KC_OPS_TEST_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA256\"}"
+        }
+      ],
+      "realmRoles": [
+        "viewer",
+        "ops-checker"
+      ]
     }
   ],
   "otpPolicyType": "totp",

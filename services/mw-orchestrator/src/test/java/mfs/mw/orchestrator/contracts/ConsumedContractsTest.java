@@ -12,6 +12,7 @@ import java.util.stream.Stream;
 import mfs.mw.orchestrator.dto.CoreEvent;
 import mfs.mw.orchestrator.dto.PartnerInbound;
 import mfs.mw.orchestrator.dto.PartnerReply;
+import mfs.mw.orchestrator.dto.TxnAction;
 import mfs.mw.orchestrator.dto.TxnRequest;
 import mfs.mw.orchestrator.mapper.CoreEventMapper;
 import org.junit.jupiter.api.DynamicTest;
@@ -50,6 +51,12 @@ class ConsumedContractsTest {
       assertThat(r.initiator().id()).as(p.toString()).isNotNull();
       assertThat(r.amount()).as(p.toString()).isNotNull();
       assertThat(r.requestedAt()).as(p.toString()).isNotNull();
+    });
+    READERS.put("events/mw-admin-api/mw.txn.action.v1.schema.json", (p, msg) -> {
+      TxnAction a = JSON.readValue(read(p), TxnAction.class);
+      // TxnActionListener.handle requires these
+      assertThat(List.of(a.actionId(), a.txnId(), a.action(), a.checkerId()))
+          .as(p.toString()).allSatisfy(v -> assertThat(v).isNotBlank());
     });
     READERS.put("events/mw-core-mock/core.event.v1.schema.json", (p, msg) -> {
       CoreEvent e = JSON.readValue(read(p), CoreEvent.class);

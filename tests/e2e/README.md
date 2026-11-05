@@ -28,7 +28,9 @@ Only APISIX is published, so every call goes through it:
 | Simulator control API | `/test/sim/*` -> `mw-simulators:8080/sim/*` | `deploy/apisix/routes-test/test-simulators.json`, TEST ONLY, same key-auth as core-mock; `support/Simulators.setScenario` / `reset` |
 | Dev mail server (GreenMail) | `GET /test/mail/*` -> `greenmail:8080/api/*` | `deploy/apisix/routes-test/test-mail.json`, TEST ONLY, same key-auth; `support/Mailbox.messagesTo(email)` |
 | Audit rows | `docker compose exec -T postgres psql` (superuser, read-only queries) | no API exposes `audit.event` before mw-admin-api (WP23), and the service role cannot read it |
-| Internal requests (REVERSAL) | `docker compose exec -T kafka kafka-console-producer.sh` on `mw.txn.request.v1` | `support/TxnRequests`: plays the operations producer (channel SYSTEM) until mw-admin-api's maker-checker reversal exists (ticket 37); the broker is not published |
+| Internal requests (REVERSAL) | `docker compose exec -T kafka kafka-console-producer.sh` on `mw.txn.request.v1` | `support/TxnRequests`: plays the operations producer (channel SYSTEM) in `reversal.feature`; the broker is not published. The maker-checker path through mw-admin-api is `admin-maker-checker.feature` (ticket 37) |
+| Tokens (realm ops) | `POST /auth/realms/ops/protocol/openid-connect/token` | `auth-ops-token.json` (ticket 37), same pinning; client `mw-admin-ui`, password `KC_OPS_TEST_PASSWORD` plus the TOTP code from `KC_OPS_TEST_TOTP_SECRET` (`support/Totp`, HmacSHA256); dev-only users `ops-e2e-maker01` (ops-maker), `ops-e2e-checker01` (ops-checker); `support/Keycloak.opsToken(user)`. A stack whose Keycloak predates ticket 37 needs `make down DOWN_ARGS=-v` |
+| Admin API | `/admin/v1/*` | the real route (`admin-v1.json`); `support/AdminApi` |
 
 ## Reuse in later flows (TOPUP, cash-in/out, bill pay, ...)
 
@@ -97,6 +99,14 @@ Only APISIX is published, so every call goes through it:
   REVERSED (or MANUAL_REVIEW) in the app view. "the orchestrator has handled the reversal
   request" waits for the request's idempotency row (a repeated reversal leaves no other trace).
   "the core rejects the next <Command> with reason <R>" injects a REJECT fault.
+- Maker-checker (`features/admin-maker-checker.feature`, `@admin @mw-admin-api`, ticket 37):
+  "<maker> asks to <INQUIRE|FORCE_COMMIT|FORCE_RELEASE|REVERSE> the transaction because "..."",
+  "<user> approves the change request", "<user> rejects the change request because "..."", "the
+  change request is <PENDING|APPROVED|REJECTED|EXPIRED>", "the admin API answers <status> with code
+  "..."" (last approve/reject), "the admin view shows the transaction as X within N seconds", "the
+  admin audit trail of the transaction records the <APPROVED|REJECTED> change request" (via
+  mw-audit-dw). A TOPUP lands in MANUAL_REVIEW with "the core rejects the next CommitHold with
+  reason INJECTED_REJECT"; the forced commit is a fresh core command, so it is not refused again.
 - Notifications (`features/notify.feature`, `@p2p @notify`, ticket 24): "<msisdn> gets the SMS
   \"...\"" waits (30 s) for that exact text at the SMSC simulator with a DELIVRD receipt
   (`{txnId}` stands for the scenario's transaction); "the SMS to <msisdn> about the transaction
