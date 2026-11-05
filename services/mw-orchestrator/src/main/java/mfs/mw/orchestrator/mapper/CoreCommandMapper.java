@@ -28,6 +28,7 @@ public class CoreCommandMapper {
   public static final String STEP_QUERY = "query";
   public static final String STEP_REVERSE = "reverse";
   public static final String STEP_REVERSE_QUERY = "reverse-query";
+  public static final String STEP_CREDIT_CHECK = "credit-check";
 
   public String commandId(String txnId, String step) {
     return txnId + ":" + step;
@@ -134,6 +135,23 @@ public class CoreCommandMapper {
     return new CoreCommand(
         1, "QueryTransaction", commandId(txnId, STEP_REVERSE_QUERY) + ":" + now.toEpochMilli(), txnId,
         rec.request().correlationId(), now, now.plus(ttl), new QueryPayload(null));
+  }
+
+  /**
+   * QueryTransaction a forced credit (ticket 37) sends before its fresh-round CreditWallet, so a
+   * credit the core applied but whose answer was lost is never applied twice: commandId {@code
+   * <txnId>:credit-check:<epoch ms>}, fresh per query, so its answer is told apart.
+   */
+  public CoreCommand creditCheck(TransactionRecord rec, Instant now, Duration ttl) {
+    String txnId = rec.txnId().toString();
+    return new CoreCommand(
+        1, "QueryTransaction", commandId(txnId, STEP_CREDIT_CHECK) + ":" + now.toEpochMilli(), txnId,
+        rec.request().correlationId(), now, now.plus(ttl), new QueryPayload(null));
+  }
+
+  /** True for the commandId of a {@link #creditCheck}. */
+  public boolean isCreditCheck(String commandId) {
+    return commandId != null && commandId.contains(":" + STEP_CREDIT_CHECK + ":");
   }
 
   /** True for the commandId of a {@link #reversalQuery}. */

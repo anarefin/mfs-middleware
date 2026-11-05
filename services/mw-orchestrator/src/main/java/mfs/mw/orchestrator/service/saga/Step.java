@@ -29,7 +29,7 @@ public enum Step {
           case SEND_POST -> POST;
           case SEND_HOLD -> HOLD;
           case SEND_PARTNER_REQUEST -> CALL_PARTNER;
-          case SEND_COMMIT -> COMMIT;
+          case SEND_COMMIT, SEND_CREDIT -> COMMIT;
           case SEND_RELEASE -> RELEASE;
           case SEND_REVERSE, SEND_REVERSAL_QUERY -> REVERSE;
           case SEND_QUERY -> QUERY;

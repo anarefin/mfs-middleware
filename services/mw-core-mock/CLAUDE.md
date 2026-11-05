@@ -49,7 +49,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   `HOLD_RELEASED`, release of a committed one `HOLD_ALREADY_COMMITTED`, unknown ids `HOLD_NOT_FOUND`.
   `holdId` is `HOLD-<coreRef>`.
 - `CreditWallet`: money from the `SETTLEMENT` wallet (seeded with 10^12 poisha so the sum of all
-  balances is constant), no PIN, no fee. `ReverseTransaction`: undoes every entry (fee included) of
+  balances is constant), no PIN, no fee. A txn is credited once whatever the commandId (an operator's
+  fresh `<txnId>:credit:manual-<n>` round): an already credited txn is answered `WalletCredited` without
+  effect, a reversed one refused `ALREADY_REVERSED`. `ReverseTransaction`: undoes every entry (fee included) of
   `originalTxnId` once, under the reversal's own txnId, with `REVERSAL` entries; the amount must
   equal the original transfer amount (`AMOUNT_MISMATCH`), the original must have entries
   (`ORIGINAL_NOT_FOUND`: a merely held txn has none), must not be a reversal

@@ -2,6 +2,7 @@ package mfs.mw.admin.api.mapper;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import mfs.mw.admin.api.dto.AdminTxn;
@@ -32,11 +33,37 @@ public final class ChangeRequestMapper {
 
   private ChangeRequestMapper() {}
 
+  /**
+   * The {@code admin.v1} view. Operators' free text (reason, decision reason, every string in payload
+   * and diff) is scrubbed ({@link MaskingPolicy#scrub}): a customer's number typed into a reason is
+   * shown masked to every reader; change requests have no reveal path.
+   */
   public static ChangeRequestView view(ChangeRequest cr) {
     return new ChangeRequestView(
-        cr.id().toString(), cr.resourceType(), cr.resourceId(), cr.action(), cr.payload(), cr.diff(), cr.makerId(),
-        cr.status().name(), cr.checkerId(), cr.reason(), cr.decisionReason(), cr.createdAt(), cr.decidedAt(),
-        cr.expiresAt());
+        cr.id().toString(), cr.resourceType(), cr.resourceId(), cr.action(), scrubbed(cr.payload()),
+        scrubbed(cr.diff()), cr.makerId(), cr.status().name(), cr.checkerId(), MaskingPolicy.scrub(cr.reason()),
+        MaskingPolicy.scrub(cr.decisionReason()), cr.createdAt(), cr.decidedAt(), cr.expiresAt());
+  }
+
+  private static Map<String, Object> scrubbed(Map<String, Object> map) {
+    Map<String, Object> out = new LinkedHashMap<>();
+    map.forEach((k, v) -> out.put(k, scrubbedValue(v)));
+    return out;
+  }
+
+  private static Object scrubbedValue(Object value) {
+    if (value instanceof String s) {
+      return MaskingPolicy.scrub(s);
+    }
+    if (value instanceof Map<?, ?> m) {
+      Map<Object, Object> out = new LinkedHashMap<>();
+      m.forEach((k, v) -> out.put(k, scrubbedValue(v)));
+      return out;
+    }
+    if (value instanceof List<?> l) {
+      return l.stream().map(ChangeRequestMapper::scrubbedValue).toList();
+    }
+    return value;
   }
 
   /** {@code diff}: the status the maker saw and the one the action leads to. */

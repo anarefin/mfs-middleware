@@ -63,6 +63,10 @@ class SagaMachineTest {
     row(Status.COMMITTING, new CommitAcknowledged(), Status.COMPLETED, Effect.NONE);
     row(Status.COMMITTING, new CommitRefused(), Status.MANUAL_REVIEW, Effect.NONE);
     row(Status.COMMITTING, new DeadlineExpired(), Status.COMMITTING, Effect.SEND_COMMIT);
+    // an operator's forced credit (ticket 37) asks the core first: credit only what is not credited
+    row(Status.COMMITTING, new CreditCheckResult(CreditCheckResult.Credit.CREDITED), Status.COMPLETED, Effect.NONE);
+    row(Status.COMMITTING, new CreditCheckResult(CreditCheckResult.Credit.NOT_CREDITED), Status.COMMITTING, Effect.SEND_CREDIT);
+    row(Status.COMMITTING, new CreditCheckResult(CreditCheckResult.Credit.CONFLICT), Status.MANUAL_REVIEW, Effect.NONE);
 
     row(Status.RELEASING, new ReleaseAcknowledged(), Status.FAILED, Effect.NONE);
     row(Status.RELEASING, new ReleaseRefused(), Status.MANUAL_REVIEW, Effect.NONE);
@@ -100,7 +104,9 @@ class SagaMachineTest {
         new CommitAcknowledged(), new CommitRefused(), new ReleaseAcknowledged(), new ReleaseRefused(),
         new ReversalRequested(), new ReversalAcknowledged(), new ReversalFailed(),
         new ReversalResendsStopped(), new ReversalUnconfirmed(), new ReversalQueryResult(true), new ReversalQueryResult(false),
-        new ManualCommit(), new ManualRelease(), new ManualInquiry(), new DeadlineExpired());
+        new ManualCommit(), new ManualRelease(), new ManualInquiry(), new DeadlineExpired(),
+        new CreditCheckResult(CreditCheckResult.Credit.CREDITED), new CreditCheckResult(CreditCheckResult.Credit.NOT_CREDITED),
+        new CreditCheckResult(CreditCheckResult.Credit.CONFLICT));
   }
 
   @Test
@@ -112,7 +118,7 @@ class SagaMachineTest {
 
   @Test
   void everyListedTransitionIsTakenWithItsEffect() {
-    assertThat(TABLE).hasSize(46);
+    assertThat(TABLE).hasSize(49);
     TABLE.forEach(
         (key, expect) -> {
           Transition t = SagaMachine.apply(key.from(), key.event());

@@ -1,0 +1,46 @@
+{
+  "name": "auth-ops-token",
+  "desc": "TEST ONLY (MW_E2E_ROUTES=1): realm ops token endpoint (password + TOTP) for the e2e operators; key-auth (consumer mw-e2e), private networks, 10/min per address. Host pinned to keycloak:8080 so iss matches admin-v1",
+  "uri": "/auth/realms/ops/protocol/openid-connect/token",
+  "methods": ["POST"],
+  "plugins": {
+    "ip-restriction": {
+      "whitelist": ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128"]
+    },
+    "key-auth": { "header": "apikey", "hide_credentials": true },
+    "consumer-restriction": { "type": "consumer_name", "whitelist": ["mw_e2e"] },
+    "limit-count": {
+      "count": 10,
+      "time_window": 60,
+      "key_type": "var",
+      "key": "remote_addr",
+      "group": "auth-ops-token",
+      "rejected_code": 429,
+      "show_limit_quota_header": true,
+      "policy": "redis",
+      "redis_host": "valkey",
+      "redis_port": 6379,
+      "redis_password": "$env://VALKEY_PASSWORD",
+      "redis_database": 0,
+      "redis_timeout": 1000,
+      "allow_degradation": true
+    },
+    "proxy-rewrite": {
+      "uri": "/realms/ops/protocol/openid-connect/token",
+      "host": "keycloak:8080",
+      "headers": {
+        "set": {
+          "X-Forwarded-Host": "keycloak",
+          "X-Forwarded-Port": "8080",
+          "X-Forwarded-Proto": "http"
+        }
+      }
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": { "connect": 5, "send": 10, "read": 10 },
+    "nodes": { "keycloak:8080": 1 }
+  }
+}

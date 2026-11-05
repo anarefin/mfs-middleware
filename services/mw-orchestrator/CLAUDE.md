@@ -124,8 +124,20 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   commit / release / credit is its own core command round: commandId `<txnId>:commit:manual-<n>`
   (`release`, `credit` likewise; n = how many ManualCommit / ManualRelease steps the txn has had,
   `TransactionRepository.countSteps`), so the core decides it afresh instead of replaying the refusal
-  it logged for `<txnId>:commit`; the core's holds make that safe (commit of a committed hold is a
-  no-op). An action the state or flow does not allow, or an unknown action, changes nothing. Every
+  it logged for `<txnId>:commit`. Forced CommitHold is safe as it is: the core commits a hold once
+  whatever the commandId (commit of a committed hold succeeds without effect, of a released one fails
+  `HOLD_RELEASED`). A forced **credit** (ADD_MONEY_BANK, no hold; security review of ticket 37) is not:
+  if an earlier CreditWallet was applied but its answer lost, a fresh-round id would credit twice. So
+  the commit step of a forced credit first asks the core (`CoreCommandMapper.creditCheck`:
+  QueryTransaction, commandId `<txnId>:credit-check:<epoch ms>`, fresh per query) and
+  `CoreEventService` turns the TransactionStatus answer into `SagaEvent.CreditCheckResult` (COMMITTING
+  only; elsewhere stale, ignored): CREDITED / POSTED -> COMPLETED with no new credit; NOT_FOUND /
+  VALIDATED / REJECTED -> stays COMMITTING with `Effect.SEND_CREDIT`, which sends
+  `<txnId>:credit:manual-<n>`; any other answer -> MANUAL_REVIEW `MW-TMO-005`. Each COMMITTING deadline
+  of a forced credit asks again instead of resending blind; a late NOT_CREDITED answer only resends
+  the same round's id (the core deduplicates it). The saga's own credit (round 0, `<txnId>:credit`)
+  sends no check. Defence in depth: mw-core-mock credits a txnId once whatever the commandId (an
+  already credited one is answered WalletCredited without effect). An action the state or flow does not allow, or an unknown action, changes nothing. Every
   action is audited in the same transaction: `txn.operator.action`, actor `user`/checkerId, before
   `{status}`, after `{status, action, makerId, changeRequestId[, refused: MW-VAL-023]}`, outcome
   SUCCESS / FAILURE (the state change itself is audited as usual by `SagaEngine`). An action for an
