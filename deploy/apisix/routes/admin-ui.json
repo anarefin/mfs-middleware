@@ -1,0 +1,34 @@
+{
+  "name": "admin-ui",
+  "desc": "Admin console (spec 15.1, ticket 40) to mw-admin-ui (basePath /console). Login is the console's own (Auth.js, realm ops, code + PKCE), so no auth plugin; the console sets CSP/HSTS/XFO. Quota per source address",
+  "uris": ["/console", "/console/*"],
+  "methods": ["GET", "HEAD", "POST"],
+  "plugins": {
+    "client-control": {
+      "max_body_size": 65536
+    },
+    "limit-count": {
+      "count": 600,
+      "time_window": 60,
+      "key_type": "var",
+      "key": "remote_addr",
+      "group": "admin-ui",
+      "rejected_code": 429,
+      "show_limit_quota_header": true,
+      "policy": "redis",
+      "redis_host": "valkey",
+      "redis_port": 6379,
+      "redis_password": "$env://VALKEY_PASSWORD",
+      "redis_database": 0,
+      "redis_timeout": 1000,
+      "allow_degradation": true
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "pass_host": "pass",
+    "timeout": { "connect": 5, "send": 30, "read": 30 },
+    "nodes": { "mw-admin-ui:3000": 1 }
+  }
+}

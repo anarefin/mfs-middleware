@@ -8,6 +8,7 @@ import java.util.Map;
 import mfs.mw.admin.api.dto.ChangeRequestBody;
 import mfs.mw.admin.api.dto.PartnerChangeRequestBody;
 import mfs.mw.admin.api.dto.RejectBody;
+import mfs.mw.admin.api.dto.WalletChangeRequestBody;
 import mfs.mw.admin.api.exception.ErrorCodes;
 import mfs.mw.admin.api.exception.MwException;
 import mfs.mw.admin.api.service.BodySchema;
@@ -40,6 +41,7 @@ public class BodySchemaAdvice extends RequestBodyAdviceAdapter {
     this.schemas =
         Map.of(
             ChangeRequestBody.class, new BodySchema(json, BodySchema.CHANGE_REQUEST),
+            WalletChangeRequestBody.class, new BodySchema(json, BodySchema.WALLET_CHANGE_REQUEST),
             RejectBody.class, new BodySchema(json, BodySchema.REJECT),
             PartnerChangeRequestBody.class, new BodySchema(json, BodySchema.PARTNER_CHANGE_REQUEST));
   }

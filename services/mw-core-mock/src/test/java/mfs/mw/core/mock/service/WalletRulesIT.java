@@ -221,4 +221,98 @@ class WalletRulesIT {
     assertThat(e.eventType()).isEqualTo("TransferPosted");
     assertThat(balance(CUSTOMER_A)).isEqualTo(1_001_000);
   }
+
+  // --- ops unlock (ticket 52) ---------------------------------------------------------------
+
+  private CoreCommand unlock(String wallet) {
+    String u = UUID.randomUUID().toString();
+    String txnId = u.substring(0, 14) + "7" + u.substring(15);
+    String changeRequestId = UUID.randomUUID().toString();
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("subject", Map.of("type", "WALLET", "id", wallet));
+    payload.put("changeRequestId", changeRequestId);
+    payload.put("makerId", "ops-maker01");
+    payload.put("checkerId", "ops-checker01");
+    Instant now = Instant.now();
+    Map<String, Object> envelope = new LinkedHashMap<>();
+    envelope.put("schemaVersion", 1);
+    envelope.put("commandType", "UnlockWallet");
+    envelope.put("commandId", changeRequestId + ":unlock");
+    envelope.put("txnId", txnId);
+    envelope.put("correlationId", "corr-" + txnId);
+    envelope.put("issuedAt", now.toString());
+    envelope.put("expiresAt", now.plusSeconds(300).toString());
+    envelope.put("payload", payload);
+    assertThat(ContractSchemas.schema("events/mw-orchestrator/core.command.v1.schema.json").validate(json.valueToTree(envelope)))
+        .as("UnlockWallet against core.command.v1")
+        .isEmpty();
+    return json.convertValue(envelope, CoreCommand.class);
+  }
+
+  private void lockOut(String wallet) {
+    for (int i = 0; i < 5; i++) {
+      validate("P2P", wallet, CUSTOMER_B, "9999");
+    }
+    assertThat(status(wallet)).isEqualTo("LOCKED");
+  }
+
+  @Test
+  void anUnlockClearsTheLockAndTheFailureCountOnce() {
+    lockOut(CUSTOMER_A);
+    CoreCommand unlock = unlock(CUSTOMER_A);
+
+    CoreEvent e = handle(unlock);
+    assertThat(e.eventType()).isEqualTo("WalletUnlocked");
+    assertThat(e.outcome()).isEqualTo(CoreEvent.Outcome.SUCCESS);
+    assertThat(e.commandId()).isEqualTo(unlock.commandId());
+    assertThat(e.payload()).containsEntry("walletId", CUSTOMER_A);
+    assertThat(status(CUSTOMER_A)).isEqualTo("ACTIVE");
+    assertThat(jdbc.queryForObject("select pin_failures from wallet where id = ?", Integer.class, CUSTOMER_A)).isZero();
+    assertThat(validate("P2P", CUSTOMER_A, CUSTOMER_B, "1234")).isEqualTo("OK");
+
+    // lock it again: a replay of the same command answers from the log and changes nothing
+    lockOut(CUSTOMER_A);
+    CoreEvent replay = handle(unlock);
+    assertThat(replay.eventId()).isEqualTo(e.eventId());
+    assertThat(replay.eventType()).isEqualTo("WalletUnlocked");
+    assertThat(status(CUSTOMER_A)).isEqualTo("LOCKED");
+  }
+
+  @Test
+  void anUnlockAfterTheUnlockCountsFailuresAfresh() {
+    lockOut(CUSTOMER_A);
+    handle(unlock(CUSTOMER_A));
+    for (int i = 0; i < 4; i++) {
+      assertThat(validate("P2P", CUSTOMER_A, CUSTOMER_B, "9999")).isEqualTo("INVALID_PIN");
+    }
+    assertThat(status(CUSTOMER_A)).isEqualTo("ACTIVE");
+  }
+
+  @Test
+  void anUnlockOfAWalletThatIsNotLockedIsRejected() {
+    validate("P2P", CUSTOMER_A, CUSTOMER_B, "9999");
+
+    CoreEvent e = handle(unlock(CUSTOMER_A));
+    assertThat(e.eventType()).isEqualTo("UnlockRejected");
+    assertThat(e.outcome()).isEqualTo(CoreEvent.Outcome.FAILURE);
+    assertThat(e.reasonCode()).isEqualTo("WALLET_NOT_LOCKED");
+    assertThat(status(CUSTOMER_A)).isEqualTo("ACTIVE");
+    assertThat(jdbc.queryForObject("select pin_failures from wallet where id = ?", Integer.class, CUSTOMER_A)).isEqualTo(1);
+  }
+
+  @Test
+  void anUnlockOfAnUnknownWalletIsRejected() {
+    CoreEvent e = handle(unlock("01799999999"));
+    assertThat(e.eventType()).isEqualTo("UnlockRejected");
+    assertThat(e.reasonCode()).isEqualTo("WALLET_NOT_FOUND");
+  }
+
+  @Test
+  void anUnlockDoesNotLiftAComplianceBlock() {
+    jdbc.update("update wallet set status = 'BLOCKED' where id = ?", CUSTOMER_A);
+
+    CoreEvent e = handle(unlock(CUSTOMER_A));
+    assertThat(e.reasonCode()).isEqualTo("WALLET_NOT_LOCKED");
+    assertThat(status(CUSTOMER_A)).isEqualTo("BLOCKED");
+  }
 }

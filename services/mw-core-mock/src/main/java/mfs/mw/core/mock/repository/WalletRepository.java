@@ -72,6 +72,14 @@ public class WalletRepository {
     jdbc.update("update wallet set pin_failures = 0 where id = ? and pin_failures > 0", id);
   }
 
+  /**
+   * Ops unlock (ticket 52): a PIN-LOCKED wallet back to ACTIVE with its failure count cleared.
+   * Returns false, changing nothing, when the wallet is not LOCKED (active, or blocked otherwise).
+   */
+  public boolean unlock(String id) {
+    return jdbc.update("update wallet set status = 'ACTIVE', pin_failures = 0 where id = ? and status = 'LOCKED'", id) == 1;
+  }
+
   /** Sum of transfer debits of the wallet since {@code since}. */
   public long debitedSince(String id, Instant since) {
     Long sum =

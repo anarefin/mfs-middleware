@@ -14,6 +14,7 @@ import mfs.mw.core.mock.dto.CoreCommand;
 import mfs.mw.core.mock.dto.CoreEvent;
 import mfs.mw.core.mock.dto.Fault;
 import mfs.mw.core.mock.dto.TransferPayload;
+import mfs.mw.core.mock.dto.UnlockPayload;
 import mfs.mw.core.mock.entity.Wallet;
 import mfs.mw.core.mock.mapper.CoreCommandMapper;
 import mfs.mw.core.mock.mapper.CoreEventMapper;
@@ -52,7 +53,7 @@ public class CoreCommandService {
    */
   static final Set<String> PAYER_SIDE_ONLY_PAYEES = Set.of("BILLER_ACCOUNT", "BANK_ACCOUNT", "CARD_TOKEN", "MSISDN");
   private static final Set<String> HANDLED =
-      Set.of(VALIDATE, POST, "HoldFunds", "CommitHold", "ReleaseHold", "CreditWallet", "ReverseTransaction", "QueryTransaction");
+      Set.of(VALIDATE, POST, "HoldFunds", "CommitHold", "ReleaseHold", "CreditWallet", "ReverseTransaction", "QueryTransaction", "UnlockWallet");
 
   private static final Logger log = LoggerFactory.getLogger(CoreCommandService.class);
 
@@ -200,8 +201,31 @@ public class CoreCommandService {
       case "CreditWallet" -> postingOps.credit(cmd, coreRef);
       case "ReverseTransaction" -> postingOps.reverse(cmd, coreRef);
       case "QueryTransaction" -> statusOps.query(cmd, coreRef);
+      case "UnlockWallet" -> unlock(cmd, coreRef);
       default -> transfer(cmd, coreRef);
     };
+  }
+
+  /**
+   * UnlockWallet (ticket 52): clears the PIN lockout of a LOCKED wallet (status ACTIVE, failure
+   * count 0). A wallet that is not LOCKED (active, or blocked for another reason) is refused
+   * {@code WALLET_NOT_LOCKED} and left as it is; an unknown one {@code WALLET_NOT_FOUND}.
+   */
+  private CoreEvent unlock(CoreCommand cmd, String coreRef) {
+    UnlockPayload p = commands.unlock(cmd);
+    Optional<String> id = wallets.resolveId(p.subject().id());
+    if (id.isEmpty()) {
+      return reject(cmd, "UnlockRejected", coreRef, Reason.WALLET_NOT_FOUND);
+    }
+    if (!wallets.unlock(id.get())) {
+      return reject(cmd, "UnlockRejected", coreRef, Reason.WALLET_NOT_LOCKED);
+    }
+    log.atInfo()
+        .addKeyValue("event", "wallet.pin.unlocked")
+        .addKeyValue("txnId", cmd.txnId())
+        .addKeyValue("walletType", wallets.get(id.get()).type())
+        .log("wallet PIN lockout cleared by ops");
+    return events.succeeded(cmd, "WalletUnlocked", coreRef, null, Map.of("walletId", id.get()));
   }
 
   /** ValidateTransaction and PostTransfer. */

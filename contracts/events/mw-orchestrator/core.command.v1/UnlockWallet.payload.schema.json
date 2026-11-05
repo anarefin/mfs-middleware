@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.upay.mw/events/mw-orchestrator/core.command.v1/UnlockWallet.payload.schema.json",
+  "title": "core.command.v1 UnlockWallet payload",
+  "description": "Clears the PIN lockout of a wallet (status LOCKED after 5 wrong PINs, spec 9.1): status back to ACTIVE, failure count 0. Sent by mw-admin-api once an ops-checker approved an ops-maker's unlock request (maker-checker, ticket 52). The core answers WalletUnlocked, or UnlockRejected (reasonCode WALLET_NOT_FOUND, WALLET_NOT_LOCKED). Carries no PIN.",
+  "type": "object",
+  "required": ["subject", "changeRequestId"],
+  "properties": {
+    "subject": {
+      "type": "object",
+      "allOf": [{ "$ref": "../../../common/defs.v1.schema.json#/$defs/Party" }],
+      "properties": { "type": { "const": "WALLET" } },
+      "description": "The wallet to unlock: its id (the MSISDN for app wallets)."
+    },
+    "changeRequestId": { "type": "string", "format": "uuid", "description": "The approved mw-admin-api change request." },
+    "makerId": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Operator username who asked for the unlock." },
+    "checkerId": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Operator username who approved it." }
+  }
+}

@@ -35,6 +35,14 @@ public final class AdminApi {
     return Http.postJson(Stack.get().url("admin/v1/partners/" + partnerId + "/change-requests"), auth(user), body);
   }
 
+  /** Ticket 52: a maker asks to UNLOCK a PIN-locked wallet. */
+  public static Http.Response askWallet(String user, String walletId, String action, String reason) {
+    return Http.postJson(
+        Stack.get().url("admin/v1/wallets/" + walletId + "/change-requests"),
+        auth(user),
+        Http.JSON.createObjectNode().put("action", action).put("reason", reason));
+  }
+
   public static Http.Response changeRequest(String user, String id) {
     return Http.get(Stack.get().url("admin/v1/change-requests/" + id), auth(user));
   }

@@ -180,6 +180,8 @@ mw:
     ttl: 72h
     expiry-cron: "0 */5 * * * *"
     expiry-batch: 500
+    # UnlockWallet sent on approval of a wallet unlock (ticket 52): expiresAt = issuedAt + this
+    unlock-command-ttl: 1h
   service:
     name: ${spring.application.name}
     version: ${MW_VERSION:0.1.0-SNAPSHOT}

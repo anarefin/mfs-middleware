@@ -6,8 +6,8 @@
 
 - 36: Admin API: RBAC + txn search / timeline
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Playwright: login, search by txnId and by MSISDN, open the detail page and see the timeline
-- [ ] The browser never receives the access token (checked in Playwright)
-- [ ] `pnpm test` and the Playwright suite pass
+- [x] Playwright: login, search by txnId and by MSISDN, open the detail page and see the timeline (`ui/mw-admin-ui/e2e/console.spec.ts`, against a fake Keycloak realm ops + stub mw-admin-api; the in-stack login through APISIX is checked at the gate)
+- [x] The browser never receives the access token (checked in Playwright)
+- [x] `pnpm test` and the Playwright suite pass

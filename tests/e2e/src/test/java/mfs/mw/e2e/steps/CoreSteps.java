@@ -5,11 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.cucumber.java.After;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import mfs.mw.e2e.support.CoreMock;
 import mfs.mw.e2e.support.Http;
+import mfs.mw.e2e.support.Waits;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
@@ -45,6 +47,18 @@ public class CoreSteps {
     if (state.faultsInjected) {
       CoreMock.resetFaults();
     }
+  }
+
+  @Then("the core shows wallet {word} as {word}")
+  public void walletStatus(String wallet, String status) {
+    assertThat(CoreMock.walletStatus(wallet)).as("core status of the wallet").isEqualTo(status);
+  }
+
+  @Then("the core shows wallet {word} as {word} within {int} seconds")
+  public void walletStatusWithin(String wallet, String status, int seconds) {
+    String seen =
+        Waits.until(() -> CoreMock.walletStatus(wallet), status::equals, Duration.ofSeconds(seconds));
+    assertThat(seen).as("core status of the wallet").isEqualTo(status);
   }
 
   @Then("the core balances changed by:")

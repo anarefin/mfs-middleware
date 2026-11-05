@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import mfs.mw.admin.api.client.OrchestratorQueryClient;
 import mfs.mw.admin.api.config.ChangeRequestProperties;
 import mfs.mw.admin.api.dto.AdminTxn;
@@ -17,6 +18,8 @@ import mfs.mw.admin.api.dto.ChangeRequestView;
 import mfs.mw.admin.api.dto.Operator;
 import mfs.mw.admin.api.dto.ReversalRequest;
 import mfs.mw.admin.api.dto.TxnAction;
+import mfs.mw.admin.api.dto.UnlockWalletCommand;
+import mfs.mw.admin.api.dto.WalletChangeRequestBody.WalletActionType;
 import mfs.mw.admin.api.entity.ChangeRequest;
 import mfs.mw.admin.api.entity.Partner;
 import mfs.mw.admin.api.exception.ErrorCodes;
@@ -62,6 +65,12 @@ public class ChangeRequestService {
   static final String AUDIT_TOPIC = "mw.audit.event.v1";
   static final String ACTION_TOPIC = "mw.txn.action.v1";
   static final String REQUEST_TOPIC = "mw.txn.request.v1";
+  /** UnlockWallet goes straight to the core (ticket 52; wallet topic per the M2 gate split). */
+  static final String CORE_COMMAND_TOPIC = "core.wallet.command.v1";
+  static final String WALLET_LOCKED = "LOCKED";
+  static final String WALLET_ACTIVE = "ACTIVE";
+  /** A wallet id here is the wallet's MSISDN in the 11-digit local form. */
+  static final Pattern WALLET_ID = Pattern.compile("^01[3-9]\\d{8}$");
 
   private final ChangeRequestRepository requests;
   private final OrchestratorQueryClient orchestrator;
@@ -108,14 +117,7 @@ public class ChangeRequestService {
             UUID.randomUUID(), ChangeRequest.TRANSACTION, txnId.toString(), action.name(), payload,
             ChangeRequestMapper.diff(txn.status(), target), maker.username(), maker.subject(),
             ChangeRequest.Status.PENDING, null, null, reason, null, now, null, now.plus(props.ttl()));
-    tx.executeWithoutResult(
-        s -> {
-          if (!requests.insert(cr)) {
-            throw new MwException(ErrorCodes.VAL_REQUEST_OPEN, "This transaction already has an open change request")
-                .withStatus(HttpStatus.CONFLICT);
-          }
-          audit(ChangeRequestMapper.created(cr, correlationId()), cr);
-        });
+    insert(cr, "This transaction already has an open change request");
     logDecision("admin.change_request.created", cr, maker.username());
     return ChangeRequestMapper.view(cr);
   }
@@ -133,14 +135,33 @@ public class ChangeRequestService {
         new ChangeRequest(
             UUID.randomUUID(), resourceType, resourceId, action, payload, diff, maker.username(), maker.subject(),
             ChangeRequest.Status.PENDING, null, null, reason, null, now, null, now.plus(props.ttl()));
-    tx.executeWithoutResult(
-        s -> {
-          if (!requests.insert(cr)) {
-            throw new MwException(ErrorCodes.VAL_REQUEST_OPEN, "This " + resourceType + " already has an open change request")
-                .withStatus(HttpStatus.CONFLICT);
-          }
-          audit(ChangeRequestMapper.created(cr, correlationId()), cr);
-        });
+    insert(cr, "This " + resourceType + " already has an open change request");
+    logDecision("admin.change_request.created", cr, maker.username());
+    return ChangeRequestMapper.view(cr);
+  }
+
+  /**
+   * Ops unlock of a PIN-locked wallet (ticket 52). The middleware cannot see the wallet's state (the
+   * core owns it), so the request is taken for any well-formed wallet id; the core refuses the
+   * approved command when the wallet is not locked ({@code UnlockRejected WALLET_NOT_LOCKED}).
+   */
+  public ChangeRequestView createForWallet(Operator maker, String walletId, WalletActionType action, String reason) {
+    if (!maker.hasAny(AdminRole.TXN_MAKER)) {
+      throw OperatorResolver.forbidden("Asking for a wallet action needs the ops-maker role");
+    }
+    if (walletId == null || !WALLET_ID.matcher(walletId).matches()) {
+      throw new MwException(ErrorCodes.VAL_INVALID, "The wallet id must be an 11-digit MSISDN")
+          .withStatus(HttpStatus.BAD_REQUEST);
+    }
+    Instant now = clock.instant();
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put(ChangeRequestMapper.UNLOCK_TXN_ID, UuidV7.at(now).toString());
+    ChangeRequest cr =
+        new ChangeRequest(
+            UUID.randomUUID(), ChangeRequest.WALLET, walletId, action.name(), payload,
+            ChangeRequestMapper.diff(WALLET_LOCKED, WALLET_ACTIVE), maker.username(), maker.subject(),
+            ChangeRequest.Status.PENDING, null, null, reason, null, now, null, now.plus(props.ttl()));
+    insert(cr, "This wallet already has an open change request");
     logDecision("admin.change_request.created", cr, maker.username());
     return ChangeRequestMapper.view(cr);
   }
@@ -149,6 +170,9 @@ public class ChangeRequestService {
 
   public ChangeRequestView approve(Operator checker, UUID id) {
     ChangeRequest cr = decidable(checker, id);
+    if (ChangeRequest.WALLET.equals(cr.resourceType())) {
+      return approveWallet(checker, cr);
+    }
     if (!ChangeRequest.TRANSACTION.equals(cr.resourceType())) {
       return approveOther(checker, cr);
     }
@@ -206,6 +230,25 @@ public class ChangeRequestService {
     return found(cr.id());
   }
 
+  /** Approval of a wallet unlock: row APPROVED + UnlockWallet to the core + audit, one transaction. */
+  private ChangeRequestView approveWallet(Operator checker, ChangeRequest cr) {
+    Instant now = clock.instant();
+    String correlationId = correlationId();
+    UnlockWalletCommand cmd = ChangeRequestMapper.unlock(cr, checker.username(), correlationId, now, props.unlockCommandTtl());
+    Map<String, Object> payload = new LinkedHashMap<>(cr.payload());
+    payload.put("commandId", cmd.commandId());
+    tx.executeWithoutResult(
+        s -> {
+          if (!requests.decide(cr.id(), ChangeRequest.Status.APPROVED, checker.username(), checker.subject(), null, payload, now)) {
+            throw decided();
+          }
+          outbox.append(CORE_COMMAND_TOPIC, cmd.txnId(), new EventMetadata(correlationId, cmd.txnId(), cmd.commandId(), 1), cmd);
+          audit(ChangeRequestMapper.approved(cr, checker.username(), CORE_COMMAND_TOPIC, correlationId, now), cr);
+        });
+    logDecision("admin.change_request.approved", cr, checker.username());
+    return found(cr.id());
+  }
+
   public ChangeRequestView reject(Operator checker, UUID id, String reason) {
     ChangeRequest cr = decidable(checker, id);
     Instant now = clock.instant();
@@ -236,26 +279,26 @@ public class ChangeRequestService {
   }
 
   /**
-   * One request. Transaction requests are shown only to transaction readers (ticket 37's least
-   * privilege); integration staff (ticket 38) see the other resource types only.
+   * One request. Transaction and wallet requests are shown only to transaction readers (ticket
+   * 37's least privilege); integration staff (ticket 38) see partner requests only.
    */
   public ChangeRequestView get(Operator operator, UUID id) {
     requireReader(operator);
     ChangeRequest cr = requests.find(id).orElseThrow(ChangeRequestService::notFound);
-    if (ChangeRequest.TRANSACTION.equals(cr.resourceType()) && !operator.hasAny(AdminRole.READ_TRANSACTIONS)) {
+    if (!Partner.RESOURCE_TYPE.equals(cr.resourceType()) && !operator.hasAny(AdminRole.READ_TRANSACTIONS)) {
       throw OperatorResolver.forbidden("This operation needs a transaction viewing role");
     }
     return ChangeRequestMapper.view(cr);
   }
 
-  /** Newest first; an operator who may not read transactions sees no transaction requests. */
+  /** Newest first; an operator who may not read transactions sees partner requests only. */
   public ChangeRequestView.Page list(
       Operator operator, ChangeRequest.Status status, String resourceType, String resourceId, int limit, int offset) {
     requireReader(operator);
     List<ChangeRequest> rows;
     if (operator.hasAny(AdminRole.READ_TRANSACTIONS)) {
       rows = requests.list(status, resourceType, resourceId, limit, offset);
-    } else if (ChangeRequest.TRANSACTION.equals(resourceType)) {
+    } else if (resourceType != null && !Partner.RESOURCE_TYPE.equals(resourceType)) {
       throw OperatorResolver.forbidden("This operation needs a transaction viewing role");
     } else {
       rows = requests.list(status, resourceType == null ? Partner.RESOURCE_TYPE : resourceType, resourceId, limit, offset);
@@ -291,7 +334,9 @@ public class ChangeRequestService {
     }
     ChangeRequest cr = requests.find(id).orElseThrow(ChangeRequestService::notFound);
     Set<AdminRole> checkers =
-        ChangeRequest.TRANSACTION.equals(cr.resourceType()) ? AdminRole.TXN_CHECKER : handler(cr.resourceType()).checkers();
+        ChangeRequest.TRANSACTION.equals(cr.resourceType()) || ChangeRequest.WALLET.equals(cr.resourceType())
+            ? AdminRole.TXN_CHECKER
+            : handler(cr.resourceType()).checkers();
     if (!checker.hasAny(checkers)) {
       throw OperatorResolver.forbidden("Deciding this change request needs another checker role");
     }
@@ -316,6 +361,17 @@ public class ChangeRequestService {
       throw expired();
     }
     return cr;
+  }
+
+  /** Stores a new PENDING request with its creation audit; one open request per resource. */
+  private void insert(ChangeRequest cr, String openMessage) {
+    tx.executeWithoutResult(
+        s -> {
+          if (!requests.insert(cr)) {
+            throw new MwException(ErrorCodes.VAL_REQUEST_OPEN, openMessage).withStatus(HttpStatus.CONFLICT);
+          }
+          audit(ChangeRequestMapper.created(cr, correlationId()), cr);
+        });
   }
 
   private void expireOne(ChangeRequest cr, Instant now) {
@@ -375,7 +431,11 @@ public class ChangeRequestService {
   private static void logDecision(String event, ChangeRequest cr, String checker) {
     log.atInfo()
         .addKeyValue("event", event)
-        .addKeyValue(ChangeRequest.TRANSACTION.equals(cr.resourceType()) ? "txnId" : "resourceId", cr.resourceId())
+        .addKeyValue(
+            ChangeRequest.WALLET.equals(cr.resourceType())
+                ? "walletId"
+                : ChangeRequest.TRANSACTION.equals(cr.resourceType()) ? "txnId" : "resourceId",
+            ChangeRequestMapper.shownId(cr))
         .addKeyValue("changeRequestId", cr.id().toString())
         .addKeyValue("action", cr.action())
         .addKeyValue("makerId", cr.makerId())

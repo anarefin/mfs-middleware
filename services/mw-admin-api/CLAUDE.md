@@ -15,7 +15,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `security/RealmIssuerValidator`). **MFA is the realm's**: the `ops` browser flow requires password +
   TOTP and every user has `CONFIGURE_TOTP` (no token before enrolment); the service does not inspect
   `acr`/`amr` (Keycloak sets no OTP marker without extra LoA config). Decision: conservative and
-  enough while realm `ops` is the only issuer accepted.
+  enough while realm `ops` is the only issuer accepted. Tokens from the console's login (ticket 40,
+  `ui/mw-admin-ui`) carry the public issuer `https://localhost/realms/ops`, others
+  `http://keycloak:8080/realms/ops`; both end with `/realms/ops`.
 - Roles (`security/AdminRole`, the spec 15.4 names as realm roles in `realm_access.roles`; any other
   role name grants nothing): `READ_TRANSACTIONS` = viewer, ops-maker, ops-checker, ops-emergency,
   recon-maker, recon-checker, compliance-officer, auditor (not integration-*, security-admin: least
@@ -59,8 +61,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `409 MW-VAL-032`; decided already `409 MW-VAL-033` (the `status = 'PENDING'` update guard).
   `GET /admin/v1/change-requests[?status&resourceType&resourceId&limit&offset]`, `GET .../{id}`
   (`READ_CHANGE_REQUESTS`: the transaction readers and integration-maker/checker, ticket 38; an
-  operator without `READ_TRANSACTIONS` sees partner requests only: transaction ones are left out of
-  the list, `?resourceType=transaction` and their detail are 403).
+  operator without `READ_TRANSACTIONS` sees partner requests only: transaction and wallet ones are
+  left out of the list, `?resourceType=transaction|wallet` and their detail are 403).
   Approval = ONE database transaction: row APPROVED + the message to mw-orchestrator + the audit,
   through the outbox: INQUIRE/FORCE_* -> `mw.txn.action.v1` (own contract, `dto/TxnAction`, key
   txnId, idempotency header = actionId, stored in `payload.actionId`); REVERSE -> REVERSAL on
@@ -80,6 +82,25 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   recon-*, not ops-emergency: its post-approval flow is for partner changes, ticket 38); a reject by
   the maker (withdrawal) is not offered. The orchestrator's resulting state is not tracked here: the
   detail view and audit trail show it.
+- Wallet unlock (ticket 52, M2 gate decision; same engine): `POST /admin/v1/wallets/{walletId}/change-requests
+  {action: UNLOCK, reason}` (`dto/WalletChangeRequestBody`, derived schema
+  `admin-v1-wallet-change-request.json`; role `TXN_MAKER` = ops-maker) -> 201 PENDING,
+  `resourceType` `wallet`, `resourceId` the wallet id (11-digit MSISDN `^01[3-9]\d{8}$`, else `400
+  MW-VAL-001`) stored whole in `admin.change_request` but shown masked (`0171****789`,
+  `ChangeRequestMapper.shownId`) in every view, audit and log; `diff` LOCKED -> ACTIVE;
+  `payload.unlockTxnId` a UUIDv7 minted at creation (txnId of the core command and of every audit
+  of the request). One open request per wallet (`409 MW-VAL-031`). Approve / reject / expiry and the
+  maker != checker rule (`403 MW-AUTH-030`) are the transaction ones; there is no status read (the
+  core owns the wallet state, so a request is taken for any well-formed id and the core refuses an
+  unlock of a wallet that is not LOCKED). Approval = one database transaction: row APPROVED
+  (`payload.commandId`) + `UnlockWallet` (`dto/UnlockWalletCommand`, `core.command.v1`, owned by
+  mw-orchestrator) on `core.wallet.command.v1` (key unlockTxnId, commandId `<changeRequestId>:unlock`,
+  `expiresAt` = issued + `mw.change-requests.unlock-command-ttl` 1h, payload subject WALLET + the
+  whole id, changeRequestId, makerId, checkerId) + audit. Audit resource `wallet/<masked id>`,
+  `walletStatus` where a transaction request has `txnStatus`, `after.sentAs` the topic.
+  Decisions (no product owner): ops-maker / ops-checker act on wallets as on transactions; the
+  core's answer (`WalletUnlocked` / `UnlockRejected`) is not consumed here (as for ticket 37, the
+  result is not tracked; mw-core-mock's wallet view shows it); the reason text is not sent to the core.
 - Partner config (ticket 38, spec 15.2 Partners, 15.3, 16.2, 20.4; `controller/PartnerController` ->
   `service/PartnerConfigService` (reads, maker) and `service/PartnerChangeHandler` (approval) ->
   `repository/PartnerRepository`, schema `partner` (own, V5: `partner`, `endpoint`, `mapping`,
@@ -148,7 +169,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 
 ## Contracts used
 
-- `contracts.yml`: produces `events/mw-audit-dw/mw.audit.event.v1` (own type `dto/AuditEvent`;
+- `contracts.yml`: produces `events/mw-orchestrator/core.command.v1#UnlockWallet` (ticket 52,
+  `dto/UnlockWalletCommand`; `WalletUnlockApiIT` validates the outbox row),
+  `events/mw-audit-dw/mw.audit.event.v1` (own type `dto/AuditEvent`;
   `contracts/ProducedContractsTest`, and `AdminTransactionApiIT` validates the outbox row),
   `events/mw-admin-api/mw.txn.action.v1` (`dto/TxnAction`) and a REVERSAL on
   `events/mw-orchestrator/mw.txn.request.v1` (`dto/ReversalRequest`; `ChangeRequestApiIT`
@@ -181,7 +204,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 | Command | What it does |
 | --- | --- |
 | `./gradlew test` | unit, slice and contract tests, no Docker |
-| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker); `AdminTransactionApiIT` (stub orchestrator + audit-dw), `ChangeRequestApiIT` (maker-checker, stub orchestrator), `PartnerConfigApiIT` (partner change requests, outbox config records) |
+| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker); `AdminTransactionApiIT` (stub orchestrator + audit-dw), `ChangeRequestApiIT` (maker-checker, stub orchestrator), `PartnerConfigApiIT` (partner change requests, outbox config records), `WalletUnlockApiIT` (ticket 52) |
 | `./gradlew conformance` | the `@Conformance` suite |
 | `./gradlew check` | all three plus the JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
 | `./gradlew check bootJar && docker build -t mw-admin-api:dev .` | image, as spec 4.3 rule 1 |

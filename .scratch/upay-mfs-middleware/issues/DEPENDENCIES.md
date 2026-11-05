@@ -6,10 +6,10 @@
 53-fast-gate-contract-manifests             —                 done     75m      161 files, +8515 −743  b807db7..d7d7916
 36-admin-api-rbac-search                    35,53             done     29m       132 files 10090  36  3bc49e3..4792c86
 37-maker-checker-engine-tsq-reversal        36,18,19          done     30m      68 files + 2855 − 43  50b8ef6..9c419f5
-52-ops-wallet-unlock                        37                todo     —        —          —
+52-ops-wallet-unlock                        37                done     17m      52 files + 1001 − 48  1260c19..2e8a6f6
 38-partner-config-maker-checker             37,20             todo     —        —          —
 39-ussd-menu-sms-template-management        37,26,24          todo     —        —          —
-40-admin-ui-shell-search                    36                todo     —        —          —
+40-admin-ui-shell-search                    36                done     40m      58 files + 3837 − 13  863f494..9bd4d32
 41-admin-ui-approvals-reversal              40,37,52          todo     —        —          —
 42-admin-ui-partner-ussd-template-editors   41,38,39          todo     —        —          —
 51-m2-gate-spec-sync                        —                 done     5m       spec only              55957cc..f8a90cc

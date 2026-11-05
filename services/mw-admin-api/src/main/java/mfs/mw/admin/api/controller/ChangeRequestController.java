@@ -9,6 +9,7 @@ import java.util.UUID;
 import mfs.mw.admin.api.dto.ChangeRequestBody;
 import mfs.mw.admin.api.dto.ChangeRequestView;
 import mfs.mw.admin.api.dto.RejectBody;
+import mfs.mw.admin.api.dto.WalletChangeRequestBody;
 import mfs.mw.admin.api.entity.ChangeRequest;
 import mfs.mw.admin.api.security.OperatorResolver;
 import mfs.mw.admin.api.service.ChangeRequestService;
@@ -47,11 +48,19 @@ public class ChangeRequestController {
     return service.create(operators.resolve(jwt), txnId, body.action(), body.reason());
   }
 
+  /** Ops unlock of a PIN-locked wallet (ticket 52); the wallet id is checked by the service. */
+  @PostMapping("/wallets/{walletId}/change-requests")
+  @ResponseStatus(HttpStatus.CREATED)
+  public ChangeRequestView createForWallet(
+      @AuthenticationPrincipal Jwt jwt, @PathVariable String walletId, @Valid @RequestBody WalletChangeRequestBody body) {
+    return service.createForWallet(operators.resolve(jwt), walletId, body.action(), body.reason());
+  }
+
   @GetMapping("/change-requests")
   public ChangeRequestView.Page list(
       @AuthenticationPrincipal Jwt jwt,
       @RequestParam(required = false) ChangeRequest.Status status,
-      @RequestParam(required = false) @Pattern(regexp = "transaction|partner") String resourceType,
+      @RequestParam(required = false) @Pattern(regexp = "transaction|wallet|partner") String resourceType,
       @RequestParam(required = false) @Size(min = 1, max = 128) String resourceId,
       @RequestParam(defaultValue = "50") @Min(1) @Max(200) int limit,
       @RequestParam(defaultValue = "0") @Min(0) @Max(100_000) int offset) {

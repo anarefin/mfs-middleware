@@ -75,8 +75,9 @@ public class SecurityConfig {
                     .access(roles(r -> r.stream().anyMatch(AdminRole.READ_CHANGE_REQUESTS::contains)))
                     .requestMatchers(HttpMethod.GET, "/admin/v1/partners", "/admin/v1/partners/*")
                     .access(roles(r -> r.stream().anyMatch(AdminRole.READ_PARTNERS::contains)))
-                    // maker-checker on transactions (ticket 37) and partners (ticket 38); the service checks again
-                    .requestMatchers(HttpMethod.POST, "/admin/v1/transactions/*/change-requests")
+                    // maker-checker on transactions (37), wallets (52) and partners (38); the service checks again
+                    .requestMatchers(
+                        HttpMethod.POST, "/admin/v1/transactions/*/change-requests", "/admin/v1/wallets/*/change-requests")
                     .access(roles(r -> r.stream().anyMatch(AdminRole.TXN_MAKER::contains)))
                     .requestMatchers(HttpMethod.POST, "/admin/v1/partners/*/change-requests")
                     .access(roles(r -> r.stream().anyMatch(AdminRole.PARTNER_MAKER::contains)))

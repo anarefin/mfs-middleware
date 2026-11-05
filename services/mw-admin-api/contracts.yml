@@ -6,12 +6,14 @@
 # mw.config.changed.v1 (own contract, dto/ConfigChangedEvent). Ticket 37: approved operator
 # actions go to mw-orchestrator on mw.txn.action.v1 (own contract) and, for a reversal, as a
 # REVERSAL on mw.txn.request.v1 (mw-orchestrator's contract).
+# Ticket 52: an approved wallet unlock goes to the core as UnlockWallet on core.wallet.command.v1.
 produces:
   events:
     - events/mw-audit-dw/mw.audit.event.v1.schema.json
     - events/mw-admin-api/mw.txn.action.v1.schema.json
     - events/mw-admin-api/mw.config.changed.v1.schema.json
     - events/mw-orchestrator/mw.txn.request.v1.schema.json
+    - events/mw-orchestrator/core.command.v1.schema.json#UnlockWallet
   apis:   [api/mw-admin-api/admin.v1.openapi.yaml]
 consumes:
   events: []

@@ -74,6 +74,13 @@ public final class CoreMock {
         b.get("availableMinor").asLong());
   }
 
+  /** The wallet's status in the core ({@code ACTIVE}, {@code LOCKED} after 5 wrong PINs, ...; ticket 52). */
+  public static String walletStatus(String walletId) {
+    Http.Response r = Http.get(Stack.get().url(BASE + "wallets/" + walletId), auth());
+    expectOk(r, "status of " + walletId);
+    return r.body().get("status").asString();
+  }
+
   /** Injects a fault ({@code {mode, commandType?, txnId?, delayMs?, reasonCode?, times?}}). */
   public static JsonNode injectFault(JsonNode fault) {
     Http.Response r = Http.postJson(Stack.get().url(BASE + "faults"), auth(), fault);
