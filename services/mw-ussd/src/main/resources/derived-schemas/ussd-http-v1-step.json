@@ -1,0 +1,37 @@
+{
+  "x-mw-derived-from": "api/mw-ussd/ussd-http.v1.openapi.yaml#/components/schemas/UssdStep",
+  "type": "object",
+  "required": [
+    "sessionId",
+    "msisdn",
+    "type"
+  ],
+  "properties": {
+    "sessionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "msisdn": {
+      "type": "string",
+      "maxLength": 16
+    },
+    "serviceCode": {
+      "type": "string",
+      "maxLength": 32
+    },
+    "input": {
+      "type": "string",
+      "maxLength": 182
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "BEGIN",
+        "CONTINUE",
+        "END",
+        "ABORT"
+      ]
+    }
+  }
+}

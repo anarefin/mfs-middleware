@@ -32,7 +32,13 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   type: BEGIN|CONTINUE|END|ABORT}` -> `{sessionId, message, flag}` with the MNO's flag values
   (`mw.ussd.mno.<mno>.continue-flag` / `end-flag`, CON / END). Only MNOs with `transport: HTTP`
   are served (others 404 `MW-VAL-003`); MSISDN `01X...`, `8801X...`, `+8801X...` (else 400
-  `MW-VAL-001`), canonical `01XNNNNNNNN` from there on. Behind APISIX routes `ussd-http-<mno>`
+  `MW-VAL-001`), canonical `01XNNNNNNNN` from there on. The body is checked before binding (and
+  before the MNO lookup) against `src/main/resources/derived-schemas/ussd-http-v1-step.json`, derived
+  from the contract's `UssdStep` (`scripts/derived-schemas.sh --write` after changing it, `make
+  contracts-lint` fails on drift), by `filter/BodySchemaAdvice` -> `service/BodySchema` (copied from
+  mw-app-gateway; review A6, APISIX checks no body): duplicate keys, trailing content, non-objects and
+  schema breaks `400 MW-VAL-001` (no request value in a message: `input` may be a PIN), over 64 KiB
+  `413 MW-VAL-BODY_TOO_LARGE`. Behind APISIX routes `ussd-http-<mno>`
   (`/ussd/<mno>`, `deploy/apisix/routes/ussd-http-<mno>.json`: the MNO's ip allow-list
   `USSD_<MNO>_ALLOWED_CIDRS`, basic-auth as consumer `ussd_<mno>` only (another MNO's credential
   403), 4 KiB body cap, quota per MSISDN hash; this service sees no credential).

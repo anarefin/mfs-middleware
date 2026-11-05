@@ -38,7 +38,9 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/UssdScreen" }
         "400":
-          description: Body invalid or the MSISDN is not a Bangladeshi mobile number (MW-VAL-001/002)
+          description: >-
+            Body invalid (not one JSON object with unique keys, or not matching UssdStep; checked by
+            mw-ussd, not at the edge) or the MSISDN is not a Bangladeshi mobile number (MW-VAL-001)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }

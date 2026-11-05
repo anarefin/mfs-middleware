@@ -13,6 +13,8 @@ public final class ErrorCodes {
   public static final String VAL_METHOD = "MW-VAL-004";
   /** Content type not supported. */
   public static final String VAL_MEDIA_TYPE = "MW-VAL-005";
+  /** Body over the service's own cap (the edge's code for the same refusal): 413. */
+  public static final String VAL_BODY_TOO_LARGE = "MW-VAL-BODY_TOO_LARGE";
   /** Unexpected failure; details stay in the log, never in the response. */
   public static final String SYS_INTERNAL = "MW-SYS-001";
 
