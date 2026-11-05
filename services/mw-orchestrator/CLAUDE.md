@@ -263,7 +263,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `mw.internal-auth.*`): a Keycloak client-credentials JWT of realm `services` (JWKS
   `MW_INTERNAL_JWK_SET_URI`, exact issuer `MW_INTERNAL_ISSUER`, default `http://keycloak:8080/realms/services`,
   `aud` must contain `mw-orchestrator`); caller `azp` in `allowed-clients` (mw-portal-api, mw-admin-api),
-  and `org-scoped-clients` (mw-portal-api) must send a non-blank `orgId` on every call. No / bad token
+  and `org-scoped-clients` (mw-portal-api) must send a non-blank `orgId` on every call. Reveal
+  (ticket 36, contract 1.2.0): `GET .../{txnId}?reveal=true` from a `reveal-clients` caller
+  (mw-admin-api only; anyone else sending `reveal` is 403) returns MSISDN-shaped party ids whole
+  (`TransactionViewMapper.masked(p, true)`: only an id `maskPartyId` masks as an MSISDN; accounts,
+  names and error text stay masked). mw-admin-api grants it to compliance-officer/auditor only and
+  audits each reveal; the orchestrator does not audit it itself. No / bad token
   `401 MW-AUTH-001`, other client or portal without orgId `403 MW-AUTH-002` (WARN
   `security.internal_call_denied`); actuator stays open. `InternalApiAuthIT` (test JWKS
   `security/InternalTokens`, registered by `TestInfrastructure`). MSISDN and org id are

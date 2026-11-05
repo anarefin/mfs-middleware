@@ -73,13 +73,22 @@ public class TransactionQueryService {
    */
   @Transactional(readOnly = true)
   public TxnDetail detail(UUID txnId, String orgId) {
+    return detail(txnId, orgId, false);
+  }
+
+  /**
+   * @param reveal party MSISDNs unmasked (ticket 36; only a reveal client gets here, see {@code
+   *     InternalCallerPolicy}, and mw-admin-api audits the operator's reveal)
+   */
+  @Transactional(readOnly = true)
+  public TxnDetail detail(UUID txnId, String orgId, boolean reveal) {
     TransactionRecord rec = transactions.find(txnId).orElseThrow(TransactionQueryService::notFound);
     String role = null;
     if (orgId != null) {
       role = role(rec, orgId).orElseThrow(TransactionQueryService::notFound);
     }
     return new TxnDetail(
-        TransactionViewMapper.toView(rec, role), transactions.timeline(txnId), partnerCalls.of(txnId));
+        TransactionViewMapper.toView(rec, role, reveal), transactions.timeline(txnId), partnerCalls.of(txnId));
   }
 
   /** The org's role in {@code rec}: INITIATOR before PAYEE; empty when it is neither. */

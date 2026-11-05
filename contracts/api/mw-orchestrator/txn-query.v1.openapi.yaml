@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: upay transaction query internal API (mw-orchestrator)
-  version: 1.1.0
+  version: 1.2.0
   description: |
     Internal, read-only API of mw-orchestrator (ticket 35, spec 15.2, 16.2): transaction search
     and the saga timeline. Clients: mw-admin-api (operators) and mw-portal-api (an org sees only
@@ -13,6 +13,9 @@ info:
     filter is matched through the keyed hash `initiator_hash` (HMAC-SHA256 over `<type>:<id>`, key
     in OpenBao), so the raw number is never indexed and an org id never matches an MSISDN. Every
     error is the 5.3 envelope.
+    Reveal (1.2.0, ticket 36, spec 15.4): mw-admin-api may ask for one transaction with
+    `reveal=true`; MSISDN party ids then come whole (account ids, names and free text stay masked).
+    mw-admin-api grants it only to the roles compliance-officer and auditor and audits every reveal.
     Org scope: with `orgId` a transaction belongs to the org when the org initiated it (initiator
     `{ORG, orgId}`) or when it pays a biller or merchant wallet the org collects for (orchestrator
     config `mw.orchestrator.search.org-payees`); each such transaction carries `role` INITIATOR or
@@ -73,11 +76,16 @@ paths:
         CreditWallet, ReverseTransaction, QueryTransaction) in the order they happened;
         `partnerCalls` lists every partner call (PAY, STATUS_QUERY, CALLBACK) with its answer.
         With `orgId`, a transaction that org neither initiated nor is the payee of is 404, exactly
-        like one that does not exist; otherwise the transaction carries the org's `role`. Errors:
-        400 MW-VAL-001 (bad txnId); 404 MW-VAL-003.
+        like one that does not exist; otherwise the transaction carries the org's `role`. With
+        `reveal=true` (reveal clients only, mw-admin-api) MSISDN party ids are not masked. Errors:
+        400 MW-VAL-001 (bad txnId); 403 MW-AUTH-002 (reveal by another client); 404 MW-VAL-003.
       parameters:
         - { name: txnId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: orgId, in: query, schema: { type: string, minLength: 1, maxLength: 64 } }
+        - name: reveal
+          in: query
+          description: MSISDN party ids unmasked (mw-admin-api only, audited there)
+          schema: { type: boolean, default: false }
         - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
       responses:
         "200":
@@ -97,7 +105,8 @@ components:
         Keycloak realm `services` client-credentials JWT (spec 18.2, M3 gate decision). The
         service checks signature, expiry, exact issuer and that `aud` contains `mw-orchestrator`;
         the caller (`azp`) must be mw-portal-api (which must send `orgId` on every call) or mw-admin-api. No or bad token: 401 MW-AUTH-001;
-        another client or mw-portal-api without `orgId`: 403 MW-AUTH-002.
+        another client, mw-portal-api without `orgId`, or `reveal` from a client other than
+        mw-admin-api: 403 MW-AUTH-002.
       flows:
         clientCredentials:
           tokenUrl: http://keycloak:8080/realms/services/protocol/openid-connect/token

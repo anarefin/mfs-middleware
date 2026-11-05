@@ -9,20 +9,48 @@
   "roles": {
     "realm": [
       {
-        "name": "ops-viewer",
-        "description": "Search transactions and audit"
+        "name": "viewer",
+        "description": "Read-only: search transactions, timelines and audit trails (spec 15.4)"
       },
       {
         "name": "ops-maker",
-        "description": "Raise TSQ, reversal and config changes"
+        "description": "Raise manual TSQ, retry, commit/release and reversal requests"
       },
       {
         "name": "ops-checker",
-        "description": "Approve maker requests (second user)"
+        "description": "Approve or reject ops-maker requests (a second user)"
       },
       {
-        "name": "ops-admin",
-        "description": "Manage partners, menus and templates"
+        "name": "ops-emergency",
+        "description": "Emergency changes, post-approved within 24 h"
+      },
+      {
+        "name": "integration-maker",
+        "description": "Raise partner, mapping and routing changes"
+      },
+      {
+        "name": "integration-checker",
+        "description": "Approve or reject integration-maker requests"
+      },
+      {
+        "name": "recon-maker",
+        "description": "Propose reconciliation resolutions"
+      },
+      {
+        "name": "recon-checker",
+        "description": "Approve or reject reconciliation resolutions"
+      },
+      {
+        "name": "compliance-officer",
+        "description": "Compliance: sees unmasked MSISDN/NID (every reveal audited)"
+      },
+      {
+        "name": "security-admin",
+        "description": "Users and roles, access review export"
+      },
+      {
+        "name": "auditor",
+        "description": "Read-only, all modules incl. audit; sees unmasked MSISDN/NID (audited)"
       }
     ]
   },
@@ -59,7 +87,7 @@
         }
       ],
       "realmRoles": [
-        "ops-viewer"
+        "viewer"
       ],
       "requiredActions": [
         "CONFIGURE_TOTP"
@@ -80,7 +108,7 @@
         }
       ],
       "realmRoles": [
-        "ops-viewer",
+        "viewer",
         "ops-maker"
       ],
       "requiredActions": [
@@ -102,7 +130,7 @@
         }
       ],
       "realmRoles": [
-        "ops-viewer",
+        "viewer",
         "ops-checker"
       ],
       "requiredActions": [
@@ -124,8 +152,51 @@
         }
       ],
       "realmRoles": [
-        "ops-viewer",
-        "ops-admin"
+        "viewer",
+        "integration-maker",
+        "security-admin"
+      ],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
+      ]
+    },
+    {
+      "username": "ops-compliance01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Compliance",
+      "lastName": "Test",
+      "email": "ops-compliance01@example.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_OPS_TEST_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "compliance-officer"
+      ],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
+      ]
+    },
+    {
+      "username": "ops-auditor01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Auditor",
+      "lastName": "Test",
+      "email": "ops-auditor01@example.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_OPS_TEST_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "auditor"
       ],
       "requiredActions": [
         "CONFIGURE_TOTP"

@@ -14,8 +14,9 @@ import mfs.mw.orchestrator.util.SensitiveType;
 
 /**
  * Transaction row -> query view (ticket 35). Masking happens here, before anything leaves the
- * service (spec 18.3, 15.4: unmasked views are a later, audited admin feature): party ids by party
- * type, names to the initial. Only the bulk attributes are shown, scrubbed; device and other
+ * service (spec 18.3): party ids by party type, names to the initial. A revealed view (ticket 36,
+ * spec 15.4: for mw-admin-api, which audits it) keeps MSISDN party ids whole; account ids, names and
+ * free text stay masked. Only the bulk attributes are shown, scrubbed; device and other
  * metadata stay inside.
  */
 public final class TransactionViewMapper {
@@ -34,6 +35,11 @@ public final class TransactionViewMapper {
 
   /** @param role the viewing org's role ({@code INITIATOR} / {@code PAYEE}), null when unscoped */
   public static TxnView toView(TransactionRecord rec, String role) {
+    return toView(rec, role, false);
+  }
+
+  /** @param reveal MSISDN party ids unmasked (ticket 36) */
+  public static TxnView toView(TransactionRecord rec, String role, boolean reveal) {
     TxnRequest r = rec.request();
     String currency = r.amount() == null ? Amount.BDT : r.amount().currency();
     return new TxnView(
@@ -48,9 +54,9 @@ public final class TransactionViewMapper {
         r.correlationId(),
         r.amount(),
         rec.feeMinor() == null ? null : new Amount(rec.feeMinor(), currency),
-        masked(r.initiator()),
-        masked(r.debitParty()),
-        masked(r.creditParty()),
+        masked(r.initiator(), reveal),
+        masked(r.debitParty(), reveal),
+        masked(r.creditParty(), reveal),
         r.partner(),
         rec.partnerRef(),
         rec.coreRef(),
@@ -68,11 +74,19 @@ public final class TransactionViewMapper {
   }
 
   static Party masked(Party p) {
+    return masked(p, false);
+  }
+
+  static Party masked(Party p, boolean reveal) {
     if (p == null) {
       return null;
     }
+    String maskedId = MaskingPolicy.maskPartyId(p.type(), p.id());
+    // revealed: only an id masked as an MSISDN goes out whole (accounts stay last 4)
+    boolean msisdn = maskedId != null && maskedId.equals(MaskingPolicy.mask(SensitiveType.MSISDN, p.id()))
+        && !maskedId.equals(MaskingPolicy.mask(SensitiveType.ACCOUNT, p.id()));
     return new Party(
-        p.type(), MaskingPolicy.maskPartyId(p.type(), p.id()), MaskingPolicy.mask(SensitiveType.NAME, p.name()),
+        p.type(), reveal && msisdn ? p.id() : maskedId, MaskingPolicy.mask(SensitiveType.NAME, p.name()),
         p.walletType());
   }
 

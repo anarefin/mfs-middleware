@@ -42,3 +42,5 @@ include:
     env_file: ../platform/.env
   - path: ../../../services/mw-checkout/compose.yml
     env_file: ../platform/.env
+  - path: ../../../services/mw-admin-api/compose.yml
+    env_file: ../platform/.env

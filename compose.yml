@@ -712,6 +712,105 @@ services:
         target: /out
         type: volume
         volume: {}
+  mw-admin-api:
+    build:
+      context: ./services/mw-admin-api
+      dockerfile: Dockerfile
+    cap_drop:
+      - ALL
+    depends_on:
+      mw-admin-api-init:
+        condition: service_completed_successfully
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 384M
+    environment:
+      - DB_URL=${DB_URL:-jdbc:postgresql://postgres:5432/mw}
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      - MW_ADMIN_JWK_SET_URI=${MW_ADMIN_JWK_SET_URI:-http://keycloak:8080/realms/ops/protocol/openid-connect/certs}
+      - MW_ENV=${MW_ENV:-local}
+      - VAULT_ADDR=${VAULT_ADDR:-http://openbao:8200}
+      - VAULT_ENABLED=${VAULT_ENABLED:-true}
+      - JAVA_TOOL_OPTIONS=-XX:+UseSerialGC -Xms32m -Xmx160m -XX:MaxMetaspaceSize=160m
+        -XX:ReservedCodeCacheSize=48m -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1
+        -Xss512k -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError
+      - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=2
+      - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1
+    healthcheck:
+      interval: 10s
+      retries: 3
+      start_period: 30s
+      test:
+        - CMD
+        - bash
+        - -c
+        - 'exec 3<>/dev/tcp/127.0.0.1/8080 && printf ''GET /actuator/health/readiness
+          HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n'' >&3 && grep -q
+          ''"status":"UP"'' <&3'
+      timeout: 3s
+    image: ${MW_ADMIN_API_IMAGE:-mw-admin-api:dev}
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: 10m
+    networks:
+      app: null
+      data: null
+    read_only: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    user: 10001:10001
+    volumes:
+      - read_only: true
+        source: admin-api-approle
+        target: /run/mw/approle
+        type: volume
+        volume: {}
+  mw-admin-api-init:
+    build:
+      context: ./services/mw-admin-api/init
+      dockerfile: Dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+    environment:
+      BAO_ADDR: ${VAULT_ADDR:-http://openbao:8200}
+      INIT_FILE: /openbao/file/dev-init.json
+      KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?run scripts/gen-dev-env.sh
+        (make up does)}
+      OUT_DIR: /out
+      PGDATABASE: ${POSTGRES_DB:-mw}
+      PGHOST: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      PGUSER: ${POSTGRES_USER:-mw_admin}
+    image: ${MW_ADMIN_API_INIT_IMAGE:-mw-admin-api-init:dev}
+    labels:
+      mw.oneshot: "true"
+    networks:
+      app: null
+      data: null
+    restart: 'no'
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - read_only: true
+        source: openbao-data
+        target: /openbao/file
+        type: volume
+        volume: {}
+      - source: admin-api-approle
+        target: /out
+        type: volume
+        volume: {}
   mw-app-gateway:
     build:
       context: ./services/mw-app-gateway
@@ -1768,6 +1867,8 @@ volumes:
     name: mw_adapter-billpay-approle
   adapter-telco-approle:
     name: mw_adapter-telco-approle
+  admin-api-approle:
+    name: mw_admin-api-approle
   apisix-tls:
     name: mw_apisix-tls
   app-gateway-approle:

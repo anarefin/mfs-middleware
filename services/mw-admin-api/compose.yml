@@ -1,0 +1,107 @@
+# This service only (spec 20.2). Included by deploy/compose/<env>/compose.yml, or run on
+# its own with `make up M=mw-admin-api` once the platform project is up.
+#
+# The zone network is named after the platform project (default `mw`, override with
+# COMPOSE_PROJECT_NAME) so the same definition works both when included in the
+# environment project and when started alone. Join only the zones this service needs
+# (18.1): `app` for Kafka, OpenBao, mw-orchestrator and mw-audit-dw (internal query APIs;
+# APISIX reaches this service over `app`), `data` for PostgreSQL and Keycloak (JWKS, tokens).
+# (The platform puts OpenBao on `app` and `ops`; services reach it over `app`.)
+networks:
+  app:
+    name: ${COMPOSE_PROJECT_NAME:-mw}_app
+  data:
+    name: ${COMPOSE_PROJECT_NAME:-mw}_data
+
+volumes:
+  # Same volume as the platform's OpenBao data (dev root token for the init step, read-only).
+  openbao-data:
+    name: ${COMPOSE_PROJECT_NAME:-mw}_openbao-data
+  # role-id / secret-id written by the init step, read by the service (Spring configtree).
+  admin-api-approle:
+
+services:
+  # Idempotent one-shot (init/init.sh): database role admin_api_rw + schema admin, the
+  # database password in OpenBao (secret/mw-admin-api), and the AppRole the service logs
+  # in with. Dev/MVP only. Needs POSTGRES_USER/PASSWORD/DB: `make up` gets them from
+  # deploy/compose/platform/.env through the include's env_file; for `make up M=mw-admin-api`
+  # export POSTGRES_PASSWORD first.
+  mw-admin-api-init:
+    image: ${MW_ADMIN_API_INIT_IMAGE:-mw-admin-api-init:dev}
+    build: ./init
+    restart: "no"
+    labels: { mw.oneshot: "true" } # one-shot: scripts/up.sh does not wait for its health
+    networks: [app, data]
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-mw_admin}
+      PGDATABASE: ${POSTGRES_DB:-mw}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      # Keycloak realm `services` client secret, synced into secret/mw-admin-api (internal API token)
+      KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      BAO_ADDR: ${VAULT_ADDR:-http://openbao:8200}
+      INIT_FILE: /openbao/file/dev-init.json
+      OUT_DIR: /out
+    volumes:
+      - openbao-data:/openbao/file:ro
+      - admin-api-approle:/out
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128M }
+
+  mw-admin-api:
+    image: ${MW_ADMIN_API_IMAGE:-mw-admin-api:dev}
+    build: .
+    restart: unless-stopped
+    networks: [app, data]
+    depends_on:
+      mw-admin-api-init: { condition: service_completed_successfully }
+    volumes:
+      - admin-api-approle:/run/mw/approle:ro
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      MW_ENV: ${MW_ENV:-local}
+      # Secrets come from OpenBao via Spring Cloud Vault (18.4); no secret values here.
+      # On: the DB password comes from secret/mw-admin-api, the AppRole
+      # credentials from the configtree at /run/mw/approle (application.yml).
+      VAULT_ENABLED: ${VAULT_ENABLED:-true}
+      VAULT_ADDR: ${VAULT_ADDR:-http://openbao:8200}
+      # Own schema in the shared PostgreSQL (16.2); credentials from OpenBao, not here.
+      DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/mw}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      # Signing keys of Keycloak realm `ops` (operators, spec 15.1). Keycloak sits on `ops` and, as
+      # the recorded MVP deviation of 18.1, on `data`: the service reaches it over `data` and
+      # joins no ops network (the ops subnet may call the APISIX Admin API).
+      MW_ADMIN_JWK_SET_URI: ${MW_ADMIN_JWK_SET_URI:-http://keycloak:8080/realms/ops/protocol/openid-connect/certs}
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+    healthcheck:
+      # Readiness (20.1); the image has bash but no curl or wget.
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/8080 &&
+          printf 'GET /actuator/health/readiness HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"status":"UP"' <&3
+      interval: 10s
+      timeout: 3s
+      start_period: 30s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

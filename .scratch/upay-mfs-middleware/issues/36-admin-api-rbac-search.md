@@ -8,7 +8,23 @@
 
 **Status:** ready-for-agent
 
-- [ ] Role tests per endpoint, including viewer read-only
-- [ ] An unmasked reveal by an allowed role writes an audit event; other roles get masked values
-- [ ] API test: search by txnId and by MSISDN returns the txn with timeline and audit
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] Role tests per endpoint, including viewer read-only
+- [x] An unmasked reveal by an allowed role writes an audit event; other roles get masked values
+- [x] API test: search by txnId and by MSISDN returns the txn with timeline and audit
+- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR (deferred to milestone gate)
+
+**Notes (implementation):**
+
+- New module `services/mw-admin-api` (package `mfs.mw.admin.api`, schema `admin`), contract
+  `api/mw-admin-api/admin.v1.openapi.yaml`: `GET /admin/v1/transactions` and
+  `GET /admin/v1/transactions/{txnId}[?reveal=true]` -> `{transaction, timeline, partnerCalls, auditTrail, revealed}`.
+  Tests: `AdminTransactionApiIT` (roles per endpoint incl. viewer/auditor read-only on every write path,
+  reveal audit, search by txnId and MSISDN), `ApiContractsTest`, `ProducedContractsTest`, `InternalClientAuthTest`.
+- mw-orchestrator `txn-query.v1` 1.2.0: `?reveal=true` on the detail, for `reveal-clients` (mw-admin-api)
+  only; MSISDN party ids whole, everything else stays masked (the query API masked everything, so an
+  unmasked reveal needs it).
+- Keycloak realm `ops` now carries the 15.4 roles (dev users viewer01, maker01, checker01, admin01,
+  compliance01, auditor01); MFA stays the realm's (password + TOTP). APISIX route `admin-v1`.
+- Checked here: `./gradlew test integrationTest` (mw-orchestrator), `./gradlew check` (mw-admin-api),
+  `make test-scripts`, `make contracts-lint`, `make check-isolation M=mw-admin-api`, `make compose-check`.
+  No e2e (ops tokens need TOTP enrolment; the e2e harness has no TOTP step yet).

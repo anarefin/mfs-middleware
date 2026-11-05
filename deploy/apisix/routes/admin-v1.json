@@ -1,0 +1,48 @@
+{
+  "name": "admin-v1",
+  "desc": "Admin API v1 (spec 15, ticket 36): ops realm bearer JWT via JWKS (mw-admin-api checks it again with the spec 15.4 roles), small body cap, quota per token subject. Called server-side by mw-admin-ui only",
+  "uri": "/admin/v1/*",
+  "methods": ["GET", "POST"],
+  "plugins": {
+    "client-control": {
+      "max_body_size": 1048576
+    },
+    "openid-connect": {
+      "discovery": "http://keycloak:8080/realms/ops/.well-known/openid-configuration",
+      "client_id": "mw-admin-ui",
+      "bearer_only": true,
+      "use_jwks": true,
+      "realm": "ops",
+      "iat_slack": 10,
+      "set_access_token_header": false,
+      "set_userinfo_header": false,
+      "set_id_token_header": false
+    },
+    "serverless-pre-function": {
+      "phase": "access",
+      "functions": ["@lua:lua/consumer-from-jwt.lua"]
+    },
+    "limit-count": {
+      "count": 300,
+      "time_window": 60,
+      "key_type": "var",
+      "key": "mw_consumer",
+      "group": "admin-v1",
+      "rejected_code": 429,
+      "show_limit_quota_header": true,
+      "policy": "redis",
+      "redis_host": "valkey",
+      "redis_port": 6379,
+      "redis_password": "$env://VALKEY_PASSWORD",
+      "redis_database": 0,
+      "redis_timeout": 1000,
+      "allow_degradation": true
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": { "connect": 5, "send": 30, "read": 30 },
+    "nodes": { "mw-admin-api:8080": 1 }
+  }
+}

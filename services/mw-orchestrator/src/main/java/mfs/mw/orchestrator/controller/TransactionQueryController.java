@@ -53,7 +53,9 @@ public class TransactionQueryController {
 
   @GetMapping("/{txnId}")
   public TxnDetail detail(
-      @PathVariable UUID txnId, @RequestParam(required = false) @Size(min = 1, max = 64) String orgId) {
-    return queries.detail(txnId, orgId);
+      @PathVariable UUID txnId,
+      @RequestParam(required = false) @Size(min = 1, max = 64) String orgId,
+      @RequestParam(defaultValue = "false") boolean reveal) {
+    return queries.detail(txnId, orgId, reveal);
   }
 }

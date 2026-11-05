@@ -130,6 +130,12 @@ portal_no_token() { call GET /portal/org/v1/bulk/batches && envelope 401 MW-AUTH
 check "portal: no bearer token -> 401 MW-AUTH-001 envelope" portal_no_token
 portal_wrong_realm() { call GET /portal/org/v1/bulk/batches -H "Authorization: Bearer $customer" && envelope 401 MW-AUTH-001; }
 check "portal: realm customers token -> 401 MW-AUTH-001 envelope" portal_wrong_realm
+
+# admin route (ticket 36): realm ops only (ops users need TOTP, so only the refusals are checked here)
+admin_no_token() { call GET /admin/v1/transactions && envelope 401 MW-AUTH-001; }
+check "admin: no bearer token -> 401 MW-AUTH-001 envelope" admin_no_token
+admin_wrong_realm() { call GET /admin/v1/transactions -H "Authorization: Bearer $customer" && envelope 401 MW-AUTH-001; }
+check "admin: realm customers token -> 401 MW-AUTH-001 envelope" admin_wrong_realm
 tampered_token() { # customer01's token with merchant01's signature: bad signature
   call GET /app/v1/transactions/x -H "Authorization: Bearer ${customer%.*}.${merchant##*.}" && envelope 401 MW-AUTH-001
 }

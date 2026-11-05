@@ -1,0 +1,12 @@
+# Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
+# `#<Msg>` names one message type of a multi-type topic, e.g.
+#   events/mw-orchestrator/core.command.v1.schema.json#HoldFunds
+# `make contracts-lint` checks every entry exists; `make verify-changed` uses this list to pick the
+# modules a contract change affects. The chassis's dto/ConfigChangedEvent is not listed: this
+# service does not publish mw.config.changed.v1 yet (ticket 37/38).
+produces:
+  events: [events/mw-audit-dw/mw.audit.event.v1.schema.json]
+  apis:   [api/mw-admin-api/admin.v1.openapi.yaml]
+consumes:
+  events: []
+  apis:   [api/mw-orchestrator/txn-query.v1.openapi.yaml, api/mw-audit-dw/audit-query.v1.openapi.yaml]

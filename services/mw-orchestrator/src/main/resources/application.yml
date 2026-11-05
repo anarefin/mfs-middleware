@@ -159,6 +159,8 @@ mw:
     audience: mw-orchestrator
     allowed-clients: mw-portal-api,mw-admin-api
     org-scoped-clients: mw-portal-api
+    # may ask for unmasked MSISDNs (?reveal=true on the detail; ticket 36, audited by mw-admin-api)
+    reveal-clients: mw-admin-api
   orchestrator:
     # Saga deadlines (spec 7.2), command lifetime (6.3), idempotency TTL (7.3), timer sweep (7.1).
     validating-timeout: 5s

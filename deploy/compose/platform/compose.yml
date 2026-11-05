@@ -118,11 +118,11 @@ services:
     #   Hikari spring.datasource.hikari.maximum-pool-size, set in each service's application.yml:
     #     10 each: mw-orchestrator, mw-app-gateway, mw-checkout                          =  30
     #      5 each: adapter-telco/-billpay/-bank, notify, core-mock, audit-dw, portal-api,
-    #              ussd, simulators                                                     =  45
+    #              ussd, simulators, admin-api                                          =  50
     #   audit-dw extra pools: audit-search 4, chain-verify reader 1                      =   5
     #   Flyway as a separate owner role at start (audit-dw), short-lived                 =   1
     #   Keycloak (KC_DB_POOL_MAX_SIZE in env/keycloak.env)                               =  20
-    #   total ~100, so 300 leaves room for psql sessions, init jobs and replicas of a service.
+    #   total ~105, so 300 leaves room for psql sessions, init jobs and replicas of a service.
     # Production sizes max_connections the same way per instance (pool x replicas, summed).
     command: ["postgres", "-c", "synchronous_commit=on", "-c", "max_connections=300"]
     volumes:
