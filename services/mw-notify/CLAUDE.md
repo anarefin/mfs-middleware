@@ -40,6 +40,18 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   receiverName, senderName -> initial; pin -> ****; a value already containing `****` is kept).
   `sender_id` per template (default `upay`). EMAIL templates: `subject` and `body` (text part)
   required, `html_body` optional (HTML part, params HTML-escaped, `TemplateRenderer.renderHtml`).
+- Published templates (ticket 39, spec 10.3, 20.4): mw-admin-api's approved versions arrive on
+  `mw.config.changed.v1` (compacted; `route/ConfigChangedRoute`, a `RetryTopicRouteBuilder`, group
+  mw-notify, retry topics then DLQ; `messaging/ConfigChangedListener`, tombstones skipped) and
+  `service/TemplatePublisher` takes configType TEMPLATE UPSERTs (value `{code, channel, locale,
+  version, body, subject?, htmlBody?, senderId?, validFrom}`; other types / DELETE ignored): one
+  insert of the next ACTIVE version (numbered here; the admin version in
+  `notify.template.config_version`, V10, unique per template: redelivery stored once, an older one
+  ignored) valid from `validFrom`. Rendering takes the highest ACTIVE version valid now, so the swap
+  is atomic and the next message uses it. A value it could not render (no body, EMAIL without
+  subject, a placeholder that is not a plain `{{name}}`) is logged `notify.template.rejected` and
+  dropped. Events `notify.template.published`, `notify.template.publish_skipped`
+  (`TemplatePublisherIT`, on test-only codes `IT_TPL_*`).
 - Encoding (`service/SmsEncoder`): GSM-7 (GSM 03.38 + extension table, unpacked, data_coding 0)
   when every character fits, else UCS-2 (data_coding 8); one SMS up to 160 septets / 70 units,
   else parts of 153 / 67 with the UDH `05 00 03 ref total seq` (esm_class UDHI); escape and
@@ -84,8 +96,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 ## Contracts used
 
 - `events/mw-orchestrator/mw.txn.status.v1.schema.json` (own subset type `dto/TxnStatusEvent`).
-- Machine-readable list: `contracts.yml` (produces `mw.notify.status.v1`; consumes `mw.notify.request.v1`
-  and `mw.txn.status.v1`; no APIs), checked by `make contracts-lint`, tested by
+- `events/mw-admin-api/mw.config.changed.v1.schema.json` (ticket 39; own type `dto/ConfigChangedEvent`).
+- Machine-readable list: `contracts.yml` (produces `mw.notify.status.v1`; consumes `mw.notify.request.v1`,
+  `mw.txn.status.v1` and `mw.config.changed.v1`; no APIs), checked by `make contracts-lint`, tested by
   `contracts/ProducedContractsTest` (events built by `StatusEvents`) / `ConsumedContractsTest` (samples
   through the real listeners); no Spring, no Docker.
 

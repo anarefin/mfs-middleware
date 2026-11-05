@@ -86,7 +86,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   (stack: the generated `USSD_<MNO>_GATEWAY_SECRET`, written to `secret/mw-simulators` by
   `init/init.sh`; an MNO without one posts without credentials and APISIX answers 401)
   and stops when mw-ussd answers the end flag (`sim.ussd-gateway.end-flag`, END); answers
-  `{sessionId, screens: [{status, message, flag}], ended}`. Not a partner in `sim.partners` (no
+  `{sessionId, screens: [{status, message, flag}], ended}`. `resume: true` with a `sessionId` and
+  inputs (HTTP mode only, ticket 39) continues a session an earlier call left open: no BEGIN, one
+  CONTINUE per input (the e2e suite plays a session that is running when a menu version goes live). Not a partner in `sim.partners` (no
   recording: inputs carry PINs).
 - USSD gateway simulator, SMPP mode (ticket 27, `client/UssdSmppGateway`): SMPP 3.4 server on
   `sim.ussd-gateway.smpp.port` (2776, internal network; `sim.ussd-gateway.smpp.enabled`, off in

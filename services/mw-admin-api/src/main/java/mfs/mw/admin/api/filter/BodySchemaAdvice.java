@@ -7,6 +7,8 @@ import java.lang.reflect.Type;
 import java.util.Map;
 import mfs.mw.admin.api.dto.ChangeRequestBody;
 import mfs.mw.admin.api.dto.RejectBody;
+import mfs.mw.admin.api.dto.TemplateChangeBody;
+import mfs.mw.admin.api.dto.UssdMenuChangeBody;
 import mfs.mw.admin.api.exception.ErrorCodes;
 import mfs.mw.admin.api.exception.MwException;
 import mfs.mw.admin.api.service.BodySchema;
@@ -30,8 +32,11 @@ import tools.jackson.databind.json.JsonMapper;
 @ControllerAdvice
 public class BodySchemaAdvice extends RequestBodyAdviceAdapter {
 
-  /** JSON bodies here are a few hundred bytes; the edge caps admin bodies at 1 MiB. */
-  static final int MAX_BODY = 64 * 1024;
+  /**
+   * Most JSON bodies here are a few hundred bytes, a USSD menu tree some 15 KiB (ticket 39); the
+   * edge caps admin bodies at 1 MiB.
+   */
+  static final int MAX_BODY = 256 * 1024;
 
   private final Map<Type, BodySchema> schemas;
 
@@ -39,7 +44,9 @@ public class BodySchemaAdvice extends RequestBodyAdviceAdapter {
     this.schemas =
         Map.of(
             ChangeRequestBody.class, new BodySchema(json, BodySchema.CHANGE_REQUEST),
-            RejectBody.class, new BodySchema(json, BodySchema.REJECT));
+            RejectBody.class, new BodySchema(json, BodySchema.REJECT),
+            UssdMenuChangeBody.class, new BodySchema(json, BodySchema.USSD_MENU_CHANGE),
+            TemplateChangeBody.class, new BodySchema(json, BodySchema.TEMPLATE_CHANGE));
   }
 
   @Override

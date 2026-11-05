@@ -107,6 +107,18 @@ Only APISIX is published, so every call goes through it:
   admin audit trail of the transaction records the <APPROVED|REJECTED> change request" (via
   mw-audit-dw). A TOPUP lands in MANUAL_REVIEW with "the core rejects the next CommitHold with
   reason INJECTED_REJECT"; the forced commit is a fresh core command, so it is not refused again.
+- Menus and templates (`features/admin-content.feature`, `@admin @mw-admin-api @mw-ussd @mw-notify`,
+  ticket 39): `{token}` is a random 4-digit marker per scenario (`ScenarioState.token`).
+  "<maker> proposes the main USSD menu for <mno> with the title "..."" (fixture
+  `menus/main-e2e.json`, a copy of mw-ussd's seed, main screen title replaced in bn and en),
+  "<maker> proposes the <SMS|EMAIL> template <CODE> in <bn|en> as "..."", then the approve steps
+  above. "<msisdn> has a USSD session open on <mno> after dialling <code>" leaves a session open;
+  "the open USSD session continues with "..."" resumes it (simulator `resume: true`, no new BEGIN);
+  "the open USSD session shows the English main menu without "..."", "a new USSD session of <msisdn>
+  on <mno> starts with "..." within N seconds" (re-dials until it does), "the services have had N
+  seconds to take the published version", "<msisdn> gets an SMS starting with "..." within N
+  seconds". The menu scenario uses bl (no other feature walks it); the template scenario restores
+  the seeded English TXN_P2P_RECEIVED text at the end.
 - Notifications (`features/notify.feature`, `@p2p @notify`, ticket 24): "<msisdn> gets the SMS
   \"...\"" waits (30 s) for that exact text at the SMSC simulator with a DELIVRD receipt
   (`{txnId}` stands for the scenario's transaction); "the SMS to <msisdn> about the transaction

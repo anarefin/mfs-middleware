@@ -79,6 +79,11 @@ public class SecurityConfig {
                     .requestMatchers(
                         HttpMethod.POST, "/admin/v1/change-requests/*/approve", "/admin/v1/change-requests/*/reject")
                     .access(roles(r -> r.stream().anyMatch(AdminRole.TXN_CHECKER::contains)))
+                    // USSD menus and notify templates (ticket 39); approve/reject above, the service checks again
+                    .requestMatchers(
+                        HttpMethod.POST, "/admin/v1/ussd-menus/*/change-requests",
+                        "/admin/v1/notify-templates/*/*/*/change-requests")
+                    .access(roles(r -> r.stream().anyMatch(AdminRole.CONTENT_MAKER::contains)))
                     .requestMatchers("/admin/**")
                     .access(roles(r -> !r.isEmpty()))
                     .anyRequest()

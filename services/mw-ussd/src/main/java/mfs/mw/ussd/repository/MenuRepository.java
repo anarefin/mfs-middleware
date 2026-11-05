@@ -61,6 +61,31 @@ public class MenuRepository {
         == 1;
   }
 
+  /**
+   * The highest admin version (ticket 39) stored for {@code menuId}; empty when none was published
+   * through the admin console.
+   */
+  public Optional<Long> latestConfigVersion(String menuId) {
+    return Optional.ofNullable(
+        jdbc.queryForObject("SELECT max(config_version) FROM menu WHERE menu_id = ?", Long.class, menuId));
+  }
+
+  /** The number a newly published version of {@code menuId} gets: above every stored one, at least {@code floor}. */
+  public int nextPublishedVersion(String menuId, int floor) {
+    Integer max = jdbc.queryForObject("SELECT max(version) FROM menu WHERE menu_id = ?", Integer.class, menuId);
+    return Math.max(max == null ? 1 : max + 1, floor);
+  }
+
+  /** Stores a version published by the admin console with its admin version. */
+  public void insertPublished(String menuId, int version, long configVersion, String tree) {
+    jdbc.update(
+        "INSERT INTO menu (menu_id, version, tree, config_version) VALUES (?, ?, ?::jsonb, ?)",
+        menuId,
+        version,
+        tree,
+        configVersion);
+  }
+
   /** Schedules a version to go live for an MNO. */
   public void activate(String mno, String menuId, int version, Instant goLiveAt) {
     jdbc.update(

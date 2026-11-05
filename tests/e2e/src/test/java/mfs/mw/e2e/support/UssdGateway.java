@@ -28,8 +28,20 @@ public final class UssdGateway {
 
   /** Dials {@code serviceCode} as {@code msisdn} on {@code mno} and sends {@code inputs} in order. */
   public static Session dial(String mno, String msisdn, String serviceCode, List<String> inputs) {
+    return play(mno, msisdn, serviceCode, null, inputs);
+  }
+
+  /** Continues the open session {@code sessionId} with {@code inputs} (HTTP mode; no new dial-in; ticket 39). */
+  public static Session resume(String mno, String msisdn, String serviceCode, String sessionId, List<String> inputs) {
+    return play(mno, msisdn, serviceCode, sessionId, inputs);
+  }
+
+  private static Session play(String mno, String msisdn, String serviceCode, String sessionId, List<String> inputs) {
     ObjectNode body = Http.JSON.createObjectNode();
     body.put("mno", mno).put("msisdn", msisdn).put("serviceCode", serviceCode);
+    if (sessionId != null) {
+      body.put("sessionId", sessionId).put("resume", true);
+    }
     inputs.forEach(body.putArray("inputs")::add);
     Http.Response r =
         Http.postJson(

@@ -2,6 +2,8 @@ package mfs.mw.ussd.contracts;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -9,7 +11,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
+import mfs.mw.ussd.dto.ConfigChangedEvent;
 import mfs.mw.ussd.dto.StatusMessage;
+import mfs.mw.ussd.messaging.ConfigChangedListener;
+import mfs.mw.ussd.service.MenuPublisher;
+import org.apache.camel.Exchange;
+import org.apache.camel.impl.DefaultCamelContext;
+import org.apache.camel.support.DefaultExchange;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
@@ -30,7 +39,24 @@ class ConsumedContractsTest {
 
   /** Per manifest entry: read one sample into the listener's DTO and check what the service uses. */
   static final Map<String, Consumer<String>> READERS =
-      Map.of("events/mw-orchestrator/mw.txn.status.v1.schema.json", ConsumedContractsTest::readStatus);
+      Map.of(
+          "events/mw-orchestrator/mw.txn.status.v1.schema.json", ConsumedContractsTest::readStatus,
+          "events/mw-admin-api/mw.config.changed.v1.schema.json", ConsumedContractsTest::readConfigChange);
+
+  /** Through the real listener ({@code ConfigChangedListener}); a USSD_MENU upsert carries a menu tree. */
+  static void readConfigChange(String json) {
+    MenuPublisher publisher = mock(MenuPublisher.class);
+    Exchange exchange = new DefaultExchange(new DefaultCamelContext());
+    exchange.getMessage().setBody(json);
+    new ConfigChangedListener(publisher, JSON).handle(exchange);
+    ArgumentCaptor<ConfigChangedEvent> captor = ArgumentCaptor.forClass(ConfigChangedEvent.class);
+    verify(publisher).onConfigChanged(captor.capture());
+    ConfigChangedEvent e = captor.getValue();
+    assertThat(e.configKey()).isNotBlank();
+    if (e.configType() == ConfigChangedEvent.ConfigType.USSD_MENU && e.change() == ConfigChangedEvent.Change.UPSERT) {
+      assertThat(e.value()).containsKeys("menuId", "menu", "activations");
+    }
+  }
 
   static void readStatus(String json) {
     StatusMessage status = JSON.readValue(json, StatusMessage.class);

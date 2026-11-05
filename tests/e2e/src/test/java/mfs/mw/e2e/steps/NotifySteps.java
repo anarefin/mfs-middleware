@@ -41,6 +41,17 @@ public class NotifySteps {
     assertThat(sms.dlrStatus()).isEqualTo("DELIVRD");
   }
 
+  /** Ticket 39: a text the scenario published ({@code {token}} = its marker), sent and delivered. */
+  @Then("{word} gets an SMS starting with {string} within {int} seconds")
+  public void getsAnSmsStartingWith(String msisdn, String prefix, int seconds) {
+    String text = prefix.replace("{token}", state.token);
+    List<Smsc.Sms> got =
+        Waits.until(() -> Smsc.messagesTo(msisdn).stream().filter(m -> m.text().startsWith(text)).toList(),
+            l -> !l.isEmpty() && l.getFirst().dlrStatus() != null, Duration.ofSeconds(seconds));
+    assertThat(got).as("SMS to %s starting %s (received: %s)", msisdn, text, Smsc.messagesTo(msisdn)).isNotEmpty();
+    assertThat(got.getFirst().dlrStatus()).isEqualTo("DELIVRD");
+  }
+
   @Then("the SMS to {word} about the transaction was sent as {word} in {int} parts")
   public void sentAs(String msisdn, String encoding, int parts) {
     String txnId = state.txnId();

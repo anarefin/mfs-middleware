@@ -65,7 +65,7 @@ class UssdGatewayServiceTest {
   @Test
   void dialsThenSendsEachInputUntilTheSessionEnds() {
     UssdDialResult r =
-        service().dial(new UssdDialRequest("robi", "8801712345678", "*268#", "s-1", List.of("1", "01812345678", "never sent")));
+        service().dial(new UssdDialRequest("robi", "8801712345678", "*268#", "s-1", List.of("1", "01812345678", "never sent"), false));
 
     assertThat(r.sessionId()).isEqualTo("s-1");
     assertThat(r.ended()).isTrue();
@@ -81,11 +81,24 @@ class UssdGatewayServiceTest {
 
   @Test
   void aSessionWithoutIdGetsARandomOneAndStaysOpenWhenInputsRunOut() {
-    UssdDialResult r = service().dial(new UssdDialRequest("robi", "01712345678", null, null, List.of()));
+    UssdDialResult r = service().dial(new UssdDialRequest("robi", "01712345678", null, null, List.of(), false));
 
     assertThat(r.sessionId()).startsWith("sim-");
     assertThat(r.ended()).isFalse();
     assertThat(r.screens()).hasSize(1);
+  }
+
+  /** Ticket 39: a session left open by an earlier call is continued without a new BEGIN. */
+  @Test
+  void aResumedSessionSendsOnlyItsInputs() {
+    UssdDialResult r = service().dial(new UssdDialRequest("robi", "01712345678", "*268#", "s-4", List.of("9"), true));
+
+    assertThat(r.sessionId()).isEqualTo("s-4");
+    assertThat(received).singleElement().satisfies(s -> {
+      assertThat(s.path("type").asString()).isEqualTo("CONTINUE");
+      assertThat(s.path("input").asString()).isEqualTo("9");
+    });
+    assertThat(r.screens()).extracting(s -> s.message()).containsExactly("screen 1");
   }
 
   /** Ticket 26 fix: APISIX's ussd-http-<mno> route takes basic-auth as consumer ussd_<mno>. */
@@ -93,7 +106,7 @@ class UssdGatewayServiceTest {
   void everyStepCarriesTheMnosBasicAuthCredential() {
     env.setProperty("sim.ussd-gateway.credentials.robi", "fake-robi-secret");
 
-    service().dial(new UssdDialRequest("robi", "01712345678", "*268#", "s-2", List.of("1", "2")));
+    service().dial(new UssdDialRequest("robi", "01712345678", "*268#", "s-2", List.of("1", "2"), false));
 
     String expected = "Basic " + java.util.Base64.getEncoder()
         .encodeToString("ussd-robi:fake-robi-secret".getBytes(StandardCharsets.UTF_8));
@@ -102,7 +115,7 @@ class UssdGatewayServiceTest {
 
   @Test
   void anMnoWithoutACredentialIsPlayedWithoutAuthorization() {
-    service().dial(new UssdDialRequest("robi", "01712345678", "*268#", "s-3", List.of()));
+    service().dial(new UssdDialRequest("robi", "01712345678", "*268#", "s-3", List.of(), false));
 
     assertThat(authorizations).containsExactly("null");
   }
@@ -110,7 +123,7 @@ class UssdGatewayServiceTest {
   @Test
   void anUnreachableUssdServiceIsReportedNotThrown() {
     server.stop(0);
-    UssdDialResult r = service().dial(new UssdDialRequest("robi", "01712345678", null, null, List.of("1")));
+    UssdDialResult r = service().dial(new UssdDialRequest("robi", "01712345678", null, null, List.of("1"), false));
     assertThat(r.screens()).singleElement().satisfies(s -> assertThat(s.status()).isEqualTo(-1));
     assertThat(r.ended()).isFalse();
   }

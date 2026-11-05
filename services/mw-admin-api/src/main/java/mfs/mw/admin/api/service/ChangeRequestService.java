@@ -62,6 +62,7 @@ public class ChangeRequestService {
   static final String REQUEST_TOPIC = "mw.txn.request.v1";
 
   private final ChangeRequestRepository requests;
+  private final ContentChangeService content;
   private final OrchestratorQueryClient orchestrator;
   private final OutboxWriter outbox;
   private final TransactionTemplate tx;
@@ -70,12 +71,14 @@ public class ChangeRequestService {
 
   public ChangeRequestService(
       ChangeRequestRepository requests,
+      ContentChangeService content,
       OrchestratorQueryClient orchestrator,
       OutboxWriter outbox,
       TransactionTemplate tx,
       ChangeRequestProperties props,
       Clock clock) {
     this.requests = requests;
+    this.content = content;
     this.orchestrator = orchestrator;
     this.outbox = outbox;
     this.tx = tx;
@@ -107,7 +110,7 @@ public class ChangeRequestService {
             throw new MwException(ErrorCodes.VAL_REQUEST_OPEN, "This transaction already has an open change request")
                 .withStatus(HttpStatus.CONFLICT);
           }
-          audit(ChangeRequestMapper.created(cr, correlationId()));
+          audit(cr, ChangeRequestMapper.created(cr, correlationId()));
         });
     logDecision("admin.change_request.created", cr, maker.username());
     return ChangeRequestMapper.view(cr);
@@ -117,6 +120,9 @@ public class ChangeRequestService {
 
   public ChangeRequestView approve(Operator checker, UUID id) {
     ChangeRequest cr = decidable(checker, id);
+    if (ContentChangeService.handles(cr.resourceType())) {
+      return approveContent(checker, cr);
+    }
     AdminTxn txn = transaction(UUID.fromString(cr.resourceId()));
     TxnActionType action = TxnActionType.valueOf(cr.action());
     if (target(action, txn).isEmpty()) {
@@ -148,10 +154,26 @@ public class ChangeRequestService {
             throw decided();
           }
           send.run();
-          audit(ChangeRequestMapper.approved(cr, checker.username(), sentAs, correlationId, now));
+          audit(cr, ChangeRequestMapper.approved(cr, checker.username(), sentAs, correlationId, now));
         });
     logDecision("admin.change_request.approved", cr, checker.username());
     return found(id);
+  }
+
+  /** A USSD menu or template version (ticket 39): approved and published in one transaction. */
+  private ChangeRequestView approveContent(Operator checker, ChangeRequest cr) {
+    Instant now = clock.instant();
+    String correlationId = correlationId();
+    tx.executeWithoutResult(
+        s -> {
+          if (!requests.decide(cr.id(), ChangeRequest.Status.APPROVED, checker.username(), checker.subject(), null, cr.payload(), now)) {
+            throw decided();
+          }
+          String sentAs = content.publish(cr, checker.username(), correlationId, now);
+          audit(cr, ChangeRequestMapper.approved(cr, checker.username(), sentAs, correlationId, now));
+        });
+    logDecision("admin.change_request.approved", cr, checker.username());
+    return found(cr.id());
   }
 
   public ChangeRequestView reject(Operator checker, UUID id, String reason) {
@@ -162,7 +184,10 @@ public class ChangeRequestService {
           if (!requests.decide(id, ChangeRequest.Status.REJECTED, checker.username(), checker.subject(), reason, cr.payload(), now)) {
             throw decided();
           }
-          audit(ChangeRequestMapper.rejected(cr, checker.username(), reason, correlationId(), now));
+          if (ContentChangeService.handles(cr.resourceType())) {
+            content.decided(cr, ChangeRequest.Status.REJECTED, checker.username(), now);
+          }
+          audit(cr, ChangeRequestMapper.rejected(cr, checker.username(), reason, correlationId(), now));
         });
     logDecision("admin.change_request.rejected", cr, checker.username());
     return found(id);
@@ -217,10 +242,11 @@ public class ChangeRequestService {
 
   /** A request this checker may decide now; an expired one is marked EXPIRED first, then refused. */
   private ChangeRequest decidable(Operator checker, UUID id) {
-    if (!checker.hasAny(AdminRole.TXN_CHECKER)) {
-      throw OperatorResolver.forbidden("Deciding a change request needs the ops-checker role");
-    }
     ChangeRequest cr = requests.find(id).orElseThrow(ChangeRequestService::notFound);
+    boolean contentRequest = ContentChangeService.handles(cr.resourceType());
+    if (!checker.hasAny(contentRequest ? AdminRole.CONTENT_CHECKER : AdminRole.TXN_CHECKER)) {
+      throw OperatorResolver.forbidden("Deciding this change request needs the ops-checker role");
+    }
     if (cr.makerSub().equals(checker.subject()) || cr.makerId().equals(checker.username())) {
       log.atWarn()
           .addKeyValue("event", "admin.change_request.own_decision_refused")
@@ -246,7 +272,10 @@ public class ChangeRequestService {
 
   private void expireOne(ChangeRequest cr, Instant now) {
     if (requests.decide(cr.id(), ChangeRequest.Status.EXPIRED, null, null, null, cr.payload(), now)) {
-      audit(ChangeRequestMapper.expired(cr, correlationId(), now));
+      if (ContentChangeService.handles(cr.resourceType())) {
+        content.decided(cr, ChangeRequest.Status.EXPIRED, null, now);
+      }
+      audit(cr, ChangeRequestMapper.expired(cr, correlationId(), now));
       logDecision("admin.change_request.expired", cr, null);
     }
   }
@@ -268,8 +297,11 @@ public class ChangeRequestService {
     }
   }
 
-  private void audit(AuditEvent e) {
-    outbox.append(AUDIT_TOPIC, e.txnId(), new EventMetadata(e.correlationId(), e.txnId(), e.auditId(), 1), e);
+  /** Key and mw-txn-id the txnId; a content request has none: key its resource, mw-txn-id its id. */
+  private void audit(ChangeRequest cr, AuditEvent e) {
+    String key = e.txnId() == null ? e.resource() : e.txnId();
+    String txnHeader = e.txnId() == null ? cr.id().toString() : e.txnId();
+    outbox.append(AUDIT_TOPIC, key, new EventMetadata(e.correlationId(), txnHeader, e.auditId(), 1), e);
   }
 
   private ChangeRequestView found(UUID id) {
@@ -290,7 +322,7 @@ public class ChangeRequestService {
   private static void logDecision(String event, ChangeRequest cr, String checker) {
     log.atInfo()
         .addKeyValue("event", event)
-        .addKeyValue("txnId", cr.resourceId())
+        .addKeyValue(ChangeRequest.TRANSACTION.equals(cr.resourceType()) ? "txnId" : "resourceId", cr.resourceId())
         .addKeyValue("changeRequestId", cr.id().toString())
         .addKeyValue("action", cr.action())
         .addKeyValue("makerId", cr.makerId())

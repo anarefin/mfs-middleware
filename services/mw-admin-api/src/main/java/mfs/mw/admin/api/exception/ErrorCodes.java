@@ -40,5 +40,10 @@ public final class ErrorCodes {
   /** The change request was already approved or rejected: HTTP 409. */
   public static final String VAL_REQUEST_DECIDED = "MW-VAL-033";
 
+  // --- USSD menus and notify templates (ticket 39) ---
+
+  /** A proposed menu tree or template is not usable (details name each problem): HTTP 400. */
+  public static final String VAL_CONTENT_INVALID = "MW-VAL-040";
+
   private ErrorCodes() {}
 }

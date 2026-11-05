@@ -11,11 +11,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
+import mfs.mw.notify.dto.ConfigChangedEvent;
 import mfs.mw.notify.dto.NotificationRequest;
 import mfs.mw.notify.dto.TxnStatusEvent;
+import mfs.mw.notify.messaging.ConfigChangedListener;
 import mfs.mw.notify.messaging.NotifyRequestListener;
 import mfs.mw.notify.messaging.TxnStatusListener;
 import mfs.mw.notify.service.NotificationService;
+import mfs.mw.notify.service.TemplatePublisher;
 import mfs.mw.notify.service.TxnStatusService;
 import org.apache.camel.Exchange;
 import org.apache.camel.impl.DefaultCamelContext;
@@ -45,6 +48,7 @@ class ConsumedContractsTest {
   static final JsonMapper JSON = JsonMapper.builder().build();
   static final String REQUEST = "events/mw-notify/mw.notify.request.v1.schema.json";
   static final String TXN_STATUS = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
+  static final String CONFIG = "events/mw-admin-api/mw.config.changed.v1.schema.json";
 
   /** Invalid samples the listener refuses (under contracts/). */
   static final List<String> REJECTED_BY_LISTENER =
@@ -72,6 +76,14 @@ class ConsumedContractsTest {
     return captor.getValue();
   }
 
+  static ConfigChangedEvent readConfig(String body) {
+    TemplatePublisher service = mock(TemplatePublisher.class);
+    new ConfigChangedListener(service, JSON).handle(exchange(body));
+    ArgumentCaptor<ConfigChangedEvent> captor = ArgumentCaptor.forClass(ConfigChangedEvent.class);
+    verify(service).onConfigChanged(captor.capture());
+    return captor.getValue();
+  }
+
   /** Manifest entry -> what the listener hands the service, checked for the fields it relies on. */
   static final Map<String, Consumer<String>> READERS =
       Map.of(
@@ -88,6 +100,14 @@ class ConsumedContractsTest {
             assertThat(e.txnId()).isNotBlank();
             assertThat(e.status()).isNotBlank();
             assertThat(e.txnType()).isNotBlank();
+          },
+          CONFIG,
+          body -> {
+            ConfigChangedEvent e = readConfig(body);
+            assertThat(e.configKey()).isNotBlank();
+            if (e.configType() == ConfigChangedEvent.ConfigType.TEMPLATE && e.change() == ConfigChangedEvent.Change.UPSERT) {
+              assertThat(e.value()).containsKeys("code", "channel", "locale", "body");
+            }
           });
 
   @TestFactory

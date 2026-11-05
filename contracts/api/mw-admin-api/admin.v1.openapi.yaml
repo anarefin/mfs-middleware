@@ -32,6 +32,15 @@ info:
     `before`/`after`. Codes: 403 MW-AUTH-030 (the maker decides own request), 409 MW-VAL-030 (the
     action does not fit the transaction's current state), 409 MW-VAL-031 (the transaction already
     has an open request), 409 MW-VAL-032 (expired), 409 MW-VAL-033 (already decided).
+
+    USSD menus and notification templates (ticket 39, spec 9.2, 10.3, 15.2): customer-facing text
+    goes through the same maker-checker. An `ops-maker` proposes a version (checked at once: 400
+    MW-VAL-040 with one `details` entry per problem); a different `ops-checker` approves it with
+    the same approve endpoint, which marks the version PUBLISHED, audits it (resource
+    `ussd_menu/<menuId>` or `notify_template/<code>/<channel>/<locale>`) and broadcasts it on
+    `mw.config.changed.v1` in one database transaction. mw-ussd activates a menu per MNO at its
+    go-live (running sessions keep their version); mw-notify switches to a template at its
+    `validFrom`.
 servers:
   - url: https://localhost
 security:
@@ -214,6 +223,189 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /admin/v1/ussd-menus/{menuId}/change-requests:
+    post:
+      operationId: proposeUssdMenu
+      summary: Propose a new version of a USSD menu and its go-live per MNO (maker)
+      description: >-
+        Role `ops-maker` (ticket 39, spec 9.2, 15.2). The tree is mw-ussd's menu JSON (`start`,
+        `messages`, `nodes`); `menuId` and `version` inside it are set by the service. The tree is
+        checked before anything is stored: every reference resolves, every node has what its type
+        needs, a PIN input leads straight to an ACTION and is never stored, and every text (node
+        texts, option labels, validator errors, the six engine messages) has both `bn` and `en`;
+        otherwise 400 MW-VAL-040 with one `details` entry per problem. `activations` names each MNO
+        (gp, robi, bl, teletalk) once, with an optional go-live time (the approval time when absent or
+        earlier). The new version is PENDING with its change request (one open request per menu, 409
+        MW-VAL-031); a different `ops-checker` approves it with `/admin/v1/change-requests/{id}/approve`,
+        which publishes it on `mw.config.changed.v1` (configType USSD_MENU, configKey
+        `ussd-menu/<menuId>`). mw-ussd then serves it to sessions that start after the go-live;
+        running sessions finish on the version they started with.
+      parameters:
+        - { name: menuId, in: path, required: true, schema: { type: string, pattern: "^[a-z0-9][a-z0-9_-]{0,31}$" } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [menu, activations, reason]
+              additionalProperties: false
+              properties:
+                menu:
+                  type: object
+                  required: [start, messages, nodes]
+                  properties:
+                    start: { type: string, minLength: 1 }
+                    messages: { type: object }
+                    nodes: { type: object, minProperties: 1 }
+                activations:
+                  type: array
+                  minItems: 1
+                  maxItems: 16
+                  items:
+                    type: object
+                    required: [mno]
+                    additionalProperties: false
+                    properties:
+                      mno: { type: string, minLength: 1, maxLength: 16 }
+                      goLiveAt: { type: string, format: date-time }
+                reason: { type: string, minLength: 1, maxLength: 500, description: Why (free text; masked in logs) }
+      responses:
+        "201":
+          description: The change request, PENDING (`payload` = the version to publish)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /admin/v1/ussd-menus/{menuId}/versions:
+    get:
+      operationId: listUssdMenuVersions
+      summary: Versions of a USSD menu, newest first (without the tree)
+      description: Any spec 15.4 role.
+      parameters:
+        - { name: menuId, in: path, required: true, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 100000, default: 0 } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: One page of versions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContentVersionPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /admin/v1/ussd-menus/{menuId}/versions/{version}:
+    get:
+      operationId: getUssdMenuVersion
+      summary: One version of a USSD menu, with its tree and go-live schedule
+      description: Any spec 15.4 role.
+      parameters:
+        - { name: menuId, in: path, required: true, schema: { type: string } }
+        - { name: version, in: path, required: true, schema: { type: integer, minimum: 1 } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The version (`value` = `{menuId, version, menu, activations}`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContentVersion" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /admin/v1/notify-templates/{code}/{channel}/{locale}/change-requests:
+    post:
+      operationId: proposeNotifyTemplate
+      summary: Propose a new version of a notification template (maker)
+      description: >-
+        Role `ops-maker` (ticket 39, spec 10.3, 15.2). One template is a code (`A-Z0-9_`), channel
+        (SMS, EMAIL) and locale (bn, en). The texts are logic-less: only plain `{{name}}`
+        placeholders (no sections, partials, comments or triple braces); EMAIL needs a `subject` and
+        may carry an `htmlBody`, SMS takes neither; `senderId` 1-11 letters, digits or spaces.
+        Otherwise 400 MW-VAL-040 with one `details` entry per problem. The version is PENDING with its
+        change request (one open request per template, 409 MW-VAL-031); a different `ops-checker`
+        approves it with `/admin/v1/change-requests/{id}/approve`, which publishes it on
+        `mw.config.changed.v1` (configType TEMPLATE, configKey `template/<code>/<channel>/<locale>`);
+        mw-notify uses it for every message rendered from `validFrom` on (the approval time when
+        absent or earlier).
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string, pattern: "^[A-Z][A-Z0-9_]{1,63}$" } }
+        - { name: channel, in: path, required: true, schema: { type: string, enum: [SMS, EMAIL] } }
+        - { name: locale, in: path, required: true, schema: { type: string, enum: [bn, en] } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body, reason]
+              additionalProperties: false
+              properties:
+                body: { type: string, minLength: 1, maxLength: 4000 }
+                subject: { type: string, minLength: 1, maxLength: 200 }
+                htmlBody: { type: string, minLength: 1, maxLength: 20000 }
+                senderId: { type: string, minLength: 1, maxLength: 11 }
+                validFrom: { type: string, format: date-time }
+                reason: { type: string, minLength: 1, maxLength: 500, description: Why (free text; masked in logs) }
+      responses:
+        "201":
+          description: The change request, PENDING (`payload` = the version to publish)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /admin/v1/notify-templates/{code}/{channel}/{locale}/versions:
+    get:
+      operationId: listNotifyTemplateVersions
+      summary: Versions of a notification template, newest first (without the texts)
+      description: Any spec 15.4 role. Lists the versions made through this API (the seeded first versions live in mw-notify).
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+        - { name: channel, in: path, required: true, schema: { type: string } }
+        - { name: locale, in: path, required: true, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 100000, default: 0 } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: One page of versions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContentVersionPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /admin/v1/notify-templates/{code}/{channel}/{locale}/versions/{version}:
+    get:
+      operationId: getNotifyTemplateVersion
+      summary: One version of a notification template, with its texts
+      description: Any spec 15.4 role.
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+        - { name: channel, in: path, required: true, schema: { type: string } }
+        - { name: locale, in: path, required: true, schema: { type: string } }
+        - { name: version, in: path, required: true, schema: { type: integer, minimum: 1 } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: "The version (`value` = `{code, channel, locale, version, body, subject?, htmlBody?, senderId?, validFrom?}`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContentVersion" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     opsBearer:
@@ -379,16 +571,20 @@ components:
       required: [id, resourceType, resourceId, action, payload, diff, makerId, status, reason, createdAt, expiresAt]
       properties:
         id: { type: string, format: uuid }
-        resourceType: { type: string, enum: [transaction] }
-        resourceId: { type: string }
-        action: { $ref: "#/components/schemas/TxnAction" }
+        resourceType: { type: string, enum: [transaction, ussd_menu, notify_template] }
+        resourceId: { type: string, description: "txnId; menuId; or <code>/<channel>/<locale>" }
+        action:
+          description: A transaction action, or PUBLISH for a menu / template version (ticket 39)
+          anyOf:
+            - { $ref: "#/components/schemas/TxnAction" }
+            - { type: string, const: PUBLISH }
         payload: { type: object }
         diff:
           type: object
           required: [before, after]
           properties:
-            before: { type: object, properties: { status: { $ref: "#/components/schemas/Status" } } }
-            after: { type: object, properties: { status: { $ref: "#/components/schemas/Status" } } }
+            before: { $ref: "#/components/schemas/ChangeSide" }
+            after: { $ref: "#/components/schemas/ChangeSide" }
         makerId: { type: string }
         status: { $ref: "#/components/schemas/ChangeRequestStatus" }
         checkerId: { type: string }
@@ -397,6 +593,42 @@ components:
         createdAt: { type: string, format: date-time }
         decidedAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
+    ChangeSide:
+      type: object
+      description: >-
+        A transaction request: the transaction `status`. A menu / template request: its `configKey`
+        and `version` (before: the latest published version made here, absent for the first).
+      properties:
+        status: { $ref: "#/components/schemas/Status" }
+        configKey: { type: string }
+        version: { type: integer, minimum: 1 }
+    ContentVersion:
+      type: object
+      description: >-
+        A version of a USSD menu or notification template (`admin.content_version`, ticket 39).
+        PENDING while its change request waits, then PUBLISHED, REJECTED or EXPIRED. `value` (single
+        version only) is what is (or would be) broadcast on `mw.config.changed.v1`; once published,
+        its go-live times are the resolved ones.
+      required: [configKey, version, status, changeRequestId, makerId, createdAt]
+      properties:
+        configKey: { type: string }
+        version: { type: integer, minimum: 1 }
+        status: { type: string, enum: [PENDING, PUBLISHED, REJECTED, EXPIRED] }
+        changeRequestId: { type: string, format: uuid }
+        makerId: { type: string }
+        checkerId: { type: string }
+        createdAt: { type: string, format: date-time }
+        decidedAt: { type: string, format: date-time }
+        value: { type: object }
+    ContentVersionPage:
+      type: object
+      required: [items, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ContentVersion" }
+        limit: { type: integer }
+        offset: { type: integer }
     ChangeRequestPage:
       type: object
       required: [items, limit, offset]

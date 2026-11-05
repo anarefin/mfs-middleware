@@ -144,6 +144,7 @@ class ChangeRequestApiIT {
     clock.set(NOW);
     STATUS.clear();
     jdbc.update("delete from outbox");
+    jdbc.update("delete from content_version");
     jdbc.update("delete from change_request");
   }
 

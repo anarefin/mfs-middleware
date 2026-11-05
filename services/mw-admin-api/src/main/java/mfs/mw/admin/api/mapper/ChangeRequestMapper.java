@@ -18,6 +18,8 @@ import mfs.mw.admin.api.util.MaskingPolicy;
  * {@code admin.change_request.<created|approved|rejected|expired>}, resource {@code
  * transaction/<txnId>} (so the request shows in the transaction's audit trail), {@code before} /
  * {@code after} the request status and the transaction status; reasons are scrubbed free text.
+ * Content requests (ticket 39: {@code ussd_menu/<menuId>}, {@code notify_template/<code>/<channel>/<locale>})
+ * carry no txnId and show their {@code diff} (version, configKey) instead of a transaction status.
  */
 public final class ChangeRequestMapper {
 
@@ -48,13 +50,13 @@ public final class ChangeRequestMapper {
     Map<String, Object> after = base(cr, "PENDING");
     after.put("expiresAt", cr.expiresAt().toString());
     after.put("reason", MaskingPolicy.scrub(cr.reason()));
-    return event(cr, correlationId, "user", cr.makerId(), CREATED, Map.of("txnStatus", cr.statusBefore()), after,
-        cr.createdAt());
+    Map<String, Object> before = transaction(cr) ? Map.of("txnStatus", cr.statusBefore()) : side(cr, "before");
+    return event(cr, correlationId, "user", cr.makerId(), CREATED, before, after, cr.createdAt());
   }
 
   public static AuditEvent approved(ChangeRequest cr, String checkerId, String sentAs, String correlationId, Instant at) {
     Map<String, Object> after = base(cr, "APPROVED");
-    after.put("txnStatus", cr.statusAfter());
+    resourceState(cr, after, "after");
     after.put("makerId", cr.makerId());
     after.put("sentAs", sentAs);
     return event(cr, correlationId, "user", checkerId, APPROVED, pendingBefore(cr), after, at);
@@ -62,7 +64,7 @@ public final class ChangeRequestMapper {
 
   public static AuditEvent rejected(ChangeRequest cr, String checkerId, String reason, String correlationId, Instant at) {
     Map<String, Object> after = base(cr, "REJECTED");
-    after.put("txnStatus", cr.statusBefore());
+    resourceState(cr, after, "before");
     after.put("makerId", cr.makerId());
     after.put("reason", MaskingPolicy.scrub(reason));
     return event(cr, correlationId, "user", checkerId, REJECTED, pendingBefore(cr), after, at);
@@ -94,7 +96,37 @@ public final class ChangeRequestMapper {
   }
 
   private static Map<String, Object> pendingBefore(ChangeRequest cr) {
-    return Map.of("status", "PENDING", "txnStatus", cr.statusBefore());
+    if (transaction(cr)) {
+      return Map.of("status", "PENDING", "txnStatus", cr.statusBefore());
+    }
+    Map<String, Object> m = new LinkedHashMap<>(side(cr, "before"));
+    m.put("status", "PENDING");
+    return m;
+  }
+
+  /** A transaction's status, or a content resource's {@code diff.<side>} (version, configKey). */
+  private static void resourceState(ChangeRequest cr, Map<String, Object> into, String side) {
+    if (transaction(cr)) {
+      into.put("txnStatus", side.equals("after") ? cr.statusAfter() : cr.statusBefore());
+    } else {
+      side(cr, side).forEach(into::putIfAbsent);
+    }
+  }
+
+  private static boolean transaction(ChangeRequest cr) {
+    return ChangeRequest.TRANSACTION.equals(cr.resourceType());
+  }
+
+  private static Map<String, Object> side(ChangeRequest cr, String key) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    if (cr.diff().get(key) instanceof Map<?, ?> d) {
+      d.forEach((k, v) -> {
+        if (v != null) {
+          m.put(String.valueOf(k), v);
+        }
+      });
+    }
+    return m;
   }
 
   private static Map<String, Object> base(ChangeRequest cr, String status) {
@@ -111,7 +143,7 @@ public final class ChangeRequestMapper {
     return new AuditEvent(
         1,
         UUID.randomUUID().toString(),
-        cr.resourceId(),
+        transaction(cr) ? cr.resourceId() : null,
         correlationId == null || correlationId.isBlank() ? "admin-" + UUID.randomUUID() : correlationId,
         new AuditEvent.Actor(actorType, actorId),
         action,

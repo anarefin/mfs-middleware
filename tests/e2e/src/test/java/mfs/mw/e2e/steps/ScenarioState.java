@@ -42,6 +42,9 @@ public class ScenarioState {
   /** batchId of the last bulk batch the scenario uploaded (org portal, ticket 33). */
   String batchId;
 
+  /** A random marker the scenario puts into texts it publishes (ticket 39), e.g. {@code 4821}. */
+  final String token = String.valueOf(1000 + new java.security.SecureRandom().nextInt(9000));
+
   /** Balances noted before the action, by wallet id. */
   final Map<String, CoreMock.Balance> notedBalances = new LinkedHashMap<>();
 
