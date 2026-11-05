@@ -75,3 +75,34 @@ td[data-testid="diff"] .after { font-weight: 600; }
 
 .pager { display: flex; gap: 12px; margin-top: 12px; }
 .login { max-width: 420px; margin: 80px auto; text-align: center; }
+
+/* partner, USSD menu and template editors (ticket 42) */
+.status.DISABLED { color: var(--bad); }
+.status.ENABLED, .status.PUBLISHED { color: var(--good); }
+.actions h2 { margin-top: 16px; }
+.actions .search { margin-top: 8px; }
+.menu-editor, .template-editor { display: flex; flex-direction: column; gap: 16px; margin-top: 16px; }
+.editor-grid { display: grid; grid-template-columns: minmax(200px, 280px) 1fr; gap: 16px; }
+ul.tree { list-style: none; margin: 0; padding: 0; border-right: 1px solid var(--line); }
+ul.tree button.node { background: none; border: 0; padding: 3px 6px; cursor: pointer; text-align: left; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+ul.tree button.node.selected { background: #eff6ff; border-radius: 4px; font-weight: 600; }
+.node-form, .template-form fieldset { display: flex; flex-direction: column; gap: 8px; }
+.node-form label, .template-form label, .textpair label, .mnos label, .add-node label, .option label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }
+.node-form input, .node-form select, .node-form textarea, .template-form input, .template-form textarea, textarea.json, .mnos input, .add-node input, .add-node select, .actions .mnos input {
+  padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; font-size: 14px; font-family: inherit;
+}
+.textpair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+fieldset.options { display: flex; flex-direction: column; gap: 8px; }
+.option { border: 1px dashed var(--line); border-radius: 4px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.add-node { display: flex; gap: 8px; align-items: end; border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
+textarea.json { width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+details { margin-top: 12px; }
+.warnings { border: 1px solid #b54708; background: #fffaeb; color: #93370d; border-radius: 6px; padding: 10px 14px; margin-top: 12px; }
+pre.ussd-screen, pre.template-preview, pre.template-live {
+  white-space: pre-wrap; background: #0f172a; color: #e2e8f0; padding: 12px; border-radius: 6px; max-width: 360px; font-size: 14px; min-height: 60px;
+}
+pre.template-preview, pre.template-live { max-width: 640px; }
+.mnos { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 8px; }
+.mno { display: flex; flex-direction: column; gap: 4px; }
+label.inline { flex-direction: row !important; align-items: center; gap: 6px; }
+ol.trail { font-size: 12px; }

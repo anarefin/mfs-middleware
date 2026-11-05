@@ -99,5 +99,145 @@
       "partnerCalls": [],
       "auditTrail": []
     }
+  },
+  "partners": [
+    {
+      "partnerId": "ocs",
+      "family": "telco",
+      "version": 3,
+      "updatedAt": "2026-11-04T08:00:00.000Z",
+      "updatedBy": "ops-maker01",
+      "approvedBy": "ops-checker01",
+      "config": {
+        "enabled": true,
+        "template": "rest-json-request-reply",
+        "baseUrl": "http://mw-simulators:8080",
+        "connectTimeoutMs": 3000,
+        "timeoutMs": 20000,
+        "readTimeoutMs": 22000,
+        "auth": { "scheme": "none" },
+        "sensitiveFields": { "msisdn": "MSISDN" },
+        "errorMap": { "2001": { "suffix": "TOPUP_REJECTED", "retryable": false } },
+        "operations": {
+          "PAY": { "method": "POST", "path": "/ocs/v1/topup", "definiteStatuses": [400, 422], "response": "{\"outcome\": \"SUCCESS\"}" },
+          "STATUS_QUERY": { "method": "GET", "path": "/ocs/v1/topup/{reference}", "response": "{\"outcome\": \"SUCCESS\"}" }
+        }
+      }
+    },
+    {
+      "partnerId": "desco",
+      "family": "billpay",
+      "version": 0,
+      "updatedAt": "2026-11-01T00:00:00.000Z",
+      "updatedBy": "seed",
+      "config": {
+        "enabled": false,
+        "baseUrl": "https://desco.example.test",
+        "timeoutMs": 8000,
+        "auth": { "scheme": "api-key", "credentialsRef": "desco-api-key" },
+        "operations": {
+          "PAY": { "method": "POST", "path": "/bills/pay", "response": "{\"outcome\": \"SUCCESS\"}" }
+        }
+      }
+    }
+  ],
+  "contentVersions": {
+    "ussd-menu/main": [
+      {
+        "configKey": "ussd-menu/main",
+        "version": 1,
+        "status": "PUBLISHED",
+        "changeRequestId": "0193a1b2-0000-7000-8000-00000000f001",
+        "makerId": "ops-maker01",
+        "checkerId": "ops-checker01",
+        "createdAt": "2026-11-03T08:00:00.000Z",
+        "decidedAt": "2026-11-03T09:00:00.000Z",
+        "value": {
+          "menuId": "main",
+          "version": 1,
+          "activations": [{ "mno": "gp", "goLiveAt": "2026-11-03T09:00:00.000Z" }, { "mno": "robi", "goLiveAt": "2026-11-03T09:00:00.000Z" }],
+          "menu": {
+            "start": "main",
+            "messages": {
+              "invalid": { "bn": "ভুল ইনপুট।", "en": "Invalid input." },
+              "tooManyAttempts": { "bn": "অনেকবার ভুল ইনপুট। আবার চেষ্টা করুন।", "en": "Too many invalid entries. Please try again." },
+              "expired": { "bn": "সেশন শেষ হয়েছে। আবার ডায়াল করুন।", "en": "Session expired. Please dial again." },
+              "processing": { "bn": "আপনার অনুরোধ প্রক্রিয়াধীন। ফলাফল SMS-এ জানানো হবে।", "en": "Your request is being processed. You will get the result by SMS." },
+              "unavailable": { "bn": "সেবাটি সাময়িকভাবে বন্ধ। পরে চেষ্টা করুন।", "en": "Service temporarily unavailable. Please try later." },
+              "more": { "bn": "0 আরও", "en": "0 More" }
+            },
+            "nodes": {
+              "main": {
+                "type": "MENU",
+                "text": { "bn": "upay", "en": "upay" },
+                "options": [
+                  { "key": "1", "label": { "bn": "সেন্ড মানি", "en": "Send Money" }, "next": "p2p.recipient" },
+                  { "key": "9", "label": { "bn": "English", "en": "বাংলা" }, "next": "main", "switchLanguage": true }
+                ]
+              },
+              "p2p.recipient": {
+                "type": "INPUT",
+                "text": { "bn": "প্রাপকের upay নম্বর দিন", "en": "Enter recipient upay number" },
+                "validator": { "type": "msisdn", "notSelf": true, "error": { "bn": "সঠিক মোবাইল নম্বর দিন।", "en": "Enter a valid mobile number." } },
+                "store": "recipient",
+                "next": "p2p.amount"
+              },
+              "p2p.amount": {
+                "type": "INPUT",
+                "text": { "bn": "টাকার পরিমাণ দিন", "en": "Enter amount (Tk)" },
+                "validator": { "type": "amount", "min": "10", "max": "25000" },
+                "store": "amount",
+                "next": "p2p.confirm"
+              },
+              "p2p.confirm": {
+                "type": "CONFIRM",
+                "text": { "bn": "{recipient} নম্বরে {amount} টাকা পাঠাবেন?", "en": "Send Tk {amount} to {recipient}?" },
+                "options": [
+                  { "key": "1", "label": { "bn": "নিশ্চিত করুন", "en": "Confirm" }, "next": "p2p.pin" },
+                  { "key": "2", "label": { "bn": "বাতিল", "en": "Cancel" }, "next": "cancelled" }
+                ]
+              },
+              "p2p.pin": {
+                "type": "INPUT",
+                "text": { "bn": "আপনার পিন দিন", "en": "Enter your PIN" },
+                "validator": { "type": "pin" },
+                "next": "p2p.send"
+              },
+              "p2p.send": {
+                "type": "ACTION",
+                "flow": "P2P",
+                "mapping": { "creditParty": "recipient", "amount": "amount" },
+                "onSuccess": "p2p.done",
+                "onFailure": "p2p.failed"
+              },
+              "p2p.done": { "type": "END", "text": { "bn": "টাকা পাঠানো হয়েছে। TxnID {txnId}", "en": "Money sent. TxnID {txnId}" } },
+              "p2p.failed": { "type": "END", "text": { "bn": "লেনদেন ব্যর্থ: {error}", "en": "Transaction failed: {error}" } },
+              "cancelled": { "type": "END", "text": { "bn": "বাতিল করা হয়েছে।", "en": "Cancelled." } }
+            }
+          }
+        }
+      }
+    ],
+    "template/TXN_CASH_OUT_SENT/SMS/bn": [
+      {
+        "configKey": "template/TXN_CASH_OUT_SENT/SMS/bn",
+        "version": 1,
+        "status": "PUBLISHED",
+        "changeRequestId": "0193a1b2-0000-7000-8000-00000000f002",
+        "makerId": "ops-maker01",
+        "checkerId": "ops-checker01",
+        "createdAt": "2026-11-03T08:00:00.000Z",
+        "decidedAt": "2026-11-03T09:00:00.000Z",
+        "value": {
+          "code": "TXN_CASH_OUT_SENT",
+          "channel": "SMS",
+          "locale": "bn",
+          "version": 1,
+          "body": "এজেন্ট {{counterparty}}-এর কাছে {{amount}} টাকা ক্যাশ আউট সফল। TxnID {{txnId}}",
+          "senderId": "upay",
+          "validFrom": "2026-11-03T09:00:00.000Z"
+        }
+      }
+    ]
   }
 }

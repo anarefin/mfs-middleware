@@ -62,16 +62,60 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
   - Decision (no product owner): the console does not offer a maker withdrawal (the API has none),
     and the server actions rely on Next's built-in Origin/Host check for CSRF (APISIX passes the
     Host through; a proxy that rewrote Host would need `experimental.serverActions.allowedOrigins`).
+- Partner, USSD menu and template editors (ticket 42, spec 15.2 / WP25; API of tickets 38, 39). All
+  three file change requests through server actions in `actions.ts` (`requestPartnerChange`,
+  `proposeMenu`, `proposeTemplate`) and land in the inbox like the others; an open request of the
+  resource (`pending-notice.tsx`, `?resourceType&resourceId&status=PENDING`) replaces the forms by
+  the `pending-request` notice. The inbox links each resource to its screen, shows a partner diff as
+  the changed fields (`enabled=true -> enabled=false`), a menu / template diff as `v1 -> v2` and,
+  once approved, `published vN`. Who decides: `approvals.ts` `mayDecide` (partner: ops-checker or
+  integration-checker; menu / template: ops-checker; never the maker).
+  - `/console/partners` (every partner: state, timeouts, version, changed / approved by) and
+    `/console/partners/{id}` (published config without secrets: credential ref names only). For
+    ops-maker / integration-maker (`canMakePartner`): "Request disable" / "Request enable" and a
+    timeouts form (`parseTimeouts`: whole ms, connect / call 1..120000, read 1..125000 and >= call;
+    empty = unchanged; else own `MW-VAL-001`). UPSERT (full config) is not offered in the console.
+  - `/console/ussd?menuId=main[&from=N]`: the versions made in the console, the editor
+    (`ussd/menu-editor.tsx`, client) on the newest PUBLISHED version or `from`: tree from `start`
+    (`lib/ussd-menu.ts` `tree`, unreachable nodes last), per-node form (type, bn / en texts, options
+    with next, validator / store / next, flow / onSuccess / onFailure, lookup source), the six engine
+    messages, a raw JSON view ("Apply JSON"), and early warnings (`menuProblems`: dangling references,
+    a text without bn or en; warnings only, mw-admin-api's MenuValidator decides, `MW-VAL-040` shown
+    with its details). Preview walk (`startPreview` / `stepPreview`): mw-ussd's UssdEngine rules
+    (options, validators, notSelf, 3 invalid attempts, language switch, `{input}` interpolation) in the
+    browser only; an ACTION runs nothing, its outcome is picked (completed -> onSuccess with
+    `txnId` PREVIEW-TXN, failed -> onFailure, processing -> the processing message); a DYNAMIC list
+    shows two sample items; the PIN is never stored and shows as `****`. The proposal: MNOs gp / robi
+    / bl / teletalk (all ticked by default), optional go-live per MNO (datetime-local read as UTC,
+    `parseActivations`), reason. With no version made in the console the editor starts from an empty
+    starter (the seeded tree lives in mw-ussd; paste it as JSON).
+  - `/console/templates?code&channel&locale`: picker (codes mw-notify seeds as suggestions,
+    `lib/templates.ts` `KNOWN_CODES`; any contract-valid code accepted), versions, the live text of the
+    newest PUBLISHED version, and the editor (`templates/template-editor.tsx`, client; body with
+    `lang`=locale and `dir=auto` for Bangla, subject / HTML body for EMAIL, sender id, valid from UTC).
+    Live preview on sample params (fake values, editable per placeholder): `renderPreview` masks each
+    param by name exactly as mw-notify's ParamMasker + MaskingPolicy (msisdn / receiver / sender /
+    counterparty / agent `0171****678`, account last 4, nid last 3, names initial, pin `****`, a value
+    with `****` kept); SMS size GSM-7 / UCS-2 (`smsInfo`); `templateProblems` is a copy of
+    mw-admin-api's TemplateValidator and blocks the submit (own `MW-VAL-040`). Anyone may type in the
+    editor to preview; only an ops-maker gets the submit.
+  - Decisions (no product owner): integration-maker / -checker see Partners like the API allows;
+    partner UPSERT / onboarding, the ops-emergency direct change, and maker withdrawal are not offered;
+    go-live / valid-from inputs are UTC like every time in the console; the menu check in the UI only
+    warns (a stricter UI copy could refuse what the API accepts), the template check blocks (exact copy).
 - `/console/api/health` -> `{"status":"UP"}` (container healthcheck, public).
 
 ## Contracts used
 
 - `api/mw-admin-api/admin.v1` (GET search and detail; change requests: list, create for a
-  transaction / a wallet, approve, reject): types in `src/lib/types.ts`. The Playwright stub
+  transaction / a wallet / a partner, approve, reject; partners list / one; USSD menu and template
+  versions list / one and proposals): types in `src/lib/types.ts`. The Playwright stub
   answers (`e2e/mock/admin-api-stub.mjs`, fixtures `e2e/fixtures/admin-api.json`; the change-request
   part applies mw-admin-api's maker-checker rules on an in-memory store and, on an approved REVERSE,
-  plays the orchestrator: original REVERSED + a REVERSAL txn) are validated against the contract by
-  `src/lib/contract.test.ts`. Owns no contract.
+  plays the orchestrator: original REVERSED + a REVERSAL txn; on an approved partner change it
+  publishes the config at version + 1, on an approved menu / template the version PUBLISHED, a
+  rejected one REJECTED) are validated against the contract by `src/lib/contract.test.ts`. Owns no
+  contract.
 
 ## Deploy
 
@@ -101,7 +145,7 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
 | --- | --- |
 | `pnpm install` | dependencies (pinned, `pnpm-lock.yaml`) |
 | `pnpm test` | `tsc --noEmit` + Vitest unit and contract tests (`src/**/*.test.ts`) |
-| `pnpm test:e2e` | Playwright (Chromium): builds, runs the standalone server against `e2e/mock/server.mjs` (fake Keycloak realm ops with PKCE + TOTP form, stub mw-admin-api); no stack. Users `ops-viewer01`, `ops-compliance01`, `ops-maker01`, `ops-checker01`, `ops-lead01` (maker + checker). `e2e/console.spec.ts` (ticket 40), `e2e/approvals.spec.ts` (ticket 41 + 52 screen; `resetStub` before each). Ports 3940/4910/4920 (`E2E_*_PORT`); `E2E_SKIP_BUILD=1` reuses `.next` |
+| `pnpm test:e2e` | Playwright (Chromium): builds, runs the standalone server against `e2e/mock/server.mjs` (fake Keycloak realm ops with PKCE + TOTP form, stub mw-admin-api); no stack. Users `ops-viewer01`, `ops-compliance01`, `ops-maker01`, `ops-checker01`, `ops-lead01` (maker + checker), `ops-integration01` (integration-maker + -checker). `e2e/console.spec.ts` (ticket 40), `e2e/approvals.spec.ts` (ticket 41 + 52 screen; `resetStub` before each), `e2e/partners.spec.ts`, `e2e/ussd.spec.ts`, `e2e/templates.spec.ts` (ticket 42: edit -> approve -> effect visible per screen). Ports 3940/4910/4920 (`E2E_*_PORT`); `E2E_SKIP_BUILD=1` reuses `.next` |
 | `pnpm dev` | dev server (needs the env above) |
 | `docker build -t mw-admin-ui:dev .` | image |
 
