@@ -1,6 +1,9 @@
 package mfs.mw.app.gateway.config;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import java.time.Duration;
 import java.util.Map;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -19,6 +22,8 @@ import org.springframework.validation.annotation.Validated;
  *     idleTimeout}
  * @param singleActiveDevice one active device per wallet: binding a device replaces the others and
  *     opening a session ends theirs
+ * @param otp the binding OTP sent by SMS to the token's wallet (review A5)
+ * @param notifyTopic mw-notify's request topic (the OTP and the "new device bound" SMS)
  */
 @Validated
 @ConfigurationProperties("mw.app-gateway.device-binding")
@@ -27,7 +32,18 @@ public record DeviceBindingProperties(
     @NotNull Duration clockSkew,
     @NotNull Duration idleTimeout,
     Map<String, Duration> idleTimeoutByChannel,
-    boolean singleActiveDevice) {
+    boolean singleActiveDevice,
+    @NotNull @Valid Otp otp,
+    @NotBlank String notifyTopic) {
+
+  /**
+   * @param ttl validity of an OTP (mw-notify's OTP default expiry, 2 min)
+   * @param maxAttempts checks per OTP; the wrong guess that uses the last one voids it
+   * @param maxSends OTPs per wallet within {@code sendWindow}
+   * @param sendWindow the window the sends are counted in
+   */
+  public record Otp(
+      @NotNull Duration ttl, @Positive int maxAttempts, @Positive int maxSends, @NotNull Duration sendWindow) {}
 
   public DeviceBindingProperties {
     idleTimeoutByChannel = Map.copyOf(idleTimeoutByChannel == null ? Map.of() : idleTimeoutByChannel);

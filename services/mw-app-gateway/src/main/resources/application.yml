@@ -226,6 +226,14 @@ mw:
       idle-timeout: ${MW_APP_SESSION_IDLE_TIMEOUT:5m}
       idle-timeout-by-channel: {}
       single-active-device: true
+      # Binding a device needs an OTP sent by SMS to the token's wallet through mw-notify (review A5):
+      # checks per OTP and sends per wallet and window are enforced with conditional updates.
+      otp:
+        ttl: 2m
+        max-attempts: 3
+        max-sends: ${MW_APP_DEVICE_OTP_MAX_SENDS:5}
+        send-window: 15m
+      notify-topic: mw.notify.request.v1
     jwt:
       # Keycloak realm `customers` (spec 9.1). Keys are fetched on the first token.
       jwk-set-uri: ${MW_APP_JWK_SET_URI:http://keycloak:8080/realms/customers/protocol/openid-connect/certs}

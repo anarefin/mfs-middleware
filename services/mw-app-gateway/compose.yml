@@ -85,6 +85,9 @@ services:
       MW_APP_JWK_SET_URI: ${MW_APP_JWK_SET_URI:-http://keycloak:8080/realms/customers/protocol/openid-connect/certs}
       # Synchronous wait for a terminal status before 202 PROCESSING (7.5).
       MW_APP_REPLY_BUDGET: ${MW_APP_REPLY_BUDGET:-25s}
+      # Binding OTPs per wallet in 15 min (default 5): dev only raises it, so repeated e2e runs
+      # (each binds every test user's new device once) do not hit the limit.
+      MW_APP_DEVICE_OTP_MAX_SENDS: ${MW_APP_DEVICE_OTP_MAX_SENDS:-20}
     deploy:
       resources:
         limits:

@@ -33,6 +33,14 @@ public final class ErrorCodes {
   public static final String AUTH_REPLAYED = "MW-AUTH-006";
   /** No live session for this device (idle timeout, or ended by another device): HTTP 401. */
   public static final String AUTH_NO_SESSION = "MW-AUTH-007";
+  /** Wrong device binding OTP: HTTP 401 (same code as mw-checkout's OTP). */
+  public static final String AUTH_OTP_WRONG = "MW-AUTH-010";
+  /** No binding OTP asked for this device, or it expired or was spent: 401, ask for a new one. */
+  public static final String AUTH_OTP_EXPIRED = "MW-AUTH-011";
+  /** Too many wrong binding OTPs: 401, ask for a new one. */
+  public static final String AUTH_OTP_LOCKED = "MW-AUTH-012";
+  /** The wallet was sent its maximum of binding OTPs for now: 429. */
+  public static final String VAL_OTP_LIMIT = "MW-VAL-022";
   /** Kafka did not accept the request in time; nothing was accepted, the app may retry: 503. */
   public static final String SYS_UNAVAILABLE = "MW-SYS-010";
   /** mw-adapter-billpay could not be asked (biller list, bill fetch); retryable: 503. */
