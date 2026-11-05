@@ -10,7 +10,8 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
 ## Responsibilities
 
 - Login (`src/auth.ts`, Auth.js / next-auth 5 beta): Keycloak realm `ops`, client `mw-admin-ui`
-  (public client, Authorization Code + PKCE S256, `state` and `nonce`). MFA is the realm's (browser
+  (public client, Authorization Code + PKCE S256, `state` and `nonce`; direct access grants off,
+  security review: the e2e password grant uses the dev-only client `mw-e2e-ops`). MFA is the realm's (browser
   flow password + TOTP, `CONFIGURE_TOTP` on every user); the console does not check `acr`.
   The session is a JWT in an encrypted (JWE with `AUTH_SECRET`), HTTP-only, SameSite=Lax cookie
   holding access token, refresh token, expiry and roles. The session object the browser can read
@@ -82,8 +83,10 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
   `AUTH_KEYCLOAK_INTERNAL_URL` (`http://keycloak:8080`), `ADMIN_API_URL`. Public base
   `MW_ADMIN_UI_PUBLIC_URL`, default `https://localhost`. Included in `deploy/compose/mvp`.
 - Issuer (decision, ticket 40): the browser reaches Keycloak through APISIX route
-  `auth-ops-browser` (`/realms/ops/*`, `/resources/*`, X-Forwarded-Host/Proto/Port set to the public
-  host, port 443); this server calls Keycloak in the stack with the same X-Forwarded-* values
+  `auth-ops-browser` (`/realms/ops/*`, `/resources/*`, only for Host `MW_PUBLIC_HOST`, default
+  `localhost`, which must match `MW_ADMIN_UI_PUBLIC_URL`; X-Forwarded-Host/Proto/Port pinned to it,
+  port 443, never the client's Host; its token endpoint takes only authorization_code and
+  refresh_token); this server calls Keycloak in the stack with the same X-Forwarded-* values
   (`lib/oidc.ts` `internalRequest`, Auth.js `customFetch`), so ops tokens from the console carry
   `https://localhost/realms/ops`. APISIX `admin-v1` accepts that issuer and the in-stack one
   (`claim_validator.issuer.valid_issuers`); mw-admin-api checks the `/realms/ops` suffix. A

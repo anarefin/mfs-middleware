@@ -155,7 +155,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   roles; dev users `ops-viewer01` (viewer), `ops-maker01`, `ops-checker01`, `ops-admin01`
   (integration-maker, security-admin), `ops-compliance01`, `ops-auditor01`, all TOTP-required; the
   dev-only e2e operators `ops-e2e-maker01` (ops-maker) and `ops-e2e-checker01` (ops-checker) have a
-  seeded TOTP credential instead (secret `KC_OPS_TEST_TOTP_SECRET`, token route
+  seeded TOTP credential instead (secret `KC_OPS_TEST_TOTP_SECRET`, dev-only direct-grant client
+  `mw-e2e-ops`; the console client `mw-admin-ui` is code + PKCE only; token route
   `deploy/apisix/routes-test/auth-ops-token.json`, test-only; ticket 37). A
   running stack keeps its old realm (import skips existing realms): `make down DOWN_ARGS=-v` first.
 
