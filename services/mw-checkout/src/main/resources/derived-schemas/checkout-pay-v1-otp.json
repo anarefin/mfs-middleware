@@ -1,0 +1,12 @@
+{
+  "x-mw-derived-from": "api/mw-checkout/checkout.v1.openapi.yaml#/components/schemas/OtpRequest",
+  "type": "object",
+  "required": [
+    "wallet"
+  ],
+  "properties": {
+    "wallet": {
+      "type": "string"
+    }
+  }
+}

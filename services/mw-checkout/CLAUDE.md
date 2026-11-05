@@ -12,9 +12,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   APISIX routes `checkout-v1-sessions` (POST, hmac-auth with body Digest, 16 KiB cap) and
   `checkout-v1-session-get` (GET, hmac-auth); APISIX forwards the consumer name in `X-Mw-Merchant-Id`
   (`deploy/apisix/README.md`). The create body is checked against the derived schema on the exact
-  bytes before binding (`filter/SessionBodySchemaAdvice` -> `service/SessionBodySchema`, copied from
+  bytes before binding (`filter/BodySchemaAdvice` -> `service/BodySchema`, copied from
   mw-app-gateway: duplicate keys, trailing content, non-objects refused; `400 MW-VAL-001`; over 64 KiB
-  `413 MW-VAL-BODY_TOO_LARGE`), then Bean Validation (patterns). No header `401 MW-AUTH-001`; a consumer that is not in
+  `413 MW-VAL-BODY_TOO_LARGE`), then Bean Validation (patterns). The same advice checks the hosted
+  page bodies (`OtpRequest`, `ConfirmRequest`; `cancel` has no body); a new body type needs its
+  derived schema added to the advice. No header `401 MW-AUTH-001`; a consumer that is not in
   `mw.checkout.merchants.<id>` (wallet, name, secret) `403 MW-AUTH-002`.
   `POST /checkout/v1/sessions {orderId, amount, successUrl, failUrl, cancelUrl, ipnUrl (https only,
   no fragment; `security/IpnUrlPolicy`: http and internal addresses `400 MW-VAL-001` field ipnUrl
@@ -90,10 +92,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 ## Contracts owned
 
 - `api/mw-checkout/checkout.v1.openapi.yaml` (merchant API, hosted page API, signed result, signed
-  IPN: webhook `ipn`, schema `Ipn`, `IpnUrl`). The service (not the edge) validates create-session
-  bodies with `src/main/resources/derived-schemas/checkout-v1-create-session.json`
-  (`scripts/derived-schemas.sh --write` after changing `CreateSessionRequest`; `make contracts-lint`
-  fails on drift).
+  IPN: webhook `ipn`, schema `Ipn`, `IpnUrl`). The service (not the edge) validates request
+  bodies with `src/main/resources/derived-schemas/` `checkout-v1-create-session.json`
+  (`CreateSessionRequest`), `checkout-pay-v1-otp.json` (`OtpRequest`) and
+  `checkout-pay-v1-confirm.json` (`ConfirmRequest`) (`scripts/derived-schemas.sh --write` after
+  changing one; `make contracts-lint` fails on drift).
 
 ## Contracts used
 
@@ -113,7 +116,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   `security/IpnSignerTest` (openssl vector); `repository/SessionRepositoryIT`; `messaging/OutboxRelayOtpIT`
   (OTP on Kafka, gone from the row once relayed, other topics untouched);
   `security/ResultSignerTest` (vector from openssl); `mapper/CheckoutMapperTest` (contract schemas);
-  `service/SessionBodySchemaTest`, `controller/MerchantSessionControllerTest` (schema before the service).
+  `service/SessionBodySchemaTest`, `controller/MerchantSessionControllerTest`,
+  `controller/HostedPageControllerTest` (schema before the service).
 - e2e `@checkout` (`tests/e2e/src/test/resources/features/checkout.feature`).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)

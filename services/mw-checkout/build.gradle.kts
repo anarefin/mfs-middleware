@@ -51,7 +51,7 @@ dependencies {
     // Scheduled jobs run on one instance only (ShedLock on this service's schema, 4.4).
     implementation(libs.shedlock.spring)
     implementation(libs.shedlock.provider.jdbc.template)
-    // Create-session body schema check (service/SessionBodySchema; body schemas are checked in the
+    // Request body schema checks (service/BodySchema; body schemas are checked in the
     // service, never at the edge). The validator is built on a newer Jackson 3 than Boot manages;
     // keep Boot's, so this library does not change Jackson for the whole service (as mw-app-gateway).
     implementation(libs.json.schema.validator) {

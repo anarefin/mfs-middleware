@@ -19,30 +19,35 @@ import tools.jackson.databind.ObjectReader;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The schema check of {@code POST /checkout/v1/sessions} bodies (spec 8.3; moved here from the
- * APISIX edge: body schemas are checked in the service, never at the edge, M3 gate decision).
- * It runs on the exact bytes the controller then binds (copied from mw-app-gateway's
- * SubmitBodySchema). The schema is {@code derived-schemas/checkout-v1-create-session.json},
- * derived from the contract's {@code CreateSessionRequest} by {@code scripts/derived-schemas.sh}
- * ({@code make contracts-lint} fails when it drifts); it has no pattern or format, so no message
- * repeats a request value (the URL and order id patterns stay on {@code dto/CreateSessionRequest}).
+ * The schema check of one JSON request body (spec 8.3; body schemas are checked in the service,
+ * never at the APISIX edge, M3 gate decision A6). It runs on the exact bytes the controller then
+ * binds (copied from mw-app-gateway's BodySchema). Each schema is a {@code derived-schemas/*.json}
+ * resource ({@link #CREATE_SESSION}, {@link #PAY_OTP}, {@link #PAY_CONFIRM}), derived from the
+ * contract's request schema by {@code scripts/derived-schemas.sh} ({@code make contracts-lint}
+ * fails when one drifts); none has a pattern or format, so no message repeats a request value
+ * (the URL, order id, wallet and OTP patterns stay on the DTOs' Bean Validation).
  *
  * <p>Duplicate keys are refused (two JSON parsers may keep different values), and so is trailing
  * content. Every failure is 400 MW-VAL-001.
  */
-public class SessionBodySchema {
+public class BodySchema {
 
-  static final String RESOURCE = "derived-schemas/checkout-v1-create-session.json";
+  /** {@code POST /checkout/v1/sessions}, from {@code CreateSessionRequest}. */
+  public static final String CREATE_SESSION = "derived-schemas/checkout-v1-create-session.json";
+  /** {@code POST /checkout/pay/v1/{token}/otp}, from {@code OtpRequest}. */
+  public static final String PAY_OTP = "derived-schemas/checkout-pay-v1-otp.json";
+  /** {@code POST /checkout/pay/v1/{token}/confirm}, from {@code ConfirmRequest}. */
+  public static final String PAY_CONFIRM = "derived-schemas/checkout-pay-v1-confirm.json";
 
   private final ObjectReader reader;
   private final Schema schema;
 
-  public SessionBodySchema(JsonMapper json) {
+  public BodySchema(JsonMapper json, String resource) {
     this.reader =
         json.reader()
             .with(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
             .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
-    this.schema = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12).getSchema(load());
+    this.schema = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12).getSchema(load(resource));
   }
 
   /** Returns when {@code body} is one JSON object matching the schema; else 400 MW-VAL-001. */
@@ -58,7 +63,7 @@ public class SessionBodySchema {
     }
     List<Error> errors = schema.validate(tree);
     if (!errors.isEmpty()) {
-      throw refused(errors.stream().map(SessionBodySchema::detail).toList());
+      throw refused(errors.stream().map(BodySchema::detail).toList());
     }
   }
 
@@ -77,10 +82,10 @@ public class SessionBodySchema {
     return new MwException(ErrorCodes.VAL_INVALID, "Request body does not match the schema").withDetails(details);
   }
 
-  private static InputStream load() {
-    InputStream in = SessionBodySchema.class.getClassLoader().getResourceAsStream(RESOURCE);
+  private static InputStream load(String resource) {
+    InputStream in = BodySchema.class.getClassLoader().getResourceAsStream(resource);
     if (in == null) {
-      throw new UncheckedIOException(new IOException("no " + RESOURCE + " on the classpath"));
+      throw new UncheckedIOException(new IOException("no " + resource + " on the classpath"));
     }
     return in;
   }

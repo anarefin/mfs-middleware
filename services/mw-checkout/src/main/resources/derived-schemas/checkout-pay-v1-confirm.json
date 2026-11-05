@@ -1,0 +1,30 @@
+{
+  "x-mw-derived-from": "api/mw-checkout/checkout.v1.openapi.yaml#/components/schemas/ConfirmRequest",
+  "type": "object",
+  "required": [
+    "otp",
+    "encryptedPin"
+  ],
+  "properties": {
+    "otp": {
+      "type": "string"
+    },
+    "encryptedPin": {
+      "type": "object",
+      "required": [
+        "keyId",
+        "ciphertext"
+      ],
+      "properties": {
+        "keyId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "ciphertext": {
+          "type": "string",
+          "maxLength": 4096
+        }
+      }
+    }
+  }
+}

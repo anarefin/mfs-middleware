@@ -23,7 +23,7 @@ public class SessionBodySchemaTest {
        "cancelUrl":"https://shop.example.test/cancel","ipnUrl":"https://shop.example.test/ipn",
        "description":"Order 1","locale":"en"}""";
 
-  private final SessionBodySchema schema = new SessionBodySchema(JsonMapper.builder().build());
+  private final BodySchema schema = new BodySchema(JsonMapper.builder().build(), BodySchema.CREATE_SESSION);
 
   MwException refused(String body) {
     MwException e =
