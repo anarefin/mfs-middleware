@@ -1,5 +1,6 @@
 package mfs.mw.audit.dw;
 
+import mfs.mw.audit.dw.security.InternalTokens;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
@@ -62,5 +63,11 @@ public class TestInfrastructure {
   @Bean
   DynamicPropertyRegistrar kafkaBrokers(KafkaContainer kafka) {
     return registry -> registry.add("camel.component.kafka.brokers", kafka::getBootstrapServers);
+  }
+
+  /** The internal API's signing keys: the test-only JWKS of {@link InternalTokens}. */
+  @Bean
+  DynamicPropertyRegistrar internalAuthKeys() {
+    return registry -> registry.add("mw.internal-auth.jwk-set-uri", InternalTokens::jwkSetUri);
   }
 }

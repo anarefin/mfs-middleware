@@ -147,6 +147,14 @@ management:
       type: w3c
 
 mw:
+  # Internal query API /internal/v1/** (spec 18.2, M3 gate): Keycloak client-credentials JWT of
+  # realm `services` (config/SecurityConfig). mw-portal-api must always send orgId.
+  internal-auth:
+    jwk-set-uri: ${MW_INTERNAL_JWK_SET_URI:http://keycloak:8080/realms/services/protocol/openid-connect/certs}
+    issuer: ${MW_INTERNAL_ISSUER:http://keycloak:8080/realms/services}
+    audience: mw-orchestrator
+    allowed-clients: mw-portal-api,mw-admin-api
+    org-scoped-clients: mw-portal-api
   orchestrator:
     # Saga deadlines (spec 7.2), command lifetime (6.3), idempotency TTL (7.3), timer sweep (7.1).
     validating-timeout: 5s

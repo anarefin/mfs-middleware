@@ -14,6 +14,8 @@ info:
     raw number is never indexed. Every error is the 5.3 envelope.
 servers:
   - url: http://mw-orchestrator:8080
+security:
+  - internalClientCredentials: []
 paths:
   /internal/v1/transactions:
     get:
@@ -52,6 +54,8 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/TxnPage" }
         "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
   /internal/v1/transactions/{txnId}:
     get:
       operationId: getTransaction
@@ -72,8 +76,22 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/TxnDetail" }
         "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
 components:
+  securitySchemes:
+    internalClientCredentials:
+      type: oauth2
+      description: >-
+        Keycloak realm `services` client-credentials JWT (spec 18.2, M3 gate decision). The
+        service checks signature, expiry, exact issuer and that `aud` contains `mw-orchestrator`;
+        the caller (`azp`) must be mw-portal-api (which must send `orgId` on every call) or mw-admin-api. No or bad token: 401 MW-AUTH-001;
+        another client or mw-portal-api without `orgId`: 403 MW-AUTH-002.
+      flows:
+        clientCredentials:
+          tokenUrl: http://keycloak:8080/realms/services/protocol/openid-connect/token
+          scopes: {}
   responses:
     Error:
       description: Error envelope (spec 5.3)

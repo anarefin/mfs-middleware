@@ -98,7 +98,11 @@ class TransactionQueryApiIT {
   // --- helpers -------------------------------------------------------------------------------
 
   private HttpResponse<String> get(String pathAndQuery) throws Exception {
-    HttpRequest req = HttpRequest.newBuilder(URI.create("http://localhost:" + port + pathAndQuery)).build();
+    // mw-admin-api's token: may query without orgId (who may call: InternalApiAuthIT)
+    HttpRequest req =
+        HttpRequest.newBuilder(URI.create("http://localhost:" + port + pathAndQuery))
+            .header("Authorization", mfs.mw.orchestrator.security.InternalTokens.bearer("mw-admin-api"))
+            .build();
     return HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.ofString());
   }
 

@@ -12,6 +12,8 @@ info:
     Every error is the 5.3 envelope.
 servers:
   - url: http://mw-audit-dw:8080
+security:
+  - internalClientCredentials: []
 paths:
   /internal/v1/audit/events:
     get:
@@ -45,7 +47,21 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/AuditPage" }
         "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
 components:
+  securitySchemes:
+    internalClientCredentials:
+      type: oauth2
+      description: >-
+        Keycloak realm `services` client-credentials JWT (spec 18.2, M3 gate decision). The
+        service checks signature, expiry, exact issuer and that `aud` contains `mw-audit-dw`;
+        the caller (`azp`) must be mw-admin-api. No or bad token: 401 MW-AUTH-001;
+        another client: 403 MW-AUTH-002.
+      flows:
+        clientCredentials:
+          tokenUrl: http://keycloak:8080/realms/services/protocol/openid-connect/token
+          scopes: {}
   responses:
     Error:
       description: Error envelope (spec 5.3)

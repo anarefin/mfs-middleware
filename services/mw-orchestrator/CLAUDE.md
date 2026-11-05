@@ -249,7 +249,15 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   in order) and `partnerCalls` (`txn.partner_call`, V8: one row per PAY / STATUS_QUERY sent by
   `SagaEngine.sendToPartner`, answered by `PartnerReplyService` (outcome, partnerRef, errorCode,
   `repliedAt`), plus one CALLBACK row per callback that passed the ownership checks). Clients are
-  mw-admin-api and mw-portal-api over the `app` network; **no APISIX route**. MSISDN and org id are
+  mw-admin-api and mw-portal-api over the `app` network; **no APISIX route**. Auth (M3 gate decision,
+  `config/SecurityConfig`, `security/InternalCallerPolicy`, `config/InternalAuthProperties`
+  `mw.internal-auth.*`): a Keycloak client-credentials JWT of realm `services` (JWKS
+  `MW_INTERNAL_JWK_SET_URI`, exact issuer `MW_INTERNAL_ISSUER`, default `http://keycloak:8080/realms/services`,
+  `aud` must contain `mw-orchestrator`); caller `azp` in `allowed-clients` (mw-portal-api, mw-admin-api),
+  and `org-scoped-clients` (mw-portal-api) must send a non-blank `orgId` on every call. No / bad token
+  `401 MW-AUTH-001`, other client or portal without orgId `403 MW-AUTH-002` (WARN
+  `security.internal_call_denied`); actuator stays open. `InternalApiAuthIT` (test JWKS
+  `security/InternalTokens`, registered by `TestInfrastructure`). MSISDN and org id are
   matched through `transaction.initiator_hash` (V8; `util/SearchHash` = HMAC-SHA256 of the canonical
   id, MSISDN in any form -> `01XNNNNNNNN`; key `mw.orchestrator.search.hash-key`, >= 32 chars, in
   `secret/mw-orchestrator`, created once by the init; `config/SearchProperties`), so `initiator_id` is
