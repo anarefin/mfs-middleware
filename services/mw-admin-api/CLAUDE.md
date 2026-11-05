@@ -79,6 +79,25 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   recon-*, not ops-emergency: its post-approval flow is for partner changes, ticket 38); a reject by
   the maker (withdrawal) is not offered. The orchestrator's resulting state is not tracked here: the
   detail view and audit trail show it.
+- Wallet unlock (ticket 52, M2 gate decision; same engine): `POST /admin/v1/wallets/{walletId}/change-requests
+  {action: UNLOCK, reason}` (`dto/WalletChangeRequestBody`, derived schema
+  `admin-v1-wallet-change-request.json`; role `TXN_MAKER` = ops-maker) -> 201 PENDING,
+  `resourceType` `wallet`, `resourceId` the wallet id (11-digit MSISDN `^01[3-9]\d{8}$`, else `400
+  MW-VAL-001`) stored whole in `admin.change_request` but shown masked (`0171****789`,
+  `ChangeRequestMapper.shownId`) in every view, audit and log; `diff` LOCKED -> ACTIVE;
+  `payload.unlockTxnId` a UUIDv7 minted at creation (txnId of the core command and of every audit
+  of the request). One open request per wallet (`409 MW-VAL-031`). Approve / reject / expiry and the
+  maker != checker rule (`403 MW-AUTH-030`) are the transaction ones; there is no status read (the
+  core owns the wallet state, so a request is taken for any well-formed id and the core refuses an
+  unlock of a wallet that is not LOCKED). Approval = one database transaction: row APPROVED
+  (`payload.commandId`) + `UnlockWallet` (`dto/UnlockWalletCommand`, `core.command.v1`, owned by
+  mw-orchestrator) on `core.wallet.command.v1` (key unlockTxnId, commandId `<changeRequestId>:unlock`,
+  `expiresAt` = issued + `mw.change-requests.unlock-command-ttl` 1h, payload subject WALLET + the
+  whole id, changeRequestId, makerId, checkerId) + audit. Audit resource `wallet/<masked id>`,
+  `walletStatus` where a transaction request has `txnStatus`, `after.sentAs` the topic.
+  Decisions (no product owner): ops-maker / ops-checker act on wallets as on transactions; the
+  core's answer (`WalletUnlocked` / `UnlockRejected`) is not consumed here (as for ticket 37, the
+  result is not tracked; mw-core-mock's wallet view shows it); the reason text is not sent to the core.
 - Internal API identity (M3 gate decision; `client/ServiceTokenClient`, `client/InternalApiCaller`):
   Keycloak realm `services` client `mw-admin-api` (client credentials, HTTP Basic, token carries
   audiences mw-orchestrator and mw-audit-dw), cached until 30 s before `expires_in`, dropped on a
@@ -108,7 +127,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 
 ## Contracts used
 
-- `contracts.yml`: produces `events/mw-audit-dw/mw.audit.event.v1` (own type `dto/AuditEvent`;
+- `contracts.yml`: produces `events/mw-orchestrator/core.command.v1#UnlockWallet` (ticket 52,
+  `dto/UnlockWalletCommand`; `WalletUnlockApiIT` validates the outbox row),
+  `events/mw-audit-dw/mw.audit.event.v1` (own type `dto/AuditEvent`;
   `contracts/ProducedContractsTest`, and `AdminTransactionApiIT` validates the outbox row),
   `events/mw-admin-api/mw.txn.action.v1` (`dto/TxnAction`) and a REVERSAL on
   `events/mw-orchestrator/mw.txn.request.v1` (`dto/ReversalRequest`; `ChangeRequestApiIT`
@@ -140,7 +161,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 | Command | What it does |
 | --- | --- |
 | `./gradlew test` | unit, slice and contract tests, no Docker |
-| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker); `AdminTransactionApiIT` (stub orchestrator + audit-dw), `ChangeRequestApiIT` (maker-checker, stub orchestrator) |
+| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker); `AdminTransactionApiIT` (stub orchestrator + audit-dw), `ChangeRequestApiIT` (maker-checker, stub orchestrator), `WalletUnlockApiIT` (ticket 52) |
 | `./gradlew conformance` | the `@Conformance` suite |
 | `./gradlew check` | all three plus the JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
 | `./gradlew check bootJar && docker build -t mw-admin-api:dev .` | image, as spec 4.3 rule 1 |

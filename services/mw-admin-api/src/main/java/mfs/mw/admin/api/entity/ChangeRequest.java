@@ -29,6 +29,8 @@ public record ChangeRequest(
     Instant expiresAt) {
 
   public static final String TRANSACTION = "transaction";
+  /** A wallet (ticket 52): resourceId the wallet id (its MSISDN), masked in every view and audit. */
+  public static final String WALLET = "wallet";
 
   public enum Status {
     PENDING,

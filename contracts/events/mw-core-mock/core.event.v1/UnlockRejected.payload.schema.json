@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.upay.mw/events/mw-core-mock/core.event.v1/UnlockRejected.payload.schema.json",
+  "title": "core.event.v1 UnlockRejected payload",
+  "description": "Failure of UnlockWallet; the reason is the envelope reasonCode (WALLET_NOT_FOUND, WALLET_NOT_LOCKED). Nothing changed.",
+  "type": "object"
+}

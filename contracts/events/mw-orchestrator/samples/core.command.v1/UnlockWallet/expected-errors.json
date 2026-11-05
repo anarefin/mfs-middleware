@@ -1,0 +1,4 @@
+{
+  "invalid-unlock-msisdn-subject.json": ["/payload/subject/type must be equal to constant"],
+  "invalid-unlock-without-change-request.json": ["/payload must have required property 'changeRequestId'"]
+}

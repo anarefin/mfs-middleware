@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import mfs.mw.admin.api.client.OrchestratorQueryClient;
 import mfs.mw.admin.api.config.ChangeRequestProperties;
 import mfs.mw.admin.api.dto.AdminTxn;
@@ -16,6 +17,8 @@ import mfs.mw.admin.api.dto.ChangeRequestView;
 import mfs.mw.admin.api.dto.Operator;
 import mfs.mw.admin.api.dto.ReversalRequest;
 import mfs.mw.admin.api.dto.TxnAction;
+import mfs.mw.admin.api.dto.UnlockWalletCommand;
+import mfs.mw.admin.api.dto.WalletChangeRequestBody.WalletActionType;
 import mfs.mw.admin.api.entity.ChangeRequest;
 import mfs.mw.admin.api.exception.ErrorCodes;
 import mfs.mw.admin.api.exception.MwException;
@@ -60,6 +63,12 @@ public class ChangeRequestService {
   static final String AUDIT_TOPIC = "mw.audit.event.v1";
   static final String ACTION_TOPIC = "mw.txn.action.v1";
   static final String REQUEST_TOPIC = "mw.txn.request.v1";
+  /** UnlockWallet goes straight to the core (ticket 52; wallet topic per the M2 gate split). */
+  static final String CORE_COMMAND_TOPIC = "core.wallet.command.v1";
+  static final String WALLET_LOCKED = "LOCKED";
+  static final String WALLET_ACTIVE = "ACTIVE";
+  /** A wallet id here is the wallet's MSISDN in the 11-digit local form. */
+  static final Pattern WALLET_ID = Pattern.compile("^01[3-9]\\d{8}$");
 
   private final ChangeRequestRepository requests;
   private final OrchestratorQueryClient orchestrator;
@@ -101,14 +110,33 @@ public class ChangeRequestService {
             UUID.randomUUID(), ChangeRequest.TRANSACTION, txnId.toString(), action.name(), payload,
             ChangeRequestMapper.diff(txn.status(), target), maker.username(), maker.subject(),
             ChangeRequest.Status.PENDING, null, null, reason, null, now, null, now.plus(props.ttl()));
-    tx.executeWithoutResult(
-        s -> {
-          if (!requests.insert(cr)) {
-            throw new MwException(ErrorCodes.VAL_REQUEST_OPEN, "This transaction already has an open change request")
-                .withStatus(HttpStatus.CONFLICT);
-          }
-          audit(ChangeRequestMapper.created(cr, correlationId()));
-        });
+    insert(cr, "This transaction already has an open change request");
+    logDecision("admin.change_request.created", cr, maker.username());
+    return ChangeRequestMapper.view(cr);
+  }
+
+  /**
+   * Ops unlock of a PIN-locked wallet (ticket 52). The middleware cannot see the wallet's state (the
+   * core owns it), so the request is taken for any well-formed wallet id; the core refuses the
+   * approved command when the wallet is not locked ({@code UnlockRejected WALLET_NOT_LOCKED}).
+   */
+  public ChangeRequestView createForWallet(Operator maker, String walletId, WalletActionType action, String reason) {
+    if (!maker.hasAny(AdminRole.TXN_MAKER)) {
+      throw OperatorResolver.forbidden("Asking for a wallet action needs the ops-maker role");
+    }
+    if (walletId == null || !WALLET_ID.matcher(walletId).matches()) {
+      throw new MwException(ErrorCodes.VAL_INVALID, "The wallet id must be an 11-digit MSISDN")
+          .withStatus(HttpStatus.BAD_REQUEST);
+    }
+    Instant now = clock.instant();
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put(ChangeRequestMapper.UNLOCK_TXN_ID, UuidV7.at(now).toString());
+    ChangeRequest cr =
+        new ChangeRequest(
+            UUID.randomUUID(), ChangeRequest.WALLET, walletId, action.name(), payload,
+            ChangeRequestMapper.diff(WALLET_LOCKED, WALLET_ACTIVE), maker.username(), maker.subject(),
+            ChangeRequest.Status.PENDING, null, null, reason, null, now, null, now.plus(props.ttl()));
+    insert(cr, "This wallet already has an open change request");
     logDecision("admin.change_request.created", cr, maker.username());
     return ChangeRequestMapper.view(cr);
   }
@@ -117,6 +145,9 @@ public class ChangeRequestService {
 
   public ChangeRequestView approve(Operator checker, UUID id) {
     ChangeRequest cr = decidable(checker, id);
+    if (ChangeRequest.WALLET.equals(cr.resourceType())) {
+      return approveWallet(checker, cr);
+    }
     AdminTxn txn = transaction(UUID.fromString(cr.resourceId()));
     TxnActionType action = TxnActionType.valueOf(cr.action());
     if (target(action, txn).isEmpty()) {
@@ -152,6 +183,25 @@ public class ChangeRequestService {
         });
     logDecision("admin.change_request.approved", cr, checker.username());
     return found(id);
+  }
+
+  /** Approval of a wallet unlock: row APPROVED + UnlockWallet to the core + audit, one transaction. */
+  private ChangeRequestView approveWallet(Operator checker, ChangeRequest cr) {
+    Instant now = clock.instant();
+    String correlationId = correlationId();
+    UnlockWalletCommand cmd = ChangeRequestMapper.unlock(cr, checker.username(), correlationId, now, props.unlockCommandTtl());
+    Map<String, Object> payload = new LinkedHashMap<>(cr.payload());
+    payload.put("commandId", cmd.commandId());
+    tx.executeWithoutResult(
+        s -> {
+          if (!requests.decide(cr.id(), ChangeRequest.Status.APPROVED, checker.username(), checker.subject(), null, payload, now)) {
+            throw decided();
+          }
+          outbox.append(CORE_COMMAND_TOPIC, cmd.txnId(), new EventMetadata(correlationId, cmd.txnId(), cmd.commandId(), 1), cmd);
+          audit(ChangeRequestMapper.approved(cr, checker.username(), CORE_COMMAND_TOPIC, correlationId, now));
+        });
+    logDecision("admin.change_request.approved", cr, checker.username());
+    return found(cr.id());
   }
 
   public ChangeRequestView reject(Operator checker, UUID id, String reason) {
@@ -244,6 +294,17 @@ public class ChangeRequestService {
     return cr;
   }
 
+  /** Stores a new PENDING request with its creation audit; one open request per resource. */
+  private void insert(ChangeRequest cr, String openMessage) {
+    tx.executeWithoutResult(
+        s -> {
+          if (!requests.insert(cr)) {
+            throw new MwException(ErrorCodes.VAL_REQUEST_OPEN, openMessage).withStatus(HttpStatus.CONFLICT);
+          }
+          audit(ChangeRequestMapper.created(cr, correlationId()));
+        });
+  }
+
   private void expireOne(ChangeRequest cr, Instant now) {
     if (requests.decide(cr.id(), ChangeRequest.Status.EXPIRED, null, null, null, cr.payload(), now)) {
       audit(ChangeRequestMapper.expired(cr, correlationId(), now));
@@ -290,7 +351,8 @@ public class ChangeRequestService {
   private static void logDecision(String event, ChangeRequest cr, String checker) {
     log.atInfo()
         .addKeyValue("event", event)
-        .addKeyValue("txnId", cr.resourceId())
+        .addKeyValue(
+            ChangeRequest.WALLET.equals(cr.resourceType()) ? "walletId" : "txnId", ChangeRequestMapper.shownId(cr))
         .addKeyValue("changeRequestId", cr.id().toString())
         .addKeyValue("action", cr.action())
         .addKeyValue("makerId", cr.makerId())

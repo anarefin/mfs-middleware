@@ -8,7 +8,7 @@
   "properties": {
     "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
     "eventType": {
-      "enum": ["TransactionValidated", "TransactionRejected", "FundsHeld", "HoldRejected", "HoldCommitted", "CommitFailed", "HoldReleased", "ReleaseFailed", "TransferPosted", "TransferRejected", "WalletCredited", "CreditRejected", "TransactionReversed", "ReversalRejected", "TransactionStatus", "ComplianceActionApplied", "ComplianceActionRejected"]
+      "enum": ["TransactionValidated", "TransactionRejected", "FundsHeld", "HoldRejected", "HoldCommitted", "CommitFailed", "HoldReleased", "ReleaseFailed", "TransferPosted", "TransferRejected", "WalletCredited", "CreditRejected", "TransactionReversed", "ReversalRejected", "TransactionStatus", "ComplianceActionApplied", "ComplianceActionRejected", "WalletUnlocked", "UnlockRejected"]
     },
     "eventId": { "type": "string", "format": "uuid", "description": "Unique per event; consumers dedupe on it (inbox)." },
     "commandId": { "$ref": "../../common/defs.v1.schema.json#/$defs/CommandId" },
@@ -156,6 +156,21 @@
       "properties": {
         "eventType": { "const": "ComplianceActionRejected" },
         "payload": { "$ref": "core.event.v1/ComplianceActionRejected.payload.schema.json" },
+        "outcome": { "const": "FAILURE" }
+      },
+      "required": ["reasonCode"]
+    },
+    {
+      "properties": {
+        "eventType": { "const": "WalletUnlocked" },
+        "payload": { "$ref": "core.event.v1/WalletUnlocked.payload.schema.json" },
+        "outcome": { "const": "SUCCESS" }
+      }
+    },
+    {
+      "properties": {
+        "eventType": { "const": "UnlockRejected" },
+        "payload": { "$ref": "core.event.v1/UnlockRejected.payload.schema.json" },
         "outcome": { "const": "FAILURE" }
       },
       "required": ["reasonCode"]

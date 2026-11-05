@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "commandType": "UnlockWallet",
+  "commandId": "5f0c2a9e-1b3d-4e6f-8a7b-9c0d1e2f3a4b:unlock",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a90",
+  "correlationId": "corr-0052",
+  "issuedAt": "2026-11-06T08:15:30Z",
+  "expiresAt": "2026-11-06T09:15:30Z",
+  "payload": {
+    "subject": { "type": "MSISDN", "id": "01711000001" },
+    "changeRequestId": "5f0c2a9e-1b3d-4e6f-8a7b-9c0d1e2f3a4b"
+  }
+}
