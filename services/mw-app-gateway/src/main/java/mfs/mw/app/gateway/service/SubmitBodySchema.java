@@ -23,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
  * the APISIX edge, ticket 29). APISIX request-validation forwards a body it validated re-encoded,
  * so the gateway could not hash the bytes the device signed; it now validates the exact bytes it
  * hashes and parses. The schema is {@code derived-schemas/app-v1-transaction-request.json},
- * derived from the contract's {@code TransactionRequest} by {@code scripts/apisix-schemas.sh}
+ * derived from the contract's {@code TransactionRequest} by {@code scripts/derived-schemas.sh}
  * ({@code make contracts-lint} fails when it drifts); like the edge copy it has no pattern or
  * format, so no message repeats a request value.
  *
