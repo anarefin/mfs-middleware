@@ -32,7 +32,7 @@ fails again and the entry must be re-checked (`test_security.sh` enforces statem
 | HIGH CVE-2026-109518 apt (Ubuntu 24.04 in eclipse-temurin 25 JRE) | every service image | runtime stage runs `apt-get upgrade` |
 | CRITICAL CVE-2026-111497 brotli, HIGH CVE-2026-92392 libcurl (Alpine) | every `mw-*-init` image and platform PostgreSQL | postgres:18.6-alpine re-pinned to the 2026-11-05 digest; init images `apk upgrade` |
 | CRITICAL/HIGH Go stdlib (26 CVEs) in gosu | every `mw-*-init` image | gosu removed (the init entry point never uses it) |
-| CRITICAL GHSA-2464-fhr4-w9xw, HIGH CVE-2026-94482 next 16.3.8 | mw-admin-ui | Next.js 16.4.1 (minor; spec D6 still says 16.3.8: spec sync item for ticket 51) |
+| CRITICAL GHSA-2464-fhr4-w9xw, HIGH CVE-2026-94482 next 16.3.8 | mw-admin-ui | Next.js 16.4.1 (minor; spec D6 and section 3 updated to 16.4.1 by ticket 47) |
 | HIGH undici 6.28.0, brace-expansion 5.0.9 (npm bundled in node:24-alpine) | mw-admin-ui image | npm, npx and corepack removed from the runtime image; `apk upgrade` |
 | CRITICAL/HIGH openssl, libssh2, musl, nghttp2, zlib (curl 8.17.0, Alpine) | etcd-init, smoke and edge-test helper | curlimages/curl 8.23.0 (pinned by digest) |
 | ZAP 10035 HSTS, 10021 nosniff, 10020/10038 on edge-produced errors, 10036 server version | APISIX edge | `lua/edge-security-headers.lua` in the global rule; `enable_server_tokens: false` |

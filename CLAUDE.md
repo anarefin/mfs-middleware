@@ -4,6 +4,13 @@ Spec: `spec/upay-mfs-middleware-spec.md`. This file is the short form of the rul
 module follows. Each service also has its own `CLAUDE.md` (responsibilities, contracts
 owned, contracts used).
 
+Operator docs (ticket 47, WP30): `README.md` (prerequisites, clean-host quick start, every make
+target), `docs/runbook.md` (MVP host), `docs/demo.md` (one demo per milestone M0–M6),
+`docs/adr/` (one record per spec decision D1–D15, M1–M13). `scripts/test/test_repo_docs.sh`
+fails when they name a make target, repo path, e2e tag or `VAR=` knob that does not exist, when
+the README misses a Makefile target, or when a spec decision row has no ADR: a new target, knob or
+decision updates these docs in the same change.
+
 ## Repository and package layout
 
 - Root (spec 4.2): Gradle composite build for convenience only. `settings.gradle.kts`
