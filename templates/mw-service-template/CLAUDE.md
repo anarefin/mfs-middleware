@@ -20,7 +20,7 @@ and keep `scripts/test/test_service_template.sh` green.
 | Security headers | `filter/SecurityHeadersFilter` | 18.6 |
 | Error envelope, code namespaces -> HTTP status, global advice; logs route templates, not raw URIs | `exception/`, `dto/ErrorEnvelope` | 5.3, 18.6 |
 | `@Sensitive` + `MaskingPolicy` (MSISDN `0171****789`, NID last 3, account last 4, name initial, secrets `****`, `PARTY_ID` by the party's `type`: wallet/MSISDN ids as an MSISDN, anything else last 4); `scrub` also masks MSISDNs written with single spaces or dashes between digit groups (`01711-234567`, `+880 1711-234567` -> `0171****567` / `+880171****567`) and leaves amounts, dates and times alone (ticket 50; every service's copy identical apart from the package) | `util/` | 18.3 |
-| JSON logs with the 21.1 fields, masking before output | `logging/JsonLogFormatter` | 21.1 |
+| JSON logs with the 21.1 fields, masking before output; the id fields (`correlationId`, `txnId`, `traceId`, `spanId`, `partnerId`) get `MaskingPolicy.scrubId` (MSISDNs masked, other digit runs kept whole, so ids stay traceable); free text keeps digit-only bounds, so a number glued to letters is still masked | `logging/JsonLogFormatter` | 21.1 |
 | Config binding, OpenBao/Vault via Spring Cloud Vault (AppRole, `VAULT_ENABLED`) | `config/MwServiceProperties`, `application.yml` | 18.4, 20.4 |
 | Liveness/readiness, `/actuator/prometheus`, Brave tracing (W3C), virtual threads | `application.yml` | 20.1, 21.2, 21.3 |
 | Image: layered jar, JDK 25 AOT cache, non-root uid 10001, readiness `HEALTHCHECK`, SBOM at `/app/sbom/bom.json` | `Dockerfile` | 20.1 |

@@ -71,48 +71,81 @@ class JsonLogFormatterTest {
   }
 
   /**
-   * The shape alone is no exemption: a UUID's last group or a trace id can be all digits, and
-   * correlationId and traceId can come from the caller.
+   * Ids are traced by exact match (edge test {@code cid_kept}), so a digit run inside one is not
+   * read as an NID or account number: a random hex suffix holds a run of 10 digits often enough
+   * to make the log untraceable.
    */
   @Test
-  void systemIdsHidingALongNumberAreScrubbed() {
+  void idFieldsKeepLongDigitRunsWhole() {
     Map<String, Object> json =
         format(
             formatter,
             Map.of(
                 "traceId", "12345678901234567890123456789012",
                 "spanId", "a012345678901234",
-                "correlationId", "12345678-1234-1234-1234-001711234567"),
+                "correlationId", "edge-test-cid-6948355579fa",
+                "partnerId", "desco-1990123456789"),
             "txnId", "0190a7c4-0000-7000-8000-000000000001");
     assertThat(json)
-        .containsEntry("traceId", "****9012")
-        .containsEntry("spanId", "a****1234")
-        .containsEntry("correlationId", "12345678-1234-1234-1234-****4567")
-        .containsEntry("txnId", "0190a7c4-0000-7000-8000-****0001");
+        .containsEntry("traceId", "12345678901234567890123456789012")
+        .containsEntry("spanId", "a012345678901234")
+        .containsEntry("correlationId", "edge-test-cid-6948355579fa")
+        .containsEntry("partnerId", "desco-1990123456789")
+        .containsEntry("txnId", "0190a7c4-0000-7000-8000-000000000001");
   }
 
   @Test
-  void idFieldsOfAnyOtherShapeAreScrubbed() {
+  void idFieldsOfAnyShapeAreKeptWhole() {
     Map<String, Object> json =
         format(
             formatter,
-            Map.of(
-                "traceId", "trace-01712345789",
-                "spanId", "A012345678901234",
-                "correlationId", "corr-01712345789"),
+            Map.of("spanId", "A012345678901234", "correlationId", "cid:2026.11.05_00112233445566"),
             "txnId", "0190A7C4-0000-7000-8000-000000000001");
     assertThat(json)
-        .containsEntry("traceId", "trace-0171****789")
-        .containsEntry("spanId", "A****1234")
-        .containsEntry("correlationId", "corr-0171****789")
-        .containsEntry("txnId", "0190A7C4-0000-7000-8000-****0001");
+        .containsEntry("spanId", "A012345678901234")
+        .containsEntry("correlationId", "cid:2026.11.05_00112233445566")
+        .containsEntry("txnId", "0190A7C4-0000-7000-8000-000000000001");
   }
 
-  /** An id shape in any other field is no exemption. */
+  /**
+   * correlationId and traceId are chosen by the caller (the filter checks only the character
+   * set), so a mobile number put in one is still masked. A random id has the exact MSISDN shape
+   * ({@code 01[3-9]} and 8 more digits, bounded by non-digits) about once in ten thousand.
+   */
   @Test
-  void otherFieldsGetNoIdExemption() {
+  void anMsisdnInsideAnIdFieldIsStillMasked() {
     Map<String, Object> json =
-        format(formatter, Map.of(), "partnerId", "0190a7c4-0000-7000-8000-000000000001");
-    assertThat(json).containsEntry("partnerId", "0190a7c4-0000-7000-8000-****0001");
+        format(
+            formatter,
+            Map.of("traceId", "trace-01712345789", "correlationId", "corr-01712345789"),
+            "txnId", "app_8801812345678");
+    assertThat(json)
+        .containsEntry("traceId", "trace-0171****789")
+        .containsEntry("correlationId", "corr-0171****789")
+        .containsEntry("txnId", "app_880181****678");
+  }
+
+  /** The id exemption is by field name only: the same text anywhere else is scrubbed. */
+  @Test
+  void otherFieldsAndTheMessageGetNoIdExemption() {
+    LoggingEvent event = new LoggingEvent();
+    event.setLevel(Level.INFO);
+    event.setLoggerName("test");
+    event.setThreadName("main");
+    event.setMessage("cid {} for {} wallet01712345789");
+    event.setArgumentArray(new Object[] {"edge-test-cid-6948355579fa", "01812345678"});
+    event.setInstant(Instant.parse("2026-11-04T08:00:00Z"));
+    event.setMDCPropertyMap(Map.of("correlationId", "edge-test-cid-6948355579fa"));
+    event.addKeyValuePair(new KeyValuePair("ref", "edge-test-cid-6948355579fa"));
+    event.addKeyValuePair(new KeyValuePair("msisdn", "01912345678"));
+    @SuppressWarnings("unchecked")
+    Map<String, Object> json =
+        JsonMapper.builder().build().readValue(formatter.format(event), Map.class);
+    assertThat(json)
+        .containsEntry("correlationId", "edge-test-cid-6948355579fa")
+        .containsEntry("ref", "edge-test-cid-****579fa")
+        .containsEntry("msisdn", "0191****678")
+        .containsEntry(
+            "message", "cid edge-test-cid-****579fa for 0181****678 wallet0171****789");
   }
 }

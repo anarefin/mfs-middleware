@@ -8,7 +8,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
+import java.util.Set;
 import mfs.mw.ussd.util.MaskingPolicy;
 import org.slf4j.event.KeyValuePair;
 import org.slf4j.helpers.MessageFormatter;
@@ -22,11 +22,10 @@ import org.springframework.core.env.Environment;
  * MaskingPolicy#describe(Object)} (so {@code @Sensitive} record components are masked) and the
  * whole message, key-value pairs and stack trace are scrubbed for MSISDNs, NIDs and account
  * numbers ({@link MaskingPolicy#scrub(String)}). Numeric field values are scrubbed as text too
- * and written as the masked string when masking changes them. The system-generated ids
- * ({@code correlationId}, {@code txnId}: lowercase UUID; {@code traceId}: 32 and {@code spanId}:
- * 16 lowercase hex) are written unscrubbed only when they have exactly that shape and hold no run
- * of 10 or more digits ({@link MaskingPolicy#hidesANumber(String)}): a UUID's last group or a
- * trace id can be all digits, and correlationId and traceId can come from the caller.
+ * and written as the masked string when masking changes them. The 21.1 id fields ({@code
+ * correlationId}, {@code txnId}, {@code traceId}, {@code spanId}, {@code partnerId}) are traced
+ * by exact match, so they get {@link MaskingPolicy#scrubId(String)} instead: a digit run in them
+ * stays whole and only an MSISDN is masked, as correlationId and traceId are chosen by the caller.
  *
  * <p>Context fields come from the MDC or from SLF4J key-value pairs ({@code
  * log.atInfo().addKeyValue("event", "txn.state.changed")}); key-value pairs win. Wired by {@code
@@ -41,16 +40,9 @@ public class JsonLogFormatter implements StructuredLogFormatter<ILoggingEvent> {
 
   private static final List<String> TRAILING_FIELDS = List.of("durationMs", "errorCode");
 
-  private static final Pattern UUID =
-      Pattern.compile("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
-
-  /** Fields that carry ids the middleware generates, with the shape that may stay whole. */
-  private static final Map<String, Pattern> SYSTEM_IDS =
-      Map.of(
-          "correlationId", UUID,
-          "txnId", UUID,
-          "traceId", Pattern.compile("[0-9a-f]{32}"),
-          "spanId", Pattern.compile("[0-9a-f]{16}"));
+  /** The 21.1 id fields, written with {@link MaskingPolicy#scrubId(String)}. */
+  private static final Set<String> ID_FIELDS =
+      Set.of("correlationId", "txnId", "traceId", "spanId", "partnerId");
 
   private final JsonWriter<Map<String, Object>> writer = JsonWriter.<Map<String, Object>>standard()
       .withNewLineAtEnd();
@@ -125,11 +117,8 @@ public class JsonLogFormatter implements StructuredLogFormatter<ILoggingEvent> {
       String text = value.toString();
       String scrubbed = MaskingPolicy.scrub(text);
       out.put(key, text.equals(scrubbed) ? value : scrubbed);
-    } else if (value instanceof String id
-        && SYSTEM_IDS.containsKey(key)
-        && SYSTEM_IDS.get(key).matcher(id).matches()
-        && !MaskingPolicy.hidesANumber(id)) {
-      out.put(key, id);
+    } else if (ID_FIELDS.contains(key)) {
+      out.put(key, MaskingPolicy.scrubId(value.toString()));
     } else {
       out.put(key, MaskingPolicy.describe(value));
     }

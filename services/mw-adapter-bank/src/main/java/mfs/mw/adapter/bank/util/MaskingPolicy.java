@@ -119,20 +119,37 @@ public final class MaskingPolicy {
   }
 
   /**
-   * Whether {@code text} holds a run of 10 or more digits, the length {@link #scrub(String)}
-   * masks. An id of a known shape is left whole only when this is false.
+   * Masking for the structured id fields of a log line ({@code correlationId}, {@code txnId},
+   * {@code traceId}, {@code spanId}, {@code partnerId}): masks Bangladesh MSISDNs as {@link
+   * #scrub(String)} does and keeps every other digit run whole. Ids are traced by exact match and
+   * a random id often holds a run of 10 digits (a 12-character hex suffix about once in 40),
+   * while the MSISDN shape, which a caller may put in a correlation id or trace id it chooses,
+   * turns up in a random id about once in ten thousand.
    */
-  public static boolean hidesANumber(String text) {
+  public static String scrubId(String id) {
+    if (id == null || id.isEmpty()) {
+      return id;
+    }
+    return maskMsisdns(id);
+  }
+
+  /**
+   * Whether {@code text} holds a run of 10 or more digits, the length {@link #scrub(String)}
+   * masks. A protected id shape in free text is left whole only when this is false.
+   */
+  private static boolean hidesANumber(String text) {
     return HIDES_A_NUMBER.matcher(text).find();
   }
 
   private static String scrubNumbers(String text) {
-    String msisdnsMasked =
-        replace(
-            MSISDN_IN_TEXT,
-            text,
-            v -> mask(SensitiveType.MSISDN, MSISDN_SEPARATOR.matcher(v).replaceAll("")));
-    return replace(LONG_NUMBER_IN_TEXT, msisdnsMasked, v -> mask(numberType(v), v));
+    return replace(LONG_NUMBER_IN_TEXT, maskMsisdns(text), v -> mask(numberType(v), v));
+  }
+
+  private static String maskMsisdns(String text) {
+    return replace(
+        MSISDN_IN_TEXT,
+        text,
+        v -> mask(SensitiveType.MSISDN, MSISDN_SEPARATOR.matcher(v).replaceAll("")));
   }
 
   private static SensitiveType numberType(String digits) {
