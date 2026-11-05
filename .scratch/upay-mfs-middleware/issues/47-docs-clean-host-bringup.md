@@ -8,7 +8,7 @@
 - 45: Gatling 100 TPS mix
 - 46: Security pass
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [ ] A person not on the team brings up the full stack with seeded data on a clean host in under 15 minutes (left for the user: README quick start + `docs/runbook.md`; every command in them is checked by `scripts/test/test_repo_docs.sh`)
 - [ ] The demo script runs every milestone demo end to end (`docs/demo.md`, M0–M6; running it needs the shared stack: deferred to milestone gate)

@@ -18,5 +18,5 @@
 44-chaos-kill-mid-flow                      43                done     12m      5 files + 413 − 5  0a9e33f..9adf0f3
 45-gatling-100-tps                          43                done     34m      39 files + 3088 − 16  2e49e02..ebfc691
 46-security-pass                            43,42             done     73m      96 files + 1308 − 90  8ef342a..27b26da
-47-docs-clean-host-bringup                  44,45,46          todo     —        —          —
+47-docs-clean-host-bringup                  44,45,46          done     17m      37 files + 1294 − 11  527066d..23b166e
 # --- M6 gate: verify-changed + fresh-stack e2e, then ONE full make verify
