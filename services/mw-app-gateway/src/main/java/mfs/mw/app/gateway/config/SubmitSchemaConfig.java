@@ -5,6 +5,7 @@ import mfs.mw.app.gateway.filter.CachedBodyRequest;
 import mfs.mw.app.gateway.filter.SubmitSchemaInterceptor;
 import mfs.mw.app.gateway.service.SubmitBodySchema;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -31,7 +32,9 @@ public class SubmitSchemaConfig implements WebMvcConfigurer {
     this.schema = new SubmitBodySchema(json);
   }
 
+  /** Servlet contexts only: the error resolver it answers 413 through is a web MVC bean. */
   @Bean
+  @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
   FilterRegistrationBean<CachedBodyFilter> cachedBodyFilter(
       @Qualifier("handlerExceptionResolver") HandlerExceptionResolver errors) {
     FilterRegistrationBean<CachedBodyFilter> r =
