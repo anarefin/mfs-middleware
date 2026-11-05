@@ -21,4 +21,5 @@
   - `make smoke`: `smoke: 46 passed, 0 failed`
   - `make edge-test`: `edge-test: 42 passed, 0 failed`
   - `make e2e` (full suite): `110 scenarios, 0 failed, 0 skipped`, `BUILD SUCCESSFUL in 21m 10s`
+- Final re-run after the masking fixes, fresh stack at bfd889b: `edge-test: 43 passed, 0 failed`; full `make e2e` 110 scenarios, 0 failed (`BUILD SUCCESSFUL in 21m 32s`). No full `make verify` after 9b73ac2 (user decision): the later fixes ran their targeted tests.
 - Gate fixes and user decisions: see the merge commits after 70f7add and memory `upay-m3-decisions`.
