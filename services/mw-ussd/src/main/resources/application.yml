@@ -241,7 +241,7 @@ mw:
         overflow: PAGE
         continue-flag: CON
         end-flag: END
-      banglalink:
+      bl:
         transport: HTTP
         short-codes: ["*268#"]
         max-length-gsm: 182
@@ -250,6 +250,8 @@ mw:
         overflow: PAGE
         continue-flag: CON
         end-flag: END
+        # spec 9.2 names the MNO bl; mw-adapter-telco's top-up partnerId is banglalink
+        operator: banglalink
       teletalk:
         transport: HTTP
         short-codes: ["*268#"]
@@ -283,9 +285,9 @@ mw:
           host: ${MW_USSD_SMPP_ROBI_HOST:mw-simulators}
           port: ${MW_USSD_SMPP_ROBI_PORT:2776}
           system-id: upay-ussd
-        banglalink:
-          host: ${MW_USSD_SMPP_BANGLALINK_HOST:mw-simulators}
-          port: ${MW_USSD_SMPP_BANGLALINK_PORT:2776}
+        bl:
+          host: ${MW_USSD_SMPP_BL_HOST:mw-simulators}
+          port: ${MW_USSD_SMPP_BL_PORT:2776}
           system-id: upay-ussd
         teletalk:
           host: ${MW_USSD_SMPP_TELETALK_HOST:mw-simulators}

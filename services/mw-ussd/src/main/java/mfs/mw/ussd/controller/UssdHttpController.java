@@ -4,7 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
 import mfs.mw.ussd.dto.HttpUssdRequest;
 import mfs.mw.ussd.dto.HttpUssdResponse;
-import mfs.mw.ussd.service.HttpUssdTransport;
+import mfs.mw.ussd.transport.HttpUssdTransport;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;

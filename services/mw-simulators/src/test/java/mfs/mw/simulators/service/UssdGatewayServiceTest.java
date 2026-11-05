@@ -14,6 +14,7 @@ import mfs.mw.simulators.dto.UssdDialResult;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.env.MockEnvironment;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -24,6 +25,8 @@ class UssdGatewayServiceTest {
 
   HttpServer server;
   final List<JsonNode> received = new CopyOnWriteArrayList<>();
+  final List<String> authorizations = new CopyOnWriteArrayList<>();
+  final MockEnvironment env = new MockEnvironment();
 
   @BeforeEach
   void start() throws IOException {
@@ -31,6 +34,7 @@ class UssdGatewayServiceTest {
     server.createContext("/ussd/robi", ex -> {
       JsonNode step = JSON.readTree(new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
       received.add(step);
+      authorizations.add(String.valueOf(ex.getRequestHeaders().getFirst("Authorization")));
       // ends on the third step
       String flag = received.size() >= 3 ? "END" : "CON";
       byte[] out = JSON.writeValueAsBytes(JSON.createObjectNode()
@@ -52,7 +56,7 @@ class UssdGatewayServiceTest {
 
   UssdGatewayService service() {
     return new UssdGatewayService(
-        new UssdGatewayClient(JSON),
+        new UssdGatewayClient(JSON, env),
         new mfs.mw.simulators.client.UssdSmppGateway(
             new mfs.mw.simulators.config.UssdSmppGatewayProperties(false, 0, java.util.List.of("gp"), null)),
         "http://127.0.0.1:" + server.getAddress().getPort() + "/ussd", "END");
@@ -82,6 +86,25 @@ class UssdGatewayServiceTest {
     assertThat(r.sessionId()).startsWith("sim-");
     assertThat(r.ended()).isFalse();
     assertThat(r.screens()).hasSize(1);
+  }
+
+  /** Ticket 26 fix: APISIX's ussd-http-<mno> route takes basic-auth as consumer ussd_<mno>. */
+  @Test
+  void everyStepCarriesTheMnosBasicAuthCredential() {
+    env.setProperty("sim.ussd-gateway.credentials.robi", "fake-robi-secret");
+
+    service().dial(new UssdDialRequest("robi", "01712345678", "*268#", "s-2", List.of("1", "2")));
+
+    String expected = "Basic " + java.util.Base64.getEncoder()
+        .encodeToString("ussd-robi:fake-robi-secret".getBytes(StandardCharsets.UTF_8));
+    assertThat(authorizations).hasSize(3).containsOnly(expected);
+  }
+
+  @Test
+  void anMnoWithoutACredentialIsPlayedWithoutAuthorization() {
+    service().dial(new UssdDialRequest("robi", "01712345678", "*268#", "s-3", List.of()));
+
+    assertThat(authorizations).containsExactly("null");
   }
 
   @Test

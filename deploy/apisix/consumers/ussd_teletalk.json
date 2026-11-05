@@ -1,0 +1,10 @@
+{
+  "username": "ussd_teletalk",
+  "desc": "MNO USSD gateway teletalk (spec 8.2): basic-auth user ussd-teletalk, password = USSD_TELETALK_GATEWAY_SECRET (generated .env in dev, OpenBao secret/mw-simulators for the simulator); only route ussd-http-teletalk admits it",
+  "plugins": {
+    "basic-auth": {
+      "username": "ussd-teletalk",
+      "password": "@env:USSD_TELETALK_GATEWAY_SECRET"
+    }
+  }
+}

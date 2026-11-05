@@ -1,4 +1,4 @@
-package mfs.mw.ussd.service;
+package mfs.mw.ussd.transport;
 
 import mfs.mw.ussd.config.UssdProperties;
 import mfs.mw.ussd.dto.HttpUssdRequest;
@@ -8,16 +8,17 @@ import mfs.mw.ussd.dto.UssdRequest;
 import mfs.mw.ussd.dto.UssdResponse;
 import mfs.mw.ussd.exception.ErrorCodes;
 import mfs.mw.ussd.exception.MwException;
+import mfs.mw.ussd.service.UssdEngine;
 import mfs.mw.ussd.util.Msisdn;
 import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
 /**
  * {@code HttpUssdTransport} (spec 9.2): the MNO POSTs each step to {@code /ussd/{mno}} and the
  * response body is the next screen plus the MNO's continue/end flag. Only MNOs configured with
  * transport HTTP are served here; the MNO-provided session id is the session id.
  */
-@Service
+@Component
 public class HttpUssdTransport implements UssdTransport {
 
   private final UssdEngine engine;

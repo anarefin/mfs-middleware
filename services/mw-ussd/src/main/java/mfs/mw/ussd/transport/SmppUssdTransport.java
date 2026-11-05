@@ -1,4 +1,4 @@
-package mfs.mw.ussd.service;
+package mfs.mw.ussd.transport;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -21,10 +21,11 @@ import mfs.mw.ussd.dto.SmppUssdMessage;
 import mfs.mw.ussd.dto.UssdEvent;
 import mfs.mw.ussd.dto.UssdRequest;
 import mfs.mw.ussd.dto.UssdResponse;
+import mfs.mw.ussd.service.UssdEngine;
 import mfs.mw.ussd.util.Msisdn;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
 /**
  * {@code SmppUssdTransport} (spec 9.2, WP19): {@code deliver_sm} in, {@code submit_sm} out, on the
@@ -36,7 +37,7 @@ import org.springframework.stereotype.Service;
  * out on the bind that received it. Each step runs on its own virtual thread, never on jSMPP's
  * PDU threads (an ACTION waits up to the sync budget).
  */
-@Service
+@Component
 public class SmppUssdTransport implements UssdTransport, UssdSmppListener {
 
   private static final Logger log = LoggerFactory.getLogger(SmppUssdTransport.class);

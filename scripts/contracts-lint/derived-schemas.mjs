@@ -1,30 +1,30 @@
-// apisix-schemas: request-validation schemas for the APISIX edge (spec 8.3), derived from the
-// OpenAPI contracts in contracts/ (ticket 13). Usage: node apisix-schemas.mjs --check|--write <repo-root>
+// derived-schemas: the body schemas a service checks itself on the exact bytes it received
+// (spec 8.3; never at the APISIX edge, whose request-validation forwards a re-encoded body: M3 gate
+// decision), derived from the OpenAPI contracts in contracts/ (tickets 13, 29).
+// Usage: node derived-schemas.mjs --check|--write <repo-root>
 //
-// Every deploy/apisix/schemas/*.json, and every services/<module>/src/main/resources/derived-schemas/*.json
-// (a service that checks a derived schema itself: mw-app-gateway's submit body, which the edge must
-// not re-encode because the device signs its bytes, ticket 29), names its source in "x-mw-derived-from"
-// ("<contracts-relative file>#<JSON pointer>"). --check fails when a file is not exactly what
-// the derivation gives today; --write rewrites the files. To add one, create the file with only
-// { "x-mw-derived-from": "..." } and run scripts/apisix-schemas.sh --write.
+// Every services/<module>/src/main/resources/derived-schemas/*.json names its source in
+// "x-mw-derived-from" ("<contracts-relative file>#<JSON pointer>"). --check fails when a file is
+// not exactly what the derivation gives today; --write rewrites the files. To add one, create the
+// file with only { "x-mw-derived-from": "..." } and run scripts/derived-schemas.sh --write.
 //
-// The derivation targets APISIX's Lua validator (api7 jsonschema, draft 4-7):
+// The derivation (draft 2020-12 subset, checked by networknt json-schema-validator in the services):
 //   - local $refs are inlined;
 //   - description/title/examples/deprecated/readOnly/writeOnly are dropped (documentation);
-//   - pattern and format are dropped: the Lua validator writes a failed pattern or format
-//     WITH the offending value (an MSISDN) to the APISIX error log (SEC-10); the owning
-//     service still checks them;
-//   - propertyNames { enum: [...] } (ignored by the Lua validator) becomes properties for each
-//     allowed name plus additionalProperties: false, which accepts exactly the same objects;
-//   - any other keyword not listed in KEEP fails the derivation, so a contract change the edge
-//     cannot express is noticed instead of silently weakening the check.
+//   - pattern and format are dropped: a validator message for a failed pattern or format
+//     repeats the offending value (an MSISDN; SEC-10); the service's bean validation still
+//     checks them;
+//   - propertyNames { enum: [...] } becomes properties for each allowed name plus
+//     additionalProperties: false, which accepts exactly the same objects;
+//   - any other keyword not listed in KEEP fails the derivation, so a contract change the
+//     derived schema cannot express is noticed instead of silently weakening the check.
 import { readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 
 const [mode, root] = process.argv.slice(2);
 if (!["--check", "--write"].includes(mode) || !root) {
-  console.error("usage: node apisix-schemas.mjs --check|--write <repo-root>");
+  console.error("usage: node derived-schemas.mjs --check|--write <repo-root>");
   process.exit(2);
 }
 const SOURCE = "x-mw-derived-from";
@@ -58,7 +58,7 @@ function derive(node, doc, where, seen = []) {
   const out = {};
   for (const [k, v] of Object.entries(node)) {
     if (DROP.has(k) || k === "propertyNames") continue;
-    if (!KEEP.has(k)) throw new Error(`${where}: keyword "${k}" has no edge equivalent; extend scripts/contracts-lint/apisix-schemas.mjs`);
+    if (!KEEP.has(k)) throw new Error(`${where}: keyword "${k}" is not supported; extend scripts/contracts-lint/derived-schemas.mjs`);
     if (k === "properties") {
       out.properties = Object.fromEntries(Object.entries(v).map(([p, s]) => [p, derive(s, doc, `${where}/properties/${p}`, seen)]));
     } else if (SUB_SCHEMA.has(k)) {
@@ -83,7 +83,7 @@ function derive(node, doc, where, seen = []) {
   return out;
 }
 
-const dirs = [join("deploy", "apisix", "schemas")];
+const dirs = [];
 const services = join(root, "services");
 if (existsSync(services)) {
   for (const m of readdirSync(services).sort()) {
@@ -120,9 +120,9 @@ for (const rel of dirs) {
     if (current === wanted) continue;
     if (mode === "--write") {
       writeFileSync(join(dir, name), wanted);
-      console.log(`apisix-schemas: wrote ${file}`);
+      console.log(`derived-schemas: wrote ${file}`);
     } else {
-      problems.push(`${file}: differs from ${source} (run scripts/apisix-schemas.sh --write)`);
+      problems.push(`${file}: differs from ${source} (run scripts/derived-schemas.sh --write)`);
     }
   } catch (e) {
     problems.push(`${file}: ${e.message}`);
@@ -130,7 +130,7 @@ for (const rel of dirs) {
   }
 }
 if (problems.length) {
-  for (const p of problems) console.error(`apisix-schemas: ${p}`);
+  for (const p of problems) console.error(`derived-schemas: ${p}`);
   process.exit(1);
 }
-console.log(`apisix-schemas: ${n} edge schema(s) match their contracts`);
+console.log(`derived-schemas: ${n} derived schema(s) match their contracts`);

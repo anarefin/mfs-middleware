@@ -41,7 +41,9 @@ mfs.mw.<service>/
   exception/   exceptions, error codes, global @RestControllerAdvice
   messaging/   Kafka listeners/publishers, outbox relay, inbox dedup, retry/DLQ
   route/       Camel RouteBuilders and YAML route templates (no XML DSL)
-  client/      outbound calls (partners, SMSC), with Resilience4j
+  client/      outbound calls (partners, SMSC), with Resilience4j; in mw-simulators also the
+               simulated SMPP servers (SMSC, USSD gateway)
+  transport/   channel transports: mw-ussd's HTTP and SMPP USSD transports (MNO wire <-> engine)
   scheduler/   @Scheduled jobs guarded by ShedLock
   security/    filters, signature/HMAC, JWT converters
   filter/      correlation ID and request logging filters
@@ -61,7 +63,7 @@ three copies stay identical apart from the package; mw-adapter-telco's CLAUDE.md
 framework hands its audit to the service's `messaging/PartnerAuditPublisher`; everything else in an
 adapter follows the layered packages above.
 
-Dependencies point one way: `controller`, `messaging`, `route`, `scheduler` -> `service`
+Dependencies point one way: `controller`, `messaging`, `route`, `scheduler`, `transport` -> `service`
 -> `repository`, `client`. One sanctioned exception: `service` may call the outbox and inbox
 writers (`messaging/OutboxWriter`, `messaging/Inbox`) and use the header constants and metadata
 of `messaging/` (`MwHeaders`, `EventMetadata`) inside its own transaction, because the event must

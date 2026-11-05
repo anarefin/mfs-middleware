@@ -61,7 +61,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 - Validation: submit body schema first (`service/SubmitBodySchema` via `filter/SubmitSchemaInterceptor`,
   `config/SubmitSchemaConfig`; after the JWT, before the device gate; ticket 29, formerly APISIX
   request-validation): `derived-schemas/app-v1-transaction-request.json`, derived from the contract's
-  `TransactionRequest` by `scripts/apisix-schemas.sh --write` (`make contracts-lint` fails on drift), validated
+  `TransactionRequest` by `scripts/derived-schemas.sh --write` (`make contracts-lint` fails on drift), validated
   with json-schema-validator (runtime dependency, on Boot's Jackson) on the cached bytes; duplicate keys,
   trailing content or a non-object `400 MW-VAL-001`, schema errors `400 MW-VAL-001` with dotted fields (no
   pattern/format in the schema, so no request value in a message). Then `Idempotency-Key` required, 1..64
@@ -152,7 +152,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 
 - `api/mw-app-gateway/app.v1.openapi.yaml` (app API v1). This service checks submit bodies against
   `src/main/resources/derived-schemas/app-v1-transaction-request.json`, derived from `TransactionRequest`
-  (`scripts/apisix-schemas.sh --write` after changing it; `make contracts-lint` fails until
+  (`scripts/derived-schemas.sh --write` after changing it; `make contracts-lint` fails until
   then). The edge answers 401/413/429 itself (`deploy/apisix/README.md`).
 
 ## Contracts used

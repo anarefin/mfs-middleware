@@ -3,7 +3,8 @@
 # per-service database roles or OpenBao identities yet):
 #   1. OpenBao KV secret/mw-simulators: database password (created once; an existing secret is
 #      never overwritten).
-#   1b. The dev billagg HMAC secret (BILLAGG_HMAC_SECRET) under sim.callback-secrets.billagg in the same KV secret.
+#   1b. The dev billagg HMAC secret (BILLAGG_HMAC_SECRET) under sim.callback-secrets.billagg in the same KV secret;
+#       the USSD gateway credentials (USSD_<MNO>_GATEWAY_SECRET) under sim.ussd-gateway.credentials.<mno>.
 #   2. PostgreSQL: login role simulators_rw and schema simulators owned by it (password synced from
 #      the secret on every run).
 #   3. OpenBao policy + AppRole mw-simulators (read that one secret); a fresh secret-id and the
@@ -78,6 +79,21 @@ if [ -n "${C2WBANK_HMAC_SECRET:-}" ]; then
 else
   log "C2WBANK_HMAC_SECRET not set: partner secret sim.callback-secrets.c2wbank left as it is" >&2
 fi
+# The simulated MNO gateways' basic-auth passwords at APISIX (route ussd-http-<mno>, consumer
+# ussd_<mno>, user ussd-<mno>), generated as USSD_<MNO>_GATEWAY_SECRET; the same values are the
+# APISIX consumers' passwords (deploy/apisix/consumers/ussd_<mno>.json).
+for mno in gp robi bl teletalk; do
+  var="USSD_$(printf '%s' "$mno" | tr 'a-z' 'A-Z')_GATEWAY_SECRET"
+  eval "val=\${$var:-}"
+  if [ -n "$val" ]; then
+    printf '%s' "$val" >"$tmp/ussd"
+    bao kv patch "$KV" "sim.ussd-gateway.credentials.$mno=@$tmp/ussd" >/dev/null
+    rm -f "$tmp/ussd"
+    log "USSD gateway credential sim.ussd-gateway.credentials.$mno synced"
+  else
+    log "$var not set: sim.ussd-gateway.credentials.$mno left as it is" >&2
+  fi
+done
 
 # 2. database role and schema ---------------------------------------------------------------------
 provision_db() {

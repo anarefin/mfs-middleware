@@ -7,7 +7,9 @@ info:
     transport is HTTP (`mw.ussd.mno.<mno>.transport: HTTP`) POSTs every step of a session to
     `/ussd/{mno}`; the response is the next screen and the MNO's continue/end flag. MVP wire
     format is this JSON; another per-MNO format (XML, TBC per MNO) maps onto the same fields.
-    Behind the APISIX route `/ussd/*` (ip allow-list, body cap, rate limit; spec 8.2). A screen
+    Behind one APISIX route per MNO, `ussd-http-<mno>` (spec 8.2): the MNO's source allow-list,
+    HTTP basic auth as that MNO's consumer (another MNO's credential is refused 403, none 401),
+    a 4 KiB body cap and a quota per MSISDN (429); the credential is not forwarded. A screen
     longer than the MNO's maximum (182 GSM-7 / 70 UCS-2 characters by default) is truncated or
     paged per MNO. The PIN typed on USSD is encrypted with the core's public key on receipt and
     never stored or logged. Errors are the 5.3 envelope.
@@ -22,7 +24,7 @@ paths:
         - name: mno
           in: path
           required: true
-          description: The MNO, one of the configured HTTP MNOs (robi, banglalink, teletalk).
+          description: The MNO, one of the configured HTTP MNOs (robi, bl, teletalk).
           schema: { type: string, pattern: "^[a-z]{1,16}$" }
       requestBody:
         required: true

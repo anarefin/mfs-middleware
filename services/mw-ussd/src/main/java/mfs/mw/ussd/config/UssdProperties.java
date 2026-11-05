@@ -23,7 +23,7 @@ import org.springframework.validation.annotation.Validated;
  * @param defaultLanguage {@code bn} or {@code en} at dial-in (no customer profile lookup yet)
  * @param maxInvalidAttempts invalid inputs in a row on one screen before the session ends
  * @param pin the core's PIN encryption key (public key from OpenBao in the stack)
- * @param mno per MNO ({@code gp}, {@code robi}, {@code banglalink}, {@code teletalk})
+ * @param mno per MNO ({@code gp}, {@code robi}, {@code bl}, {@code teletalk})
  * @param lists static lists for DYNAMIC nodes, by source name
  */
 @Validated
@@ -65,13 +65,15 @@ public record UssdProperties(
   public record Pin(@NotBlank String keyId, String publicKey) {}
 
   /**
-   * Per-MNO configuration ({@code mw.ussd.mno.<gp|robi|teletalk|banglalink>}).
+   * Per-MNO configuration ({@code mw.ussd.mno.<gp|robi|teletalk|bl>}, spec 9.2).
    *
    * @param maxLengthGsm screen limit for GSM-7 text (182)
    * @param maxLengthUcs2 screen limit for UCS-2 text such as Bangla (70)
    * @param sessionTimeout the MNO's session limit (120-180 s, TBC per MNO)
    * @param continueFlag value of the HTTP response flag that keeps the session open
    * @param endFlag value of the HTTP response flag that ends it
+   * @param operator mw-adapter-telco's partnerId for this MNO's subscribers (a top-up of the own
+   *     number); blank = the MNO key itself (bl: {@code banglalink})
    */
   public record Mno(
       @NotNull Transport transport,
@@ -81,10 +83,16 @@ public record UssdProperties(
       @NotNull Duration sessionTimeout,
       @NotNull Overflow overflow,
       @NotBlank String continueFlag,
-      @NotBlank String endFlag) {
+      @NotBlank String endFlag,
+      String operator) {
 
     public Mno {
       shortCodes = List.copyOf(shortCodes == null ? List.of() : shortCodes);
+    }
+
+    /** The top-up operator (telco partnerId) of this MNO, whose key is {@code key}. */
+    public String operatorOr(String key) {
+      return operator == null || operator.isBlank() ? key : operator;
     }
   }
 

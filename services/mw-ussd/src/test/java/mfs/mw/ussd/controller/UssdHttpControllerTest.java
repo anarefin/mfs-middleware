@@ -10,7 +10,7 @@ import mfs.mw.ussd.config.UssdProperties;
 import mfs.mw.ussd.dto.UssdEvent;
 import mfs.mw.ussd.dto.UssdRequest;
 import mfs.mw.ussd.dto.UssdResponse;
-import mfs.mw.ussd.service.HttpUssdTransport;
+import mfs.mw.ussd.transport.HttpUssdTransport;
 import mfs.mw.ussd.service.UssdEngine;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * A state change read from {@code mw.txn.status.v1} (contract {@code
@@ -56,9 +57,11 @@ public record StatusMessage(
 
   /** States after which nothing changes any more for the app (spec 7.2). */
   public boolean terminal() {
-    return switch (status == null ? "" : status) {
-      case "COMPLETED", "FAILED", "REJECTED", "REVERSED" -> true;
-      default -> false;
-    };
+    return terminalStatus().isPresent();
+  }
+
+  /** The terminal state of this record, or empty while the transaction is still moving. */
+  public Optional<TerminalStatus> terminalStatus() {
+    return TerminalStatus.of(status);
   }
 }

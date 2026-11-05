@@ -3,26 +3,29 @@
 #   1. creates a self-signed edge certificate for localhost on first run (dev only; kept in
 #      the apisix-tls volume so it survives restarts; replaced by a real cert later)
 #   2. PUTs it as SSL object "edge-default"
-#   3. PUTs every deploy/apisix/global_rules/<id>.json as global rule <id>, then every
-#      deploy/apisix/routes/<id>.json as route <id>
+#   3. PUTs every deploy/apisix/global_rules/<id>.json as global rule <id>, every
+#      deploy/apisix/consumers/<username>.json as consumer <username> (the MNO USSD gateways),
+#      then every deploy/apisix/routes/<id>.json as route <id>; then DELETEs every object listed
+#      in deploy/apisix/retired.txt (a file that was removed or renamed)
 #   4. test-only objects for the host e2e suite: with MW_E2E_ROUTES=1 PUTs
 #      consumers-test/<username>.json and routes-test/<id>.json; without it DELETEs them, so a
 #      default `make up` never leaves a test route behind (`make e2e` re-runs this with the flag)
-# Before a PUT, string values "@lua:<path>" and "@json:<path>" are replaced by the file at
-# <path> (relative to deploy/apisix): Lua as a JSON string (serverless functions), JSON as is
-# (request-validation schemas derived from contracts/, see scripts/apisix-schemas.sh);
-# "@env:<NAME>" by that environment variable as a JSON string (secrets such as the e2e key,
-# never in the repo; unset or empty fails the apply).
+# Before a PUT, string values "@lua:<path>" are replaced by the file at <path> (relative to
+# deploy/apisix) as a JSON string (serverless functions); "@env:<NAME>" by that environment
+# variable as a JSON string (secrets such as the e2e key, never in the repo); "@list:<NAME>" by
+# that comma-separated variable as a JSON array of strings (address lists such as an MNO's
+# allow-list; entries may hold only hex digits, '.', ':' and '/'). An unset or empty variable
+# fails the apply. Body schemas are never checked here: each service validates its own body.
 #
 # Idempotent: PUT with a fixed id stores the same object again, so a second run leaves the
-# configuration as it was (only update_time moves). Objects are never deleted (except the
-# test-only ones above): a removed file leaves its object behind until it is deleted through
-# the Admin API (see README.md).
+# configuration as it was (only update_time moves). Objects are deleted only when listed in
+# retired.txt (or test-only, above): a removed file must be added there (see README.md).
 #
 # Env: APISIX_ADMIN (host:port), APISIX_ADMIN_KEY; MW_E2E_ROUTES (1 = apply the test-only
-# objects), MW_E2E_API_KEY (their consumer key, required with MW_E2E_ROUTES=1).
+# objects), MW_E2E_API_KEY (their consumer key, required with MW_E2E_ROUTES=1);
+# USSD_<MNO>_GATEWAY_SECRET and USSD_<MNO>_ALLOWED_CIDRS (gp, robi, bl, teletalk; required).
 # APISIX_DRY_RUN=<dir>: no network, no certificate; writes each body to <dir>/<kind>/<id>.json.
-# APISIX_CONFIG_DIR: the folder holding routes/, global_rules/, lua/, schemas/ (default: here).
+# APISIX_CONFIG_DIR: the folder holding routes/, consumers/, global_rules/, lua/ (default: here).
 set -euo pipefail
 
 dir="${APISIX_CONFIG_DIR:-$(cd "$(dirname "$0")" && pwd)}"
@@ -31,7 +34,7 @@ admin="${APISIX_ADMIN:-apisix:9180}"
 host="${admin%:*}"; port="${admin#*:}"
 tls="${APISIX_TLS_DIR:-/usr/local/apisix/conf/cert}"
 
-# render FILE: FILE with every "@lua:<path>" / "@json:<path>" string replaced by that file.
+# render FILE: FILE with every "@lua:<path>" / "@env:<NAME>" / "@list:<NAME>" string replaced.
 # Plain awk (mawk in the image, BSD awk on macOS) and no gsub on the replacement text, so
 # backslashes and '&' in Lua code survive unchanged.
 render() {
@@ -57,7 +60,7 @@ render() {
     }
     {
       line = $0; res = ""
-      while (match(line, /"@(lua|json|env):[^"]*"/)) {
+      while (match(line, /"@(lua|env|list):[^"]*"/)) {
         tok = substr(line, RSTART + 1, RLENGTH - 2)
         res = res substr(line, 1, RSTART - 1)
         line = substr(line, RSTART + RLENGTH)
@@ -67,7 +70,17 @@ render() {
           if (ENVIRON[name] == "") { printf "apisix-init: %s: %s is not set\n", FILENAME, name > "/dev/stderr"; failed = 1; exit 1 }
           res = res jstr(ENVIRON[name])
         }
-        else res = res slurp(base "/" substr(tok, 7))
+        else if (substr(tok, 1, 6) == "@list:") {
+          name = substr(tok, 7); v = ENVIRON[name]; gsub(/[ \t]/, "", v)
+          if (v == "") { printf "apisix-init: %s: %s is not set\n", FILENAME, name > "/dev/stderr"; failed = 1; exit 1 }
+          n = split(v, items, ","); arr = ""
+          for (i = 1; i <= n; i++) {
+            if (items[i] !~ /^[0-9A-Fa-f.:\/]+$/) { printf "apisix-init: %s: %s entry %d is not an address\n", FILENAME, name, i > "/dev/stderr"; failed = 1; exit 1 }
+            arr = arr (i > 1 ? "," : "") "\"" items[i] "\""
+          }
+          res = res "[" arr "]"
+        }
+        else { printf "apisix-init: %s: unknown include %s\n", FILENAME, tok > "/dev/stderr"; failed = 1; exit 1 }
       }
       print res line
     }
@@ -146,14 +159,23 @@ if [ -z "$dry" ]; then
     "{\"snis\":[\"localhost\"],\"cert\":\"$(json_pem "$tls/edge.crt")\",\"key\":\"$(json_pem "$tls/edge.key")\"}"
 fi
 
-# global rules first: they hold the correlation ID and error envelope every route relies on
-for kind in global_rules routes; do
+# global rules first: they hold the correlation ID and error envelope every route relies on;
+# consumers before the routes that name them
+for kind in global_rules consumers routes; do
   for f in "$dir/$kind"/*.json; do
     [ -f "$f" ] || continue
     body="$(render "$f")"
     apply "/apisix/admin/$kind/$(basename "$f" .json)" "$body"
   done
 done
+
+# retired objects: "<kind>/<id>" per line (# comments), deleted on every run (404 is fine)
+if [ -f "$dir/retired.txt" ]; then
+  while read -r obj _; do
+    case "$obj" in ''|'#'*) continue ;; esac
+    remove "/apisix/admin/$obj"
+  done <"$dir/retired.txt"
+fi
 
 # test-only objects (host e2e suite): consumers first, then the routes that name them
 if [ "${MW_E2E_ROUTES:-0}" = 1 ]; then

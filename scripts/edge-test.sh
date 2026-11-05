@@ -21,7 +21,10 @@
 #     per-source quota configured
 #   - C2W bank callback route (ticket 23): the same cases against mw-adapter-bank
 #   - checkout (ticket 31): unsigned / badly signed merchant calls -> 401 at the edge; the hosted
-#     page API reaches mw-checkout without login
+#     page API reaches mw-checkout without login; a signed body breaking the schema -> 400 from
+#     mw-checkout (no body schema at the edge; needs the test-only merchant, else skipped)
+#   - USSD (M3 gate): no / wrong credential -> 401, another MNO's credential -> 403, the MNO's own
+#     reaches mw-ussd with a quota per hashed MSISDN, unrouted MNO 404
 #   - Valkey down (ticket 50): limit-count fails open and APISIX logs mw.edge.rate_limit_degraded
 #   - applying deploy/apisix twice is a no-op (Admin API objects identical but update_time)
 # The quota check spends merchant01's quota for the rest of the window (60 s).
@@ -335,6 +338,55 @@ co_get_unsigned() { call GET "/checkout/v1/sessions/$(uniq_id s)" && envelope 40
 check "checkout session read without an HMAC signature -> 401 MW-AUTH-001 at the edge" co_get_unsigned
 co_page_unknown() { call GET "/checkout/pay/v1/$(uniq_id tok)" && envelope 404 MW-VAL-003; }
 check "hosted page API reaches mw-checkout without login (unknown token -> 404 MW-VAL-003)" co_page_unknown
+# co_signed BODY: POST /checkout/v1/sessions signed as the dev merchant (README: hmac-auth)
+co_signed() {
+  local d digest sig
+  d="$(LC_ALL=C TZ=GMT date '+%a, %d %b %Y %H:%M:%S GMT')"
+  digest="SHA-256=$(printf '%s' "$1" | openssl dgst -sha256 -binary | base64)"
+  sig="$(printf 'merchant-demo\nPOST /checkout/v1/sessions\ndate: %s\ndigest: %s\n' "$d" "$digest" \
+    | openssl dgst -sha256 -hmac "$CHECKOUT_DEMO_MERCHANT_SECRET" -binary | base64)"
+  call POST /checkout/v1/sessions -H 'Content-Type: application/json' -H "Date: $d" -H "Digest: $digest" \
+    -H "Authorization: Signature keyId=\"merchant-demo\",algorithm=\"hmac-sha256\",headers=\"@request-target date digest\",signature=\"$sig\"" \
+    --data-binary "$1"
+}
+co_schema_400() { # the edge has no body schema any more: mw-checkout refuses it (duplicate key)
+  if [ "$(admin GET consumers/merchant_demo -o /dev/null -w '%{http_code}')" != 200 ]; then
+    echo "skipped: consumer merchant_demo exists only after make e2e (MW_E2E_ROUTES=1)"; return 0
+  fi
+  co_signed "${co_body%\}},\"amount\":{\"valueMinor\":1,\"currency\":\"BDT\"}}" && envelope 400 MW-VAL-001 || return 1
+  co_signed "${co_body/BDT/USD}" && envelope 400 MW-VAL-001
+}
+check "signed checkout body breaking the schema -> 400 MW-VAL-001 (mw-checkout's schema check)" co_schema_400
+
+# ---- MNO USSD gateways (spec 8.2, M3 gate): one basic-auth consumer per MNO, bound to its path ----
+ussd_step() { # ussd_step MNO CREDENTIAL_MNO|none MSISDN TYPE
+  local auth=() v
+  v="USSD_$(printf '%s' "$2" | tr 'a-z' 'A-Z')_GATEWAY_SECRET"
+  [ "$2" = none ] || auth=(-u "ussd-$2:${!v}")
+  call POST "/ussd/$1" ${auth[@]+"${auth[@]}"} -H 'Content-Type: application/json' \
+    -d "{\"sessionId\":\"$(uniq_id ussd)\",\"msisdn\":\"$3\",\"type\":\"$4\",\"serviceCode\":\"*268#\",\"input\":\"\"}"
+}
+ussd_no_credential() { ussd_step robi none 01711000001 BEGIN && envelope 401 MW-AUTH-001; }
+check "USSD step without a credential -> 401 MW-AUTH-001 at the edge" ussd_no_credential
+ussd_wrong_mno() { ussd_step robi gp 01711000001 BEGIN && envelope 403 MW-AUTH-002; }
+check "USSD step on /ussd/robi with the GP credential -> 403 MW-AUTH-002 at the edge" ussd_wrong_mno
+ussd_bad_password() {
+  call POST /ussd/robi -u 'ussd-robi:not-the-secret' -H 'Content-Type: application/json' \
+    -d '{"sessionId":"x","msisdn":"01711000001","type":"BEGIN","input":""}' && envelope 401 MW-AUTH-001
+}
+check "USSD step with a wrong password -> 401 MW-AUTH-001 at the edge" ussd_bad_password
+ussd_passes() { # robi is HTTP in dev: mw-ussd answers the dial-in screen
+  local keys
+  ussd_step robi robi 01711000001 BEGIN
+  [ "$status" = 200 ] && jq -e '.flag | length > 0' "$tmp/b" >/dev/null || { echo "HTTP $status: $(head -c 300 "$tmp/b")"; return 1; }
+  [ -n "$(resp_header X-RateLimit-Limit)" ] || { echo "no quota header"; return 1; }
+  keys="$(dc exec -T valkey valkey-cli --scan --pattern '*robi:*')"
+  [ -n "$keys" ] || { echo "no per-MSISDN counter in Valkey"; return 1; }
+  if printf '%s' "$keys" | grep -q 1711000001; then echo "MSISDN in a Valkey key: $keys"; return 1; fi
+}
+check "USSD step with the MNO's own credential -> mw-ussd answers; quota per hashed MSISDN" ussd_passes
+ussd_unknown_mno() { ussd_step nope robi 01711000001 BEGIN && envelope 404 MW-VAL-003; }
+check "USSD step for an MNO without a route -> 404 at the edge" ussd_unknown_mno
 
 # ---- rate limiter fails open with an alert line when Valkey is down (ticket 50) ----
 # Stops Valkey for a few seconds (the services fall back: the orchestrator's idempotency lock to

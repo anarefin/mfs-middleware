@@ -39,6 +39,12 @@ services:
       BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?run scripts/gen-dev-env.sh (make up does)}
       # Dev C2W bank hmac-sha256 secret (ticket 23), written as sim.callback-secrets.c2wbank.
       C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      # Dev MNO USSD gateway basic-auth passwords at APISIX (route ussd-http-<mno>), written as
+      # sim.ussd-gateway.credentials.<mno>.
+      USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_TELETALK_GATEWAY_SECRET: ${USSD_TELETALK_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
       BAO_ADDR: ${VAULT_ADDR:-http://openbao:8200}
       INIT_FILE: /openbao/file/dev-init.json
       OUT_DIR: /out

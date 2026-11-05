@@ -1,0 +1,10 @@
+{
+  "username": "ussd_bl",
+  "desc": "MNO USSD gateway bl (spec 8.2): basic-auth user ussd-bl, password = USSD_BL_GATEWAY_SECRET (generated .env in dev, OpenBao secret/mw-simulators for the simulator); only route ussd-http-bl admits it",
+  "plugins": {
+    "basic-auth": {
+      "username": "ussd-bl",
+      "password": "@env:USSD_BL_GATEWAY_SECRET"
+    }
+  }
+}
