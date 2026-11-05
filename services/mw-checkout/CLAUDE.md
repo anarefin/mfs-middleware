@@ -28,6 +28,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   `otp-ttl` 2 min; at most `otp-max-sends` 3 per session `429 MW-VAL-022`) sent as
   `mw.notify.request.v1` (template `CHECKOUT_OTP` seeded in mw-notify, priority OTP, SMS, expiresAt
   = OTP expiry, messageId `checkout-otp:<sessionId>:<n>`) through the outbox with the session update;
+  once relayed, the row loses `params.otp` within seconds (review A8: `messaging/OutboxOtpScrubber`, beside
+  the relay, run by `scheduler/OutboxOtpScrubJob` on `mw.outbox.otp-scrub.cron` every 5 s, ShedLock
+  `outbox-otp-scrub`; partial index `outbox_otp_unscrubbed_idx`, V6), so no OTP stays in clear for the 7 day purge;
   `POST .../confirm {otp, encryptedPin}`: no/expired OTP `401 MW-AUTH-011`, wrong `401 MW-AUTH-010`,
   after `otp-max-attempts` 3 checks `401 MW-AUTH-012` until a new OTP. Every guess first reserves one
   check atomically (`SessionRepository.reserveOtpAttempt`: `otp_attempts < max` in the UPDATE, row
@@ -103,7 +106,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   internal target refused); `client/MerchantIpnClientTest` (pinned address, Host kept),
   `client/MerchantIpnTlsTest` (keytool certificates: SNI and certificate checked against the name);
   `service/IpnRetryScheduleTest`, `security/IpnUrlPolicyTest` (one case per IPv6 rule),
-  `security/IpnSignerTest` (openssl vector); `repository/SessionRepositoryIT`;
+  `security/IpnSignerTest` (openssl vector); `repository/SessionRepositoryIT`; `messaging/OutboxOtpScrubberIT`,
+  `scheduler/OutboxOtpScrubJobIT` (relayed OTP gone within seconds);
   `security/ResultSignerTest` (vector from openssl); `mapper/CheckoutMapperTest` (contract schemas).
 - e2e `@checkout` (`tests/e2e/src/test/resources/features/checkout.feature`).
 
