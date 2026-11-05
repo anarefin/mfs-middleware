@@ -14,6 +14,7 @@ import mfs.mw.admin.api.dto.AdminTxn;
 import mfs.mw.admin.api.dto.Operator;
 import mfs.mw.admin.api.entity.ChangeRequest;
 import mfs.mw.admin.api.mapper.ChangeRequestMapper;
+import mfs.mw.admin.api.mapper.PartnerMapper;
 import mfs.mw.admin.api.mapper.RevealAuditMapper;
 import mfs.mw.admin.api.util.UuidV7;
 import mfs.mw.admin.api.security.AdminRole;
@@ -42,6 +43,20 @@ class ProducedContractsTest {
         null, null, "customer 01712345678 complained", null, AT, null, AT.plusSeconds(72 * 3600));
   }
 
+  /** A PENDING partner change (ticket 38): DISABLE of the seed ocs. */
+  static ChangeRequest partnerRequest() {
+    return new ChangeRequest(
+        UUID.fromString("0d6c3f0e-1111-4b5e-9a1e-000000000002"), "partner", "ocs", "DISABLE",
+        Map.of("family", "telco", "baseVersion", 0, "config", CONFIG),
+        PartnerMapper.diff(Map.of("enabled", true), Map.of("enabled", false)), "ops-maker01", "sub-maker",
+        ChangeRequest.Status.PENDING, null, null, "OCS incident", null, AT, null, AT.plusSeconds(72 * 3600));
+  }
+
+  static final Map<String, Object> CONFIG =
+      Map.of(
+          "enabled", false, "baseUrl", "http://mw-simulators:8080", "timeoutMs", 20000,
+          "operations", Map.of("PAY", Map.of("method", "POST", "path", "/ocs/v1/topup", "response", "{}")));
+
   static final Map<String, Supplier<List<Object>>> FIXTURES =
       Map.of(
           "events/mw-audit-dw/mw.audit.event.v1.schema.json",
@@ -61,7 +76,16 @@ class ProducedContractsTest {
                   ChangeRequestMapper.created(unlockRequest(), "corr-1"),
                   ChangeRequestMapper.approved(unlockRequest(), "ops-checker01", "core.wallet.command.v1", "corr-1", AT),
                   ChangeRequestMapper.rejected(unlockRequest(), "ops-checker01", "no", null, AT),
-                  ChangeRequestMapper.expired(unlockRequest(), "corr-1", AT)),
+                  ChangeRequestMapper.expired(unlockRequest(), "corr-1", AT),
+                  ChangeRequestMapper.created(partnerRequest(), "corr-1"),
+                  ChangeRequestMapper.approved(partnerRequest(), "ops-checker01", "mw.config.changed.v1", "corr-1", AT),
+                  ChangeRequestMapper.rejected(partnerRequest(), "ops-checker01", "no", "corr-1", AT),
+                  ChangeRequestMapper.expired(partnerRequest(), "corr-1", AT)),
+          "events/mw-admin-api/mw.config.changed.v1.schema.json",
+          () ->
+              List.of(
+                  PartnerMapper.configChanged("ocs", 1, CONFIG, "ops-maker01", "ops-checker01", "corr-1", AT),
+                  PartnerMapper.configChanged("robi", 7, CONFIG, "int-maker01", "int-checker01", "admin-" + UUID.randomUUID(), AT)),
           "events/mw-admin-api/mw.txn.action.v1.schema.json",
           () ->
               List.of(

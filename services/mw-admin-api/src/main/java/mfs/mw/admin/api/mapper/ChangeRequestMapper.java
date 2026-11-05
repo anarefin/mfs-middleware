@@ -23,7 +23,9 @@ import mfs.mw.admin.api.util.SensitiveType;
  * {@code after} the request status and the transaction status; reasons are scrubbed free text. A
  * wallet request (UNLOCK, ticket 52) is audited as {@code wallet/<masked MSISDN>} with txnId its
  * {@code unlockTxnId} and {@code walletStatus} in place of {@code txnStatus}; its approval sends
- * {@code UnlockWallet} to the core.
+ * {@code UnlockWallet} to the core. A partner request (ticket 38) is audited as {@code
+ * partner/<id>} without a txnId; its before/after carry {@code config} (the changed fields of the
+ * diff, never secrets) in place of a status.
  */
 public final class ChangeRequestMapper {
 
@@ -56,13 +58,23 @@ public final class ChangeRequestMapper {
     Map<String, Object> after = base(cr, "PENDING");
     after.put("expiresAt", cr.expiresAt().toString());
     after.put("reason", MaskingPolicy.scrub(cr.reason()));
-    return event(cr, correlationId, "user", cr.makerId(), CREATED, Map.of(statusKey(cr), cr.statusBefore()), after,
-        cr.createdAt());
+    Map<String, Object> before;
+    if (config(cr)) {
+      before = Map.of("config", side(cr, "before"));
+      after.put("config", side(cr, "after"));
+    } else {
+      before = Map.of(statusKey(cr), cr.statusBefore());
+    }
+    return event(cr, correlationId, "user", cr.makerId(), CREATED, before, after, cr.createdAt());
   }
 
   public static AuditEvent approved(ChangeRequest cr, String checkerId, String sentAs, String correlationId, Instant at) {
     Map<String, Object> after = base(cr, "APPROVED");
-    after.put(statusKey(cr), cr.statusAfter());
+    if (config(cr)) {
+      after.put("config", side(cr, "after"));
+    } else {
+      after.put(statusKey(cr), cr.statusAfter());
+    }
     after.put("makerId", cr.makerId());
     after.put("sentAs", sentAs);
     return event(cr, correlationId, "user", checkerId, APPROVED, pendingBefore(cr), after, at);
@@ -70,7 +82,9 @@ public final class ChangeRequestMapper {
 
   public static AuditEvent rejected(ChangeRequest cr, String checkerId, String reason, String correlationId, Instant at) {
     Map<String, Object> after = base(cr, "REJECTED");
-    after.put(statusKey(cr), cr.statusBefore());
+    if (!config(cr)) {
+      after.put(statusKey(cr), cr.statusBefore());
+    }
     after.put("makerId", cr.makerId());
     after.put("reason", MaskingPolicy.scrub(reason));
     return event(cr, correlationId, "user", checkerId, REJECTED, pendingBefore(cr), after, at);
@@ -137,7 +151,19 @@ public final class ChangeRequestMapper {
   }
 
   private static Map<String, Object> pendingBefore(ChangeRequest cr) {
-    return Map.of("status", "PENDING", statusKey(cr), cr.statusBefore());
+    return config(cr)
+        ? Map.of("status", "PENDING", "config", side(cr, "before"))
+        : Map.of("status", "PENDING", statusKey(cr), cr.statusBefore());
+  }
+
+  /** A config resource (ticket 38: partner): no status, no txnId; the diff holds changed fields. */
+  private static boolean config(ChangeRequest cr) {
+    return !ChangeRequest.TRANSACTION.equals(cr.resourceType()) && !wallet(cr);
+  }
+
+  private static Object side(ChangeRequest cr, String key) {
+    Object v = cr.diff().get(key);
+    return v == null ? Map.of() : v;
   }
 
   private static Map<String, Object> base(ChangeRequest cr, String status) {
@@ -154,7 +180,7 @@ public final class ChangeRequestMapper {
     return new AuditEvent(
         1,
         UUID.randomUUID().toString(),
-        wallet(cr) ? unlockTxnId(cr) : cr.resourceId(),
+        wallet(cr) ? unlockTxnId(cr) : config(cr) ? null : cr.resourceId(),
         correlationId == null || correlationId.isBlank() ? "admin-" + UUID.randomUUID() : correlationId,
         new AuditEvent.Actor(actorType, actorId),
         action,

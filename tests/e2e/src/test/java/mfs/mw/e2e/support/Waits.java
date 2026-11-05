@@ -20,7 +20,7 @@ public final class Waits {
     return v;
   }
 
-  private static void pause(Duration d) {
+  public static void pause(Duration d) {
     try {
       Thread.sleep(d);
     } catch (InterruptedException e) {

@@ -38,7 +38,9 @@ spring:
       # max_connections sizing: deploy/compose/platform/compose.yml (postgres).
       maximum-pool-size: 5
   flyway:
-    schemas: admin
+    # admin (change requests, outbox) and partner (partner config, ticket 38; spec 16.2), both
+    # owned by this service; the history table lives in the first.
+    schemas: admin,partner
 
 # Kafka through Camel (spec 6.1, 19.2). Single KRaft node; topics come from deploy/kafka/.
 camel:

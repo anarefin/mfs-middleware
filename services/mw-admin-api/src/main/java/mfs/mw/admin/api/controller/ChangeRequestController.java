@@ -3,6 +3,7 @@ package mfs.mw.admin.api.controller;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.util.UUID;
 import mfs.mw.admin.api.dto.ChangeRequestBody;
@@ -59,10 +60,11 @@ public class ChangeRequestController {
   public ChangeRequestView.Page list(
       @AuthenticationPrincipal Jwt jwt,
       @RequestParam(required = false) ChangeRequest.Status status,
+      @RequestParam(required = false) @Pattern(regexp = "transaction|wallet|partner") String resourceType,
       @RequestParam(required = false) @Size(min = 1, max = 128) String resourceId,
       @RequestParam(defaultValue = "50") @Min(1) @Max(200) int limit,
       @RequestParam(defaultValue = "0") @Min(0) @Max(100_000) int offset) {
-    return service.list(operators.resolve(jwt), status, resourceId, limit, offset);
+    return service.list(operators.resolve(jwt), status, resourceType, resourceId, limit, offset);
   }
 
   @GetMapping("/change-requests/{id}")

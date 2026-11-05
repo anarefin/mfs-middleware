@@ -69,6 +69,8 @@ services:
       - no-new-privileges:true
     environment:
       MW_ENV: ${MW_ENV:-local}
+      # Dev profile (application-dev.yml): the partner seeds mirroring the adapters' dev seeds (ticket 38).
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       # Secrets come from OpenBao via Spring Cloud Vault (18.4); no secret values here.
       # On: the DB password comes from secret/mw-admin-api, the AppRole
       # credentials from the configtree at /run/mw/approle (application.yml).

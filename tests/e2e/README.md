@@ -107,6 +107,14 @@ Only APISIX is published, so every call goes through it:
   admin audit trail of the transaction records the <APPROVED|REJECTED> change request" (via
   mw-audit-dw). A TOPUP lands in MANUAL_REVIEW with "the core rejects the next CommitHold with
   reason INJECTED_REJECT"; the forced commit is a fresh core command, so it is not refused again.
+- Partner config (`features/partner-config.feature`, `@partner-config @mw-admin-api
+  @mw-adapter-telco`, ticket 38; `steps/PartnerConfigSteps`): "the operators <disable|enable> partner
+  <id>", "the operators set the time limit of partner <id> to <n> ms" (ops-e2e-maker01 asks, the
+  maker's own approval is checked to be 403, ops-e2e-checker01 approves, the published version
+  goes up), "the partner change has reached the adapters" (5 s for outbox relay + config consumer),
+  "the OCS answers every top-up after <n> seconds" (applies it; reset by "the OCS behaves normally
+  again" or the `@After`). An `@After` hook puts every changed partner back to its seed (enabled,
+  20 s); the seed `ocs` comes from mw-admin-api's dev profile.
 - Wallet unlock (`features/wallet-unlock.feature`, `@wallet-unlock @mw-admin-api`, ticket 52):
   "<maker> asks to unlock wallet <msisdn> because "..."" (then the change request steps above),
   "the core shows wallet <id> as <ACTIVE|LOCKED>" and "... within N seconds" (mw-core-mock's

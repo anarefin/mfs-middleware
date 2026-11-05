@@ -16,3 +16,7 @@ mw:
   change-requests:
     # The expiry job is off in tests; ChangeRequestApiIT calls it directly.
     expiry-cron: "-"
+  partners:
+    # The dev seed (application-dev.yml) is what the ITs change; PartnerConfigApiIT re-seeds it.
+    seeds:
+      - classpath:partner-seeds/dev/ocs.json
