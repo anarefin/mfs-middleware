@@ -6,9 +6,10 @@
 -- phase (ngx.get_phase() == "access"):
 --   1. strips every inbound X-Mw-* header: internal headers are set by the middleware only,
 --      so a client can never forge one;
---   2. drops an X-Correlation-Id that is repeated or not 1..128 of [A-Za-z0-9._:-] (the
---      contract pattern, same rule as the services' CorrelationIdFilter), so request-id
---      generates a fresh one and the edge and the services log the same ID.
+--   2. drops an X-Correlation-Id that is repeated, not 1..128 of [A-Za-z0-9._:-] (the
+--      contract pattern) or holds a run of 6+ digits (it is logged unmasked, so it must not be
+--      able to hide an NID or MSISDN), the same rule as the services' CorrelationIdFilter, so
+--      request-id generates a fresh UUID and the edge and the services log the same ID.
 local core = require("apisix.core")
 
 return function(conf, ctx)
@@ -22,7 +23,8 @@ return function(conf, ctx)
   end
   local cid = ngx.req.get_headers(0)["x-correlation-id"]
   if cid ~= nil and (type(cid) ~= "string" or #cid > 128
-      or not ngx.re.find(cid, [[^[A-Za-z0-9._:-]+$]], "jo")) then
+      or not ngx.re.find(cid, [[^[A-Za-z0-9._:-]+$]], "jo")
+      or ngx.re.find(cid, "[0-9]{6}", "jo")) then
     core.request.set_header(ctx, "X-Correlation-Id", nil)
   end
 end

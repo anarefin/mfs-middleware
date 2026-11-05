@@ -8,6 +8,7 @@ import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import mfs.mw.audit.dw.dto.AuditEvent;
 import mfs.mw.audit.dw.entity.AuditRow;
 import mfs.mw.audit.dw.entity.ChainHead;
@@ -28,11 +29,27 @@ import tools.jackson.databind.node.ObjectNode;
  * ({@code audit.event_key}, kept for good, unlike the purged inbox), all in one transaction. Only
  * INSERTs into {@code audit.event}; the chain tail comes from {@code audit.chain_head}, whose row
  * lock serialises writers of one month.
+ *
+ * <p>Masking: every text field and {@code before}/{@code after} go through {@link
+ * MaskingPolicy#scrub(String)}, with two system-id exemptions so ids stay traceable: a {@code
+ * resource} that is exactly {@code <type>/<uuid>} ({@link #SYSTEM_RESOURCE}; producers build these
+ * from system ids) and a {@code correlationId} that is a UUID ({@link #RFC_UUID}; a caller id
+ * holds no run of 6+ digits after the edge and the services' filter, so the scrub leaves it whole).
+ * {@code txnId} is parsed as a UUID.
  */
 @Service
 public class AuditService {
 
   private static final Logger log = LoggerFactory.getLogger(AuditService.class);
+
+  /** A lower-case RFC 9562 UUID: version nibble 1-8, variant 8-b. */
+  private static final String UUID_TEXT =
+      "[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+
+  private static final Pattern RFC_UUID = Pattern.compile(UUID_TEXT);
+
+  /** A resource that names a system id: {@code <type>/<uuid>}, nothing more. */
+  private static final Pattern SYSTEM_RESOURCE = Pattern.compile("[a-z][a-z0-9-]*/" + UUID_TEXT);
 
   private final JdbcTemplate jdbc;
   private final TransactionTemplate tx;
@@ -112,11 +129,11 @@ public class AuditService {
                 recordedAt,
                 e.at().truncatedTo(ChronoUnit.MICROS),
                 e.txnId() == null ? null : UUID.fromString(e.txnId()),
-                MaskingPolicy.scrub(e.correlationId()),
+                keptIf(RFC_UUID, e.correlationId()),
                 e.actor().type(),
                 MaskingPolicy.scrub(e.actor().id()),
                 e.action(),
-                MaskingPolicy.scrub(e.resource()),
+                keptIf(SYSTEM_RESOURCE, e.resource()),
                 e.outcome(),
                 e.service(),
                 e.sourceIp(),
@@ -142,6 +159,11 @@ public class AuditService {
         "update chain_head set seq = ?, hash = ?, updated_at = ? where month = ?",
         row.seq(), row.hash(), utc(recordedAt), month);
     return true;
+  }
+
+  /** {@code value} as it is when it is exactly a {@code systemId}, otherwise scrubbed. */
+  private static String keptIf(Pattern systemId, String value) {
+    return systemId.matcher(value).matches() ? value : MaskingPolicy.scrub(value);
   }
 
   private String jsonText(JsonNode node) {

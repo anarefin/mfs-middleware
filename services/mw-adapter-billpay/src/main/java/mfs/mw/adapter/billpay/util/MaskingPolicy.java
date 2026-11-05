@@ -38,37 +38,10 @@ public final class MaskingPolicy {
    * Other runs of 10 or more digits, bounded by anything but a digit (a number glued to a word,
    * {@code _} or {@code -} is still masked, and no run is too long to mask): 10, 13 and 17 digits
    * are Bangladesh NID lengths and keep the last 3; the rest are taken as account numbers and keep
-   * the last 4. Ambiguous lengths get the stricter NID rule. UUIDs and trace/span ids are protected
-   * separately ({@link #PROTECTED_ID}), not by these bounds.
+   * the last 4. Ambiguous lengths get the stricter NID rule. There is no exemption for UUID or other id
+   * shapes: a caller can craft an id that hides a number, so a run inside one is masked too.
    */
   private static final Pattern LONG_NUMBER_IN_TEXT = Pattern.compile("(?<!\\d)\\d{10,}(?!\\d)");
-
-  /**
-   * Shapes of ids that are not personal data: UUIDs (8-4-4-4-12 hex) and W3C trace/span ids (32
-   * or 16 lowercase hex, standalone or as the parts of a {@code traceparent}), bounded by anything
-   * but a letter or digit. A match is left as it is only when it holds no run of 10 or more
-   * digits ({@link #HIDES_A_NUMBER}), so the shape alone never hides a number; otherwise it is
-   * scrubbed like any other text.
-   */
-  private static final Pattern PROTECTED_ID =
-      Pattern.compile(
-          "(?<![0-9A-Za-z])"
-              + "(?:[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}"
-              + "|[0-9a-f]{32}|[0-9a-f]{16})"
-              + "(?![0-9A-Za-z])");
-
-  private static final Pattern HIDES_A_NUMBER = Pattern.compile("\\d{10}");
-
-  /**
-   * A token that is exactly a UUID (8-4-4-4-12 hex, any case), bounded by anything but a hex
-   * digit or {@code -}, or by the ends of the text. It is a system id (txn ids, audit resources
-   * such as {@code txn/<uuid>}) and is left whole even when a group holds a 10-digit run, which
-   * one random UUID in about 40 does. Text around it is scrubbed as usual; since the bounds are
-   * never digits, a number next to it is never cut.
-   */
-  private static final Pattern UUID_TOKEN =
-      Pattern.compile(
-          "(?<![0-9A-Fa-f-])[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}(?![0-9A-Fa-f-])");
 
   private MaskingPolicy() {}
 
@@ -108,49 +81,16 @@ public final class MaskingPolicy {
   }
 
   /**
-   * Safety net for free text such as log messages and audit text (18.3): outside exact UUID
-   * tokens ({@link #UUID_TOKEN}, always whole) and trace/span ids (whole when they hide no long
-   * number), masks every Bangladesh MSISDN, then every other number of 10 or more digits as an
-   * NID (10, 13 or 17 digits) or an account number.
+   * Safety net for free text such as log messages and audit text (18.3): masks every Bangladesh
+   * MSISDN, then every other number of 10 or more digits as an NID (10, 13 or 17 digits) or an
+   * account number, wherever it sits, UUIDs and trace ids included (no id-shape exemption; system
+   * ids are kept whole only in the log id fields and the audit resource).
    */
   public static String scrub(String text) {
     if (text == null || text.isEmpty()) {
       return text;
     }
-    Matcher uuids = UUID_TOKEN.matcher(text);
-    StringBuilder out = new StringBuilder(text.length());
-    int from = 0;
-    while (uuids.find()) {
-      out.append(scrubOutsideUuids(text.substring(from, uuids.start()))).append(uuids.group());
-      from = uuids.end();
-    }
-    return out.append(scrubOutsideUuids(text.substring(from))).toString();
-  }
-
-  /** {@link #scrub(String)} for text that holds no exact UUID token. */
-  private static String scrubOutsideUuids(String text) {
-    if (text.isEmpty()) {
-      return text;
-    }
-    Matcher ids = PROTECTED_ID.matcher(text);
-    StringBuilder out = new StringBuilder(text.length());
-    int from = 0;
-    while (ids.find()) {
-      if (hidesANumber(ids.group())) {
-        continue;
-      }
-      out.append(scrubNumbers(text.substring(from, ids.start()))).append(ids.group());
-      from = ids.end();
-    }
-    return out.append(scrubNumbers(text.substring(from))).toString();
-  }
-
-  /**
-   * Whether {@code text} holds a run of 10 or more digits, the length {@link #scrub(String)}
-   * masks. A protected id shape in free text is left whole only when this is false.
-   */
-  private static boolean hidesANumber(String text) {
-    return HIDES_A_NUMBER.matcher(text).find();
+    return scrubNumbers(text);
   }
 
   private static String scrubNumbers(String text) {

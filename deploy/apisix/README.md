@@ -51,7 +51,7 @@ Global rule `edge` (all routes, including 404s for unknown paths):
 
 | Policy | How |
 | --- | --- |
-| Correlation ID | `request-id` on `X-Correlation-Id` (UUID when absent), forwarded upstream and returned. Its `_meta.pre_function` (`lua/edge-request.lua`) first drops an ID that is repeated or not `[A-Za-z0-9._:-]{1,128}` (same rule as the services' `CorrelationIdFilter`), so edge and services log the same ID. The error log's `request_id` is this ID too. |
+| Correlation ID | `request-id` on `X-Correlation-Id` (UUID when absent), forwarded upstream and returned. Its `_meta.pre_function` (`lua/edge-request.lua`) first drops an ID that is repeated, not `[A-Za-z0-9._:-]{1,128}` or holds a run of 6+ digits (same rule as the services' `CorrelationIdFilter`), so edge and services log the same ID. The ID is logged unmasked (only system ids escape the masking scrub; root `CLAUDE.md` "Masking"), so a caller ID that could hide an NID or MSISDN is replaced by a generated UUID. `traceparent` passes the edge untouched; the services drop one whose trace or parent id has such a run. The error log's `request_id` is this ID too. |
 | Internal headers | the same pre_function removes every inbound `X-Mw-*` header (any spelling); `proxy-rewrite` cannot remove by prefix. |
 | Error envelope | `lua/edge-error-headers.lua` (header_filter) + `lua/edge-error-body.lua` (body_filter) turn any 4xx/5xx the edge produced itself into the 5.3 envelope. An upstream's JSON answer passes untouched. |
 | Body logging | off: no logger plugin, default access log (no bodies). `test_apisix_edge.sh` fails on a logger plugin or `include_*_body`. |

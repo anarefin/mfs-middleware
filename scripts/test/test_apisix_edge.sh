@@ -373,6 +373,8 @@ test_a_global_rule_sets_the_correlation_id_after_stripping_internal_headers() {
     || fail "request-id's pre_function does not strip X-Mw-* headers"
   printf '%s' "$g" | jq -r '.["request-id"]._meta.pre_function' | grep -q 'x-correlation-id' \
     || fail "request-id's pre_function does not drop unsafe correlation IDs"
+  printf '%s' "$g" | jq -r '.["request-id"]._meta.pre_function' | grep -qF '[0-9]{6}' \
+    || fail "request-id's pre_function does not drop correlation IDs with a run of 6+ digits"
   # APISIX refuses a plugin used by two global rules: keep the edge in one rule
   [ "$(ls out/global_rules | wc -l | tr -d ' ')" = 1 ] || fail "more than one global rule: $(ls out/global_rules)"
 }

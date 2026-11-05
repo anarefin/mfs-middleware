@@ -103,6 +103,10 @@ field marked `@Sensitive`:
 - NID: last 3 digits only
 - Account number: last 4 only
 - Names: first initial only
+- Ids: free-text `scrub` has no UUID/id-shape exemption; only system ids stay whole: in logs a
+  `txnId`/`correlationId` that is an RFC 9562 UUID and a W3C `traceId`/`spanId`, in the audit trail
+  a `<type>/<uuid>` resource and a UUID correlationId. A caller `X-Correlation-Id` (edge and
+  `CorrelationIdFilter`) or `traceparent` (filter) with a run of 6+ digits is replaced/dropped.
 - PIN: never logged or stored; the middleware only ever handles ciphertext (RSA-OAEP,
   SHA-256 with the core's public key). Card PAN never enters the middleware.
 

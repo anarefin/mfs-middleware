@@ -15,7 +15,8 @@
 #   - more requests than the per-consumer quota -> 429 MW-SYS-RATE_LIMITED, counter in Valkey,
 #     another consumer unaffected
 #   - client X-Mw-* headers never reach the upstream; X-Correlation-Id generated when absent
-#     (or unsafe), kept when valid, returned to the client and present in the upstream's log
+#     (or unsafe, or holding a run of 6+ digits), kept when valid, returned to the client and
+#     present in the upstream's log
 #   - partner callback route (ticket 22): unsigned / badly signed -> 401 MW-AUTH-001 from
 #     mw-adapter-billpay, over 16 KiB -> 413, POST only, unrouted partner 404, ip allow-list and
 #     per-source quota configured
@@ -90,10 +91,9 @@ gateway_logged() {
   done
   return 1
 }
-# Random 12-letter suffix (hex with the digits mapped to g-p), never a digit: these ids are
-# caller-chosen, so a correlation id that is not a UUID is scrubbed like free text in the
-# services' JSON logs (MaskingPolicy masks runs of 10+ digits as NIDs/account numbers), and
-# gateway_logged greps the log for the id exactly as it was sent.
+# Random 12-letter suffix (hex with the digits mapped to g-p), never a digit: a caller
+# correlation id with a run of 6+ digits is replaced at the edge (and by the services'
+# CorrelationIdFilter), and gateway_logged greps the log for the id exactly as it was sent.
 uniq_id() { printf 'edge-test-%s-%s' "$1" "$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n' | tr '0-9' 'g-p')"; }
 
 cleanup() {
@@ -209,6 +209,14 @@ cid_unsafe_replaced() {
   [ "$(resp_header X-Correlation-Id)" = "$fwd" ] || { echo "client got $(resp_header X-Correlation-Id), upstream $fwd"; return 1; }
 }
 check "unsafe X-Correlation-Id -> replaced by a generated one before the upstream" cid_unsafe_replaced
+cid_digits_replaced() {
+  local fwd
+  call GET "/mw-edge-test/$$/echo" -H 'X-Correlation-Id: corr-2345678901234'
+  fwd="$(jq -r '.["x-correlation-id"]' "$tmp/b")"
+  printf '%s' "$fwd" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' || { echo "forwarded id with a digit run: '$fwd'"; return 1; }
+  [ "$(resp_header X-Correlation-Id)" = "$fwd" ] || { echo "client got $(resp_header X-Correlation-Id), upstream $fwd"; return 1; }
+}
+check "X-Correlation-Id with a run of 6+ digits -> replaced by a generated UUID before the upstream" cid_digits_replaced
 upstream_down() { call GET "/mw-edge-test/$$/dead" && envelope 502 MW-SYS-UPSTREAM_UNAVAILABLE && jq -e '.retryable' "$tmp/b" >/dev/null; }
 check "upstream unreachable -> 502 MW-SYS-UPSTREAM_UNAVAILABLE envelope (retryable)" upstream_down
 

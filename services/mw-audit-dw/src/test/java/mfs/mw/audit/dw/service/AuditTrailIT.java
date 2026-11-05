@@ -126,8 +126,9 @@ class AuditTrailIT {
   }
 
   /**
-   * A txn id whose last group holds a 10-digit run (about one UUID in 40) is kept whole in the
-   * scrubbed resource, while an NID or MSISDN next to it in free text is still masked.
+   * A txn id whose last group holds a 10-digit run (about one UUID in 40) is kept whole as the
+   * {@code txn/<uuid>} resource and as a UUID correlation id, while an NID or MSISDN in free text
+   * is still masked.
    */
   @Test
   void aTxnResourceKeepsItsUuidWholeThroughTheScrub() {
@@ -150,6 +151,57 @@ class AuditTrailIT {
         .containsEntry("resource", "txn/" + txnId)
         .containsEntry("correlation_id", txnId)
         .containsEntry("reason", "nid ****234 msisdn 0171****789");
+  }
+
+  /** Stores an event with this resource and correlation id; returns the stored pair. */
+  private Map<String, Object> stored(String resource, String correlationId) {
+    UUID id = UUID.randomUUID();
+    audit.record(
+        JSON.readValue(
+            """
+            {"schemaVersion":1,"auditId":"%s","correlationId":"%s",
+             "actor":{"type":"system","id":"mw-orchestrator"},"action":"txn.state.changed",
+             "resource":"%s","outcome":"SUCCESS","at":"2026-11-03T08:15:31.5Z",
+             "service":"mw-orchestrator"}
+            """
+                .formatted(id, correlationId, resource),
+            AuditEvent.class));
+    return jdbc.queryForMap(
+        "select resource, correlation_id from event where audit_id = ?", id);
+  }
+
+  /**
+   * Only a resource that is exactly {@code <type>/<lower-case RFC 9562 UUID>} is a system id kept
+   * whole; a crafted UUID shape (bad variant), another case, a non-UUID id or anything around the
+   * UUID is scrubbed like free text, so an NID or MSISDN hidden in it is masked.
+   */
+  @Test
+  void onlyATypeSlashRfcUuidResourceEscapesTheScrub() {
+    String cid = "01a1aa26-3303-7169-8282-0e6132984047";
+    assertThat(stored("txn/01a1aa26-3303-7169-8282-0e6132984047", cid))
+        .containsEntry("resource", "txn/01a1aa26-3303-7169-8282-0e6132984047");
+    assertThat(stored("partner-ref/01a1aa26-3303-7169-8282-0e6132984047", cid))
+        .containsEntry("resource", "partner-ref/01a1aa26-3303-7169-8282-0e6132984047");
+    assertThat(stored("txn/01712345-6789-1234-1234-0123456789ab", cid))
+        .containsEntry("resource", "txn/01712345-6789-1234-1234-****789ab");
+    assertThat(stored("foo/01712345678", cid)).containsEntry("resource", "foo/0171****678");
+    assertThat(stored("txn/01A1AA26-3303-7169-8282-0E6132984047", cid))
+        .containsEntry("resource", "txn/01A1AA26-3303-7169-8282-0E****047");
+    assertThat(stored("txn/01a1aa26-3303-7169-8282-0e6132984047/2345678901", cid))
+        .containsEntry("resource", "txn/01a1aa26-3303-7169-8282-0e****047/****901");
+  }
+
+  /**
+   * correlationId follows the boundary rule: a UUID is kept whole, a caller id without a run of
+   * 6+ digits comes through the scrub unchanged, anything else is scrubbed.
+   */
+  @Test
+  void aCorrelationIdIsKeptWholeOnlyWhenItIsAUuidOrHoldsNoLongDigitRun() {
+    String resource = "txn/" + UUID.randomUUID();
+    assertThat(stored(resource, "cid-12345-67890")).containsEntry("correlation_id", "cid-12345-67890");
+    assertThat(stored(resource, "corr-2345678901234")).containsEntry("correlation_id", "corr-****234");
+    assertThat(stored(resource, "12345678-1234-1234-1234-001711234567"))
+        .containsEntry("correlation_id", "12345678-1234-1234-1234-****4567");
   }
 
   @Test
