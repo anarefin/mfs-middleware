@@ -24,6 +24,6 @@ if [ ! -f "$tool/node_modules/.package-lock.json" ] || [ "$tool/package-lock.jso
   (cd "$tool" && npm ci --silent --no-audit --no-fund) || die "contracts-lint: npm ci failed in $tool"
 fi
 
-node "$tool/lint.mjs" "$dir"
+node "$tool/lint.mjs" "$dir" "$MW_ROOT"
 # the services' derived body schemas (services/*/src/main/resources/derived-schemas)
 exec "$(dirname "$0")/derived-schemas.sh" --check

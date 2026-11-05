@@ -301,6 +301,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 ## Contracts used
 
+- `contracts.yml` (module root) is the machine-readable list of what this service produces and
+  consumes (each `core.command.v1` command type, `core.event.v1` event type and partner family
+  separately), checked by `make contracts-lint` and tested without Docker by
+  `contracts/ProducedContractsTest` (every produced event built by the real mapper, serialised as
+  the outbox does, validated), `contracts/ConsumedContractsTest` (every valid sample of a consumed
+  event read into the own DTO) and `contracts/ApiContractsTest` (txn-query response bodies against
+  the OpenAPI component schemas). A new event type or family goes into `contracts.yml` and gets a
+  fixture there.
+- `dto/ConfigChangedEvent` (`mw.config.changed.v1`) exists with its schema tests, but no route
+  consumes the topic yet, so it is not in `contracts.yml`.
 - `events/mw-core-mock/core.event.v1.schema.json`: own type `dto/CoreEvent` (payload read as a
   tree per `eventType`). Unknown fields are ignored.
 - `mw.partner.inbound.v1` (owned, consumed): own type `dto/PartnerInbound`;
@@ -335,7 +345,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 | Command | What it does |
 | --- | --- |
-| `./gradlew check` | unit, slice and Testcontainers tests (Docker needed for `*IT`), JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
+| `./gradlew test` | unit, slice and contract tests, no Docker (leaves out `*IT` and `@Conformance`) |
+| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker needed), not `@Conformance` |
+| `./gradlew conformance` | the `@Conformance` suite (Docker needed) |
+| `./gradlew check` | `test` + `integrationTest` + `conformance`, JaCoCo gate over all three (80% lines on `service`/`mapper`/`client`) |
 | `./gradlew check bootJar && docker build -t mw-orchestrator:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-orchestrator` | isolation + field-injection check + contracts lint + `./gradlew check` |
+| `make verify-changed [BASE=main]` | the gate for the modules changed since BASE (this one when it or a contract in its `contracts.yml` changed) |
 | `make up M=mw-orchestrator` | run this service's `compose.yml` (platform project must be up) |

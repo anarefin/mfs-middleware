@@ -111,6 +111,10 @@ MSISDN, a bank account (and any other type) last 4 only.
 
 ## Contracts used
 
+- Machine-readable list: `contracts.yml` (checked by `make contracts-lint`, tested by
+  `contracts/ProducedContractsTest` / `ConsumedContractsTest`). No APIs served or called with a contract file (the partner callback endpoint and the bank wire format have none).
+- `events/mw-audit-dw/mw.audit.event.v1` out (`partner.call.completed`, `messaging/PartnerAuditPublisher`);
+  own type `dto/AuditEvent`.
 - `events/mw-orchestrator/mw.partner.request.v1` (family `bank`, shared payload) in; own type
   `dto/PartnerRequest`. Canonical ADD_MONEY_BANK: `partner {partnerId: c2wbank, productCode:
   C2W}`, debit party `{type: BANK_ACCOUNT, id: <account>}`, credit party `{type: WALLET}`.
@@ -140,7 +144,11 @@ MSISDN, a bank account (and any other type) last 4 only.
 
 | Command | What it does |
 | --- | --- |
-| `./gradlew check` | unit, slice and Testcontainers tests (Docker needed for `*IT`), JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
+| `./gradlew test` | unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`), no Docker |
+| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker needed) |
+| `./gradlew conformance` | the `@Conformance` suite (Docker needed) |
+| `./gradlew check` | all three + JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
 | `./gradlew check bootJar && docker build -t mw-adapter-bank:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-adapter-bank` | isolation + field-injection check + contracts lint + `./gradlew check` |
+| `make verify-changed [BASE=main]` | the gate for the modules changed since BASE (this one when it, or a contract in its `contracts.yml`, changed) |
 | `make up M=mw-adapter-bank` | run this service's `compose.yml` (platform project must be up) |

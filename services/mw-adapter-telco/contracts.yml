@@ -1,0 +1,11 @@
+# Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
+produces:
+  events:
+    - events/mw-orchestrator/mw.partner.reply.v1.schema.json#telco
+    - events/mw-audit-dw/mw.audit.event.v1.schema.json
+  apis: []
+consumes:
+  events:
+    - events/mw-orchestrator/mw.partner.request.v1.schema.json#telco
+    - events/mw-admin-api/mw.config.changed.v1.schema.json
+  apis: []

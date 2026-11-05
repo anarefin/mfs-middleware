@@ -21,6 +21,10 @@ public record PageView(
     String txnId,
     String redirectUrl) {
 
-  /** The core's PIN encryption key. */
+  /**
+   * The core's PIN encryption key; {@code publicKey} is left out, not null, while none is
+   * configured (contract {@code PageView}: an optional string).
+   */
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   public record PinKey(String keyId, String publicKey) {}
 }

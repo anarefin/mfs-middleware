@@ -112,6 +112,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 
 - `events/mw-core-mock/core.event.v1.schema.json` and its per-event payload schemas (topics
   `core.wallet.event.v1`, `core.payment.event.v1`). Tests validate every emitted event against it.
+- Machine-readable list: `contracts.yml` (produces 15 `core.event.v1` types, consumes the 8 handled
+  `core.command.v1` types; `ApplyComplianceAction` is ignored, so neither it nor `ComplianceAction*` is
+  listed), checked by `make contracts-lint`, tested by `contracts/ProducedContractsTest` /
+  `ConsumedContractsTest` (no Spring, no Docker). No OpenAPI: the admin API is not a product contract.
 
 ## Contracts used
 
@@ -143,7 +147,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 
 | Command | What it does |
 | --- | --- |
-| `./gradlew check` | unit, slice and Testcontainers tests (Docker needed for `*IT`), JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
+| `./gradlew test` | unit, slice and contract tests (`contracts/*ContractsTest`), no Docker |
+| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker), e.g. `CoreMockApplicationIT`, `config/MwServicePropertiesIT`, `logging/JsonLoggingIT` |
+| `./gradlew conformance` | the `@Conformance` suite (Docker) |
+| `./gradlew check` | all three + JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
 | `./gradlew check bootJar && docker build -t mw-core-mock:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-core-mock` | isolation + field-injection check + contracts lint + `./gradlew check` |
+| `make verify-changed [BASE=main]` | the gate for the modules changed since BASE (this one when it or a contract it lists changed) |
 | `make up M=mw-core-mock` | run this service's `compose.yml` (platform project must be up) |

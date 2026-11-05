@@ -112,6 +112,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 
 ## Contracts used
 
+- `contracts.yml` (module root) is the machine-readable list of the events and APIs here, checked by
+  `make contracts-lint` and tested without Docker by `contracts/ProducedContractsTest` (every produced
+  event built by `TxnRequestMapper` validates), `contracts/ConsumedContractsTest` (every valid sample reads
+  into the own DTO) and `contracts/ApiContractsTest` (USSD HTTP API responses and the billpay client's requests).
 - `events/mw-orchestrator/mw.txn.request.v1` (produced; own type `dto/TxnRequest`, validated in
   `TxnRequestMapperTest`).
 - `events/mw-orchestrator/mw.txn.status.v1` (consumed; own type `dto/StatusMessage`) and the
@@ -142,8 +146,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 
 | Command | What it does |
 | --- | --- |
-| `./gradlew check` | unit, slice and Testcontainers tests (Docker needed for `*IT`: PostgreSQL, Kafka, Valkey), JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
+| `./gradlew test` | unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`, `ApiContractsTest`); no Docker |
+| `./gradlew integrationTest` | Testcontainers `*IT` classes (PostgreSQL, Kafka, Valkey; Docker needed) |
+| `./gradlew conformance` | the `@Conformance` suite (outbox, inbox, HTTP, purge; Docker needed) |
+| `./gradlew check` | `test` + `integrationTest` + `conformance`, JaCoCo gate (80% lines on `service`/`mapper`/`client`) over all three |
 | `./gradlew check bootJar && docker build -t mw-ussd:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-ussd` | isolation + field-injection check + contracts lint + `./gradlew check` |
+| `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when its files or the contracts in its `contracts.yml` changed) |
 | `make up M=mw-ussd` | run this service's `compose.yml` (platform project must be up) |
 | `make e2e TAGS=@ussd` | P2P, cash-out, top-up and bill pay over the HTTP USSD gateway simulator (`tests/e2e/src/test/resources/features/ussd.feature`, `ussd-flows.feature`) and GP over SMPP (`ussd-smpp.feature`, `@smpp`) |

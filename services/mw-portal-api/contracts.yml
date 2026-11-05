@@ -1,0 +1,7 @@
+# Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
+produces:
+  events: [events/mw-audit-dw/mw.audit.event.v1.schema.json, events/mw-orchestrator/mw.txn.request.v1.schema.json]
+  apis:   [api/mw-portal-api/portal-org.v1.openapi.yaml]
+consumes:
+  events: [events/mw-orchestrator/mw.txn.status.v1.schema.json]
+  apis:   [api/mw-orchestrator/txn-query.v1.openapi.yaml]

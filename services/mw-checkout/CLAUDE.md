@@ -100,6 +100,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 
 ## Contracts used
 
+- `contracts.yml` (module root) is the machine-readable list of the events and APIs here, checked by
+  `make contracts-lint` and tested without Docker by `contracts/ProducedContractsTest` (every produced
+  event built by `CheckoutMapper` validates), `contracts/ConsumedContractsTest` (every valid sample reads
+  into the own DTO) and `contracts/ApiContractsTest` (checkout API responses and the IPN body). No other
+  module's API is called (`consumes.apis` empty).
 - `events/mw-orchestrator/mw.txn.request.v1` (produced; `dto/TxnRequest`, checked in `CheckoutMapperTest`).
 - `events/mw-orchestrator/mw.txn.status.v1` (consumed; `dto/StatusMessage`) and the `mw-reply-to` convention.
 - `events/mw-notify/mw.notify.request.v1` (produced; `dto/NotificationRequest`, checked in `CheckoutMapperTest`).
@@ -140,8 +145,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 
 | Command | What it does |
 | --- | --- |
-| `./gradlew check` | unit, slice and Testcontainers tests (Docker needed for `*IT`), JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
+| `./gradlew test` | unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`, `ApiContractsTest`); no Docker |
+| `./gradlew integrationTest` | Testcontainers `*IT` classes (PostgreSQL, Kafka; Docker needed) |
+| `./gradlew conformance` | the `@Conformance` suite (outbox, inbox, HTTP, purge; Docker needed) |
+| `./gradlew check` | `test` + `integrationTest` + `conformance`, JaCoCo gate (80% lines on `service`/`mapper`/`client`) over all three |
 | `./gradlew check bootJar && docker build -t mw-checkout:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-checkout` | isolation + field-injection check + contracts lint + `./gradlew check` |
+| `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when its files or the contracts in its `contracts.yml` changed) |
 | `make up M=mw-checkout` | run this service's `compose.yml` (platform project must be up) |
 | `make e2e TAGS=@checkout` | session -> OTP -> pay -> signed redirect through the edge |

@@ -88,6 +88,9 @@ Standalone service module (spec 4.2, 4.3). Package \`$pkg\`. Follow the root
 ## Contracts used
 
 - TODO: files under \`contracts/\` this service consumes. Write your own types for them.
+- \`contracts.yml\` is the machine-readable list (produces/consumes, events and apis, paths relative to
+  \`contracts/\`, \`#<Msg>\` for one message type), checked by \`make contracts-lint\`; keep it in sync and
+  add \`contracts/ProducedContractsTest\` / \`ConsumedContractsTest\` once the service has events.
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
@@ -110,9 +113,13 @@ Standalone service module (spec 4.2, 4.3). Package \`$pkg\`. Follow the root
 
 | Command | What it does |
 | --- | --- |
-| \`./gradlew check\` | unit, slice and Testcontainers tests (Docker needed for \`*IT\`), JaCoCo gate (80% lines on \`service\`/\`mapper\`/\`client\`) |
+| \`./gradlew test\` | unit, slice and contract tests, no Docker |
+| \`./gradlew integrationTest\` | Testcontainers \`*IT\` classes (Docker) |
+| \`./gradlew conformance\` | the \`@Conformance\` suite |
+| \`./gradlew check\` | all three plus the JaCoCo gate (80% lines on \`service\`/\`mapper\`/\`client\`) |
 | \`./gradlew check bootJar && docker build -t $name:dev .\` | image, as spec 4.3 rule 1 |
 | \`make verify M=$name\` | isolation + field-injection check + contracts lint + \`./gradlew check\` |
+| \`make verify-changed [BASE=main]\` | the same gate for the modules changed since BASE only |
 | \`make up M=$name\` | run this service's \`compose.yml\` (platform project must be up) |
 EOF
 

@@ -1,0 +1,7 @@
+# Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
+produces:
+  events: []
+  apis:   []
+consumes:
+  events: []
+  apis:   [api/mw-ussd/ussd-http.v1.openapi.yaml]

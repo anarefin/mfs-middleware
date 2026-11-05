@@ -1,0 +1,7 @@
+# Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
+produces:
+  events: [events/mw-notify/mw.notify.status.v1.schema.json]
+  apis:   []
+consumes:
+  events: [events/mw-notify/mw.notify.request.v1.schema.json, events/mw-orchestrator/mw.txn.status.v1.schema.json]
+  apis:   []

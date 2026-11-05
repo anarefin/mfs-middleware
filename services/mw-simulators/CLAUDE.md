@@ -124,6 +124,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 
 - `api/mw-ussd/ussd-http.v1.openapi.yaml` (client, USSD gateway simulator; own types `dto/UssdScreen`).
 - Otherwise none. (Later tickets add the core stub: `core.*.command` in, `core.*.event` out, spec 22.2.)
+- `contracts.yml`: the machine-readable list (checked by `make contracts-lint`): no events produced
+  or consumed (the Kafka chassis is unused), so there is no `ProducedContractsTest` /
+  `ConsumedContractsTest`; `contracts/ApiContractsTest` checks the steps `client/UssdGatewayClient`
+  sends against `UssdStep` and that it reads a `UssdScreen` (local stand-in server, no Docker). The
+  merchant IPN receiver plays the merchant side of mw-checkout's `ipn` webhook; it records the body
+  raw and parses nothing, so `checkout.v1` is not listed.
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
@@ -148,7 +154,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 
 | Command | What it does |
 | --- | --- |
-| `./gradlew check` | unit, slice and Testcontainers tests (Docker needed for `*IT`), JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
+| `./gradlew test` | unit, slice and contract tests (`contracts/`), no Docker |
+| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker needed) |
+| `./gradlew conformance` | the `@Conformance` suite (Docker needed) |
+| `./gradlew check` | `test` + `integrationTest` + `conformance`, JaCoCo gate (80% lines on `service`/`mapper`/`client`, over all three) |
 | `./gradlew check bootJar && docker build -t mw-simulators:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-simulators` | isolation + field-injection check + contracts lint + `./gradlew check` |
+| `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when it or a contract in its `contracts.yml` changed) |
 | `make up M=mw-simulators` | run this service's `compose.yml` (platform project must be up) |

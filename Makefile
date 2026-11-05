@@ -5,6 +5,7 @@
 # A module is any services/* or templates/* folder with its own settings.gradle(.kts).
 #
 #   make verify [M=]            isolation + field injection + contracts lint + ./gradlew check per module (+ script self-tests)
+#   make verify-changed [BASE=main] [JOBS=3]  the same gate for the modules changed since BASE only (contracts mapped precisely), JOBS at a time
 #   make check-isolation [M=]   module independence rules (spec 4.3)
 #   make check-field-injection [M=]  no @Autowired fields under any module's src/
 #   make contracts-lint         lint the root contracts/ folder
@@ -27,18 +28,22 @@ MW_ROOT ?= $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 SELFTEST ?= 1
 M ?=
 BASE ?=
+JOBS ?= 3
 export MW_ROOT
 
-.PHONY: help verify check-isolation check-field-injection contracts-lint versions-check compose-flat compose-check up smoke edge-test down e2e e2e-changed perf security new-service test-scripts
+.PHONY: help verify verify-changed check-isolation check-field-injection contracts-lint versions-check compose-flat compose-check up smoke edge-test down e2e e2e-changed perf security new-service test-scripts
 
 help:
-	@sed -n '3,24p' $(abspath $(lastword $(MAKEFILE_LIST)))
+	@sed -n '3,25p' $(abspath $(lastword $(MAKEFILE_LIST)))
 
 verify:
 ifeq ($(SELFTEST)$(M),1)
 	@$(SCRIPTS)/test/run.sh
 endif
 	@$(SCRIPTS)/verify.sh "$(M)"
+
+verify-changed:
+	@$(SCRIPTS)/verify-changed.sh "$(BASE)" "$(JOBS)"
 
 check-isolation:
 	@$(SCRIPTS)/check-isolation.sh "$(M)"

@@ -32,7 +32,7 @@ and keep `scripts/test/test_service_template.sh` green.
 | --- | --- | --- |
 | Camel Kafka component: idempotent producer, `acks=all`, group = service name, auto-commit off (per-record commit after handling or parking) | `application.yml` (`camel.component.kafka`) | 6.1 |
 | `EventPublisher`: JSON record with the 6 headers (`mw-correlation-id`, `mw-txn-id`, `mw-idempotency-key`, `mw-source`, `mw-schema-version`, `traceparent`) | `messaging/` | 6.1, 21.3 |
-| `RetryTopicRouteBuilder`: subclass per consumed topic; failures go `<topic>.<group>.retry.1..3` (10 s, 1 min, 10 min) then `<topic>.<group>.dlq`, `<group>` = the service's consumer group (service name), so services sharing a topic never share parked records (declare them with `retry=<service>` in `deploy/kafka/topics.txt`); key, body and headers kept; delays pause the partition, never sleep on the consumer thread (`messaging/RetryDelayListener`); due times from the injected `Clock` bean (`config/ClockConfig`); logs ids and exception class only | `route/`, `messaging/`, `config/KafkaRetryProperties` | 19.2, 6.2 |
+| `RetryTopicRouteBuilder`: subclass per consumed topic; failures go `<topic>.<group>.retry.1..3` (10 s, 1 min, 10 min, configurable as `mw.kafka.retry.delays`; `RetryTopicRouteIT` shortens them) then `<topic>.<group>.dlq`, `<group>` = the service's consumer group (service name), so services sharing a topic never share parked records (declare them with `retry=<service>` in `deploy/kafka/topics.txt`); key, body and headers kept; delays pause the partition, never sleep on the consumer thread (`messaging/RetryDelayListener`); due times from the injected `Clock` bean (`config/ClockConfig`); logs ids and exception class only | `route/`, `messaging/`, `config/KafkaRetryProperties` | 19.2, 6.2 |
 | Resilience4j defaults (CB 60 s window / 50 calls / 50% failed or slow / 30 s open / 5 probes, bulkhead 200, time limiter 30 s, retry 2x 200 ms -> 1 s jittered, idempotent calls only) | `application.yml` (`resilience4j`) | 19.2 |
 | Own schema `service_template` (renamed by scaffold to the service name in snake case; services may pick the spec 16.2 name), Flyway on start from `db/migration/V<n>__*.sql` | `application.yml`, `src/main/resources/db/migration` | 16.2, 16.4 |
 | Own type for `mw.config.changed.v1`, checked against `contracts/` via `mwContractsDir` | `dto/ConfigChangedEvent`, `ConfigChangedEventSchemaTest` | 20.4, 22.1 |
@@ -63,9 +63,23 @@ test contexts would relay each other's rows; a test that needs it on sets
 
 | Command | What it does |
 | --- | --- |
-| `./gradlew check` | all tests in one JVM (`test` includes the `@Conformance` suite; `*IT` use Testcontainers, Docker) and the JaCoCo gate (>= 80% lines per `service`/`mapper`/`client` package, 22.1; report in `build/reports/jacoco`) |
-| `./gradlew conformance` | the conformance suite alone |
+| `./gradlew test` | unit, slice and contract tests; no Docker (`*IT` classes and `@Conformance` are left out) |
+| `./gradlew integrationTest` | the Testcontainers `*IT` classes (not `@Conformance`); Docker |
+| `./gradlew conformance` | the conformance suite alone (`RetryTopicRouteIT` runs its independent routes side by side, under 10 s) |
+| `./gradlew check` | `test`, `integrationTest`, `conformance` and the JaCoCo gate over all three (>= 80% lines per `service`/`mapper`/`client` package, 22.1; report in `build/reports/jacoco`) |
 | `make test-scripts` | includes `test_template_copy_checks_and_builds_its_image_alone`: a copy plus `contracts/` runs `./gradlew check bootJar && docker build .` (skipped when Docker is down) |
 | `./gradlew check bootJar && docker build -t mw-service-template:dev .` | spec 4.3 rule 1 |
 | `docker compose up -d --wait` | run it alone (creates/joins `${COMPOSE_PROJECT_NAME:-mw}_app`) |
 | `make verify M=mw-service-template` | isolation + field-injection check + contracts lint + `./gradlew check` |
+| `make verify-changed [BASE=main]` | the same gate for the modules changed since `BASE` only |
+
+## Contracts
+
+`contracts.yml` lists the contracts the module produces and consumes (paths relative to
+`contracts/`, `#<Msg>` for one message type of a multi-type topic); the template's lists are empty.
+`make contracts-lint` checks the entries and `make verify-changed` maps a contract change to the
+modules listing it. A service that produces or consumes events adds `contracts/ProducedContractsTest`
+(each `produces.events` entry built by the real mapper and serialised as the publisher does,
+validated against its schema; an entry without a fixture fails) and `ConsumedContractsTest` (every
+valid sample of each `consumes.events` entry reads into its own DTO), plain JUnit on
+`contracts/ContractSchemas`, no Spring context, no Docker (ticket 53).

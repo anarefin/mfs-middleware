@@ -1,0 +1,45 @@
+# Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
+# Checked by `make contracts-lint`, tested by contracts/ProducedContractsTest and ConsumedContractsTest
+# (events) and contracts/ApiContractsTest (APIs).
+produces:
+  events:
+    - events/mw-orchestrator/mw.txn.status.v1.schema.json
+    - events/mw-orchestrator/core.command.v1.schema.json#ValidateTransaction
+    - events/mw-orchestrator/core.command.v1.schema.json#PostTransfer
+    - events/mw-orchestrator/core.command.v1.schema.json#HoldFunds
+    - events/mw-orchestrator/core.command.v1.schema.json#CommitHold
+    - events/mw-orchestrator/core.command.v1.schema.json#ReleaseHold
+    - events/mw-orchestrator/core.command.v1.schema.json#CreditWallet
+    - events/mw-orchestrator/core.command.v1.schema.json#ReverseTransaction
+    - events/mw-orchestrator/core.command.v1.schema.json#QueryTransaction
+    - events/mw-orchestrator/mw.partner.request.v1.schema.json#telco
+    - events/mw-orchestrator/mw.partner.request.v1.schema.json#billpay
+    - events/mw-orchestrator/mw.partner.request.v1.schema.json#bank
+    - events/mw-audit-dw/mw.audit.event.v1.schema.json
+  apis:
+    - api/mw-orchestrator/txn-query.v1.openapi.yaml
+consumes:
+  events:
+    - events/mw-orchestrator/mw.txn.request.v1.schema.json
+    - events/mw-core-mock/core.event.v1.schema.json#TransactionValidated
+    - events/mw-core-mock/core.event.v1.schema.json#TransactionRejected
+    - events/mw-core-mock/core.event.v1.schema.json#TransferPosted
+    - events/mw-core-mock/core.event.v1.schema.json#TransferRejected
+    - events/mw-core-mock/core.event.v1.schema.json#FundsHeld
+    - events/mw-core-mock/core.event.v1.schema.json#HoldRejected
+    - events/mw-core-mock/core.event.v1.schema.json#HoldCommitted
+    - events/mw-core-mock/core.event.v1.schema.json#CommitFailed
+    - events/mw-core-mock/core.event.v1.schema.json#HoldReleased
+    - events/mw-core-mock/core.event.v1.schema.json#ReleaseFailed
+    - events/mw-core-mock/core.event.v1.schema.json#WalletCredited
+    - events/mw-core-mock/core.event.v1.schema.json#CreditRejected
+    - events/mw-core-mock/core.event.v1.schema.json#TransactionReversed
+    - events/mw-core-mock/core.event.v1.schema.json#ReversalRejected
+    - events/mw-core-mock/core.event.v1.schema.json#TransactionStatus
+    - events/mw-orchestrator/mw.partner.reply.v1.schema.json#telco
+    - events/mw-orchestrator/mw.partner.reply.v1.schema.json#billpay
+    - events/mw-orchestrator/mw.partner.reply.v1.schema.json#bank
+    - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#telco
+    - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#billpay
+    - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#bank
+  apis: []

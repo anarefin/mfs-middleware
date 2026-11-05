@@ -495,3 +495,94 @@ test_lint_rejects_a_non_service_owner_for_common() {
   assert_fails mw_make "$PWD" contracts-lint
   assert_out_contains "nobody"
 }
+
+# --- contract manifests: services/<mw-x>/contracts.yml (ticket 53) ---
+
+# plant_manifest MODULE PRODUCED_EVENTS CONSUMED_EVENTS [PRODUCED_APIS]: services/MODULE/contracts.yml
+# with the given flow-style lists (e.g. "events/mw-a/x.v1.schema.json, events/mw-a/y.v1.schema.json").
+plant_manifest() {
+  mkdir -p "services/$1"
+  cat >"services/$1/contracts.yml" <<EOF
+produces:
+  events: [$2]
+  apis: [${4:-}]
+consumes:
+  events: [$3]
+  apis: []
+EOF
+}
+
+test_repo_every_module_has_a_contract_manifest() {
+  local d
+  for d in "$REPO_DIR"/services/*/ "$REPO_DIR"/templates/mw-service-template/; do
+    [ -f "$d/settings.gradle.kts" ] || continue
+    [ -f "$d/contracts.yml" ] || fail "no contracts.yml in $d"
+  done
+}
+
+test_lint_accepts_manifests_that_cover_every_schema() {
+  plant_schema mw-a mw.a.event.v1
+  plant_envelope mw-a mw.a.cmd.v1 Alpha Beta
+  plant_manifest mw-a "events/mw-a/mw.a.event.v1.schema.json, events/mw-a/mw.a.cmd.v1.schema.json#Alpha" ""
+  plant_manifest mw-b "" "events/mw-a/mw.a.event.v1.schema.json, events/mw-a/mw.a.cmd.v1.schema.json"
+  assert_ok mw_make "$PWD" contracts-lint
+  assert_out_contains "2 manifest(s)"
+}
+
+test_lint_fails_when_a_manifest_entry_names_a_missing_file() {
+  plant_schema mw-a mw.a.event.v1
+  plant_manifest mw-a "events/mw-a/mw.a.event.v1.schema.json, events/mw-a/mw.a.gone.v1.schema.json" ""
+  plant_manifest mw-b "" "events/mw-a/mw.a.event.v1.schema.json"
+  assert_fails mw_make "$PWD" contracts-lint
+  assert_out_contains "services/mw-a/contracts.yml: produces.events entry events/mw-a/mw.a.gone.v1.schema.json: no such contract file"
+}
+
+test_lint_fails_when_a_manifest_api_entry_names_a_missing_file() {
+  plant_schema mw-a mw.a.event.v1
+  plant_manifest mw-a "events/mw-a/mw.a.event.v1.schema.json" "events/mw-a/mw.a.event.v1.schema.json" "api/mw-a/gone.v1.openapi.yaml"
+  assert_fails mw_make "$PWD" contracts-lint
+  assert_out_contains "produces.apis entry api/mw-a/gone.v1.openapi.yaml: no such contract file"
+}
+
+test_lint_fails_when_a_manifest_names_a_message_type_the_envelope_lacks() {
+  plant_envelope mw-a mw.a.cmd.v1 Alpha
+  plant_manifest mw-a "events/mw-a/mw.a.cmd.v1.schema.json#Gamma" "events/mw-a/mw.a.cmd.v1.schema.json#Alpha"
+  assert_fails mw_make "$PWD" contracts-lint
+  assert_out_contains "produces.events entry events/mw-a/mw.a.cmd.v1.schema.json#Gamma: events/mw-a/mw.a.cmd.v1.schema.json has no message type Gamma"
+}
+
+test_lint_fails_when_a_manifest_names_a_message_type_of_a_single_type_topic() {
+  plant_schema mw-a mw.a.event.v1
+  plant_manifest mw-a "events/mw-a/mw.a.event.v1.schema.json#Alpha" "events/mw-a/mw.a.event.v1.schema.json"
+  assert_fails mw_make "$PWD" contracts-lint
+  assert_out_contains "is a single-type topic, it has no message type Alpha"
+}
+
+test_lint_fails_on_an_orphan_schema_without_producer_or_consumer() {
+  plant_schema mw-a mw.a.event.v1
+  plant_schema mw-a mw.a.orphan.v1
+  plant_manifest mw-a "events/mw-a/mw.a.event.v1.schema.json" "events/mw-a/mw.a.event.v1.schema.json"
+  assert_fails mw_make "$PWD" contracts-lint
+  assert_out_contains "events/mw-a/mw.a.orphan.v1.schema.json: orphan schema: no contracts.yml produces it"
+  assert_out_contains "events/mw-a/mw.a.orphan.v1.schema.json: orphan schema: no contracts.yml consumes it"
+  assert_out_lacks "mw.a.event.v1.schema.json: orphan"
+}
+
+test_lint_accepts_a_side_played_outside_the_repo_from_EXTERNAL() {
+  plant_schema mw-a mw.a.event.v1
+  plant_manifest mw-b "" "events/mw-a/mw.a.event.v1.schema.json"
+  assert_fails mw_make "$PWD" contracts-lint
+  assert_out_contains "no contracts.yml produces it"
+  printf 'producers:\n  events/mw-a/mw.a.event.v1.schema.json: the core banking system\n' >contracts/EXTERNAL.yml
+  printf '  EXTERNAL.yml: mw-a\n' >>contracts/OWNERS.yml
+  assert_ok mw_make "$PWD" contracts-lint
+}
+
+test_lint_fails_on_an_EXTERNAL_entry_for_a_missing_schema() {
+  plant_schema mw-a mw.a.event.v1
+  plant_manifest mw-a "events/mw-a/mw.a.event.v1.schema.json" "events/mw-a/mw.a.event.v1.schema.json"
+  printf 'consumers:\n  events/mw-a/mw.a.gone.v1.schema.json: nobody\n' >contracts/EXTERNAL.yml
+  printf '  EXTERNAL.yml: mw-a\n' >>contracts/OWNERS.yml
+  assert_fails mw_make "$PWD" contracts-lint
+  assert_out_contains "EXTERNAL.yml: consumers entry events/mw-a/mw.a.gone.v1.schema.json is not an event schema"
+}

@@ -84,6 +84,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 ## Contracts used
 
 - None besides its own `mw.audit.event.v1`.
+- `contracts.yml`: the machine-readable list of what this module produces and consumes (checked
+  by `make contracts-lint`, tested by `contracts/ConsumedContractsTest` (every valid sample reads
+  into `dto/AuditEvent`) and `contracts/ApiContractsTest` (search responses against
+  `audit-query.v1`); no Docker). It produces no events, so there is no `ProducedContractsTest`
+  (`ConsumedContractsTest.producesNoEvents` fails if the manifest gains one).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
@@ -110,7 +115,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 
 | Command | What it does |
 | --- | --- |
-| `./gradlew check` | unit, slice and Testcontainers tests (Docker needed for `*IT`), JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
+| `./gradlew test` | unit, slice and contract tests (`contracts/`), no Docker |
+| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker needed) |
+| `./gradlew conformance` | the `@Conformance` suite (Docker needed) |
+| `./gradlew check` | `test` + `integrationTest` + `conformance`, JaCoCo gate (80% lines on `service`/`mapper`/`client`, over all three) |
 | `./gradlew check bootJar && docker build -t mw-audit-dw:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-audit-dw` | isolation + field-injection check + contracts lint + `./gradlew check` |
+| `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when it or a contract in its `contracts.yml` changed) |
 | `make up M=mw-audit-dw` | run this service's `compose.yml` (platform project must be up) |

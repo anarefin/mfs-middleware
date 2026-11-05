@@ -1,0 +1,12 @@
+# Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
+produces:
+  events:
+    - events/mw-orchestrator/mw.partner.reply.v1.schema.json#billpay
+    - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#billpay
+    - events/mw-audit-dw/mw.audit.event.v1.schema.json
+  apis: [api/mw-adapter-billpay/billpay.v1.openapi.yaml]
+consumes:
+  events:
+    - events/mw-orchestrator/mw.partner.request.v1.schema.json#billpay
+    - events/mw-admin-api/mw.config.changed.v1.schema.json
+  apis: []

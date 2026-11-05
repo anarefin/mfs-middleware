@@ -74,34 +74,53 @@ tasks.withType<Test>().configureEach {
 
 // `test` runs every test, the conformance suite included, in one JVM: the Testcontainers and
 // the cached Spring contexts are started once per `check` (make verify), not once per task.
+// Test tiers (ticket 53). `test` needs no Docker: it leaves out the Testcontainers `*IT` classes
+// and the @Conformance suite. `integrationTest` runs the `*IT` classes (not @Conformance) and
+// `conformance` the @Conformance tests (spec 4.3 rule 5, 22.1, copied from the template into every
+// service). `check` (make verify, make verify-changed) runs all three.
+val integrationTestClasses = listOf("**/*IT.class", "**/*IT$*.class")
 tasks.test {
-    useJUnitPlatform()
+    useJUnitPlatform { excludeTags("conformance") }
+    exclude(integrationTestClasses)
 }
 
-// Conformance suite (spec 4.3 rule 5, 22.1): tests tagged @Conformance, copied from the template
-// into every service. `./gradlew conformance` runs them alone; `check` runs them as part of `test`.
+val integrationTest by tasks.registering(Test::class) {
+    description = "Runs the Testcontainers integration tests (*IT classes, not @Conformance)."
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform { excludeTags("conformance") }
+    include(integrationTestClasses)
+    shouldRunAfter(tasks.test)
+}
+
 val conformance by tasks.registering(Test::class) {
-    description = "Runs the conformance suite (@Conformance tests) alone."
+    description = "Runs the conformance suite (@Conformance tests)."
     group = LifecycleBasePlugin.VERIFICATION_GROUP
     testClassesDirs = sourceSets.test.get().output.classesDirs
     classpath = sourceSets.test.get().runtimeClasspath
     useJUnitPlatform { includeTags("conformance") }
+    // Classes run one at a time; a test method may opt in to running beside its class-mates
+    // (@Execution(CONCURRENT) on the method: RetryTopicRouteIT, whose routes are independent).
+    systemProperty("junit.jupiter.execution.parallel.enabled", "true")
+    shouldRunAfter(tasks.test, integrationTest)
 }
+tasks.check { dependsOn(integrationTest, conformance) }
 
 // Coverage gate (spec 22.1): >= 80% line coverage per package on service, mapper and client
-// (and their sub-packages), measured over the `test` run (unit and conformance tests). `check` (make
-// verify) fails below it. Other packages are reported but not gated.
+// (and their sub-packages), measured over the test, integrationTest and conformance runs. `check`
+// (make verify) fails below it. Other packages are reported but not gated.
 val basePackage = "mfs.mw.service.template"
 val gatedPackages = listOf("service", "mapper", "client")
 jacoco { toolVersion = libs.versions.jacoco.get() }
 tasks.jacocoTestReport {
-    executionData(tasks.test.get())
-    dependsOn(tasks.test)
+    executionData(tasks.test.get(), integrationTest.get(), conformance.get())
+    dependsOn(tasks.test, integrationTest, conformance)
     reports { xml.required = true; html.required = true }
 }
 tasks.jacocoTestCoverageVerification {
-    executionData(tasks.test.get())
-    dependsOn(tasks.test)
+    executionData(tasks.test.get(), integrationTest.get(), conformance.get())
+    dependsOn(tasks.test, integrationTest, conformance)
     violationRules {
         rule {
             element = "PACKAGE"

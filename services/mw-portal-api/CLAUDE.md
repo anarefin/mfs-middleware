@@ -131,6 +131,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
 
 ## Contracts used
 
+- `contracts.yml`: the machine-readable list of what this module produces and consumes (checked
+  by `make contracts-lint`, tested by `contracts/ProducedContractsTest` / `ConsumedContractsTest`,
+  and `contracts/ApiContractsTest` for the served and called APIs; no Docker).
 - `events/mw-audit-dw/mw.audit.event.v1` (produced, own type `dto/AuditEvent`; `BulkLifecycleIT`
   validates every batch audit event against it).
 
@@ -161,7 +164,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
 
 | Command | What it does |
 | --- | --- |
-| `./gradlew check` | unit, slice and Testcontainers tests (Docker needed for `*IT`), JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
+| `./gradlew test` | unit, slice and contract tests (`contracts/`), no Docker |
+| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker needed) |
+| `./gradlew conformance` | the `@Conformance` suite (Docker needed) |
+| `./gradlew check` | `test` + `integrationTest` + `conformance`, JaCoCo gate (80% lines on `service`/`mapper`/`client`, over all three) |
 | `./gradlew check bootJar && docker build -t mw-portal-api:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-portal-api` | isolation + field-injection check + contracts lint + `./gradlew check` |
+| `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when it or a contract in its `contracts.yml` changed) |
 | `make up M=mw-portal-api` | run this service's `compose.yml` (platform project must be up) |

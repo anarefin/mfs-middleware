@@ -75,7 +75,7 @@ straight to Kafka so it is never stored): a port interface would have one implem
 `messaging/` and leave the dependency direction as it is, so it is not added. Listeners, relays and routes in `messaging/` still
 depend on `service`, never the other way round otherwise. Entities never leave the service layer.
 Tests mirror the main packages (unit for service/mapper/util, `@WebMvcTest` for controller,
-`*RepositoryIT` for repository: the JDBC repositories run against the module's JVM-scoped
+`*RepositoryIT` for repository (any test that needs Docker is a `*IT`): the JDBC repositories run against the module's JVM-scoped
 Testcontainers PostgreSQL from its `TestInfrastructure`, in a `@SpringBootTest` context, as the
 catalogs carry no JDBC slice starter; Camel route tests for route).
 
@@ -130,8 +130,9 @@ or one with `M=<module>` (e.g. `M=mw-orchestrator`).
 | Command | What it does |
 | --- | --- |
 | `make verify [M=]` | isolation check, field-injection check, contracts lint, `./gradlew check` per module (tests, JaCoCo 80% line gate on `service`/`mapper`/`client`); without `M=` also the script self-tests |
+| `make verify-changed [BASE=main] [JOBS=3]` | the same gate for the modules changed since `BASE` only (`scripts/changed-modules.sh --contracts-precise`: a changed contract selects the modules whose `contracts.yml` lists it, plus its owner; `contracts/common/`, `OWNERS.yml`, `deploy/`, `scripts/` or the root build select all), `JOBS` modules at a time; per-module logs in `build/verify-changed/<module>.log`, pass/fail and duration summary; warns when the MVP stack is running (Docker memory) |
 | `make check-isolation [M=]` | module independence rules (fails on cross-module deps, `includeBuild`, convention plugins, paths outside the module except `contracts/`) |
-| `make contracts-lint` | lint `contracts/` |
+| `make contracts-lint` | lint `contracts/` and every module's `contracts.yml` (entries exist, `#<Msg>` is a message type, every event schema has a producer and a consumer manifest or a side in `contracts/EXTERNAL.yml`) |
 | `make versions-check [M=]` | report version drift between module version catalogs (report only, not in `verify`) |
 | `make up [M=]` | Compose stack (`deploy/compose/mvp`) or one module's `compose.yml`; first generates the gitignored dev credentials in `deploy/compose/platform/.env` (`scripts/gen-dev-env.sh`), always rebuilds every stack module jar (`bootJar`) and its images (`up --build`; `MW_UP_NO_BUILD=1` skips both), then waits until services are healthy and one-shot inits exited 0; the MVP project always runs with the low-resource override `deploy/compose/mvp/compose.lowmem.yml` (functional runs only, about 7.5 GB of limits) |
 | `make compose-flat` | regenerate the root `compose.yml`: the whole stack as one flat file (includes and the low-resource override merged, `${VAR}` placeholders kept, repo-relative paths). Run it with `docker compose --env-file deploy/compose/platform/.env up -d --build` after building the jars |
@@ -145,10 +146,21 @@ or one with `M=<module>` (e.g. `M=mw-orchestrator`).
 | `make security [M=]` | gitleaks, CycloneDX SBOM, trivy (deps and images) |
 | `make new-service NAME=mw-x` | scaffold a service from the template |
 | `make test-scripts` | shell tests for the Makefile and `scripts/` (`scripts/test/`) |
-| `cd services/mw-x && ./gradlew check` | one module on its own |
+| `cd services/mw-x && ./gradlew test` | unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`); no Docker, no `*IT` classes, no `@Conformance` |
+| `cd services/mw-x && ./gradlew integrationTest` | the Testcontainers `*IT` classes (not `@Conformance`), Docker needed |
+| `cd services/mw-x && ./gradlew conformance` | the `@Conformance` suite |
+| `cd services/mw-x && ./gradlew check` | one module on its own: `test`, `integrationTest`, `conformance` and the JaCoCo gate over all three |
 
-Definition of done: tests written first, `make verify M=<module>` and the relevant
-`make e2e TAGS=...` green locally, output pasted into the PR template.
+Each module lists the contracts it produces and consumes in `services/mw-x/contracts.yml` (paths
+relative to `contracts/`, `#<Msg>` for one message type of a multi-type topic). Keep it in sync with
+the code in the same commit; its `ProducedContractsTest` / `ConsumedContractsTest` fail on an entry
+without a fixture.
+
+Definition of done: tests written first; per ticket `./gradlew test integrationTest` green for every
+touched module (plus `make test-scripts` / `make contracts-lint` when scripts or contracts changed)
+and the relevant `make e2e TAGS=...`; at a milestone gate `make verify-changed BASE=<gate base>` and
+the e2e suite; a full `make verify` once at the end of a milestone run. Output pasted into the PR
+template.
 
 ## Never
 

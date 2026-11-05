@@ -151,6 +151,11 @@ mapping, inbox/outbox).
 
 ## Contracts used
 
+- Machine-readable list: `contracts.yml` (checked by `make contracts-lint`, tested by
+  `contracts/ProducedContractsTest` / `ConsumedContractsTest`). No APIs served or called (the OCS wire
+  format has no contract file).
+- `events/mw-audit-dw/mw.audit.event.v1` out (`partner.call.completed`, `messaging/PartnerAuditPublisher`);
+  own type `dto/AuditEvent`.
 - `events/mw-orchestrator/mw.partner.request.v1` (family `telco`, shared payload) in; own type
   `dto/PartnerRequest`.
 - `events/mw-orchestrator/mw.partner.reply.v1` (family `telco`, shared payload) out; own type
@@ -182,7 +187,11 @@ mapping, inbox/outbox).
 
 | Command | What it does |
 | --- | --- |
-| `./gradlew check` | unit, slice and Testcontainers tests (Docker needed for `*IT`), JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
+| `./gradlew test` | unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`), no Docker |
+| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker needed) |
+| `./gradlew conformance` | the `@Conformance` suite (Docker needed) |
+| `./gradlew check` | all three + JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
 | `./gradlew check bootJar && docker build -t mw-adapter-telco:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-adapter-telco` | isolation + field-injection check + contracts lint + `./gradlew check` |
+| `make verify-changed [BASE=main]` | the gate for the modules changed since BASE (this one when it, or a contract in its `contracts.yml`, changed) |
 | `make up M=mw-adapter-telco` | run this service's `compose.yml` (platform project must be up) |

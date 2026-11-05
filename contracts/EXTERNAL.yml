@@ -1,0 +1,10 @@
+# Sides of an event contract played by a system outside this repo (ticket 53).
+# `make contracts-lint` requires every event schema to have at least one producer and one consumer
+# among the services' contracts.yml manifests; a side listed here is exempt. Remove an entry as
+# soon as a module in the repo plays that side and lists it in its contracts.yml.
+producers:
+  # mw-admin-api publishes config changes after maker-checker approval; not built yet (ticket 36).
+  events/mw-admin-api/mw.config.changed.v1.schema.json: mw-admin-api (not yet in the repo, ticket 36)
+consumers:
+  # The admin console reads delivery status (spec 10.2-10.4); no module in the repo consumes it yet.
+  events/mw-notify/mw.notify.status.v1.schema.json: mw-admin-api / admin console (not yet in the repo, tickets 36-40)

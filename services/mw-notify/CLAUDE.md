@@ -84,6 +84,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 ## Contracts used
 
 - `events/mw-orchestrator/mw.txn.status.v1.schema.json` (own subset type `dto/TxnStatusEvent`).
+- Machine-readable list: `contracts.yml` (produces `mw.notify.status.v1`; consumes `mw.notify.request.v1`
+  and `mw.txn.status.v1`; no APIs), checked by `make contracts-lint`, tested by
+  `contracts/ProducedContractsTest` (events built by `StatusEvents`) / `ConsumedContractsTest` (samples
+  through the real listeners); no Spring, no Docker.
 
 ## Tests
 
@@ -93,7 +97,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   subject, text and HTML parts, SMS+EMAIL request, SMTP down retried); `service/FlowNotificationsIT`
   (every seeded flow state -> exact SMS texts and email receipts, rule/template completeness);
   `SmscFlowIT` (Kafka in, real SMPP to the
-  in-test `client/SmscStub`, DLRs, `mw.notify.status.v1` out); `dto/NotifyContractsSchemaTest`.
+  in-test `client/SmscStub`, DLRs, `mw.notify.status.v1` out); `dto/NotifyContractsSchemaTest`;
+  `contracts/ProducedContractsTest`, `ConsumedContractsTest`. Spring contexts with Testcontainers are
+  `*IT` (`NotifyApplicationIT`, `config/MwServicePropertiesIT`, `logging/JsonLoggingIT`).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
@@ -116,7 +122,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 
 | Command | What it does |
 | --- | --- |
-| `./gradlew check` | unit, slice and Testcontainers tests (Docker needed for `*IT`), JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
+| `./gradlew test` | unit, slice and contract tests (`contracts/*ContractsTest`), no Docker |
+| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker) |
+| `./gradlew conformance` | the `@Conformance` suite (Docker) |
+| `./gradlew check` | all three + JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
 | `./gradlew check bootJar && docker build -t mw-notify:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-notify` | isolation + field-injection check + contracts lint + `./gradlew check` |
+| `make verify-changed [BASE=main]` | the gate for the modules changed since BASE (this one when it or a contract it lists changed) |
 | `make up M=mw-notify` | run this service's `compose.yml` (platform project must be up) |

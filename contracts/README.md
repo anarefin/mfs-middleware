@@ -7,6 +7,7 @@ Files only, no code (spec 4.2, 4.3, D14). Modules read this folder through the
 
 ```
 OWNERS.yml                                         owning service per file
+EXTERNAL.yml                                       event-contract sides played outside the repo
 common/defs.v1.schema.json                         shared types: Amount, Party, Msisdn, EncryptedPin,
                                                    TxnId, CorrelationId, SchemaVersion, ...
 events/<owner>/<topic>.schema.json                 one schema per topic (JSON Schema 2020-12)
@@ -66,6 +67,11 @@ network: the lint registers every file first, and the service template's test lo
   (`"<instance path> <Ajv message>"`; wrapper errors from `if`, `anyOf`, `oneOf` are left out)
 - every file except samples and payload schemas has an owner in `OWNERS.yml`; under
   `<kind>/<owner>/` it must be that folder's service; `common/` may name any service
+- every module's manifest `services/<mw-x>/contracts.yml` (`produces` / `consumes`, each with
+  `events` and `apis`, paths relative to this folder) names existing files; `<path>#<Msg>` names a
+  message type of an envelope with a payload file; every event schema has at least one producer and
+  one consumer manifest, unless `EXTERNAL.yml` names a system outside the repo for that side
+  (ticket 53; `make verify-changed` uses the manifests to pick the modules a contract change affects)
 
 Within a version only additive changes are allowed; consumers ignore unknown fields, so schemas
 leave `additionalProperties` open.

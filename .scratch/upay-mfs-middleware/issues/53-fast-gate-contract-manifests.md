@@ -32,9 +32,9 @@
 
 **Status:** ready-for-agent
 
-- [ ] Every module has `contracts.yml`, and `make contracts-lint` validates them (the self-test covers a missing file, a missing `#Msg` and an orphan schema)
-- [ ] `./gradlew test` passes in every module with Docker stopped
-- [ ] `ProducedContractsTest` and `ConsumedContractsTest` exist in every module that produces or consumes events. Breaking a mapped field on purpose makes the producer test fail (show it once in the PR notes, then revert)
-- [ ] `./gradlew check` still runs `test`, `integrationTest` and `conformance`, and the JaCoCo gate still passes
-- [ ] `make verify-changed` with a change to a file in `contracts/events/mw-notify/` selects only the producers and consumers of that topic; `make test-scripts` passes
-- [ ] `RetryTopicRouteIT` takes under 10 s in each module that has it
+- [x] Every module has `contracts.yml`, and `make contracts-lint` validates them (the self-test covers a missing file, a missing `#Msg` and an orphan schema)
+- [x] `./gradlew test` passes in every module with Docker stopped
+- [x] `ProducedContractsTest` and `ConsumedContractsTest` exist in every module that produces or consumes events. Breaking a mapped field on purpose makes the producer test fail (show it once in the PR notes, then revert)
+- [x] `./gradlew check` still runs `test`, `integrationTest` and `conformance`, and the JaCoCo gate still passes
+- [x] `make verify-changed` with a change to a file in `contracts/events/mw-notify/` selects only the producers and consumers of that topic; `make test-scripts` passes
+- [x] `RetryTopicRouteIT` takes under 10 s in each module that has it

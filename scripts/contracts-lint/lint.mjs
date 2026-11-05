@@ -1,5 +1,5 @@
 // contracts-lint: validates the root contracts/ folder (spec 4.3, 6.1, 22.1; WP04, ticket 48).
-// Usage: node lint.mjs <contracts-dir>
+// Usage: node lint.mjs <contracts-dir> [<repo-root>]   (repo root: where services/*/contracts.yml live)
 //
 // Layout (contracts/README.md):
 //   common/<name>.schema.json                         shared types, owned like any other file
@@ -224,9 +224,133 @@ for (const [path, owner] of Object.entries(owners)) {
 for (const f of files.filter((f) => f !== OWNERS && !claimedSamples.has(f) && !claimedPayloads.has(f) && !isSample(f)))
   if (!(f in owners)) err(f, `no owner in ${OWNERS}`);
 
+// 5. Contract manifests (ticket 53): services/<mw-x>/contracts.yml (and the template's) list, relative
+// to contracts/, the event schemas and APIs the module produces and consumes; "#<Msg>" names one
+// message type of a multi-type topic. Every entry must exist. Once any manifest exists, every event
+// schema needs a producer and a consumer manifest, unless EXTERNAL.yml says a system outside the
+// repo plays that side. A repo without manifests (an empty fixture) skips the coverage check.
+const repo = process.argv[3];
+const EXTERNAL = "EXTERNAL.yml";
+const manifests = [];
+if (repo) {
+  for (const parent of ["services", "templates"]) {
+    let mods = [];
+    try {
+      mods = readdirSync(join(repo, parent)).sort();
+    } catch {
+      continue;
+    }
+    for (const m of mods) {
+      const file = join(repo, parent, m, "contracts.yml");
+      try {
+        if (statSync(file).isFile()) manifests.push({ name: m, file: `${parent}/${m}/contracts.yml`, path: file });
+      } catch {
+        // no manifest in this module
+      }
+    }
+  }
+}
+const SIDES = ["produces", "consumes"];
+const KINDS = ["events", "apis"];
+const sides = { produces: {}, consumes: {} }; // schema file -> [module]
+const mErr = (m, msg) => errors.push(`${m.file}: ${msg}`);
+for (const m of manifests) {
+  let doc;
+  try {
+    doc = parseYaml(readFileSync(m.path, "utf8")) ?? {};
+  } catch (e) {
+    mErr(m, `cannot be read: ${e.message}`);
+    continue;
+  }
+  if (typeof doc !== "object" || Array.isArray(doc)) {
+    mErr(m, "must be a map with produces and consumes");
+    continue;
+  }
+  for (const k of Object.keys(doc)) if (!SIDES.includes(k)) mErr(m, `unknown key ${k} (expected produces, consumes)`);
+  for (const side of SIDES) {
+    const block = doc[side] ?? {};
+    if (typeof block !== "object" || Array.isArray(block)) {
+      mErr(m, `${side} must be a map with events and apis`);
+      continue;
+    }
+    for (const k of Object.keys(block)) if (!KINDS.includes(k)) mErr(m, `unknown key ${side}.${k} (expected events, apis)`);
+    for (const kind of KINDS) {
+      const entries = block[kind] ?? [];
+      if (!Array.isArray(entries)) {
+        mErr(m, `${side}.${kind} must be a list`);
+        continue;
+      }
+      for (const entry of entries) {
+        if (typeof entry !== "string") {
+          mErr(m, `${side}.${kind} entry ${JSON.stringify(entry)} must be a path under contracts/`);
+          continue;
+        }
+        const [path, msg, ...rest] = entry.split("#");
+        if (!files.includes(path)) {
+          mErr(m, `${side}.${kind} entry ${entry}: no such contract file contracts/${path}`);
+          continue;
+        }
+        if (kind === "apis") {
+          if (!/^api\/.+\.openapi\.ya?ml$/.test(path)) mErr(m, `${side}.apis entry ${entry} is not an OpenAPI file under api/`);
+          if (msg !== undefined) mErr(m, `${side}.apis entry ${entry}: #<Msg> applies to event schemas only`);
+          continue;
+        }
+        if (!path.startsWith("events/") || !messageFiles.includes(path)) {
+          mErr(m, `${side}.events entry ${entry} is not a message schema under events/ (a payload or common file is part of its envelope)`);
+          continue;
+        }
+        if (rest.length || msg === "") {
+          mErr(m, `${side}.events entry ${entry}: expected <path> or <path>#<Msg>`);
+          continue;
+        }
+        if (msg !== undefined) {
+          const schema = schemas[path];
+          const tag = envelopeTag(schema);
+          if (!tag) {
+            mErr(m, `${side}.events entry ${entry}: ${path} is a single-type topic, it has no message type ${msg}`);
+            continue;
+          }
+          const branch = (schema.oneOf ?? []).find((b) => b?.properties?.[tag]?.const === msg);
+          const ref = branch?.properties?.payload?.$ref;
+          const payload = typeof ref === "string" ? `${path.slice(0, path.lastIndexOf("/") + 1)}${ref}` : undefined;
+          if (!(schema.properties?.[tag]?.enum ?? []).includes(msg) || !payload || !files.includes(payload)) {
+            mErr(m, `${side}.events entry ${entry}: ${path} has no message type ${msg} with a payload file (${tag} enum and oneOf branch)`);
+            continue;
+          }
+        }
+        (sides[side][path] ??= []).push(m.name);
+      }
+    }
+  }
+}
+let external = { producers: {}, consumers: {} };
+if (files.includes(EXTERNAL)) {
+  try {
+    const doc = parseYaml(readFileSync(join(root, EXTERNAL), "utf8")) ?? {};
+    for (const k of Object.keys(doc)) if (!["producers", "consumers"].includes(k)) err(EXTERNAL, `unknown key ${k} (expected producers, consumers)`);
+    for (const k of ["producers", "consumers"]) {
+      const v = doc[k] ?? {};
+      if (typeof v !== "object" || Array.isArray(v)) err(EXTERNAL, `${k} must be a map of <event schema path>: <who plays that side>`);
+      else external[k] = v;
+      for (const path of Object.keys(external[k]))
+        if (!messageFiles.includes(path) || !path.startsWith("events/")) err(EXTERNAL, `${k} entry ${path} is not an event schema in contracts/`);
+    }
+  } catch (e) {
+    err(EXTERNAL, `cannot be read: ${e.message}`);
+  }
+}
+if (manifests.length) {
+  for (const file of messageFiles.filter((f) => f.startsWith("events/"))) {
+    if (!sides.produces[file]?.length && !(file in external.producers))
+      err(file, `orphan schema: no contracts.yml produces it and ${EXTERNAL} names no outside producer`);
+    if (!sides.consumes[file]?.length && !(file in external.consumers))
+      err(file, `orphan schema: no contracts.yml consumes it and ${EXTERNAL} names no outside consumer`);
+  }
+}
+
 if (errors.length) {
   for (const e of errors) console.error(`CONTRACTS: ${e}`);
   console.error(`contracts-lint FAILED: ${errors.length} problem(s)`);
   process.exit(1);
 }
-console.log(`==> contracts-lint passed: ${schemaFiles.length} schema(s), ${samples} sample(s)`);
+console.log(`==> contracts-lint passed: ${schemaFiles.length} schema(s), ${samples} sample(s), ${manifests.length} manifest(s)`);

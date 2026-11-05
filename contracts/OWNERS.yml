@@ -23,6 +23,8 @@
 
 files:
   common/defs.v1.schema.json: mw-orchestrator
+  # sides of event contracts played outside the repo (ticket 53); kept with common/
+  EXTERNAL.yml: mw-orchestrator
   events/mw-orchestrator/mw.txn.request.v1.schema.json: mw-orchestrator
   events/mw-orchestrator/mw.txn.status.v1.schema.json: mw-orchestrator
   events/mw-orchestrator/core.command.v1.schema.json: mw-orchestrator

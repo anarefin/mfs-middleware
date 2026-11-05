@@ -1,0 +1,31 @@
+# Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
+# Not listed: ApplyComplianceAction (and its ComplianceAction* results): the mock logs and ignores it.
+produces:
+  events:
+    - events/mw-core-mock/core.event.v1.schema.json#TransactionValidated
+    - events/mw-core-mock/core.event.v1.schema.json#TransactionRejected
+    - events/mw-core-mock/core.event.v1.schema.json#FundsHeld
+    - events/mw-core-mock/core.event.v1.schema.json#HoldRejected
+    - events/mw-core-mock/core.event.v1.schema.json#HoldCommitted
+    - events/mw-core-mock/core.event.v1.schema.json#CommitFailed
+    - events/mw-core-mock/core.event.v1.schema.json#HoldReleased
+    - events/mw-core-mock/core.event.v1.schema.json#ReleaseFailed
+    - events/mw-core-mock/core.event.v1.schema.json#TransferPosted
+    - events/mw-core-mock/core.event.v1.schema.json#TransferRejected
+    - events/mw-core-mock/core.event.v1.schema.json#WalletCredited
+    - events/mw-core-mock/core.event.v1.schema.json#CreditRejected
+    - events/mw-core-mock/core.event.v1.schema.json#TransactionReversed
+    - events/mw-core-mock/core.event.v1.schema.json#ReversalRejected
+    - events/mw-core-mock/core.event.v1.schema.json#TransactionStatus
+  apis: []
+consumes:
+  events:
+    - events/mw-orchestrator/core.command.v1.schema.json#ValidateTransaction
+    - events/mw-orchestrator/core.command.v1.schema.json#PostTransfer
+    - events/mw-orchestrator/core.command.v1.schema.json#HoldFunds
+    - events/mw-orchestrator/core.command.v1.schema.json#CommitHold
+    - events/mw-orchestrator/core.command.v1.schema.json#ReleaseHold
+    - events/mw-orchestrator/core.command.v1.schema.json#CreditWallet
+    - events/mw-orchestrator/core.command.v1.schema.json#ReverseTransaction
+    - events/mw-orchestrator/core.command.v1.schema.json#QueryTransaction
+  apis: []
