@@ -34,6 +34,9 @@ spring:
     password: ${DB_PASSWORD:}
     hikari:
       schema: service_template
+      # Explicit, small pool (Kafka-driven or light on the database). PostgreSQL
+      # max_connections sizing: deploy/compose/platform/compose.yml (postgres).
+      maximum-pool-size: 5
   flyway:
     schemas: service_template
 

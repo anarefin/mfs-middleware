@@ -35,6 +35,10 @@ spring:
     password: ${DB_PASSWORD:}
     hikari:
       schema: app_gateway
+      # Explicit pool: 10, above the usual 5, because every app request (HTTP, virtual threads) reads or writes its
+      # schema. PostgreSQL
+      # max_connections sizing: deploy/compose/platform/compose.yml (postgres).
+      maximum-pool-size: 10
   flyway:
     schemas: app_gateway
   # Valkey (Lettuce) for device sessions and the signed-request nonce cache (spec 9.1, 18.6,

@@ -341,3 +341,24 @@ test_one_shot_services_are_labelled_and_up_has_no_list() {
   grep -q 'mw.oneshot=true' "$REPO_DIR/scripts/up.sh" || fail "up.sh does not read the mw.oneshot label"
   return 0
 }
+
+# ---- PostgreSQL connection budget (D24) ----
+
+test_every_service_sets_an_explicit_pool_and_the_sum_fits_max_connections() {
+  # Each service's Hikari pool is explicit; every pool plus Keycloak's, summed, stays well under
+  # postgres max_connections (sizing written next to it in deploy/compose/platform/compose.yml).
+  local f n sum=0 max kc
+  for f in "$REPO_DIR"/services/*/src/main/resources/application.yml; do
+    n="$(sed -n 's/^ *maximum-pool-size: *\([0-9][0-9]*\).*/\1/p' "$f" | head -1)"
+    [ -n "$n" ] || fail "no spring.datasource.hikari.maximum-pool-size in $f"
+    [ "$n" -le 10 ] || fail "pool $n in $f: above 10 needs a sizing update in deploy/"
+    sum=$((sum + n))
+  done
+  kc="$(sed -n 's/^KC_DB_POOL_MAX_SIZE=\([0-9][0-9]*\)$/\1/p' "$REPO_DIR/deploy/compose/platform/env/keycloak.env")"
+  [ -n "$kc" ] || fail "Keycloak pool not capped (KC_DB_POOL_MAX_SIZE in env/keycloak.env)"
+  max="$(sed -n 's/.*"max_connections=\([0-9][0-9]*\)".*/\1/p' "$REPO_DIR/deploy/compose/platform/compose.yml")"
+  [ -n "$max" ] || fail "postgres max_connections not set in compose.yml"
+  # audit-dw's own search (4) and reader (1) pools, plus headroom for init jobs and psql
+  [ $((sum + kc + 5 + 20)) -le "$max" ] || fail "pools $sum + keycloak $kc + 25 exceed max_connections $max"
+  return 0
+}

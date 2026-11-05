@@ -35,6 +35,9 @@ spring:
     password: ${DB_PASSWORD:}
     hikari:
       schema: ussd
+      # Explicit, small pool (Kafka-driven or light on the database). PostgreSQL
+      # max_connections sizing: deploy/compose/platform/compose.yml (postgres).
+      maximum-pool-size: 5
   flyway:
     schemas: ussd
   # Valkey (Lettuce) holds the USSD sessions ussd:{mno}:{sessionId} (spec 9.2). The password comes

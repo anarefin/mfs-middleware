@@ -35,6 +35,10 @@ spring:
     password: ${DB_PASSWORD:}
     hikari:
       schema: txn
+      # Explicit pool: 10, above the usual 5, because it runs every saga step from 5 consumed topics, the outbox relay
+      # and the internal query API. PostgreSQL
+      # max_connections sizing: deploy/compose/platform/compose.yml (postgres).
+      maximum-pool-size: 10
   flyway:
     schemas: txn
   # Valkey (Lettuce) for the 60 s idempotency lock (spec 7.3 rule 4, ticket 50). The password comes

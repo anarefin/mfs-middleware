@@ -35,6 +35,9 @@ spring:
     password: ${DB_PASSWORD:}
     hikari:
       schema: notify
+      # Explicit, small pool (Kafka-driven or light on the database). PostgreSQL
+      # max_connections sizing: deploy/compose/platform/compose.yml (postgres).
+      maximum-pool-size: 5
   flyway:
     schemas: notify
     # db/dev (dev seed data: test contacts) is added only by the dev stack's compose.yml.

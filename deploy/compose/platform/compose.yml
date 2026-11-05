@@ -112,8 +112,18 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
       # postgres/initdb/10-keycloak.sh creates the keycloak role and database with it
       KC_DB_PASSWORD: ${KC_DB_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
-    # One shared dev instance serves Keycloak and every service's pool (Hikari default 10 each,
-    # plus extra pools such as audit-dw's reader); the default 100 slots run out with 12 services.
+    # One shared dev instance serves Keycloak and every service's pool. max_connections sizing
+    # (sum of the worst case, one replica each; keep it below max_connections minus the 3
+    # superuser_reserved_connections when a pool or a replica is added):
+    #   Hikari spring.datasource.hikari.maximum-pool-size, set in each service's application.yml:
+    #     10 each: mw-orchestrator, mw-app-gateway, mw-checkout                          =  30
+    #      5 each: adapter-telco/-billpay/-bank, notify, core-mock, audit-dw, portal-api,
+    #              ussd, simulators                                                     =  45
+    #   audit-dw extra pools: audit-search 4, chain-verify reader 1                      =   5
+    #   Flyway as a separate owner role at start (audit-dw), short-lived                 =   1
+    #   Keycloak (KC_DB_POOL_MAX_SIZE in env/keycloak.env)                               =  20
+    #   total ~100, so 300 leaves room for psql sessions, init jobs and replicas of a service.
+    # Production sizes max_connections the same way per instance (pool x replicas, summed).
     command: ["postgres", "-c", "synchronous_commit=on", "-c", "max_connections=300"]
     volumes:
       - postgres-data:/var/lib/postgresql
