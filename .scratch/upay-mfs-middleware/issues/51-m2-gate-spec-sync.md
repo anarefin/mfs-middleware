@@ -37,6 +37,6 @@
 
 **Status:** ready-for-agent
 
-- [ ] Every numbered point above is reflected in the spec, with a "Decision 2026-11-04" note where it overrides earlier text
-- [ ] No spec text still says APISIX ADC, APISIX hmac-auth for callbacks, PIN "never stored" without the ciphertext exception, or agent-initiated CASH_OUT
-- [ ] `make contracts-lint` still passes (no contract changes expected)
+- [x] Every numbered point above is reflected in the spec, with a "Decision 2026-11-04" note where it overrides earlier text
+- [x] No spec text still says APISIX ADC, APISIX hmac-auth for callbacks, PIN "never stored" without the ciphertext exception, or agent-initiated CASH_OUT
+- [x] `make contracts-lint` still passes (no contract changes expected)
