@@ -36,6 +36,19 @@
       "partner": { "partnerId": "ocs-gp", "productCode": "PREPAID" },
       "partnerRef": "GP-TOPUP-9921",
       "error": { "code": "MW-PTR-GP-REJECTED", "message": "Operator rejected the top-up", "retryable": false }
+    },
+    {
+      "txnId": "c4e5f6a7-8b9c-4d0e-9f1a-2b3c4d5e6f70",
+      "txnType": "BILLPAY",
+      "channel": "APP",
+      "status": "MANUAL_REVIEW",
+      "previousStatus": "UNKNOWN",
+      "createdAt": "2026-11-05T11:00:00.000Z",
+      "updatedAt": "2026-11-05T11:20:00.000Z",
+      "amount": { "valueMinor": 85000, "currency": "BDT" },
+      "initiator": { "type": "CUSTOMER", "id": "0191****555", "name": "S." },
+      "partner": { "partnerId": "desco", "billerCode": "DESCO-PRE" },
+      "error": { "code": "MW-TMO-002", "message": "Partner outcome unknown after retries", "retryable": false }
     }
   ],
   "details": {
@@ -75,6 +88,15 @@
       "partnerCalls": [
         { "requestId": "req-0001", "operation": "PAY", "family": "telco", "partnerId": "ocs-gp", "sentAt": "2026-11-04T18:02:11.000Z", "outcome": "FAILED", "partnerRef": "GP-TOPUP-9921", "errorCode": "MW-PTR-GP-REJECTED", "answeredAt": "2026-11-04T18:02:39.800Z" }
       ],
+      "auditTrail": []
+    },
+    "c4e5f6a7-8b9c-4d0e-9f1a-2b3c4d5e6f70": {
+      "timeline": [
+        { "kind": "STATE", "to": "RECEIVED", "trigger": "TxnRequested", "at": "2026-11-05T11:00:00.010Z" },
+        { "kind": "STATE", "from": "PARTNER_PENDING", "to": "UNKNOWN", "trigger": "PartnerTimeout", "at": "2026-11-05T11:01:00.000Z" },
+        { "kind": "STATE", "from": "UNKNOWN", "to": "MANUAL_REVIEW", "trigger": "InquiryExhausted", "at": "2026-11-05T11:20:00.000Z" }
+      ],
+      "partnerCalls": [],
       "auditTrail": []
     }
   }

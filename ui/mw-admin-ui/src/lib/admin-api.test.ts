@@ -59,3 +59,50 @@ describe("admin API client", () => {
     });
   });
 });
+
+describe("admin API client, change requests (tickets 41, 52)", () => {
+  type Sent = { url: string; method: string; headers: Headers; body: string | null };
+  function recorder(status: number, body: unknown, sent: Sent[]): typeof fetch {
+    return (async (input: RequestInfo | URL, init?: RequestInit) => {
+      sent.push({
+        url: String(input), method: init?.method ?? "GET", headers: new Headers(init?.headers),
+        body: typeof init?.body === "string" ? init.body : null,
+      });
+      return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+  }
+  const CR = "0193a1b2-0000-7000-8000-000000000001";
+
+  it("files a transaction action and a wallet unlock as JSON POSTs with the bearer token", async () => {
+    const sent: Sent[] = [];
+    const api = createAdminApi({ baseUrl: "http://x", fetch: recorder(201, { id: CR }, sent) });
+    expect(await api.requestTxnAction("tok", TXN, "REVERSE", "duplicate debit")).toEqual({ ok: true, data: { id: CR } });
+    await api.requestWalletAction("tok", "01712345678", "UNLOCK", "customer called");
+    expect(sent.map((s) => [s.method, s.url, s.body])).toEqual([
+      ["POST", `http://x/admin/v1/transactions/${TXN}/change-requests`, JSON.stringify({ action: "REVERSE", reason: "duplicate debit" })],
+      ["POST", "http://x/admin/v1/wallets/01712345678/change-requests", JSON.stringify({ action: "UNLOCK", reason: "customer called" })],
+    ]);
+    expect(sent[0]?.headers.get("authorization")).toBe("Bearer tok");
+    expect(sent[0]?.headers.get("content-type")).toBe("application/json");
+    expect(sent[0]?.headers.get("x-correlation-id")).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("lists, approves (no body) and rejects (with a reason)", async () => {
+    const sent: Sent[] = [];
+    const api = createAdminApi({ baseUrl: "http://x", fetch: recorder(200, { items: [], limit: 50, offset: 0 }, sent) });
+    await api.listChangeRequests("tok", new URLSearchParams("status=PENDING"));
+    await api.approveChangeRequest("tok", CR);
+    await api.rejectChangeRequest("tok", CR, "not justified");
+    expect(sent.map((s) => [s.method, s.url, s.body])).toEqual([
+      ["GET", "http://x/admin/v1/change-requests?status=PENDING", null],
+      ["POST", `http://x/admin/v1/change-requests/${CR}/approve`, null],
+      ["POST", `http://x/admin/v1/change-requests/${CR}/reject`, JSON.stringify({ reason: "not justified" })],
+    ]);
+  });
+
+  it("hands back the envelope of a refused write", async () => {
+    const own = { code: "MW-AUTH-030", message: "The maker cannot decide", correlationId: "c", retryable: false, details: [] };
+    const api = createAdminApi({ baseUrl: "http://x", fetch: recorder(403, own, []) });
+    expect(await api.approveChangeRequest("t", CR)).toEqual({ ok: false, status: 403, error: own });
+  });
+});

@@ -3,13 +3,18 @@
 //     authorization code with mandatory PKCE S256, token, refresh, JWKS, logout) on MOCK_IDP_PORT
 //   - the stub mw-admin-api (contract admin.v1, answers from e2e/mock/admin-api-stub.mjs) on
 //     MOCK_API_PORT; it accepts only access tokens the IdP issued and records what it received
-//   - GET /__test/state on the IdP port: issued access tokens and the API's view, for assertions
+//     including the maker-checker writes (change requests, approve / reject; state in memory)
+//   - GET /__test/state on the IdP port: issued access tokens and the API's view, for assertions;
+//     POST /__test/reset: change requests and transactions back to the fixtures
 // All credentials are fake test values.
 
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
-import { detailAnswer, errorAnswer, loadFixtures, searchAnswer } from "./admin-api-stub.mjs";
+import {
+  approveAnswer, createStore, detailAnswer, errorAnswer, listRequestsAnswer, rejectAnswer, searchAnswer,
+  txnRequestAnswer, walletRequestAnswer,
+} from "./admin-api-stub.mjs";
 
 const IDP_PORT = Number(process.env.MOCK_IDP_PORT ?? 4010);
 const API_PORT = Number(process.env.MOCK_API_PORT ?? 4020);
@@ -20,16 +25,21 @@ const OTP = "123456";
 const USERS = {
   "ops-viewer01": ["viewer"],
   "ops-compliance01": ["viewer", "compliance-officer"],
+  "ops-maker01": ["ops-maker"],
+  "ops-checker01": ["ops-checker"],
+  // holds both roles: may decide requests of others, never their own (ticket 41)
+  "ops-lead01": ["ops-maker", "ops-checker"],
 };
 
 const { publicKey, privateKey } = await generateKeyPair("RS256");
 const jwk = { ...(await exportJWK(publicKey)), kid: "mock-1", alg: "RS256", use: "sig" };
-const fx = loadFixtures();
+let store = createStore();
 
 const codes = new Map(); // code -> { user, clientId, redirectUri, challenge, nonce }
 const refreshTokens = new Map(); // refresh token -> user
 const state = { issuedAccessTokens: [], pkceVerified: 0, apiCalls: [] };
 const tokenRoles = new Map(); // access token -> roles
+const tokenUser = new Map(); // access token -> username
 
 function send(res, status, body, headers = {}) {
   const text = typeof body === "string" ? body : JSON.stringify(body);
@@ -71,6 +81,7 @@ async function tokensFor(user, nonce) {
   refreshTokens.set(refresh, user);
   state.issuedAccessTokens.push(access);
   tokenRoles.set(access, roles);
+  tokenUser.set(access, user);
   return { access_token: access, id_token: id, refresh_token: refresh, token_type: "Bearer", expires_in: 300, scope: "openid profile" };
 }
 
@@ -139,13 +150,27 @@ const idp = createServer(async (req, res) => {
       return send(res, 204, "");
     }
     if (p === "/__test/state") return send(res, 200, state);
+    if (p === "/__test/reset" && req.method === "POST") {
+      store = createStore();
+      return send(res, 200, { reset: true });
+    }
     return send(res, 404, { error: "not_found" });
   } catch (e) {
     return send(res, 500, { error: String(e) });
   }
 });
 
-const api = createServer((req, res) => {
+async function readJson(req) {
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8") || "null");
+  } catch {
+    return undefined;
+  }
+}
+
+const api = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${API_PORT}`);
   const correlationId = req.headers["x-correlation-id"] ?? randomUUID();
   const auth = req.headers.authorization ?? "";
@@ -154,12 +179,29 @@ const api = createServer((req, res) => {
   const reply = ({ status, body }) => send(res, status, body, { "x-correlation-id": correlationId });
 
   if (!tokenRoles.has(token)) return reply(errorAnswer(401, "MW-AUTH-001", "Authentication required", correlationId));
+  const roles = tokenRoles.get(token);
+  const op = { username: tokenUser.get(token), sub: `sub-${tokenUser.get(token)}`, roles };
+  const path = url.pathname;
+  if (req.method === "POST") {
+    // viewers and auditors write nothing (mw-admin-api SecurityConfig)
+    if (roles.every((r) => r === "viewer" || r === "auditor")) return reply(errorAnswer(403, "MW-AUTH-002", "Forbidden", correlationId));
+    const body = await readJson(req);
+    let w = path.match(/^\/admin\/v1\/transactions\/([0-9a-f-]{36})\/change-requests$/);
+    if (w) return reply(txnRequestAnswer(store, w[1], body, op, correlationId));
+    w = path.match(/^\/admin\/v1\/wallets\/([^/]+)\/change-requests$/);
+    if (w) return reply(walletRequestAnswer(store, decodeURIComponent(w[1]), body, op, correlationId));
+    w = path.match(/^\/admin\/v1\/change-requests\/([0-9a-f-]{36})\/(approve|reject)$/);
+    if (w && w[2] === "approve") return reply(approveAnswer(store, w[1], op, correlationId));
+    if (w) return reply(rejectAnswer(store, w[1], body, op, correlationId));
+    return reply(errorAnswer(404, "MW-VAL-003", "Not found", correlationId));
+  }
   if (req.method !== "GET") return reply(errorAnswer(403, "MW-AUTH-002", "Forbidden", correlationId));
-  if (url.pathname === "/admin/v1/transactions") return reply(searchAnswer(fx, url.searchParams, correlationId));
+  if (path === "/admin/v1/change-requests") return reply(listRequestsAnswer(store, url.searchParams, correlationId));
+  if (url.pathname === "/admin/v1/transactions") return reply(searchAnswer(store, url.searchParams, correlationId));
   const m = url.pathname.match(/^\/admin\/v1\/transactions\/([0-9a-f-]{36})$/);
   if (m) {
     const mayReveal = tokenRoles.get(token).some((r) => r === "compliance-officer" || r === "auditor");
-    return reply(detailAnswer(fx, m[1], { reveal: url.searchParams.get("reveal") === "true", mayReveal }, correlationId));
+    return reply(detailAnswer(store, m[1], { reveal: url.searchParams.get("reveal") === "true", mayReveal }, correlationId));
   }
   return reply(errorAnswer(404, "MW-VAL-003", "Not found", correlationId));
 });

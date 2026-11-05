@@ -7,8 +7,11 @@ import { resolve } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import {
+  approveAnswer, createStore, detailAnswer, errorAnswer, listRequestsAnswer, loadFixtures, rejectAnswer, searchAnswer,
+  txnRequestAnswer, walletRequestAnswer,
 // @ts-expect-error plain JS module of the e2e stub
-import { detailAnswer, errorAnswer, loadFixtures, searchAnswer } from "../../e2e/mock/admin-api-stub.mjs";
+} from "../../e2e/mock/admin-api-stub.mjs";
 
 const contractsDir = process.env.MW_CONTRACTS_DIR ?? resolve(__dirname, "../../../../contracts");
 const doc = parse(readFileSync(resolve(contractsDir, "api/mw-admin-api/admin.v1.openapi.yaml"), "utf8"));
@@ -39,6 +42,49 @@ describe("stub admin API answers match admin.v1", () => {
     for (const id of Object.keys(fx.details)) {
       check("TxnDetail", detailAnswer(fx, id).body);
       check("TxnDetail", detailAnswer(fx, id, { reveal: true, mayReveal: true }).body);
+    }
+  });
+
+  it("change requests are ChangeRequest / ChangeRequestPage, through the whole maker-checker path", () => {
+    const store = createStore(fx);
+    const maker = { username: "ops-maker01", sub: "sub-ops-maker01", roles: ["ops-maker"] };
+    const checker = { username: "ops-checker01", sub: "sub-ops-checker01", roles: ["ops-checker"] };
+    const P2P = "3f1c2b9e-7a4d-4c1e-9b8a-2d6f0e5a1c33";
+    const STUCK = "c4e5f6a7-8b9c-4d0e-9f1a-2b3c4d5e6f70";
+
+    const reverse = txnRequestAnswer(store, P2P, { action: "REVERSE", reason: "duplicate" }, maker);
+    expect(reverse.status).toBe(201);
+    check("ChangeRequest", reverse.body);
+    const tsq = txnRequestAnswer(store, STUCK, { action: "INQUIRE", reason: "check" }, maker);
+    const unlock = walletRequestAnswer(store, "01712345678", { action: "UNLOCK", reason: "verified" }, maker);
+    expect(unlock.body.resourceId).toBe("0171****678");
+    check("ChangeRequest", unlock.body);
+    check("ChangeRequestPage", listRequestsAnswer(store, new URLSearchParams("status=PENDING")).body);
+
+    expect(approveAnswer(store, reverse.body.id, maker).body.code).toBe("MW-AUTH-002");
+    const makerAsChecker = { ...maker, roles: ["ops-maker", "ops-checker"] };
+    expect(approveAnswer(store, reverse.body.id, makerAsChecker).body.code).toBe("MW-AUTH-030");
+    const approved = approveAnswer(store, reverse.body.id, checker);
+    expect(approved.body).toMatchObject({ status: "APPROVED", checkerId: "ops-checker01" });
+    check("ChangeRequest", approved.body);
+    check("ChangeRequest", approveAnswer(store, unlock.body.id, checker).body);
+    check("ChangeRequest", rejectAnswer(store, tsq.body.id, { reason: "no" }, checker).body);
+    check("ChangeRequestPage", listRequestsAnswer(store, new URLSearchParams()).body);
+
+    // the reversed original and its REVERSAL read as TxnDetail
+    const original = detailAnswer(store, P2P).body;
+    expect(original.transaction.status).toBe("REVERSED");
+    check("TxnDetail", original);
+    check("TxnDetail", detailAnswer(store, original.transaction.reversalTxnId).body);
+
+    for (const refused of [
+      approveAnswer(store, reverse.body.id, checker),
+      txnRequestAnswer(store, P2P, { action: "REVERSE", reason: "again" }, maker),
+      walletRequestAnswer(store, "01212345678", { action: "UNLOCK", reason: "x" }, maker),
+      txnRequestAnswer(store, STUCK, { action: "INQUIRE", reason: "x" }, checker),
+    ]) {
+      expect(refused.status).toBeGreaterThanOrEqual(400);
+      check("ErrorEnvelope", refused.body);
     }
   });
 

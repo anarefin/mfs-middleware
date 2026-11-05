@@ -2,7 +2,9 @@
 // handlers and server components): the operator's access token is sent from this server, never
 // from the browser (spec 15.1). The wiring with the token and base URL is src/lib/server/admin.ts.
 
-import type { ApiResult, ErrorEnvelope, TxnDetail, TxnPage } from "./types";
+import type {
+  ApiResult, ChangeRequest, ChangeRequestPage, ErrorEnvelope, TxnAction, TxnDetail, TxnPage, WalletAction,
+} from "./types";
 
 export type AdminApiOptions = { baseUrl: string; fetch?: typeof fetch; timeoutMs?: number };
 
@@ -30,13 +32,26 @@ export function createAdminApi(opts: AdminApiOptions) {
   const doFetch = opts.fetch ?? fetch;
   const timeoutMs = opts.timeoutMs ?? 15_000;
 
-  async function get<T>(token: string, path: string): Promise<ApiResult<T>> {
+  function get<T>(token: string, path: string): Promise<ApiResult<T>> {
+    return call<T>(token, "GET", path);
+  }
+
+  function post<T>(token: string, path: string, body?: unknown): Promise<ApiResult<T>> {
+    return call<T>(token, "POST", path, body);
+  }
+
+  async function call<T>(token: string, method: "GET" | "POST", path: string, json?: unknown): Promise<ApiResult<T>> {
     const correlationId = crypto.randomUUID();
+    const headers: Record<string, string> = {
+      authorization: `Bearer ${token}`, accept: "application/json", "x-correlation-id": correlationId,
+    };
+    if (json !== undefined) headers["content-type"] = "application/json";
     let res: Response;
     try {
       res = await doFetch(`${base}${path}`, {
-        method: "GET",
-        headers: { authorization: `Bearer ${token}`, accept: "application/json", "x-correlation-id": correlationId },
+        method,
+        headers,
+        ...(json !== undefined ? { body: JSON.stringify(json) } : {}),
         cache: "no-store",
         signal: AbortSignal.timeout(timeoutMs),
       });
@@ -61,6 +76,22 @@ export function createAdminApi(opts: AdminApiOptions) {
     getTransaction(token: string, txnId: string, reveal: boolean): Promise<ApiResult<TxnDetail>> {
       const path = `/admin/v1/transactions/${encodeURIComponent(txnId)}${reveal ? "?reveal=true" : ""}`;
       return get<TxnDetail>(token, path);
+    },
+    listChangeRequests(token: string, query: URLSearchParams): Promise<ApiResult<ChangeRequestPage>> {
+      const q = query.toString();
+      return get<ChangeRequestPage>(token, `/admin/v1/change-requests${q ? `?${q}` : ""}`);
+    },
+    requestTxnAction(token: string, txnId: string, action: TxnAction, reason: string): Promise<ApiResult<ChangeRequest>> {
+      return post<ChangeRequest>(token, `/admin/v1/transactions/${encodeURIComponent(txnId)}/change-requests`, { action, reason });
+    },
+    requestWalletAction(token: string, walletId: string, action: WalletAction, reason: string): Promise<ApiResult<ChangeRequest>> {
+      return post<ChangeRequest>(token, `/admin/v1/wallets/${encodeURIComponent(walletId)}/change-requests`, { action, reason });
+    },
+    approveChangeRequest(token: string, id: string): Promise<ApiResult<ChangeRequest>> {
+      return post<ChangeRequest>(token, `/admin/v1/change-requests/${encodeURIComponent(id)}/approve`);
+    },
+    rejectChangeRequest(token: string, id: string, reason: string): Promise<ApiResult<ChangeRequest>> {
+      return post<ChangeRequest>(token, `/admin/v1/change-requests/${encodeURIComponent(id)}/reject`, { reason });
     },
   };
 }

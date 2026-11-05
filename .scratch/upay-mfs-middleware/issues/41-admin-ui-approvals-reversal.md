@@ -9,5 +9,5 @@
 
 **Status:** ready-for-agent
 
-- [ ] Playwright: maker requests a reversal, checker (another user) approves it, and the txn shows REVERSED
-- [ ] Playwright: a maker cannot see an approve button on their own request
+- [x] Playwright: maker requests a reversal, checker (another user) approves it, and the txn shows REVERSED (`ui/mw-admin-ui/e2e/approvals.spec.ts`)
+- [x] Playwright: a maker cannot see an approve button on their own request (also a user holding ops-maker and ops-checker; the ticket 52 wallet-unlock screen is covered in the same spec)

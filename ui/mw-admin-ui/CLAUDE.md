@@ -35,13 +35,42 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
   STATE/CORE, partner calls, audit trail; "Reveal MSISDN (audited)" link only for
   compliance-officer / auditor, `?reveal=true`, mw-admin-api decides and audits). Values are shown
   as the API masks them.
+- Maker-checker (ticket 41, spec 15.3; wallet unlock screen of ticket 52). Writes are server
+  actions (`src/app/(console)/actions.ts`, `"use server"`), posted by the client wrapper
+  `action-form.tsx` (`useActionState`: the refusal envelope shows next to the form, buttons
+  disabled while pending). Each action checks its input as the contract does (UUID ids, action
+  enum, reason 1..500 trimmed, wallet id via `lib/approvals.ts` `parseWalletId`; else own
+  `MW-VAL-001`), calls mw-admin-api with the operator's token and on success redirects to the inbox
+  (`/approvals?created=<id>`, after a decision `?status=all&decided=<id>`).
+  - Transaction detail: an "Actions" panel for ops-maker with one Reason field and the buttons the
+    status allows (`txnActionsFor`, ticket 37 rules: REVERSE of a COMPLETED, unreversed,
+    non-REVERSAL txn = "Request reversal"; INQUIRE in UNKNOWN / MANUAL_REVIEW = "Request manual
+    TSQ"; FORCE_COMMIT / FORCE_RELEASE in MANUAL_REVIEW). While a PENDING request exists for the
+    txn (`GET /change-requests?resourceId=<txnId>&status=PENDING`) the panel is replaced by a notice
+    `pending-request`.
+  - `/console/approvals`: change requests (filter PENDING default, APPROVED, REJECTED, EXPIRED,
+    any; first 100), with the diff (status before -> the one the action leads to, e.g. COMPLETED ->
+    REVERSING, LOCKED -> ACTIVE), what is sent (amount, reversal / action / command ids), maker,
+    reason, expiry. Approve / Reject (with a "Rejection reason") only when `mayDecide`: PENDING,
+    the operator holds ops-checker and is not the maker (`makerId` = maker's `preferred_username`
+    = session `user.name`); the maker sees "your request: another checker decides", even with
+    ops-checker. mw-admin-api enforces all of it (403 MW-AUTH-030 etc.); the UI only hides buttons.
+  - `/console/wallets`: ops-maker files UNLOCK for a wallet id (MSISDN in any form, normalised to
+    `01XXXXXXXXX`); the request shows (masked) in the inbox for an ops-checker. The UI does not show
+    the core's result (WalletUnlocked / UnlockRejected are not tracked by mw-admin-api, ticket 52).
+  - Decision (no product owner): the console does not offer a maker withdrawal (the API has none),
+    and the server actions rely on Next's built-in Origin/Host check for CSRF (APISIX passes the
+    Host through; a proxy that rewrote Host would need `experimental.serverActions.allowedOrigins`).
 - `/console/api/health` -> `{"status":"UP"}` (container healthcheck, public).
 
 ## Contracts used
 
-- `api/mw-admin-api/admin.v1` (GET search and detail): types in `src/lib/types.ts`. The
-  Playwright stub answers (`e2e/mock/admin-api-stub.mjs`, fixtures `e2e/fixtures/admin-api.json`)
-  are validated against the contract by `src/lib/contract.test.ts`. Owns no contract.
+- `api/mw-admin-api/admin.v1` (GET search and detail; change requests: list, create for a
+  transaction / a wallet, approve, reject): types in `src/lib/types.ts`. The Playwright stub
+  answers (`e2e/mock/admin-api-stub.mjs`, fixtures `e2e/fixtures/admin-api.json`; the change-request
+  part applies mw-admin-api's maker-checker rules on an in-memory store and, on an approved REVERSE,
+  plays the orchestrator: original REVERSED + a REVERSAL txn) are validated against the contract by
+  `src/lib/contract.test.ts`. Owns no contract.
 
 ## Deploy
 
@@ -69,7 +98,7 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
 | --- | --- |
 | `pnpm install` | dependencies (pinned, `pnpm-lock.yaml`) |
 | `pnpm test` | `tsc --noEmit` + Vitest unit and contract tests (`src/**/*.test.ts`) |
-| `pnpm test:e2e` | Playwright (Chromium): builds, runs the standalone server against `e2e/mock/server.mjs` (fake Keycloak realm ops with PKCE + TOTP form, stub mw-admin-api); no stack. Ports 3940/4910/4920 (`E2E_*_PORT`); `E2E_SKIP_BUILD=1` reuses `.next` |
+| `pnpm test:e2e` | Playwright (Chromium): builds, runs the standalone server against `e2e/mock/server.mjs` (fake Keycloak realm ops with PKCE + TOTP form, stub mw-admin-api); no stack. Users `ops-viewer01`, `ops-compliance01`, `ops-maker01`, `ops-checker01`, `ops-lead01` (maker + checker). `e2e/console.spec.ts` (ticket 40), `e2e/approvals.spec.ts` (ticket 41 + 52 screen; `resetStub` before each). Ports 3940/4910/4920 (`E2E_*_PORT`); `E2E_SKIP_BUILD=1` reuses `.next` |
 | `pnpm dev` | dev server (needs the env above) |
 | `docker build -t mw-admin-ui:dev .` | image |
 

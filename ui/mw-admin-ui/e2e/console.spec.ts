@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { IDP_PORT, IDP } from "./ports";
+import { login } from "./helpers";
+import { IDP } from "./ports";
 
 const P2P = "3f1c2b9e-7a4d-4c1e-9b8a-2d6f0e5a1c33";
 const TOPUP = "8b2d4e61-1f3a-4b7c-a9d0-5e6f7a8b9c0d";
@@ -13,19 +14,6 @@ type MockState = {
 
 async function mockState(page: Page): Promise<MockState> {
   return (await page.request.get(`${IDP}/__test/state`)).json() as Promise<MockState>;
-}
-
-async function login(page: Page, user = "ops-viewer01") {
-  await page.goto("/console/transactions");
-  await expect(page).toHaveURL(/\/console\/login\?callbackUrl=/);
-  await page.getByRole("button", { name: "Sign in with Keycloak" }).click();
-  await expect(page).toHaveURL(new RegExp(`localhost:${IDP_PORT}/realms/ops/protocol/openid-connect/auth`));
-  await page.fill("#username", user);
-  await page.fill("#password", "fake-test-password");
-  await page.fill("#otp", "123456");
-  await page.click("#kc-login");
-  await expect(page).toHaveURL(/\/console\/transactions$/);
-  await expect(page.getByTestId("operator")).toContainText(user);
 }
 
 test("an operator signs in, finds a transaction by txnId and by MSISDN and reads its timeline", async ({ page }) => {
