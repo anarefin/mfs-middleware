@@ -81,7 +81,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   `service/UssdGatewayService`, `client/UssdGatewayClient`): plays an MNO whose USSD transport is
   HTTP. `POST /sim/ussdgw/sessions {mno, msisdn, serviceCode?, sessionId?, inputs[]}` sends BEGIN,
   then one CONTINUE per input to `sim.ussd-gateway.target-url` + mno (stack: `http://apisix:9080/ussd/`,
-  APISIX route `ussd-http` -> mw-ussd; wire format `contracts/api/mw-ussd/ussd-http.v1.openapi.yaml`)
+  APISIX route `ussd-http-<mno>` -> mw-ussd; wire format `contracts/api/mw-ussd/ussd-http.v1.openapi.yaml`),
+  each step with HTTP basic auth as `ussd-<mno>` and the password `sim.ussd-gateway.credentials.<mno>`
+  (stack: the generated `USSD_<MNO>_GATEWAY_SECRET`, written to `secret/mw-simulators` by
+  `init/init.sh`; an MNO without one posts without credentials and APISIX answers 401)
   and stops when mw-ussd answers the end flag (`sim.ussd-gateway.end-flag`, END); answers
   `{sessionId, screens: [{status, message, flag}], ended}`. Not a partner in `sim.partners` (no
   recording: inputs carry PINs).

@@ -32,9 +32,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   type: BEGIN|CONTINUE|END|ABORT}` -> `{sessionId, message, flag}` with the MNO's flag values
   (`mw.ussd.mno.<mno>.continue-flag` / `end-flag`, CON / END). Only MNOs with `transport: HTTP`
   are served (others 404 `MW-VAL-003`); MSISDN `01X...`, `8801X...`, `+8801X...` (else 400
-  `MW-VAL-001`), canonical `01XNNNNNNNN` from there on. Behind APISIX route `ussd-http`
-  (`/ussd/*`, `deploy/apisix/routes/ussd-http.json`: ip allow-list, 4 KiB body cap, quota per
-  source; per-MNO hmac/basic auth comes with each MNO contract).
+  `MW-VAL-001`), canonical `01XNNNNNNNN` from there on. Behind APISIX routes `ussd-http-<mno>`
+  (`/ussd/<mno>`, `deploy/apisix/routes/ussd-http-<mno>.json`: the MNO's ip allow-list
+  `USSD_<MNO>_ALLOWED_CIDRS`, basic-auth as consumer `ussd_<mno>` only (another MNO's credential
+  403), 4 KiB body cap, quota per MSISDN hash; this service sees no credential).
 - Per MNO (`mw.ussd.mno.<gp|robi|bl|teletalk>`, spec 9.2; `config/UssdProperties`): transport,
   short codes, screen limits (182 GSM-7 / 70 UCS-2), session timeout, overflow TRUNCATE|PAGE.
   Dev: gp SMPP; robi, bl HTTP + PAGE; teletalk HTTP + TRUNCATE. `operator` = the MNO's top-up partnerId

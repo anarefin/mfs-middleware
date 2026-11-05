@@ -1,0 +1,3 @@
+# Admin API objects whose file was removed or renamed: "<kind>/<id>" per line. apply.sh DELETEs
+# each on every run (404 is fine), so etcd never keeps an object the repo no longer defines.
+routes/ussd-http     # one unauthenticated route for every MNO, replaced by ussd-http-<mno> (M3 gate)

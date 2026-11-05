@@ -313,6 +313,18 @@ services:
       MW_E2E_API_KEY: ${MW_E2E_API_KEY:?run scripts/gen-dev-env.sh (make up does)}
       # hmac-auth secret of the test-only checkout merchant consumer merchant_demo (ticket 31).
       CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      # MNO USSD gateways (consumers ussd_<mno>, routes ussd-http-<mno>): basic-auth passwords from
+      # the generated .env (the simulator gets the same values via OpenBao), and each MNO's
+      # source allow-list (comma-separated CIDRs). Dev: the compose networks' private ranges and
+      # loopback; production lists each MNO's gateway addresses.
+      USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_TELETALK_GATEWAY_SECRET: ${USSD_TELETALK_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_GP_ALLOWED_CIDRS: ${USSD_GP_ALLOWED_CIDRS:-127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128}
+      USSD_ROBI_ALLOWED_CIDRS: ${USSD_ROBI_ALLOWED_CIDRS:-127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128}
+      USSD_BL_ALLOWED_CIDRS: ${USSD_BL_ALLOWED_CIDRS:-127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128}
+      USSD_TELETALK_ALLOWED_CIDRS: ${USSD_TELETALK_ALLOWED_CIDRS:-127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128}
     volumes:
       - ../../apisix:/deploy/apisix:ro
       - apisix-tls:/usr/local/apisix/conf/cert
