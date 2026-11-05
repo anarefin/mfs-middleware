@@ -480,3 +480,20 @@ test_apisix_reads_the_valkey_password_from_its_environment() {
   if grep -rn 'redis_password' "$REPO_DIR/deploy/apisix" | grep -v '\$env://'; then fail "literal redis password"; fi
   return 0
 }
+
+# ---- admin console (ticket 40) ----
+
+# The console's login goes through the edge (realm ops pages) with the public host pinned, so its
+# tokens carry the public issuer; admin-v1 must accept that one besides the in-stack issuer.
+test_admin_console_login_routes_and_issuers() {
+  render || fail "dry run failed"
+  obj routes admin-ui | jq -e '(.uris | index("/console/*")) and .upstream.nodes["mw-admin-ui:3000"] == 1
+    and (.plugins | has("openid-connect") | not) and .plugins["limit-count"].key == "remote_addr"' >/dev/null \
+    || fail "admin-ui: $(obj routes admin-ui | jq -c '{uris, plugins: (.plugins | keys)}')"
+  obj routes auth-ops-browser | jq -e '(.uris | index("/realms/ops/*")) and .upstream.nodes["keycloak:8080"] == 1
+    and .plugins["proxy-rewrite"].headers.set == {"X-Forwarded-Host": "$host", "X-Forwarded-Proto": "https", "X-Forwarded-Port": "443"}' >/dev/null \
+    || fail "auth-ops-browser: $(obj routes auth-ops-browser | jq -c '.plugins["proxy-rewrite"]')"
+  obj routes admin-v1 | jq -e '.plugins["openid-connect"].claim_validator.issuer.valid_issuers
+    == ["http://keycloak:8080/realms/ops", "https://localhost/realms/ops"]' >/dev/null \
+    || fail "admin-v1 issuers: $(obj routes admin-v1 | jq -c '.plugins["openid-connect"].claim_validator')"
+}
