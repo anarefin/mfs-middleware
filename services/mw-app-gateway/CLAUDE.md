@@ -58,10 +58,13 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   (`DEVICE_BOUND`, TXN priority) to the outbox. Errors: wrong `401 MW-AUTH-010`, none for this device / expired /
   spent `MW-AUTH-011`, checks used up `MW-AUTH-012`, more than `max-sends` (5, dev compose 20) OTPs per wallet in
   `send-window` (15 min) `429 MW-VAL-022`. Templates live in mw-notify (`V9`).
-- Validation: submit body schema first (`service/SubmitBodySchema` via `filter/SubmitSchemaInterceptor`,
-  `config/SubmitSchemaConfig`; after the JWT, before the device gate; ticket 29, formerly APISIX
-  request-validation): `derived-schemas/app-v1-transaction-request.json`, derived from the contract's
-  `TransactionRequest` by `scripts/derived-schemas.sh --write` (`make contracts-lint` fails on drift), validated
+- Validation: body schema first (`service/BodySchema` via `filter/BodySchemaInterceptor`, one per endpoint,
+  `config/BodySchemaConfig`; after the JWT, before the device gate; ticket 29 and review A6, APISIX validates no
+  body): `derived-schemas/app-v1-transaction-request.json` (`TransactionRequest`), `app-v1-device-otp-request.json`
+  (`DeviceOtpRequest`, optional: no bytes at all pass), `app-v1-device-binding-request.json` (`DeviceBindingRequest`)
+  and `app-v1-fetch-bill-request.json` (`FetchBillRequest`), derived from the contract by
+  `scripts/derived-schemas.sh --write` (`make contracts-lint` fails on drift; a new JSON body endpoint needs its
+  schema registered in `BodySchemaConfig`; `POST /app/v1/sessions` has no body), validated
   with json-schema-validator (runtime dependency, on Boot's Jackson) on the cached bytes; duplicate keys,
   trailing content or a non-object `400 MW-VAL-001`, schema errors `400 MW-VAL-001` with dotted fields (no
   pattern/format in the schema, so no request value in a message). Then `Idempotency-Key` required, 1..64
@@ -150,10 +153,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 
 ## Contracts owned
 
-- `api/mw-app-gateway/app.v1.openapi.yaml` (app API v1). This service checks submit bodies against
-  `src/main/resources/derived-schemas/app-v1-transaction-request.json`, derived from `TransactionRequest`
-  (`scripts/derived-schemas.sh --write` after changing it; `make contracts-lint` fails until
-  then). The edge answers 401/413/429 itself (`deploy/apisix/README.md`).
+- `api/mw-app-gateway/app.v1.openapi.yaml` (app API v1). This service checks every JSON request body against
+  its schema in `src/main/resources/derived-schemas/` (`TransactionRequest`, `DeviceOtpRequest`,
+  `DeviceBindingRequest`, `FetchBillRequest`; `scripts/derived-schemas.sh --write` after changing one;
+  `make contracts-lint` fails until then). The edge answers 401/413/429 itself (`deploy/apisix/README.md`).
 
 ## Contracts used
 

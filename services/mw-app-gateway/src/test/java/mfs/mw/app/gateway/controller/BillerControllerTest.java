@@ -79,6 +79,20 @@ class BillerControllerTest {
     verify(service, never()).fetch(anyString(), anyString());
   }
 
+  /** The contract-derived schema runs on the received bytes before binding (A6): 400 MW-VAL-001. */
+  @Test
+  void aBodyBreakingTheSchemaIsRefusedBeforeTheService() {
+    for (String body :
+        new String[] {
+          "{}", "{\"billNumber\":1234567}", "{\"billNumber\":\"1234567\",\"billNumber\":\"7654321\"}",
+          "{\"billNumber\":\"1234567\"} x", "[]",
+        }) {
+      assertThat(fetch(customer(), "DESCO", body)).as(body).hasStatus(400)
+          .bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-001");
+    }
+    verify(service, never()).fetch(anyString(), anyString());
+  }
+
   @Test
   void aMappedPartnerErrorIsTheEnvelope() {
     when(service.fetch("DESCO", "1234404"))

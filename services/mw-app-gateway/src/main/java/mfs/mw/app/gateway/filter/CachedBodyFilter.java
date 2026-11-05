@@ -10,12 +10,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
 /**
- * Keeps the body of {@code /app/**} POSTs in memory ({@link CachedBodyRequest}) so the submit
- * schema check, the device signature hash (ticket 29) and the controller read the same bytes, the
+ * Keeps the body of {@code /app/**} POSTs in memory ({@link CachedBodyRequest}) so the body
+ * schema checks, the device signature hash (ticket 29) and the controller read the same bytes, the
  * ones the client sent. A body over {@link CachedBodyRequest#MAX_BODY} is answered 413
  * MW-VAL-BODY_TOO_LARGE with the 5.3 envelope (through the global handler, as the security entry
  * points do) and goes no further. Runs after Spring Security, so an unauthenticated request is 401
- * first. Registered by {@code config/SubmitSchemaConfig}.
+ * first. Registered by {@code config/BodySchemaConfig}.
  */
 public class CachedBodyFilter extends OncePerRequestFilter {
 
