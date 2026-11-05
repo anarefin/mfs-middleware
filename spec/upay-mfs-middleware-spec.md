@@ -8,6 +8,8 @@ This spec turns the upay *Mobile Money Middleware RFP v0.1* into a build-ready d
 
 **Conventions.** MUST / SHOULD / MAY follow RFC 2119. Values marked **TBC** are assumptions to confirm (section 25). `mw-*` names modules and services.
 
+**Revision 4 (Nov 5, 2026).** Syncs the spec with the M2 gate decisions of 2026-11-04 and what tickets 07–23 and 50 built: new state-table rows (7.2), late conflicting partner results, idempotency as built (7.3), the inquiry schedule and cut-off (7.4), core-only reversal, core topic routing (6.3), channel roles (9.1), the bill-fetch HTTP exception, adapter-verified partner callbacks and APISIX configured as JSON through the Admin API (8), the audit trail as built (14.3) and PIN ciphertext and masking rules (18.3). Each override is marked **Decision 2026-11-04**.
+
 **Revision 3 (Nov 3, 2026).** Gradle replaces Maven (D13); package root is `mfs.mw.<service>`; every service uses a conventional layered Spring Boot structure (controller, service, repository, entity, dto, exception and so on), with no Spring Modulith and no ArchUnit (D15). Sections changed: 0, MVP build plan, 3, 4.2, 4.3, 7.1, 12, 18.3, 20.1, 22.1, 23.1, 25.
 
 **Revision 2 (Nov 3, 2026).** Adds decisions D11–D14: no high availability for any component, Docker Compose for every component including platform tools, a multi-module build in which every module is an independently deployable Spring Boot application, and no shared library or common module. Sections changed: MVP scope and build plan, 0, 2 (architecture diagram), 2.1, 3, 4, 5, 6.1, 8, 9.2.1, 10.4, 12, 16, 18, 19, 20, 21, 22, 23, 25.
@@ -54,7 +56,7 @@ The MVP proves every core pattern of the middleware on one Docker Compose host: 
 | M8 | Footprint | Single host, Docker Compose, no HA; the same single-instance model as production (D11), only smaller |
 | M9 | Serialisation | JSON on Kafka with JSON Schema files in Git; no Apicurio, Avro or Harbor |
 | M10 | Delivery | Built mainly by coding agents (Claude Code); work is sliced into small, testable packages (next section) |
-| M11 | PIN | Target scheme from day one: apps encrypt the PIN with the core's public key (RSA-OAEP); mw-ussd encrypts on receipt; the middleware only forwards ciphertext; mw-core-mock holds the private key (in OpenBao) and checks a bcrypt hash |
+| M11 | PIN | Target scheme from day one: apps encrypt the PIN with the core's public key (RSA-OAEP); mw-ussd encrypts on receipt; the middleware only forwards ciphertext (it may hold the ciphertext on the transaction row until a terminal state, 18.3); mw-core-mock holds the private key (in OpenBao) and checks a bcrypt hash |
 | M12 | Code review | An upay engineer reviews and approves every pull request, including agent-written ones; milestone demos on top |
 | M13 | Repo and CI | GitHub repo owned by upay; no CI/CD in the MVP. Tests run locally through Makefile targets; the PR carries the test report and the reviewer re-runs make verify before merging |
 
@@ -63,6 +65,7 @@ The MVP proves every core pattern of the middleware on one Docker Compose host: 
 | Area | In the MVP | Deferred |
 | --- | --- | --- |
 | Orchestration | Full state machine, idempotency, outbox/inbox, timers, TSQ, reversal, `MANUAL_REVIEW` | Post-restore recovery sweep (19.3) |
+| Reversal | Core-only `ReverseTransaction` of a `COMPLETED` transaction, full amount, requested only by the `SYSTEM` channel (ops through the admin console with maker-checker, ticket 37); a reversed `TOPUP` returns the money and keeps the airtime (**Decision 2026-11-04**) | Partner-side reversal (airtime, bill, bank), partial reversal |
 | Partner adapters | `mw-adapter-telco` (OCS sim), `mw-adapter-billpay` (1 aggregator sim), `mw-adapter-bank` (C2W bank sim) on the adapter SDK with route templates | CyberSource, UCB ATM / IMT, merchant SOAP, NPSB/BanglaQR, remaining banks and aggregators |
 | Notifications | SMS (SMPP 3.4 to SMSC sim) and email (SMTP to GreenMail); bn/en templates; DLR tracking | Push, quiet hours, channel fallback |
 | Portals | Org bulk disbursement (CSV upload up to 10,000 rows, maker-checker, child txns); SP transaction query | SFTP bulk drop, SP self-service extras |
@@ -143,9 +146,9 @@ The MVP is built as about 30 small work packages (WPs), each sized for one codin
 | WP15 | M2 | `mw-adapter-billpay` (adapter framework copied from telco) + `BILL_PAY` (bill fetch, pay, callback) | WP11–WP13 | e2e incl. late and duplicate callback |
 | WP16 | M2 | `mw-adapter-bank` (adapter framework copied from telco) + `ADD_MONEY_BANK` (C2W inbound credit) | WP11–WP13 | e2e incl. bank callback replay |
 | WP17 | M3 Notify | `mw-notify`: templates (bn/en), rules, SMPP to SMSC sim (GSM-7/UCS-2, DLR), SMTP to GreenMail | WP05, WP12 | SMS and email asserted in e2e for each flow |
-| WP18 | M4 Channels | USSD engine: menu JSON model, Valkey sessions, validators, bn/en, action mapping to flows, PIN encrypted with the core public key on receipt (own RSA-OAEP helper in `mw-ussd`) and never stored | WP07 | Menu-walk tests for all MVP flows |
+| WP18 | M4 Channels | USSD engine: menu JSON model, Valkey sessions, validators, bn/en, action mapping to flows, PIN encrypted with the core public key on receipt (own RSA-OAEP helper in `mw-ussd`); the plaintext PIN is never stored (only ciphertext, 18.3) | WP07 | Menu-walk tests for all MVP flows |
 | WP19 | M4 | USSD transports: `SmppUssdTransport` and `HttpUssdTransport`, per-MNO config (GP = SMPP, live; Robi, Banglalink, Teletalk config-ready), USSD gateway simulator in both modes | WP18 | Same menu-walk passes over SMPP and over HTTP by config switch; GP SMPP bind handling (bind\_transceiver, enquire\_link, reconnect, throttling errors) passes against the simulator |
-| WP20 | M4 | App gateway part 2: agent and merchant roles (agent cash-in/out; merchant in-app MERCHANT\_PAY and collections view), device binding and request signature | WP08 | Role tests; e2e merchant in-app payment; signature replay rejected |
+| WP20 | M4 | App gateway part 2: agent and merchant roles (agent-initiated cash-in; cash-out is customer-initiated with the agent as payee, 9.1; merchant in-app MERCHANT\_PAY and collections view), device binding and request signature | WP08 | Role tests; e2e merchant in-app payment; signature replay rejected |
 | WP21 | M4 | `mw-checkout`: sessions API (HMAC), pay endpoint, redirect, signed IPN with retries; `MERCHANT_PAY` flow | WP07, WP09 | e2e checkout incl. IPN retry |
 | WP22 | M4 | `mw-portal-api`: bulk CSV upload (max 10,000 rows; larger files rejected), validation, maker-checker, throttled child txns, result file; SP txn query | WP07 | 10,000-row batch e2e |
 | WP23 | M5 Admin | `mw-admin-api`: RBAC from Keycloak, change-request (maker-checker) engine, txn search + timeline, manual TSQ/reversal, partner toggle/timeouts, USSD menus, SMS templates, `mw.config.changed` | WP10, WP13 | API tests incl. maker ≠ checker |
@@ -294,7 +297,7 @@ flowchart LR
     orch -.->|secrets| bao
 ```
 
-*Figure 2.1: middleware architecture (Revision 2).* Each large box is a Docker Compose network that stands for a security zone (18.1), and every component is a single container with no standby (D11, D12). Solid arrows are request paths; dotted arrows are callbacks, storage, secrets and control traffic. Every service reads its secrets from OpenBao and writes its own schema in PostgreSQL; only a few of those links are drawn to keep the figure readable. All links to Kafka are produce/consume: there are no direct service-to-service calls on the money path, and only the orchestrator sends commands to the core.
+*Figure 2.1: middleware architecture (Revision 2).* Each large box is a Docker Compose network that stands for a security zone (18.1), and every component is a single container with no standby (D11, D12). Solid arrows are request paths; dotted arrows are callbacks, storage, secrets and control traffic. Every service reads its secrets from OpenBao and writes its own schema in PostgreSQL; only a few of those links are drawn to keep the figure readable. All links to Kafka are produce/consume: there are no direct service-to-service calls on the money path, and only the orchestrator sends commands to the core. The one read-only exception is the bill fetch (biller list and fetch-bill), which `mw-app-gateway` asks `mw-adapter-billpay` over internal HTTP; it moves no money (9.1, **Decision 2026-11-04**).
 
 ### 2.1 Request flow (example: prepaid top-up from the app)
 
@@ -399,7 +402,7 @@ upay-middleware/
 │  ├─ compose/
 │  │  ├─ platform/              # kafka, kafka-init, postgres, valkey, keycloak, openbao, apisix, etcd, sftp, greenmail; zone networks
 │  │  └─ mvp/ dev/ sit/ uat/ preprod/ prod/   # one project per environment; `include`s platform + module compose files
-│  ├─ apisix/                   # declarative routes, plugins, consumers (ADC/YAML)
+│  ├─ apisix/                   # routes, global rules, consumers as JSON, applied through the Admin API
 │  ├─ kafka/                    # topic definitions as code, applied by kafka-init
 │  └─ ansible/                  # host provisioning (TBC)
 ├─ tests/                       # e2e (Cucumber), Gatling, security; black-box, talks to the stack over the network only
@@ -500,7 +503,7 @@ Every channel request and every partner response is mapped to one canonical mode
 | Code | Flow | External party |
 | --- | --- | --- |
 | `P2P` | Wallet to wallet | none |
-| `CASH_IN` / `CASH_OUT` | Agent cash in/out | none |
+| `CASH_IN` / `CASH_OUT` | Cash in at an agent (agent-initiated, payee the customer) / cash out at an agent (customer-initiated with the customer's own PIN, payee the agent), 9.1 | none |
 | `ATM_CASH_OUT` / `ATM_CASH_IN` | Wallet via ATM | UCB ATM gateway |
 | `TOPUP` | Airtime prepaid / postpaid | GP/Robi/Teletalk/BL OCS |
 | `BILL_PAY` | Utility and other bills | Utility aggregator, SSLCommerz, eKpay, agg 3, agg 4 |
@@ -516,6 +519,18 @@ Every channel request and every partner response is mapped to one canonical mode
 ### 5.3 Error model
 
 One error envelope for every API: `{ code, message, messageBn?, txnId?, correlationId, retryable, details[] }`. Codes are namespaced: `MW-VAL-*` (validation), `MW-AUTH-*`, `MW-IDEM-*`, `MW-CORE-*` (core rejection, carries the core reason), `MW-PTR-<partner>-*` (mapped partner error), `MW-TMO-*` (timeout / unknown), `MW-SYS-*`. Each adapter keeps a partner-code → canonical-code mapping table in config, editable from the admin console.
+
+Codes in use (as built, source: each module's `exception/ErrorCodes` and `CLAUDE.md`; a code's number is unique within its namespace, and services that refuse the same thing share its code):
+
+| Namespace | Codes |
+| --- | --- |
+| `MW-VAL-*` | `001` Bean Validation / body schema, `002` body missing or unparseable, `003` no such endpoint or resource, `004` method not allowed, `005` content type not supported, `BODY_TOO_LARGE` body over the cap (edge and services, 413); `010` txn type not offered, `011` amount not positive, `012` partner missing for a flow with a partner leg (orchestrator) / counterparty is the initiator's own wallet (app gateway); reversal `020` original not found, `021` original not `COMPLETED`, `022` amount differs (no partial reversal); checkout `020` session expired (410), `021` session not open (409), `022` OTP send limit (429, also the app's binding OTP limit); bulk `030` file over the row or byte cap, `031` bad header or rows, `032` batch not awaiting approval, `033` batch not running / not paused, `034` org without payout wallet, `035` no result file; notify `101` channel without address, `102` template or placeholder missing |
+| `MW-AUTH-*` | `001` no valid credential (401), `002` authenticated but not allowed (403); app `003` device not bound, `004` bad request signature, `005` stale timestamp, `006` replayed nonce, `007` no live session; OTP `010` wrong, `011` expired or not asked, `012` too many wrong; `020` reversal from a channel not allowed, `021` bulk disbursement from a channel not allowed; `030` maker cannot be checker |
+| `MW-IDEM-*` | `001` same key, different request; `002` merchant order already has a session with another amount |
+| `MW-CORE-*` | `MW-CORE-<reasonCode>` with the core's reason (e.g. `MW-CORE-INVALID_COUNTERPARTY`), English and Bengali message, not retryable; also on `CommitFailed` / `ReleaseFailed` / `CreditRejected` / `ReversalRejected` (7.2) |
+| `MW-PTR-*` | `MW-PTR-<PARTNER>-<suffix>` from the adapter's mapping table (e.g. `MW-PTR-BILLAGG-*`, `MW-PTR-C2WBANK-*`), `MW-PTR-<PARTNER>-UNMAPPED` for a partner code with no mapping |
+| `MW-TMO-*` | `001` core did not answer ValidateTransaction, `002` core did not answer HoldFunds, `003` not found by status inquiry (released, retryable), `004` inquiry cut-off passed (`MANUAL_REVIEW`), `005` inquiry answer fits no outcome (`MANUAL_REVIEW`), `020` reversal not confirmed by the core (`MANUAL_REVIEW`); `PARTNER_<reason>` from adapters (e.g. `MW-TMO-PARTNER_AMBIGUOUS_CODE`); edge `UPSTREAM_TIMEOUT` (504, outcome unknown) |
+| `MW-SYS-*` | `001` unexpected failure; `010` Kafka did not accept the request (503), `011` mw-adapter-billpay unreachable for the bill fetch, `012` Valkey session store unreachable, `020` no live USSD menu, `040` orchestrator query API unreachable; notify `101` refused for good, `102` retries exhausted, `103` undeliverable (DLR), `104` transient, retry scheduled; edge `RATE_LIMITED` (429), `UPSTREAM_UNAVAILABLE` (502/503) |
 
 ## 6. Kafka topics and the core wallet contract
 
@@ -573,6 +588,8 @@ The middleware proposes this contract; the core team must confirm field names an
 
 Every command carries `{ schemaVersion, commandType, commandId, txnId, correlationId, issuedAt, expiresAt, payload }`. `expiresAt` lets the core drop a stale command it receives after the middleware has timed out. Every event carries the envelope `{ schemaVersion, eventType, eventId, commandId, txnId, coreRef, occurredAt, outcome, reasonCode?, reasonMessage?, balancesAfter?, payload }`; `balancesAfter` is optional and used only for customer messages, and failure events carry `outcome` FAILURE and a `reasonCode`. Event-specific fields sit under `payload`, one schema per event type (`contracts/events/mw-core-mock/core.event.v1/`): `payload.holdId` (FundsHeld; also on the other hold events and TransactionStatus), `payload.txnStatus` (TransactionStatus), `payload.fee`, `payload.charges` and `payload.limitsLeft` (TransactionValidated). Commands that need customer authorisation (ValidateTransaction, HoldFunds, PostTransfer) carry `payload.encryptedPin` { keyId, ciphertext } (RSA-OAEP, SHA-256); the middleware never decrypts it. Amounts on every topic are `{ valueMinor, currency }`: non-negative integer minor units (poisha), currency BDT.
 
+Topic routing (**Decision 2026-11-04**, built in ticket 50): the hold commands `HoldFunds`, `CommitHold` and `ReleaseHold` go on `core.payment.command.v1` and their events come back on `core.payment.event.v1`; every other command (`ValidateTransaction`, `PostTransfer`, `CreditWallet`, `ReverseTransaction`, `QueryTransaction`, `ApplyComplianceAction`, and the planned `UnlockWallet` of ticket 52) goes on `core.wallet.command.v1`, with its events on `core.wallet.event.v1`.
+
 ### 6.4 Reliable publishing
 
 Services that change PostgreSQL state and publish an event use the **transactional outbox**: write the business row and an `outbox` row in one DB transaction; a Camel route (or Debezium, TBC) relays outbox rows to Kafka and marks them sent. Consumers record processed `eventId`s in an `inbox` table (or a unique constraint on the business row) so a redelivered event is a no-op.
@@ -597,33 +614,44 @@ Only `COMMITTING` and `RELEASING` touch held funds after a partner call; `UNKNOW
 | State | Meaning | Next states | Timeout action |
 | --- | --- | --- | --- |
 | `RECEIVED` | Accepted, idempotency recorded | `VALIDATING`, `REJECTED` | n/a |
-| `VALIDATING` | `ValidateTransaction` sent to core | `HOLDING`, `POSTING`, `REJECTED` | after 5 s → `FAILED` (nothing moved) |
+| `VALIDATING` | `ValidateTransaction` sent to core | `HOLDING`, `POSTING`, `PARTNER_PENDING` (inbound money with a partner leg: `ADD_MONEY_BANK`, no hold), `REJECTED` | after 5 s → `FAILED` (nothing moved) |
 | `HOLDING` | `HoldFunds` sent | `PARTNER_PENDING`, `REJECTED` | after 5 s → `QueryTransaction`; if held → `RELEASING` |
 | `POSTING` | `PostTransfer` / `CreditWallet` sent (no partner) | `COMPLETED`, `REJECTED`, `UNKNOWN` | after 5 s → `UNKNOWN` |
-| `PARTNER_PENDING` | Partner request sent | `COMMITTING`, `RELEASING`, `UNKNOWN` | per partner (default 30 s) → `UNKNOWN` |
-| `UNKNOWN` | Outcome not known (timeout, 5xx, broken connection) | `COMMITTING`, `RELEASING`, `MANUAL_REVIEW` | TSQ schedule (7.4) |
-| `COMMITTING` | `CommitHold` sent | `COMPLETED` | retry until acknowledged; alert after 60 s |
-| `RELEASING` | `ReleaseHold` sent | `FAILED` | retry until acknowledged; alert after 60 s |
-| `REVERSING` | `ReverseTransaction` (post-completion reversal, operator or partner-initiated) | `REVERSED`, `MANUAL_REVIEW` | retry; alert |
+| `PARTNER_PENDING` | Partner request sent | `COMMITTING`, `RELEASING`, `FAILED` (partner refusal with no hold, `ADD_MONEY_BANK`), `UNKNOWN` | per partner (default 30 s) → `UNKNOWN` |
+| `UNKNOWN` | Outcome not known (timeout, 5xx, broken connection) | `COMMITTING`, `RELEASING`, `FAILED` (no hold), `MANUAL_REVIEW` | TSQ schedule (7.4) |
+| `COMMITTING` | `CommitHold` sent (`CreditWallet` for `ADD_MONEY_BANK`) | `COMPLETED`; `MANUAL_REVIEW` on `CommitFailed` or, for `ADD_MONEY_BANK`, `CreditRejected` (**Decision 2026-11-04**) | resend with the same `commandId` until acknowledged; alert after 60 s |
+| `RELEASING` | `ReleaseHold` sent | `FAILED`; `MANUAL_REVIEW` on `ReleaseFailed` (**Decision 2026-11-04**) | resend with the same `commandId` until acknowledged; alert after 60 s |
+| `REVERSING` | `ReverseTransaction` (post-completion reversal, requested by operations, see "Reversal" below) | `REVERSED`, `MANUAL_REVIEW` | resend every 5 s until 60 s, then (once the last command has expired) a core `QueryTransaction`: `REVERSED` → `REVERSED`, anything else or no answer → `MANUAL_REVIEW` `MW-TMO-020` (**Decision 2026-11-04**) |
 | `COMPLETED` / `FAILED` / `REJECTED` / `REVERSED` | Terminal | `REVERSING` (from `COMPLETED` only) | n/a |
-| `MANUAL_REVIEW` | TSQ exhausted or conflicting results | `COMMITTING`, `RELEASING` (maker-checker) | daily ageing alert |
+| `MANUAL_REVIEW` | TSQ exhausted, conflicting results, or a core refusal of commit, release or credit | `COMMITTING`, `RELEASING` (maker-checker); `REVERSED` when a `TransactionReversed` (or a `REVERSED` query answer) arrives for a transaction that came from `REVERSING` (**Decision 2026-11-04**) | daily ageing alert |
 
 Timeout values are defaults; each is configurable per partner and product from the admin console (FR-06).
+
+**Decision 2026-11-04 (M2 gate), rows added to the table above:**
+
+- **Core refusal after the partner call.** `CommitFailed` in `COMMITTING` and `ReleaseFailed` in `RELEASING` go to `MANUAL_REVIEW` with `MW-CORE-<reason>` and a Sev-1 alert (`txn.commit.failed` / `txn.release.failed`). `CreditRejected` in `COMMITTING` for `ADD_MONEY_BANK` does the same: the bank has already collected the money, so operations must settle it.
+- **Reversal confirmed late.** A `TransactionReversed` that arrives in `MANUAL_REVIEW`, for a transaction that came from `REVERSING`, moves it to `REVERSED`: the core's truth wins.
+- **REVERSING timeout.** The orchestrator asks the core (`QueryTransaction`) before giving up to `MANUAL_REVIEW`.
+- **ADD_MONEY_BANK path (C2W, inbound money).** `VALIDATING` → `PARTNER_PENDING` (debit the bank account, no hold) → `COMMITTING` (`CreditWallet`) → `COMPLETED`. A bank refusal goes `PARTNER_PENDING` → `FAILED` with the partner's error (nothing to release); an unknown outcome goes through `UNKNOWN` and the partner status inquiry (7.4), where `SUCCESS` → `COMMITTING` and `FAILED` / `NOT_FOUND` → `FAILED`.
+
+**Late conflicting partner results (Decision 2026-11-04).** A late callback or status-inquiry answer that contradicts a state already reached (`SUCCESS` against `RELEASING` / `FAILED` / `MANUAL_REVIEW`; `FAILED` or `NOT_FOUND` against `COMMITTING` / `COMPLETED` / `REVERSING` / `REVERSED` / `MANUAL_REVIEW`) never moves the transaction: a terminal state is kept, and nothing reopens it to `MANUAL_REVIEW`. The orchestrator logs `txn.outcome.conflict` at ERROR and writes an audit entry (`mw.audit.event.v1`, action `txn.outcome.conflict`, outcome FAILURE), which operations and reconciliation resolve (section 13, admin console). A late result that agrees with the state is audited as `partner.callback.late` and changes nothing.
+
+**Reversal (Decision 2026-11-04).** Reversal is core-only in the MVP: the orchestrator sends `ReverseTransaction` and no partner-side reversal, so a reversed `TOPUP` gives the money back and the customer keeps the airtime. Only a `COMPLETED` transaction can be reversed, once, for its full amount. Only the `SYSTEM` channel may request one (`MW-AUTH-020` otherwise); operators reach it through the admin console with maker-checker (ticket 37).
 
 ### 7.3 Idempotency (FR-05)
 
 1. Every financial API requires `Idempotency-Key` (UUID or ≤ 64 chars). USSD and SMPP have no such key, so the middleware derives `sha256(channel + msisdn + sessionId + menuPath + amount + target)`.
-2. Scope = `(channel, initiatorId, idempotencyKey)`. Stored in PostgreSQL `txn.idempotency` with a unique constraint, request hash, `txnId` and the final response; TTL 72 h (configurable), purged by partition drop.
-3. Same key + same request hash → return the stored `txnId` and current status (HTTP 200 with the original body, or 202 if still running). Same key + different hash → `409 MW-IDEM-001`.
-4. Valkey holds a 60 s lock on the key during the first insert to absorb double-taps; PostgreSQL remains the source of truth.
+2. Scope = `(channel, initiatorId, idempotencyKey)`. Stored in PostgreSQL `txn.idempotency` with a unique constraint, request hash and `txnId`; TTL 72 h (configurable). The table is not partitioned: an expired key is reclaimed in place by the next request that uses it (**Decision 2026-11-04**).
+3. Same key + same request hash → return the stored `txnId` and its current status, answered from the live transaction row (no stored response; HTTP 200 when final, 202 if still running) (**Decision 2026-11-04**). Same key + different hash → `409 MW-IDEM-001`.
+4. Valkey holds a 60 s lock on the key during the first insert to absorb double-taps (kept, built in ticket 50); PostgreSQL remains the source of truth, and an unreachable Valkey never blocks or fails a request (the primary key still guarantees uniqueness).
 5. Towards partners, the adapter sends a stable partner reference derived from `txnId` (format per partner) so a retry is recognised as a duplicate by the partner too.
 6. Towards the core, `commandId = txnId + step + attempt-independent suffix`, so retried commands are deduplicated by the core.
 
 ### 7.4 Unknown outcomes and status inquiry (FR-07)
 
 - Adapter returns `UNKNOWN` on timeout, connection reset after send, HTTP 5xx after send, or an ambiguous partner code (configured list).
-- TSQ schedule (default, per partner override): 30 s, 1 min, 2 min, 5 min, 15 min, 1 h, then every 6 h until the partner's settlement cut-off; then `MANUAL_REVIEW`.
-- TSQ result `SUCCESS` → `COMMITTING`; `FAILED`/`NOT_FOUND` (after the partner's confirmed not-found window) → `RELEASING`; still pending → next slot.
+- TSQ schedule (default as built, per-partner override of the schedule, the repeat interval and the cut-off): 30 s, 1 min, 2 min, 5 min, 15 min, 1 h, then every 6 h until a cut-off of 24 h after entering `UNKNOWN`, which stands in for the partner's settlement cut-off; at the cut-off the transaction goes to `MANUAL_REVIEW` `MW-TMO-004` (**Decision 2026-11-04**). A flow without a partner leg asks the core (`QueryTransaction`) on the same schedule.
+- TSQ result `SUCCESS` → `COMMITTING`; `FAILED` → `RELEASING` (`FAILED` when nothing is held); still pending → next slot. `NOT_FOUND` releases (`MW-TMO-003`) only once the original request can no longer arrive: for a partner, after the partner deadline plus a grace period (the adapter refuses to send an expired request); for the core, after the command's `expiresAt` plus the grace period. Before that, `NOT_FOUND` counts as pending (**Decision 2026-11-04**). An answer that fits no outcome goes to `MANUAL_REVIEW` `MW-TMO-005`; a late answer that contradicts the resolution follows the conflict rule in 7.2.
 - Partners without a status API: hold stays until the settlement file arrives; recon (section 13) resolves it.
 - Customers receive a "processing" message immediately and a final SMS on resolution.
 
@@ -638,7 +666,7 @@ APISIX is the single north-south entry point for HTTP traffic from apps, checkou
 ### 8.1 Deployment
 
 - One APISIX instance per gateway group, each with its own single etcd, no HA (D11): **edge** (DMZ network: internet, partner and MNO HTTP traffic) and **internal** (ops network: admin console and ops APIs). In the MVP the internal group is deferred and admin routes sit on the edge instance. A failed APISIX container is restarted by Compose.
-- Configuration is declarative YAML in `deploy/apisix/` applied by ADC (APISIX Declarative CLI) from the pipeline. The APISIX dashboard is read-only in production; partner onboarding from the admin console writes through `mw-admin-api`, which calls the Admin API with a scoped key.
+- Configuration is code in `deploy/apisix/`: routes, global rules and consumers as JSON files, which an idempotent apply script (`apply.sh`, run by the one-shot `apisix-init` container on every start) PUTs through the APISIX Admin API, deleting the objects listed as retired (**Decision 2026-11-04**: JSON through the Admin API, not a declarative CLI). Secrets are referenced from the environment, never stored in the repo. The APISIX dashboard is read-only in production; partner onboarding from the admin console writes through `mw-admin-api`, which calls the Admin API with a scoped key.
 - TLS 1.2+ only, TLS 1.3 preferred; mTLS for partners that support it; certificates issued by Vault/OpenBao PKI and pushed as APISIX SSL objects with expiry alerts at 30/14/7 days (ENV-06).
 
 ### 8.2 Route groups
@@ -647,22 +675,22 @@ APISIX is the single north-south entry point for HTTP traffic from apps, checkou
 | --- | --- | --- | --- |
 | `/app/v1/*` | Six mobile apps | `openid-connect` (Keycloak, JWT), device-binding header check | `mw-app-gateway` |
 | `/app/soap/*` | Legacy SOAP app clients (TBC whether needed) | WS-Security validated in CXF; `key-auth` at gateway | `mw-app-gateway` |
-| `/ussd/{mno}/*` | MNO HTTP USSD gateways | `ip-restriction` + `hmac-auth` or `basic-auth` per MNO | `mw-ussd` |
+| `/ussd/{mno}/*` | MNO HTTP USSD gateways | `ip-restriction` + `basic-auth` per MNO with `consumer-restriction` binding the credential to its `{mno}` (as built; another scheme only if an MNO contract requires it) | `mw-ussd` |
 | `/checkout/v1/*` | Merchants (server-to-server) | `hmac-auth` (merchant secret) | `mw-checkout` |
 | `/checkout/pay/*` | Customer browser | none (session token in URL), `csrf`, strict CORS | `mw-checkout` |
 | `/portal/org/v1/*`, `/portal/sp/v1/*` | Org and SP portals | `openid-connect` (Keycloak realm `portals`) | `mw-portal-api` |
-| `/partner/{partnerId}/callback/*` | Billers, banks, CyberSource, UCB IMT | per partner: mTLS, `hmac-auth`, `jwt-auth`, IP allow-list | owning adapter |
+| `/partner/{partnerId}/callback/*` | Billers, banks, CyberSource, UCB IMT | no auth plugin: `ip-restriction` (partner egress addresses), `client-control` body cap, `limit-count`; the owning adapter verifies the signature in the partner's own format with the secret in OpenBao (**Decision 2026-11-04**; mTLS deferred) | owning adapter |
 | `/admin/v1/*` | Admin console (internal gateway only) | `openid-connect` (Keycloak realm `ops`, MFA) | `mw-admin-api` |
 
 ### 8.3 Policies (all per consumer, editable via admin console)
 
-- `limit-req` (burst) + `limit-count` (quota per minute/day) per channel and per partner, backed by Valkey for cluster-wide counters.
+- `limit-count` per consumer, backed by Valkey counters: on `/app/v1/*` 120 requests per 60 s per token subject (`sub`); other routes have their own per-consumer, per-MSISDN or per-address limits (`deploy/apisix/README.md`). The limiter fails open when Valkey is down (requests pass) and raises an alert on limiter errors (**Decision 2026-11-04**, alert built in ticket 50). Over the limit: 429 `MW-SYS-RATE_LIMITED`.
 - `request-validation` with JSON Schema derived from the OpenAPI spec for every public route.
 - `request-id` set to `X-Correlation-Id` (generated if absent) and forwarded upstream.
 - `proxy-rewrite` strips internal headers from inbound requests (`X-Mw-*`).
 - `api-breaker` per upstream as a coarse guard; fine-grained circuit breakers live in Resilience4j inside services.
 - Request/response body logging OFF at the gateway (PII); services log masked payloads (SEC-10).
-- `ip-restriction` on all partner and MNO routes.
+- `ip-restriction` on all partner and MNO routes. Partner callback routes carry only the ip allow-list, the body cap and the rate limit; signature verification belongs to the adapter (8.2, 11.2).
 
 ### 8.4 API catalogue and versioning (FR-08)
 
@@ -680,8 +708,10 @@ Each channel service authenticates, normalises the request to the canonical mode
 - Authentication: Keycloak realm `customers` (and one per app family) issues short-lived JWT (5 min) + refresh token; PIN verification is a core call (`VerifyPin` is not used; instead the app sends the PIN encrypted with the core's public key inside the transaction request, and only the core decrypts and checks it).
 - Device binding: `X-Device-Id` + device public key registered at onboarding; sensitive operations require a request signature (ECDSA P-256 over method, path, body hash, timestamp) verified by the gateway service.
 - Session: Valkey key `sess:{subject}:{deviceId}`, idle timeout 5 min (configurable per app); single active device per customer wallet (configurable).
-- Throttling per subject and device on top of APISIX limits (e.g. 5 PIN failures → lock, rule owned by core).
+- Throttling per subject and device on top of APISIX limits. PIN lockout after 5 failures is owned by the core, not the middleware; a locked wallet is unlocked by operations through the admin console with maker-checker (ticket 52) (**Decision 2026-11-04**).
+- Roles (**Decision 2026-11-04**): the role map from token role to allowed `txnType`s is deny-by-default (a type with no entry is refused for every role, a role not listed for a type gets 403 `MW-AUTH-002`). `CASH_IN` is agent-initiated (payee the customer); `CASH_OUT` is customer-initiated with the customer's own PIN, payee the agent; `P2P`, `MERCHANT_PAY`, `TOPUP`, `BILL_PAY` and `ADD_MONEY_BANK` are customer-initiated; the merchant app initiates no money movement. The core enforces the wallet types per `txnType`.
 - Endpoints (v1, indicative): `POST /transactions` (all `txnType`s), `GET /transactions/{txnId}`, `GET /transactions?from&to`, `POST /quotes` (fee preview via `ValidateTransaction`), `GET /billers`, `POST /billers/{code}/fetch-bill`, `GET /operators`, `POST /kyc/nid-verify`.
+- Bill fetch (**Decision 2026-11-04**): the biller list and fetch-bill go from `mw-app-gateway` to `mw-adapter-billpay` over internal HTTP (unreachable: 503 `MW-SYS-011`, retryable). This is the one read-only exception to "no service-to-service calls on the money path" (2): it moves no money, and the payment itself still goes over Kafka.
 
 ### 9.2 USSD (`mw-ussd`, FR-10, FR-11)
 
@@ -701,7 +731,7 @@ Per-MNO configuration (`ussd.mno.<gp|robi|teletalk|bl>`): transport type, short 
 - Menus are data, not code: a versioned JSON tree in PostgreSQL `ussd.menu` with nodes of type `MENU`, `INPUT` (with validator: msisdn, amount, PIN, numeric, regex), `CONFIRM`, `ACTION` (invokes a flow with a mapping from collected inputs to the canonical request), `DYNAMIC` (list from a lookup, e.g. billers) and `END`.
 - Text per node in `bn` and `en`; language from customer profile (core) or a language-switch option.
 - Menus are edited in the admin console, versioned, approved by maker-checker, and activated per MNO with a scheduled go-live; running sessions finish on the version they started.
-- Session state in Valkey: `ussd:{mno}:{sessionId}` holding node path, inputs (PIN never stored; it is encrypted with the core's public key on receipt, forwarded once and cleared), language, and version; TTL = MNO timeout + 30 s.
+- Session state in Valkey: `ussd:{mno}:{sessionId}` holding node path, inputs (the plaintext PIN is never stored; it is encrypted with the core's public key on receipt, and only the ciphertext is forwarded, 18.3), language, and version; TTL = MNO timeout + 30 s.
 - When a transaction exceeds the 8 s synchronous budget, the menu ends with "Your request is being processed" and the final result arrives by SMS.
 - PIN entry on USSD is passed to the core for verification inside the transaction command, never logged.
 
@@ -785,7 +815,7 @@ Every partner gets the same skeleton: a Camel route template, a config record, a
 ### 11.2 Common adapter behaviour
 
 - **Request path:** consume `mw.partner.request.<family>` → load partner config → map canonical → partner payload → sign/encrypt → call with Resilience4j (bulkhead per partner, circuit breaker, time limiter; no automatic retry on non-idempotent calls unless the partner supports idempotent references) → map response → publish `mw.partner.reply` with `SUCCESS | FAILED | UNKNOWN | PENDING`.
-- **Inbound path (callbacks, inbound remittance, NPSB credit):** APISIX → adapter verifies signature/mTLS → de-duplicates on partner reference → acknowledges partner synchronously only after the event is durably written to Kafka (or an inbound table) → publishes `mw.partner.inbound`.
+- **Inbound path (callbacks, inbound remittance, NPSB credit):** APISIX (ip allow-list, body cap, rate limit) → adapter verifies the signature in the partner's own format, with the secret in OpenBao (**Decision 2026-11-04**; mTLS deferred) → de-duplicates on partner reference → acknowledges partner synchronously only after the event is durably written to Kafka (or an inbound table) → publishes `mw.partner.inbound`.
 - **Routing and failover (FR-09):** for billers served by more than one aggregator, `routing.rule` rows choose the aggregator by biller, amount band, time window, priority and health; when an aggregator's circuit is open, the next eligible route is used. Routing is never changed mid-transaction.
 - **Biller catalogue:** nightly (and on-demand) sync of biller lists from aggregators into `partner.biller`, merged into one upay catalogue exposed to channels; disabled billers hidden immediately.
 - **Per-partner config:** base URLs per environment, credentials references (Vault paths, never values), timeouts, TSQ schedule, rate limit, error-code map, cut-off times, maintenance windows.
@@ -877,10 +907,12 @@ Files are checksummed, stored raw (immutable) for audit, and processed once (fil
 ### 14.3 Audit trail (FR-18)
 
 - Every service emits `AuditEvent { auditId, txnId?, correlationId, actor (system|user|partner), action, resource, before?, after?, payloadRef?, outcome, at, sourceIp?, service }` to `mw.audit.event.v1`.
-- `mw-audit-dw` writes to `audit.event` (append-only, monthly partitions). DB role for the writer has INSERT only; no UPDATE/DELETE grants to anyone; a hash chain (`prevHash`, `hash` = SHA-256 over row + prevHash per partition) makes tampering detectable; daily anchor hash exported to WORM storage (TBC).
+- `mw-audit-dw` writes to `audit.event` (append-only, monthly RANGE partitions on `recorded_at`, the writer's UTC clock, not the event's own time). The writer role `audit_writer` is INSERT-only; no UPDATE/DELETE grants to anyone; a hash chain (`prevHash`, `hash` = SHA-256 over row + prevHash per partition) makes tampering detectable, and a scheduled job verifies the chain of every month as the read-only role `audit_reader` and alerts on a break (built in ticket 50); daily anchor hash exported to WORM storage (TBC).
 - Raw request/response bodies (masked) stored as compressed JSONB in `audit.payload`, referenced by `payloadRef`.
 - Search in the admin console by txnId, MSISDN (searched via a keyed hash, so raw MSISDN need not be indexed), partner, time window, actor.
-- Operator actions (config change, manual retry, reversal, approval) are audited with before/after values.
+- Operator actions (config change, manual retry, reversal, approval) are audited with before/after values. The operator's username stays in full in `actor.id`: masking covers customers, not staff (18.3).
+- Partner calls: every adapter call to a partner is audited on `mw.audit.event.v1` as action `partner.call.completed` (actor `system`/<adapter>, masked request and response summary).
+- **Decision 2026-11-04:** the four points above (partitions on `recorded_at`, INSERT-only writer, `audit_reader` chain verify, `partner.call.completed`) are the audit trail as built; retention of the partitions follows section 17.
 
 ## 15. Admin console
 
@@ -1025,7 +1057,7 @@ Timer sweeps use `SELECT … FOR UPDATE SKIP LOCKED LIMIT n`, which keeps them s
 ### 16.4 Migrations and access
 
 - Each service runs Flyway on start-up against its own schema, from `src/main/resources/db/migration/V<n>__*.sql` in its own module; there is no central migration folder or migration container. Only expand/contract (backward-compatible) migrations in a release.
-- Roles: `<service>_rw` (owner of its schema objects), `<service>_ro`, `audit_writer` (INSERT only), `dba_breakglass` (Vault-issued, time-bound, audited). Credentials are dynamic via Vault database secrets engine (TTL 24 h).
+- Roles: `<service>_rw` (owner of its schema objects), `<service>_ro`, `audit_writer` (INSERT only), `audit_reader` (read-only: chain verify and audit search, 14.3), `dba_breakglass` (Vault-issued, time-bound, audited). Credentials are dynamic via Vault database secrets engine (TTL 24 h).
 
 ## 17. Data warehouse feed, retention and archival
 
@@ -1047,6 +1079,7 @@ The Data Warehouse gets a real-time Kafka stream and a daily SFTP batch of the s
 
 - Archival job detaches the expiring monthly partition, exports it to compressed Parquet with checksum in an upay-controlled object store in Bangladesh (MinIO, AGPL — needs approval under OWN-03, or an alternative S3-compatible store, TBC), verifies the export, then drops the partition. Restores are a documented runbook.
 - All data, backups and archives stay in Bangladesh (OWN-11).
+- The audit trail itself (writer, partitions on `recorded_at`, hash-chain verification, partner-call audit) is specified in 14.3.
 
 ## 18. Security design
 
@@ -1073,8 +1106,8 @@ On a Compose host each zone is its own user-defined network (`dmz`, `app`, `data
 
 - In transit: TLS 1.2+ everywhere, including Kafka (SASL\_SSL with mTLS or SCRAM), PostgreSQL (`sslmode=verify-full`), Valkey (TLS), SMPP over TLS or VPN where MNO supports it.
 - At rest: disk encryption on all hosts; application-level encryption for NID, bank account numbers and PIN-related blobs via Vault transit (keys can be backed by upay's HSM, SEC-04).
-- PIN: never logged or stored; encrypted end to end from app to core (decided): the app encrypts with the core's public key (RSA-OAEP, SHA-256), the middleware passes only ciphertext, and only the core decrypts. USSD PIN is encrypted at the USSD service on receipt.
-- Masking (SEC-10): a `MaskingPolicy` in each service's `util` package (copied from the template, D14, and checked by the conformance suite) applied to logs, audit payloads and admin views — MSISDN `0171****789`, NID last 3, account last 4, names first initial; enforced by a log appender filter plus unit tests on every DTO with a `@Sensitive` annotation.
+- PIN: the plaintext PIN is never logged or stored; encrypted end to end from app to core (decided): the app encrypts with the core's public key (RSA-OAEP, SHA-256), the middleware passes only ciphertext, and only the core decrypts. USSD PIN is encrypted at the USSD service on receipt. Exception (**Decision 2026-11-04**): the PIN ciphertext may be held on the orchestrator's transaction row (`txn.transaction.encrypted_pin`) while the saga still needs it (e.g. `PostTransfer` after `ValidateTransaction`), and is wiped on every transition into a terminal state (`COMPLETED`, `FAILED`, `REJECTED`, `REVERSED`) or `MANUAL_REVIEW`; tests walk every path to a terminal state and check it is cleared. The ciphertext is never logged and never part of the stored request or the idempotency hash.
+- Masking (SEC-10): a `MaskingPolicy` in each service's `util` package (copied from the template, D14, and checked by the conformance suite) applied to logs, audit payloads and admin views — MSISDN `0171****789`, NID last 3, account last 4, names first initial; party ids are masked by their party `type` (a wallet or MSISDN as an MSISDN, a bank account or any other type last 4 only). Name masking covers customers, not staff: an operator's username stays in full in audit `actor.id` (**Decision 2026-11-04**). Enforced by a log appender filter plus unit tests on every DTO with a `@Sensitive` annotation.
 - Card data: PAN never enters middleware; CyberSource tokenisation (Flex/Microform) and bank-hosted pages keep upay out of PCI scope where possible (SEC-02).
 - Non-production: only synthetic or masked data (ENV-12); a masking job produces UAT data from production extracts on approval.
 
