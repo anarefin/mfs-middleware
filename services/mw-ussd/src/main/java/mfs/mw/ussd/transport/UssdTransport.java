@@ -1,4 +1,4 @@
-package mfs.mw.ussd.service;
+package mfs.mw.ussd.transport;
 
 import mfs.mw.ussd.config.UssdProperties;
 import mfs.mw.ussd.dto.UssdRequest;

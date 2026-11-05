@@ -67,7 +67,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   `sim.callback-secrets.c2wbank` (stack: `C2WBANK_HMAC_SECRET`, written by `init/init.sh`); the
   e2e suite points `callbackUrl` at `http://apisix:9080/partner/c2wbank/callback/debits`; replay
   through the shared `POST /sim/c2wbank/callbacks/{reference}/replay`.
-- SMSC (ticket 24, `messaging/SmscServer` on jSMPP, `service/SmscService`,
+- SMSC (ticket 24, `client/SmscServer` on jSMPP, `service/SmscService`,
   `controller/SmscController`): SMPP 3.4 server on `sim.smsc.port` (2775, internal network only;
   `sim.smsc.enabled`, off in tests except `SmscSimulatorIT`). Accepts any bind (no credential
   check); every `submit_sm` gets `SMSC-n`; GSM-7 (data_coding 0, unpacked) and UCS-2 (8)

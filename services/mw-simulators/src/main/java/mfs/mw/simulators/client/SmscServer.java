@@ -1,4 +1,4 @@
-package mfs.mw.simulators.messaging;
+package mfs.mw.simulators.client;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

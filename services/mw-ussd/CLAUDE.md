@@ -6,8 +6,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 ## Responsibilities
 
 - USSD channel (spec 9.2, FR-10/11, WP18 part, WP19 part; ticket 26): one menu engine for every
-  MNO behind the transport SPI `service/UssdTransport` (`onBegin`, `onContinue`, `onEnd`,
-  `onAbort`, `send`): `service/HttpUssdTransport` and `service/SmppUssdTransport` (ticket 27).
+  MNO behind the transport SPI `transport/UssdTransport` (`onBegin`, `onContinue`, `onEnd`,
+  `onAbort`, `send`): `transport/HttpUssdTransport` and `transport/SmppUssdTransport` (ticket 27; `transport/` sits beside `controller/` and calls `service/UssdEngine`).
   An MNO switches transport by configuration alone (`mw.ussd.mno.<mno>.transport` + its
   `mw.ussd.smpp.mno.<mno>` endpoint); `UssdMenuWalkSuite` runs the same walk over both.
 - SMPP transport (spec 9.2, 9.2.1, WP19): `client/UssdSmppClient` (bean in `config/UssdSmppConfig`)
