@@ -65,7 +65,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   approved|rejected|expired|paused|resumed>`, resource `bulk-batch/<batchId>`, actor `user`/<operator's
   `preferred_username`> (staff id, **not masked**) or `system`/`mw-portal-api` for the expiry, `before`
   `{status}` (absent on upload), `after` `{status, orgId, rowCount, totalMinor, currency, reason?}`
-  (a rejection's reason through `MaskingPolicy.scrub`), `txnId` the parent txn once approved, key the
+  (a rejection's reason through `MaskingPolicy.scrub`), `txnId` the parent txn once approved, key the batch's parent txnId (`util/BulkIds`, from the upload on, so one batch's trail keeps its order on one partition) rather than the
   actor id. The rows (MSISDNs) are never copied into an audit event. `BulkLifecycleIT` validates
   every event against the contract.
 - Execution (ticket 34, spec 9.4, WP22 part; `service/BulkExecutionService`, schema V5). Approval
