@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "configKey": "ussd-menu/main",
+  "configType": "USSD_MENU",
+  "change": "UPSERT",
+  "version": 4,
+  "value": {
+    "menuId": "main",
+    "version": 4,
+    "menu": {
+      "menuId": "main",
+      "version": 4,
+      "start": "main",
+      "messages": {
+        "invalid": { "bn": "ভুল ইনপুট।", "en": "Invalid input." },
+        "tooManyAttempts": { "bn": "অনেকবার ভুল ইনপুট।", "en": "Too many invalid entries." },
+        "expired": { "bn": "সেশন শেষ হয়েছে।", "en": "Session expired." },
+        "processing": { "bn": "আপনার অনুরোধ প্রক্রিয়াধীন।", "en": "Your request is being processed." },
+        "unavailable": { "bn": "সেবাটি সাময়িকভাবে বন্ধ।", "en": "Service temporarily unavailable." },
+        "more": { "bn": "0 আরও", "en": "0 More" }
+      },
+      "nodes": {
+        "main": {
+          "type": "MENU",
+          "text": { "bn": "upay", "en": "upay" },
+          "options": [
+            { "key": "1", "label": { "bn": "সাহায্য", "en": "Help" }, "next": "help" },
+            { "key": "9", "label": { "bn": "English", "en": "বাংলা" }, "next": "main", "switchLanguage": true }
+          ]
+        },
+        "help": { "type": "END", "text": { "bn": "১৬২৬৮ নম্বরে কল করুন।", "en": "Call 16268." } }
+      }
+    },
+    "activations": [
+      { "mno": "robi", "goLiveAt": "2026-11-06T00:00:00Z" },
+      { "mno": "gp", "goLiveAt": "2026-11-07T00:00:00Z" }
+    ]
+  },
+  "changedAt": "2026-11-05T10:00:00Z",
+  "changedBy": "ops.maker1",
+  "approvedBy": "ops.checker1",
+  "correlationId": "admin-3f6c2a1e-1b2c-4d5e-8f90-123456789abc"
+}

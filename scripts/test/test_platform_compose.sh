@@ -280,7 +280,11 @@ test_topic_plan_adds_three_retry_tiers_and_a_dlq_per_consumer_group_with_source_
   assert_plan_has "mw.txn.request.v1.mw-orchestrator.dlq partitions=48 retention.ms=1209600000"
   assert_plan_has "mw.partner.request.bank.v1.mw-adapter-bank.retry.2 partitions=24 retention.ms=1209600000"
   [ "$(printf '%s\n' "$OUT" | grep -c '\.retry\.4 ')" = 0 ] || fail "unexpected 4th retry tier"
-  printf '%s\n' "$OUT" | grep -q '^mw.config.changed.v1\..*retry' && fail "compacted config topic must not get retry topics"
+  # The compacted config topic gets retry topics per consuming group like any other (ticket 39):
+  # its consumers ignore a version older than the one they hold, so a parked record retried after a
+  # newer one changes nothing.
+  assert_plan_has "mw.config.changed.v1.mw-ussd.retry.1 partitions=6 retention.ms=1209600000"
+  assert_plan_has "mw.config.changed.v1.mw-notify.dlq partitions=6 retention.ms=1209600000"
   # no shared, group-less retry or DLQ topic is left
   printf '%s\n' "$OUT" | grep -qE '^[a-z.]+\.v1\.(retry\.[0-9]+|dlq) ' && fail "group-less retry/DLQ topic in plan"
   return 0

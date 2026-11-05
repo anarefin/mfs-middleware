@@ -29,4 +29,4 @@ mw.partner.inbound.v1          24 7d retry=mw-orchestrator
 mw.notify.request.v1           24 3d retry=mw-notify
 mw.notify.status.v1            12 7d
 mw.audit.event.v1              24 7d retry=mw-audit-dw
-mw.config.changed.v1            6 compact
+mw.config.changed.v1            6 compact retry=mw-ussd,mw-notify

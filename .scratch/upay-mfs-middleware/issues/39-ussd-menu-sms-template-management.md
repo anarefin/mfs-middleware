@@ -10,7 +10,7 @@
 
 **Status:** ready-for-agent
 
-- [ ] e2e: an approved menu text change shows up on the next USSD session but not in an ongoing one
-- [ ] e2e: an approved SMS template change is used for the next notification
-- [ ] An invalid menu tree (dangling node, missing bn/en text) is rejected at maker time
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] e2e: an approved menu text change shows up on the next USSD session but not in an ongoing one (`tests/e2e/.../admin-content.feature`, runs at the gate; covered in-module by mw-ussd `MenuPublisherIT`)
+- [x] e2e: an approved SMS template change is used for the next notification (`admin-content.feature`, runs at the gate; in-module mw-notify `TemplatePublisherIT`)
+- [x] An invalid menu tree (dangling node, missing bn/en text) is rejected at maker time (400 MW-VAL-040, `ContentChangeApiIT`, `MenuValidatorTest`)
+- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR (deferred to milestone gate; `./gradlew test integrationTest` green for mw-admin-api, mw-ussd, mw-notify, mw-simulators)

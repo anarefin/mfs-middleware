@@ -8,6 +8,8 @@ import java.util.Map;
 import mfs.mw.admin.api.dto.ChangeRequestBody;
 import mfs.mw.admin.api.dto.PartnerChangeRequestBody;
 import mfs.mw.admin.api.dto.RejectBody;
+import mfs.mw.admin.api.dto.TemplateChangeBody;
+import mfs.mw.admin.api.dto.UssdMenuChangeBody;
 import mfs.mw.admin.api.dto.WalletChangeRequestBody;
 import mfs.mw.admin.api.exception.ErrorCodes;
 import mfs.mw.admin.api.exception.MwException;
@@ -32,8 +34,11 @@ import tools.jackson.databind.json.JsonMapper;
 @ControllerAdvice
 public class BodySchemaAdvice extends RequestBodyAdviceAdapter {
 
-  /** JSON bodies here are a few KB at most (a full partner config); the edge caps admin bodies at 1 MiB. */
-  static final int MAX_BODY = 64 * 1024;
+  /**
+   * Most JSON bodies here are a few KB at most (a full partner config), a USSD menu tree some 15 KiB (ticket 39); the
+   * edge caps admin bodies at 1 MiB.
+   */
+  static final int MAX_BODY = 256 * 1024;
 
   private final Map<Type, BodySchema> schemas;
 
@@ -43,7 +48,9 @@ public class BodySchemaAdvice extends RequestBodyAdviceAdapter {
             ChangeRequestBody.class, new BodySchema(json, BodySchema.CHANGE_REQUEST),
             WalletChangeRequestBody.class, new BodySchema(json, BodySchema.WALLET_CHANGE_REQUEST),
             RejectBody.class, new BodySchema(json, BodySchema.REJECT),
-            PartnerChangeRequestBody.class, new BodySchema(json, BodySchema.PARTNER_CHANGE_REQUEST));
+            PartnerChangeRequestBody.class, new BodySchema(json, BodySchema.PARTNER_CHANGE_REQUEST),
+            UssdMenuChangeBody.class, new BodySchema(json, BodySchema.USSD_MENU_CHANGE),
+            TemplateChangeBody.class, new BodySchema(json, BodySchema.TEMPLATE_CHANGE));
   }
 
   @Override

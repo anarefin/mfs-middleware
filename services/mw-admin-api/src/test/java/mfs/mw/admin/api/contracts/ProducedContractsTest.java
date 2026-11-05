@@ -13,6 +13,8 @@ import java.util.stream.Stream;
 import mfs.mw.admin.api.dto.AdminTxn;
 import mfs.mw.admin.api.dto.Operator;
 import mfs.mw.admin.api.entity.ChangeRequest;
+import mfs.mw.admin.api.entity.ContentVersion;
+import mfs.mw.admin.api.mapper.ContentChangeMapper;
 import mfs.mw.admin.api.mapper.ChangeRequestMapper;
 import mfs.mw.admin.api.mapper.PartnerMapper;
 import mfs.mw.admin.api.mapper.RevealAuditMapper;
@@ -57,6 +59,18 @@ class ProducedContractsTest {
           "enabled", false, "baseUrl", "http://mw-simulators:8080", "timeoutMs", 20000,
           "operations", Map.of("PAY", Map.of("method", "POST", "path", "/ocs/v1/topup", "response", "{}")));
 
+  /** A PENDING USSD menu version request (ticket 39). */
+  static ChangeRequest menuRequest() {
+    return new ChangeRequest(
+        UUID.fromString("0d6c3f0e-1111-4b5e-9a1e-000000000003"), ContentChangeMapper.USSD_MENU, "main", "PUBLISH",
+        Map.of(), ContentChangeMapper.diff("ussd-menu/main", 2, 3), "ops-maker01", "sub-maker",
+        ChangeRequest.Status.PENDING, null, null, "new top-up wording", null, AT, null, AT.plusSeconds(72 * 3600));
+  }
+
+  static ContentVersion version(String key, String type, Map<String, Object> value) {
+    return new ContentVersion(key, 3, type, value, ContentVersion.Status.PENDING, UUID.randomUUID(), "ops-maker01", null, AT, null);
+  }
+
   static final Map<String, Supplier<List<Object>>> FIXTURES =
       Map.of(
           "events/mw-audit-dw/mw.audit.event.v1.schema.json",
@@ -80,12 +94,26 @@ class ProducedContractsTest {
                   ChangeRequestMapper.created(partnerRequest(), "corr-1"),
                   ChangeRequestMapper.approved(partnerRequest(), "ops-checker01", "mw.config.changed.v1", "corr-1", AT),
                   ChangeRequestMapper.rejected(partnerRequest(), "ops-checker01", "no", "corr-1", AT),
-                  ChangeRequestMapper.expired(partnerRequest(), "corr-1", AT)),
+                  ChangeRequestMapper.expired(partnerRequest(), "corr-1", AT),
+                  ChangeRequestMapper.created(menuRequest(), "corr-1"),
+                  ChangeRequestMapper.approved(menuRequest(), "ops-checker01", "mw.config.changed.v1", "corr-1", AT),
+                  ChangeRequestMapper.rejected(menuRequest(), "ops-checker01", "no", "corr-1", AT),
+                  ChangeRequestMapper.expired(menuRequest(), "corr-1", AT)),
           "events/mw-admin-api/mw.config.changed.v1.schema.json",
           () ->
               List.of(
                   PartnerMapper.configChanged("ocs", 1, CONFIG, "ops-maker01", "ops-checker01", "corr-1", AT),
-                  PartnerMapper.configChanged("robi", 7, CONFIG, "int-maker01", "int-checker01", "admin-" + UUID.randomUUID(), AT)),
+                  PartnerMapper.configChanged("robi", 7, CONFIG, "int-maker01", "int-checker01", "admin-" + UUID.randomUUID(), AT),
+                  ContentChangeMapper.published(
+                      version("ussd-menu/main", ContentVersion.USSD_MENU, Map.of("menuId", "main", "version", 3,
+                          "menu", Map.of("menuId", "main", "version", 3, "start", "main", "nodes", Map.of()),
+                          "activations", List.of(Map.of("mno", "robi", "goLiveAt", AT.toString())))),
+                      Map.of("menuId", "main", "version", 3), "ops-checker01", "corr-1", AT),
+                  ContentChangeMapper.published(
+                      version("template/TXN_P2P_RECEIVED/SMS/en", ContentVersion.TEMPLATE, Map.of()),
+                      Map.of("code", "TXN_P2P_RECEIVED", "channel", "SMS", "locale", "en", "version", 3,
+                          "body", "You got Tk {{amount}}", "validFrom", AT.toString()),
+                      "ops-checker01", "corr-1", AT)),
           "events/mw-admin-api/mw.txn.action.v1.schema.json",
           () ->
               List.of(

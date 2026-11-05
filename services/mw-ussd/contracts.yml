@@ -3,5 +3,5 @@ produces:
   events: [events/mw-orchestrator/mw.txn.request.v1.schema.json]
   apis: [api/mw-ussd/ussd-http.v1.openapi.yaml]
 consumes:
-  events: [events/mw-orchestrator/mw.txn.status.v1.schema.json]
+  events: [events/mw-orchestrator/mw.txn.status.v1.schema.json, events/mw-admin-api/mw.config.changed.v1.schema.json]
   apis: [api/mw-adapter-billpay/billpay.v1.openapi.yaml]

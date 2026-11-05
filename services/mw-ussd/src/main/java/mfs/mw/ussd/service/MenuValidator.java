@@ -10,6 +10,7 @@ import mfs.mw.ussd.dto.Menu;
 import mfs.mw.ussd.dto.MenuNode;
 import mfs.mw.ussd.dto.MenuOption;
 import mfs.mw.ussd.dto.NodeType;
+import mfs.mw.ussd.dto.Text;
 import mfs.mw.ussd.dto.ValidatorSpec;
 import mfs.mw.ussd.mapper.TxnRequestMapper;
 
@@ -37,6 +38,47 @@ public final class MenuValidator {
     }
     nodes.forEach((id, n) -> check(id, n, nodes, p));
     return List.copyOf(p);
+  }
+
+  /** Engine messages every published menu carries in both languages. */
+  static final List<String> MESSAGES =
+      List.of(Menu.INVALID, Menu.TOO_MANY_ATTEMPTS, Menu.EXPIRED, Menu.PROCESSING, Menu.UNAVAILABLE, Menu.MORE);
+
+  /**
+   * The problems of a menu published by the admin console (ticket 39): {@link #problems} plus
+   * complete texts (every node but an ACTION has a text; texts, option labels, validator errors
+   * and the six engine messages in both bn and en), the rules mw-admin-api checked at maker time.
+   */
+  public static List<String> publishProblems(Menu menu) {
+    List<String> p = new ArrayList<>(problems(menu));
+    for (String m : MESSAGES) {
+      if (!complete(menu.messages().get(m))) {
+        p.add("message " + m + " needs both bn and en");
+      }
+    }
+    menu.nodes().forEach((id, n) -> {
+      if (n.type() == null) {
+        return;
+      }
+      if (n.type() != NodeType.ACTION && n.text() != null && !complete(n.text())) {
+        p.add(id + ": text needs both bn and en");
+      } else if (n.type() != NodeType.ACTION && n.text() == null && n.type() != NodeType.END) {
+        p.add(id + ": text is required");
+      }
+      for (MenuOption o : n.options()) {
+        if (!complete(o.label())) {
+          p.add(id + ": option " + o.key() + " label needs both bn and en");
+        }
+      }
+      if (n.validator() != null && n.validator().error() != null && !complete(n.validator().error())) {
+        p.add(id + ": validator error needs both bn and en");
+      }
+    });
+    return List.copyOf(p);
+  }
+
+  private static boolean complete(Text t) {
+    return t != null && t.bn() != null && !t.bn().isBlank() && t.en() != null && !t.en().isBlank();
   }
 
   public static Menu requireValid(Menu menu) {

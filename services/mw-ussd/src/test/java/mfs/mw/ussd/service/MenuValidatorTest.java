@@ -77,6 +77,20 @@ class MenuValidatorTest {
   }
 
   @Test
+  void aPublishedMenuNeedsEveryTextInBothLanguages() {
+    assertThat(MenuValidator.publishProblems(MenuParser.parseResource(JSON, "menus/main-v2.json"))).isEmpty();
+    Menu m =
+        menu(
+            "\"a\":{\"type\":\"MENU\",\"text\":{\"en\":\"A\"},"
+                + "\"options\":[{\"key\":\"1\",\"label\":{\"bn\":\"এক\"},\"next\":\"b\"}]},"
+                + "\"b\":{\"type\":\"END\",\"text\":{\"en\":\"x\"}}");
+    assertThat(MenuValidator.problems(m)).isEmpty();
+    assertThat(MenuValidator.publishProblems(m))
+        .contains("a: text needs both bn and en", "a: option 1 label needs both bn and en", "b: text needs both bn and en",
+            "message more needs both bn and en");
+  }
+
+  @Test
   void requireValidThrowsWithTheProblems() {
     assertThatThrownBy(() -> MenuValidator.requireValid(menu("")))
         .isInstanceOf(IllegalArgumentException.class)
