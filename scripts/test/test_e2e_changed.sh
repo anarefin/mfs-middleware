@@ -153,3 +153,24 @@ test_e2e_changed_with_no_module_changes_skips_the_rebuild_and_still_runs_e2e() {
   grep ' up -d' .tool-calls | grep -v apisix-init | grep -q . && fail "stack touched: $(cat .tool-calls)"
   [ -f tests/e2e/.gradlew-calls ] || fail "e2e not run"
 }
+
+test_mvp_targets_add_the_low_resource_override_when_present() {
+  stub_stack
+  stack_module "$PWD" mw-a
+  touch deploy/compose/mvp/compose.lowmem.yml
+  mvp="$PWD/deploy/compose/mvp"
+  mw_make "$PWD" up || fail "up failed: $OUT"
+  grep -q -F "compose -f $mvp/compose.yml -f $mvp/compose.lowmem.yml up -d --build" .tool-calls \
+    || fail "up without the override: $(cat .tool-calls)"
+  grep -q -F "compose -f $mvp/compose.yml -f $mvp/compose.lowmem.yml ps -a" .tool-calls \
+    || fail "health wait without the override: $(cat .tool-calls)"
+  rm -f .tool-calls
+  mw_make "$PWD" down || fail "down failed: $OUT"
+  grep -q -F "compose -f $mvp/compose.yml -f $mvp/compose.lowmem.yml down" .tool-calls \
+    || fail "down without the override: $(cat .tool-calls)"
+  # a module's own compose.yml (M=) never gets the MVP override
+  rm -f .tool-calls
+  mw_make "$PWD" up M=mw-a || fail "up M= failed: $OUT"
+  grep -q 'compose.lowmem.yml' .tool-calls && fail "override applied to M=mw-a"
+  return 0
+}

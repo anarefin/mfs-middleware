@@ -10,6 +10,8 @@
 #   make contracts-lint         lint the root contracts/ folder
 #   make versions-check [M=]    report version drift between module version catalogs
 #   make up [M=]                start the Compose stack (deploy/compose/mvp) or one module's compose.yml
+#   make compose-flat           regenerate the root compose.yml (whole stack, one flat file, low-resource limits)
+#   make compose-check          fail when compose.yml is stale or the memory budget (10 GB) is exceeded
 #   make smoke                  live checks against the running MVP stack (scripts/smoke.sh)
 #   make edge-test              live APISIX edge policy tests: 401/400/413/429, headers, idempotent apply
 #   make down [DOWN_ARGS=-v]    stop the MVP stack (-v also drops its volumes)
@@ -27,10 +29,10 @@ M ?=
 BASE ?=
 export MW_ROOT
 
-.PHONY: help verify check-isolation check-field-injection contracts-lint versions-check up smoke edge-test down e2e e2e-changed perf security new-service test-scripts
+.PHONY: help verify check-isolation check-field-injection contracts-lint versions-check compose-flat compose-check up smoke edge-test down e2e e2e-changed perf security new-service test-scripts
 
 help:
-	@sed -n '3,22p' $(abspath $(lastword $(MAKEFILE_LIST)))
+	@sed -n '3,24p' $(abspath $(lastword $(MAKEFILE_LIST)))
 
 verify:
 ifeq ($(SELFTEST)$(M),1)
@@ -49,6 +51,12 @@ contracts-lint:
 
 versions-check:
 	@$(SCRIPTS)/versions-check.sh "$(M)"
+
+compose-flat:
+	@$(SCRIPTS)/compose-flat.sh
+
+compose-check:
+	@$(SCRIPTS)/compose-flat.sh --check
 
 up:
 	@$(SCRIPTS)/up.sh "$(M)"

@@ -38,3 +38,17 @@ selected_modules() {
   done
   die "unknown module '$m' (known: $(all_modules | xargs -n1 basename | tr '\n' ' '))"
 }
+
+# compose_files FILE: set DC_F to the -f arguments for FILE. For the MVP project
+# (deploy/compose/mvp/compose.yml) that adds its low-resource override compose.lowmem.yml when
+# present, so every target (up, down, smoke, edge-test, e2e) sees the same model of the stack.
+# Use as: compose_files "$file"; docker compose "${DC_F[@]}" ...
+compose_files() {
+  DC_F=(-f "$1")
+  local over
+  over="$(dirname "$1")/compose.lowmem.yml"
+  if [ "$1" = "$MW_ROOT/deploy/compose/mvp/compose.yml" ] && [ -f "$over" ]; then
+    DC_F+=(-f "$over")
+  fi
+  return 0
+}

@@ -19,12 +19,13 @@ tags="${2:-}"
 scope="${E2E_SCOPE:-all}"
 here="$(dirname "$0")"
 file="$MW_ROOT/deploy/compose/mvp/compose.yml"
+compose_files "$file"
 
 changed="$("$here/changed-modules.sh" "$base")"
 info "e2e-changed: changed since $base: $(printf '%s' "${changed:-none}" | tr '\n' ' ')"
 
 running=""
-[ -f "$file" ] && running="$(docker compose -f "$file" ps -q 2>/dev/null || true)"
+[ -f "$file" ] && running="$(docker compose "${DC_F[@]}" ps -q 2>/dev/null || true)"
 
 if [ "$changed" = ALL ] || [ -z "$running" ]; then
   [ -z "$running" ] && info "e2e-changed: stack is not up: starting all of it"

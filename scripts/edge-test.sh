@@ -34,12 +34,13 @@ set -uo pipefail
 
 file="$MW_ROOT/deploy/compose/mvp/compose.yml"
 [ -f "$file" ] || die "edge-test: deploy/compose/mvp/compose.yml does not exist"
+compose_files "$file"
 command -v jq >/dev/null || die "edge-test: jq is required"
 [ -f "$MW_ROOT/deploy/compose/platform/.env" ] || die "edge-test: no generated credentials; run make up first"
 set -a; . "$MW_ROOT/deploy/compose/platform/.env"; set +a
 
 CURL_IMAGE="curlimages/curl:8.17.0@sha256:935d9100e9ba842cdb060de42472c7ca90cfe9a7c96e4dacb55e79e560b3ff40"
-dc() { docker compose -f "$file" "$@"; }
+dc() { docker compose "${DC_F[@]}" "$@"; }
 project="$(dc config --format json | jq -r .name)"
 https_port="$(dc port apisix 9443 2>/dev/null | head -1 | sed 's/.*://')"
 [ -n "$https_port" ] || die "edge-test: apisix is not running in project $project (make up)"

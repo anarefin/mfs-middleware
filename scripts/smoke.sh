@@ -13,6 +13,7 @@ set -uo pipefail
 
 file="$MW_ROOT/deploy/compose/mvp/compose.yml"
 [ -f "$file" ] || die "smoke: deploy/compose/mvp/compose.yml does not exist"
+compose_files "$file"
 command -v jq >/dev/null || die "smoke: jq is required"
 "$(dirname "$0")/gen-dev-env.sh"
 
@@ -32,7 +33,7 @@ resolve() {
   esac
 }
 
-dc() { docker compose -f "$file" "$@"; }
+dc() { docker compose "${DC_F[@]}" "$@"; }
 project="$(dc config --format json | jq -r .name)"
 
 passed=0; failed=0

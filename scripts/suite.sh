@@ -35,11 +35,12 @@ case "$suite" in
     # `make up` removes them. Re-run it on the running stack with the flag and wait for it.
     file="$MW_ROOT/deploy/compose/mvp/compose.yml"
     if [ -f "$file" ]; then
+      compose_files "$file"
       "$(dirname "$0")/gen-dev-env.sh"
       set -a; . "$MW_ROOT/deploy/compose/platform/.env"; set +a
       info "e2e: enabling the test-only gateway routes (apisix-init with MW_E2E_ROUTES=1)"
-      MW_E2E_ROUTES=1 docker compose -f "$file" up -d --no-deps --force-recreate apisix-init >/dev/null
-      docker compose -f "$file" wait apisix-init >/dev/null \
+      MW_E2E_ROUTES=1 docker compose "${DC_F[@]}" up -d --no-deps --force-recreate apisix-init >/dev/null
+      docker compose "${DC_F[@]}" wait apisix-init >/dev/null \
         || die "e2e: apisix-init failed to apply the test routes (docker compose logs apisix-init); is the stack up (make up)?"
     fi
     ;;

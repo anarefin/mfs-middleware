@@ -27,6 +27,7 @@ else
   fi
   "$(dirname "$0")/gen-dev-env.sh"
 fi
+compose_files "$file"
 # MW_UP_ONLY="mw-a mw-b" (no MODULE): rebuild only those modules' jars and recreate only their
 # services (<module>-init, <module>) inside the running MVP project, with --no-deps. Use this, not
 # MODULE, to swap a changed service into the full stack: a module's own compose.yml runs as a
@@ -68,7 +69,7 @@ fi
 case " ${COMPOSE_ARGS:-} " in *" --build "*) build_args="" ;; esac
 
 info "up: docker compose -f ${file#"$MW_ROOT"/} up -d $build_args ${COMPOSE_ARGS:-} $svc_args"
-docker compose -f "$file" up -d $build_args ${COMPOSE_ARGS:-} $svc_args
+docker compose "${DC_F[@]}" up -d $build_args ${COMPOSE_ARGS:-} $svc_args
 
 timeout="${MW_UP_TIMEOUT:-300}"
 poll="${MW_UP_POLL:-3}"
@@ -76,7 +77,7 @@ poll="${MW_UP_POLL:-3}"
 # services and one-shots that exited 0 print nothing. A long-running service without a
 # healthcheck counts once it is running.
 check() {
-  docker compose -f "$file" ps -a --format '{{.Service}}	{{.State}}	{{.Health}}	{{.ExitCode}}	{{.Labels}}' |
+  docker compose "${DC_F[@]}" ps -a --format '{{.Service}}	{{.State}}	{{.Health}}	{{.ExitCode}}	{{.Labels}}' |
     # tab is IFS whitespace, so empty fields (no health) would collapse: split on | instead
     tr '\t' '|' | while IFS='|' read -r svc state health code labels; do
       [ -n "$svc" ] || continue

@@ -2,6 +2,7 @@
 # Local quality gate (no CI/CD in the MVP).
 # Usage: scripts/verify.sh [MODULE]
 #   1. isolation check (D13, D14)   2. no @Autowired field injection   3. contracts lint
+#   3b. generated root compose.yml up to date, memory budget kept (compose-flat.sh --check)
 #   4. ./gradlew check in each selected module (unit, route, Testcontainers
 #      integration tests and coverage as the module configures them)
 set -eu
@@ -13,6 +14,12 @@ modules="$(selected_modules "$m")"
 "$(dirname "$0")/check-isolation.sh" "$m"
 "$(dirname "$0")/check-field-injection.sh" "$m"
 "$(dirname "$0")/contracts-lint.sh"
+# the generated root compose.yml matches its sources and the stack fits the memory budget
+if docker compose version >/dev/null 2>&1; then
+  "$(dirname "$0")/compose-flat.sh" --check
+else
+  info "verify: docker compose CLI not found, skipping compose-check"
+fi
 
 if [ -z "$modules" ]; then
   info "verify: no modules found under: $MODULE_PARENTS (nothing to build)"

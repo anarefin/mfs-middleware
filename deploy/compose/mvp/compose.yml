@@ -5,6 +5,10 @@
 #   make smoke            # scripts/smoke.sh: waits for health, then live checks
 #   make down             # stop (add DOWN_ARGS=-v to drop the volumes)
 #
+# Every make target merges compose.lowmem.yml over this file (low-resource limits). After a
+# change here, in an included file or in the override, run `make compose-flat`: the repo-root
+# compose.yml is generated from them, and `make verify` fails while it is out of date.
+#
 # Parallel stacks on one host: set COMPOSE_PROJECT_NAME (e.g. mw-t02) and
 # MW_HTTPS_PORT (e.g. 0 for a random host port).
 name: mw
