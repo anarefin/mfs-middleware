@@ -15,14 +15,19 @@ import org.slf4j.LoggerFactory;
 /**
  * Consumes {@link #topic()} and hands each record to {@link #handlerUri()}. When the handler
  * throws, the original record (same key, body and headers) is parked on {@code
- * <topic>.retry.1}; each retry consumer holds the record back until its delay has passed
+ * <topic>.<group>.retry.1}; each retry consumer holds the record back until its delay has passed
  * (pausing the partition, never sleeping on the consumer thread: {@link RetryDelayListener}),
- * tries again and moves it on to the next retry topic, then to {@code <topic>.dlq} (spec 19.2,
- * 6.2). The source partition is never blocked by a failing record.
+ * tries again and moves it on to the next retry topic, then to {@code <topic>.<group>.dlq} (spec
+ * 19.2, 6.2). The source partition is never blocked by a failing record.
+ *
+ * <p>{@code <group>} is this service's consumer group ({@code camel.component.kafka.group-id},
+ * the service name): retry and DLQ topics belong to one consumer, so services that consume the
+ * same topic never re-read each other's parked records.
  *
  * <p>Subclass it in {@code route/} once per consumed topic and register it as a bean. Topics
- * {@code <topic>.retry.<n>} and {@code <topic>.dlq} are declared in {@code deploy/kafka/} with the
- * source's partition count and 14 d retention. Logging shows topic, attempt, correlation/txn IDs
+ * {@code <topic>.<group>.retry.<n>} and {@code <topic>.<group>.dlq} are declared in {@code
+ * deploy/kafka/topics.txt} ({@code retry=<group>}) with the source's partition count and 14 d
+ * retention. Logging shows topic, attempt, correlation/txn IDs
  * and the exception class only, never the payload or the exception message (18.3).
  */
 public abstract class RetryTopicRouteBuilder extends RouteBuilder {
@@ -36,6 +41,9 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
 
   /** How often a paused retry consumer checks whether its held-back record is due. */
   private static final long RESUME_CHECK_MS = 500;
+
+  /** The service's consumer group, also the middle part of its retry and DLQ topic names. */
+  private static final String GROUP_PROPERTY = "{{camel.component.kafka.group-id}}";
 
   private final KafkaRetryProperties retry;
   private final Clock clock;
@@ -55,8 +63,19 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
   /** Endpoint that handles one record and throws on failure, e.g. {@code bean:x?method=y}. */
   protected abstract String handlerUri();
 
+  /** Retry topic {@code n} (1-based) of {@code group} for {@code topic}. */
+  public static String retryTopic(String topic, String group, int n) {
+    return topic + "." + group + ".retry." + n;
+  }
+
+  /** Dead-letter topic of {@code group} for {@code topic}. */
+  public static String dlqTopic(String topic, String group) {
+    return topic + "." + group + ".dlq";
+  }
+
   @Override
   public void configure() {
+    String group = getCamelContext().resolvePropertyPlaceholders(GROUP_PROPERTY);
     int attempts = retry.attempts();
     from("kafka:" + topic())
         .routeId(topic() + ".consume")
@@ -64,7 +83,7 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
         .handled(true)
         .useOriginalMessage()
         .process(e -> park(e, 1))
-        .to("kafka:" + nextTopic(1))
+        .to("kafka:" + nextTopic(group, 1))
         .process(RetryTopicRouteBuilder::commit)
         .end()
         .to(handlerUri())
@@ -73,15 +92,15 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
     for (int n = 1; n <= attempts; n++) {
       int next = n + 1;
       RetryDelayListener delay = new RetryDelayListener(retry.delay(n), clock);
-      from("kafka:" + retryTopic(n)
-              + "?groupId={{camel.component.kafka.group-id}}.retry." + n
+      from("kafka:" + retryTopic(topic(), group, n)
+              + "?groupId=" + group + ".retry." + n
               + "&pollTimeoutMs=" + RESUME_CHECK_MS)
-          .routeId(retryTopic(n) + ".consume")
+          .routeId(topic() + ".retry." + n + ".consume")
           .onException(Exception.class)
           .handled(true)
           .useOriginalMessage()
           .process(e -> park(e, next))
-          .to("kafka:" + nextTopic(next))
+          .to("kafka:" + nextTopic(group, next))
           .process(RetryTopicRouteBuilder::commit)
           .end()
           .pausable(delay, ignored -> true)
@@ -92,13 +111,9 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
     }
   }
 
-  private String retryTopic(int n) {
-    return topic() + ".retry." + n;
-  }
-
   /** Where a record that failed on attempt {@code attempt - 1} goes next. */
-  private String nextTopic(int attempt) {
-    return attempt <= retry.attempts() ? retryTopic(attempt) : topic() + ".dlq";
+  private String nextTopic(String group, int attempt) {
+    return attempt <= retry.attempts() ? retryTopic(topic(), group, attempt) : dlqTopic(topic(), group);
   }
 
   void park(Exchange exchange, int attempt) {

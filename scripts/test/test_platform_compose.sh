@@ -228,18 +228,58 @@ test_topic_plan_has_the_mvp_catalogue_with_spec_partitions_and_retention() {
   assert_plan_has "mw.config.changed.v1 partitions=6 cleanup.policy=compact"
 }
 
-test_topic_plan_adds_three_retry_tiers_and_a_dlq_with_source_partitions_and_14d() {
+test_topic_plan_adds_three_retry_tiers_and_a_dlq_per_consumer_group_with_source_partitions_and_14d() {
   assert_ok plan
-  # 19.2: Kafka retry 10 s / 1 min / 10 min then DLQ; 6.2: same partitions, 14 d
-  assert_plan_has "mw.txn.request.v1.retry.1 partitions=48 retention.ms=1209600000"
-  assert_plan_has "mw.txn.request.v1.retry.2 partitions=48 retention.ms=1209600000"
-  assert_plan_has "mw.txn.request.v1.retry.3 partitions=48 retention.ms=1209600000"
-  assert_plan_has "mw.txn.request.v1.dlq partitions=48 retention.ms=1209600000"
-  assert_plan_has "mw.notify.status.v1.dlq partitions=12 retention.ms=1209600000"
-  assert_plan_has "mw.partner.request.bank.v1.retry.2 partitions=24 retention.ms=1209600000"
+  # 19.2: Kafka retry 10 s / 1 min / 10 min then DLQ; 6.2: same partitions, 14 d. One set per
+  # consumer group (B10): <topic>.<group>.retry.<n>, <topic>.<group>.dlq.
+  assert_plan_has "mw.txn.request.v1.mw-orchestrator.retry.1 partitions=48 retention.ms=1209600000"
+  assert_plan_has "mw.txn.request.v1.mw-orchestrator.retry.2 partitions=48 retention.ms=1209600000"
+  assert_plan_has "mw.txn.request.v1.mw-orchestrator.retry.3 partitions=48 retention.ms=1209600000"
+  assert_plan_has "mw.txn.request.v1.mw-orchestrator.dlq partitions=48 retention.ms=1209600000"
+  assert_plan_has "mw.partner.request.bank.v1.mw-adapter-bank.retry.2 partitions=24 retention.ms=1209600000"
   [ "$(printf '%s\n' "$OUT" | grep -c '\.retry\.4 ')" = 0 ] || fail "unexpected 4th retry tier"
-  printf '%s\n' "$OUT" | grep -q '^mw.config.changed.v1.retry' && fail "compacted config topic must not get retry topics"
+  printf '%s\n' "$OUT" | grep -q '^mw.config.changed.v1\..*retry' && fail "compacted config topic must not get retry topics"
+  # no shared, group-less retry or DLQ topic is left
+  printf '%s\n' "$OUT" | grep -qE '^[a-z.]+\.v1\.(retry\.[0-9]+|dlq) ' && fail "group-less retry/DLQ topic in plan"
   return 0
+}
+
+test_topic_plan_gives_each_status_consumer_its_own_retry_topics() {
+  # mw-notify and mw-app-gateway (and checkout, portal-api) all consume mw.txn.status.v1: each
+  # group parks on its own topics, so none re-reads another's failed records (B10).
+  local g
+  assert_ok plan
+  for g in mw-app-gateway mw-checkout mw-notify mw-portal-api; do
+    assert_plan_has "mw.txn.status.v1.$g.retry.1 partitions=48 retention.ms=1209600000"
+    assert_plan_has "mw.txn.status.v1.$g.dlq partitions=48 retention.ms=1209600000"
+  done
+}
+
+test_topic_plan_has_retry_topics_for_every_retry_route_in_the_services() {
+  # Every RetryTopicRouteBuilder subclass parks on <topic>.<module>.retry.<n>/.dlq; the platform
+  # must declare them (topics are not auto-created). Topic = the class's TOPIC string literal or
+  # an orchestrator CoreTopics constant.
+  local f module lit const topic
+  assert_ok plan
+  for f in $(grep -rl 'extends RetryTopicRouteBuilder' "$REPO_DIR"/services/*/src/main/java); do
+    module="${f#"$REPO_DIR"/services/}"; module="${module%%/*}"
+    lit="$(sed -n 's/.*String TOPIC = "\([^"]*\)".*/\1/p' "$f" | head -1)"
+    if [ -z "$lit" ]; then
+      const="$(sed -n 's/.*String TOPIC = CoreTopics\.\([A-Z_]*\);.*/\1/p' "$f" | head -1)"
+      [ -n "$const" ] || fail "cannot find the TOPIC of $f"
+      lit="$(grep -rh "String $const = " "$REPO_DIR/services/$module/src/main/java" | sed -n 's/.*= "\([^"]*\)".*/\1/p' | head -1)"
+    fi
+    for topic in "$lit.$module.retry.1" "$lit.$module.retry.2" "$lit.$module.retry.3" "$lit.$module.dlq"; do
+      printf '%s\n' "$OUT" | grep -q "^$topic " || fail "$f: $topic not in deploy/kafka/topics.txt"
+    done
+  done
+  return 0
+}
+
+test_topic_plan_rejects_a_retry_flag_without_a_group() {
+  printf 'some.topic.v1 3 7d retry\n' >topics.txt
+  OUT="$("$REPO_DIR/deploy/kafka/apply-topics.sh" --dry-run topics.txt 2>&1)" && fail "accepted retry without a group"
+  assert_out_contains "some.topic.v1"
 }
 
 test_topic_plan_leaves_out_deferred_topics() {

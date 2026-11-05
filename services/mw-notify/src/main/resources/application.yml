@@ -156,7 +156,7 @@ management:
 mw:
   kafka:
     retry:
-      # Non-blocking retry topics <topic>.retry.1..3, then <topic>.dlq (19.2).
+      # Non-blocking retry topics <topic>.<group>.retry.1..3, then <topic>.<group>.dlq (19.2).
       delays: 10s,1m,10m
   outbox:
     relay:
