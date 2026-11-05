@@ -172,10 +172,12 @@ mw:
       delays: 10s,1m,10m
   outbox:
     relay:
-      # Transactional outbox relay (6.4): publishes unsent rows, then stamps sent_at.
+      # Transactional outbox relay (6.4): claims up to batch-size unsent rows, sends them all
+      # without waiting, then stamps sent_at on the acknowledged ones in one statement. Polls
+      # again at once while batches come back full; waits one period once the outbox is drained.
       enabled: true
       period: 500ms
-      batch-size: 100
+      batch-size: 500
   retention:
     # Purge (service/RetentionService via scheduler/OutboxInboxPurgeJob): sent outbox rows and
     # inbox rows older than these; unsent outbox rows never. ShedLock-guarded, one instance at a
