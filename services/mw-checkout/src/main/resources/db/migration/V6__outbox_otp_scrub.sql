@@ -1,8 +1,5 @@
--- The checkout OTP is removed from relayed outbox rows within seconds (review A8,
--- messaging/OutboxOtpScrubber): this partial index holds only the rows that still carry one, so
--- the scrub every few seconds never scans the 7 days of sent rows.
-CREATE INDEX outbox_otp_unscrubbed_idx ON outbox (id) WHERE payload->'params' ? 'otp';
-
--- Rows already relayed before this change lose their OTP now.
+-- The checkout OTP is removed from an outbox row in the statement that marks it sent (review A8,
+-- messaging/OutboxRelay.markSent), so it never stays in clear for the 7 day purge. Rows relayed
+-- before that change lose theirs now.
 UPDATE outbox SET payload = payload #- '{params,otp}'
- WHERE payload->'params' ? 'otp' AND sent_at IS NOT NULL;
+ WHERE topic = 'mw.notify.request.v1' AND payload->'params' ? 'otp' AND sent_at IS NOT NULL;

@@ -5,9 +5,16 @@ import io.micrometer.tracing.Tracer;
 import io.micrometer.tracing.propagation.Propagator;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import mfs.mw.notify.config.MwServiceProperties;
+import org.apache.camel.AsyncProducer;
+import org.apache.camel.CamelContext;
+import org.apache.camel.Exchange;
 import org.apache.camel.ProducerTemplate;
 import org.apache.camel.component.kafka.KafkaConstants;
+import org.apache.camel.support.DefaultExchange;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -21,7 +28,7 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p>A service that also changes PostgreSQL state publishes through {@link OutboxWriter}
  * instead (spec 6.4); {@link OutboxRelay} then sends the stored record with {@link
- * #publishStored}.
+ * #publishStoredAsync}.
  */
 @Component
 public class EventPublisher {
@@ -33,6 +40,7 @@ public class EventPublisher {
   private final Tracer tracer;
   private final Propagator propagator;
   private final String source;
+  private final ConcurrentMap<String, AsyncProducer> storedProducers = new ConcurrentHashMap<>();
 
   public EventPublisher(
       ProducerTemplate producer,
@@ -78,11 +86,53 @@ public class EventPublisher {
   }
 
   /**
-   * Sends a stored record unchanged (same key, headers and JSON body), synchronously: returns
-   * only once Kafka has acknowledged it, and throws if it did not.
+   * Sends a stored record unchanged (same key, headers and JSON body) without waiting: the
+   * record is handed to the Kafka producer on the calling thread, in call order, and the future
+   * completes once Kafka acknowledged it, or exceptionally if it did not. Records for one key go
+   * to one partition through one idempotent producer ({@code acks=all}, at most 5 requests in
+   * flight), so Kafka keeps their call order, retries included.
+   *
+   * <p>Not through {@link ProducerTemplate#asyncSend}: that hands each send to a thread pool,
+   * which reorders them. The Camel Kafka producer per topic is created once, started and stopped
+   * with the Camel context.
    */
-  public void publishStored(String topic, String key, Map<String, String> headers, String body) {
-    send(topic, key, headers, body);
+  public CompletableFuture<Void> publishStoredAsync(
+      String topic, String key, Map<String, String> headers, String body) {
+    CamelContext camel = producer.getCamelContext();
+    Exchange exchange = new DefaultExchange(camel);
+    exchange.getMessage().setHeaders(new HashMap<>(headers));
+    exchange.getMessage().setHeader(KafkaConstants.KEY, key);
+    exchange.getMessage().setBody(body);
+    CompletableFuture<Void> acked = new CompletableFuture<>();
+    try {
+      storedProducer(camel, topic)
+          .process(
+              exchange,
+              doneSync -> {
+                if (exchange.getException() == null) {
+                  acked.complete(null);
+                } else {
+                  acked.completeExceptionally(exchange.getException());
+                }
+              });
+    } catch (RuntimeException e) {
+      acked.completeExceptionally(e);
+    }
+    return acked;
+  }
+
+  private AsyncProducer storedProducer(CamelContext camel, String topic) {
+    return storedProducers.computeIfAbsent(
+        topic,
+        t -> {
+          try {
+            AsyncProducer p = camel.getEndpoint("kafka:" + t).createAsyncProducer();
+            camel.addService(p, true, true);
+            return p;
+          } catch (Exception e) {
+            throw new IllegalStateException("cannot create the Kafka producer for " + t, e);
+          }
+        });
   }
 
   private Map<String, String> headers(EventMetadata meta, Span span) {

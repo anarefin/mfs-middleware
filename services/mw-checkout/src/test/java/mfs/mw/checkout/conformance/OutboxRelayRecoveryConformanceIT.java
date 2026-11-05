@@ -44,7 +44,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * The outbox relay after a crash, a restart and with two instances (spec 6.4, 19.3). The relay
  * route is off here (test default), so each test drives {@link OutboxRelay} itself: a relay that
- * dies after Kafka acknowledged a record but before its transaction committed leaves the row
+ * dies after Kafka acknowledged its batch but before its transaction committed leaves the rows
  * unsent; the relay of the restarted service publishes it again, and the consumer's inbox
  * applies each event once. Two relays running at once never publish a row twice.
  */
@@ -148,11 +148,11 @@ class OutboxRelayRecoveryConformanceIT {
                 Map.of("schemaVersion", 1, "eventId", eventId)));
   }
 
-  /** A relay instance whose process "dies" right after Kafka acknowledged its first record. */
+  /** A relay instance whose process "dies" right after Kafka acknowledged its whole batch. */
   OutboxRelay crashingRelay() {
-    return new OutboxRelay(jdbc, tx, publisher, json, properties) {
+    return new OutboxRelay(jdbc, tx, publisher, json, properties, null) {
       @Override
-      protected void markSent(long id) {
+      protected void markSent(List<Long> ids) {
         throw new SimulatedCrash();
       }
     };
@@ -188,28 +188,29 @@ class OutboxRelayRecoveryConformanceIT {
     List<String> events = List.of("crash-1", "crash-2", "crash-3");
     events.forEach(this::append);
 
-    // Crash: crash-1 reached Kafka, but the relay died before marking it sent.
+    // Crash: the whole batch reached Kafka, but the relay died before marking it sent.
     assertThatThrownBy(() -> crashingRelay().relayBatch()).isInstanceOf(SimulatedCrash.class);
     assertThat(unsent("crash-")).as("nothing marked sent by the crashed relay").isEqualTo(3);
-    assertThat(published("crash-", 1, Duration.ofSeconds(10))).hasSize(1);
+    assertThat(published("crash-", 3, Duration.ofSeconds(10))).hasSize(3);
 
-    // Restart: a fresh relay publishes every pending row, crash-1 for the second time.
+    // Restart: a fresh relay publishes every pending row, each for the second time.
     assertThat(relay.relayPending()).isGreaterThanOrEqualTo(3);
     assertThat(unsent("crash-")).isZero();
-    List<ConsumerRecord<String, String>> onKafka = published("crash-", 4, Duration.ofSeconds(20));
+    List<ConsumerRecord<String, String>> onKafka = published("crash-", 6, Duration.ofSeconds(20));
     assertThat(onKafka).extracting(ConsumerRecord::key)
-        .containsExactlyInAnyOrder("TXN-crash-1", "TXN-crash-1", "TXN-crash-2", "TXN-crash-3");
+        .containsExactlyInAnyOrder(
+            "TXN-crash-1", "TXN-crash-1", "TXN-crash-2", "TXN-crash-2", "TXN-crash-3", "TXN-crash-3");
 
-    // The consumer saw crash-1 twice and applied it once.
-    await(() -> handler.deliveries.getOrDefault("crash-1", new AtomicInteger()).get() == 2
-        && events.stream().allMatch(e -> handler.deliveries.containsKey(e)), Duration.ofSeconds(30));
+    // The consumer saw every event twice and applied each once.
+    await(() -> events.stream()
+        .allMatch(e -> handler.deliveries.getOrDefault(e, new AtomicInteger()).get() == 2), Duration.ofSeconds(30));
     for (String e : events) {
       assertThat(effects(e)).as("side effect of %s", e).isEqualTo(1);
     }
 
     // Nothing is left to relay: a later run publishes nothing more.
     relay.relayPending();
-    assertThat(published("crash-", 5, Duration.ofSeconds(3))).hasSize(4);
+    assertThat(published("crash-", 7, Duration.ofSeconds(3))).hasSize(6);
   }
 
   @Test
