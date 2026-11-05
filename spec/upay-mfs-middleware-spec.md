@@ -8,6 +8,8 @@ This spec turns the upay *Mobile Money Middleware RFP v0.1* into a build-ready d
 
 **Conventions.** MUST / SHOULD / MAY follow RFC 2119. Values marked **TBC** are assumptions to confirm (section 25). `mw-*` names modules and services.
 
+**Revision 5 (Nov 6, 2026).** D6 and sections 3, 4 and 15.1 name Next.js 16.4.1, the version the admin console runs since the ticket 46 security pass. The decisions in both tables have one architecture decision record each in `docs/adr/` (WP30).
+
 **Revision 4 (Nov 5, 2026).** Syncs the spec with the M2 gate decisions of 2026-11-04 and what tickets 07–23 and 50 built: new state-table rows (7.2), late conflicting partner results, idempotency as built (7.3), the inquiry schedule and cut-off (7.4), core-only reversal, core topic routing (6.3), channel roles (9.1), the bill-fetch HTTP exception, adapter-verified partner callbacks and APISIX configured as JSON through the Admin API (8), the audit trail as built (14.3) and PIN ciphertext and masking rules (18.3). Each override is marked **Decision 2026-11-04**.
 
 **Revision 3 (Nov 3, 2026).** Gradle replaces Maven (D13); package root is `mfs.mw.<service>`; every service uses a conventional layered Spring Boot structure (controller, service, repository, entity, dto, exception and so on), with no Spring Modulith and no ArchUnit (D15). Sections changed: 0, MVP build plan, 3, 4.2, 4.3, 7.1, 12, 18.3, 20.1, 22.1, 23.1, 25.
@@ -23,7 +25,7 @@ This spec turns the upay *Mobile Money Middleware RFP v0.1* into a build-ready d
 | D3 | API gateway | Apache APISIX |
 | D4 | Middleware database | PostgreSQL 18 (confirmed), used only where the middleware needs its own state; services access it through Spring Data JDBC/JPA, no PostgREST |
 | D5 | Core wallet / payment link | Asynchronous Kafka commands and events; no synchronous calls into the core |
-| D6 | Admin console | Next.js 16.3.8 (App Router, TypeScript) |
+| D6 | Admin console | Next.js 16.4.1 (App Router, TypeScript); 16.3.8 until the ticket 46 security pass (CRITICAL and HIGH CVEs fixed in 16.4.1) |
 | D7 | USSD | One adapter abstraction; SMPP or HTTP transport selected per MNO by configuration |
 | D8 | Runtime | Docker images; every component, including platform tools, runs under Docker Compose (see D12) |
 | D9 | Platform services | Keycloak (IAM/SSO), HashiCorp Vault or OpenBao (secrets, PKI), Resilience4j (resilience) |
@@ -152,7 +154,7 @@ The MVP is built as about 30 small work packages (WPs), each sized for one codin
 | WP21 | M4 | `mw-checkout`: sessions API (HMAC), pay endpoint, redirect, signed IPN with retries; `MERCHANT_PAY` flow | WP07, WP09 | e2e checkout incl. IPN retry |
 | WP22 | M4 | `mw-portal-api`: bulk CSV upload (max 10,000 rows; larger files rejected), validation, maker-checker, throttled child txns, result file; SP txn query | WP07 | 10,000-row batch e2e |
 | WP23 | M5 Admin | `mw-admin-api`: RBAC from Keycloak, change-request (maker-checker) engine, txn search + timeline, manual TSQ/reversal, partner toggle/timeouts, USSD menus, SMS templates, `mw.config.changed` | WP10, WP13 | API tests incl. maker ≠ checker |
-| WP24 | M5 | `mw-admin-ui` (Next.js 16.3.8): Auth.js + Keycloak, layout, transaction search/detail | WP23 | Playwright tests |
+| WP24 | M5 | `mw-admin-ui` (Next.js 16.4.1): Auth.js + Keycloak, layout, transaction search/detail | WP23 | Playwright tests |
 | WP25 | M5 | Admin UI: approvals inbox, reversal, partner config, USSD menu editor, template editor with preview | WP24 | Playwright tests per screen |
 | WP26 | M6 Hardening | e2e suite (Cucumber) covering acceptance criteria 1–5 | all flow WPs | Suite green on the MVP host |
 | WP27 | M6 | Chaos script: kill containers mid-flow, verify sweeps (criterion 3) | WP26 | No stuck txns after rerun |
@@ -343,7 +345,7 @@ Every runtime component is open source under a permissive licence, which satisfi
 | IAM | Keycloak | 26.x | Apache 2.0 | OAuth2/OIDC for admin users and partners |
 | Config / secrets binding | Spring Cloud (Spring Cloud Vault) | 2025.1.4 | Apache 2.0 | Loads Vault/OpenBao secrets at start, renews leases |
 | Secrets / PKI | HashiCorp Vault or OpenBao | current | BUSL / MPL 2.0 | Secrets, dynamic DB creds, certificate issue (prefer OpenBao for OWN-03) |
-| Admin UI | Next.js + React + TypeScript | 16.3.8 | MIT | Admin console |
+| Admin UI | Next.js + React + TypeScript | 16.4.1 | MIT | Admin console |
 | Testing | JUnit 6, Testcontainers, WireMock, Pact, Gatling | current | EPL/Apache/MIT | Unit, integration, contract, load |
 
 **Rules.** No GPL/AGPL component without written approval (OWN-03). The JDK's GPLv2 + Classpath Exception is standard and should be noted in the SBOM. Vault's BUSL licence is a commercial-risk flag; OpenBao is the drop-in fallback.
@@ -370,7 +372,7 @@ The middleware is 14 runtime services, the admin UI and two test-only services (
 | `mw-recon` | App | MT940/942 and partner settlement ingest, matching, exception reports | SFTP, Kafka | PG, SFTP, Kafka | PG `recon` |
 | `mw-audit-dw` | Data | Audit writer (append-only), DW stream and SFTP batch export, retention | Kafka `mw.audit.*` | PG, Kafka, SFTP | PG `audit` |
 | `mw-admin-api` | Ops | Admin REST API: partners, routes, rules, templates, credentials, maker-checker, transaction search | APISIX (Keycloak OIDC) | PG, Vault, Kafka `mw.config.changed` | PG `admin` |
-| `mw-admin-ui` | Ops | Next.js 16.3.8 console | Browser | `mw-admin-api` | none |
+| `mw-admin-ui` | Ops | Next.js 16.4.1 console | Browser | `mw-admin-api` | none |
 | `mw-core-mock` | Test only | Core wallet/payment test double (MVP M4) | Kafka `core.*.command.v1` | Kafka `core.*.event.v1` | PG `coremock` |
 | `mw-simulators` | Test only | Simulators for every external party (ENV-10) | Adapters | n/a | in-memory / PG |
 
@@ -397,7 +399,7 @@ upay-middleware/
 │  ├─ mw-adapter-telco/  mw-adapter-billpay/  mw-adapter-bank/  mw-adapter-interop/
 │  ├─ mw-compliance/  mw-notify/  mw-recon/  mw-audit-dw/  mw-admin-api/
 │  └─ mw-simulators/
-├─ ui/mw-admin-ui/              # Next.js 16.3.8, own package.json, Dockerfile and compose.yml
+├─ ui/mw-admin-ui/              # Next.js 16.4.1, own package.json, Dockerfile and compose.yml
 ├─ deploy/
 │  ├─ compose/
 │  │  ├─ platform/              # kafka, kafka-init, postgres, valkey, keycloak, openbao, apisix, etcd, sftp, greenmail; zone networks
@@ -916,11 +918,11 @@ Files are checksummed, stored raw (immutable) for audit, and processed once (fil
 
 ## 15. Admin console
 
-The console is a Next.js 16.3.8 app (`mw-admin-ui`) over a Spring Boot REST API (`mw-admin-api`); every change that affects money movement, partners, credentials or customer-facing text goes through maker-checker (FR-19, FR-20).
+The console is a Next.js 16.4.1 app (`mw-admin-ui`) over a Spring Boot REST API (`mw-admin-api`); every change that affects money movement, partners, credentials or customer-facing text goes through maker-checker (FR-19, FR-20).
 
 ### 15.1 Front end (`mw-admin-ui`)
 
-- Next.js 16.3.8 App Router, React Server Components, TypeScript strict; UI kit: shadcn/ui on Tailwind CSS (MIT) — TBC; tables: TanStack Table; forms: React Hook Form + Zod schemas generated from the admin OpenAPI.
+- Next.js 16.4.1 App Router, React Server Components, TypeScript strict; UI kit: shadcn/ui on Tailwind CSS (MIT) — TBC; tables: TanStack Table; forms: React Hook Form + Zod schemas generated from the admin OpenAPI.
 - Auth: OIDC Authorization Code + PKCE against Keycloak realm `ops` (MFA mandatory), handled server-side by Auth.js; tokens kept in an encrypted HTTP-only cookie; the browser never holds the access token.
 - All data calls go server-side (route handlers / server actions) to `mw-admin-api` via the internal APISIX; no direct browser-to-API calls.
 - Bilingual UI not required for operators (English), but template editors support Bangla input and preview.
