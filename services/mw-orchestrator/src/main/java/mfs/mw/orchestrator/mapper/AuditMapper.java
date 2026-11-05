@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import mfs.mw.orchestrator.dto.AuditEvent;
+import mfs.mw.orchestrator.dto.TxnAction;
 import mfs.mw.orchestrator.entity.TransactionRecord;
 import mfs.mw.orchestrator.service.saga.Status;
 import org.springframework.stereotype.Component;
@@ -101,6 +102,43 @@ public class AuditMapper {
         from == null ? null : Map.of("status", from.name()),
         after,
         "SUCCESS",
+        at,
+        SERVICE);
+  }
+
+  /** An operator action approved by maker-checker (ticket 37, {@code mw.txn.action.v1}). */
+  public static final String OPERATOR_ACTION = "txn.operator.action";
+
+  /**
+   * An operator action applied or refused: actor the checker who approved it ({@code user}, staff
+   * id), {@code before} the status the action found, {@code after} the status it left plus the
+   * action, the maker, the change request and, when refused, {@code refused} = the error code
+   * (outcome FAILURE). The maker's free-text reason is not copied: it may name a customer.
+   */
+  public AuditEvent operatorAction(
+      TransactionRecord rec, TxnAction action, Status before, Status after, String refusedCode, Instant at) {
+    Map<String, String> out = new HashMap<>();
+    out.put("status", after.name());
+    out.put("action", action.action());
+    out.put("makerId", action.makerId());
+    out.put("changeRequestId", action.changeRequestId());
+    if (refusedCode != null) {
+      out.put("refused", refusedCode);
+    }
+    String txnId = rec.txnId().toString();
+    return new AuditEvent(
+        1,
+        UUID.randomUUID().toString(),
+        txnId,
+        action.correlationId() == null || action.correlationId().isBlank()
+            ? rec.request().correlationId()
+            : action.correlationId(),
+        new AuditEvent.Actor("user", action.checkerId()),
+        OPERATOR_ACTION,
+        "txn/" + txnId,
+        Map.of("status", before.name()),
+        out,
+        refusedCode == null ? "SUCCESS" : "FAILURE",
         at,
         SERVICE);
   }

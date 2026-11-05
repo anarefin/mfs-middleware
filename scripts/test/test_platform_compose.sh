@@ -7,7 +7,7 @@ PLATFORM_SERVICES="kafka kafka-init postgres valkey keycloak openbao etcd etcd-i
 ONE_SHOT="kafka-init etcd-init apisix-init"
 SECRET_VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALTH_PASSWORD
   POSTGRES_PASSWORD VALKEY_PASSWORD KC_BOOTSTRAP_ADMIN_PASSWORD KC_PARTNER_SIM_SECRET
-  KC_CUSTOMERS_TEST_PASSWORD KC_OPS_TEST_PASSWORD KC_PORTALS_TEST_PASSWORD KC_DB_PASSWORD
+  KC_CUSTOMERS_TEST_PASSWORD KC_OPS_TEST_PASSWORD KC_OPS_TEST_TOTP_SECRET KC_PORTALS_TEST_PASSWORD KC_DB_PASSWORD
   MW_E2E_API_KEY BILLAGG_HMAC_SECRET C2WBANK_HMAC_SECRET CHECKOUT_DEMO_MERCHANT_SECRET
   KC_MW_PORTAL_API_SECRET KC_MW_ADMIN_API_SECRET MW_ADMIN_UI_AUTH_SECRET
   USSD_GP_GATEWAY_SECRET USSD_ROBI_GATEWAY_SECRET USSD_BL_GATEWAY_SECRET USSD_TELETALK_GATEWAY_SECRET"
@@ -253,6 +253,8 @@ test_topic_plan_has_the_mvp_catalogue_with_spec_partitions_and_retention() {
   # spec 6.2, values copied from the catalogue (7 d = 604800000 ms, 3 d = 259200000 ms)
   assert_plan_has "mw.txn.request.v1 partitions=48 retention.ms=604800000"
   assert_plan_has "mw.txn.status.v1 partitions=48 retention.ms=604800000"
+  # operator actions after maker-checker (ticket 37; low volume, not in the 6.2 catalogue)
+  assert_plan_has "mw.txn.action.v1 partitions=6 retention.ms=604800000"
   assert_plan_has "core.wallet.command.v1 partitions=48 retention.ms=604800000"
   assert_plan_has "core.payment.command.v1 partitions=48 retention.ms=604800000"
   assert_plan_has "core.wallet.event.v1 partitions=48 retention.ms=604800000"
@@ -354,8 +356,11 @@ test_make_up_generates_the_dev_env_before_starting_the_mvp_project() {
 
 test_ops_realm_enforces_totp_for_every_user_and_in_the_browser_flow() {
   local f="$REALMS_DIR/ops-realm.json" flow bad
-  bad="$(jq -r '.users[] | select((.requiredActions // []) | index("CONFIGURE_TOTP") | not) | .username' "$f")"
-  [ -z "$bad" ] || fail "ops users without the CONFIGURE_TOTP required action: $bad"
+  # every user either must enrol TOTP before a first token, or has one enrolled (the dev-only e2e
+  # operators of ticket 37, whose seeded secret the suite uses to compute the code)
+  bad="$(jq -r '.users[] | select(((.requiredActions // []) | index("CONFIGURE_TOTP") | not)
+    and ((.credentials // []) | map(.type) | index("otp") | not)) | .username' "$f")"
+  [ -z "$bad" ] || fail "ops users without the CONFIGURE_TOTP required action or an OTP credential: $bad"
   flow="$(jq -r '.browserFlow // empty' "$f")"
   [ -n "$flow" ] && [ "$flow" != "browser" ] || fail "ops realm keeps the built-in browser flow (OTP only conditional)"
   # executions reachable from the browser flow: OTP and password forms REQUIRED, and

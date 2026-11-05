@@ -69,8 +69,16 @@ public class SecurityConfig {
             a ->
                 a.requestMatchers(r -> r.getRequestURI().startsWith("/admin/") && !SAFE.contains(HttpMethod.valueOf(r.getMethod())))
                     .access(roles(AdminRole::mayWrite))
-                    .requestMatchers(HttpMethod.GET, "/admin/v1/transactions", "/admin/v1/transactions/*")
+                    .requestMatchers(
+                        HttpMethod.GET, "/admin/v1/transactions", "/admin/v1/transactions/*",
+                        "/admin/v1/change-requests", "/admin/v1/change-requests/*")
                     .access(roles(r -> r.stream().anyMatch(AdminRole.READ_TRANSACTIONS::contains)))
+                    // maker-checker on transactions (ticket 37); the service checks again
+                    .requestMatchers(HttpMethod.POST, "/admin/v1/transactions/*/change-requests")
+                    .access(roles(r -> r.stream().anyMatch(AdminRole.TXN_MAKER::contains)))
+                    .requestMatchers(
+                        HttpMethod.POST, "/admin/v1/change-requests/*/approve", "/admin/v1/change-requests/*/reject")
+                    .access(roles(r -> r.stream().anyMatch(AdminRole.TXN_CHECKER::contains)))
                     .requestMatchers("/admin/**")
                     .access(roles(r -> !r.isEmpty()))
                     .anyRequest()

@@ -96,6 +96,13 @@ public sealed interface SagaEvent {
 
   record ManualRelease() implements SagaEvent {}
 
+  /**
+   * An operator's status inquiry (ticket 37, maker-checker approved): one inquiry now, in UNKNOWN
+   * or MANUAL_REVIEW; the state stays (in UNKNOWN the answer resolves it as any inquiry answer
+   * does, in MANUAL_REVIEW the answer is only recorded on the saga timeline).
+   */
+  record ManualInquiry() implements SagaEvent {}
+
   /** The deadline stored in {@code saga_timer} passed; the meaning depends on the state. */
   record DeadlineExpired() implements SagaEvent {}
 }

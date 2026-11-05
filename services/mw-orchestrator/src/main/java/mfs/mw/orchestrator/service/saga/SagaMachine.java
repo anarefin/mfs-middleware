@@ -74,6 +74,7 @@ public final class SagaMachine {
             case InquiryFailed e -> go(from, Status.FAILED, Effect.NONE);
             case InquiryExhausted e -> go(from, Status.MANUAL_REVIEW, Effect.NONE);
             case DeadlineExpired e -> go(from, Status.UNKNOWN, Effect.SEND_INQUIRY);
+            case ManualInquiry e -> go(from, Status.UNKNOWN, Effect.SEND_INQUIRY);
             default -> null;
           };
       case COMMITTING ->
@@ -110,6 +111,7 @@ public final class SagaMachine {
           switch (event) {
             case ManualCommit e -> go(from, Status.COMMITTING, Effect.SEND_COMMIT);
             case ManualRelease e -> go(from, Status.RELEASING, Effect.SEND_RELEASE);
+            case ManualInquiry e -> go(from, Status.MANUAL_REVIEW, Effect.SEND_INQUIRY);
             // only a transaction handed over from REVERSING has a reversal the core can confirm
             // (TransactionReversed answers a ReverseTransaction only): the core's truth wins
             case ReversalAcknowledged e -> go(from, Status.REVERSED, Effect.NONE);

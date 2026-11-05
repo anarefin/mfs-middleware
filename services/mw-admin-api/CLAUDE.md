@@ -8,7 +8,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 - Operations console API (spec 15, WP23 part, ticket 36) for `mw-admin-ui` (server-side calls only)
   behind APISIX route `/admin/v1/*` (`deploy/apisix/routes/admin-v1.json`, `openid-connect`
   bearer-only on realm `ops`, 1 MiB body cap, 300 req/min per token subject). Later tickets add the
-  change-request engine (37), partner config (38), USSD menus / SMS templates (39).
+  change-request engine (37, below), partner config (38), USSD menus / SMS templates (39); 38/39
+  reuse `ChangeRequestService`'s rules (a new `resourceType`, its own maker/checker role sets).
 - Auth (`config/SecurityConfig`, `security/`): bearer JWT of realm `ops`, verified again here (JWKS
   `mw.admin-api.jwt.jwk-set-uri` / `MW_ADMIN_JWK_SET_URI`, issuer must end with `/realms/ops`,
   `security/RealmIssuerValidator`). **MFA is the realm's**: the `ops` browser flow requires password +
@@ -45,6 +46,39 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   key the txnId). If the audit cannot be written the request fails: no unaudited reveal. Any other
   role asking gets the masked view, `revealed: false`, no audit, and the orchestrator is never asked
   for unmasked values.
+- Maker-checker (ticket 37, spec 15.3; `controller/ChangeRequestController` ->
+  `service/ChangeRequestService` -> `repository/ChangeRequestRepository`, table `admin.change_request`
+  V4, `entity/ChangeRequest`, `mapper/ChangeRequestMapper`): operator actions on a transaction
+  (`dto/ChangeRequestBody.TxnActionType`: INQUIRE in UNKNOWN/MANUAL_REVIEW, FORCE_COMMIT /
+  FORCE_RELEASE in MANUAL_REVIEW, REVERSE of a COMPLETED, unreversed, non-REVERSAL txn; status read
+  from `txn-query.v1`). `POST /admin/v1/transactions/{txnId}/change-requests {action, reason}` (role
+  `AdminRole.TXN_MAKER` = ops-maker) -> 201 PENDING, `expiresAt` = created + `mw.change-requests.ttl`
+  (72h); one PENDING request per transaction (partial unique index, `409 MW-VAL-031`); action not
+  fitting the status `409 MW-VAL-030`. `POST /admin/v1/change-requests/{id}/approve` and `/reject
+  {reason}` (role `TXN_CHECKER` = ops-checker; the maker never, compared on token subject AND
+  username: `403 MW-AUTH-030`, even when the maker also holds ops-checker); the txn is read again on
+  approval (moved on: `409 MW-VAL-030`, request stays PENDING); expired: marked EXPIRED + audited,
+  `409 MW-VAL-032`; decided already `409 MW-VAL-033` (the `status = 'PENDING'` update guard).
+  `GET /admin/v1/change-requests[?status&resourceId&limit&offset]`, `GET .../{id}` (READ_TRANSACTIONS).
+  Approval = ONE database transaction: row APPROVED + the message to mw-orchestrator + the audit,
+  through the outbox: INQUIRE/FORCE_* -> `mw.txn.action.v1` (own contract, `dto/TxnAction`, key
+  txnId, idempotency header = actionId, stored in `payload.actionId`); REVERSE -> REVERSAL on
+  `mw.txn.request.v1` (`dto/ReversalRequest`: channel SYSTEM, fresh UUIDv7 `util/UuidV7` stored in
+  `payload.reversalTxnId`, idempotencyKey = change request id, the original's full amount; initiator,
+  debit and credit party `ORG`/`upay-ops`, since the orchestrator reverses the original's own parties
+  and no customer data has to leave this service). Audit (`mw.audit.event.v1`, resource
+  `transaction/<txnId>`, so it shows in the txn's trail): `admin.change_request.created` (maker;
+  before `{txnStatus}`), `.approved` / `.rejected` (checker; before `{status: PENDING, txnStatus}`,
+  after `{status, txnStatus, action, changeRequestId, makerId, ...}`), `.expired` (actor system);
+  reasons only scrubbed (`MaskingPolicy.scrub`), never logged. `scheduler/ChangeRequestExpiryJob`
+  (ShedLock `change-request-expiry`, `mw.change-requests.expiry-cron` every 5 min, batch
+  `expiry-batch`) expires due requests. Bodies are checked against `derived-schemas/` by
+  `filter/BodySchemaAdvice` + `service/BodySchema` (copied from mw-portal-api; json-schema-validator
+  is now an implementation dependency, Jackson excluded) before binding: `400 MW-VAL-001`.
+  Decision (no product owner available): only ops-maker / ops-checker act on transactions (not
+  recon-*, not ops-emergency: its post-approval flow is for partner changes, ticket 38); a reject by
+  the maker (withdrawal) is not offered. The orchestrator's resulting state is not tracked here: the
+  detail view and audit trail show it.
 - Internal API identity (M3 gate decision; `client/ServiceTokenClient`, `client/InternalApiCaller`):
   Keycloak realm `services` client `mw-admin-api` (client credentials, HTTP Basic, token carries
   audiences mw-orchestrator and mw-audit-dw), cached until 30 s before `expires_in`, dropped on a
@@ -56,20 +90,29 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   AppRole. Stack: included in `deploy/compose/mvp/compose.yml`, low-mem limit 384 MiB, Hikari pool 2.
 - Keycloak realm `ops` (`deploy/compose/platform/keycloak/realms/ops-realm.json`) carries the 15.4
   roles; dev users `ops-viewer01` (viewer), `ops-maker01`, `ops-checker01`, `ops-admin01`
-  (integration-maker, security-admin), `ops-compliance01`, `ops-auditor01`, all TOTP-required. A
+  (integration-maker, security-admin), `ops-compliance01`, `ops-auditor01`, all TOTP-required; the
+  dev-only e2e operators `ops-e2e-maker01` (ops-maker) and `ops-e2e-checker01` (ops-checker) have a
+  seeded TOTP credential instead (secret `KC_OPS_TEST_TOTP_SECRET`, token route
+  `deploy/apisix/routes/auth-ops-token.json`; ticket 37). A
   running stack keeps its old realm (import skips existing realms): `make down DOWN_ARGS=-v` first.
 
 ## Contracts owned
 
 - `api/mw-admin-api/admin.v1.openapi.yaml` (admin API v1; `contracts/ApiContractsTest` validates the
-  served bodies). No JSON request body yet (GETs only); a later POST needs a derived body schema and
-  a `filter/BodySchemaAdvice` as in mw-portal-api.
-- `events/mw-admin-api/mw.config.changed.v1` (owned, not produced yet: tickets 37/38).
+  served bodies). JSON request bodies (change request, reject) each have a derived schema in
+  `src/main/resources/derived-schemas/` (`scripts/derived-schemas.sh --write` after a contract
+  change) registered in `filter/BodySchemaAdvice`.
+- `events/mw-admin-api/mw.txn.action.v1` (ticket 37): approved INQUIRE / FORCE_COMMIT /
+  FORCE_RELEASE for mw-orchestrator (Kafka topic 6 partitions, 7 d, retry group mw-orchestrator).
+- `events/mw-admin-api/mw.config.changed.v1` (owned, not produced yet: ticket 38).
 
 ## Contracts used
 
 - `contracts.yml`: produces `events/mw-audit-dw/mw.audit.event.v1` (own type `dto/AuditEvent`;
-  `contracts/ProducedContractsTest`, and `AdminTransactionApiIT` validates the outbox row), serves
+  `contracts/ProducedContractsTest`, and `AdminTransactionApiIT` validates the outbox row),
+  `events/mw-admin-api/mw.txn.action.v1` (`dto/TxnAction`) and a REVERSAL on
+  `events/mw-orchestrator/mw.txn.request.v1` (`dto/ReversalRequest`; `ChangeRequestApiIT`
+  validates both outbox rows), serves
   `admin.v1`; consumes `api/mw-orchestrator/txn-query.v1` (own type `dto/AdminTxn`) and
   `api/mw-audit-dw/audit-query.v1` (own type `dto/AuditTrail`), unknown fields ignored
   (`contracts/ApiContractsTest` reads contract-shaped answers). No consumed events.
@@ -97,7 +140,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 | Command | What it does |
 | --- | --- |
 | `./gradlew test` | unit, slice and contract tests, no Docker |
-| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker); `AdminTransactionApiIT` (stub orchestrator + audit-dw) |
+| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker); `AdminTransactionApiIT` (stub orchestrator + audit-dw), `ChangeRequestApiIT` (maker-checker, stub orchestrator) |
 | `./gradlew conformance` | the `@Conformance` suite |
 | `./gradlew check` | all three plus the JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
 | `./gradlew check bootJar && docker build -t mw-admin-api:dev .` | image, as spec 4.3 rule 1 |

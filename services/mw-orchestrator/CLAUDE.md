@@ -9,7 +9,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   Consumes `mw.txn.request.v1` (`route/TxnRequestRoute`), the core results on
   `core.wallet.event.v1` (`route/CoreWalletEventRoute`) and `core.payment.event.v1` (`route/CorePaymentEventRoute`, same handler) and partner adapter answers on
   `mw.partner.reply.v1` (`route/PartnerReplyRoute`) and partner callbacks on `mw.partner.inbound.v1`
-  (`route/PartnerInboundRoute`), all with retry topics and DLQ. Publishes every
+  (`route/PartnerInboundRoute`) and operator actions on `mw.txn.action.v1` (`route/TxnActionRoute`,
+  ticket 37), all with retry topics and DLQ. Publishes every
   state change on `mw.txn.status.v1`, core commands on `core.payment.command.v1` (HoldFunds, CommitHold,
   ReleaseHold) or `core.wallet.command.v1` (every other command; `service/CoreTopics`, ticket 50) and partner
   requests on `mw.partner.request.<family>.v1`, all through the transactional outbox, in the same
@@ -111,8 +112,25 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   STATUS_QUERY answer after the txn left UNKNOWN changes nothing; one contradicting the
   resolution is logged `txn.outcome.conflict`. Gauges `mw_txn_unknown_open` and
   `mw_manual_review_open` (`service/BacklogMetrics`, count per scrape). MANUAL_REVIEW arms no timer
-  (the daily ageing check above reports it); ManualCommit / ManualRelease come with the admin API and
-  are refused for a flow without the step (S2).
+  (the daily ageing check above reports it); ManualCommit / ManualRelease come from the admin API
+  (below) and are refused for a flow without the step (S2).
+- Operator actions (ticket 37, maker-checker approved in mw-admin-api): `mw.txn.action.v1` (contract
+  owned by mw-admin-api; `route/TxnActionRoute`, retry topics + DLQ, `messaging/TxnActionListener`,
+  own type `dto/TxnAction`) -> `service/OperatorActionService`, inbox key `actionId` (consumer
+  `orchestrator.txn-actions`): FORCE_COMMIT = ManualCommit, FORCE_RELEASE = ManualRelease (MANUAL_REVIEW
+  only), INQUIRE = `SagaEvent.ManualInquiry` (UNKNOWN or MANUAL_REVIEW, self-transition with
+  SEND_INQUIRY: one status inquiry now, the schedule's timer untouched; in MANUAL_REVIEW the answer
+  only lands on the timeline, `partner_call` / `core_call`, and is logged late/conflict). A forced
+  commit / release / credit is its own core command round: commandId `<txnId>:commit:manual-<n>`
+  (`release`, `credit` likewise; n = how many ManualCommit / ManualRelease steps the txn has had,
+  `TransactionRepository.countSteps`), so the core decides it afresh instead of replaying the refusal
+  it logged for `<txnId>:commit`; the core's holds make that safe (commit of a committed hold is a
+  no-op). An action the state or flow does not allow, or an unknown action, changes nothing. Every
+  action is audited in the same transaction: `txn.operator.action`, actor `user`/checkerId, before
+  `{status}`, after `{status, action, makerId, changeRequestId[, refused: MW-VAL-023]}`, outcome
+  SUCCESS / FAILURE (the state change itself is audited as usual by `SagaEngine`). An action for an
+  unknown txn is logged `txn.action.unknown_txn` and dropped. Reversal is NOT an action: mw-admin-api
+  sends a REVERSAL on `mw.txn.request.v1` (channel SYSTEM), handled as below.
 - Partner callbacks (ticket 22, spec 11.2, `service/PartnerInboundService`, own type
   `dto/PartnerInbound`): kind CALLBACK only, families telco/billpay/bank (REMITTANCE / NPSB_CREDIT logged
   `partner.inbound.unsupported` and dropped; C2W needs none: its confirmation is a CALLBACK of the customer's own request, decision in mw-adapter-bank's CLAUDE.md). Inbox key `inboundId` (the adapter
@@ -226,7 +244,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   Other codes used: `MW-VAL-010` unsupported txn type, `MW-VAL-011` amount <= 0, `MW-VAL-012`
   partner missing for a flow with a partner leg, `MW-IDEM-001`, `MW-TMO-001`, `MW-TMO-002`,
   `MW-TMO-003` (not found by inquiry, retryable), `MW-TMO-004` (inquiry exhausted),
-  `MW-TMO-005` (conflicting inquiry answer), reversal `MW-VAL-020..022`, `MW-AUTH-020`, `MW-TMO-020`, bulk channel `MW-AUTH-021`;
+  `MW-TMO-005` (conflicting inquiry answer), reversal `MW-VAL-020..022`, operator action not allowed `MW-VAL-023`, `MW-AUTH-020`, `MW-TMO-020`, bulk channel `MW-AUTH-021`;
   partner codes come from the adapter's reply.
 - PIN: only ciphertext. It is kept in `transaction.encrypted_pin` (jsonb) because PostTransfer
   follows ValidateTransaction, and cleared (`TransactionRecord.moved`, the one write path) on every
@@ -318,6 +336,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   consumes the topic yet, so it is not in `contracts.yml`.
 - `events/mw-core-mock/core.event.v1.schema.json`: own type `dto/CoreEvent` (payload read as a
   tree per `eventType`). Unknown fields are ignored.
+- `events/mw-admin-api/mw.txn.action.v1.schema.json` (consumed, ticket 37): own type `dto/TxnAction`;
+  `ConsumedContractsTest` reads the valid samples, `service/OperatorActionIT` covers the handling.
+  The REVERSAL mw-admin-api sends on `mw.txn.request.v1` names only `ORG`/`upay-ops` as parties and
+  the change request id as idempotency key.
 - `mw.partner.inbound.v1` (owned, consumed): own type `dto/PartnerInbound`;
   `PartnerMessagesTest` reads every valid sample, `PartnerCallbackSagaIT` validates the callbacks
   it feeds in.

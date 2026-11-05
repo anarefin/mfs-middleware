@@ -9,8 +9,12 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
+import mfs.mw.admin.api.dto.AdminTxn;
 import mfs.mw.admin.api.dto.Operator;
+import mfs.mw.admin.api.entity.ChangeRequest;
+import mfs.mw.admin.api.mapper.ChangeRequestMapper;
 import mfs.mw.admin.api.mapper.RevealAuditMapper;
+import mfs.mw.admin.api.util.UuidV7;
 import mfs.mw.admin.api.security.AdminRole;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
@@ -29,6 +33,14 @@ class ProducedContractsTest {
   static final Instant AT = Instant.parse("2026-11-05T10:00:00Z");
   static final UUID TXN = UUID.fromString("019a5b2e-1c00-7abc-8def-000000000002");
 
+  /** A PENDING request as the maker leaves it (ticket 37). */
+  static ChangeRequest request(String action, String before, String after) {
+    return new ChangeRequest(
+        UUID.fromString("0d6c3f0e-1111-4b5e-9a1e-000000000001"), ChangeRequest.TRANSACTION, TXN.toString(), action,
+        Map.of(), ChangeRequestMapper.diff(before, after), "ops-maker01", "sub-maker", ChangeRequest.Status.PENDING,
+        null, null, "customer 01712345678 complained", null, AT, null, AT.plusSeconds(72 * 3600));
+  }
+
   static final Map<String, Supplier<List<Object>>> FIXTURES =
       Map.of(
           "events/mw-audit-dw/mw.audit.event.v1.schema.json",
@@ -38,7 +50,24 @@ class ProducedContractsTest {
                       new Operator("sub-1", "ops-compliance01", Set.of(AdminRole.COMPLIANCE_OFFICER)),
                       AdminRole.COMPLIANCE_OFFICER, TXN, "corr-1", AT),
                   RevealAuditMapper.event(
-                      new Operator("sub-2", "ops-auditor01", Set.of(AdminRole.AUDITOR)), AdminRole.AUDITOR, TXN, null, AT)));
+                      new Operator("sub-2", "ops-auditor01", Set.of(AdminRole.AUDITOR)), AdminRole.AUDITOR, TXN, null, AT),
+                  ChangeRequestMapper.created(request("REVERSE", "COMPLETED", "REVERSING"), "corr-1"),
+                  ChangeRequestMapper.approved(request("FORCE_COMMIT", "MANUAL_REVIEW", "COMMITTING"), "ops-checker01",
+                      "mw.txn.action.v1", "corr-1", AT),
+                  ChangeRequestMapper.rejected(request("REVERSE", "COMPLETED", "REVERSING"), "ops-checker01", "no", null, AT),
+                  ChangeRequestMapper.expired(request("INQUIRE", "UNKNOWN", "UNKNOWN"), "corr-1", AT)),
+          "events/mw-admin-api/mw.txn.action.v1.schema.json",
+          () ->
+              List.of(
+                  ChangeRequestMapper.action(request("FORCE_COMMIT", "MANUAL_REVIEW", "COMMITTING"), UUID.randomUUID(),
+                      "ops-checker01", "corr-1", AT),
+                  ChangeRequestMapper.action(request("INQUIRE", "UNKNOWN", "UNKNOWN"), UUID.randomUUID(),
+                      "ops-checker01", "corr-1", AT)),
+          "events/mw-orchestrator/mw.txn.request.v1.schema.json",
+          () ->
+              List.of(
+                  ChangeRequestMapper.reversal(request("REVERSE", "COMPLETED", "REVERSING"), UuidV7.at(AT),
+                      new AdminTxn.Amount(5000, "BDT"), "ops-checker01", "corr-1", AT)));
 
   static final List<String> ENTRIES = ContractManifest.load().producedEvents();
 

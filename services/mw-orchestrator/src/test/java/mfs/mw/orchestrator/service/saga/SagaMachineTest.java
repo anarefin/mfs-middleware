@@ -84,6 +84,10 @@ class SagaMachineTest {
     // a transaction handed over from REVERSING whose reversal the core applied after all
     row(Status.MANUAL_REVIEW, new ReversalAcknowledged(), Status.REVERSED, Effect.NONE);
     row(Status.MANUAL_REVIEW, new ReversalQueryResult(true), Status.REVERSED, Effect.NONE);
+
+    // an operator's status inquiry (ticket 37): one inquiry now, the state stays
+    row(Status.UNKNOWN, new ManualInquiry(), Status.UNKNOWN, Effect.SEND_INQUIRY);
+    row(Status.MANUAL_REVIEW, new ManualInquiry(), Status.MANUAL_REVIEW, Effect.SEND_INQUIRY);
   }
 
   private static List<SagaEvent> allEvents() {
@@ -96,7 +100,7 @@ class SagaMachineTest {
         new CommitAcknowledged(), new CommitRefused(), new ReleaseAcknowledged(), new ReleaseRefused(),
         new ReversalRequested(), new ReversalAcknowledged(), new ReversalFailed(),
         new ReversalResendsStopped(), new ReversalUnconfirmed(), new ReversalQueryResult(true), new ReversalQueryResult(false),
-        new ManualCommit(), new ManualRelease(), new DeadlineExpired());
+        new ManualCommit(), new ManualRelease(), new ManualInquiry(), new DeadlineExpired());
   }
 
   @Test
@@ -108,7 +112,7 @@ class SagaMachineTest {
 
   @Test
   void everyListedTransitionIsTakenWithItsEffect() {
-    assertThat(TABLE).hasSize(44);
+    assertThat(TABLE).hasSize(46);
     TABLE.forEach(
         (key, expect) -> {
           Transition t = SagaMachine.apply(key.from(), key.event());
