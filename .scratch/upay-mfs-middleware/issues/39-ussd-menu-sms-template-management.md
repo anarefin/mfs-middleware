@@ -8,7 +8,7 @@
 - 26: USSD engine over HTTP transport
 - 24: Notify SMS over SMPP
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] e2e: an approved menu text change shows up on the next USSD session but not in an ongoing one (`tests/e2e/.../admin-content.feature`, runs at the gate; covered in-module by mw-ussd `MenuPublisherIT`)
 - [x] e2e: an approved SMS template change is used for the next notification (`admin-content.feature`, runs at the gate; in-module mw-notify `TemplatePublisherIT`)
