@@ -120,7 +120,9 @@ one `partner.call.audit` log event per call with the raw request/response masked
 rule, then free-text scrubbing; headers never), cut at 4 KB, and the same entry as a
 `partner.call.completed` audit event on `mw.audit.event.v1` (above).
 
-The OCS is the seed instance `ocs` in `application.yml` (`mw.partners`, base URL from `OCS_BASE_URL`,
+The OCS is the seed instance `ocs`, a dev seed in `application-dev.yml` (profile `dev`, D23: set by this module's `compose.yml`
+and the test config; the packaged `application.yml` seeds no partner, so a production start has none
+until a `partner/<id>` record arrives, and the image's AOT training run needs no http override) (`mw.partners`, base URL from `OCS_BASE_URL`,
 timeout 20 s, Resilience4j instance `ocs`: bulkhead 100, circuit breaker with 16 s slow-call threshold)
 and `default-partner: ocs`, so gp/robi/banglalink/teletalk are all served by it until they get their own
 `partner/<id>` record. Never add a retry to a partner call.
@@ -134,7 +136,8 @@ into all three.
 Copying it into another adapter (tickets 21, 23): copy `partner/` with its tests
 (`src/test/.../partner/`, including the `PartnerFramework` harness and the security tests), rename the
 package, add `jsonata` to the module's version catalog and build, copy the `mw.partners` block shape into
-`application.yml` with that adapter's seed partners, `security.allowed-hosts` per instance (and
+`application.yml` (security, default partner) and its seed partners into `application-dev.yml` (dev
+profile only; the test config activates it), `security.allowed-hosts` per instance (and
 `insecure-http-hosts` for its simulator only) and Resilience4j instances, keep secrets under
 `mw.partner-secrets.<instance>.<name>` in OpenBao, and in the test config set
 `mw.partners.config-consumer.enabled: false` and allow localhost. Keep operation paths plain (no query

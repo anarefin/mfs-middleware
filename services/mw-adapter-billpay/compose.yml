@@ -78,7 +78,10 @@ services:
       # Utility bill aggregator endpoint; the MVP stack targets the aggregator simulator
       # (mw-simulators, /billagg/v1/*).
       BILLAGG_BASE_URL: ${BILLAGG_BASE_URL:-http://mw-simulators:8080}
-      # Dev stack only: the simulator is plain http. The packaged default allows no http host.
+      # Dev stack only: the seed partners on the simulator (application-dev.yml; the packaged
+      # config has none) ...
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      # ... and plain http for the simulator. The packaged default allows no http host.
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
     deploy:
       resources:

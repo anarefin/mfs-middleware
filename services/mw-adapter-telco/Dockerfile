@@ -24,9 +24,9 @@ ENV JAVA_TOOL_OPTIONS="-XX:+UseZGC -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemor
 
 # AOT cache training run: start the context once, then exit. No database or Kafka exists at
 # build time: Flyway is skipped here only (it runs on every real start-up, 16.4); the pool
-# and Kafka clients connect lazily. The seed partners point at the plain-http simulator, so the
-# training run (only) allows that host; the image itself keeps the secure empty default.
-RUN MW_PARTNER_INSECURE_HTTP_HOSTS=mw-simulators java -XX:AOTCacheOutput=/app/app.aot -Dspring.context.exit=onRefresh \
+# and Kafka clients connect lazily. No profile: the packaged config seeds no partner (the dev
+# seeds are in application-dev.yml), so no plain-http host needs allowing here.
+RUN java -XX:AOTCacheOutput=/app/app.aot -Dspring.context.exit=onRefresh \
       -Dspring.flyway.enabled=false -jar app.jar > /dev/null
 
 USER 10001:10001

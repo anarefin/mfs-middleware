@@ -120,7 +120,9 @@ mapping put under `attributes`; empty otherwise), used by the INQUIRY mapping to
 amount due (since ticket 23 also in mw-adapter-telco's and mw-adapter-bank's copies, so the
 three are identical). A fix to the framework must be applied to all three copies.
 
-The aggregator is the seed instance `billagg` in `application.yml` (`mw.partners`; wire format of
+The aggregator is the seed instance `billagg`, a dev seed in `application-dev.yml` (profile `dev`, D23: set by this module's `compose.yml`
+and the test config; the packaged `application.yml` seeds no partner, so a production start has none
+until a `partner/<id>` record arrives, and the image's AOT training run needs no http override) (`mw.partners`; wire format of
 the mw-simulators aggregator: `POST /billagg/v1/payments {transactionId, billerCode, billNumber,
 amount:"667.00"}` (200 SUCCESS, 422 FAILED, or 202 PENDING with the outcome by callback),
 `GET /billagg/v1/payments/{reference}`, `POST /billagg/v1/bills/fetch {billerCode, billNumber}`,

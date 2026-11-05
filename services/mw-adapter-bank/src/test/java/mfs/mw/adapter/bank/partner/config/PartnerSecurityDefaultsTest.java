@@ -15,7 +15,8 @@ import org.springframework.core.io.ClassPathResource;
 /**
  * The packaged {@code application.yml} allows no plain-http partner host (ticket 50): only the
  * dev Compose stack ({@code MW_PARTNER_INSECURE_HTTP_HOSTS} in {@code compose.yml}) and the tests
- * allow the simulator host.
+ * allow the simulator host. It also seeds no partner (D23): the simulator seeds live in the dev
+ * profile ({@code application-dev.yml}), so a production start has no partners.
  */
 class PartnerSecurityDefaultsTest {
 
@@ -37,6 +38,34 @@ class PartnerSecurityDefaultsTest {
 
     assertThat(security.insecureHttpHosts()).containsExactly("mw-simulators");
     assertThat(policyFor(security).problems(anyInstance(security), SIMULATOR)).isEmpty();
+  }
+
+  @Test
+  void thePackagedConfigSeedsNoPartner() throws IOException {
+    assertThat(packagedPartners(false).instances()).isEmpty();
+  }
+
+  @Test
+  void theDevProfileSeedsPartnersOnTheSimulatorOnly() throws IOException {
+    Map<String, PartnerConfig> seeds = packagedPartners(true).instances();
+
+    assertThat(seeds).isNotEmpty();
+    assertThat(seeds.values())
+        .allSatisfy(p -> assertThat(p.baseUrl().getHost()).isEqualTo("mw-simulators"));
+  }
+
+  private static PartnerProperties packagedPartners(boolean devProfile) throws IOException {
+    StandardEnvironment environment = new StandardEnvironment();
+    environment.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+    environment.getPropertySources().remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
+    YamlPropertySourceLoader loader = new YamlPropertySourceLoader();
+    if (devProfile) {
+      loader.load("dev", new ClassPathResource("application-dev.yml"))
+          .forEach(environment.getPropertySources()::addLast);
+    }
+    loader.load("packaged", new ClassPathResource("application.yml"))
+        .forEach(environment.getPropertySources()::addLast);
+    return Binder.get(environment).bind("mw.partners", PartnerProperties.class).get();
   }
 
   private static PartnerProperties.Security packagedSecurity(Map<String, Object> env)

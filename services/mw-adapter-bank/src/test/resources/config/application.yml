@@ -1,4 +1,8 @@
 # Test-only overrides, merged over src/main/resources/application.yml.
+spring:
+  profiles:
+    # The tests run on the dev seed partners (application-dev.yml); prod config has none.
+    active: dev
 mw:
   bank:
     request-consumer:

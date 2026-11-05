@@ -1,0 +1,124 @@
+# Dev profile only (SPRING_PROFILES_ACTIVE=dev): set by this module's compose.yml for the dev
+# stack and by the test config. Seed partner instances (version 0) pointing at mw-simulators
+# over plain http; the packaged application.yml has none, so a production start has no
+# partners. Plain http still needs MW_PARTNER_INSECURE_HTTP_HOSTS (compose.yml sets it).
+mw:
+  partners:
+    instances:
+      # Utility bill aggregator REST/JSON (wire format: mw-simulators billagg). Async-callback
+      # template (ticket 22): a payment is answered at once (200 SUCCESS / 422 FAILED) or accepted
+      # (202 PENDING) with the outcome following as a signed callback to
+      # /partner/billagg/callback/payments (APISIX -> controller/PartnerCallbackController).
+      billagg:
+        template: rest-json-async-callback
+        base-url: ${BILLAGG_BASE_URL:http://mw-simulators:8080}
+        connect-timeout-ms: 3000
+        # Aggregator timeout (spec 11.1 says 30 s) is 25 s here so the adapter answers before the
+        # orchestrator's 30 s partner deadline; the read timeout sits a little above so the time
+        # limiter decides first. Resilience4j bulkhead/circuit breaker: instance "billagg".
+        timeout-ms: 25000
+        read-timeout-ms: 27000
+        # hmac-sha256 both ways: outbound calls are signed, and a callback is believed only with a
+        # valid signature over method, path, timestamp and body (300 s skew). The shared secret is
+        # the property mw.partner-secrets.billagg.hmac-secret (OpenBao secret/mw-adapter-billpay,
+        # provisioned by init/init.sh from the generated BILLAGG_HMAC_SECRET in dev); never here.
+        auth:
+          scheme: hmac-sha256
+          credentials-ref: hmac-secret
+        # Raw bodies are audited masked: these fields by rule, everything by free-text scrubbing.
+        sensitive-fields:
+          billNumber: ACCOUNT
+        # Aggregator codes that do not say whether the payment was applied: reply UNKNOWN.
+        ambiguous-codes: ["9876"]
+        # Aggregator code -> MW-PTR-BILLAGG-<suffix>. Unlisted codes become UNMAPPED.
+        error-map:
+          "[3001]": { suffix: BILL_NOT_FOUND, retryable: false }
+          "[3002]": { suffix: BILL_ALREADY_PAID, retryable: false }
+          "[3003]": { suffix: PAYMENT_REFUSED, retryable: false }
+          "[3004]": { suffix: UNKNOWN_BILLER, retryable: false }
+        operations:
+          # POST /billagg/v1/payments {transactionId, billerCode, billNumber, amount:"667.00"}.
+          # Only 422 with a code and 400 are rejections; any other non-2xx is UNKNOWN (fail closed).
+          "[PAY]":
+            method: POST
+            path: /billagg/v1/payments
+            definite-statuses: [400, 422]
+            request: |
+              {"transactionId": reference, "billerCode": partner.billerCode,
+               "billNumber": creditParty.id, "amount": amount.major}
+            response: |
+              status = 200
+                ? (body.status = "SUCCESS" and $type(body.paymentRef) = "string" and body.paymentRef != ""
+                    ? {"outcome": "SUCCESS", "partnerRef": body.paymentRef, "code": body.code}
+                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+              : status = 202
+                ? (body.status = "PENDING"
+                    ? {"outcome": "PENDING", "partnerRef": body.paymentRef, "code": body.code}
+                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+              : status = 422
+                ? ($type(body.code) = "string" and body.code != ""
+                    ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+              : status = 400
+                ? {"outcome": "FAILED", "code": "HTTP_400", "message": body.message}
+              : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          # Status inquiry (spec 7.4): GET /billagg/v1/payments/{reference}. NOT_FOUND only for a
+          # 404 carrying the aggregator's NOT_FOUND body; anything else indefinite is UNKNOWN.
+          "[STATUS_QUERY]":
+            method: GET
+            path: /billagg/v1/payments/{reference}
+            definite-statuses: [200, 404]
+            response: |
+              status = 200
+                ? (body.status = "SUCCESS" and $type(body.paymentRef) = "string" and body.paymentRef != ""
+                    ? {"outcome": "SUCCESS", "partnerRef": body.paymentRef, "code": body.code}
+                    : body.status = "FAILED" and $type(body.code) = "string" and body.code != ""
+                      ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+                    : body.status = "PENDING"
+                      ? {"outcome": "PENDING", "partnerRef": body.paymentRef, "code": body.code}
+                      : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+              : status = 404 and body.status = "NOT_FOUND"
+                ? {"outcome": "NOT_FOUND", "code": body.code, "message": body.message}
+              : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          # Callback (ticket 22): POST /partner/billagg/callback/payments with the payment body
+          # {transactionId (our reference), status SUCCESS|FAILED|PENDING, code, message, paymentRef},
+          # signed (auth above). Input {headers, body}; anything without a known status is refused.
+          # The path is where APISIX forwards it; it is never called outbound.
+          "[CALLBACK]":
+            method: POST
+            path: /partner/billagg/callback/payments
+            response: |
+              $type(body.transactionId) != "string" or body.transactionId = "" ? {}
+              : body.status = "SUCCESS" and $type(body.paymentRef) = "string" and body.paymentRef != ""
+                ? {"outcome": "SUCCESS", "partnerRef": body.paymentRef, "reference": body.transactionId,
+                   "code": body.code, "message": body.message}
+              : body.status = "FAILED" and $type(body.code) = "string" and body.code != ""
+                ? {"outcome": "FAILED", "partnerRef": body.paymentRef, "reference": body.transactionId,
+                   "code": body.code, "message": body.message}
+              : body.status = "PENDING"
+                ? {"outcome": "PENDING", "partnerRef": body.paymentRef, "reference": body.transactionId,
+                   "code": body.code, "message": body.message}
+              : {}
+          # Bill fetch (ticket 21, internal API only; no money moves):
+          # POST /billagg/v1/bills/fetch {billerCode, billNumber}. 200 DUE carries the amount due
+          # (decimal string, major units) as attributes; 422 with a code is a refusal (unknown
+          # bill, already paid, unknown biller).
+          "[INQUIRY]":
+            method: POST
+            path: /billagg/v1/bills/fetch
+            definite-statuses: [400, 422]
+            request: |
+              {"billerCode": partner.billerCode, "billNumber": creditParty.id}
+            response: |
+              status = 200
+                ? (body.status = "DUE" and $type(body.amount) = "string" and $type(body.billNumber) = "string"
+                    ? {"outcome": "SUCCESS", "partnerRef": body.billNumber, "code": body.code,
+                       "attributes": {"amount": body.amount, "dueDate": body.dueDate, "billPeriod": body.billPeriod}}
+                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+              : status = 422
+                ? ($type(body.code) = "string" and body.code != ""
+                    ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+              : status = 400
+                ? {"outcome": "FAILED", "code": "HTTP_400", "message": body.message}
+              : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
