@@ -1,18 +1,21 @@
 package mfs.mw.app.gateway.config;
 
 import mfs.mw.app.gateway.filter.CachedBodyFilter;
+import mfs.mw.app.gateway.filter.CachedBodyRequest;
 import mfs.mw.app.gateway.filter.SubmitSchemaInterceptor;
 import mfs.mw.app.gateway.service.SubmitBodySchema;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.HandlerExceptionResolver;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The submit body schema check (ticket 29, formerly APISIX request-validation): {@code /app/**}
- * POST bodies are kept in memory ({@link CachedBodyFilter}) so the schema check, the device
+ * POST bodies (at most 64 KiB, else 413) are kept in memory ({@link CachedBodyFilter}) so the schema check, the device
  * signature and the controller all read the same bytes; the check runs after the JWT and before
  * the device gate ({@code DeviceBindingConfig}), as it did at the edge.
  */
@@ -29,8 +32,10 @@ public class SubmitSchemaConfig implements WebMvcConfigurer {
   }
 
   @Bean
-  FilterRegistrationBean<CachedBodyFilter> cachedBodyFilter() {
-    FilterRegistrationBean<CachedBodyFilter> r = new FilterRegistrationBean<>(new CachedBodyFilter());
+  FilterRegistrationBean<CachedBodyFilter> cachedBodyFilter(
+      @Qualifier("handlerExceptionResolver") HandlerExceptionResolver errors) {
+    FilterRegistrationBean<CachedBodyFilter> r =
+        new FilterRegistrationBean<>(new CachedBodyFilter(errors, CachedBodyRequest.MAX_BODY));
     r.addUrlPatterns("/app/*");
     return r;
   }

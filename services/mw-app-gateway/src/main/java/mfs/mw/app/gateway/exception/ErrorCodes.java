@@ -13,6 +13,8 @@ public final class ErrorCodes {
   public static final String VAL_METHOD = "MW-VAL-004";
   /** Content type not supported. */
   public static final String VAL_MEDIA_TYPE = "MW-VAL-005";
+  /** Body over the 64 KiB cap (the same code as the APISIX edge's 413): HTTP 413. */
+  public static final String VAL_BODY_TOO_LARGE = "MW-VAL-BODY_TOO_LARGE";
   /** Transaction type not offered on this channel (same code as mw-orchestrator). */
   public static final String VAL_UNSUPPORTED_TXN_TYPE = "MW-VAL-010";
   /** The counterparty wallet is the initiator's own wallet (wallet-to-wallet types). */

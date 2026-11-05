@@ -27,14 +27,15 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   (actuator) are open inside the app network. Keycloak is reached over `data` (MVP deviation of
   18.1), not `ops`.
 - Device binding (ticket 29, spec 9.1/18.6; `config/DeviceBindingConfig`, `security/DeviceBindingInterceptor`
-  + `@DeviceGate`, `service/DeviceBindingService`, `service/RequestSignatures`, `client/DeviceSessionStore`,
+  + `@DeviceGate`, `service/DeviceBindingService`, `service/RequestSignatures`, `repository/DeviceSessionStore`,
   table `app_device` V6): after the JWT, every `/app/**` handler needs `X-Device-Id` of a device ACTIVE for the
   token's wallet (`401 MW-AUTH-003`) and a live Valkey session `sess:{sub}:{deviceId}` (sliding idle timeout
   `mw.app-gateway.device-binding.idle-timeout` 5 min, per channel `idle-timeout-by-channel`; `401 MW-AUTH-007`).
-  `POST /app/v1/transactions` (`@DeviceGate(SIGNED)`) also needs `X-Timestamp` (epoch ms, ±`clock-skew` 5 min,
-  `MW-AUTH-005`), `X-Nonce` (once per device: Valkey `nonce:{deviceId}:{nonce}` SET NX, TTL 2x skew,
-  `MW-AUTH-006`) and `X-Signature` (ECDSA P-256 SHA-256, DER or P1363, over `METHOD\nPATH\nhex(sha256(body))\n
-  TIMESTAMP\nNONCE\nDEVICE-ID`; `MW-AUTH-004`). The body hashed is the received body (`filter/CachedBodyFilter`): exactly the bytes the
+  `POST /app/v1/transactions` (`@DeviceGate(SIGNED)`) also needs `X-Timestamp` (epoch ms, strictly less than
+  `clock-skew` 5 min either way, `MW-AUTH-005`), `X-Nonce` (once per device: Valkey `nonce:{deviceId}:{nonce}` SET NX,
+  TTL 2x skew + 30 s, above the 2x skew acceptance window; `MW-AUTH-006`) and `X-Signature` (ECDSA P-256 SHA-256, DER or P1363, over `METHOD\nPATH\nhex(sha256(body))\n
+  TIMESTAMP\nNONCE\nDEVICE-ID`; `MW-AUTH-004`). The body hashed is the received body (`filter/CachedBodyFilter`, at most 64 KiB read with
+  `readNBytes(limit+1)`, a larger one `413 MW-VAL-BODY_TOO_LARGE` as at the edge): exactly the bytes the
   schema check and the controller parse; no hash is taken from a header. That is why APISIX runs no
   request-validation on this route (it forwards a validated body re-encoded). Order:
   device, timestamp, signature, nonce, session. `POST /app/v1/devices {publicKey}` binds (signed with that key,
