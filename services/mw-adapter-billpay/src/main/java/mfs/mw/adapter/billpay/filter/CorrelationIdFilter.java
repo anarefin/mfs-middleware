@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import mfs.mw.adapter.billpay.util.MaskingPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -27,9 +28,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
  *
  * <p>Correlation and trace ids are logged unmasked (they are traced by exact match), so a caller
  * value that could hide an NID, account number or MSISDN is not let in: a caller id with a run of
- * 6 or more digits is replaced by a generated UUID like an unsafe one (the APISIX edge applies the
- * same rule), and a {@code traceparent} whose trace id or parent id holds such a run is dropped
- * with its {@code tracestate}, so tracing starts a new trace. This filter runs before the server
+ * 6 or more digits (the APISIX edge applies the same rule), or one that {@link
+ * MaskingPolicy#scrub(String)} would change (such as a valid UUID that spreads an MSISDN over its
+ * groups), is replaced by a generated UUID like an unsafe one, and a {@code traceparent} whose
+ * trace id or parent id is such a value is dropped with its {@code tracestate}, so tracing starts
+ * a new trace. This filter is the gate the log formatter and the audit trail rely on: they keep
+ * correlation, trace and span ids whole on their shape alone. This filter runs before the server
  * observation filter, which is what reads {@code traceparent}.
  */
 @Component
@@ -55,11 +59,12 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
     String id;
     if (incoming == null || !SAFE.matcher(incoming).matches()) {
       id = UUID.randomUUID().toString();
-    } else if (SIX_DIGITS.matcher(incoming).find()) {
+    } else if (unsafeId(incoming)) {
       id = UUID.randomUUID().toString();
       log.atWarn()
           .addKeyValue("event", "correlation.id.replaced")
-          .log("caller correlation id holds a run of 6+ digits; replaced by a generated one");
+          .log("caller correlation id holds a run of 6+ digits or a number the scrub masks;"
+              + " replaced by a generated one");
     } else {
       id = incoming;
     }
@@ -68,7 +73,8 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
       forwarded = new WithoutTraceContext(request);
       log.atWarn()
           .addKeyValue("event", "traceparent.dropped")
-          .log("caller traceparent holds a run of 6+ digits; dropped, a new trace is started");
+          .log("caller traceparent holds a run of 6+ digits or a number the scrub masks;"
+              + " dropped, a new trace is started");
     }
     forwarded.setAttribute(MDC_KEY, id);
     response.setHeader(HEADER, id);
@@ -82,7 +88,7 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
 
   /**
    * Whether the trace id or parent id of a W3C {@code traceparent} ({@code
-   * version-traceid-parentid-flags}) holds a run of 6+ digits. Anything that does not parse is
+   * version-traceid-parentid-flags}) holds a run of 6+ digits or a number the scrub masks. Anything that does not parse is
    * ignored by tracing anyway and is left alone.
    */
   private static boolean unsafeTraceparent(String traceparent) {
@@ -90,8 +96,12 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
       return false;
     }
     String[] parts = traceparent.strip().split("-");
-    return parts.length >= 3
-        && (SIX_DIGITS.matcher(parts[1]).find() || SIX_DIGITS.matcher(parts[2]).find());
+    return parts.length >= 3 && (unsafeId(parts[1]) || unsafeId(parts[2]));
+  }
+
+  /** A caller id with a run of 6+ digits, or one that {@link MaskingPolicy#scrub} would change. */
+  private static boolean unsafeId(String id) {
+    return SIX_DIGITS.matcher(id).find() || !MaskingPolicy.scrub(id).equals(id);
   }
 
   /** The request without its {@code traceparent} and {@code tracestate} headers. */

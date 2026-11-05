@@ -73,8 +73,9 @@ class JsonLogFormatterTest {
   /**
    * System ids are kept whole however long their digit runs: a txnId that is a valid RFC 9562
    * UUID (services only log parsed or generated ones), a correlationId that is such a UUID (the
-   * boundary replaces any caller id with a run of 6+ digits), and a traceId / spanId of the W3C
-   * shape (the boundary drops a caller traceparent with such a run). partnerId gets no exemption.
+   * boundary replaces any caller id with a run of 6+ digits or that the scrub would change, such as
+   * a UUID spreading an MSISDN over its groups), and a traceId / spanId of the W3C shape (the
+   * boundary drops such a caller traceparent). partnerId gets no exemption.
    */
   @Test
   void systemIdsKeepLongDigitRunsWhole() {

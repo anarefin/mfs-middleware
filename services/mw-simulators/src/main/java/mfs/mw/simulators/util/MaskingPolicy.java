@@ -25,14 +25,17 @@ public final class MaskingPolicy {
 
   /**
    * Bangladesh mobile numbers in free text: 01XNNNNNNNN, optionally with 880 / +880, with at most
-   * one space or dash between any two digit groups ({@code 01711-234567}, {@code 0171 123 4567},
-   * {@code +880 1711-234567}). Only a number that starts like an MSISDN and has exactly its digit
-   * count is taken, so amounts, dates and times are left alone.
+   * one separator ({@code -}, {@code .}, {@code _}, {@code :} or a space) between any two digits
+   * ({@code 01711-234567}, {@code 0171 123 4567}, {@code +880 1711-234567}, and an MSISDN spread
+   * over the groups of a UUID-shaped id such as {@code aaaa0171-2345-678a-...}). Only a number that
+   * starts like an MSISDN and has exactly its digit count is taken, so amounts, dates and times are
+   * left alone.
    */
   private static final Pattern MSISDN_IN_TEXT =
-      Pattern.compile("(?<![\\d+])(?:\\+?880[ -]?|0)1[ -]?[3-9](?:[ -]?\\d){8}(?!\\d)");
+      Pattern.compile(
+          "(?<![\\d+])(?:\\+?8[ ._:-]?8[ ._:-]?0[ ._:-]?|0[ ._:-]?)1[ ._:-]?[3-9](?:[ ._:-]?\\d){8}(?!\\d)");
 
-  private static final Pattern MSISDN_SEPARATOR = Pattern.compile("[ -]");
+  private static final Pattern MSISDN_SEPARATOR = Pattern.compile("[ ._:-]");
 
   /**
    * Other runs of 10 or more digits, bounded by anything but a digit (a number glued to a word,

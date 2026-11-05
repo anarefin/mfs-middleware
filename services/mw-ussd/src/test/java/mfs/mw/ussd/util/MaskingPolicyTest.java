@@ -195,7 +195,42 @@ class MaskingPolicyTest {
   /** Two separators in a row or other punctuation do not make a run of groups an MSISDN. */
   @Test
   void scrubDoesNotJoinGroupsAcrossDoubleSeparators() {
-    String text = "codes 0171  1234567 and 0171--1234567 and 0171.123.4567";
+    String text = "codes 0171  1234567 and 0171--1234567 and 0171/123/4567 and 0171,123,4567";
+    assertThat(MaskingPolicy.scrub(text)).isEqualTo(text);
+  }
+
+  /**
+   * An MSISDN split over UUID-style groups, or joined by a single {@code -}, {@code .}, {@code _},
+   * {@code :} or space anywhere between its 11 digits (with or without 880 / +880), is masked.
+   */
+  @Test
+  void scrubMasksMsisdnsSplitByAnySingleSeparator() {
+    assertThat(
+            MaskingPolicy.scrub(
+                "a 0171-2345-678 b 01712-345678 c 0171.2345.678 d 0171_2345_678 e 0171:2345:678"
+                    + " f 0171 2345 678 g 8801-7123-45678 h +880-1712-345-678 i 0-1-7-1-2-3-4-5-6-7-8"))
+        .isEqualTo(
+            "a 0171****678 b 0171****678 c 0171****678 d 0171****678 e 0171****678"
+                + " f 0171****678 g 880171****678 h +880171****678 i 0171****678");
+  }
+
+  /** A crafted UUID that spreads an MSISDN over its groups (no 6-digit run) is scrubbed. */
+  @Test
+  void scrubMasksAnMsisdnHiddenInAValidUuid() {
+    assertThat(MaskingPolicy.scrub("aaaa0171-2345-678a-8bcd-ef0123abcdef"))
+        .isEqualTo("aaaa0171****678a-8bcd-ef0123abcdef");
+    assertThat(MaskingPolicy.scrub("abcdef01-7123-4567-8abc-def012345abc"))
+        .isEqualTo("abcdef0171****678abc-def012345abc");
+  }
+
+  /** The wider separators still leave amounts, dates, times, versions and random UUIDs alone. */
+  @Test
+  void scrubWithWiderSeparatorsLeavesAmountsDatesTimesAndUuidsAlone() {
+    String text =
+        "amount 1.500.000 BDT 0.15 fee 12_50 on 2026.11.04 at 01:15:30 ts 2026-11-04T01:35:45.123Z"
+            + " v1.13.4 ip 10.13.45.67 date 01.11.2026 01_11_2026 time 01:59:59.999"
+            + " ids f47ac10b-58cc-4372-a567-0e02b2c3d479 0190a7c4-1b2e-7c3d-8e4f-5a6b7c8d9e0f"
+            + " 9b2c6e3a-4f1d-4c8b-a2e7-3d5f6a7b8c9d";
     assertThat(MaskingPolicy.scrub(text)).isEqualTo(text);
   }
 

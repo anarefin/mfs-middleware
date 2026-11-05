@@ -33,8 +33,11 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>Masking: every text field and {@code before}/{@code after} go through {@link
  * MaskingPolicy#scrub(String)}, with two system-id exemptions so ids stay traceable: a {@code
  * resource} that is exactly {@code <type>/<uuid>} ({@link #SYSTEM_RESOURCE}; producers build these
- * from system ids) and a {@code correlationId} that is a UUID ({@link #RFC_UUID}; a caller id
- * holds no run of 6+ digits after the edge and the services' filter, so the scrub leaves it whole).
+ * from system ids) and a {@code correlationId} that is a UUID ({@link #RFC_UUID}). Shape is
+ * enough because each service's {@code CorrelationIdFilter} is the gate: producers take these ids
+ * from the filter-guarded request context, and the filter replaces a caller correlation id with a
+ * run of 6+ digits or one the scrub would change (such as a UUID spreading an MSISDN over its
+ * groups), so a system UUID with a 10+ digit run stays whole and traceable.
  * {@code txnId} is parsed as a UUID.
  */
 @Service
@@ -161,7 +164,10 @@ public class AuditService {
     return true;
   }
 
-  /** {@code value} as it is when it is exactly a {@code systemId}, otherwise scrubbed. */
+  /**
+   * {@code value} as it is when it is exactly a {@code systemId}, otherwise scrubbed. Shape alone,
+   * on purpose: {@code CorrelationIdFilter} upstream is the gate that keeps crafted caller ids out.
+   */
   private static String keptIf(Pattern systemId, String value) {
     return systemId.matcher(value).matches() ? value : MaskingPolicy.scrub(value);
   }

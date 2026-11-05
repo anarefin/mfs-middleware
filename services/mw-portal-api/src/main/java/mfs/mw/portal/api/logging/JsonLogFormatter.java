@@ -24,13 +24,12 @@ import org.springframework.core.env.Environment;
  * numbers ({@link MaskingPolicy#scrub(String)}). Numeric field values are scrubbed as text too
  * and written as the masked string when masking changes them. The 21.1 id fields are traced by
  * exact match, so system ids among them are written unmasked, digit runs and all ({@link
- * #isSystemId}): a {@code txnId} that is a valid RFC 9562 UUID (services log only parsed or
- * generated txn ids), a {@code correlationId} that is such a UUID, and a {@code traceId} /
- * {@code spanId} of the W3C hex shape (the filter drops a caller {@code traceparent} with a run of
- * 6+ digits). Any other value, {@code partnerId} always, is scrubbed like free text, so an NID,
- * account number or MSISDN hidden in an id is still masked. A caller correlation id reaches here
- * only without a run of 6+ digits (the edge and {@code CorrelationIdFilter} replace it
- * otherwise), so the scrub leaves it whole unless it spells a dashed MSISDN.
+ * #isSystemId}): a {@code txnId} or {@code correlationId} that is a valid lower-case RFC 9562
+ * UUID and a {@code traceId} / {@code spanId} of the lower-case W3C hex shape. Shape is enough
+ * because {@code CorrelationIdFilter} is the gate: a caller correlation id or traceparent with a
+ * run of 6+ digits, or one {@link MaskingPolicy#scrub(String)} would change (such as a UUID that
+ * spreads an MSISDN over its groups), never gets past it. Any other value, {@code partnerId}
+ * always, is scrubbed like free text.
  *
  * <p>Context fields come from the MDC or from SLF4J key-value pairs ({@code
  * log.atInfo().addKeyValue("event", "txn.state.changed")}); key-value pairs win. Wired by {@code
@@ -137,7 +136,14 @@ public class JsonLogFormatter implements StructuredLogFormatter<ILoggingEvent> {
     }
   }
 
-  /** Whether {@code id} in field {@code key} is a system id, written unmasked (21.1). */
+  /**
+   * Whether {@code id} in field {@code key} is a system id, written unmasked (21.1), on its shape
+   * alone. {@code CorrelationIdFilter} is the gate: it replaces a caller correlation id and drops a
+   * caller traceparent that holds a 6+ digit run or that the scrub would change, so every
+   * correlation, trace and span id that reaches here is generated or scrub-safe, and a txnId is a
+   * parsed UUID. Shape alone keeps a system id with a 10+ digit run (about one UUID in 40) whole,
+   * so it stays traceable by exact match.
+   */
   private static boolean isSystemId(String key, String id) {
     return switch (key) {
       case "txnId", "correlationId" -> RFC_UUID.matcher(id).matches();
