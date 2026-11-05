@@ -240,6 +240,30 @@ class MaskingPolicyTest {
         .isEqualTo("msisdn0171****789 acct_0181****678 ref-880191****678");
   }
 
+  /**
+   * Free text keeps digit-only bounds even inside a letter-and-digit token: a token bound would
+   * let {@code nid2345678901} or {@code wallet01712345789} through, and over-masking a hex id in
+   * a message costs only readability (id fields are written with {@link
+   * MaskingPolicy#scrubId(String)} instead).
+   */
+  @Test
+  void scrubMasksDigitRunsInsideAlphanumericTokens() {
+    assertThat(MaskingPolicy.scrub("abc6948355579fa wallet01712345789x nid2345678901z"))
+        .isEqualTo("abc****579fa wallet0171****789x nid****901z");
+  }
+
+  @Test
+  void scrubIdKeepsLongDigitRunsButMasksMsisdns() {
+    assertThat(MaskingPolicy.scrubId("edge-test-cid-6948355579fa"))
+        .isEqualTo("edge-test-cid-6948355579fa");
+    assertThat(MaskingPolicy.scrubId("12345678901234567890123456789012"))
+        .isEqualTo("12345678901234567890123456789012");
+    assertThat(MaskingPolicy.scrubId("corr-01712345789")).isEqualTo("corr-0171****789");
+    assertThat(MaskingPolicy.scrubId("cid+880 1711-234567")).isEqualTo("cid+880171****567");
+    assertThat(MaskingPolicy.scrubId("")).isEmpty();
+    assertThat(MaskingPolicy.scrubId(null)).isNull();
+  }
+
   @Test
   void scrubLeavesUuidsIntactWhereverTheySit() {
     String text =
