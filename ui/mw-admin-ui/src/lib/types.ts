@@ -78,6 +78,30 @@ export type TxnDetail = {
   revealed: boolean;
 };
 
+export type TxnAction = "INQUIRE" | "FORCE_COMMIT" | "FORCE_RELEASE" | "REVERSE";
+export type WalletAction = "UNLOCK";
+export type ChangeRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
+
+/** An `admin.change_request` (spec 15.3, tickets 37 and 52); a wallet's resourceId arrives masked. */
+export type ChangeRequest = {
+  id: string;
+  resourceType: "transaction" | "wallet";
+  resourceId: string;
+  action: TxnAction | WalletAction;
+  payload: Record<string, unknown>;
+  diff: { before: { status?: string }; after: { status?: string } };
+  makerId: string;
+  status: ChangeRequestStatus;
+  checkerId?: string;
+  reason: string;
+  decisionReason?: string;
+  createdAt: string;
+  decidedAt?: string;
+  expiresAt: string;
+};
+
+export type ChangeRequestPage = { items: ChangeRequest[]; limit: number; offset: number };
+
 export type ErrorEnvelope = {
   code: string;
   message: string;

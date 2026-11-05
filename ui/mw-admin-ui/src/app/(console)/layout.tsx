@@ -21,6 +21,8 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
         <Link className="brand" href="/transactions">upay ops console</Link>
         <nav>
           <Link href="/transactions">Transactions</Link>
+          <Link href="/approvals">Approvals</Link>
+          <Link href="/wallets">Wallets</Link>
         </nav>
         <span className="spacer" />
         <span className="who" data-testid="operator">
