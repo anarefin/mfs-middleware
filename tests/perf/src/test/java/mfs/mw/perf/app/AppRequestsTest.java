@@ -85,7 +85,7 @@ class AppRequestsTest {
       // cheap bills (101..150 taka) so customers' balances and daily limits last a whole run
       assertThat(AppRequests.dueMinor(bill)).isBetween(10100L, 15000L);
     }
-    // README of tests/e2e: 100 taka + the last three digits in taka (1234567 -> 66700 poisha)
+    // billagg simulator: 100 taka + the last three digits in taka (1234567 -> 66700 poisha)
     assertThat(AppRequests.dueMinor("1234567")).isEqualTo(66700);
     assertThat(AppRequests.dueMinor("4567001")).isEqualTo(10100);
   }

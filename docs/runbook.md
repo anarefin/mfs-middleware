@@ -6,7 +6,7 @@ host running and for anyone debugging a failed demo or gate.
 
 ## Host
 
-| | MVP host (spec, TBC) | Smallest that works (functional runs, demos, e2e) |
+| | MVP host (spec, TBC) | Smallest that works (functional runs, demos, the API suite) |
 | --- | --- | --- |
 | CPU | 16 vCPU | 4 cores |
 | RAM | 64 GB | 16 GB (Docker gets at least 10 GB) |
@@ -45,7 +45,7 @@ On macOS: Docker Desktop (Settings, Resources: memory 10 GB or more), a JDK 25 (
 | Stop, keep the data | `make down` |
 | Stop and wipe every volume | `make reset` (every profile, orphans too) |
 | Swap a rebuilt service into the running stack | `make build M=mw-notify && make up M=mw-notify` |
-| Run a second stack beside the first | export `COMPOSE_PROJECT_NAME=mw-t2` and `MW_HTTPS_PORT=0` for `make up`, `make e2e` and `make down` (the console login needs port 443, so use it on the default stack only) |
+| Run a second stack beside the first | export `COMPOSE_PROJECT_NAME=mw-t2` and `MW_HTTPS_PORT=0` for `make up`, `make api-test` and `make down` (the console login needs port 443, so use it on the default stack only) |
 
 For direct `docker compose` work, define once per shell (the same file and env the scripts use):
 
@@ -149,7 +149,7 @@ dc exec -T kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server loc
   --topic mw.txn.request.v1.mw-orchestrator.dlq --from-beginning --timeout-ms 10000 --property print.headers=true
 ```
 
-Read-only database checks (superuser, as the e2e and chaos scripts do; never write by hand):
+Read-only database checks (superuser, as the chaos script does; never write by hand):
 
 ```sh
 dc exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select status, count(*) from txn.transaction group by 1"'
@@ -163,7 +163,8 @@ dc exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select
 | Transactions stuck in `PROCESSING` / `UNKNOWN` | wait for the status inquiry schedule (30 s, 1, 2, 5 min); what it cannot settle goes to `MANUAL_REVIEW`, handled in the console |
 | `make up` stops at an init container | `dc logs <name>-init`; most often a volume made with other credentials (see Credentials) or an OpenBao that is still sealed: `make down && make up` |
 | `make seed` fails | `dc logs mw-seeder`: the line `seed.step.failed` names the step. `not ready yet: <svc>` = a service never became ready (fix it, seed again); `open change request of <operator>` = a partner, menu or template has a pending request someone else made: approve or reject it in the console, then `make seed` again. Seeding is idempotent, so re-running is always safe |
-| APISIX answers 404 for test routes (`/test/...`) | expected after `make up`; `make e2e` and `make perf` enable them |
+| APISIX answers 404 for test routes (`/test/...`) | expected after `make up`; `make api-test` and `make perf` enable them |
+| A service answers 404 `MW-VAL-003` for paths it serves, after `dc up -d <service>` recreated just that container | APISIX still sends to the old container IP, which another service may own now: `dc restart apisix` (a full `make up` does not hit this) |
 | 401 from the console API after a long idle | sign out and in again (the refresh token expired) |
 | Port 443 busy | free it, or `MW_HTTPS_PORT=8443 make up` (APIs work, the console login does not) |
 | Docker out of disk | `docker system df`, then `docker image prune` and `docker builder prune` (keeps volumes) |
@@ -188,8 +189,8 @@ secrets that `make up` writes again.
 | Run | Command | Note |
 | --- | --- | --- |
 | Changed-module gate | `make verify-changed BASE=<sha>` | run with the stack down: Testcontainers competes with it for Docker memory |
-| Acceptance suite | `make e2e` | on a fresh stack |
+| Acceptance suite | `make api-test` (`ALL=1` adds the slow folder) | on a fresh stack: `make reset && make build && make up TIMERS=fast && make seed` first; under 10 minutes |
 | Chaos | `make chaos` (or `make chaos TARGETS="mw-orchestrator kafka"`) | kills containers: never on a stack someone else is using |
 | Load | `make perf` | spends the seed wallets' daily limits: fresh stack before and after |
-| Security | `SECURITY_LIVE=1 make security` | after `make e2e`, so the log scan has logs to read; findings register `docs/security-findings.md` |
+| Security | `SECURITY_LIVE=1 make security` | after `make api-test`, so the log scan has logs to read; findings register `docs/security-findings.md` |
 | Container logs only | `make log-scan` | no PIN or unmasked MSISDN / NID in any log |

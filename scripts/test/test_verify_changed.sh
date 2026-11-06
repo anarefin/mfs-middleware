@@ -65,7 +65,7 @@ test_changed_modules_precise_maps_a_contract_to_producers_consumers_and_owner() 
   echo ' ' >>contracts/events/mw-b/mw.b.event.v1.schema.json
   OUT="$(MW_ROOT="$PWD" "$REPO_DIR/scripts/changed-modules.sh" --contracts-precise main 2>&1)" || fail "changed-modules failed"
   [ "$(printf '%s\n' "$OUT" | tr '\n' ' ')" = "mw-a mw-b " ] || fail "wrong modules: $OUT"
-  # without the flag the old behaviour stays: any contracts/ change is ALL (e2e-changed)
+  # without the flag the old behaviour stays: any contracts/ change is ALL
   OUT="$(MW_ROOT="$PWD" "$REPO_DIR/scripts/changed-modules.sh" main 2>&1)"
   [ "$OUT" = ALL ] || fail "default mode should print ALL, got: $OUT"
 }

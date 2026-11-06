@@ -1,0 +1,4 @@
+{
+  "name": "07 BILL_PAY confirmed by the aggregator's callback",
+  "description": "Port of the Cucumber billpay-callback.feature (tests/e2e, removed in ticket 58)."
+}

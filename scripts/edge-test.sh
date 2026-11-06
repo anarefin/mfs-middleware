@@ -393,7 +393,7 @@ co_signed() {
 }
 co_schema_400() { # the edge has no body schema any more: mw-checkout refuses it (duplicate key)
   if [ "$(admin GET consumers/merchant_demo -o /dev/null -w '%{http_code}')" != 200 ]; then
-    echo "skipped: consumer merchant_demo exists only after make e2e (MW_E2E_ROUTES=1)"; return 0
+    echo "skipped: consumer merchant_demo exists only after make api-test (MW_E2E_ROUTES=1)"; return 0
   fi
   co_signed "${co_body%\}},\"amount\":{\"valueMinor\":1,\"currency\":\"BDT\"}}" && envelope 400 MW-VAL-001 || return 1
   co_signed "${co_body/BDT/USD}" && envelope 400 MW-VAL-001

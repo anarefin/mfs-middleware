@@ -1,0 +1,4 @@
+{
+  "name": "22 Org portal bulk payout: throttled child txns, pause and resume, result file",
+  "description": "Port of the Cucumber bulk-execution.feature (tests/e2e, removed in ticket 58)."
+}

@@ -3,7 +3,8 @@
 # every sample payload validates (valid*) or is rejected (invalid*), and
 # OWNERS.yml names an owner for every contract file. See scripts/contracts-lint/lint.mjs.
 # Then checks that the body schemas the services derive from their contracts still match them
-# (scripts/derived-schemas.sh --check).
+# (scripts/derived-schemas.sh --check), and the API suite's acceptance traceability
+# (scripts/check-api-traceability.sh: tests/api requests vs tests/api/TRACEABILITY.md).
 #
 # Needs Node (>= 22). Dependencies are pinned in scripts/contracts-lint/package-lock.json
 # and installed locally (npm ci) on first use; no global installs.
@@ -26,4 +27,6 @@ fi
 
 node "$tool/lint.mjs" "$dir" "$MW_ROOT"
 # the services' derived body schemas (services/*/src/main/resources/derived-schemas)
-exec "$(dirname "$0")/derived-schemas.sh" --check
+"$(dirname "$0")/derived-schemas.sh" --check
+# the Newman suite's MVP acceptance traceability (passes when there is no tests/api collection)
+exec "$(dirname "$0")/check-api-traceability.sh"

@@ -32,6 +32,18 @@ class SmscServiceTest {
   }
 
   @Test
+  void aRestartedSimulatorNeverHandsOutAMessageIdOfTheRunBefore() throws Exception {
+    // mw-notify keeps every provider message_id unique: a restart (a test-timer recreate) must not
+    // start again at an id an earlier run already gave out
+    String before = smsc.submit("01711000001", "Bits", (byte) 0, (byte) 0, new byte[] {'a'}).messageId();
+    Thread.sleep(2);
+    String after = new SmscService(100).submit("01711000001", "Bits", (byte) 0, (byte) 0, new byte[] {'a'}).messageId();
+
+    assertThat(after).isNotEqualTo(before);
+    assertThat(after.length()).isLessThanOrEqualTo(64); // SMPP message_id: C-Octet String of 65
+  }
+
+  @Test
   void aSingleGsm7MessageIsDecodedIncludingGsmAndExtensionCharacters() throws Exception {
     byte[] gsm = {'T', 'k', ' ', 0x00, 0x01, 0x1B, 0x65, ' ', 'o', 'k'};
     SmscService.Submission s = smsc.submit("01711000001", "Bits", (byte) 0, (byte) 0, gsm);

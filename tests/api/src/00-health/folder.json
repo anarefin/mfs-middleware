@@ -1,0 +1,4 @@
+{
+  "name": "00 Health & seed check",
+  "description": "Edge, test-only routes and the mw-seeder baseline (ticket 57) are in place."
+}

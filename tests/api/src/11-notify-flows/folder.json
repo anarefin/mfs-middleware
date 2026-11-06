@@ -1,0 +1,4 @@
+{
+  "name": "11 Every flow sends the right SMS, and an email receipt where configured",
+  "description": "Port of the Cucumber notify-flows.feature (tests/e2e, removed in ticket 58)."
+}

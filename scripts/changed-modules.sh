@@ -4,7 +4,7 @@
 # "Changed" covers commits on this branch since it left BASE (git diff BASE...HEAD), staged and
 # unstaged edits, and untracked files.
 #
-# Default (used by scripts/e2e-changed.sh): the services/* modules changed. Prints the single word
+# Default: the services/* modules changed. Prints the single word
 # ALL when contracts/ or deploy/ changed (APISIX schemas, compose and topic config feed every
 # module), and nothing when no module changed (docs/, tests/, templates/ only). Markdown under
 # deploy/ (deploy/**/*.md) and docs/ never select a module, in either mode.

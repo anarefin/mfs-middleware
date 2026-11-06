@@ -1,0 +1,4 @@
+{
+  "name": "17 USSD menu and SMS template changes with maker-checker in the admin API",
+  "description": "Port of the Cucumber admin-content.feature (tests/e2e, removed in ticket 58)."
+}

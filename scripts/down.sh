@@ -13,6 +13,7 @@ stack_compose $STACK_PROFILES
 if [ "${1:-}" = --reset ]; then
   info "reset: docker compose down -v --remove-orphans (every profile)"
   docker compose "${DC_F[@]}" down -v --remove-orphans
+  rm -f "$STACK_TIMERS_STATE"
   info "reset: every container and volume of the stack removed; make up starts fresh"
 else
   info "down: docker compose down ${DOWN_ARGS:-}"

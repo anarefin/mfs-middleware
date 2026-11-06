@@ -10,7 +10,7 @@
 #
 # Profiles:
 #   (none)    platform services and one-shots: always start
-#   minimal   the P2P and cash path the e2e @p2p / @cash scenarios need (orchestrator, core mock,
+#   minimal   the P2P and cash path the API suite folders 01 and 03 need (orchestrator, core mock,
 #             app gateway, simulators, notify, audit-dw, ussd, admin-api)
 #   core      every mw-* service and mw-admin-ui
 #   seed      mw-seeder (ticket 57)
@@ -33,7 +33,7 @@
 # Test timers: the ${MW_...} placeholders marked "timer" default to the production values of the
 # services' application.yml; `make up TIMERS=fast` also loads deploy/test-timers.env (short ones).
 #
-# Memory (functional runs only, never load tests; the smallest footprint that still passes e2e).
+# Memory (functional runs only, never load tests; the smallest footprint that still passes the API suite).
 # Hard guard: the limits of all long-running containers (no mw.oneshot label) must add up to
 # <= 10240 MiB; `make compose-check` fails above that, or when a long-running service has no limit.
 # The JVM flags the AOT cache depends on (GC, hence compressed oops) are the image's JVM_OPTS build
@@ -42,8 +42,8 @@
 # CPU limits are left as they are: an idle limit reserves nothing, and lower ones slow start-up
 # past the health-check windows.
 #
-#   container            limit MiB   measured peak (one make up + full make e2e, 2026-11-05)
-#   mw-* services        512         311-359 after make up + make e2e TAGS=@p2p, 2026-11-06 (Serial GC, tiered JIT, fixed heap 192m; Hikari pool 3, 4 for the busy three)
+#   container            limit MiB   measured peak (one make up + full Cucumber e2e run, 2026-11-05)
+#   mw-* services        512         311-359 after make up + the Cucumber @p2p scenarios, 2026-11-06 (Serial GC, tiered JIT, fixed heap 192m; Hikari pool 3, 4 for the busy three)
 #     mw-orchestrator    576         381
 #     mw-audit-dw        544         326
 #     mw-simulators      448         319
@@ -59,7 +59,7 @@
 #   one-shots (exit before their service starts): *-init 128, kafka-init 512 (3 parallel CLI
 #   JVMs; 8 were OOM-killed at 384), apisix-init 256, etcd-init 64
 #
-# Recalibrate by sampling `docker stats` through one `make up` + `make e2e`: limit about
+# Recalibrate by sampling `docker stats` through one `make up` + `make api-test`: limit about
 # peak x 1.3 (JVMs less: their RSS is bounded by the flags), rounded to 32 MiB.
 name: mfs-mw
 
@@ -506,7 +506,7 @@ services:
     environment:
       APISIX_ADMIN: apisix:9180
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?run scripts/gen-dev-env.sh (make up does)}
-      # Test-only objects (deploy/apisix/routes-test, consumers-test): off unless `make e2e`
+      # Test-only objects (deploy/apisix/routes-test, consumers-test): off unless `make api-test`
       # re-runs this one-shot with MW_E2E_ROUTES=1; off also removes them.
       MW_E2E_ROUTES: ${MW_E2E_ROUTES:-0}
       # Public host of the edge (route auth-ops-browser: the only Host it answers for, and the
@@ -622,6 +622,9 @@ services:
     environment:
       <<: *jvm-env
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+      # Hold time of a simulated partner timeout (amount fraction .13): above the callers' time
+      # limits (timer: TIMERS=fast shortens it with them).
+      SIM_TIMEOUTDELAY: ${MW_SIM_TIMEOUT_DELAY:-30s}
     deploy:
       resources:
         limits: { cpus: "1.0", memory: 448M }
@@ -668,6 +671,9 @@ services:
       MW_ORCHESTRATOR_INQUIRY_SCHEDULE: ${MW_ORCHESTRATOR_INQUIRY_SCHEDULE:-30s,1m,2m,5m,15m,1h}
       MW_ORCHESTRATOR_INQUIRY_NOTFOUNDGRACE: ${MW_ORCHESTRATOR_INQUIRY_NOT_FOUND_GRACE:-30s}
       MW_ORCHESTRATOR_REVERSINGTIMEOUT: ${MW_ORCHESTRATOR_REVERSING_TIMEOUT:-60s}
+      # Dev/test only (ticket 58): the test API /test/v1/** (publish a REVERSAL, idempotency
+      # lookup) for the host API suite; APISIX routes it only with MW_E2E_ROUTES=1.
+      MW_ORCHESTRATOR_TEST_API_ENABLED: "true"
     deploy:
       resources:
         limits: { cpus: "1.0", memory: 576M }
@@ -699,6 +705,9 @@ services:
       # Runs as the INSERT-only writer; Flyway migrates as the schema owner (14.3, 16.4).
       DB_USERNAME: audit_writer
       SPRING_FLYWAY_USER: audit_dw_rw
+      # Test-only audit API (ticket 58; /test/v1/audit/*, reached only through the test-only
+      # APISIX route test-audit-dw with MW_E2E_ROUTES=1): dev/test stack only.
+      MW_AUDIT_DW_TEST_API_ENABLED: "true"
     deploy:
       resources:
         limits: { cpus: "1.0", memory: 544M }
@@ -738,7 +747,7 @@ services:
       MW_APP_JWK_SET_URI: ${MW_APP_JWK_SET_URI:-http://keycloak:8080/realms/customers/protocol/openid-connect/certs}
       # Synchronous wait for a terminal status before 202 PROCESSING (7.5).
       MW_APP_REPLY_BUDGET: ${MW_APP_REPLY_BUDGET:-25s}
-      # Binding OTPs per wallet in 15 min (default 5): dev only raises it, so repeated e2e runs
+      # Binding OTPs per wallet in 15 min (default 5): dev only raises it, so repeated API suite runs
       # (each binds every test user's new device once) do not hit the limit.
       MW_APP_DEVICE_OTP_MAX_SENDS: ${MW_APP_DEVICE_OTP_MAX_SENDS:-20}
     deploy:
@@ -928,6 +937,10 @@ services:
       # Utility bill aggregator endpoint; the MVP stack targets the aggregator simulator
       # (mw-simulators, /billagg/v1/*).
       BILLAGG_BASE_URL: ${BILLAGG_BASE_URL:-http://mw-simulators:8080}
+      # The dev partner's time limit and read timeout (application-dev.yml values; timer: TIMERS=fast
+      # shortens them, the read timeout staying above the limit).
+      MW_PARTNERS_INSTANCES_BILLAGG_TIMEOUTMS: ${MW_BILLAGG_TIMEOUT_MS:-25000}
+      MW_PARTNERS_INSTANCES_BILLAGG_READTIMEOUTMS: ${MW_BILLAGG_READ_TIMEOUT_MS:-27000}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
     deploy:
@@ -963,6 +976,10 @@ services:
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
       # C2W bank endpoint; the MVP stack targets the bank simulator (mw-simulators, /c2wbank/v1/*).
       C2WBANK_BASE_URL: ${C2WBANK_BASE_URL:-http://mw-simulators:8080}
+      # The dev partner's time limit and read timeout (application-dev.yml values; timer: TIMERS=fast
+      # shortens them, the read timeout staying above the limit).
+      MW_PARTNERS_INSTANCES_C2WBANK_TIMEOUTMS: ${MW_C2WBANK_TIMEOUT_MS:-25000}
+      MW_PARTNERS_INSTANCES_C2WBANK_READTIMEOUTMS: ${MW_C2WBANK_READ_TIMEOUT_MS:-27000}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
     deploy:
@@ -1040,6 +1057,8 @@ services:
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "4"
       # Where the hosted checkout page lives (front-end TBC, spec open point 16).
       MW_CHECKOUT_PAGE_BASE_URL: ${MW_CHECKOUT_PAGE_BASE_URL:-https://localhost/checkout/page/}
+      # Synchronous wait for the payment's terminal status before 202 PAYING (timer: TIMERS=fast shortens it).
+      MW_CHECKOUT_REPLY_BUDGET: ${MW_CHECKOUT_REPLY_BUDGET:-25s}
       # Dev stack only: the merchant IPN receiver simulator is plain http at a private address
       # (http://mw-simulators:8080/merchant/ipn/...). The packaged default allows no such host.
       MW_CHECKOUT_IPN_DEV_HOSTS: ${MW_CHECKOUT_IPN_DEV_HOSTS:-mw-simulators}
@@ -1126,6 +1145,12 @@ services:
       JDK_JAVA_OPTIONS: -Xms64m -Xmx96m -XX:MaxMetaspaceSize=96m -Xss512k
       # timer: each seed step's time limit (ticket 57: 10 min)
       MW_SEED_STEP_TIMEOUT: ${MW_SEED_STEP_TIMEOUT:-10m}
+      # Baseline time limit of partner ocs in mw-admin-api (application.yml: 20 s; timer: TIMERS=fast
+      # seeds a short one, and the API suite reads it back from the manifest). Every field of the
+      # list element: an environment list replaces the application.yml one, it does not merge.
+      MW_SEEDER_PARTNERS_0_PARTNERID: ocs
+      MW_SEEDER_PARTNERS_0_ENABLED: "true"
+      MW_SEEDER_PARTNERS_0_TIMEOUTMS: ${MW_SEED_OCS_TIMEOUT_MS:-20000}
       KC_BOOTSTRAP_ADMIN_USERNAME: kc-admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
       KC_OPS_TEST_PASSWORD: ${KC_OPS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}

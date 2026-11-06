@@ -1,0 +1,4 @@
+{
+  "name": "10 Customers get an SMS for their P2P transaction",
+  "description": "Port of the Cucumber notify.feature (tests/e2e, removed in ticket 58)."
+}

@@ -1,0 +1,4 @@
+{
+  "name": "09 Web checkout: session, OTP and PIN, MERCHANT_PAY, signed redirect",
+  "description": "Port of the Cucumber checkout.feature (tests/e2e, removed in ticket 58)."
+}

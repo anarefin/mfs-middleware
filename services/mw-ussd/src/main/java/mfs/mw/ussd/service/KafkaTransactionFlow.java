@@ -50,17 +50,26 @@ public class KafkaTransactionFlow implements TransactionFlow {
     this.clock = clock;
   }
 
+  /**
+   * The request's idempotency key (spec 7.3 rule 1): channel, MSISDN, session, menu path, amount
+   * and target, plus the session's start: an SMPP gateway reuses its session numbers 1..128
+   * ({@code its_session_info}), so a later session with the same number and the same transfer is a
+   * new transaction, never a replay of the earlier one. Every step of one session keeps the key.
+   */
+  static String idempotencyKey(FlowRequest request) {
+    String amountMinor = Long.toString(TxnRequestMapper.minor(request.fields().get(FlowRequest.AMOUNT)));
+    return IdempotencyKeys.derive(
+        TxnRequestMapper.CHANNEL,
+        request.session().msisdn(),
+        request.session().sessionId() + "@" + (request.session().startedAt() == null ? "" : request.session().startedAt().toEpochMilli()),
+        request.menuPath(),
+        amountMinor,
+        request.fields().get(FlowRequest.CREDIT_PARTY));
+  }
+
   @Override
   public FlowOutcome submit(FlowRequest request) {
-    String amountMinor = Long.toString(TxnRequestMapper.minor(request.fields().get(FlowRequest.AMOUNT)));
-    String key =
-        IdempotencyKeys.derive(
-            TxnRequestMapper.CHANNEL,
-            request.session().msisdn(),
-            request.session().sessionId(),
-            request.menuPath(),
-            amountMinor,
-            request.fields().get(FlowRequest.CREDIT_PARTY));
+    String key = idempotencyKey(request);
     Instant now = clock.instant();
     String txnId = UuidV7.next(clock).toString();
     String correlationId = correlationId();

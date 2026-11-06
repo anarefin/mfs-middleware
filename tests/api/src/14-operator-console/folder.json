@@ -1,0 +1,4 @@
+{
+  "name": "14 An operator finds a transaction, reads its timeline and audit, and reverses it with a second approval",
+  "description": "Port of the Cucumber operator-console.feature (tests/e2e, removed in ticket 58)."
+}

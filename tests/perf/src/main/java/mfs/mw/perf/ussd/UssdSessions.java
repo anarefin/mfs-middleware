@@ -8,7 +8,7 @@ import tools.jackson.databind.node.ObjectNode;
 /**
  * USSD sessions played by the USSD gateway simulator in HTTP mode ({@code POST
  * /test/sim/ussdgw/sessions}, test-only route): the simulator plays MNO robi and POSTs every step
- * through APISIX ({@code /ussd/robi}) to mw-ussd, as in tests/e2e {@code ussd.feature}.
+ * through APISIX ({@code /ussd/robi}) to mw-ussd, as in the API suite folder 18 (tests/api).
  */
 public final class UssdSessions {
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Container log scan (spec 18.3, 21.1, WP29, ticket 46): no PIN (plain or ciphertext), no
 # unmasked MSISDN and no unmasked NID in any log line.
-# Usage: scripts/log-scan.sh            every container log of the MVP project (run after make e2e)
+# Usage: scripts/log-scan.sh            every container log of the MVP project (run after make api-test)
 #        scripts/log-scan.sh FILE...    the given files ('-' = stdin), e.g. saved logs
 # Exit 1 on a finding. A finding is printed with its source and line number and the matched
 # value masked, so this script never repeats what it found.
@@ -66,7 +66,8 @@ scan() { # scan SOURCE-LABEL < lines
       plain = systemids(line)
       if (match(plain, /(^|[^0-9])(\+?880|0)1[3-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]([^0-9]|$)/)) report("msisdn", substr(plain, RSTART, RLENGTH))
       if (match(lower, /(^|[^a-z])"?(nid|nationalid|national_id|nidnumber)"?[ ]*[:=][ ]*"?[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]/)) report("nid", substr(line, RSTART, RLENGTH))
-      if (match(lower, /(^|[^a-z])"?(pin|newpin|oldpin|pinblock)"?[ ]*[:=][ ]*"?[^"*,} \[]+/)) {
+      # (a value never starts with ':': "encrypted_pin::text" is a SQL cast in a logged statement)
+      if (match(lower, /(^|[^a-z])"?(pin|newpin|oldpin|pinblock)"?[ ]*[:=][ ]*"?[^"*,} \[:][^"*,} \[]*/)) {
         v = substr(lower, RSTART, RLENGTH); if (v !~ /(null|redacted)$/) report("pin", substr(line, RSTART, RLENGTH))
       }
       if (match(lower, /(^|[^a-z])"?(encryptedpin|pinciphertext|ciphertext)"?[ ]*[:=][ ]*("[^"*\[]|\{)/)) report("pin", substr(line, RSTART, RLENGTH))
@@ -89,7 +90,7 @@ else
   # shellcheck disable=SC2086 # one profile per word
   stack_compose $STACK_PROFILES
   services="$(docker compose "${DC_F[@]}" ps -a --format '{{.Service}}' 2>/dev/null | sort -u)"
-  [ -n "$services" ] || die "log-scan: no containers in the MVP project (make up && make e2e first)"
+  [ -n "$services" ] || die "log-scan: no containers in the MVP project (make up && make api-test first)"
   for s in $services; do
     docker compose "${DC_F[@]}" logs --no-color --no-log-prefix "$s" 2>&1 | scan "$s" || rc=1
   done

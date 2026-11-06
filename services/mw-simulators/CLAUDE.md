@@ -70,7 +70,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 - SMSC (ticket 24, `client/SmscServer` on jSMPP, `service/SmscService`,
   `controller/SmscController`): SMPP 3.4 server on `sim.smsc.port` (2775, internal network only;
   `sim.smsc.enabled`, off in tests except `SmscSimulatorIT`). Accepts any bind (no credential
-  check); every `submit_sm` gets `SMSC-n`; GSM-7 (data_coding 0, unpacked) and UCS-2 (8)
+  check); every `submit_sm` gets `SMSC-<start>-<n>` (start = the instance's start time, so a restart never repeats an id mw-notify already stored); GSM-7 (data_coding 0, unpacked) and UCS-2 (8)
   decoded, concatenated parts (UDH IE 0x00/0x08) reassembled. A DLR (`deliver_sm`, SMSC delivery
   receipt, `id:... stat:...`) goes back on the same session after `sim.smsc.dlr-delay` (300 ms).
   Destination magic suffixes: `999` DLR UNDELIV, `998` DLR EXPIRED, `997` first two submits

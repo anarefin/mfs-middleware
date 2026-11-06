@@ -29,6 +29,7 @@ import tools.jackson.databind.json.JsonMapper;
 class ApiContractsTest {
 
   private static final String API = "api/mw-orchestrator/txn-query.v1.openapi.yaml";
+  private static final String TEST_API = "api/mw-orchestrator/orchestrator-test.v1.openapi.yaml";
   private static final JsonMapper JSON = ContractManifest.serviceJsonMapper();
   private static final RequestMapper REQUESTS = new RequestMapper(JSON);
 
@@ -50,7 +51,7 @@ class ApiContractsTest {
 
   @Test
   void theApiIsTheOneTheManifestSaysThisModuleServes() {
-    assertThat(ContractManifest.entries("produces", "apis")).containsExactly(API);
+    assertThat(ContractManifest.entries("produces", "apis")).containsExactly(API, TEST_API);
     assertThat(ContractManifest.entries("consumes", "apis")).isEmpty();
   }
 
@@ -88,6 +89,18 @@ class ApiContractsTest {
         e.code(), e.getMessage(), e.messageBn(), e.txnId(), "corr-1", e.retryable(), e.details());
 
     assertThat(OpenApiSchemas.component(API, "ErrorEnvelope").validate(body(envelope))).isEmpty();
+  }
+
+  /** The test-only API (ticket 58, controller/TestApiController). */
+  @Test
+  void theTestApiBodiesMatchTheirSchemas() {
+    var accepted = new mfs.mw.orchestrator.dto.TestReversalAccepted(TestData.txnId(), "test-rev-" + TestData.txnId());
+    var handled = new mfs.mw.orchestrator.dto.TxnRequestHandled("test-rev-1", true);
+
+    assertThat(OpenApiSchemas.component(TEST_API, "ReversalAccepted").validate(body(accepted))).isEmpty();
+    assertThat(OpenApiSchemas.component(TEST_API, "TxnRequestHandled").validate(body(handled))).isEmpty();
+    assertThat(OpenApiSchemas.component(TEST_API, "TxnRequestHandled")
+        .validate(body(new mfs.mw.orchestrator.dto.TxnRequestHandled("k", false)))).isNotEmpty();
   }
 
   /** Guards the helper: a body that breaks the schema is reported. */

@@ -178,6 +178,10 @@ mw:
     reversing-timeout: 60s
     # Channels that may send a REVERSAL request (operations; mw-admin-api publishes as SYSTEM).
     reversal-channels: SYSTEM
+    # Test-only API /test/v1/** (ticket 58: publish a REVERSAL, see whether a key was handled); the
+    # dev stack switches it on, APISIX routes it only with MW_E2E_ROUTES=1.
+    test-api:
+      enabled: ${MW_ORCHESTRATOR_TEST_API_ENABLED:false}
     # Channels that may send a BULK_DISBURSE child (ticket 34): the org portal, after maker-checker.
     bulk-channels: ORG_PORTAL
     # Daily MANUAL_REVIEW ageing check (scheduler/ManualReviewAgeingJob, UTC, "-" switches it off).

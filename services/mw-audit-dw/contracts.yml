@@ -1,7 +1,7 @@
 # Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
 produces:
   events: []
-  apis:   [api/mw-audit-dw/audit-query.v1.openapi.yaml]
+  apis:   [api/mw-audit-dw/audit-query.v1.openapi.yaml, api/mw-audit-dw/audit-dw-test.v1.openapi.yaml]
 consumes:
   events: [events/mw-audit-dw/mw.audit.event.v1.schema.json]
   apis:   []

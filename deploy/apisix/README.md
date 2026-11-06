@@ -101,7 +101,7 @@ Route `partner-billagg-callback` (`/partner/billagg/callback/*`, POST only, tick
 `mw-adapter-billpay:8080`, path and body unchanged (the partner signed them):
 
 1. `ip-restriction`: dev/MVP loopback and private ranges (the simulator posts from the `app`
-   network, the host e2e suite through Docker's NAT); production lists the partner's egress
+   network, the host API suite through Docker's NAT); production lists the partner's egress
    addresses.
 2. `client-control` `max_body_size` 16 KiB (413).
 3. `limit-count` 600 / 60 s per `remote_addr`, Valkey as on `app-v1`.
@@ -138,7 +138,7 @@ contract `contracts/api/mw-ussd/ussd-http.v1.openapi.yaml`). One route and one c
    not changed; no MSISDN in Valkey keys).
 6. `limit-count` 120 steps / 60 s per MSISDN (group `ussd-http-<mno>`, Valkey, fail-open as every
    limited route; a step without a readable msisdn is counted per source address). A subscriber
-   types far slower; 120 leaves room for the e2e suite's one test MSISDN. MNO contract value, TBC.
+   types far slower; 120 leaves room for the API suite's test MSISDNs. MNO contract value, TBC.
 
 Upstream read timeout 12 s (above mw-ussd's 8 s sync budget). The former single route `ussd-http`
 (`/ussd/*`, no auth) is in `retired.txt`. An SMPP MNO (gp in dev) does not use its route until its
@@ -173,7 +173,7 @@ secret `CHECKOUT_DEMO_MERCHANT_SECRET` from the generated `.env`, also synced to
 `Authorization: Signature keyId="merchant-demo",algorithm="hmac-sha256",headers="@request-target
 date digest",signature="<base64(hmac-sha256(secret, signing string))>"`, signing string =
 `keyId\n<METHOD> <path?query>\ndate: <Date>\ndigest: <Digest>\n` (each header line `name: value`
-in the order of `headers`, every line ending in `\n`). `tests/e2e/support/CheckoutApi` signs this way.
+in the order of `headers`, every line ending in `\n`). `tests/api/lib.js` (`checkout.signed`) signs this way.
 
 A new partner gets its own `partner-<id>-callback.json` (upstream: the owning adapter);
 `scripts/edge-test.sh` has the cases to copy (billagg and c2wbank both covered).
@@ -239,7 +239,7 @@ repeats the value, e.g. an MSISDN; the service's Bean Validation still checks th
 `propertyNames: { enum }` into a closed `properties` list, and fails on any keyword it cannot carry
 over.
 
-## Host routes for the e2e suite (ticket 10)
+## Host routes for the API suite (tickets 10, 58)
 
 - `routes/auth-customers-token.json` (always applied): `POST
   /auth/realms/customers/protocol/openid-connect/token`, only Keycloak's public token endpoint of
@@ -255,7 +255,7 @@ over.
   `ops` (dev-only public client `mw-e2e-ops`, direct grant only, no browser flow; the console's
   client `mw-admin-ui` has no direct grant, security review), so the token's `iss` is the one
   `admin-v1`'s discovery expects. Applied only with `MW_E2E_ROUTES=1` like the other test-only objects below, with the same
-  `ip-restriction` / `key-auth` (`mw_e2e`, header `apikey`, sent by `tests/e2e` `Keycloak.opsToken`)
+  `ip-restriction` / `key-auth` (`mw_e2e`, header `apikey`, sent by `tests/api/lib.js` `token('ops', ...)`)
   and a strict `limit-count` of 10 requests per minute per `remote_addr` (429 beyond). The realm
   demands TOTP on this grant (built-in direct-grant flow, conditional OTP): only users with an
   enrolled OTP get a token, i.e. the dev-only e2e operators `ops-e2e-maker01` / `ops-e2e-checker01`
@@ -264,11 +264,15 @@ over.
   quick-login check 1 s; `scripts/test/test_platform_compose.sh`). Keycloak imports a realm only when
   it does not exist yet, so an existing dev stack picks the settings up after `make down DOWN_ARGS=-v`.
 - Test-only objects, `routes-test/` + `consumers-test/`: applied only when `apisix-init` runs with
-  `MW_E2E_ROUTES=1`, which `make e2e` does on the running stack (`scripts/suite.sh`); every
+  `MW_E2E_ROUTES=1`, which `make api-test` (`tests/api/run.sh`) and `make perf` (`scripts/suite.sh`) do on the running stack; every
   other run (a default `make up`) DELETEs them. Today: `test-core-mock` (`/test/core-mock/v1/*` ->
   core-mock's test/admin API: balances, PIN key, faults) and `test-simulators` (`/test/sim/*` ->
   mw-simulators' control API: forced scenarios) and `test-mail` (`GET /test/mail/*` -> GreenMail's
-  REST API `/api/*`: mailboxes of the dev mail server, ticket 25), all with `ip-restriction` (loopback and
+  REST API `/api/*`: mailboxes of the dev mail server, ticket 25) and `test-audit-dw` (`GET
+  /test/audit-dw/v1/*` -> mw-audit-dw's test API `/test/v1/audit/*`: audit event search and the
+  hash-chain check of one month, ticket 58) and `test-orchestrator` (`/test/orchestrator/v1/*` ->
+  mw-orchestrator's test API `/test/v1/*`: publish a REVERSAL of a transaction, see whether a
+  request's idempotency key was handled, ticket 58), all with `ip-restriction` (loopback and
   private ranges only), `key-auth` (header `apikey`, hidden from the upstream) and
   `consumer-restriction` to consumer `mw_e2e`, whose key is `"@env:MW_E2E_API_KEY"`: generated by
   `scripts/gen-dev-env.sh` into the gitignored `deploy/.env`, never in the repo.

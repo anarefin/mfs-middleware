@@ -1,8 +1,8 @@
 # tests/perf: Gatling 100 TPS mixed load (spec WP28, MVP acceptance criterion 7)
 
 Its own Gradle build (wrapper, `gradle/libs.versions.toml`, Gatling Gradle plugin, Java DSL); never
-depends on a service module and shares no code with `tests/e2e` (the few helpers it needs are
-copied). It runs on the host against a running MVP stack, through APISIX like the e2e suite.
+depends on a service module and shares no code with `tests/api` (the few helpers it needs were
+copied from the former Cucumber suite). It runs on the host against a running MVP stack, through APISIX like the API suite.
 
 Criterion 7: the single MVP host handles at least **100 TPS** of mixed load with **p95 middleware
 overhead under 150 ms**, overhead measured excluding core-mock and simulator time; no errors
@@ -16,7 +16,7 @@ make perf                             # setup (~1-2 min), 60 s ramp, 5 min at 10
 ```
 
 `make perf` (`scripts/suite.sh perf`) re-applies the test-only gateway routes (apisix-init with
-`MW_E2E_ROUTES=1`, as `make e2e`), runs `./gradlew gatlingRun`, then always `./gradlew
+`MW_E2E_ROUTES=1`, as `make api-test`), runs `./gradlew gatlingRun`, then always `./gradlew
 perfOverhead`, and fails when either failed. Extra settings: `MW_PERF_ARGS="-Dmw.perf.steady=10m"
 make perf`. `M=` is accepted but the mix always covers the whole stack.
 

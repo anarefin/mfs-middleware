@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
- * The running MVP stack as the perf suite sees it (as tests/e2e's {@code Stack}, copied: the
+ * The running MVP stack as the perf suite sees it (as the former Cucumber suite's {@code Stack}, copied: the
  * suites share no code): the APISIX edge URL (the only published port) and {@code docker compose}
  * on the stack's project for what no API offers (Keycloak user provisioning, the post-run
  * read-only queries of the core's outbox and the audit trail).

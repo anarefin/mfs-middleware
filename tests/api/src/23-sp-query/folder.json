@@ -1,0 +1,4 @@
+{
+  "name": "23 SP transaction query on the org portal",
+  "description": "Port of the Cucumber sp-query.feature (tests/e2e, removed in ticket 58)."
+}

@@ -1,4 +1,4 @@
-# make up / e2e / perf / security / new-service: dispatch for all modules or one (M=).
+# make up / api-test / perf / security / new-service: dispatch for all modules or one (M=).
 # docker, gitleaks and trivy are replaced by stubs on PATH that record their arguments.
 
 stub_tools() {
@@ -57,6 +57,29 @@ test_up_with_TIMERS_fast_adds_the_test_timers_env_file() {
     || fail "test timers not loaded: $(cat .tool-calls)"
   assert_fails mw_make "$PWD" up TIMERS=slow
   assert_out_contains "TIMERS"
+}
+
+test_targets_after_up_TIMERS_fast_keep_the_test_timers() {
+  # make up TIMERS=fast records the timers, so make seed (and every later target that talks to
+  # the stack) passes the same env files instead of recreating services with production timers;
+  # a plain make up or make reset forgets them.
+  stub_tools
+  stack_file mw-a mw-seeder
+  assert_ok mw_make "$PWD" up TIMERS=fast
+  rm -f .tool-calls
+  assert_ok mw_make "$PWD" seed
+  grep -qF "docker $(F) --env-file $PWD/deploy/test-timers.env --profile core --profile seed up -d --no-deps" .tool-calls \
+    || fail "seed after up TIMERS=fast lost the timers: $(cat .tool-calls)"
+  assert_ok mw_make "$PWD" up
+  rm -f .tool-calls
+  assert_ok mw_make "$PWD" seed
+  grep -qF "test-timers.env" .tool-calls && fail "seed after a plain up still uses the test timers: $(cat .tool-calls)"
+  assert_ok mw_make "$PWD" up TIMERS=fast
+  assert_ok mw_make "$PWD" reset
+  rm -f .tool-calls
+  assert_ok mw_make "$PWD" seed
+  grep -qF "test-timers.env" .tool-calls && fail "seed after reset still uses the test timers: $(cat .tool-calls)"
+  return 0
 }
 
 test_up_with_M_starts_that_service_and_its_dependencies() {
@@ -151,8 +174,9 @@ test_seed_runs_the_seeder_one_shot_and_fails_when_it_does() {
   stub_tools
   stack_file mw-a mw-seeder
   assert_ok mw_make "$PWD" seed
-  # recreated, so a seeder that already exited 0 runs again (idempotent second run)
-  grep -qF -- "--profile core --profile seed up -d --force-recreate mw-seeder" .tool-calls || fail "seeder not started: $(cat .tool-calls)"
+  # recreated, so a seeder that already exited 0 runs again (idempotent second run); --no-deps, so
+  # the running services are never recreated (a stack started with TIMERS=fast keeps its timers)
+  grep -qF -- "--profile core --profile seed up -d --no-deps --force-recreate mw-seeder" .tool-calls || fail "seeder not started: $(cat .tool-calls)"
   grep -qF -- "--profile core --profile seed wait mw-seeder" .tool-calls || fail "seeder exit not checked: $(cat .tool-calls)"
   grep -qF -- "cp mw-seeder:/run/mw/seed/manifest.json $PWD/build/seed/manifest.json" .tool-calls \
     || fail "manifest not copied out: $(cat .tool-calls)"
@@ -185,52 +209,49 @@ test_down_stops_every_profile_and_reset_drops_the_volumes_too() {
     || fail "reset: $(cat .tool-calls)"
 }
 
-test_e2e_with_no_suite_is_a_noop() {
-  assert_ok mw_make "$PWD" e2e
-  assert_out_contains "no e2e suite"
-  new_module "$PWD" services/mw-a
-  assert_ok mw_make "$PWD" e2e M=mw-a
+test_api_test_with_no_suite_is_a_noop() {
+  assert_ok mw_make "$PWD" api-test
+  assert_out_contains "no API suite"
 }
 
-test_e2e_runs_suite_filtered_by_module_tag() {
-  new_module "$PWD" tests/e2e
-  assert_ok mw_make "$PWD" e2e
-  grep -q '^test' tests/e2e/.gradlew-calls || fail "suite not run"
-  new_module "$PWD" services/mw-a
-  rm tests/e2e/.gradlew-calls
-  assert_ok mw_make "$PWD" e2e M=mw-a TAGS=@p2p
-  grep -q -- '-Dcucumber.filter.tags=@mw-a and (@p2p)' tests/e2e/.gradlew-calls || fail "tags not passed: $(cat tests/e2e/.gradlew-calls)"
+# plant_api_suite: a stub tests/api/run.sh that records its arguments.
+plant_api_suite() {
+  mkdir -p tests/api
+  printf '#!/bin/sh\necho "$@" >> "$(dirname "$0")/.run-calls"\n[ -f "$(dirname "$0")/.fail" ] && exit 1\nexit 0\n' >tests/api/run.sh
+  chmod +x tests/api/run.sh
 }
 
-test_e2e_enables_the_test_only_gateway_routes_on_the_running_stack_first() {
+test_api_test_runs_the_default_folders() {
+  plant_api_suite
+  assert_ok mw_make "$PWD" api-test
+  [ "$(cat tests/api/.run-calls)" = "" ] || fail "default run got arguments: $(cat tests/api/.run-calls)"
+}
+
+test_api_test_passes_folders_and_all() {
+  plant_api_suite
+  assert_ok mw_make "$PWD" api-test FOLDER="01, 05 09" ALL=1
+  [ "$(cat tests/api/.run-calls)" = "--folder 01 --folder 05 --folder 09 --all" ] \
+    || fail "run.sh got: $(cat tests/api/.run-calls)"
+}
+
+test_api_test_fails_when_the_suite_fails() {
+  plant_api_suite
+  touch tests/api/.fail
+  assert_fails mw_make "$PWD" api-test
+}
+
+test_api_test_rejects_a_bad_ALL() {
+  plant_api_suite
+  assert_fails mw_make "$PWD" api-test ALL=yes
+  assert_out_contains "ALL must be empty or 1"
+}
+
+test_the_api_suite_enables_the_test_only_gateway_routes_on_the_running_stack_first() {
   # The test routes (deploy/apisix/routes-test) exist only while apisix-init last ran with
-  # MW_E2E_ROUTES=1: make e2e re-runs it with the flag and waits for it, then runs the suite.
-  mkdir -p .bin deploy && touch deploy/docker-compose.yml
-  cat >.bin/docker <<EOF
-#!/bin/sh
-echo "MW_E2E_ROUTES=\${MW_E2E_ROUTES:-} key=\${MW_E2E_API_KEY:+set} docker \$*" >> "$PWD/.tool-calls"
-exit 0
-EOF
-  chmod +x .bin/docker
-  PATH="$PWD/.bin:$PATH"
-  new_module "$PWD" tests/e2e
-  assert_ok mw_make "$PWD" e2e TAGS=@p2p
-  grep -q '^MW_E2E_ROUTES=1 key=set docker compose .*up -d --no-deps --force-recreate apisix-init' .tool-calls \
-    || fail "apisix-init not re-run with MW_E2E_ROUTES=1: $(cat .tool-calls)"
-  grep -q 'docker compose .*wait apisix-init' .tool-calls || fail "did not wait for apisix-init: $(cat .tool-calls)"
-  grep -q '^test' tests/e2e/.gradlew-calls || fail "suite not run"
-}
-
-test_e2e_fails_when_the_test_routes_cannot_be_enabled() {
-  mkdir -p .bin deploy && touch deploy/docker-compose.yml
-  printf '#!/bin/sh\ncase "$*" in *wait*) exit 1 ;; esac\nexit 0\n' >.bin/docker
-  chmod +x .bin/docker
-  PATH="$PWD/.bin:$PATH"
-  new_module "$PWD" tests/e2e
-  assert_fails mw_make "$PWD" e2e
-  assert_out_contains "apisix-init"
-  [ -f tests/e2e/.gradlew-calls ] && fail "suite ran without its routes"
-  return 0
+  # MW_E2E_ROUTES=1: tests/api/run.sh re-runs it with the flag and waits for it.
+  grep -q 'MW_E2E_ROUTES=1 docker compose "${DC_F\[@\]}" up -d --no-deps --force-recreate apisix-init' "$REPO_DIR/tests/api/run.sh" \
+    || fail "tests/api/run.sh does not re-run apisix-init with MW_E2E_ROUTES=1"
+  grep -q 'docker compose "${DC_F\[@\]}" wait apisix-init' "$REPO_DIR/tests/api/run.sh" || fail "tests/api/run.sh does not wait for apisix-init"
 }
 
 test_perf_runs_gatling_suite() {
@@ -273,8 +294,9 @@ EOF
   grep -q '^gatlingRun' tests/perf/.gradlew-calls || fail "gatling not run"
 }
 
-test_e2e_with_unknown_M_fails() {
-  assert_fails mw_make "$PWD" e2e M=mw-nope
+test_perf_with_unknown_M_fails() {
+  new_module "$PWD" tests/perf
+  assert_fails mw_make "$PWD" perf M=mw-nope
   assert_out_contains "unknown module"
 }
 

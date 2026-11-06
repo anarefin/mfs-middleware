@@ -1,19 +1,18 @@
 #!/usr/bin/env bash
 # Runs a black-box suite in tests/<suite> (its own Gradle build) against the running stack.
-# Usage: scripts/suite.sh e2e|perf [MODULE] [TAGS]
-#   e2e:  ./gradlew test with Cucumber tags; MODULE adds the tag @<module>
+# Usage: scripts/suite.sh perf [MODULE]
 #   perf: ./gradlew gatlingRun, then ./gradlew perfOverhead (always, also after a failed run, so
 #         the overhead breakdown of a missed target is written); extra -D settings from
 #         MW_PERF_ARGS (e.g. "-Dmw.perf.steady=10m"); MODULE is passed as -Dmw.module=<module>
 #         (the mix always covers the whole stack)
-# Both need the test-only gateway routes and re-apply them first.
+# It needs the test-only gateway routes and re-applies them first. (The API suite has its own
+# runner, tests/api/run.sh, which applies them the same way: make api-test.)
 # Passes (does nothing) while the suite does not exist yet.
 set -eu
 . "$(dirname "$0")/lib/modules.sh"
 
-suite="${1:?suite name (e2e|perf)}"
+suite="${1:?suite name (perf)}"
 m="${2:-}"
-tags="${3:-}"
 name=""
 if [ -n "$m" ]; then
   mod="$(selected_modules "$m")"
@@ -26,7 +25,7 @@ if [ ! -x "$dir/gradlew" ]; then
   exit 0
 fi
 
-# The suites' test-only gateway routes (deploy/apisix/routes-test: core-mock's test API, the
+# The suite's test-only gateway routes (deploy/apisix/routes-test: core-mock's test API, the
 # simulators' control API, behind key-auth) are applied only when apisix-init runs with
 # MW_E2E_ROUTES=1; a default `make up` removes them. Re-run it on the running stack with the flag
 # and wait for it.
@@ -43,14 +42,6 @@ enable_test_routes() {
 
 args=()
 case "$suite" in
-  e2e)
-    args=(test)
-    filter=""
-    [ -n "$name" ] && filter="@$name"
-    if [ -n "$tags" ]; then filter="${filter:+$filter and }($tags)"; fi
-    [ -n "$filter" ] && args+=("-Dcucumber.filter.tags=$filter")
-    enable_test_routes
-    ;;
   perf)
     [ -n "$name" ] && args+=("-Dmw.module=$name")
     # shellcheck disable=SC2206 # word splitting of the extra settings is intended
@@ -66,6 +57,3 @@ case "$suite" in
     ;;
   *) die "unknown suite '$suite'" ;;
 esac
-
-info "$suite: tests/$suite ./gradlew ${args[*]}"
-cd "$dir" && ./gradlew "${args[@]}"

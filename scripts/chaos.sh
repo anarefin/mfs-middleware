@@ -4,7 +4,7 @@
 # and sweeps". Run on a fresh, healthy stack: make down DOWN_ARGS=-v && make up && make chaos.
 #
 # For every target in turn (default: every long-running mw-* service, then kafka, then postgres):
-#   1. start mixed load (a loop of the e2e suite, CHAOS_LOAD_CMD) in the background
+#   1. start mixed load (a loop of Newman API suite folders, CHAOS_LOAD_CMD) in the background
 #   2. after CHAOS_WARMUP s (txns in flight) SIGKILL the target (docker compose kill), keep it
 #      down CHAOS_DOWN s, start it again, wait until every long-running service is healthy
 #   3. stop the load (lets the running suite pass finish, CHAOS_LOAD_STOP_TIMEOUT), then wait up
@@ -19,11 +19,12 @@
 # Writes a Markdown report (CHAOS_REPORT, default build/chaos/chaos-report-<UTC>.md) to attach to
 # the PR; exits 1 when any round failed.
 #
-# Knobs (environment): CHAOS_TARGETS="mw-orchestrator kafka", CHAOS_LOAD_CMD, CHAOS_LOAD_TAGS,
+# Knobs (environment): CHAOS_TARGETS="mw-orchestrator kafka", CHAOS_LOAD_CMD, CHAOS_LOAD_FOLDERS
+# (API suite folders, default "01 03 04 05 06 08": P2P, cash, merchant, top-up, bill pay, add money),
 # CHAOS_WARMUP (60), CHAOS_DOWN (15), CHAOS_RECOVER_TIMEOUT (300), CHAOS_SETTLE_TIMEOUT (900: the
 # TSQ schedule's 30 s, 1, 2, 5 min slots), CHAOS_POLL (10), CHAOS_LOAD_PAUSE (2),
 # CHAOS_LOAD_STOP_TIMEOUT (300), CHAOS_ALLOW_MANUAL_REVIEW (0). Reads the databases with the
-# postgres superuser through docker compose exec, read-only queries (as the e2e suite does).
+# postgres superuser through docker compose exec, read-only queries.
 set -uo pipefail
 . "$(dirname "$0")/lib/modules.sh"
 
@@ -38,8 +39,10 @@ settle_timeout="${CHAOS_SETTLE_TIMEOUT:-900}"
 poll="${CHAOS_POLL:-10}"
 load_pause="${CHAOS_LOAD_PAUSE:-2}"
 load_stop_timeout="${CHAOS_LOAD_STOP_TIMEOUT:-300}"
-load_tags="${CHAOS_LOAD_TAGS:-(@p2p or @cash or @topup or @billpay or @addmoney) and not @tsq}"
-load_cmd="${CHAOS_LOAD_CMD:-\"$MW_ROOT/scripts/suite.sh\" e2e \"\" \"$load_tags\"}"
+load_folders="${CHAOS_LOAD_FOLDERS:-01 03 04 05 06 08}"
+load_args=""
+for f in $load_folders; do load_args="$load_args --folder $f"; done
+load_cmd="${CHAOS_LOAD_CMD:-\"$MW_ROOT/tests/api/run.sh\"$load_args}"
 report="${CHAOS_REPORT:-$MW_ROOT/build/chaos/chaos-report-$(date -u +%Y%m%dT%H%M%SZ).md}"
 work="$(mktemp -d "${TMPDIR:-/tmp}/mwchaos.XXXXXX")"
 mkdir -p "$(dirname "$report")"

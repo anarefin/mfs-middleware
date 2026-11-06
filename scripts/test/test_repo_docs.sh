@@ -107,7 +107,7 @@ test_spec_kafka_contract_matches_the_contract_schemas() {
 }
 
 # ---- Operator docs (ticket 47, spec WP30, MVP acceptance criterion 6) ----
-# README quick start, docs/runbook.md, docs/demo.md and docs/adr/: every command, path, tag and
+# README quick start, docs/runbook.md, docs/demo.md and docs/adr/: every command, path, folder and
 # knob they name must be real, so a person not on the team can follow them on a clean host.
 
 op_docs() { # the operator docs, repo-relative
@@ -173,12 +173,27 @@ test_every_repo_path_in_the_docs_exists() {
   done
 }
 
-test_every_e2e_tag_in_the_docs_exists() {
-  local f tag feats="$REPO_DIR/tests/e2e/src/test/resources/features"
+test_every_api_test_folder_in_the_docs_exists() {
+  # FOLDER= of make api-test: folder numbers (tests/api/src/NN-*) or full folder names, comma-separated
+  local f v part n names
+  names="$(sed -n 's/^ *"name": *"\(.*\)",\{0,1\}$/\1/p' "$REPO_DIR"/tests/api/src/*/folder.json 2>/dev/null)"
   for f in $(op_docs); do
-    for tag in $(grep -oE 'TAGS=("[^"]*"|[^ `]*)' "$REPO_DIR/$f" | grep -oE '@[a-z0-9-]+' | sort -u); do
-      grep -rqE -- "$tag( |\$)" "$feats" || fail "$f uses tag $tag, which no feature file carries"
-    done
+    while IFS= read -r v; do
+      # placeholders ([FOLDER=], FOLDER=<folders>) are not folders
+      case "$v" in '' | ']'* | '<'*) continue ;; esac
+      IFS=',' read -r -a parts <<<"$v"
+      for part in "${parts[@]}"; do
+        part="$(printf '%s' "$part" | sed -e 's/^ *//' -e 's/ *$//')"
+        [ -z "$part" ] && continue
+        if printf '%s' "$part" | grep -qE '^[0-9 ]+$'; then
+          for n in $part; do
+            ls -d "$REPO_DIR/tests/api/src/$n-"* >/dev/null 2>&1 || fail "$f uses FOLDER $n, which tests/api/src has no folder for"
+          done
+        else
+          printf '%s\n' "$names" | grep -qxF -- "$part" || fail "$f uses FOLDER '$part', which is no folder name of the API suite"
+        fi
+      done
+    done < <(grep -oE 'FOLDER=("[^"]*"|[^ `]*)' "$REPO_DIR/$f" | sed -E 's/^FOLDER=//; s/^"//; s/"$//' | sort -u)
   done
 }
 
@@ -188,8 +203,8 @@ test_every_knob_in_the_docs_is_read_by_the_tooling() {
   for f in $(op_docs); do
     for v in $(grep -E '(make [a-z]|scripts/|docker compose)' "$REPO_DIR/$f" | grep -oE '(^|[ `(])[A-Z][A-Z0-9_]+=' \
                | sed -E 's/^[ `(]//; s/=$//' | sort -u); do
-      grep -rqw -- "$v" "$REPO_DIR/Makefile" "$REPO_DIR/scripts" "$REPO_DIR/deploy" \
-        || fail "$f sets $v, which neither the Makefile, scripts/ nor deploy/ reads"
+      grep -rqw -- "$v" "$REPO_DIR/Makefile" "$REPO_DIR/scripts" "$REPO_DIR/deploy" "$REPO_DIR/tests/api/run.sh" \
+        || fail "$f sets $v, which neither the Makefile, scripts/, deploy/ nor tests/api/run.sh reads"
     done
   done
 }

@@ -17,7 +17,7 @@
 #   OS packages without a fix (--ignore-unfixed, decision in docs/security-findings.md).
 #   Findings below high are written to build/security/*-below-high.json (report only); their
 #   decisions are in docs/security-findings.md.
-# Live stages (need the running stack, `make up` then `make e2e`):
+# Live stages (need the running stack, `make up` then `make api-test`):
 #   - zap:      ZAP baseline (passive) on the APISIX edge from inside the dmz network, gated by
 #               scripts/lib/zap-gate.py against deploy/zap/decisions.tsv (high fails, and so
 #               does any alert without a decision)
@@ -204,7 +204,7 @@ elif stack_up; then
   "$(dirname "$0")/log-scan.sh" || failed="$failed logs"
 elif [ "$LIVE" = 1 ]; then
   failed="$failed live:stack-down"
-  printf 'security: SECURITY_LIVE=1 but the MVP stack is not running (make up && make e2e first)\n' >&2
+  printf 'security: SECURITY_LIVE=1 but the MVP stack is not running (make up && make api-test first)\n' >&2
 else
   printf '==> WARNING security: MVP stack not running: ZAP baseline and log scan SKIPPED (the gate runs them with SECURITY_LIVE=1)\n' >&2
 fi

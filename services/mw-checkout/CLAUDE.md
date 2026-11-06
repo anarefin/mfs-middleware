@@ -123,7 +123,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   `security/ResultSignerTest` (vector from openssl); `mapper/CheckoutMapperTest` (contract schemas);
   `service/SessionBodySchemaTest`, `controller/MerchantSessionControllerTest`,
   `controller/HostedPageControllerTest` (schema before the service).
-- e2e `@checkout` (`tests/e2e/src/test/resources/features/checkout.feature`).
+- API suite folder `09` (`tests/api/src/09-checkout/checkout.js`).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
@@ -159,4 +159,4 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 | `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when its files or the contracts in its `contracts.yml` changed) |
 | `make build M=mw-checkout` | `bootJar`, then this service's images (`mfs-mw/mw-checkout:local`, `-init`) |
 | `make up M=mw-checkout` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |
-| `make e2e TAGS=@checkout` | session -> OTP -> pay -> signed redirect through the edge |
+| `make api-test FOLDER=09` | session -> OTP -> pay -> signed redirect through the edge |

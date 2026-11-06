@@ -1,0 +1,4 @@
+{
+  "name": "20 USSD over SMPP for GP (SmppUssdTransport)",
+  "description": "Port of the Cucumber ussd-smpp.feature (tests/e2e, removed in ticket 58)."
+}

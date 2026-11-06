@@ -16,8 +16,11 @@ produces:
     - events/mw-orchestrator/mw.partner.request.v1.schema.json#billpay
     - events/mw-orchestrator/mw.partner.request.v1.schema.json#bank
     - events/mw-audit-dw/mw.audit.event.v1.schema.json
+    # REVERSAL of the test-only API (ticket 58, off unless mw.orchestrator.test-api.enabled)
+    - events/mw-orchestrator/mw.txn.request.v1.schema.json
   apis:
     - api/mw-orchestrator/txn-query.v1.openapi.yaml
+    - api/mw-orchestrator/orchestrator-test.v1.openapi.yaml
 consumes:
   events:
     - events/mw-orchestrator/mw.txn.request.v1.schema.json

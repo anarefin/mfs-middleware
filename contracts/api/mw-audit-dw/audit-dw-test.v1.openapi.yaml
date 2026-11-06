@@ -1,0 +1,139 @@
+openapi: 3.1.0
+info:
+  title: Bits audit test API v1 (mw-audit-dw, test-only)
+  version: 1.0.0
+  description: |
+    Test-only API of mw-audit-dw (ticket 58), never part of the product: the host Newman suite
+    (`tests/api`) reads audit rows and checks the hash chain through the test-only APISIX route
+    `/test/audit-dw/v1/*` (deploy/apisix/routes-test/test-audit-dw.json, applied only with
+    `MW_E2E_ROUTES=1`, key-auth consumer `mw_e2e`, private source addresses only). It replaces the
+    suite's read-only psql reads of `audit.event`. Off unless mw-audit-dw runs with
+    `MW_AUDIT_DW_TEST_API_ENABLED=true` (`mw.audit-dw.test-api.enabled`; the dev stack sets it);
+    off, neither path exists (404). No token: the route's key-auth is the only gate.
+    Values are returned as stored, i.e. already masked (spec 18.3). Every error is the 5.3 envelope.
+servers:
+  - url: http://mw-audit-dw:8080
+paths:
+  /test/v1/audit/events:
+    get:
+      operationId: searchAuditEventsForTests
+      summary: Search audit events (same filters and page as the internal searchAuditEvents)
+      description: >-
+        Every filter is optional; filters are ANDed. Ordered by `at`, then chain order. Errors:
+        400 MW-VAL-001 (bad filter, limit outside 1..500).
+      parameters:
+        - { name: txnId, in: query, schema: { type: string, format: uuid } }
+        - { name: actorType, in: query, schema: { type: string, minLength: 1, maxLength: 32 } }
+        - { name: actorId, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: action, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: resource, in: query, schema: { type: string, minLength: 1, maxLength: 256 } }
+        - { name: outcome, in: query, schema: { type: string, minLength: 1, maxLength: 32 } }
+        - name: from
+          in: query
+          description: Inclusive lower bound of `at`
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          description: Exclusive upper bound of `at`
+          schema: { type: string, format: date-time }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 100000, default: 0 } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: One page of audit events
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditPage" }
+        "400": { $ref: "#/components/responses/Error" }
+  /test/v1/audit/chains/{month}:
+    get:
+      operationId: verifyAuditChain
+      summary: Recompute one month's hash chain and check it against its chain head
+      description: >-
+        Runs the scheduled verification's check (spec 14.3, `AuditChainVerifier`) for one month as
+        the read-only role `audit_reader`. 200 whatever the outcome: `intact` false names the first
+        broken `failedSeq` and why. Errors: 400 MW-VAL-001 (month not yyyy-MM), 503 MW-SYS-002
+        (chain verification switched off, `mw.audit-dw.chain-verify.enabled=false`).
+      parameters:
+        - name: month
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$" }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The verification result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChainVerification" }
+        "400": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+components:
+  responses:
+    Error:
+      description: Error envelope (spec 5.3)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    ChainVerification:
+      type: object
+      required: [month, intact, rows]
+      properties:
+        month: { type: string, description: "yyyy-MM" }
+        intact: { type: boolean }
+        rows: { type: integer, description: Rows checked }
+        failedSeq: { type: [integer, "null"], description: "First seq at which the chain breaks (null when intact)" }
+        reason: { type: [string, "null"], description: "Why it breaks (null when intact)" }
+    AuditEntry:
+      type: object
+      required: [auditId, month, seq, recordedAt, at, correlationId, actor, action, resource, outcome, service]
+      properties:
+        auditId: { type: string, format: uuid }
+        month: { type: string, description: "yyyy-MM: the hash chain the event belongs to" }
+        seq: { type: integer, description: Position in the month's chain }
+        recordedAt: { type: string, format: date-time }
+        at: { type: string, format: date-time }
+        txnId: { type: string, format: uuid }
+        correlationId: { type: string }
+        actor:
+          type: object
+          required: [type, id]
+          properties:
+            type: { type: string }
+            id: { type: string }
+        action: { type: string }
+        resource: { type: string }
+        outcome: { type: string }
+        service: { type: string }
+        sourceIp: { type: string }
+        payloadRef: { type: string }
+        before: { type: object }
+        after: { type: object }
+    AuditPage:
+      type: object
+      required: [items, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AuditEntry" }
+        limit: { type: integer }
+        offset: { type: integer }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

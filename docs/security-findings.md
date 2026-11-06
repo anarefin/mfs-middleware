@@ -5,7 +5,7 @@ for every finding it reports: the fixes made, the HIGH/CRITICAL findings accepte
 scanner ignore entry that carries the same reason and an expiry), and the decisions for every
 finding below high. Last full offline run: 2026-11-06, trivy 0.67.2 (DB of that day), gitleaks
 8.28.0, images built from this branch (tag `sec46`). The live stages (ZAP baseline, container
-log scan) need the running stack and are run by the milestone gate (`make up && make e2e &&
+log scan) need the running stack and are run by the milestone gate (`make up TIMERS=fast && make seed && make api-test &&
 SECURITY_LIVE=1 make security`).
 
 ## How the gate reads it
@@ -93,7 +93,7 @@ Decisions for the rest:
   the header; `accept` alerts carry their reason). An alert not listed fails the gate: add its
   decision there, with this register updated. The pipeline (zap-baseline.py, JSON report,
   `scripts/lib/zap-gate.py`) was checked against a dummy target; against APISIX it runs at the gate.
-- Log scan: `scripts/log-scan.sh` over every container log after the full `make e2e` run. Rules
+- Log scan: `scripts/log-scan.sh` over every container log after the full `make api-test` run. Rules
   in the script header; a match is printed masked. Self-tests in `scripts/test/test_security.sh`.
 
 ## Below high

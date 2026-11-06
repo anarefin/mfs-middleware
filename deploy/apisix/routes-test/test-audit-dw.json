@@ -1,0 +1,22 @@
+{
+  "name": "test-audit-dw",
+  "desc": "TEST ONLY (MW_E2E_ROUTES=1): mw-audit-dw test API (audit event search, hash-chain check; ticket 58) for the host Newman suite; key-auth (consumer mw-e2e) from private networks only",
+  "uri": "/test/audit-dw/v1/*",
+  "methods": ["GET"],
+  "plugins": {
+    "ip-restriction": {
+      "whitelist": ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128"]
+    },
+    "key-auth": { "header": "apikey", "hide_credentials": true },
+    "consumer-restriction": { "type": "consumer_name", "whitelist": ["mw_e2e"] },
+    "proxy-rewrite": {
+      "regex_uri": ["^/test/audit-dw(/v1/.*)$", "/test$1"]
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": { "connect": 5, "send": 10, "read": 30 },
+    "nodes": { "mw-audit-dw:8080": 1 }
+  }
+}

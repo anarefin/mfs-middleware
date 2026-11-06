@@ -26,7 +26,7 @@ runs in Docker.
 | Docker Engine with the Compose v2 plugin, 2.20 or newer (`up --wait`, profiles); on macOS Docker Desktop with at least 10 GB memory for its VM | every container | `docker compose version` |
 | JDK 25 (Temurin or any other build) on `PATH` or in `JAVA_HOME` | `make build` builds each service jar on the host with its own Gradle wrapper; the wrappers download Gradle itself | `java -version` |
 | bash, make (GNU or BSD), git, curl, jq | the Makefile and `scripts/`; jq for `make smoke`, `make edge-test`, `make security` | `jq --version` |
-| Node.js 22+ (optional) | only `make contracts-lint` and `make compose-check`; the admin console builds inside Docker | `node --version` |
+| Node.js 22+ with npx | `make api-test` (Newman, pinned, fetched by npx; needs access to registry.npmjs.org and cdnjs.cloudflare.com), `make contracts-lint`, `make compose-check`; the admin console builds inside Docker | `node --version` |
 | Node.js 24 + pnpm (optional) | only the admin console's own tests (`pnpm test`, `pnpm test:e2e` in `ui/mw-admin-ui`) | `pnpm --version` |
 | Internet access on the first run | images, Gradle distributions and dependencies, the console's pnpm packages | |
 | Host port 443 free | APISIX is the only container that publishes a port (443 -> 9443) | `lsof -i :443` |
@@ -99,8 +99,9 @@ Then:
   first sign-in of each operator asks you to enrol TOTP with an authenticator app (realm `ops`
   requires MFA). A second operator, `ops-checker01`, approves what `ops-maker01` requests: use a
   private window for them.
-- **A first transaction**: `make e2e TAGS=@p2p` runs the P2P scenarios through APISIX (the first
-  run downloads the suite's dependencies). Then search the console for MSISDN `01711000001`.
+- **A first transaction**: `make seed`, then `make api-test FOLDER=01` runs the P2P scenarios through
+  APISIX (the first run downloads Newman). For the whole suite start the stack with
+  `make up TIMERS=fast` (short status-inquiry and retry timers) and run `make api-test`. Then search the console for MSISDN `01711000001`.
 - **Stop**: `make down` keeps the data; `make reset` drops every container and volume (a fresh
   start next time).
 
@@ -109,8 +110,8 @@ Then:
 | Realm | Users | Password variable | Used by |
 | --- | --- | --- | --- |
 | `ops` | `ops-viewer01`, `ops-maker01`, `ops-checker01`, `ops-admin01`, `ops-compliance01`, `ops-auditor01` (TOTP enrolled at first sign-in) | `KC_OPS_TEST_PASSWORD` | admin console |
-| `ops` | `ops-e2e-maker01`, `ops-e2e-checker01` (TOTP preset from `KC_OPS_TEST_TOTP_SECRET`) | `KC_OPS_TEST_PASSWORD` | e2e suite only |
-| `customers` | `customer01` (wallet `01711000001`), `customer02` (`01711000002`), `agent01`, `merchant01`, `merchant02` | `KC_CUSTOMERS_TEST_PASSWORD` | app API, e2e, perf |
+| `ops` | `ops-e2e-maker01`, `ops-e2e-checker01` (TOTP preset from `KC_OPS_TEST_TOTP_SECRET`) | `KC_OPS_TEST_PASSWORD` | API suite only |
+| `customers` | `customer01` (wallet `01711000001`), `customer02` (`01711000002`), `agent01`, `merchant01`, `merchant02` | `KC_CUSTOMERS_TEST_PASSWORD` | app API, API suite, perf |
 | `portals` | `org-maker01`, `org-checker01`, `org-checker02`, `org-makerchecker01`, `sp-viewer01` | `KC_PORTALS_TEST_PASSWORD` | org / SP portal API |
 
 ### With plain `docker compose`
@@ -139,7 +140,7 @@ docker compose -f deploy/docker-compose.yml --profile core up -d --wait
 Repository layout: `contracts/` (OpenAPI and JSON Schema files, owner per file in
 `contracts/OWNERS.yml`), `services/mw-*` (12 standalone Gradle builds), `ui/mw-admin-ui`
 (Next.js 16.4.1), `templates/mw-service-template`, `deploy/` (the stack file `deploy/docker-compose.yml`, APISIX, Kafka topics, ZAP
-decisions), `tests/e2e` (Cucumber), `tests/perf` (Gatling), `scripts/` (everything the Makefile
+decisions), `tests/api` (Newman API suite), `tests/perf` (Gatling), `scripts/` (everything the Makefile
 runs, with shell self-tests in `scripts/test/`), `docs/`.
 
 ## Commands
@@ -159,7 +160,7 @@ modules, or for one with `M=<module>`. `make help` prints the list.
 | `make verify-changed [BASE=main] [JOBS=3]` | the same gate for the modules changed since `BASE` plus their contract neighbours, `JOBS` at a time (logs in `build/verify-changed/`). A changed contract selects the modules whose `services/mw-*/contracts.yml` lists it; run it with the stack down (Docker memory) |
 | `make check-isolation [M=]` | module independence: no cross-module dependency, `includeBuild`, convention plugin or path outside the module except `contracts/` |
 | `make check-field-injection [M=]` | no `@Autowired` field anywhere, tests included |
-| `make contracts-lint` | lint `contracts/` and every module's `contracts.yml` (Node.js) |
+| `make contracts-lint` | lint `contracts/` and every module's `contracts.yml`, and the API suite's acceptance traceability (`scripts/check-api-traceability.sh`) (Node.js, python3) |
 | `make versions-check [M=]` | report version drift between the modules' version catalogs |
 | `make test-scripts` | shell self-tests of the Makefile and `scripts/` (this README's commands included) |
 | `make new-service NAME=mw-x` | scaffold a service from `templates/mw-service-template` |
@@ -175,12 +176,11 @@ manifest in step with every message change. The admin console is tested with `pn
 | Command | What it does |
 | --- | --- |
 | `make build [M=] [JOBS=3]` | `bootJar` per stack module, `JOBS` at a time, then `docker compose build` (every image, or `M=`'s) |
-| `make up [PROFILE=core] [TIMERS=fast] [M=]` | start the stack from the built images and wait until healthy (above); `PROFILE=minimal` = the P2P and cash path, `TIMERS=fast` = short test timers (`deploy/test-timers.env`), `M=mw-x` = one service and its dependencies |
+| `make up [PROFILE=core] [TIMERS=fast] [M=]` | start the stack from the built images and wait until healthy (above); `PROFILE=minimal` = the P2P and cash path, `TIMERS=fast` = short test timers (`deploy/test-timers.env`; recorded in `build/stack-timers`, so later targets such as `make seed` keep them until a plain `make up` or `make reset`), `M=mw-x` = one service and its dependencies |
 | `make seed` | run the seed profile's one-shot `mw-seeder` on the running stack, fail unless it exits 0, copy its manifest to `build/seed/manifest.json` (`MW_SEED_MANIFEST=` overrides); idempotent |
 | `make smoke` | live checks against the running stack |
 | `make edge-test` | APISIX edge policies: 401/400/413/429 envelopes, header stripping, correlation ID, quotas, idempotent apply |
-| `make e2e [M=] [TAGS=]` | Cucumber suite in `tests/e2e` (`tests/e2e/README.md`), filtered by `@<module>` and a tag expression, e.g. `make e2e TAGS="@p2p or @cash"` |
-| `make e2e-changed [BASE=main] [TAGS=]` | `make build M=` + `make up M=` for each module changed since `BASE` (the whole stack when it is down or `contracts/`/`deploy/` changed), then the e2e suite (`E2E_SCOPE=modules` runs only their scenarios); fast feedback, not the gate |
+| `make api-test [FOLDER=] [ALL=1]` | Newman API suite in `tests/api` (`tests/api/README.md`) against the running stack (`make up TIMERS=fast && make seed` first; under 10 minutes): every folder but `90 Slow`, or the ones in `FOLDER` (numbers or names, comma-separated, e.g. `make api-test FOLDER="01, 03"`); `ALL=1` adds `90 Slow` |
 | `make chaos [TARGETS=]` | kill every `mw-*` container, then `kafka` and `postgres`, mid-flow under load; checks no transaction is left non-terminal and the core-mock ledger balances (criterion 3); report in `build/chaos/` |
 | `make perf` | Gatling mix at 100 TPS with the p95 middleware-overhead check (criterion 7, `tests/perf/README.md`); report under `tests/perf/build/reports/` |
 | `make security [M=]` | gitleaks, CycloneDX SBOM + trivy for every module and image; with the stack up also the ZAP baseline and the container log scan. `SECURITY_LIVE=1 make security` makes the live stages mandatory (the milestone gate). Decisions in `docs/security-findings.md` |
@@ -190,5 +190,5 @@ manifest in step with every message change. The admin console is tested with `pn
 | `make reset` | remove every container, volume and orphan of the stack (every profile): the next `make up` starts fresh |
 
 The milestone gate, in order: `make verify-changed BASE=<run start>` with the stack down, then
-`make reset && make build && make up && make e2e`, then `make chaos`, `make perf` and
+`make reset && make build && make up TIMERS=fast && make seed && make api-test`, then `make chaos`, `make perf` and
 `SECURITY_LIVE=1 make security` on that stack (see [docs/demo.md](docs/demo.md), M6).

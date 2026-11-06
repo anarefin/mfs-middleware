@@ -1,0 +1,4 @@
+{
+  "name": "04 In-app merchant payment (Customer app) and the merchant's collections (Merchant app)",
+  "description": "Port of the Cucumber merchant.feature (tests/e2e, removed in ticket 58)."
+}

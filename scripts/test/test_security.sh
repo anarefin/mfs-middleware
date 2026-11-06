@@ -21,6 +21,14 @@ test_log_scan_passes_masked_values_and_system_ids() {
   assert_out_contains "no PIN"
 }
 
+test_log_scan_passes_a_sql_cast_of_a_pin_column() {
+  # PostgreSQL logs the statement of a deadlock: a column name cast with ::, no value (ticket 58)
+  assert_ok scan_lines \
+    'postgres-1  | Process 179: select txn_id, encrypted_pin::text, request::text from transaction where txn_id = $1'
+  assert_fails scan_lines '{"pin":"1234"}'
+  assert_fails scan_lines 'pin: 1234'
+}
+
 test_log_scan_finds_an_unmasked_msisdn_without_repeating_it() {
   assert_fails scan_lines 'payer 01712345678 ok'
   assert_out_contains "FINDING msisdn logs.txt:1"

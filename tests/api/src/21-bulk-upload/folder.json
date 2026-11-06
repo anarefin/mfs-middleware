@@ -1,0 +1,4 @@
+{
+  "name": "21 Org portal bulk upload with maker-checker through APISIX",
+  "description": "Port of the Cucumber bulk-upload.feature (tests/e2e, removed in ticket 58)."
+}

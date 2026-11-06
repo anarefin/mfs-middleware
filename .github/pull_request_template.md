@@ -18,7 +18,7 @@ Commands run locally on this branch (paste the summary lines of each):
 $ make verify M=<module>
 <paste summary>
 
-$ make e2e TAGS=<tags>      # if the WP has an e2e scenario
+$ make api-test FOLDER=<folders>   # if the WP has API suite requests (tests/api)
 <paste summary>
 ```
 
@@ -45,6 +45,6 @@ Definition of done (spec 23.2):
 ## Reviewer checklist
 
 - [ ] Re-ran `make verify` on this branch and it passed
-- [ ] Re-ran the relevant `make e2e` tags (if any) and they passed
+- [ ] Re-ran the relevant `make api-test` folders (if any) and they passed
 - [ ] Test report above matches the acceptance tests in the WP
 - [ ] Code follows the package layout, error model, masking and log-field rules in `CLAUDE.md`

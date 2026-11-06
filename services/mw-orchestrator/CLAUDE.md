@@ -324,6 +324,22 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   SP `reference` scrubbed, only the bulk attributes (`parentTxnId`, `batchId`, `lineNo`, `reference`);
   no PIN, idempotency key or raw request. `TransactionQueryApiIT` (TSQ'd top-up timeline with core
   commands, resend count and failure reason, masking, typed org scope, payee roles).
+- Test-only API (ticket 58, contract `api/mw-orchestrator/orchestrator-test.v1.openapi.yaml`;
+  `controller/TestApiController` -> `service/TestApiService`, both only with
+  `mw.orchestrator.test-api.enabled=true` = `MW_ORCHESTRATOR_TEST_API_ENABLED`, which only the dev
+  stack sets; off, the paths are 404): the host API suite (`tests/api`) plays operations' REVERSAL
+  producer without the Docker CLI. `POST /test/v1/reversals {originalTxnId, reason?}` loads the
+  original (404 `MW-VAL-003` if unknown) and publishes on `mw.txn.request.v1` (keyed by txnId,
+  `messaging/EventPublisher` directly: no local state changes) a REVERSAL as operations sends it:
+  fresh UUIDv7 txnId, key `test-rev-<uuidv7>`, channel SYSTEM, initiator ORG `bits-ops-test`, the
+  original's parties swapped, its amount, `attributes.reason` (default `test reversal`); answers 202
+  `{txnId, idempotencyKey}`. The request is then handled like any other (rules above). `GET
+  /test/v1/txn-requests/{idempotencyKey}` is 200 `{idempotencyKey, handled: true}` once
+  `txn.idempotency` holds the key (any scope, `IdempotencyRepository.exists`), else 404: the only
+  trace of a repeated reversal. No auth in the service (`anyRequest().permitAll()` outside
+  `/internal/**`); APISIX exposes it only with `MW_E2E_ROUTES=1` as `/test/orchestrator/v1/*`
+  (`deploy/apisix/routes-test/test-orchestrator.json`, key-auth `mw_e2e`, private networks).
+  `TestApiControllerTest` (on/off), `TestApiServiceTest`.
 - Init (`mw-orchestrator-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): creates
   role and schema, `secret/mw-orchestrator` (DB password, never overwritten; search hash key, created once) and the AppRole
   `mw-orchestrator`; role-id/secret-id land in a volume the service reads as a configtree. On a
@@ -334,7 +350,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 - `events/mw-orchestrator/mw.txn.request.v1`, `mw.txn.status.v1`, `core.command.v1` (+ per-command
   payloads), `mw.partner.request.v1`, `mw.partner.reply.v1`, `mw.partner.inbound.v1`,
-  `api/mw-orchestrator/txn-query.v1.openapi.yaml` (internal query API, ticket 35), and
+  `api/mw-orchestrator/txn-query.v1.openapi.yaml` (internal query API, ticket 35),
+  `api/mw-orchestrator/orchestrator-test.v1.openapi.yaml` (test-only API, ticket 58), and
   `common/defs.v1` (see `contracts/OWNERS.yml`). Tests validate every status and command the
   service emits against them. `core.command.v1#UnlockWallet` (ticket 52) is in this contract but
   produced by mw-admin-api (ops unlock after maker-checker), not by the orchestrator; its results
@@ -349,8 +366,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `contracts/ProducedContractsTest` (every produced event built by the real mapper, serialised as
   the outbox does, validated), `contracts/ConsumedContractsTest` (every valid sample of a consumed
   event read into the own DTO) and `contracts/ApiContractsTest` (txn-query response bodies against
-  the OpenAPI component schemas). A new event type or family goes into `contracts.yml` and gets a
-  fixture there.
+  the OpenAPI component schemas; also the test API's bodies). A new event type or family goes into
+  `contracts.yml` and gets a fixture there. `mw.txn.request.v1` is consumed and, by the test-only
+  reversal only, produced (fixture: the REVERSAL `TestApiService` publishes).
 - `dto/ConfigChangedEvent` (`mw.config.changed.v1`) exists with its schema tests, but no route
   consumes the topic yet, so it is not in `contracts.yml`.
 - `events/mw-core-mock/core.event.v1.schema.json`: own type `dto/CoreEvent` (payload read as a

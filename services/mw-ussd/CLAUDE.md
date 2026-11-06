@@ -99,8 +99,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   never reaches the session: it is encrypted on receipt (`util/PinCipher`, RSA-OAEP SHA-256 with
   the core's public key, `mw.ussd.pin.key-id` / `public-key` from OpenBao) and handed straight to
   the ACTION, forwarded once in `encryptedPin`.
-- ACTION -> `service/KafkaTransactionFlow`: idempotency key `sha256(USSD|msisdn|sessionId|menuPath|
-  amountMinor|target)` hex (spec 7.3 rule 1, `service/IdempotencyKeys`; menuPath = the node ids and
+- ACTION -> `service/KafkaTransactionFlow`: idempotency key `sha256(USSD|msisdn|sessionId@startedAtMillis|menuPath|
+  amountMinor|target)` hex (the session start: SMPP session numbers are reused) (spec 7.3 rule 1, `service/IdempotencyKeys`; menuPath = the node ids and
   choices taken, e.g. `main:1>p2p.recipient>p2p.amount>p2p.confirm:1>p2p.pin`), UUIDv7 txnId,
   canonical `mw.txn.request.v1` (`mapper/TxnRequestMapper`: channel USSD, initiator MSISDN, debit
   the CUSTOMER wallet; credit per flow: P2P CUSTOMER wallet, CASH_OUT AGENT wallet, TOPUP bare
@@ -175,4 +175,4 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 | `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when its files or the contracts in its `contracts.yml` changed) |
 | `make build M=mw-ussd` | `bootJar`, then this service's images (`mfs-mw/mw-ussd:local`, `-init`) |
 | `make up M=mw-ussd` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |
-| `make e2e TAGS=@ussd` | P2P, cash-out, top-up and bill pay over the HTTP USSD gateway simulator (`tests/e2e/src/test/resources/features/ussd.feature`, `ussd-flows.feature`) and GP over SMPP (`ussd-smpp.feature`, `@smpp`) |
+| `make api-test FOLDER="18, 19, 20"` | P2P, cash-out, top-up and bill pay over the HTTP USSD gateway simulator (`tests/api/src/18-ussd`, `19-ussd-flows`) and GP over SMPP (`20-ussd-smpp`) |

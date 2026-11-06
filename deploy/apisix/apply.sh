@@ -7,9 +7,9 @@
 #      deploy/apisix/consumers/<username>.json as consumer <username> (the MNO USSD gateways),
 #      then every deploy/apisix/routes/<id>.json as route <id>; then DELETEs every object listed
 #      in deploy/apisix/retired.txt (a file that was removed or renamed)
-#   4. test-only objects for the host e2e suite: with MW_E2E_ROUTES=1 PUTs
+#   4. test-only objects for the host API suite (tests/api): with MW_E2E_ROUTES=1 PUTs
 #      consumers-test/<username>.json and routes-test/<id>.json; without it DELETEs them, so a
-#      default `make up` never leaves a test route behind (`make e2e` re-runs this with the flag)
+#      default `make up` never leaves a test route behind (`make api-test` re-runs this with the flag)
 # Before a PUT, string values "@lua:<path>" are replaced by the file at <path> (relative to
 # deploy/apisix) as a JSON string (serverless functions); "@env:<NAME>" by that environment
 # variable as a JSON string (secrets such as the e2e key, never in the repo); "@list:<NAME>" by
@@ -177,7 +177,7 @@ if [ -f "$dir/retired.txt" ]; then
   done <"$dir/retired.txt"
 fi
 
-# test-only objects (host e2e suite): consumers first, then the routes that name them
+# test-only objects (host API suite): consumers first, then the routes that name them
 if [ "${MW_E2E_ROUTES:-0}" = 1 ]; then
   [ -n "${MW_E2E_API_KEY:-}" ] || { echo "apisix-init: MW_E2E_ROUTES=1 needs MW_E2E_API_KEY (scripts/gen-dev-env.sh)" >&2; exit 1; }
   for kind in consumers routes; do

@@ -4,7 +4,7 @@
 # scripts/smoke.sh (make smoke).
 
 STACK_FILE="$REPO_DIR/deploy/docker-compose.yml"
-# the P2P and cash path of the e2e @p2p / @cash scenarios (profile minimal)
+# the P2P and cash path of the API suite folders 01 / 03 (profile minimal)
 MINIMAL_SERVICES="mw-admin-api mw-app-gateway mw-audit-dw mw-core-mock mw-notify mw-orchestrator mw-simulators mw-ussd"
 PLATFORM_SERVICES="kafka kafka-init postgres valkey keycloak openbao etcd etcd-init apisix apisix-init greenmail"
 ONE_SHOT="kafka-init etcd-init apisix-init"
@@ -135,11 +135,21 @@ test_test_timers_default_to_production_values_and_the_fast_file_shortens_them() 
   [ -f "$REPO_DIR/deploy/test-timers.env" ] || fail "no deploy/test-timers.env"
   j="$(COMPOSE_ENV_FILES="deploy/test-timers.env" compose_json)"
   o="$(printf '%s' "$j" | jq -c '.services["mw-orchestrator"].environment')"
-  printf '%s' "$o" | jq -e '(.MW_ORCHESTRATOR_INQUIRY_SCHEDULE | startswith("2s"))
+  printf '%s' "$o" | jq -e '(.MW_ORCHESTRATOR_INQUIRY_SCHEDULE | startswith("6s,2s"))
     and .MW_ORCHESTRATOR_REVERSINGTIMEOUT == "5s" and .MW_KAFKA_RETRY_DELAYS == "1s,1s,1s"' >/dev/null \
     || fail "test-timers.env does not shorten the orchestrator timers: $o"
   printf '%s' "$j" | jq -e '.services["mw-checkout"].environment.MW_KAFKA_RETRY_DELAYS == "1s,1s,1s"' >/dev/null \
     || fail "retry delays not shortened for every service"
+  printf '%s' "$j" | jq -e '.services["mw-app-gateway"].environment.MW_APP_REPLY_BUDGET == "7s"
+    and .services["mw-checkout"].environment.MW_CHECKOUT_REPLY_BUDGET == "7s"' >/dev/null \
+    || fail "test-timers.env does not shorten the app and checkout reply budgets"
+  printf '%s' "$j" | jq -e '.services["mw-adapter-billpay"].environment.MW_PARTNERS_INSTANCES_BILLAGG_TIMEOUTMS == "4000"
+    and .services["mw-adapter-bank"].environment.MW_PARTNERS_INSTANCES_C2WBANK_TIMEOUTMS == "4000"
+    and .services["mw-simulators"].environment.SIM_TIMEOUTDELAY == "7s"' >/dev/null \
+    || fail "test-timers.env does not shorten the partner time limits"
+  COMPOSE_ENV_FILES="deploy/test-timers.env" COMPOSE_PROFILE="core seed" compose_json \
+    | jq -e '.services["mw-seeder"].environment.MW_SEEDER_PARTNERS_0_TIMEOUTMS == "4000"' >/dev/null \
+    || fail "test-timers.env does not seed a short ocs time limit"
 }
 
 test_zone_networks_exist_and_postgres_is_data_only() {
@@ -580,8 +590,8 @@ test_ops_realm_console_client_has_no_direct_grant_and_e2e_has_its_own_client() {
     || fail "no dev-only direct-grant client mw-e2e-ops: $(jq -c '[.clients[].clientId]' "$f")"
   jq -e '[.clients[] | select(.directAccessGrantsEnabled) | .clientId] == ["mw-e2e-ops"]' "$f" >/dev/null \
     || fail "direct grant on: $(jq -c '[.clients[] | select(.directAccessGrantsEnabled) | .clientId]' "$f")"
-  grep -q '"mw-e2e-ops"' "$REPO_DIR/tests/e2e/src/test/java/mfs/mw/e2e/support/Keycloak.java" \
-    || fail "tests/e2e Keycloak.opsToken does not use mw-e2e-ops"
+  grep -q "client: 'mw-e2e-ops'" "$REPO_DIR/tests/api/lib.js" \
+    || fail "tests/api lib.js does not log operators in with mw-e2e-ops"
 }
 
 # ---- Keycloak production mode on PostgreSQL (ticket 49) ----

@@ -42,7 +42,9 @@ files:
   api/mw-ussd/ussd-http.v1.openapi.yaml: mw-ussd
   api/mw-portal-api/portal-org.v1.openapi.yaml: mw-portal-api
   api/mw-orchestrator/txn-query.v1.openapi.yaml: mw-orchestrator
+  api/mw-orchestrator/orchestrator-test.v1.openapi.yaml: mw-orchestrator
   api/mw-audit-dw/audit-query.v1.openapi.yaml: mw-audit-dw
+  api/mw-audit-dw/audit-dw-test.v1.openapi.yaml: mw-audit-dw
   api/mw-checkout/checkout.v1.openapi.yaml: mw-checkout
   api/mw-admin-api/admin.v1.openapi.yaml: mw-admin-api
   # test-only wallet seed API of the core test double (ticket 57); not a product contract

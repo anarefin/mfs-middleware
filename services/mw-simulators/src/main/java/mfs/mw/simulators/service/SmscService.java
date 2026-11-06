@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * SMSC simulator logic (spec 22.2, ticket 24), independent of the SMPP plumbing ({@code
- * client/SmscServer}). Every {@code submit_sm} gets a message_id; text is decoded from GSM-7
+ * client/SmscServer}). Every {@code submit_sm} gets a message_id ({@code SMSC-<start>-<n>}); text is decoded from GSM-7
  * (data_coding 0, one septet per byte) or UCS-2 (8), and parts carrying a concatenation UDH
  * (esm_class UDHI, IE 0x00 or 0x08) are reassembled. Destination magic suffixes: {@code 999} DLR
  * UNDELIV, {@code 998} DLR EXPIRED, {@code 997} the first two submits refused with
@@ -52,6 +52,11 @@ public class SmscService {
 
   private final int recordLimit;
   private final AtomicInteger ids = new AtomicInteger();
+  /**
+   * Start of this instance (base 36 millis) in every message_id: a restarted simulator never repeats
+   * an id of an earlier run, which mw-notify keeps unique per provider.
+   */
+  private final String run = Long.toString(System.currentTimeMillis(), 36);
   private final List<SmscMessage> messages = new ArrayList<>();
   private final Map<String, Pending> pending = new LinkedHashMap<>();
   private final Map<String, SmscDlrState> dlrs = new ConcurrentHashMap<>();
@@ -76,7 +81,7 @@ public class SmscService {
         && throttled.computeIfAbsent(dest, d -> new AtomicInteger()).getAndIncrement() < THROTTLED_SUBMITS) {
       throw new SmscRefusalException(STAT_THROTTLED, "throttled (magic 997)");
     }
-    String id = "SMSC-" + ids.incrementAndGet();
+    String id = "SMSC-" + run + "-" + ids.incrementAndGet();
     String encoding = dataCoding == 0x08 ? "UCS2" : "GSM7";
     byte[] sm = shortMessage == null ? new byte[0] : shortMessage;
     boolean udhi = (esmClass & 0x40) != 0 && sm.length > 0;

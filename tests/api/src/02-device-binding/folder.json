@@ -1,0 +1,4 @@
+{
+  "name": "02 Sensitive app requests come only from a bound device, signed, never replayed",
+  "description": "Port of the Cucumber device-binding.feature (tests/e2e, removed in ticket 58)."
+}

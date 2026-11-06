@@ -24,7 +24,10 @@ if [ -n "$m" ]; then
   stack_has_service "$svc" || die "up: $svc is not a service of deploy/docker-compose.yml"
 fi
 "$(dirname "$0")/gen-dev-env.sh"
-stack_compose "$profile"
+MW_STACK_UP=1 stack_compose "$profile"
+# record the timers for the later targets (seed, smoke, api-test, ...): see stack_compose
+mkdir -p "$(dirname "$STACK_TIMERS_STATE")"
+if [ -n "${TIMERS:-}" ]; then printf '%s\n' "$TIMERS" >"$STACK_TIMERS_STATE"; else rm -f "$STACK_TIMERS_STATE"; fi
 
 # `up --wait` treats a one-shot that exits as a failure unless a started service depends on it, so
 # the whole-stack start names the long-running services (their one-shot dependencies start and must

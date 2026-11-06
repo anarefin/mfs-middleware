@@ -13,8 +13,8 @@ Tickets: `.scratch/bits-mfs-middleware/issues/<NN>-<slug>.md`; run order + statu
 - `templates/mw-service-template/`: copied by `make new-service NAME=mw-x` (`scaffold.sh`); never a dependency.
 - `deploy/`: `compose/platform` (PG, Kafka, Valkey, Keycloak, OpenBao), `compose/mvp` (+ `compose.lowmem.yml`),
   `apisix/` (routes, edge policies, README), Kafka topic definitions. Root `compose.yml` is GENERATED (`make compose-flat`).
-- `tests/e2e/` Cucumber (feature files tagged `@<module>`, `@p2p`...; README has reusable steps), `tests/perf/` Gatling.
-- `scripts/`: `verify.sh`, `changed-modules.sh`, `e2e-changed.sh`, `contracts-lint.sh`, `check-isolation.sh`,
+- `tests/api/` Newman API suite (ticket 58; replaced the Cucumber `tests/e2e`): `src/<NN-folder>/*.js` -> `build_collection.mjs` -> `mfs-mw.postman_collection.json`, shared `lib.js`, `run.sh`, `PARITY.md`, `TRACEABILITY.md` (checked by `scripts/check-api-traceability.sh`). `tests/perf/` Gatling.
+- `scripts/`: `verify.sh`, `changed-modules.sh`, `api-test.sh`, `check-api-traceability.sh`, `contracts-lint.sh`, `check-isolation.sh`,
   `check-field-injection.sh`, `compose-flat.sh`, `up.sh`, `down.sh`, `new-service.sh`, `lib/modules.sh`;
   shell self-tests in `scripts/test/test_*.sh` (runner `scripts/test/run.sh`).
 
@@ -50,7 +50,7 @@ Tickets: `.scratch/bits-mfs-middleware/issues/<NN>-<slug>.md`; run order + statu
 - After 53: `./gradlew integrationTest`, `make verify-changed BASE=<sha> JOBS=3`
 - Scripts: `make test-scripts` ; contracts: `make contracts-lint` ; isolation: `make check-isolation M=mw-x`
 - Stack: `make up` (regenerates dev `.env`, builds jars+images), `make down [DOWN_ARGS=-v]`, `make smoke`,
-  `make edge-test`, `make e2e [M=] [TAGS=@x]` (stack must be up), `make e2e-changed`.
+  `make edge-test`, `make api-test [FOLDER=01,05] [ALL=1]` (stack must be up: `make up TIMERS=fast && make seed`).
 - **Do NOT run `make verify` or `./gradlew check` on all modules per ticket** (hours). User rule (2026-11-05):
   per ticket run `./gradlew test` (+ `integrationTest` after 53) for the modules you touch only. Gates run later.
 

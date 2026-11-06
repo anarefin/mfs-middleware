@@ -21,6 +21,17 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   mw-orchestrator's query API, then its audit by txnId. `AuditSearchApiIT`. Consumes `mw.audit.event.v1` (`route/AuditEventRoute` ->
   `messaging/AuditEventListener` -> `service/AuditService.record`) with retry topics and DLQ; an
   unreadable event or one missing a required field throws and ends on the DLQ.
+- Test-only audit API (ticket 58, contract `api/mw-audit-dw/audit-dw-test.v1.openapi.yaml`,
+  `controller/AuditTestController`, `AuditTestControllerTest`): only with
+  `mw.audit-dw.test-api.enabled=true` (`MW_AUDIT_DW_TEST_API_ENABLED`, set by `deploy/docker-compose.yml`
+  for the dev stack; off, the paths do not exist). `GET /test/v1/audit/events` = the internal search
+  (same filters, same `AuditPage`) without a token; `GET /test/v1/audit/chains/{month}` (yyyy-MM, else
+  400 `MW-VAL-001`) -> `AuditChainVerifier.verify(month)` as `audit_reader`, 200 `{month, intact, rows,
+  failedSeq, reason}` whatever the outcome; 503 `MW-SYS-002` when chain verification is switched off.
+  Reached only through the test-only APISIX route `test-audit-dw` (`/test/audit-dw/v1/*`, GET, key-auth
+  `mw_e2e`, `MW_E2E_ROUTES=1`); `SecurityConfig` guards only `/internal/**`, so `/test/**` needs no JWT.
+  The Newman suite (`tests/api`) reads a bulk batch's trail (`resource=bulk-batch/<id>`) and checks the
+  month's chain with it, instead of psql.
 - `audit.event`: append-only, RANGE-partitioned by month on `recorded_at` (the writer's clock,
   UTC), partitions `event_yyyy_MM` created on the month's first event by the SECURITY DEFINER
   function `ensure_month_partition` (unique `seq` index + `month` check per partition). A
@@ -80,6 +91,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 - `events/mw-audit-dw/mw.audit.event.v1.schema.json` (+ samples): own type `dto/AuditEvent`,
   checked by `AuditEventSchemaTest`. Produced by every service, consumed here.
 - `api/mw-audit-dw/audit-query.v1.openapi.yaml` (internal audit search, ticket 35).
+- `api/mw-audit-dw/audit-dw-test.v1.openapi.yaml` (test-only audit search and chain check, ticket 58).
 
 ## Contracts used
 
@@ -87,7 +99,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 - `contracts.yml`: the machine-readable list of what this module produces and consumes (checked
   by `make contracts-lint`, tested by `contracts/ConsumedContractsTest` (every valid sample reads
   into `dto/AuditEvent`) and `contracts/ApiContractsTest` (search responses against
-  `audit-query.v1`); no Docker). It produces no events, so there is no `ProducedContractsTest`
+  `audit-query.v1`, test API responses against `audit-dw-test.v1`); no Docker). It produces no events, so there is no `ProducedContractsTest`
   (`ConsumedContractsTest.producesNoEvents` fails if the manifest gains one).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)

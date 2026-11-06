@@ -11,3 +11,6 @@ node_modules/
 
 # Claude Code agent worktrees (local only)
 .claude/worktrees/
+
+# Newman run state of tests/api (secrets blanked by run.sh, still local only)
+.local.postman_environment.json

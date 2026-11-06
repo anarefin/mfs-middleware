@@ -1,0 +1,4 @@
+{
+  "name": "03 Agent cash in (Agent app) and customer cash out to an agent (Customer app) through APISIX",
+  "description": "Port of the Cucumber cash.feature (tests/e2e, removed in ticket 58)."
+}

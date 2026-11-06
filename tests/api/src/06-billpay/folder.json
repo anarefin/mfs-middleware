@@ -1,0 +1,4 @@
+{
+  "name": "06 BILL_PAY from the app (bill fetch, then hold, partner, commit or release)",
+  "description": "Port of the Cucumber billpay.feature (tests/e2e, removed in ticket 58)."
+}

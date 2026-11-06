@@ -1,0 +1,4 @@
+{
+  "name": "08 ADD_MONEY_BANK (C2W) add money from a linked bank account",
+  "description": "Port of the Cucumber add-money-bank.feature (tests/e2e, removed in ticket 58)."
+}

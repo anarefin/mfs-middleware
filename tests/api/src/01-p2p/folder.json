@@ -1,0 +1,4 @@
+{
+  "name": "01 P2P send money from the app through APISIX",
+  "description": "Port of the Cucumber p2p.feature (tests/e2e, removed in ticket 58)."
+}

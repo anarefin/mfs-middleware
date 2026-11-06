@@ -136,6 +136,40 @@ test_e2e_flag_applies_the_test_route_behind_key_auth_from_private_networks() {
   assert_out_lacks "DELETE /apisix/admin/routes/test-core-mock"
 }
 
+# Ticket 58: the audit test API of mw-audit-dw is test-only, GET only, behind the same gate.
+test_the_audit_dw_test_route_is_test_only_behind_key_auth() {
+  MW_E2E_ROUTES= MW_E2E_API_KEY= render || fail "dry run failed: $OUT"
+  [ -f out/routes/test-audit-dw.json ] && fail "audit test route applied without MW_E2E_ROUTES=1"
+  assert_out_contains "DELETE /apisix/admin/routes/test-audit-dw"
+  MW_E2E_ROUTES=1 MW_E2E_API_KEY=k3yFromDotEnv CHECKOUT_DEMO_MERCHANT_SECRET=s3cretFromDotEnv render || fail "dry run failed: $OUT"
+  local r=out/routes/test-audit-dw.json
+  [ -f "$r" ] || fail "audit test route not applied with MW_E2E_ROUTES=1"
+  jq -e '.plugins["key-auth"] and .plugins["consumer-restriction"].whitelist == ["mw_e2e"]' "$r" >/dev/null \
+    || fail "audit test route lacks key-auth for mw_e2e: $(jq -c .plugins "$r")"
+  jq -e '.plugins["ip-restriction"].whitelist | index("0.0.0.0/0") | not' "$r" >/dev/null \
+    || fail "audit test route open to every address"
+  jq -e '.methods == ["GET"] and .uri == "/test/audit-dw/v1/*" and (.upstream.nodes | has("mw-audit-dw:8080"))' "$r" >/dev/null \
+    || fail "audit test route must be GET /test/audit-dw/v1/* to mw-audit-dw: $(jq -c '{methods,uri,upstream}' "$r")"
+}
+
+# Ticket 58: the orchestrator's test API (publish a REVERSAL, idempotency lookup) is test-only,
+# behind the same gate, and rewrites /test/orchestrator/v1/* to the service's /test/v1/*.
+test_the_orchestrator_test_route_is_test_only_behind_key_auth() {
+  MW_E2E_ROUTES= MW_E2E_API_KEY= render || fail "dry run failed: $OUT"
+  [ -f out/routes/test-orchestrator.json ] && fail "orchestrator test route applied without MW_E2E_ROUTES=1"
+  assert_out_contains "DELETE /apisix/admin/routes/test-orchestrator"
+  MW_E2E_ROUTES=1 MW_E2E_API_KEY=k3yFromDotEnv CHECKOUT_DEMO_MERCHANT_SECRET=s3cretFromDotEnv render || fail "dry run failed: $OUT"
+  local r=out/routes/test-orchestrator.json
+  [ -f "$r" ] || fail "orchestrator test route not applied with MW_E2E_ROUTES=1"
+  jq -e '.plugins["key-auth"] and .plugins["consumer-restriction"].whitelist == ["mw_e2e"]' "$r" >/dev/null \
+    || fail "orchestrator test route lacks key-auth for mw_e2e: $(jq -c .plugins "$r")"
+  jq -e '.plugins["ip-restriction"].whitelist | index("0.0.0.0/0") | not' "$r" >/dev/null \
+    || fail "orchestrator test route open to every address"
+  jq -e '.uri == "/test/orchestrator/v1/*" and (.upstream.nodes | has("mw-orchestrator:8080"))
+    and .plugins["proxy-rewrite"].regex_uri == ["^/test/orchestrator(/v1/.*)$", "/test$1"]' "$r" >/dev/null \
+    || fail "orchestrator test route must map /test/orchestrator/v1/* to mw-orchestrator /test/v1/*: $(jq -c '{uri,upstream,plugins}' "$r")"
+}
+
 # Ticket 31: the dev checkout merchant is a test-only hmac-auth consumer whose secret comes from
 # the generated .env; the merchant API routes authenticate with hmac-auth and forward the
 # consumer name, the hosted page route has no auth plugin but a quota per source address.

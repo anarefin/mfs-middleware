@@ -26,6 +26,12 @@ public class IdempotencyRepository {
     this.jdbc = jdbc;
   }
 
+  /** Whether any scope holds {@code key} (the test-only API, ticket 58). */
+  public boolean exists(String key) {
+    Boolean found = jdbc.queryForObject("select exists(select 1 from idempotency where idem_key = ?)", Boolean.class, key);
+    return Boolean.TRUE.equals(found);
+  }
+
   /**
    * Claims the key for {@code txnId}. Returns empty when this request is the first (or the key
    * had expired and is now reused); otherwise the stored entry of the earlier request. The

@@ -1,0 +1,105 @@
+openapi: 3.1.0
+info:
+  title: Bits orchestrator test API v1 (mw-orchestrator, test-only)
+  version: 1.0.0
+  description: |
+    Test-only API of mw-orchestrator (ticket 58), never part of the product. The host API suite
+    (`tests/api`, Newman) plays operations' REVERSAL producer with it and checks that a request
+    was taken in, without the Docker CLI. Off unless mw-orchestrator runs with
+    `MW_ORCHESTRATOR_TEST_API_ENABLED=true` (`mw.orchestrator.test-api.enabled`; the dev stack sets
+    it); off, every path is 404. No auth in the service: APISIX exposes it only with
+    `MW_E2E_ROUTES=1` as `/test/orchestrator/v1/*` (route `deploy/apisix/routes-test/
+    test-orchestrator.json`, key-auth `apikey` of the test consumer `mw_e2e`, private source
+    addresses only). Every error is the 5.3 envelope.
+servers:
+  - url: http://mw-orchestrator:8080
+paths:
+  /test/v1/reversals:
+    post:
+      operationId: publishTestReversal
+      summary: Publish a REVERSAL of a stored transaction on mw.txn.request.v1
+      description: >-
+        Builds the REVERSAL as operations sends it (schemaVersion 1, fresh UUIDv7 txnId,
+        idempotencyKey `test-rev-<uuidv7>`, channel SYSTEM, initiator ORG `bits-ops-test`, the
+        original's credit party as debit party and debit party as credit party, the original's
+        amount, `originalTxnId`, `attributes.reason`) and publishes it keyed by its txnId. The
+        answer only says it was published: the orchestrator then handles it like any other
+        request (the original shows REVERSING, REVERSED or MANUAL_REVIEW; a refusal is a REJECTED
+        status under the new txnId). Errors: 400 MW-VAL-001/002 (bad body), 404 MW-VAL-003 (no
+        such transaction).
+      parameters:
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [originalTxnId]
+              properties:
+                originalTxnId: { type: string, format: uuid }
+                reason: { type: string, maxLength: 200, description: "attributes.reason; default 'test reversal'" }
+      responses:
+        "202":
+          description: Published
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReversalAccepted" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /test/v1/txn-requests/{idempotencyKey}:
+    get:
+      operationId: getTxnRequestHandled
+      summary: Whether the orchestrator recorded a request's idempotency key
+      description: >-
+        200 once `txn.idempotency` holds the key (any channel and initiator); 404 MW-VAL-003 while
+        it does not. A repeated REVERSAL changes nothing else, so this is its only trace.
+      parameters:
+        - { name: idempotencyKey, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Handled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TxnRequestHandled" }
+        "404": { $ref: "#/components/responses/Error" }
+components:
+  responses:
+    Error:
+      description: Error envelope (spec 5.3)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    ReversalAccepted:
+      type: object
+      required: [txnId, idempotencyKey]
+      additionalProperties: false
+      properties:
+        txnId: { type: string, format: uuid }
+        idempotencyKey: { type: string }
+    TxnRequestHandled:
+      type: object
+      required: [idempotencyKey, handled]
+      additionalProperties: false
+      properties:
+        idempotencyKey: { type: string }
+        handled: { type: boolean, const: true }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

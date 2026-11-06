@@ -1,6 +1,20 @@
 package mfs.mw.orchestrator.contracts;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.time.Clock;
+import java.time.ZoneOffset;
+import java.util.Optional;
+import mfs.mw.orchestrator.messaging.EventPublisher;
+import mfs.mw.orchestrator.repository.IdempotencyRepository;
+import mfs.mw.orchestrator.repository.TransactionRepository;
+import mfs.mw.orchestrator.service.TestApiService;
+import org.mockito.ArgumentCaptor;
 
 import java.nio.file.Files;
 import java.time.Duration;
@@ -41,6 +55,7 @@ class ProducedContractsTest {
   private static final String COMMAND = "events/mw-orchestrator/core.command.v1.schema.json";
   private static final String PARTNER_REQUEST = "events/mw-orchestrator/mw.partner.request.v1.schema.json";
   private static final String AUDIT = "events/mw-audit-dw/mw.audit.event.v1.schema.json";
+  private static final String TXN_REQUEST = "events/mw-orchestrator/mw.txn.request.v1.schema.json";
 
   private static final Duration TTL = Duration.ofSeconds(60);
   private static final Duration PARTNER_DEADLINE = Duration.ofSeconds(30);
@@ -74,6 +89,19 @@ class ProducedContractsTest {
     return flow.partnerCall().orElseThrow();
   }
 
+  /** The REVERSAL the test-only API (ticket 58) publishes for a completed P2P. */
+  private static Object testReversal() {
+    TransactionRecord original = p2p().moved(Status.COMPLETED, TestData.NOW, null);
+    TransactionRepository transactions = mock(TransactionRepository.class);
+    when(transactions.find(original.txnId())).thenReturn(Optional.of(original));
+    EventPublisher publisher = mock(EventPublisher.class);
+    new TestApiService(transactions, mock(IdempotencyRepository.class), publisher, Clock.fixed(TestData.NOW, ZoneOffset.UTC))
+        .reverse(original.txnId(), "contract fixture");
+    ArgumentCaptor<Object> sent = ArgumentCaptor.forClass(Object.class);
+    verify(publisher).publish(eq("mw.txn.request.v1"), any(), any(), sent.capture());
+    return sent.getValue();
+  }
+
   /** Manifest entry -> the message the module publishes for it. */
   private static final Map<String, Supplier<Object>> FIXTURES = new LinkedHashMap<>();
 
@@ -95,6 +123,7 @@ class ProducedContractsTest {
     FIXTURES.put(PARTNER_REQUEST + "#telco", () -> PARTNER.pay(topupHeld(), leg(new TopupFlow()), TestData.NOW, PARTNER_DEADLINE));
     FIXTURES.put(PARTNER_REQUEST + "#billpay", () -> PARTNER.pay(billPay(), leg(new BillPayFlow()), TestData.NOW, PARTNER_DEADLINE));
     FIXTURES.put(PARTNER_REQUEST + "#bank", () -> PARTNER.pay(addMoney(), leg(new AddMoneyBankFlow()), TestData.NOW, PARTNER_DEADLINE));
+    FIXTURES.put(TXN_REQUEST, ProducedContractsTest::testReversal);
     FIXTURES.put(AUDIT, () -> new AuditMapper().stateChanged(
         p2p().moved(Status.VALIDATING, TestData.NOW, null)
             .moved(Status.REJECTED, TestData.NOW, new ErrorInfo("MW-CORE-INSUFFICIENT_BALANCE", "Insufficient balance", null, false)),

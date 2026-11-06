@@ -5,6 +5,9 @@ apisix:
   node_listen: 9080              # plain HTTP: internal only, never published
   enable_server_tokens: false    # Server: APISIX without its version (ZAP 10036, ticket 46)
   enable_ipv6: false
+  # Upstreams are Compose service names: re-resolve them every 5 s, so a recreated container (new
+  # address) is reached at once instead of an old address another container may now own.
+  dns_resolver_valid: 5
   ssl:
     enable: true
     listen:

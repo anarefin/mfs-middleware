@@ -19,8 +19,7 @@
 #   make chaos [TARGETS=]       kill each mw-* container, kafka, postgres mid-flow; no stuck txns, ledger consistent (scripts/chaos.sh)
 #   make down [DOWN_ARGS=-v]    stop the stack, every profile (-v also drops its volumes)
 #   make reset                  remove every container, volume and orphan of the stack (fresh start)
-#   make e2e [M=] [TAGS=]       Cucumber suite in tests/e2e against the running stack
-#   make e2e-changed [BASE=main] [TAGS=]  build only modules changed since BASE, recreate them in the running stack, then e2e
+#   make api-test [FOLDER=] [ALL=1]  Newman API suite in tests/api against the running stack (make up TIMERS=fast && make seed)
 #   make perf [M=]              Gatling suite in tests/perf
 #   make security [M=]          secret, dependency and image scans; with the stack up also ZAP baseline + log scan
 #   make log-scan               scan every container log of the running stack for PIN / unmasked MSISDN / NID
@@ -37,10 +36,10 @@ PROFILE ?=
 TIMERS ?=
 export MW_ROOT PROFILE TIMERS
 
-.PHONY: help verify verify-changed check-isolation check-field-injection contracts-lint versions-check build compose-check up seed reset smoke edge-test chaos down e2e e2e-changed perf security log-scan new-service test-scripts
+.PHONY: help verify verify-changed check-isolation check-field-injection contracts-lint versions-check build compose-check up seed reset smoke edge-test chaos down api-test perf security log-scan new-service test-scripts
 
 help:
-	@sed -n '3,29p' $(abspath $(lastword $(MAKEFILE_LIST)))
+	@sed -n '3,28p' $(abspath $(lastword $(MAKEFILE_LIST)))
 
 verify:
 ifeq ($(SELFTEST)$(M),1)
@@ -90,14 +89,11 @@ down:
 reset:
 	@$(SCRIPTS)/down.sh --reset
 
-e2e:
-	@$(SCRIPTS)/suite.sh e2e "$(M)" "$(TAGS)"
-
-e2e-changed:
-	@$(SCRIPTS)/e2e-changed.sh "$(BASE)" "$(TAGS)"
+api-test:
+	@$(SCRIPTS)/api-test.sh "$(FOLDER)" "$(ALL)"
 
 perf:
-	@$(SCRIPTS)/suite.sh perf "$(M)" "$(TAGS)"
+	@$(SCRIPTS)/suite.sh perf "$(M)"
 
 security:
 	@$(SCRIPTS)/security.sh "$(M)"

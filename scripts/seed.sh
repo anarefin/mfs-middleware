@@ -15,8 +15,10 @@ fi
 "$(dirname "$0")/gen-dev-env.sh" >/dev/null
 stack_compose core seed
 info "seed: docker compose --profile seed up -d mw-seeder, then wait for its exit"
-# --force-recreate: a container that already exited 0 would otherwise not run again
-docker compose "${DC_F[@]}" up -d --force-recreate mw-seeder || die "seed: mw-seeder did not start"
+# --force-recreate: a container that already exited 0 would otherwise not run again. --no-deps: the
+# services it seeds are already up (its first step waits for them); without it Compose would
+# recreate them with this call's configuration, e.g. drop the short timers of make up TIMERS=fast.
+docker compose "${DC_F[@]}" up -d --no-deps --force-recreate mw-seeder || die "seed: mw-seeder did not start"
 docker compose "${DC_F[@]}" wait mw-seeder >/dev/null \
   || die "seed: mw-seeder exited non-zero (docker compose logs mw-seeder)"
 info "seed: mw-seeder exited 0"

@@ -1,0 +1,4 @@
+{
+  "name": "15 Partner config through maker-checker, without an adapter restart",
+  "description": "Port of the Cucumber partner-config.feature (tests/e2e, removed in ticket 58)."
+}

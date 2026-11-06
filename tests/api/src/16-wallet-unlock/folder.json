@@ -1,0 +1,4 @@
+{
+  "name": "16 Ops unlock of a PIN-locked wallet with maker-checker",
+  "description": "Port of the Cucumber wallet-unlock.feature (tests/e2e, removed in ticket 58)."
+}

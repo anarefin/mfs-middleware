@@ -1,0 +1,4 @@
+{
+  "name": "19 Cash out, top-up and bill pay over USSD (HTTP transport)",
+  "description": "Port of the Cucumber ussd-flows.feature (tests/e2e, removed in ticket 58)."
+}

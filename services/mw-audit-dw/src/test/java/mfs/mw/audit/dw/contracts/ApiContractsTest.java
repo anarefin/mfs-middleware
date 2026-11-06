@@ -9,6 +9,7 @@ import mfs.mw.audit.dw.dto.AuditEntry;
 import mfs.mw.audit.dw.dto.AuditEvent;
 import mfs.mw.audit.dw.dto.ErrorDetail;
 import mfs.mw.audit.dw.dto.ErrorEnvelope;
+import mfs.mw.audit.dw.service.ChainVerification;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -68,5 +69,24 @@ class ApiContractsTest {
         OpenApiSchemas.component(API, "ErrorEnvelope"),
         new ErrorEnvelope("MW-VAL-001", "bad filter", null, null, "corr-1", false,
             List.of(new ErrorDetail("limit", "must be at most 500"))));
+  }
+
+  static final String TEST_API = "api/mw-audit-dw/audit-dw-test.v1.openapi.yaml";
+
+  /** Ticket 58: the test-only search answers the same page, the chain check its verification. */
+  @Test
+  void testApiResponsesMatchTheirContract() {
+    assertValid(
+        OpenApiSchemas.response(TEST_API, "/test/v1/audit/events", "get", "200"),
+        new AuditEntry.Page(List.of(full(), minimal()), 100, 0));
+    Schema chain = OpenApiSchemas.response(TEST_API, "/test/v1/audit/chains/{month}", "get", "200");
+    assertValid(chain, new ChainVerification("2026-11", true, 42, null, null));
+    assertValid(chain, new ChainVerification("2026-11", false, 42, 7L, "hash does not match the row"));
+    ObjectNode noIntact = (ObjectNode) asMvc(new ChainVerification("2026-11", true, 1, null, null));
+    noIntact.remove("intact");
+    assertThat(chain.validate(noIntact)).isNotEmpty();
+    assertValid(
+        OpenApiSchemas.component(TEST_API, "ErrorEnvelope"),
+        new ErrorEnvelope("MW-SYS-002", "Chain verification is switched off", null, null, "corr-1", true, List.of()));
   }
 }

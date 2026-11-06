@@ -19,6 +19,8 @@ public final class ErrorCodes {
   public static final String AUTH_FORBIDDEN = "MW-AUTH-002";
   /** Unexpected failure; details stay in the log, never in the response. */
   public static final String SYS_INTERNAL = "MW-SYS-001";
+  /** A dependency the request needs is switched off or not reachable: 503. */
+  public static final String SYS_UNAVAILABLE = "MW-SYS-002";
 
   private ErrorCodes() {}
 }

@@ -175,6 +175,11 @@ mw:
     # read-only role audit_reader; its password is mw.audit-dw.chain-verify.reader-password in
     # OpenBao (secret/mw-audit-dw), never written here. A broken chain logs audit.chain.broken
     # (ERROR) and sets the gauge mw_audit_chain_broken.
+    # Test-only API (ticket 58, controller/AuditTestController, contract audit-dw-test.v1):
+    # GET /test/v1/audit/events and /test/v1/audit/chains/{month} without a token, for the Newman
+    # suite through the test-only APISIX route; off unless the dev stack sets it.
+    test-api:
+      enabled: ${MW_AUDIT_DW_TEST_API_ENABLED:false}
     chain-verify:
       enabled: true
       cron: "0 30 * * * *"

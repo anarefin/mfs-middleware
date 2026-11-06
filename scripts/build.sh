@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the stack's jars and images (make build). `make up` never builds, so run this after a
-# code change (or use make e2e-changed).
+# code change.
 # Usage: scripts/build.sh [MODULE] [JOBS]
 #   1. ./gradlew bootJar in every stack module (services/* with a Dockerfile), or only MODULE,
 #      JOBS modules at a time (default 3), each its own Gradle build; logs in build/build/<module>.log

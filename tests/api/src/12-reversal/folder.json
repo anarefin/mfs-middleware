@@ -1,0 +1,4 @@
+{
+  "name": "12 Reversal of a completed transaction",
+  "description": "Port of the Cucumber reversal.feature (tests/e2e, removed in ticket 58)."
+}

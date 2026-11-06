@@ -22,7 +22,7 @@ import tools.jackson.databind.JsonNode;
  * (idempotent partial import through {@code docker compose exec keycloak kcadm.sh}), fetches the
  * core's PIN key and every user's token, and binds one fresh device per user exactly as the app
  * does (binding OTP read from the SMSC simulator, signed {@code POST /app/v1/devices}). Needs the
- * test-only routes ({@code make perf} applies them like {@code make e2e}).
+ * test-only routes ({@code make perf} applies them like {@code make api-test}).
  */
 public final class Provisioning {
 
