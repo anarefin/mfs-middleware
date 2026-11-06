@@ -5,7 +5,8 @@ Components, TypeScript strict, pnpm. A UI module, not a Gradle build: it lives u
 4.2), so the Gradle scripts (`make verify`, `check-isolation`, `changed-modules`, `e2e-changed`)
 do not see it. Module isolation still holds: nothing outside this folder is referenced except the
 root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, default
-`../../contracts`).
+`../../contracts`) and, for the Playwright suite only, the seed manifest `make seed` writes
+(`E2E_SEED_MANIFEST`, set by `make ui-e2e`; default `../../build/seed/manifest.json`).
 
 ## Responsibilities
 
@@ -110,12 +111,9 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
 
 - `api/mw-admin-api/admin.v1` (GET search and detail; change requests: list, create for a
   transaction / a wallet / a partner, approve, reject; partners list / one; USSD menu and template
-  versions list / one and proposals): types in `src/lib/types.ts`. The Playwright stub
-  answers (`e2e/mock/admin-api-stub.mjs`, fixtures `e2e/fixtures/admin-api.json`; the change-request
-  part applies mw-admin-api's maker-checker rules on an in-memory store and, on an approved REVERSE,
-  plays the orchestrator: original REVERSED + a REVERSAL txn; on an approved partner change it
-  publishes the config at version + 1, on an approved menu / template the version PUBLISHED, a
-  rejected one REJECTED) are validated against the contract by `src/lib/contract.test.ts`. Owns no
+  versions list / one and proposals): types in `src/lib/types.ts`. The fake answers the Vitest
+  component tests use (`src/lib/testing/admin-fixtures.ts`) are validated against the contract by
+  `src/lib/contract.test.ts`; the Playwright suite runs against the real mw-admin-api. Owns no
   contract.
 
 ## Deploy
@@ -145,12 +143,39 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
 | Command | What it does |
 | --- | --- |
 | `pnpm install` | dependencies (pinned, `pnpm-lock.yaml`) |
-| `pnpm test` | `tsc --noEmit` + Vitest unit and contract tests (`src/**/*.test.ts`) |
-| `pnpm test:e2e` | Playwright (Chromium): builds, runs the standalone server against `e2e/mock/server.mjs` (fake Keycloak realm ops with PKCE + TOTP form, stub mw-admin-api); no stack. Users `ops-viewer01`, `ops-compliance01`, `ops-maker01`, `ops-checker01`, `ops-lead01` (maker + checker), `ops-integration01` (integration-maker + -checker). `e2e/console.spec.ts` (ticket 40), `e2e/approvals.spec.ts` (ticket 41 + 52 screen; `resetStub` before each), `e2e/partners.spec.ts`, `e2e/ussd.spec.ts`, `e2e/templates.spec.ts` (ticket 42: edit -> approve -> effect visible per screen). Ports 3940/4910/4920 (`E2E_*_PORT`); `E2E_SKIP_BUILD=1` reuses `.next` |
+| `pnpm test` | `tsc --noEmit` + Vitest: unit, component and contract tests (`src/**/*.test.{ts,tsx}`) and the suite's own logic (`e2e/support/*.test.ts`: TOTP, stack check). The open-request-check fault (no action buttons, only the note) is `src/app/(console)/transactions/[txnId]/txn-actions.test.tsx`, fetch mocked |
+| `make ui-e2e [GREP=]` (repo root) | Playwright (Chromium) against the running, seeded stack (`make up && make seed`): the mw-admin-ui container behind APISIX, real Keycloak, real mw-admin-api. `scripts/ui-e2e.sh` installs when needed and exports `E2E_BASE_URL` (`https://localhost[:MW_HTTPS_PORT]`), `E2E_SEED_MANIFEST`, `E2E_COMPOSE_PROJECT` and the credentials `KC_OPS_TEST_PASSWORD`, `KC_OPS_TEST_TOTP_SECRET`, `USSD_ROBI_GATEWAY_SECRET` from `deploy/.env` (`pnpm test:e2e` here needs the same env) |
 | `pnpm dev` | dev server (needs the env above) |
 | `docker build -t mw-admin-ui:dev .` | image |
 
-Test fixtures use fake values only (`fake-test-password`, OTP `123456`, fake secret).
+Playwright suite (ticket 59, BitsPay pattern): `playwright.config.ts` (no `webServer`; one worker, file
+order, `retries: 0`, 90 s per test; trace / video on failure, screenshot only on failure; reporters list,
+html, junit `test-results/junit.xml`). `e2e/support/`:
+- `global-setup.ts` + `stack.ts`: APISIX `/healthz`, Keycloak realm ops discovery, `/console/api/health`
+  through the edge, `docker ps` health of apisix, keycloak, mw-admin-api (no public health route),
+  mw-admin-ui, mw-orchestrator, mw-core-mock, mw-ussd, mw-audit-dw, the seed manifest and the
+  credentials it names; every probe 5 s at most, so a stopped stack fails in about a second with
+  `make up && make seed`. Then it resets `e2e/.state/` (gitignored).
+- `personas.ts`: `maker`, `checker`, `viewer` -> `seed-ops-*` from the manifest, password / TOTP secret
+  from the env variables the manifest names. No compliance persona is seeded, so the reveal itself is
+  not driven here (the viewer side is).
+- `session.ts`: one real login per persona per run (console login page -> Keycloak username +
+  password, then the OTP form; `totp.ts` = mw-seeder's `util/Totp`), cached as storageState in
+  `e2e/.state/sessions/` and added to later contexts; the session is an HTTP-only cookie, so
+  storageState, not an init script. Realm ops refuses a code used twice: the last step per user is in
+  `e2e/.state/run.json` and a login waits for an unused step; an APISIX 429 or a refused code is
+  retried inside `toPass`.
+- `state.ts` (`saveState` / `readState` / `need()`, `E2E_ALLOW_SKIP=1` to run one spec alone),
+  `approvals.ts` (`asChecker()` in a new browser context; rows by request id, `clearPending()` rejects
+  what an interrupted run left PENDING), `ussd.ts` (a real P2P: seeded customer `01712000001` ->
+  `01712000002`, Tk 10, over robi's HTTP USSD route, English so the end screen carries the TxnID).
+- Specs: `00-smoke` (`@smoke`), `10-console` (`@console`), `20-approvals` (`@approvals`),
+  `30-partners` (`@partners`), `40-ussd` (`@ussd`), `50-templates` (`@templates`). Idempotent across
+  runs: own transactions per run, inbox rows by id, partner `ocs` put back as found, menu and template
+  versions published with go-live / valid-from 2099 so mw-ussd and mw-notify keep serving the seeded
+  texts the API suite reads.
+
+Test fixtures use fake values only; the Playwright suite reads the stack's generated dev credentials from the environment, never from the repo.
 
 Security pass (ticket 46, `docs/security-findings.md`): the runtime image keeps node only (npm, npx and
 corepack removed: their bundled undici / brace-expansion carry HIGH CVEs) and runs `apk upgrade`;

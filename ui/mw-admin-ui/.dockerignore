@@ -5,3 +5,5 @@ test-results
 playwright-report
 *.tsbuildinfo
 **/*.test.ts
+**/*.test.tsx
+src/lib/testing

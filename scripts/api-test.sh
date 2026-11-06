@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # make api-test [FOLDER=] [ALL=1]: the Newman API suite in tests/api against the running stack
-# (ticket 58; it replaced the Cucumber suite and make e2e / e2e-changed).
+# (ticket 58; it replaced the Cucumber suite and its two make targets).
 #   FOLDER  folders to run, by number or full name, separated by commas ("01, 05"; numbers may
 #           also be separated by spaces: "01 05")
 #           default every folder except 90 Slow and 99 Destructive

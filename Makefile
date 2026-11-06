@@ -20,6 +20,7 @@
 #   make down [DOWN_ARGS=-v]    stop the stack, every profile (-v also drops its volumes)
 #   make reset                  remove every container, volume and orphan of the stack (fresh start)
 #   make api-test [FOLDER=] [ALL=1]  Newman API suite in tests/api against the running stack (make up TIMERS=fast && make seed)
+#   make ui-e2e [GREP=]         admin UI Playwright suite against the running, seeded stack (ui/mw-admin-ui)
 #   make perf [M=]              Gatling suite in tests/perf
 #   make security [M=]          secret, dependency and image scans; with the stack up also ZAP baseline + log scan
 #   make log-scan               scan every container log of the running stack for PIN / unmasked MSISDN / NID
@@ -36,7 +37,7 @@ PROFILE ?=
 TIMERS ?=
 export MW_ROOT PROFILE TIMERS
 
-.PHONY: help verify verify-changed check-isolation check-field-injection contracts-lint versions-check build compose-check up seed reset smoke edge-test chaos down api-test perf security log-scan new-service test-scripts
+.PHONY: help verify verify-changed check-isolation check-field-injection contracts-lint versions-check build compose-check up seed reset smoke edge-test chaos down api-test ui-e2e perf security log-scan new-service test-scripts
 
 help:
 	@sed -n '3,28p' $(abspath $(lastword $(MAKEFILE_LIST)))
@@ -91,6 +92,9 @@ reset:
 
 api-test:
 	@$(SCRIPTS)/api-test.sh "$(FOLDER)" "$(ALL)"
+
+ui-e2e:
+	@$(SCRIPTS)/ui-e2e.sh "$(GREP)"
 
 perf:
 	@$(SCRIPTS)/suite.sh perf "$(M)"
