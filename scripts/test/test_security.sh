@@ -123,6 +123,16 @@ test_security_runs_zap_on_the_edge_and_the_log_scan_when_the_stack_is_up() {
   grep -q 'logs --no-color' .tool-calls || fail "no log scan"
 }
 
+test_log_scan_covers_every_profile_so_the_seeder_is_scanned_too() {
+  stub_live_docker 'ok'
+  mkdir -p scripts/lib
+  cp "$REPO_DIR/scripts/log-scan.sh" scripts/
+  cp "$REPO_DIR/scripts/lib/modules.sh" scripts/lib/
+  assert_ok env MW_ROOT="$PWD" bash scripts/log-scan.sh
+  grep -q -- '--profile minimal --profile core --profile seed ps -a' .tool-calls \
+    || fail "log-scan does not list every profile's containers: $(cat .tool-calls)"
+}
+
 test_security_fails_on_a_leak_in_a_container_log() {
   stub_live_docker 'payer 01712345678'
   assert_fails security_in_fixture env

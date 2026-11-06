@@ -1,0 +1,129 @@
+# Static configuration baked into the image (spec 20.4). mw-seeder (ticket 57) is a one-shot: no web
+# server, database, Kafka or Vault. Credentials come from the environment (Compose interpolates them
+# from the generated deploy/.env) and are never written here.
+spring:
+  application:
+    name: mw-seeder
+  main:
+    web-application-type: none
+    banner-mode: "off"
+  threads:
+    virtual:
+      enabled: true
+
+logging:
+  structured:
+    format:
+      # JSON lines with the spec 21.1 fields; masking runs in the formatter (18.3).
+      console: mfs.mw.seeder.logging.JsonLogFormatter
+
+mw:
+  service:
+    name: ${spring.application.name}
+    version: ${MW_VERSION:0.1.0-SNAPSHOT}
+    env: ${MW_ENV:local}
+  seeder:
+    run-on-startup: true
+    # Each step's time limit (ticket 57: 10 min), per step under step-timeouts.<id>.
+    step-timeout: ${MW_SEED_STEP_TIMEOUT:10m}
+    step-timeouts: {}
+    # A 503 / 504 / no answer runs the step again after this back-off, doubling up to max-backoff.
+    initial-backoff: 1s
+    max-backoff: 15s
+    # The seed-manifest volume in the stack; `make seed` copies it to build/seed/manifest.json.
+    manifest-path: ${MW_SEED_MANIFEST:/run/mw/seed/manifest.json}
+    http:
+      connect-timeout: 5s
+      read-timeout: 30s
+    # The services directly, inside the stack networks (app, data), not through APISIX.
+    endpoints:
+      keycloak: ${MW_SEED_KEYCLOAK_URL:http://keycloak:8080}
+      admin-api: ${MW_SEED_ADMIN_API_URL:http://mw-admin-api:8080}
+      core-mock: ${MW_SEED_CORE_MOCK_URL:http://mw-core-mock:8080}
+    readiness:
+      - { name: apisix, url: "${MW_SEED_APISIX_READY_URL:http://apisix:7085/status/ready}" }
+      - { name: keycloak, url: "${MW_SEED_KEYCLOAK_READY_URL:http://keycloak:9000/health/ready}" }
+      - { name: mw-orchestrator, url: "http://mw-orchestrator:8080/actuator/health/readiness" }
+      - { name: mw-core-mock, url: "${mw.seeder.endpoints.core-mock}/actuator/health/readiness" }
+      - { name: mw-admin-api, url: "${mw.seeder.endpoints.admin-api}/actuator/health/readiness" }
+      - { name: mw-app-gateway, url: "http://mw-app-gateway:8080/actuator/health/readiness" }
+      - { name: mw-simulators, url: "http://mw-simulators:8080/actuator/health/readiness" }
+      - { name: mw-notify, url: "http://mw-notify:8080/actuator/health/readiness" }
+      - { name: mw-audit-dw, url: "http://mw-audit-dw:8080/actuator/health/readiness" }
+      - { name: mw-ussd, url: "http://mw-ussd:8080/actuator/health/readiness" }
+      - { name: mw-adapter-telco, url: "http://mw-adapter-telco:8080/actuator/health/readiness" }
+      - { name: mw-adapter-billpay, url: "http://mw-adapter-billpay:8080/actuator/health/readiness" }
+      - { name: mw-adapter-bank, url: "http://mw-adapter-bank:8080/actuator/health/readiness" }
+      - { name: mw-checkout, url: "http://mw-checkout:8080/actuator/health/readiness" }
+      - { name: mw-portal-api, url: "http://mw-portal-api:8080/actuator/health/readiness" }
+    keycloak-admin:
+      realm: master
+      client-id: admin-cli
+      username: ${KC_BOOTSTRAP_ADMIN_USERNAME:kc-admin}
+      password: ${KC_BOOTSTRAP_ADMIN_PASSWORD:}
+    # Per realm: the test password (and TOTP secret) of its users, the deploy/.env names of both (the
+    # manifest lists the names, never the values), the client a suite logs in with, the clients that
+    # must exist (the realm imports create them).
+    realms:
+      ops:
+        password: ${KC_OPS_TEST_PASSWORD:}
+        password-env: KC_OPS_TEST_PASSWORD
+        totp-secret: ${KC_OPS_TEST_TOTP_SECRET:}
+        totp-secret-env: KC_OPS_TEST_TOTP_SECRET
+        login-client: mw-e2e-ops
+        clients: [mw-admin-ui, mw-e2e-ops]
+      portals:
+        password: ${KC_PORTALS_TEST_PASSWORD:}
+        password-env: KC_PORTALS_TEST_PASSWORD
+        login-client: mw-portal
+        clients: [mw-portal]
+      customers:
+        password: ${KC_CUSTOMERS_TEST_PASSWORD:}
+        password-env: KC_CUSTOMERS_TEST_PASSWORD
+        login-client: mw-app
+        clients: [mw-app]
+    # The shared baseline personas (ticket 57; Playwright of ticket 59 logs in as the ops ones). The
+    # realm imports' own users (ops-e2e-*, customer01, org-maker01, ...) stay for the e2e suite.
+    users:
+      - { persona: maker, realm: ops, username: seed-ops-maker, roles: [viewer, ops-maker] }
+      - { persona: checker, realm: ops, username: seed-ops-checker, roles: [viewer, ops-checker] }
+      - { persona: viewer, realm: ops, username: seed-ops-viewer, roles: [viewer] }
+      - { persona: org-maker, realm: portals, username: seed-org-maker, roles: [org-maker], attributes: { orgId: ORG001 } }
+      - { persona: org-checker, realm: portals, username: seed-org-checker, roles: [org-checker], attributes: { orgId: ORG001 } }
+      - { persona: customer, realm: customers, username: seed-customer01, roles: [customer], attributes: { msisdn: "01712000001" } }
+      - { persona: customer, realm: customers, username: seed-customer02, roles: [customer], attributes: { msisdn: "01712000002" } }
+      - { persona: agent, realm: customers, username: seed-agent01, roles: [agent], attributes: { msisdn: "01812000001" } }
+      - { persona: merchant, realm: customers, username: seed-merchant01, roles: [merchant], attributes: { msisdn: "01912000001" } }
+    # The ops personas the admin-api steps act as (maker != checker), direct-grant client + TOTP.
+    operators:
+      realm: ops
+      client: mw-e2e-ops
+      maker: seed-ops-maker
+      checker: seed-ops-checker
+    # Core-mock wallets of the seed personas (outside core-mock's own 0171100xxxx.. seed ranges);
+    # balances as core-mock seeds its own (poisha). Every wallet has core-mock's seed PIN.
+    wallets:
+      - { wallet-id: "01712000001", type: CUSTOMER, opening-balance-minor: 1000000 }
+      - { wallet-id: "01712000002", type: CUSTOMER, opening-balance-minor: 1000000 }
+      - { wallet-id: "01812000001", type: AGENT, opening-balance-minor: 10000000 }
+      - { wallet-id: "01912000001", type: MERCHANT, opening-balance-minor: 0 }
+      - { wallet-id: "01312000001", type: ORG, opening-balance-minor: 100000000 }
+    # Partner baselines in mw-admin-api (the e2e suite's restore values: enabled, 20 s).
+    partners:
+      - { partner-id: ocs, enabled: true, timeout-ms: 20000 }
+    # First admin versions: copies of what mw-ussd (menus/main-v2.json) and mw-notify (V5) ship,
+    # so publishing them changes no text. Keep the copies identical.
+    content:
+      menus:
+        - { menu-id: main, resource: "classpath:seed-content/menus/main.json", mnos: [gp, robi, bl, teletalk] }
+      templates:
+        - code: TXN_P2P_RECEIVED
+          channel: SMS
+          locale: en
+          body: "You have received Tk {{amount}} from {{counterparty}}. TrxID {{txnId}}"
+          sender-id: Bits
+        - code: TXN_P2P_RECEIVED
+          channel: SMS
+          locale: bn
+          body: "আপনি {{counterparty}} নম্বর থেকে ৳{{amount}} পেয়েছেন। TrxID {{txnId}}"
+          sender-id: Bits

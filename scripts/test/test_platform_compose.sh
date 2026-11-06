@@ -39,17 +39,19 @@ copy_deploy() {
 # COMPOSE_PROFILE / COMPOSE_ENV_FILES pick another profile or extra --env-file (e.g. test timers).
 compose_json() {
   copy_deploy
-  local ef=() f
+  local ef=() pf=() f p
   for f in ${COMPOSE_ENV_FILES:-}; do ef+=(--env-file "$f"); done
+  # COMPOSE_PROFILE: one or more profiles, space-separated (default core)
+  for p in ${COMPOSE_PROFILE:-core}; do pf+=(--profile "$p"); done
   env -u MW_HTTPS_PORT -u MW_OPS_SUBNET -u COMPOSE_PROJECT_NAME $(placeholder_env) "$@" \
-    docker compose -f deploy/docker-compose.yml ${ef[@]+"${ef[@]}"} --profile "${COMPOSE_PROFILE:-core}" config --format json 2>/dev/null
+    docker compose -f deploy/docker-compose.yml ${ef[@]+"${ef[@]}"} "${pf[@]}" config --format json 2>/dev/null
 }
 
 test_one_hand_written_stack_file_with_every_platform_service() {
   [ -f "$STACK_FILE" ] || fail "missing deploy/docker-compose.yml"
   grep -q '^include:' "$STACK_FILE" && fail "deploy/docker-compose.yml still includes other files"
   local services j
-  j="$(compose_json)" || fail "compose config failed"
+  j="$(COMPOSE_PROFILE="core seed" compose_json)" || fail "compose config failed"
   [ "$(printf '%s' "$j" | jq -r .name)" = mfs-mw ] || fail "project name is not mfs-mw"
   services="$(printf '%s' "$j" | jq -r '.services | keys[]')"
   for s in $PLATFORM_SERVICES; do
@@ -91,9 +93,23 @@ test_profiles_platform_always_minimal_for_the_p2p_and_cash_path_core_for_everyth
   j="$(compose_json)"
   printf '%s' "$j" | jq -e '.services | has("mw-admin-ui") and has("mw-checkout") and has("mw-portal-api")' >/dev/null \
     || fail "profile core misses services"
-  # seed: only mw-seeder (ticket 57), nothing else
-  printf '%s' "$j" | jq -e '[.services[] | select((.profiles // []) | index("seed"))] | length == 0' >/dev/null \
-    || fail "a core service is in the seed profile"
+  printf '%s' "$j" | jq -e '.services | has("mw-seeder") | not' >/dev/null || fail "mw-seeder starts with profile core"
+  # seed: only mw-seeder (ticket 57), a one-shot that never restarts and writes the manifest volume
+  j="$(COMPOSE_PROFILE="core seed" compose_json)"
+  [ "$(printf '%s' "$j" | jq -r '[.services | to_entries[] | select((.value.profiles // []) | index("seed")) | .key] | join(" ")')" = mw-seeder ] \
+    || fail "the seed profile is not exactly mw-seeder"
+  printf '%s' "$j" | jq -e '.services["mw-seeder"] | .restart == "no" and .labels["mw.oneshot"] == "true"
+    and ([.volumes[] | select(.source == "seed-manifest" and .target == "/run/mw/seed")] | length == 1)' >/dev/null \
+    || fail "mw-seeder is not a one-shot writing the seed-manifest volume"
+  # it starts once every long-running mw-* service of the core profile is healthy
+  local s
+  for s in $(printf '%s' "$j" | jq -r '.services | keys[] | select(test("^mw-") and (test("-init$") | not) and . != "mw-admin-ui" and . != "mw-seeder")'); do
+    printf '%s' "$j" | jq -e --arg s "$s" '.services["mw-seeder"].depends_on[$s].condition == "service_healthy"' >/dev/null \
+      || fail "mw-seeder does not wait for a healthy $s"
+  done
+  # the core mock serves its test-only seed API in the dev stack
+  printf '%s' "$j" | jq -e '.services["mw-core-mock"].environment.MW_COREMOCK_SEED_API_ENABLED == "true"' >/dev/null \
+    || fail "mw-core-mock's seed API is off in the stack"
 }
 
 test_app_images_are_local_builds_reused_by_up() {
@@ -631,6 +647,8 @@ test_every_service_sets_an_explicit_pool_and_the_sum_fits_max_connections() {
   # under the stack's postgres max_connections (sizing written next to it in deploy/docker-compose.yml).
   local f n sum=0 max kc j s
   for f in "$REPO_DIR"/services/*/src/main/resources/application.yml; do
+    # a module without a database (mw-seeder, ticket 57) has no pool to size
+    grep -qE '^ *datasource:' "$f" || continue
     n="$(sed -n 's/^ *maximum-pool-size: *\([0-9][0-9]*\).*/\1/p' "$f" | head -1)"
     [ -n "$n" ] || fail "no spring.datasource.hikari.maximum-pool-size in $f"
     [ "$n" -le 10 ] || fail "pool $n in $f: above 10 needs a sizing update in deploy/"

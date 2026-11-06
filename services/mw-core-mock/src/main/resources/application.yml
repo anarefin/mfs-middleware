@@ -137,6 +137,9 @@ management:
 
 mw:
   coremock:
+    # Test-only wallet seed API (ticket 57, WalletSeedController; mw-seeder): off unless the stack sets it.
+    seed-api:
+      enabled: ${MW_COREMOCK_SEED_API_ENABLED:false}
     # Rules kept simple and configurable (spec "Core mock"); amounts in minor units (poisha).
     fees:
       P2P: 500

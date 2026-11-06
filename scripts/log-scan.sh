@@ -85,7 +85,9 @@ if [ $# -gt 0 ]; then
     if [ "$f" = - ]; then scan stdin || rc=1; else scan "$f" <"$f" || rc=1; fi
   done
 else
-  stack_compose
+  # every profile, so the seed profile's one-shot mw-seeder (ticket 57) is scanned too
+  # shellcheck disable=SC2086 # one profile per word
+  stack_compose $STACK_PROFILES
   services="$(docker compose "${DC_F[@]}" ps -a --format '{{.Service}}' 2>/dev/null | sort -u)"
   [ -n "$services" ] || die "log-scan: no containers in the MVP project (make up && make e2e first)"
   for s in $services; do

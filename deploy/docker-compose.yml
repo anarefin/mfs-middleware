@@ -191,6 +191,8 @@ volumes:
   portal-api-approle:
   checkout-approle:
   admin-api-approle:
+  # mw-seeder's manifest (ticket 57): seeded ids and personas, no secret
+  seed-manifest:
 
 services:
   # ------------------------------------------------------------ platform (no profile: always start)
@@ -581,6 +583,8 @@ services:
     environment:
       <<: *jvm-env
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+      # Dev stack only: the test-only wallet seed API mw-seeder uses (ticket 57, core-mock-seed.v1).
+      MW_COREMOCK_SEED_API_ENABLED: "true"
     deploy:
       resources:
         limits: { cpus: "1.0", memory: 512M }
@@ -1081,14 +1085,53 @@ services:
         limits: { cpus: "0.5", memory: 256M }
 
   # ------------------------------------------------------------ seed (ticket 57)
-  # mw-seeder: one-shot API seeder (profile seed; `make seed` runs it and fails unless it exits 0).
-  # mw-seeder:
-  #   profiles: [seed]
-  #   image: mfs-mw/mw-seeder:local
-  #   build: ../services/mw-seeder
-  #   restart: "no"
-  #   labels: { mw.oneshot: "true" }
-  #   networks: [app]
-  #   depends_on:
-  #     apisix-init: { condition: service_completed_successfully }
-  #     mw-orchestrator: { condition: service_healthy }
+  # mw-seeder: one-shot API seeder (profile seed; `make seed` runs it with the core profile and fails
+  # unless it exits 0). Seeds through the services' APIs only (Keycloak admin REST, mw-core-mock's
+  # test-only wallet API, mw-admin-api maker-checker), idempotently; writes the manifest to the
+  # seed-manifest volume (make seed copies it to build/seed/manifest.json). The test passwords and
+  # TOTP secret are interpolated from deploy/.env: dev/test stack only, never a production pattern.
+  mw-seeder:
+    profiles: [seed]
+    image: mfs-mw/mw-seeder:local
+    build: { context: ../services/mw-seeder, args: *jvm-build-args }
+    restart: "no"
+    labels: { mw.oneshot: "true" } # one-shot: exits 0 once the stack is seeded
+    networks: [app, data]
+    user: "10001:10001"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging: *logging
+    depends_on:
+      apisix-init: { condition: service_completed_successfully }
+      keycloak: { condition: service_healthy }
+      mw-orchestrator: { condition: service_healthy }
+      mw-core-mock: { condition: service_healthy }
+      mw-admin-api: { condition: service_healthy }
+      mw-app-gateway: { condition: service_healthy }
+      mw-simulators: { condition: service_healthy }
+      mw-notify: { condition: service_healthy }
+      mw-audit-dw: { condition: service_healthy }
+      mw-ussd: { condition: service_healthy }
+      mw-adapter-telco: { condition: service_healthy }
+      mw-adapter-billpay: { condition: service_healthy }
+      mw-adapter-bank: { condition: service_healthy }
+      mw-checkout: { condition: service_healthy }
+      mw-portal-api: { condition: service_healthy }
+    volumes:
+      - seed-manifest:/run/mw/seed
+    environment:
+      MW_ENV: ${MW_ENV:-local}
+      JDK_JAVA_OPTIONS: -Xms64m -Xmx96m -XX:MaxMetaspaceSize=96m -Xss512k
+      # timer: each seed step's time limit (ticket 57: 10 min)
+      MW_SEED_STEP_TIMEOUT: ${MW_SEED_STEP_TIMEOUT:-10m}
+      KC_BOOTSTRAP_ADMIN_USERNAME: kc-admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      KC_OPS_TEST_PASSWORD: ${KC_OPS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      KC_OPS_TEST_TOTP_SECRET: ${KC_OPS_TEST_TOTP_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 256M }

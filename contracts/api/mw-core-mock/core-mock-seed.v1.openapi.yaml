@@ -1,0 +1,97 @@
+openapi: 3.1.0
+info:
+  title: Bits core-mock seed API v1 (mw-core-mock, test-only)
+  version: 1.0.0
+  description: |
+    Test-only wallet API of the core test double (ticket 57), never part of the product and never
+    offered by the real core. Called by mw-seeder inside the stack network (no APISIX route, no
+    auth: the mock is dev/test only). The PUT is off unless mw-core-mock runs with
+    `MW_COREMOCK_SEED_API_ENABLED=true` (`mw.coremock.seed-api.enabled`; the dev stack sets it);
+    off, a PUT is 405 and the mock seeds only its own fixed ranges on start.
+
+    A seeded wallet's id is its MSISDN; it gets the mock's seed PIN (`mw.coremock.seed.pin`, fake)
+    and its opening balance without ledger entries, as the mock's own start-up seed does. The PUT
+    is create-if-absent: an existing wallet is answered as it is (200) and never changed, whatever
+    the body says, so tests that moved its balance keep their numbers.
+servers:
+  - url: http://mw-core-mock:8080
+paths:
+  /core-mock/v1/wallets/{walletId}:
+    parameters:
+      - { name: walletId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+      - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+    get:
+      operationId: getWallet
+      summary: A wallet's type, status and balances (id or MSISDN)
+      responses:
+        "200":
+          description: The wallet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Wallet" }
+        "400":
+          description: Unknown wallet (MW-VAL-003)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    put:
+      operationId: seedWallet
+      summary: Create the wallet with its opening balance unless it exists (test-only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, openingBalanceMinor]
+              additionalProperties: false
+              properties:
+                type: { type: string, enum: [CUSTOMER, AGENT, MERCHANT, ORG] }
+                openingBalanceMinor: { type: integer, minimum: 0, maximum: 100000000000, description: Poisha }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Wallet" }
+        "200":
+          description: Already there; nothing changed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Wallet" }
+        "400":
+          description: Not a mobile number (`01[3-9]` + 8 digits) or a bad body (MW-VAL-001)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "405":
+          description: Seed API switched off (the GET on the same path stays; MW-VAL-004)
+components:
+  schemas:
+    Wallet:
+      type: object
+      required: [walletId, type, status, balanceMinor, heldMinor, availableMinor]
+      properties:
+        walletId: { type: string }
+        type: { type: string, enum: [CUSTOMER, AGENT, MERCHANT, ORG, SYSTEM] }
+        status: { type: string }
+        balanceMinor: { type: integer }
+        heldMinor: { type: integer }
+        availableMinor: { type: integer, description: balanceMinor - heldMinor }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

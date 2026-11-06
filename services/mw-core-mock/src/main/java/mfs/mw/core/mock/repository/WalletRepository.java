@@ -35,6 +35,17 @@ public class WalletRepository {
         .findFirst();
   }
 
+  /**
+   * Inserts an ACTIVE wallet whose id and MSISDN are {@code id} (test-only seed API, ticket 57);
+   * false, changing nothing, when one with that id already exists.
+   */
+  public boolean insertIfAbsent(String id, String type, long balanceMinor, String pinHash) {
+    return jdbc.update(
+            "insert into wallet (id, msisdn, type, balance_minor, pin_hash) values (?, ?, ?, ?, ?) on conflict do nothing",
+            id, id, type, balanceMinor, pinHash)
+        == 1;
+  }
+
   /** Reads and row-locks a wallet for the rest of the transaction. */
   public Wallet lock(String id) {
     return jdbc.queryForObject("select * from wallet where id = ? for update", MAPPER, id);

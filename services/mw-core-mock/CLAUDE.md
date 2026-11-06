@@ -77,6 +77,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   -> `{walletId, type, status, balanceMinor, heldMinor, availableMinor}`, unknown `400 MW-VAL-003`.
   The e2e suite reads it (and the PIN key and faults) through the dev-only APISIX route
   `/test/core-mock/v1/*` (`deploy/apisix/routes/test-core-mock.json`).
+- Wallet seed API (ticket 57, test-only, for mw-seeder; contract `api/mw-core-mock/core-mock-seed.v1.openapi.yaml`):
+  `PUT /core-mock/v1/wallets/{walletId}` `{type: CUSTOMER|AGENT|MERCHANT|ORG, openingBalanceMinor}`
+  (`controller/WalletSeedController` -> `service/WalletSeedService` -> `WalletRepository.insertIfAbsent`):
+  create-if-absent with id = MSISDN (`01[3-9]` + 8 digits, else 400 MW-VAL-001), the seed PIN and the
+  opening balance, no ledger entries (as `WalletSeeder`); 201 created, 200 already there (never changed,
+  whatever the body). Only with `mw.coremock.seed-api.enabled=true` (`MW_COREMOCK_SEED_API_ENABLED`, set by
+  `deploy/docker-compose.yml`; default off: a PUT is then 405). No APISIX route: mw-seeder calls it
+  inside the app network.
 - Ledger in schema `coremock` (role `coremock_rw`): `wallet`, `hold`, `entry`, `command_log`, `reversal`.
   Seed (on start, idempotent, `WalletSeeder`): 1,000 customers `01711000001..`, 50 agents
   `01811000001..`, 20 merchants `01911000001..`, 2 orgs `01311000001..` (wallet id = MSISDN) and the
@@ -129,7 +137,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 - Machine-readable list: `contracts.yml` (produces 17 `core.event.v1` types, consumes the 9 handled
   `core.command.v1` types; `ApplyComplianceAction` is ignored, so neither it nor `ComplianceAction*` is
   listed), checked by `make contracts-lint`, tested by `contracts/ProducedContractsTest` /
-  `ConsumedContractsTest` (no Spring, no Docker). No OpenAPI: the admin API is not a product contract.
+  `ConsumedContractsTest` (no Spring, no Docker). The fault and balance admin API is not a product
+  contract; the wallet GET and the test-only seed PUT are `api/mw-core-mock/core-mock-seed.v1.openapi.yaml`
+  (ticket 57, consumed by mw-seeder), served shapes checked by `contracts/ApiContractsTest`.
 
 ## Contracts used
 

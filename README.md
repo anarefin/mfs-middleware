@@ -42,7 +42,7 @@ git clone <this repo> mfs-middleware && cd mfs-middleware
 java -version && docker compose version     # JDK 25, Compose 2.20+
 make build                                  # jars (bootJar, 3 modules at a time), then every image
 time make up                                # credentials, then the stack from the built images; waits until healthy
-make seed                                   # seed data through the APIs (mw-seeder, ticket 57; a no-op until then)
+make seed                                   # shared baseline through the APIs (mw-seeder); manifest in build/seed/manifest.json
 make smoke                                  # live checks: containers, topics, Kafka, PG, Valkey, Keycloak, OpenBao, APISIX
 ```
 
@@ -80,6 +80,16 @@ Seeded on start, no extra step: `mw-core-mock` creates 1,000 customer wallets `0
 50 agents `01811000001..`, 20 merchants `01911000001..`, 2 orgs `01311000001..`, all with the fake
 PIN `1234`; Keycloak imports its realms with test users (table below); the simulators, USSD menus,
 SMS/email templates and partner configs load their dev data.
+
+`make seed` (`scripts/seed.sh`, ticket 57) then runs the one-shot `mw-seeder` (profile `seed`) on the
+running stack and fails unless it exits 0. Through the services' APIs only (no SQL), it adds the
+baseline the API and Playwright suites share: the personas `seed-ops-maker`, `seed-ops-checker`,
+`seed-ops-viewer` (realm ops, with the TOTP secret `KC_OPS_TEST_TOTP_SECRET`), `seed-org-maker`,
+`seed-org-checker`, `seed-customer01`/`02`, `seed-agent01`, `seed-merchant01` with their core-mock
+wallets (`01712000001`, ...), the OCS partner at its baseline and a first admin version of the USSD
+main menu and the P2P received SMS, all through maker-checker. It is idempotent: a second `make seed`
+logs every step `unchanged`. The manifest (seeded ids and personas, no secret) is copied to
+`build/seed/manifest.json`; how to log in as the personas: `services/mw-seeder/CLAUDE.md`.
 
 Then:
 
@@ -166,7 +176,7 @@ manifest in step with every message change. The admin console is tested with `pn
 | --- | --- |
 | `make build [M=] [JOBS=3]` | `bootJar` per stack module, `JOBS` at a time, then `docker compose build` (every image, or `M=`'s) |
 | `make up [PROFILE=core] [TIMERS=fast] [M=]` | start the stack from the built images and wait until healthy (above); `PROFILE=minimal` = the P2P and cash path, `TIMERS=fast` = short test timers (`deploy/test-timers.env`), `M=mw-x` = one service and its dependencies |
-| `make seed` | run the seed profile's one-shot `mw-seeder` and fail unless it exits 0 (ticket 57; a no-op until it exists) |
+| `make seed` | run the seed profile's one-shot `mw-seeder` on the running stack, fail unless it exits 0, copy its manifest to `build/seed/manifest.json` (`MW_SEED_MANIFEST=` overrides); idempotent |
 | `make smoke` | live checks against the running stack |
 | `make edge-test` | APISIX edge policies: 401/400/413/429 envelopes, header stripping, correlation ID, quotas, idempotent apply |
 | `make e2e [M=] [TAGS=]` | Cucumber suite in `tests/e2e` (`tests/e2e/README.md`), filtered by `@<module>` and a tag expression, e.g. `make e2e TAGS="@p2p or @cash"` |

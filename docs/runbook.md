@@ -41,6 +41,7 @@ On macOS: Docker Desktop (Settings, Resources: memory 10 GB or more), a JDK 25 (
 | Start only the P2P and cash path | `make up PROFILE=minimal` |
 | Start with short test timers | `make up TIMERS=fast` (`deploy/test-timers.env`) |
 | Live checks | `make smoke` |
+| Seed the shared test baseline (personas, wallets, partner baseline, first admin content) | `make seed` (after `make up`; idempotent; manifest in `build/seed/manifest.json`) |
 | Stop, keep the data | `make down` |
 | Stop and wipe every volume | `make reset` (every profile, orphans too) |
 | Swap a rebuilt service into the running stack | `make build M=mw-notify && make up M=mw-notify` |
@@ -161,6 +162,7 @@ dc exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select
 | A service crashed or was killed | `dc start <service>` (or `make up`). The outbox resends, the inbox drops duplicates, saga timers and the status inquiry finish what was in flight; `make chaos` proves this for every service, Kafka and PostgreSQL |
 | Transactions stuck in `PROCESSING` / `UNKNOWN` | wait for the status inquiry schedule (30 s, 1, 2, 5 min); what it cannot settle goes to `MANUAL_REVIEW`, handled in the console |
 | `make up` stops at an init container | `dc logs <name>-init`; most often a volume made with other credentials (see Credentials) or an OpenBao that is still sealed: `make down && make up` |
+| `make seed` fails | `dc logs mw-seeder`: the line `seed.step.failed` names the step. `not ready yet: <svc>` = a service never became ready (fix it, seed again); `open change request of <operator>` = a partner, menu or template has a pending request someone else made: approve or reject it in the console, then `make seed` again. Seeding is idempotent, so re-running is always safe |
 | APISIX answers 404 for test routes (`/test/...`) | expected after `make up`; `make e2e` and `make perf` enable them |
 | 401 from the console API after a long idle | sign out and in again (the refresh token expired) |
 | Port 443 busy | free it, or `MW_HTTPS_PORT=8443 make up` (APIs work, the console login does not) |

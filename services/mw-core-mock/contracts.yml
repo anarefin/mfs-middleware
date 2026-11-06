@@ -20,7 +20,8 @@ produces:
     - events/mw-core-mock/core.event.v1.schema.json#TransactionStatus
     - events/mw-core-mock/core.event.v1.schema.json#WalletUnlocked
     - events/mw-core-mock/core.event.v1.schema.json#UnlockRejected
-  apis: []
+  # ticket 57: the test-only wallet seed API (PUT behind mw.coremock.seed-api.enabled) and the wallet read
+  apis: [api/mw-core-mock/core-mock-seed.v1.openapi.yaml]
 consumes:
   events:
     - events/mw-orchestrator/core.command.v1.schema.json#ValidateTransaction

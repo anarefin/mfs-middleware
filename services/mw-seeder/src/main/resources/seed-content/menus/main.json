@@ -1,0 +1,526 @@
+{
+  "menuId": "main",
+  "version": 2,
+  "start": "main",
+  "messages": {
+    "invalid": {
+      "bn": "ভুল ইনপুট।",
+      "en": "Invalid input."
+    },
+    "tooManyAttempts": {
+      "bn": "অনেকবার ভুল ইনপুট। আবার চেষ্টা করুন।",
+      "en": "Too many invalid entries. Please try again."
+    },
+    "expired": {
+      "bn": "সেশন শেষ হয়েছে। আবার ডায়াল করুন।",
+      "en": "Session expired. Please dial again."
+    },
+    "processing": {
+      "bn": "আপনার অনুরোধ প্রক্রিয়াধীন। ফলাফল SMS-এ জানানো হবে।",
+      "en": "Your request is being processed. You will get the result by SMS."
+    },
+    "unavailable": {
+      "bn": "সেবাটি সাময়িকভাবে বন্ধ। পরে চেষ্টা করুন।",
+      "en": "Service temporarily unavailable. Please try later."
+    },
+    "more": {
+      "bn": "0 আরও",
+      "en": "0 More"
+    }
+  },
+  "nodes": {
+    "main": {
+      "type": "MENU",
+      "text": {
+        "bn": "Bits",
+        "en": "Bits"
+      },
+      "options": [
+        {
+          "key": "1",
+          "label": {
+            "bn": "সেন্ড মানি",
+            "en": "Send Money"
+          },
+          "next": "p2p.recipient"
+        },
+        {
+          "key": "2",
+          "label": {
+            "bn": "ক্যাশ আউট",
+            "en": "Cash Out"
+          },
+          "next": "co.agent"
+        },
+        {
+          "key": "3",
+          "label": {
+            "bn": "মোবাইল রিচার্জ",
+            "en": "Mobile Recharge"
+          },
+          "next": "tu.whom"
+        },
+        {
+          "key": "4",
+          "label": {
+            "bn": "বিল পে",
+            "en": "Pay Bill"
+          },
+          "next": "bp.biller"
+        },
+        {
+          "key": "9",
+          "label": {
+            "bn": "English",
+            "en": "বাংলা"
+          },
+          "next": "main",
+          "switchLanguage": true
+        }
+      ]
+    },
+    "p2p.recipient": {
+      "type": "INPUT",
+      "text": {
+        "bn": "প্রাপকের Bits নম্বর দিন",
+        "en": "Enter recipient Bits number"
+      },
+      "validator": {
+        "type": "msisdn",
+        "notSelf": true,
+        "error": {
+          "bn": "সঠিক মোবাইল নম্বর দিন।",
+          "en": "Enter a valid mobile number."
+        }
+      },
+      "store": "recipient",
+      "next": "p2p.amount"
+    },
+    "p2p.amount": {
+      "type": "INPUT",
+      "text": {
+        "bn": "টাকার পরিমাণ দিন",
+        "en": "Enter amount (Tk)"
+      },
+      "validator": {
+        "type": "amount",
+        "min": "10",
+        "max": "25000",
+        "error": {
+          "bn": "পরিমাণ ১০ থেকে ২৫০০০ টাকার মধ্যে দিন।",
+          "en": "Enter an amount from Tk 10 to 25000."
+        }
+      },
+      "store": "amount",
+      "next": "p2p.confirm"
+    },
+    "p2p.confirm": {
+      "type": "CONFIRM",
+      "text": {
+        "bn": "{recipient} নম্বরে {amount} টাকা পাঠাবেন?",
+        "en": "Send Tk {amount} to {recipient}?"
+      },
+      "options": [
+        {
+          "key": "1",
+          "label": {
+            "bn": "নিশ্চিত করুন",
+            "en": "Confirm"
+          },
+          "next": "p2p.pin"
+        },
+        {
+          "key": "2",
+          "label": {
+            "bn": "বাতিল",
+            "en": "Cancel"
+          },
+          "next": "cancelled"
+        }
+      ]
+    },
+    "p2p.pin": {
+      "type": "INPUT",
+      "text": {
+        "bn": "আপনার পিন দিন",
+        "en": "Enter your PIN"
+      },
+      "validator": {
+        "type": "pin",
+        "error": {
+          "bn": "পিন ৪ অঙ্কের।",
+          "en": "The PIN has 4 digits."
+        }
+      },
+      "next": "p2p.send"
+    },
+    "p2p.send": {
+      "type": "ACTION",
+      "flow": "P2P",
+      "mapping": {
+        "creditParty": "recipient",
+        "amount": "amount"
+      },
+      "onSuccess": "p2p.done",
+      "onFailure": "p2p.failed"
+    },
+    "p2p.done": {
+      "type": "END",
+      "text": {
+        "bn": "{recipient} নম্বরে {amount} টাকা পাঠানো হয়েছে।",
+        "en": "Tk {amount} sent to {recipient}. TxnID {txnId}"
+      }
+    },
+    "p2p.failed": {
+      "type": "END",
+      "text": {
+        "bn": "সেন্ড মানি ব্যর্থ: {error}",
+        "en": "Send Money failed: {error}"
+      }
+    },
+    "co.agent": {
+      "type": "INPUT",
+      "text": {
+        "bn": "এজেন্টের Bits নম্বর দিন",
+        "en": "Enter agent Bits number"
+      },
+      "validator": {
+        "type": "msisdn",
+        "notSelf": true,
+        "error": {
+          "bn": "সঠিক মোবাইল নম্বর দিন।",
+          "en": "Enter a valid mobile number."
+        }
+      },
+      "store": "agent",
+      "next": "co.amount"
+    },
+    "co.amount": {
+      "type": "INPUT",
+      "text": {
+        "bn": "টাকার পরিমাণ দিন",
+        "en": "Enter amount (Tk)"
+      },
+      "validator": {
+        "type": "amount",
+        "min": "50",
+        "max": "25000",
+        "error": {
+          "bn": "পরিমাণ ৫০ থেকে ২৫০০০ টাকার মধ্যে দিন।",
+          "en": "Enter an amount from Tk 50 to 25000."
+        }
+      },
+      "store": "amount",
+      "next": "co.confirm"
+    },
+    "co.confirm": {
+      "type": "CONFIRM",
+      "text": {
+        "bn": "এজেন্ট {agent}: {amount} টাকা ক্যাশ আউট?",
+        "en": "Cash out Tk {amount} at agent {agent}?"
+      },
+      "options": [
+        {
+          "key": "1",
+          "label": {
+            "bn": "নিশ্চিত করুন",
+            "en": "Confirm"
+          },
+          "next": "co.pin"
+        },
+        {
+          "key": "2",
+          "label": {
+            "bn": "বাতিল",
+            "en": "Cancel"
+          },
+          "next": "cancelled"
+        }
+      ]
+    },
+    "co.pin": {
+      "type": "INPUT",
+      "text": {
+        "bn": "আপনার পিন দিন",
+        "en": "Enter your PIN"
+      },
+      "validator": {
+        "type": "pin",
+        "error": {
+          "bn": "পিন ৪ অঙ্কের।",
+          "en": "The PIN has 4 digits."
+        }
+      },
+      "next": "co.send"
+    },
+    "co.send": {
+      "type": "ACTION",
+      "flow": "CASH_OUT",
+      "mapping": {
+        "creditParty": "agent",
+        "amount": "amount"
+      },
+      "onSuccess": "co.done",
+      "onFailure": "co.failed"
+    },
+    "co.done": {
+      "type": "END",
+      "text": {
+        "bn": "এজেন্ট {agent} থেকে {amount} টাকা ক্যাশ আউট হয়েছে।",
+        "en": "Tk {amount} cashed out at agent {agent}. TxnID {txnId}"
+      }
+    },
+    "co.failed": {
+      "type": "END",
+      "text": {
+        "bn": "ক্যাশ আউট ব্যর্থ: {error}",
+        "en": "Cash Out failed: {error}"
+      }
+    },
+    "tu.whom": {
+      "type": "MENU",
+      "text": {
+        "bn": "মোবাইল রিচার্জ",
+        "en": "Mobile Recharge"
+      },
+      "options": [
+        {
+          "key": "1",
+          "label": {
+            "bn": "নিজের নম্বর",
+            "en": "Own number"
+          },
+          "next": "tu.amount",
+          "set": {
+            "target": "{msisdn}",
+            "operator": "{mno}"
+          }
+        },
+        {
+          "key": "2",
+          "label": {
+            "bn": "অন্য নম্বর",
+            "en": "Other number"
+          },
+          "next": "tu.number"
+        }
+      ]
+    },
+    "tu.number": {
+      "type": "INPUT",
+      "text": {
+        "bn": "মোবাইল নম্বর দিন",
+        "en": "Enter mobile number"
+      },
+      "validator": {
+        "type": "msisdn",
+        "error": {
+          "bn": "সঠিক মোবাইল নম্বর দিন।",
+          "en": "Enter a valid mobile number."
+        }
+      },
+      "store": "target",
+      "next": "tu.operator"
+    },
+    "tu.operator": {
+      "type": "DYNAMIC",
+      "text": {
+        "bn": "অপারেটর বাছাই করুন",
+        "en": "Select operator"
+      },
+      "source": "operators",
+      "store": "operator",
+      "next": "tu.amount"
+    },
+    "tu.amount": {
+      "type": "INPUT",
+      "text": {
+        "bn": "রিচার্জের পরিমাণ দিন",
+        "en": "Enter recharge amount (Tk)"
+      },
+      "validator": {
+        "type": "amount",
+        "min": "10",
+        "max": "1000",
+        "error": {
+          "bn": "পরিমাণ ১০ থেকে ১০০০ টাকার মধ্যে দিন।",
+          "en": "Enter an amount from Tk 10 to 1000."
+        }
+      },
+      "store": "amount",
+      "next": "tu.confirm"
+    },
+    "tu.confirm": {
+      "type": "CONFIRM",
+      "text": {
+        "bn": "{target} নম্বরে {amount} টাকা রিচার্জ করবেন?",
+        "en": "Recharge Tk {amount} to {target}?"
+      },
+      "options": [
+        {
+          "key": "1",
+          "label": {
+            "bn": "নিশ্চিত করুন",
+            "en": "Confirm"
+          },
+          "next": "tu.pin"
+        },
+        {
+          "key": "2",
+          "label": {
+            "bn": "বাতিল",
+            "en": "Cancel"
+          },
+          "next": "cancelled"
+        }
+      ]
+    },
+    "tu.pin": {
+      "type": "INPUT",
+      "text": {
+        "bn": "আপনার পিন দিন",
+        "en": "Enter your PIN"
+      },
+      "validator": {
+        "type": "pin",
+        "error": {
+          "bn": "পিন ৪ অঙ্কের।",
+          "en": "The PIN has 4 digits."
+        }
+      },
+      "next": "tu.send"
+    },
+    "tu.send": {
+      "type": "ACTION",
+      "flow": "TOPUP",
+      "mapping": {
+        "creditParty": "target",
+        "amount": "amount",
+        "partnerId": "operator",
+        "productCode": "=PREPAID"
+      },
+      "onSuccess": "tu.done",
+      "onFailure": "tu.failed"
+    },
+    "tu.done": {
+      "type": "END",
+      "text": {
+        "bn": "{target} নম্বরে {amount} টাকা রিচার্জ হয়েছে।",
+        "en": "Tk {amount} recharged to {target}. TxnID {txnId}"
+      }
+    },
+    "tu.failed": {
+      "type": "END",
+      "text": {
+        "bn": "রিচার্জ ব্যর্থ: {error}",
+        "en": "Recharge failed: {error}"
+      }
+    },
+    "bp.biller": {
+      "type": "DYNAMIC",
+      "text": {
+        "bn": "বিলার বাছাই করুন",
+        "en": "Select biller"
+      },
+      "source": "billers",
+      "store": "biller",
+      "next": "bp.number"
+    },
+    "bp.number": {
+      "type": "INPUT",
+      "text": {
+        "bn": "{biller} বিল নম্বর দিন",
+        "en": "Enter {biller} bill number"
+      },
+      "validator": {
+        "type": "numeric",
+        "min": "4",
+        "max": "20",
+        "error": {
+          "bn": "সঠিক বিল নম্বর দিন।",
+          "en": "Enter a valid bill number."
+        }
+      },
+      "store": "billNumber",
+      "lookup": "bill",
+      "mapping": {
+        "billerCode": "biller",
+        "billNumber": "billNumber"
+      },
+      "next": "bp.confirm"
+    },
+    "bp.confirm": {
+      "type": "CONFIRM",
+      "text": {
+        "bn": "{biller} বিল {billNumber}: {amount} টাকা দিবেন?",
+        "en": "Pay Tk {amount} for {biller} bill {billNumber}?"
+      },
+      "options": [
+        {
+          "key": "1",
+          "label": {
+            "bn": "নিশ্চিত করুন",
+            "en": "Confirm"
+          },
+          "next": "bp.pin"
+        },
+        {
+          "key": "2",
+          "label": {
+            "bn": "বাতিল",
+            "en": "Cancel"
+          },
+          "next": "cancelled"
+        }
+      ]
+    },
+    "bp.pin": {
+      "type": "INPUT",
+      "text": {
+        "bn": "আপনার পিন দিন",
+        "en": "Enter your PIN"
+      },
+      "validator": {
+        "type": "pin",
+        "error": {
+          "bn": "পিন ৪ অঙ্কের।",
+          "en": "The PIN has 4 digits."
+        }
+      },
+      "next": "bp.send"
+    },
+    "bp.send": {
+      "type": "ACTION",
+      "flow": "BILL_PAY",
+      "mapping": {
+        "creditParty": "billNumber",
+        "amount": "amount",
+        "partnerId": "partnerId",
+        "billerCode": "biller"
+      },
+      "onSuccess": "bp.done",
+      "onFailure": "bp.failed"
+    },
+    "bp.done": {
+      "type": "END",
+      "text": {
+        "bn": "{biller} বিল {billNumber}: {amount} টাকা দেওয়া হয়েছে।",
+        "en": "Tk {amount} paid for {biller} bill {billNumber}. TxnID {txnId}"
+      }
+    },
+    "bp.failed": {
+      "type": "END",
+      "text": {
+        "bn": "বিল পে ব্যর্থ: {error}",
+        "en": "Bill payment failed: {error}"
+      }
+    },
+    "cancelled": {
+      "type": "END",
+      "text": {
+        "bn": "বাতিল করা হয়েছে।",
+        "en": "Cancelled."
+      }
+    }
+  }
+}

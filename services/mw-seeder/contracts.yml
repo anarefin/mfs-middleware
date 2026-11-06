@@ -1,0 +1,12 @@
+# Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
+# mw-seeder (ticket 57) produces nothing; it calls the APIs below (contracts/ConsumedContractsTest
+# checks its request DTOs and the answers it reads against them). Keycloak's admin REST API and
+# token endpoint are third-party, not contract files (see CLAUDE.md "Contracts used").
+produces:
+  events: []
+  apis: []
+consumes:
+  events: []
+  apis:
+    - api/mw-admin-api/admin.v1.openapi.yaml
+    - api/mw-core-mock/core-mock-seed.v1.openapi.yaml

@@ -29,6 +29,10 @@ Tickets: `.scratch/bits-mfs-middleware/issues/<NN>-<slug>.md`; run order + statu
 - mw-notify: SMS (SMPP) + email notifications.
 - mw-audit-dw: audit trail store + audit query API.
 - mw-simulators: partner/OCS/SMSC/USSD-gateway simulators.
+- mw-seeder (ticket 57): one-shot, no web server/DB/Kafka; seeds the stack through APIs only (Keycloak admin
+  REST, mw-core-mock's test-only `PUT /core-mock/v1/wallets/{id}`, mw-admin-api maker-checker), idempotent;
+  `make seed` runs it (profile `seed`) and copies its manifest to `build/seed/manifest.json`. Steps are
+  `service/*Step` (`@Order`), runner `scheduler/SeedRunner`; data in its `application.yml` (`mw.seeder.*`).
 - NOT YET: `mw-admin-api` (ticket 36, create with `make new-service NAME=mw-admin-api`), `mw-admin-ui` (Next.js 16.3.8, ticket 40).
 
 ## Tests

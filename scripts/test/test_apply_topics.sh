@@ -113,7 +113,7 @@ test_a_failed_pass_fails_and_writes_no_marker() {
 
 test_kafka_init_keeps_its_marker_in_a_volume_and_gets_dev_partitions() {
   local f="$REPO_DIR/deploy/docker-compose.yml"
-  OUT="$(env $(for v in $(grep -o '\${[A-Z_]*:?' "$f" | tr -d '${:?' | sort -u); do printf '%s=t ' "$v"; done) \
+  OUT="$(env $(for v in $(grep -o '\${[A-Z0-9_]*:?' "$f" | tr -d '${:?' | sort -u); do printf '%s=t ' "$v"; done) \
     docker compose -f "$f" config --format json 2>&1)" || fail "compose config failed"
   printf '%s' "$OUT" | jq -e '.services["kafka-init"].environment.MW_KAFKA_PARTITIONS == "3"' >/dev/null \
     || fail "kafka-init does not default MW_KAFKA_PARTITIONS to 3"

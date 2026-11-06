@@ -151,8 +151,12 @@ test_seed_runs_the_seeder_one_shot_and_fails_when_it_does() {
   stub_tools
   stack_file mw-a mw-seeder
   assert_ok mw_make "$PWD" seed
-  grep -qF -- "--profile core --profile seed up -d mw-seeder" .tool-calls || fail "seeder not started: $(cat .tool-calls)"
+  # recreated, so a seeder that already exited 0 runs again (idempotent second run)
+  grep -qF -- "--profile core --profile seed up -d --force-recreate mw-seeder" .tool-calls || fail "seeder not started: $(cat .tool-calls)"
   grep -qF -- "--profile core --profile seed wait mw-seeder" .tool-calls || fail "seeder exit not checked: $(cat .tool-calls)"
+  grep -qF -- "cp mw-seeder:/run/mw/seed/manifest.json $PWD/build/seed/manifest.json" .tool-calls \
+    || fail "manifest not copied out: $(cat .tool-calls)"
+  assert_out_contains "manifest at build/seed/manifest.json"
   printf '#!/bin/sh\ncase "$*" in *" wait "*) exit 3 ;; esac\nexit 0\n' >.bin/docker
   assert_fails mw_make "$PWD" seed
   assert_out_contains "mw-seeder"

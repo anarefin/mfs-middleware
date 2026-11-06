@@ -1,0 +1,5 @@
+# Test-only overrides, merged over src/main/resources/application.yml.
+mw:
+  seeder:
+    # Short limits so a failing test ends quickly; SeedRunnerIT passes its own endpoints.
+    step-timeout: 20s
