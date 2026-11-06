@@ -297,6 +297,11 @@ services:
       - work_mem=2MB
       - -c
       - maintenance_work_mem=32MB
+      # A constraint error's DETAIL line quotes the key, e.g. an unmasked MSISDN wallet id
+      # (change_request_one_pending_idx, ticket 59); terse drops DETAIL/HINT/CONTEXT so
+      # make log-scan stays clean. The STATEMENT line keeps $n placeholders, no values.
+      - -c
+      - log_error_verbosity=terse
     volumes:
       - postgres-data:/var/lib/postgresql
       - ./postgres/initdb:/docker-entrypoint-initdb.d:ro

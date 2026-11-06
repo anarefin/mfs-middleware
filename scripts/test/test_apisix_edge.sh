@@ -639,3 +639,15 @@ test_edge_sets_security_headers_and_hides_its_version() {
     | grep -q true || fail "security headers must run after the envelope function"
   grep -Eq '^ +enable_server_tokens: false' "$REPO_DIR/deploy/apisix/config.yaml" || fail "APISIX version not hidden"
 }
+
+test_edge_buffers_the_console_sign_in_redirect_headers() {
+  # Ticket 59: the console's "Sign in with Keycloak" answer (303 to Keycloak) carries about 4.4 KB of
+  # headers (Location with PKCE, state and nonce, the Auth.js state / pkce / nonce / csrf / callback
+  # cookies, CSP); nginx's default 4 KiB proxy_buffer_size answered it 502 "upstream sent too big header".
+  local c="$REPO_DIR/deploy/apisix/config.yaml" size
+  size="$(sed -nE 's/^ +proxy_buffer_size +([0-9]+)k;.*/\1/p' "$c" | head -1)"
+  [ -n "$size" ] || fail "config.yaml sets no proxy_buffer_size in http_configuration_snippet"
+  [ "$size" -ge 16 ] || fail "proxy_buffer_size ${size}k is below 16k"
+  grep -qE '^ +proxy_buffers +[0-9]+ +16k;' "$c" || fail "proxy_buffers not sized to the 16k buffer"
+  grep -qE '^ +proxy_busy_buffers_size +[0-9]+k;' "$c" || fail "proxy_busy_buffers_size not set (nginx refuses one below proxy_buffer_size)"
+}

@@ -112,7 +112,7 @@ test.describe("ussd", { tag: "@ussd" }, () => {
     await propose.getByLabel("Reason").fill("try it");
     await propose.getByRole("button", { name: "Request publish" }).click();
     await expect(propose.locator(".error[role=alert]")).toContainText("MW-VAL-040");
-    await expect(propose.locator(".error[role=alert]")).toContainText("menu.nodes.p2p.amount.next: no node nowhere");
+    await expect(propose.locator(".error[role=alert]")).toContainText("p2p.amount: next points to missing node nowhere");
     await maker.context().close();
   });
 });

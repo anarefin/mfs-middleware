@@ -677,3 +677,10 @@ test_every_service_sets_an_explicit_pool_and_the_sum_fits_max_connections() {
   [ $((sum + kc + 5 + 20)) -le "$max" ] || fail "pools $sum + keycloak $kc + 25 exceed max_connections $max"
   return 0
 }
+
+test_postgres_logs_errors_terse_so_constraint_details_never_quote_a_key() {
+  # Ticket 59 gate: a duplicate wallet-unlock request logged
+  # "DETAIL: Key (resource_type, resource_id)=(wallet, 01...)" with the unmasked MSISDN.
+  compose_json | jq -e '.services.postgres.command | index("log_error_verbosity=terse")' >/dev/null \
+    || fail "postgres must run with -c log_error_verbosity=terse"
+}

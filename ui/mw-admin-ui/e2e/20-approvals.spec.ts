@@ -52,10 +52,11 @@ test.describe("approvals", { tag: "@approvals" }, () => {
       const decided = await approve(checker, id);
       await expect(decided).toContainText(checkerName);
 
-      await decided.getByRole("link", { name: txnId }).click();
-      // the orchestrator reverses it after the approval (asynchronously)
+      await expect(decided.getByRole("link", { name: txnId })).toBeVisible();
+      // the orchestrator reverses it after the approval (asynchronously); open the detail page
+      // directly on every try (a reload of the inbox would never show the status)
       await expect(async () => {
-        await checker.reload();
+        await checker.goto(`/console/transactions/${txnId}`);
         await expect(checker.getByTestId("status")).toContainText("REVERSED", { timeout: 2_000 });
         await expect(checker.getByTestId("audit-trail")).toContainText("admin.change_request.approved", { timeout: 2_000 });
       }).toPass({ timeout: 60_000 });
