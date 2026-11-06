@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { ACTION_LABELS, canMake, txnActionsFor } from "@/lib/approvals";
+import { ACTION_LABELS, txnActionGate } from "@/lib/approvals";
 import { formatAmount, formatTime, partyLabel } from "@/lib/format";
 import { canReveal } from "@/lib/oidc";
 import { adminApi, operatorToken } from "@/lib/server/admin";
@@ -46,12 +46,11 @@ export default async function TransactionPage({ params, searchParams }: Props) {
   }
 
   const { transaction: t, timeline, partnerCalls, auditTrail, revealed } = result.data;
-  // operator actions (ticket 41): only for an ops-maker, only those the status allows, and not
-  // while a request is open (mw-admin-api allows one per transaction)
+  // operator actions (ticket 41): only for an ops-maker, only those the status allows, and only
+  // once the check for an open request succeeded and found none (mw-admin-api allows one per txn)
   const pendingQuery = new URLSearchParams({ resourceId: t.txnId, status: "PENDING", limit: "1" });
   const pending = await adminApi().listChangeRequests(token, pendingQuery);
-  const open = pending.ok ? pending.data.items[0] : undefined;
-  const actions = canMake(session?.roles ?? []) && !open ? txnActionsFor(t) : [];
+  const { actions, open, checkFailed } = txnActionGate(session?.roles ?? [], t, pending);
   return (
     <>
       <p><Link href="/transactions">Back to search</Link></p>
@@ -87,6 +86,11 @@ export default async function TransactionPage({ params, searchParams }: Props) {
         <p className="notice" data-testid="pending-request">
           {open.action} requested by {open.makerId} on {formatTime(open.createdAt)}, waiting for approval in{" "}
           <Link href="/approvals">Approvals</Link>.
+        </p>
+      ) : null}
+      {checkFailed ? (
+        <p className="notice" data-testid="pending-check-failed">
+          Could not check for open requests, so no action can be requested now. Reload the page to try again.
         </p>
       ) : null}
       {actions.length > 0 ? (

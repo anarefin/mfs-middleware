@@ -4,7 +4,7 @@ import java.util.Set;
 import java.util.function.Predicate;
 import mfs.mw.admin.api.exception.ErrorCodes;
 import mfs.mw.admin.api.exception.MwException;
-import mfs.mw.admin.api.security.AdminRole;
+import mfs.mw.admin.api.dto.AdminRole;
 import mfs.mw.admin.api.security.OperatorResolver;
 import mfs.mw.admin.api.security.RealmIssuerValidator;
 import org.springframework.beans.factory.annotation.Qualifier;

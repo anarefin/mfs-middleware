@@ -38,6 +38,22 @@ export function canMake(roles: readonly string[]): boolean {
   return roles.includes(MAKER_ROLE);
 }
 
+/**
+ * The transaction page's action buttons (ticket 41): only for an ops-maker, only those the status
+ * allows, and only once the check for an open PENDING request (one per transaction) succeeded and
+ * found none. A failed check offers no buttons and `checkFailed` (the page says it could not check).
+ */
+export function txnActionGate(
+  roles: readonly string[],
+  t: Txn,
+  pending: { ok: true; data: { items: ChangeRequest[] } } | { ok: false },
+): { actions: TxnAction[]; open: ChangeRequest | undefined; checkFailed: boolean } {
+  const maker = canMake(roles);
+  if (!pending.ok) return { actions: [], open: undefined, checkFailed: maker };
+  const open = pending.data.items[0];
+  return { actions: maker && !open ? txnActionsFor(t) : [], open, checkFailed: false };
+}
+
 /** Files partner changes: ops-maker or integration-maker (an incident disable is an operations task). */
 export function canMakePartner(roles: readonly string[]): boolean {
   return PARTNER_MAKER_ROLES.some((r) => roles.includes(r));

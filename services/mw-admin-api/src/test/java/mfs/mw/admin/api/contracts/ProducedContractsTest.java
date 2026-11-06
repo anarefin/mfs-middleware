@@ -19,7 +19,7 @@ import mfs.mw.admin.api.mapper.ChangeRequestMapper;
 import mfs.mw.admin.api.mapper.PartnerMapper;
 import mfs.mw.admin.api.mapper.RevealAuditMapper;
 import mfs.mw.admin.api.util.UuidV7;
-import mfs.mw.admin.api.security.AdminRole;
+import mfs.mw.admin.api.dto.AdminRole;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;

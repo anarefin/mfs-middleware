@@ -5,7 +5,7 @@ import java.util.Map;
 import java.util.Set;
 import mfs.mw.admin.api.dto.Operator;
 import mfs.mw.admin.api.entity.ChangeRequest;
-import mfs.mw.admin.api.security.AdminRole;
+import mfs.mw.admin.api.dto.AdminRole;
 
 /**
  * What approving a change request on one resource type does (ticket 38; ticket 39 adds USSD menus

@@ -3,7 +3,6 @@ package mfs.mw.admin.api.dto;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.Set;
-import mfs.mw.admin.api.security.AdminRole;
 
 /**
  * The authenticated operator, from a Keycloak realm {@code ops} token: {@code sub} (the identity a

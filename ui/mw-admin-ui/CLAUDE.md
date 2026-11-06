@@ -48,7 +48,8 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
     non-REVERSAL txn = "Request reversal"; INQUIRE in UNKNOWN / MANUAL_REVIEW = "Request manual
     TSQ"; FORCE_COMMIT / FORCE_RELEASE in MANUAL_REVIEW). While a PENDING request exists for the
     txn (`GET /change-requests?resourceId=<txnId>&status=PENDING`) the panel is replaced by a notice
-    `pending-request`.
+    `pending-request`; when that check fails no buttons are shown, only the note
+    `pending-check-failed` (`txnActionGate`).
   - `/console/approvals`: change requests (filter PENDING default, APPROVED, REJECTED, EXPIRED,
     any; first 100), with the diff (status before -> the one the action leads to, e.g. COMPLETED ->
     REVERSING, LOCKED -> ACTIVE), what is sent (amount, reversal / action / command ids), maker,

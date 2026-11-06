@@ -10,7 +10,6 @@ import mfs.mw.admin.api.dto.ChangeRequestBody;
 import mfs.mw.admin.api.dto.ChangeRequestView;
 import mfs.mw.admin.api.dto.RejectBody;
 import mfs.mw.admin.api.dto.WalletChangeRequestBody;
-import mfs.mw.admin.api.entity.ChangeRequest;
 import mfs.mw.admin.api.security.OperatorResolver;
 import mfs.mw.admin.api.service.ChangeRequestService;
 import org.springframework.http.HttpStatus;
@@ -59,8 +58,8 @@ public class ChangeRequestController {
   @GetMapping("/change-requests")
   public ChangeRequestView.Page list(
       @AuthenticationPrincipal Jwt jwt,
-      @RequestParam(required = false) ChangeRequest.Status status,
-      @RequestParam(required = false) @Pattern(regexp = "transaction|wallet|partner") String resourceType,
+      @RequestParam(required = false) ChangeRequestView.Status status,
+      @RequestParam(required = false) @Pattern(regexp = "transaction|wallet|partner|ussd_menu|notify_template") String resourceType,
       @RequestParam(required = false) @Size(min = 1, max = 128) String resourceId,
       @RequestParam(defaultValue = "50") @Min(1) @Max(200) int limit,
       @RequestParam(defaultValue = "0") @Min(0) @Max(100_000) int offset) {

@@ -20,8 +20,8 @@ import mfs.mw.admin.api.exception.ErrorCodes;
 import mfs.mw.admin.api.exception.MwException;
 import mfs.mw.admin.api.mapper.PartnerMapper;
 import mfs.mw.admin.api.repository.PartnerRepository;
-import mfs.mw.admin.api.security.AdminRole;
-import mfs.mw.admin.api.security.OperatorResolver;
+import mfs.mw.admin.api.dto.AdminRole;
+import mfs.mw.admin.api.exception.ForbiddenException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
@@ -83,7 +83,7 @@ public class PartnerConfigService {
 
   public ChangeRequestView request(Operator maker, String partnerId, PartnerChangeRequestBody body) {
     if (!maker.hasAny(AdminRole.PARTNER_MAKER)) {
-      throw OperatorResolver.forbidden("Asking for a partner change needs the ops-maker or integration-maker role");
+      throw new ForbiddenException("Asking for a partner change needs the ops-maker or integration-maker role");
     }
     String id = checkedId(partnerId);
     Optional<Partner> held = partners.find(id);
@@ -284,7 +284,7 @@ public class PartnerConfigService {
 
   private static void requireReader(Operator operator) {
     if (!operator.hasAny(AdminRole.READ_PARTNERS)) {
-      throw OperatorResolver.forbidden("This operation needs a partner viewing role");
+      throw new ForbiddenException("This operation needs a partner viewing role");
     }
   }
 

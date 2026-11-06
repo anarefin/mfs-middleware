@@ -17,8 +17,8 @@ import mfs.mw.admin.api.dto.TxnDetailView;
 import mfs.mw.admin.api.exception.ErrorCodes;
 import mfs.mw.admin.api.exception.MwException;
 import mfs.mw.admin.api.exception.QueryUnavailableException;
-import mfs.mw.admin.api.security.AdminRole;
-import mfs.mw.admin.api.security.OperatorResolver;
+import mfs.mw.admin.api.dto.AdminRole;
+import mfs.mw.admin.api.exception.ForbiddenException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -111,7 +111,7 @@ public class TransactionQueryService {
 
   private static void requireReader(Operator operator) {
     if (!operator.hasAny(AdminRole.READ_TRANSACTIONS)) {
-      throw OperatorResolver.forbidden("This operation needs a transaction viewing role");
+      throw new ForbiddenException("This operation needs a transaction viewing role");
     }
   }
 

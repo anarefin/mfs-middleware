@@ -1,4 +1,4 @@
-package mfs.mw.admin.api.filter;
+package mfs.mw.admin.api.controller;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;

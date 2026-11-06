@@ -4,10 +4,9 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import mfs.mw.admin.api.dto.AdminRole;
 import mfs.mw.admin.api.dto.Operator;
-import mfs.mw.admin.api.exception.ErrorCodes;
-import mfs.mw.admin.api.exception.MwException;
-import org.springframework.http.HttpStatus;
+import mfs.mw.admin.api.exception.ForbiddenException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 
@@ -22,7 +21,7 @@ public class OperatorResolver {
   public Operator resolve(Jwt jwt) {
     String sub = jwt.getSubject();
     if (sub == null || sub.isBlank()) {
-      throw forbidden("Token carries no subject");
+      throw new ForbiddenException("Token carries no subject");
     }
     String username = jwt.getClaimAsString("preferred_username");
     return new Operator(sub, username == null || username.isBlank() ? sub : username, AdminRole.from(realmRoles(jwt)));
@@ -36,9 +35,5 @@ public class OperatorResolver {
       roles.forEach(r -> out.add(String.valueOf(r)));
     }
     return out;
-  }
-
-  public static MwException forbidden(String message) {
-    return new MwException(ErrorCodes.AUTH_FORBIDDEN, message).withStatus(HttpStatus.FORBIDDEN);
   }
 }

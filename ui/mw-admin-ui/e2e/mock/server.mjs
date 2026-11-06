@@ -5,7 +5,8 @@
 //     MOCK_API_PORT; it accepts only access tokens the IdP issued and records what it received
 //     including the maker-checker writes (change requests, approve / reject; state in memory)
 //   - GET /__test/state on the IdP port: issued access tokens and the API's view, for assertions;
-//     POST /__test/reset: change requests and transactions back to the fixtures
+//     POST /__test/reset: change requests and transactions back to the fixtures;
+//     POST /__test/fail-change-request-list: the change-request list answers 503 until the reset
 // All credentials are fake test values.
 
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -157,6 +158,10 @@ const idp = createServer(async (req, res) => {
       store = createStore();
       return send(res, 200, { reset: true });
     }
+    if (p === "/__test/fail-change-request-list" && req.method === "POST") {
+      store.failChangeRequestList = true; // until the next reset
+      return send(res, 200, { failing: true });
+    }
     return send(res, 404, { error: "not_found" });
   } catch (e) {
     return send(res, 500, { error: String(e) });
@@ -205,6 +210,9 @@ const api = createServer(async (req, res) => {
     return reply(errorAnswer(404, "MW-VAL-003", "Not found", correlationId));
   }
   if (req.method !== "GET") return reply(errorAnswer(403, "MW-AUTH-002", "Forbidden", correlationId));
+  if (path === "/admin/v1/change-requests" && store.failChangeRequestList) {
+    return reply(errorAnswer(503, "MW-SYS-001", "Change request store unavailable", correlationId));
+  }
   if (path === "/admin/v1/change-requests") return reply(listRequestsAnswer(store, url.searchParams, correlationId));
   if (path === "/admin/v1/partners") return reply(partnersAnswer(store));
   let g = path.match(/^\/admin\/v1\/partners\/([^/]+)$/);

@@ -1,5 +1,6 @@
 package mfs.mw.admin.api.service;
 
+import mfs.mw.admin.api.util.CorrelationIds;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -8,6 +9,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import mfs.mw.admin.api.client.OrchestratorQueryClient;
 import mfs.mw.admin.api.config.ChangeRequestProperties;
@@ -29,12 +32,11 @@ import mfs.mw.admin.api.mapper.ChangeRequestMapper;
 import mfs.mw.admin.api.messaging.EventMetadata;
 import mfs.mw.admin.api.messaging.OutboxWriter;
 import mfs.mw.admin.api.repository.ChangeRequestRepository;
-import mfs.mw.admin.api.security.AdminRole;
-import mfs.mw.admin.api.security.OperatorResolver;
+import mfs.mw.admin.api.dto.AdminRole;
+import mfs.mw.admin.api.exception.ForbiddenException;
 import mfs.mw.admin.api.util.UuidV7;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -103,7 +105,7 @@ public class ChangeRequestService {
 
   public ChangeRequestView create(Operator maker, UUID txnId, TxnActionType action, String reason) {
     if (!maker.hasAny(AdminRole.TXN_MAKER)) {
-      throw OperatorResolver.forbidden("Asking for a transaction action needs the ops-maker role");
+      throw new ForbiddenException("Asking for a transaction action needs the ops-maker role");
     }
     AdminTxn txn = transaction(txnId);
     String target = target(action, txn).orElseThrow(() -> notAllowed(action, txn.status()));
@@ -129,13 +131,37 @@ public class ChangeRequestService {
   public ChangeRequestView open(
       Operator maker, String resourceType, String resourceId, String action, Map<String, Object> payload,
       Map<String, Object> diff, String reason) {
+    return open(maker, resourceType, resourceId, action, reason, () -> new Opening(payload, diff, cr -> {}));
+  }
+
+  /**
+   * What a request is opened with, built inside the opening transaction (ticket 39: the content
+   * version number), and what is stored with it there once the request is in.
+   */
+  public record Opening(Map<String, Object> payload, Map<String, Object> diff, Consumer<ChangeRequest> alongside) {}
+
+  /**
+   * Opens a PENDING request whose payload and diff are built inside the opening transaction; the
+   * request, its creation audit and {@link Opening#alongside()} commit together. One open request
+   * per resource ({@code 409 MW-VAL-031}, everything rolls back).
+   */
+  public ChangeRequestView open(
+      Operator maker, String resourceType, String resourceId, String action, String reason, Supplier<Opening> opening) {
     handler(resourceType);
     Instant now = clock.instant();
     ChangeRequest cr =
-        new ChangeRequest(
-            UUID.randomUUID(), resourceType, resourceId, action, payload, diff, maker.username(), maker.subject(),
-            ChangeRequest.Status.PENDING, null, null, reason, null, now, null, now.plus(props.ttl()));
-    insert(cr, "This " + resourceType + " already has an open change request");
+        tx.execute(
+            s -> {
+              Opening o = opening.get();
+              ChangeRequest c =
+                  new ChangeRequest(
+                      UUID.randomUUID(), resourceType, resourceId, action, o.payload(), o.diff(), maker.username(),
+                      maker.subject(), ChangeRequest.Status.PENDING, null, null, reason, null, now, null,
+                      now.plus(props.ttl()));
+              insert(c, "This " + resourceType + " already has an open change request");
+              o.alongside().accept(c);
+              return c;
+            });
     logDecision("admin.change_request.created", cr, maker.username());
     return ChangeRequestMapper.view(cr);
   }
@@ -147,7 +173,7 @@ public class ChangeRequestService {
    */
   public ChangeRequestView createForWallet(Operator maker, String walletId, WalletActionType action, String reason) {
     if (!maker.hasAny(AdminRole.TXN_MAKER)) {
-      throw OperatorResolver.forbidden("Asking for a wallet action needs the ops-maker role");
+      throw new ForbiddenException("Asking for a wallet action needs the ops-maker role");
     }
     if (walletId == null || !WALLET_ID.matcher(walletId).matches()) {
       throw new MwException(ErrorCodes.VAL_INVALID, "The wallet id must be an 11-digit MSISDN")
@@ -287,20 +313,21 @@ public class ChangeRequestService {
     requireReader(operator);
     ChangeRequest cr = requests.find(id).orElseThrow(ChangeRequestService::notFound);
     if (!Partner.RESOURCE_TYPE.equals(cr.resourceType()) && !operator.hasAny(AdminRole.READ_TRANSACTIONS)) {
-      throw OperatorResolver.forbidden("This operation needs a transaction viewing role");
+      throw new ForbiddenException("This operation needs a transaction viewing role");
     }
     return ChangeRequestMapper.view(cr);
   }
 
   /** Newest first; an operator who may not read transactions sees partner requests only. */
   public ChangeRequestView.Page list(
-      Operator operator, ChangeRequest.Status status, String resourceType, String resourceId, int limit, int offset) {
+      Operator operator, ChangeRequestView.Status shown, String resourceType, String resourceId, int limit, int offset) {
     requireReader(operator);
+    ChangeRequest.Status status = ChangeRequestMapper.status(shown);
     List<ChangeRequest> rows;
     if (operator.hasAny(AdminRole.READ_TRANSACTIONS)) {
       rows = requests.list(status, resourceType, resourceId, limit, offset);
     } else if (resourceType != null && !Partner.RESOURCE_TYPE.equals(resourceType)) {
-      throw OperatorResolver.forbidden("This operation needs a transaction viewing role");
+      throw new ForbiddenException("This operation needs a transaction viewing role");
     } else {
       rows = requests.list(status, resourceType == null ? Partner.RESOURCE_TYPE : resourceType, resourceId, limit, offset);
     }
@@ -331,7 +358,7 @@ public class ChangeRequestService {
   /** A request this checker may decide now; an expired one is marked EXPIRED first, then refused. */
   private ChangeRequest decidable(Operator checker, UUID id) {
     if (!checker.hasAny(AdminRole.ANY_CHECKER)) {
-      throw OperatorResolver.forbidden("Deciding a change request needs a checker role");
+      throw new ForbiddenException("Deciding a change request needs a checker role");
     }
     ChangeRequest cr = requests.find(id).orElseThrow(ChangeRequestService::notFound);
     Set<AdminRole> checkers =
@@ -339,7 +366,7 @@ public class ChangeRequestService {
             ? AdminRole.TXN_CHECKER
             : handler(cr.resourceType()).checkers();
     if (!checker.hasAny(checkers)) {
-      throw OperatorResolver.forbidden("Deciding this change request needs another checker role");
+      throw new ForbiddenException("Deciding this change request needs another checker role");
     }
     if (cr.makerSub().equals(checker.subject()) || cr.makerId().equals(checker.username())) {
       log.atWarn()
@@ -429,13 +456,12 @@ public class ChangeRequestService {
 
   private static void requireReader(Operator operator) {
     if (!operator.hasAny(AdminRole.READ_CHANGE_REQUESTS)) {
-      throw OperatorResolver.forbidden("This operation needs a viewing role");
+      throw new ForbiddenException("This operation needs a viewing role");
     }
   }
 
   private static String correlationId() {
-    String c = MDC.get("correlationId");
-    return c == null || c.isBlank() ? "admin-" + UUID.randomUUID() : c;
+    return CorrelationIds.current();
   }
 
   private static void logDecision(String event, ChangeRequest cr, String checker) {

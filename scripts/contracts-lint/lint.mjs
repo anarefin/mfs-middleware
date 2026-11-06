@@ -339,6 +339,11 @@ if (files.includes(EXTERNAL)) {
     err(EXTERNAL, `cannot be read: ${e.message}`);
   }
 }
+// An EXTERNAL.yml side that a manifest in the repo now plays is stale: remove the entry.
+for (const [k, side] of [["producers", "produces"], ["consumers", "consumes"]])
+  for (const path of Object.keys(external[k]))
+    for (const name of sides[side][path] ?? [])
+      err(EXTERNAL, `${k} entry ${path} is stale: ${manifests.find((m) => m.name === name).file} ${side} it`);
 if (manifests.length) {
   for (const file of messageFiles.filter((f) => f.startsWith("events/"))) {
     if (!sides.produces[file]?.length && !(file in external.producers))

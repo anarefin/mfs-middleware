@@ -3,7 +3,7 @@
 // rules of mw-admin-api (ticket 37): ops-maker files, a different ops-checker decides.
 import { expect, test, type Page } from "@playwright/test";
 
-import { login, operator, resetStub } from "./helpers";
+import { failChangeRequestList, login, operator, resetStub } from "./helpers";
 
 const P2P = "3f1c2b9e-7a4d-4c1e-9b8a-2d6f0e5a1c33";
 const STUCK = "c4e5f6a7-8b9c-4d0e-9f1a-2b3c4d5e6f70";
@@ -123,4 +123,14 @@ test("a malformed wallet id is refused by the form, a viewer is offered no actio
   await expect(viewer.getByRole("region", { name: "Actions" })).toHaveCount(0);
   await viewer.goto("/console/wallets");
   await expect(viewer.getByRole("button", { name: "Request unlock" })).toHaveCount(0);
+});
+
+test("no action buttons when the check for an open request fails, only a note", async ({ browser }) => {
+  const maker = await operator(browser, "ops-maker01");
+  await failChangeRequestList(maker);
+  await maker.goto(`/console/transactions/${P2P}`);
+  await expect(maker.getByTestId("status")).toContainText("COMPLETED");
+  await expect(maker.getByTestId("pending-check-failed")).toContainText("Could not check for open requests");
+  await expect(maker.getByRole("region", { name: "Actions" })).toHaveCount(0);
+  await expect(maker.getByRole("button", { name: "Request reversal" })).toHaveCount(0);
 });
