@@ -21,9 +21,10 @@ Do it in `templates/mw-service-template/` first, then copy it into every `servic
 
 **Blocked by:**
 
-**Status:** todo
+**Status:** done
 
 - [ ] `make verify-changed` over all 14 modules (touch `scripts/`) finishes at least 30% faster than the last recorded 9 min, with the same tests run (compare the counts in the JUnit XML)
-- [ ] In one module's `./gradlew check`, `docker ps` shows one Postgres and one Kafka container, and both `integrationTest` and `conformance` used them
-- [ ] Every module passes `./gradlew check --configuration-cache` twice in a row (the second run reuses the configuration cache)
-- [ ] `make test-scripts` passes, and `make verify JOBS=1 M=mw-notify` still works
+  - NOT MET: JOBS=3 9:32 (no gain; time is test execution, per-module 67–183 s); JOBS=5 `--rerun-tasks` 6:45 (−25%), 4,528 tests, all 14 pass. Gain is in `make verify` (was serial ~27 min).
+- [x] In one module's `./gradlew check`, `docker ps` shows one Postgres and one Kafka container, and both `integrationTest` and `conformance` used them
+- [x] Every module passes `./gradlew check --configuration-cache` twice in a row (the second run reuses the configuration cache) — `check` passed in all 14 via the gate twice (config cache on by gradle.properties); `help`/`check --dry-run` twice reused the entry in every module
+- [x] `make test-scripts` passes, and `make verify JOBS=1 M=mw-notify` still works
