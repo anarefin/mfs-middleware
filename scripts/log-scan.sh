@@ -8,7 +8,9 @@
 #
 # Rules (what masking leaves is never matched: 0171****789, NID ***123, PIN ****):
 #   msisdn     BD MSISDN 01[3-9]XXXXXXXX or +880/880 1[3-9]XXXXXXXX, not part of a longer
-#              digit run
+#              digit run; system ids stay whole by shape (root CLAUDE.md "Masking") and are
+#              set aside first: a whole UUID (8-4-4-4-12 hex) anywhere, a traceparent value, a
+#              32/16-hex value of a traceId/spanId field. Digits next to such an id still count.
 #   nid        a field named nid / nationalId / national_id / nidNumber holding 10-17 digits
 #   pin        a field named pin / newPin / oldPin / pinBlock holding anything but stars or
 #              [REDACTED]; also a field named encryptedPin / pinCiphertext / ciphertext with any value
@@ -29,11 +31,40 @@ scan() { # scan SOURCE-LABEL < lines
     }
     function mask(s) { gsub(/[0-9]/, "#", s); if (length(s) > 24) s = substr(s, 1, 12) "..." substr(s, length(s) - 7); return s }
     function report(rule, m) { printf "FINDING %s %s:%d %s\n", rule, src, NR, mask(m); found++ }
+    # ids(s, re): s with every match of re that has no letter or digit on either side replaced by
+    # "ID" (a whole token); a match glued to more letters/digits is kept as it is
+    function ids(s, re,   out, prev, nxt) {
+      out = ""; prev = ""
+      while (match(s, re)) {
+        nxt = substr(s, RSTART + RLENGTH, 1)
+        if (RSTART > 1) prev = substr(s, RSTART - 1, 1)
+        if (prev !~ /[0-9A-Za-z]/ && nxt !~ /[0-9A-Za-z]/) out = out substr(s, 1, RSTART - 1) "ID"
+        else out = out substr(s, 1, RSTART + RLENGTH - 1)
+        prev = substr(s, RSTART + RLENGTH - 1, 1)
+        s = substr(s, RSTART + RLENGTH)
+      }
+      return out s
+    }
+    # system ids stay whole by shape (root CLAUDE.md "Masking"), so a 01... run inside one is no
+    # MSISDN: an RFC 9562 UUID anywhere, a W3C trace-id (32 hex) / span-id (16 hex) in a field
+    # named traceId / spanId / trace_id / span_id, and a whole traceparent value
+    function systemids(s) {
+      s = ids(s, h8 "-" h4 "-" h4 "-" h4 "-" h12)
+      s = ids(s, "[0-9a-f][0-9a-f]-" h32 "-" h16 "-[0-9a-f][0-9a-f]")
+      s = ids(s, tkey h32)
+      return ids(s, skey h16)
+    }
+    BEGIN {
+      h4 = "[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]"; h8 = h4 h4; h12 = h8 h4; h16 = h8 h8; h32 = h16 h16
+      tkey = "[Tt][Rr][Aa][Cc][Ee]_?[Ii][Dd]\"?[ ]*[:=][ ]*\"?"
+      skey = "[Ss][Pp][Aa][Nn]_?[Ii][Dd]\"?[ ]*[:=][ ]*\"?"
+    }
     {
       line = $0
       for (i = 0; i < n; i++) if (line ~ allowed[i]) next
       lower = tolower(line)
-      if (match(line, /(^|[^0-9])(\+?880|0)1[3-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]([^0-9]|$)/)) report("msisdn", substr(line, RSTART, RLENGTH))
+      plain = systemids(line)
+      if (match(plain, /(^|[^0-9])(\+?880|0)1[3-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]([^0-9]|$)/)) report("msisdn", substr(plain, RSTART, RLENGTH))
       if (match(lower, /(^|[^a-z])"?(nid|nationalid|national_id|nidnumber)"?[ ]*[:=][ ]*"?[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]/)) report("nid", substr(line, RSTART, RLENGTH))
       if (match(lower, /(^|[^a-z])"?(pin|newpin|oldpin|pinblock)"?[ ]*[:=][ ]*"?[^"*,} \[]+/)) {
         v = substr(lower, RSTART, RLENGTH); if (v !~ /(null|redacted)$/) report("pin", substr(line, RSTART, RLENGTH))

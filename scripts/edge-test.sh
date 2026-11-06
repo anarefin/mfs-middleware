@@ -30,6 +30,8 @@
 #   - ops login route (security review): a foreign Host -> 404, client X-Forwarded-*/Forwarded
 #     ignored (issuer stays the public host), password grant / introspection refused at the edge,
 #     authorization_code passes; client mw-admin-ui has no direct grant in Keycloak
+#   - access log (M6 gate): an MSISDN in the path / referrer is logged as 0171****678, no query
+#     string, no 11-digit run anywhere in the line (path, referrer, upstream URI)
 #   - applying deploy/apisix twice is a no-op (Admin API objects identical but update_time)
 # The quota check spends merchant01's quota for the rest of the window (60 s).
 set -uo pipefail
@@ -187,6 +189,26 @@ cid_kept() {
   gateway_logged "$cid" || { echo "no mw-app-gateway log line with correlationId $cid"; return 1; }
 }
 check "valid X-Correlation-Id -> kept end to end" cid_kept
+
+# ---- access log masking (M6 gate): an MSISDN in the path, the query string or the referrer
+# never reaches the APISIX access log whole; the line is found by a unique User-Agent ----
+access_log_masked() {
+  local ua line i; ua="$(uniq_id ua)"
+  call GET "/app/v1/transactions/01712345678?msisdn=01812345678" -H "Authorization: Bearer $customer" \
+    -H "User-Agent: $ua" -H "Referer: https://localhost/x/01912345678?q=01512345678"
+  for i in $(seq 0 10); do
+    line="$(dc logs --no-log-prefix --since 2m apisix 2>/dev/null | grep -F "\"$ua\"" | tail -1)"
+    [ -n "$line" ] && break
+    sleep 1
+  done
+  [ -n "$line" ] || { echo "no APISIX access log line with User-Agent $ua"; return 1; }
+  line="$(printf '%s' "$line" | sed -E 's/[0-9]{11}/<11 digits>/g')"
+  printf '%s' "$line" | grep -qF '"GET /app/v1/transactions/0171****678 ' || { echo "path not masked: $line"; return 1; }
+  printf '%s' "$line" | grep -qF '"https://localhost/x/0191****678"' || { echo "referrer not masked: $line"; return 1; }
+  if printf '%s' "$line" | grep -qE '<11 digits>|msisdn=|q='; then echo "unmasked MSISDN or query string: $line"; return 1; fi
+  return 0
+}
+check "access log: MSISDN in path/referrer masked to 0171****678, query string dropped" access_log_masked
 
 # ---- what the upstream receives: a temporary route (deleted on exit) whose .../echo answers,
 # right before proxying (before_proxy), with the request headers it would forward; any other

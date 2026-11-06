@@ -474,8 +474,56 @@ test_the_edge_never_logs_bodies() {
   if cat out/*/*.json | jq -e '[.. | objects | to_entries[] | select(.key | test("include_(req|resp)_body"))] | length > 0' >/dev/null; then
     fail "body logging turned on"
   fi
-  if grep -nE 'request_body|resp_body|access_log_format' "$REPO_DIR/deploy/apisix/config.yaml"; then fail "access log format with bodies"; fi
+  if grep -nE 'request_body|resp_body' "$REPO_DIR/deploy/apisix/config.yaml"; then fail "access log format with bodies"; fi
   return 0
+}
+
+# The nginx access log masks MSISDNs (root CLAUDE.md "Masking", M6 gate): the format logs only the
+# masked copies of the request URI, referrer and upstream URI (query string dropped), and the
+# map chain in http_configuration_snippet (emulated here with Python's re, PCRE-compatible for
+# these patterns) turns a path MSISDN into 0171****789.
+test_the_access_log_masks_msisdns_and_drops_the_query_string() {
+  command -v python3 >/dev/null || fail "python3 is needed for this check"
+  OUT="$(python3 - "$REPO_DIR/deploy/apisix/config.yaml" <<'PY' 2>&1
+import re, sys
+text = open(sys.argv[1]).read()
+fmt = re.search(r"^    access_log_format: '(.*)'$", text, re.M)
+assert fmt, "no nginx_config.http.access_log_format"
+fmt = fmt.group(1)
+for raw in ("$request", "$request_uri", "$uri", "$http_referer", "$upstream_uri", "$args", "$query_string", "$document_uri"):
+    assert not re.search(re.escape(raw) + r"(?![A-Za-z0-9_])", fmt), "format logs raw " + raw
+assert "$arg_" not in fmt, "format logs a query argument"
+for want in ("$request_method $mw_log_uri $server_protocol", '"$mw_log_referer"', "$upstream_host$mw_log_upstream_uri", "$status", "$remote_addr", "$apisix_request_id", "$upstream_status", "$request_time"):
+    assert want in fmt, "format lacks " + want
+snip = re.search(r"^  http_configuration_snippet: \|\n((?:    .*\n)+)", text, re.M)
+assert snip, "no http_configuration_snippet"
+maps = {}
+for line in snip.group(1).splitlines():
+    m = re.match(r'\s*map \$(\w+) \$(\w+) \{ "~(.*?)" (\S+);(?: default \$(\w+);)? \}$', line)
+    if m: maps[m.group(2)] = m.groups()
+def val(var, env):
+    if var in env: return env[var]
+    src, _, rx, repl, dflt = maps[var]
+    s = val(src, env)
+    m = re.search(rx, s)
+    if not m: return val(dflt, env) if dflt else ""
+    return re.sub(r"\$(\d)", lambda g: m.group(int(g.group(1))) or "", repl)
+cases = [
+    ("/admin/v1/wallets/01712345678/change-requests", "/admin/v1/wallets/0171****678/change-requests"),
+    ("/test/core-mock/v1/wallets/01812345678?x=1", "/test/core-mock/v1/wallets/0181****678"),
+    ("/admin/v1/transactions?msisdn=%2B8801712345678&limit=50", "/admin/v1/transactions"),
+    ("/a/8801812345678/b/%2B8801912345678", "/a/880181****678/b/%2B880191****678"),
+    ("/m/01712345678/01812345678/01912345678", "/m/0171****678/0181****678/0191****678"),
+    ("/n/017123456789/0171****789/SETTLEMENT", "/n/017123456789/0171****789/SETTLEMENT"),
+]
+for name, src in (("mw_log_uri", "request_uri"), ("mw_log_referer", "http_referer"), ("mw_log_upstream_uri", "upstream_uri")):
+    assert name in maps, "no map for $" + name
+    for given, want in cases:
+        got = val(name, {src: given})
+        assert got == want, "%s: %s -> %s, want %s" % (name, given, got, want)
+print("ok")
+PY
+)" || fail "access log format does not mask"
 }
 
 test_apisix_reads_the_valkey_password_from_its_environment() {

@@ -36,6 +36,8 @@ fails again and the entry must be re-checked (`test_security.sh` enforces statem
 | HIGH undici 6.28.0, brace-expansion 5.0.9 (npm bundled in node:24-alpine) | mw-admin-ui image | npm, npx and corepack removed from the runtime image; `apk upgrade` |
 | CRITICAL/HIGH openssl, libssh2, musl, nghttp2, zlib (curl 8.17.0, Alpine) | etcd-init, smoke and edge-test helper | curlimages/curl 8.23.0 (pinned by digest) |
 | ZAP 10035 HSTS, 10021 nosniff, 10020/10038 on edge-produced errors, 10036 server version | APISIX edge | `lua/edge-security-headers.lua` in the global rule; `enable_server_tokens: false` |
+| Unmasked MSISDN in the APISIX access log (M6 gate log scan: 1184 lines, e.g. `POST /admin/v1/wallets/<MSISDN>/change-requests`, `GET /test/core-mock/v1/wallets/<MSISDN>`, `?msisdn=` queries, the number repeated in the upstream URI) | APISIX nginx access log (raw `$request`, `$http_referer`, `$upstream_uri`) | `config.yaml` access log format logs masked copies: query string dropped, MSISDN to `0171****789` (`deploy/apisix/README.md` "Access log masking"); takes effect when APISIX restarts |
+| Log scan false positive: an 11-digit `01…` run inside a system UUID (txnId `01a1ae14-…-c01653930180`, 5 lines in mw-orchestrator / mw-core-mock) | `scripts/log-scan.sh` | system ids set aside by shape before the MSISDN rule (root `CLAUDE.md` "Masking"): a whole UUID, a traceparent value, the 32/16-hex value of a traceId/spanId field; digits next to one still count |
 
 ## HIGH / CRITICAL accepted (no fixed upstream release)
 
