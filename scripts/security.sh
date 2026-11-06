@@ -7,9 +7,10 @@
 #               out), with the repo's .gitleaks.toml (default rules + fixture allow-list)
 #   - deps:     per Gradle module ./gradlew cyclonedxBom, then trivy sbom on the CycloneDX BOM;
 #               per module also trivy fs (lockfiles: the admin UI's pnpm-lock.yaml)
-#   - images:   trivy image on every locally built mw-x:$MW_IMAGE_TAG and mw-x-init:$MW_IMAGE_TAG
-#               (default tag dev, what compose builds); without M= also every third-party image
-#               the root compose.yml pins
+#   - images:   trivy image on mw-x:$MW_IMAGE_TAG (module has a Dockerfile) and mw-x-init:$MW_IMAGE_TAG
+#               (init/Dockerfile), default tag dev, what compose builds; an image not built locally
+#               fails the stage (image-missing, NOT SCANNED); without M= also every third-party
+#               image the root compose.yml pins
 #   HIGH and CRITICAL fail, minus the justified entries of .trivyignore.yaml; image scans skip
 #   OS packages without a fix (--ignore-unfixed, decision in docs/security-findings.md).
 #   Findings below high are written to build/security/*-below-high.json (report only); their
@@ -137,8 +138,16 @@ for mod in $modules; do
     fi
   fi
   trivy_gate fs "$MW_ROOT/$mod" "$name"
-  for img in "$name:$IMAGE_TAG" "$name-init:$IMAGE_TAG"; do
-    docker image inspect "$img" >/dev/null 2>&1 && trivy_gate image "$img" "$img"
+  # every image the module builds must be built locally: an unbuilt one fails, never skipped quietly
+  for spec in "Dockerfile=$name:$IMAGE_TAG" "init/Dockerfile=$name-init:$IMAGE_TAG"; do
+    img="${spec#*=}"
+    [ -f "$MW_ROOT/$mod/${spec%%=*}" ] || continue
+    if docker image inspect "$img" >/dev/null 2>&1; then
+      trivy_gate image "$img" "$img"
+    else
+      failed="$failed image-missing:$img"
+      printf '==> ERROR security: image %s not built: %s NOT SCANNED (build it first: make up, or MW_IMAGE_TAG=<tag>)\n' "$img" "$img" >&2
+    fi
   done
 done
 if [ -z "$m" ] && [ -f "$MW_ROOT/compose.yml" ]; then
