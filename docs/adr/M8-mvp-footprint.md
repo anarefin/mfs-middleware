@@ -17,5 +17,5 @@ One Compose project on one Linux VM (about 16 vCPU, 64 GB RAM, 500 GB SSD, TBC).
 
 ## Where in the repo
 
-- `deploy/compose/mvp/compose.lowmem.yml`
+- `deploy/docker-compose.yml` (its memory limits; `make compose-check`)
 - [docs/runbook.md](../runbook.md)

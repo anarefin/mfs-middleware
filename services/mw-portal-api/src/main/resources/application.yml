@@ -36,7 +36,7 @@ spring:
     hikari:
       schema: bulk
       # Explicit, small pool (Kafka-driven or light on the database). PostgreSQL
-      # max_connections sizing: deploy/compose/platform/compose.yml (postgres).
+      # max_connections sizing: deploy/docker-compose.yml (postgres).
       maximum-pool-size: 5
   flyway:
     schemas: bulk
@@ -225,6 +225,6 @@ mw:
       jwk-set-uri: ${MW_PORTAL_JWK_SET_URI:http://keycloak:8080/realms/portals/protocol/openid-connect/certs}
       realm-path: /realms/portals
     roles:
-      # Realm roles of deploy/compose/platform/keycloak/realms/portals-realm.json.
+      # Realm roles of deploy/keycloak/realms/portals-realm.json.
       maker: org-maker
       checker: org-checker

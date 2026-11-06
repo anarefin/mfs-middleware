@@ -43,7 +43,7 @@ fi
 bao kv get -field=spring.datasource.password "$KV" >"$tmp/dbpw"
 
 # 1b. partner secret (ticket 23) ----------------------------------------------------------------
-# The dev C2W bank simulator's hmac-sha256 secret, generated into deploy/compose/platform/.env
+# The dev C2W bank simulator's hmac-sha256 secret, generated into deploy/.env
 # (scripts/gen-dev-env.sh) and shared by mw-simulators (signs callbacks) and mw-adapter-bank
 # (verifies them, signs calls). Synced on every run, so a regenerated .env takes effect.
 if [ -n "${C2WBANK_HMAC_SECRET:-}" ]; then

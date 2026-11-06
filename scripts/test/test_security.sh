@@ -83,8 +83,8 @@ test_log_scan_honours_the_justified_allow_list() {
 
 # stub_live_docker LOGS: docker stub for a running MVP stack whose every container logs LOGS
 stub_live_docker() {
-  mkdir -p .bin deploy/compose/mvp deploy/zap scripts/lib
-  touch deploy/compose/mvp/compose.yml deploy/zap/decisions.tsv scripts/lib/zap-gate.py
+  mkdir -p .bin deploy/zap scripts/lib
+  touch deploy/docker-compose.yml deploy/zap/decisions.tsv scripts/lib/zap-gate.py
   printf '%s\n' "$1" >.stub-logs
   cat >.bin/docker <<EOF
 #!/bin/sh
@@ -118,7 +118,7 @@ test_security_runs_zap_on_the_edge_and_the_log_scan_when_the_stack_is_up() {
   stub_live_docker '{"message":"to 0171****789"}'
   assert_ok security_in_fixture env
   grep -q 'zap-baseline.py' .tool-calls || fail "no ZAP baseline: $(cat .tool-calls)"
-  grep -q -- '--network mw_dmz' .tool-calls || fail "ZAP not on the dmz network"
+  grep -q -- '--network mfs-mw_dmz' .tool-calls || fail "ZAP not on the dmz network"
   grep -q 'https://apisix:9443/' .tool-calls || fail "ZAP not aimed at APISIX"
   grep -q 'logs --no-color' .tool-calls || fail "no log scan"
 }
@@ -146,7 +146,7 @@ test_security_skips_live_stages_loudly_when_the_stack_is_down_unless_required() 
     PATH="$PWD/.bin:$PATH"
   }
   stub_tools_down
-  mkdir -p deploy/compose/mvp && touch deploy/compose/mvp/compose.yml
+  mkdir -p deploy && touch deploy/docker-compose.yml
   assert_ok security_in_fixture env
   assert_out_contains "SKIPPED"
   assert_fails security_in_fixture env SECURITY_LIVE=1
@@ -198,7 +198,7 @@ test_every_zap_decision_and_trivy_ignore_has_a_reason() {
 # Third-party platform images and the dev-only one-shot inits: docs/security-findings.md.
 test_own_long_running_containers_are_non_root_and_read_only() {
   python3 -c 'import yaml' 2>/dev/null || return 0
-  OUT="$(python3 "$REPO_DIR/scripts/test/hardening_check.py" "$REPO_DIR/compose.yml" 2>&1)" \
+  OUT="$(python3 "$REPO_DIR/scripts/test/hardening_check.py" "$REPO_DIR/deploy/docker-compose.yml" 2>&1)" \
     || fail "hardening missing: $OUT"
   printf 'services:\n  mw-x:\n    image: x\n' >c.yml
   OUT="$(python3 "$REPO_DIR/scripts/test/hardening_check.py" c.yml 2>&1)" && fail "an unhardened mw-x passed"

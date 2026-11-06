@@ -18,6 +18,6 @@ PostgreSQL 18, one cluster, one schema and one role per service. Services use Sp
 
 ## Where in the repo
 
-- `deploy/compose/platform/postgres/initdb` (roles and schemas)
+- `deploy/postgres/initdb` (roles and schemas)
 - `services/mw-orchestrator/src/main/resources/db` (Flyway migrations)
 - spec section 16

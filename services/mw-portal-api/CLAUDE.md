@@ -149,7 +149,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
   `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
-  `:dev` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
+  `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
 - `exception/`: `MwException`, `ErrorCategory` (namespace -> HTTP status, retryable),
@@ -176,4 +176,5 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
 | `./gradlew check bootJar && docker build -t mw-portal-api:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-portal-api` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when it or a contract in its `contracts.yml` changed) |
-| `make up M=mw-portal-api` | run this service's `compose.yml` (platform project must be up) |
+| `make build M=mw-portal-api` | `bootJar`, then this service's images (`mfs-mw/mw-portal-api:local`, `-init`) |
+| `make up M=mw-portal-api` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |

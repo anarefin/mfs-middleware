@@ -35,6 +35,7 @@ This spec turns the Bits *Mobile Money Middleware RFP v0.1* into a build-ready d
 | D13 | Build | One Git repo built with Gradle (Kotlin DSL). The root is a Gradle composite build for convenience only; every module is its own standalone Gradle build and a complete Spring Boot application that builds, tests, ships as its own image and deploys on its own (section 4.2) |
 | D14 | Code sharing | No library, common, starter or test-kit module. Services share only contract files (JSON Schema, OpenAPI, AsyncAPI, WSDL/XSD, Pact), kept in one root `contracts/` folder that holds no code; each module pins its own dependency versions (no shared parent or BOM module); cross-cutting code is copied from a service template, never depended on, so any module can move to its own repo with no code change (section 4.3) |
 | D15 | Code structure | Package root `mfs.mw.<service>`. Conventional layered Spring Boot structure in every service: `controller`, `service`, `repository`, `entity`, `dto`, `mapper`, `exception`, `config` and a few integration packages (section 4.4). No Spring Modulith, no ArchUnit; layering is enforced by code review and the conventions in `CLAUDE.md` |
+| D16 | Stack file | One hand-written `deploy/docker-compose.yml` with profiles (platform always; `minimal`, `core`, `seed`) for the whole single-host stack; images built on request (`make build`) and reused by `make up`; supersedes the per-module `compose.yml` of 4.2/4.3 and D12 (ticket 56, 2026-11-06) |
 
 ### Assumed sizing (TBC)
 
@@ -81,7 +82,7 @@ The MVP proves every core pattern of the middleware on one Docker Compose host: 
 
 ### Single-host topology
 
-One Compose project (`deploy/compose/mvp/compose.yml`, which `include`s the platform file and each module's own `compose.yml`, section 20.2) on one Linux VM, sized at about **16 vCPU, 64 GB RAM, 500 GB SSD** (TBC). All containers share one internal network; only APISIX (443), the SMPP/USSD port and the admin UI (via APISIX) are published.
+One Compose project (`deploy/docker-compose.yml`, one hand-written file with profiles, section 20.2, D16) on one Linux VM, sized at about **16 vCPU, 64 GB RAM, 500 GB SSD** (TBC). All containers share one internal network; only APISIX (443), the SMPP/USSD port and the admin UI (via APISIX) are published.
 
 | Group | Containers |
 | --- | --- |
@@ -132,7 +133,7 @@ The MVP is built as about 30 small work packages (WPs), each sized for one codin
 | WP | Milestone | Work package | Depends on | Done when |
 | --- | --- | --- | --- | --- |
 | WP01 | M0 Foundation | Repo skeleton: root `settings.gradle.kts` as a composite build (`includeBuild` per module, no shared configuration, no `buildSrc` or convention plugins), Makefile targets (up, verify, e2e, perf, security, new-service, check-isolation, contracts-lint, versions-check), PR template with test-report section, root `CLAUDE.md` | — | Makefile targets run per module and for all modules; `check-isolation` catches a planted cross-module dependency |
-| WP02 | M0 | `deploy/compose/platform` (single instance each): Kafka + `kafka-init`, PostgreSQL 18, Valkey, Keycloak (realms imported), OpenBao (dev-unseal script), APISIX + etcd, GreenMail, zone networks; `deploy/compose/mvp` project that `include`s platform and module compose files | WP01 | `docker compose up` healthy; smoke script passes |
+| WP02 | M0 | `deploy/docker-compose.yml` platform services (single instance each): Kafka + `kafka-init`, PostgreSQL 18, Valkey, Keycloak (realms imported), OpenBao (dev-unseal script), APISIX + etcd, GreenMail, zone networks; the module services join the same file (D16; originally one `include`d `compose.yml` per module) | WP01 | `docker compose up` healthy; smoke script passes |
 | WP03 | M0 | `templates/mw-service-template` part 1: runnable Spring Boot 4 app as a standalone Gradle build (own `settings.gradle.kts`, `build.gradle.kts`, `gradle/libs.versions.toml`, Gradle wrapper; Spring Boot and Camel BOMs as Gradle platforms), Dockerfile, `compose.yml`, `CLAUDE.md`, CycloneDX SBOM; layered package skeleton (4.4) with correlation filter, error model and global `@RestControllerAdvice`, masking (`@Sensitive`), JSON logging, Vault config binding; `make new-service` | WP01 | Template builds, tests and starts from its own directory alone; unit tests for masking and error mapping; a scaffolded copy has no reference back to the template and uses package `mfs.mw.<name>` |
 | WP04 | M0 | Contracts: JSON Schemas for transaction envelope, core commands/events, partner request/reply, notify request, audit event (encryptedPin as keyId + ciphertext on authorising commands), in root `contracts/events/<owning-service>/`, with `contracts/OWNERS.yml` and `make contracts-lint` | WP01 | Sample payloads validate against every schema; the template's schema tests load contracts through `mwContractsDir` |
 | WP05 | M0 | Template part 2: Kafka and Camel defaults, error handler with retry topics and DLQ, Resilience4j wiring, outbox relay, inbox dedup, Flyway on start, conformance test suite | WP03, WP04 | Route tests: retry, DLQ, dedup; conformance suite green on the template |
@@ -399,11 +400,11 @@ bits-middleware/
 │  ├─ mw-adapter-telco/  mw-adapter-billpay/  mw-adapter-bank/  mw-adapter-interop/
 │  ├─ mw-compliance/  mw-notify/  mw-recon/  mw-audit-dw/  mw-admin-api/
 │  └─ mw-simulators/
-├─ ui/mw-admin-ui/              # Next.js 16.4.1, own package.json, Dockerfile and compose.yml
+├─ ui/mw-admin-ui/              # Next.js 16.4.1, own package.json and Dockerfile
 ├─ deploy/
-│  ├─ compose/
-│  │  ├─ platform/              # kafka, kafka-init, postgres, valkey, keycloak, openbao, apisix, etcd, sftp, greenmail; zone networks
-│  │  └─ mvp/ dev/ sit/ uat/ preprod/ prod/   # one project per environment; `include`s platform + module compose files
+│  ├─ docker-compose.yml        # the whole stack, hand-written, profiles (none = platform, minimal, core, seed); D16
+│  ├─ test-timers.env           # short test timers (make up TIMERS=fast)
+│  ├─ env/ etcd/ keycloak/ openbao/ postgres/   # platform settings, realms, init scripts (no secrets)
 │  ├─ apisix/                   # routes, global rules, consumers as JSON, applied through the Admin API
 │  ├─ kafka/                    # topic definitions as code, applied by kafka-init
 │  └─ ansible/                  # host provisioning (TBC)
@@ -421,7 +422,6 @@ services/mw-<name>/
 ├─ gradle.properties            # incl. mwContractsDir
 ├─ gradlew, gradle/wrapper/     # own Gradle wrapper
 ├─ Dockerfile                   # own image
-├─ compose.yml                  # this service only; joins the external zone networks from the platform project
 ├─ CLAUDE.md                    # responsibilities, contracts owned and contracts used
 └─ src/
    ├─ main/java/mfs/mw/<service>/   # <service> with dots as folders, e.g. adapter/telco; layered packages, see 4.4
@@ -433,7 +433,7 @@ services/mw-<name>/
 
 ### 4.3 Module independence rules (D13, D14)
 
-1. A module MUST build, test, produce its image and run from its own directory plus the root `contracts/` folder: on a copy of just `services/mw-x/` and `contracts/`, `./gradlew check bootJar && docker build .` works.
+1. A module MUST build, test and produce its image from its own directory plus the root `contracts/` folder: on a copy of just `services/mw-x/` and `contracts/`, `./gradlew check bootJar && docker build .` works. It runs in the stack from the one `deploy/docker-compose.yml` (D16, Decision 2026-11-06; no module has its own `compose.yml`), and `make check-isolation` fails on a module `compose.yml`.
 2. A module MUST NOT declare a Gradle dependency on, `includeBuild`, apply a plugin from, or reference by path any other module, the template or the root build. Its only outside reference is the contracts folder, read through one Gradle property, `mwContractsDir` (default `../../contracts` in the module's `gradle.properties`), and only by tests and build-time schema checks; contracts are never packaged into the image. `make check-isolation` enforces this.
 3. Services interact only through Kafka topics, HTTP APIs and the contracts that describe them; never through shared code, shared tables or shared files at runtime.
 4. Contracts live in the root `contracts/` folder; each file is owned by the service that produces the message or serves the API (`contracts/OWNERS.yml`). A consumer writes its own Java types for the contracts it uses, and its schema tests validate those types against the files in `contracts/`, so a breaking change by the owner fails the consumer's build in the same repo.
@@ -1203,7 +1203,7 @@ Every service and every platform tool ships as a signed OCI image and runs under
 ### 20.2 Compose topology
 
 - **Everything in Compose (D12):** Kafka (+ one-shot `kafka-init`), PostgreSQL (+ pgBackRest), Valkey, Keycloak, OpenBao (+ Vault Agent sidecars), APISIX + etcd, SFTP server, archive object store (TBC), every `mw-*` service and the admin UI; simulators, `mw-core-mock` and GreenMail only in non-production projects. Only Docker Engine is installed on the host.
-- **Files:** `deploy/compose/platform/compose.yml` defines the platform tools and the zone networks; each module ships a `compose.yml` for itself only; `deploy/compose/<env>/compose.yml` is the environment project, which pulls in the platform file and the module files with Compose `include` and adds environment overrides (image digests, limits, env files). Any single service can be deployed, restarted or rolled back with `docker compose up -d --no-deps <svc>` without touching the others.
+- **Files (D16, Decision 2026-11-06):** one hand-written `deploy/docker-compose.yml` holds the platform tools, the zone networks and every module's services (no module has a `compose.yml` of its own), with profiles: none = the platform, `minimal` = the P2P and cash path, `core` = everything, `seed` = the seeder. Shared settings are YAML anchors; images are `mfs-mw/<svc>:local`, built by `make build` and reused by `make up`. Another environment is the same file with its own env file (image digests, limits). Any single service can be deployed, restarted or rolled back with `docker compose up -d --no-deps <svc>` without touching the others.
 - **Hosts:** one host per environment by default. If one host cannot carry production load, the environment is split by host role (`edge`, `app`, `data`, `ops`), each host running its own Compose project; every component is still a single instance (open point 9).
 - Each container: `restart: unless-stopped`, CPU/memory limits, read-only FS, `tmpfs` for `/tmp`, non-root user, `healthcheck`, logging driver set to JSON with rotation (shipping decided by observability tooling).
 - **Deploys:** one service at a time: `docker compose pull <svc>` → `up -d --no-deps <svc>` → readiness green → next. With no second instance each service is briefly unavailable; channel clients retry with the same idempotency key and Kafka holds work for consumers. Scripted (`deploy/scripts/deploy.sh`) with automatic rollback to the previous digest if readiness fails; production deploys run in an agreed maintenance window.

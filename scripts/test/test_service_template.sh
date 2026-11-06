@@ -32,7 +32,15 @@ test_new_service_scaffolds_a_clean_copy() {
   grep -q '^package mfs.mw.demo;' $d/src/main/java/mfs/mw/demo/DemoApplication.java || fail "package not renamed"
   grep -q 'rootProject.name = "mw-demo"' $d/settings.gradle.kts || fail "rootProject.name not renamed"
   grep -q 'name: mw-demo' $d/src/main/resources/application.yml || fail "application name not renamed"
-  grep -q 'mw-demo:' $d/compose.yml || fail "compose service not renamed"
+  [ ! -e $d/compose.yml ] || fail "the copy has its own compose.yml (ADR D16: one deploy/docker-compose.yml)"
+  # instead it prints the block to paste into deploy/docker-compose.yml
+  assert_out_contains "deploy/docker-compose.yml"
+  assert_out_contains "  mw-demo:"
+  assert_out_contains "image: mfs-mw/mw-demo:local"
+  assert_out_contains "build: { context: ../services/mw-demo, args: *jvm-build-args }"
+  assert_out_contains "mw-demo-init: { condition: service_completed_successfully }"
+  assert_out_contains "  mw-demo-init:"
+  assert_out_contains "demo-approle:/run/mw/approle:ro"
   grep -q 'schemas: demo$' $d/src/main/resources/application.yml || fail "DB schema not renamed"
   grep -q 'COMMENT ON SCHEMA demo ' $d/src/main/resources/db/migration/V1__baseline.sql || fail "migration schema not renamed"
   [ -x $d/gradlew ] || fail "gradlew not executable"
@@ -50,7 +58,7 @@ test_new_service_maps_hyphens_to_package_dots() {
   d=services/mw-adapter-telco
   [ -f $d/src/main/java/mfs/mw/adapter/telco/AdapterTelcoApplication.java ] || fail "wrong package path"
   grep -q '^package mfs.mw.adapter.telco.filter;' $d/src/main/java/mfs/mw/adapter/telco/filter/CorrelationIdFilter.java || fail "sub-package not renamed"
-  grep -q 'MW_ADAPTER_TELCO_IMAGE' $d/compose.yml || fail "image variable not renamed"
+  assert_out_contains "image: mfs-mw/mw-adapter-telco:local"
   grep -q 'schemas: adapter_telco$' $d/src/main/resources/application.yml || fail "DB schema not snake_case"
   [ -z "$(back_refs $d)" ] || fail "references back to the template"
 }
@@ -64,16 +72,18 @@ test_new_service_rejects_names_that_are_not_java_packages() {
 }
 
 test_container_runs_as_non_root_with_health_wired_to_compose() {
-  df="$TEMPLATE_SRC/Dockerfile"; cf="$TEMPLATE_SRC/compose.yml"
+  local df="$TEMPLATE_SRC/Dockerfile" cf="$REPO_DIR/deploy/docker-compose.yml" app
   user="$(grep -E '^USER ' "$df" | tail -1 | awk '{print $2}')"
   [ -n "$user" ] || fail "Dockerfile has no USER"
   case "$user" in root|0|0:*) fail "Dockerfile runs as root: $user" ;; esac
   grep -q 'HEALTHCHECK' "$df" || fail "Dockerfile has no HEALTHCHECK"
   grep -q '/actuator/health/readiness' "$df" || fail "Dockerfile healthcheck not on readiness"
-  grep -q 'healthcheck:' "$cf" || fail "compose.yml has no healthcheck"
-  grep -q '/actuator/health/readiness' "$cf" || fail "compose healthcheck not on readiness"
-  grep -q 'read_only: true' "$cf" || fail "compose.yml root FS not read-only"
-  grep -q 'restart: unless-stopped' "$cf" || fail "compose.yml restart policy missing"
+  # every service block a new module pastes merges x-app (deploy/docker-compose.yml)
+  app="$(awk '/^x-app:/{f=1;next} f&&/^[a-z]/{exit} f' "$cf")"
+  printf '%s' "$app" | grep -q 'healthcheck:' || fail "x-app has no healthcheck"
+  printf '%s' "$app" | grep -q '/actuator/health/readiness' || fail "x-app healthcheck not on readiness"
+  printf '%s' "$app" | grep -q 'read_only: true' || fail "x-app root FS not read-only"
+  printf '%s' "$app" | grep -q 'restart: unless-stopped' || fail "x-app restart policy missing"
 }
 
 # Spec 4.3 rule 1: a copy of the template plus contracts/ runs
@@ -90,16 +100,6 @@ test_template_copy_checks_and_builds_its_image_alone() {
     || fail "./gradlew check bootJar && docker build . failed in the copy"
   docker image inspect "$tag" >/dev/null 2>&1 || fail "image $tag not built"
   docker rmi -f "$tag" >/dev/null 2>&1 || true
-}
-
-test_template_compose_comments_match_the_platform_zones() {
-  # OpenBao is on app and ops in the platform (deploy/compose/platform), never on data.
-  if grep -nE '^#.*`data` for[^`]*OpenBao' "$TEMPLATE_SRC/compose.yml"; then
-    fail "template compose.yml says OpenBao is on data"
-  fi
-  local nets
-  nets="$(awk '/^  openbao:/{f=1;next} f&&/^  [a-z]/{exit} f&&/networks:/{print;exit}' "$REPO_DIR/deploy/compose/platform/compose.yml")"
-  case "$nets" in *app*ops*) ;; *) fail "platform openbao networks changed: $nets" ;; esac
 }
 
 test_template_check_runs_the_coverage_gate() {

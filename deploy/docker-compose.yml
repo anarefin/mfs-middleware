@@ -1,0 +1,1094 @@
+# Bits MFS middleware: the whole single-host stack in one hand-written file (spec "Single-host
+# topology", 20.2; ADR D16 replaces the per-module compose.yml files). Edit this file directly.
+#
+#   make build [M=]                      bootJar per module, then `docker compose build` (images
+#                                        mfs-mw/<svc>:local; `make up` never builds)
+#   make up [PROFILE=core] [TIMERS=fast] [M=mw-x]
+#                                        docker compose --profile $PROFILE up -d --wait [mw-x]
+#   make seed                            the seed profile's one-shot (mw-seeder, ticket 57)
+#   make down / make reset               stop / drop every container and volume of every profile
+#
+# Profiles:
+#   (none)    platform services and one-shots: always start
+#   minimal   the P2P and cash path the e2e @p2p / @cash scenarios need (orchestrator, core mock,
+#             app gateway, simulators, notify, audit-dw, ussd, admin-api)
+#   core      every mw-* service and mw-admin-ui
+#   seed      mw-seeder (ticket 57)
+#
+# Credentials (18.4): this file holds no secret value. scripts/gen-dev-env.sh writes every one into
+# the gitignored deploy/.env, which Compose reads to interpolate ${VAR} placeholders (it is not
+# passed into the containers: services get their secrets from OpenBao). env/*.env hold only
+# identities and settings. The Keycloak realm files reference their credentials as ${VAR}
+# placeholders, which Keycloak resolves from its environment on import.
+#
+# Zones (18.1): dmz = internet-facing edge, app = services + Kafka + Valkey, data = PostgreSQL,
+# ops = Keycloak, OpenBao, APISIX Admin API callers. ops has a fixed subnet (MW_OPS_SUBNET)
+# because the APISIX Admin API only accepts callers from it. etcd sits alone on the internal
+# `etcd` network with APISIX (and its init step). Only APISIX publishes a host port (443 -> 9443;
+# override with MW_HTTPS_PORT). Parallel stacks on one host: COMPOSE_PROJECT_NAME and
+# MW_HTTPS_PORT (e.g. 0 for a random host port).
+#
+# Images are pinned by tag and digest (20.1); the ones built here are mfs-mw/<svc>:local.
+#
+# Test timers: the ${MW_...} placeholders marked "timer" default to the production values of the
+# services' application.yml; `make up TIMERS=fast` also loads deploy/test-timers.env (short ones).
+#
+# Memory (functional runs only, never load tests; the smallest footprint that still passes e2e).
+# Hard guard: the limits of all long-running containers (no mw.oneshot label) must add up to
+# <= 10240 MiB; `make compose-check` fails above that, or when a long-running service has no limit.
+# The JVM flags the AOT cache depends on (GC, hence compressed oops) are the image's JVM_OPTS build
+# arg (x-jvm-build), used by the training run and by every start (JAVA_TOOL_OPTIONS); the run adds
+# only sizes (JDK_JAVA_OPTIONS), so the cache baked into the image is used (ticket 55; -Xlog:aot).
+# CPU limits are left as they are: an idle limit reserves nothing, and lower ones slow start-up
+# past the health-check windows.
+#
+#   container            limit MiB   measured peak (one make up + full make e2e, 2026-11-05)
+#   mw-* services        512         311-359 after make up + make e2e TAGS=@p2p, 2026-11-06 (Serial GC, tiered JIT, fixed heap 192m; Hikari pool 3, 4 for the busy three)
+#     mw-orchestrator    576         381
+#     mw-audit-dw        544         326
+#     mw-simulators      448         319
+#   kafka                640         374  (fixed heap 256m; 3 partitions per topic, MW_KAFKA_PARTITIONS, ~280 in all)
+#   keycloak             640         494  (heap 128..384m)
+#   apisix               448         368
+#   postgres             384         274  (shared_buffers 64MB, max_connections 100; pools total 39)
+#   greenmail            192         123  (heap 96m)
+#   openbao              160          92
+#   etcd 96 (43), valkey 64 (9)
+#   mw-admin-ui          256         not yet measured (Node.js standalone server)
+#   long-running total   9568 of the 10240 guard
+#   one-shots (exit before their service starts): *-init 128, kafka-init 512 (3 parallel CLI
+#   JVMs; 8 were OOM-killed at 384), apisix-init 256, etcd-init 64
+#
+# Recalibrate by sampling `docker stats` through one `make up` + `make e2e`: limit about
+# peak x 1.3 (JVMs less: their RSS is bounded by the flags), rounded to 32 MiB.
+name: mfs-mw
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# Shared by every mw-* service: hardening (no root, read-only root fs, no capabilities), restart,
+# logs, the app + data zones. mw-admin-ui overrides the networks.
+x-app: &app
+  restart: unless-stopped
+  networks: [app, data]
+  user: "10001:10001"
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging: *logging
+  healthcheck:
+    # Readiness (20.1); the image has bash but no curl or wget.
+    test:
+      - CMD
+      - bash
+      - -c
+      - >-
+        exec 3<>/dev/tcp/127.0.0.1/8080 &&
+        printf 'GET /actuator/health/readiness HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+        grep -q '"status":"UP"' <&3
+    interval: 5s
+    timeout: 3s
+    start_period: 30s
+    start_interval: 1s
+    retries: 3
+
+# Every mw-* JVM service starts once the platform is ready: PostgreSQL, Kafka, Keycloak and
+# OpenBao healthy and the topics created (kafka-init); plus its own <svc>-init.
+x-infra-deps: &infra-deps
+  postgres: { condition: service_healthy }
+  kafka: { condition: service_healthy }
+  keycloak: { condition: service_healthy }
+  openbao: { condition: service_healthy }
+  kafka-init: { condition: service_completed_successfully }
+
+# Environment every mw-* JVM service shares. Secrets come from OpenBao via Spring Cloud Vault
+# (18.4): the DB password and the service's other secrets from secret/<svc>, the AppRole
+# credentials from the configtree at /run/mw/approle (application.yml). Each service owns its
+# schema in the shared PostgreSQL (16.2).
+x-jvm-env: &jvm-env
+  MW_ENV: ${MW_ENV:-local}
+  VAULT_ENABLED: ${VAULT_ENABLED:-true}
+  VAULT_ADDR: ${VAULT_ADDR:-http://openbao:8200}
+  DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/mw}
+  KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+  # Sizes only, on top of the image's JAVA_TOOL_OPTIONS (the trained flags, see x-jvm-build):
+  # a fixed heap (BitsPay pattern), normal tiered JIT.
+  JDK_JAVA_OPTIONS: >-
+    -Xms192m -Xmx192m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m -Xss512k
+    -XX:MaxDirectMemorySize=64m
+  SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "1"
+  # timer: non-blocking retry topics <topic>.<group>.retry.1..3 (19.2), three delays
+  MW_KAFKA_RETRY_DELAYS: ${MW_KAFKA_RETRY_DELAYS:-10s,1m,10m}
+
+# The image's JVM_OPTS (JAVA_TOOL_OPTIONS of the AOT training run and of every start), in place of
+# its ZGC + MaxRAMPercentage=75: Serial GC suits a 192m heap; a change here rebuilds the images.
+x-jvm-build-args: &jvm-build-args
+  JVM_OPTS: -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
+
+# Each service's idempotent one-shot (services/<svc>/init/init.sh): its database role and schema,
+# its secrets in OpenBao (secret/<svc>) and the AppRole the service logs in with (written to the
+# <svc>-approle volume). Dev/MVP only. Starts once PostgreSQL and OpenBao (unsealed, engines
+# enabled) are healthy, so init.sh never polls.
+x-init: &init
+  restart: "no"
+  labels: { mw.oneshot: "true" } # one-shot: exits 0 before its service starts
+  networks: [app, data]
+  security_opt: [no-new-privileges:true]
+  depends_on: &init-deps
+    postgres: { condition: service_healthy }
+    openbao: { condition: service_healthy }
+  deploy:
+    resources:
+      limits: { cpus: "0.5", memory: 128M }
+
+x-init-env: &init-env
+  PGHOST: postgres
+  PGUSER: ${POSTGRES_USER:-mw_admin}
+  PGDATABASE: ${POSTGRES_DB:-mw}
+  PGPASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+  BAO_ADDR: ${VAULT_ADDR:-http://openbao:8200}
+  INIT_FILE: /openbao/file/dev-init.json
+  OUT_DIR: /out
+
+x-minimal: &minimal [minimal, core]
+x-core: &core [core]
+
+networks:
+  dmz:
+  app:
+  data:
+  ops:
+    ipam:
+      config:
+        - subnet: ${MW_OPS_SUBNET:-172.31.250.0/24}
+  etcd:
+    internal: true
+
+volumes:
+  kafka-data:
+  postgres-data:
+  valkey-data:
+  openbao-data:
+  etcd-data:
+  apisix-tls:
+  # kafka-init's done marker (apply-topics.sh: checksum of the applied plan)
+  kafka-init-state:
+  # role-id / secret-id written by each <svc>-init, read by the service (Spring configtree)
+  core-mock-approle:
+  simulators-approle:
+  adapter-telco-approle:
+  adapter-billpay-approle:
+  adapter-bank-approle:
+  orchestrator-approle:
+  audit-dw-approle:
+  app-gateway-approle:
+  notify-approle:
+  ussd-approle:
+  portal-api-approle:
+  checkout-approle:
+  admin-api-approle:
+
+services:
+  # ------------------------------------------------------------ platform (no profile: always start)
+  kafka:
+    image: apache/kafka:4.3.2@sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7
+    restart: unless-stopped
+    networks: [app]
+    environment:
+      CLUSTER_ID: mw-kraft-single-node-0
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      # 6.1: single node, RF 1, min ISR 1, topics only from deploy/kafka (kafka-init)
+      KAFKA_DEFAULT_REPLICATION_FACTOR: "1"
+      KAFKA_MIN_INSYNC_REPLICAS: "1"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: "1"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      # 3 partitions per topic (kafka-init MW_KAFKA_PARTITIONS), about 280 in all: a fixed 256m heap.
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx256m
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    tmpfs: [/tmp]
+    # A TCP check on the client listener, not a Kafka CLI (a JVM per probe). kafka-init's first
+    # describe waits for the broker to answer, and every service waits for kafka-init.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9092"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
+      start_interval: 1s
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 640M }
+    logging: *logging
+
+  kafka-init:
+    image: apache/kafka:4.3.2@sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7
+    restart: "no"
+    labels: { mw.oneshot: "true" }
+    networks: [app]
+    depends_on:
+      kafka: { condition: service_healthy }
+    entrypoint: ["/bin/sh", "/deploy/kafka/apply-topics.sh", "/deploy/kafka/topics.txt"]
+    environment:
+      BOOTSTRAP: kafka:9092
+      # apply-topics.sh runs PARALLEL Kafka CLI JVMs at once for the creates on a fresh stack (none
+      # on a second run: done marker): 3 small, C1-only ones fit (8 were OOM-killed at 384M).
+      PARALLEL: "3"
+      KAFKA_HEAP_OPTS: -Xms16m -Xmx96m
+      KAFKA_JVM_PERFORMANCE_OPTS: -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1
+      # Dev stack: every topic gets 3 partitions (topics.txt keeps the production counts).
+      MW_KAFKA_PARTITIONS: ${MW_KAFKA_PARTITIONS:-3}
+      # Done marker: a second run with the same plan exits at once, without a Kafka CLI JVM.
+      # /var/lib/kafka/data is owned by the image's appuser, so the fresh volume is writable.
+      STATE_DIR: /var/lib/kafka/data
+    volumes:
+      - ./kafka:/deploy/kafka:ro
+      - kafka-init-state:/var/lib/kafka/data
+    read_only: true
+    tmpfs: [/tmp]
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 512M }
+    logging: *logging
+
+  postgres:
+    image: postgres:18.6-alpine@sha256:8a334ab9502c8ccb8d7dec4e83b36b5ce8ed7b396e585f1c86b0e69c416f4fca
+    restart: unless-stopped
+    networks: [data]
+    env_file: [env/postgres.env]
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      # postgres/initdb/10-keycloak.sh creates the keycloak role and database with it
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+    # One shared dev instance serves Keycloak and every service's pool. max_connections sizing
+    # (sum of the worst case, one replica each; keep it below max_connections minus the 3
+    # superuser_reserved_connections when a pool or a replica is added): the dev stack caps each
+    # service's Hikari pool (SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE below: 2-4, 39 in all with
+    # audit-dw's extra pools and Keycloak's 20), so 100 leaves room for psql sessions and the inits.
+    # Production sizes max_connections per instance (pool x replicas, summed).
+    command:
+      - postgres
+      - -c
+      - synchronous_commit=on
+      - -c
+      - max_connections=100
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - work_mem=2MB
+      - -c
+      - maintenance_work_mem=32MB
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+    read_only: true
+    tmpfs: [/tmp, /var/run/postgresql]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+      start_interval: 1s
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 384M }
+    logging: *logging
+
+  valkey:
+    image: valkey/valkey:8.1.11-alpine@sha256:2602ace2be6569bc2bbb06f873776516ab9089821525be34f4305c67eb9db02a
+    restart: unless-stopped
+    networks: [app]
+    environment:
+      # --requirepass and valkey-cli (REDISCLI_AUTH) share the generated password
+      REDISCLI_AUTH: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+    command: ["sh", "-c", "exec valkey-server --appendonly yes --requirepass \"$$REDISCLI_AUTH\""]
+    volumes:
+      - valkey-data:/data
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+      start_interval: 1s
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 64M }
+    logging: *logging
+
+  keycloak:
+    image: mfs-mw/keycloak:local
+    build: ./keycloak
+    restart: unless-stopped
+    networks: [ops, data]
+    # Pre-built (deploy/keycloak/Dockerfile: `kc.sh build` on the pinned image), so a start skips
+    # the Quarkus re-augmentation; its entrypoint is `start --optimized --import-realm`.
+    depends_on:
+      postgres: { condition: service_healthy }
+    env_file: [env/keycloak.env]
+    # Production mode on PostgreSQL (its own keycloak database and role, created by
+    # postgres/initdb). Plain HTTP inside the ops network behind APISIX, which terminates
+    # TLS; realms in keycloak/realms are imported on start when missing.
+    environment:
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      # resolved by Keycloak in the realm files (${VAR} placeholders) on import
+      KC_PARTNER_SIM_SECRET: ${KC_PARTNER_SIM_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      KC_OPS_TEST_PASSWORD: ${KC_OPS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      # TOTP secret of the dev-only e2e operators ops-e2e-maker01 / ops-e2e-checker01 (ticket 37)
+      KC_OPS_TEST_TOTP_SECRET: ${KC_OPS_TEST_TOTP_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      # realm services: internal API clients (/internal/v1/** of mw-orchestrator, mw-audit-dw)
+      KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      JAVA_OPTS_KC_HEAP: -Xms128m -Xmx384m
+    volumes:
+      - ./keycloak/realms:/opt/keycloak/data/import:ro
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 200'"]
+      interval: 5s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+      start_interval: 1s
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 640M }
+    logging: *logging
+
+  openbao:
+    image: openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f
+    restart: unless-stopped
+    networks: [app, ops]
+    # dev-unseal.sh starts the server, initialises on first start and unseals on every
+    # start (dev only; see the script header)
+    entrypoint: ["/bin/sh", "/openbao/dev/dev-unseal.sh"]
+    environment:
+      BAO_ADDR: http://127.0.0.1:8200
+    volumes:
+      - ./openbao/config.hcl:/openbao/config/config.hcl:ro
+      - ./openbao/dev-unseal.sh:/openbao/dev/dev-unseal.sh:ro
+      - openbao-data:/openbao/file
+    tmpfs: [/tmp]
+    # Healthy once unsealed and the dev engines exist (dev-unseal.sh writes dev-ready after them):
+    # the module inits read the root token and write their secrets as soon as this is healthy.
+    healthcheck:
+      test: ["CMD-SHELL", "bao status >/dev/null && test -f /openbao/file/dev-ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+      start_interval: 1s
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 160M }
+    logging: *logging
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.6.16@sha256:a9c7cc12156f4b26ca41f0b57ba5b76c45037ff6c1e47ea3d68cb7908d48a965
+    restart: unless-stopped
+    networks: [etcd]          # internal network shared only with APISIX; 2379 never published
+    environment:
+      # healthcheck user: no role, so it can read nothing; etcdctl counts "permission
+      # denied" as healthy, and with auth on an anonymous health check is refused
+      ETCDCTL_USER: healthcheck:${ETCD_HEALTH_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://etcd:2380
+      - --initial-cluster=etcd=http://etcd:2380
+    volumes:
+      - etcd-data:/etcd-data
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/etcdctl", "endpoint", "health"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+      start_interval: 1s
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 96M }
+    logging: *logging
+
+  etcd-init:
+    # Turns on etcd auth: root user, and an apisix user limited to the /apisix prefix.
+    image: curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93
+    restart: "no"
+    labels: { mw.oneshot: "true" }
+    networks: [etcd]
+    depends_on:
+      etcd: { condition: service_healthy }
+    entrypoint: ["/bin/sh", "/deploy/etcd/init-auth.sh"]
+    environment:
+      ETCD_ENDPOINT: http://etcd:2379
+      ETCD_ROOT_PASSWORD: ${ETCD_ROOT_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      ETCD_APISIX_PASSWORD: ${ETCD_APISIX_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      ETCD_HEALTH_PASSWORD: ${ETCD_HEALTH_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+    volumes:
+      - ./etcd:/deploy/etcd:ro
+    read_only: true
+    tmpfs: [/tmp]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 64m }
+    logging: *logging
+
+  apisix:
+    image: apache/apisix:3.19.0-debian@sha256:9a7e45dc943fbf10ec916d1232bae4cda9302ae28a4696cfb83c2da01d261141
+    restart: unless-stopped
+    networks: [dmz, app, ops, etcd]
+    depends_on:
+      etcd-init: { condition: service_completed_successfully }
+    environment:
+      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?run scripts/gen-dev-env.sh (make up does)}
+      ETCD_APISIX_PASSWORD: ${ETCD_APISIX_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      # limit-count counters in Valkey (8.3); routes reference it as $env://VALKEY_PASSWORD
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      MW_OPS_SUBNET: ${MW_OPS_SUBNET:-172.31.250.0/24}
+    ports:
+      - target: 9443
+        published: "${MW_HTTPS_PORT:-443}"
+        protocol: tcp
+    volumes:
+      - ./apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/7085 && printf 'GET /status/ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 200'"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+      start_interval: 1s
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 448M }
+    logging: *logging
+
+  apisix-init:
+    image: apache/apisix:3.19.0-debian@sha256:9a7e45dc943fbf10ec916d1232bae4cda9302ae28a4696cfb83c2da01d261141
+    restart: "no"
+    labels: { mw.oneshot: "true" }
+    networks: [ops]
+    depends_on:
+      apisix: { condition: service_healthy }
+    entrypoint: ["/bin/bash", "/deploy/apisix/apply.sh"]
+    environment:
+      APISIX_ADMIN: apisix:9180
+      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?run scripts/gen-dev-env.sh (make up does)}
+      # Test-only objects (deploy/apisix/routes-test, consumers-test): off unless `make e2e`
+      # re-runs this one-shot with MW_E2E_ROUTES=1; off also removes them.
+      MW_E2E_ROUTES: ${MW_E2E_ROUTES:-0}
+      # Public host of the edge (route auth-ops-browser: the only Host it answers for, and the
+      # X-Forwarded-Host Keycloak sees, never the client's); the edge certificate's name.
+      MW_PUBLIC_HOST: ${MW_PUBLIC_HOST:-localhost}
+      MW_E2E_API_KEY: ${MW_E2E_API_KEY:?run scripts/gen-dev-env.sh (make up does)}
+      # hmac-auth secret of the test-only checkout merchant consumer merchant_demo (ticket 31).
+      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      # MNO USSD gateways (consumers ussd_<mno>, routes ussd-http-<mno>): basic-auth passwords from
+      # the generated .env (the simulator gets the same values via OpenBao), and each MNO's
+      # source allow-list (comma-separated CIDRs, required: no fallback, so a missing list stops the
+      # stack instead of opening the route). Dev values: written by gen-dev-env.sh; production lists
+      # each MNO's gateway addresses.
+      USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_TELETALK_GATEWAY_SECRET: ${USSD_TELETALK_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_GP_ALLOWED_CIDRS: ${USSD_GP_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_ROBI_ALLOWED_CIDRS: ${USSD_ROBI_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_BL_ALLOWED_CIDRS: ${USSD_BL_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_TELETALK_ALLOWED_CIDRS: ${USSD_TELETALK_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh (make up does)}
+    volumes:
+      - ./apisix:/deploy/apisix:ro
+      - apisix-tls:/usr/local/apisix/conf/cert
+    read_only: true
+    tmpfs: [/tmp]
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 256m }
+    logging: *logging
+
+  greenmail:
+    image: greenmail/standalone:2.1.15@sha256:309ba544ea482e5d4265d09921cdab07c8dad2cc4481d715c9b8ff5d3f0a149f
+    restart: unless-stopped
+    networks: [app]
+    environment:
+      GREENMAIL_OPTS: -Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled
+      JAVA_OPTS: -Xmx96m
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /api/service/readiness HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 200'"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+      start_interval: 1s
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 192M }
+    logging: *logging
+
+  # ------------------------------------------------------------ minimal (and core): P2P and cash path
+  # Ledger and PIN check stand-in for the core (spec 13); the PIN private key in OpenBao.
+  mw-core-mock-init:
+    <<: *init
+    profiles: *minimal
+    image: mfs-mw/mw-core-mock-init:local
+    build: ../services/mw-core-mock/init
+    environment: *init-env
+    volumes:
+      - openbao-data:/openbao/file:ro
+      - core-mock-approle:/out
+
+  mw-core-mock:
+    <<: *app
+    profiles: *minimal
+    image: mfs-mw/mw-core-mock:local
+    build: { context: ../services/mw-core-mock, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+      mw-core-mock-init: { condition: service_completed_successfully }
+    volumes:
+      - core-mock-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
+
+  # Partner, SMSC and USSD gateway simulators (OCS, bill aggregator, C2W bank, merchant IPN).
+  mw-simulators-init:
+    <<: *init
+    profiles: *minimal
+    image: mfs-mw/mw-simulators-init:local
+    build: ../services/mw-simulators/init
+    environment:
+      <<: *init-env
+      # the partner simulators' hmac-sha256 secrets (the adapters get the same values)
+      BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      # the MNO USSD gateways' basic-auth passwords (APISIX consumers ussd_<mno> hold the same)
+      USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_TELETALK_GATEWAY_SECRET: ${USSD_TELETALK_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+    volumes:
+      - openbao-data:/openbao/file:ro
+      - simulators-approle:/out
+
+  mw-simulators:
+    <<: *app
+    profiles: *minimal
+    image: mfs-mw/mw-simulators:local
+    build: { context: ../services/mw-simulators, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+      mw-simulators-init: { condition: service_completed_successfully }
+    volumes:
+      - simulators-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 448M }
+
+  # Transaction saga (spec 7).
+  mw-orchestrator-init:
+    <<: *init
+    profiles: *minimal
+    image: mfs-mw/mw-orchestrator-init:local
+    build: ../services/mw-orchestrator/init
+    environment:
+      <<: *init-env
+      # Synced into secret/mw-orchestrator as spring.data.redis.password (idempotency lock).
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+    volumes:
+      - openbao-data:/openbao/file:ro
+      - orchestrator-approle:/out
+
+  mw-orchestrator:
+    <<: *app
+    profiles: *minimal
+    image: mfs-mw/mw-orchestrator:local
+    build: { context: ../services/mw-orchestrator, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+      mw-orchestrator-init: { condition: service_completed_successfully }
+    volumes:
+      - orchestrator-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "4"
+      # Valkey for the idempotency lock (7.3 rule 4); its password comes from OpenBao.
+      VALKEY_HOST: ${VALKEY_HOST:-valkey}
+      # Dev only (A3): org ORG002 of realm portals collects for biller DESCO and merchant
+      # 01911000001 (the core mock's merchant01), so the SP query shows those payments as PAYEE.
+      # The main config has no org payees (JSON, as env var names would lower-case the org ids).
+      SPRING_APPLICATION_JSON: >-
+        {"mw":{"orchestrator":{"search":{"org-payees":{"ORG002":["BILLER:DESCO","MERCHANT:01911000001"]}}}}}
+      # timers (spec 7.2, 7.4; application.yml mw.orchestrator.*): saga deadlines, the status
+      # inquiry schedule of UNKNOWN outcomes and its "not found" grace, the reversal deadline
+      MW_ORCHESTRATOR_HOLDINGTIMEOUT: ${MW_ORCHESTRATOR_HOLDING_TIMEOUT:-5s}
+      MW_ORCHESTRATOR_POSTINGTIMEOUT: ${MW_ORCHESTRATOR_POSTING_TIMEOUT:-5s}
+      MW_ORCHESTRATOR_PARTNERTIMEOUT: ${MW_ORCHESTRATOR_PARTNER_TIMEOUT:-30s}
+      MW_ORCHESTRATOR_INQUIRY_SCHEDULE: ${MW_ORCHESTRATOR_INQUIRY_SCHEDULE:-30s,1m,2m,5m,15m,1h}
+      MW_ORCHESTRATOR_INQUIRY_NOTFOUNDGRACE: ${MW_ORCHESTRATOR_INQUIRY_NOT_FOUND_GRACE:-30s}
+      MW_ORCHESTRATOR_REVERSINGTIMEOUT: ${MW_ORCHESTRATOR_REVERSING_TIMEOUT:-60s}
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 576M }
+
+  # Append-only audit trail and its query API (spec 14).
+  mw-audit-dw-init:
+    <<: *init
+    profiles: *minimal
+    image: mfs-mw/mw-audit-dw-init:local
+    build: ../services/mw-audit-dw/init
+    environment: *init-env
+    volumes:
+      - openbao-data:/openbao/file:ro
+      - audit-dw-approle:/out
+
+  mw-audit-dw:
+    <<: *app
+    profiles: *minimal
+    image: mfs-mw/mw-audit-dw:local
+    build: { context: ../services/mw-audit-dw, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+      mw-audit-dw-init: { condition: service_completed_successfully }
+    volumes:
+      - audit-dw-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+      # Runs as the INSERT-only writer; Flyway migrates as the schema owner (14.3, 16.4).
+      DB_USERNAME: audit_writer
+      SPRING_FLYWAY_USER: audit_dw_rw
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 544M }
+
+  # Customer app API (spec 9.1).
+  mw-app-gateway-init:
+    <<: *init
+    profiles: *minimal
+    image: mfs-mw/mw-app-gateway-init:local
+    build: ../services/mw-app-gateway/init
+    environment:
+      <<: *init-env
+      # Synced into secret/mw-app-gateway as spring.data.redis.password (sessions, nonces).
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+    volumes:
+      - openbao-data:/openbao/file:ro
+      - app-gateway-approle:/out
+
+  mw-app-gateway:
+    <<: *app
+    profiles: *minimal
+    image: mfs-mw/mw-app-gateway:local
+    build: { context: ../services/mw-app-gateway, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+      mw-app-gateway-init: { condition: service_completed_successfully }
+    volumes:
+      - app-gateway-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "4"
+      # Valkey for device sessions and the nonce cache (9.1, 18.6); its password comes from OpenBao.
+      VALKEY_HOST: ${VALKEY_HOST:-valkey}
+      # Signing keys of Keycloak realm `customers` (spec 9.1). Keycloak sits on `ops` and, as
+      # the recorded MVP deviation of 18.1, on `data`: the service reaches it over `data` and
+      # joins no ops network (the ops subnet may call the APISIX Admin API).
+      MW_APP_JWK_SET_URI: ${MW_APP_JWK_SET_URI:-http://keycloak:8080/realms/customers/protocol/openid-connect/certs}
+      # Synchronous wait for a terminal status before 202 PROCESSING (7.5).
+      MW_APP_REPLY_BUDGET: ${MW_APP_REPLY_BUDGET:-25s}
+      # Binding OTPs per wallet in 15 min (default 5): dev only raises it, so repeated e2e runs
+      # (each binds every test user's new device once) do not hit the limit.
+      MW_APP_DEVICE_OTP_MAX_SENDS: ${MW_APP_DEVICE_OTP_MAX_SENDS:-20}
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
+
+  # SMS over SMPP and email over SMTP (spec 10).
+  mw-notify-init:
+    <<: *init
+    profiles: *minimal
+    image: mfs-mw/mw-notify-init:local
+    build: ../services/mw-notify/init
+    environment: *init-env
+    volumes:
+      - openbao-data:/openbao/file:ro
+      - notify-approle:/out
+
+  mw-notify:
+    <<: *app
+    profiles: *minimal
+    image: mfs-mw/mw-notify:local
+    build: { context: ../services/mw-notify, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+      mw-notify-init: { condition: service_completed_successfully }
+    volumes:
+      - notify-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+      # SMSC over SMPP 3.4 (10.2): the simulator in the MVP stack (internal network, no host port).
+      SMPP_HOST: ${SMPP_HOST:-mw-simulators}
+      SMPP_PORT: ${SMPP_PORT:-2775}
+      # Email over SMTP (10.2): the platform's GreenMail (internal network, no auth, no TLS).
+      SMTP_HOST: ${SMTP_HOST:-greenmail}
+      SMTP_PORT: ${SMTP_PORT:-3025}
+      # DEV ONLY: GreenMail offers no STARTTLS. The service's own default requires it.
+      SMTP_STARTTLS_REQUIRED: ${SMTP_STARTTLS_REQUIRED:-false}
+      MAIL_FROM: ${MAIL_FROM:-bits <no-reply@bits.test>}
+      # Dev/MVP stack only: also apply db/dev (registered emails of the seeded test users).
+      MW_NOTIFY_FLYWAY_LOCATIONS: ${MW_NOTIFY_FLYWAY_LOCATIONS:-classpath:db/migration,classpath:db/dev}
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
+
+  # USSD menus over HTTP and SMPP (spec 9.2); in minimal for the @p2p / @cash USSD scenarios.
+  mw-ussd-init:
+    <<: *init
+    profiles: *minimal
+    image: mfs-mw/mw-ussd-init:local
+    build: ../services/mw-ussd/init
+    depends_on:
+      <<: *init-deps
+      # copies the core's PIN public key, which mw-core-mock-init creates on a fresh stack
+      mw-core-mock-init: { condition: service_completed_successfully }
+    environment:
+      <<: *init-env
+      # Synced into secret/mw-ussd as spring.data.redis.password (USSD sessions).
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+    volumes:
+      - openbao-data:/openbao/file:ro
+      - ussd-approle:/out
+
+  mw-ussd:
+    <<: *app
+    profiles: *minimal
+    image: mfs-mw/mw-ussd:local
+    build: { context: ../services/mw-ussd, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+      mw-ussd-init: { condition: service_completed_successfully }
+    volumes:
+      - ussd-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+      # Valkey holds the USSD sessions (spec 9.2); its password comes from OpenBao.
+      VALKEY_HOST: ${VALKEY_HOST:-valkey}
+      # Final status awaited this long before the menu ends with "being processed" (9.2).
+      MW_USSD_SYNC_BUDGET: ${MW_USSD_SYNC_BUDGET:-8s}
+      # GP USSD over SMPP (WP19): binds to the USSD gateway simulator's SMPP port in dev.
+      MW_USSD_SMPP_GP_HOST: ${MW_USSD_SMPP_GP_HOST:-mw-simulators}
+      MW_USSD_SMPP_GP_PORT: ${MW_USSD_SMPP_GP_PORT:-2776}
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
+
+  # Operator admin API (spec 15); in minimal for the @p2p operator and template scenarios.
+  mw-admin-api-init:
+    <<: *init
+    profiles: *minimal
+    image: mfs-mw/mw-admin-api-init:local
+    build: ../services/mw-admin-api/init
+    environment:
+      <<: *init-env
+      # client secret of mw-admin-api in Keycloak realm services (internal API calls)
+      KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+    volumes:
+      - openbao-data:/openbao/file:ro
+      - admin-api-approle:/out
+
+  mw-admin-api:
+    <<: *app
+    profiles: *minimal
+    image: mfs-mw/mw-admin-api:local
+    build: { context: ../services/mw-admin-api, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+      mw-admin-api-init: { condition: service_completed_successfully }
+    volumes:
+      - admin-api-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "2"
+      # Dev profile (application-dev.yml): the partner seeds mirroring the adapters' dev seeds (ticket 38).
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      # Signing keys of Keycloak realm `ops` (operators, spec 15.1). Keycloak sits on `ops` and, as
+      # the recorded MVP deviation of 18.1, on `data`: the service reaches it over `data` and
+      # joins no ops network (the ops subnet may call the APISIX Admin API).
+      MW_ADMIN_JWK_SET_URI: ${MW_ADMIN_JWK_SET_URI:-http://keycloak:8080/realms/ops/protocol/openid-connect/certs}
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
+
+  # ------------------------------------------------------------ core: the rest of the stack
+  # Mobile top-up adapter: OCS (spec 12); the dev profile seeds the partners on the simulator.
+  mw-adapter-telco-init:
+    <<: *init
+    profiles: *core
+    image: mfs-mw/mw-adapter-telco-init:local
+    build: ../services/mw-adapter-telco/init
+    environment: *init-env
+    volumes:
+      - openbao-data:/openbao/file:ro
+      - adapter-telco-approle:/out
+
+  mw-adapter-telco:
+    <<: *app
+    profiles: *core
+    image: mfs-mw/mw-adapter-telco:local
+    build: { context: ../services/mw-adapter-telco, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+      mw-adapter-telco-init: { condition: service_completed_successfully }
+    volumes:
+      - adapter-telco-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+      # OCS endpoint; the MVP stack targets the OCS simulator (mw-simulators).
+      OCS_BASE_URL: ${OCS_BASE_URL:-http://mw-simulators:8080}
+      # Dev stack only: the seed partners on the simulator (application-dev.yml; the packaged
+      # config has none) and plain http for the simulator (the packaged default allows none).
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
+
+  # Bill payment adapter: utility bill aggregator (spec 12).
+  mw-adapter-billpay-init:
+    <<: *init
+    profiles: *core
+    image: mfs-mw/mw-adapter-billpay-init:local
+    build: ../services/mw-adapter-billpay/init
+    environment:
+      <<: *init-env
+      # The dev aggregator simulator's hmac-sha256 secret (mw-simulators-init holds the same).
+      BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+    volumes:
+      - openbao-data:/openbao/file:ro
+      - adapter-billpay-approle:/out
+
+  mw-adapter-billpay:
+    <<: *app
+    profiles: *core
+    image: mfs-mw/mw-adapter-billpay:local
+    build: { context: ../services/mw-adapter-billpay, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+      mw-adapter-billpay-init: { condition: service_completed_successfully }
+    volumes:
+      - adapter-billpay-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+      # Utility bill aggregator endpoint; the MVP stack targets the aggregator simulator
+      # (mw-simulators, /billagg/v1/*).
+      BILLAGG_BASE_URL: ${BILLAGG_BASE_URL:-http://mw-simulators:8080}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
+
+  # Add money adapter: C2W bank (spec 12).
+  mw-adapter-bank-init:
+    <<: *init
+    profiles: *core
+    image: mfs-mw/mw-adapter-bank-init:local
+    build: ../services/mw-adapter-bank/init
+    environment:
+      <<: *init-env
+      # The dev C2W bank simulator's hmac-sha256 secret (mw-simulators-init holds the same).
+      C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+    volumes:
+      - openbao-data:/openbao/file:ro
+      - adapter-bank-approle:/out
+
+  mw-adapter-bank:
+    <<: *app
+    profiles: *core
+    image: mfs-mw/mw-adapter-bank:local
+    build: { context: ../services/mw-adapter-bank, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+      mw-adapter-bank-init: { condition: service_completed_successfully }
+    volumes:
+      - adapter-bank-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+      # C2W bank endpoint; the MVP stack targets the bank simulator (mw-simulators, /c2wbank/v1/*).
+      C2WBANK_BASE_URL: ${C2WBANK_BASE_URL:-http://mw-simulators:8080}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
+
+  # Organisation portal API and bulk disbursement (spec 8.2, 9.4).
+  mw-portal-api-init:
+    <<: *init
+    profiles: *core
+    image: mfs-mw/mw-portal-api-init:local
+    build: ../services/mw-portal-api/init
+    environment:
+      <<: *init-env
+      # client secret of mw-portal-api in Keycloak realm services (internal API calls)
+      KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+    volumes:
+      - openbao-data:/openbao/file:ro
+      - portal-api-approle:/out
+
+  mw-portal-api:
+    <<: *app
+    profiles: *core
+    image: mfs-mw/mw-portal-api:local
+    build: { context: ../services/mw-portal-api, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+      mw-portal-api-init: { condition: service_completed_successfully }
+    volumes:
+      - portal-api-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+      # Signing keys of Keycloak realm `portals` (spec 8.2). Keycloak sits on `ops` and, as
+      # the recorded MVP deviation of 18.1, on `data`: the service reaches it over `data` and
+      # joins no ops network (the ops subnet may call the APISIX Admin API).
+      MW_PORTAL_JWK_SET_URI: ${MW_PORTAL_JWK_SET_URI:-http://keycloak:8080/realms/portals/protocol/openid-connect/certs}
+      # timer: bulk child txns dispatched per second over all batches (spec 9.4)
+      MW_BULK_RATE_PER_SECOND: ${MW_BULK_RATE_PER_SECOND:-50}
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
+
+  # Merchant checkout API and hosted payment page API (spec 9.3).
+  mw-checkout-init:
+    <<: *init
+    profiles: *core
+    image: mfs-mw/mw-checkout-init:local
+    build: ../services/mw-checkout/init
+    depends_on:
+      <<: *init-deps
+      # copies the core's PIN public key, which mw-core-mock-init creates on a fresh stack
+      mw-core-mock-init: { condition: service_completed_successfully }
+    environment:
+      <<: *init-env
+      # Synced into secret/mw-checkout as mw.checkout.merchants.merchant_demo.secret; the APISIX
+      # consumer merchant_demo (hmac-auth) holds the same value.
+      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+    volumes:
+      - openbao-data:/openbao/file:ro
+      - checkout-approle:/out
+
+  mw-checkout:
+    <<: *app
+    profiles: *core
+    image: mfs-mw/mw-checkout:local
+    build: { context: ../services/mw-checkout, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+      mw-checkout-init: { condition: service_completed_successfully }
+    volumes:
+      - checkout-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "4"
+      # Where the hosted checkout page lives (front-end TBC, spec open point 16).
+      MW_CHECKOUT_PAGE_BASE_URL: ${MW_CHECKOUT_PAGE_BASE_URL:-https://localhost/checkout/page/}
+      # Dev stack only: the merchant IPN receiver simulator is plain http at a private address
+      # (http://mw-simulators:8080/merchant/ipn/...). The packaged default allows no such host.
+      MW_CHECKOUT_IPN_DEV_HOSTS: ${MW_CHECKOUT_IPN_DEV_HOSTS:-mw-simulators}
+      # timer: the IPN retry schedule. The dev stack keeps the compressed one e2e was written
+      # against (the packaged default is the spec's 1m,5m,30m,2h,6h; set this to try it).
+      MW_CHECKOUT_IPN_RETRY_DELAYS: ${MW_CHECKOUT_IPN_RETRY_DELAYS:-10s,20s,30s,1m,2m}
+      MW_CHECKOUT_IPN_POLL_PERIOD: ${MW_CHECKOUT_IPN_POLL_PERIOD:-2s}
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
+
+  # The admin console (Next.js, spec 15.1). Operation zone only (18.1): the `ops` network, where
+  # APISIX (which routes /console/* here and /admin/v1/* to mw-admin-api) and Keycloak are. The
+  # browser reaches the console and the Keycloak login through APISIX (https://localhost/console,
+  # /realms/ops/*); this server calls Keycloak inside the stack with the public host as
+  # X-Forwarded-* (src/lib/oidc.ts) and mw-admin-api through APISIX, so every token carries the
+  # public issuer.
+  mw-admin-ui:
+    <<: *app
+    profiles: *core
+    image: mfs-mw/mw-admin-ui:local
+    build: ../ui/mw-admin-ui
+    networks: [ops]
+    tmpfs: [/tmp, /app/.next/cache]
+    environment:
+      # encrypts the session cookie (JWE) that holds the operator's tokens; generated dev value
+      AUTH_SECRET: ${MW_ADMIN_UI_AUTH_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      # public origin of the edge (APISIX); a non-default MW_HTTPS_PORT needs e.g. https://localhost:18443
+      AUTH_URL: ${MW_ADMIN_UI_PUBLIC_URL:-https://localhost}/console/api/auth
+      AUTH_KEYCLOAK_ISSUER: ${MW_ADMIN_UI_PUBLIC_URL:-https://localhost}/realms/ops
+      AUTH_KEYCLOAK_INTERNAL_URL: http://keycloak:8080
+      AUTH_KEYCLOAK_ID: mw-admin-ui
+      ADMIN_API_URL: http://apisix:9080
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/console/api/health | grep -q UP"]
+      interval: 5s
+      timeout: 3s
+      start_period: 20s
+      start_interval: 1s
+      retries: 3
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256M }
+
+  # ------------------------------------------------------------ seed (ticket 57)
+  # mw-seeder: one-shot API seeder (profile seed; `make seed` runs it and fails unless it exits 0).
+  # mw-seeder:
+  #   profiles: [seed]
+  #   image: mfs-mw/mw-seeder:local
+  #   build: ../services/mw-seeder
+  #   restart: "no"
+  #   labels: { mw.oneshot: "true" }
+  #   networks: [app]
+  #   depends_on:
+  #     apisix-init: { condition: service_completed_successfully }
+  #     mw-orchestrator: { condition: service_healthy }

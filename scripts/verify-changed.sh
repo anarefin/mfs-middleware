@@ -9,7 +9,7 @@
 #      time; each module's output goes to build/verify-changed/<module>.log; Testcontainers reuse
 #      as in verify.sh (scripts/lib/gate.sh), reused containers removed at the end unless KEEP_TC=1
 #   4. a summary: pass/fail and duration per module; exits non-zero on any failure
-# Warns when the MVP compose project is running: its containers compete with Testcontainers for
+# Warns when the stack (deploy/docker-compose.yml) is running: its containers compete with Testcontainers for
 # Docker memory.
 set -eu
 . "$(dirname "$0")/lib/modules.sh"
@@ -35,15 +35,14 @@ info "verify-changed: modules since $base: $(printf '%s' "${modules:-none}" | xa
 "$here/check-field-injection.sh" ""
 "$here/contracts-lint.sh"
 if docker compose version >/dev/null 2>&1; then
-  "$here/compose-flat.sh" --check
+  "$here/compose-check.sh"
 else
   info "verify-changed: docker compose CLI not found, skipping compose-check"
 fi
-file="$MW_ROOT/deploy/compose/mvp/compose.yml"
-if [ -f "$file" ] && command -v docker >/dev/null 2>&1; then
-  compose_files "$file"
+if [ -f "$STACK_FILE" ] && command -v docker >/dev/null 2>&1; then
+  stack_compose
   if [ -n "$(docker compose "${DC_F[@]}" ps -q 2>/dev/null || true)" ]; then
-    printf 'warning: the MVP compose project is running; its containers compete with the Testcontainers tests for Docker memory (make down to stop it)\n' >&2
+    printf 'warning: the stack (deploy/docker-compose.yml) is running; its containers compete with the Testcontainers tests for Docker memory (make down to stop it)\n' >&2
   fi
 fi
 

@@ -8,8 +8,8 @@ L='com.docker.compose.project=mvp'
 O="$L,mw.oneshot=true"
 
 stub_chaos() {
-  mkdir -p .bin deploy/compose/mvp
-  touch deploy/compose/mvp/compose.yml
+  mkdir -p .bin deploy
+  touch deploy/docker-compose.yml
   cat >.bin/docker <<EOF
 #!/bin/bash
 echo "docker \$*" >> "$PWD/.tool-calls"

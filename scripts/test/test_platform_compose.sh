@@ -1,8 +1,11 @@
-# Platform Compose stack (WP02): static checks on the resolved Compose model and on the
-# topics-as-code plan. They need the docker CLI (compose config works without a daemon)
-# and jq. The live checks are in scripts/smoke.sh (make smoke).
+# The single-host Compose stack (WP02, ticket 56: one hand-written deploy/docker-compose.yml with
+# profiles): static checks on the resolved Compose model and on the topics-as-code plan. They need
+# the docker CLI (compose config works without a daemon) and jq. The live checks are in
+# scripts/smoke.sh (make smoke).
 
-MVP_FILE="$REPO_DIR/deploy/compose/mvp/compose.yml"
+STACK_FILE="$REPO_DIR/deploy/docker-compose.yml"
+# the P2P and cash path of the e2e @p2p / @cash scenarios (profile minimal)
+MINIMAL_SERVICES="mw-admin-api mw-app-gateway mw-audit-dw mw-core-mock mw-notify mw-orchestrator mw-simulators mw-ussd"
 PLATFORM_SERVICES="kafka kafka-init postgres valkey keycloak openbao etcd etcd-init apisix apisix-init greenmail"
 ONE_SHOT="kafka-init etcd-init apisix-init"
 SECRET_VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALTH_PASSWORD
@@ -14,7 +17,7 @@ SECRET_VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALT
 # Not secrets, but generated into the same .env and required by the platform file (no fallback):
 # each MNO's USSD source allow-list (comma-separated CIDRs, item A4).
 ADDRESS_VARS="USSD_GP_ALLOWED_CIDRS USSD_ROBI_ALLOWED_CIDRS USSD_BL_ALLOWED_CIDRS USSD_TELETALK_ALLOWED_CIDRS"
-REALMS_DIR="$REPO_DIR/deploy/compose/platform/keycloak/realms"
+REALMS_DIR="$REPO_DIR/deploy/keycloak/realms"
 
 # placeholder_env: VAR=t for every generated secret, a test range for every address list (for `env`).
 placeholder_env() {
@@ -28,43 +31,99 @@ placeholder_env() {
 copy_deploy() {
   [ -d deploy ] && return 0
   cp -R "$REPO_DIR/deploy" deploy
-  rm -f deploy/compose/platform/.env
-  # the MVP project includes module compose files (with the platform .env as their env_file):
-  # copy those too, and an empty .env so the include resolves without developer secrets
-  local f
-  local parent
-  for f in "$REPO_DIR"/services/*/compose.yml "$REPO_DIR"/ui/*/compose.yml; do
-    [ -f "$f" ] || continue
-    parent="$(basename "$(dirname "$(dirname "$f")")")"
-    mkdir -p "$parent/$(basename "$(dirname "$f")")"
-    cp "$f" "$parent/$(basename "$(dirname "$f")")/compose.yml"
-  done
-  : >deploy/compose/platform/.env
+  rm -f deploy/.env
 }
 
-# compose_json: the resolved MVP project as JSON (default env, so MW_HTTPS_PORT=443),
-# with placeholder values for the generated secrets. Args: extra VAR=value settings.
+# compose_json [VAR=value...]: the resolved stack, profile core (every service), as JSON (default
+# env, so MW_HTTPS_PORT=443), with placeholder values for the generated secrets.
+# COMPOSE_PROFILE / COMPOSE_ENV_FILES pick another profile or extra --env-file (e.g. test timers).
 compose_json() {
   copy_deploy
-  env -u MW_HTTPS_PORT -u MW_OPS_SUBNET $(placeholder_env) "$@" \
-    docker compose -f deploy/compose/mvp/compose.yml config --format json 2>/dev/null
+  local ef=() f
+  for f in ${COMPOSE_ENV_FILES:-}; do ef+=(--env-file "$f"); done
+  env -u MW_HTTPS_PORT -u MW_OPS_SUBNET -u COMPOSE_PROJECT_NAME $(placeholder_env) "$@" \
+    docker compose -f deploy/docker-compose.yml ${ef[@]+"${ef[@]}"} --profile "${COMPOSE_PROFILE:-core}" config --format json 2>/dev/null
 }
 
-# compose_json_lowmem: compose_json with the low-resource override every make target merges.
-compose_json_lowmem() {
-  copy_deploy
-  env -u MW_HTTPS_PORT -u MW_OPS_SUBNET $(placeholder_env) "$@" \
-    docker compose -f deploy/compose/mvp/compose.yml -f deploy/compose/mvp/compose.lowmem.yml config --format json 2>/dev/null
-}
-
-test_mvp_project_includes_every_platform_service() {
-  [ -f "$MVP_FILE" ] || fail "missing deploy/compose/mvp/compose.yml"
-  grep -q 'platform/compose.yml' "$MVP_FILE" || fail "mvp project does not include the platform file"
-  local services
-  services="$(compose_json | jq -r '.services | keys[]')" || fail "compose config failed"
+test_one_hand_written_stack_file_with_every_platform_service() {
+  [ -f "$STACK_FILE" ] || fail "missing deploy/docker-compose.yml"
+  grep -q '^include:' "$STACK_FILE" && fail "deploy/docker-compose.yml still includes other files"
+  local services j
+  j="$(compose_json)" || fail "compose config failed"
+  [ "$(printf '%s' "$j" | jq -r .name)" = mfs-mw ] || fail "project name is not mfs-mw"
+  services="$(printf '%s' "$j" | jq -r '.services | keys[]')"
   for s in $PLATFORM_SERVICES; do
     printf '%s\n' "$services" | grep -qx "$s" || fail "service $s missing (have: $services)"
   done
+  # every module is in the file, with its init when it has one
+  for d in "$REPO_DIR"/services/*/ "$REPO_DIR"/ui/*/; do
+    s="$(basename "$d")"
+    printf '%s\n' "$services" | grep -qx "$s" || fail "module $s is not a service of deploy/docker-compose.yml"
+    [ -d "$d/init" ] && { printf '%s\n' "$services" | grep -qx "$s-init" || fail "$s-init missing"; }
+  done
+  return 0
+}
+
+test_no_module_has_its_own_compose_file_any_more() {
+  local f
+  for f in "$REPO_DIR"/services/*/compose.yml "$REPO_DIR"/ui/*/compose.yml \
+    "$REPO_DIR"/templates/*/compose.yml "$REPO_DIR/compose.yml"; do
+    [ -e "$f" ] && fail "${f#"$REPO_DIR"/} still exists (ADR D16: one deploy/docker-compose.yml)"
+  done
+  [ -e "$REPO_DIR/deploy/compose" ] && fail "the old deploy/compose layout still exists"
+  return 0
+}
+
+test_profiles_platform_always_minimal_for_the_p2p_and_cash_path_core_for_everything() {
+  local j s plat mods
+  # no profile: the platform only, every one of its services
+  j="$(COMPOSE_PROFILE=none compose_json)" || fail "config without a profile failed"
+  plat="$(printf '%s' "$j" | jq -r '.services | keys | sort | join(" ")')"
+  [ "$plat" = "$(printf '%s\n' $PLATFORM_SERVICES | sort | tr '\n' ' ' | sed 's/ $//')" ] \
+    || fail "services without a profile: $plat"
+  j="$(COMPOSE_PROFILE=minimal compose_json)"
+  mods="$(printf '%s' "$j" | jq -r '[.services | keys[] | select(startswith("mw-") and (endswith("-init") | not))] | sort | join(" ")')"
+  [ "$mods" = "$MINIMAL_SERVICES" ] || fail "profile minimal starts '$mods', expected '$MINIMAL_SERVICES'"
+  # each init comes with its service
+  for s in $MINIMAL_SERVICES; do
+    printf '%s' "$j" | jq -e --arg s "$s-init" '.services | has($s)' >/dev/null || fail "$s-init not in minimal"
+  done
+  j="$(compose_json)"
+  printf '%s' "$j" | jq -e '.services | has("mw-admin-ui") and has("mw-checkout") and has("mw-portal-api")' >/dev/null \
+    || fail "profile core misses services"
+  # seed: only mw-seeder (ticket 57), nothing else
+  printf '%s' "$j" | jq -e '[.services[] | select((.profiles // []) | index("seed"))] | length == 0' >/dev/null \
+    || fail "a core service is in the seed profile"
+}
+
+test_app_images_are_local_builds_reused_by_up() {
+  local j bad
+  j="$(compose_json)"
+  bad="$(printf '%s' "$j" | jq -r '.services | to_entries[] | select(.key | startswith("mw-"))
+    | select(.value.image != "mfs-mw/\(.key):local" or .value.build.context == null) | .key')"
+  [ -z "$bad" ] || fail "not built as mfs-mw/<svc>:local: $bad"
+  return 0
+}
+
+test_test_timers_default_to_production_values_and_the_fast_file_shortens_them() {
+  local j o
+  j="$(compose_json)"
+  o="$(printf '%s' "$j" | jq -c '.services["mw-orchestrator"].environment')"
+  printf '%s' "$o" | jq -e '.MW_ORCHESTRATOR_INQUIRY_SCHEDULE == "30s,1m,2m,5m,15m,1h"
+    and .MW_ORCHESTRATOR_INQUIRY_NOTFOUNDGRACE == "30s" and .MW_ORCHESTRATOR_REVERSINGTIMEOUT == "60s"
+    and .MW_ORCHESTRATOR_POSTINGTIMEOUT == "5s" and .MW_ORCHESTRATOR_HOLDINGTIMEOUT == "5s"
+    and .MW_ORCHESTRATOR_PARTNERTIMEOUT == "30s" and .MW_KAFKA_RETRY_DELAYS == "10s,1m,10m"' >/dev/null \
+    || fail "orchestrator timer defaults are not the production values: $o"
+  printf '%s' "$j" | jq -e '.services["mw-portal-api"].environment.MW_BULK_RATE_PER_SECOND == "50"' >/dev/null \
+    || fail "portal-api bulk rate default is not 50"
+  [ -f "$REPO_DIR/deploy/test-timers.env" ] || fail "no deploy/test-timers.env"
+  j="$(COMPOSE_ENV_FILES="deploy/test-timers.env" compose_json)"
+  o="$(printf '%s' "$j" | jq -c '.services["mw-orchestrator"].environment')"
+  printf '%s' "$o" | jq -e '(.MW_ORCHESTRATOR_INQUIRY_SCHEDULE | startswith("2s"))
+    and .MW_ORCHESTRATOR_REVERSINGTIMEOUT == "5s" and .MW_KAFKA_RETRY_DELAYS == "1s,1s,1s"' >/dev/null \
+    || fail "test-timers.env does not shorten the orchestrator timers: $o"
+  printf '%s' "$j" | jq -e '.services["mw-checkout"].environment.MW_KAFKA_RETRY_DELAYS == "1s,1s,1s"' >/dev/null \
+    || fail "retry delays not shortened for every service"
 }
 
 test_zone_networks_exist_and_postgres_is_data_only() {
@@ -151,7 +210,7 @@ test_openbao_is_healthy_only_once_its_engines_are_enabled() {
   # inits read the dev root token and write KV secrets as soon as openbao is healthy
   compose_json | jq -e '.services.openbao.healthcheck.test | join(" ") | test("dev-ready")' >/dev/null \
     || fail "openbao healthcheck does not wait for the dev-ready marker"
-  grep -q 'dev-ready' "$REPO_DIR/deploy/compose/platform/openbao/dev-unseal.sh" || fail "dev-unseal.sh writes no dev-ready marker"
+  grep -q 'dev-ready' "$REPO_DIR/deploy/openbao/dev-unseal.sh" || fail "dev-unseal.sh writes no dev-ready marker"
 }
 
 test_every_java_service_starts_after_kafka_init() {
@@ -162,10 +221,17 @@ test_every_java_service_starts_after_kafka_init() {
       || bad="$bad $s"
   done
   [ -z "$bad" ] || fail "do not wait for kafka-init:$bad"
-  # a module's own compose.yml still starts on its own (make up M=): the dependency is optional
-  for s in "$REPO_DIR"/services/*/compose.yml "$REPO_DIR"/templates/mw-service-template/compose.yml; do
-    grep -A1 'kafka-init:' "$s" | grep -q 'required: false' || fail "$s: kafka-init dependency not required: false"
+  # x-infra-deps: the whole platform is ready first, and its own init has run (all required now:
+  # one file, so `make up M=mw-x` starts the dependencies too)
+  for s in $(printf '%s' "$j" | jq -r '.services | keys[] | select(test("^mw-") and (test("-init$") | not) and . != "mw-admin-ui")'); do
+    printf '%s' "$j" | jq -e --arg s "$s" '.services[$s].depends_on as $d
+      | $d.postgres.condition == "service_healthy" and $d.kafka.condition == "service_healthy"
+      and $d.keycloak.condition == "service_healthy" and $d.openbao.condition == "service_healthy"
+      and $d["\($s)-init"].condition == "service_completed_successfully"
+      and ([$d[] | select(.required == false)] | length == 0)' >/dev/null \
+      || fail "$s: depends_on is not x-infra-deps + its init: $(printf '%s' "$j" | jq -c --arg s "$s" '.services[$s].depends_on')"
   done
+  return 0
 }
 
 test_healthchecks_poll_every_5s_and_kafka_uses_a_tcp_check() {
@@ -191,7 +257,7 @@ test_aot_training_and_the_runtime_use_the_same_jvm_flags() {
     grep -qE 'java -XX:AOTCacheOutput=' "$f" || fail "$f has no AOT training run"
     grep -qE '^ENTRYPOINT \["java", "-XX:AOTCache=' "$f" || fail "$f does not start with the AOT cache"
   done
-  j="$(compose_json_lowmem)"
+  j="$(compose_json)"
   for s in $(printf '%s' "$j" | jq -r '.services | to_entries[] | select(.key | test("^mw-") and (test("-init$") | not)) | select(.value.build.context != null) | select(.key != "mw-admin-ui") | .key'); do
     printf '%s' "$j" | jq -e --arg s "$s" '.services[$s] | (.environment.JAVA_TOOL_OPTIONS == null)
       and (.build.args.JVM_OPTS | test("-XX:\\+UseSerialGC"))
@@ -204,7 +270,7 @@ test_aot_training_and_the_runtime_use_the_same_jvm_flags() {
 test_compose_files_hold_no_inline_secret_values() {
   # Credentials come from the generated .env;
   # the Compose files themselves only reference variables.
-  if grep -nE '^ *[A-Z_]*(PASSWORD|SECRET|_KEY|TOKEN)[A-Z_]*: *[^$ {]' "$REPO_DIR"/deploy/compose/platform/compose.yml "$MVP_FILE"; then
+  if grep -nE '^ *[A-Z_]*(PASSWORD|SECRET|_KEY|TOKEN|AUTH): *[^$ {]' "$STACK_FILE" "$REPO_DIR/deploy/test-timers.env"; then
     fail "inline secret value in a compose file"
   fi
 }
@@ -212,7 +278,7 @@ test_compose_files_hold_no_inline_secret_values() {
 test_env_files_and_realms_hold_no_literal_secrets() {
   local bad f
   # env/*.env: identities and settings only; credentials come from the generated .env
-  bad="$(grep -nE '^[[:space:]]*[A-Za-z_]*(PASS|SECRET|AUTH|KEY|TOKEN)[A-Za-z_]*=' "$REPO_DIR"/deploy/compose/platform/env/*.env 2>/dev/null || true)"
+  bad="$(grep -nE '^[[:space:]]*[A-Za-z_]*(PASS|SECRET|AUTH|KEY|TOKEN)[A-Za-z_]*=' "$REPO_DIR"/deploy/env/*.env 2>/dev/null || true)"
   [ -z "$bad" ] || fail "credential in an env file: $bad"
   # realms: every client secret and user credential is a Keycloak ${ENV} placeholder
   for f in "$REALMS_DIR"/*-realm.json; do
@@ -243,15 +309,15 @@ test_compose_config_fails_fast_without_the_generated_secrets() {
   local v
   for v in $SECRET_VARS; do
     OUT="$(env $(placeholder_env) "$v=" \
-      docker compose -f deploy/compose/mvp/compose.yml config -q 2>&1)" && fail "config passed without $v"
+      docker compose -f deploy/docker-compose.yml --profile core config -q 2>&1)" && fail "config passed without $v"
     assert_out_contains "$v"
   done
 }
 
 test_gen_dev_env_generates_random_values_once_and_keeps_them() {
-  mkdir -p deploy/compose/platform
+  mkdir -p deploy
   assert_ok env MW_ROOT="$PWD" "$REPO_DIR/scripts/gen-dev-env.sh"
-  local f=deploy/compose/platform/.env v first
+  local f=deploy/.env v first
   [ -f "$f" ] || fail "no $f"
   for v in $SECRET_VARS; do
     grep -qE "^$v=[A-Za-z0-9]{32,}$" "$f" || fail "$v missing or weak in $f"
@@ -260,12 +326,12 @@ test_gen_dev_env_generates_random_values_once_and_keeps_them() {
   first="$(cat "$f")"
   env MW_ROOT="$PWD" "$REPO_DIR/scripts/gen-dev-env.sh" >/dev/null
   [ "$(cat "$f")" = "$first" ] || fail "re-run changed existing secrets"
-  grep -qx '/deploy/compose/platform/.env' "$REPO_DIR/.gitignore" || fail ".env is not gitignored"
+  grep -qx '/deploy/.env' "$REPO_DIR/.gitignore" || fail ".env is not gitignored"
 }
 
 test_gen_dev_env_adds_a_new_variable_to_an_existing_env_and_keeps_the_rest() {
-  mkdir -p deploy/compose/platform
-  local f=deploy/compose/platform/.env
+  mkdir -p deploy
+  local f=deploy/.env
   # an .env written before ticket 23: every variable but the C2W bank secret
   printf '# old\nPOSTGRES_PASSWORD=keepmekeepmekeepmekeepmekeepme1234\n' >"$f"
   chmod 600 "$f"
@@ -280,7 +346,7 @@ test_compose_config_fails_without_a_ussd_allow_list() {
   local v
   for v in $ADDRESS_VARS; do
     OUT="$(env $(placeholder_env) "$v=" \
-      docker compose -f deploy/compose/mvp/compose.yml config -q 2>&1)" && fail "config passed without $v (fails open)"
+      docker compose -f deploy/docker-compose.yml --profile core config -q 2>&1)" && fail "config passed without $v (fails open)"
     assert_out_contains "$v"
   done
   [ "$(compose_json | jq -r '.services["apisix-init"].environment.USSD_ROBI_ALLOWED_CIDRS')" = "10.9.0.0/16" ] \
@@ -288,8 +354,8 @@ test_compose_config_fails_without_a_ussd_allow_list() {
 }
 
 test_gen_dev_env_writes_the_dev_ussd_allow_lists_once_and_keeps_edits() {
-  mkdir -p deploy/compose/platform
-  local f=deploy/compose/platform/.env v
+  mkdir -p deploy
+  local f=deploy/.env v
   printf 'USSD_GP_ALLOWED_CIDRS=10.7.0.0/24\n' >"$f"
   chmod 600 "$f"
   assert_ok env MW_ROOT="$PWD" "$REPO_DIR/scripts/gen-dev-env.sh"
@@ -434,18 +500,18 @@ test_topic_plan_rejects_a_malformed_line() {
   assert_out_contains "bad.topic.v1"
 }
 
-test_make_smoke_and_down_need_the_mvp_project() {
+test_make_smoke_and_down_need_the_stack_file() {
   assert_fails mw_make "$PWD" smoke
-  assert_out_contains "deploy/compose/mvp/compose.yml"
+  assert_out_contains "deploy/docker-compose.yml"
   assert_fails mw_make "$PWD" down
-  assert_out_contains "deploy/compose/mvp/compose.yml"
+  assert_out_contains "deploy/docker-compose.yml"
 }
 
-test_make_up_generates_the_dev_env_before_starting_the_mvp_project() {
-  mkdir -p .bin deploy/compose/mvp && touch deploy/compose/mvp/compose.yml
+test_make_up_generates_the_dev_env_before_starting_the_stack() {
+  mkdir -p .bin deploy && touch deploy/docker-compose.yml
   printf '#!/bin/sh\necho "docker $*" >> "%s/.tool-calls"\n' "$PWD" >.bin/docker; chmod +x .bin/docker
   PATH="$PWD/.bin:$PATH" mw_make "$PWD" up || fail "make up failed"
-  grep -q '^APISIX_ADMIN_KEY=' deploy/compose/platform/.env || fail "make up did not generate deploy/compose/platform/.env"
+  grep -q '^APISIX_ADMIN_KEY=' deploy/.env || fail "make up did not generate deploy/.env"
 }
 
 # ---- Keycloak ops realm MFA (spec 18.2) ----
@@ -532,7 +598,7 @@ test_keycloak_runs_in_production_mode_on_its_own_postgres_database() {
 }
 
 test_postgres_init_creates_the_keycloak_role_and_database() {
-  local f="$REPO_DIR/deploy/compose/platform/postgres/initdb/10-keycloak.sh"
+  local f="$REPO_DIR/deploy/postgres/initdb/10-keycloak.sh"
   [ -f "$f" ] || fail "no $f"
   grep -qE 'CREATE ROLE keycloak .*LOGIN' "$f" || fail "no keycloak login role"
   grep -qE 'CREATE DATABASE keycloak OWNER keycloak' "$f" || fail "no keycloak database owned by the role"
@@ -541,37 +607,44 @@ test_postgres_init_creates_the_keycloak_role_and_database() {
   return 0
 }
 
-test_one_shot_services_are_labelled_and_up_has_no_list() {
-  # scripts/up.sh tells one-shots from the compose label mw.oneshot=true; keep it in sync with
-  # the services that never restart and have no healthcheck.
+test_one_shot_services_are_labelled_for_the_memory_budget() {
+  # scripts/compose-check.sh leaves one-shots (compose label mw.oneshot=true) out of the
+  # long-running memory budget; keep the label in sync with the services that never restart and
+  # have no healthcheck.
   local j labelled noRestart
   j="$(compose_json)"
-  # platform services only: module one-shots (mw-*) carry the label too but are not in ONE_SHOT
-  labelled="$(printf '%s' "$j" | jq -r '[.services | to_entries[] | select(.key | startswith("mw-") | not) | select(.value.labels["mw.oneshot"] == "true") | .key] | sort | join(" ")')"
-  noRestart="$(printf '%s' "$j" | jq -r '[.services | to_entries[] | select(.key | startswith("mw-") | not) | select(.value.restart == "no" and .value.healthcheck == null) | .key] | sort | join(" ")')"
-  [ "$labelled" = "$(printf '%s\n' $ONE_SHOT | sort | tr '\n' ' ' | sed 's/ $//')" ] || fail "mw.oneshot=true on '$labelled', expected '$ONE_SHOT'"
+  labelled="$(printf '%s' "$j" | jq -r '[.services | to_entries[] | select(.value.labels["mw.oneshot"] == "true") | .key] | sort | join(" ")')"
+  noRestart="$(printf '%s' "$j" | jq -r '[.services | to_entries[] | select(.value.restart == "no" and .value.healthcheck == null) | .key] | sort | join(" ")')"
   [ "$labelled" = "$noRestart" ] || fail "labelled one-shots '$labelled' != restart-no services without healthcheck '$noRestart'"
-  grep -q 'MW_UP_ONESHOT' "$REPO_DIR/scripts/up.sh" && fail "up.sh still has a hard-coded one-shot list"
-  grep -q 'mw.oneshot=true' "$REPO_DIR/scripts/up.sh" || fail "up.sh does not read the mw.oneshot label"
+  for s in $ONE_SHOT; do
+    case " $labelled " in *" $s "*) ;; *) fail "$s is not labelled mw.oneshot=true" ;; esac
+  done
+  grep -q 'mw.oneshot' "$REPO_DIR/scripts/compose-check.sh" || fail "compose-check.sh does not read the mw.oneshot label"
   return 0
 }
 
 # ---- PostgreSQL connection budget (D24) ----
 
 test_every_service_sets_an_explicit_pool_and_the_sum_fits_max_connections() {
-  # Each service's Hikari pool is explicit; every pool plus Keycloak's, summed, stays well under
-  # postgres max_connections (sizing written next to it in deploy/compose/platform/compose.yml).
-  local f n sum=0 max kc
+  # Each service's Hikari pool is explicit in its application.yml, and the dev stack caps it again
+  # (SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE); every stack pool plus Keycloak's, summed, stays
+  # under the stack's postgres max_connections (sizing written next to it in deploy/docker-compose.yml).
+  local f n sum=0 max kc j s
   for f in "$REPO_DIR"/services/*/src/main/resources/application.yml; do
     n="$(sed -n 's/^ *maximum-pool-size: *\([0-9][0-9]*\).*/\1/p' "$f" | head -1)"
     [ -n "$n" ] || fail "no spring.datasource.hikari.maximum-pool-size in $f"
     [ "$n" -le 10 ] || fail "pool $n in $f: above 10 needs a sizing update in deploy/"
+  done
+  j="$(compose_json)"
+  for s in $(printf '%s' "$j" | jq -r '.services | keys[] | select(test("^mw-") and (test("-init$") | not) and . != "mw-admin-ui")'); do
+    n="$(printf '%s' "$j" | jq -r --arg s "$s" '.services[$s].environment.SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE // empty')"
+    [ -n "$n" ] || fail "$s: no SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE in the stack"
     sum=$((sum + n))
   done
-  kc="$(sed -n 's/^KC_DB_POOL_MAX_SIZE=\([0-9][0-9]*\)$/\1/p' "$REPO_DIR/deploy/compose/platform/env/keycloak.env")"
+  kc="$(sed -n 's/^KC_DB_POOL_MAX_SIZE=\([0-9][0-9]*\)$/\1/p' "$REPO_DIR/deploy/env/keycloak.env")"
   [ -n "$kc" ] || fail "Keycloak pool not capped (KC_DB_POOL_MAX_SIZE in env/keycloak.env)"
-  max="$(sed -n 's/.*"max_connections=\([0-9][0-9]*\)".*/\1/p' "$REPO_DIR/deploy/compose/platform/compose.yml")"
-  [ -n "$max" ] || fail "postgres max_connections not set in compose.yml"
+  max="$(printf '%s' "$j" | jq -r '.services.postgres.command | map(select(startswith("max_connections="))) | .[0] | sub("max_connections="; "")')"
+  [ -n "$max" ] && [ "$max" != null ] || fail "postgres max_connections not set in deploy/docker-compose.yml"
   # audit-dw's own search (4) and reader (1) pools, plus headroom for init jobs and psql
   [ $((sum + kc + 5 + 20)) -le "$max" ] || fail "pools $sum + keycloak $kc + 25 exceed max_connections $max"
   return 0

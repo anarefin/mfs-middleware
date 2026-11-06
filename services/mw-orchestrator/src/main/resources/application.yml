@@ -37,7 +37,7 @@ spring:
       schema: txn
       # Explicit pool: 10, above the usual 5, because it runs every saga step from 5 consumed topics, the outbox relay
       # and the internal query API. PostgreSQL
-      # max_connections sizing: deploy/compose/platform/compose.yml (postgres).
+      # max_connections sizing: deploy/docker-compose.yml (postgres).
       maximum-pool-size: 10
   flyway:
     schemas: txn

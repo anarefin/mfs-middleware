@@ -117,10 +117,11 @@ Standalone service module (spec 4.2, 4.3). Package \`$pkg\`. Follow the root
 | \`./gradlew integrationTest\` | Testcontainers \`*IT\` classes (Docker) |
 | \`./gradlew conformance\` | the \`@Conformance\` suite |
 | \`./gradlew check\` | all three plus the JaCoCo gate (80% lines on \`service\`/\`mapper\`/\`client\`) |
-| \`./gradlew check bootJar && docker build -t $name:dev .\` | image, as spec 4.3 rule 1 |
+| \`./gradlew check bootJar && docker build -t mfs-mw/$name:local .\` | image, as spec 4.3 rule 1 |
 | \`make verify M=$name\` | isolation + field-injection check + contracts lint + \`./gradlew check\` |
 | \`make verify-changed [BASE=main]\` | the same gate for the modules changed since BASE only |
-| \`make up M=$name\` | run this service's \`compose.yml\` (platform project must be up) |
+| \`make build M=$name\` | \`bootJar\`, then this service's images (\`deploy/docker-compose.yml\`) |
+| \`make up M=$name\` | start this service and its dependencies from \`deploy/docker-compose.yml\` |
 EOF
 
 refs="$(grep -rIlE 'service-template|service_template|service\.template|service/template|ServiceTemplate|SERVICE_TEMPLATE|templates/' "$out" || true)"
@@ -129,3 +130,40 @@ refs="$(grep -rIlE 'service-template|service_template|service\.template|service/
 mkdir -p "$(dirname "$dest")"
 mv "$out" "$dest"
 printf '==> scaffold: %s (package %s)\n' "$dest" "$pkg"
+
+# One hand-written stack file (ADR D16): no compose.yml in the module. Print the blocks to paste
+# into deploy/docker-compose.yml (profile core; keep the -init block once the service has an init/
+# step, copied from a service that has one).
+cat <<EOF
+==> scaffold: paste into deploy/docker-compose.yml (services:, profile core), then make build M=$name
+
+  $name-init:
+    <<: *init
+    profiles: *core
+    image: mfs-mw/$name-init:local
+    build: ../services/$name/init
+    environment: *init-env
+    volumes:
+      - openbao-data:/openbao/file:ro
+      - $suffix-approle:/out
+
+  $name:
+    <<: *app
+    profiles: *core
+    image: mfs-mw/$name:local
+    build: { context: ../services/$name, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+      $name-init: { condition: service_completed_successfully }
+    volumes:
+      - $suffix-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
+
+and under volumes:
+  $suffix-approle:
+EOF

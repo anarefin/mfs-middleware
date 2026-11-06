@@ -4,7 +4,7 @@ Its own Gradle build (wrapper, `gradle/libs.versions.toml`); never depends on a 
 It runs on the host against a running MVP stack and talks to it over the network only.
 
 ```
-make up                       # the stack (fresh: make down DOWN_ARGS=-v first)
+make build && make up         # the stack (fresh: make reset first; make up PROFILE=minimal is enough for @p2p)
 make e2e TAGS=@p2p            # every @p2p scenario
 make e2e TAGS=@cash           # agent01 cash-in, customer01 cash-out to agent01
 make e2e M=mw-audit-dw TAGS=@p2p   # @mw-audit-dw and (@p2p)
@@ -21,7 +21,7 @@ Only APISIX is published, so every call goes through it:
 | What | Path | Notes |
 | --- | --- | --- |
 | App API | `/app/v1/*` | the real channel route (`deploy/apisix/routes/app-v1.json`) |
-| Tokens (realm customers) | `POST /auth/realms/customers/protocol/openid-connect/token` | `auth-customers-token.json`; pins Host/X-Forwarded-* to `keycloak:8080` so `iss` = `http://keycloak:8080/realms/customers`, the issuer APISIX's openid-connect discovery expects. Password = `KC_CUSTOMERS_TEST_PASSWORD` from the generated `deploy/compose/platform/.env` |
+| Tokens (realm customers) | `POST /auth/realms/customers/protocol/openid-connect/token` | `auth-customers-token.json`; pins Host/X-Forwarded-* to `keycloak:8080` so `iss` = `http://keycloak:8080/realms/customers`, the issuer APISIX's openid-connect discovery expects. Password = `KC_CUSTOMERS_TEST_PASSWORD` from the generated `deploy/.env` |
 | Tokens (realm portals) | `POST /auth/realms/portals/protocol/openid-connect/token` | `auth-portals-token.json` (ticket 33), same pinning; client `mw-portal`, password `KC_PORTALS_TEST_PASSWORD`; `support/Keycloak.portalToken(user)` |
 | Org portal API | `/portal/org/v1/*` | the real route (`portal-org-v1.json`); `support/PortalApi` |
 | core-mock test/admin API | `/test/core-mock/v1/*` -> `mw-core-mock:8080/core-mock/v1/*` | `deploy/apisix/routes-test/test-core-mock.json`, TEST ONLY: PIN public key, `wallets/{id}` balances, `faults`. Present only after `make e2e` re-ran `apisix-init` with `MW_E2E_ROUTES=1` (a plain `make up` removes it); key-auth header `apikey` = `MW_E2E_API_KEY` from the generated `.env`, private source addresses only |
@@ -229,7 +229,7 @@ Only APISIX is published, so every call goes through it:
   scenario's own txnId), "<user> opens the transaction" / "opens the first listed transaction",
   "the opened transaction is tagged PAYEE", "the timeline ends "A -> B"" (state changes only;
   the portal drops the orchestrator's core-command entries). Payee scope in the dev stack:
-  ORG002 collects for biller DESCO and merchant wallet 01911000001 (mw-orchestrator `compose.yml`,
+  ORG002 collects for biller DESCO and merchant wallet 01911000001 (mw-orchestrator in `deploy/docker-compose.yml`,
   `mw.orchestrator.search.org-payees`).
 - `support/Keycloak.customerToken(user)`; `support/AuditTrail.rowsOfTxn` / `verifyChain`;
   `support/Waits.until` for anything asynchronous.

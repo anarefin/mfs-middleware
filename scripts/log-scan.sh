@@ -85,9 +85,7 @@ if [ $# -gt 0 ]; then
     if [ "$f" = - ]; then scan stdin || rc=1; else scan "$f" <"$f" || rc=1; fi
   done
 else
-  file="$MW_ROOT/deploy/compose/mvp/compose.yml"
-  [ -f "$file" ] || die "log-scan: deploy/compose/mvp/compose.yml does not exist"
-  compose_files "$file"
+  stack_compose
   services="$(docker compose "${DC_F[@]}" ps -a --format '{{.Service}}' 2>/dev/null | sort -u)"
   [ -n "$services" ] || die "log-scan: no containers in the MVP project (make up && make e2e first)"
   for s in $services; do

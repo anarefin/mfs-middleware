@@ -75,7 +75,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   `http_status`/`error` (`HTTP_<n>`, TIMEOUT, CONNECT_FAILED, TLS_FAILED, IO_ERROR, NO_SECRET, `URL_REFUSED: ...`)
   and the next row due after `service/IpnRetrySchedule` (`retry-delays` 1m,5m,30m,2h,6h; 6 attempts).
   CANCELLED and EXPIRED sessions get no IPN (no payment was made; the merchant's GET shows them). Logs: `checkout.ipn.delivered|failed|
-  exhausted` with the host only. Dev stack (`compose.yml`): dev host `mw-simulators` (merchant IPN
+  exhausted` with the host only. Dev stack (`deploy/docker-compose.yml`): dev host `mw-simulators` (merchant IPN
   receiver simulator) and a compressed schedule 10s,20s,30s,1m,2m.
 - Signed result (`security/ResultSigner`, `service/ResultLinks`): PAID -> successUrl, CANCELLED ->
   cancelUrl, FAILED/EXPIRED -> failUrl, query `sessionId, orderId, status, txnId?, amount, currency,
@@ -131,7 +131,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
   `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
-  `:dev` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
+  `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
 - `exception/`: `MwException`, `ErrorCategory` (namespace -> HTTP status, retryable),
@@ -157,5 +157,6 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 | `./gradlew check bootJar && docker build -t mw-checkout:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-checkout` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when its files or the contracts in its `contracts.yml` changed) |
-| `make up M=mw-checkout` | run this service's `compose.yml` (platform project must be up) |
+| `make build M=mw-checkout` | `bootJar`, then this service's images (`mfs-mw/mw-checkout:local`, `-init`) |
+| `make up M=mw-checkout` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |
 | `make e2e TAGS=@checkout` | session -> OTP -> pay -> signed redirect through the edge |

@@ -142,6 +142,29 @@ test_fails_on_shared_root_version_catalog() {
   assert_violation
 }
 
+# ADR D16: one hand-written deploy/docker-compose.yml; no module has its own compose.yml.
+test_fails_on_a_module_compose_file() {
+  new_module "$PWD" services/mw-a
+  touch services/mw-a/compose.yml
+  assert_violation
+  assert_out_contains "services/mw-a: compose.yml"
+  rm services/mw-a/compose.yml
+  mkdir -p ui/mw-ui && touch ui/mw-ui/compose.yml
+  assert_violation
+  assert_out_contains "ui/mw-ui: compose.yml"
+}
+
+test_fails_on_a_reference_to_the_old_compose_layout() {
+  new_module "$PWD" services/mw-a
+  printf '# see deploy/%s/mvp/compose.yml\n' compose >services/mw-a/Dockerfile
+  assert_violation
+  assert_out_contains "services/mw-a/Dockerfile"
+  # ADRs keep the history
+  rm services/mw-a/Dockerfile
+  mkdir -p docs/adr && printf 'was deploy/%s/mvp\n' compose >docs/adr/D16-x.md
+  assert_ok mw_make "$PWD" check-isolation
+}
+
 test_reports_all_violations_in_one_run() {
   new_module "$PWD" services/mw-a
   new_module "$PWD" services/mw-b

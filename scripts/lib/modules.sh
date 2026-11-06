@@ -39,16 +39,53 @@ selected_modules() {
   die "unknown module '$m' (known: $(all_modules | xargs -n1 basename | tr '\n' ' '))"
 }
 
-# compose_files FILE: set DC_F to the -f arguments for FILE. For the MVP project
-# (deploy/compose/mvp/compose.yml) that adds its low-resource override compose.lowmem.yml when
-# present, so every target (up, down, smoke, edge-test, e2e) sees the same model of the stack.
-# Use as: compose_files "$file"; docker compose "${DC_F[@]}" ...
-compose_files() {
-  DC_F=(-f "$1")
-  local over
-  over="$(dirname "$1")/compose.lowmem.yml"
-  if [ "$1" = "$MW_ROOT/deploy/compose/mvp/compose.yml" ] && [ -f "$over" ]; then
-    DC_F+=(-f "$over")
-  fi
+# The single-host stack: one hand-written Compose file with profiles (ADR D16).
+STACK_FILE="$MW_ROOT/deploy/docker-compose.yml"
+STACK_ENV="$MW_ROOT/deploy/.env"
+STACK_TIMERS="$MW_ROOT/deploy/test-timers.env"
+# every profile of the stack file (make down / make reset stop them all)
+STACK_PROFILES="minimal core seed"
+
+# stack_compose [PROFILE...]: set DC_F to the docker compose arguments for the stack: the file,
+# the generated deploy/.env (and deploy/test-timers.env with TIMERS=fast), then --profile for each
+# PROFILE (default core: every service, as the read-only targets ps, exec and logs need).
+# Use as: stack_compose; docker compose "${DC_F[@]}" ...
+stack_compose() {
+  [ -f "$STACK_FILE" ] || die "deploy/docker-compose.yml does not exist"
+  DC_F=(-f "$STACK_FILE")
+  # gen-dev-env.sh writes it (make up does); a read-only call on a checkout without it still works
+  # (scripts that start or stop the stack run gen-dev-env.sh first, so they always pass it)
+  if [ -f "$STACK_ENV" ] || [ "${TIMERS:-}" = fast ]; then DC_F+=(--env-file "$STACK_ENV"); fi
+  case "${TIMERS:-}" in
+    '') ;;
+    fast) DC_F+=(--env-file "$STACK_TIMERS") ;;
+    *) die "TIMERS must be empty or fast, got '$TIMERS'" ;;
+  esac
+  local p
+  [ "$#" -gt 0 ] || set -- core
+  for p in "$@"; do DC_F+=(--profile "$p"); done
   return 0
+}
+
+# stack_has_service NAME: true when deploy/docker-compose.yml defines service NAME (a two-space
+# indented key; the file is hand-written in that layout).
+stack_has_service() {
+  grep -q "^  $1:\$" "$STACK_FILE" 2>/dev/null
+}
+
+# stack_project: the Compose project name (COMPOSE_PROJECT_NAME, or the file's `name:`).
+stack_project() {
+  if [ -n "${COMPOSE_PROJECT_NAME:-}" ]; then printf '%s\n' "$COMPOSE_PROJECT_NAME"; return 0; fi
+  sed -n 's/^name: *//p' "$STACK_FILE" 2>/dev/null | head -1 | grep . || printf 'mfs-mw\n'
+}
+
+# stack_modules [M]: the stack modules (services/* with a Dockerfile, also in the stack file),
+# or only M.
+stack_modules() {
+  local mod
+  for mod in $(selected_modules "${1:-}"); do
+    case "$mod" in services/*) ;; *) [ -n "${1:-}" ] && die "$mod is not a stack module (services/*)"; continue ;; esac
+    [ -f "$MW_ROOT/$mod/Dockerfile" ] || continue
+    printf '%s\n' "$mod"
+  done
 }

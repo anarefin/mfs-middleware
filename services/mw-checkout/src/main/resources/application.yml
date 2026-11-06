@@ -37,7 +37,7 @@ spring:
       schema: checkout
       # Explicit pool: 10, above the usual 5, because every checkout page, pay and OTP call (HTTP, virtual threads) reads
       # or writes its schema. PostgreSQL
-      # max_connections sizing: deploy/compose/platform/compose.yml (postgres).
+      # max_connections sizing: deploy/docker-compose.yml (postgres).
       maximum-pool-size: 10
   flyway:
     schemas: checkout

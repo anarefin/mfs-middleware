@@ -326,7 +326,7 @@ test_each_ussd_route_takes_its_ip_allow_list_from_config() {
   # never opens the route; the dev ranges come from the generated .env (scripts/gen-dev-env.sh)
   local mno
   for mno in GP ROBI BL TELETALK; do
-    grep -qE "USSD_${mno}_ALLOWED_CIDRS: [\$][{]USSD_${mno}_ALLOWED_CIDRS:[?]" "$REPO_DIR/deploy/compose/platform/compose.yml" \
+    grep -qE "USSD_${mno}_ALLOWED_CIDRS: [\$][{]USSD_${mno}_ALLOWED_CIDRS:[?]" "$REPO_DIR/deploy/docker-compose.yml" \
       || fail "USSD_${mno}_ALLOWED_CIDRS is not required in the platform compose file"
     grep -q "USSD_${mno}_ALLOWED_CIDRS" "$REPO_DIR/scripts/gen-dev-env.sh" || fail "USSD_${mno}_ALLOWED_CIDRS not generated"
   done
@@ -358,8 +358,8 @@ test_ussd_secrets_are_generated_and_passed_to_apisix_and_the_simulator() {
   for mno in GP ROBI BL TELETALK; do
     v="USSD_${mno}_GATEWAY_SECRET"
     grep -q "$v" "$REPO_DIR/scripts/gen-dev-env.sh" || fail "$v not generated"
-    grep -A40 -E '^  apisix-init:' "$REPO_DIR/deploy/compose/platform/compose.yml" | grep -q "$v: " || fail "$v not passed to apisix-init"
-    grep -q "$v: " "$REPO_DIR/services/mw-simulators/compose.yml" || fail "$v not passed to mw-simulators-init"
+    grep -A40 -E '^  apisix-init:' "$REPO_DIR/deploy/docker-compose.yml" | grep -q "$v: " || fail "$v not passed to apisix-init"
+    grep -A20 -E "^  mw-simulators-init:" "$REPO_DIR/deploy/docker-compose.yml" | grep -q "$v: " || fail "$v not passed to mw-simulators-init"
   done
 }
 
@@ -367,12 +367,12 @@ test_ussd_secrets_are_generated_and_passed_to_apisix_and_the_simulator() {
 
 test_edge_test_fails_clearly_without_a_stack() {
   assert_fails mw_make "$PWD" edge-test
-  assert_out_contains "deploy/compose/mvp/compose.yml"
-  mkdir -p deploy/compose/mvp deploy/compose/platform .bin
-  touch deploy/compose/mvp/compose.yml
+  assert_out_contains "deploy/docker-compose.yml"
+  mkdir -p deploy .bin
+  touch deploy/docker-compose.yml
   assert_fails mw_make "$PWD" edge-test
   assert_out_contains "make up"
-  printf 'APISIX_ADMIN_KEY=t\n' >deploy/compose/platform/.env
+  printf 'APISIX_ADMIN_KEY=t\n' >deploy/.env
   # docker stub: the project resolves, but nothing publishes apisix:9443
   printf '#!/bin/sh\ncase "$*" in *" config "*) echo "{\\"name\\":\\"mw\\"}" ;; esac\nexit 0\n' >.bin/docker
   chmod +x .bin/docker
@@ -528,7 +528,7 @@ PY
 
 test_apisix_reads_the_valkey_password_from_its_environment() {
   grep -A3 -E '^ *envs:' "$REPO_DIR/deploy/apisix/config.yaml" | grep -q 'VALKEY_PASSWORD' || fail "config.yaml does not pass VALKEY_PASSWORD to nginx"
-  grep -A12 -E '^  apisix:' "$REPO_DIR/deploy/compose/platform/compose.yml" | grep -qE 'VALKEY_PASSWORD: [$][{]VALKEY_PASSWORD:[?]' \
+  grep -A12 -E '^  apisix:' "$REPO_DIR/deploy/docker-compose.yml" | grep -qE 'VALKEY_PASSWORD: [$][{]VALKEY_PASSWORD:[?]' \
     || fail "apisix service does not get VALKEY_PASSWORD from the generated env"
   if grep -rn 'redis_password' "$REPO_DIR/deploy/apisix" | grep -v '\$env://'; then fail "literal redis password"; fi
   return 0
@@ -572,7 +572,7 @@ test_ops_login_route_pins_the_public_host_and_never_reflects_the_client_host() {
 # The apisix-init one-shot gets the public host from the environment (default localhost, the
 # edge certificate's name and the redirect URIs of client mw-admin-ui).
 test_apisix_init_gets_the_public_host() {
-  grep -A40 -E '^  apisix-init:' "$REPO_DIR/deploy/compose/platform/compose.yml" \
+  grep -A40 -E '^  apisix-init:' "$REPO_DIR/deploy/docker-compose.yml" \
     | grep -qE 'MW_PUBLIC_HOST: [$][{]MW_PUBLIC_HOST:-localhost[}]' || fail "apisix-init lacks MW_PUBLIC_HOST"
 }
 

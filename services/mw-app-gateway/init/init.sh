@@ -43,7 +43,7 @@ fi
 bao kv get -field=spring.datasource.password "$KV" >"$tmp/dbpw"
 
 # 1b. Valkey password (ticket 29: device sessions, nonce cache) ----------------------------------
-# The platform's dev Valkey password (deploy/compose/platform/.env, scripts/gen-dev-env.sh), synced
+# The platform's dev Valkey password (deploy/.env, scripts/gen-dev-env.sh), synced
 # on every run as spring.data.redis.password, so a regenerated .env takes effect.
 if [ -n "${VALKEY_PASSWORD:-}" ]; then
   printf '%s' "$VALKEY_PASSWORD" >"$tmp/valkey"

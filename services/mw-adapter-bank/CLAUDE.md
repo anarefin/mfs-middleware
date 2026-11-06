@@ -85,7 +85,7 @@ since ticket 23 (applied to telco too, so the three stay identical). A fix to th
 be applied to all three copies (`diff -r` of the `partner` packages, package names aside, shows
 only test fixtures).
 
-The C2W bank is the seed instance `c2wbank`, a dev seed in `application-dev.yml` (profile `dev`, D23: set by this module's `compose.yml`
+The C2W bank is the seed instance `c2wbank`, a dev seed in `application-dev.yml` (profile `dev`, D23: set by its service in `deploy/docker-compose.yml`
 and the test config; the packaged `application.yml` seeds no partner, so a production start has none
 until a `partner/<id>` record arrives, and the image's AOT training run needs no http override) (`mw.partners`; wire format of
 the mw-simulators bank: `POST /c2wbank/v1/debits {transactionId, accountNumber, amount:"500.00"}`
@@ -131,7 +131,7 @@ MSISDN, a bank account (and any other type) last 4 only.
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
   `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
-  `:dev` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
+  `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
 - `exception/`: `MwException`, `ErrorCategory` (namespace -> HTTP status, retryable),
@@ -156,4 +156,5 @@ MSISDN, a bank account (and any other type) last 4 only.
 | `./gradlew check bootJar && docker build -t mw-adapter-bank:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-adapter-bank` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make verify-changed [BASE=main]` | the gate for the modules changed since BASE (this one when it, or a contract in its `contracts.yml`, changed) |
-| `make up M=mw-adapter-bank` | run this service's `compose.yml` (platform project must be up) |
+| `make build M=mw-adapter-bank` | `bootJar`, then this service's images (`mfs-mw/mw-adapter-bank:local`, `-init`) |
+| `make up M=mw-adapter-bank` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |

@@ -316,7 +316,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `transaction.payee_hash` (V9, indexed like the initiator hash; `BILLER:<billerCode>` of a BILL_PAY,
   `MERCHANT:<wallet>` of a credit to a MERCHANT wallet, else null) against the org's payees in
   `mw.orchestrator.search.org-payees` (`<orgId>: [BILLER:<code>, MERCHANT:<msisdn>]`, checked at
-  start; none in the main config, the dev ones (ORG002: DESCO and 01911000001) in `compose.yml` as
+  start; none in the main config, the dev ones (ORG002: DESCO and 01911000001) in `deploy/docker-compose.yml` as
   `SPRING_APPLICATION_JSON`, test ones in the test config). Each org-scoped item carries `role`
   INITIATOR (wins) or PAYEE; unscoped results carry none. Rows from before V8 had no hash and V8
   rows an untyped one: V10 re-hashes them all, so none is left behind. Views
@@ -374,7 +374,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
   `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
-  `:dev` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
+  `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
 - `exception/`: `MwException`, `ErrorCategory` (namespace -> HTTP status, retryable),
@@ -403,4 +403,5 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 | `./gradlew check bootJar && docker build -t mw-orchestrator:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-orchestrator` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make verify-changed [BASE=main]` | the gate for the modules changed since BASE (this one when it or a contract in its `contracts.yml` changed) |
-| `make up M=mw-orchestrator` | run this service's `compose.yml` (platform project must be up) |
+| `make build M=mw-orchestrator` | `bootJar`, then this service's images (`mfs-mw/mw-orchestrator:local`, `-init`) |
+| `make up M=mw-orchestrator` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |

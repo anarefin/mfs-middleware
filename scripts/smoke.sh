@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Smoke test for the running MVP Compose project (spec WP02). Run after `make up`.
-# Usage: scripts/smoke.sh        (honours COMPOSE_PROJECT_NAME, default project "mw")
+# Smoke test for the running stack (deploy/docker-compose.yml) (spec WP02). Run after `make up`.
+# Usage: scripts/smoke.sh        (honours COMPOSE_PROJECT_NAME, default project "mfs-mw")
 #
 # Checks: every platform container healthy and the one-shots exited 0; only APISIX
 # publishes a host port; every topic in deploy/kafka/topics.txt exists with RF 1 and the
@@ -11,18 +11,17 @@
 set -uo pipefail
 . "$(dirname "$0")/lib/modules.sh"
 
-file="$MW_ROOT/deploy/compose/mvp/compose.yml"
-[ -f "$file" ] || die "smoke: deploy/compose/mvp/compose.yml does not exist"
-compose_files "$file"
+[ -f "$STACK_FILE" ] || die "smoke: deploy/docker-compose.yml does not exist"
 command -v jq >/dev/null || die "smoke: jq is required"
 "$(dirname "$0")/gen-dev-env.sh"
+stack_compose
 
 CURL_IMAGE="curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93"
 LONG_RUNNING="kafka postgres valkey keycloak openbao etcd apisix greenmail"
 ONE_SHOT="kafka-init etcd-init apisix-init"
 
 # Generated credentials (gitignored .env written by gen-dev-env.sh)
-set -a; . "$MW_ROOT/deploy/compose/platform/.env"; set +a
+set -a; . "$STACK_ENV"; set +a
 # resolve VALUE: a realm file's ${VAR} placeholder -> its generated value (as Keycloak's
 # import does); any other value unchanged
 resolve() {
@@ -136,7 +135,7 @@ totp_required() {
   printf '%s' "$out" | jq -e '.access_token == null and .error == "invalid_grant"' >/dev/null \
     || { echo "got: $out"; return 1; }
 }
-for realm_file in "$MW_ROOT"/deploy/compose/platform/keycloak/realms/*-realm.json; do
+for realm_file in "$MW_ROOT"/deploy/keycloak/realms/*-realm.json; do
   realm="$(jq -r .realm "$realm_file")"
   client="$(jq -r '[.clients[] | select(.publicClient and .directAccessGrantsEnabled)][0].clientId // empty' "$realm_file")"
   while read -r user pw mfa; do
@@ -160,7 +159,7 @@ done
 ops_browser_flow_requires_otp() {
   local at flow ex
   at="$(docker run --rm --network "$ops_net" "$CURL_IMAGE" -sf --data-urlencode grant_type=password \
-    --data-urlencode client_id=admin-cli --data-urlencode "username=$(sed -n 's/^KC_BOOTSTRAP_ADMIN_USERNAME=//p' "$MW_ROOT/deploy/compose/platform/env/keycloak.env")" \
+    --data-urlencode client_id=admin-cli --data-urlencode "username=$(sed -n 's/^KC_BOOTSTRAP_ADMIN_USERNAME=//p' "$MW_ROOT/deploy/env/keycloak.env")" \
     --data-urlencode "password=$KC_BOOTSTRAP_ADMIN_PASSWORD" \
     http://keycloak:8080/realms/master/protocol/openid-connect/token | jq -r .access_token)" || return 1
   flow="$(docker run --rm --network "$ops_net" "$CURL_IMAGE" -sf -H "Authorization: Bearer $at" \

@@ -44,16 +44,33 @@ case "$auth" in
      exit 1 ;;
 esac
 
+# Any user, role or grant write bumps etcd's auth revision, which invalidates the running APISIX's
+# token (its next Admin API write fails with 503 until it logs in again). So a re-run (every
+# make up) with the setup already in place, the passwords from the env working and the apisix role
+# holding its /apisix range, changes nothing and exits at once.
+password_ok() { # USER PASSWORD: true when etcd accepts this login (always false before auth enable)
+  [ -n "$token" ] || return 1
+  curl -s -X POST -d "{\"name\":\"$1\",\"password\":\"$2\"}" "$ep/v3/auth/authenticate" | grep -q '"token"'
+}
+if password_ok apisix "$ETCD_APISIX_PASSWORD" && password_ok healthcheck "$ETCD_HEALTH_PASSWORD" \
+  && curl -s -X POST -H "Authorization: $token" -d '{"role":"apisix"}' "$ep/v3/auth/role/get" \
+     | grep -q "\"key\":\"$KEY_B64\".*\"range_end\":\"$RANGE_END_B64\""; then
+  echo "etcd-init: auth, users and the apisix role already in place, nothing to change"
+  exit 0
+fi
+
 call /v3/auth/role/add '{"name":"root"}'
 call /v3/auth/user/add "{\"name\":\"root\",\"password\":\"$ETCD_ROOT_PASSWORD\"}"
 call /v3/auth/user/grant '{"user":"root","role":"root"}'
 call /v3/auth/role/add '{"name":"apisix"}'
 call /v3/auth/role/grant "{\"name\":\"apisix\",\"perm\":{\"permType\":\"READWRITE\",\"key\":\"$KEY_B64\",\"range_end\":\"$RANGE_END_B64\"}}"
 call /v3/auth/user/add "{\"name\":\"apisix\",\"password\":\"$ETCD_APISIX_PASSWORD\"}"
-call /v3/auth/user/changepw "{\"name\":\"apisix\",\"password\":\"$ETCD_APISIX_PASSWORD\"}"
+password_ok apisix "$ETCD_APISIX_PASSWORD" \
+  || call /v3/auth/user/changepw "{\"name\":\"apisix\",\"password\":\"$ETCD_APISIX_PASSWORD\"}"
 call /v3/auth/user/grant '{"user":"apisix","role":"apisix"}'
 # healthcheck: no role at all, used only by the etcd container's health check
 call /v3/auth/user/add "{\"name\":\"healthcheck\",\"password\":\"$ETCD_HEALTH_PASSWORD\"}"
-call /v3/auth/user/changepw "{\"name\":\"healthcheck\",\"password\":\"$ETCD_HEALTH_PASSWORD\"}"
+password_ok healthcheck "$ETCD_HEALTH_PASSWORD" \
+  || call /v3/auth/user/changepw "{\"name\":\"healthcheck\",\"password\":\"$ETCD_HEALTH_PASSWORD\"}"
 [ -n "$token" ] || call /v3/auth/enable '{}'
 echo "etcd-init: auth enabled; apisix may only use the /apisix prefix"

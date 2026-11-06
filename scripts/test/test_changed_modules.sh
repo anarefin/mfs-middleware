@@ -17,7 +17,7 @@ test_changed_modules_ignores_markdown_under_deploy_and_docs() {
   cm_repo
   echo more >>deploy/apisix/README.md
   echo more >>docs/runbook.md
-  mkdir -p deploy/compose/mvp && echo '# new' >deploy/compose/mvp/NOTES.md
+  mkdir -p deploy/kafka && echo "# new" >deploy/kafka/NOTES.md
   cm
   [ -z "$OUT" ] || fail "docs-only change selected modules (default mode): $OUT"
   cm --contracts-precise

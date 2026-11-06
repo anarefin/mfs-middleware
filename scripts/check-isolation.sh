@@ -88,9 +88,29 @@ check_root() {
   done
 }
 
+# ADR D16: the stack is one hand-written deploy/docker-compose.yml. No module (services/*,
+# templates/*, ui/*) has its own compose.yml, and nothing outside docs/adr/ (the history) refers to
+# the removed per-module layout (ticket 56).
+check_compose_layout() {
+  local f hits old="deploy/""compose/"
+  for f in "$MW_ROOT"/services/*/compose.yml "$MW_ROOT"/templates/*/compose.yml "$MW_ROOT"/ui/*/compose.yml; do
+    [ -f "$f" ] || continue
+    f="${f#"$MW_ROOT"/}"
+    violation "${f%/compose.yml}" "compose.yml: a module has no compose file of its own; its services live in deploy/docker-compose.yml (ADR D16)"
+  done
+  hits="$(grep -rIl -F "$old" "$MW_ROOT" \
+    --exclude-dir=.git --exclude-dir=build --exclude-dir=.gradle --exclude-dir=node_modules \
+    --exclude-dir=.next --exclude-dir=.scratch --exclude-dir=.claude 2>/dev/null \
+    | sed "s#^$MW_ROOT/##" | grep -v -E '^(docs/adr|scripts/test)/' || true)"
+  for f in $hits; do
+    violation "$f" "refers to the removed $old layout (now deploy/docker-compose.yml, ADR D16)"
+  done
+}
+
 m="${1:-}"
 modules="$(selected_modules "$m")"
 check_root
+[ -n "$m" ] || check_compose_layout
 for mod in $modules; do
   out="$(check_module "$mod")"
   if [ -n "$out" ]; then

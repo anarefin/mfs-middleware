@@ -10,169 +10,175 @@ stub_tools() {
   PATH="$PWD/.bin:$PATH"
 }
 
-test_up_with_no_stack_and_no_modules_is_a_noop() {
+# stack_file [SERVICE...]: a fixture deploy/docker-compose.yml naming SERVICE... (one per line, as
+# the scripts look services up).
+stack_file() {
+  mkdir -p deploy
+  { printf 'name: mfs-mw\nservices:\n'; for s in "$@"; do printf '  %s:\n    image: x\n' "$s"; done; } >deploy/docker-compose.yml
+}
+
+F() { printf 'compose -f %s/deploy/docker-compose.yml --env-file %s/deploy/.env' "$PWD" "$PWD"; }
+
+test_up_with_no_stack_file_is_a_noop() {
   stub_tools
   assert_ok mw_make "$PWD" up
   assert_out_contains "nothing to start"
 }
 
-test_up_always_rebuilds_service_jars_and_images_unless_opted_out() {
-  # Never run stale code: an existing jar or an existing mw-x:dev / mw-x-init:dev image may
-  # predate the source. Every stack module's bootJar runs (Gradle is incremental) and compose
-  # builds every image (layer cache) on each make up; MW_UP_NO_BUILD=1 skips both.
+test_up_starts_the_core_profile_and_waits_without_building() {
+  # Images are reused: make up never runs Gradle and never passes --build (make build does that).
   stub_tools
-  mkdir -p deploy/compose/mvp && touch deploy/compose/mvp/compose.yml
-  new_module "$PWD" services/mw-a; touch services/mw-a/Dockerfile services/mw-a/compose.yml
-  new_module "$PWD" services/mw-b; touch services/mw-b/Dockerfile services/mw-b/compose.yml
-  mkdir -p services/mw-b/build/libs && touch services/mw-b/build/libs/mw-b-0.1.0.jar
+  stack_file mw-a
+  new_module "$PWD" services/mw-a; touch services/mw-a/Dockerfile
   assert_ok mw_make "$PWD" up
-  grep -q '^bootJar' services/mw-a/.gradlew-calls 2>/dev/null || fail "mw-a jar not built"
-  grep -q '^bootJar' services/mw-b/.gradlew-calls 2>/dev/null || fail "mw-b jar not refreshed although one exists"
-  grep -q "compose -f $PWD/deploy/compose/mvp/compose.yml up -d --build" .tool-calls || fail "images not rebuilt: $(cat .tool-calls)"
-  # --build given once even when COMPOSE_ARGS has it too
-  rm -f .tool-calls
-  assert_ok mw_make "$PWD" up COMPOSE_ARGS=--build
-  [ "$(grep -o -- '--build' .tool-calls | wc -l | tr -d ' ')" = 1 ] || fail "--build repeated: $(cat .tool-calls)"
-  # M= rebuilds that module only
-  rm -f .tool-calls services/mw-*/.gradlew-calls
-  assert_ok mw_make "$PWD" up M=mw-a
-  grep -q '^bootJar' services/mw-a/.gradlew-calls 2>/dev/null || fail "M=mw-a jar not built"
-  [ -f services/mw-b/.gradlew-calls ] && fail "M=mw-a also built mw-b"
-  grep -q "compose -f $PWD/services/mw-a/compose.yml up -d --build" .tool-calls || fail "M=mw-a image not rebuilt"
-  # opt-out
-  rm -f .tool-calls services/mw-*/.gradlew-calls
-  MW_UP_NO_BUILD=1 mw_make "$PWD" up || fail "up with MW_UP_NO_BUILD=1 failed: $OUT"
-  [ -f services/mw-a/.gradlew-calls ] && fail "MW_UP_NO_BUILD=1 still built jars"
-  grep -q -- '--build' .tool-calls && fail "MW_UP_NO_BUILD=1 still rebuilt images"
-  # a failing build stops make up before compose
-  rm -f services/mw-a/.gradlew-calls .tool-calls; rm -rf services/mw-a/build; touch services/mw-a/.gradlew-fail
-  assert_fails mw_make "$PWD" up
-  assert_out_contains "mw-a"
-  grep -q 'compose' .tool-calls 2>/dev/null && fail "compose ran after a failed jar build"
+  grep -qF "docker $(F) --profile core up -d --wait" .tool-calls || fail "core profile not started: $(cat .tool-calls)"
+  grep -q -- '--build' .tool-calls && fail "make up rebuilt images: $(cat .tool-calls)"
+  [ -f services/mw-a/.gradlew-calls ] && fail "make up ran Gradle"
   return 0
 }
 
-test_up_starts_the_mvp_compose_project() {
+test_up_with_PROFILE_starts_that_profile_and_rejects_unknown_ones() {
   stub_tools
-  mkdir -p deploy/compose/mvp && touch deploy/compose/mvp/compose.yml
-  assert_ok mw_make "$PWD" up
-  grep -q "docker compose -f $PWD/deploy/compose/mvp/compose.yml up -d" .tool-calls || fail "mvp project not started: $(cat .tool-calls)"
+  stack_file mw-a
+  assert_ok mw_make "$PWD" up PROFILE=minimal
+  grep -qF -- "--profile minimal up -d --wait" .tool-calls || fail "minimal not started: $(cat .tool-calls)"
+  rm -f .tool-calls
+  assert_fails mw_make "$PWD" up PROFILE=everything
+  assert_out_contains "PROFILE"
+  [ -f .tool-calls ] && grep -q ' up ' .tool-calls && fail "started with an unknown profile"
+  return 0
 }
 
-# stub_compose_ps: docker stub whose `compose ... ps` prints .ps-<n> on the n-th call
-# (the last file once they run out); every other call is recorded and succeeds.
-stub_compose_ps() {
+test_up_with_TIMERS_fast_adds_the_test_timers_env_file() {
+  stub_tools
+  stack_file mw-a
+  assert_ok mw_make "$PWD" up TIMERS=fast
+  grep -qF "docker $(F) --env-file $PWD/deploy/test-timers.env --profile core up -d --wait" .tool-calls \
+    || fail "test timers not loaded: $(cat .tool-calls)"
+  assert_fails mw_make "$PWD" up TIMERS=slow
+  assert_out_contains "TIMERS"
+}
+
+test_up_with_M_starts_that_service_and_its_dependencies() {
+  stub_tools
+  stack_file mw-a-init mw-a mw-b
+  new_module "$PWD" services/mw-a
+  assert_ok mw_make "$PWD" up M=mw-a
+  grep -F -- "--profile core up -d --wait" .tool-calls | grep -q " mw-a$" || fail "mw-a not started: $(cat .tool-calls)"
+  grep -q -- '--no-deps' .tool-calls && fail "M= must start the dependencies too"
+  return 0
+}
+
+test_up_with_M_fails_when_the_module_is_not_in_the_stack_file() {
+  stub_tools
+  stack_file mw-b
+  new_module "$PWD" services/mw-a
+  assert_fails mw_make "$PWD" up M=mw-a
+  assert_out_contains "deploy/docker-compose.yml"
+}
+
+test_up_waits_for_long_running_services_then_runs_the_one_shots_nothing_depends_on() {
+  # `up --wait` fails on a one-shot that exits unless a started service depends on it
+  # (apisix-init): name the long-running services, then run and wait for the dangling one-shots.
+  command -v jq >/dev/null 2>&1 || return 0
   mkdir -p .bin
   cat >.bin/docker <<EOF
 #!/bin/sh
 echo "docker \$*" >> "$PWD/.tool-calls"
 case "\$*" in
-  *" ps "*|*" ps") n=\$(( \$(cat "$PWD/.ps-n" 2>/dev/null || echo 0) + 1 )); echo \$n > "$PWD/.ps-n"
-    f="$PWD/.ps-\$n"; [ -f "\$f" ] || f="\$(ls "$PWD"/.ps-[0-9]* | sort -t- -k2 -n | tail -1)"; cat "\$f" ;;
+  *"config --format json"*) cat <<'J'
+{"services":{"db":{},"db-init":{"labels":{"mw.oneshot":"true"}},"svc":{"depends_on":{"db-init":{}}},
+ "edge-init":{"labels":{"mw.oneshot":"true"},"depends_on":{"db":{}}}}}
+J
+  ;;
 esac
 exit 0
 EOF
-  chmod +x .bin/docker
-  PATH="$PWD/.bin:$PATH"
-  mkdir -p deploy/compose/mvp && touch deploy/compose/mvp/compose.yml
-}
-
-# ps lines as up.sh asks for them: service, state, health, exit code, labels. One-shot init
-# containers carry the compose label mw.oneshot=true.
-L='com.docker.compose.project=mvp'
-O="$L,mw.oneshot=true"
-
-# up_with TIMEOUT: run make up against the stubbed docker; output in OUT, status returned.
-up_with() {
-  OUT="$(MW_UP_TIMEOUT="$1" MW_UP_POLL=0 make -s -f "$REPO_DIR/Makefile" MW_ROOT="$PWD" SELFTEST=0 up 2>&1)"
-}
-
-test_up_returns_once_every_long_running_service_is_healthy() {
-  stub_compose_ps
-  printf 'kafka\trunning\tstarting\t0\t%s\nkafka-init\trunning\t\t0\t%s\npostgres\trunning\thealthy\t0\t%s\n' "$L" "$O" "$L" >.ps-1
-  printf 'kafka\trunning\thealthy\t0\t%s\nkafka-init\texited\t\t0\t%s\netcd-init\texited\t\t0\t%s\npostgres\trunning\thealthy\t0\t%s\n' "$L" "$O" "$O" "$L" >.ps-2
-  up_with 30 || fail "up failed: $OUT"
-  [ "$(cat .ps-n)" = 2 ] || fail "did not poll until healthy (polls: $(cat .ps-n))"
-  assert_out_contains "healthy"
-}
-
-test_up_waits_for_running_one_shots_to_finish() {
-  # Services report healthy before kafka-init has created the topics they use: up must not
-  # return until every one-shot has exited (0).
-  stub_compose_ps
-  printf 'kafka\trunning\thealthy\t0\t%s\nkafka-init\trunning\t\t0\t%s\nnew-init\tcreated\t\t0\t%s\n' "$L" "$O" "$O" >.ps-1
-  printf 'kafka\trunning\thealthy\t0\t%s\nkafka-init\texited\t\t0\t%s\nnew-init\texited\t\t0\t%s\n' "$L" "$O" "$O" >.ps-2
-  up_with 30 || fail "up failed: $OUT"
-  [ "$(cat .ps-n)" = 2 ] || fail "returned while one-shots were still running (polls: $(cat .ps-n))"
-  rm -f .ps-*
-  printf 'kafka\trunning\thealthy\t0\t%s\nkafka-init\trunning\t\t0\t%s\n' "$L" "$O" >.ps-1
-  if up_with 1; then fail "up succeeded with kafka-init still running"; fi
-  assert_out_contains "kafka-init"
-}
-
-test_up_fails_naming_the_unhealthy_services_on_timeout() {
-  stub_compose_ps
-  printf 'kafka\trunning\thealthy\t0\t%s\nkeycloak\trunning\tstarting\t0\t%s\napisix\tcreated\t\t0\t%s\nkafka-init\texited\t\t0\t%s\n' "$L" "$L" "$L" "$O" >.ps-1
-  if up_with 1; then fail "up succeeded with services still starting"; fi
-  assert_out_contains "keycloak"; assert_out_contains "apisix"
-  assert_out_lacks "kafka-init"
-  case "$OUT" in *timed*out*|*timeout*) ;; *) fail "no timeout message" ;; esac
-  printf '%s\n' "$OUT" | grep -i 'unhealthy\|not healthy' | grep -q 'kafka,\|kafka ' && fail "healthy kafka named as unhealthy"
+  chmod +x .bin/docker; PATH="$PWD/.bin:$PATH"
+  stack_file db db-init svc edge-init
+  assert_ok mw_make "$PWD" up
+  grep -q -- "up -d --wait --wait-timeout 300 db svc$" .tool-calls || fail "long-running services not named: $(cat .tool-calls)"
+  grep -q -- "up -d edge-init$" .tool-calls || fail "dangling one-shot not started: $(cat .tool-calls)"
+  grep -q -- " wait edge-init$" .tool-calls || fail "dangling one-shot exit not checked: $(cat .tool-calls)"
+  grep -q -- "db-init" .tool-calls && fail "a one-shot with a dependant was started on its own"
   return 0
 }
 
-test_up_fails_fast_naming_a_long_running_service_that_exited_died_or_is_unhealthy() {
-  local state health
-  for state_health in exited: dead: running:unhealthy; do
-    state="${state_health%%:*}"; health="${state_health#*:}"
-    rm -f .ps-* .tool-calls
-    stub_compose_ps
-    printf 'kafka\trunning\tstarting\t0\t%s\nopenbao\t%s\t%s\t1\t%s\n' "$L" "$state" "$health" "$L" >.ps-1
-    if up_with 5; then fail "up succeeded with openbao $state $health"; fi
-    [ "$(cat .ps-n)" = 1 ] || fail "$state/$health: kept polling ($(cat .ps-n) polls) instead of failing fast"
-    assert_out_contains "openbao"
-    assert_out_contains "${health:-$state}"
-    assert_out_lacks "timed out"
-    printf '%s\n' "$OUT" | grep -q 'kafka(' && fail "still-starting kafka named as failed: $OUT"
-  done
+test_up_fails_when_compose_fails() {
+  mkdir -p .bin; printf '#!/bin/sh\nexit 1\n' >.bin/docker; chmod +x .bin/docker; PATH="$PWD/.bin:$PATH"
+  stack_file mw-a
+  assert_fails mw_make "$PWD" up
+}
+
+test_build_builds_every_stack_jar_then_the_images() {
+  stub_tools
+  stack_file mw-a-init mw-a mw-b
+  new_module "$PWD" services/mw-a; touch services/mw-a/Dockerfile
+  new_module "$PWD" services/mw-b; touch services/mw-b/Dockerfile
+  new_module "$PWD" templates/mw-service-template; touch templates/mw-service-template/Dockerfile
+  assert_ok mw_make "$PWD" build
+  grep -q '^bootJar' services/mw-a/.gradlew-calls || fail "mw-a jar not built"
+  grep -q '^bootJar' services/mw-b/.gradlew-calls || fail "mw-b jar not built"
+  [ -f templates/mw-service-template/.gradlew-calls ] && fail "the template is not a stack module"
+  grep -qF "docker $(F) --profile minimal --profile core --profile seed build" .tool-calls || fail "images not built: $(cat .tool-calls)"
+}
+
+test_build_with_M_builds_only_that_jar_and_its_images() {
+  stub_tools
+  stack_file mw-a-init mw-a mw-b
+  new_module "$PWD" services/mw-a; touch services/mw-a/Dockerfile
+  new_module "$PWD" services/mw-b; touch services/mw-b/Dockerfile
+  assert_ok mw_make "$PWD" build M=mw-a
+  grep -q '^bootJar' services/mw-a/.gradlew-calls || fail "mw-a jar not built"
+  [ -f services/mw-b/.gradlew-calls ] && fail "M=mw-a also built mw-b"
+  grep -qF -- "build mw-a-init mw-a" .tool-calls || fail "mw-a images not built: $(cat .tool-calls)"
+}
+
+test_build_runs_JOBS_gradle_builds_at_a_time_and_stops_before_the_images_on_a_failure() {
+  stub_tools
+  stack_file mw-a mw-b
+  new_module "$PWD" services/mw-a; touch services/mw-a/Dockerfile
+  new_module "$PWD" services/mw-b; touch services/mw-b/Dockerfile services/mw-b/.gradlew-fail
+  assert_fails mw_make "$PWD" build JOBS=2
+  assert_out_contains "mw-b"
+  grep -q '^bootJar' services/mw-a/.gradlew-calls || fail "mw-a not built next to the failing mw-b"
+  grep -q ' build' .tool-calls 2>/dev/null && fail "images built after a failed jar build"
+  assert_fails mw_make "$PWD" build JOBS=0
+  assert_out_contains "JOBS"
+}
+
+test_seed_runs_the_seeder_one_shot_and_fails_when_it_does() {
+  stub_tools
+  stack_file mw-a mw-seeder
+  assert_ok mw_make "$PWD" seed
+  grep -qF -- "--profile core --profile seed up -d mw-seeder" .tool-calls || fail "seeder not started: $(cat .tool-calls)"
+  grep -qF -- "--profile core --profile seed wait mw-seeder" .tool-calls || fail "seeder exit not checked: $(cat .tool-calls)"
+  printf '#!/bin/sh\ncase "$*" in *" wait "*) exit 3 ;; esac\nexit 0\n' >.bin/docker
+  assert_fails mw_make "$PWD" seed
+  assert_out_contains "mw-seeder"
+}
+
+test_seed_without_a_seeder_says_so_and_does_nothing() {
+  stub_tools
+  stack_file mw-a
+  assert_ok mw_make "$PWD" seed
+  assert_out_contains "no mw-seeder"
+  [ -f .tool-calls ] && grep -q ' up ' .tool-calls && fail "started something"
   return 0
 }
 
-test_up_fails_fast_naming_a_one_shot_that_exited_non_zero() {
-  stub_compose_ps
-  printf 'kafka\trunning\thealthy\t0\t%s\nkafka-init\texited\t\t1\t%s\netcd-init\texited\t\t0\t%s\napisix\trunning\tstarting\t0\t%s\n' "$L" "$O" "$O" "$L" >.ps-1
-  if up_with 5; then fail "up succeeded with a failed one-shot"; fi
-  [ "$(cat .ps-n)" = 1 ] || fail "kept polling ($(cat .ps-n) polls) instead of failing fast"
-  assert_out_contains "kafka-init"
-  assert_out_contains "exit 1"
-  assert_out_lacks "etcd-init"
-  assert_out_lacks "timed out"
-}
-
-test_up_reads_one_shots_from_the_compose_label_not_a_list() {
-  # An exited service without the label is long-running (fails); one with it is a one-shot.
-  stub_compose_ps
-  printf 'kafka\trunning\thealthy\t0\t%s\nnew-init\texited\t\t0\t%s\n' "$L" "$O" >.ps-1
-  up_with 30 || fail "labelled one-shot new-init exited 0 was not skipped: $OUT"
-  rm -f .ps-*
-  printf 'kafka\trunning\thealthy\t0\t%s\nkafka-init\texited\t\t0\t%s\n' "$L" "$L" >.ps-1
-  if up_with 30; then fail "unlabelled exited kafka-init treated as a one-shot"; fi
-  assert_out_contains "kafka-init"
-}
-
-test_up_with_M_starts_only_that_module() {
+test_down_stops_every_profile_and_reset_drops_the_volumes_too() {
   stub_tools
-  new_module "$PWD" services/mw-a
-  touch services/mw-a/compose.yml
-  assert_ok mw_make "$PWD" up M=mw-a
-  grep -q "docker compose -f $PWD/services/mw-a/compose.yml up -d" .tool-calls || fail "module not started"
-}
-
-test_up_with_M_fails_when_module_has_no_compose_file() {
-  stub_tools
-  new_module "$PWD" services/mw-a
-  assert_fails mw_make "$PWD" up M=mw-a
-  assert_out_contains "compose.yml"
+  stack_file mw-a
+  assert_ok mw_make "$PWD" down
+  grep -qF "docker $(F) --profile minimal --profile core --profile seed down" .tool-calls || fail "down: $(cat .tool-calls)"
+  rm -f .tool-calls
+  assert_ok mw_make "$PWD" down DOWN_ARGS=-v
+  grep -qF -- "down -v" .tool-calls || fail "DOWN_ARGS not passed: $(cat .tool-calls)"
+  rm -f .tool-calls
+  assert_ok mw_make "$PWD" reset
+  grep -qF "docker $(F) --profile minimal --profile core --profile seed down -v --remove-orphans" .tool-calls \
+    || fail "reset: $(cat .tool-calls)"
 }
 
 test_e2e_with_no_suite_is_a_noop() {
@@ -195,7 +201,7 @@ test_e2e_runs_suite_filtered_by_module_tag() {
 test_e2e_enables_the_test_only_gateway_routes_on_the_running_stack_first() {
   # The test routes (deploy/apisix/routes-test) exist only while apisix-init last ran with
   # MW_E2E_ROUTES=1: make e2e re-runs it with the flag and waits for it, then runs the suite.
-  mkdir -p .bin deploy/compose/mvp && touch deploy/compose/mvp/compose.yml
+  mkdir -p .bin deploy && touch deploy/docker-compose.yml
   cat >.bin/docker <<EOF
 #!/bin/sh
 echo "MW_E2E_ROUTES=\${MW_E2E_ROUTES:-} key=\${MW_E2E_API_KEY:+set} docker \$*" >> "$PWD/.tool-calls"
@@ -212,7 +218,7 @@ EOF
 }
 
 test_e2e_fails_when_the_test_routes_cannot_be_enabled() {
-  mkdir -p .bin deploy/compose/mvp && touch deploy/compose/mvp/compose.yml
+  mkdir -p .bin deploy && touch deploy/docker-compose.yml
   printf '#!/bin/sh\ncase "$*" in *wait*) exit 1 ;; esac\nexit 0\n' >.bin/docker
   chmod +x .bin/docker
   PATH="$PWD/.bin:$PATH"
@@ -248,7 +254,7 @@ test_perf_passes_extra_settings_to_both_runs() {
 
 test_perf_enables_the_test_only_gateway_routes_first() {
   # The run's setup needs the core's PIN key and the SMSC simulator (binding OTPs): test routes.
-  mkdir -p .bin deploy/compose/mvp && touch deploy/compose/mvp/compose.yml
+  mkdir -p .bin deploy && touch deploy/docker-compose.yml
   cat >.bin/docker <<EOF
 #!/bin/sh
 echo "MW_E2E_ROUTES=\${MW_E2E_ROUTES:-} docker \$*" >> "$PWD/.tool-calls"
@@ -318,4 +324,57 @@ test_new_service_rejects_bad_names_and_existing_modules() {
   new_module "$PWD" services/mw-x
   assert_fails mw_make "$PWD" new-service NAME=mw-x
   assert_out_contains "exists"
+}
+
+# ---- make compose-check: memory budget of deploy/docker-compose.yml (real `docker compose config`) ----
+
+have_compose() {
+  docker compose version >/dev/null 2>&1 && command -v node >/dev/null 2>&1 && return 0
+  echo "    SKIP: docker compose CLI or node missing" >&2; return 1
+}
+
+# budget_stack: one long-running platform service, one one-shot, one profiled module
+budget_stack() {
+  mkdir -p deploy
+  cat >deploy/docker-compose.yml <<'YML'
+name: mfs-mw
+services:
+  db:
+    image: postgres:18
+    environment: { POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh}" }
+    deploy: { resources: { limits: { memory: 384M } } }
+  db-init:
+    image: alpine:3
+    labels: { mw.oneshot: "true" }
+    restart: "no"
+  mw-a:
+    profiles: [core]
+    image: mfs-mw/mw-a:local
+    deploy: { resources: { limits: { memory: 512M } } }
+YML
+}
+
+test_compose_check_counts_every_profile_and_skips_one_shots() {
+  have_compose || return 0
+  budget_stack
+  assert_ok mw_make "$PWD" compose-check
+  assert_out_contains "896 MiB of 10240 MiB"
+}
+
+test_compose_check_fails_over_the_budget_or_without_a_limit() {
+  have_compose || return 0
+  budget_stack
+  OUT="$(MW_RAM_BUDGET_MIB=800 make -s -f "$REPO_DIR/Makefile" MW_ROOT="$PWD" SELFTEST=0 compose-check 2>&1)" \
+    && fail "896 MiB accepted under an 800 MiB budget"
+  assert_out_contains "over the 800 MiB budget"
+  sed -i.bak '/memory: 512M/d' deploy/docker-compose.yml
+  assert_fails mw_make "$PWD" compose-check
+  assert_out_contains "without a memory limit: mw-a"
+}
+
+test_compose_check_passes_on_the_repo_stack_file() {
+  have_compose || return 0
+  mkdir -p deploy && cp "$REPO_DIR/deploy/docker-compose.yml" deploy/
+  assert_ok mw_make "$PWD" compose-check
+  assert_out_contains "of 10240 MiB"
 }

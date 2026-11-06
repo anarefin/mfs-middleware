@@ -43,8 +43,8 @@ tasks.test {
     System.getProperties().stringPropertyNames()
         .filter { it == "cucumber.filter.tags" || it.startsWith("mw.e2e.") }
         .forEach { systemProperty(it, System.getProperty(it)) }
-    // The repository root: compose file and generated dev credentials (deploy/compose/...).
+    // The repository root: compose file and generated dev credentials (deploy/docker-compose.yml, deploy/.env).
     systemProperty("mw.e2e.root", rootDir.resolve("../..").canonicalPath)
-    // Compose project of the stack under test (per-worktree stacks set it, default "mw").
+    // Compose project of the stack under test (per-worktree stacks set it, default "mfs-mw").
     System.getenv("COMPOSE_PROJECT_NAME")?.let { environment("COMPOSE_PROJECT_NAME", it) }
 }

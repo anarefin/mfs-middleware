@@ -28,7 +28,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   constructors); `recipient` INITIATOR|DEBIT_PARTY|CREDIT_PARTY. An SMS rule needs an
   MSISDN-shaped id; an EMAIL rule needs the party's address in `notify.contact` (party_id ->
   email; maintained by the admin console later; dev seed `db/dev/R__dev_contacts.sql`, applied
-  only when `MW_NOTIFY_FLYWAY_LOCATIONS` adds `classpath:db/dev`, as the module's compose.yml
+  only when `MW_NOTIFY_FLYWAY_LOCATIONS` adds `classpath:db/dev`, as `deploy/docker-compose.yml`
   does), else the rule is skipped. Params: amount, fee (taka, 2 decimals), txnId, txnType,
   counterparty (the other side, masked by type: for the INITIATOR the side that is not itself, so
   an ADD_MONEY_BANK shows the bank account), coreRef, partnerRef, partner (partnerId), biller
@@ -120,7 +120,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
   `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
-  `:dev` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
+  `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
 - `exception/`: `MwException`, `ErrorCategory` (namespace -> HTTP status, retryable),
@@ -147,4 +147,5 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 | `./gradlew check bootJar && docker build -t mw-notify:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-notify` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make verify-changed [BASE=main]` | the gate for the modules changed since BASE (this one when it or a contract it lists changed) |
-| `make up M=mw-notify` | run this service's `compose.yml` (platform project must be up) |
+| `make build M=mw-notify` | `bootJar`, then this service's images (`mfs-mw/mw-notify:local`, `-init`) |
+| `make up M=mw-notify` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |

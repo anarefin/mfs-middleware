@@ -80,7 +80,7 @@ test_spec_has_no_static_analysis_or_sast_requirement() {
 
 test_spec_records_keycloak_on_the_data_network_as_an_mvp_deviation() {
   spec_has 'Keycloak \(Operation zone\) also joins the `data` network.*PostgreSQL.*MVP single-host deviation'
-  grep -A4 '^  keycloak:' "$REPO_DIR/deploy/compose/platform/compose.yml" | grep -qE 'networks: \[ops, data\]' \
+  grep -A4 '^  keycloak:' "$REPO_DIR/deploy/docker-compose.yml" | grep -qE 'networks: \[ops, data\]' \
     || fail "keycloak compose networks changed; update spec 18.1"
 }
 

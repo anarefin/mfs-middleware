@@ -27,10 +27,8 @@
 set -uo pipefail
 . "$(dirname "$0")/lib/modules.sh"
 
-file="$MW_ROOT/deploy/compose/mvp/compose.yml"
-[ -f "$file" ] || die "chaos: deploy/compose/mvp/compose.yml does not exist"
-compose_files "$file"
-env_file="$MW_ROOT/deploy/compose/platform/.env"
+stack_compose
+env_file="$STACK_ENV"
 if [ -f "$env_file" ]; then set -a; . "$env_file"; set +a; fi
 
 warmup="${CHAOS_WARMUP:-60}"

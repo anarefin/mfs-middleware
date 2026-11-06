@@ -9,7 +9,8 @@ assumes the earlier ones still pass.
 ## Before any demo
 
 ```sh
-make down DOWN_ARGS=-v          # fresh volumes: seed balances, daily limits, Keycloak users
+make reset                      # fresh volumes: seed balances, daily limits, Keycloak users
+make build                      # jars and images
 time make up                    # under 15 minutes on a clean host (README quick start)
 make smoke
 ```
@@ -95,7 +96,7 @@ Automated:
 Manual walk (acceptance criterion 4), after `make e2e TAGS=@p2p` so there are transactions:
 
 1. Open https://localhost/console and sign in as `ops-maker01` (password `KC_OPS_TEST_PASSWORD`
-   from `deploy/compose/platform/.env`); enrol TOTP with an authenticator app at first sign-in.
+   from `deploy/.env`); enrol TOTP with an authenticator app at first sign-in.
 2. Transactions: search MSISDN `01711000001`. The list shows masked MSISDNs. Open a COMPLETED
    P2P: summary, saga timeline (STATE and CORE steps), partner calls, audit trail.
 3. In "Actions", type a reason and press "Request reversal". The console lands on Approvals with
@@ -122,7 +123,7 @@ What it proves: the acceptance suite (WP26), chaos (WP27), 100 TPS (WP28), the s
 | Step | Command | Expect |
 | --- | --- | --- |
 | 1 | `make verify-changed BASE=<sha of the run start>` (stack down: `make down`) | every changed module and its contract neighbours green: `./gradlew check` per module, isolation, field injection, contracts lint, compose-check; logs in `build/verify-changed/` |
-| 2 | `make down DOWN_ARGS=-v && time make up && make smoke` | the full stack with seed data in under 15 minutes (criterion 6) |
+| 2 | `make reset && make build && time make up && make smoke` | the full stack with seed data in under 15 minutes (criterion 6) |
 | 3 | `make e2e` | every scenario green; `tests/e2e/TRACEABILITY.md` maps them to criteria 1, 2, 4, 5 |
 | 4 | `make chaos` | each `mw-*` container, then `kafka` and `postgres`, killed mid-flow under load: no transaction left non-terminal, ledger sums unchanged, nothing posted twice (criterion 3). Long (each target takes several minutes); a short demo: `make chaos TARGETS="mw-orchestrator kafka"`. Report in `build/chaos/` |
 | 5 | `make perf` | about 100 TPS mixed load for 5 minutes, p95 middleware overhead under 150 ms, zero KO (criterion 7); the overhead report under tests/perf/build/reports/perf/ (start from a fresh stack: the run spends daily limits) |

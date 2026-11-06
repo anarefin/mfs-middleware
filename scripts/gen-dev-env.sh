@@ -4,10 +4,10 @@
 # secrets shared by mw-simulators and mw-adapter-billpay / mw-adapter-bank, the dev checkout
 # merchant secret shared by APISIX and mw-checkout, the realm `services` client secrets of
 # mw-portal-api / mw-admin-api, also put into OpenBao by their init steps, the MNO USSD gateway
-# passwords shared by APISIX and mw-simulators, the session-cookie key of mw-admin-ui) into deploy/compose/platform/.env
-# (gitignored, mode 600), which Compose reads to interpolate the platform file. Existing
+# passwords shared by APISIX and mw-simulators, the session-cookie key of mw-admin-ui) into deploy/.env
+# (gitignored, mode 600), which Compose reads to interpolate deploy/docker-compose.yml. Existing
 # values are kept, so volumes initialised with them stay usable; only missing variables
-# are added. Called by `make up`, `make smoke` and `make down`. Real environments inject
+# are added. Called by `make up`, `make smoke`, `make down` and `make reset`. Real environments inject
 # these at deploy time instead (spec 18.4).
 set -eu
 . "$(dirname "$0")/lib/modules.sh"
@@ -18,7 +18,7 @@ VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALTH_PASSW
   MW_E2E_API_KEY BILLAGG_HMAC_SECRET C2WBANK_HMAC_SECRET CHECKOUT_DEMO_MERCHANT_SECRET
   KC_MW_PORTAL_API_SECRET KC_MW_ADMIN_API_SECRET MW_ADMIN_UI_AUTH_SECRET
   USSD_GP_GATEWAY_SECRET USSD_ROBI_GATEWAY_SECRET USSD_BL_GATEWAY_SECRET USSD_TELETALK_GATEWAY_SECRET"
-file="$MW_ROOT/deploy/compose/platform/.env"
+file="$MW_ROOT/deploy/.env"
 mkdir -p "$(dirname "$file")"
 
 umask 077
@@ -31,7 +31,7 @@ added=""
 for v in $VARS; do
   grep -q "^$v=" "$file" || { printf '%s=%s\n' "$v" "$(random)" >>"$file"; added="$added $v"; }
 done
-# Not secrets: each MNO's USSD source allow-list, required by the platform compose file (no
+# Not secrets: each MNO's USSD source allow-list, required by deploy/docker-compose.yml (no
 # fallback there, so a missing list stops the apply instead of opening the route). Dev: loopback
 # and Docker's default address pools (172.16.0.0/12, 192.168.0.0/16), where the compose networks
 # and the Docker Desktop host gateway (edge-test, e2e from the host) live; the compose networks

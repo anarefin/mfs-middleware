@@ -1,6 +1,6 @@
 # Architecture decision records
 
-One record per decision in the spec's two decision tables: D1–D15 ("Decisions confirmed") and
+One record per decision in the spec's two decision tables: D1–D16 ("Decisions confirmed") and
 M1–M13 ("MVP decisions"). The spec stays the source of the decision text; these records add the
 context, the consequences and where the decision lives in the repo. Later refinements (milestone
 gate decisions) are noted in each record's Status line; the spec marks them **Decision
@@ -23,10 +23,11 @@ the repo". A new decision gets the next free id in its table (spec first, then a
 | D9 | [Keycloak, OpenBao and Resilience4j](D9-platform-services.md) | Accepted, 2026-11-03 (spec revision 1) |
 | D10 | [Out of this spec: orchestration, CI/CD and observability tooling](D10-excluded-tooling.md) | Accepted, 2026-11-03 (spec revision 1) |
 | D11 | [No high availability, anywhere](D11-no-high-availability.md) | Accepted, 2026-11-03 (spec revision 2) |
-| D12 | [Docker Compose for everything](D12-deployment.md) | Accepted, 2026-11-03 (spec revision 2) |
+| D12 | [Docker Compose for everything](D12-deployment.md) | Accepted, 2026-11-03 (spec revision 2); file layout superseded by D16, 2026-11-06 |
 | D13 | [One Git repo, Gradle Kotlin DSL, every module a standalone build](D13-build.md) | Accepted, 2026-11-03 (spec revisions 2 and 3: Gradle replaces Maven) |
 | D14 | [No shared code: contracts only, cross-cutting code copied from a template](D14-code-sharing.md) | Accepted, 2026-11-03 (spec revision 2) |
 | D15 | [Layered packages under mfs.mw.<service>](D15-code-structure.md) | Accepted, 2026-11-03 (spec revision 3) |
+| D16 | [One hand-written Compose file with profiles](D16-single-compose-file.md) | Accepted, 2026-11-06 (ticket 56; supersedes the per-module `compose.yml` of D12) |
 | M1 | [MVP flows](M1-mvp-flows.md) | Accepted, 2026-11-03 |
 | M2 | [MVP channels](M2-mvp-channels.md) | Accepted, 2026-11-03 |
 | M3 | [USSD: SMPP and HTTP both built, GP live over SMPP](M3-mvp-ussd-transport.md) | Accepted, 2026-11-03 |

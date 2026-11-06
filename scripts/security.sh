@@ -3,20 +3,21 @@
 #
 # Offline stages (always):
 #   - secrets:  gitleaks over the tracked and untracked, not ignored files (gitignored build
-#               output, node_modules and the generated deploy/compose/platform/.env are left
+#               output, node_modules and the generated deploy/.env are left
 #               out), with the repo's .gitleaks.toml (default rules + fixture allow-list)
 #   - deps:     per Gradle module ./gradlew cyclonedxBom, then trivy sbom on the CycloneDX BOM;
 #               per module also trivy fs (lockfiles: the admin UI's pnpm-lock.yaml)
-#   - images:   trivy image on mw-x:$MW_IMAGE_TAG (module has a Dockerfile) and mw-x-init:$MW_IMAGE_TAG
-#               (init/Dockerfile), default tag dev, what compose builds; an image not built locally
-#               fails the stage (image-missing, NOT SCANNED); without M= also every third-party
-#               image the root compose.yml pins and the platform image built from the repo
+#   - images:   trivy image on mfs-mw/mw-x:$MW_IMAGE_TAG (module has a Dockerfile) and
+#               mfs-mw/mw-x-init:$MW_IMAGE_TAG (init/Dockerfile), default tag local, what `make build`
+#               builds; an image not built locally fails the stage (image-missing, NOT SCANNED);
+#               without M= also every third-party image deploy/docker-compose.yml pins and the
+#               platform image built from the repo
 #               (mfs-mw/keycloak:local, deploy/keycloak/Dockerfile)
 #   HIGH and CRITICAL fail, minus the justified entries of .trivyignore.yaml; image scans skip
 #   OS packages without a fix (--ignore-unfixed, decision in docs/security-findings.md).
 #   Findings below high are written to build/security/*-below-high.json (report only); their
 #   decisions are in docs/security-findings.md.
-# Live stages (need the running MVP stack, `make up` then `make e2e`):
+# Live stages (need the running stack, `make up` then `make e2e`):
 #   - zap:      ZAP baseline (passive) on the APISIX edge from inside the dmz network, gated by
 #               scripts/lib/zap-gate.py against deploy/zap/decisions.tsv (high fails, and so
 #               does any alert without a decision)
@@ -33,7 +34,7 @@ set -eu
 GITLEAKS_IMAGE="${MW_GITLEAKS_IMAGE:-ghcr.io/gitleaks/gitleaks:v8.28.0}"
 TRIVY_IMAGE="${MW_TRIVY_IMAGE:-aquasec/trivy:0.67.2}"
 ZAP_IMAGE="${MW_ZAP_IMAGE:-ghcr.io/zaproxy/zaproxy:2.16.1}"
-IMAGE_TAG="${MW_IMAGE_TAG:-dev}"
+IMAGE_TAG="${MW_IMAGE_TAG:-local}"
 LIVE="${SECURITY_LIVE:-auto}"
 OUT="$MW_ROOT/build/security"
 
@@ -140,14 +141,14 @@ for mod in $modules; do
   fi
   trivy_gate fs "$MW_ROOT/$mod" "$name"
   # every image the module builds must be built locally: an unbuilt one fails, never skipped quietly
-  for spec in "Dockerfile=$name:$IMAGE_TAG" "init/Dockerfile=$name-init:$IMAGE_TAG"; do
+  for spec in "Dockerfile=mfs-mw/$name:$IMAGE_TAG" "init/Dockerfile=mfs-mw/$name-init:$IMAGE_TAG"; do
     img="${spec#*=}"
     [ -f "$MW_ROOT/$mod/${spec%%=*}" ] || continue
     if docker image inspect "$img" >/dev/null 2>&1; then
       trivy_gate image "$img" "$img"
     else
       failed="$failed image-missing:$img"
-      printf '==> ERROR security: image %s not built: %s NOT SCANNED (build it first: make up, or MW_IMAGE_TAG=<tag>)\n' "$img" "$img" >&2
+      printf '==> ERROR security: image %s not built: %s NOT SCANNED (build it first: make build, or MW_IMAGE_TAG=<tag>)\n' "$img" "$img" >&2
     fi
   done
 done
@@ -161,10 +162,10 @@ if [ -z "$m" ] && [ -f "$MW_ROOT/deploy/keycloak/Dockerfile" ]; then
     trivy_gate image "$img" "$img"
   else
     failed="$failed image-missing:$img"
-    printf '==> ERROR security: image %s not built: %s NOT SCANNED (build it first: make up)\n' "$img" "$img" >&2
+    printf '==> ERROR security: image %s not built: %s NOT SCANNED (build it first: make build)\n' "$img" "$img" >&2
   fi
 fi
-if [ -z "$m" ] && [ -f "$MW_ROOT/compose.yml" ]; then
+if [ -z "$m" ] && [ -f "$STACK_FILE" ]; then
   ignore_args=()
   [ -f "$THIRD_PARTY_IGNORE" ] && ignore_args=(--ignorefile "$THIRD_PARTY_IGNORE")
   # Upstream sample keys the secret scanner finds in the APISIX image: the placeholder cert nginx
@@ -172,22 +173,21 @@ if [ -z "$m" ] && [ -f "$MW_ROOT/compose.yml" ]; then
   # a key in the lua-resty-rsa docs. Decision in docs/security-findings.md.
   image_extra=(--skip-files usr/local/apisix/conf/cert/ssl_PLACE_HOLDER.key
     --skip-files usr/local/openresty/pod/lua-resty-rsa-1.1.1/lua-resty-rsa-1.1.1.pod)
-  for img in $(sed -n 's/^ *image: *\([^ $]*@sha256:[0-9a-f]*\).*/\1/p' "$MW_ROOT/compose.yml" | sort -u); do
+  for img in $(sed -n 's/^ *image: *\([^ $]*@sha256:[0-9a-f]*\).*/\1/p' "$STACK_FILE" | sort -u); do
     trivy_gate image "$img" "${img%@*}"
   done
 fi
 
 # --- live: ZAP baseline on the edge and the container log scan ---------------------------
 stack_up() {
-  local file="$MW_ROOT/deploy/compose/mvp/compose.yml"
-  [ -f "$file" ] || return 1
-  compose_files "$file"
+  [ -f "$STACK_FILE" ] || return 1
+  stack_compose
   [ -n "$(docker compose "${DC_F[@]}" ps -q --status running apisix 2>/dev/null)" ]
 }
 if [ "$LIVE" = 0 ]; then
   info "security: live stages (zap, logs) skipped (SECURITY_LIVE=0)"
 elif stack_up; then
-  project="${COMPOSE_PROJECT_NAME:-mw}"
+  project="$(stack_project)"
   net="${project}_dmz"
   zap_dir="$OUT/zap"; rm -rf "$zap_dir"; mkdir -p "$zap_dir"; chmod 777 "$zap_dir"
   for target in ${MW_ZAP_TARGETS:-https://apisix:9443/ https://apisix:9443/console/}; do

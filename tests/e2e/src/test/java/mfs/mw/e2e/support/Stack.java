@@ -21,11 +21,11 @@ import java.util.concurrent.TimeUnit;
  * <ul>
  *   <li>{@code mw.e2e.base-url} / {@code MW_E2E_BASE_URL}: edge URL; default {@code
  *       https://localhost:<port>} with the port Compose published for {@code apisix:9443}
- *   <li>{@code COMPOSE_PROJECT_NAME}: the stack's project (per-worktree stacks), default {@code mw}
+ *   <li>{@code COMPOSE_PROJECT_NAME}: the stack's project (per-worktree stacks), default {@code mfs-mw} (deploy/docker-compose.yml)
  *   <li>{@code mw.e2e.root}: repository root (set by the build)
  * </ul>
  *
- * Test users' passwords are the generated dev credentials in {@code deploy/compose/platform/.env}
+ * Test users' passwords are the generated dev credentials in {@code deploy/.env}
  * ({@code scripts/gen-dev-env.sh}), read the same way {@code make smoke} reads them.
  */
 public final class Stack {
@@ -38,7 +38,7 @@ public final class Stack {
 
   private Stack(Path root) {
     this.root = root;
-    this.devEnv = readEnvFile(root.resolve("deploy/compose/platform/.env"));
+    this.devEnv = readEnvFile(root.resolve("deploy/.env"));
     this.baseUrl = resolveBaseUrl();
   }
 
@@ -75,7 +75,7 @@ public final class Stack {
     }
     if (v == null || v.isEmpty()) {
       throw new IllegalStateException(
-          name + " not found: run `make up` first (it generates deploy/compose/platform/.env)");
+          name + " not found: run `make up` first (it generates deploy/.env)");
     }
     return v;
   }
@@ -94,16 +94,16 @@ public final class Stack {
         .strip();
   }
 
-  /** {@code docker compose -f deploy/compose/mvp/compose.yml <args>}; returns stdout. */
+  /** {@code docker compose -f deploy/docker-compose.yml <args>}; returns stdout. */
   public String compose(String... args) {
-    List<String> cmd = new ArrayList<>(List.of("docker", "compose", "-f", root.resolve("deploy/compose/mvp/compose.yml").toString()));
+    List<String> cmd = new ArrayList<>(List.of("docker", "compose", "-f", root.resolve("deploy/docker-compose.yml").toString()));
     cmd.addAll(List.of(args));
     return run(cmd, null);
   }
 
   /** As {@link #compose}, with {@code input} written to the command's stdin. */
   public String composeWithInput(String input, String... args) {
-    List<String> cmd = new ArrayList<>(List.of("docker", "compose", "-f", root.resolve("deploy/compose/mvp/compose.yml").toString()));
+    List<String> cmd = new ArrayList<>(List.of("docker", "compose", "-f", root.resolve("deploy/docker-compose.yml").toString()));
     cmd.addAll(List.of(args));
     return run(cmd, input);
   }

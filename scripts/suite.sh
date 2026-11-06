@@ -31,11 +31,10 @@ fi
 # MW_E2E_ROUTES=1; a default `make up` removes them. Re-run it on the running stack with the flag
 # and wait for it.
 enable_test_routes() {
-  local file="$MW_ROOT/deploy/compose/mvp/compose.yml"
-  [ -f "$file" ] || return 0
-  compose_files "$file"
+  [ -f "$STACK_FILE" ] || return 0
   "$(dirname "$0")/gen-dev-env.sh"
-  set -a; . "$MW_ROOT/deploy/compose/platform/.env"; set +a
+  stack_compose
+  set -a; . "$STACK_ENV"; set +a
   info "$suite: enabling the test-only gateway routes (apisix-init with MW_E2E_ROUTES=1)"
   MW_E2E_ROUTES=1 docker compose "${DC_F[@]}" up -d --no-deps --force-recreate apisix-init >/dev/null
   docker compose "${DC_F[@]}" wait apisix-init >/dev/null \

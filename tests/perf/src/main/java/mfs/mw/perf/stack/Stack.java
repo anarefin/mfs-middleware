@@ -21,8 +21,8 @@ import java.util.concurrent.TimeUnit;
  * <p>Configuration (system properties forwarded by Gradle, or environment): {@code
  * mw.perf.base-url} / {@code MW_PERF_BASE_URL} (default {@code https://localhost:<port>} with the
  * port Compose published for {@code apisix:9443}), {@code COMPOSE_PROJECT_NAME} (default {@code
- * mw}), {@code mw.perf.root} (repository root, set by the build). Credentials are the generated
- * dev ones in {@code deploy/compose/platform/.env} ({@code scripts/gen-dev-env.sh}).
+ * mfs-mw}), {@code mw.perf.root} (repository root, set by the build). Credentials are the generated
+ * dev ones in {@code deploy/.env} ({@code scripts/gen-dev-env.sh}).
  */
 public final class Stack {
 
@@ -34,7 +34,7 @@ public final class Stack {
 
   private Stack(Path root) {
     this.root = root;
-    this.devEnv = readEnvFile(root.resolve("deploy/compose/platform/.env"));
+    this.devEnv = readEnvFile(root.resolve("deploy/.env"));
   }
 
   public static Stack get() {
@@ -73,7 +73,7 @@ public final class Stack {
     }
     if (v == null || v.isEmpty()) {
       throw new IllegalStateException(
-          name + " not found: run `make up` first (it generates deploy/compose/platform/.env)");
+          name + " not found: run `make up` first (it generates deploy/.env)");
     }
     return v;
   }
@@ -92,9 +92,9 @@ public final class Stack {
         .strip();
   }
 
-  /** {@code docker compose -f deploy/compose/mvp/compose.yml <args>} with {@code input} on stdin; stdout. */
+  /** {@code docker compose -f deploy/docker-compose.yml <args>} with {@code input} on stdin; stdout. */
   public String compose(String input, String... args) {
-    List<String> cmd = new ArrayList<>(List.of("docker", "compose", "-f", root.resolve("deploy/compose/mvp/compose.yml").toString()));
+    List<String> cmd = new ArrayList<>(List.of("docker", "compose", "-f", root.resolve("deploy/docker-compose.yml").toString()));
     cmd.addAll(List.of(args));
     try {
       ProcessBuilder pb = new ProcessBuilder(cmd);

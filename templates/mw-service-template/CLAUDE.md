@@ -24,7 +24,7 @@ and keep `scripts/test/test_service_template.sh` green.
 | Config binding, OpenBao/Vault via Spring Cloud Vault (AppRole, `VAULT_ENABLED`) | `config/MwServiceProperties`, `application.yml` | 18.4, 20.4 |
 | Liveness/readiness, `/actuator/prometheus`, Brave tracing (W3C), virtual threads | `application.yml` | 20.1, 21.2, 21.3 |
 | Image: layered jar, JDK 25 AOT cache (trained and run with the same `JVM_OPTS` build arg = `JAVA_TOOL_OPTIONS`; the dev stack sets Serial GC there and only sizes in `JDK_JAVA_OPTIONS`, ticket 55), non-root uid 10001, readiness `HEALTHCHECK`, SBOM at `/app/sbom/bom.json` | `Dockerfile` | 20.1 |
-| Compose: read-only FS, tmpfs `/tmp`, limits, `unless-stopped`, healthcheck, zone networks `app`, `data` | `compose.yml` | 20.2 |
+| Compose: no `compose.yml` in the module (ADR D16); `scaffold.sh` prints the service block for `deploy/docker-compose.yml`, which merges `x-app` (read-only FS, tmpfs `/tmp`, `unless-stopped`, readiness healthcheck, zone networks `app`, `data`) and sets the limits | `scaffold.sh` | 20.2 |
 
 ## Kafka, Camel, resilience, Flyway (WP05 part)
 
@@ -76,8 +76,7 @@ test contexts would relay each other's rows; a test that needs it on sets
 | `./gradlew conformance` | the conformance suite alone (`RetryTopicRouteIT` runs its independent routes side by side, under 10 s) |
 | `./gradlew check` | `test`, `integrationTest`, `conformance` and the JaCoCo gate over all three (>= 80% lines per `service`/`mapper`/`client` package, 22.1; report in `build/reports/jacoco`) |
 | `make test-scripts` | includes `test_template_copy_checks_and_builds_its_image_alone`: a copy plus `contracts/` runs `./gradlew check bootJar && docker build .` (skipped when Docker is down) |
-| `./gradlew check bootJar && docker build -t mw-service-template:dev .` | spec 4.3 rule 1 |
-| `docker compose up -d --wait` | run it alone (creates/joins `${COMPOSE_PROJECT_NAME:-mw}_app`) |
+| `./gradlew check bootJar && docker build -t mfs-mw/mw-service-template:local .` | spec 4.3 rule 1 |
 | `make verify M=mw-service-template` | isolation + field-injection check + contracts lint + `./gradlew check` (Testcontainers reuse on, containers removed afterwards unless `KEEP_TC=1`) |
 | `make verify-changed [BASE=main]` | the same gate for the modules changed since `BASE` only |
 
@@ -98,4 +97,4 @@ valid sample of each `consumes.events` entry reads into its own DTO), plain JUni
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
   `apt-get upgrade` in the runtime stage. `make security M=<this module>` scans the SBOM and the
-  `:dev` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
+  `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).

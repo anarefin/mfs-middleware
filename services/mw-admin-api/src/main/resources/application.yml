@@ -36,7 +36,7 @@ spring:
     hikari:
       schema: admin
       # Explicit, small pool (Kafka-driven or light on the database). PostgreSQL
-      # max_connections sizing: deploy/compose/platform/compose.yml (postgres).
+      # max_connections sizing: deploy/docker-compose.yml (postgres).
       maximum-pool-size: 5
   flyway:
     # admin (change requests, outbox) and partner (partner config, ticket 38; spec 16.2), both

@@ -1,113 +1,54 @@
 #!/usr/bin/env bash
-# Starts the local stack.
+# Starts the local stack from deploy/docker-compose.yml (ADR D16). Never builds: images are reused
+# as they are (`make build` makes them), so a warm `make up` only starts containers.
 # Usage: scripts/up.sh [MODULE]
-#   no MODULE: docker compose up the MVP project (deploy/compose/mvp/compose.yml,
-#              which includes the platform and every module's compose.yml)
-#   MODULE:    docker compose up only that module's own compose.yml (it joins the
-#              external zone networks, so the platform project must already be up)
-#   MW_UP_ONLY="mw-a mw-b" (no MODULE): only those modules, recreated inside the MVP project
-# Then waits until every long-running service is healthy and every one-shot has finished. One-shot
-# init containers carry the compose label mw.oneshot=true (restart "no", no healthcheck): they
-# count once exited 0 (services can be healthy before e.g. kafka-init has created their topics).
-# Fails at once, naming the service, when a long-running service is exited, dead or unhealthy,
-# or a one-shot exits non-zero. MW_UP_TIMEOUT (s, default 300) and MW_UP_POLL (s, default 1).
+#   PROFILE=core (default) | minimal   which services start (the platform always does)
+#   TIMERS=fast                        also load deploy/test-timers.env (short test timers)
+#   MODULE                             only that service, plus what it depends on
+# `docker compose up -d --wait` returns once every started service is healthy (one-shots exited
+# 0, as their dependants require) and fails naming the one that is not. MW_UP_TIMEOUT (s, 300).
+# COMPOSE_ARGS adds arguments to `up` (e.g. --force-recreate).
 set -eu
 . "$(dirname "$0")/lib/modules.sh"
 
 m="${1:-}"
+if [ ! -f "$STACK_FILE" ]; then
+  info "up: deploy/docker-compose.yml does not exist yet, nothing to start"
+  exit 0
+fi
+profile="${PROFILE:-core}"
+case "$profile" in core | minimal) ;; *) die "PROFILE must be core or minimal, got '$profile'" ;; esac
+svc=""
 if [ -n "$m" ]; then
-  mod="$(selected_modules "$m")"
-  file="$MW_ROOT/$mod/compose.yml"
-  [ -f "$file" ] || die "$mod has no compose.yml"
-else
-  file="$MW_ROOT/deploy/compose/mvp/compose.yml"
-  if [ ! -f "$file" ]; then
-    info "up: deploy/compose/mvp/compose.yml does not exist yet, nothing to start"
-    exit 0
+  svc="$(basename "${m%/}")"
+  stack_has_service "$svc" || die "up: $svc is not a service of deploy/docker-compose.yml"
+fi
+"$(dirname "$0")/gen-dev-env.sh"
+stack_compose "$profile"
+
+# `up --wait` treats a one-shot that exits as a failure unless a started service depends on it, so
+# the whole-stack start names the long-running services (their one-shot dependencies start and must
+# exit 0 first), then runs each one-shot nothing depends on (apisix-init) and waits for its exit 0.
+targets="$svc"
+tail_oneshots=""
+if [ -z "$svc" ] && command -v jq >/dev/null 2>&1; then
+  model="$(docker compose "${DC_F[@]}" config --format json 2>/dev/null || true)"
+  if [ -n "$model" ]; then
+    targets="$(printf '%s' "$model" | jq -r '.services | to_entries[]
+      | select((.value.labels // {})["mw.oneshot"] != "true") | .key' | sort | tr '\n' ' ')"
+    tail_oneshots="$(printf '%s' "$model" | jq -r '[.services[] | (.depends_on // {}) | keys[]] as $deps
+      | .services | to_entries[] | select((.value.labels // {})["mw.oneshot"] == "true")
+      | select(.key as $k | $deps | index($k) | not) | .key' | sort | tr '\n' ' ')"
   fi
-  "$(dirname "$0")/gen-dev-env.sh"
 fi
-compose_files "$file"
-# MW_UP_ONLY="mw-a mw-b" (no MODULE): rebuild only those modules' jars and recreate only their
-# services (<module>-init, <module>) inside the running MVP project, with --no-deps. Use this, not
-# MODULE, to swap a changed service into the full stack: a module's own compose.yml runs as a
-# separate compose project (named after its folder), next to the copy the MVP project started.
-svc_args=""
-only_mods=""
-if [ -n "${MW_UP_ONLY:-}" ]; then
-  [ -z "$m" ] || die "up: MW_UP_ONLY applies to the MVP project; leave out M=$m"
-  for o in $MW_UP_ONLY; do
-    s="$(selected_modules "$o")"
-    case "$s" in services/*) ;; *) die "up: MW_UP_ONLY: $o is not a stack module (services/*)" ;; esac
-    n="$(basename "$s")"
-    only_mods="$only_mods $s"
-    grep -q "^  $n-init:" "$MW_ROOT/$s/compose.yml" 2>/dev/null && svc_args="$svc_args $n-init"
-    svc_args="$svc_args $n"
-  done
-  svc_args="--no-deps$svc_args"
-fi
-# Never run stale code: an existing jar or mw-x:dev / mw-x-init:dev image may predate the
-# source. So every stack module's jar is rebuilt (images copy build/libs/*.jar + the SBOM;
-# Gradle is incremental, so this is cheap when nothing changed), one module at a time (parallel
-# Gradle daemons are unreliable here), and compose rebuilds every image it builds (services and
-# their init images; the layer cache keeps it cheap). MW_UP_NO_BUILD=1 skips both (faster, at
-# your own risk: whatever jars and images exist are used).
-build_args="--build"
-if [ "${MW_UP_NO_BUILD:-0}" = 1 ]; then
-  info "up: MW_UP_NO_BUILD=1: using existing jars and images as they are"
-  build_args=""
-else
-  if [ -n "$m" ]; then stack_mods="$mod"
-  elif [ -n "${MW_UP_ONLY:-}" ]; then stack_mods="$only_mods"
-  else stack_mods="$(cd "$MW_ROOT" && ls -d services/*/ 2>/dev/null | sed 's#/$##')"; fi
-  for s in $stack_mods; do
-    [ -f "$MW_ROOT/$s/Dockerfile" ] && [ -f "$MW_ROOT/$s/compose.yml" ] && [ -x "$MW_ROOT/$s/gradlew" ] || continue
-    info "up: $s ./gradlew bootJar"
-    (cd "$MW_ROOT/$s" && ./gradlew bootJar -q) || die "up: $s: bootJar failed"
-  done
-fi
-case " ${COMPOSE_ARGS:-} " in *" --build "*) build_args="" ;; esac
 
-info "up: docker compose -f ${file#"$MW_ROOT"/} up -d $build_args ${COMPOSE_ARGS:-} $svc_args"
-docker compose "${DC_F[@]}" up -d $build_args ${COMPOSE_ARGS:-} $svc_args
-
-timeout="${MW_UP_TIMEOUT:-300}"
-poll="${MW_UP_POLL:-1}"
-# check: one line per service, "failed <svc>(<why>)" or "pending <svc>(<state>)"; healthy
-# services and one-shots that exited 0 print nothing. A long-running service without a
-# healthcheck counts once it is running.
-check() {
-  docker compose "${DC_F[@]}" ps -a --format '{{.Service}}	{{.State}}	{{.Health}}	{{.ExitCode}}	{{.Labels}}' |
-    # tab is IFS whitespace, so empty fields (no health) would collapse: split on | instead
-    tr '\t' '|' | while IFS='|' read -r svc state health code labels; do
-      [ -n "$svc" ] || continue
-      case ",$labels," in
-        *,mw.oneshot=true,*)
-          case "$state" in
-            exited) [ "${code:-0}" = 0 ] || printf 'failed %s(exit %s)\n' "$svc" "$code" ;;
-            dead) printf 'failed %s(dead)\n' "$svc" ;;
-            # still provisioning (e.g. kafka-init creating topics the healthy services need)
-            *) printf 'pending %s(%s)\n' "$svc" "$state" ;;
-          esac
-          continue ;;
-      esac
-      case "$state/$health" in
-        exited/* | dead/*) printf 'failed %s(%s)\n' "$svc" "$state" ;;
-        */unhealthy) printf 'failed %s(unhealthy)\n' "$svc" ;;
-        */healthy | running/) ;;
-        *) printf 'pending %s(%s)\n' "$svc" "${health:-$state}" ;;
-      esac
-    done
-}
-names() { sed -n "s/^$1 //p" | tr '\n' ' '; }
-info "up: waiting up to ${timeout}s for every long-running service to be healthy"
-start=$SECONDS
-while :; do
-  status="$(check)"
-  failed="$(printf '%s\n' "$status" | names failed)"
-  [ -n "$failed" ] && die "up: failed: ${failed% }"
-  pending="$(printf '%s\n' "$status" | names pending)"
-  [ -z "$pending" ] && { info "up: all long-running services are healthy, one-shots done"; exit 0; }
-  [ $((SECONDS - start)) -ge "$timeout" ] && die "up: timed out after ${timeout}s; not healthy: ${pending% }"
-  sleep "$poll"
+info "up: docker compose --profile $profile${TIMERS:+ (TIMERS=$TIMERS)} up -d --wait ${COMPOSE_ARGS:-}${svc:+ $svc}"
+# shellcheck disable=SC2086 # COMPOSE_ARGS and the service lists are lists of words
+docker compose "${DC_F[@]}" up -d --wait --wait-timeout "${MW_UP_TIMEOUT:-300}" ${COMPOSE_ARGS:-} $targets \
+  || die "up: the stack did not come up healthy (docker compose ps -a; docker compose logs <service>)"
+for o in $tail_oneshots; do
+  docker compose "${DC_F[@]}" up -d ${COMPOSE_ARGS:-} "$o" >/dev/null \
+    && docker compose "${DC_F[@]}" wait "$o" >/dev/null \
+    || die "up: one-shot $o did not exit 0 (docker compose logs $o)"
 done
+info "up: every started service is healthy, one-shots done"

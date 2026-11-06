@@ -17,5 +17,5 @@ Keycloak, OpenBao, Valkey, Kafka (KRaft), PostgreSQL 18, APISIX, and notificatio
 
 ## Where in the repo
 
-- `deploy/compose/platform/compose.yml`
+- `deploy/docker-compose.yml`
 - `scripts/smoke.sh`

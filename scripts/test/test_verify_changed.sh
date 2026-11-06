@@ -123,15 +123,15 @@ test_verify_changed_rejects_a_bad_JOBS_value() {
   assert_out_contains "JOBS must be a positive number"
 }
 
-test_verify_changed_warns_when_the_mvp_stack_is_running() {
+test_verify_changed_warns_when_the_stack_is_running() {
   vc_repo
-  mkdir -p .bin deploy/compose/mvp
-  touch deploy/compose/mvp/compose.yml
+  mkdir -p .bin deploy
+  touch deploy/docker-compose.yml
   git -c user.email=t@example.invalid -c user.name=t add -A
   git -c user.email=t@example.invalid -c user.name=t commit -q -m stack
   # docker stub: no compose CLI version (compose-check skipped), but the MVP project has containers
   printf '#!/bin/sh\ncase "$*" in *" ps -q"*) echo abc123; exit 0 ;; esac\nexit 1\n' >.bin/docker
   chmod +x .bin/docker
   PATH="$PWD/.bin:$PATH" mw_make "$PWD" verify-changed BASE=HEAD || fail "verify-changed failed"
-  assert_out_contains "MVP compose project is running"
+  assert_out_contains "the stack (deploy/docker-compose.yml) is running"
 }

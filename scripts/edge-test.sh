@@ -37,12 +37,10 @@
 set -uo pipefail
 . "$(dirname "$0")/lib/modules.sh"
 
-file="$MW_ROOT/deploy/compose/mvp/compose.yml"
-[ -f "$file" ] || die "edge-test: deploy/compose/mvp/compose.yml does not exist"
-compose_files "$file"
+stack_compose
 command -v jq >/dev/null || die "edge-test: jq is required"
-[ -f "$MW_ROOT/deploy/compose/platform/.env" ] || die "edge-test: no generated credentials; run make up first"
-set -a; . "$MW_ROOT/deploy/compose/platform/.env"; set +a
+[ -f "$STACK_ENV" ] || die "edge-test: no generated credentials; run make up first"
+set -a; . "$STACK_ENV"; set +a
 
 CURL_IMAGE="curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93"
 dc() { docker compose "${DC_F[@]}" "$@"; }
@@ -115,7 +113,7 @@ trap cleanup EXIT
 
 kc_admin_token() {
   ops_curl --data-urlencode grant_type=password --data-urlencode client_id=admin-cli \
-    --data-urlencode "username=$(sed -n 's/^KC_BOOTSTRAP_ADMIN_USERNAME=//p' "$MW_ROOT/deploy/compose/platform/env/keycloak.env")" \
+    --data-urlencode "username=$(sed -n 's/^KC_BOOTSTRAP_ADMIN_USERNAME=//p' "$MW_ROOT/deploy/env/keycloak.env")" \
     --data-urlencode "password=$KC_BOOTSTRAP_ADMIN_PASSWORD" \
     http://keycloak:8080/realms/master/protocol/openid-connect/token | jq -r '.access_token // empty'
 }

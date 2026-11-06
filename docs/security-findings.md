@@ -14,8 +14,8 @@ SECURITY_LIVE=1 make security`).
 | --- | --- | --- |
 | secrets (gitleaks, files not gitignored) | any leak | `.gitleaks.toml` (narrow fixture allow-list) |
 | deps (CycloneDX SBOM + trivy per module, trivy fs for lockfiles) | HIGH, CRITICAL | `.trivyignore.yaml` |
-| own images (`mw-*:dev`, `mw-*-init:dev`, `mw-admin-ui:dev`; OS packages without a fix skipped) | HIGH, CRITICAL | `.trivyignore.yaml` |
-| third-party images pinned in `compose.yml` | HIGH, CRITICAL | `deploy/trivyignore-third-party.yaml` |
+| own images (`mfs-mw/mw-*:local`, `mfs-mw/mw-*-init:local`, `mfs-mw/mw-admin-ui:local`; OS packages without a fix skipped) | HIGH, CRITICAL | `.trivyignore.yaml` |
+| third-party images pinned in `deploy/docker-compose.yml` | HIGH, CRITICAL | `deploy/trivyignore-third-party.yaml` |
 | ZAP baseline on APISIX (`https://apisix:9443/`, `/console/`, from the dmz network) | High, any alert without a decision, any `fix` alert | `deploy/zap/decisions.tsv` |
 | log scan (`scripts/log-scan.sh`, every container of the project) | any PIN, PIN ciphertext, unmasked MSISDN or NID | `scripts/log-scan.allow` (empty) |
 
@@ -64,7 +64,7 @@ key generated inside `PinCipherTest`, base64 of "not a key" in `RequestSignature
 `k3yFromDotEnv` / `s3cretFromDotEnv` placeholders in `test_apisix_edge.sh`. Decision: allow-list
 each exact fixture shape in `.gitleaks.toml` (a real secret beside one is still found). The scan
 covers the files git would commit (tracked + untracked, not ignored); the generated dev
-credentials (`deploy/compose/platform/.env`, gitignored) are out of scope by design. History is
+credentials (`deploy/.env`, gitignored) are out of scope by design. History is
 not rescanned (decision: the working tree is what ships; a history scan with the gitleaks binary
 is `gitleaks git` and can be added to the gate).
 
@@ -72,7 +72,7 @@ is `gitleaks git` and can be added to the gate).
 
 Every long-running container built here (12 services, mw-admin-api, mw-admin-ui) runs as
 `10001:10001`, `read_only: true` with a tmpfs `/tmp`, `cap_drop: [ALL]`, `no-new-privileges`
-(`test_own_long_running_containers_are_non_root_and_read_only` checks the root `compose.yml`).
+(`test_own_long_running_containers_are_non_root_and_read_only` checks `deploy/docker-compose.yml`).
 Decisions for the rest:
 
 - `mw-*-init` one-shots (dev/MVP only): run as root on a writable FS, with `no-new-privileges`;

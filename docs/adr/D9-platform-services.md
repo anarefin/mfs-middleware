@@ -17,7 +17,7 @@ Keycloak for IAM/SSO (realms `customers`, `portals`, `ops`, `services`, `partner
 
 ## Where in the repo
 
-- `deploy/compose/platform/keycloak/realms`
-- `deploy/compose/platform/openbao`
+- `deploy/keycloak/realms`
+- `deploy/openbao`
 - `scripts/gen-dev-env.sh`
 - spec sections 18.2, 18.4, 19.2

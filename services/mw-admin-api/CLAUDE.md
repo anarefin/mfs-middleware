@@ -136,7 +136,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   record per partner to every adapter start (the adapters consume from the beginning in a group of
   their own). Seeds: `mw.partners.seeds` (resource list, `config/PartnerSeedProperties`,
   `scheduler/PartnerSeedJob` at start-up, insert-if-absent at version 0, never published); only the dev
-  profile (`application-dev.yml`, `SPRING_PROFILES_ACTIVE=dev` in `compose.yml`) seeds
+  profile (`application-dev.yml`, `SPRING_PROFILES_ACTIVE=dev` in `deploy/docker-compose.yml`) seeds
   `partner-seeds/dev/ocs.json`, a copy of mw-adapter-telco's dev seed `ocs` (keep them identical; the
   test config seeds it too). Decisions (no product owner available): ops-maker/ops-checker may change
   partners as well as integration-* (an incident disable is an operations task); the ops-emergency
@@ -190,8 +190,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `QueryUnavailableException` only).
 - Init (`mw-admin-api-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
   `admin_api_rw`, schemas `admin` and `partner` (spec 16.2), `secret/mw-admin-api` (DB password; client secret),
-  AppRole. Stack: included in `deploy/compose/mvp/compose.yml`, low-mem limit 384 MiB, Hikari pool 2.
-- Keycloak realm `ops` (`deploy/compose/platform/keycloak/realms/ops-realm.json`) carries the 15.4
+  AppRole. Stack: a service of `deploy/docker-compose.yml` (profiles `minimal`, `core`), limit 512 MiB, Hikari pool 2.
+- Keycloak realm `ops` (`deploy/keycloak/realms/ops-realm.json`) carries the 15.4
   roles; dev users `ops-viewer01` (viewer), `ops-maker01`, `ops-checker01`, `ops-admin01`
   (integration-maker, security-admin), `ops-compliance01`, `ops-auditor01`, all TOTP-required; the
   dev-only e2e operators `ops-e2e-maker01` (ops-maker) and `ops-e2e-checker01` (ops-checker) have a
@@ -235,7 +235,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
   `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
-  `:dev` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
+  `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
   Events written without one (scheduled jobs) get a plain UUID (`util/CorrelationIds`).
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -266,4 +266,5 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 | `./gradlew check bootJar && docker build -t mw-admin-api:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-admin-api` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make verify-changed [BASE=main]` | the same gate for the modules changed since BASE only |
-| `make up M=mw-admin-api` | run this service's `compose.yml` (platform project must be up) |
+| `make build M=mw-admin-api` | `bootJar`, then this service's images (`mfs-mw/mw-admin-api:local`, `-init`) |
+| `make up M=mw-admin-api` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |

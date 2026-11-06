@@ -23,7 +23,7 @@ COPY build/reports/cyclonedx-direct/bom.json /app/sbom/bom.json
 
 # JVM flags of the AOT training run below and of every start: the cache is rejected when the GC or
 # the compressed-oops mode differs (ZGC turns compressed oops off). Production default per spec
-# 20.1; the dev stack builds with Serial GC (build arg in deploy/compose/mvp/compose.lowmem.yml) and
+# 20.1; the dev stack builds with Serial GC (build arg JVM_OPTS in deploy/docker-compose.yml) and
 # adds only sizes at run time (JDK_JAVA_OPTIONS), never another JAVA_TOOL_OPTIONS.
 ARG JVM_OPTS="-XX:+UseZGC -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
 ENV JAVA_TOOL_OPTIONS="${JVM_OPTS}"

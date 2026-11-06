@@ -86,7 +86,7 @@ Security (config-changed records come from Kafka and ACLs are deferred, so they 
 - `mw.partners.security` is static config only (application.yml, per-environment overrides, OpenBao):
   `allowed-hosts.<instance>` (hosts its `baseUrl` may name; no entry = the partner cannot be configured)
   and `insecure-http-hosts` (plain http allowed; `MW_PARTNER_INSECURE_HTTP_HOSTS`, empty by default in
-  `application.yml` (ticket 50); only this module's `compose.yml` (dev stack) sets `mw-simulators` and the
+  `application.yml` (ticket 50); only `deploy/docker-compose.yml` (dev stack) sets `mw-simulators` and the
   test config allows `mw-simulators,localhost`; `PartnerSecurityDefaultsTest` guards the default, identical
   in all three adapters). Everything else needs https, no user info. A seed with an http `baseUrl` therefore
   fails start-up outside the dev stack.
@@ -120,7 +120,7 @@ one `partner.call.audit` log event per call with the raw request/response masked
 rule, then free-text scrubbing; headers never), cut at 4 KB, and the same entry as a
 `partner.call.completed` audit event on `mw.audit.event.v1` (above).
 
-The OCS is the seed instance `ocs`, a dev seed in `application-dev.yml` (profile `dev`, D23: set by this module's `compose.yml`
+The OCS is the seed instance `ocs`, a dev seed in `application-dev.yml` (profile `dev`, D23: set by its service in `deploy/docker-compose.yml`
 and the test config; the packaged `application.yml` seeds no partner, so a production start has none
 until a `partner/<id>` record arrives, and the image's AOT training run needs no http override) (`mw.partners`, base URL from `OCS_BASE_URL`,
 timeout 20 s, Resilience4j instance `ocs`: bulkhead 100, circuit breaker with 16 s slow-call threshold)
@@ -176,7 +176,7 @@ mapping, inbox/outbox).
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
   `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
-  `:dev` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
+  `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
 - `exception/`: `MwException`, `ErrorCategory` (namespace -> HTTP status, retryable),
@@ -205,4 +205,5 @@ mapping, inbox/outbox).
 | `./gradlew check bootJar && docker build -t mw-adapter-telco:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-adapter-telco` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make verify-changed [BASE=main]` | the gate for the modules changed since BASE (this one when it, or a contract in its `contracts.yml`, changed) |
-| `make up M=mw-adapter-telco` | run this service's `compose.yml` (platform project must be up) |
+| `make build M=mw-adapter-telco` | `bootJar`, then this service's images (`mfs-mw/mw-adapter-telco:local`, `-init`) |
+| `make up M=mw-adapter-telco` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |

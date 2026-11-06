@@ -10,18 +10,20 @@
 #   make check-field-injection [M=]  no @Autowired fields under any module's src/
 #   make contracts-lint         lint the root contracts/ folder
 #   make versions-check [M=]    report version drift between module version catalogs
-#   make up [M=]                start the Compose stack (deploy/compose/mvp) or one module's compose.yml
-#   make compose-flat           regenerate the root compose.yml (whole stack, one flat file, low-resource limits)
-#   make compose-check          fail when compose.yml is stale or the memory budget (10 GB) is exceeded
+#   make build [M=] [JOBS=3]    bootJar per stack module (JOBS at a time), then docker compose build
+#   make up [PROFILE=core] [TIMERS=fast] [M=]  start the stack (deploy/docker-compose.yml) without building
+#   make seed                   run the seed profile's mw-seeder one-shot; fails unless it exits 0
+#   make compose-check          fail when the stack's memory limits exceed the budget (10 GB)
 #   make smoke                  live checks against the running MVP stack (scripts/smoke.sh)
 #   make edge-test              live APISIX edge policy tests: 401/400/413/429, headers, idempotent apply
 #   make chaos [TARGETS=]       kill each mw-* container, kafka, postgres mid-flow; no stuck txns, ledger consistent (scripts/chaos.sh)
-#   make down [DOWN_ARGS=-v]    stop the MVP stack (-v also drops its volumes)
+#   make down [DOWN_ARGS=-v]    stop the stack, every profile (-v also drops its volumes)
+#   make reset                  remove every container, volume and orphan of the stack (fresh start)
 #   make e2e [M=] [TAGS=]       Cucumber suite in tests/e2e against the running stack
-#   make e2e-changed [BASE=main] [TAGS=]  rebuild only modules changed since BASE into the running stack, then e2e (no verify)
+#   make e2e-changed [BASE=main] [TAGS=]  build only modules changed since BASE, recreate them in the running stack, then e2e
 #   make perf [M=]              Gatling suite in tests/perf
 #   make security [M=]          secret, dependency and image scans; with the stack up also ZAP baseline + log scan
-#   make log-scan               scan every container log of the running MVP stack for PIN / unmasked MSISDN / NID
+#   make log-scan               scan every container log of the running stack for PIN / unmasked MSISDN / NID
 #   make new-service NAME=mw-x  copy templates/mw-service-template to services/mw-x
 #   make test-scripts           shell tests for this Makefile and scripts/
 
@@ -31,12 +33,14 @@ SELFTEST ?= 1
 M ?=
 BASE ?=
 JOBS ?= 3
-export MW_ROOT
+PROFILE ?=
+TIMERS ?=
+export MW_ROOT PROFILE TIMERS
 
-.PHONY: help verify verify-changed check-isolation check-field-injection contracts-lint versions-check compose-flat compose-check up smoke edge-test chaos down e2e e2e-changed perf security log-scan new-service test-scripts
+.PHONY: help verify verify-changed check-isolation check-field-injection contracts-lint versions-check build compose-check up seed reset smoke edge-test chaos down e2e e2e-changed perf security log-scan new-service test-scripts
 
 help:
-	@sed -n '3,26p' $(abspath $(lastword $(MAKEFILE_LIST)))
+	@sed -n '3,29p' $(abspath $(lastword $(MAKEFILE_LIST)))
 
 verify:
 ifeq ($(SELFTEST)$(M),1)
@@ -59,14 +63,17 @@ contracts-lint:
 versions-check:
 	@$(SCRIPTS)/versions-check.sh "$(M)"
 
-compose-flat:
-	@$(SCRIPTS)/compose-flat.sh
+build:
+	@$(SCRIPTS)/build.sh "$(M)" "$(JOBS)"
 
 compose-check:
-	@$(SCRIPTS)/compose-flat.sh --check
+	@$(SCRIPTS)/compose-check.sh
 
 up:
 	@$(SCRIPTS)/up.sh "$(M)"
+
+seed:
+	@$(SCRIPTS)/seed.sh
 
 smoke:
 	@$(SCRIPTS)/smoke.sh
@@ -79,6 +86,9 @@ chaos:
 
 down:
 	@$(SCRIPTS)/down.sh
+
+reset:
+	@$(SCRIPTS)/down.sh --reset
 
 e2e:
 	@$(SCRIPTS)/suite.sh e2e "$(M)" "$(TAGS)"

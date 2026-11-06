@@ -22,11 +22,11 @@ runs in Docker.
 
 | What | Why | Check |
 | --- | --- | --- |
-| Linux or macOS host, 4+ CPU cores, 16 GB RAM, 40 GB free disk | the stack's memory limits add up to about 7.5 GB (`make compose-check` caps them at 10 GB); images and Gradle caches take about 15 GB | `nproc` / `sysctl -n hw.ncpu` |
-| Docker Engine with the Compose v2 plugin, 2.20 or newer (Compose `include`); on macOS Docker Desktop with at least 10 GB memory for its VM | every container | `docker compose version` |
-| JDK 25 (Temurin or any other build) on `PATH` or in `JAVA_HOME` | `make up` builds each service jar on the host with its own Gradle wrapper; the wrappers download Gradle itself | `java -version` |
+| Linux or macOS host, 4+ CPU cores, 16 GB RAM, 40 GB free disk | the stack's memory limits add up to about 9.6 GB (`make compose-check` caps them at 10 GB); images and Gradle caches take about 15 GB | `nproc` / `sysctl -n hw.ncpu` |
+| Docker Engine with the Compose v2 plugin, 2.20 or newer (`up --wait`, profiles); on macOS Docker Desktop with at least 10 GB memory for its VM | every container | `docker compose version` |
+| JDK 25 (Temurin or any other build) on `PATH` or in `JAVA_HOME` | `make build` builds each service jar on the host with its own Gradle wrapper; the wrappers download Gradle itself | `java -version` |
 | bash, make (GNU or BSD), git, curl, jq | the Makefile and `scripts/`; jq for `make smoke`, `make edge-test`, `make security` | `jq --version` |
-| Node.js 22+ (optional) | only `make contracts-lint`, `make compose-flat` and `make compose-check`; the admin console builds inside Docker | `node --version` |
+| Node.js 22+ (optional) | only `make contracts-lint` and `make compose-check`; the admin console builds inside Docker | `node --version` |
 | Node.js 24 + pnpm (optional) | only the admin console's own tests (`pnpm test`, `pnpm test:e2e` in `ui/mw-admin-ui`) | `pnpm --version` |
 | Internet access on the first run | images, Gradle distributions and dependencies, the console's pnpm packages | |
 | Host port 443 free | APISIX is the only container that publishes a port (443 -> 9443) | `lsof -i :443` |
@@ -40,31 +40,41 @@ the first run spends most of its time downloading images and Gradle dependencies
 ```sh
 git clone <this repo> mfs-middleware && cd mfs-middleware
 java -version && docker compose version     # JDK 25, Compose 2.20+
-time make up                                # credentials, jars, images, stack; waits until healthy
+make build                                  # jars (bootJar, 3 modules at a time), then every image
+time make up                                # credentials, then the stack from the built images; waits until healthy
+make seed                                   # seed data through the APIs (mw-seeder, ticket 57; a no-op until then)
 make smoke                                  # live checks: containers, topics, Kafka, PG, Valkey, Keycloak, OpenBao, APISIX
 ```
 
-`make up` (`scripts/up.sh`):
+The whole stack is one hand-written file, `deploy/docker-compose.yml` (project `mfs-mw`, ADR
+[D16](docs/adr/D16-single-compose-file.md)), with profiles: no profile = the platform (always
+starts), `minimal` = the P2P and cash path, `core` = everything (the default), `seed` = the seeder.
 
-1. generates every dev credential into the gitignored `deploy/compose/platform/.env`
+`make build` (`scripts/build.sh`) runs `./gradlew bootJar` in every `services/mw-*` (no tests;
+`JOBS` modules at a time, logs in `build/build/`), then `docker compose build`: images
+`mfs-mw/<service>:local`. `make build M=mw-x` builds one module and its images.
+
+`make up` (`scripts/up.sh`) never builds:
+
+1. generates every dev credential into the gitignored `deploy/.env`
    (`scripts/gen-dev-env.sh`; existing values are kept, so the volumes stay usable);
-2. builds every service jar (`./gradlew bootJar` in each `services/mw-*`, no tests);
-3. starts the MVP project `mw` (`deploy/compose/mvp/compose.yml`, which includes
-   `deploy/compose/platform/compose.yml` and every module's own `compose.yml`, with the
-   low-resource override `deploy/compose/mvp/compose.lowmem.yml`) with `up -d --build`;
-4. waits until every long-running container is healthy and every one-shot init container
-   (`kafka-init`, `etcd-init`, `apisix-init`, `<module>-init`) has exited 0; it fails at once,
-   naming the container, otherwise (`MW_UP_TIMEOUT`, default 300 s).
+2. runs `docker compose --profile core up -d --wait` (`PROFILE=minimal` for the P2P and cash path
+   only; `TIMERS=fast` adds `deploy/test-timers.env`: short status-inquiry, reversal, retry-topic
+   and IPN timers for test runs; `M=mw-x` starts one service and what it depends on);
+3. returns once every started container is healthy and every one-shot init container
+   (`kafka-init`, `etcd-init`, `apisix-init`, `<module>-init`) has exited 0, and fails naming the
+   container otherwise (`MW_UP_TIMEOUT`, default 300 s). A second `make up` reuses the images and
+   containers as they are.
 
 Start-up order and cost (ticket 55): the init containers start once PostgreSQL and OpenBao are
-healthy, every `mw-*` service once `kafka-init` has exited 0. `kafka-init` creates the topics of
-`deploy/kafka/topics.txt` with 3 partitions each (`MW_KAFKA_PARTITIONS=3`; the file keeps the
-production counts) and leaves a done marker in its volume, so a later `make up` with the same plan
-skips it in about a second. Keycloak is pre-built (`deploy/keycloak/Dockerfile`, image
-`mfs-mw/keycloak:local`) and starts `--optimized`. The service images are trained for their AOT
-cache with the dev stack's JVM flags (build arg `JVM_OPTS` in `compose.lowmem.yml`). A volume from
-before ticket 55 holds 48-partition topics that the smaller Kafka heap does not load: run
-`make down DOWN_ARGS=-v` once.
+healthy, every `mw-*` service once PostgreSQL, Kafka, Keycloak and OpenBao are healthy and
+`kafka-init` has exited 0. `kafka-init` creates the topics of `deploy/kafka/topics.txt` with 3
+partitions each (`MW_KAFKA_PARTITIONS=3`; the file keeps the production counts) and leaves a done
+marker in its volume, so a later `make up` with the same plan skips it in about a second. Keycloak
+is pre-built (`deploy/keycloak/Dockerfile`, image `mfs-mw/keycloak:local`) and starts `--optimized`.
+The service images are trained for their AOT cache with the dev stack's JVM flags (build arg
+`JVM_OPTS`, `x-jvm-build-args` in `deploy/docker-compose.yml`). `make reset` removes every
+container and volume of the stack (every profile) for a fresh start.
 
 Seeded on start, no extra step: `mw-core-mock` creates 1,000 customer wallets `01711000001..`,
 50 agents `01811000001..`, 20 merchants `01911000001..`, 2 orgs `01311000001..`, all with the fake
@@ -75,13 +85,13 @@ Then:
 
 - **Admin console**: open https://localhost/console (the edge certificate is self-signed: accept
   the browser warning). Sign in as `ops-maker01`; the password is `KC_OPS_TEST_PASSWORD` in
-  `deploy/compose/platform/.env` (`grep KC_OPS_TEST_PASSWORD deploy/compose/platform/.env`). The
+  `deploy/.env` (`grep KC_OPS_TEST_PASSWORD deploy/.env`). The
   first sign-in of each operator asks you to enrol TOTP with an authenticator app (realm `ops`
   requires MFA). A second operator, `ops-checker01`, approves what `ops-maker01` requests: use a
   private window for them.
 - **A first transaction**: `make e2e TAGS=@p2p` runs the P2P scenarios through APISIX (the first
   run downloads the suite's dependencies). Then search the console for MSISDN `01711000001`.
-- **Stop**: `make down` keeps the data; `make down DOWN_ARGS=-v` drops every volume (a fresh
+- **Stop**: `make down` keeps the data; `make reset` drops every container and volume (a fresh
   start next time).
 
 ### Test users (dev only, passwords in the generated `.env`)
@@ -95,17 +105,14 @@ Then:
 
 ### With plain `docker compose`
 
-The repo-root `compose.yml` is the whole stack in one flat file (generated by `make compose-flat`
-from the MVP project and its low-resource override). Without the Makefile:
+Without the Makefile:
 
 ```sh
-scripts/gen-dev-env.sh                                            # dev credentials, once
+scripts/gen-dev-env.sh                                               # dev credentials, once
 for d in services/mw-*/; do (cd "$d" && ./gradlew bootJar -q); done  # the images copy build/libs/*.jar
-docker compose --env-file deploy/compose/platform/.env up -d --build
-make smoke                                                        # waits for health, then checks
+docker compose -f deploy/docker-compose.yml --profile core build
+docker compose -f deploy/docker-compose.yml --profile core up -d --wait
 ```
-
-This path does not wait for health by itself; `make smoke` does.
 
 ## What runs
 
@@ -121,7 +128,7 @@ This path does not wait for health by itself; `make smoke` does.
 
 Repository layout: `contracts/` (OpenAPI and JSON Schema files, owner per file in
 `contracts/OWNERS.yml`), `services/mw-*` (12 standalone Gradle builds), `ui/mw-admin-ui`
-(Next.js 16.4.1), `templates/mw-service-template`, `deploy/` (Compose, APISIX, Kafka topics, ZAP
+(Next.js 16.4.1), `templates/mw-service-template`, `deploy/` (the stack file `deploy/docker-compose.yml`, APISIX, Kafka topics, ZAP
 decisions), `tests/e2e` (Cucumber), `tests/perf` (Gatling), `scripts/` (everything the Makefile
 runs, with shell self-tests in `scripts/test/`), `docs/`.
 
@@ -157,19 +164,21 @@ manifest in step with every message change. The admin console is tested with `pn
 
 | Command | What it does |
 | --- | --- |
-| `make up [M=]` | the MVP stack (above), or one module's `compose.yml` as its own project; `MW_UP_NO_BUILD=1` reuses the built jars and images, `MW_UP_ONLY="mw-a mw-b"` rebuilds and recreates only those services inside the running stack |
+| `make build [M=] [JOBS=3]` | `bootJar` per stack module, `JOBS` at a time, then `docker compose build` (every image, or `M=`'s) |
+| `make up [PROFILE=core] [TIMERS=fast] [M=]` | start the stack from the built images and wait until healthy (above); `PROFILE=minimal` = the P2P and cash path, `TIMERS=fast` = short test timers (`deploy/test-timers.env`), `M=mw-x` = one service and its dependencies |
+| `make seed` | run the seed profile's one-shot `mw-seeder` and fail unless it exits 0 (ticket 57; a no-op until it exists) |
 | `make smoke` | live checks against the running stack |
 | `make edge-test` | APISIX edge policies: 401/400/413/429 envelopes, header stripping, correlation ID, quotas, idempotent apply |
 | `make e2e [M=] [TAGS=]` | Cucumber suite in `tests/e2e` (`tests/e2e/README.md`), filtered by `@<module>` and a tag expression, e.g. `make e2e TAGS="@p2p or @cash"` |
-| `make e2e-changed [BASE=main] [TAGS=]` | rebuild only the modules changed since `BASE` into the running stack, then the e2e suite (`E2E_SCOPE=modules` runs only their scenarios); fast feedback, not the gate |
+| `make e2e-changed [BASE=main] [TAGS=]` | `make build M=` + `make up M=` for each module changed since `BASE` (the whole stack when it is down or `contracts/`/`deploy/` changed), then the e2e suite (`E2E_SCOPE=modules` runs only their scenarios); fast feedback, not the gate |
 | `make chaos [TARGETS=]` | kill every `mw-*` container, then `kafka` and `postgres`, mid-flow under load; checks no transaction is left non-terminal and the core-mock ledger balances (criterion 3); report in `build/chaos/` |
 | `make perf` | Gatling mix at 100 TPS with the p95 middleware-overhead check (criterion 7, `tests/perf/README.md`); report under `tests/perf/build/reports/` |
 | `make security [M=]` | gitleaks, CycloneDX SBOM + trivy for every module and image; with the stack up also the ZAP baseline and the container log scan. `SECURITY_LIVE=1 make security` makes the live stages mandatory (the milestone gate). Decisions in `docs/security-findings.md` |
 | `make log-scan` | scan every container log of the stack for a PIN or an unmasked MSISDN / NID |
-| `make compose-flat` | regenerate the root `compose.yml` |
-| `make compose-check` | fail when `compose.yml` is stale, a service has no memory limit or the limits pass 10 GB |
-| `make down [DOWN_ARGS=-v]` | stop the stack (`-v` drops its volumes) |
+| `make compose-check` | fail when a long-running service of `deploy/docker-compose.yml` has no memory limit or the limits pass 10 GB |
+| `make down [DOWN_ARGS=-v]` | stop the stack, every profile (`-v` drops its volumes) |
+| `make reset` | remove every container, volume and orphan of the stack (every profile): the next `make up` starts fresh |
 
 The milestone gate, in order: `make verify-changed BASE=<run start>` with the stack down, then
-`make down DOWN_ARGS=-v && make up && make e2e`, then `make chaos`, `make perf` and
+`make reset && make build && make up && make e2e`, then `make chaos`, `make perf` and
 `SECURITY_LIVE=1 make security` on that stack (see [docs/demo.md](docs/demo.md), M6).

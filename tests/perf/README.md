@@ -11,7 +11,7 @@ other than intended business failures.
 ## Running it (the milestone gate)
 
 ```
-make down DOWN_ARGS=-v && make up     # fresh stack (balances, daily limits, Keycloak users)
+make reset && make build && make up   # fresh stack (balances, daily limits, Keycloak users)
 make perf                             # setup (~1-2 min), 60 s ramp, 5 min at 102 TPS, report
 ```
 
@@ -108,7 +108,7 @@ started in the steady window divided by its length.
   command, status to the gateway), so up to about 1 s of relay wait per transaction is expected at
   this rate: the first suspect for a p95 over 150 ms (fix in the services: a shorter period or a
   wake-up after commit, not in this suite).
-- The MVP project runs with the low-resource override (`deploy/compose/mvp/compose.lowmem.yml`,
-  about 7.5 GB of limits, functional runs only): CPU or memory caps there can cap the rate.
+- The stack (`deploy/docker-compose.yml`) runs with low-resource limits
+  (about 9.6 GB of limits, functional runs only): CPU or memory caps there can cap the rate.
 - KOs: a 202 `PROCESSING` (outcome not known within the gateway's 25 s budget), 429 (an APISIX
   quota: raise the pools), 401 `MW-AUTH-007` (a device session that idled out).
