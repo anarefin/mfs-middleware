@@ -29,3 +29,9 @@ export async function resetStub(page: Page) {
   const res = await page.request.post(`${IDP}/__test/reset`);
   expect(res.ok()).toBe(true);
 }
+
+/** Makes the stub's change-request list answer 503 until the next resetStub. */
+export async function failChangeRequestList(page: Page) {
+  const res = await page.request.post(`${IDP}/__test/fail-change-request-list`);
+  expect(res.ok()).toBe(true);
+}

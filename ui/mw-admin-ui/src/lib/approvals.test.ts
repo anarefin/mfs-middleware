@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canMake, canMakePartner, diffLabel, mayDecide, parseReason, parseTimeouts, parseWalletId, txnActionsFor } from "./approvals";
+import { canMake, canMakePartner, diffLabel, mayDecide, parseReason, parseTimeouts, parseWalletId, txnActionGate, txnActionsFor } from "./approvals";
 import type { ChangeRequest, Txn } from "./types";
 
 const txn = (over: Partial<Txn>): Txn => ({
@@ -32,6 +32,31 @@ describe("actions a maker may ask for, per transaction status (ticket 37 rules)"
     for (const status of ["FAILED", "REJECTED", "POSTING", "REVERSED", "REVERSING"]) {
       expect(txnActionsFor(txn({ status }))).toEqual([]);
     }
+  });
+});
+
+describe("action buttons only once the open-request check succeeded (ticket 41)", () => {
+  const maker = ["ops-maker"];
+  const t = txn({ status: "MANUAL_REVIEW" });
+
+  it("offers the actions when the check found no open request", () => {
+    expect(txnActionGate(maker, t, { ok: true, data: { items: [] } })).toEqual({
+      actions: ["INQUIRE", "FORCE_COMMIT", "FORCE_RELEASE"], open: undefined, checkFailed: false,
+    });
+  });
+
+  it("offers none while a request is open, and shows it", () => {
+    const open = cr({ action: "INQUIRE" });
+    expect(txnActionGate(maker, t, { ok: true, data: { items: [open] } })).toEqual({ actions: [], open, checkFailed: false });
+  });
+
+  it("offers none when the check failed, and says it could not check", () => {
+    expect(txnActionGate(maker, t, { ok: false })).toEqual({ actions: [], open: undefined, checkFailed: true });
+  });
+
+  it("never offers them to a non-maker, and does not report a failed check to one", () => {
+    expect(txnActionGate(["viewer"], t, { ok: true, data: { items: [] } }).actions).toEqual([]);
+    expect(txnActionGate(["viewer"], t, { ok: false }).checkFailed).toBe(false);
   });
 });
 
