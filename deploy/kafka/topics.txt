@@ -1,5 +1,7 @@
 # Kafka topics as code (spec 6.1, 6.2), applied by the one-shot kafka-init container
 # through apply-topics.sh. Single broker: replication factor 1, min.insync.replicas 1.
+# The partition counts are the production reference; the dev stack overrides all of them with
+# MW_KAFKA_PARTITIONS (3, deploy/compose/platform/compose.yml).
 #
 # Format: <topic> <partitions> <retention> [retry=<group>[,<group>...]]
 #   retention: <n>d (days) or "compact" (cleanup.policy=compact)

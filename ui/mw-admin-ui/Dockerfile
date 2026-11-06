@@ -22,6 +22,6 @@ COPY --from=build --chown=10001:10001 /app/.next/standalone ./
 COPY --from=build --chown=10001:10001 /app/.next/static ./.next/static
 USER 10001:10001
 EXPOSE 3000
-HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
+HEALTHCHECK --interval=5s --timeout=3s --start-period=20s --retries=3 \
   CMD wget -qO- http://127.0.0.1:3000/console/api/health | grep -q UP || exit 1
 CMD ["node", "server.js"]

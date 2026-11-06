@@ -9,7 +9,7 @@ dockerfiles() {
 test_dockerfiles_set_no_env_beyond_the_jvm_flags() {
   local f bad
   for f in $(dockerfiles); do
-    bad="$(grep -nE '^[[:space:]]*(ENV|ARG)[[:space:]]' "$f" | grep -vE '(ENV JAVA_TOOL_OPTIONS=|ARG JRE_IMAGE=)')"
+    bad="$(grep -nE '^[[:space:]]*(ENV|ARG)[[:space:]]' "$f" | grep -vE '(ENV JAVA_TOOL_OPTIONS=|ARG JRE_IMAGE=|ARG JVM_OPTS=)')"
     [ -z "$bad" ] || fail "$f sets image env/args beyond JVM flags: $bad"
   done
 }

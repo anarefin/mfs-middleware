@@ -10,7 +10,8 @@
 #   - images:   trivy image on mw-x:$MW_IMAGE_TAG (module has a Dockerfile) and mw-x-init:$MW_IMAGE_TAG
 #               (init/Dockerfile), default tag dev, what compose builds; an image not built locally
 #               fails the stage (image-missing, NOT SCANNED); without M= also every third-party
-#               image the root compose.yml pins
+#               image the root compose.yml pins and the platform image built from the repo
+#               (mfs-mw/keycloak:local, deploy/keycloak/Dockerfile)
 #   HIGH and CRITICAL fail, minus the justified entries of .trivyignore.yaml; image scans skip
 #   OS packages without a fix (--ignore-unfixed, decision in docs/security-findings.md).
 #   Findings below high are written to build/security/*-below-high.json (report only); their
@@ -150,6 +151,19 @@ for mod in $modules; do
     fi
   done
 done
+# Platform images built from the repo (ticket 55): upstream content plus our build step, so the
+# third-party ignore file applies; one not built fails like a module image.
+if [ -z "$m" ] && [ -f "$MW_ROOT/deploy/keycloak/Dockerfile" ]; then
+  img=mfs-mw/keycloak:local
+  if docker image inspect "$img" >/dev/null 2>&1; then
+    ignore_args=()
+    [ -f "$THIRD_PARTY_IGNORE" ] && ignore_args=(--ignorefile "$THIRD_PARTY_IGNORE")
+    trivy_gate image "$img" "$img"
+  else
+    failed="$failed image-missing:$img"
+    printf '==> ERROR security: image %s not built: %s NOT SCANNED (build it first: make up)\n' "$img" "$img" >&2
+  fi
+fi
 if [ -z "$m" ] && [ -f "$MW_ROOT/compose.yml" ]; then
   ignore_args=()
   [ -f "$THIRD_PARTY_IGNORE" ] && ignore_args=(--ignorefile "$THIRD_PARTY_IGNORE")

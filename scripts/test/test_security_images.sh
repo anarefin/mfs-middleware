@@ -49,3 +49,22 @@ test_security_fails_when_an_init_image_is_not_built() {
   assert_fails run_security mw-x
   assert_out_contains "image-missing:mw-x-init:dev"
 }
+
+# The platform image built from the repo (ticket 55: deploy/keycloak/Dockerfile -> mfs-mw/keycloak:local)
+# is scanned like the upstream images, without M= only; one not built fails the stage.
+test_security_scans_the_locally_built_keycloak_image() {
+  images_fixture mw-x:dev mw-x-init:dev mfs-mw/keycloak:local
+  mkdir -p deploy/keycloak && touch deploy/keycloak/Dockerfile
+  assert_ok run_security
+  grep -q 'trivy image .* mfs-mw/keycloak:local$' .tool-calls || fail "keycloak image not scanned: $(cat .tool-calls)"
+  : >.tool-calls
+  assert_ok run_security mw-x
+  if grep -q 'mfs-mw/keycloak' .tool-calls; then fail "keycloak scanned with M="; fi
+}
+
+test_security_fails_when_the_keycloak_image_is_not_built() {
+  images_fixture mw-x:dev mw-x-init:dev
+  mkdir -p deploy/keycloak && touch deploy/keycloak/Dockerfile
+  assert_fails run_security
+  assert_out_contains "image-missing:mfs-mw/keycloak:local"
+}

@@ -10,7 +10,7 @@
 # init containers carry the compose label mw.oneshot=true (restart "no", no healthcheck): they
 # count once exited 0 (services can be healthy before e.g. kafka-init has created their topics).
 # Fails at once, naming the service, when a long-running service is exited, dead or unhealthy,
-# or a one-shot exits non-zero. MW_UP_TIMEOUT (s, default 300) and MW_UP_POLL (s, default 3).
+# or a one-shot exits non-zero. MW_UP_TIMEOUT (s, default 300) and MW_UP_POLL (s, default 1).
 set -eu
 . "$(dirname "$0")/lib/modules.sh"
 
@@ -72,7 +72,7 @@ info "up: docker compose -f ${file#"$MW_ROOT"/} up -d $build_args ${COMPOSE_ARGS
 docker compose "${DC_F[@]}" up -d $build_args ${COMPOSE_ARGS:-} $svc_args
 
 timeout="${MW_UP_TIMEOUT:-300}"
-poll="${MW_UP_POLL:-3}"
+poll="${MW_UP_POLL:-1}"
 # check: one line per service, "failed <svc>(<why>)" or "pending <svc>(<state>)"; healthy
 # services and one-shots that exited 0 print nothing. A long-running service without a
 # healthcheck counts once it is running.

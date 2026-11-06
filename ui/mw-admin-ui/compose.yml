@@ -41,9 +41,10 @@ services:
           memory: 256M
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/console/api/health | grep -q UP"]
-      interval: 10s
+      interval: 5s
       timeout: 3s
       start_period: 20s
+      start_interval: 1s
       retries: 3
     logging:
       driver: json-file

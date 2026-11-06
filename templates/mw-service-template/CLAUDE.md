@@ -23,7 +23,7 @@ and keep `scripts/test/test_service_template.sh` green.
 | JSON logs with the 21.1 fields, masking before output; only system ids are written unmasked, on their shape alone (`CorrelationIdFilter` is the gate for caller correlation and trace ids): `txnId` and `correlationId` when a lower-case RFC 9562 UUID (version 1-8, variant 8-b), `traceId`/`spanId` when 32/16 lower-case hex (generated, or a caller traceparent the filter let through); anything else, `partnerId` always, is `MaskingPolicy.scrub`bed like free text; free text keeps digit-only bounds, so a number glued to letters is still masked | `logging/JsonLogFormatter` | 21.1 |
 | Config binding, OpenBao/Vault via Spring Cloud Vault (AppRole, `VAULT_ENABLED`) | `config/MwServiceProperties`, `application.yml` | 18.4, 20.4 |
 | Liveness/readiness, `/actuator/prometheus`, Brave tracing (W3C), virtual threads | `application.yml` | 20.1, 21.2, 21.3 |
-| Image: layered jar, JDK 25 AOT cache, non-root uid 10001, readiness `HEALTHCHECK`, SBOM at `/app/sbom/bom.json` | `Dockerfile` | 20.1 |
+| Image: layered jar, JDK 25 AOT cache (trained and run with the same `JVM_OPTS` build arg = `JAVA_TOOL_OPTIONS`; the dev stack sets Serial GC there and only sizes in `JDK_JAVA_OPTIONS`, ticket 55), non-root uid 10001, readiness `HEALTHCHECK`, SBOM at `/app/sbom/bom.json` | `Dockerfile` | 20.1 |
 | Compose: read-only FS, tmpfs `/tmp`, limits, `unless-stopped`, healthcheck, zone networks `app`, `data` | `compose.yml` | 20.2 |
 
 ## Kafka, Camel, resilience, Flyway (WP05 part)

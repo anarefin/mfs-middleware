@@ -21,8 +21,12 @@ COPY --from=extract /build/extracted/snapshot-dependencies/ ./
 COPY --from=extract /build/extracted/application/ ./
 COPY build/reports/cyclonedx-direct/bom.json /app/sbom/bom.json
 
-# Same JVM flags for the training run and at runtime, or the AOT cache is rejected.
-ENV JAVA_TOOL_OPTIONS="-XX:+UseZGC -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+# JVM flags of the AOT training run below and of every start: the cache is rejected when the GC or
+# the compressed-oops mode differs (ZGC turns compressed oops off). Production default per spec
+# 20.1; the dev stack builds with Serial GC (build arg in deploy/compose/mvp/compose.lowmem.yml) and
+# adds only sizes at run time (JDK_JAVA_OPTIONS), never another JAVA_TOOL_OPTIONS.
+ARG JVM_OPTS="-XX:+UseZGC -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+ENV JAVA_TOOL_OPTIONS="${JVM_OPTS}"
 
 # AOT cache training run: start the context once, then exit. No database or Kafka exists at
 # build time: Flyway is skipped here only (it runs on every real start-up, 16.4); the pool
@@ -39,7 +43,7 @@ RUN --mount=type=bind,source=aot-training-pin-public-key.pem,target=/tmp/aot-pin
 USER 10001:10001
 EXPOSE 8080
 
-HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=5s --timeout=3s --start-period=30s --retries=3 \
   CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /actuator/health/readiness HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"status\":\"UP\"' <&3"]
 
 ENTRYPOINT ["java", "-XX:AOTCache=/app/app.aot", "-jar", "/app/app.jar"]

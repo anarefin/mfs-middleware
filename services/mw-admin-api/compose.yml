@@ -30,6 +30,15 @@ services:
     image: ${MW_ADMIN_API_INIT_IMAGE:-mw-admin-api-init:dev}
     build: ./init
     restart: "no"
+    # Starts once PostgreSQL and OpenBao (unsealed, engines enabled) are healthy, so init.sh never
+    # polls. Optional: with `make up M=...` they belong to the already running platform project.
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+      openbao:
+        condition: service_healthy
+        required: false
     labels: { mw.oneshot: "true" } # one-shot: scripts/up.sh does not wait for its health
     networks: [app, data]
     environment:
@@ -58,6 +67,9 @@ services:
     networks: [app, data]
     depends_on:
       mw-admin-api-init: { condition: service_completed_successfully }
+      # Topics exist before the consumers subscribe (platform kafka-init). Optional, so
+      # `make up M=mw-admin-api` (this file alone, no kafka-init in the project) still starts.
+      kafka-init: { condition: service_completed_successfully, required: false }
     volumes:
       - admin-api-approle:/run/mw/approle:ro
     user: "10001:10001"
@@ -98,9 +110,10 @@ services:
           exec 3<>/dev/tcp/127.0.0.1/8080 &&
           printf 'GET /actuator/health/readiness HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
           grep -q '"status":"UP"' <&3
-      interval: 10s
+      interval: 5s
       timeout: 3s
       start_period: 30s
+      start_interval: 1s
       retries: 3
     logging:
       driver: json-file

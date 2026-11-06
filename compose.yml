@@ -44,6 +44,7 @@ services:
     healthcheck:
       interval: 5s
       retries: 12
+      start_interval: 1s
       start_period: 10s
       test:
         - CMD
@@ -161,6 +162,8 @@ services:
     healthcheck:
       interval: 5s
       retries: 12
+      start_interval: 1s
+      start_period: 10s
       test:
         - CMD
         - /usr/local/bin/etcdctl
@@ -238,6 +241,7 @@ services:
     healthcheck:
       interval: 5s
       retries: 12
+      start_interval: 1s
       start_period: 10s
       test:
         - CMD
@@ -262,7 +266,7 @@ services:
       resources:
         limits:
           cpus: "2"
-          memory: 896M
+          memory: 640M
     environment:
       - CLUSTER_ID=mw-kraft-single-node-0
       - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
@@ -271,7 +275,7 @@ services:
       - KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093
       - KAFKA_DEFAULT_REPLICATION_FACTOR=1
       - KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0
-      - KAFKA_HEAP_OPTS=-Xms256m -Xmx512m
+      - KAFKA_HEAP_OPTS=-Xms256m -Xmx256m
       - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
       - KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
       - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
@@ -285,14 +289,16 @@ services:
       - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
       - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
     healthcheck:
-      interval: 10s
-      retries: 12
-      start_period: 30s
+      interval: 5s
+      retries: 24
+      start_interval: 1s
+      start_period: 10s
       test:
-        - CMD-SHELL
-        - KAFKA_HEAP_OPTS='-Xms16m -Xmx96m' /opt/kafka/bin/kafka-broker-api-versions.sh
-          --bootstrap-server localhost:9092 >/dev/null
-      timeout: 20s
+        - CMD
+        - bash
+        - -c
+        - exec 3<>/dev/tcp/127.0.0.1/9092
+      timeout: 5s
     image: apache/kafka:4.3.2@sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7
     logging:
       driver: json-file
@@ -326,7 +332,9 @@ services:
     environment:
       - BOOTSTRAP=kafka:9092
       - KAFKA_HEAP_OPTS=-Xms16m -Xmx96m
+      - MW_KAFKA_PARTITIONS=${MW_KAFKA_PARTITIONS:-3}
       - PARALLEL=3
+      - STATE_DIR=/var/lib/kafka/data
       - KAFKA_JVM_PERFORMANCE_OPTS=-XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1
     image: apache/kafka:4.3.2@sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7
     labels:
@@ -349,10 +357,14 @@ services:
         source: ./deploy/kafka
         target: /deploy/kafka
         type: bind
+      - source: kafka-init-state
+        target: /var/lib/kafka/data
+        type: volume
+        volume: {}
   keycloak:
-    command:
-      - start
-      - --import-realm
+    build:
+      context: ./deploy/keycloak
+      dockerfile: Dockerfile
     depends_on:
       postgres:
         condition: service_healthy
@@ -385,8 +397,9 @@ services:
       - KC_PORTALS_TEST_PASSWORD=${KC_PORTALS_TEST_PASSWORD:?run scripts/gen-dev-env.sh
         (make up does)}
     healthcheck:
-      interval: 10s
+      interval: 5s
       retries: 18
+      start_interval: 1s
       start_period: 30s
       test:
         - CMD
@@ -395,7 +408,7 @@ services:
         - 'exec 3<>/dev/tcp/127.0.0.1/9000 && printf ''GET /health/ready HTTP/1.0\r\nHost:
           localhost\r\n\r\n'' >&3 && head -1 <&3 | grep -q '' 200'''
       timeout: 5s
-    image: quay.io/keycloak/keycloak:26.8.1@sha256:3f3c5f8e03c614774b4bd9173b88391fefa4153bfc010d8012d59ad825377332
+    image: mfs-mw/keycloak:local
     logging:
       driver: json-file
       options:
@@ -416,11 +429,16 @@ services:
         type: bind
   mw-adapter-bank:
     build:
+      args:
+        JVM_OPTS: -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
       context: ./services/mw-adapter-bank
       dockerfile: Dockerfile
     cap_drop:
       - ALL
     depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+        required: false
       mw-adapter-bank-init:
         condition: service_completed_successfully
         required: true
@@ -428,7 +446,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 384M
+          memory: 512M
     environment:
       - C2WBANK_BASE_URL=${C2WBANK_BASE_URL:-http://mw-simulators:8080}
       - DB_URL=${DB_URL:-jdbc:postgresql://postgres:5432/mw}
@@ -438,14 +456,14 @@ services:
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-dev}
       - VAULT_ADDR=${VAULT_ADDR:-http://openbao:8200}
       - VAULT_ENABLED=${VAULT_ENABLED:-true}
-      - JAVA_TOOL_OPTIONS=-XX:+UseSerialGC -Xms32m -Xmx160m -XX:MaxMetaspaceSize=160m
-        -XX:ReservedCodeCacheSize=48m -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1
-        -Xss512k -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError
+      - JDK_JAVA_OPTIONS=-Xms192m -Xmx192m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m
+        -Xss512k -XX:MaxDirectMemorySize=64m
       - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=3
       - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1
     healthcheck:
-      interval: 10s
+      interval: 5s
       retries: 3
+      start_interval: 1s
       start_period: 30s
       test:
         - CMD
@@ -481,6 +499,13 @@ services:
     build:
       context: ./services/mw-adapter-bank/init
       dockerfile: Dockerfile
+    depends_on:
+      openbao:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
     deploy:
       resources:
         limits:
@@ -517,11 +542,16 @@ services:
         volume: {}
   mw-adapter-billpay:
     build:
+      args:
+        JVM_OPTS: -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
       context: ./services/mw-adapter-billpay
       dockerfile: Dockerfile
     cap_drop:
       - ALL
     depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+        required: false
       mw-adapter-billpay-init:
         condition: service_completed_successfully
         required: true
@@ -529,7 +559,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 384M
+          memory: 512M
     environment:
       - BILLAGG_BASE_URL=${BILLAGG_BASE_URL:-http://mw-simulators:8080}
       - DB_URL=${DB_URL:-jdbc:postgresql://postgres:5432/mw}
@@ -539,14 +569,14 @@ services:
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-dev}
       - VAULT_ADDR=${VAULT_ADDR:-http://openbao:8200}
       - VAULT_ENABLED=${VAULT_ENABLED:-true}
-      - JAVA_TOOL_OPTIONS=-XX:+UseSerialGC -Xms32m -Xmx160m -XX:MaxMetaspaceSize=160m
-        -XX:ReservedCodeCacheSize=48m -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1
-        -Xss512k -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError
+      - JDK_JAVA_OPTIONS=-Xms192m -Xmx192m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m
+        -Xss512k -XX:MaxDirectMemorySize=64m
       - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=3
       - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1
     healthcheck:
-      interval: 10s
+      interval: 5s
       retries: 3
+      start_interval: 1s
       start_period: 30s
       test:
         - CMD
@@ -582,6 +612,13 @@ services:
     build:
       context: ./services/mw-adapter-billpay/init
       dockerfile: Dockerfile
+    depends_on:
+      openbao:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
     deploy:
       resources:
         limits:
@@ -618,11 +655,16 @@ services:
         volume: {}
   mw-adapter-telco:
     build:
+      args:
+        JVM_OPTS: -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
       context: ./services/mw-adapter-telco
       dockerfile: Dockerfile
     cap_drop:
       - ALL
     depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+        required: false
       mw-adapter-telco-init:
         condition: service_completed_successfully
         required: true
@@ -630,7 +672,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 384M
+          memory: 512M
     environment:
       - DB_URL=${DB_URL:-jdbc:postgresql://postgres:5432/mw}
       - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
@@ -640,14 +682,14 @@ services:
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-dev}
       - VAULT_ADDR=${VAULT_ADDR:-http://openbao:8200}
       - VAULT_ENABLED=${VAULT_ENABLED:-true}
-      - JAVA_TOOL_OPTIONS=-XX:+UseSerialGC -Xms32m -Xmx160m -XX:MaxMetaspaceSize=160m
-        -XX:ReservedCodeCacheSize=48m -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1
-        -Xss512k -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError
+      - JDK_JAVA_OPTIONS=-Xms192m -Xmx192m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m
+        -Xss512k -XX:MaxDirectMemorySize=64m
       - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=3
       - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1
     healthcheck:
-      interval: 10s
+      interval: 5s
       retries: 3
+      start_interval: 1s
       start_period: 30s
       test:
         - CMD
@@ -683,6 +725,13 @@ services:
     build:
       context: ./services/mw-adapter-telco/init
       dockerfile: Dockerfile
+    depends_on:
+      openbao:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
     deploy:
       resources:
         limits:
@@ -717,11 +766,16 @@ services:
         volume: {}
   mw-admin-api:
     build:
+      args:
+        JVM_OPTS: -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
       context: ./services/mw-admin-api
       dockerfile: Dockerfile
     cap_drop:
       - ALL
     depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+        required: false
       mw-admin-api-init:
         condition: service_completed_successfully
         required: true
@@ -729,7 +783,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 384M
+          memory: 512M
     environment:
       - DB_URL=${DB_URL:-jdbc:postgresql://postgres:5432/mw}
       - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
@@ -738,14 +792,14 @@ services:
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-dev}
       - VAULT_ADDR=${VAULT_ADDR:-http://openbao:8200}
       - VAULT_ENABLED=${VAULT_ENABLED:-true}
-      - JAVA_TOOL_OPTIONS=-XX:+UseSerialGC -Xms32m -Xmx160m -XX:MaxMetaspaceSize=160m
-        -XX:ReservedCodeCacheSize=48m -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1
-        -Xss512k -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError
+      - JDK_JAVA_OPTIONS=-Xms192m -Xmx192m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m
+        -Xss512k -XX:MaxDirectMemorySize=64m
       - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=2
       - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1
     healthcheck:
-      interval: 10s
+      interval: 5s
       retries: 3
+      start_interval: 1s
       start_period: 30s
       test:
         - CMD
@@ -781,6 +835,13 @@ services:
     build:
       context: ./services/mw-admin-api/init
       dockerfile: Dockerfile
+    depends_on:
+      openbao:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
     deploy:
       resources:
         limits:
@@ -835,8 +896,9 @@ services:
         does)}
       AUTH_URL: ${MW_ADMIN_UI_PUBLIC_URL:-https://localhost}/console/api/auth
     healthcheck:
-      interval: 10s
+      interval: 5s
       retries: 3
+      start_interval: 1s
       start_period: 20s
       test:
         - CMD-SHELL
@@ -860,11 +922,16 @@ services:
     user: 10001:10001
   mw-app-gateway:
     build:
+      args:
+        JVM_OPTS: -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
       context: ./services/mw-app-gateway
       dockerfile: Dockerfile
     cap_drop:
       - ALL
     depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+        required: false
       mw-app-gateway-init:
         condition: service_completed_successfully
         required: true
@@ -872,7 +939,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 384M
+          memory: 512M
     environment:
       - DB_URL=${DB_URL:-jdbc:postgresql://postgres:5432/mw}
       - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
@@ -883,14 +950,14 @@ services:
       - VALKEY_HOST=${VALKEY_HOST:-valkey}
       - VAULT_ADDR=${VAULT_ADDR:-http://openbao:8200}
       - VAULT_ENABLED=${VAULT_ENABLED:-true}
-      - JAVA_TOOL_OPTIONS=-XX:+UseSerialGC -Xms32m -Xmx160m -XX:MaxMetaspaceSize=160m
-        -XX:ReservedCodeCacheSize=48m -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1
-        -Xss512k -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError
+      - JDK_JAVA_OPTIONS=-Xms192m -Xmx192m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m
+        -Xss512k -XX:MaxDirectMemorySize=64m
       - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=4
       - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1
     healthcheck:
-      interval: 10s
+      interval: 5s
       retries: 3
+      start_interval: 1s
       start_period: 30s
       test:
         - CMD
@@ -926,6 +993,13 @@ services:
     build:
       context: ./services/mw-app-gateway/init
       dockerfile: Dockerfile
+    depends_on:
+      openbao:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
     deploy:
       resources:
         limits:
@@ -961,11 +1035,16 @@ services:
         volume: {}
   mw-audit-dw:
     build:
+      args:
+        JVM_OPTS: -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
       context: ./services/mw-audit-dw
       dockerfile: Dockerfile
     cap_drop:
       - ALL
     depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+        required: false
       mw-audit-dw-init:
         condition: service_completed_successfully
         required: true
@@ -973,7 +1052,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 416M
+          memory: 544M
     environment:
       - DB_URL=${DB_URL:-jdbc:postgresql://postgres:5432/mw}
       - DB_USERNAME=audit_writer
@@ -982,14 +1061,14 @@ services:
       - SPRING_FLYWAY_USER=audit_dw_rw
       - VAULT_ADDR=${VAULT_ADDR:-http://openbao:8200}
       - VAULT_ENABLED=${VAULT_ENABLED:-true}
-      - JAVA_TOOL_OPTIONS=-XX:+UseSerialGC -Xms32m -Xmx160m -XX:MaxMetaspaceSize=160m
-        -XX:ReservedCodeCacheSize=48m -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1
-        -Xss512k -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError
+      - JDK_JAVA_OPTIONS=-Xms192m -Xmx192m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m
+        -Xss512k -XX:MaxDirectMemorySize=64m
       - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=3
       - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1
     healthcheck:
-      interval: 10s
+      interval: 5s
       retries: 3
+      start_interval: 1s
       start_period: 30s
       test:
         - CMD
@@ -1025,6 +1104,13 @@ services:
     build:
       context: ./services/mw-audit-dw/init
       dockerfile: Dockerfile
+    depends_on:
+      openbao:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
     deploy:
       resources:
         limits:
@@ -1059,11 +1145,16 @@ services:
         volume: {}
   mw-checkout:
     build:
+      args:
+        JVM_OPTS: -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
       context: ./services/mw-checkout
       dockerfile: Dockerfile
     cap_drop:
       - ALL
     depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+        required: false
       mw-checkout-init:
         condition: service_completed_successfully
         required: true
@@ -1071,7 +1162,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 384M
+          memory: 512M
     environment:
       - DB_URL=${DB_URL:-jdbc:postgresql://postgres:5432/mw}
       - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
@@ -1082,14 +1173,14 @@ services:
       - MW_ENV=${MW_ENV:-local}
       - VAULT_ADDR=${VAULT_ADDR:-http://openbao:8200}
       - VAULT_ENABLED=${VAULT_ENABLED:-true}
-      - JAVA_TOOL_OPTIONS=-XX:+UseSerialGC -Xms32m -Xmx160m -XX:MaxMetaspaceSize=160m
-        -XX:ReservedCodeCacheSize=48m -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1
-        -Xss512k -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError
+      - JDK_JAVA_OPTIONS=-Xms192m -Xmx192m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m
+        -Xss512k -XX:MaxDirectMemorySize=64m
       - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=4
       - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1
     healthcheck:
-      interval: 10s
+      interval: 5s
       retries: 3
+      start_interval: 1s
       start_period: 30s
       test:
         - CMD
@@ -1125,6 +1216,16 @@ services:
     build:
       context: ./services/mw-checkout/init
       dockerfile: Dockerfile
+    depends_on:
+      mw-core-mock-init:
+        condition: service_completed_successfully
+        required: false
+      openbao:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
     deploy:
       resources:
         limits:
@@ -1161,11 +1262,16 @@ services:
         volume: {}
   mw-core-mock:
     build:
+      args:
+        JVM_OPTS: -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
       context: ./services/mw-core-mock
       dockerfile: Dockerfile
     cap_drop:
       - ALL
     depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+        required: false
       mw-core-mock-init:
         condition: service_completed_successfully
         required: true
@@ -1173,21 +1279,21 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 384M
+          memory: 512M
     environment:
       - DB_URL=${DB_URL:-jdbc:postgresql://postgres:5432/mw}
       - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
       - MW_ENV=${MW_ENV:-local}
       - VAULT_ADDR=${VAULT_ADDR:-http://openbao:8200}
       - VAULT_ENABLED=${VAULT_ENABLED:-true}
-      - JAVA_TOOL_OPTIONS=-XX:+UseSerialGC -Xms32m -Xmx160m -XX:MaxMetaspaceSize=160m
-        -XX:ReservedCodeCacheSize=48m -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1
-        -Xss512k -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError
+      - JDK_JAVA_OPTIONS=-Xms192m -Xmx192m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m
+        -Xss512k -XX:MaxDirectMemorySize=64m
       - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=3
       - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1
     healthcheck:
-      interval: 10s
+      interval: 5s
       retries: 3
+      start_interval: 1s
       start_period: 30s
       test:
         - CMD
@@ -1223,6 +1329,13 @@ services:
     build:
       context: ./services/mw-core-mock/init
       dockerfile: Dockerfile
+    depends_on:
+      openbao:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
     deploy:
       resources:
         limits:
@@ -1257,11 +1370,16 @@ services:
         volume: {}
   mw-notify:
     build:
+      args:
+        JVM_OPTS: -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
       context: ./services/mw-notify
       dockerfile: Dockerfile
     cap_drop:
       - ALL
     depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+        required: false
       mw-notify-init:
         condition: service_completed_successfully
         required: true
@@ -1269,7 +1387,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 384M
+          memory: 512M
     environment:
       - DB_URL=${DB_URL:-jdbc:postgresql://postgres:5432/mw}
       - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
@@ -1283,14 +1401,14 @@ services:
       - SMTP_STARTTLS_REQUIRED=${SMTP_STARTTLS_REQUIRED:-false}
       - VAULT_ADDR=${VAULT_ADDR:-http://openbao:8200}
       - VAULT_ENABLED=${VAULT_ENABLED:-true}
-      - JAVA_TOOL_OPTIONS=-XX:+UseSerialGC -Xms32m -Xmx160m -XX:MaxMetaspaceSize=160m
-        -XX:ReservedCodeCacheSize=48m -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1
-        -Xss512k -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError
+      - JDK_JAVA_OPTIONS=-Xms192m -Xmx192m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m
+        -Xss512k -XX:MaxDirectMemorySize=64m
       - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=3
       - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1
     healthcheck:
-      interval: 10s
+      interval: 5s
       retries: 3
+      start_interval: 1s
       start_period: 30s
       test:
         - CMD
@@ -1326,6 +1444,13 @@ services:
     build:
       context: ./services/mw-notify/init
       dockerfile: Dockerfile
+    depends_on:
+      openbao:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
     deploy:
       resources:
         limits:
@@ -1360,11 +1485,16 @@ services:
         volume: {}
   mw-orchestrator:
     build:
+      args:
+        JVM_OPTS: -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
       context: ./services/mw-orchestrator
       dockerfile: Dockerfile
     cap_drop:
       - ALL
     depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+        required: false
       mw-orchestrator-init:
         condition: service_completed_successfully
         required: true
@@ -1372,7 +1502,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 448M
+          memory: 576M
     environment:
       - DB_URL=${DB_URL:-jdbc:postgresql://postgres:5432/mw}
       - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
@@ -1381,14 +1511,14 @@ services:
       - VALKEY_HOST=${VALKEY_HOST:-valkey}
       - VAULT_ADDR=${VAULT_ADDR:-http://openbao:8200}
       - VAULT_ENABLED=${VAULT_ENABLED:-true}
-      - JAVA_TOOL_OPTIONS=-XX:+UseSerialGC -Xms32m -Xmx160m -XX:MaxMetaspaceSize=160m
-        -XX:ReservedCodeCacheSize=48m -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1
-        -Xss512k -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError
+      - JDK_JAVA_OPTIONS=-Xms192m -Xmx192m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m
+        -Xss512k -XX:MaxDirectMemorySize=64m
       - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=4
       - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1
     healthcheck:
-      interval: 10s
+      interval: 5s
       retries: 3
+      start_interval: 1s
       start_period: 30s
       test:
         - CMD
@@ -1424,6 +1554,13 @@ services:
     build:
       context: ./services/mw-orchestrator/init
       dockerfile: Dockerfile
+    depends_on:
+      openbao:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
     deploy:
       resources:
         limits:
@@ -1459,11 +1596,16 @@ services:
         volume: {}
   mw-portal-api:
     build:
+      args:
+        JVM_OPTS: -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
       context: ./services/mw-portal-api
       dockerfile: Dockerfile
     cap_drop:
       - ALL
     depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+        required: false
       mw-portal-api-init:
         condition: service_completed_successfully
         required: true
@@ -1471,7 +1613,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 384M
+          memory: 512M
     environment:
       - DB_URL=${DB_URL:-jdbc:postgresql://postgres:5432/mw}
       - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
@@ -1479,14 +1621,14 @@ services:
       - MW_PORTAL_JWK_SET_URI=${MW_PORTAL_JWK_SET_URI:-http://keycloak:8080/realms/portals/protocol/openid-connect/certs}
       - VAULT_ADDR=${VAULT_ADDR:-http://openbao:8200}
       - VAULT_ENABLED=${VAULT_ENABLED:-true}
-      - JAVA_TOOL_OPTIONS=-XX:+UseSerialGC -Xms32m -Xmx160m -XX:MaxMetaspaceSize=160m
-        -XX:ReservedCodeCacheSize=48m -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1
-        -Xss512k -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError
+      - JDK_JAVA_OPTIONS=-Xms192m -Xmx192m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m
+        -Xss512k -XX:MaxDirectMemorySize=64m
       - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=3
       - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1
     healthcheck:
-      interval: 10s
+      interval: 5s
       retries: 3
+      start_interval: 1s
       start_period: 30s
       test:
         - CMD
@@ -1522,6 +1664,13 @@ services:
     build:
       context: ./services/mw-portal-api/init
       dockerfile: Dockerfile
+    depends_on:
+      openbao:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
     deploy:
       resources:
         limits:
@@ -1558,11 +1707,16 @@ services:
         volume: {}
   mw-simulators:
     build:
+      args:
+        JVM_OPTS: -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
       context: ./services/mw-simulators
       dockerfile: Dockerfile
     cap_drop:
       - ALL
     depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+        required: false
       mw-simulators-init:
         condition: service_completed_successfully
         required: true
@@ -1570,21 +1724,21 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 320M
+          memory: 448M
     environment:
       - DB_URL=${DB_URL:-jdbc:postgresql://postgres:5432/mw}
       - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
       - MW_ENV=${MW_ENV:-local}
       - VAULT_ADDR=${VAULT_ADDR:-http://openbao:8200}
       - VAULT_ENABLED=${VAULT_ENABLED:-true}
-      - JAVA_TOOL_OPTIONS=-XX:+UseSerialGC -Xms32m -Xmx160m -XX:MaxMetaspaceSize=160m
-        -XX:ReservedCodeCacheSize=48m -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1
-        -Xss512k -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError
+      - JDK_JAVA_OPTIONS=-Xms192m -Xmx192m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m
+        -Xss512k -XX:MaxDirectMemorySize=64m
       - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=3
       - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1
     healthcheck:
-      interval: 10s
+      interval: 5s
       retries: 3
+      start_interval: 1s
       start_period: 30s
       test:
         - CMD
@@ -1620,6 +1774,13 @@ services:
     build:
       context: ./services/mw-simulators/init
       dockerfile: Dockerfile
+    depends_on:
+      openbao:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
     deploy:
       resources:
         limits:
@@ -1666,11 +1827,16 @@ services:
         volume: {}
   mw-ussd:
     build:
+      args:
+        JVM_OPTS: -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
       context: ./services/mw-ussd
       dockerfile: Dockerfile
     cap_drop:
       - ALL
     depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+        required: false
       mw-ussd-init:
         condition: service_completed_successfully
         required: true
@@ -1678,7 +1844,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 384M
+          memory: 512M
     environment:
       - DB_URL=${DB_URL:-jdbc:postgresql://postgres:5432/mw}
       - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
@@ -1689,14 +1855,14 @@ services:
       - VALKEY_HOST=${VALKEY_HOST:-valkey}
       - VAULT_ADDR=${VAULT_ADDR:-http://openbao:8200}
       - VAULT_ENABLED=${VAULT_ENABLED:-true}
-      - JAVA_TOOL_OPTIONS=-XX:+UseSerialGC -Xms32m -Xmx160m -XX:MaxMetaspaceSize=160m
-        -XX:ReservedCodeCacheSize=48m -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1
-        -Xss512k -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError
+      - JDK_JAVA_OPTIONS=-Xms192m -Xmx192m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m
+        -Xss512k -XX:MaxDirectMemorySize=64m
       - SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=3
       - SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1
     healthcheck:
-      interval: 10s
+      interval: 5s
       retries: 3
+      start_interval: 1s
       start_period: 30s
       test:
         - CMD
@@ -1732,6 +1898,16 @@ services:
     build:
       context: ./services/mw-ussd/init
       dockerfile: Dockerfile
+    depends_on:
+      mw-core-mock-init:
+        condition: service_completed_successfully
+        required: false
+      openbao:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
     deploy:
       resources:
         limits:
@@ -1779,11 +1955,11 @@ services:
     healthcheck:
       interval: 5s
       retries: 12
+      start_interval: 1s
       start_period: 10s
       test:
-        - CMD
-        - bao
-        - status
+        - CMD-SHELL
+        - bao status >/dev/null && test -f /openbao/file/dev-ready
       timeout: 5s
     image: openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f
     logging:
@@ -1842,6 +2018,7 @@ services:
     healthcheck:
       interval: 5s
       retries: 12
+      start_interval: 1s
       start_period: 10s
       test:
         - CMD-SHELL
@@ -1886,6 +2063,8 @@ services:
     healthcheck:
       interval: 5s
       retries: 12
+      start_interval: 1s
+      start_period: 10s
       test:
         - CMD-SHELL
         - valkey-cli ping | grep -q PONG
@@ -1930,6 +2109,8 @@ volumes:
     name: mw_etcd-data
   kafka-data:
     name: mw_kafka-data
+  kafka-init-state:
+    name: mw_kafka-init-state
   notify-approle:
     name: mw_notify-approle
   openbao-data:
@@ -1946,12 +2127,14 @@ volumes:
     name: mw_ussd-approle
   valkey-data:
     name: mw_valkey-data
+x-jvm-build:
+  args:
+    JVM_OPTS: -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
 x-jvm-small:
-  JAVA_TOOL_OPTIONS: -XX:+UseSerialGC -Xms32m -Xmx160m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=48m
-    -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1 -Xss512k -XX:MaxDirectMemorySize=64m
-    -XX:+ExitOnOutOfMemoryError
+  JDK_JAVA_OPTIONS: -Xms192m -Xmx192m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m
+    -Xss512k -XX:MaxDirectMemorySize=64m
   SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "1"
 x-limit-svc:
   resources:
     limits:
-      memory: 384M
+      memory: 512M

@@ -26,29 +26,14 @@ OUT="${OUT_DIR:-/out}"
 
 log() { printf 'mw-audit-dw-init: %s\n' "$*"; }
 
+# Compose starts this step once openbao is healthy: unsealed, engines enabled and the dev init
+# file written (depends_on openbao: service_healthy), so nothing here polls.
 if [ -z "${BAO_TOKEN:-}" ]; then
   INIT_FILE="${INIT_FILE:?BAO_TOKEN or INIT_FILE is required}"
-  # On a fresh stack OpenBao writes this file on its first start, possibly after this step began.
-  i=0
-  until BAO_TOKEN="$(sed -n 's/.*"root_token": *"\([^"]*\)".*/\1/p' "$INIT_FILE" 2>/dev/null | head -1)" &&
-    [ -n "$BAO_TOKEN" ]; do
-    i=$((i + 1)); [ "$i" -lt 60 ] || break
-    sleep 2
-  done
+  BAO_TOKEN="$(sed -n 's/.*"root_token": *"\([^"]*\)".*/\1/p' "$INIT_FILE" 2>/dev/null | head -1)"
 fi
-[ -n "$BAO_TOKEN" ] || { log "no OpenBao token" >&2; exit 1; }
+[ -n "$BAO_TOKEN" ] || { log "no OpenBao token in ${INIT_FILE:-BAO_TOKEN} (is openbao healthy?)" >&2; exit 1; }
 export BAO_TOKEN BAO_ADDR
-
-wait_for() { # description, command...
-  desc="$1"; shift
-  i=0
-  until "$@" >/dev/null 2>&1; do
-    i=$((i + 1)); [ "$i" -lt 60 ] || { log "timed out waiting for $desc" >&2; exit 1; }
-    sleep 2
-  done
-}
-wait_for postgres pg_isready
-wait_for "openbao (unsealed)" bao status
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -75,9 +60,10 @@ bao kv get -field=mw.audit-dw.chain-verify.reader-password "$KV" >"$tmp/readerpw
 
 # 2. database roles and schema --------------------------------------------------------------------
 provision_db() {
-  psql -v ON_ERROR_STOP=1 -q \
+  psql -1 -v ON_ERROR_STOP=1 -q \
   -v ownerpw="$(cat "$tmp/ownerpw")" -v writerpw="$(cat "$tmp/writerpw")" -v readerpw="$(cat "$tmp/readerpw")" \
   -v owner="$OWNER" -v writer="$WRITER" -v reader="$READER" -v schema="$SCHEMA" -v db="$PGDATABASE" <<'SQL'
+DO $$ BEGIN PERFORM pg_advisory_xact_lock(hashtext('mw-service-init')); END $$;
 SELECT format('CREATE ROLE %I LOGIN', :'owner') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'owner') \gexec
 SELECT format('CREATE ROLE %I LOGIN', :'writer') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'writer') \gexec
 SELECT format('CREATE ROLE %I LOGIN', :'reader') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'reader') \gexec
@@ -92,13 +78,11 @@ REVOKE ALL ON DATABASE :"db" FROM :"owner", :"writer", :"reader";
 GRANT CONNECT ON DATABASE :"db" TO :"owner", :"writer", :"reader";
 SQL
 }
-# The other services' init steps change the same database ACL at the same time on a fresh
-# stack ("tuple concurrently updated"): the statements are idempotent, so try again.
-n=0
-until provision_db; do
-  n=$((n + 1)); [ "$n" -lt 5 ] || { log "database provisioning failed" >&2; exit 1; }
-  log "database provisioning raced another init step, retrying"; sleep 2
-done
+# The other services' init steps run at the same time on a fresh stack: an advisory lock
+# serialises the provisioning transactions (they all change the database ACL, "tuple concurrently
+# updated"), and one short retry covers anything else that races. The statements are idempotent.
+provision_db || { log "database provisioning raced another init step, retrying"; sleep 1; provision_db; } ||
+  { log "database provisioning failed" >&2; exit 1; }
 log "roles $OWNER, $WRITER, $READER and schema $SCHEMA ready"
 
 # 3. AppRole --------------------------------------------------------------------------------------

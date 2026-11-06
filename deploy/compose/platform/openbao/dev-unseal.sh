@@ -7,7 +7,8 @@
 # unseals with a KMS/HSM or Shamir key holders instead (spec 18.4).
 #
 # On first start it also enables the engines the services use (KV v2 at secret/,
-# transit, PKI, database) and writes secret/mw/smoke for the smoke test.
+# transit, PKI, database) and writes secret/mw/smoke for the smoke test. Then (every start) it
+# touches /openbao/file/dev-ready, which the compose healthcheck requires.
 set -eu
 
 export BAO_ADDR="http://127.0.0.1:8200"
@@ -55,5 +56,9 @@ if [ "$first_start" = 1 ]; then
   bao kv put secret/mw/smoke value=ok >/dev/null
   echo "dev-unseal: engines enabled (kv v2 at secret/, transit, pki, database, approle)"
 fi
+
+# Ready marker for the compose healthcheck (with `bao status`): unsealed and the engines exist,
+# so the module inits (depends_on openbao: service_healthy) never poll.
+touch /openbao/file/dev-ready
 
 wait "$server"

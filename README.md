@@ -56,6 +56,16 @@ make smoke                                  # live checks: containers, topics, K
    (`kafka-init`, `etcd-init`, `apisix-init`, `<module>-init`) has exited 0; it fails at once,
    naming the container, otherwise (`MW_UP_TIMEOUT`, default 300 s).
 
+Start-up order and cost (ticket 55): the init containers start once PostgreSQL and OpenBao are
+healthy, every `mw-*` service once `kafka-init` has exited 0. `kafka-init` creates the topics of
+`deploy/kafka/topics.txt` with 3 partitions each (`MW_KAFKA_PARTITIONS=3`; the file keeps the
+production counts) and leaves a done marker in its volume, so a later `make up` with the same plan
+skips it in about a second. Keycloak is pre-built (`deploy/keycloak/Dockerfile`, image
+`mfs-mw/keycloak:local`) and starts `--optimized`. The service images are trained for their AOT
+cache with the dev stack's JVM flags (build arg `JVM_OPTS` in `compose.lowmem.yml`). A volume from
+before ticket 55 holds 48-partition topics that the smaller Kafka heap does not load: run
+`make down DOWN_ARGS=-v` once.
+
 Seeded on start, no extra step: `mw-core-mock` creates 1,000 customer wallets `01711000001..`,
 50 agents `01811000001..`, 20 merchants `01911000001..`, 2 orgs `01311000001..`, all with the fake
 PIN `1234`; Keycloak imports its realms with test users (table below); the simulators, USSD menus,

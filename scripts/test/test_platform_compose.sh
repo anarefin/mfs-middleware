@@ -50,6 +50,13 @@ compose_json() {
     docker compose -f deploy/compose/mvp/compose.yml config --format json 2>/dev/null
 }
 
+# compose_json_lowmem: compose_json with the low-resource override every make target merges.
+compose_json_lowmem() {
+  copy_deploy
+  env -u MW_HTTPS_PORT -u MW_OPS_SUBNET $(placeholder_env) "$@" \
+    docker compose -f deploy/compose/mvp/compose.yml -f deploy/compose/mvp/compose.lowmem.yml config --format json 2>/dev/null
+}
+
 test_mvp_project_includes_every_platform_service() {
   [ -f "$MVP_FILE" ] || fail "missing deploy/compose/mvp/compose.yml"
   grep -q 'platform/compose.yml' "$MVP_FILE" || fail "mvp project does not include the platform file"
@@ -105,8 +112,93 @@ test_every_container_restarts_has_limits_log_rotation_and_a_healthcheck() {
 test_platform_images_are_pinned_by_digest() {
   local bad
   # platform services only: mw-* module images are built from the repo, not pulled
-  bad="$(compose_json | jq -r '.services | to_entries[] | select(.key | startswith("mw-") | not) | select(.value.image | test("@sha256:[0-9a-f]{64}$") | not) | .key')"
+  # a platform image built from the repo (keycloak, ticket 55) pins its FROM images instead
+  bad="$(compose_json | jq -r '.services | to_entries[] | select(.key | startswith("mw-") | not) | select(.value.build == null) | select(.value.image | test("@sha256:[0-9a-f]{64}$") | not) | .key')"
   [ -z "$bad" ] || fail "not pinned by digest: $bad"
+  bad="$(grep -E '^FROM ' "$REPO_DIR/deploy/keycloak/Dockerfile" | grep -vE '@sha256:[0-9a-f]{64}( AS [a-z]+)?$')"
+  [ -z "$bad" ] || fail "deploy/keycloak/Dockerfile FROM not pinned by digest: $bad"
+}
+
+# ---- cheaper start-up (ticket 55) ----
+
+test_keycloak_is_built_once_as_a_local_image() {
+  local k
+  k="$(compose_json | jq -c '.services.keycloak')"
+  printf '%s' "$k" | jq -e '.image == "mfs-mw/keycloak:local" and (.build.context | test("deploy/keycloak$"))' >/dev/null \
+    || fail "keycloak is not built from deploy/keycloak as mfs-mw/keycloak:local: $(printf '%s' "$k" | jq -c '{image, build}')"
+  grep -qE '^RUN .*kc\.sh build' "$REPO_DIR/deploy/keycloak/Dockerfile" || fail "the Keycloak image does not run kc.sh build"
+  # build-time options baked in must match the runtime env (an --optimized start rejects a change)
+  grep -qE 'KC_DB=postgres' "$REPO_DIR/deploy/keycloak/Dockerfile" || fail "KC_DB not set for kc.sh build"
+  grep -qE 'KC_HEALTH_ENABLED=true' "$REPO_DIR/deploy/keycloak/Dockerfile" || fail "KC_HEALTH_ENABLED not set for kc.sh build"
+}
+
+test_every_init_waits_for_healthy_postgres_and_openbao_through_compose_not_sleep_loops() {
+  local j s f
+  j="$(compose_json)"
+  for s in $(printf '%s' "$j" | jq -r '.services | keys[] | select(test("^mw-.*-init$"))'); do
+    printf '%s' "$j" | jq -e --arg s "$s" '.services[$s].depends_on.postgres.condition == "service_healthy"
+      and .services[$s].depends_on.openbao.condition == "service_healthy"' >/dev/null \
+      || fail "$s does not depend on healthy postgres and openbao: $(printf '%s' "$j" | jq -c --arg s "$s" '.services[$s].depends_on')"
+  done
+  for f in "$REPO_DIR"/services/*/init/init.sh; do
+    grep -qE 'wait_for|pg_isready|until .*bao status' "$f" && fail "$f still polls postgres/openbao"
+    [ "$(grep -c 'sleep' "$f")" -le 1 ] || fail "$f sleeps more than once (only the raced-init retry may)"
+  done
+  return 0
+}
+
+test_openbao_is_healthy_only_once_its_engines_are_enabled() {
+  # inits read the dev root token and write KV secrets as soon as openbao is healthy
+  compose_json | jq -e '.services.openbao.healthcheck.test | join(" ") | test("dev-ready")' >/dev/null \
+    || fail "openbao healthcheck does not wait for the dev-ready marker"
+  grep -q 'dev-ready' "$REPO_DIR/deploy/compose/platform/openbao/dev-unseal.sh" || fail "dev-unseal.sh writes no dev-ready marker"
+}
+
+test_every_java_service_starts_after_kafka_init() {
+  local j s bad=""
+  j="$(compose_json)"
+  for s in $(printf '%s' "$j" | jq -r '.services | keys[] | select(test("^mw-") and (test("-init$") | not) and . != "mw-admin-ui")'); do
+    printf '%s' "$j" | jq -e --arg s "$s" '.services[$s].depends_on["kafka-init"].condition == "service_completed_successfully"' >/dev/null \
+      || bad="$bad $s"
+  done
+  [ -z "$bad" ] || fail "do not wait for kafka-init:$bad"
+  # a module's own compose.yml still starts on its own (make up M=): the dependency is optional
+  for s in "$REPO_DIR"/services/*/compose.yml "$REPO_DIR"/templates/mw-service-template/compose.yml; do
+    grep -A1 'kafka-init:' "$s" | grep -q 'required: false' || fail "$s: kafka-init dependency not required: false"
+  done
+}
+
+test_healthchecks_poll_every_5s_and_kafka_uses_a_tcp_check() {
+  local j bad
+  j="$(compose_json)"
+  bad="$(printf '%s' "$j" | jq -r '.services | to_entries[] | select(.value.healthcheck.test != null) | select(.value.healthcheck.interval != "5s") | .key')"
+  [ -z "$bad" ] || fail "healthcheck interval is not 5s: $bad"
+  # while starting, probe every second: a dependant starts as soon as its dependency is up
+  bad="$(printf '%s' "$j" | jq -r '.services | to_entries[] | select(.value.healthcheck.test != null) | select(.value.healthcheck.start_interval != "1s" or .value.healthcheck.start_period == null) | .key')"
+  [ -z "$bad" ] || fail "healthcheck without start_period and start_interval 1s: $bad"
+  printf '%s' "$j" | jq -e '.services.kafka.healthcheck.test | join(" ") | test("/dev/tcp/127.0.0.1/9092")' >/dev/null \
+    || fail "kafka healthcheck still starts a JVM: $(printf '%s' "$j" | jq -c .services.kafka.healthcheck.test)"
+}
+
+test_aot_training_and_the_runtime_use_the_same_jvm_flags() {
+  # The AOT cache is rejected when the training run and the runtime differ in GC / compressed oops
+  # (ZGC turns compressed oops off). The image's JVM_OPTS build arg is JAVA_TOOL_OPTIONS for both;
+  # the dev stack picks its GC through that build arg and adds only sizes (JDK_JAVA_OPTIONS) at run time.
+  local f j s bad=""
+  for f in "$REPO_DIR"/services/*/Dockerfile "$REPO_DIR"/templates/mw-service-template/Dockerfile; do
+    grep -qE '^ARG JVM_OPTS="[^"]+"$' "$f" || fail "$f: no ARG JVM_OPTS"
+    grep -qE '^ENV JAVA_TOOL_OPTIONS="[$][{]JVM_OPTS[}]"$' "$f" || fail "$f: JAVA_TOOL_OPTIONS is not JVM_OPTS"
+    grep -qE 'java -XX:AOTCacheOutput=' "$f" || fail "$f has no AOT training run"
+    grep -qE '^ENTRYPOINT \["java", "-XX:AOTCache=' "$f" || fail "$f does not start with the AOT cache"
+  done
+  j="$(compose_json_lowmem)"
+  for s in $(printf '%s' "$j" | jq -r '.services | to_entries[] | select(.key | test("^mw-") and (test("-init$") | not)) | select(.value.build.context != null) | select(.key != "mw-admin-ui") | .key'); do
+    printf '%s' "$j" | jq -e --arg s "$s" '.services[$s] | (.environment.JAVA_TOOL_OPTIONS == null)
+      and (.build.args.JVM_OPTS | test("-XX:\\+UseSerialGC"))
+      and ((.environment.JDK_JAVA_OPTIONS // "") | test("Use[A-Za-z]+GC|CompressedOops") | not)' >/dev/null || bad="$bad $s"
+  done
+  [ -z "$bad" ] || fail "dev stack overrides the trained JVM flags or trains without Serial GC:$bad"
+  return 0
 }
 
 test_compose_files_hold_no_inline_secret_values() {
@@ -416,8 +508,12 @@ test_keycloak_runs_in_production_mode_on_its_own_postgres_database() {
   local j k
   j="$(compose_json)"
   k="$(printf '%s' "$j" | jq -c '.services.keycloak')"
-  printf '%s' "$k" | jq -e '.command[0] == "start" and (.command | index("--import-realm"))' >/dev/null \
-    || fail "keycloak must run 'start --import-realm' (production mode): $(printf '%s' "$k" | jq -c .command)"
+  # production mode, pre-built (ticket 55): deploy/keycloak/Dockerfile runs `kc.sh build`, its
+  # entrypoint is `start --optimized --import-realm`, so compose sets no command
+  printf '%s' "$k" | jq -e '.command == null' >/dev/null \
+    || fail "keycloak command overrides the image entrypoint: $(printf '%s' "$k" | jq -c .command)"
+  grep -qE '^ENTRYPOINT .*"start", *"--optimized", *"--import-realm"' "$REPO_DIR/deploy/keycloak/Dockerfile" \
+    || fail "deploy/keycloak/Dockerfile does not start --optimized --import-realm"
   printf '%s' "$k" | jq -e '.environment.KC_DB == "postgres"
     and (.environment.KC_DB_URL | test("^jdbc:postgresql://postgres:5432/keycloak$"))
     and .environment.KC_DB_USERNAME == "keycloak"

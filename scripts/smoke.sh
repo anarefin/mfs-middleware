@@ -72,7 +72,11 @@ published="$(printf '%s' "$ps_json" | jq -r '.[] | .Service as $s | (.Publishers
 # ---- Kafka topics ----
 topics_check() {
   local want got missing=0 topic parts _
-  want="$("$MW_ROOT/deploy/kafka/apply-topics.sh" --dry-run "$MW_ROOT/deploy/kafka/topics.txt")" || return 1
+  # the partition count kafka-init ran with (MW_KAFKA_PARTITIONS, 3 on the dev stack; ticket 55)
+  local cid parts_env
+  cid="$(dc ps -a -q kafka-init | head -1)"
+  parts_env="$(docker inspect "$cid" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | sed -n 's/^MW_KAFKA_PARTITIONS=//p')"
+  want="$(MW_KAFKA_PARTITIONS="$parts_env" "$MW_ROOT/deploy/kafka/apply-topics.sh" --dry-run "$MW_ROOT/deploy/kafka/topics.txt")" || return 1
   got="$(dc exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --exclude-internal \
     | awk -F'\t' '/PartitionCount/ { t=$1; sub(/^Topic: /,"",t); p=$3; sub(/.*: /,"",p); r=$4; sub(/.*: /,"",r); print t, p, r }')" || return 1
   while read -r topic parts _; do
@@ -122,17 +126,30 @@ totp_pending() {
   printf '%s' "$out" | jq -e '.access_token == null and .error_description == "Account is not fully set up"' >/dev/null \
     || { echo "got: $out"; return 1; }
 }
+# totp_required REALM FORM...: a user with an enrolled TOTP gets no token from the password alone
+totp_required() {
+  local realm="$1"; shift
+  local args=() f out
+  for f in "$@"; do args+=(--data-urlencode "$f"); done
+  out="$(docker run --rm --network "$ops_net" "$CURL_IMAGE" -s "${args[@]}" \
+    "http://keycloak:8080/realms/$realm/protocol/openid-connect/token")"
+  printf '%s' "$out" | jq -e '.access_token == null and .error == "invalid_grant"' >/dev/null \
+    || { echo "got: $out"; return 1; }
+}
 for realm_file in "$MW_ROOT"/deploy/compose/platform/keycloak/realms/*-realm.json; do
   realm="$(jq -r .realm "$realm_file")"
   client="$(jq -r '[.clients[] | select(.publicClient and .directAccessGrantsEnabled)][0].clientId // empty' "$realm_file")"
   while read -r user pw mfa; do
     [ -n "$user" ] || continue
-    if [ "$mfa" = mfa ]; then
+    if [ "$mfa" = otp ]; then
+      # an enrolled TOTP (the dev-only e2e operators, ticket 37): the password alone gets no token
+      check "keycloak $realm/$user: no token without the TOTP code (MFA)" totp_required "$realm" grant_type=password "client_id=$client" "username=$user" "password=$(resolve "$pw")"
+    elif [ "$mfa" = mfa ]; then
       check "keycloak $realm/$user: no token before TOTP enrolment (MFA)" totp_pending "$realm" grant_type=password "client_id=$client" "username=$user" "password=$(resolve "$pw")"
     else
       check "keycloak token $realm/$user" token "$realm" grant_type=password "client_id=$client" "username=$user" "password=$(resolve "$pw")"
     fi
-  done < <(jq -r '.users[] | select(.credentials) | "\(.username) \(.credentials[0].value) \(if (.requiredActions // []) | index("CONFIGURE_TOTP") then "mfa" else "-" end)"' "$realm_file")
+  done < <(jq -r '.users[] | select(.credentials) | "\(.username) \(.credentials[0].value) \(if (.requiredActions // []) | index("CONFIGURE_TOTP") then "mfa" elif (.credentials | map(.type) | index("otp")) then "otp" else "-" end)"' "$realm_file")
   while read -r cid secret; do
     [ -n "$cid" ] || continue
     check "keycloak token $realm/$cid (client credentials)" token "$realm" grant_type=client_credentials "client_id=$cid" "client_secret=$(resolve "$secret")"
