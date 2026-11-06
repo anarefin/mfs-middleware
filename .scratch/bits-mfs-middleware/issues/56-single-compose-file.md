@@ -39,9 +39,17 @@
 
 **Blocked by:** 55
 
-**Status:** todo
+**Status:** done
 
-- [ ] `make reset && make build && make up` brings up the whole stack. `make up` a second time without `make build` starts in under 3 min, and no image is rebuilt
-- [ ] `make up PROFILE=minimal` starts only the platform and the minimal services, and `make e2e TAGS=@p2p` passes on it
-- [ ] `make up TIMERS=fast` changes the inquiry delay; check it through the orchestrator's actuator `env` or a log line, not by reading code
-- [ ] `make compose-check`, `make smoke`, `make edge-test`, the full `make e2e` (on a fresh stack), `make test-scripts` and `make contracts-lint` pass; `git grep deploy/compose/` finds nothing outside the ADR
+- [x] `make reset && make build && make up` brings up the whole stack. `make up` a second time without `make build` starts in under 3 min, and no image is rebuilt
+- [x] `make up PROFILE=minimal` starts only the platform and the minimal services, and `make e2e TAGS=@p2p` passes on it
+- [x] `make up TIMERS=fast` changes the inquiry delay; check it through the orchestrator's actuator `env` or a log line, not by reading code
+- [x] `make compose-check`, `make smoke`, `make edge-test`, the full `make e2e` (on a fresh stack), `make test-scripts` and `make contracts-lint` pass; `git grep deploy/compose/` finds nothing outside the ADR
+
+## Evidence (run 2026-11-06, a7c45de5)
+- reset 13 s, build 85 s cold / 14 s warm, up 69 s; second up 8 s (running) / 31 s (after down), 28 image ids unchanged.
+- PROFILE=minimal 55 s (platform + 8 services: orchestrator, core-mock, app-gateway, simulators, notify, audit-dw, ussd, admin-api); `make e2e TAGS=@p2p` 13/13, 148 s.
+- TIMERS=fast via actuator configprops: inquiry 2s,2s,5s,10s,30s,1m; not-found grace 2s; reversing 5s; retry 1s,1s,1s.
+- compose-check 9568/10240 MiB; smoke 50/50; edge-test 53/53; test-scripts 312/312; contracts-lint pass.
+- Full Cucumber `make e2e` replaced by `@p2p` (user 2026-11-06). Not exercised live: `make up M=`, `build M=`, `e2e-changed` (self-tests only).
+- Deviations: no `env_file` in x-app (secrets stay in OpenBao); checkout IPN retry default kept at dev schedule; test bulk rate 200.
