@@ -20,3 +20,10 @@
 46-security-pass                            43,42             done     73m      96 files + 1308 − 90  8ef342a..27b26da
 47-docs-clean-host-bringup                  44,45,46          done     17m      37 files + 1294 − 11  527066d..23b166e
 # --- M6 gate DONE (2026-11-06, 8e17214): verify-changed 14/14 (= full check, deploy changed); fresh-stack e2e 140/140 twice; edge-test 53/53; log-scan clean after the APISIX access-log masking fix (3c084a0); review fixes 8e17214. NOT RUN (user: no load tests): make chaos, make perf; NOT RUN: SECURITY_LIVE ZAP baseline
+# --- Run 54-59 (2026-11-06): BitsPay-style deploy + test (plan check-the-project-deployment-ancient-possum). Row order = run order.
+54-faster-module-gate                       —                 todo
+55-cheaper-stack-startup                    54                todo
+56-single-compose-file                      55                todo
+57-mw-seeder                                56                todo
+58-newman-api-suite                         57                todo
+59-admin-ui-playwright-live                 56,57             todo
