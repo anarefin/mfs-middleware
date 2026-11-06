@@ -155,3 +155,11 @@ Changes that apply to every row:
 | ussd.feature | a bad number is refused and asked again, and no money moves | 18 | [ussd] a bad number is refused and asked again, and no money moves | mapped |  |
 | ussd.feature | a wrong PIN is refused by the core and no money moves | 18 | [ussd] a wrong PIN is refused by the core and no money moves | mapped |  |
 | wallet-unlock.feature | five wrong PINs lock the wallet, an approved unlock lets the next correct-PIN P2P succeed | 16 | [admin wallet-unlock] five wrong PINs lock the wallet, an approved unlock lets the next correct-PIN P2P succeed | mapped |  |
+
+## Additions (no Cucumber scenario)
+
+Requests added after the port that no Cucumber scenario had. They are not counted in the 137 rows above.
+
+| Source | What | Folder | Newman request | Notes |
+| --- | --- | --- | --- | --- |
+| ticket 58 (folder `90 Slow`: "the full retry-to-DLQ path") | the retry topics end on the DLQ; the Cucumber suite had no such scenario (only the modules' `RetryTopicRouteIT` proved it) | 90 | [dlq] a request the orchestrator always refuses is retried three times and parked on its DLQ, nothing stored | mw-orchestrator test API `POST /test/v1/poison-requests` + `GET /test/v1/dlq-records/{txnId}` (no Docker, no Kafka CLI); about 3 s with TIMERS=fast, some 11 min with production retry delays |

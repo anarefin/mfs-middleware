@@ -329,14 +329,20 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `mw.orchestrator.test-api.enabled=true` = `MW_ORCHESTRATOR_TEST_API_ENABLED`, which only the dev
   stack sets; off, the paths are 404): the host API suite (`tests/api`) plays operations' REVERSAL
   producer without the Docker CLI. `POST /test/v1/reversals {originalTxnId, reason?}` loads the
-  original (404 `MW-VAL-003` if unknown) and publishes on `mw.txn.request.v1` (keyed by txnId,
+  original (404 `MW-VAL-003` if unknown) and publishes on `mw.txn.request.v1` (`TxnRequestRoute.TOPIC`, keyed by txnId,
   `messaging/EventPublisher` directly: no local state changes) a REVERSAL as operations sends it:
-  fresh UUIDv7 txnId, key `test-rev-<uuidv7>`, channel SYSTEM, initiator ORG `bits-ops-test`, the
+  fresh UUIDv7 txnId, key `test-rev-<uuidv7>`, a plain random UUID correlationId (command id, no prefix), channel SYSTEM, initiator ORG `bits-ops-test`, the
   original's parties swapped, its amount, `attributes.reason` (default `test reversal`); answers 202
   `{txnId, idempotencyKey}`. The request is then handled like any other (rules above). `GET
   /test/v1/txn-requests/{idempotencyKey}` is 200 `{idempotencyKey, handled: true}` once
-  `txn.idempotency` holds the key (any scope, `IdempotencyRepository.exists`), else 404: the only
-  trace of a repeated reversal. No auth in the service (`anyRequest().permitAll()` outside
+  `txn.idempotency` holds the key (any scope, `IdempotencyRepository.exists`), else 404 `MW-VAL-003` (both decided in `TestApiService.handled`): the only
+  trace of a repeated reversal. Retry-to-DLQ path (ticket 58, folder `90 Slow`): `POST
+  /test/v1/poison-requests` publishes (keyed by a fresh UUIDv7 txnId) a record `TxnRequestListener` can
+  read but always refuses (schemaVersion, txnId, txnType only), so it walks retry.1..3 to
+  `mw.txn.request.v1.mw-orchestrator.dlq`; 202 `{txnId, dlqTopic}`, nothing stored. `GET
+  /test/v1/dlq-records/{txnId}` is 200 `{txnId, topic, parked: true}` once the DLQ holds the key, else
+  404 `MW-VAL-003` (`client/DlqClient`: a short-lived group-less consumer reading the topic from its start
+  to its current end on the HTTP thread, nothing committed; `DlqClientIT`). No auth in the service (`anyRequest().permitAll()` outside
   `/internal/**`); APISIX exposes it only with `MW_E2E_ROUTES=1` as `/test/orchestrator/v1/*`
   (`deploy/apisix/routes-test/test-orchestrator.json`, key-auth `mw_e2e`, private networks).
   `TestApiControllerTest` (on/off), `TestApiServiceTest`.

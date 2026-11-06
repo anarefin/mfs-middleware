@@ -12,7 +12,7 @@ and `tsq`; `ops *` needs `operator` or `admin`; `<FLOW> ussd *` and `ussd http` 
 
 Requirement tags are the Cucumber flow tags without `@` (`p2p`, `cash`, `topup`, `billpay`,
 `callback`, `addmoney`, `c2w`, `merchant`, `checkout`, `ipn`, `notify`, `tsq`, `device`, `reversal`,
-`admin`, `operator`, `partner-config`, `wallet-unlock`, `ussd`, `smpp`, `bulk`, `sp-query`, plus
+`admin`, `operator`, `partner-config`, `wallet-unlock`, `ussd`, `smpp`, `bulk`, `sp-query`, `dlq` (retry topics to the DLQ, ticket 58, no Cucumber flow), plus
 `health` and `seed` for folder 00); the module tags (`@mw-*`) were run filters, not requirements, and
 are not carried over (`make api-test FOLDER=` selects folders).
 
@@ -73,6 +73,7 @@ Criteria `-` = supporting scenario (edge security, bulk, portal, config), no MVP
 | 06 | [billpay] a bill payment sent twice with the same idempotency key pays the bill once | 2 | BILL_PAY app idempotent |
 | 06 | [billpay tsq] an aggregator timeout the payment did not survive is resolved by status inquiry and released | 1 | BILL_PAY app tsq-release |
 | 90 | [bulk] a 10,000-row batch completes, the result file matches and the org balance is correct | - |  |
+| 90 | [dlq] a request the orchestrator always refuses is retried three times and parked on its DLQ, nothing stored | - |  |
 | 22 | [bulk] a row the core refuses is reported in the result file and costs the org nothing | - |  |
 | 22 | [bulk] a paused batch sends nothing until it is resumed, then completes | - |  |
 | 21 | [bulk] a valid file is stored awaiting approval and a different checker approves it | - |  |

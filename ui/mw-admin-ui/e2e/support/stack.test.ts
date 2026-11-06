@@ -10,7 +10,7 @@ const target: StackTarget = {
 
 const manifest = JSON.stringify({
   schemaVersion: 1,
-  personas: ["maker", "checker", "viewer"].map((p) => ({
+  personas: ["maker", "checker", "viewer", "compliance"].map((p) => ({
     persona: p, realm: "ops", username: `seed-ops-${p}`, roles: ["viewer"], loginClient: "mw-e2e-ops",
     passwordEnv: "KC_OPS_TEST_PASSWORD", totpSecretEnv: "KC_OPS_TEST_TOTP_SECRET",
   })),
@@ -75,13 +75,18 @@ describe("stack check before the browser tests", () => {
     expect(problems).toEqual(["docker ps failed: Cannot connect to the Docker daemon"]);
   });
 
-  it("needs the seed manifest with the three ops personas", async () => {
+  it("needs the seed manifest with the four ops personas", async () => {
     expect(await stackProblems(target, probes({ manifest: null }))).toEqual([
       "seed manifest /repo/build/seed/manifest.json is missing (make seed writes it)",
     ]);
-    const noViewer = JSON.stringify({ schemaVersion: 1, personas: JSON.parse(manifest).personas.slice(0, 2) });
+    const noViewer = JSON.stringify({ schemaVersion: 1, personas: JSON.parse(manifest).personas.filter((p: { persona: string }) => p.persona !== "viewer") });
     expect(await stackProblems(target, probes({ manifest: noViewer }))).toEqual([
       "seed manifest /repo/build/seed/manifest.json has no ops persona viewer (make seed writes it)",
+    ]);
+    // a manifest seeded before the compliance persona existed (mw-seeder of ticket 57)
+    const noCompliance = JSON.stringify({ schemaVersion: 1, personas: JSON.parse(manifest).personas.slice(0, 3) });
+    expect(await stackProblems(target, probes({ manifest: noCompliance }))).toEqual([
+      "seed manifest /repo/build/seed/manifest.json has no ops persona compliance (make seed writes it)",
     ]);
   });
 

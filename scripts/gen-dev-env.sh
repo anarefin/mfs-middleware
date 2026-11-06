@@ -19,6 +19,9 @@ VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALTH_PASSW
   KC_MW_PORTAL_API_SECRET KC_MW_ADMIN_API_SECRET MW_ADMIN_UI_AUTH_SECRET
   USSD_GP_GATEWAY_SECRET USSD_ROBI_GATEWAY_SECRET USSD_BL_GATEWAY_SECRET USSD_TELETALK_GATEWAY_SECRET"
 file="$MW_ROOT/deploy/.env"
+# the pre-ticket-56 location: kept (it may hold the passwords of old volumes), but no longer read
+old="$MW_ROOT/deploy/compose/platform/.env"
+[ ! -f "$old" ] || printf "WARNING: %s is a leftover of the old layout and no longer read (secrets live in deploy/.env); delete it when you no longer need it\n" "${old#"$MW_ROOT"/}" >&2
 mkdir -p "$(dirname "$file")"
 
 umask 077

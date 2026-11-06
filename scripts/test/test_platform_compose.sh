@@ -72,8 +72,28 @@ test_no_module_has_its_own_compose_file_any_more() {
     "$REPO_DIR"/templates/*/compose.yml "$REPO_DIR/compose.yml"; do
     [ -e "$f" ] && fail "${f#"$REPO_DIR"/} still exists (ADR D16: one deploy/docker-compose.yml)"
   done
-  [ -e "$REPO_DIR/deploy/compose" ] && fail "the old deploy/compose layout still exists"
+  # only tracked files count: an old checkout may keep its gitignored, generated deploy/compose/ secrets
+  [ -z "$(git -C "$REPO_DIR" ls-files -- deploy/compose)" ] || fail "the old deploy/compose layout is still tracked"
   return 0
+}
+
+test_the_pre_ticket_56_compose_folder_is_gitignored() {
+  git -C "$REPO_DIR" check-ignore -q --no-index deploy/compose/platform/.env \
+    || fail "deploy/compose/ (old generated dev secrets) is not gitignored"
+}
+
+test_gen_dev_env_warns_once_about_a_leftover_pre_ticket_56_env_and_keeps_it() {
+  mkdir -p deploy/compose/platform
+  printf 'POSTGRES_PASSWORD=old\n' >deploy/compose/platform/.env
+  OUT="$(env MW_ROOT="$PWD" "$REPO_DIR/scripts/gen-dev-env.sh" 2>&1)" || fail "gen-dev-env failed"
+  [ "$(printf '%s\n' "$OUT" | grep -c 'deploy/compose/platform/.env')" = 1 ] || fail "no one-line warning about the old .env"
+  [ -f deploy/compose/platform/.env ] || fail "the old .env was deleted"
+}
+
+test_gen_dev_env_is_quiet_without_a_leftover_env() {
+  mkdir -p deploy
+  OUT="$(env MW_ROOT="$PWD" "$REPO_DIR/scripts/gen-dev-env.sh" 2>&1)" || fail "gen-dev-env failed"
+  assert_out_lacks "deploy/compose/platform"
 }
 
 test_profiles_platform_always_minimal_for_the_p2p_and_cash_path_core_for_everything() {

@@ -2,7 +2,7 @@ package mfs.mw.simulators.service;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -56,19 +56,22 @@ public class SmscService {
    * Start of this instance (base 36 millis) in every message_id: a restarted simulator never repeats
    * an id of an earlier run, which mw-notify keeps unique per provider.
    */
-  private final String run = Long.toString(System.currentTimeMillis(), 36);
+  private final String run;
+  private final Clock clock;
   private final List<SmscMessage> messages = new ArrayList<>();
   private final Map<String, Pending> pending = new LinkedHashMap<>();
   private final Map<String, SmscDlrState> dlrs = new ConcurrentHashMap<>();
   private final Map<String, AtomicInteger> throttled = new ConcurrentHashMap<>();
 
   @Autowired
-  public SmscService(SimulatorProperties props) {
-    this(props.recordLimit());
+  public SmscService(SimulatorProperties props, Clock clock) {
+    this(props.recordLimit(), clock);
   }
 
-  SmscService(int recordLimit) {
+  SmscService(int recordLimit, Clock clock) {
     this.recordLimit = recordLimit;
+    this.clock = clock;
+    this.run = Long.toString(clock.millis(), 36);
   }
 
   public synchronized Submission submit(String destination, String source, byte dataCoding, byte esmClass,
@@ -128,7 +131,7 @@ public class SmscService {
     ordered.forEach(p -> all.writeBytes(p.body()));
     String text = decode(encoding, all.toByteArray());
     messages.add(new SmscMessage(dest, source, text, encoding, ordered.size(),
-        ordered.stream().map(Part::messageId).toList(), null, Instant.now()));
+        ordered.stream().map(Part::messageId).toList(), null, clock.instant()));
     while (messages.size() > recordLimit) {
       messages.removeFirst();
     }

@@ -18,15 +18,7 @@ jobs="${2:-3}"
 gate_jobs "$jobs"
 modules="$(selected_modules "$m")"
 
-"$(dirname "$0")/check-isolation.sh" "$m"
-"$(dirname "$0")/check-field-injection.sh" "$m"
-"$(dirname "$0")/contracts-lint.sh"
-# the stack (deploy/docker-compose.yml) fits the memory budget
-if docker compose version >/dev/null 2>&1; then
-  "$(dirname "$0")/compose-check.sh"
-else
-  info "verify: docker compose CLI not found, skipping compose-check"
-fi
+gate_prechecks verify "$m"
 
 if [ -z "$modules" ]; then
   info "verify: no modules found under: $MODULE_PARENTS (nothing to build)"

@@ -38,11 +38,12 @@ import tools.jackson.databind.json.JsonMapper;
  */
 class SeedRunnerIT {
 
-  private static final Map<String, List<String>> USERS =
+  private static final Map<String, List<String>> PERSONAS =
       Map.of(
           "ops/seed-ops-maker", List.of("viewer", "ops-maker"),
           "ops/seed-ops-checker", List.of("viewer", "ops-checker"),
           "ops/seed-ops-viewer", List.of("viewer"),
+          "ops/seed-ops-compliance", List.of("compliance-officer"),
           "portals/seed-org-maker", List.of("org-maker"),
           "portals/seed-org-checker", List.of("org-checker"),
           "customers/seed-customer01", List.of("customer"),
@@ -50,10 +51,22 @@ class SeedRunnerIT {
           "customers/seed-agent01", List.of("agent"),
           "customers/seed-merchant01", List.of("merchant"));
 
+  /** The API suite's run customers (tests/api/run_customer.mjs): seed-run-customer01..24, 01714NN0001. */
+  private static final int RUN_CUSTOMERS = 24;
+
+  private static final Map<String, List<String>> USERS = new java.util.LinkedHashMap<>(PERSONAS);
   private static final Map<String, String> WALLETS =
-      Map.of(
-          "01712000001", "CUSTOMER", "01712000002", "CUSTOMER", "01812000001", "AGENT", "01912000001", "MERCHANT",
-          "01312000001", "ORG");
+      new java.util.LinkedHashMap<>(
+          Map.of(
+              "01712000001", "CUSTOMER", "01712000002", "CUSTOMER", "01812000001", "AGENT", "01912000001", "MERCHANT",
+              "01312000001", "ORG"));
+
+  static {
+    for (int i = 1; i <= RUN_CUSTOMERS; i++) {
+      USERS.put(String.format("customers/seed-run-customer%02d", i), List.of("customer"));
+      WALLETS.put(String.format("01714%02d0001", i), "CUSTOMER");
+    }
+  }
 
   @TempDir Path dir;
 
@@ -106,6 +119,12 @@ class SeedRunnerIT {
     JsonNode rep = json.readTree(maker.getBodyAsString());
     assertThat(rep.path("credentials").findValuesAsString("type")).containsExactly("password", "otp");
     assertThat(rep.path("credentials").get(1).path("secretData").asString()).isEqualTo("{\"value\":\"fake-totp-secret\"}");
+    LoggedRequest compliance =
+        requests(RequestMethod.POST, "/admin/realms/ops/users").stream()
+            .filter(r -> r.getBodyAsString().contains("seed-ops-compliance")).findFirst().orElseThrow();
+    assertThat(json.readTree(compliance.getBodyAsString()).path("credentials").findValuesAsString("type"))
+        .as("the compliance officer logs in with password + TOTP like the other ops personas")
+        .containsExactly("password", "otp");
     LoggedRequest opsToken =
         requests(RequestMethod.POST, "/realms/ops/protocol/openid-connect/token").getFirst();
     assertThat(opsToken.getBodyAsString()).contains("client_id=mw-e2e-ops", "totp=");

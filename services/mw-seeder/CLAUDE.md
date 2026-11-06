@@ -31,8 +31,17 @@ this file says what is specific to this module.
      exist (the realm imports create them) or the step fails.
   3. `seed-core-accounts`: the wallets of `mw.seeder.wallets` in mw-core-mock: GET, and only if unknown
      the test-only `PUT /core-mock/v1/wallets/{walletId}` (create-if-absent, seed PIN, opening balance, no
-     ledger entries; an existing wallet keeps whatever balance tests left). Billers are not core wallets
-     (a BILLER_ACCOUNT is outside the core): they are mw-adapter-billpay partner config.
+     ledger entries; an existing wallet keeps whatever balance tests left).
+     **Billers (ticket 57 lists them) need no seeding, by design:** (a) core-mock has no biller wallet
+     type (its seed PUT takes CUSTOMER|AGENT|MERCHANT|ORG): a bill payment's credit party is a
+     `BILLER_ACCOUNT` outside the core, validated payer-side only and committed to the `SETTLEMENT`
+     wallet core-mock seeds itself; (b) the biller catalogue (DESCO, DPDC, WASA, TITAS -> `billagg`) is
+     static mw-adapter-billpay config (`mw.billers`, served read-only by `GET /billpay/v1/billers`; no
+     write API, and mw-admin-api has no biller catalogue yet, spec 11.2); (c) the `billagg` partner is the
+     adapter's own dev seed, not an mw-admin-api-managed partner (its seeds are `ocs` only), so the
+     admin refuses a change request for it; (d) the simulated aggregator derives every bill from its
+     number (due = 100 taka + the last three digits), so there are no bills to create. A bill-pay test
+     needs only a seeded customer wallet.
   4. `seed-partner-configs`: each partner of `mw.seeder.partners` at its baseline in mw-admin-api
      (enabled, `timeoutMs` 20 s, the e2e suite's restore values). Each difference: the seed maker asks
      (ENABLE / DISABLE / SET_TIMEOUTS), the seed checker approves (publishes to the adapters). At its
@@ -58,11 +67,18 @@ this file says what is specific to this module.
   mw-core-mock's seed PIN (`mw.coremock.seed.pin`, the fake `1234`). It is also logged once, masked
   (`seed.manifest`, MSISDNs `0171****001`).
 - Seeded data (`application.yml`, fake values only): ops `seed-ops-maker` (viewer, ops-maker),
-  `seed-ops-checker` (viewer, ops-checker), `seed-ops-viewer` (viewer); portals `seed-org-maker`,
+  `seed-ops-checker` (viewer, ops-checker), `seed-ops-viewer` (viewer), `seed-ops-compliance`
+  (compliance-officer, as the realm import's `ops-compliance01`: the console's audited PII reveal);
+  all four with password + TOTP; portals `seed-org-maker`,
   `seed-org-checker` (orgId ORG001); customers `seed-customer01`/`02` (`01712000001`/`2`), `seed-agent01`
   (`01812000001`), `seed-merchant01` (`01912000001`); wallets for those MSISDNs plus org `01312000001`,
-  outside mw-core-mock's own seed ranges (`0171100xxxx`, ...). The realm imports' own users
-  (`ops-e2e-maker01`, `customer01`, `org-maker01`, ...) stay for the Cucumber suite.
+  outside mw-core-mock's own seed ranges (`0171100xxxx`, ...). The API suite's run customers `seed-run-customer01..24` (persona
+  `run-customer`, role customer, MSISDN `01714NN0001`: masks as `0171****001` like customer01) with
+  CUSTOMER wallets of 10,000,000 BDT: each `make api-test` plays customer01 as one of them
+  (`tests/api/run_customer.mjs`, at most 3 runs per UTC day each), so repeated runs never reach a
+  wallet's daily debit limit (`tests/api/README.md`). The realm imports' own users
+  (`ops-e2e-maker01`, `customer01`, `org-maker01`, ...) stay for the Newman suite (`tests/api`), which
+  still logs in as several of them, and for manual use.
 
 ## Logging in as the seeded personas (Newman, Playwright)
 

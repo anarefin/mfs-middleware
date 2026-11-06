@@ -28,6 +28,7 @@ pinned in the collection (`build_collection.mjs`, `PINNED`).
 | `lib.js` | the shared script library, embedded as the collection variable `lib`: every script starts with `const MW = eval(pm.collectionVariables.get('lib'))` |
 | `fixtures/*.json` | data embedded as the collection variable `fixtures` (`MW.fixture('main-e2e')`: the USSD main menu the admin-content scenario republishes) |
 | `local.postman_environment.json` | the environment: `baseUrl` and the secret names (blank; run.sh fills them from `deploy/.env`) |
+| `run_customer.mjs` | picks the run customer of a run (below) and records it in `build/api-test/run-customers.tsv` (`MW_API_RUN_LEDGER`); self-test `scripts/test/test_api_run_customer.sh` |
 | `run.sh` | the runner (options in its header); run state in `.local.postman_environment.json` (gitignored, secrets blanked after every run), JUnit report in `build/newman-report.xml` |
 | `TRACEABILITY.md` | every request -> MVP acceptance criteria and coverage items; checked by `scripts/check-api-traceability.sh` |
 | `PARITY.md` | every Cucumber scenario -> its Newman request, step-level changes noted |
@@ -52,6 +53,21 @@ through `pm.sendRequest` (Newman waits for them; `--timeout-script` 15 min).
   partner restore). Money is always compared before/after (`S.note`, `S.changedBy`, `S.noChange`,
   `S.noHold`), never absolute; idempotency keys, references and markers are fresh per run, so a
   second `make api-test` on the same stack passes without a reset.
+
+## Repeated runs and the daily limit
+
+Most scenarios pay from customer01 (01711000001), and one run spends about 4,000 BDT of the
+15,000 BDT a core-mock wallet may debit per UTC day: on one wallet the 4th run of a day would fail
+with `MW-CORE-LIMIT_EXCEEDED_DAILY`. So run.sh gives every run a **run customer** from mw-seeder's
+pool (`seed-run-customer01..24`, MSISDN `01714NN0001`, 10,000,000 BDT each, persona `run-customer`
+in the seed manifest): `run_customer.mjs` takes the one used least on this UTC day, at most 3 runs a
+day each (12,000 BDT), and refuses with the fix when the pool is used up (72 runs a day). lib.js then
+plays customer01 as it: `MW.forRun` swaps customer01's number (`1711000001`, so the `0...` and `880...`
+forms) in the scenario source before it runs, so everything sent, signed and expected uses the run
+customer, and `MW.loginUser` logs `customers/customer01` in as the run customer. Its number masks as
+`0171****001` like customer01's, and mw-notify's dev contacts give it customer01's email address. A
+run without `runCustomerMsisdn` (Newman by hand) plays customer01 itself. The 10,000-row payout
+(folder 90) pays the real 01711000001, so it checks 01711000002 instead.
 
 Request names start with their requirement tags (`[p2p tsq] a transfer whose core reply is lost
 ...`), the Cucumber flow tags; `TRACEABILITY.md` lists the vocabulary and the rule.
@@ -82,5 +98,5 @@ partner deadline 8 s. `make up TIMERS=fast` records the timers in `build/stack-t
 later `make seed` keeps them. run.sh passes the seeded ocs limit (`build/seed/manifest.json`) to
 the scenarios, which size their partner delays from it, so the suite also runs (slower) on a stack
 with production timers. Each request logs `scenario took N s`. Folder 90 holds what stays slow (the
-10,000-row payout). APISIX re-resolves service names every 5 s (`dns_resolver_valid`), so a
+10,000-row payout; the retry-to-DLQ request, some 11 min with production retry delays). APISIX re-resolves service names every 5 s (`dns_resolver_valid`), so a
 recreated container is reached at its new address.

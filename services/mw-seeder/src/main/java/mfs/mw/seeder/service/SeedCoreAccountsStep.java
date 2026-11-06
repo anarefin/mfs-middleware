@@ -14,8 +14,9 @@ import org.springframework.stereotype.Service;
 /**
  * seed-core-accounts: the wallets of {@code mw.seeder.wallets} (customers, agents, merchants, orgs)
  * in mw-core-mock, through its test-only seed API (create-if-absent; an existing wallet keeps its
- * balance, which tests may have moved). Billers are not core wallets (a BILLER_ACCOUNT is outside
- * the core): they are partner configs of mw-adapter-billpay.
+ * balance, which tests may have moved). Billers need nothing seeded: a BILLER_ACCOUNT is outside the
+ * core (no wallet type), the biller catalogue is static mw-adapter-billpay config with no write API,
+ * and the simulated aggregator derives bills from their number (CLAUDE.md, seed-core-accounts).
  */
 @Service
 @Order(3)

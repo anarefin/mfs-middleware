@@ -8,7 +8,8 @@ export default [
       const up = S.record(await MW.portal.upload('org-maker01', MW.portal.payoutFile(10000, '1.00')));
       S.status(201);
       const id = up.body.batchId;
-      await S.note(['01311000001', '01711000001', '01711001000']);
+      // not 01711000001: the run plays customer01's number as the run customer (lib.js forRun), the file pays the real one
+      await S.note(['01311000001', '01711000002', '01711001000']);
       S.record(await MW.portal.approve('org-checker01', id));
       S.status(200);
       const done = await MW.poll(() => MW.portal.get('org-checker01', id), r => r.body && r.body.status === 'COMPLETED', 900000, 3000);
@@ -27,7 +28,7 @@ export default [
       S.check('every row COMPLETED with a masked MSISDN', rows.every(l => l[4] === 'COMPLETED' && /^01\d{2}\*{4}\d{3}$/.test(l[1])), rows.slice(0, 3));
       S.eq('each with its own txnId', new Set(rows.map(l => l[5])).size, 10000);
       S.check('every row names the batch status COMPLETED', rows.every(l => l[7] === 'COMPLETED'));
-      await S.changedBy({ '01311000001': -1000000, '01711000001': 1000, '01711001000': 1000 });
+      await S.changedBy({ '01311000001': -1000000, '01711000002': 1000, '01711001000': 1000 });
     },
   },
 ];

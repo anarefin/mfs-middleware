@@ -108,3 +108,16 @@ test_verify_with_M_removes_only_that_modules_containers() {
   grep -q 'label=mw.module=mw-a' .docker-calls || fail "mw-a containers not looked up: $(cat .docker-calls)"
   ! grep -q 'filter label=mw.module --filter' .docker-calls || fail "M= removed every module's containers"
 }
+
+test_verify_and_verify_changed_run_the_same_pre_checks_from_gate_sh() {
+  local s
+  grep -q '^gate_prechecks()' "$REPO_DIR/scripts/lib/gate.sh" || fail "no gate_prechecks in scripts/lib/gate.sh"
+  for s in verify.sh verify-changed.sh; do
+    grep -q 'gate_prechecks ' "$REPO_DIR/scripts/$s" || fail "$s does not call gate_prechecks"
+    if grep -qE 'check-isolation\.sh|check-field-injection\.sh|contracts-lint\.sh|compose-check\.sh"' \
+      "$REPO_DIR/scripts/$s"; then
+      fail "$s still runs a pre-check itself"
+    fi
+  done
+  return 0
+}

@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import mfs.mw.simulators.dto.SmscDlrState;
 import mfs.mw.simulators.dto.SmscMessage;
 import mfs.mw.simulators.exception.SmscRefusalException;
@@ -17,11 +20,13 @@ import org.junit.jupiter.api.Test;
  */
 class SmscServiceTest {
 
+  private static final Instant START = Instant.parse("2026-11-06T10:00:00Z");
+
   private SmscService smsc;
 
   @BeforeEach
   void setUp() {
-    smsc = new SmscService(100);
+    smsc = new SmscService(100, Clock.fixed(START, ZoneOffset.UTC));
   }
 
   static byte[] udh(int ref, int total, int seq, byte[] body) {
@@ -36,11 +41,19 @@ class SmscServiceTest {
     // mw-notify keeps every provider message_id unique: a restart (a test-timer recreate) must not
     // start again at an id an earlier run already gave out
     String before = smsc.submit("01711000001", "Bits", (byte) 0, (byte) 0, new byte[] {'a'}).messageId();
-    Thread.sleep(2);
-    String after = new SmscService(100).submit("01711000001", "Bits", (byte) 0, (byte) 0, new byte[] {'a'}).messageId();
+    Clock later = Clock.fixed(START.plusMillis(2), ZoneOffset.UTC);
+    String after = new SmscService(100, later).submit("01711000001", "Bits", (byte) 0, (byte) 0, new byte[] {'a'}).messageId();
 
     assertThat(after).isNotEqualTo(before);
     assertThat(after.length()).isLessThanOrEqualTo(64); // SMPP message_id: C-Octet String of 65
+  }
+
+  @Test
+  void idsAndReceiptTimesComeFromTheInjectedClock() throws Exception {
+    String id = smsc.submit("01711000001", "Bits", (byte) 0, (byte) 0, new byte[] {'a'}).messageId();
+
+    assertThat(id).isEqualTo("SMSC-mw4szls0-1"); // 2026-11-06T10:00Z in base 36 millis
+    assertThat(smsc.messages("01711000001").getFirst().receivedAt()).isEqualTo(START);
   }
 
   @Test

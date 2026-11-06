@@ -180,6 +180,7 @@
     ops: { client: 'mw-e2e-ops', password: 'kcOpsPassword', totp: true },
   };
   async function token(realm, user) {
+    user = loginUser(realm, user);
     const key = 'tok:' + realm + '/' + user;
     const raw = CV.get(key);
     const now = Date.now();
@@ -419,12 +420,35 @@
   const testApi = {
     reverse: (txnId, reason) => must('POST', '/test/orchestrator/v1/reversals', { apikey: true, json: { originalTxnId: txnId, reason: reason || 'api reversal' } }, [202]),
     handled: key => http('GET', '/test/orchestrator/v1/txn-requests/' + encodeURIComponent(key), { apikey: true }),
+    poison: () => must('POST', '/test/orchestrator/v1/poison-requests', { apikey: true }, [202]),
+    dlqRecord: txnId => http('GET', '/test/orchestrator/v1/dlq-records/' + encodeURIComponent(txnId), { apikey: true }),
     auditEvents: query => must('GET', '/test/audit-dw/v1/audit/events?' + query, { apikey: true }),
     chain: month => must('GET', '/test/audit-dw/v1/audit/chains/' + month, { apikey: true }),
   };
 
   /** The seeded time limit of partner ocs (manifest, passed by run.sh): 20 s, or 5 s with TIMERS=fast. */
   const ocsLimit = () => Number(v('ocsTimeoutMs')) || 20000;
+
+  // ---------- Run customer (run.sh picks it with run_customer.mjs) ----------
+  // The scenarios pay mostly from customer01 (01711000001); one run spends about 4,000 BDT of the
+  // 15,000 BDT a core-mock wallet may debit per UTC day. So every run plays customer01 as the run
+  // customer run.sh passed (mw-seeder's seed-run-customerNN, MSISDN 01714NN0001, which masks as
+  // 0171****001 too): its scenario source has customer01's number swapped in every form (0..., 880...)
+  // before it runs, and the customers-realm login of customer01 becomes the run customer's. Without
+  // runCustomerMsisdn (a manual run) nothing changes.
+  const CUSTOMER01_CORE = '1711000001';
+  function runCustomer() {
+    const msisdn = v('runCustomerMsisdn');
+    return msisdn && /^01[3-9]\d{8}$/.test(msisdn) ? { user: v('runCustomerUser'), msisdn } : null;
+  }
+  function forRun(src) {
+    const c = runCustomer();
+    return c ? src.split(CUSTOMER01_CORE).join(c.msisdn.slice(1)) : src;
+  }
+  function loginUser(realm, user) {
+    const c = runCustomer();
+    return c && c.user && realm === 'customers' && user === 'customer01' ? c.user : user;
+  }
 
   // ---------- Unique data ----------
   let counter = 0;
@@ -676,7 +700,7 @@
     http, must, poll, sleep, uuid, unique, short, totp, claims, hmacHex, hmacB64, sha256Hex, encryptPin, token, bearer,
     core, sim, app, admin, portal, checkout, callbacks, testApi, run, FINAL, IPN_URL, v, CV,
     fixture: n => JSON.parse(CV.get('fixtures'))[n],
-    ocsLimit,
+    ocsLimit, forRun, loginUser,
   };
   return MW;
 })();

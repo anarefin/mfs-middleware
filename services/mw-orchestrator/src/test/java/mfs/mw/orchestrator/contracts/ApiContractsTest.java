@@ -99,6 +99,10 @@ class ApiContractsTest {
 
     assertThat(OpenApiSchemas.component(TEST_API, "ReversalAccepted").validate(body(accepted))).isEmpty();
     assertThat(OpenApiSchemas.component(TEST_API, "TxnRequestHandled").validate(body(handled))).isEmpty();
+    assertThat(OpenApiSchemas.component(TEST_API, "PoisonAccepted")
+        .validate(body(new mfs.mw.orchestrator.dto.PoisonAccepted(TestData.txnId(), "mw.txn.request.v1.mw-orchestrator.dlq")))).isEmpty();
+    assertThat(OpenApiSchemas.component(TEST_API, "DlqRecord")
+        .validate(body(new mfs.mw.orchestrator.dto.DlqRecord(TestData.txnId(), "mw.txn.request.v1.mw-orchestrator.dlq", true)))).isEmpty();
     assertThat(OpenApiSchemas.component(TEST_API, "TxnRequestHandled")
         .validate(body(new mfs.mw.orchestrator.dto.TxnRequestHandled("k", false)))).isNotEmpty();
   }

@@ -90,7 +90,9 @@ check_root() {
 
 # ADR D16: the stack is one hand-written deploy/docker-compose.yml. No module (services/*,
 # templates/*, ui/*) has its own compose.yml, and nothing outside docs/adr/ (the history) refers to
-# the removed per-module layout (ticket 56).
+# the removed per-module layout (ticket 56). Two files name it on purpose: .gitignore keeps the
+# generated secrets an old checkout may still hold there out of git, and scripts/gen-dev-env.sh
+# warns about such a leftover .env.
 check_compose_layout() {
   local f hits old="deploy/""compose/"
   for f in "$MW_ROOT"/services/*/compose.yml "$MW_ROOT"/templates/*/compose.yml "$MW_ROOT"/ui/*/compose.yml; do
@@ -101,7 +103,7 @@ check_compose_layout() {
   hits="$(grep -rIl -F "$old" "$MW_ROOT" \
     --exclude-dir=.git --exclude-dir=build --exclude-dir=.gradle --exclude-dir=node_modules \
     --exclude-dir=.next --exclude-dir=.scratch --exclude-dir=.claude 2>/dev/null \
-    | sed "s#^$MW_ROOT/##" | grep -v -E '^(docs/adr|scripts/test)/' || true)"
+    | sed "s#^$MW_ROOT/##" | grep -v -E '^(docs/adr|scripts/test)/|^[.]gitignore$|^scripts/gen-dev-env[.]sh$' || true)"
   for f in $hits; do
     violation "$f" "refers to the removed $old layout (now deploy/docker-compose.yml, ADR D16)"
   done

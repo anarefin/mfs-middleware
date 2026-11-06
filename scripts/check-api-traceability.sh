@@ -37,7 +37,7 @@ import json, re, sys
 
 TAGS = {"health", "seed", "p2p", "device", "cash", "merchant", "topup", "billpay", "callback", "addmoney", "c2w",
         "checkout", "ipn", "notify", "tsq", "reversal", "admin", "operator", "partner-config", "wallet-unlock",
-        "ussd", "smpp", "bulk", "sp-query"}
+        "ussd", "smpp", "bulk", "sp-query", "dlq"}
 FLOWS = {"P2P app": "p2p", "CASH_IN app": "cash", "CASH_OUT app": "cash", "TOPUP app": "topup", "BILL_PAY app": "billpay",
          "ADD_MONEY_BANK app": "addmoney", "MERCHANT_PAY app": "merchant", "MERCHANT_PAY checkout": "checkout"}
 USSD_FLOWS = ["P2P ussd", "CASH_OUT ussd", "TOPUP ussd", "BILL_PAY ussd"]

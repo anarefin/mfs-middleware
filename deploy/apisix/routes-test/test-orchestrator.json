@@ -1,6 +1,6 @@
 {
   "name": "test-orchestrator",
-  "desc": "TEST ONLY (MW_E2E_ROUTES=1): mw-orchestrator test API (publish a REVERSAL, idempotency lookup; ticket 58) for the host API suite; key-auth (consumer mw-e2e) from private networks only",
+  "desc": "TEST ONLY (MW_E2E_ROUTES=1): mw-orchestrator test API (publish a REVERSAL, idempotency lookup, poison request and DLQ lookup; ticket 58) for the host API suite; key-auth (consumer mw-e2e) from private networks only",
   "uri": "/test/orchestrator/v1/*",
   "methods": ["GET", "POST"],
   "plugins": {

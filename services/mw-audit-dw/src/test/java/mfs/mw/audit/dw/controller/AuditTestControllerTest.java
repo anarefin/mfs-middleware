@@ -11,13 +11,16 @@ import java.util.UUID;
 import mfs.mw.audit.dw.dto.AuditEntry;
 import mfs.mw.audit.dw.dto.AuditEvent;
 import mfs.mw.audit.dw.dto.AuditSearchCriteria;
-import mfs.mw.audit.dw.service.AuditChainVerifier;
+import mfs.mw.audit.dw.exception.ErrorCodes;
+import mfs.mw.audit.dw.exception.MwException;
 import mfs.mw.audit.dw.service.AuditSearchService;
+import mfs.mw.audit.dw.service.AuditTestService;
 import mfs.mw.audit.dw.service.ChainVerification;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 
@@ -33,7 +36,7 @@ class AuditTestControllerTest {
   private final MockMvcTester mvc;
 
   @MockitoBean AuditSearchService search;
-  @MockitoBean AuditChainVerifier verifier;
+  @MockitoBean AuditTestService tests;
 
   @Autowired
   AuditTestControllerTest(MockMvcTester mvc) {
@@ -72,7 +75,7 @@ class AuditTestControllerTest {
 
   @Test
   void verifiesTheChainOfOneMonth() {
-    when(verifier.verify("2026-11")).thenReturn(new ChainVerification("2026-11", true, 42, null, null));
+    when(tests.verifyChain("2026-11")).thenReturn(new ChainVerification("2026-11", true, 42, null, null));
 
     var r = assertThat(mvc.get().uri("/test/v1/audit/chains/2026-11")).hasStatusOk().bodyJson();
     r.extractingPath("$.month").isEqualTo("2026-11");
@@ -82,13 +85,23 @@ class AuditTestControllerTest {
 
   @Test
   void aBrokenChainNamesTheFirstBadSeq() {
-    when(verifier.verify("2026-10"))
+    when(tests.verifyChain("2026-10"))
         .thenReturn(new ChainVerification("2026-10", false, 9, 4L, "hash does not match the row"));
 
     var r = assertThat(mvc.get().uri("/test/v1/audit/chains/2026-10")).hasStatusOk().bodyJson();
     r.extractingPath("$.intact").isEqualTo(false);
     r.extractingPath("$.failedSeq").isEqualTo(4);
     r.extractingPath("$.reason").isEqualTo("hash does not match the row");
+  }
+
+  @Test
+  void chainVerificationSwitchedOffIs503() {
+    when(tests.verifyChain("2026-11"))
+        .thenThrow(new MwException(ErrorCodes.SYS_UNAVAILABLE, "Chain verification is switched off")
+            .withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+
+    assertThat(mvc.get().uri("/test/v1/audit/chains/2026-11"))
+        .hasStatus(503).bodyJson().extractingPath("$.code").isEqualTo("MW-SYS-002");
   }
 
   @Test

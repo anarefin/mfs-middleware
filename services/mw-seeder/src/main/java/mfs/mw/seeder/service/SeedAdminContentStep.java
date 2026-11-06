@@ -97,7 +97,7 @@ public class SeedAdminContentStep implements SeedStep {
   private Seeded ensure(
       String type, String resourceId, Supplier<List<ContentVersionView>> versions, Supplier<ChangeRequestView> propose) {
     List<ContentVersionView> have = versions.get();
-    Optional<ContentVersionView> published = have.stream().filter(v -> "PUBLISHED".equals(v.status())).findFirst();
+    Optional<ContentVersionView> published = published(have);
     if (published.isPresent()) {
       return new Seeded(StepResult.unchanged(1), published.get().version());
     }
@@ -110,15 +110,17 @@ public class SeedAdminContentStep implements SeedStep {
       ops.approve(propose.get());
     }
     int version =
-        versions.get().stream()
-            .filter(v -> "PUBLISHED".equals(v.status()))
-            .findFirst()
+        published(versions.get())
             .orElseThrow(() -> new IllegalStateException(type + " " + resourceId + " has no published version after approval"))
             .version();
     log.atInfo()
         .addKeyValue("event", "seed.content.published")
         .log("{} {} published as admin version {}", type, resourceId, version);
     return new Seeded(StepResult.created(1), version);
+  }
+
+  private static Optional<ContentVersionView> published(List<ContentVersionView> versions) {
+    return versions.stream().filter(v -> "PUBLISHED".equals(v.status())).findFirst();
   }
 
   private MenuProposal menuProposal(MenuSpec m) {

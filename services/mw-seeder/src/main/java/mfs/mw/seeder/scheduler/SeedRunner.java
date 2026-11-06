@@ -118,7 +118,8 @@ public class SeedRunner {
             .addKeyValue("event", "seed.step.retry")
             .log("seed step {} attempt {} not done yet, retrying in {}: {}", step.id(), attempt, backoff, e.getMessage());
         Thread.sleep(backoff);
-        backoff = backoff.multipliedBy(2).compareTo(settings.maxBackoff()) > 0 ? settings.maxBackoff() : backoff.multipliedBy(2);
+        Duration doubled = backoff.multipliedBy(2);
+        backoff = doubled.compareTo(settings.maxBackoff()) > 0 ? settings.maxBackoff() : doubled;
         attempt++;
       }
     }

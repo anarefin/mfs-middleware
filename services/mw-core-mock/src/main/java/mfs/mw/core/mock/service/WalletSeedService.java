@@ -6,6 +6,8 @@ import mfs.mw.core.mock.dto.WalletBalance;
 import mfs.mw.core.mock.exception.ErrorCodes;
 import mfs.mw.core.mock.exception.MwException;
 import mfs.mw.core.mock.repository.WalletRepository;
+import mfs.mw.core.mock.util.MaskingPolicy;
+import mfs.mw.core.mock.util.SensitiveType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -50,7 +52,7 @@ public class WalletSeedService {
     if (created) {
       log.atInfo()
           .addKeyValue("event", "coremock.wallet.seeded")
-          .log("seeded {} wallet {}", type, walletId);
+          .log("seeded {} wallet {}", type, MaskingPolicy.mask(SensitiveType.MSISDN, walletId));
     }
     WalletBalance now =
         balances.find(walletId).orElseThrow(() -> new IllegalStateException("seeded wallet not readable"));

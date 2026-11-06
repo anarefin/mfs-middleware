@@ -8,6 +8,8 @@ node_modules/
 
 # generated dev credentials (scripts/gen-dev-env.sh)
 /deploy/.env
+# the pre-ticket-56 layout: old checkouts may still hold generated dev secrets there
+/deploy/compose/
 
 # Claude Code agent worktrees (local only)
 .claude/worktrees/

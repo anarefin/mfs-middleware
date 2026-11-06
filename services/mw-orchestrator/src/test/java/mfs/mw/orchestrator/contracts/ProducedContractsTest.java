@@ -95,7 +95,10 @@ class ProducedContractsTest {
     TransactionRepository transactions = mock(TransactionRepository.class);
     when(transactions.find(original.txnId())).thenReturn(Optional.of(original));
     EventPublisher publisher = mock(EventPublisher.class);
-    new TestApiService(transactions, mock(IdempotencyRepository.class), publisher, Clock.fixed(TestData.NOW, ZoneOffset.UTC))
+    new TestApiService(
+            transactions, mock(IdempotencyRepository.class), publisher, mock(mfs.mw.orchestrator.client.DlqClient.class),
+            new mfs.mw.orchestrator.config.MwServiceProperties("mw-orchestrator", "t", "test"),
+            Clock.fixed(TestData.NOW, ZoneOffset.UTC))
         .reverse(original.txnId(), "contract fixture");
     ArgumentCaptor<Object> sent = ArgumentCaptor.forClass(Object.class);
     verify(publisher).publish(eq("mw.txn.request.v1"), any(), any(), sent.capture());

@@ -1,11 +1,12 @@
 package mfs.mw.orchestrator.controller;
 
 import jakarta.validation.Valid;
+import java.util.UUID;
+import mfs.mw.orchestrator.dto.DlqRecord;
+import mfs.mw.orchestrator.dto.PoisonAccepted;
 import mfs.mw.orchestrator.dto.TestReversalAccepted;
 import mfs.mw.orchestrator.dto.TestReversalRequest;
 import mfs.mw.orchestrator.dto.TxnRequestHandled;
-import mfs.mw.orchestrator.exception.ErrorCodes;
-import mfs.mw.orchestrator.exception.MwException;
 import mfs.mw.orchestrator.service.TestApiService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
@@ -39,11 +40,18 @@ public class TestApiController {
     return ResponseEntity.status(HttpStatus.ACCEPTED).body(service.reverse(body.originalTxnId(), body.reason()));
   }
 
+  @PostMapping("/poison-requests")
+  ResponseEntity<PoisonAccepted> poison() {
+    return ResponseEntity.status(HttpStatus.ACCEPTED).body(service.poison());
+  }
+
+  @GetMapping("/dlq-records/{txnId}")
+  DlqRecord dlqRecord(@PathVariable UUID txnId) {
+    return service.dlqRecord(txnId.toString());
+  }
+
   @GetMapping("/txn-requests/{idempotencyKey}")
   TxnRequestHandled handled(@PathVariable String idempotencyKey) {
-    if (!service.handled(idempotencyKey)) {
-      throw new MwException(ErrorCodes.VAL_NOT_FOUND, "Request not handled (yet)").withStatus(HttpStatus.NOT_FOUND);
-    }
-    return new TxnRequestHandled(idempotencyKey, true);
+    return service.handled(idempotencyKey);
   }
 }

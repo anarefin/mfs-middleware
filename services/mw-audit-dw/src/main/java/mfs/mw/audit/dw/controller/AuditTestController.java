@@ -8,14 +8,10 @@ import java.time.Instant;
 import java.util.UUID;
 import mfs.mw.audit.dw.dto.AuditEntry;
 import mfs.mw.audit.dw.dto.AuditSearchCriteria;
-import mfs.mw.audit.dw.exception.ErrorCodes;
-import mfs.mw.audit.dw.exception.MwException;
-import mfs.mw.audit.dw.service.AuditChainVerifier;
 import mfs.mw.audit.dw.service.AuditSearchService;
+import mfs.mw.audit.dw.service.AuditTestService;
 import mfs.mw.audit.dw.service.ChainVerification;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -36,11 +32,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuditTestController {
 
   private final AuditSearchService search;
-  private final ObjectProvider<AuditChainVerifier> verifier;
+  private final AuditTestService tests;
 
-  public AuditTestController(AuditSearchService search, ObjectProvider<AuditChainVerifier> verifier) {
+  public AuditTestController(AuditSearchService search, AuditTestService tests) {
     this.search = search;
-    this.verifier = verifier;
+    this.tests = tests;
   }
 
   @GetMapping("/events")
@@ -59,14 +55,9 @@ public class AuditTestController {
         new AuditSearchCriteria(txnId, actorType, actorId, action, resource, outcome, from, to, limit, offset));
   }
 
-  /** The month's chain recomputed as the read-only reader ({@code service/AuditChainVerifier}). */
+  /** The month's chain recomputed as the read-only reader ({@code service/AuditTestService}). */
   @GetMapping("/chains/{month}")
   public ChainVerification chain(@PathVariable @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String month) {
-    AuditChainVerifier v = verifier.getIfAvailable();
-    if (v == null) {
-      throw new MwException(ErrorCodes.SYS_UNAVAILABLE, "Chain verification is switched off")
-          .withStatus(HttpStatus.SERVICE_UNAVAILABLE);
-    }
-    return v.verify(month);
+    return tests.verifyChain(month);
   }
 }

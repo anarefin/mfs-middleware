@@ -6,7 +6,10 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.util.UUID;
+import mfs.mw.orchestrator.dto.DlqRecord;
+import mfs.mw.orchestrator.dto.PoisonAccepted;
 import mfs.mw.orchestrator.dto.TestReversalAccepted;
+import mfs.mw.orchestrator.dto.TxnRequestHandled;
 import mfs.mw.orchestrator.exception.ErrorCodes;
 import mfs.mw.orchestrator.exception.MwException;
 import mfs.mw.orchestrator.service.TestApiService;
@@ -76,7 +79,7 @@ class TestApiControllerTest {
 
     @Test
     void aHandledKeyIs200() {
-      given(service.handled("test-rev-1")).willReturn(true);
+      given(service.handled("test-rev-1")).willReturn(new TxnRequestHandled("test-rev-1", true));
 
       assertThat(mvc.get().uri("/test/v1/txn-requests/test-rev-1"))
           .hasStatus(200)
@@ -85,8 +88,34 @@ class TestApiControllerTest {
     }
 
     @Test
+    void aPoisonRequestIs202WithItsTxnIdAndDlqTopic() {
+      given(service.poison())
+          .willReturn(new PoisonAccepted("0190a7c4-0000-7000-8000-0000000000cc", "mw.txn.request.v1.mw-orchestrator.dlq"));
+
+      assertThat(mvc.post().uri("/test/v1/poison-requests"))
+          .hasStatus(202)
+          .bodyJson()
+          .isLenientlyEqualTo(
+              "{\"txnId\":\"0190a7c4-0000-7000-8000-0000000000cc\",\"dlqTopic\":\"mw.txn.request.v1.mw-orchestrator.dlq\"}");
+    }
+
+    @Test
+    void aParkedRecordIs200AndOneNotParkedYet404() {
+      given(service.dlqRecord("0190a7c4-0000-7000-8000-0000000000cc"))
+          .willReturn(new DlqRecord("0190a7c4-0000-7000-8000-0000000000cc", "mw.txn.request.v1.mw-orchestrator.dlq", true));
+      given(service.dlqRecord("0190a7c4-0000-7000-8000-0000000000dd"))
+          .willThrow(new MwException(ErrorCodes.VAL_NOT_FOUND, "Not on the DLQ (yet)").withStatus(HttpStatus.NOT_FOUND));
+
+      assertThat(mvc.get().uri("/test/v1/dlq-records/0190a7c4-0000-7000-8000-0000000000cc"))
+          .hasStatus(200).bodyJson().extractingPath("$.parked").isEqualTo(true);
+      assertThat(mvc.get().uri("/test/v1/dlq-records/0190a7c4-0000-7000-8000-0000000000dd"))
+          .hasStatus(404).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-003");
+    }
+
+    @Test
     void aKeyNotSeenYetIs404() {
-      given(service.handled("test-rev-2")).willReturn(false);
+      given(service.handled("test-rev-2"))
+          .willThrow(new MwException(ErrorCodes.VAL_NOT_FOUND, "Request not handled (yet)").withStatus(HttpStatus.NOT_FOUND));
 
       assertThat(mvc.get().uri("/test/v1/txn-requests/test-rev-2"))
           .hasStatus(404).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-003");

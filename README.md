@@ -84,7 +84,7 @@ SMS/email templates and partner configs load their dev data.
 `make seed` (`scripts/seed.sh`, ticket 57) then runs the one-shot `mw-seeder` (profile `seed`) on the
 running stack and fails unless it exits 0. Through the services' APIs only (no SQL), it adds the
 baseline the API and Playwright suites share: the personas `seed-ops-maker`, `seed-ops-checker`,
-`seed-ops-viewer` (realm ops, with the TOTP secret `KC_OPS_TEST_TOTP_SECRET`), `seed-org-maker`,
+`seed-ops-viewer`, `seed-ops-compliance` (realm ops, with the TOTP secret `KC_OPS_TEST_TOTP_SECRET`), `seed-org-maker`,
 `seed-org-checker`, `seed-customer01`/`02`, `seed-agent01`, `seed-merchant01` with their core-mock
 wallets (`01712000001`, ...), the OCS partner at its baseline and a first admin version of the USSD
 main menu and the P2P received SMS, all through maker-checker. It is idempotent: a second `make seed`

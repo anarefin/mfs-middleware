@@ -156,15 +156,20 @@ html, junit `test-results/junit.xml`). `e2e/support/`:
   mw-admin-ui, mw-orchestrator, mw-core-mock, mw-ussd, mw-audit-dw, the seed manifest and the
   credentials it names; every probe 5 s at most, so a stopped stack fails in about a second with
   `make up && make seed`. Then it resets `e2e/.state/` (gitignored).
-- `personas.ts`: `maker`, `checker`, `viewer` -> `seed-ops-*` from the manifest, password / TOTP secret
-  from the env variables the manifest names. No compliance persona is seeded, so the reveal itself is
-  not driven here (the viewer side is).
+- `personas.ts`: `maker`, `checker`, `viewer`, `compliance` -> `seed-ops-*` from the manifest (`compliance` =
+  `seed-ops-compliance`, role compliance-officer), password / TOTP secret from the env variables the
+  manifest names. `10-console` drives the reveal both ways: the compliance officer clicks "Reveal MSISDN
+  (audited)", sees the whole number and the audited note, and the txn's audit trail then shows
+  `admin.txn.msisdn.revealed` by `seed-ops-compliance`; a viewer is not offered the link and its
+  `?reveal=true` stays masked. A manifest from before the persona existed fails global setup (`make seed`).
 - `session.ts`: one real login per persona per run (console login page -> Keycloak username +
   password, then the OTP form; `totp.ts` = mw-seeder's `util/Totp`), cached as storageState in
   `e2e/.state/sessions/` and added to later contexts; the session is an HTTP-only cookie, so
   storageState, not an init script. Realm ops refuses a code used twice: the last step per user is in
   `e2e/.state/run.json` and a login waits for an unused step; an APISIX 429 or a refused code is
-  retried inside `toPass`.
+  retried inside `toPass`. Every signed-in page drops Next's link prefetches (`Next-Router-Prefetch`)
+  through Chromium's Fetch domain (not `page.route`, which turns the HTTP cache off): with them a run
+  passed APISIX's `admin-ui` quota of 600 requests a minute and got 429 pages.
 - `state.ts` (`saveState` / `readState` / `need()`, `E2E_ALLOW_SKIP=1` to run one spec alone),
   `approvals.ts` (`asChecker()` in a new browser context; rows by request id, `clearPending()` rejects
   what an interrupted run left PENDING), `ussd.ts` (a real P2P: seeded customer `01712000001` ->

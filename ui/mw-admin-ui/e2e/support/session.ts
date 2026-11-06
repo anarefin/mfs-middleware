@@ -79,11 +79,36 @@ async function signedInAs(page: Page, name: PersonaName): Promise<boolean> {
   return (await page.getByTestId("operator").textContent())?.includes(persona(name).username) ?? false;
 }
 
+const prefetchFree = new WeakSet<Page>();
+
+/**
+ * Drops Next's link prefetches (header `Next-Router-Prefetch`) in the suite's pages: every console
+ * page prefetches its six nav links, which pushed a whole run past APISIX's `admin-ui` quota (600
+ * requests a minute per address) and turned pages into 429s. A click then loads the page itself, as
+ * an operator whose prefetch failed sees it. Through Chromium's Fetch domain, not `page.route`:
+ * Playwright routing turns the HTTP cache off, and the static chunks fetched again on every page
+ * load are more requests than the prefetches.
+ */
+async function skipPrefetches(page: Page): Promise<void> {
+  if (prefetchFree.has(page)) return;
+  prefetchFree.add(page);
+  const cdp = await page.context().newCDPSession(page);
+  cdp.on("Fetch.requestPaused", (e: { requestId: string; request: { headers: Record<string, string> } }) => {
+    const prefetch = Object.keys(e.request.headers).some((h) => h.toLowerCase() === "next-router-prefetch");
+    const done = prefetch
+      ? cdp.send("Fetch.failRequest", { requestId: e.requestId, errorReason: "Aborted" })
+      : cdp.send("Fetch.continueRequest", { requestId: e.requestId });
+    done.catch(() => undefined); // the page may be gone already
+  });
+  await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*/console/*", requestStage: "Request" }] });
+}
+
 /**
  * Puts `name` signed in into the page's context: the run's cached session when it still works, else
  * a real login (cached for the rest of the run). Lands on the search.
  */
 export async function signIn(page: Page, name: PersonaName): Promise<void> {
+  await skipPrefetches(page);
   const file = sessionFile(name);
   if (fs.existsSync(file)) {
     const cached = JSON.parse(fs.readFileSync(file, "utf8")) as { cookies: Parameters<BrowserContext["addCookies"]>[0] };

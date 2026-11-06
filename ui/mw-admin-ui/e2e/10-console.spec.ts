@@ -115,9 +115,38 @@ test.describe("console", { tag: "@console" }, () => {
     }
   });
 
+  test("a compliance officer reveals the MSISDN, unmasked, and the audit trail records it", async ({ page }) => {
+    // first login of seed-ops-compliance in this run: it may wait up to 30 s for an unused TOTP step
+    test.setTimeout(150_000);
+    const { TXN_P2P } = readState();
+    need(!TXN_P2P, "no TXN_P2P from the search test");
+    const compliance = persona("compliance");
+    await signIn(page, "compliance");
+    await page.goto(`/console/transactions/${TXN_P2P}`);
+    const masked = `${CUSTOMER_A.slice(0, 4)}****${CUSTOMER_A.slice(-3)}`;
+    await expect(page.getByTestId("initiator")).toContainText(masked);
+    expect(await page.content()).not.toContain(CUSTOMER_A);
+
+    await page.getByRole("link", { name: "Reveal MSISDN (audited)" }).click();
+    await expect(page).toHaveURL(/\?reveal=true$/);
+    await expect(page.getByTestId("initiator")).toContainText(CUSTOMER_A);
+    await expect(page.getByText("this view was audited")).toBeVisible();
+
+    // mw-admin-api audits the reveal through its outbox; mw-audit-dw stores it a moment later
+    const reveal = page.getByTestId("audit-trail").locator("tr", { hasText: "admin.txn.msisdn.revealed" });
+    await page.getByRole("link", { name: "Mask again" }).click();
+    await expect(page.getByTestId("initiator")).toContainText(masked);
+    await expect(async () => {
+      await page.goto(`/console/transactions/${TXN_P2P}`);
+      await expect(reveal.filter({ hasText: compliance.username }).first()).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 60_000 });
+    // masked again: the number is gone from the page, the audit row names the operator, not the number
+    expect(await page.content()).not.toContain(CUSTOMER_A);
+    await expect(reveal.first()).toContainText(`transaction/${TXN_P2P}`);
+  });
+
   test("only a compliance officer or auditor is offered the reveal; a viewer's ?reveal=true stays masked", async ({ page }) => {
-    // The seed has no compliance persona (maker, checker, viewer); the reveal itself is mw-admin-api's
-    // (audited) and covered by the API suite. The console must not pass reveal=true for a viewer.
+    // The console must not pass reveal=true for a viewer (mw-admin-api would refuse it anyway).
     const { TXN_P2P } = readState();
     need(!TXN_P2P, "no TXN_P2P from the search test");
     await signIn(page, "viewer");

@@ -16,10 +16,15 @@ import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import mfs.mw.orchestrator.client.DlqClient;
+import mfs.mw.orchestrator.config.MwServiceProperties;
 import mfs.mw.orchestrator.dto.Amount;
+import mfs.mw.orchestrator.dto.DlqRecord;
+import mfs.mw.orchestrator.dto.PoisonAccepted;
 import mfs.mw.orchestrator.dto.Party;
 import mfs.mw.orchestrator.dto.TestReversalAccepted;
 import mfs.mw.orchestrator.dto.TxnRequest;
+import mfs.mw.orchestrator.dto.TxnRequestHandled;
 import mfs.mw.orchestrator.entity.TransactionRecord;
 import mfs.mw.orchestrator.exception.MwException;
 import mfs.mw.orchestrator.messaging.EventMetadata;
@@ -39,8 +44,11 @@ class TestApiServiceTest {
   private final TransactionRepository transactions = mock(TransactionRepository.class);
   private final IdempotencyRepository idempotency = mock(IdempotencyRepository.class);
   private final EventPublisher publisher = mock(EventPublisher.class);
+  private final DlqClient dlq = mock(DlqClient.class);
   private final TestApiService service =
-      new TestApiService(transactions, idempotency, publisher, Clock.fixed(NOW, ZoneOffset.UTC));
+      new TestApiService(
+          transactions, idempotency, publisher, dlq, new MwServiceProperties("mw-orchestrator", "t", "test"),
+          Clock.fixed(NOW, ZoneOffset.UTC));
 
   private static TransactionRecord p2p() {
     TxnRequest req =
@@ -78,6 +86,8 @@ class TestApiServiceTest {
     assertThat(meta.getValue().txnId()).isEqualTo(r.txnId());
     assertThat(meta.getValue().idempotencyKey()).isEqualTo(r.idempotencyKey());
     assertThat(meta.getValue().correlationId()).isEqualTo(r.correlationId());
+    // a plain RFC 9562 UUID (the masking gate keeps only that shape whole), no prefix
+    assertThat(UUID.fromString(r.correlationId()).toString()).isEqualTo(r.correlationId());
   }
 
   @Test
@@ -110,7 +120,49 @@ class TestApiServiceTest {
   void aKeyIsHandledOnceTheIdempotencyTableHasIt() {
     when(idempotency.exists("test-rev-1")).thenReturn(true);
 
-    assertThat(service.handled("test-rev-1")).isTrue();
-    assertThat(service.handled("test-rev-2")).isFalse();
+    assertThat(service.handled("test-rev-1")).isEqualTo(new TxnRequestHandled("test-rev-1", true));
+  }
+
+  @Test
+  void aKeyNotSeenYetIs404() {
+    when(idempotency.exists("test-rev-2")).thenReturn(false);
+
+    assertThatThrownBy(() -> service.handled("test-rev-2"))
+        .isInstanceOfSatisfying(MwException.class, e -> {
+          assertThat(e.code()).isEqualTo("MW-VAL-003");
+          assertThat(e.status().value()).isEqualTo(404);
+        });
+  }
+
+  @Test
+  void aPoisonRequestIsAWellFormedRecordTheListenerRefuses() {
+    PoisonAccepted accepted = service.poison();
+
+    assertThat(UUID.fromString(accepted.txnId()).version()).isEqualTo(7);
+    assertThat(accepted.dlqTopic()).isEqualTo("mw.txn.request.v1.mw-orchestrator.dlq");
+    ArgumentCaptor<Object> sent = ArgumentCaptor.forClass(Object.class);
+    ArgumentCaptor<EventMetadata> meta = ArgumentCaptor.forClass(EventMetadata.class);
+    verify(publisher).publish(eq("mw.txn.request.v1"), eq(accepted.txnId()), meta.capture(), sent.capture());
+    // JSON the listener reads, but without initiator, amount and requestedAt: it throws on every attempt
+    assertThat(sent.getValue()).isEqualTo(Map.of("schemaVersion", 1, "txnId", accepted.txnId(), "txnType", "P2P"));
+    assertThat(meta.getValue().txnId()).isEqualTo(accepted.txnId());
+    assertThat(UUID.fromString(meta.getValue().correlationId()).toString()).isEqualTo(meta.getValue().correlationId());
+  }
+
+  @Test
+  void aParkedRecordIsFoundOnTheDlqByItsKey() {
+    String txnId = "0190a7c4-0000-7000-8000-0000000000cc";
+    when(dlq.holds("mw.txn.request.v1.mw-orchestrator.dlq", txnId)).thenReturn(true);
+
+    assertThat(service.dlqRecord(txnId))
+        .isEqualTo(new DlqRecord(txnId, "mw.txn.request.v1.mw-orchestrator.dlq", true));
+  }
+
+  @Test
+  void aRecordNotOnTheDlqYetIs404() {
+    when(dlq.holds(anyString(), anyString())).thenReturn(false);
+
+    assertThatThrownBy(() -> service.dlqRecord("0190a7c4-0000-7000-8000-0000000000cc"))
+        .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.status().value()).isEqualTo(404));
   }
 }

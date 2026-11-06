@@ -14,7 +14,8 @@
 # state goes to tests/api/.local.postman_environment.json (gitignored) with every secret blanked;
 # the JUnit report to tests/api/build/newman-report.xml. Knobs: MW_API_BASE_URL (default
 # https://localhost:${MW_HTTPS_PORT:-443}), NEWMAN_VERSION, MW_SEED_MANIFEST (default
-# build/seed/manifest.json, written by make seed).
+# build/seed/manifest.json, written by make seed), MW_API_RUN_LEDGER (default
+# build/api-test/run-customers.tsv: which run customer each run played customer01 as, run_customer.mjs).
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -84,7 +85,14 @@ manifest="${MW_SEED_MANIFEST:-$root/build/seed/manifest.json}"
 [ -f "$manifest" ] || { echo "run.sh: no seed manifest at $manifest: run make seed first" >&2; exit 1; }
 ocs_timeout="$(node -e 'const m = require(process.argv[1]); const p = (m.partners || []).find(x => x.partnerId === "ocs"); console.log(p ? p.timeoutMs : "")' "$manifest")"
 [ -n "$ocs_timeout" ] || { echo "run.sh: the seed manifest names no partner ocs" >&2; exit 1; }
-env_args=(--env-var "baseUrl=$base_url" --env-var "ocsTimeoutMs=$ocs_timeout")
+# The run customer (mw-seeder pool) this run plays customer01 as, so repeated runs on one day never
+# reach a wallet's daily debit limit (run_customer.mjs; picks recorded in build/api-test/).
+read -r run_user run_msisdn < <(node "$here/run_customer.mjs" "$manifest" "${MW_API_RUN_LEDGER:-$root/build/api-test/run-customers.tsv}") \
+  || { echo "run.sh: no run customer for this run (see above)" >&2; exit 1; }
+[ -n "${run_msisdn:-}" ] || { echo "run.sh: no run customer for this run" >&2; exit 1; }
+echo "==> api-test: customer01 plays as run customer $run_user (${run_msisdn:0:4}****${run_msisdn: -3})"
+env_args=(--env-var "baseUrl=$base_url" --env-var "ocsTimeoutMs=$ocs_timeout"
+  --env-var "runCustomerUser=$run_user" --env-var "runCustomerMsisdn=$run_msisdn")
 for s in "${secrets[@]}"; do env_args+=(--env-var "$s"); done
 mkdir -p "$here/build"
 

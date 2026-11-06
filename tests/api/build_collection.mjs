@@ -53,8 +53,12 @@ async function folders() {
   return out;
 }
 
+// The scenario (helpers + run) goes in as source text: MW.forRun swaps customer01's number for the run
+// customer's (run.sh, run_customer.mjs) before it is evaluated, so every value it sends or expects,
+// signed bodies included, uses the run customer. Direct eval of our own generated source only.
 function item(s, helpers) {
-  const script = [PRELUDE, ...helpers, `MW.run(${JSON.stringify(s.name)}, ${s.run.toString()}, ${JSON.stringify(s.args === undefined ? null : s.args)});`].join('\n');
+  const code = [...helpers, `;(${s.run.toString()})`].join('\n');
+  const script = [PRELUDE, `MW.run(${JSON.stringify(s.name)}, eval(MW.forRun(${JSON.stringify(code)})), ${JSON.stringify(s.args === undefined ? null : s.args)});`].join('\n');
   return {
     name: s.name,
     event: [{ listen: 'test', script: { type: 'text/javascript', exec: script.split('\n') } }],
@@ -92,7 +96,7 @@ function environment() {
   const values = [
     ['baseUrl', 'https://localhost:443'], ['ocsTimeoutMs', '20000'],
     ['e2eApiKey', ''], ['kcCustomersPassword', ''], ['kcPortalsPassword', ''], ['kcOpsPassword', ''],
-    ['kcOpsTotpSecret', ''], ['billaggSecret', ''], ['checkoutSecret', ''],
+    ['kcOpsTotpSecret', ''], ['billaggSecret', ''], ['checkoutSecret', ''], ['runCustomerUser', ''], ['runCustomerMsisdn', ''],
   ].map(([key, value]) => ({ key, value, enabled: true }));
   return { name: 'Bits MFS middleware local stack', values, _postman_variable_scope: 'environment' };
 }

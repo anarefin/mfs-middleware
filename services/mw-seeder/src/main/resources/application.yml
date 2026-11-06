@@ -88,12 +88,41 @@ mw:
       - { persona: maker, realm: ops, username: seed-ops-maker, roles: [viewer, ops-maker] }
       - { persona: checker, realm: ops, username: seed-ops-checker, roles: [viewer, ops-checker] }
       - { persona: viewer, realm: ops, username: seed-ops-viewer, roles: [viewer] }
+      # roles as the realm import's ops-compliance01 (the PII reveal of the console, ticket 59)
+      - { persona: compliance, realm: ops, username: seed-ops-compliance, roles: [compliance-officer] }
       - { persona: org-maker, realm: portals, username: seed-org-maker, roles: [org-maker], attributes: { orgId: ORG001 } }
       - { persona: org-checker, realm: portals, username: seed-org-checker, roles: [org-checker], attributes: { orgId: ORG001 } }
       - { persona: customer, realm: customers, username: seed-customer01, roles: [customer], attributes: { msisdn: "01712000001" } }
       - { persona: customer, realm: customers, username: seed-customer02, roles: [customer], attributes: { msisdn: "01712000002" } }
       - { persona: agent, realm: customers, username: seed-agent01, roles: [agent], attributes: { msisdn: "01812000001" } }
       - { persona: merchant, realm: customers, username: seed-merchant01, roles: [merchant], attributes: { msisdn: "01912000001" } }
+      # The API suite's run customers (tests/api/run_customer.mjs): each make api-test pays as one of them
+      # (lib.js plays customer01 as it), at most 3 runs per UTC day each, so repeated runs stay under
+      # core-mock's daily debit limit. MSISDN 01714NN0001: masks as 0171****001 like customer01.
+      - { persona: run-customer, realm: customers, username: seed-run-customer01, roles: [customer], attributes: { msisdn: "01714010001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer02, roles: [customer], attributes: { msisdn: "01714020001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer03, roles: [customer], attributes: { msisdn: "01714030001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer04, roles: [customer], attributes: { msisdn: "01714040001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer05, roles: [customer], attributes: { msisdn: "01714050001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer06, roles: [customer], attributes: { msisdn: "01714060001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer07, roles: [customer], attributes: { msisdn: "01714070001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer08, roles: [customer], attributes: { msisdn: "01714080001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer09, roles: [customer], attributes: { msisdn: "01714090001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer10, roles: [customer], attributes: { msisdn: "01714100001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer11, roles: [customer], attributes: { msisdn: "01714110001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer12, roles: [customer], attributes: { msisdn: "01714120001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer13, roles: [customer], attributes: { msisdn: "01714130001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer14, roles: [customer], attributes: { msisdn: "01714140001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer15, roles: [customer], attributes: { msisdn: "01714150001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer16, roles: [customer], attributes: { msisdn: "01714160001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer17, roles: [customer], attributes: { msisdn: "01714170001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer18, roles: [customer], attributes: { msisdn: "01714180001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer19, roles: [customer], attributes: { msisdn: "01714190001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer20, roles: [customer], attributes: { msisdn: "01714200001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer21, roles: [customer], attributes: { msisdn: "01714210001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer22, roles: [customer], attributes: { msisdn: "01714220001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer23, roles: [customer], attributes: { msisdn: "01714230001" } }
+      - { persona: run-customer, realm: customers, username: seed-run-customer24, roles: [customer], attributes: { msisdn: "01714240001" } }
     # The ops personas the admin-api steps act as (maker != checker), direct-grant client + TOTP.
     operators:
       realm: ops
@@ -108,6 +137,31 @@ mw:
       - { wallet-id: "01812000001", type: AGENT, opening-balance-minor: 10000000 }
       - { wallet-id: "01912000001", type: MERCHANT, opening-balance-minor: 0 }
       - { wallet-id: "01312000001", type: ORG, opening-balance-minor: 100000000 }
+      # run customers (above): 10,000,000 BDT each, a run spends about 4,000 BDT
+      - { wallet-id: "01714010001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714020001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714030001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714040001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714050001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714060001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714070001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714080001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714090001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714100001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714110001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714120001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714130001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714140001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714150001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714160001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714170001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714180001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714190001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714200001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714210001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714220001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714230001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714240001", type: CUSTOMER, opening-balance-minor: 1000000000 }
     # Partner baselines in mw-admin-api (the e2e suite's restore values: enabled, 20 s).
     partners:
       - { partner-id: ocs, enabled: true, timeout-ms: 20000 }

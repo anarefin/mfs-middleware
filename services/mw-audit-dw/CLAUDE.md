@@ -22,11 +22,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   `messaging/AuditEventListener` -> `service/AuditService.record`) with retry topics and DLQ; an
   unreadable event or one missing a required field throws and ends on the DLQ.
 - Test-only audit API (ticket 58, contract `api/mw-audit-dw/audit-dw-test.v1.openapi.yaml`,
-  `controller/AuditTestController`, `AuditTestControllerTest`): only with
+  `controller/AuditTestController`, `service/AuditTestService`, `AuditTestControllerTest`, `AuditTestServiceTest`): only with
   `mw.audit-dw.test-api.enabled=true` (`MW_AUDIT_DW_TEST_API_ENABLED`, set by `deploy/docker-compose.yml`
   for the dev stack; off, the paths do not exist). `GET /test/v1/audit/events` = the internal search
   (same filters, same `AuditPage`) without a token; `GET /test/v1/audit/chains/{month}` (yyyy-MM, else
-  400 `MW-VAL-001`) -> `AuditChainVerifier.verify(month)` as `audit_reader`, 200 `{month, intact, rows,
+  400 `MW-VAL-001`) -> `service/AuditTestService.verifyChain` -> `AuditChainVerifier.verify(month)` as `audit_reader`, 200 `{month, intact, rows,
   failedSeq, reason}` whatever the outcome; 503 `MW-SYS-002` when chain verification is switched off.
   Reached only through the test-only APISIX route `test-audit-dw` (`/test/audit-dw/v1/*`, GET, key-auth
   `mw_e2e`, `MW_E2E_ROUTES=1`); `SecurityConfig` guards only `/internal/**`, so `/test/**` needs no JWT.

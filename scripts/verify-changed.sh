@@ -31,14 +31,7 @@ else
 fi
 info "verify-changed: modules since $base: $(printf '%s' "${modules:-none}" | xargs -n1 basename 2>/dev/null | tr '\n' ' ')"
 
-"$here/check-isolation.sh" ""
-"$here/check-field-injection.sh" ""
-"$here/contracts-lint.sh"
-if docker compose version >/dev/null 2>&1; then
-  "$here/compose-check.sh"
-else
-  info "verify-changed: docker compose CLI not found, skipping compose-check"
-fi
+gate_prechecks verify-changed ""
 if [ -f "$STACK_FILE" ] && command -v docker >/dev/null 2>&1; then
   stack_compose
   if [ -n "$(docker compose "${DC_F[@]}" ps -q 2>/dev/null || true)" ]; then

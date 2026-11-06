@@ -14,6 +14,23 @@ gate_jobs() {
   case "$1" in '' | *[!0-9]* | 0) die "JOBS must be a positive number, got '$1'" ;; esac
 }
 
+# gate_prechecks LABEL [MODULE]: the static checks every gate runs before Gradle: isolation and
+# field injection (MODULE only, or every module), contracts lint, and compose-check (skipped with a
+# note when there is no docker compose CLI). Exits on the first failure (set -e in the caller).
+gate_prechecks() {
+  local label="$1" m="${2:-}" scripts
+  scripts="$(cd "$GATE_LIB/.." && pwd)"
+  "$scripts/check-isolation.sh" "$m"
+  "$scripts/check-field-injection.sh" "$m"
+  "$scripts/contracts-lint.sh"
+  # the stack (deploy/docker-compose.yml) fits the memory budget
+  if docker compose version >/dev/null 2>&1; then
+    "$scripts/compose-check.sh"
+  else
+    info "$label: docker compose CLI not found, skipping compose-check"
+  fi
+}
+
 # tc_cleanup [MODULE]: remove the reused test containers of MODULE (default: every module) of this
 # checkout. A no-op with KEEP_TC=1 or without a docker CLI; never fails.
 tc_cleanup() {
