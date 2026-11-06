@@ -30,10 +30,16 @@ This is plan `check-the-project-deployment-ancient-possum`, Phase A step 4 (user
 
 **Blocked by:** 54
 
-**Status:** todo
+**Status:** done
 
-- [ ] The PR shows the AOT log before (rejected) and after (cache used) for one service
-- [ ] A second `make up` with nothing changed (`MW_UP_NO_BUILD=1`) is ready at least 50% faster than before; record both times. `kafka-init` exits in under 5 s on the second run
-- [ ] `make compose-check` passes (≤10 GB long-running limits)
-- [ ] `make smoke`, `make edge-test` and the full `make e2e` pass on a fresh stack (`make down DOWN_ARGS=-v && make up`)
-- [ ] `make test-scripts` passes
+- [x] The PR shows the AOT log before (rejected) and after (cache used) for one service
+- [x] A second `make up` with nothing changed (`MW_UP_NO_BUILD=1`) is ready at least 50% faster than before; record both times. `kafka-init` exits in under 5 s on the second run
+- [x] `make compose-check` passes (≤10 GB long-running limits)
+- [x] `make smoke`, `make edge-test` and the full `make e2e` pass on a fresh stack (`make down DOWN_ARGS=-v && make up`) — user 2026-11-06: full Cucumber replaced by `make e2e TAGS=@p2p` (suite deleted in 58)
+- [x] `make test-scripts` passes
+
+## Evidence (run 2026-11-06, de4ddbca)
+- AOT before (mw-notify): `[warning][aot] Unable to use AOT cache.` (trained ZGC, ran SerialGC); after: `[aot] Using AOT-linked classes: true`.
+- Warm `MW_UP_NO_BUILD=1 make up`: 53 s → 22–24 s. `kafka-init` second run 0.14 s (fresh, 92 topics: ~34 s).
+- Fresh stack 68 s; compose-check 9568/10240 MiB; smoke 50/50; edge-test 53/53; `make e2e TAGS=@p2p` green; test-scripts 311/311.
+- Upgrade note: old dev volumes need one `make down DOWN_ARGS=-v` (48-partition topics vs 256m Kafka heap).
