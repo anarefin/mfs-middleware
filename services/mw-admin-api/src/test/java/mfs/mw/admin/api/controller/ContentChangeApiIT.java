@@ -229,6 +229,26 @@ class ContentChangeApiIT {
   }
 
   @Test
+  void contentRequestsCanBeListedByResourceType() throws IOException {
+    assertThat(proposeMenu(MAKER, "main", menuBody(seedTree(), "[{\"mno\":\"robi\"}]"))).hasStatus(201);
+    assertThat(proposeTemplate(MAKER, "TXN_P2P_RECEIVED/SMS/en", "{\"body\":\"Tk {{amount}}\",\"reason\":\"shorter\"}"))
+        .hasStatus(201);
+
+    MvcTestResult menus =
+        mvc.get().uri("/admin/v1/change-requests?resourceType=ussd_menu&status=PENDING").with(CHECKER).exchange();
+    assertThat(menus).hasStatus(200);
+    assertThat(body(menus).path("items").valueStream().map(i -> i.path("resourceId").asString()).toList())
+        .containsExactly("main");
+
+    MvcTestResult templates = mvc.get().uri("/admin/v1/change-requests?resourceType=notify_template").with(CHECKER).exchange();
+    assertThat(templates).hasStatus(200);
+    assertThat(body(templates).path("items").valueStream().map(i -> i.path("resourceId").asString()).toList())
+        .containsExactly("TXN_P2P_RECEIVED/SMS/en");
+
+    assertThat(mvc.get().uri("/admin/v1/change-requests?resourceType=menu").with(CHECKER).exchange()).hasStatus(400);
+  }
+
+  @Test
   void anUnknownMnoAndAMalformedBodyAreRefused() throws IOException {
     MvcTestResult unknown = proposeMenu(MAKER, "main", menuBody(seedTree(), "[{\"mno\":\"airtel\"}]"));
     assertThat(unknown).hasStatus(400);

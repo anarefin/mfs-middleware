@@ -1,4 +1,4 @@
-package mfs.mw.admin.api.security;
+package mfs.mw.admin.api.dto;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

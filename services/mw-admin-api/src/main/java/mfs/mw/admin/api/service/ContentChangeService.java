@@ -8,11 +8,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.regex.Pattern;
-import mfs.mw.admin.api.config.ChangeRequestProperties;
 import mfs.mw.admin.api.config.ContentProperties;
-import mfs.mw.admin.api.dto.AuditEvent;
 import mfs.mw.admin.api.dto.ChangeRequestView;
 import mfs.mw.admin.api.dto.ConfigChangedEvent;
 import mfs.mw.admin.api.dto.ContentVersionView;
@@ -25,21 +22,18 @@ import mfs.mw.admin.api.entity.ChangeRequest;
 import mfs.mw.admin.api.entity.ContentVersion;
 import mfs.mw.admin.api.exception.ErrorCodes;
 import mfs.mw.admin.api.exception.MwException;
-import mfs.mw.admin.api.mapper.ChangeRequestMapper;
 import mfs.mw.admin.api.mapper.ContentChangeMapper;
 import mfs.mw.admin.api.mapper.MenuParser;
 import mfs.mw.admin.api.messaging.EventMetadata;
 import mfs.mw.admin.api.messaging.OutboxWriter;
-import mfs.mw.admin.api.repository.ChangeRequestRepository;
 import mfs.mw.admin.api.repository.ContentVersionRepository;
-import mfs.mw.admin.api.security.AdminRole;
-import mfs.mw.admin.api.security.OperatorResolver;
+import mfs.mw.admin.api.dto.AdminRole;
+import mfs.mw.admin.api.exception.ForbiddenException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.MDC;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -72,29 +66,24 @@ public class ContentChangeService {
   private static final Set<String> CHANNELS = Set.of("SMS", "EMAIL");
   private static final Set<String> LOCALES = Set.of("bn", "en");
 
-  private final ChangeRequestRepository requests;
+  /** Lazily: ChangeRequestService's handlers ({@link ContentChangeHandler}) need this service. */
+  private final ObjectProvider<ChangeRequestService> changeRequests;
   private final ContentVersionRepository versions;
   private final OutboxWriter outbox;
-  private final TransactionTemplate tx;
-  private final ChangeRequestProperties props;
   private final ContentProperties content;
   private final JsonMapper json;
   private final Clock clock;
 
   public ContentChangeService(
-      ChangeRequestRepository requests,
+      ObjectProvider<ChangeRequestService> changeRequests,
       ContentVersionRepository versions,
       OutboxWriter outbox,
-      TransactionTemplate tx,
-      ChangeRequestProperties props,
       ContentProperties content,
       JsonMapper json,
       Clock clock) {
-    this.requests = requests;
+    this.changeRequests = changeRequests;
     this.versions = versions;
     this.outbox = outbox;
-    this.tx = tx;
-    this.props = props;
     this.content = content;
     this.json = json;
     this.clock = clock;
@@ -184,38 +173,33 @@ public class ContentChangeService {
         });
   }
 
+  /**
+   * Through {@link ChangeRequestService}'s shared open path: inside its transaction the version
+   * number is taken, the request inserted (one open request per resource, 409 MW-VAL-031) and
+   * audited, and the PENDING version stored with it.
+   */
   private ChangeRequestView propose(
       Operator maker, String resourceType, String resourceId, String key, String configType, String reason,
       java.util.function.IntFunction<Map<String, Object>> valueFor) {
     Instant now = clock.instant();
-    ChangeRequest cr =
-        tx.execute(
-            s -> {
+    ChangeRequestView cr =
+        changeRequests.getObject().open(maker, resourceType, resourceId, ACTION, reason,
+            () -> {
               int version = versions.nextVersion(key);
               Integer published = versions.latestPublished(key).map(ContentVersion::version).orElse(null);
               Map<String, Object> value = valueFor.apply(version);
-              ChangeRequest c =
-                  new ChangeRequest(
-                      UUID.randomUUID(), resourceType, resourceId, ACTION, value,
-                      ContentChangeMapper.diff(key, published, version), maker.username(), maker.subject(),
-                      ChangeRequest.Status.PENDING, null, null, reason, null, now, null, now.plus(props.ttl()));
-              if (!requests.insert(c)) {
-                throw new MwException(ErrorCodes.VAL_REQUEST_OPEN, "This resource already has an open change request")
-                    .withStatus(HttpStatus.CONFLICT);
-              }
-              versions.insert(
-                  new ContentVersion(key, version, configType, value, ContentVersion.Status.PENDING, c.id(),
-                      maker.username(), null, now, null));
-              audit(c, ChangeRequestMapper.created(c, correlationId()));
-              return c;
+              return new ChangeRequestService.Opening(
+                  value, ContentChangeMapper.diff(key, published, version),
+                  c -> versions.insert(
+                      new ContentVersion(key, version, configType, value, ContentVersion.Status.PENDING, c.id(),
+                          maker.username(), null, now, null)));
             });
     log.atInfo()
-        .addKeyValue("event", "admin.change_request.created")
-        .addKeyValue("changeRequestId", cr.id().toString())
+        .addKeyValue("event", "admin.content.proposed")
+        .addKeyValue("changeRequestId", cr.id())
         .addKeyValue("configKey", key)
-        .addKeyValue("makerId", cr.makerId())
-        .log("content change request created");
-    return ChangeRequestMapper.view(cr);
+        .log("content version proposed");
+    return cr;
   }
 
   // --- checker (called by ChangeRequestService inside its transaction) --------------------------
@@ -322,23 +306,11 @@ public class ContentChangeService {
 
   private static void requireMaker(Operator maker) {
     if (!maker.hasAny(AdminRole.CONTENT_MAKER)) {
-      throw OperatorResolver.forbidden("Proposing a menu or template version needs the ops-maker role");
+      throw new ForbiddenException("Proposing a menu or template version needs the ops-maker role");
     }
-  }
-
-  /** A content audit: key the resource, header mw-txn-id the change request id (no transaction). */
-  private void audit(ChangeRequest cr, AuditEvent e) {
-    outbox.append(
-        ChangeRequestService.AUDIT_TOPIC, e.resource(),
-        new EventMetadata(e.correlationId(), cr.id().toString(), e.auditId(), 1), e);
   }
 
   private static MwException invalid(List<ErrorDetail> details) {
     return new MwException(ErrorCodes.VAL_CONTENT_INVALID, "The proposed version is not usable").withDetails(details);
-  }
-
-  private static String correlationId() {
-    String c = MDC.get("correlationId");
-    return c == null || c.isBlank() ? "admin-" + UUID.randomUUID() : c;
   }
 }

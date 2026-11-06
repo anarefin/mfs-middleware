@@ -29,6 +29,11 @@ public class MwException extends RuntimeException {
     this(code, message, null, null, null, null, List.of(), cause);
   }
 
+  /** For subclasses whose code always has a status other than the namespace default. */
+  protected MwException(String code, String message, HttpStatus status) {
+    this(code, message, status, null, null, null, List.of(), null);
+  }
+
   private MwException(
       String code,
       String message,

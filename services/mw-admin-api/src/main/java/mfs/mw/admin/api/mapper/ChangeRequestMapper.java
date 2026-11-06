@@ -1,5 +1,6 @@
 package mfs.mw.admin.api.mapper;
 
+import mfs.mw.admin.api.util.CorrelationIds;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -42,6 +43,11 @@ public final class ChangeRequestMapper {
   static final ReversalRequest.Party OPS = new ReversalRequest.Party("ORG", "upay-ops");
 
   private ChangeRequestMapper() {}
+
+  /** The stored status a list filter {@code ?status=} names; null stays null (no filter). */
+  public static ChangeRequest.Status status(ChangeRequestView.Status shown) {
+    return shown == null ? null : ChangeRequest.Status.valueOf(shown.name());
+  }
 
   /**
    * The {@code admin.v1} view. Operators' free text (reason, decision reason, every string in payload
@@ -212,7 +218,7 @@ public final class ChangeRequestMapper {
         1,
         UUID.randomUUID().toString(),
         wallet(cr) ? unlockTxnId(cr) : config(cr) ? null : cr.resourceId(),
-        correlationId == null || correlationId.isBlank() ? "admin-" + UUID.randomUUID() : correlationId,
+        CorrelationIds.orNew(correlationId),
         new AuditEvent.Actor(actorType, actorId),
         action,
         cr.resourceType() + "/" + shownId(cr),

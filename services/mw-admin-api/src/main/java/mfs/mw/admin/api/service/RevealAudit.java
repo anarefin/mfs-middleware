@@ -7,7 +7,7 @@ import mfs.mw.admin.api.dto.Operator;
 import mfs.mw.admin.api.mapper.RevealAuditMapper;
 import mfs.mw.admin.api.messaging.EventMetadata;
 import mfs.mw.admin.api.messaging.OutboxWriter;
-import mfs.mw.admin.api.security.AdminRole;
+import mfs.mw.admin.api.dto.AdminRole;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;

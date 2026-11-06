@@ -60,6 +60,11 @@ class GlobalExceptionHandlerTest {
       throw new MwException("MW-AUTH-001", "Unauthorised");
     }
 
+    @GetMapping("/test/forbidden")
+    void forbidden() {
+      throw new ForbiddenException("This operation needs a viewing role");
+    }
+
     @GetMapping("/test/timeout")
     void timeout() {
       throw new MwException("MW-TMO-001", "Outcome unknown");
@@ -108,6 +113,14 @@ class GlobalExceptionHandlerTest {
     assertThat(tmo).bodyJson().extractingPath("$.retryable").isEqualTo(true);
     assertThat(tmo).bodyJson().doesNotHavePath("$.txnId");
     assertThat(tmo).bodyJson().doesNotHavePath("$.messageBn");
+  }
+
+  @Test
+  void forbiddenIs403AuthForbidden() {
+    MvcTestResult r = get("/test/forbidden");
+    assertThat(r).hasStatus(403);
+    assertThat(r).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-002");
+    assertThat(r).bodyJson().extractingPath("$.retryable").isEqualTo(false);
   }
 
   @Test

@@ -29,6 +29,16 @@ class ChangeRequestMapperTest {
   }
 
   @Test
+  void theListStatusFilterMapsEveryShownStatusToTheStoredOne() {
+    assertThat(ChangeRequestMapper.status(null)).isNull();
+    assertThat(ChangeRequestMapper.status(ChangeRequestView.Status.PENDING)).isEqualTo(ChangeRequest.Status.PENDING);
+    assertThat(ChangeRequestMapper.status(ChangeRequestView.Status.APPROVED)).isEqualTo(ChangeRequest.Status.APPROVED);
+    assertThat(ChangeRequestMapper.status(ChangeRequestView.Status.REJECTED)).isEqualTo(ChangeRequest.Status.REJECTED);
+    assertThat(ChangeRequestMapper.status(ChangeRequestView.Status.EXPIRED)).isEqualTo(ChangeRequest.Status.EXPIRED);
+    assertThat(ChangeRequestView.Status.values()).hasSameSizeAs(ChangeRequest.Status.values());
+  }
+
+  @Test
   void theViewScrubsTheMakersAndCheckersReasons() {
     ChangeRequestView v = ChangeRequestMapper.view(request(Map.of(), Map.of()));
 

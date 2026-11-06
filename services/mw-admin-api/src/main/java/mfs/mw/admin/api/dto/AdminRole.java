@@ -1,4 +1,4 @@
-package mfs.mw.admin.api.security;
+package mfs.mw.admin.api.dto;
 
 import java.util.Collection;
 import java.util.EnumSet;

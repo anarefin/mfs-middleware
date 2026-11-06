@@ -15,7 +15,7 @@ import mfs.mw.admin.api.mapper.PartnerMapper;
 import mfs.mw.admin.api.messaging.EventMetadata;
 import mfs.mw.admin.api.messaging.OutboxWriter;
 import mfs.mw.admin.api.repository.PartnerRepository;
-import mfs.mw.admin.api.security.AdminRole;
+import mfs.mw.admin.api.dto.AdminRole;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;

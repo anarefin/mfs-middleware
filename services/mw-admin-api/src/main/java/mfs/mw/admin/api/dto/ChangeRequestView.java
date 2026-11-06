@@ -23,6 +23,14 @@ public record ChangeRequestView(
     Instant decidedAt,
     Instant expiresAt) {
 
+  /** A request's status as {@code admin.v1} names it (list filter {@code ?status=}). */
+  public enum Status {
+    PENDING,
+    APPROVED,
+    REJECTED,
+    EXPIRED
+  }
+
   /** One page, newest first. */
   public record Page(List<ChangeRequestView> items, int limit, int offset) {
 

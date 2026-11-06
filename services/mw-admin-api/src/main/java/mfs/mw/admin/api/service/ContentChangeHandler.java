@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.Set;
 import mfs.mw.admin.api.dto.Operator;
 import mfs.mw.admin.api.entity.ChangeRequest;
-import mfs.mw.admin.api.security.AdminRole;
+import mfs.mw.admin.api.dto.AdminRole;
 
 /**
  * The {@link ResourceChangeHandler} of a content resource type (ticket 39): an approval publishes

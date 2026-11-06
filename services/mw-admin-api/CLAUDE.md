@@ -18,7 +18,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   enough while realm `ops` is the only issuer accepted. Tokens from the console's login (ticket 40,
   `ui/mw-admin-ui`) carry the public issuer `https://localhost/realms/ops`, others
   `http://keycloak:8080/realms/ops`; both end with `/realms/ops`.
-- Roles (`security/AdminRole`, the spec 15.4 names as realm roles in `realm_access.roles`; any other
+- Roles (`dto/AdminRole`, the spec 15.4 names as realm roles in `realm_access.roles`; any other
   role name grants nothing): `READ_TRANSACTIONS` = viewer, ops-maker, ops-checker, ops-emergency,
   recon-maker, recon-checker, compliance-officer, auditor (not integration-*, security-admin: least
   privilege); `REVEAL_MSISDN` = compliance-officer, auditor; `READ_ONLY` = viewer, auditor. Rules in
@@ -59,7 +59,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   username: `403 MW-AUTH-030`, even when the maker also holds ops-checker); the txn is read again on
   approval (moved on: `409 MW-VAL-030`, request stays PENDING); expired: marked EXPIRED + audited,
   `409 MW-VAL-032`; decided already `409 MW-VAL-033` (the `status = 'PENDING'` update guard).
-  `GET /admin/v1/change-requests[?status&resourceType&resourceId&limit&offset]`, `GET .../{id}`
+  `GET /admin/v1/change-requests[?status&resourceType&resourceId&limit&offset]` (`resourceType`
+  transaction|wallet|partner|ussd_menu|notify_template; `status` is `dto/ChangeRequestView.Status`), `GET .../{id}`
   (`READ_CHANGE_REQUESTS`: the transaction readers and integration-maker/checker, ticket 38; an
   operator without `READ_TRANSACTIONS` sees partner requests only: transaction and wallet ones are
   left out of the list, `?resourceType=transaction|wallet` and their detail are 403).
@@ -79,12 +80,15 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   (security review; `mapper/ChangeRequestMapperTest`): change requests have no reveal path. `scheduler/ChangeRequestExpiryJob`
   (ShedLock `change-request-expiry`, `mw.change-requests.expiry-cron` every 5 min, batch
   `expiry-batch`) expires due requests. Bodies are checked against `derived-schemas/` by
-  `filter/BodySchemaAdvice` + `service/BodySchema` (copied from mw-portal-api; json-schema-validator
+  `controller/BodySchemaAdvice` + `service/BodySchema` (copied from mw-portal-api; json-schema-validator
   is now an implementation dependency, Jackson excluded) before binding: `400 MW-VAL-001`.
   Decision (no product owner available): only ops-maker / ops-checker act on transactions (not
   recon-*, not ops-emergency: its post-approval flow is for partner changes, ticket 38); a reject by
   the maker (withdrawal) is not offered. The orchestrator's resulting state is not tracked here: the
-  detail view and audit trail show it.
+  detail view and audit trail show it. Decision (no product owner): an approved INQUIRE on a
+  MANUAL_REVIEW transaction only records the core's answer on the timeline and keeps MANUAL_REVIEW
+  (mw-orchestrator's `ManualInquiry` is a self-transition there), so even a resolved answer still needs a
+  FORCE_COMMIT / FORCE_RELEASE change request to settle the transaction.
 - Wallet unlock (ticket 52, M2 gate decision; same engine): `POST /admin/v1/wallets/{walletId}/change-requests
   {action: UNLOCK, reason}` (`dto/WalletChangeRequestBody`, derived schema
   `admin-v1-wallet-change-request.json`; role `TXN_MAKER` = ops-maker) -> 201 PENDING,
@@ -171,7 +175,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `notify_template/<...>`, no txnId, before / after `config` = the diff side {configKey, version}); go-live times (`goLiveAt`,
   `validFrom`) before the approval become the approval time. Rejected / expired versions are marked
   so and never published. Reads (any 15.4 role): `GET .../versions[?limit&offset]` (no value) and
-  `.../versions/{version}` (with value). Body cap raised to 256 KiB (`filter/BodySchemaAdvice`; a
+  `.../versions/{version}` (with value). Body cap raised to 256 KiB (`controller/BodySchemaAdvice`; a
   menu tree is some 15 KiB). Decisions (no product owner): ops-maker / ops-checker own customer-facing
   text; one version carries its own per-MNO schedule (no activation-only request); version numbers
   here are the admin's, mw-ussd / mw-notify number their own rows; the seeded first versions live
@@ -201,7 +205,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 - `api/mw-admin-api/admin.v1.openapi.yaml` (admin API v1; `contracts/ApiContractsTest` validates the
   served bodies). JSON request bodies (change request, reject) each have a derived schema in
   `src/main/resources/derived-schemas/` (`scripts/derived-schemas.sh --write` after a contract
-  change) registered in `filter/BodySchemaAdvice`.
+  change) registered in `controller/BodySchemaAdvice`.
 - `events/mw-admin-api/mw.txn.action.v1` (ticket 37): approved INQUIRE / FORCE_COMMIT /
   FORCE_RELEASE for mw-orchestrator (Kafka topic 6 partitions, 7 d, retry group mw-orchestrator).
 - `events/mw-admin-api/mw.config.changed.v1` (ticket 38): approved partner configs, PARTNER UPSERT,
@@ -233,8 +237,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
   `:dev` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
+  Events written without one (scheduled jobs) get a plain UUID (`util/CorrelationIds`).
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
-- `exception/`: `MwException`, `ErrorCategory` (namespace -> HTTP status, retryable),
+- `exception/`: `MwException`, `ForbiddenException` (403 `MW-AUTH-002`, thrown by the services and
+  `security/OperatorResolver`; the services read roles from `dto/Operator` / `dto/AdminRole`, never
+  `security/`), `ErrorCategory` (namespace -> HTTP status, retryable),
   `ErrorCodes`, `GlobalExceptionHandler` building `dto/ErrorEnvelope`. Logs show route
   templates, never raw URIs.
 - `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3; mark every personal field.
