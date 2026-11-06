@@ -29,6 +29,34 @@ test_log_scan_finds_an_unmasked_msisdn_without_repeating_it() {
   assert_out_contains "FINDING msisdn"
 }
 
+# System ids stay whole by shape (root CLAUDE.md "Masking"): an 11-digit 01... run inside a UUID
+# or a W3C trace/span id is not an MSISDN, but a real MSISDN next to one still is.
+test_log_scan_ignores_msisdn_shaped_runs_inside_uuids_and_trace_ids() {
+  assert_ok scan_lines \
+    '{"txnId":"01a1ae14-7daf-727a-ad5b-c01653930180","event":"txn.state.changed"}' \
+    'GET /portal/org/v1/bulk/batches/01A1AE18-377A-7145-9B2A-C01712345678/pause' \
+    '{"traceId":"4bf92f3577b34da6a3ce929d0e0e4736","spanId":"00f067aa0ba902b7"}' \
+    '{"traceId":"abcdefabcdefabcdefabc01712345678","spanId":"a01712345678bcde"}' \
+    'traceparent: 00-a01712345678bcdea3ce929d0e0e4736-a01812345678bcde-01' \
+    '{"to":"0171****789","txnId":"01a1ae14-7daf-727a-ad5b-c01653930180"}'
+  assert_out_contains "no PIN"
+}
+
+test_log_scan_still_finds_an_msisdn_next_to_a_uuid() {
+  assert_fails scan_lines '{"txnId":"01a1ae14-7daf-727a-ad5b-c01653930180","to":"01712345678"}'
+  assert_out_contains "FINDING msisdn"
+  assert_fails scan_lines 'id=01a1ae14-7daf-727a-ad5b-c01653930180/01712345678'
+  assert_out_contains "FINDING msisdn"
+  # only a whole UUID is exempt: a last group of 13 or a first group of 11 is not a UUID
+  assert_fails scan_lines 'ref 01a1ae14-7daf-727a-ad5b-ac01653930180'
+  assert_out_contains "FINDING msisdn"
+  assert_fails scan_lines 'ref 01712345678-7daf-727a-ad5b-c01653930180'
+  assert_out_contains "FINDING msisdn"
+  # a 32-hex run is a trace id only where a trace id goes
+  assert_fails scan_lines '{"note":"abcdefabcdefabcdefabc01712345678"}'
+  assert_out_contains "FINDING msisdn"
+}
+
 test_log_scan_finds_a_plain_pin_and_any_pin_ciphertext() {
   assert_fails scan_lines '{"pin":"1234"}'
   assert_out_contains "FINDING pin"
