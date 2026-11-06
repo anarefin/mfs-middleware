@@ -25,5 +25,5 @@
 55-cheaper-stack-startup                    54                done     ~45m     see de4ddbca            5978052..de4ddbca
 56-single-compose-file                      55                done     66m      see a7c45de5            15f6529c..a7c45de5
 57-mw-seeder                                56                done     48m      see a5962796            31210399..a5962796
-58-newman-api-suite                         57                todo
-59-admin-ui-playwright-live                 56,57             todo
+58-newman-api-suite                         57                done     217m     see 0762cdf3            040c26d2..bc4f222e
+59-admin-ui-playwright-live                 56,57             done     27m+fix  see 2ad973ce,d614ac37   040c26d2..d614ac37

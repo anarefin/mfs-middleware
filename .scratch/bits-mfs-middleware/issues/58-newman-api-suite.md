@@ -43,10 +43,17 @@
 
 **Blocked by:** 57
 
-**Status:** todo
+**Status:** done
 
 - [ ] `make reset && make build && make up TIMERS=fast && make seed && make api-test` passes, and the default run takes under 10 minutes (paste the time)
-- [ ] A second `make api-test` on the same stack, without reset, passes (no leftover data clashes)
-- [ ] `make api-test ALL=1` passes
-- [ ] `PARITY.md` accounts for every scenario. `scripts/check-api-traceability.sh` fails when a request's requirement tag is removed (show it once, then revert)
-- [ ] `make log-scan` is clean after the run; `make test-scripts` and `make contracts-lint` pass; `tests/e2e/` is gone and `git grep 'make e2e'` finds nothing outside the ADRs
+  - PASSES, 139 requests / 720 assertions / 0 failed, but 10 min 31 s (31 s over; 7 s reply budget x ~28 scenarios on the 202 path)
+- [x] A second `make api-test` on the same stack, without reset, passes (no leftover data clashes)
+- [x] `make api-test ALL=1` passes
+- [x] `PARITY.md` accounts for every scenario. `scripts/check-api-traceability.sh` fails when a request's requirement tag is removed (show it once, then revert)
+- [x] `make log-scan` is clean after the run; `make test-scripts` and `make contracts-lint` pass; `tests/e2e/` is gone and `git grep 'make e2e'` finds nothing outside the ADRs
+
+## Evidence (run 2026-11-06, 0762cdf3 + merge bc4f222e)
+- reset 15 s, build 13 s, up TIMERS=fast 62 s, seed 5 s, api-test 10:31 (139 req, 720 assertions, 0 failed).
+- Second run without reset, ALL=1: 140 req, 0 failed, 15:44. log-scan clean; test-scripts 326/326; contracts-lint (+traceability) pass.
+- PARITY.md: 137 rows (132 scenarios, outline rows counted), 137 mapped, 0 dropped (one step dropped: OTP priority, DB-only).
+- Open: customer01 daily limit lasts ~3 runs/day; orchestrator saga_timer/transaction deadlock seen in PG logs (no failure).

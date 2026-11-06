@@ -22,9 +22,16 @@
 
 **Blocked by:** 57 (seed), 56 (stack); can run in parallel with 58
 
-**Status:** todo
+**Status:** done
 
-- [ ] On a fresh stack, `make reset && make build && make up && make seed && make ui-e2e` passes, and a second `make ui-e2e` passes too
-- [ ] With mw-admin-api stopped, `make ui-e2e` fails in global setup within 30 s, with the fix command printed
-- [ ] The vitest that replaces the failing-list mock passes (`pnpm test`); `e2e/mock` is gone
-- [ ] `make test-scripts` passes; `make log-scan` is clean after the run
+- [x] On a fresh stack, `make reset && make build && make up && make seed && make ui-e2e` passes, and a second `make ui-e2e` passes too
+- [x] With mw-admin-api stopped, `make ui-e2e` fails in global setup within 30 s, with the fix command printed
+- [x] The vitest that replaces the failing-list mock passes (`pnpm test`); `e2e/mock` is gone
+- [x] `make test-scripts` passes; `make log-scan` is clean after the run
+
+## Evidence (run 2026-11-06, 2ad973ce + d614ac37)
+- First live run: 1/16 (every login 502 "upstream sent too big header" at APISIX). Fixed with proxy_buffer_size 16k; two spec fixes.
+- Seeded stack, `make ui-e2e` twice without reset: 16/16 in 47 s, 16/16 in 61 s; third run after Postgres recreate 16/16 in 38 s.
+- Fail-fast with mw-admin-api hidden: global setup failed in 1 s with `make up && make seed`.
+- log-scan: Postgres DETAIL leaked an unmasked wallet MSISDN -> log_error_verbosity=terse; then clean.
+- pnpm test 80/80; e2e/mock gone. Open: compliance persona (user: add, end-of-run fixer).
