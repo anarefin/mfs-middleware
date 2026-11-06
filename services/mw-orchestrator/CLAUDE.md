@@ -329,7 +329,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `mw.orchestrator.test-api.enabled=true` = `MW_ORCHESTRATOR_TEST_API_ENABLED`, which only the dev
   stack sets; off, the paths are 404): the host API suite (`tests/api`) plays operations' REVERSAL
   producer without the Docker CLI. `POST /test/v1/reversals {originalTxnId, reason?}` loads the
-  original (404 `MW-VAL-003` if unknown) and publishes on `mw.txn.request.v1` (`TxnRequestRoute.TOPIC`, keyed by txnId,
+  original (404 `MW-VAL-003` if unknown) and publishes on `mw.txn.request.v1` (`messaging/MwTopics.TXN_REQUEST`, keyed by txnId,
   `messaging/EventPublisher` directly: no local state changes) a REVERSAL as operations sends it:
   fresh UUIDv7 txnId, key `test-rev-<uuidv7>`, a plain random UUID correlationId (command id, no prefix), channel SYSTEM, initiator ORG `bits-ops-test`, the
   original's parties swapped, its amount, `attributes.reason` (default `test reversal`); answers 202

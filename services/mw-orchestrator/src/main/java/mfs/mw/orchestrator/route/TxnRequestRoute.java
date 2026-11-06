@@ -2,6 +2,7 @@ package mfs.mw.orchestrator.route;
 
 import java.time.Clock;
 import mfs.mw.orchestrator.config.KafkaRetryProperties;
+import mfs.mw.orchestrator.messaging.MwTopics;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -10,7 +11,7 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "mw.orchestrator.consumers.enabled", havingValue = "true", matchIfMissing = true)
 public class TxnRequestRoute extends RetryTopicRouteBuilder {
 
-  public static final String TOPIC = "mw.txn.request.v1";
+  public static final String TOPIC = MwTopics.TXN_REQUEST;
 
   public TxnRequestRoute(KafkaRetryProperties retry, Clock clock) {
     super(retry, clock);

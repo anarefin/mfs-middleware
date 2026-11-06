@@ -70,7 +70,7 @@ public abstract class RetryTopicRouteBuilder extends RouteBuilder {
 
   /** Dead-letter topic of {@code group} for {@code topic}. */
   public static String dlqTopic(String topic, String group) {
-    return topic + "." + group + ".dlq";
+    return mfs.mw.orchestrator.messaging.MwTopics.dlqTopic(topic, group);
   }
 
   @Override

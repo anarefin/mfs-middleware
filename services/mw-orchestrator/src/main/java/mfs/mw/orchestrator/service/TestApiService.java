@@ -19,10 +19,9 @@ import mfs.mw.orchestrator.exception.ErrorCodes;
 import mfs.mw.orchestrator.exception.MwException;
 import mfs.mw.orchestrator.messaging.EventMetadata;
 import mfs.mw.orchestrator.messaging.EventPublisher;
+import mfs.mw.orchestrator.messaging.MwTopics;
 import mfs.mw.orchestrator.repository.IdempotencyRepository;
 import mfs.mw.orchestrator.repository.TransactionRepository;
-import mfs.mw.orchestrator.route.RetryTopicRouteBuilder;
-import mfs.mw.orchestrator.route.TxnRequestRoute;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -66,7 +65,7 @@ public class TestApiService {
     this.publisher = publisher;
     this.dlq = dlq;
     // the consumer group is the service name (application.yml camel.component.kafka.group-id)
-    this.dlqTopic = RetryTopicRouteBuilder.dlqTopic(TxnRequestRoute.TOPIC, service.name());
+    this.dlqTopic = MwTopics.dlqTopic(MwTopics.TXN_REQUEST, service.name());
     this.clock = clock;
   }
 
@@ -87,7 +86,7 @@ public class TestApiService {
             1, txnId, key, correlationId, "SYSTEM", "REVERSAL", new Party("ORG", INITIATOR, null, null),
             o.creditParty(), o.debitParty(), o.amount(), null, originalTxnId.toString(), null, null, null,
             Map.of("reason", reason == null || reason.isBlank() ? DEFAULT_REASON : reason), now);
-    publisher.publish(TxnRequestRoute.TOPIC, txnId, new EventMetadata(correlationId, txnId, key, 1), reversal);
+    publisher.publish(MwTopics.TXN_REQUEST, txnId, new EventMetadata(correlationId, txnId, key, 1), reversal);
     log.atInfo()
         .addKeyValue("event", "test.reversal.published")
         .addKeyValue("txnId", txnId)
@@ -116,7 +115,7 @@ public class TestApiService {
     String txnId = uuidV7(clock.instant()).toString();
     String correlationId = UUID.randomUUID().toString();
     publisher.publish(
-        TxnRequestRoute.TOPIC, txnId, new EventMetadata(correlationId, txnId, "test-poison-" + txnId, 1),
+        MwTopics.TXN_REQUEST, txnId, new EventMetadata(correlationId, txnId, "test-poison-" + txnId, 1),
         Map.of("schemaVersion", 1, "txnId", txnId, "txnType", "P2P"));
     log.atInfo()
         .addKeyValue("event", "test.poison.published")
