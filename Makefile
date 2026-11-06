@@ -4,7 +4,7 @@
 # mw-orchestrator, or a path such as services/mw-orchestrator).
 # A module is any services/* or templates/* folder with its own settings.gradle(.kts).
 #
-#   make verify [M=]            isolation + field injection + contracts lint + ./gradlew check per module (+ script self-tests)
+#   make verify [M=] [JOBS=3]   isolation + field injection + contracts lint + ./gradlew check per module, JOBS at a time (+ script self-tests); KEEP_TC=1 keeps the reused test containers
 #   make verify-changed [BASE=main] [JOBS=3]  the same gate for the modules changed since BASE only (contracts mapped precisely), JOBS at a time
 #   make check-isolation [M=]   module independence rules (spec 4.3)
 #   make check-field-injection [M=]  no @Autowired fields under any module's src/
@@ -42,7 +42,7 @@ verify:
 ifeq ($(SELFTEST)$(M),1)
 	@$(SCRIPTS)/test/run.sh
 endif
-	@$(SCRIPTS)/verify.sh "$(M)"
+	@$(SCRIPTS)/verify.sh "$(M)" "$(JOBS)"
 
 verify-changed:
 	@$(SCRIPTS)/verify-changed.sh "$(BASE)" "$(JOBS)"

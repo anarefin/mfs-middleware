@@ -6,7 +6,8 @@
 #
 # Default (used by scripts/e2e-changed.sh): the services/* modules changed. Prints the single word
 # ALL when contracts/ or deploy/ changed (APISIX schemas, compose and topic config feed every
-# module), and nothing when no module changed (docs/, tests/, templates/ only).
+# module), and nothing when no module changed (docs/, tests/, templates/ only). Markdown under
+# deploy/ (deploy/**/*.md) and docs/ never select a module, in either mode.
 #
 # --contracts-precise (used by scripts/verify-changed.sh, ticket 53): a changed contract file
 # selects the modules whose contracts.yml lists its schema or API (producers and consumers; a
@@ -31,6 +32,8 @@ files="$(
     git ls-files --others --exclude-standard
   } | sort -u
 )"
+# Documentation selects no module (ticket 54): Markdown under deploy/ and anything under docs/.
+files="$(printf '%s\n' "$files" | grep -v -E '^deploy/.*\.md$|^docs/' || true)"
 
 if [ -z "$precise" ]; then
   if printf '%s\n' "$files" | grep -q -E '^(contracts|deploy)/'; then

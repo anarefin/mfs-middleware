@@ -83,11 +83,16 @@ tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.addAll(listOf("-parameters", "-Xlint:all,-processing,-serial", "-Werror"))
 }
 
+// The test database prefix: the module name without mw-, hyphens as underscores (portal_api).
+val testDatabase = rootProject.name.removePrefix("mw-").replace('-', '_')
 tasks.withType<Test>().configureEach {
     // Schema tests read the root contracts/ folder through mwContractsDir only (spec 4.3 rule 2).
     val contracts = layout.projectDirectory.dir(providers.gradleProperty("mwContractsDir").get())
     inputs.dir(contracts).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("mwContracts")
     systemProperty("mwContractsDir", contracts.asFile.absolutePath)
+    // Reused Testcontainers (ticket 54): labelled with this module; each task its own database.
+    systemProperty("mw.module", rootProject.name)
+    systemProperty("mw.tc.database", "${testDatabase}_test")
 }
 
 // Test tiers (ticket 53). `test` needs no Docker: it leaves out the Testcontainers `*IT` classes
@@ -107,6 +112,7 @@ val integrationTest by tasks.registering(Test::class) {
     classpath = sourceSets.test.get().runtimeClasspath
     useJUnitPlatform { excludeTags("conformance") }
     include(integrationTestClasses)
+    systemProperty("mw.tc.database", "${testDatabase}_it")
     shouldRunAfter(tasks.test)
 }
 
@@ -119,7 +125,11 @@ val conformance by tasks.registering(Test::class) {
     // Classes run one at a time; a test method may opt in to running beside its class-mates
     // (@Execution(CONCURRENT) on the method: RetryTopicRouteIT, whose routes are independent).
     systemProperty("junit.jupiter.execution.parallel.enabled", "true")
-    shouldRunAfter(tasks.test, integrationTest)
+    systemProperty("mw.tc.database", "${testDatabase}_conf")
+    // Never beside integrationTest (the configuration cache runs tasks in parallel): the two JVMs
+    // share the reused containers, and each cleans the Kafka broker when it starts.
+    shouldRunAfter(tasks.test)
+    mustRunAfter(integrationTest)
 }
 tasks.check { dependsOn(integrationTest, conformance) }
 

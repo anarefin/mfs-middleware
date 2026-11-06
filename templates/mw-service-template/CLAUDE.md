@@ -40,6 +40,14 @@ and keep `scripts/test/test_service_template.sh` green.
 
 Tests that start the context import `TestInfrastructure` (PostgreSQL 18 + Kafka
 Testcontainers, JVM-wide singletons, not Spring beans: a closed context must not stop them).
+They are reusable (ticket 54): with `TESTCONTAINERS_REUSE_ENABLE=true` (`make verify`,
+`make verify-changed`) one PostgreSQL and one Kafka, labelled `mw.module=<module>` and
+`mw.root=<checkout>`, serve both the `integrationTest` and the `conformance` JVM (`conformance`
+`mustRunAfter` `integrationTest`). Each JVM gets its own database from the `mw.tc.database` system
+property the Gradle task sets (`<svc>_it`, `<svc>_conf`; dropped and created at start) and deletes
+every topic and consumer group left on the broker, so no test sees an earlier JVM's data;
+`TestInfrastructureIT` checks it. `gradle.properties` turns on the configuration cache, parallel
+tasks and `-Xmx1g -XX:+UseParallelGC` for the daemon.
 Tests that talk to Kafka directly use `TestInfrastructure.kafkaBootstrapServers()`, and assert
 "nothing was published" with `KafkaTestConsumer.readToEnd` rather than a timed wait. Topic, retry-topic and DLQ declarations and their producer
 ACLs belong to the platform (`deploy/kafka/`), not this module.
@@ -70,7 +78,7 @@ test contexts would relay each other's rows; a test that needs it on sets
 | `make test-scripts` | includes `test_template_copy_checks_and_builds_its_image_alone`: a copy plus `contracts/` runs `./gradlew check bootJar && docker build .` (skipped when Docker is down) |
 | `./gradlew check bootJar && docker build -t mw-service-template:dev .` | spec 4.3 rule 1 |
 | `docker compose up -d --wait` | run it alone (creates/joins `${COMPOSE_PROJECT_NAME:-mw}_app`) |
-| `make verify M=mw-service-template` | isolation + field-injection check + contracts lint + `./gradlew check` |
+| `make verify M=mw-service-template` | isolation + field-injection check + contracts lint + `./gradlew check` (Testcontainers reuse on, containers removed afterwards unless `KEEP_TC=1`) |
 | `make verify-changed [BASE=main]` | the same gate for the modules changed since `BASE` only |
 
 ## Contracts
