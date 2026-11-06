@@ -595,3 +595,12 @@ test_lint_fails_on_an_EXTERNAL_entry_for_a_missing_schema() {
   assert_fails mw_make "$PWD" contracts-lint
   assert_out_contains "EXTERNAL.yml: consumers entry events/mw-a/mw.a.gone.v1.schema.json is not an event schema"
 }
+
+test_lint_fails_on_an_EXTERNAL_entry_for_a_side_a_manifest_plays() {
+  plant_schema mw-a mw.a.event.v1
+  plant_manifest mw-a "events/mw-a/mw.a.event.v1.schema.json" "events/mw-a/mw.a.event.v1.schema.json"
+  printf 'producers:\n  events/mw-a/mw.a.event.v1.schema.json: mw-a (not yet in the repo)\n' >contracts/EXTERNAL.yml
+  printf '  EXTERNAL.yml: mw-a\n' >>contracts/OWNERS.yml
+  assert_fails mw_make "$PWD" contracts-lint
+  assert_out_contains "EXTERNAL.yml: producers entry events/mw-a/mw.a.event.v1.schema.json is stale: services/mw-a/contracts.yml produces it"
+}

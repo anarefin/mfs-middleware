@@ -71,7 +71,7 @@ network: the lint registers every file first, and the service template's test lo
   `events` and `apis`, paths relative to this folder) names existing files; `<path>#<Msg>` names a
   message type of an envelope with a payload file; every event schema has at least one producer and
   one consumer manifest, unless `EXTERNAL.yml` names a system outside the repo for that side
-  (ticket 53; `make verify-changed` uses the manifests to pick the modules a contract change affects)
+  (an `EXTERNAL.yml` entry for a side a manifest already plays fails as stale) (ticket 53; `make verify-changed` uses the manifests to pick the modules a contract change affects)
 
 Within a version only additive changes are allowed; consumers ignore unknown fields, so schemas
 leave `additionalProperties` open.
