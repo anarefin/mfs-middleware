@@ -11,7 +11,7 @@
 - [x] Role tests per endpoint, including viewer read-only
 - [x] An unmasked reveal by an allowed role writes an audit event; other roles get masked values
 - [x] API test: search by txnId and by MSISDN returns the txn with timeline and audit
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR (deferred to milestone gate)
+- [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR (deferred to milestone gate) — evidence: M6 gate 2026-11-06 at 8e17214 (make verify-changed 14/14 modules, each a full ./gradlew check; fresh-stack make e2e 140/140; make edge-test 53/53; make log-scan clean)
 
 **Notes (implementation):**
 

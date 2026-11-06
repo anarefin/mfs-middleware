@@ -13,4 +13,4 @@
 - [x] e2e: an approved menu text change shows up on the next USSD session but not in an ongoing one (`tests/e2e/.../admin-content.feature`, runs at the gate; covered in-module by mw-ussd `MenuPublisherIT`)
 - [x] e2e: an approved SMS template change is used for the next notification (`admin-content.feature`, runs at the gate; in-module mw-notify `TemplatePublisherIT`)
 - [x] An invalid menu tree (dangling node, missing bn/en text) is rejected at maker time (400 MW-VAL-040, `ContentChangeApiIT`, `MenuValidatorTest`)
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR (deferred to milestone gate; `./gradlew test integrationTest` green for mw-admin-api, mw-ussd, mw-notify, mw-simulators)
+- [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR (deferred to milestone gate; `./gradlew test integrationTest` green for mw-admin-api, mw-ussd, mw-notify, mw-simulators) — evidence: M6 gate 2026-11-06 at 8e17214 (make verify-changed 14/14 modules, each a full ./gradlew check; fresh-stack make e2e 140/140; make edge-test 53/53; make log-scan clean)

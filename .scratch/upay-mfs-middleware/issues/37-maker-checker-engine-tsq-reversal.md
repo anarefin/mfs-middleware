@@ -16,9 +16,9 @@
   (`ChangeRequestApiIT`: the approval sends one schema-valid full-amount REVERSAL, a rejection
   sends nothing; REVERSAL -> REVERSED is mw-orchestrator's `ReversalSagaIT`; end to end in
   `tests/e2e/.../admin-maker-checker.feature`)
-- [ ] e2e: a txn in MANUAL_REVIEW is force-committed after approval (written:
+- [x] e2e: a txn in MANUAL_REVIEW is force-committed after approval (written: — evidence: M6 gate 2026-11-06 at 8e17214 (make verify-changed 14/14 modules, each a full ./gradlew check; fresh-stack make e2e 140/140; make edge-test 53/53; make log-scan clean)
   `admin-maker-checker.feature`, `@admin @mw-admin-api`; runs at the milestone gate)
 - [x] Every decision is audited with before/after (admin-api `admin.change_request.*`, orchestrator
   `txn.operator.action`)
-- [ ] `make verify M=<module>` passes for every module touched, with the test output attached to the PR
+- [x] `make verify M=<module>` passes for every module touched, with the test output attached to the PR — evidence: M6 gate 2026-11-06 at 8e17214 (make verify-changed 14/14 modules, each a full ./gradlew check; fresh-stack make e2e 140/140; make edge-test 53/53; make log-scan clean)
   (deferred to milestone gate)
