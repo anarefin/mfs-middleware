@@ -28,9 +28,15 @@
 
 **Blocked by:** 56
 
-**Status:** todo
+**Status:** done
 
-- [ ] `./gradlew test integrationTest` passes in `services/mw-seeder`; `make check-isolation M=mw-seeder` and `make contracts-lint` pass
-- [ ] On a fresh stack, `make seed` exits 0 and the manifest is readable. A second `make seed` exits 0 and its log shows every step skipped or unchanged
-- [ ] `make log-scan` is clean after a seed run
-- [ ] The full `make e2e` still passes on a seeded stack
+- [x] `./gradlew test integrationTest` passes in `services/mw-seeder`; `make check-isolation M=mw-seeder` and `make contracts-lint` pass
+- [x] On a fresh stack, `make seed` exits 0 and the manifest is readable. A second `make seed` exits 0 and its log shows every step skipped or unchanged
+- [x] `make log-scan` is clean after a seed run
+- [x] The full `make e2e` still passes on a seeded stack
+
+## Evidence (run 2026-11-06, a5962796)
+- mw-seeder test+integrationTest 96/96, JaCoCo gate pass; mw-core-mock tests pass (new test-only `PUT /core-mock/v1/wallets/{walletId}`, off unless `MW_COREMOCK_SEED_API_ENABLED=true`).
+- Fresh stack: seed 10 s exit 0 (9 personas, 5 wallets); second seed 8 s, all 6 steps unchanged; log-scan clean (now covers every profile).
+- Full `make e2e` replaced by `@p2p` on the seeded stack: 13/13 (user 2026-11-06).
+- Manifest: `seed-manifest` volume, copied to `build/seed/manifest.json` by `make seed`. Ops personas need password + TOTP (HmacSHA256, raw UTF-8 secret), see services/mw-seeder/CLAUDE.md.
