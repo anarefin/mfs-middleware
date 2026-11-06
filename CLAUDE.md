@@ -23,7 +23,8 @@ decision updates these docs in the same change.
 - `services/mw-<name>/`: standalone Gradle build with its own wrapper,
   `gradle/libs.versions.toml`, `Dockerfile`, `CLAUDE.md` (no `compose.yml`: ADR D16).
 - `ui/mw-admin-ui/`: the Next.js admin console (spec 4.2), own `package.json` (pnpm), `Dockerfile`,
-  `CLAUDE.md`; tests `pnpm test` and `pnpm test:e2e` (Playwright, self-contained).
+  `CLAUDE.md`; tests `pnpm test` (Vitest, no stack) and `make ui-e2e` (Playwright against the running,
+  seeded stack).
   Not a Gradle module, so the Makefile module targets skip it.
 - `deploy/`: `docker-compose.yml`, the whole stack in one hand-written file with profiles (none =
   platform, `minimal` = P2P and cash path, `core` = everything, `seed` = seeder; ADR D16; a new
@@ -158,6 +159,7 @@ or one with `M=<module>` (e.g. `M=mw-orchestrator`).
 | `make reset` | `down -v --remove-orphans` across every profile: every container and volume of the stack goes (fresh start) |
 | `make e2e [M=] [TAGS=@p2p]` | Cucumber suite in `tests/e2e` against the running stack (`make up` first), filtered by `@<module>` and `TAGS`; first re-runs `apisix-init` with `MW_E2E_ROUTES=1` (test-only routes, key-auth); stack access and reusable steps: `tests/e2e/README.md` |
 | `make e2e-changed [BASE=main] [TAGS=]` | fast feedback after a change, no `verify`: `make build M=` (`bootJar`, no tests) and `make up M=` for each module changed since `BASE` (commits, staged, unstaged, untracked), so Compose recreates the services whose image changed; `make build` + `make up` of the whole stack when it is down or `contracts/`/`deploy/` changed; then the full e2e suite (`E2E_SCOPE=modules` runs only `@<changed-module>` scenarios). Not a substitute for the gate |
+| `make ui-e2e [GREP=]` | admin UI Playwright suite (`ui/mw-admin-ui/e2e`, numbered specs tagged `@smoke`, `@console`, `@approvals`, `@partners`, `@ussd`, `@templates`) against the running, seeded stack (`make up && make seed` first; no mock): real Keycloak logins as the seeded ops personas, the real mw-admin-api behind APISIX; `pnpm install --frozen-lockfile` / Chromium when needed; credentials from `deploy/.env`, personas from `build/seed/manifest.json`; global setup fails in seconds with the fix when the stack is not ready; idempotent |
 | `make perf [M=]` | Gatling 100 TPS mix in `tests/perf` against the running stack (`make up` first, fresh for the gate): re-applies the test-only routes, `gatlingRun` then always `perfOverhead` (overhead = response time minus core-mock and simulator time); reports in `tests/perf/build/reports/{gatling,perf}`; extra `-D` settings via `MW_PERF_ARGS`; see `tests/perf/README.md` |
 | `make security [M=]` | security pass (WP29): gitleaks over the files not gitignored, CycloneDX SBOM + trivy per module, trivy on the built `mfs-mw/*:local` images and the pinned third-party images (HIGH/CRITICAL fail; accepted findings with reason + expiry in `.trivyignore.yaml` / `deploy/trivyignore-third-party.yaml`); with the stack up also the ZAP baseline on APISIX and `scripts/log-scan.sh` over every container log (`SECURITY_LIVE=1` makes them mandatory: the gate runs it after `make e2e`); scanners from PATH or their pinned images; register `docs/security-findings.md` |
 | `make log-scan` | `scripts/log-scan.sh` over every container log of the running stack: fails on a PIN, PIN ciphertext, unmasked MSISDN or NID (findings printed masked; also a stage of `make security`) |

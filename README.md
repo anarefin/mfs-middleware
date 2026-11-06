@@ -27,7 +27,7 @@ runs in Docker.
 | JDK 25 (Temurin or any other build) on `PATH` or in `JAVA_HOME` | `make build` builds each service jar on the host with its own Gradle wrapper; the wrappers download Gradle itself | `java -version` |
 | bash, make (GNU or BSD), git, curl, jq | the Makefile and `scripts/`; jq for `make smoke`, `make edge-test`, `make security` | `jq --version` |
 | Node.js 22+ (optional) | only `make contracts-lint` and `make compose-check`; the admin console builds inside Docker | `node --version` |
-| Node.js 24 + pnpm (optional) | only the admin console's own tests (`pnpm test`, `pnpm test:e2e` in `ui/mw-admin-ui`) | `pnpm --version` |
+| Node.js 24 + pnpm (optional) | only the admin console's own tests: `pnpm test` in `ui/mw-admin-ui` and `make ui-e2e` (Playwright against the running stack; Chromium is installed on first use) | `pnpm --version` |
 | Internet access on the first run | images, Gradle distributions and dependencies, the console's pnpm packages | |
 | Host port 443 free | APISIX is the only container that publishes a port (443 -> 9443) | `lsof -i :443` |
 
@@ -167,8 +167,9 @@ modules, or for one with `M=<module>`. `make help` prints the list.
 Contract manifests (ticket 53): each `services/mw-*/contracts.yml` lists the event and API
 contracts the module produces and consumes; `ProducedContractsTest` and `ConsumedContractsTest`
 (Docker-free, part of `./gradlew test`) check them against the root `contracts/` folder. Keep the
-manifest in step with every message change. The admin console is tested with `pnpm test` and
-`pnpm test:e2e` in `ui/mw-admin-ui` (`ui/mw-admin-ui/CLAUDE.md`).
+manifest in step with every message change. The admin console is tested with `pnpm test` in
+`ui/mw-admin-ui` (no stack) and `make ui-e2e` (Playwright against the running, seeded stack;
+`ui/mw-admin-ui/CLAUDE.md`).
 
 ### Stack and black-box suites
 
@@ -181,6 +182,7 @@ manifest in step with every message change. The admin console is tested with `pn
 | `make edge-test` | APISIX edge policies: 401/400/413/429 envelopes, header stripping, correlation ID, quotas, idempotent apply |
 | `make e2e [M=] [TAGS=]` | Cucumber suite in `tests/e2e` (`tests/e2e/README.md`), filtered by `@<module>` and a tag expression, e.g. `make e2e TAGS="@p2p or @cash"` |
 | `make e2e-changed [BASE=main] [TAGS=]` | `make build M=` + `make up M=` for each module changed since `BASE` (the whole stack when it is down or `contracts/`/`deploy/` changed), then the e2e suite (`E2E_SCOPE=modules` runs only their scenarios); fast feedback, not the gate |
+| `make ui-e2e [GREP=]` | admin console Playwright suite (`ui/mw-admin-ui/e2e`) against the running, seeded stack (`make up && make seed` first): real Keycloak logins as `seed-ops-maker` / `-checker` / `-viewer`, the real mw-admin-api behind APISIX; `pnpm install --frozen-lockfile` and the Chromium download when needed; credentials from `deploy/.env`, personas from `build/seed/manifest.json`; `GREP=@approvals` filters by spec tag (`@smoke`, `@console`, `@approvals`, `@partners`, `@ussd`, `@templates`); stops in global setup, with the fix, when the stack is not ready; idempotent (run it twice) |
 | `make chaos [TARGETS=]` | kill every `mw-*` container, then `kafka` and `postgres`, mid-flow under load; checks no transaction is left non-terminal and the core-mock ledger balances (criterion 3); report in `build/chaos/` |
 | `make perf` | Gatling mix at 100 TPS with the p95 middleware-overhead check (criterion 7, `tests/perf/README.md`); report under `tests/perf/build/reports/` |
 | `make security [M=]` | gitleaks, CycloneDX SBOM + trivy for every module and image; with the stack up also the ZAP baseline and the container log scan. `SECURITY_LIVE=1 make security` makes the live stages mandatory (the milestone gate). Decisions in `docs/security-findings.md` |

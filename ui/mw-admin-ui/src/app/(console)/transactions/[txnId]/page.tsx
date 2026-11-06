@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { ACTION_LABELS, txnActionGate } from "@/lib/approvals";
 import { formatAmount, formatTime, partyLabel } from "@/lib/format";
 import { canReveal } from "@/lib/oidc";
 import { adminApi, operatorToken } from "@/lib/server/admin";
+import { loadTxnView } from "@/lib/txn-view";
 import type { TimelineEntry } from "@/lib/types";
-import { ActionForm } from "../../action-form";
 import { requestTxnAction } from "../../actions";
 import { ApiError } from "../../api-error";
+import { TxnActions } from "./txn-actions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -33,7 +33,7 @@ export default async function TransactionPage({ params, searchParams }: Props) {
 
   const token = await operatorToken();
   if (!token) redirect("/login?error=SessionExpired");
-  const result = await adminApi().getTransaction(token, txnId, reveal);
+  const result = await loadTxnView(adminApi(), token, txnId, session?.roles ?? [], reveal);
 
   if (!result.ok) {
     return (
@@ -46,11 +46,6 @@ export default async function TransactionPage({ params, searchParams }: Props) {
   }
 
   const { transaction: t, timeline, partnerCalls, auditTrail, revealed } = result.data;
-  // operator actions (ticket 41): only for an ops-maker, only those the status allows, and only
-  // once the check for an open request succeeded and found none (mw-admin-api allows one per txn)
-  const pendingQuery = new URLSearchParams({ resourceId: t.txnId, status: "PENDING", limit: "1" });
-  const pending = await adminApi().listChangeRequests(token, pendingQuery);
-  const { actions, open, checkFailed } = txnActionGate(session?.roles ?? [], t, pending);
   return (
     <>
       <p><Link href="/transactions">Back to search</Link></p>
@@ -82,31 +77,8 @@ export default async function TransactionPage({ params, searchParams }: Props) {
         ) : null}
       </section>
 
-      {open ? (
-        <p className="notice" data-testid="pending-request">
-          {open.action} requested by {open.makerId} on {formatTime(open.createdAt)}, waiting for approval in{" "}
-          <Link href="/approvals">Approvals</Link>.
-        </p>
-      ) : null}
-      {checkFailed ? (
-        <p className="notice" data-testid="pending-check-failed">
-          Could not check for open requests, so no action can be requested now. Reload the page to try again.
-        </p>
-      ) : null}
-      {actions.length > 0 ? (
-        <section className="panel actions" aria-label="Actions">
-          <h2>Actions</h2>
-          <p className="hint">A request is applied only after a different operator (ops-checker) approves it.</p>
-          <ActionForm action={requestTxnAction.bind(null, t.txnId)} label="Request an action">
-            <label>Reason<input name="reason" required maxLength={500} /></label>
-            <span className="buttons">
-              {actions.map((a) => (
-                <button key={a} className="primary" type="submit" name="action" value={a}>{ACTION_LABELS[a]}</button>
-              ))}
-            </span>
-          </ActionForm>
-        </section>
-      ) : null}
+      {/* operator actions (ticket 41): only for an ops-maker, only those the status allows */}
+      <TxnActions gate={result.gate} action={requestTxnAction.bind(null, t.txnId)} />
 
       <h2>Saga timeline</h2>
       {timeline.length === 0 ? <p className="hint">No steps recorded.</p> : (

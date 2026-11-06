@@ -91,7 +91,8 @@ Automated:
 | Step | Command | Expect |
 | --- | --- | --- |
 | 1 | `make e2e TAGS=@admin` | search by txnId and MSISDN, timeline and audit, reversal requested by a maker and approved by a different checker (maker = checker refused), partner disable/enable and timeouts, menu and template publish, wallet unlock |
-| 2 | `cd ui/mw-admin-ui && pnpm install && pnpm test && pnpm test:e2e` | unit and contract tests, then Playwright against a stub API and fake Keycloak (needs Node.js 24 and pnpm; `pnpm exec playwright install chromium` once) |
+| 2 | `cd ui/mw-admin-ui && pnpm install && pnpm test` | unit, component and contract tests, no stack (Node.js 24 and pnpm) |
+| 3 | `make seed && make ui-e2e` | Playwright on the running stack, real Keycloak and mw-admin-api: sign-in with password + TOTP (PKCE) and sign-out, search and timeline of a P2P the suite makes over USSD, reversal approved by the checker (txn REVERSED), own request not approvable and rejected, wallet unlock, partner disable/enable and timeouts, menu and template publish (go-live 2099, so nothing a subscriber sees changes); run it twice, both pass |
 
 Manual walk (acceptance criterion 4), after `make e2e TAGS=@p2p` so there are transactions:
 

@@ -21,6 +21,7 @@
 #   make reset                  remove every container, volume and orphan of the stack (fresh start)
 #   make e2e [M=] [TAGS=]       Cucumber suite in tests/e2e against the running stack
 #   make e2e-changed [BASE=main] [TAGS=]  build only modules changed since BASE, recreate them in the running stack, then e2e
+#   make ui-e2e [GREP=]         admin UI Playwright suite against the running, seeded stack (ui/mw-admin-ui)
 #   make perf [M=]              Gatling suite in tests/perf
 #   make security [M=]          secret, dependency and image scans; with the stack up also ZAP baseline + log scan
 #   make log-scan               scan every container log of the running stack for PIN / unmasked MSISDN / NID
@@ -37,10 +38,10 @@ PROFILE ?=
 TIMERS ?=
 export MW_ROOT PROFILE TIMERS
 
-.PHONY: help verify verify-changed check-isolation check-field-injection contracts-lint versions-check build compose-check up seed reset smoke edge-test chaos down e2e e2e-changed perf security log-scan new-service test-scripts
+.PHONY: help verify verify-changed check-isolation check-field-injection contracts-lint versions-check build compose-check up seed reset smoke edge-test chaos down e2e e2e-changed ui-e2e perf security log-scan new-service test-scripts
 
 help:
-	@sed -n '3,29p' $(abspath $(lastword $(MAKEFILE_LIST)))
+	@sed -n '3,30p' $(abspath $(lastword $(MAKEFILE_LIST)))
 
 verify:
 ifeq ($(SELFTEST)$(M),1)
@@ -95,6 +96,9 @@ e2e:
 
 e2e-changed:
 	@$(SCRIPTS)/e2e-changed.sh "$(BASE)" "$(TAGS)"
+
+ui-e2e:
+	@$(SCRIPTS)/ui-e2e.sh "$(GREP)"
 
 perf:
 	@$(SCRIPTS)/suite.sh perf "$(M)" "$(TAGS)"
