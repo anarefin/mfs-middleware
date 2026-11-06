@@ -52,21 +52,21 @@ public final class MerchantIpn {
     List<Received> out = new ArrayList<>();
     for (JsonNode n : r.body()) {
       JsonNode h = n.path("headers");
-      out.add(new Received(h.path("x-upay-attempt").asInt(-1), h.path("x-upay-timestamp").asString(null),
-          h.path("x-upay-signature").asString(null), n.path("body").asString(), n.path("answeredStatus").asInt()));
+      out.add(new Received(h.path("x-bits-attempt").asInt(-1), h.path("x-bits-timestamp").asString(null),
+          h.path("x-bits-signature").asString(null), n.path("body").asString(), n.path("answeredStatus").asInt()));
     }
     return out;
   }
 
   /**
    * The merchant's check: hex HMAC-SHA256 with its secret over {@code
-   * upay-checkout-ipn.v1\n<X-Upay-Timestamp>\n<body>}, compared in constant time.
+   * bits-checkout-ipn.v1\n<X-Bits-Timestamp>\n<body>}, compared in constant time.
    */
   public static boolean verify(Received ipn, String secret) {
     if (ipn.signature() == null || ipn.timestamp() == null) {
       return false;
     }
-    String expected = HexFormat.of().formatHex(hmac(secret, "upay-checkout-ipn.v1\n" + ipn.timestamp() + "\n" + ipn.body()));
+    String expected = HexFormat.of().formatHex(hmac(secret, "bits-checkout-ipn.v1\n" + ipn.timestamp() + "\n" + ipn.body()));
     return MessageDigest.isEqual(expected.getBytes(StandardCharsets.US_ASCII), ipn.signature().getBytes(StandardCharsets.US_ASCII));
   }
 

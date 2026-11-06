@@ -21,7 +21,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.bank`. Follow
   FAILED `MW-VAL-INVALID_PARTNER_REQUEST` for requests that cannot be mapped. W2B, AVL, card,
   UCB ATM / IMT and CyberSource are later tickets (new instances, operations or SPI modules here).
 - Stable partner reference (`service/PartnerReferenceService`, table `partner_reference` in own
-  schema `bank_ref`): `UPAY` + txnId hex, stored on first use, sent as the bank's
+  schema `bank_ref`): `BITS` + txnId hex, stored on first use, sent as the bank's
   `transactionId`; a repeated one returns the original outcome.
 - The bank call runs on a virtual-thread executor (`bankCallExecutor`), never on the Kafka
   consumer thread; the offset is committed at hand-over (crash -> orchestrator deadline ->

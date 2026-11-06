@@ -135,7 +135,7 @@ class UssdSmppMenuWalkIT extends UssdMenuWalkSuite {
     Walk w = walk(List.of("9", "1"));
 
     assertThat(GATEWAY.refusedCount() - refusedBefore).isEqualTo(2);
-    assertThat(w.screens()).last().isEqualTo("Enter recipient upay number");
+    assertThat(w.screens()).last().isEqualTo("Enter recipient Bits number");
     assertThat(Objects.requireNonNull(w.screens()).size()).isEqualTo(3);
   }
 }

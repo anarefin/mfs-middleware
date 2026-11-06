@@ -46,7 +46,7 @@ class MerchantIpnControllerTest {
 
   private MvcTestResult ipn(String id) {
     return mvc.post().uri("/merchant/ipn/shop1").contentType(MediaType.APPLICATION_JSON)
-        .header("X-Upay-Ipn-Id", id).header("X-Upay-Signature", "abc").header("X-Upay-Timestamp", "1")
+        .header("X-Bits-Ipn-Id", id).header("X-Bits-Signature", "abc").header("X-Bits-Timestamp", "1")
         .content("{\"sessionId\":\"" + id + "\"}").exchange();
   }
 
@@ -65,7 +65,7 @@ class MerchantIpnControllerTest {
     assertThat(list).bodyJson().extractingPath("$.length()").isEqualTo(3);
     assertThat(list).bodyJson().extractingPath("$[2].answeredStatus").isEqualTo(200);
     assertThat(list).bodyJson().extractingPath("$[2].path").isEqualTo("/merchant/ipn/shop1");
-    assertThat(list).bodyJson().extractingPath("$[2].headers.x-upay-signature").isEqualTo("abc");
+    assertThat(list).bodyJson().extractingPath("$[2].headers.x-bits-signature").isEqualTo("abc");
     assertThat(list).bodyJson().extractingPath("$[2].body").isEqualTo("{\"sessionId\":\"s1\"}");
 
     assertThat(mvc.delete().uri("/sim/merchant/ipn/received").exchange()).hasStatus(204);

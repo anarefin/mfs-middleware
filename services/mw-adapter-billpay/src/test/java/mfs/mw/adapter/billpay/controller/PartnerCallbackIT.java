@@ -155,7 +155,7 @@ class PartnerCallbackIT {
 
   @Test
   void aCallbackForAReferenceNeverIssuedIsNotFound() throws Exception {
-    Answer a = post(body("UPAY00000000000000000000000000000000", "SUCCESS", "000", "AGG-43"));
+    Answer a = post(body("BITS00000000000000000000000000000000", "SUCCESS", "000", "AGG-43"));
 
     assertThat(a.status()).as(a.toString()).isEqualTo(404);
     assertThat(a.body().path("code").asString()).isEqualTo("MW-VAL-003");

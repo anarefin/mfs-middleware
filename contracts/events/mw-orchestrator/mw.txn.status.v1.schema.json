@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.upay.mw/events/mw-orchestrator/mw.txn.status.v1.schema.json",
+  "$id": "https://contracts.bits.mw/events/mw-orchestrator/mw.txn.status.v1.schema.json",
   "title": "mw.txn.status.v1",
   "description": "Transaction state change published by mw-orchestrator (spec 5.1, 6.2, 7.2). Key: txnId. Consumers: channel services, notify, audit-dw.",
   "type": "object",

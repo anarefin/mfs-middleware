@@ -12,7 +12,7 @@ import java.util.Map;
  * @param operation canonical operation ({@code PAY}, {@code STATUS_QUERY}, ...); picks the
  *     operation config (path, mappings, definite statuses)
  * @param txnType canonical transaction type, for metrics
- * @param reference our stable partner reference ({@code UPAY...}); also {@code {reference}} in a
+ * @param reference our stable partner reference ({@code BITS...}); also {@code {reference}} in a
  *     path template
  * @param input canonical document the request mapping (JSONata) reads; carries personal data,
  *     so it is never logged as it is

@@ -161,7 +161,7 @@ class ContentChangeApiIT {
   @Test
   void anApprovedMenuVersionIsPublishedWithItsGoLivePerMno() throws IOException {
     ObjectNode tree = seedTree();
-    ((ObjectNode) tree.path("nodes").path("main").path("text")).put("en", "upay new");
+    ((ObjectNode) tree.path("nodes").path("main").path("text")).put("en", "Bits new");
     String later = NOW.plus(Duration.ofHours(2)).toString();
     MvcTestResult created =
         proposeMenu(MAKER, "main", menuBody(tree, "[{\"mno\":\"robi\"},{\"mno\":\"gp\",\"goLiveAt\":\"" + later + "\"}]"));
@@ -189,7 +189,7 @@ class ContentChangeApiIT {
     assertThat(event.path("approvedBy").asString()).isEqualTo("ops-checker01");
     JsonNode value = event.path("value");
     assertThat(value.path("menu").path("menuId").asString()).isEqualTo("main");
-    assertThat(value.path("menu").path("nodes").path("main").path("text").path("en").asString()).isEqualTo("upay new");
+    assertThat(value.path("menu").path("nodes").path("main").path("text").path("en").asString()).isEqualTo("Bits new");
     assertThat(value.path("activations").get(0).path("goLiveAt").asString())
         .as("no go-live: the approval time").isEqualTo(NOW.plus(Duration.ofMinutes(5)).toString());
     assertThat(value.path("activations").get(1).path("goLiveAt").asString()).isEqualTo(later);
@@ -302,7 +302,7 @@ class ContentChangeApiIT {
   void anApprovedTemplateVersionIsPublished() {
     MvcTestResult created =
         proposeTemplate(MAKER, "TXN_P2P_RECEIVED/SMS/en",
-            "{\"body\":\"You got Tk {{amount}} from {{counterparty}}. TrxID {{txnId}}\",\"senderId\":\"upay\","
+            "{\"body\":\"You got Tk {{amount}} from {{counterparty}}. TrxID {{txnId}}\",\"senderId\":\"Bits\","
                 + "\"reason\":\"shorter text\"}");
     assertThat(created).hasStatus(201);
     assertResponse("/admin/v1/notify-templates/{code}/{channel}/{locale}/change-requests", "post", "201", body(created));

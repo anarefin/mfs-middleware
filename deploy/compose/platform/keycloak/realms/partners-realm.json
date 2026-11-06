@@ -1,6 +1,6 @@
 {
   "realm": "partners",
-  "displayName": "upay partners (client credentials)",
+  "displayName": "Bits partners (client credentials)",
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": false,
@@ -10,7 +10,7 @@
     "realm": [
       {
         "name": "partner",
-        "description": "Partner system calling upay APIs"
+        "description": "Partner system calling Bits APIs"
       }
     ]
   },

@@ -15,6 +15,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record EmailProperties(boolean enabled, String from) {
 
   public EmailProperties {
-    from = from == null || from.isBlank() ? "upay <no-reply@upay.local>" : from;
+    from = from == null || from.isBlank() ? "Bits <no-reply@bits.local>" : from;
   }
 }

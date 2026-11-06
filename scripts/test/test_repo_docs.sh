@@ -46,12 +46,12 @@ test_pr_template_has_the_spec_definition_of_done() {
 }
 
 spec_has() {
-  grep -qE -- "$1" "$REPO_DIR/spec/upay-mfs-middleware-spec.md" || fail "spec lacks: $1"
+  grep -qE -- "$1" "$REPO_DIR/spec/bits-mfs-middleware-spec.md" || fail "spec lacks: $1"
 }
 
 test_spec_records_the_m0_review_decisions() {
   # Ticket 49 (M0 review, 2026-11-03).
-  local f="$REPO_DIR/spec/upay-mfs-middleware-spec.md"
+  local f="$REPO_DIR/spec/bits-mfs-middleware-spec.md"
   spec_has '^\| Framework \| Spring Boot \| 4\.1\.2 '
   spec_has '^\| Integration \| Apache Camel .*\| 4\.22\.2 LTS '
   spec_has '^\| .*Spring Cloud.* \| 2025\.1\.4 '
@@ -71,7 +71,7 @@ test_spec_records_the_m0_review_decisions() {
 
 test_spec_has_no_static_analysis_or_sast_requirement() {
   # M0 decision: no static analysis and no SAST; review, gitleaks and trivy only.
-  local f="$REPO_DIR/spec/upay-mfs-middleware-spec.md" hits
+  local f="$REPO_DIR/spec/bits-mfs-middleware-spec.md" hits
   hits=$(grep -niE 'static[- ]analysis|\bSAST\b|SpotBugs|FindSecBugs' "$f") \
     && fail "spec still requires static analysis or SAST: $hits"
   spec_has 'gitleaks|[Ss]ecret scan'
@@ -86,7 +86,7 @@ test_spec_records_keycloak_on_the_data_network_as_an_mvp_deviation() {
 
 test_spec_kafka_contract_matches_the_contract_schemas() {
   # Spec 6.2/6.3 must describe the envelope + payload shape in contracts/events.
-  local f="$REPO_DIR/spec/upay-mfs-middleware-spec.md" c="$REPO_DIR/contracts/events"
+  local f="$REPO_DIR/spec/bits-mfs-middleware-spec.md" c="$REPO_DIR/contracts/events"
   spec_has 'Every event carries the envelope `\{ schemaVersion, eventType, eventId, commandId, txnId, coreRef, occurredAt, outcome, reasonCode\?, reasonMessage\?, balancesAfter\?, payload \}`'
   spec_has '`payload\.holdId`' ; spec_has '`payload\.txnStatus`' ; spec_has '`payload\.fee`' ; spec_has '`payload\.limitsLeft`'
   spec_has 'non-negative integer minor units'
@@ -196,7 +196,7 @@ test_every_knob_in_the_docs_is_read_by_the_tooling() {
 
 test_adrs_cover_every_decision_in_the_spec_tables() {
   local id file ids s idx="$REPO_DIR/docs/adr/README.md"
-  ids="$(grep -oE '^\| (D|M)[0-9]+ \|' "$REPO_DIR/spec/upay-mfs-middleware-spec.md" | grep -oE '(D|M)[0-9]+')"
+  ids="$(grep -oE '^\| (D|M)[0-9]+ \|' "$REPO_DIR/spec/bits-mfs-middleware-spec.md" | grep -oE '(D|M)[0-9]+')"
   [ "$(printf '%s\n' "$ids" | wc -l | tr -d ' ')" -ge 28 ] || fail "spec decision tables not found"
   [ -f "$idx" ] || fail "no docs/adr/README.md index"
   for id in $ids; do
@@ -214,13 +214,13 @@ test_adrs_cover_every_decision_in_the_spec_tables() {
 test_demo_script_has_a_section_per_milestone() {
   local d="$REPO_DIR/docs/demo.md" m
   [ -f "$d" ] || fail "no docs/demo.md"
-  for m in $(grep -oE '^\| WP[0-9]+ \| M[0-9]' "$REPO_DIR/spec/upay-mfs-middleware-spec.md" | grep -oE 'M[0-9]$' | sort -u); do
+  for m in $(grep -oE '^\| WP[0-9]+ \| M[0-9]' "$REPO_DIR/spec/bits-mfs-middleware-spec.md" | grep -oE 'M[0-9]$' | sort -u); do
     grep -qE "^## $m " "$d" || fail "docs/demo.md has no section for milestone $m"
   done
 }
 
 test_spec_names_the_next_version_the_admin_ui_runs() {
-  local v s="$REPO_DIR/spec/upay-mfs-middleware-spec.md"
+  local v s="$REPO_DIR/spec/bits-mfs-middleware-spec.md"
   v="$(sed -nE 's/^ *"next": *"([0-9.]+)".*/\1/p' "$REPO_DIR/ui/mw-admin-ui/package.json")"
   [ -n "$v" ] || fail "no next version in ui/mw-admin-ui/package.json"
   grep -qF "| D6 | Admin console | Next.js $v " "$s" || fail "spec D6 does not say Next.js $v"

@@ -20,7 +20,7 @@ import javax.crypto.spec.SecretKeySpec;
  * <p>Signature: lower-case hex HMAC-SHA256 with the merchant's secret over the lines
  *
  * <pre>
- * upay-checkout-result.v1
+ * bits-checkout-result.v1
  * sessionId
  * orderId
  * status
@@ -37,7 +37,7 @@ import javax.crypto.spec.SecretKeySpec;
  */
 public final class ResultSigner {
 
-  public static final String PREFIX = "upay-checkout-result.v1";
+  public static final String PREFIX = "bits-checkout-result.v1";
 
   /** The fields of a signed result, as query parameters. */
   public record Result(

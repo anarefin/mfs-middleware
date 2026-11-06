@@ -108,7 +108,7 @@ class AuthSchemesTest {
 
     @Test
     void verifyAcceptsWhatApplySignedForTheSameRequest() {
-      String body = "{\"reference\":\"UPAY1\",\"status\":\"SUCCESS\"}";
+      String body = "{\"reference\":\"BITS1\",\"status\":\"SUCCESS\"}";
       Map<String, String> headers = signedHeaders("POST", "/partner/acme/callback", body);
 
       assertThat(scheme.verify(inbound(headers, body), REF)).isTrue();

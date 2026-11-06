@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: upay audit search internal API (mw-audit-dw)
+  title: Bits audit search internal API (mw-audit-dw)
   version: 1.0.0
   description: |
     Internal, read-only API of mw-audit-dw (ticket 35, spec 14.3, 16.2): search of the audit

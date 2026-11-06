@@ -64,7 +64,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   next command. `SagaEngine.created` publishes the first state (RECEIVED) the same way.
 - Hold path (TOPUP): FundsHeld stores `holdId` (`transaction.hold_id`), PARTNER_PENDING sends PAY
   (`mapper/PartnerRequestMapper`: `requestId` = name-based UUID of `<txnId>:PAY`, stable across
-  resends; `partnerTxnRef` `UPAY<txnId hex>`; `deadlineAt` = now + `partner-timeout`; never the
+  resends; `partnerTxnRef` `BITS<txnId hex>`; `deadlineAt` = now + `partner-timeout`; never the
   PIN). `service/PartnerReplyService` (inbox key `requestId:outcome`): SUCCESS -> COMMITTING
   (partner's `partnerRef` stored in `transaction.partner_ref`, shown on the status), FAILED ->
   RELEASING with the reply's canonical error (kept into FAILED; a code outside the status
@@ -154,7 +154,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   first (security review): applied only when the outcome is SUCCESS/FAILED/PENDING, the flow has
   a partner leg, `partnerId` equals the transaction's partner (`SagaEngine.partnerId`), `family`
   equals the leg's family and, once a partner reference is stored, the callback's `partnerRef` is
-  that reference or our own `UPAY<txnId hex>`; otherwise nothing changes, event
+  that reference or our own `BITS<txnId hex>`; otherwise nothing changes, event
   `security.partner_callback_mismatch` and audit `partner.callback.rejected` outcome DENIED with
   `after.reason` UNKNOWN_OUTCOME / NO_PARTNER_LEG / PARTNER_MISMATCH / FAMILY_MISMATCH /
   PARTNER_REF_MISMATCH. The adapter sets `partnerId` from the authenticated route (the URL's
@@ -357,7 +357,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   tree per `eventType`). Unknown fields are ignored.
 - `events/mw-admin-api/mw.txn.action.v1.schema.json` (consumed, ticket 37): own type `dto/TxnAction`;
   `ConsumedContractsTest` reads the valid samples, `service/OperatorActionIT` covers the handling.
-  The REVERSAL mw-admin-api sends on `mw.txn.request.v1` names only `ORG`/`upay-ops` as parties and
+  The REVERSAL mw-admin-api sends on `mw.txn.request.v1` names only `ORG`/`bits-ops` as parties and
   the change request id as idempotency key.
 - `mw.partner.inbound.v1` (owned, consumed): own type `dto/PartnerInbound`;
   `PartnerMessagesTest` reads every valid sample, `PartnerCallbackSagaIT` validates the callbacks

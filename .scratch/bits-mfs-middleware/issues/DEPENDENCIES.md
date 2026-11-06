@@ -1,4 +1,4 @@
-# Dependency graph — upay-mfs-middleware (run from 04875ae, 2026-11-05)
+# Dependency graph — bits-mfs-middleware (run from 04875ae, 2026-11-05)
 # Execution order is the ROW order below (user decision: prep ticket 53 runs first), not filename order.
 # Status here is authoritative, not in the tickets. Earlier tickets 01-35, 48-50: done.
 # ticket                                    blocked-by        status   elapsed  diffstat   commits

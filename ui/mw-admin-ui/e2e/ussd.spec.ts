@@ -31,12 +31,12 @@ test("a maker edits a Bangla text, walks it in the preview, an ops-checker appro
   // the preview walks the published tree first (Bangla, mw-ussd's default)
   const preview = maker.getByRole("region", { name: "Preview" });
   await preview.getByRole("button", { name: "Dial" }).click();
-  await expect(preview.getByTestId("ussd-screen")).toHaveText("upay\n1 সেন্ড মানি\n9 English");
+  await expect(preview.getByTestId("ussd-screen")).toHaveText("Bits\n1 সেন্ড মানি\n9 English");
   await preview.getByLabel("Reply", { exact: true }).fill("1");
   await preview.getByRole("button", { name: "Send" }).click();
   await preview.getByLabel("Reply", { exact: true }).fill("01712345678"); // own number: notSelf
   await preview.getByRole("button", { name: "Send" }).click();
-  await expect(preview.getByTestId("ussd-screen")).toHaveText("সঠিক মোবাইল নম্বর দিন।\nপ্রাপকের upay নম্বর দিন");
+  await expect(preview.getByTestId("ussd-screen")).toHaveText("সঠিক মোবাইল নম্বর দিন।\nপ্রাপকের Bits নম্বর দিন");
 
   // edit the success screen in Bangla and walk to it
   await maker.getByTestId("menu-tree").getByRole("button", { name: /^p2p\.done/ }).click();

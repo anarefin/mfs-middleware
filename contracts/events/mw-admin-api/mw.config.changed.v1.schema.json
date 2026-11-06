@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.upay.mw/events/mw-admin-api/mw.config.changed.v1.schema.json",
+  "$id": "https://contracts.bits.mw/events/mw-admin-api/mw.config.changed.v1.schema.json",
   "title": "mw.config.changed.v1",
   "description": "Dynamic business config change, broadcast after maker-checker approval (spec 20.4). Compacted topic keyed by configKey: the latest record per key is the current value; services hold an in-memory snapshot and swap it atomically. A DELETE is followed by a tombstone.",
   "type": "object",

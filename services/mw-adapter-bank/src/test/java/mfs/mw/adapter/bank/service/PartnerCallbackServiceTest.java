@@ -30,7 +30,7 @@ import org.junit.jupiter.api.Test;
 /** The failure answers of the callback service that the HTTP test cannot provoke. */
 class PartnerCallbackServiceTest {
 
-  static final String REF = "UPAY01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
+  static final String REF = "BITS01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
 
   final PartnerConfigStore store = mock(PartnerConfigStore.class);
   final PartnerGateway gateway = mock(PartnerGateway.class);

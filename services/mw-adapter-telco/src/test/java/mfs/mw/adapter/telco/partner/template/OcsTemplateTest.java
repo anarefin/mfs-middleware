@@ -44,7 +44,7 @@ import org.junit.jupiter.params.provider.ValueSource;
  */
 class OcsTemplateTest {
 
-  static final String REF = "UPAY01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
+  static final String REF = "BITS01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
 
   final PartnerCallMapper mapper = new PartnerCallMapper();
   WireMockServer ocs;

@@ -7,7 +7,7 @@
 // Nothing is shared with the included builds: no pluginManagement, no
 // dependencyResolutionManagement, no version catalog, no buildSrc or convention
 // plugins. Each module builds alone from its own directory (`make check-isolation`).
-rootProject.name = "upay-middleware"
+rootProject.name = "bits-middleware"
 
 file("services").listFiles()
     ?.filter { it.isDirectory && (it.resolve("settings.gradle.kts").isFile || it.resolve("settings.gradle").isFile) }

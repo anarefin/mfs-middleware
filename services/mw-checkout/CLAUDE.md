@@ -65,8 +65,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   IPv6 (review A7): the IPv4 inside NAT64 `64:ff9b::/96`, 6to4 `2002::/16` and IPv4-compatible `::/96` is
   extracted and checked, NAT64 local-use `64:ff9b:1::/48` refused outright (its embedding depends on a
   local prefix length), else only global unicast `2000::/3` minus `2001:db8::/32` and `2001::/23`
-  (`100::/64` and the rest refused)), the merchant's current secret, headers `X-Upay-Ipn-Id` (sessionId), `X-Upay-Attempt`, `X-Upay-Timestamp` (epoch s of the
-  attempt), `X-Upay-Signature` = `security/IpnSigner` (hex HMAC-SHA256 over `upay-checkout-ipn.v1\n`
+  (`100::/64` and the rest refused)), the merchant's current secret, headers `X-Bits-Ipn-Id` (sessionId), `X-Bits-Attempt`, `X-Bits-Timestamp` (epoch s of the
+  attempt), `X-Bits-Signature` = `security/IpnSigner` (hex HMAC-SHA256 over `bits-checkout-ipn.v1\n`
   + ts + `\n` + body), one POST by `client/MerchantIpnClient` (Apache HttpClient 5, a new client per call
   whose DNS answers the URL's host with the checked addresses only, so DNS rebinding cannot move the
   connect; the name stays the Host header, the TLS SNI name and the name the certificate is verified
@@ -79,7 +79,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   receiver simulator) and a compressed schedule 10s,20s,30s,1m,2m.
 - Signed result (`security/ResultSigner`, `service/ResultLinks`): PAID -> successUrl, CANCELLED ->
   cancelUrl, FAILED/EXPIRED -> failUrl, query `sessionId, orderId, status, txnId?, amount, currency,
-  errorCode?, ts, signature` = hex HMAC-SHA256(merchant secret, `upay-checkout-result.v1\n` + the
+  errorCode?, ts, signature` = hex HMAC-SHA256(merchant secret, `bits-checkout-result.v1\n` + the
   fields joined by `\n`); described for merchants in the contract.
 - Table `checkout.ipn_delivery` (V5): one row per IPN attempt (see above).
 - Table `checkout.session` (V4): token, merchant, order, amount, URLs, status, payer, OTP hash /

@@ -51,7 +51,7 @@ public final class TxnRequests {
         .put("correlationId", "e2e-" + UUID.randomUUID())
         .put("channel", "SYSTEM")
         .put("txnType", "REVERSAL");
-    r.putObject("initiator").put("type", "ORG").put("id", "upay-ops-e2e");
+    r.putObject("initiator").put("type", "ORG").put("id", "bits-ops-e2e");
     r.putObject("debitParty").put("type", "WALLET").put("id", payee);
     r.putObject("creditParty").put("type", "WALLET").put("id", payer);
     r.putObject("amount").put("valueMinor", amountMinor).put("currency", "BDT");

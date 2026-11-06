@@ -84,7 +84,7 @@ class SmscSimulatorIT {
   }
 
   String submit(String dest, byte dataCoding, boolean udhi, byte[] sm) throws Exception {
-    return session.submitShortMessage("", TypeOfNumber.ALPHANUMERIC, NumberingPlanIndicator.UNKNOWN, "upay",
+    return session.submitShortMessage("", TypeOfNumber.ALPHANUMERIC, NumberingPlanIndicator.UNKNOWN, "Bits",
             TypeOfNumber.UNKNOWN, NumberingPlanIndicator.ISDN, dest,
             new ESMClass(MessageMode.DEFAULT, MessageType.DEFAULT, udhi ? GSMSpecificFeature.UDHI : GSMSpecificFeature.DEFAULT),
             (byte) 0, (byte) 0, null, null, new RegisteredDelivery(SMSCDeliveryReceipt.SUCCESS_FAILURE), (byte) 0,
@@ -119,7 +119,7 @@ class SmscSimulatorIT {
     JsonNode m = messages("01711000001").get(0);
     assertThat(m.get("text").asString()).isEqualTo("You have sent Tk 10.00");
     assertThat(m.get("encoding").asString()).isEqualTo("GSM7");
-    assertThat(m.get("source").asString()).isEqualTo("upay");
+    assertThat(m.get("source").asString()).isEqualTo("Bits");
     assertThat(m.get("dlrStatus").asString()).isEqualTo("DELIVRD");
   }
 

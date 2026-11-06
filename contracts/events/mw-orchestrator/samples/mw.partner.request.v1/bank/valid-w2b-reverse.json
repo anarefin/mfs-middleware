@@ -10,7 +10,7 @@
     "operation": "REVERSE",
     "txnType": "W2B",
     "partner": { "partnerId": "partner-bank-1", "productCode": "W2B" },
-    "partnerTxnRef": "UPAY01933B8E7C1A",
+    "partnerTxnRef": "BITS01933B8E7C1A",
     "amount": { "valueMinor": 150000, "currency": "BDT" },
     "originalPartnerRef": "PB-0001"
   }

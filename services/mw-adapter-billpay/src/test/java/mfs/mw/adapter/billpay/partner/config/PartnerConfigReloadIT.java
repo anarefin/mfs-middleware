@@ -95,7 +95,7 @@ class PartnerConfigReloadIT {
            "template": "rest-json-request-reply", "baseUrl": "http://localhost:%d", "timeoutMs": 700,
            "errorMap": {"3003": {"suffix": "PAYMENT_REFUSED", "retryable": false}},
            "operations": {"PAY": {"method": "POST", "path": "/billagg/v1/payments", "definiteStatuses": [400, 422],
-             "request": "{\\"transactionId\\": reference, \\"billNumber\\": creditParty.id, \\"amount\\": amount.major, \\"channel\\": \\"upay\\"}",
+             "request": "{\\"transactionId\\": reference, \\"billNumber\\": creditParty.id, \\"amount\\": amount.major, \\"channel\\": \\"Bits\\"}",
              "response": "status = 200 and body.status = \\"SUCCESS\\" ? {\\"outcome\\": \\"SUCCESS\\", \\"partnerRef\\": body.paymentRef, \\"code\\": body.code} : {\\"outcome\\": \\"UNKNOWN\\", \\"reason\\": \\"UNEXPECTED_STATUS\\"}"}}
          }}
         """
@@ -108,7 +108,7 @@ class PartnerConfigReloadIT {
     send(mapped);
     assertThat(awaitReply(mapped.txnId()).payload().outcome()).isEqualTo("SUCCESS");
     String lastBody = AGG.findAll(postRequestedFor(urlEqualTo("/billagg/v1/payments"))).getLast().getBodyAsString();
-    assertThat(JSON.readTree(lastBody).get("channel").asString()).isEqualTo("upay");
+    assertThat(JSON.readTree(lastBody).get("channel").asString()).isEqualTo("Bits");
 
     AGG.resetAll();
     stubAggregator(1500);

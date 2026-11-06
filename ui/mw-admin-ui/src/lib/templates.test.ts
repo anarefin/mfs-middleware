@@ -36,7 +36,7 @@ describe("template preview (spec 10.3: params masked by name before rendering)",
 
 describe("template checks (mw-admin-api TemplateValidator)", () => {
   it("accepts a plain SMS", () => {
-    expect(templateProblems("SMS", { body: "কোড {{otp}}", senderId: "upay" })).toEqual([]);
+    expect(templateProblems("SMS", { body: "কোড {{otp}}", senderId: "Bits" })).toEqual([]);
   });
 
   it("refuses sections, unbalanced braces and EMAIL fields on SMS", () => {

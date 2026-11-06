@@ -19,7 +19,7 @@ class PartnerInboundMapperTest {
 
   static final String SCHEMA = "events/mw-orchestrator/mw.partner.inbound.v1.schema.json";
   static final String TXN = "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c";
-  static final String REF = "UPAY01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
+  static final String REF = "BITS01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
   static final Instant NOW = Instant.parse("2026-11-03T08:15:40Z");
 
   final JsonMapper json = JsonMapper.builder().build();

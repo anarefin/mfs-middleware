@@ -1,6 +1,6 @@
 {
   "realm": "ops",
-  "displayName": "upay operations",
+  "displayName": "Bits operations",
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": false,

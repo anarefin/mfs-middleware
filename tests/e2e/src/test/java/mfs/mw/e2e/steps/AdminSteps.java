@@ -70,7 +70,7 @@ public class AdminSteps {
   @When("{word} proposes the {word} template {word} in {word} as {string}")
   public void proposeTemplate(String user, String channel, String code, String locale, String text) {
     ObjectNode body = Http.JSON.createObjectNode();
-    body.put("body", text.replace("{token}", state.token)).put("senderId", "upay").put("reason", "e2e wording " + state.token);
+    body.put("body", text.replace("{token}", state.token)).put("senderId", "Bits").put("reason", "e2e wording " + state.token);
     last = AdminApi.proposeTemplate(user, code, channel, locale, body);
     assertThat(last.status()).as("%s", last.body()).isEqualTo(201);
     changeRequestId = last.body().path("id").asString();

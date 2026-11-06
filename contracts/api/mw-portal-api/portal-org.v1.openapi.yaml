@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: upay org portal API (mw-portal-api)
+  title: Bits org portal API (mw-portal-api)
   version: 1.0.0
   description: |
     Org portal API v1 (spec 8.2, 9.4), served by mw-portal-api behind APISIX route

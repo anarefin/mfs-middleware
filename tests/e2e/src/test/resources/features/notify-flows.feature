@@ -85,7 +85,7 @@ Feature: Every flow sends the right SMS, and an email receipt where configured (
     When customer01 pays 66700 poisha on bill 1234567 of biller DESCO with PIN "1234"
     Then the response status is 200
     And 01711000001 gets the SMS "DESCO বিল (****4567) ৳667.00 পরিশোধ সফল হয়েছে। ফি ৳3.00। TrxID {txnId}"
-    And customer01@example.test gets the email "upay বিল পরিশোধের রসিদ, TrxID {txnId}"
+    And customer01@example.test gets the email "Bits বিল পরিশোধের রসিদ, TrxID {txnId}"
 
   @billpay @mw-adapter-billpay
   Scenario: a bill payment the aggregator refuses tells the payer it failed, without a receipt
@@ -102,7 +102,7 @@ Feature: Every flow sends the right SMS, and an email receipt where configured (
     Then the response status is 202
     And 01711000001 gets the SMS "DESCO বিল (****4567) ৳100.13 পরিশোধ প্রক্রিয়াধীন। ফলাফল SMS-এ জানানো হবে। TrxID {txnId}" within 60 seconds
     And the app shows the transaction as COMPLETED within 120 seconds
-    And customer01@example.test gets the email "upay বিল পরিশোধের রসিদ, TrxID {txnId}"
+    And customer01@example.test gets the email "Bits বিল পরিশোধের রসিদ, TrxID {txnId}"
 
   @addmoney @c2w @mw-adapter-bank
   Scenario: money added from a bank account sends an SMS and an email receipt
@@ -110,8 +110,8 @@ Feature: Every flow sends the right SMS, and an email receipt where configured (
     And the bank confirms debits by callback
     When customer01 adds 50000 poisha from bank account 1234567890123 at c2wbank with PIN "1234"
     Then the app shows the transaction as COMPLETED within 25 seconds
-    And 01711000001 gets the SMS "c2wbank অ্যাকাউন্ট ****0123 থেকে আপনার upay অ্যাকাউন্টে ৳500.00 যোগ হয়েছে। TrxID {txnId}"
-    And customer01@example.test gets the email "upay অ্যাড মানি রসিদ, TrxID {txnId}"
+    And 01711000001 gets the SMS "c2wbank অ্যাকাউন্ট ****0123 থেকে আপনার Bits অ্যাকাউন্টে ৳500.00 যোগ হয়েছে। TrxID {txnId}"
+    And customer01@example.test gets the email "Bits অ্যাড মানি রসিদ, TrxID {txnId}"
 
   @addmoney @c2w @mw-adapter-bank
   Scenario: a debit the bank refuses tells the customer it failed
@@ -128,4 +128,4 @@ Feature: Every flow sends the right SMS, and an email receipt where configured (
     When customer01 adds 50013 poisha from bank account 1234567890123 at c2wbank with PIN "1234"
     Then 01711000001 gets the SMS "c2wbank অ্যাকাউন্ট ****0123 থেকে ৳500.13 যোগ করা প্রক্রিয়াধীন। ফলাফল SMS-এ জানানো হবে। TrxID {txnId}" within 60 seconds
     And the app shows the transaction as COMPLETED within 120 seconds
-    And customer01@example.test gets the email "upay অ্যাড মানি রসিদ, TrxID {txnId}"
+    And customer01@example.test gets the email "Bits অ্যাড মানি রসিদ, TrxID {txnId}"

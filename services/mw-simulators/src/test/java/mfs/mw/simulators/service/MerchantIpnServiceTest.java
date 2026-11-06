@@ -17,7 +17,7 @@ class MerchantIpnServiceTest {
       new MerchantIpnService(Clock.fixed(Instant.parse("2026-11-05T10:00:00Z"), ZoneOffset.UTC), 100);
 
   private int ipn(String id) {
-    return merchant.receive("/merchant/ipn", Map.of("x-upay-ipn-id", id, "x-upay-signature", "ab"), "{\"sessionId\":\"" + id + "\"}");
+    return merchant.receive("/merchant/ipn", Map.of("x-bits-ipn-id", id, "x-bits-signature", "ab"), "{\"sessionId\":\"" + id + "\"}");
   }
 
   @Test
@@ -26,7 +26,7 @@ class MerchantIpnServiceTest {
     assertThat(merchant.received(null)).singleElement().satisfies(r -> {
       assertThat(r.answeredStatus()).isEqualTo(200);
       assertThat(r.ipnId()).isEqualTo("s1");
-      assertThat(r.headers()).containsEntry("x-upay-signature", "ab");
+      assertThat(r.headers()).containsEntry("x-bits-signature", "ab");
       assertThat(r.body()).isEqualTo("{\"sessionId\":\"s1\"}");
       assertThat(r.receivedAt()).isEqualTo(Instant.parse("2026-11-05T10:00:00Z"));
     });

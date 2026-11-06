@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: upay admin API v1 (mw-admin-api)
+  title: Bits admin API v1 (mw-admin-api)
   version: 1.0.0
   description: |
     Operations console API (ticket 36, spec 15). Reached by mw-admin-ui server-side through the

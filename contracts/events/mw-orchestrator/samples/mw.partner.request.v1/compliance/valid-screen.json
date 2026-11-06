@@ -10,7 +10,7 @@
     "operation": "SCREEN",
     "txnType": "REMIT_IN",
     "partner": { "partnerId": "aml-vendor", "productCode": "SANCTIONS" },
-    "partnerTxnRef": "UPAY01933B8E7C1A",
+    "partnerTxnRef": "BITS01933B8E7C1A",
     "creditParty": { "type": "WALLET", "id": "01711000001", "walletType": "CUSTOMER" }
   }
 }

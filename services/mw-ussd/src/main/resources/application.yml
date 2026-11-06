@@ -273,7 +273,7 @@ mw:
         gp:
           host: ${MW_USSD_SMPP_GP_HOST:mw-simulators}
           port: ${MW_USSD_SMPP_GP_PORT:2776}
-          system-id: upay-ussd
+          system-id: bits-ussd
           binds: 2
           enquire-link: 30s
           enquire-link-misses: 3
@@ -286,12 +286,12 @@ mw:
         robi:
           host: ${MW_USSD_SMPP_ROBI_HOST:mw-simulators}
           port: ${MW_USSD_SMPP_ROBI_PORT:2776}
-          system-id: upay-ussd
+          system-id: bits-ussd
         bl:
           host: ${MW_USSD_SMPP_BL_HOST:mw-simulators}
           port: ${MW_USSD_SMPP_BL_PORT:2776}
-          system-id: upay-ussd
+          system-id: bits-ussd
         teletalk:
           host: ${MW_USSD_SMPP_TELETALK_HOST:mw-simulators}
           port: ${MW_USSD_SMPP_TELETALK_PORT:2776}
-          system-id: upay-ussd
+          system-id: bits-ussd

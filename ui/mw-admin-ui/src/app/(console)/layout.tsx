@@ -18,7 +18,7 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
   return (
     <>
       <header className="topbar">
-        <Link className="brand" href="/transactions">upay ops console</Link>
+        <Link className="brand" href="/transactions">Bits ops console</Link>
         <nav>
           <Link href="/transactions">Transactions</Link>
           <Link href="/approvals">Approvals</Link>

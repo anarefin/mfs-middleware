@@ -16,9 +16,9 @@ Feature: USSD over SMPP for GP (SmppUssdTransport)
   Scenario: a P2P over SMPP USSD walks the same menu and moves the money once
     When 01711000001 dials *268# on gp and enters "9, 1, 01711000002, 10, 1, 1234"
     Then the first USSD screens were:
-      | upay\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English |
-      | upay\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা |
-      | Enter recipient upay number                                           |
+      | Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English |
+      | Bits\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা |
+      | Enter recipient Bits number                                           |
       | Enter amount (Tk)                                                     |
       | Send Tk 10.00 to 01711000002?\n1 Confirm\n2 Cancel                    |
       | Enter your PIN                                                        |
@@ -30,7 +30,7 @@ Feature: USSD over SMPP for GP (SmppUssdTransport)
 
   Scenario: a bad number is asked again over SMPP and no money moves
     When 01711000001 dials *268# on gp and enters "9, 1, 12345"
-    Then the USSD session is still open on "Enter a valid mobile number.\nEnter recipient upay number"
+    Then the USSD session is still open on "Enter a valid mobile number.\nEnter recipient Bits number"
     And no core balance changed
 
   Scenario: the binds are kept alive with enquire_link
@@ -40,10 +40,10 @@ Feature: USSD over SMPP for GP (SmppUssdTransport)
     When the SMPP USSD gateway drops every bind
     Then mw-ussd binds to the SMPP USSD gateway again
     When 01711000001 dials *268# on gp and enters "9, 1"
-    Then the USSD session is still open on "Enter recipient upay number"
+    Then the USSD session is still open on "Enter recipient Bits number"
 
   Scenario: throttling, queue full and generic_nack are retried after a delay
     Given the SMPP USSD gateway refuses the next screens with "throttled, queue full, generic_nack"
     When 01711000001 dials *268# on gp and enters "9, 1"
-    Then the USSD session is still open on "Enter recipient upay number"
+    Then the USSD session is still open on "Enter recipient Bits number"
     And the SMPP USSD gateway refused 3 screens

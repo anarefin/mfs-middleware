@@ -36,7 +36,7 @@ and keep `scripts/test/test_service_template.sh` green.
 | Resilience4j defaults (CB 60 s window / 50 calls / 50% failed or slow / 30 s open / 5 probes, bulkhead 200, time limiter 30 s, retry 2x 200 ms -> 1 s jittered, idempotent calls only) | `application.yml` (`resilience4j`) | 19.2 |
 | Own schema `service_template` (renamed by scaffold to the service name in snake case; services may pick the spec 16.2 name), Flyway on start from `db/migration/V<n>__*.sql` | `application.yml`, `src/main/resources/db/migration` | 16.2, 16.4 |
 | Own type for `mw.config.changed.v1`, checked against `contracts/` via `mwContractsDir` | `dto/ConfigChangedEvent`, `ConfigChangedEventSchemaTest` | 20.4, 22.1 |
-| Test-side schema loader: reads every `https://contracts.upay.mw/` `$id` from `mwContractsDir`, so `$ref`s between envelope, payload and `common/` schemas resolve offline | `src/test/.../contracts/ContractSchemas` | 4.3, 22.1 |
+| Test-side schema loader: reads every `https://contracts.bits.mw/` `$id` from `mwContractsDir`, so `$ref`s between envelope, payload and `common/` schemas resolve offline | `src/test/.../contracts/ContractSchemas` | 4.3, 22.1 |
 
 Tests that start the context import `TestInfrastructure` (PostgreSQL 18 + Kafka
 Testcontainers, JVM-wide singletons, not Spring beans: a closed context must not stop them).

@@ -112,8 +112,8 @@ class UssdEngineTest {
 
   @Test
   void p2pMenuWalkInBangla() throws Exception {
-    assertThat(dial("s1").text()).isEqualTo("upay\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English");
-    assertThat(send("s1", "1").text()).isEqualTo("প্রাপকের upay নম্বর দিন");
+    assertThat(dial("s1").text()).isEqualTo("Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English");
+    assertThat(send("s1", "1").text()).isEqualTo("প্রাপকের Bits নম্বর দিন");
     assertThat(send("s1", PAYEE).text()).isEqualTo("টাকার পরিমাণ দিন");
     assertThat(send("s1", "500").text()).isEqualTo("01812345678 নম্বরে 500.00 টাকা পাঠাবেন?\n1 নিশ্চিত করুন\n2 বাতিল");
     assertThat(send("s1", "1").text()).isEqualTo("আপনার পিন দিন");
@@ -136,8 +136,8 @@ class UssdEngineTest {
   @Test
   void p2pMenuWalkInEnglishAfterTheLanguageSwitch() {
     dial("s2");
-    assertThat(send("s2", "9").text()).isEqualTo("upay\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা");
-    assertThat(send("s2", "1").text()).isEqualTo("Enter recipient upay number");
+    assertThat(send("s2", "9").text()).isEqualTo("Bits\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা");
+    assertThat(send("s2", "1").text()).isEqualTo("Enter recipient Bits number");
     assertThat(send("s2", "8801812345678").text()).isEqualTo("Enter amount (Tk)");
     assertThat(send("s2", "120.5").text()).isEqualTo("Send Tk 120.50 to 01812345678?\n1 Confirm\n2 Cancel");
     assertThat(send("s2", "1").text()).isEqualTo("Enter your PIN");
@@ -179,8 +179,8 @@ class UssdEngineTest {
     dial("s5");
     send("s5", "9");
     send("s5", "1");
-    assertThat(send("s5", "12345").text()).isEqualTo("Enter a valid mobile number.\nEnter recipient upay number");
-    assertThat(send("s5", CUSTOMER).text()).isEqualTo("Enter a valid mobile number.\nEnter recipient upay number");
+    assertThat(send("s5", "12345").text()).isEqualTo("Enter a valid mobile number.\nEnter recipient Bits number");
+    assertThat(send("s5", CUSTOMER).text()).isEqualTo("Enter a valid mobile number.\nEnter recipient Bits number");
     assertThat(send("s5", PAYEE).text()).isEqualTo("Enter amount (Tk)");
     assertThat(send("s5", "5").text()).isEqualTo("Enter an amount from Tk 10 to 25000.\nEnter amount (Tk)");
     assertThat(send("s5", "abc").text()).isEqualTo("Enter an amount from Tk 10 to 25000.\nEnter amount (Tk)");
@@ -191,7 +191,7 @@ class UssdEngineTest {
   @Test
   void anUnknownMenuChoiceIsPromptedAgain() {
     dial("s6");
-    assertThat(send("s6", "7").text()).startsWith("ভুল ইনপুট।\nupay\n1 সেন্ড মানি").endsWith("0 আরও");
+    assertThat(send("s6", "7").text()).startsWith("ভুল ইনপুট।\nBits\n1 সেন্ড মানি").endsWith("0 আরও");
   }
 
   @Test

@@ -22,7 +22,7 @@ class ResultSignerTest {
   void signsTheCanonicalResultWithHmacSha256Hex() {
     // expected value computed independently with openssl dgst -sha256 -hmac (see the contract)
     assertThat(ResultSigner.sign(SECRET, PAID))
-        .isEqualTo("db450e80c1add5a10490587ab214973a215cc521f2fd708791ad394baefc2c24");
+        .isEqualTo("ba07ab802a359bea5d9f442dc86ea0a0cb72732ab6a8a21aae3f2d5d4199c1d7");
   }
 
   @Test
@@ -49,7 +49,7 @@ class ResultSignerTest {
         .containsEntry("amount", "2500")
         .containsEntry("currency", "BDT")
         .containsEntry("ts", "1793700000")
-        .containsEntry("signature", "db450e80c1add5a10490587ab214973a215cc521f2fd708791ad394baefc2c24")
+        .containsEntry("signature", "ba07ab802a359bea5d9f442dc86ea0a0cb72732ab6a8a21aae3f2d5d4199c1d7")
         .doesNotContainKey("errorCode");
     assertThat(ResultSigner.verify(SECRET, q)).isTrue();
   }

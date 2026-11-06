@@ -10,7 +10,7 @@
     "operation": "STATUS_QUERY",
     "txnType": "TOPUP",
     "partner": { "partnerId": "gp", "productCode": "PREPAID" },
-    "partnerTxnRef": "UPAY01933B8E7C1A",
+    "partnerTxnRef": "BITS01933B8E7C1A",
     "originalPartnerRef": "GP-778899"
   }
 }

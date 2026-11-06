@@ -9,7 +9,7 @@ vc_schema() {
   cat >"$dir/$2.schema.json" <<EOF
 {
   "\$schema": "https://json-schema.org/draft/2020-12/schema",
-  "\$id": "https://contracts.upay.mw/events/$1/$2.schema.json",
+  "\$id": "https://contracts.bits.mw/events/$1/$2.schema.json",
   "title": "$2",
   "type": "object",
   "required": ["schemaVersion"],

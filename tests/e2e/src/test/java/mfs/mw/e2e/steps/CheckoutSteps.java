@@ -29,7 +29,7 @@ import mfs.mw.e2e.support.Waits;
  */
 public class CheckoutSteps {
 
-  private static final Pattern OTP = Pattern.compile("Your upay code is ([0-9]{6}) to pay Tk ([0-9.]+) to Demo Shop");
+  private static final Pattern OTP = Pattern.compile("Your Bits code is ([0-9]{6}) to pay Tk ([0-9.]+) to Demo Shop");
 
   private final ScenarioState state;
   private String orderId;

@@ -40,7 +40,7 @@ public final class ChangeRequestMapper {
   public static final String UNLOCK_TXN_ID = "unlockTxnId";
 
   /** The organisation a REVERSAL names as its parties (no customer data in the request). */
-  static final ReversalRequest.Party OPS = new ReversalRequest.Party("ORG", "upay-ops");
+  static final ReversalRequest.Party OPS = new ReversalRequest.Party("ORG", "bits-ops");
 
   private ChangeRequestMapper() {}
 

@@ -2,7 +2,7 @@
 # rules plus an allow-list of the obviously fake test fixtures they flag. Each entry is narrow
 # (the exact fixture shape), so a real secret next to it is still found. Decisions:
 # docs/security-findings.md.
-title = "upay MFS middleware"
+title = "Bits MFS middleware"
 
 [extend]
 useDefault = true

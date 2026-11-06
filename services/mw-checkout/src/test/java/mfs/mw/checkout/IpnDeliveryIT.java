@@ -166,9 +166,9 @@ class IpnDeliveryIT {
     for (int i = 0; i < got.size(); i++) {
       Received r = got.get(i);
       assertThat(r.headers()).containsEntry("content-type", "application/json")
-          .containsEntry("x-upay-attempt", Integer.toString(i + 1))
-          .containsEntry("x-upay-ipn-id", s.sessionId().toString());
-      assertThat(IpnSigner.verify(SECRET, r.headers().get("x-upay-timestamp"), r.body(), r.headers().get("x-upay-signature")))
+          .containsEntry("x-bits-attempt", Integer.toString(i + 1))
+          .containsEntry("x-bits-ipn-id", s.sessionId().toString());
+      assertThat(IpnSigner.verify(SECRET, r.headers().get("x-bits-timestamp"), r.body(), r.headers().get("x-bits-signature")))
           .as("attempt %d is signed", i + 1).isTrue();
       assertThat(r.body()).as("every attempt sends the same body").isEqualTo(got.getFirst().body());
     }
@@ -245,7 +245,7 @@ class IpnDeliveryIT {
   // ---- helpers ------------------------------------------------------------------------------
 
   List<Received> mine(CheckoutSession s) {
-    return received.stream().filter(r -> s.sessionId().toString().equals(r.headers().get("x-upay-ipn-id"))).toList();
+    return received.stream().filter(r -> s.sessionId().toString().equals(r.headers().get("x-bits-ipn-id"))).toList();
   }
 
   /** A session the customer is paying (OTP checked, MERCHANT_PAY sent). */

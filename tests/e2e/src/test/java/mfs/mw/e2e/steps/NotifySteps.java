@@ -37,7 +37,7 @@ public class NotifySteps {
             l -> !l.isEmpty() && l.getFirst().dlrStatus() != null, Duration.ofSeconds(seconds));
     assertThat(got).as("SMS to %s reading %s (received: %s)", msisdn, text, Smsc.messagesTo(msisdn)).hasSize(1);
     Smsc.Sms sms = got.getFirst();
-    assertThat(sms.source()).isEqualTo("upay");
+    assertThat(sms.source()).isEqualTo("Bits");
     assertThat(sms.dlrStatus()).isEqualTo("DELIVRD");
   }
 

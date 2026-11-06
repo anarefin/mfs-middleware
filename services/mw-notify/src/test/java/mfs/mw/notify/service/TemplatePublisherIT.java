@@ -88,7 +88,7 @@ class TemplatePublisherIT {
     return new ConfigChangedEvent(
         1, "template/" + code + "/SMS/en", ConfigChangedEvent.ConfigType.TEMPLATE, ConfigChangedEvent.Change.UPSERT,
         version,
-        Map.of("code", code, "channel", "SMS", "locale", "en", "version", version, "body", body, "senderId", "upay",
+        Map.of("code", code, "channel", "SMS", "locale", "en", "version", version, "body", body, "senderId", "Bits",
             "validFrom", validFrom.toString()),
         T0, "ops-maker01", "ops-checker01", "corr-it");
   }

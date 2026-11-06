@@ -13,7 +13,7 @@ const MENU: Menu = {
   messages: MESSAGES,
   nodes: {
     main: {
-      type: "MENU", text: t("upay", "upay"),
+      type: "MENU", text: t("Bits", "Bits"),
       options: [
         { key: "1", label: t("সেন্ড মানি", "Send Money"), next: "p2p.recipient" },
         { key: "9", label: t("English", "বাংলা"), next: "main", switchLanguage: true },
@@ -46,7 +46,7 @@ const MENU: Menu = {
 describe("USSD preview walk (mw-ussd UssdEngine rules, no flow is run)", () => {
   it("walks Send Money in Bangla to the success screen", () => {
     let p = startPreview(MENU, { msisdn: "01712345678" });
-    expect(p.screen).toBe("upay\n1 সেন্ড মানি\n9 English");
+    expect(p.screen).toBe("Bits\n1 সেন্ড মানি\n9 English");
     p = stepPreview(p, "1");
     expect(p.screen).toBe("প্রাপকের নম্বর দিন");
     p = stepPreview(p, "+880 1812-345321");
@@ -72,7 +72,7 @@ describe("USSD preview walk (mw-ussd UssdEngine rules, no flow is run)", () => {
   it("switches language, and an ACTION may fail or stay processing", () => {
     let p = stepPreview(startPreview(MENU, { msisdn: "01712345678" }), "9");
     expect(p.lang).toBe("en");
-    expect(p.screen).toBe("upay\n1 Send Money\n9 বাংলা");
+    expect(p.screen).toBe("Bits\n1 Send Money\n9 বাংলা");
     for (const i of ["1", "01812345321", "25000", "1"]) p = stepPreview(p, i);
     const failed = stepPreview(p, "1234", "FAILED");
     expect(failed.screen).toBe("Failed: Preview: the core refused");

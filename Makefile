@@ -1,4 +1,4 @@
-# upay MFS middleware: local quality gate (no CI/CD in the MVP, spec "MVP build plan").
+# Bits MFS middleware: local quality gate (no CI/CD in the MVP, spec "MVP build plan").
 #
 # Every target works for all modules, or for one with M=<module> (name such as
 # mw-orchestrator, or a path such as services/mw-orchestrator).

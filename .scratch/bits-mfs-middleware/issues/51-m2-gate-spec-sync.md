@@ -1,6 +1,6 @@
 # 51: M2 gate spec sync
 
-**What to build:** Update `spec/upay-mfs-middleware-spec.md` so it matches the M2 gate decisions (2026-11-04) and what tickets 07–23 built. This ticket changes the spec only. Every point below is a decision already taken, so record it as a decision and do not reopen it.
+**What to build:** Update `spec/bits-mfs-middleware-spec.md` so it matches the M2 gate decisions (2026-11-04) and what tickets 07–23 built. This ticket changes the spec only. Every point below is a decision already taken, so record it as a decision and do not reopen it.
 
 1. **§7.2 state table, new rows:**
    - CommitFailed / ReleaseFailed in COMMITTING / RELEASING go to MANUAL_REVIEW with `MW-CORE-<reason>` and a Sev-1 alert.

@@ -80,7 +80,7 @@ class UssdSmppGatewayIT {
     post("/sim/ussdgw/smpp/scenario", "{}");
     session = new SMPPSession();
     session.setMessageReceiverListener(new Esme());
-    session.connectAndBind("127.0.0.1", SMPP_PORT, new BindParameter(BindType.BIND_TRX, "upay-ussd", "", "",
+    session.connectAndBind("127.0.0.1", SMPP_PORT, new BindParameter(BindType.BIND_TRX, "bits-ussd", "", "",
         TypeOfNumber.UNKNOWN, NumberingPlanIndicator.UNKNOWN, null), 5000);
   }
 

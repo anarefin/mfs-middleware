@@ -1,6 +1,6 @@
 {
   "realm": "services",
-  "displayName": "upay internal services (client credentials)",
+  "displayName": "Bits internal services (client credentials)",
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": false,

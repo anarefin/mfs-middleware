@@ -10,7 +10,7 @@
     "operation": "PAY",
     "txnType": "ADD_MONEY_BANK",
     "partner": { "partnerId": "c2wbank", "productCode": "C2W" },
-    "partnerTxnRef": "UPAY01933B8E7C1A7B2E9F3D2A4C5E6F7A9E",
+    "partnerTxnRef": "BITS01933B8E7C1A7B2E9F3D2A4C5E6F7A9E",
     "amount": { "valueMinor": 50000, "currency": "BDT" },
     "debitParty": { "type": "BANK_ACCOUNT", "id": "1234567890123" },
     "creditParty": { "type": "WALLET", "id": "01711000001", "walletType": "CUSTOMER" }

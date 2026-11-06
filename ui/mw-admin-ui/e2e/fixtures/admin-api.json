@@ -169,7 +169,7 @@
             "nodes": {
               "main": {
                 "type": "MENU",
-                "text": { "bn": "upay", "en": "upay" },
+                "text": { "bn": "Bits", "en": "Bits" },
                 "options": [
                   { "key": "1", "label": { "bn": "সেন্ড মানি", "en": "Send Money" }, "next": "p2p.recipient" },
                   { "key": "9", "label": { "bn": "English", "en": "বাংলা" }, "next": "main", "switchLanguage": true }
@@ -177,7 +177,7 @@
               },
               "p2p.recipient": {
                 "type": "INPUT",
-                "text": { "bn": "প্রাপকের upay নম্বর দিন", "en": "Enter recipient upay number" },
+                "text": { "bn": "প্রাপকের Bits নম্বর দিন", "en": "Enter recipient Bits number" },
                 "validator": { "type": "msisdn", "notSelf": true, "error": { "bn": "সঠিক মোবাইল নম্বর দিন।", "en": "Enter a valid mobile number." } },
                 "store": "recipient",
                 "next": "p2p.amount"
@@ -234,7 +234,7 @@
           "locale": "bn",
           "version": 1,
           "body": "এজেন্ট {{counterparty}}-এর কাছে {{amount}} টাকা ক্যাশ আউট সফল। TxnID {{txnId}}",
-          "senderId": "upay",
+          "senderId": "Bits",
           "validFrom": "2026-11-03T09:00:00.000Z"
         }
       }

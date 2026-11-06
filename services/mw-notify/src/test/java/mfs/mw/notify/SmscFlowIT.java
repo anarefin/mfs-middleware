@@ -127,7 +127,7 @@ class SmscFlowIT {
       assertThat(r.dataCoding()).isEqualTo((byte) 0);
       assertThat(SmscStub.text(r)).startsWith("You have sent Tk 500.00 to " + receiver.substring(0, 4) + "****"
           + receiver.substring(8));
-      assertThat(r.source()).isEqualTo("upay");
+      assertThat(r.source()).isEqualTo("Bits");
     });
     assertThat(SmscStub.text(toReceiver.getFirst()))
         .startsWith("You have received Tk 500.00 from " + sender.substring(0, 4) + "****");

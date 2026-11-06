@@ -34,10 +34,10 @@ public class IpnDeliveryService {
 
   private static final Logger log = LoggerFactory.getLogger(IpnDeliveryService.class);
 
-  public static final String HEADER_SIGNATURE = "X-Upay-Signature";
-  public static final String HEADER_TIMESTAMP = "X-Upay-Timestamp";
-  public static final String HEADER_IPN_ID = "X-Upay-Ipn-Id";
-  public static final String HEADER_ATTEMPT = "X-Upay-Attempt";
+  public static final String HEADER_SIGNATURE = "X-Bits-Signature";
+  public static final String HEADER_TIMESTAMP = "X-Bits-Timestamp";
+  public static final String HEADER_IPN_ID = "X-Bits-Ipn-Id";
+  public static final String HEADER_ATTEMPT = "X-Bits-Attempt";
 
   private final IpnDeliveryRepository deliveries;
   private final MerchantIpnClient client;

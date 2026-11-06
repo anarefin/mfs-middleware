@@ -48,7 +48,7 @@ export function TemplateEditor({ templateKey, initial, action }: Props) {
               <textarea name="body" lang={lang} dir="auto" rows={5} value={body} onChange={(e) => setBody(e.target.value)} />
             </label>
             {email ? <label>HTML body (optional)<textarea name="htmlBody" rows={5} value={htmlBody} onChange={(e) => setHtmlBody(e.target.value)} /></label> : null}
-            <label>Sender id<input name="senderId" maxLength={11} value={senderId} onChange={(e) => setSenderId(e.target.value)} placeholder="upay" /></label>
+            <label>Sender id<input name="senderId" maxLength={11} value={senderId} onChange={(e) => setSenderId(e.target.value)} placeholder="Bits" /></label>
             {action ? (
               <>
                 <label>Valid from (UTC, empty = at approval)<input type="datetime-local" name="validFrom" /></label>

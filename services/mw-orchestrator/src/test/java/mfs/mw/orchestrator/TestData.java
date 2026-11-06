@@ -125,7 +125,7 @@ public final class TestData {
         "corr-" + txnId.substring(0, 8),
         "SYSTEM",
         "REVERSAL",
-        new Party("ORG", "upay-ops", null, null),
+        new Party("ORG", "bits-ops", null, null),
         new Party("WALLET", "01711000002", null, "CUSTOMER"),
         new Party("WALLET", "01711000001", null, "CUSTOMER"),
         Amount.bdt(amountMinor),

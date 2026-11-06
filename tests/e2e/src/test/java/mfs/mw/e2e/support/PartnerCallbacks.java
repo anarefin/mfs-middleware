@@ -27,9 +27,9 @@ public final class PartnerCallbacks {
 
   private PartnerCallbacks() {}
 
-  /** Our partner reference for a transaction ({@code UPAY} + the txnId's hex, upper case). */
+  /** Our partner reference for a transaction ({@code BITS} + the txnId's hex, upper case). */
   public static String reference(String txnId) {
-    return "UPAY" + txnId.replace("-", "").toUpperCase(Locale.ROOT);
+    return "BITS" + txnId.replace("-", "").toUpperCase(Locale.ROOT);
   }
 
   /** The aggregator's callback body for a reference. */

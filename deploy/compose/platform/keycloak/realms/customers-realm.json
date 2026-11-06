@@ -1,6 +1,6 @@
 {
   "realm": "customers",
-  "displayName": "upay customers and apps",
+  "displayName": "Bits customers and apps",
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": false,
@@ -25,7 +25,7 @@
   "clients": [
     {
       "clientId": "mw-app",
-      "name": "upay mobile apps",
+      "name": "Bits mobile apps",
       "enabled": true,
       "publicClient": true,
       "standardFlowEnabled": true,

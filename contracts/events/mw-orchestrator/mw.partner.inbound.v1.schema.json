@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.upay.mw/events/mw-orchestrator/mw.partner.inbound.v1.schema.json",
+  "$id": "https://contracts.bits.mw/events/mw-orchestrator/mw.partner.inbound.v1.schema.json",
   "title": "mw.partner.inbound.v1",
   "description": "Partner-initiated message (callback, inbound remittance, NPSB credit) published by an adapter after signature check and dedup on partnerRef (spec 6.2, 11.2). Key: txnId (minted by the adapter for new inbound money). Owned by mw-orchestrator, its only consumer. The payload is picked by family.",
   "type": "object",

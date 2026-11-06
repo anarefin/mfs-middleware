@@ -10,7 +10,7 @@
     "operation": "INQUIRY",
     "txnType": "BILL_PAY",
     "partner": { "partnerId": "billpay-agg-1", "productCode": "ELECTRICITY", "billerCode": "DESCO" },
-    "partnerTxnRef": "UPAY01933B8E7C1A",
+    "partnerTxnRef": "BITS01933B8E7C1A",
     "attributes": { "billNumber": "123456789" }
   }
 }

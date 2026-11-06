@@ -123,7 +123,7 @@ describe("stub admin API answers match admin.v1", () => {
     expect(versionAnswer(store, MENU, 2).body.status).toBe("PUBLISHED");
     check("ContentVersion", versionAnswer(store, MENU, 2).body);
 
-    const tpl = templateProposeAnswer(store, "TXN_CASH_OUT_SENT", "SMS", "bn", { body: "নতুন {{amount}}", senderId: "upay", reason: "wording" }, maker);
+    const tpl = templateProposeAnswer(store, "TXN_CASH_OUT_SENT", "SMS", "bn", { body: "নতুন {{amount}}", senderId: "Bits", reason: "wording" }, maker);
     check("ChangeRequest", tpl.body);
     check("ChangeRequest", rejectAnswer(store, tpl.body.id, { reason: "typo" }, checker).body);
     expect(versionAnswer(store, "template/TXN_CASH_OUT_SENT/SMS/bn", 2).body.status).toBe("REJECTED");

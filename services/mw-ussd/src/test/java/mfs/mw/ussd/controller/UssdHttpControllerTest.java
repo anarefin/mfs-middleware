@@ -45,13 +45,13 @@ class UssdHttpControllerTest {
 
   @Test
   void aStepIsHandedToTheEngineAndAnsweredWithTheScreenAndTheContinueFlag() {
-    when(engine.handle(any())).thenReturn(new UssdResponse("s-1", "upay\n1 Send Money", false));
+    when(engine.handle(any())).thenReturn(new UssdResponse("s-1", "Bits\n1 Send Money", false));
 
     MvcTestResult r =
         post("robi", "{\"sessionId\":\"s-1\",\"msisdn\":\"8801712345678\",\"serviceCode\":\"*268#\",\"input\":\"\",\"type\":\"BEGIN\"}");
 
     assertThat(r).hasStatusOk();
-    assertThat(r).bodyJson().extractingPath("$.message").isEqualTo("upay\n1 Send Money");
+    assertThat(r).bodyJson().extractingPath("$.message").isEqualTo("Bits\n1 Send Money");
     assertThat(r).bodyJson().extractingPath("$.flag").isEqualTo("CON");
     assertThat(r).bodyJson().extractingPath("$.sessionId").isEqualTo("s-1");
     ArgumentCaptor<UssdRequest> req = ArgumentCaptor.forClass(UssdRequest.class);

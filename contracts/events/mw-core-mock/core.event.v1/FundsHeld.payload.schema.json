@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.upay.mw/events/mw-core-mock/core.event.v1/FundsHeld.payload.schema.json",
+  "$id": "https://contracts.bits.mw/events/mw-core-mock/core.event.v1/FundsHeld.payload.schema.json",
   "title": "core.event.v1 FundsHeld payload",
   "description": "Success of HoldFunds: the hold to commit or release later.",
   "type": "object",

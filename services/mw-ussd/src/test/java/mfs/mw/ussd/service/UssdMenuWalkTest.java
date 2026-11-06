@@ -117,9 +117,9 @@ class UssdMenuWalkTest {
   @Test
   void theMainMenuOffersEveryUssdFlowInBothLanguages() {
     assertThat(dial("m").text())
-        .isEqualTo("upay\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English");
+        .isEqualTo("Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English");
     assertThat(send("m", "9").text())
-        .isEqualTo("upay\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা");
+        .isEqualTo("Bits\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা");
   }
 
   // --- CASH_OUT (customer to agent) ---
@@ -127,7 +127,7 @@ class UssdMenuWalkTest {
   @Test
   void cashOutToAnAgentInBangla() throws Exception {
     dial("c1");
-    assertThat(send("c1", "2").text()).isEqualTo("এজেন্টের upay নম্বর দিন");
+    assertThat(send("c1", "2").text()).isEqualTo("এজেন্টের Bits নম্বর দিন");
     assertThat(send("c1", AGENT).text()).isEqualTo("টাকার পরিমাণ দিন");
     assertThat(send("c1", "500").text())
         .isEqualTo("এজেন্ট 01812345678: 500.00 টাকা ক্যাশ আউট?\n1 নিশ্চিত করুন\n2 বাতিল");
@@ -149,8 +149,8 @@ class UssdMenuWalkTest {
   void cashOutToAnAgentInEnglish() {
     dial("c2");
     send("c2", "9");
-    assertThat(send("c2", "2").text()).isEqualTo("Enter agent upay number");
-    assertThat(send("c2", CUSTOMER).text()).isEqualTo("Enter a valid mobile number.\nEnter agent upay number");
+    assertThat(send("c2", "2").text()).isEqualTo("Enter agent Bits number");
+    assertThat(send("c2", CUSTOMER).text()).isEqualTo("Enter a valid mobile number.\nEnter agent Bits number");
     assertThat(send("c2", "8801812345678").text()).isEqualTo("Enter amount (Tk)");
     assertThat(send("c2", "20").text()).isEqualTo("Enter an amount from Tk 50 to 25000.\nEnter amount (Tk)");
     assertThat(send("c2", "500").text()).isEqualTo("Cash out Tk 500.00 at agent 01812345678?\n1 Confirm\n2 Cancel");

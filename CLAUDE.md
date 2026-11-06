@@ -1,6 +1,6 @@
-# upay MFS middleware: repo conventions
+# Bits MFS middleware: repo conventions
 
-Spec: `spec/upay-mfs-middleware-spec.md`. This file is the short form of the rules every
+Spec: `spec/bits-mfs-middleware-spec.md`. This file is the short form of the rules every
 module follows. Each service also has its own `CLAUDE.md` (responsibilities, contracts
 owned, contracts used).
 

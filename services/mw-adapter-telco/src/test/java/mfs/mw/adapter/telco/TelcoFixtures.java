@@ -47,7 +47,7 @@ public final class TelcoFixtures {
             operation,
             "TOPUP",
             new PartnerRequest.PartnerRef("gp", "PREPAID", null),
-            "UPAY-IGNORED",
+            "BITS-IGNORED",
             new PartnerRequest.Amount(valueMinor, "BDT"),
             new PartnerRequest.Party("WALLET", "01711000002", null, null),
             new PartnerRequest.Party("MSISDN", msisdn, null, null),

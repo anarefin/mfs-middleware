@@ -15,14 +15,14 @@ import java.util.stream.Stream;
  * Loads contract schemas from the root {@code contracts/} folder, which reaches this module only
  * through the {@code mwContractsDir} Gradle property (spec 4.3 rule 2), in tests only.
  *
- * <p>Every schema has an absolute {@code $id} under {@code https://contracts.upay.mw/} that mirrors
+ * <p>Every schema has an absolute {@code $id} under {@code https://contracts.bits.mw/} that mirrors
  * its path, and refers to others with relative {@code $ref}s (envelope -> per-message payload ->
  * {@code common/defs.v1}). The registry reads every id under that prefix from {@code mwContractsDir}, so refs resolve
  * from disk and nothing is fetched over the network. See contracts/README.md.
  */
 public final class ContractSchemas {
 
-  public static final String ID_BASE = "https://contracts.upay.mw/";
+  public static final String ID_BASE = "https://contracts.bits.mw/";
 
   private static final SchemaRegistry REGISTRY =
       SchemaRegistry.withDefaultDialect(

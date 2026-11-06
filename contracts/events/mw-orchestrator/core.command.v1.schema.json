@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.upay.mw/events/mw-orchestrator/core.command.v1.schema.json",
+  "$id": "https://contracts.bits.mw/events/mw-orchestrator/core.command.v1.schema.json",
   "title": "core.command.v1",
   "description": "Command from mw-orchestrator to the core (spec 6.3; UnlockWallet from mw-admin-api after maker-checker approval, ticket 52, its txnId a fresh UUIDv7 of the unlock), on core.wallet.command.v1 and core.payment.command.v1. Key: txnId. Idempotent on commandId. The payload is picked by commandType; ValidateTransaction, HoldFunds and PostTransfer carry payload.encryptedPin, which the middleware never decrypts.",
   "type": "object",

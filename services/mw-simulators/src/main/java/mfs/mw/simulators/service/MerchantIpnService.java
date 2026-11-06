@@ -37,7 +37,7 @@ public class MerchantIpnService {
   /** Handles one IPN: the status to answer. */
   public synchronized int receive(String path, Map<String, String> headers, String body) {
     int status = 200;
-    String ipnId = headers.get("x-upay-ipn-id");
+    String ipnId = headers.get("x-bits-ipn-id");
     if (scenario.appliesTo(ipnId)) {
       status = scenario.failStatusOrDefault();
       scenario = new MerchantIpnScenario(scenario.failNext() - 1, scenario.failStatus(), scenario.ipnId());
@@ -57,7 +57,7 @@ public class MerchantIpnService {
     return scenario;
   }
 
-  /** What was received, oldest first; only IPNs with this {@code X-Upay-Ipn-Id} when given. */
+  /** What was received, oldest first; only IPNs with this {@code X-Bits-Ipn-Id} when given. */
   public synchronized List<ReceivedIpn> received(String ipnId) {
     return received.stream().filter(r -> ipnId == null || ipnId.equals(r.ipnId())).toList();
   }

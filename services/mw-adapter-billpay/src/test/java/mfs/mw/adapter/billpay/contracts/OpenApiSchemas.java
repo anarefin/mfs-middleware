@@ -18,7 +18,7 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
  */
 public final class OpenApiSchemas {
 
-  static final String ID_BASE = "https://openapi.upay.mw/";
+  static final String ID_BASE = "https://openapi.bits.mw/";
 
   private static final JsonMapper JSON = JsonMapper.builder().build();
   private static final YAMLMapper YAML = YAMLMapper.builder().build();

@@ -64,7 +64,7 @@ class ProducedContractsTest {
     PartnerReplyMapper mapper = new PartnerReplyMapper(CLOCK);
     PartnerRequest pay = BillpayFixtures.pay(TXN_ID, BillpayFixtures.BILL, 66_700);
     PartnerRequest query = BillpayFixtures.statusQuery(TXN_ID);
-    String ref = "UPAY01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
+    String ref = "BITS01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
     List<PartnerReply> replies =
         List.of(
             mapper.toReply(pay, ref, new PartnerResponse.Success("AGG-445566", "00", Map.of())),
@@ -98,7 +98,7 @@ class ProducedContractsTest {
   static List<Outbox.Record> partnerInbound(Outbox outbox) {
     PartnerInboundMapper mapper = new PartnerInboundMapper();
     PartnerConfig config = PartnerFrameworkSeeds.billagg();
-    String ref = "UPAY01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
+    String ref = "BITS01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
     Instant now = CLOCK.instant();
     List<PartnerInbound> events =
         List.of(

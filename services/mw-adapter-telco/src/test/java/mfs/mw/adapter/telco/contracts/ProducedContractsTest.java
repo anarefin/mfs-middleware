@@ -57,7 +57,7 @@ class ProducedContractsTest {
     PartnerReplyMapper mapper = new PartnerReplyMapper(CLOCK);
     PartnerRequest pay = TelcoFixtures.pay(TXN_ID, "01711000001", 2000);
     PartnerRequest query = TelcoFixtures.statusQuery(TXN_ID);
-    String ref = "UPAY01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
+    String ref = "BITS01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
     List<PartnerReply> replies =
         List.of(
             mapper.toReply(pay, ref, new PartnerResponse.Success("GP-778899", "00", Map.of())),

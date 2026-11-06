@@ -155,7 +155,7 @@ public class PartnerInboundService {
    * ticket 22): a valid signature only proves which partner sent it, so the partner, the family,
    * the flow's partner leg and, once one is stored, the partner reference must all match the
    * transaction; and only SUCCESS, FAILED and PENDING are outcomes. The reference matches when it
-   * is the stored partner reference or our own reference for this transaction ({@code UPAY} + its
+   * is the stored partner reference or our own reference for this transaction ({@code BITS} + its
    * txnId, from which the adapter resolved the txnId).
    */
   private Optional<String> mismatch(TransactionRecord rec, PartnerInbound in) {

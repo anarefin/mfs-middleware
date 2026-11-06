@@ -10,7 +10,7 @@
     "operation": "PAY",
     "txnType": "TOPUP",
     "partner": { "partnerId": "gp", "productCode": "PREPAID" },
-    "partnerTxnRef": "UPAY01933B8E7C1A",
+    "partnerTxnRef": "BITS01933B8E7C1A",
     "amount": { "valueMinor": 2000, "currency": "BDT" },
     "debitParty": { "type": "WALLET", "id": "01711000001" },
     "creditParty": { "type": "MSISDN", "id": "01711000001" }

@@ -42,7 +42,7 @@ class ProducedContractsTest {
 
   static MessageRecord message(String messageId, String txnId, String correlationId, String channel, int attempts) {
     return new MessageRecord(messageId, txnId, correlationId, channel, "01711000001", "TXN_P2P_SENT", 1, "bn",
-        "TXN", "upay", "body", null, 1, "QUEUED", attempts, null, AT.plusSeconds(3600), null,
+        "TXN", "Bits", "body", null, 1, "QUEUED", attempts, null, AT.plusSeconds(3600), null,
         "EMAIL".equals(channel) ? "a@example.test" : null, null, null);
   }
 

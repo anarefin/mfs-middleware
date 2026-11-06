@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.upay.mw/events/mw-orchestrator/mw.partner.inbound.v1/shared.payload.schema.json",
+  "$id": "https://contracts.bits.mw/events/mw-orchestrator/mw.partner.inbound.v1/shared.payload.schema.json",
   "title": "mw.partner.inbound.v1 shared payload",
   "description": "Partner-initiated message received by an adapter of any family (one payload shared by all families until one needs its own). A CALLBACK carries the final outcome of an earlier request; REMITTANCE and NPSB_CREDIT carry new inbound money.",
   "type": "object",

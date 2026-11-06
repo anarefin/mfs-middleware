@@ -205,7 +205,7 @@ class TopupSagaIT {
     assertThat(request.path("family").asString()).isEqualTo("telco");
     assertThat(request.path("requestId").asString())
         .isEqualTo(java.util.UUID.nameUUIDFromBytes((txn + ":PAY").getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString());
-    assertThat(request.path("payload").path("partnerTxnRef").asString()).isEqualTo("UPAY" + txn.replace("-", "").toUpperCase());
+    assertThat(request.path("payload").path("partnerTxnRef").asString()).isEqualTo("BITS" + txn.replace("-", "").toUpperCase());
     assertThat(request.path("deadlineAt").asString()).isEqualTo(TestData.NOW.plusSeconds(30).toString());
     assertThat(request.path("payload").path("operation").asString()).isEqualTo("PAY");
     assertThat(request.path("payload").path("partner").path("partnerId").asString()).isEqualTo("gp");

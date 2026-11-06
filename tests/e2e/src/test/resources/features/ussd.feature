@@ -14,9 +14,9 @@ Feature: P2P send money over USSD (HTTP transport)
   Scenario: a P2P over USSD in English completes and moves the money once
     When 01711000001 dials *268# on robi and enters "9, 1, 01711000002, 10, 1, 1234"
     Then the first USSD screens were:
-      | upay\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English |
-      | upay\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা |
-      | Enter recipient upay number                          |
+      | Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English |
+      | Bits\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা |
+      | Enter recipient Bits number                          |
       | Enter amount (Tk)                                    |
       | Send Tk 10.00 to 01711000002?\n1 Confirm\n2 Cancel   |
       | Enter your PIN                                       |
@@ -36,7 +36,7 @@ Feature: P2P send money over USSD (HTTP transport)
 
   Scenario: a bad number is refused and asked again, and no money moves
     When 01711000001 dials *268# on robi and enters "9, 1, 12345"
-    Then the USSD session is still open on "Enter a valid mobile number.\nEnter recipient upay number"
+    Then the USSD session is still open on "Enter a valid mobile number.\nEnter recipient Bits number"
     And no core balance changed
 
   Scenario: a wrong PIN is refused by the core and no money moves

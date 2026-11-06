@@ -63,13 +63,13 @@ class PartnerReferenceRepositoryIT {
   @Test
   void aReferenceWeIssuedLeadsBackToItsTransactionAndPartner() {
     String txnId = UUID.randomUUID().toString();
-    String ref = "UPAY" + txnId.replace("-", "").toUpperCase();
+    String ref = "BITS" + txnId.replace("-", "").toUpperCase();
     repo.findOrCreate(txnId, "billagg", ref, T0);
 
     assertThat(repo.findByReference(ref)).hasValueSatisfying(i -> {
       assertThat(i.txnId()).isEqualTo(txnId);
       assertThat(i.partnerId()).isEqualTo("billagg");
     });
-    assertThat(repo.findByReference("UPAY-NEVER-ISSUED")).isEmpty();
+    assertThat(repo.findByReference("BITS-NEVER-ISSUED")).isEmpty();
   }
 }

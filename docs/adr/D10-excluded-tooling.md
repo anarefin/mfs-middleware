@@ -4,7 +4,7 @@ Status: Accepted, 2026-11-03 (spec revision 1).
 
 ## Context
 
-Kubernetes, CI/CD and observability stacks are chosen by upay separately and should not block the middleware build.
+Kubernetes, CI/CD and observability stacks are chosen by Bits separately and should not block the middleware build.
 
 ## Decision
 

@@ -9,7 +9,7 @@
   "payload": {
     "operation": "INQUIRY",
     "txnType": "BILL_PAY",
-    "partnerTxnRef": "UPAY01933B8E7C1A",
+    "partnerTxnRef": "BITS01933B8E7C1A",
     "attributes": { "billNumber": "123456789" }
   }
 }

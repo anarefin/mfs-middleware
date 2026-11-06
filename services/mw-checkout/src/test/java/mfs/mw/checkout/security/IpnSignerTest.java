@@ -12,10 +12,10 @@ class IpnSignerTest {
 
   @Test
   void signsPrefixTimestampAndExactBodyLikeOpenssl() {
-    // printf 'upay-checkout-ipn.v1\n1762336800\n{"sessionId":"s1","status":"PAID"}' \
+    // printf 'bits-checkout-ipn.v1\n1762336800\n{"sessionId":"s1","status":"PAID"}' \
     //   | openssl dgst -sha256 -hmac 'test-merchant-secret-not-real' -hex
     assertThat(IpnSigner.sign(SECRET, 1762336800L, BODY))
-        .isEqualTo("c18cd1a828d85727a9282a091fbecd45cdd88f3ec8aa6cbb134da8b90740b17c");
+        .isEqualTo("b4fba6ca92f01b777c9b70651d3c4adf511506a7d1f8a4c7b2322ab52c0003f9");
   }
 
   @Test

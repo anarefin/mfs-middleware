@@ -1,10 +1,10 @@
-# upay MFS Middleware — Implementation Specification
+# Bits MFS Middleware — Implementation Specification
 
 Nov 3, 2026 · @Ahmad Naqibul Arefin
 
 ## 0. Document control
 
-This spec turns the upay *Mobile Money Middleware RFP v0.1* into a build-ready design for the integration layer, using Apache Camel, Kafka, APISIX, Spring Boot 4, JDK 25 and PostgreSQL 18. Requirement IDs (OWN, FR, NFR, SEC, ENV) are the RFP's; section 24 traces each one to its design.
+This spec turns the Bits *Mobile Money Middleware RFP v0.1* into a build-ready design for the integration layer, using Apache Camel, Kafka, APISIX, Spring Boot 4, JDK 25 and PostgreSQL 18. Requirement IDs (OWN, FR, NFR, SEC, ENV) are the RFP's; section 24 traces each one to its design.
 
 **Conventions.** MUST / SHOULD / MAY follow RFC 2119. Values marked **TBC** are assumptions to confirm (section 25). `mw-*` names modules and services.
 
@@ -59,8 +59,8 @@ The MVP proves every core pattern of the middleware on one Docker Compose host: 
 | M9 | Serialisation | JSON on Kafka with JSON Schema files in Git; no Apicurio, Avro or Harbor |
 | M10 | Delivery | Built mainly by coding agents (Claude Code); work is sliced into small, testable packages (next section) |
 | M11 | PIN | Target scheme from day one: apps encrypt the PIN with the core's public key (RSA-OAEP); mw-ussd encrypts on receipt; the middleware only forwards ciphertext (it may hold the ciphertext on the transaction row until a terminal state, 18.3); mw-core-mock holds the private key (in OpenBao) and checks a bcrypt hash |
-| M12 | Code review | An upay engineer reviews and approves every pull request, including agent-written ones; milestone demos on top |
-| M13 | Repo and CI | GitHub repo owned by upay; no CI/CD in the MVP. Tests run locally through Makefile targets; the PR carries the test report and the reviewer re-runs make verify before merging |
+| M12 | Code review | An Bits engineer reviews and approves every pull request, including agent-written ones; milestone demos on top |
+| M13 | Repo and CI | GitHub repo owned by Bits; no CI/CD in the MVP. Tests run locally through Makefile targets; the PR carries the test report and the reviewer re-runs make verify before merging |
 
 ### In the MVP vs deferred
 
@@ -123,7 +123,7 @@ The MVP is built as about 30 small work packages (WPs), each sized for one codin
 - **Local quality gate (no CI/CD in the MVP).** Makefile targets replace a pipeline: `make up` (Compose stack + seed data), `make verify` (unit, route and Testcontainers integration tests, coverage, isolation and contract checks; `M=<module>` limits it to one module), `make e2e` (Cucumber suite against the stack and simulators), `make security` (dependency, container and secret scans), `make perf` (Gatling). Agents run `verify` and the relevant `e2e` tags before opening a PR and paste the summary into the PR template; the reviewer re-runs `make verify` on the branch before approving.
 - **Module isolation (D13, D14).** A module never depends on another `mfs.mw` artifact, never references another module's files at build time and never reads another service's schema. Every new service starts as a copy of `templates/mw-service-template` (`make new-service NAME=mw-x`) and may then diverge. `make check-isolation` (a shell script over the Gradle files, not ArchUnit) fails on any cross-module dependency, `includeBuild`, convention plugin or relative path, except the one allowed reference to the root `contracts/` folder (4.3).
 - **Consistency without shared code.** Cross-cutting behaviour (correlation, error envelope, masking, log fields, Kafka retry/DLQ, outbox, inbox) is defined once in this spec and proved in every service by the conformance suite copied from the template. A fix to the template is rolled into each service as its own small WP.
-- **Small diffs.** Target ≤ 1,500 changed lines per WP; larger work is split. One WP = one branch = one GitHub pull request, approved by an upay engineer before merge.
+- **Small diffs.** Target ≤ 1,500 changed lines per WP; larger work is split. One WP = one branch = one GitHub pull request, approved by an Bits engineer before merge.
 - **Parallel lanes.** Up to 3–4 agents at once on WPs with no unmet dependency, each in its own Git worktree. Because every PR needs a human approval, review capacity is the real limit: plan about 2 open PRs per reviewer, and let an agent start the next WP in its lane while its PR waits.
 - **Human gates.** A human approves at the end of each milestone (M0–M6) by running the demo script for that milestone.
 
@@ -168,7 +168,7 @@ M0 must finish first (WP01→WP02/WP03/WP04 in parallel→WP05). From M1 on, thr
 
 ## 1. Context and scope
 
-The middleware is the only path between upay's access channels, the core wallet and payment microservices, and about 30 external parties. It owns protocol handling, transformation, orchestration, reliability and audit; it never owns balances or the ledger.
+The middleware is the only path between Bits's access channels, the core wallet and payment microservices, and about 30 external parties. It owns protocol handling, transformation, orchestration, reliability and audit; it never owns balances or the ledger.
 
 ### 1.1 In scope
 
@@ -378,12 +378,12 @@ The middleware is 14 runtime services, the admin UI and two test-only services (
 
 Adapters are split by partner family so each family gets its own bulkhead, thread pools and scaling. Any adapter MAY later be split per partner by moving its route bundle; the adapter framework (section 12) is copied with it, so that is a packaging change.
 
-### 4.2 Repository layout (monorepo on upay's GitHub, OWN-02)
+### 4.2 Repository layout (monorepo on Bits's GitHub, OWN-02)
 
 The repo is a Gradle composite build only for convenience: the root `settings.gradle.kts` lists each module with `includeBuild(...)`, and the root `build.gradle.kts` holds only aggregate tasks (`checkAll`, `bootJarAll`) that call each included build. There is no `allprojects`/`subprojects` block, no `buildSrc`, no convention plugin and no shared version catalog, so no module inherits anything from the root.
 
 ```
-upay-middleware/
+bits-middleware/
 ├─ settings.gradle.kts          # composite build: includeBuild("services/mw-…") per module, nothing inherited
 ├─ build.gradle.kts             # aggregate tasks only (checkAll, bootJarAll)
 ├─ gradlew, gradle/wrapper/     # wrapper for the aggregate build
@@ -806,8 +806,8 @@ Every partner gets the same skeleton: a Camel route template, a config record, a
 | Merchant system | billpay | SOAP (CXF), WS-Security UsernameToken or X.509 (TBC) | `MERCHANT_PAY` notification / confirmation | TBC | Merchant settlement report | 15 s |
 | Partner banks (\~20) — C2W, AVL, card | bank | SOAP or REST per bank; mTLS + signature (TBC per bank) | `C2W` / `ADD_MONEY_BANK`, `W2B`, account verification/lookup (AVL), card payment | Yes (per bank) | MT940 / bank statement, settlement file | 30 s |
 | UCB ATM gateway | bank | SOAP, mTLS, VPN (TBC) | `ATM_CASH_OUT` (cardless, token/OTP), `ATM_CASH_IN`, reversal advice from ATM | Yes | ATM switch settlement file | 10 s (ATM UX) |
-| CyberSource | bank | HTTPS REST, HTTP Signature/JWT; hosted fields or Flex tokenisation so PAN never reaches upay (SEC-02); 3-D Secure | `ADD_MONEY_CARD`: authorise + capture, webhook | Yes (transaction search) | CyberSource settlement / Business Center report | 30 s |
-| UCB IMT | bank | HTTPS, inbound (UCB calls upay) + status outbound | `REMIT_IN`: beneficiary validation, credit, status callback | Yes (UCB queries upay) | Daily remittance file | inbound SLA 10 s |
+| CyberSource | bank | HTTPS REST, HTTP Signature/JWT; hosted fields or Flex tokenisation so PAN never reaches Bits (SEC-02); 3-D Secure | `ADD_MONEY_CARD`: authorise + capture, webhook | Yes (transaction search) | CyberSource settlement / Business Center report | 30 s |
+| UCB IMT | bank | HTTPS, inbound (UCB calls Bits) + status outbound | `REMIT_IN`: beneficiary validation, credit, status callback | Yes (UCB queries Bits) | Daily remittance file | inbound SLA 10 s |
 | NPSB / BanglaQR | interop | ISO 20022 (pacs.008, pacs.002, pacs.028, camt.056/029, pain.013 TBC); transport per Bangladesh Bank NPSB spec (TBC) | `QR_PAY_INTEROP` outbound and inbound credit, `W2B` via NPSB, returns | pacs.028 | camt.053 / NPSB settlement report | per scheme rules |
 | Bangladesh Election Commission | compliance | SOAP or REST (per EC partner service), VPN + credentials | NID verification, photo/biometric match result (scope TBC) | n/a | n/a | 15 s |
 | AML system | compliance | SFTP (PGP-encrypted files) | Transaction export (batch + intraday), alert/instruction import | n/a | n/a | n/a |
@@ -819,7 +819,7 @@ Every partner gets the same skeleton: a Camel route template, a config record, a
 - **Request path:** consume `mw.partner.request.<family>` → load partner config → map canonical → partner payload → sign/encrypt → call with Resilience4j (bulkhead per partner, circuit breaker, time limiter; no automatic retry on non-idempotent calls unless the partner supports idempotent references) → map response → publish `mw.partner.reply` with `SUCCESS | FAILED | UNKNOWN | PENDING`.
 - **Inbound path (callbacks, inbound remittance, NPSB credit):** APISIX (ip allow-list, body cap, rate limit) → adapter verifies the signature in the partner's own format, with the secret in OpenBao (**Decision 2026-11-04**; mTLS deferred) → de-duplicates on partner reference → acknowledges partner synchronously only after the event is durably written to Kafka (or an inbound table) → publishes `mw.partner.inbound`.
 - **Routing and failover (FR-09):** for billers served by more than one aggregator, `routing.rule` rows choose the aggregator by biller, amount band, time window, priority and health; when an aggregator's circuit is open, the next eligible route is used. Routing is never changed mid-transaction.
-- **Biller catalogue:** nightly (and on-demand) sync of biller lists from aggregators into `partner.biller`, merged into one upay catalogue exposed to channels; disabled billers hidden immediately.
+- **Biller catalogue:** nightly (and on-demand) sync of biller lists from aggregators into `partner.biller`, merged into one Bits catalogue exposed to channels; disabled billers hidden immediately.
 - **Per-partner config:** base URLs per environment, credentials references (Vault paths, never values), timeouts, TSQ schedule, rate limit, error-code map, cut-off times, maintenance windows.
 
 ### 11.3 Partner onboarding checklist (per integration)
@@ -835,7 +835,7 @@ Every partner gets the same skeleton: a Camel route template, a config record, a
 
 ## 12. Adapter framework
 
-upay's own team must be able to add a partner of a known kind with configuration only, and a partner of a new kind with one small Java module (RFP section 5, closing line). The adapter framework delivers this with three layers. It is not a library (D14): it is built once inside `mw-adapter-telco` (package `mfs.mw.adapter.telco.partner`, alongside the layered packages of 4.4) and copied into each other adapter service, where it may evolve independently; each adapter's framework tests and the conformance suite keep the common behaviour aligned.
+Bits's own team must be able to add a partner of a known kind with configuration only, and a partner of a new kind with one small Java module (RFP section 5, closing line). The adapter framework delivers this with three layers. It is not a library (D14): it is built once inside `mw-adapter-telco` (package `mfs.mw.adapter.telco.partner`, alongside the layered packages of 4.4) and copied into each other adapter service, where it may evolve independently; each adapter's framework tests and the conformance suite keep the common behaviour aligned.
 
 ### 12.1 Layers
 
@@ -872,7 +872,7 @@ Pluggable `AuthScheme`s shipped: `api-key`, `basic`, `oauth2-client-credentials`
 | --- | --- | --- | --- |
 | Trust bank MT940 | SFTP pull (or H2H, TBC) | Prowide `MT940` → `recon.statement_line` (:61:, :86: parsed, references extracted by per-bank regex) | EOD |
 | Trust bank MT942 | SFTP pull / push | Prowide `MT942` | Intraday, every 15–60 min (TBC) |
-| Partner settlement files | SFTP pull from partner or partner push to upay SFTP (DMZ) | Configurable CSV/XLSX/fixed-width parser driven by a `recon.file_layout` record | Daily / per partner |
+| Partner settlement files | SFTP pull from partner or partner push to Bits SFTP (DMZ) | Configurable CSV/XLSX/fixed-width parser driven by a `recon.file_layout` record | Daily / per partner |
 | Middleware txn log | PostgreSQL `txn.transaction` | n/a | Continuous |
 | Core ledger | `core.*.event` (copied to `recon.core_entry`) or a core extract (TBC) | n/a | Continuous |
 
@@ -1079,7 +1079,7 @@ The Data Warehouse gets a real-time Kafka stream and a daily SFTP batch of the s
 | USSD session data | TTL in Valkey only | none | technical |
 | Application logs | per observability tooling | per policy | out of spec |
 
-- Archival job detaches the expiring monthly partition, exports it to compressed Parquet with checksum in an upay-controlled object store in Bangladesh (MinIO, AGPL — needs approval under OWN-03, or an alternative S3-compatible store, TBC), verifies the export, then drops the partition. Restores are a documented runbook.
+- Archival job detaches the expiring monthly partition, exports it to compressed Parquet with checksum in an bits-controlled object store in Bangladesh (MinIO, AGPL — needs approval under OWN-03, or an alternative S3-compatible store, TBC), verifies the export, then drops the partition. Restores are a documented runbook.
 - All data, backups and archives stay in Bangladesh (OWN-11).
 - The audit trail itself (writer, partitions on `recorded_at`, hash-chain verification, partner-call audit) is specified in 14.3.
 
@@ -1107,10 +1107,10 @@ On a Compose host each zone is its own user-defined network (`dmz`, `app`, `data
 ### 18.3 Data protection
 
 - In transit: TLS 1.2+ everywhere, including Kafka (SASL\_SSL with mTLS or SCRAM), PostgreSQL (`sslmode=verify-full`), Valkey (TLS), SMPP over TLS or VPN where MNO supports it.
-- At rest: disk encryption on all hosts; application-level encryption for NID, bank account numbers and PIN-related blobs via Vault transit (keys can be backed by upay's HSM, SEC-04).
+- At rest: disk encryption on all hosts; application-level encryption for NID, bank account numbers and PIN-related blobs via Vault transit (keys can be backed by Bits's HSM, SEC-04).
 - PIN: the plaintext PIN is never logged or stored; encrypted end to end from app to core (decided): the app encrypts with the core's public key (RSA-OAEP, SHA-256), the middleware passes only ciphertext, and only the core decrypts. USSD PIN is encrypted at the USSD service on receipt. Exception (**Decision 2026-11-04**): the PIN ciphertext may be held on the orchestrator's transaction row (`txn.transaction.encrypted_pin`) while the saga still needs it (e.g. `PostTransfer` after `ValidateTransaction`), and is wiped on every transition into a terminal state (`COMPLETED`, `FAILED`, `REJECTED`, `REVERSED`) or `MANUAL_REVIEW`; tests walk every path to a terminal state and check it is cleared. The ciphertext is never logged and never part of the stored request or the idempotency hash.
 - Masking (SEC-10): a `MaskingPolicy` in each service's `util` package (copied from the template, D14, and checked by the conformance suite) applied to logs, audit payloads and admin views — MSISDN `0171****789`, NID last 3, account last 4, names first initial; party ids are masked by their party `type` (a wallet or MSISDN as an MSISDN, a bank account or any other type last 4 only). Name masking covers customers, not staff: an operator's username stays in full in audit `actor.id` (**Decision 2026-11-04**). Enforced by a log appender filter plus unit tests on every DTO with a `@Sensitive` annotation.
-- Card data: PAN never enters middleware; CyberSource tokenisation (Flex/Microform) and bank-hosted pages keep upay out of PCI scope where possible (SEC-02).
+- Card data: PAN never enters middleware; CyberSource tokenisation (Flex/Microform) and bank-hosted pages keep Bits out of PCI scope where possible (SEC-02).
 - Non-production: only synthetic or masked data (ENV-12); a masking job produces UAT data from production extracts on approval.
 
 ### 18.4 Secrets and keys (SEC-05, ENV-06)
@@ -1191,13 +1191,13 @@ How these containers are packed onto hosts is in 20.2. The performance test (sec
 
 ## 20. Deployment, environments, configuration and secrets
 
-Every service and every platform tool ships as a signed OCI image and runs under Docker Compose on Linux hosts (D12); Compose files, host provisioning and config live in upay's Git so upay can rebuild any environment from source (OWN-06, ENV-03, ENV-04).
+Every service and every platform tool ships as a signed OCI image and runs under Docker Compose on Linux hosts (D12); Compose files, host provisioning and config live in Bits's Git so Bits can rebuild any environment from source (OWN-06, ENV-03, ENV-04).
 
 ### 20.1 Images
 
 - Each module builds its own image from its own multi-stage `Dockerfile` on an `eclipse-temurin:25-jre` distroless-style base (or its own `./gradlew bootBuildImage`, Paketo, Apache 2.0), and is versioned and released on its own; JVM flags: `-XX:+UseZGC -XX:MaxRAMPercentage=75`, virtual threads on (`spring.threads.virtual.enabled=true`).
 - CDS/AOT cache enabled to cut start-up; GraalVM native image NOT used initially (Camel component coverage).
-- Tag = semantic version + Git SHA; Compose references images by digest. Images pushed to upay's existing container registry (TBC; for the MVP a plain CNCF Distribution registry:2 is enough); CycloneDX SBOM stored with each release.
+- Tag = semantic version + Git SHA; Compose references images by digest. Images pushed to Bits's existing container registry (TBC; for the MVP a plain CNCF Distribution registry:2 is enough); CycloneDX SBOM stored with each release.
 - Health endpoints: `/actuator/health/liveness`, `/actuator/health/readiness` (readiness includes Kafka, DB, Vault), used by Compose `healthcheck`, `depends_on: condition: service_healthy` and APISIX upstream health checks.
 
 ### 20.2 Compose topology
@@ -1230,7 +1230,7 @@ Every service and every platform tool ships as a signed OCI image and runs under
 
 - PostgreSQL: pgBackRest (container) full weekly, differential daily, WAL archive continuous to off-host storage; restore tested monthly in pre-prod; PITR to any second within 14 days.
 - Kafka: not backed up; topics are not the system of record and topic configs are code. After a Kafka volume loss, topics are recreated and the recovery sweep (19.3) resolves in-flight transactions.
-- Vault/OpenBao: Raft snapshots hourly, encrypted, off-host; unseal keys under upay key custodians (OWN-08).
+- Vault/OpenBao: Raft snapshots hourly, encrypted, off-host; unseal keys under Bits key custodians (OWN-08).
 - Keycloak: realm export nightly + its DB backup.
 
 ## 21. Observability contract
@@ -1245,7 +1245,7 @@ Tooling is outside this spec (D10); this section fixes what every service MUST e
 
 ### 21.2 Metrics
 
-- Micrometer, exposed at `/actuator/prometheus` (Prometheus text format is the lingua franca; scraping tool is upay's choice) and OTLP-capable if needed.
+- Micrometer, exposed at `/actuator/prometheus` (Prometheus text format is the lingua franca; scraping tool is Bits's choice) and OTLP-capable if needed.
 - Required metric families (labels: `channel`, `txn_type`, `partner`, `biller`, `status`): `mw_txn_total`, `mw_txn_duration_seconds` (histogram), `mw_partner_call_total`, `mw_partner_call_duration_seconds`, `mw_partner_circuit_state`, `mw_txn_unknown_open`, `mw_manual_review_open`, `mw_idempotency_hits_total`, `mw_notify_sent_total` / `_delivered_total`, `mw_smpp_bind_up`, `mw_ussd_sessions_active`, `mw_recon_unmatched_amount`, plus JVM, Camel route, Kafka client and HikariCP defaults.
 
 ### 21.3 Tracing and correlation
@@ -1258,7 +1258,7 @@ Alert rules are delivered as tool-neutral definitions (YAML: metric, condition, 
 
 ## 22. Testing strategy and simulators
 
-No integration is "done" until it passes against its simulator in the pipeline and against the partner sandbox in SIT; the simulators are delivered as source and owned by upay (ENV-10, ENV-11).
+No integration is "done" until it passes against its simulator in the pipeline and against the partner sandbox in SIT; the simulators are delivered as source and owned by Bits (ENV-10, ENV-11).
 
 ### 22.1 Test layers
 
@@ -1300,7 +1300,7 @@ Go-live readiness is the gate that matters most: it needs SIT/UAT sign-off, 3x p
 
 | Epic | Phase | Contents | Depends on |
 | --- | --- | --- | --- |
-| E01 Repo and build | 2 | Monorepo, Gradle composite build, per-module standalone Gradle build, SBOM and image, registry push, isolation check | Git org from upay |
+| E01 Repo and build | 2 | Monorepo, Gradle composite build, per-module standalone Gradle build, SBOM and image, registry push, isolation check | Git org from Bits |
 | E02 Platform via Compose | 2 | Kafka, PostgreSQL 18, Valkey, Keycloak, Vault/OpenBao, APISIX in Compose, single instance each, Dev/SIT | Hosts |
 | E03 Service template and contracts | 2 | `mw-service-template` (masking, errors, correlation, audit emitter, Kafka/Camel defaults, outbox/inbox, conformance suite), root `contracts/` with owners and lint, adapter framework v0 inside `mw-adapter-telco` | E01 |
 | E04 Orchestrator core | 2 | State machine, timers, idempotency, outbox/inbox, core command/event contract, core stub | E03, core contract draft |
@@ -1319,11 +1319,11 @@ Go-live readiness is the gate that matters most: it needs SIT/UAT sign-off, 3x p
 | E17 Hardening | 4 | Perf, resilience, restore drills, pen test fixes | All |
 | E18 Certification and UAT | 4 | Partner certification, BB requirements | All |
 | E19 Go-live and hypercare | 5 | Pilot, phased roll-out, 3-month hypercare | E18 |
-| E20 Handover | 6 | Clean-build demo by upay team, runbooks, training, sign-off | All |
+| E20 Handover | 6 | Clean-build demo by Bits team, runbooks, training, sign-off | All |
 
 ### 23.2 Definition of done (every story)
 
-- [ ] Code merged in upay repo with review by an upay engineer (pairing from Phase 2, RFP 11.5)
+- [ ] Code merged in Bits repo with review by an Bits engineer (pairing from Phase 2, RFP 11.5)
 - [ ] Unit, route and integration tests green; coverage gate met
 - [ ] Contracts (OpenAPI/AsyncAPI/JSON Schema/Pact) updated
 - [ ] Masking verified for any new field
@@ -1338,11 +1338,11 @@ Every RFP requirement maps to at least one section of this spec; items marked *o
 | RFP ID | Topic | Spec section(s) |
 | --- | --- | --- |
 | OWN-01, OWN-04, OWN-10 | IP, licences, confidentiality | Contractual; 3 (licences) |
-| OWN-02 | Code in upay repo | 4.2, 4.3 |
+| OWN-02 | Code in Bits repo | 4.2, 4.3 |
 | OWN-03 | Open-source runtime | 3 |
 | OWN-05 | SBOM | 3, 20.1 |
 | OWN-06 | Reproducible build | 20.1, 20.2 |
-| OWN-07, OWN-08 | No back doors; upay holds credentials | 18.2, 18.4, 20.5 |
+| OWN-07, OWN-08 | No back doors; Bits holds credentials | 18.2, 18.4, 20.5 |
 | OWN-09 | Handover package | 12.2, 23 (E20) |
 | OWN-11 | Data residency | 17, 20 |
 | FR-01 | Gateway, auth, rate limit | 8 |

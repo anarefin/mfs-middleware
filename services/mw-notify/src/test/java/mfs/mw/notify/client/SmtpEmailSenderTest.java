@@ -32,7 +32,7 @@ import org.springframework.mail.javamail.JavaMailSenderImpl;
  */
 class SmtpEmailSenderTest {
 
-  private static final EmailProperties PROPS = new EmailProperties(true, "upay <no-reply@upay.local>");
+  private static final EmailProperties PROPS = new EmailProperties(true, "Bits <no-reply@bits.local>");
   private static final EmailMessage EMAIL =
       new EmailMessage("customer@example.test", "Bill paid", "Tk 500.00 paid", "<p>Tk 500.00 paid</p>");
 
@@ -121,7 +121,7 @@ class SmtpEmailSenderTest {
     MessagingException wrapped = new MessagingException("send failed", data);
     MailSendException message = new MailSendException("send failed", wrapped);
     SMTPSenderFailedException sender =
-        new SMTPSenderFailedException(new InternetAddress("no-reply@upay.local"), "MAIL FROM", 421, "421 try later");
+        new SMTPSenderFailedException(new InternetAddress("no-reply@bits.local"), "MAIL FROM", 421, "421 try later");
     MailSendException from = new MailSendException("send failed", sender);
 
     assertThat(SmtpEmailSender.smtpCode(message)).isEqualTo(554);

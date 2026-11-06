@@ -95,7 +95,7 @@ class PartnerConfigReloadIT {
            "template": "rest-json-request-reply", "baseUrl": "http://localhost:%d", "timeoutMs": 700,
            "errorMap": {"2001": {"suffix": "TOPUP_REJECTED", "retryable": false}},
            "operations": {"PAY": {"method": "POST", "path": "/ocs/v1/topup", "definiteStatuses": [400, 422],
-             "request": "{\\"transactionId\\": reference, \\"msisdn\\": creditParty.id, \\"amount\\": amount.major, \\"channel\\": \\"upay\\"}",
+             "request": "{\\"transactionId\\": reference, \\"msisdn\\": creditParty.id, \\"amount\\": amount.major, \\"channel\\": \\"Bits\\"}",
              "response": "status = 200 and body.status = \\"SUCCESS\\" ? {\\"outcome\\": \\"SUCCESS\\", \\"partnerRef\\": body.ocsRef, \\"code\\": body.code} : {\\"outcome\\": \\"UNKNOWN\\", \\"reason\\": \\"UNEXPECTED_STATUS\\"}"}}
          }}
         """
@@ -108,7 +108,7 @@ class PartnerConfigReloadIT {
     send(mapped);
     assertThat(awaitReply(mapped.txnId()).payload().outcome()).isEqualTo("SUCCESS");
     String lastBody = OCS.findAll(postRequestedFor(urlEqualTo("/ocs/v1/topup"))).getLast().getBodyAsString();
-    assertThat(JSON.readTree(lastBody).get("channel").asString()).isEqualTo("upay");
+    assertThat(JSON.readTree(lastBody).get("channel").asString()).isEqualTo("Bits");
 
     OCS.resetAll();
     stubOcs(1500);

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.upay.mw/events/mw-orchestrator/mw.txn.request.v1.schema.json",
+  "$id": "https://contracts.bits.mw/events/mw-orchestrator/mw.txn.request.v1.schema.json",
   "title": "mw.txn.request.v1",
   "description": "Transaction request from a channel service to mw-orchestrator (spec 5.1, 6.2). Key: txnId. Consumers ignore unknown fields; only additive changes within v1.",
   "type": "object",

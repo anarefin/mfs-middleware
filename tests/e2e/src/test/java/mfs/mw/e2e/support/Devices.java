@@ -53,7 +53,7 @@ public final class Devices {
 
   private static final Map<String, Device> DEVICES = new ConcurrentHashMap<>();
   /** The code of the English binding OTP SMS (mw-notify template DEVICE_BIND_OTP). */
-  private static final Pattern OTP = Pattern.compile("Your upay code to bind a new device is ([0-9]{6})");
+  private static final Pattern OTP = Pattern.compile("Your Bits code to bind a new device is ([0-9]{6})");
   private static final JsonMapper JSON = JsonMapper.builder().build();
 
   private Devices() {}

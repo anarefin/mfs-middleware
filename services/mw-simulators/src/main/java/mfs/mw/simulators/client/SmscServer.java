@@ -122,7 +122,7 @@ public class SmscServer implements SmartLifecycle {
   private void bind(SMPPServerSession session) {
     try {
       BindRequest bind = session.waitForBind(5000);
-      bind.accept("upay-smsc-sim");
+      bind.accept("bits-smsc-sim");
       log.atInfo().addKeyValue("event", "sim.smsc.bound").addKeyValue("bindType", bind.getBindType())
           .log("SMPP client bound");
     } catch (Exception e) {

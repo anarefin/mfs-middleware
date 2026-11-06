@@ -28,7 +28,7 @@ public final class Provisioning {
 
   private static final Logger log = LoggerFactory.getLogger(Provisioning.class);
   /** The code of the English binding OTP SMS (mw-notify template DEVICE_BIND_OTP). */
-  private static final Pattern OTP = Pattern.compile("Your upay code to bind a new device is ([0-9]{6})");
+  private static final Pattern OTP = Pattern.compile("Your Bits code to bind a new device is ([0-9]{6})");
   private static final String KCADM =
       "/opt/keycloak/bin/kcadm.sh config credentials --config /tmp/perf-kcadm.config --server http://localhost:8080"
           + " --realm master --user \"$KC_BOOTSTRAP_ADMIN_USERNAME\" --password \"$KC_BOOTSTRAP_ADMIN_PASSWORD\" >/dev/null"

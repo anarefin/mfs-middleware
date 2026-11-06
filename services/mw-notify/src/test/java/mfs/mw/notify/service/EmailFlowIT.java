@@ -48,7 +48,7 @@ import tools.jackson.databind.json.JsonMapper;
       "mw.notify.smpp.enabled=false",
       "mw.notify.dispatch.enabled=false",
       "mw.notify.email.enabled=true",
-      "mw.notify.email.from=upay <no-reply@upay.test>"
+      "mw.notify.email.from=Bits <no-reply@bits.test>"
     })
 @Import({TestInfrastructure.class, EmailFlowIT.Fixtures.class})
 class EmailFlowIT {
@@ -165,7 +165,7 @@ class EmailFlowIT {
     MimeMessage mail = received[0];
     assertThat(mail.getSubject()).isEqualTo("Receipt T-1");
     assertThat(mail.getAllRecipients()).extracting(Object::toString).containsExactly("customer01@example.test");
-    assertThat(mail.getFrom()).extracting(Object::toString).containsExactly("upay <no-reply@upay.test>");
+    assertThat(mail.getFrom()).extracting(Object::toString).containsExactly("Bits <no-reply@bits.test>");
     Map<String, String> parts = parts(mail);
     assertThat(parts.get("text/plain")).isEqualTo("Paid Tk 667.00 to Gas & <Power>. Account 0181****002.");
     assertThat(parts.get("text/html"))

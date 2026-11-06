@@ -10,7 +10,7 @@
     "locale": "en",
     "version": 2,
     "body": "You got Tk {{amount}} from {{counterparty}}. TrxID {{txnId}}",
-    "senderId": "upay",
+    "senderId": "Bits",
     "validFrom": "2026-11-05T10:00:00Z"
   },
   "changedAt": "2026-11-05T10:00:00Z",

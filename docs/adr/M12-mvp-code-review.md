@@ -8,7 +8,7 @@ Agent-written code needs a human owner who understands and accepts it.
 
 ## Decision
 
-An upay engineer reviews and approves every pull request, including agent-written ones. Each milestone ends with a demo that a human runs from the demo script.
+An Bits engineer reviews and approves every pull request, including agent-written ones. Each milestone ends with a demo that a human runs from the demo script.
 
 ## Consequences
 

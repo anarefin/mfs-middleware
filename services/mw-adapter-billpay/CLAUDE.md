@@ -18,7 +18,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.billpay`. Fol
   STATUS_QUERY only, a PAY past its `deadlineAt` refused unsent (`MW-SYS-PARTNER_REQUEST_EXPIRED`),
   FAILED `MW-VAL-INVALID_PARTNER_REQUEST` for requests that cannot be mapped.
 - Stable partner reference (`service/PartnerReferenceService`, table `partner_reference` in own
-  schema `billpay_ref`; mw-adapter-telco owns `partner_ref`): `UPAY` + txnId hex, stored on first
+  schema `billpay_ref`; mw-adapter-telco owns `partner_ref`): `BITS` + txnId hex, stored on first
   use, sent as the aggregator's `transactionId`; a repeated one returns the original outcome.
 - The aggregator call runs on a virtual-thread executor (`billpayCallExecutor`), never on the
   Kafka consumer thread; the offset is committed at hand-over (crash -> orchestrator deadline ->

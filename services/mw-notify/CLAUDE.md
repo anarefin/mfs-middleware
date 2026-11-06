@@ -38,7 +38,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   `MW-VAL-102`); params masked first by name (`service/ParamMasker`: msisdn, receiver, sender,
   counterparty, agent -> MSISDN; account, accountNumber -> last 4; nid -> last 3; name,
   receiverName, senderName -> initial; pin -> ****; a value already containing `****` is kept).
-  `sender_id` per template (default `upay`). EMAIL templates: `subject` and `body` (text part)
+  `sender_id` per template (default `Bits`). EMAIL templates: `subject` and `body` (text part)
   required, `html_body` optional (HTML part, params HTML-escaped, `TemplateRenderer.renderHtml`).
 - Published templates (ticket 39, spec 10.3, 20.4): mw-admin-api's approved versions arrive on
   `mw.config.changed.v1` (compacted; `route/ConfigChangedRoute`, a `RetryTopicRouteBuilder`, group

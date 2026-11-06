@@ -44,12 +44,12 @@ Other topics: `mw.txn.request.v1`, `mw.txn.status.v1` -> `events/mw-orchestrator
 ### Ids and references
 
 Every schema has an absolute `$id` that mirrors its path:
-`https://contracts.upay.mw/<path under contracts/>`. References between files are relative
+`https://contracts.bits.mw/<path under contracts/>`. References between files are relative
 and resolve against that id, e.g. from an envelope `"$ref": "core.command.v1/HoldFunds.payload.schema.json"`
 and `"$ref": "../../common/defs.v1.schema.json#/$defs/TxnId"`, from a payload
 `"$ref": "../../../common/defs.v1.schema.json#/$defs/Amount"`. Nothing is fetched over the
 network: the lint registers every file first, and the service template's test loader
-(`ContractSchemas`) reads every `https://contracts.upay.mw/` id from `mwContractsDir`.
+(`ContractSchemas`) reads every `https://contracts.bits.mw/` id from `mwContractsDir`.
 
 ## Rules checked by `make contracts-lint` (scripts/contracts-lint/lint.mjs)
 
@@ -86,7 +86,7 @@ A contract change is its own WP, made by the topic's owner (ground rule "Contrac
    Branch-level rules that depend on the type (an `outcome` const, a required `reasonCode`) go in
    the branch too.
 3. Create `core.command.v1/NewThing.payload.schema.json` with
-   `"$id": "https://contracts.upay.mw/events/mw-orchestrator/core.command.v1/NewThing.payload.schema.json"`,
+   `"$id": "https://contracts.bits.mw/events/mw-orchestrator/core.command.v1/NewThing.payload.schema.json"`,
    `"type": "object"`, its fields and `required`. Use the `common/defs.v1` types by relative `$ref`.
 4. Add `samples/core.command.v1/NewThing/valid-<case>.json` and `invalid-<reason>.json` (whole
    envelope messages), and `expected-errors.json` stating each invalid sample's errors, e.g.
@@ -99,7 +99,7 @@ A contract change is its own WP, made by the topic's owner (ground rule "Contrac
 When one partner family needs its own payload (say `bank` on `mw.partner.reply.v1`):
 
 1. Copy `mw.partner.reply.v1/shared.payload.schema.json` to `mw.partner.reply.v1/bank.payload.schema.json`,
-   set its `$id` to `https://contracts.upay.mw/events/mw-orchestrator/mw.partner.reply.v1/bank.payload.schema.json`
+   set its `$id` to `https://contracts.bits.mw/events/mw-orchestrator/mw.partner.reply.v1/bank.payload.schema.json`
    and its `title`, then change its fields.
 2. In `mw.partner.reply.v1.schema.json`, point only the `bank` branch at it:
    `{ "properties": { "family": { "const": "bank" }, "payload": { "$ref": "mw.partner.reply.v1/bank.payload.schema.json" } } }`.

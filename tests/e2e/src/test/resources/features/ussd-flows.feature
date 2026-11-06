@@ -17,8 +17,8 @@ Feature: Cash out, top-up and bill pay over USSD (HTTP transport)
   Scenario: a top-up of the own number over USSD in English completes
     When 01711000001 dials *268# on robi and enters "9, 3, 1, 20, 1, 1234"
     Then the first USSD screens were:
-      | upay\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English |
-      | upay\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা |
+      | Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English |
+      | Bits\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা |
       | Mobile Recharge\n1 Own number\n2 Other number                          |
       | Enter recharge amount (Tk)                                             |
       | Recharge Tk 20.00 to 01711000001?\n1 Confirm\n2 Cancel                 |
@@ -52,8 +52,8 @@ Feature: Cash out, top-up and bill pay over USSD (HTTP transport)
   Scenario: a bill pay over USSD in English fetches the bill and pays it
     When 01711000001 dials *268# on robi and enters "9, 4, 1, 1234567, 1, 1234"
     Then the first USSD screens were:
-      | upay\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English |
-      | upay\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা |
+      | Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English |
+      | Bits\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা |
       | Select biller\n1 DESCO\n2 DPDC\n3 TITAS\n4 WASA                        |
       | Enter DESCO bill number                                                |
       | Pay Tk 667.00 for DESCO bill 1234567?\n1 Confirm\n2 Cancel             |

@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: upay USSD HTTP transport (mw-ussd)
+  title: Bits USSD HTTP transport (mw-ussd)
   version: 1.0.0
   description: |
     MNO-facing HTTP USSD API of mw-ussd (spec 9.2, HttpUssdTransport, ticket 26). An MNO whose

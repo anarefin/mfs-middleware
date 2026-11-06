@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.upay.mw/common/defs.v1.schema.json",
+  "$id": "https://contracts.bits.mw/common/defs.v1.schema.json",
   "title": "defs.v1",
   "description": "Shared types for every contract (spec 5.1, 5.3, 6.1, 6.3). Not a message: message schemas $ref these with a relative path, e.g. ../../common/defs.v1.schema.json#/$defs/Amount. Only additive changes within v1.",
   "$defs": {

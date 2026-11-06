@@ -22,7 +22,7 @@
       "nodes": {
         "main": {
           "type": "MENU",
-          "text": { "bn": "upay", "en": "upay" },
+          "text": { "bn": "Bits", "en": "Bits" },
           "options": [
             { "key": "1", "label": { "bn": "সাহায্য", "en": "Help" }, "next": "help" },
             { "key": "9", "label": { "bn": "English", "en": "বাংলা" }, "next": "main", "switchLanguage": true }

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.upay.mw/events/mw-notify/mw.notify.request.v1.schema.json",
+  "$id": "https://contracts.bits.mw/events/mw-notify/mw.notify.request.v1.schema.json",
   "title": "mw.notify.request.v1",
   "description": "NotificationRequest (spec 10.1). Any service produces it; mw-notify consumes and owns it. Key: recipient. messageId is the idempotency key; duplicates are dropped.",
   "type": "object",

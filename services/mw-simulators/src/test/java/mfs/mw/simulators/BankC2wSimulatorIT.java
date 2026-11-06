@@ -126,7 +126,7 @@ class BankC2wSimulatorIT {
   }
 
   private static String id() {
-    return "UPAY" + UUID.randomUUID().toString().replace("-", "").toUpperCase();
+    return "BITS" + UUID.randomUUID().toString().replace("-", "").toUpperCase();
   }
 
   private String statusOf(String id) throws Exception {

@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: upay bill pay internal API (mw-adapter-billpay)
+  title: Bits bill pay internal API (mw-adapter-billpay)
   version: 1.0.0
   description: |
     Internal, read-only API of mw-adapter-billpay (ticket 21): the biller catalogue and the

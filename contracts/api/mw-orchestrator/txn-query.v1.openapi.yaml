@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: upay transaction query internal API (mw-orchestrator)
+  title: Bits transaction query internal API (mw-orchestrator)
   version: 1.2.0
   description: |
     Internal, read-only API of mw-orchestrator (ticket 35, spec 15.2, 16.2): transaction search

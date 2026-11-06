@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.upay.mw/events/mw-admin-api/mw.txn.action.v1.schema.json",
+  "$id": "https://contracts.bits.mw/events/mw-admin-api/mw.txn.action.v1.schema.json",
   "title": "mw.txn.action.v1",
   "description": "An operator action on one transaction, approved by maker-checker in mw-admin-api (spec 15.2, 15.3, ticket 37), for mw-orchestrator: INQUIRE runs one status inquiry now (UNKNOWN or MANUAL_REVIEW; the answer goes on the saga timeline, in MANUAL_REVIEW it changes nothing), FORCE_COMMIT / FORCE_RELEASE leave MANUAL_REVIEW for COMMITTING / RELEASING (spec 7.2). Reversal is not an action here: it is a REVERSAL on mw.txn.request.v1 (channel SYSTEM). Applied once per actionId; an action the transaction's state or flow does not allow changes nothing and is audited as refused. Key: txnId. Consumers ignore unknown fields; only additive changes within v1.",
   "type": "object",

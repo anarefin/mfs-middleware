@@ -93,26 +93,26 @@ class MenuPublisherIT {
   @Test
   void anApprovedTextChangeShowsInTheNextSessionButNotInARunningOne() throws Exception {
     String running = "it-" + UUID.randomUUID();
-    assertThat(step(running, "BEGIN", "").path("message").asString()).startsWith("upay\n1 সেন্ড মানি");
+    assertThat(step(running, "BEGIN", "").path("message").asString()).startsWith("Bits\n1 সেন্ড মানি");
 
-    publisher.onConfigChanged(event("main", 7, seedWithTitle("upay নতুন", "upay new"), "itmenu", Instant.now()));
+    publisher.onConfigChanged(event("main", 7, seedWithTitle("Bits নতুন", "Bits new"), "itmenu", Instant.now()));
 
     assertThat(step(running, "CONTINUE", "9").path("message").asString())
         .as("the running session finishes on the version it started on")
-        .startsWith("upay\n1 Send Money");
+        .startsWith("Bits\n1 Send Money");
     assertThat(step("it-" + UUID.randomUUID(), "BEGIN", "").path("message").asString())
         .as("the next session gets the published version")
-        .startsWith("upay নতুন\n1 সেন্ড মানি");
+        .startsWith("Bits নতুন\n1 সেন্ড মানি");
     assertThat(menus.active("itmenu", Instant.now()).orElseThrow().version()).isGreaterThanOrEqualTo(MenuPublisher.FIRST_PUBLISHED);
   }
 
   @Test
   void aRedeliveredOrOlderVersionIsStoredOnceAndAFutureGoLiveWaits() {
     String menuId = "it-" + UUID.randomUUID().toString().substring(0, 8);
-    Map<String, Object> tree = seedWithTitle("upay ২", "upay 2");
+    Map<String, Object> tree = seedWithTitle("Bits ২", "Bits 2");
     publisher.onConfigChanged(event(menuId, 2, tree, "itmenu", Instant.now().plus(Duration.ofHours(1))));
     publisher.onConfigChanged(event(menuId, 2, tree, "itmenu", Instant.now().plus(Duration.ofHours(1))));
-    publisher.onConfigChanged(event(menuId, 1, seedWithTitle("upay ১", "upay 1"), "itmenu", Instant.now()));
+    publisher.onConfigChanged(event(menuId, 1, seedWithTitle("Bits ১", "Bits 1"), "itmenu", Instant.now()));
 
     assertThat(jdbc.queryForList("select config_version from menu where menu_id = ?", Long.class, menuId)).containsExactly(2L);
     assertThat(menus.active("itmenu", Instant.now()).orElseThrow().menuId()).isNotEqualTo(menuId);
@@ -122,7 +122,7 @@ class MenuPublisherIT {
   @Test
   void anUnusableTreeOrAnUnknownMnoChangesNothing() {
     String menuId = "it-" + UUID.randomUUID().toString().substring(0, 8);
-    Map<String, Object> tree = seedWithTitle("upay", "upay");
+    Map<String, Object> tree = seedWithTitle("Bits", "Bits");
     ObjectNode broken = json.valueToTree(tree);
     ((ObjectNode) broken.path("nodes").path("cancelled").path("text")).remove("en");
     publisher.onConfigChanged(event(menuId, 1, json.convertValue(broken, MAP), "itmenu", Instant.now()));

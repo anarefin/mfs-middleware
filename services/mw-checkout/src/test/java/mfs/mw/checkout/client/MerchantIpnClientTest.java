@@ -83,7 +83,7 @@ class MerchantIpnClientTest {
   private void record(HttpExchange ex) throws IOException {
     String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
     seen.add(new Seen(ex.getRequestURI().getPath(), ex.getRequestHeaders().getFirst("Content-Type"),
-        ex.getRequestHeaders().getFirst("X-Upay-Signature"), ex.getRequestHeaders().getFirst("X-Upay-Timestamp"),
+        ex.getRequestHeaders().getFirst("X-Bits-Signature"), ex.getRequestHeaders().getFirst("X-Bits-Timestamp"),
         body));
   }
 
@@ -103,7 +103,7 @@ class MerchantIpnClientTest {
   }
 
   private static final Map<String, String> SIGNED =
-      Map.of("X-Upay-Signature", "sig-fake-value", "X-Upay-Timestamp", "1700000000");
+      Map.of("X-Bits-Signature", "sig-fake-value", "X-Bits-Timestamp", "1700000000");
 
   @Test
   void a2xxAnswerIsDeliveredAndTheSignatureHeadersAndJsonBodyReachTheMerchant() {

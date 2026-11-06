@@ -19,14 +19,14 @@ class PartnerCallMapperTest {
   void aPayBecomesACanonicalCallWithOurReferenceTheAmountTheBillAndTheBiller() {
     PartnerRequest request = pay(newTxnId(), "1234567", 2000);
 
-    PartnerCall call = mapper.toCall(request, "UPAYREF1");
+    PartnerCall call = mapper.toCall(request, "BITSREF1");
 
     assertThat(call.partnerId()).isEqualTo("billagg");
     assertThat(call.operation()).isEqualTo("PAY");
     assertThat(call.txnType()).isEqualTo("BILL_PAY");
     assertThat(call.txnId()).isEqualTo(request.txnId());
     assertThat(call.correlationId()).isEqualTo("corr-0002");
-    assertThat(call.reference()).isEqualTo("UPAYREF1");
+    assertThat(call.reference()).isEqualTo("BITSREF1");
     assertThat(call.input())
         .containsEntry("amount", Map.of("valueMinor", 2000L, "currency", "BDT", "major", "20.00"))
         .containsEntry("creditParty", Map.of("type", "BILLER_ACCOUNT", "id", "1234567"))

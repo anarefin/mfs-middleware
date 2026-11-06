@@ -15,7 +15,7 @@ import addFormats from "ajv-formats";
 import { parse as parseYaml } from "yaml";
 
 const root = process.argv[2];
-const ID_BASE = "https://contracts.upay.mw/";
+const ID_BASE = "https://contracts.bits.mw/";
 const EXPECTED = "expected-errors.json";
 const errors = [];
 const err = (file, msg) => errors.push(`${file}: ${msg}`);

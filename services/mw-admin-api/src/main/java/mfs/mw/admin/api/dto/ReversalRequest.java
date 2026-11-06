@@ -8,7 +8,7 @@ import java.util.Map;
  * This service's own type for the REVERSAL it sends on {@code mw.txn.request.v1} (contract owned by
  * mw-orchestrator; ticket 37): channel {@code SYSTEM}, the original's txnId and full amount. The
  * orchestrator reverses the original's own parties, so initiator, debit and credit party name only
- * the operations organisation ({@code ORG}/{@code upay-ops}): no customer data leaves this service.
+ * the operations organisation ({@code ORG}/{@code bits-ops}): no customer data leaves this service.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ReversalRequest(

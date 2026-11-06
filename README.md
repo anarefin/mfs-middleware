@@ -1,11 +1,11 @@
-# upay MFS middleware (MVP)
+# Bits MFS middleware (MVP)
 
-The integration layer between upay's channels (customer, agent and merchant apps, USSD, web
+The integration layer between Bits's channels (customer, agent and merchant apps, USSD, web
 checkout, org and SP portals) and the core wallet, built on Spring Boot 4, Apache Camel, Kafka,
 APISIX and PostgreSQL 18. The MVP runs the whole system on one Docker Compose host against a
 mocked core (`mw-core-mock`) and simulated partners (`mw-simulators`).
 
-- Design: [spec/upay-mfs-middleware-spec.md](spec/upay-mfs-middleware-spec.md) (the "MVP scope"
+- Design: [spec/bits-mfs-middleware-spec.md](spec/bits-mfs-middleware-spec.md) (the "MVP scope"
   section wins over sections 1–25 for the MVP).
 - Why it is built this way: [docs/adr/README.md](docs/adr/README.md), one record per decision
   D1–D15 and M1–M13.

@@ -122,7 +122,7 @@ class BankRequestRouteIT {
     assertThat(reply.payload().outcome()).isEqualTo("SUCCESS");
     assertThat(reply.payload().partnerRef()).isEqualTo("C2W-778899");
     assertThat(reply.payload().partnerCode()).isEqualTo("0000");
-    String ref = "UPAY" + request.txnId().replace("-", "").toUpperCase();
+    String ref = "BITS" + request.txnId().replace("-", "").toUpperCase();
     assertThat(reply.payload().attributes()).containsEntry("partnerTxnRef", ref);
     BANK.verify(
         1,
@@ -285,7 +285,7 @@ class BankRequestRouteIT {
     assertThat(calls).hasSize(2);
     String first = JSON.readTree(calls.get(0).getBodyAsString()).get("transactionId").asString();
     String second = JSON.readTree(calls.get(1).getBodyAsString()).get("transactionId").asString();
-    assertThat(second).isEqualTo(first).startsWith("UPAY");
+    assertThat(second).isEqualTo(first).startsWith("BITS");
     assertThat(replies)
         .extracting(r -> r.payload().attributes().get("partnerTxnRef"))
         .containsOnly(first);
@@ -347,7 +347,7 @@ class BankRequestRouteIT {
   // --- status inquiry (ticket 18, spec 7.4) ------------------------------------------------------
 
   private static String ref(String txnId) {
-    return "UPAY" + txnId.replace("-", "").toUpperCase();
+    return "BITS" + txnId.replace("-", "").toUpperCase();
   }
 
   private void stubStatus(String txnId, int status, String body) {

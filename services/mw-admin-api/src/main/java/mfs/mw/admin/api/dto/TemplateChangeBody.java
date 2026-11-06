@@ -13,7 +13,7 @@ import java.time.Instant;
  * @param body logic-less {@code {{name}}} text (SMS text, or the EMAIL text part)
  * @param subject EMAIL only, required there
  * @param htmlBody EMAIL only, optional HTML part
- * @param senderId SMS sender id / short code; mw-notify's default ({@code upay}) when absent
+ * @param senderId SMS sender id / short code; mw-notify's default ({@code Bits}) when absent
  * @param validFrom when the version takes over; the approval time when absent or earlier
  * @param reason why (free text; never logged, scrubbed in the audit)
  */

@@ -69,7 +69,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   txnId, idempotency header = actionId, stored in `payload.actionId`); REVERSE -> REVERSAL on
   `mw.txn.request.v1` (`dto/ReversalRequest`: channel SYSTEM, fresh UUIDv7 `util/UuidV7` stored in
   `payload.reversalTxnId`, idempotencyKey = change request id, the original's full amount; initiator,
-  debit and credit party `ORG`/`upay-ops`, since the orchestrator reverses the original's own parties
+  debit and credit party `ORG`/`bits-ops`, since the orchestrator reverses the original's own parties
   and no customer data has to leave this service). Audit (`mw.audit.event.v1`, resource
   `transaction/<txnId>`, so it shows in the txn's trail): `admin.change_request.created` (maker;
   before `{txnStatus}`), `.approved` / `.rejected` (checker; before `{status: PENDING, txnStatus}`,

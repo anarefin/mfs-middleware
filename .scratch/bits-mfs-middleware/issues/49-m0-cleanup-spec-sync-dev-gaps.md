@@ -2,7 +2,7 @@
 
 **What to build:** This ticket carries out the M0 review decisions (2026-11-03) that don't concern contracts.
 
-1. **Spec sync** (`spec/upay-mfs-middleware-spec.md`):
+1. **Spec sync** (`spec/bits-mfs-middleware-spec.md`):
    - §3 versions: Spring Boot 4.1.2, Camel 4.22.2 LTS, Spring Cloud 2025.1.4, Flyway 12, ShedLock 7, JUnit 6.
    - The "In the MVP vs deferred" table gains Kafka ACLs/quotas, image digest pinning, and the OpenBao root token kept in its data volume (dev only).
    - §6 says "effectively-once (idempotent producer + outbox + inbox)" instead of Kafka transactions.

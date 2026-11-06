@@ -249,7 +249,7 @@ public class UssdSmppGateway implements SmartLifecycle {
   private void bind(SMPPServerSession session) {
     try {
       BindRequest bind = session.waitForBind(5000);
-      bind.accept("upay-ussdgw");
+      bind.accept("bits-ussdgw");
       binds.incrementAndGet();
       sessions.add(session);
       log.atInfo().addKeyValue("event", "sim.ussd.smpp.bound").addKeyValue("bindType", bind.getBindType())

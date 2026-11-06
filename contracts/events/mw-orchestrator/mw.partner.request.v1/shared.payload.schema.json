@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.upay.mw/events/mw-orchestrator/mw.partner.request.v1/shared.payload.schema.json",
+  "$id": "https://contracts.bits.mw/events/mw-orchestrator/mw.partner.request.v1/shared.payload.schema.json",
   "title": "mw.partner.request.v1 shared payload",
   "description": "Request to an adapter of any family (one payload shared by all families until one needs its own). PAY and REVERSE carry an amount.",
   "type": "object",

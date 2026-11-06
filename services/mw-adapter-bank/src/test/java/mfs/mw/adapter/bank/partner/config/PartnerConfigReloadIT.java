@@ -95,7 +95,7 @@ class PartnerConfigReloadIT {
            "template": "rest-json-request-reply", "baseUrl": "http://localhost:%d", "timeoutMs": 700,
            "errorMap": {"4002": {"suffix": "DEBIT_REFUSED", "retryable": false}},
            "operations": {"PAY": {"method": "POST", "path": "/c2wbank/v1/debits", "definiteStatuses": [400, 422],
-             "request": "{\\"transactionId\\": reference, \\"accountNumber\\": debitParty.id, \\"amount\\": amount.major, \\"channel\\": \\"upay\\"}",
+             "request": "{\\"transactionId\\": reference, \\"accountNumber\\": debitParty.id, \\"amount\\": amount.major, \\"channel\\": \\"Bits\\"}",
              "response": "status = 200 and body.status = \\"SUCCESS\\" ? {\\"outcome\\": \\"SUCCESS\\", \\"partnerRef\\": body.debitRef, \\"code\\": body.code} : {\\"outcome\\": \\"UNKNOWN\\", \\"reason\\": \\"UNEXPECTED_STATUS\\"}"}}
          }}
         """
@@ -108,7 +108,7 @@ class PartnerConfigReloadIT {
     send(mapped);
     assertThat(awaitReply(mapped.txnId()).payload().outcome()).isEqualTo("SUCCESS");
     String lastBody = BANK.findAll(postRequestedFor(urlEqualTo("/c2wbank/v1/debits"))).getLast().getBodyAsString();
-    assertThat(JSON.readTree(lastBody).get("channel").asString()).isEqualTo("upay");
+    assertThat(JSON.readTree(lastBody).get("channel").asString()).isEqualTo("Bits");
 
     BANK.resetAll();
     stubBank(1500);

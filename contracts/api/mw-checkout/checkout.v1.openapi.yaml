@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: upay web checkout (mw-checkout)
+  title: Bits web checkout (mw-checkout)
   version: 1.0.0
   description: |
     Web checkout (spec 9.3, ticket 31). Two APIs:
@@ -29,7 +29,7 @@ info:
     units), `currency`, `errorCode` (FAILED only), `ts` (epoch seconds) and `signature`:
     lower-case hex HMAC-SHA256, key = the merchant's checkout secret, over the UTF-8 text
 
-        upay-checkout-result.v1\n<sessionId>\n<orderId>\n<status>\n<txnId or empty>\n<amount>\n<currency>\n<errorCode or empty>\n<ts>
+        bits-checkout-result.v1\n<sessionId>\n<orderId>\n<status>\n<txnId or empty>\n<amount>\n<currency>\n<errorCode or empty>\n<ts>
 
     (no trailing newline). The merchant recomputes it, compares in constant time and should
     refuse an old `ts`. The result is a convenience for the browser; the merchant's source of
@@ -37,11 +37,11 @@ info:
 
     Signed IPN (server to server, ticket 32): when a payment ends (PAID or FAILED) the middleware
     posts the `Ipn` body (webhook `ipn`) to the session's `ipnUrl`, with the headers
-    `X-Upay-Ipn-Id` (the sessionId; one IPN per session, deduplicate on it), `X-Upay-Attempt`
-    (1..6), `X-Upay-Timestamp` (epoch seconds of this attempt) and `X-Upay-Signature`: lower-case
+    `X-Bits-Ipn-Id` (the sessionId; one IPN per session, deduplicate on it), `X-Bits-Attempt`
+    (1..6), `X-Bits-Timestamp` (epoch seconds of this attempt) and `X-Bits-Signature`: lower-case
     hex HMAC-SHA256, key = the merchant's checkout secret, over the UTF-8 text
 
-        upay-checkout-ipn.v1\n<X-Upay-Timestamp>\n<the exact request body>
+        bits-checkout-ipn.v1\n<X-Bits-Timestamp>\n<the exact request body>
 
     Any 2xx answer acknowledges it. Otherwise (other status, no answer within 10 s, connection
     failure) it is retried 1 min, 5 min, 30 min, 2 h and 6 h after each failed attempt; after
@@ -212,10 +212,10 @@ webhooks:
       operationId: receiveIpn
       summary: Signed IPN the middleware posts to the session's ipnUrl (implemented by the merchant)
       parameters:
-        - { name: X-Upay-Ipn-Id, in: header, required: true, schema: { type: string, format: uuid }, description: The sessionId }
-        - { name: X-Upay-Attempt, in: header, required: true, schema: { type: integer, minimum: 1, maximum: 6 } }
-        - { name: X-Upay-Timestamp, in: header, required: true, schema: { type: integer }, description: Epoch seconds of this attempt }
-        - { name: X-Upay-Signature, in: header, required: true, schema: { type: string, pattern: "^[0-9a-f]{64}$" } }
+        - { name: X-Bits-Ipn-Id, in: header, required: true, schema: { type: string, format: uuid }, description: The sessionId }
+        - { name: X-Bits-Attempt, in: header, required: true, schema: { type: integer, minimum: 1, maximum: 6 } }
+        - { name: X-Bits-Timestamp, in: header, required: true, schema: { type: integer }, description: Epoch seconds of this attempt }
+        - { name: X-Bits-Signature, in: header, required: true, schema: { type: string, pattern: "^[0-9a-f]{64}$" } }
       requestBody:
         required: true
         content:

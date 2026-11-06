@@ -58,7 +58,7 @@ class SmppSmsSenderTest {
   }
 
   private static SmsPart part(String destination) {
-    return new SmsPart(destination, "upay", (byte) 0, false, "Your OTP is 123456".getBytes(StandardCharsets.US_ASCII));
+    return new SmsPart(destination, "Bits", (byte) 0, false, "Your OTP is 123456".getBytes(StandardCharsets.US_ASCII));
   }
 
   private static void await(BooleanSupplier done) throws InterruptedException {
@@ -83,7 +83,7 @@ class SmppSmsSenderTest {
     assertThat(smsc.receivedFor(MSISDN)).singleElement()
         .satisfies(r -> {
           assertThat(r.messageId()).isEqualTo(result.providerMessageId());
-          assertThat(r.source()).isEqualTo("upay");
+          assertThat(r.source()).isEqualTo("Bits");
           assertThat(SmscStub.text(r)).isEqualTo("Your OTP is 123456");
         });
     await(() -> !reports.isEmpty());

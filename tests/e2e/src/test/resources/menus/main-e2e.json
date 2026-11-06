@@ -32,8 +32,8 @@
     "main": {
       "type": "MENU",
       "text": {
-        "bn": "upay",
-        "en": "upay"
+        "bn": "Bits",
+        "en": "Bits"
       },
       "options": [
         {
@@ -82,8 +82,8 @@
     "p2p.recipient": {
       "type": "INPUT",
       "text": {
-        "bn": "প্রাপকের upay নম্বর দিন",
-        "en": "Enter recipient upay number"
+        "bn": "প্রাপকের Bits নম্বর দিন",
+        "en": "Enter recipient Bits number"
       },
       "validator": {
         "type": "msisdn",
@@ -181,8 +181,8 @@
     "co.agent": {
       "type": "INPUT",
       "text": {
-        "bn": "এজেন্টের upay নম্বর দিন",
-        "en": "Enter agent upay number"
+        "bn": "এজেন্টের Bits নম্বর দিন",
+        "en": "Enter agent Bits number"
       },
       "validator": {
         "type": "msisdn",

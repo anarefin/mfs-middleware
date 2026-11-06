@@ -139,11 +139,11 @@ public final class CheckoutApi {
 
   /**
    * The merchant's check of the signed result: hex HMAC-SHA256 with its secret over {@code
-   * upay-checkout-result.v1\nsessionId\norderId\nstatus\ntxnId\namount\ncurrency\nerrorCode\nts}.
+   * bits-checkout-result.v1\nsessionId\norderId\nstatus\ntxnId\namount\ncurrency\nerrorCode\nts}.
    */
   public static boolean verifyResult(Map<String, String> q, String secret) {
     String canonical = String.join("\n", List.of(
-        "upay-checkout-result.v1",
+        "bits-checkout-result.v1",
         q.getOrDefault("sessionId", ""), q.getOrDefault("orderId", ""), q.getOrDefault("status", ""),
         q.getOrDefault("txnId", ""), q.getOrDefault("amount", ""), q.getOrDefault("currency", ""),
         q.getOrDefault("errorCode", ""), q.getOrDefault("ts", "")));

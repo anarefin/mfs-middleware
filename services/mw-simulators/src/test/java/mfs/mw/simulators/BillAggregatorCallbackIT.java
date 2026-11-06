@@ -127,7 +127,7 @@ class BillAggregatorCallbackIT {
   }
 
   private static String id() {
-    return "UPAY" + UUID.randomUUID().toString().replace("-", "").toUpperCase();
+    return "BITS" + UUID.randomUUID().toString().replace("-", "").toUpperCase();
   }
 
   @Test

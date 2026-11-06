@@ -4,11 +4,11 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
 /**
- * Signs the server-to-server IPN (spec 9.3 step 3, ticket 32). Header {@code X-Upay-Signature} =
+ * Signs the server-to-server IPN (spec 9.3 step 3, ticket 32). Header {@code X-Bits-Signature} =
  * lower-case hex HMAC-SHA256 with the merchant's checkout secret over the UTF-8 text
  *
  * <pre>
- * upay-checkout-ipn.v1\n&lt;X-Upay-Timestamp&gt;\n&lt;the exact request body&gt;
+ * bits-checkout-ipn.v1\n&lt;X-Bits-Timestamp&gt;\n&lt;the exact request body&gt;
  * </pre>
  *
  * The timestamp is the epoch second of the attempt (each retry is signed afresh), so a merchant
@@ -17,7 +17,7 @@ import java.security.MessageDigest;
  */
 public final class IpnSigner {
 
-  public static final String PREFIX = "upay-checkout-ipn.v1";
+  public static final String PREFIX = "bits-checkout-ipn.v1";
 
   private IpnSigner() {}
 

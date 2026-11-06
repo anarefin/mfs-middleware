@@ -27,9 +27,9 @@ public class PartnerRequestMapper {
     return UUID.nameUUIDFromBytes((txnId + ":" + operation).getBytes(StandardCharsets.UTF_8)).toString();
   }
 
-  /** Our reference towards the partner: {@code UPAY} + the txnId's hex digits, upper case. */
+  /** Our reference towards the partner: {@code BITS} + the txnId's hex digits, upper case. */
   public static String partnerTxnRef(String txnId) {
-    return "UPAY" + txnId.replace("-", "").toUpperCase(Locale.ROOT);
+    return "BITS" + txnId.replace("-", "").toUpperCase(Locale.ROOT);
   }
 
   /** The PAY request of a held transaction; the adapter must answer before {@code deadline}. */

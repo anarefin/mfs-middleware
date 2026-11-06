@@ -52,7 +52,7 @@ class UssdSmppClientTest {
   }
 
   UssdSmppProperties.Endpoint endpoint(int binds, Duration enquireLink, int tps) {
-    return new UssdSmppProperties.Endpoint("127.0.0.1", gateway.port(), "upay", "fake-pw", null, null, binds,
+    return new UssdSmppProperties.Endpoint("127.0.0.1", gateway.port(), "Bits", "fake-pw", null, null, binds,
         enquireLink, 3, Duration.ofMillis(300), Duration.ofMillis(100), Duration.ofMillis(400), 4, tps,
         List.of(Duration.ofMillis(50), Duration.ofMillis(50), Duration.ofMillis(50)));
   }

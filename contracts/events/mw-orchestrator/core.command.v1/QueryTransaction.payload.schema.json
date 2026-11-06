@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.upay.mw/events/mw-orchestrator/core.command.v1/QueryTransaction.payload.schema.json",
+  "$id": "https://contracts.bits.mw/events/mw-orchestrator/core.command.v1/QueryTransaction.payload.schema.json",
   "title": "core.command.v1 QueryTransaction payload",
   "description": "Status inquiry by the envelope txnId, optionally narrowed to one earlier commandId.",
   "type": "object",

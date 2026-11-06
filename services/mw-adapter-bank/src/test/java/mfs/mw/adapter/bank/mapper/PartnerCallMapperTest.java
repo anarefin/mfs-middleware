@@ -21,14 +21,14 @@ class PartnerCallMapperTest {
   void aPayBecomesACanonicalDebitCallWithOurReferenceTheAmountTheAccountAndTheWallet() {
     PartnerRequest request = pay(newTxnId(), ACCOUNT, 2000);
 
-    PartnerCall call = mapper.toCall(request, "UPAYREF1");
+    PartnerCall call = mapper.toCall(request, "BITSREF1");
 
     assertThat(call.partnerId()).isEqualTo("c2wbank");
     assertThat(call.operation()).isEqualTo("PAY");
     assertThat(call.txnType()).isEqualTo("ADD_MONEY_BANK");
     assertThat(call.txnId()).isEqualTo(request.txnId());
     assertThat(call.correlationId()).isEqualTo("corr-0002");
-    assertThat(call.reference()).isEqualTo("UPAYREF1");
+    assertThat(call.reference()).isEqualTo("BITSREF1");
     assertThat(call.input())
         .containsEntry("amount", Map.of("valueMinor", 2000L, "currency", "BDT", "major", "20.00"))
         .containsEntry("debitParty", Map.of("type", "BANK_ACCOUNT", "id", ACCOUNT))

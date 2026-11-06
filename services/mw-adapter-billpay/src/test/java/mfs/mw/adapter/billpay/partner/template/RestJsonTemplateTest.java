@@ -78,7 +78,7 @@ class RestJsonTemplateTest {
         1000L,
         5000L,
         null,
-        Map.of("X-Channel", "upay"),
+        Map.of("X-Channel", "Bits"),
         new PartnerConfig.Auth("api-key", "api-key", Map.of("header", "X-Acme-Key")),
         Map.of(
             "PAY",
@@ -118,7 +118,7 @@ class RestJsonTemplateTest {
     Map<String, Object> input = new LinkedHashMap<>();
     input.put("amount", Map.of("valueMinor", 2000L, "currency", "BDT", "major", "20.00"));
     input.put("creditParty", Map.of("type", "MSISDN", "id", "01711000001"));
-    return new PartnerCall(partnerId, "PAY", "BILL_PAY", "txn-1", "corr-1", "UPAYREF1", input);
+    return new PartnerCall(partnerId, "PAY", "BILL_PAY", "txn-1", "corr-1", "BITSREF1", input);
   }
 
   void stubPay(int status, String body) {
@@ -140,10 +140,10 @@ class RestJsonTemplateTest {
         1,
         postRequestedFor(urlEqualTo("/v2/payments"))
             .withHeader("X-Acme-Key", equalTo(SECRET))
-            .withHeader("X-Channel", equalTo("upay"))
+            .withHeader("X-Channel", equalTo("Bits"))
             .withHeader("X-Correlation-Id", equalTo("corr-1"))
             .withHeader("Content-Type", matching("application/json.*"))
-            .withRequestBody(equalToJson("{\"ref\":\"UPAYREF1\",\"to\":\"01711000001\",\"minor\":2000}")));
+            .withRequestBody(equalToJson("{\"ref\":\"BITSREF1\",\"to\":\"01711000001\",\"minor\":2000}")));
   }
 
   @Test
@@ -234,11 +234,11 @@ class RestJsonTemplateTest {
             new PartnerConfig.Auth("hmac-sha256", "api-key", Map.of()),
             ops, base.errorMap(), base.ambiguousCodes(), base.sensitiveFields(), null);
     PartnerGateway gateway = framework(Map.of("acme", hmac), null);
-    String body = "{\"ref\":\"UPAYREF1\",\"id\":\"ACME-9\",\"result\":\"OK\"}";
+    String body = "{\"ref\":\"BITSREF1\",\"id\":\"ACME-9\",\"result\":\"OK\"}";
 
     InboundResult result = gateway.inbound(signed(body, body));
 
-    assertThat(result).isEqualTo(new InboundResult("ACME-9", "UPAYREF1", "SUCCESS", null, null, Map.of()));
+    assertThat(result).isEqualTo(new InboundResult("ACME-9", "BITSREF1", "SUCCESS", null, null, Map.of()));
     assertThatThrownBy(() -> gateway.inbound(signed(body, body.replace("OK", "NO"))))
         .isInstanceOf(PartnerAuthenticationException.class);
   }
@@ -310,7 +310,7 @@ class RestJsonTemplateTest {
         partner.findAll(postRequestedFor(urlEqualTo("/v2/payments"))).stream().map(r -> r.getBodyAsString()).toList();
     assertThat(bodies).hasSize(2);
     assertThat(bodies.get(0)).contains("\"minor\"");
-    assertThat(bodies.get(1)).isEqualTo("{\"reference\":\"UPAYREF1\",\"amount\":\"20.00\"}");
+    assertThat(bodies.get(1)).isEqualTo("{\"reference\":\"BITSREF1\",\"amount\":\"20.00\"}");
   }
 
   @Test
@@ -369,7 +369,7 @@ class RestJsonTemplateTest {
     assertThat(e.path()).isEqualTo("/v2/payments");
     assertThat(e.httpStatus()).isEqualTo(200);
     assertThat(e.outcome()).isEqualTo("SUCCESS");
-    assertThat(e.request()).contains("\"to\":\"0171****001\"").doesNotContain("01711000001").contains("UPAYREF1");
+    assertThat(e.request()).contains("\"to\":\"0171****001\"").doesNotContain("01711000001").contains("BITSREF1");
     assertThat(e.response()).contains("ACME-77").contains("0171****001").doesNotContain("01711000001");
     assertThat(e.request() + e.response()).doesNotContain(SECRET);
   }

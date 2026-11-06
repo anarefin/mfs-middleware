@@ -18,7 +18,7 @@ plant_schema() {
   cat >"$dir/$name.schema.json" <<EOF
 {
   "\$schema": "https://json-schema.org/draft/2020-12/schema",
-  "\$id": "https://contracts.upay.mw/events/$svc/$name.schema.json",
+  "\$id": "https://contracts.bits.mw/events/$svc/$name.schema.json",
   "title": "$name",
   "type": "object",
   "required": ["schemaVersion", "amount"],
@@ -253,7 +253,7 @@ plant_common() {
   cat >contracts/common/defs.v1.schema.json <<'EOF'
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.upay.mw/common/defs.v1.schema.json",
+  "$id": "https://contracts.bits.mw/common/defs.v1.schema.json",
   "title": "defs.v1",
   "$defs": {
     "Amount": {
@@ -275,7 +275,7 @@ plant_payload() {
   cat >"$dir/$3.payload.schema.json" <<EOF
 {
   "\$schema": "https://json-schema.org/draft/2020-12/schema",
-  "\$id": "https://contracts.upay.mw/events/$1/$2/$3.payload.schema.json",
+  "\$id": "https://contracts.bits.mw/events/$1/$2/$3.payload.schema.json",
   "title": "$2 $3 payload",
   "type": "object",
   "required": ["amount"],
@@ -309,7 +309,7 @@ plant_envelope() {
   cat >"contracts/events/$svc/$topic.schema.json" <<EOF
 {
   "\$schema": "https://json-schema.org/draft/2020-12/schema",
-  "\$id": "https://contracts.upay.mw/events/$svc/$topic.schema.json",
+  "\$id": "https://contracts.bits.mw/events/$svc/$topic.schema.json",
   "title": "$topic",
   "type": "object",
   "required": ["schemaVersion", "kind", "payload"],

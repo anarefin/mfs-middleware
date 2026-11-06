@@ -12,7 +12,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The schema loader resolves {@code https://contracts.upay.mw/} ids, and the relative {@code $ref}s
+ * The schema loader resolves {@code https://contracts.bits.mw/} ids, and the relative {@code $ref}s
  * between envelope, payload and {@code common/} schemas, from {@code mwContractsDir} (spec 4.3 rule
  * 2; ticket 48). core.command.v1 HoldFunds is the worked example: envelope -> HoldFunds payload ->
  * common/defs.v1 EncryptedPin and Amount.

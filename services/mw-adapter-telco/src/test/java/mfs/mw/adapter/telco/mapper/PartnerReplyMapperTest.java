@@ -24,7 +24,7 @@ class PartnerReplyMapperTest {
 
   @Test
   void successCarriesTheOcsReferenceAndOurStableReference() {
-    PartnerReply reply = mapper.toReply(request, "UPAYREF1", new PartnerResponse.Success("OCS-1", "0000"));
+    PartnerReply reply = mapper.toReply(request, "BITSREF1", new PartnerResponse.Success("OCS-1", "0000"));
 
     assertThat(reply.family()).isEqualTo("telco");
     assertThat(reply.requestId()).isEqualTo(request.requestId());
@@ -35,13 +35,13 @@ class PartnerReplyMapperTest {
     assertThat(reply.payload())
         .isEqualTo(
             new PartnerReply.Payload(
-                "PAY", "SUCCESS", "OCS-1", "0000", null, null, null, Map.of("partnerTxnRef", "UPAYREF1")));
+                "PAY", "SUCCESS", "OCS-1", "0000", null, null, null, Map.of("partnerTxnRef", "BITSREF1")));
   }
 
   @Test
   void aStatusQueryAnswerKeepsItsOperation() {
     PartnerRequest query = TelcoFixtures.statusQuery(newTxnId());
-    PartnerReply reply = mapper.toReply(query, "UPAYREF1", new PartnerResponse.Success("OCS-1", "0000"));
+    PartnerReply reply = mapper.toReply(query, "BITSREF1", new PartnerResponse.Success("OCS-1", "0000"));
     assertThat(reply.payload().operation()).isEqualTo("STATUS_QUERY");
     assertThat(reply.payload().outcome()).isEqualTo("SUCCESS");
   }
@@ -49,7 +49,7 @@ class PartnerReplyMapperTest {
   @Test
   void anOcsWithoutRecordOfTheTopupIsNotFound() {
     PartnerReply reply =
-        mapper.toReply(TelcoFixtures.statusQuery(newTxnId()), "UPAYREF1", new PartnerResponse.NotFound("4040", "Unknown transaction"));
+        mapper.toReply(TelcoFixtures.statusQuery(newTxnId()), "BITSREF1", new PartnerResponse.NotFound("4040", "Unknown transaction"));
     assertThat(reply.payload().operation()).isEqualTo("STATUS_QUERY");
     assertThat(reply.payload().outcome()).isEqualTo("NOT_FOUND");
     assertThat(reply.payload().partnerCode()).isEqualTo("4040");

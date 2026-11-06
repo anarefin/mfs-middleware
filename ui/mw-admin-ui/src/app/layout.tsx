@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "upay MFS middleware - operations console",
+  title: "Bits MFS middleware - operations console",
   robots: { index: false, follow: false },
 };
 

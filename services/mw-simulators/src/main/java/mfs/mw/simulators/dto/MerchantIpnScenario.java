@@ -6,7 +6,7 @@ import jakarta.validation.constraints.PositiveOrZero;
 
 /**
  * How the merchant IPN receiver answers (ticket 32): the next {@code failNext} IPNs (only those
- * whose {@code X-Upay-Ipn-Id} is {@code ipnId}, when given) get {@code failStatus} (default 500),
+ * whose {@code X-Bits-Ipn-Id} is {@code ipnId}, when given) get {@code failStatus} (default 500),
  * every later one 200.
  */
 public record MerchantIpnScenario(

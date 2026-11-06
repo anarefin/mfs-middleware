@@ -182,7 +182,7 @@ mw:
     # Transient SMPP errors: retry after 2 s, 10 s, 30 s, then FAILED (spec 10.4).
     retry-backoff: 2s,10s,30s
     dispatch-batch: 50
-    default-sender: upay
+    default-sender: Bits
     default-locale: bn
     receipt-buffer-ttl: 1d
     # PROMO is held from start to end local time (spec 10.1) and sent after, unless it expires
@@ -199,14 +199,14 @@ mw:
       enabled: true
     email:
       enabled: ${EMAIL_ENABLED:true}
-      from: ${MAIL_FROM:upay <no-reply@upay.local>}
+      from: ${MAIL_FROM:Bits <no-reply@bits.local>}
     smpp:
       # SMPP 3.4 to the SMSC (10.2); MVP: the SMSC simulator in mw-simulators. The bind password
       # comes from OpenBao (secret/mw-notify, mw.notify.smpp.password).
       enabled: ${SMPP_ENABLED:true}
       host: ${SMPP_HOST:mw-simulators}
       port: ${SMPP_PORT:2775}
-      system-id: ${SMPP_SYSTEM_ID:upay-notify}
+      system-id: ${SMPP_SYSTEM_ID:bits-notify}
       binds: { OTP: 1, TXN: 1, INFO: 1, PROMO: 1 }
       enquire-link: 30s
       transaction-timeout: 5s

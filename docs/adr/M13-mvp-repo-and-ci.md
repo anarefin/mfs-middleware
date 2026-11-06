@@ -8,7 +8,7 @@ CI/CD tooling is chosen separately (D10), but every change still needs a repeata
 
 ## Decision
 
-The repo is on upay's GitHub. Tests run locally through Makefile targets (`make verify`, `make e2e`, `make security`, `make perf`); the pull request carries the test report and the reviewer re-runs `make verify` before merging.
+The repo is on Bits's GitHub. Tests run locally through Makefile targets (`make verify`, `make e2e`, `make security`, `make perf`); the pull request carries the test report and the reviewer re-runs `make verify` before merging.
 
 ## Consequences
 

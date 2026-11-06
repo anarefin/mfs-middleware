@@ -1,8 +1,8 @@
-# MAP — upay MFS middleware (read once, trust it)
+# MAP — Bits MFS middleware (read once, trust it)
 
 Rules: root `CLAUDE.md` (conventions, error model, masking, log fields, "Never" list) and each
-`services/<mw-x>/CLAUDE.md` (responsibilities, contracts owned/used). Spec: `spec/upay-mfs-middleware-spec.md`.
-Tickets: `.scratch/upay-mfs-middleware/issues/<NN>-<slug>.md`; run order + status: `issues/DEPENDENCIES.md`.
+`services/<mw-x>/CLAUDE.md` (responsibilities, contracts owned/used). Spec: `spec/bits-mfs-middleware-spec.md`.
+Tickets: `.scratch/bits-mfs-middleware/issues/<NN>-<slug>.md`; run order + status: `issues/DEPENDENCIES.md`.
 
 ## Layout
 - `contracts/` files only: `events/<owner>/<topic>.schema.json` (+ `<topic>/<Msg>.payload.schema.json`,

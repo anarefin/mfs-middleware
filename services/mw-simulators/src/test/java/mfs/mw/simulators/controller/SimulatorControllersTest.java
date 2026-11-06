@@ -59,11 +59,11 @@ class SimulatorControllersTest {
   void aTopupIsHandedToTheOcsServiceAndItsReplyPassesThrough() {
     when(ocs.topup(any())).thenReturn(new SimReply(422, Map.of("status", "FAILED", "code", "2001")));
 
-    MvcTestResult r = postJson("/ocs/v1/topup", "{\"transactionId\":\"UPAY1\",\"msisdn\":\"01711000001\",\"amount\":\"20.00\"}");
+    MvcTestResult r = postJson("/ocs/v1/topup", "{\"transactionId\":\"BITS1\",\"msisdn\":\"01711000001\",\"amount\":\"20.00\"}");
 
     assertThat(r).hasStatus(422);
     assertThat(r).bodyJson().extractingPath("$.code").isEqualTo("2001");
-    verify(ocs).topup(new OcsTopupRequest("UPAY1", "01711000001", "20.00"));
+    verify(ocs).topup(new OcsTopupRequest("BITS1", "01711000001", "20.00"));
   }
 
   @Test
@@ -77,9 +77,9 @@ class SimulatorControllersTest {
 
   @Test
   void theOcsStatusInquiryAsksByReference() {
-    when(ocs.statusReply("UPAY2")).thenReturn(new SimReply(404, Map.of("status", "NOT_FOUND")));
+    when(ocs.statusReply("BITS2")).thenReturn(new SimReply(404, Map.of("status", "NOT_FOUND")));
 
-    MvcTestResult r = mvc.get().uri("/ocs/v1/topup/UPAY2").exchange();
+    MvcTestResult r = mvc.get().uri("/ocs/v1/topup/BITS2").exchange();
 
     assertThat(r).hasStatus(404);
     assertThat(r).bodyJson().extractingPath("$.status").isEqualTo("NOT_FOUND");
@@ -91,14 +91,14 @@ class SimulatorControllersTest {
   void theAggregatorListsBillersAndPassesPaymentAndStatusReplies() {
     when(billagg.billers()).thenReturn(List.of(new Biller("DESCO", "Dhaka Electric", "ELECTRICITY")));
     when(billagg.pay(any())).thenReturn(new SimReply(200, Map.of("status", "SUCCESS", "paymentRef", "AGG-1")));
-    when(billagg.status("UPAY3")).thenReturn(new SimReply(200, Map.of("status", "SUCCESS")));
+    when(billagg.status("BITS3")).thenReturn(new SimReply(200, Map.of("status", "SUCCESS")));
 
     assertThat(mvc.get().uri("/billagg/v1/billers").exchange()).bodyJson().extractingPath("$[0].code").isEqualTo("DESCO");
     MvcTestResult paid =
-        postJson("/billagg/v1/payments", "{\"transactionId\":\"UPAY3\",\"billerCode\":\"DESCO\",\"billNumber\":\"1234567\",\"amount\":\"50.00\"}");
+        postJson("/billagg/v1/payments", "{\"transactionId\":\"BITS3\",\"billerCode\":\"DESCO\",\"billNumber\":\"1234567\",\"amount\":\"50.00\"}");
     assertThat(paid).hasStatusOk();
     assertThat(paid).bodyJson().extractingPath("$.paymentRef").isEqualTo("AGG-1");
-    assertThat(mvc.get().uri("/billagg/v1/payments/UPAY3").exchange()).hasStatusOk();
+    assertThat(mvc.get().uri("/billagg/v1/payments/BITS3").exchange()).hasStatusOk();
   }
 
   @Test
@@ -115,9 +115,9 @@ class SimulatorControllersTest {
   void aDebitIsHandedToTheBankServiceAndAnInvalidAccountIsRefused() {
     when(bank.debit(any())).thenReturn(new SimReply(202, Map.of("status", "PENDING")));
 
-    assertThat(postJson("/c2wbank/v1/debits", "{\"transactionId\":\"UPAY4\",\"accountNumber\":\"1234567890123\",\"amount\":\"20.00\"}"))
+    assertThat(postJson("/c2wbank/v1/debits", "{\"transactionId\":\"BITS4\",\"accountNumber\":\"1234567890123\",\"amount\":\"20.00\"}"))
         .hasStatus(202);
-    assertThat(postJson("/c2wbank/v1/debits", "{\"transactionId\":\"UPAY5\",\"accountNumber\":\"12ab\",\"amount\":\"20.00\"}"))
+    assertThat(postJson("/c2wbank/v1/debits", "{\"transactionId\":\"BITS5\",\"accountNumber\":\"12ab\",\"amount\":\"20.00\"}"))
         .hasStatus(400);
     verify(bank).debit(any());
   }
@@ -146,12 +146,12 @@ class SimulatorControllersTest {
 
   @Test
   void aCallbackReplayReportsTheTargetStatus() {
-    when(callbacks.replay(eq("billagg"), eq("UPAY6"), isNull())).thenReturn(200);
+    when(callbacks.replay(eq("billagg"), eq("BITS6"), isNull())).thenReturn(200);
 
-    MvcTestResult r = mvc.post().uri("/sim/billagg/callbacks/UPAY6/replay").exchange();
+    MvcTestResult r = mvc.post().uri("/sim/billagg/callbacks/BITS6/replay").exchange();
 
     assertThat(r).hasStatusOk();
-    assertThat(r).bodyJson().extractingPath("$.reference").isEqualTo("UPAY6");
+    assertThat(r).bodyJson().extractingPath("$.reference").isEqualTo("BITS6");
     assertThat(r).bodyJson().extractingPath("$.targetStatus").isEqualTo(200);
   }
 }

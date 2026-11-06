@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.upay.mw/events/mw-core-mock/core.event.v1.schema.json",
+  "$id": "https://contracts.bits.mw/events/mw-core-mock/core.event.v1.schema.json",
   "title": "core.event.v1",
   "description": "Result event from the core (mw-core-mock in the MVP) for a core command (spec 6.3), on core.wallet.event.v1 and core.payment.event.v1. Key: txnId. A repeated commandId yields the same event. The payload is picked by eventType; success events carry outcome SUCCESS, failure events outcome FAILURE and a reasonCode.",
   "type": "object",

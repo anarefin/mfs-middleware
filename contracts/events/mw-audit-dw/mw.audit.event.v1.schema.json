@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.upay.mw/events/mw-audit-dw/mw.audit.event.v1.schema.json",
+  "$id": "https://contracts.bits.mw/events/mw-audit-dw/mw.audit.event.v1.schema.json",
   "title": "mw.audit.event.v1",
   "description": "AuditEvent (spec 14.3). Every service produces it; mw-audit-dw consumes and owns it. Key: txnId or actor id. Payloads are masked before publishing (spec 18.3); raw bodies go to audit.payload via payloadRef.",
   "type": "object",

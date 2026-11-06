@@ -48,7 +48,7 @@ public final class BillpayFixtures {
             operation,
             "BILL_PAY",
             new PartnerRequest.PartnerRef("billagg", "BILL", "DESCO"),
-            "UPAY-IGNORED",
+            "BITS-IGNORED",
             new PartnerRequest.Amount(valueMinor, "BDT"),
             new PartnerRequest.Party("WALLET", "01711000001", null, "CUSTOMER"),
             new PartnerRequest.Party("BILLER_ACCOUNT", billNumber, null, null),

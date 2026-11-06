@@ -64,7 +64,7 @@ class ProducedContractsTest {
     PartnerReplyMapper mapper = new PartnerReplyMapper(CLOCK);
     PartnerRequest pay = BankFixtures.pay(TXN_ID, BankFixtures.ACCOUNT, 50_000);
     PartnerRequest query = BankFixtures.statusQuery(TXN_ID);
-    String ref = "UPAY01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
+    String ref = "BITS01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
     List<PartnerReply> replies =
         List.of(
             mapper.toReply(pay, ref, new PartnerResponse.Success("C2W-445566", "00", Map.of())),
@@ -98,7 +98,7 @@ class ProducedContractsTest {
   static List<Outbox.Record> partnerInbound(Outbox outbox) {
     PartnerInboundMapper mapper = new PartnerInboundMapper();
     PartnerConfig config = PartnerFrameworkSeeds.c2wbank();
-    String ref = "UPAY01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
+    String ref = "BITS01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
     Instant now = CLOCK.instant();
     List<PartnerInbound> events =
         List.of(

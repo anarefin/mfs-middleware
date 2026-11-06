@@ -81,7 +81,7 @@ services:
       SMTP_PORT: ${SMTP_PORT:-3025}
       # DEV ONLY: GreenMail offers no STARTTLS. The service's own default requires it.
       SMTP_STARTTLS_REQUIRED: ${SMTP_STARTTLS_REQUIRED:-false}
-      MAIL_FROM: ${MAIL_FROM:-upay <no-reply@upay.test>}
+      MAIL_FROM: ${MAIL_FROM:-bits <no-reply@bits.test>}
       # Dev/MVP stack only: also apply db/dev (registered emails of the seeded test users).
       MW_NOTIFY_FLYWAY_LOCATIONS: ${MW_NOTIFY_FLYWAY_LOCATIONS:-classpath:db/migration,classpath:db/dev}
     deploy:

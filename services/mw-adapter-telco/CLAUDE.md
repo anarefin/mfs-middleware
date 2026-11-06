@@ -18,7 +18,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.telco`. Follo
   1xx/3xx are UNKNOWN (fail closed: a rejection releases the hold). FAILED `MW-VAL-INVALID_PARTNER_REQUEST`
   for requests that cannot be mapped (wrong family/operation, amount <= 0, credit party not an MSISDN).
 - Stable partner reference (`service/PartnerReferenceService`, table `partner_reference` in schema
-  `partner_ref`, spec 4.1): `UPAY` + txnId hex, upper case, stored on first use. Every request for the same
+  `partner_ref`, spec 4.1): `BITS` + txnId hex, upper case, stored on first use. Every request for the same
   txnId sends the same reference; the OCS returns the original outcome for a repeated one. The
   orchestrator's `partnerTxnRef` is ignored.
 - The partner call runs on a virtual-thread executor (`telcoCallExecutor` hands the request off,

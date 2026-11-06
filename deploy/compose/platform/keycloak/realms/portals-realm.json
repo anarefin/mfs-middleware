@@ -1,6 +1,6 @@
 {
   "realm": "portals",
-  "displayName": "upay org and SP portals",
+  "displayName": "Bits org and SP portals",
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": false,

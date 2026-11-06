@@ -135,7 +135,7 @@ class NotificationFlowIT {
     assertThat(smsc.sent()).hasSize(1);
     FakeSmsSender.Sent sent = smsc.sent().getFirst();
     assertThat(sent.part().destination()).isEqualTo("01711000001");
-    assertThat(sent.part().source()).isEqualTo("upay");
+    assertThat(sent.part().source()).isEqualTo("Bits");
     assertThat(sent.part().dataCoding()).isEqualTo((byte) 0x00);
     assertThat(new String(sent.part().shortMessage(), StandardCharsets.US_ASCII))
         .isEqualTo("You have sent Tk 500.00 to 0181****002. Fee Tk 0.00. TrxID " + TXN_REF);
@@ -162,7 +162,7 @@ class NotificationFlowIT {
 
     assertThat(smsc.sent()).hasSize(1);
     assertThat(new String(smsc.sent().getFirst().part().shortMessage(), StandardCharsets.US_ASCII))
-        .isEqualTo("Your upay code is 042917 to pay Tk 25.50 to Demo Shop. Valid 2 minutes. Never share it.");
+        .isEqualTo("Your Bits code is 042917 to pay Tk 25.50 to Demo Shop. Valid 2 minutes. Never share it.");
   }
 
   @Test
@@ -180,8 +180,8 @@ class NotificationFlowIT {
 
     assertThat(smsc.sent()).extracting(s -> new String(s.part().shortMessage(), StandardCharsets.US_ASCII))
         .containsExactly(
-            "Your upay code to bind a new device is 042917. Valid 2 minutes. Never share it.",
-            "A new device was bound to your upay wallet. If this was not you, call upay support now.");
+            "Your Bits code to bind a new device is 042917. Valid 2 minutes. Never share it.",
+            "A new device was bound to your Bits wallet. If this was not you, call Bits support now.");
   }
 
   @Test

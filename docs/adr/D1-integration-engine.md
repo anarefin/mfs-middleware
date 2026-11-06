@@ -4,7 +4,7 @@ Status: Accepted, 2026-11-03 (spec revision 1). Versions confirmed at the M0 gat
 
 ## Context
 
-The middleware connects many partners with different protocols (REST/JSON, SMPP, callbacks) and runs long-lived request/reply conversations over Kafka. The RFP asks for an integration platform the upay team can own, with open-source components and no per-core licence.
+The middleware connects many partners with different protocols (REST/JSON, SMPP, callbacks) and runs long-lived request/reply conversations over Kafka. The RFP asks for an integration platform the Bits team can own, with open-source components and no per-core licence.
 
 ## Decision
 

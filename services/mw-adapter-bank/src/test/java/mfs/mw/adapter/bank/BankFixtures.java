@@ -51,7 +51,7 @@ public final class BankFixtures {
             operation,
             "ADD_MONEY_BANK",
             new PartnerRequest.PartnerRef("c2wbank", "C2W", null),
-            "UPAY-IGNORED",
+            "BITS-IGNORED",
             new PartnerRequest.Amount(valueMinor, "BDT"),
             new PartnerRequest.Party("BANK_ACCOUNT", account, null, null),
             new PartnerRequest.Party("WALLET", "01711000001", null, "CUSTOMER"),

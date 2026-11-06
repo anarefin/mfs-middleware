@@ -10,7 +10,7 @@
     "operation": "PAY",
     "txnType": "QR_PAY_INTEROP",
     "partner": { "partnerId": "npsb", "productCode": "BANGLAQR" },
-    "partnerTxnRef": "UPAY01933B8E7C1A",
+    "partnerTxnRef": "BITS01933B8E7C1A",
     "amount": { "valueMinor": 750.5, "currency": "BDT" },
     "debitParty": { "type": "WALLET", "id": "01711000001", "walletType": "CUSTOMER" },
     "creditParty": { "type": "MERCHANT", "id": "MID-0001" }

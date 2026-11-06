@@ -313,7 +313,7 @@ check "over the per-consumer quota -> 429 MW-SYS-RATE_LIMITED; counter in Valkey
 
 # ---- partner callback route (ticket 22): edge policies, signature checked by the adapter ----
 cb_path=/partner/billagg/callback/payments
-cb_body='{"transactionId":"UPAY00000000000000000000000000000000","status":"SUCCESS","code":"000","paymentRef":"AGG-1"}'
+cb_body='{"transactionId":"BITS00000000000000000000000000000000","status":"SUCCESS","code":"000","paymentRef":"AGG-1"}'
 cb_unsigned() { call POST "$cb_path" -H 'Content-Type: application/json' -d "$cb_body" && envelope 401 MW-AUTH-001; }
 check "partner callback without a signature -> 401 MW-AUTH-001 (mw-adapter-billpay)" cb_unsigned
 cb_bad_signature() {
@@ -342,7 +342,7 @@ check "partner callback route: ip allow-list, quota per source address in Valkey
 
 # ---- C2W bank callback route (ticket 23): same edge policies, upstream mw-adapter-bank ----
 bank_path=/partner/c2wbank/callback/debits
-bank_body='{"transactionId":"UPAY00000000000000000000000000000000","status":"SUCCESS","code":"000","debitRef":"C2W-1"}'
+bank_body='{"transactionId":"BITS00000000000000000000000000000000","status":"SUCCESS","code":"000","debitRef":"C2W-1"}'
 bank_unsigned() { call POST "$bank_path" -H 'Content-Type: application/json' -d "$bank_body" && envelope 401 MW-AUTH-001; }
 check "bank callback without a signature -> 401 MW-AUTH-001 (mw-adapter-bank)" bank_unsigned
 bank_bad_signature() {
