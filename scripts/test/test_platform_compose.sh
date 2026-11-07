@@ -301,8 +301,15 @@ test_aot_training_and_the_runtime_use_the_same_jvm_flags() {
     grep -qE '^ARG JVM_OPTS="[^"]+"$' "$f" || fail "$f: no ARG JVM_OPTS"
     grep -qE '^ENV JAVA_TOOL_OPTIONS="[$][{]JVM_OPTS[}]"$' "$f" || fail "$f: JAVA_TOOL_OPTIONS is not JVM_OPTS"
     grep -qE 'java -XX:AOTCacheOutput=' "$f" || fail "$f has no AOT training run"
-    grep -qE '^ENTRYPOINT \["java", "-XX:AOTCache=' "$f" || fail "$f does not start with the AOT cache"
+    # opt-in (laptop footprint): production images train (ARG MW_AOT=1), the dev stack builds with
+    # MW_AOT=0; the image starts with the cache only when one was trained
+    grep -qxF 'ARG MW_AOT=1' "$f" || fail "$f: no ARG MW_AOT=1"
+    grep -qF 'if [ "$MW_AOT" = 1 ]; then' "$f" || fail "$f: the training run is not behind MW_AOT"
+    grep -qxF 'ENTRYPOINT ["bash", "-c", "if [ -f /app/app.aot ]; then exec java -XX:AOTCache=/app/app.aot -jar /app/app.jar; fi; exec java -jar /app/app.jar"]' "$f" \
+      || fail "$f does not start with the AOT cache when the image has one"
   done
+  compose_json | jq -e '.services["mw-orchestrator"].build.args.MW_AOT == "0"' >/dev/null \
+    || fail "the dev stack does not build without the AOT cache by default (x-jvm-build-args MW_AOT)"
   j="$(compose_json)"
   for s in $(printf '%s' "$j" | jq -r '.services | to_entries[] | select(.key | test("^mw-") and (test("-init$") | not)) | select(.value.build.context != null) | select(.key != "mw-admin-ui") | .key'); do
     printf '%s' "$j" | jq -e --arg s "$s" '.services[$s] | (.environment.JAVA_TOOL_OPTIONS == null)

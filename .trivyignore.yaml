@@ -11,3 +11,10 @@ vulnerabilities:
       CLI only talks to the local OpenBao during make up and never parses a foreign JWK.
       Re-pin when OpenBao ships go-jose >= 4.1.6.
     expired_at: 2027-02-01
+  - id: CVE-2026-109518
+    statement: >-
+      apt in the Ubuntu 24.04 base of eclipse-temurin:25.0.5_8-jre-noble (the newest Temurin 25 JRE,
+      2026-10-29). The service images no longer run apt-get upgrade at build (laptop footprint,
+      deploy/RUNNING.html), and the running containers never run apt (non-root, read-only root fs).
+      Re-pin JRE_IMAGE when Temurin rebuilds on a fixed apt.
+    expired_at: 2027-02-01

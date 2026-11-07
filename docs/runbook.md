@@ -9,12 +9,12 @@ host running and for anyone debugging a failed demo or gate.
 | | MVP host (spec, TBC) | Smallest that works (functional runs, demos, the API suite) |
 | --- | --- | --- |
 | CPU | 16 vCPU | 4 cores |
-| RAM | 64 GB | 16 GB (Docker gets at least 10 GB) |
+| RAM | 64 GB | 16 GB (Docker gets at least 8 GB) |
 | Disk | 500 GB SSD | 40 GB free |
 | OS | Linux VM | Linux or macOS (Docker Desktop) |
 
 The stack is one hand-written file, `deploy/docker-compose.yml` (project `mfs-mw`, ADR D16), with
-low-resource limits (about 9.6 GB of memory limits in total, checked by `make compose-check`).
+a laptop demo footprint (about 7.9 GB of memory limits in total, capped at 8 GB by `make compose-check`; 1 Kafka partition per topic, 160m JVM heaps, at most 1 CPU per container but Keycloak).
 They are sized for functional runs; a throughput run on a small
 machine may be capped by it (`tests/perf/README.md`).
 
@@ -29,7 +29,7 @@ java -version                                       # must say 25
 docker compose version                              # 2.20 or newer
 ```
 
-On macOS: Docker Desktop (Settings, Resources: memory 10 GB or more), a JDK 25 (`brew install
+On macOS: Docker Desktop (Settings, Resources: memory 8 GB or more), a JDK 25 (`brew install
 --cask temurin`), and `brew install jq`.
 
 ## Start, stop, status
@@ -43,7 +43,8 @@ On macOS: Docker Desktop (Settings, Resources: memory 10 GB or more), a JDK 25 (
 | Live checks | `make smoke` |
 | Seed the shared test baseline (personas, wallets, partner baseline, first admin content) | `make seed` (after `make up`; idempotent; manifest in `build/seed/manifest.json`) |
 | Stop, keep the data | `make down` |
-| Stop and wipe every volume | `make reset` (every profile, orphans too) |
+| Stop and wipe every volume | `make reset` (every profile, orphans too), or `./reset.sh` from `deploy/` |
+| Start without the Makefile (build, start and seed in one command) | `./gradlew clean build`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core --profile seed up -d --build` (`deploy/RUNNING.html`) |
 | Swap a rebuilt service into the running stack | `make build M=mw-notify && make up M=mw-notify` |
 | Run a second stack beside the first | export `COMPOSE_PROJECT_NAME=mw-t2` and `MW_HTTPS_PORT=0` for `make up`, `make api-test` and `make down` (the console login needs port 443, so use it on the default stack only) |
 

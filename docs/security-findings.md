@@ -29,7 +29,6 @@ fails again and the entry must be re-checked (`test_security.sh` enforces statem
 | HIGH CVE-2026-89407, -89425 (jackson-core), -68497, -91776, -91777 (jackson-databind) 2.22.1 | every Gradle module (Jackson 2 comes through Kafka / Camel; the services use Jackson 3) | `jackson-bom` 2.22.3 platform (`security-jackson2` in each catalog) |
 | HIGH CVE-2026-106451 lz4-java 1.11.1 | every module with kafka-clients | constraint 1.11.4 |
 | HIGH CVE-2026-108106, -93451 snappy-java 1.1.10.7 | every module with kafka-clients | constraint 1.1.10.9 |
-| HIGH CVE-2026-109518 apt (Ubuntu 24.04 in eclipse-temurin 25 JRE) | every service image | runtime stage runs `apt-get upgrade` |
 | CRITICAL CVE-2026-111497 brotli, HIGH CVE-2026-92392 libcurl (Alpine) | every `mw-*-init` image and platform PostgreSQL | postgres:18.6-alpine re-pinned to the 2026-11-05 digest; init images `apk upgrade` |
 | CRITICAL/HIGH Go stdlib (26 CVEs) in gosu | every `mw-*-init` image | gosu removed (the init entry point never uses it) |
 | CRITICAL GHSA-2464-fhr4-w9xw, HIGH CVE-2026-94482 next 16.3.8 | mw-admin-ui | Next.js 16.4.1 (minor; spec D6 and section 3 updated to 16.4.1 by ticket 47) |
@@ -49,7 +48,7 @@ platform images stay pulled by digest (spec 20.1); re-pin when upstream rebuilds
 | perl-base CVE-2026-13221, -42496, -8376 (CRITICAL), -42497, -48962, -57432, -57433 | apache/apisix:3.19.0-debian | perl only serves Debian maintainer scripts; APISIX is OpenResty + Lua |
 | libssl3/openssl CVE-2026-84782 (DTLS) | apisix | no DTLS listener; the edge's TLS uses the OpenSSL bundled in apisix-runtime |
 | pcre2 CVE-2026-103111 | apisix | regexes come from our route config only |
-| apt CVE-2026-109518 | apisix, greenmail | the running containers never run apt |
+| apt CVE-2026-109518 | apisix, greenmail; every service image (eclipse-temurin:25.0.5_8-jre-noble, newest Temurin 25 JRE; the images stopped running `apt-get upgrade` for the laptop footprint, `.trivyignore.yaml`) | the running containers never run apt |
 | brotli CVE-2026-111497 (CRITICAL) | apache/kafka:4.3.2, greenmail 2.1.15 | JVM services never load the native libbrotli |
 | libexpat CVE-2026-113351, -117610, -118370, -77214 | apache/kafka:4.3.2 | Kafka parses no XML with the native expat |
 | guava CVE-2026-102554 | keycloak 26.8.1 (26.8.2 ships the same guava) | Keycloak deserializes no Guava objects from requests |

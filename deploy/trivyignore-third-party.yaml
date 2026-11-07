@@ -45,8 +45,8 @@ vulnerabilities:
   - id: CVE-2026-109518
     statement: >-
       apt: on-path attacker during apt downloads. The running containers never run apt; only an
-      image build would, and these images are pulled, not built here. (Our own images run apt-get
-      upgrade at build and are scanned with .trivyignore.yaml, where this id is not accepted.)
+      image build would, and these images are pulled, not built here. (Our own service images,
+      built on eclipse-temurin, accept it in .trivyignore.yaml for the same reason.)
     expired_at: 2027-02-01
   # --- brotli: apache/kafka (Alpine) and greenmail/standalone (Debian 13) --------------------
   - id: CVE-2026-111497

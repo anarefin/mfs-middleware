@@ -13,7 +13,7 @@
 #   make build [M=] [JOBS=3]    bootJar per stack module (JOBS at a time), then docker compose build
 #   make up [PROFILE=core] [TIMERS=fast] [M=]  start the stack (deploy/docker-compose.yml) without building
 #   make seed                   run the seed profile's mw-seeder one-shot; fails unless it exits 0
-#   make compose-check          fail when the stack's memory limits exceed the budget (10 GB)
+#   make compose-check          fail when the stack's memory limits exceed the budget (8 GB, laptop footprint)
 #   make smoke                  live checks against the running MVP stack (scripts/smoke.sh)
 #   make edge-test              live APISIX edge policy tests: 401/400/413/429, headers, idempotent apply
 #   make chaos [TARGETS=]       kill each mw-* container, kafka, postgres mid-flow; no stuck txns, ledger consistent (scripts/chaos.sh)

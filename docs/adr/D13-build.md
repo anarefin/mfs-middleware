@@ -8,7 +8,7 @@ Twelve services should be built and released independently, yet live in one repo
 
 ## Decision
 
-One Git repo. Each module under `services/` is its own Gradle build (own wrapper, `settings.gradle.kts`, version catalog, Dockerfile; since D16 no `compose.yml`, the stack is `deploy/docker-compose.yml`) and a complete Spring Boot application. The root is a Gradle composite build for convenience only (`checkAll`, `bootJarAll`), with no shared configuration, `buildSrc` or convention plugins.
+One Git repo. Each module under `services/` is its own Gradle build (own wrapper, `settings.gradle.kts`, version catalog, Dockerfile; since D16 no `compose.yml`, the stack is `deploy/docker-compose.yml`) and a complete Spring Boot application. The root is a Gradle composite build for convenience only (`checkAll`, `bootJarAll`, and `clean` / `build` for `./gradlew clean build`: each module's `clean`, then its Docker-free `test` and `bootJar`), with no shared configuration, `buildSrc` or convention plugins.
 
 ## Consequences
 

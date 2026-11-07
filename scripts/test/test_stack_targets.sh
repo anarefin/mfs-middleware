@@ -209,6 +209,16 @@ test_down_stops_every_profile_and_reset_drops_the_volumes_too() {
     || fail "reset: $(cat .tool-calls)"
 }
 
+test_deploy_reset_sh_is_make_reset() {
+  # deploy/RUNNING.html step 11: ./reset.sh from deploy/ wipes every profile's containers and volumes
+  [ -x "$REPO_DIR/deploy/reset.sh" ] || fail "deploy/reset.sh missing or not executable"
+  stub_tools
+  stack_file mw-a
+  OUT="$(root="$PWD"; cd deploy && MW_ROOT="$root" "$REPO_DIR/deploy/reset.sh" 2>&1)" || fail "reset.sh failed"
+  grep -qF "docker $(F) --profile minimal --profile core --profile seed down -v --remove-orphans" .tool-calls \
+    || fail "reset.sh: $(cat .tool-calls)"
+}
+
 test_api_test_with_no_suite_is_a_noop() {
   assert_ok mw_make "$PWD" api-test
   assert_out_contains "no API suite"
@@ -384,7 +394,7 @@ test_compose_check_counts_every_profile_and_skips_one_shots() {
   have_compose || return 0
   budget_stack
   assert_ok mw_make "$PWD" compose-check
-  assert_out_contains "896 MiB of 10240 MiB"
+  assert_out_contains "896 MiB of 8192 MiB"
 }
 
 test_compose_check_fails_over_the_budget_or_without_a_limit() {
@@ -402,5 +412,5 @@ test_compose_check_passes_on_the_repo_stack_file() {
   have_compose || return 0
   mkdir -p deploy && cp "$REPO_DIR/deploy/docker-compose.yml" deploy/
   assert_ok mw_make "$PWD" compose-check
-  assert_out_contains "of 10240 MiB"
+  assert_out_contains "of 8192 MiB"
 }

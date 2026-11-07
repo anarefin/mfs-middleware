@@ -381,12 +381,12 @@ Adapters are split by partner family so each family gets its own bulkhead, threa
 
 ### 4.2 Repository layout (monorepo on Bits's GitHub, OWN-02)
 
-The repo is a Gradle composite build only for convenience: the root `settings.gradle.kts` lists each module with `includeBuild(...)`, and the root `build.gradle.kts` holds only aggregate tasks (`checkAll`, `bootJarAll`) that call each included build. There is no `allprojects`/`subprojects` block, no `buildSrc`, no convention plugin and no shared version catalog, so no module inherits anything from the root.
+The repo is a Gradle composite build only for convenience: the root `settings.gradle.kts` lists each module with `includeBuild(...)`, and the root `build.gradle.kts` holds only aggregate tasks (`checkAll`, `bootJarAll`, `clean`, `build`) that call each included build; `./gradlew clean build` runs each module's `clean`, then its Docker-free `test` and `bootJar` (no Testcontainers). There is no `allprojects`/`subprojects` block, no `buildSrc`, no convention plugin and no shared version catalog, so no module inherits anything from the root.
 
 ```
 bits-middleware/
 ├─ settings.gradle.kts          # composite build: includeBuild("services/mw-…") per module, nothing inherited
-├─ build.gradle.kts             # aggregate tasks only (checkAll, bootJarAll)
+├─ build.gradle.kts             # aggregate tasks only (checkAll, bootJarAll, clean, build)
 ├─ gradlew, gradle/wrapper/     # wrapper for the aggregate build
 ├─ Makefile                     # up, verify, e2e, perf, security, new-service, check-isolation, contracts-lint, versions-check
 ├─ contracts/                   # files only, no code: OpenAPI 3.1, WSDL/XSD, AsyncAPI 3, JSON Schema, Pact

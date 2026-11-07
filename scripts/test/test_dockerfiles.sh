@@ -9,7 +9,7 @@ dockerfiles() {
 test_dockerfiles_set_no_env_beyond_the_jvm_flags() {
   local f bad
   for f in $(dockerfiles); do
-    bad="$(grep -nE '^[[:space:]]*(ENV|ARG)[[:space:]]' "$f" | grep -vE '(ENV JAVA_TOOL_OPTIONS=|ARG JRE_IMAGE=|ARG JVM_OPTS=)')"
+    bad="$(grep -nE '^[[:space:]]*(ENV|ARG)[[:space:]]' "$f" | grep -vE '(ENV JAVA_TOOL_OPTIONS=|ARG JRE_IMAGE=|ARG JVM_OPTS=|ARG MW_AOT=)')"
     [ -z "$bad" ] || fail "$f sets image env/args beyond JVM flags: $bad"
   done
 }
@@ -29,5 +29,14 @@ test_training_run_placeholders_are_obviously_fake() {
     line="$(grep -nE '^(RUN|[[:space:]]).*[A-Z_]*(KEY|SECRET|PASSWORD|TOKEN)[A-Z_]*=' "$f" \
       | grep -vE '[A-Z_]*(KEY|SECRET|PASSWORD|TOKEN)[A-Z_]*=("\$\(cat /tmp/aot-|[^ ]*fake)')"
     [ -z "$line" ] || fail "$f training RUN sets a secret-like value that is not obviously fake: $line"
+  done
+}
+
+test_service_images_skip_the_os_package_upgrade() {
+  # Laptop footprint (deploy/RUNNING.html): no apt-get upgrade per image; OS fixes come with the
+  # pinned JRE_IMAGE (bump the pin), accepted findings in .trivyignore.yaml (docs/security-findings.md).
+  local f
+  for f in $(dockerfiles); do
+    ! grep -qE 'apt-get[^#]*upgrade' "$f" || fail "$f still runs apt-get upgrade"
   done
 }

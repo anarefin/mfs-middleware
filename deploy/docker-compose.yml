@@ -33,29 +33,32 @@
 # Test timers: the ${MW_...} placeholders marked "timer" default to the production values of the
 # services' application.yml; `make up TIMERS=fast` also loads deploy/test-timers.env (short ones).
 #
-# Memory (functional runs only, never load tests; the smallest footprint that still passes the API suite).
+# Memory (laptop demo footprint: functional runs and feature exploration only, never load tests).
+# Target: the whole core profile + seed inside Docker Desktop at 8 GB on a personal laptop.
 # Hard guard: the limits of all long-running containers (no mw.oneshot label) must add up to
-# <= 10240 MiB; `make compose-check` fails above that, or when a long-running service has no limit.
+# <= 8192 MiB; `make compose-check` fails above that, or when a long-running service has no limit.
 # The JVM flags the AOT cache depends on (GC, hence compressed oops) are the image's JVM_OPTS build
 # arg (x-jvm-build), used by the training run and by every start (JAVA_TOOL_OPTIONS); the run adds
-# only sizes (JDK_JAVA_OPTIONS), so the cache baked into the image is used (ticket 55; -Xlog:aot).
-# CPU limits are left as they are: an idle limit reserves nothing, and lower ones slow start-up
-# past the health-check windows.
+# only sizes (JDK_JAVA_OPTIONS), so a cache baked into the image is used (ticket 55; -Xlog:aot).
+# The dev stack builds without the AOT cache (MW_AOT=0, x-jvm-build-args; MW_AOT=1 make build
+# trains it). CPU: at most 1 CPU per JVM service and platform container (keycloak 2: its start-up
+# is CPU-bound and the health window would pass), so the stack never takes the whole laptop.
 #
-#   container            limit MiB   measured peak (one make up + full Cucumber e2e run, 2026-11-05)
-#   mw-* services        512         311-359 after make up + the Cucumber @p2p scenarios, 2026-11-06 (Serial GC, tiered JIT, fixed heap 192m; Hikari pool 3, 4 for the busy three)
-#     mw-orchestrator    576         381
-#     mw-audit-dw        544         326
-#     mw-simulators      448         319
-#   kafka                640         374  (fixed heap 256m; 3 partitions per topic, MW_KAFKA_PARTITIONS, ~280 in all)
-#   keycloak             640         494  (heap 128..384m)
-#   apisix               448         368
-#   postgres             384         274  (shared_buffers 64MB, max_connections 100; pools total 39)
-#   greenmail            192         123  (heap 96m)
-#   openbao              160          92
-#   etcd 96 (43), valkey 64 (9)
-#   mw-admin-ui          256         not yet measured (Node.js standalone server)
-#   long-running total   9568 of the 10240 guard
+#   container            limit MiB   measured peak MiB (the RUNNING.html start + make seed + api-test
+#                                    folders 00, 01, 05, 2026-11-06, MW_AOT=0, heap 160m; *: full Cucumber run 2026-11-05)
+#   mw-* services        416         313-362 (Serial GC, tiered JIT, fixed heap 160m; Hikari pool 3, 4 for the busy three)
+#     mw-orchestrator    448         369
+#     mw-audit-dw        448         320
+#     mw-simulators      384         287
+#   kafka                576         469  (fixed heap 256m; 1 partition per topic, MW_KAFKA_PARTITIONS)
+#   keycloak             608         483  (heap 128..384m)
+#   apisix               384         290, 368*
+#   postgres             320         140, 274*  (shared_buffers 64MB, max_connections 100; pools total 39)
+#   greenmail            160         125  (heap 96m)
+#   openbao              128          95
+#   etcd 64 (34), valkey 64 (8)
+#   mw-admin-ui          160          46  (Node.js standalone server)
+#   long-running total   7904 of the 8192 guard (sum of the measured peaks: 5974)
 #   one-shots (exit before their service starts): *-init 128, kafka-init 512 (3 parallel CLI
 #   JVMs; 8 were OOM-killed at 384), apisix-init 256, etcd-init 64
 #
@@ -118,7 +121,7 @@ x-jvm-env: &jvm-env
   # Sizes only, on top of the image's JAVA_TOOL_OPTIONS (the trained flags, see x-jvm-build):
   # a fixed heap (BitsPay pattern), normal tiered JIT.
   JDK_JAVA_OPTIONS: >-
-    -Xms192m -Xmx192m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m -Xss512k
+    -Xms160m -Xmx160m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m -Xss512k
     -XX:MaxDirectMemorySize=64m
   SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "1"
   # timer: non-blocking retry topics <topic>.<group>.retry.1..3 (19.2), three delays
@@ -128,6 +131,9 @@ x-jvm-env: &jvm-env
 # its ZGC + MaxRAMPercentage=75: Serial GC suits a 192m heap; a change here rebuilds the images.
 x-jvm-build-args: &jvm-build-args
   JVM_OPTS: -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
+  # AOT cache training run at image build: off on the laptop dev stack (faster builds); MW_AOT=1 on
+  # the build command (e.g. `MW_AOT=1 make build`) trains it, as the production images do.
+  MW_AOT: ${MW_AOT:-0}
 
 # Each service's idempotent one-shot (services/<svc>/init/init.sh): its database role and schema,
 # its secrets in OpenBao (secret/<svc>) and the AppRole the service logs in with (written to the
@@ -221,7 +227,7 @@ services:
       KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: "1"
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
-      # 3 partitions per topic (kafka-init MW_KAFKA_PARTITIONS), about 280 in all: a fixed 256m heap.
+      # 1 partition per topic (kafka-init MW_KAFKA_PARTITIONS; laptop demo footprint): a fixed 256m heap.
       KAFKA_HEAP_OPTS: -Xms256m -Xmx256m
     volumes:
       - kafka-data:/var/lib/kafka/data
@@ -237,7 +243,7 @@ services:
       start_interval: 1s
     deploy:
       resources:
-        limits: { cpus: "2", memory: 640M }
+        limits: { cpus: "1", memory: 576M }
     logging: *logging
 
   kafka-init:
@@ -255,8 +261,8 @@ services:
       PARALLEL: "3"
       KAFKA_HEAP_OPTS: -Xms16m -Xmx96m
       KAFKA_JVM_PERFORMANCE_OPTS: -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1
-      # Dev stack: every topic gets 3 partitions (topics.txt keeps the production counts).
-      MW_KAFKA_PARTITIONS: ${MW_KAFKA_PARTITIONS:-3}
+      # Dev stack: every topic gets 1 partition (laptop footprint; topics.txt keeps the production counts).
+      MW_KAFKA_PARTITIONS: ${MW_KAFKA_PARTITIONS:-1}
       # Done marker: a second run with the same plan exits at once, without a Kafka CLI JVM.
       # /var/lib/kafka/data is owned by the image's appuser, so the fresh volume is writable.
       STATE_DIR: /var/lib/kafka/data
@@ -316,7 +322,7 @@ services:
       start_interval: 1s
     deploy:
       resources:
-        limits: { cpus: "2", memory: 384M }
+        limits: { cpus: "1", memory: 320M }
     logging: *logging
 
   valkey:
@@ -340,7 +346,7 @@ services:
       start_interval: 1s
     deploy:
       resources:
-        limits: { cpus: "1", memory: 64M }
+        limits: { cpus: "0.5", memory: 64M }
     logging: *logging
 
   keycloak:
@@ -382,7 +388,7 @@ services:
       start_interval: 1s
     deploy:
       resources:
-        limits: { cpus: "2", memory: 640M }
+        limits: { cpus: "2", memory: 608M }
     logging: *logging
 
   openbao:
@@ -410,7 +416,7 @@ services:
       start_interval: 1s
     deploy:
       resources:
-        limits: { cpus: "1", memory: 160M }
+        limits: { cpus: "0.5", memory: 128M }
     logging: *logging
 
   etcd:
@@ -443,7 +449,7 @@ services:
       start_interval: 1s
     deploy:
       resources:
-        limits: { cpus: "1", memory: 96M }
+        limits: { cpus: "0.5", memory: 64M }
     logging: *logging
 
   etcd-init:
@@ -497,7 +503,7 @@ services:
       start_interval: 1s
     deploy:
       resources:
-        limits: { cpus: "2", memory: 448M }
+        limits: { cpus: "1", memory: 384M }
     logging: *logging
 
   apisix-init:
@@ -560,7 +566,7 @@ services:
       start_interval: 1s
     deploy:
       resources:
-        limits: { cpus: "1", memory: 192M }
+        limits: { cpus: "0.5", memory: 160M }
     logging: *logging
 
   # ------------------------------------------------------------ minimal (and core): P2P and cash path
@@ -592,7 +598,7 @@ services:
       MW_COREMOCK_SEED_API_ENABLED: "true"
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 512M }
+        limits: { cpus: "1.0", memory: 416M }
 
   # Partner, SMSC and USSD gateway simulators (OCS, bill aggregator, C2W bank, merchant IPN).
   mw-simulators-init:
@@ -632,7 +638,7 @@ services:
       SIM_TIMEOUTDELAY: ${MW_SIM_TIMEOUT_DELAY:-30s}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 448M }
+        limits: { cpus: "1.0", memory: 384M }
 
   # Transaction saga (spec 7).
   mw-orchestrator-init:
@@ -681,7 +687,7 @@ services:
       MW_ORCHESTRATOR_TEST_API_ENABLED: "true"
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 576M }
+        limits: { cpus: "1.0", memory: 448M }
 
   # Append-only audit trail and its query API (spec 14).
   mw-audit-dw-init:
@@ -715,7 +721,7 @@ services:
       MW_AUDIT_DW_TEST_API_ENABLED: "true"
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 544M }
+        limits: { cpus: "1.0", memory: 448M }
 
   # Customer app API (spec 9.1).
   mw-app-gateway-init:
@@ -757,7 +763,7 @@ services:
       MW_APP_DEVICE_OTP_MAX_SENDS: ${MW_APP_DEVICE_OTP_MAX_SENDS:-20}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 512M }
+        limits: { cpus: "1.0", memory: 416M }
 
   # SMS over SMPP and email over SMTP (spec 10).
   mw-notify-init:
@@ -796,7 +802,7 @@ services:
       MW_NOTIFY_FLYWAY_LOCATIONS: ${MW_NOTIFY_FLYWAY_LOCATIONS:-classpath:db/migration,classpath:db/dev}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 512M }
+        limits: { cpus: "1.0", memory: 416M }
 
   # USSD menus over HTTP and SMPP (spec 9.2); in minimal for the @p2p / @cash USSD scenarios.
   mw-ussd-init:
@@ -838,7 +844,7 @@ services:
       MW_USSD_SMPP_GP_PORT: ${MW_USSD_SMPP_GP_PORT:-2776}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 512M }
+        limits: { cpus: "1.0", memory: 416M }
 
   # Operator admin API (spec 15); in minimal for the @p2p operator and template scenarios.
   mw-admin-api-init:
@@ -875,7 +881,7 @@ services:
       MW_ADMIN_JWK_SET_URI: ${MW_ADMIN_JWK_SET_URI:-http://keycloak:8080/realms/ops/protocol/openid-connect/certs}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 512M }
+        limits: { cpus: "1.0", memory: 416M }
 
   # ------------------------------------------------------------ core: the rest of the stack
   # Mobile top-up adapter: OCS (spec 12); the dev profile seeds the partners on the simulator.
@@ -910,7 +916,7 @@ services:
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 512M }
+        limits: { cpus: "1.0", memory: 416M }
 
   # Bill payment adapter: utility bill aggregator (spec 12).
   mw-adapter-billpay-init:
@@ -950,7 +956,7 @@ services:
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 512M }
+        limits: { cpus: "1.0", memory: 416M }
 
   # Add money adapter: C2W bank (spec 12).
   mw-adapter-bank-init:
@@ -989,7 +995,7 @@ services:
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 512M }
+        limits: { cpus: "1.0", memory: 416M }
 
   # Organisation portal API and bulk disbursement (spec 8.2, 9.4).
   mw-portal-api-init:
@@ -1026,7 +1032,7 @@ services:
       MW_BULK_RATE_PER_SECOND: ${MW_BULK_RATE_PER_SECOND:-50}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 512M }
+        limits: { cpus: "1.0", memory: 416M }
 
   # Merchant checkout API and hosted payment page API (spec 9.3).
   mw-checkout-init:
@@ -1073,7 +1079,7 @@ services:
       MW_CHECKOUT_IPN_POLL_PERIOD: ${MW_CHECKOUT_IPN_POLL_PERIOD:-2s}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 512M }
+        limits: { cpus: "1.0", memory: 416M }
 
   # The admin console (Next.js, spec 15.1). Operation zone only (18.1): the `ops` network, where
   # APISIX (which routes /console/* here and /admin/v1/* to mw-admin-api) and Keycloak are. The
@@ -1106,7 +1112,7 @@ services:
       retries: 3
     deploy:
       resources:
-        limits: { cpus: "0.5", memory: 256M }
+        limits: { cpus: "0.5", memory: 160M }
 
   # ------------------------------------------------------------ seed (ticket 57)
   # mw-seeder: one-shot API seeder (profile seed; `make seed` runs it with the core profile and fails

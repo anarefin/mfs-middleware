@@ -11,6 +11,8 @@ mocked core (`mw-core-mock`) and simulated partners (`mw-simulators`).
   D1–D15 and M1–M13.
 - Running the MVP host: [docs/runbook.md](docs/runbook.md).
 - Milestone demos M0–M6: [docs/demo.md](docs/demo.md).
+- Running the full stack on a laptop with plain Docker Compose and seed data, then testing it
+  (BitsPay pattern): [deploy/RUNNING.html](deploy/RUNNING.html).
 - Conventions for contributors and coding agents: [CLAUDE.md](CLAUDE.md) and the `CLAUDE.md` of
   each module.
 
@@ -22,8 +24,8 @@ runs in Docker.
 
 | What | Why | Check |
 | --- | --- | --- |
-| Linux or macOS host, 4+ CPU cores, 16 GB RAM, 40 GB free disk | the stack's memory limits add up to about 9.6 GB (`make compose-check` caps them at 10 GB); images and Gradle caches take about 15 GB | `nproc` / `sysctl -n hw.ncpu` |
-| Docker Engine with the Compose v2 plugin, 2.20 or newer (`up --wait`, profiles); on macOS Docker Desktop with at least 10 GB memory for its VM | every container | `docker compose version` |
+| Linux or macOS host, 4+ CPU cores, 16 GB RAM, 40 GB free disk | the stack's memory limits add up to about 7.9 GB (`make compose-check` caps them at 8 GB: a laptop demo footprint, never a load test host); images and Gradle caches take about 15 GB | `nproc` / `sysctl -n hw.ncpu` |
+| Docker Engine with the Compose v2 plugin, 2.20 or newer (`up --wait`, profiles); on macOS Docker Desktop with at least 8 GB memory for its VM | every container | `docker compose version` |
 | JDK 25 (Temurin or any other build) on `PATH` or in `JAVA_HOME` | `make build` builds each service jar on the host with its own Gradle wrapper; the wrappers download Gradle itself | `java -version` |
 | bash, make (GNU or BSD), git, curl, jq | the Makefile and `scripts/`; jq for `make smoke`, `make edge-test`, `make security` | `jq --version` |
 | Node.js 22+ with npx | `make api-test` (Newman, pinned, fetched by npx; needs access to registry.npmjs.org and cdnjs.cloudflare.com), `make contracts-lint`, `make compose-check`; the admin console builds inside Docker | `node --version` |
@@ -68,8 +70,8 @@ starts), `minimal` = the P2P and cash path, `core` = everything (the default), `
 
 Start-up order and cost (ticket 55): the init containers start once PostgreSQL and OpenBao are
 healthy, every `mw-*` service once PostgreSQL, Kafka, Keycloak and OpenBao are healthy and
-`kafka-init` has exited 0. `kafka-init` creates the topics of `deploy/kafka/topics.txt` with 3
-partitions each (`MW_KAFKA_PARTITIONS=3`; the file keeps the production counts) and leaves a done
+`kafka-init` has exited 0. `kafka-init` creates the topics of `deploy/kafka/topics.txt` with 1
+partition each (`MW_KAFKA_PARTITIONS=1`, the laptop footprint; the file keeps the production counts) and leaves a done
 marker in its volume, so a later `make up` with the same plan skips it in about a second. Keycloak
 is pre-built (`deploy/keycloak/Dockerfile`, image `mfs-mw/keycloak:local`) and starts `--optimized`.
 The service images are trained for their AOT cache with the dev stack's JVM flags (build arg
@@ -114,16 +116,22 @@ Then:
 | `customers` | `customer01` (wallet `01711000001`), `customer02` (`01711000002`), `agent01`, `merchant01`, `merchant02` | `KC_CUSTOMERS_TEST_PASSWORD` | app API, API suite, perf |
 | `portals` | `org-maker01`, `org-checker01`, `org-checker02`, `org-makerchecker01`, `sp-viewer01` | `KC_PORTALS_TEST_PASSWORD` | org / SP portal API |
 
-### With plain `docker compose`
+### With plain `docker compose` (BitsPay pattern)
 
-Without the Makefile:
+Without the Makefile, one command builds the images, starts everything and seeds it
+([deploy/RUNNING.html](deploy/RUNNING.html) walks through every step):
 
 ```sh
-scripts/gen-dev-env.sh                                               # dev credentials, once
-for d in services/mw-*/; do (cd "$d" && ./gradlew bootJar -q); done  # the images copy build/libs/*.jar
-docker compose -f deploy/docker-compose.yml --profile core build
-docker compose -f deploy/docker-compose.yml --profile core up -d --wait
+./gradlew clean build                 # every module's clean, Docker-free test tier and bootJar
+scripts/gen-dev-env.sh                # dev credentials in deploy/.env, once (values are kept)
+cd deploy
+docker compose --env-file .env --env-file test-timers.env --profile core --profile seed up -d --build
+docker compose --profile core --profile seed ps -a mw-seeder   # exited (0) once seeded
+./reset.sh                            # later: wipe every container and volume (same as make reset)
 ```
+
+Drop `--env-file test-timers.env` for the production timers. The images build without the AOT
+cache on the dev stack (`MW_AOT=0`); `MW_AOT=1` on the build trains it as the production images do.
 
 ## What runs
 
@@ -152,6 +160,7 @@ modules, or for one with `M=<module>`. `make help` prints the list.
 
 | Command | What it does |
 | --- | --- |
+| `./gradlew clean build` (repo root) | every module's `clean`, then its `test` tier and `bootJar`: fresh jars for the images, no Docker |
 | `cd services/mw-x && ./gradlew test` | unit and slice tests, no Docker (the fast tier) |
 | `cd services/mw-x && ./gradlew integrationTest` | the `*IT` classes: Testcontainers PostgreSQL 18 and Kafka (needs Docker) |
 | `cd services/mw-x && ./gradlew conformance` | the `@Conformance` suite copied from the template (correlation, envelope, masking, outbox, inbox, retry/DLQ) |
@@ -187,9 +196,9 @@ manifest in step with every message change. The admin console is tested with `pn
 | `make perf` | Gatling mix at 100 TPS with the p95 middleware-overhead check (criterion 7, `tests/perf/README.md`); report under `tests/perf/build/reports/` |
 | `make security [M=]` | gitleaks, CycloneDX SBOM + trivy for every module and image; with the stack up also the ZAP baseline and the container log scan. `SECURITY_LIVE=1 make security` makes the live stages mandatory (the milestone gate). Decisions in `docs/security-findings.md` |
 | `make log-scan` | scan every container log of the stack for a PIN or an unmasked MSISDN / NID |
-| `make compose-check` | fail when a long-running service of `deploy/docker-compose.yml` has no memory limit or the limits pass 10 GB |
+| `make compose-check` | fail when a long-running service of `deploy/docker-compose.yml` has no memory limit or the limits pass 8 GB |
 | `make down [DOWN_ARGS=-v]` | stop the stack, every profile (`-v` drops its volumes) |
-| `make reset` | remove every container, volume and orphan of the stack (every profile): the next `make up` starts fresh |
+| `make reset` | remove every container, volume and orphan of the stack (every profile): the next `make up` starts fresh; `deploy/reset.sh` does the same from `deploy/` |
 
 The milestone gate, in order: `make verify-changed BASE=<run start>` with the stack down, then
 `make reset && make build && make up TIMERS=fast && make seed && make api-test`, then `make chaos`, `make perf` and

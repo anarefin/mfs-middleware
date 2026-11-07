@@ -71,7 +71,7 @@ published="$(printf '%s' "$ps_json" | jq -r '.[] | .Service as $s | (.Publishers
 # ---- Kafka topics ----
 topics_check() {
   local want got missing=0 topic parts _
-  # the partition count kafka-init ran with (MW_KAFKA_PARTITIONS, 3 on the dev stack; ticket 55)
+  # the partition count kafka-init ran with (MW_KAFKA_PARTITIONS, 1 on the laptop dev stack; ticket 55)
   local cid parts_env
   cid="$(dc ps -a -q kafka-init | head -1)"
   parts_env="$(docker inspect "$cid" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | sed -n 's/^MW_KAFKA_PARTITIONS=//p')"
