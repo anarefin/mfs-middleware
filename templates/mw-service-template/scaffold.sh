@@ -132,20 +132,10 @@ mv "$out" "$dest"
 printf '==> scaffold: %s (package %s)\n' "$dest" "$pkg"
 
 # One hand-written stack file (ADR D16): no compose.yml in the module. Print the blocks to paste
-# into deploy/docker-compose.yml (profile core; keep the -init block once the service has an init/
-# step, copied from a service that has one).
+# into deploy/docker-compose.yml (profile core) and deploy/provision/services.sh (the one dev
+# provisioning one-shot: its secret, database role and schema, AppRole).
 cat <<EOF
 ==> scaffold: paste into deploy/docker-compose.yml (services:, profile core), then make build M=$name
-
-  $name-init:
-    <<: *init
-    profiles: *core
-    image: mfs-mw/$name-init:local
-    build: ../services/$name/init
-    environment: *init-env
-    volumes:
-      - openbao-data:/openbao/file:ro
-      - $suffix-approle:/out
 
   $name:
     <<: *app
@@ -154,7 +144,6 @@ cat <<EOF
     build: { context: ../services/$name, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
-      $name-init: { condition: service_completed_successfully }
     volumes:
       - $suffix-approle:/run/mw/approle:ro
     environment:
@@ -166,4 +155,14 @@ cat <<EOF
 
 and under volumes:
   $suffix-approle:
+
+and under provision: volumes:
+      - $suffix-approle:/out/$suffix
+
+==> scaffold: paste into deploy/provision/services.sh (append $name:$suffix to SERVICES, then):
+
+provision_$(printf '%s' "$name" | tr - _)() {
+  gen_once spring.datasource.password 40
+  db_role ${snake}_rw $snake
+}
 EOF

@@ -114,7 +114,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   processed", the result by SMS once mw-notify sends it); publish failure -> `unavailable`.
   Flows: P2P, CASH_OUT, TOPUP, BILL_PAY (`TxnRequestMapper.FLOWS`); agents cash in from the Agent
   app, not over USSD.
-- Init (`mw-ussd-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role `ussd_rw`,
+- Dev provisioning (`provision_mw_ussd` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role `ussd_rw`,
   schema `ussd`, `secret/mw-ussd` (DB password; Valkey password from `VALKEY_PASSWORD`; the core's
   PIN public key and key id copied from `secret/mw-core-mock`, playing the core team's hand-over),
   AppRole `mw-ussd`.
@@ -143,7 +143,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -173,6 +173,6 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 | `./gradlew check bootJar && docker build -t mw-ussd:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-ussd` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when its files or the contracts in its `contracts.yml` changed) |
-| `make build M=mw-ussd` | `bootJar`, then this service's images (`mfs-mw/mw-ussd:local`, `-init`) |
+| `make build M=mw-ussd` | `bootJar`, then this service's images (`mfs-mw/mw-ussd:local`, plus the shared `mfs-mw/provision:local`) |
 | `make up M=mw-ussd` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |
 | `make api-test FOLDER="18, 19, 20"` | P2P, cash-out, top-up and bill pay over the HTTP USSD gateway simulator (`tests/api/src/18-ussd`, `19-ussd-flows`) and GP over SMPP (`20-ussd-smpp`) |

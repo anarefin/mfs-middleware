@@ -188,7 +188,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   401; secret `mw.admin-api.internal-auth.client-secret` in `secret/mw-admin-api`, synced by the init
   from `KC_MW_ADMIN_API_SECRET`. Resilience4j `orchestrator` and `audit-dw` (retry + breaker on
   `QueryUnavailableException` only).
-- Init (`mw-admin-api-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
+- Dev provisioning (`provision_mw_admin_api` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role
   `admin_api_rw`, schemas `admin` and `partner` (spec 16.2), `secret/mw-admin-api` (DB password; client secret),
   AppRole. Stack: a service of `deploy/docker-compose.yml` (profiles `minimal`, `core`), limit 512 MiB, Hikari pool 2.
 - Keycloak realm `ops` (`deploy/keycloak/realms/ops-realm.json`) carries the 15.4
@@ -234,7 +234,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
   Events written without one (scheduled jobs) get a plain UUID (`util/CorrelationIds`).
@@ -266,5 +266,5 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 | `./gradlew check bootJar && docker build -t mw-admin-api:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-admin-api` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make verify-changed [BASE=main]` | the same gate for the modules changed since BASE only |
-| `make build M=mw-admin-api` | `bootJar`, then this service's images (`mfs-mw/mw-admin-api:local`, `-init`) |
+| `make build M=mw-admin-api` | `bootJar`, then this service's images (`mfs-mw/mw-admin-api:local`, plus the shared `mfs-mw/provision:local`) |
 | `make up M=mw-admin-api` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |

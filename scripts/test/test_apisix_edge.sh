@@ -393,7 +393,7 @@ test_ussd_secrets_are_generated_and_passed_to_apisix_and_the_simulator() {
     v="USSD_${mno}_GATEWAY_SECRET"
     grep -q "$v" "$REPO_DIR/scripts/gen-dev-env.sh" || fail "$v not generated"
     grep -A40 -E '^  apisix-init:' "$REPO_DIR/deploy/docker-compose.yml" | grep -q "$v: " || fail "$v not passed to apisix-init"
-    grep -A20 -E "^  mw-simulators-init:" "$REPO_DIR/deploy/docker-compose.yml" | grep -q "$v: " || fail "$v not passed to mw-simulators-init"
+    grep -A40 -E "^  provision:" "$REPO_DIR/deploy/docker-compose.yml" | grep -q "$v: " || fail "$v not passed to provision (mw-simulators' secret)"
   done
 }
 

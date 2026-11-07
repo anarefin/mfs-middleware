@@ -100,13 +100,14 @@ x-app: &app
     retries: 3
 
 # Every mw-* JVM service starts once the platform is ready: PostgreSQL, Kafka, Keycloak and
-# OpenBao healthy and the topics created (kafka-init); plus its own <svc>-init.
+# OpenBao healthy, the topics created (kafka-init) and every service provisioned (provision).
 x-infra-deps: &infra-deps
   postgres: { condition: service_healthy }
   kafka: { condition: service_healthy }
   keycloak: { condition: service_healthy }
   openbao: { condition: service_healthy }
   kafka-init: { condition: service_completed_successfully }
+  provision: { condition: service_completed_successfully }
 
 # Environment every mw-* JVM service shares. Secrets come from OpenBao via Spring Cloud Vault
 # (18.4): the DB password and the service's other secrets from secret/<svc>, the AppRole
@@ -135,31 +136,6 @@ x-jvm-build-args: &jvm-build-args
   # the build command (e.g. `MW_AOT=1 make build`) trains it, as the production images do.
   MW_AOT: ${MW_AOT:-0}
 
-# Each service's idempotent one-shot (services/<svc>/init/init.sh): its database role and schema,
-# its secrets in OpenBao (secret/<svc>) and the AppRole the service logs in with (written to the
-# <svc>-approle volume). Dev/MVP only. Starts once PostgreSQL and OpenBao (unsealed, engines
-# enabled) are healthy, so init.sh never polls.
-x-init: &init
-  restart: "no"
-  labels: { mw.oneshot: "true" } # one-shot: exits 0 before its service starts
-  networks: [app, data]
-  security_opt: [no-new-privileges:true]
-  depends_on: &init-deps
-    postgres: { condition: service_healthy }
-    openbao: { condition: service_healthy }
-  deploy:
-    resources:
-      limits: { cpus: "0.5", memory: 128M }
-
-x-init-env: &init-env
-  PGHOST: postgres
-  PGUSER: ${POSTGRES_USER:-mw_admin}
-  PGDATABASE: ${POSTGRES_DB:-mw}
-  PGPASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
-  BAO_ADDR: ${VAULT_ADDR:-http://openbao:8200}
-  INIT_FILE: /openbao/file/dev-init.json
-  OUT_DIR: /out
-
 x-minimal: &minimal [minimal, core]
 x-core: &core [core]
 
@@ -183,7 +159,7 @@ volumes:
   apisix-tls:
   # kafka-init's done marker (apply-topics.sh: checksum of the applied plan)
   kafka-init-state:
-  # role-id / secret-id written by each <svc>-init, read by the service (Spring configtree)
+  # role-id / secret-id written by provision, each read by its own service only (Spring configtree)
   core-mock-approle:
   simulators-approle:
   adapter-telco-approle:
@@ -279,6 +255,8 @@ services:
   postgres:
     image: postgres:18.6-alpine@sha256:8a334ab9502c8ccb8d7dec4e83b36b5ce8ed7b396e585f1c86b0e69c416f4fca
     restart: unless-stopped
+    # tini as PID 1: reaps the pg_isready of a healthcheck that timed out (BitsPay deploy pattern)
+    init: true
     networks: [data]
     env_file: [env/postgres.env]
     environment:
@@ -289,7 +267,7 @@ services:
     # (sum of the worst case, one replica each; keep it below max_connections minus the 3
     # superuser_reserved_connections when a pool or a replica is added): the dev stack caps each
     # service's Hikari pool (SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE below: 2-4, 39 in all with
-    # audit-dw's extra pools and Keycloak's 20), so 100 leaves room for psql sessions and the inits.
+    # audit-dw's extra pools and Keycloak's 20), so 100 leaves room for psql sessions and the provision one-shot.
     # Production sizes max_connections per instance (pool x replicas, summed).
     command:
       - postgres
@@ -406,7 +384,7 @@ services:
       - openbao-data:/openbao/file
     tmpfs: [/tmp]
     # Healthy once unsealed and the dev engines exist (dev-unseal.sh writes dev-ready after them):
-    # the module inits read the root token and write their secrets as soon as this is healthy.
+    # provision reads the root token and writes every service's secrets as soon as this is healthy.
     healthcheck:
       test: ["CMD-SHELL", "bao status >/dev/null && test -f /openbao/file/dev-ready"]
       interval: 5s
@@ -569,18 +547,65 @@ services:
         limits: { cpus: "0.5", memory: 160M }
     logging: *logging
 
-  # ------------------------------------------------------------ minimal (and core): P2P and cash path
-  # Ledger and PIN check stand-in for the core (spec 13); the PIN private key in OpenBao.
-  mw-core-mock-init:
-    <<: *init
+  # ------------------------------------------------------------ provisioning (minimal and core)
+  # The dev stack's one provisioning one-shot (deploy/provision; ADR D16): for every service of
+  # deploy/provision/services.sh, in order, its secret/<svc> in OpenBao, its database role(s) and
+  # schema and the AppRole it logs in with, written to that service's own <dir>-approle volume.
+  # Idempotent on every `make up`; only this one-shot holds the OpenBao root token and the
+  # PostgreSQL admin password. Starts once both are healthy, so provision.sh never polls. Dev/MVP only.
+  provision:
     profiles: *minimal
-    image: mfs-mw/mw-core-mock-init:local
-    build: ../services/mw-core-mock/init
-    environment: *init-env
+    image: mfs-mw/provision:local
+    build: ./provision
+    restart: "no"
+    labels: { mw.oneshot: "true" } # one-shot: exits 0 before any mw-* service starts
+    networks: [app, data]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      postgres: { condition: service_healthy }
+      openbao: { condition: service_healthy }
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-mw_admin}
+      PGDATABASE: ${POSTGRES_DB:-mw}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      BAO_ADDR: ${VAULT_ADDR:-http://openbao:8200}
+      INIT_FILE: /openbao/file/dev-init.json
+      OUT_ROOT: /out
+      # deploy/.env values synced into the services' secrets on every run (services.sh sync_env)
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_TELETALK_GATEWAY_SECRET: ${USSD_TELETALK_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
     volumes:
       - openbao-data:/openbao/file:ro
-      - core-mock-approle:/out
+      # one volume per service, at /out/<dir> as listed in services.sh
+      - core-mock-approle:/out/core-mock
+      - simulators-approle:/out/simulators
+      - orchestrator-approle:/out/orchestrator
+      - audit-dw-approle:/out/audit-dw
+      - app-gateway-approle:/out/app-gateway
+      - notify-approle:/out/notify
+      - ussd-approle:/out/ussd
+      - admin-api-approle:/out/admin-api
+      - adapter-telco-approle:/out/adapter-telco
+      - adapter-billpay-approle:/out/adapter-billpay
+      - adapter-bank-approle:/out/adapter-bank
+      - portal-api-approle:/out/portal-api
+      - checkout-approle:/out/checkout
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128M }
+    logging: *logging
 
+  # ------------------------------------------------------------ minimal (and core): P2P and cash path
+  # Ledger and PIN check stand-in for the core (spec 13); the PIN private key in OpenBao.
   mw-core-mock:
     <<: *app
     profiles: *minimal
@@ -588,7 +613,6 @@ services:
     build: { context: ../services/mw-core-mock, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
-      mw-core-mock-init: { condition: service_completed_successfully }
     volumes:
       - core-mock-approle:/run/mw/approle:ro
     environment:
@@ -601,25 +625,6 @@ services:
         limits: { cpus: "1.0", memory: 416M }
 
   # Partner, SMSC and USSD gateway simulators (OCS, bill aggregator, C2W bank, merchant IPN).
-  mw-simulators-init:
-    <<: *init
-    profiles: *minimal
-    image: mfs-mw/mw-simulators-init:local
-    build: ../services/mw-simulators/init
-    environment:
-      <<: *init-env
-      # the partner simulators' hmac-sha256 secrets (the adapters get the same values)
-      BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      # the MNO USSD gateways' basic-auth passwords (APISIX consumers ussd_<mno> hold the same)
-      USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      USSD_TELETALK_GATEWAY_SECRET: ${USSD_TELETALK_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-    volumes:
-      - openbao-data:/openbao/file:ro
-      - simulators-approle:/out
-
   mw-simulators:
     <<: *app
     profiles: *minimal
@@ -627,7 +632,6 @@ services:
     build: { context: ../services/mw-simulators, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
-      mw-simulators-init: { condition: service_completed_successfully }
     volumes:
       - simulators-approle:/run/mw/approle:ro
     environment:
@@ -641,19 +645,6 @@ services:
         limits: { cpus: "1.0", memory: 384M }
 
   # Transaction saga (spec 7).
-  mw-orchestrator-init:
-    <<: *init
-    profiles: *minimal
-    image: mfs-mw/mw-orchestrator-init:local
-    build: ../services/mw-orchestrator/init
-    environment:
-      <<: *init-env
-      # Synced into secret/mw-orchestrator as spring.data.redis.password (idempotency lock).
-      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
-    volumes:
-      - openbao-data:/openbao/file:ro
-      - orchestrator-approle:/out
-
   mw-orchestrator:
     <<: *app
     profiles: *minimal
@@ -661,7 +652,6 @@ services:
     build: { context: ../services/mw-orchestrator, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
-      mw-orchestrator-init: { condition: service_completed_successfully }
     volumes:
       - orchestrator-approle:/run/mw/approle:ro
     environment:
@@ -690,16 +680,6 @@ services:
         limits: { cpus: "1.0", memory: 448M }
 
   # Append-only audit trail and its query API (spec 14).
-  mw-audit-dw-init:
-    <<: *init
-    profiles: *minimal
-    image: mfs-mw/mw-audit-dw-init:local
-    build: ../services/mw-audit-dw/init
-    environment: *init-env
-    volumes:
-      - openbao-data:/openbao/file:ro
-      - audit-dw-approle:/out
-
   mw-audit-dw:
     <<: *app
     profiles: *minimal
@@ -707,7 +687,6 @@ services:
     build: { context: ../services/mw-audit-dw, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
-      mw-audit-dw-init: { condition: service_completed_successfully }
     volumes:
       - audit-dw-approle:/run/mw/approle:ro
     environment:
@@ -724,19 +703,6 @@ services:
         limits: { cpus: "1.0", memory: 448M }
 
   # Customer app API (spec 9.1).
-  mw-app-gateway-init:
-    <<: *init
-    profiles: *minimal
-    image: mfs-mw/mw-app-gateway-init:local
-    build: ../services/mw-app-gateway/init
-    environment:
-      <<: *init-env
-      # Synced into secret/mw-app-gateway as spring.data.redis.password (sessions, nonces).
-      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
-    volumes:
-      - openbao-data:/openbao/file:ro
-      - app-gateway-approle:/out
-
   mw-app-gateway:
     <<: *app
     profiles: *minimal
@@ -744,7 +710,6 @@ services:
     build: { context: ../services/mw-app-gateway, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
-      mw-app-gateway-init: { condition: service_completed_successfully }
     volumes:
       - app-gateway-approle:/run/mw/approle:ro
     environment:
@@ -766,16 +731,6 @@ services:
         limits: { cpus: "1.0", memory: 416M }
 
   # SMS over SMPP and email over SMTP (spec 10).
-  mw-notify-init:
-    <<: *init
-    profiles: *minimal
-    image: mfs-mw/mw-notify-init:local
-    build: ../services/mw-notify/init
-    environment: *init-env
-    volumes:
-      - openbao-data:/openbao/file:ro
-      - notify-approle:/out
-
   mw-notify:
     <<: *app
     profiles: *minimal
@@ -783,7 +738,6 @@ services:
     build: { context: ../services/mw-notify, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
-      mw-notify-init: { condition: service_completed_successfully }
     volumes:
       - notify-approle:/run/mw/approle:ro
     environment:
@@ -805,23 +759,6 @@ services:
         limits: { cpus: "1.0", memory: 416M }
 
   # USSD menus over HTTP and SMPP (spec 9.2); in minimal for the @p2p / @cash USSD scenarios.
-  mw-ussd-init:
-    <<: *init
-    profiles: *minimal
-    image: mfs-mw/mw-ussd-init:local
-    build: ../services/mw-ussd/init
-    depends_on:
-      <<: *init-deps
-      # copies the core's PIN public key, which mw-core-mock-init creates on a fresh stack
-      mw-core-mock-init: { condition: service_completed_successfully }
-    environment:
-      <<: *init-env
-      # Synced into secret/mw-ussd as spring.data.redis.password (USSD sessions).
-      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
-    volumes:
-      - openbao-data:/openbao/file:ro
-      - ussd-approle:/out
-
   mw-ussd:
     <<: *app
     profiles: *minimal
@@ -829,7 +766,6 @@ services:
     build: { context: ../services/mw-ussd, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
-      mw-ussd-init: { condition: service_completed_successfully }
     volumes:
       - ussd-approle:/run/mw/approle:ro
     environment:
@@ -847,19 +783,6 @@ services:
         limits: { cpus: "1.0", memory: 416M }
 
   # Operator admin API (spec 15); in minimal for the @p2p operator and template scenarios.
-  mw-admin-api-init:
-    <<: *init
-    profiles: *minimal
-    image: mfs-mw/mw-admin-api-init:local
-    build: ../services/mw-admin-api/init
-    environment:
-      <<: *init-env
-      # client secret of mw-admin-api in Keycloak realm services (internal API calls)
-      KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-    volumes:
-      - openbao-data:/openbao/file:ro
-      - admin-api-approle:/out
-
   mw-admin-api:
     <<: *app
     profiles: *minimal
@@ -867,7 +790,6 @@ services:
     build: { context: ../services/mw-admin-api, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
-      mw-admin-api-init: { condition: service_completed_successfully }
     volumes:
       - admin-api-approle:/run/mw/approle:ro
     environment:
@@ -885,16 +807,6 @@ services:
 
   # ------------------------------------------------------------ core: the rest of the stack
   # Mobile top-up adapter: OCS (spec 12); the dev profile seeds the partners on the simulator.
-  mw-adapter-telco-init:
-    <<: *init
-    profiles: *core
-    image: mfs-mw/mw-adapter-telco-init:local
-    build: ../services/mw-adapter-telco/init
-    environment: *init-env
-    volumes:
-      - openbao-data:/openbao/file:ro
-      - adapter-telco-approle:/out
-
   mw-adapter-telco:
     <<: *app
     profiles: *core
@@ -902,7 +814,6 @@ services:
     build: { context: ../services/mw-adapter-telco, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
-      mw-adapter-telco-init: { condition: service_completed_successfully }
     volumes:
       - adapter-telco-approle:/run/mw/approle:ro
     environment:
@@ -919,19 +830,6 @@ services:
         limits: { cpus: "1.0", memory: 416M }
 
   # Bill payment adapter: utility bill aggregator (spec 12).
-  mw-adapter-billpay-init:
-    <<: *init
-    profiles: *core
-    image: mfs-mw/mw-adapter-billpay-init:local
-    build: ../services/mw-adapter-billpay/init
-    environment:
-      <<: *init-env
-      # The dev aggregator simulator's hmac-sha256 secret (mw-simulators-init holds the same).
-      BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-    volumes:
-      - openbao-data:/openbao/file:ro
-      - adapter-billpay-approle:/out
-
   mw-adapter-billpay:
     <<: *app
     profiles: *core
@@ -939,7 +837,6 @@ services:
     build: { context: ../services/mw-adapter-billpay, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
-      mw-adapter-billpay-init: { condition: service_completed_successfully }
     volumes:
       - adapter-billpay-approle:/run/mw/approle:ro
     environment:
@@ -959,19 +856,6 @@ services:
         limits: { cpus: "1.0", memory: 416M }
 
   # Add money adapter: C2W bank (spec 12).
-  mw-adapter-bank-init:
-    <<: *init
-    profiles: *core
-    image: mfs-mw/mw-adapter-bank-init:local
-    build: ../services/mw-adapter-bank/init
-    environment:
-      <<: *init-env
-      # The dev C2W bank simulator's hmac-sha256 secret (mw-simulators-init holds the same).
-      C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-    volumes:
-      - openbao-data:/openbao/file:ro
-      - adapter-bank-approle:/out
-
   mw-adapter-bank:
     <<: *app
     profiles: *core
@@ -979,7 +863,6 @@ services:
     build: { context: ../services/mw-adapter-bank, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
-      mw-adapter-bank-init: { condition: service_completed_successfully }
     volumes:
       - adapter-bank-approle:/run/mw/approle:ro
     environment:
@@ -998,19 +881,6 @@ services:
         limits: { cpus: "1.0", memory: 416M }
 
   # Organisation portal API and bulk disbursement (spec 8.2, 9.4).
-  mw-portal-api-init:
-    <<: *init
-    profiles: *core
-    image: mfs-mw/mw-portal-api-init:local
-    build: ../services/mw-portal-api/init
-    environment:
-      <<: *init-env
-      # client secret of mw-portal-api in Keycloak realm services (internal API calls)
-      KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-    volumes:
-      - openbao-data:/openbao/file:ro
-      - portal-api-approle:/out
-
   mw-portal-api:
     <<: *app
     profiles: *core
@@ -1018,7 +888,6 @@ services:
     build: { context: ../services/mw-portal-api, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
-      mw-portal-api-init: { condition: service_completed_successfully }
     volumes:
       - portal-api-approle:/run/mw/approle:ro
     environment:
@@ -1035,24 +904,6 @@ services:
         limits: { cpus: "1.0", memory: 416M }
 
   # Merchant checkout API and hosted payment page API (spec 9.3).
-  mw-checkout-init:
-    <<: *init
-    profiles: *core
-    image: mfs-mw/mw-checkout-init:local
-    build: ../services/mw-checkout/init
-    depends_on:
-      <<: *init-deps
-      # copies the core's PIN public key, which mw-core-mock-init creates on a fresh stack
-      mw-core-mock-init: { condition: service_completed_successfully }
-    environment:
-      <<: *init-env
-      # Synced into secret/mw-checkout as mw.checkout.merchants.merchant_demo.secret; the APISIX
-      # consumer merchant_demo (hmac-auth) holds the same value.
-      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-    volumes:
-      - openbao-data:/openbao/file:ro
-      - checkout-approle:/out
-
   mw-checkout:
     <<: *app
     profiles: *core
@@ -1060,7 +911,6 @@ services:
     build: { context: ../services/mw-checkout, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
-      mw-checkout-init: { condition: service_completed_successfully }
     volumes:
       - checkout-approle:/run/mw/approle:ro
     environment:

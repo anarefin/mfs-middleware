@@ -146,10 +146,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   `TransactionView.merchantPayee`), status COMPLETED or REVERSED only, newest first (UUIDv7 txnId
   order). Each entry `{txnId, status, amount, payer, coreRef, requestedAt, updatedAt}` with the payer's
   MSISDN masked (`0171****789`); no fee, no PIN.
-- Init (`mw-app-gateway-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
-  `app_gateway_rw`, schema `app_gateway`, `secret/mw-app-gateway` (DB password), AppRole; retries
-  the database step when another init races it on a fresh stack, and waits for OpenBao's
-  `dev-init.json` first.
+- Dev provisioning (`provision_mw_app_gateway` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role
+  `app_gateway_rw`, schema `app_gateway`, `secret/mw-app-gateway` (DB password; `spring.data.redis.password`
+  synced from `VALKEY_PASSWORD`), AppRole.
 
 ## Contracts owned
 
@@ -177,7 +176,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -207,5 +206,5 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 | `./gradlew check bootJar && docker build -t mw-app-gateway:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-app-gateway` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when its files or the contracts in its `contracts.yml` changed) |
-| `make build M=mw-app-gateway` | `bootJar`, then this service's images (`mfs-mw/mw-app-gateway:local`, `-init`) |
+| `make build M=mw-app-gateway` | `bootJar`, then this service's images (`mfs-mw/mw-app-gateway:local`, plus the shared `mfs-mw/provision:local`) |
 | `make up M=mw-app-gateway` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |

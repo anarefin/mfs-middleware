@@ -81,10 +81,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   `spring.flyway.password` from OpenBao); V4 grants the writer. `audit_reader` (V5): USAGE on the
   schema and SELECT on `event` and `chain_head` only. Nobody holds UPDATE/DELETE on
   `event`. A superuser can still bypass everything, which the chain detects (`AuditTrailIT`).
-- Init (`mw-audit-dw-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): roles
+- Dev provisioning (`provision_mw_audit_dw` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): roles
   `audit_dw_rw`, `audit_writer` and `audit_reader`, schema `audit`, `secret/mw-audit-dw` (the three DB
-  passwords, never overwritten; the reader's is `mw.audit-dw.chain-verify.reader-password`) and the AppRole `mw-audit-dw` (configtree volume). On a fresh stack it waits
-  for OpenBao's `dev-init.json` and retries the database step when another init races it.
+  passwords, never overwritten; the reader's is `mw.audit-dw.chain-verify.reader-password`) and the AppRole `mw-audit-dw` (configtree volume).
 
 ## Contracts owned
 
@@ -107,7 +106,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, unsafe or holding a
   run of 6+ digits or one the scrub would change (WARN `correlation.id.replaced`), MDC
@@ -139,5 +138,5 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 | `./gradlew check bootJar && docker build -t mw-audit-dw:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-audit-dw` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when it or a contract in its `contracts.yml` changed) |
-| `make build M=mw-audit-dw` | `bootJar`, then this service's images (`mfs-mw/mw-audit-dw:local`, `-init`) |
+| `make build M=mw-audit-dw` | `bootJar`, then this service's images (`mfs-mw/mw-audit-dw:local`, plus the shared `mfs-mw/provision:local`) |
 | `make up M=mw-audit-dw` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |

@@ -84,7 +84,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 - Table `checkout.ipn_delivery` (V5): one row per IPN attempt (see above).
 - Table `checkout.session` (V4): token, merchant, order, amount, URLs, status, payer, OTP hash /
   expiry / attempts / sends, txn_id, error_code, times.
-- Init (`mw-checkout-init`, `init/init.sh`, dev only): role `checkout_rw`, schema `checkout`,
+- Dev provisioning (`provision_mw_checkout` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role `checkout_rw`, schema `checkout`,
   `secret/mw-checkout` (DB password; `mw.checkout.merchants.merchant_demo.secret` from
   `CHECKOUT_DEMO_MERCHANT_SECRET`, the same value as the test-only APISIX consumer; the core's PIN
   public key + key id copied from `secret/mw-core-mock`), AppRole `mw-checkout`.
@@ -130,7 +130,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -157,6 +157,6 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 | `./gradlew check bootJar && docker build -t mw-checkout:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-checkout` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when its files or the contracts in its `contracts.yml` changed) |
-| `make build M=mw-checkout` | `bootJar`, then this service's images (`mfs-mw/mw-checkout:local`, `-init`) |
+| `make build M=mw-checkout` | `bootJar`, then this service's images (`mfs-mw/mw-checkout:local`, plus the shared `mfs-mw/provision:local`) |
 | `make up M=mw-checkout` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |
 | `make api-test FOLDER=09` | session -> OTP -> pay -> signed redirect through the edge |

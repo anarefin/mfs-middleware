@@ -56,12 +56,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.bank`. Follow
   and the `request`/`response` bodies as the framework masked them (`sensitive-fields`, scrub, 4 KB);
   raw bodies never, no `payloadRef`. Key txnId (else partnerId). A failing publisher is logged
   `partner.call.audit_failed` and never fails the call. Identical in telco, billpay and bank.
-- Init (`mw-adapter-bank-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
+- Dev provisioning (`provision_mw_adapter_bank` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role
   `adapter_bank_rw` and schema `bank_ref`, `secret/mw-adapter-bank` (DB password, never
   overwritten; `mw.partner-secrets.c2wbank.hmac-secret` synced from the generated
   `C2WBANK_HMAC_SECRET` on every run) and the AppRole `mw-adapter-bank` (configtree volume at
-  `/run/mw/approle`); waits for OpenBao's `dev-init.json` and retries the database step on "tuple
-  concurrently updated".
+  `/run/mw/approle`).
 
 ## Design decision: C2W is a normal request path with a CALLBACK, not a new inbound kind
 
@@ -130,7 +129,7 @@ MSISDN, a bank account (and any other type) last 4 only.
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -156,5 +155,5 @@ MSISDN, a bank account (and any other type) last 4 only.
 | `./gradlew check bootJar && docker build -t mw-adapter-bank:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-adapter-bank` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make verify-changed [BASE=main]` | the gate for the modules changed since BASE (this one when it, or a contract in its `contracts.yml`, changed) |
-| `make build M=mw-adapter-bank` | `bootJar`, then this service's images (`mfs-mw/mw-adapter-bank:local`, `-init`) |
+| `make build M=mw-adapter-bank` | `bootJar`, then this service's images (`mfs-mw/mw-adapter-bank:local`, plus the shared `mfs-mw/provision:local`) |
 | `make up M=mw-adapter-bank` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |

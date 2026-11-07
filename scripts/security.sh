@@ -7,12 +7,12 @@
 #               out), with the repo's .gitleaks.toml (default rules + fixture allow-list)
 #   - deps:     per Gradle module ./gradlew cyclonedxBom, then trivy sbom on the CycloneDX BOM;
 #               per module also trivy fs (lockfiles: the admin UI's pnpm-lock.yaml)
-#   - images:   trivy image on mfs-mw/mw-x:$MW_IMAGE_TAG (module has a Dockerfile) and
-#               mfs-mw/mw-x-init:$MW_IMAGE_TAG (init/Dockerfile), default tag local, what `make build`
-#               builds; an image not built locally fails the stage (image-missing, NOT SCANNED);
-#               without M= also every third-party image deploy/docker-compose.yml pins and the
-#               platform image built from the repo
-#               (mfs-mw/keycloak:local, deploy/keycloak/Dockerfile)
+#   - images:   trivy image on mfs-mw/mw-x:$MW_IMAGE_TAG (module has a Dockerfile), default tag
+#               local, what `make build` builds; an image not built locally fails the stage
+#               (image-missing, NOT SCANNED); without M= also every third-party image
+#               deploy/docker-compose.yml pins and the platform images built from the repo
+#               (mfs-mw/keycloak:local, deploy/keycloak/Dockerfile; mfs-mw/provision:local,
+#               deploy/provision/Dockerfile, the dev provisioning one-shot)
 #   HIGH and CRITICAL fail, minus the justified entries of .trivyignore.yaml; image scans skip
 #   OS packages without a fix (--ignore-unfixed, decision in docs/security-findings.md).
 #   Findings below high are written to build/security/*-below-high.json (report only); their
@@ -140,18 +140,28 @@ for mod in $modules; do
     fi
   fi
   trivy_gate fs "$MW_ROOT/$mod" "$name"
-  # every image the module builds must be built locally: an unbuilt one fails, never skipped quietly
-  for spec in "Dockerfile=mfs-mw/$name:$IMAGE_TAG" "init/Dockerfile=mfs-mw/$name-init:$IMAGE_TAG"; do
-    img="${spec#*=}"
-    [ -f "$MW_ROOT/$mod/${spec%%=*}" ] || continue
+  # the module's image must be built locally: an unbuilt one fails, never skipped quietly
+  img="mfs-mw/$name:$IMAGE_TAG"
+  if [ -f "$MW_ROOT/$mod/Dockerfile" ]; then
     if docker image inspect "$img" >/dev/null 2>&1; then
       trivy_gate image "$img" "$img"
     else
       failed="$failed image-missing:$img"
       printf '==> ERROR security: image %s not built: %s NOT SCANNED (build it first: make build, or MW_IMAGE_TAG=<tag>)\n' "$img" "$img" >&2
     fi
-  done
+  fi
 done
+# The dev provisioning one-shot (deploy/provision): our own script on the pinned postgres + bao
+# images, scanned with the repo's ignore file like a module image; one not built fails.
+if [ -z "$m" ] && [ -f "$MW_ROOT/deploy/provision/Dockerfile" ]; then
+  img="mfs-mw/provision:$IMAGE_TAG"
+  if docker image inspect "$img" >/dev/null 2>&1; then
+    trivy_gate image "$img" "$img"
+  else
+    failed="$failed image-missing:$img"
+    printf '==> ERROR security: image %s not built: %s NOT SCANNED (build it first: make build)\n' "$img" "$img" >&2
+  fi
+fi
 # Platform images built from the repo (ticket 55): upstream content plus our build step, so the
 # third-party ignore file applies; one not built fails like a module image.
 if [ -z "$m" ] && [ -f "$MW_ROOT/deploy/keycloak/Dockerfile" ]; then

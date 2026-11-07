@@ -84,7 +84,7 @@ test_targets_after_up_TIMERS_fast_keep_the_test_timers() {
 
 test_up_with_M_starts_that_service_and_its_dependencies() {
   stub_tools
-  stack_file mw-a-init mw-a mw-b
+  stack_file provision mw-a mw-b
   new_module "$PWD" services/mw-a
   assert_ok mw_make "$PWD" up M=mw-a
   grep -F -- "--profile core up -d --wait" .tool-calls | grep -q " mw-a$" || fail "mw-a not started: $(cat .tool-calls)"
@@ -135,7 +135,7 @@ test_up_fails_when_compose_fails() {
 
 test_build_builds_every_stack_jar_then_the_images() {
   stub_tools
-  stack_file mw-a-init mw-a mw-b
+  stack_file provision mw-a mw-b
   new_module "$PWD" services/mw-a; touch services/mw-a/Dockerfile
   new_module "$PWD" services/mw-b; touch services/mw-b/Dockerfile
   new_module "$PWD" templates/mw-service-template; touch templates/mw-service-template/Dockerfile
@@ -148,13 +148,14 @@ test_build_builds_every_stack_jar_then_the_images() {
 
 test_build_with_M_builds_only_that_jar_and_its_images() {
   stub_tools
-  stack_file mw-a-init mw-a mw-b
+  stack_file provision mw-a mw-b
   new_module "$PWD" services/mw-a; touch services/mw-a/Dockerfile
   new_module "$PWD" services/mw-b; touch services/mw-b/Dockerfile
   assert_ok mw_make "$PWD" build M=mw-a
   grep -q '^bootJar' services/mw-a/.gradlew-calls || fail "mw-a jar not built"
   [ -f services/mw-b/.gradlew-calls ] && fail "M=mw-a also built mw-b"
-  grep -qF -- "build mw-a-init mw-a" .tool-calls || fail "mw-a images not built: $(cat .tool-calls)"
+  # plus the provisioning one-shot, which `make up M=mw-a` starts too
+  grep -qF -- "build provision mw-a" .tool-calls || fail "mw-a images not built: $(cat .tool-calls)"
 }
 
 test_build_runs_JOBS_gradle_builds_at_a_time_and_stops_before_the_images_on_a_failure() {

@@ -12,7 +12,7 @@ Keycloak for IAM/SSO (realms `customers`, `portals`, `ops`, `services`, `partner
 
 ## Consequences
 
-- No secret in code, config or tests: dev credentials are generated into a gitignored `.env` and written into OpenBao by the init containers.
+- No secret in code, config or tests: dev credentials are generated into a gitignored `.env` and written into OpenBao by the dev provisioning one-shot `provision` (`deploy/provision`; ADR D16), which gives every service its own secret, AppRole and database role.
 - The OpenBao root token is kept in its data volume in dev only (known gap, production unseal deferred).
 
 ## Where in the repo

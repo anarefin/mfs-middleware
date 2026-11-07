@@ -54,7 +54,8 @@ starts), `minimal` = the P2P and cash path, `core` = everything (the default), `
 
 `make build` (`scripts/build.sh`) runs `./gradlew bootJar` in every `services/mw-*` (no tests;
 `JOBS` modules at a time, logs in `build/build/`), then `docker compose build`: images
-`mfs-mw/<service>:local`. `make build M=mw-x` builds one module and its images.
+`mfs-mw/<service>:local` plus `mfs-mw/provision:local` (`deploy/provision`, the dev provisioning
+one-shot). `make build M=mw-x` builds one module's jar and image, plus `provision`.
 
 `make up` (`scripts/up.sh`) never builds:
 
@@ -63,14 +64,16 @@ starts), `minimal` = the P2P and cash path, `core` = everything (the default), `
 2. runs `docker compose --profile core up -d --wait` (`PROFILE=minimal` for the P2P and cash path
    only; `TIMERS=fast` adds `deploy/test-timers.env`: short status-inquiry, reversal, retry-topic
    and IPN timers for test runs; `M=mw-x` starts one service and what it depends on);
-3. returns once every started container is healthy and every one-shot init container
-   (`kafka-init`, `etcd-init`, `apisix-init`, `<module>-init`) has exited 0, and fails naming the
+3. returns once every started container is healthy and every one-shot
+   (`kafka-init`, `etcd-init`, `apisix-init`, `provision`) has exited 0, and fails naming the
    container otherwise (`MW_UP_TIMEOUT`, default 300 s). A second `make up` reuses the images and
    containers as they are.
 
-Start-up order and cost (ticket 55): the init containers start once PostgreSQL and OpenBao are
-healthy, every `mw-*` service once PostgreSQL, Kafka, Keycloak and OpenBao are healthy and
-`kafka-init` has exited 0. `kafka-init` creates the topics of `deploy/kafka/topics.txt` with 1
+Start-up order and cost (ticket 55): `provision` starts once PostgreSQL and OpenBao are healthy
+and, for every service of `deploy/provision/services.sh` in turn, writes its OpenBao secret,
+database role and schema and AppRole (each into that service's own `<svc>-approle` volume; ADR D16).
+Every `mw-*` service starts once PostgreSQL, Kafka, Keycloak and OpenBao are healthy and
+`kafka-init` and `provision` have exited 0. `kafka-init` creates the topics of `deploy/kafka/topics.txt` with 1
 partition each (`MW_KAFKA_PARTITIONS=1`, the laptop footprint; the file keeps the production counts) and leaves a done
 marker in its volume, so a later `make up` with the same plan skips it in about a second. Keycloak
 is pre-built (`deploy/keycloak/Dockerfile`, image `mfs-mw/keycloak:local`) and starts `--optimized`.
@@ -142,7 +145,7 @@ cache on the dev stack (`MW_AOT=0`); `MW_AOT=1` on the build trains it as the pr
 | Core flow | `mw-orchestrator` (saga, idempotency, TSQ, reversal), `mw-core-mock` (ledger, fault injection) |
 | Partners | `mw-adapter-telco`, `mw-adapter-billpay`, `mw-adapter-bank` |
 | Support | `mw-notify` (SMS over SMPP, email), `mw-audit-dw` (hash-chained audit trail), `mw-admin-api`, `mw-admin-ui` (console at `/console`) |
-| Platform | `kafka` (KRaft), `postgres` (18), `valkey`, `keycloak`, `openbao`, one-shot `kafka-init` and per-service init containers |
+| Platform | `kafka` (KRaft), `postgres` (18), `valkey`, `keycloak`, `openbao`, one-shots `kafka-init` and `provision` (every service's secret, database role and AppRole, `deploy/provision`) |
 | Test | `mw-simulators` (OCS, bill aggregator, C2W bank, SMSC, USSD gateway), `greenmail` |
 
 Repository layout: `contracts/` (OpenAPI and JSON Schema files, owner per file in

@@ -57,11 +57,14 @@ test_one_hand_written_stack_file_with_every_platform_service() {
   for s in $PLATFORM_SERVICES; do
     printf '%s\n' "$services" | grep -qx "$s" || fail "service $s missing (have: $services)"
   done
-  # every module is in the file, with its init when it has one
+  # every module is in the file; their dev provisioning is the one one-shot `provision`
+  # (deploy/provision), never a per-module init
+  printf '%s\n' "$services" | grep -qx provision || fail "the provision one-shot is missing"
   for d in "$REPO_DIR"/services/*/ "$REPO_DIR"/ui/*/; do
     s="$(basename "$d")"
     printf '%s\n' "$services" | grep -qx "$s" || fail "module $s is not a service of deploy/docker-compose.yml"
-    [ -d "$d/init" ] && { printf '%s\n' "$services" | grep -qx "$s-init" || fail "$s-init missing"; }
+    [ -e "$d/init" ] && fail "$s still has an init/ folder (its provisioning belongs in deploy/provision/services.sh)"
+    printf '%s\n' "$services" | grep -qx "$s-init" && fail "$s-init still in the stack"
   done
   return 0
 }
@@ -106,10 +109,8 @@ test_profiles_platform_always_minimal_for_the_p2p_and_cash_path_core_for_everyth
   j="$(COMPOSE_PROFILE=minimal compose_json)"
   mods="$(printf '%s' "$j" | jq -r '[.services | keys[] | select(startswith("mw-") and (endswith("-init") | not))] | sort | join(" ")')"
   [ "$mods" = "$MINIMAL_SERVICES" ] || fail "profile minimal starts '$mods', expected '$MINIMAL_SERVICES'"
-  # each init comes with its service
-  for s in $MINIMAL_SERVICES; do
-    printf '%s' "$j" | jq -e --arg s "$s-init" '.services | has($s)' >/dev/null || fail "$s-init not in minimal"
-  done
+  # the provisioning one-shot comes with them
+  printf '%s' "$j" | jq -e '.services | has("provision")' >/dev/null || fail "provision not in minimal"
   j="$(compose_json)"
   printf '%s' "$j" | jq -e '.services | has("mw-admin-ui") and has("mw-checkout") and has("mw-portal-api")' >/dev/null \
     || fail "profile core misses services"
@@ -237,19 +238,39 @@ test_keycloak_is_built_once_as_a_local_image() {
   grep -qE 'KC_HEALTH_ENABLED=true' "$REPO_DIR/deploy/keycloak/Dockerfile" || fail "KC_HEALTH_ENABLED not set for kc.sh build"
 }
 
-test_every_init_waits_for_healthy_postgres_and_openbao_through_compose_not_sleep_loops() {
-  local j s f
+test_provision_waits_for_healthy_postgres_and_openbao_through_compose_not_sleep_loops() {
+  # the scripts themselves never poll (scripts/test/test_provision.sh)
+  compose_json | jq -e '.services.provision | .depends_on.postgres.condition == "service_healthy"
+    and .depends_on.openbao.condition == "service_healthy" and .restart == "no"
+    and .labels["mw.oneshot"] == "true" and .build.context != null' >/dev/null \
+    || fail "provision is not a one-shot waiting for healthy postgres and openbao"
+}
+
+test_provision_writes_each_service_its_own_approle_volume_only() {
+  # every service reads /run/mw/approle from its own <dir>-approle volume, which provision mounts at
+  # /out/<dir> and services.sh lists as <service>:<dir>; no service sees another one's volume
+  local j s src manifest
   j="$(compose_json)"
-  for s in $(printf '%s' "$j" | jq -r '.services | keys[] | select(test("^mw-.*-init$"))'); do
-    printf '%s' "$j" | jq -e --arg s "$s" '.services[$s].depends_on.postgres.condition == "service_healthy"
-      and .services[$s].depends_on.openbao.condition == "service_healthy"' >/dev/null \
-      || fail "$s does not depend on healthy postgres and openbao: $(printf '%s' "$j" | jq -c --arg s "$s" '.services[$s].depends_on')"
+  manifest="$(. "$REPO_DIR/deploy/provision/services.sh"; printf '%s\n' $SERVICES)"
+  for s in $(printf '%s' "$j" | jq -r '.services | to_entries[] | select(.key | test("^mw-"))
+      | select([.value.volumes[]? | select(.target == "/run/mw/approle")] | length > 0) | .key'); do
+    src="$(printf '%s' "$j" | jq -r --arg s "$s" '.services[$s].volumes[] | select(.target == "/run/mw/approle") | .source')"
+    [ "$src" = "${s#mw-}-approle" ] || fail "$s reads approle volume $src"
+    printf '%s' "$j" | jq -e --arg s "$s" --arg v "$src" '.services[$s].volumes[] | select(.source == $v) | .read_only == true' >/dev/null \
+      || fail "$s mounts $src writable"
+    printf '%s' "$j" | jq -e --arg v "$src" --arg t "/out/${s#mw-}" '[.services.provision.volumes[] | select(.source == $v and .target == $t)] | length == 1' >/dev/null \
+      || fail "provision does not write $src at /out/${s#mw-}"
+    printf '%s\n' "$manifest" | grep -qx "$s:${s#mw-}" || fail "$s:${s#mw-} not in deploy/provision/services.sh"
+    [ "$(printf '%s' "$j" | jq --arg v "$src" '[.services | to_entries[] | select(.key != "provision") | .value.volumes[]? | select(.source == $v)] | length')" = 1 ] \
+      || fail "$src is mounted by more than its service"
   done
-  for f in "$REPO_DIR"/services/*/init/init.sh; do
-    grep -qE 'wait_for|pg_isready|until .*bao status' "$f" && fail "$f still polls postgres/openbao"
-    [ "$(grep -c 'sleep' "$f")" -le 1 ] || fail "$f sleeps more than once (only the raced-init retry may)"
-  done
-  return 0
+  [ "$(printf '%s\n' "$manifest" | wc -l | tr -d ' ')" = "$(printf '%s' "$j" | jq '[.services.provision.volumes[] | select(.target | startswith("/out/"))] | length')" ] \
+    || fail "deploy/provision/services.sh and the provision volumes differ"
+}
+
+test_postgres_runs_under_an_init_process() {
+  # tini as PID 1 reaps the pg_isready processes of healthchecks that timed out (BitsPay deploy)
+  compose_json | jq -e '.services.postgres.init == true' >/dev/null || fail "postgres has no init: true"
 }
 
 test_openbao_is_healthy_only_once_its_engines_are_enabled() {
@@ -267,15 +288,15 @@ test_every_java_service_starts_after_kafka_init() {
       || bad="$bad $s"
   done
   [ -z "$bad" ] || fail "do not wait for kafka-init:$bad"
-  # x-infra-deps: the whole platform is ready first, and its own init has run (all required now:
+  # x-infra-deps: the whole platform is ready first, and provision has run (all required now:
   # one file, so `make up M=mw-x` starts the dependencies too)
   for s in $(printf '%s' "$j" | jq -r '.services | keys[] | select(test("^mw-") and (test("-init$") | not) and . != "mw-admin-ui")'); do
     printf '%s' "$j" | jq -e --arg s "$s" '.services[$s].depends_on as $d
       | $d.postgres.condition == "service_healthy" and $d.kafka.condition == "service_healthy"
       and $d.keycloak.condition == "service_healthy" and $d.openbao.condition == "service_healthy"
-      and $d["\($s)-init"].condition == "service_completed_successfully"
+      and $d.provision.condition == "service_completed_successfully"
       and ([$d[] | select(.required == false)] | length == 0)' >/dev/null \
-      || fail "$s: depends_on is not x-infra-deps + its init: $(printf '%s' "$j" | jq -c --arg s "$s" '.services[$s].depends_on')"
+      || fail "$s: depends_on is not x-infra-deps + provision: $(printf '%s' "$j" | jq -c --arg s "$s" '.services[$s].depends_on')"
   done
   return 0
 }

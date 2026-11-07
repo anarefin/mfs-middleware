@@ -58,7 +58,7 @@ if [ "$first_start" = 1 ]; then
 fi
 
 # Ready marker for the compose healthcheck (with `bao status`): unsealed and the engines exist,
-# so the module inits (depends_on openbao: service_healthy) never poll.
+# so the provision one-shot (depends_on openbao: service_healthy) never polls.
 touch /openbao/file/dev-ready
 
 wait "$server"

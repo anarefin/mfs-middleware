@@ -130,7 +130,7 @@ lsof -i :443    <span class="c"># must print nothing</span></pre></div>
     <div class="flow">
       <span>postgres · valkey · openbao · keycloak</span><b>·</b><span>kafka</span><b>→</b><span>kafka-init (topics)</span><b>·</b>
       <span>etcd</span><b>→</b><span>etcd-init</span><b>→</b><span>apisix</span><b>→</b><span>apisix-init (routes)</span><b>·</b>
-      <span>&lt;service&gt;-init (schema, OpenBao secrets)</span><b>→</b><span>14 services + admin console</span><b>→</b>
+      <span>provision (every service&rsquo;s schema, OpenBao secret, AppRole)</span><b>→</b><span>14 services + admin console</span><b>→</b>
       <span>mw-seeder (one-shot)</span>
     </div>
     <ul>
@@ -143,7 +143,7 @@ lsof -i :443    <span class="c"># must print nothing</span></pre></div>
         trains it, as the production images do (longer build, each JVM starts a little faster).</li>
     </ul>
     <p>On a warm Docker cache the whole command, seeding included, takes about <strong>1–2 minutes</strong> (<a href="#s13">step 13</a>).
-      The first run pulls the platform images and builds 29 images (14 services, their 14 <code>-init</code> images and the console), so it takes a few minutes more.</p>
+      The first run pulls the platform images and builds 16 images (14 services, the one <code>provision</code> image and the console), so it takes a few minutes more.</p>
   </section>
 
   <section id="s5">
@@ -287,10 +287,10 @@ docker compose --env-file .env --env-file test-timers.env --profile core --profi
       <li><strong>"port is already allocated" on 443</strong>: another process holds it (<code>lsof -i :443</code>). Stop it, or start with
         <code>MW_HTTPS_PORT=8443</code> in front of the command (the APIs work, the console login needs 443).</li>
       <li><strong>Containers exit with code 137</strong>: Docker is out of memory. Give Docker Desktop 8 GB, or use the minimal profile.</li>
-      <li><strong>An <code>-init</code> container exits non-zero</strong>: <code>docker compose logs &lt;name&gt;-init</code>. Usually volumes created with
+      <li><strong>A one-shot (<code>provision</code>, <code>kafka-init</code>, <code>etcd-init</code>, <code>apisix-init</code>) exits non-zero</strong>: <code>docker compose logs provision</code> (it names the service and step), or that one-shot. Usually volumes created with
         other credentials (a deleted <code>.env</code>, see step 3) or OpenBao not yet unsealed; <code>docker compose down</code> and start again.</li>
       <li><strong>A service stays "starting"</strong>: <code>docker compose logs &lt;service&gt;</code>. It is usually waiting on postgres,
-        kafka, keycloak, openbao or its <code>-init</code>.</li>
+        kafka, keycloak, openbao or <code>provision</code>.</li>
       <li><strong>The seeder exits non-zero</strong>: <code>docker compose --profile core --profile seed logs mw-seeder</code>; the line <code>seed.step.failed</code> names the step.
         <code>open change request of &lt;operator&gt;</code> means someone left a pending request on a partner, menu or template: approve or
         reject it in the console, then run step 4 again.</li>

@@ -25,7 +25,21 @@ noticeably faster.
   outside `docs/adr/` that names the old layout.
 - YAML anchors hold what services share: `x-app` (hardening, restart, logs, readiness
   healthcheck, zones), `x-infra-deps` (PostgreSQL, Kafka, Keycloak and OpenBao healthy,
-  `kafka-init` done), `x-jvm-env`, `x-jvm-build-args`, `x-init`.
+  `kafka-init` and `provision` done), `x-jvm-env`, `x-jvm-build-args`.
+- Dev provisioning is one one-shot, `provision` (`deploy/provision`: `provision.sh`, the steps in
+  `lib.sh`, the central manifest `services.sh`), not one init container per module (BitsPay keeps
+  only platform one-shots too). For every service in manifest order it writes `secret/<svc>` in
+  OpenBao (generated values once, `.env` values on every run, the core's PIN public key copied),
+  the service's database role(s) and schema, and its AppRole, whose role-id/secret-id go to that
+  service's own `<svc>-approle` volume. Least privilege is unchanged: each service mounts only its
+  own volume, reads only its own secret and logs in as its own role; only `provision` holds the
+  OpenBao root token and the PostgreSQL admin password, and it exits when done. Roles stay in
+  `provision` (not `docker-entrypoint-initdb.d`), so database passwords never leave OpenBao and a
+  new service needs no `make reset`. One image (`mfs-mw/provision:local`) replaces 13.
+- The platform one-shots stay separate: `kafka-init` (Kafka CLI image), `etcd-init` (before
+  `apisix` starts) and `apisix-init` (after `apisix` is healthy, re-run alone by `make api-test`)
+  need different images at different points of the start order. `postgres` runs under tini
+  (`init: true`), which reaps timed-out healthcheck processes.
 - Profiles: none = the platform (always starts); `minimal` = the P2P and cash path (orchestrator,
   core mock, app gateway, simulators, notify, audit-dw, ussd, admin-api); `core` = every service
   and the admin UI; `seed` = the seeder one-shot (ticket 57).
@@ -46,7 +60,10 @@ noticeably faster.
 - A warm `make up` starts containers only; a code change needs `make build [M=]` first (or
   `make e2e-changed`, which builds and recreates the changed modules).
 - A module is no longer runnable on its own from its folder with Compose; `make up M=mw-x` starts
-  it with its dependencies from the one file. `make new-service` prints the block to paste.
+  it with its dependencies from the one file. `make new-service` prints the blocks to paste (the
+  service, its approle volume, its `deploy/provision/services.sh` entry).
+- A new service edits a deploy/ file for its provisioning (`services.sh`), as it already does for
+  its compose block; the module itself carries no init step.
 - Module isolation (D13, D14) is unchanged for code and builds: the stack file is deployment, not a
   build input.
 - Network and volume names change with the project name (`mfs-mw_*`); old `mw_*` dev volumes are
@@ -54,7 +71,7 @@ noticeably faster.
 
 ## Where in the repo
 
-- `deploy/docker-compose.yml`, `deploy/test-timers.env`
+- `deploy/docker-compose.yml`, `deploy/test-timers.env`, `deploy/provision/`
 - `scripts/up.sh`, `scripts/build.sh`, `scripts/seed.sh`, `scripts/down.sh`, `scripts/compose-check.sh`
-- `scripts/check-isolation.sh`, `scripts/test/test_platform_compose.sh`
+- `scripts/check-isolation.sh`, `scripts/test/test_platform_compose.sh`, `scripts/test/test_provision.sh`
 - spec sections 4.2, 4.3 and 20.2

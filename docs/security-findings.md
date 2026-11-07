@@ -29,8 +29,8 @@ fails again and the entry must be re-checked (`test_security.sh` enforces statem
 | HIGH CVE-2026-89407, -89425 (jackson-core), -68497, -91776, -91777 (jackson-databind) 2.22.1 | every Gradle module (Jackson 2 comes through Kafka / Camel; the services use Jackson 3) | `jackson-bom` 2.22.3 platform (`security-jackson2` in each catalog) |
 | HIGH CVE-2026-106451 lz4-java 1.11.1 | every module with kafka-clients | constraint 1.11.4 |
 | HIGH CVE-2026-108106, -93451 snappy-java 1.1.10.7 | every module with kafka-clients | constraint 1.1.10.9 |
-| CRITICAL CVE-2026-111497 brotli, HIGH CVE-2026-92392 libcurl (Alpine) | every `mw-*-init` image and platform PostgreSQL | postgres:18.6-alpine re-pinned to the 2026-11-05 digest; init images `apk upgrade` |
-| CRITICAL/HIGH Go stdlib (26 CVEs) in gosu | every `mw-*-init` image | gosu removed (the init entry point never uses it) |
+| CRITICAL CVE-2026-111497 brotli, HIGH CVE-2026-92392 libcurl (Alpine) | the dev provisioning image `mfs-mw/provision` (formerly every `mw-*-init` image) and platform PostgreSQL | postgres:18.6-alpine re-pinned to the 2026-11-05 digest; the provisioning image runs `apk upgrade` |
+| CRITICAL/HIGH Go stdlib (26 CVEs) in gosu | the dev provisioning image `mfs-mw/provision` (formerly every `mw-*-init` image) | gosu removed (the provisioning entry point never uses it) |
 | CRITICAL GHSA-2464-fhr4-w9xw, HIGH CVE-2026-94482 next 16.3.8 | mw-admin-ui | Next.js 16.4.1 (minor; spec D6 and section 3 updated to 16.4.1 by ticket 47) |
 | HIGH undici 6.28.0, brace-expansion 5.0.9 (npm bundled in node:24-alpine) | mw-admin-ui image | npm, npx and corepack removed from the runtime image; `apk upgrade` |
 | CRITICAL/HIGH openssl, libssh2, musl, nghttp2, zlib (curl 8.17.0, Alpine) | etcd-init, smoke and edge-test helper | curlimages/curl 8.23.0 (pinned by digest) |
@@ -52,7 +52,7 @@ platform images stay pulled by digest (spec 20.1); re-pin when upstream rebuilds
 | brotli CVE-2026-111497 (CRITICAL) | apache/kafka:4.3.2, greenmail 2.1.15 | JVM services never load the native libbrotli |
 | libexpat CVE-2026-113351, -117610, -118370, -77214 | apache/kafka:4.3.2 | Kafka parses no XML with the native expat |
 | guava CVE-2026-102554 | keycloak 26.8.1 (26.8.2 ships the same guava) | Keycloak deserializes no Guava objects from requests |
-| go-jose CVE-2026-116587 | openbao 2.7.2 (latest) and the bao CLI in `mw-*-init` | no JWT/OIDC auth method is enabled (AppRole + token); the CLI parses no foreign JWK |
+| go-jose CVE-2026-116587 | openbao 2.7.2 (latest) and the bao CLI in `provision` | no JWT/OIDC auth method is enabled (AppRole + token); the CLI parses no foreign JWK |
 | Go stdlib in gosu (26 CVEs) | platform postgres:18.6-alpine | gosu runs once in the entrypoint to drop root, opens nothing, parses nothing |
 
 ## Secrets
@@ -74,8 +74,9 @@ Every long-running container built here (12 services, mw-admin-api, mw-admin-ui)
 (`test_own_long_running_containers_are_non_root_and_read_only` checks `deploy/docker-compose.yml`).
 Decisions for the rest:
 
-- `mw-*-init` one-shots (dev/MVP only): run as root on a writable FS, with `no-new-privileges`;
-  they create database roles and write AppRole files into a named volume, then exit. Accepted for
+- The `provision` one-shot (dev/MVP only; it replaced the 13 `mw-*-init` ones): runs as root on a
+  writable FS, with `no-new-privileges`; it creates database roles and writes each service's AppRole
+  files into that service's named volume, then exits. Accepted for
   the MVP; production provisions roles and AppRoles outside Compose.
 - Third-party platform images keep their image user: APISIX `apisix`, Kafka `appuser`,
   Keycloak `1000`, OpenBao `openbao`, GreenMail `greenmail` (all non-root) with a writable root
@@ -106,9 +107,9 @@ pinned third-party images:
 
 | Package | Ids (M medium, L low, U unknown) | Where | Decision |
 | --- | --- | --- | --- |
-| go-jose v4 | CVE-2026-116585 (M), CVE-2026-116586 (M) | bao CLI in `mw-*-init`, openbao | Accept until OpenBao ships go-jose >= 4.1.6 (same reason as the HIGH one: no JWT/OIDC auth, CLI parses no foreign JWK) |
-| golang.org/x/crypto, x/net | GO-2026-5932 (U), CVE-2026-78661 (U), CVE-2026-97045 (U) | bao CLI in `mw-*-init`, etcd | Accept: dev-only CLI on the internal network; etcd sits on the internal `etcd` network shared only with APISIX; re-pin with upstream |
-| Go stdlib (33 ids) | CVE-2025-47912, -58183, -58185, -58186 (L), -58187, -58188, -58189, -61723, -61724, -61725, -61727, -61728, -61730, CVE-2026-27139 (L), -27142, -32282, -32288, -32289, -39823, -39825, -39826, -42505, -42507, -56857 (L), -56866, -78659, -78660, -78663, -94439, -94440, -94448, -97030, -97032 (M unless marked) | gosu in postgres:18.6-alpine | Accept: gosu only drops root once in the entrypoint (as the HIGH ones); removed from our init images |
+| go-jose v4 | CVE-2026-116585 (M), CVE-2026-116586 (M) | bao CLI in `provision`, openbao | Accept until OpenBao ships go-jose >= 4.1.6 (same reason as the HIGH one: no JWT/OIDC auth, CLI parses no foreign JWK) |
+| golang.org/x/crypto, x/net | GO-2026-5932 (U), CVE-2026-78661 (U), CVE-2026-97045 (U) | bao CLI in `provision`, etcd | Accept: dev-only CLI on the internal network; etcd sits on the internal `etcd` network shared only with APISIX; re-pin with upstream |
+| Go stdlib (33 ids) | CVE-2025-47912, -58183, -58185, -58186 (L), -58187, -58188, -58189, -61723, -61724, -61725, -61727, -61728, -61730, CVE-2026-27139 (L), -27142, -32282, -32288, -32289, -39823, -39825, -39826, -42505, -42507, -56857 (L), -56866, -78659, -78660, -78663, -94439, -94440, -94448, -97030, -97032 (M unless marked) | gosu in postgres:18.6-alpine | Accept: gosu only drops root once in the entrypoint (as the HIGH ones); removed from the provisioning image |
 | github.com/moby/sys/user, golang.org/x/sys | CVE-2026-61801 (M), CVE-2026-39824 (U) | gosu in postgres | Accept: same as above |
 | perl-base | CVE-2025-15649, CVE-2026-12087, -19487, -48959, -7010, -7017 (M) | apisix | Accept: perl is not on any request path (as the HIGH ones) |
 | openssl, libssl3 | CVE-2026-35189 (L), CVE-2026-54872, -75805, -75806, -77696 (M) | apisix | Accept: the edge's TLS uses the OpenSSL bundled in apisix-runtime, not Debian's libssl3; re-pin with upstream |

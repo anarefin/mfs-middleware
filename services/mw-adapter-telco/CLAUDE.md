@@ -46,10 +46,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.telco`. Follo
   and the `request`/`response` bodies as the framework masked them (`sensitive-fields`, scrub, 4 KB);
   raw bodies never, no `payloadRef`. Key txnId (else partnerId). A failing publisher is logged
   `partner.call.audit_failed` and never fails the call. Identical in telco, billpay and bank.
-- Init (`mw-adapter-telco-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
+- Dev provisioning (`provision_mw_adapter_telco` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role
   `adapter_telco_rw` and schema `partner_ref`, `secret/mw-adapter-telco` (DB password, never
-  overwritten) and the AppRole `mw-adapter-telco` (configtree volume at `/run/mw/approle`); waits
-  for OpenBao's `dev-init.json` and retries the database step when another init races it.
+  overwritten) and the AppRole `mw-adapter-telco` (configtree volume at `/run/mw/approle`).
 
 ## Adapter framework (`partner` package, spec 12, WP11; copied, not a library: D13/D14)
 
@@ -175,7 +174,7 @@ mapping, inbox/outbox).
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -205,5 +204,5 @@ mapping, inbox/outbox).
 | `./gradlew check bootJar && docker build -t mw-adapter-telco:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-adapter-telco` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make verify-changed [BASE=main]` | the gate for the modules changed since BASE (this one when it, or a contract in its `contracts.yml`, changed) |
-| `make build M=mw-adapter-telco` | `bootJar`, then this service's images (`mfs-mw/mw-adapter-telco:local`, `-init`) |
+| `make build M=mw-adapter-telco` | `bootJar`, then this service's images (`mfs-mw/mw-adapter-telco:local`, plus the shared `mfs-mw/provision:local`) |
 | `make up M=mw-adapter-telco` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |

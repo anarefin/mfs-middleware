@@ -5,7 +5,8 @@
 #   1. ./gradlew bootJar in every stack module (services/* with a Dockerfile), or only MODULE,
 #      JOBS modules at a time (default 3), each its own Gradle build; logs in build/build/<module>.log
 #   2. docker compose build: every image of deploy/docker-compose.yml (each copies its module's
-#      build/libs/*.jar), or MODULE's (<module>-init and <module>)
+#      build/libs/*.jar), or MODULE's plus the provisioning one-shot's (provision, deploy/provision:
+#      `make up M=` starts it too)
 set -eu
 . "$(dirname "$0")/lib/modules.sh"
 . "$(dirname "$0")/lib/gate.sh"
@@ -19,7 +20,7 @@ svcs=""
 if [ -n "$m" ]; then
   name="$(basename "${m%/}")"
   stack_has_service "$name" || die "build: $name is not a service of deploy/docker-compose.yml"
-  stack_has_service "$name-init" && svcs="$name-init"
+  stack_has_service provision && svcs="provision"
   svcs="$svcs $name"
   # a UI module (ui/*) has no Gradle build: its image builds the app itself
   [ -d "$MW_ROOT/ui/$name" ] && mods="" || mods="$(stack_modules "$m")"

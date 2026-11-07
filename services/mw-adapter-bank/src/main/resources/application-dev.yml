@@ -22,7 +22,7 @@ mw:
         # signed, and a callback is believed only with a valid signature over method, path,
         # timestamp and body (300 s skew). The shared secret is the property
         # mw.partner-secrets.c2wbank.hmac-secret (OpenBao secret/mw-adapter-bank, provisioned by
-        # init/init.sh from the generated C2WBANK_HMAC_SECRET in dev); never here.
+        # deploy/provision/services.sh from the generated C2WBANK_HMAC_SECRET in dev); never here.
         auth:
           scheme: hmac-sha256
           credentials-ref: hmac-secret

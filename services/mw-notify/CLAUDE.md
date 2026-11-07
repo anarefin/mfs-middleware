@@ -75,7 +75,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 - SMPP (`client/SmppSmsSender`, `client/SmppBind`, jSMPP direct): transceiver binds per priority
   (`mw.notify.smpp.binds`), enquire_link 30 s, reconnect 1-60 s exponential, events
   `smpp.bind.up` / `smpp.bind.down`; submit_sm asks for DLRs. Password from OpenBao
-  (`secret/mw-notify`, `mw.notify.smpp.password`, created by `init/init.sh`).
+  (`secret/mw-notify`, `mw.notify.smpp.password`, created by `deploy/provision/services.sh`).
   `mw.notify.smpp.enabled=false` -> `client/DisabledSmsSender` (every send transient).
 - DLRs (`messaging/SmppReceiptListener` -> `service/ReceiptService`): matched on the part's
   message_id; DELIVRD -> DELIVERED, EXPIRED -> EXPIRED, UNDELIV/REJECTD/DELETED -> UNDELIVERABLE
@@ -85,7 +85,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 - Status: every attempt and final status to `mw.notify.status.v1` via the outbox
   (`service/StatusEvents`; SENT, FAILED, DELIVERED, UNDELIVERABLE, EXPIRED; `channel` names the
   row). `mw-txn-id` header = txnId, else messageId.
-- Init (`mw-notify-init`, `init/init.sh`, dev only): role `notify_rw`, schema `notify`,
+- Dev provisioning (`provision_mw_notify` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role `notify_rw`, schema `notify`,
   `secret/mw-notify` (DB and SMPP passwords), AppRole `mw-notify`.
 
 ## Contracts owned
@@ -119,7 +119,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -147,5 +147,5 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 | `./gradlew check bootJar && docker build -t mw-notify:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-notify` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make verify-changed [BASE=main]` | the gate for the modules changed since BASE (this one when it or a contract it lists changed) |
-| `make build M=mw-notify` | `bootJar`, then this service's images (`mfs-mw/mw-notify:local`, `-init`) |
+| `make build M=mw-notify` | `bootJar`, then this service's images (`mfs-mw/mw-notify:local`, plus the shared `mfs-mw/provision:local`) |
 | `make up M=mw-notify` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |

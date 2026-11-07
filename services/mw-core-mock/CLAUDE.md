@@ -124,11 +124,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 - PIN: RSA-OAEP with SHA-256 (hash and MGF1), PKCS#8 private key from OpenBao
   (`mw.coremock.pin.private-key`), checked against the wallet's bcrypt hash. The plaintext is never
   logged or stored. `GET /core-mock/v1/pin-public-key` exports `{keyId, algorithm, publicKeyPem}`.
-- Init (`mw-core-mock-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): creates role
+- Dev provisioning (`provision_mw_core_mock` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): creates role
   and schema `coremock`, `secret/mw-core-mock` (DB password, PIN key pair, created once and never
   overwritten) and the AppRole `mw-core-mock`; role-id/secret-id land in a volume the service reads
-  as a Spring configtree (`/run/mw/approle`). On a fresh stack it waits for OpenBao's
-  `dev-init.json` and retries the database step when another init races it.
+  as a Spring configtree (`/run/mw/approle`).
 
 ## Contracts owned
 
@@ -153,7 +152,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -183,5 +182,5 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 | `./gradlew check bootJar && docker build -t mw-core-mock:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-core-mock` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make verify-changed [BASE=main]` | the gate for the modules changed since BASE (this one when it or a contract it lists changed) |
-| `make build M=mw-core-mock` | `bootJar`, then this service's images (`mfs-mw/mw-core-mock:local`, `-init`) |
+| `make build M=mw-core-mock` | `bootJar`, then this service's images (`mfs-mw/mw-core-mock:local`, plus the shared `mfs-mw/provision:local`) |
 | `make up M=mw-core-mock` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |

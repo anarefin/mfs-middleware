@@ -112,7 +112,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   COMPLETED_WITH_EXCEPTIONS), MSISDN masked (18.3), current state while running; before approval
   `409 MW-VAL-035`. No re-send of a SUBMITTED row that never settles (the reconcile job above settles
   or gives it up).
-- Init (`mw-portal-api-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
+- Dev provisioning (`provision_mw_portal_api` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role
   `portal_api_rw`, schema `bulk`, `secret/mw-portal-api` (DB password; realm `services` client
   secret from `KC_MW_PORTAL_API_SECRET`), AppRole.
 
@@ -148,7 +148,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -176,5 +176,5 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
 | `./gradlew check bootJar && docker build -t mw-portal-api:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-portal-api` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when it or a contract in its `contracts.yml` changed) |
-| `make build M=mw-portal-api` | `bootJar`, then this service's images (`mfs-mw/mw-portal-api:local`, `-init`) |
+| `make build M=mw-portal-api` | `bootJar`, then this service's images (`mfs-mw/mw-portal-api:local`, plus the shared `mfs-mw/provision:local`) |
 | `make up M=mw-portal-api` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |

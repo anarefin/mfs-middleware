@@ -27,7 +27,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
     signed hmac-sha256 at send time when `sim.callback-secrets.<partner>` is set (string to sign:
     method, path+query, epoch seconds, hex SHA-256 of the body; `X-Signature`, `X-Timestamp`; the
     middleware's `hmac-sha256` scheme). In the stack the billagg secret is the generated
-    `BILLAGG_HMAC_SECRET`, written to OpenBao `secret/mw-simulators` by `init/init.sh`; the e2e
+    `BILLAGG_HMAC_SECRET`, written to OpenBao `secret/mw-simulators` by `deploy/provision/services.sh`; the e2e
     suite points `callbackUrl` at `http://apisix:9080/partner/billagg/callback/payments`.
   - `filter/RecordingFilter` records every request to `/{partner}/**` (raw bodies, test data;
     Authorization and Cookie headers dropped), last `sim.record-limit` per partner.
@@ -64,7 +64,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   500 (applied, callback sent), `.99` FAILED `9876` (ambiguous), `.55` malformed 202 body
   (applied, callback sent). `GET /c2wbank/v1/debits/{transactionId}` the real outcome or 404
   NOT_FOUND. Outage / error rate 503 (not applied). Callbacks signed with
-  `sim.callback-secrets.c2wbank` (stack: `C2WBANK_HMAC_SECRET`, written by `init/init.sh`); the
+  `sim.callback-secrets.c2wbank` (stack: `C2WBANK_HMAC_SECRET`, written by `deploy/provision/services.sh`); the
   e2e suite points `callbackUrl` at `http://apisix:9080/partner/c2wbank/callback/debits`; replay
   through the shared `POST /sim/c2wbank/callbacks/{reference}/replay`.
 - SMSC (ticket 24, `client/SmscServer` on jSMPP, `service/SmscService`,
@@ -84,7 +84,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   APISIX route `ussd-http-<mno>` -> mw-ussd; wire format `contracts/api/mw-ussd/ussd-http.v1.openapi.yaml`),
   each step with HTTP basic auth as `ussd-<mno>` and the password `sim.ussd-gateway.credentials.<mno>`
   (stack: the generated `USSD_<MNO>_GATEWAY_SECRET`, written to `secret/mw-simulators` by
-  `init/init.sh`; an MNO without one posts without credentials and APISIX answers 401)
+  `deploy/provision/services.sh`; an MNO without one posts without credentials and APISIX answers 401)
   and stops when mw-ussd answers the end flag (`sim.ussd-gateway.end-flag`, END); answers
   `{sessionId, screens: [{status, message, flag}], ended}`. `resume: true` with a `sessionId` and
   inputs (HTTP mode only, ticket 39) continues a session an earlier call left open: no BEGIN, one
@@ -112,11 +112,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   `sim.partners`.
 - Adding a simulator: add its name to `sim.partners`, a controller under `/<partner>/...`, reuse
   the store, recorder, `SimMode`/`MagicAmounts` and callback service.
-- Init (`mw-simulators-init`, label `mw.oneshot`, `init/init.sh`, idempotent, dev only): role
+- Dev provisioning (`provision_mw_simulators` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role
   `simulators_rw` and schema `simulators` (the chassis still migrates one on start-up),
   `secret/mw-simulators` (DB password, never overwritten) and the AppRole `mw-simulators`
-  (configtree volume at `/run/mw/approle`); waits for OpenBao's `dev-init.json` and retries the
-  database step when another init races it.
+  (configtree volume at `/run/mw/approle`).
 
 ## Contracts owned
 
@@ -138,7 +137,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
   `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage and `init/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -168,5 +167,5 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 | `./gradlew check bootJar && docker build -t mw-simulators:dev .` | image, as spec 4.3 rule 1 |
 | `make verify M=mw-simulators` | isolation + field-injection check + contracts lint + `./gradlew check` |
 | `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when it or a contract in its `contracts.yml` changed) |
-| `make build M=mw-simulators` | `bootJar`, then this service's images (`mfs-mw/mw-simulators:local`, `-init`) |
+| `make build M=mw-simulators` | `bootJar`, then this service's images (`mfs-mw/mw-simulators:local`, plus the shared `mfs-mw/provision:local`) |
 | `make up M=mw-simulators` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |
