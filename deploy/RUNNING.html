@@ -260,6 +260,15 @@ make api-test                    <span class="c"># every folder but 90 Slow (abo
     <p>By hand: after <code>make api-test FOLDER=01</code>, search MSISDN <code>01711000001</code> in the console, open a COMPLETED P2P,
       request a reversal as <code>ops-maker01</code>, and approve it as <code>ops-checker01</code> in a private window. The demo script
       for every feature is in <code>docs/demo.md</code>.</p>
+    <h3>Test console (every feature by hand, dev/test only)</h3>
+    <div class="cmd"><pre>make tester                      <span class="c"># test-only routes on, start mw-test-console: https://localhost/tester</span>
+make tester-e2e                  <span class="c"># its Playwright suite against the running, seeded stack</span>
+<span class="c"># without make, from deploy/: the test routes, then the console (profile tester)</span>
+MW_E2E_ROUTES=1 docker compose --env-file .env --profile core up -d --no-deps --force-recreate apisix-init
+docker compose --env-file .env --profile core --profile tester up -d --no-deps --wait mw-test-console</pre></div>
+    <p>The test console plays the mobile app, a USSD handset (robi over HTTP, gp over SMPP), the partner simulators and
+      core faults, the checkout shop and buyer, and the org portal; each action shows every API call, the balances before
+      and after and the SMS. The step-by-step walkthrough of every feature is <code>docs/testing-guide.md</code>.</p>
     <h3>Logs and code</h3>
     <div class="cmd"><pre>make log-scan                    <span class="c"># no PIN or unmasked MSISDN / NID in any container log</span>
 make verify-changed BASE=main    <span class="c"># module gate with Testcontainers: run it with the stack stopped (Docker memory)</span></pre></div>

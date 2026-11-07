@@ -137,7 +137,7 @@ test_log_scan_covers_every_profile_so_the_seeder_is_scanned_too() {
   cp "$REPO_DIR/scripts/log-scan.sh" scripts/
   cp "$REPO_DIR/scripts/lib/modules.sh" scripts/lib/
   assert_ok env MW_ROOT="$PWD" bash scripts/log-scan.sh
-  grep -q -- '--profile minimal --profile core --profile seed ps -a' .tool-calls \
+  grep -q -- '--profile minimal --profile core --profile seed --profile tester ps -a' .tool-calls \
     || fail "log-scan does not list every profile's containers: $(cat .tool-calls)"
 }
 

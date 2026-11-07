@@ -1,0 +1,19 @@
+{
+  "name": "test-console",
+  "desc": "TEST ONLY (MW_E2E_ROUTES=1): the test console (ui/mw-test-console, ADR D17, basePath /tester) that plays the app, USSD handset, partners, merchant and org portal; from private networks only, no sign-in (dev stack only)",
+  "uris": ["/tester", "/tester/*"],
+  "methods": ["GET", "HEAD", "POST"],
+  "plugins": {
+    "ip-restriction": {
+      "whitelist": ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128"]
+    },
+    "client-control": { "max_body_size": 3145728 }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "pass_host": "pass",
+    "timeout": { "connect": 5, "send": 30, "read": 180 },
+    "nodes": { "mw-test-console:3000": 1 }
+  }
+}

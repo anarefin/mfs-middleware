@@ -11,6 +11,9 @@ mocked core (`mw-core-mock`) and simulated partners (`mw-simulators`).
   D1–D15 and M1–M13.
 - Running the MVP host: [docs/runbook.md](docs/runbook.md).
 - Milestone demos M0–M6: [docs/demo.md](docs/demo.md).
+- Testing every feature by hand from a browser (app flows, USSD, bank, failures, checkout, bulk,
+  ops console), step by step: [docs/testing-guide.md](docs/testing-guide.md), with the dev/test-only
+  test console (`make tester`, https://localhost/tester).
 - Running the full stack on a laptop with plain Docker Compose and seed data, then testing it
   (BitsPay pattern): [deploy/RUNNING.html](deploy/RUNNING.html).
 - Conventions for contributors and coding agents: [CLAUDE.md](CLAUDE.md) and the `CLAUDE.md` of
@@ -29,7 +32,7 @@ runs in Docker.
 | JDK 25 (Temurin or any other build) on `PATH` or in `JAVA_HOME` | `make build` builds each service jar on the host with its own Gradle wrapper; the wrappers download Gradle itself | `java -version` |
 | bash, make (GNU or BSD), git, curl, jq | the Makefile and `scripts/`; jq for `make smoke`, `make edge-test`, `make security` | `jq --version` |
 | Node.js 22+ with npx | `make api-test` (Newman, pinned, fetched by npx; needs access to registry.npmjs.org and cdnjs.cloudflare.com), `make contracts-lint`, `make compose-check`; the admin console builds inside Docker | `node --version` |
-| Node.js 24 + pnpm (optional) | only the admin console's own tests: `pnpm test` in `ui/mw-admin-ui` and `make ui-e2e` (Playwright against the running stack; Chromium is installed on first use) | `pnpm --version` |
+| Node.js 24 + pnpm (optional) | only the consoles' own tests: `pnpm test` in `ui/mw-admin-ui` / `ui/mw-test-console`, `make ui-e2e` and `make tester-e2e` (Playwright against the running stack; Chromium is installed on first use) | `pnpm --version` |
 | Internet access on the first run | images, Gradle distributions and dependencies, the console's pnpm packages | |
 | Host port 443 free | APISIX is the only container that publishes a port (443 -> 9443) | `lsof -i :443` |
 
@@ -107,6 +110,9 @@ Then:
 - **A first transaction**: `make seed`, then `make api-test FOLDER=01` runs the P2P scenarios through
   APISIX (the first run downloads Newman). For the whole suite start the stack with
   `make up TIMERS=fast` (short status-inquiry and retry timers) and run `make api-test`. Then search the console for MSISDN `01711000001`.
+- **Test every feature by hand**: `make tester` starts the dev/test-only test console at
+  https://localhost/tester (it plays the app, a USSD handset, the partners, the checkout shop and the
+  org portal); [docs/testing-guide.md](docs/testing-guide.md) walks through every feature with it.
 - **Stop**: `make down` keeps the data; `make reset` drops every container and volume (a fresh
   start next time).
 
@@ -195,6 +201,8 @@ manifest in step with every message change. The admin console is tested with `pn
 | `make edge-test` | APISIX edge policies: 401/400/413/429 envelopes, header stripping, correlation ID, quotas, idempotent apply |
 | `make api-test [FOLDER=] [ALL=1]` | Newman API suite in `tests/api` (`tests/api/README.md`) against the running stack (`make up TIMERS=fast && make seed` first; under 10 minutes): every folder but `90 Slow`, or the ones in `FOLDER` (numbers or names, comma-separated, e.g. `make api-test FOLDER="01, 03"`); `ALL=1` adds `90 Slow` |
 | `make ui-e2e [GREP=]` | admin console Playwright suite (`ui/mw-admin-ui/e2e`) against the running, seeded stack (`make up && make seed` first): real Keycloak logins as `seed-ops-maker` / `-checker` / `-viewer`, the real mw-admin-api behind APISIX; `pnpm install --frozen-lockfile` and the Chromium download when needed; credentials from `deploy/.env`, personas from `build/seed/manifest.json`; `GREP=@approvals` filters by spec tag (`@smoke`, `@console`, `@approvals`, `@partners`, `@ussd`, `@templates`); stops in global setup, with the fix, when the stack is not ready; idempotent (run it twice) |
+| `make tester` | start the dev/test-only test console (`ui/mw-test-console`, ADR D17) on the running stack: re-applies the test-only gateway routes (`MW_E2E_ROUTES=1`, its own route `/tester` included), starts `mw-test-console` (profile `tester`, about 192 MiB outside the core budget) and prints https://localhost/tester; a later plain `make up` removes the route again; walkthrough in [docs/testing-guide.md](docs/testing-guide.md) |
+| `make tester-e2e [GREP=]` | the test console's Playwright suite (`ui/mw-test-console/e2e`) against it on the running, seeded stack (`make up TIMERS=fast && make seed && make tester` first): app flows with balances, USSD over HTTP and SMPP, a lost core reply resolved by the status inquiry, checkout with IPN, a bulk batch |
 | `make chaos [TARGETS=]` | kill every `mw-*` container, then `kafka` and `postgres`, mid-flow under load; checks no transaction is left non-terminal and the core-mock ledger balances (criterion 3); report in `build/chaos/` |
 | `make perf` | Gatling mix at 100 TPS with the p95 middleware-overhead check (criterion 7, `tests/perf/README.md`); report under `tests/perf/build/reports/` |
 | `make security [M=]` | gitleaks, CycloneDX SBOM + trivy for every module and image; with the stack up also the ZAP baseline and the container log scan. `SECURITY_LIVE=1 make security` makes the live stages mandatory (the milestone gate). Decisions in `docs/security-findings.md` |

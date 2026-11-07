@@ -143,7 +143,7 @@ test_build_builds_every_stack_jar_then_the_images() {
   grep -q '^bootJar' services/mw-a/.gradlew-calls || fail "mw-a jar not built"
   grep -q '^bootJar' services/mw-b/.gradlew-calls || fail "mw-b jar not built"
   [ -f templates/mw-service-template/.gradlew-calls ] && fail "the template is not a stack module"
-  grep -qF "docker $(F) --profile minimal --profile core --profile seed build" .tool-calls || fail "images not built: $(cat .tool-calls)"
+  grep -qF "docker $(F) --profile minimal --profile core --profile seed --profile tester build" .tool-calls || fail "images not built: $(cat .tool-calls)"
 }
 
 test_build_with_M_builds_only_that_jar_and_its_images() {
@@ -200,13 +200,13 @@ test_down_stops_every_profile_and_reset_drops_the_volumes_too() {
   stub_tools
   stack_file mw-a
   assert_ok mw_make "$PWD" down
-  grep -qF "docker $(F) --profile minimal --profile core --profile seed down" .tool-calls || fail "down: $(cat .tool-calls)"
+  grep -qF "docker $(F) --profile minimal --profile core --profile seed --profile tester down" .tool-calls || fail "down: $(cat .tool-calls)"
   rm -f .tool-calls
   assert_ok mw_make "$PWD" down DOWN_ARGS=-v
   grep -qF -- "down -v" .tool-calls || fail "DOWN_ARGS not passed: $(cat .tool-calls)"
   rm -f .tool-calls
   assert_ok mw_make "$PWD" reset
-  grep -qF "docker $(F) --profile minimal --profile core --profile seed down -v --remove-orphans" .tool-calls \
+  grep -qF "docker $(F) --profile minimal --profile core --profile seed --profile tester down -v --remove-orphans" .tool-calls \
     || fail "reset: $(cat .tool-calls)"
 }
 
@@ -216,7 +216,7 @@ test_deploy_reset_sh_is_make_reset() {
   stub_tools
   stack_file mw-a
   OUT="$(root="$PWD"; cd deploy && MW_ROOT="$root" "$REPO_DIR/deploy/reset.sh" 2>&1)" || fail "reset.sh failed"
-  grep -qF "docker $(F) --profile minimal --profile core --profile seed down -v --remove-orphans" .tool-calls \
+  grep -qF "docker $(F) --profile minimal --profile core --profile seed --profile tester down -v --remove-orphans" .tool-calls \
     || fail "reset.sh: $(cat .tool-calls)"
 }
 
@@ -263,6 +263,45 @@ test_the_api_suite_enables_the_test_only_gateway_routes_on_the_running_stack_fir
   grep -q 'MW_E2E_ROUTES=1 docker compose "${DC_F\[@\]}" up -d --no-deps --force-recreate apisix-init' "$REPO_DIR/tests/api/run.sh" \
     || fail "tests/api/run.sh does not re-run apisix-init with MW_E2E_ROUTES=1"
   grep -q 'docker compose "${DC_F\[@\]}" wait apisix-init' "$REPO_DIR/tests/api/run.sh" || fail "tests/api/run.sh does not wait for apisix-init"
+}
+
+test_tester_enables_the_test_routes_then_starts_the_console() {
+  # The console's route is a test-only route: apisix-init re-runs with MW_E2E_ROUTES=1 first.
+  stub_tools
+  stack_file apisix-init mw-test-console
+  assert_ok mw_make "$PWD" tester
+  grep -qF "docker $(F) --profile core --profile tester up -d --no-deps --force-recreate apisix-init" .tool-calls \
+    || fail "test routes not re-applied: $(cat .tool-calls)"
+  grep -qF "docker $(F) --profile core --profile tester wait apisix-init" .tool-calls || fail "apisix-init not awaited: $(cat .tool-calls)"
+  grep -qF "docker $(F) --profile core --profile tester up -d --no-deps --wait --wait-timeout 120 mw-test-console" .tool-calls \
+    || fail "console not started: $(cat .tool-calls)"
+  grep -q -- '--build' .tool-calls && fail "make tester built an image: $(cat .tool-calls)"
+  grep -q 'MW_E2E_ROUTES=1 docker compose' "$REPO_DIR/scripts/tester.sh" || fail "tester.sh does not set MW_E2E_ROUTES=1"
+  assert_out_contains "https://localhost/tester"
+}
+
+test_tester_fails_without_the_console_in_the_stack_file() {
+  stub_tools
+  stack_file apisix-init
+  assert_fails mw_make "$PWD" tester
+  assert_out_contains "no mw-test-console service"
+}
+
+test_tester_e2e_installs_then_runs_the_suite_against_the_edge() {
+  mkdir -p ui/mw-test-console .bin
+  printf '{"name":"mw-test-console"}\n' >ui/mw-test-console/package.json
+  printf 'lockfileVersion: 9\n' >ui/mw-test-console/pnpm-lock.yaml
+  {
+    printf '#!/bin/sh\n'
+    printf 'echo "pnpm $* | E2E_BASE_URL=$E2E_BASE_URL | cwd=$(pwd)" >> "%s/.tool-calls"\n' "$PWD"
+    printf '[ "$1" = install ] && mkdir -p node_modules && touch node_modules/.modules.yaml\n'
+    printf 'exit 0\n'
+  } >.bin/pnpm
+  chmod +x .bin/pnpm
+  PATH="$PWD/.bin:$PATH"
+  assert_ok mw_make "$PWD" tester-e2e GREP=@ussd
+  grep -q "^pnpm install --frozen-lockfile .*cwd=$PWD/ui/mw-test-console$" .tool-calls || fail "no frozen install: $(cat .tool-calls)"
+  grep -qF "pnpm test:e2e --grep @ussd | E2E_BASE_URL=https://localhost |" .tool-calls || fail "suite not run: $(cat .tool-calls)"
 }
 
 test_perf_runs_gatling_suite() {

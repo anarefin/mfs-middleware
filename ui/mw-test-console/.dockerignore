@@ -1,0 +1,8 @@
+node_modules
+.next
+e2e
+test-results
+playwright-report
+*.tsbuildinfo
+**/*.test.ts
+**/*.test.tsx

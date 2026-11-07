@@ -51,7 +51,7 @@ test_one_hand_written_stack_file_with_every_platform_service() {
   [ -f "$STACK_FILE" ] || fail "missing deploy/docker-compose.yml"
   grep -q '^include:' "$STACK_FILE" && fail "deploy/docker-compose.yml still includes other files"
   local services j
-  j="$(COMPOSE_PROFILE="core seed" compose_json)" || fail "compose config failed"
+  j="$(COMPOSE_PROFILE="core seed tester" compose_json)" || fail "compose config failed"
   [ "$(printf '%s' "$j" | jq -r .name)" = mfs-mw ] || fail "project name is not mfs-mw"
   services="$(printf '%s' "$j" | jq -r '.services | keys[]')"
   for s in $PLATFORM_SERVICES; do

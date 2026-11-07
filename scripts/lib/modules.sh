@@ -46,7 +46,7 @@ STACK_TIMERS="$MW_ROOT/deploy/test-timers.env"
 # the timers the running stack was started with (make up writes it, make reset removes it)
 STACK_TIMERS_STATE="$MW_ROOT/build/stack-timers"
 # every profile of the stack file (make down / make reset stop them all)
-STACK_PROFILES="minimal core seed"
+STACK_PROFILES="minimal core seed tester"
 
 # stack_compose [PROFILE...]: set DC_F to the docker compose arguments for the stack: the file,
 # the generated deploy/.env (and deploy/test-timers.env with TIMERS=fast), then --profile for each

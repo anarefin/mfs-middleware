@@ -964,6 +964,39 @@ services:
       resources:
         limits: { cpus: "0.5", memory: 160M }
 
+  # The test console (ADR D17, dev/test only, profile `tester`, outside the core memory budget):
+  # a Next.js app that plays the app, a USSD handset, the partners, the checkout merchant and the
+  # org portal against this stack, for testing every feature by hand (docs/testing-guide.md). It
+  # calls APISIX only, server-side, with the generated dev credentials below; APISIX serves it at
+  # https://localhost/tester only while the test-only routes are on (MW_E2E_ROUTES=1, routes-test/
+  # test-console.json): `make tester` turns them on and starts it.
+  mw-test-console:
+    <<: *app
+    profiles: [tester]
+    image: mfs-mw/mw-test-console:local
+    build: ../ui/mw-test-console
+    networks: [app]
+    tmpfs: [/tmp, /app/.next/cache]
+    environment:
+      EDGE_URL: http://apisix:9080
+      PUBLIC_URL: ${MW_ADMIN_UI_PUBLIC_URL:-https://localhost}
+      MW_E2E_API_KEY: ${MW_E2E_API_KEY:?run scripts/gen-dev-env.sh (make up does)}
+      KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+    depends_on:
+      apisix: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/tester/api/health | grep -q UP"]
+      interval: 5s
+      timeout: 3s
+      start_period: 20s
+      start_interval: 1s
+      retries: 3
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 192M }
+
   # ------------------------------------------------------------ seed (ticket 57)
   # mw-seeder: one-shot API seeder (profile seed; `make seed` runs it with the core profile and fails
   # unless it exits 0). Seeds through the services' APIs only (Keycloak admin REST, mw-core-mock's

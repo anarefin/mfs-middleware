@@ -23,6 +23,10 @@ picked by number or full name, comma-separated: `make api-test FOLDER="01, 03"`;
 is in `tests/api/README.md`. A failing request prints the check, the call and the envelope it got;
 the JUnit report is tests/api/build/newman-report.xml.
 
+To show a feature by hand instead (a browser, no API knowledge needed), run `make tester` and follow
+[docs/testing-guide.md](testing-guide.md): the test console plays the app, a USSD handset, the
+partners, the checkout shop and the org portal; `make tester-e2e` is its browser suite.
+
 ## M0 Foundation
 
 What it proves: repo skeleton and quality gate (WP01), platform stack (WP02), service template

@@ -79,6 +79,7 @@ is reachable only inside the Compose networks.
 | `/admin/v1/*` | `mw-admin-api` (realm `ops` JWT) |
 | `/checkout/*`, `/ussd/<mno>`, `/partner/*/callback/*` | checkout, MNO USSD gateways, partner callbacks |
 | `/healthz` | APISIX itself |
+| `/tester` | test console (`mw-test-console`, dev/test only, ADR D17): only while the test-only routes are on (`make tester`), from private addresses; never on a shared or production host |
 
 The full route list and every edge policy is in `deploy/apisix/README.md`. To demo from another
 machine, browse on the host itself or forward the port (`sudo ssh -L 443:localhost:443

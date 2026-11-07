@@ -28,6 +28,7 @@ the repo". A new decision gets the next free id in its table (spec first, then a
 | D14 | [No shared code: contracts only, cross-cutting code copied from a template](D14-code-sharing.md) | Accepted, 2026-11-03 (spec revision 2) |
 | D15 | [Layered packages under mfs.mw.<service>](D15-code-structure.md) | Accepted, 2026-11-03 (spec revision 3) |
 | D16 | [One hand-written Compose file with profiles](D16-single-compose-file.md) | Accepted, 2026-11-06 (ticket 56; supersedes the per-module `compose.yml` of D12) |
+| D17 | [A dev/test-only test console for manual testing](D17-test-console.md) | Accepted, 2026-11-07 |
 | M1 | [MVP flows](M1-mvp-flows.md) | Accepted, 2026-11-03 |
 | M2 | [MVP channels](M2-mvp-channels.md) | Accepted, 2026-11-03 |
 | M3 | [USSD: SMPP and HTTP both built, GP live over SMPP](M3-mvp-ussd-transport.md) | Accepted, 2026-11-03 |
