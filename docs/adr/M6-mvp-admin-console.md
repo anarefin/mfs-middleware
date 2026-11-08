@@ -19,4 +19,4 @@ Login with MFA, transaction search by txnId or MSISDN and saga timeline with aud
 
 - `services/mw-admin-api/CLAUDE.md`
 - `ui/mw-admin-ui/CLAUDE.md`
-- `tests/e2e/src/test/resources/features/operator-console.feature`
+- `tests/api/src/14-operator-console` and `ui/mw-admin-ui/e2e` (formerly the Cucumber feature operator-console.feature)

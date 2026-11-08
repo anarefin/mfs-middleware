@@ -7,6 +7,7 @@ owned, contracts used).
 Operator docs (ticket 47, WP30): `README.md` (prerequisites, clean-host quick start, every make
 target), `docs/runbook.md` (MVP host), `docs/demo.md` (one demo per milestone M0–M6),
 `docs/testing-guide.html` (QA walkthrough: credentials (`make creds`, `make totp`), every feature by hand with the test console and the ops console),
+`docs/tutorial/` (onboarding tour for a new developer: architecture, core ideas, every feature's flow, a first day),
 `docs/adr/` (one record per spec decision D1–D15, M1–M13). `scripts/test/test_repo_docs.sh`
 fails when they name a make target, repo path, `make api-test` folder or `VAR=` knob that does not exist, when
 the README misses a Makefile target, or when a spec decision row has no ADR: a new target, knob or

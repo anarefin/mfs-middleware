@@ -13,7 +13,7 @@ Every service is a Spring Boot 4 application on JDK 25. Partner and messaging in
 ## Consequences
 
 - One programming model for HTTP APIs (Spring MVC), Kafka listeners and partner routes.
-- Camel route templates make partner onboarding mostly configuration (the adapter framework, spec 12).
+- Camel route templates turn partner onboarding into mostly configuration (the adapter framework, spec 12).
 - JDK 25 is required on every build host (the quick start checks it); Camel and Boot upgrades are per module, because each module pins its own versions (D14).
 
 ## Where in the repo

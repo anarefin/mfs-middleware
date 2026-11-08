@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Middleware Glossary</title>
+<link rel="stylesheet" href="tutorial.css">
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> tutorial</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="01-what-is-mfs.html">1 MFS</a>
+    <a href="02-architecture.html">2 Architecture</a>
+    <a href="03-core-ideas.html">3 Core ideas</a>
+    <a href="04-money-flows.html">4 Money</a>
+    <a href="05-partner-flows.html">5 Partners</a>
+    <a href="06-checkout-bulk.html">6 Checkout &amp; bulk</a>
+    <a href="07-ops-platform.html">7 Ops</a>
+    <a href="08-first-day.html">8 First day</a>
+    <a href="09-how-we-work.html">9 How we work</a>
+    <a href="glossary.html" aria-current="page">Glossary</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Reference</div>
+  <h1>Glossary</h1>
+  <p class="lead">Every abbreviation and project word used in this tutorial, the spec and the code.</p>
+
+  <dl class="gloss">
+    <dt>Adapter</dt><dd>A service that talks to one family of outside partners (<code>mw-adapter-telco</code>, <code>-billpay</code>, <code>-bank</code>). See <a href="05-partner-flows.html#framework">chapter 5</a>.</dd>
+    <dt>Agent</dt><dd>A shop that exchanges cash for wallet money (cash in, cash out).</dd>
+    <dt>APISIX</dt><dd>The API gateway at the edge: the only way in from outside.</dd>
+    <dt>AppRole</dt><dd>An OpenBao login method for machines: each service has its own and can read only its own secrets.</dd>
+    <dt>Audit trail</dt><dd>The append-only, hash-chained record of everything that happened (<code>mw-audit-dw</code>).</dd>
+    <dt>BDT, Tk, poisha</dt><dd>Bangladeshi taka. Tk 1 = 100 poisha. Amounts are stored as whole poisha in <code>valueMinor</code>.</dd>
+    <dt>Bulk disbursement</dt><dd>An organisation paying many wallets from one CSV file, with maker-checker.</dd>
+    <dt>Callback</dt><dd>A partner calling <em>us</em> later with the result of an earlier request.</dd>
+    <dt>Camel (Apache Camel)</dt><dd>An integration library used inside services for Kafka consumers, the outbox relay and partner routes.</dd>
+    <dt>Circuit breaker</dt><dd>Stops calling a partner for a while after repeated failures, so a broken partner does not drag everything down.</dd>
+    <dt>Command / event</dt><dd>A request to the core over Kafka ("PostTransfer") and its answer ("TransferPosted"). See <a href="03-core-ideas.html#core-contract">chapter 3</a>.</dd>
+    <dt>commandId</dt><dd>The id of one command, <code>&lt;txnId&gt;:&lt;step&gt;</code>. The core uses it to recognise a repeat.</dd>
+    <dt>Commit / release</dt><dd>Take held money, or give it back.</dd>
+    <dt>Compose profile</dt><dd>A named group of containers in <code>deploy/docker-compose.yml</code>: <code>minimal</code>, <code>core</code>, <code>seed</code>, <code>tester</code>.</dd>
+    <dt>Consumer group</dt><dd>A named Kafka reader. Each group sees every message of a topic once.</dd>
+    <dt>Contract</dt><dd>An OpenAPI file or JSON Schema in <code>contracts/</code> that two services agree on. Owned by one service.</dd>
+    <dt>Core</dt><dd>The system that owns balances, the ledger, fees, limits and PINs. Not in this repo; <code>mw-core-mock</code> plays it.</dd>
+    <dt>correlationId</dt><dd>The id that ties together everything caused by one request (<code>X-Correlation-Id</code>).</dd>
+    <dt>Device binding</dt><dd>Linking an app install to a wallet with an SMS OTP and a device key, so every money request must be signed by that phone.</dd>
+    <dt>DLQ</dt><dd>Dead-letter queue: the Kafka topic where a message goes when it fails every retry, for a human to look at.</dd>
+    <dt>eKYC</dt><dd>Electronic "know your customer": identity checks. In the spec; not built in the MVP.</dd>
+    <dt>Fail closed</dt><dd>When unsure, choose the safe answer: an unclear partner reply is UNKNOWN, never FAILED.</dd>
+    <dt>Flow</dt><dd>The orchestrator's description of one transaction type's steps (<code>P2pFlow</code>, <code>TopupFlow</code>, ...).</dd>
+    <dt>HMAC</dt><dd>A signature made with a shared secret. Merchants and partners sign their requests; we sign IPNs.</dd>
+    <dt>Hold</dt><dd>Reserving money in a wallet without moving it, until a partner has done its part.</dd>
+    <dt>Idempotency</dt><dd>Doing something twice has the same effect as once. See <a href="03-core-ideas.html#idempotency">chapter 3</a>.</dd>
+    <dt>Inbox</dt><dd>A table of handled message ids, so a listener ignores a message it has seen.</dd>
+    <dt>IPN</dt><dd>Instant payment notification: our signed server-to-server message telling a shop an order is paid.</dd>
+    <dt>JSONata</dt><dd>An expression language for transforming JSON; used to map our partner requests to each partner's format.</dd>
+    <dt>Kafka</dt><dd>The message log all services use to talk to each other.</dd>
+    <dt>Keycloak / realm</dt><dd>The login server; a realm is one separate set of users (customers, ops, portals, services, partners).</dd>
+    <dt>Maker-checker</dt><dd>The four-eyes rule: one person asks for a risky change, a different person approves it.</dd>
+    <dt>MANUAL_REVIEW</dt><dd>The saga state where the system cannot decide safely and an operator must.</dd>
+    <dt>Masking</dt><dd>Hiding personal data in logs and screens: <code>0171****789</code>.</dd>
+    <dt>MFS</dt><dd>Mobile financial services: a wallet on your phone number.</dd>
+    <dt>MNO</dt><dd>Mobile network operator (Grameenphone "gp", Robi, Banglalink "bl", Teletalk).</dd>
+    <dt>MSISDN</dt><dd>A mobile phone number, for example <code>01711000001</code>.</dd>
+    <dt>MVP</dt><dd>Minimum viable product: the first version this repository builds.</dd>
+    <dt>OCS</dt><dd>Online charging system: the operator system that adds airtime.</dd>
+    <dt>OpenBao</dt><dd>The secrets vault (an open-source fork of HashiCorp Vault).</dd>
+    <dt>Orchestrator</dt><dd><code>mw-orchestrator</code>: runs every transaction's saga and is the only service that commands the core.</dd>
+    <dt>OTP</dt><dd>One-time password sent by SMS (device binding, checkout).</dd>
+    <dt>Outbox</dt><dd>A table where a service writes outgoing messages in the same database transaction as its business change; a relay publishes them.</dd>
+    <dt>P2P</dt><dd>Person to person: send money.</dd>
+    <dt>Partner reference</dt><dd>The stable id we give a partner for one transaction (top-up: <code>BITS</code> + txnId in hex), so a repeat is recognisable.</dd>
+    <dt>PIN ciphertext</dt><dd>The PIN encrypted with the core's public key (RSA-OAEP). The middleware carries it but cannot read it.</dd>
+    <dt>Post</dt><dd>Move money in one step (<code>PostTransfer</code>), no hold.</dd>
+    <dt>Reply budget</dt><dd>How long a channel service waits for a final status before answering "processing" (app 25 s, USSD 8 s).</dd>
+    <dt>Reversal</dt><dd>Undoing a completed transaction with a new <code>REVERSAL</code> transaction, after maker-checker.</dd>
+    <dt>Saga</dt><dd>A multi-step job across systems, saved step by step, with compensating steps when a later step fails.</dd>
+    <dt>SagaMachine / SagaEngine</dt><dd>The pure decision function (state + event → next state + effects) and the part that carries the effects out.</dd>
+    <dt>Seeder</dt><dd><code>mw-seeder</code>: creates the test users, wallets and balances (<code>make seed</code>).</dd>
+    <dt>Simulator</dt><dd><code>mw-simulators</code>: fakes every partner, the SMS centre, the USSD gateway and the shop's IPN receiver.</dd>
+    <dt>SMPP</dt><dd>Short message peer-to-peer: the telecom protocol for SMS and for some USSD gateways.</dd>
+    <dt>SMSC</dt><dd>SMS centre: delivers our text messages.</dd>
+    <dt>SP</dt><dd>Service provider: a business that looks up its own transactions through the portal.</dd>
+    <dt>SSRF</dt><dd>Server-side request forgery: tricking our server into calling an internal address. IPN URLs are checked against it.</dd>
+    <dt>Test console</dt><dd><code>mw-test-console</code> at <code>https://localhost/tester</code>: plays every outside party for manual testing. Dev/test only.</dd>
+    <dt>Testcontainers</dt><dd>A library that starts real PostgreSQL and Kafka containers for <code>*IT</code> tests.</dd>
+    <dt>TOTP</dt><dd>Time-based one-time password: the 6-digit code from an authenticator app (ops logins). <code>make totp</code> prints it for test users.</dd>
+    <dt>TSQ</dt><dd>Transaction status query: asking the core or a partner "what happened to this transaction?" until the answer is clear.</dd>
+    <dt>txnId</dt><dd>The id of one transaction, created by the channel service and carried everywhere.</dd>
+    <dt>UNKNOWN</dt><dd>The saga state for "money may or may not have moved; we are finding out".</dd>
+    <dt>USSD</dt><dd>Unstructured supplementary service data: the text menus on any phone after dialling a code like <code>*268#</code>.</dd>
+    <dt>Valkey</dt><dd>An in-memory key-value store (open-source Redis): sessions, locks, counters.</dd>
+    <dt>Wallet</dt><dd>An account in the core tied to a phone number, of a type such as CUSTOMER, AGENT or MERCHANT.</dd>
+  </dl>
+
+  <nav class="pager">
+    <a href="09-how-we-work.html"><small>Previous</small>← 9. How we work</a>
+    <a class="next" href="index.html"><small>Back to</small>Start →</a>
+  </nav>
+</main>
+</body>
+</html>

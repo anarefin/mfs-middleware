@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Money Flows</title>
+<link rel="stylesheet" href="tutorial.css">
+<script src="diagrams.js" defer></script>
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> tutorial</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="01-what-is-mfs.html">1 MFS</a>
+    <a href="02-architecture.html">2 Architecture</a>
+    <a href="03-core-ideas.html">3 Core ideas</a>
+    <a href="04-money-flows.html" aria-current="page">4 Money</a>
+    <a href="05-partner-flows.html">5 Partners</a>
+    <a href="06-checkout-bulk.html">6 Checkout &amp; bulk</a>
+    <a href="07-ops-platform.html">7 Ops</a>
+    <a href="08-first-day.html">8 First day</a>
+    <a href="09-how-we-work.html">9 How we work</a>
+    <a href="glossary.html">Glossary</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Chapter 4</div>
+  <h1>Money flows: send money, cash in, cash out</h1>
+  <p class="lead">The simplest flows: money moves between two wallets inside Bits, with no outside partner. Learn
+    send money (P2P) from the app in detail. Every other flow in this tutorial is a variation of it.</p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#p2p-app">Send money from the app</a></li>
+    <li><a href="#p2p-ussd">Send money from a USSD phone</a></li>
+    <li><a href="#cash">Cash in and cash out</a></li>
+    <li><a href="#wrong">When things go wrong</a></li>
+    <li><a href="#reversal">Reversal</a></li>
+    <li><a href="#try">Try it yourself</a></li>
+  </ol></div>
+
+  <h2 id="p2p-app">Send money (P2P) from the app</h2>
+  <div class="box plain">
+    <div class="tag">In plain English</div>
+    <p>Customer A (<code>01711000001</code>) sends Tk 10 to customer B (<code>01711000002</code>). The app asks the
+      app gateway; the gateway hands the job to the orchestrator; the orchestrator asks the core "is this allowed?" and then
+      "move it"; the core says "done"; the orchestrator announces "COMPLETED"; the gateway tells the app, and
+      the notify service texts both people.</p>
+  </div>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+    actors: App | APISIX | mw-app-gateway | mw-orchestrator | mw-core-mock | mw-notify | SMSC
+    App -> APISIX : POST /app/v1/transactions (token, Idempotency-Key, device signature)
+    APISIX -> mw-app-gateway : token checked, correlation id added
+    mw-app-gateway -> mw-app-gateway : check role and device, create txnId, register waiter
+    mw-app-gateway => mw-orchestrator : mw.txn.request.v1
+    mw-orchestrator -> mw-orchestrator : idempotency check, pick P2pFlow, RECEIVED → VALIDATING
+    mw-orchestrator => mw-core-mock : ValidateTransaction
+    mw-core-mock => mw-orchestrator : TransactionValidated (PIN, limits, fee OK)
+    mw-orchestrator => mw-core-mock : PostTransfer (state POSTING)
+    mw-core-mock => mw-orchestrator : TransferPosted (ledger written)
+    mw-orchestrator => mw-app-gateway : mw.txn.status.v1 COMPLETED
+    mw-app-gateway --> App : 200 { status: COMPLETED, txnId }
+    mw-orchestrator => mw-notify : the same mw.txn.status.v1 event
+    mw-notify -> SMSC : SMPP: "you sent Tk 10" / "you received Tk 10"
+  </script></div>
+  <div class="legend"><span class="h"><i></i>HTTP / SMPP</span><span class="k"><i></i>Kafka</span><span class="r"><i></i>reply</span></div>
+  <figcaption>Figure 4.1: send money from the app. Every status change (VALIDATING, POSTING, COMPLETED) is published on
+    <code>mw.txn.status.v1</code>; the gateway only reacts to the final one.</figcaption></figure>
+
+  <h3>Step by step</h3>
+  <ol class="steps">
+    <li><strong>The app calls APISIX.</strong> The request carries a Keycloak login token (realm <code>customers</code>),
+      an <code>Idempotency-Key</code>, and a signature made with a key stored on the phone when the device was bound.
+      APISIX checks the token and size limits and forwards to the app gateway.</li>
+    <li><strong>The app gateway checks the request.</strong> Is this user allowed this transaction type (a customer may
+      P2P; only an agent may cash in)? Is the device bound and the signature right? Is the customer not paying
+      themself? Then it creates the <code>txnId</code> and registers a waiter (chapter 3, idea 9).</li>
+    <li><strong>It publishes the request</strong> on <code>mw.txn.request.v1</code>. No database write is needed here, so
+      it publishes directly.</li>
+    <li><strong>The orchestrator receives it,</strong> checks idempotency (a repeat gets the existing transaction), picks the
+      flow for <code>P2P</code>, creates the saga row in state RECEIVED and moves it to VALIDATING. In the same database
+      transaction it writes the <code>ValidateTransaction</code> command to its outbox, plus a status update and an audit
+      event, and starts a 5-second timer.</li>
+    <li><strong>The core validates:</strong> PIN (decrypted only inside the core), wallet states, limits, fee. It answers
+      <code>TransactionValidated</code> on <code>core.wallet.event.v1</code>.</li>
+    <li><strong>The orchestrator moves to POSTING</strong> and sends <code>PostTransfer</code> (commandId
+      <code>&lt;txnId&gt;:post</code>).</li>
+    <li><strong>The core writes the ledger</strong> (debit A Tk 10 + Tk 5 fee, credit B Tk 10, credit the fee pool Tk 5)
+      and answers <code>TransferPosted</code>.</li>
+    <li><strong>The orchestrator moves to COMPLETED</strong> and publishes the status, with the gateway's
+      <code>mw-reply-to</code> header copied across.</li>
+    <li><strong>The gateway's waiter wakes up</strong> and the app gets <code>200</code> with the status. The gateway also
+      stores the result, so <code>GET /app/v1/transactions/{txnId}</code> works later.</li>
+    <li><strong>mw-notify sees the same status event,</strong> finds its rules for a completed P2P (one SMS to the sender, one to
+      the receiver), stores two messages and sends them to the SMS centre over SMPP. Numbers in the text are masked.</li>
+  </ol>
+
+  <div class="box where"><div class="tag">Where it lives</div><ul>
+    <li>mw-app-gateway: <code>controller/TransactionController</code> →
+      <a href="../../services/mw-app-gateway/src/main/java/mfs/mw/app/gateway/service/TransactionService.java"><code>service/TransactionService</code></a>;
+      device checks in <a href="../../services/mw-app-gateway/src/main/java/mfs/mw/app/gateway/security/DeviceBindingInterceptor.java"><code>security/DeviceBindingInterceptor</code></a>.</li>
+    <li>mw-orchestrator: <code>route/TxnRequestRoute</code> → <code>messaging/TxnRequestListener</code> →
+      <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/TransactionService.java"><code>service/TransactionService</code></a> →
+      <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/saga/P2pFlow.java"><code>saga/P2pFlow</code></a> /
+      <code>SagaMachine</code> / <code>SagaEngine</code>. Core answers come in through <code>route/CoreWalletEventRoute</code> →
+      <code>service/CoreEventService</code>.</li>
+    <li>mw-core-mock: <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/service/CoreCommandService.java"><code>service/CoreCommandService</code></a>; fees and wallet-type rules in
+      <a href="../../services/mw-core-mock/src/main/resources/application.yml">its application.yml</a>.</li>
+    <li>mw-notify: <code>route/TxnStatusRoute</code> → <code>service/TxnStatusService</code> →
+      <a href="../../services/mw-notify/src/main/java/mfs/mw/notify/service/RuleEngine.java"><code>service/RuleEngine</code></a>; sending in
+      <a href="../../services/mw-notify/src/main/java/mfs/mw/notify/service/DispatchService.java"><code>service/DispatchService</code></a>.</li>
+    <li>API contract: <a href="../../contracts/api">contracts/api/</a> (the app API is owned by mw-app-gateway). Spec sections 7 and 9.1.</li>
+  </ul></div>
+
+  <h2 id="p2p-ussd">Send money from a USSD phone</h2>
+  <div class="box plain">
+    <div class="tag">In plain English</div>
+    <p>A basic phone has no app. The customer dials <code>*268#</code> and gets text menus: "1 Send money, 2 Cash
+      out...". Each screen is one short request from the phone operator's USSD gateway to <code>mw-ussd</code> and one reply.
+      Once the customer has entered the number, the amount and the PIN, <code>mw-ussd</code> starts exactly the same
+      transaction as the app does.</p>
+  </div>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+    actors: Phone | Operator USSD gateway | mw-ussd | Valkey | mw-orchestrator | mw-notify
+    Phone -> Operator USSD gateway : dials *268#
+    Operator USSD gateway -> mw-ussd : session start (SMPP, or HTTP POST /ussd/{mno})
+    mw-ussd -> Valkey : create session ussd:{mno}:{sessionId}
+    mw-ussd --> Operator USSD gateway : main menu text
+    note Phone, Operator USSD gateway, mw-ussd : one round trip per screen: 1 (Send money), number, amount, 1 (confirm)
+    Operator USSD gateway -> mw-ussd : PIN (encrypted at once, never stored)
+    mw-ussd => mw-orchestrator : mw.txn.request.v1 (channel USSD, derived idempotency key)
+    note mw-orchestrator : the same saga as the app: validate, post
+    mw-orchestrator => mw-ussd : mw.txn.status.v1 COMPLETED
+    mw-ussd --> Operator USSD gateway : success screen with the TxnID (or "processing" after 8 s)
+    mw-orchestrator => mw-notify : status → SMS to both people
+  </script></div>
+  <figcaption>Figure 4.2: send money over USSD. The saga part is identical to figure 4.1.</figcaption></figure>
+  <ul>
+    <li><strong>Two transports, one engine.</strong> Some operators connect over SMPP (a long-lived telecom connection; in
+      dev, Grameenphone), others over HTTP through APISIX (in dev, Robi, Banglalink, Teletalk). The <code>transport/</code>
+      package turns both into the same call to the menu engine.</li>
+    <li><strong>Menus are data,</strong> not code: a JSON file, stored in versions in the database and editable in the ops console
+      (with maker-checker). A menu node of type ACTION starts a transaction.</li>
+    <li><strong>The session lives in Valkey,</strong> so any <code>mw-ussd</code> instance can serve the next screen.</li>
+    <li>USSD supports P2P, cash out, top-up and bill pay. There is no cash in over USSD.</li>
+  </ul>
+  <div class="box where"><div class="tag">Where it lives</div><ul>
+    <li><a href="../../services/mw-ussd/src/main/java/mfs/mw/ussd/service/UssdEngine.java"><code>service/UssdEngine</code></a> (one step per request),
+      <a href="../../services/mw-ussd/src/main/java/mfs/mw/ussd/service/KafkaTransactionFlow.java"><code>service/KafkaTransactionFlow</code></a> (starts the transaction).</li>
+    <li>Transports: <code>transport/HttpUssdTransport</code>, <code>transport/SmppUssdTransport</code>; the menus:
+      <a href="../../services/mw-ussd/src/main/resources/menus/main-v2.json">menus/main-v2.json</a>. Spec section 9.2.</li>
+  </ul></div>
+
+  <h2 id="cash">Cash in and cash out</h2>
+  <p>These are the same two-step flow as P2P (validate, then post, no hold). Only the parties, the fee and the rules
+    differ:</p>
+  <div class="table-wrap"><table>
+    <tr><th></th><th>P2P</th><th>Cash in</th><th>Cash out</th></tr>
+    <tr><td>Who starts it</td><td>a customer</td><td>an agent (agent app only)</td><td>a customer (app or USSD)</td></tr>
+    <tr><td>Money moves</td><td>customer → customer</td><td>agent → customer</td><td>customer → agent</td></tr>
+    <tr><td>Real world</td><td></td><td>the customer hands the agent cash</td><td>the agent hands the customer cash</td></tr>
+    <tr><td>Fee in the core mock</td><td>Tk 5</td><td>none</td><td>Tk 10</td></tr>
+    <tr><td>Wrong counterparty</td><td></td><td colspan="2"><code>MW-CORE-INVALID_COUNTERPARTY</code> (for example cash in to a merchant)</td></tr>
+  </table></div>
+  <p>The orchestrator flows are <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/saga/CashInFlow.java"><code>CashInFlow</code></a>
+    and <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/saga/CashOutFlow.java"><code>CashOutFlow</code></a>.
+    Compare them with <code>P2pFlow</code>: they are almost the same.</p>
+
+  <h2 id="wrong">When things go wrong</h2>
+  <div class="box wrong"><div class="tag">What can go wrong, and what happens</div>
+    <div class="table-wrap"><table>
+      <tr><th>Situation</th><th>Result</th><th>Money</th></tr>
+      <tr><td>Wrong PIN, over the limit, not enough balance</td><td><span class="st bad">REJECTED</span> <code>MW-CORE-&lt;reason&gt;</code>, HTTP 422</td><td>nothing moved</td></tr>
+      <tr><td>Same Idempotency-Key sent again</td><td>the first transaction's status and txnId</td><td>nothing more moved</td></tr>
+      <tr><td>Core does not answer validation in 5 s</td><td><span class="st bad">FAILED</span> <code>MW-TMO-001</code></td><td>nothing moved (validation moves no money)</td></tr>
+      <tr><td>Core does not answer the posting in 5 s</td><td><span class="st wait">UNKNOWN</span>, then the status inquiry asks the core until it knows</td><td>maybe; the inquiry finds out</td></tr>
+      <tr><td>No final answer within the app's 25 s</td><td><code>202 PROCESSING</code> plus a link to poll; an SMS follows</td><td>still being decided</td></tr>
+      <tr><td>Still unknown after 24 h, or a nonsense answer</td><td><span class="st manual">MANUAL_REVIEW</span>, an operator decides</td><td>an operator decides</td></tr>
+      <tr><td>Five wrong PINs in a row</td><td>the core locks the wallet; an operator unlocks it with maker-checker</td><td>nothing moved</td></tr>
+    </table></div>
+  </div>
+
+  <h2 id="reversal">Reversal</h2>
+  <p>A completed transaction is undone by a new transaction of type <code>REVERSAL</code>. Customers cannot start one:
+    it comes from the system channel, in practice from an operator's approved change request in the ops console
+    (chapter 7). The orchestrator moves the original from <span class="st ok">COMPLETED</span> to
+    <span class="st wait">REVERSING</span>, sends <code>ReverseTransaction</code>, and on <code>TransactionReversed</code>
+    marks it <span class="st step">REVERSED</span>. If the core refuses, or does not answer even after a query, it goes to
+    <span class="st manual">MANUAL_REVIEW</span>.</p>
+
+  <h2 id="try">Try it yourself</h2>
+  <div class="box try"><div class="tag">Try it yourself</div>
+    <ul>
+      <li>Test console page <strong>App flows</strong>: choose "Send money (P2P)", user <code>customer01</code>, counterparty
+        <code>01711000002</code>, amount <code>10</code>, PIN <code>1234</code>. Then try PIN <code>9999</code>, and press
+        "Resend the last submit" to see idempotency. Full steps: <a href="../testing-guide.html">docs/testing-guide.html</a>, sections 3 and 4.</li>
+      <li>Test console page <strong>USSD phone</strong>: dial <code>*268#</code> as <code>01711000001</code>.</li>
+      <li>Automated: <code>make api-test FOLDER="01, 03, 12, 18, 19"</code> runs the P2P, cash, reversal and USSD folders of
+        the API suite (<a href="../../tests/api/README.md">tests/api/</a>).</li>
+    </ul>
+  </div>
+
+  <nav class="pager">
+    <a href="03-core-ideas.html"><small>Previous</small>← 3. Ten ideas to know first</a>
+    <a class="next" href="05-partner-flows.html"><small>Next</small>5. Partner flows →</a>
+  </nav>
+</main>
+</body>
+</html>

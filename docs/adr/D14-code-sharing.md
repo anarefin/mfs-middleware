@@ -4,7 +4,7 @@ Status: Accepted, 2026-11-03 (spec revision 2).
 
 ## Context
 
-Shared libraries couple release cycles and make a module impossible to move to its own repo.
+Shared libraries couple release cycles and leave a module impossible to move to its own repo.
 
 ## Decision
 

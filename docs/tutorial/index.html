@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Middleware Tutorial</title>
+<link rel="stylesheet" href="tutorial.css">
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> tutorial</a>
+  <nav>
+    <a href="index.html" aria-current="page">Start</a>
+    <a href="01-what-is-mfs.html">1 MFS</a>
+    <a href="02-architecture.html">2 Architecture</a>
+    <a href="03-core-ideas.html">3 Core ideas</a>
+    <a href="04-money-flows.html">4 Money</a>
+    <a href="05-partner-flows.html">5 Partners</a>
+    <a href="06-checkout-bulk.html">6 Checkout &amp; bulk</a>
+    <a href="07-ops-platform.html">7 Ops</a>
+    <a href="08-first-day.html">8 First day</a>
+    <a href="09-how-we-work.html">9 How we work</a>
+    <a href="glossary.html">Glossary</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Start here</div>
+  <h1>Welcome to the Bits MFS middleware</h1>
+  <p class="lead">A guided tour for a developer who has never seen this project, or a mobile money system, before.
+    By the end you can explain what every service does, follow a payment from the phone to the ledger and back,
+    run the whole system on your laptop and change one service safely.</p>
+
+  <div class="box plain">
+    <div class="tag">The whole project in three sentences</div>
+    <p>Bits runs a mobile wallet: people keep money on their phone number and send it, pay with it, top up airtime
+      and pay bills. The money itself (balances, the ledger) lives in a separate system called <strong>the core</strong>.
+      This repository is the <strong>middleware</strong>: the layer in between that receives every request from apps,
+      USSD phones, shops and portals, talks to the core and to outside partners in the right order, makes sure nothing
+      is done twice or lost, and tells everyone the result.</p>
+  </div>
+
+  <h2>How to read this tutorial</h2>
+  <p>Read chapters 1 to 3 in order: they give you the vocabulary everything else uses. After that, chapters 4 to 7
+    each follow one family of features and can be read in any order. Do chapter 8 at your keyboard with the system
+    running. Keep chapter 9 open when you write your first change. If a word is new, look it up in the
+    <a href="glossary.html">glossary</a>.</p>
+
+  <p>Every chapter uses the same boxes:</p>
+  <div class="box plain"><div class="tag">In plain English</div><p>The idea without jargon.</p></div>
+  <div class="box where"><div class="tag">Where it lives</div><p>The classes and files to open. Links go straight to the source in this repository.</p></div>
+  <div class="box wrong"><div class="tag">What can go wrong</div><p>The failure cases, and what the system does about them. In payments this is half the work.</p></div>
+  <div class="box try"><div class="tag">Try it yourself</div><p>Where to see it happen on your own laptop (after chapter 8).</p></div>
+
+  <h2>Chapters</h2>
+  <div class="cards">
+    <a class="card" href="01-what-is-mfs.html"><div class="no">CHAPTER 1</div><h3>What is mobile money?</h3><p>Wallets, agents, merchants and partners. What the core does and what the middleware adds.</p></a>
+    <a class="card" href="02-architecture.html"><div class="no">CHAPTER 2</div><h3>The architecture</h3><p>Every service in one line, the infrastructure, the network zones, and how a service is laid out inside.</p></a>
+    <a class="card" href="03-core-ideas.html"><div class="no">CHAPTER 3</div><h3>Ten ideas to know first</h3><p>Transaction ids, idempotency, Kafka, outbox and inbox, sagas, holds, unknown outcomes, errors, masking.</p></a>
+    <a class="card" href="04-money-flows.html"><div class="no">CHAPTER 4</div><h3>Money flows</h3><p>Send money from the app and from a USSD phone, cash in, cash out, timeouts, reversals, manual review.</p></a>
+    <a class="card" href="05-partner-flows.html"><div class="no">CHAPTER 5</div><h3>Partner flows</h3><p>Airtime top-up, bill pay and add money from a bank, and the adapter framework behind them.</p></a>
+    <a class="card" href="06-checkout-bulk.html"><div class="no">CHAPTER 6</div><h3>Checkout and bulk</h3><p>Paying a web shop with the wallet, and an organisation paying many people from one file.</p></a>
+    <a class="card" href="07-ops-platform.html"><div class="no">CHAPTER 7</div><h3>Ops and platform</h3><p>The ops console and maker-checker, SMS and email, the audit trail, logins, the gateway and secrets.</p></a>
+    <a class="card" href="08-first-day.html"><div class="no">CHAPTER 8</div><h3>Your first day</h3><p>Run the system, send money in the test console, find it in the logs and the console, change a service, run its tests.</p></a>
+    <a class="card" href="09-how-we-work.html"><div class="no">CHAPTER 9</div><h3>How we work</h3><p>Contracts, module rules, test tiers, the definition of done and the never-do list.</p></a>
+    <a class="card" href="glossary.html"><div class="no">REFERENCE</div><h3>Glossary</h3><p>Every abbreviation and project word, from agent to TSQ.</p></a>
+  </div>
+
+  <h2>The other documents, and when to use them</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Document</th><th>Use it for</th></tr>
+    <tr><td><a href="../../README.md">README.md</a></td><td>The quick start and the full list of Makefile commands.</td></tr>
+    <tr><td><a href="../../deploy/RUNNING.html">deploy/RUNNING.html</a></td><td>Running the stack step by step, with troubleshooting.</td></tr>
+    <tr><td><a href="../testing-guide.html">docs/testing-guide.html</a></td><td>Testing every feature by hand in the browser, with expected results.</td></tr>
+    <tr><td><a href="../../spec/bits-mfs-middleware-spec.md">spec/bits-mfs-middleware-spec.md</a></td><td>The design. Long and dense; this tutorial gives the section numbers to read next.</td></tr>
+    <tr><td><a href="../adr/README.md">docs/adr/</a></td><td>Why each design decision was made.</td></tr>
+    <tr><td><a href="../../CLAUDE.md">CLAUDE.md</a> (root and one per service)</td><td>The rules every module follows, and what each service owns.</td></tr>
+  </table></div>
+
+  <div class="box note">
+    <div class="tag">This is an MVP</div>
+    <p>The repository builds the first version (the "MVP"). Some services in the spec do not exist yet
+      (<code>mw-adapter-interop</code>, <code>mw-compliance</code>, <code>mw-recon</code>), the real core is replaced by
+      a mock and every partner is a simulator. The tutorial says so wherever it matters.</p>
+  </div>
+
+  <nav class="pager"><a class="next" href="01-what-is-mfs.html"><small>Next</small>1. What is mobile money? →</a></nav>
+</main>
+</body>
+</html>

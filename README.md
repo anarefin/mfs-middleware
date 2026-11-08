@@ -5,6 +5,8 @@ checkout, org and SP portals) and the core wallet, built on Spring Boot 4, Apach
 APISIX and PostgreSQL 18. The MVP runs the whole system on one Docker Compose host against a
 mocked core (`mw-core-mock`) and simulated partners (`mw-simulators`).
 
+- New to the project: [docs/tutorial/index.html](docs/tutorial/index.html), a guided tour for a new
+  developer (the architecture in plain English with diagrams, every feature's flow, a hands-on first day).
 - Design: [spec/bits-mfs-middleware-spec.md](spec/bits-mfs-middleware-spec.md) (the "MVP scope"
   section wins over sections 1–25 for the MVP).
 - Why it is built this way: [docs/adr/README.md](docs/adr/README.md), one record per decision

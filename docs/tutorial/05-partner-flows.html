@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Partner Flows</title>
+<link rel="stylesheet" href="tutorial.css">
+<script src="diagrams.js" defer></script>
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> tutorial</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="01-what-is-mfs.html">1 MFS</a>
+    <a href="02-architecture.html">2 Architecture</a>
+    <a href="03-core-ideas.html">3 Core ideas</a>
+    <a href="04-money-flows.html">4 Money</a>
+    <a href="05-partner-flows.html" aria-current="page">5 Partners</a>
+    <a href="06-checkout-bulk.html">6 Checkout &amp; bulk</a>
+    <a href="07-ops-platform.html">7 Ops</a>
+    <a href="08-first-day.html">8 First day</a>
+    <a href="09-how-we-work.html">9 How we work</a>
+    <a href="glossary.html">Glossary</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Chapter 5</div>
+  <h1>Partner flows: top-up, bill pay, add money from a bank</h1>
+  <p class="lead">These flows need a company outside Bits to do its part. The orchestrator still runs the saga, but
+    now one step is "ask the partner", done by an adapter. Partners are slow, flaky and all different, so this is
+    where the "never guess" rule earns its keep.</p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#topup">Mobile top-up</a></li>
+    <li><a href="#billpay">Bill pay</a></li>
+    <li><a href="#bank">Add money from a bank</a></li>
+    <li><a href="#framework">The adapter framework</a></li>
+    <li><a href="#simulators">The simulators</a></li>
+    <li><a href="#try">Try it yourself</a></li>
+  </ol></div>
+
+  <h2 id="topup">Mobile top-up (airtime)</h2>
+  <div class="box plain">
+    <div class="tag">In plain English</div>
+    <p>The customer buys Tk 20 of airtime. We do not know yet whether the operator will deliver it, so we
+      <strong>hold</strong> Tk 20 in the wallet first (chapter 3, idea 7). Then the telco adapter asks the operator's
+      OCS to add the airtime. If the operator says yes, we <strong>commit</strong> the hold (take the money). If it says no,
+      we <strong>release</strong> it (give it back). If it does not answer, we ask again until we know.</p>
+  </div>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+    actors: App | mw-app-gateway | mw-orchestrator | mw-core-mock | mw-adapter-telco | OCS (simulator)
+    App -> mw-app-gateway : POST /app/v1/transactions (TOPUP)
+    mw-app-gateway => mw-orchestrator : mw.txn.request.v1
+    mw-orchestrator => mw-core-mock : ValidateTransaction
+    mw-core-mock => mw-orchestrator : TransactionValidated
+    mw-orchestrator => mw-core-mock : HoldFunds on core.payment.command.v1 (HOLDING)
+    mw-core-mock => mw-orchestrator : FundsHeld (holdId)
+    mw-orchestrator => mw-adapter-telco : PAY on mw.partner.request.telco.v1 (PARTNER_PENDING, 30 s deadline)
+    mw-adapter-telco -> OCS (simulator) : POST /ocs/v1/topup (reference BITS + txnId)
+    OCS (simulator) --> mw-adapter-telco : 200 SUCCESS, ocsRef
+    mw-adapter-telco => mw-orchestrator : mw.partner.reply.v1 SUCCESS
+    mw-orchestrator => mw-core-mock : CommitHold (COMMITTING)
+    mw-core-mock => mw-orchestrator : HoldCommitted
+    mw-orchestrator => mw-app-gateway : mw.txn.status.v1 COMPLETED
+    mw-app-gateway --> App : 200 COMPLETED
+  </script></div>
+  <div class="legend"><span class="h"><i></i>HTTP</span><span class="k"><i></i>Kafka</span><span class="r"><i></i>reply</span></div>
+  <figcaption>Figure 5.1: a successful top-up. Notify and audit are left out; they work exactly as in chapter 4.</figcaption></figure>
+
+  <h3>The three possible partner answers</h3>
+  <div class="table-wrap"><table>
+    <tr><th>Partner says</th><th>Orchestrator does</th><th>Customer sees</th></tr>
+    <tr><td><span class="st ok">SUCCESS</span></td><td>COMMITTING: <code>CommitHold</code> → COMPLETED</td><td>airtime arrives, money taken</td></tr>
+    <tr><td><span class="st bad">FAILED</span> (a definite no)</td><td>RELEASING: <code>ReleaseHold</code> → FAILED with <code>MW-PTR-&lt;PARTNER&gt;-&lt;reason&gt;</code></td><td>"recharge failed", money back</td></tr>
+    <tr><td><span class="st wait">UNKNOWN</span>, or nothing within 30 s</td><td>UNKNOWN: the adapter sends a <code>STATUS_QUERY</code> to the partner on the inquiry schedule. Success → commit; failed → release; "never heard of it" → release, but only after the deadline has passed</td><td>"processing", then an SMS with the result</td></tr>
+  </table></div>
+  <div class="box wrong"><div class="tag">What can go wrong</div>
+    <ul>
+      <li><strong>The adapter is slow to read the request</strong> (for example it was restarted). A PAY request that is already past
+        its deadline is not sent to the partner; the adapter answers FAILED. Otherwise the orchestrator might release the hold
+        while the operator delivers airtime.</li>
+      <li><strong>The partner answers with a code nobody understands.</strong> The adapter is <em>fail closed</em>: anything it cannot
+        clearly classify is UNKNOWN, never FAILED. Releasing money for a top-up that actually happened is a real loss.</li>
+      <li><strong>The hold times out</strong> (no FundsHeld in 5 s). The orchestrator asks the core: if the hold exists it releases it,
+        otherwise the transaction is REJECTED.</li>
+      <li><strong>CommitHold or ReleaseHold fails.</strong> This should never happen, so the transaction goes to MANUAL_REVIEW with a top-priority alert.</li>
+    </ul>
+  </div>
+  <div class="box where"><div class="tag">Where it lives</div><ul>
+    <li>Orchestrator: <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/saga/TopupFlow.java"><code>saga/TopupFlow</code></a>;
+      partner answers in <code>route/PartnerReplyRoute</code> →
+      <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/PartnerReplyService.java"><code>service/PartnerReplyService</code></a>.</li>
+    <li>Adapter: <code>route/TelcoRequestRouteBuilder</code> → <code>messaging/TelcoRequestHandler</code> →
+      <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/service/TopupService.java"><code>service/TopupService</code></a>.</li>
+    <li>Spec sections 11.1 and 11.2.</li>
+  </ul></div>
+  <div class="box note"><div class="tag">Not built yet</div>
+    <p>Operators can also send a callback later. The telco adapter has no callback endpoint yet, so a telco top-up is
+      settled only by the reply or by the status inquiry. Bill pay and bank do take callbacks.</p></div>
+
+  <h2 id="billpay">Bill pay</h2>
+  <p>Bill pay is the top-up pattern with two additions: first the app <strong>fetches the bill</strong> to show the amount
+    due (a plain HTTP lookup, no money involved), and the aggregator often answers "accepted, pending" and sends the real
+    result later as a <strong>callback</strong>.</p>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+    actors: App | mw-app-gateway | mw-adapter-billpay | Bill aggregator (sim) | mw-orchestrator | mw-core-mock
+    App -> mw-app-gateway : fetch bill (biller DESCO, bill number)
+    mw-app-gateway -> mw-adapter-billpay : POST /billpay/v1/billers/{code}/bills/fetch
+    mw-adapter-billpay -> Bill aggregator (sim) : fetch
+    Bill aggregator (sim) --> mw-adapter-billpay : amount due Tk 667
+    mw-adapter-billpay --> App : amount shown (via the gateway)
+    App -> mw-app-gateway : POST /app/v1/transactions (BILL_PAY)
+    mw-app-gateway => mw-orchestrator : mw.txn.request.v1
+    note mw-orchestrator, mw-core-mock : validate, then HoldFunds, as in top-up
+    mw-orchestrator => mw-adapter-billpay : PAY on mw.partner.request.billpay.v1
+    mw-adapter-billpay -> Bill aggregator (sim) : pay
+    Bill aggregator (sim) --> mw-adapter-billpay : accepted, pending
+    Bill aggregator (sim) -> mw-adapter-billpay : later: callback POST /partner/{id}/callback (via APISIX, signed)
+    mw-adapter-billpay => mw-orchestrator : mw.partner.inbound.v1 SUCCESS
+    mw-orchestrator => mw-core-mock : CommitHold → COMPLETED
+  </script></div>
+  <figcaption>Figure 5.2: bill pay with a fetch and a callback.</figcaption></figure>
+  <ul>
+    <li>The callback comes from outside, so APISIX lets it in and the adapter checks its HMAC signature and that the
+      reference is one we sent. The orchestrator checks again that the callback belongs to that transaction.</li>
+    <li>Callbacks can arrive twice, late or out of order. The inbox and the state machine keep that harmless: a callback for a
+      transaction that is already COMPLETED changes nothing.</li>
+  </ul>
+  <div class="box where"><div class="tag">Where it lives</div><ul>
+    <li><a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/saga/BillPayFlow.java"><code>saga/BillPayFlow</code></a>;
+      callbacks: <code>route/PartnerInboundRoute</code> → <code>service/PartnerInboundService</code>.</li>
+    <li>Adapter: <code>controller/BillerController</code>, <a href="../../services/mw-adapter-billpay/src/main/java/mfs/mw/adapter/billpay/service/BillFetchService.java"><code>service/BillFetchService</code></a>,
+      <code>service/BillPaymentService</code>.</li>
+  </ul></div>
+
+  <h2 id="bank">Add money from a bank</h2>
+  <p>Here the money comes <em>in</em>, so there is nothing to hold. The bank debits the customer's bank account, and only
+    when the bank confirms do we credit the wallet.</p>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+    actors: App | mw-orchestrator | mw-core-mock | mw-adapter-bank | Bank (sim)
+    App -> mw-orchestrator : ADD_MONEY_BANK (through the app gateway, as usual)
+    mw-orchestrator => mw-core-mock : ValidateTransaction
+    mw-core-mock => mw-orchestrator : TransactionValidated
+    mw-orchestrator => mw-adapter-bank : PAY on mw.partner.request.bank.v1 (PARTNER_PENDING)
+    mw-adapter-bank -> Bank (sim) : debit the bank account
+    Bank (sim) --> mw-adapter-bank : 202 pending
+    mw-adapter-bank => mw-orchestrator : mw.partner.reply.v1 PENDING
+    Bank (sim) -> mw-adapter-bank : later: callback, debit done (via APISIX)
+    mw-adapter-bank => mw-orchestrator : mw.partner.inbound.v1 SUCCESS
+    mw-orchestrator => mw-core-mock : CreditWallet (COMMITTING)
+    mw-core-mock => mw-orchestrator : WalletCredited → COMPLETED
+  </script></div>
+  <figcaption>Figure 5.3: add money from a bank. A bank refusal ends in FAILED with nothing to undo. If the core refuses
+    the credit after the bank took the money, the transaction goes to MANUAL_REVIEW.</figcaption></figure>
+  <p>Flow class: <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/saga/AddMoneyBankFlow.java"><code>saga/AddMoneyBankFlow</code></a>;
+    adapter: <a href="../../services/mw-adapter-bank/src/main/java/mfs/mw/adapter/bank/service/BankDebitService.java"><code>service/BankDebitService</code></a>,
+    <code>controller/PartnerCallbackController</code>.</p>
+
+  <h2 id="framework">The adapter framework</h2>
+  <div class="box plain">
+    <div class="tag">In plain English</div>
+    <p>Each new partner should be <strong>configuration, not code</strong>. The three adapters share a small framework (copied
+      into each, in a package called <code>partner/</code>): the partner's URL, timeouts, authentication, how to build its request,
+      how to read its answer and how to translate its error codes are all written in YAML. The framework does the HTTP
+      call safely and turns the answer into one of SUCCESS, FAILED, UNKNOWN or PENDING.</p>
+  </div>
+  <figure class="wide">
+    <div class="canvas">
+      <svg viewBox="0 0 900 420" role="img" aria-label="Layers of an adapter from the Kafka request to the partner and back">
+        <defs><marker id="c5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4a5468"/></marker></defs>
+        <rect x="40" y="16" width="420" height="44" rx="8" class="n-kafka"/><text x="250" y="43" text-anchor="middle" class="t-md">Kafka: mw.partner.request.telco.v1 (PAY or STATUS_QUERY)</text>
+        <rect x="40" y="82" width="420" height="44" rx="8" class="n-mw"/><text x="250" y="101" text-anchor="middle" class="t-md" font-weight="600">request route + handler</text><text x="250" y="117" text-anchor="middle" class="t-sm">route/TelcoRequestRouteBuilder → messaging/TelcoRequestHandler</text>
+        <rect x="40" y="148" width="420" height="44" rx="8" class="n-mw"/><text x="250" y="167" text-anchor="middle" class="t-md" font-weight="600">service</text><text x="250" y="183" text-anchor="middle" class="t-sm">TopupService: stable reference, drop expired requests, pick the partner</text>
+        <rect x="40" y="214" width="420" height="44" rx="8" class="n"/><text x="250" y="233" text-anchor="middle" class="t-md" font-weight="600">gateway + route from a template</text><text x="250" y="249" text-anchor="middle" class="t-sm">PartnerGateway → direct:partner-ocs (rest-json-request-reply)</text>
+        <rect x="40" y="280" width="420" height="44" rx="8" class="n-wait"/><text x="250" y="299" text-anchor="middle" class="t-md" font-weight="600">call wrapper</text><text x="250" y="315" text-anchor="middle" class="t-sm">PartnerCallWrapper: bulkhead → circuit breaker → time limiter, one try</text>
+        <rect x="40" y="346" width="420" height="44" rx="8" class="n"/><text x="250" y="365" text-anchor="middle" class="t-md" font-weight="600">REST/JSON call + JSONata + auth</text><text x="250" y="381" text-anchor="middle" class="t-sm">RestJsonAdapter, JsonataMapping, AuthScheme (none, API key, HMAC)</text>
+        <g class="a"><path d="M250,60 V80" marker-end="url(#c5)"/><path d="M250,126 V146" marker-end="url(#c5)"/><path d="M250,192 V212" marker-end="url(#c5)"/><path d="M250,258 V278" marker-end="url(#c5)"/><path d="M250,324 V344" marker-end="url(#c5)"/></g>
+        <path d="M24,214 V390" stroke="#0f6e6a" stroke-width="2" fill="none"/>
+        <text x="16" y="302" text-anchor="middle" class="t-sm" transform="rotate(-90 16 302)">partner/ framework</text>
+        <rect x="560" y="346" width="300" height="44" rx="8" class="n-ext"/><text x="710" y="365" text-anchor="middle" class="t-md" font-weight="600">the partner</text><text x="710" y="381" text-anchor="middle" class="t-sm">here: the OCS in mw-simulators</text>
+        <path d="M460,362 H556" class="a-http" marker-end="url(#c5)"/><path d="M556,376 H462" class="a-soft" marker-end="url(#c5)"/>
+        <text x="508" y="356" text-anchor="middle" class="t-sm">HTTP</text>
+        <rect x="560" y="214" width="300" height="78" rx="8" class="n-wait"/>
+        <text x="710" y="236" text-anchor="middle" class="t-md" font-weight="600">classify the answer</text>
+        <text x="710" y="254" text-anchor="middle" class="t-sm">SUCCESS · FAILED · UNKNOWN · PENDING · NOT_FOUND</text>
+        <text x="710" y="270" text-anchor="middle" class="t-sm">partner code → MW-PTR-&lt;PARTNER&gt;-&lt;suffix&gt;</text>
+        <text x="710" y="285" text-anchor="middle" class="t-sm">anything unclear → UNKNOWN</text>
+        <path d="M710,346 V294" class="a" marker-end="url(#c5)"/>
+        <rect x="560" y="148" width="300" height="44" rx="8" class="n-mw"/><text x="710" y="175" text-anchor="middle" class="t-md">outbox (+ masked audit of the raw call)</text>
+        <path d="M710,214 V194" class="a" marker-end="url(#c5)"/>
+        <rect x="560" y="82" width="300" height="44" rx="8" class="n-kafka"/><text x="710" y="109" text-anchor="middle" class="t-md">Kafka: mw.partner.reply.v1</text>
+        <path d="M710,148 V128" class="a" marker-end="url(#c5)"/>
+      </svg>
+    </div>
+    <figcaption>Figure 5.4: the layers of the telco adapter. Billpay and bank are the same, with their own route and service
+      classes and the <code>rest-json-async-callback</code> template.</figcaption>
+  </figure>
+  <h3>A partner, written as configuration</h3>
+  <p>This is the real OCS configuration from <a href="../../services/mw-adapter-telco/src/main/resources/application-dev.yml">mw-adapter-telco's application-dev.yml</a>, trimmed:</p>
+<pre><code>mw:
+  partners:
+    instances:
+      ocs:
+        template: rest-json-request-reply      <span class="c"># which Camel route template to use</span>
+        base-url: ${OCS_BASE_URL:http://mw-simulators:8080}
+        timeout-ms: 20000
+        auth:
+          scheme: none
+        ambiguous-codes: ["9876"]              <span class="c"># these codes mean "we do not know": UNKNOWN</span>
+        error-map:
+          "[2001]": { suffix: TOPUP_REJECTED, retryable: false }
+        operations:
+          "[PAY]":
+            method: POST
+            path: /ocs/v1/topup
+            request: |                         <span class="c"># JSONata: our request → their JSON</span>
+              {"transactionId": reference, "msisdn": creditParty.id, "amount": amount.major}
+            response: |                        <span class="c"># JSONata: their answer → our outcome</span>
+              status = 200
+                ? {"outcome": "SUCCESS", "partnerRef": body.ocsRef, ...}
+                : ...
+          "[STATUS_QUERY]":
+            method: GET
+            path: /ocs/v1/topup/{reference}</code></pre>
+  <p><strong>JSONata</strong> is a small expression language for transforming JSON. Here it translates between our standard partner
+    request and the partner's own format, so adding a similar partner needs no Java.</p>
+  <p>Key rules of the framework (spec section 12):</p>
+  <ul>
+    <li><strong>One attempt, never an automatic retry</strong> of a money call. A retry could pay twice; the status inquiry is the safe
+      way to find out.</li>
+    <li><strong>Circuit breaker and bulkhead</strong> (Resilience4j): if a partner keeps failing, stop calling it for a while, and never let
+      one slow partner use up every thread.</li>
+    <li><strong>Fail closed:</strong> any status code or body the mapping does not recognise is UNKNOWN.</li>
+    <li><strong>Config can change at runtime:</strong> an approved change in the ops console arrives on <code>mw.config.changed.v1</code>,
+      checked against an allow-list of hosts.</li>
+  </ul>
+  <div class="box where"><div class="tag">Where it lives (telco; billpay and bank have identical copies)</div><ul>
+    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/template/PartnerRouteTemplates.java"><code>partner/template/PartnerRouteTemplates</code></a>,
+      <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/template/PartnerCallWrapper.java"><code>PartnerCallWrapper</code></a>,
+      <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/template/RestJsonAdapter.java"><code>RestJsonAdapter</code></a>.</li>
+    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/mapping/JsonataMapping.java"><code>partner/mapping/JsonataMapping</code></a>; auth schemes in <code>partner/auth/</code>; config in <code>partner/config/</code>.</li>
+    <li>The framework is described in <a href="../../services/mw-adapter-telco/CLAUDE.md">mw-adapter-telco's CLAUDE.md</a>.</li>
+  </ul></div>
+
+  <h2 id="simulators">The simulators</h2>
+  <p><code>mw-simulators</code> fakes every partner. You steer it with "magic" values, so you can test every failure from
+    the app without touching code:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Input</th><th>What the fake partner does</th></tr>
+    <tr><td>phone number ending in <code>999</code></td><td>a business failure (for example "subscriber not eligible")</td></tr>
+    <tr><td>amount ending in <code>.13</code> (for example Tk 20.13)</td><td>never answers (timeout)</td></tr>
+    <tr><td>amount ending in <code>.77</code></td><td>does the work, then returns HTTP 500</td></tr>
+    <tr><td>amount ending in <code>.99</code></td><td>answers with the unknown code <code>9876</code></td></tr>
+    <tr><td>amount ending in <code>.55</code></td><td>sends a broken reply</td></tr>
+    <tr><td>bill number ending in <code>404</code> / <code>000</code> / <code>999</code></td><td>bill not found / already paid / refused</td></tr>
+  </table></div>
+  <p>There is also a control API (<code>/sim/{partner}/scenario</code>) to force a mode or have callbacks arrive twice,
+    late or out of order. The test console's <strong>Simulators</strong> page has buttons for all of it.</p>
+  <div class="box where"><div class="tag">Where it lives</div><ul>
+    <li><a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/service/MagicAmounts.java"><code>service/MagicAmounts</code></a>, <code>service/ScenarioStore</code>, one controller per fake partner. Spec section 22.2.</li>
+  </ul></div>
+
+  <h2 id="try">Try it yourself</h2>
+  <div class="box try"><div class="tag">Try it yourself</div>
+    <ul>
+      <li>App flows page, type "Mobile top-up": a normal amount, then <code>20.13</code> (watch it go UNKNOWN and settle) and a
+        number ending in <code>999</code> (FAILED, money released).</li>
+      <li>USSD phone: <code>4, 1, 1234567</code> pays the DESCO bill of Tk 667.</li>
+      <li>Automated: <code>make api-test FOLDER="05, 06, 07, 08"</code> (top-up, bill pay, bill pay callbacks, add money from bank).</li>
+    </ul>
+  </div>
+
+  <nav class="pager">
+    <a href="04-money-flows.html"><small>Previous</small>← 4. Money flows</a>
+    <a class="next" href="06-checkout-bulk.html"><small>Next</small>6. Checkout and bulk →</a>
+  </nav>
+</main>
+</body>
+</html>

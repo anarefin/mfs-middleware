@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What Is Mobile Money</title>
+<link rel="stylesheet" href="tutorial.css">
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> tutorial</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="01-what-is-mfs.html" aria-current="page">1 MFS</a>
+    <a href="02-architecture.html">2 Architecture</a>
+    <a href="03-core-ideas.html">3 Core ideas</a>
+    <a href="04-money-flows.html">4 Money</a>
+    <a href="05-partner-flows.html">5 Partners</a>
+    <a href="06-checkout-bulk.html">6 Checkout &amp; bulk</a>
+    <a href="07-ops-platform.html">7 Ops</a>
+    <a href="08-first-day.html">8 First day</a>
+    <a href="09-how-we-work.html">9 How we work</a>
+    <a href="glossary.html">Glossary</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Chapter 1</div>
+  <h1>What is mobile money?</h1>
+  <p class="lead">Before any code: who uses the system, what they want to do, and which part of the system is
+    responsible for what.</p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#people">The people</a></li>
+    <li><a href="#things">What they can do</a></li>
+    <li><a href="#core">The core: where the money lives</a></li>
+    <li><a href="#partners">Partners</a></li>
+    <li><a href="#middleware">So what does the middleware do?</a></li>
+    <li><a href="#money">How money is written down</a></li>
+  </ol></div>
+
+  <h2 id="people">The people</h2>
+  <p>MFS means <strong>mobile financial services</strong>. A customer opens a wallet tied to their mobile number
+    (the <strong>MSISDN</strong>, for example <code>01711000001</code>) and can then hold and move money with only a
+    phone. Four kinds of wallet holders matter here:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Who</th><th>What they are</th><th>How they reach us</th></tr>
+    <tr><td><strong>Customer</strong></td><td>An ordinary person with a wallet.</td><td>The customer app, or a basic phone with USSD (dial the short code <code>*268#</code>, get text menus).</td></tr>
+    <tr><td><strong>Agent</strong></td><td>A shop that swaps cash for wallet money. You give an agent paper money and it appears in your wallet (cash in), or the other way round (cash out).</td><td>The agent app.</td></tr>
+    <tr><td><strong>Merchant</strong></td><td>A shop or website that accepts wallet payments.</td><td>The merchant app, or the web checkout on its website.</td></tr>
+    <tr><td><strong>Organisation</strong></td><td>A company that pays many people at once, for example salaries.</td><td>The org portal: upload a file of payments.</td></tr>
+  </table></div>
+  <p>Behind the scenes there are also <strong>operators</strong>: Bits staff who watch transactions and fix the rare
+    stuck ones through the <strong>ops console</strong>.</p>
+
+  <h2 id="things">What they can do</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Feature</th><th>Name in the code (<code>txnType</code>)</th><th>Example</th><th>Chapter</th></tr>
+    <tr><td>Send money</td><td><code>P2P</code></td><td>Customer A sends Tk 10 to customer B.</td><td><a href="04-money-flows.html">4</a></td></tr>
+    <tr><td>Cash in</td><td><code>CASH_IN</code></td><td>An agent moves Tk 20 from its wallet into a customer's wallet after taking Tk 20 in cash.</td><td><a href="04-money-flows.html#cash">4</a></td></tr>
+    <tr><td>Cash out</td><td><code>CASH_OUT</code></td><td>A customer moves Tk 20 to an agent and gets the cash.</td><td><a href="04-money-flows.html#cash">4</a></td></tr>
+    <tr><td>Merchant payment</td><td><code>MERCHANT_PAY</code></td><td>Pay a shop, in the app or on its website.</td><td><a href="06-checkout-bulk.html">6</a></td></tr>
+    <tr><td>Mobile top-up</td><td><code>TOPUP</code></td><td>Buy Tk 50 of airtime for any phone number.</td><td><a href="05-partner-flows.html">5</a></td></tr>
+    <tr><td>Bill pay</td><td><code>BILL_PAY</code></td><td>Pay the electricity bill.</td><td><a href="05-partner-flows.html#billpay">5</a></td></tr>
+    <tr><td>Add money from a bank</td><td><code>ADD_MONEY_BANK</code></td><td>Move money from a bank account into the wallet.</td><td><a href="05-partner-flows.html#bank">5</a></td></tr>
+    <tr><td>Bulk disbursement</td><td><code>BULK_DISBURSE</code></td><td>A company pays 500 salaries from one CSV file.</td><td><a href="06-checkout-bulk.html#bulk">6</a></td></tr>
+    <tr><td>Reversal</td><td><code>REVERSAL</code></td><td>Undo a completed payment (only the system or an operator can start one).</td><td><a href="04-money-flows.html#reversal">4</a></td></tr>
+  </table></div>
+
+  <h2 id="core">The core: where the money lives</h2>
+  <div class="box plain">
+    <div class="tag">In plain English</div>
+    <p>The <strong>core</strong> is the bank vault and the accounting book. It knows every balance, writes every
+      ledger entry, applies fees and limits and checks the PIN. It is a separate system owned by another team
+      (Bits's "Digital Wallet" and "Digital Payment" services). <strong>The middleware never calculates or stores a
+      balance.</strong> It only asks the core to do things and acts on the answer.</p>
+  </div>
+  <p>The middleware talks to the core by sending <strong>commands</strong> over Kafka (a message system, explained in
+    <a href="03-core-ideas.html#kafka">chapter 3</a>) and receiving <strong>events</strong> back. A command is a request
+    such as "validate this transfer" or "move Tk 10 from A to B"; an event is the answer, such as "validated" or
+    "rejected: wrong PIN". The full list is in <a href="03-core-ideas.html#core-contract">chapter 3</a>.</p>
+  <div class="box note">
+    <div class="tag">In this repository</div>
+    <p>The real core is not here. <a href="../../services/mw-core-mock/CLAUDE.md"><code>mw-core-mock</code></a> plays it:
+      it keeps its own small ledger, checks PINs and limits, charges fees and answers the same commands with the same
+      events, so the middleware cannot tell the difference.</p>
+  </div>
+
+  <h2 id="partners">Partners</h2>
+  <p>Some features need a company outside Bits:</p>
+  <ul>
+    <li><strong>Mobile network operators</strong> (MNOs: Grameenphone, Robi, Banglalink, Teletalk). They sell airtime
+      (top-up) through their charging system, called the <strong>OCS</strong>, and they also run the USSD gateways
+      that connect basic phones to us.</li>
+    <li><strong>Bill aggregators</strong>: one company that collects bills for many utilities (electricity, gas,
+      water).</li>
+    <li><strong>Banks</strong>: for moving money between a bank account and a wallet.</li>
+    <li><strong>An SMS centre</strong> (SMSC): delivers our text messages.</li>
+  </ul>
+  <p>Each partner has its own API, its own error codes and its own ways of failing. The spec counts about 30 of them.
+    In this repository all of them are faked by <a href="../../services/mw-simulators/CLAUDE.md"><code>mw-simulators</code></a>.</p>
+
+  <h2 id="middleware">So what does the middleware do?</h2>
+  <p>If the core holds the money and the partners do their own jobs, why is there a whole system in between?
+    Because someone has to:</p>
+  <ol class="steps">
+    <li><strong>Be the single front door.</strong> Apps, USSD, websites and portals all speak different protocols.
+      The middleware receives them all, checks who is calling, and turns every request into one standard shape.</li>
+    <li><strong>Make sure nothing happens twice.</strong> Phones lose signal and retry. A retried "send Tk 10" must
+      not send Tk 20. This is called <a href="03-core-ideas.html#idempotency">idempotency</a>.</li>
+    <li><strong>Run multi-step jobs in the right order.</strong> A top-up is: check the customer can pay, reserve the
+      money, ask the operator for airtime, then either take the reserved money or give it back. If any step fails
+      half-way, the money must end up right. This step-by-step job is called a <a href="03-core-ideas.html#saga">saga</a>.</li>
+    <li><strong>Never guess.</strong> When a partner or the core does not answer, the middleware does not know
+      whether the money moved. It marks the payment UNKNOWN and keeps asking until it finds out
+      (<a href="03-core-ideas.html#unknown">chapter 3</a>).</li>
+    <li><strong>Speak every partner's language.</strong> One adapter per partner family translates our standard
+      request into their API and their answer back.</li>
+    <li><strong>Tell people.</strong> SMS and email to the customer, signed callbacks to merchants.</li>
+    <li><strong>Keep a record.</strong> An append-only audit trail of everything, which no one can edit later.</li>
+    <li><strong>Give staff a console</strong> to search transactions and fix stuck ones, where every risky action
+      needs a second person to approve it (maker-checker).</li>
+  </ol>
+
+  <h2 id="money">How money is written down</h2>
+  <p>Money is never a decimal number in this code. It is an object with a whole number of the smallest unit and a
+    currency:</p>
+  <pre><code>{ "valueMinor": 1000, "currency": "BDT" }   <span class="c">// Tk 10.00</span></code></pre>
+  <p>The Bangladeshi taka (BDT) has 100 <strong>poisha</strong>, so <code>valueMinor</code> is in poisha:
+    Tk 10.00 is <code>1000</code>, and the Tk 5 P2P fee charged by the core mock is <code>500</code>. Whole numbers
+    avoid rounding errors that decimals bring.</p>
+
+  <div class="box try">
+    <div class="tag">Read next</div>
+    <p>Spec section 1 ("Context and scope") and the "MVP scope" section near the top of
+      <a href="../../spec/bits-mfs-middleware-spec.md">the spec</a>. The MVP scope section wins wherever it
+      differs from the rest.</p>
+  </div>
+
+  <nav class="pager">
+    <a href="index.html"><small>Previous</small>← Start</a>
+    <a class="next" href="02-architecture.html"><small>Next</small>2. The architecture →</a>
+  </nav>
+</main>
+</body>
+</html>

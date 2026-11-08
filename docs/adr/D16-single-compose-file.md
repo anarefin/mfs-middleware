@@ -8,7 +8,7 @@ Supersedes the per-module `compose.yml` rule of D12 and of spec 4.2 / 4.3.
 Until ticket 56 the stack was assembled from many files: an environment project
 (deploy/compose/mvp/compose.yml) that `include`d a platform file (deploy/compose/platform/compose.yml)
 and one `compose.yml` per module, a low-resource override (compose.lowmem.yml) merged over it by
-every make target, and a repo-root compose.yml generated from all of them by
+every Makefile target, and a repo-root compose.yml generated from all of them by
 scripts/compose-flat.sh, whose staleness `make verify` checked. Every `make up` ran `bootJar` for
 13 modules one after another and rebuilt every image (`up --build`); per-module files had to mark
 every cross-file dependency `required: false` so `make up M=` could start one module alone.
@@ -58,7 +58,7 @@ noticeably faster.
 ## Consequences
 
 - A warm `make up` starts containers only; a code change needs `make build [M=]` first (or
-  `make e2e-changed`, which builds and recreates the changed modules).
+  the `e2e-changed` target of the former Cucumber suite, which built and recreated the changed modules).
 - A module is no longer runnable on its own from its folder with Compose; `make up M=mw-x` starts
   it with its dependencies from the one file. `make new-service` prints the blocks to paste (the
   service, its approle volume, its `deploy/provision/services.sh` entry).

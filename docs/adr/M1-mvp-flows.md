@@ -17,6 +17,6 @@ MVP flows: `P2P`, `CASH_IN`, `CASH_OUT`, `TOPUP`, `BILL_PAY`, `ADD_MONEY_BANK` (
 
 ## Where in the repo
 
-- `tests/e2e/TRACEABILITY.md`
-- `tests/e2e/src/test/resources/features`
+- `tests/api/TRACEABILITY.md` (the Newman API suite; it replaced the Cucumber suite, tests/e2e, whose TRACEABILITY.md this ADR first named)
+- `tests/api/src` (one folder per scenario group)
 - spec "MVP scope"

@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ops and Platform</title>
+<link rel="stylesheet" href="tutorial.css">
+<script src="diagrams.js" defer></script>
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> tutorial</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="01-what-is-mfs.html">1 MFS</a>
+    <a href="02-architecture.html">2 Architecture</a>
+    <a href="03-core-ideas.html">3 Core ideas</a>
+    <a href="04-money-flows.html">4 Money</a>
+    <a href="05-partner-flows.html">5 Partners</a>
+    <a href="06-checkout-bulk.html">6 Checkout &amp; bulk</a>
+    <a href="07-ops-platform.html" aria-current="page">7 Ops</a>
+    <a href="08-first-day.html">8 First day</a>
+    <a href="09-how-we-work.html">9 How we work</a>
+    <a href="glossary.html">Glossary</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Chapter 7</div>
+  <h1>Ops and platform</h1>
+  <p class="lead">The parts that do not move money themselves but keep the system honest and running: the ops console,
+    notifications, the audit trail, logins, the gateway and secrets.</p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#console">The ops console and maker-checker</a></li>
+    <li><a href="#notify">Notifications: SMS and email</a></li>
+    <li><a href="#audit">The audit trail</a></li>
+    <li><a href="#keycloak">Logins: Keycloak realms</a></li>
+    <li><a href="#apisix">The gateway: APISIX</a></li>
+    <li><a href="#secrets">Secrets: OpenBao</a></li>
+    <li><a href="#logs">Logs</a></li>
+  </ol></div>
+
+  <h2 id="console">The ops console and maker-checker</h2>
+  <p>Bits staff use the ops console (<code>https://localhost/console</code>, app <code>mw-admin-ui</code>) to search
+    transactions, see each one's timeline of states, manage partner settings, SMS templates and USSD menus, and fix stuck
+    transactions. Behind it is <code>mw-admin-api</code>.</p>
+  <div class="box plain">
+    <div class="tag">In plain English</div>
+    <p><strong>Maker-checker</strong> is the four-eyes rule: any action that changes money or configuration needs two different people.
+      The <em>maker</em> asks for the change ("force-release this stuck hold", "reverse this payment", "change this partner's URL"); a
+      <em>checker</em> who is not the maker approves or rejects it. Only then does it happen. A request nobody decides on expires after 72 hours.</p>
+  </div>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+    actors: Ops maker | Ops checker | mw-admin-ui | mw-admin-api | mw-orchestrator | mw-audit-dw
+    Ops maker -> mw-admin-ui : opens a MANUAL_REVIEW transaction, asks for "force release"
+    mw-admin-ui -> mw-admin-api : POST /admin/v1/transactions/{txnId}/change-requests
+    mw-admin-api -> mw-admin-api : change request PENDING (+ audit event, one DB transaction)
+    Ops checker -> mw-admin-ui : Approvals page → approve
+    mw-admin-ui -> mw-admin-api : POST /admin/v1/change-requests/{id}/approve (checker is not the maker)
+    mw-admin-api => mw-orchestrator : mw.txn.action.v1 FORCE_RELEASE
+    mw-admin-api => mw-audit-dw : mw.audit.event.v1 (who approved what)
+    note mw-orchestrator : sends ReleaseHold to the core → FAILED (money back to the customer)
+  </script></div>
+  <div class="legend"><span class="h"><i></i>HTTP</span><span class="k"><i></i>Kafka</span></div>
+  <figcaption>Figure 7.1: an operator fixes a stuck top-up with maker-checker.</figcaption></figure>
+  <ul>
+    <li>Operator actions on transactions: FORCE_COMMIT, FORCE_RELEASE, INQUIRE (ask again now) and reversal.</li>
+    <li>Roles are Keycloak roles in the <code>ops</code> realm, for example <code>ops-maker</code> and <code>ops-checker</code>
+      (transactions), <code>integration-maker</code> / <code>integration-checker</code> (partner settings),
+      <code>compliance-officer</code>, <code>auditor</code> and <code>viewer</code> (enum <code>dto/AdminRole</code>). Logging in needs a password and a TOTP code (an authenticator app); for test users,
+      <code>make totp</code> prints the current code.</li>
+    <li>The browser never calls <code>mw-admin-api</code> directly: the Next.js server does, with the operator's token.</li>
+  </ul>
+  <div class="box where"><div class="tag">Where it lives</div><ul>
+    <li><a href="../../services/mw-admin-api/src/main/java/mfs/mw/admin/api/service/ChangeRequestService.java"><code>service/ChangeRequestService</code></a> (the maker-checker engine),
+      <code>controller/ChangeRequestController</code>, <code>dto/AdminRole</code>.</li>
+    <li>The orchestrator side: <code>route/TxnActionRoute</code> →
+      <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/OperatorActionService.java"><code>service/OperatorActionService</code></a>.</li>
+    <li>The UI: <a href="../../ui/mw-admin-ui/CLAUDE.md">ui/mw-admin-ui/</a> (pages under <code>src/app/(console)/</code>). Spec section 15.</li>
+  </ul></div>
+
+  <h2 id="notify">Notifications: SMS and email</h2>
+  <p><code>mw-notify</code> sends messages for two reasons:</p>
+  <ol class="steps">
+    <li><strong>Transaction updates.</strong> It listens to <code>mw.txn.status.v1</code>. Rules stored in its database decide who gets what:
+      for a completed P2P, the sender gets "sent" and the receiver "received"; a failure or "still processing" goes to the person who
+      started it. Templates exist in Bangla and English.</li>
+    <li><strong>Direct requests.</strong> Other services publish on <code>mw.notify.request.v1</code>, for example an OTP. The
+      <code>messageId</code> is the idempotency key, so a repeat is never sent twice.</li>
+  </ol>
+  <p>Messages are first stored, then a dispatch job sends them: OTPs first, transient errors retried after 2 s, 10 s and 30 s,
+    promotional messages held during quiet hours (22:00 to 08:00, Dhaka time). SMS go out over SMPP to the SMS centre (the
+    simulator, in dev); email over SMTP (the GreenMail test server).</p>
+  <div class="box where"><div class="tag">Where it lives (mw-notify)</div><ul>
+    <li><a href="../../services/mw-notify/src/main/java/mfs/mw/notify/service/RuleEngine.java"><code>service/RuleEngine</code></a>, <code>service/TxnStatusService</code>,
+      <a href="../../services/mw-notify/src/main/java/mfs/mw/notify/service/DispatchService.java"><code>service/DispatchService</code></a>, <code>client/SmppSmsSender</code>.</li>
+    <li>Spec section 10.</li>
+  </ul></div>
+
+  <h2 id="audit">The audit trail</h2>
+  <p>Every saga state change, every operator decision and every partner call (masked) produces an event on
+    <code>mw.audit.event.v1</code>. <code>mw-audit-dw</code> stores them in its own schema with a database user that can only
+    <em>insert</em>: no update, no delete.</p>
+  <p>On top of that, each month's records form a <strong>hash chain</strong>: every record stores a SHA-256 hash of its own content plus the
+    previous record's hash. Change one old record and every hash after it stops matching. A scheduled job checks the chain.</p>
+  <div class="box where"><div class="tag">Where it lives (mw-audit-dw)</div><ul>
+    <li><code>messaging/AuditEventListener</code>, <code>service/AuditService</code>,
+      <a href="../../services/mw-audit-dw/src/main/java/mfs/mw/audit/dw/service/HashChain.java"><code>service/HashChain</code></a>,
+      <code>scheduler/AuditChainVerifyJob</code>, the search API <code>controller/AuditSearchController</code>. Spec section 14.</li>
+  </ul></div>
+  <div class="box note"><div class="tag">Not built yet</div>
+    <p>Despite the "dw" (data warehouse) in its name, the MVP has no separate warehouse feed: the audit store is what exists.</p></div>
+
+  <h2 id="keycloak">Logins: Keycloak realms</h2>
+  <p>A Keycloak <strong>realm</strong> is a separate set of users with its own login rules. There is one per kind of user:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Realm</th><th>Who</th><th>Test users</th></tr>
+    <tr><td><code>customers</code></td><td>app users: customers, agents, merchants</td><td><code>customer01</code>, <code>customer02</code>, <code>agent01</code>, <code>merchant01</code></td></tr>
+    <tr><td><code>ops</code></td><td>Bits staff (password + TOTP)</td><td><code>seed-ops-maker</code>, <code>seed-ops-checker</code> and the <code>ops-*</code> users</td></tr>
+    <tr><td><code>portals</code></td><td>organisation and service-provider portal users</td><td><code>org-maker01</code>, <code>org-checker01</code></td></tr>
+    <tr><td><code>services</code></td><td>service accounts for internal calls between services</td><td><code>mw-portal-api</code>, <code>mw-admin-api</code></td></tr>
+    <tr><td><code>partners</code></td><td>partner systems</td><td><code>partner-sim</code></td></tr>
+  </table></div>
+  <p>Passwords are generated per laptop into the gitignored <code>deploy/.env</code>; <code>make creds</code> prints them all.
+    Realm files: <a href="../../deploy/keycloak">deploy/keycloak/</a>.</p>
+  <p>The app has one extra layer: <strong>device binding</strong>. A login alone is not enough to move money; the phone must also be
+    bound (an OTP by SMS, then a key stored on the device) and must sign each request. A stolen password on another phone cannot pay.</p>
+
+  <h2 id="apisix">The gateway: APISIX</h2>
+  <p>APISIX is configured from files in <a href="../../deploy/apisix/README.md">deploy/apisix/</a>, applied on every <code>make up</code>:</p>
+  <ul>
+    <li><code>global_rules/</code>: what applies to every request (correlation id, size limits, stripping internal
+      <code>X-Mw-*</code> headers a caller tries to send, the standard error envelope).</li>
+    <li><code>routes/</code>: one JSON file per public path, with its plugins (JWT check for the app, HMAC for merchants and
+      partner callbacks, IP allow-list and basic auth for USSD gateways, rate limits).</li>
+    <li><code>routes-test/</code>: test-only routes (to the core mock and simulators), added only by the test tools.</li>
+  </ul>
+  <p>Request body <em>shapes</em> are not checked at the edge; each service validates against its OpenAPI contract.
+    <code>make edge-test</code> tests the edge rules on the running stack.</p>
+
+  <h2 id="secrets">Secrets: OpenBao</h2>
+  <p>No secret is ever in code, a config file or a test. Services read database passwords, partner keys and signing secrets from
+    OpenBao at start-up; each service has its own login (AppRole) and can read only its own secrets. On a laptop the one-shot
+    <code>provision</code> container creates everything on first <code>make up</code>.</p>
+
+  <h2 id="logs">Logs</h2>
+  <p>Every service writes JSON to stdout, one event per line, with the same fields: <code>ts</code>, <code>level</code>,
+    <code>service</code>, <code>correlationId</code>, <code>txnId</code>, <code>traceId</code>, <code>partnerId</code>, <code>channel</code>,
+    <code>event</code>, <code>message</code>, <code>durationMs</code>, <code>errorCode</code>, among others. Business events have stable names such as
+    <code>txn.state.changed</code> and <code>partner.call.completed</code>. Masking runs before anything is printed.</p>
+
+  <div class="box try"><div class="tag">Try it yourself</div><ul>
+    <li>Log in to the console as <code>seed-ops-maker</code> (TOTP from <code>make totp</code>), open a transaction and read its timeline.
+      Raise a change request, then approve it as <code>seed-ops-checker</code> (<code>make totp PERSONA=seed-ops-checker</code>).</li>
+    <li>Test console page <strong>SMS &amp; email</strong> shows what <code>mw-notify</code> sent.</li>
+    <li>Automated: <code>make api-test FOLDER="10, 11, 13, 14, 15, 17"</code> and <code>make ui-e2e</code> (the console's browser tests).</li>
+  </ul></div>
+
+  <nav class="pager">
+    <a href="06-checkout-bulk.html"><small>Previous</small>← 6. Checkout and bulk</a>
+    <a class="next" href="08-first-day.html"><small>Next</small>8. Your first day →</a>
+  </nav>
+</main>
+</body>
+</html>

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How We Work</title>
+<link rel="stylesheet" href="tutorial.css">
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> tutorial</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="01-what-is-mfs.html">1 MFS</a>
+    <a href="02-architecture.html">2 Architecture</a>
+    <a href="03-core-ideas.html">3 Core ideas</a>
+    <a href="04-money-flows.html">4 Money</a>
+    <a href="05-partner-flows.html">5 Partners</a>
+    <a href="06-checkout-bulk.html">6 Checkout &amp; bulk</a>
+    <a href="07-ops-platform.html">7 Ops</a>
+    <a href="08-first-day.html">8 First day</a>
+    <a href="09-how-we-work.html" aria-current="page">9 How we work</a>
+    <a href="glossary.html">Glossary</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Chapter 9</div>
+  <h1>How we work</h1>
+  <p class="lead">The rules for changing this codebase. They are strict because the code moves money, and most of them are
+    checked by scripts, so breaking one fails the build rather than a review.</p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#contracts">Contracts first</a></li>
+    <li><a href="#modules">Module rules</a></li>
+    <li><a href="#tests">The test tiers</a></li>
+    <li><a href="#make">The Makefile is the pipeline</a></li>
+    <li><a href="#done">Definition of done</a></li>
+    <li><a href="#never">Never do this</a></li>
+    <li><a href="#new">Adding a new service</a></li>
+  </ol></div>
+
+  <h2 id="contracts">Contracts first</h2>
+  <p>Two services agree through a <strong>contract</strong>, not through shared code:</p>
+  <ul>
+    <li><a href="../../contracts/api">contracts/api/&lt;owner&gt;/</a>: OpenAPI files for HTTP APIs.</li>
+    <li><a href="../../contracts/events">contracts/events/&lt;owner&gt;/</a>: a JSON Schema for every Kafka message, with sample messages.</li>
+    <li><a href="../../contracts/OWNERS.yml">contracts/OWNERS.yml</a>: which service owns each file. <strong>Only the owner may change it.</strong> If you
+      need a change in someone else's contract, ask the owning team.</li>
+    <li>Each service lists what it produces and consumes in its own <code>contracts.yml</code>, for example
+      <a href="../../services/mw-orchestrator/contracts.yml">services/mw-orchestrator/contracts.yml</a>. Its contract tests
+      (<code>ProducedContractsTest</code>, <code>ConsumedContractsTest</code>) check real messages against those schemas, so
+      keep the file in step with the code in the same commit.</li>
+  </ul>
+  <p><code>make contracts-lint</code> checks all of it, including that every event has both a producer and a consumer.</p>
+
+  <h2 id="modules">Module rules</h2>
+  <ul>
+    <li>A service never depends on another service's code, the template or the root build, and never references a path outside its
+      own folder (except <code>contracts/</code>, read by tests). <code>make check-isolation</code> enforces this.</li>
+    <li>Copied code (masking, errors, correlation, outbox, inbox) is meant to be copied. Do not "fix" it by creating a shared library.</li>
+    <li>A service reads and writes only its own database schema.</li>
+    <li>Package layout and dependency direction as in <a href="02-architecture.html#inside">chapter 2</a>: controllers only map and
+      validate, business logic is in <code>service/</code>, entities never leave the service layer.</li>
+    <li>Constructor injection only; never <code>@Autowired</code> on a field, in tests too (<code>scripts/check-field-injection.sh</code>).</li>
+  </ul>
+
+  <h2 id="tests">The test tiers</h2>
+  <p>Every service has the same three Gradle test tasks:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Command (inside <code>services/mw-&lt;name&gt;</code>)</th><th>Runs</th><th>Needs Docker</th></tr>
+    <tr><td><code>./gradlew test</code></td><td>Unit tests (service, mapper, util), <code>@WebMvcTest</code> controller slices, contract tests. No class ending in <code>IT</code>.</td><td>no</td></tr>
+    <tr><td><code>./gradlew integrationTest</code></td><td>The <code>*IT</code> classes: a real PostgreSQL and Kafka in Testcontainers, for example the repository tests.</td><td>yes</td></tr>
+    <tr><td><code>./gradlew conformance</code></td><td>The <code>@Conformance</code> suite: the same tests in every service proving its outbox, inbox and HTTP basics behave.</td><td>yes</td></tr>
+    <tr><td><code>./gradlew check</code></td><td>All three, plus a JaCoCo gate: 80% line coverage on <code>service</code>, <code>mapper</code> and <code>client</code>.</td><td>yes</td></tr>
+  </table></div>
+  <p>Above the modules, against the running stack: <code>make api-test</code> (Newman, black-box API scenarios in
+    <a href="../../tests/api/README.md">tests/api/</a>), <code>make ui-e2e</code> and <code>make tester-e2e</code> (Playwright for the two web
+    apps), <code>make edge-test</code> (gateway rules). <strong>Tests are written first</strong>: a failing test, then the code that makes it pass.</p>
+
+  <h2 id="make">The Makefile is the pipeline</h2>
+  <p>There is no CI server in the MVP. The Makefile is the pipeline, and every target works for all modules or one with <code>M=</code>:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Command</th><th>Use it when</th></tr>
+    <tr><td><code>make verify-changed</code></td><td>Before you open a pull request: the full gate for the modules you changed since <code>main</code>.</td></tr>
+    <tr><td><code>make verify M=mw-orchestrator</code></td><td>The full gate for one module: isolation, field-injection, contracts lint, <code>./gradlew check</code>.</td></tr>
+    <tr><td><code>make test-scripts</code></td><td>You changed the Makefile, a script or a doc that names commands or paths.</td></tr>
+    <tr><td><code>make contracts-lint</code></td><td>You changed a contract or a <code>contracts.yml</code>.</td></tr>
+    <tr><td><code>make security</code>, <code>make log-scan</code></td><td>Secret scan, dependency and image scan, and the "no PIN or unmasked number in any log" check.</td></tr>
+  </table></div>
+  <p>The README lists every target.</p>
+
+  <h2 id="done">Definition of done</h2>
+  <ul class="check">
+    <li>Tests written first; <code>./gradlew test integrationTest</code> green for every module you touched.</li>
+    <li><code>make test-scripts</code> / <code>make contracts-lint</code> green if you changed scripts or contracts.</li>
+    <li>The relevant <code>make api-test FOLDER=&lt;your folders&gt;</code> green on <code>make up TIMERS=fast</code> and <code>make seed</code>.</li>
+    <li>The service's <code>CLAUDE.md</code> and <code>contracts.yml</code> updated if what it owns or uses changed.</li>
+    <li>A new Makefile target, knob or decision is also added to the docs (README, runbook, ADR) in the same change: <code>scripts/test/test_repo_docs.sh</code> fails otherwise.</li>
+    <li>The command output pasted into the pull request template.</li>
+  </ul>
+
+  <h2 id="never">Never do this</h2>
+  <div class="box wrong"><div class="tag">Never</div>
+    <ul>
+      <li>Put a secret in code, a config file or a test. Use OpenBao; test fixtures use obviously fake values.</li>
+      <li>Use <code>System.out</code>, <code>System.err</code> or <code>printStackTrace</code>. Log through SLF4J.</li>
+      <li>Log a PIN, or an unmasked phone number, national ID, account number or name.</li>
+      <li>Block a Kafka listener thread: no waiting for replies, no sleeps, no long partner calls on it.</li>
+      <li>Use field injection.</li>
+      <li>Depend on, include or reference another module, the template or the root build.</li>
+      <li>Change a contract your service does not own.</li>
+      <li>Read or write another service's database schema.</li>
+      <li>Retry a money call to a partner or the core "just in case". Ask (status inquiry) instead.</li>
+    </ul>
+  </div>
+
+  <h2 id="new">Adding a new service</h2>
+<pre><code>make new-service NAME=mw-example      <span class="c"># copies templates/mw-service-template and prints the compose block to add</span></code></pre>
+  <p>Then add the printed block to <code>deploy/docker-compose.yml</code>, give the service a <code>CLAUDE.md</code> (responsibilities, contracts owned and
+    used), its contracts and its <code>contracts.yml</code>. Read the template's <a href="../../templates/mw-service-template/CLAUDE.md">CLAUDE.md</a> first.</p>
+
+  <div class="box try"><div class="tag">Read next</div>
+    <p>The root <a href="../../CLAUDE.md">CLAUDE.md</a> is the short form of every rule on this page. The decisions behind them are in
+      <a href="../adr/README.md">docs/adr/</a>. The spec's sections 16 (data design), 18 (security), 19 (resilience) and 22 (testing) are worth reading
+      once you are comfortable.</p></div>
+
+  <nav class="pager">
+    <a href="08-first-day.html"><small>Previous</small>← 8. Your first day</a>
+    <a class="next" href="glossary.html"><small>Next</small>Glossary →</a>
+  </nav>
+</main>
+</body>
+</html>

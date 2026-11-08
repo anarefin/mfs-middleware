@@ -112,8 +112,10 @@ test_spec_kafka_contract_matches_the_contract_schemas() {
 
 op_docs() { # the operator docs, repo-relative
   local f
-  for f in README.md docs/runbook.md docs/demo.md docs/testing-guide.html docs/adr/*.md; do
-    [ -f "$REPO_DIR/$f" ] && printf '%s\n' "$f"
+  # globs expand under REPO_DIR: the runner calls the tests from a scratch directory
+  for f in "$REPO_DIR"/README.md "$REPO_DIR"/docs/runbook.md "$REPO_DIR"/docs/demo.md \
+           "$REPO_DIR"/docs/testing-guide.html "$REPO_DIR"/docs/tutorial/*.html "$REPO_DIR"/docs/adr/*.md; do
+    [ -f "$f" ] && printf '%s\n' "${f#"$REPO_DIR"/}"
   done
   return 0
 }

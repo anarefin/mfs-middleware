@@ -18,4 +18,4 @@ Both transports are implemented. GP runs over SMPP in the MVP; Robi, Banglalink 
 ## Where in the repo
 
 - `services/mw-ussd/CLAUDE.md`
-- `tests/e2e/src/test/resources/features/ussd-smpp.feature`
+- `tests/api/src/20-ussd-smpp` (formerly the Cucumber feature ussd-smpp.feature)

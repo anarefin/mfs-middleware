@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ten Core Ideas</title>
+<link rel="stylesheet" href="tutorial.css">
+<script src="diagrams.js" defer></script>
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> tutorial</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="01-what-is-mfs.html">1 MFS</a>
+    <a href="02-architecture.html">2 Architecture</a>
+    <a href="03-core-ideas.html" aria-current="page">3 Core ideas</a>
+    <a href="04-money-flows.html">4 Money</a>
+    <a href="05-partner-flows.html">5 Partners</a>
+    <a href="06-checkout-bulk.html">6 Checkout &amp; bulk</a>
+    <a href="07-ops-platform.html">7 Ops</a>
+    <a href="08-first-day.html">8 First day</a>
+    <a href="09-how-we-work.html">9 How we work</a>
+    <a href="glossary.html">Glossary</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Chapter 3</div>
+  <h1>Ten ideas to know first</h1>
+  <p class="lead">Every flow in chapters 4 to 7 is built from the same ten ideas. Learn them once here and the flows
+    become easy to read. Most of them exist for one reason: <strong>money must never be lost, created or moved
+    twice, even when networks fail and services crash.</strong></p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#ids">txnId and correlationId</a></li>
+    <li><a href="#idempotency">Idempotency: doing it once</a></li>
+    <li><a href="#kafka">Kafka topics</a></li>
+    <li><a href="#outbox">Outbox and inbox</a></li>
+    <li><a href="#core-contract">Commands and events with the core</a></li>
+    <li><a href="#saga">Sagas and the state machine</a></li>
+    <li><a href="#hold">Post versus hold</a></li>
+    <li><a href="#unknown">Unknown outcomes and status inquiry</a></li>
+    <li><a href="#waiting">Waiting for an answer</a></li>
+    <li><a href="#errors">Errors, masking and the PIN</a></li>
+  </ol></div>
+
+  <h2 id="ids">1. txnId and correlationId</h2>
+  <p>Two ids follow every request through every service, every Kafka message and every log line:</p>
+  <ul>
+    <li><strong><code>txnId</code></strong>: the id of one transaction (one payment). A UUID, created once by the
+      channel service when the request arrives (the app gateway, USSD, checkout, portal). Ask anyone in the team
+      about a payment and they will want its txnId.</li>
+    <li><strong><code>correlationId</code></strong>: the id of one request chain, sent as the
+      <code>X-Correlation-Id</code> HTTP header (APISIX creates one if the caller did not). It ties together all the
+      log lines caused by one click, across all services.</li>
+  </ul>
+  <p>Kafka messages carry both as headers (<code>mw-txn-id</code>, <code>mw-correlation-id</code>), and every log
+    line has them as JSON fields. So to follow a payment you search the logs for its txnId. You will do that in
+    <a href="08-first-day.html">chapter 8</a>.</p>
+
+  <h2 id="idempotency">2. Idempotency: doing it once</h2>
+  <div class="box plain">
+    <div class="tag">In plain English</div>
+    <p>"Idempotent" means "doing it twice has the same effect as doing it once". A customer presses Send, the
+      network drops, the app tries again. Without protection, the customer pays twice. With it, the second try is
+      recognised as the same request and gets the first one's answer.</p>
+  </div>
+  <p>The middleware applies this at every hop:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Hop</th><th>How a repeat is recognised</th></tr>
+    <tr><td>App → middleware</td><td>The app sends an <code>Idempotency-Key</code> header. Same key and same body: you get the existing transaction's status. Same key, different body: error <code>MW-IDEM-001</code>. A 60-second lock in Valkey also stops a double tap from racing.</td></tr>
+    <tr><td>USSD → middleware</td><td>A basic phone cannot send a key, so <code>mw-ussd</code> derives one from the session, the menu path, the amount and the target.</td></tr>
+    <tr><td>Middleware → core</td><td>Every command has a <code>commandId</code> built from the txnId and the step, for example <code>&lt;txnId&gt;:post</code>. The core answers a repeat from its log instead of moving money again.</td></tr>
+    <tr><td>Middleware → partner</td><td>A stable partner reference (for top-up, <code>BITS</code> followed by the txnId in hex), so a partner can spot a repeat too.</td></tr>
+    <tr><td>Kafka listener</td><td>The <a href="#outbox">inbox</a>: a table of message ids already handled.</td></tr>
+  </table></div>
+  <div class="box where"><div class="tag">Where it lives</div><ul>
+    <li><a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/IdempotencyGate.java"><code>IdempotencyGate</code></a> in mw-orchestrator: decides proceed, duplicate or conflict.</li>
+    <li>Spec section 7.3.</li>
+  </ul></div>
+
+  <h2 id="kafka">3. Kafka topics</h2>
+  <p>Kafka is a log of messages split into named <strong>topics</strong>. A service <em>publishes</em> to a topic;
+    any number of services can <em>listen</em> to it, each as its own <strong>consumer group</strong>, and each group
+    sees every message. Messages stay on the topic after they are read, so a service that was down simply catches up.</p>
+  <p>Topic names follow <code>&lt;domain&gt;.&lt;entity&gt;.&lt;kind&gt;.v&lt;n&gt;</code>. The ones you will meet all the time:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Topic</th><th>Carries</th><th>From → to</th></tr>
+    <tr><td><code>mw.txn.request.v1</code></td><td>"Please do this transaction"</td><td>channel services → orchestrator</td></tr>
+    <tr><td><code>mw.txn.status.v1</code></td><td>Every state change of every transaction</td><td>orchestrator → channel services, notify</td></tr>
+    <tr><td><code>core.wallet.command.v1</code> / <code>core.payment.command.v1</code></td><td>Commands to the core (the three hold commands use the payment topic)</td><td>orchestrator → core</td></tr>
+    <tr><td><code>core.wallet.event.v1</code> / <code>core.payment.event.v1</code></td><td>The core's answers</td><td>core → orchestrator</td></tr>
+    <tr><td><code>mw.partner.request.telco.v1</code> (also <code>.billpay</code>, <code>.bank</code>)</td><td>"Call this partner"</td><td>orchestrator → one adapter</td></tr>
+    <tr><td><code>mw.partner.reply.v1</code> / <code>mw.partner.inbound.v1</code></td><td>The partner's answer / a partner's later callback</td><td>adapters → orchestrator</td></tr>
+    <tr><td><code>mw.notify.request.v1</code></td><td>"Send this SMS or email" (OTPs, for example)</td><td>any → notify</td></tr>
+    <tr><td><code>mw.audit.event.v1</code></td><td>Something worth recording</td><td>any → audit</td></tr>
+    <tr><td><code>mw.txn.action.v1</code></td><td>An approved operator action (force commit, release, inquire)</td><td>admin API → orchestrator</td></tr>
+    <tr><td><code>mw.config.changed.v1</code></td><td>Approved config change (partner settings, templates, menus)</td><td>admin API → adapters, notify, USSD</td></tr>
+  </table></div>
+  <p>Three details that matter: every message's <strong>key is the txnId</strong>, and Kafka keeps messages with the
+    same key in order, so the steps of one transaction never overtake each other. Every message has a
+    <strong>JSON Schema</strong> in <a href="../../contracts/README.md">contracts/</a>. And when a listener fails on a message, it moves
+    it to a <strong>retry topic</strong> (<code>&lt;topic&gt;.&lt;group&gt;.retry.&lt;n&gt;</code>) and finally a
+    <strong>dead-letter topic</strong> (<code>.dlq</code>) instead of blocking everything behind it.</p>
+
+  <h2 id="outbox">4. Outbox and inbox</h2>
+  <p>Here is a classic trap. The orchestrator must do two things when a step completes: save the new state in its
+    database, and publish the next command to Kafka. If it saves and then crashes before publishing, the payment is
+    stuck. If it publishes and then crashes before saving, the core moves money the orchestrator does not know about.
+    Two separate systems cannot be updated "at the same time".</p>
+  <figure class="wide">
+    <div class="canvas">
+      <svg viewBox="0 0 960 250" role="img" aria-label="Outbox: state row and outbox row written in one transaction, relay publishes to Kafka, listener checks inbox before acting">
+        <defs><marker id="c3o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4a5468"/></marker></defs>
+        <rect x="10" y="20" width="400" height="214" rx="12" class="zone"/>
+        <text x="24" y="40" class="t-sm">SERVICE A (for example mw-orchestrator)</text>
+        <rect x="30" y="80" width="160" height="56" rx="8" class="n-mw"/>
+        <text x="110" y="104" text-anchor="middle" class="t-md" font-weight="600">business code</text>
+        <text x="110" y="122" text-anchor="middle" class="t-sm">decides the next step</text>
+        <path d="M190,108 H218" class="a" marker-end="url(#c3o)"/>
+        <rect x="222" y="54" width="172" height="164" rx="10" class="n"/>
+        <text x="308" y="74" text-anchor="middle" class="t-sm">ONE DATABASE TRANSACTION</text>
+        <rect x="236" y="86" width="144" height="40" rx="6" class="n-ok"/>
+        <text x="308" y="104" text-anchor="middle" class="t-sm" font-weight="700">state row</text>
+        <text x="308" y="118" text-anchor="middle" class="t-sm">status = POSTING</text>
+        <rect x="236" y="136" width="144" height="40" rx="6" class="n-kafka"/>
+        <text x="308" y="154" text-anchor="middle" class="t-sm" font-weight="700">outbox row</text>
+        <text x="308" y="168" text-anchor="middle" class="t-sm">PostTransfer, not sent</text>
+        <text x="308" y="204" text-anchor="middle" class="t-sm">both saved, or neither</text>
+        <path d="M394,156 H448" class="a" marker-end="url(#c3o)"/>
+        <rect x="452" y="128" width="120" height="56" rx="8" class="n-mw"/>
+        <text x="512" y="152" text-anchor="middle" class="t-md" font-weight="600">outbox relay</text>
+        <text x="512" y="170" text-anchor="middle" class="t-sm">sends unsent rows</text>
+        <path d="M572,156 H606" class="a-kafka" marker-end="url(#c3o)"/>
+        <rect x="610" y="128" width="90" height="56" rx="8" class="n-kafka"/>
+        <text x="655" y="161" text-anchor="middle" class="t-md" font-weight="600">Kafka</text>
+        <path d="M700,156 H734" class="a-kafka" marker-end="url(#c3o)"/>
+        <rect x="726" y="20" width="224" height="214" rx="12" class="zone"/>
+        <text x="740" y="40" class="t-sm">SERVICE B (any listener)</text>
+        <rect x="738" y="56" width="200" height="44" rx="8" class="n-mw"/>
+        <text x="838" y="83" text-anchor="middle" class="t-md">1. message arrives</text>
+        <rect x="738" y="118" width="200" height="56" rx="8" class="n-wait"/>
+        <text x="838" y="141" text-anchor="middle" class="t-md">2. inbox: seen this id?</text>
+        <text x="838" y="159" text-anchor="middle" class="t-sm">yes → ignore it</text>
+        <rect x="738" y="186" width="200" height="40" rx="8" class="n-ok"/>
+        <text x="838" y="211" text-anchor="middle" class="t-md">3. no → do the work + record id</text>
+        <path d="M838,100 V116" class="a" marker-end="url(#c3o)"/><path d="M838,174 V184" class="a" marker-end="url(#c3o)"/>
+      </svg>
+    </div>
+    <figcaption>Figure 3.1: the outbox makes "save and publish" one atomic step; the inbox makes "receive twice" harmless.</figcaption>
+  </figure>
+  <ol class="steps">
+    <li><strong>Outbox:</strong> instead of publishing directly, the service writes the message as a row in its own
+      <code>outbox</code> table, <em>in the same database transaction</em> as the business change. Either both are
+      saved or neither is.</li>
+    <li>A small background <strong>relay</strong> reads unsent outbox rows, publishes them to Kafka and marks them sent.
+      If it crashes after publishing but before marking, it publishes the row again later. So a message can arrive
+      twice, but is never lost.</li>
+    <li><strong>Inbox:</strong> every listener records the id of each message it has handled in an <code>inbox</code>
+      table, in the same transaction as its own work. A message it has already seen is ignored. Together this gives
+      "effectively once" delivery.</li>
+  </ol>
+  <div class="box where"><div class="tag">Where it lives (copied into every service)</div><ul>
+    <li><a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/messaging/OutboxWriter.java"><code>messaging/OutboxWriter</code></a>,
+      <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/messaging/OutboxRelay.java"><code>messaging/OutboxRelay</code></a>,
+      <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/route/OutboxRelayRouteBuilder.java"><code>route/OutboxRelayRouteBuilder</code></a>,
+      <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/messaging/Inbox.java"><code>messaging/Inbox</code></a>.</li>
+    <li>Every service runs the same <code>@Conformance</code> tests on them (chapter 9). Spec section 6.4.</li>
+  </ul></div>
+  <div class="box note"><div class="tag">One exception</div>
+    <p>A channel service that changes nothing in its own database before publishing (the app gateway sending a
+      transaction request, for example) publishes straight to Kafka. There is no business row to keep in step with.
+      The orchestrator's idempotency check handles a repeat.</p></div>
+
+  <h2 id="core-contract">5. Commands and events with the core</h2>
+  <p>The core understands a fixed set of commands. Each has a success event and a failure event:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Command</th><th>Meaning</th><th>Success</th><th>Failure</th><th>Topic</th></tr>
+    <tr><td><code>ValidateTransaction</code></td><td>Is this allowed? (PIN, limits, wallet state, fees)</td><td>TransactionValidated</td><td>TransactionRejected</td><td>wallet</td></tr>
+    <tr><td><code>PostTransfer</code></td><td>Move the money from A to B now</td><td>TransferPosted</td><td>TransferRejected</td><td>wallet</td></tr>
+    <tr><td><code>HoldFunds</code></td><td>Reserve the money; do not move it yet</td><td>FundsHeld</td><td>HoldRejected</td><td>payment</td></tr>
+    <tr><td><code>CommitHold</code></td><td>Take the reserved money</td><td>HoldCommitted</td><td>CommitFailed</td><td>payment</td></tr>
+    <tr><td><code>ReleaseHold</code></td><td>Give the reserved money back</td><td>HoldReleased</td><td>ReleaseFailed</td><td>payment</td></tr>
+    <tr><td><code>CreditWallet</code></td><td>Put money into a wallet (from a bank)</td><td>WalletCredited</td><td>CreditRejected</td><td>wallet</td></tr>
+    <tr><td><code>ReverseTransaction</code></td><td>Undo a completed transaction</td><td>TransactionReversed</td><td>ReversalRejected</td><td>wallet</td></tr>
+    <tr><td><code>QueryTransaction</code></td><td>What happened to this transaction?</td><td colspan="2">TransactionStatus</td><td>wallet</td></tr>
+  </table></div>
+  <p>A command looks like this (trimmed). The PIN is in there, but encrypted, and the middleware cannot read it:</p>
+<pre><code>{
+  "commandType": "PostTransfer",
+  "commandId":   "0193c2...:post",          <span class="c">// txnId + step: a repeat is recognised</span>
+  "txnId":       "0193c2...",
+  "correlationId": "...",
+  "issuedAt": "...", "expiresAt": "...",
+  "payload": {
+    "amount": { "valueMinor": 1000, "currency": "BDT" },
+    "encryptedPin": "base64 RSA-OAEP ciphertext"
+  }
+}</code></pre>
+  <div class="box where"><div class="tag">Where it lives</div><ul>
+    <li>Schemas: <a href="../../contracts/events/mw-orchestrator">contracts/events/mw-orchestrator/</a> (commands) and
+      <a href="../../contracts/events/mw-core-mock">contracts/events/mw-core-mock/</a> (events).</li>
+    <li>Which topic a command goes to: <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/CoreTopics.java"><code>CoreTopics</code></a>. The mock's side: <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/service/CoreCommandService.java"><code>CoreCommandService</code></a>.</li>
+    <li>Spec section 6.3.</li>
+  </ul></div>
+
+  <h2 id="saga">6. Sagas and the state machine</h2>
+  <div class="box plain">
+    <div class="tag">In plain English</div>
+    <p>A <strong>saga</strong> is a job made of several steps across several systems, where you cannot undo
+      everything with one database rollback. Instead, each step is saved before the next starts, and if a later step
+      fails, the saga runs a <em>compensating</em> step (for example "release the hold") to put things right. The
+      orchestrator keeps one saga per transaction, as a row in its database with the current <strong>state</strong>.</p>
+  </div>
+  <p>There are 14 states. A transaction moves between them as events arrive:</p>
+  <figure class="wide">
+    <div class="canvas">
+      <svg viewBox="0 0 970 340" role="img" aria-label="Saga state machine with the 14 states">
+        <defs><marker id="c3s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4a5468"/></marker></defs>
+        <g class="t-md" font-weight="600">
+          <rect x="15" y="194" width="130" height="36" rx="18" class="n"/><text x="80" y="217" text-anchor="middle">RECEIVED</text>
+          <rect x="160" y="194" width="130" height="36" rx="18" class="n-wait"/><text x="225" y="217" text-anchor="middle">VALIDATING</text>
+          <rect x="310" y="104" width="130" height="36" rx="18" class="n-wait"/><text x="375" y="127" text-anchor="middle">POSTING</text>
+          <rect x="310" y="194" width="130" height="36" rx="18" class="n-wait"/><text x="375" y="217" text-anchor="middle">HOLDING</text>
+          <rect x="465" y="194" width="130" height="36" rx="18" class="n-wait"/><text x="530" y="217" text-anchor="middle" font-size="12">PARTNER_PENDING</text>
+          <rect x="465" y="104" width="130" height="36" rx="18" class="n-wait" stroke-dasharray="5 3"/><text x="530" y="127" text-anchor="middle">UNKNOWN</text>
+          <rect x="625" y="104" width="130" height="36" rx="18" class="n-manual"/><text x="690" y="127" text-anchor="middle" font-size="12">MANUAL_REVIEW</text>
+          <rect x="625" y="194" width="130" height="36" rx="18" class="n-wait"/><text x="690" y="217" text-anchor="middle">COMMITTING</text>
+          <rect x="625" y="284" width="130" height="36" rx="18" class="n-wait"/><text x="690" y="307" text-anchor="middle">RELEASING</text>
+          <rect x="625" y="24" width="130" height="36" rx="18" class="n-wait"/><text x="690" y="47" text-anchor="middle">REVERSING</text>
+          <rect x="160" y="284" width="130" height="36" rx="6" class="n-bad"/><text x="225" y="307" text-anchor="middle">REJECTED</text>
+          <rect x="800" y="104" width="150" height="36" rx="6" class="n-ok"/><text x="875" y="127" text-anchor="middle">COMPLETED</text>
+          <rect x="800" y="284" width="150" height="36" rx="6" class="n-bad"/><text x="875" y="307" text-anchor="middle">FAILED</text>
+          <rect x="800" y="24" width="150" height="36" rx="6" class="n"/><text x="875" y="47" text-anchor="middle">REVERSED</text>
+        </g>
+        <g class="a">
+          <path d="M145,212 H157" marker-end="url(#c3s)"/>
+          <path d="M290,204 C300,196 298,128 307,124" marker-end="url(#c3s)"/>
+          <path d="M290,212 H307" marker-end="url(#c3s)"/>
+          <path d="M250,230 C270,275 500,275 525,233" marker-end="url(#c3s)"/>
+          <path d="M225,230 V281" marker-end="url(#c3s)"/>
+          <path d="M440,212 H462" marker-end="url(#c3s)"/>
+          <path d="M595,212 H622" marker-end="url(#c3s)"/>
+          <path d="M595,224 L622,292" marker-end="url(#c3s)"/>
+          <path d="M755,204 L797,134" marker-end="url(#c3s)"/>
+          <path d="M755,302 H797" marker-end="url(#c3s)"/>
+          <path d="M420,104 C480,68 760,68 862,101" marker-end="url(#c3s)"/>
+          <path d="M440,122 H462" marker-end="url(#c3s)"/>
+          <path d="M530,194 V143" marker-end="url(#c3s)"/>
+          <path d="M595,122 H622" marker-end="url(#c3s)"/>
+          <path d="M815,104 L758,62" marker-end="url(#c3s)"/>
+          <path d="M755,42 H797" marker-end="url(#c3s)"/>
+        </g>
+        <path d="M585,140 L648,191" class="a-soft" marker-end="url(#c3s)"/>
+        <text x="375" y="160" text-anchor="middle" class="t-sm">P2P, cash, merchant, bulk</text>
+        <text x="375" y="248" text-anchor="middle" class="t-sm">top-up, bill pay</text>
+        <text x="392" y="288" text-anchor="middle" class="t-sm">add money from bank (no hold)</text>
+        <text x="150" y="262" text-anchor="end" class="t-sm">core says no</text>
+        <text x="536" y="174" class="t-sm">no answer</text>
+        <text x="540" y="66" text-anchor="middle" class="t-sm">core posted the transfer</text>
+        <text x="604" y="178" class="t-sm">found out</text>
+        <text x="700" y="252" class="t-sm">partner said yes</text>
+        <text x="598" y="274" text-anchor="end" class="t-sm">partner said no</text>
+      </svg>
+    </div>
+    <div class="legend"><span><span class="st wait">amber</span> waiting for someone</span><span><span class="st ok">green</span> done, money moved</span><span><span class="st bad">red</span> done, nothing moved</span><span><span class="st manual">purple</span> a human must decide</span></div>
+    <figcaption>Figure 3.2: the saga states (enum <code>Status</code>). Simplified: not every arrow is drawn. Once UNKNOWN
+      finds out, it can settle to any outcome (completed, committing, releasing, failed). A failed commit or release, a
+      refused or unanswered reversal, and a 24-hour UNKNOWN all go to MANUAL_REVIEW. Square boxes are terminal: nothing happens after them (except that a COMPLETED transaction can be
+      reversed).</figcaption>
+  </figure>
+  <p>The code splits the saga into three parts. This split is worth understanding before you read any flow:</p>
+  <ul>
+    <li>A <strong>Flow</strong> per transaction type describes its steps: does it need a hold, which partner family,
+      which command posts the money. <code>P2pFlow</code>, <code>TopupFlow</code>, <code>BillPayFlow</code>, and so on.</li>
+    <li>The <strong>SagaMachine</strong> is a pure function: given the current state and an event, it returns the next state and the
+      effects to perform ("send PostTransfer", "start a 5-second timer"). It touches no database and no Kafka, so it is
+      easy to unit test.</li>
+    <li>The <strong>SagaEngine</strong> carries the effects out in one database transaction: saves the new state, writes the next command,
+      the status update and an audit event to the outbox, and stores the timer.</li>
+  </ul>
+  <div class="box where"><div class="tag">Where it lives</div><ul>
+    <li><a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/saga/Status.java"><code>saga/Status</code></a>,
+      <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/saga/SagaMachine.java"><code>saga/SagaMachine</code></a>,
+      <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/saga/FlowRegistry.java"><code>saga/FlowRegistry</code></a> and the flows next to it.</li>
+    <li><a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/SagaEngine.java"><code>service/SagaEngine</code></a>; timers: <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/SagaTimerService.java"><code>service/SagaTimerService</code></a>.</li>
+    <li>Spec sections 7.1 and 7.2.</li>
+  </ul></div>
+
+  <h2 id="hold">7. Post versus hold</h2>
+  <p>There are two ways to move money, and every flow uses one of them:</p>
+  <div class="table-wrap"><table>
+    <tr><th></th><th>Post (one step)</th><th>Hold, then commit or release</th></tr>
+    <tr><td>Steps</td><td><code>ValidateTransaction</code> → <code>PostTransfer</code></td><td><code>ValidateTransaction</code> → <code>HoldFunds</code> → (partner works) → <code>CommitHold</code> or <code>ReleaseHold</code></td></tr>
+    <tr><td>Used when</td><td>Both sides are wallets inside Bits: P2P, cash in, cash out, merchant pay, bulk.</td><td>An outside partner must do something before we know whether to charge: top-up, bill pay.</td></tr>
+    <tr><td>Like</td><td>Paying cash over the counter.</td><td>A hotel blocking an amount on your card at check-in, and charging or releasing it at check-out.</td></tr>
+  </table></div>
+  <p>Why hold? If we took the money first and the operator then failed to deliver the airtime, we would have to send it
+    back as a refund. Holding means the customer cannot spend the money twice in the meantime, and nothing needs to be
+    refunded if the partner says no.</p>
+
+  <h2 id="unknown">8. Unknown outcomes and status inquiry</h2>
+  <div class="box plain">
+    <div class="tag">In plain English</div>
+    <p>You ask the core to move money and the answer never comes. Did the money move? You do not know: maybe the
+      request was lost, maybe only the answer was lost. <strong>Guessing either way is a bug that costs real money.</strong>
+      So the middleware marks the transaction <span class="st wait">UNKNOWN</span> and asks again ("what happened to
+      transaction X?") on a schedule until it gets a clear answer. This is the <strong>status inquiry</strong>, or
+      <strong>TSQ</strong> (transaction status query).</p>
+  </div>
+  <figure class="wide">
+    <div class="canvas">
+      <svg viewBox="0 0 900 150" role="img" aria-label="Status inquiry schedule">
+        <line x1="40" y1="70" x2="860" y2="70" stroke="#9aa3b5" stroke-width="2"/>
+        <g class="t-sm" text-anchor="middle">
+          <circle cx="40" cy="70" r="9" class="n-wait"/><text x="40" y="45">UNKNOWN</text><text x="40" y="100">start</text>
+          <circle cx="122" cy="70" r="7" class="n-kafka"/><text x="122" y="100">30 s</text>
+          <circle cx="204" cy="70" r="7" class="n-kafka"/><text x="204" y="100">1 min</text>
+          <circle cx="286" cy="70" r="7" class="n-kafka"/><text x="286" y="100">2 min</text>
+          <circle cx="368" cy="70" r="7" class="n-kafka"/><text x="368" y="100">5 min</text>
+          <circle cx="450" cy="70" r="7" class="n-kafka"/><text x="450" y="100">15 min</text>
+          <circle cx="532" cy="70" r="7" class="n-kafka"/><text x="532" y="100">1 h</text>
+          <circle cx="614" cy="70" r="7" class="n-kafka"/><circle cx="696" cy="70" r="7" class="n-kafka"/><circle cx="778" cy="70" r="7" class="n-kafka"/>
+          <text x="696" y="100">then every 6 h</text>
+          <circle cx="860" cy="70" r="10" class="n-manual"/><text x="860" y="45">MANUAL_REVIEW</text><text x="860" y="100">24 h cut-off</text>
+          <text x="330" y="45">ask: "what happened?"</text>
+        </g>
+        <text x="450" y="134" text-anchor="middle" class="t-sm">A clear answer at any ask ends the wait: posted → COMPLETED, rejected or not found (after the deadline) → FAILED.</text>
+      </svg>
+    </div>
+    <figcaption>Figure 3.3: the inquiry schedule (<code>InquirySchedule</code>). With <code>make up TIMERS=fast</code> every
+      timer is much shorter, so you can watch this on your laptop.</figcaption>
+  </figure>
+  <ul>
+    <li>Every waiting state has a <strong>timer</strong> (for example 5 seconds for a core answer, 30 seconds for a
+      partner). The <code>SagaTimerJob</code> checks timers every second.</li>
+    <li>A timeout <em>before</em> any money could move (validation) just fails the transaction. A timeout <em>after</em>
+      money might have moved (posting, partner) goes to UNKNOWN.</li>
+    <li>For partner steps the same idea applies, but the adapter asks the partner (a <code>STATUS_QUERY</code>).</li>
+    <li>If 24 hours pass, or an answer makes no sense, the transaction goes to <span class="st manual">MANUAL_REVIEW</span>: a
+      person in the ops console decides (chapter 7).</li>
+    <li>A late answer that contradicts what the saga already decided changes nothing; it is logged and audited as a
+      conflict.</li>
+  </ul>
+  <div class="box where"><div class="tag">Where it lives</div><ul>
+    <li><a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/InquiryService.java"><code>service/InquiryService</code></a>,
+      <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/saga/InquirySchedule.java"><code>saga/InquirySchedule</code></a>. Spec section 7.4.</li>
+  </ul></div>
+
+  <h2 id="waiting">9. Waiting for an answer</h2>
+  <p>The app makes an HTTP call and wants an answer, but the work happens over Kafka. How does the app gateway turn
+    one into the other?</p>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+    actors: App | mw-app-gateway | mw-orchestrator
+    App -> mw-app-gateway : POST /app/v1/transactions
+    mw-app-gateway -> mw-app-gateway : register a waiter for this txnId
+    mw-app-gateway => mw-orchestrator : mw.txn.request.v1 (header mw-reply-to = this instance)
+    note mw-orchestrator : runs the saga (seconds)
+    mw-orchestrator => mw-app-gateway : mw.txn.status.v1 (final status, same reply-to)
+    mw-app-gateway -> mw-app-gateway : StatusReplyRoute wakes the waiter
+    mw-app-gateway --> App : 200 COMPLETED, or 202 PROCESSING after 25 s
+  </script></div>
+  <div class="legend"><span class="h"><i></i>HTTP</span><span class="k"><i></i>Kafka</span><span class="r"><i></i>reply</span></div>
+  <figcaption>Figure 3.4: request over Kafka, reply over Kafka, answer over HTTP.</figcaption></figure>
+  <ol class="steps">
+    <li>The gateway registers a <strong>waiter</strong> in memory, then publishes the request with a header
+      <code>mw-reply-to</code> naming this gateway instance.</li>
+    <li>The orchestrator copies that header onto every status update it publishes.</li>
+    <li>Each gateway instance listens to <code>mw.txn.status.v1</code> in its own consumer group and wakes the waiter
+      for a final status.</li>
+    <li>If no final status comes within the <strong>reply budget</strong> (25 seconds for the app), the gateway answers
+      <code>202 PROCESSING</code> with a link to poll. The transaction is not cancelled; it finishes in the background
+      and the customer gets an SMS.</li>
+  </ol>
+  <p><code>mw-ussd</code> (8-second budget, then a "processing" screen) and <code>mw-checkout</code> do the same thing.</p>
+  <div class="box where"><div class="tag">Where it lives</div><ul>
+    <li><a href="../../services/mw-app-gateway/src/main/java/mfs/mw/app/gateway/service/ReplyWaiters.java"><code>service/ReplyWaiters</code></a> and
+      <a href="../../services/mw-app-gateway/src/main/java/mfs/mw/app/gateway/route/StatusReplyRoute.java"><code>route/StatusReplyRoute</code></a> in mw-app-gateway. Spec section 7.5.</li>
+  </ul></div>
+
+  <h2 id="errors">10. Errors, masking and the PIN</h2>
+  <h3>One error shape everywhere</h3>
+  <p>Every API returns errors in the same envelope:</p>
+<pre><code>{
+  "code": "MW-CORE-INVALID_PIN",
+  "message": "The PIN is not correct",
+  "messageBn": "...",                <span class="c">// Bangla, when there is one</span>
+  "txnId": "0193c2...",
+  "correlationId": "...",
+  "retryable": false,
+  "details": []
+}</code></pre>
+  <div class="table-wrap"><table>
+    <tr><th>Code family</th><th>Means</th><th>Example</th></tr>
+    <tr><td><code>MW-VAL-*</code></td><td>The request itself is wrong</td><td>bad amount, paying your own wallet</td></tr>
+    <tr><td><code>MW-AUTH-*</code></td><td>Who you are, or what you may do</td><td>token missing, wrong role</td></tr>
+    <tr><td><code>MW-IDEM-*</code></td><td>Idempotency key misuse</td><td>same key, different body</td></tr>
+    <tr><td><code>MW-CORE-*</code></td><td>The core refused, with its reason</td><td><code>MW-CORE-INVALID_PIN</code>, <code>MW-CORE-LIMIT_EXCEEDED_PER_TXN</code></td></tr>
+    <tr><td><code>MW-PTR-&lt;partner&gt;-*</code></td><td>A partner refused (mapped from its own code)</td><td><code>MW-PTR-GP-TOPUP_REJECTED</code> (Grameenphone)</td></tr>
+    <tr><td><code>MW-TMO-*</code></td><td>Timeout or unknown outcome</td><td><code>MW-TMO-001</code> core did not answer validation</td></tr>
+    <tr><td><code>MW-SYS-*</code></td><td>Something broke on our side</td><td></td></tr>
+  </table></div>
+  <p>In code, you throw an exception from the <code>exception/</code> package; one global
+    <code>@RestControllerAdvice</code> (<code>GlobalExceptionHandler</code>) builds the envelope. Spec section 5.3.</p>
+
+  <h3>Masking personal data</h3>
+  <p>Logs, audit records and console screens must never show full personal data. Each service's
+    <code>util/MaskingPolicy</code> masks it, and a log filter applies it before anything is written:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Data</th><th>Shown as</th></tr>
+    <tr><td>Phone number (MSISDN)</td><td><code>0171****789</code></td></tr>
+    <tr><td>National ID</td><td>last 3 digits only</td></tr>
+    <tr><td>Account number</td><td>last 4 only</td></tr>
+    <tr><td>Names</td><td>first initial only</td></tr>
+  </table></div>
+
+  <h3>The PIN</h3>
+  <p>The customer's PIN is encrypted on the phone (or, for USSD, the moment <code>mw-ussd</code> receives it) with the
+    core's public key (RSA-OAEP with SHA-256). The middleware only ever carries the ciphertext to the core and cannot
+    decrypt it. It is never logged and never stored. Card numbers never enter the middleware at all.</p>
+  <div class="box wrong"><div class="tag">What can go wrong</div>
+    <p>Logging a whole request body "just to debug" can leak a phone number or a PIN ciphertext. <code>make log-scan</code>
+      scans every container log for exactly that and fails the security check. Log through SLF4J with fields, and let
+      the masking do its job.</p></div>
+
+  <nav class="pager">
+    <a href="02-architecture.html"><small>Previous</small>← 2. The architecture</a>
+    <a class="next" href="04-money-flows.html"><small>Next</small>4. Money flows →</a>
+  </nav>
+</main>
+</body>
+</html>

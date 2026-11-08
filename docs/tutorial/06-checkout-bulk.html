@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checkout and Bulk</title>
+<link rel="stylesheet" href="tutorial.css">
+<script src="diagrams.js" defer></script>
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> tutorial</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="01-what-is-mfs.html">1 MFS</a>
+    <a href="02-architecture.html">2 Architecture</a>
+    <a href="03-core-ideas.html">3 Core ideas</a>
+    <a href="04-money-flows.html">4 Money</a>
+    <a href="05-partner-flows.html">5 Partners</a>
+    <a href="06-checkout-bulk.html" aria-current="page">6 Checkout &amp; bulk</a>
+    <a href="07-ops-platform.html">7 Ops</a>
+    <a href="08-first-day.html">8 First day</a>
+    <a href="09-how-we-work.html">9 How we work</a>
+    <a href="glossary.html">Glossary</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Chapter 6</div>
+  <h1>Checkout and bulk disbursement</h1>
+  <p class="lead">Two business features built on top of the same saga: a shopper paying a web shop with their
+    wallet, and an organisation paying hundreds of people from one file. Both add their own records and safety checks
+    around a plain post-style transaction.</p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#checkout">Merchant web checkout</a></li>
+    <li><a href="#ipn">Telling the shop: IPN</a></li>
+    <li><a href="#bulk">Bulk disbursement</a></li>
+    <li><a href="#reconcile">Reconciling stuck rows</a></li>
+    <li><a href="#try">Try it yourself</a></li>
+  </ol></div>
+
+  <h2 id="checkout">Merchant web checkout</h2>
+  <div class="box plain">
+    <div class="tag">In plain English</div>
+    <p>It works like any "pay with ..." button. The shop's server asks us for a <strong>payment session</strong>
+      for order 123, Tk 500. We give back a link to <strong>our own payment page</strong>. The shopper opens it, types their
+      wallet number, gets an OTP by SMS, enters the OTP and PIN, and pays. We send the shopper back to the shop with a
+      signed result, and separately tell the shop's server with a signed message (the IPN).</p>
+  </div>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+    actors: Shopper | Merchant server | mw-checkout | mw-notify | mw-orchestrator
+    Merchant server -> mw-checkout : POST /checkout/v1/sessions (order, amount; HMAC-signed, via APISIX)
+    mw-checkout --> Merchant server : sessionId + payment page link
+    Shopper -> mw-checkout : opens the hosted page /checkout/pay/v1/{token}
+    Shopper -> mw-checkout : wallet number → POST .../otp
+    mw-checkout => mw-notify : OTP SMS (mw.notify.request.v1, through the outbox)
+    Shopper -> mw-checkout : POST .../confirm (OTP + encrypted PIN)
+    mw-checkout => mw-orchestrator : MERCHANT_PAY on mw.txn.request.v1
+    note mw-orchestrator : validate + PostTransfer with the core (like P2P)
+    mw-orchestrator => mw-checkout : mw.txn.status.v1 COMPLETED
+    mw-checkout -> mw-checkout : session PAYING → PAID, plus an IPN row (one DB transaction)
+    mw-checkout --> Shopper : redirect back to the shop with a signed result (/return)
+    mw-checkout -> Merchant server : IPN: POST signed result (retried until 2xx)
+  </script></div>
+  <div class="legend"><span class="h"><i></i>HTTP</span><span class="k"><i></i>Kafka</span><span class="r"><i></i>reply</span></div>
+  <figcaption>Figure 6.1: one checkout payment.</figcaption></figure>
+  <ol class="steps">
+    <li><strong>Create a session.</strong> The merchant's server signs the request with its HMAC key; APISIX checks the
+      signature and tells <code>mw-checkout</code> which merchant it is. Sending the same order and amount again returns the
+      same session (idempotent). A merchant can only ever see its own sessions.</li>
+    <li><strong>The hosted page.</strong> The shopper never types their PIN into the shop's website, only into ours.</li>
+    <li><strong>OTP.</strong> A one-time code goes by SMS through <code>mw-notify</code> at the highest priority. Each wrong guess uses up
+      one of a limited number of tries.</li>
+    <li><strong>Confirm.</strong> Exactly one <code>MERCHANT_PAY</code> transaction per session. The request thread waits for the
+      status (the same waiter pattern as the app gateway).</li>
+    <li><strong>Close the session safely.</strong> The session moves PAYING → PAID (or FAILED) with a conditional database update, so two
+      racing requests cannot both pay. Cancelled sessions are CANCELLED; an expired session answers 410.</li>
+  </ol>
+
+  <h2 id="ipn">Telling the shop: IPN</h2>
+  <p>An <strong>IPN</strong> (instant payment notification) is a server-to-server message to the shop: "order 123 is paid". The shop
+    must not trust the shopper's redirect alone, because a shopper could fake it.</p>
+  <ul>
+    <li>The IPN row is written in the <strong>same database transaction</strong> as the session outcome, so a paid session always has an IPN to
+      send (the outbox idea again).</li>
+    <li>A scheduled job sends due IPNs. The body is signed: header <code>X-Bits-Signature</code> is an HMAC-SHA256 over a version
+      string, the <code>X-Bits-Timestamp</code> and the body.</li>
+    <li>A 2xx answer means delivered. Otherwise it tries again after 1 min, 5 min, 30 min, 2 h and 6 h.</li>
+    <li>The shop's URL is checked before every send (https only, no private addresses), so nobody can use the IPN to reach our
+      internal network (SSRF).</li>
+  </ul>
+  <div class="box where"><div class="tag">Where it lives (mw-checkout)</div><ul>
+    <li>Merchant API: <code>controller/MerchantSessionController</code>, <code>service/MerchantSessionService</code>.</li>
+    <li>Hosted page: <code>controller/HostedPageController</code>, <a href="../../services/mw-checkout/src/main/java/mfs/mw/checkout/service/CheckoutPayService.java"><code>service/CheckoutPayService</code></a>,
+      <a href="../../services/mw-checkout/src/main/java/mfs/mw/checkout/service/SessionOutcomes.java"><code>service/SessionOutcomes</code></a>.</li>
+    <li>IPN: <a href="../../services/mw-checkout/src/main/java/mfs/mw/checkout/service/IpnDeliveryService.java"><code>service/IpnDeliveryService</code></a>,
+      <a href="../../services/mw-checkout/src/main/java/mfs/mw/checkout/service/IpnRetrySchedule.java"><code>service/IpnRetrySchedule</code></a>,
+      <code>security/IpnSigner</code>, <code>security/IpnUrlPolicy</code>. The fake shop that receives IPNs is in mw-simulators.</li>
+  </ul></div>
+
+  <h2 id="bulk">Bulk disbursement</h2>
+  <div class="box plain">
+    <div class="tag">In plain English</div>
+    <p>A company wants to pay 500 salaries. One person (the <strong>maker</strong>) uploads a CSV file. A different person from the same
+      company (the <strong>checker</strong>) reviews and approves it. Then the system pays each row as its own small transaction,
+      at a steady pace, and produces a result file.</p>
+  </div>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+    actors: Org maker | Org checker | mw-portal-api | mw-orchestrator
+    Org maker -> mw-portal-api : POST /portal/org/v1/bulk/batches (CSV: msisdn,amount,reference)
+    mw-portal-api -> mw-portal-api : parse: every row valid, or the whole file is refused
+    mw-portal-api --> Org maker : batch PENDING_APPROVAL
+    Org checker -> mw-portal-api : POST .../{id}/approve (must not be the maker)
+    mw-portal-api -> mw-portal-api : dispatch job: rows at a fixed rate per second
+    mw-portal-api => mw-orchestrator : one BULK_DISBURSE request per row (txnId derived from the row)
+    note mw-orchestrator : validate + post each row, like P2P
+    mw-orchestrator => mw-portal-api : mw.txn.status.v1 per row
+    mw-portal-api -> mw-portal-api : row settled; batch COMPLETED or COMPLETED_WITH_EXCEPTIONS
+    Org maker -> mw-portal-api : GET .../{id}/result (CSV, numbers masked)
+  </script></div>
+  <figcaption>Figure 6.2: a bulk batch from upload to result file.</figcaption></figure>
+  <ul>
+    <li><strong>All or nothing on upload:</strong> one bad row (bad number, more than 2 decimals, a repeated reference) refuses the
+      whole file with <code>MW-VAL-031</code>. Too many rows is <code>MW-VAL-030</code>. A half-uploaded payroll is worse than none.</li>
+    <li><strong>Maker-checker:</strong> the checker must be a different user of the same organisation. A batch nobody decides on within 72 hours
+      expires.</li>
+    <li><strong>Pacing:</strong> rows are sent at <code>bulk.dispatch.rate-per-second</code> (a token bucket), so a big file does not
+      flood the core. Batches can be paused and resumed.</li>
+    <li><strong>No double pay:</strong> each row's txnId is derived from the row itself, so sending a row twice (after a crash, say) hits
+      the orchestrator's idempotency check.</li>
+  </ul>
+  <p>Batch states: <span class="st wait">PENDING_APPROVAL</span> → <span class="st step">APPROVED</span> →
+    <span class="st wait">EXECUTING</span> (↔ <span class="st step">PAUSED</span>) → <span class="st ok">COMPLETED</span> or
+    <span class="st manual">COMPLETED_WITH_EXCEPTIONS</span>; or REJECTED / EXPIRED before it starts.</p>
+
+  <h2 id="reconcile">Reconciling stuck rows</h2>
+  <p>What if a row was sent but its status never came back? A reconcile job looks for rows still SUBMITTED after a while and
+    asks the orchestrator's internal transaction query API what happened (logging in as the <code>mw-portal-api</code> service
+    account). A row that cannot be settled in time is marked UNRESOLVED and the batch ends COMPLETED_WITH_EXCEPTIONS.
+    <strong>It never sends the row again</strong>: re-sending without knowing is how people get paid twice.</p>
+  <div class="box where"><div class="tag">Where it lives (mw-portal-api)</div><ul>
+    <li><code>controller/BulkBatchController</code>, <code>service/BatchService</code>,
+      <a href="../../services/mw-portal-api/src/main/java/mfs/mw/portal/api/service/BulkCsvParser.java"><code>service/BulkCsvParser</code></a>.</li>
+    <li><a href="../../services/mw-portal-api/src/main/java/mfs/mw/portal/api/service/BulkExecutionService.java"><code>service/BulkExecutionService</code></a> (dispatch),
+      <code>route/TxnStatusRoute</code> (settle),
+      <a href="../../services/mw-portal-api/src/main/java/mfs/mw/portal/api/service/BulkReconcileService.java"><code>service/BulkReconcileService</code></a>,
+      <code>client/OrchestratorQueryClient</code>.</li>
+    <li>The orchestrator side: <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/saga/BulkDisburseFlow.java"><code>saga/BulkDisburseFlow</code></a>.</li>
+  </ul></div>
+
+  <h2 id="try">Try it yourself</h2>
+  <div class="box try"><div class="tag">Try it yourself</div>
+    <ul>
+      <li>Test console pages <strong>Checkout</strong> (plays the shop and the shopper) and <strong>Bulk</strong> (plays the org maker
+        and checker). Steps in <a href="../testing-guide.html">docs/testing-guide.html</a>, sections 7 and 8.</li>
+      <li>Automated: <code>make api-test FOLDER="09, 21, 22, 23"</code> (checkout, bulk upload, bulk execution, SP query).</li>
+    </ul>
+  </div>
+
+  <nav class="pager">
+    <a href="05-partner-flows.html"><small>Previous</small>← 5. Partner flows</a>
+    <a class="next" href="07-ops-platform.html"><small>Next</small>7. Ops and platform →</a>
+  </nav>
+</main>
+</body>
+</html>

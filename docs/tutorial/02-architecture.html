@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Architecture</title>
+<link rel="stylesheet" href="tutorial.css">
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> tutorial</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="01-what-is-mfs.html">1 MFS</a>
+    <a href="02-architecture.html" aria-current="page">2 Architecture</a>
+    <a href="03-core-ideas.html">3 Core ideas</a>
+    <a href="04-money-flows.html">4 Money</a>
+    <a href="05-partner-flows.html">5 Partners</a>
+    <a href="06-checkout-bulk.html">6 Checkout &amp; bulk</a>
+    <a href="07-ops-platform.html">7 Ops</a>
+    <a href="08-first-day.html">8 First day</a>
+    <a href="09-how-we-work.html">9 How we work</a>
+    <a href="glossary.html">Glossary</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Chapter 2</div>
+  <h1>The architecture</h1>
+  <p class="lead">The middleware is about a dozen small Spring Boot services that talk to each other mostly
+    through Kafka, sitting behind one gateway. This chapter names every piece and shows how they connect.</p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#context">The big picture</a></li>
+    <li><a href="#talk">Two ways services talk</a></li>
+    <li><a href="#map">The service map</a></li>
+    <li><a href="#services">Every service in one line</a></li>
+    <li><a href="#platform">The platform pieces</a></li>
+    <li><a href="#zones">Network zones and profiles</a></li>
+    <li><a href="#isolation">No shared code, on purpose</a></li>
+    <li><a href="#inside">Inside one service</a></li>
+  </ol></div>
+
+  <h2 id="context">The big picture</h2>
+  <figure class="wide">
+    <div class="canvas">
+      <svg viewBox="0 0 960 372" role="img" aria-label="Channels call APISIX, APISIX calls the middleware, the middleware talks to the core over Kafka, to partners over HTTP and to the SMS centre over SMPP">
+        <defs>
+          <marker id="c1a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2a5db0"/></marker>
+          <marker id="c1k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6b4bb8"/></marker>
+        </defs>
+        <text x="110" y="12" text-anchor="middle" class="t-sm">WHO CALLS US</text>
+        <g>
+          <rect x="10" y="20" width="200" height="42" rx="8" class="n-ext"/><text x="110" y="46" text-anchor="middle" class="t-md">Customer app</text>
+          <rect x="10" y="78" width="200" height="42" rx="8" class="n-ext"/><text x="110" y="104" text-anchor="middle" class="t-md">Agent and merchant apps</text>
+          <rect x="10" y="136" width="200" height="42" rx="8" class="n-ext"/><text x="110" y="155" text-anchor="middle" class="t-md">Basic phone (USSD)</text><text x="110" y="170" text-anchor="middle" class="t-sm">through the operator's gateway</text>
+          <rect x="10" y="194" width="200" height="42" rx="8" class="n-ext"/><text x="110" y="220" text-anchor="middle" class="t-md">Merchant website</text>
+          <rect x="10" y="252" width="200" height="42" rx="8" class="n-ext"/><text x="110" y="278" text-anchor="middle" class="t-md">Org portal (bulk pay)</text>
+          <rect x="10" y="310" width="200" height="42" rx="8" class="n-ext"/><text x="110" y="336" text-anchor="middle" class="t-md">Ops console (Bits staff)</text>
+        </g>
+        <g class="a-http">
+          <path d="M210,41 H256" marker-end="url(#c1a)"/><path d="M210,99 H256" marker-end="url(#c1a)"/>
+          <path d="M210,157 H256" marker-end="url(#c1a)"/><path d="M210,215 H256" marker-end="url(#c1a)"/>
+          <path d="M210,273 H256" marker-end="url(#c1a)"/><path d="M210,331 H256" marker-end="url(#c1a)"/>
+        </g>
+        <rect x="260" y="20" width="110" height="332" rx="10" class="n-edge"/>
+        <text x="315" y="178" text-anchor="middle" class="t-lg">APISIX</text>
+        <text x="315" y="196" text-anchor="middle" class="t-sm">the front door</text>
+        <g class="a-http">
+          <path d="M370,100 H416" marker-end="url(#c1a)"/><path d="M370,186 H416" marker-end="url(#c1a)"/><path d="M370,272 H416" marker-end="url(#c1a)"/>
+        </g>
+        <rect x="420" y="20" width="260" height="332" rx="12" class="n-mw"/>
+        <text x="550" y="50" text-anchor="middle" class="t-lg">The middleware</text>
+        <text x="550" y="68" text-anchor="middle" class="t-sm">(this repository)</text>
+        <text x="550" y="112" text-anchor="middle" class="t-md">channel services</text>
+        <text x="550" y="146" text-anchor="middle" class="t-md">mw-orchestrator</text>
+        <text x="550" y="180" text-anchor="middle" class="t-md">partner adapters</text>
+        <text x="550" y="214" text-anchor="middle" class="t-md">notify · audit · admin</text>
+        <rect x="445" y="262" width="210" height="34" rx="6" class="n-kafka"/>
+        <text x="550" y="284" text-anchor="middle" class="t-md">Kafka underneath</text>
+        <text x="550" y="326" text-anchor="middle" class="t-sm">PostgreSQL · Valkey · Keycloak · OpenBao</text>
+        <rect x="780" y="20" width="170" height="110" rx="10" class="n-ext"/>
+        <text x="865" y="56" text-anchor="middle" class="t-lg">The core</text>
+        <text x="865" y="78" text-anchor="middle" class="t-sm">balances, ledger, fees, PIN</text>
+        <text x="865" y="108" text-anchor="middle" class="t-sm">here: mw-core-mock</text>
+        <rect x="780" y="160" width="170" height="110" rx="10" class="n-ext"/>
+        <text x="865" y="196" text-anchor="middle" class="t-lg">Partners</text>
+        <text x="865" y="218" text-anchor="middle" class="t-sm">operators, billers, banks</text>
+        <text x="865" y="248" text-anchor="middle" class="t-sm">here: mw-simulators</text>
+        <rect x="780" y="300" width="170" height="52" rx="10" class="n-ext"/>
+        <text x="865" y="324" text-anchor="middle" class="t-md">SMS centre</text>
+        <text x="865" y="341" text-anchor="middle" class="t-sm">here: mw-simulators</text>
+        <path d="M680,75 H776" class="a-kafka" marker-end="url(#c1k)" marker-start="url(#c1k)"/>
+        <text x="730" y="67" text-anchor="middle" class="t-sm">Kafka</text>
+        <path d="M680,215 H776" class="a-http" marker-end="url(#c1a)"/>
+        <text x="730" y="207" text-anchor="middle" class="t-sm">HTTP</text>
+        <path d="M680,326 H776" class="a-http" marker-end="url(#c1a)"/>
+        <text x="730" y="318" text-anchor="middle" class="t-sm">SMPP</text>
+      </svg>
+    </div>
+    <figcaption>Figure 2.1: who talks to whom. One exception to "everything through APISIX": an operator's USSD
+      gateway that speaks SMPP (a telecom protocol) connects to <code>mw-ussd</code> directly; the ones that speak HTTP go
+      through APISIX.</figcaption>
+  </figure>
+
+  <div class="box plain">
+    <div class="tag">In plain English</div>
+    <p>Think of an airport. <strong>APISIX</strong> is security at the entrance: it checks your ticket (login token),
+      throws out anything too big or too frequent, and sends you to the right gate. The <strong>channel
+      services</strong> are the check-in desks, one per kind of traveller (app, USSD, web shop, portal, staff).
+      <strong>Kafka</strong> is the conveyor belt that carries bags between desks without anyone waiting for anyone.
+      The <strong>orchestrator</strong> is the control tower that decides what happens next for each trip. The
+      <strong>adapters</strong> are the people who phone other airlines. The <strong>core</strong> is the bank
+      next door that holds the money.</p>
+  </div>
+
+  <h2 id="talk">Two ways services talk</h2>
+  <div class="table-wrap"><table>
+    <tr><th></th><th>HTTP (synchronous)</th><th>Kafka (asynchronous)</th></tr>
+    <tr><td>Like</td><td>A phone call: you ask and hold the line until you get the answer.</td><td>A post box: you drop a letter and carry on; someone picks it up and later posts a reply.</td></tr>
+    <tr><td>Used for</td><td>Everything coming in from outside (apps, USSD over HTTP, merchants, portals, partner callbacks), calls out to partners, and a few internal lookups (bill fetch, transaction query, audit search).</td><td>Everything between services inside: transaction requests, commands to the core, partner requests and replies, status updates, notifications, audit events.</td></tr>
+    <tr><td>Why</td><td>The outside world expects an answer to its request.</td><td>If a service is down or slow, messages wait on the topic instead of being lost, and no thread sits blocked.</td></tr>
+  </table></div>
+  <p>The interesting part: an app calls over HTTP and expects an answer, but the work inside happens over Kafka.
+    <a href="03-core-ideas.html#waiting">Chapter 3</a> explains how a service waits for the Kafka answer and turns it back into an HTTP
+    response.</p>
+
+  <h2 id="map">The service map</h2>
+  <figure class="wide">
+    <div class="canvas">
+      <svg viewBox="0 0 1000 566" role="img" aria-label="Service map: APISIX on top, five channel services, a Kafka bar, seven back-end services, simulators and the platform">
+        <defs><marker id="c2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2a5db0"/></marker></defs>
+        <rect x="380" y="12" width="240" height="44" rx="9" class="n-edge"/>
+        <text x="500" y="32" text-anchor="middle" class="t-lg">APISIX</text>
+        <text x="500" y="48" text-anchor="middle" class="t-sm">edge gateway (config stored in etcd)</text>
+        <g class="a-http">
+          <path d="M500,56 V80"/><path d="M120,80 H880"/>
+          <path d="M120,80 V100" marker-end="url(#c2a)"/><path d="M310,80 V100" marker-end="url(#c2a)"/><path d="M500,80 V100" marker-end="url(#c2a)"/>
+          <path d="M690,80 V100" marker-end="url(#c2a)"/><path d="M880,80 V100" marker-end="url(#c2a)"/>
+        </g>
+        <text x="20" y="76" class="t-sm">channel services</text>
+        <g>
+          <rect x="35" y="104" width="170" height="50" rx="8" class="n-mw"/><text x="120" y="125" text-anchor="middle" class="t-md" font-weight="600">mw-app-gateway</text><text x="120" y="143" text-anchor="middle" class="t-sm">the six mobile apps</text>
+          <rect x="225" y="104" width="170" height="50" rx="8" class="n-mw"/><text x="310" y="125" text-anchor="middle" class="t-md" font-weight="600">mw-ussd</text><text x="310" y="143" text-anchor="middle" class="t-sm">USSD menus</text>
+          <rect x="415" y="104" width="170" height="50" rx="8" class="n-mw"/><text x="500" y="125" text-anchor="middle" class="t-md" font-weight="600">mw-checkout</text><text x="500" y="143" text-anchor="middle" class="t-sm">web shop payments</text>
+          <rect x="605" y="104" width="170" height="50" rx="8" class="n-mw"/><text x="690" y="125" text-anchor="middle" class="t-md" font-weight="600">mw-portal-api</text><text x="690" y="143" text-anchor="middle" class="t-sm">org portal, bulk pay</text>
+          <rect x="795" y="104" width="170" height="50" rx="8" class="n-mw"/><text x="880" y="125" text-anchor="middle" class="t-md" font-weight="600">mw-admin-api</text><text x="880" y="143" text-anchor="middle" class="t-sm">ops console (+ mw-admin-ui)</text>
+        </g>
+        <g class="a-kafka"><path d="M120,154 V190"/><path d="M310,154 V190"/><path d="M500,154 V190"/><path d="M690,154 V190"/><path d="M880,154 V190"/></g>
+        <rect x="35" y="190" width="930" height="46" rx="9" class="n-kafka"/>
+        <text x="500" y="211" text-anchor="middle" class="t-lg">Kafka</text>
+        <text x="500" y="228" text-anchor="middle" class="t-sm">topics: mw.txn.* · core.* · mw.partner.* · mw.notify.* · mw.audit.* · mw.config.changed</text>
+        <g class="a-kafka"><path d="M95,236 V272"/><path d="M230,236 V272"/><path d="M365,236 V272"/><path d="M500,236 V272"/><path d="M635,236 V272"/><path d="M770,236 V272"/><path d="M905,236 V272"/></g>
+        <g>
+          <rect x="35" y="272" width="120" height="56" rx="8" class="n-mw"/><text x="95" y="295" text-anchor="middle" class="t-md" font-weight="600">mw-orchestrator</text><text x="95" y="313" text-anchor="middle" class="t-sm">the saga engine</text>
+          <rect x="170" y="272" width="120" height="56" rx="8" class="n-mock"/><text x="230" y="295" text-anchor="middle" class="t-md" font-weight="600">mw-core-mock</text><text x="230" y="313" text-anchor="middle" class="t-sm">plays the core</text>
+          <rect x="305" y="272" width="120" height="56" rx="8" class="n-mw"/><text x="365" y="295" text-anchor="middle" class="t-md" font-weight="600">mw-adapter</text><text x="365" y="313" text-anchor="middle" class="t-sm">-telco (top-up)</text>
+          <rect x="440" y="272" width="120" height="56" rx="8" class="n-mw"/><text x="500" y="295" text-anchor="middle" class="t-md" font-weight="600">mw-adapter</text><text x="500" y="313" text-anchor="middle" class="t-sm">-billpay (bills)</text>
+          <rect x="575" y="272" width="120" height="56" rx="8" class="n-mw"/><text x="635" y="295" text-anchor="middle" class="t-md" font-weight="600">mw-adapter</text><text x="635" y="313" text-anchor="middle" class="t-sm">-bank (bank to wallet)</text>
+          <rect x="710" y="272" width="120" height="56" rx="8" class="n-mw"/><text x="770" y="295" text-anchor="middle" class="t-md" font-weight="600">mw-notify</text><text x="770" y="313" text-anchor="middle" class="t-sm">SMS and email</text>
+          <rect x="845" y="272" width="120" height="56" rx="8" class="n-mw"/><text x="905" y="295" text-anchor="middle" class="t-md" font-weight="600">mw-audit-dw</text><text x="905" y="313" text-anchor="middle" class="t-sm">audit trail</text>
+        </g>
+        <g class="a-http"><path d="M365,328 V368" marker-end="url(#c2a)"/><path d="M500,328 V368" marker-end="url(#c2a)"/><path d="M635,328 V368" marker-end="url(#c2a)"/><path d="M770,328 V368" marker-end="url(#c2a)"/></g>
+        <text x="776" y="352" class="t-sm">SMPP</text><text x="371" y="352" class="t-sm">HTTP</text>
+        <rect x="305" y="372" width="525" height="50" rx="8" class="n-mock"/>
+        <text x="567" y="393" text-anchor="middle" class="t-md" font-weight="600">mw-simulators</text>
+        <text x="567" y="411" text-anchor="middle" class="t-sm">fake OCS, bill aggregator, bank, SMS centre, USSD gateway, merchant IPN receiver</text>
+        <rect x="20" y="446" width="960" height="110" rx="10" class="zone"/>
+        <text x="36" y="466" class="t-sm">PLATFORM (shared infrastructure, used by most services)</text>
+        <g>
+          <rect x="50" y="480" width="210" height="58" rx="8" class="n"/><text x="155" y="504" text-anchor="middle" class="t-md" font-weight="600">PostgreSQL 18</text><text x="155" y="523" text-anchor="middle" class="t-sm">one schema per service</text>
+          <rect x="285" y="480" width="210" height="58" rx="8" class="n"/><text x="390" y="504" text-anchor="middle" class="t-md" font-weight="600">Valkey</text><text x="390" y="523" text-anchor="middle" class="t-sm">sessions, locks, counters</text>
+          <rect x="520" y="480" width="210" height="58" rx="8" class="n"/><text x="625" y="504" text-anchor="middle" class="t-md" font-weight="600">Keycloak</text><text x="625" y="523" text-anchor="middle" class="t-sm">logins and tokens</text>
+          <rect x="755" y="480" width="210" height="58" rx="8" class="n"/><text x="860" y="504" text-anchor="middle" class="t-md" font-weight="600">OpenBao</text><text x="860" y="523" text-anchor="middle" class="t-sm">secrets and keys</text>
+        </g>
+      </svg>
+    </div>
+    <div class="legend"><span class="h"><i></i>HTTP or SMPP call</span><span class="k"><i></i>Kafka (publish / listen)</span><span>dashed box = test double</span></div>
+    <figcaption>Figure 2.2: the services that run with <code>make up</code>. Not drawn: <code>mw-ussd</code> also binds over
+      SMPP to the simulated USSD gateway, <code>mw-app-gateway</code> calls <code>mw-adapter-billpay</code> over HTTP to fetch a bill,
+      and <code>mw-portal-api</code> and <code>mw-admin-api</code> ask the orchestrator for transaction details over HTTP.</figcaption>
+  </figure>
+
+  <p>Notice what the picture says: <strong>only <code>mw-orchestrator</code> sends commands to the core</strong>. The channel
+    services never talk to the core or to partners themselves. They hand a transaction request to the orchestrator
+    and wait for its status updates. This one rule keeps the money logic in one place.</p>
+
+  <h2 id="services">Every service in one line</h2>
+  <p>Each service folder has a <code>CLAUDE.md</code> that says what it owns. Open them as you read.</p>
+  <div class="table-wrap"><table>
+    <tr><th>Service</th><th>What it does</th><th>Started by</th></tr>
+    <tr><td><a href="../../services/mw-app-gateway/CLAUDE.md">mw-app-gateway</a></td><td>REST API for the mobile apps. Checks the login, the bound device and the role, starts transactions, answers with the result.</td><td>minimal</td></tr>
+    <tr><td><a href="../../services/mw-ussd/CLAUDE.md">mw-ussd</a></td><td>USSD menu engine: one screen per request, menus stored as data, over HTTP or SMPP per operator.</td><td>minimal</td></tr>
+    <tr><td><a href="../../services/mw-orchestrator/CLAUDE.md">mw-orchestrator</a></td><td>The heart. Runs every transaction as a saga: decides each step, sends commands to the core and requests to adapters, publishes every status change.</td><td>minimal</td></tr>
+    <tr><td><a href="../../services/mw-core-mock/CLAUDE.md">mw-core-mock</a></td><td>Stand-in for the real core: ledger, PIN check, limits, fees, holds.</td><td>minimal</td></tr>
+    <tr><td><a href="../../services/mw-notify/CLAUDE.md">mw-notify</a></td><td>Turns status changes and requests into SMS (SMPP) and email (SMTP), using templates and rules.</td><td>minimal</td></tr>
+    <tr><td><a href="../../services/mw-audit-dw/CLAUDE.md">mw-audit-dw</a></td><td>Append-only audit trail with a hash chain that shows tampering; search API for the console.</td><td>minimal</td></tr>
+    <tr><td><a href="../../services/mw-admin-api/CLAUDE.md">mw-admin-api</a></td><td>API behind the ops console: transaction search, partner and content config, maker-checker change requests.</td><td>minimal</td></tr>
+    <tr><td><a href="../../services/mw-simulators/CLAUDE.md">mw-simulators</a></td><td>Fake partners and channels, steered by "magic" amounts and a control API.</td><td>minimal</td></tr>
+    <tr><td><a href="../../services/mw-adapter-telco/CLAUDE.md">mw-adapter-telco</a></td><td>Talks to the operators' OCS for airtime top-up.</td><td>core</td></tr>
+    <tr><td><a href="../../services/mw-adapter-billpay/CLAUDE.md">mw-adapter-billpay</a></td><td>Talks to the bill aggregator: biller list, bill fetch, payment, callbacks.</td><td>core</td></tr>
+    <tr><td><a href="../../services/mw-adapter-bank/CLAUDE.md">mw-adapter-bank</a></td><td>Talks to banks for "add money from bank" (bank debit, then callback).</td><td>core</td></tr>
+    <tr><td><a href="../../services/mw-checkout/CLAUDE.md">mw-checkout</a></td><td>Merchant web checkout: payment sessions, hosted payment page, signed redirect, IPN callbacks to the shop.</td><td>core</td></tr>
+    <tr><td><a href="../../services/mw-portal-api/CLAUDE.md">mw-portal-api</a></td><td>Org portal: bulk payment files with maker-checker, transaction lookup for service providers.</td><td>core</td></tr>
+    <tr><td><a href="../../ui/mw-admin-ui/CLAUDE.md">mw-admin-ui</a></td><td>The ops console web app (Next.js) at <code>https://localhost/console</code>.</td><td>core</td></tr>
+    <tr><td><a href="../../services/mw-seeder/CLAUDE.md">mw-seeder</a></td><td>One-shot job that creates the test users, wallets and balances (<code>make seed</code>).</td><td>seed</td></tr>
+    <tr><td><a href="../../ui/mw-test-console/CLAUDE.md">mw-test-console</a></td><td>Dev/test-only web app that plays the phone, the apps, the partners and the shop for manual testing (<code>make tester</code>).</td><td>tester</td></tr>
+  </table></div>
+  <p>"Started by" is the Docker Compose profile (see <a href="#zones">below</a>): <em>minimal</em> is enough for
+    send money and cash; <em>core</em> adds everything else.</p>
+
+  <h2 id="platform">The platform pieces</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Piece</th><th>What it is</th><th>What we use it for</th></tr>
+    <tr><td><strong>APISIX</strong> (+ etcd)</td><td>An API gateway. Its config (routes, plugins) is stored in etcd.</td><td>Single entry point on port 443: TLS, login token checks, rate limits, body size limits, HMAC checks for merchants and partners, correlation ids. Config files in <a href="../../deploy/apisix/README.md">deploy/apisix/</a>.</td></tr>
+    <tr><td><strong>Kafka</strong></td><td>A durable message log split into named topics.</td><td>All service-to-service messages. Topic list: <a href="../../deploy/kafka/topics.txt">deploy/kafka/topics.txt</a>.</td></tr>
+    <tr><td><strong>PostgreSQL 18</strong></td><td>The relational database.</td><td>One database server; every service has its own schema and never reads another's.</td></tr>
+    <tr><td><strong>Valkey</strong></td><td>An in-memory key-value store (an open-source Redis).</td><td>USSD sessions, device-binding sessions, short locks (the double-tap guard), rate counters.</td></tr>
+    <tr><td><strong>Keycloak</strong></td><td>An identity server (OpenID Connect).</td><td>Logins for customers, ops staff and portal users, and tokens for service-to-service calls. One <em>realm</em> per group (chapter 7).</td></tr>
+    <tr><td><strong>OpenBao</strong></td><td>A secrets vault (an open-source fork of HashiCorp Vault).</td><td>Database passwords, partner keys, signing secrets. Services read them at start-up; none are in code or config files.</td></tr>
+    <tr><td><strong>Apache Camel</strong></td><td>An integration library inside the services (not a container).</td><td>Kafka consumers, the outbox relay, the partner call routes.</td></tr>
+  </table></div>
+
+  <h2 id="zones">Network zones and profiles</h2>
+  <p>Everything runs in Docker Compose from one file, <a href="../../deploy/docker-compose.yml">deploy/docker-compose.yml</a>.
+    Two ideas in that file are worth knowing on day one.</p>
+  <p><strong>Zones.</strong> The containers sit on separate Docker networks (<code>dmz</code>, <code>app</code>,
+    <code>data</code>, <code>ops</code>, <code>etcd</code>), like the security zones of a real data centre. APISIX is the
+    only container with a port open on your machine (443, so <code>https://localhost/...</code>). The database is
+    only on the data network, and etcd only talks to APISIX.</p>
+  <p><strong>Profiles.</strong> A profile decides which containers start:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Profile</th><th>Starts</th><th>Command</th></tr>
+    <tr><td>(none)</td><td>The platform: Kafka, PostgreSQL, Valkey, Keycloak, OpenBao, etcd, APISIX, a test mail server, and one-shot setup jobs.</td><td>always</td></tr>
+    <tr><td><code>minimal</code></td><td>Platform plus the services for send money and cash.</td><td><code>make up PROFILE=minimal</code></td></tr>
+    <tr><td><code>core</code></td><td>Everything (the default).</td><td><code>make up</code></td></tr>
+    <tr><td><code>seed</code></td><td>The seeder (test data).</td><td><code>make seed</code></td></tr>
+    <tr><td><code>tester</code></td><td>The test console.</td><td><code>make tester</code></td></tr>
+  </table></div>
+
+  <h2 id="isolation">No shared code, on purpose</h2>
+  <div class="box plain">
+    <div class="tag">In plain English</div>
+    <p>Every service is its own little project with its own Gradle build, its own dependency versions and its own
+      Dockerfile. No service may depend on another service's code, and <strong>there is no shared library</strong>.
+      Code every service needs (error handling, masking, the outbox, correlation ids) is <strong>copied</strong>
+      from the template into each service. That looks wasteful, but it means a team can change, build and release one
+      service without touching or breaking any other.</p>
+  </div>
+  <p>The only thing services share is the <a href="../../contracts/README.md">contracts/</a> folder: the OpenAPI
+    files for HTTP APIs and the JSON Schemas for every Kafka message. A contract is the agreement between two
+    services, and each file has one owning service (<a href="../../contracts/OWNERS.yml">contracts/OWNERS.yml</a>).
+    Chapter 9 covers the rules.</p>
+  <div class="box where">
+    <div class="tag">Where it lives</div>
+    <ul>
+      <li>The template every service is copied from: <a href="../../templates/mw-service-template/CLAUDE.md">templates/mw-service-template/</a> (<code>make new-service NAME=mw-x</code> copies it).</li>
+      <li>The isolation check: <a href="../../scripts/check-isolation.sh">scripts/check-isolation.sh</a> (<code>make check-isolation</code>).</li>
+      <li>Why: <a href="../adr/README.md">docs/adr/</a> (decisions D13 and D14).</li>
+    </ul>
+  </div>
+
+  <h2 id="inside">Inside one service</h2>
+  <p>Every service uses the same package layout, so once you know one you can find your way in all of them. The
+    package name is <code>mfs.mw.&lt;service&gt;</code>: <code>mw-adapter-telco</code> becomes
+    <code>mfs.mw.adapter.telco</code>. Each sub-package holds one kind of class:</p>
+  <figure>
+    <div class="canvas">
+      <svg viewBox="0 0 900 330" role="img" aria-label="Entry-point packages call service, service calls repository and client">
+        <defs><marker id="c8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4a5468"/></marker></defs>
+        <text x="25" y="14" class="t-sm">ENTRY POINTS: where work arrives</text>
+        <g>
+          <rect x="25" y="22" width="150" height="50" rx="8" class="n-edge"/><text x="100" y="43" text-anchor="middle" class="t-md" font-weight="600">controller/</text><text x="100" y="61" text-anchor="middle" class="t-sm">HTTP endpoints</text>
+          <rect x="197" y="22" width="150" height="50" rx="8" class="n-kafka"/><text x="272" y="43" text-anchor="middle" class="t-md" font-weight="600">messaging/</text><text x="272" y="61" text-anchor="middle" class="t-sm">Kafka listeners, outbox</text>
+          <rect x="369" y="22" width="150" height="50" rx="8" class="n-kafka"/><text x="444" y="43" text-anchor="middle" class="t-md" font-weight="600">route/</text><text x="444" y="61" text-anchor="middle" class="t-sm">Camel routes</text>
+          <rect x="541" y="22" width="150" height="50" rx="8" class="n-wait"/><text x="616" y="43" text-anchor="middle" class="t-md" font-weight="600">scheduler/</text><text x="616" y="61" text-anchor="middle" class="t-sm">timed jobs</text>
+          <rect x="713" y="22" width="150" height="50" rx="8" class="n"/><text x="788" y="43" text-anchor="middle" class="t-md" font-weight="600">transport/</text><text x="788" y="61" text-anchor="middle" class="t-sm">USSD wire (mw-ussd)</text>
+        </g>
+        <g class="a"><path d="M100,72 L380,124" marker-end="url(#c8)"/><path d="M272,72 L420,124" marker-end="url(#c8)"/><path d="M444,72 L450,124" marker-end="url(#c8)"/><path d="M616,72 L480,124" marker-end="url(#c8)"/><path d="M788,72 L520,124" marker-end="url(#c8)"/></g>
+        <rect x="300" y="126" width="300" height="56" rx="10" class="n-mw"/>
+        <text x="450" y="150" text-anchor="middle" class="t-lg">service/</text>
+        <text x="450" y="170" text-anchor="middle" class="t-sm">business logic and @Transactional boundaries</text>
+        <g class="a"><path d="M390,182 L320,234" marker-end="url(#c8)"/><path d="M510,182 L580,234" marker-end="url(#c8)"/></g>
+        <rect x="220" y="236" width="200" height="50" rx="8" class="n"/><text x="320" y="257" text-anchor="middle" class="t-md" font-weight="600">repository/</text><text x="320" y="275" text-anchor="middle" class="t-sm">database access (own schema)</text>
+        <rect x="480" y="236" width="200" height="50" rx="8" class="n"/><text x="580" y="257" text-anchor="middle" class="t-md" font-weight="600">client/</text><text x="580" y="275" text-anchor="middle" class="t-sm">outbound calls (partners, SMSC)</text>
+        <path d="M600,140 C 680,120 700,96 690,74" class="a-soft" marker-end="url(#c8)"/>
+        <text x="700" y="122" class="t-sm">allowed exception: service may</text>
+        <text x="700" y="136" class="t-sm">write the outbox / inbox</text>
+        <text x="450" y="316" text-anchor="middle" class="t-sm">Used by all of the above: dto/ · entity/ (service layer only) · mapper/ · exception/ · config/ · util/ · filter/ · logging/ · security/</text>
+      </svg>
+    </div>
+    <figcaption>Figure 2.3: dependencies point one way, from the entry points to <code>service/</code> to <code>repository/</code> and <code>client/</code>.
+      A controller only maps the request and validates it; all decisions are in <code>service/</code>.</figcaption>
+  </figure>
+  <p>Here is the orchestrator, trimmed, as an example:</p>
+<pre><code>services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/
+  OrchestratorApplication.java   <span class="c">// the only class in the root package</span>
+  controller/   <span class="c">// internal transaction query API</span>
+  route/        <span class="c">// Camel routes: TxnRequestRoute, CoreWalletEventRoute, PartnerReplyRoute, ...</span>
+  messaging/    <span class="c">// listeners, OutboxWriter, OutboxRelay, Inbox</span>
+  service/      <span class="c">// TransactionService, SagaEngine, InquiryService, IdempotencyGate</span>
+    saga/       <span class="c">// SagaMachine, Status, one Flow per transaction type (P2pFlow, TopupFlow, ...)</span>
+  scheduler/    <span class="c">// SagaTimerJob: fires timeouts every second</span>
+  repository/   entity/   dto/   mapper/   exception/   util/   filter/   logging/   config/</code></pre>
+  <p>The adapters have one extra package, <code>partner/</code>, the adapter framework; chapter 5 explains it.</p>
+
+  <div class="box try">
+    <div class="tag">Read next</div>
+    <p>Spec sections 2 ("Architecture overview") and 4 ("Service decomposition and repository layout"), and the
+      repository layout part of the root <a href="../../CLAUDE.md">CLAUDE.md</a>.</p>
+  </div>
+
+  <nav class="pager">
+    <a href="01-what-is-mfs.html"><small>Previous</small>← 1. What is mobile money?</a>
+    <a class="next" href="03-core-ideas.html"><small>Next</small>3. Ten ideas to know first →</a>
+  </nav>
+</main>
+</body>
+</html>
