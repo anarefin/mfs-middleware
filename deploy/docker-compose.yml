@@ -966,7 +966,7 @@ services:
 
   # The test console (ADR D17, dev/test only, profile `tester`, outside the core memory budget):
   # a Next.js app that plays the app, a USSD handset, the partners, the checkout merchant and the
-  # org portal against this stack, for testing every feature by hand (docs/testing-guide.md). It
+  # org portal against this stack, for testing every feature by hand (docs/testing-guide.html). It
   # calls APISIX only, server-side, with the generated dev credentials below; APISIX serves it at
   # https://localhost/tester only while the test-only routes are on (MW_E2E_ROUTES=1, routes-test/
   # test-console.json): `make tester` turns them on and starts it.

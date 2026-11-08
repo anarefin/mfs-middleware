@@ -19,13 +19,17 @@ export function BulkTester() {
 
   return (
     <div className="cols">
+      <div className="stack">
+      {/* outside the form: React resets a form after its action, which would put the select back on
+          its first option while the state (and the button label) still names the chosen user */}
+      <section className="panel stack">
+        <h2>Portal user</h2>
+        <select value={user} onChange={(e) => setUser(e.target.value)} aria-label="Portal user" data-testid="bulk-user">
+          {PORTAL_PERSONAS.map((p) => <option key={p.user} value={p.user}>{p.label}</option>)}
+        </select>
+      </section>
       <form action={run} className="stack" aria-busy={pending}>
-        <section className="panel stack">
-          <h2>Portal user</h2>
-          <select name="user" value={user} onChange={(e) => setUser(e.target.value)} data-testid="bulk-user">
-            {PORTAL_PERSONAS.map((p) => <option key={p.user} value={p.user}>{p.label}</option>)}
-          </select>
-        </section>
+        <input type="hidden" name="user" value={user} />
         <section className="panel stack">
           <h2>1. File (maker)</h2>
           <div className="row">
@@ -52,9 +56,10 @@ export function BulkTester() {
             <button type="submit" name="op" value="txns" disabled={pending}>Transactions</button>
             <button type="submit" name="op" value="list" disabled={pending}>List batches</button>
           </div>
-          <p className="hint">Switch the user to org-checker01 to approve org-maker01&apos;s upload; sp-viewer01 + Transactions is the SP query.</p>
+          <p className="hint">Switch the user to org-checker01 to approve org-maker01&apos;s upload. SP query: org-checker02 (ORG002 collects for DESCO and Demo Shop), empty batch id, Transactions.</p>
         </section>
       </form>
+      </div>
       <div>
         {pending ? <p className="busy">working…</p> : null}
         {state ? <section className="panel"><Result state={state} /></section> : <section className="panel"><p className="hint">Generate a sample file, upload it as the maker, approve it as the checker.</p></section>}

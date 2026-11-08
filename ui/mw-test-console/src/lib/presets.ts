@@ -49,8 +49,8 @@ export const PRESETS: readonly Preset[] = [
   },
   {
     id: "core-hold-lost", title: "Core: the reply of the next hold is lost",
-    proves: "a top-up / bill pay whose hold answer is lost is resolved by the status inquiry",
-    then: "App: send a top-up or bill payment",
+    proves: "a top-up / bill pay whose hold answer never comes is refused safely: nothing moves, MW-TMO-002",
+    then: "App: send a top-up or bill payment; it ends REJECTED MW-TMO-002 (HTTP 504) and no balance moves",
     calls: [{ method: "POST", path: "/test/core-mock/v1/faults", json: { mode: "DROP_REPLY", commandType: "HoldFunds", times: 1 } }],
   },
   {
@@ -67,8 +67,8 @@ export const PRESETS: readonly Preset[] = [
   },
   {
     id: "ocs-outage", title: "OCS (top-up) outage",
-    proves: "the partner answers 503 unapplied: the hold is released, the top-up FAILED with MW-PTR-*",
-    then: "App: send a top-up; then reset",
+    proves: "a partner 503 is an unknown outcome (fail closed): the top-up stays UNKNOWN with the amount held while the status inquiry also gets 503",
+    then: "App: send a top-up (it ends UNKNOWN, amount held); then reset: the next status inquiry finds nothing, the hold is released, FAILED",
     calls: [{ method: "POST", path: "/test/sim/ocs/scenario", json: { outage: true } }],
   },
   {

@@ -6,7 +6,7 @@ owned, contracts used).
 
 Operator docs (ticket 47, WP30): `README.md` (prerequisites, clean-host quick start, every make
 target), `docs/runbook.md` (MVP host), `docs/demo.md` (one demo per milestone M0–M6),
-`docs/testing-guide.md` (every feature by hand with the test console and the ops console),
+`docs/testing-guide.html` (QA walkthrough: credentials (`make creds`, `make totp`), every feature by hand with the test console and the ops console),
 `docs/adr/` (one record per spec decision D1–D15, M1–M13). `scripts/test/test_repo_docs.sh`
 fails when they name a make target, repo path, `make api-test` folder or `VAR=` knob that does not exist, when
 the README misses a Makefile target, or when a spec decision row has no ADR: a new target, knob or
@@ -30,7 +30,7 @@ decision updates these docs in the same change.
   Not a Gradle module, so the Makefile module targets skip it.
 - `ui/mw-test-console/`: the dev/test-only test console (ADR D17) at `/tester`: plays the app, a USSD
   handset, the partner simulators, the checkout shop and the org portal for manual testing
-  (`docs/testing-guide.md`); compose profile `tester`, test-only APISIX route; `pnpm test`, `make tester`,
+  (`docs/testing-guide.html`); compose profile `tester`, test-only APISIX route; `pnpm test`, `make tester`,
   `make tester-e2e`. Not a Gradle module either.
 - `deploy/`: `docker-compose.yml`, the whole stack in one hand-written file with profiles (none =
   platform, `minimal` = P2P and cash path, `core` = everything, `seed` = seeder; ADR D16; a new
@@ -165,8 +165,10 @@ or one with `M=<module>` (e.g. `M=mw-orchestrator`).
 | `make reset` | `down -v --remove-orphans` across every profile: every container and volume of the stack goes (fresh start) |
 | `make api-test [FOLDER=] [ALL=1]` | Newman API suite in `tests/api` (`tests/api/README.md`) against the running stack (`make up TIMERS=fast && make seed` first): one request per scenario, folders `00`-`23` (`FOLDER="01, 05"` by number or full name; `ALL=1` adds `90 Slow`); `tests/api/run.sh` first re-runs `apisix-init` with `MW_E2E_ROUTES=1` (test-only routes, key-auth), runs a pinned Newman with `npx`, JUnit report `tests/api/build/newman-report.xml`. Request names carry the requirement tags `scripts/check-api-traceability.sh` (in `make contracts-lint`) checks against `tests/api/TRACEABILITY.md`; regenerate the collection with `node tests/api/build_collection.mjs` |
 | `make ui-e2e [GREP=]` | admin UI Playwright suite (`ui/mw-admin-ui/e2e`, numbered specs tagged `@smoke`, `@console`, `@approvals`, `@partners`, `@ussd`, `@templates`) against the running, seeded stack (`make up && make seed` first; no mock): real Keycloak logins as the seeded ops personas, the real mw-admin-api behind APISIX; `pnpm install --frozen-lockfile` / Chromium when needed; credentials from `deploy/.env`, personas from `build/seed/manifest.json`; global setup fails in seconds with the fix when the stack is not ready; idempotent |
-| `make tester` | dev/test-only test console (`ui/mw-test-console`, ADR D17): re-runs `apisix-init` with `MW_E2E_ROUTES=1` (test routes and its own `/tester` route), starts `mw-test-console` (profile `tester`, outside the core budget), prints https://localhost/tester; manual walkthrough of every feature in `docs/testing-guide.md` |
+| `make tester` | dev/test-only test console (`ui/mw-test-console`, ADR D17): re-runs `apisix-init` with `MW_E2E_ROUTES=1` (test routes and its own `/tester` route), starts `mw-test-console` (profile `tester`, outside the core budget), prints https://localhost/tester; manual walkthrough of every feature in `docs/testing-guide.html` |
 | `make tester-e2e [GREP=]` | the test console's Playwright suite (`ui/mw-test-console/e2e`, tags `@smoke`, `@app`, `@ussd`, `@failures`, `@checkout`, `@bulk`) against it on the running, seeded stack (`make up TIMERS=fast && make seed && make tester` first) |
+| `make creds` | print every dev/test login and key (`scripts/creds.sh`: `deploy/.env`, the OpenBao root token while the stack is up) for testers (`docs/testing-guide.html` section 1) |
+| `make totp [PERSONA=seed-ops-maker]` | current ops console TOTP of a persona with the pre-set secret (`scripts/totp.sh`; HmacSHA256, raw UTF-8 key as mw-seeder `util/Totp`) |
 | `make perf [M=]` | Gatling 100 TPS mix in `tests/perf` against the running stack (`make up` first, fresh for the gate): re-applies the test-only routes, `gatlingRun` then always `perfOverhead` (overhead = response time minus core-mock and simulator time); reports in `tests/perf/build/reports/{gatling,perf}`; extra `-D` settings via `MW_PERF_ARGS`; see `tests/perf/README.md` |
 | `make security [M=]` | security pass (WP29): gitleaks over the files not gitignored, CycloneDX SBOM + trivy per module, trivy on the built `mfs-mw/*:local` images and the pinned third-party images (HIGH/CRITICAL fail; accepted findings with reason + expiry in `.trivyignore.yaml` / `deploy/trivyignore-third-party.yaml`); with the stack up also the ZAP baseline on APISIX and `scripts/log-scan.sh` over every container log (`SECURITY_LIVE=1` makes them mandatory: the gate runs it after `make api-test`); scanners from PATH or their pinned images; register `docs/security-findings.md` |
 | `make log-scan` | `scripts/log-scan.sh` over every container log of the running stack: fails on a PIN, PIN ciphertext, unmasked MSISDN or NID (findings printed masked; also a stage of `make security`) |

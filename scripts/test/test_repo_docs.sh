@@ -112,10 +112,20 @@ test_spec_kafka_contract_matches_the_contract_schemas() {
 
 op_docs() { # the operator docs, repo-relative
   local f
-  for f in README.md docs/runbook.md docs/demo.md docs/adr/*.md; do
+  for f in README.md docs/runbook.md docs/demo.md docs/testing-guide.html docs/adr/*.md; do
     [ -f "$REPO_DIR/$f" ] && printf '%s\n' "$f"
   done
   return 0
+}
+
+# doc_text FILE: the doc as the checks read it. Markdown as is; HTML with <code> turned into
+# backticks, href="x" into a markdown link ](x), every other tag dropped and entities decoded.
+doc_text() {
+  case "$1" in
+    *.html) sed -E -e 's#</?code>#`#g' -e 's#href="([^"]*)"#>](\1)<#g' -e 's#<[^>]*>##g' \
+                   -e 's#&lt;#<#g; s#&gt;#>#g; s#&nbsp;# #g; s#&amp;#\&#g' "$1" ;;
+    *) cat "$1" ;;
+  esac
 }
 
 makefile_targets() {
@@ -150,7 +160,7 @@ test_every_make_target_in_the_docs_exists() {
   local f t targets
   targets=" $(makefile_targets | tr '\n' ' ') "
   for f in $(op_docs); do
-    for t in $(grep -oE '(^|[^a-z0-9-])make [a-z][a-z0-9-]*' "$REPO_DIR/$f" | sed 's/.*make //' | sort -u); do
+    for t in $(doc_text "$REPO_DIR/$f" | grep -oE '(^|[^a-z0-9-])make [a-z][a-z0-9-]*' | sed 's/.*make //' | sort -u); do
       case "$targets" in *" $t "*) ;; *) fail "$f names make $t, which the Makefile has no target for" ;; esac
     done
   done
@@ -160,14 +170,14 @@ test_every_repo_path_in_the_docs_exists() {
   local f p
   for f in $(op_docs); do
     # backticked repo paths (placeholders such as <x> or globs end the match and are skipped)
-    for p in $(grep -oE '`(scripts|deploy|services|tests|docs|contracts|ui|spec|templates)/[A-Za-z0-9._/-]*`' "$REPO_DIR/$f" \
+    for p in $(doc_text "$REPO_DIR/$f" | grep -oE '`(scripts|deploy|services|tests|docs|contracts|ui|spec|templates)/[A-Za-z0-9._/-]*`' \
                | tr -d '`' | sed 's#/$##' | sort -u); do
       # generated output (build/, the dev .env) is gitignored and appears only after a run
       git -C "$REPO_DIR" check-ignore -q --no-index "$p" 2>/dev/null && continue
       [ -e "$REPO_DIR/$p" ] || fail "$f names $p, which does not exist"
     done
     # relative markdown links
-    for p in $(grep -oE '\]\([^)#:]+(#[^)]*)?\)' "$REPO_DIR/$f" | sed -E 's/^\]\(//; s/\)$//; s/#.*//' | sort -u); do
+    for p in $(doc_text "$REPO_DIR/$f" | grep -oE '\]\([^)#:]+(#[^)]*)?\)' | sed -E 's/^\]\(//; s/\)$//; s/#.*//' | sort -u); do
       [ -e "$(dirname "$REPO_DIR/$f")/$p" ] || fail "$f links $p, which does not exist"
     done
   done
@@ -193,7 +203,7 @@ test_every_api_test_folder_in_the_docs_exists() {
           printf '%s\n' "$names" | grep -qxF -- "$part" || fail "$f uses FOLDER '$part', which is no folder name of the API suite"
         fi
       done
-    done < <(grep -oE 'FOLDER=("[^"]*"|[^ `]*)' "$REPO_DIR/$f" | sed -E 's/^FOLDER=//; s/^"//; s/"$//' | sort -u)
+    done < <(doc_text "$REPO_DIR/$f" | grep -oE 'FOLDER=("[^"]*"|[^ `]*)' | sed -E 's/^FOLDER=//; s/^"//; s/"$//' | sort -u)
   done
 }
 
@@ -201,7 +211,7 @@ test_every_knob_in_the_docs_is_read_by_the_tooling() {
   # a VAR=value setting shown in a command line must be read by the Makefile, a script or deploy/
   local f v
   for f in $(op_docs); do
-    for v in $(grep -E '(make [a-z]|scripts/|docker compose)' "$REPO_DIR/$f" | grep -oE '(^|[ `(])[A-Z][A-Z0-9_]+=' \
+    for v in $(doc_text "$REPO_DIR/$f" | grep -E '(make [a-z]|scripts/|docker compose)' | grep -oE '(^|[ `(])[A-Z][A-Z0-9_]+=' \
                | sed -E 's/^[ `(]//; s/=$//' | sort -u); do
       grep -rqw -- "$v" "$REPO_DIR/Makefile" "$REPO_DIR/scripts" "$REPO_DIR/deploy" "$REPO_DIR/tests/api/run.sh" \
         || fail "$f sets $v, which neither the Makefile, scripts/, deploy/ nor tests/api/run.sh reads"

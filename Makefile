@@ -23,6 +23,8 @@
 #   make ui-e2e [GREP=]         admin UI Playwright suite against the running, seeded stack (ui/mw-admin-ui)
 #   make tester                 start the dev/test-only test console (ui/mw-test-console) at https://localhost/tester
 #   make tester-e2e [GREP=]     the test console's Playwright suite against the running, seeded stack
+#   make creds                  print every login and key of the dev/test stack (deploy/.env, OpenBao root token)
+#   make totp [PERSONA=seed-ops-maker]  current ops console one-time code of a persona with a pre-set secret
 #   make perf [M=]              Gatling suite in tests/perf
 #   make security [M=]          secret, dependency and image scans; with the stack up also ZAP baseline + log scan
 #   make log-scan               scan every container log of the running stack for PIN / unmasked MSISDN / NID
@@ -37,12 +39,13 @@ BASE ?=
 JOBS ?= 3
 PROFILE ?=
 TIMERS ?=
+PERSONA ?= seed-ops-maker
 export MW_ROOT PROFILE TIMERS
 
-.PHONY: help verify verify-changed check-isolation check-field-injection contracts-lint versions-check build compose-check up seed reset smoke edge-test chaos down api-test ui-e2e tester tester-e2e perf security log-scan new-service test-scripts
+.PHONY: help verify verify-changed check-isolation check-field-injection contracts-lint versions-check build compose-check up seed reset smoke edge-test chaos down api-test ui-e2e tester tester-e2e creds totp perf security log-scan new-service test-scripts
 
 help:
-	@sed -n '3,28p' $(abspath $(lastword $(MAKEFILE_LIST)))
+	@sed -n '3,30p' $(abspath $(lastword $(MAKEFILE_LIST)))
 
 verify:
 ifeq ($(SELFTEST)$(M),1)
@@ -103,6 +106,12 @@ tester:
 
 tester-e2e:
 	@$(SCRIPTS)/tester-e2e.sh "$(GREP)"
+
+creds:
+	@$(SCRIPTS)/creds.sh
+
+totp:
+	@$(SCRIPTS)/totp.sh "$(PERSONA)"
 
 perf:
 	@$(SCRIPTS)/suite.sh perf "$(M)"

@@ -1,0 +1,1043 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MFS Testing Guide</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --surface: #ffffff; --text: #1d2330; --muted: #5b6475; --border: #e2e6ee;
+    --accent: #1f6feb; --accent-soft: #e8f0fe; --code-bg: #f1f3f7; --warn-bg: #fff7e6; --warn: #8a5a00;
+    --ok: #1a7f37; --ok-bg: #eaf6ee; --bad: #b42318;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 1.9rem; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 24px; }
+  h2 { font-size: 1.25rem; margin: 0 0 8px; display: flex; align-items: center; gap: 10px; }
+  h3 { font-size: 1.05rem; margin: 22px 0 6px; scroll-margin-top: 12px; }
+  h4 { font-size: .95rem; margin: 12px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  .num {
+    flex: none; min-width: 28px; height: 28px; border-radius: 14px; background: var(--accent); color: #fff;
+    font-size: .9rem; display: inline-flex; align-items: center; justify-content: center; padding: 0 6px;
+  }
+  section {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px; margin: 0 0 16px; scroll-margin-top: 12px;
+  }
+  .case { border-left: 3px solid var(--accent-soft); padding: 2px 0 6px 14px; margin: 14px 0; }
+  .case h3 { margin-top: 6px; }
+  .case .id { color: var(--muted); font-weight: 400; font-size: .9rem; margin-right: 6px; }
+  p, ul, ol { margin: 8px 0; }
+  li { margin: 4px 0; }
+  a { color: var(--accent); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em;
+         background: var(--code-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+  pre code { background: none; padding: 0; }
+  .ui { font-weight: 600; background: var(--accent-soft); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
+  .cmd { position: relative; margin: 10px 0; }
+  .cmd pre {
+    margin: 0; background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 70px 12px 14px; overflow-x: auto; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .cmd pre .c { color: var(--muted); }
+  .copy {
+    position: absolute; top: 8px; right: 8px; border: 1px solid var(--border); background: var(--surface);
+    color: var(--muted); border-radius: 6px; font-size: 12px; padding: 3px 9px; cursor: pointer;
+  }
+  .copy:hover { color: var(--accent); border-color: var(--accent); }
+  .copy.done { color: var(--ok); border-color: var(--ok); }
+  .note { background: var(--accent-soft); border-radius: 8px; padding: 10px 14px; margin: 10px 0; }
+  .warn { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 10px 14px; margin: 10px 0; }
+  .ok { background: var(--ok-bg); border-radius: 8px; padding: 10px 14px; margin: 10px 0; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  td.tick { width: 34px; text-align: center; }
+  .flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0; }
+  .flow span { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: .88rem; }
+  .flow b { color: var(--muted); font-weight: 400; }
+  nav { font-size: .92rem; margin: 0 0 20px; }
+  nav a { color: var(--accent); text-decoration: none; margin-right: 12px; white-space: nowrap; display: inline-block; }
+  .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; color: var(--muted); font-size: .92rem; }
+  .bar button { border: 1px solid var(--border); background: var(--surface); border-radius: 6px; padding: 3px 10px; cursor: pointer; color: var(--text); }
+  @media (max-width: 560px) { h1 { font-size: 1.5rem; } section { padding: 16px; } .case { padding-left: 10px; } }
+  @media print { .copy, .bar button { display: none; } .cmd pre { white-space: pre-wrap; } section { break-inside: auto; } }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Testing guide: every feature, step by step</h1>
+<p class="lead">For testers who check the Bits MFS middleware by hand, from a browser, on the laptop or
+test stack. No knowledge of the code is needed: every click, value and expected result is written out.
+Section&nbsp;1 explains where every password and key comes from.</p>
+
+<nav>
+  <a href="#checklist">Checklist</a>
+  <a href="#s0">0 Before you start</a>
+  <a href="#s1">1 Credentials and keys</a>
+  <a href="#s2">2 Reading a result</a>
+  <a href="#s3">3 App flows</a>
+  <a href="#s4">4 USSD</a>
+  <a href="#s5">5 Failures and recovery</a>
+  <a href="#s6">6 SMS and email</a>
+  <a href="#s7">7 Web checkout</a>
+  <a href="#s8">8 Bulk and SP query</a>
+  <a href="#s9">9 Ops console</a>
+  <a href="#s10">10 Logs and health</a>
+  <a href="#s11">11 Not in the MVP</a>
+  <a href="#s12">12 Troubleshooting</a>
+  <a href="#s13">13 Automated twins</a>
+</nav>
+
+<!-- ============================================================ -->
+<section id="checklist">
+  <h2><span class="num">✓</span> Feature checklist</h2>
+  <p>Tick a row when its case passed. Ticks are kept in this browser only (handy across a day of
+  testing); print the page for a paper record.</p>
+  <div class="bar"><span id="tick-count"></span><button type="button" id="tick-clear">Clear every tick</button></div>
+  <div class="table-wrap"><table id="checks">
+    <thead><tr><th>Done</th><th>Feature</th><th>Case</th><th>UI</th></tr></thead>
+    <tbody>
+      <tr><td class="tick"></td><td>Sign in to the ops console (password + one-time code)</td><td><a href="#c1-3">1.3</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>Device binding (OTP by SMS)</td><td><a href="#c3-1">3.1</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Send money (P2P), idempotent resend, wrong PIN, limits</td><td><a href="#c3-2">3.2</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Cash in (agent → customer)</td><td><a href="#c3-3">3.3</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Cash out (customer → agent)</td><td><a href="#c3-4">3.4</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Merchant payment and merchant collections</td><td><a href="#c3-5">3.5</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Mobile top-up (OCS) and its partner failures</td><td><a href="#c3-6">3.6</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Billers, fetch bill, bill payment</td><td><a href="#c3-7">3.7</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Add money from bank (C2W) with signed callback</td><td><a href="#c3-8">3.8</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Transaction status as the app sees it</td><td><a href="#c3-9">3.9</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>USSD over HTTP (robi)</td><td><a href="#c4-1">4.1</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>USSD over SMPP (gp) and re-bind</td><td><a href="#c4-2">4.2</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>USSD other menus, Bangla, invalid input</td><td><a href="#c4-3">4.3</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Core lost reply → status inquiry → COMPLETED</td><td><a href="#c5-2">5.2</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Core lost refusal → status inquiry → FAILED</td><td><a href="#c5-3">5.3</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Partner timeouts and outages on held flows</td><td><a href="#c5-4">5.4</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Partner callbacks: once, twice, late, out of order, replay</td><td><a href="#c5-5">5.5</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>MANUAL_REVIEW creation</td><td><a href="#c5-6">5.6</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Custom partner and core faults</td><td><a href="#c5-7">5.7</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>SMS content, language, masking, delivery reports; email receipts</td><td><a href="#c6-1">6.1</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Web checkout: pay, signed redirect, IPN</td><td><a href="#c7-1">7.1</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Web checkout variants: wrong OTP, pay twice, IPN retries, core refusal</td><td><a href="#c7-2">7.2</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Bulk disbursement: upload, approve, result file</td><td><a href="#c8-1">8.1</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Bulk maker-checker, reject, pause/resume, bad files</td><td><a href="#c8-2">8.2</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Service provider (SP) transaction query</td><td><a href="#c8-3">8.3</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Search transactions (all filters, paging)</td><td><a href="#c9-2">9.2</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>Transaction detail: timeline, partner calls, audit trail</td><td><a href="#c9-3">9.3</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>Audited MSISDN reveal (compliance)</td><td><a href="#c9-4">9.4</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>Reversal (maker → checker), reject, refused reversal</td><td><a href="#c9-5">9.5</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>MANUAL_REVIEW: force commit, force release, manual TSQ</td><td><a href="#c9-6">9.6</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>Approvals: filters, rules, error codes</td><td><a href="#c9-7">9.7</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>Wallet unlock</td><td><a href="#c9-8">9.8</a></td><td>Both</td></tr>
+      <tr><td class="tick"></td><td>Partners: disable, enable, timeouts</td><td><a href="#c9-9">9.9</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>USSD menu editor, preview, publish per MNO</td><td><a href="#c9-10">9.10</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>SMS and email templates: preview, publish, reject</td><td><a href="#c9-11">9.11</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>Viewer is read only</td><td><a href="#c9-12">9.12</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>Follow a transaction in the logs; health checks</td><td><a href="#s10">10</a></td><td>Terminal</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s0">
+  <h2><span class="num">0</span> Before you start</h2>
+
+  <h3>The two web UIs</h3>
+  <p>The middleware has no customer UI of its own: the mobile app, USSD handsets, merchant web shops,
+  banks, mobile operators and billers are all outside it. On a test stack two web UIs stand in for them:</p>
+  <div class="table-wrap"><table>
+    <tr><th>UI</th><th>URL</th><th>Plays</th><th>Sign-in</th></tr>
+    <tr><td><b>Test console</b> (dev/test only)</td><td><a href="https://localhost/tester">https://localhost/tester</a></td>
+      <td>the mobile app (customer, agent, merchant), a USSD handset, the partners (top-up operator OCS, bill
+      aggregator, bank: simulators you can switch to fail), the core banking fault switch, the checkout shop and
+      buyer, the organisation portal, the SMS and email inboxes</td><td>none</td></tr>
+    <tr><td><b>Ops console</b></td><td><a href="https://localhost/console">https://localhost/console</a></td>
+      <td>the operations team: search, timeline, audit trail, reversals, approvals (maker-checker), partners,
+      USSD menus, SMS/email templates, wallet unlock</td><td>Keycloak, password + one-time code (<a href="#s1">section 1</a>)</td></tr>
+  </table></div>
+  <p>Every action in the test console goes through the API gateway (APISIX) exactly like a real client.</p>
+
+  <h3>Step 0.1: start the stack (whoever runs it, once)</h3>
+  <p>Prerequisites as in the <a href="../README.md">README</a> (Docker, JDK 25, Node.js 24 + pnpm). From the repository folder:</p>
+  <div class="cmd"><pre><span class="c"># fresh volumes: seeded balances, daily limits, users</span>
+make reset
+<span class="c"># jars and images (the test console image too); 10-15 min the first time</span>
+make build
+<span class="c"># the stack with short timeouts, so timeout tests take seconds, not minutes</span>
+make up TIMERS=fast
+<span class="c"># seeded users, wallets, partners, templates</span>
+make seed
+<span class="c"># turns on the test-only routes and starts the test console</span>
+make tester
+<span class="c"># prints every login and key you need (section 1)</span>
+make creds</pre></div>
+  <div class="warn">Run <code>make tester</code> again after any plain <code>make up</code>: that removes the
+  test-only routes and <code>/tester</code> answers 404.</div>
+
+  <h3>Step 0.2: open the test console</h3>
+  <ol>
+    <li>Open <a href="https://localhost/tester">https://localhost/tester</a>. The certificate is self-signed:
+      accept it once (Chrome: <span class="ui">Advanced</span> → <span class="ui">Proceed to localhost</span>;
+      or type <code>thisisunsafe</code> on the warning page).</li>
+    <li>The <span class="ui">Home</span> page shows three stack checks. Expect three green ✔: the gateway answers,
+      the test-only routes are on, the USSD SMPP gateway is bound. Each ✖ shows its fix.</li>
+    <li>Below them, the seeded wallets table shows each wallet's balance and amount held.</li>
+    <li>Press <span class="ui">Reset every simulator and core fault</span>. Expect "applied". Do this
+      <b>before and after every failure test</b>.</li>
+  </ol>
+
+  <h3>Test data you will use</h3>
+  <div class="table-wrap"><table>
+    <tr><th>Who</th><th>User</th><th>Wallet</th><th>Wallet PIN</th></tr>
+    <tr><td>Customer 1 (payer in most tests)</td><td>customer01</td><td>01711000001</td><td>1234</td></tr>
+    <tr><td>Customer 2 (payee)</td><td>customer02</td><td>01711000002</td><td>1234</td></tr>
+    <tr><td>Agent</td><td>agent01</td><td>01811000001</td><td>1234</td></tr>
+    <tr><td>Merchant "Demo Shop"</td><td>merchant01</td><td>01911000001</td><td>1234</td></tr>
+    <tr><td>Second merchant</td><td>merchant02</td><td>01911000002</td><td>1234</td></tr>
+    <tr><td>Bulk payees (seeded)</td><td>-</td><td>01711000101 onwards</td><td>-</td></tr>
+  </table></div>
+  <p><b>Fees and limits.</b> The core charges the payer the amount <b>plus a fee</b> into the
+  <code>FEE-POOL</code> account (P2P Tk 5, top-up Tk 2, …). A Tk 10 P2P therefore shows <code>-Tk 15.00</code>
+  on the payer, <code>Tk 10.00</code> on the payee and <code>Tk 5.00</code> on FEE-POOL (a gain has no + sign). Other fees: cash out Tk 10, top-up Tk 2, bill payment Tk 3, merchant payment and add money none. Limits: Tk 5,000
+  per transaction, Tk 15,000 debited per wallet per UTC day. Five wrong PINs in a row lock the wallet.</p>
+
+  <h3 id="magic">Magic values</h3>
+  <p>The partner simulators react to these values; no setup needed.</p>
+  <div class="table-wrap"><table>
+    <tr><th>Value</th><th>Effect</th></tr>
+    <tr><td>number / account / bill ending <code>999</code></td><td>refused by the partner (business failure)</td></tr>
+    <tr><td>amount with <code>.13</code> paisa (e.g. <code>20.13</code>)</td><td>partner times out but <b>applied</b> the request</td></tr>
+    <tr><td>amount <code>.77</code></td><td>partner answers HTTP 500 after applying (the status inquiry then finds it: COMPLETED)</td></tr>
+    <tr><td>amount <code>.99</code></td><td>partner answers an unknown code, also to every status inquiry: the transaction <b>stays UNKNOWN with the amount held</b> (up to the 24 h cut-off, then MANUAL_REVIEW). Useful for 9.6</td></tr>
+    <tr><td>amount <code>.55</code></td><td>partner answers a broken body (applied)</td></tr>
+    <tr><td>bill number ending <code>404</code> / <code>000</code></td><td>bill not found / already paid</td></tr>
+    <tr><td>SMS number ending <code>999</code> / <code>998</code> / <code>995</code></td><td>delivery report UNDELIV / EXPIRED / none</td></tr>
+  </table></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s1">
+  <h2><span class="num">1</span> Credentials and keys</h2>
+  <p>Every password and key of a dev/test stack is generated per machine into the file
+  <code>deploy/.env</code> (never committed) the first time the stack starts. Nobody hands them out:
+  you print them yourself. They are test values, never real secrets.</p>
+
+  <div class="case" id="c1-1">
+    <h3><span class="id">1.1</span>Print every login and key</h3>
+    <div class="cmd"><pre>make creds</pre></div>
+    <p>The output is grouped by where a value is used:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Block</th><th>What it gives you</th><th>Taken from</th></tr>
+      <tr><td>Test console</td><td>the URL; no sign-in (it signs in as the test users by itself)</td><td>-</td></tr>
+      <tr><td>Ops console</td><td>the one password of every ops user and which users need an authenticator app</td><td><code>KC_OPS_TEST_PASSWORD</code></td></tr>
+      <tr><td>App users</td><td>password of customer01, customer02, agent01, merchant01, merchant02 (realm <code>customers</code>, client <code>mw-app</code>)</td><td><code>KC_CUSTOMERS_TEST_PASSWORD</code></td></tr>
+      <tr><td>Portal users</td><td>password of org-maker01, org-checker01, org-makerchecker01, org-checker02, sp-viewer01 (realm <code>portals</code>, client <code>mw-portal</code>)</td><td><code>KC_PORTALS_TEST_PASSWORD</code></td></tr>
+      <tr><td>Keycloak admin</td><td>user <code>kc-admin</code> and its password</td><td><code>KC_BOOTSTRAP_ADMIN_PASSWORD</code></td></tr>
+      <tr><td>OpenBao</td><td>the root token (only while the stack is up)</td><td>the OpenBao data volume</td></tr>
+      <tr><td>APISIX</td><td>the <code>apikey</code> of the test-only routes, the admin API key</td><td><code>MW_E2E_API_KEY</code>, <code>APISIX_ADMIN_KEY</code></td></tr>
+      <tr><td>Signing secrets</td><td>checkout merchant <code>merchant-demo</code>, bill aggregator and bank callback HMAC secrets</td><td><code>CHECKOUT_DEMO_MERCHANT_SECRET</code>, <code>BILLAGG_HMAC_SECRET</code>, <code>C2WBANK_HMAC_SECRET</code></td></tr>
+      <tr><td>USSD gateways</td><td>basic-auth password per operator (user <code>ussd-gp</code>, <code>ussd-robi</code>, …)</td><td><code>USSD_GP_GATEWAY_SECRET</code>, …</td></tr>
+    </table></div>
+    <p>One value only: <code>grep KC_OPS_TEST_PASSWORD deploy/.env</code>.</p>
+    <div class="note">On a shared test host, ask whoever runs it to run <code>make creds</code> and pass you
+    the ops password; the test console itself needs no credentials.</div>
+  </div>
+
+  <div class="case" id="c1-2">
+    <h3><span class="id">1.2</span>Who is who in the ops console</h3>
+    <div class="table-wrap"><table>
+      <tr><th>User</th><th>Roles</th><th>Can</th><th>One-time code</th></tr>
+      <tr><td><code>seed-ops-maker</code></td><td>viewer, ops-maker</td><td>read; <b>request</b> reversals, force commit/release, TSQ, unlocks, partner changes, menu and template publishes</td><td rowspan="4"><code>make totp PERSONA=&lt;user&gt;</code><br>(no app needed; exists after <code>make seed</code>)</td></tr>
+      <tr><td><code>seed-ops-checker</code></td><td>viewer, ops-checker</td><td>read; <b>approve or reject</b> requests of others</td></tr>
+      <tr><td><code>seed-ops-viewer</code></td><td>viewer</td><td>read only</td></tr>
+      <tr><td><code>seed-ops-compliance</code></td><td>compliance-officer</td><td>read; reveal a full MSISDN (audited)</td></tr>
+      <tr><td><code>ops-maker01</code>, <code>ops-checker01</code>, <code>ops-viewer01</code>, <code>ops-compliance01</code></td><td>as above</td><td>as above</td><td rowspan="3">enrol an authenticator app at the first sign-in (1.4)</td></tr>
+      <tr><td><code>ops-auditor01</code></td><td>auditor</td><td>read; reveal a full MSISDN (audited)</td></tr>
+      <tr><td><code>ops-admin01</code></td><td>viewer, integration-maker, security-admin</td><td>request partner changes</td></tr>
+    </table></div>
+    <p>All ops users share the password from <code>make creds</code>. A maker can never approve their own
+    request: you need two users, so use two browser windows (a normal one and a private/incognito one),
+    each signed in as a different user.</p>
+  </div>
+
+  <div class="case" id="c1-3">
+    <h3><span class="id">1.3</span>Sign in with a pre-set code (quickest)</h3>
+    <ol>
+      <li>Open <a href="https://localhost/console">https://localhost/console</a> and press <span class="ui">Sign in with Keycloak</span>.</li>
+      <li>Username <code>seed-ops-maker</code>, password from <code>make creds</code>, press <span class="ui">Sign In</span>.</li>
+      <li>The next page asks for a one-time code. In a terminal run:
+        <div class="cmd"><pre>make totp PERSONA=seed-ops-maker</pre></div>
+        It prints e.g. <code>seed-ops-maker: 482913  (valid 17 s more; …)</code>. Type the 6 digits, press <span class="ui">Sign In</span>.</li>
+      <li>Expect the <span class="ui">Transactions</span> page; the header shows <code>seed-ops-maker</code> with its roles (among them <code>viewer</code>, <code>ops-maker</code>) and <span class="ui">Sign out</span>.</li>
+    </ol>
+    <div class="warn">A code is accepted <b>once</b>. To sign in a second user within the same 30 seconds,
+    wait until the code changes (run <code>make totp</code> again). Five wrong passwords or codes lock the
+    user for 1 to 15 minutes.</div>
+  </div>
+
+  <div class="case" id="c1-4">
+    <h3><span class="id">1.4</span>Sign in with your own authenticator app</h3>
+    <p>For <code>ops-maker01</code> and the other realm users. The codes use <b>SHA-256</b>: use
+    <b>FreeOTP</b> or <b>Aegis</b> (Android) or another app that honours the algorithm in the QR code.
+    Keycloak's setup page also names Google Authenticator, but on many phones it ignores the SHA-256 setting and its codes are refused.</p>
+    <ol>
+      <li><span class="ui">Sign in with Keycloak</span>, user <code>ops-maker01</code> and the password.</li>
+      <li>First time only: the page <i>Mobile Authenticator Setup</i> shows a barcode (QR). Scan it in the app (or <span class="ui">Unable to scan?</span> shows the key to type in).</li>
+      <li>Type the app's 6-digit code into <span class="ui">One-time code</span>, any <span class="ui">Device Name</span>, press <span class="ui">Submit</span>.</li>
+      <li>Later sign-ins: password, then the app's current code.</li>
+    </ol>
+    <p><b>Lost the phone or enrolled a wrong app?</b> Reset the user's code so the next sign-in enrols again
+    (replace <code>ops-maker01</code>):</p>
+    <div class="cmd"><pre>docker compose -f deploy/docker-compose.yml exec keycloak sh -c '
+  k=/opt/keycloak/bin/kcadm.sh; c="--config /tmp/kc.config"
+  $k config credentials $c --server http://localhost:8080 --realm master \
+     --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
+  id=$($k get users $c -r ops -q username=ops-maker01 --fields id --format csv --noquotes)
+  for cid in $($k get users/$id/credentials $c -r ops --fields id,type --format csv --noquotes | awk -F, "\$2==\"otp\"{print \$1}"); do
+    $k delete users/$id/credentials/$cid $c -r ops
+  done
+  $k update users/$id $c -r ops -s "requiredActions=[\"CONFIGURE_TOTP\"]"
+  rm -f /tmp/kc.config'</pre></div>
+  </div>
+
+  <div class="case" id="c1-5">
+    <h3><span class="id">1.5</span>Keycloak administration</h3>
+    <p>The Keycloak admin web console is <b>not</b> published by the gateway (only the ops login pages are).
+    Admin tasks run with <code>kcadm.sh</code> inside the container, as user <code>kc-admin</code> (password in
+    <code>make creds</code>; the container already has it in its environment). Example: list the ops users and whether they enrolled:</p>
+    <div class="cmd"><pre>docker compose -f deploy/docker-compose.yml exec keycloak sh -c '
+  k=/opt/keycloak/bin/kcadm.sh; c="--config /tmp/kc.config"
+  $k config credentials $c --server http://localhost:8080 --realm master \
+     --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
+  $k get users $c -r ops --fields username,requiredActions
+  rm -f /tmp/kc.config'</pre></div>
+    <p>Realms: <code>ops</code> (console), <code>customers</code> (app), <code>portals</code> (org/SP portal),
+    <code>partners</code>, <code>services</code> (service to service). Their definitions are in
+    <code>deploy/keycloak/realms</code>. <code>make reset</code> re-imports them and resets every user.</p>
+  </div>
+
+  <div class="case" id="c1-6">
+    <h3><span class="id">1.6</span>OpenBao (secrets store)</h3>
+    <p>OpenBao is reachable only inside the stack. <code>make creds</code> prints its root token (dev only).
+    Read a service's secrets:</p>
+    <div class="cmd"><pre><span class="c"># list every service's secret folder</span>
+docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=&lt;root token&gt; openbao bao kv list secret/
+<span class="c"># one service, e.g. the core mock's PIN key pair</span>
+docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=&lt;root token&gt; openbao bao kv get secret/mw-core-mock</pre></div>
+    <div class="table-wrap"><table>
+      <tr><th>Path</th><th>Holds</th></tr>
+      <tr><td><code>secret/mw-core-mock</code></td><td>the PIN encryption key pair (<code>mw.coremock.pin.*</code>, key id <code>core-pin-dev-1</code>)</td></tr>
+      <tr><td><code>secret/mw-ussd</code>, <code>secret/mw-checkout</code></td><td>the PIN public key; checkout also the merchant <code>merchant_demo</code> secret</td></tr>
+      <tr><td><code>secret/mw-adapter-billpay</code>, <code>secret/mw-adapter-bank</code></td><td>the partner callback HMAC secrets</td></tr>
+      <tr><td><code>secret/mw-simulators</code></td><td>the simulators' side of the callback and USSD gateway secrets</td></tr>
+      <tr><td><code>secret/mw-notify</code></td><td>the SMSC (SMPP) password</td></tr>
+      <tr><td>every <code>secret/mw-*</code></td><td><code>spring.datasource.password</code> (the service's own database user)</td></tr>
+    </table></div>
+    <p>A tester rarely needs these: the PIN public key is also served at
+    <code>GET /test/core-mock/v1/pin-public-key</code> (header <code>apikey</code>, 1.7).</p>
+  </div>
+
+  <div class="case" id="c1-7">
+    <h3><span class="id">1.7</span>API keys and tokens (Postman, curl)</h3>
+    <p><b>Test-only routes</b> (<code>/test/core-mock/…</code>, <code>/test/sim/…</code>, <code>/test/mail/…</code>)
+    need the header <code>apikey: &lt;MW_E2E_API_KEY&gt;</code> and exist only after <code>make tester</code>
+    (or <code>make api-test</code>).</p>
+    <p><b>Tokens</b> (JWT) for the business APIs: a form POST to the gateway. All login clients are public: no client secret.</p>
+    <div class="cmd"><pre><span class="c"># app user (realm customers) -> /app/v1/*</span>
+curl -sk https://localhost/auth/realms/customers/protocol/openid-connect/token \
+  -d client_id=mw-app -d grant_type=password -d username=customer01 -d password='&lt;customers password&gt;'
+<span class="c"># portal user (realm portals) -> /portal/org/v1/*</span>
+curl -sk https://localhost/auth/realms/portals/protocol/openid-connect/token \
+  -d client_id=mw-portal -d grant_type=password -d username=org-maker01 -d password='&lt;portals password&gt;'
+<span class="c"># ops user (realm ops) -> /admin/v1/*: pre-set code users only, plus the apikey header</span>
+curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'apikey: &lt;MW_E2E_API_KEY&gt;' \
+  -d client_id=mw-e2e-ops -d grant_type=password -d username=seed-ops-viewer -d password='&lt;ops password&gt;' \
+  -d totp=&lt;make totp PERSONA=seed-ops-viewer&gt;</pre></div>
+    <p>Use the <code>access_token</code> from the answer as <code>Authorization: Bearer …</code>. It lasts 5 minutes.</p>
+    <div class="warn"><code>/app/v1/*</code> needs more than a token: a bound device and an ECDSA signature on
+    every request (headers <code>X-Device-Id</code>, <code>X-Timestamp</code>, <code>X-Nonce</code>,
+    <code>X-Signature</code>). Postman cannot do that by hand; use the test console, or the ready collection below.</div>
+    <p><b>Postman</b>: import <code>tests/api/mfs-mw.postman_collection.json</code> and
+    <code>tests/api/local.postman_environment.json</code>, then fill the environment's
+    <code>e2eApiKey</code>, <code>kcCustomersPassword</code>, <code>kcPortalsPassword</code>, <code>kcOpsPassword</code>,
+    <code>kcOpsTotpSecret</code>, <code>billaggSecret</code>, <code>checkoutSecret</code> from <code>deploy/.env</code>
+    (the collection signs requests itself). Or run the whole suite: <code>make api-test</code>.</p>
+    <p><b>APISIX admin API</b> (developers only; read the live routes):</p>
+    <div class="cmd"><pre>docker compose -f deploy/docker-compose.yml exec apisix bash -c 'exec 3&lt;&gt;/dev/tcp/127.0.0.1/9180;
+  printf "GET /apisix/admin/routes HTTP/1.0\r\nX-API-KEY: %s\r\n\r\n" "$APISIX_ADMIN_KEY" &gt;&amp;3; cat &lt;&amp;3'</pre></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s2">
+  <h2><span class="num">2</span> Reading a test console result</h2>
+  <p>The panel on the right of each page shows the result of the last button you pressed:</p>
+  <ol>
+    <li><b>Headline</b>: green ✔ or red ✖, the txnId and status, and the error code if refused (e.g. <code>REJECTED MW-CORE-INVALID_PIN</code>).</li>
+    <li><b>Final status</b> with the link <span class="ui">open in the ops console ↗</span> (timeline, partner calls, audit trail).</li>
+    <li><b>Balances</b> of every wallet involved: before, after, change, amount held now.</li>
+    <li><b>SMS received since the submit.</b></li>
+    <li><b>Steps</b>: every API call in order with HTTP status and time. Click a step to see the answer.</li>
+  </ol>
+  <div class="warn"><b>A red ✖ is not always a failed test.</b> The headline is red whenever a call answered
+  outside 200/201/202. In a <i>negative</i> case (wrong PIN, maker approving own batch, wrong OTP) red with the
+  expected code <b>is the pass</b>. Some business refusals are answered with HTTP 200 and show a green ✔ with
+  the refused status (checkout <code>result FAILED</code>). Balances, SMS and the final status appear on
+  <span class="ui">App flows</span> only; the other pages show the headline and steps: click a step to see the full answer.</div>
+  <p>Statuses: <code>COMPLETED</code> (done), <code>REJECTED</code> (refused before money moved),
+  <code>FAILED</code> (attempted, nothing moved), <code>PROCESSING</code> / <code>UNKNOWN</code> (outcome being
+  resolved), <code>MANUAL_REVIEW</code> (an operator must decide), <code>REVERSED</code>.</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="s3">
+  <h2><span class="num">3</span> App flows</h2>
+  <p>Page <span class="ui">App flows</span>. Block 1 <i>Who is signed in</i>, block 2 <i>Flow</i>, block 3 <i>Look things up</i>.</p>
+  <div class="warn"><b>Pick the transaction type first, then the user.</b> Choosing a
+  <span class="ui">Transaction type</span> resets the user, counterparty and amount to that type's defaults
+  (the defaults below already fit each case).</div>
+
+  <div class="case" id="c3-1">
+    <h3><span class="id">3.1</span>Device binding</h3>
+    <ol>
+      <li><span class="ui">User (customers realm)</span> <code>customer01</code>, press <span class="ui">Re-bind (new device)</span>.</li>
+      <li>Expect three steps: <i>ask for the binding OTP</i> (HTTP 202), <i>read the OTP from the SMSC simulator</i>
+        (the 6-digit OTP shown), <i>bind the device</i> (HTTP 201).</li>
+      <li><span class="ui">Bind device</span> on an already bound user does nothing new (no OTP steps): that is correct.</li>
+      <li>Check: page <span class="ui">SMS &amp; email</span>, number <code>01711000001</code>, <span class="ui">Read</span>:
+        the binding code SMS is there.</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c3-2">
+    <h3><span class="id">3.2</span>Send money (P2P)</h3>
+    <ol>
+      <li>Type <span class="ui">Send money (P2P)</span> (user <code>customer01</code>, counterparty <code>01711000002</code>, amount <code>10</code>, PIN <code>1234</code>), press <span class="ui">Submit</span>.</li>
+      <li>Expect <code>COMPLETED</code>; balances payer <code>-Tk 15.00</code>, payee <code>Tk 10.00</code>,
+        FEE-POOL <code>Tk 5.00</code>; two SMS (Bangla by default) with masked numbers (<code>0171****002</code>).</li>
+    </ol>
+    <h4>Variants</h4>
+    <div class="table-wrap"><table>
+      <tr><th>Do</th><th>Expect</th></tr>
+      <tr><td>press <span class="ui">Resend the last submit (same Idempotency-Key)</span></td><td>the <b>same txnId</b>, every balance change <code>Tk 0.00</code></td></tr>
+      <tr><td>type your own value (e.g. <code>qa-key-0001</code>) in <span class="ui">Idempotency-Key (empty = new)</span>, Submit; the field empties after each submit, so type the <b>same</b> value again and Submit</td><td>the second answer has the first's txnId and every change <code>Tk 0.00</code></td></tr>
+      <tr><td>PIN <code>9999</code></td><td>red ✖ <code>REJECTED MW-CORE-INVALID_PIN</code>, HTTP 422, no balance change. Not 5 times in a row (locks the wallet; 9.8)</td></tr>
+      <tr><td>amount <code>6000</code></td><td><code>REJECTED MW-CORE-LIMIT_EXCEEDED_PER_TXN</code></td></tr>
+    </table></div>
+    <p>Then open the link <span class="ui">open in the ops console ↗</span>: the timeline shows the states and the core command (9.3).</p>
+  </div>
+
+  <div class="case" id="c3-3">
+    <h3><span class="id">3.3</span>Cash in (agent → customer)</h3>
+    <ol>
+      <li>Type <span class="ui">Cash in (agent -&gt; customer)</span> (user <code>agent01</code>, counterparty <code>01711000001</code>, amount <code>20</code>), <span class="ui">Submit</span>.</li>
+      <li>Expect <code>COMPLETED</code>, customer <code>+Tk 20.00</code>, agent debited, SMS to both.</li>
+      <li>Negative: counterparty <code>01911000001</code> (a merchant, not a customer): <code>REJECTED MW-CORE-INVALID_COUNTERPARTY</code>. Counterparty <code>01811000001</code> is agent01's own wallet: refused at once with <code>MW-VAL-012</code> (own wallet).</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c3-4">
+    <h3><span class="id">3.4</span>Cash out (customer → agent)</h3>
+    <ol>
+      <li>Type <span class="ui">Cash out (customer -&gt; agent)</span> (user <code>customer01</code>, counterparty <code>01811000001</code>, amount <code>20</code>), <span class="ui">Submit</span>.</li>
+      <li>Expect <code>COMPLETED</code>: customer <code>-Tk 30.00</code> (Tk 20 + Tk 10 fee), agent <code>Tk 20.00</code>; the customer's SMS shows the fee.</li>
+      <li>Negative: counterparty <code>01711000002</code> (not an agent): <code>REJECTED MW-CORE-INVALID_COUNTERPARTY</code>.</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c3-5">
+    <h3><span class="id">3.5</span>Merchant payment (in-app) and collections</h3>
+    <ol>
+      <li>Type <span class="ui">Merchant payment (in-app)</span> (counterparty <code>01911000001</code>, amount <code>25</code>), <span class="ui">Submit</span>.</li>
+      <li>Expect <code>COMPLETED</code>, merchant wallet <code>+Tk 25.00</code>.</li>
+      <li>Change the user to <code>merchant01</code>, press <span class="ui">Merchant collections</span> (block 3); the first time it binds merchant01's device. Click the step <i>the merchant's collections</i>: the payment is listed with the payer masked.</li>
+      <li>Negative: counterparty <code>01711000002</code> (not a merchant): <code>REJECTED MW-CORE-INVALID_COUNTERPARTY</code>.</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c3-6">
+    <h3><span class="id">3.6</span>Mobile top-up (OCS)</h3>
+    <ol>
+      <li>Type <span class="ui">Mobile top-up (OCS)</span>: <span class="ui">Operator</span> <code>gp</code>, <span class="ui">Product</span> <code>PREPAID</code>,
+        <span class="ui">Number to top up</span> <code>01711000002</code>, amount <code>20</code>, <span class="ui">Submit</span>.</li>
+      <li>Expect <code>COMPLETED</code>, payer <code>-Tk 22.00</code>. The money is <b>held</b>, then committed when the operator confirms (Held now back to 0).</li>
+      <li>Repeat with the other operators (<code>robi</code>, <code>banglalink</code>, <code>teletalk</code>) and product <code>POSTPAID</code>: same result.</li>
+    </ol>
+    <h4>Variants</h4>
+    <div class="table-wrap"><table>
+      <tr><th>Change</th><th>Expect</th></tr>
+      <tr><td>number <code>01711000999</code></td><td>red ✖ <code>REJECTED MW-PTR-GP-TOPUP_REJECTED</code> (Subscriber not eligible), nothing moved, nothing left held</td></tr>
+      <tr><td>amount <code>20.13</code></td><td>first <code>PROCESSING</code> (operator timed out), then <code>COMPLETED</code> after the status inquiry (6-10 s with fast timers); money moved once</td></tr>
+      <tr><td>amount <code>20.77</code></td><td>takes up to a minute: <code>COMPLETED</code> after the status inquiry, charged once</td></tr>
+      <tr><td>amount <code>20.99</code></td><td>after a minute the result says <code>UNKNOWN</code> and <i>Held now</i> grows by Tk 22.99: it stays so (see magic values); keep its txnId for 9.6</td></tr>
+      <tr><td>amount <code>20.55</code></td><td><code>COMPLETED</code></td></tr>
+      <tr><td>PIN <code>9999</code></td><td><code>REJECTED</code>; the operator was never called (<span class="ui">Simulators &amp; faults</span> → ocs → <span class="ui">Show scenario and last 10 requests</span>: no new request)</td></tr>
+    </table></div>
+  </div>
+
+  <div class="case" id="c3-7">
+    <h3><span class="id">3.7</span>Billers, fetch bill, bill payment</h3>
+    <ol>
+      <li>Block 3: press <span class="ui">Billers</span>: DESCO, DPDC, WASA, TITAS are listed.</li>
+      <li>Biller <code>DESCO</code>, <span class="ui">Bill number</span> <code>1234567</code>, <span class="ui">Fetch bill</span>: amount due Tk 667.00 (Tk 100 plus the bill number's last 3 digits).</li>
+      <li>Type <span class="ui">Bill payment (aggregator)</span>, biller <code>DESCO</code>, bill <code>1234567</code>, amount <code>100</code>, <span class="ui">Submit</span>.</li>
+      <li>Expect <code>COMPLETED</code>, payer <code>-Tk 103.00</code> (Tk 3 fee), an SMS, and an email receipt (6.1).</li>
+    </ol>
+    <h4>Variants</h4>
+    <div class="table-wrap"><table>
+      <tr><th>Change</th><th>Expect</th></tr>
+      <tr><td>bill <code>1234999</code></td><td>red ✖ <code>REJECTED MW-PTR-BILLAGG-PAYMENT_REFUSED</code>, nothing moved</td></tr>
+      <tr><td>Fetch bill <code>1234404</code> / <code>1234000</code></td><td>red ✖ HTTP 502 <code>MW-PTR-BILLAGG-BILL_NOT_FOUND</code> / <code>MW-PTR-BILLAGG-BILL_ALREADY_PAID</code></td></tr>
+      <tr><td>amount <code>100.13</code></td><td>timeout → status inquiry → <code>COMPLETED</code></td></tr>
+      <tr><td>billers DPDC / WASA / TITAS</td><td>same as DESCO</td></tr>
+    </table></div>
+  </div>
+
+  <div class="case" id="c3-8">
+    <h3><span class="id">3.8</span>Add money from bank (C2W)</h3>
+    <ol>
+      <li>Type <span class="ui">Add money from bank (C2W)</span> (<span class="ui">Bank account (debited)</span> <code>1234567890123</code>, amount <code>500</code>), <span class="ui">Submit</span>.</li>
+      <li>If the bank simulator had no callback set, the first step sets "callbacks ONCE" and says so.</li>
+      <li>Expect: the bank's signed callback completes the transaction: <code>COMPLETED</code>, wallet <code>+Tk 500.00</code>, an SMS and an email receipt.</li>
+      <li>See the bank's own answer (202 PENDING): <span class="ui">Simulators &amp; faults</span> → c2wbank → <span class="ui">Show scenario and last 10 requests</span>.</li>
+    </ol>
+    <h4>Variants</h4>
+    <div class="table-wrap"><table>
+      <tr><th>Change</th><th>Expect</th></tr>
+      <tr><td>account <code>1234567890999</code></td><td>red ✖ <code>REJECTED MW-PTR-C2WBANK-DEBIT_REFUSED</code>, nothing credited</td></tr>
+      <tr><td>PIN <code>9999</code></td><td><code>REJECTED</code>, the bank is never asked</td></tr>
+      <tr><td>amount <code>500.13</code></td><td><code>COMPLETED</code>, wallet <code>Tk 500.13</code>: the status inquiry finds the debit</td></tr>
+      <tr><td><span class="ui">Resend the last submit</span></td><td>credited once</td></tr>
+    </table></div>
+  </div>
+
+  <div class="case" id="c3-9">
+    <h3><span class="id">3.9</span>Transaction status</h3>
+    <p>Block 3: the <span class="ui">txnId</span> of the last submit is filled in. Press <span class="ui">Status</span>:
+    the transaction as the app sees it (status, amount, fee, masked counterparty).</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s4">
+  <h2><span class="num">4</span> USSD</h2>
+  <p>Page <span class="ui">USSD phone</span>: a feature phone dialling <code>*268#</code>. <b>robi</b> is connected
+  over HTTP, <b>gp</b> over SMPP; the menus are the same. Type a reply in the box (or use the keypad),
+  then <span class="ui">Send</span>. <span class="ui">Clear</span> clears the input only. There is no hang-up: while a session is open the
+  button says <span class="ui">Send</span>; to start over <b>reload the page</b> (then it says <span class="ui">Dial</span>).
+  Reload before each row of 4.3.</p>
+
+  <div class="case" id="c4-1">
+    <h3><span class="id">4.1</span>Send money over HTTP (robi), in English</h3>
+    <ol>
+      <li><span class="ui">MNO (transport)</span> <code>robi (HTTP)</code>, <span class="ui">Subscriber</span> <code>01711000001</code>, <span class="ui">Code</span> <code>*268#</code>, <span class="ui">Dial</span>. The screen shows the Bangla main menu.</li>
+      <li>Send <code>9</code>: the menu switches to English.</li>
+      <li>Send <code>1</code> (Send Money), <code>01711000002</code>, <code>10</code>, <code>1</code> (confirm), <code>1234</code> (PIN).</li>
+      <li>Expect: the session ends (<code>[END]</code> in the <i>Transcript</i>) with a confirmation carrying the TxnID;
+        the PIN shows as <code>****</code>; on <span class="ui">Home</span> payer -Tk 15, payee +Tk 10; SMS to both.</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c4-2">
+    <h3><span class="id">4.2</span>The same over SMPP (gp), and re-bind</h3>
+    <ol>
+      <li>MNO <code>gp (SMPP)</code>, repeat 4.1. Expect the same screens and result.</li>
+      <li><span class="ui">Simulators &amp; faults</span> → <i>USSD SMPP gateway (gp)</i> → <span class="ui">Show binds</span>: mw-ussd is bound.</li>
+      <li><span class="ui">Drop every bind</span>, wait 5 seconds, <span class="ui">Show binds</span>: <code>bound</code> is 2 again and the <code>binds</code> counter grew by 2 (re-bound). Dial on gp: it works.</li>
+      <li><span class="ui">Throttle next 2</span> makes the gateway throttle its next 2 messages; <span class="ui">Normal</span> switches that off again.</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c4-3">
+    <h3><span class="id">4.3</span>Other menus (robi, after <code>9</code> for English)</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Inputs after <code>9</code></th><th>Flow</th><th>Expect</th></tr>
+      <tr><td><code>1, 01711000002, 10, 1, 9999</code></td><td>wrong PIN</td><td>ends with a PIN error, nothing moved</td></tr>
+      <tr><td><code>1, 12345</code></td><td>invalid number</td><td>"Enter a valid mobile number", session stays open</td></tr>
+      <tr><td><code>2, 01811000001, 50, 1, 1234</code></td><td>cash out to the agent</td><td>ends with the TxnID</td></tr>
+      <tr><td><code>3, 1, 20, 1, 1234</code></td><td>recharge own number</td><td>success or processing</td></tr>
+      <tr><td><code>3, 2, 01711000999, 1, 20, 1, 1234</code></td><td>recharge another number (the <code>1</code> after the number picks the operator gp)</td><td>"Recharge failed: Subscriber not eligible for recharge"</td></tr>
+      <tr><td><code>4, 1, 1234567, 1, 1234</code></td><td>pay bill (first biller, DESCO)</td><td>"Tk 667.00 paid for DESCO bill 1234567. TxnID …"</td></tr>
+      <tr><td><code>4, 1, 1234404</code></td><td>unknown bill</td><td>bill not found</td></tr>
+    </table></div>
+    <p>Without <code>9</code> the same flows run in Bangla: check the Bangla texts and that the SMS are in
+    Bangla. Three invalid entries in a row end the session ("Too many invalid entries").</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s5">
+  <h2><span class="num">5</span> Failures, timeouts and recovery</h2>
+  <p>Page <span class="ui">Simulators &amp; faults</span>. A <b>preset</b> card is a ready-made failure: it says
+  what it proves and what to do next. Press its <span class="ui">Apply</span>, run the flow on another page,
+  check, then <span class="ui">Reset everything</span> on the card <i>Reset everything to normal</i>.</p>
+
+  <div class="case" id="c5-1">
+    <h3><span class="id">5.1</span>The presets at a glance</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Preset (title in the UI)</th><th>Then do</th><th>Expect</th></tr>
+      <tr><td>Core: the reply of the next transfer is lost (TSQ -&gt; COMPLETED)</td><td>App: P2P</td><td>5.2</td></tr>
+      <tr><td>Core: the next transfer is refused and the refusal lost (TSQ -&gt; FAILED)</td><td>App: P2P</td><td>5.3</td></tr>
+      <tr><td>Core: the next validation says insufficient balance</td><td>any money flow</td><td><code>REJECTED MW-CORE-INSUFFICIENT_BALANCE</code></td></tr>
+      <tr><td>Core: the reply of the next hold is lost</td><td>top-up or bill pay</td><td>red ✖ <code>REJECTED MW-TMO-002</code> (HTTP 504, "nothing was moved"); no balance or hold changes</td></tr>
+      <tr><td>Core: the next hold commit is refused (-&gt; MANUAL_REVIEW)</td><td>top-up</td><td>5.6 (one commit only: the next top-up completes)</td></tr>
+      <tr><td>Core: the next reversal is refused (-&gt; MANUAL_REVIEW)</td><td>ops console reversal</td><td>9.5</td></tr>
+      <tr><td>OCS (top-up) outage</td><td>top-up</td><td>after about a minute <code>UNKNOWN</code>, the amount held (a 503 is an unknown outcome, never a refusal). Reset everything: the next status inquiry finds nothing, hold released, <code>FAILED</code> (search it in the ops console)</td></tr>
+      <tr><td>OCS: every top-up times out (applied)</td><td>top-up</td><td><code>PROCESSING</code>, then <code>COMPLETED</code> after the inquiry</td></tr>
+      <tr><td>OCS: answers too late and refuses (not applied)</td><td>top-up</td><td>5.4</td></tr>
+      <tr><td>Bill aggregator: callback-only payments (callback ONCE)</td><td>bill pay <code>1234567</code></td><td>answered 202 PENDING, the signed callback completes it</td></tr>
+      <tr><td>Bill aggregator: callback-only, every callback sent twice</td><td>bill pay</td><td>balance moved once; duplicate ignored (audit trail)</td></tr>
+      <tr><td>Bill aggregator: callback-only, outcome then a stale PENDING</td><td>bill pay</td><td>stays <code>COMPLETED</code></td></tr>
+      <tr><td>Bank (C2W): normal callbacks ONCE</td><td>add money</td><td>as 3.8</td></tr>
+      <tr><td>Bank (C2W): every callback sent twice</td><td>add money</td><td>credited once</td></tr>
+      <tr><td>Bank (C2W): the callback comes 20 s late</td><td>add money</td><td>completes when the callback (or the inquiry) arrives</td></tr>
+      <tr><td>Merchant IPN endpoint fails the next 2 IPNs (503)</td><td>checkout</td><td>7.2</td></tr>
+      <tr><td>USSD SMPP gateway: drop every bind</td><td>USSD on gp</td><td>works again after a few seconds</td></tr>
+    </table></div>
+  </div>
+
+  <div class="case" id="c5-2">
+    <h3><span class="id">5.2</span>Lost core reply → status inquiry → COMPLETED</h3>
+    <ol>
+      <li>Apply <i>Core: the reply of the next transfer is lost (TSQ -&gt; COMPLETED)</i>.</li>
+      <li><span class="ui">App flows</span>: P2P to <code>01711000002</code>, Tk 10, <span class="ui">Submit</span>.</li>
+      <li>Expect a step <i>poll the transaction until it is final (was PROCESSING)</i>, then <code>COMPLETED</code>;
+        payer debited <b>once</b> (<code>-Tk 15.00</code>); SMS "processing", then "sent".</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c5-3">
+    <h3><span class="id">5.3</span>Lost refusal → status inquiry → FAILED</h3>
+    <ol>
+      <li>Apply <i>Core: the next transfer is refused and the refusal lost (TSQ -&gt; FAILED)</i>.</li>
+      <li>App: P2P. Expect <code>FAILED</code> (code <code>MW-TMO-003</code> in the ops console), no balance changed.</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c5-4">
+    <h3><span class="id">5.4</span>Partner times out and did <i>not</i> apply</h3>
+    <ol>
+      <li>Apply <i>OCS: answers too late and refuses (not applied)</i>.</li>
+      <li>App: top-up. It answers <code>PROCESSING</code>.</li>
+      <li>Open a second tab on <span class="ui">Simulators &amp; faults</span> and, about 30 s after Submit, press <span class="ui">Reset ocs</span> there (the first tab keeps waiting for the result).</li>
+      <li>Expect: the status inquiry finds nothing, the hold is released, <code>FAILED</code>.</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c5-5">
+    <h3><span class="id">5.5</span>Replay a partner callback by hand</h3>
+    <ol>
+      <li>After a bill payment (callback-only preset) or an add money: billagg or c2wbank form → <span class="ui">Show scenario and last 10 requests</span>.</li>
+      <li>Click the step <i>requests billagg received</i>; in a request's <code>body</code> copy the <code>transactionId</code> (it starts with <code>BITS</code>) into <span class="ui">Partner reference</span> under <i>Replay a callback</i>, press <span class="ui">Replay</span>: "callback replayed".</li>
+      <li>Expect no second balance change (check <span class="ui">Home</span> or <i>A wallet in core-mock</i>).</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c5-6">
+    <h3><span class="id">5.6</span>Create a MANUAL_REVIEW transaction</h3>
+    <ol>
+      <li>Apply <i>Core: the next hold commit is refused (-&gt; MANUAL_REVIEW)</i>.</li>
+      <li>App: top-up. Expect <code>MANUAL_REVIEW</code>. Keep the txnId: resolve it in the ops console (9.6).</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c5-7">
+    <h3><span class="id">5.7</span>Custom faults</h3>
+    <ul>
+      <li><b>Partner forms</b> (ocs, billagg, c2wbank): <span class="ui">Outcome (forceMode)</span> (normal, SUCCESS, BUSINESS_FAILURE, TIMEOUT,
+        SERVER_ERROR_AFTER_SEND, UNKNOWN_CODE, MALFORMED), <span class="ui">Latency ms</span>, <span class="ui">Error rate 0..1 (503 unapplied)</span>,
+        <span class="ui">Timeout hold ms</span>, outage. billagg and c2wbank also have <span class="ui">Callback</span> (NONE/ONCE/DUPLICATE/LATE/OUT_OF_ORDER)
+        and <span class="ui">Callback delay ms</span>; billagg also <i>callback-only</i>. <span class="ui">Set …</span> applies, <span class="ui">Reset …</span> clears.</li>
+      <li><b>Core fault</b>: Mode DROP_REPLY / REJECT / DELAY / DUPLICATE_REPLY, a command (PostTransfer, HoldFunds, CommitHold, … or any),
+        <span class="ui">Times</span>, <span class="ui">Reason (REJECT)</span>, <span class="ui">Delay ms (DELAY)</span>, <span class="ui">Inject</span>;
+        <span class="ui">Clear every fault</span> removes them.</li>
+      <li><b>A wallet in core-mock</b>: any wallet, <span class="ui">Show balance, hold and status</span>, click the step: <code>status</code> (ACTIVE / LOCKED), <code>balanceMinor</code> and <code>heldMinor</code> in paisa (1222642 = Tk 12,226.42).</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s6">
+  <h2><span class="num">6</span> SMS and email</h2>
+  <div class="case" id="c6-1">
+    <h3><span class="id">6.1</span>Read what was sent</h3>
+    <p>Page <span class="ui">SMS &amp; email</span>: <span class="ui">Wallet / mobile number</span> and/or
+    <span class="ui">Email address</span> (<code>customer01@example.test</code>), <span class="ui">Read</span> (newest first).
+    <span class="ui">Clear every SMS</span> empties the SMSC inbox.</p>
+    <div class="table-wrap"><table>
+      <tr><th>After</th><th>Expect</th></tr>
+      <tr><td>P2P</td><td>sender "sent … fee …"; receiver "received …"; Bangla by default; numbers masked <code>0171****001</code>; DLR <code>DELIVRD</code></td></tr>
+      <tr><td>P2P refused</td><td>sender "failed"</td></tr>
+      <tr><td>P2P with lost core reply (5.2)</td><td>"processing", then "sent"</td></tr>
+      <tr><td>cash in / cash out</td><td>both parties (cash out shows the fee)</td></tr>
+      <tr><td>top-up</td><td>payer and the recharged number</td></tr>
+      <tr><td>bill pay, add money</td><td>SMS plus an email receipt (multipart text + HTML)</td></tr>
+      <tr><td>device binding, checkout OTP</td><td>the OTP SMS</td></tr>
+      <tr><td>a top-up of <code>01711000998</code> (or <code>…995</code>), then read that number</td><td>the recharge SMS with DLR EXPIRED (none for 995); a number ending 999 would get UNDELIV but its top-up is refused</td></tr>
+    </table></div>
+    <p>Bangla SMS are <code>UCS2 · n part(s)</code>, English ones <code>GSM7</code>. A full number or a PIN
+    must never appear in an SMS.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s7">
+  <h2><span class="num">7</span> Web checkout</h2>
+  <p>Page <span class="ui">Web checkout</span>. The shop is "Demo Shop" (merchant wallet 01911000001).</p>
+  <div class="case" id="c7-1">
+    <h3><span class="id">7.1</span>Pay a checkout session</h3>
+    <ol>
+      <li>Block 1 (shop): <span class="ui">Amount (Tk)</span> <code>25</code>, <span class="ui">Page language</span> <code>en</code>, <span class="ui">Create checkout session</span>.
+        Expect HTTP 201, status <code>OPEN</code>; the step shows the signed request (Date, Digest, Signature). The <code>/checkout/page/…</code> link in the result is where a real shop would send the buyer; the MVP has no hosted HTML page, the next step plays it.</li>
+      <li>Block 2 (buyer): <span class="ui">Open the checkout page</span>: "Demo Shop Tk 25.00 (OPEN)".</li>
+      <li><span class="ui">Payer wallet</span> <code>01711000001</code>, <span class="ui">Send OTP</span>: HTTP 202, the OTP is read from the SMS and filled in.</li>
+      <li><span class="ui">PIN</span> <code>1234</code>, <span class="ui">Pay</span>: <code>result PAID</code> with a txnId; payer balance lower.</li>
+      <li>Block 3: <span class="ui">Return to the shop (signed redirect)</span>: HTTP 303 to the shop's ok URL, status PAID, <i>signature valid</i>.</li>
+      <li><span class="ui">Shop server: session status and IPNs</span>: session PAID; one IPN answered 200 with a valid signature.</li>
+    </ol>
+  </div>
+  <div class="case" id="c7-2">
+    <h3><span class="id">7.2</span>Variants</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Do</th><th>Expect</th></tr>
+      <tr><td>edit the OTP field before Pay</td><td>red ✖ <code>result 401</code> (<code>MW-AUTH-010</code> in the step), nothing paid; put the right OTP back and Pay works</td></tr>
+      <tr><td>press <span class="ui">Pay</span> twice</td><td>the second is red ✖ <code>result 409</code>, nothing paid again</td></tr>
+      <tr><td>apply <i>Merchant IPN endpoint fails the next 2 IPNs (503)</i> before Pay</td><td>IPNs answered 503, 503, then 200 (attempts 1-3; press the IPN button again after a few seconds)</td></tr>
+      <tr><td>apply <i>Core: the next validation says insufficient balance</i> before Pay</td><td>green ✔ <code>result FAILED</code> (HTTP 200: the payment was answered), nothing paid; <span class="ui">Return to the shop</span> goes to <code>…/checkout/fail</code> with status FAILED</td></tr>
+    </table></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s8">
+  <h2><span class="num">8</span> Bulk disbursement and SP query</h2>
+  <p>Page <span class="ui">Bulk portal</span>. The <span class="ui">Portal user</span> select decides who acts; the upload button names the current user (<span class="ui">Upload as …</span>).</p>
+  <div class="case" id="c8-1">
+    <h3><span class="id">8.1</span>Upload, approve, result</h3>
+    <ol>
+      <li>Portal user <code>org-maker01</code>; <span class="ui">Rows</span> <code>5</code>, <span class="ui">Tk each</span> <code>1.00</code>, <span class="ui">Generate sample</span>: a CSV <code>msisdn,amount,reference</code> appears (editable).</li>
+      <li><span class="ui">Upload as org-maker01</span>: a batch id (filled in below) and its status.</li>
+      <li>Portal user <code>org-checker01</code>, <span class="ui">Approve</span>. Press <span class="ui">Batch status</span> until <code>COMPLETED</code> (or <code>COMPLETED_WITH_EXCEPTIONS</code>).</li>
+      <li><span class="ui">Result file</span>: one line per row with its outcome. <span class="ui">Transactions</span>: the batch's child transactions. <span class="ui">List batches</span>: every batch of the org.</li>
+    </ol>
+  </div>
+  <div class="case" id="c8-2">
+    <h3><span class="id">8.2</span>Maker-checker and bad input</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Do</th><th>Expect</th></tr>
+      <tr><td>approve as <code>org-maker01</code> (own batch)</td><td>red ✖ HTTP 403 (<code>MW-AUTH-002</code>: needs the checker role); <code>org-makerchecker01</code> may not approve its own upload either: 403 <code>MW-AUTH-030</code></td></tr>
+      <tr><td>approve as <code>org-checker02</code> (other org)</td><td>HTTP 404 <code>MW-VAL-003</code>: another org cannot see the batch</td></tr>
+      <tr><td><span class="ui">Reject</span> with a <span class="ui">Reject reason</span></td><td>batch REJECTED, nothing paid</td></tr>
+      <tr><td>Rows <code>1000</code>, upload, approve as <code>org-checker01</code>, at once <span class="ui">Pause</span>, <span class="ui">Batch status</span> twice, then <span class="ui">Resume</span> (checker)</td><td>PAUSED: <code>completed</code> stops growing; after Resume it grows again until COMPLETED</td></tr>
+      <tr><td>a file over 10,000 rows (paste it; the generator stops at 1000)</td><td>refused as a whole</td></tr>
+      <tr><td>a broken CSV (e.g. <code>phone,amt</code> / <code>123,abc</code>)</td><td>red ✖ HTTP 400 <code>MW-VAL-031</code> with the row details</td></tr>
+    </table></div>
+  </div>
+  <div class="case" id="c8-3">
+    <h3><span class="id">8.3</span>Service provider (SP) query</h3>
+    <ol>
+      <li>A service provider is an organisation. ORG002 collects for biller DESCO and merchant Demo Shop (01911000001).
+        Make a DESCO bill payment or a merchant payment first (3.5, 3.7).</li>
+      <li>Portal user <code>org-checker02</code>, <b>empty</b> the <span class="ui">Batch id</span> field (it is pre-filled after an upload), <span class="ui">Transactions</span>.
+        Click the step: the BILL_PAY and MERCHANT_PAY transactions with <code>"role": "PAYEE"</code>.</li>
+      <li>As <code>org-checker01</code> with a batch id: that batch's children with <code>"role": "INITIATOR"</code>.</li>
+      <li>Negative: <code>sp-viewer01</code> belongs to no organisation: red ✖ HTTP 403 <code>MW-AUTH-002</code> "Token carries no organisation".</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s9">
+  <h2><span class="num">9</span> Ops console</h2>
+  <p><a href="https://localhost/console">https://localhost/console</a>. Menu: <span class="ui">Transactions</span>
+  · <span class="ui">Approvals</span> · <span class="ui">Wallets</span> · <span class="ui">Partners</span> ·
+  <span class="ui">USSD menus</span> · <span class="ui">Templates</span>. Run a few app flows first so there are
+  transactions. Every change follows <b>maker-checker</b>: the maker requests, a different checker approves;
+  nothing is applied before the approval.</p>
+  <div class="flow"><span>maker: Request …</span><b>→</b><span>Approvals: PENDING</span><b>→</b><span>checker: Approve</span><b>→</b><span>applied</span></div>
+  <p>Window A: <code>seed-ops-maker</code>; window B (private): <code>seed-ops-checker</code> (1.3).</p>
+
+  <div class="case" id="c9-1">
+    <h3><span class="id">9.1</span>Sign in and out</h3>
+    <ol>
+      <li>Sign in as in 1.3. The header shows the user and roles.</li>
+      <li><span class="ui">Sign out</span>: back on the login page; <span class="ui">Sign in with Keycloak</span> asks for the password again (the Keycloak session ended too).</li>
+      <li>A session lasts up to 8 hours; after that the login page says "Your session has ended. Sign in again."</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c9-2">
+    <h3><span class="id">9.2</span>Search transactions</h3>
+    <ol>
+      <li><span class="ui">Transactions</span>: <span class="ui">MSISDN</span> <code>01711000001</code>, <span class="ui">Search</span>. The list shows masked numbers.</li>
+      <li>Try each filter: <span class="ui">Transaction ID</span>, <span class="ui">Partner ref</span> (from a top-up), <span class="ui">Status</span> (e.g. COMPLETED), <span class="ui">Type</span> (e.g. TOPUP), <span class="ui">From</span>/<span class="ui">To</span> (UTC days).</li>
+      <li>More than 50 hits: <span class="ui">Next</span> / <span class="ui">Previous</span>.</li>
+      <li>Negative: an invalid MSISDN shows an inline <code>field: issue</code> list; nothing matching shows "No transactions found".</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c9-3">
+    <h3><span class="id">9.3</span>Transaction detail</h3>
+    <ol>
+      <li>Open a COMPLETED top-up (or use <span class="ui">open in the ops console ↗</span> in the test console).</li>
+      <li>Expect the summary, the saga <b>timeline</b> (state changes and core commands), the <b>partner calls</b>
+        (top-up, bill pay, add money only; a P2P shows "No partner calls."), and the <b>audit trail</b>.</li>
+      <li>Unknown id in the URL: <code>MW-VAL-003</code>.</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c9-4">
+    <h3><span class="id">9.4</span>Audited MSISDN reveal</h3>
+    <ol>
+      <li>Sign in as <code>seed-ops-compliance</code>, open any transaction, press <span class="ui">Reveal MSISDN (audited)</span>.</li>
+      <li>Expect the full number with "this view was audited" and <span class="ui">Mask again</span>; the audit trail gets <code>admin.txn.msisdn.revealed</code>.</li>
+      <li>As <code>seed-ops-viewer</code> or <code>seed-ops-maker</code>: no reveal button.</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c9-5">
+    <h3><span class="id">9.5</span>Reversal</h3>
+    <ol>
+      <li>Maker: open a COMPLETED P2P, type a <span class="ui">Reason</span>, <span class="ui">Request reversal</span>.
+        Expect Approvals with a PENDING row, change <code>COMPLETED -&gt; REVERSING</code>, banner "Request filed. Nothing is applied until…".</li>
+      <li>Maker sees "your request: another checker decides" and no Approve button.</li>
+      <li>Back on the transaction: the actions panel says the request is waiting for approval.</li>
+      <li>Checker: <span class="ui">Approvals</span> → <span class="ui">Approve</span>: "Decision recorded."</li>
+      <li>Reload the transaction: status <code>REVERSED</code> (the original itself; no separate transaction is
+        created). The approval row shows <code>reversal &lt;id&gt;</code>: the core's booking reference; the
+        <i>Reversed by</i> link on the transaction opens that id and answers <code>MW-VAL-003</code> (known, not a
+        transaction). In the test console the balances are restored (<i>A wallet in core-mock</i>).</li>
+      <li><b>Reject</b> instead (with a <span class="ui">Rejection reason</span>): status stays COMPLETED.</li>
+      <li><b>Core refuses</b>: apply preset <i>Core: the next reversal is refused (-&gt; MANUAL_REVIEW)</i>, request and approve a
+        reversal: the transaction goes to <code>MANUAL_REVIEW</code> with an audit entry. Resolve it as in 9.6 (force commit keeps it as paid).</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c9-6">
+    <h3><span class="id">9.6</span>MANUAL_REVIEW: force commit, force release, manual TSQ</h3>
+    <ol>
+      <li>Create one (5.6), open it as the maker. Buttons: <span class="ui">Request manual TSQ</span>,
+        <span class="ui">Request force commit</span>, <span class="ui">Request force release</span>.</li>
+      <li>Reason, <span class="ui">Request force commit</span>; checker approves. Expect <code>COMPLETED</code>, money moved once, no hold left.</li>
+      <li>Second MANUAL_REVIEW: <span class="ui">Request force release</span>, approve. Expect <code>FAILED</code>, hold released.</li>
+      <li>Manual TSQ on MANUAL_REVIEW: approved, the transaction <b>stays</b> MANUAL_REVIEW (an inquiry never settles it alone); you still force commit or release.</li>
+      <li>An <code>UNKNOWN</code> transaction (e.g. the <code>20.99</code> top-up of 3.6) offers only <span class="ui">Request manual TSQ</span>. Approved, one
+        status inquiry is sent now (a new row in <i>Partner calls</i>); while the partner still answers an unknown code it stays UNKNOWN.</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c9-7">
+    <h3><span class="id">9.7</span>Approvals page rules</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Do</th><th>Expect</th></tr>
+      <tr><td>filter PENDING / APPROVED / REJECTED / EXPIRED / any, <span class="ui">Show</span></td><td>the matching requests (first 100)</td></tr>
+      <tr><td>open a transaction or partner with a pending request</td><td>the action form is replaced by "… requested by … waiting for approval in Approvals" (a second request through the API gets <code>MW-VAL-031</code>)</td></tr>
+      <tr><td>a maker approving own request (via the API)</td><td><code>MW-AUTH-030</code></td></tr>
+      <tr><td>approve a request already decided in the other window</td><td><code>MW-VAL-033</code></td></tr>
+      <tr><td>a request older than 72 h</td><td>EXPIRED; approving it gives <code>MW-VAL-032</code></td></tr>
+    </table></div>
+  </div>
+
+  <div class="case" id="c9-8">
+    <h3><span class="id">9.8</span>Wallet unlock</h3>
+    <ol>
+      <li>Test console App: type P2P, user <code>customer02</code>, counterparty <code>01711000001</code>, PIN <code>9999</code>, <span class="ui">Submit</span> <b>five times</b>.
+        Then PIN <code>1234</code>: <code>MW-CORE-ACCOUNT_LOCKED</code>. <i>A wallet in core-mock</i> <code>01711000002</code>: LOCKED.</li>
+      <li>Ops console <span class="ui">Wallets</span> (maker): <span class="ui">Wallet (MSISDN)</span> <code>01711000002</code>, Reason, <span class="ui">Request unlock</span>. Checker approves (<code>LOCKED -&gt; ACTIVE</code>).</li>
+      <li>The console does not show the core's answer: check <i>A wallet in core-mock</i>: ACTIVE. A P2P with <code>1234</code> completes.</li>
+      <li>Negative: a malformed number gives <code>MW-VAL-001</code>; a viewer sees "Only an ops-maker files unlock requests."</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c9-9">
+    <h3><span class="id">9.9</span>Partners</h3>
+    <ol>
+      <li><span class="ui">Partners</span>: the partners managed here (<code>ocs</code> on the dev stack) with state, timeouts, version, changed and approved by.</li>
+      <li>Open <code>ocs</code>, Reason, <span class="ui">Request disable</span>; checker approves (<code>enabled=true -&gt; enabled=false</code>). Version + 1. A test console top-up now fails at once: <code>REJECTED MW-SYS-PARTNER_DISABLED</code>.</li>
+      <li><span class="ui">Request enable</span> the same way.</li>
+      <li>Timeouts form: <span class="ui">Call timeout</span> e.g. <code>8000</code>, Reason, <span class="ui">Request timeouts</span>, approve: new version. Limits: whole ms; connect and call 1-120000; read 1-125000 and at least the call timeout.</li>
+      <li><code>ops-admin01</code> (integration-maker) can also request partner changes. The config never shows a secret, only its reference name.</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c9-10">
+    <h3><span class="id">9.10</span>USSD menus</h3>
+    <ol>
+      <li><span class="ui">USSD menus</span>: menu <code>main</code>, its versions with their go-live per MNO (the live one is the newest whose go-live has passed; the e2e suite publishes versions that go live in 2099); <span class="ui">edit from</span> a version.</li>
+      <li>Change a node's English text. The warnings box should say "No problems found".</li>
+      <li><b>Preview walk</b> (any role, nothing is sent): <span class="ui">Dialling MSISDN (sample)</span>, <span class="ui">Language</span>, <span class="ui">Action outcome</span>, <span class="ui">Dial</span>, then reply: e.g. en, <code>1, 01711000002, 10, 1, 1234</code> ends "Money sent. TxnID PREVIEW-TXN"; the PIN shows <code>****</code>.</li>
+      <li>Maker: MNOs gp / robi / bl / teletalk (all ticked), go-live per MNO (empty = at approval), Reason, <span class="ui">Request publish</span>. Checker approves (<code>vN -&gt; vM</code>).</li>
+      <li>Test console USSD, dial on robi, <code>9</code>: the new text. A session already open keeps the old one.</li>
+      <li>Undo: <span class="ui">edit from</span> the previous version and publish it again (there is no rollback button).</li>
+      <li>Negative: break the tree in the JSON section, <span class="ui">Apply JSON</span>, request: <code>MW-VAL-040</code> with details.</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c9-11">
+    <h3><span class="id">9.11</span>Templates (SMS and email)</h3>
+    <ol>
+      <li><span class="ui">Templates</span>: Code <code>TXN_P2P_RECEIVED</code>, Channel <code>SMS</code>, Locale <code>bn</code> (SMS are Bangla by default), <span class="ui">Open</span>: versions and <i>Live text</i>.
+        Note: <i>Live text</i> shows the newest published version even when its <i>Valid from</i> is still ahead (the e2e suite publishes one valid from 2099); the SMS uses the newest one already valid.</li>
+      <li>Add a marker such as <code>TEST1</code> at the end of the Body. The live preview shows masked sample values and the SMS size (GSM-7 / UCS-2, parts).</li>
+      <li>Maker: <span class="ui">Valid from</span> empty, Reason, <span class="ui">Request publish</span>. Checker approves.</li>
+      <li>Test console: a P2P to <code>01711000002</code>, then <span class="ui">SMS &amp; email</span> for <code>01711000002</code>: the received SMS ends with <code>TEST1</code>.</li>
+      <li>Reject a second proposal: that version never goes live.</li>
+      <li>Put the seeded text back afterwards: publish <code>আপনি {{counterparty}} নম্বর থেকে ৳{{amount}} পেয়েছেন। TrxID {{txnId}}</code> the same way.</li>
+      <li>Channel <code>EMAIL</code>: Subject and HTML body fields appear. A template with problems cannot be submitted (<code>MW-VAL-040</code>).</li>
+    </ol>
+  </div>
+
+  <div class="case" id="c9-12">
+    <h3><span class="id">9.12</span>Viewer is read only</h3>
+    <p>Sign in as <code>seed-ops-viewer</code>: every page reads, but no Request / Approve / Reveal button exists anywhere.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s10">
+  <h2><span class="num">10</span> Logs and health (observability)</h2>
+  <p>The MVP has <b>no dashboards</b> (no Grafana, Prometheus UI, Kafka UI). The business view of a transaction
+  is the ops console's timeline and audit trail (9.3). The technical view is the services' JSON logs.</p>
+  <h3>Follow one transaction</h3>
+  <div class="cmd"><pre><span class="c"># paste the txnId from a test console result</span>
+docker compose -f deploy/docker-compose.yml logs --no-log-prefix mw-app-gateway mw-orchestrator mw-core-mock mw-notify | grep '&lt;txnId&gt;'</pre></div>
+  <p>Each line is one JSON event with <code>ts</code>, <code>level</code>, <code>service</code>,
+  <code>correlationId</code>, <code>txnId</code>, <code>event</code> (e.g. <code>txn.state.changed</code>,
+  <code>partner.call.completed</code>), <code>errorCode</code>, <code>durationMs</code>. Check: numbers are
+  masked (<code>0171****001</code>), no PIN ever appears.</p>
+  <h3>Health</h3>
+  <div class="cmd"><pre><span class="c"># every container and its health</span>
+docker compose -f deploy/docker-compose.yml ps
+<span class="c"># live checks: gateway, Kafka, PostgreSQL, Keycloak tokens, OpenBao ...</span>
+make smoke
+<span class="c"># every container log: fails on a PIN or an unmasked MSISDN / NID</span>
+make log-scan</pre></div>
+  <p>In the browser: <a href="https://localhost/healthz">https://localhost/healthz</a> (gateway) and
+  <a href="https://localhost/console/api/health">https://localhost/console/api/health</a> (<code>{"status":"UP"}</code>).
+  Log events that need a person are listed in the <a href="runbook.md">runbook</a>.</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="s11">
+  <h2><span class="num">11</span> Not in the MVP</h2>
+  <p>In the spec's catalogue but <b>not built</b>, so nothing to test yet:</p>
+  <ul>
+    <li>Send money to bank (W2B) via a partner bank or NPSB</li>
+    <li>NPSB / BanglaQR interoperable QR payments</li>
+    <li>Bank account verification / lookup and card payments</li>
+    <li>Checkout cancel from the hosted page, and a single portal transaction lookup (the API exists, the test console has no button)</li>
+    <li>Maker withdrawing their own request; partner onboarding or full config replace in the console</li>
+    <li>Monitoring dashboards and alert rules</li>
+    <li>Live partner integrations: every partner is a simulator</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<section id="s12">
+  <h2><span class="num">12</span> Troubleshooting</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Symptom</th><th>Fix</th></tr>
+    <tr><td><code>/tester</code> answers 404 or a JSON error</td><td>a plain <code>make up</code> removed the test routes: <code>make tester</code></td></tr>
+    <tr><td>Home shows ✖ "test-only routes are on"</td><td><code>make tester</code></td></tr>
+    <tr><td>Everything times out or fails oddly</td><td>a preset or fault is still on: Home → <span class="ui">Reset every simulator and core fault</span></td></tr>
+    <tr><td>Timeout tests take minutes</td><td>the stack runs production timers: <code>make up TIMERS=fast</code>, then <code>make tester</code></td></tr>
+    <tr><td><code>MW-CORE-LIMIT_EXCEEDED_DAILY</code></td><td>the wallet spent Tk 15,000 today (UTC): use customer02, or start fresh (0.1)</td></tr>
+    <tr><td><code>MW-CORE-ACCOUNT_LOCKED</code></td><td>five wrong PINs: unlock (9.8)</td></tr>
+    <tr><td>A submit says no binding OTP arrived</td><td>mw-notify or the simulators are down: <code>docker compose -f deploy/docker-compose.yml ps</code></td></tr>
+    <tr><td>Console sign-in: "Invalid authenticator code"</td><td>the code was used already or expired: wait for the next one (<code>make totp</code>); with your own app use FreeOTP/Aegis (SHA-256)</td></tr>
+    <tr><td>Console sign-in refused although the password and code are right</td><td>5 wrong tries lock the user for 1-15 minutes: wait, then try again</td></tr>
+    <tr><td><code>make totp</code>: "no pre-set secret"</td><td>that user enrols an app (1.4); use a <code>seed-ops-*</code> user instead</td></tr>
+    <tr><td>Console login loops back to Keycloak</td><td>the console only works on <code>https://localhost</code> (port 443)</td></tr>
+    <tr><td><code>make api-test</code> fails a device test after you used the test console</td><td>each wallet has one active device; rerun the suite (it binds again)</td></tr>
+  </table></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="s13">
+  <h2><span class="num">13</span> The same checks, automated</h2>
+  <p>Each section has automated twins: the Newman API suite (<code>make api-test FOLDER=&lt;folders&gt;</code>, see
+  <code>tests/api/README.md</code>), the test console's browser suite (<code>make tester-e2e</code>) and the
+  ops console's browser suite (<code>make ui-e2e</code>).</p>
+  <div class="table-wrap"><table>
+    <tr><th>Section</th><th><code>make api-test FOLDER=</code></th></tr>
+    <tr><td>3.1 device binding</td><td><code>02</code></td></tr>
+    <tr><td>3.2 P2P</td><td><code>01</code></td></tr>
+    <tr><td>3.3, 3.4 cash</td><td><code>03</code></td></tr>
+    <tr><td>3.5 merchant</td><td><code>04</code></td></tr>
+    <tr><td>3.6 top-up</td><td><code>05</code></td></tr>
+    <tr><td>3.7, 5.5 bill pay</td><td><code>06, 07</code></td></tr>
+    <tr><td>3.8 add money</td><td><code>08</code></td></tr>
+    <tr><td>4 USSD</td><td><code>18, 19, 20</code></td></tr>
+    <tr><td>6 notifications</td><td><code>10, 11</code></td></tr>
+    <tr><td>7 checkout</td><td><code>09</code></td></tr>
+    <tr><td>8 bulk</td><td><code>21, 22, 23</code></td></tr>
+    <tr><td>9.2, 9.3 search and timeline</td><td><code>14</code></td></tr>
+    <tr><td>9.5 reversal</td><td><code>12, 13</code></td></tr>
+    <tr><td>9.8 wallet unlock</td><td><code>16</code></td></tr>
+    <tr><td>9.9 partners</td><td><code>15</code></td></tr>
+    <tr><td>9.10, 9.11 menus and templates</td><td><code>17</code></td></tr>
+  </table></div>
+</section>
+
+</main>
+<script>
+  (function () {
+    document.querySelectorAll('.cmd').forEach(function (block) {
+      var pre = block.querySelector('pre');
+      if (!pre) return;
+      var btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'copy'; btn.textContent = 'Copy';
+      btn.addEventListener('click', function () {
+        var text = Array.prototype.map.call(pre.childNodes, function (n) {
+          return n.nodeType === 1 && n.classList.contains('c') ? '' : n.textContent;
+        }).join('').split('\n').map(function (l) { return l.replace(/\s+$/, ''); })
+          .filter(function (l) { return l !== ''; }).join('\n');
+        function done(ok) {
+          btn.textContent = ok ? 'Copied' : 'Select and copy';
+          btn.classList.toggle('done', ok);
+          setTimeout(function () { btn.textContent = 'Copy'; btn.classList.remove('done'); }, 1500);
+        }
+        try { navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); }); }
+        catch (e) { done(false); }
+      });
+      block.appendChild(btn);
+    });
+
+    // Checklist ticks, kept per browser (a convenience only; the page works without storage).
+    var KEY = 'mw-testing-guide-ticks';
+    var ticks = {};
+    try { ticks = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { ticks = {}; }
+    var rows = document.querySelectorAll('#checks tbody tr');
+    var count = document.getElementById('tick-count');
+    function save() { try { localStorage.setItem(KEY, JSON.stringify(ticks)); } catch (e) {} }
+    function update() {
+      var n = 0; for (var k in ticks) if (ticks[k]) n++;
+      count.textContent = n + ' of ' + rows.length + ' done';
+    }
+    rows.forEach(function (row) {
+      var id = row.querySelector('a').getAttribute('href').slice(1);
+      var box = document.createElement('input');
+      box.type = 'checkbox'; box.checked = !!ticks[id];
+      box.setAttribute('aria-label', 'done: ' + row.children[1].textContent);
+      box.addEventListener('change', function () { ticks[id] = box.checked; save(); update(); });
+      row.querySelector('.tick').appendChild(box);
+    });
+    document.getElementById('tick-clear').addEventListener('click', function () {
+      ticks = {}; save();
+      document.querySelectorAll('#checks input').forEach(function (b) { b.checked = false; });
+      update();
+    });
+    update();
+  })();
+</script>
+</body>
+</html>

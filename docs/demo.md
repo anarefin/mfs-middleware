@@ -24,7 +24,7 @@ is in `tests/api/README.md`. A failing request prints the check, the call and th
 the JUnit report is tests/api/build/newman-report.xml.
 
 To show a feature by hand instead (a browser, no API knowledge needed), run `make tester` and follow
-[docs/testing-guide.md](testing-guide.md): the test console plays the app, a USSD handset, the
+[docs/testing-guide.html](testing-guide.html): the test console plays the app, a USSD handset, the
 partners, the checkout shop and the org portal; `make tester-e2e` is its browser suite.
 
 ## M0 Foundation

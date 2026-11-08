@@ -30,7 +30,7 @@ A browser page cannot call the APIs itself: APISIX grants no CORS, the test-only
   addresses), present only while `apisix-init` ran with `MW_E2E_ROUTES=1` (`make tester`); a plain
   `make up` removes it. It has no sign-in.
 - Ops features are not repeated: they stay in the admin console; the test console links each
-  transaction to it. `docs/testing-guide.md` walks through every feature with both.
+  transaction to it. `docs/testing-guide.html` walks through every feature with both.
 
 ## Consequences
 

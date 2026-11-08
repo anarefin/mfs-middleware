@@ -25,4 +25,4 @@ info "tester: docker compose --profile tester up -d --wait mw-test-console"
 docker compose "${DC_F[@]}" up -d --no-deps --wait --wait-timeout "${MW_UP_TIMEOUT:-120}" mw-test-console \
   || die "tester: mw-test-console did not come up healthy (make build M=mw-test-console; docker compose logs mw-test-console)"
 port="${MW_HTTPS_PORT:-}"
-info "tester: open https://localhost${port:+:$port}/tester (ops console: https://localhost${port:+:$port}/console); guide: docs/testing-guide.md"
+info "tester: open https://localhost${port:+:$port}/tester (ops console: https://localhost${port:+:$port}/console); guide: docs/testing-guide.html"

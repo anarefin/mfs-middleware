@@ -18,8 +18,8 @@ export const PORTAL_PERSONAS: readonly PortalPersona[] = [
   { user: "org-maker01", label: "org-maker01 (ORG001 maker: uploads)" },
   { user: "org-checker01", label: "org-checker01 (ORG001 checker: approves)" },
   { user: "org-makerchecker01", label: "org-makerchecker01 (ORG001 maker and checker)" },
-  { user: "org-checker02", label: "org-checker02 (ORG002 checker: other org)" },
-  { user: "sp-viewer01", label: "sp-viewer01 (service provider: SP query)" },
+  { user: "org-checker02", label: "org-checker02 (ORG002 checker: other org; SP query as payee)" },
+  { user: "sp-viewer01", label: "sp-viewer01 (no organisation: refused, 403)" },
 ];
 
 /** Every wallet the home page shows (core-mock's seed). */

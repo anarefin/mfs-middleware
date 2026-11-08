@@ -12,7 +12,7 @@ mocked core (`mw-core-mock`) and simulated partners (`mw-simulators`).
 - Running the MVP host: [docs/runbook.md](docs/runbook.md).
 - Milestone demos M0–M6: [docs/demo.md](docs/demo.md).
 - Testing every feature by hand from a browser (app flows, USSD, bank, failures, checkout, bulk,
-  ops console), step by step: [docs/testing-guide.md](docs/testing-guide.md), with the dev/test-only
+  ops console), step by step: [docs/testing-guide.html](docs/testing-guide.html), with the dev/test-only
   test console (`make tester`, https://localhost/tester).
 - Running the full stack on a laptop with plain Docker Compose and seed data, then testing it
   (BitsPay pattern): [deploy/RUNNING.html](deploy/RUNNING.html).
@@ -112,7 +112,7 @@ Then:
   `make up TIMERS=fast` (short status-inquiry and retry timers) and run `make api-test`. Then search the console for MSISDN `01711000001`.
 - **Test every feature by hand**: `make tester` starts the dev/test-only test console at
   https://localhost/tester (it plays the app, a USSD handset, the partners, the checkout shop and the
-  org portal); [docs/testing-guide.md](docs/testing-guide.md) walks through every feature with it.
+  org portal); [docs/testing-guide.html](docs/testing-guide.html) walks through every feature with it.
 - **Stop**: `make down` keeps the data; `make reset` drops every container and volume (a fresh
   start next time).
 
@@ -201,8 +201,10 @@ manifest in step with every message change. The admin console is tested with `pn
 | `make edge-test` | APISIX edge policies: 401/400/413/429 envelopes, header stripping, correlation ID, quotas, idempotent apply |
 | `make api-test [FOLDER=] [ALL=1]` | Newman API suite in `tests/api` (`tests/api/README.md`) against the running stack (`make up TIMERS=fast && make seed` first; under 10 minutes): every folder but `90 Slow`, or the ones in `FOLDER` (numbers or names, comma-separated, e.g. `make api-test FOLDER="01, 03"`); `ALL=1` adds `90 Slow` |
 | `make ui-e2e [GREP=]` | admin console Playwright suite (`ui/mw-admin-ui/e2e`) against the running, seeded stack (`make up && make seed` first): real Keycloak logins as `seed-ops-maker` / `-checker` / `-viewer`, the real mw-admin-api behind APISIX; `pnpm install --frozen-lockfile` and the Chromium download when needed; credentials from `deploy/.env`, personas from `build/seed/manifest.json`; `GREP=@approvals` filters by spec tag (`@smoke`, `@console`, `@approvals`, `@partners`, `@ussd`, `@templates`); stops in global setup, with the fix, when the stack is not ready; idempotent (run it twice) |
-| `make tester` | start the dev/test-only test console (`ui/mw-test-console`, ADR D17) on the running stack: re-applies the test-only gateway routes (`MW_E2E_ROUTES=1`, its own route `/tester` included), starts `mw-test-console` (profile `tester`, about 192 MiB outside the core budget) and prints https://localhost/tester; a later plain `make up` removes the route again; walkthrough in [docs/testing-guide.md](docs/testing-guide.md) |
+| `make tester` | start the dev/test-only test console (`ui/mw-test-console`, ADR D17) on the running stack: re-applies the test-only gateway routes (`MW_E2E_ROUTES=1`, its own route `/tester` included), starts `mw-test-console` (profile `tester`, about 192 MiB outside the core budget) and prints https://localhost/tester; a later plain `make up` removes the route again; walkthrough in [docs/testing-guide.html](docs/testing-guide.html) |
 | `make tester-e2e [GREP=]` | the test console's Playwright suite (`ui/mw-test-console/e2e`) against it on the running, seeded stack (`make up TIMERS=fast && make seed && make tester` first): app flows with balances, USSD over HTTP and SMPP, a lost core reply resolved by the status inquiry, checkout with IPN, a bulk batch |
+| `make creds` | print every login and key a tester needs on the dev/test stack (ops, app and portal users and their passwords, Keycloak admin, the OpenBao root token while the stack is up, APISIX keys, partner and merchant signing secrets, USSD gateway passwords), read from `deploy/.env`; walkthrough in [docs/testing-guide.html](docs/testing-guide.html) section 1 |
+| `make totp [PERSONA=seed-ops-maker]` | the current 6-digit ops console one-time code of a persona with a pre-set secret (`seed-ops-maker`, `seed-ops-checker`, `seed-ops-viewer`, `seed-ops-compliance`, `ops-e2e-*`): HmacSHA256 over `KC_OPS_TEST_TOTP_SECRET`, so no authenticator app is needed |
 | `make chaos [TARGETS=]` | kill every `mw-*` container, then `kafka` and `postgres`, mid-flow under load; checks no transaction is left non-terminal and the core-mock ledger balances (criterion 3); report in `build/chaos/` |
 | `make perf` | Gatling mix at 100 TPS with the p95 middleware-overhead check (criterion 7, `tests/perf/README.md`); report under `tests/perf/build/reports/` |
 | `make security [M=]` | gitleaks, CycloneDX SBOM + trivy for every module and image; with the stack up also the ZAP baseline and the container log scan. `SECURITY_LIVE=1 make security` makes the live stages mandatory (the milestone gate). Decisions in `docs/security-findings.md` |

@@ -4,7 +4,7 @@ Test console (ADR D17): **dev/test only**. A Next.js 16.4.1 app (App Router, Rea
 strict, pnpm) that plays every outside party of the middleware against the local stack, so each
 feature can be tested by hand from a browser: the mobile app (customer, agent, merchant), a USSD
 handset, the partners (OCS, bill aggregator, C2W bank: their simulators), the checkout merchant and
-payer, and the org portal. The step-by-step guide that uses it is `docs/testing-guide.md`. Ops
+payer, and the org portal. The step-by-step guide that uses it is `docs/testing-guide.html`. Ops
 features stay in the admin console (`ui/mw-admin-ui`, `/console`).
 
 A UI module, not a Gradle build (like mw-admin-ui): the Gradle scripts do not see it. Nothing outside

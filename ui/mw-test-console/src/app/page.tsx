@@ -33,7 +33,7 @@ export default async function Home() {
         (customer, agent, merchant), a USSD handset (robi over HTTP, gp over SMPP), the partners (OCS, bill aggregator, bank),
         the checkout merchant and payer, and the org portal. Ops features (search, timeline, reversal, approvals, partners,
         menus, templates, wallet unlock) are in the <a href="/console" target="_blank" rel="noreferrer">ops console</a>.
-        The step-by-step guide is <code>docs/testing-guide.md</code>.
+        The step-by-step guide is <code>docs/testing-guide.html</code>.
       </p>
       <div className="grid">
         <section className="panel">
