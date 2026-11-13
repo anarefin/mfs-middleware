@@ -1,4 +1,4 @@
-// From bulk-execution.feature: the 10,000-row payout still takes minutes with TIMERS=fast (200
+// From bulk-execution.feature: the 10,000-row payout still takes minutes with the test timers (200
 // rows/s plus settlement), so it runs only with ALL=1 (tests/api/run.sh --all).
 export default [
   {

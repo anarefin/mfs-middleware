@@ -6,8 +6,9 @@ build/
 .DS_Store
 node_modules/
 
-# generated dev credentials (scripts/gen-dev-env.sh)
+# local dev settings (a copy of deploy/dev.env.defaults)
 /deploy/.env
+/deploy/.env.*
 # the pre-ticket-56 layout: old checkouts may still hold generated dev secrets there
 /deploy/compose/
 

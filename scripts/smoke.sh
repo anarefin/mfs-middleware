@@ -3,7 +3,7 @@
 # Usage: scripts/smoke.sh        (honours COMPOSE_PROJECT_NAME, default project "mfs-mw")
 #
 # Checks: every platform container healthy and the one-shots exited 0; only APISIX
-# publishes a host port; every topic in deploy/kafka/topics.txt exists with RF 1 and the
+# publishes a port beyond 127.0.0.1; every topic in deploy/kafka/topics.txt exists with RF 1 and the
 # planned partition count; Kafka produce/consume; a PostgreSQL connection; a Valkey ping;
 # Keycloak in production mode with its realms in PostgreSQL; a Keycloak token for every test user and the partner client (ops users: refused until
 # TOTP is enrolled, and the ops browser flow requires OTP); an OpenBao KV read; the
@@ -13,14 +13,14 @@ set -uo pipefail
 
 [ -f "$STACK_FILE" ] || die "smoke: deploy/docker-compose.yml does not exist"
 command -v jq >/dev/null || die "smoke: jq is required"
-"$(dirname "$0")/gen-dev-env.sh"
+ensure_env
 stack_compose
 
 CURL_IMAGE="curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93"
 LONG_RUNNING="kafka postgres valkey keycloak openbao etcd apisix greenmail"
 ONE_SHOT="kafka-init etcd-init apisix-init"
 
-# Generated credentials (gitignored .env written by gen-dev-env.sh)
+# Generated credentials (gitignored deploy/.env, a copy of deploy/dev.env.defaults)
 set -a; . "$STACK_ENV"; set +a
 # resolve VALUE: a realm file's ${VAR} placeholder -> its generated value (as Keycloak's
 # import does); any other value unchanged
@@ -65,8 +65,10 @@ for s in $ONE_SHOT; do
 done
 
 # ---- published host ports ----
-published="$(printf '%s' "$ps_json" | jq -r '.[] | .Service as $s | (.Publishers // [])[] | select(.PublishedPort != 0) | "\($s):\(.TargetPort)"' | sort -u)"
-[ "$published" = "apisix:9443" ] && ok "only apisix:9443 is published" || ko "only apisix:9443 is published (got: $(echo $published))"
+# the edge (apisix:9443) is the only port open beyond the laptop; every other published port (the
+# per-service and platform ports of the dev stack, ADR D3 amendment) is bound to 127.0.0.1
+public="$(printf '%s' "$ps_json" | jq -r '.[] | .Service as $s | (.Publishers // [])[] | select(.PublishedPort != 0) | select(.URL != "127.0.0.1") | "\($s):\(.TargetPort)"' | sort -u)"
+[ "$public" = "apisix:9443" ] && ok "only apisix:9443 is published beyond 127.0.0.1" || ko "only apisix:9443 is published beyond 127.0.0.1 (got: $(echo $public))"
 
 # ---- Kafka topics ----
 topics_check() {

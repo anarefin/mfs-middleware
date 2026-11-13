@@ -161,7 +161,7 @@ test_readme_has_a_clean_host_quick_start() {
   grep -qE 'JDK 25' "$r" || fail "README does not name JDK 25 (bootJar runs on the host)"
   grep -qE 'Docker' "$r" || fail "README does not name Docker"
   grep -qF './gradlew clean build' "$r" || fail "README quick start lacks ./gradlew clean build"
-  grep -qF 'scripts/gen-dev-env.sh' "$r" || fail "README quick start lacks scripts/gen-dev-env.sh"
+  grep -qF 'cp dev.env.defaults .env' "$r" || fail "README quick start lacks cp dev.env.defaults .env"
   grep -qE 'docker compose .*up' "$r" || fail "README quick start lacks docker compose ... up"
   grep -qF 'scripts/smoke.sh' "$r" || fail "README quick start lacks scripts/smoke.sh"
   grep -qF 'https://localhost/console' "$r" || fail "README does not point at the admin console"

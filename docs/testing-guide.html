@@ -178,12 +178,12 @@ Every login is printed where a step needs it; <a href="#c1-0">1.0 Logins at a gl
   <p>Prerequisites as in the <a href="../README.md">README</a> (Docker, JDK 25, Node.js 24 + pnpm). From the repository folder:</p>
   <div class="cmd"><pre><span class="c"># the service jars the images copy (./gradlew clean build also runs every test)</span>
 ./gradlew bootJar
-<span class="c"># dev credentials in deploy/.env (existing values are kept)</span>
-scripts/gen-dev-env.sh
+<span class="c"># the dev settings: fixed fake credentials and short timers (once; the scripts also copy it when deploy/.env is missing)</span>
+(cd deploy &amp;&amp; cp dev.env.defaults .env)
 <span class="c"># fresh volumes: seeded balances, daily limits, users</span>
 deploy/reset.sh
-<span class="c"># build the images, start the stack with short timeouts (timeout tests take seconds, not minutes) and seed it</span>
-(cd deploy &amp;&amp; docker compose --env-file .env --env-file test-timers.env --profile core --profile seed up -d --build)
+<span class="c"># build the images, start the stack and seed it (Compose reads deploy/.env itself; with its short timers, timeout tests take seconds, not minutes)</span>
+(cd deploy &amp;&amp; docker compose --profile core --profile seed up -d --build)
 <span class="c"># waits for the seeder (users, wallets, partners, templates): ends with "exited with status code 0"</span>
 (cd deploy &amp;&amp; docker compose --profile core --profile seed wait mw-seeder)
 <span class="c"># the test console image (first time and after a test console change)</span>
@@ -254,11 +254,11 @@ scripts/creds.sh</pre></div>
   <h2><span class="num">1</span> Credentials and keys</h2>
   <p>The logins a tester types are <b>fixed, well-known test values</b>, the same on every machine: they are
   written below at every step that needs them. They are dev/test values only, never real secrets. The
-  other keys (database, HMAC and gateway secrets) are random per machine; <code>scripts/creds.sh</code> prints them.</p>
-  <div class="warn">The fixed values hold on a stack started after <code>deploy/reset.sh</code>. A stack whose
-  <code>deploy/.env</code> was created before keeps its old random values (the volumes were set up with them):
-  <code>scripts/gen-dev-env.sh</code> then warns "… differ from the documented test values", and <code>scripts/creds.sh</code>
-  prints the values that work. To switch: <code>deploy/reset.sh</code>, then step 0.1 again.</div>
+  other keys (database, HMAC and gateway secrets) are fixed fake <code>dev-…</code> values. All of them come from the
+  committed file <code>deploy/dev.env.defaults</code>, copied to <code>deploy/.env</code> (step 0.1); <code>scripts/creds.sh</code> prints them.</p>
+  <div class="warn">The volumes are set up with the values of <code>deploy/.env</code>. To change a value, edit
+  <code>deploy/.env</code>, then <code>deploy/reset.sh</code> and step 0.1 again; <code>scripts/creds.sh</code> always
+  prints the values your stack has.</div>
 
   <div class="case" id="c1-0">
     <h3><span class="id">1.0</span>Logins at a glance</h3>
@@ -283,7 +283,7 @@ scripts/creds.sh</pre></div>
   <div class="case" id="c1-1">
     <h3><span class="id">1.1</span>Print every login and key</h3>
     <div class="cmd"><pre>scripts/creds.sh</pre></div>
-    <p>The output is grouped by where a value is used; use it for the random values and to check which
+    <p>The output is grouped by where a value is used; use it to check which
     values your stack really has:</p>
     <div class="table-wrap"><table>
       <tr><th>Block</th><th>What it gives you</th><th>Value / taken from</th></tr>
@@ -293,9 +293,9 @@ scripts/creds.sh</pre></div>
       <tr><td>Portal users</td><td>password of the portals realm users</td><td><code>portal-test-pass</code> (<code>KC_PORTALS_TEST_PASSWORD</code>)</td></tr>
       <tr><td>Keycloak admin</td><td>user <code>kc-admin</code> and its password</td><td><code>kc-admin-test-pass</code> (<code>KC_BOOTSTRAP_ADMIN_PASSWORD</code>)</td></tr>
       <tr><td>OpenBao</td><td>the token (only while the stack is up)</td><td><code>dev-root-token</code> (an older OpenBao volume: its random root token)</td></tr>
-      <tr><td>APISIX</td><td>the <code>apikey</code> of the test-only routes; the admin API key</td><td><code>e2e-test-apikey</code> (<code>MW_E2E_API_KEY</code>); admin key random (<code>APISIX_ADMIN_KEY</code>)</td></tr>
-      <tr><td>Signing secrets</td><td>checkout merchant <code>merchant-demo</code>, bill aggregator and bank callback HMAC secrets</td><td>random: <code>CHECKOUT_DEMO_MERCHANT_SECRET</code>, <code>BILLAGG_HMAC_SECRET</code>, <code>C2WBANK_HMAC_SECRET</code></td></tr>
-      <tr><td>USSD gateways</td><td>basic-auth password per operator (user <code>ussd-gp</code>, <code>ussd-robi</code>, <code>ussd-bl</code>, <code>ussd-teletalk</code>)</td><td>random: <code>USSD_GP_GATEWAY_SECRET</code>, …</td></tr>
+      <tr><td>APISIX</td><td>the <code>apikey</code> of the test-only routes; the admin API key</td><td><code>e2e-test-apikey</code> (<code>MW_E2E_API_KEY</code>); admin key <code>dev-apisix-admin-key</code> (<code>APISIX_ADMIN_KEY</code>)</td></tr>
+      <tr><td>Signing secrets</td><td>checkout merchant <code>merchant-demo</code>, bill aggregator and bank callback HMAC secrets</td><td><code>dev-checkout-merchant-secret</code>, <code>dev-billagg-hmac-secret</code>, <code>dev-c2wbank-hmac-secret</code> (<code>CHECKOUT_DEMO_MERCHANT_SECRET</code>, <code>BILLAGG_HMAC_SECRET</code>, <code>C2WBANK_HMAC_SECRET</code>)</td></tr>
+      <tr><td>USSD gateways</td><td>basic-auth password per operator (user <code>ussd-gp</code>, <code>ussd-robi</code>, <code>ussd-bl</code>, <code>ussd-teletalk</code>)</td><td><code>dev-ussd-gp-pass</code>, <code>dev-ussd-robi-pass</code>, … (<code>USSD_GP_GATEWAY_SECRET</code>, …)</td></tr>
     </table></div>
     <p>One value only: <code>grep KC_OPS_TEST_PASSWORD deploy/.env</code>. The test console reads the customers and
     portals passwords, the apikey and the merchant secret from <code>deploy/.env</code> when <code>scripts/tester.sh</code> starts it.</p>
@@ -460,10 +460,10 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <tr><td><code>kcPortalsPassword</code></td><td><code>portal-test-pass</code></td></tr>
       <tr><td><code>kcOpsPassword</code></td><td><code>ops-test-pass</code></td></tr>
       <tr><td><code>kcOpsTotpSecret</code></td><td><code>opstesttotpsecretnotarealsecret1</code></td></tr>
-      <tr><td><code>billaggSecret</code>, <code>checkoutSecret</code></td><td>random: <code>BILLAGG_HMAC_SECRET</code> and <code>CHECKOUT_DEMO_MERCHANT_SECRET</code> from <code>scripts/creds.sh</code></td></tr>
+      <tr><td><code>billaggSecret</code>, <code>checkoutSecret</code></td><td><code>dev-billagg-hmac-secret</code> and <code>dev-checkout-merchant-secret</code> (<code>BILLAGG_HMAC_SECRET</code>, <code>CHECKOUT_DEMO_MERCHANT_SECRET</code>)</td></tr>
     </table></div>
     <p>The collection signs requests itself. Or run the whole suite: <code>scripts/api-test.sh</code> (it fills them from <code>deploy/.env</code>).</p>
-    <p><b>APISIX admin API</b> (developers only; read the live routes; the container has its random key):</p>
+    <p><b>APISIX admin API</b> (developers only; read the live routes; the container has the key <code>dev-apisix-admin-key</code>):</p>
     <div class="cmd"><pre>docker compose -f deploy/docker-compose.yml exec apisix bash -c 'exec 3&lt;&gt;/dev/tcp/127.0.0.1/9180;
   printf "GET /apisix/admin/routes HTTP/1.0\r\nX-API-KEY: %s\r\n\r\n" "$APISIX_ADMIN_KEY" &gt;&amp;3; cat &lt;&amp;3'</pre></div>
   </div>
@@ -1260,11 +1260,11 @@ scripts/log-scan.sh</pre></div>
     <tr><td><code>/tester</code> answers 404 or a JSON error</td><td>a later <code>docker compose up</code> removed the test routes: <code>scripts/tester.sh</code></td></tr>
     <tr><td>Home shows ✖ "test-only routes are on"</td><td><code>scripts/tester.sh</code></td></tr>
     <tr><td>Everything times out or fails oddly</td><td>a preset or fault is still on: Home → <span class="ui">Reset every simulator and core fault</span></td></tr>
-    <tr><td>Timeout tests take minutes</td><td>the stack runs production timers: start it again with <code>--env-file test-timers.env</code> (step 0.1), then <code>scripts/tester.sh</code></td></tr>
+    <tr><td>Timeout tests take minutes</td><td>the stack runs production timers (the test timers block was removed from <code>deploy/.env</code>): put it back from <code>deploy/dev.env.defaults</code>, recreate the services (step 0.1), then <code>scripts/tester.sh</code></td></tr>
     <tr><td><code>MW-CORE-LIMIT_EXCEEDED_DAILY</code></td><td>the wallet spent Tk 15,000 today (UTC): use customer02, or start fresh (0.1)</td></tr>
     <tr><td><code>MW-CORE-ACCOUNT_LOCKED</code></td><td>five wrong PINs: unlock (9.8)</td></tr>
     <tr><td>A submit says no binding OTP arrived</td><td>mw-notify or the simulators are down: <code>docker compose -f deploy/docker-compose.yml ps</code></td></tr>
-    <tr><td>Sign-in refused with <code>ops-test-pass</code> (or <code>app-test-pass</code>, <code>portal-test-pass</code>)</td><td>your <code>deploy/.env</code> predates the fixed test values (<code>scripts/gen-dev-env.sh</code> warns "… differ from the documented test values"): use the values <code>scripts/creds.sh</code> prints, or switch with <code>deploy/reset.sh</code>, then step 0.1</td></tr>
+    <tr><td>Sign-in refused with <code>ops-test-pass</code> (or <code>app-test-pass</code>, <code>portal-test-pass</code>)</td><td>your <code>deploy/.env</code> or the volumes hold other values than <code>deploy/dev.env.defaults</code>: use the values <code>scripts/creds.sh</code> prints, or start fresh: <code>cp deploy/dev.env.defaults deploy/.env</code>, <code>deploy/reset.sh</code>, then step 0.1</td></tr>
     <tr><td>The console's login page says "Your session has ended. Sign in again." on the first visit</td><td>a console cookie from before a <code>deploy/reset.sh</code>: just sign in (1.3)</td></tr>
     <tr><td><code>dev-root-token</code>: "permission denied"</td><td>the OpenBao volume predates it: use the token <code>scripts/creds.sh</code> prints (or <code>deploy/reset.sh</code>)</td></tr>
     <tr><td>Console sign-in: "Invalid authenticator code"</td><td>the code was used already or expired: wait for the next one (<code>scripts/totp.sh</code>); with your own app use FreeOTP/Aegis (SHA-256)</td></tr>

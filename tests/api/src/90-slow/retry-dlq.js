@@ -1,7 +1,7 @@
 // Ticket 58 names it for this folder: the full retry-to-DLQ path (spec 19.2). No Cucumber scenario
 // had it (the retry topics were proved only by the modules' RetryTopicRouteIT), so PARITY.md lists it
 // as an addition. A record mw-orchestrator always refuses walks retry.1..3 to its DLQ: about 3 s with
-// TIMERS=fast (MW_KAFKA_RETRY_DELAYS 1s,1s,1s), some 11 min with the production delays (10 s, 1 min,
+// the test timers (MW_KAFKA_RETRY_DELAYS 1s,1s,1s), some 11 min with the production delays (10 s, 1 min,
 // 10 min), hence folder 90.
 export default [
   {

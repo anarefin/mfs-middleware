@@ -5,8 +5,8 @@ for every finding it reports: the fixes made, the HIGH/CRITICAL findings accepte
 scanner ignore entry that carries the same reason and an expiry), and the decisions for every
 finding below high. Last full offline run: 2026-11-06, trivy 0.67.2 (DB of that day), gitleaks
 8.28.0, images built from this branch (tag `sec46`). The live stages (ZAP baseline, container
-log scan) need the running stack and are run by the milestone gate (`make up TIMERS=fast && make seed && make api-test &&
-SECURITY_LIVE=1 make security`).
+log scan) need the running stack and are run by the milestone gate (from `deploy/`: `docker compose --profile core --profile seed up -d --build --wait`, with the
+default `deploy/dev.env.defaults` timers, then `scripts/api-test.sh` and `SECURITY_LIVE=1 scripts/security.sh`).
 
 ## How the gate reads it
 
@@ -62,16 +62,29 @@ contract samples, `partner/<id>` config keys, the `tok_abcdef1234` card-token ma
 key generated inside `PinCipherTest`, base64 of "not a key" in `RequestSignaturesTest`, and the
 `k3yFromDotEnv` / `s3cretFromDotEnv` placeholders in `test_apisix_edge.sh`. Decision: allow-list
 each exact fixture shape in `.gitleaks.toml` (a real secret beside one is still found). The scan
-covers the files git would commit (tracked + untracked, not ignored); the generated dev
-credentials (`deploy/.env`, gitignored) are out of scope by design. History is
+covers the files git would commit (tracked + untracked, not ignored); the local copy of the dev
+settings (`deploy/.env`, gitignored) is out of scope by design. History is
 not rescanned (decision: the working tree is what ships; a history scan with the gitleaks binary
 is `gitleaks git` and can be added to the gate).
 
 The dev/test tester logins are fixed, documented fake values (ADR D9 amendment: `ops-test-pass`,
 `app-test-pass`, `portal-test-pass`, `kc-admin-test-pass`, the ops TOTP secret, `e2e-test-apikey`,
-OpenBao `dev-root-token`), written by `scripts/gen-dev-env.sh` and printed in `docs/testing-guide.html`.
-Decision: accepted, because they open only a local dev/test stack; they are low-entropy words that
-gitleaks' default rules do not flag (no allow-list entry needed). Every other dev credential stays random.
+OpenBao `dev-root-token`), committed in `deploy/dev.env.defaults` and printed in `docs/testing-guide.html`.
+Decision: accepted, because they open only a local dev/test stack.
+
+Since 2026-11-13 (ADR D9 amendment, BitsPay deploy alignment) every other dev credential is a fixed,
+obviously fake value too, committed in `deploy/dev.env.defaults` (low-entropy `dev-...` strings, the
+USSD source CIDRs and the short test timers sit beside them); `cp dev.env.defaults .env` creates the
+gitignored `deploy/.env`. Decisions:
+
+- Committing the file: accepted. The values open only a local dev/test stack bound to loopback
+  ports and an edge on the developer's host; no real environment uses them (spec 18.4: real
+  environments inject every secret through OpenBao), and a fixed, documented set lets testers and
+  scripts work without a generator step.
+- gitleaks allow-list: one `[[allowlists]]` entry in `.gitleaks.toml` with `paths` set to exactly
+  `deploy/dev.env.defaults`, so a future value there that a default rule matches does not fail the
+  scan. The entry is narrow (one path, no regex over content), so a real secret in any other file is
+  still found; a reviewer of a change to that file checks every value stays obviously fake.
 
 ## Containers: non-root, read-only root FS
 

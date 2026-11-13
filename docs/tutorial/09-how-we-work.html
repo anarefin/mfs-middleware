@@ -101,7 +101,7 @@
   <h2 id="done">Definition of done</h2>
   <ul class="check">
     <li>Tests written first; <code>./gradlew clean build</code> green (it covers every module you touched and the repo checks).</li>
-    <li>The relevant <code>scripts/api-test.sh "&lt;your folders&gt;"</code> green on a stack started with <code>test-timers.env</code> and the
+    <li>The relevant <code>scripts/api-test.sh "&lt;your folders&gt;"</code> green on a stack started with the dev settings (<code>deploy/.env</code>, with its test timers) and the
       <code>seed</code> profile.</li>
     <li>The service's <code>CLAUDE.md</code> and <code>contracts.yml</code> updated if what it owns or uses changed.</li>
     <li>A new script, knob or decision is also added to the docs (README, runbook, ADR) in the same change: <code>scripts/test/test_repo_docs.sh</code> fails otherwise.</li>

@@ -6,8 +6,8 @@ is modelled on BitsPay's `tools/postman`. No request needs Docker; only `run.sh`
 re-apply the test-only gateway routes.
 
 ```
-deploy/reset.sh                     # fresh volumes; then, from deploy/, a stack on short timers, seeded:
-docker compose --env-file .env --env-file test-timers.env --profile core --profile seed up -d --build
+deploy/reset.sh                     # fresh volumes; then, from deploy/, a stack on short timers (deploy/.env), seeded:
+docker compose --profile core --profile seed up -d --build
 scripts/api-test.sh                 # every folder except 90 Slow (and 99 Destructive, if one is added)
 scripts/api-test.sh "01, 05"        # folders by number (or full name), comma separated
 scripts/api-test.sh "" 1            # every folder, 90 Slow included
@@ -91,12 +91,13 @@ users and core-mock's own seed wallets, as the Cucumber suite did, and make thei
 
 ## Timing
 
-The default run is sized for a stack started with `--env-file test-timers.env` (`deploy/test-timers.env`): core command
+The default run is sized for a stack started with the test timers of `deploy/.env` (the test timers block copied
+from `deploy/dev.env.defaults`; Compose reads `deploy/.env` by itself): core command
 deadlines 2 s, first status inquiry after 6 s, app / checkout reply budget 7 s (so a lost core
 reply is still answered 202 and resolved by the inquiry), partner limits 4 s (ocs through the
 mw-seeder baseline, billagg / c2wbank in the adapters) with the simulators' timeout hold at 7 s,
-partner deadline 8 s. The same start command gives `mw-seeder` the short ocs limit
-(`MW_SEED_OCS_TIMEOUT_MS` in `deploy/test-timers.env`). run.sh passes the seeded ocs limit (`build/seed/manifest.json`) to
+partner deadline 8 s. The same file gives `mw-seeder` the short ocs limit
+(`MW_SEED_OCS_TIMEOUT_MS` in `deploy/dev.env.defaults`). run.sh passes the seeded ocs limit (`build/seed/manifest.json`) to
 the scenarios, which size their partner delays from it, so the suite also runs (slower) on a stack
 with production timers. Each request logs `scenario took N s`. Folder 90 holds what stays slow (the
 10,000-row payout; the retry-to-DLQ request, some 11 min with production retry delays). APISIX re-resolves service names every 5 s (`dns_resolver_valid`), so a

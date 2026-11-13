@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs the Newman API suite (ticket 58) against the running stack, started with the test timers
-# and the seed profile (from deploy/: docker compose --env-file .env --env-file test-timers.env
+# and the seed profile (from deploy/: docker compose
 # --profile core --profile seed up -d --wait).
 #
 #   tests/api/run.sh                         every folder except "90 Slow" and "99 Destructive"
@@ -8,7 +8,7 @@
 #                                            repeat --folder for several
 #   tests/api/run.sh --all                   every folder, the slow ones included
 #
-# Reads the dev credentials from deploy/.env (scripts/gen-dev-env.sh writes it), copies mw-seeder's
+# Reads the dev credentials from deploy/.env (a copy of deploy/dev.env.defaults), copies mw-seeder's
 # manifest out of its container to build/seed/manifest.json and re-applies the test-only APISIX
 # routes once (apisix-init with MW_E2E_ROUTES=1, as the suite always needs; MW_API_SKIP_ROUTES=1
 # skips both), then runs a pinned Newman with npx (no --delay-request: Newman 6
@@ -51,7 +51,7 @@ if grep -q '^?' <<<"$names"; then
 fi
 
 env_file="$root/deploy/.env"
-[ -f "$env_file" ] || { echo "run.sh: $env_file is missing: run scripts/gen-dev-env.sh and start the stack first" >&2; exit 1; }
+[ -f "$env_file" ] || { echo "run.sh: $env_file is missing: run `cd deploy && cp dev.env.defaults .env` and start the stack first" >&2; exit 1; }
 env_value() { { grep -E "^$1=" "$env_file" || true; } | tail -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//'; }
 port="$(env_value MW_HTTPS_PORT)"
 base_url="${MW_API_BASE_URL:-https://localhost:${port:-${MW_HTTPS_PORT:-443}}}"
@@ -65,7 +65,7 @@ secrets=(
   "checkoutSecret=$(env_value CHECKOUT_DEMO_MERCHANT_SECRET)"
 )
 for s in "${secrets[@]}"; do
-  [ -n "${s#*=}" ] || { echo "run.sh: ${s%%=*} has no value in deploy/.env (scripts/gen-dev-env.sh)" >&2; exit 1; }
+  [ -n "${s#*=}" ] || { echo "run.sh: ${s%%=*} has no value in deploy/.env (see deploy/dev.env.defaults)" >&2; exit 1; }
 done
 
 if [ "${MW_API_SKIP_ROUTES:-0}" != 1 ]; then
@@ -83,7 +83,7 @@ fi
 [ -f "$state" ] || cp "$here/local.postman_environment.json" "$state"
 args=()
 while IFS= read -r f; do args+=(--folder "$f"); done <<<"$names"
-# The seeded baseline (mw-seeder, ticket 57): partner ocs's time limit, which TIMERS=fast shortens;
+# The seeded baseline (mw-seeder, ticket 57): partner ocs's time limit, which the test timers of deploy/dev.env.defaults shorten;
 # the scenarios size their partner timeouts from it.
 manifest="${MW_SEED_MANIFEST:-$root/build/seed/manifest.json}"
 [ -f "$manifest" ] || { echo "run.sh: no seed manifest at $manifest: start the stack with --profile seed (mw-seeder must exit 0) first" >&2; exit 1; }

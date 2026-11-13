@@ -37,7 +37,7 @@ if (existsSync(ledgerPath)) {
 const pick = pool.reduce((best, p) => (used.get(p.username) < used.get(best.username) ? p : best), pool[0]);
 if (used.get(pick.username) >= RUNS_PER_DAY) {
   console.error(`run_customer: all ${pool.length} run customers already ran ${RUNS_PER_DAY} times on ${day} (UTC); ` +
-    'wait for the next UTC day, or start a fresh stack (deploy/reset.sh, then up with test-timers.env and --profile seed) and delete ' + ledgerPath);
+    'wait for the next UTC day, or start a fresh stack (deploy/reset.sh, then up with --profile seed) and delete ' + ledgerPath);
   process.exit(1);
 }
 mkdirSync(dirname(ledgerPath), { recursive: true });

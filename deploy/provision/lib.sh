@@ -41,7 +41,7 @@ gen_once() {
 # takes effect). Compose requires the variable, so an empty one is an error.
 sync_env() {
   eval "val=\${$2:-}"
-  [ -n "$val" ] || die "$SVC: $2 is not set (run scripts/gen-dev-env.sh first)"
+  [ -n "$val" ] || die "$SVC: $2 is not set (cp dev.env.defaults .env first)"
   printf '%s' "$val" >"$tmp/v"
   kv_set "$1=@$tmp/v"
   rm -f "$tmp/v"

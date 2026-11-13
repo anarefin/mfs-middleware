@@ -80,7 +80,7 @@ export function notReadyMessage(problems: string[]): string {
     "The stack is not ready for the admin UI browser tests:",
     ...problems.map((x) => `  - ${x}`),
     "Start and seed it from the repo root, then run the suite again:",
-    "  cd deploy && docker compose --env-file .env --profile core --profile seed up -d --wait",
+    "  cd deploy && docker compose --profile core --profile seed up -d --wait",
     "  scripts/ui-e2e.sh",
   ].join("\n");
 }

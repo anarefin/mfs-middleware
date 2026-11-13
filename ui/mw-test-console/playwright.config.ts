@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * The test console in a browser against the running, seeded stack: the stack started with test-timers.env and the seed
+ * The test console in a browser against the running, seeded stack: the stack started with deploy/.env (its test timers) and the seed
  * profile, then scripts/tester.sh, then scripts/tester-e2e.sh (E2E_BASE_URL https://localhost; against `pnpm dev`
  * E2E_BASE_URL=http://localhost:3001). Each spec drives one page as a tester would and checks the
  * middleware's answer; specs run in file order on one worker (they share the simulators).

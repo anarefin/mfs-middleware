@@ -16,9 +16,9 @@ case "$persona" in
   seed-ops-maker|seed-ops-checker|seed-ops-viewer|seed-ops-compliance|ops-e2e-maker01|ops-e2e-checker01) ;;
   *) die "totp: $persona has no pre-set secret; it enrols an authenticator app (FreeOTP or Aegis, SHA-256) at its first sign-in. Pre-set: seed-ops-maker, seed-ops-checker, seed-ops-viewer, seed-ops-compliance, ops-e2e-maker01, ops-e2e-checker01" ;;
 esac
-[ -f "$STACK_ENV" ] || die "totp: deploy/.env does not exist (run scripts/gen-dev-env.sh)"
+[ -f "$STACK_ENV" ] || die "totp: deploy/.env does not exist (cd deploy && cp dev.env.defaults .env)"
 secret="$(sed -n 's/^KC_OPS_TEST_TOTP_SECRET=//p' "$STACK_ENV" | tail -1)"
-[ -n "$secret" ] || die "totp: KC_OPS_TEST_TOTP_SECRET is not in deploy/.env (scripts/gen-dev-env.sh adds it)"
+[ -n "$secret" ] || die "totp: KC_OPS_TEST_TOTP_SECRET is not in deploy/.env (see deploy/dev.env.defaults)"
 command -v node >/dev/null 2>&1 || die "totp: node is not on PATH (prerequisite: Node.js 24)"
 
 MW_TOTP_SECRET="$secret" MW_TOTP_PERSONA="$persona" node -e '

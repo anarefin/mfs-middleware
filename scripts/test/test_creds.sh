@@ -68,13 +68,13 @@ test_totp_refuses_a_persona_without_a_preset_secret() {
 
 test_totp_without_dev_env_says_how_to_create_it() {
   assert_fails mw_run "$PWD" totp.sh
-  assert_out_contains "scripts/gen-dev-env.sh"
+  assert_out_contains "cp dev.env.defaults .env"
 }
 
 test_creds_without_dev_env_says_how_to_create_it() {
   docker_stub down
   assert_fails mw_run "$PWD" creds.sh
-  assert_out_contains "scripts/gen-dev-env.sh"
+  assert_out_contains "cp dev.env.defaults .env"
 }
 
 test_creds_prints_every_login_and_key() {

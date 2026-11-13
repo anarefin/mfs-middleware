@@ -64,9 +64,9 @@ customers, holds the stack's generated test credentials and has no sign-in.
 | --- | --- |
 | `pnpm install` | dependencies (pinned, `pnpm-lock.yaml`) |
 | `pnpm test` | `tsc --noEmit` + Vitest (`src/**/*.test.ts`: crypto, formats, redaction, headers; no stack) |
-| `make build M=mw-test-console` (repo root) | the image `mfs-mw/mw-test-console:local` (`make build` builds it with the rest) |
-| `make tester` (repo root) | test routes on, start the container, print https://localhost/tester |
-| `make tester-e2e [GREP=]` (repo root) | Playwright (`e2e/*.spec.ts`, file order, one worker) against the console on the running, seeded stack (`make up TIMERS=fast && make seed && make tester`); `E2E_BASE_URL` |
+| from `deploy/`: `docker compose --profile tester build mw-test-console` | the image `mfs-mw/mw-test-console:local` |
+| `scripts/tester.sh` (repo root) | test routes on, start the container, print https://localhost/tester |
+| `scripts/tester-e2e.sh [GREP]` (repo root) | Playwright (`e2e/*.spec.ts`, file order, one worker) against the console on the running, seeded stack (from `deploy/`: `docker compose --profile core --profile seed up -d --build --wait`, then `scripts/tester.sh`); `E2E_BASE_URL` |
 | `pnpm dev` | dev server on :3001 against the stack: `EDGE_URL=https://localhost`, `NODE_EXTRA_CA_CERTS=<file>` with the stack's self-signed edge certificate (`docker compose -f deploy/docker-compose.yml cp apisix:/usr/local/apisix/conf/cert/edge.crt build/edge.crt`; TLS verification stays on) plus the four credentials above in the environment; then `E2E_BASE_URL=http://localhost:3001 pnpm test:e2e` |
 
 The e2e specs check money with deltas (fee included: P2P Tk 5, top-up Tk 2) and reset the simulators

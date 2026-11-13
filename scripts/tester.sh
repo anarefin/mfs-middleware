@@ -12,7 +12,7 @@ set -eu
 
 [ -f "$STACK_FILE" ] || die "tester: deploy/docker-compose.yml does not exist"
 stack_has_service mw-test-console || die "tester: deploy/docker-compose.yml has no mw-test-console service"
-"$(dirname "$0")/gen-dev-env.sh" >/dev/null
+ensure_env >/dev/null
 stack_compose core tester
 set -a; . "$STACK_ENV"; set +a
 

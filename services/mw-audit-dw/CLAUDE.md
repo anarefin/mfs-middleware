@@ -134,4 +134,4 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 | `./gradlew :mw-audit-dw:build` | `test`, then the boot jar `build/libs/mw-audit-dw.jar` (fixed name, the one the Dockerfile copies) |
 | `./gradlew :mw-audit-dw:bootJar && docker build -t mw-audit-dw:dev services/mw-audit-dw` | image, as spec 4.3 rule 1 |
 | `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
-| `./gradlew :mw-audit-dw:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-audit-dw` | rebuild this service's image (`mfs-mw/mw-audit-dw:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |
+| `./gradlew :mw-audit-dw:bootJar`, then from `deploy/`: `docker compose --profile core up -d --build mw-audit-dw` | rebuild this service's image (`mfs-mw/mw-audit-dw:local`) and restart it with what it depends on (dev timers from `deploy/.env`) |

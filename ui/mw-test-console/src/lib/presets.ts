@@ -29,7 +29,7 @@ export const PRESETS: readonly Preset[] = [
   {
     id: "core-lost-reply", title: "Core: the reply of the next transfer is lost (TSQ -> COMPLETED)",
     proves: "a P2P / cash / merchant payment whose core answer never comes is resolved by the status inquiry",
-    then: "App: send a P2P; it answers 202 PROCESSING, then COMPLETED after the inquiry (TIMERS=fast: about 6-10 s); money moved once",
+    then: "App: send a P2P; it answers 202 PROCESSING, then COMPLETED after the inquiry (test timers: about 6-10 s); money moved once",
     calls: [{ method: "POST", path: "/test/core-mock/v1/faults", json: { mode: "DROP_REPLY", commandType: "PostTransfer", times: 1 } }],
   },
   {

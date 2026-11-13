@@ -178,4 +178,4 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 | `./gradlew :mw-core-mock:build` | `test`, then the boot jar `build/libs/mw-core-mock.jar` (fixed name, the one the Dockerfile copies) |
 | `./gradlew :mw-core-mock:bootJar && docker build -t mw-core-mock:dev services/mw-core-mock` | image, as spec 4.3 rule 1 |
 | `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
-| `./gradlew :mw-core-mock:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-core-mock` | rebuild this service's image (`mfs-mw/mw-core-mock:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |
+| `./gradlew :mw-core-mock:bootJar`, then from `deploy/`: `docker compose --profile core up -d --build mw-core-mock` | rebuild this service's image (`mfs-mw/mw-core-mock:local`) and restart it with what it depends on (dev timers from `deploy/.env`) |

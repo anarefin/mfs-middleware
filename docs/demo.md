@@ -11,14 +11,14 @@ assumes the earlier ones still pass.
 
 ```sh
 ./gradlew clean build           # every module's tests and jar, the repo checks (Docker running)
-scripts/gen-dev-env.sh          # dev credentials in deploy/.env (kept when present)
 cd deploy && ./reset.sh         # fresh volumes: seed balances, daily limits, Keycloak users
-time docker compose --env-file .env --env-file test-timers.env --profile core --profile seed up -d --build
+cp dev.env.defaults .env        # fixed dev settings with the short test timers
+time docker compose --profile core --profile seed up -d --build
 docker compose --profile core --profile seed wait mw-seeder   # 0: the baseline the suite checks in folder 00
 cd .. && scripts/smoke.sh
 ```
 
-The start takes under 15 minutes on a clean host (README quick start); `test-timers.env` gives the
+The start takes under 15 minutes on a clean host (README quick start); `deploy/.env` gives the
 short timers the suite needs. `scripts/api-test.sh` enables the suite's test-only gateway routes on
 the running stack by itself (it re-runs `apisix-init` with `MW_E2E_ROUTES=1`); a later
 `docker compose up` removes them again. Folders are picked by number or full name, comma-separated:

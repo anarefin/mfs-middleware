@@ -262,4 +262,4 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 | `./gradlew :mw-admin-api:build` | `test`, then the boot jar `build/libs/mw-admin-api.jar` (fixed name, the one the Dockerfile copies) |
 | `./gradlew :mw-admin-api:bootJar && docker build -t mw-admin-api:dev services/mw-admin-api` | image, as spec 4.3 rule 1 |
 | `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
-| `./gradlew :mw-admin-api:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-admin-api` | rebuild this service's image (`mfs-mw/mw-admin-api:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |
+| `./gradlew :mw-admin-api:bootJar`, then from `deploy/`: `docker compose --profile core up -d --build mw-admin-api` | rebuild this service's image (`mfs-mw/mw-admin-api:local`) and restart it with what it depends on (dev timers from `deploy/.env`) |

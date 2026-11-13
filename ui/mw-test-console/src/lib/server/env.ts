@@ -1,6 +1,6 @@
 import "server-only";
 // Runtime configuration, read on the server only (never sent to the browser). In the stack the
-// values are the generated dev credentials of deploy/.env (scripts/gen-dev-env.sh): fake test
+// values are the fixed dev credentials of deploy/.env (a copy of deploy/dev.env.defaults): fake test
 // values on a laptop stack, never production secrets.
 
 function required(name: string): string {

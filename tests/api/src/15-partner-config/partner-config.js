@@ -30,7 +30,7 @@ export default [
     name: '[admin partner-config topup tsq] a lowered time limit applies to the next call',
     run: async (MW, S) => {
       restoreAfter(MW, S, 'ocs');
-      // Cucumber: OCS answers after 6 s, limit lowered from 20 s to 3 s; with TIMERS=fast (4 s seed
+      // Cucumber: OCS answers after 6 s, limit lowered from 20 s to 3 s; with the test timers (4 s seed
       // limit) 3 s and 1.5 s
       const latency = Math.min(6000, MW.ocsLimit() - 1000);
       await S.force('ocs', { latencyMs: latency, errorRate: 0.0, outage: false, callbackMode: 'NONE', callbackDelayMs: 0 });

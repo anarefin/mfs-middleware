@@ -357,12 +357,12 @@ test_each_ussd_route_takes_its_ip_allow_list_from_config() {
     || fail "robi allow-list: $(jq -c '.plugins["ip-restriction"]' out/routes/ussd-http-robi.json)"
   [ "$(jq -c '.plugins["ip-restriction"].whitelist' out/routes/ussd-http-gp.json)" = '["10.1.0.0/16"]' ] || fail "gp allow-list"
   # no fallback in the platform compose file: an unset list stops the stack (and the apply),
-  # never opens the route; the dev ranges come from the generated .env (scripts/gen-dev-env.sh)
+  # never opens the route; the dev ranges come from deploy/dev.env.defaults
   local mno
   for mno in GP ROBI BL TELETALK; do
     grep -qE "USSD_${mno}_ALLOWED_CIDRS: [\$][{]USSD_${mno}_ALLOWED_CIDRS:[?]" "$REPO_DIR/deploy/docker-compose.yml" \
       || fail "USSD_${mno}_ALLOWED_CIDRS is not required in the platform compose file"
-    grep -q "USSD_${mno}_ALLOWED_CIDRS" "$REPO_DIR/scripts/gen-dev-env.sh" || fail "USSD_${mno}_ALLOWED_CIDRS not generated"
+    grep -q "USSD_${mno}_ALLOWED_CIDRS" "$REPO_DIR/deploy/dev.env.defaults" || fail "USSD_${mno}_ALLOWED_CIDRS not in deploy/dev.env.defaults"
   done
 }
 
@@ -387,11 +387,11 @@ test_a_missing_ussd_secret_fails_the_apply() {
   assert_out_contains "USSD_BL_GATEWAY_SECRET"
 }
 
-test_ussd_secrets_are_generated_and_passed_to_apisix_and_the_simulator() {
+test_ussd_secrets_are_defined_and_passed_to_apisix_and_the_simulator() {
   local mno v
   for mno in GP ROBI BL TELETALK; do
     v="USSD_${mno}_GATEWAY_SECRET"
-    grep -q "$v" "$REPO_DIR/scripts/gen-dev-env.sh" || fail "$v not generated"
+    grep -q "^$v=" "$REPO_DIR/deploy/dev.env.defaults" || fail "$v not in deploy/dev.env.defaults"
     grep -A40 -E '^  apisix-init:' "$REPO_DIR/deploy/docker-compose.yml" | grep -q "$v: " || fail "$v not passed to apisix-init"
     grep -A40 -E "^  provision:" "$REPO_DIR/deploy/docker-compose.yml" | grep -q "$v: " || fail "$v not passed to provision (mw-simulators' secret)"
   done

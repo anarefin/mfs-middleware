@@ -8,7 +8,11 @@ import NextAuth, { customFetch, type NextAuthConfig } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import Keycloak from "next-auth/providers/keycloak";
 import { expiresSoon, internalRequest, rolesOf } from "@/lib/oidc";
+import { isSignedOut, markSignedOut } from "@/lib/signed-out";
 import { authEnv, BASE_PATH, type AuthEnv } from "@/lib/server/env";
+
+/** Session cookie lifetime (seconds); also how long a signed-out session id is remembered. */
+const SESSION_MAX_AGE = 8 * 60 * 60;
 
 declare module "next-auth" {
   interface Session {
@@ -19,6 +23,8 @@ declare module "next-auth" {
 
 declare module "next-auth/jwt" {
   interface JWT {
+    /** one per login: sign-out remembers it (lib/signed-out.ts) */
+    sessionId?: string;
     accessToken?: string;
     refreshToken?: string;
     expiresAt?: number;
@@ -100,7 +106,7 @@ export function authConfig(env: AuthEnv): NextAuthConfig {
     trustHost: true,
     secret: env.secret,
     basePath: env.authBasePath,
-    session: { strategy: "jwt", maxAge: 8 * 60 * 60 },
+    session: { strategy: "jwt", maxAge: SESSION_MAX_AGE },
     pages: { signIn: `${BASE_PATH}/login`, error: `${BASE_PATH}/login` },
     providers: [
       Keycloak({
@@ -120,12 +126,15 @@ export function authConfig(env: AuthEnv): NextAuthConfig {
           return {
             name: (profile?.preferred_username as string | undefined) ?? token.name,
             sub: token.sub,
+            sessionId: crypto.randomUUID(),
             accessToken: account.access_token,
             refreshToken: account.refresh_token,
             expiresAt: account.expires_at,
             roles: rolesOf(account.access_token),
           };
         }
+        // a signed-out session's cookie put back by a late response: null clears the cookie
+        if (isSignedOut(token.sessionId)) return null;
         if (token.accessToken && !expiresSoon(token.expiresAt)) return token;
         if (token.error) return token;
         return refreshAccessToken(token, env);
@@ -142,7 +151,9 @@ export function authConfig(env: AuthEnv): NextAuthConfig {
     },
     events: {
       async signOut(message) {
-        await endKeycloakSession("token" in message ? message.token : null, env);
+        const token = "token" in message ? message.token : null;
+        markSignedOut(token?.sessionId ?? undefined, Date.now() + SESSION_MAX_AGE * 1000);
+        await endKeycloakSession(token, env);
       },
     },
   };

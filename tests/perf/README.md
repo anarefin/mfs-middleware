@@ -14,7 +14,7 @@ other than intended business failures.
 ```
 ./gradlew bootJar                     # from the repo root: the service jars
 deploy/reset.sh                       # fresh stack (balances, daily limits, Keycloak users)
-(cd deploy && docker compose --env-file .env --profile core --profile seed up -d --build)
+(cd deploy && docker compose --profile core --profile seed up -d --build)
 scripts/suite.sh perf                 # setup (~1-2 min), 60 s ramp, 5 min at 102 TPS, report
 ```
 

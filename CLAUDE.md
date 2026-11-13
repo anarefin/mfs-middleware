@@ -43,7 +43,8 @@ when a spec decision row has no ADR: a new script, knob or decision updates thes
 - `deploy/`: `docker-compose.yml`, the whole stack in one hand-written file with profiles (none =
   platform, `minimal` = P2P and cash path, `core` = everything, `seed` = seeder, `tester` = test
   console; ADR D16; a new service adds its block there, `scripts/new-service.sh` prints it), memory
-  knobs in its header, `test-timers.env`, `reset.sh`, APISIX, Kafka topics, the `provision` one-shot;
+  knobs and `MW_PORT_*` port knobs in its header, `dev.env.defaults` (committed fake dev values and
+  short test timers, copied to the gitignored `.env`), `reset.sh`, APISIX, Kafka topics, the `provision` one-shot;
   `tests/` (`tests/api` Newman API suite, `tests/perf` Gatling, its own standalone build; black-box), `docs/`.
 
 Module isolation (4.3, D13, D14 as amended for the multi-module root): a module never depends on
@@ -185,16 +186,17 @@ outbox every 50 ms and give Camel's Kafka consumers a 100 ms shutdown timeout, a
 | `./gradlew :composeCheck` | fail when a long-running service of `deploy/docker-compose.yml` (`--profile core`) has no memory limit or the limits (knob values from the shell or `deploy/.env`, else their defaults) add up to more than 8 GB |
 | `./gradlew :scriptTests` | the shell tests of `scripts/` and the repo layout and docs (`scripts/test/run.sh [test_file.sh ...]`) |
 | `scripts/versions-check.sh [M]` | report version drift between the modules' build files (report only, not in the build) |
-| `scripts/gen-dev-env.sh` | the gitignored dev credentials in `deploy/.env` (existing values kept); run once before the first `up` |
-| `docker compose --env-file .env [--env-file test-timers.env] --profile core --profile seed up -d --build --wait` | from `deploy/`, after `./gradlew clean build`: builds the images from the jars, starts the stack, waits until healthy; the `provision` one-shot re-creates missing roles and schemas on every `up`; `mw-seeder` seeds (must show `exited (0)` in `docker compose --profile seed ps -a mw-seeder`). `test-timers.env` = short core and partner deadlines, inquiry, reversal, retry-topic, bulk and IPN timers (scripts that start services read `TIMERS=fast` for it); `--profile minimal` = the P2P and cash path only. Laptop demo footprint only (about 7.9 GB of limits), never load tests; knobs in `README.md`. Without the shell: `deploy/RUNNING.html` |
+| `cd deploy && cp dev.env.defaults .env` | the dev settings in the gitignored `deploy/.env`: fixed, obviously fake credentials (ADR D9 amendment) and the short test timers; run once before the first `up` (`scripts/smoke.sh`, `scripts/tester.sh`, `scripts/suite.sh` and `deploy/reset.sh` copy it when it is missing) |
+| `docker compose --profile core --profile seed up -d --build --wait` | from `deploy/`, after `./gradlew clean build`: builds the images from the jars, starts the stack, waits until healthy; the `provision` one-shot re-creates missing roles and schemas on every `up`; `mw-seeder` seeds (must show `exited (0)` in `docker compose --profile seed ps -a mw-seeder`). Compose reads `deploy/.env` by itself: its short core and partner deadlines, inquiry, reversal, retry-topic, bulk and IPN timers come from `dev.env.defaults` (the compose defaults are the production values); `--profile minimal` = the P2P and cash path only. Laptop demo footprint only (about 7.9 GB of limits), never load tests; knobs in `README.md`. Without the shell: `deploy/RUNNING.html` |
+| dev host ports | the dev stack also publishes on 127.0.0.1 every `mw-*` service (8081-8093), the admin UI (3000), the test console (3001), PostgreSQL 5432, Valkey 6379, Kafka 9094, Keycloak 8180, OpenBao 8200, GreenMail 8025/3025 (`MW_PORT_<NAME>` knobs); direct ports skip the edge policies; APISIX 443 is the edge and the only port beyond loopback (ADR D3 amendment); production is edge-only |
 | `./gradlew :mw-x:bootJar && docker compose ... up -d --build mw-x` | rebuild and restart one service after a change |
 | `docker compose --profile core --profile seed down` / `deploy/reset.sh` | stop the stack (data kept) / drop every container and volume of every profile (fresh start) |
 | `scripts/smoke.sh` | live checks against the running stack (health, topics, Kafka, PG, Valkey, Keycloak tokens, OpenBao, APISIX `/healthz`) |
 | `scripts/edge-test.sh` | live APISIX edge policy tests on the running stack (401/400/413/429 envelopes, X-Mw-* strip, correlation ID, idempotent apply); edge config rules in `deploy/apisix/README.md` |
-| `scripts/api-test.sh [FOLDER] [ALL]` | Newman API suite in `tests/api` (`tests/api/README.md`) against the running, seeded stack started with `test-timers.env`: one request per scenario, folders `00`-`23` (`"01, 05"` by number or full name; `ALL` = `1` adds `90 Slow`); `tests/api/run.sh` re-runs `apisix-init` with `MW_E2E_ROUTES=1` (test-only routes, key-auth), runs a pinned Newman with `npx`, JUnit report `tests/api/build/newman-report.xml`. Request names carry the requirement tags `scripts/check-api-traceability.sh` checks against `tests/api/TRACEABILITY.md`; regenerate the collection with `node tests/api/build_collection.mjs` |
+| `scripts/api-test.sh [FOLDER] [ALL]` | Newman API suite in `tests/api` (`tests/api/README.md`) against the running, seeded stack started with the default `dev.env.defaults` timers: one request per scenario, folders `00`-`23` (`"01, 05"` by number or full name; `ALL` = `1` adds `90 Slow`); `tests/api/run.sh` re-runs `apisix-init` with `MW_E2E_ROUTES=1` (test-only routes, key-auth), runs a pinned Newman with `npx`, JUnit report `tests/api/build/newman-report.xml`. Request names carry the requirement tags `scripts/check-api-traceability.sh` checks against `tests/api/TRACEABILITY.md`; regenerate the collection with `node tests/api/build_collection.mjs` |
 | `scripts/ui-e2e.sh [GREP]` | admin UI Playwright suite (`ui/mw-admin-ui/e2e`, numbered specs tagged `@smoke`, `@console`, `@approvals`, `@partners`, `@ussd`, `@templates`) against the running, seeded stack (no mock): real Keycloak logins as the seeded ops personas, the real mw-admin-api behind APISIX; installs pnpm packages / Chromium when needed; credentials from `deploy/.env`, personas from `build/seed/manifest.json`; global setup fails in seconds with the fix when the stack is not ready; idempotent |
 | `scripts/tester.sh` | dev/test-only test console (`ui/mw-test-console`, ADR D17): re-runs `apisix-init` with `MW_E2E_ROUTES=1`, starts `mw-test-console` (profile `tester`, outside the core budget), prints https://localhost/tester; walkthrough in `docs/testing-guide.html` |
-| `scripts/tester-e2e.sh [GREP]` | the test console's Playwright suite (`ui/mw-test-console/e2e`, tags `@smoke`, `@app`, `@ussd`, `@failures`, `@checkout`, `@bulk`) on the running, seeded stack started with `test-timers.env`, after `scripts/tester.sh` |
+| `scripts/tester-e2e.sh [GREP]` | the test console's Playwright suite (`ui/mw-test-console/e2e`, tags `@smoke`, `@app`, `@ussd`, `@failures`, `@checkout`, `@bulk`) on the running, seeded stack started with the default `dev.env.defaults` timers, after `scripts/tester.sh` |
 | `scripts/creds.sh` | print every dev/test login and key (`deploy/.env`, the OpenBao root token while the stack is up) for testers (`docs/testing-guide.html` section 1) |
 | `scripts/totp.sh [PERSONA]` | current ops console TOTP of a persona with the pre-set secret (default `seed-ops-maker`; HmacSHA256, raw UTF-8 key as mw-seeder `util/Totp`) |
 | `scripts/security.sh [M]` | security pass (WP29): gitleaks over the files not gitignored, CycloneDX SBOM + trivy per module (from its boot jar), trivy on the built `mfs-mw/*:local` images and the pinned third-party images (HIGH/CRITICAL fail; accepted findings with reason + expiry in `.trivyignore.yaml` / `deploy/trivyignore-third-party.yaml`); with the stack up also the ZAP baseline on APISIX and `scripts/log-scan.sh` (`SECURITY_LIVE=1` makes them mandatory: the gate runs it after `scripts/api-test.sh`); register `docs/security-findings.md` |
@@ -214,13 +216,14 @@ Definition of done: tests written first; per ticket `./gradlew :mw-x:build` gree
 running, for every touched module (plus `./gradlew :scriptTests` / `./gradlew :contractsLint` when
 scripts or contracts changed) and the relevant `scripts/api-test.sh` folders; at a milestone gate
 the root `./gradlew clean build -PwithSlow` and the whole API suite on a fresh stack (`deploy/reset.sh`, then
-`up` with `test-timers.env` and the seed profile). Output pasted into the PR template.
+`up` with the default `dev.env.defaults` timers and the seed profile). Output pasted into the PR template.
 
 ## Never
 
 - Never put secrets in code, config files or tests (use OpenBao/Vault config binding;
-  test fixtures use obviously fake values). The one exception: the dev/test stack's tester logins
-  are fixed, documented fake values in `scripts/gen-dev-env.sh` (ADR D9 amendment).
+  test fixtures use obviously fake values). The one exception: the dev/test stack's values (tester logins and
+  every other dev credential) are fixed, documented fake values committed in `deploy/dev.env.defaults`
+  (ADR D9 amendment 2026-11-13).
 - Never use `System.out` / `System.err` / `printStackTrace`; log through SLF4J.
 - Never use field injection (`@Autowired` on fields), tests included; constructor injection
   only (`./gradlew :checkFieldInjection` runs `scripts/check-field-injection.sh`).

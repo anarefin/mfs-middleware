@@ -57,7 +57,7 @@ deployment:
     config_provider: etcd
   admin:
     admin_key_required: true
-    # Key generated per host into deploy/.env (scripts/gen-dev-env.sh);
+    # Fixed fake dev key in deploy/.env (a copy of deploy/dev.env.defaults);
     # Compose refuses to start without it.
     admin_key:
       - name: admin

@@ -18,11 +18,11 @@ ui="$MW_ROOT/ui/mw-admin-ui"
 command -v pnpm >/dev/null 2>&1 || die "ui-e2e: pnpm not found (Node.js 24 + pnpm, see README prerequisites)"
 [ -f "$STACK_ENV" ] || die "ui-e2e: deploy/.env does not exist: start and seed the stack first (deploy/RUNNING.html)"
 
-# one value of deploy/.env (KEY=value lines, as scripts/gen-dev-env.sh writes them)
+# one value of deploy/.env (KEY=value lines, as in deploy/dev.env.defaults)
 env_value() { sed -n "s/^$1=//p" "$STACK_ENV" | tail -1; }
 for v in KC_OPS_TEST_PASSWORD KC_OPS_TEST_TOTP_SECRET USSD_ROBI_GATEWAY_SECRET; do
   val="$(env_value "$v")"
-  [ -n "$val" ] || die "ui-e2e: $v is not in deploy/.env (run scripts/gen-dev-env.sh)"
+  [ -n "$val" ] || die "ui-e2e: $v is not in deploy/.env (cd deploy && cp dev.env.defaults .env)"
   export "$v=$val"
 done
 

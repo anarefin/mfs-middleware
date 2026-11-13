@@ -57,7 +57,7 @@ export default [
     },
   },
   {
-    // Cucumber sent the callback 90 s late; with TIMERS=fast (8 s partner deadline, first inquiry
+    // Cucumber sent the callback 90 s late; with the test timers (8 s partner deadline, first inquiry
     // 6 s later) the status inquiry resolves the payment within about 15 s, so 20 s late is enough.
     name: '[billpay callback tsq] a late callback after the status inquiry resolved the payment is recorded and changes nothing',
     run: async (MW, S) => {

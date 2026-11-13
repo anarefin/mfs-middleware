@@ -50,13 +50,14 @@
     <tr><td>bash, git, curl, jq</td><td>the scripts in <code>scripts/</code></td><td><code>jq --version</code></td></tr>
     <tr><td>Node.js 22+</td><td>the API test suite</td><td><code>node --version</code></td></tr>
   </table></div>
-  <p>Port 443 must be free. The full list, with the reasons, is in the <a href="../../README.md">README</a> under Prerequisites.</p>
+  <p>Port 443 must be free (and the debug ports on 127.0.0.1: 8081-8093, 3000, 3001, 5432, 6379, 9094, 8180, 8200, 8025, 3025;
+    <code>MW_PORT_&lt;NAME&gt;</code> moves one). The full list, with the reasons, is in the <a href="../../README.md">README</a> under Prerequisites.</p>
 
   <h2 id="up">2. Build and start the stack</h2>
 <pre><code>./gradlew clean build      <span class="c"># compile, test and package every service jar (the Testcontainers tests need Docker)</span>
 cd deploy
-../scripts/gen-dev-env.sh  <span class="c"># write the dev credentials into deploy/.env (once; later runs keep them)</span>
-docker compose --env-file .env --env-file test-timers.env --profile core --profile seed up -d --build
+cp dev.env.defaults .env   <span class="c"># the dev settings: fixed fake credentials and short timers (once)</span>
+docker compose --profile core --profile seed up -d --build
 cd ..
 scripts/smoke.sh           <span class="c"># quick live checks: is everything up?</span>
 scripts/tester.sh          <span class="c"># start the test console: https://localhost/tester</span>
@@ -65,12 +66,14 @@ scripts/creds.sh           <span class="c"># print every test login and password
   <ul>
     <li><code>./gradlew clean build</code> built every <code>services/mw-*</code> module in one Gradle run: its tests, then one
       jar per module (<code>build/libs/mw-x.jar</code>). A second run with no changes comes from the build cache.</li>
-    <li><code>gen-dev-env.sh</code> wrote the dev credentials into <code>deploy/.env</code> (never committed: the tester logins are fixed
-      documented values, the rest random for your laptop).</li>
+    <li><code>cp</code> made <code>deploy/.env</code> (gitignored) from the committed <code>deploy/dev.env.defaults</code>: fixed,
+      obviously fake dev credentials, the USSD allow-lists and short test timers. Compose reads <code>deploy/.env</code> by
+      itself, so no <code>docker compose</code> command needs an extra flag; the scripts copy it themselves when it is
+      missing. The volumes are set up with these values: change one only together with <code>deploy/reset.sh</code>.</li>
     <li><code>docker compose … up -d --build</code> built the images from those jars and started the containers; the seed profile
-      also ran <code>mw-seeder</code>, which creates the test users, wallets and balances. <code>test-timers.env</code> shortens the
-      timeouts and the status-inquiry schedule so failures resolve in seconds, not hours. Pass it on every later
-      <code>up</code> too, or the defaults (production values) come back.</li>
+      also ran <code>mw-seeder</code>, which creates the test users, wallets and balances. The test timers block of
+      <code>deploy/.env</code> shortens the timeouts and the status-inquiry schedule so failures resolve in seconds, not hours.
+      Delete that block (and recreate the services) for the production values.</li>
     <li>The first start also ran one-shot jobs: <code>kafka-init</code> created the topics, <code>provision</code> created each
       service's database schema and OpenBao secrets, <code>apisix-init</code> loaded the gateway routes.</li>
   </ul>
@@ -146,7 +149,7 @@ scripts/api-test.sh</code></pre>
 <pre><code>./gradlew :mw-orchestrator:test        <span class="c"># every test of the module; the *IT tests need Docker</span>
 ./gradlew :mw-orchestrator:bootJar     <span class="c"># rebuild that one jar</span>
 cd deploy
-docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-orchestrator
+docker compose --profile core up -d --build mw-orchestrator
 cd ..
 scripts/api-test.sh 01                 <span class="c"># the API folder for your feature</span>
 ./gradlew clean build                  <span class="c"># the full gate before a pull request (unchanged modules come from the cache)</span></code></pre>

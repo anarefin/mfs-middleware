@@ -131,4 +131,4 @@ this file says what is specific to this module.
 | `./gradlew :mw-seeder:build` | `test`, then the boot jar `build/libs/mw-seeder.jar` (fixed name, the one the Dockerfile copies) |
 | `./gradlew :mw-seeder:bootJar && docker build -t mfs-mw/mw-seeder:local services/mw-seeder` | image, as spec 4.3 rule 1 |
 | `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`) |
-| from `deploy/`: `docker compose --env-file .env --profile core --profile seed up -d --build` | build the image (profile `seed`) and run it on the stack; `docker compose --profile core --profile seed ps -a mw-seeder` must show `exited (0)`. `scripts/api-test.sh` and `scripts/ui-e2e.sh` copy its manifest to `build/seed/manifest.json` |
+| from `deploy/`: `docker compose --profile core --profile seed up -d --build` | build the image (profile `seed`) and run it on the stack; `docker compose --profile core --profile seed ps -a mw-seeder` must show `exited (0)`. `scripts/api-test.sh` and `scripts/ui-e2e.sh` copy its manifest to `build/seed/manifest.json` |

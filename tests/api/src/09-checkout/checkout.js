@@ -64,7 +64,7 @@ export default [
       S.check('the same body on every attempt', got.every(r => r.body === ipn.body));
       const b = JSON.parse(ipn.body);
       S.eq('IPN body: session, order, PAID, amount, txnId', [b.sessionId, b.orderId, b.status, b.amount.valueMinor, !!b.txnId], [co.sessionId, co.orderId, 'PAID', 1200, true]);
-      // negative window: with TIMERS=fast a further retry would come within 1-3 s (Cucumber: 15 s)
+      // negative window: with the test timers a further retry would come within 1-3 s (Cucumber: 15 s)
       const before = got.length;
       const later = await MW.poll(() => MW.sim.ipnReceived(co.sessionId), l => l.length > before, 5000, 1000);
       S.eq('no further IPN of the session within 5 seconds', later.length, before);

@@ -163,4 +163,4 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 | `./gradlew :mw-simulators:build` | `test`, then the boot jar `build/libs/mw-simulators.jar` (fixed name, the one the Dockerfile copies) |
 | `./gradlew :mw-simulators:bootJar && docker build -t mw-simulators:dev services/mw-simulators` | image, as spec 4.3 rule 1 |
 | `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
-| `./gradlew :mw-simulators:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-simulators` | rebuild this service's image (`mfs-mw/mw-simulators:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |
+| `./gradlew :mw-simulators:bootJar`, then from `deploy/`: `docker compose --profile core up -d --build mw-simulators` | rebuild this service's image (`mfs-mw/mw-simulators:local`) and restart it with what it depends on (dev timers from `deploy/.env`) |

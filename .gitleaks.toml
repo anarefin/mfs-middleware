@@ -19,3 +19,9 @@ regexes = [
   '''=k3yFromDotEnv''',
   '''=s3cretFromDotEnv''',
 ]
+
+[[allowlists]]
+description = "Committed dev/test settings: obviously fake, documented dev values for the local stack only, copied to the gitignored deploy/.env (ADR D9 amendment 2026-11-13; docs/security-findings.md)"
+paths = [
+  '''deploy/dev\.env\.defaults''',
+]

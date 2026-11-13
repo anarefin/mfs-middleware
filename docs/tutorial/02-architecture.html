@@ -226,10 +226,13 @@
     Two ideas in that file are worth knowing on day one.</p>
   <p><strong>Zones.</strong> The containers sit on separate Docker networks (<code>dmz</code>, <code>app</code>,
     <code>data</code>, <code>ops</code>, <code>etcd</code>), like the security zones of a real data centre. APISIX is the
-    only container with a port open on your machine (443, so <code>https://localhost/...</code>). The database is
+    edge (port 443, so <code>https://localhost/...</code>): every client goes through it, and only there do the edge
+    policies (auth, rate limits, size limits) apply. For debugging, the services and platform containers are also
+    published on <code>127.0.0.1</code> only (8081-8093 the services, 3000/3001 the two UIs, 5432 PostgreSQL, 9094 Kafka,
+    8180 Keycloak, ...; <code>MW_PORT_&lt;NAME&gt;</code> moves one). The database is
     only on the data network, and etcd only talks to APISIX.</p>
   <p><strong>Profiles.</strong> A profile decides which containers start. Every command runs from <code>deploy/</code>
-    after <code>../scripts/gen-dev-env.sh</code>:</p>
+    after <code>cp dev.env.defaults .env</code> (the committed dev settings; Compose reads <code>deploy/.env</code> by itself):</p>
   <div class="table-wrap"><table>
     <tr><th>Profile</th><th>Starts</th><th>Command</th></tr>
     <tr><td>(none)</td><td>The platform: Kafka, PostgreSQL, Valkey, Keycloak, OpenBao, etcd, APISIX, a test mail server, and one-shot setup jobs.</td><td>always</td></tr>

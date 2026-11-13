@@ -2,7 +2,7 @@
 # Chaos run against the running MVP stack (spec WP27, MVP acceptance criterion 3): "killing any
 # one middleware container mid-flow leaves no transaction in a non-terminal state after restart
 # and sweeps". Run on a fresh, healthy stack: deploy/reset.sh, then start it (from deploy/:
-# docker compose --env-file .env --profile core --profile seed up -d --wait), then scripts/chaos.sh.
+# docker compose --profile core --profile seed up -d --wait), then scripts/chaos.sh.
 #
 # For every target in turn (default: every long-running mw-* service, then kafka, then postgres):
 #   1. start mixed load (a loop of Newman API suite folders, CHAOS_LOAD_CMD) in the background

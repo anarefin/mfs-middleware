@@ -14,15 +14,15 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * The running MVP stack as the perf suite sees it (as the former Cucumber suite's {@code Stack}, copied: the
- * suites share no code): the APISIX edge URL (the only published port) and {@code docker compose}
+ * suites share no code): the APISIX edge URL (where the edge policies apply) and {@code docker compose}
  * on the stack's project for what no API offers (Keycloak user provisioning, the post-run
  * read-only queries of the core's outbox and the audit trail).
  *
  * <p>Configuration (system properties forwarded by Gradle, or environment): {@code
  * mw.perf.base-url} / {@code MW_PERF_BASE_URL} (default {@code https://localhost:<port>} with the
  * port Compose published for {@code apisix:9443}), {@code COMPOSE_PROJECT_NAME} (default {@code
- * mfs-mw}), {@code mw.perf.root} (repository root, set by the build). Credentials are the generated
- * dev ones in {@code deploy/.env} ({@code scripts/gen-dev-env.sh}).
+ * mfs-mw}), {@code mw.perf.root} (repository root, set by the build). Credentials are the fixed
+ * dev ones in {@code deploy/.env} (a copy of {@code deploy/dev.env.defaults}).
  */
 public final class Stack {
 
@@ -65,7 +65,7 @@ public final class Stack {
     return baseUrl().resolve(path);
   }
 
-  /** A generated dev credential (e.g. {@code KC_CUSTOMERS_TEST_PASSWORD}); fails when missing. */
+  /** A dev credential (e.g. {@code KC_CUSTOMERS_TEST_PASSWORD}); fails when missing. */
   public String devCredential(String name) {
     String v = System.getenv(name);
     if (v == null) {
@@ -73,7 +73,7 @@ public final class Stack {
     }
     if (v == null || v.isEmpty()) {
       throw new IllegalStateException(
-          name + " not found: run scripts/gen-dev-env.sh and start the stack first");
+          name + " not found: cp deploy/dev.env.defaults deploy/.env and start the stack first");
     }
     return v;
   }

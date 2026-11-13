@@ -31,7 +31,7 @@ fi
 # and wait for it.
 enable_test_routes() {
   [ -f "$STACK_FILE" ] || return 0
-  "$(dirname "$0")/gen-dev-env.sh"
+  ensure_env
   stack_compose
   set -a; . "$STACK_ENV"; set +a
   info "$suite: enabling the test-only gateway routes (apisix-init with MW_E2E_ROUTES=1)"

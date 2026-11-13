@@ -2,8 +2,8 @@
 # topology", 20.2; ADR D16 replaces the per-module compose.yml files). Edit this file directly.
 #
 # Start the whole stack without any script (from deploy/, after `./gradlew clean build` made the
-# boot jars and ../scripts/gen-dev-env.sh wrote .env):
-#   docker compose --env-file .env [--env-file test-timers.env] --profile core --profile seed up -d --build
+# boot jars and `cp dev.env.defaults .env` made the settings file Compose reads on its own):
+#   docker compose --profile core --profile seed up -d --build
 # Every one-shot is reached from that command: kafka-init and provision gate every mw-* service
 # (x-infra-deps), etcd-init gates apisix, apisix-init gates mw-app-gateway and mw-admin-ui (and
 # mw-seeder). provision re-runs on every `up` (an exited one-shot is started again) and creates
@@ -17,8 +17,8 @@
 #   core      every mw-* service and mw-admin-ui
 #   seed      mw-seeder (ticket 57)
 #
-# Credentials (18.4): this file holds no secret value. scripts/gen-dev-env.sh writes every one into
-# the gitignored deploy/.env, which Compose reads to interpolate ${VAR} placeholders (it is not
+# Credentials (18.4): this file holds no secret value. deploy/.env (gitignored, a copy of the
+# committed dev.env.defaults with fixed, obviously fake dev values; ADR D9) holds every one, and Compose reads it to interpolate ${VAR} placeholders (it is not
 # passed into the containers: services get their secrets from OpenBao). env/*.env hold only
 # identities and settings. The Keycloak realm files reference their credentials as ${VAR}
 # placeholders, which Keycloak resolves from its environment on import.
@@ -26,14 +26,18 @@
 # Zones (18.1): dmz = internet-facing edge, app = services + Kafka + Valkey, data = PostgreSQL,
 # ops = Keycloak, OpenBao, APISIX Admin API callers. ops has a fixed subnet (MW_OPS_SUBNET)
 # because the APISIX Admin API only accepts callers from it. etcd sits alone on the internal
-# `etcd` network with APISIX (and its init step). Only APISIX publishes a host port (443 -> 9443;
-# override with MW_HTTPS_PORT). Parallel stacks on one host: COMPOSE_PROJECT_NAME and
-# MW_HTTPS_PORT (e.g. 0 for a random host port).
+# `etcd` network with APISIX (and its init step). Host ports (dev stack, BitsPay pattern; ADR D3
+# amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8093), the
+# two consoles (3000, 3001) and the platform (postgres 5432, valkey 6379, kafka 9094, keycloak 8180,
+# openbao 8200, greenmail 8025 / 3025) also publish a port on 127.0.0.1 only (MW_PORT_<NAME> moves
+# one). The direct ports skip the edge policies (JWT, HMAC, quotas) and are for poking at one
+# service; the console login still needs https://localhost on 443. etcd and the APISIX Admin API
+# stay unpublished. Production publishes the edge only (18.1).
 #
 # Images are pinned by tag and digest (20.1); the ones built here are mfs-mw/<svc>:local.
 #
 # Test timers: the ${MW_...} placeholders marked "timer" default to the production values of the
-# services' application.yml; `--env-file test-timers.env` (TIMERS=fast) loads the short ones.
+# services' application.yml; dev.env.defaults (copied to deploy/.env) sets the short ones.
 #
 # Memory (laptop demo footprint: functional runs and feature exploration only, never load tests).
 # Target: the whole core profile + seed inside Docker Desktop at 8 GB on a personal laptop.
@@ -188,14 +192,16 @@ services:
     image: apache/kafka:4.3.2@sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7
     restart: unless-stopped
     networks: [app]
+    ports:
+      - "127.0.0.1:${MW_PORT_KAFKA:-9094}:9094"
     environment:
       CLUSTER_ID: mw-kraft-single-node-0
       KAFKA_NODE_ID: "1"
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,HOST://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,HOST://localhost:${MW_PORT_KAFKA:-9094}
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
       KAFKA_LOG_DIRS: /var/lib/kafka/data
@@ -264,11 +270,13 @@ services:
     # tini as PID 1: reaps the pg_isready of a healthcheck that timed out (BitsPay deploy pattern)
     init: true
     networks: [data]
+    ports:
+      - "127.0.0.1:${MW_PORT_POSTGRES:-5432}:5432"
     env_file: [env/postgres.env]
     environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh first}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?cp dev.env.defaults .env}
       # postgres/initdb/10-keycloak.sh creates the keycloak role and database with it
-      KC_DB_PASSWORD: ${KC_DB_PASSWORD:?run scripts/gen-dev-env.sh first}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:?cp dev.env.defaults .env}
     # One shared dev instance serves Keycloak and every service's pool. max_connections sizing
     # (sum of the worst case, one replica each; keep it below max_connections minus the 3
     # superuser_reserved_connections when a pool or a replica is added): the dev stack caps each
@@ -313,9 +321,11 @@ services:
     image: valkey/valkey:8.1.11-alpine@sha256:2602ace2be6569bc2bbb06f873776516ab9089821525be34f4305c67eb9db02a
     restart: unless-stopped
     networks: [app]
+    ports:
+      - "127.0.0.1:${MW_PORT_VALKEY:-6379}:6379"
     environment:
       # --requirepass and valkey-cli (REDISCLI_AUTH) share the generated password
-      REDISCLI_AUTH: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh first}
+      REDISCLI_AUTH: ${VALKEY_PASSWORD:?cp dev.env.defaults .env}
     command: ["sh", "-c", "exec valkey-server --appendonly yes --requirepass \"$$REDISCLI_AUTH\""]
     volumes:
       - valkey-data:/data
@@ -338,6 +348,8 @@ services:
     build: ./keycloak
     restart: unless-stopped
     networks: [ops, data]
+    ports:
+      - "127.0.0.1:${MW_PORT_KEYCLOAK:-8180}:8080"
     # Pre-built (deploy/keycloak/Dockerfile: `kc.sh build` on the pinned image), so a start skips
     # the Quarkus re-augmentation; its entrypoint is `start --optimized --import-realm`.
     depends_on:
@@ -347,18 +359,18 @@ services:
     # postgres/initdb). Plain HTTP inside the ops network behind APISIX, which terminates
     # TLS; realms in keycloak/realms are imported on start when missing.
     environment:
-      KC_DB_PASSWORD: ${KC_DB_PASSWORD:?run scripts/gen-dev-env.sh first}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?run scripts/gen-dev-env.sh first}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:?cp dev.env.defaults .env}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?cp dev.env.defaults .env}
       # resolved by Keycloak in the realm files (${VAR} placeholders) on import
-      KC_PARTNER_SIM_SECRET: ${KC_PARTNER_SIM_SECRET:?run scripts/gen-dev-env.sh first}
-      KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?run scripts/gen-dev-env.sh first}
-      KC_OPS_TEST_PASSWORD: ${KC_OPS_TEST_PASSWORD:?run scripts/gen-dev-env.sh first}
+      KC_PARTNER_SIM_SECRET: ${KC_PARTNER_SIM_SECRET:?cp dev.env.defaults .env}
+      KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?cp dev.env.defaults .env}
+      KC_OPS_TEST_PASSWORD: ${KC_OPS_TEST_PASSWORD:?cp dev.env.defaults .env}
       # TOTP secret of the dev-only e2e operators ops-e2e-maker01 / ops-e2e-checker01 (ticket 37)
-      KC_OPS_TEST_TOTP_SECRET: ${KC_OPS_TEST_TOTP_SECRET:?run scripts/gen-dev-env.sh first}
-      KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?run scripts/gen-dev-env.sh first}
+      KC_OPS_TEST_TOTP_SECRET: ${KC_OPS_TEST_TOTP_SECRET:?cp dev.env.defaults .env}
+      KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?cp dev.env.defaults .env}
       # realm services: internal API clients (/internal/v1/** of mw-orchestrator, mw-audit-dw)
-      KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?run scripts/gen-dev-env.sh first}
-      KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?run scripts/gen-dev-env.sh first}
+      KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?cp dev.env.defaults .env}
+      KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
       JAVA_OPTS_KC_HEAP: -Xms128m -Xmx384m
     volumes:
       - ./keycloak/realms:/opt/keycloak/data/import:ro
@@ -379,6 +391,8 @@ services:
     image: openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f
     restart: unless-stopped
     networks: [app, ops]
+    ports:
+      - "127.0.0.1:${MW_PORT_OPENBAO:-8200}:8200"
     # dev-unseal.sh starts the server, initialises on first start and unseals on every
     # start (dev only; see the script header)
     entrypoint: ["/bin/sh", "/openbao/dev/dev-unseal.sh"]
@@ -410,7 +424,7 @@ services:
     environment:
       # healthcheck user: no role, so it can read nothing; etcdctl counts "permission
       # denied" as healthy, and with auth on an anonymous health check is refused
-      ETCDCTL_USER: healthcheck:${ETCD_HEALTH_PASSWORD:?run scripts/gen-dev-env.sh first}
+      ETCDCTL_USER: healthcheck:${ETCD_HEALTH_PASSWORD:?cp dev.env.defaults .env}
     command:
       - /usr/local/bin/etcd
       - --name=etcd
@@ -447,9 +461,9 @@ services:
     entrypoint: ["/bin/sh", "/deploy/etcd/init-auth.sh"]
     environment:
       ETCD_ENDPOINT: http://etcd:2379
-      ETCD_ROOT_PASSWORD: ${ETCD_ROOT_PASSWORD:?run scripts/gen-dev-env.sh first}
-      ETCD_APISIX_PASSWORD: ${ETCD_APISIX_PASSWORD:?run scripts/gen-dev-env.sh first}
-      ETCD_HEALTH_PASSWORD: ${ETCD_HEALTH_PASSWORD:?run scripts/gen-dev-env.sh first}
+      ETCD_ROOT_PASSWORD: ${ETCD_ROOT_PASSWORD:?cp dev.env.defaults .env}
+      ETCD_APISIX_PASSWORD: ${ETCD_APISIX_PASSWORD:?cp dev.env.defaults .env}
+      ETCD_HEALTH_PASSWORD: ${ETCD_HEALTH_PASSWORD:?cp dev.env.defaults .env}
     volumes:
       - ./etcd:/deploy/etcd:ro
     read_only: true
@@ -466,10 +480,10 @@ services:
     depends_on:
       etcd-init: { condition: service_completed_successfully }
     environment:
-      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?run scripts/gen-dev-env.sh first}
-      ETCD_APISIX_PASSWORD: ${ETCD_APISIX_PASSWORD:?run scripts/gen-dev-env.sh first}
+      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?cp dev.env.defaults .env}
+      ETCD_APISIX_PASSWORD: ${ETCD_APISIX_PASSWORD:?cp dev.env.defaults .env}
       # limit-count counters in Valkey (8.3); routes reference it as $env://VALKEY_PASSWORD
-      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh first}
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?cp dev.env.defaults .env}
       MW_OPS_SUBNET: ${MW_OPS_SUBNET:-172.31.250.0/24}
     ports:
       - target: 9443
@@ -500,29 +514,29 @@ services:
     entrypoint: ["/bin/bash", "/deploy/apisix/apply.sh"]
     environment:
       APISIX_ADMIN: apisix:9180
-      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?run scripts/gen-dev-env.sh first}
+      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?cp dev.env.defaults .env}
       # Test-only objects (deploy/apisix/routes-test, consumers-test): off unless scripts/api-test.sh
       # (tests/api/run.sh) or scripts/tester.sh re-runs this one-shot with MW_E2E_ROUTES=1; off also removes them.
       MW_E2E_ROUTES: ${MW_E2E_ROUTES:-0}
       # Public host of the edge (route auth-ops-browser: the only Host it answers for, and the
       # X-Forwarded-Host Keycloak sees, never the client's); the edge certificate's name.
       MW_PUBLIC_HOST: ${MW_PUBLIC_HOST:-localhost}
-      MW_E2E_API_KEY: ${MW_E2E_API_KEY:?run scripts/gen-dev-env.sh first}
+      MW_E2E_API_KEY: ${MW_E2E_API_KEY:?cp dev.env.defaults .env}
       # hmac-auth secret of the test-only checkout merchant consumer merchant_demo (ticket 31).
-      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?run scripts/gen-dev-env.sh first}
+      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?cp dev.env.defaults .env}
       # MNO USSD gateways (consumers ussd_<mno>, routes ussd-http-<mno>): basic-auth passwords from
-      # the generated .env (the simulator gets the same values via OpenBao), and each MNO's
+      # deploy/.env (dev.env.defaults) (the simulator gets the same values via OpenBao), and each MNO's
       # source allow-list (comma-separated CIDRs, required: no fallback, so a missing list stops the
-      # stack instead of opening the route). Dev values: written by gen-dev-env.sh; production lists
+      # stack instead of opening the route). Dev values: dev.env.defaults; production lists
       # each MNO's gateway addresses.
-      USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?run scripts/gen-dev-env.sh first}
-      USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?run scripts/gen-dev-env.sh first}
-      USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?run scripts/gen-dev-env.sh first}
-      USSD_TELETALK_GATEWAY_SECRET: ${USSD_TELETALK_GATEWAY_SECRET:?run scripts/gen-dev-env.sh first}
-      USSD_GP_ALLOWED_CIDRS: ${USSD_GP_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh first}
-      USSD_ROBI_ALLOWED_CIDRS: ${USSD_ROBI_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh first}
-      USSD_BL_ALLOWED_CIDRS: ${USSD_BL_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh first}
-      USSD_TELETALK_ALLOWED_CIDRS: ${USSD_TELETALK_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh first}
+      USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?cp dev.env.defaults .env}
+      USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?cp dev.env.defaults .env}
+      USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?cp dev.env.defaults .env}
+      USSD_TELETALK_GATEWAY_SECRET: ${USSD_TELETALK_GATEWAY_SECRET:?cp dev.env.defaults .env}
+      USSD_GP_ALLOWED_CIDRS: ${USSD_GP_ALLOWED_CIDRS:?cp dev.env.defaults .env}
+      USSD_ROBI_ALLOWED_CIDRS: ${USSD_ROBI_ALLOWED_CIDRS:?cp dev.env.defaults .env}
+      USSD_BL_ALLOWED_CIDRS: ${USSD_BL_ALLOWED_CIDRS:?cp dev.env.defaults .env}
+      USSD_TELETALK_ALLOWED_CIDRS: ${USSD_TELETALK_ALLOWED_CIDRS:?cp dev.env.defaults .env}
     volumes:
       - ./apisix:/deploy/apisix:ro
       - apisix-tls:/usr/local/apisix/conf/cert
@@ -537,6 +551,9 @@ services:
     image: greenmail/standalone:2.1.15@sha256:309ba544ea482e5d4265d09921cdab07c8dad2cc4481d715c9b8ff5d3f0a149f
     restart: unless-stopped
     networks: [app]
+    ports:
+      - "127.0.0.1:${MW_PORT_GREENMAIL:-8025}:8080"
+      - "127.0.0.1:${MW_PORT_GREENMAIL_SMTP:-3025}:3025"
     environment:
       GREENMAIL_OPTS: -Dgreenmail.setup.test.all -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled
       JAVA_OPTS: -Xmx96m
@@ -574,21 +591,21 @@ services:
       PGHOST: postgres
       PGUSER: ${POSTGRES_USER:-mw_admin}
       PGDATABASE: ${POSTGRES_DB:-mw}
-      PGPASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh first}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?cp dev.env.defaults .env}
       BAO_ADDR: ${VAULT_ADDR:-http://openbao:8200}
       INIT_FILE: /openbao/file/dev-init.json
       OUT_ROOT: /out
       # deploy/.env values synced into the services' secrets on every run (services.sh sync_env)
-      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh first}
-      BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?run scripts/gen-dev-env.sh first}
-      C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?run scripts/gen-dev-env.sh first}
-      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?run scripts/gen-dev-env.sh first}
-      KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?run scripts/gen-dev-env.sh first}
-      KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?run scripts/gen-dev-env.sh first}
-      USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?run scripts/gen-dev-env.sh first}
-      USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?run scripts/gen-dev-env.sh first}
-      USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?run scripts/gen-dev-env.sh first}
-      USSD_TELETALK_GATEWAY_SECRET: ${USSD_TELETALK_GATEWAY_SECRET:?run scripts/gen-dev-env.sh first}
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?cp dev.env.defaults .env}
+      BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?cp dev.env.defaults .env}
+      C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?cp dev.env.defaults .env}
+      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?cp dev.env.defaults .env}
+      KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
+      KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?cp dev.env.defaults .env}
+      USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?cp dev.env.defaults .env}
+      USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?cp dev.env.defaults .env}
+      USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?cp dev.env.defaults .env}
+      USSD_TELETALK_GATEWAY_SECRET: ${USSD_TELETALK_GATEWAY_SECRET:?cp dev.env.defaults .env}
     volumes:
       - openbao-data:/openbao/file:ro
       # one volume per service, at /out/<dir> as listed in services.sh
@@ -615,6 +632,8 @@ services:
   mw-core-mock:
     <<: *app
     profiles: *minimal
+    ports:
+      - "127.0.0.1:${MW_PORT_CORE_MOCK:-8084}:8080"
     image: mfs-mw/mw-core-mock:local
     build: { context: ../services/mw-core-mock, args: *jvm-build-args }
     depends_on:
@@ -634,6 +653,8 @@ services:
   mw-simulators:
     <<: *app
     profiles: *minimal
+    ports:
+      - "127.0.0.1:${MW_PORT_SIMULATORS:-8085}:8080"
     image: mfs-mw/mw-simulators:local
     build: { context: ../services/mw-simulators, args: *jvm-build-args }
     depends_on:
@@ -644,7 +665,7 @@ services:
       <<: *jvm-env
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
       # Hold time of a simulated partner timeout (amount fraction .13): above the callers' time
-      # limits (timer: TIMERS=fast shortens it with them).
+      # limits (timer: dev.env.defaults shortens it with them).
       SIM_TIMEOUTDELAY: ${MW_SIM_TIMEOUT_DELAY:-30s}
     deploy:
       resources:
@@ -654,6 +675,8 @@ services:
   mw-orchestrator:
     <<: *app
     profiles: *minimal
+    ports:
+      - "127.0.0.1:${MW_PORT_ORCHESTRATOR:-8083}:8080"
     image: mfs-mw/mw-orchestrator:local
     build: { context: ../services/mw-orchestrator, args: *jvm-build-args }
     depends_on:
@@ -689,6 +712,8 @@ services:
   mw-audit-dw:
     <<: *app
     profiles: *minimal
+    ports:
+      - "127.0.0.1:${MW_PORT_AUDIT_DW:-8087}:8080"
     image: mfs-mw/mw-audit-dw:local
     build: { context: ../services/mw-audit-dw, args: *jvm-build-args }
     depends_on:
@@ -712,6 +737,8 @@ services:
   mw-app-gateway:
     <<: *app
     profiles: *minimal
+    ports:
+      - "127.0.0.1:${MW_PORT_APP_GATEWAY:-8081}:8080"
     image: mfs-mw/mw-app-gateway:local
     build: { context: ../services/mw-app-gateway, args: *jvm-build-args }
     depends_on:
@@ -743,6 +770,8 @@ services:
   mw-notify:
     <<: *app
     profiles: *minimal
+    ports:
+      - "127.0.0.1:${MW_PORT_NOTIFY:-8086}:8080"
     image: mfs-mw/mw-notify:local
     build: { context: ../services/mw-notify, args: *jvm-build-args }
     depends_on:
@@ -771,6 +800,8 @@ services:
   mw-ussd:
     <<: *app
     profiles: *minimal
+    ports:
+      - "127.0.0.1:${MW_PORT_USSD:-8082}:8080"
     image: mfs-mw/mw-ussd:local
     build: { context: ../services/mw-ussd, args: *jvm-build-args }
     depends_on:
@@ -795,6 +826,8 @@ services:
   mw-admin-api:
     <<: *app
     profiles: *minimal
+    ports:
+      - "127.0.0.1:${MW_PORT_ADMIN_API:-8088}:8080"
     image: mfs-mw/mw-admin-api:local
     build: { context: ../services/mw-admin-api, args: *jvm-build-args }
     depends_on:
@@ -819,6 +852,8 @@ services:
   mw-adapter-telco:
     <<: *app
     profiles: *core
+    ports:
+      - "127.0.0.1:${MW_PORT_ADAPTER_TELCO:-8089}:8080"
     image: mfs-mw/mw-adapter-telco:local
     build: { context: ../services/mw-adapter-telco, args: *jvm-build-args }
     depends_on:
@@ -842,6 +877,8 @@ services:
   mw-adapter-billpay:
     <<: *app
     profiles: *core
+    ports:
+      - "127.0.0.1:${MW_PORT_ADAPTER_BILLPAY:-8090}:8080"
     image: mfs-mw/mw-adapter-billpay:local
     build: { context: ../services/mw-adapter-billpay, args: *jvm-build-args }
     depends_on:
@@ -854,7 +891,7 @@ services:
       # Utility bill aggregator endpoint; the MVP stack targets the aggregator simulator
       # (mw-simulators, /billagg/v1/*).
       BILLAGG_BASE_URL: ${BILLAGG_BASE_URL:-http://mw-simulators:8080}
-      # The dev partner's time limit and read timeout (application-dev.yml values; timer: TIMERS=fast
+      # The dev partner's time limit and read timeout (application-dev.yml values; timer: dev.env.defaults
       # shortens them, the read timeout staying above the limit).
       MW_PARTNERS_INSTANCES_BILLAGG_TIMEOUTMS: ${MW_BILLAGG_TIMEOUT_MS:-25000}
       MW_PARTNERS_INSTANCES_BILLAGG_READTIMEOUTMS: ${MW_BILLAGG_READ_TIMEOUT_MS:-27000}
@@ -868,6 +905,8 @@ services:
   mw-adapter-bank:
     <<: *app
     profiles: *core
+    ports:
+      - "127.0.0.1:${MW_PORT_ADAPTER_BANK:-8091}:8080"
     image: mfs-mw/mw-adapter-bank:local
     build: { context: ../services/mw-adapter-bank, args: *jvm-build-args }
     depends_on:
@@ -879,7 +918,7 @@ services:
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
       # C2W bank endpoint; the MVP stack targets the bank simulator (mw-simulators, /c2wbank/v1/*).
       C2WBANK_BASE_URL: ${C2WBANK_BASE_URL:-http://mw-simulators:8080}
-      # The dev partner's time limit and read timeout (application-dev.yml values; timer: TIMERS=fast
+      # The dev partner's time limit and read timeout (application-dev.yml values; timer: dev.env.defaults
       # shortens them, the read timeout staying above the limit).
       MW_PARTNERS_INSTANCES_C2WBANK_TIMEOUTMS: ${MW_C2WBANK_TIMEOUT_MS:-25000}
       MW_PARTNERS_INSTANCES_C2WBANK_READTIMEOUTMS: ${MW_C2WBANK_READ_TIMEOUT_MS:-27000}
@@ -893,6 +932,8 @@ services:
   mw-portal-api:
     <<: *app
     profiles: *core
+    ports:
+      - "127.0.0.1:${MW_PORT_PORTAL_API:-8093}:8080"
     image: mfs-mw/mw-portal-api:local
     build: { context: ../services/mw-portal-api, args: *jvm-build-args }
     depends_on:
@@ -916,6 +957,8 @@ services:
   mw-checkout:
     <<: *app
     profiles: *core
+    ports:
+      - "127.0.0.1:${MW_PORT_CHECKOUT:-8092}:8080"
     image: mfs-mw/mw-checkout:local
     build: { context: ../services/mw-checkout, args: *jvm-build-args }
     depends_on:
@@ -927,7 +970,7 @@ services:
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "4"
       # Where the hosted checkout page lives (front-end TBC, spec open point 16).
       MW_CHECKOUT_PAGE_BASE_URL: ${MW_CHECKOUT_PAGE_BASE_URL:-https://localhost/checkout/page/}
-      # Synchronous wait for the payment's terminal status before 202 PAYING (timer: TIMERS=fast shortens it).
+      # Synchronous wait for the payment's terminal status before 202 PAYING (timer: dev.env.defaults shortens it).
       MW_CHECKOUT_REPLY_BUDGET: ${MW_CHECKOUT_REPLY_BUDGET:-25s}
       # Dev stack only: the merchant IPN receiver simulator is plain http at a private address
       # (http://mw-simulators:8080/merchant/ipn/...). The packaged default allows no such host.
@@ -949,6 +992,8 @@ services:
   mw-admin-ui:
     <<: *app
     profiles: *core
+    ports:
+      - "127.0.0.1:${MW_PORT_ADMIN_UI:-3000}:3000"
     image: mfs-mw/mw-admin-ui:local
     build: ../ui/mw-admin-ui
     networks: [ops]
@@ -958,7 +1003,7 @@ services:
       apisix-init: { condition: service_completed_successfully }
     environment:
       # encrypts the session cookie (JWE) that holds the operator's tokens; generated dev value
-      AUTH_SECRET: ${MW_ADMIN_UI_AUTH_SECRET:?run scripts/gen-dev-env.sh first}
+      AUTH_SECRET: ${MW_ADMIN_UI_AUTH_SECRET:?cp dev.env.defaults .env}
       # public origin of the edge (APISIX); a non-default MW_HTTPS_PORT needs e.g. https://localhost:18443
       AUTH_URL: ${MW_ADMIN_UI_PUBLIC_URL:-https://localhost}/console/api/auth
       AUTH_KEYCLOAK_ISSUER: ${MW_ADMIN_UI_PUBLIC_URL:-https://localhost}/realms/ops
@@ -985,6 +1030,8 @@ services:
   mw-test-console:
     <<: *app
     profiles: [tester]
+    ports:
+      - "127.0.0.1:${MW_PORT_TEST_CONSOLE:-3001}:3000"
     image: mfs-mw/mw-test-console:local
     build: ../ui/mw-test-console
     networks: [app]
@@ -992,10 +1039,10 @@ services:
     environment:
       EDGE_URL: http://apisix:9080
       PUBLIC_URL: ${MW_ADMIN_UI_PUBLIC_URL:-https://localhost}
-      MW_E2E_API_KEY: ${MW_E2E_API_KEY:?run scripts/gen-dev-env.sh first}
-      KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?run scripts/gen-dev-env.sh first}
-      KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?run scripts/gen-dev-env.sh first}
-      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?run scripts/gen-dev-env.sh first}
+      MW_E2E_API_KEY: ${MW_E2E_API_KEY:?cp dev.env.defaults .env}
+      KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?cp dev.env.defaults .env}
+      KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?cp dev.env.defaults .env}
+      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?cp dev.env.defaults .env}
     depends_on:
       apisix: { condition: service_healthy }
     healthcheck:
@@ -1051,18 +1098,18 @@ services:
       JDK_JAVA_OPTIONS: -Xms64m -Xmx96m -XX:MaxMetaspaceSize=96m -Xss512k
       # timer: each seed step's time limit (ticket 57: 10 min)
       MW_SEED_STEP_TIMEOUT: ${MW_SEED_STEP_TIMEOUT:-10m}
-      # Baseline time limit of partner ocs in mw-admin-api (application.yml: 20 s; timer: TIMERS=fast
+      # Baseline time limit of partner ocs in mw-admin-api (application.yml: 20 s; timer: dev.env.defaults
       # seeds a short one, and the API suite reads it back from the manifest). Every field of the
       # list element: an environment list replaces the application.yml one, it does not merge.
       MW_SEEDER_PARTNERS_0_PARTNERID: ocs
       MW_SEEDER_PARTNERS_0_ENABLED: "true"
       MW_SEEDER_PARTNERS_0_TIMEOUTMS: ${MW_SEED_OCS_TIMEOUT_MS:-20000}
       KC_BOOTSTRAP_ADMIN_USERNAME: kc-admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?run scripts/gen-dev-env.sh first}
-      KC_OPS_TEST_PASSWORD: ${KC_OPS_TEST_PASSWORD:?run scripts/gen-dev-env.sh first}
-      KC_OPS_TEST_TOTP_SECRET: ${KC_OPS_TEST_TOTP_SECRET:?run scripts/gen-dev-env.sh first}
-      KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?run scripts/gen-dev-env.sh first}
-      KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?run scripts/gen-dev-env.sh first}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?cp dev.env.defaults .env}
+      KC_OPS_TEST_PASSWORD: ${KC_OPS_TEST_PASSWORD:?cp dev.env.defaults .env}
+      KC_OPS_TEST_TOTP_SECRET: ${KC_OPS_TEST_TOTP_SECRET:?cp dev.env.defaults .env}
+      KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?cp dev.env.defaults .env}
+      KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?cp dev.env.defaults .env}
     deploy:
       resources:
         limits: { cpus: "1.0", memory: 256M }

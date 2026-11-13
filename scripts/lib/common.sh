@@ -41,27 +41,27 @@ selected_modules() {
 # The single-host stack: one hand-written Compose file with profiles (ADR D16).
 STACK_FILE="$MW_ROOT/deploy/docker-compose.yml"
 STACK_ENV="$MW_ROOT/deploy/.env"
-STACK_TIMERS="$MW_ROOT/deploy/test-timers.env"
+# the committed dev settings (fixed, fake values and the short test timers; ADR D9) deploy/.env is copied from
+STACK_ENV_DEFAULTS="$MW_ROOT/deploy/dev.env.defaults"
 # every profile of the stack file (deploy/reset.sh and the log scan cover them all)
 STACK_PROFILES="minimal core seed tester"
 
-# stack_compose [PROFILE...]: set DC_F to the docker compose arguments for the stack: the file, the
-# generated deploy/.env, with TIMERS=fast also deploy/test-timers.env, then --profile for each PROFILE
-# (default core). The scripts that use it only read the stack (ps, logs, exec, cp) or (re)start a
-# one-shot with --no-deps, so they never recreate a service: TIMERS matters only when a script starts
-# services, and then it must match the `up` that started the stack (TIMERS=fast for
-# `--env-file test-timers.env`).
+# ensure_env: copy deploy/dev.env.defaults to deploy/.env when .env does not exist yet (the
+# `cp dev.env.defaults .env` of deploy/RUNNING.html step 3); an existing .env is kept as it is.
+ensure_env() {
+  [ -f "$STACK_ENV" ] && return 0
+  [ -f "$STACK_ENV_DEFAULTS" ] || die "deploy/dev.env.defaults does not exist"
+  cp "$STACK_ENV_DEFAULTS" "$STACK_ENV"
+  info "created deploy/.env from deploy/dev.env.defaults"
+}
+
+# stack_compose [PROFILE...]: set DC_F to the docker compose arguments for the stack: the file, then
+# --profile for each PROFILE (default core). Compose reads deploy/.env on its own (the project
+# directory is deploy/, the folder of the file), so no --env-file is passed.
 # Use as: stack_compose; docker compose "${DC_F[@]}" ...
 stack_compose() {
   [ -f "$STACK_FILE" ] || die "deploy/docker-compose.yml does not exist"
   DC_F=(-f "$STACK_FILE")
-  # gen-dev-env.sh writes it; a read-only call on a checkout without it still works
-  if [ -f "$STACK_ENV" ] || [ "${TIMERS:-}" = fast ]; then DC_F+=(--env-file "$STACK_ENV"); fi
-  case "${TIMERS:-}" in
-    '') ;;
-    fast) DC_F+=(--env-file "$STACK_TIMERS") ;;
-    *) die "TIMERS must be empty or fast, got '$TIMERS'" ;;
-  esac
   local p
   [ "$#" -gt 0 ] || set -- core
   for p in "$@"; do DC_F+=(--profile "$p"); done

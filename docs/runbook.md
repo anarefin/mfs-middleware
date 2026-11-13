@@ -35,27 +35,27 @@ On macOS: Docker Desktop (Settings, Resources: memory 8 GB or more), a JDK 25 (`
 ## Start, stop, status
 
 Gradle runs from the repo root; the `docker compose` commands run from `deploy/` (Compose then reads
-`deploy/.env` by itself; pass `--env-file .env` explicitly whenever you add `--env-file test-timers.env`).
+`deploy/.env` by itself, short test timers included).
 
 | Task | Command |
 | --- | --- |
 | Build and test (after a code change) | `./gradlew clean build` (or `./gradlew :mw-notify:build` for one module); `./gradlew bootJar` for the jars only |
-| Credentials (first time; values are kept) | `scripts/gen-dev-env.sh` |
-| Start, build the images, seed (or bring back after a reboot) | `docker compose --env-file .env --profile core --profile seed up -d --build`, then `docker compose --profile core --profile seed wait mw-seeder` (ends with `exited with status code 0`) |
-| Start with short test timers | the same with `--env-file .env --env-file test-timers.env` (`deploy/test-timers.env`) |
-| Start without seeding, wait until healthy | `docker compose --env-file .env --profile core up -d --build --wait` |
-| Start only the P2P and cash path | `docker compose --env-file .env --profile minimal up -d --build` (unseeded) |
+| Dev settings (first time) | `cd deploy && cp dev.env.defaults .env` |
+| Start, build the images, seed (or bring back after a reboot) | `docker compose --profile core --profile seed up -d --build`, then `docker compose --profile core --profile seed wait mw-seeder` (ends with `exited with status code 0`) |
+| Production timers instead of the test ones | delete the timer block from `deploy/.env`, then `docker compose --profile core up -d` (recreates the services) |
+| Start without seeding, wait until healthy | `docker compose --profile core up -d --build --wait` |
+| Start only the P2P and cash path | `docker compose --profile minimal up -d --build` (unseeded) |
 | Live checks | `scripts/smoke.sh` (repo root) |
 | Stop, keep the data | `docker compose --profile core --profile seed down` (or `stop`) |
 | Stop and wipe every volume | `deploy/reset.sh` (every profile, orphans too) |
-| Swap a rebuilt service into the running stack | `./gradlew :mw-notify:bootJar`, then `docker compose --env-file .env --profile core up -d --build mw-notify` and `docker compose restart apisix` (keep the `--env-file` arguments the stack was started with) |
-| Run a second stack beside the first | export `COMPOSE_PROJECT_NAME=mw-t2` and `MW_HTTPS_PORT=0` for the `docker compose` commands and the scripts (the console login needs port 443, so use it on the default stack only) |
+| Swap a rebuilt service into the running stack | `./gradlew :mw-notify:bootJar`, then `docker compose --profile core up -d --build mw-notify` and `docker compose restart apisix` |
+| Run a second stack beside the first | export `COMPOSE_PROJECT_NAME=mw-t2`, `MW_HTTPS_PORT=0` and a free `MW_PORT_<NAME>` for every direct port for the `docker compose` commands and the scripts (the console login needs port 443, so use it on the default stack only) |
 
 The step-by-step version with timings is `deploy/RUNNING.html`. For `docker compose` work from the
 repo root, define once per shell (the same file and env the scripts use):
 
 ```sh
-dc() { docker compose -f deploy/docker-compose.yml --env-file deploy/.env --profile core "$@"; }
+dc() { docker compose -f deploy/docker-compose.yml --profile core "$@"; }
 dc ps                                   # state and health of every container
 dc logs -f --tail=200 mw-orchestrator   # one service's JSON log
 dc restart mw-notify                    # restart one service
@@ -70,10 +70,44 @@ schemas idempotently, so a new service's schema appears without wiping volumes.
 
 ## What is published
 
-Only APISIX publishes a host port: 443 (container port 9443, `MW_HTTPS_PORT` to change it). The
-edge certificate is self-signed for `localhost`, created on the first start and kept in the
-`apisix-tls` volume. Everything else (Kafka, PostgreSQL, Keycloak, OpenBao, the services' 8080)
-is reachable only inside the Compose networks.
+APISIX is the edge on 443 (container port 9443, `MW_HTTPS_PORT` to change it). The edge
+certificate is self-signed for `localhost`, created on the first start and kept in the
+`apisix-tls` volume.
+
+For debugging, every service and platform container also publishes a port on 127.0.0.1 only
+(never on other interfaces). Each moves with its `MW_PORT_<NAME>` knob, e.g. `MW_PORT_POSTGRES`.
+etcd and the APISIX Admin API stay unpublished. A direct port skips the edge policies (JWT, HMAC,
+quotas); the console login still needs https://localhost on 443. Production stays edge-only (ADR
+D3 amendment 2026-11-13).
+
+| Host port | Container | Knob |
+| --- | --- | --- |
+| 8081 | `mw-app-gateway` | `MW_PORT_APP_GATEWAY` |
+| 8082 | `mw-ussd` | `MW_PORT_USSD` |
+| 8083 | `mw-orchestrator` | `MW_PORT_ORCHESTRATOR` |
+| 8084 | `mw-core-mock` | `MW_PORT_CORE_MOCK` |
+| 8085 | `mw-simulators` | `MW_PORT_SIMULATORS` |
+| 8086 | `mw-notify` | `MW_PORT_NOTIFY` |
+| 8087 | `mw-audit-dw` | `MW_PORT_AUDIT_DW` |
+| 8088 | `mw-admin-api` | `MW_PORT_ADMIN_API` |
+| 8089 | `mw-adapter-telco` | `MW_PORT_ADAPTER_TELCO` |
+| 8090 | `mw-adapter-billpay` | `MW_PORT_ADAPTER_BILLPAY` |
+| 8091 | `mw-adapter-bank` | `MW_PORT_ADAPTER_BANK` |
+| 8092 | `mw-checkout` | `MW_PORT_CHECKOUT` |
+| 8093 | `mw-portal-api` | `MW_PORT_PORTAL_API` |
+| 3000 | `mw-admin-ui` (path `/console`) | `MW_PORT_ADMIN_UI` |
+| 3001 | `mw-test-console` (profile `tester`) | `MW_PORT_TEST_CONSOLE` |
+| 5432 | `postgres` | `MW_PORT_POSTGRES` |
+| 6379 | `valkey` | `MW_PORT_VALKEY` |
+| 9094 | `kafka` (host listener `localhost:9094`) | `MW_PORT_KAFKA` |
+| 8180 | `keycloak` | `MW_PORT_KEYCLOAK` |
+| 8200 | `openbao` | `MW_PORT_OPENBAO` |
+| 8025 / 3025 | `greenmail` API / SMTP | `MW_PORT_GREENMAIL`, `MW_PORT_GREENMAIL_SMTP` |
+
+Readiness of one service: `curl -s localhost:8081/actuator/health/readiness` (the actuator listens
+on 8080 inside the container).
+
+Through the edge:
 
 | Path on https://localhost | Goes to |
 | --- | --- |
@@ -94,17 +128,17 @@ machine, browse on the host itself or forward the port (`sudo ssh -L 443:localho
 ## Credentials
 
 - Every dev credential (PostgreSQL, Valkey, Keycloak admin and test users, client secrets, partner
-  simulator HMAC secrets, USSD gateway passwords, the console's session key) is generated by
-  `scripts/gen-dev-env.sh` into the gitignored `deploy/.env` (mode 600): run it before the first
-  `up` (`scripts/smoke.sh`, `scripts/tester.sh` and `deploy/reset.sh` call it too); existing values are kept. The tester logins are fixed,
-  documented fake values (ADR D9 amendment; `docs/testing-guide.html` section 1), the rest random;
-  `deploy/reset.sh` rewrites the fixed ones (an older `.env` warns that they differ). OpenBao also gets the
+  simulator HMAC secrets, USSD gateway passwords, the console's session key) is a fixed, obviously
+  fake value in the committed `deploy/dev.env.defaults` (ADR D9 amendment; the tester logins are in
+  `docs/testing-guide.html` section 1). `cd deploy && cp dev.env.defaults .env` before the first
+  `up`; `scripts/smoke.sh`, `scripts/tester.sh`, `scripts/suite.sh` and `deploy/reset.sh` copy it
+  when `deploy/.env` is missing. Deleting `deploy/.env` and copying it again is safe. OpenBao also gets the
   fixed token `dev-root-token` on the first start of a fresh volume. The one-shot `provision`
   (`deploy/provision`) writes the services' secrets into OpenBao; services read them from OpenBao at start.
 - Test users and which variable holds their password: README, "Test users".
-- Rotating every random value: `deploy/reset.sh`, delete `deploy/.env`, `scripts/gen-dev-env.sh`, start again (the tester logins come back with their fixed values).
-  Deleting the file but keeping the volumes leaves PostgreSQL and Keycloak with the old passwords:
-  the stack will not come up.
+- Changing a value: edit `deploy/.env`, then `deploy/reset.sh` and start again. The volumes
+  (PostgreSQL, Keycloak, etcd) were initialised with the old values, so a changed value with the
+  old volumes keeps the stack from coming up.
 - The OpenBao root token is kept in its data volume (dev only, a known gap; production unseal is
   deferred).
 
@@ -176,7 +210,7 @@ dc exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select
 | APISIX answers 404 for test routes (`/test/...`) | expected after an `up`; `scripts/api-test.sh`, `scripts/tester.sh` and `scripts/suite.sh perf` enable them |
 | A service answers 404 `MW-VAL-003` for paths it serves, after `dc up -d <service>` recreated just that container | APISIX still sends to the old container IP, which another service may own now: `dc restart apisix` (a full start does not hit this) |
 | 401 from the console API after a long idle | sign out and in again (the refresh token expired) |
-| Port 443 busy | free it, or put `MW_HTTPS_PORT=8443` in front of the `docker compose` start command (APIs work, the console login does not) |
+| Port 443 or a direct port busy | free it, or move ours: `MW_HTTPS_PORT=8443` (APIs work, the console login does not) or `MW_PORT_<NAME>` (e.g. `MW_PORT_POSTGRES=15432`) in `deploy/.env` or in front of the `docker compose` start command |
 | Docker out of disk | `docker system df`, then `docker image prune` and `docker builder prune` (keeps volumes) |
 | Anything else after a crash of the host | `dc down`, then start again; as the last resort `deploy/reset.sh`, then start again (loses every transaction; the seed data comes back) |
 
@@ -199,7 +233,7 @@ secrets that `provision` writes again on every `up`.
 | Run | Command | Note |
 | --- | --- | --- |
 | Build gate | `./gradlew clean build` | with Docker running (otherwise the Testcontainers tests are skipped); best with the stack stopped: up to four modules' test PostgreSQL and Kafka run at once (`mwDockerTests`); a milestone gate adds `-PwithSlow` |
-| Acceptance suite | `scripts/api-test.sh` (`scripts/api-test.sh "" 1` adds the slow folder) | on a fresh stack: `deploy/reset.sh`, then start with `--env-file test-timers.env` and the seed profile; under 10 minutes |
+| Acceptance suite | `scripts/api-test.sh` (`scripts/api-test.sh "" 1` adds the slow folder) | on a fresh stack: `deploy/reset.sh`, then start with the seed profile (`deploy/.env` carries the test timers); under 10 minutes |
 | Chaos | `scripts/chaos.sh` (or `CHAOS_TARGETS="mw-orchestrator kafka" scripts/chaos.sh`) | kills containers: never on a stack someone else is using |
 | Load | `scripts/suite.sh perf` | spends the seed wallets' daily limits: fresh stack before and after |
 | Security | `SECURITY_LIVE=1 scripts/security.sh` | after `scripts/api-test.sh`, so the log scan has logs to read; findings register `docs/security-findings.md` |

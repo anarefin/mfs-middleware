@@ -1,6 +1,12 @@
 # M8: Single host, Docker Compose, no HA
 
 Status: Accepted, 2026-11-03.
+Amendment (2026-11-13, BitsPay deploy alignment): the dev stack also publishes host ports on
+127.0.0.1 only: every `mw-*` service (8081-8093), the admin UI (3000), the test console (3001) and
+the platform (PostgreSQL 5432, Valkey 6379, Kafka 9094, Keycloak 8180, OpenBao 8200, GreenMail
+8025/3025), each a `MW_PORT_<NAME>` knob in `deploy/docker-compose.yml`, for local debugging. A
+direct port skips every edge policy. APISIX 443 stays the edge and the only port reachable beyond
+loopback; etcd and the APISIX Admin API stay unpublished. Production stays edge-only (only APISIX publishes 443, as decided below).
 
 ## Context
 

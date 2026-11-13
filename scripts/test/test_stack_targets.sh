@@ -17,9 +17,11 @@ stub_tools() {
 stack_file() {
   mkdir -p deploy
   { printf 'name: mfs-mw\nservices:\n'; for s in "$@"; do printf '  %s:\n    image: x\n' "$s"; done; } >deploy/docker-compose.yml
+  # the committed dev settings deploy/.env is copied from (ensure_env)
+  printf 'A=1\n' >deploy/dev.env.defaults
 }
 
-F() { printf 'compose -f %s/deploy/docker-compose.yml --env-file %s/deploy/.env' "$PWD" "$PWD"; }
+F() { printf 'compose -f %s/deploy/docker-compose.yml' "$PWD"; }
 
 # perf_suite: tests/perf, its own standalone Gradle build, with a stub wrapper that records its tasks.
 perf_suite() {
@@ -49,13 +51,21 @@ test_seed_manifest_copy_never_fails_without_a_stack() {
   OUT="$(MW_ROOT="$PWD" bash -c '. "$1"; stack_seed_manifest' _ "$REPO_DIR/scripts/lib/common.sh" 2>&1)" || fail "failed without a stack file"
 }
 
-test_TIMERS_fast_adds_the_test_timers_env_file_and_rejects_others() {
+test_stack_compose_passes_no_env_file_compose_reads_deploy_env_itself() {
   stack_file mw-a
   touch deploy/.env
-  OUT="$(MW_ROOT="$PWD" TIMERS=fast bash -c '. "$1"; stack_compose; echo "${DC_F[*]}"' _ "$REPO_DIR/scripts/lib/common.sh" 2>&1)"
-  assert_out_contains "--env-file $PWD/deploy/test-timers.env --profile core"
-  OUT="$(MW_ROOT="$PWD" TIMERS=slow bash -c '. "$1"; stack_compose' _ "$REPO_DIR/scripts/lib/common.sh" 2>&1)" && fail "TIMERS=slow accepted"
-  assert_out_contains "TIMERS must be empty or fast"
+  OUT="$(MW_ROOT="$PWD" bash -c '. "$1"; stack_compose seed; echo "${DC_F[*]}"' _ "$REPO_DIR/scripts/lib/common.sh" 2>&1)"
+  [ "$OUT" = "-f $PWD/deploy/docker-compose.yml --profile seed" ] || fail "unexpected compose args: $OUT"
+}
+
+test_ensure_env_copies_the_dev_defaults_once_and_keeps_an_existing_env() {
+  mkdir -p deploy
+  printf 'A=1\n' >deploy/dev.env.defaults
+  MW_ROOT="$PWD" bash -c '. "$1"; ensure_env' _ "$REPO_DIR/scripts/lib/common.sh" >/dev/null || fail "ensure_env failed"
+  [ "$(cat deploy/.env)" = "A=1" ] || fail "deploy/.env is not a copy of dev.env.defaults"
+  printf 'A=edited\n' >deploy/.env
+  MW_ROOT="$PWD" bash -c '. "$1"; ensure_env' _ "$REPO_DIR/scripts/lib/common.sh" >/dev/null || fail "ensure_env failed"
+  [ "$(cat deploy/.env)" = "A=edited" ] || fail "ensure_env overwrote an existing deploy/.env"
 }
 
 test_deploy_reset_sh_drops_every_profile_from_any_directory() {
@@ -66,10 +76,11 @@ test_deploy_reset_sh_drops_every_profile_from_any_directory() {
   stack_file mw-a
   local d
   for d in deploy /; do
-    rm -f .tool-calls
+    rm -f .tool-calls deploy/.env
     OUT="$(root="$PWD"; cd "$d" && MW_ROOT="$root" "$REPO_DIR/deploy/reset.sh" 2>&1)" || fail "reset.sh failed (from $d)"
     grep -qF "docker $(F) --profile minimal --profile core --profile seed --profile tester down -v --remove-orphans" .tool-calls \
       || fail "reset.sh (from $d): $(cat .tool-calls)"
+    [ "$(cat deploy/.env)" = "A=1" ] || fail "reset.sh (from $d) did not copy deploy/dev.env.defaults to a missing deploy/.env"
   done
 }
 
@@ -182,7 +193,7 @@ test_perf_passes_extra_settings_to_both_runs() {
 
 test_perf_enables_the_test_only_gateway_routes_first() {
   # The run's setup needs the core's PIN key and the SMSC simulator (binding OTPs): test routes.
-  mkdir -p .bin deploy && touch deploy/docker-compose.yml
+  mkdir -p .bin deploy && touch deploy/docker-compose.yml && printf 'A=1\n' >deploy/dev.env.defaults
   cat >.bin/docker <<EOF
 #!/bin/sh
 echo "MW_E2E_ROUTES=\${MW_E2E_ROUTES:-} docker \$*" >> "$PWD/.tool-calls"
@@ -274,7 +285,7 @@ name: mfs-mw
 services:
   db:
     image: postgres:18
-    environment: { POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh}" }
+    environment: { POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?cp dev.env.defaults .env}" }
     deploy: { resources: { limits: { memory: 384M } } }
   db-init:
     image: alpine:3
@@ -313,7 +324,7 @@ name: mfs-mw
 services:
   db:
     image: postgres:18
-    environment: { POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh}" }
+    environment: { POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?cp dev.env.defaults .env}" }
     deploy: { resources: { limits: { memory: "${POSTGRES_MEM:-384M}" } } }
   mw-a:
     profiles: [core]

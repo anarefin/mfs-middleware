@@ -169,5 +169,5 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 | `./gradlew :mw-ussd:build` | `test`, then the boot jar `build/libs/mw-ussd.jar` (fixed name, the one the Dockerfile copies) |
 | `./gradlew :mw-ussd:bootJar && docker build -t mw-ussd:dev services/mw-ussd` | image, as spec 4.3 rule 1 |
 | `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
-| `./gradlew :mw-ussd:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-ussd` | rebuild this service's image (`mfs-mw/mw-ussd:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |
+| `./gradlew :mw-ussd:bootJar`, then from `deploy/`: `docker compose --profile core up -d --build mw-ussd` | rebuild this service's image (`mfs-mw/mw-ussd:local`) and restart it with what it depends on (dev timers from `deploy/.env`) |
 | `scripts/api-test.sh "18, 19, 20"` | P2P, cash-out, top-up and bill pay over the HTTP USSD gateway simulator (`tests/api/src/18-ussd`, `19-ussd-flows`) and GP over SMPP (`20-ussd-smpp`) |

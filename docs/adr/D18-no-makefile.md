@@ -2,6 +2,9 @@
 
 Status: Accepted, 2026-11-13 (user decision, plan "Build, test and deploy the BitsPay way").
 Amends M13 and D16.
+Amendment (2026-11-13, BitsPay deploy alignment): the dev settings are the committed
+`deploy/dev.env.defaults` (copied to `deploy/.env`, which Compose reads by itself), so the stack
+command has no `--env-file` flags and no separate timers file (ADR D9, D16 amendments).
 
 ## Context
 
@@ -29,8 +32,8 @@ stack is plain `docker compose`.
   cache. After `clean`, a module whose inputs did not change (its sources and the contract files its
   tests read) restores its test results and jar instead of running them again. That replaces the
   changed-modules selection of the old verify-changed gate.
-- The stack: from `deploy/`, `../scripts/gen-dev-env.sh`, then
-  `docker compose --env-file .env [--env-file test-timers.env] --profile core --profile seed up -d --build`
+- The stack: from `deploy/`, `cp dev.env.defaults .env`, then
+  `docker compose --profile core --profile seed up -d --build --wait`
   (`deploy/RUNNING.html`); `deploy/reset.sh` wipes it. Live checks stay scripts:
   `scripts/smoke.sh`, `scripts/api-test.sh`, `scripts/ui-e2e.sh`, `scripts/edge-test.sh`,
   `scripts/security.sh`, `scripts/log-scan.sh`, `scripts/chaos.sh`, `scripts/suite.sh`.

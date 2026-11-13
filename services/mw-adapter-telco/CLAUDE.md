@@ -200,4 +200,4 @@ mapping, inbox/outbox).
 | `./gradlew :mw-adapter-telco:build` | `test`, then the boot jar `build/libs/mw-adapter-telco.jar` (fixed name, the one the Dockerfile copies) |
 | `./gradlew :mw-adapter-telco:bootJar && docker build -t mw-adapter-telco:dev services/mw-adapter-telco` | image, as spec 4.3 rule 1 |
 | `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
-| `./gradlew :mw-adapter-telco:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-adapter-telco` | rebuild this service's image (`mfs-mw/mw-adapter-telco:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |
+| `./gradlew :mw-adapter-telco:bootJar`, then from `deploy/`: `docker compose --profile core up -d --build mw-adapter-telco` | rebuild this service's image (`mfs-mw/mw-adapter-telco:local`) and restart it with what it depends on (dev timers from `deploy/.env`) |

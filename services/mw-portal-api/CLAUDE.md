@@ -28,7 +28,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   auth to `mw.portal-api.orchestrator.auth.token-uri` (`MW_INTERNAL_TOKEN_URI`), cached until 30 s
   before `expires_in`, dropped when the orchestrator answers 401; secret
   `mw.portal-api.orchestrator.auth.client-secret` in `secret/mw-portal-api`, synced by the init from
-  `KC_MW_PORTAL_API_SECRET` of `scripts/gen-dev-env.sh`). No token -> `503 MW-SYS-040`.
+  `KC_MW_PORTAL_API_SECRET` of `deploy/dev.env.defaults`). No token -> `503 MW-SYS-040`.
   `OrchestratorClientAuthTest`. Resilience4j `orchestrator` (retry + circuit breaker on
   `OrchestratorUnavailableException` only); unreachable / non-200 / unreadable -> `503 MW-SYS-040`
   (retryable). The view (`dto/OrgTxn`) drops correlation id, channel, initiator and partner calls;
@@ -172,4 +172,4 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
 | `./gradlew :mw-portal-api:build` | `test`, then the boot jar `build/libs/mw-portal-api.jar` (fixed name, the one the Dockerfile copies) |
 | `./gradlew :mw-portal-api:bootJar && docker build -t mw-portal-api:dev services/mw-portal-api` | image, as spec 4.3 rule 1 |
 | `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
-| `./gradlew :mw-portal-api:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-portal-api` | rebuild this service's image (`mfs-mw/mw-portal-api:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |
+| `./gradlew :mw-portal-api:bootJar`, then from `deploy/`: `docker compose --profile core up -d --build mw-portal-api` | rebuild this service's image (`mfs-mw/mw-portal-api:local`) and restart it with what it depends on (dev timers from `deploy/.env`) |

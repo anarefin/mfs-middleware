@@ -39,7 +39,7 @@ set -uo pipefail
 
 stack_compose
 command -v jq >/dev/null || die "edge-test: jq is required"
-[ -f "$STACK_ENV" ] || die "edge-test: no generated credentials; run scripts/gen-dev-env.sh and start the stack first"
+[ -f "$STACK_ENV" ] || die "edge-test: no deploy/.env; run `cd deploy && cp dev.env.defaults .env` and start the stack first"
 set -a; . "$STACK_ENV"; set +a
 
 CURL_IMAGE="curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93"

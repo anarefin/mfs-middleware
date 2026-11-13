@@ -179,7 +179,7 @@ fi
 
 # test-only objects (host API suite): consumers first, then the routes that name them
 if [ "${MW_E2E_ROUTES:-0}" = 1 ]; then
-  [ -n "${MW_E2E_API_KEY:-}" ] || { echo "apisix-init: MW_E2E_ROUTES=1 needs MW_E2E_API_KEY (scripts/gen-dev-env.sh)" >&2; exit 1; }
+  [ -n "${MW_E2E_API_KEY:-}" ] || { echo "apisix-init: MW_E2E_ROUTES=1 needs MW_E2E_API_KEY (deploy/dev.env.defaults)" >&2; exit 1; }
   for kind in consumers routes; do
     for f in "$dir/$kind-test"/*.json; do
       [ -f "$f" ] || continue

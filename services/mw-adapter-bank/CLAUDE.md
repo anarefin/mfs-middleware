@@ -151,4 +151,4 @@ MSISDN, a bank account (and any other type) last 4 only.
 | `./gradlew :mw-adapter-bank:build` | `test`, then the boot jar `build/libs/mw-adapter-bank.jar` (fixed name, the one the Dockerfile copies) |
 | `./gradlew :mw-adapter-bank:bootJar && docker build -t mw-adapter-bank:dev services/mw-adapter-bank` | image, as spec 4.3 rule 1 |
 | `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
-| `./gradlew :mw-adapter-bank:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-adapter-bank` | rebuild this service's image (`mfs-mw/mw-adapter-bank:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |
+| `./gradlew :mw-adapter-bank:bootJar`, then from `deploy/`: `docker compose --profile core up -d --build mw-adapter-bank` | rebuild this service's image (`mfs-mw/mw-adapter-bank:local`) and restart it with what it depends on (dev timers from `deploy/.env`) |

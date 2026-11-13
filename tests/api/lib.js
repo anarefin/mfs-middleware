@@ -426,7 +426,7 @@
     chain: month => must('GET', '/test/audit-dw/v1/audit/chains/' + month, { apikey: true }),
   };
 
-  /** The seeded time limit of partner ocs (manifest, passed by run.sh): 20 s, or 5 s with TIMERS=fast. */
+  /** The seeded time limit of partner ocs (manifest, passed by run.sh): 20 s, or 4 s with the test timers of deploy/.env. */
   const ocsLimit = () => Number(v('ocsTimeoutMs')) || 20000;
 
   // ---------- Run customer (run.sh picks it with run_customer.mjs) ----------
@@ -520,8 +520,8 @@
     };
     /**
      * The partner holds every request past its caller's time limit, then refuses it (503) unapplied: a
-     * timeout it did not survive. The limits follow the seeded ocs one (TIMERS=fast: 5 s; billagg and
-     * c2wbank read limits 1 s above theirs, 27 s / 6 s), so: ocs limit + 5 s, others + 8 s.
+     * timeout it did not survive. The limits follow the seeded ocs one (test timers: 4 s; billagg and
+     * c2wbank read limits 1 s above theirs, 27 s / 5 s), so: ocs limit + 5 s, others + 8 s.
      */
     S.lateUnapplied = partner => S.lateUnappliedMs(partner, ocsLimit() + (partner === 'ocs' ? 5000 : 8000));
     S.lateUnappliedMs = (partner, ms) => S.force(partner, { latencyMs: ms, errorRate: 1.0, outage: false, callbackMode: 'NONE', callbackDelayMs: 0 });

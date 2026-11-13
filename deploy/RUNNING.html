@@ -68,210 +68,109 @@
 <body>
 <main>
   <h1>Running Bits MFS Middleware with Docker</h1>
-  <p class="lead">How to build, start, seed and test the whole middleware (14 Spring Boot services, the
-    admin console and the platform) from <code>deploy/docker-compose.yml</code> on one laptop, for
-    exploring and demoing the features. This is a demo footprint; it is never used for load tests.</p>
+  <p class="lead">How to start the whole middleware (14 Spring Boot services, the admin console and the platform)
+    from <code>deploy/docker-compose.yml</code> on one laptop, and how to test it. This is a demo footprint for exploring
+    the features; it is never used for load tests.</p>
 
   <nav>
-    <a href="#s1">Prerequisites</a><a href="#s2">Build options</a><a href="#s3">.env</a><a href="#s4">Start</a>
-    <a href="#s5">Seed</a><a href="#s6">Verify</a><a href="#s7">Services</a><a href="#s8">Minimal</a>
-    <a href="#s9">Rebuild</a><a href="#s10">Test</a><a href="#s11">Stop / reset</a>
-    <a href="#s12">Troubleshooting</a><a href="#s13">Timings</a>
+    <a href="#s1">Prerequisites</a><a href="#s2">Build</a><a href="#s3">.env</a><a href="#s4">Start</a>
+    <a href="#s5">Seed</a><a href="#s6">Verify</a><a href="#s7">Ports</a><a href="#s8">Minimal</a>
+    <a href="#s9">Rebuild</a><a href="#s10">Stop / reset</a><a href="#s11">Test</a><a href="#s12">Troubleshooting</a>
   </nav>
 
   <section id="s1">
     <h2><span class="num">1</span>Prerequisites</h2>
     <ul>
       <li><strong>Docker Desktop</strong> (or Docker Engine with Compose v2.20+). Give it <strong>8 GB of RAM</strong>:
-        the memory limits of the full profile add up to 7.9 GB (14 JVMs at 160 MB heap, Kafka, PostgreSQL 18,
-        Keycloak, OpenBao, Valkey, APISIX, etcd, GreenMail). Measured use is about 6 GB.</li>
-      <li><strong>4 CPU cores</strong> or more. Each container is capped at 1 CPU (Keycloak at 2), so the stack
-        never takes the whole laptop.</li>
+        the memory limits of the full profile add up to 7.9 GB (14 JVMs, Kafka, PostgreSQL 18, Keycloak, OpenBao, Valkey,
+        APISIX, etcd, GreenMail). Measured use is about 6 GB. 4 CPU cores or more.</li>
       <li><strong>JDK 25</strong> on the host, to build the jars. You don't need to install Gradle: the repo ships <code>./gradlew</code>.</li>
-      <li><strong>Node.js 22+</strong> with <code>npx</code>, for the API suite in step 10. <code>bash</code>, <code>curl</code>, <code>jq</code>.</li>
-      <li>Host port <code>443</code> must be free. It is the only published port: APISIX, the edge.
-        Every other container is reachable only inside the Compose networks.</li>
+      <li>For the test suites in step 11: <strong>Node.js 22+</strong> with <code>npx</code>, and <code>bash</code>, <code>curl</code>, <code>jq</code>.</li>
+      <li>These host ports must be free: <code>443</code> (the edge), <code>8081</code>–<code>8093</code>,
+        <code>3000</code>, <code>3001</code>, <code>5432</code>, <code>6379</code>, <code>9094</code>, <code>8180</code>,
+        <code>8200</code>, <code>8025</code> and <code>3025</code> (step 7 says how to move one).</li>
     </ul>
-    <div class="cmd"><pre>docker --version && docker compose version
+    <div class="cmd"><pre>docker --version &amp;&amp; docker compose version
 java -version   <span class="c"># must report 25</span>
-node --version  <span class="c"># 22 or newer</span>
-lsof -i :443    <span class="c"># must print nothing</span></pre></div>
+node --version  <span class="c"># 22 or newer</span></pre></div>
   </section>
 
   <section id="s2">
-    <h2><span class="num">2</span>Build: choose an option</h2>
+    <h2><span class="num">2</span>Build the service jars</h2>
     <p>The images don't compile code. Each <code>services/&lt;module&gt;/Dockerfile</code> copies
-      <code>build/libs/&lt;module&gt;.jar</code> (a fixed name, so a stale jar is never picked up), so the jars must exist
-      before step 4. Every build is one Gradle build, run from the <strong>repository root</strong> with the bundled
-      <code>./gradlew</code>. Pick the row that matches what you want; each one is explained step by step below.</p>
+      <code>build/libs/&lt;module&gt;.jar</code>, so build the jars first. Run this from the repository root:</p>
+    <div class="cmd"><pre>./gradlew clean build</pre></div>
+    <p>One Gradle build: every module's tests (unit, slice, contract, Camel route, Testcontainers and conformance, in one JVM
+      per module), every jar, and the repo checks (module isolation, no field injection, contracts lint, the compose memory
+      budget, the shell tests). It worked when the last line is <code>BUILD SUCCESSFUL</code>. The Testcontainers tests need
+      Docker running; without it they are skipped, not failed.</p>
     <div class="table-wrap"><table>
-      <tr><th>You want to…</th><th>Run (from the repo root)</th><th>What runs</th><th>Time</th></tr>
-      <tr><td>Check everything before a pull request (the everyday gate)</td><td><code>./gradlew clean build</code></td><td>every module's tests and jar, the repo checks</td><td>about 3 min cold, seconds when nothing changed</td></tr>
-      <tr><td>Close a milestone (the full gate)</td><td><code>./gradlew clean build -PwithSlow</code></td><td>the same, plus the 139 <code>slow-wait</code> tests</td><td>about 5 min</td></tr>
-      <tr><td>Only get the jars, to start the stack</td><td><code>./gradlew bootJar</code></td><td>compile and jars, no tests</td><td>seconds to a minute</td></tr>
-      <tr><td>Work on one service</td><td><code>./gradlew :mw-notify:build</code></td><td>that module's tests and jar</td><td>about 40 s</td></tr>
-      <tr><td>Run one test class</td><td><code>./gradlew :mw-notify:test --tests '*SmscFlowIT'</code></td><td>that class only</td><td>about 15 s</td></tr>
-      <tr><td>Test everything without making jars</td><td><code>./gradlew check</code></td><td>every test and repo check</td><td>about 3 min cold</td></tr>
-      <tr><td>Run one repo check</td><td><code>./gradlew :contractsLint</code> (or another, 2.7)</td><td>that check</td><td>seconds to a minute</td></tr>
-      <tr><td>Rebuild the images after a build</td><td><code>docker compose … build</code> (2.9)</td><td>the images from the jars</td><td>about 5 s per image, cached</td></tr>
+      <tr><th>You want to…</th><th>Run</th><th>Time</th></tr>
+      <tr><td>The everyday gate, before a pull request</td><td><code>./gradlew clean build</code></td><td>about 3 min cold, seconds when nothing changed</td></tr>
+      <tr><td>The milestone gate (adds the slow-wait tests)</td><td><code>./gradlew clean build -PwithSlow</code></td><td>about 5 min</td></tr>
+      <tr><td>Only the jars, to start the stack</td><td><code>./gradlew bootJar</code></td><td>seconds to a minute</td></tr>
+      <tr><td>One module / one test class</td><td><code>./gradlew :mw-notify:build</code> / <code>./gradlew :mw-notify:test --tests '*SmscFlowIT'</code></td><td>about 40 s / 15 s</td></tr>
+      <tr><td>Every test and repo check, no jars</td><td><code>./gradlew check</code></td><td>about 3 min cold</td></tr>
+      <tr><td>One repo check</td><td><code>./gradlew :checkIsolation</code>, <code>:checkFieldInjection</code>, <code>:contractsLint</code>, <code>:composeCheck</code>, <code>:scriptTests</code></td><td>seconds to a minute</td></tr>
     </table></div>
-    <p>Flags that work with any of them: <code>--rerun-tasks</code> (ignore the up-to-date checks and the cache, run
-      everything again), <code>--continue</code> (keep going after a failure and list every failure at the end),
-      <code>--profile</code> (a timing report in <code>build/reports/profile/</code>).</p>
-
-    <h3>2.1 Before the first build</h3>
-    <ol>
-      <li><strong>Start Docker.</strong> Each module's tests include Testcontainers classes (<code>*IT</code> and the
-        conformance suite): every module's test JVM starts its own PostgreSQL and Kafka and removes them when it ends.
-        Without Docker those classes are <em>skipped</em>, not failed, so the build still says <code>BUILD SUCCESSFUL</code>
-        but it is not a gate run.</li>
-      <li><strong>Prefer the stack stopped</strong> (<code>docker compose --profile core --profile seed stop</code> from
-        <code>deploy/</code>): the test containers need Docker's memory and CPU. The build works with the stack up, just slower.</li>
-      <li><strong>Open a shell in the repo root</strong> and check Java: <code>java -version</code> must report 25.</li>
-    </ol>
-    <div class="cmd"><pre>docker info --format '{{.NCPU}} CPUs, {{.MemTotal}} bytes'   <span class="c"># Docker is up</span>
-java -version                                              <span class="c"># 25</span></pre></div>
-    <p>The first build downloads Gradle and every dependency (a few minutes, once). Later builds use the local caches.</p>
-
-    <h3>2.2 The everyday gate: <code>./gradlew clean build</code></h3>
-    <ol>
-      <li>Run it:
-        <div class="cmd"><pre>./gradlew clean build</pre></div></li>
-      <li>Gradle compiles every module (8 tasks at a time), then runs each module's one <code>test</code> task: unit, slice,
-        contract, Camel route, Testcontainers and conformance tests in one JVM, <strong>at most 4 modules' tests at a time</strong>
-        (sized for an 8-core host). It builds each jar and runs the repo checks: module isolation, no field injection,
-        contracts lint, the compose memory budget and the shell tests.</li>
-      <li>It worked when the last line is <code>BUILD SUCCESSFUL</code>. The jars are at
-        <code>services/&lt;module&gt;/build/libs/&lt;module&gt;.jar</code>; each module's test report is
-        <code>services/&lt;module&gt;/build/reports/tests/test/index.html</code>.</li>
-      <li>Run it again with nothing changed and it takes seconds: the build cache restores every module whose sources
-        (and the contract files its tests read) did not change, even after <code>clean</code>. Change one module and only
-        that module, plus the checks that read its files, runs again.</li>
-    </ol>
-    <div class="note">The everyday gate leaves out the <code>slow-wait</code> tests (2.3). Use it before every pull request;
-      a milestone needs 2.3.</div>
-
-    <h3>2.3 The milestone gate: <code>-PwithSlow</code></h3>
-    <p>About 140 tests spend most of their time <em>waiting</em> on purpose to prove an outcome: that nothing arrives within
-      a window, that a timeout or a retry delay runs out, that a deadline moves a transaction on. They are tagged
-      <code>slow-wait</code> and the everyday gate skips them (ADR D19). A milestone gate runs everything:</p>
-    <ol>
-      <li><div class="cmd"><pre>./gradlew clean build -PwithSlow</pre></div></li>
-      <li>Same as 2.2, plus the <code>slow-wait</code> tests: 4,465 tests in all, about 5 minutes.</li>
-      <li>Then the API suite on a fresh stack: <code>./reset.sh</code>, step 4 with <code>test-timers.env</code>, and
-        <code>scripts/api-test.sh</code> (step 10).</li>
-    </ol>
-    <p><code>-PwithSlow</code> works with any test command, for example <code>./gradlew :mw-orchestrator:test -PwithSlow</code>.</p>
-
-    <h3>2.4 Jars only: <code>./gradlew bootJar</code></h3>
-    <p>For starting the stack without waiting for the tests (a demo, or after someone else ran the gate):</p>
-    <ol>
-      <li><div class="cmd"><pre>./gradlew bootJar</pre></div></li>
-      <li>Every module's jar lands in <code>services/&lt;module&gt;/build/libs/</code>, with no tests run. Seconds on a warm
-        Gradle, under a minute cold.</li>
-      <li>Go on with step 3; step 4's <code>--build</code> turns the jars into images.</li>
-    </ol>
-
-    <h3>2.5 One module</h3>
-    <p>While you work on one service, build and test only that module (<code>:mw-&lt;name&gt;:</code>, any folder in
-      <code>services/</code>):</p>
-    <div class="cmd"><pre>./gradlew :mw-notify:build                          <span class="c"># its tests, then its jar</span>
-./gradlew :mw-notify:test                           <span class="c"># its tests only</span>
-./gradlew :mw-notify:test --tests '*SmscFlowIT'     <span class="c"># one class; a method: '*SmscFlowIT.aThrottled*'</span>
-./gradlew :mw-notify:bootJar                        <span class="c"># its jar only, no tests</span>
-./gradlew :mw-notify:test --rerun-tasks             <span class="c"># again, even though nothing changed</span></pre></div>
-    <p>Then put the new jar into the running stack with step 9.</p>
-
-    <h3>2.6 Force a cold run, measure it, see every failure</h3>
-    <ol>
-      <li>Gradle skips work whose inputs did not change. To run everything again (to measure, or to rule out the cache):
-        <div class="cmd"><pre>./gradlew clean build --rerun-tasks                 <span class="c"># run every task again</span>
-./gradlew clean build --no-build-cache              <span class="c"># or: do not restore from the build cache</span></pre></div></li>
-      <li>To see where the time goes, add <code>--profile</code> and open the newest report in
-        <code>build/reports/profile/</code>.</li>
-      <li>By default Gradle stops scheduling new work after the first failure. To see every failure in one run:
-        <div class="cmd"><pre>./gradlew clean build --continue</pre></div></li>
-    </ol>
-
-    <h3>2.7 Tests and repo checks without jars</h3>
-    <div class="cmd"><pre>./gradlew check                 <span class="c"># every module's tests plus the repo checks, no jars</span>
-./gradlew :checkIsolation       <span class="c"># modules depend on no other module, no shared build logic</span>
-./gradlew :checkFieldInjection  <span class="c"># no @Autowired fields</span>
-./gradlew :contractsLint        <span class="c"># contracts/, every contracts.yml, API suite traceability</span>
-./gradlew :composeCheck         <span class="c"># memory limits of the core profile add up to 8 GB or less</span>
-./gradlew :scriptTests          <span class="c"># the shell tests of scripts/, the repo layout and these docs</span></pre></div>
-    <p>The shell tests can also run straight from the shell: <code>scripts/test/run.sh</code> (every file) or
-      <code>scripts/test/run.sh scripts/test/test_repo_docs.sh</code> (one file). They run three files side by side;
-      <code>SCRIPT_TESTS_JOBS=1 scripts/test/run.sh</code> runs them one at a time.</p>
-
-    <h3>2.8 Tune the build for your machine</h3>
-    <ul>
-      <li><strong>Test concurrency:</strong> at most 4 modules' tests run at once (<code>mwDockerTests=4</code> in
-        <code>gradle.properties</code>), sized for 8 cores: each one runs a test JVM, a PostgreSQL and a Kafka. On a bigger
-        host try more while watching <code>docker stats</code>; on a smaller one, fewer:
-        <div class="cmd"><pre>./gradlew clean build -PmwDockerTests=6     <span class="c"># 12+ cores</span>
-./gradlew clean build -PmwDockerTests=2     <span class="c"># 4 cores, or Docker short of memory</span></pre></div></li>
-      <li><strong>Compile and jar concurrency:</strong> <code>org.gradle.workers.max=8</code> in <code>gradle.properties</code>.</li>
-      <li>More than 4 test modules at once on 8 cores makes timing-sensitive tests flaky; lower the number before
-        suspecting a test.</li>
-    </ul>
-
-    <h3>2.9 The images</h3>
-    <p>Step 4's <code>up --build</code> builds every image it needs from the jars, so you rarely build images on their own.
-      To do it anyway, from <code>deploy/</code>:</p>
-    <div class="cmd"><pre>docker compose --env-file .env --profile core build                       <span class="c"># every core image</span>
-docker compose --env-file .env --profile core build mw-notify             <span class="c"># one image</span>
-docker compose --env-file .env --profile core build --no-cache mw-notify  <span class="c"># from scratch</span>
-docker compose --env-file .env --profile tester build mw-test-console     <span class="c"># the test console</span></pre></div>
-    <p>Images are tagged <code>mfs-mw/&lt;service&gt;:local</code>. The two web consoles (<code>mw-admin-ui</code>,
-      <code>mw-test-console</code>) are not Gradle modules: their Dockerfiles build them. Their unit tests run with pnpm,
-      no stack needed:</p>
-    <div class="cmd"><pre>(cd ui/mw-admin-ui && pnpm install && pnpm test)
-(cd ui/mw-test-console && pnpm install && pnpm test)</pre></div>
+    <p>The build cache is on (<code>gradle.properties</code>). After <code>clean</code>, a module whose inputs did not change
+      restores its jar and test results instead of running again. To run everything again:</p>
+    <div class="cmd"><pre>./gradlew clean build --rerun-tasks   <span class="c"># or --no-build-cache</span>
+./gradlew clean build --continue      <span class="c"># list every failure, not just the first</span></pre></div>
+    <div class="note">At most 4 modules' tests run at once (<code>mwDockerTests=4</code>, sized for 8 cores: each runs a test JVM,
+      a PostgreSQL and a Kafka). On a smaller host or with Docker short of memory use <code>./gradlew clean build -PmwDockerTests=2</code>.
+      Build with the stack stopped (<code>docker compose --profile core --profile seed stop</code>), or the test containers
+      and the running stack compete for memory.</div>
+    <p>The two web consoles (<code>ui/mw-admin-ui</code>, <code>ui/mw-test-console</code>) are not Gradle modules: their
+      Dockerfiles build them in step 4. Their unit tests run with pnpm, no stack needed:
+      <code>(cd ui/mw-admin-ui &amp;&amp; pnpm install &amp;&amp; pnpm test)</code>.</p>
   </section>
 
   <section id="s3">
     <h2><span class="num">3</span>Create the environment file</h2>
-    <p><code>deploy/.env</code> holds every dev credential: database, Valkey, Keycloak admin and test-user passwords,
-      client secrets, simulator HMAC secrets and the console session key. It is never committed, and every
-      <code>docker compose</code> command below reads it. The logins a tester types are fixed, documented values
-      (ops <code>ops-test-pass</code>, app <code>app-test-pass</code>, portal <code>portal-test-pass</code>, Keycloak admin
-      <code>kc-admin-test-pass</code>, apikey <code>e2e-test-apikey</code>: <a href="../docs/testing-guide.html#s1">testing guide, section 1</a>);
-      every other value is random.</p>
+    <p>The <code>.env</code> file holds the dev credentials (database, Valkey, Keycloak admin and test users, client secrets,
+      simulator HMAC secrets, the console session key) and the short test timers. Every container reads it. All values are
+      fixed, obviously fake dev values committed in <code>deploy/dev.env.defaults</code>; <code>deploy/.env</code> itself is gitignored.</p>
     <div class="cmd"><pre>cd deploy
-../scripts/gen-dev-env.sh</pre></div>
-    <p>Run every <code>docker compose</code> command below from inside <code>deploy/</code>. Running the script again keeps
-      existing values and only adds missing ones.</p>
-    <div class="warn">Never delete <code>.env</code> on its own: PostgreSQL and Keycloak keep the old passwords in their
-      volumes and the stack will not come up. To rotate everything: <code>./reset.sh</code>, delete <code>.env</code>, then step 3 again.</div>
+cp dev.env.defaults .env</pre></div>
+    <p>Run every <code>docker compose</code> command below from inside <code>deploy/</code>. Compose reads <code>.env</code> there
+      on its own, so no <code>--env-file</code> flag is needed.</p>
+    <p>The logins a tester types: ops <code>ops-test-pass</code>, app <code>app-test-pass</code>, portal <code>portal-test-pass</code>,
+      Keycloak admin <code>kc-admin-test-pass</code>, test-route apikey <code>e2e-test-apikey</code>
+      (<code>scripts/creds.sh</code> prints them all; <a href="../docs/testing-guide.html">testing guide</a>, section 1).</p>
+    <div class="warn">The volumes are initialised with these values. If you change a credential in <code>.env</code>, reset
+      everything (<code>./reset.sh</code>, step 10) before the next start.</div>
   </section>
 
   <section id="s4">
     <h2><span class="num">4</span>Start the full platform</h2>
-    <div class="cmd"><pre>docker compose --env-file .env --env-file test-timers.env \
-  --profile core --profile seed up -d --build</pre></div>
+    <div class="cmd"><pre>docker compose --profile core --profile seed up -d --build</pre></div>
     <p>Compose builds the images (<code>mfs-mw/&lt;service&gt;:local</code>), then starts everything in dependency order.
       Each service waits until what it needs is healthy or has finished:</p>
     <div class="flow">
       <span>postgres · valkey · openbao · keycloak</span><b>·</b><span>kafka</span><b>→</b><span>kafka-init (topics)</span><b>·</b>
       <span>etcd</span><b>→</b><span>etcd-init</span><b>→</b><span>apisix</span><b>→</b><span>apisix-init (routes)</span><b>·</b>
-      <span>provision (every service&rsquo;s schema, OpenBao secret, AppRole)</span><b>→</b><span>14 services + admin console</span><b>→</b>
+      <span>provision (schemas, OpenBao secrets, AppRoles)</span><b>→</b><span>14 services + admin console</span><b>→</b>
       <span>mw-seeder (one-shot)</span>
     </div>
     <ul>
       <li><strong>Always pass <code>--profile seed</code> with <code>--profile core</code>.</strong> The seeder runs once, after
         <code>apisix-init</code> has finished and every service is healthy. It goes through the services' own APIs and
         maker-checker, like an operator would. It is idempotent, so running the same command again is safe.</li>
-      <li><code>--env-file test-timers.env</code> loads the <strong>short test timers</strong> (status inquiry, reversal, retry topics,
-        IPN, bulk), which the API suite in step 10 needs. Leave it out for the production timers.</li>
+      <li>The short test timers (status inquiry, reversal, retry topics, IPN, partner limits) come from <code>.env</code>; the
+        API suite in step 11 needs them. For the production timers, delete the "Test timers" block from <code>.env</code> and
+        run <code>docker compose --profile core up -d</code>.</li>
       <li>The <code>provision</code> one-shot runs on every <code>up</code> and creates missing database roles, schemas and
         OpenBao secrets, so a new service's schema appears without wiping the volumes.</li>
-      <li>Memory limits are knobs (<code>APP_MEM_LIMIT</code>, <code>APP_MEM_LIMIT_LARGE</code>, <code>APP_XMX</code>,
-        <code>KAFKA_MEM</code>, ...; the table is the header of <code>docker-compose.yml</code>): set one in the shell or in
-        <code>.env</code> to give a container more room.</li>
+      <li>Memory limits are knobs (<code>APP_MEM_LIMIT</code>, <code>APP_XMX</code>, <code>KAFKA_MEM</code>, …; the table is the
+        header of <code>deploy/docker-compose.yml</code>): set one in <code>.env</code> to give a container more room.</li>
     </ul>
-    <p>On a warm Docker cache the whole command, seeding included, takes about <strong>1–2 minutes</strong> (<a href="#s13">step 13</a>).
-      The first run pulls the platform images and builds 16 images (14 services, the one <code>provision</code> image and the console), so it takes a few minutes more.</p>
+    <p>On a warm Docker cache the whole command, seeding included, takes about 1–2 minutes. The first run pulls the platform
+      images and builds 16 images, so it takes a few minutes more.</p>
+    <p>Then open the <strong>admin console</strong> at <a href="https://localhost/console">https://localhost/console</a>. The
+      edge certificate is self-signed for localhost, so accept the browser warning. Sign in as <code>ops-maker01</code> with
+      <code>ops-test-pass</code>; the first sign-in asks you to enrol TOTP with an authenticator app
+      (<code>scripts/totp.sh</code> prints the code of a seeded persona).</p>
   </section>
 
   <section id="s5">
@@ -279,66 +178,70 @@ docker compose --env-file .env --profile tester build mw-test-console     <span 
     <p>The start command in step 4 already runs the seeder. Follow it until it exits:</p>
     <div class="cmd"><pre>docker compose --profile core --profile seed logs -f mw-seeder
 docker compose --profile core --profile seed ps -a mw-seeder   <span class="c"># must show: exited (0)</span></pre></div>
-    <p>The seeder commands need both profiles (it depends on the core services); the other services work without them.</p>
-    <p>What you get:</p>
+    <p>The test suites sign in as the seeded personas, so they need <code>mw-seeder</code> at <code>exited (0)</code>. What you get:</p>
     <ul>
-      <li>At start-up (no seeder needed): <code>mw-core-mock</code> creates 1,000 customer wallets <code>01711000001</code>…, 50 agents
-        <code>01811000001</code>…, 20 merchants <code>01911000001</code>…, 2 orgs <code>01311000001</code>…, all with the fake PIN <code>1234</code>.
-        Keycloak imports its realms (<code>ops</code>, <code>customers</code>, <code>portals</code>) with test users. The simulators, USSD menus,
-        templates and partner configs load their dev data.</li>
-      <li>From <code>mw-seeder</code>: the personas <code>seed-ops-maker</code>, <code>seed-ops-checker</code>, <code>seed-ops-viewer</code>,
-        <code>seed-ops-compliance</code>, <code>seed-org-maker</code>, <code>seed-org-checker</code>, <code>seed-customer01</code>/<code>02</code>,
-        <code>seed-agent01</code>, <code>seed-merchant01</code> with their wallets (<code>01712000001</code>…), the OCS partner at its
-        baseline, and a first version of the USSD main menu and the P2P received SMS.</li>
+      <li>At start-up: <code>mw-core-mock</code> creates 1,000 customer wallets <code>01711000001…</code>, 50 agents
+        <code>01811000001…</code>, 20 merchants <code>01911000001…</code>, 2 orgs <code>01311000001…</code>, all with the fake PIN
+        <code>1234</code>. Keycloak imports its realms (ops, customers, portals) with test users.</li>
+      <li>From <code>mw-seeder</code>: the personas <code>seed-ops-maker</code>, <code>seed-ops-checker</code>,
+        <code>seed-ops-viewer</code>, <code>seed-ops-compliance</code>, <code>seed-org-maker</code>, <code>seed-org-checker</code>,
+        <code>seed-customer01/02</code>, <code>seed-agent01</code>, <code>seed-merchant01</code> with their wallets
+        (<code>01712000001…</code>), the OCS partner, the USSD main menu and the P2P SMS template.</li>
     </ul>
-    <div class="note">The test suites in step 10 sign in as the seeded personas; they need <code>mw-seeder</code> at <code>exited (0)</code>.</div>
   </section>
 
   <section id="s6">
     <h2><span class="num">6</span>Verify it is running</h2>
     <div class="cmd"><pre><span class="c"># every container should show "healthy" (init jobs and the seeder show "exited (0)")</span>
 docker compose --profile core --profile seed ps -a
-<span class="c"># the edge (the only published port)</span>
+<span class="c"># readiness of one service</span>
+curl -s localhost:8081/actuator/health/readiness
+<span class="c"># readiness of all of them (8081-8093)</span>
+for p in $(seq 8081 8093); do printf "%s " $p; curl -s localhost:$p/actuator/health/readiness; echo; done
+<span class="c"># the edge and the two consoles</span>
 curl -sk https://localhost/healthz
-<span class="c"># readiness of one service (services publish no host port: ask from inside its container)</span>
-docker compose exec -T mw-orchestrator bash -c 'exec 3&lt;&gt;/dev/tcp/127.0.0.1/8080; printf "GET /actuator/health/readiness HTTP/1.0\r\n\r\n" &gt;&amp;3; tail -1 &lt;&amp;3'
-<span class="c"># memory and CPU per container</span>
+curl -s -o /dev/null -w "%{http_code}\n" localhost:3000/console/api/health
+<span class="c"># memory and CPU per container, one service's JSON log</span>
 docker stats --no-stream
-<span class="c"># follow one service's JSON log</span>
 docker compose logs -f mw-orchestrator</pre></div>
-    <p>Then open the admin console at <a href="https://localhost/console">https://localhost/console</a>. The edge certificate is
-      self-signed for <code>localhost</code>, so accept the browser warning. Sign in as <code>ops-maker01</code> with the password
-      <code>KC_OPS_TEST_PASSWORD</code> from <code>.env</code> (<code>grep KC_OPS_TEST_PASSWORD .env</code>); the first sign-in asks you to enrol TOTP
-      with an authenticator app.</p>
   </section>
 
   <section id="s7">
-    <h2><span class="num">7</span>Services and edge paths</h2>
-    <p>Every service listens on 8080 inside the Compose network. From the laptop you reach them through APISIX on
-      <code>https://localhost</code>.</p>
+    <h2><span class="num">7</span>Services and ports</h2>
+    <p>Every service listens on 8080 inside the Compose network and publishes a port on <code>127.0.0.1</code> for poking at it
+      directly. Those direct ports skip the edge policies (JWT, HMAC, quotas, the error envelope): clients, the consoles and the
+      test suites go through APISIX on <code>https://localhost</code>. To move a port that is already taken, set
+      <code>MW_PORT_&lt;NAME&gt;</code> in <code>.env</code> (for example <code>MW_PORT_POSTGRES=15432</code>, <code>MW_HTTPS_PORT=8443</code>).</p>
     <div class="table-wrap"><table>
-      <tr><th>Service</th><th>What it does</th><th>Path on https://localhost</th><th>Profiles</th></tr>
-      <tr><td><code>mw-app-gateway</code></td><td>customer, agent and merchant apps (realm <code>customers</code> JWT)</td><td><code>/app/v1/*</code></td><td>minimal, core</td></tr>
-      <tr><td><code>mw-ussd</code></td><td>USSD menus over HTTP and SMPP</td><td><code>/ussd/&lt;mno&gt;</code></td><td>minimal, core</td></tr>
-      <tr><td><code>mw-orchestrator</code></td><td>saga, idempotency, status inquiry, reversal</td><td>internal</td><td>minimal, core</td></tr>
-      <tr><td><code>mw-core-mock</code></td><td>mocked core wallet and ledger</td><td>internal</td><td>minimal, core</td></tr>
-      <tr><td><code>mw-simulators</code></td><td>OCS, bill aggregator, C2W bank, SMSC, USSD gateway</td><td>internal</td><td>minimal, core</td></tr>
-      <tr><td><code>mw-notify</code></td><td>SMS over SMPP, email to GreenMail</td><td>internal</td><td>minimal, core</td></tr>
-      <tr><td><code>mw-audit-dw</code></td><td>hash-chained audit trail</td><td>internal</td><td>minimal, core</td></tr>
-      <tr><td><code>mw-admin-api</code></td><td>ops API, maker-checker (realm <code>ops</code> JWT)</td><td><code>/admin/v1/*</code></td><td>minimal, core</td></tr>
-      <tr><td><code>mw-adapter-telco</code>, <code>-billpay</code>, <code>-bank</code></td><td>partner adapters (top-up, bill pay, add money)</td><td><code>/partner/*/callback/*</code></td><td>core</td></tr>
-      <tr><td><code>mw-checkout</code></td><td>web checkout and IPN</td><td><code>/checkout/*</code></td><td>core</td></tr>
-      <tr><td><code>mw-portal-api</code></td><td>org bulk disbursement, SP query (realm <code>portals</code> JWT)</td><td><code>/portal/org/v1/*</code></td><td>core</td></tr>
-      <tr><td><code>mw-admin-ui</code></td><td>admin console (Next.js)</td><td><code>/console</code></td><td>core</td></tr>
-      <tr><td><code>mw-seeder</code></td><td>one-shot seeder</td><td>none</td><td>seed (always with core)</td></tr>
+      <tr><th>Port</th><th>Service</th><th>What it does</th><th>Edge path on https://localhost</th><th>Profiles</th></tr>
+      <tr><td>8081</td><td>mw-app-gateway</td><td>customer, agent and merchant apps</td><td><code>/app/v1/*</code></td><td>minimal, core</td></tr>
+      <tr><td>8082</td><td>mw-ussd</td><td>USSD menus over HTTP and SMPP</td><td><code>/ussd/&lt;mno&gt;</code></td><td>minimal, core</td></tr>
+      <tr><td>8083</td><td>mw-orchestrator</td><td>saga, idempotency, status inquiry, reversal</td><td>internal</td><td>minimal, core</td></tr>
+      <tr><td>8084</td><td>mw-core-mock</td><td>mocked core wallet and ledger</td><td>internal</td><td>minimal, core</td></tr>
+      <tr><td>8085</td><td>mw-simulators</td><td>OCS, bill aggregator, C2W bank, SMSC, USSD gateway</td><td>internal</td><td>minimal, core</td></tr>
+      <tr><td>8086</td><td>mw-notify</td><td>SMS over SMPP, email to GreenMail</td><td>internal</td><td>minimal, core</td></tr>
+      <tr><td>8087</td><td>mw-audit-dw</td><td>hash-chained audit trail</td><td>internal</td><td>minimal, core</td></tr>
+      <tr><td>8088</td><td>mw-admin-api</td><td>ops API, maker-checker</td><td><code>/admin/v1/*</code></td><td>minimal, core</td></tr>
+      <tr><td>8089</td><td>mw-adapter-telco</td><td>top-up partner adapter</td><td><code>/partner/*/callback/*</code></td><td>core</td></tr>
+      <tr><td>8090</td><td>mw-adapter-billpay</td><td>bill pay partner adapter</td><td><code>/partner/*/callback/*</code></td><td>core</td></tr>
+      <tr><td>8091</td><td>mw-adapter-bank</td><td>add money from bank</td><td><code>/partner/*/callback/*</code></td><td>core</td></tr>
+      <tr><td>8092</td><td>mw-checkout</td><td>web checkout and IPN</td><td><code>/checkout/*</code></td><td>core</td></tr>
+      <tr><td>8093</td><td>mw-portal-api</td><td>org bulk disbursement, SP query</td><td><code>/portal/org/v1/*</code></td><td>core</td></tr>
+      <tr><td>3000</td><td>mw-admin-ui</td><td>admin console (Next.js, base path <code>/console</code>; sign in through 443)</td><td><code>/console</code></td><td>core</td></tr>
+      <tr><td>3001</td><td>mw-test-console</td><td>test console, dev/test only</td><td><code>/tester</code></td><td>tester</td></tr>
+      <tr><td>—</td><td>mw-seeder</td><td>one-shot seeder</td><td>none</td><td>seed (always with core)</td></tr>
     </table></div>
-    <h3>Platform (always started, no host port)</h3>
+    <h3>Platform (always started)</h3>
     <div class="table-wrap"><table>
-      <tr><th>Container</th><th>Role</th></tr>
-      <tr><td><code>apisix</code> + <code>etcd</code></td><td>edge on 443: TLS, JWT / HMAC / basic auth, quotas, error envelope; <code>/healthz</code></td></tr>
-      <tr><td><code>keycloak</code></td><td>realms <code>ops</code>, <code>customers</code>, <code>portals</code>, <code>services</code>; the console login at <code>/realms/ops/*</code></td></tr>
-      <tr><td><code>openbao</code></td><td>service secrets (dev mode)</td></tr>
-      <tr><td><code>postgres</code> (18), <code>kafka</code> (KRaft, 1 partition per topic), <code>valkey</code>, <code>greenmail</code></td><td>data, events, sessions and rate limits, test mailbox</td></tr>
+      <tr><th>Port</th><th>Container</th><th>Role</th></tr>
+      <tr><td>443</td><td>apisix</td><td>the edge: TLS, JWT / HMAC / basic auth, quotas, error envelope, <code>/healthz</code>; the only port open beyond the laptop</td></tr>
+      <tr><td>5432</td><td>postgres (18)</td><td>every service's schema; user <code>mw_admin</code>, password <code>POSTGRES_PASSWORD</code> from <code>.env</code></td></tr>
+      <tr><td>9094</td><td>kafka (KRaft)</td><td>host listener <code>localhost:9094</code> (containers use <code>kafka:9092</code>); 1 partition per topic</td></tr>
+      <tr><td>6379</td><td>valkey</td><td>sessions and rate limits; password <code>VALKEY_PASSWORD</code></td></tr>
+      <tr><td>8180</td><td>keycloak</td><td>realms ops, customers, portals, services (the console login goes through 443)</td></tr>
+      <tr><td>8200</td><td>openbao</td><td>service secrets (dev mode)</td></tr>
+      <tr><td>8025 / 3025</td><td>greenmail</td><td>test mailbox: API / SMTP</td></tr>
+      <tr><td>—</td><td>etcd</td><td>APISIX configuration; never published</td></tr>
     </table></div>
     <p>The full route list and every edge policy: <code>deploy/apisix/README.md</code>.</p>
   </section>
@@ -346,125 +249,100 @@ docker compose logs -f mw-orchestrator</pre></div>
   <section id="s8">
     <h2><span class="num">8</span>Alternative: the minimal profile</h2>
     <p>To start only the P2P and cash path (the 8 services marked "minimal" above) on less RAM:</p>
-    <div class="cmd"><pre>docker compose --env-file .env --env-file test-timers.env --profile minimal up -d --build</pre></div>
-    <p>The minimal profile starts <strong>unseeded</strong>, because the seeder also seeds services that minimal doesn't run.
-      The built-in wallets and Keycloak users are there. For a seeded stack, use the step 4 command.</p>
+    <div class="cmd"><pre>docker compose --profile minimal up -d --build</pre></div>
+    <p>The minimal profile starts unseeded, because the seeder also seeds services that minimal doesn't run. The built-in
+      wallets and Keycloak users are there. For a seeded stack, use the step 4 command.</p>
   </section>
 
   <section id="s9">
     <h2><span class="num">9</span>Rebuild one service after a code change</h2>
-    <p>Build the module (<a href="#s2">step 2.5</a>), then replace its container. From <code>deploy/</code>:</p>
-    <div class="cmd"><pre>(cd .. && ./gradlew :mw-notify:build)   <span class="c"># its tests and jar; :mw-notify:bootJar for the jar only</span>
-docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-notify
-docker compose restart apisix   <span class="c"># APISIX still points at the old container's IP</span></pre></div>
+    <div class="cmd"><pre>(cd .. &amp;&amp; ./gradlew :mw-notify:build)   <span class="c"># its tests and jar; :mw-notify:bootJar for the jar only</span>
+docker compose --profile core up -d --build mw-notify
+docker compose restart apisix            <span class="c"># APISIX still points at the old container's IP</span>
+<span class="c"># after a console change (no Gradle step)</span>
+docker compose --profile core up -d --build mw-admin-ui</pre></div>
   </section>
 
   <section id="s10">
-    <h2><span class="num">10</span>Test it</h2>
-    <p>These run from the <strong>repository root</strong> (<code>cd ..</code>) against the stack you started in step 4.</p>
-    <div class="cmd"><pre>scripts/smoke.sh                  <span class="c"># containers, topics, Kafka, PostgreSQL, Valkey, Keycloak tokens, OpenBao, APISIX</span>
-scripts/edge-test.sh              <span class="c"># APISIX policies: 401/400/413/429 envelopes, header stripping, correlation ID</span>
-scripts/api-test.sh "00, 01"      <span class="c"># Newman API suite: health and seed baseline, P2P</span>
-scripts/api-test.sh               <span class="c"># every folder but 90 Slow (about 10 minutes)</span></pre></div>
-    <div class="note">The suites copy the seed manifest out of <code>mw-seeder</code> to <code>build/seed/manifest.json</code> and
-      re-apply the test-only gateway routes themselves. The timer scenarios need the stack started with
-      <code>--env-file test-timers.env</code> (step 4), which also seeds the short OCS time limit.</div>
-    <h3>API suite folders (<code>tests/api/src</code>)</h3>
-    <div class="table-wrap"><table>
-      <tr><th>Folder</th><th>Feature</th></tr>
-      <tr><td><code>00</code></td><td>edge, test routes, seed baseline</td></tr>
-      <tr><td><code>01</code>–<code>04</code></td><td>P2P, device binding, cash in / out, merchant payment</td></tr>
-      <tr><td><code>05</code>–<code>08</code></td><td>top-up, bill pay (sync and callback), add money from bank</td></tr>
-      <tr><td><code>09</code></td><td>web checkout and IPN</td></tr>
-      <tr><td><code>10</code>, <code>11</code></td><td>SMS and email notifications</td></tr>
-      <tr><td><code>12</code></td><td>reversal by the core</td></tr>
-      <tr><td><code>13</code>–<code>17</code></td><td>admin: maker-checker, console search, partner config, wallet unlock, menus and templates</td></tr>
-      <tr><td><code>18</code>–<code>20</code></td><td>USSD over HTTP and SMPP</td></tr>
-      <tr><td><code>21</code>–<code>23</code></td><td>org bulk disbursement, SP query</td></tr>
-      <tr><td><code>90</code></td><td>10,000-row bulk payout (<code>scripts/api-test.sh "" 1</code>): heavy, not a laptop demo target</td></tr>
-    </table></div>
-    <h3>Admin console</h3>
-    <div class="cmd"><pre>scripts/ui-e2e.sh                 <span class="c"># Playwright: real Keycloak logins as the seeded personas (pnpm, Chromium on first use)</span>
-(cd ui/mw-admin-ui && pnpm install && pnpm test)   <span class="c"># unit and component tests, no stack</span></pre></div>
-    <p>By hand: after <code>scripts/api-test.sh 01</code>, search MSISDN <code>01711000001</code> in the console, open a COMPLETED P2P,
-      request a reversal as <code>ops-maker01</code>, and approve it as <code>ops-checker01</code> in a private window. The demo script
-      for every feature is in <code>docs/demo.md</code>.</p>
-    <h3>Test console (every feature by hand, dev/test only)</h3>
-    <div class="cmd"><pre>scripts/tester.sh                 <span class="c"># test-only routes on, start mw-test-console: https://localhost/tester</span>
-scripts/tester-e2e.sh             <span class="c"># its Playwright suite against the running, seeded stack</span>
-<span class="c"># without the script, from deploy/: the test routes, then the console (profile tester)</span>
-MW_E2E_ROUTES=1 docker compose --env-file .env --profile core up -d --no-deps --force-recreate apisix-init
-docker compose --env-file .env --profile core --profile tester up -d --no-deps --wait mw-test-console</pre></div>
-    <p>The test console plays the mobile app, a USSD handset (robi over HTTP, gp over SMPP), the partner simulators and
-      core faults, the checkout shop and buyer, and the org portal; each action shows every API call, the balances before
-      and after and the SMS. The step-by-step walkthrough of every feature is <code>docs/testing-guide.html</code>.</p>
-    <h3>Logs and code</h3>
-    <div class="cmd"><pre>scripts/log-scan.sh               <span class="c"># no PIN or unmasked MSISDN / NID in any container log</span>
-(cd .. && ./gradlew clean build)  <span class="c"># the build gate (step 2.2): best with the stack stopped; a milestone adds -PwithSlow (2.3)</span></pre></div>
-    <div class="warn">No load tests on a laptop: <code>scripts/suite.sh perf</code> and <code>scripts/chaos.sh</code> need a bigger host and a fresh stack.</div>
-  </section>
-
-  <section id="s11">
-    <h2><span class="num">11</span>Stop and reset</h2>
+    <h2><span class="num">10</span>Stop and reset</h2>
     <div class="cmd"><pre><span class="c"># stop the containers, keep the data</span>
 docker compose --profile core --profile seed stop
 <span class="c"># remove the containers, keep the volumes</span>
 docker compose --profile core --profile seed down
-<span class="c"># wipe ALL state together (every volume), then start again and re-seed</span>
+<span class="c"># wipe ALL state together (every volume of every profile), then start again and re-seed</span>
 ./reset.sh
-docker compose --env-file .env --env-file test-timers.env --profile core --profile seed up -d --build</pre></div>
-    <div class="warn"><strong>Never reset a single store.</strong> PostgreSQL, Kafka, Valkey, OpenBao, Keycloak and the core-mock
-      ledger describe the same state, so they are always reset together with <code>./reset.sh</code> (every profile, every volume).</div>
+docker compose --profile core --profile seed up -d --build</pre></div>
+    <div class="warn">Never reset a single store. PostgreSQL, Kafka, Valkey, OpenBao, Keycloak and the core-mock ledger describe
+      the same state, so they are always reset together with <code>./reset.sh</code>.</div>
+  </section>
+
+  <section id="s11">
+    <h2><span class="num">11</span>Test the running platform</h2>
+    <p>Run these from the repository root (<code>cd ..</code>) against the seeded stack from step 4.</p>
+    <div class="cmd"><pre>scripts/smoke.sh                  <span class="c"># containers, published ports, topics, Kafka, PostgreSQL, Valkey, Keycloak tokens, OpenBao, APISIX</span>
+scripts/edge-test.sh              <span class="c"># APISIX policies: 401/400/413/429 envelopes, header stripping, correlation ID</span>
+scripts/api-test.sh "00, 01"      <span class="c"># Newman API suite: health and seed baseline, P2P</span>
+scripts/api-test.sh               <span class="c"># every folder but 90 Slow (about 10 minutes)</span>
+scripts/ui-e2e.sh                 <span class="c"># admin console Playwright suite, real Keycloak logins as the seeded personas</span>
+scripts/log-scan.sh               <span class="c"># no PIN or unmasked MSISDN / NID in any container log</span></pre></div>
+    <p>The suites copy the seed manifest out of <code>mw-seeder</code> to <code>build/seed/manifest.json</code> and re-apply the
+      test-only gateway routes themselves.</p>
+    <div class="table-wrap"><table>
+      <tr><th>API suite folder (<code>tests/api/src</code>)</th><th>Feature</th></tr>
+      <tr><td>00</td><td>edge, test routes, seed baseline</td></tr>
+      <tr><td>01–04</td><td>P2P, device binding, cash in / out, merchant payment</td></tr>
+      <tr><td>05–08</td><td>top-up, bill pay (sync and callback), add money from bank</td></tr>
+      <tr><td>09</td><td>web checkout and IPN</td></tr>
+      <tr><td>10, 11</td><td>SMS and email notifications</td></tr>
+      <tr><td>12</td><td>reversal by the core</td></tr>
+      <tr><td>13–17</td><td>admin: maker-checker, console search, partner config, wallet unlock, menus and templates</td></tr>
+      <tr><td>18–20</td><td>USSD over HTTP and SMPP</td></tr>
+      <tr><td>21–23</td><td>org bulk disbursement, SP query</td></tr>
+      <tr><td>90</td><td>10,000-row bulk payout (<code>scripts/api-test.sh "" 1</code>): heavy, not a laptop demo target</td></tr>
+    </table></div>
+    <h3>Test console (every feature by hand, dev/test only)</h3>
+    <div class="cmd"><pre>scripts/tester.sh                 <span class="c"># test-only routes on, start mw-test-console: https://localhost/tester</span>
+scripts/tester-e2e.sh             <span class="c"># its Playwright suite</span></pre></div>
+    <p>The test console plays the mobile app, a USSD handset, the partner simulators and core faults, the checkout shop and the
+      org portal; each action shows every API call, the balances before and after and the SMS. The walkthrough of every feature
+      is <a href="../docs/testing-guide.html">docs/testing-guide.html</a>; a demo script per milestone is <code>docs/demo.md</code>.</p>
+    <div class="note">No load tests on a laptop: <code>scripts/suite.sh perf</code> and <code>scripts/chaos.sh</code> need a bigger
+      host and a fresh stack.</div>
   </section>
 
   <section id="s12">
     <h2><span class="num">12</span>Troubleshooting</h2>
     <ul>
-      <li><strong><code>COPY build/libs/&lt;module&gt;.jar</code> fails</strong>: you skipped step 2. Run <code>./gradlew clean build</code> (or <code>./gradlew bootJar</code> for the jars alone) from the repo root.</li>
-      <li><strong>The build passes but the Testcontainers tests were skipped</strong> (the test report shows the <code>*IT</code> classes as skipped):
-        Gradle could not reach Docker. Start Docker and run <code>./gradlew clean build --rerun-tasks</code>.</li>
-      <li><strong>A timing test failed once</strong> (an assertion about a reply, timeout or budget): run that class on its own,
-        <code>./gradlew :mw-x:test --tests '*TheClassIT'</code>. If it passes, run the gate again; if it keeps failing on a small host,
-        lower the test concurrency with <code>-PmwDockerTests=2</code> (step 2.8).</li>
-      <li><strong>The build is much slower than step 13 says</strong>: the stack is probably still running and competing for Docker
-        (<code>docker stats</code>). Stop it, or lower <code>-PmwDockerTests</code>. <code>--profile</code> shows which task takes the time.</li>
-      <li><strong><code>required variable … is missing a value: run scripts/gen-dev-env.sh</code></strong>: you skipped step 3.</li>
-      <li><strong>"port is already allocated" on 443</strong>: another process holds it (<code>lsof -i :443</code>). Stop it, or start with
-        <code>MW_HTTPS_PORT=8443</code> in front of the command (the APIs work, the console login needs 443).</li>
+      <li><strong><code>COPY build/libs/…jar</code> fails</strong>: you skipped step 2. Run <code>./gradlew clean build</code> (or
+        <code>./gradlew bootJar</code>) from the repo root.</li>
+      <li><strong>A fix doesn't show up in the running stack</strong>: the images copy the jar, and <code>--build</code> doesn't
+        rebuild it. Run <code>./gradlew bootJar</code> first, then step 9.</li>
+      <li><strong>The build passes but the <code>*IT</code> tests were skipped</strong>: Gradle could not reach Docker. Start Docker
+        and run <code>./gradlew clean build --rerun-tasks</code>.</li>
+      <li><strong>A timing test failed once</strong>: run that class alone (<code>./gradlew :mw-x:test --tests '*TheClassIT'</code>).
+        If it keeps failing on a small host, lower the test concurrency with <code>-PmwDockerTests=2</code>.</li>
+      <li><strong><code>required variable … is missing a value: cp dev.env.defaults .env</code></strong>: you skipped step 3.</li>
+      <li><strong>"port is already allocated"</strong>: another process holds one of the ports in step 7 (<code>lsof -i :5432</code>).
+        Stop it, or move the port with <code>MW_PORT_&lt;NAME&gt;</code> in <code>.env</code>. Port 443 moves with
+        <code>MW_HTTPS_PORT</code> (the APIs work, the console login needs 443).</li>
       <li><strong>Containers exit with code 137</strong>: Docker is out of memory. Give Docker Desktop 8 GB, or use the minimal profile.</li>
-      <li><strong>A one-shot (<code>provision</code>, <code>kafka-init</code>, <code>etcd-init</code>, <code>apisix-init</code>) exits non-zero</strong>: <code>docker compose logs provision</code> (it names the service and step), or that one-shot. Usually volumes created with
-        other credentials (a deleted <code>.env</code>, see step 3) or OpenBao not yet unsealed; <code>docker compose down</code> and start again.</li>
-      <li><strong>A service stays "starting"</strong>: <code>docker compose logs &lt;service&gt;</code>. It is usually waiting on postgres,
-        kafka, keycloak, openbao or <code>provision</code>.</li>
-      <li><strong>The seeder exits non-zero</strong>: <code>docker compose --profile core --profile seed logs mw-seeder</code>; the line <code>seed.step.failed</code> names the step.
-        <code>open change request of &lt;operator&gt;</code> means someone left a pending request on a partner, menu or template: approve or
-        reject it in the console, then run step 4 again.</li>
-      <li><strong>404 on <code>/test/...</code> routes</strong>: expected after a start; <code>scripts/api-test.sh</code> and <code>scripts/tester.sh</code> add the test-only routes.</li>
-      <li><strong><code>scripts/smoke.sh</code> reports a partition mismatch</strong> after upgrading from a stack started with 3 partitions per topic:
-        run <code>./reset.sh</code> once (Kafka cannot shrink existing topics).</li>
+      <li><strong>A one-shot (<code>provision</code>, <code>kafka-init</code>, <code>etcd-init</code>, <code>apisix-init</code>) exits
+        non-zero</strong>: <code>docker compose logs provision</code> names the service and step. Usually volumes created with
+        other credentials (an <code>.env</code> from before <code>dev.env.defaults</code>, or an edited value): run
+        <code>./reset.sh</code> and start again.</li>
+      <li><strong>A service stays "starting"</strong>: <code>docker compose logs &lt;service&gt;</code>. It is usually waiting on
+        postgres, kafka, keycloak, openbao or provision.</li>
+      <li><strong>The seeder exits non-zero</strong>: <code>docker compose --profile core --profile seed logs mw-seeder</code>; the
+        line <code>seed.step.failed</code> names the step. <code>open change request of &lt;operator&gt;</code> means a pending
+        request on a partner, menu or template: approve or reject it in the console, then run step 4 again.</li>
+      <li><strong>404 on <code>/test/...</code> routes</strong>: expected after a start; <code>scripts/api-test.sh</code> and
+        <code>scripts/tester.sh</code> add the test-only routes.</li>
+      <li><strong>Timer scenarios of the API suite fail</strong>: <code>.env</code> lacks the "Test timers" block. Copy it back from
+        <code>deploy/dev.env.defaults</code> and run <code>docker compose --profile core --profile seed up -d</code>.</li>
+      <li><strong><code>docker compose logs</code> shows nothing for a service</strong>: services in a profile are listed only when
+        you pass it: <code>docker compose --profile core logs &lt;service&gt;</code>.</li>
     </ul>
     <p>Recovery and operations in depth: <code>docs/runbook.md</code>.</p>
-  </section>
-
-  <section id="s13">
-    <h2><span class="num">13</span>Measured timings and footprint</h2>
-    <p>Measured on a 12-core, 24 GB Apple Silicon (arm64) laptop, warm Docker and Gradle caches: the stack rows on 2026-11-06, the build rows on 2026-11-13 (test concurrency sized for an 8-core host).</p>
-    <div class="table-wrap"><table>
-      <tr><th>Step</th><th>Before the laptop changes</th><th>Now</th></tr>
-      <tr><td><code>./gradlew clean build</code> (14 modules; then the fast test tier + jars, no Testcontainers)</td><td>n/a (jars only, per module)</td><td>46 s</td></tr>
-      <tr><td><code>./gradlew clean build --no-build-cache</code> today (one build: every test but <code>slow-wait</code>, Testcontainers included, jars, repo checks), cold</td><td>about 7 min 45 s (4,465 tests, 4 tasks at once)</td><td>3 min 3 s (4,326 tests; 2026-11-13, with the stack running)</td></tr>
-      <tr><td><code>./gradlew clean build -PwithSlow</code> (every test), cold</td><td></td><td>about 5 min (4,465 tests)</td></tr>
-      <tr><td>The same, run again with nothing changed (build cache)</td><td></td><td>1–4 s</td></tr>
-      <tr><td><code>./gradlew bootJar</code> after <code>clean</code>, warm Gradle daemon</td><td></td><td>4 s</td></tr>
-      <tr><td><code>./gradlew :mw-notify:build --rerun-tasks</code> (one module) / one test class</td><td></td><td>40 s / 16 s</td></tr>
-      <tr><td><code>docker compose … build mw-notify</code> (one image, cached layers)</td><td></td><td>5 s</td></tr>
-      <tr><td>Image build, no cache (29 images)</td><td>101 s (AOT training + <code>apt-get upgrade</code> per image)</td><td>61 s</td></tr>
-      <tr><td>Image build, cached</td><td></td><td>8 s</td></tr>
-      <tr><td>Step 4 start until <code>mw-seeder</code> exited 0 (fresh volumes)</td><td>72 s (the old <code>up</code> script 64 s + seed script 8 s)</td><td>76 s (one command, cached <code>--build</code> included)</td></tr>
-      <tr><td>Memory limits, long-running containers</td><td>9.6 GB (Docker 10 GB+)</td><td>7.9 GB (Docker 8 GB)</td></tr>
-      <tr><td>Measured memory in use (start + seed + API folders 00, 01, 05)</td><td>5.9 GB</td><td>6.0 GB</td></tr>
-      <tr><td><code>scripts/api-test.sh "00, 01, 05"</code></td><td></td><td>127 s, 269 requests, 0 failed</td></tr>
-    </table></div>
   </section>
 </main>
 <script>

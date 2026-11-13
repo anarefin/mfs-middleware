@@ -42,7 +42,7 @@ runs in Docker.
 | Node.js 22+ with npx | `scripts/api-test.sh` (Newman, pinned, fetched by npx; needs access to registry.npmjs.org and cdnjs.cloudflare.com), the `contractsLint` and `composeCheck` repo checks of `./gradlew build`; the admin console builds inside Docker | `node --version` |
 | Node.js 24 + pnpm (optional) | only the consoles' own tests: `pnpm test` in `ui/mw-admin-ui` / `ui/mw-test-console`, `scripts/ui-e2e.sh` and `scripts/tester-e2e.sh` (Playwright against the running stack; Chromium is installed on first use) | `pnpm --version` |
 | Internet access on the first run | images, the Gradle distribution and dependencies, the console's pnpm packages | |
-| Host port 443 free | APISIX is the only container that publishes a port (443 -> 9443) | `lsof -i :443` |
+| Host port 443 free, and the direct ports below | APISIX publishes 443 (-> 9443); every service and platform container also publishes on 127.0.0.1 (table under "Host ports") | `lsof -i :443` |
 
 ```sh
 docker --version && docker compose version
@@ -67,21 +67,23 @@ running the Testcontainers tests run too (a cold run takes about 3 minutes, size
 an unchanged rebuild comes from the build cache in seconds). To only get the jars for the images,
 `./gradlew bootJar` takes well under a minute.
 
-**2. Create the credentials** (first time only)
+**2. Copy the dev settings** (first time only)
 
 ```sh
-scripts/gen-dev-env.sh
+cd deploy && cp dev.env.defaults .env
 ```
 
-Writes every dev credential into the gitignored `deploy/.env`. Running it again keeps existing
-values (the volumes were initialised with them) and only adds missing ones. Never delete
-`deploy/.env` on its own: use `deploy/reset.sh` first.
+`deploy/dev.env.defaults` is committed: fixed, obviously fake dev values (the tester logins, every
+other credential, the USSD source lists and the short test timers). Compose reads `deploy/.env` by
+itself, so no command names an env file. `scripts/smoke.sh`, `scripts/tester.sh`, `scripts/suite.sh`
+and `deploy/reset.sh` copy it on their own when `deploy/.env` is missing. The volumes are
+initialised with these values: change one only together with `./reset.sh`. Deleting `deploy/.env`
+and copying it again is always safe, as the values are fixed.
 
-**3. Start and seed the stack**
+**3. Start and seed the stack** (from `deploy/`)
 
 ```sh
-cd deploy
-docker compose --env-file .env --env-file test-timers.env --profile core --profile seed up -d --build
+docker compose --profile core --profile seed up -d --build --wait
 docker compose --profile core --profile seed wait mw-seeder     # ends with "exited with status code 0" once seeded
 ```
 
@@ -90,13 +92,13 @@ the platform, the one-shots (`kafka-init` creates the topics, `etcd-init` and `a
 edge config, `provision` every service's OpenBao secret, database role, schema and AppRole), the
 14 services and the admin console, then the one-shot `mw-seeder`. `provision` runs again on every
 `up` and creates what is missing, so a new service's schema appears without dropping volumes.
-`--env-file test-timers.env` loads the short test timers (core and partner deadlines, status
-inquiry, reversal, retry topics, bulk, IPN) the API suite needs; leave it out for the production
-timers. On a warm Docker cache the command takes 1–2 minutes; the first run pulls the platform
+`deploy/.env` carries the short test timers (core and partner deadlines, status inquiry, reversal,
+retry topics, bulk, IPN) the API suite needs; for the production timers delete the timer block from
+`deploy/.env` and run the start command again (it recreates the services). On a warm Docker cache the command takes 1–2 minutes; the first run pulls the platform
 images and builds 16 images.
 
-Without the seeder: `docker compose --env-file .env --profile core up -d --build --wait` returns
-once every service is healthy. The `minimal` profile instead of `core` starts only the P2P and cash
+Without the seeder: `docker compose --profile core up -d --build --wait` returns once every
+service is healthy. `docker compose --profile minimal up -d --build` starts only the P2P and cash
 path, unseeded.
 
 **4. Check it** (repo root)
@@ -137,7 +139,7 @@ Then:
 
 ### Test users (dev only: fixed, documented fake passwords; ADR D9 amendment)
 
-After `deploy/reset.sh` (an older `deploy/.env` keeps its random values: `scripts/creds.sh` prints the current ones).
+The values come from `deploy/dev.env.defaults`; `scripts/creds.sh` prints the ones in `deploy/.env`.
 
 | Realm | Users | Password (variable) | Used by |
 | --- | --- | --- | --- |
@@ -154,13 +156,11 @@ From `deploy/`:
 
 ```sh
 (cd .. && ./gradlew :mw-notify:build)       # its tests and jar; :mw-notify:bootJar for the jar only
-docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-notify
+docker compose --profile core up -d --build mw-notify
 docker compose restart apisix               # the edge still points at the old container's IP
 ```
 
-Keep the same `--env-file` arguments as the command that started the stack, or Compose recreates
-the services whose timers changed. After an admin console change:
-`docker compose --env-file .env --profile core up -d --build mw-admin-ui`.
+After an admin console change: `docker compose --profile core up -d --build mw-admin-ui`.
 
 ## Stop and reset
 
@@ -173,8 +173,8 @@ docker compose --profile core --profile seed down    # remove containers, keep v
 ```
 
 Never reset a single store. PostgreSQL, Kafka, Valkey, OpenBao, Keycloak and the core-mock ledger
-describe the same books, so `deploy/reset.sh` always resets them together (it also switches the
-tester logins back to their documented values). After a reset, repeat step 3.
+describe the same books, so `deploy/reset.sh` always resets them together. After a reset, repeat
+step 3.
 
 ## Build and test
 
@@ -208,7 +208,7 @@ and `scripts/ui-e2e.sh` (`ui/mw-admin-ui/CLAUDE.md`).
 
 ## Test suites against the running stack
 
-Start and seed the stack first (quick start step 3, with `test-timers.env`). All run from the repo root.
+Start and seed the stack first (quick start step 3; `deploy/.env` carries the short test timers). All run from the repo root.
 
 ```sh
 scripts/smoke.sh                  # live checks of the platform
@@ -238,9 +238,8 @@ milestone gate run them on a fresh stack:
 
 ```sh
 ./gradlew clean build                                  # Docker up: every test, every repo check
-scripts/gen-dev-env.sh
-cd deploy && ./reset.sh
-docker compose --env-file .env --env-file test-timers.env --profile core --profile seed up -d --build
+cd deploy && ./reset.sh                                # also copies dev.env.defaults to .env if missing
+docker compose --profile core --profile seed up -d --build
 docker compose --profile core --profile seed wait mw-seeder        # 0
 cd .. && scripts/smoke.sh && scripts/edge-test.sh
 scripts/api-test.sh ""                                 # the whole API suite (but 90 Slow)
@@ -259,10 +258,9 @@ Every script prints its usage in its header comment. They read the running stack
 
 | Script | What it does |
 | --- | --- |
-| `scripts/gen-dev-env.sh [--reset-fixed]` | generate every dev credential into the gitignored `deploy/.env` (existing values kept); `--reset-fixed` rewrites the tester logins to their documented values (`deploy/reset.sh` does) |
 | `scripts/smoke.sh` | live checks: every platform container healthy and the one-shots exited 0, topics, Kafka produce/consume, PostgreSQL, Valkey, Keycloak tokens for every test user, OpenBao, APISIX `/healthz` |
 | `scripts/edge-test.sh` | APISIX edge policies on the running stack: 401/400/413/429 envelopes, header stripping, correlation ID, quotas, partner and checkout callbacks, USSD credentials, idempotent apply |
-| `scripts/api-test.sh [FOLDER] [ALL]` | Newman API suite in `tests/api` against the running, seeded stack (started with `test-timers.env`): every folder but `90 Slow`, or the given ones (numbers or names, comma-separated, e.g. `scripts/api-test.sh "01, 03"`); `1` as the second argument adds `90 Slow`. Re-applies the test-only gateway routes first; JUnit report `tests/api/build/newman-report.xml` |
+| `scripts/api-test.sh [FOLDER] [ALL]` | Newman API suite in `tests/api` against the running, seeded stack (with the test timers of `deploy/.env`): every folder but `90 Slow`, or the given ones (numbers or names, comma-separated, e.g. `scripts/api-test.sh "01, 03"`); `1` as the second argument adds `90 Slow`. Re-applies the test-only gateway routes first; JUnit report `tests/api/build/newman-report.xml` |
 | `scripts/ui-e2e.sh [GREP]` | admin console Playwright suite (`ui/mw-admin-ui/e2e`) on the running, seeded stack: real Keycloak logins as the seeded personas, the real mw-admin-api behind APISIX; tags `@smoke`, `@console`, `@approvals`, `@partners`, `@ussd`, `@templates`; installs pnpm packages and Chromium when needed |
 | `scripts/tester.sh` | start the dev/test-only test console (`ui/mw-test-console`, ADR D17): re-applies the test-only gateway routes with `/tester`, starts `mw-test-console` (profile `tester`, about 192 MiB outside the core budget), prints https://localhost/tester; a later `docker compose up` removes the routes again (run it once more) |
 | `scripts/tester-e2e.sh [GREP]` | the test console's Playwright suite (`ui/mw-test-console/e2e`) after `scripts/tester.sh`: app flows with balances, USSD over HTTP and SMPP, a lost core reply resolved by the status inquiry, checkout with IPN, a bulk batch |
@@ -283,7 +281,7 @@ Every script prints its usage in its header comment. They read the running stack
 ## Memory knobs
 
 Every long-running memory limit in `deploy/docker-compose.yml` is an optional knob: set it in the
-shell or in `deploy/.env`, e.g. `APP_MEM_LIMIT=512M APP_XMX=192m docker compose --env-file .env --profile core up -d`.
+shell or in `deploy/.env`, e.g. `APP_MEM_LIMIT=512M APP_XMX=192m docker compose --profile core up -d`.
 `./gradlew :composeCheck` sums the values it sees (shell, then `deploy/.env`, then the defaults)
 against the 8 GB laptop budget (`MW_RAM_BUDGET_MIB`, default 8192). The full table, with measured
 peaks, is the header of `deploy/docker-compose.yml`.
@@ -302,26 +300,60 @@ peaks, is the header of `deploy/docker-compose.yml`.
 | `OPENBAO_MEM` (128M), `ETCD_MEM` (64M), `VALKEY_MEM` (64M) | `openbao`, `etcd`, `valkey` |
 | `ADMIN_UI_MEM` (160M) | `mw-admin-ui` |
 
-Other settings: `MW_HTTPS_PORT` (published edge port, default 443), `COMPOSE_PROJECT_NAME` (a
-second stack on one host). Scripts that start services (`scripts/tester.sh`) read `TIMERS=fast`
-when the stack runs with `test-timers.env`, so they start it the same way.
+Other settings: `MW_HTTPS_PORT` (published edge port, default 443), `MW_PORT_<NAME>` (the direct
+host ports below), `COMPOSE_PROJECT_NAME` (a second stack on one host).
+
+## Host ports
+
+APISIX is the edge on https://localhost (443, `MW_HTTPS_PORT`). For debugging, every service and
+platform container also publishes on 127.0.0.1 only; each port moves with its `MW_PORT_<NAME>`
+knob (in the shell or `deploy/.env`). etcd and the APISIX Admin API stay unpublished. A direct
+port skips the edge policies (JWT, HMAC, quotas), and the console login still needs
+https://localhost on 443. Production stays edge-only (ADR D3 amendment).
+
+| Port | Container (knob) |
+| --- | --- |
+| 8081 | `mw-app-gateway` (`MW_PORT_APP_GATEWAY`) |
+| 8082 | `mw-ussd` (`MW_PORT_USSD`) |
+| 8083 | `mw-orchestrator` (`MW_PORT_ORCHESTRATOR`) |
+| 8084 | `mw-core-mock` (`MW_PORT_CORE_MOCK`) |
+| 8085 | `mw-simulators` (`MW_PORT_SIMULATORS`) |
+| 8086 | `mw-notify` (`MW_PORT_NOTIFY`) |
+| 8087 | `mw-audit-dw` (`MW_PORT_AUDIT_DW`) |
+| 8088 | `mw-admin-api` (`MW_PORT_ADMIN_API`) |
+| 8089 | `mw-adapter-telco` (`MW_PORT_ADAPTER_TELCO`) |
+| 8090 | `mw-adapter-billpay` (`MW_PORT_ADAPTER_BILLPAY`) |
+| 8091 | `mw-adapter-bank` (`MW_PORT_ADAPTER_BANK`) |
+| 8092 | `mw-checkout` (`MW_PORT_CHECKOUT`) |
+| 8093 | `mw-portal-api` (`MW_PORT_PORTAL_API`) |
+| 3000 | `mw-admin-ui`, path `/console` (`MW_PORT_ADMIN_UI`) |
+| 3001 | `mw-test-console`, profile `tester` (`MW_PORT_TEST_CONSOLE`) |
+| 5432 | `postgres` (`MW_PORT_POSTGRES`) |
+| 6379 | `valkey` (`MW_PORT_VALKEY`) |
+| 9094 | `kafka`, host listener `localhost:9094` (`MW_PORT_KAFKA`) |
+| 8180 | `keycloak` (`MW_PORT_KEYCLOAK`) |
+| 8200 | `openbao` (`MW_PORT_OPENBAO`) |
+| 8025 / 3025 | `greenmail` API / SMTP (`MW_PORT_GREENMAIL`, `MW_PORT_GREENMAIL_SMTP`) |
+
+Readiness of one service: `curl -s localhost:8081/actuator/health/readiness` (the actuator listens
+on 8080 inside the container).
 
 ## Troubleshooting
 
 | Symptom | Cause and fix |
 | --- | --- |
 | `COPY build/libs/mw-….jar` fails during `docker compose … up --build` | No jar yet: run `./gradlew clean build` (or `./gradlew bootJar`) from the repo root first. |
-| `required variable … is missing a value` | `deploy/.env` is missing: run `scripts/gen-dev-env.sh`. |
+| `required variable … is missing a value` | `deploy/.env` is missing: `cd deploy && cp dev.env.defaults .env`. |
 | `./gradlew build` passes but says the `*IT` tests were skipped | Docker was not reachable from Gradle. Start Docker and run `./gradlew clean build --rerun-tasks` for the gate. |
 | `./gradlew build` fails with containers OOM-killed or timing out | Four modules' test PostgreSQL and Kafka run at once. Stop the stack while building (`docker compose … stop`), or run with `--max-workers 2`. |
-| `port is already allocated` on 443 | Another process holds it (`lsof -i :443`). Stop it, or put `MW_HTTPS_PORT=8443` in front of the `docker compose` command (the APIs work; the console login needs 443). |
+| `port is already allocated` | Another process holds that port (`lsof -i :443`, or the port named). Stop it, or move ours: `MW_HTTPS_PORT=8443` for the edge (the APIs work; the console login needs 443), `MW_PORT_<NAME>` for a direct port (e.g. `MW_PORT_POSTGRES=15432`), in the shell or `deploy/.env`. |
 | Containers restart or exit with code 137 | Docker is out of memory. Give Docker Desktop 8 GB, lower a knob above, or use `--profile minimal`. |
-| A one-shot (`provision`, `kafka-init`, `etcd-init`, `apisix-init`) exits non-zero | `docker compose logs provision` (it names the service and step), or that one-shot. Usually volumes created with other credentials (a deleted `deploy/.env`): `./reset.sh`, then start again. |
+| A one-shot (`provision`, `kafka-init`, `etcd-init`, `apisix-init`) exits non-zero | `docker compose logs provision` (it names the service and step), or that one-shot. Usually volumes created with other credentials (a changed value in `deploy/.env`): `./reset.sh`, then start again. |
 | A service stays `starting` | `docker compose logs <service>`. It is usually waiting on postgres, kafka, keycloak, openbao or provision. |
 | `wait mw-seeder` prints a non-zero code | `docker compose --profile core --profile seed logs mw-seeder`: the line `seed.step.failed` names the step. An open change request left in the console blocks it: approve or reject it, then start again. |
-| Every console or suite sign-in fails | The seeder has not finished, or `deploy/.env` predates the fixed tester logins: `scripts/creds.sh` prints the current values. |
+| Every console or suite sign-in fails | The seeder has not finished, or `deploy/.env` holds other values than the volumes: `scripts/creds.sh` prints the current values; `./reset.sh` and copy `dev.env.defaults` again. |
 | 404 on `/test/...` routes | Expected after an `up`: `scripts/api-test.sh` and `scripts/tester.sh` re-apply the test-only routes. |
-| API suite timer scenarios fail | The stack was started without `--env-file test-timers.env`. Start it again with it (the same command recreates the services). |
+| API suite timer scenarios fail | `deploy/.env` lacks the test timer block (deleted for production timers, or an old file). Copy `dev.env.defaults` to `.env` again and rerun the start command (it recreates the services). |
 | 502 from the edge right after rebuilding one service | APISIX still points at the old container: `docker compose restart apisix`. |
 | `scripts/smoke.sh` reports a partition mismatch | The Kafka volume is from a stack with more partitions per topic: `deploy/reset.sh` once. |
 

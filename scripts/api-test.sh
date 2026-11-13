@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/api-test.sh [FOLDER] [ALL]: the Newman API suite in tests/api against the running, seeded stack
 # (ticket 58; it replaced the Cucumber suite). Start it with the test timers first (from deploy/:
-# docker compose --env-file .env --env-file test-timers.env --profile core --profile seed up -d --wait).
+# docker compose --profile core --profile seed up -d --wait).
 #   FOLDER  folders to run, by number or full name, separated by commas ("01, 05"; numbers may
 #           also be separated by spaces: "01 05")
 #           default every folder except 90 Slow and 99 Destructive
