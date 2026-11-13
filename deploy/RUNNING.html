@@ -35,6 +35,7 @@
   a { color: var(--accent); }
   code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em;
          background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  :not(pre) > code { overflow-wrap: anywhere; }
   pre code { background: none; padding: 0; }
   .cmd { position: relative; margin: 10px 0; }
   .cmd pre {
@@ -72,7 +73,7 @@
     exploring and demoing the features. This is a demo footprint; it is never used for load tests.</p>
 
   <nav>
-    <a href="#s1">Prerequisites</a><a href="#s2">Build</a><a href="#s3">.env</a><a href="#s4">Start</a>
+    <a href="#s1">Prerequisites</a><a href="#s2">Build options</a><a href="#s3">.env</a><a href="#s4">Start</a>
     <a href="#s5">Seed</a><a href="#s6">Verify</a><a href="#s7">Services</a><a href="#s8">Minimal</a>
     <a href="#s9">Rebuild</a><a href="#s10">Test</a><a href="#s11">Stop / reset</a>
     <a href="#s12">Troubleshooting</a><a href="#s13">Timings</a>
@@ -98,17 +99,135 @@ lsof -i :443    <span class="c"># must print nothing</span></pre></div>
   </section>
 
   <section id="s2">
-    <h2><span class="num">2</span>Build the service jars</h2>
+    <h2><span class="num">2</span>Build: choose an option</h2>
     <p>The images don't compile code. Each <code>services/&lt;module&gt;/Dockerfile</code> copies
-      <code>build/libs/&lt;module&gt;.jar</code> (a fixed name, so a stale jar is never picked up), so build the jars first.
-      Run this from the <strong>repository root</strong>:</p>
-    <div class="cmd"><pre>./gradlew clean build</pre></div>
-    <p>The full gate of the one Gradle build: every module's compile, all its tests and its jar, plus the repo checks
-      (isolation, field injection, contracts lint, compose memory budget, script tests). With Docker running the
-      Testcontainers tests run too (each module's test JVM starts its own PostgreSQL and Kafka, removed when it ends);
-      without Docker they are skipped. A cold run takes about 7 minutes on a 12-core laptop; up to 4 modules build at once.
-      The build cache restores unchanged modules, so a second run with nothing changed takes seconds. For the jars alone,
-      <code>./gradlew bootJar</code> takes well under a minute. The first run downloads Gradle and the dependencies.</p>
+      <code>build/libs/&lt;module&gt;.jar</code> (a fixed name, so a stale jar is never picked up), so the jars must exist
+      before step 4. Every build is one Gradle build, run from the <strong>repository root</strong> with the bundled
+      <code>./gradlew</code>. Pick the row that matches what you want; each one is explained step by step below.</p>
+    <div class="table-wrap"><table>
+      <tr><th>You want to…</th><th>Run (from the repo root)</th><th>What runs</th><th>Time</th></tr>
+      <tr><td>Check everything before a pull request (the everyday gate)</td><td><code>./gradlew clean build</code></td><td>every module's tests and jar, the repo checks</td><td>about 3 min cold, seconds when nothing changed</td></tr>
+      <tr><td>Close a milestone (the full gate)</td><td><code>./gradlew clean build -PwithSlow</code></td><td>the same, plus the 139 <code>slow-wait</code> tests</td><td>about 5 min</td></tr>
+      <tr><td>Only get the jars, to start the stack</td><td><code>./gradlew bootJar</code></td><td>compile and jars, no tests</td><td>seconds to a minute</td></tr>
+      <tr><td>Work on one service</td><td><code>./gradlew :mw-notify:build</code></td><td>that module's tests and jar</td><td>about 40 s</td></tr>
+      <tr><td>Run one test class</td><td><code>./gradlew :mw-notify:test --tests '*SmscFlowIT'</code></td><td>that class only</td><td>about 15 s</td></tr>
+      <tr><td>Test everything without making jars</td><td><code>./gradlew check</code></td><td>every test and repo check</td><td>about 3 min cold</td></tr>
+      <tr><td>Run one repo check</td><td><code>./gradlew :contractsLint</code> (or another, 2.7)</td><td>that check</td><td>seconds to a minute</td></tr>
+      <tr><td>Rebuild the images after a build</td><td><code>docker compose … build</code> (2.9)</td><td>the images from the jars</td><td>about 5 s per image, cached</td></tr>
+    </table></div>
+    <p>Flags that work with any of them: <code>--rerun-tasks</code> (ignore the up-to-date checks and the cache, run
+      everything again), <code>--continue</code> (keep going after a failure and list every failure at the end),
+      <code>--profile</code> (a timing report in <code>build/reports/profile/</code>).</p>
+
+    <h3>2.1 Before the first build</h3>
+    <ol>
+      <li><strong>Start Docker.</strong> Each module's tests include Testcontainers classes (<code>*IT</code> and the
+        conformance suite): every module's test JVM starts its own PostgreSQL and Kafka and removes them when it ends.
+        Without Docker those classes are <em>skipped</em>, not failed, so the build still says <code>BUILD SUCCESSFUL</code>
+        but it is not a gate run.</li>
+      <li><strong>Prefer the stack stopped</strong> (<code>docker compose --profile core --profile seed stop</code> from
+        <code>deploy/</code>): the test containers need Docker's memory and CPU. The build works with the stack up, just slower.</li>
+      <li><strong>Open a shell in the repo root</strong> and check Java: <code>java -version</code> must report 25.</li>
+    </ol>
+    <div class="cmd"><pre>docker info --format '{{.NCPU}} CPUs, {{.MemTotal}} bytes'   <span class="c"># Docker is up</span>
+java -version                                              <span class="c"># 25</span></pre></div>
+    <p>The first build downloads Gradle and every dependency (a few minutes, once). Later builds use the local caches.</p>
+
+    <h3>2.2 The everyday gate: <code>./gradlew clean build</code></h3>
+    <ol>
+      <li>Run it:
+        <div class="cmd"><pre>./gradlew clean build</pre></div></li>
+      <li>Gradle compiles every module (8 tasks at a time), then runs each module's one <code>test</code> task: unit, slice,
+        contract, Camel route, Testcontainers and conformance tests in one JVM, <strong>at most 4 modules' tests at a time</strong>
+        (sized for an 8-core host). It builds each jar and runs the repo checks: module isolation, no field injection,
+        contracts lint, the compose memory budget and the shell tests.</li>
+      <li>It worked when the last line is <code>BUILD SUCCESSFUL</code>. The jars are at
+        <code>services/&lt;module&gt;/build/libs/&lt;module&gt;.jar</code>; each module's test report is
+        <code>services/&lt;module&gt;/build/reports/tests/test/index.html</code>.</li>
+      <li>Run it again with nothing changed and it takes seconds: the build cache restores every module whose sources
+        (and the contract files its tests read) did not change, even after <code>clean</code>. Change one module and only
+        that module, plus the checks that read its files, runs again.</li>
+    </ol>
+    <div class="note">The everyday gate leaves out the <code>slow-wait</code> tests (2.3). Use it before every pull request;
+      a milestone needs 2.3.</div>
+
+    <h3>2.3 The milestone gate: <code>-PwithSlow</code></h3>
+    <p>About 140 tests spend most of their time <em>waiting</em> on purpose to prove an outcome: that nothing arrives within
+      a window, that a timeout or a retry delay runs out, that a deadline moves a transaction on. They are tagged
+      <code>slow-wait</code> and the everyday gate skips them (ADR D19). A milestone gate runs everything:</p>
+    <ol>
+      <li><div class="cmd"><pre>./gradlew clean build -PwithSlow</pre></div></li>
+      <li>Same as 2.2, plus the <code>slow-wait</code> tests: 4,465 tests in all, about 5 minutes.</li>
+      <li>Then the API suite on a fresh stack: <code>./reset.sh</code>, step 4 with <code>test-timers.env</code>, and
+        <code>scripts/api-test.sh</code> (step 10).</li>
+    </ol>
+    <p><code>-PwithSlow</code> works with any test command, for example <code>./gradlew :mw-orchestrator:test -PwithSlow</code>.</p>
+
+    <h3>2.4 Jars only: <code>./gradlew bootJar</code></h3>
+    <p>For starting the stack without waiting for the tests (a demo, or after someone else ran the gate):</p>
+    <ol>
+      <li><div class="cmd"><pre>./gradlew bootJar</pre></div></li>
+      <li>Every module's jar lands in <code>services/&lt;module&gt;/build/libs/</code>, with no tests run. Seconds on a warm
+        Gradle, under a minute cold.</li>
+      <li>Go on with step 3; step 4's <code>--build</code> turns the jars into images.</li>
+    </ol>
+
+    <h3>2.5 One module</h3>
+    <p>While you work on one service, build and test only that module (<code>:mw-&lt;name&gt;:</code>, any folder in
+      <code>services/</code>):</p>
+    <div class="cmd"><pre>./gradlew :mw-notify:build                          <span class="c"># its tests, then its jar</span>
+./gradlew :mw-notify:test                           <span class="c"># its tests only</span>
+./gradlew :mw-notify:test --tests '*SmscFlowIT'     <span class="c"># one class; a method: '*SmscFlowIT.aThrottled*'</span>
+./gradlew :mw-notify:bootJar                        <span class="c"># its jar only, no tests</span>
+./gradlew :mw-notify:test --rerun-tasks             <span class="c"># again, even though nothing changed</span></pre></div>
+    <p>Then put the new jar into the running stack with step 9.</p>
+
+    <h3>2.6 Force a cold run, measure it, see every failure</h3>
+    <ol>
+      <li>Gradle skips work whose inputs did not change. To run everything again (to measure, or to rule out the cache):
+        <div class="cmd"><pre>./gradlew clean build --rerun-tasks                 <span class="c"># run every task again</span>
+./gradlew clean build --no-build-cache              <span class="c"># or: do not restore from the build cache</span></pre></div></li>
+      <li>To see where the time goes, add <code>--profile</code> and open the newest report in
+        <code>build/reports/profile/</code>.</li>
+      <li>By default Gradle stops scheduling new work after the first failure. To see every failure in one run:
+        <div class="cmd"><pre>./gradlew clean build --continue</pre></div></li>
+    </ol>
+
+    <h3>2.7 Tests and repo checks without jars</h3>
+    <div class="cmd"><pre>./gradlew check                 <span class="c"># every module's tests plus the repo checks, no jars</span>
+./gradlew :checkIsolation       <span class="c"># modules depend on no other module, no shared build logic</span>
+./gradlew :checkFieldInjection  <span class="c"># no @Autowired fields</span>
+./gradlew :contractsLint        <span class="c"># contracts/, every contracts.yml, API suite traceability</span>
+./gradlew :composeCheck         <span class="c"># memory limits of the core profile add up to 8 GB or less</span>
+./gradlew :scriptTests          <span class="c"># the shell tests of scripts/, the repo layout and these docs</span></pre></div>
+    <p>The shell tests can also run straight from the shell: <code>scripts/test/run.sh</code> (every file) or
+      <code>scripts/test/run.sh scripts/test/test_repo_docs.sh</code> (one file). They run three files side by side;
+      <code>SCRIPT_TESTS_JOBS=1 scripts/test/run.sh</code> runs them one at a time.</p>
+
+    <h3>2.8 Tune the build for your machine</h3>
+    <ul>
+      <li><strong>Test concurrency:</strong> at most 4 modules' tests run at once (<code>mwDockerTests=4</code> in
+        <code>gradle.properties</code>), sized for 8 cores: each one runs a test JVM, a PostgreSQL and a Kafka. On a bigger
+        host try more while watching <code>docker stats</code>; on a smaller one, fewer:
+        <div class="cmd"><pre>./gradlew clean build -PmwDockerTests=6     <span class="c"># 12+ cores</span>
+./gradlew clean build -PmwDockerTests=2     <span class="c"># 4 cores, or Docker short of memory</span></pre></div></li>
+      <li><strong>Compile and jar concurrency:</strong> <code>org.gradle.workers.max=8</code> in <code>gradle.properties</code>.</li>
+      <li>More than 4 test modules at once on 8 cores makes timing-sensitive tests flaky; lower the number before
+        suspecting a test.</li>
+    </ul>
+
+    <h3>2.9 The images</h3>
+    <p>Step 4's <code>up --build</code> builds every image it needs from the jars, so you rarely build images on their own.
+      To do it anyway, from <code>deploy/</code>:</p>
+    <div class="cmd"><pre>docker compose --env-file .env --profile core build                       <span class="c"># every core image</span>
+docker compose --env-file .env --profile core build mw-notify             <span class="c"># one image</span>
+docker compose --env-file .env --profile core build --no-cache mw-notify  <span class="c"># from scratch</span>
+docker compose --env-file .env --profile tester build mw-test-console     <span class="c"># the test console</span></pre></div>
+    <p>Images are tagged <code>mfs-mw/&lt;service&gt;:local</code>. The two web consoles (<code>mw-admin-ui</code>,
+      <code>mw-test-console</code>) are not Gradle modules: their Dockerfiles build them. Their unit tests run with pnpm,
+      no stack needed:</p>
+    <div class="cmd"><pre>(cd ui/mw-admin-ui && pnpm install && pnpm test)
+(cd ui/mw-test-console && pnpm install && pnpm test)</pre></div>
   </section>
 
   <section id="s3">
@@ -234,6 +353,7 @@ docker compose logs -f mw-orchestrator</pre></div>
 
   <section id="s9">
     <h2><span class="num">9</span>Rebuild one service after a code change</h2>
+    <p>Build the module (<a href="#s2">step 2.5</a>), then replace its container. From <code>deploy/</code>:</p>
     <div class="cmd"><pre>(cd .. && ./gradlew :mw-notify:build)   <span class="c"># its tests and jar; :mw-notify:bootJar for the jar only</span>
 docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-notify
 docker compose restart apisix   <span class="c"># APISIX still points at the old container's IP</span></pre></div>
@@ -280,7 +400,7 @@ docker compose --env-file .env --profile core --profile tester up -d --no-deps -
       and after and the SMS. The step-by-step walkthrough of every feature is <code>docs/testing-guide.html</code>.</p>
     <h3>Logs and code</h3>
     <div class="cmd"><pre>scripts/log-scan.sh               <span class="c"># no PIN or unmasked MSISDN / NID in any container log</span>
-(cd .. && ./gradlew clean build)  <span class="c"># the build gate: best with the stack stopped (Docker memory for the test containers)</span></pre></div>
+(cd .. && ./gradlew clean build)  <span class="c"># the build gate (step 2.2): best with the stack stopped; a milestone adds -PwithSlow (2.3)</span></pre></div>
     <div class="warn">No load tests on a laptop: <code>scripts/suite.sh perf</code> and <code>scripts/chaos.sh</code> need a bigger host and a fresh stack.</div>
   </section>
 
@@ -300,7 +420,14 @@ docker compose --env-file .env --env-file test-timers.env --profile core --profi
   <section id="s12">
     <h2><span class="num">12</span>Troubleshooting</h2>
     <ul>
-      <li><strong><code>COPY build/libs/&lt;module&gt;.jar</code> fails</strong>: you skipped step 2. Run <code>./gradlew clean build</code> from the repo root.</li>
+      <li><strong><code>COPY build/libs/&lt;module&gt;.jar</code> fails</strong>: you skipped step 2. Run <code>./gradlew clean build</code> (or <code>./gradlew bootJar</code> for the jars alone) from the repo root.</li>
+      <li><strong>The build passes but the Testcontainers tests were skipped</strong> (the test report shows the <code>*IT</code> classes as skipped):
+        Gradle could not reach Docker. Start Docker and run <code>./gradlew clean build --rerun-tasks</code>.</li>
+      <li><strong>A timing test failed once</strong> (an assertion about a reply, timeout or budget): run that class on its own,
+        <code>./gradlew :mw-x:test --tests '*TheClassIT'</code>. If it passes, run the gate again; if it keeps failing on a small host,
+        lower the test concurrency with <code>-PmwDockerTests=2</code> (step 2.8).</li>
+      <li><strong>The build is much slower than step 13 says</strong>: the stack is probably still running and competing for Docker
+        (<code>docker stats</code>). Stop it, or lower <code>-PmwDockerTests</code>. <code>--profile</code> shows which task takes the time.</li>
       <li><strong><code>required variable … is missing a value: run scripts/gen-dev-env.sh</code></strong>: you skipped step 3.</li>
       <li><strong>"port is already allocated" on 443</strong>: another process holds it (<code>lsof -i :443</code>). Stop it, or start with
         <code>MW_HTTPS_PORT=8443</code> in front of the command (the APIs work, the console login needs 443).</li>
@@ -321,12 +448,16 @@ docker compose --env-file .env --env-file test-timers.env --profile core --profi
 
   <section id="s13">
     <h2><span class="num">13</span>Measured timings and footprint</h2>
-    <p>Measured on 2026-11-06 on a 12-core, 24 GB Apple Silicon (arm64) laptop, warm Docker and Gradle caches.</p>
+    <p>Measured on a 12-core, 24 GB Apple Silicon (arm64) laptop, warm Docker and Gradle caches: the stack rows on 2026-11-06, the build rows on 2026-11-13 (test concurrency sized for an 8-core host).</p>
     <div class="table-wrap"><table>
       <tr><th>Step</th><th>Before the laptop changes</th><th>Now</th></tr>
       <tr><td><code>./gradlew clean build</code> (14 modules; then the fast test tier + jars, no Testcontainers)</td><td>n/a (jars only, per module)</td><td>46 s</td></tr>
-      <tr><td><code>./gradlew clean build</code> today (one build: every test, Testcontainers included, jars, repo checks), cold</td><td></td><td>about 7 min (2026-11-13)</td></tr>
+      <tr><td><code>./gradlew clean build --no-build-cache</code> today (one build: every test but <code>slow-wait</code>, Testcontainers included, jars, repo checks), cold</td><td>about 7 min 45 s (4,465 tests, 4 tasks at once)</td><td>3 min 3 s (4,326 tests; 2026-11-13, with the stack running)</td></tr>
+      <tr><td><code>./gradlew clean build -PwithSlow</code> (every test), cold</td><td></td><td>about 5 min (4,465 tests)</td></tr>
       <tr><td>The same, run again with nothing changed (build cache)</td><td></td><td>1–4 s</td></tr>
+      <tr><td><code>./gradlew bootJar</code> after <code>clean</code>, warm Gradle daemon</td><td></td><td>4 s</td></tr>
+      <tr><td><code>./gradlew :mw-notify:build --rerun-tasks</code> (one module) / one test class</td><td></td><td>40 s / 16 s</td></tr>
+      <tr><td><code>docker compose … build mw-notify</code> (one image, cached layers)</td><td></td><td>5 s</td></tr>
       <tr><td>Image build, no cache (29 images)</td><td>101 s (AOT training + <code>apt-get upgrade</code> per image)</td><td>61 s</td></tr>
       <tr><td>Image build, cached</td><td></td><td>8 s</td></tr>
       <tr><td>Step 4 start until <code>mw-seeder</code> exited 0 (fresh volumes)</td><td>72 s (the old <code>up</code> script 64 s + seed script 8 s)</td><td>76 s (one command, cached <code>--build</code> included)</td></tr>

@@ -16,6 +16,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -158,6 +159,7 @@ class SyncReplyIT {
         .containsEntry("mw-source", "mw-app-gateway");
   }
 
+  @Tag("slow-wait")
   @Test
   void noReplyWithinTheBudgetIs202WithTheTxnIdAndGetShowsTheStatus() throws Exception {
     long start = System.nanoTime();
@@ -182,6 +184,7 @@ class SyncReplyIT {
     assertThat(other).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-003");
   }
 
+  @Tag("slow-wait")
   @Test
   void aReplyForAnotherInstanceIsIgnored() throws Exception {
     MvcTestResult r = submit(key(), OrchestratorStub.OTHER_INSTANCE);
@@ -228,6 +231,7 @@ class SyncReplyIT {
    * minted for the repeat. That id must not stay RECEIVED for ever: once the duplicate answer
    * names the stored transaction, GET on it shows the stored transaction, up to its final status.
    */
+  @Tag("slow-wait")
   @Test
   void aRepeatAnsweredAfterTheBudgetGives202WithAnIdThatReachesTheFinalStatus() throws Exception {
     String key = key();

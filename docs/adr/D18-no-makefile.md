@@ -42,8 +42,9 @@ stack is plain `docker compose`.
 - One command to learn for the gate, the same as BitsPay. A second `./gradlew clean build` with no
   changes comes from the cache.
 - The `M=` and `JOBS=` knobs are gone: one module is `:mw-x:`, and parallelism is
-  `org.gradle.workers.max` in the root `gradle.properties` (a Docker memory budget, since every
-  module's test JVM starts its own PostgreSQL and Kafka).
+  `org.gradle.workers.max` in the root `gradle.properties`, with module test tasks capped by
+  `mwDockerTests` (a Docker and CPU budget, since every module's test JVM starts its own PostgreSQL
+  and Kafka; D19 amendment).
 - The full gate needs Docker and node on PATH (Testcontainers tests, `contractsLint`,
   `composeCheck`, `scriptTests`); without Docker the Testcontainers tests are skipped, not failed.
 - `scripts/test/test_repo_docs.sh` checks that the docs name only existing scripts, Gradle tasks

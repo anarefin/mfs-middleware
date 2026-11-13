@@ -12,6 +12,7 @@ import mfs.mw.simulators.messaging.KafkaTestConsumer;
 import mfs.mw.simulators.messaging.OutboxWriter;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -116,6 +117,7 @@ class OutboxConformanceIT {
         .isEqualTo(1);
   }
 
+  @Tag("slow-wait")
   @Test
   void rolledBackBusinessTransactionWritesNoOutboxRowAndPublishesNothing() {
     assertThatThrownBy(() -> businessOperation("TXN-OUT-RB", true))

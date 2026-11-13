@@ -17,6 +17,7 @@ import mfs.mw.adapter.billpay.messaging.KafkaTestConsumer;
 import mfs.mw.adapter.billpay.partner.auth.HmacSha256AuthScheme;
 import mfs.mw.adapter.billpay.service.PartnerReferenceService;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -92,6 +93,7 @@ class PartnerCallbackIT {
     return references.referenceFor(txnId, "billagg");
   }
 
+  @Tag("slow-wait")
   @Test
   void aSignedCallbackIsPublishedOnceAndAcknowledged() throws Exception {
     String txnId = newTxnId();
@@ -137,6 +139,7 @@ class PartnerCallbackIT {
     assertThat(m.path("partnerRef").asString()).isEqualTo(issued(txnId)); // no aggregator ref: ours
   }
 
+  @Tag("slow-wait")
   @Test
   void aCallbackWithABadSignatureIsRefusedAndNothingIsPublished() throws Exception {
     String txnId = newTxnId();
@@ -162,6 +165,7 @@ class PartnerCallbackIT {
   }
 
   /** T7: the partner id in the path is checked by Bean Validation (@Pattern), before the service. */
+  @Tag("slow-wait")
   @Test
   void aCallbackToAMalformedPartnerIdIsRefusedAsInvalid() throws Exception {
     String txnId = newTxnId();
@@ -174,6 +178,7 @@ class PartnerCallbackIT {
     assertThat(published(txnId, 1, Duration.ofSeconds(3))).isEmpty();
   }
 
+  @Tag("slow-wait")
   @Test
   void aCallbackToAPartnerWithoutConfigOfItsOwnIsNotFound() throws Exception {
     String txnId = newTxnId();
@@ -185,6 +190,7 @@ class PartnerCallbackIT {
     assertThat(published(txnId, 1, Duration.ofSeconds(3))).isEmpty();
   }
 
+  @Tag("slow-wait")
   @Test
   void anUnreadableSignedCallbackIsABadRequest() throws Exception {
     String txnId = newTxnId();

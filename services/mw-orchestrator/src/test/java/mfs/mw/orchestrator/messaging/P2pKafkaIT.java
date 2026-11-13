@@ -11,6 +11,7 @@ import mfs.mw.orchestrator.dto.TxnRequest;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -142,6 +143,7 @@ class P2pKafkaIT {
         .isEqualTo("MW-CORE-INSUFFICIENT_BALANCE");
   }
 
+  @Tag("slow-wait")
   @Test
   void aCoreThatNeverAnswersPostTransferEndsUnknownAfterTheDeadline() {
     TxnRequest req = request(CoreStub.SILENT_AMOUNT);

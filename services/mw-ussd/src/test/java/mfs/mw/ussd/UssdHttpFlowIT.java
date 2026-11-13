@@ -12,6 +12,7 @@ import mfs.mw.ussd.util.TestPinKeys;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -194,6 +195,7 @@ class UssdHttpFlowIT {
     assertThat(bad.path("flag").asString()).isEqualTo("CON");
   }
 
+  @Tag("slow-wait")
   @Test
   void noFinalAnswerWithinTheBudgetEndsWithBeingProcessed() {
     String session = "it-" + UUID.randomUUID();

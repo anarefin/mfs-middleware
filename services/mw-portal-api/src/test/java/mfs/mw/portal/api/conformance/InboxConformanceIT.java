@@ -16,6 +16,7 @@ import mfs.mw.portal.api.messaging.Inbox;
 import mfs.mw.portal.api.route.RetryTopicRouteBuilder;
 import org.apache.camel.Exchange;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -143,6 +144,7 @@ class InboxConformanceIT {
     assertThat(effects("evt-dup-1")).isEqualTo(1);
   }
 
+  @Tag("slow-wait")
   @Test
   void failedSideEffectLeavesNoInboxRecordSoTheRetryAppliesIt() throws Exception {
     deliver("fail-first-1");

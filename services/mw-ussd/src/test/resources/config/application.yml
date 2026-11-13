@@ -14,6 +14,14 @@ mw:
       # would publish rows another test is checking. Tests that need it switch it on and close
       # their context afterwards (@DirtiesContext).
       enabled: false
+      # Tests that switch it on want each hop at once, not after a 500 ms idle wait.
+      period: 50ms
   retention:
     # The purge job's schedule is off in tests; OutboxInboxPurgeConformanceIT calls it directly.
     cron: "-"
+camel:
+  component:
+    kafka:
+      # A closing test context does not wait the default 30 s per consumer for one caught mid-rebalance
+      # (cached contexts share the consumer group); nothing in a test depends on that drain.
+      shutdown-timeout: 100

@@ -108,9 +108,24 @@ val listedContracts = providers.fileContents(layout.projectDirectory.file("contr
     } + listOf("common", "OWNERS.yml")
 }
 
+// Docker and CPU budget: every module's test JVM starts its own PostgreSQL and Kafka, so at most
+// `mwDockerTests` (root gradle.properties, default 4) module test tasks run at once, whatever
+// org.gradle.workers.max lets compile and jar tasks do beside them. Every module registers the same
+// service name, so they share one limit; nothing is shared but the name (D13, D14).
+abstract class DockerTestSlots : BuildService<BuildServiceParameters.None>
+val dockerTestSlots = gradle.sharedServices.registerIfAbsent("mwDockerTests", DockerTestSlots::class) {
+    maxParallelUsages.set(providers.gradleProperty("mwDockerTests").map(String::toInt).orElse(4))
+}
+
 tasks.test {
-    useJUnitPlatform()
-    // Bounded heap: up to four module test JVMs run side by side (root gradle.properties).
+    usesService(dockerTestSlots)
+    useJUnitPlatform {
+        // Tests whose time is a deliberate wait that proves an outcome (an absence window, a timeout
+        // or retry delay running out) are tagged slow-wait and left out of the everyday build;
+        // `-PwithSlow` runs them too (milestone gate: `./gradlew clean build -PwithSlow`).
+        if (!providers.gradleProperty("withSlow").isPresent) excludeTags("slow-wait")
+    }
+    // Bounded heap: up to `mwDockerTests` (4) module test JVMs run side by side.
     maxHeapSize = "1g"
     val agent: FileCollection = mockitoAgent
     jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-javaagent:${agent.singleFile}") })

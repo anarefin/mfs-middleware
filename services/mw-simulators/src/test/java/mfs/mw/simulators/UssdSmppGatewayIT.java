@@ -32,6 +32,7 @@ import org.jsmpp.session.SMPPSession;
 import org.jsmpp.session.Session;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
@@ -171,6 +172,7 @@ class UssdSmppGatewayIT {
         .isEqualTo(tlv(begin.getOptionalParameters(), OptionalParameter.Tag.ITS_SESSION_INFO)[0]);
   }
 
+  @Tag("slow-wait")
   @Test
   void refusesTheNextSubmitsAsAsked() throws Exception {
     post("/sim/ussdgw/smpp/scenario", "{\"throttleNext\":1,\"queueFullNext\":1,\"genericNackNext\":1}");

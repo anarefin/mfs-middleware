@@ -16,6 +16,7 @@ import mfs.mw.core.mock.service.WalletSeeder;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -123,6 +124,7 @@ class CorePaymentKafkaIT {
     assertThat(e.path("eventType").asString()).isEqualTo("WalletCredited");
   }
 
+  @Tag("slow-wait")
   @Test
   void aDelayedReplyArrivesLateAndADroppedOneNeverDoes() throws InterruptedException {
     faults.add(new FaultRequest(FaultMode.DELAY, "CreditWallet", null, 3_000L, null, null));

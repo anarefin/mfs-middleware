@@ -63,7 +63,7 @@ in under 15 minutes, from the repo alone. Run Gradle from the repository root an
 ```
 
 The full gate: every module's compile, tests and boot jar, plus the repo checks. With Docker
-running the Testcontainers tests run too (a cold run takes about 7 minutes on a 12-core laptop;
+running the Testcontainers tests run too (a cold run takes about 3 minutes, sized for an 8-core host;
 an unchanged rebuild comes from the build cache in seconds). To only get the jars for the images,
 `./gradlew bootJar` takes well under a minute.
 
@@ -184,7 +184,7 @@ Gradle multi-module build; every `services/*` folder with a `build.gradle.kts` i
 
 | Command (repo root) | What it does |
 | --- | --- |
-| `./gradlew clean build` | the full gate: every module's compile, `test` and `bootJar` (`services/mw-*/build/libs/mw-<module>.jar`), plus the repo checks below under the root `check`. Up to 4 modules build at once (`org.gradle.workers.max`, a Docker memory budget); unchanged modules come from the build cache; `--rerun-tasks` forces a full run |
+| `./gradlew clean build` | the full gate: every module's compile, `test` and `bootJar` (`services/mw-*/build/libs/mw-<module>.jar`), plus the repo checks below under the root `check`. Compile and jars run 8 tasks at once (`org.gradle.workers.max`), module tests at most 4 at once (`mwDockerTests`, a Docker and CPU budget for an 8-core host; `-PmwDockerTests=6` on a bigger one); unchanged modules come from the build cache; `--rerun-tasks` forces a full run; `-PwithSlow` adds the `slow-wait` tests (ADR D19), which a milestone gate runs |
 | `./gradlew :mw-orchestrator:build` | one module: compile, `test`, `bootJar` |
 | `./gradlew :mw-orchestrator:test` | one module's tests; `--tests '*OutboxIT'` for one class |
 | `./gradlew bootJar` | every module's jar, no tests: the fastest way to images |
@@ -192,7 +192,7 @@ Gradle multi-module build; every `services/*` folder with a `build.gradle.kts` i
 | `./gradlew :checkFieldInjection` | no `@Autowired` field anywhere, tests included (`scripts/check-field-injection.sh`) |
 | `./gradlew :contractsLint` | lint `contracts/` and every module's `contracts.yml`, the derived body schemas, and the API suite's acceptance traceability (`scripts/contracts-lint.sh`) |
 | `./gradlew :composeCheck` | fail when a long-running service of `deploy/docker-compose.yml` has no memory limit or the limits pass 8 GB (`scripts/compose-check.sh`) |
-| `./gradlew :scriptTests` | the shell tests of `scripts/` and of the repo layout and docs, this README's commands included (`scripts/test/run.sh`) |
+| `./gradlew :scriptTests` | the shell tests of `scripts/` and of the repo layout and docs, this README's commands included (`scripts/test/run.sh`; files run side by side, `SCRIPT_TESTS_JOBS=3` by default) |
 
 Each module has one `test` task: unit, slice, contract, Camel route, Testcontainers `*IT` and
 `@Conformance` tests in one JVM. The `*IT` tests share one PostgreSQL 18 and one Kafka per test JVM

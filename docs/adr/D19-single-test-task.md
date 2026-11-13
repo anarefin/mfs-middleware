@@ -39,6 +39,29 @@ BitsPay runs one `test` task per module, with Testcontainers the plain way.
   ids); it is fixed in the tests, not with per-JVM clean-up.
 - Spec 22.1's coverage target and NFR-08 are not enforced by the build for the MVP.
 
+## Amendment 2026-11-13: a cold gate in about 3 minutes on 8 cores (user decision)
+
+A cold `./gradlew clean build --no-build-cache` took 7m45s. The test reports showed most of that
+was waiting, not testing: the outbox relay idling 500 ms between saga hops, a fresh consumer group
+joined by every test read, Camel waiting its 30 s Kafka `shutdownTimeout` for consumers caught in a
+rebalance whenever a test context closed, and tests whose job is to wait (an absence window, a
+timeout or retry delay running out). The target host has at most 8 cores, so test concurrency stays
+at 4 and the time had to come from less work.
+
+- Test infrastructure (behaviour of every test unchanged): `mw.outbox.relay.period: 50ms` and
+  `camel.component.kafka.shutdown-timeout: 100` in each module's test config; `KafkaTestConsumer`
+  reads with assigned partitions and no consumer group; the test Kafka is `apache/kafka-native`
+  (same version as the stack).
+- Still one `test` task, but a test whose time is a deliberate wait that proves an outcome is tagged
+  `@Tag("slow-wait")` and left out unless `-PwithSlow` is given. The rule: still 2 s or more after the
+  infrastructure fixes, and the time is a wait written into the test or the configuration under test.
+  The tests are not rewritten or shortened. A milestone gate runs `./gradlew clean build -PwithSlow`;
+  the per-ticket `./gradlew :mw-x:build` and the everyday cold build skip them.
+- `org.gradle.workers.max=8` so compile and jars overlap tests; at most `mwDockerTests` (4) module
+  test tasks at once, through a `mwDockerTests` build service every module registers under the same
+  name (no shared code). `scripts/test/run.sh` runs the shell test files side by side
+  (`SCRIPT_TESTS_JOBS`, default 3).
+
 ## Where in the repo
 
 - `services/mw-orchestrator/build.gradle.kts` (the `test` task)

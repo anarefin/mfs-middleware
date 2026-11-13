@@ -116,7 +116,7 @@ test_spec_kafka_contract_matches_the_contract_schemas() {
 op_docs() { # the operator docs, repo-relative
   local f
   # globs expand under REPO_DIR: the runner calls the tests from a scratch directory
-  for f in "$REPO_DIR"/README.md "$REPO_DIR"/docs/runbook.md "$REPO_DIR"/docs/demo.md \
+  for f in "$REPO_DIR"/README.md "$REPO_DIR"/deploy/RUNNING.html "$REPO_DIR"/docs/runbook.md "$REPO_DIR"/docs/demo.md \
            "$REPO_DIR"/docs/testing-guide.html "$REPO_DIR"/docs/tutorial/*.html "$REPO_DIR"/docs/adr/*.md; do
     [ -f "$f" ] && printf '%s\n' "${f#"$REPO_DIR"/}"
   done
@@ -258,8 +258,8 @@ test_every_api_test_folder_in_the_docs_exists() {
   names="$(sed -n 's/^ *"name": *"\(.*\)",\{0,1\}$/\1/p' "$REPO_DIR"/tests/api/src/*/folder.json 2>/dev/null)"
   for f in $(op_docs); do
     while IFS= read -r v; do
-      # placeholders ([FOLDER], FOLDER=<folders>) and an empty "" are not folders
-      case "$v" in '' | ']'* | '<'* | '['*) continue ;; esac
+      # placeholders ([FOLDER], FOLDER=<folders>), an empty "" and a comment (# ...) are not folders
+      case "$v" in '' | ']'* | '<'* | '['* | '#'*) continue ;; esac
       IFS=',' read -r -a parts <<<"$v"
       for part in "${parts[@]}"; do
         part="$(printf '%s' "$part" | sed -e 's/^ *//' -e 's/ *$//')"

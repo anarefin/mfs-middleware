@@ -30,6 +30,7 @@ import org.apache.camel.Exchange;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -183,6 +184,7 @@ class OutboxRelayRecoveryConformanceIT {
     }
   }
 
+  @Tag("slow-wait")
   @Test
   void pendingRowsAreRelayedAfterACrashAndRestartWithNoDuplicatePastTheInbox() throws Exception {
     List<String> events = List.of("crash-1", "crash-2", "crash-3");
@@ -213,6 +215,7 @@ class OutboxRelayRecoveryConformanceIT {
     assertThat(published("crash-", 7, Duration.ofSeconds(3))).hasSize(6);
   }
 
+  @Tag("slow-wait")
   @Test
   void twoRelaysRunningAtOnceNeverPublishARowTwice() throws Exception {
     int rows = 60;

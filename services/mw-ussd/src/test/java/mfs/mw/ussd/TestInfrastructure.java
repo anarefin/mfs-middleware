@@ -16,8 +16,9 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * Real infrastructure for tests that start the application context (spec 22.1): PostgreSQL 18, a
- * single-node KRaft Kafka and Valkey (USSD sessions), the same images as the platform stack, and a
- * PIN key pair generated per run in place of the core's. This module owns its fixtures (no shared
+ * single-node KRaft Kafka and Valkey (USSD sessions), the platform stack's versions (Kafka as its
+ * GraalVM native build, apache/kafka-native: same broker, starts in about a second on little memory
+ * and CPU), and a PIN key pair generated per run in place of the core's. This module owns its fixtures (no shared
  * test kit). Import it with {@code @Import(TestInfrastructure.class)}; such a test class is a
  * {@code *IT}, which {@link DockerAvailableCondition} skips when Docker is not available.
  *
@@ -60,7 +61,7 @@ public class TestInfrastructure {
       new PostgreSQLContainer("postgres:18.6-alpine3.24")
           .withCommand("postgres", "-c", "fsync=off", "-c", "max_connections=600");
 
-  public static final KafkaContainer KAFKA = new JvmScopedKafka("apache/kafka:4.3.2");
+  public static final KafkaContainer KAFKA = new JvmScopedKafka("apache/kafka-native:4.3.2");
 
   @SuppressWarnings("resource") // JVM-scoped; Ryuk removes it at JVM exit
   public static final GenericContainer<?> VALKEY =

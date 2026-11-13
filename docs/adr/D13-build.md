@@ -24,7 +24,7 @@ Since 2026-11-13 the root is a multi-module Gradle build:
 
 - The root `settings.gradle.kts` includes every `services/*` folder that has a `build.gradle.kts`
   (discovered, so a new service never edits it). One wrapper and one `gradle.properties` at the
-  root (parallel, build cache, configuration cache, `workers.max=4` as a Docker memory budget).
+  root (parallel, build cache, configuration cache, `workers.max=8`, and `mwDockerTests=4` test tasks at once as the Docker and CPU budget; D19 amendment).
 - The root `build.gradle.kts` applies only `base` and registers the repo checks (`checkIsolation`,
   `checkFieldInjection`, `contractsLint`, `composeCheck`, `scriptTests`) wired into its `check`.
 - Still no shared build logic: no `allprojects` / `subprojects`, no `buildSrc`, no convention

@@ -6,11 +6,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.UUID;
 import java.util.function.Predicate;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.serialization.StringDeserializer;
 
@@ -34,14 +34,25 @@ public final class KafkaTestConsumer {
       Predicate<ConsumerRecord<String, String>> filter) {
     Properties p = new Properties();
     p.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrap);
-    p.put(ConsumerConfig.GROUP_ID_CONFIG, "test-" + UUID.randomUUID());
-    p.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
     p.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
     p.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+    // A short fetch wait: a record that arrives mid-poll is returned at once.
+    p.put(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, "50");
     List<ConsumerRecord<String, String>> out = new ArrayList<>();
+    // No consumer group: the partitions are assigned and read from the start, so a read never
+    // waits for a group join (nothing is committed; each read sees the whole topic).
     try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(p)) {
-      consumer.subscribe(List.of(topic));
       long deadline = System.nanoTime() + timeout.toNanos();
+      List<TopicPartition> partitions = List.of();
+      while (partitions.isEmpty() && System.nanoTime() < deadline) {
+        // empty until the topic exists (it may be auto-created by the first send)
+        partitions =
+            consumer.partitionsFor(topic, Duration.ofSeconds(5)).stream()
+                .map(i -> new TopicPartition(topic, i.partition()))
+                .toList();
+      }
+      consumer.assign(partitions);
+      consumer.seekToBeginning(partitions);
       while (out.size() < count && System.nanoTime() < deadline) {
         for (ConsumerRecord<String, String> r : consumer.poll(Duration.ofMillis(200))) {
           if (filter.test(r)) {

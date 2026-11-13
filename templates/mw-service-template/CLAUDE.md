@@ -76,7 +76,7 @@ test contexts would relay each other's rows; a test that needs it on sets
 | `./gradlew :mw-x:build` | `test`, then the boot jar `build/libs/mw-x.jar` (fixed name, the one the Dockerfile copies) |
 | `./gradlew :mw-x:bootJar && docker build -t mfs-mw/mw-x:local services/mw-x` | spec 4.3 rule 1 |
 | `./gradlew :scriptTests` | includes `scripts/test/test_service_template.sh`: `scripts/new-service.sh` makes a clean copy, and the root settings pick it up as a module |
-| `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`) |
+| `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); `-PwithSlow` adds the `slow-wait` tests (ADR D19) |
 
 ## Contracts
 

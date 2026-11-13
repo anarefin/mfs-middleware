@@ -9,6 +9,7 @@ import mfs.mw.ussd.messaging.OrchestratorStub;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 
@@ -118,6 +119,7 @@ public abstract class UssdMenuWalkSuite {
     assertThat(w.last()).isEqualTo("সেন্ড মানি ব্যর্থ: অপর্যাপ্ত ব্যালেন্স");
   }
 
+  @Tag("slow-wait")
   @Test
   void noFinalAnswerWithinTheBudgetEndsWithBeingProcessed() {
     Walk w = walk(p2p(true, "20", PIN));

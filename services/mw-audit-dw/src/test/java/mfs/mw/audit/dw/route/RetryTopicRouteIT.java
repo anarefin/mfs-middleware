@@ -43,6 +43,7 @@ import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
@@ -257,6 +258,7 @@ class RetryTopicRouteIT {
     }
   }
 
+  @Tag("slow-wait")
   @Test
   @Execution(ExecutionMode.CONCURRENT)
   @ResourceLock("it.retry.event")
@@ -331,6 +333,7 @@ class RetryTopicRouteIT {
     assertThat(handler.calls.get("K-ALWAYS")).hasValue(4);
   }
 
+  @Tag("slow-wait")
   @Test
   @Execution(ExecutionMode.CONCURRENT)
   void recordThatSucceedsOnRetryIsNotSentToDlq() throws Exception {
@@ -399,6 +402,7 @@ class RetryTopicRouteIT {
   // while the record is held back, across the forced rebalance and until it is handled: it must
   // never pass the held record, or a restart or new partition owner would skip it.
 
+  @Tag("slow-wait")
   @Test
   @Execution(ExecutionMode.CONCURRENT)
   @ResourceLock("it.retry.hold")
@@ -424,6 +428,7 @@ class RetryTopicRouteIT {
     assertHandledOnceAfterDelay("K-KEPT", start, held);
   }
 
+  @Tag("slow-wait")
   @Test
   @Execution(ExecutionMode.CONCURRENT)
   @ResourceLock("it.retry.hold")

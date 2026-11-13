@@ -19,8 +19,9 @@ when a spec decision row has no ADR: a new script, knob or decision updates thes
 - Root (spec 4.2): one Gradle multi-module build with the only wrapper (`./gradlew`).
   `settings.gradle.kts` includes every `services/*` folder that has a `build.gradle.kts` as the
   subproject `:mw-x` (auto-discovered; nothing else goes in that file). `gradle.properties` turns on
-  parallel builds, the build cache and the configuration cache, with `org.gradle.workers.max=4` (a
-  Docker memory budget: at most four modules' test containers at once). `build.gradle.kts` applies
+  parallel builds, the build cache and the configuration cache, with `org.gradle.workers.max=8` and
+  `mwDockerTests=4` (a Docker and CPU budget for an 8-core host: at most four modules' test JVMs and
+  their containers at once, through a `mwDockerTests` build service each module's `test` task uses). `build.gradle.kts` applies
   only `base` and registers the repo checks (`checkIsolation`, `checkFieldInjection`, `contractsLint`,
   `composeCheck`, `scriptTests`: the scripts in `scripts/` as cached Exec tasks) under the root
   `check`. No `allprojects`/`subprojects`, no `buildSrc`, no convention plugins, no version catalog.
@@ -164,11 +165,16 @@ in its header). Run Gradle from the repo root; run `docker compose` from `deploy
 
 Each module has one `test` task: unit, slice, contract, Camel route, Testcontainers `*IT` and
 `@Conformance` tests in one JVM (no separate tiers, no coverage gate). Without Docker the `*IT`
-classes are skipped, so the build still passes; a gate run needs Docker.
+classes are skipped, so the build still passes; a gate run needs Docker. A test whose time is a
+deliberate wait that proves an outcome (an absence window, a timeout or retry delay running out;
+2 s or more) is tagged `@Tag("slow-wait")`: left out of every build unless `-PwithSlow` is given
+(ADR D19 amendment). Test infrastructure must never be what slows a test: test configs relay the
+outbox every 50 ms and give Camel's Kafka consumers a 100 ms shutdown timeout, and
+`KafkaTestConsumer` reads without a consumer group.
 
 | Command | What it does |
 | --- | --- |
-| `./gradlew clean build` | the full gate: every module's compile, `test` and `bootJar` (`build/libs/mw-x.jar`), plus the repo checks under the root `check`. The build cache restores what did not change (an unchanged rebuild takes seconds; a cold run about 7 min on a 12-core laptop); `--rerun-tasks` forces everything |
+| `./gradlew clean build` | the full gate: every module's compile, `test` and `bootJar` (`build/libs/mw-x.jar`), plus the repo checks under the root `check`. The build cache restores what did not change (an unchanged rebuild takes seconds; a cold run about 3 min; sized for an 8-core host); `--rerun-tasks` forces everything. `-PwithSlow` adds the `slow-wait` tests (milestone gate) |
 | `./gradlew :mw-x:build` | one module: compile, `test`, `bootJar` |
 | `./gradlew :mw-x:test` | one module's tests (`--tests '*SomeIT'` for one class) |
 | `./gradlew :mw-x:bootJar` | one module's jar for its image, no tests |
@@ -207,7 +213,7 @@ contract re-runs exactly the modules that use it.
 Definition of done: tests written first; per ticket `./gradlew :mw-x:build` green, with Docker
 running, for every touched module (plus `./gradlew :scriptTests` / `./gradlew :contractsLint` when
 scripts or contracts changed) and the relevant `scripts/api-test.sh` folders; at a milestone gate
-the root `./gradlew clean build` and the whole API suite on a fresh stack (`deploy/reset.sh`, then
+the root `./gradlew clean build -PwithSlow` and the whole API suite on a fresh stack (`deploy/reset.sh`, then
 `up` with `test-timers.env` and the seed profile). Output pasted into the PR template.
 
 ## Never

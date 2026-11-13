@@ -11,6 +11,7 @@ import mfs.mw.orchestrator.dto.TxnRequest;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -114,6 +115,7 @@ class TopupKafkaIT {
     assertThat(KafkaTestConsumer.headers(got.get(5))).containsKeys(MwHeaders.REQUIRED.toArray(String[]::new));
   }
 
+  @Tag("slow-wait")
   @Test
   void aLostPartnerReplyIsRecoveredByStatusInquiry() {
     TxnRequest req = request("01711000888");

@@ -31,6 +31,7 @@ import mfs.mw.adapter.billpay.messaging.EventPublisher;
 import mfs.mw.adapter.billpay.messaging.KafkaTestConsumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -295,6 +296,7 @@ class BillpayRequestRouteIT {
         .isEqualTo(1);
   }
 
+  @Tag("slow-wait")
   @Test
   void aRedeliveredRequestIsRepliedToOnlyOnce() throws Exception {
     stubAggregator(200, "{\"status\":\"SUCCESS\",\"code\":\"0000\",\"paymentRef\":\"AGG-1\"}");
@@ -308,6 +310,7 @@ class BillpayRequestRouteIT {
     assertThat(replies(request.txnId(), 2, Duration.ofSeconds(2))).hasSize(1);
   }
 
+  @Tag("slow-wait")
   @Test
   void aFailedTopupIsNotRetried() throws Exception {
     stubAggregator(500, "{}");

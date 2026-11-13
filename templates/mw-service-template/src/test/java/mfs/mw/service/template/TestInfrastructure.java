@@ -14,7 +14,9 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * Real infrastructure for tests that start the application context (spec 22.1): PostgreSQL 18 and
- * a single-node KRaft Kafka, the same images as the platform stack. This module owns its fixtures
+ * a single-node KRaft Kafka, the platform stack's versions (Kafka as its GraalVM native build,
+ * apache/kafka-native: same broker, starts in about a second on little memory and CPU, so four
+ * module test JVMs fit side by side on an 8-core host). This module owns its fixtures
  * (no shared test kit). Import it with {@code @Import(TestInfrastructure.class)}; such a test class
  * is a {@code *IT}, which {@link DockerAvailableCondition} skips when Docker is not available.
  *
@@ -44,7 +46,7 @@ public class TestInfrastructure {
       new PostgreSQLContainer("postgres:18.6-alpine3.24")
           .withCommand("postgres", "-c", "fsync=off", "-c", "max_connections=600");
 
-  static final KafkaContainer KAFKA = new KafkaContainer("apache/kafka:4.3.2");
+  static final KafkaContainer KAFKA = new KafkaContainer("apache/kafka-native:4.3.2");
 
   /** Starts both containers once (in parallel); later calls are no-ops. */
   static synchronized void start() {

@@ -19,6 +19,7 @@ $ ./gradlew :mw-<module>:build        # each module touched
 <paste summary>
 
 $ ./gradlew clean build                # the full gate: every module plus the repo checks
+                                        # (milestone gate: add -PwithSlow)
 <paste summary>
 
 $ scripts/api-test.sh "<folders>"      # if the WP has API suite requests (tests/api)

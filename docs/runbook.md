@@ -198,7 +198,7 @@ secrets that `provision` writes again on every `up`.
 
 | Run | Command | Note |
 | --- | --- | --- |
-| Build gate | `./gradlew clean build` | with Docker running (otherwise the Testcontainers tests are skipped); best with the stack stopped: up to four modules' test PostgreSQL and Kafka run at once |
+| Build gate | `./gradlew clean build` | with Docker running (otherwise the Testcontainers tests are skipped); best with the stack stopped: up to four modules' test PostgreSQL and Kafka run at once (`mwDockerTests`); a milestone gate adds `-PwithSlow` |
 | Acceptance suite | `scripts/api-test.sh` (`scripts/api-test.sh "" 1` adds the slow folder) | on a fresh stack: `deploy/reset.sh`, then start with `--env-file test-timers.env` and the seed profile; under 10 minutes |
 | Chaos | `scripts/chaos.sh` (or `CHAOS_TARGETS="mw-orchestrator kafka" scripts/chaos.sh`) | kills containers: never on a stack someone else is using |
 | Load | `scripts/suite.sh perf` | spends the seed wallets' daily limits: fresh stack before and after |

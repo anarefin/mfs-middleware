@@ -11,6 +11,7 @@ import mfs.mw.audit.dw.TestInfrastructure;
 import mfs.mw.audit.dw.route.RetryTopicRouteBuilder;
 import mfs.mw.audit.dw.service.AuditChainVerifier;
 import mfs.mw.audit.dw.service.ChainVerification;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -96,6 +97,7 @@ class AuditEventKafkaIT {
     assertThat(v.intact()).as(v.toString()).isTrue();
   }
 
+  @Tag("slow-wait")
   @Test
   void aRecordThatIsNotAnAuditEventEndsOnTheDlq() {
     String key = UUID.randomUUID().toString();
