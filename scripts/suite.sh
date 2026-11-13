@@ -6,10 +6,10 @@
 #         MW_PERF_ARGS (e.g. "-Dmw.perf.steady=10m"); MODULE is passed as -Dmw.module=<module>
 #         (the mix always covers the whole stack)
 # It needs the test-only gateway routes and re-applies them first. (The API suite has its own
-# runner, tests/api/run.sh, which applies them the same way: make api-test.)
+# runner, tests/api/run.sh, which applies them the same way: scripts/api-test.sh.)
 # Passes (does nothing) while the suite does not exist yet.
 set -eu
-. "$(dirname "$0")/lib/modules.sh"
+. "$(dirname "$0")/lib/common.sh"
 
 suite="${1:?suite name (perf)}"
 m="${2:-}"
@@ -27,7 +27,7 @@ fi
 
 # The suite's test-only gateway routes (deploy/apisix/routes-test: core-mock's test API, the
 # simulators' control API, behind key-auth) are applied only when apisix-init runs with
-# MW_E2E_ROUTES=1; a default `make up` removes them. Re-run it on the running stack with the flag
+# MW_E2E_ROUTES=1; a plain `docker compose up` removes them. Re-run it on the running stack with the flag
 # and wait for it.
 enable_test_routes() {
   [ -f "$STACK_FILE" ] || return 0
@@ -37,7 +37,7 @@ enable_test_routes() {
   info "$suite: enabling the test-only gateway routes (apisix-init with MW_E2E_ROUTES=1)"
   MW_E2E_ROUTES=1 docker compose "${DC_F[@]}" up -d --no-deps --force-recreate apisix-init >/dev/null
   docker compose "${DC_F[@]}" wait apisix-init >/dev/null \
-    || die "$suite: apisix-init failed to apply the test routes (docker compose logs apisix-init); is the stack up (make up)?"
+    || die "$suite: apisix-init failed to apply the test routes (docker compose logs apisix-init); is the stack up?"
 }
 
 args=()

@@ -12,7 +12,7 @@ Apache APISIX is the only published entry point (443). It verifies Keycloak JWTs
 
 ## Consequences
 
-- One place to audit edge policy; `make edge-test` proves it on the running stack.
+- One place to audit edge policy; `scripts/edge-test.sh` (originally `make edge-test`) proves it on the running stack.
 - Partner callback signatures are verified by the adapters (partner-specific formats), APISIX keeps allow-lists, caps and quotas.
 - The rate limiter fails open when Valkey is down and logs an alert event.
 

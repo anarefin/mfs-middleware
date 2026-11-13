@@ -5,7 +5,7 @@ import "server-only";
 
 function required(name: string): string {
   const v = process.env[name];
-  if (!v) throw new Error(`${name} is not set (the test console reads it from deploy/.env: make tester)`);
+  if (!v) throw new Error(`${name} is not set (the test console reads it from deploy/.env: scripts/tester.sh)`);
   return v;
 }
 

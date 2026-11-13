@@ -14,10 +14,10 @@ Every service is a Spring Boot 4 application on JDK 25. Partner and messaging in
 
 - One programming model for HTTP APIs (Spring MVC), Kafka listeners and partner routes.
 - Camel route templates turn partner onboarding into mostly configuration (the adapter framework, spec 12).
-- JDK 25 is required on every build host (the quick start checks it); Camel and Boot upgrades are per module, because each module pins its own versions (D14).
+- JDK 25 is required on every build host (the quick start checks it); Camel and Boot upgrades are per module, because each module pins its own versions (D14): originally in a per-module version catalog, since 2026-11-13 inline in its `build.gradle.kts` (D13).
 
 ## Where in the repo
 
-- `services/mw-orchestrator/gradle/libs.versions.toml` (one catalog per module)
+- `services/mw-orchestrator/build.gradle.kts` (versions inline, one build file per module)
 - `route/` packages, e.g. `services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/template`
 - spec section 3

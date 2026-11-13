@@ -40,13 +40,13 @@ case "$auth" in
   *'"token"'*) token="$(printf '%s' "$auth" | sed 's/.*"token":"\([^"]*\)".*/\1/')"; echo "etcd-init: auth already enabled, logged in as root" ;;
   *"not enabled"*) echo "etcd-init: auth not enabled yet, setting it up" ;;
   *) echo "etcd-init: root login failed: $auth" >&2
-     echo "etcd-init: the etcd-data volume was set up with other secrets; run 'make down DOWN_ARGS=-v'" >&2
+     echo "etcd-init: the etcd-data volume was set up with other secrets; run deploy/reset.sh" >&2
      exit 1 ;;
 esac
 
 # Any user, role or grant write bumps etcd's auth revision, which invalidates the running APISIX's
 # token (its next Admin API write fails with 503 until it logs in again). So a re-run (every
-# make up) with the setup already in place, the passwords from the env working and the apisix role
+# `docker compose up`) with the setup already in place, the passwords from the env working and the apisix role
 # holding its /apisix range, changes nothing and exits at once.
 password_ok() { # USER PASSWORD: true when etcd accepts this login (always false before auth enable)
   [ -n "$token" ] || return 1

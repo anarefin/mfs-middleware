@@ -85,7 +85,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 - Status: every attempt and final status to `mw.notify.status.v1` via the outbox
   (`service/StatusEvents`; SENT, FAILED, DELIVERED, UNDELIVERABLE, EXPIRED; `channel` names the
   row). `mw-txn-id` header = txnId, else messageId.
-- Dev provisioning (`provision_mw_notify` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role `notify_rw`, schema `notify`,
+- Dev provisioning (`provision_mw_notify` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role `notify_rw`, schema `notify`,
   `secret/mw-notify` (DB and SMPP passwords), AppRole `mw-notify`.
 
 ## Contracts owned
@@ -98,7 +98,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 - `events/mw-orchestrator/mw.txn.status.v1.schema.json` (own subset type `dto/TxnStatusEvent`).
 - `events/mw-admin-api/mw.config.changed.v1.schema.json` (ticket 39; own type `dto/ConfigChangedEvent`).
 - Machine-readable list: `contracts.yml` (produces `mw.notify.status.v1`; consumes `mw.notify.request.v1`,
-  `mw.txn.status.v1` and `mw.config.changed.v1`; no APIs), checked by `make contracts-lint`, tested by
+  `mw.txn.status.v1` and `mw.config.changed.v1`; no APIs), checked by `./gradlew :contractsLint`, tested by
   `contracts/ProducedContractsTest` (events built by `StatusEvents`) / `ConsumedContractsTest` (samples
   through the real listeners); no Spring, no Docker.
 
@@ -117,9 +117,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
-  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
-  `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
+  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -138,14 +137,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 
 ## Commands
 
-| Command | What it does |
+| Command (from the repo root) | What it does |
 | --- | --- |
-| `./gradlew test` | unit, slice and contract tests (`contracts/*ContractsTest`), no Docker |
-| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker) |
-| `./gradlew conformance` | the `@Conformance` suite (Docker) |
-| `./gradlew check` | all three + JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
-| `./gradlew check bootJar && docker build -t mw-notify:dev .` | image, as spec 4.3 rule 1 |
-| `make verify M=mw-notify` | isolation + field-injection check + contracts lint + `./gradlew check` |
-| `make verify-changed [BASE=main]` | the gate for the modules changed since BASE (this one when it or a contract it lists changed) |
-| `make build M=mw-notify` | `bootJar`, then this service's images (`mfs-mw/mw-notify:local`, plus the shared `mfs-mw/provision:local`) |
-| `make up M=mw-notify` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |
+| `./gradlew :mw-notify:test` | every test in one JVM: unit, slice and contract tests (`contracts/*ContractsTest`), the Testcontainers `*IT` classes and the `@Conformance` suite; one PostgreSQL and one Kafka per test JVM, a fresh database per Spring context; the `*IT` and conformance classes are skipped without Docker. One class: `--tests '<class>'` |
+| `./gradlew :mw-notify:build` | `test`, then the boot jar `build/libs/mw-notify.jar` (fixed name, the one the Dockerfile copies) |
+| `./gradlew :mw-notify:bootJar && docker build -t mw-notify:dev services/mw-notify` | image, as spec 4.3 rule 1 |
+| `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
+| `./gradlew :mw-notify:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-notify` | rebuild this service's image (`mfs-mw/mw-notify:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |

@@ -19,7 +19,7 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * {@code ./gradlew perfOverhead} (run by {@code make perf} after {@code gatlingRun}): reads the last
+ * {@code ./gradlew perfOverhead} (run by {@code scripts/suite.sh perf} after {@code gatlingRun}): reads the last
  * run's {@code txns.csv} and {@code run.properties} (written by the simulation to {@code
  * build/reports/perf/}), subtracts core and partner time per transaction ({@link RunFacts}) and
  * writes {@code overhead.md} and {@code overhead.json} there. Exits 1 when the target is missed

@@ -1,6 +1,6 @@
 // Black-box perf suite (spec WP28, MVP acceptance criterion 7): a Gatling scenario mix across the
-// MVP flows at 100 TPS on the single MVP host. Run by `make perf` (scripts/suite.sh ->
-// ./gradlew gatlingRun perfOverhead) against a running stack (`make up`); see README.md.
+// MVP flows at 100 TPS on the single MVP host. Run by scripts/suite.sh perf (->
+// ./gradlew gatlingRun perfOverhead) against a running stack; see README.md.
 //
 // - src/main/java: stack access, users, signed request building, scenario mix, overhead report
 // - src/gatling/java: the simulation (MixedLoadSimulation)

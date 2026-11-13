@@ -81,7 +81,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   `spring.flyway.password` from OpenBao); V4 grants the writer. `audit_reader` (V5): USAGE on the
   schema and SELECT on `event` and `chain_head` only. Nobody holds UPDATE/DELETE on
   `event`. A superuser can still bypass everything, which the chain detects (`AuditTrailIT`).
-- Dev provisioning (`provision_mw_audit_dw` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): roles
+- Dev provisioning (`provision_mw_audit_dw` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): roles
   `audit_dw_rw`, `audit_writer` and `audit_reader`, schema `audit`, `secret/mw-audit-dw` (the three DB
   passwords, never overwritten; the reader's is `mw.audit-dw.chain-verify.reader-password`) and the AppRole `mw-audit-dw` (configtree volume).
 
@@ -96,7 +96,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 
 - None besides its own `mw.audit.event.v1`.
 - `contracts.yml`: the machine-readable list of what this module produces and consumes (checked
-  by `make contracts-lint`, tested by `contracts/ConsumedContractsTest` (every valid sample reads
+  by `./gradlew :contractsLint`, tested by `contracts/ConsumedContractsTest` (every valid sample reads
   into `dto/AuditEvent`) and `contracts/ApiContractsTest` (search responses against
   `audit-query.v1`, test API responses against `audit-dw-test.v1`); no Docker). It produces no events, so there is no `ProducedContractsTest`
   (`ConsumedContractsTest.producesNoEvents` fails if the manifest gains one).
@@ -104,9 +104,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
-  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
-  `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
+  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, unsafe or holding a
   run of 6+ digits or one the scrub would change (WARN `correlation.id.replaced`), MDC
@@ -129,14 +128,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 
 ## Commands
 
-| Command | What it does |
+| Command (from the repo root) | What it does |
 | --- | --- |
-| `./gradlew test` | unit, slice and contract tests (`contracts/`), no Docker |
-| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker needed) |
-| `./gradlew conformance` | the `@Conformance` suite (Docker needed) |
-| `./gradlew check` | `test` + `integrationTest` + `conformance`, JaCoCo gate (80% lines on `service`/`mapper`/`client`, over all three) |
-| `./gradlew check bootJar && docker build -t mw-audit-dw:dev .` | image, as spec 4.3 rule 1 |
-| `make verify M=mw-audit-dw` | isolation + field-injection check + contracts lint + `./gradlew check` |
-| `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when it or a contract in its `contracts.yml` changed) |
-| `make build M=mw-audit-dw` | `bootJar`, then this service's images (`mfs-mw/mw-audit-dw:local`, plus the shared `mfs-mw/provision:local`) |
-| `make up M=mw-audit-dw` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |
+| `./gradlew :mw-audit-dw:test` | every test in one JVM: unit, slice and contract tests (`contracts/`), the Testcontainers `*IT` classes and the `@Conformance` suite; one PostgreSQL and one Kafka per test JVM, a fresh database per Spring context; the `*IT` and conformance classes are skipped without Docker. One class: `--tests '<class>'` |
+| `./gradlew :mw-audit-dw:build` | `test`, then the boot jar `build/libs/mw-audit-dw.jar` (fixed name, the one the Dockerfile copies) |
+| `./gradlew :mw-audit-dw:bootJar && docker build -t mw-audit-dw:dev services/mw-audit-dw` | image, as spec 4.3 rule 1 |
+| `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
+| `./gradlew :mw-audit-dw:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-audit-dw` | rebuild this service's image (`mfs-mw/mw-audit-dw:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |

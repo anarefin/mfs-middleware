@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Gateway tests for the APISIX edge policies (spec 8.3, WP09, ticket 13), against the running
-# MVP stack (`make up`; honours COMPOSE_PROJECT_NAME). Usage: make edge-test
+# MVP stack (honours COMPOSE_PROJECT_NAME). Usage: scripts/edge-test.sh
 #
 # Requests go to the published HTTPS port like any client. Tokens, the Admin API, Valkey and
 # the mw-app-gateway log are reached from inside the project (throwaway curl containers on the
@@ -35,18 +35,18 @@
 #   - applying deploy/apisix twice is a no-op (Admin API objects identical but update_time)
 # The quota check spends merchant01's quota for the rest of the window (60 s).
 set -uo pipefail
-. "$(dirname "$0")/lib/modules.sh"
+. "$(dirname "$0")/lib/common.sh"
 
 stack_compose
 command -v jq >/dev/null || die "edge-test: jq is required"
-[ -f "$STACK_ENV" ] || die "edge-test: no generated credentials; run make up first"
+[ -f "$STACK_ENV" ] || die "edge-test: no generated credentials; run scripts/gen-dev-env.sh and start the stack first"
 set -a; . "$STACK_ENV"; set +a
 
 CURL_IMAGE="curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93"
 dc() { docker compose "${DC_F[@]}" "$@"; }
 project="$(dc config --format json | jq -r .name)"
 https_port="$(dc port apisix 9443 2>/dev/null | head -1 | sed 's/.*://')"
-[ -n "$https_port" ] || die "edge-test: apisix is not running in project $project (make up)"
+[ -n "$https_port" ] || die "edge-test: apisix is not running in project $project (start the stack)"
 ops_net="$(docker network ls --format '{{.Name}}' --filter "label=com.docker.compose.project=$project" --filter "label=com.docker.compose.network=ops" | head -1)"
 base="https://localhost:$https_port"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/edge-test.XXXXXX")"
@@ -393,7 +393,7 @@ co_signed() {
 }
 co_schema_400() { # the edge has no body schema any more: mw-checkout refuses it (duplicate key)
   if [ "$(admin GET consumers/merchant_demo -o /dev/null -w '%{http_code}')" != 200 ]; then
-    echo "skipped: consumer merchant_demo exists only after make api-test (MW_E2E_ROUTES=1)"; return 0
+    echo "skipped: consumer merchant_demo exists only after scripts/api-test.sh (MW_E2E_ROUTES=1)"; return 0
   fi
   co_signed "${co_body%\}},\"amount\":{\"valueMinor\":1,\"currency\":\"BDT\"}}" && envelope 400 MW-VAL-001 || return 1
   co_signed "${co_body/BDT/USD}" && envelope 400 MW-VAL-001

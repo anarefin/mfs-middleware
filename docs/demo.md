@@ -10,22 +10,25 @@ assumes the earlier ones still pass.
 ## Before any demo
 
 ```sh
-make reset                      # fresh volumes: seed balances, daily limits, Keycloak users
-make build                      # jars and images
-time make up TIMERS=fast        # under 15 minutes on a clean host (README quick start); short timers for the suite
-make seed                       # the mw-seeder baseline the suite checks in folder 00
-make smoke
+./gradlew clean build           # every module's tests and jar, the repo checks (Docker running)
+scripts/gen-dev-env.sh          # dev credentials in deploy/.env (kept when present)
+cd deploy && ./reset.sh         # fresh volumes: seed balances, daily limits, Keycloak users
+time docker compose --env-file .env --env-file test-timers.env --profile core --profile seed up -d --build
+docker compose --profile core --profile seed wait mw-seeder   # 0: the baseline the suite checks in folder 00
+cd .. && scripts/smoke.sh
 ```
 
-`make api-test` enables the suite's test-only gateway routes on the running stack by itself (it
-re-runs `apisix-init` with `MW_E2E_ROUTES=1`); a later `make up` removes them again. Folders are
-picked by number or full name, comma-separated: `make api-test FOLDER="01, 03"`; the folder list
-is in `tests/api/README.md`. A failing request prints the check, the call and the envelope it got;
-the JUnit report is tests/api/build/newman-report.xml.
+The start takes under 15 minutes on a clean host (README quick start); `test-timers.env` gives the
+short timers the suite needs. `scripts/api-test.sh` enables the suite's test-only gateway routes on
+the running stack by itself (it re-runs `apisix-init` with `MW_E2E_ROUTES=1`); a later
+`docker compose up` removes them again. Folders are picked by number or full name, comma-separated:
+`scripts/api-test.sh "01, 03"`; the folder list is in `tests/api/README.md`. A failing request
+prints the check, the call and the envelope it got; the JUnit report is
+tests/api/build/newman-report.xml.
 
-To show a feature by hand instead (a browser, no API knowledge needed), run `make tester` and follow
-[docs/testing-guide.html](testing-guide.html): the test console plays the app, a USSD handset, the
-partners, the checkout shop and the org portal; `make tester-e2e` is its browser suite.
+To show a feature by hand instead (a browser, no API knowledge needed), run `scripts/tester.sh` and
+follow [docs/testing-guide.html](testing-guide.html): the test console plays the app, a USSD
+handset, the partners, the checkout shop and the org portal; `scripts/tester-e2e.sh` is its browser suite.
 
 ## M0 Foundation
 
@@ -34,12 +37,12 @@ What it proves: repo skeleton and quality gate (WP01), platform stack (WP02), se
 
 | Step | Command | Expect |
 | --- | --- | --- |
-| 1 | `make test-scripts` | every shell test `ok`, among them `test_check_isolation.sh` (a planted cross-module dependency, `includeBuild` and convention plugin are caught) and `test_service_template.sh` |
-| 2 | `make check-isolation` | every module passes |
-| 3 | `make contracts-lint` | every schema and its valid/invalid samples pass (needs Node.js 22+) |
-| 4 | `cd templates/mw-service-template && ./gradlew test` | the template builds and tests from its own folder alone (masking, error mapping, retry/DLQ routes) |
-| 5 | `make smoke` | every platform container healthy, topics with RF 1, Kafka produce/consume, PostgreSQL, Valkey, Keycloak tokens per test user, OpenBao read, APISIX `/healthz` over HTTPS |
-| 6 | `make new-service NAME=mw-demo && make check-isolation M=mw-demo` | a scaffolded copy with package `mfs.mw.demo` and no reference back to the template; remove it afterwards with `rm -rf services/mw-demo` |
+| 1 | `./gradlew :scriptTests` | every shell test `ok`, among them `test_check_isolation.sh` (a planted cross-module dependency, `includeBuild`, convention plugin and version catalog are caught) and `test_service_template.sh` |
+| 2 | `./gradlew :checkIsolation` | every module passes |
+| 3 | `./gradlew :contractsLint` | every schema and its valid/invalid samples pass (needs Node.js 22+) |
+| 4 | `scripts/new-service.sh mw-name && ./gradlew :mw-name:build` | a scaffolded copy with package `mfs.mw.name` and no reference back to the template, picked up by the root build; its copied tests pass (masking, error mapping, retry/DLQ routes, the conformance suite) |
+| 5 | `scripts/smoke.sh` | every platform container healthy, topics with RF 1, Kafka produce/consume, PostgreSQL, Valkey, Keycloak tokens per test user, OpenBao read, APISIX `/healthz` over HTTPS |
+| 6 | `scripts/check-isolation.sh mw-name` | the copy passes the isolation rules; remove it afterwards with `rm -rf services/mw-name` |
 
 ## M1 Core loop
 
@@ -48,10 +51,10 @@ wait (WP08), edge policies (WP09), audit trail (WP10).
 
 | Step | Command | Expect |
 | --- | --- | --- |
-| 1 | `make api-test FOLDER="01, 02, 03"` | P2P, agent cash-in and customer cash-out complete; insufficient funds and wrong PIN rejected; the same idempotency key resent never moves money twice (core-mock balances compared); lost core replies end COMPLETED or FAILED by status inquiry (requests tagged `tsq`) |
-| 2 | `make edge-test` | 401 without, with a garbage or expired token; 400 on a broken body; 413 on an oversized body; 429 past the quota; `X-Mw-*` stripped; correlation ID generated or kept; a second apply is a no-op |
-| 3 | `cd services/mw-audit-dw && ./gradlew test --tests mfs.mw.audit.dw.service.HashChainTest` | the hash chain fails at an edited or deleted audit row, and at the next row when an edited row was re-hashed |
-| 4 | `make api-test FOLDER=01` | every state change of a P2P lands in the audit trail once and the month's hash chain verifies (`[p2p] a completed P2P leaves a verifiable audit trail`) |
+| 1 | `scripts/api-test.sh "01, 02, 03"` | P2P, agent cash-in and customer cash-out complete; insufficient funds and wrong PIN rejected; the same idempotency key resent never moves money twice (core-mock balances compared); lost core replies end COMPLETED or FAILED by status inquiry (requests tagged `tsq`) |
+| 2 | `scripts/edge-test.sh` | 401 without, with a garbage or expired token; 400 on a broken body; 413 on an oversized body; 429 past the quota; `X-Mw-*` stripped; correlation ID generated or kept; a second apply is a no-op |
+| 3 | `./gradlew :mw-audit-dw:test --tests mfs.mw.audit.dw.service.HashChainTest` | the hash chain fails at an edited or deleted audit row, and at the next row when an edited row was re-hashed |
+| 4 | `scripts/api-test.sh 01` | every state change of a P2P lands in the audit trail once and the month's hash chain verifies (`[p2p] a completed P2P leaves a verifiable audit trail`) |
 
 ## M2 Partners
 
@@ -60,10 +63,10 @@ What it proves: adapter framework and simulators (WP11, WP12), hold / commit / r
 
 | Step | Command | Expect |
 | --- | --- | --- |
-| 1 | `make api-test FOLDER=05` | top-up succeeds; an OCS refusal releases the hold; an OCS timeout or ambiguous answer goes `UNKNOWN`, then the status inquiry commits or releases; a duplicate request moves money once |
-| 2 | `make api-test FOLDER="06, 07"` | biller list, bill fetch and pay; unknown bill and refused payment mapped to `MW-PTR-BILLAGG-*`; callback-only mode with duplicate, out-of-order, late and conflicting callbacks (a conflicting late callback keeps the terminal state and is audited) |
-| 3 | `make api-test FOLDER=08` | C2W add money by bank callback, callback replay applied once, refused account, no answer resolved by status inquiry |
-| 4 | `make api-test FOLDER=12` | a COMPLETED transaction reversed by the core (full amount, money back on the payer) |
+| 1 | `scripts/api-test.sh 05` | top-up succeeds; an OCS refusal releases the hold; an OCS timeout or ambiguous answer goes `UNKNOWN`, then the status inquiry commits or releases; a duplicate request moves money once |
+| 2 | `scripts/api-test.sh "06, 07"` | biller list, bill fetch and pay; unknown bill and refused payment mapped to `MW-PTR-BILLAGG-*`; callback-only mode with duplicate, out-of-order, late and conflicting callbacks (a conflicting late callback keeps the terminal state and is audited) |
+| 3 | `scripts/api-test.sh 08` | C2W add money by bank callback, callback replay applied once, refused account, no answer resolved by status inquiry |
+| 4 | `scripts/api-test.sh 12` | a COMPLETED transaction reversed by the core (full amount, money back on the payer) |
 
 ## M3 Notify
 
@@ -72,7 +75,7 @@ and email to GreenMail, bn/en templates, per flow (WP17).
 
 | Step | Command | Expect |
 | --- | --- | --- |
-| 1 | `make api-test FOLDER="10, 11"` | for each flow the payer (and payee where the rules say so) gets the SMS in the right language with masked MSISDNs, and the email lands in GreenMail; a processing SMS on `UNKNOWN` |
+| 1 | `scripts/api-test.sh "10, 11"` | for each flow the payer (and payee where the rules say so) gets the SMS in the right language with masked MSISDNs, and the email lands in GreenMail; a processing SMS on `UNKNOWN` |
 
 ## M4 Channels
 
@@ -82,11 +85,11 @@ and SP query (WP22).
 
 | Step | Command | Expect |
 | --- | --- | --- |
-| 1 | `make api-test FOLDER="18, 19, 20"` | the USSD gateway simulator walks every MVP flow's menu: robi over HTTP, gp over SMPP (bind, enquire_link, reconnect), Bangla and English, PIN encrypted on receipt |
-| 2 | `cd services/mw-ussd && ./gradlew integrationTest --tests 'mfs.mw.ussd.Ussd*MenuWalkIT'` | the same menu walk passes over SMPP and over HTTP; only `mw.ussd.mno.<mno>.transport` differs (criterion 5) |
-| 3 | `make api-test FOLDER="02, 04"` | device binding with OTP, a replayed signature refused, merchant in-app payment and collections view |
-| 4 | `make api-test FOLDER=09` | checkout session (merchant HMAC), pay, redirect, signed IPN retried until the merchant answers |
-| 5 | `make api-test FOLDER="21, 22, 23, 90"` | a 10,000-row CSV batch through maker-checker (folder 90 Slow), throttled child transactions and the result file; an over-size file refused; the SP sees its transactions as initiator and payee |
+| 1 | `scripts/api-test.sh "18, 19, 20"` | the USSD gateway simulator walks every MVP flow's menu: robi over HTTP, gp over SMPP (bind, enquire_link, reconnect), Bangla and English, PIN encrypted on receipt |
+| 2 | `./gradlew :mw-ussd:test --tests 'mfs.mw.ussd.Ussd*MenuWalkIT'` (Docker running) | the same menu walk passes over SMPP and over HTTP; only `mw.ussd.mno.<mno>.transport` differs (criterion 5) |
+| 3 | `scripts/api-test.sh "02, 04"` | device binding with OTP, a replayed signature refused, merchant in-app payment and collections view |
+| 4 | `scripts/api-test.sh 09` | checkout session (merchant HMAC), pay, redirect, signed IPN retried until the merchant answers |
+| 5 | `scripts/api-test.sh "21, 22, 23, 90"` | a 10,000-row CSV batch through maker-checker (folder 90 Slow), throttled child transactions and the result file; an over-size file refused; the SP sees its transactions as initiator and payee |
 
 ## M5 Admin
 
@@ -97,11 +100,11 @@ Automated:
 
 | Step | Command | Expect |
 | --- | --- | --- |
-| 1 | `make api-test FOLDER="13, 14, 15, 16, 17"` | search by txnId and MSISDN, timeline and audit, reversal requested by a maker and approved by a different checker (maker = checker refused), partner disable/enable and timeouts, menu and template publish, wallet unlock |
+| 1 | `scripts/api-test.sh "13, 14, 15, 16, 17"` | search by txnId and MSISDN, timeline and audit, reversal requested by a maker and approved by a different checker (maker = checker refused), partner disable/enable and timeouts, menu and template publish, wallet unlock |
 | 2 | `cd ui/mw-admin-ui && pnpm install && pnpm test` | unit, component and contract tests, no stack (Node.js 24 and pnpm) |
-| 3 | `make seed && make ui-e2e` | Playwright on the running stack, real Keycloak and mw-admin-api: sign-in with password + TOTP (PKCE) and sign-out, search and timeline of a P2P the suite makes over USSD, reversal approved by the checker (txn REVERSED), own request not approvable and rejected, wallet unlock, partner disable/enable and timeouts, menu and template publish (go-live 2099, so nothing a subscriber sees changes); run it twice, both pass |
+| 3 | `scripts/ui-e2e.sh` | Playwright on the running stack, real Keycloak and mw-admin-api: sign-in with password + TOTP (PKCE) and sign-out, search and timeline of a P2P the suite makes over USSD, reversal approved by the checker (txn REVERSED), own request not approvable and rejected, wallet unlock, partner disable/enable and timeouts, menu and template publish (go-live 2099, so nothing a subscriber sees changes); run it twice, both pass |
 
-Manual walk (acceptance criterion 4), after `make api-test FOLDER=01` so there are transactions:
+Manual walk (acceptance criterion 4), after `scripts/api-test.sh 01` so there are transactions:
 
 1. Open https://localhost/console and sign in as `ops-maker01` (password `KC_OPS_TEST_PASSWORD`
    from `deploy/.env`); enrol TOTP with an authenticator app at first sign-in.
@@ -120,7 +123,7 @@ Manual walk (acceptance criterion 4), after `make api-test FOLDER=01` so there a
    preview (the preview walk runs in the browser only, PIN shown as `****`), propose, approve as
    the checker; the new version shows PUBLISHED.
 8. Wallets (`/console/wallets`): request UNLOCK for a wallet and approve it as the checker. The
-   core unlocks only a LOCKED wallet (five wrong PINs in a row; `make api-test FOLDER=16` shows
+   core unlocks only a LOCKED wallet (five wrong PINs in a row; `scripts/api-test.sh 16` shows
    the whole path) and the console does not show the core's answer.
 
 ## M6 Hardening
@@ -130,13 +133,14 @@ What it proves: the acceptance suite (WP26), chaos (WP27), 100 TPS (WP28), the s
 
 | Step | Command | Expect |
 | --- | --- | --- |
-| 1 | `make verify-changed BASE=<sha of the run start>` (stack down: `make down`) | every changed module and its contract neighbours green: `./gradlew check` per module, isolation, field injection, contracts lint, compose-check; logs in `build/verify-changed/` |
-| 2 | `make reset && make build && time make up TIMERS=fast && make seed && make smoke` | the full stack with seed data in under 15 minutes (criterion 6) |
-| 3 | `time make api-test` | every request green in under 10 minutes; `tests/api/TRACEABILITY.md` maps them to criteria 1, 2, 4, 5 (`make api-test ALL=1` adds the 10,000-row payout) |
-| 4 | `make chaos` | each `mw-*` container, then `kafka` and `postgres`, killed mid-flow under load: no transaction left non-terminal, ledger sums unchanged, nothing posted twice (criterion 3). Long (each target takes several minutes); a short demo: `make chaos TARGETS="mw-orchestrator kafka"`. Report in `build/chaos/` |
-| 5 | `make perf` | about 100 TPS mixed load for 5 minutes, p95 middleware overhead under 150 ms, zero KO (criterion 7); the overhead report under tests/perf/build/reports/perf/ (start from a fresh stack: the run spends daily limits) |
-| 6 | `SECURITY_LIVE=1 make security` | no secret found, no open HIGH/CRITICAL in dependencies or images, the ZAP baseline on APISIX passes `deploy/zap/decisions.tsv`, the container log scan finds no PIN or unmasked MSISDN/NID (it reads the logs the API suite run left) |
+| 1 | `./gradlew clean build` (Docker running, stack down: `docker compose --profile core --profile seed down` in `deploy/`) | every module's tests (Testcontainers included) and jar green, plus isolation, field injection, contracts lint, compose check and the script tests |
+| 2 | `deploy/reset.sh`, then the start command of "Before any demo" under `time`, then `scripts/smoke.sh` | the full stack with seed data in under 15 minutes (criterion 6) |
+| 3 | `time scripts/api-test.sh` | every request green in under 10 minutes; `tests/api/TRACEABILITY.md` maps them to criteria 1, 2, 4, 5 (`scripts/api-test.sh "" 1` adds the 10,000-row payout) |
+| 4 | `scripts/chaos.sh` | each `mw-*` container, then `kafka` and `postgres`, killed mid-flow under load: no transaction left non-terminal, ledger sums unchanged, nothing posted twice (criterion 3). Long (each target takes several minutes); a short demo: `CHAOS_TARGETS="mw-orchestrator kafka" scripts/chaos.sh`. Report in `build/chaos/` |
+| 5 | `scripts/suite.sh perf` | about 100 TPS mixed load for 5 minutes, p95 middleware overhead under 150 ms, zero KO (criterion 7); the overhead report under tests/perf/build/reports/perf/ (start from a fresh stack: the run spends daily limits) |
+| 6 | `SECURITY_LIVE=1 scripts/security.sh` | no secret found, no open HIGH/CRITICAL in dependencies or images, the ZAP baseline on APISIX passes `deploy/zap/decisions.tsv`, the container log scan finds no PIN or unmasked MSISDN/NID (it reads the logs the API suite run left) |
 | 7 | the README quick start on a clean host, by someone not on the team | stack up with seed data in under 15 minutes from the repo alone |
 
-Once at the end of M6, the full gate: `make verify` (every module, slow: hours) with the stack
-down.
+Step 1 is the whole build gate: there is no separate slower run. A second `./gradlew clean build`
+with nothing changed restores every module from the build cache in seconds; `--rerun-tasks` runs
+everything again.

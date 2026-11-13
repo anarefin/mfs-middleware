@@ -6,7 +6,7 @@ Status: Accepted, 2026-11-07.
 
 The middleware has no customer-facing UI: the mobile app, the USSD handsets, the merchants' web
 shops, the banks, MNOs and billers are all outside it, and on the laptop stack the partners and the
-core are simulators. Every feature could be checked only by the Newman suite (`make api-test`) or by
+core are simulators. Every feature could be checked only by the Newman suite (then `make api-test`) or by
 hand-written API calls, which need the device signature (EC P-256), RSA-OAEP PIN encryption, Keycloak
 tokens, hmac-auth and the test-only key. Testers without that knowledge could not check a flow by
 hand, see each step, or switch a partner to fail. The ops console covers only the operations side.
@@ -27,8 +27,8 @@ A browser page cannot call the APIs itself: APISIX grants no CORS, the test-only
   cryptography is a port of `tests/api/lib.js` on Node's crypto.
 - Dev/test only: compose profile `tester` (outside the core profile and its memory budget), and its
   APISIX route is a test-only route (`deploy/apisix/routes-test/test-console.json`, private source
-  addresses), present only while `apisix-init` ran with `MW_E2E_ROUTES=1` (`make tester`); a plain
-  `make up` removes it. It has no sign-in.
+  addresses), present only while `apisix-init` ran with `MW_E2E_ROUTES=1` (`scripts/tester.sh`, originally `make tester`); a
+  plain `docker compose up` removes it. It has no sign-in.
 - Ops features are not repeated: they stay in the admin console; the test console links each
   transaction to it. `docs/testing-guide.html` walks through every feature with both.
 
@@ -36,7 +36,7 @@ A browser page cannot call the APIs itself: APISIX grants no CORS, the test-only
 
 - A tester checks every MVP flow, its failure paths (timeouts, TSQ, UNKNOWN, MANUAL_REVIEW,
   callbacks) and the ops actions from a browser, with no API tooling.
-- One more UI module to keep working: its own `pnpm test` (no stack) and `make tester-e2e`
+- One more UI module to keep working: its own `pnpm test` (no stack) and `scripts/tester-e2e.sh`
   (Playwright against the running stack). It follows API changes only through the contracts it
   calls, like any client.
 - It impersonates customers and holds test credentials: it must never be started on a shared or

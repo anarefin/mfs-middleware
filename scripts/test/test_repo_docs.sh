@@ -18,7 +18,8 @@ test_claude_md_records_the_conventions() {
   claude_md_has '^#+ .*log fields'
   claude_md_has 'correlationId' ; claude_md_has 'durationMs' ; claude_md_has 'errorCode'
   claude_md_has '^#+ .*test commands'
-  claude_md_has 'make verify' ; claude_md_has 'M=' ; claude_md_has 'make check-isolation'
+  claude_md_has '\./gradlew clean build' ; claude_md_has '\./gradlew :mw-' ; claude_md_has 'checkIsolation'
+  if grep -qE '(^|[^a-z-])make [a-z]' "$REPO_DIR/CLAUDE.md"; then fail "CLAUDE.md still names make targets (there is no Makefile)"; fi
 }
 
 test_claude_md_lists_the_never_rules() {
@@ -33,14 +34,16 @@ test_pr_template_has_test_report_and_reviewer_checklist() {
   t="$REPO_DIR/.github/pull_request_template.md"
   [ -f "$t" ] || fail "no PR template"
   grep -qiE '^#+ .*test report' "$t" || fail "no test-report section"
-  grep -qE '^- \[ \] .*make verify' "$t" || fail "no reviewer checklist item to re-run make verify"
+  grep -qE '^- \[ \] .*\./gradlew (clean )?build' "$t" || fail "no reviewer checklist item to re-run ./gradlew clean build"
   grep -qiE 'reviewer' "$t" || fail "no reviewer checklist"
 }
 
 test_pr_template_has_the_spec_definition_of_done() {
   t="$REPO_DIR/.github/pull_request_template.md"
   # spec 23.2 items the agent can tick on a PR
-  grep -qiE '^- \[ \] .*coverage gate' "$t" || fail "no 'coverage gate met' item"
+  # (no JaCoCo coverage gate: one test task per module, ./gradlew clean build is the gate)
+  grep -qiE 'coverage gate' "$t" && fail "PR template still asks for the removed coverage gate"
+  grep -qiE '^- \[ \] .*tests? (written|added) first' "$t" || fail "no 'tests written first' item"
   grep -qiE '^- \[ \] .*masking verified for (any|every) new field' "$t" || fail "no 'masking verified' item"
   grep -qiE '^- \[ \] .*metrics.*log events.*alert rule' "$t" || fail "no 'metrics, log events, alert rule' item"
 }
@@ -130,9 +133,25 @@ doc_text() {
   esac
 }
 
-makefile_targets() {
-  sed -n 's/^\.PHONY: *//p' "$REPO_DIR/Makefile" | tr ' ' '\n' | grep -v '^$'
+# operator_scripts: the scripts in scripts/ a person runs directly (the repo checks run through
+# ./gradlew :checkIsolation etc., and derived-schemas.sh / check-api-traceability.sh through
+# contracts-lint.sh)
+operator_scripts() {
+  local f
+  for f in "$REPO_DIR"/scripts/*.sh; do
+    case "$(basename "$f")" in
+      check-isolation.sh | check-field-injection.sh | contracts-lint.sh | compose-check.sh | \
+        check-api-traceability.sh | derived-schemas.sh) ;;
+      *) printf 'scripts/%s\n' "$(basename "$f")" ;;
+    esac
+  done
 }
+
+# Gradle tasks the docs may name: the root project's (base lifecycle, the repo checks, help tasks)
+# and a service module's (java + Spring Boot); tests/perf's own build adds the Gatling tasks.
+ROOT_TASKS=" clean build check assemble checkIsolation checkFieldInjection contractsLint composeCheck scriptTests help tasks projects properties dependencies buildEnvironment "
+MODULE_TASKS=" clean build check assemble test bootJar bootRun bootBuildImage compileJava compileTestJava classes testClasses processResources jar javadoc dependencies dependencyInsight help tasks properties "
+PERF_TASKS=" gatlingRun perfOverhead compileGatlingJava "
 
 test_readme_has_a_clean_host_quick_start() {
   local r="$REPO_DIR/README.md" d
@@ -141,8 +160,10 @@ test_readme_has_a_clean_host_quick_start() {
   grep -qiE '^#+ .*prerequisites' "$r" || fail "README lists no prerequisites"
   grep -qE 'JDK 25' "$r" || fail "README does not name JDK 25 (bootJar runs on the host)"
   grep -qE 'Docker' "$r" || fail "README does not name Docker"
-  grep -qF 'make up' "$r" || fail "README quick start lacks make up"
-  grep -qF 'make smoke' "$r" || fail "README quick start lacks make smoke"
+  grep -qF './gradlew clean build' "$r" || fail "README quick start lacks ./gradlew clean build"
+  grep -qF 'scripts/gen-dev-env.sh' "$r" || fail "README quick start lacks scripts/gen-dev-env.sh"
+  grep -qE 'docker compose .*up' "$r" || fail "README quick start lacks docker compose ... up"
+  grep -qF 'scripts/smoke.sh' "$r" || fail "README quick start lacks scripts/smoke.sh"
   grep -qF 'https://localhost/console' "$r" || fail "README does not point at the admin console"
   grep -qiE '15 min' "$r" || fail "README does not state the 15 minute bring-up target"
   for d in docs/runbook.md docs/demo.md docs/adr/README.md; do
@@ -150,21 +171,67 @@ test_readme_has_a_clean_host_quick_start() {
   done
 }
 
-test_readme_lists_every_makefile_target() {
-  local t
-  for t in $(makefile_targets); do
-    [ "$t" = help ] && continue
-    grep -qE "make $t([^a-z-]|\$)" "$REPO_DIR/README.md" || fail "README does not mention make $t"
+test_readme_lists_every_operator_script() {
+  local p
+  for p in $(operator_scripts); do
+    grep -qF "$p" "$REPO_DIR/README.md" || fail "README does not mention $p"
   done
 }
 
-test_every_make_target_in_the_docs_exists() {
-  local f t targets
-  targets=" $(makefile_targets | tr '\n' ' ') "
+test_no_doc_names_a_make_target() {
+  # there is no Makefile: ./gradlew, docker compose and scripts/ replace it (the ADRs keep the history)
+  local f hits
   for f in $(op_docs); do
-    for t in $(doc_text "$REPO_DIR/$f" | grep -oE '(^|[^a-z0-9-])make [a-z][a-z0-9-]*' | sed 's/.*make //' | sort -u); do
-      case "$targets" in *" $t "*) ;; *) fail "$f names make $t, which the Makefile has no target for" ;; esac
+    case "$f" in docs/adr/*) continue ;; esac
+    hits="$(doc_text "$REPO_DIR/$f" | grep -oE '(^|[^a-z0-9-])make [a-z][a-z0-9-]*' | sed 's/.*make /make /' | sort -u | tr '\n' ' ')"
+    [ -z "$hits" ] || fail "$f names $hits(there is no Makefile)"
+  done
+}
+
+test_every_script_in_the_docs_exists() {
+  local f p
+  for f in $(op_docs); do
+    for p in $(doc_text "$REPO_DIR/$f" | grep -oE '(^|[^A-Za-z0-9_./-])(\.\./)?(scripts|deploy|tests/api)/[A-Za-z0-9._/-]*\.sh' \
+               | sed -E 's#^[^a-z.]##; s#^\.\./##' | sort -u); do
+      [ -e "$REPO_DIR/$p" ] || fail "$f names $p, which does not exist"
     done
+  done
+}
+
+# gradle_words FILE: one line per ./gradlew command line of the doc: its words up to a shell
+# operator or the end of the code span.
+gradle_words() {
+  doc_text "$1" | sed 's/[[:space:]]#.*//' | grep -oE '\./gradlew( +[^ `;&|()#]+)*' | sed 's#^\./gradlew *##'
+}
+
+test_every_gradle_task_in_the_docs_exists() {
+  local f line w task mod modules prev
+  modules=" $(for d in "$REPO_DIR"/services/*/; do [ -f "$d/build.gradle.kts" ] && basename "$d"; done | tr '\n' ' ') "
+  for f in $(op_docs); do
+    while IFS= read -r line; do
+      prev=""
+      for w in $line; do
+        case "$prev" in
+          -x | --exclude-task) ;;                      # the next word is a task: check it
+          --tests | -p | --project-dir | --max-workers | --console | -I | --init-script) prev="$w"; continue ;;
+          *) case "$w" in -*|*'<'*|*'>'*|*...*|*'['*|*']'*|*'"'*|*"'"*) prev="$w"; continue ;; esac ;;
+        esac
+        prev="$w"
+        case "$w" in
+          :*:*)
+            mod="${w#:}"; mod="${mod%%:*}"; task="${w##*:}"
+            case "$mod" in mw-x | mw-name | mw-*'<'*) ;; *)
+              case "$modules" in *" $mod "*) ;; *) fail "$f runs ./gradlew $w: no module $mod in services/" ;; esac ;;
+            esac
+            case "$MODULE_TASKS" in *" $task "*) ;; *) fail "$f runs ./gradlew $w: $task is not a module task" ;; esac ;;
+          :*)
+            task="${w#:}"
+            case "$ROOT_TASKS" in *" $task "*) ;; *) fail "$f runs ./gradlew $w: no root task $task" ;; esac ;;
+          *)
+            case "$ROOT_TASKS$MODULE_TASKS$PERF_TASKS" in *" $w "*) ;; *) fail "$f runs ./gradlew $w: no such task" ;; esac ;;
+        esac
+      done
+    done < <(gradle_words "$REPO_DIR/$f")
   done
 }
 
@@ -186,13 +253,13 @@ test_every_repo_path_in_the_docs_exists() {
 }
 
 test_every_api_test_folder_in_the_docs_exists() {
-  # FOLDER= of make api-test: folder numbers (tests/api/src/NN-*) or full folder names, comma-separated
+  # the folders of scripts/api-test.sh (its first argument, or FOLDER=): folder numbers (tests/api/src/NN-*) or full folder names, comma-separated
   local f v part n names
   names="$(sed -n 's/^ *"name": *"\(.*\)",\{0,1\}$/\1/p' "$REPO_DIR"/tests/api/src/*/folder.json 2>/dev/null)"
   for f in $(op_docs); do
     while IFS= read -r v; do
-      # placeholders ([FOLDER=], FOLDER=<folders>) are not folders
-      case "$v" in '' | ']'* | '<'*) continue ;; esac
+      # placeholders ([FOLDER], FOLDER=<folders>) and an empty "" are not folders
+      case "$v" in '' | ']'* | '<'* | '['*) continue ;; esac
       IFS=',' read -r -a parts <<<"$v"
       for part in "${parts[@]}"; do
         part="$(printf '%s' "$part" | sed -e 's/^ *//' -e 's/ *$//')"
@@ -205,18 +272,21 @@ test_every_api_test_folder_in_the_docs_exists() {
           printf '%s\n' "$names" | grep -qxF -- "$part" || fail "$f uses FOLDER '$part', which is no folder name of the API suite"
         fi
       done
-    done < <(doc_text "$REPO_DIR/$f" | grep -oE 'FOLDER=("[^"]*"|[^ `]*)' | sed -E 's/^FOLDER=//; s/^"//; s/"$//' | sort -u)
+    done < <(doc_text "$REPO_DIR/$f" | grep -oE '(FOLDER=|api-test\.sh +)("[^"]*"|[^ `]*)' \
+               | sed -E 's/^(FOLDER=|api-test\.sh +)//; s/^"//; s/"$//' | sort -u)
   done
 }
 
 test_every_knob_in_the_docs_is_read_by_the_tooling() {
-  # a VAR=value setting shown in a command line must be read by the Makefile, a script or deploy/
+  # a VAR=value setting shown in a command line must be read by a script, deploy/, the API runner or
+  # the root Gradle files
   local f v
   for f in $(op_docs); do
-    for v in $(doc_text "$REPO_DIR/$f" | grep -E '(make [a-z]|scripts/|docker compose)' | grep -oE '(^|[ `(])[A-Z][A-Z0-9_]+=' \
+    for v in $(doc_text "$REPO_DIR/$f" | grep -E '(\./gradlew|scripts/|docker compose|deploy/)' | grep -oE '(^|[ `(])[A-Z][A-Z0-9_]+=' \
                | sed -E 's/^[ `(]//; s/=$//' | sort -u); do
-      grep -rqw -- "$v" "$REPO_DIR/Makefile" "$REPO_DIR/scripts" "$REPO_DIR/deploy" "$REPO_DIR/tests/api/run.sh" \
-        || fail "$f sets $v, which neither the Makefile, scripts/, deploy/ nor tests/api/run.sh reads"
+      grep -rqw -- "$v" "$REPO_DIR/scripts" "$REPO_DIR/deploy" "$REPO_DIR/tests/api/run.sh" \
+        "$REPO_DIR/build.gradle.kts" "$REPO_DIR/gradle.properties" \
+        || fail "$f sets $v, which neither scripts/, deploy/, tests/api/run.sh nor the root Gradle files read"
     done
   done
 }

@@ -22,7 +22,7 @@ import tools.jackson.databind.JsonNode;
  * (idempotent partial import through {@code docker compose exec keycloak kcadm.sh}), fetches the
  * core's PIN key and every user's token, and binds one fresh device per user exactly as the app
  * does (binding OTP read from the SMSC simulator, signed {@code POST /app/v1/devices}). Needs the
- * test-only routes ({@code make perf} applies them like {@code make api-test}).
+ * test-only routes ({@code scripts/suite.sh perf} applies them like {@code scripts/api-test.sh}).
  */
 public final class Provisioning {
 
@@ -71,7 +71,7 @@ public final class Provisioning {
   private static PinCipher pinKey() {
     Http.Response r = Http.get(Stack.get().url("test/core-mock/v1/pin-public-key"), apiKey());
     if (r.status() != 200) {
-      throw new IllegalStateException("PIN public key (test-only routes applied? make perf does it): " + r.status());
+      throw new IllegalStateException("PIN public key (test-only routes applied? scripts/suite.sh perf does it): " + r.status());
     }
     return PinCipher.fromPem(r.body().get("keyId").asString(), r.body().get("publicKeyPem").asString());
   }

@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * Where the suite finds the running stack. `make ui-e2e` sets every value (scripts/ui-e2e.sh); the
+ * Where the suite finds the running stack. scripts/ui-e2e.sh sets every value; the
  * defaults match deploy/docker-compose.yml (APISIX on https://localhost, project mfs-mw).
  */
 export const BASE_URL = (process.env.E2E_BASE_URL ?? "https://localhost").replace(/\/+$/, "");
@@ -10,7 +10,7 @@ export const BASE_URL = (process.env.E2E_BASE_URL ?? "https://localhost").replac
 /** Compose project of the stack, for the container health check (COMPOSE_PROJECT_NAME). */
 export const COMPOSE_PROJECT = process.env.E2E_COMPOSE_PROJECT ?? "mfs-mw";
 
-/** The seed manifest `make seed` copies out (default: the repo's build/seed/manifest.json). */
+/** The seed manifest scripts/ui-e2e.sh copies out of mw-seeder (default: the repo's build/seed/manifest.json). */
 export function manifestPath(): string {
   return process.env.E2E_SEED_MANIFEST ?? resolve(fileURLToPath(new URL(".", import.meta.url)), "../../../../build/seed/manifest.json");
 }

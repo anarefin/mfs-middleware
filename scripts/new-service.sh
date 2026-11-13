@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # Scaffolds a new service from templates/mw-service-template (spec 4.3, WP03).
 # Usage: scripts/new-service.sh mw-<name>
-# The copy and rename (package mfs.mw.<name>, rootProject.name, no reference back to
-# the template) belong to the template's own scaffold.sh, called as:
+# services/mw-<name> is picked up by the root settings.gradle.kts (./gradlew :mw-<name>:build). The copy
+# and rename (package mfs.mw.<name>, project name, no reference back to the template) belong to the
+# template's own scaffold.sh, which also prints the deploy/docker-compose.yml block to paste; called as:
 #   templates/mw-service-template/scaffold.sh <NAME> <DEST_DIR>
 set -eu
-. "$(dirname "$0")/lib/modules.sh"
+. "$(dirname "$0")/lib/common.sh"
 
 name="${1:-}"
-[ -n "$name" ] || die "usage: make new-service NAME=mw-<name>"
+[ -n "$name" ] || die "usage: scripts/new-service.sh mw-<name>"
 printf '%s' "$name" | grep -Eq '^mw-[a-z][a-z0-9]*(-[a-z0-9]+)*$' \
   || die "NAME must look like mw-<name> (lowercase letters, digits, single hyphens): '$name'"
 

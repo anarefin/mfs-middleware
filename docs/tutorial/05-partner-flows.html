@@ -268,7 +268,7 @@
       <li>App flows page, type "Mobile top-up": a normal amount, then <code>20.13</code> (watch it go UNKNOWN and settle) and a
         number ending in <code>999</code> (FAILED, money released).</li>
       <li>USSD phone: <code>4, 1, 1234567</code> pays the DESCO bill of Tk 667.</li>
-      <li>Automated: <code>make api-test FOLDER="05, 06, 07, 08"</code> (top-up, bill pay, bill pay callbacks, add money from bank).</li>
+      <li>Automated: <code>scripts/api-test.sh "05, 06, 07, 08"</code> (top-up, bill pay, bill pay callbacks, add money from bank).</li>
     </ul>
   </div>
 

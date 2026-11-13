@@ -1,8 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * The test console in a browser against the running, seeded stack: `make up TIMERS=fast && make seed
- * && make tester`, then `make tester-e2e` (E2E_BASE_URL https://localhost; against `pnpm dev`
+ * The test console in a browser against the running, seeded stack: the stack started with test-timers.env and the seed
+ * profile, then scripts/tester.sh, then scripts/tester-e2e.sh (E2E_BASE_URL https://localhost; against `pnpm dev`
  * E2E_BASE_URL=http://localhost:3001). Each spec drives one page as a tester would and checks the
  * middleware's answer; specs run in file order on one worker (they share the simulators).
  */

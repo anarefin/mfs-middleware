@@ -47,24 +47,30 @@
     <tr><td>16 GB RAM, 4+ cores, 40 GB free disk</td><td>the stack uses about 8 GB</td><td></td></tr>
     <tr><td>Docker with Compose v2 (2.20+). On macOS, Docker Desktop with at least 8 GB for its VM</td><td>every container</td><td><code>docker compose version</code></td></tr>
     <tr><td>JDK 25</td><td>the services are built on your machine</td><td><code>java -version</code></td></tr>
-    <tr><td>bash, make, git, curl, jq</td><td>the Makefile and scripts</td><td><code>jq --version</code></td></tr>
+    <tr><td>bash, git, curl, jq</td><td>the scripts in <code>scripts/</code></td><td><code>jq --version</code></td></tr>
     <tr><td>Node.js 22+</td><td>the API test suite</td><td><code>node --version</code></td></tr>
   </table></div>
   <p>Port 443 must be free. The full list, with the reasons, is in the <a href="../../README.md">README</a> under Prerequisites.</p>
 
   <h2 id="up">2. Build and start the stack</h2>
-<pre><code>make build              <span class="c"># build every service jar, then every Docker image (first time: 10+ min)</span>
-make up TIMERS=fast     <span class="c"># start everything with short timers; waits until all containers are healthy</span>
-make seed               <span class="c"># create test users, wallets and balances</span>
-make smoke              <span class="c"># quick live checks: is everything up?</span>
-make tester             <span class="c"># start the test console: https://localhost/tester</span>
-make creds              <span class="c"># print every test login and password</span></code></pre>
+<pre><code>./gradlew clean build      <span class="c"># compile, test and package every service jar (the Testcontainers tests need Docker)</span>
+cd deploy
+../scripts/gen-dev-env.sh  <span class="c"># write the dev credentials into deploy/.env (once; later runs keep them)</span>
+docker compose --env-file .env --env-file test-timers.env --profile core --profile seed up -d --build
+cd ..
+scripts/smoke.sh           <span class="c"># quick live checks: is everything up?</span>
+scripts/tester.sh          <span class="c"># start the test console: https://localhost/tester</span>
+scripts/creds.sh           <span class="c"># print every test login and password</span></code></pre>
   <p>What just happened:</p>
   <ul>
-    <li><code>make build</code> ran <code>./gradlew bootJar</code> inside every <code>services/mw-*</code> folder, then built the images.</li>
-    <li><code>make up</code> first generated passwords for your laptop into <code>deploy/.env</code> (never committed), then started
-      the containers. <code>TIMERS=fast</code> shortens the timeouts and the status-inquiry schedule so failures resolve in seconds,
-      not hours. Later commands remember it.</li>
+    <li><code>./gradlew clean build</code> built every <code>services/mw-*</code> module in one Gradle run: its tests, then one
+      jar per module (<code>build/libs/mw-x.jar</code>). A second run with no changes comes from the build cache.</li>
+    <li><code>gen-dev-env.sh</code> wrote the dev credentials into <code>deploy/.env</code> (never committed: the tester logins are fixed
+      documented values, the rest random for your laptop).</li>
+    <li><code>docker compose … up -d --build</code> built the images from those jars and started the containers; the seed profile
+      also ran <code>mw-seeder</code>, which creates the test users, wallets and balances. <code>test-timers.env</code> shortens the
+      timeouts and the status-inquiry schedule so failures resolve in seconds, not hours. Pass it on every later
+      <code>up</code> too, or the defaults (production values) come back.</li>
     <li>The first start also ran one-shot jobs: <code>kafka-init</code> created the topics, <code>provision</code> created each
       service's database schema and OpenBao secrets, <code>apisix-init</code> loaded the gateway routes.</li>
   </ul>
@@ -99,8 +105,8 @@ docker compose logs --no-log-prefix mw-core-mock    | grep 'PASTE-TXN-ID' | jq -
   <h2 id="console">5. Find it in the ops console</h2>
   <ol class="steps">
     <li>Open <code>https://localhost/console</code>. Log in as <code>seed-ops-maker</code> with the ops password from
-      <code>make creds</code>.</li>
-    <li>When asked for a code, run <code>make totp</code> in a terminal and type the 6 digits (a code works once; for a second login, wait for the next one).</li>
+      <code>scripts/creds.sh</code>.</li>
+    <li>When asked for a code, run <code>scripts/totp.sh</code> in a terminal and type the 6 digits (a code works once; for a second login, wait for the next one).</li>
     <li>Open <strong>Transactions</strong>, search for your txnId, open it. The timeline shows each state, when it happened and which command
       was sent to the core. Notice the phone numbers are masked even here.</li>
   </ol>
@@ -117,9 +123,10 @@ docker compose logs --no-log-prefix mw-core-mock    | grep 'PASTE-TXN-ID' | jq -
   </table></div>
   <p>For every row, open the transaction in the ops console and read its timeline. The complete manual test list, with the
     expected result of every step, is <a href="../testing-guide.html">docs/testing-guide.html</a>.</p>
-  <p>The same checks, automated, are the Newman API suite. Run one folder, then all of them:</p>
-<pre><code>make api-test FOLDER=01     <span class="c"># the P2P folder</span>
-make api-test               <span class="c"># every folder (needs the fast timers and the seed from step 2)</span></code></pre>
+  <p>The same checks, automated, are the Newman API suite. Run the P2P folder, then every folder (both need the test timers
+    and the seed from step 2):</p>
+<pre><code>scripts/api-test.sh 01
+scripts/api-test.sh</code></pre>
 
   <h2 id="change">7. Change a service and test it</h2>
   <p>A safe first change: read the saga state machine through its test, break it, watch the test catch it, put it back.</p>
@@ -129,30 +136,28 @@ make api-test               <span class="c"># every folder (needs the fast timer
 <pre><code>row(Status.POSTING, new DeadlineExpired(), Status.UNKNOWN, Effect.SCHEDULE_INQUIRY);</code></pre>
       That is idea 8 in one line: a posting that times out becomes UNKNOWN and schedules an inquiry.</li>
     <li>Run the orchestrator's unit tests (no Docker needed):
-<pre><code>cd services/mw-orchestrator
-./gradlew test --tests 'mfs.mw.orchestrator.service.saga.SagaMachineTest'</code></pre></li>
+<pre><code>./gradlew :mw-orchestrator:test --tests 'mfs.mw.orchestrator.service.saga.SagaMachineTest'</code></pre></li>
     <li>Now pretend you "simplify" it: change <code>Status.UNKNOWN</code> to <code>Status.FAILED</code> in that row and run the test again. It
       fails, because <code>SagaMachine</code> does not do that. Think about why the real rule is right: on a posting timeout the money
       may already have moved, so failing it would lie to the customer.</li>
-    <li>Put the line back (<code>git checkout -- src/test</code>) and check the test is green again.</li>
+    <li>Put the line back (<code>git checkout -- services/mw-orchestrator/src/test</code>) and check the test is green again.</li>
   </ol>
   <p>When you change real code in a service, the loop is:</p>
-<pre><code>cd services/mw-orchestrator
-./gradlew test                         <span class="c"># unit, slice and contract tests: fast, no Docker</span>
-./gradlew integrationTest              <span class="c"># the *IT tests with Testcontainers (Docker)</span>
-cd ../..
-make build M=mw-orchestrator           <span class="c"># rebuild that one jar and image</span>
-make up M=mw-orchestrator              <span class="c"># restart it (and what it needs)</span>
-make api-test FOLDER=01                <span class="c"># the API folder for your feature</span>
-make verify-changed                    <span class="c"># the full gate for every module you touched</span></code></pre>
-  <p>Chapter 9 explains the test tiers and what "done" means.</p>
+<pre><code>./gradlew :mw-orchestrator:test        <span class="c"># every test of the module; the *IT tests need Docker</span>
+./gradlew :mw-orchestrator:bootJar     <span class="c"># rebuild that one jar</span>
+cd deploy
+docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-orchestrator
+cd ..
+scripts/api-test.sh 01                 <span class="c"># the API folder for your feature</span>
+./gradlew clean build                  <span class="c"># the full gate before a pull request (unchanged modules come from the cache)</span></code></pre>
+  <p>Chapter 9 explains the tests and what "done" means.</p>
 
   <h2 id="stop">8. Stop, reset, troubleshoot</h2>
   <div class="table-wrap"><table>
     <tr><th>Command</th><th>Does</th></tr>
-    <tr><td><code>make down</code></td><td>stops everything; data is kept for next time</td></tr>
-    <tr><td><code>make reset</code></td><td>stops everything and deletes all data (a fresh start; run <code>make up</code> and <code>make seed</code> again)</td></tr>
-    <tr><td><code>make smoke</code></td><td>tells you which piece is unhealthy</td></tr>
+    <tr><td><code>docker compose --profile core --profile seed down</code> (from <code>deploy/</code>)</td><td>stops everything; data is kept for next time</td></tr>
+    <tr><td><code>deploy/reset.sh</code></td><td>stops everything and deletes all data (a fresh start; run the <code>docker compose … up</code> of step 2 again)</td></tr>
+    <tr><td><code>scripts/smoke.sh</code></td><td>tells you which piece is unhealthy</td></tr>
     <tr><td><code>docker compose logs provision</code> (from <code>deploy/</code>)</td><td>why a setup one-shot failed</td></tr>
   </table></div>
 

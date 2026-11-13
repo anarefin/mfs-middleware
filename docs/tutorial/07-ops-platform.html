@@ -69,7 +69,7 @@
     <li>Roles are Keycloak roles in the <code>ops</code> realm, for example <code>ops-maker</code> and <code>ops-checker</code>
       (transactions), <code>integration-maker</code> / <code>integration-checker</code> (partner settings),
       <code>compliance-officer</code>, <code>auditor</code> and <code>viewer</code> (enum <code>dto/AdminRole</code>). Logging in needs a password and a TOTP code (an authenticator app); for test users,
-      <code>make totp</code> prints the current code.</li>
+      <code>scripts/totp.sh</code> prints the current code.</li>
     <li>The browser never calls <code>mw-admin-api</code> directly: the Next.js server does, with the operator's token.</li>
   </ul>
   <div class="box where"><div class="tag">Where it lives</div><ul>
@@ -122,13 +122,15 @@
     <tr><td><code>services</code></td><td>service accounts for internal calls between services</td><td><code>mw-portal-api</code>, <code>mw-admin-api</code></td></tr>
     <tr><td><code>partners</code></td><td>partner systems</td><td><code>partner-sim</code></td></tr>
   </table></div>
-  <p>Passwords are generated per laptop into the gitignored <code>deploy/.env</code>; <code>make creds</code> prints them all.
+  <p>The test users' passwords are fixed, documented dev values (ops <code>ops-test-pass</code>, customers <code>app-test-pass</code>,
+    portals <code>portal-test-pass</code>); the other secrets are generated per laptop into the gitignored <code>deploy/.env</code>.
+    <code>scripts/creds.sh</code> prints them all.
     Realm files: <a href="../../deploy/keycloak">deploy/keycloak/</a>.</p>
   <p>The app has one extra layer: <strong>device binding</strong>. A login alone is not enough to move money; the phone must also be
     bound (an OTP by SMS, then a key stored on the device) and must sign each request. A stolen password on another phone cannot pay.</p>
 
   <h2 id="apisix">The gateway: APISIX</h2>
-  <p>APISIX is configured from files in <a href="../../deploy/apisix/README.md">deploy/apisix/</a>, applied on every <code>make up</code>:</p>
+  <p>APISIX is configured from files in <a href="../../deploy/apisix/README.md">deploy/apisix/</a>, applied on every <code>docker compose up</code> by the <code>apisix-init</code> one-shot:</p>
   <ul>
     <li><code>global_rules/</code>: what applies to every request (correlation id, size limits, stripping internal
       <code>X-Mw-*</code> headers a caller tries to send, the standard error envelope).</li>
@@ -137,12 +139,12 @@
     <li><code>routes-test/</code>: test-only routes (to the core mock and simulators), added only by the test tools.</li>
   </ul>
   <p>Request body <em>shapes</em> are not checked at the edge; each service validates against its OpenAPI contract.
-    <code>make edge-test</code> tests the edge rules on the running stack.</p>
+    <code>scripts/edge-test.sh</code> tests the edge rules on the running stack.</p>
 
   <h2 id="secrets">Secrets: OpenBao</h2>
   <p>No secret is ever in code, a config file or a test. Services read database passwords, partner keys and signing secrets from
     OpenBao at start-up; each service has its own login (AppRole) and can read only its own secrets. On a laptop the one-shot
-    <code>provision</code> container creates everything on first <code>make up</code>.</p>
+    <code>provision</code> container creates everything on the first <code>docker compose up</code> and checks it again on every later one (idempotent).</p>
 
   <h2 id="logs">Logs</h2>
   <p>Every service writes JSON to stdout, one event per line, with the same fields: <code>ts</code>, <code>level</code>,
@@ -151,10 +153,10 @@
     <code>txn.state.changed</code> and <code>partner.call.completed</code>. Masking runs before anything is printed.</p>
 
   <div class="box try"><div class="tag">Try it yourself</div><ul>
-    <li>Log in to the console as <code>seed-ops-maker</code> (TOTP from <code>make totp</code>), open a transaction and read its timeline.
-      Raise a change request, then approve it as <code>seed-ops-checker</code> (<code>make totp PERSONA=seed-ops-checker</code>).</li>
+    <li>Log in to the console as <code>seed-ops-maker</code> (TOTP from <code>scripts/totp.sh</code>), open a transaction and read its timeline.
+      Raise a change request, then approve it as <code>seed-ops-checker</code> (<code>scripts/totp.sh seed-ops-checker</code>).</li>
     <li>Test console page <strong>SMS &amp; email</strong> shows what <code>mw-notify</code> sent.</li>
-    <li>Automated: <code>make api-test FOLDER="10, 11, 13, 14, 15, 17"</code> and <code>make ui-e2e</code> (the console's browser tests).</li>
+    <li>Automated: <code>scripts/api-test.sh "10, 11, 13, 14, 15, 17"</code> and <code>scripts/ui-e2e.sh</code> (the console's browser tests).</li>
   </ul></div>
 
   <nav class="pager">

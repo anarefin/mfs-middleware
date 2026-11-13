@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Container log scan (spec 18.3, 21.1, WP29, ticket 46): no PIN (plain or ciphertext), no
 # unmasked MSISDN and no unmasked NID in any log line.
-# Usage: scripts/log-scan.sh            every container log of the MVP project (run after make api-test)
+# Usage: scripts/log-scan.sh            every container log of the MVP project (run after scripts/api-test.sh)
 #        scripts/log-scan.sh FILE...    the given files ('-' = stdin), e.g. saved logs
 # Exit 1 on a finding. A finding is printed with its source and line number and the matched
 # value masked, so this script never repeats what it found.
@@ -18,7 +18,7 @@
 # False positives that are justified go into scripts/log-scan.allow (one extended regex per
 # line, matched against the whole line; '#' comments), each with its reason.
 set -uo pipefail
-. "$(dirname "$0")/lib/modules.sh"
+. "$(dirname "$0")/lib/common.sh"
 
 allow="$MW_ROOT/scripts/log-scan.allow"
 
@@ -90,7 +90,7 @@ else
   # shellcheck disable=SC2086 # one profile per word
   stack_compose $STACK_PROFILES
   services="$(docker compose "${DC_F[@]}" ps -a --format '{{.Service}}' 2>/dev/null | sort -u)"
-  [ -n "$services" ] || die "log-scan: no containers in the MVP project (make up && make api-test first)"
+  [ -n "$services" ] || die "log-scan: no containers in the MVP project (start the stack and run scripts/api-test.sh first)"
   for s in $services; do
     docker compose "${DC_F[@]}" logs --no-color --no-log-prefix "$s" 2>&1 | scan "$s" || rc=1
   done

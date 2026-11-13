@@ -9,8 +9,9 @@ import org.junit.jupiter.api.Tag;
 /**
  * Marks a test of the conformance suite (spec 4.3 rule 5, 22.1): the cross-cutting behaviour every
  * service copies from the template (correlation, error envelope, masking, log fields, Kafka
- * retry/DLQ, outbox, inbox). {@code ./gradlew conformance} runs only these; {@code check} runs
- * them too. Copy this package unchanged into every service and keep it green.
+ * retry/DLQ, outbox, inbox). They run with every other test in the one {@code test} task; the tag
+ * lets an IDE or {@code --tests} select them. Copy this package unchanged into every service and
+ * keep it green.
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)

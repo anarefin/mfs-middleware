@@ -1,4 +1,4 @@
-# Shared helpers for the shell test suite (bash 3.2 compatible, BSD/GNU tools).
+# Shared helpers for the shell test suite of scripts/ (bash 3.2 compatible, BSD/GNU tools).
 # Each test file defines functions named test_*; run.sh sources this file and the
 # test file, then calls every test_* function in a fresh subshell.
 
@@ -12,40 +12,51 @@ new_root() {
   printf '%s\n' "$d"
 }
 
-# new_module ROOT DIR: plant a minimal standalone Gradle module at ROOT/DIR.
-# Its gradlew is a stub that records the tasks it was asked to run.
+# new_module ROOT DIR: plant a minimal module at ROOT/DIR: a subproject of the root build (a
+# build.gradle.kts with inline versions; no settings file, wrapper or version catalog of its own).
 new_module() {
-  local root="$1" dir="$2" name
-  name="$(basename "$dir")"
-  mkdir -p "$root/$dir/gradle"
-  printf 'rootProject.name = "%s"\n' "$name" >"$root/$dir/settings.gradle.kts"
+  local root="$1" dir="$2"
+  mkdir -p "$root/$dir"
   cat >"$root/$dir/build.gradle.kts" <<'EOF'
-plugins { java }
-dependencies { testImplementation("org.junit.jupiter:junit-jupiter:5.13.4") }
+plugins {
+    java
+    id("org.springframework.boot") version "4.0.0"
+}
+dependencies {
+    implementation(platform("org.apache.camel.springboot:camel-spring-boot-bom:4.14.0"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
+}
 EOF
-  printf 'mwContractsDir=../../contracts\n' >"$root/$dir/gradle.properties"
-  cat >"$root/$dir/gradle/libs.versions.toml" <<'EOF'
-[versions]
-spring-boot = "4.0.0"
-camel = "4.14.0"
-
-[libraries]
-junit = { module = "org.junit.jupiter:junit-jupiter", version = "5.13.4" }
-EOF
-  cat >"$root/$dir/gradlew" <<'EOF'
-#!/bin/sh
-echo "$*" >> "$(dirname "$0")/.gradlew-calls"
-[ -f "$(dirname "$0")/.gradlew-fail" ] && exit 1
-exit 0
-EOF
-  chmod +x "$root/$dir/gradlew"
 }
 
-# mw_make ROOT TARGET [VAR=VAL...]: run the repo Makefile against a fixture root.
-# Output goes to $OUT; exit status is returned.
-mw_make() {
+# mw_run ROOT [VAR=VAL...] SCRIPT [ARG...]: run scripts/SCRIPT of this repo against a fixture root
+# (MW_ROOT=ROOT, plus the VAR=VAL environment). Output goes to $OUT; exit status is returned.
+mw_run() {
   local root="$1"; shift
-  OUT="$(make -s -f "$REPO_DIR/Makefile" MW_ROOT="$root" SELFTEST=0 "$@" 2>&1)"
+  local envs=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      [A-Za-z_]*=*) envs+=("$1"); shift ;;
+      *) break ;;
+    esac
+  done
+  local script="$1"; shift
+  OUT="$(env MW_ROOT="$root" ${envs[@]+"${envs[@]}"} "$REPO_DIR/scripts/$script" "$@" 2>&1)"
+}
+
+# root_gradlew: a stub ./gradlew at the fixture root that records its arguments and, for
+# :mw-x:bootJar, writes services/mw-x/build/libs/mw-x.jar (the fixed jar name).
+root_gradlew() {
+  cat >gradlew <<'EOF'
+#!/bin/sh
+cd "$(dirname "$0")"
+echo "$*" >> .gradlew-calls
+for a in "$@"; do
+  case "$a" in :*:bootJar) m="${a#:}"; m="${m%:bootJar}"; mkdir -p "services/$m/build/libs"; touch "services/$m/build/libs/$m.jar" ;; esac
+done
+exit 0
+EOF
+  chmod +x gradlew
 }
 
 fail() { printf '    FAIL: %s\n' "$*" >&2; [ -n "${OUT:-}" ] && printf '%s\n' "$OUT" | sed 's/^/      | /' >&2; exit 1; }

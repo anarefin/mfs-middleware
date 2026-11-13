@@ -1,7 +1,7 @@
 # APISIX edge config (spec 8.3, WP09, ticket 13): static checks on what deploy/apisix/apply.sh
 # would send to the Admin API (APISIX_DRY_RUN), and on the body schemas the services derive from
 # their OpenAPI contracts (body schemas are checked in the service, never at the edge: M3 gate).
-# The live gateway tests are scripts/edge-test.sh (make edge-test).
+# The live gateway tests are scripts/edge-test.sh.
 
 APPLY="$REPO_DIR/deploy/apisix/apply.sh"
 
@@ -323,7 +323,7 @@ test_contracts_lint_runs_the_derived_schema_check() {
   fixture_schemas
   printf '{ "x-mw-derived-from": "api/mw-checkout/checkout.v1.openapi.yaml#/components/schemas/CreateSessionRequest" }\n' \
     >services/mw-checkout/src/main/resources/derived-schemas/checkout-v1-create-session.json
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "checkout-v1-create-session.json"
 }
 
@@ -397,20 +397,20 @@ test_ussd_secrets_are_generated_and_passed_to_apisix_and_the_simulator() {
   done
 }
 
-# ---- make edge-test (scripts/edge-test.sh): the live tests need a running stack ----
+# ---- scripts/edge-test.sh: the live tests need a running stack ----
 
 test_edge_test_fails_clearly_without_a_stack() {
-  assert_fails mw_make "$PWD" edge-test
+  assert_fails mw_run "$PWD" edge-test.sh
   assert_out_contains "deploy/docker-compose.yml"
   mkdir -p deploy .bin
   touch deploy/docker-compose.yml
-  assert_fails mw_make "$PWD" edge-test
-  assert_out_contains "make up"
+  assert_fails mw_run "$PWD" edge-test.sh
+  assert_out_contains "start the stack"
   printf 'APISIX_ADMIN_KEY=t\n' >deploy/.env
   # docker stub: the project resolves, but nothing publishes apisix:9443
   printf '#!/bin/sh\ncase "$*" in *" config "*) echo "{\\"name\\":\\"mw\\"}" ;; esac\nexit 0\n' >.bin/docker
   chmod +x .bin/docker
-  OUT="$(PATH="$PWD/.bin:$PATH" make -s -f "$REPO_DIR/Makefile" MW_ROOT="$PWD" SELFTEST=0 edge-test 2>&1)" && fail "passed without apisix"
+  PATH="$PWD/.bin:$PATH" mw_run "$PWD" edge-test.sh && fail "passed without apisix"
   assert_out_contains "apisix is not running"
 }
 
@@ -475,7 +475,7 @@ test_rate_limited_routes_fail_open_and_log_a_stable_degradation_line() {
   fns="$(cat out/global_rules/*.json | jq -r '.. | objects | select(.phase == "header_filter") | .functions[]')"
   printf '%s\n' "$fns" | grep -q 'mw.edge.rate_limit_degraded' || fail "no header_filter logging mw.edge.rate_limit_degraded"
   printf '%s\n' "$fns" | grep -q 'X-RateLimit-Limit' || fail "degradation not detected from the missing quota header"
-  grep -q 'mw.edge.rate_limit_degraded' "$REPO_DIR/scripts/smoke.sh" || fail "make smoke does not look for the degradation line"
+  grep -q 'mw.edge.rate_limit_degraded' "$REPO_DIR/scripts/smoke.sh" || fail "scripts/smoke.sh does not look for the degradation line"
   grep -q 'mw.edge.rate_limit_degraded' "$REPO_DIR/deploy/apisix/README.md" || fail "degradation alert not documented"
 }
 

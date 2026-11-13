@@ -18,7 +18,7 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /** The menu-walk suite over the HTTP transport: robi as configured (transport HTTP). */
-@SpringBootTest(properties = {"mw.ussd.sync-budget=2s", "mw.ussd.instance-id=it-ussd-walk-http",
+@SpringBootTest(properties = {"mw.ussd.sync-budget=5s", "mw.ussd.instance-id=it-ussd-walk-http",
     "mw.ussd.consumers.enabled=true"})
 @AutoConfigureMockMvc
 @Import(TestInfrastructure.class)

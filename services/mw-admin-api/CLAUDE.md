@@ -188,7 +188,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   401; secret `mw.admin-api.internal-auth.client-secret` in `secret/mw-admin-api`, synced by the init
   from `KC_MW_ADMIN_API_SECRET`. Resilience4j `orchestrator` and `audit-dw` (retry + breaker on
   `QueryUnavailableException` only).
-- Dev provisioning (`provision_mw_admin_api` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role
+- Dev provisioning (`provision_mw_admin_api` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `admin_api_rw`, schemas `admin` and `partner` (spec 16.2), `secret/mw-admin-api` (DB password; client secret),
   AppRole. Stack: a service of `deploy/docker-compose.yml` (profiles `minimal`, `core`), limit 512 MiB, Hikari pool 2.
 - Keycloak realm `ops` (`deploy/keycloak/realms/ops-realm.json`) carries the 15.4
@@ -198,7 +198,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   seeded TOTP credential instead (secret `KC_OPS_TEST_TOTP_SECRET`, dev-only direct-grant client
   `mw-e2e-ops`; the console client `mw-admin-ui` is code + PKCE only; token route
   `deploy/apisix/routes-test/auth-ops-token.json`, test-only; ticket 37). A
-  running stack keeps its old realm (import skips existing realms): `make down DOWN_ARGS=-v` first.
+  running stack keeps its old realm (import skips existing realms): `deploy/reset.sh` first.
 
 ## Contracts owned
 
@@ -232,9 +232,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
-  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
-  `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
+  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
   Events written without one (scheduled jobs) get a plain UUID (`util/CorrelationIds`).
@@ -257,14 +256,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 
 ## Commands
 
-| Command | What it does |
+| Command (from the repo root) | What it does |
 | --- | --- |
-| `./gradlew test` | unit, slice and contract tests, no Docker |
-| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker); `AdminTransactionApiIT` (stub orchestrator + audit-dw), `ChangeRequestApiIT` (maker-checker, stub orchestrator), `PartnerConfigApiIT` (partner change requests, outbox config records), `WalletUnlockApiIT` (ticket 52), `ContentChangeApiIT` (menus and templates, ticket 39) |
-| `./gradlew conformance` | the `@Conformance` suite |
-| `./gradlew check` | all three plus the JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
-| `./gradlew check bootJar && docker build -t mw-admin-api:dev .` | image, as spec 4.3 rule 1 |
-| `make verify M=mw-admin-api` | isolation + field-injection check + contracts lint + `./gradlew check` |
-| `make verify-changed [BASE=main]` | the same gate for the modules changed since BASE only |
-| `make build M=mw-admin-api` | `bootJar`, then this service's images (`mfs-mw/mw-admin-api:local`, plus the shared `mfs-mw/provision:local`) |
-| `make up M=mw-admin-api` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |
+| `./gradlew :mw-admin-api:test` | every test in one JVM: unit, slice and contract tests, the Testcontainers `*IT` classes (`AdminTransactionApiIT` (stub orchestrator + audit-dw), `ChangeRequestApiIT` (maker-checker, stub orchestrator), `PartnerConfigApiIT` (partner change requests, outbox config records), `WalletUnlockApiIT` (ticket 52), `ContentChangeApiIT` (menus and templates, ticket 39)) and the `@Conformance` suite; one PostgreSQL and one Kafka per test JVM, a fresh database per Spring context; the `*IT` and conformance classes are skipped without Docker. One class: `--tests '<class>'` |
+| `./gradlew :mw-admin-api:build` | `test`, then the boot jar `build/libs/mw-admin-api.jar` (fixed name, the one the Dockerfile copies) |
+| `./gradlew :mw-admin-api:bootJar && docker build -t mw-admin-api:dev services/mw-admin-api` | image, as spec 4.3 rule 1 |
+| `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
+| `./gradlew :mw-admin-api:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-admin-api` | rebuild this service's image (`mfs-mw/mw-admin-api:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |

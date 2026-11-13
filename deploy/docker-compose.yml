@@ -1,12 +1,14 @@
 # Bits MFS middleware: the whole single-host stack in one hand-written file (spec "Single-host
 # topology", 20.2; ADR D16 replaces the per-module compose.yml files). Edit this file directly.
 #
-#   make build [M=]                      bootJar per module, then `docker compose build` (images
-#                                        mfs-mw/<svc>:local; `make up` never builds)
-#   make up [PROFILE=core] [TIMERS=fast] [M=mw-x]
-#                                        docker compose --profile $PROFILE up -d --wait [mw-x]
-#   make seed                            the seed profile's one-shot (mw-seeder, ticket 57)
-#   make down / make reset               stop / drop every container and volume of every profile
+# Start the whole stack without any script (from deploy/, after `./gradlew clean build` made the
+# boot jars and ../scripts/gen-dev-env.sh wrote .env):
+#   docker compose --env-file .env [--env-file test-timers.env] --profile core --profile seed up -d --build
+# Every one-shot is reached from that command: kafka-init and provision gate every mw-* service
+# (x-infra-deps), etcd-init gates apisix, apisix-init gates mw-app-gateway and mw-admin-ui (and
+# mw-seeder). provision re-runs on every `up` (an exited one-shot is started again) and creates
+# missing roles and schemas idempotently, so a new service's schema appears without `down -v`.
+# ./reset.sh drops every container and volume of every profile.
 #
 # Profiles:
 #   (none)    platform services and one-shots: always start
@@ -31,38 +33,45 @@
 # Images are pinned by tag and digest (20.1); the ones built here are mfs-mw/<svc>:local.
 #
 # Test timers: the ${MW_...} placeholders marked "timer" default to the production values of the
-# services' application.yml; `make up TIMERS=fast` also loads deploy/test-timers.env (short ones).
+# services' application.yml; `--env-file test-timers.env` (TIMERS=fast) loads the short ones.
 #
 # Memory (laptop demo footprint: functional runs and feature exploration only, never load tests).
 # Target: the whole core profile + seed inside Docker Desktop at 8 GB on a personal laptop.
 # Hard guard: the limits of all long-running containers (no mw.oneshot label) must add up to
-# <= 8192 MiB; `make compose-check` fails above that, or when a long-running service has no limit.
-# The JVM flags the AOT cache depends on (GC, hence compressed oops) are the image's JVM_OPTS build
-# arg (x-jvm-build), used by the training run and by every start (JAVA_TOOL_OPTIONS); the run adds
-# only sizes (JDK_JAVA_OPTIONS), so a cache baked into the image is used (ticket 55; -Xlog:aot).
-# The dev stack builds without the AOT cache (MW_AOT=0, x-jvm-build-args; MW_AOT=1 make build
-# trains it). CPU: at most 1 CPU per JVM service and platform container (keycloak 2: its start-up
-# is CPU-bound and the health window would pass), so the stack never takes the whole laptop.
+# <= 8192 MiB; scripts/compose-check.sh fails above that (it sums the knob defaults below, or the
+# values set in the shell or deploy/.env), or when a long-running service has no limit.
+# The GC flags are the image's JVM_OPTS build arg (x-jvm-build-args, JAVA_TOOL_OPTIONS of every
+# start); the run adds only sizes (JDK_JAVA_OPTIONS in x-jvm-env). CPU: at most 1 CPU per JVM
+# service and platform container (keycloak 2: its start-up is CPU-bound and the health window
+# would pass), so the stack never takes the whole laptop.
 #
-#   container            limit MiB   measured peak MiB (the RUNNING.html start + make seed + api-test
-#                                    folders 00, 01, 05, 2026-11-06, MW_AOT=0, heap 160m; *: full Cucumber run 2026-11-05)
-#   mw-* services        416         313-362 (Serial GC, tiered JIT, fixed heap 160m; Hikari pool 3, 4 for the busy three)
-#     mw-orchestrator    448         369
-#     mw-audit-dw        448         320
-#     mw-simulators      384         287
-#   kafka                576         469  (fixed heap 256m; 1 partition per topic, MW_KAFKA_PARTITIONS)
-#   keycloak             608         483  (heap 128..384m)
-#   apisix               384         290, 368*
-#   postgres             320         140, 274*  (shared_buffers 64MB, max_connections 100; pools total 39)
-#   greenmail            160         125  (heap 96m)
-#   openbao              128          95
-#   etcd 64 (34), valkey 64 (8)
-#   mw-admin-ui          160          46  (Node.js standalone server)
-#   long-running total   7904 of the 8192 guard (sum of the measured peaks: 5974)
-#   one-shots (exit before their service starts): *-init 128, kafka-init 512 (3 parallel CLI
-#   JVMs; 8 were OOM-killed at 384), apisix-init 256, etcd-init 64
+# Every long-running limit is an optional knob (BitsPay pattern): set it in the shell or in
+# deploy/.env, e.g. `APP_MEM_LIMIT=512M APP_XMX=192m docker compose ... up -d`. The defaults are
+# the laptop values in the table.
 #
-# Recalibrate by sampling `docker stats` through one `make up` + `make api-test`: limit about
+#   knob (default)              containers           measured peak MiB (RUNNING.html start + seed +
+#                                                    api-test folders 00, 01, 05, 2026-11-06, heap 160m;
+#                                                    *: full Cucumber run 2026-11-05)
+#   APP_MEM_LIMIT (416M)        every other mw-*     313-362 (Serial GC, tiered JIT; Hikari pool 3, 4 for the busy three)
+#   APP_MEM_LIMIT_LARGE (448M)  mw-orchestrator,     369, 320
+#                               mw-audit-dw
+#   SIM_MEM_LIMIT (384M)        mw-simulators        287
+#   APP_XMX (160m)              heap (-Xms = -Xmx) of every mw-* service (x-jvm-env)
+#   KAFKA_MEM (576M)            kafka                469  (KAFKA_HEAP (256m) fixed heap; 1 partition per topic, MW_KAFKA_PARTITIONS)
+#   KEYCLOAK_MEM (608M)         keycloak             483  (heap 128..384m)
+#   APISIX_MEM (384M)           apisix               290, 368*
+#   POSTGRES_MEM (320M)         postgres             140, 274*  (shared_buffers 64MB, max_connections 100; pools total 39)
+#   GREENMAIL_MEM (160M)        greenmail            125  (heap 96m)
+#   OPENBAO_MEM (128M)          openbao               95
+#   ETCD_MEM (64M)              etcd                  34
+#   VALKEY_MEM (64M)            valkey                 8
+#   ADMIN_UI_MEM (160M)         mw-admin-ui           46  (Node.js standalone server)
+#   long-running total with the defaults: 7904 of the 8192 guard (sum of the measured peaks: 5974)
+#   fixed (outside the guard): one-shots exit before their service starts: provision 128,
+#   kafka-init 512 (3 parallel CLI JVMs; 8 were OOM-killed at 384), apisix-init 256, etcd-init 64,
+#   mw-seeder 256; mw-test-console 192 (profile tester)
+#
+# Recalibrate by sampling `docker stats` through one stack start + API suite run: limit about
 # peak x 1.3 (JVMs less: their RSS is bounded by the flags), rounded to 32 MiB.
 name: mfs-mw
 
@@ -119,22 +128,19 @@ x-jvm-env: &jvm-env
   VAULT_ADDR: ${VAULT_ADDR:-http://openbao:8200}
   DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/mw}
   KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
-  # Sizes only, on top of the image's JAVA_TOOL_OPTIONS (the trained flags, see x-jvm-build):
-  # a fixed heap (BitsPay pattern), normal tiered JIT.
+  # Sizes only, on top of the image's JAVA_TOOL_OPTIONS (the GC flags, see x-jvm-build-args):
+  # a fixed heap of APP_XMX (BitsPay pattern), normal tiered JIT.
   JDK_JAVA_OPTIONS: >-
-    -Xms160m -Xmx160m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m -Xss512k
+    -Xms${APP_XMX:-160m} -Xmx${APP_XMX:-160m} -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m -Xss512k
     -XX:MaxDirectMemorySize=64m
   SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "1"
   # timer: non-blocking retry topics <topic>.<group>.retry.1..3 (19.2), three delays
   MW_KAFKA_RETRY_DELAYS: ${MW_KAFKA_RETRY_DELAYS:-10s,1m,10m}
 
-# The image's JVM_OPTS (JAVA_TOOL_OPTIONS of the AOT training run and of every start), in place of
-# its ZGC + MaxRAMPercentage=75: Serial GC suits a 192m heap; a change here rebuilds the images.
+# The image's JVM_OPTS (JAVA_TOOL_OPTIONS of every start), in place of its ZGC +
+# MaxRAMPercentage=75: Serial GC suits a 160m heap; a change here rebuilds the images.
 x-jvm-build-args: &jvm-build-args
   JVM_OPTS: -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError
-  # AOT cache training run at image build: off on the laptop dev stack (faster builds); MW_AOT=1 on
-  # the build command (e.g. `MW_AOT=1 make build`) trains it, as the production images do.
-  MW_AOT: ${MW_AOT:-0}
 
 x-minimal: &minimal [minimal, core]
 x-core: &core [core]
@@ -204,7 +210,7 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
       # 1 partition per topic (kafka-init MW_KAFKA_PARTITIONS; laptop demo footprint): a fixed 256m heap.
-      KAFKA_HEAP_OPTS: -Xms256m -Xmx256m
+      KAFKA_HEAP_OPTS: -Xms${KAFKA_HEAP:-256m} -Xmx${KAFKA_HEAP:-256m}
     volumes:
       - kafka-data:/var/lib/kafka/data
     tmpfs: [/tmp]
@@ -219,7 +225,7 @@ services:
       start_interval: 1s
     deploy:
       resources:
-        limits: { cpus: "1", memory: 576M }
+        limits: { cpus: "1", memory: "${KAFKA_MEM:-576M}" }
     logging: *logging
 
   kafka-init:
@@ -260,9 +266,9 @@ services:
     networks: [data]
     env_file: [env/postgres.env]
     environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh first}
       # postgres/initdb/10-keycloak.sh creates the keycloak role and database with it
-      KC_DB_PASSWORD: ${KC_DB_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:?run scripts/gen-dev-env.sh first}
     # One shared dev instance serves Keycloak and every service's pool. max_connections sizing
     # (sum of the worst case, one replica each; keep it below max_connections minus the 3
     # superuser_reserved_connections when a pool or a replica is added): the dev stack caps each
@@ -283,7 +289,7 @@ services:
       - maintenance_work_mem=32MB
       # A constraint error's DETAIL line quotes the key, e.g. an unmasked MSISDN wallet id
       # (change_request_one_pending_idx, ticket 59); terse drops DETAIL/HINT/CONTEXT so
-      # make log-scan stays clean. The STATEMENT line keeps $n placeholders, no values.
+      # scripts/log-scan.sh stays clean. The STATEMENT line keeps $n placeholders, no values.
       - -c
       - log_error_verbosity=terse
     volumes:
@@ -300,7 +306,7 @@ services:
       start_interval: 1s
     deploy:
       resources:
-        limits: { cpus: "1", memory: 320M }
+        limits: { cpus: "1", memory: "${POSTGRES_MEM:-320M}" }
     logging: *logging
 
   valkey:
@@ -309,7 +315,7 @@ services:
     networks: [app]
     environment:
       # --requirepass and valkey-cli (REDISCLI_AUTH) share the generated password
-      REDISCLI_AUTH: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      REDISCLI_AUTH: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh first}
     command: ["sh", "-c", "exec valkey-server --appendonly yes --requirepass \"$$REDISCLI_AUTH\""]
     volumes:
       - valkey-data:/data
@@ -324,7 +330,7 @@ services:
       start_interval: 1s
     deploy:
       resources:
-        limits: { cpus: "0.5", memory: 64M }
+        limits: { cpus: "0.5", memory: "${VALKEY_MEM:-64M}" }
     logging: *logging
 
   keycloak:
@@ -341,18 +347,18 @@ services:
     # postgres/initdb). Plain HTTP inside the ops network behind APISIX, which terminates
     # TLS; realms in keycloak/realms are imported on start when missing.
     environment:
-      KC_DB_PASSWORD: ${KC_DB_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:?run scripts/gen-dev-env.sh first}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?run scripts/gen-dev-env.sh first}
       # resolved by Keycloak in the realm files (${VAR} placeholders) on import
-      KC_PARTNER_SIM_SECRET: ${KC_PARTNER_SIM_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
-      KC_OPS_TEST_PASSWORD: ${KC_OPS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      KC_PARTNER_SIM_SECRET: ${KC_PARTNER_SIM_SECRET:?run scripts/gen-dev-env.sh first}
+      KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?run scripts/gen-dev-env.sh first}
+      KC_OPS_TEST_PASSWORD: ${KC_OPS_TEST_PASSWORD:?run scripts/gen-dev-env.sh first}
       # TOTP secret of the dev-only e2e operators ops-e2e-maker01 / ops-e2e-checker01 (ticket 37)
-      KC_OPS_TEST_TOTP_SECRET: ${KC_OPS_TEST_TOTP_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      KC_OPS_TEST_TOTP_SECRET: ${KC_OPS_TEST_TOTP_SECRET:?run scripts/gen-dev-env.sh first}
+      KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?run scripts/gen-dev-env.sh first}
       # realm services: internal API clients (/internal/v1/** of mw-orchestrator, mw-audit-dw)
-      KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?run scripts/gen-dev-env.sh first}
+      KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?run scripts/gen-dev-env.sh first}
       JAVA_OPTS_KC_HEAP: -Xms128m -Xmx384m
     volumes:
       - ./keycloak/realms:/opt/keycloak/data/import:ro
@@ -366,7 +372,7 @@ services:
       start_interval: 1s
     deploy:
       resources:
-        limits: { cpus: "2", memory: 608M }
+        limits: { cpus: "2", memory: "${KEYCLOAK_MEM:-608M}" }
     logging: *logging
 
   openbao:
@@ -394,7 +400,7 @@ services:
       start_interval: 1s
     deploy:
       resources:
-        limits: { cpus: "0.5", memory: 128M }
+        limits: { cpus: "0.5", memory: "${OPENBAO_MEM:-128M}" }
     logging: *logging
 
   etcd:
@@ -404,7 +410,7 @@ services:
     environment:
       # healthcheck user: no role, so it can read nothing; etcdctl counts "permission
       # denied" as healthy, and with auth on an anonymous health check is refused
-      ETCDCTL_USER: healthcheck:${ETCD_HEALTH_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      ETCDCTL_USER: healthcheck:${ETCD_HEALTH_PASSWORD:?run scripts/gen-dev-env.sh first}
     command:
       - /usr/local/bin/etcd
       - --name=etcd
@@ -427,7 +433,7 @@ services:
       start_interval: 1s
     deploy:
       resources:
-        limits: { cpus: "0.5", memory: 64M }
+        limits: { cpus: "0.5", memory: "${ETCD_MEM:-64M}" }
     logging: *logging
 
   etcd-init:
@@ -441,9 +447,9 @@ services:
     entrypoint: ["/bin/sh", "/deploy/etcd/init-auth.sh"]
     environment:
       ETCD_ENDPOINT: http://etcd:2379
-      ETCD_ROOT_PASSWORD: ${ETCD_ROOT_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
-      ETCD_APISIX_PASSWORD: ${ETCD_APISIX_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
-      ETCD_HEALTH_PASSWORD: ${ETCD_HEALTH_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      ETCD_ROOT_PASSWORD: ${ETCD_ROOT_PASSWORD:?run scripts/gen-dev-env.sh first}
+      ETCD_APISIX_PASSWORD: ${ETCD_APISIX_PASSWORD:?run scripts/gen-dev-env.sh first}
+      ETCD_HEALTH_PASSWORD: ${ETCD_HEALTH_PASSWORD:?run scripts/gen-dev-env.sh first}
     volumes:
       - ./etcd:/deploy/etcd:ro
     read_only: true
@@ -460,10 +466,10 @@ services:
     depends_on:
       etcd-init: { condition: service_completed_successfully }
     environment:
-      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?run scripts/gen-dev-env.sh (make up does)}
-      ETCD_APISIX_PASSWORD: ${ETCD_APISIX_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?run scripts/gen-dev-env.sh first}
+      ETCD_APISIX_PASSWORD: ${ETCD_APISIX_PASSWORD:?run scripts/gen-dev-env.sh first}
       # limit-count counters in Valkey (8.3); routes reference it as $env://VALKEY_PASSWORD
-      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh first}
       MW_OPS_SUBNET: ${MW_OPS_SUBNET:-172.31.250.0/24}
     ports:
       - target: 9443
@@ -481,7 +487,7 @@ services:
       start_interval: 1s
     deploy:
       resources:
-        limits: { cpus: "1", memory: 384M }
+        limits: { cpus: "1", memory: "${APISIX_MEM:-384M}" }
     logging: *logging
 
   apisix-init:
@@ -494,29 +500,29 @@ services:
     entrypoint: ["/bin/bash", "/deploy/apisix/apply.sh"]
     environment:
       APISIX_ADMIN: apisix:9180
-      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?run scripts/gen-dev-env.sh (make up does)}
-      # Test-only objects (deploy/apisix/routes-test, consumers-test): off unless `make api-test`
-      # re-runs this one-shot with MW_E2E_ROUTES=1; off also removes them.
+      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?run scripts/gen-dev-env.sh first}
+      # Test-only objects (deploy/apisix/routes-test, consumers-test): off unless scripts/api-test.sh
+      # (tests/api/run.sh) or scripts/tester.sh re-runs this one-shot with MW_E2E_ROUTES=1; off also removes them.
       MW_E2E_ROUTES: ${MW_E2E_ROUTES:-0}
       # Public host of the edge (route auth-ops-browser: the only Host it answers for, and the
       # X-Forwarded-Host Keycloak sees, never the client's); the edge certificate's name.
       MW_PUBLIC_HOST: ${MW_PUBLIC_HOST:-localhost}
-      MW_E2E_API_KEY: ${MW_E2E_API_KEY:?run scripts/gen-dev-env.sh (make up does)}
+      MW_E2E_API_KEY: ${MW_E2E_API_KEY:?run scripts/gen-dev-env.sh first}
       # hmac-auth secret of the test-only checkout merchant consumer merchant_demo (ticket 31).
-      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?run scripts/gen-dev-env.sh first}
       # MNO USSD gateways (consumers ussd_<mno>, routes ussd-http-<mno>): basic-auth passwords from
       # the generated .env (the simulator gets the same values via OpenBao), and each MNO's
       # source allow-list (comma-separated CIDRs, required: no fallback, so a missing list stops the
       # stack instead of opening the route). Dev values: written by gen-dev-env.sh; production lists
       # each MNO's gateway addresses.
-      USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      USSD_TELETALK_GATEWAY_SECRET: ${USSD_TELETALK_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      USSD_GP_ALLOWED_CIDRS: ${USSD_GP_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh (make up does)}
-      USSD_ROBI_ALLOWED_CIDRS: ${USSD_ROBI_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh (make up does)}
-      USSD_BL_ALLOWED_CIDRS: ${USSD_BL_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh (make up does)}
-      USSD_TELETALK_ALLOWED_CIDRS: ${USSD_TELETALK_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh (make up does)}
+      USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?run scripts/gen-dev-env.sh first}
+      USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?run scripts/gen-dev-env.sh first}
+      USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?run scripts/gen-dev-env.sh first}
+      USSD_TELETALK_GATEWAY_SECRET: ${USSD_TELETALK_GATEWAY_SECRET:?run scripts/gen-dev-env.sh first}
+      USSD_GP_ALLOWED_CIDRS: ${USSD_GP_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh first}
+      USSD_ROBI_ALLOWED_CIDRS: ${USSD_ROBI_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh first}
+      USSD_BL_ALLOWED_CIDRS: ${USSD_BL_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh first}
+      USSD_TELETALK_ALLOWED_CIDRS: ${USSD_TELETALK_ALLOWED_CIDRS:?run scripts/gen-dev-env.sh first}
     volumes:
       - ./apisix:/deploy/apisix:ro
       - apisix-tls:/usr/local/apisix/conf/cert
@@ -544,14 +550,14 @@ services:
       start_interval: 1s
     deploy:
       resources:
-        limits: { cpus: "0.5", memory: 160M }
+        limits: { cpus: "0.5", memory: "${GREENMAIL_MEM:-160M}" }
     logging: *logging
 
   # ------------------------------------------------------------ provisioning (minimal and core)
   # The dev stack's one provisioning one-shot (deploy/provision; ADR D16): for every service of
   # deploy/provision/services.sh, in order, its secret/<svc> in OpenBao, its database role(s) and
   # schema and the AppRole it logs in with, written to that service's own <dir>-approle volume.
-  # Idempotent on every `make up`; only this one-shot holds the OpenBao root token and the
+  # Idempotent on every `up`; only this one-shot holds the OpenBao root token and the
   # PostgreSQL admin password. Starts once both are healthy, so provision.sh never polls. Dev/MVP only.
   provision:
     profiles: *minimal
@@ -568,21 +574,21 @@ services:
       PGHOST: postgres
       PGUSER: ${POSTGRES_USER:-mw_admin}
       PGDATABASE: ${POSTGRES_DB:-mw}
-      PGPASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?run scripts/gen-dev-env.sh first}
       BAO_ADDR: ${VAULT_ADDR:-http://openbao:8200}
       INIT_FILE: /openbao/file/dev-init.json
       OUT_ROOT: /out
       # deploy/.env values synced into the services' secrets on every run (services.sh sync_env)
-      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
-      BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      USSD_TELETALK_GATEWAY_SECRET: ${USSD_TELETALK_GATEWAY_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?run scripts/gen-dev-env.sh first}
+      BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?run scripts/gen-dev-env.sh first}
+      C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?run scripts/gen-dev-env.sh first}
+      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?run scripts/gen-dev-env.sh first}
+      KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?run scripts/gen-dev-env.sh first}
+      KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?run scripts/gen-dev-env.sh first}
+      USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?run scripts/gen-dev-env.sh first}
+      USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?run scripts/gen-dev-env.sh first}
+      USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?run scripts/gen-dev-env.sh first}
+      USSD_TELETALK_GATEWAY_SECRET: ${USSD_TELETALK_GATEWAY_SECRET:?run scripts/gen-dev-env.sh first}
     volumes:
       - openbao-data:/openbao/file:ro
       # one volume per service, at /out/<dir> as listed in services.sh
@@ -622,7 +628,7 @@ services:
       MW_COREMOCK_SEED_API_ENABLED: "true"
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 416M }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
 
   # Partner, SMSC and USSD gateway simulators (OCS, bill aggregator, C2W bank, merchant IPN).
   mw-simulators:
@@ -642,7 +648,7 @@ services:
       SIM_TIMEOUTDELAY: ${MW_SIM_TIMEOUT_DELAY:-30s}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 384M }
+        limits: { cpus: "1.0", memory: "${SIM_MEM_LIMIT:-384M}" }
 
   # Transaction saga (spec 7).
   mw-orchestrator:
@@ -677,7 +683,7 @@ services:
       MW_ORCHESTRATOR_TEST_API_ENABLED: "true"
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 448M }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT_LARGE:-448M}" }
 
   # Append-only audit trail and its query API (spec 14).
   mw-audit-dw:
@@ -700,7 +706,7 @@ services:
       MW_AUDIT_DW_TEST_API_ENABLED: "true"
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 448M }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT_LARGE:-448M}" }
 
   # Customer app API (spec 9.1).
   mw-app-gateway:
@@ -710,6 +716,9 @@ services:
     build: { context: ../services/mw-app-gateway, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
+      # reached only through the edge: its routes are applied first (and the one-shot is started by
+      # a plain `up`, which `up --wait` needs: a one-shot nothing depends on counts as a failure)
+      apisix-init: { condition: service_completed_successfully }
     volumes:
       - app-gateway-approle:/run/mw/approle:ro
     environment:
@@ -728,7 +737,7 @@ services:
       MW_APP_DEVICE_OTP_MAX_SENDS: ${MW_APP_DEVICE_OTP_MAX_SENDS:-20}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 416M }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
 
   # SMS over SMPP and email over SMTP (spec 10).
   mw-notify:
@@ -756,7 +765,7 @@ services:
       MW_NOTIFY_FLYWAY_LOCATIONS: ${MW_NOTIFY_FLYWAY_LOCATIONS:-classpath:db/migration,classpath:db/dev}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 416M }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
 
   # USSD menus over HTTP and SMPP (spec 9.2); in minimal for the @p2p / @cash USSD scenarios.
   mw-ussd:
@@ -780,7 +789,7 @@ services:
       MW_USSD_SMPP_GP_PORT: ${MW_USSD_SMPP_GP_PORT:-2776}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 416M }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
 
   # Operator admin API (spec 15); in minimal for the @p2p operator and template scenarios.
   mw-admin-api:
@@ -803,7 +812,7 @@ services:
       MW_ADMIN_JWK_SET_URI: ${MW_ADMIN_JWK_SET_URI:-http://keycloak:8080/realms/ops/protocol/openid-connect/certs}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 416M }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
 
   # ------------------------------------------------------------ core: the rest of the stack
   # Mobile top-up adapter: OCS (spec 12); the dev profile seeds the partners on the simulator.
@@ -827,7 +836,7 @@ services:
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 416M }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
 
   # Bill payment adapter: utility bill aggregator (spec 12).
   mw-adapter-billpay:
@@ -853,7 +862,7 @@ services:
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 416M }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
 
   # Add money adapter: C2W bank (spec 12).
   mw-adapter-bank:
@@ -878,7 +887,7 @@ services:
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 416M }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
 
   # Organisation portal API and bulk disbursement (spec 8.2, 9.4).
   mw-portal-api:
@@ -901,7 +910,7 @@ services:
       MW_BULK_RATE_PER_SECOND: ${MW_BULK_RATE_PER_SECOND:-50}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 416M }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
 
   # Merchant checkout API and hosted payment page API (spec 9.3).
   mw-checkout:
@@ -929,7 +938,7 @@ services:
       MW_CHECKOUT_IPN_POLL_PERIOD: ${MW_CHECKOUT_IPN_POLL_PERIOD:-2s}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 416M }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
 
   # The admin console (Next.js, spec 15.1). Operation zone only (18.1): the `ops` network, where
   # APISIX (which routes /console/* here and /admin/v1/* to mw-admin-api) and Keycloak are. The
@@ -944,9 +953,12 @@ services:
     build: ../ui/mw-admin-ui
     networks: [ops]
     tmpfs: [/tmp, /app/.next/cache]
+    depends_on:
+      # served only through APISIX (route /console/*), so its routes are applied first
+      apisix-init: { condition: service_completed_successfully }
     environment:
       # encrypts the session cookie (JWE) that holds the operator's tokens; generated dev value
-      AUTH_SECRET: ${MW_ADMIN_UI_AUTH_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      AUTH_SECRET: ${MW_ADMIN_UI_AUTH_SECRET:?run scripts/gen-dev-env.sh first}
       # public origin of the edge (APISIX); a non-default MW_HTTPS_PORT needs e.g. https://localhost:18443
       AUTH_URL: ${MW_ADMIN_UI_PUBLIC_URL:-https://localhost}/console/api/auth
       AUTH_KEYCLOAK_ISSUER: ${MW_ADMIN_UI_PUBLIC_URL:-https://localhost}/realms/ops
@@ -962,14 +974,14 @@ services:
       retries: 3
     deploy:
       resources:
-        limits: { cpus: "0.5", memory: 160M }
+        limits: { cpus: "0.5", memory: "${ADMIN_UI_MEM:-160M}" }
 
   # The test console (ADR D17, dev/test only, profile `tester`, outside the core memory budget):
   # a Next.js app that plays the app, a USSD handset, the partners, the checkout merchant and the
   # org portal against this stack, for testing every feature by hand (docs/testing-guide.html). It
   # calls APISIX only, server-side, with the generated dev credentials below; APISIX serves it at
   # https://localhost/tester only while the test-only routes are on (MW_E2E_ROUTES=1, routes-test/
-  # test-console.json): `make tester` turns them on and starts it.
+  # test-console.json): scripts/tester.sh turns them on and starts it.
   mw-test-console:
     <<: *app
     profiles: [tester]
@@ -980,10 +992,10 @@ services:
     environment:
       EDGE_URL: http://apisix:9080
       PUBLIC_URL: ${MW_ADMIN_UI_PUBLIC_URL:-https://localhost}
-      MW_E2E_API_KEY: ${MW_E2E_API_KEY:?run scripts/gen-dev-env.sh (make up does)}
-      KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
-      KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
-      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?run scripts/gen-dev-env.sh (make up does)}
+      MW_E2E_API_KEY: ${MW_E2E_API_KEY:?run scripts/gen-dev-env.sh first}
+      KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?run scripts/gen-dev-env.sh first}
+      KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?run scripts/gen-dev-env.sh first}
+      CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?run scripts/gen-dev-env.sh first}
     depends_on:
       apisix: { condition: service_healthy }
     healthcheck:
@@ -998,10 +1010,10 @@ services:
         limits: { cpus: "0.5", memory: 192M }
 
   # ------------------------------------------------------------ seed (ticket 57)
-  # mw-seeder: one-shot API seeder (profile seed; `make seed` runs it with the core profile and fails
-  # unless it exits 0). Seeds through the services' APIs only (Keycloak admin REST, mw-core-mock's
+  # mw-seeder: one-shot API seeder (profile seed: `--profile core --profile seed up` runs it; it must
+  # exit 0). Seeds through the services' APIs only (Keycloak admin REST, mw-core-mock's
   # test-only wallet API, mw-admin-api maker-checker), idempotently; writes the manifest to the
-  # seed-manifest volume (make seed copies it to build/seed/manifest.json). The test passwords and
+  # seed-manifest volume (scripts/ui-e2e.sh and tests/api/run.sh copy it to build/seed/manifest.json). The test passwords and
   # TOTP secret are interpolated from deploy/.env: dev/test stack only, never a production pattern.
   mw-seeder:
     profiles: [seed]
@@ -1046,11 +1058,11 @@ services:
       MW_SEEDER_PARTNERS_0_ENABLED: "true"
       MW_SEEDER_PARTNERS_0_TIMEOUTMS: ${MW_SEED_OCS_TIMEOUT_MS:-20000}
       KC_BOOTSTRAP_ADMIN_USERNAME: kc-admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
-      KC_OPS_TEST_PASSWORD: ${KC_OPS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
-      KC_OPS_TEST_TOTP_SECRET: ${KC_OPS_TEST_TOTP_SECRET:?run scripts/gen-dev-env.sh (make up does)}
-      KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
-      KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?run scripts/gen-dev-env.sh (make up does)}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?run scripts/gen-dev-env.sh first}
+      KC_OPS_TEST_PASSWORD: ${KC_OPS_TEST_PASSWORD:?run scripts/gen-dev-env.sh first}
+      KC_OPS_TEST_TOTP_SECRET: ${KC_OPS_TEST_TOTP_SECRET:?run scripts/gen-dev-env.sh first}
+      KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?run scripts/gen-dev-env.sh first}
+      KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?run scripts/gen-dev-env.sh first}
     deploy:
       resources:
         limits: { cpus: "1.0", memory: 256M }

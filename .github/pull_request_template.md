@@ -15,10 +15,13 @@
 Commands run locally on this branch (paste the summary lines of each):
 
 ```
-$ make verify M=<module>
+$ ./gradlew :mw-<module>:build        # each module touched
 <paste summary>
 
-$ make api-test FOLDER=<folders>   # if the WP has API suite requests (tests/api)
+$ ./gradlew clean build                # the full gate: every module plus the repo checks
+<paste summary>
+
+$ scripts/api-test.sh "<folders>"      # if the WP has API suite requests (tests/api)
 <paste summary>
 ```
 
@@ -29,14 +32,14 @@ Acceptance tests from the WP and where they live:
 ## Author checklist
 
 - [ ] Tests written first; all acceptance tests from the WP pass
-- [ ] `make verify` passes for the module(s) touched
-- [ ] `make check-isolation` passes (no cross-module dependency, `includeBuild`, convention plugin or path outside the module except `contracts/`)
+- [ ] `./gradlew :mw-<module>:build` passes for the module(s) touched, and `./gradlew clean build` passes from the root
+- [ ] `./gradlew :checkIsolation` passes (no cross-module dependency, shared build logic, version catalog or path outside the module except `contracts/`)
 - [ ] No secrets, no `System.out`, no field injection, no blocking on Kafka threads (see `CLAUDE.md`)
 - [ ] Only contracts owned by this service changed
 
 Definition of done (spec 23.2):
 
-- [ ] Unit, route and integration tests green; coverage gate met (JaCoCo >= 80% lines on `service`, `mapper`, `client`; `make verify` enforces it)
+- [ ] Unit, route and integration tests green (one `test` task per module; the Testcontainers tests ran, with Docker up)
 - [ ] Contracts (OpenAPI/AsyncAPI/JSON Schema) updated
 - [ ] Masking verified for any new field (`@Sensitive` on every personal field, with a `MaskingPolicy` test)
 - [ ] Metrics, log events and alert rule (if new failure mode) added
@@ -44,7 +47,7 @@ Definition of done (spec 23.2):
 
 ## Reviewer checklist
 
-- [ ] Re-ran `make verify` on this branch and it passed
-- [ ] Re-ran the relevant `make api-test` folders (if any) and they passed
+- [ ] Re-ran `./gradlew clean build` on this branch, with Docker running, and it passed
+- [ ] Re-ran the relevant `scripts/api-test.sh` folders (if any) and they passed
 - [ ] Test report above matches the acceptance tests in the WP
 - [ ] Code follows the package layout, error model, masking and log-field rules in `CLAUDE.md`

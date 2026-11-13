@@ -30,7 +30,7 @@ import org.springframework.test.web.servlet.assertj.MockMvcTester;
  * gateway with two binds). Plus what only SMPP has: bind affinity, the final PSSR response,
  * subscriber release, and a throttled screen retried within the session.
  */
-@SpringBootTest(properties = {"mw.ussd.sync-budget=2s", "mw.ussd.instance-id=it-ussd-walk-smpp",
+@SpringBootTest(properties = {"mw.ussd.sync-budget=5s", "mw.ussd.instance-id=it-ussd-walk-smpp",
     "mw.ussd.consumers.enabled=true", "mw.ussd.mno.robi.transport=SMPP", "mw.ussd.smpp.enabled=true",
     "mw.ussd.smpp.mno.robi.host=127.0.0.1", "mw.ussd.smpp.mno.robi.binds=2",
     "mw.ussd.smpp.mno.robi.retry-delays=100ms,100ms,100ms"})

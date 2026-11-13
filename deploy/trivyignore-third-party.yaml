@@ -1,4 +1,4 @@
-# Accepted HIGH/CRITICAL findings in the pinned upstream platform images (make security,
+# Accepted HIGH/CRITICAL findings in the pinned upstream platform images (scripts/security.sh,
 # ticket 46). These images are pulled by digest (spec 20.1, test_platform_images_are_pinned_by_digest),
 # not rebuilt here, so a fix arrives with a new upstream digest. Every entry below has NO fixed
 # upstream image as of 2026-11-06 (latest tag rebuilt and re-scanned); each expires so that the

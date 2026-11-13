@@ -12,8 +12,8 @@ Operators need a web console for transaction search, saga timeline, maker-checke
 
 ## Consequences
 
-- A UI module, not a Gradle build: it lives under `ui/` and is tested with `pnpm test` and Playwright against the running, seeded stack (`make ui-e2e`, ticket 59), outside `make verify`.
-- `make security M=mw-admin-ui` scans its lockfile and image.
+- A UI module, not a Gradle build: it lives under `ui/` and is tested with `pnpm test` and Playwright against the running, seeded stack (`scripts/ui-e2e.sh`, originally `make ui-e2e`, ticket 59), outside the Gradle build.
+- `scripts/security.sh mw-admin-ui` (originally `make security M=mw-admin-ui`) scans its lockfile and image.
 - The console's login needs the default HTTPS port 443 (the public issuer is `https://localhost/realms/ops`).
 
 ## Where in the repo

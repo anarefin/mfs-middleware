@@ -23,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
  * never at the APISIX edge, M3 gate decision A6). It runs on the exact bytes the controller then
  * binds (copied from mw-app-gateway's BodySchema). Each schema is a {@code derived-schemas/*.json}
  * resource ({@link #CREATE_SESSION}, {@link #PAY_OTP}, {@link #PAY_CONFIRM}), derived from the
- * contract's request schema by {@code scripts/derived-schemas.sh} ({@code make contracts-lint}
+ * contract's request schema by {@code scripts/derived-schemas.sh} ({@code ./gradlew :contractsLint}
  * fails when one drifts); none has a pattern or format, so no message repeats a request value
  * (the URL, order id, wallet and OTP patterns stay on the DTOs' Bean Validation).
  *

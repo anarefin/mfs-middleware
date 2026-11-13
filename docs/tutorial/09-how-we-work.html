@@ -33,8 +33,8 @@
   <div class="toc"><strong>On this page</strong><ol>
     <li><a href="#contracts">Contracts first</a></li>
     <li><a href="#modules">Module rules</a></li>
-    <li><a href="#tests">The test tiers</a></li>
-    <li><a href="#make">The Makefile is the pipeline</a></li>
+    <li><a href="#tests">Tests</a></li>
+    <li><a href="#gate">The build is the pipeline</a></li>
     <li><a href="#done">Definition of done</a></li>
     <li><a href="#never">Never do this</a></li>
     <li><a href="#new">Adding a new service</a></li>
@@ -52,12 +52,16 @@
       (<code>ProducedContractsTest</code>, <code>ConsumedContractsTest</code>) check real messages against those schemas, so
       keep the file in step with the code in the same commit.</li>
   </ul>
-  <p><code>make contracts-lint</code> checks all of it, including that every event has both a producer and a consumer.</p>
+  <p><code>./gradlew :contractsLint</code> checks all of it, including that every event has both a producer and a consumer.</p>
 
   <h2 id="modules">Module rules</h2>
   <ul>
-    <li>A service never depends on another service's code, the template or the root build, and never references a path outside its
-      own folder (except <code>contracts/</code>, read by tests). <code>make check-isolation</code> enforces this.</li>
+    <li>A service never depends on another service's code, the template or the root build (the root
+      <code>settings.gradle.kts</code> only lists the service folders; there are no <code>allprojects</code>, no <code>buildSrc</code>, no
+      convention plugins). Each service writes its own dependency versions in its <code>build.gradle.kts</code>; Gradle plugin
+      versions must be the same in every module.</li>
+    <li>A service never and never references a path outside its
+      own folder (except <code>contracts/</code>, read by tests). <code>./gradlew :checkIsolation</code> enforces this, as part of every <code>./gradlew build</code>.</li>
     <li>Copied code (masking, errors, correlation, outbox, inbox) is meant to be copied. Do not "fix" it by creating a shared library.</li>
     <li>A service reads and writes only its own database schema.</li>
     <li>Package layout and dependency direction as in <a href="02-architecture.html#inside">chapter 2</a>: controllers only map and
@@ -65,38 +69,42 @@
     <li>Constructor injection only; never <code>@Autowired</code> on a field, in tests too (<code>scripts/check-field-injection.sh</code>).</li>
   </ul>
 
-  <h2 id="tests">The test tiers</h2>
-  <p>Every service has the same three Gradle test tasks:</p>
-  <div class="table-wrap"><table>
-    <tr><th>Command (inside <code>services/mw-&lt;name&gt;</code>)</th><th>Runs</th><th>Needs Docker</th></tr>
-    <tr><td><code>./gradlew test</code></td><td>Unit tests (service, mapper, util), <code>@WebMvcTest</code> controller slices, contract tests. No class ending in <code>IT</code>.</td><td>no</td></tr>
-    <tr><td><code>./gradlew integrationTest</code></td><td>The <code>*IT</code> classes: a real PostgreSQL and Kafka in Testcontainers, for example the repository tests.</td><td>yes</td></tr>
-    <tr><td><code>./gradlew conformance</code></td><td>The <code>@Conformance</code> suite: the same tests in every service proving its outbox, inbox and HTTP basics behave.</td><td>yes</td></tr>
-    <tr><td><code>./gradlew check</code></td><td>All three, plus a JaCoCo gate: 80% line coverage on <code>service</code>, <code>mapper</code> and <code>client</code>.</td><td>yes</td></tr>
-  </table></div>
-  <p>Above the modules, against the running stack: <code>make api-test</code> (Newman, black-box API scenarios in
-    <a href="../../tests/api/README.md">tests/api/</a>), <code>make ui-e2e</code> and <code>make tester-e2e</code> (Playwright for the two web
-    apps), <code>make edge-test</code> (gateway rules). <strong>Tests are written first</strong>: a failing test, then the code that makes it pass.</p>
+  <h2 id="tests">Tests</h2>
+  <p>Every service has one Gradle test task, run from the repo root: <code>./gradlew :mw-orchestrator:test</code>. It runs
+    everything in one JVM:</p>
+  <ul>
+    <li>unit tests (service, mapper, util), <code>@WebMvcTest</code> controller slices and the contract tests;</li>
+    <li>the <code>*IT</code> classes: a real PostgreSQL and Kafka in Testcontainers, for example the repository tests;</li>
+    <li>the <code>@Conformance</code> suite: the same tests in every service proving its outbox, inbox and HTTP basics behave.</li>
+  </ul>
+  <p>The test JVM starts one PostgreSQL and one Kafka container and gives each Spring test context a fresh database. Testcontainers
+    removes the containers when the JVM exits. Without Docker the <code>*IT</code> and conformance tests are skipped, not
+    failed. There is no coverage gate.</p>
+  <p>Above the modules, against the running stack: <code>scripts/api-test.sh</code> (Newman, black-box API scenarios in
+    <a href="../../tests/api/README.md">tests/api/</a>), <code>scripts/ui-e2e.sh</code> and <code>scripts/tester-e2e.sh</code> (Playwright for the two web
+    apps), <code>scripts/edge-test.sh</code> (gateway rules). <strong>Tests are written first</strong>: a failing test, then the code that makes it pass.</p>
 
-  <h2 id="make">The Makefile is the pipeline</h2>
-  <p>There is no CI server in the MVP. The Makefile is the pipeline, and every target works for all modules or one with <code>M=</code>:</p>
+  <h2 id="gate">The build is the pipeline</h2>
+  <p>There is no CI server and no Makefile in the MVP. The root Gradle build is the pipeline: one Gradle daemon builds every
+    module, with the build cache, so unchanged modules are restored instead of rebuilt.</p>
   <div class="table-wrap"><table>
-    <tr><th>Command</th><th>Use it when</th></tr>
-    <tr><td><code>make verify-changed</code></td><td>Before you open a pull request: the full gate for the modules you changed since <code>main</code>.</td></tr>
-    <tr><td><code>make verify M=mw-orchestrator</code></td><td>The full gate for one module: isolation, field-injection, contracts lint, <code>./gradlew check</code>.</td></tr>
-    <tr><td><code>make test-scripts</code></td><td>You changed the Makefile, a script or a doc that names commands or paths.</td></tr>
-    <tr><td><code>make contracts-lint</code></td><td>You changed a contract or a <code>contracts.yml</code>.</td></tr>
-    <tr><td><code>make security</code>, <code>make log-scan</code></td><td>Secret scan, dependency and image scan, and the "no PIN or unmasked number in any log" check.</td></tr>
+    <tr><th>Command (from the repo root)</th><th>Use it when</th></tr>
+    <tr><td><code>./gradlew clean build</code></td><td>Before you open a pull request: every module's tests and jar, plus the repo checks
+      (<code>:checkIsolation</code>, <code>:checkFieldInjection</code>, <code>:contractsLint</code>, <code>:composeCheck</code>, <code>:scriptTests</code>).</td></tr>
+    <tr><td><code>./gradlew :mw-orchestrator:build</code></td><td>One module: its tests and its jar.</td></tr>
+    <tr><td><code>./gradlew :scriptTests</code></td><td>You changed a script or a doc that names commands or paths.</td></tr>
+    <tr><td><code>./gradlew :contractsLint</code></td><td>You changed a contract or a <code>contracts.yml</code>.</td></tr>
+    <tr><td><code>scripts/security.sh</code>, <code>scripts/log-scan.sh</code></td><td>Secret scan, dependency and image scan, and the "no PIN or unmasked number in any log" check.</td></tr>
   </table></div>
-  <p>The README lists every target.</p>
+  <p>The README lists every script.</p>
 
   <h2 id="done">Definition of done</h2>
   <ul class="check">
-    <li>Tests written first; <code>./gradlew test integrationTest</code> green for every module you touched.</li>
-    <li><code>make test-scripts</code> / <code>make contracts-lint</code> green if you changed scripts or contracts.</li>
-    <li>The relevant <code>make api-test FOLDER=&lt;your folders&gt;</code> green on <code>make up TIMERS=fast</code> and <code>make seed</code>.</li>
+    <li>Tests written first; <code>./gradlew clean build</code> green (it covers every module you touched and the repo checks).</li>
+    <li>The relevant <code>scripts/api-test.sh "&lt;your folders&gt;"</code> green on a stack started with <code>test-timers.env</code> and the
+      <code>seed</code> profile.</li>
     <li>The service's <code>CLAUDE.md</code> and <code>contracts.yml</code> updated if what it owns or uses changed.</li>
-    <li>A new Makefile target, knob or decision is also added to the docs (README, runbook, ADR) in the same change: <code>scripts/test/test_repo_docs.sh</code> fails otherwise.</li>
+    <li>A new script, knob or decision is also added to the docs (README, runbook, ADR) in the same change: <code>scripts/test/test_repo_docs.sh</code> fails otherwise.</li>
     <li>The command output pasted into the pull request template.</li>
   </ul>
 
@@ -116,7 +124,8 @@
   </div>
 
   <h2 id="new">Adding a new service</h2>
-<pre><code>make new-service NAME=mw-example      <span class="c"># copies templates/mw-service-template and prints the compose block to add</span></code></pre>
+<pre><code>scripts/new-service.sh mw-x            <span class="c"># copies templates/mw-service-template and prints the compose block to add</span>
+./gradlew :mw-x:build                  <span class="c"># the root build picks the new folder up by itself</span></code></pre>
   <p>Then add the printed block to <code>deploy/docker-compose.yml</code>, give the service a <code>CLAUDE.md</code> (responsibilities, contracts owned and
     used), its contracts and its <code>contracts.yml</code>. Read the template's <a href="../../templates/mw-service-template/CLAUDE.md">CLAUDE.md</a> first.</p>
 

@@ -1,3 +1,2 @@
 *
-!build/libs/*.jar
-!build/reports/cyclonedx-direct/bom.json
+!build/libs/mw-adapter-telco.jar

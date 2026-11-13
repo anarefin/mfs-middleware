@@ -112,7 +112,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   `sim.partners`.
 - Adding a simulator: add its name to `sim.partners`, a controller under `/<partner>/...`, reuse
   the store, recorder, `SimMode`/`MagicAmounts` and callback service.
-- Dev provisioning (`provision_mw_simulators` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role
+- Dev provisioning (`provision_mw_simulators` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `simulators_rw` and schema `simulators` (the chassis still migrates one on start-up),
   `secret/mw-simulators` (DB password, never overwritten) and the AppRole `mw-simulators`
   (configtree volume at `/run/mw/approle`).
@@ -125,7 +125,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 
 - `api/mw-ussd/ussd-http.v1.openapi.yaml` (client, USSD gateway simulator; own types `dto/UssdScreen`).
 - Otherwise none. (Later tickets add the core stub: `core.*.command` in, `core.*.event` out, spec 22.2.)
-- `contracts.yml`: the machine-readable list (checked by `make contracts-lint`): no events produced
+- `contracts.yml`: the machine-readable list (checked by `./gradlew :contractsLint`): no events produced
   or consumed (the Kafka chassis is unused), so there is no `ProducedContractsTest` /
   `ConsumedContractsTest`; `contracts/ApiContractsTest` checks the steps `client/UssdGatewayClient`
   sends against `UssdStep` and that it reads a `UssdScreen` (local stand-in server, no Docker). The
@@ -135,9 +135,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
-  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
-  `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
+  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -158,14 +157,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 
 ## Commands
 
-| Command | What it does |
+| Command (from the repo root) | What it does |
 | --- | --- |
-| `./gradlew test` | unit, slice and contract tests (`contracts/`), no Docker |
-| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker needed) |
-| `./gradlew conformance` | the `@Conformance` suite (Docker needed) |
-| `./gradlew check` | `test` + `integrationTest` + `conformance`, JaCoCo gate (80% lines on `service`/`mapper`/`client`, over all three) |
-| `./gradlew check bootJar && docker build -t mw-simulators:dev .` | image, as spec 4.3 rule 1 |
-| `make verify M=mw-simulators` | isolation + field-injection check + contracts lint + `./gradlew check` |
-| `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when it or a contract in its `contracts.yml` changed) |
-| `make build M=mw-simulators` | `bootJar`, then this service's images (`mfs-mw/mw-simulators:local`, plus the shared `mfs-mw/provision:local`) |
-| `make up M=mw-simulators` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |
+| `./gradlew :mw-simulators:test` | every test in one JVM: unit, slice and contract tests (`contracts/`), the Testcontainers `*IT` classes and the `@Conformance` suite; one PostgreSQL and one Kafka per test JVM, a fresh database per Spring context; the `*IT` and conformance classes are skipped without Docker. One class: `--tests '<class>'` |
+| `./gradlew :mw-simulators:build` | `test`, then the boot jar `build/libs/mw-simulators.jar` (fixed name, the one the Dockerfile copies) |
+| `./gradlew :mw-simulators:bootJar && docker build -t mw-simulators:dev services/mw-simulators` | image, as spec 4.3 rule 1 |
+| `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
+| `./gradlew :mw-simulators:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-simulators` | rebuild this service's image (`mfs-mw/mw-simulators:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |

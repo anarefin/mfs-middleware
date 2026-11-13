@@ -1,6 +1,7 @@
 # tests/perf: Gatling 100 TPS mixed load (spec WP28, MVP acceptance criterion 7)
 
-Its own Gradle build (wrapper, `gradle/libs.versions.toml`, Gatling Gradle plugin, Java DSL); never
+Its own standalone Gradle build (wrapper, `gradle/libs.versions.toml`, Gatling Gradle plugin, Java
+DSL), never included in the root build (so `./gradlew clean build` at the root does not touch it); never
 depends on a service module and shares no code with `tests/api` (the few helpers it needs were
 copied from the former Cucumber suite). It runs on the host against a running MVP stack, through APISIX like the API suite.
 
@@ -11,14 +12,17 @@ other than intended business failures.
 ## Running it (the milestone gate)
 
 ```
-make reset && make build && make up   # fresh stack (balances, daily limits, Keycloak users)
-make perf                             # setup (~1-2 min), 60 s ramp, 5 min at 102 TPS, report
+./gradlew bootJar                     # from the repo root: the service jars
+deploy/reset.sh                       # fresh stack (balances, daily limits, Keycloak users)
+(cd deploy && docker compose --env-file .env --profile core --profile seed up -d --build)
+scripts/suite.sh perf                 # setup (~1-2 min), 60 s ramp, 5 min at 102 TPS, report
 ```
 
-`make perf` (`scripts/suite.sh perf`) re-applies the test-only gateway routes (apisix-init with
-`MW_E2E_ROUTES=1`, as `make api-test`), runs `./gradlew gatlingRun`, then always `./gradlew
-perfOverhead`, and fails when either failed. Extra settings: `MW_PERF_ARGS="-Dmw.perf.steady=10m"
-make perf`. `M=` is accepted but the mix always covers the whole stack.
+`scripts/suite.sh perf` re-applies the test-only gateway routes (apisix-init with
+`MW_E2E_ROUTES=1`, as `scripts/api-test.sh`), runs `./gradlew gatlingRun` in `tests/perf`, then always
+`./gradlew perfOverhead`, and fails when either failed. Extra settings:
+`MW_PERF_ARGS="-Dmw.perf.steady=10m" scripts/suite.sh perf`. A module name as the second argument is
+accepted but the mix always covers the whole stack.
 
 | Setting (`-D`) | Default | Meaning |
 | --- | --- | --- |

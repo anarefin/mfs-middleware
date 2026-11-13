@@ -13,7 +13,7 @@ Package root `mfs.mw.<service>`; conventional layered Spring Boot packages (`con
 ## Consequences
 
 - Tests mirror the main packages.
-- Constructor injection only (`make check-field-injection`).
+- Constructor injection only (`./gradlew :checkFieldInjection`, originally `make check-field-injection`).
 
 ## Where in the repo
 

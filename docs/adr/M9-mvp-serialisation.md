@@ -12,7 +12,7 @@ Kafka messages are JSON. Their JSON Schemas live in `contracts/events/<owner>/`,
 
 ## Consequences
 
-- `make contracts-lint` validates every schema and its valid/invalid samples.
+- `./gradlew :contractsLint` (originally `make contracts-lint`) validates every schema and its valid/invalid samples.
 - Producers and consumers test their messages against the schemas (`ProducedContractsTest`, `ConsumedContractsTest`).
 
 ## Where in the repo

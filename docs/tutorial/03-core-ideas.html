@@ -329,7 +329,7 @@
         <text x="450" y="134" text-anchor="middle" class="t-sm">A clear answer at any ask ends the wait: posted → COMPLETED, rejected or not found (after the deadline) → FAILED.</text>
       </svg>
     </div>
-    <figcaption>Figure 3.3: the inquiry schedule (<code>InquirySchedule</code>). With <code>make up TIMERS=fast</code> every
+    <figcaption>Figure 3.3: the inquiry schedule (<code>InquirySchedule</code>). With the stack started with <code>--env-file test-timers.env</code> every
       timer is much shorter, so you can watch this on your laptop.</figcaption>
   </figure>
   <ul>
@@ -420,7 +420,7 @@
     core's public key (RSA-OAEP with SHA-256). The middleware only ever carries the ciphertext to the core and cannot
     decrypt it. It is never logged and never stored. Card numbers never enter the middleware at all.</p>
   <div class="box wrong"><div class="tag">What can go wrong</div>
-    <p>Logging a whole request body "just to debug" can leak a phone number or a PIN ciphertext. <code>make log-scan</code>
+    <p>Logging a whole request body "just to debug" can leak a phone number or a PIN ciphertext. <code>scripts/log-scan.sh</code>
       scans every container log for exactly that and fails the security check. Log through SLF4J with fields, and let
       the masking do its job.</p></div>
 

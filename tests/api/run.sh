@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
-# Runs the Newman API suite (ticket 58) against the running stack (make up TIMERS=fast && make seed).
+# Runs the Newman API suite (ticket 58) against the running stack, started with the test timers
+# and the seed profile (from deploy/: docker compose --env-file .env --env-file test-timers.env
+# --profile core --profile seed up -d --wait).
 #
 #   tests/api/run.sh                         every folder except "90 Slow" and "99 Destructive"
 #   tests/api/run.sh --folder "01 P2P ..."   one folder by its full name or its number ("01");
 #                                            repeat --folder for several
 #   tests/api/run.sh --all                   every folder, the slow ones included
 #
-# Reads the dev credentials from deploy/.env (scripts/gen-dev-env.sh writes it), re-applies the
-# test-only APISIX routes once (apisix-init with MW_E2E_ROUTES=1, as `make api-test` always needs;
-# MW_API_SKIP_ROUTES=1 skips it), then runs a pinned Newman with npx (no --delay-request: Newman 6
+# Reads the dev credentials from deploy/.env (scripts/gen-dev-env.sh writes it), copies mw-seeder's
+# manifest out of its container to build/seed/manifest.json and re-applies the test-only APISIX
+# routes once (apisix-init with MW_E2E_ROUTES=1, as the suite always needs; MW_API_SKIP_ROUTES=1
+# skips both), then runs a pinned Newman with npx (no --delay-request: Newman 6
 # refuses 0, and its default is no delay). Needs Node/npx and access to
 # cdnjs.cloudflare.com (node-forge and elliptic, pinned by SHA-256 in the collection). The run
 # state goes to tests/api/.local.postman_environment.json (gitignored) with every secret blanked;
 # the JUnit report to tests/api/build/newman-report.xml. Knobs: MW_API_BASE_URL (default
 # https://localhost:${MW_HTTPS_PORT:-443}), NEWMAN_VERSION, MW_SEED_MANIFEST (default
-# build/seed/manifest.json, written by make seed), MW_API_RUN_LEDGER (default
+# build/seed/manifest.json, copied out of mw-seeder), MW_API_RUN_LEDGER (default
 # build/api-test/run-customers.tsv: which run customer each run played customer01 as, run_customer.mjs).
 set -euo pipefail
 
@@ -48,7 +51,7 @@ if grep -q '^?' <<<"$names"; then
 fi
 
 env_file="$root/deploy/.env"
-[ -f "$env_file" ] || { echo "run.sh: $env_file is missing: run make up first" >&2; exit 1; }
+[ -f "$env_file" ] || { echo "run.sh: $env_file is missing: run scripts/gen-dev-env.sh and start the stack first" >&2; exit 1; }
 env_value() { { grep -E "^$1=" "$env_file" || true; } | tail -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//'; }
 port="$(env_value MW_HTTPS_PORT)"
 base_url="${MW_API_BASE_URL:-https://localhost:${port:-${MW_HTTPS_PORT:-443}}}"
@@ -66,8 +69,9 @@ for s in "${secrets[@]}"; do
 done
 
 if [ "${MW_API_SKIP_ROUTES:-0}" != 1 ]; then
-  # shellcheck source=../../scripts/lib/modules.sh
-  . "$root/scripts/lib/modules.sh"
+  # shellcheck source=../../scripts/lib/common.sh
+  . "$root/scripts/lib/common.sh"
+  stack_seed_manifest
   stack_compose
   info "api-test: enabling the test-only gateway routes (apisix-init with MW_E2E_ROUTES=1)"
   set -a; . "$STACK_ENV"; set +a
@@ -79,10 +83,10 @@ fi
 [ -f "$state" ] || cp "$here/local.postman_environment.json" "$state"
 args=()
 while IFS= read -r f; do args+=(--folder "$f"); done <<<"$names"
-# The seeded baseline (make seed, ticket 57): partner ocs's time limit, which TIMERS=fast shortens;
+# The seeded baseline (mw-seeder, ticket 57): partner ocs's time limit, which TIMERS=fast shortens;
 # the scenarios size their partner timeouts from it.
 manifest="${MW_SEED_MANIFEST:-$root/build/seed/manifest.json}"
-[ -f "$manifest" ] || { echo "run.sh: no seed manifest at $manifest: run make seed first" >&2; exit 1; }
+[ -f "$manifest" ] || { echo "run.sh: no seed manifest at $manifest: start the stack with --profile seed (mw-seeder must exit 0) first" >&2; exit 1; }
 ocs_timeout="$(node -e 'const m = require(process.argv[1]); const p = (m.partners || []).find(x => x.partnerId === "ocs"); console.log(p ? p.timeoutMs : "")' "$manifest")"
 [ -n "$ocs_timeout" ] || { echo "run.sh: the seed manifest names no partner ocs" >&2; exit 1; }
 # The run customer (mw-seeder pool) this run plays customer01 as, so repeated runs on one day never

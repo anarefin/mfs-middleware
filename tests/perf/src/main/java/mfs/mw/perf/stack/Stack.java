@@ -73,7 +73,7 @@ public final class Stack {
     }
     if (v == null || v.isEmpty()) {
       throw new IllegalStateException(
-          name + " not found: run `make up` first (it generates deploy/.env)");
+          name + " not found: run scripts/gen-dev-env.sh and start the stack first");
     }
     return v;
   }
@@ -139,7 +139,7 @@ public final class Stack {
     String published = compose(null, "port", "apisix", "9443").strip().lines().findFirst().orElse("");
     int colon = published.lastIndexOf(':');
     if (colon < 0) {
-      throw new IllegalStateException("APISIX publishes no port: is the stack up (`make up`)?");
+      throw new IllegalStateException("APISIX publishes no port: is the stack up?");
     }
     return URI.create("https://localhost:" + published.substring(colon + 1) + "/");
   }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for the running stack (deploy/docker-compose.yml) (spec WP02). Run after `make up`.
+# Smoke test for the running stack (deploy/docker-compose.yml) (spec WP02). Run after `docker compose up` (deploy/RUNNING.html).
 # Usage: scripts/smoke.sh        (honours COMPOSE_PROJECT_NAME, default project "mfs-mw")
 #
 # Checks: every platform container healthy and the one-shots exited 0; only APISIX
@@ -9,7 +9,7 @@
 # TOTP is enrolled, and the ops browser flow requires OTP); an OpenBao KV read; the
 # APISIX /healthz route over HTTPS on the published port; no rate-limiter degradation logged.
 set -uo pipefail
-. "$(dirname "$0")/lib/modules.sh"
+. "$(dirname "$0")/lib/common.sh"
 
 [ -f "$STACK_FILE" ] || die "smoke: deploy/docker-compose.yml does not exist"
 command -v jq >/dev/null || die "smoke: jq is required"
@@ -43,7 +43,7 @@ check() { local name="$1"; shift; if out="$("$@" 2>&1)"; then ok "$name"; else k
 info "smoke: project $project"
 ps_all() { dc ps -a --format json | jq -s 'if .[0] | type == "array" then .[0] else . end'; }
 
-# `make up` (up -d) returns before health checks pass and the one-shots finish; wait
+# `docker compose up -d` returns before health checks pass and the one-shots finish; wait
 # (up to SMOKE_WAIT seconds) while any container is still starting.
 settling='[.[] | select(.State == "created" or (.State == "running" and (.Health == "starting" or .Health == ""))) | .Service]'
 waited=0
@@ -191,7 +191,7 @@ check "apisix https://localhost:$https_port/healthz -> 200" \
 # ---- rate-limiter degradation alert (ticket 50) ----
 # limit-count fails open when Valkey is down; deploy/apisix/lua/edge-limit-degraded.lua logs
 # every request it let through unlimited as "mw.edge.rate_limit_degraded" (deploy/apisix/README.md).
-# Last SMOKE_LIMITER_WINDOW (default 5m), so the brief outage make edge-test causes ages out.
+# Last SMOKE_LIMITER_WINDOW (default 5m), so the brief outage scripts/edge-test.sh causes ages out.
 limiter_not_degraded() {
   local lines
   lines="$(dc logs --no-log-prefix --since "${SMOKE_LIMITER_WINDOW:-5m}" apisix 2>&1 | grep 'mw.edge.rate_limit_degraded')"

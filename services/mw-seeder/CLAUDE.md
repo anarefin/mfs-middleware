@@ -15,8 +15,7 @@ this file says what is specific to this module.
   failure (`exception/RemoteCallException` with 503, 504 or no answer) runs the whole step again after a
   back-off (1 s doubling to 15 s) until the timeout; anything else, or the timeout, stops the run
   (`SeedFailedException`, later steps never run). `SeederApplication.run` returns the exit code: 0, or 1
-  on failure; `main` hands it to `System.exit`. The image's AOT training run
-  (`spring.context.exit=onRefresh`) stops before the runner and exits 0.
+  on failure; `main` hands it to `System.exit`.
 - Every step is idempotent (looks up before it creates) and reports `created / updated / unchanged`
   (`service/StepResult`); the log line `seed.step.completed` carries `outcome`. A second run on a seeded
   stack is `UNCHANGED` for every step and makes no create or change call (only GETs and token requests).
@@ -57,7 +56,7 @@ this file says what is specific to this module.
      PUBLISHED admin version is left alone; a version the seed maker left PENDING is approved.
   6. `write-manifest`: the manifest (below), replaced atomically only when its content changed.
 - Manifest (`dto/SeedManifest`, `schemaVersion` 1): written to `mw.seeder.manifest-path`
-  (`/run/mw/seed/manifest.json`, the `seed-manifest` volume); `make seed` copies it to
+  (`/run/mw/seed/manifest.json`, the `seed-manifest` volume); `scripts/api-test.sh` and `scripts/ui-e2e.sh` copy it to
   `build/seed/manifest.json` (host; read it from Newman and Playwright, or mount the volume read-only
   in a container). It is deterministic (no timestamps or run ids) and holds no secret:
   `{schemaVersion, personas[{persona, realm, username, roles, attributes, loginClient, passwordEnv,
@@ -74,7 +73,7 @@ this file says what is specific to this module.
   (`01812000001`), `seed-merchant01` (`01912000001`); wallets for those MSISDNs plus org `01312000001`,
   outside mw-core-mock's own seed ranges (`0171100xxxx`, ...). The API suite's run customers `seed-run-customer01..24` (persona
   `run-customer`, role customer, MSISDN `01714NN0001`: masks as `0171****001` like customer01) with
-  CUSTOMER wallets of 10,000,000 BDT: each `make api-test` plays customer01 as one of them
+  CUSTOMER wallets of 10,000,000 BDT: each `scripts/api-test.sh` run plays customer01 as one of them
   (`tests/api/run_customer.mjs`, at most 3 runs per UTC day each), so repeated runs never reach a
   wallet's daily debit limit (`tests/api/README.md`). The realm imports' own users
   (`ops-e2e-maker01`, `customer01`, `org-maker01`, ...) stay for the Newman suite (`tests/api`), which
@@ -126,12 +125,10 @@ this file says what is specific to this module.
 
 ## Commands
 
-| Command | What it does |
+| Command (from the repo root) | What it does |
 | --- | --- |
-| `./gradlew test` | unit and contract tests (runner, every step against fakes, `ConsumedContractsTest`), no Docker |
-| `./gradlew integrationTest` | `SeedRunnerIT`: the whole seeder against stateful WireMock stubs, run twice (second run: no create call, same manifest) and once against a platform that never gets ready (exit 1); no Docker |
-| `./gradlew check` | both plus the JaCoCo gate (80% lines on `service`/`client`) |
-| `./gradlew check bootJar && docker build -t mfs-mw/mw-seeder:local .` | image, as spec 4.3 rule 1 |
-| `make verify M=mw-seeder` | isolation + field-injection check + contracts lint + `./gradlew check` |
-| `make build M=mw-seeder` | `bootJar`, then the image (`deploy/docker-compose.yml`, profile `seed`) |
-| `make seed` | run it on the running stack (core profile), fail unless it exits 0, copy the manifest to `build/seed/manifest.json` |
+| `./gradlew :mw-seeder:test` | every test in one JVM, no Docker needed: unit and contract tests (runner, every step against fakes, `ConsumedContractsTest`) and `SeedRunnerIT`: the whole seeder against stateful WireMock stubs, run twice (second run: no create call, same manifest) and once against a platform that never gets ready (exit 1) |
+| `./gradlew :mw-seeder:build` | `test`, then the boot jar `build/libs/mw-seeder.jar` (fixed name, the one the Dockerfile copies) |
+| `./gradlew :mw-seeder:bootJar && docker build -t mfs-mw/mw-seeder:local services/mw-seeder` | image, as spec 4.3 rule 1 |
+| `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`) |
+| from `deploy/`: `docker compose --env-file .env --profile core --profile seed up -d --build` | build the image (profile `seed`) and run it on the stack; `docker compose --profile core --profile seed ps -a mw-seeder` must show `exited (0)`. `scripts/api-test.sh` and `scripts/ui-e2e.sh` copy its manifest to `build/seed/manifest.json` |

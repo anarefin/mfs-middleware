@@ -1,5 +1,5 @@
 # scripts/security.sh image stage: every module image (Dockerfile -> mw-x:$MW_IMAGE_TAG) and, without
-# M=, the provisioning one-shot's (deploy/provision/Dockerfile -> provision:$MW_IMAGE_TAG) is scanned;
+# a MODULE argument, the provisioning one-shot's (deploy/provision/Dockerfile -> provision:$MW_IMAGE_TAG) is scanned;
 # one that is not built fails the stage (NOT SCANNED), never "security passed". Docker, trivy and
 # gitleaks are stubbed.
 
@@ -7,6 +7,7 @@
 # knows only BUILT images.
 images_fixture() {
   new_module "$PWD" services/mw-x
+  root_gradlew
   mkdir -p deploy/provision .bin
   touch services/mw-x/Dockerfile deploy/provision/Dockerfile
   printf '%s\n' "$@" >.built
@@ -55,11 +56,11 @@ test_security_fails_when_the_provision_image_is_not_built() {
 test_security_with_M_scans_only_that_module_image() {
   images_fixture mfs-mw/mw-x:local
   assert_ok run_security mw-x
-  if grep -q 'mfs-mw/provision' .tool-calls; then fail "provision scanned with M="; fi
+  if grep -q 'mfs-mw/provision' .tool-calls; then fail "provision scanned with a MODULE argument"; fi
 }
 
 # The platform image built from the repo (ticket 55: deploy/keycloak/Dockerfile -> mfs-mw/keycloak:local)
-# is scanned like the upstream images, without M= only; one not built fails the stage.
+# is scanned like the upstream images, without a MODULE argument only; one not built fails the stage.
 test_security_scans_the_locally_built_keycloak_image() {
   images_fixture mfs-mw/mw-x:local mfs-mw/provision:local mfs-mw/keycloak:local
   mkdir -p deploy/keycloak && touch deploy/keycloak/Dockerfile
@@ -67,7 +68,7 @@ test_security_scans_the_locally_built_keycloak_image() {
   grep -q 'trivy image .* mfs-mw/keycloak:local$' .tool-calls || fail "keycloak image not scanned: $(cat .tool-calls)"
   : >.tool-calls
   assert_ok run_security mw-x
-  if grep -q 'mfs-mw/keycloak' .tool-calls; then fail "keycloak scanned with M="; fi
+  if grep -q 'mfs-mw/keycloak' .tool-calls; then fail "keycloak scanned with a MODULE argument"; fi
 }
 
 test_security_fails_when_the_keycloak_image_is_not_built() {

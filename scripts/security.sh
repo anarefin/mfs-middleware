@@ -5,11 +5,13 @@
 #   - secrets:  gitleaks over the tracked and untracked, not ignored files (gitignored build
 #               output, node_modules and the generated deploy/.env are left
 #               out), with the repo's .gitleaks.toml (default rules + fixture allow-list)
-#   - deps:     per Gradle module ./gradlew cyclonedxBom, then trivy sbom on the CycloneDX BOM;
+#   - deps:     per services/* module a CycloneDX SBOM (trivy rootfs on its boot jar, built with
+#               ./gradlew :mw-x:bootJar), then trivy sbom on it;
 #               per module also trivy fs (lockfiles: the admin UI's pnpm-lock.yaml)
 #   - images:   trivy image on mfs-mw/mw-x:$MW_IMAGE_TAG (module has a Dockerfile), default tag
-#               local, what `make build` builds; an image not built locally fails the stage
-#               (image-missing, NOT SCANNED); without M= also every third-party image
+#               local, what `docker compose build` builds (after ./gradlew build); an image not
+#               built locally fails the stage
+#               (image-missing, NOT SCANNED); without MODULE also every third-party image
 #               deploy/docker-compose.yml pins and the platform images built from the repo
 #               (mfs-mw/keycloak:local, deploy/keycloak/Dockerfile; mfs-mw/provision:local,
 #               deploy/provision/Dockerfile, the dev provisioning one-shot)
@@ -17,7 +19,7 @@
 #   OS packages without a fix (--ignore-unfixed, decision in docs/security-findings.md).
 #   Findings below high are written to build/security/*-below-high.json (report only); their
 #   decisions are in docs/security-findings.md.
-# Live stages (need the running stack, `make up` then `make api-test`):
+# Live stages (need the running stack, then scripts/api-test.sh):
 #   - zap:      ZAP baseline (passive) on the APISIX edge from inside the dmz network, gated by
 #               scripts/lib/zap-gate.py against deploy/zap/decisions.tsv (high fails, and so
 #               does any alert without a decision)
@@ -29,7 +31,7 @@
 # Scanners: gitleaks / trivy on PATH, else their pinned images through docker. Fails when
 # neither exists.
 set -eu
-. "$(dirname "$0")/lib/modules.sh"
+. "$(dirname "$0")/lib/common.sh"
 
 GITLEAKS_IMAGE="${MW_GITLEAKS_IMAGE:-ghcr.io/gitleaks/gitleaks:v8.28.0}"
 TRIVY_IMAGE="${MW_TRIVY_IMAGE:-aquasec/trivy:0.67.2}"
@@ -39,7 +41,7 @@ LIVE="${SECURITY_LIVE:-auto}"
 OUT="$MW_ROOT/build/security"
 
 m="${1:-}"
-# UI modules (ui/*, a package.json, no Gradle build) are scanned too; M= may name one.
+# UI modules (ui/*, a package.json, no Gradle build) are scanned too; MODULE may name one.
 ui_modules() {
   local d
   for d in "$MW_ROOT"/ui/*/; do
@@ -130,15 +132,19 @@ done
 # --- dependencies and images -------------------------------------------------------------
 for mod in $modules; do
   name="$(basename "$mod")"
-  if [ -x "$MW_ROOT/$mod/gradlew" ]; then
-    info "security: $mod SBOM (cyclonedxBom)"
-    if (cd "$MW_ROOT/$mod" && ./gradlew -q cyclonedxBom); then
-      bom="$MW_ROOT/$mod/build/reports/cyclonedx/application.cdx.json"
-      [ -f "$bom" ] && trivy_gate sbom "$bom" "$name"
+  case "$mod" in services/*)
+    # A subproject of the root build: trivy writes the SBOM of the boot jar (bootJar's fixed name
+    # build/libs/<module>.jar), then scans it. (The template is no subproject: fs scan only.)
+    info "security: $mod SBOM (trivy on the boot jar)"
+    bom="$OUT/$(slug "sbom-$name").cdx.json"
+    if (cd "$MW_ROOT" && ./gradlew -q ":$name:bootJar") && [ -f "$MW_ROOT/$mod/build/libs/$name.jar" ] \
+      && trivy_run rootfs --quiet --format cyclonedx --output "$bom" "$MW_ROOT/$mod/build/libs/$name.jar"; then
+      trivy_gate sbom "$bom" "$name"
     else
       failed="$failed sbom:$mod"
     fi
-  fi
+    ;;
+  esac
   trivy_gate fs "$MW_ROOT/$mod" "$name"
   # the module's image must be built locally: an unbuilt one fails, never skipped quietly
   img="mfs-mw/$name:$IMAGE_TAG"
@@ -147,7 +153,7 @@ for mod in $modules; do
       trivy_gate image "$img" "$img"
     else
       failed="$failed image-missing:$img"
-      printf '==> ERROR security: image %s not built: %s NOT SCANNED (build it first: make build, or MW_IMAGE_TAG=<tag>)\n' "$img" "$img" >&2
+      printf '==> ERROR security: image %s not built: %s NOT SCANNED (build it first: ./gradlew build, then docker compose build in deploy/, or MW_IMAGE_TAG=<tag>)\n' "$img" "$img" >&2
     fi
   fi
 done
@@ -159,7 +165,7 @@ if [ -z "$m" ] && [ -f "$MW_ROOT/deploy/provision/Dockerfile" ]; then
     trivy_gate image "$img" "$img"
   else
     failed="$failed image-missing:$img"
-    printf '==> ERROR security: image %s not built: %s NOT SCANNED (build it first: make build)\n' "$img" "$img" >&2
+    printf '==> ERROR security: image %s not built: %s NOT SCANNED (build it first: docker compose build in deploy/)\n' "$img" "$img" >&2
   fi
 fi
 # Platform images built from the repo (ticket 55): upstream content plus our build step, so the
@@ -172,7 +178,7 @@ if [ -z "$m" ] && [ -f "$MW_ROOT/deploy/keycloak/Dockerfile" ]; then
     trivy_gate image "$img" "$img"
   else
     failed="$failed image-missing:$img"
-    printf '==> ERROR security: image %s not built: %s NOT SCANNED (build it first: make build)\n' "$img" "$img" >&2
+    printf '==> ERROR security: image %s not built: %s NOT SCANNED (build it first: docker compose build in deploy/)\n' "$img" "$img" >&2
   fi
 fi
 if [ -z "$m" ] && [ -f "$STACK_FILE" ]; then
@@ -214,7 +220,7 @@ elif stack_up; then
   "$(dirname "$0")/log-scan.sh" || failed="$failed logs"
 elif [ "$LIVE" = 1 ]; then
   failed="$failed live:stack-down"
-  printf 'security: SECURITY_LIVE=1 but the MVP stack is not running (make up && make api-test first)\n' >&2
+  printf 'security: SECURITY_LIVE=1 but the MVP stack is not running (start the stack and run scripts/api-test.sh first)\n' >&2
 else
   printf '==> WARNING security: MVP stack not running: ZAP baseline and log scan SKIPPED (the gate runs them with SECURITY_LIVE=1)\n' >&2
 fi

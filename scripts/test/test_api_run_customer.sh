@@ -1,4 +1,4 @@
-# tests/api/run_customer.mjs: each make api-test pays from a seeded run customer (mw-seeder pool) that
+# tests/api/run_customer.mjs: each scripts/api-test.sh run pays from a seeded run customer (mw-seeder pool) that
 # has been used fewer than RUNS_PER_DAY times this UTC day, so repeated runs never reach core-mock's
 # daily debit limit of one wallet (15,000 BDT; one run spends about 4,000 BDT of it).
 
@@ -31,7 +31,7 @@ test_repeated_runs_on_one_day_spread_over_the_pool_and_never_exceed_three_per_cu
   done
   # a 4th run per customer would pass 12,000 BDT: refused, with the fix
   if OUT="$(node "$PICK" manifest.json ledger.tsv 2026-11-06 2>&1)"; then fail "a 10th run on 3 customers was allowed"; fi
-  assert_out_contains "make seed"
+  assert_out_contains "--profile seed"
 }
 
 test_a_new_utc_day_starts_the_count_again() {
@@ -89,7 +89,7 @@ test_run_sh_picks_a_run_customer_and_passes_it_to_newman() {
 test_a_manifest_without_run_customers_is_refused_with_the_fix() {
   printf '{"schemaVersion":1,"personas":[]}\n' >manifest.json
   if OUT="$(node "$PICK" manifest.json ledger.tsv 2026-11-06 2>&1)"; then fail "picked from an empty pool"; fi
-  assert_out_contains "make seed"
+  assert_out_contains "--profile seed"
 }
 
 test_every_run_customer_masks_like_customer01_and_lies_outside_the_core_mock_seed() {

@@ -18,7 +18,7 @@ export const core = {
     const g = globalThis as unknown as { __tcPinKey?: { keyId: string; publicKeyPem: string } };
     if (g.__tcPinKey) return g.__tcPinKey;
     const r = await edge("GET", "/test/core-mock/v1/pin-public-key", { apikey: true });
-    if (r.status !== 200) throw new EdgeError(`the core's PIN key is not available (HTTP ${r.status}): are the test routes on (make tester)?`);
+    if (r.status !== 200) throw new EdgeError(`the core's PIN key is not available (HTTP ${r.status}): are the test routes on (scripts/tester.sh)?`);
     return (g.__tcPinKey = r.body as { keyId: string; publicKeyPem: string });
   },
   async encrypt(pin: string): Promise<EncryptedPin> {

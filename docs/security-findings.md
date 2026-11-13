@@ -67,6 +67,12 @@ credentials (`deploy/.env`, gitignored) are out of scope by design. History is
 not rescanned (decision: the working tree is what ships; a history scan with the gitleaks binary
 is `gitleaks git` and can be added to the gate).
 
+The dev/test tester logins are fixed, documented fake values (ADR D9 amendment: `ops-test-pass`,
+`app-test-pass`, `portal-test-pass`, `kc-admin-test-pass`, the ops TOTP secret, `e2e-test-apikey`,
+OpenBao `dev-root-token`), written by `scripts/gen-dev-env.sh` and printed in `docs/testing-guide.html`.
+Decision: accepted, because they open only a local dev/test stack; they are low-entropy words that
+gitleaks' default rules do not flag (no allow-list entry needed). Every other dev credential stays random.
+
 ## Containers: non-root, read-only root FS
 
 Every long-running container built here (12 services, mw-admin-api, mw-admin-ui) runs as

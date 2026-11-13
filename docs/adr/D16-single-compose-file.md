@@ -2,6 +2,8 @@
 
 Status: Accepted, 2026-11-06 (ticket 56, plan "BitsPay-style deployment and testing", Phase A).
 Supersedes the per-module `compose.yml` rule of D12 and of spec 4.2 / 4.3.
+Amended 2026-11-13 (D18): no Makefile and no wrapper scripts; images are built by
+`docker compose … up -d --build` from the jars of `./gradlew clean build`.
 
 ## Context
 
@@ -9,7 +11,7 @@ Until ticket 56 the stack was assembled from many files: an environment project
 (deploy/compose/mvp/compose.yml) that `include`d a platform file (deploy/compose/platform/compose.yml)
 and one `compose.yml` per module, a low-resource override (compose.lowmem.yml) merged over it by
 every Makefile target, and a repo-root compose.yml generated from all of them by
-scripts/compose-flat.sh, whose staleness `make verify` checked. Every `make up` ran `bootJar` for
+a compose-flat.sh script, whose staleness `make verify` checked. Every `make up` ran `bootJar` for
 13 modules one after another and rebuilt every image (`up --build`); per-module files had to mark
 every cross-file dependency `required: false` so `make up M=` could start one module alone.
 Reading or changing a setting meant finding which of four layers set it last.
@@ -43,35 +45,48 @@ noticeably faster.
 - Profiles: none = the platform (always starts); `minimal` = the P2P and cash path (orchestrator,
   core mock, app gateway, simulators, notify, audit-dw, ussd, admin-api); `core` = every service
   and the admin UI; `seed` = the seeder one-shot (ticket 57).
-- Images are `mfs-mw/<svc>:local`, built only by `make build` (`bootJar` per module, `JOBS` at a
-  time, then `docker compose build`). `make up [PROFILE=] [TIMERS=fast] [M=]` is
-  `docker compose --profile … up -d --wait`: no Gradle, no `--build`.
+- Images are `mfs-mw/<svc>:local`. Originally they were built only by `make build` (`bootJar` per
+  module, `JOBS` at a time, then `docker compose build`), and `make up [PROFILE=] [TIMERS=fast] [M=]`
+  was `docker compose --profile … up -d --wait`: no Gradle, no `--build`. Since 2026-11-13 (D18)
+  there is no Makefile: `./gradlew clean build` writes one fixed-name jar per module
+  (`build/libs/mw-x.jar`), and from `deploy/` the documented command
+  `docker compose --env-file .env [--env-file test-timers.env] --profile core --profile seed up -d --build`
+  builds the images from those jars and starts the stack (`deploy/RUNNING.html`). Compose never
+  runs Gradle.
 - The low-resource limits, JVM build arg and sizes (ticket 55) are the file's only settings; the
   10 GB budget for long-running limits stays (`make compose-check`).
 - Test timers: `${VAR:-<production value>}` placeholders for the orchestrator's saga, inquiry and
   reversal timers, every service's retry-topic delays, the portal bulk rate and the checkout IPN
   schedule; `deploy/test-timers.env` holds short values, loaded by `TIMERS=fast`. No
   `application.yml` changes.
-- Generated dev credentials move to the gitignored `deploy/.env` (still `scripts/gen-dev-env.sh`);
+- Memory limits are knobs with the laptop values as defaults (`APP_MEM_LIMIT`, `KAFKA_MEM`, ...;
+  2026-11-13), listed in the file's header.
+- Generated dev credentials move to the gitignored `deploy/.env` (still `scripts/gen-dev-env.sh`; the
+  tester logins among them are fixed, documented values: ADR D9 amendment);
   Compose reads them only to interpolate the file, they are not passed into the containers.
 
 ## Consequences
 
-- A warm `make up` starts containers only; a code change needs `make build [M=]` first (or
-  the `e2e-changed` target of the former Cucumber suite, which built and recreated the changed modules).
-- A module is no longer runnable on its own from its folder with Compose; `make up M=mw-x` starts
-  it with its dependencies from the one file. `make new-service` prints the blocks to paste (the
+- Originally a warm `make up` started containers only and a code change needed `make build [M=]`
+  first (or the `e2e-changed` target of the former Cucumber suite). Since 2026-11-13 a code change is
+  `./gradlew :mw-x:bootJar`, then `docker compose … up -d --build mw-x` from `deploy/`.
+- A module is no longer runnable on its own from its folder with Compose; `docker compose up mw-x`
+  (originally `make up M=mw-x`) starts it with its dependencies from the one file.
+  `scripts/new-service.sh` (originally `make new-service`) prints the blocks to paste (the
   service, its approle volume, its `deploy/provision/services.sh` entry).
 - A new service edits a deploy/ file for its provisioning (`services.sh`), as it already does for
   its compose block; the module itself carries no init step.
 - Module isolation (D13, D14) is unchanged for code and builds: the stack file is deployment, not a
   build input.
 - Network and volume names change with the project name (`mfs-mw_*`); old `mw_*` dev volumes are
-  not reused (`make reset` starts fresh).
+  not reused (`deploy/reset.sh`, originally `make reset`, starts fresh).
+- The `provision` one-shot runs on every `up` and is idempotent, so a new service's schema appears
+  without wiping the volumes.
 
 ## Where in the repo
 
 - `deploy/docker-compose.yml`, `deploy/test-timers.env`, `deploy/provision/`
-- `scripts/up.sh`, `scripts/build.sh`, `scripts/seed.sh`, `scripts/down.sh`, `scripts/compose-check.sh`
+- `deploy/reset.sh`, `deploy/RUNNING.html`, `scripts/compose-check.sh` (originally also the up, build,
+  seed and down wrapper scripts, removed on 2026-11-13 with the Makefile: D18)
 - `scripts/check-isolation.sh`, `scripts/test/test_platform_compose.sh`, `scripts/test/test_provision.sh`
 - spec sections 4.2, 4.3 and 20.2

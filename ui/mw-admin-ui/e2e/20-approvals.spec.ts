@@ -18,7 +18,7 @@ test.describe("approvals", { tag: "@approvals" }, () => {
     const { TXN_P2P } = readState();
     need(!TXN_P2P, "no TXN_P2P from 10-console");
     // first logins of maker and checker (each may wait for an unused TOTP step, e.g. right after
-    // make seed used theirs) plus the orchestrator's reversal
+    // mw-seeder used theirs) plus the orchestrator's reversal
     test.setTimeout(180_000);
     const txnId = TXN_P2P!;
     const makerName = persona("maker").username;

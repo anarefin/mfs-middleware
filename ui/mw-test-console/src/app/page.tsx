@@ -20,9 +20,9 @@ async function check(label: string, fn: () => Promise<boolean>, fix: string) {
 
 export default async function Home() {
   const checks = await Promise.all([
-    check("APISIX edge answers /healthz", async () => (await edge("GET", "/healthz")).status === 200, "make up"),
-    check("test-only routes are on (core-mock PIN key)", async () => (await edge("GET", "/test/core-mock/v1/pin-public-key", { apikey: true })).status === 200, "make tester (re-applies the test routes)"),
-    check("simulators answer (SMPP binds of mw-ussd)", async () => (await edge("GET", "/test/sim/ussdgw/smpp/binds", { apikey: true })).status === 200, "make up; docker compose logs mw-simulators"),
+    check("APISIX edge answers /healthz", async () => (await edge("GET", "/healthz")).status === 200, "start the stack (deploy/RUNNING.html)"),
+    check("test-only routes are on (core-mock PIN key)", async () => (await edge("GET", "/test/core-mock/v1/pin-public-key", { apikey: true })).status === 200, "scripts/tester.sh (re-applies the test routes)"),
+    check("simulators answer (SMPP binds of mw-ussd)", async () => (await edge("GET", "/test/sim/ussdgw/smpp/binds", { apikey: true })).status === 200, "start the stack; docker compose logs mw-simulators"),
   ]);
   const wallets = await Promise.all(SEEDED_WALLETS.map(async (w) => ({ ...w, wallet: await core.wallet(w.msisdn).catch(() => null) })));
   return (

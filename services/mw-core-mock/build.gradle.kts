@@ -1,10 +1,11 @@
-// Standalone module build (spec 4.2, 4.3). The Boot, Spring Cloud and Camel BOMs are
-// Gradle platforms; every version comes from this module's gradle/libs.versions.toml.
+// mw-core-mock: a self-contained subproject of the root build (spec 4.2, 4.3, D13, D14). Nothing is
+// inherited from the root; every version is written here. The Boot, Spring Cloud, Camel, Resilience4j
+// and Testcontainers BOMs are Gradle platforms and carry most versions.
 plugins {
     java
-    jacoco
-    alias(libs.plugins.spring.boot)
-    alias(libs.plugins.cyclonedx)
+    // Plugin versions must be the same in every module: Gradle rejects one plugin requested with two
+    // versions by subprojects of the same build. Change them in all services/*/build.gradle.kts at once.
+    id("org.springframework.boot") version "4.1.2"
 }
 
 group = "mfs.mw"
@@ -20,139 +21,109 @@ java {
 repositories { mavenCentral() }
 
 dependencies {
-    implementation(platform(libs.spring.boot.bom))
+    implementation(platform("org.springframework.boot:spring-boot-dependencies:4.1.2"))
     // Security pass (ticket 46, docs/security-findings.md): patch releases of transitive libraries
     // with HIGH CVEs, above what the BOMs pin (Jackson 2 from Kafka/Camel, lz4 and snappy from
     // kafka-clients). Drop each once the Boot / Camel BOM ships it.
-    implementation(platform(libs.jackson2.bom))
+    implementation(platform("com.fasterxml.jackson:jackson-bom:2.22.3"))
     constraints {
-        implementation(libs.lz4.java)
-        implementation(libs.snappy.java)
+        implementation("at.yawk.lz4:lz4-java:1.11.4")
+        implementation("org.xerial.snappy:snappy-java:1.1.10.9")
     }
-    implementation(platform(libs.spring.cloud.bom))
-    implementation(platform(libs.camel.bom))
-    implementation(platform(libs.resilience4j.bom))
-    testImplementation(platform(libs.testcontainers.bom))
+    implementation(platform("org.springframework.cloud:spring-cloud-dependencies:2025.1.4"))
+    implementation(platform("org.apache.camel.springboot:camel-spring-boot-bom:4.22.2"))
+    implementation(platform("io.github.resilience4j:resilience4j-bom:2.4.0"))
+    testImplementation(platform("org.testcontainers:testcontainers-bom:2.0.5"))
 
-    implementation(libs.spring.boot.starter.webmvc)
-    implementation(libs.spring.boot.starter.actuator)
-    implementation(libs.spring.boot.starter.validation)
-    implementation(libs.spring.boot.micrometer.tracing.brave)
-    implementation(libs.micrometer.tracing.bridge.brave)
-    implementation(libs.micrometer.registry.prometheus)
-    implementation(libs.spring.cloud.starter.vault.config)
+    implementation("org.springframework.boot:spring-boot-starter-webmvc")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
+    implementation("org.springframework.boot:spring-boot-micrometer-tracing-brave")
+    implementation("io.micrometer:micrometer-tracing-bridge-brave")
+    implementation("io.micrometer:micrometer-registry-prometheus")
+    implementation("org.springframework.cloud:spring-cloud-starter-vault-config")
 
     // Kafka through Camel (spec 6.1, 19.2): idempotent producer, retry topics, DLQ.
-    implementation(libs.camel.spring.boot.starter)
-    implementation(libs.camel.kafka.starter)
+    implementation("org.apache.camel.springboot:camel-spring-boot-starter")
+    implementation("org.apache.camel.springboot:camel-kafka-starter")
     // Resilience4j for client/ calls (19.2); annotations need AspectJ.
-    implementation(libs.resilience4j.spring.boot4)
-    implementation(libs.spring.boot.starter.aspectj)
+    implementation("io.github.resilience4j:resilience4j-spring-boot4:2.4.0")
+    implementation("org.springframework.boot:spring-boot-starter-aspectj")
     // Own schema, migrated by Flyway on start-up (16.4).
-    implementation(libs.spring.boot.starter.jdbc)
+    implementation("org.springframework.boot:spring-boot-starter-jdbc")
     // bcrypt for the PIN hashes (spec M11); only the crypto module, no Spring Security web stack.
-    implementation(libs.spring.security.crypto)
-    implementation(libs.spring.boot.starter.flyway)
-    implementation(libs.flyway.database.postgresql)
-    runtimeOnly(libs.postgresql)
+    implementation("org.springframework.security:spring-security-crypto")
+    implementation("org.springframework.boot:spring-boot-starter-flyway")
+    implementation("org.flywaydb:flyway-database-postgresql")
+    runtimeOnly("org.postgresql:postgresql")
     // Scheduled jobs run on one instance only (ShedLock on this service's schema, 4.4).
-    implementation(libs.shedlock.spring)
-    implementation(libs.shedlock.provider.jdbc.template)
+    implementation("net.javacrumbs.shedlock:shedlock-spring:7.10.1")
+    implementation("net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.10.1")
 
-    testImplementation(libs.spring.boot.starter.test)
-    testImplementation(libs.spring.boot.starter.webmvc.test)
-    testImplementation(libs.testcontainers)
-    testImplementation(libs.testcontainers.junit.jupiter)
-    testImplementation(libs.testcontainers.postgresql)
-    testImplementation(libs.testcontainers.kafka)
-    testImplementation(libs.spring.boot.testcontainers)
-    testImplementation(libs.camel.test.spring.junit6)
-    testImplementation(libs.json.schema.validator)
-    testRuntimeOnly(libs.junit.platform.launcher)
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
+    testImplementation("org.testcontainers:testcontainers")
+    testImplementation("org.testcontainers:testcontainers-junit-jupiter")
+    testImplementation("org.testcontainers:testcontainers-postgresql")
+    testImplementation("org.testcontainers:testcontainers-kafka")
+    testImplementation("org.springframework.boot:spring-boot-testcontainers")
+    testImplementation("org.apache.camel:camel-test-spring-junit6")
+    testImplementation("com.networknt:json-schema-validator:3.0.8")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.addAll(listOf("-parameters", "-Xlint:all,-processing,-serial", "-Werror"))
 }
 
-// The test database prefix: the module name without mw-, hyphens as underscores (core_mock).
-val testDatabase = rootProject.name.removePrefix("mw-").replace('-', '_')
-tasks.withType<Test>().configureEach {
-    // Schema tests read the root contracts/ folder through mwContractsDir only (spec 4.3 rule 2).
-    val contracts = layout.projectDirectory.dir(providers.gradleProperty("mwContractsDir").get())
-    inputs.dir(contracts).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("mwContracts")
-    systemProperty("mwContractsDir", contracts.asFile.absolutePath)
-    // Reused Testcontainers (ticket 54): labelled with this module; each task its own database.
-    systemProperty("mw.module", rootProject.name)
-    systemProperty("mw.tc.database", "${testDatabase}_test")
+// Mockito runs as a -javaagent of the test JVM. Self-attaching at runtime (the default) fails where
+// the JVM attach mechanism is unavailable ("Could not self-attach to current VM"), and JDK 21+
+// deprecates dynamic agent loading (JEP 451). The version comes from the Boot BOM.
+val mockitoAgent = configurations.create("mockitoAgent")
+dependencies {
+    mockitoAgent(platform("org.springframework.boot:spring-boot-dependencies:4.1.2"))
+    mockitoAgent("org.mockito:mockito-core") { isTransitive = false }
 }
 
-// Test tiers (ticket 53). `test` needs no Docker: it leaves out the Testcontainers `*IT` classes
-// and the @Conformance suite. `integrationTest` runs the `*IT` classes (not @Conformance) and
-// `conformance` the @Conformance tests (spec 4.3 rule 5, 22.1, copied from the template into every
-// service). `check` (make verify, make verify-changed) runs all three.
-val integrationTestClasses = listOf("**/*IT.class", "**/*IT$*.class")
+// The contracts the tests read (spec 4.3 rule 2): the files this module's contracts.yml lists (a
+// `#<Msg>` suffix names a message type of the file and is dropped), each schema's per-message folder
+// (<name>/) and samples folder (samples/<name>/) beside it, contracts/common/ and OWNERS.yml. Only
+// these are test inputs, so a contract change re-runs the tests of the modules that use it and no
+// others. contracts.yml is read through a provider, so the configuration cache notices its edits.
+val contractsDir = layout.projectDirectory.dir(providers.gradleProperty("mwContractsDir").get())
+//
+// Configuration cache: lambdas stored with a task (the provider below, the Mockito agent provider)
+// must capture only locals, never a top-level val of this script (that serialises the script object).
+val listedContracts = providers.fileContents(layout.projectDirectory.file("contracts.yml")).asText.map { yml ->
+    // Read by a test although contracts.yml does not list it (dto/ConfigChangedEventSchemaTest).
+    val extraTestContracts = listOf("events/mw-admin-api/mw.config.changed.v1.schema.json")
+    val paths = yml.lines()
+        .filterNot { it.trimStart().startsWith("#") }
+        .flatMap { line -> Regex("""(?:events|api|common)/[A-Za-z0-9._/-]+""").findAll(line).map { it.value }.toList() }
+    (paths + extraTestContracts).distinct().flatMap { path ->
+        val dir = path.substringBeforeLast('/')
+        val name = path.substringAfterLast('/').removeSuffix(".schema.json")
+        listOf(path, "$dir/$name", "$dir/samples/$name")
+    } + listOf("common", "OWNERS.yml")
+}
+
 tasks.test {
-    useJUnitPlatform { excludeTags("conformance") }
-    exclude(integrationTestClasses)
-}
-
-val integrationTest by tasks.registering(Test::class) {
-    description = "Runs the Testcontainers integration tests (*IT classes, not @Conformance)."
-    group = LifecycleBasePlugin.VERIFICATION_GROUP
-    testClassesDirs = sourceSets.test.get().output.classesDirs
-    classpath = sourceSets.test.get().runtimeClasspath
-    useJUnitPlatform { excludeTags("conformance") }
-    include(integrationTestClasses)
-    systemProperty("mw.tc.database", "${testDatabase}_it")
-    shouldRunAfter(tasks.test)
-}
-
-val conformance by tasks.registering(Test::class) {
-    description = "Runs the conformance suite (@Conformance tests)."
-    group = LifecycleBasePlugin.VERIFICATION_GROUP
-    testClassesDirs = sourceSets.test.get().output.classesDirs
-    classpath = sourceSets.test.get().runtimeClasspath
-    useJUnitPlatform { includeTags("conformance") }
-    // Classes run one at a time; a test method may opt in to running beside its class-mates
-    // (@Execution(CONCURRENT) on the method: RetryTopicRouteIT, whose routes are independent).
+    useJUnitPlatform()
+    // Bounded heap: up to four module test JVMs run side by side (root gradle.properties).
+    maxHeapSize = "1g"
+    val agent: FileCollection = mockitoAgent
+    jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-javaagent:${agent.singleFile}") })
+    inputs.files(contractsDir.files(listedContracts))
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+        .withPropertyName("mwContracts")
+    systemProperty("mwContractsDir", contractsDir.asFile.absolutePath)
+    // One test task runs everything: unit, slice, contract, Testcontainers `*IT` and the @Conformance
+    // suite, in one JVM sharing one PostgreSQL and one Kafka (TestInfrastructure). Without Docker the
+    // `*IT` classes are skipped (DockerAvailableCondition). Classes run one at a time; a method may
+    // opt in to running beside its class-mates (@Execution(CONCURRENT): RetryTopicRouteIT).
     systemProperty("junit.jupiter.execution.parallel.enabled", "true")
-    systemProperty("mw.tc.database", "${testDatabase}_conf")
-    // Never beside integrationTest (the configuration cache runs tasks in parallel): the two JVMs
-    // share the reused containers, and each cleans the Kafka broker when it starts.
-    shouldRunAfter(tasks.test)
-    mustRunAfter(integrationTest)
 }
-tasks.check { dependsOn(integrationTest, conformance) }
 
-// Coverage gate (spec 22.1): >= 80% line coverage per package on service, mapper and client
-// (and their sub-packages), measured over the test, integrationTest and conformance runs. `check`
-// (make verify) fails below it. Other packages are reported but not gated.
-val basePackage = "mfs.mw.core.mock"
-val gatedPackages = listOf("service", "mapper", "client")
-jacoco { toolVersion = libs.versions.jacoco.get() }
-tasks.jacocoTestReport {
-    executionData(tasks.test.get(), integrationTest.get(), conformance.get())
-    dependsOn(tasks.test, integrationTest, conformance)
-    reports { xml.required = true; html.required = true }
-}
-tasks.jacocoTestCoverageVerification {
-    executionData(tasks.test.get(), integrationTest.get(), conformance.get())
-    dependsOn(tasks.test, integrationTest, conformance)
-    violationRules {
-        rule {
-            element = "PACKAGE"
-            includes = gatedPackages.flatMap { listOf("$basePackage.$it", "$basePackage.$it.*") }
-            limit {
-                counter = "LINE"
-                value = "COVEREDRATIO"
-                minimum = "0.80".toBigDecimal()
-            }
-        }
-    }
-}
-tasks.check { dependsOn(tasks.jacocoTestCoverageVerification, tasks.jacocoTestReport) }
-
-// SBOM on every build (spec 3, OWN-05), written to build/reports/cyclonedx-direct/ and
-// copied into the image by the Dockerfile.
-tasks.named("bootJar") { dependsOn(tasks.named("cyclonedxDirectBom")) }
+// Fixed jar name: the Dockerfile copies exactly this file, never a stale jar. No plain jar.
+tasks.bootJar { archiveFileName = "mw-core-mock.jar" }
+tasks.jar { enabled = false }

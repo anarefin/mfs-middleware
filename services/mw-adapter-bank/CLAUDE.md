@@ -56,7 +56,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.bank`. Follow
   and the `request`/`response` bodies as the framework masked them (`sensitive-fields`, scrub, 4 KB);
   raw bodies never, no `payloadRef`. Key txnId (else partnerId). A failing publisher is logged
   `partner.call.audit_failed` and never fails the call. Identical in telco, billpay and bank.
-- Dev provisioning (`provision_mw_adapter_bank` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role
+- Dev provisioning (`provision_mw_adapter_bank` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `adapter_bank_rw` and schema `bank_ref`, `secret/mw-adapter-bank` (DB password, never
   overwritten; `mw.partner-secrets.c2wbank.hmac-secret` synced from the generated
   `C2WBANK_HMAC_SECRET` on every run) and the AppRole `mw-adapter-bank` (configtree volume at
@@ -86,7 +86,7 @@ only test fixtures).
 
 The C2W bank is the seed instance `c2wbank`, a dev seed in `application-dev.yml` (profile `dev`, D23: set by its service in `deploy/docker-compose.yml`
 and the test config; the packaged `application.yml` seeds no partner, so a production start has none
-until a `partner/<id>` record arrives, and the image's AOT training run needs no http override) (`mw.partners`; wire format of
+until a `partner/<id>` record arrives) (`mw.partners`; wire format of
 the mw-simulators bank: `POST /c2wbank/v1/debits {transactionId, accountNumber, amount:"500.00"}`
 (202 PENDING `{status, code: "100", debitRef}`; 200 SUCCESS and 422 FAILED are understood too),
 `GET /c2wbank/v1/debits/{reference}` (200 the real outcome, 404 NOT_FOUND), callback `POST
@@ -110,7 +110,7 @@ MSISDN, a bank account (and any other type) last 4 only.
 
 ## Contracts used
 
-- Machine-readable list: `contracts.yml` (checked by `make contracts-lint`, tested by
+- Machine-readable list: `contracts.yml` (checked by `./gradlew :contractsLint`, tested by
   `contracts/ProducedContractsTest` / `ConsumedContractsTest`). No APIs served or called with a contract file (the partner callback endpoint and the bank wire format have none).
 - `events/mw-audit-dw/mw.audit.event.v1` out (`partner.call.completed`, `messaging/PartnerAuditPublisher`);
   own type `dto/AuditEvent`.
@@ -127,9 +127,8 @@ MSISDN, a bank account (and any other type) last 4 only.
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
-  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
-  `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
+  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -146,14 +145,10 @@ MSISDN, a bank account (and any other type) last 4 only.
 
 ## Commands
 
-| Command | What it does |
+| Command (from the repo root) | What it does |
 | --- | --- |
-| `./gradlew test` | unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`), no Docker |
-| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker needed) |
-| `./gradlew conformance` | the `@Conformance` suite (Docker needed) |
-| `./gradlew check` | all three + JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
-| `./gradlew check bootJar && docker build -t mw-adapter-bank:dev .` | image, as spec 4.3 rule 1 |
-| `make verify M=mw-adapter-bank` | isolation + field-injection check + contracts lint + `./gradlew check` |
-| `make verify-changed [BASE=main]` | the gate for the modules changed since BASE (this one when it, or a contract in its `contracts.yml`, changed) |
-| `make build M=mw-adapter-bank` | `bootJar`, then this service's images (`mfs-mw/mw-adapter-bank:local`, plus the shared `mfs-mw/provision:local`) |
-| `make up M=mw-adapter-bank` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |
+| `./gradlew :mw-adapter-bank:test` | every test in one JVM: unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`), the Testcontainers `*IT` classes and the `@Conformance` suite; one PostgreSQL and one Kafka per test JVM, a fresh database per Spring context; the `*IT` and conformance classes are skipped without Docker. One class: `--tests '<class>'` |
+| `./gradlew :mw-adapter-bank:build` | `test`, then the boot jar `build/libs/mw-adapter-bank.jar` (fixed name, the one the Dockerfile copies) |
+| `./gradlew :mw-adapter-bank:bootJar && docker build -t mw-adapter-bank:dev services/mw-adapter-bank` | image, as spec 4.3 rule 1 |
+| `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
+| `./gradlew :mw-adapter-bank:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-adapter-bank` | rebuild this service's image (`mfs-mw/mw-adapter-bank:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |

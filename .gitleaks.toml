@@ -1,4 +1,4 @@
-# Secret scan config for `make security` (scripts/security.sh, ticket 46): gitleaks' default
+# Secret scan config for scripts/security.sh (ticket 46): gitleaks' default
 # rules plus an allow-list of the obviously fake test fixtures they flag. Each entry is narrow
 # (the exact fixture shape), so a real secret next to it is still found. Decisions:
 # docs/security-findings.md.

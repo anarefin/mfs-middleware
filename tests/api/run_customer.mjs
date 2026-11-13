@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Picks the run customer of one `make api-test` (tests/api/run.sh) and records the pick:
+// Picks the run customer of one scripts/api-test.sh run (tests/api/run.sh) and records the pick:
 //
 //   node tests/api/run_customer.mjs MANIFEST LEDGER [YYYY-MM-DD]     prints "<username> <msisdn>"
 //
@@ -24,7 +24,7 @@ const day = dayArg || new Date().toISOString().slice(0, 10);
 const pool = (JSON.parse(readFileSync(manifestPath, 'utf8')).personas || [])
   .filter(p => p.persona === 'run-customer' && p.realm === 'customers' && p.attributes && p.attributes.msisdn);
 if (!pool.length) {
-  console.error(`run_customer: the seed manifest ${manifestPath} has no run customers: run make seed`);
+  console.error(`run_customer: the seed manifest ${manifestPath} has no run customers: start the stack with --profile seed (mw-seeder must exit 0)`);
   process.exit(1);
 }
 const used = new Map(pool.map(p => [p.username, 0]));
@@ -37,7 +37,7 @@ if (existsSync(ledgerPath)) {
 const pick = pool.reduce((best, p) => (used.get(p.username) < used.get(best.username) ? p : best), pool[0]);
 if (used.get(pick.username) >= RUNS_PER_DAY) {
   console.error(`run_customer: all ${pool.length} run customers already ran ${RUNS_PER_DAY} times on ${day} (UTC); ` +
-    'wait for the next UTC day, or start a fresh stack (make reset && make up TIMERS=fast && make seed) and delete ' + ledgerPath);
+    'wait for the next UTC day, or start a fresh stack (deploy/reset.sh, then up with test-timers.env and --profile seed) and delete ' + ledgerPath);
   process.exit(1);
 }
 mkdirSync(dirname(ledgerPath), { recursive: true });

@@ -72,7 +72,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.billpay`. Fol
   and the `request`/`response` bodies as the framework masked them (`sensitive-fields`, scrub, 4 KB);
   raw bodies never, no `payloadRef`. Key txnId (else partnerId: a bill fetch has no txnId and is audited under the biller's aggregator). A failing publisher is logged
   `partner.call.audit_failed` and never fails the call. Identical in telco, billpay and bank.
-- Dev provisioning (`provision_mw_adapter_billpay` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role
+- Dev provisioning (`provision_mw_adapter_billpay` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `adapter_billpay_rw` and schema `billpay_ref`, `secret/mw-adapter-billpay` (DB password, never
   overwritten) and the AppRole `mw-adapter-billpay` (configtree volume at `/run/mw/approle`).
 
@@ -121,7 +121,7 @@ three are identical). A fix to the framework must be applied to all three copies
 
 The aggregator is the seed instance `billagg`, a dev seed in `application-dev.yml` (profile `dev`, D23: set by its service in `deploy/docker-compose.yml`
 and the test config; the packaged `application.yml` seeds no partner, so a production start has none
-until a `partner/<id>` record arrives, and the image's AOT training run needs no http override) (`mw.partners`; wire format of
+until a `partner/<id>` record arrives) (`mw.partners`; wire format of
 the mw-simulators aggregator: `POST /billagg/v1/payments {transactionId, billerCode, billNumber,
 amount:"667.00"}` (200 SUCCESS, 422 FAILED, or 202 PENDING with the outcome by callback),
 `GET /billagg/v1/payments/{reference}`, `POST /billagg/v1/bills/fetch {billerCode, billNumber}`,
@@ -155,7 +155,7 @@ adapter-minted txnId) are still dropped and belong to the REMIT_IN / NPSB ticket
 
 ## Contracts used
 
-- Machine-readable list: `contracts.yml` (checked by `make contracts-lint`, tested by
+- Machine-readable list: `contracts.yml` (checked by `./gradlew :contractsLint`, tested by
   `contracts/ProducedContractsTest` / `ConsumedContractsTest`). `ApiContractsTest` validates the `billpay.v1` responses (catalogue, bill, error envelope) built by `service/BillFetchService`.
 - `events/mw-audit-dw/mw.audit.event.v1` out (`partner.call.completed`, `messaging/PartnerAuditPublisher`);
   own type `dto/AuditEvent`.
@@ -172,9 +172,8 @@ adapter-minted txnId) are still dropped and belong to the REMIT_IN / NPSB ticket
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
-  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
-  `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
+  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -193,14 +192,10 @@ adapter-minted txnId) are still dropped and belong to the REMIT_IN / NPSB ticket
 
 ## Commands
 
-| Command | What it does |
+| Command (from the repo root) | What it does |
 | --- | --- |
-| `./gradlew test` | unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`, `ApiContractsTest`), no Docker |
-| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker needed) |
-| `./gradlew conformance` | the `@Conformance` suite (Docker needed) |
-| `./gradlew check` | all three + JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
-| `./gradlew check bootJar && docker build -t mw-adapter-billpay:dev .` | image, as spec 4.3 rule 1 |
-| `make verify M=mw-adapter-billpay` | isolation + field-injection check + contracts lint + `./gradlew check` |
-| `make verify-changed [BASE=main]` | the gate for the modules changed since BASE (this one when it, or a contract in its `contracts.yml`, changed) |
-| `make build M=mw-adapter-billpay` | `bootJar`, then this service's images (`mfs-mw/mw-adapter-billpay:local`, plus the shared `mfs-mw/provision:local`) |
-| `make up M=mw-adapter-billpay` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |
+| `./gradlew :mw-adapter-billpay:test` | every test in one JVM: unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`, `ApiContractsTest`), the Testcontainers `*IT` classes and the `@Conformance` suite; one PostgreSQL and one Kafka per test JVM, a fresh database per Spring context; the `*IT` and conformance classes are skipped without Docker. One class: `--tests '<class>'` |
+| `./gradlew :mw-adapter-billpay:build` | `test`, then the boot jar `build/libs/mw-adapter-billpay.jar` (fixed name, the one the Dockerfile copies) |
+| `./gradlew :mw-adapter-billpay:bootJar && docker build -t mw-adapter-billpay:dev services/mw-adapter-billpay` | image, as spec 4.3 rule 1 |
+| `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
+| `./gradlew :mw-adapter-billpay:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-adapter-billpay` | rebuild this service's image (`mfs-mw/mw-adapter-billpay:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |

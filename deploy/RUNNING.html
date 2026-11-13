@@ -87,7 +87,7 @@
       <li><strong>4 CPU cores</strong> or more. Each container is capped at 1 CPU (Keycloak at 2), so the stack
         never takes the whole laptop.</li>
       <li><strong>JDK 25</strong> on the host, to build the jars. You don't need to install Gradle: the repo ships <code>./gradlew</code>.</li>
-      <li><strong>Node.js 22+</strong> with <code>npx</code>, for the API suite in step 10. <code>bash</code>, <code>make</code>, <code>curl</code>, <code>jq</code>.</li>
+      <li><strong>Node.js 22+</strong> with <code>npx</code>, for the API suite in step 10. <code>bash</code>, <code>curl</code>, <code>jq</code>.</li>
       <li>Host port <code>443</code> must be free. It is the only published port: APISIX, the edge.
         Every other container is reachable only inside the Compose networks.</li>
     </ul>
@@ -100,19 +100,25 @@ lsof -i :443    <span class="c"># must print nothing</span></pre></div>
   <section id="s2">
     <h2><span class="num">2</span>Build the service jars</h2>
     <p>The images don't compile code. Each <code>services/&lt;module&gt;/Dockerfile</code> copies
-      <code>build/libs/*.jar</code>, so build the jars first. Run this from the <strong>repository root</strong>:</p>
+      <code>build/libs/&lt;module&gt;.jar</code> (a fixed name, so a stale jar is never picked up), so build the jars first.
+      Run this from the <strong>repository root</strong>:</p>
     <div class="cmd"><pre>./gradlew clean build</pre></div>
-    <p>This cleans every module, runs its fast test tier (unit, slice and contract tests) and builds its jar.
-      It needs no Docker: the Testcontainers suites (<code>integrationTest</code>, <code>conformance</code>) are
-      left to <code>./gradlew checkAll</code> or <code>make verify</code>. About 1 minute with a warm Gradle cache; the first
-      run downloads Gradle and the dependencies.</p>
+    <p>The full gate of the one Gradle build: every module's compile, all its tests and its jar, plus the repo checks
+      (isolation, field injection, contracts lint, compose memory budget, script tests). With Docker running the
+      Testcontainers tests run too (each module's test JVM starts its own PostgreSQL and Kafka, removed when it ends);
+      without Docker they are skipped. A cold run takes about 7 minutes on a 12-core laptop; up to 4 modules build at once.
+      The build cache restores unchanged modules, so a second run with nothing changed takes seconds. For the jars alone,
+      <code>./gradlew bootJar</code> takes well under a minute. The first run downloads Gradle and the dependencies.</p>
   </section>
 
   <section id="s3">
     <h2><span class="num">3</span>Create the environment file</h2>
     <p><code>deploy/.env</code> holds every dev credential: database, Valkey, Keycloak admin and test-user passwords,
-      client secrets, simulator HMAC secrets and the console session key. It is generated with random values,
-      never committed, and every <code>docker compose</code> command below reads it.</p>
+      client secrets, simulator HMAC secrets and the console session key. It is never committed, and every
+      <code>docker compose</code> command below reads it. The logins a tester types are fixed, documented values
+      (ops <code>ops-test-pass</code>, app <code>app-test-pass</code>, portal <code>portal-test-pass</code>, Keycloak admin
+      <code>kc-admin-test-pass</code>, apikey <code>e2e-test-apikey</code>: <a href="../docs/testing-guide.html#s1">testing guide, section 1</a>);
+      every other value is random.</p>
     <div class="cmd"><pre>cd deploy
 ../scripts/gen-dev-env.sh</pre></div>
     <p>Run every <code>docker compose</code> command below from inside <code>deploy/</code>. Running the script again keeps
@@ -139,8 +145,11 @@ lsof -i :443    <span class="c"># must print nothing</span></pre></div>
         maker-checker, like an operator would. It is idempotent, so running the same command again is safe.</li>
       <li><code>--env-file test-timers.env</code> loads the <strong>short test timers</strong> (status inquiry, reversal, retry topics,
         IPN, bulk), which the API suite in step 10 needs. Leave it out for the production timers.</li>
-      <li>The images build without the AOT start-up cache on this laptop stack. <code>MW_AOT=1 docker compose … up -d --build</code>
-        trains it, as the production images do (longer build, each JVM starts a little faster).</li>
+      <li>The <code>provision</code> one-shot runs on every <code>up</code> and creates missing database roles, schemas and
+        OpenBao secrets, so a new service's schema appears without wiping the volumes.</li>
+      <li>Memory limits are knobs (<code>APP_MEM_LIMIT</code>, <code>APP_MEM_LIMIT_LARGE</code>, <code>APP_XMX</code>,
+        <code>KAFKA_MEM</code>, ...; the table is the header of <code>docker-compose.yml</code>): set one in the shell or in
+        <code>.env</code> to give a container more room.</li>
     </ul>
     <p>On a warm Docker cache the whole command, seeding included, takes about <strong>1–2 minutes</strong> (<a href="#s13">step 13</a>).
       The first run pulls the platform images and builds 16 images (14 services, the one <code>provision</code> image and the console), so it takes a few minutes more.</p>
@@ -225,7 +234,7 @@ docker compose logs -f mw-orchestrator</pre></div>
 
   <section id="s9">
     <h2><span class="num">9</span>Rebuild one service after a code change</h2>
-    <div class="cmd"><pre>(cd .. && ./gradlew :mw-notify:clean :mw-notify:test :mw-notify:bootJar)
+    <div class="cmd"><pre>(cd .. && ./gradlew :mw-notify:build)   <span class="c"># its tests and jar; :mw-notify:bootJar for the jar only</span>
 docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-notify
 docker compose restart apisix   <span class="c"># APISIX still points at the old container's IP</span></pre></div>
   </section>
@@ -233,13 +242,13 @@ docker compose restart apisix   <span class="c"># APISIX still points at the old
   <section id="s10">
     <h2><span class="num">10</span>Test it</h2>
     <p>These run from the <strong>repository root</strong> (<code>cd ..</code>) against the stack you started in step 4.</p>
-    <div class="cmd"><pre>make seed TIMERS=fast            <span class="c"># idempotent re-run that copies the seed manifest to build/seed/manifest.json for the suites</span>
-make smoke                       <span class="c"># containers, topics, Kafka, PostgreSQL, Valkey, Keycloak tokens, OpenBao, APISIX</span>
-make edge-test                   <span class="c"># APISIX policies: 401/400/413/429 envelopes, header stripping, correlation ID</span>
-make api-test FOLDER="00, 01"    <span class="c"># Newman API suite: health and seed baseline, P2P</span>
-make api-test                    <span class="c"># every folder but 90 Slow (about 10 minutes)</span></pre></div>
-    <div class="note"><code>TIMERS=fast</code> keeps the seeder's short OCS time limit, matching the timers the stack runs with. A plain
-      <code>make seed</code> would seed the 20 s production limit.</div>
+    <div class="cmd"><pre>scripts/smoke.sh                  <span class="c"># containers, topics, Kafka, PostgreSQL, Valkey, Keycloak tokens, OpenBao, APISIX</span>
+scripts/edge-test.sh              <span class="c"># APISIX policies: 401/400/413/429 envelopes, header stripping, correlation ID</span>
+scripts/api-test.sh "00, 01"      <span class="c"># Newman API suite: health and seed baseline, P2P</span>
+scripts/api-test.sh               <span class="c"># every folder but 90 Slow (about 10 minutes)</span></pre></div>
+    <div class="note">The suites copy the seed manifest out of <code>mw-seeder</code> to <code>build/seed/manifest.json</code> and
+      re-apply the test-only gateway routes themselves. The timer scenarios need the stack started with
+      <code>--env-file test-timers.env</code> (step 4), which also seeds the short OCS time limit.</div>
     <h3>API suite folders (<code>tests/api/src</code>)</h3>
     <div class="table-wrap"><table>
       <tr><th>Folder</th><th>Feature</th></tr>
@@ -252,27 +261,27 @@ make api-test                    <span class="c"># every folder but 90 Slow (abo
       <tr><td><code>13</code>–<code>17</code></td><td>admin: maker-checker, console search, partner config, wallet unlock, menus and templates</td></tr>
       <tr><td><code>18</code>–<code>20</code></td><td>USSD over HTTP and SMPP</td></tr>
       <tr><td><code>21</code>–<code>23</code></td><td>org bulk disbursement, SP query</td></tr>
-      <tr><td><code>90</code></td><td>10,000-row bulk payout (<code>ALL=1</code>): heavy, not a laptop demo target</td></tr>
+      <tr><td><code>90</code></td><td>10,000-row bulk payout (<code>scripts/api-test.sh "" 1</code>): heavy, not a laptop demo target</td></tr>
     </table></div>
     <h3>Admin console</h3>
-    <div class="cmd"><pre>make ui-e2e                      <span class="c"># Playwright: real Keycloak logins as the seeded personas (pnpm, Chromium on first use)</span>
+    <div class="cmd"><pre>scripts/ui-e2e.sh                 <span class="c"># Playwright: real Keycloak logins as the seeded personas (pnpm, Chromium on first use)</span>
 (cd ui/mw-admin-ui && pnpm install && pnpm test)   <span class="c"># unit and component tests, no stack</span></pre></div>
-    <p>By hand: after <code>make api-test FOLDER=01</code>, search MSISDN <code>01711000001</code> in the console, open a COMPLETED P2P,
+    <p>By hand: after <code>scripts/api-test.sh 01</code>, search MSISDN <code>01711000001</code> in the console, open a COMPLETED P2P,
       request a reversal as <code>ops-maker01</code>, and approve it as <code>ops-checker01</code> in a private window. The demo script
       for every feature is in <code>docs/demo.md</code>.</p>
     <h3>Test console (every feature by hand, dev/test only)</h3>
-    <div class="cmd"><pre>make tester                      <span class="c"># test-only routes on, start mw-test-console: https://localhost/tester</span>
-make tester-e2e                  <span class="c"># its Playwright suite against the running, seeded stack</span>
-<span class="c"># without make, from deploy/: the test routes, then the console (profile tester)</span>
+    <div class="cmd"><pre>scripts/tester.sh                 <span class="c"># test-only routes on, start mw-test-console: https://localhost/tester</span>
+scripts/tester-e2e.sh             <span class="c"># its Playwright suite against the running, seeded stack</span>
+<span class="c"># without the script, from deploy/: the test routes, then the console (profile tester)</span>
 MW_E2E_ROUTES=1 docker compose --env-file .env --profile core up -d --no-deps --force-recreate apisix-init
 docker compose --env-file .env --profile core --profile tester up -d --no-deps --wait mw-test-console</pre></div>
     <p>The test console plays the mobile app, a USSD handset (robi over HTTP, gp over SMPP), the partner simulators and
       core faults, the checkout shop and buyer, and the org portal; each action shows every API call, the balances before
       and after and the SMS. The step-by-step walkthrough of every feature is <code>docs/testing-guide.html</code>.</p>
     <h3>Logs and code</h3>
-    <div class="cmd"><pre>make log-scan                    <span class="c"># no PIN or unmasked MSISDN / NID in any container log</span>
-make verify-changed BASE=main    <span class="c"># module gate with Testcontainers: run it with the stack stopped (Docker memory)</span></pre></div>
-    <div class="warn">No load tests on a laptop: <code>make perf</code> and <code>make chaos</code> need a bigger host and a fresh stack.</div>
+    <div class="cmd"><pre>scripts/log-scan.sh               <span class="c"># no PIN or unmasked MSISDN / NID in any container log</span>
+(cd .. && ./gradlew clean build)  <span class="c"># the build gate: best with the stack stopped (Docker memory for the test containers)</span></pre></div>
+    <div class="warn">No load tests on a laptop: <code>scripts/suite.sh perf</code> and <code>scripts/chaos.sh</code> need a bigger host and a fresh stack.</div>
   </section>
 
   <section id="s11">
@@ -285,13 +294,13 @@ docker compose --profile core --profile seed down
 ./reset.sh
 docker compose --env-file .env --env-file test-timers.env --profile core --profile seed up -d --build</pre></div>
     <div class="warn"><strong>Never reset a single store.</strong> PostgreSQL, Kafka, Valkey, OpenBao, Keycloak and the core-mock
-      ledger describe the same state, so they are always reset together with <code>./reset.sh</code> (the same as <code>make reset</code>).</div>
+      ledger describe the same state, so they are always reset together with <code>./reset.sh</code> (every profile, every volume).</div>
   </section>
 
   <section id="s12">
     <h2><span class="num">12</span>Troubleshooting</h2>
     <ul>
-      <li><strong><code>COPY build/libs/*.jar</code> fails</strong>: you skipped step 2. Run <code>./gradlew clean build</code> from the repo root.</li>
+      <li><strong><code>COPY build/libs/&lt;module&gt;.jar</code> fails</strong>: you skipped step 2. Run <code>./gradlew clean build</code> from the repo root.</li>
       <li><strong><code>required variable … is missing a value: run scripts/gen-dev-env.sh</code></strong>: you skipped step 3.</li>
       <li><strong>"port is already allocated" on 443</strong>: another process holds it (<code>lsof -i :443</code>). Stop it, or start with
         <code>MW_HTTPS_PORT=8443</code> in front of the command (the APIs work, the console login needs 443).</li>
@@ -303,8 +312,8 @@ docker compose --env-file .env --env-file test-timers.env --profile core --profi
       <li><strong>The seeder exits non-zero</strong>: <code>docker compose --profile core --profile seed logs mw-seeder</code>; the line <code>seed.step.failed</code> names the step.
         <code>open change request of &lt;operator&gt;</code> means someone left a pending request on a partner, menu or template: approve or
         reject it in the console, then run step 4 again.</li>
-      <li><strong>404 on <code>/test/...</code> routes</strong>: expected after a start; <code>make api-test</code> adds the test-only routes.</li>
-      <li><strong><code>make smoke</code> reports a partition mismatch</strong> after upgrading from a stack started with 3 partitions per topic:
+      <li><strong>404 on <code>/test/...</code> routes</strong>: expected after a start; <code>scripts/api-test.sh</code> and <code>scripts/tester.sh</code> add the test-only routes.</li>
+      <li><strong><code>scripts/smoke.sh</code> reports a partition mismatch</strong> after upgrading from a stack started with 3 partitions per topic:
         run <code>./reset.sh</code> once (Kafka cannot shrink existing topics).</li>
     </ul>
     <p>Recovery and operations in depth: <code>docs/runbook.md</code>.</p>
@@ -315,13 +324,15 @@ docker compose --env-file .env --env-file test-timers.env --profile core --profi
     <p>Measured on 2026-11-06 on a 12-core, 24 GB Apple Silicon (arm64) laptop, warm Docker and Gradle caches.</p>
     <div class="table-wrap"><table>
       <tr><th>Step</th><th>Before the laptop changes</th><th>Now</th></tr>
-      <tr><td><code>./gradlew clean build</code> (14 modules, fast tests + jars)</td><td>n/a (jars only, per module)</td><td>46 s</td></tr>
+      <tr><td><code>./gradlew clean build</code> (14 modules; then the fast test tier + jars, no Testcontainers)</td><td>n/a (jars only, per module)</td><td>46 s</td></tr>
+      <tr><td><code>./gradlew clean build</code> today (one build: every test, Testcontainers included, jars, repo checks), cold</td><td></td><td>about 7 min (2026-11-13)</td></tr>
+      <tr><td>The same, run again with nothing changed (build cache)</td><td></td><td>1–4 s</td></tr>
       <tr><td>Image build, no cache (29 images)</td><td>101 s (AOT training + <code>apt-get upgrade</code> per image)</td><td>61 s</td></tr>
       <tr><td>Image build, cached</td><td></td><td>8 s</td></tr>
-      <tr><td>Step 4 start until <code>mw-seeder</code> exited 0 (fresh volumes)</td><td>72 s (<code>make up</code> 64 s + <code>make seed</code> 8 s)</td><td>76 s (one command, cached <code>--build</code> included)</td></tr>
+      <tr><td>Step 4 start until <code>mw-seeder</code> exited 0 (fresh volumes)</td><td>72 s (the old <code>up</code> script 64 s + seed script 8 s)</td><td>76 s (one command, cached <code>--build</code> included)</td></tr>
       <tr><td>Memory limits, long-running containers</td><td>9.6 GB (Docker 10 GB+)</td><td>7.9 GB (Docker 8 GB)</td></tr>
       <tr><td>Measured memory in use (start + seed + API folders 00, 01, 05)</td><td>5.9 GB</td><td>6.0 GB</td></tr>
-      <tr><td><code>make api-test FOLDER="00, 01, 05"</code></td><td></td><td>127 s, 269 requests, 0 failed</td></tr>
+      <tr><td><code>scripts/api-test.sh "00, 01, 05"</code></td><td></td><td>127 s, 269 requests, 0 failed</td></tr>
     </table></div>
   </section>
 </main>

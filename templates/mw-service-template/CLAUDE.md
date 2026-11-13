@@ -1,15 +1,17 @@
 # mw-service-template
 
 The reference service every `services/mw-*` module is copied from (spec 4.2, WP03). It is
-never a dependency and is not in the root composite build. Follow the root `CLAUDE.md`.
+never a dependency and is not a module of the root build (the root `settings.gradle.kts` includes
+`services/*` only). Follow the root `CLAUDE.md`.
 
 ## Scaffolding
 
-`make new-service NAME=mw-x` runs `scaffold.sh mw-x services/mw-x`: copies this folder
+`scripts/new-service.sh mw-x` runs `scaffold.sh mw-x services/mw-x`: copies this folder
 without build output, `scaffold.sh` or this file; renames package `mfs.mw.service.template`
 to `mfs.mw.<x with hyphens as dots>`, `ServiceTemplateApplication` to `<X>Application`, and
 every `mw-service-template` / `MW_SERVICE_TEMPLATE` / `service_template` name; writes a service `CLAUDE.md`; and
-fails if any template name survives. So keep every template name in one of those forms,
+fails if any template name survives. The root build picks `services/mw-x` up by itself
+(`./gradlew :mw-x:build`); the copy has no wrapper, settings or `gradle.properties` of its own. So keep every template name in one of those forms,
 and keep `scripts/test/test_service_template.sh` green.
 
 ## What the chassis has (HTTP part, WP03)
@@ -23,7 +25,7 @@ and keep `scripts/test/test_service_template.sh` green.
 | JSON logs with the 21.1 fields, masking before output; only system ids are written unmasked, on their shape alone (`CorrelationIdFilter` is the gate for caller correlation and trace ids): `txnId` and `correlationId` when a lower-case RFC 9562 UUID (version 1-8, variant 8-b), `traceId`/`spanId` when 32/16 lower-case hex (generated, or a caller traceparent the filter let through); anything else, `partnerId` always, is `MaskingPolicy.scrub`bed like free text; free text keeps digit-only bounds, so a number glued to letters is still masked | `logging/JsonLogFormatter` | 21.1 |
 | Config binding, OpenBao/Vault via Spring Cloud Vault (AppRole, `VAULT_ENABLED`) | `config/MwServiceProperties`, `application.yml` | 18.4, 20.4 |
 | Liveness/readiness, `/actuator/prometheus`, Brave tracing (W3C), virtual threads | `application.yml` | 20.1, 21.2, 21.3 |
-| Image: layered jar, JDK 25 AOT cache (trained and run with the same `JVM_OPTS` build arg = `JAVA_TOOL_OPTIONS`; the dev stack sets Serial GC there and only sizes in `JDK_JAVA_OPTIONS`, ticket 55), non-root uid 10001, readiness `HEALTHCHECK`, SBOM at `/app/sbom/bom.json` | `Dockerfile` | 20.1 |
+| Image: copies the fixed jar `build/libs/mw-service-template.jar` (never a stale one), extracts its layers, no AOT cache and no SBOM in the image (`scripts/security.sh` builds its own); `JVM_OPTS` build arg = `JAVA_TOOL_OPTIONS` (the dev stack sets Serial GC there and only sizes in `JDK_JAVA_OPTIONS`, ticket 55), non-root uid 10001, readiness `HEALTHCHECK` | `Dockerfile` | 20.1 |
 | Compose: no `compose.yml` in the module (ADR D16); `scaffold.sh` prints the service block for `deploy/docker-compose.yml`, which merges `x-app` (read-only FS, tmpfs `/tmp`, `unless-stopped`, readiness healthcheck, zone networks `app`, `data`) and sets the limits | `scaffold.sh` | 20.2 |
 
 ## Kafka, Camel, resilience, Flyway (WP05 part)
@@ -40,14 +42,13 @@ and keep `scripts/test/test_service_template.sh` green.
 
 Tests that start the context import `TestInfrastructure` (PostgreSQL 18 + Kafka
 Testcontainers, JVM-wide singletons, not Spring beans: a closed context must not stop them).
-They are reusable (ticket 54): with `TESTCONTAINERS_REUSE_ENABLE=true` (`make verify`,
-`make verify-changed`) one PostgreSQL and one Kafka, labelled `mw.module=<module>` and
-`mw.root=<checkout>`, serve both the `integrationTest` and the `conformance` JVM (`conformance`
-`mustRunAfter` `integrationTest`). Each JVM gets its own database from the `mw.tc.database` system
-property the Gradle task sets (`<svc>_it`, `<svc>_conf`; dropped and created at start) and deletes
-every topic and consumer group left on the broker, so no test sees an earlier JVM's data;
-`TestInfrastructureIT` checks it. `gradle.properties` turns on the configuration cache, parallel
-tasks and `-Xmx1g -XX:+UseParallelGC` for the daemon.
+One PostgreSQL and one Kafka per test JVM (the module's one `test` task, ADR D19), never reused
+(no `withReuse`, no labels) and removed by Ryuk when the JVM exits. Every Spring context gets an
+empty database of its own (`CREATE DATABASE ctx_<n>`); Kafka is shared, so tests keep apart by
+their own topics, keys and consumer groups. `TestInfrastructureIT` checks it. Classes that need
+Docker are `*IT`, skipped without Docker by `DockerAvailableCondition`. The root
+`gradle.properties` (no module has its own) turns on the configuration cache, the build cache,
+parallel modules and `-Xmx2g -XX:+UseParallelGC` for the daemon; the test JVM has `maxHeapSize = "1g"`.
 Tests that talk to Kafka directly use `TestInfrastructure.kafkaBootstrapServers()`, and assert
 "nothing was published" with `KafkaTestConsumer.readToEnd` rather than a timed wait. Topic, retry-topic and DLQ declarations and their producer
 ACLs belong to the platform (`deploy/kafka/`), not this module.
@@ -69,23 +70,21 @@ test contexts would relay each other's rows; a test that needs it on sets
 
 ## Commands
 
-| Command | What it does |
+| Command (from the repo root, once copied to `services/mw-x`) | What it does |
 | --- | --- |
-| `./gradlew test` | unit, slice and contract tests; no Docker (`*IT` classes and `@Conformance` are left out) |
-| `./gradlew integrationTest` | the Testcontainers `*IT` classes (not `@Conformance`); Docker |
-| `./gradlew conformance` | the conformance suite alone (`RetryTopicRouteIT` runs its independent routes side by side, under 10 s) |
-| `./gradlew check` | `test`, `integrationTest`, `conformance` and the JaCoCo gate over all three (>= 80% lines per `service`/`mapper`/`client` package, 22.1; report in `build/reports/jacoco`) |
-| `make test-scripts` | includes `test_template_copy_checks_and_builds_its_image_alone`: a copy plus `contracts/` runs `./gradlew check bootJar && docker build .` (skipped when Docker is down) |
-| `./gradlew check bootJar && docker build -t mfs-mw/mw-service-template:local .` | spec 4.3 rule 1 |
-| `make verify M=mw-service-template` | isolation + field-injection check + contracts lint + `./gradlew check` (Testcontainers reuse on, containers removed afterwards unless `KEEP_TC=1`) |
-| `make verify-changed [BASE=main]` | the same gate for the modules changed since `BASE` only |
+| `./gradlew :mw-x:test` | every test in one JVM: unit, slice and contract tests, the Testcontainers `*IT` classes and the conformance suite (`RetryTopicRouteIT` runs its independent routes side by side, under 10 s); one PostgreSQL and one Kafka per test JVM (`TestInfrastructure`), a fresh database per Spring context; the `*IT` classes are skipped without Docker (`DockerAvailableCondition`). No coverage gate (ADR D19) |
+| `./gradlew :mw-x:build` | `test`, then the boot jar `build/libs/mw-x.jar` (fixed name, the one the Dockerfile copies) |
+| `./gradlew :mw-x:bootJar && docker build -t mfs-mw/mw-x:local services/mw-x` | spec 4.3 rule 1 |
+| `./gradlew :scriptTests` | includes `scripts/test/test_service_template.sh`: `scripts/new-service.sh` makes a clean copy, and the root settings pick it up as a module |
+| `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`) |
 
 ## Contracts
 
 `contracts.yml` lists the contracts the module produces and consumes (paths relative to
 `contracts/`, `#<Msg>` for one message type of a multi-type topic); the template's lists are empty.
-`make contracts-lint` checks the entries and `make verify-changed` maps a contract change to the
-modules listing it. A service that produces or consumes events adds `contracts/ProducedContractsTest`
+`./gradlew :contractsLint` checks the entries. The listed contract files are inputs of the module's
+`test` task, so a contract change re-runs the tests of the modules listing it and, through the build
+cache, no others. A service that produces or consumes events adds `contracts/ProducedContractsTest`
 (each `produces.events` entry built by the real mapper and serialised as the publisher does,
 validated against its schema; an entry without a fixture fails) and `ConsumedContractsTest` (every
 valid sample of each `consumes.events` entry reads into its own DTO), plain JUnit on
@@ -94,7 +93,7 @@ valid sample of each `consumes.events` entry reads into its own DTO), plain JUni
 ## Security pass
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
-  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
-  `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage. `make security M=<this module>` scans the SBOM and the
+  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
+  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the Dockerfile adds no OS packages to the
+  pinned JRE base image. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).

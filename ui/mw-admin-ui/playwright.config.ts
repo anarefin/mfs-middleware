@@ -4,8 +4,8 @@ import { BASE_URL } from "./e2e/support/env";
 
 /**
  * Browser tests of the console against the running, seeded stack (ticket 59): the mw-admin-ui
- * container behind APISIX, real Keycloak realm ops, the real mw-admin-api. `make up && make seed`,
- * then `make ui-e2e` (exports the deploy/.env credentials and the seed manifest path). Specs share
+ * container behind APISIX, real Keycloak realm ops, the real mw-admin-api. the stack started with the seed profile (deploy/RUNNING.html),
+ * then `scripts/ui-e2e.sh` (exports the deploy/.env credentials and the seed manifest path). Specs share
  * seeded personas and the maker-checker inbox and hand ids to each other (e2e/support/state.ts), so
  * they run in file order on one worker.
  */

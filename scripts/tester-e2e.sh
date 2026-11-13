@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Runs the test console's Playwright suite (ui/mw-test-console/e2e) against the console on the
-# running, seeded stack: `make up TIMERS=fast && make seed && make tester`, then
-# `make tester-e2e [GREP=@x]`. Each spec drives one page the way the guide does (app flows, USSD over
+# running, seeded stack (started with test-timers.env and the seed profile), after scripts/tester.sh:
+# `scripts/tester-e2e.sh [GREP]` (GREP e.g. @ussd). Each spec drives one page the way the guide does (app flows, USSD over
 # HTTP and SMPP, a lost core reply resolved by TSQ, checkout with IPN, a bulk batch) and checks the
 # middleware's answer. Installs with pnpm when needed; E2E_BASE_URL https://localhost[:MW_HTTPS_PORT].
 set -eu
-. "$(dirname "$0")/lib/modules.sh"
+. "$(dirname "$0")/lib/common.sh"
 
 grep_arg="${1:-}"
 ui="$MW_ROOT/ui/mw-test-console"

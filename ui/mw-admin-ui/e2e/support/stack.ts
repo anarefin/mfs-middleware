@@ -56,21 +56,21 @@ export async function stackProblems(t: StackTarget, p: Probes): Promise<string[]
   const text = p.readFile(t.manifestPath);
   const needed = new Set<string>([USSD_SECRET_ENV]);
   if (text === undefined) {
-    problems.push(`seed manifest ${t.manifestPath} is missing (make seed writes it)`);
+    problems.push(`seed manifest ${t.manifestPath} is missing (mw-seeder writes it; scripts/ui-e2e.sh copies it out)`);
   } else {
     try {
       const { personas, missing } = parseManifest(text);
-      for (const m of missing) problems.push(`seed manifest ${t.manifestPath} has no ops persona ${m} (make seed writes it)`);
+      for (const m of missing) problems.push(`seed manifest ${t.manifestPath} has no ops persona ${m} (mw-seeder writes it; scripts/ui-e2e.sh copies it out)`);
       for (const mp of personas.values()) {
         needed.add(mp.passwordEnv);
         if (mp.totpSecretEnv) needed.add(mp.totpSecretEnv);
       }
     } catch (e) {
-      problems.push(`seed manifest ${t.manifestPath} is not JSON (${(e as Error).message}); run make seed`);
+      problems.push(`seed manifest ${t.manifestPath} is not JSON (${(e as Error).message}); re-run scripts/ui-e2e.sh after mw-seeder exited 0`);
     }
   }
   for (const v of [...needed].sort()) {
-    if (!t.env[v]) problems.push(`${v} is not set (make ui-e2e reads it from deploy/.env)`);
+    if (!t.env[v]) problems.push(`${v} is not set (scripts/ui-e2e.sh reads it from deploy/.env)`);
   }
   return problems;
 }
@@ -80,8 +80,8 @@ export function notReadyMessage(problems: string[]): string {
     "The stack is not ready for the admin UI browser tests:",
     ...problems.map((x) => `  - ${x}`),
     "Start and seed it from the repo root, then run the suite again:",
-    "  make up && make seed",
-    "  make ui-e2e",
+    "  cd deploy && docker compose --env-file .env --profile core --profile seed up -d --wait",
+    "  scripts/ui-e2e.sh",
   ].join("\n");
 }
 

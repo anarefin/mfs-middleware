@@ -34,8 +34,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   are served (others 404 `MW-VAL-003`); MSISDN `01X...`, `8801X...`, `+8801X...` (else 400
   `MW-VAL-001`), canonical `01XNNNNNNNN` from there on. The body is checked before binding (and
   before the MNO lookup) against `src/main/resources/derived-schemas/ussd-http-v1-step.json`, derived
-  from the contract's `UssdStep` (`scripts/derived-schemas.sh --write` after changing it, `make
-  contracts-lint` fails on drift), by `filter/BodySchemaAdvice` -> `service/BodySchema` (copied from
+  from the contract's `UssdStep` (`scripts/derived-schemas.sh --write` after changing it, `./gradlew
+  :contractsLint` fails on drift), by `filter/BodySchemaAdvice` -> `service/BodySchema` (copied from
   mw-app-gateway; review A6, APISIX checks no body): duplicate keys, trailing content, non-objects and
   schema breaks `400 MW-VAL-001` (no request value in a message: `input` may be a PIN), over 64 KiB
   `413 MW-VAL-BODY_TOO_LARGE`. Behind APISIX routes `ussd-http-<mno>`
@@ -114,7 +114,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   processed", the result by SMS once mw-notify sends it); publish failure -> `unavailable`.
   Flows: P2P, CASH_OUT, TOPUP, BILL_PAY (`TxnRequestMapper.FLOWS`); agents cash in from the Agent
   app, not over USSD.
-- Dev provisioning (`provision_mw_ussd` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role `ussd_rw`,
+- Dev provisioning (`provision_mw_ussd` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role `ussd_rw`,
   schema `ussd`, `secret/mw-ussd` (DB password; Valkey password from `VALKEY_PASSWORD`; the core's
   PIN public key and key id copied from `secret/mw-core-mock`, playing the core team's hand-over),
   AppRole `mw-ussd`.
@@ -126,7 +126,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 ## Contracts used
 
 - `contracts.yml` (module root) is the machine-readable list of the events and APIs here, checked by
-  `make contracts-lint` and tested without Docker by `contracts/ProducedContractsTest` (every produced
+  `./gradlew :contractsLint` and tested without Docker by `contracts/ProducedContractsTest` (every produced
   event built by `TxnRequestMapper` validates), `contracts/ConsumedContractsTest` (every valid sample reads
   into the own DTO) and `contracts/ApiContractsTest` (USSD HTTP API responses and the billpay client's requests).
 - `events/mw-orchestrator/mw.txn.request.v1` (produced; own type `dto/TxnRequest`, validated in
@@ -141,9 +141,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
-  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
-  `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
+  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -164,15 +163,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 
 ## Commands
 
-| Command | What it does |
+| Command (from the repo root) | What it does |
 | --- | --- |
-| `./gradlew test` | unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`, `ApiContractsTest`); no Docker |
-| `./gradlew integrationTest` | Testcontainers `*IT` classes (PostgreSQL, Kafka, Valkey; Docker needed) |
-| `./gradlew conformance` | the `@Conformance` suite (outbox, inbox, HTTP, purge; Docker needed) |
-| `./gradlew check` | `test` + `integrationTest` + `conformance`, JaCoCo gate (80% lines on `service`/`mapper`/`client`) over all three |
-| `./gradlew check bootJar && docker build -t mw-ussd:dev .` | image, as spec 4.3 rule 1 |
-| `make verify M=mw-ussd` | isolation + field-injection check + contracts lint + `./gradlew check` |
-| `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when its files or the contracts in its `contracts.yml` changed) |
-| `make build M=mw-ussd` | `bootJar`, then this service's images (`mfs-mw/mw-ussd:local`, plus the shared `mfs-mw/provision:local`) |
-| `make up M=mw-ussd` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |
-| `make api-test FOLDER="18, 19, 20"` | P2P, cash-out, top-up and bill pay over the HTTP USSD gateway simulator (`tests/api/src/18-ussd`, `19-ussd-flows`) and GP over SMPP (`20-ussd-smpp`) |
+| `./gradlew :mw-ussd:test` | every test in one JVM: unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`, `ApiContractsTest`), the Testcontainers `*IT` classes (PostgreSQL, Kafka, Valkey) and the `@Conformance` suite (outbox, inbox, HTTP, purge); one PostgreSQL and one Kafka per test JVM, a fresh database per Spring context; the `*IT` and conformance classes are skipped without Docker. One class: `--tests '<class>'` |
+| `./gradlew :mw-ussd:build` | `test`, then the boot jar `build/libs/mw-ussd.jar` (fixed name, the one the Dockerfile copies) |
+| `./gradlew :mw-ussd:bootJar && docker build -t mw-ussd:dev services/mw-ussd` | image, as spec 4.3 rule 1 |
+| `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
+| `./gradlew :mw-ussd:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-ussd` | rebuild this service's image (`mfs-mw/mw-ussd:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |
+| `scripts/api-test.sh "18, 19, 20"` | P2P, cash-out, top-up and bill pay over the HTTP USSD gateway simulator (`tests/api/src/18-ussd`, `19-ussd-flows`) and GP over SMPP (`20-ussd-smpp`) |

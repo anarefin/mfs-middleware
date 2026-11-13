@@ -6,11 +6,12 @@ is modelled on BitsPay's `tools/postman`. No request needs Docker; only `run.sh`
 re-apply the test-only gateway routes.
 
 ```
-make reset && make build && make up TIMERS=fast && make seed   # a fresh stack on short timers, seeded
-make api-test                       # every folder except 90 Slow (and 99 Destructive, if one is added)
-make api-test FOLDER="01, 05"       # folders by number (or full name), comma separated
-make api-test ALL=1                 # every folder, 90 Slow included
-tests/api/run.sh --folder 01        # the same without make
+deploy/reset.sh                     # fresh volumes; then, from deploy/, a stack on short timers, seeded:
+docker compose --env-file .env --env-file test-timers.env --profile core --profile seed up -d --build
+scripts/api-test.sh                 # every folder except 90 Slow (and 99 Destructive, if one is added)
+scripts/api-test.sh "01, 05"        # folders by number (or full name), comma separated
+scripts/api-test.sh "" 1            # every folder, 90 Slow included
+tests/api/run.sh --folder 01        # the runner itself (scripts/api-test.sh calls it)
 ```
 
 Needs Node (npx) and access to cdnjs.cloudflare.com: Newman is `npx newman@6.2.1`, and the PIN
@@ -22,7 +23,7 @@ pinned in the collection (`build_collection.mjs`, `PINNED`).
 
 | File | What |
 | --- | --- |
-| `build_collection.mjs` | generates `mfs-mw.postman_collection.json` and `local.postman_environment.json` from `src/` and `lib.js` (`node tests/api/build_collection.mjs`; `--check` fails when the committed files are stale, run by `make contracts-lint`) |
+| `build_collection.mjs` | generates `mfs-mw.postman_collection.json` and `local.postman_environment.json` from `src/` and `lib.js` (`node tests/api/build_collection.mjs`; `--check` fails when the committed files are stale, run by `./gradlew :contractsLint`) |
 | `src/<NN-folder>/folder.json` | the folder's name (Cucumber `Feature:` line) and description |
 | `src/<NN-folder>/*.js` | the folder's scenarios: `export default [{ name, run, args? }]`; optional `export const helpers = [fn]` (shared steps, copied into each script of the file) |
 | `lib.js` | the shared script library, embedded as the collection variable `lib`: every script starts with `const MW = eval(pm.collectionVariables.get('lib'))` |
@@ -52,7 +53,7 @@ through `pm.sendRequest` (Newman waits for them; `--timeout-script` 15 min).
   one stops the scenario, `S.after(fn)` clean-ups always run (core faults, simulator scenarios,
   partner restore). Money is always compared before/after (`S.note`, `S.changedBy`, `S.noChange`,
   `S.noHold`), never absolute; idempotency keys, references and markers are fresh per run, so a
-  second `make api-test` on the same stack passes without a reset.
+  second `scripts/api-test.sh` run on the same stack passes without a reset.
 
 ## Repeated runs and the daily limit
 
@@ -90,12 +91,12 @@ users and core-mock's own seed wallets, as the Cucumber suite did, and make thei
 
 ## Timing
 
-The default run is sized for `make up TIMERS=fast` (`deploy/test-timers.env`): core command
+The default run is sized for a stack started with `--env-file test-timers.env` (`deploy/test-timers.env`): core command
 deadlines 2 s, first status inquiry after 6 s, app / checkout reply budget 7 s (so a lost core
 reply is still answered 202 and resolved by the inquiry), partner limits 4 s (ocs through the
 mw-seeder baseline, billagg / c2wbank in the adapters) with the simulators' timeout hold at 7 s,
-partner deadline 8 s. `make up TIMERS=fast` records the timers in `build/stack-timers`, so a
-later `make seed` keeps them. run.sh passes the seeded ocs limit (`build/seed/manifest.json`) to
+partner deadline 8 s. The same start command gives `mw-seeder` the short ocs limit
+(`MW_SEED_OCS_TIMEOUT_MS` in `deploy/test-timers.env`). run.sh passes the seeded ocs limit (`build/seed/manifest.json`) to
 the scenarios, which size their partner delays from it, so the suite also runs (slower) on a stack
 with production timers. Each request logs `scenario took N s`. Folder 90 holds what stays slow (the
 10,000-row payout; the retry-to-DLQ request, some 11 min with production retry delays). APISIX re-resolves service names every 5 s (`dns_resolver_valid`), so a

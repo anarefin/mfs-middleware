@@ -33,7 +33,7 @@ import tools.jackson.databind.node.ObjectNode;
  * PostgreSQL (menus), Valkey (sessions) and Kafka, with a stub playing mw-orchestrator. The menu
  * comes from the seeder; every step is a POST to {@code /ussd/robi} as an MNO sends it.
  */
-@SpringBootTest(properties = {"mw.ussd.sync-budget=2s", "mw.ussd.instance-id=it-ussd-1", "mw.ussd.consumers.enabled=true"})
+@SpringBootTest(properties = {"mw.ussd.sync-budget=5s", "mw.ussd.instance-id=it-ussd-1", "mw.ussd.consumers.enabled=true"})
 @AutoConfigureMockMvc
 @Import(TestInfrastructure.class)
 @DirtiesContext

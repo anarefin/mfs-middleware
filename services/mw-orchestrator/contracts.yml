@@ -1,5 +1,5 @@
 # Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
-# Checked by `make contracts-lint`, tested by contracts/ProducedContractsTest and ConsumedContractsTest
+# Checked by `./gradlew :contractsLint`, tested by contracts/ProducedContractsTest and ConsumedContractsTest
 # (events) and contracts/ApiContractsTest (APIs).
 produces:
   events:

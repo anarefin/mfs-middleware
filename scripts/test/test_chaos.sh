@@ -1,4 +1,4 @@
-# make chaos (scripts/chaos.sh, spec WP27, acceptance criterion 3): kill each container mid-flow,
+# scripts/chaos.sh ( spec WP27, acceptance criterion 3): kill each container mid-flow,
 # then check that no txn is left non-terminal and the core-mock ledger is consistent.
 # docker is a stub: `compose ... ps` prints .ps, `compose ... exec ... postgres psql` answers the
 # SQL tagged `-- chaos:<tag>` from .sql-<tag>.<n> on the n-th call of that tag (the highest file
@@ -36,11 +36,11 @@ EOF
   printf '1000000000000\n' >.sql-ledger_sum.1
 }
 
-# chaos [VAR=VAL...]: run make chaos against the stub with zero waits; output in OUT.
+# chaos [VAR=VAL...]: run scripts/chaos.sh against the stub with zero waits; output in OUT.
 chaos() {
   OUT="$(env CHAOS_WARMUP=0 CHAOS_DOWN=0 CHAOS_POLL=0 CHAOS_LOAD_PAUSE=0 CHAOS_SETTLE_TIMEOUT=5 \
     CHAOS_RECOVER_TIMEOUT=5 CHAOS_LOAD_CMD="echo load >> $PWD/.load-calls" CHAOS_REPORT="$PWD/report.md" "$@" \
-    make -s -f "$REPO_DIR/Makefile" MW_ROOT="$PWD" SELFTEST=0 chaos 2>&1)"
+    MW_ROOT="$PWD" "$REPO_DIR/scripts/chaos.sh" 2>&1)"
 }
 
 test_chaos_kills_and_restarts_every_mw_service_then_kafka_and_postgres_in_turn() {

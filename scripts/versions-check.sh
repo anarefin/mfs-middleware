@@ -1,32 +1,44 @@
 #!/usr/bin/env bash
-# Reports version drift between modules' own version catalogs
-# (<module>/gradle/libs.versions.toml, [versions] table only).
+# Reports version drift between the modules' build files (services/*/build.gradle.kts and the
+# template's): the versions are written inline (no version catalog), so every plugin
+# `id("x") version "v"` and every coordinate "group:artifact:version" (platforms/BOMs included)
+# is compared by plugin id / group:artifact.
 # Usage: scripts/versions-check.sh [MODULE]
 #   With MODULE, only drift on keys where MODULE's version differs from another
 #   module is reported. Exits 1 when any drift is reported.
-# Modules own their versions (D14), so drift is allowed but must be visible:
-# this check is a report, not part of `make verify`.
+# Modules own their versions (D14), so drift is allowed but must be visible: this check is a
+# report, not part of `./gradlew build` (plugin versions must match anyway: scripts/check-isolation.sh).
 set -eu
-. "$(dirname "$0")/lib/modules.sh"
+. "$(dirname "$0")/lib/common.sh"
 
 m="${1:-}"
 focus=""
 [ -n "$m" ] && focus="$(selected_modules "$m")"
 
-# Emit "module<TAB>key<TAB>version" for every [versions] entry of every module.
+# Emit "module<TAB>key<TAB>version" for every inline version of every module's build.gradle.kts
+# (whole-line comments skipped).
 pairs() {
-  local mod cat
+  local mod f
   for mod in $(all_modules); do
-    cat="$MW_ROOT/$mod/gradle/libs.versions.toml"
-    [ -f "$cat" ] || continue
+    f="$MW_ROOT/$mod/build.gradle.kts"
+    [ -f "$f" ] || continue
     awk -v mod="$mod" '
-      /^[[:space:]]*\[/ { in_versions = ($0 ~ /^[[:space:]]*\[versions\][[:space:]]*(#.*)?$/); next }
-      in_versions && /^[[:space:]]*[A-Za-z0-9_.-]+[[:space:]]*=[[:space:]]*"/ {
-        line = $0; sub(/#.*/, "", line)
-        key = line; sub(/^[[:space:]]*/, "", key); sub(/[[:space:]]*=.*/, "", key)
-        val = line; sub(/^[^"]*"/, "", val); sub(/".*/, "", val)
-        printf "%s\t%s\t%s\n", mod, key, val
-      }' "$cat"
+      /^[[:space:]]*(\/\/|\/\*|\*)/ { next }
+      {
+        line = $0; sub(/[[:space:]]\/\/.*/, "", line)
+        if (match(line, /id[[:space:]]*\([[:space:]]*"[^"]+"[[:space:]]*\)[[:space:]]*version[[:space:]]*"[^"]+"/)) {
+          t = substr(line, RSTART, RLENGTH)
+          split(t, q, "\"")
+          printf "%s\tplugin %s\t%s\n", mod, q[2], q[4]
+        }
+        rest = line
+        while (match(rest, /"[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+:[^":@ ]+"/)) {
+          t = substr(rest, RSTART + 1, RLENGTH - 2)
+          rest = substr(rest, RSTART + RLENGTH)
+          n = split(t, c, ":")
+          printf "%s\t%s:%s\t%s\n", mod, c[1], c[2], c[3]
+        }
+      }' "$f"
   done
 }
 
@@ -56,7 +68,7 @@ fi
 
 if [ -n "$report" ]; then
   printf '%s\n' "$report"
-  printf 'versions-check: %d key(s) drift between module catalogs\n' "$(printf '%s\n' "$report" | wc -l | tr -d ' ')" >&2
+  printf 'versions-check: %d key(s) drift between module build files\n' "$(printf '%s\n' "$report" | wc -l | tr -d ' ')" >&2
   exit 1
 fi
 info "versions-check: no version drift${focus:+ involving $focus}"

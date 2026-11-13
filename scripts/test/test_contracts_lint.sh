@@ -1,4 +1,4 @@
-# make contracts-lint: schemas, sample payloads and OWNERS.yml in contracts/ (WP04).
+# scripts/contracts-lint.sh (./gradlew :contractsLint): schemas, sample payloads and OWNERS.yml in contracts/ (WP04).
 #
 # Layout the linter expects (contracts/README.md):
 #   contracts/OWNERS.yml                                         files: { <path>: <owning service> }
@@ -45,7 +45,7 @@ EOF
 # --- the repo's own contracts (WP04) ---
 
 test_repo_contracts_pass_the_lint() {
-  assert_ok mw_make "$REPO_DIR" contracts-lint
+  assert_ok mw_run "$REPO_DIR" contracts-lint.sh
 }
 
 test_repo_has_the_v1_contract_set_under_each_owning_service() {
@@ -132,26 +132,26 @@ test_repo_shared_types_live_once_in_common_defs() {
 }
 
 test_lint_passes_on_empty_contracts() {
-  assert_ok mw_make "$PWD" contracts-lint
+  assert_ok mw_run "$PWD" contracts-lint.sh
 }
 
 test_lint_passes_on_a_well_formed_contract() {
   plant_schema mw-a mw.a.event.v1
-  assert_ok mw_make "$PWD" contracts-lint
+  assert_ok mw_run "$PWD" contracts-lint.sh
   assert_out_contains "1 schema"
 }
 
 test_lint_fails_when_a_valid_sample_does_not_validate() {
   plant_schema mw-a mw.a.event.v1
   echo '{"schemaVersion":1}' >contracts/events/mw-a/samples/mw.a.event.v1/valid-missing-amount.json
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "valid-missing-amount.json"
 }
 
 test_lint_fails_when_an_invalid_sample_validates() {
   plant_schema mw-a mw.a.event.v1
   echo '{"schemaVersion":1,"amount":{"valueMinor":5,"currency":"BDT"}}' >contracts/events/mw-a/samples/mw.a.event.v1/invalid-but-ok.json
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "invalid-but-ok.json"
 }
 
@@ -159,28 +159,28 @@ test_lint_fails_on_a_schema_that_does_not_compile() {
   plant_schema mw-a mw.a.event.v1
   sed -i.bak 's/"type": "object",/"type": "objekt",/' contracts/events/mw-a/mw.a.event.v1.schema.json
   rm contracts/events/mw-a/*.bak
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "does not compile"
 }
 
 test_lint_fails_on_malformed_json() {
   plant_schema mw-a mw.a.event.v1
   echo '{"schemaVersion":' >contracts/events/mw-a/samples/mw.a.event.v1/valid-broken.json
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "not valid JSON"
 }
 
 test_lint_fails_when_a_schema_has_no_valid_sample() {
   plant_schema mw-a mw.a.event.v1
   rm contracts/events/mw-a/samples/mw.a.event.v1/valid-*.json
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "no valid sample"
 }
 
 test_lint_fails_when_a_schema_has_no_invalid_sample() {
   plant_schema mw-a mw.a.event.v1
   rm contracts/events/mw-a/samples/mw.a.event.v1/invalid-*.json
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "no invalid sample"
 }
 
@@ -188,7 +188,7 @@ test_lint_fails_on_samples_without_a_schema() {
   plant_schema mw-a mw.a.event.v1
   mkdir -p contracts/events/mw-a/samples/mw.gone.v1
   echo '{}' >contracts/events/mw-a/samples/mw.gone.v1/valid-x.json
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "mw.gone.v1/valid-x.json"
 }
 
@@ -196,7 +196,7 @@ test_lint_fails_when_a_schema_lacks_a_required_schemaVersion() {
   plant_schema mw-a mw.a.event.v1
   sed -i.bak 's/"required": \["schemaVersion", "amount"\]/"required": ["amount"]/' contracts/events/mw-a/mw.a.event.v1.schema.json
   rm contracts/events/mw-a/*.bak
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "schemaVersion"
 }
 
@@ -204,14 +204,14 @@ test_lint_fails_when_a_contract_file_has_no_owner() {
   plant_schema mw-a mw.a.event.v1
   plant_schema mw-a mw.a.other.v1
   grep -v 'mw.a.other.v1' contracts/OWNERS.yml >owners.tmp && mv owners.tmp contracts/OWNERS.yml
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "events/mw-a/mw.a.other.v1.schema.json: no owner"
 }
 
 test_lint_fails_when_OWNERS_is_missing() {
   plant_schema mw-a mw.a.event.v1
   rm contracts/OWNERS.yml
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "OWNERS.yml"
 }
 
@@ -219,23 +219,23 @@ test_lint_requires_an_owner_for_non_schema_contract_files() {
   plant_schema mw-a mw.a.event.v1
   mkdir -p contracts/api/mw-b
   echo 'openapi: 3.1.0' >contracts/api/mw-b/b.yaml
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "api/mw-b/b.yaml: no owner"
   printf '  api/mw-b/b.yaml: mw-b\n' >>contracts/OWNERS.yml
-  assert_ok mw_make "$PWD" contracts-lint
+  assert_ok mw_run "$PWD" contracts-lint.sh
 }
 
 test_lint_fails_on_an_owner_entry_for_a_missing_file() {
   plant_schema mw-a mw.a.event.v1
   printf '  events/mw-a/gone.schema.json: mw-a\n' >>contracts/OWNERS.yml
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "gone.schema.json"
 }
 
 test_lint_fails_when_the_owner_differs_from_the_owning_service_folder() {
   plant_schema mw-a mw.a.event.v1
   sed -i.bak 's/: mw-a$/: mw-b/' contracts/OWNERS.yml && rm contracts/OWNERS.yml.bak
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "mw-b"
 }
 
@@ -243,7 +243,7 @@ test_lint_fails_on_floating_point_numbers_in_a_schema() {
   plant_schema mw-a mw.a.event.v1
   sed -i.bak 's/"valueMinor": { "type": "integer"/"valueMinor": { "type": "number"/' contracts/events/mw-a/mw.a.event.v1.schema.json
   rm contracts/events/mw-a/*.bak
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "valueMinor"
 }
 
@@ -331,7 +331,7 @@ EOF
 
 test_lint_resolves_cross_file_refs_between_envelope_payload_and_common_defs() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha Beta
-  assert_ok mw_make "$PWD" contracts-lint
+  assert_ok mw_run "$PWD" contracts-lint.sh
   assert_out_contains "4 schema"
   assert_out_contains "4 sample"
 }
@@ -340,7 +340,7 @@ test_lint_fails_when_a_ref_points_at_a_missing_file() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha
   sed -i.bak 's/defs.v1.schema.json/gone.v1.schema.json/' contracts/events/mw-a/mw.a.cmd.v1/Alpha.payload.schema.json
   rm contracts/events/mw-a/mw.a.cmd.v1/*.bak
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "does not compile"
 }
 
@@ -348,14 +348,14 @@ test_lint_fails_when_a_schema_id_does_not_match_its_path() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha
   sed -i.bak 's#mw.a.cmd.v1/Alpha.payload#mw.a.cmd.v1/Other.payload#' contracts/events/mw-a/mw.a.cmd.v1/Alpha.payload.schema.json
   rm contracts/events/mw-a/mw.a.cmd.v1/*.bak
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "\$id"
 }
 
 test_lint_fails_when_a_payload_file_has_no_enum_value() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha
   plant_payload mw-a mw.a.cmd.v1 Stray
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "Stray.payload.schema.json"
   assert_out_contains "no kind enum value"
 }
@@ -363,7 +363,7 @@ test_lint_fails_when_a_payload_file_has_no_enum_value() {
 test_lint_fails_when_an_enum_value_has_no_payload_file() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha Beta
   rm contracts/events/mw-a/mw.a.cmd.v1/Beta.payload.schema.json
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "Beta"
   assert_out_contains "no payload file"
 }
@@ -372,7 +372,7 @@ test_lint_fails_when_a_oneOf_branch_refs_another_message_payload() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha Beta
   sed -i.bak 's#"const": "Beta" }, "payload": { "$ref": "mw.a.cmd.v1/Beta#"const": "Beta" }, "payload": { "$ref": "mw.a.cmd.v1/Alpha#' contracts/events/mw-a/mw.a.cmd.v1.schema.json
   rm contracts/events/mw-a/*.bak
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "oneOf branch for Beta"
 }
 
@@ -391,7 +391,7 @@ share_payload() {
 test_lint_accepts_one_shared_payload_referenced_by_several_enum_values() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha Beta
   share_payload mw-a mw.a.cmd.v1 shared Alpha Beta
-  assert_ok mw_make "$PWD" contracts-lint
+  assert_ok mw_run "$PWD" contracts-lint.sh
   assert_out_contains "3 schema"
   assert_out_contains "4 sample"
 }
@@ -399,7 +399,7 @@ test_lint_accepts_one_shared_payload_referenced_by_several_enum_values() {
 test_lint_accepts_a_family_split_out_of_a_shared_payload() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha Beta Gamma
   share_payload mw-a mw.a.cmd.v1 shared Alpha Beta
-  assert_ok mw_make "$PWD" contracts-lint
+  assert_ok mw_run "$PWD" contracts-lint.sh
 }
 
 test_lint_fails_when_an_enum_value_has_no_branch_with_a_shared_payload() {
@@ -408,7 +408,7 @@ test_lint_fails_when_an_enum_value_has_no_branch_with_a_shared_payload() {
   sed -i.bak 's/"kind": { "enum": \["Alpha", "Beta"\] }/"kind": { "enum": ["Alpha", "Beta", "Delta"] }/' contracts/events/mw-a/mw.a.cmd.v1.schema.json
   rm contracts/events/mw-a/*.bak
   plant_msg_samples mw-a mw.a.cmd.v1 Delta
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "kind Delta has no payload file"
 }
 
@@ -416,14 +416,14 @@ test_lint_fails_on_a_shared_payload_file_nothing_references() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha Beta
   share_payload mw-a mw.a.cmd.v1 shared Alpha Beta
   plant_payload mw-a mw.a.cmd.v1 unused
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "unused.payload.schema.json: payload file is referenced by no oneOf branch"
 }
 
 test_lint_fails_when_a_message_type_has_no_samples() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha Beta
   rm -r contracts/events/mw-a/samples/mw.a.cmd.v1/Beta
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "samples/mw.a.cmd.v1/Beta/"
 }
 
@@ -431,7 +431,7 @@ test_lint_fails_when_a_message_type_has_no_invalid_sample() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha
   rm contracts/events/mw-a/samples/mw.a.cmd.v1/Alpha/invalid-*.json
   echo '{}' >contracts/events/mw-a/samples/mw.a.cmd.v1/Alpha/expected-errors.json
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "no invalid sample"
 }
 
@@ -439,14 +439,14 @@ test_lint_fails_when_a_sample_type_differs_from_its_folder() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha Beta
   sed -i.bak 's/"kind":"Alpha"/"kind":"Beta"/' contracts/events/mw-a/samples/mw.a.cmd.v1/Alpha/valid-basic.json
   rm contracts/events/mw-a/samples/mw.a.cmd.v1/Alpha/*.bak
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "Alpha/valid-basic.json"
 }
 
 test_lint_fails_on_samples_for_a_message_type_the_envelope_lacks() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha
   plant_msg_samples mw-a mw.a.cmd.v1 Gamma
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "Gamma"
 }
 
@@ -454,14 +454,14 @@ test_lint_fails_when_an_invalid_sample_fails_for_another_reason() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha
   echo '{"schemaVersion":1,"kind":"Alpha","payload":{"amount":{"valueMinor":10.5,"currency":"USD"}}}' \
     >contracts/events/mw-a/samples/mw.a.cmd.v1/Alpha/invalid-decimal-amount.json
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "/payload/amount/currency"
 }
 
 test_lint_fails_when_an_invalid_sample_has_no_stated_reason() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha
   echo '{}' >contracts/events/mw-a/samples/mw.a.cmd.v1/Alpha/expected-errors.json
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "no stated reason"
 }
 
@@ -469,7 +469,7 @@ test_lint_fails_on_a_stated_reason_without_a_sample() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha
   echo '{"invalid-decimal-amount.json":["/payload/amount/valueMinor must be integer"],"invalid-gone.json":["/ x"]}' \
     >contracts/events/mw-a/samples/mw.a.cmd.v1/Alpha/expected-errors.json
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "invalid-gone.json"
 }
 
@@ -478,7 +478,7 @@ test_lint_fails_on_floating_point_numbers_in_a_payload_schema() {
   sed -i.bak 's/"required": \["amount"\],/"required": ["amount"], "patternProperties": { "^rate$": { "type": "number" } },/' \
     contracts/events/mw-a/mw.a.cmd.v1/Alpha.payload.schema.json
   rm contracts/events/mw-a/mw.a.cmd.v1/*.bak
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "Alpha.payload.schema.json: uses type \"number\""
 }
 
@@ -486,22 +486,22 @@ test_lint_fails_when_an_envelope_lacks_a_required_schemaVersion() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha
   sed -i.bak 's/"required": \["schemaVersion", "kind", "payload"\]/"required": ["kind", "payload"]/' contracts/events/mw-a/mw.a.cmd.v1.schema.json
   rm contracts/events/mw-a/*.bak
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "mw.a.cmd.v1.schema.json: must declare a required schemaVersion"
 }
 
 test_lint_accepts_a_service_as_owner_of_common_and_still_requires_one() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha
-  assert_ok mw_make "$PWD" contracts-lint
+  assert_ok mw_run "$PWD" contracts-lint.sh
   grep -v 'common/defs.v1' contracts/OWNERS.yml >owners.tmp && mv owners.tmp contracts/OWNERS.yml
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "common/defs.v1.schema.json: no owner"
 }
 
 test_lint_rejects_a_non_service_owner_for_common() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha
   sed -i.bak 's/common\/defs.v1.schema.json: mw-a/common\/defs.v1.schema.json: nobody/' contracts/OWNERS.yml && rm contracts/OWNERS.yml.bak
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "nobody"
 }
 
@@ -524,7 +524,7 @@ EOF
 test_repo_every_module_has_a_contract_manifest() {
   local d
   for d in "$REPO_DIR"/services/*/ "$REPO_DIR"/templates/mw-service-template/; do
-    [ -f "$d/settings.gradle.kts" ] || continue
+    [ -f "$d/build.gradle.kts" ] || continue
     [ -f "$d/contracts.yml" ] || fail "no contracts.yml in $d"
   done
 }
@@ -534,7 +534,7 @@ test_lint_accepts_manifests_that_cover_every_schema() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha Beta
   plant_manifest mw-a "events/mw-a/mw.a.event.v1.schema.json, events/mw-a/mw.a.cmd.v1.schema.json#Alpha" ""
   plant_manifest mw-b "" "events/mw-a/mw.a.event.v1.schema.json, events/mw-a/mw.a.cmd.v1.schema.json"
-  assert_ok mw_make "$PWD" contracts-lint
+  assert_ok mw_run "$PWD" contracts-lint.sh
   assert_out_contains "2 manifest(s)"
 }
 
@@ -542,28 +542,28 @@ test_lint_fails_when_a_manifest_entry_names_a_missing_file() {
   plant_schema mw-a mw.a.event.v1
   plant_manifest mw-a "events/mw-a/mw.a.event.v1.schema.json, events/mw-a/mw.a.gone.v1.schema.json" ""
   plant_manifest mw-b "" "events/mw-a/mw.a.event.v1.schema.json"
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "services/mw-a/contracts.yml: produces.events entry events/mw-a/mw.a.gone.v1.schema.json: no such contract file"
 }
 
 test_lint_fails_when_a_manifest_api_entry_names_a_missing_file() {
   plant_schema mw-a mw.a.event.v1
   plant_manifest mw-a "events/mw-a/mw.a.event.v1.schema.json" "events/mw-a/mw.a.event.v1.schema.json" "api/mw-a/gone.v1.openapi.yaml"
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "produces.apis entry api/mw-a/gone.v1.openapi.yaml: no such contract file"
 }
 
 test_lint_fails_when_a_manifest_names_a_message_type_the_envelope_lacks() {
   plant_envelope mw-a mw.a.cmd.v1 Alpha
   plant_manifest mw-a "events/mw-a/mw.a.cmd.v1.schema.json#Gamma" "events/mw-a/mw.a.cmd.v1.schema.json#Alpha"
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "produces.events entry events/mw-a/mw.a.cmd.v1.schema.json#Gamma: events/mw-a/mw.a.cmd.v1.schema.json has no message type Gamma"
 }
 
 test_lint_fails_when_a_manifest_names_a_message_type_of_a_single_type_topic() {
   plant_schema mw-a mw.a.event.v1
   plant_manifest mw-a "events/mw-a/mw.a.event.v1.schema.json#Alpha" "events/mw-a/mw.a.event.v1.schema.json"
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "is a single-type topic, it has no message type Alpha"
 }
 
@@ -571,7 +571,7 @@ test_lint_fails_on_an_orphan_schema_without_producer_or_consumer() {
   plant_schema mw-a mw.a.event.v1
   plant_schema mw-a mw.a.orphan.v1
   plant_manifest mw-a "events/mw-a/mw.a.event.v1.schema.json" "events/mw-a/mw.a.event.v1.schema.json"
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "events/mw-a/mw.a.orphan.v1.schema.json: orphan schema: no contracts.yml produces it"
   assert_out_contains "events/mw-a/mw.a.orphan.v1.schema.json: orphan schema: no contracts.yml consumes it"
   assert_out_lacks "mw.a.event.v1.schema.json: orphan"
@@ -580,11 +580,11 @@ test_lint_fails_on_an_orphan_schema_without_producer_or_consumer() {
 test_lint_accepts_a_side_played_outside_the_repo_from_EXTERNAL() {
   plant_schema mw-a mw.a.event.v1
   plant_manifest mw-b "" "events/mw-a/mw.a.event.v1.schema.json"
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "no contracts.yml produces it"
   printf 'producers:\n  events/mw-a/mw.a.event.v1.schema.json: the core banking system\n' >contracts/EXTERNAL.yml
   printf '  EXTERNAL.yml: mw-a\n' >>contracts/OWNERS.yml
-  assert_ok mw_make "$PWD" contracts-lint
+  assert_ok mw_run "$PWD" contracts-lint.sh
 }
 
 test_lint_fails_on_an_EXTERNAL_entry_for_a_missing_schema() {
@@ -592,7 +592,7 @@ test_lint_fails_on_an_EXTERNAL_entry_for_a_missing_schema() {
   plant_manifest mw-a "events/mw-a/mw.a.event.v1.schema.json" "events/mw-a/mw.a.event.v1.schema.json"
   printf 'consumers:\n  events/mw-a/mw.a.gone.v1.schema.json: nobody\n' >contracts/EXTERNAL.yml
   printf '  EXTERNAL.yml: mw-a\n' >>contracts/OWNERS.yml
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "EXTERNAL.yml: consumers entry events/mw-a/mw.a.gone.v1.schema.json is not an event schema"
 }
 
@@ -601,6 +601,6 @@ test_lint_fails_on_an_EXTERNAL_entry_for_a_side_a_manifest_plays() {
   plant_manifest mw-a "events/mw-a/mw.a.event.v1.schema.json" "events/mw-a/mw.a.event.v1.schema.json"
   printf 'producers:\n  events/mw-a/mw.a.event.v1.schema.json: mw-a (not yet in the repo)\n' >contracts/EXTERNAL.yml
   printf '  EXTERNAL.yml: mw-a\n' >>contracts/OWNERS.yml
-  assert_fails mw_make "$PWD" contracts-lint
+  assert_fails mw_run "$PWD" contracts-lint.sh
   assert_out_contains "EXTERNAL.yml: producers entry events/mw-a/mw.a.event.v1.schema.json is stale: services/mw-a/contracts.yml produces it"
 }

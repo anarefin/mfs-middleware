@@ -4,9 +4,9 @@
 # at the APISIX edge: M3 gate decision). See scripts/contracts-lint/derived-schemas.mjs for the rules.
 # Usage: scripts/derived-schemas.sh --check   fail when a schema differs from its contract
 #        scripts/derived-schemas.sh --write   rewrite the schemas from their contracts
-# `make contracts-lint` (and so `make verify`) runs --check.
+# scripts/contracts-lint.sh (./gradlew :contractsLint, part of ./gradlew build) runs --check.
 set -eu
-. "$(dirname "$0")/lib/modules.sh"
+. "$(dirname "$0")/lib/common.sh"
 
 mode="${1:---check}"
 tool="$(cd "$(dirname "$0")/contracts-lint" && pwd)"

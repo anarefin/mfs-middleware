@@ -112,7 +112,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   COMPLETED_WITH_EXCEPTIONS), MSISDN masked (18.3), current state while running; before approval
   `409 MW-VAL-035`. No re-send of a SUBMITTED row that never settles (the reconcile job above settles
   or gives it up).
-- Dev provisioning (`provision_mw_portal_api` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role
+- Dev provisioning (`provision_mw_portal_api` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `portal_api_rw`, schema `bulk`, `secret/mw-portal-api` (DB password; realm `services` client
   secret from `KC_MW_PORTAL_API_SECRET`), AppRole.
 
@@ -122,8 +122,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   A6); the edge answers 401/413/429 itself (`deploy/apisix/README.md`). The only JSON body, reject
   `{reason}`, is checked here before binding against
   `src/main/resources/derived-schemas/portal-org-v1-reject-request.json` (derived from the contract's
-  inline reject body schema; `scripts/derived-schemas.sh --write` after changing it, `make
-  contracts-lint` fails on drift) by `filter/BodySchemaAdvice` -> `service/BodySchema` (copied from
+  inline reject body schema; `scripts/derived-schemas.sh --write` after changing it, `./gradlew
+  :contractsLint` fails on drift) by `filter/BodySchemaAdvice` -> `service/BodySchema` (copied from
   mw-app-gateway: duplicate keys, trailing content, non-objects refused; `400 MW-VAL-001`; over 64 KiB
   `413 MW-VAL-BODY_TOO_LARGE`); then Bean Validation. approve/pause/resume take no body. The CSV
   upload is not JSON: `BulkCsvParser` and its caps (above) check it. A new JSON body type needs its
@@ -132,7 +132,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
 ## Contracts used
 
 - `contracts.yml`: the machine-readable list of what this module produces and consumes (checked
-  by `make contracts-lint`, tested by `contracts/ProducedContractsTest` / `ConsumedContractsTest`,
+  by `./gradlew :contractsLint`, tested by `contracts/ProducedContractsTest` / `ConsumedContractsTest`,
   and `contracts/ApiContractsTest` for the served and called APIs; no Docker).
 - `events/mw-audit-dw/mw.audit.event.v1` (produced, own type `dto/AuditEvent`; `BulkLifecycleIT`
   validates every batch audit event against it).
@@ -146,9 +146,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
-  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
-  `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
+  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -167,14 +166,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
 
 ## Commands
 
-| Command | What it does |
+| Command (from the repo root) | What it does |
 | --- | --- |
-| `./gradlew test` | unit, slice and contract tests (`contracts/`), no Docker |
-| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker needed) |
-| `./gradlew conformance` | the `@Conformance` suite (Docker needed) |
-| `./gradlew check` | `test` + `integrationTest` + `conformance`, JaCoCo gate (80% lines on `service`/`mapper`/`client`, over all three) |
-| `./gradlew check bootJar && docker build -t mw-portal-api:dev .` | image, as spec 4.3 rule 1 |
-| `make verify M=mw-portal-api` | isolation + field-injection check + contracts lint + `./gradlew check` |
-| `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when it or a contract in its `contracts.yml` changed) |
-| `make build M=mw-portal-api` | `bootJar`, then this service's images (`mfs-mw/mw-portal-api:local`, plus the shared `mfs-mw/provision:local`) |
-| `make up M=mw-portal-api` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |
+| `./gradlew :mw-portal-api:test` | every test in one JVM: unit, slice and contract tests (`contracts/`), the Testcontainers `*IT` classes and the `@Conformance` suite; one PostgreSQL and one Kafka per test JVM, a fresh database per Spring context; the `*IT` and conformance classes are skipped without Docker. One class: `--tests '<class>'` |
+| `./gradlew :mw-portal-api:build` | `test`, then the boot jar `build/libs/mw-portal-api.jar` (fixed name, the one the Dockerfile copies) |
+| `./gradlew :mw-portal-api:bootJar && docker build -t mw-portal-api:dev services/mw-portal-api` | image, as spec 4.3 rule 1 |
+| `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
+| `./gradlew :mw-portal-api:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-portal-api` | rebuild this service's image (`mfs-mw/mw-portal-api:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |

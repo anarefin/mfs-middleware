@@ -9,7 +9,7 @@
 #      in deploy/apisix/retired.txt (a file that was removed or renamed)
 #   4. test-only objects for the host API suite (tests/api): with MW_E2E_ROUTES=1 PUTs
 #      consumers-test/<username>.json and routes-test/<id>.json; without it DELETEs them, so a
-#      default `make up` never leaves a test route behind (`make api-test` re-runs this with the flag)
+#      plain `docker compose up` never leaves a test route behind (scripts/api-test.sh re-runs this with the flag)
 # Before a PUT, string values "@lua:<path>" are replaced by the file at <path> (relative to
 # deploy/apisix) as a JSON string (serverless functions); "@env:<NAME>" by that environment
 # variable as a JSON string (secrets such as the e2e key, never in the repo); "@list:<NAME>" by

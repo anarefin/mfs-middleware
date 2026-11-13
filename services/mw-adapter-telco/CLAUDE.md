@@ -46,7 +46,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.telco`. Follo
   and the `request`/`response` bodies as the framework masked them (`sensitive-fields`, scrub, 4 KB);
   raw bodies never, no `payloadRef`. Key txnId (else partnerId). A failing publisher is logged
   `partner.call.audit_failed` and never fails the call. Identical in telco, billpay and bank.
-- Dev provisioning (`provision_mw_adapter_telco` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role
+- Dev provisioning (`provision_mw_adapter_telco` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `adapter_telco_rw` and schema `partner_ref`, `secret/mw-adapter-telco` (DB password, never
   overwritten) and the AppRole `mw-adapter-telco` (configtree volume at `/run/mw/approle`).
 
@@ -121,7 +121,7 @@ rule, then free-text scrubbing; headers never), cut at 4 KB, and the same entry 
 
 The OCS is the seed instance `ocs`, a dev seed in `application-dev.yml` (profile `dev`, D23: set by its service in `deploy/docker-compose.yml`
 and the test config; the packaged `application.yml` seeds no partner, so a production start has none
-until a `partner/<id>` record arrives, and the image's AOT training run needs no http override) (`mw.partners`, base URL from `OCS_BASE_URL`,
+until a `partner/<id>` record arrives) (`mw.partners`, base URL from `OCS_BASE_URL`,
 timeout 20 s, Resilience4j instance `ocs`: bulkhead 100, circuit breaker with 16 s slow-call threshold)
 and `default-partner: ocs`, so gp/robi/banglalink/teletalk are all served by it until they get their own
 `partner/<id>` record. Never add a retry to a partner call.
@@ -134,7 +134,7 @@ into all three.
 
 Copying it into another adapter (tickets 21, 23): copy `partner/` with its tests
 (`src/test/.../partner/`, including the `PartnerFramework` harness and the security tests), rename the
-package, add `jsonata` to the module's version catalog and build, copy the `mw.partners` block shape into
+package, add `com.dashjoin:jsonata` (version inline) to the module's `build.gradle.kts`, copy the `mw.partners` block shape into
 `application.yml` (security, default partner) and its seed partners into `application-dev.yml` (dev
 profile only; the test config activates it), `security.allowed-hosts` per instance (and
 `insecure-http-hosts` for its simulator only) and Resilience4j instances, keep secrets under
@@ -150,7 +150,7 @@ mapping, inbox/outbox).
 
 ## Contracts used
 
-- Machine-readable list: `contracts.yml` (checked by `make contracts-lint`, tested by
+- Machine-readable list: `contracts.yml` (checked by `./gradlew :contractsLint`, tested by
   `contracts/ProducedContractsTest` / `ConsumedContractsTest`). No APIs served or called (the OCS wire
   format has no contract file).
 - `events/mw-audit-dw/mw.audit.event.v1` out (`partner.call.completed`, `messaging/PartnerAuditPublisher`);
@@ -172,9 +172,8 @@ mapping, inbox/outbox).
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
-  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
-  `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
+  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -195,14 +194,10 @@ mapping, inbox/outbox).
 
 ## Commands
 
-| Command | What it does |
+| Command (from the repo root) | What it does |
 | --- | --- |
-| `./gradlew test` | unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`), no Docker |
-| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker needed) |
-| `./gradlew conformance` | the `@Conformance` suite (Docker needed) |
-| `./gradlew check` | all three + JaCoCo gate (80% lines on `service`/`mapper`/`client`) |
-| `./gradlew check bootJar && docker build -t mw-adapter-telco:dev .` | image, as spec 4.3 rule 1 |
-| `make verify M=mw-adapter-telco` | isolation + field-injection check + contracts lint + `./gradlew check` |
-| `make verify-changed [BASE=main]` | the gate for the modules changed since BASE (this one when it, or a contract in its `contracts.yml`, changed) |
-| `make build M=mw-adapter-telco` | `bootJar`, then this service's images (`mfs-mw/mw-adapter-telco:local`, plus the shared `mfs-mw/provision:local`) |
-| `make up M=mw-adapter-telco` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |
+| `./gradlew :mw-adapter-telco:test` | every test in one JVM: unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`), the Testcontainers `*IT` classes and the `@Conformance` suite; one PostgreSQL and one Kafka per test JVM, a fresh database per Spring context; the `*IT` and conformance classes are skipped without Docker. One class: `--tests '<class>'` |
+| `./gradlew :mw-adapter-telco:build` | `test`, then the boot jar `build/libs/mw-adapter-telco.jar` (fixed name, the one the Dockerfile copies) |
+| `./gradlew :mw-adapter-telco:bootJar && docker build -t mw-adapter-telco:dev services/mw-adapter-telco` | image, as spec 4.3 rule 1 |
+| `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
+| `./gradlew :mw-adapter-telco:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-adapter-telco` | rebuild this service's image (`mfs-mw/mw-adapter-telco:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |

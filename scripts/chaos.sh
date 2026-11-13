@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Chaos run against the running MVP stack (spec WP27, MVP acceptance criterion 3): "killing any
 # one middleware container mid-flow leaves no transaction in a non-terminal state after restart
-# and sweeps". Run on a fresh, healthy stack: make down DOWN_ARGS=-v && make up && make chaos.
+# and sweeps". Run on a fresh, healthy stack: deploy/reset.sh, then start it (from deploy/:
+# docker compose --env-file .env --profile core --profile seed up -d --wait), then scripts/chaos.sh.
 #
 # For every target in turn (default: every long-running mw-* service, then kafka, then postgres):
 #   1. start mixed load (a loop of Newman API suite folders, CHAOS_LOAD_CMD) in the background
@@ -26,7 +27,7 @@
 # CHAOS_LOAD_STOP_TIMEOUT (300), CHAOS_ALLOW_MANUAL_REVIEW (0). Reads the databases with the
 # postgres superuser through docker compose exec, read-only queries.
 set -uo pipefail
-. "$(dirname "$0")/lib/modules.sh"
+. "$(dirname "$0")/lib/common.sh"
 
 stack_compose
 env_file="$STACK_ENV"
@@ -52,12 +53,12 @@ terminal="'COMPLETED','FAILED','REJECTED','REVERSED'"
 
 dc() { docker compose "${DC_F[@]}" "$@"; }
 
-# ---- stack state (the same reading of `compose ps` as scripts/up.sh) ----
+# ---- stack state (`docker compose ps`) ----
 ps_lines() {
   dc ps -a --format '{{.Service}}	{{.State}}	{{.Health}}	{{.ExitCode}}	{{.Labels}}' | tr '\t' '|'
 }
 # not_ready: "<svc>(<state>)" for every long-running service that is not healthy (or running
-# without a healthcheck); one-shots are ignored (they ran at make up and stay exited).
+# without a healthcheck); one-shots are ignored (they ran at `up` and stay exited).
 not_ready() {
   ps_lines | while IFS='|' read -r svc state health _ labels; do
     [ -n "$svc" ] || continue
@@ -152,8 +153,8 @@ trap 'stop_load; rm -rf "$work"' EXIT
 cell() { printf '%s\n' "$1" | sed '/^$/d' | head -3 | tr '|' ' ' | tr '\n' ';' | sed 's/;$//; s/;/; /g'; }
 
 # ---- run ----
-start_ts="$(q_now)" || die "chaos: cannot reach postgres (is the stack up? make up)"
-[ -n "$start_ts" ] || die "chaos: postgres returned no time (is the stack up? make up)"
+start_ts="$(q_now)" || die "chaos: cannot reach postgres (is the stack up?)"
+[ -n "$start_ts" ] || die "chaos: postgres returned no time (is the stack up?)"
 baseline="$(q_ledger_sum)" || die "chaos: cannot read the core-mock ledger"
 targets="${CHAOS_TARGETS:-$(default_targets | tr '\n' ' ')}"
 info "chaos: targets: $targets"

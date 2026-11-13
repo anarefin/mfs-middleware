@@ -13,7 +13,7 @@ One instance of every component in every environment: no clustering, replication
 ## Consequences
 
 - Availability target 99.5 %, RPO 5 min, RTO 4 h (TBC).
-- Every service must recover by itself after a restart: outbox, inbox, saga timers and TSQ sweeps finish what was in flight. `make chaos` proves it (criterion 3).
+- Every service must recover by itself after a restart: outbox, inbox, saga timers and TSQ sweeps finish what was in flight. `scripts/chaos.sh` (originally `make chaos`) proves it (criterion 3).
 - Backup and the restore drill are deferred for the MVP (runbook).
 
 ## Where in the repo

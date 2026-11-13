@@ -81,7 +81,7 @@
     <dt>Reversal</dt><dd>Undoing a completed transaction with a new <code>REVERSAL</code> transaction, after maker-checker.</dd>
     <dt>Saga</dt><dd>A multi-step job across systems, saved step by step, with compensating steps when a later step fails.</dd>
     <dt>SagaMachine / SagaEngine</dt><dd>The pure decision function (state + event → next state + effects) and the part that carries the effects out.</dd>
-    <dt>Seeder</dt><dd><code>mw-seeder</code>: creates the test users, wallets and balances (<code>make seed</code>).</dd>
+    <dt>Seeder</dt><dd><code>mw-seeder</code>: creates the test users, wallets and balances (compose profile <code>seed</code>).</dd>
     <dt>Simulator</dt><dd><code>mw-simulators</code>: fakes every partner, the SMS centre, the USSD gateway and the shop's IPN receiver.</dd>
     <dt>SMPP</dt><dd>Short message peer-to-peer: the telecom protocol for SMS and for some USSD gateways.</dd>
     <dt>SMSC</dt><dd>SMS centre: delivers our text messages.</dd>
@@ -89,7 +89,7 @@
     <dt>SSRF</dt><dd>Server-side request forgery: tricking our server into calling an internal address. IPN URLs are checked against it.</dd>
     <dt>Test console</dt><dd><code>mw-test-console</code> at <code>https://localhost/tester</code>: plays every outside party for manual testing. Dev/test only.</dd>
     <dt>Testcontainers</dt><dd>A library that starts real PostgreSQL and Kafka containers for <code>*IT</code> tests.</dd>
-    <dt>TOTP</dt><dd>Time-based one-time password: the 6-digit code from an authenticator app (ops logins). <code>make totp</code> prints it for test users.</dd>
+    <dt>TOTP</dt><dd>Time-based one-time password: the 6-digit code from an authenticator app (ops logins). <code>scripts/totp.sh</code> prints it for test users.</dd>
     <dt>TSQ</dt><dd>Transaction status query: asking the core or a partner "what happened to this transaction?" until the answer is clear.</dd>
     <dt>txnId</dt><dd>The id of one transaction, created by the channel service and carried everywhere.</dd>
     <dt>UNKNOWN</dt><dd>The saga state for "money may or may not have moved; we are finding out".</dd>

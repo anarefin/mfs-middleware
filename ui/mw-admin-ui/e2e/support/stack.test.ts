@@ -77,31 +77,31 @@ describe("stack check before the browser tests", () => {
 
   it("needs the seed manifest with the four ops personas", async () => {
     expect(await stackProblems(target, probes({ manifest: null }))).toEqual([
-      "seed manifest /repo/build/seed/manifest.json is missing (make seed writes it)",
+      "seed manifest /repo/build/seed/manifest.json is missing (mw-seeder writes it; scripts/ui-e2e.sh copies it out)",
     ]);
     const noViewer = JSON.stringify({ schemaVersion: 1, personas: JSON.parse(manifest).personas.filter((p: { persona: string }) => p.persona !== "viewer") });
     expect(await stackProblems(target, probes({ manifest: noViewer }))).toEqual([
-      "seed manifest /repo/build/seed/manifest.json has no ops persona viewer (make seed writes it)",
+      "seed manifest /repo/build/seed/manifest.json has no ops persona viewer (mw-seeder writes it; scripts/ui-e2e.sh copies it out)",
     ]);
     // a manifest seeded before the compliance persona existed (mw-seeder of ticket 57)
     const noCompliance = JSON.stringify({ schemaVersion: 1, personas: JSON.parse(manifest).personas.slice(0, 3) });
     expect(await stackProblems(target, probes({ manifest: noCompliance }))).toEqual([
-      "seed manifest /repo/build/seed/manifest.json has no ops persona compliance (make seed writes it)",
+      "seed manifest /repo/build/seed/manifest.json has no ops persona compliance (mw-seeder writes it; scripts/ui-e2e.sh copies it out)",
     ]);
   });
 
   it("needs the credentials the manifest names, from deploy/.env", async () => {
     const problems = await stackProblems({ ...target, env: { USSD_ROBI_GATEWAY_SECRET: "x" } }, probes());
     expect(problems).toEqual([
-      "KC_OPS_TEST_PASSWORD is not set (make ui-e2e reads it from deploy/.env)",
-      "KC_OPS_TEST_TOTP_SECRET is not set (make ui-e2e reads it from deploy/.env)",
+      "KC_OPS_TEST_PASSWORD is not set (scripts/ui-e2e.sh reads it from deploy/.env)",
+      "KC_OPS_TEST_TOTP_SECRET is not set (scripts/ui-e2e.sh reads it from deploy/.env)",
     ]);
   });
 
   it("tells how to fix it", () => {
     const m = notReadyMessage(["mw-admin-api: no running container in compose project mfs-mw"]);
     expect(m).toContain("  - mw-admin-api: no running container in compose project mfs-mw");
-    expect(m).toContain("make up && make seed");
-    expect(m).toContain("make ui-e2e");
+    expect(m).toContain("--profile seed up -d --wait");
+    expect(m).toContain("scripts/ui-e2e.sh");
   });
 });

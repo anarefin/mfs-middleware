@@ -14,9 +14,9 @@
 #   - a Covers item is claimed by a request without the tag its flow / outcome demands (so a tag
 #     removed from a request name fails here);
 #   - a coverage item the MVP acceptance criteria demand is claimed by no request.
-# Run by make contracts-lint; self-test scripts/test/test_api_traceability.sh.
+# Run by scripts/contracts-lint.sh (./gradlew :contractsLint); self-test scripts/test/test_api_traceability.sh.
 set -eu
-. "$(dirname "$0")/lib/modules.sh"
+. "$(dirname "$0")/lib/common.sh"
 
 collection="${1:-$MW_ROOT/tests/api/mfs-mw.postman_collection.json}"
 table="${2:-$MW_ROOT/tests/api/TRACEABILITY.md}"

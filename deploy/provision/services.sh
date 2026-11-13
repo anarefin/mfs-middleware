@@ -3,7 +3,7 @@
 # directory under OUT_ROOT where the service's <dir>-approle volume is mounted (docker-compose.yml).
 # A function names what goes into secret/<service> and creates the database role(s); provision.sh
 # then writes the AppRole. Steps: lib.sh. A new service adds an entry and a function here, plus its
-# approle volume in the `provision` block (make new-service prints both).
+# approle volume in the `provision` block (scripts/new-service.sh prints both).
 #
 # mw-core-mock comes first: mw-ussd and mw-checkout copy its PIN public key.
 

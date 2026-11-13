@@ -14,14 +14,14 @@ host running and for anyone debugging a failed demo or gate.
 | OS | Linux VM | Linux or macOS (Docker Desktop) |
 
 The stack is one hand-written file, `deploy/docker-compose.yml` (project `mfs-mw`, ADR D16), with
-a laptop demo footprint (about 7.9 GB of memory limits in total, capped at 8 GB by `make compose-check`; 1 Kafka partition per topic, 160m JVM heaps, at most 1 CPU per container but Keycloak).
+a laptop demo footprint (about 7.9 GB of memory limits in total, capped at 8 GB by `./gradlew :composeCheck`; 1 Kafka partition per topic, 160m JVM heaps, at most 1 CPU per container but Keycloak).
 They are sized for functional runs; a throughput run on a small
 machine may be capped by it (`tests/perf/README.md`).
 
 ### Installing the prerequisites on a clean Ubuntu 24.04 VM
 
 ```sh
-sudo apt-get update && sudo apt-get install -y ca-certificates curl git jq make
+sudo apt-get update && sudo apt-get install -y ca-certificates curl git jq
 curl -fsSL https://get.docker.com | sudo sh          # Docker Engine + Compose v2 plugin
 sudo usermod -aG docker "$USER" && newgrp docker
 # JDK 25: any build, e.g. Eclipse Temurin from https://adoptium.net (apt repo or tarball), then
@@ -34,21 +34,25 @@ On macOS: Docker Desktop (Settings, Resources: memory 8 GB or more), a JDK 25 (`
 
 ## Start, stop, status
 
+Gradle runs from the repo root; the `docker compose` commands run from `deploy/` (Compose then reads
+`deploy/.env` by itself; pass `--env-file .env` explicitly whenever you add `--env-file test-timers.env`).
+
 | Task | Command |
 | --- | --- |
-| Build jars and images (after a code change) | `make build` (or `make build M=mw-notify` for one module) |
-| Start (or bring back after a reboot) | `make up` (never builds: reuses the images, then waits for health) |
-| Start only the P2P and cash path | `make up PROFILE=minimal` |
-| Start with short test timers | `make up TIMERS=fast` (`deploy/test-timers.env`) |
-| Live checks | `make smoke` |
-| Seed the shared test baseline (personas, wallets, partner baseline, first admin content) | `make seed` (after `make up`; idempotent; manifest in `build/seed/manifest.json`) |
-| Stop, keep the data | `make down` |
-| Stop and wipe every volume | `make reset` (every profile, orphans too), or `./reset.sh` from `deploy/` |
-| Start without the Makefile (build, start and seed in one command) | `./gradlew clean build`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core --profile seed up -d --build` (`deploy/RUNNING.html`) |
-| Swap a rebuilt service into the running stack | `make build M=mw-notify && make up M=mw-notify` |
-| Run a second stack beside the first | export `COMPOSE_PROJECT_NAME=mw-t2` and `MW_HTTPS_PORT=0` for `make up`, `make api-test` and `make down` (the console login needs port 443, so use it on the default stack only) |
+| Build and test (after a code change) | `./gradlew clean build` (or `./gradlew :mw-notify:build` for one module); `./gradlew bootJar` for the jars only |
+| Credentials (first time; values are kept) | `scripts/gen-dev-env.sh` |
+| Start, build the images, seed (or bring back after a reboot) | `docker compose --env-file .env --profile core --profile seed up -d --build`, then `docker compose --profile core --profile seed wait mw-seeder` (ends with `exited with status code 0`) |
+| Start with short test timers | the same with `--env-file .env --env-file test-timers.env` (`deploy/test-timers.env`) |
+| Start without seeding, wait until healthy | `docker compose --env-file .env --profile core up -d --build --wait` |
+| Start only the P2P and cash path | `docker compose --env-file .env --profile minimal up -d --build` (unseeded) |
+| Live checks | `scripts/smoke.sh` (repo root) |
+| Stop, keep the data | `docker compose --profile core --profile seed down` (or `stop`) |
+| Stop and wipe every volume | `deploy/reset.sh` (every profile, orphans too) |
+| Swap a rebuilt service into the running stack | `./gradlew :mw-notify:bootJar`, then `docker compose --env-file .env --profile core up -d --build mw-notify` and `docker compose restart apisix` (keep the `--env-file` arguments the stack was started with) |
+| Run a second stack beside the first | export `COMPOSE_PROJECT_NAME=mw-t2` and `MW_HTTPS_PORT=0` for the `docker compose` commands and the scripts (the console login needs port 443, so use it on the default stack only) |
 
-For direct `docker compose` work, define once per shell (the same file and env the scripts use):
+The step-by-step version with timings is `deploy/RUNNING.html`. For `docker compose` work from the
+repo root, define once per shell (the same file and env the scripts use):
 
 ```sh
 dc() { docker compose -f deploy/docker-compose.yml --env-file deploy/.env --profile core "$@"; }
@@ -58,10 +62,11 @@ dc restart mw-notify                    # restart one service
 dc stats --no-stream                    # memory and CPU per container
 ```
 
-`make up` fails at once, naming the container, when a service is unhealthy or exited or a one-shot
-(`kafka-init`, `etcd-init`, `apisix-init`, `provision`) exits non-zero; `dc logs <that container>` shows why. It gives up after
-`MW_UP_TIMEOUT` seconds (default 300); a slow first start on a small machine may need
-`MW_UP_TIMEOUT=600 make up`.
+`up --wait` fails, naming the container, when a service is unhealthy or exited or a one-shot
+(`kafka-init`, `etcd-init`, `apisix-init`, `provision`) exits non-zero; `dc logs <that container>`
+shows why. A slow first start on a small machine may need `--wait-timeout 600`. Without `--wait`,
+`dc ps -a` shows the same. The `provision` one-shot runs on every `up` and creates missing roles and
+schemas idempotently, so a new service's schema appears without wiping volumes.
 
 ## What is published
 
@@ -79,7 +84,7 @@ is reachable only inside the Compose networks.
 | `/admin/v1/*` | `mw-admin-api` (realm `ops` JWT) |
 | `/checkout/*`, `/ussd/<mno>`, `/partner/*/callback/*` | checkout, MNO USSD gateways, partner callbacks |
 | `/healthz` | APISIX itself |
-| `/tester` | test console (`mw-test-console`, dev/test only, ADR D17): only while the test-only routes are on (`make tester`), from private addresses; never on a shared or production host |
+| `/tester` | test console (`mw-test-console`, dev/test only, ADR D17): only while the test-only routes are on (`scripts/tester.sh`), from private addresses; never on a shared or production host |
 
 The full route list and every edge policy is in `deploy/apisix/README.md`. To demo from another
 machine, browse on the host itself or forward the port (`sudo ssh -L 443:localhost:443
@@ -90,11 +95,14 @@ machine, browse on the host itself or forward the port (`sudo ssh -L 443:localho
 
 - Every dev credential (PostgreSQL, Valkey, Keycloak admin and test users, client secrets, partner
   simulator HMAC secrets, USSD gateway passwords, the console's session key) is generated by
-  `scripts/gen-dev-env.sh` into the gitignored `deploy/.env` (mode 600) on every
-  `make up`, `make smoke` and `make down`; existing values are kept. The one-shot `provision`
+  `scripts/gen-dev-env.sh` into the gitignored `deploy/.env` (mode 600): run it before the first
+  `up` (`scripts/smoke.sh`, `scripts/tester.sh` and `deploy/reset.sh` call it too); existing values are kept. The tester logins are fixed,
+  documented fake values (ADR D9 amendment; `docs/testing-guide.html` section 1), the rest random;
+  `deploy/reset.sh` rewrites the fixed ones (an older `.env` warns that they differ). OpenBao also gets the
+  fixed token `dev-root-token` on the first start of a fresh volume. The one-shot `provision`
   (`deploy/provision`) writes the services' secrets into OpenBao; services read them from OpenBao at start.
 - Test users and which variable holds their password: README, "Test users".
-- Rotating everything: `make down DOWN_ARGS=-v`, delete `deploy/.env`, `make up`.
+- Rotating every random value: `deploy/reset.sh`, delete `deploy/.env`, `scripts/gen-dev-env.sh`, start again (the tester logins come back with their fixed values).
   Deleting the file but keeping the volumes leaves PostgreSQL and Keycloak with the old passwords:
   the stack will not come up.
 - The OpenBao root token is kept in its data volume (dev only, a known gap; production unseal is
@@ -117,7 +125,7 @@ dc exec keycloak sh -c '
   rm -f /tmp/kc.config'
 ```
 
-`make down DOWN_ARGS=-v` also resets every operator (the realms are re-imported).
+`deploy/reset.sh` also resets every operator (the realms are re-imported).
 
 ## Health and alerts
 
@@ -161,16 +169,16 @@ dc exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select
 
 | Symptom | Do |
 | --- | --- |
-| A service crashed or was killed | `dc start <service>` (or `make up`). The outbox resends, the inbox drops duplicates, saga timers and the status inquiry finish what was in flight; `make chaos` proves this for every service, Kafka and PostgreSQL |
+| A service crashed or was killed | `dc start <service>` (or the start command again). The outbox resends, the inbox drops duplicates, saga timers and the status inquiry finish what was in flight; `scripts/chaos.sh` proves this for every service, Kafka and PostgreSQL |
 | Transactions stuck in `PROCESSING` / `UNKNOWN` | wait for the status inquiry schedule (30 s, 1, 2, 5 min); what it cannot settle goes to `MANUAL_REVIEW`, handled in the console |
-| `make up` stops at a one-shot | `dc logs provision` (it names the service and step that failed; or `kafka-init`, `etcd-init`, `apisix-init`); most often a volume made with other credentials (see Credentials) or an OpenBao that is still sealed: `make down && make up` |
-| `make seed` fails | `dc logs mw-seeder`: the line `seed.step.failed` names the step. `not ready yet: <svc>` = a service never became ready (fix it, seed again); `open change request of <operator>` = a partner, menu or template has a pending request someone else made: approve or reject it in the console, then `make seed` again. Seeding is idempotent, so re-running is always safe |
-| APISIX answers 404 for test routes (`/test/...`) | expected after `make up`; `make api-test` and `make perf` enable them |
-| A service answers 404 `MW-VAL-003` for paths it serves, after `dc up -d <service>` recreated just that container | APISIX still sends to the old container IP, which another service may own now: `dc restart apisix` (a full `make up` does not hit this) |
+| `up` stops at a one-shot | `dc logs provision` (it names the service and step that failed; or `kafka-init`, `etcd-init`, `apisix-init`); most often a volume made with other credentials (see Credentials) or an OpenBao that is still sealed: `dc down`, then start again |
+| `wait mw-seeder` prints a non-zero code | `dc --profile seed logs mw-seeder`: the line `seed.step.failed` names the step. `not ready yet: <svc>` = a service never became ready (fix it, seed again); `open change request of <operator>` = a partner, menu or template has a pending request someone else made: approve or reject it in the console, then run the start command again. Seeding is idempotent, so re-running is always safe |
+| APISIX answers 404 for test routes (`/test/...`) | expected after an `up`; `scripts/api-test.sh`, `scripts/tester.sh` and `scripts/suite.sh perf` enable them |
+| A service answers 404 `MW-VAL-003` for paths it serves, after `dc up -d <service>` recreated just that container | APISIX still sends to the old container IP, which another service may own now: `dc restart apisix` (a full start does not hit this) |
 | 401 from the console API after a long idle | sign out and in again (the refresh token expired) |
-| Port 443 busy | free it, or `MW_HTTPS_PORT=8443 make up` (APIs work, the console login does not) |
+| Port 443 busy | free it, or put `MW_HTTPS_PORT=8443` in front of the `docker compose` start command (APIs work, the console login does not) |
 | Docker out of disk | `docker system df`, then `docker image prune` and `docker builder prune` (keeps volumes) |
-| Anything else after a crash of the host | `make down && make up`; as the last resort `make down DOWN_ARGS=-v && make up` (loses every transaction; the seed data comes back) |
+| Anything else after a crash of the host | `dc down`, then start again; as the last resort `deploy/reset.sh`, then start again (loses every transaction; the seed data comes back) |
 
 ## Backup and restore
 
@@ -181,18 +189,18 @@ risky change:
 dc exec -T postgres sh -c 'pg_dumpall -U "$POSTGRES_USER"' > mw-backup.sql
 ```
 
-Restoring means a fresh stack (`make down DOWN_ARGS=-v && make up`) and feeding that file to
+Restoring means a fresh stack (`deploy/reset.sh`, then start again) and feeding that file to
 `psql`. Kafka, Valkey and OpenBao are not backed up: Kafka holds only in-flight messages (each
 service's outbox is in PostgreSQL), Valkey only sessions and locks, OpenBao only the generated dev
-secrets that `make up` writes again.
+secrets that `provision` writes again on every `up`.
 
 ## Gate and security runs on this host
 
 | Run | Command | Note |
 | --- | --- | --- |
-| Changed-module gate | `make verify-changed BASE=<sha>` | run with the stack down: Testcontainers competes with it for Docker memory |
-| Acceptance suite | `make api-test` (`ALL=1` adds the slow folder) | on a fresh stack: `make reset && make build && make up TIMERS=fast && make seed` first; under 10 minutes |
-| Chaos | `make chaos` (or `make chaos TARGETS="mw-orchestrator kafka"`) | kills containers: never on a stack someone else is using |
-| Load | `make perf` | spends the seed wallets' daily limits: fresh stack before and after |
-| Security | `SECURITY_LIVE=1 make security` | after `make api-test`, so the log scan has logs to read; findings register `docs/security-findings.md` |
-| Container logs only | `make log-scan` | no PIN or unmasked MSISDN / NID in any log |
+| Build gate | `./gradlew clean build` | with Docker running (otherwise the Testcontainers tests are skipped); best with the stack stopped: up to four modules' test PostgreSQL and Kafka run at once |
+| Acceptance suite | `scripts/api-test.sh` (`scripts/api-test.sh "" 1` adds the slow folder) | on a fresh stack: `deploy/reset.sh`, then start with `--env-file test-timers.env` and the seed profile; under 10 minutes |
+| Chaos | `scripts/chaos.sh` (or `CHAOS_TARGETS="mw-orchestrator kafka" scripts/chaos.sh`) | kills containers: never on a stack someone else is using |
+| Load | `scripts/suite.sh perf` | spends the seed wallets' daily limits: fresh stack before and after |
+| Security | `SECURITY_LIVE=1 scripts/security.sh` | after `scripts/api-test.sh`, so the log scan has logs to read; findings register `docs/security-findings.md` |
+| Container logs only | `scripts/log-scan.sh` | no PIN or unmasked MSISDN / NID in any log |

@@ -118,7 +118,7 @@ EOF
 security_in_fixture() {
   mkdir -p scripts/lib
   cp "$REPO_DIR/scripts/security.sh" "$REPO_DIR/scripts/log-scan.sh" scripts/
-  cp "$REPO_DIR/scripts/lib/modules.sh" scripts/lib/
+  cp "$REPO_DIR/scripts/lib/common.sh" scripts/lib/
   OUT="$(MW_ROOT="$PWD" "$@" bash scripts/security.sh 2>&1)"
 }
 
@@ -135,7 +135,7 @@ test_log_scan_covers_every_profile_so_the_seeder_is_scanned_too() {
   stub_live_docker 'ok'
   mkdir -p scripts/lib
   cp "$REPO_DIR/scripts/log-scan.sh" scripts/
-  cp "$REPO_DIR/scripts/lib/modules.sh" scripts/lib/
+  cp "$REPO_DIR/scripts/lib/common.sh" scripts/lib/
   assert_ok env MW_ROOT="$PWD" bash scripts/log-scan.sh
   grep -q -- '--profile minimal --profile core --profile seed --profile tester ps -a' .tool-calls \
     || fail "log-scan does not list every profile's containers: $(cat .tool-calls)"

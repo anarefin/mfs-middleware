@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the shell test suite for the Makefile and scripts/.
+# Runs the shell test suite for scripts/ and the repo layout (./gradlew :scriptTests runs it).
 # Usage: scripts/test/run.sh [test_file.sh ...]   (default: every scripts/test/test_*.sh)
 set -u
 

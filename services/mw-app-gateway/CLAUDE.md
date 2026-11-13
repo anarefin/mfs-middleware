@@ -63,7 +63,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   body): `derived-schemas/app-v1-transaction-request.json` (`TransactionRequest`), `app-v1-device-otp-request.json`
   (`DeviceOtpRequest`, optional: no bytes at all pass), `app-v1-device-binding-request.json` (`DeviceBindingRequest`)
   and `app-v1-fetch-bill-request.json` (`FetchBillRequest`), derived from the contract by
-  `scripts/derived-schemas.sh --write` (`make contracts-lint` fails on drift; a new JSON body endpoint needs its
+  `scripts/derived-schemas.sh --write` (`./gradlew :contractsLint` fails on drift; a new JSON body endpoint needs its
   schema registered in `BodySchemaConfig`; `POST /app/v1/sessions` has no body), validated
   with json-schema-validator (runtime dependency, on Boot's Jackson) on the cached bytes; duplicate keys,
   trailing content or a non-object `400 MW-VAL-001`, schema errors `400 MW-VAL-001` with dotted fields (no
@@ -146,7 +146,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   `TransactionView.merchantPayee`), status COMPLETED or REVERSED only, newest first (UUIDv7 txnId
   order). Each entry `{txnId, status, amount, payer, coreRef, requestedAt, updatedAt}` with the payer's
   MSISDN masked (`0171****789`); no fee, no PIN.
-- Dev provisioning (`provision_mw_app_gateway` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role
+- Dev provisioning (`provision_mw_app_gateway` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `app_gateway_rw`, schema `app_gateway`, `secret/mw-app-gateway` (DB password; `spring.data.redis.password`
   synced from `VALKEY_PASSWORD`), AppRole.
 
@@ -155,12 +155,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 - `api/mw-app-gateway/app.v1.openapi.yaml` (app API v1). This service checks every JSON request body against
   its schema in `src/main/resources/derived-schemas/` (`TransactionRequest`, `DeviceOtpRequest`,
   `DeviceBindingRequest`, `FetchBillRequest`; `scripts/derived-schemas.sh --write` after changing one;
-  `make contracts-lint` fails until then). The edge answers 401/413/429 itself (`deploy/apisix/README.md`).
+  `./gradlew :contractsLint` fails until then). The edge answers 401/413/429 itself (`deploy/apisix/README.md`).
 
 ## Contracts used
 
 - `contracts.yml` (module root) is the machine-readable list of the events and APIs below, checked by
-  `make contracts-lint` and tested without Docker by `contracts/ProducedContractsTest` (every produced
+  `./gradlew :contractsLint` and tested without Docker by `contracts/ProducedContractsTest` (every produced
   event built by the real mapper validates), `contracts/ConsumedContractsTest` (every valid sample reads into
   the own DTO) and `contracts/ApiContractsTest` (app API responses and the billpay client's requests).
 - `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (client; own types `dto/Biller`, `dto/Bill`).
@@ -174,9 +174,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
-  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
-  `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
+  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -197,14 +196,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 
 ## Commands
 
-| Command | What it does |
+| Command (from the repo root) | What it does |
 | --- | --- |
-| `./gradlew test` | unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`, `ApiContractsTest`); no Docker |
-| `./gradlew integrationTest` | Testcontainers `*IT` classes (PostgreSQL, Kafka, Valkey; Docker needed) |
-| `./gradlew conformance` | the `@Conformance` suite (outbox, inbox, HTTP, purge; Docker needed) |
-| `./gradlew check` | `test` + `integrationTest` + `conformance`, JaCoCo gate (80% lines on `service`/`mapper`/`client`) over all three |
-| `./gradlew check bootJar && docker build -t mw-app-gateway:dev .` | image, as spec 4.3 rule 1 |
-| `make verify M=mw-app-gateway` | isolation + field-injection check + contracts lint + `./gradlew check` |
-| `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when its files or the contracts in its `contracts.yml` changed) |
-| `make build M=mw-app-gateway` | `bootJar`, then this service's images (`mfs-mw/mw-app-gateway:local`, plus the shared `mfs-mw/provision:local`) |
-| `make up M=mw-app-gateway` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |
+| `./gradlew :mw-app-gateway:test` | every test in one JVM: unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`, `ApiContractsTest`), the Testcontainers `*IT` classes (PostgreSQL, Kafka, Valkey) and the `@Conformance` suite (outbox, inbox, HTTP, purge); one PostgreSQL and one Kafka per test JVM, a fresh database per Spring context; the `*IT` and conformance classes are skipped without Docker. One class: `--tests '<class>'` |
+| `./gradlew :mw-app-gateway:build` | `test`, then the boot jar `build/libs/mw-app-gateway.jar` (fixed name, the one the Dockerfile copies) |
+| `./gradlew :mw-app-gateway:bootJar && docker build -t mw-app-gateway:dev services/mw-app-gateway` | image, as spec 4.3 rule 1 |
+| `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
+| `./gradlew :mw-app-gateway:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-app-gateway` | rebuild this service's image (`mfs-mw/mw-app-gateway:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |

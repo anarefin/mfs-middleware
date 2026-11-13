@@ -1,53 +1,78 @@
-# make versions-check: version drift between module version catalogs.
+# scripts/versions-check.sh: version drift between the inline versions of the modules' build files.
+
+# bump MODULE OLD NEW: rewrite one inline version in services/MODULE/build.gradle.kts.
+bump() { sed -i.bak "s|$2|$3|" "services/$1/build.gradle.kts"; }
 
 test_same_versions_report_no_drift() {
   new_module "$PWD" services/mw-a
   new_module "$PWD" services/mw-b
-  assert_ok mw_make "$PWD" versions-check
+  assert_ok mw_run "$PWD" versions-check.sh
   assert_out_contains "no version drift"
 }
 
-test_reports_drift_between_two_modules() {
+test_reports_plugin_drift_between_two_modules() {
   new_module "$PWD" services/mw-a
   new_module "$PWD" services/mw-b
-  sed -i.bak 's/^spring-boot = "4.0.0"/spring-boot = "4.0.1"/' services/mw-b/gradle/libs.versions.toml
-  assert_fails mw_make "$PWD" versions-check
-  assert_out_contains "DRIFT spring-boot"
+  bump mw-b 'version "4.0.0"' 'version "4.0.1"'
+  assert_fails mw_run "$PWD" versions-check.sh
+  assert_out_contains "DRIFT plugin org.springframework.boot"
   assert_out_contains "services/mw-a=4.0.0"
   assert_out_contains "services/mw-b=4.0.1"
-  assert_out_lacks "DRIFT camel"
+  assert_out_lacks "camel"
 }
 
-test_keys_present_in_only_one_module_are_not_drift() {
+test_reports_dependency_and_platform_drift() {
   new_module "$PWD" services/mw-a
   new_module "$PWD" services/mw-b
-  printf '[versions]\njsonata = "2.0.6"\nspring-boot = "4.0.0"\ncamel = "4.14.0"\n' >services/mw-b/gradle/libs.versions.toml
-  assert_ok mw_make "$PWD" versions-check
+  bump mw-b 'camel-spring-boot-bom:4.14.0' 'camel-spring-boot-bom:4.15.0'
+  assert_fails mw_run "$PWD" versions-check.sh
+  assert_out_contains "DRIFT org.apache.camel.springboot:camel-spring-boot-bom"
+  assert_out_contains "services/mw-b=4.15.0"
 }
 
-test_ignores_comments_and_other_tables() {
+test_template_is_compared_too() {
+  new_module "$PWD" services/mw-a
+  new_module "$PWD" templates/mw-service-template
+  sed -i.bak 's|junit-jupiter:5.13.4|junit-jupiter:5.14.0|' templates/mw-service-template/build.gradle.kts
+  assert_fails mw_run "$PWD" versions-check.sh
+  assert_out_contains "templates/mw-service-template=5.14.0"
+}
+
+test_coordinates_in_only_one_module_are_not_drift() {
   new_module "$PWD" services/mw-a
   new_module "$PWD" services/mw-b
-  printf '[versions]\nspring-boot = "4.0.0" # pinned\ncamel = "4.14.0"\n\n[libraries]\nx = { module = "a:b", version = "9" }\n' >services/mw-b/gradle/libs.versions.toml
-  printf '[versions]\nspring-boot = "4.0.0"\ncamel = "4.14.0"\n\n[libraries]\nx = { module = "a:b", version = "1" }\n' >services/mw-a/gradle/libs.versions.toml
-  assert_ok mw_make "$PWD" versions-check
+  echo 'dependencies { implementation("com.dashjoin:jsonata:0.9.8") }' >>services/mw-b/build.gradle.kts
+  assert_ok mw_run "$PWD" versions-check.sh
+}
+
+test_ignores_comment_lines_and_versionless_coordinates() {
+  new_module "$PWD" services/mw-a
+  new_module "$PWD" services/mw-b
+  printf '// was org.junit.jupiter:junit-jupiter:5.0.0\n' >>services/mw-b/build.gradle.kts
+  echo 'dependencies { implementation("org.apache.camel.springboot:camel-kafka-starter") }' >>services/mw-b/build.gradle.kts
+  assert_ok mw_run "$PWD" versions-check.sh
 }
 
 test_M_reports_only_drift_involving_that_module() {
   new_module "$PWD" services/mw-a
   new_module "$PWD" services/mw-b
   new_module "$PWD" services/mw-c
-  sed -i.bak 's/^camel = .*/camel = "4.15.0"/' services/mw-b/gradle/libs.versions.toml
-  # drift between mw-a and mw-c on a key mw-b does not use
-  printf '[versions]\nspring-boot = "4.0.0"\ncamel = "4.14.0"\njsonata = "2.0.6"\n' >services/mw-a/gradle/libs.versions.toml
-  printf '[versions]\nspring-boot = "4.0.0"\ncamel = "4.14.0"\njsonata = "2.1.0"\n' >services/mw-c/gradle/libs.versions.toml
-  assert_fails mw_make "$PWD" versions-check M=mw-b
-  assert_out_contains "DRIFT camel"
-  assert_out_lacks "DRIFT jsonata"
-  assert_fails mw_make "$PWD" versions-check
-  assert_out_contains "DRIFT jsonata"
+  bump mw-b 'camel-spring-boot-bom:4.14.0' 'camel-spring-boot-bom:4.15.0'
+  # drift between mw-a and mw-c on a coordinate mw-b does not use
+  echo 'dependencies { implementation("com.dashjoin:jsonata:0.9.8") }' >>services/mw-a/build.gradle.kts
+  echo 'dependencies { implementation("com.dashjoin:jsonata:0.9.9") }' >>services/mw-c/build.gradle.kts
+  assert_fails mw_run "$PWD" versions-check.sh mw-b
+  assert_out_contains "DRIFT org.apache.camel"
+  assert_out_lacks "DRIFT com.dashjoin"
+  assert_fails mw_run "$PWD" versions-check.sh
+  assert_out_contains "DRIFT com.dashjoin:jsonata"
 }
 
 test_no_modules_reports_nothing_to_compare() {
-  assert_ok mw_make "$PWD" versions-check
+  assert_ok mw_run "$PWD" versions-check.sh
+}
+
+test_runs_on_the_repo_build_files() {
+  # report only: it runs on the real repo and must not crash
+  OUT="$("$REPO_DIR/scripts/versions-check.sh" 2>&1)" || case "$OUT" in *DRIFT*) ;; *) fail "versions-check crashed" ;; esac
 }

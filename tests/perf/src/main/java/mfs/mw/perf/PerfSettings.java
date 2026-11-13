@@ -4,7 +4,7 @@ import java.time.Duration;
 import mfs.mw.perf.mix.ScenarioMix;
 
 /**
- * Settings of a run, from {@code -Dmw.perf.*} (forwarded by Gradle; {@code make perf} passes none,
+ * Settings of a run, from {@code -Dmw.perf.*} (forwarded by Gradle; {@code scripts/suite.sh perf} passes none,
  * so the defaults are the criterion-7 run):
  *
  * <ul>

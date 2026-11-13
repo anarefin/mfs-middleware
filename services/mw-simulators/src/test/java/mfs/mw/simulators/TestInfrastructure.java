@@ -4,17 +4,8 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ExecutionException;
-import org.apache.kafka.clients.admin.Admin;
-import org.apache.kafka.clients.admin.AdminClientConfig;
-import org.apache.kafka.clients.admin.GroupListing;
-import org.apache.kafka.clients.admin.ListGroupsOptions;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.DynamicPropertyRegistrar;
 import org.testcontainers.kafka.KafkaContainer;
@@ -24,155 +15,87 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /**
  * Real infrastructure for tests that start the application context (spec 22.1): PostgreSQL 18 and
  * a single-node KRaft Kafka, the same images as the platform stack. This module owns its fixtures
- * (no shared test kit). Import it with {@code @Import(TestInfrastructure.class)}. The containers
- * are shared by every test context in the run and stopped by Testcontainers at JVM exit.
+ * (no shared test kit). Import it with {@code @Import(TestInfrastructure.class)}; such a test class
+ * is a {@code *IT}, which {@link DockerAvailableCondition} skips when Docker is not available.
  *
- * <p>Reuse (ticket 54): with {@code TESTCONTAINERS_REUSE_ENABLE=true} (set by {@code make verify}
- * and {@code make verify-changed}) the containers outlive the JVM, so the {@code integrationTest}
- * and {@code conformance} JVMs share one PostgreSQL and one Kafka. They are labelled {@code
- * mw.module} (this module) and {@code mw.root} (the checkout), so modules and worktrees never share
- * them. Each test JVM still starts on clean infrastructure: it works in its own database (system
- * property {@code mw.tc.database}, e.g. {@code <svc>_it} / {@code <svc>_conf}, set by the Gradle
- * test task), dropped and created afresh at start, and it deletes every topic and consumer group a
- * previous JVM left behind. Without reuse enabled the containers are throwaway, as before.
+ * <p>One PostgreSQL and one Kafka per test JVM: JVM-wide singletons, started together the first
+ * time a Spring context asks for them, never reused across JVMs (no {@code withReuse}, no labels)
+ * and removed by Testcontainers' Ryuk when the JVM exits. Nothing cleans up between runs because
+ * every run starts on new containers.
+ *
+ * <p>Per Spring context a fresh database: {@link #testInfrastructureProperties()} runs {@code
+ * CREATE DATABASE ctx_<n>} for every context Spring builds (other {@code @MockitoBean}s, other
+ * properties, {@code @DirtiesContext}) and points {@code spring.datasource.*} at it, so Flyway
+ * migrates an empty database and no context sees another's rows. Kafka is shared by all contexts;
+ * tests keep apart by their own topic names, keys and consumer groups.
+ *
+ * <p>PostgreSQL is deliberately not a bean: Spring Boot stops a container bean when its context
+ * closes, which would stop the shared container under every other cached context. Kafka stays a
+ * bean because tests inject {@link KafkaContainer} for its bootstrap servers; its {@code stop()} is
+ * a no-op for the same reason.
  */
 @TestConfiguration(proxyBeanMethods = false)
 public class TestInfrastructure {
 
-  /** This module, the label that keeps its reused containers apart from other modules'. */
-  static final String MODULE = System.getProperty("mw.module", "mw-simulators");
-
-  /**
-   * The containers live as long as the JVM, not as long as one Spring context: Spring Boot's
-   * Testcontainers support stops a container bean when its context closes (whatever the bean's
-   * destroyMethod says), and every context in the run shares these two. So {@code stop()} is a
-   * no-op here; Testcontainers' Ryuk removes them when the JVM exits.
-   */
-  static final class JvmScopedPostgres extends PostgreSQLContainer {
-    private volatile String database;
-
-    JvmScopedPostgres(String image) {
-      super(image);
-    }
-
-    /** Drops and creates {@code name}, then points every later JDBC URL at it. */
-    void useFreshDatabase(String name) {
-      if (!name.matches("[a-z][a-z0-9_]{0,62}")) {
-        throw new IllegalArgumentException("not a plain database name: " + name);
-      }
-      try (Connection c = DriverManager.getConnection(super.getJdbcUrl(), getUsername(), getPassword());
-          Statement s = c.createStatement()) {
-        s.execute("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)");
-        s.execute("CREATE DATABASE " + name);
-      } catch (SQLException e) {
-        throw new IllegalStateException("cannot create test database " + name, e);
-      }
-      database = name;
-    }
-
-    @Override
-    public String getDatabaseName() {
-      return database == null ? super.getDatabaseName() : database;
-    }
-
-    @Override
-    public String getJdbcUrl() {
-      String url = super.getJdbcUrl();
-      return database == null
-          ? url
-          : url.replaceFirst("/" + super.getDatabaseName() + "(?=\\?|$)", "/" + database);
-    }
-
-    @Override
-    public void stop() {
-      // shared by all contexts; removed at JVM exit
-    }
-  }
-
+  /** Kafka as a bean that survives the close of the context that holds it (see class doc). */
   static final class JvmScopedKafka extends KafkaContainer {
     JvmScopedKafka(String image) {
       super(image);
     }
 
-    /** Deletes every topic and consumer group, so this JVM starts on an empty broker. */
-    void deleteTopicsAndGroups() {
-      try (Admin admin =
-          Admin.create(Map.of(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, getBootstrapServers()))) {
-        var groups =
-            admin.listGroups(ListGroupsOptions.forConsumerGroups()).all().get().stream()
-                .map(GroupListing::groupId)
-                .toList();
-        if (!groups.isEmpty()) {
-          admin.deleteConsumerGroups(groups).all().get();
-        }
-        Set<String> topics = admin.listTopics().names().get();
-        if (!topics.isEmpty()) {
-          admin.deleteTopics(topics).all().get();
-        }
-        Instant deadline = Instant.now().plus(Duration.ofSeconds(30));
-        while (!admin.listTopics().names().get().isEmpty()) {
-          if (Instant.now().isAfter(deadline)) {
-            throw new IllegalStateException("topics of an earlier test run are still being deleted");
-          }
-          Thread.sleep(100);
-        }
-      } catch (ExecutionException e) {
-        throw new IllegalStateException("cannot clean the reused Kafka broker", e);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new IllegalStateException(e);
-      }
-    }
-
     @Override
     public void stop() {
-      // shared by all contexts; removed at JVM exit
+      // shared by all contexts; Ryuk removes it at JVM exit
     }
   }
 
-  static final JvmScopedPostgres POSTGRES =
-      reusable(new JvmScopedPostgres("postgres:18.6-alpine3.24"));
-  static final JvmScopedKafka KAFKA = reusable(new JvmScopedKafka("apache/kafka:4.3.2"));
+  /** Numbers the Spring test contexts; each gets its own database {@code ctx_<n>}. */
+  private static final AtomicInteger CONTEXTS = new AtomicInteger();
 
-  static {
-    Startables.deepStart(POSTGRES, KAFKA).join();
-    String database = System.getProperty("mw.tc.database");
-    if (database != null && !database.isBlank()) {
-      POSTGRES.useFreshDatabase(database);
+  /** Every cached context keeps its own Hikari pool open, so the server allows many clients. */
+  static final PostgreSQLContainer POSTGRES =
+      new PostgreSQLContainer("postgres:18.6-alpine3.24")
+          .withCommand("postgres", "-c", "fsync=off", "-c", "max_connections=600");
+
+  static final JvmScopedKafka KAFKA = new JvmScopedKafka("apache/kafka:4.3.2");
+
+  /** Starts both containers once (in parallel); later calls are no-ops. */
+  static synchronized void start() {
+    if (!POSTGRES.isRunning() || !KAFKA.isRunning()) {
+      Startables.deepStart(POSTGRES, KAFKA).join();
     }
-    KAFKA.deleteTopicsAndGroups();
   }
 
-  private static <T extends org.testcontainers.containers.GenericContainer<?>> T reusable(T container) {
-    container.withReuse(true);
-    container.withLabel("mw.module", MODULE);
-    container.withLabel("mw.root", repoRoot());
-    return container;
-  }
-
-  /** The checkout this run belongs to: the parent of {@code mwContractsDir} (set by Gradle). */
-  private static String repoRoot() {
-    String contracts = System.getProperty("mwContractsDir");
-    if (contracts == null) {
-      return System.getProperty("user.dir");
+  /** Creates the next context's empty database and returns its JDBC URL. */
+  static String createContextDatabase() {
+    start();
+    String database = "ctx_" + CONTEXTS.incrementAndGet();
+    try (Connection c =
+            DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        Statement s = c.createStatement()) {
+      s.execute("CREATE DATABASE " + database);
+    } catch (SQLException e) {
+      throw new IllegalStateException("cannot create test database " + database, e);
     }
-    return java.nio.file.Path.of(contracts).toAbsolutePath().normalize().getParent().toString();
+    return POSTGRES.getJdbcUrl().replaceFirst("/[^/?]+(\\?|$)", "/" + database + "$1");
   }
 
-  @Bean(destroyMethod = "")
-  @ServiceConnection
-  PostgreSQLContainer postgres() {
-    return POSTGRES;
+  /** Wires this context to its own database and to the shared Kafka. */
+  @Bean
+  DynamicPropertyRegistrar testInfrastructureProperties() {
+    String url = createContextDatabase();
+    return registry -> {
+      registry.add("spring.datasource.url", () -> url);
+      registry.add("spring.datasource.username", POSTGRES::getUsername);
+      registry.add("spring.datasource.password", POSTGRES::getPassword);
+      // Camel's Kafka component does not read Spring Boot's Kafka connection details.
+      registry.add("camel.component.kafka.brokers", KAFKA::getBootstrapServers);
+    };
   }
 
   @Bean(destroyMethod = "")
   KafkaContainer kafka() {
+    start();
     return KAFKA;
-  }
-
-  /** Camel's Kafka component does not read Spring Boot's Kafka connection details. */
-  @Bean
-  DynamicPropertyRegistrar kafkaBrokers(KafkaContainer kafka) {
-    return registry -> registry.add("camel.component.kafka.brokers", kafka::getBootstrapServers);
   }
 }

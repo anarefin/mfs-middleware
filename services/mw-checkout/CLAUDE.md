@@ -84,7 +84,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 - Table `checkout.ipn_delivery` (V5): one row per IPN attempt (see above).
 - Table `checkout.session` (V4): token, merchant, order, amount, URLs, status, payer, OTP hash /
   expiry / attempts / sends, txn_id, error_code, times.
-- Dev provisioning (`provision_mw_checkout` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): role `checkout_rw`, schema `checkout`,
+- Dev provisioning (`provision_mw_checkout` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role `checkout_rw`, schema `checkout`,
   `secret/mw-checkout` (DB password; `mw.checkout.merchants.merchant_demo.secret` from
   `CHECKOUT_DEMO_MERCHANT_SECRET`, the same value as the test-only APISIX consumer; the core's PIN
   public key + key id copied from `secret/mw-core-mock`), AppRole `mw-checkout`.
@@ -96,12 +96,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   bodies with `src/main/resources/derived-schemas/` `checkout-v1-create-session.json`
   (`CreateSessionRequest`), `checkout-pay-v1-otp.json` (`OtpRequest`) and
   `checkout-pay-v1-confirm.json` (`ConfirmRequest`) (`scripts/derived-schemas.sh --write` after
-  changing one; `make contracts-lint` fails on drift).
+  changing one; `./gradlew :contractsLint` fails on drift).
 
 ## Contracts used
 
 - `contracts.yml` (module root) is the machine-readable list of the events and APIs here, checked by
-  `make contracts-lint` and tested without Docker by `contracts/ProducedContractsTest` (every produced
+  `./gradlew :contractsLint` and tested without Docker by `contracts/ProducedContractsTest` (every produced
   event built by `CheckoutMapper` validates), `contracts/ConsumedContractsTest` (every valid sample reads
   into the own DTO) and `contracts/ApiContractsTest` (checkout API responses and the IPN body). No other
   module's API is called (`consumes.apis` empty).
@@ -128,9 +128,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
-  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
-  `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
+  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -148,15 +147,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 
 ## Commands
 
-| Command | What it does |
+| Command (from the repo root) | What it does |
 | --- | --- |
-| `./gradlew test` | unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`, `ApiContractsTest`); no Docker |
-| `./gradlew integrationTest` | Testcontainers `*IT` classes (PostgreSQL, Kafka; Docker needed) |
-| `./gradlew conformance` | the `@Conformance` suite (outbox, inbox, HTTP, purge; Docker needed) |
-| `./gradlew check` | `test` + `integrationTest` + `conformance`, JaCoCo gate (80% lines on `service`/`mapper`/`client`) over all three |
-| `./gradlew check bootJar && docker build -t mw-checkout:dev .` | image, as spec 4.3 rule 1 |
-| `make verify M=mw-checkout` | isolation + field-injection check + contracts lint + `./gradlew check` |
-| `make verify-changed [BASE=main]` | the gate for the modules changed since `BASE` (this one when its files or the contracts in its `contracts.yml` changed) |
-| `make build M=mw-checkout` | `bootJar`, then this service's images (`mfs-mw/mw-checkout:local`, plus the shared `mfs-mw/provision:local`) |
-| `make up M=mw-checkout` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |
-| `make api-test FOLDER=09` | session -> OTP -> pay -> signed redirect through the edge |
+| `./gradlew :mw-checkout:test` | every test in one JVM: unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`, `ApiContractsTest`), the Testcontainers `*IT` classes (PostgreSQL, Kafka) and the `@Conformance` suite (outbox, inbox, HTTP, purge); one PostgreSQL and one Kafka per test JVM, a fresh database per Spring context; the `*IT` and conformance classes are skipped without Docker. One class: `--tests '<class>'` |
+| `./gradlew :mw-checkout:build` | `test`, then the boot jar `build/libs/mw-checkout.jar` (fixed name, the one the Dockerfile copies) |
+| `./gradlew :mw-checkout:bootJar && docker build -t mw-checkout:dev services/mw-checkout` | image, as spec 4.3 rule 1 |
+| `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
+| `./gradlew :mw-checkout:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-checkout` | rebuild this service's image (`mfs-mw/mw-checkout:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |
+| `scripts/api-test.sh 09` | session -> OTP -> pay -> signed redirect through the edge |

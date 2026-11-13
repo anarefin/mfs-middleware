@@ -1,5 +1,5 @@
-# templates/mw-service-template: scaffolding (make new-service) and container wiring.
-# Runs against a copy of the real template in a fixture root; no Gradle or Docker needed.
+# templates/mw-service-template: scaffolding (scripts/new-service.sh) and container wiring.
+# Runs against a copy of the real template in a fixture root; only the root-build check runs Gradle.
 
 TEMPLATE_SRC="$REPO_DIR/templates/mw-service-template"
 
@@ -17,20 +17,22 @@ back_refs() {
 
 test_template_is_a_module_and_passes_isolation() {
   copy_template "$PWD"
-  assert_ok mw_make "$PWD" check-isolation M=mw-service-template
+  assert_ok mw_run "$PWD" check-isolation.sh mw-service-template
   assert_out_contains "1 module(s)"
 }
 
 test_new_service_scaffolds_a_clean_copy() {
   copy_template "$PWD"
-  assert_ok mw_make "$PWD" new-service NAME=mw-demo
+  assert_ok mw_run "$PWD" new-service.sh mw-demo
   d=services/mw-demo
   [ -f $d/src/main/java/mfs/mw/demo/DemoApplication.java ] || fail "no DemoApplication: $(find $d/src -name '*.java' | head)"
   [ -f $d/src/main/java/mfs/mw/demo/util/MaskingPolicy.java ] || fail "layered packages not moved"
   [ -f $d/src/test/java/mfs/mw/demo/util/MaskingPolicyTest.java ] || fail "tests not moved"
   [ ! -d $d/src/main/java/mfs/mw/service ] || fail "old package dir left behind"
   grep -q '^package mfs.mw.demo;' $d/src/main/java/mfs/mw/demo/DemoApplication.java || fail "package not renamed"
-  grep -q 'rootProject.name = "mw-demo"' $d/settings.gradle.kts || fail "rootProject.name not renamed"
+  grep -q 'archiveFileName = "mw-demo.jar"' $d/build.gradle.kts || fail "boot jar name not renamed"
+  grep -q 'COPY build/libs/mw-demo.jar app.jar' $d/Dockerfile || fail "Dockerfile jar name not renamed"
+  grep -q '!build/libs/mw-demo.jar' $d/.dockerignore || fail ".dockerignore jar name not renamed"
   grep -q 'name: mw-demo' $d/src/main/resources/application.yml || fail "application name not renamed"
   [ ! -e $d/compose.yml ] || fail "the copy has its own compose.yml (ADR D16: one deploy/docker-compose.yml)"
   # instead it prints the block to paste into deploy/docker-compose.yml
@@ -38,6 +40,8 @@ test_new_service_scaffolds_a_clean_copy() {
   assert_out_contains "  mw-demo:"
   assert_out_contains "image: mfs-mw/mw-demo:local"
   assert_out_contains "build: { context: ../services/mw-demo, args: *jvm-build-args }"
+  assert_out_contains 'memory: "${APP_MEM_LIMIT:-416M}"'
+  assert_out_contains "./gradlew :mw-demo:bootJar"
   assert_out_lacks "mw-demo-init"
   assert_out_contains "demo-approle:/run/mw/approle:ro"
   # and its provisioning: the provision volume and the services.sh entry
@@ -47,18 +51,20 @@ test_new_service_scaffolds_a_clean_copy() {
   assert_out_contains "db_role demo_rw demo"
   grep -q 'schemas: demo$' $d/src/main/resources/application.yml || fail "DB schema not renamed"
   grep -q 'COMMENT ON SCHEMA demo ' $d/src/main/resources/db/migration/V1__baseline.sql || fail "migration schema not renamed"
-  [ -x $d/gradlew ] || fail "gradlew not executable"
-  [ -f $d/gradle/wrapper/gradle-wrapper.jar ] || fail "wrapper jar missing"
+  # a plain subproject of the root build: no settings, wrapper or catalog of its own
+  for f in settings.gradle.kts gradlew gradlew.bat gradle gradle.properties; do
+    [ ! -e $d/$f ] || fail "the copy has its own $f"
+  done
   [ ! -e $d/scaffold.sh ] || fail "scaffold.sh copied"
   grep -q '# mw-demo' $d/CLAUDE.md || fail "CLAUDE.md not generated for the service"
   refs="$(back_refs $d)"
   [ -z "$refs" ] || fail "references back to the template in: $refs"
-  assert_ok mw_make "$PWD" check-isolation M=mw-demo
+  assert_ok mw_run "$PWD" check-isolation.sh mw-demo
 }
 
 test_new_service_maps_hyphens_to_package_dots() {
   copy_template "$PWD"
-  assert_ok mw_make "$PWD" new-service NAME=mw-adapter-telco
+  assert_ok mw_run "$PWD" new-service.sh mw-adapter-telco
   d=services/mw-adapter-telco
   [ -f $d/src/main/java/mfs/mw/adapter/telco/AdapterTelcoApplication.java ] || fail "wrong package path"
   grep -q '^package mfs.mw.adapter.telco.filter;' $d/src/main/java/mfs/mw/adapter/telco/filter/CorrelationIdFilter.java || fail "sub-package not renamed"
@@ -69,9 +75,9 @@ test_new_service_maps_hyphens_to_package_dots() {
 
 test_new_service_rejects_names_that_are_not_java_packages() {
   copy_template "$PWD"
-  assert_fails mw_make "$PWD" new-service NAME=mw-new
+  assert_fails mw_run "$PWD" new-service.sh mw-new
   assert_out_contains "Java"
-  assert_fails mw_make "$PWD" new-service NAME=mw-adapter-2fa
+  assert_fails mw_run "$PWD" new-service.sh mw-adapter-2fa
   [ ! -e services/mw-new ] && [ ! -e services/mw-adapter-2fa ] || fail "partial module left behind"
 }
 
@@ -90,46 +96,42 @@ test_container_runs_as_non_root_with_health_wired_to_compose() {
   printf '%s' "$app" | grep -q 'restart: unless-stopped' || fail "x-app restart policy missing"
 }
 
-# Spec 4.3 rule 1: a copy of the template plus contracts/ runs
-# `./gradlew check bootJar && docker build .` from its own directory alone. Slow (the
-# module's full check, Testcontainers included); skipped with a note when Docker is down.
-test_template_copy_checks_and_builds_its_image_alone() {
-  if ! docker info >/dev/null 2>&1; then
-    echo "    SKIP: Docker not running" >&2; return 0
+# A scaffolded copy is a subproject of the root build as soon as it exists (settings.gradle.kts
+# discovers services/* with a build.gradle.kts): the real root settings, run by the real wrapper in a
+# fixture root, list it. Configuration only (no compile, no tests); skipped when no JDK is around.
+test_scaffolded_service_is_picked_up_by_the_root_build() {
+  if ! command -v java >/dev/null 2>&1 && [ -z "${JAVA_HOME:-}" ]; then
+    echo "    SKIP: no JDK" >&2; return 0
   fi
   copy_template "$PWD"
-  (cd "$REPO_DIR/contracts" && tar cf - .) | (cd "$PWD/contracts" && tar xf -)
-  tag="mwtest-template:$$"
-  OUT="$(cd templates/mw-service-template && ./gradlew -q check bootJar 2>&1 && docker build -q -t "$tag" . 2>&1)" \
-    || fail "./gradlew check bootJar && docker build . failed in the copy"
-  docker image inspect "$tag" >/dev/null 2>&1 || fail "image $tag not built"
-  docker rmi -f "$tag" >/dev/null 2>&1 || true
+  cp -R "$REPO_DIR/gradlew" "$REPO_DIR/gradle" "$REPO_DIR/settings.gradle.kts" "$REPO_DIR/gradle.properties" .
+  printf 'plugins { base }\n' >build.gradle.kts
+  assert_ok mw_run "$PWD" new-service.sh mw-demo
+  OUT="$(./gradlew -q --offline --no-daemon --no-configuration-cache projects 2>&1)" \
+    || OUT="$(./gradlew -q --no-daemon --no-configuration-cache projects 2>&1)" \
+    || fail "./gradlew projects failed in the fixture root"
+  assert_out_contains ":mw-demo"
 }
 
-test_template_check_runs_the_coverage_gate() {
-  # spec 22.1: >= 80% line coverage (JaCoCo) on service, mapper and client, in `check`
-  # (make verify).
+test_template_has_a_single_test_task_and_no_coverage_gate() {
+  # One test task per module (unit, slice, contract, *IT, @Conformance in one JVM), no JaCoCo gate.
   local b="$TEMPLATE_SRC/build.gradle.kts"
-  grep -qE '^[[:space:]]*jacoco$' "$b" || fail "jacoco plugin not applied"
-  grep -q 'jacocoTestCoverageVerification' "$b" || fail "no coverage verification task configured"
-  grep -qE 'minimum = "?0\.80"?\.toBigDecimal\(\)|minimum = BigDecimal\("0\.80"\)' "$b" || fail "gate is not 0.80"
-  grep -qE 'counter = "LINE"' "$b" || fail "gate does not count lines"
-  for p in service mapper client; do
-    grep -q "\"$p\"" "$b" || fail "gate does not cover the $p package"
-  done
-  grep -qE 'tasks\.check \{[^}]*jacocoTestCoverageVerification' "$b" || fail "coverage gate not wired into check"
-  grep -q 'toolVersion = libs.versions.jacoco' "$b" || fail "JaCoCo version not pinned from the catalog"
+  grep -qE '^[[:space:]]*jacoco$|jacocoTestCoverageVerification' "$b" && fail "JaCoCo still applied"
+  grep -qE 'register<Test>|integrationTest|conformance"' "$b" && fail "extra test tasks still registered"
+  grep -q 'tasks.test' "$b" || fail "no tasks.test configuration"
+  grep -q 'useJUnitPlatform' "$b" || fail "JUnit Platform not used"
+  grep -q 'libs\.' "$b" && fail "the template uses a version catalog (versions are inline)"
+  return 0
 }
 
 test_no_static_analysis_tool_in_the_template_docs_or_scripts() {
-  # M0 review (ticket 49): SpotBugs/FindSecBugs dropped; `make verify` runs no static analysis.
+  # M0 review (ticket 49): SpotBugs/FindSecBugs dropped; ./gradlew build runs no static analysis.
   [ -e "$TEMPLATE_SRC/config/spotbugs" ] && fail "config/spotbugs still present"
   local hits
-  hits="$(grep -rliE 'spotbugs|findsecbugs' "$TEMPLATE_SRC/build.gradle.kts" "$TEMPLATE_SRC/gradle/libs.versions.toml" \
+  hits="$(grep -rliE 'spotbugs|findsecbugs' "$TEMPLATE_SRC/build.gradle.kts" \
     "$TEMPLATE_SRC/CLAUDE.md" "$TEMPLATE_SRC/scaffold.sh" "$REPO_DIR/CLAUDE.md" "$REPO_DIR/.github/pull_request_template.md" \
-    "$REPO_DIR/Makefile" "$REPO_DIR/scripts"/*.sh 2>/dev/null)"
+    "$REPO_DIR/build.gradle.kts" "$REPO_DIR/scripts"/*.sh 2>/dev/null)"
   [ -z "$hits" ] || fail "SpotBugs still mentioned in: $hits"
-  grep -qi 'static analysis' "$REPO_DIR/scripts/verify.sh" "$REPO_DIR/Makefile" && fail "verify still claims static analysis"
   return 0
 }
 

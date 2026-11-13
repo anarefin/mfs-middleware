@@ -23,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
  * never at the APISIX edge, M3 gate decision A6). It runs on the exact bytes the controller then
  * binds (copied from mw-app-gateway's BodySchema). Each schema is a {@code derived-schemas/*.json}
  * resource ({@link #HTTP_STEP}), derived from the contract's request schema by {@code
- * scripts/derived-schemas.sh} ({@code make contracts-lint} fails when one drifts); none has a
+ * scripts/derived-schemas.sh} ({@code ./gradlew :contractsLint} fails when one drifts); none has a
  * pattern or format, so no message repeats a request value (the step's {@code input} may be a PIN).
  *
  * <p>Duplicate keys are refused (two JSON parsers may keep different values), and so is trailing

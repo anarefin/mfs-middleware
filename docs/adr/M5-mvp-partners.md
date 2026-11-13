@@ -13,7 +13,7 @@ Real partner APIs and test accounts are not available yet; the adapter framework
 ## Consequences
 
 - Real partner mappings are configuration on the adapter framework later (spec 11.3 onboarding checklist).
-- The simulators' control API is reachable only through test-only APISIX routes that `make api-test` and `make tester` enable (originally the Cucumber `e2e` target).
+- The simulators' control API is reachable only through test-only APISIX routes that `scripts/api-test.sh` and `scripts/tester.sh` enable (originally the Cucumber `e2e` target, then `make api-test` and `make tester`).
 
 ## Where in the repo
 

@@ -56,7 +56,7 @@ export const PRESETS: readonly Preset[] = [
   {
     id: "core-commit-refused", title: "Core: the next hold commit is refused (-> MANUAL_REVIEW)",
     proves: "a top-up / bill payment the partner applied but the core will not commit stops in MANUAL_REVIEW for an operator",
-    then: "App: send a top-up; it ends MANUAL_REVIEW. Ops console: request FORCE_COMMIT as ops-maker01, approve as ops-checker01 -> COMPLETED",
+    then: "App: send a top-up; it ends MANUAL_REVIEW. Ops console: request FORCE_COMMIT as seed-ops-maker, approve as seed-ops-checker -> COMPLETED",
     calls: [{ method: "POST", path: "/test/core-mock/v1/faults", json: { mode: "REJECT", commandType: "CommitHold", times: 1, reasonCode: "INJECTED_REJECT" } }],
   },
   {

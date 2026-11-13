@@ -18,8 +18,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * write-manifest: the seeded ids and personas as JSON at {@code mw.seeder.manifest-path} (the
- * {@code seed-manifest} volume in the stack; {@code make seed} copies it to {@code
- * build/seed/manifest.json}), plus one masked log line. The file is replaced atomically and only
+ * {@code seed-manifest} volume in the stack; scripts/ui-e2e.sh and tests/api/run.sh copy it to
+ * {@code build/seed/manifest.json}), plus one masked log line. The file is replaced atomically and only
  * when its content changed, so a second run reports UNCHANGED.
  */
 @Service

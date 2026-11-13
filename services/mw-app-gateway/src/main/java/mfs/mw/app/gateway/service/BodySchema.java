@@ -25,7 +25,7 @@ import tools.jackson.databind.json.JsonMapper;
  * bytes the device signed; it validates the exact bytes it hashes and parses. Each schema is a
  * {@code derived-schemas/*.json} resource ({@link #TRANSACTION}, {@link #DEVICE_OTP}, {@link
  * #DEVICE_BINDING}, {@link #FETCH_BILL}), derived from the contract's request schema by {@code
- * scripts/derived-schemas.sh} ({@code make contracts-lint} fails when one drifts); none has a
+ * scripts/derived-schemas.sh} ({@code ./gradlew :contractsLint} fails when one drifts); none has a
  * pattern or format, so no message repeats a request value.
  *
  * <p>Duplicate keys are refused (two JSON parsers may keep different values; the edge's re-encoding

@@ -4,7 +4,7 @@
 -- upstream on a route with limit-count (and show_limit_quota_header) but carries no
 -- X-RateLimit-Limit was therefore not counted: log the stable error line
 -- "mw.edge.rate_limit_degraded" with the route id and status (never headers or bodies), which
--- make smoke and the alerting grep for. limit-count's own 429 and every request stopped before
+-- scripts/smoke.sh and the alerting grep for. limit-count's own 429 and every request stopped before
 -- the limiter (401, 400, 413...) never reach the upstream, so they never match.
 local core = require("apisix.core")
 

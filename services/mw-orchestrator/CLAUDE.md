@@ -346,7 +346,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `/internal/**`); APISIX exposes it only with `MW_E2E_ROUTES=1` as `/test/orchestrator/v1/*`
   (`deploy/apisix/routes-test/test-orchestrator.json`, key-auth `mw_e2e`, private networks).
   `TestApiControllerTest` (on/off), `TestApiServiceTest`.
-- Dev provisioning (`provision_mw_orchestrator` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `make up`, idempotent, dev only): creates
+- Dev provisioning (`provision_mw_orchestrator` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): creates
   role and schema, `secret/mw-orchestrator` (DB password, never overwritten; search hash key, created once) and the AppRole
   `mw-orchestrator`; role-id/secret-id land in a volume the service reads as a configtree.
 
@@ -366,7 +366,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 - `contracts.yml` (module root) is the machine-readable list of what this service produces and
   consumes (each `core.command.v1` command type, `core.event.v1` event type and partner family
-  separately), checked by `make contracts-lint` and tested without Docker by
+  separately), checked by `./gradlew :contractsLint` and tested without Docker by
   `contracts/ProducedContractsTest` (every produced event built by the real mapper, serialised as
   the outbox does, validated), `contracts/ConsumedContractsTest` (every valid sample of a consumed
   event read into the own DTO) and `contracts/ApiContractsTest` (txn-query response bodies against
@@ -393,9 +393,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
-  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (`security-*` in
-  `gradle/libs.versions.toml`; drop once the Boot / Camel BOMs ship them); the Dockerfile runs
-  `apt-get upgrade` in the runtime stage; the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `make security M=<this module>` scans the SBOM and the
+  Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
+  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -416,14 +415,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 ## Commands
 
-| Command | What it does |
+| Command (from the repo root) | What it does |
 | --- | --- |
-| `./gradlew test` | unit, slice and contract tests, no Docker (leaves out `*IT` and `@Conformance`) |
-| `./gradlew integrationTest` | Testcontainers `*IT` classes (Docker needed), not `@Conformance` |
-| `./gradlew conformance` | the `@Conformance` suite (Docker needed) |
-| `./gradlew check` | `test` + `integrationTest` + `conformance`, JaCoCo gate over all three (80% lines on `service`/`mapper`/`client`) |
-| `./gradlew check bootJar && docker build -t mw-orchestrator:dev .` | image, as spec 4.3 rule 1 |
-| `make verify M=mw-orchestrator` | isolation + field-injection check + contracts lint + `./gradlew check` |
-| `make verify-changed [BASE=main]` | the gate for the modules changed since BASE (this one when it or a contract in its `contracts.yml` changed) |
-| `make build M=mw-orchestrator` | `bootJar`, then this service's images (`mfs-mw/mw-orchestrator:local`, plus the shared `mfs-mw/provision:local`) |
-| `make up M=mw-orchestrator` | start this service and what it depends on from `deploy/docker-compose.yml` (`TIMERS=fast` for short test timers) |
+| `./gradlew :mw-orchestrator:test` | every test in one JVM: unit, slice and contract tests, the Testcontainers `*IT` classes and the `@Conformance` suite; one PostgreSQL and one Kafka per test JVM, a fresh database per Spring context; the `*IT` and conformance classes are skipped without Docker. One class: `--tests '<class>'` |
+| `./gradlew :mw-orchestrator:build` | `test`, then the boot jar `build/libs/mw-orchestrator.jar` (fixed name, the one the Dockerfile copies) |
+| `./gradlew :mw-orchestrator:bootJar && docker build -t mw-orchestrator:dev services/mw-orchestrator` | image, as spec 4.3 rule 1 |
+| `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |
+| `./gradlew :mw-orchestrator:bootJar`, then from `deploy/`: `docker compose --env-file .env --env-file test-timers.env --profile core up -d --build mw-orchestrator` | rebuild this service's image (`mfs-mw/mw-orchestrator:local`) and restart it with what it depends on (leave out `--env-file test-timers.env` for the production timers) |

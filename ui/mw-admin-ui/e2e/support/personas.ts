@@ -4,8 +4,8 @@ import { manifestPath } from "./env";
 /**
  * The seeded ops personas (mw-seeder, ticket 57) the suite signs in as; `compliance` (compliance-officer)
  * drives the audited MSISDN reveal. Names and roles come from the
- * seed manifest (build/seed/manifest.json after `make seed`); the password and TOTP secret from the
- * deploy/.env variables the manifest names (make ui-e2e exports them), never from the repo.
+ * seed manifest (build/seed/manifest.json after scripts/ui-e2e.sh copied it out of mw-seeder); the password and TOTP secret from the
+ * deploy/.env variables the manifest names (scripts/ui-e2e.sh exports them), never from the repo.
  */
 export const PERSONAS = ["maker", "checker", "viewer", "compliance"] as const;
 export type PersonaName = (typeof PERSONAS)[number];
@@ -36,9 +36,9 @@ let cache: Map<PersonaName, ManifestPersona> | undefined;
 export function persona(name: PersonaName): Persona {
   cache ??= parseManifest(readFileSync(manifestPath(), "utf8")).personas;
   const p = cache.get(name);
-  if (!p) throw new Error(`the seed manifest has no ops persona ${name} (make seed)`);
+  if (!p) throw new Error(`the seed manifest has no ops persona ${name} (mw-seeder)`);
   const password = process.env[p.passwordEnv];
   const totpSecret = p.totpSecretEnv ? process.env[p.totpSecretEnv] : undefined;
-  if (!password || !totpSecret) throw new Error(`${p.passwordEnv} / ${p.totpSecretEnv} not set (run through make ui-e2e)`);
+  if (!password || !totpSecret) throw new Error(`${p.passwordEnv} / ${p.totpSecretEnv} not set (run through scripts/ui-e2e.sh)`);
   return { name, username: p.username, roles: p.roles, password, totpSecret };
 }

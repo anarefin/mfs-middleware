@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# make api-test [FOLDER=] [ALL=1]: the Newman API suite in tests/api against the running stack
-# (ticket 58; it replaced the Cucumber suite and its two make targets).
+# scripts/api-test.sh [FOLDER] [ALL]: the Newman API suite in tests/api against the running, seeded stack
+# (ticket 58; it replaced the Cucumber suite). Start it with the test timers first (from deploy/:
+# docker compose --env-file .env --env-file test-timers.env --profile core --profile seed up -d --wait).
 #   FOLDER  folders to run, by number or full name, separated by commas ("01, 05"; numbers may
 #           also be separated by spaces: "01 05")
 #           default every folder except 90 Slow and 99 Destructive
-#   ALL=1   every folder, the slow ones included
-# tests/api/run.sh re-applies the test-only gateway routes, then runs Newman.
+#   ALL     1: every folder, the slow ones included
+# tests/api/run.sh copies the seed manifest out of mw-seeder, re-applies the test-only gateway routes,
+# then runs Newman.
 set -eu
-. "$(dirname "$0")/lib/modules.sh"
+. "$(dirname "$0")/lib/common.sh"
 
 folders="${1:-}"
 all="${2:-}"

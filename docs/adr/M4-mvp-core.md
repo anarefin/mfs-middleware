@@ -13,7 +13,7 @@ The real core is not available to the MVP, and a stub that always says yes would
 ## Consequences
 
 - It is a test double: it never ships to production and is replaced by the real core without orchestrator change.
-- Tests prove money is never moved twice by reading its balances (criterion 2) and `make chaos` checks its ledger invariants.
+- Tests prove money is never moved twice by reading its balances (criterion 2) and `scripts/chaos.sh` (originally `make chaos`) checks its ledger invariants.
 
 ## Where in the repo
 

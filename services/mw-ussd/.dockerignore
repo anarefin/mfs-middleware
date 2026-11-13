@@ -1,4 +1,2 @@
 *
-!build/libs/*.jar
-!build/reports/cyclonedx-direct/bom.json
-!aot-training-pin-public-key.pem
+!build/libs/mw-ussd.jar

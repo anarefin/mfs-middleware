@@ -13,7 +13,7 @@ Keycloak, OpenBao, Valkey, Kafka (KRaft), PostgreSQL 18, APISIX, and notificatio
 ## Consequences
 
 - Keycloak runs in production mode on PostgreSQL even in dev.
-- `make smoke` checks every platform component on the running stack.
+- `scripts/smoke.sh` (originally `make smoke`) checks every platform component on the running stack.
 
 ## Where in the repo
 

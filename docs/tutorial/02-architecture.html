@@ -176,7 +176,7 @@
       </svg>
     </div>
     <div class="legend"><span class="h"><i></i>HTTP or SMPP call</span><span class="k"><i></i>Kafka (publish / listen)</span><span>dashed box = test double</span></div>
-    <figcaption>Figure 2.2: the services that run with <code>make up</code>. Not drawn: <code>mw-ussd</code> also binds over
+    <figcaption>Figure 2.2: the services that run with <code>docker compose --profile core up</code>. Not drawn: <code>mw-ussd</code> also binds over
       SMPP to the simulated USSD gateway, <code>mw-app-gateway</code> calls <code>mw-adapter-billpay</code> over HTTP to fetch a bill,
       and <code>mw-portal-api</code> and <code>mw-admin-api</code> ask the orchestrator for transaction details over HTTP.</figcaption>
   </figure>
@@ -203,8 +203,8 @@
     <tr><td><a href="../../services/mw-checkout/CLAUDE.md">mw-checkout</a></td><td>Merchant web checkout: payment sessions, hosted payment page, signed redirect, IPN callbacks to the shop.</td><td>core</td></tr>
     <tr><td><a href="../../services/mw-portal-api/CLAUDE.md">mw-portal-api</a></td><td>Org portal: bulk payment files with maker-checker, transaction lookup for service providers.</td><td>core</td></tr>
     <tr><td><a href="../../ui/mw-admin-ui/CLAUDE.md">mw-admin-ui</a></td><td>The ops console web app (Next.js) at <code>https://localhost/console</code>.</td><td>core</td></tr>
-    <tr><td><a href="../../services/mw-seeder/CLAUDE.md">mw-seeder</a></td><td>One-shot job that creates the test users, wallets and balances (<code>make seed</code>).</td><td>seed</td></tr>
-    <tr><td><a href="../../ui/mw-test-console/CLAUDE.md">mw-test-console</a></td><td>Dev/test-only web app that plays the phone, the apps, the partners and the shop for manual testing (<code>make tester</code>).</td><td>tester</td></tr>
+    <tr><td><a href="../../services/mw-seeder/CLAUDE.md">mw-seeder</a></td><td>One-shot job that creates the test users, wallets and balances (profile <code>seed</code>).</td><td>seed</td></tr>
+    <tr><td><a href="../../ui/mw-test-console/CLAUDE.md">mw-test-console</a></td><td>Dev/test-only web app that plays the phone, the apps, the partners and the shop for manual testing (<code>scripts/tester.sh</code>).</td><td>tester</td></tr>
   </table></div>
   <p>"Started by" is the Docker Compose profile (see <a href="#zones">below</a>): <em>minimal</em> is enough for
     send money and cash; <em>core</em> adds everything else.</p>
@@ -228,21 +228,23 @@
     <code>data</code>, <code>ops</code>, <code>etcd</code>), like the security zones of a real data centre. APISIX is the
     only container with a port open on your machine (443, so <code>https://localhost/...</code>). The database is
     only on the data network, and etcd only talks to APISIX.</p>
-  <p><strong>Profiles.</strong> A profile decides which containers start:</p>
+  <p><strong>Profiles.</strong> A profile decides which containers start. Every command runs from <code>deploy/</code>
+    after <code>../scripts/gen-dev-env.sh</code>:</p>
   <div class="table-wrap"><table>
     <tr><th>Profile</th><th>Starts</th><th>Command</th></tr>
     <tr><td>(none)</td><td>The platform: Kafka, PostgreSQL, Valkey, Keycloak, OpenBao, etcd, APISIX, a test mail server, and one-shot setup jobs.</td><td>always</td></tr>
-    <tr><td><code>minimal</code></td><td>Platform plus the services for send money and cash.</td><td><code>make up PROFILE=minimal</code></td></tr>
-    <tr><td><code>core</code></td><td>Everything (the default).</td><td><code>make up</code></td></tr>
-    <tr><td><code>seed</code></td><td>The seeder (test data).</td><td><code>make seed</code></td></tr>
-    <tr><td><code>tester</code></td><td>The test console.</td><td><code>make tester</code></td></tr>
+    <tr><td><code>minimal</code></td><td>Platform plus the services for send money and cash.</td><td><code>docker compose --profile minimal up -d</code></td></tr>
+    <tr><td><code>core</code></td><td>Everything.</td><td><code>docker compose --profile core up -d</code></td></tr>
+    <tr><td><code>seed</code></td><td>The seeder (test data).</td><td><code>docker compose --profile core --profile seed up -d</code></td></tr>
+    <tr><td><code>tester</code></td><td>The test console.</td><td><code>scripts/tester.sh</code></td></tr>
   </table></div>
 
   <h2 id="isolation">No shared code, on purpose</h2>
   <div class="box plain">
     <div class="tag">In plain English</div>
-    <p>Every service is its own little project with its own Gradle build, its own dependency versions and its own
-      Dockerfile. No service may depend on another service's code, and <strong>there is no shared library</strong>.
+    <p>Every service is its own little project with its own Gradle build file, its own dependency versions and its own
+      Dockerfile. The root Gradle build only lists the service folders, so one <code>./gradlew clean build</code> builds
+      them all; it holds no shared build logic. No service may depend on another service's code, and <strong>there is no shared library</strong>.
       Code every service needs (error handling, masking, the outbox, correlation ids) is <strong>copied</strong>
       from the template into each service. That looks wasteful, but it means a team can change, build and release one
       service without touching or breaking any other.</p>
@@ -254,8 +256,8 @@
   <div class="box where">
     <div class="tag">Where it lives</div>
     <ul>
-      <li>The template every service is copied from: <a href="../../templates/mw-service-template/CLAUDE.md">templates/mw-service-template/</a> (<code>make new-service NAME=mw-x</code> copies it).</li>
-      <li>The isolation check: <a href="../../scripts/check-isolation.sh">scripts/check-isolation.sh</a> (<code>make check-isolation</code>).</li>
+      <li>The template every service is copied from: <a href="../../templates/mw-service-template/CLAUDE.md">templates/mw-service-template/</a> (<code>scripts/new-service.sh mw-x</code> copies it).</li>
+      <li>The isolation check: <a href="../../scripts/check-isolation.sh">scripts/check-isolation.sh</a> (<code>./gradlew :checkIsolation</code>, part of <code>./gradlew build</code>).</li>
       <li>Why: <a href="../adr/README.md">docs/adr/</a> (decisions D13 and D14).</li>
     </ul>
   </div>

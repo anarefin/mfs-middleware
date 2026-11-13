@@ -12,8 +12,8 @@ Every component runs under Docker Compose: platform (Kafka, PostgreSQL, Valkey, 
 
 ## Consequences
 
-- `make up` starts the whole MVP; `make up M=<module>` starts one module and what it depends on (D16).
-- `make compose-check` keeps the memory limits of the long-running containers within 10 GB.
+- `docker compose --profile core up -d` from `deploy/` starts the whole MVP; naming one service starts it and what it depends on (D16; originally `make up` and `make up M=<module>`, until D18).
+- `./gradlew :composeCheck` (originally `make compose-check`) keeps the memory limits of the long-running containers within 10 GB.
 
 ## Where in the repo
 

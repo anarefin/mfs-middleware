@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Copies this template to a new standalone service module (spec 4.2, 4.3, WP03).
-# Usage: scaffold.sh mw-<name> DEST_DIR      (normally via `make new-service NAME=mw-<name>`)
+# Copies this template to a new service module (spec 4.2, 4.3, WP03): services/mw-<name>, picked
+# up as a subproject by the root settings.gradle.kts (no settings file or wrapper of its own).
+# Usage: scaffold.sh mw-<name> DEST_DIR      (normally via scripts/new-service.sh mw-<name>)
 #
 # mw-adapter-telco -> package mfs.mw.adapter.telco, AdapterTelcoApplication,
-# rootProject.name "mw-adapter-telco", DB schema adapter_telco. The copy keeps no reference back to the template:
+# project and jar name "mw-adapter-telco", DB schema adapter_telco. The copy keeps no reference back to the template:
 # build output, this script and the template's CLAUDE.md are not copied, and the run
 # fails if any template name survives the rename. bash 3.2 compatible.
 set -eu
@@ -69,12 +70,11 @@ grep -rIlE 'service-template|service_template|service\.template|service/template
           -e "s#service_template#$snake#g" \
           "$f" >"$f.scaffold" && mv "$f.scaffold" "$f"
     done
-chmod +x "$out/gradlew"
 
 cat >"$out/CLAUDE.md" <<EOF
 # $name
 
-Standalone service module (spec 4.2, 4.3). Package \`$pkg\`. Follow the root
+Service module (spec 4.2, 4.3), a subproject of the root build. Package \`$pkg\`. Follow the root
 \`CLAUDE.md\` conventions; this file says what is specific to this service.
 
 ## Responsibilities
@@ -89,7 +89,7 @@ Standalone service module (spec 4.2, 4.3). Package \`$pkg\`. Follow the root
 
 - TODO: files under \`contracts/\` this service consumes. Write your own types for them.
 - \`contracts.yml\` is the machine-readable list (produces/consumes, events and apis, paths relative to
-  \`contracts/\`, \`#<Msg>\` for one message type), checked by \`make contracts-lint\`; keep it in sync and
+  \`contracts/\`, \`#<Msg>\` for one message type), checked by \`./gradlew :contractsLint\`; keep it in sync and
   add \`contracts/ProducedContractsTest\` / \`ConsumedContractsTest\` once the service has events.
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
@@ -113,15 +113,9 @@ Standalone service module (spec 4.2, 4.3). Package \`$pkg\`. Follow the root
 
 | Command | What it does |
 | --- | --- |
-| \`./gradlew test\` | unit, slice and contract tests, no Docker |
-| \`./gradlew integrationTest\` | Testcontainers \`*IT\` classes (Docker) |
-| \`./gradlew conformance\` | the \`@Conformance\` suite |
-| \`./gradlew check\` | all three plus the JaCoCo gate (80% lines on \`service\`/\`mapper\`/\`client\`) |
-| \`./gradlew check bootJar && docker build -t mfs-mw/$name:local .\` | image, as spec 4.3 rule 1 |
-| \`make verify M=$name\` | isolation + field-injection check + contracts lint + \`./gradlew check\` |
-| \`make verify-changed [BASE=main]\` | the same gate for the modules changed since BASE only |
-| \`make build M=$name\` | \`bootJar\`, then this service's images (\`deploy/docker-compose.yml\`) |
-| \`make up M=$name\` | start this service and its dependencies from \`deploy/docker-compose.yml\` |
+| \`./gradlew :$name:test\` | every test in one JVM: unit, slice, contract, Testcontainers \`*IT\` and \`@Conformance\` (\`*IT\` skipped without Docker) |
+| \`./gradlew :$name:build\` | the tests plus the boot jar \`build/libs/$name.jar\` |
+| \`./gradlew :$name:bootJar && docker build -t mfs-mw/$name:local services/$name\` | image, as spec 4.3 rule 1 |
 EOF
 
 refs="$(grep -rIlE 'service-template|service_template|service\.template|service/template|ServiceTemplate|SERVICE_TEMPLATE|templates/' "$out" || true)"
@@ -135,7 +129,7 @@ printf '==> scaffold: %s (package %s)\n' "$dest" "$pkg"
 # into deploy/docker-compose.yml (profile core) and deploy/provision/services.sh (the one dev
 # provisioning one-shot: its secret, database role and schema, AppRole).
 cat <<EOF
-==> scaffold: paste into deploy/docker-compose.yml (services:, profile core), then make build M=$name
+==> scaffold: paste into deploy/docker-compose.yml (services:, profile core), then ./gradlew :$name:bootJar and docker compose up -d --build $name in deploy/
 
   $name:
     <<: *app
@@ -151,7 +145,7 @@ cat <<EOF
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: 512M }
+        limits: { cpus: "1.0", memory: "\${APP_MEM_LIMIT:-416M}" }
 
 and under volumes:
   $suffix-approle:

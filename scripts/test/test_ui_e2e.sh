@@ -1,4 +1,4 @@
-# make ui-e2e (ticket 59): the admin UI Playwright suite against the running, seeded stack.
+# scripts/ui-e2e.sh (ticket 59): the admin UI Playwright suite against the running, seeded stack.
 # pnpm is a stub on PATH that records its arguments and the E2E_* / credential env it was given.
 
 ui_fixture() {
@@ -24,7 +24,7 @@ EOF
 
 test_ui_e2e_installs_once_then_runs_the_suite_against_the_stack() {
   ui_fixture
-  assert_ok mw_make "$PWD" ui-e2e
+  assert_ok mw_run "$PWD" ui-e2e.sh
   grep -q "^pnpm install --frozen-lockfile .*cwd=$PWD/ui/mw-admin-ui$" .tool-calls || fail "no frozen install: $(cat .tool-calls)"
   grep -q "^pnpm exec playwright install chromium " .tool-calls || fail "browser not installed: $(cat .tool-calls)"
   grep -q "^pnpm test:e2e |" .tool-calls || fail "suite not run: $(cat .tool-calls)"
@@ -32,23 +32,23 @@ test_ui_e2e_installs_once_then_runs_the_suite_against_the_stack() {
   [ "$(cut -d' ' -f2 .tool-calls | tr '\n' ' ')" = "install exec test:e2e " ] || fail "order: $(cat .tool-calls)"
   rm .tool-calls
   # node_modules newer than the lockfile: no second install
-  assert_ok mw_make "$PWD" ui-e2e
+  assert_ok mw_run "$PWD" ui-e2e.sh
   grep -q "^pnpm install" .tool-calls && fail "installed again: $(cat .tool-calls)"
   return 0
 }
 
 test_ui_e2e_reinstalls_when_the_lockfile_changed() {
   ui_fixture
-  assert_ok mw_make "$PWD" ui-e2e
+  assert_ok mw_run "$PWD" ui-e2e.sh
   rm .tool-calls
   sleep 1; touch ui/mw-admin-ui/pnpm-lock.yaml
-  assert_ok mw_make "$PWD" ui-e2e
+  assert_ok mw_run "$PWD" ui-e2e.sh
   grep -q "^pnpm install --frozen-lockfile" .tool-calls || fail "lockfile change not installed: $(cat .tool-calls)"
 }
 
 test_ui_e2e_passes_the_seed_manifest_and_only_the_credentials_it_needs() {
   ui_fixture
-  assert_ok mw_make "$PWD" ui-e2e
+  assert_ok mw_run "$PWD" ui-e2e.sh
   line="$(grep '^pnpm test:e2e' .tool-calls)"
   case "$line" in *"E2E_BASE_URL=https://localhost "*) ;; *) fail "base URL: $line";; esac
   case "$line" in *"E2E_SEED_MANIFEST=$PWD/build/seed/manifest.json "*) ;; *) fail "manifest: $line";; esac
@@ -59,15 +59,15 @@ test_ui_e2e_passes_the_seed_manifest_and_only_the_credentials_it_needs() {
 
 test_ui_e2e_follows_MW_HTTPS_PORT_and_GREP() {
   ui_fixture
-  assert_ok mw_make "$PWD" ui-e2e GREP=@approvals MW_HTTPS_PORT=18443
+  assert_ok mw_run "$PWD" MW_HTTPS_PORT=18443 ui-e2e.sh @approvals
   grep -q "^pnpm test:e2e --grep @approvals | E2E_BASE_URL=https://localhost:18443 " .tool-calls || fail "GREP / port: $(cat .tool-calls)"
 }
 
 test_ui_e2e_without_deploy_env_names_the_fix() {
   ui_fixture
   rm deploy/.env
-  assert_fails mw_make "$PWD" ui-e2e
-  assert_out_contains "make up && make seed"
+  assert_fails mw_run "$PWD" ui-e2e.sh
+  assert_out_contains "deploy/RUNNING.html"
   grep -q "test:e2e" .tool-calls 2>/dev/null && fail "ran the suite without credentials"
   return 0
 }
@@ -75,13 +75,13 @@ test_ui_e2e_without_deploy_env_names_the_fix() {
 test_ui_e2e_fails_when_the_suite_fails() {
   ui_fixture
   touch .pnpm-fail
-  assert_fails mw_make "$PWD" ui-e2e
+  assert_fails mw_run "$PWD" ui-e2e.sh
 }
 
 test_ui_e2e_without_pnpm_says_what_to_install() {
   ui_fixture
   rm .bin/pnpm
   PATH="$PWD/.bin:/usr/bin:/bin"
-  assert_fails mw_make "$PWD" ui-e2e
+  assert_fails mw_run "$PWD" ui-e2e.sh
   assert_out_contains "pnpm"
 }

@@ -43,7 +43,7 @@ export async function edge(method: string, path: string, opts: CallOpts = {}): P
       signal: AbortSignal.timeout(opts.timeoutMs ?? 40000),
     });
   } catch (e) {
-    throw new EdgeError(`${method} ${path}: the edge did not answer (${(e as Error).message}); is the stack up (make up && make tester)?`);
+    throw new EdgeError(`${method} ${path}: the edge did not answer (${(e as Error).message}); is the stack up (then scripts/tester.sh)?`);
   }
   const raw = await res.text();
   let parsed: unknown = null;

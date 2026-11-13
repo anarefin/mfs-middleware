@@ -21,9 +21,7 @@ public final class TestTopics {
   private TestTopics() {}
 
   public static String bootstrap() {
-    if (!TestInfrastructure.KAFKA.isRunning()) {
-      TestInfrastructure.KAFKA.start();
-    }
+    TestInfrastructure.start();
     return TestInfrastructure.KAFKA.getBootstrapServers();
   }
 

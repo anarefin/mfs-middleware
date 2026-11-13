@@ -196,7 +196,7 @@
         <code>01711000002</code>, amount <code>10</code>, PIN <code>1234</code>. Then try PIN <code>9999</code>, and press
         "Resend the last submit" to see idempotency. Full steps: <a href="../testing-guide.html">docs/testing-guide.html</a>, sections 3 and 4.</li>
       <li>Test console page <strong>USSD phone</strong>: dial <code>*268#</code> as <code>01711000001</code>.</li>
-      <li>Automated: <code>make api-test FOLDER="01, 03, 12, 18, 19"</code> runs the P2P, cash, reversal and USSD folders of
+      <li>Automated: <code>scripts/api-test.sh "01, 03, 12, 18, 19"</code> runs the P2P, cash, reversal and USSD folders of
         the API suite (<a href="../../tests/api/README.md">tests/api/</a>).</li>
     </ul>
   </div>

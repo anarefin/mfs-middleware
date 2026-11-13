@@ -10,7 +10,7 @@ import { BASE_URL, SEED_PIN, USSD_MNO, USSD_SECRET_ENV } from "./env";
  */
 export async function p2pOverUssd(from: string, to: string, amountTk = "10"): Promise<string> {
   const secret = process.env[USSD_SECRET_ENV];
-  if (!secret) throw new Error(`${USSD_SECRET_ENV} not set (run through make ui-e2e)`);
+  if (!secret) throw new Error(`${USSD_SECRET_ENV} not set (run through scripts/ui-e2e.sh)`);
   const api = await request.newContext({
     baseURL: BASE_URL,
     ignoreHTTPSErrors: true,

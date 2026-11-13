@@ -77,7 +77,7 @@
 <h1>Testing guide: every feature, step by step</h1>
 <p class="lead">For testers who check the Bits MFS middleware by hand, from a browser, on the laptop or
 test stack. No knowledge of the code is needed: every click, value and expected result is written out.
-Section&nbsp;1 explains where every password and key comes from.</p>
+Every login is printed where a step needs it; <a href="#c1-0">1.0 Logins at a glance</a> lists them all on one card.</p>
 
 <nav>
   <a href="#checklist">Checklist</a>
@@ -106,7 +106,10 @@ Section&nbsp;1 explains where every password and key comes from.</p>
   <div class="table-wrap"><table id="checks">
     <thead><tr><th>Done</th><th>Feature</th><th>Case</th><th>UI</th></tr></thead>
     <tbody>
+      <tr><td class="tick"></td><td>Test console Home: stack checks, seeded wallets, reset</td><td><a href="#c0-2">0.2</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Sign in to the ops console (password + one-time code)</td><td><a href="#c1-3">1.3</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>Keycloak admin: list users, reset a code, unlock, reset a password</td><td><a href="#c1-5">1.5</a></td><td>Terminal</td></tr>
+      <tr><td class="tick"></td><td>OpenBao: list and read secrets</td><td><a href="#c1-6">1.6</a></td><td>Terminal</td></tr>
       <tr><td class="tick"></td><td>Device binding (OTP by SMS)</td><td><a href="#c3-1">3.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Send money (P2P), idempotent resend, wrong PIN, limits</td><td><a href="#c3-2">3.2</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Cash in (agent → customer)</td><td><a href="#c3-3">3.3</a></td><td>Test console</td></tr>
@@ -116,21 +119,26 @@ Section&nbsp;1 explains where every password and key comes from.</p>
       <tr><td class="tick"></td><td>Billers, fetch bill, bill payment</td><td><a href="#c3-7">3.7</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Add money from bank (C2W) with signed callback</td><td><a href="#c3-8">3.8</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Transaction status as the app sees it</td><td><a href="#c3-9">3.9</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>App flows input checks, other users, resend rules</td><td><a href="#c3-10">3.10</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>USSD over HTTP (robi)</td><td><a href="#c4-1">4.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>USSD over SMPP (gp) and re-bind</td><td><a href="#c4-2">4.2</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>USSD other menus, Bangla, invalid input</td><td><a href="#c4-3">4.3</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>USSD phone errors and edge cases</td><td><a href="#c4-4">4.4</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Core lost reply → status inquiry → COMPLETED</td><td><a href="#c5-2">5.2</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Core lost refusal → status inquiry → FAILED</td><td><a href="#c5-3">5.3</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Partner timeouts and outages on held flows</td><td><a href="#c5-4">5.4</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Partner callbacks: once, twice, late, out of order, replay</td><td><a href="#c5-5">5.5</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>MANUAL_REVIEW creation</td><td><a href="#c5-6">5.6</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Custom partner and core faults</td><td><a href="#c5-7">5.7</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>A fault on every core command</td><td><a href="#c5-8">5.8</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>SMS content, language, masking, delivery reports; email receipts</td><td><a href="#c6-1">6.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Web checkout: pay, signed redirect, IPN</td><td><a href="#c7-1">7.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Web checkout variants: wrong OTP, pay twice, IPN retries, core refusal</td><td><a href="#c7-2">7.2</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Bulk disbursement: upload, approve, result file</td><td><a href="#c8-1">8.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Bulk maker-checker, reject, pause/resume, bad files</td><td><a href="#c8-2">8.2</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Service provider (SP) transaction query</td><td><a href="#c8-3">8.3</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Error box and form checks</td><td><a href="#c9-0">9.0</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>Sign in, sign out, session end, deep links, no token in the browser</td><td><a href="#c9-1">9.1</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Search transactions (all filters, paging)</td><td><a href="#c9-2">9.2</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Transaction detail: timeline, partner calls, audit trail</td><td><a href="#c9-3">9.3</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Audited MSISDN reveal (compliance)</td><td><a href="#c9-4">9.4</a></td><td>Ops console</td></tr>
@@ -141,7 +149,7 @@ Section&nbsp;1 explains where every password and key comes from.</p>
       <tr><td class="tick"></td><td>Partners: disable, enable, timeouts</td><td><a href="#c9-9">9.9</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>USSD menu editor, preview, publish per MNO</td><td><a href="#c9-10">9.10</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>SMS and email templates: preview, publish, reject</td><td><a href="#c9-11">9.11</a></td><td>Ops console</td></tr>
-      <tr><td class="tick"></td><td>Viewer is read only</td><td><a href="#c9-12">9.12</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>What each role can and cannot do</td><td><a href="#c9-12">9.12</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Follow a transaction in the logs; health checks</td><td><a href="#s10">10</a></td><td>Terminal</td></tr>
     </tbody>
   </table></div>
@@ -168,29 +176,43 @@ Section&nbsp;1 explains where every password and key comes from.</p>
 
   <h3>Step 0.1: start the stack (whoever runs it, once)</h3>
   <p>Prerequisites as in the <a href="../README.md">README</a> (Docker, JDK 25, Node.js 24 + pnpm). From the repository folder:</p>
-  <div class="cmd"><pre><span class="c"># fresh volumes: seeded balances, daily limits, users</span>
-make reset
-<span class="c"># jars and images (the test console image too); 10-15 min the first time</span>
-make build
-<span class="c"># the stack with short timeouts, so timeout tests take seconds, not minutes</span>
-make up TIMERS=fast
-<span class="c"># seeded users, wallets, partners, templates</span>
-make seed
+  <div class="cmd"><pre><span class="c"># the service jars the images copy (./gradlew clean build also runs every test)</span>
+./gradlew bootJar
+<span class="c"># dev credentials in deploy/.env (existing values are kept)</span>
+scripts/gen-dev-env.sh
+<span class="c"># fresh volumes: seeded balances, daily limits, users</span>
+deploy/reset.sh
+<span class="c"># build the images, start the stack with short timeouts (timeout tests take seconds, not minutes) and seed it</span>
+(cd deploy &amp;&amp; docker compose --env-file .env --env-file test-timers.env --profile core --profile seed up -d --build)
+<span class="c"># waits for the seeder (users, wallets, partners, templates): ends with "exited with status code 0"</span>
+(cd deploy &amp;&amp; docker compose --profile core --profile seed wait mw-seeder)
+<span class="c"># the test console image (first time and after a test console change)</span>
+(cd deploy &amp;&amp; docker compose --profile tester build mw-test-console)
 <span class="c"># turns on the test-only routes and starts the test console</span>
-make tester
+scripts/tester.sh
 <span class="c"># prints every login and key you need (section 1)</span>
-make creds</pre></div>
-  <div class="warn">Run <code>make tester</code> again after any plain <code>make up</code>: that removes the
+scripts/creds.sh</pre></div>
+  <p>The first run takes 10-15 minutes (images and dependencies); later ones a few minutes.</p>
+  <div class="warn">Run <code>scripts/tester.sh</code> again after any later <code>docker compose up</code>: that removes the
   test-only routes and <code>/tester</code> answers 404.</div>
 
-  <h3>Step 0.2: open the test console</h3>
+  <h3 id="c0-2">Step 0.2: open the test console</h3>
+  <p><b>Sign-in: none.</b> The test console signs in by itself as the user you pick on each page (customers
+  password <code>app-test-pass</code>, portals password <code>portal-test-pass</code>, apikey <code>e2e-test-apikey</code>).</p>
   <ol>
     <li>Open <a href="https://localhost/tester">https://localhost/tester</a>. The certificate is self-signed:
       accept it once (Chrome: <span class="ui">Advanced</span> → <span class="ui">Proceed to localhost</span>;
       or type <code>thisisunsafe</code> on the warning page).</li>
-    <li>The <span class="ui">Home</span> page shows three stack checks. Expect three green ✔: the gateway answers,
-      the test-only routes are on, the USSD SMPP gateway is bound. Each ✖ shows its fix.</li>
-    <li>Below them, the seeded wallets table shows each wallet's balance and amount held.</li>
+    <li>The <span class="ui">Home</span> page shows three stack checks. Expect three green ✔:
+      <ul>
+        <li><i>APISIX edge answers /healthz</i> (✖: "fix: start the stack (deploy/RUNNING.html)")</li>
+        <li><i>test-only routes are on (core-mock PIN key)</i> (✖: "fix: scripts/tester.sh (re-applies the test routes)")</li>
+        <li><i>simulators answer (SMPP binds of mw-ussd)</i>: the simulators' bind list answers; whether mw-ussd is
+          actually bound is checked in 4.2 (✖: "fix: start the stack; docker compose logs mw-simulators")</li>
+      </ul></li>
+    <li>Below them, the panel <i>Seeded wallets (core-mock)</i> lists 6 wallets (columns Wallet / Who / Balance / Held),
+      among them <code>01711000003</code> "core-mock seeded customer". The panel <i>Where to test what</i> links to
+      the other pages; <span class="ui">Ops console ↗</span> in the top bar opens the ops console in a new tab.</li>
     <li>Press <span class="ui">Reset every simulator and core fault</span>. Expect "applied". Do this
       <b>before and after every failure test</b>.</li>
   </ol>
@@ -203,8 +225,11 @@ make creds</pre></div>
     <tr><td>Agent</td><td>agent01</td><td>01811000001</td><td>1234</td></tr>
     <tr><td>Merchant "Demo Shop"</td><td>merchant01</td><td>01911000001</td><td>1234</td></tr>
     <tr><td>Second merchant</td><td>merchant02</td><td>01911000002</td><td>1234</td></tr>
+    <tr><td>Third seeded customer (core-mock only, no login)</td><td>-</td><td>01711000003</td><td>1234</td></tr>
+    <tr><td>Seeder customer (type the name; <a href="#c3-10">3.10</a>)</td><td>seed-customer01</td><td>01712000001</td><td>1234</td></tr>
     <tr><td>Bulk payees (seeded)</td><td>-</td><td>01711000101 onwards</td><td>-</td></tr>
   </table></div>
+  <p>Every app user signs in with the password <code>app-test-pass</code>; the test console does it for you.</p>
   <p><b>Fees and limits.</b> The core charges the payer the amount <b>plus a fee</b> into the
   <code>FEE-POOL</code> account (P2P Tk 5, top-up Tk 2, …). A Tk 10 P2P therefore shows <code>-Tk 15.00</code>
   on the payer, <code>Tk 10.00</code> on the payee and <code>Tk 5.00</code> on FEE-POOL (a gain has no + sign). Other fees: cash out Tk 10, top-up Tk 2, bill payment Tk 3, merchant payment and add money none. Limits: Tk 5,000
@@ -227,76 +252,124 @@ make creds</pre></div>
 <!-- ============================================================ -->
 <section id="s1">
   <h2><span class="num">1</span> Credentials and keys</h2>
-  <p>Every password and key of a dev/test stack is generated per machine into the file
-  <code>deploy/.env</code> (never committed) the first time the stack starts. Nobody hands them out:
-  you print them yourself. They are test values, never real secrets.</p>
+  <p>The logins a tester types are <b>fixed, well-known test values</b>, the same on every machine: they are
+  written below at every step that needs them. They are dev/test values only, never real secrets. The
+  other keys (database, HMAC and gateway secrets) are random per machine; <code>scripts/creds.sh</code> prints them.</p>
+  <div class="warn">The fixed values hold on a stack started after <code>deploy/reset.sh</code>. A stack whose
+  <code>deploy/.env</code> was created before keeps its old random values (the volumes were set up with them):
+  <code>scripts/gen-dev-env.sh</code> then warns "… differ from the documented test values", and <code>scripts/creds.sh</code>
+  prints the values that work. To switch: <code>deploy/reset.sh</code>, then step 0.1 again.</div>
+
+  <div class="case" id="c1-0">
+    <h3><span class="id">1.0</span>Logins at a glance</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Where</th><th>User</th><th>Password</th><th>Second factor / note</th></tr>
+      <tr><td>Test console <a href="https://localhost/tester">/tester</a></td><td>-</td><td>-</td><td>no sign-in: it signs in as the users below by itself</td></tr>
+      <tr><td rowspan="4">Ops console <a href="https://localhost/console">/console</a> (realm <code>ops</code>)</td>
+        <td><code>seed-ops-maker</code>, <code>seed-ops-checker</code>, <code>seed-ops-viewer</code>, <code>seed-ops-compliance</code> (after <code>mw-seeder</code> ran)</td>
+        <td rowspan="4"><code>ops-test-pass</code></td><td>6-digit code: <code>scripts/totp.sh &lt;user&gt;</code> (no phone app)</td></tr>
+      <tr><td><code>ops-e2e-maker01</code>, <code>ops-e2e-checker01</code></td><td>code: <code>scripts/totp.sh &lt;user&gt;</code> (the API suite uses them too)</td></tr>
+      <tr><td><code>ops-maker01</code>, <code>ops-checker01</code>, <code>ops-viewer01</code>, <code>ops-compliance01</code>, <code>ops-auditor01</code>, <code>ops-admin01</code></td><td>enrol an authenticator app at the first sign-in (1.4)</td></tr>
+      <tr><td colspan="2">Five wrong passwords or codes lock the user for 1-15 min (unlock: 1.5)</td></tr>
+      <tr><td>App users (realm <code>customers</code>, client <code>mw-app</code>)</td><td><code>customer01</code>, <code>customer02</code>, <code>agent01</code>, <code>merchant01</code>, <code>merchant02</code>, <code>seed-customer01</code>, …</td><td><code>app-test-pass</code></td><td>wallet PIN of every wallet: <code>1234</code></td></tr>
+      <tr><td>Portal users (realm <code>portals</code>, client <code>mw-portal</code>)</td><td><code>org-maker01</code>, <code>org-checker01</code>, <code>org-makerchecker01</code>, <code>org-checker02</code>, <code>sp-viewer01</code>, <code>seed-org-maker</code>, <code>seed-org-checker</code></td><td><code>portal-test-pass</code></td><td>-</td></tr>
+      <tr><td>Keycloak admin (realm <code>master</code>)</td><td><code>kc-admin</code></td><td><code>kc-admin-test-pass</code></td><td>no web console; commands in 1.5</td></tr>
+      <tr><td>OpenBao (secrets store)</td><td>-</td><td>token <code>dev-root-token</code></td><td>no web UI; commands in 1.6</td></tr>
+      <tr><td>Test-only API routes (<code>/test/…</code>, Postman)</td><td>-</td><td>header <code>apikey: e2e-test-apikey</code></td><td>exist after <code>scripts/tester.sh</code> or <code>scripts/api-test.sh</code></td></tr>
+      <tr><td>Ops one-time-code secret (for your own TOTP tool)</td><td>-</td><td><code>opstesttotpsecretnotarealsecret1</code></td><td>HmacSHA256, 6 digits, 30 s, the raw text as key (not base32)</td></tr>
+    </table></div>
+  </div>
 
   <div class="case" id="c1-1">
     <h3><span class="id">1.1</span>Print every login and key</h3>
-    <div class="cmd"><pre>make creds</pre></div>
-    <p>The output is grouped by where a value is used:</p>
+    <div class="cmd"><pre>scripts/creds.sh</pre></div>
+    <p>The output is grouped by where a value is used; use it for the random values and to check which
+    values your stack really has:</p>
     <div class="table-wrap"><table>
-      <tr><th>Block</th><th>What it gives you</th><th>Taken from</th></tr>
-      <tr><td>Test console</td><td>the URL; no sign-in (it signs in as the test users by itself)</td><td>-</td></tr>
-      <tr><td>Ops console</td><td>the one password of every ops user and which users need an authenticator app</td><td><code>KC_OPS_TEST_PASSWORD</code></td></tr>
-      <tr><td>App users</td><td>password of customer01, customer02, agent01, merchant01, merchant02 (realm <code>customers</code>, client <code>mw-app</code>)</td><td><code>KC_CUSTOMERS_TEST_PASSWORD</code></td></tr>
-      <tr><td>Portal users</td><td>password of org-maker01, org-checker01, org-makerchecker01, org-checker02, sp-viewer01 (realm <code>portals</code>, client <code>mw-portal</code>)</td><td><code>KC_PORTALS_TEST_PASSWORD</code></td></tr>
-      <tr><td>Keycloak admin</td><td>user <code>kc-admin</code> and its password</td><td><code>KC_BOOTSTRAP_ADMIN_PASSWORD</code></td></tr>
-      <tr><td>OpenBao</td><td>the root token (only while the stack is up)</td><td>the OpenBao data volume</td></tr>
-      <tr><td>APISIX</td><td>the <code>apikey</code> of the test-only routes, the admin API key</td><td><code>MW_E2E_API_KEY</code>, <code>APISIX_ADMIN_KEY</code></td></tr>
-      <tr><td>Signing secrets</td><td>checkout merchant <code>merchant-demo</code>, bill aggregator and bank callback HMAC secrets</td><td><code>CHECKOUT_DEMO_MERCHANT_SECRET</code>, <code>BILLAGG_HMAC_SECRET</code>, <code>C2WBANK_HMAC_SECRET</code></td></tr>
-      <tr><td>USSD gateways</td><td>basic-auth password per operator (user <code>ussd-gp</code>, <code>ussd-robi</code>, …)</td><td><code>USSD_GP_GATEWAY_SECRET</code>, …</td></tr>
+      <tr><th>Block</th><th>What it gives you</th><th>Value / taken from</th></tr>
+      <tr><td>Test console</td><td>the URL; no sign-in</td><td>-</td></tr>
+      <tr><td>Ops console</td><td>the one password of every ops user and which users need an authenticator app</td><td><code>ops-test-pass</code> (<code>KC_OPS_TEST_PASSWORD</code>)</td></tr>
+      <tr><td>App users</td><td>password of the customers realm users</td><td><code>app-test-pass</code> (<code>KC_CUSTOMERS_TEST_PASSWORD</code>)</td></tr>
+      <tr><td>Portal users</td><td>password of the portals realm users</td><td><code>portal-test-pass</code> (<code>KC_PORTALS_TEST_PASSWORD</code>)</td></tr>
+      <tr><td>Keycloak admin</td><td>user <code>kc-admin</code> and its password</td><td><code>kc-admin-test-pass</code> (<code>KC_BOOTSTRAP_ADMIN_PASSWORD</code>)</td></tr>
+      <tr><td>OpenBao</td><td>the token (only while the stack is up)</td><td><code>dev-root-token</code> (an older OpenBao volume: its random root token)</td></tr>
+      <tr><td>APISIX</td><td>the <code>apikey</code> of the test-only routes; the admin API key</td><td><code>e2e-test-apikey</code> (<code>MW_E2E_API_KEY</code>); admin key random (<code>APISIX_ADMIN_KEY</code>)</td></tr>
+      <tr><td>Signing secrets</td><td>checkout merchant <code>merchant-demo</code>, bill aggregator and bank callback HMAC secrets</td><td>random: <code>CHECKOUT_DEMO_MERCHANT_SECRET</code>, <code>BILLAGG_HMAC_SECRET</code>, <code>C2WBANK_HMAC_SECRET</code></td></tr>
+      <tr><td>USSD gateways</td><td>basic-auth password per operator (user <code>ussd-gp</code>, <code>ussd-robi</code>, <code>ussd-bl</code>, <code>ussd-teletalk</code>)</td><td>random: <code>USSD_GP_GATEWAY_SECRET</code>, …</td></tr>
     </table></div>
-    <p>One value only: <code>grep KC_OPS_TEST_PASSWORD deploy/.env</code>.</p>
-    <div class="note">On a shared test host, ask whoever runs it to run <code>make creds</code> and pass you
-    the ops password; the test console itself needs no credentials.</div>
+    <p>One value only: <code>grep KC_OPS_TEST_PASSWORD deploy/.env</code>. The test console reads the customers and
+    portals passwords, the apikey and the merchant secret from <code>deploy/.env</code> when <code>scripts/tester.sh</code> starts it.</p>
+    <div class="note">On a shared test host you need no file access: the fixed values above work there too
+    (if that host was set up after <code>deploy/reset.sh</code>). Only <code>scripts/totp.sh</code> needs a terminal on the host:
+    ask whoever runs it, or compute the code yourself from the secret in 1.0 with a TOTP tool set to SHA-256.</div>
   </div>
 
   <div class="case" id="c1-2">
     <h3><span class="id">1.2</span>Who is who in the ops console</h3>
     <div class="table-wrap"><table>
       <tr><th>User</th><th>Roles</th><th>Can</th><th>One-time code</th></tr>
-      <tr><td><code>seed-ops-maker</code></td><td>viewer, ops-maker</td><td>read; <b>request</b> reversals, force commit/release, TSQ, unlocks, partner changes, menu and template publishes</td><td rowspan="4"><code>make totp PERSONA=&lt;user&gt;</code><br>(no app needed; exists after <code>make seed</code>)</td></tr>
-      <tr><td><code>seed-ops-checker</code></td><td>viewer, ops-checker</td><td>read; <b>approve or reject</b> requests of others</td></tr>
-      <tr><td><code>seed-ops-viewer</code></td><td>viewer</td><td>read only</td></tr>
-      <tr><td><code>seed-ops-compliance</code></td><td>compliance-officer</td><td>read; reveal a full MSISDN (audited)</td></tr>
-      <tr><td><code>ops-maker01</code>, <code>ops-checker01</code>, <code>ops-viewer01</code>, <code>ops-compliance01</code></td><td>as above</td><td>as above</td><td rowspan="3">enrol an authenticator app at the first sign-in (1.4)</td></tr>
-      <tr><td><code>ops-auditor01</code></td><td>auditor</td><td>read; reveal a full MSISDN (audited)</td></tr>
-      <tr><td><code>ops-admin01</code></td><td>viewer, integration-maker, security-admin</td><td>request partner changes</td></tr>
+      <tr><td><code>seed-ops-maker</code>, <code>ops-e2e-maker01</code>, <code>ops-maker01</code></td><td>viewer, ops-maker</td><td>read; <b>request</b> reversals, force commit/release, TSQ, wallet unlocks, partner changes, USSD menu and template publishes</td><td rowspan="4"><code>seed-ops-*</code> and <code>ops-e2e-*</code>: <code>scripts/totp.sh &lt;user&gt;</code><br>(no app; <code>seed-ops-*</code> exist after <code>mw-seeder</code> ran)<br><br><code>ops-*01</code>: authenticator app (1.4)</td></tr>
+      <tr><td><code>seed-ops-checker</code>, <code>ops-e2e-checker01</code>, <code>ops-checker01</code></td><td>viewer, ops-checker</td><td>read; <b>approve or reject</b> the requests of others (also partner changes)</td></tr>
+      <tr><td><code>seed-ops-viewer</code>, <code>ops-viewer01</code></td><td>viewer</td><td>read only</td></tr>
+      <tr><td><code>seed-ops-compliance</code>, <code>ops-compliance01</code></td><td>compliance-officer</td><td>read; reveal a full MSISDN (audited)</td></tr>
+      <tr><td><code>ops-auditor01</code></td><td>auditor</td><td>read; reveal a full MSISDN (audited)</td><td rowspan="2">authenticator app (1.4)</td></tr>
+      <tr><td><code>ops-admin01</code></td><td>viewer, integration-maker, security-admin</td><td>read; request partner changes only</td></tr>
     </table></div>
-    <p>All ops users share the password from <code>make creds</code>. A maker can never approve their own
+    <p>Every ops user has the password <code>ops-test-pass</code>. A maker can never approve their own
     request: you need two users, so use two browser windows (a normal one and a private/incognito one),
-    each signed in as a different user.</p>
+    each signed in as a different user. No user holds the realm roles ops-emergency, recon-maker,
+    recon-checker or integration-checker: partner changes are approved by an ops-checker.</p>
   </div>
 
   <div class="case" id="c1-3">
     <h3><span class="id">1.3</span>Sign in with a pre-set code (quickest)</h3>
     <ol>
-      <li>Open <a href="https://localhost/console">https://localhost/console</a> and press <span class="ui">Sign in with Keycloak</span>.</li>
-      <li>Username <code>seed-ops-maker</code>, password from <code>make creds</code>, press <span class="ui">Sign In</span>.</li>
-      <li>The next page asks for a one-time code. In a terminal run:
-        <div class="cmd"><pre>make totp PERSONA=seed-ops-maker</pre></div>
-        It prints e.g. <code>seed-ops-maker: 482913  (valid 17 s more; …)</code>. Type the 6 digits, press <span class="ui">Sign In</span>.</li>
-      <li>Expect the <span class="ui">Transactions</span> page; the header shows <code>seed-ops-maker</code> with its roles (among them <code>viewer</code>, <code>ops-maker</code>) and <span class="ui">Sign out</span>.</li>
+      <li>Open <a href="https://localhost/console">https://localhost/console</a> (accept the self-signed certificate once, as in 0.2) and press <span class="ui">Sign in with Keycloak</span>.</li>
+      <li>Username <code>seed-ops-maker</code>, password <code>ops-test-pass</code>, press <span class="ui">Sign In</span>.</li>
+      <li>The next page asks for a one-time code. In a terminal, in the repository folder, run:
+        <div class="cmd"><pre>scripts/totp.sh seed-ops-maker</pre></div>
+        It prints e.g. <code>seed-ops-maker: 482913  (valid 17 s more; …)</code>. Type the 6 digits, press <span class="ui">Sign In</span>.
+        With less than 5 s left, wait for the next code.</li>
+      <li>Expect the <span class="ui">Transactions</span> page; the header shows <code>seed-ops-maker</code> with its roles (among them <code>viewer, ops-maker</code>; Keycloak adds <code>offline_access, uma_authorization, default-roles-ops</code>) and <span class="ui">Sign out</span>.</li>
+      <li><b>The checker, for every maker-checker case:</b> open a private/incognito window, same URL, user
+        <code>seed-ops-checker</code>, password <code>ops-test-pass</code>, code <code>scripts/totp.sh seed-ops-checker</code>.</li>
     </ol>
-    <div class="warn">A code is accepted <b>once</b>. To sign in a second user within the same 30 seconds,
-    wait until the code changes (run <code>make totp</code> again). Five wrong passwords or codes lock the
-    user for 1 to 15 minutes.</div>
+    <div class="warn">A code is accepted <b>once</b>. Two users have different codes, so the maker and the checker
+    may sign in in the same 30 seconds; the same user twice (e.g. after a sign-out) must wait for the next
+    code. Five wrong passwords or codes lock the user for 1 to 15 minutes (wait, or unlock in 1.5).</div>
   </div>
 
   <div class="case" id="c1-4">
     <h3><span class="id">1.4</span>Sign in with your own authenticator app</h3>
-    <p>For <code>ops-maker01</code> and the other realm users. The codes use <b>SHA-256</b>: use
+    <p>For <code>ops-maker01</code> and the other <code>ops-*01</code> users. The codes use <b>SHA-256</b>: use
     <b>FreeOTP</b> or <b>Aegis</b> (Android) or another app that honours the algorithm in the QR code.
     Keycloak's setup page also names Google Authenticator, but on many phones it ignores the SHA-256 setting and its codes are refused.</p>
     <ol>
-      <li><span class="ui">Sign in with Keycloak</span>, user <code>ops-maker01</code> and the password.</li>
+      <li><span class="ui">Sign in with Keycloak</span>, user <code>ops-maker01</code>, password <code>ops-test-pass</code>.</li>
       <li>First time only: the page <i>Mobile Authenticator Setup</i> shows a barcode (QR). Scan it in the app (or <span class="ui">Unable to scan?</span> shows the key to type in).</li>
       <li>Type the app's 6-digit code into <span class="ui">One-time code</span>, any <span class="ui">Device Name</span>, press <span class="ui">Submit</span>.</li>
-      <li>Later sign-ins: password, then the app's current code.</li>
+      <li>Later sign-ins: <code>ops-test-pass</code>, then the app's current code.</li>
     </ol>
-    <p><b>Lost the phone or enrolled a wrong app?</b> Reset the user's code so the next sign-in enrols again
-    (replace <code>ops-maker01</code>):</p>
+    <p><b>Lost the phone or enrolled a wrong app?</b> Reset the user's code with the first block of 1.5.</p>
+  </div>
+
+  <div class="case" id="c1-5">
+    <h3><span class="id">1.5</span>Keycloak administration</h3>
+    <p>The Keycloak admin web console is <b>not</b> published by the gateway (only the login pages are).
+    Admin tasks run with <code>kcadm.sh</code> inside the container as user <code>kc-admin</code>, password
+    <code>kc-admin-test-pass</code>. The container already has both in its environment
+    (<code>$KC_BOOTSTRAP_ADMIN_USERNAME</code>, <code>$KC_BOOTSTRAP_ADMIN_PASSWORD</code>), so each block below is copied
+    and run as it is, from the repository folder. Change the user name (<code>ops-maker01</code>) and the realm
+    (<code>-r ops</code>) as needed.</p>
+    <h4>List the users of a realm and whether they enrolled</h4>
+    <div class="cmd"><pre>docker compose -f deploy/docker-compose.yml exec keycloak sh -c '
+  k=/opt/keycloak/bin/kcadm.sh; c="--config /tmp/kc.config"
+  $k config credentials $c --server http://localhost:8080 --realm master \
+     --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
+  $k get users $c -r ops --fields username,enabled,requiredActions
+  rm -f /tmp/kc.config'</pre></div>
+    <p>Expect one line per ops user. <code>-r customers</code> or <code>-r portals</code> lists those realms.</p>
+    <h4>Reset a user's one-time code (enrol again at the next sign-in)</h4>
     <div class="cmd"><pre>docker compose -f deploy/docker-compose.yml exec keycloak sh -c '
   k=/opt/keycloak/bin/kcadm.sh; c="--config /tmp/kc.config"
   $k config credentials $c --server http://localhost:8080 --realm master \
@@ -307,32 +380,42 @@ make creds</pre></div>
   done
   $k update users/$id $c -r ops -s "requiredActions=[\"CONFIGURE_TOTP\"]"
   rm -f /tmp/kc.config'</pre></div>
-  </div>
-
-  <div class="case" id="c1-5">
-    <h3><span class="id">1.5</span>Keycloak administration</h3>
-    <p>The Keycloak admin web console is <b>not</b> published by the gateway (only the ops login pages are).
-    Admin tasks run with <code>kcadm.sh</code> inside the container, as user <code>kc-admin</code> (password in
-    <code>make creds</code>; the container already has it in its environment). Example: list the ops users and whether they enrolled:</p>
+    <p>Do not run it for a <code>seed-ops-*</code> or <code>ops-e2e-*</code> user: their pre-set code would be gone
+    (<code>deploy/reset.sh</code>, then step 0.1, brings it back).</p>
+    <h4>Unlock a user after five wrong tries</h4>
     <div class="cmd"><pre>docker compose -f deploy/docker-compose.yml exec keycloak sh -c '
   k=/opt/keycloak/bin/kcadm.sh; c="--config /tmp/kc.config"
   $k config credentials $c --server http://localhost:8080 --realm master \
      --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
-  $k get users $c -r ops --fields username,requiredActions
+  id=$($k get users $c -r ops -q username=seed-ops-maker --fields id --format csv --noquotes)
+  $k delete attack-detection/brute-force/users/$id $c -r ops
   rm -f /tmp/kc.config'</pre></div>
-    <p>Realms: <code>ops</code> (console), <code>customers</code> (app), <code>portals</code> (org/SP portal),
-    <code>partners</code>, <code>services</code> (service to service). Their definitions are in
-    <code>deploy/keycloak/realms</code>. <code>make reset</code> re-imports them and resets every user.</p>
+    <h4>Set a user's password back to the test value</h4>
+    <div class="cmd"><pre>docker compose -f deploy/docker-compose.yml exec keycloak sh -c '
+  k=/opt/keycloak/bin/kcadm.sh; c="--config /tmp/kc.config"
+  $k config credentials $c --server http://localhost:8080 --realm master \
+     --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
+  $k set-password $c -r ops --username ops-maker01 --new-password ops-test-pass
+  rm -f /tmp/kc.config'</pre></div>
+    <p>Realms: <code>ops</code> (console), <code>customers</code> (app, password <code>app-test-pass</code>), <code>portals</code>
+    (org/SP portal, <code>portal-test-pass</code>), <code>partners</code>, <code>services</code> (service to service). Their
+    definitions are in <code>deploy/keycloak/realms</code>. <code>deploy/reset.sh</code> re-imports them and resets every user.</p>
   </div>
 
   <div class="case" id="c1-6">
     <h3><span class="id">1.6</span>OpenBao (secrets store)</h3>
-    <p>OpenBao is reachable only inside the stack. <code>make creds</code> prints its root token (dev only).
-    Read a service's secrets:</p>
+    <p>OpenBao is reachable only inside the stack; there is no web UI. Its token is <code>dev-root-token</code>
+    (dev only; on an OpenBao volume from before, use the token <code>scripts/creds.sh</code> prints instead). Run from the repository folder:</p>
     <div class="cmd"><pre><span class="c"># list every service's secret folder</span>
-docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=&lt;root token&gt; openbao bao kv list secret/
+docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token openbao bao kv list secret/
 <span class="c"># one service, e.g. the core mock's PIN key pair</span>
-docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=&lt;root token&gt; openbao bao kv get secret/mw-core-mock</pre></div>
+docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token openbao bao kv get secret/mw-core-mock
+<span class="c"># one field only</span>
+docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token openbao bao kv get -field=spring.datasource.password secret/mw-notify
+<span class="c"># the engines that are on (kv, transit, pki, database)</span>
+docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token openbao bao secrets list</pre></div>
+    <p>Expect <code>kv list</code> to print one key per service (<code>mw-admin-api</code>, <code>mw-core-mock</code>, …, and <code>mw/</code>).
+    "permission denied" means the token is wrong (old volume: use <code>scripts/creds.sh</code>).</p>
     <div class="table-wrap"><table>
       <tr><th>Path</th><th>Holds</th></tr>
       <tr><td><code>secret/mw-core-mock</code></td><td>the PIN encryption key pair (<code>mw.coremock.pin.*</code>, key id <code>core-pin-dev-1</code>)</td></tr>
@@ -343,35 +426,44 @@ docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=&lt;root token&gt;
       <tr><td>every <code>secret/mw-*</code></td><td><code>spring.datasource.password</code> (the service's own database user)</td></tr>
     </table></div>
     <p>A tester rarely needs these: the PIN public key is also served at
-    <code>GET /test/core-mock/v1/pin-public-key</code> (header <code>apikey</code>, 1.7).</p>
+    <code>GET /test/core-mock/v1/pin-public-key</code> (header <code>apikey: e2e-test-apikey</code>, 1.7).</p>
   </div>
 
   <div class="case" id="c1-7">
     <h3><span class="id">1.7</span>API keys and tokens (Postman, curl)</h3>
     <p><b>Test-only routes</b> (<code>/test/core-mock/…</code>, <code>/test/sim/…</code>, <code>/test/mail/…</code>)
-    need the header <code>apikey: &lt;MW_E2E_API_KEY&gt;</code> and exist only after <code>make tester</code>
-    (or <code>make api-test</code>).</p>
+    need the header <code>apikey: e2e-test-apikey</code> and exist only after <code>scripts/tester.sh</code>
+    (or <code>scripts/api-test.sh</code>):</p>
+    <div class="cmd"><pre>curl -sk https://localhost/test/core-mock/v1/pin-public-key -H 'apikey: e2e-test-apikey'</pre></div>
     <p><b>Tokens</b> (JWT) for the business APIs: a form POST to the gateway. All login clients are public: no client secret.</p>
     <div class="cmd"><pre><span class="c"># app user (realm customers) -> /app/v1/*</span>
 curl -sk https://localhost/auth/realms/customers/protocol/openid-connect/token \
-  -d client_id=mw-app -d grant_type=password -d username=customer01 -d password='&lt;customers password&gt;'
+  -d client_id=mw-app -d grant_type=password -d username=customer01 -d password=app-test-pass
 <span class="c"># portal user (realm portals) -> /portal/org/v1/*</span>
 curl -sk https://localhost/auth/realms/portals/protocol/openid-connect/token \
-  -d client_id=mw-portal -d grant_type=password -d username=org-maker01 -d password='&lt;portals password&gt;'
-<span class="c"># ops user (realm ops) -> /admin/v1/*: pre-set code users only, plus the apikey header</span>
-curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'apikey: &lt;MW_E2E_API_KEY&gt;' \
-  -d client_id=mw-e2e-ops -d grant_type=password -d username=seed-ops-viewer -d password='&lt;ops password&gt;' \
-  -d totp=&lt;make totp PERSONA=seed-ops-viewer&gt;</pre></div>
+  -d client_id=mw-portal -d grant_type=password -d username=org-maker01 -d password=portal-test-pass
+<span class="c"># ops user (realm ops) -> /admin/v1/*: pre-set code users only, plus the apikey header;</span>
+<span class="c"># run scripts/totp.sh seed-ops-viewer first and put its 6 digits after totp=</span>
+curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'apikey: e2e-test-apikey' \
+  -d client_id=mw-e2e-ops -d grant_type=password -d username=seed-ops-viewer -d password=ops-test-pass \
+  -d totp=123456</pre></div>
     <p>Use the <code>access_token</code> from the answer as <code>Authorization: Bearer …</code>. It lasts 5 minutes.</p>
     <div class="warn"><code>/app/v1/*</code> needs more than a token: a bound device and an ECDSA signature on
     every request (headers <code>X-Device-Id</code>, <code>X-Timestamp</code>, <code>X-Nonce</code>,
     <code>X-Signature</code>). Postman cannot do that by hand; use the test console, or the ready collection below.</div>
     <p><b>Postman</b>: import <code>tests/api/mfs-mw.postman_collection.json</code> and
-    <code>tests/api/local.postman_environment.json</code>, then fill the environment's
-    <code>e2eApiKey</code>, <code>kcCustomersPassword</code>, <code>kcPortalsPassword</code>, <code>kcOpsPassword</code>,
-    <code>kcOpsTotpSecret</code>, <code>billaggSecret</code>, <code>checkoutSecret</code> from <code>deploy/.env</code>
-    (the collection signs requests itself). Or run the whole suite: <code>make api-test</code>.</p>
-    <p><b>APISIX admin API</b> (developers only; read the live routes):</p>
+    <code>tests/api/local.postman_environment.json</code>, then fill the environment:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Variable</th><th>Value</th></tr>
+      <tr><td><code>e2eApiKey</code></td><td><code>e2e-test-apikey</code></td></tr>
+      <tr><td><code>kcCustomersPassword</code></td><td><code>app-test-pass</code></td></tr>
+      <tr><td><code>kcPortalsPassword</code></td><td><code>portal-test-pass</code></td></tr>
+      <tr><td><code>kcOpsPassword</code></td><td><code>ops-test-pass</code></td></tr>
+      <tr><td><code>kcOpsTotpSecret</code></td><td><code>opstesttotpsecretnotarealsecret1</code></td></tr>
+      <tr><td><code>billaggSecret</code>, <code>checkoutSecret</code></td><td>random: <code>BILLAGG_HMAC_SECRET</code> and <code>CHECKOUT_DEMO_MERCHANT_SECRET</code> from <code>scripts/creds.sh</code></td></tr>
+    </table></div>
+    <p>The collection signs requests itself. Or run the whole suite: <code>scripts/api-test.sh</code> (it fills them from <code>deploy/.env</code>).</p>
+    <p><b>APISIX admin API</b> (developers only; read the live routes; the container has its random key):</p>
     <div class="cmd"><pre>docker compose -f deploy/docker-compose.yml exec apisix bash -c 'exec 3&lt;&gt;/dev/tcp/127.0.0.1/9180;
   printf "GET /apisix/admin/routes HTTP/1.0\r\nX-API-KEY: %s\r\n\r\n" "$APISIX_ADMIN_KEY" &gt;&amp;3; cat &lt;&amp;3'</pre></div>
   </div>
@@ -388,6 +480,11 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <li><b>SMS received since the submit.</b></li>
     <li><b>Steps</b>: every API call in order with HTTP status and time. Click a step to see the answer.</li>
   </ol>
+  <p>Each action adds its own panel (titled <i>Submit</i>, <i>Resend</i>, <i>Device</i>, <i>Lookup</i>, …); the
+  newest is on top. A submit also shows the hint <i>Idempotency-Key &lt;key&gt;</i> it used. "No SMS yet
+  (notifications can take a few seconds: see Inbox)." means the SMS had not arrived when the panel was drawn:
+  check <span class="ui">SMS &amp; email</span> (6.1). <span class="ui">open in the ops console ↗</span> when you are
+  not signed in to the console leads to its login page and, after the sign-in (1.3), back to that transaction.</p>
   <div class="warn"><b>A red ✖ is not always a failed test.</b> The headline is red whenever a call answered
   outside 200/201/202. In a <i>negative</i> case (wrong PIN, maker approving own batch, wrong OTP) red with the
   expected code <b>is the pass</b>. Some business refusals are answered with HTTP 200 and show a green ✔ with
@@ -401,7 +498,10 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
 <!-- ============================================================ -->
 <section id="s3">
   <h2><span class="num">3</span> App flows</h2>
-  <p>Page <span class="ui">App flows</span>. Block 1 <i>Who is signed in</i>, block 2 <i>Flow</i>, block 3 <i>Look things up</i>.</p>
+  <p>Page <span class="ui">App flows</span>. Block 1 <i>Who is signed in</i>, block 2 <i>Flow</i>, block 3 <i>Look things up</i>.
+  <b>Sign-in: none.</b> The console signs in as the user in <span class="ui">User (customers realm)</span> with the
+  password <code>app-test-pass</code>, binds a device for it the first time, and signs every request. The wallet PIN is
+  <code>1234</code>. Under <span class="ui">Transaction type</span> a hint says what the chosen type does.</p>
   <div class="warn"><b>Pick the transaction type first, then the user.</b> Choosing a
   <span class="ui">Transaction type</span> resets the user, counterparty and amount to that type's defaults
   (the defaults below already fit each case).</div>
@@ -523,14 +623,37 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
   <div class="case" id="c3-9">
     <h3><span class="id">3.9</span>Transaction status</h3>
     <p>Block 3: the <span class="ui">txnId</span> of the last submit is filled in. Press <span class="ui">Status</span>:
-    the transaction as the app sees it (status, amount, fee, masked counterparty).</p>
+    the transaction as the app sees it (status, amount, fee, masked counterparty). A value that is not a txnId
+    (e.g. <code>abc</code>): "enter a txnId".</p>
+  </div>
+
+  <div class="case" id="c3-10">
+    <h3><span class="id">3.10</span>Input checks, other users, resend rules</h3>
+    <p>These are checked in the console before anything is sent; each shows a red ✖ with the text below and no steps.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Do</th><th>Expect</th></tr>
+      <tr><td><span class="ui">User (customers realm)</span> empty or <code>nobody</code>, Submit</td><td>"choose a user"</td></tr>
+      <tr><td>Amount <code>10.123</code> or <code>abc</code></td><td>"the amount is taka with at most 2 decimals, e.g. 10 or 20.13"</td></tr>
+      <tr><td>PIN <code>12</code></td><td>"the PIN is 4 to 6 digits (seeded wallets: 1234)"</td></tr>
+      <tr><td>P2P counterparty <code>12345</code></td><td>"the counterparty must be a wallet number (01XXXXXXXXX)"</td></tr>
+      <tr><td>Top-up, number to top up <code>12345</code></td><td>"the number to top up must be a mobile number"</td></tr>
+      <tr><td>Bill payment, bill number empty</td><td>"enter the bill number"</td></tr>
+      <tr><td>Add money, bank account <code>123</code></td><td>"the bank account number is 6 to 20 digits"</td></tr>
+      <tr><td>Type <code>customer02</code> as user (never submitted before), press <span class="ui">Resend the last submit (same Idempotency-Key)</span></td><td>"no earlier submit of customer02 in this console (submit one first)": the last submit is remembered per user</td></tr>
+      <tr><td>User <code>merchant02</code>, <span class="ui">Bind device</span>, then <span class="ui">Merchant collections</span></td><td>device bound for merchant02 (01911000002); its collections list (empty until someone pays 01911000002)</td></tr>
+      <tr><td>User <code>seed-customer01</code> (typed, not in the suggestions), P2P to <code>01711000002</code>, Tk 10</td><td>the first submit binds a device, then <code>COMPLETED</code>; payer <code>01712000001</code> <code>-Tk 15.00</code></td></tr>
+      <tr><td>Leave the console idle for more than 4 minutes, then Submit</td><td>an extra first step <i>open a new app session for the bound device (signed)</i> (<code>POST /app/v1/sessions</code>); if that fails, the console binds the device again</td></tr>
+    </table></div>
   </div>
 </section>
 
 <!-- ============================================================ -->
 <section id="s4">
   <h2><span class="num">4</span> USSD</h2>
-  <p>Page <span class="ui">USSD phone</span>: a feature phone dialling <code>*268#</code>. <b>robi</b> is connected
+  <p>Page <span class="ui">USSD phone</span>: a feature phone dialling <code>*268#</code>. <b>Sign-in: none</b> (the console
+  plays the operator's gateway with its own key). Above the screen a status line says <i>idle</i>,
+  <i>session open</i> or <i>session ended</i> and how many inputs were sent; on a PIN screen the reply box hides
+  what you type. <b>robi</b> is connected
   over HTTP, <b>gp</b> over SMPP; the menus are the same. Type a reply in the box (or use the keypad),
   then <span class="ui">Send</span>. <span class="ui">Clear</span> clears the input only. There is no hang-up: while a session is open the
   button says <span class="ui">Send</span>; to start over <b>reload the page</b> (then it says <span class="ui">Dial</span>).
@@ -572,12 +695,26 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <p>Without <code>9</code> the same flows run in Bangla: check the Bangla texts and that the SMS are in
     Bangla. Three invalid entries in a row end the session ("Too many invalid entries").</p>
   </div>
+
+  <div class="case" id="c4-4">
+    <h3><span class="id">4.4</span>Phone errors and edge cases</h3>
+    <div class="table-wrap"><table>
+      <tr><th>Do</th><th>Expect</th></tr>
+      <tr><td>Session open, empty reply box, <span class="ui">Send</span></td><td>"type a reply"</td></tr>
+      <tr><td><span class="ui">Subscriber</span> <code>12345</code>, <span class="ui">Dial</span></td><td>"enter the subscriber's number (01XXXXXXXXX)"</td></tr>
+      <tr><td>Dial, then change <span class="ui">MNO (transport)</span> or <span class="ui">Subscriber</span>, then Send</td><td>"no open session: dial first"; the button still says Send: reload the page</td></tr>
+      <tr><td>Subscriber <code>01711000002</code> (customer02), send money to <code>01711000001</code></td><td>as 4.1 with the roles swapped</td></tr>
+      <tr><td><span class="ui">Code</span> <code>*999#</code>, Dial</td><td>the same Bits main menu: the dev gateway sends every code to the Bits service (the code is not checked)</td></tr>
+      <tr><td>gp (SMPP): compare the steps with robi</td><td>over SMPP each step says "SMPP: replay the session from the dial with N input(s)" (every key press replays the session); over HTTP "send the reply in the open session (HTTP CONTINUE)"</td></tr>
+      <tr><td><span class="ui">Clear</span></td><td>empties the reply box only; the session stays open</td></tr>
+    </table></div>
+  </div>
 </section>
 
 <!-- ============================================================ -->
 <section id="s5">
   <h2><span class="num">5</span> Failures, timeouts and recovery</h2>
-  <p>Page <span class="ui">Simulators &amp; faults</span>. A <b>preset</b> card is a ready-made failure: it says
+  <p>Page <span class="ui">Simulators &amp; faults</span>. <b>Sign-in: none.</b> A <b>preset</b> card is a ready-made failure: it says
   what it proves and what to do next. Press its <span class="ui">Apply</span>, run the flow on another page,
   check, then <span class="ui">Reset everything</span> on the card <i>Reset everything to normal</i>.</p>
 
@@ -628,7 +765,9 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <ol>
       <li>Apply <i>OCS: answers too late and refuses (not applied)</i>.</li>
       <li>App: top-up. It answers <code>PROCESSING</code>.</li>
-      <li>Open a second tab on <span class="ui">Simulators &amp; faults</span> and, about 30 s after Submit, press <span class="ui">Reset ocs</span> there (the first tab keeps waiting for the result).</li>
+      <li>Open a second tab on <span class="ui">Simulators &amp; faults</span>. About 25 s after Submit, once
+        <i>OCS (prepaid top-up, every MNO)</i> → <span class="ui">Show scenario and last 10 requests</span> shows the request answered,
+        press <span class="ui">Reset ocs</span> there (the first tab keeps waiting for the result).</li>
       <li>Expect: the status inquiry finds nothing, the hold is released, <code>FAILED</code>.</li>
     </ol>
   </div>
@@ -637,8 +776,10 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <h3><span class="id">5.5</span>Replay a partner callback by hand</h3>
     <ol>
       <li>After a bill payment (callback-only preset) or an add money: billagg or c2wbank form → <span class="ui">Show scenario and last 10 requests</span>.</li>
-      <li>Click the step <i>requests billagg received</i>; in a request's <code>body</code> copy the <code>transactionId</code> (it starts with <code>BITS</code>) into <span class="ui">Partner reference</span> under <i>Replay a callback</i>, press <span class="ui">Replay</span>: "callback replayed".</li>
+      <li>Click the step <i>requests billagg received (newest last)</i>; in a request's <code>body</code> copy the <code>transactionId</code> (it starts with <code>BITS</code>) into <span class="ui">Partner reference</span> under <i>Replay a callback</i>, press <span class="ui">Replay</span>: "callback replayed".</li>
       <li>Expect no second balance change (check <span class="ui">Home</span> or <i>A wallet in core-mock</i>).</li>
+      <li>The same on the <i>C2W bank (add money from bank)</i> card after an add money (3.8): credited once.</li>
+      <li>Negative: <span class="ui">Replay</span> with an empty or malformed reference: red ✖ "choose a partner and enter the partner reference…".</li>
     </ol>
   </div>
 
@@ -652,16 +793,58 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
 
   <div class="case" id="c5-7">
     <h3><span class="id">5.7</span>Custom faults</h3>
+    <p>Three partner cards: <i>OCS (prepaid top-up, every MNO)</i>, <i>Bill aggregator (DESCO, DPDC, WASA, TITAS)</i>,
+    <i>C2W bank (add money from bank)</i>. On a card set the fields, press <span class="ui">Set ocs</span> (or
+    <span class="ui">Set billagg</span> / <span class="ui">Set c2wbank</span>): two steps (<i>set the … scenario</i>, <i>read back the …
+    scenario</i>) and "&lt;partner&gt; scenario set". Run the flow, then <span class="ui">Reset ocs</span> (…): "&lt;partner&gt; reset".</p>
+    <div class="table-wrap"><table>
+      <tr><th><span class="ui">Outcome (forceMode)</span></th><th>Then a top-up (ocs) / bill pay (billagg) / add money (c2wbank)</th></tr>
+      <tr><td>normal (magic values decide)</td><td>as in 3.6-3.8: the magic values of section 0 decide</td></tr>
+      <tr><td>SUCCESS</td><td><code>COMPLETED</code>, even for a magic value</td></tr>
+      <tr><td>BUSINESS_FAILURE</td><td>red ✖ <code>REJECTED MW-PTR-…</code>, nothing moved, nothing held</td></tr>
+      <tr><td>TIMEOUT (applied, reply held)</td><td><code>PROCESSING</code>, then <code>COMPLETED</code> after the status inquiry</td></tr>
+      <tr><td>500 after send (applied)</td><td><code>COMPLETED</code> after the status inquiry, charged once</td></tr>
+      <tr><td>unknown code 9876</td><td><code>UNKNOWN</code>, the amount stays held (as amount <code>.99</code>)</td></tr>
+      <tr><td>malformed body (applied)</td><td><code>COMPLETED</code> (as amount <code>.55</code>)</td></tr>
+    </table></div>
     <ul>
-      <li><b>Partner forms</b> (ocs, billagg, c2wbank): <span class="ui">Outcome (forceMode)</span> (normal, SUCCESS, BUSINESS_FAILURE, TIMEOUT,
-        SERVER_ERROR_AFTER_SEND, UNKNOWN_CODE, MALFORMED), <span class="ui">Latency ms</span>, <span class="ui">Error rate 0..1 (503 unapplied)</span>,
-        <span class="ui">Timeout hold ms</span>, outage. billagg and c2wbank also have <span class="ui">Callback</span> (NONE/ONCE/DUPLICATE/LATE/OUT_OF_ORDER)
-        and <span class="ui">Callback delay ms</span>; billagg also <i>callback-only</i>. <span class="ui">Set …</span> applies, <span class="ui">Reset …</span> clears.</li>
-      <li><b>Core fault</b>: Mode DROP_REPLY / REJECT / DELAY / DUPLICATE_REPLY, a command (PostTransfer, HoldFunds, CommitHold, … or any),
-        <span class="ui">Times</span>, <span class="ui">Reason (REJECT)</span>, <span class="ui">Delay ms (DELAY)</span>, <span class="ui">Inject</span>;
-        <span class="ui">Clear every fault</span> removes them.</li>
-      <li><b>A wallet in core-mock</b>: any wallet, <span class="ui">Show balance, hold and status</span>, click the step: <code>status</code> (ACTIVE / LOCKED), <code>balanceMinor</code> and <code>heldMinor</code> in paisa (1222642 = Tk 12,226.42).</li>
+      <li><span class="ui">Latency ms</span> (e.g. <code>3000</code>): every answer 3 s later; the flow still completes, slower.
+        <span class="ui">Error rate 0..1 (503 unapplied)</span> (e.g. <code>0.5</code>): about half the calls answered 503 without applying.
+        <span class="ui">Timeout hold ms</span>: how long a TIMEOUT answer is held back.
+        Checkbox "outage (every request 503, not applied)": as the preset <i>OCS (top-up) outage</i>.</li>
+      <li>billagg and c2wbank also have <span class="ui">Callback</span>: "none", "once", "twice (duplicate)", "late (after the delay)",
+        "outcome then stale PENDING" (c2wbank starts on once, billagg on none) and <span class="ui">Callback delay ms</span>;
+        billagg also the checkbox "callback-only (payments answered 202 PENDING)". Expected results: as the matching presets in 5.1.</li>
+      <li><i>What &lt;partner&gt; received</i> → <span class="ui">Show scenario and last 10 requests</span>: "&lt;partner&gt;: N recorded request(s), last 10 shown".</li>
+      <li><b>Core fault</b> (card <i>Inject a core-mock fault</i>): <span class="ui">Mode</span> DROP_REPLY (applied, reply lost) / REJECT /
+        DELAY (reply held back) / DUPLICATE_REPLY (reply twice), a <span class="ui">Command</span> (5.8), <span class="ui">Times</span> (default 1),
+        <span class="ui">Reason (REJECT)</span> (e.g. <code>INSUFFICIENT_BALANCE</code>), <span class="ui">Delay ms (DELAY)</span>, <span class="ui">Inject</span>:
+        "fault injected: it applies to the next matching command(s)". <span class="ui">Clear every fault</span>: "core-mock faults cleared".</li>
+      <li><b>A wallet in core-mock</b>: any wallet, <span class="ui">Show balance, hold and status</span>, click the step: <code>status</code> (ACTIVE / LOCKED), <code>balanceMinor</code> and <code>heldMinor</code> in paisa (1222642 = Tk 12,226.42). A malformed number: "enter a wallet number".</li>
+      <li><b>USSD SMPP gateway (gp)</b>: <span class="ui">Show binds</span> ("SMPP binds: {…}"), <span class="ui">Drop every bind</span> (4.2),
+        <span class="ui">Throttle next 2</span> (the step "refuse the next 2 screens with 0x58 throttled": mw-ussd retries them after a short
+        delay, so a gp dial still answers, a little later), <span class="ui">Normal</span>.</li>
     </ul>
+  </div>
+
+  <div class="case" id="c5-8">
+    <h3><span class="id">5.8</span>A fault on every core command</h3>
+    <p>Inject with <span class="ui">Times</span> <code>1</code>, run the flow, check, then <span class="ui">Clear every fault</span>.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Command</th><th>Mode</th><th>Then do</th><th>Expect</th></tr>
+      <tr><td>PostTransfer</td><td>DROP_REPLY</td><td>P2P</td><td>as 5.2: <code>COMPLETED</code> after the status inquiry, debited once</td></tr>
+      <tr><td>PostTransfer</td><td>DELAY, <code>3000</code> ms</td><td>P2P</td><td><code>COMPLETED</code>, about 3 s slower</td></tr>
+      <tr><td>PostTransfer</td><td>DUPLICATE_REPLY</td><td>P2P</td><td><code>COMPLETED</code>, debited once (the second reply is ignored)</td></tr>
+      <tr><td>ValidateTransaction</td><td>REJECT, reason <code>INSUFFICIENT_BALANCE</code></td><td>any money flow</td><td><code>REJECTED MW-CORE-INSUFFICIENT_BALANCE</code></td></tr>
+      <tr><td>HoldFunds</td><td>REJECT (no reason)</td><td>top-up</td><td>red ✖ <code>REJECTED MW-CORE-INJECTED_REJECT</code> "Rejected by the core" (HTTP 422), the operator never called, nothing held; a "recharge failed" SMS</td></tr>
+      <tr><td>CommitHold</td><td>REJECT</td><td>top-up</td><td><code>MANUAL_REVIEW</code> (as 5.6)</td></tr>
+      <tr><td>ReleaseHold</td><td>REJECT</td><td>top-up of <code>01711000999</code> (refused by the operator)</td><td>after about a minute green ✔ <code>MANUAL_REVIEW</code>: the hold could not be released and stays held; resolve with force release (9.6)</td></tr>
+      <tr><td>CreditWallet</td><td>DROP_REPLY</td><td>add money (3.8)</td><td><code>COMPLETED</code> after the inquiry, credited once</td></tr>
+      <tr><td>ReverseTransaction</td><td>REJECT</td><td>ops console reversal (9.5)</td><td><code>MANUAL_REVIEW</code></td></tr>
+      <tr><td>QueryTransaction</td><td>DROP_REPLY, Times <code>2</code></td><td>inject PostTransfer DROP_REPLY too, then P2P</td><td>step "poll the transaction until it is final (was PROCESSING)", about 30 s, then <code>COMPLETED</code>, debited once</td></tr>
+      <tr><td>UnlockWallet</td><td>REJECT</td><td>wallet unlock approval (9.8)</td><td>the approval is recorded but the wallet stays LOCKED (check <i>A wallet in core-mock</i>)</td></tr>
+      <tr><td>any command</td><td>DELAY, <code>2000</code> ms</td><td>any flow</td><td>the next core call of any kind is 2 s slower</td></tr>
+    </table></div>
   </div>
 </section>
 
@@ -670,9 +853,12 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
   <h2><span class="num">6</span> SMS and email</h2>
   <div class="case" id="c6-1">
     <h3><span class="id">6.1</span>Read what was sent</h3>
-    <p>Page <span class="ui">SMS &amp; email</span>: <span class="ui">Wallet / mobile number</span> and/or
+    <p>Page <span class="ui">SMS &amp; email</span> (<b>sign-in: none</b>): <span class="ui">Wallet / mobile number</span> and/or
     <span class="ui">Email address</span> (<code>customer01@example.test</code>), <span class="ui">Read</span> (newest first).
-    <span class="ui">Clear every SMS</span> empties the SMSC inbox.</p>
+    The SMS table has Received / From / Text (with "encoding · n part(s)") / DLR; each email shows subject, date and
+    content type and opens to the raw message. <span class="ui">Clear every SMS</span> empties the SMSC inbox.
+    Number empty, email filled: emails only. Both empty: "enter a number and/or an email address".
+    An address with no mail: the step says "mailbox empty".</p>
     <div class="table-wrap"><table>
       <tr><th>After</th><th>Expect</th></tr>
       <tr><td>P2P</td><td>sender "sent … fee …"; receiver "received …"; Bangla by default; numbers masked <code>0171****001</code>; DLR <code>DELIVRD</code></td></tr>
@@ -692,7 +878,9 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
 <!-- ============================================================ -->
 <section id="s7">
   <h2><span class="num">7</span> Web checkout</h2>
-  <p>Page <span class="ui">Web checkout</span>. The shop is "Demo Shop" (merchant wallet 01911000001).</p>
+  <p>Page <span class="ui">Web checkout</span>. The shop is "Demo Shop" (merchant wallet 01911000001). <b>Sign-in: none</b>
+  (the console signs the shop's requests with the merchant secret and plays the buyer). The buyer buttons stay
+  disabled until a session exists (step 1).</p>
   <div class="case" id="c7-1">
     <h3><span class="id">7.1</span>Pay a checkout session</h3>
     <ol>
@@ -709,6 +897,9 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <h3><span class="id">7.2</span>Variants</h3>
     <div class="table-wrap"><table>
       <tr><th>Do</th><th>Expect</th></tr>
+      <tr><td><span class="ui">Page language</span> <code>bn</code> at step 1</td><td>the same flow; the OTP SMS (6.1) is in Bangla</td></tr>
+      <tr><td><span class="ui">Payer wallet</span> <code>01711000002</code></td><td>customer02 pays; the OTP goes to 01711000002</td></tr>
+      <tr><td>OTP <code>123</code> or PIN <code>12</code>, Pay</td><td>red ✖ "the OTP is 6 digits, the PIN 4 to 6"; nothing sent</td></tr>
       <tr><td>edit the OTP field before Pay</td><td>red ✖ <code>result 401</code> (<code>MW-AUTH-010</code> in the step), nothing paid; put the right OTP back and Pay works</td></tr>
       <tr><td>press <span class="ui">Pay</span> twice</td><td>the second is red ✖ <code>result 409</code>, nothing paid again</td></tr>
       <tr><td>apply <i>Merchant IPN endpoint fails the next 2 IPNs (503)</i> before Pay</td><td>IPNs answered 503, 503, then 200 (attempts 1-3; press the IPN button again after a few seconds)</td></tr>
@@ -720,7 +911,12 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
 <!-- ============================================================ -->
 <section id="s8">
   <h2><span class="num">8</span> Bulk disbursement and SP query</h2>
-  <p>Page <span class="ui">Bulk portal</span>. The <span class="ui">Portal user</span> select decides who acts; the upload button names the current user (<span class="ui">Upload as …</span>).</p>
+  <p>Page <span class="ui">Bulk portal</span>. <b>Sign-in: none.</b> The <span class="ui">Portal user</span> select decides who acts
+  (the console signs in as that user with the password <code>portal-test-pass</code>); the upload button names the current
+  user (<span class="ui">Upload as …</span>). Users: org-maker01 (ORG001 maker: uploads), org-checker01 (ORG001 checker:
+  approves, rejects, pauses, resumes), org-makerchecker01 (ORG001 both), org-checker02 (ORG002 checker: other org; SP
+  query as payee), sp-viewer01 (no organisation: refused, 403). The seeder's <code>seed-org-maker</code> /
+  <code>seed-org-checker</code> (ORG001) are not in the list.</p>
   <div class="case" id="c8-1">
     <h3><span class="id">8.1</span>Upload, approve, result</h3>
     <ol>
@@ -740,6 +936,10 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <tr><td>Rows <code>1000</code>, upload, approve as <code>org-checker01</code>, at once <span class="ui">Pause</span>, <span class="ui">Batch status</span> twice, then <span class="ui">Resume</span> (checker)</td><td>PAUSED: <code>completed</code> stops growing; after Resume it grows again until COMPLETED</td></tr>
       <tr><td>a file over 10,000 rows (paste it; the generator stops at 1000)</td><td>refused as a whole</td></tr>
       <tr><td>a broken CSV (e.g. <code>phone,amt</code> / <code>123,abc</code>)</td><td>red ✖ HTTP 400 <code>MW-VAL-031</code> with the row details</td></tr>
+      <tr><td>empty the CSV box, Upload</td><td>"paste or generate a CSV first"</td></tr>
+      <tr><td>empty <span class="ui">Batch id</span>, Approve (or Reject, Pause, Resume)</td><td>"enter a batch id (Upload or List shows it)"</td></tr>
+      <tr><td>Pause or Resume as <code>org-maker01</code></td><td>HTTP 403 <code>MW-AUTH-002</code>: only a checker pauses and resumes</td></tr>
+      <tr><td>Reject with the reason field empty</td><td>rejected with the reason "rejected in the test console"</td></tr>
     </table></div>
   </div>
   <div class="case" id="c8-3">
@@ -760,57 +960,107 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
   <h2><span class="num">9</span> Ops console</h2>
   <p><a href="https://localhost/console">https://localhost/console</a>. Menu: <span class="ui">Transactions</span>
   · <span class="ui">Approvals</span> · <span class="ui">Wallets</span> · <span class="ui">Partners</span> ·
-  <span class="ui">USSD menus</span> · <span class="ui">Templates</span>. Run a few app flows first so there are
-  transactions. Every change follows <b>maker-checker</b>: the maker requests, a different checker approves;
-  nothing is applied before the approval.</p>
+  <span class="ui">USSD menus</span> · <span class="ui">Templates</span>; the title <i>Bits ops console</i> goes back to
+  Transactions. There is no audit, user or dashboard page: the audit trail is inside each transaction (9.3).
+  Run a few app flows first so there are transactions. Every change follows <b>maker-checker</b>: the maker
+  requests, a different checker approves; nothing is applied before the approval.</p>
   <div class="flow"><span>maker: Request …</span><b>→</b><span>Approvals: PENDING</span><b>→</b><span>checker: Approve</span><b>→</b><span>applied</span></div>
-  <p>Window A: <code>seed-ops-maker</code>; window B (private): <code>seed-ops-checker</code> (1.3).</p>
+  <div class="ok"><b>Sign in for section 9</b> (1.3). Password of every ops user: <code>ops-test-pass</code>.
+    <ul>
+      <li><b>Window A (maker)</b>, normal window: <code>seed-ops-maker</code>, code <code>scripts/totp.sh seed-ops-maker</code></li>
+      <li><b>Window B (checker)</b>, private/incognito window: <code>seed-ops-checker</code>, code <code>scripts/totp.sh seed-ops-checker</code></li>
+      <li>Other roles when a case says so: <code>seed-ops-viewer</code>, <code>seed-ops-compliance</code> (codes with <code>scripts/totp.sh …</code>);
+        <code>ops-auditor01</code> and <code>ops-admin01</code> need an authenticator app (1.4).</li>
+    </ul></div>
+
+  <div class="case" id="c9-0">
+    <h3><span class="id">9.0</span>Error box and form checks</h3>
+    <p><b>Sign in as:</b> window A (maker).</p>
+    <p>Every refusal shows one box: the error code and message, then <i>- sign in again</i> (a link) when the
+    session ended (401), <i>(try again)</i> when the error is retryable, a list of <code>field: issue</code> lines,
+    and <i>correlationId …</i> (quote it when reporting a bug: section 10). The console checks the form before it
+    calls the API; those refusals are <code>MW-VAL-001</code>:</p>
+    <div class="table-wrap"><table>
+      <tr><th>Do</th><th>Expect</th></tr>
+      <tr><td>any <span class="ui">Request …</span> with the <span class="ui">Reason</span> empty (or over 500 characters)</td><td><code>MW-VAL-001</code>, <code>reason: 1 to 500 characters</code></td></tr>
+      <tr><td><span class="ui">Wallets</span>, number <code>12345</code>, Request unlock</td><td><code>MW-VAL-001</code>, <code>walletId: an MSISDN 01[3-9]XXXXXXXX</code></td></tr>
+      <tr><td>Approvals, <span class="ui">Reject</span> with <span class="ui">Rejection reason</span> empty (window B)</td><td><code>MW-VAL-001</code></td></tr>
+    </table></div>
+  </div>
 
   <div class="case" id="c9-1">
     <h3><span class="id">9.1</span>Sign in and out</h3>
+    <p><b>Sign in as:</b> <code>seed-ops-maker</code> / <code>ops-test-pass</code> + <code>scripts/totp.sh seed-ops-maker</code>.</p>
     <ol>
-      <li>Sign in as in 1.3. The header shows the user and roles.</li>
+      <li>Sign in as in 1.3. The login page says <i>Operations console</i>; after the sign-in the header shows <code>seed-ops-maker</code> and its roles (among them <code>viewer, ops-maker</code>).</li>
       <li><span class="ui">Sign out</span>: back on the login page; <span class="ui">Sign in with Keycloak</span> asks for the password again (the Keycloak session ended too).</li>
-      <li>A session lasts up to 8 hours; after that the login page says "Your session has ended. Sign in again."</li>
+      <li>A session lasts up to 8 hours; after that (or when its renewal fails) the login page says "Your session has ended. Sign in again."</li>
+      <li><b>Deep link:</b> signed out, open a transaction URL (e.g. from <span class="ui">open in the ops console ↗</span> in the
+        test console): the login page opens and, after the sign-in, the same transaction.</li>
+      <li><b>Wrong password</b> <code>wrong</code>: Keycloak says "Invalid username or password." (five in a row lock the user: 1.5).
+        Cancelling on the Keycloak page brings you back with "Access denied."; any other sign-in failure: "Sign-in failed. Try again."</li>
+      <li><b>No token in the browser</b> (DevTools): open <a href="https://localhost/console/api/auth/session">https://localhost/console/api/auth/session</a>
+        while signed in: only the name, roles and expiry, no access or refresh token. In DevTools → Network, any console
+        page's response headers carry <code>Content-Security-Policy</code>, <code>Strict-Transport-Security</code> and
+        <code>X-Frame-Options: DENY</code>.</li>
     </ol>
   </div>
 
   <div class="case" id="c9-2">
     <h3><span class="id">9.2</span>Search transactions</h3>
+    <p><b>Sign in as:</b> any ops user (<code>seed-ops-viewer</code> is enough).</p>
     <ol>
-      <li><span class="ui">Transactions</span>: <span class="ui">MSISDN</span> <code>01711000001</code>, <span class="ui">Search</span>. The list shows masked numbers.</li>
-      <li>Try each filter: <span class="ui">Transaction ID</span>, <span class="ui">Partner ref</span> (from a top-up), <span class="ui">Status</span> (e.g. COMPLETED), <span class="ui">Type</span> (e.g. TOPUP), <span class="ui">From</span>/<span class="ui">To</span> (UTC days).</li>
+      <li><span class="ui">Transactions</span> with every field empty, <span class="ui">Search</span>: the hint "Search by transaction ID, MSISDN, partner reference, status, type or date." and no search.</li>
+      <li><span class="ui">MSISDN</span> <code>01711000001</code>, <span class="ui">Search</span>. "Results (1-50)", columns Created / Transaction ID /
+        Type / Channel / Status / Amount / Initiator / Partner ref; numbers masked (<code>0171****001</code>).</li>
+      <li>Try each filter: <span class="ui">Transaction ID</span> (paste a txnId), <span class="ui">Partner ref</span> (from a top-up's detail),
+        <span class="ui">Status</span>, <span class="ui">Type</span> (e.g. <code>TOPUP</code>, <code>P2P</code>), <span class="ui">From (UTC)</span> /
+        <span class="ui">To (UTC)</span> (UTC days; the To day is included). Status offers any, RECEIVED, VALIDATING, HOLDING,
+        POSTING, PARTNER_PENDING, COMMITTING, RELEASING, UNKNOWN, COMPLETED, REJECTED, FAILED, REVERSING, REVERSED, MANUAL_REVIEW.</li>
       <li>More than 50 hits: <span class="ui">Next</span> / <span class="ui">Previous</span>.</li>
-      <li>Negative: an invalid MSISDN shows an inline <code>field: issue</code> list; nothing matching shows "No transactions found".</li>
+      <li>Negative (each shows the error box with the field): Transaction ID <code>abc</code> → "must be a UUID"; MSISDN <code>12ab</code> →
+        "must be a phone number"; Type <code>top-up</code> → "upper-case letters, digits and _ only"; Partner ref over 128 characters →
+        "at most 128 characters". Nothing matching: "No transactions found".</li>
     </ol>
   </div>
 
   <div class="case" id="c9-3">
     <h3><span class="id">9.3</span>Transaction detail</h3>
+    <p><b>Sign in as:</b> any ops user.</p>
     <ol>
-      <li>Open a COMPLETED top-up (or use <span class="ui">open in the ops console ↗</span> in the test console).</li>
-      <li>Expect the summary, the saga <b>timeline</b> (state changes and core commands), the <b>partner calls</b>
-        (top-up, bill pay, add money only; a P2P shows "No partner calls."), and the <b>audit trail</b>.</li>
-      <li>Unknown id in the URL: <code>MW-VAL-003</code>.</li>
+      <li>Open a COMPLETED top-up (or use <span class="ui">open in the ops console ↗</span> in the test console). <span class="ui">Back to search</span> returns to the list.</li>
+      <li>Summary: Status (with "(was X)"), Type / channel, Amount, Fee, Created, Updated, Initiator, Debit / credit, Partner,
+        Partner ref / core ref, Correlation ID, Error, Reversal of, Reversed by. Check Fee (top-up Tk 2) and, on a refused one, Error.</li>
+      <li><b>Saga timeline</b>: one line per state change, <code>from -&gt; to on trigger</code>, and per core command
+        <code>core &lt;Command&gt;, sent Nx -&gt; result (reason)</code> ("sent 2x" = the command was retried). "No steps recorded." when empty.</li>
+      <li><b>Partner calls</b> (Sent / Operation / Partner / Outcome / Partner ref / Error / Answered): top-up, bill pay and add money only;
+        a P2P shows "No partner calls.". <b>Audit trail</b> (At / Action / Actor / Outcome / Service / Resource).</li>
+      <li>Actions offered depend on the status: COMPLETED → <span class="ui">Request reversal</span> (not on a reversed one);
+        UNKNOWN → <span class="ui">Request manual TSQ</span>; MANUAL_REVIEW → manual TSQ, force commit, force release (9.6);
+        any other status: no buttons (the API would answer 409 <code>MW-VAL-030</code>).</li>
+      <li>In the URL: an unknown id in UUID form (e.g. <code>00000000-0000-4000-8000-000000000000</code>) → <code>MW-VAL-003</code>; an id that is not a UUID → the page-not-found page.</li>
     </ol>
   </div>
 
   <div class="case" id="c9-4">
     <h3><span class="id">9.4</span>Audited MSISDN reveal</h3>
+    <p><b>Sign in as:</b> <code>seed-ops-compliance</code> / <code>ops-test-pass</code> + <code>scripts/totp.sh seed-ops-compliance</code>.</p>
     <ol>
-      <li>Sign in as <code>seed-ops-compliance</code>, open any transaction, press <span class="ui">Reveal MSISDN (audited)</span>.</li>
-      <li>Expect the full number with "this view was audited" and <span class="ui">Mask again</span>; the audit trail gets <code>admin.txn.msisdn.revealed</code>.</li>
-      <li>As <code>seed-ops-viewer</code> or <code>seed-ops-maker</code>: no reveal button.</li>
+      <li>Open any transaction, press <span class="ui">Reveal MSISDN (audited)</span>.</li>
+      <li>Expect the full number with "MSISDNs shown unmasked; this view was audited." and <span class="ui">Mask again</span>; the audit trail gets <code>admin.txn.msisdn.revealed</code>.</li>
+      <li><code>ops-auditor01</code> (auditor) sees the same button.</li>
+      <li>Negative, as <code>seed-ops-viewer</code> or <code>seed-ops-maker</code>: no reveal button; adding <code>?reveal=true</code> to the URL still shows masked numbers.</li>
     </ol>
   </div>
 
   <div class="case" id="c9-5">
     <h3><span class="id">9.5</span>Reversal</h3>
+    <p><b>Sign in as:</b> window A <code>seed-ops-maker</code>, window B <code>seed-ops-checker</code> (both <code>ops-test-pass</code>).</p>
     <ol>
       <li>Maker: open a COMPLETED P2P, type a <span class="ui">Reason</span>, <span class="ui">Request reversal</span>.
-        Expect Approvals with a PENDING row, change <code>COMPLETED -&gt; REVERSING</code>, banner "Request filed. Nothing is applied until…".</li>
+        Expect Approvals with the new PENDING row highlighted, change <code>COMPLETED -&gt; REVERSING</code>, banner "Request filed. Nothing is applied until a different operator (ops-checker) approves it."</li>
       <li>Maker sees "your request: another checker decides" and no Approve button.</li>
-      <li>Back on the transaction: the actions panel says the request is waiting for approval.</li>
+      <li>Back on the transaction: "REVERSAL requested by seed-ops-maker on …, waiting for approval in Approvals."</li>
       <li>Checker: <span class="ui">Approvals</span> → <span class="ui">Approve</span>: "Decision recorded."</li>
       <li>Reload the transaction: status <code>REVERSED</code> (the original itself; no separate transaction is
         created). The approval row shows <code>reversal &lt;id&gt;</code>: the core's booking reference; the
@@ -824,6 +1074,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
 
   <div class="case" id="c9-6">
     <h3><span class="id">9.6</span>MANUAL_REVIEW: force commit, force release, manual TSQ</h3>
+    <p><b>Sign in as:</b> window A <code>seed-ops-maker</code>, window B <code>seed-ops-checker</code>.</p>
     <ol>
       <li>Create one (5.6), open it as the maker. Buttons: <span class="ui">Request manual TSQ</span>,
         <span class="ui">Request force commit</span>, <span class="ui">Request force release</span>.</li>
@@ -837,68 +1088,128 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
 
   <div class="case" id="c9-7">
     <h3><span class="id">9.7</span>Approvals page rules</h3>
+    <p><b>Sign in as:</b> window A maker, window B checker; also <code>seed-ops-viewer</code> for the last row.</p>
+    <p>Columns: Created / Action / Resource (link to the transaction, or "partner X", "ussd_menu X",
+    "notify_template CODE/CH/LOC") / Change (status, <code>field=value</code> or <code>vN -&gt; vM</code>) / Sends (what is applied:
+    the amount, <code>reversal &lt;id&gt;</code>, <code>action &lt;id&gt;</code>, <code>command &lt;id&gt;</code>, the version or the template text) /
+    Maker / Reason / Status / Expires / Decision.</p>
     <div class="table-wrap"><table>
       <tr><th>Do</th><th>Expect</th></tr>
-      <tr><td>filter PENDING / APPROVED / REJECTED / EXPIRED / any, <span class="ui">Show</span></td><td>the matching requests (first 100)</td></tr>
+      <tr><td><span class="ui">Status</span> PENDING / APPROVED / REJECTED / EXPIRED / any, <span class="ui">Show</span></td><td>the matching requests (first 100); none: "No pending change requests." (or "No change requests." for any)</td></tr>
+      <tr><td>a decided row</td><td>Decision shows "by &lt;checker&gt; &lt;time&gt;" and the decision reason</td></tr>
       <tr><td>open a transaction or partner with a pending request</td><td>the action form is replaced by "… requested by … waiting for approval in Approvals" (a second request through the API gets <code>MW-VAL-031</code>)</td></tr>
       <tr><td>a maker approving own request (via the API)</td><td><code>MW-AUTH-030</code></td></tr>
       <tr><td>approve a request already decided in the other window</td><td><code>MW-VAL-033</code></td></tr>
       <tr><td>a request older than 72 h</td><td>EXPIRED; approving it gives <code>MW-VAL-032</code></td></tr>
+      <tr><td>as <code>seed-ops-viewer</code> (or <code>ops-admin01</code>)</td><td>the rows, with "waiting for an ops-checker" instead of the buttons</td></tr>
     </table></div>
   </div>
 
   <div class="case" id="c9-8">
     <h3><span class="id">9.8</span>Wallet unlock</h3>
+    <p><b>Sign in as:</b> window A <code>seed-ops-maker</code>, window B <code>seed-ops-checker</code>; test console needs none.</p>
     <ol>
       <li>Test console App: type P2P, user <code>customer02</code>, counterparty <code>01711000001</code>, PIN <code>9999</code>, <span class="ui">Submit</span> <b>five times</b>.
         Then PIN <code>1234</code>: <code>MW-CORE-ACCOUNT_LOCKED</code>. <i>A wallet in core-mock</i> <code>01711000002</code>: LOCKED.</li>
-      <li>Ops console <span class="ui">Wallets</span> (maker): <span class="ui">Wallet (MSISDN)</span> <code>01711000002</code>, Reason, <span class="ui">Request unlock</span>. Checker approves (<code>LOCKED -&gt; ACTIVE</code>).</li>
+      <li>Ops console <span class="ui">Wallets</span> (maker), card <i>Unlock a PIN-locked wallet</i>: <span class="ui">Wallet (MSISDN)</span> <code>01711000002</code>
+        (also accepted: <code>8801711000002</code>, <code>+880 1711-000002</code>), Reason, <span class="ui">Request unlock</span>. Checker approves (<code>LOCKED -&gt; ACTIVE</code>).</li>
       <li>The console does not show the core's answer: check <i>A wallet in core-mock</i>: ACTIVE. A P2P with <code>1234</code> completes.</li>
-      <li>Negative: a malformed number gives <code>MW-VAL-001</code>; a viewer sees "Only an ops-maker files unlock requests."</li>
+      <li>Negative: a malformed number gives <code>MW-VAL-001</code> (9.0); unlocking a wallet that is not locked is refused by the core at approval
+        (the console shows only "Decision recorded.": check <i>A wallet in core-mock</i>); every user without ops-maker (checker, viewer,
+        compliance, auditor, <code>ops-admin01</code>) sees "Only an ops-maker files unlock requests."</li>
     </ol>
   </div>
 
   <div class="case" id="c9-9">
     <h3><span class="id">9.9</span>Partners</h3>
+    <p><b>Sign in as:</b> window A <code>seed-ops-maker</code> (or <code>ops-admin01</code>, integration-maker), window B <code>seed-ops-checker</code>.</p>
     <ol>
-      <li><span class="ui">Partners</span>: the partners managed here (<code>ocs</code> on the dev stack) with state, timeouts, version, changed and approved by.</li>
-      <li>Open <code>ocs</code>, Reason, <span class="ui">Request disable</span>; checker approves (<code>enabled=true -&gt; enabled=false</code>). Version + 1. A test console top-up now fails at once: <code>REJECTED MW-SYS-PARTNER_DISABLED</code>.</li>
-      <li><span class="ui">Request enable</span> the same way.</li>
-      <li>Timeouts form: <span class="ui">Call timeout</span> e.g. <code>8000</code>, Reason, <span class="ui">Request timeouts</span>, approve: new version. Limits: whole ms; connect and call 1-120000; read 1-125000 and at least the call timeout.</li>
-      <li><code>ops-admin01</code> (integration-maker) can also request partner changes. The config never shows a secret, only its reference name.</li>
+      <li><span class="ui">Partners</span>: the partners managed here (<code>ocs</code> on the dev stack) with Family, State, Connect / Timeout / Read,
+        Version ("seed" or vN), Changed by, Approved by, Updated.</li>
+      <li>Open <code>ocs</code> (<span class="ui">Back to partners</span> returns): State, Family, Version ("seed (never published)" before the first change),
+        Changed, Base URL, Template, Timeouts, Auth (only the secret's reference name, never a secret), Operations, Error map "N codes".</li>
+      <li>Card <i>Change</i>: Reason, <span class="ui">Request disable</span>; checker approves (<code>enabled=true -&gt; enabled=false</code>). Version + 1. A test console top-up now fails at once: <code>REJECTED MW-SYS-PARTNER_DISABLED</code>.</li>
+      <li><span class="ui">Request enable</span> the same way; the top-up works again.</li>
+      <li>Card <i>Timeouts</i>: <span class="ui">Call timeout (ms)</span> e.g. <code>8000</code>, Reason, <span class="ui">Request timeouts</span>, approve: new version.
+        Negative: <span class="ui">Connect (ms)</span> <code>0</code> → "a whole number 1 to 120000"; all three empty → "timeouts: at least one timeout";
+        <span class="ui">Read (ms)</span> below the call timeout → "readTimeoutMs: at least timeoutMs"; read over <code>125000</code> → "a whole number 1 to 125000".</li>
+      <li>As the checker or a viewer the Change and Timeouts cards are not there. An unknown partner id in the URL shows the error box.</li>
     </ol>
   </div>
 
   <div class="case" id="c9-10">
     <h3><span class="id">9.10</span>USSD menus</h3>
+    <p><b>Sign in as:</b> window A <code>seed-ops-maker</code>, window B <code>seed-ops-checker</code>; the preview works for any user.</p>
     <ol>
-      <li><span class="ui">USSD menus</span>: menu <code>main</code>, its versions with their go-live per MNO (the live one is the newest whose go-live has passed; the e2e suite publishes versions that go live in 2099); <span class="ui">edit from</span> a version.</li>
-      <li>Change a node's English text. The warnings box should say "No problems found".</li>
-      <li><b>Preview walk</b> (any role, nothing is sent): <span class="ui">Dialling MSISDN (sample)</span>, <span class="ui">Language</span>, <span class="ui">Action outcome</span>, <span class="ui">Dial</span>, then reply: e.g. en, <code>1, 01711000002, 10, 1, 1234</code> ends "Money sent. TxnID PREVIEW-TXN"; the PIN shows <code>****</code>.</li>
-      <li>Maker: MNOs gp / robi / bl / teletalk (all ticked), go-live per MNO (empty = at approval), Reason, <span class="ui">Request publish</span>. Checker approves (<code>vN -&gt; vM</code>).</li>
+      <li><span class="ui">USSD menus</span>: <span class="ui">Menu id</span> <code>main</code>, <span class="ui">Open</span>. The <i>Versions</i> table (Version / Status / Go-live /
+        Maker / Checker / Created / Decided): the live one per MNO is the newest whose go-live has passed (the API suite publishes
+        versions that go live in 2099). Press <span class="ui">edit from</span> on the newest PUBLISHED version: the <i>Tree</i> heading says "edited from vN (PUBLISHED)".</li>
+      <li><b>Tree</b>: one button per node ("id TYPE", "unreachable" when no path leads to it). Click the main menu node. Its form:
+        <span class="ui">Type</span> (MENU, INPUT, CONFIRM, ACTION, DYNAMIC, END), <i>Text (bn)</i>, <i>Text (en)</i>; for MENU per option
+        <span class="ui">Key</span>, <i>Option N label (bn/en)</i>, <span class="ui">Next</span>, <span class="ui">Remove option</span>, and <span class="ui">Add option</span>;
+        for INPUT <span class="ui">Validator</span> (msisdn, amount, pin, numeric, regex), <span class="ui">Store as</span>, <span class="ui">Next</span>; for DYNAMIC
+        <span class="ui">Lookup source</span>, <span class="ui">Store as</span>, <span class="ui">Next</span>; for ACTION <span class="ui">Flow</span>,
+        <span class="ui">On success</span>, <span class="ui">On failure</span>. <span class="ui">Delete node</span> is on every node but the start node.</li>
+      <li>Change the main menu's English text (e.g. add <code>TEST</code>). The warnings box says "No problems found (the API checks again when filed)."</li>
+      <li><b>Break it on purpose</b>: clear a node's <i>Text (bn)</i>: the box says "Not ready yet (mw-admin-api would refuse it):" with
+        <code>nodes.&lt;id&gt;.text: needs bn and en</code>; set an option's <span class="ui">Next</span> to <code>nowhere</code>: "…next: no node nowhere". Undo both.</li>
+      <li><b>Add a node</b>: <span class="ui">New node id</span> <code>test_end</code>, <span class="ui">Type</span> END, <span class="ui">Add node</span>: it appears as "test_end END, unreachable"; <span class="ui">Delete node</span> removes it.</li>
+      <li><b>Engine messages (bn and en)</b>: the texts for invalid, tooManyAttempts, expired, processing, unavailable and more; change one and see it in the preview.</li>
+      <li><b>JSON</b>: the whole tree as text. Type <code>{}</code>, <span class="ui">Apply JSON</span>: "Not a menu tree: JSON with start, messages and nodes". A tree with an
+        error applied and requested: <code>MW-VAL-040</code> with details.</li>
+      <li><b>Preview walk</b> (nothing is sent): <span class="ui">Dialling MSISDN (sample)</span> (01712345678), <span class="ui">Language</span> en,
+        <span class="ui">Action outcome</span> completed, <span class="ui">Dial</span>, then <span class="ui">Reply</span> + <span class="ui">Send</span>
+        <code>1, 01711000002, 10, 1, 1234</code>: "Money sent. TxnID PREVIEW-TXN", "Session ended.", the PIN shown as <code>****</code>.
+        Again with outcome failed (ends "Preview: the core refused"), processing (ends with the processing message), three invalid
+        replies (ends with the tooManyAttempts message). A DYNAMIC node lists sample items "&lt;source&gt; 1", "&lt;source&gt; 2".</li>
+      <li><b>Propose</b> (card <i>Propose this version</i>, maker): MNOs gp / robi / bl / teletalk (all ticked), <span class="ui">Go-live &lt;mno&gt;</span> per MNO
+        (UTC; empty = at approval), Reason, <span class="ui">Request publish</span>. Checker approves (<code>vN -&gt; vM</code>). Unticking every MNO:
+        "activations: pick each MNO once…".</li>
       <li>Test console USSD, dial on robi, <code>9</code>: the new text. A session already open keeps the old one.</li>
       <li>Undo: <span class="ui">edit from</span> the previous version and publish it again (there is no rollback button).</li>
-      <li>Negative: break the tree in the JSON section, <span class="ui">Apply JSON</span>, request: <code>MW-VAL-040</code> with details.</li>
+      <li>Another <span class="ui">Menu id</span>, e.g. <code>promo</code>, <span class="ui">Open</span>: "No versions made in the console yet (the seeded first version lives in mw-ussd)." and a blank starter tree.</li>
+      <li>As the checker or a viewer: "Only an ops-maker proposes menu versions; the preview works for everyone." With a request pending, no propose form, the pending note instead.</li>
     </ol>
   </div>
 
   <div class="case" id="c9-11">
     <h3><span class="id">9.11</span>Templates (SMS and email)</h3>
+    <p><b>Sign in as:</b> window A <code>seed-ops-maker</code>, window B <code>seed-ops-checker</code>.</p>
     <ol>
-      <li><span class="ui">Templates</span>: Code <code>TXN_P2P_RECEIVED</code>, Channel <code>SMS</code>, Locale <code>bn</code> (SMS are Bangla by default), <span class="ui">Open</span>: versions and <i>Live text</i>.
-        Note: <i>Live text</i> shows the newest published version even when its <i>Valid from</i> is still ahead (the e2e suite publishes one valid from 2099); the SMS uses the newest one already valid.</li>
-      <li>Add a marker such as <code>TEST1</code> at the end of the Body. The live preview shows masked sample values and the SMS size (GSM-7 / UCS-2, parts).</li>
-      <li>Maker: <span class="ui">Valid from</span> empty, Reason, <span class="ui">Request publish</span>. Checker approves.</li>
+      <li><span class="ui">Templates</span>: type <span class="ui">Code</span> <code>TXN_P2P_RECEIVED</code> by hand (the suggestions list the other seeded codes, not
+        the P2P ones), Channel <code>SMS</code>, Locale <code>bn</code> (SMS are Bangla by default), <span class="ui">Open</span>: versions and <i>Live text (vN)</i>.
+        Only <code>TXN_P2P_RECEIVED</code> SMS bn/en has console versions (made by <code>mw-seeder</code>); every other code says
+        "No versions made in the console yet (the seeded first version lives in mw-notify)" and opens with an empty editor.
+        <i>Live text</i> shows the newest published version even when its <i>Valid from</i> is still ahead (the API suite publishes one valid from 2099); the SMS uses the newest one already valid.</li>
+      <li>Add a marker such as <code>TEST1</code> at the end of the <span class="ui">Body (bn)</span>. The <i>Live preview</i> shows one "Sample &lt;name&gt;" field per
+        placeholder (change one and the preview follows), masked sample values and the SMS size ("UCS-2, N characters, N SMS").
+        <span class="ui">Sender id</span> (up to 11 letters, digits or spaces; placeholder Bits) is optional.</li>
+      <li>Maker: <span class="ui">Valid from (UTC, empty = at approval)</span> empty, Reason, <span class="ui">Request publish</span>. Checker approves.</li>
       <li>Test console: a P2P to <code>01711000002</code>, then <span class="ui">SMS &amp; email</span> for <code>01711000002</code>: the received SMS ends with <code>TEST1</code>.</li>
       <li>Reject a second proposal: that version never goes live.</li>
       <li>Put the seeded text back afterwards: publish <code>আপনি {{counterparty}} নম্বর থেকে ৳{{amount}} পেয়েছেন। TrxID {{txnId}}</code> the same way.</li>
-      <li>Channel <code>EMAIL</code>: Subject and HTML body fields appear. A template with problems cannot be submitted (<code>MW-VAL-040</code>).</li>
+      <li><b>Email</b>: Code <code>TXN_BILL_PAY_SUCCESS</code> (or <code>TXN_ADD_MONEY_SUCCESS</code>), Channel <code>EMAIL</code>, Locale <code>en</code>, <span class="ui">Open</span>:
+        the fields <span class="ui">Subject</span>, <span class="ui">Body (en)</span> and <span class="ui">HTML body (optional)</span> appear, empty (no console version yet).
+        Fill them, request and approve, then a bill payment (3.7): the email receipt (6.1) has the new subject.</li>
+      <li>Problems (listed under the editor; <span class="ui">Request publish</span> is refused with <code>MW-VAL-040</code>): Body empty → "body is required";
+        EMAIL without Subject → "subject is required for EMAIL"; <code>Hello {{amount</code> → "…: unbalanced {{ or }}"; <code>{{a b}}</code> →
+        "…: placeholder {{a b}} is not a plain {{name}}"; Sender id <code>TOO-LONG-SENDER</code> → "senderId must be 1-11 letters, digits or spaces".</li>
+      <li>Code <code>bad code</code>, Open: "A code is A-Z, 0-9 and _ (2 to 64), channel SMS or EMAIL, locale bn or en."</li>
+      <li>As the checker or a viewer, or while a version waits: "Only an ops-maker proposes template versions (and not while one waits for approval)."</li>
     </ol>
   </div>
 
   <div class="case" id="c9-12">
-    <h3><span class="id">9.12</span>Viewer is read only</h3>
-    <p>Sign in as <code>seed-ops-viewer</code>: every page reads, but no Request / Approve / Reveal button exists anywhere.</p>
+    <h3><span class="id">9.12</span>What each role can and cannot do</h3>
+    <p>Sign in as each user in turn (password <code>ops-test-pass</code>) and check every page:</p>
+    <div class="table-wrap"><table>
+      <tr><th>User</th><th>Sees</th><th>Must not see</th></tr>
+      <tr><td><code>seed-ops-viewer</code></td><td>every page, read only</td><td>any Request / Approve / Reject / Reveal button</td></tr>
+      <tr><td><code>seed-ops-checker</code></td><td>Approve / Reject on others' requests</td><td>any Request form (transactions, Wallets, Partners, menus, templates)</td></tr>
+      <tr><td><code>seed-ops-maker</code></td><td>every Request form</td><td>Approve on its own requests; Reveal</td></tr>
+      <tr><td><code>seed-ops-compliance</code>, <code>ops-auditor01</code></td><td>Reveal MSISDN (audited)</td><td>Request and Approve buttons</td></tr>
+      <tr><td><code>ops-admin01</code></td><td>Partners → Change and Timeouts cards</td><td>Wallets unlock, menu and template proposals, transaction actions, Approve</td></tr>
+    </table></div>
   </div>
 </section>
 
@@ -918,9 +1229,9 @@ docker compose -f deploy/docker-compose.yml logs --no-log-prefix mw-app-gateway 
   <div class="cmd"><pre><span class="c"># every container and its health</span>
 docker compose -f deploy/docker-compose.yml ps
 <span class="c"># live checks: gateway, Kafka, PostgreSQL, Keycloak tokens, OpenBao ...</span>
-make smoke
+scripts/smoke.sh
 <span class="c"># every container log: fails on a PIN or an unmasked MSISDN / NID</span>
-make log-scan</pre></div>
+scripts/log-scan.sh</pre></div>
   <p>In the browser: <a href="https://localhost/healthz">https://localhost/healthz</a> (gateway) and
   <a href="https://localhost/console/api/health">https://localhost/console/api/health</a> (<code>{"status":"UP"}</code>).
   Log events that need a person are listed in the <a href="runbook.md">runbook</a>.</p>
@@ -946,29 +1257,32 @@ make log-scan</pre></div>
   <h2><span class="num">12</span> Troubleshooting</h2>
   <div class="table-wrap"><table>
     <tr><th>Symptom</th><th>Fix</th></tr>
-    <tr><td><code>/tester</code> answers 404 or a JSON error</td><td>a plain <code>make up</code> removed the test routes: <code>make tester</code></td></tr>
-    <tr><td>Home shows ✖ "test-only routes are on"</td><td><code>make tester</code></td></tr>
+    <tr><td><code>/tester</code> answers 404 or a JSON error</td><td>a later <code>docker compose up</code> removed the test routes: <code>scripts/tester.sh</code></td></tr>
+    <tr><td>Home shows ✖ "test-only routes are on"</td><td><code>scripts/tester.sh</code></td></tr>
     <tr><td>Everything times out or fails oddly</td><td>a preset or fault is still on: Home → <span class="ui">Reset every simulator and core fault</span></td></tr>
-    <tr><td>Timeout tests take minutes</td><td>the stack runs production timers: <code>make up TIMERS=fast</code>, then <code>make tester</code></td></tr>
+    <tr><td>Timeout tests take minutes</td><td>the stack runs production timers: start it again with <code>--env-file test-timers.env</code> (step 0.1), then <code>scripts/tester.sh</code></td></tr>
     <tr><td><code>MW-CORE-LIMIT_EXCEEDED_DAILY</code></td><td>the wallet spent Tk 15,000 today (UTC): use customer02, or start fresh (0.1)</td></tr>
     <tr><td><code>MW-CORE-ACCOUNT_LOCKED</code></td><td>five wrong PINs: unlock (9.8)</td></tr>
     <tr><td>A submit says no binding OTP arrived</td><td>mw-notify or the simulators are down: <code>docker compose -f deploy/docker-compose.yml ps</code></td></tr>
-    <tr><td>Console sign-in: "Invalid authenticator code"</td><td>the code was used already or expired: wait for the next one (<code>make totp</code>); with your own app use FreeOTP/Aegis (SHA-256)</td></tr>
-    <tr><td>Console sign-in refused although the password and code are right</td><td>5 wrong tries lock the user for 1-15 minutes: wait, then try again</td></tr>
-    <tr><td><code>make totp</code>: "no pre-set secret"</td><td>that user enrols an app (1.4); use a <code>seed-ops-*</code> user instead</td></tr>
+    <tr><td>Sign-in refused with <code>ops-test-pass</code> (or <code>app-test-pass</code>, <code>portal-test-pass</code>)</td><td>your <code>deploy/.env</code> predates the fixed test values (<code>scripts/gen-dev-env.sh</code> warns "… differ from the documented test values"): use the values <code>scripts/creds.sh</code> prints, or switch with <code>deploy/reset.sh</code>, then step 0.1</td></tr>
+    <tr><td>The console's login page says "Your session has ended. Sign in again." on the first visit</td><td>a console cookie from before a <code>deploy/reset.sh</code>: just sign in (1.3)</td></tr>
+    <tr><td><code>dev-root-token</code>: "permission denied"</td><td>the OpenBao volume predates it: use the token <code>scripts/creds.sh</code> prints (or <code>deploy/reset.sh</code>)</td></tr>
+    <tr><td>Console sign-in: "Invalid authenticator code"</td><td>the code was used already or expired: wait for the next one (<code>scripts/totp.sh</code>); with your own app use FreeOTP/Aegis (SHA-256)</td></tr>
+    <tr><td>Console sign-in refused although the password and code are right</td><td>5 wrong tries lock the user for 1-15 minutes: wait, or unlock it (1.5)</td></tr>
+    <tr><td><code>scripts/totp.sh</code>: "no pre-set secret"</td><td>that user enrols an app (1.4); use a <code>seed-ops-*</code> user instead</td></tr>
     <tr><td>Console login loops back to Keycloak</td><td>the console only works on <code>https://localhost</code> (port 443)</td></tr>
-    <tr><td><code>make api-test</code> fails a device test after you used the test console</td><td>each wallet has one active device; rerun the suite (it binds again)</td></tr>
+    <tr><td><code>scripts/api-test.sh</code> fails a device test after you used the test console</td><td>each wallet has one active device; rerun the suite (it binds again)</td></tr>
   </table></div>
 </section>
 
 <!-- ============================================================ -->
 <section id="s13">
   <h2><span class="num">13</span> The same checks, automated</h2>
-  <p>Each section has automated twins: the Newman API suite (<code>make api-test FOLDER=&lt;folders&gt;</code>, see
-  <code>tests/api/README.md</code>), the test console's browser suite (<code>make tester-e2e</code>) and the
-  ops console's browser suite (<code>make ui-e2e</code>).</p>
+  <p>Each section has automated twins: the Newman API suite (<code>scripts/api-test.sh "&lt;folders&gt;"</code>, see
+  <code>tests/api/README.md</code>), the test console's browser suite (<code>scripts/tester-e2e.sh</code>) and the
+  ops console's browser suite (<code>scripts/ui-e2e.sh</code>).</p>
   <div class="table-wrap"><table>
-    <tr><th>Section</th><th><code>make api-test FOLDER=</code></th></tr>
+    <tr><th>Section</th><th>Folders (<code>scripts/api-test.sh "01, 05"</code>)</th></tr>
     <tr><td>3.1 device binding</td><td><code>02</code></td></tr>
     <tr><td>3.2 P2P</td><td><code>01</code></td></tr>
     <tr><td>3.3, 3.4 cash</td><td><code>03</code></td></tr>

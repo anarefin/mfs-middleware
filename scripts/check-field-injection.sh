@@ -7,7 +7,7 @@
 # @TestConstructor(autowireMode = ALL). @Autowired on a constructor, method or method
 # parameter (e.g. a static @BeforeAll hook) is allowed; on a field it is not.
 set -eu
-. "$(dirname "$0")/lib/modules.sh"
+. "$(dirname "$0")/lib/common.sh"
 
 m="${1:-}"
 modules="$(selected_modules "$m")"

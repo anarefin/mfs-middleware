@@ -9,7 +9,7 @@
 # Needs Node (>= 22). Dependencies are pinned in scripts/contracts-lint/package-lock.json
 # and installed locally (npm ci) on first use; no global installs.
 set -eu
-. "$(dirname "$0")/lib/modules.sh"
+. "$(dirname "$0")/lib/common.sh"
 
 dir="$MW_ROOT/contracts"
 tool="$(cd "$(dirname "$0")/contracts-lint" && pwd)"

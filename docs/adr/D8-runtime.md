@@ -13,7 +13,7 @@ Every component, including platform tools, runs from a Docker image: one image p
 ## Consequences
 
 - A host needs only Docker (plus JDK 25 to build the jars in the MVP).
-- Image scanning (`make security`) covers every image the stack runs.
+- Image scanning (`scripts/security.sh`, originally `make security`) covers every image the stack runs.
 
 ## Where in the repo
 

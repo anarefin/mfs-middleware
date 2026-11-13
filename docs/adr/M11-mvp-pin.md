@@ -12,7 +12,7 @@ Apps encrypt the PIN with the core's public key (RSA-OAEP, SHA-256); `mw-ussd` e
 
 ## Consequences
 
-- No PIN, plain or encrypted, may appear in a log: `make log-scan` checks every container log.
+- No PIN, plain or encrypted, may appear in a log: `scripts/log-scan.sh` (originally `make log-scan`) checks every container log.
 - Every terminal path clears the stored ciphertext (tested in the orchestrator).
 
 ## Where in the repo

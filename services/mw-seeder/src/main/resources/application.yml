@@ -30,7 +30,7 @@ mw:
     # A 503 / 504 / no answer runs the step again after this back-off, doubling up to max-backoff.
     initial-backoff: 1s
     max-backoff: 15s
-    # The seed-manifest volume in the stack; `make seed` copies it to build/seed/manifest.json.
+    # The seed-manifest volume in the stack; scripts/ui-e2e.sh and tests/api/run.sh copy it to build/seed/manifest.json.
     manifest-path: ${MW_SEED_MANIFEST:/run/mw/seed/manifest.json}
     http:
       connect-timeout: 5s
@@ -96,7 +96,7 @@ mw:
       - { persona: customer, realm: customers, username: seed-customer02, roles: [customer], attributes: { msisdn: "01712000002" } }
       - { persona: agent, realm: customers, username: seed-agent01, roles: [agent], attributes: { msisdn: "01812000001" } }
       - { persona: merchant, realm: customers, username: seed-merchant01, roles: [merchant], attributes: { msisdn: "01912000001" } }
-      # The API suite's run customers (tests/api/run_customer.mjs): each make api-test pays as one of them
+      # The API suite's run customers (tests/api/run_customer.mjs): each scripts/api-test.sh run pays as one of them
       # (lib.js plays customer01 as it), at most 3 runs per UTC day each, so repeated runs stay under
       # core-mock's daily debit limit. MSISDN 01714NN0001: masks as 0171****001 like customer01.
       - { persona: run-customer, realm: customers, username: seed-run-customer01, roles: [customer], attributes: { msisdn: "01714010001" } }
