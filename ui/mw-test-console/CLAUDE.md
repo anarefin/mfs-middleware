@@ -46,6 +46,16 @@ customers, holds the stack's generated test credentials and has no sign-in.
 - `src/proxy.ts`: per-request CSP nonce (`lib/security-headers.ts`), `cache-control: no-store`;
   `next.config.ts`: basePath `/tester`, standalone output, static security headers, `agentRules: false`.
 
+## UI stack
+
+Same design system as `ui/mw-admin-ui` (copied, not shared): Tailwind CSS v4 (`postcss.config.mjs`,
+`src/app/globals.css`), shadcn/ui-style components in `src/components/ui/` (`components.json`; Radix via
+`radix-ui`, `lucide-react`, Geist fonts from `geist`), sidebar shell with the DEV / TEST banner
+(`src/components/shell/app-shell.tsx`, cookie `mw-tester-sidebar`) and the theme toggle (cookie
+`mw-tester-theme`, `src/lib/theme.ts`; `system` follows `prefers-color-scheme` in CSS, no inline script).
+Selects stay native (`NativeSelect`, Playwright `selectOption`); every `data-testid` the e2e suite reads is
+kept.
+
 ## Deploy
 
 - `Dockerfile`: standalone output, node 24 alpine, uid 10001, npm/npx/corepack removed (as mw-admin-ui).

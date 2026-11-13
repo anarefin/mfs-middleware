@@ -1,6 +1,12 @@
 // The transaction detail's operator actions (ticket 41): the open request, the note when the check
 // for one failed, or the Actions panel with the buttons the status allows.
+import { Clock, TriangleAlert, Wrench } from "lucide-react";
 import Link from "next/link";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { CardContent, CardDescription, CardHeader, CardSection, CardTitle } from "@/components/ui/card";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { ACTION_LABELS } from "@/lib/approvals";
 import { formatTime } from "@/lib/format";
 import type { TxnGate } from "@/lib/txn-view";
@@ -13,29 +19,43 @@ export function TxnActions({ gate: { actions, open, checkFailed }, action }: Pro
   return (
     <>
       {open ? (
-        <p className="notice" data-testid="pending-request">
-          {open.action} requested by {open.makerId} on {formatTime(open.createdAt)}, waiting for approval in{" "}
-          <Link href="/approvals">Approvals</Link>.
-        </p>
+        <Alert variant="info">
+          <Clock />
+          <AlertDescription>
+            <p data-testid="pending-request">
+              {open.action} requested by {open.makerId} on {formatTime(open.createdAt)}, waiting for approval in{" "}
+              <Link href="/approvals" className="font-medium text-info underline">Approvals</Link>.
+            </p>
+          </AlertDescription>
+        </Alert>
       ) : null}
       {checkFailed ? (
-        <p className="notice" data-testid="pending-check-failed">
-          Could not check for open requests, so no action can be requested now. Reload the page to try again.
-        </p>
+        <Alert variant="warning">
+          <TriangleAlert />
+          <AlertDescription>
+            <p data-testid="pending-check-failed">
+              Could not check for open requests, so no action can be requested now. Reload the page to try again.
+            </p>
+          </AlertDescription>
+        </Alert>
       ) : null}
       {actions.length > 0 ? (
-        <section className="panel actions" aria-label="Actions">
-          <h2>Actions</h2>
-          <p className="hint">A request is applied only after a different operator (ops-checker) approves it.</p>
-          <ActionForm action={action} label="Request an action">
-            <label>Reason<input name="reason" required maxLength={500} /></label>
-            <span className="buttons">
-              {actions.map((a) => (
-                <button key={a} className="primary" type="submit" name="action" value={a}>{ACTION_LABELS[a]}</button>
-              ))}
-            </span>
-          </ActionForm>
-        </section>
+        <CardSection aria-label="Actions">
+          <CardHeader className="flex-col items-start gap-1">
+            <CardTitle><Wrench />Actions</CardTitle>
+            <CardDescription>A request is applied only after a different operator (ops-checker) approves it.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ActionForm action={action} label="Request an action" className="flex flex-col gap-3">
+              <Field label="Reason" className="max-w-xl"><Input name="reason" required maxLength={500} /></Field>
+              <span className="flex flex-wrap gap-2">
+                {actions.map((a) => (
+                  <Button key={a} type="submit" name="action" value={a} variant={a === "REVERSE" || a === "FORCE_RELEASE" ? "outline-destructive" : "default"}>{ACTION_LABELS[a]}</Button>
+                ))}
+              </span>
+            </ActionForm>
+          </CardContent>
+        </CardSection>
       ) : null}
     </>
   );

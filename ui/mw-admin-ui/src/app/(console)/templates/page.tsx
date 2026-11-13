@@ -1,5 +1,14 @@
+import { CircleAlert, FileText, History } from "lucide-react";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { PageHeader } from "@/components/page-header";
+import { StatusBadge } from "@/components/status-badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardSection, CardTitle } from "@/components/ui/card";
+import { Field } from "@/components/ui/field";
+import { Input, NativeSelect } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { canMake } from "@/lib/approvals";
 import { formatTime } from "@/lib/format";
 import { adminApi, operatorToken } from "@/lib/server/admin";
@@ -34,20 +43,27 @@ export default async function TemplatesPage({ searchParams }: Props) {
   if (!token) redirect("/login?error=SessionExpired");
 
   const picker = (
-    <form className="panel search" method="get" action={`${BASE_PATH}/templates`} aria-label="Pick template">
-      <label>Code<input name="code" list="template-codes" defaultValue={code ?? ""} required pattern="[A-Z][A-Z0-9_]{1,63}" /></label>
-      <datalist id="template-codes">{KNOWN_CODES.map((c) => <option key={c} value={c} />)}</datalist>
-      <label>Channel<select name="channel" defaultValue={channel}><option>SMS</option><option>EMAIL</option></select></label>
-      <label>Locale<select name="locale" defaultValue={locale}><option>bn</option><option>en</option></select></label>
-      <button className="primary" type="submit">Open</button>
-    </form>
+    <Card>
+      <form className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] items-end gap-3 p-4" method="get" action={`${BASE_PATH}/templates`} aria-label="Pick template">
+        <Field label="Code"><Input name="code" list="template-codes" defaultValue={code ?? ""} required pattern="[A-Z][A-Z0-9_]{1,63}" className="font-mono" /></Field>
+        <datalist id="template-codes">{KNOWN_CODES.map((c) => <option key={c} value={c} />)}</datalist>
+        <Field label="Channel"><NativeSelect name="channel" defaultValue={channel}><option>SMS</option><option>EMAIL</option></NativeSelect></Field>
+        <Field label="Locale"><NativeSelect name="locale" defaultValue={locale}><option>bn</option><option>en</option></NativeSelect></Field>
+        <Button type="submit">Open</Button>
+      </form>
+    </Card>
   );
   if (!key) {
     return (
       <>
-        <h1>Notification templates</h1>
+        <PageHeader title="Notification templates" description="Pick a template by code, channel and locale to see its versions and edit it." />
         {picker}
-        {code ? <p className="error" role="alert">A code is A-Z, 0-9 and _ (2 to 64), channel SMS or EMAIL, locale bn or en.</p> : null}
+        {code ? (
+          <Alert variant="destructive" className="error" role="alert">
+            <CircleAlert />
+            <AlertDescription><p>A code is A-Z, 0-9 and _ (2 to 64), channel SMS or EMAIL, locale bn or en.</p></AlertDescription>
+          </Alert>
+        ) : null}
       </>
     );
   }
@@ -64,30 +80,34 @@ export default async function TemplatesPage({ searchParams }: Props) {
 
   return (
     <>
-      <h1>Template <span className="mono">{resourceId}</span></h1>
+      <PageHeader title={<>Template <span className="font-mono">{resourceId}</span></>} />
       {picker}
-      <h2>Versions</h2>
-      {!versions.ok ? <ApiError status={versions.status} error={versions.error} /> : items.length === 0 ? (
-        <p className="hint">No versions made in the console yet (the seeded first version lives in mw-notify).</p>
-      ) : (
-        <table data-testid="template-versions">
-          <thead><tr><th>Version</th><th>Status</th><th>Maker</th><th>Checker</th><th>Created</th><th>Decided</th></tr></thead>
-          <tbody>
-            {items.map((v) => (
-              <tr key={v.version}>
-                <td>v{v.version}</td><td className={`status ${v.status}`}>{v.status}</td>
-                <td>{v.makerId}</td><td>{v.checkerId ?? ""}</td>
-                <td>{formatTime(v.createdAt)}</td><td>{formatTime(v.decidedAt)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <Card className="overflow-hidden">
+        <CardHeader><CardTitle><History />Versions</CardTitle></CardHeader>
+        {!versions.ok ? <div className="p-4"><ApiError status={versions.status} error={versions.error} /></div> : items.length === 0 ? (
+          <p className="m-0 px-4 py-8 text-center text-muted-foreground">No versions made in the console yet (the seeded first version lives in mw-notify).</p>
+        ) : (
+          <Table data-testid="template-versions">
+            <TableHeader><TableRow><TableHead>Version</TableHead><TableHead>Status</TableHead><TableHead>Maker</TableHead><TableHead>Checker</TableHead><TableHead>Created</TableHead><TableHead>Decided</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {items.map((v) => (
+                <TableRow key={v.version}>
+                  <TableCell className="font-medium tabular-nums">v{v.version}</TableCell><TableCell><StatusBadge status={v.status} /></TableCell>
+                  <TableCell className="text-muted-foreground">{v.makerId}</TableCell><TableCell className="text-muted-foreground">{v.checkerId ?? ""}</TableCell>
+                  <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">{formatTime(v.createdAt)}</TableCell><TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">{formatTime(v.decidedAt)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Card>
       {latest && value ? (
-        <section className="panel" aria-label="Published text">
-          <h2>Live text (v{latest.version})</h2>
-          <pre className="template-live" lang={key.locale} data-testid="template-live">{String(value.body ?? "")}</pre>
-        </section>
+        <CardSection aria-label="Published text">
+          <CardHeader><CardTitle><FileText />Live text (v{latest.version})</CardTitle></CardHeader>
+          <div className="p-4">
+            <pre className="m-0 rounded-md border bg-muted px-3 py-2.5 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words" lang={key.locale} data-testid="template-live">{String(value.body ?? "")}</pre>
+          </div>
+        </CardSection>
       ) : null}
       {open ? <PendingNotice cr={open} /> : null}
       <TemplateEditor

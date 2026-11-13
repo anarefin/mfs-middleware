@@ -1,7 +1,12 @@
 "use client";
 // The simulator, core-mock and SMPP control forms, each showing what its calls did.
 
+import { Building2, Gauge, Radio, Wallet } from "lucide-react";
 import { useActionState, type ReactNode } from "react";
+import { Busy, Panel, Row, SubHeading } from "@/components/section";
+import { Button } from "@/components/ui/button";
+import { Field, InlineField } from "@/components/ui/field";
+import { Input, NativeSelect } from "@/components/ui/input";
 import type { Outcome } from "@/lib/types";
 import { coreFault, readPartner, replayCallback, setScenario, smpp, walletLookup } from "../actions/sim";
 import { Result } from "../components/result";
@@ -11,9 +16,9 @@ type Act = (prev: Outcome | null, f: FormData) => Promise<Outcome | null>;
 export function ActForm({ action, children, testid }: { action: Act; children: ReactNode; testid?: string }) {
   const [state, run, pending] = useActionState(action, null);
   return (
-    <form action={run} className="stack" aria-busy={pending} data-testid={testid}>
-      <fieldset disabled={pending}>{children}</fieldset>
-      {pending ? <p className="busy">working…</p> : null}
+    <form action={run} className="flex flex-col gap-3" aria-busy={pending} data-testid={testid}>
+      <fieldset disabled={pending} className="contents">{children}</fieldset>
+      {pending ? <Busy>working…</Busy> : null}
       <Result state={state} />
     </form>
   );
@@ -25,17 +30,18 @@ const PARTNER_INFO: Record<string, string> = {
   c2wbank: "C2W bank (add money from bank)",
 };
 
+const checkboxClass = "size-4 accent-primary";
+
 export function PartnerForms() {
   return (
-    <div className="grid">
+    <div className="grid items-start gap-4 xl:grid-cols-3">
       {Object.entries(PARTNER_INFO).map(([p, title]) => (
-        <section key={p} className="panel">
-          <h3>{title}</h3>
+        <Panel key={p} title={title} icon={Building2} contentClassName="gap-4">
           <ActForm action={setScenario} testid={`scenario-${p}`}>
             <input type="hidden" name="partner" value={p} />
-            <div className="row">
-              <label>Outcome (forceMode)
-                <select name="forceMode" defaultValue="">
+            <Row>
+              <Field label="Outcome (forceMode)">
+                <NativeSelect name="forceMode" defaultValue="">
                   <option value="">normal (magic values decide)</option>
                   <option value="SUCCESS">SUCCESS</option>
                   <option value="BUSINESS_FAILURE">BUSINESS_FAILURE</option>
@@ -43,53 +49,55 @@ export function PartnerForms() {
                   <option value="SERVER_ERROR_AFTER_SEND">500 after send (applied)</option>
                   <option value="UNKNOWN_CODE">unknown code 9876</option>
                   <option value="MALFORMED">malformed body (applied)</option>
-                </select>
-              </label>
-              <label>Latency ms<input name="latencyMs" inputMode="numeric" placeholder="0" /></label>
-            </div>
-            <div className="row">
-              <label>Error rate 0..1 (503 unapplied)<input name="errorRate" placeholder="0" /></label>
-              <label>Timeout hold ms<input name="timeoutDelayMs" inputMode="numeric" placeholder="default" /></label>
-            </div>
-            <label className="inline"><input type="checkbox" name="outage" /> outage (every request 503, not applied)</label>
+                </NativeSelect>
+              </Field>
+              <Field label="Latency ms"><Input name="latencyMs" inputMode="numeric" placeholder="0" /></Field>
+            </Row>
+            <Row>
+              <Field label="Error rate 0..1 (503 unapplied)"><Input name="errorRate" placeholder="0" /></Field>
+              <Field label="Timeout hold ms"><Input name="timeoutDelayMs" inputMode="numeric" placeholder="default" /></Field>
+            </Row>
+            <InlineField><input type="checkbox" name="outage" className={checkboxClass} /> outage (every request 503, not applied)</InlineField>
             {p !== "ocs" ? (
               <>
-                <div className="row">
-                  <label>Callback
-                    <select name="callbackMode" defaultValue={p === "c2wbank" ? "ONCE" : "NONE"}>
+                <Row>
+                  <Field label="Callback">
+                    <NativeSelect name="callbackMode" defaultValue={p === "c2wbank" ? "ONCE" : "NONE"}>
                       <option value="NONE">none</option>
                       <option value="ONCE">once</option>
                       <option value="DUPLICATE">twice (duplicate)</option>
                       <option value="LATE">late (after the delay)</option>
                       <option value="OUT_OF_ORDER">outcome then stale PENDING</option>
-                    </select>
-                  </label>
-                  <label>Callback delay ms<input name="callbackDelayMs" inputMode="numeric" placeholder="0" /></label>
-                </div>
-                {p === "billagg" ? <label className="inline"><input type="checkbox" name="callbackOnly" /> callback-only (payments answered 202 PENDING)</label> : null}
+                    </NativeSelect>
+                  </Field>
+                  <Field label="Callback delay ms"><Input name="callbackDelayMs" inputMode="numeric" placeholder="0" /></Field>
+                </Row>
+                {p === "billagg" ? <InlineField><input type="checkbox" name="callbackOnly" className={checkboxClass} /> callback-only (payments answered 202 PENDING)</InlineField> : null}
               </>
             ) : null}
-            <div className="row">
-              <button type="submit" name="op" value="set" className="primary">Set {p}</button>
-              <button type="submit" name="op" value="reset">Reset {p}</button>
-            </div>
+            <Row>
+              <Button type="submit" name="op" value="set">Set {p}</Button>
+              <Button type="submit" name="op" value="reset" variant="outline">Reset {p}</Button>
+            </Row>
           </ActForm>
-          <h3>What {p} received</h3>
-          <ActForm action={readPartner}>
-            <input type="hidden" name="partner" value={p} />
-            <button type="submit">Show scenario and last 10 requests</button>
-          </ActForm>
+          <div className="flex flex-col gap-3 border-t pt-4">
+            <SubHeading>What {p} received</SubHeading>
+            <ActForm action={readPartner}>
+              <input type="hidden" name="partner" value={p} />
+              <Button type="submit" variant="outline" className="self-start">Show scenario and last 10 requests</Button>
+            </ActForm>
+          </div>
           {p !== "ocs" ? (
-            <>
-              <h3>Replay a callback</h3>
+            <div className="flex flex-col gap-3 border-t pt-4">
+              <SubHeading>Replay a callback</SubHeading>
               <ActForm action={replayCallback}>
                 <input type="hidden" name="partner" value={p} />
-                <label>Partner reference (the transactionId {p} received, see the requests)<input name="reference" /></label>
-                <button type="submit">Replay</button>
+                <Field label={`Partner reference (the transactionId ${p} received, see the requests)`}><Input name="reference" className="font-mono" /></Field>
+                <Button type="submit" variant="outline" className="self-start">Replay</Button>
               </ActForm>
-            </>
+            </div>
           ) : null}
-        </section>
+        </Panel>
       ))}
     </div>
   );
@@ -97,56 +105,53 @@ export function PartnerForms() {
 
 export function CoreForms() {
   return (
-    <div className="grid">
-      <section className="panel">
-        <h3>Inject a core-mock fault</h3>
+    <div className="grid items-start gap-4 xl:grid-cols-3">
+      <Panel title="Inject a core-mock fault" icon={Gauge}>
         <ActForm action={coreFault} testid="core-fault">
-          <div className="row">
-            <label>Mode
-              <select name="mode" defaultValue="DROP_REPLY">
+          <Row>
+            <Field label="Mode">
+              <NativeSelect name="mode" defaultValue="DROP_REPLY">
                 <option value="DROP_REPLY">DROP_REPLY (applied, reply lost)</option>
                 <option value="REJECT">REJECT (refused, no effect)</option>
                 <option value="DELAY">DELAY (reply held back)</option>
                 <option value="DUPLICATE_REPLY">DUPLICATE_REPLY (reply twice)</option>
-              </select>
-            </label>
-            <label>Command
-              <select name="commandType" defaultValue="PostTransfer">
+              </NativeSelect>
+            </Field>
+            <Field label="Command">
+              <NativeSelect name="commandType" defaultValue="PostTransfer">
                 {["PostTransfer", "ValidateTransaction", "HoldFunds", "CommitHold", "ReleaseHold", "CreditWallet", "ReverseTransaction", "QueryTransaction", "UnlockWallet", ""].map((c) => (
                   <option key={c} value={c}>{c || "any command"}</option>
                 ))}
-              </select>
-            </label>
-          </div>
-          <div className="row">
-            <label>Times<input name="times" defaultValue="1" inputMode="numeric" /></label>
-            <label>Reason (REJECT)<input name="reasonCode" placeholder="INSUFFICIENT_BALANCE" /></label>
-            <label>Delay ms (DELAY)<input name="delayMs" inputMode="numeric" /></label>
-          </div>
-          <div className="row">
-            <button type="submit" name="op" value="add" className="primary">Inject</button>
-            <button type="submit" name="op" value="reset">Clear every fault</button>
-          </div>
+              </NativeSelect>
+            </Field>
+          </Row>
+          <Row>
+            <Field label="Times"><Input name="times" defaultValue="1" inputMode="numeric" /></Field>
+            <Field label="Reason (REJECT)"><Input name="reasonCode" placeholder="INSUFFICIENT_BALANCE" /></Field>
+            <Field label="Delay ms (DELAY)"><Input name="delayMs" inputMode="numeric" /></Field>
+          </Row>
+          <Row>
+            <Button type="submit" name="op" value="add">Inject</Button>
+            <Button type="submit" name="op" value="reset" variant="outline">Clear every fault</Button>
+          </Row>
         </ActForm>
-      </section>
-      <section className="panel">
-        <h3>A wallet in core-mock</h3>
+      </Panel>
+      <Panel title="A wallet in core-mock" icon={Wallet}>
         <ActForm action={walletLookup}>
-          <label>Wallet<input name="msisdn" defaultValue="01711000001" /></label>
-          <button type="submit">Show balance, hold and status</button>
+          <Field label="Wallet"><Input name="msisdn" defaultValue="01711000001" className="font-mono" /></Field>
+          <Button type="submit" variant="outline" className="self-start">Show balance, hold and status</Button>
         </ActForm>
-      </section>
-      <section className="panel">
-        <h3>USSD SMPP gateway (gp)</h3>
+      </Panel>
+      <Panel title="USSD SMPP gateway (gp)" icon={Radio}>
         <ActForm action={smpp}>
-          <div className="row">
-            <button type="submit" name="op" value="binds">Show binds</button>
-            <button type="submit" name="op" value="drop" className="danger">Drop every bind</button>
-            <button type="submit" name="op" value="throttle">Throttle next 2</button>
-            <button type="submit" name="op" value="reset">Normal</button>
-          </div>
+          <Row>
+            <Button type="submit" name="op" value="binds" variant="outline">Show binds</Button>
+            <Button type="submit" name="op" value="drop" variant="outline-destructive">Drop every bind</Button>
+            <Button type="submit" name="op" value="throttle" variant="outline">Throttle next 2</Button>
+            <Button type="submit" name="op" value="reset" variant="outline">Normal</Button>
+          </Row>
         </ActForm>
-      </section>
+      </Panel>
     </div>
   );
 }

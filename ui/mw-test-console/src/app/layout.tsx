@@ -1,6 +1,10 @@
+import { GeistMono } from "geist/font/mono";
+import { GeistSans } from "geist/font/sans";
 import type { Metadata } from "next";
-import Link from "next/link";
+import { cookies } from "next/headers";
 import type { ReactNode } from "react";
+import { AppShell } from "@/components/shell/app-shell";
+import { SIDEBAR_COOKIE, THEME_COOKIE, parseTheme } from "@/lib/theme";
 import "./globals.css";
 
 // Every page renders per request: Next.js puts the CSP nonce (src/proxy.ts) on its scripts only then;
@@ -13,32 +17,13 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const NAV: [string, string][] = [
-  ["/", "Home"],
-  ["/app", "App flows"],
-  ["/ussd", "USSD phone"],
-  ["/simulators", "Simulators & faults"],
-  ["/inbox", "SMS & email"],
-  ["/checkout", "Web checkout"],
-  ["/bulk", "Bulk portal"],
-];
-
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const jar = await cookies();
+  const theme = parseTheme(jar.get(THEME_COOKIE)?.value);
   return (
-    <html lang="en">
+    <html lang="en" className={`${theme} ${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
       <body>
-        <header className="topbar">
-          <span className="brand">Bits MFS · test console</span>
-          <nav>
-            {NAV.map(([href, label]) => (
-              <Link key={href} href={href}>{label}</Link>
-            ))}
-            <a href="/console" target="_blank" rel="noreferrer">Ops console ↗</a>
-          </nav>
-          <span className="spacer" />
-          <span className="badge">DEV / TEST ONLY</span>
-        </header>
-        <main>{children}</main>
+        <AppShell theme={theme} collapsed={jar.get(SIDEBAR_COOKIE)?.value === "collapsed"}>{children}</AppShell>
       </body>
     </html>
   );

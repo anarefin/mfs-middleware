@@ -1,7 +1,12 @@
 "use client";
 // The mobile app: pick who is signed in, bind the device, run a flow, see every step.
 
+import { ArrowLeftRight, Loader2, RotateCcw, Search, Send, Smartphone, UserRound } from "lucide-react";
 import { useActionState, useState } from "react";
+import { Busy, EmptyResult, Hint, Panel, Row, TwoColumns } from "@/components/section";
+import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
+import { Input, NativeSelect } from "@/components/ui/input";
 import { APP_PERSONAS, FLOW_HELP, TXN_TYPES, type TxnType } from "@/lib/personas";
 import { appRead, bindDevice, resendLast, submitTxn } from "../actions/app";
 import { Result } from "../components/result";
@@ -28,93 +33,93 @@ export function AppTester() {
     setUser(DEFAULT_USER[t]);
   };
 
+  const SELECT_OPS = ["DESCO", "DPDC", "WASA", "TITAS"];
   return (
-    <div className="cols">
-      <div>
-        <section className="panel">
-          <h2>1. Who is signed in</h2>
-          <label>User (customers realm)
-            <input list="app-users" value={user} onChange={(e) => setUser(e.target.value)} name="user-visible" data-testid="app-user" />
+    <TwoColumns>
+      <div className="flex min-w-0 flex-col gap-5">
+        <Panel title="1. Who is signed in" icon={UserRound}>
+          <Field label="User (customers realm)">
+            <Input list="app-users" value={user} onChange={(e) => setUser(e.target.value)} name="user-visible" data-testid="app-user" />
             <datalist id="app-users">
               {APP_PERSONAS.map((p) => <option key={p.user} value={p.user}>{p.label}, {p.msisdn}</option>)}
             </datalist>
-          </label>
-          <form action={bind} className="row" style={{ marginTop: 8 }}>
+          </Field>
+          <form action={bind} className="flex flex-wrap gap-2">
             <input type="hidden" name="user" value={user} />
-            <button type="submit" disabled={busy} data-testid="bind">{binding ? "binding…" : "Bind device"}</button>
-            <button type="submit" name="force" value="1" disabled={busy}>Re-bind (new device)</button>
+            <Button type="submit" variant="outline" disabled={busy} data-testid="bind"><Smartphone />{binding ? "binding…" : "Bind device"}</Button>
+            <Button type="submit" variant="outline" name="force" value="1" disabled={busy}>Re-bind (new device)</Button>
           </form>
-          <p className="hint">The first submit binds automatically; binding here shows the OTP steps on their own.</p>
-        </section>
+          <Hint>The first submit binds automatically; binding here shows the OTP steps on their own.</Hint>
+        </Panel>
 
-        <section className="panel">
-          <h2>2. Flow</h2>
-          <label>Transaction type
-            <select value={type} onChange={(e) => pick(e.target.value as TxnType)} data-testid="txn-type">
+        <Panel title="2. Flow" icon={ArrowLeftRight}>
+          <Field label="Transaction type">
+            <NativeSelect value={type} onChange={(e) => pick(e.target.value as TxnType)} data-testid="txn-type">
               {TXN_TYPES.map((t) => <option key={t} value={t}>{FLOW_HELP[t].title}</option>)}
-            </select>
-          </label>
-          <p className="help">{help.hint}</p>
-          <form action={submit} className="stack" key={type}>
+            </NativeSelect>
+          </Field>
+          <p className="m-0 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{help.hint}</p>
+          <form action={submit} className="flex flex-col gap-3" key={type}>
             <input type="hidden" name="user" value={user} />
             <input type="hidden" name="txnType" value={type} />
             {type === "TOPUP" ? (
-              <div className="row">
-                <label>Operator<select name="operator" defaultValue="gp">{["gp", "robi", "banglalink", "teletalk"].map((o) => <option key={o}>{o}</option>)}</select></label>
-                <label>Product<select name="product" defaultValue="PREPAID"><option>PREPAID</option><option>POSTPAID</option></select></label>
-              </div>
+              <Row>
+                <Field label="Operator"><NativeSelect name="operator" defaultValue="gp">{["gp", "robi", "banglalink", "teletalk"].map((o) => <option key={o}>{o}</option>)}</NativeSelect></Field>
+                <Field label="Product"><NativeSelect name="product" defaultValue="PREPAID"><option>PREPAID</option><option>POSTPAID</option></NativeSelect></Field>
+              </Row>
             ) : null}
             {type === "BILL_PAY" ? (
-              <label>Biller<select name="biller" defaultValue="DESCO">{["DESCO", "DPDC", "WASA", "TITAS"].map((o) => <option key={o}>{o}</option>)}</select></label>
+              <Field label="Biller"><NativeSelect name="biller" defaultValue="DESCO">{SELECT_OPS.map((o) => <option key={o}>{o}</option>)}</NativeSelect></Field>
             ) : null}
             {type === "ADD_MONEY_BANK" ? <input type="hidden" name="bank" value="c2wbank" /> : null}
-            <label>
-              {type === "TOPUP" ? "Number to top up" : type === "BILL_PAY" ? "Bill number" : type === "ADD_MONEY_BANK" ? "Bank account (debited)" : "Counterparty wallet"}
-              <input name="counterparty" defaultValue={help.counterparty} data-testid="counterparty" />
-            </label>
-            <div className="row">
-              <label>Amount (Tk)<input name="amount" defaultValue={DEFAULT_AMOUNT[type]} data-testid="amount" /></label>
-              <label>PIN<input name="pin" type="password" defaultValue="1234" autoComplete="off" data-testid="pin" /></label>
-            </div>
-            <label>Idempotency-Key (empty = new)<input name="idempotencyKey" placeholder="tc-…" /></label>
-            <button type="submit" className="primary" disabled={busy} data-testid="submit">{submitting ? "running… (up to a minute with a timeout)" : "Submit"}</button>
+            <Field label={type === "TOPUP" ? "Number to top up" : type === "BILL_PAY" ? "Bill number" : type === "ADD_MONEY_BANK" ? "Bank account (debited)" : "Counterparty wallet"}>
+              <Input name="counterparty" defaultValue={help.counterparty} data-testid="counterparty" className="font-mono" />
+            </Field>
+            <Row>
+              <Field label="Amount (Tk)"><Input name="amount" defaultValue={DEFAULT_AMOUNT[type]} data-testid="amount" className="tabular-nums" /></Field>
+              <Field label="PIN"><Input name="pin" type="password" defaultValue="1234" autoComplete="off" data-testid="pin" /></Field>
+            </Row>
+            <Field label="Idempotency-Key (empty = new)"><Input name="idempotencyKey" placeholder="tc-…" className="font-mono" /></Field>
+            <Button type="submit" disabled={busy} data-testid="submit">
+              {submitting ? <Loader2 className="animate-spin" /> : <Send />}
+              {submitting ? "running… (up to a minute with a timeout)" : "Submit"}
+            </Button>
           </form>
-          <form action={resend} style={{ marginTop: 8 }}>
+          <form action={resend}>
             <input type="hidden" name="user" value={user} />
-            <button type="submit" disabled={busy} data-testid="resend">{resending ? "resending…" : "Resend the last submit (same Idempotency-Key)"}</button>
+            <Button type="submit" variant="outline" className="w-full" disabled={busy} data-testid="resend"><RotateCcw />{resending ? "resending…" : "Resend the last submit (same Idempotency-Key)"}</Button>
           </form>
-        </section>
+        </Panel>
 
-        <section className="panel">
-          <h2>3. Look things up</h2>
-          <form action={read} className="stack">
+        <Panel title="3. Look things up" icon={Search}>
+          <form action={read} className="flex flex-col gap-3">
             <input type="hidden" name="user" value={user} />
-            <div className="row">
-              <button type="submit" name="what" value="billers" disabled={busy}>Billers</button>
-              <button type="submit" name="what" value="collections" disabled={busy}>Merchant collections</button>
-            </div>
-            <div className="row">
-              <label>Biller<select name="biller" defaultValue="DESCO">{["DESCO", "DPDC", "WASA", "TITAS"].map((o) => <option key={o}>{o}</option>)}</select></label>
-              <label>Bill number<input name="counterparty" defaultValue="1234567" /></label>
-              <button type="submit" name="what" value="fetchBill" disabled={busy}>Fetch bill</button>
-            </div>
-            <div className="row">
-              <label>txnId<input name="txnId" defaultValue={txnState?.txnId ?? ""} key={txnState?.txnId ?? "none"} /></label>
-              <button type="submit" name="what" value="status" disabled={busy}>Status</button>
-            </div>
+            <Row>
+              <Button type="submit" variant="outline" name="what" value="billers" disabled={busy}>Billers</Button>
+              <Button type="submit" variant="outline" name="what" value="collections" disabled={busy}>Merchant collections</Button>
+            </Row>
+            <Row>
+              <Field label="Biller"><NativeSelect name="biller" defaultValue="DESCO">{SELECT_OPS.map((o) => <option key={o}>{o}</option>)}</NativeSelect></Field>
+              <Field label="Bill number"><Input name="counterparty" defaultValue="1234567" className="font-mono" /></Field>
+              <Button type="submit" variant="outline" name="what" value="fetchBill" disabled={busy}>Fetch bill</Button>
+            </Row>
+            <Row>
+              <Field label="txnId"><Input name="txnId" defaultValue={txnState?.txnId ?? ""} key={txnState?.txnId ?? "none"} className="font-mono" /></Field>
+              <Button type="submit" variant="outline" name="what" value="status" disabled={busy}>Status</Button>
+            </Row>
           </form>
-        </section>
+        </Panel>
       </div>
-      <div>
-        {busy ? <p className="busy">Working… each step appears when the call returns.</p> : null}
+      <div className="flex min-w-0 flex-col gap-5">
+        {busy ? <Busy>Working… each step appears when the call returns.</Busy> : null}
         {[txnState, resendState, bindState, readState].filter(Boolean).length === 0 ? (
-          <section className="panel"><p className="hint">Run something on the left: the result, balances, SMS and every API call show here.</p></section>
+          <EmptyResult>Run something on the left: the result, balances, SMS and every API call show here.</EmptyResult>
         ) : null}
-        {txnState ? <section className="panel"><h2>Submit</h2><Result state={txnState} /></section> : null}
-        {resendState ? <section className="panel"><h2>Resend</h2><Result state={resendState} /></section> : null}
-        {bindState ? <section className="panel"><h2>Device</h2><Result state={bindState} /></section> : null}
-        {readState ? <section className="panel"><h2>Lookup</h2><Result state={readState} /></section> : null}
+        {txnState ? <Panel title="Submit" icon={Send}><Result state={txnState} /></Panel> : null}
+        {resendState ? <Panel title="Resend" icon={RotateCcw}><Result state={resendState} /></Panel> : null}
+        {bindState ? <Panel title="Device" icon={Smartphone}><Result state={bindState} /></Panel> : null}
+        {readState ? <Panel title="Lookup" icon={Search}><Result state={readState} /></Panel> : null}
       </div>
-    </div>
+    </TwoColumns>
   );
 }

@@ -1,5 +1,14 @@
+import { CircleAlert, Search, SearchX } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { PageHeader } from "@/components/page-header";
+import { StatusBadge } from "@/components/status-badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardFooter } from "@/components/ui/card";
+import { Field } from "@/components/ui/field";
+import { Input, NativeSelect } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatAmount, formatTime, partyLabel } from "@/lib/format";
 import { pageHref, parseSearch, STATUSES } from "@/lib/search";
 import { adminApi, operatorToken } from "@/lib/server/admin";
@@ -21,62 +30,77 @@ export default async function TransactionsPage({ searchParams }: Props) {
 
   return (
     <>
-      <h1>Transactions</h1>
-      <form className="panel search" method="get" action={`${BASE_PATH}/transactions`} role="search">
-        <label>Transaction ID<input name="txnId" defaultValue={form.txnId} placeholder="UUID" /></label>
-        <label>MSISDN<input name="msisdn" defaultValue={form.msisdn} placeholder="01XXXXXXXXX" inputMode="tel" /></label>
-        <label>Partner ref<input name="partnerRef" defaultValue={form.partnerRef} /></label>
-        <label>Status
-          <select name="status" defaultValue={form.status}>
-            <option value="">any</option>
-            {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </label>
-        <label>Type<input name="txnType" defaultValue={form.txnType} placeholder="P2P, TOPUP..." /></label>
-        <label>From (UTC)<input type="date" name="from" defaultValue={form.from} /></label>
-        <label>To (UTC)<input type="date" name="to" defaultValue={form.to} /></label>
-        <button className="primary" type="submit">Search</button>
-      </form>
+      <PageHeader title="Transactions" description="Search by transaction ID, MSISDN, partner reference, status, type or date." />
+
+      <Card>
+        <form className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] items-end gap-3 p-4" method="get" action={`${BASE_PATH}/transactions`} role="search">
+          <Field label="Transaction ID"><Input name="txnId" defaultValue={form.txnId} placeholder="UUID" className="font-mono" /></Field>
+          <Field label="MSISDN"><Input name="msisdn" defaultValue={form.msisdn} placeholder="01XXXXXXXXX" inputMode="tel" /></Field>
+          <Field label="Partner ref"><Input name="partnerRef" defaultValue={form.partnerRef} /></Field>
+          <Field label="Status">
+            <NativeSelect name="status" defaultValue={form.status}>
+              <option value="">any</option>
+              {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </NativeSelect>
+          </Field>
+          <Field label="Type"><Input name="txnType" defaultValue={form.txnType} placeholder="P2P, TOPUP..." /></Field>
+          <Field label="From (UTC)"><Input type="date" name="from" defaultValue={form.from} /></Field>
+          <Field label="To (UTC)"><Input type="date" name="to" defaultValue={form.to} /></Field>
+          <Button type="submit"><Search />Search</Button>
+        </form>
+      </Card>
 
       {errors.length > 0 ? (
-        <div className="error" role="alert">
-          <ul>{errors.map((e) => <li key={e.field}>{e.field}: {e.issue}</li>)}</ul>
-        </div>
+        <Alert variant="destructive" className="error" role="alert">
+          <CircleAlert />
+          <AlertDescription>
+            <ul>{errors.map((e) => <li key={e.field}>{e.field}: {e.issue}</li>)}</ul>
+          </AlertDescription>
+        </Alert>
       ) : null}
 
-      {!parsed.submitted ? <p className="hint">Search by transaction ID, MSISDN, partner reference, status, type or date.</p> : null}
+      {!parsed.submitted ? (
+        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-12 text-center text-muted-foreground">
+          <Search className="size-6" />
+          <p className="m-0">Fill in at least one field and search. Press <kbd className="rounded border px-1 text-xs">⌘K</kbd> anywhere to jump straight to a transaction ID.</p>
+        </div>
+      ) : null}
 
       {result && !result.ok ? <ApiError status={result.status} error={result.error} /> : null}
 
       {result?.ok ? (
-        <>
-          <h2>{result.data.items.length === 0 ? "No transactions found" : `Results (${parsed.offset + 1}-${parsed.offset + result.data.items.length})`}</h2>
-          {result.data.items.length > 0 ? (
-            <table data-testid="results">
-              <thead>
-                <tr><th>Created</th><th>Transaction ID</th><th>Type</th><th>Channel</th><th>Status</th><th>Amount</th><th>Initiator</th><th>Partner ref</th></tr>
-              </thead>
-              <tbody>
-                {result.data.items.map((t) => (
-                  <tr key={t.txnId}>
-                    <td>{formatTime(t.createdAt)}</td>
-                    <td className="mono"><Link href={`/transactions/${t.txnId}`}>{t.txnId}</Link></td>
-                    <td>{t.txnType}</td>
-                    <td>{t.channel}</td>
-                    <td className={`status ${t.status}`}>{t.status}</td>
-                    <td>{formatAmount(t.amount)}</td>
-                    <td>{partyLabel(t.initiator)}</td>
-                    <td className="mono">{t.partnerRef ?? ""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : null}
-          <div className="pager">
-            {parsed.offset > 0 ? <Link href={pageHref(form, Math.max(0, parsed.offset - parsed.limit))}>Previous</Link> : null}
-            {result.data.items.length === parsed.limit ? <Link href={pageHref(form, parsed.offset + parsed.limit)}>Next</Link> : null}
+        <Card className="overflow-hidden">
+          <div className="flex items-center gap-2 border-b px-4 py-3">
+            <h2 className="m-0 text-sm font-semibold">{result.data.items.length === 0 ? "No transactions found" : `Results (${parsed.offset + 1}-${parsed.offset + result.data.items.length})`}</h2>
           </div>
-        </>
+          {result.data.items.length > 0 ? (
+            <Table data-testid="results">
+              <TableHeader>
+                <TableRow><TableHead>Created</TableHead><TableHead>Transaction ID</TableHead><TableHead>Type</TableHead><TableHead>Channel</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Amount</TableHead><TableHead>Initiator</TableHead><TableHead>Partner ref</TableHead></TableRow>
+              </TableHeader>
+              <TableBody>
+                {result.data.items.map((t) => (
+                  <TableRow key={t.txnId}>
+                    <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">{formatTime(t.createdAt)}</TableCell>
+                    <TableCell className="font-mono text-xs"><Link href={`/transactions/${t.txnId}`}>{t.txnId}</Link></TableCell>
+                    <TableCell>{t.txnType}</TableCell>
+                    <TableCell className="text-muted-foreground">{t.channel}</TableCell>
+                    <TableCell><StatusBadge status={t.status} /></TableCell>
+                    <TableCell className="text-right whitespace-nowrap tabular-nums">{formatAmount(t.amount)}</TableCell>
+                    <TableCell className="font-mono text-xs">{partyLabel(t.initiator)}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{t.partnerRef ?? ""}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="flex flex-col items-center gap-2 px-6 py-10 text-muted-foreground"><SearchX className="size-6" />Nothing matches these filters.</div>
+          )}
+          <CardFooter className="justify-end">
+            {parsed.offset > 0 ? <Button asChild variant="outline" size="sm"><Link href={pageHref(form, Math.max(0, parsed.offset - parsed.limit))}>Previous</Link></Button> : null}
+            {result.data.items.length === parsed.limit ? <Button asChild variant="outline" size="sm"><Link href={pageHref(form, parsed.offset + parsed.limit)}>Next</Link></Button> : null}
+          </CardFooter>
+        </Card>
       ) : null}
     </>
   );

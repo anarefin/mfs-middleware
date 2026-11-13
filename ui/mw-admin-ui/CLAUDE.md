@@ -110,6 +110,22 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
     warns (a stricter UI copy could refuse what the API accepts), the template check blocks (exact copy).
 - `/console/api/health` -> `{"status":"UP"}` (container healthcheck, public).
 
+## UI stack
+
+Tailwind CSS v4 (`postcss.config.mjs`, `src/app/globals.css`) with shadcn/ui components (`components.json`,
+"new-york", zinc; Radix via `radix-ui`, icons `lucide-react`, Geist fonts from the `geist` package, served
+by Next itself so `font-src 'self'` holds). Design direction A "clean sidebar" (2026-11-13): collapsible
+sidebar (`src/components/shell/app-shell.tsx`, state in cookie `mw-admin-sidebar`), top bar with
+breadcrumb text, ⌘K command palette (`command-palette.tsx`: pages, a txn id opens it, an MSISDN / partner
+ref searches; button named "Command palette") and the theme toggle. Theme: cookie `mw-admin-theme`
+(`src/lib/theme.ts`: system / light / dark) -> class on `<html>`; `system` follows
+`prefers-color-scheme` in CSS, so no inline script (the CSP stays nonce-only). Components in
+`src/components/ui/` are shadcn-style copies (add more with `pnpm dlx shadcn@4.23.0 add <name>`);
+`StatusBadge` colours a state but keeps the raw code as text (the e2e suite reads it). Selects stay native
+(`NativeSelect`): GET forms and Playwright `selectOption`. Kept for the e2e suite: every `data-testid`,
+the `.error[role=alert]` error box, `tr.highlight`, `ol.trail`, unique nav link names, region / form
+aria-labels. The same look is copied (not shared) into `ui/mw-test-console`.
+
 ## Contracts used
 
 - `api/mw-admin-api/admin.v1` (GET search and detail; change requests: list, create for a

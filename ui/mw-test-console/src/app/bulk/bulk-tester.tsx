@@ -1,6 +1,11 @@
 "use client";
 
+import { ClipboardCheck, FileSpreadsheet, ListChecks, Upload, UserRound } from "lucide-react";
 import { useActionState, useEffect, useState } from "react";
+import { Busy, EmptyResult, Hint, Panel, Row, TwoColumns } from "@/components/section";
+import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
+import { Input, NativeSelect, Textarea } from "@/components/ui/input";
 import { PORTAL_PERSONAS } from "@/lib/personas";
 import { bulk } from "../actions/bulk";
 import { Result } from "../components/result";
@@ -18,52 +23,49 @@ export function BulkTester() {
   }, [state]);
 
   return (
-    <div className="cols">
-      <div className="stack">
+    <TwoColumns>
+      <div className="flex min-w-0 flex-col gap-5">
       {/* outside the form: React resets a form after its action, which would put the select back on
           its first option while the state (and the button label) still names the chosen user */}
-      <section className="panel stack">
-        <h2>Portal user</h2>
-        <select value={user} onChange={(e) => setUser(e.target.value)} aria-label="Portal user" data-testid="bulk-user">
+      <Panel title="Portal user" icon={UserRound}>
+        <NativeSelect value={user} onChange={(e) => setUser(e.target.value)} aria-label="Portal user" data-testid="bulk-user">
           {PORTAL_PERSONAS.map((p) => <option key={p.user} value={p.user}>{p.label}</option>)}
-        </select>
-      </section>
-      <form action={run} className="stack" aria-busy={pending}>
+        </NativeSelect>
+      </Panel>
+      <form action={run} className="flex flex-col gap-5" aria-busy={pending}>
         <input type="hidden" name="user" value={user} />
-        <section className="panel stack">
-          <h2>1. File (maker)</h2>
-          <div className="row">
-            <label>Rows<input name="rows" defaultValue="5" inputMode="numeric" /></label>
-            <label>Tk each<input name="taka" defaultValue="1.00" /></label>
-            <button type="submit" name="op" value="sample" disabled={pending}>Generate sample</button>
-          </div>
-          <label>CSV (msisdn,amount,reference)<textarea name="csv" value={csv} onChange={(e) => setCsv(e.target.value)} data-testid="bulk-csv" /></label>
-          <button type="submit" name="op" value="upload" className="primary" disabled={pending} data-testid="bulk-upload">Upload as {user}</button>
-        </section>
-        <section className="panel stack">
-          <h2>2. Decide and follow (checker)</h2>
-          <label>Batch id<input name="batchId" value={batchId} onChange={(e) => setBatchId(e.target.value)} data-testid="bulk-batch" /></label>
-          <div className="row">
-            <button type="submit" name="op" value="approve" className="primary" disabled={pending} data-testid="bulk-approve">Approve</button>
-            <button type="submit" name="op" value="reject" className="danger" disabled={pending}>Reject</button>
-            <button type="submit" name="op" value="pause" disabled={pending}>Pause</button>
-            <button type="submit" name="op" value="resume" disabled={pending}>Resume</button>
-          </div>
-          <label>Reject reason<input name="reason" placeholder="wrong payroll month" /></label>
-          <div className="row">
-            <button type="submit" name="op" value="get" disabled={pending} data-testid="bulk-get">Batch status</button>
-            <button type="submit" name="op" value="result" disabled={pending}>Result file</button>
-            <button type="submit" name="op" value="txns" disabled={pending}>Transactions</button>
-            <button type="submit" name="op" value="list" disabled={pending}>List batches</button>
-          </div>
-          <p className="hint">Switch the user to org-checker01 to approve org-maker01&apos;s upload. SP query: org-checker02 (ORG002 collects for DESCO and Demo Shop), empty batch id, Transactions.</p>
-        </section>
+        <Panel title="1. File (maker)" icon={FileSpreadsheet}>
+          <Row>
+            <Field label="Rows"><Input name="rows" defaultValue="5" inputMode="numeric" className="tabular-nums" /></Field>
+            <Field label="Tk each"><Input name="taka" defaultValue="1.00" className="tabular-nums" /></Field>
+            <Button type="submit" variant="outline" name="op" value="sample" disabled={pending}>Generate sample</Button>
+          </Row>
+          <Field label="CSV (msisdn,amount,reference)"><Textarea name="csv" value={csv} onChange={(e) => setCsv(e.target.value)} data-testid="bulk-csv" className="min-h-32 font-mono text-xs" /></Field>
+          <Button type="submit" name="op" value="upload" disabled={pending} data-testid="bulk-upload"><Upload />Upload as {user}</Button>
+        </Panel>
+        <Panel title="2. Decide and follow (checker)" icon={ClipboardCheck}>
+          <Field label="Batch id"><Input name="batchId" value={batchId} onChange={(e) => setBatchId(e.target.value)} data-testid="bulk-batch" className="font-mono" /></Field>
+          <Row>
+            <Button type="submit" name="op" value="approve" disabled={pending} data-testid="bulk-approve">Approve</Button>
+            <Button type="submit" name="op" value="reject" variant="outline-destructive" disabled={pending}>Reject</Button>
+            <Button type="submit" name="op" value="pause" variant="outline" disabled={pending}>Pause</Button>
+            <Button type="submit" name="op" value="resume" variant="outline" disabled={pending}>Resume</Button>
+          </Row>
+          <Field label="Reject reason"><Input name="reason" placeholder="wrong payroll month" /></Field>
+          <Row>
+            <Button type="submit" name="op" value="get" variant="outline" disabled={pending} data-testid="bulk-get">Batch status</Button>
+            <Button type="submit" name="op" value="result" variant="outline" disabled={pending}>Result file</Button>
+            <Button type="submit" name="op" value="txns" variant="outline" disabled={pending}>Transactions</Button>
+            <Button type="submit" name="op" value="list" variant="outline" disabled={pending}>List batches</Button>
+          </Row>
+          <Hint>Switch the user to org-checker01 to approve org-maker01&apos;s upload. SP query: org-checker02 (ORG002 collects for DESCO and Demo Shop), empty batch id, Transactions.</Hint>
+        </Panel>
       </form>
       </div>
-      <div>
-        {pending ? <p className="busy">working…</p> : null}
-        {state ? <section className="panel"><Result state={state} /></section> : <section className="panel"><p className="hint">Generate a sample file, upload it as the maker, approve it as the checker.</p></section>}
+      <div className="flex min-w-0 flex-col gap-5">
+        {pending ? <Busy>working…</Busy> : null}
+        {state ? <Panel title="Result" icon={ListChecks}><Result state={state} /></Panel> : <EmptyResult>Generate a sample file, upload it as the maker, approve it as the checker.</EmptyResult>}
       </div>
-    </div>
+    </TwoColumns>
   );
 }
