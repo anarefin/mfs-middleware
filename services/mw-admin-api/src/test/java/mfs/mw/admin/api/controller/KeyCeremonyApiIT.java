@@ -234,7 +234,9 @@ class KeyCeremonyApiIT {
     assertThat(approved).hasStatus(200);
     assertThat(body(approved).path("status").asString()).isEqualTo("APPROVED");
     assertThat(body(approved).path("payload").path("appliedKid").asString()).isEqualTo("pin-hmac.v3");
-    assertThat(CALLS).filteredOn(c -> c.startsWith("PUT /internal/v1/key-changes/" + id)).singleElement()
+    // under the approval attempt's id (the claim token), never the request id (a cancelled attempt must not block it)
+    assertThat(CALLS).noneMatch(c -> c.startsWith("PUT /internal/v1/key-changes/" + id));
+    assertThat(CALLS).filteredOn(c -> c.startsWith("PUT /internal/v1/key-changes/")).singleElement()
         .satisfies(c -> assertThat(c).contains("\"action\":\"ROTATE\"", "\"makerId\":\"seed-ops-secadmin1\"",
             "\"checkerId\":\"seed-ops-secadmin2\""));
     // audited with the checker as actor

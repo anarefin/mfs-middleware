@@ -98,8 +98,8 @@ public class ChangeRequestRepository {
   public boolean claim(UUID id, String checkerId, String checkerSub, UUID token, Instant at) {
     return jdbc.update(
             "update change_request set status = 'APPROVING', checker_id = ?, checker_sub = ?, claim_token = ?,"
-                + " claimed_at = ? where id = ? and status = 'PENDING'",
-            checkerId, checkerSub, token, Timestamp.from(at), id)
+                + " claimed_at = ?, attempt_started_at = ? where id = ? and status = 'PENDING'",
+            checkerId, checkerSub, token, Timestamp.from(at), Timestamp.from(at), id)
         == 1;
   }
 
@@ -111,6 +111,15 @@ public class ChangeRequestRepository {
                 rs.getObject("claim_token", UUID.class), instant(rs, "claimed_at")),
             id)
         .stream().findFirst();
+  }
+
+  /** The holder starts another attempt (a retry): refreshes {@code attempt_started_at}. */
+  public boolean touchAttempt(UUID id, Claim claim, Instant at) {
+    return jdbc.update(
+            "update change_request set attempt_started_at = ? where id = ? and status = 'APPROVING'"
+                + " and checker_sub = ? and claim_token = ?",
+            Timestamp.from(at), id, claim.checkerSub(), claim.token())
+        == 1;
   }
 
   /** APPROVING -> APPROVED by the claim holder (sub and token) with the final payload. */
@@ -126,7 +135,8 @@ public class ChangeRequestRepository {
   public boolean release(UUID id, Claim claim) {
     return jdbc.update(
             "update change_request set status = 'PENDING', checker_id = null, checker_sub = null, claim_token = null,"
-                + " claimed_at = null where id = ? and status = 'APPROVING' and checker_sub = ? and claim_token = ?",
+                + " claimed_at = null, attempt_started_at = null"
+                + " where id = ? and status = 'APPROVING' and checker_sub = ? and claim_token = ?",
             id, claim.checkerSub(), claim.token())
         == 1;
   }
@@ -140,11 +150,11 @@ public class ChangeRequestRepository {
         == 1;
   }
 
-  /** APPROVING requests whose claim was taken before {@code before} (lease over), oldest first. */
+  /** APPROVING requests whose last attempt started before {@code before}, oldest first. */
   public List<ChangeRequest> staleApproving(Instant before, int limit) {
     return jdbc.query(
-        "select " + COLUMNS + " from change_request where status = 'APPROVING' and claimed_at < ?"
-            + " order by claimed_at limit ?",
+        "select " + COLUMNS + " from change_request where status = 'APPROVING' and attempt_started_at < ?"
+            + " order by attempt_started_at limit ?",
         rows, Timestamp.from(before), limit);
   }
 

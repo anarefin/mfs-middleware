@@ -16,12 +16,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import mfs.mw.admin.api.MutableClock;
 import mfs.mw.admin.api.TestInfrastructure;
@@ -47,17 +47,19 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Claim-first approval of key changes and the key ceremony (ticket 75, security reviews of the
- * dual-control race), against a stateful stand-in mw-crypto (key changes applied per id, ceremonies
- * OPEN / COMBINED / COMMITTED / ABORTED with abort terminal per id):
+ * dual-control race) against a stateful stand-in mw-crypto with its rules: a key change per attempt
+ * id (the claim token), applied or CANCELLED (terminal; a PUT after the cancel is refused), the
+ * cancel atomic with the PUT; ceremonies opened by PUT, components only while OPEN, abort terminal.
  *
  * <ul>
- *   <li>approve vs reject raced N times: an applied change never belongs to a REJECTED request;
- *   <li>a 4xx for a change mw-crypto already applied finishes APPROVED (asked by id), a 4xx for one
- *       not applied releases to PENDING, a 4xx when mw-crypto cannot tell keeps APPROVING;
- *   <li>a timeout keeps APPROVING; only the claiming checker retries, within the lease; past it the
- *       reconciler resolves APPROVED / PENDING / EXPIRED from mw-crypto's state;
- *   <li>ceremony commit vs reject and component vs reject raced N times: a REJECTED ceremony is
- *       always ABORTED at mw-crypto, never COMMITTED or left OPEN / COMBINED.
+ *   <li>approve vs reject, ceremony commit vs reject, component vs reject, each raced N times;
+ *   <li>a 4xx is settled by a cancel: applied -> APPROVED, cancelled -> PENDING (a new attempt id
+ *       next time; a ceremony EXPIRED), unknown -> APPROVING;
+ *   <li>a timeout keeps APPROVING; only the claimer retries, within the lease, refreshing the
+ *       attempt; the reconciler waits lease + read timeout after the last attempt, then cancels, and
+ *       the PUT still in flight is refused when it arrives;
+ *   <li>orphan ceremonies (filing failed, rejected while mw-crypto was down) are aborted later;
+ *   <li>a component whose request turned APPROVING aborts nothing; REJECTED aborts.
  * </ul>
  */
 @SpringBootTest(properties = {"mw.outbox.relay.enabled=false", "mw.admin-api.read-timeout=1s"})
@@ -69,16 +71,25 @@ class KeyApprovalRaceIT {
   static final String TOKEN = "service-token-race";
   static final String C1 = "11".repeat(32);
   static final String C2 = "22".repeat(32);
-  /** Change request ids whose key change mw-crypto applied. */
+  /** Attempt ids whose key change was applied / cancelled; every PUT's attempt id in order. */
   static final Set<String> APPLIED = ConcurrentHashMap.newKeySet();
-  /** Ceremony id -> OPEN, COMBINED, COMMITTED, ABORTED; and its share count. */
+  static final Set<String> CANCELLED = ConcurrentHashMap.newKeySet();
+  static final List<String> PUTS = new CopyOnWriteArrayList<>();
+  /** PUTs refused because their attempt was cancelled first. */
+  static final List<String> LATE_REFUSED = new CopyOnWriteArrayList<>();
+  /** Ceremony id -> OPEN, COMBINED, COMMITTED, ABORTED; share count; when opened. */
   static final Map<String, String> CEREMONIES = new ConcurrentHashMap<>();
   static final Map<String, Integer> SHARES = new ConcurrentHashMap<>();
-  static final AtomicInteger PUTS = new AtomicInteger();
-  /** PUT key-changes: "ok", "refuse" (409), "refuse-applied" (applies, then 409), "hang". */
+  static final Map<String, Instant> OPENED = new ConcurrentHashMap<>();
+  /** PUT key-changes: "ok", "refuse" (409), "refuse-applied" (applies, then 409), "hang", "hang-apply". */
   static final AtomicReference<String> MODE = new AtomicReference<>("ok");
-  /** GET key-changes answers 503 (mw-crypto cannot tell). */
-  static volatile boolean stateDown;
+  static volatile boolean cancelDown;
+  static volatile boolean abortDown;
+  static volatile boolean openGarbled;
+  /** The stand-in's idea of now (the test clock), for the ceremonies' createdAt. */
+  static volatile Instant stubNow = NOW;
+  static volatile Runnable onComponent = () -> {};
+  static volatile CountDownLatch lateDone = new CountDownLatch(0);
   static final HttpServer CRYPTO = startStub();
 
   static final String KEYS = "{\"items\":[{\"keyId\":\"pin-hmac\",\"purpose\":\"PIN_HMAC\",\"algorithm\":\"HMAC_SHA256\","
@@ -110,6 +121,102 @@ class KeyApprovalRaceIT {
     }
   }
 
+  static void crypto(HttpExchange ex) throws IOException {
+    ex.getRequestBody().readAllBytes();
+    String method = ex.getRequestMethod();
+    String path = ex.getRequestURI().getPath();
+    String[] p = path.split("/");
+    if (path.equals("/internal/v1/keys")) {
+      respond(ex, 200, KEYS);
+    } else if (path.startsWith("/internal/v1/key-changes/") && path.endsWith("/cancel")) {
+      if (cancelDown) {
+        respond(ex, 503, "{\"code\":\"MW-SYS-010\"}");
+      } else {
+        respond(ex, 200, cancel(p[4]));
+      }
+    } else if (path.startsWith("/internal/v1/key-changes/")) {
+      put(ex, p[4]);
+    } else if (path.equals("/internal/v1/ceremonies") && "GET".equals(method)) {
+      respond(ex, 200, live());
+    } else if (path.startsWith("/internal/v1/ceremonies/")) {
+      if (p.length > 5 && "components".equals(p[5])) {
+        onComponent.run();
+      }
+      ceremony(ex, method, p[4], p.length > 5 ? p[5] : "");
+    } else {
+      respond(ex, 404, "{\"code\":\"MW-VAL-003\"}");
+    }
+  }
+
+  /** mw-crypto: the attempt's row is applied or cancelled, whichever comes first (atomic). */
+  static synchronized String cancel(String id) {
+    if (APPLIED.contains(id)) {
+      return "{\"changeId\":\"" + id + "\",\"applied\":true,\"cancelled\":false,\"kid\":\"pin-hmac.v2\"}";
+    }
+    CANCELLED.add(id);
+    return "{\"changeId\":\"" + id + "\",\"applied\":false,\"cancelled\":true}";
+  }
+
+  /** Applies attempt {@code id} unless cancelled; false when it was cancelled. */
+  static synchronized boolean apply(String id) {
+    if (CANCELLED.contains(id)) {
+      LATE_REFUSED.add(id);
+      return false;
+    }
+    APPLIED.add(id);
+    return true;
+  }
+
+  static void put(HttpExchange ex, String id) throws IOException {
+    PUTS.add(id);
+    switch (MODE.get()) {
+      case "refuse" -> respond(ex, 409, "{\"code\":\"MW-VAL-018\",\"message\":\"conflict\"}");
+      case "refuse-applied" -> {
+        apply(id);
+        respond(ex, 409, "{\"code\":\"MW-VAL-018\",\"message\":\"applied with other values\"}");
+      }
+      case "hang" -> {
+        sleep(2_500);
+        ex.close();
+      }
+      case "hang-apply" -> {
+        // the answer is lost, but the PUT reaches mw-crypto's apply late
+        sleep(5_000);
+        apply(id);
+        ex.close();
+        lateDone.countDown();
+      }
+      default -> {
+        if (apply(id)) {
+          respond(ex, 200, KEY_V2);
+        } else {
+          respond(ex, 409, "{\"code\":\"MW-VAL-018\",\"message\":\"This key change was cancelled\"}");
+        }
+      }
+    }
+  }
+
+  static void sleep(long ms) {
+    try {
+      Thread.sleep(ms);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+  }
+
+  static synchronized String live() {
+    StringBuilder b = new StringBuilder("{\"items\":[");
+    String sep = "";
+    for (Map.Entry<String, String> e : CEREMONIES.entrySet()) {
+      if ("OPEN".equals(e.getValue()) || "COMBINED".equals(e.getValue())) {
+        b.append(sep).append("{\"ceremonyId\":\"").append(e.getKey()).append("\",\"keyId\":\"pin-hmac\",\"state\":\"")
+            .append(e.getValue()).append("\",\"createdAt\":\"").append(OPENED.get(e.getKey())).append("\"}");
+        sep = ",";
+      }
+    }
+    return b.append("]}").toString();
+  }
+
   static String ceremonyView(String id) {
     String state = CEREMONIES.get(id);
     int n = SHARES.getOrDefault(id, 0);
@@ -120,50 +227,6 @@ class KeyApprovalRaceIT {
         + "],\"checkValue\":" + (n >= 2 ? "\"A1B2C3\"" : "null") + "}";
   }
 
-  static void crypto(HttpExchange ex) throws IOException {
-    ex.getRequestBody().readAllBytes();
-    String method = ex.getRequestMethod();
-    String path = ex.getRequestURI().getPath();
-    String[] p = path.split("/");
-    if (path.equals("/internal/v1/keys")) {
-      respond(ex, 200, KEYS);
-    } else if (path.startsWith("/internal/v1/key-changes/") && "GET".equals(method)) {
-      if (stateDown) {
-        respond(ex, 503, "{\"code\":\"MW-SYS-010\"}");
-      } else {
-        boolean applied = APPLIED.contains(p[4]);
-        respond(ex, 200, "{\"changeRequestId\":\"" + p[4] + "\",\"applied\":" + applied
-            + (applied ? ",\"action\":\"ROTATE\",\"keyId\":\"pin-hmac\",\"kid\":\"pin-hmac.v2\"" : "") + "}");
-      }
-    } else if (path.startsWith("/internal/v1/key-changes/")) {
-      PUTS.incrementAndGet();
-      switch (MODE.get()) {
-        case "refuse" -> respond(ex, 409, "{\"code\":\"MW-VAL-018\",\"message\":\"conflict\"}");
-        case "refuse-applied" -> {
-          APPLIED.add(p[4]);
-          respond(ex, 409, "{\"code\":\"MW-VAL-018\",\"message\":\"applied with other values\"}");
-        }
-        case "hang" -> {
-          try {
-            Thread.sleep(2_500);
-          } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-          }
-          ex.close();
-        }
-        default -> {
-          APPLIED.add(p[4]);
-          respond(ex, 200, KEY_V2);
-        }
-      }
-    } else if (path.startsWith("/internal/v1/ceremonies/")) {
-      ceremony(ex, method, p[4], p.length > 5 ? p[5] : "");
-    } else {
-      respond(ex, 404, "{\"code\":\"MW-VAL-003\"}");
-    }
-  }
-
-  /** mw-crypto's ceremony rules: opened by PUT, components only while OPEN, abort terminal per id. */
   static synchronized void ceremony(HttpExchange ex, String method, String id, String op) throws IOException {
     String state = CEREMONIES.get(id);
     switch (method + " " + op) {
@@ -172,8 +235,10 @@ class KeyApprovalRaceIT {
           respond(ex, 409, "{\"code\":\"MW-VAL-018\",\"message\":\"aborted\"}");
           return;
         }
-        CEREMONIES.putIfAbsent(id, "OPEN");
-        respond(ex, 200, ceremonyView(id));
+        if (CEREMONIES.putIfAbsent(id, "OPEN") == null) {
+          OPENED.put(id, stubNow);
+        }
+        respond(ex, 200, openGarbled ? "{not json" : ceremonyView(id));
       }
       case "GET " -> {
         if (state == null) {
@@ -204,7 +269,9 @@ class KeyApprovalRaceIT {
         }
       }
       case "POST abort" -> {
-        if ("COMMITTED".equals(state)) {
+        if (abortDown) {
+          respond(ex, 503, "{\"code\":\"MW-SYS-010\"}");
+        } else if ("COMMITTED".equals(state)) {
           respond(ex, 409, "{\"code\":\"MW-VAL-018\",\"message\":\"committed\"}");
         } else {
           CEREMONIES.put(id, "ABORTED");
@@ -257,12 +324,24 @@ class KeyApprovalRaceIT {
     jdbc.update("delete from content_version");
     jdbc.update("delete from change_request");
     APPLIED.clear();
+    CANCELLED.clear();
+    PUTS.clear();
+    LATE_REFUSED.clear();
     CEREMONIES.clear();
     SHARES.clear();
-    PUTS.set(0);
+    OPENED.clear();
     MODE.set("ok");
-    stateDown = false;
+    cancelDown = false;
+    abortDown = false;
+    openGarbled = false;
+    onComponent = () -> {};
     clock.set(NOW);
+    stubNow = NOW;
+  }
+
+  private void advance(Duration d) {
+    clock.advance(d);
+    stubNow = clock.instant();
   }
 
   /** A security-admin whose MFA is 30 s old at the test clock's now. */
@@ -273,9 +352,12 @@ class KeyApprovalRaceIT {
         .claim("realm_access", Map.of("roles", List.of("security-admin"))));
   }
 
+  private MvcTestResult post(String who, String uri, String body) {
+    return mvc.post().uri(uri).with(op(who)).contentType(MediaType.APPLICATION_JSON).content(body).exchange();
+  }
+
   private String file(String uri, String body) {
-    MvcTestResult r = mvc.post().uri(uri).with(op("seed-ops-secadmin1")).contentType(MediaType.APPLICATION_JSON)
-        .content(body).exchange();
+    MvcTestResult r = post("seed-ops-secadmin1", uri, body);
     assertThat(r).hasStatus(201);
     return json.readTree(r.getResponse().getContentAsByteArray()).path("id").asString();
   }
@@ -289,9 +371,8 @@ class KeyApprovalRaceIT {
   }
 
   private int component(String who, String id, String component) {
-    return mvc.post().uri("/admin/v1/key-ceremonies/{id}/components", id).with(op(who))
-        .contentType(MediaType.APPLICATION_JSON).content("{\"component\":\"" + component + "\",\"checkValue\":\"AAAAAA\"}")
-        .exchange().getResponse().getStatus();
+    return post(who, "/admin/v1/key-ceremonies/" + id + "/components",
+        "{\"component\":\"" + component + "\",\"checkValue\":\"AAAAAA\"}").getResponse().getStatus();
   }
 
   private MvcTestResult approve(String who, String id) {
@@ -299,15 +380,13 @@ class KeyApprovalRaceIT {
   }
 
   private MvcTestResult reject(String who, String id) {
-    return mvc.post().uri("/admin/v1/change-requests/{id}/reject", id).with(op(who))
-        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"no\"}").exchange();
+    return post(who, "/admin/v1/change-requests/" + id + "/reject", "{\"reason\":\"no\"}");
   }
 
   private String status(String id) {
     return jdbc.queryForObject("select status from change_request where id = ?::uuid", String.class, id);
   }
 
-  /** Runs both at once and returns their HTTP statuses. */
   private static int[] race(ExecutorService pool, Callable<Integer> a, Callable<Integer> b) throws Exception {
     CountDownLatch go = new CountDownLatch(1);
     Future<Integer> fa = pool.submit(() -> {
@@ -328,16 +407,17 @@ class KeyApprovalRaceIT {
     try {
       for (int i = 0; i < 10; i++) {
         String id = rotation();
+        int before = APPLIED.size();
         int[] r = race(pool,
             () -> approve("seed-ops-secadmin2", id).getResponse().getStatus(),
             () -> reject("seed-ops-secadmin3", id).getResponse().getStatus());
         String s = status(id);
         assertThat(s).isIn("APPROVED", "REJECTED");
         if ("REJECTED".equals(s)) {
-          assertThat(APPLIED).as("run %d: a rejected request was applied", i).doesNotContain(id);
+          assertThat(APPLIED).as("run %d: a rejected request was applied", i).hasSize(before);
           assertThat(r[1]).isEqualTo(200);
         } else {
-          assertThat(APPLIED).contains(id);
+          assertThat(APPLIED).hasSize(before + 1);
           assertThat(r).containsExactly(200, 409);
         }
       }
@@ -347,15 +427,16 @@ class KeyApprovalRaceIT {
   }
 
   @Test
-  void aRefusalOfAChangeNotAppliedReleasesToPending() {
+  void aRefusalIsSettledByACancelAndTheNextApprovalUsesANewAttempt() {
     String id = rotation();
     MODE.set("refuse");
     assertThat(approve("seed-ops-secadmin2", id)).hasStatus(409);
     assertThat(status(id)).isEqualTo("PENDING");
-    assertThat(jdbc.queryForObject("select checker_id from change_request where id = ?::uuid", String.class, id)).isNull();
+    assertThat(CANCELLED).containsExactly(PUTS.getLast());
     MODE.set("ok");
     assertThat(approve("seed-ops-secadmin2", id)).hasStatus(200);
     assertThat(status(id)).isEqualTo("APPROVED");
+    assertThat(PUTS).hasSize(2).doesNotHaveDuplicates();
   }
 
   @Test
@@ -365,72 +446,87 @@ class KeyApprovalRaceIT {
     MvcTestResult r = approve("seed-ops-secadmin2", id);
     assertThat(r).hasStatus(200);
     assertThat(status(id)).isEqualTo("APPROVED");
+    assertThat(CANCELLED).isEmpty();
     assertThat(json.readTree(r.getResponse().getContentAsByteArray()).path("payload").path("appliedKid").asString())
         .isEqualTo("pin-hmac.v2");
   }
 
   @Test
-  void aRefusalWhenMwCryptoCannotTellKeepsTheClaim() {
+  void aRefusalWhenTheCancelFailsKeepsTheClaim() {
     String id = rotation();
     MODE.set("refuse");
-    stateDown = true;
+    cancelDown = true;
     assertThat(approve("seed-ops-secadmin2", id)).hasStatus(409);
     assertThat(status(id)).isEqualTo("APPROVING");
   }
 
   @Test
-  void aTimeoutKeepsTheClaimForItsCheckerWithinTheLeaseOnly() {
+  void aTimeoutKeepsTheClaimForItsCheckerWhoRetriesTheSameAttempt() {
     String id = rotation();
     MODE.set("hang");
     assertThat(approve("seed-ops-secadmin2", id)).hasStatus(503);
     assertThat(status(id)).isEqualTo("APPROVING");
-    // reject, a new request of the key, another checker and the maker are refused
     assertThat(reject("seed-ops-secadmin3", id)).hasStatus(409);
-    assertThat(mvc.post().uri("/admin/v1/keys/change-requests").with(op("seed-ops-secadmin3"))
-        .contentType(MediaType.APPLICATION_JSON)
-        .content("{\"action\":\"KEY_ROTATE\",\"keyId\":\"pin-hmac\",\"reason\":\"again\"}").exchange()).hasStatus(409);
+    assertThat(post("seed-ops-secadmin3", "/admin/v1/keys/change-requests",
+        "{\"action\":\"KEY_ROTATE\",\"keyId\":\"pin-hmac\",\"reason\":\"again\"}")).hasStatus(409);
     assertThat(approve("seed-ops-secadmin3", id)).hasStatus(409);
     assertThat(approve("seed-ops-secadmin1", id)).hasStatus(403);
 
-    // the claiming checker retries with the same id
     MODE.set("ok");
-    int before = PUTS.get();
     assertThat(approve("seed-ops-secadmin2", id)).hasStatus(200);
-    assertThat(PUTS.get()).isEqualTo(before + 1);
-    assertThat(APPLIED).containsExactly(id);
+    assertThat(PUTS).hasSize(2);
+    assertThat(PUTS.get(0)).as("the retry is the same attempt").isEqualTo(PUTS.get(1));
     assertThat(status(id)).isEqualTo("APPROVED");
   }
 
   @Test
-  void pastTheLeaseOnlyTheReconcilerResolvesAClaim() {
+  void theReconcilerCancelsOnlyAfterTheLastAttemptAndALatePutIsRefused() throws Exception {
+    String id = rotation();
+    lateDone = new CountDownLatch(1);
+    MODE.set("hang-apply");
+    assertThat(approve("seed-ops-secadmin2", id)).hasStatus(503);
+    // a retry inside the lease refreshes the attempt: the reconciler leaves the claim alone
+    advance(Duration.ofMinutes(4));
+    MODE.set("hang");
+    assertThat(approve("seed-ops-secadmin2", id)).hasStatus(503);
+    advance(Duration.ofMinutes(2)); // claim 6 min old, last attempt 2 min
+    assertThat(service.reconcileApproving()).isZero();
+    assertThat(status(id)).isEqualTo("APPROVING");
+    // the lease is over for retries
+    assertThat(approve("seed-ops-secadmin2", id)).hasStatus(409);
+
+    // lease + read timeout after the last attempt: cancel ("not applied" binding), then PENDING
+    advance(Duration.ofMinutes(4));
+    assertThat(service.reconcileApproving()).isEqualTo(1);
+    assertThat(status(id)).isEqualTo("PENDING");
+    String attempt = PUTS.getFirst();
+    assertThat(CANCELLED).contains(attempt);
+    // the first PUT, still in flight, reaches mw-crypto after the cancel: refused, nothing applied
+    assertThat(lateDone.await(10, TimeUnit.SECONDS)).isTrue();
+    assertThat(LATE_REFUSED).contains(attempt);
+    assertThat(APPLIED).isEmpty();
+  }
+
+  @Test
+  void theReconcilerFinishesAnAppliedClaimAndExpiresAnOldOne() {
     MODE.set("hang");
     String applied = rotation();
     assertThat(approve("seed-ops-secadmin2", applied)).hasStatus(503);
-    APPLIED.add(applied); // mw-crypto applied it although the answer was lost
-    clock.advance(Duration.ofMinutes(6));
-    MODE.set("ok");
-    assertThat(approve("seed-ops-secadmin2", applied)).hasStatus(409);
-
+    APPLIED.add(PUTS.getLast()); // mw-crypto applied it although the answer was lost
+    advance(Duration.ofMinutes(6));
     assertThat(service.reconcileApproving()).isEqualTo(1);
     assertThat(status(applied)).isEqualTo("APPROVED");
 
-    // not applied, still before expires_at: back to PENDING
-    MODE.set("hang");
-    String notApplied = rotation();
-    assertThat(approve("seed-ops-secadmin2", notApplied)).hasStatus(503);
-    clock.advance(Duration.ofMinutes(6));
-    stateDown = true;
+    String old = rotation();
+    assertThat(approve("seed-ops-secadmin2", old)).hasStatus(503);
+    advance(Duration.ofMinutes(6));
+    cancelDown = true;
     assertThat(service.reconcileApproving()).isZero();
-    assertThat(status(notApplied)).isEqualTo("APPROVING");
-    stateDown = false;
+    assertThat(status(old)).isEqualTo("APPROVING");
+    cancelDown = false;
+    advance(Duration.ofHours(73)); // expires_at stays in force
     assertThat(service.reconcileApproving()).isEqualTo(1);
-    assertThat(status(notApplied)).isEqualTo("PENDING");
-
-    // not applied and past expires_at: EXPIRED (expires_at stays in force)
-    assertThat(approve("seed-ops-secadmin2", notApplied)).hasStatus(503);
-    clock.advance(Duration.ofHours(73));
-    assertThat(service.reconcileApproving()).isEqualTo(1);
-    assertThat(status(notApplied)).isEqualTo("EXPIRED");
+    assertThat(status(old)).isEqualTo("EXPIRED");
   }
 
   @Test
@@ -445,11 +541,10 @@ class KeyApprovalRaceIT {
         race(pool,
             () -> approve("seed-ops-secadmin2", id).getResponse().getStatus(),
             () -> reject("seed-ops-secadmin3", id).getResponse().getStatus());
-        String s = status(id);
-        if ("REJECTED".equals(s)) {
+        if ("REJECTED".equals(status(id))) {
           assertThat(CEREMONIES.get(id)).as("run %d", i).isEqualTo("ABORTED");
         } else {
-          assertThat(s).isEqualTo("APPROVED");
+          assertThat(status(id)).isEqualTo("APPROVED");
           assertThat(CEREMONIES.get(id)).as("run %d", i).isEqualTo("COMMITTED");
         }
       }
@@ -471,11 +566,70 @@ class KeyApprovalRaceIT {
         assertThat(r[1]).isEqualTo(200);
         assertThat(status(id)).isEqualTo("REJECTED");
         assertThat(CEREMONIES.get(id)).as("run %d: the ceremony stayed live", i).isEqualTo("ABORTED");
-        // a ceremony of the key can be filed again
         jdbc.update("delete from change_request where id = ?::uuid", id);
       }
     } finally {
       pool.shutdownNow();
     }
+  }
+
+  @Test
+  void aCeremonyCommitRefusedByMwCryptoAbortsItAndExpiresTheRequest() {
+    String id = ceremony();
+    component("seed-ops-secadmin1", id, C1);
+    component("seed-ops-secadmin2", id, C2);
+    CEREMONIES.put(id, "OPEN"); // the key changed meanwhile: mw-crypto refuses the commit
+    assertThat(approve("seed-ops-secadmin2", id)).hasStatus(409);
+    assertThat(CEREMONIES.get(id)).isEqualTo("ABORTED");
+    assertThat(status(id)).isEqualTo("EXPIRED");
+  }
+
+  @Test
+  void aComponentWhoseRequestTurnedApprovingAbortsNothingButARejectedOneAborts() {
+    String id = ceremony();
+    component("seed-ops-secadmin1", id, C1);
+    onComponent = () -> jdbc.update("update change_request set status = 'APPROVING' where id = ?::uuid", id);
+    assertThat(component("seed-ops-secadmin2", id, C2)).isEqualTo(409);
+    assertThat(CEREMONIES.get(id)).as("a commit may be under way").isEqualTo("COMBINED");
+
+    String other = file("/admin/v1/key-ceremonies", "{\"keyId\":\"hmac-other\",\"purpose\":\"HMAC_OTHER\",\"reason\":\"r\"}");
+    onComponent = () -> jdbc.update("update change_request set status = 'REJECTED' where id = ?::uuid", other);
+    assertThat(component("seed-ops-secadmin1", other, C1)).isEqualTo(409);
+    assertThat(CEREMONIES.get(other)).isEqualTo("ABORTED");
+  }
+
+  @Test
+  void aFilingThatFailsAfterTheOpenAbortsTheCeremony() {
+    openGarbled = true; // the open reached mw-crypto, its answer is unreadable: the filing rolls back
+    MvcTestResult r = post("seed-ops-secadmin1", "/admin/v1/key-ceremonies",
+        "{\"keyId\":\"pin-hmac\",\"purpose\":\"PIN_HMAC\",\"reason\":\"r\"}");
+    assertThat(r).hasStatus(503);
+    assertThat(jdbc.queryForObject("select count(*) from change_request", Integer.class)).isZero();
+    assertThat(CEREMONIES.values()).containsExactly("ABORTED");
+  }
+
+  @Test
+  void theReconcilerAbortsOrphanCeremoniesOnly() {
+    // rejected while mw-crypto was down: the abort failed
+    String rejected = ceremony();
+    abortDown = true;
+    assertThat(reject("seed-ops-secadmin2", rejected)).hasStatus(200);
+    assertThat(CEREMONIES.get(rejected)).isEqualTo("OPEN");
+    abortDown = false;
+    // one with no request at all (its filing never committed), one live and pending, one too young
+    String missing = java.util.UUID.randomUUID().toString();
+    CEREMONIES.put(missing, "OPEN");
+    OPENED.put(missing, stubNow);
+    String pending = file("/admin/v1/key-ceremonies", "{\"keyId\":\"hmac-pend\",\"purpose\":\"HMAC_PEND\",\"reason\":\"r\"}");
+    advance(Duration.ofMinutes(6));
+    String young = java.util.UUID.randomUUID().toString();
+    CEREMONIES.put(young, "OPEN");
+    OPENED.put(young, stubNow);
+
+    service.reconcileApproving();
+    assertThat(CEREMONIES.get(rejected)).isEqualTo("ABORTED");
+    assertThat(CEREMONIES.get(missing)).isEqualTo("ABORTED");
+    assertThat(CEREMONIES.get(pending)).isEqualTo("OPEN");
+    assertThat(CEREMONIES.get(young)).isEqualTo("OPEN");
   }
 }

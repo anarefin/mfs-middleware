@@ -53,7 +53,18 @@ public final class CryptoKeys {
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record Share(int share, String custodian, Instant enteredAt) {}
 
-  /** Whether mw-crypto applied the change of one change request id ({@code GET /internal/v1/key-changes/{id}}). */
+  /** An approval attempt's state at mw-crypto ({@code POST /internal/v1/key-changes/{id}/cancel}). */
   @JsonIgnoreProperties(ignoreUnknown = true)
-  public record ChangeState(UUID changeRequestId, boolean applied, String action, String keyId, String kid) {}
+  public record ChangeState(UUID changeId, boolean applied, boolean cancelled, String action, String keyId, String kid) {}
+
+  /** {@code GET /internal/v1/ceremonies?state=LIVE}. */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record LiveCeremonies(List<Live> items) {
+    public LiveCeremonies {
+      items = items == null ? List.of() : List.copyOf(items);
+    }
+  }
+
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record Live(UUID ceremonyId, String keyId, String state, Instant createdAt) {}
 }

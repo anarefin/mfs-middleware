@@ -97,6 +97,14 @@ public class CeremonyService {
     return view(open(id, keyId, purpose, clock.instant()));
   }
 
+  /** The live (OPEN, COMBINED) ceremonies, for mw-admin-api's reconciler. */
+  @Transactional(readOnly = true)
+  public mfs.mw.crypto.dto.LiveCeremonies live() {
+    return new mfs.mw.crypto.dto.LiveCeremonies(ceremonies.live().stream()
+        .map(c -> new mfs.mw.crypto.dto.LiveCeremonies.Item(c.ceremonyId(), c.keyId(), c.state().name(), c.createdAt()))
+        .toList());
+  }
+
   /**
    * One custodian's component of an OPEN ceremony (never opens one: a component in flight while the
    * request was rejected must not start a ceremony); the first is stored, the second combines.
