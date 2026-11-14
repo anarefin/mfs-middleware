@@ -72,6 +72,15 @@ public class KeyRepository {
         .update();
   }
 
+  /** Sets the HSM reference of one version (a payShield key's blob under the LMK, ticket 64). */
+  public void updateLabel(String keyId, int version, String hsmLabel) {
+    jdbc.sql("UPDATE key SET hsm_label = :l WHERE key_id = :id AND version = :v")
+        .param("l", hsmLabel)
+        .param("id", keyId)
+        .param("v", version)
+        .update();
+  }
+
   /** Moves one version to {@code state}, stamping {@code at} as its rotated_at. */
   public void updateState(String keyId, int version, KeyState state, Instant at) {
     jdbc.sql("UPDATE key SET state = :s, rotated_at = :r WHERE key_id = :id AND version = :v")

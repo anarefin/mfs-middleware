@@ -675,6 +675,8 @@ services:
       USSD_TELETALK_GATEWAY_SECRET: ${USSD_TELETALK_GATEWAY_SECRET:?cp dev.env.defaults .env}
       # the softhsm mw-crypto token's user PIN, into secret/mw-crypto (tickets 61, 62)
       SOFTHSM_MWCRYPTO_USER_PIN: ${SOFTHSM_MWCRYPTO_USER_PIN:?cp dev.env.defaults .env}
+      # the softhsm paysim token's user PIN, into secret/mw-simulators (payShield simulator, ticket 64)
+      SOFTHSM_PAYSIM_USER_PIN: ${SOFTHSM_PAYSIM_USER_PIN:?cp dev.env.defaults .env}
     volumes:
       - openbao-data:/openbao/file:ro
       # one volume per service, at /out/<dir> as listed in services.sh
@@ -748,6 +750,9 @@ services:
         -XX:MaxDirectMemorySize=64m
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
       MW_CRYPTO_BOOTSTRAP_KEYS: "true"
+      # the payShield provider (ticket 64) against the simulator in mw-simulators (host commands on
+      # mw-simulators:1500); the bootstrap also creates the PVK, TPK, ZPK (+ _AES) keys there
+      MW_CRYPTO_PAYSHIELD_ENABLED: "true"
     # mTLS (D24, ticket 66): 8080 (and the published 8094) needs a client certificate of the OpenBao
     # intermediate pki_int; the service issues its own at start (pki_int/issue/mw-crypto, provision).
     # Probes and metrics are on the plain management port 8081, inside the network only.
@@ -830,6 +835,8 @@ services:
     build: { context: ../services/mw-simulators, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
+      # the payShield simulator's LMK is in the softhsm paysim token (port 5658, ticket 64)
+      softhsm: { condition: service_healthy }
     volumes:
       - simulators-approle:/run/mw/approle:ro
     environment:

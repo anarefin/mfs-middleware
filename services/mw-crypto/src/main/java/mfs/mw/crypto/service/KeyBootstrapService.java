@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import mfs.mw.crypto.config.CryptoProperties;
+import mfs.mw.crypto.config.PayShieldProperties;
 import mfs.mw.crypto.exception.CryptoErrors;
 import mfs.mw.crypto.exception.ErrorCodes;
 import mfs.mw.crypto.exception.MwException;
@@ -18,7 +19,8 @@ import org.springframework.stereotype.Service;
  * Idempotent: a purpose with any key is skipped, and a key a concurrent run created first counts as
  * done. An HSM that is not up yet stops the run; the next run picks up where it stopped. Production
  * keys come only from the key ceremony (ticket 75), so {@code scheduler/KeyBootstrap} runs only with
- * {@code mw.crypto.bootstrap-keys=true}.
+ * {@code mw.crypto.bootstrap-keys=true}. While the payShield provider is on, its {@code
+ * mw.crypto.payshield.bootstrap-purposes} come after the others.
  */
 @Service
 public class KeyBootstrapService {
@@ -28,9 +30,14 @@ public class KeyBootstrapService {
   private final KeyService keys;
   private final List<String> purposes;
 
-  public KeyBootstrapService(KeyService keys, CryptoProperties props) {
+  public KeyBootstrapService(KeyService keys, CryptoProperties props, PayShieldProperties payshield) {
     this.keys = keys;
-    this.purposes = props.bootstrapPurposes();
+    List<String> all = new ArrayList<>(props.bootstrapPurposes());
+    // last, so a payShield HSM that is not up yet defers only its own keys (ticket 64)
+    if (payshield.enabled()) {
+      payshield.bootstrapPurposes().stream().filter(p -> !all.contains(p)).forEach(all::add);
+    }
+    this.purposes = List.copyOf(all);
   }
 
   /** Generates the missing keys; returns the purposes it generated a key for. */

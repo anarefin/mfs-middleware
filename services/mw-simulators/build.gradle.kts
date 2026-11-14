@@ -141,6 +141,13 @@ tasks.test {
     // `*IT` classes are skipped (DockerAvailableCondition). Classes run one at a time; a method may
     // opt in to running beside its class-mates (@Execution(CONCURRENT): RetryTopicRouteIT).
     systemProperty("junit.jupiter.execution.parallel.enabled", "true")
+    // PayShieldSimulatorIT (ticket 64) builds this service's image from the Dockerfile and the boot
+    // jar, so PKCS#11 (the LMK in the SoftHSM paysim token) runs only in the container, never on the
+    // host: the jar and the Dockerfile are test inputs, and the jar is built first.
+    val bootJarFile = tasks.bootJar.flatMap { it.archiveFile }
+    inputs.file(bootJarFile).withPathSensitivity(PathSensitivity.NONE).withPropertyName("mwBootJar")
+    inputs.file(layout.projectDirectory.file("Dockerfile")).withPathSensitivity(PathSensitivity.NONE)
+        .withPropertyName("mwDockerfile")
 }
 
 // Fixed jar name: the Dockerfile copies exactly this file, never a stale jar. No plain jar.

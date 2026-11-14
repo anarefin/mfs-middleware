@@ -24,6 +24,16 @@ public interface CryptoProvider {
   /** Generates a new key of {@code algorithm} in the HSM under {@code label}, never extractable. */
   void generateKey(String label, KeyAlgorithm algorithm);
 
+  /**
+   * Generates a key of {@code algorithm} for {@code purpose} and returns the reference stored as the
+   * key version's HSM label: the label itself for a provider that keeps keys under labels (the
+   * default), the LMK-encrypted key blob for payShield (ticket 64), which keeps no key itself.
+   */
+  default String createKey(String label, KeyAlgorithm algorithm, String purpose) {
+    generateKey(label, algorithm);
+    return label;
+  }
+
   /** The public half of the key pair stored under {@code label}. */
   PublicKey publicKey(String label);
 

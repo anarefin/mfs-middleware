@@ -25,6 +25,11 @@ class KeyPurposeTest {
     "KEK_COLUMN, AES_256, ENVELOPE, kek-column, ,",
     "HMAC_WEBHOOK, HMAC_SHA256, HMAC, hmac-webhook, ,",
     "XMLDSIG, RSA_3072, XMLDSIG, xmldsig, RS256, sig",
+    "ZPK, TDES_2KEY, PIN_BLOCK, zpk, ,",
+    "TPK, TDES_2KEY, PIN_BLOCK, tpk, ,",
+    "ZPK_AES, AES_128, PIN_BLOCK, zpk-aes, ,",
+    "TPK_AES, AES_128, PIN_BLOCK, tpk-aes, ,",
+    "PVK, TDES_2KEY, PVV, pvk, ,",
     "HTTP_SIGN_RSA, RSA_3072, XMLDSIG, http-sign-rsa, PS512, sig",
     "HTTP_SIGN_EC, EC_P256, XMLDSIG, http-sign-ec, ES256, sig"
   })
@@ -41,7 +46,7 @@ class KeyPurposeTest {
 
   @ParameterizedTest
   @ValueSource(strings = {"", "jwt_sign", "TOKENISE_", "KEK_", "TOKENISE_msisdn", "SIGN", "KEK_A-B", "HMAC_", "HMAC_a",
-      "TOKENISE_ABCDEFGHIJKLMNOPQRSTUVWXYZ"})
+      "TOKENISE_ABCDEFGHIJKLMNOPQRSTUVWXYZ", "ZMK", "PVK_AES"})
   void anythingElseIsAnUnknownPurpose(String name) {
     assertThatThrownBy(() -> KeyPurpose.parse(name))
         .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-VAL-011"));

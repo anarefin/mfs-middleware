@@ -18,7 +18,9 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   `HMAC_<use>` (HMAC-SHA256: partner signatures, webhooks; ticket 63), `KEK_<purpose>` (AES-256),
   `XMLDSIG` (RSA 3072), `HTTP_SIGN_RSA` (RSA 3072, JWK `PS512`) and `HTTP_SIGN_EC` (EC P-256, ES256) for
   RFC 9421 HTTP signatures (ticket 65: own keys, so no key signs for two protocols; not in the dev
-  bootstrap list). Default keyId = purpose in lower case with hyphens.
+  bootstrap list); payShield (ticket 64): `ZPK`, `TPK`, `PVK` (`TDES_2KEY`), `ZPK_AES`, `TPK_AES`
+  (`AES_128`, ISO format 4). Default keyId = purpose in lower case with hyphens. A key is generated in the
+  default provider when it serves the purpose, else in the provider that does (`KeyService`).
 - Rotation (`service/KeyService.rotate`) adds a version: ACTIVE -> VERIFY_ONLY, an older VERIFY_ONLY ->
   RETIRED (verification accepts the current and the previous version only). Retired HSM objects are not
   destroyed here (`CryptoProvider.destroy` exists for the ceremony, ticket 75).
@@ -78,6 +80,62 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   (healthcheck). The p11-kit client must match the softhsm server's version: Ubuntu noble's 0.25.3 logs in
   but fails every key generation with `CKR_DEVICE_MEMORY` (`scripts/test/test_softhsm.sh` checks it).
 
+## payShield provider (ticket 64, spec 18.8, D23)
+
+- `client/PayShieldProvider` (`mw.crypto.payshield.*`, `config/PayShieldProperties`; off by default,
+  compose sets `MW_CRYPTO_PAYSHIELD_ENABLED=true`, host `mw-simulators:1500`): Thales payShield 10K host
+  commands over TCP, implementing `CryptoProvider` (capabilities `PIN_BLOCK`, `PVV`; `createKey` = `A0`,
+  `probe` = `NC`; no public keys, HMAC, signatures or wrapping) and `client/PinBlockProvider`. Frame:
+  2-byte length, 4-digit header (rolling counter; the answer must echo it and carry the response code,
+  else the connection is dropped), command. Pool of `pool-size` (4) persistent connections, one command
+  in flight on each, `acquire-timeout` 2 s, `connect-timeout` 2 s, `call-timeout` 3 s (socket read
+  timeout). Resilience4j circuit breaker `payshield` (count based, 20 calls, opens at 50 %, 10 s): only
+  transport failures count; open = 503 `MW-SYS-010` at once. Field layouts: mw-simulators `CLAUDE.md`
+  "payShield 10K simulator".
+- Key metadata stores the key's blob under the LMK as the version's `hsm_label` (`CryptoProvider.createKey`
+  returns it; `KeyRepository.updateLabel`), never a clear key; `destroy` is a no-op. The dev bootstrap adds
+  `mw.crypto.payshield.bootstrap-purposes` (PVK, TPK, ZPK, TPK_AES, ZPK_AES) after the others while the
+  provider is on.
+- Error mapping: `10`/`11` (key parity: a corrupt blob or one of another type) and `69` (format not
+  permitted) -> 400 `MW-VAL-015`; `15` -> 400 `MW-VAL-014` on translate and PVV generate; `68` and
+  anything else -> 503 `MW-SYS-010`. PVV verify (security review): every PIN failure (`01`, and `15`,
+  `20` and any other PIN block error once the request passed the checks here) is `{match: false}`, so the
+  error code is no oracle on the PIN; the real code is only logged (WARN `crypto.pvv.verify_refused`
+  with `hsmError`, never the block). Only the request-shape checks before the HSM call stay `MW-VAL-*`,
+  and key or HSM failures (`10`, `11`, `68`) stay errors (they do not depend on the PIN). Attempt
+  counting and lockout are the caller's job (mw-auth, ticket 70, for wallet PINs; the ATM / interop
+  adapter for card-style PINs), and the `account` must be resolved server side by that adapter from
+  its own records, never taken from an untrusted client.
+- Format pairs (security review, format downgrade): `/pinblock/translate` accepts only the pairs in
+  `mw.crypto.payshield.allowed-translations` (`FROM:TO`), else 400 `MW-VAL-015` before any HSM call.
+  Default (`PayShieldProperties.DEFAULT_TRANSLATIONS`): same format; ISO 0 <-> 3; ISO 0 / 3 -> 4 and
+  4 -> 0 / 3 (all PAN-bound, so the PIN stays tied to the account; 4 -> 0/3 is kept because switches
+  and schemes that speak only the triple DES formats still need it, at the cost of TDES instead of AES
+  on that hop); ISO 1 -> 0 / 3 / 4 (binding a PIN to the account only adds protection). Never ISO 0, 3
+  or 4 -> ISO 1: ISO 1 binds the PIN to no account, so such a block can be replayed against any
+  account. The simulator refuses the same by default (error `69`, payShield security setting "allow
+  translation to non-PAN formats" off), which maps to `MW-VAL-015` too.
+- API (`service/PinBlockService`, `controller/PinBlockController`, `controller/PvvController`; for the
+  later ATM and interop adapters): `POST /internal/v1/pinblock/translate {source{keyId, format, block},
+  destination{keyId, format}, account}` -> `{block, format, keyId(kid)}` (`CA` from a TPK, `CC` from a
+  ZPK; target a ZPK, ACTIVE); `POST /internal/v1/pvv/generate {pvkId, pvki, pinBlock, account}` -> `{pvv,
+  pvkId(kid), pvki}` (`JC`/`JE` then `DG`); `POST /internal/v1/pvv/verify {..., pvv}` -> `{match,
+  pvkId}` (`DC`/`EC`). Formats `ISO0`, `ISO1`, `ISO3` need a TDES key, `ISO4` an `_AES` one (else
+  `MW-VAL-015`), the block length must fit (`MW-VAL-001`). `account` is the ISO 9564 "PAN" (12-19
+  digits with the check digit; a wallet's account number, a card PAN never enters the middleware),
+  `@Sensitive(ACCOUNT)`; blocks and PVVs `SECRET`.
+- Caller policy: each key's purpose (`TPK`, `ZPK`, `TPK_AES`, `ZPK_AES`, `PVK`) in `mw.crypto.authz.purposes`;
+  none bound yet (deny by default). The ATM / interop adapter ticket adds its client there and to
+  `allowed-clients`.
+- Tests: `client/PayShieldProviderTest` (a stand-in TCP server: framing, header correlation, fields sent,
+  error mapping, reuse, timeout, breaker), `controller/PinBlockControllersTest` (real service and policy
+  over a mocked provider, test-only client `mw-atm-it`), `service/PayShieldKeyServiceTest`,
+  `contracts/PayShieldContractsTest`, `dto/PayShieldDtoMaskingTest`, `client/PayShieldProviderIT` (the
+  provider in the test JVM against the mw-simulators image with its LMK in a SoftHSM paysim token;
+  skipped unless `mfs-mw/mw-simulators:local` exists, since module isolation forbids building another
+  module's image: `./gradlew :mw-simulators:bootJar && docker build -t mfs-mw/mw-simulators:local
+  services/mw-simulators`).
+
 ## Operations (ticket 63, spec 18.7, 18.8)
 
 - Key references (`service/HsmKeys`): a keyId means its ACTIVE version, a kid `<keyId>.v<n>` that
@@ -122,6 +180,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   | `/tokens` | `purposes.TOKENISE_<domain>` | `TOKENISE_MSISDN`, `TOKENISE_NID`: `mw-auth`, `mw-audit-dw`; `TOKENISE_ACCOUNT`: `mw-audit-dw` |
   | `/envelope/encrypt`, `/decrypt` | `purposes.KEK_<purpose>` | `KEK_COLUMN`: `mw-auth`; `KEK_FILE`: nobody |
   | `/hmac/sign`, `/verify` | `purposes.HMAC_<use>` | none yet |
+  | `/pinblock/translate`, `/pvv/generate`, `/pvv/verify` (ticket 64) | `purposes.<TPK, ZPK, TPK_AES, ZPK_AES, PVK>` of every key | none yet |
   | `/xmldsig/sign`, `/verify` (also with a partner PEM) | `purposes.XMLDSIG` | none yet |
   | `/http-signature/sign`, `/verify` | the key's purpose (`HTTP_SIGN_RSA`, `HTTP_SIGN_EC`, `HMAC_<use>`); a partner PEM by its key type | none yet |
   | `/jwks/{purpose}`, `/keys`, `/keys/{keyId}/public` | every allowed caller | |
@@ -251,12 +310,12 @@ No PKCS#11 tooling on the host (user decision 2026-11-14): PKCS#11 never runs in
   `GET /internal/v1/keys/{keyId}/public` (PEM and JWK per live version plus a JWK Set); ticket 63 the
   operations `/internal/v1/pin/{verify,derive}`, `/jws/sign`, `/jwks/{purpose}`, `/hmac/{sign,verify}`,
   `/tokens`, `/envelope/{encrypt,decrypt}`; ticket 65 `/xmldsig/{sign,verify}` and
-  `/http-signature/{sign,verify}`. Checked by `contracts/ProducedContractsTest` and
-  `contracts/OperationContractsTest`.
+  `/http-signature/{sign,verify}`; ticket 64 `/pinblock/translate`, `/pvv/{generate,verify}`. Checked by
+  `contracts/ProducedContractsTest`, `contracts/OperationContractsTest` and `contracts/PayShieldContractsTest`.
 
 ## Contracts used
 
-- None. Callers: `mw-admin-api` (Keycloak realm `services` client, audience mapper `aud-mw-crypto` added
+- None (the payShield simulator's host commands are simulator-owned, not in `contracts/`). Callers: `mw-admin-api` (Keycloak realm `services` client, audience mapper `aud-mw-crypto` added
   here), `mw-auth` (ticket 67) and `mw-audit-dw` (ticket 74) add their own clients; all three are on
   `mw.internal-auth.allowed-clients`, only `mw-admin-api` on `key-admin-clients`. Each also needs its
   OpenBao certificate (see "mTLS").
