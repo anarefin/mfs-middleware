@@ -156,7 +156,10 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   requiredComponents?, expectedKeyid?, maxAgeSeconds?}` parses the received fields (`util/StructuredFields`,
   RFC 8941 subset), rebuilds the base and answers `SignatureCheck` (reasons in the OpenAPI); `created` may
   be 60 s ahead. A partner `keyid` is checked only through `expectedKeyid`; a kid of the key in `keyid`
-  picks that version.
+  picks that version. `requiredComponents` compare by full identity (name and parameters, the same
+  string as in the signature base; security review of ticket 65): a bare name is that component without
+  parameters only, so a covered `"content-digest";req` / `;bs` / `;key=` never satisfies it; a
+  serialised identifier (`"content-digest";sf`) requires exactly that component and parameters.
 - Masking and logging: no payload logging here, ever. Every secret request/response field is
   `@Sensitive(SECRET)` (walletId and MSISDNs `MSISDN`) and every operation DTO's `toString()` is
   `MaskingPolicy.describe`; services log only event, kid, outcome. Bean Validation messages never echo

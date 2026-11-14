@@ -76,6 +76,14 @@ class SignatureContractsTest {
         + ",\"components\":" + COMPONENTS + "}");
     invalidRequest(verify, HttpSignatureVerifyRequest.class, "{\"keyId\":\"hmac-partner\",\"signature\":\"sig1=:AAAA:\","
         + "\"components\":[]}");
+    // required components by full identity: a bare name or the serialised identifier with parameters
+    validRequest(verify, HttpSignatureVerifyRequest.class, "{\"keyId\":\"hmac-partner\"," + input + ",\"components\":"
+        + COMPONENTS + ",\"requiredComponents\":[\"@method\",\"\\\"example-dict\\\";key=\\\"a\\\";sf\","
+        + "\"\\\"content-digest\\\"\"]}");
+    invalidRequest(verify, HttpSignatureVerifyRequest.class, "{\"keyId\":\"hmac-partner\"," + input + ",\"components\":"
+        + COMPONENTS + ",\"requiredComponents\":[\"\\\"content-digest\"]}");
+    invalidRequest(verify, HttpSignatureVerifyRequest.class, "{\"keyId\":\"hmac-partner\"," + input + ",\"components\":"
+        + COMPONENTS + ",\"requiredComponents\":[\"content-digest;sf\"]}");
     validResponse(verify, SignatureCheck.valid("http-sign-ec.v1"));
     validResponse(verify, SignatureCheck.invalid("TOO_OLD"));
   }

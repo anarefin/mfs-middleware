@@ -61,6 +61,16 @@ public final class StructuredFields {
     }
   }
 
+  /** One item with its parameters, the whole value (e.g. a component identifier {@code "content-digest";sf}). */
+  public static Item parseItem(String value) {
+    StructuredFields p = new StructuredFields(value);
+    Item item = p.item();
+    if (!p.end()) {
+      throw new IllegalArgumentException("trailing characters");
+    }
+    return item;
+  }
+
   public static String serialize(InnerList list) {
     StringBuilder b = new StringBuilder("(");
     for (int k = 0; k < list.items().size(); k++) {

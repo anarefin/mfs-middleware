@@ -202,6 +202,40 @@ class HttpSignatureServiceTest {
         .isEqualTo(SignatureCheck.invalid("COMPONENT_MISSING"));
   }
 
+  static SignatureCheck verifyRequiring(HttpSignatureService http, HttpSignatureSignResponse s,
+      List<HttpComponent> components, List<String> required) {
+    return http.verify(new HttpSignatureVerifyRequest("http-sign-ec", null, null, null, s.signatureInput(),
+        s.signature(), components, required, null, null));
+  }
+
+  @Test
+  void requiredComponentsMatchTheFullIdentityNotJustTheName() {
+    // a covered "content-digest";req (or ;bs, ;key=) is another component than a plain content-digest
+    for (Map<String, Object> params : List.<Map<String, Object>>of(Map.of("req", true), Map.of("bs", true),
+        Map.of("key", "sha-256"))) {
+      List<HttpComponent> variant = List.of(c("@method", "POST"), new HttpComponent("content-digest", params, DIGEST));
+      HttpSignatureSignResponse s = http.sign(new HttpSignatureSignRequest("http-sign-ec", null, null, variant,
+          null, null, null, null));
+      assertThat(verifyRequiring(http, s, variant, List.of("@method", "content-digest")))
+          .as(params.toString()).isEqualTo(SignatureCheck.invalid("REQUIRED_COMPONENT_NOT_COVERED"));
+      // the exact identity, as RFC 9421 serialises it, is satisfied
+      String identity = "\"content-digest\";" + params.keySet().iterator().next()
+          + (params.containsKey("key") ? "=\"sha-256\"" : "");
+      assertThat(verifyRequiring(http, s, variant, List.of("@method", identity))).as(identity)
+          .isEqualTo(SignatureCheck.valid("http-sign-ec.v1"));
+    }
+    // a plain requirement is satisfied by the plain component; an identity with parameters is not
+    HttpSignatureSignResponse plain = http.sign(sign("http-sign-ec", null));
+    assertThat(verifyRequiring(http, plain, request(), List.of("content-digest", "\"@method\"")).valid()).isTrue();
+    assertThat(verifyRequiring(http, plain, request(), List.of("\"content-digest\";sf")))
+        .isEqualTo(SignatureCheck.invalid("REQUIRED_COMPONENT_NOT_COVERED"));
+    // a malformed or unknown-parameter requirement is the caller's mistake
+    for (String bad : List.of("\"content-digest", "\"content-digest\";unknown", "\"content-digest\";key=1")) {
+      assertThatThrownBy(() -> verifyRequiring(http, plain, request(), List.of(bad))).as(bad)
+          .satisfies(e -> assertThat(code(e)).isEqualTo("MW-VAL-001"));
+    }
+  }
+
   @Test
   void theTimeWindowIsChecked() {
     HttpSignatureSignResponse old = http.sign(new HttpSignatureSignRequest("http-sign-ec", null, null, request(),
