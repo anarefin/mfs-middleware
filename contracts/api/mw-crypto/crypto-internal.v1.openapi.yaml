@@ -1,0 +1,244 @@
+openapi: 3.1.0
+info:
+  title: Bits HSM gateway internal API (mw-crypto)
+  version: 1.0.0
+  description: |
+    Internal API of mw-crypto, the only HSM client (ticket 62, spec 18.8, ADR D23): key management
+    by keyId. Every other service asks it by keyId and never holds key material; only key metadata
+    is returned, and public keys. Its callers are mw-admin-api (key screens, ticket 75), mw-auth
+    (ticket 67) and mw-audit-dw (ticket 74), over the `app` zone network (`http://mw-crypto:8080`);
+    it is not routed by APISIX. mTLS is added by ticket 66 (D24). The operations (PIN verify, JWS
+    sign, HMAC, tokenise, envelope, XML-DSig) are added by tickets 63-65.
+
+    Key versions: a key has versions `<keyId>.v<n>` (the JWS `kid` and HSM label). Rotation adds a
+    version; the previous ACTIVE one becomes VERIFY_ONLY (verification still accepts it), an older
+    VERIFY_ONLY one RETIRED. When the HSM cannot be reached the request fails closed with 503
+    MW-SYS-010 (retryable). Every error is the 5.3 envelope.
+servers:
+  - url: http://mw-crypto:8080
+security:
+  - internalClientCredentials: []
+paths:
+  /internal/v1/keys:
+    get:
+      operationId: listKeys
+      summary: Every key and its versions (metadata only)
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: The keys, by keyId
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KeyPage" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: generateKey
+      summary: Generate a key (dev and bootstrap only until the key ceremony, ticket 75)
+      description: >-
+        Generates version 1 of a new key in the HSM. Errors: 400 MW-VAL-001 (bad body), 400
+        MW-VAL-011 (unknown purpose), 409 MW-VAL-012 (keyId exists), 503 MW-SYS-010 (HSM down).
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GenerateKeyRequest" }
+      responses:
+        "201":
+          description: The new key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Key" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/keys/{keyId}/rotate:
+    post:
+      operationId: rotateKey
+      summary: Add a version; the previous one stays VERIFY_ONLY until retired
+      description: >-
+        Errors: 404 MW-VAL-010 (unknown keyId), 503 MW-SYS-010 (HSM down).
+      parameters:
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: The key with its new version
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Key" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/keys/{keyId}/public:
+    get:
+      operationId: getPublicKey
+      summary: Public key of every version in use, as PEM and JWK, plus a JWK Set
+      description: >-
+        Versions ACTIVE and VERIFY_ONLY. Errors: 404 MW-VAL-010 (unknown keyId), 400 MW-VAL-013
+        (symmetric key: no public key), 503 MW-SYS-010 (HSM down).
+      parameters:
+        - $ref: "#/components/parameters/KeyId"
+        - $ref: "#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: The public keys
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicKey" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    internalClientCredentials:
+      type: oauth2
+      description: >-
+        Keycloak realm `services` client-credentials JWT (spec 18.2). The service checks
+        signature, expiry, exact issuer and that `aud` contains `mw-crypto`; the caller (`azp`)
+        must be mw-admin-api, mw-auth or mw-audit-dw. No or bad token: 401 MW-AUTH-001; another
+        client: 403 MW-AUTH-002.
+      flows:
+        clientCredentials:
+          tokenUrl: http://keycloak:8080/realms/services/protocol/openid-connect/token
+          scopes: {}
+  parameters:
+    KeyId:
+      name: keyId
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/KeyId" }
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema: { type: string }
+  responses:
+    Error:
+      description: Error envelope (spec 5.3)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    KeyId:
+      type: string
+      pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+    Purpose:
+      type: string
+      description: >-
+        Spec 18.8 key purpose: PIN_TRANSPORT (RSA 3072), PIN_HMAC (HMAC-SHA256), JWT_SIGN (RSA
+        3072, RS256), ASSERTION_SIGN and AUDIT_ANCHOR_SIGN (EC P-256, ES256), TOKENISE_<domain>
+        (HMAC-SHA256), KEK_<purpose> (AES-256), XMLDSIG (RSA 3072).
+      pattern: "^(PIN_TRANSPORT|PIN_HMAC|JWT_SIGN|ASSERTION_SIGN|AUDIT_ANCHOR_SIGN|XMLDSIG|TOKENISE_[A-Z][A-Z0-9]{0,23}|KEK_[A-Z][A-Z0-9]{0,23})$"
+    GenerateKeyRequest:
+      type: object
+      required: [purpose]
+      additionalProperties: false
+      properties:
+        purpose: { $ref: "#/components/schemas/Purpose" }
+        keyId:
+          description: Default the purpose in lower case with hyphens (JWT_SIGN -> jwt-sign)
+          $ref: "#/components/schemas/KeyId"
+    KeyVersion:
+      type: object
+      required: [version, kid, state, createdAt]
+      properties:
+        version: { type: integer, minimum: 1 }
+        kid: { type: string, description: "<keyId>.v<version>: JWS kid and HSM label" }
+        state: { type: string, enum: [ACTIVE, VERIFY_ONLY, RETIRED] }
+        createdAt: { type: string, format: date-time }
+        rotatedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When it left ACTIVE (or VERIFY_ONLY); null while ACTIVE
+    Key:
+      type: object
+      required: [keyId, purpose, algorithm, provider, versions]
+      properties:
+        keyId: { $ref: "#/components/schemas/KeyId" }
+        purpose: { $ref: "#/components/schemas/Purpose" }
+        algorithm: { type: string, enum: [RSA_3072, EC_P256, HMAC_SHA256, AES_256] }
+        provider: { type: string, description: "The provider holding the key (pkcs11)" }
+        versions:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/KeyVersion" }
+    KeyPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Key" }
+    Jwk:
+      type: object
+      description: RFC 7517 public JWK (RSA n/e or EC crv/x/y), never a private member
+      required: [kty, kid, alg, use]
+      properties:
+        kty: { type: string, enum: [RSA, EC] }
+        kid: { type: string }
+        alg: { type: string, enum: [RS256, ES256, RSA-OAEP-256] }
+        use: { type: string, enum: [sig, enc] }
+        n: { type: string }
+        e: { type: string }
+        crv: { type: string, enum: [P-256] }
+        x: { type: string }
+        "y": { type: string }
+      not:
+        anyOf:
+          - required: [d]
+          - required: [p]
+          - required: [q]
+    PublicKeyVersion:
+      type: object
+      required: [version, kid, state, pem, jwk]
+      properties:
+        version: { type: integer, minimum: 1 }
+        kid: { type: string }
+        state: { type: string, enum: [ACTIVE, VERIFY_ONLY] }
+        pem: { type: string, pattern: "^-----BEGIN PUBLIC KEY-----\\n" }
+        jwk: { $ref: "#/components/schemas/Jwk" }
+    PublicKey:
+      type: object
+      required: [keyId, purpose, algorithm, versions, jwks]
+      properties:
+        keyId: { $ref: "#/components/schemas/KeyId" }
+        purpose: { $ref: "#/components/schemas/Purpose" }
+        algorithm: { type: string, enum: [RSA_3072, EC_P256] }
+        versions:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/PublicKeyVersion" }
+        jwks:
+          type: object
+          required: [keys]
+          properties:
+            keys:
+              type: array
+              items: { $ref: "#/components/schemas/Jwk" }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

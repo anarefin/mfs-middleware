@@ -191,3 +191,28 @@ test_docs_record_the_access_shape_and_the_knobs() {
     grep -q "$v" "$REPO_DIR/docs/testing-guide.html" || fail "testing guide section 1 lacks $v"
   done
 }
+
+# ---- mw-crypto (ticket 62): its HSM ITs build the softhsm image from a copy in its test resources ----
+
+test_mw_crypto_test_copy_matches_deploy_softhsm() {
+  # module isolation forbids mw-crypto's tests a path outside the module, so they keep a copy
+  # (services/mw-crypto/src/test/resources/softhsm); it must stay identical to deploy/softhsm
+  local copy="$REPO_DIR/services/mw-crypto/src/test/resources/softhsm" d
+  [ -d "$copy" ] || fail "no services/mw-crypto/src/test/resources/softhsm"
+  d="$(diff -r "$SOFTHSM_DIR" "$copy" 2>&1)" \
+    || fail "services/mw-crypto/src/test/resources/softhsm drifted from deploy/softhsm (copy the folder again): $d"
+}
+
+test_mw_crypto_image_reaches_its_token_through_the_p11_kit_proxy() {
+  local f="$REPO_DIR/services/mw-crypto/Dockerfile" server client
+  # the p11-kit RPC client must match the server's version (noble's 0.25 fails key generation)
+  server="$(grep -oE 'p11-kit=[0-9][^ ]*' "$SOFTHSM_DIR/Dockerfile" | head -1)"
+  client="$(grep -oE 'p11-kit=[0-9][^ ]*' "$f" | head -1)"
+  [ -n "$server" ] && [ "$server" = "$client" ] || fail "mw-crypto p11-kit ($client) differs from softhsm's ($server)"
+  grep -q 'socat=' "$f" || fail "mw-crypto image lacks socat"
+  grep -q 'remote: |socat - TCP:softhsm:5657' "$f" || fail "mw-crypto module file does not dial softhsm:5657"
+  grep -qF 'rm -f /usr/share/p11-kit/modules/*.module' "$f" \
+    || fail "mw-crypto image keeps other p11-kit modules (slot 0 would be ambiguous)"
+  [ "$(softhsm_service '.services["mw-crypto"].depends_on.softhsm.condition')" = '"service_healthy"' ] \
+    || fail "mw-crypto does not wait for a healthy softhsm"
+}

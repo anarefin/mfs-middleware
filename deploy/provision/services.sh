@@ -8,12 +8,10 @@
 # mw-core-mock comes first: mw-ussd and mw-checkout copy its PIN public key.
 #
 # SECRETS_AHEAD: secrets written for a service that is not in the stack yet (no role, schema or
-# AppRole), <service>:<function>, run after SERVICES. mw-crypto's softhsm token PIN comes with the
-# softhsm container (ticket 61); ticket 62 moves mw-crypto into SERVICES and these lines into
-# provision_mw_crypto.
-SECRETS_AHEAD="mw-crypto:softhsm_token_pin"
+# AppRole), <service>:<function>, run after SERVICES. Empty while every service is in SERVICES.
+SECRETS_AHEAD=""
 
-SERVICES="mw-core-mock:core-mock mw-simulators:simulators mw-orchestrator:orchestrator
+SERVICES="mw-core-mock:core-mock mw-crypto:crypto mw-simulators:simulators mw-orchestrator:orchestrator
   mw-audit-dw:audit-dw mw-app-gateway:app-gateway mw-notify:notify mw-ussd:ussd mw-admin-api:admin-api
   mw-adapter-telco:adapter-telco mw-adapter-billpay:adapter-billpay mw-adapter-bank:adapter-bank
   mw-portal-api:portal-api mw-checkout:checkout"
@@ -23,6 +21,14 @@ provision_mw_core_mock() {
   gen_once spring.datasource.password 40
   pin_keypair "${PIN_KEY_ID:-core-pin-dev-1}"
   db_role coremock_rw coremock
+}
+
+# The HSM gateway (ticket 62, spec 18.8, D23): the user PIN of the softhsm mw-crypto token it logs in
+# with (deploy/softhsm; spec 18.4: OpenBao keeps the PKCS#11 token PIN), synced from deploy/.env.
+provision_mw_crypto() {
+  gen_once spring.datasource.password 40
+  sync_env mw.crypto.pkcs11.user-pin SOFTHSM_MWCRYPTO_USER_PIN
+  db_role crypto_rw crypto
 }
 
 # Partner, SMSC and USSD gateway simulators: they sign with the same secrets the adapters verify
@@ -145,8 +151,3 @@ provision_mw_checkout() {
   db_role checkout_rw checkout
 }
 
-# The user PIN of the softhsm mw-crypto token (deploy/softhsm, ticket 61; spec 18.4: OpenBao keeps
-# the PKCS#11 token PIN mw-crypto logs in with).
-provision_softhsm_token_pin() {
-  sync_env mw.crypto.pkcs11.user-pin SOFTHSM_MWCRYPTO_USER_PIN
-}

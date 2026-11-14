@@ -1161,7 +1161,7 @@ On a Compose host each zone is its own user-defined network (`dmz`, `app`, `data
 
 1. `POST /auth/v1/otp` (MSISDN, deviceId, purpose `LOGIN`/`BIND`/`RESET`/`CHECKOUT`): OTP by SMS through `mw-notify` (priority OTP), stored only as a hash bound to wallet, device and purpose; sends per window and guesses capped (the rules built in ticket 18, moved from `mw-app-gateway`).
 2. `POST /auth/v1/devices` (bind): OTP + PIN ciphertext + device public key (P-256) + proof of possession. Binding replaces the earlier device, ends its sessions and refresh tokens, and sends an SMS alert. For 24 h (config) the wallet's assertions carry `newDevice: true`; the core decides what that caps.
-3. `POST /auth/v1/sessions` (login): MSISDN + PIN ciphertext + device signature → access JWT (5 min, claims `sub` walletId, `msisdn`, `role` from the wallet type, `deviceId`, `amr`) and refresh token (30 days, opaque, stored hashed, device-bound, rotated on every use; reuse of a rotated token revokes the whole family). Signed by an `mw-crypto` key; JWKS at `/auth/v1/.well-known/jwks.json`.
+3. `POST /auth/v1/sessions` (login): MSISDN + PIN ciphertext + device signature → access JWT (5 min, claims `sub` walletId, `msisdn`, `role` from the wallet type, `deviceId`, `amr`) and refresh token (30 days, opaque, stored hashed, device-bound, rotated on every use; reuse of a rotated token revokes the whole family). Signed RS256 by the `mw-crypto` key `JWT_SIGN` (RSA 3072; **amendment 2026-11-14**: APISIX 3.19 `openid-connect` verifies RSA JWKS only, so the access token is RS256, not ES256; assertions and the audit anchor stay ES256); JWKS at `/auth/v1/.well-known/jwks.json` and a discovery document at `/auth/v1/.well-known/openid-configuration` for the edge.
 4. First PIN: a wallet the core reports active without a PIN logs in with OTP and must set a PIN before anything else.
 5. Idle session timeout 5 min (sliding, Valkey `sess:{walletId}:{deviceId}`); logout and revocation delete the session and the refresh family.
 
@@ -1196,14 +1196,14 @@ On a Compose host each zone is its own user-defined network (`dmz`, `app`, `data
 | PIN transport public key by `keyId` (RSA 3072, OAEP SHA-256) | PKCS#11 | apps (at build or start), `mw-ussd`, checkout page |
 | PIN verify / set / change: decrypt the transport block, HMAC-SHA256 under the PIN key over walletId and PIN, compare with the stored value in constant time | PKCS#11 | `mw-auth` |
 | PIN-block translation ISO 9564 formats 0 and 4 (`CA` TPK to ZPK, `CC` ZPK to ZPK), PVV generate and verify (`DG`, `DC`, `EC`), key generate (`A0`), data encrypt (`M0`, `M2`), diagnostics (`NC`) | payShield | ATM and interop adapters (later), tests |
-| JWS sign (ES256, PS256) and JWKS per key | PKCS#11 | `mw-auth` tokens and assertions, audit anchor |
+| JWS sign (RS256 for the `mw-auth` access tokens, ES256 for assertions and the audit anchor, PS256) and JWKS per key | PKCS#11 | `mw-auth` tokens and assertions, audit anchor |
 | HMAC sign and verify | PKCS#11 | partner signatures, webhooks |
 | Deterministic tokenisation (HMAC-based, per-domain key) of MSISDN, NID and account numbers | PKCS#11 | data warehouse export, audit search keys |
 | Envelope encryption (AES-256-GCM data keys wrapped by a KEK in the HSM) | PKCS#11 | NID and account columns, files |
 | XML-DSig sign and verify (RSA-SHA256, exclusive C14N) and HTTP-message signatures | PKCS#11 | NPSB / ISO 20022, SOAP partners |
 | Key list, generate, rotate, retire by `keyId`; public keys | both | `mw-admin-api` key screens |
 
-**Key hierarchy.** PIN transport key pair, PIN HMAC key, JWT signing key, assertion signing key, audit-anchor signing key, tokenisation keys per domain, KEKs per purpose, XML-DSig key pair; on the payShield side LMK, ZPK, PVK. Every key has versions; rotation adds a version, verification accepts the current and the previous version until retired, and a rotated PIN HMAC key re-hashes on the next successful verify.
+**Key hierarchy.** PIN transport key pair (RSA 3072), PIN HMAC key (HMAC-SHA256), JWT signing key (RSA 3072, RS256; amendment 2026-11-14), assertion signing key and audit-anchor signing key (EC P-256, ES256), tokenisation keys per domain, KEKs per purpose, XML-DSig key pair; on the payShield side LMK, ZPK, PVK. Every key has versions; rotation adds a version, verification accepts the current and the previous version until retired, and a rotated PIN HMAC key re-hashes on the next successful verify.
 
 **Key ceremony.** Generating or importing a top-level key needs two custodians from the `ops` realm role `security-admin` (split knowledge, dual control): one raises the ceremony, the second approves in the admin console (maker-checker), each enters their own component or confirmation; every step is audited. Built in ticket 75.
 

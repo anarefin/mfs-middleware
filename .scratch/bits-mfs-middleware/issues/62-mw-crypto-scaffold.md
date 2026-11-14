@@ -23,8 +23,16 @@
 
 **Blocked by:** 61
 
-**Status:** open
+**Status:** done
 
-- [ ] `./gradlew :mw-crypto:build` green with Docker
-- [ ] `./gradlew :checkIsolation :checkFieldInjection :contractsLint :composeCheck` green
-- [ ] On the running stack, `GET /internal/v1/keys` lists a key of every purpose after the first start
+- [x] `./gradlew :mw-crypto:build` green with Docker
+- [x] `./gradlew :checkIsolation :checkFieldInjection :contractsLint :composeCheck` green
+- [ ] On the running stack, `GET /internal/v1/keys` lists a key of every purpose after the first start (deferred to final integration test)
+
+Decisions recorded (ticket 62): JWT_SIGN is RSA 3072 / RS256 (user decision; D21 amendment, spec 18.7/18.8).
+HSM ITs run mw-crypto's own image next to SoftHSM on a Testcontainers network (`HsmStack`, recorded in
+`services/mw-crypto/CLAUDE.md`). mw-crypto image is Alpine (p11-kit 0.26.2 must match softhsm; noble's 0.25.3
+fails key generation). Reconnect after an HSM outage re-initialises the PKCS#11 module through the JDK-internal
+SunPKCS11 wrapper (`Add-Opens` in the boot jar manifest). Memory: `CRYPTO_MEM_LIMIT` 320M / `CRYPTO_XMX` 112m,
+`ADMIN_UI_MEM` 160M -> 64M (total 8176 / 8192). The running-stack check needs `deploy/reset.sh` (new audience
+mapper `aud-mw-crypto` on the Keycloak `mw-admin-api` client is imported only into a fresh realm).

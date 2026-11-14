@@ -39,8 +39,10 @@ libsofthsm2 into their images. It was rejected for three reasons:
   client sees exactly one slot (`slotListIndex = 0` in SunPKCS11, no lookup by label), and the
   simulator cannot see mw-crypto's token.
 
-**Cost.** Each client image needs p11-kit and socat (Alpine: `p11-kit`, `socat`; Debian/Ubuntu:
-`p11-kit-modules`, `socat`), plus one small module file. The port has no transport security. That
+**Cost.** Each client image needs p11-kit and socat, plus one small module file. The client's
+p11-kit must speak the server's RPC version: Alpine `p11-kit=0.26.2-r0`, as in this image (ticket 62
+found that Ubuntu noble's 0.25.3 logs in but fails every key generation with `CKR_DEVICE_MEMORY`, so
+the mw-crypto image is Alpine; `scripts/test/test_softhsm.sh` checks the versions match). The port has no transport security. That
 is acceptable for dev and test because a session still needs the token's user PIN. The port is
 reachable on the `app` network and on 127.0.0.1 only. Production uses the real HSM's PKCS#11
 library over its own secured channel (open point 22), behind the same mw-crypto provider SPI.
@@ -60,7 +62,8 @@ remote: |socat - TCP:softhsm:5657
 ```
 
 Then point SunPKCS11 at the p11-kit proxy, which is `libp11-kit.so.0` itself (`/usr/lib/libp11-kit.so.0` on
-Alpine; on Debian `/usr/lib/<arch>-linux-gnu/p11-kit-proxy.so`):
+Alpine). The mw-crypto image adds `connect-timeout=3,keepalive,keepidle=5,keepintvl=2,keepcnt=3` to the
+socat address, so a vanished softhsm ends the connection within seconds instead of hanging:
 
 ```
 name = mw-crypto
@@ -79,14 +82,13 @@ A local `socat UNIX-LISTEN:/tmp/p11.sock,fork TCP:softhsm:5657` bridges that soc
 **Testcontainers (`Pkcs11ProviderIT`, ticket 62; the simulator IT, ticket 64).** Module isolation
 forbids a path outside the module, so copy this folder into the module's test resources
 (`src/test/resources/softhsm/`, with `pkcs11-modules/`). Build it with `ImageFromDockerfile` and set the
-six `SOFTHSM_*` variables with obviously fake values. Expose 5657 (or 5658) and wait with
+six `SOFTHSM_*` variables with obviously fake values, network alias `softhsm`, and wait with
 `Wait.forHealthcheck()`. The image has a `HEALTHCHECK`, and every script runs through `/bin/sh`, so the
-copy works even if the exec bits are lost. Then reach the mapped port with one of the recipes above
-(`TCP:<host>:<mapped port>`). A test JVM on the host needs p11-kit and socat installed there
-(`brew install p11-kit socat` on macOS, `apt-get install p11-kit-modules socat` on Linux). Make the
-IT skip with a clear message when they are missing, the same way `DockerAvailableCondition` does.
-The other option is to run the PKCS#11 part of the test inside a container. Keep the copy in step
-with this folder (ticket 62 decides how, for example a test that compares checksums).
+copy works even if the exec bits are lost. No PKCS#11 tooling on the host (decision 2026-11-14): the
+PKCS#11 side never runs in the host test JVM. The IT runs the client's own image next to this
+container on a Testcontainers network and drives it over HTTP (mw-crypto: `HsmStack`, described in
+`services/mw-crypto/CLAUDE.md`, "HSM integration tests"). `scripts/test/test_softhsm.sh` fails when a
+copy differs from this folder.
 
 ## Files
 

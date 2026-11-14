@@ -47,5 +47,6 @@ files:
   api/mw-audit-dw/audit-dw-test.v1.openapi.yaml: mw-audit-dw
   api/mw-checkout/checkout.v1.openapi.yaml: mw-checkout
   api/mw-admin-api/admin.v1.openapi.yaml: mw-admin-api
+  api/mw-crypto/crypto-internal.v1.openapi.yaml: mw-crypto
   # test-only wallet seed API of the core test double (ticket 57); not a product contract
   api/mw-core-mock/core-mock-seed.v1.openapi.yaml: mw-core-mock

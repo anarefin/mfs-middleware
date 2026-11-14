@@ -5,7 +5,7 @@
 
 STACK_FILE="$REPO_DIR/deploy/docker-compose.yml"
 # the P2P and cash path of the API suite folders 01 / 03 (profile minimal)
-MINIMAL_SERVICES="mw-admin-api mw-app-gateway mw-audit-dw mw-core-mock mw-notify mw-orchestrator mw-simulators mw-ussd"
+MINIMAL_SERVICES="mw-admin-api mw-app-gateway mw-audit-dw mw-core-mock mw-crypto mw-notify mw-orchestrator mw-simulators mw-ussd"
 PLATFORM_SERVICES="kafka kafka-init postgres valkey keycloak openbao etcd etcd-init apisix apisix-init greenmail"
 ONE_SHOT="kafka-init etcd-init apisix-init"
 SECRET_VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALTH_PASSWORD
@@ -193,6 +193,7 @@ mw-app-gateway:127.0.0.1:8081->8080
 mw-audit-dw:127.0.0.1:8087->8080
 mw-checkout:127.0.0.1:8092->8080
 mw-core-mock:127.0.0.1:8084->8080
+mw-crypto:127.0.0.1:8094->8080
 mw-notify:127.0.0.1:8086->8080
 mw-orchestrator:127.0.0.1:8083->8080
 mw-portal-api:127.0.0.1:8093->8080
@@ -382,7 +383,7 @@ test_every_long_running_memory_limit_is_a_knob_with_the_laptop_default() {
   # the defaults are today's laptop values (MiB)
   j="$(compose_json)"
   expect="kafka=576 keycloak=608 postgres=320 apisix=384 greenmail=160 openbao=128 etcd=64 valkey=64 softhsm=48
-    mw-admin-ui=160 mw-simulators=384 mw-orchestrator=448 mw-audit-dw=448 mw-core-mock=416 mw-notify=416
+    mw-admin-ui=64 mw-crypto=320 mw-simulators=384 mw-orchestrator=448 mw-audit-dw=448 mw-core-mock=416 mw-notify=416
     mw-app-gateway=416 mw-ussd=416 mw-admin-api=416 mw-adapter-telco=416 mw-adapter-billpay=416
     mw-adapter-bank=416 mw-portal-api=416 mw-checkout=416"
   for s in $expect; do
@@ -392,6 +393,8 @@ test_every_long_running_memory_limit_is_a_knob_with_the_laptop_default() {
   done
   printf '%s' "$j" | jq -e '.services["mw-notify"].environment.JDK_JAVA_OPTIONS | test("-Xms160m -Xmx160m ")' >/dev/null \
     || fail "APP_XMX default is not a fixed 160m heap"
+  printf '%s' "$j" | jq -e '.services["mw-crypto"].environment.JDK_JAVA_OPTIONS | test("-Xms112m -Xmx112m ")' >/dev/null \
+    || fail "CRYPTO_XMX default is not a fixed 112m heap"
   printf '%s' "$j" | jq -e '.services.kafka.environment.KAFKA_HEAP_OPTS == "-Xms256m -Xmx256m"' >/dev/null \
     || fail "KAFKA_HEAP default is not 256m"
   return 0
@@ -399,12 +402,15 @@ test_every_long_running_memory_limit_is_a_knob_with_the_laptop_default() {
 
 test_memory_knobs_override_the_limits_and_the_heap() {
   local j
-  j="$(compose_json APP_MEM_LIMIT=512M APP_MEM_LIMIT_LARGE=640M SIM_MEM_LIMIT=400M KAFKA_MEM=1G APP_XMX=200m)"
+  j="$(compose_json APP_MEM_LIMIT=512M APP_MEM_LIMIT_LARGE=640M SIM_MEM_LIMIT=400M KAFKA_MEM=1G APP_XMX=200m \
+    CRYPTO_MEM_LIMIT=384M CRYPTO_XMX=128m)"
   printf '%s' "$j" | jq -e '(.services["mw-notify"].deploy.resources.limits.memory | tonumber) == 536870912
     and (.services["mw-orchestrator"].deploy.resources.limits.memory | tonumber) == 671088640
     and (.services["mw-simulators"].deploy.resources.limits.memory | tonumber) == 419430400
     and (.services.kafka.deploy.resources.limits.memory | tonumber) == 1073741824
-    and (.services["mw-notify"].environment.JDK_JAVA_OPTIONS | test("-Xms200m -Xmx200m "))' >/dev/null \
+    and (.services["mw-notify"].environment.JDK_JAVA_OPTIONS | test("-Xms200m -Xmx200m "))
+    and (.services["mw-crypto"].deploy.resources.limits.memory | tonumber) == 402653184
+    and (.services["mw-crypto"].environment.JDK_JAVA_OPTIONS | test("-Xms128m -Xmx128m "))' >/dev/null \
     || fail "memory knobs not honoured: $(printf '%s' "$j" | jq -c '[.services["mw-notify","mw-orchestrator","mw-simulators","kafka"].deploy.resources.limits.memory]')"
 }
 

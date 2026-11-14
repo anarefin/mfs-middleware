@@ -43,7 +43,7 @@
     },
     {
       "clientId": "mw-admin-api",
-      "name": "mw-admin-api (operations: transaction and audit search)",
+      "name": "mw-admin-api (operations: transaction and audit search, key management on mw-crypto)",
       "enabled": true,
       "publicClient": false,
       "clientAuthenticatorType": "client-secret",
@@ -71,6 +71,16 @@
           "protocolMapper": "oidc-audience-mapper",
           "config": {
             "included.custom.audience": "mw-audit-dw",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "aud-mw-crypto",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "mw-crypto",
             "access.token.claim": "true",
             "id.token.claim": "false"
           }

@@ -1,0 +1,25 @@
+# Test-only overrides, merged over src/main/resources/application.yml.
+mw:
+  outbox:
+    relay:
+      # Off by default in tests: Spring caches test contexts, and a relay left running in one
+      # would publish rows another test is checking. Tests that need it switch it on and close
+      # their context afterwards (@DirtiesContext).
+      enabled: false
+      # Tests that switch it on want each hop at once, not after a 500 ms idle wait.
+      period: 50ms
+  retention:
+    # The purge job's schedule is off in tests; OutboxInboxPurgeConformanceIT calls it directly.
+    cron: "-"
+  # The host test JVM never reaches an HSM (no PKCS#11 on the host; Pkcs11ProviderIT runs the
+  # service in a container): probe rarely, so contexts do not log a failed probe every 10 s.
+  crypto:
+    hsm-probe-period: 1h
+  internal-auth:
+    issuer: http://keycloak.test/realms/services
+camel:
+  component:
+    kafka:
+      # A closing test context does not wait the default 30 s per consumer for one caught mid-rebalance
+      # (cached contexts share the consumer group); nothing in a test depends on that drain.
+      shutdown-timeout: 100

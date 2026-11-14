@@ -95,6 +95,7 @@ D3 amendment 2026-11-13).
 | 8091 | `mw-adapter-bank` | `MW_PORT_ADAPTER_BANK` |
 | 8092 | `mw-checkout` | `MW_PORT_CHECKOUT` |
 | 8093 | `mw-portal-api` | `MW_PORT_PORTAL_API` |
+| 8094 | `mw-crypto` | `MW_PORT_CRYPTO` |
 | 3000 | `mw-admin-ui` (path `/console`) | `MW_PORT_ADMIN_UI` |
 | 3001 | `mw-test-console` (profile `tester`) | `MW_PORT_TEST_CONSOLE` |
 | 5432 | `postgres` | `MW_PORT_POSTGRES` |
@@ -183,6 +184,7 @@ Log events that need a person:
 | `kafka.dlq.parked` | any consumer | a record failed its retries and sits on `<topic>.<group>.dlq`: read it (below), fix the cause, replay by hand |
 | `outbox.relay.failed` | any producer | the outbox cannot reach Kafka: check `kafka` health; rows are sent once it is back |
 | `audit.chain.broken` | mw-audit-dw | the audit hash chain failed verification: treat as an incident, keep the database as is |
+| `crypto.hsm.down` | mw-crypto | the HSM does not answer (gauge `crypto_hsm_up` 0): PIN checks, logins and signing fail closed with `MW-SYS-010`. Check `softhsm` health (dev) or the HSM; mw-crypto reconnects by itself (`crypto.hsm.up` when back) |
 | `smpp.bind.down` | mw-ussd, mw-notify | the SMPP bind to the USSD gateway or SMSC is lost; it reconnects by itself, check the peer |
 | `partner.call.failed`, `partner.route.failed` | adapters | partner errors or a route that failed to start after a config change |
 | `mw.edge.rate_limit_degraded` | apisix | Valkey is unreachable and the rate limiter fails open: check `valkey` |

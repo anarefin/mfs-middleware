@@ -79,7 +79,7 @@ manifest_services() { (. "$PROVISION_DIR/services.sh"; printf '%s\n' $SERVICES);
 
 test_every_service_with_an_approle_volume_is_in_the_manifest() {
   local s
-  for s in mw-core-mock mw-simulators mw-orchestrator mw-audit-dw mw-app-gateway mw-notify mw-ussd \
+  for s in mw-core-mock mw-crypto mw-simulators mw-orchestrator mw-audit-dw mw-app-gateway mw-notify mw-ussd \
     mw-admin-api mw-adapter-telco mw-adapter-billpay mw-adapter-bank mw-portal-api mw-checkout; do
     manifest_services | grep -q "^$s:" || fail "$s missing from deploy/provision/services.sh"
   done
@@ -102,7 +102,7 @@ test_provision_creates_every_secret_role_and_approle() {
     grep -q "^bao policy write $s -$" .bao-calls || fail "$s: no policy"
     grep -q "^bao write auth/approle/role/$s token_policies=$s " .bao-calls || fail "$s: no AppRole"
   done
-  assert_out_contains "provision: 13 services provisioned"
+  assert_out_contains "provision: 14 services provisioned"
 }
 
 test_provision_writes_the_service_specific_keys() {
@@ -136,8 +136,9 @@ test_provision_writes_the_service_specific_keys() {
   [ "$(kv mw-ussd mw.ussd.pin.key-id)" = core-pin-dev-1 ] || fail "ussd key id"
   [ "$(kv mw-checkout mw.checkout.pin.public-key)" = PUBLIC-PEM ] || fail "checkout PIN key"
   [ "$(kv mw-checkout mw.checkout.pin.key-id)" = core-pin-dev-1 ] || fail "checkout key id"
-  # the softhsm mw-crypto token's user PIN (ticket 61), written ahead of the mw-crypto service
+  # mw-crypto (ticket 62): the softhsm mw-crypto token's user PIN (ticket 61), its role and schema
   [ "$(kv mw-crypto mw.crypto.pkcs11.user-pin)" = hsm-pin-t ] || fail "mw-crypto token PIN"
+  grep -q 'role=crypto_rw .*schema=crypto' .psql-calls || fail "mw-crypto role/schema"
   # one role + schema per plain service
   grep -q 'role=orchestrator_rw .*schema=txn' .psql-calls || fail "orchestrator role/schema"
   # mw-admin-api also owns schema partner (its Flyway migrates both)

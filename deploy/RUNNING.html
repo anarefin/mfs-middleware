@@ -82,11 +82,11 @@
     <h2><span class="num">1</span>Prerequisites</h2>
     <ul>
       <li><strong>Docker Desktop</strong> (or Docker Engine with Compose v2.20+). Give it <strong>8 GB of RAM</strong>:
-        the memory limits of the full profile add up to 7.9 GB (14 JVMs, Kafka, PostgreSQL 18, Keycloak, OpenBao, Valkey,
+        the memory limits of the full profile add up to 8.0 GB (15 JVMs, Kafka, PostgreSQL 18, Keycloak, OpenBao, Valkey,
         APISIX, etcd, GreenMail). Measured use is about 6 GB. 4 CPU cores or more.</li>
       <li><strong>JDK 25</strong> on the host, to build the jars. You don't need to install Gradle: the repo ships <code>./gradlew</code>.</li>
       <li>For the test suites in step 11: <strong>Node.js 22+</strong> with <code>npx</code>, and <code>bash</code>, <code>curl</code>, <code>jq</code>.</li>
-      <li>These host ports must be free: <code>443</code> (the edge), <code>8081</code>–<code>8093</code>,
+      <li>These host ports must be free: <code>443</code> (the edge), <code>8081</code>–<code>8094</code>,
         <code>3000</code>, <code>3001</code>, <code>5432</code>, <code>6379</code>, <code>9094</code>, <code>8180</code>,
         <code>8200</code>, <code>8025</code> and <code>3025</code> (step 7 says how to move one).</li>
     </ul>
@@ -196,8 +196,8 @@ docker compose --profile core --profile seed ps -a mw-seeder   <span class="c">#
 docker compose --profile core --profile seed ps -a
 <span class="c"># readiness of one service</span>
 curl -s localhost:8081/actuator/health/readiness
-<span class="c"># readiness of all of them (8081-8093)</span>
-for p in $(seq 8081 8093); do printf "%s " $p; curl -s localhost:$p/actuator/health/readiness; echo; done
+<span class="c"># readiness of all of them (8081-8094)</span>
+for p in $(seq 8081 8094); do printf "%s " $p; curl -s localhost:$p/actuator/health/readiness; echo; done
 <span class="c"># the edge and the two consoles</span>
 curl -sk https://localhost/healthz
 curl -s -o /dev/null -w "%{http_code}\n" localhost:3000/console/api/health
@@ -227,6 +227,7 @@ docker compose logs -f mw-orchestrator</pre></div>
       <tr><td>8091</td><td>mw-adapter-bank</td><td>add money from bank</td><td><code>/partner/*/callback/*</code></td><td>core</td></tr>
       <tr><td>8092</td><td>mw-checkout</td><td>web checkout and IPN</td><td><code>/checkout/*</code></td><td>core</td></tr>
       <tr><td>8093</td><td>mw-portal-api</td><td>org bulk disbursement, SP query</td><td><code>/portal/org/v1/*</code></td><td>core</td></tr>
+      <tr><td>8094</td><td>mw-crypto</td><td>HSM gateway: keys by keyId (softhsm token in dev)</td><td>internal</td><td>minimal, core</td></tr>
       <tr><td>3000</td><td>mw-admin-ui</td><td>admin console (Next.js, base path <code>/console</code>; sign in through 443)</td><td><code>/console</code></td><td>core</td></tr>
       <tr><td>3001</td><td>mw-test-console</td><td>test console, dev/test only</td><td><code>/tester</code></td><td>tester</td></tr>
       <tr><td>—</td><td>mw-seeder</td><td>one-shot seeder</td><td>none</td><td>seed (always with core)</td></tr>

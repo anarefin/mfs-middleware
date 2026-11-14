@@ -228,7 +228,7 @@
     <code>data</code>, <code>ops</code>, <code>etcd</code>), like the security zones of a real data centre. APISIX is the
     edge (port 443, so <code>https://localhost/...</code>): every client goes through it, and only there do the edge
     policies (auth, rate limits, size limits) apply. For debugging, the services and platform containers are also
-    published on <code>127.0.0.1</code> only (8081-8093 the services, 3000/3001 the two UIs, 5432 PostgreSQL, 9094 Kafka,
+    published on <code>127.0.0.1</code> only (8081-8094 the services, 3000/3001 the two UIs, 5432 PostgreSQL, 9094 Kafka,
     8180 Keycloak, ...; <code>MW_PORT_&lt;NAME&gt;</code> moves one). The database is
     only on the data network, and etcd only talks to APISIX.</p>
   <p><strong>Profiles.</strong> A profile decides which containers start. Every command runs from <code>deploy/</code>
