@@ -37,7 +37,7 @@ class CryptoClientTest {
   private static CryptoClient client(String base, String token) {
     AnchorProperties props =
         new AnchorProperties(
-            true, "-", "", 31,
+            true, "-", "", 31, Duration.ofHours(3),
             new AnchorProperties.Crypto(
                 URI.create(base), URI.create(token), "mw-audit-dw", "test-only-client-secret",
                 Duration.ofSeconds(2), Duration.ofSeconds(5)));

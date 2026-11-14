@@ -108,6 +108,7 @@ class AuditAnchorIT {
     admin.execute("truncate audit.event, audit.event_key, audit.chain_head, audit.anchor");
     CRYPTO.signRequests.clear();
     CRYPTO.signStatus(200);
+    Files.createDirectories(EXPORT);
     try (var files = Files.list(EXPORT)) {
       for (Path f : files.toList()) {
         Files.delete(f);
@@ -215,9 +216,108 @@ class AuditAnchorIT {
 
     assertThat(broken)
         .containsExactly(
+            "2026-11-01: anchor missing, export exists",
             "2026-11-02: anchor chain broken",
             "2026-11-03: signature does not verify",
             "2026-11-04: anchor chain broken");
+  }
+
+  /** After the grace (3 h by default) the previous day's anchor is due: 06:00 on 5 Nov. */
+  private static final Instant NOV_5_LATE = Instant.parse("2026-11-05T06:00:00Z");
+
+  private void superuser(String... statements) {
+    tx.executeWithoutResult(
+        s -> {
+          admin.execute("set local session_replication_role = replica");
+          for (String sql : statements) {
+            admin.update(sql);
+          }
+        });
+  }
+
+  @Test
+  void deletingTheNewestAnchorIsCaughtAndTheDayIsNeverReSigned() {
+    anchors.anchorDue();
+    superuser("delete from audit.anchor where anchor_date = '2026-11-04'");
+    clock.set(NOV_5_LATE);
+
+    assertThat(broken(anchors.verifyAll())).containsExactly("2026-11-04: anchor missing, export exists");
+    assertThat(anchors.status().status()).isEqualTo(AnchorStatus.BROKEN);
+
+    // the exported file is the outside copy: the day is not signed again over it
+    assertThat(anchors.anchorDue()).isEmpty();
+    assertThat(CRYPTO.signRequests).hasSize(4);
+    assertThat(admin.queryForObject("select count(*) from audit.anchor", Long.class)).isEqualTo(3);
+  }
+
+  @Test
+  void deletingEveryAnchorIsCaughtEvenWithoutTheExport() throws IOException {
+    anchors.anchorDue();
+    superuser("delete from audit.anchor");
+    clock.set(NOV_5_LATE);
+
+    assertThat(broken(anchors.verifyAll()))
+        .containsExactly(
+            "2026-11-01: anchor missing, export exists",
+            "2026-11-02: anchor missing, export exists",
+            "2026-11-03: anchor missing, export exists",
+            "2026-11-04: anchor missing, export exists");
+    assertThat(anchors.anchorDue()).isEmpty();
+
+    // with the export gone too, the chain months still say anchors were due
+    try (var files = Files.list(EXPORT)) {
+      for (Path f : files.toList()) {
+        Files.delete(f);
+      }
+    }
+    assertThat(broken(anchors.verifyAll())).hasSize(4).allSatisfy(b -> assertThat(b).endsWith(": anchor missing"));
+    assertThat(anchors.status().status()).isEqualTo(AnchorStatus.BROKEN);
+  }
+
+  @Test
+  void anAnchorReSignedWithTheRealKeyButDifferentFromItsExportIsCaught() throws Exception {
+    anchors.anchorDue();
+    String nov4 = admin.queryForObject("select jws from audit.anchor where anchor_date = '2026-11-04'", String.class);
+    // same claims, the real key, a fresh signature: signature, chain and heads all check out
+    String resigned = CRYPTO.signWithStubKey(JWSObject.parse(nov4).getPayload().toString());
+    assertThat(resigned).isNotEqualTo(nov4);
+    tx.executeWithoutResult(
+        s -> {
+          admin.execute("set local session_replication_role = replica");
+          admin.update(
+              "update audit.anchor set jws = ?, anchor_hash = ? where anchor_date = '2026-11-04'",
+              resigned, sha256(resigned));
+        });
+
+    assertThat(broken(anchors.verifyAll())).containsExactly("2026-11-04: export differs");
+
+    Files.delete(EXPORT.resolve("2026-11-03.jws"));
+    assertThat(broken(anchors.verifyAll())).containsExactly("2026-11-03: export missing", "2026-11-04: export differs");
+  }
+
+  @Test
+  void anUnavailableExportFolderLeavesTheAnchorsUnverified() throws IOException {
+    anchors.anchorDue();
+    try (var files = Files.list(EXPORT)) {
+      for (Path f : files.toList()) {
+        Files.delete(f);
+      }
+    }
+    Files.delete(EXPORT);
+
+    assertThat(broken(anchors.verifyAll())).isEmpty();
+    assertThat(anchors.status().status()).isEqualTo(AnchorStatus.UNVERIFIED);
+  }
+
+  @Test
+  void noAnchorIsExpectedWithinTheGrace() {
+    // 5 Nov 00:15: 4 Nov is not due before 03:00, so its absence is not a failure yet
+    clock.set(Instant.parse("2026-11-04T12:00:00Z"));
+    anchors.anchorDue();
+    clock.set(NOV_5);
+
+    assertThat(broken(anchors.verifyAll())).isEmpty();
+    assertThat(anchors.status().status()).isEqualTo(AnchorStatus.INTACT);
   }
 
   @Test

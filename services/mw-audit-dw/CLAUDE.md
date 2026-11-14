@@ -77,22 +77,31 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   writer SELECT/INSERT, reader SELECT) as the writer, INFO `audit.anchor.signed`. Export: written to
   `mw.audit-dw.anchor.export-dir` (`/var/lib/mw/audit-anchors`, compose volume `audit-anchors`; blank =
   off) as `<date>.jws` (temp file + atomic move, never overwritten); the WORM target stays TBC; a failed
-  write is ERROR `audit.anchor.export_failed` (the anchor stays stored). Verification:
-  `AuditChainVerifyJob` runs `AnchorService.verifyAll()` after the chains: per anchor (first failure
-  wins) the stored hash = SHA-256 of the JWS, ES256 signature and `typ` against mw-crypto's
-  `GET /internal/v1/jwks/AUDIT_ANCHOR_SIGN` by kid ("signature does not verify"), the date, no missing
-  day ("anchor missing before it"), the anchor chain ("anchor chain broken"), and the heads equal to the
-  heads recomputed from `audit.event` now ("chain heads differ": catches a chain a superuser rewrote and
-  re-sealed consistently, which the hash chain alone cannot). A failure is ERROR `audit.anchor.broken`
-  (date, reason) and gauge `mw.audit.anchor.broken`; an unreadable JWKS is WARN
-  `audit.anchor.unverifiable`. The last result is the `anchor` field of every audit search page
+  write is ERROR `audit.anchor.export_failed` (the anchor stays stored, and the next verification
+  reports "export missing" until an operator restores the file). The job never signs a day whose
+  `<date>.jws` exists: a row missing next to its file is ERROR `audit.anchor.broken` ("anchor missing,
+  export exists") and status BROKEN, not a catch-up. Verification: `AuditChainVerifyJob` runs
+  `AnchorService.verifyAll()` after the chains, one result per day that has or should have an anchor.
+  Expected days: every UTC day from day 1 of the first chain month whose end is more than
+  `mw.audit-dw.anchor.grace` (3 h: the next hourly run plus a short mw-crypto outage) ago; a missing one
+  is "anchor missing" (also when every anchor is gone), or "anchor missing, export exists", and an
+  exported file without its row counts too. A stored anchor (first failure wins): the stored hash =
+  SHA-256 of the JWS, ES256 signature and `typ` against mw-crypto's `GET
+  /internal/v1/jwks/AUDIT_ANCHOR_SIGN` by kid ("signature does not verify"), the date, the anchor chain
+  ("anchor chain broken"), the heads equal to the heads recomputed from `audit.event` now ("chain heads
+  differ": catches a chain a superuser rewrote and re-sealed consistently, which the hash chain alone
+  cannot), then its exported `<date>.jws` byte for byte ("export missing" / "export differs": catches a
+  re-signed or deleted-and-re-signed anchor). A failure is ERROR `audit.anchor.broken` (date, reason)
+  and gauge `mw.audit.anchor.broken`; an unreadable JWKS or an export folder that cannot be read is WARN
+  `audit.anchor.unverifiable` and status UNVERIFIED (BROKEN wins). The last result is the `anchor` field of every audit search page
   (`dto/AnchorStatus` INTACT / BROKEN / UNVERIFIED (not checked since start) / OFF (anchoring off),
   lastAnchorDate, verifiedAt), shown by mw-admin-api as `auditAnchor` of the transaction detail and by the
-  admin console's audit trail card. Not detected: deleting the newest anchors (the exported files are
-  the outside copy). Off with `mw.audit-dw.anchor.enabled=false` (it also needs chain verification on).
+  admin console's audit trail card. Off with `mw.audit-dw.anchor.enabled=false` (it also needs chain verification on).
   Tests: `service/AuditAnchorIT` (stand-in `client/CryptoStub` with its own EC key: one anchor per day,
   the chain, export, a consistently rewritten chain caught, a forged and a missing anchor caught, the
-  writer cannot change an anchor, mw-crypto down leaves the day due), `client/CryptoClientTest` (request =
+  newest anchor deleted (caught, never re-signed), every anchor deleted with and without the export,
+  an anchor re-signed with the real key differing from its export, an unreadable export folder, the
+  grace, the writer cannot change an anchor, mw-crypto down leaves the day due), `client/CryptoClientTest` (request =
   mw-crypto contract `JwsSignRequest`, token reuse, failures).
 - Producers today: mw-orchestrator (`txn.state.changed`, `partner.callback.late`,
   `txn.outcome.conflict`, `partner.callback.rejected`) and the three adapters

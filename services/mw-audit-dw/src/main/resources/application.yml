@@ -210,6 +210,8 @@ mw:
       cron: "0 15 * * * *"
       export-dir: ${MW_AUDIT_DW_ANCHOR_EXPORT_DIR:/var/lib/mw/audit-anchors}
       catch-up-days: 31
+      # a day's anchor counts as missing once the day ended this long ago (next run + short outage)
+      grace: 3h
       # mw-crypto over mTLS (mw.tls) plus a Keycloak realm services client-credentials token (client
       # mw-audit-dw, audience mw-crypto); the client secret is mw.audit-dw.anchor.crypto.client-secret in
       # OpenBao (secret/mw-audit-dw), never written here.

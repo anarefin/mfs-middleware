@@ -72,6 +72,11 @@ public final class CryptoStub implements AutoCloseable {
     this.signStatus = status;
   }
 
+  /** A fresh signature by the stub's own (the "real") key: what a re-signing insider would make. */
+  public String signWithStubKey(String payloadJson) {
+    return signWith(key, payloadJson);
+  }
+
   /** The same payload, signed by a key mw-crypto's JWKS does not hold (but the same kid). */
   public static String signWithForeignKey(String payloadJson) {
     return signWith(newKey(KID), payloadJson);

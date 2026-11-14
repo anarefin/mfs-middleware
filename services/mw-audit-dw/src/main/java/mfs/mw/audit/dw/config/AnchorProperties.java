@@ -15,6 +15,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param exportDir folder the anchors are also written to as {@code <date>.jws} (WORM target TBC);
  *     blank = no export
  * @param catchUpDays most days anchored in one run
+ * @param grace how long after a UTC day ends its anchor may still be missing before the
+ *     verification calls it missing (covers the next hourly run and a short mw-crypto outage)
  * @param crypto the mw-crypto call
  */
 @ConfigurationProperties("mw.audit-dw.anchor")
@@ -23,6 +25,7 @@ public record AnchorProperties(
     @DefaultValue("0 15 * * * *") String cron,
     String exportDir,
     @DefaultValue("31") int catchUpDays,
+    @DefaultValue("3h") Duration grace,
     @DefaultValue Crypto crypto) {
 
   /**

@@ -36,4 +36,8 @@
   `mw.audit.anchor.broken`; runbook rows added. The status is in-memory (UNVERIFIED until the first check
   after a start) and travels as `AuditPage.anchor` (audit-query.v1, required) -> mw-admin-api
   `TxnDetail.auditAnchor` (admin.v1, optional) -> the console's audit trail badge `audit-anchor`.
-- Not detected by design: deleting the newest anchors (the exported files are the outside copy).
+- Security review follow-up: expected days (first chain month's day 1 up to the last day ended more than
+  `mw.audit-dw.anchor.grace` = 3 h ago) must have an anchor, every stored anchor must equal its exported
+  `<date>.jws`, and the job never re-signs a day whose file exists (row missing + file = BROKEN). An export
+  folder that cannot be read is WARN `audit.anchor.unverifiable` / status UNVERIFIED. Covered in
+  `AuditAnchorIT` (tail deletion, delete-all with and without the export, re-signed anchor vs export).
