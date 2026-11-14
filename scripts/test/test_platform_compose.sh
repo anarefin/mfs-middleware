@@ -13,7 +13,8 @@ SECRET_VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALT
   KC_CUSTOMERS_TEST_PASSWORD KC_OPS_TEST_PASSWORD KC_OPS_TEST_TOTP_SECRET KC_PORTALS_TEST_PASSWORD KC_DB_PASSWORD
   MW_E2E_API_KEY BILLAGG_HMAC_SECRET C2WBANK_HMAC_SECRET CHECKOUT_DEMO_MERCHANT_SECRET
   KC_MW_PORTAL_API_SECRET KC_MW_ADMIN_API_SECRET MW_ADMIN_UI_AUTH_SECRET
-  USSD_GP_GATEWAY_SECRET USSD_ROBI_GATEWAY_SECRET USSD_BL_GATEWAY_SECRET USSD_TELETALK_GATEWAY_SECRET"
+  USSD_GP_GATEWAY_SECRET USSD_ROBI_GATEWAY_SECRET USSD_BL_GATEWAY_SECRET USSD_TELETALK_GATEWAY_SECRET
+  SOFTHSM_MWCRYPTO_SO_PIN SOFTHSM_MWCRYPTO_USER_PIN SOFTHSM_PAYSIM_SO_PIN SOFTHSM_PAYSIM_USER_PIN"
 # The tester logins: fixed, documented fake values (ADR D9 amendment, docs/testing-guide.html section 1),
 # committed in deploy/dev.env.defaults like every other dev value.
 FIXED_VARS="KC_OPS_TEST_PASSWORD=ops-test-pass KC_CUSTOMERS_TEST_PASSWORD=app-test-pass
@@ -200,6 +201,8 @@ mw-test-console:127.0.0.1:3001->3000
 mw-ussd:127.0.0.1:8082->8080
 openbao:127.0.0.1:8200->8200
 postgres:127.0.0.1:5432->5432
+softhsm:127.0.0.1:5657->5657
+softhsm:127.0.0.1:5658->5658
 valkey:127.0.0.1:6379->6379"
 
 test_the_edge_is_the_only_public_port_and_every_other_published_port_is_loopback() {
@@ -378,7 +381,7 @@ test_every_long_running_memory_limit_is_a_knob_with_the_laptop_default() {
   [ -z "$bad" ] || fail "long-running memory limit is not a \${KNOB:-default}: $bad"
   # the defaults are today's laptop values (MiB)
   j="$(compose_json)"
-  expect="kafka=576 keycloak=608 postgres=320 apisix=384 greenmail=160 openbao=128 etcd=64 valkey=64
+  expect="kafka=576 keycloak=608 postgres=320 apisix=384 greenmail=160 openbao=128 etcd=64 valkey=64 softhsm=48
     mw-admin-ui=160 mw-simulators=384 mw-orchestrator=448 mw-audit-dw=448 mw-core-mock=416 mw-notify=416
     mw-app-gateway=416 mw-ussd=416 mw-admin-api=416 mw-adapter-telco=416 mw-adapter-billpay=416
     mw-adapter-bank=416 mw-portal-api=416 mw-checkout=416"

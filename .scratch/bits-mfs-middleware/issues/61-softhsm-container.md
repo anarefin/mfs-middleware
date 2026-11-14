@@ -9,8 +9,10 @@
 
 **Blocked by:** 60
 
-**Status:** open
+**Status:** done
 
-- [ ] `docker compose --profile core up -d --build --wait softhsm` is healthy; a second `up` on the same volume keeps the tokens
-- [ ] `./gradlew :composeCheck` green (budget ≤ 8 GB with the new limit)
-- [ ] `./gradlew :scriptTests` green (README, creds and docs mention the new knobs)
+Access shape: Option A (p11-kit RPC over TCP, one port per token: 5657 mw-crypto, 5658 paysim); reason and client recipes in `deploy/softhsm/README.md`. The mw-crypto user PIN goes to `secret/mw-crypto` key `mw.crypto.pkcs11.user-pin` via `SECRETS_AHEAD` in `deploy/provision/services.sh` (ticket 62 moves it into `provision_mw_crypto`).
+
+- [x] `docker compose --profile core up -d --build --wait softhsm` is healthy; a second `up` on the same volume keeps the tokens (verified on an isolated compose project: healthy, `--force-recreate` logged `token ... kept`, a generated key survived; the full stack run is deferred to final integration test)
+- [x] `./gradlew :composeCheck` green (budget ≤ 8 GB with the new limit)
+- [x] `./gradlew :scriptTests` green (README, creds and docs mention the new knobs)

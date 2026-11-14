@@ -77,3 +77,22 @@ test_security_fails_when_the_keycloak_image_is_not_built() {
   assert_fails run_security
   assert_out_contains "image-missing:mfs-mw/keycloak:local"
 }
+
+# The softhsm image (ticket 61: deploy/softhsm/Dockerfile -> mfs-mw/softhsm:local) is scanned like
+# keycloak: without a MODULE argument only; one not built fails the stage.
+test_security_scans_the_locally_built_softhsm_image() {
+  images_fixture mfs-mw/mw-x:local mfs-mw/provision:local mfs-mw/softhsm:local
+  mkdir -p deploy/softhsm && touch deploy/softhsm/Dockerfile
+  assert_ok run_security
+  grep -q 'trivy image .* mfs-mw/softhsm:local$' .tool-calls || fail "softhsm image not scanned: $(cat .tool-calls)"
+  : >.tool-calls
+  assert_ok run_security mw-x
+  if grep -q 'mfs-mw/softhsm' .tool-calls; then fail "softhsm scanned with a MODULE argument"; fi
+}
+
+test_security_fails_when_the_softhsm_image_is_not_built() {
+  images_fixture mfs-mw/mw-x:local mfs-mw/provision:local
+  mkdir -p deploy/softhsm && touch deploy/softhsm/Dockerfile
+  assert_fails run_security
+  assert_out_contains "image-missing:mfs-mw/softhsm:local"
+}

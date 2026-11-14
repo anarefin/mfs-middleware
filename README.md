@@ -150,6 +150,14 @@ The values come from `deploy/dev.env.defaults`; `scripts/creds.sh` prints the on
 | `portals` | `org-maker01`, `org-checker01`, `org-checker02`, `org-makerchecker01`, `sp-viewer01` | `portal-test-pass` (`KC_PORTALS_TEST_PASSWORD`) | org / SP portal API |
 | `master` | `kc-admin` (kcadm.sh in the container only) | `kc-admin-test-pass` (`KC_BOOTSTRAP_ADMIN_PASSWORD`) | Keycloak admin |
 
+The `softhsm` dev/test PKCS#11 tokens (`deploy/softhsm/README.md`, ticket 61) use fixed, documented
+fake values too:
+
+| Token label (variable) | User PIN (variable) | SO PIN (variable) | Port | Used by |
+| --- | --- | --- | --- | --- |
+| `mw-crypto` (`SOFTHSM_MWCRYPTO_LABEL`) | `dev-mwcrypto-user-pin` (`SOFTHSM_MWCRYPTO_USER_PIN`, copied to OpenBao `secret/mw-crypto`) | `dev-mwcrypto-so-pin` (`SOFTHSM_MWCRYPTO_SO_PIN`) | 5657 | `mw-crypto` |
+| `paysim` (`SOFTHSM_PAYSIM_LABEL`) | `dev-paysim-user-pin` (`SOFTHSM_PAYSIM_USER_PIN`) | `dev-paysim-so-pin` (`SOFTHSM_PAYSIM_SO_PIN`) | 5658 | payShield simulator (`mw-simulators`) |
+
 ## Rebuild one service after a code change
 
 From `deploy/`:
@@ -298,6 +306,7 @@ peaks, is the header of `deploy/docker-compose.yml`.
 | `POSTGRES_MEM` (320M) | `postgres` |
 | `GREENMAIL_MEM` (160M) | `greenmail` |
 | `OPENBAO_MEM` (128M), `ETCD_MEM` (64M), `VALKEY_MEM` (64M) | `openbao`, `etcd`, `valkey` |
+| `SOFTHSM_MEM` (48M) | `softhsm` (profiles `minimal` and `core`) |
 | `ADMIN_UI_MEM` (160M) | `mw-admin-ui` |
 
 Other settings: `MW_HTTPS_PORT` (published edge port, default 443), `MW_PORT_<NAME>` (the direct
@@ -334,6 +343,7 @@ https://localhost on 443. Production stays edge-only (ADR D3 amendment).
 | 8180 | `keycloak` (`MW_PORT_KEYCLOAK`) |
 | 8200 | `openbao` (`MW_PORT_OPENBAO`) |
 | 8025 / 3025 | `greenmail` API / SMTP (`MW_PORT_GREENMAIL`, `MW_PORT_GREENMAIL_SMTP`) |
+| 5657 / 5658 | `softhsm` PKCS#11 tokens `mw-crypto` / `paysim`, p11-kit RPC (`MW_PORT_SOFTHSM_MWCRYPTO`, `MW_PORT_SOFTHSM_PAYSIM`) |
 
 Readiness of one service: `curl -s localhost:8081/actuator/health/readiness` (the actuator listens
 on 8080 inside the container).
@@ -368,7 +378,7 @@ Recovery and operations in depth: [docs/runbook.md](docs/runbook.md).
 | Core flow | `mw-orchestrator` (saga, idempotency, TSQ, reversal), `mw-core-mock` (ledger, fault injection) |
 | Partners | `mw-adapter-telco`, `mw-adapter-billpay`, `mw-adapter-bank` |
 | Support | `mw-notify` (SMS over SMPP, email), `mw-audit-dw` (hash-chained audit trail), `mw-admin-api`, `mw-admin-ui` (console at `/console`) |
-| Platform | `kafka` (KRaft), `postgres` (18), `valkey`, `keycloak`, `openbao`, one-shots `kafka-init` and `provision` (every service's secret, database role and AppRole, `deploy/provision`) |
+| Platform | `kafka` (KRaft), `postgres` (18), `valkey`, `keycloak`, `openbao`, one-shots `kafka-init` and `provision` (every service's secret, database role and AppRole, `deploy/provision`), `softhsm` (dev/test PKCS#11 tokens, profiles `minimal` and `core`, `deploy/softhsm`) |
 | Test | `mw-simulators` (OCS, bill aggregator, C2W bank, SMSC, USSD gateway), `greenmail`, `mw-seeder` (profile `seed`), `mw-test-console` (profile `tester`) |
 
 The compose profiles: no profile = the platform (always starts), `minimal` = the P2P and cash path,
@@ -378,6 +388,6 @@ The compose profiles: no profile = the platform (always starts), `minimal` = the
 Repository layout: `contracts/` (OpenAPI and JSON Schema files, owner per file in
 `contracts/OWNERS.yml`), `services/mw-*` (14 subprojects of the root Gradle build), `ui/mw-admin-ui`
 (Next.js 16.4.1), `ui/mw-test-console`, `templates/mw-service-template`, `deploy/` (the stack file
-`deploy/docker-compose.yml`, APISIX, Kafka topics, provisioning, ZAP decisions), `tests/api`
+`deploy/docker-compose.yml`, APISIX, Kafka topics, provisioning, the softhsm image, ZAP decisions), `tests/api`
 (Newman API suite), `tests/perf` (Gatling, its own build), `scripts/` (the repo checks and operator
 scripts, with shell self-tests in `scripts/test/`), `docs/`.

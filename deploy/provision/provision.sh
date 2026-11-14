@@ -6,6 +6,7 @@
 #   2. PostgreSQL: the service's login role(s) and schema (passwords synced from the secret);
 #   3. OpenBao policy + AppRole <svc> reading only that secret; the role-id and a fresh secret-id
 #      go to OUT_ROOT/<dir>, the service's own approle volume (Spring configtree).
+# Then the SECRETS_AHEAD entries of services.sh: KV values only, for a service not in the stack yet.
 # Each service still gets only its own secret, role and AppRole; only this one-shot holds the
 # OpenBao root token and the PostgreSQL admin password, and it exits when done.
 # Compose starts it once postgres and openbao are healthy, so nothing here polls.
@@ -30,5 +31,10 @@ for entry in $SERVICES; do
   "provision_$(printf '%s' "$SVC" | tr '-' '_')"
   approle
   n=$((n + 1))
+done
+for entry in ${SECRETS_AHEAD:-}; do
+  SVC="${entry%%:*}"
+  KV="secret/$SVC"
+  "provision_${entry#*:}"
 done
 log "$n services provisioned"

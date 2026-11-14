@@ -103,6 +103,7 @@ D3 amendment 2026-11-13).
 | 8180 | `keycloak` | `MW_PORT_KEYCLOAK` |
 | 8200 | `openbao` | `MW_PORT_OPENBAO` |
 | 8025 / 3025 | `greenmail` API / SMTP | `MW_PORT_GREENMAIL`, `MW_PORT_GREENMAIL_SMTP` |
+| 5657 / 5658 | `softhsm` PKCS#11 tokens `mw-crypto` / `paysim` (p11-kit RPC, `deploy/softhsm/README.md`) | `MW_PORT_SOFTHSM_MWCRYPTO`, `MW_PORT_SOFTHSM_PAYSIM` |
 
 Readiness of one service: `curl -s localhost:8081/actuator/health/readiness` (the actuator listens
 on 8080 inside the container).

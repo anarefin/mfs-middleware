@@ -61,6 +61,10 @@ Dev/test stack only, never real secrets. The logins testers type are fixed, docu
    test routes  header  apikey: $(v MW_E2E_API_KEY)      (consumer mw_e2e, /test/*)
    admin API    header  X-API-KEY: $(v APISIX_ADMIN_KEY)   (127.0.0.1:9180 inside the apisix container)
 
+== SoftHSM PKCS#11 tokens (deploy/softhsm; p11-kit RPC on 127.0.0.1, see deploy/softhsm/README.md)
+   mw-crypto  port 5657  label $(v SOFTHSM_MWCRYPTO_LABEL)  user PIN $(v SOFTHSM_MWCRYPTO_USER_PIN)  SO PIN $(v SOFTHSM_MWCRYPTO_SO_PIN)
+   paysim     port 5658  label $(v SOFTHSM_PAYSIM_LABEL)  user PIN $(v SOFTHSM_PAYSIM_USER_PIN)  SO PIN $(v SOFTHSM_PAYSIM_SO_PIN)
+
 == Partner and merchant signing secrets
    checkout merchant merchant-demo (hmac-auth)  $(v CHECKOUT_DEMO_MERCHANT_SECRET)
    bill aggregator callbacks (HMAC-SHA256)      $(v BILLAGG_HMAC_SECRET)

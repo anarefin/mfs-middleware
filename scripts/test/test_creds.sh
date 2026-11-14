@@ -19,6 +19,12 @@ USSD_ROBI_GATEWAY_SECRET=fake-robi
 USSD_BL_GATEWAY_SECRET=fake-bl
 USSD_TELETALK_GATEWAY_SECRET=fake-teletalk
 POSTGRES_PASSWORD=fake-pg
+SOFTHSM_MWCRYPTO_LABEL=fake-mwcrypto-label
+SOFTHSM_MWCRYPTO_SO_PIN=fake-mwcrypto-so
+SOFTHSM_MWCRYPTO_USER_PIN=fake-mwcrypto-user
+SOFTHSM_PAYSIM_LABEL=fake-paysim-label
+SOFTHSM_PAYSIM_SO_PIN=fake-paysim-so
+SOFTHSM_PAYSIM_USER_PIN=fake-paysim-user
 EOF
 }
 
@@ -83,7 +89,8 @@ test_creds_prints_every_login_and_key() {
   for v in fake-apisix-admin fake-kc-admin fake-ops-pw fake-customers-pw fake-portals-pw fake-e2e-key \
            fake-checkout fake-billagg fake-c2wbank fake-gp fake-robi fake-bl fake-teletalk dev-root-token \
            https://localhost/tester https://localhost/console seed-ops-maker customer01 org-maker01 kc-admin \
-           "scripts/totp.sh seed-ops-maker"; do
+           "scripts/totp.sh seed-ops-maker" fake-mwcrypto-label fake-mwcrypto-so fake-mwcrypto-user \
+           fake-paysim-label fake-paysim-so fake-paysim-user; do
     assert_out_contains "$v"
   done
 }

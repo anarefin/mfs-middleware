@@ -6,6 +6,12 @@
 # approle volume in the `provision` block (scripts/new-service.sh prints both).
 #
 # mw-core-mock comes first: mw-ussd and mw-checkout copy its PIN public key.
+#
+# SECRETS_AHEAD: secrets written for a service that is not in the stack yet (no role, schema or
+# AppRole), <service>:<function>, run after SERVICES. mw-crypto's softhsm token PIN comes with the
+# softhsm container (ticket 61); ticket 62 moves mw-crypto into SERVICES and these lines into
+# provision_mw_crypto.
+SECRETS_AHEAD="mw-crypto:softhsm_token_pin"
 
 SERVICES="mw-core-mock:core-mock mw-simulators:simulators mw-orchestrator:orchestrator
   mw-audit-dw:audit-dw mw-app-gateway:app-gateway mw-notify:notify mw-ussd:ussd mw-admin-api:admin-api
@@ -137,4 +143,10 @@ provision_mw_checkout() {
   copy_key mw-core-mock mw.coremock.pin.public-key mw.checkout.pin.public-key
   copy_key mw-core-mock mw.coremock.pin.key-id mw.checkout.pin.key-id
   db_role checkout_rw checkout
+}
+
+# The user PIN of the softhsm mw-crypto token (deploy/softhsm, ticket 61; spec 18.4: OpenBao keeps
+# the PKCS#11 token PIN mw-crypto logs in with).
+provision_softhsm_token_pin() {
+  sync_env mw.crypto.pkcs11.user-pin SOFTHSM_MWCRYPTO_USER_PIN
 }

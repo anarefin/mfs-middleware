@@ -29,8 +29,8 @@
 # `etcd` network with APISIX (and its init step). Host ports (dev stack, BitsPay pattern; ADR D3
 # amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8093), the
 # two consoles (3000, 3001) and the platform (postgres 5432, valkey 6379, kafka 9094, keycloak 8180,
-# openbao 8200, greenmail 8025 / 3025) also publish a port on 127.0.0.1 only (MW_PORT_<NAME> moves
-# one). The direct ports skip the edge policies (JWT, HMAC, quotas) and are for poking at one
+# openbao 8200, greenmail 8025 / 3025, softhsm 5657 / 5658) also publish a port on 127.0.0.1 only
+# (MW_PORT_<NAME> moves one). The direct ports skip the edge policies (JWT, HMAC, quotas) and are for poking at one
 # service; the console login still needs https://localhost on 443. etcd and the APISIX Admin API
 # stay unpublished. Production publishes the edge only (18.1).
 #
@@ -67,10 +67,11 @@
 #   POSTGRES_MEM (320M)         postgres             140, 274*  (shared_buffers 64MB, max_connections 100; pools total 39)
 #   GREENMAIL_MEM (160M)        greenmail            125  (heap 96m)
 #   OPENBAO_MEM (128M)          openbao               95
+#   SOFTHSM_MEM (48M)           softhsm               new (ticket 61): socat + one p11-kit remote per client
 #   ETCD_MEM (64M)              etcd                  34
 #   VALKEY_MEM (64M)            valkey                 8
 #   ADMIN_UI_MEM (160M)         mw-admin-ui           46  (Node.js standalone server)
-#   long-running total with the defaults: 7904 of the 8192 guard (sum of the measured peaks: 5974)
+#   long-running total with the defaults: 7952 of the 8192 guard (sum of the measured peaks: 5974)
 #   fixed (outside the guard): one-shots exit before their service starts: provision 128,
 #   kafka-init 512 (3 parallel CLI JVMs; 8 were OOM-killed at 384), apisix-init 256, etcd-init 64,
 #   mw-seeder 256; mw-test-console 192 (profile tester)
@@ -185,6 +186,8 @@ volumes:
   admin-api-approle:
   # mw-seeder's manifest (ticket 57): seeded ids and personas, no secret
   seed-manifest:
+  # SoftHSMv2 token files (ticket 61): mounted only by softhsm, so keys never sit in another container
+  softhsm-tokens:
 
 services:
   # ------------------------------------------------------------ platform (no profile: always start)
@@ -570,6 +573,50 @@ services:
         limits: { cpus: "0.5", memory: "${GREENMAIL_MEM:-160M}" }
     logging: *logging
 
+  # ------------------------------------------------------------ HSM stand-in (minimal and core)
+  # SoftHSMv2 PKCS#11 tokens for dev and test (ticket 61, spec 18.8 / 22.2, ADR D23; deploy/softhsm/README.md):
+  # mw-crypto's token on 5657, the payShield simulator's LMK store on 5658, each served over TCP as the
+  # p11-kit RPC protocol, so SoftHSM and the token files stay in this container. The tokens are created
+  # on a fresh softhsm-tokens volume with the fake, documented labels and PINs of deploy/.env and kept
+  # on every later `up`; no keys are generated here (mw-crypto's key API does that).
+  softhsm:
+    profiles: *minimal
+    image: mfs-mw/softhsm:local
+    build: ./softhsm
+    restart: unless-stopped
+    # tini as PID 1: reaps the per-connection p11-kit remote processes and the healthcheck's
+    init: true
+    networks: [app]
+    ports:
+      - "127.0.0.1:${MW_PORT_SOFTHSM_MWCRYPTO:-5657}:5657"
+      - "127.0.0.1:${MW_PORT_SOFTHSM_PAYSIM:-5658}:5658"
+    user: "10001:10001"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      SOFTHSM_MWCRYPTO_LABEL: ${SOFTHSM_MWCRYPTO_LABEL:-mw-crypto}
+      SOFTHSM_MWCRYPTO_SO_PIN: ${SOFTHSM_MWCRYPTO_SO_PIN:?cp dev.env.defaults .env}
+      SOFTHSM_MWCRYPTO_USER_PIN: ${SOFTHSM_MWCRYPTO_USER_PIN:?cp dev.env.defaults .env}
+      SOFTHSM_PAYSIM_LABEL: ${SOFTHSM_PAYSIM_LABEL:-paysim}
+      SOFTHSM_PAYSIM_SO_PIN: ${SOFTHSM_PAYSIM_SO_PIN:?cp dev.env.defaults .env}
+      SOFTHSM_PAYSIM_USER_PIN: ${SOFTHSM_PAYSIM_USER_PIN:?cp dev.env.defaults .env}
+    volumes:
+      - softhsm-tokens:/var/lib/softhsm/tokens
+    # pkcs11-tool --list-slots through both sockets sees both tokens
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/opt/softhsm/healthcheck.sh"]
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+      start_interval: 1s
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: "${SOFTHSM_MEM:-48M}" }
+    logging: *logging
+
   # ------------------------------------------------------------ provisioning (minimal and core)
   # The dev stack's one provisioning one-shot (deploy/provision; ADR D16): for every service of
   # deploy/provision/services.sh, in order, its secret/<svc> in OpenBao, its database role(s) and
@@ -606,6 +653,8 @@ services:
       USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?cp dev.env.defaults .env}
       USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?cp dev.env.defaults .env}
       USSD_TELETALK_GATEWAY_SECRET: ${USSD_TELETALK_GATEWAY_SECRET:?cp dev.env.defaults .env}
+      # the softhsm mw-crypto token's user PIN, into secret/mw-crypto (ticket 61)
+      SOFTHSM_MWCRYPTO_USER_PIN: ${SOFTHSM_MWCRYPTO_USER_PIN:?cp dev.env.defaults .env}
     volumes:
       - openbao-data:/openbao/file:ro
       # one volume per service, at /out/<dir> as listed in services.sh

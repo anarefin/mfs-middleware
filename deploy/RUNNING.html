@@ -230,6 +230,7 @@ docker compose logs -f mw-orchestrator</pre></div>
       <tr><td>3000</td><td>mw-admin-ui</td><td>admin console (Next.js, base path <code>/console</code>; sign in through 443)</td><td><code>/console</code></td><td>core</td></tr>
       <tr><td>3001</td><td>mw-test-console</td><td>test console, dev/test only</td><td><code>/tester</code></td><td>tester</td></tr>
       <tr><td>—</td><td>mw-seeder</td><td>one-shot seeder</td><td>none</td><td>seed (always with core)</td></tr>
+      <tr><td>5657 / 5658</td><td>softhsm</td><td>dev/test PKCS#11 tokens <code>mw-crypto</code> / <code>paysim</code> (SoftHSMv2 over p11-kit RPC; <code>deploy/softhsm/README.md</code>)</td><td>none</td><td>minimal, core</td></tr>
     </table></div>
     <h3>Platform (always started)</h3>
     <div class="table-wrap"><table>

@@ -8,7 +8,7 @@ PROVISION_DIR="$REPO_DIR/deploy/provision"
 PROVISION_ENV="VALKEY_PASSWORD=valkey-t BILLAGG_HMAC_SECRET=billagg-t C2WBANK_HMAC_SECRET=c2w-t
   CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t
   USSD_GP_GATEWAY_SECRET=gp-t USSD_ROBI_GATEWAY_SECRET=robi-t USSD_BL_GATEWAY_SECRET=bl-t
-  USSD_TELETALK_GATEWAY_SECRET=teletalk-t"
+  USSD_TELETALK_GATEWAY_SECRET=teletalk-t SOFTHSM_MWCRYPTO_USER_PIN=hsm-pin-t"
 
 provision_fixture() {
   mkdir -p .bin .kv out
@@ -136,6 +136,8 @@ test_provision_writes_the_service_specific_keys() {
   [ "$(kv mw-ussd mw.ussd.pin.key-id)" = core-pin-dev-1 ] || fail "ussd key id"
   [ "$(kv mw-checkout mw.checkout.pin.public-key)" = PUBLIC-PEM ] || fail "checkout PIN key"
   [ "$(kv mw-checkout mw.checkout.pin.key-id)" = core-pin-dev-1 ] || fail "checkout key id"
+  # the softhsm mw-crypto token's user PIN (ticket 61), written ahead of the mw-crypto service
+  [ "$(kv mw-crypto mw.crypto.pkcs11.user-pin)" = hsm-pin-t ] || fail "mw-crypto token PIN"
   # one role + schema per plain service
   grep -q 'role=orchestrator_rw .*schema=txn' .psql-calls || fail "orchestrator role/schema"
   # mw-admin-api also owns schema partner (its Flyway migrates both)
@@ -171,6 +173,8 @@ test_provision_fails_when_a_required_env_secret_is_missing() {
   provision_fixture
   assert_fails run_provision VALKEY_PASSWORD=
   assert_out_contains "VALKEY_PASSWORD"
+  assert_fails run_provision SOFTHSM_MWCRYPTO_USER_PIN=
+  assert_out_contains "SOFTHSM_MWCRYPTO_USER_PIN"
 }
 
 test_provision_never_polls_or_sleeps() {

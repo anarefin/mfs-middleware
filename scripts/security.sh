@@ -13,7 +13,8 @@
 #               built locally fails the stage
 #               (image-missing, NOT SCANNED); without MODULE also every third-party image
 #               deploy/docker-compose.yml pins and the platform images built from the repo
-#               (mfs-mw/keycloak:local, deploy/keycloak/Dockerfile; mfs-mw/provision:local,
+#               (mfs-mw/keycloak:local, deploy/keycloak/Dockerfile; mfs-mw/softhsm:local,
+#               deploy/softhsm/Dockerfile; mfs-mw/provision:local,
 #               deploy/provision/Dockerfile, the dev provisioning one-shot)
 #   HIGH and CRITICAL fail, minus the justified entries of .trivyignore.yaml; image scans skip
 #   OS packages without a fix (--ignore-unfixed, decision in docs/security-findings.md).
@@ -170,8 +171,10 @@ if [ -z "$m" ] && [ -f "$MW_ROOT/deploy/provision/Dockerfile" ]; then
 fi
 # Platform images built from the repo (ticket 55): upstream content plus our build step, so the
 # third-party ignore file applies; one not built fails like a module image.
-if [ -z "$m" ] && [ -f "$MW_ROOT/deploy/keycloak/Dockerfile" ]; then
-  img=mfs-mw/keycloak:local
+# keycloak (ticket 55) and softhsm (ticket 61, the dev/test PKCS#11 tokens on pinned Alpine packages).
+for platform in keycloak softhsm; do
+  [ -z "$m" ] && [ -f "$MW_ROOT/deploy/$platform/Dockerfile" ] || continue
+  img="mfs-mw/$platform:local"
   if docker image inspect "$img" >/dev/null 2>&1; then
     ignore_args=()
     [ -f "$THIRD_PARTY_IGNORE" ] && ignore_args=(--ignorefile "$THIRD_PARTY_IGNORE")
@@ -180,7 +183,7 @@ if [ -z "$m" ] && [ -f "$MW_ROOT/deploy/keycloak/Dockerfile" ]; then
     failed="$failed image-missing:$img"
     printf '==> ERROR security: image %s not built: %s NOT SCANNED (build it first: docker compose build in deploy/)\n' "$img" "$img" >&2
   fi
-fi
+done
 if [ -z "$m" ] && [ -f "$STACK_FILE" ]; then
   ignore_args=()
   [ -f "$THIRD_PARTY_IGNORE" ] && ignore_args=(--ignorefile "$THIRD_PARTY_IGNORE")
