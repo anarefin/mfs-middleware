@@ -24,7 +24,9 @@ class KeyPurposeTest {
     "TOKENISE_MSISDN, HMAC_SHA256, TOKENISE, tokenise-msisdn, ,",
     "KEK_COLUMN, AES_256, ENVELOPE, kek-column, ,",
     "HMAC_WEBHOOK, HMAC_SHA256, HMAC, hmac-webhook, ,",
-    "XMLDSIG, RSA_3072, XMLDSIG, xmldsig, RS256, sig"
+    "XMLDSIG, RSA_3072, XMLDSIG, xmldsig, RS256, sig",
+    "HTTP_SIGN_RSA, RSA_3072, XMLDSIG, http-sign-rsa, PS512, sig",
+    "HTTP_SIGN_EC, EC_P256, XMLDSIG, http-sign-ec, ES256, sig"
   })
   void eachPurposeHasItsAlgorithmCapabilityAndDefaultKeyId(
       String name, KeyAlgorithm algorithm, Capability capability, String keyId, String jwkAlg, String use) {

@@ -12,7 +12,7 @@ public enum Capability {
   TOKENISE,
   /** Envelope encryption: AES-256-GCM data keys wrapped by a KEK. */
   ENVELOPE,
-  /** XML-DSig and HTTP-message signatures (RSA-SHA256). */
+  /** XML-DSig (RSA-SHA256) and RFC 9421 HTTP-message signatures (RSA-PSS, RSA v1.5, ECDSA P-256). */
   XMLDSIG,
   /** ISO 9564 PIN-block translation (payShield). */
   PIN_BLOCK,

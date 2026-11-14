@@ -113,9 +113,11 @@ public final class HsmStack {
             .withEnv("MW_CRYPTO_HSM_PROBE_PERIOD", "1s")
             .withEnv("MW_INTERNAL_JWK_SET_URI", "http://host.testcontainers.internal:" + jwksPort + "/certs")
             .withEnv("MW_INTERNAL_ISSUER", InternalTokens.ISSUER)
-            // OperationsIT's own HMAC purpose (security/CallerPolicy denies a purpose without an entry)
+            // OperationsIT's own HMAC purpose and SignaturesIT's XML-DSig and HTTP signature purposes
+            // (security/CallerPolicy denies a purpose without an entry; no production caller has them yet)
             .withEnv("SPRING_APPLICATION_JSON",
-                "{\"mw\":{\"crypto\":{\"authz\":{\"purposes\":{\"HMAC_IT\":[\"mw-auth\"]}}}}}")
+                "{\"mw\":{\"crypto\":{\"authz\":{\"purposes\":{\"HMAC_IT\":[\"mw-auth\"],\"XMLDSIG\":[\"mw-auth\"],"
+                    + "\"HTTP_SIGN_RSA\":[\"mw-auth\"],\"HTTP_SIGN_EC\":[\"mw-auth\"]}}}}}")
             // mTLS: its certificate from the test PKI (token auth; the stack uses AppRole)
             .withEnv("VAULT_ENABLED", "true")
             .withEnv("VAULT_ADDR", "http://openbao:8200")

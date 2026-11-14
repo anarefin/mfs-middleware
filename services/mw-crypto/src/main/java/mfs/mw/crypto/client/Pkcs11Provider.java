@@ -209,6 +209,11 @@ public class Pkcs11Provider implements CryptoProvider {
               pss.setParameter(algorithm.pssParameters());
               yield pss;
             }
+            case PS512 -> {
+              Signature pss = Signature.getInstance("SHA512withRSASSA-PSS", t.provider());
+              pss.setParameter(algorithm.pssParameters());
+              yield pss;
+            }
             case ES256 -> Signature.getInstance("SHA256withECDSA", t.provider());
           };
       s.initSign(privateKey(t, label));
