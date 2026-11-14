@@ -42,6 +42,6 @@
 71-txn-authorisation-assertion              69                open
 72-channels-switch-to-assertion             71,70             open
 73-keycloak-realm-hardening                 69                open
-74-audit-anchor-signing                     63,66             done     19m      49 files +1681 −51     1f1a8a6f..c757ffbd
+74-audit-anchor-signing                     63,66             done     19m      49 files +1681 −51     1f1a8a6f..9aec2426 (+review fix)
 75-admin-key-management-ceremony            64,70             open
 76-security-tests-docs                      72,73,75          open
