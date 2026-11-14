@@ -22,11 +22,27 @@ enum Reason {
   ORIGINAL_NOT_REVERSIBLE("A reversal cannot be reversed"),
   ALREADY_REVERSED("Transaction was already reversed"),
   AMOUNT_MISMATCH("Amount differs from the original transfer"),
-  WALLET_NOT_LOCKED("Wallet is not locked");
+  WALLET_NOT_LOCKED("Wallet is not locked"),
+  /**
+   * mw-auth's transaction assertion was refused (ticket 71: signature, audience, expiry, hash,
+   * wallet or a jti used by another transaction); travels as mw-auth's code MW-AUTH-046.
+   */
+  ASSERTION_INVALID("MW-AUTH-046", "Transaction authorisation invalid or already used");
 
   final String message;
+  private final String code;
 
   Reason(String message) {
+    this(null, message);
+  }
+
+  Reason(String code, String message) {
+    this.code = code;
     this.message = message;
+  }
+
+  /** The {@code reasonCode} of the failure event: the name, except the assertion's MW-AUTH-046. */
+  String code() {
+    return code != null ? code : name();
   }
 }

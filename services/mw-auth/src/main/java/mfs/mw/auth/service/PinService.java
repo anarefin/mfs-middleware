@@ -24,7 +24,7 @@ import org.springframework.stereotype.Service;
  * resets the count and stores the rehash of a rotated key. Nothing about the PIN is logged.
  */
 @Service
-public class PinService {
+public class PinService implements PinVerification {
 
   private static final Logger log = LoggerFactory.getLogger(PinService.class);
 
@@ -39,6 +39,7 @@ public class PinService {
   }
 
   /** Verifies the wallet's PIN; 403 MW-AUTH-045 when it has none, 401 MW-AUTH-040 when wrong. */
+  @Override
   public void verify(String walletId, EncryptedPin pin) {
     PinHmac stored = credentials.find(walletId).orElseThrow(PinService::notSet);
     CryptoPinVerified r = crypto.verifyPin(walletId, pin, stored.hmac(), stored.hmacKeyId());

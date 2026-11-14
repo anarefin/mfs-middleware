@@ -33,12 +33,27 @@ class CoreCommandMapperTest {
   void readsEveryValidTransferSample(Path sample) throws Exception {
     CoreCommand cmd = mapper.command(Files.readString(sample));
 
-    if (mapper.transfer(cmd).pinRequired()) {
-      assertThat(mapper.transfer(cmd).encryptedPin().ciphertext()).isNotBlank();
+    var p = mapper.transfer(cmd);
+    if (!p.pinRequired()) {
+      assertThat(p.encryptedPin()).isNull(); // BULK_DISBURSE, ticket 34
+      assertThat(p.assertion()).isNull();
+    } else if (p.assertion() != null) {
+      assertThat(p.encryptedPin()).isNull(); // ticket 71: the assertion instead of the PIN
+      assertThat(p.idempotencyKey()).isNotBlank();
     } else {
-      assertThat(mapper.transfer(cmd).encryptedPin()).isNull(); // BULK_DISBURSE, ticket 34
+      assertThat(p.encryptedPin().ciphertext()).isNotBlank();
     }
-    assertThat(mapper.transfer(cmd).debitParty().id()).isNotBlank();
+    assertThat(p.debitParty().id()).isNotBlank();
+  }
+
+  @Test
+  void anAssertionWithoutItsIdempotencyKeyIsRejected() {
+    String body =
+        "{\"schemaVersion\":1,\"commandType\":\"PostTransfer\",\"commandId\":\"c\",\"txnId\":\"t\",\"payload\":{\"txnType\":\"P2P\","
+            + "\"debitParty\":{\"type\":\"WALLET\",\"id\":\"01711000001\"},\"creditParty\":{\"type\":\"WALLET\","
+            + "\"id\":\"01711000002\"},\"amount\":{\"valueMinor\":100,\"currency\":\"BDT\"},\"assertion\":\"a.b.c\"%s}}";
+    assertThatThrownBy(() -> mapper.transfer(mapper.command(body.formatted("")))).isInstanceOf(MwException.class);
+    assertThat(mapper.transfer(mapper.command(body.formatted(",\"idempotencyKey\":\"k\""))).assertion()).isEqualTo("a.b.c");
   }
 
   @Test

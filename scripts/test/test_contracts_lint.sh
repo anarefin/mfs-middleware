@@ -66,14 +66,17 @@ test_repo_has_the_v1_contract_set_under_each_owning_service() {
   done
 }
 
-# Core commands needing customer authorisation carry encryptedPin { keyId, ciphertext } (6.3, M11).
-# Each has an invalid sample stated to fail only for the missing encryptedPin.
-test_repo_core_command_requires_encryptedPin_on_authorising_commands() {
+# Core commands needing customer authorisation carry mw-auth's assertion (18.7, D22) or, until
+# ticket 72, the deprecated encryptedPin: each has an invalid sample stated to fail for carrying
+# neither, and a valid sample with an assertion.
+test_repo_core_command_requires_authorisation_on_authorising_commands() {
   local s="$REPO_DIR/contracts/events/mw-orchestrator/samples/core.command.v1" c
   for c in ValidateTransaction HoldFunds PostTransfer; do
-    grep -q "\"/payload must have required property 'encryptedPin'\"" "$s/$c/expected-errors.json" 2>/dev/null \
-      || fail "no invalid $c sample stated to fail for a missing encryptedPin"
+    grep -q "\"/payload must have required property 'assertion'\"" "$s/$c/expected-errors.json" 2>/dev/null \
+      || fail "no invalid $c sample stated to fail for a missing assertion"
+    grep -lq '"assertion"' "$s/$c"/valid-*.json 2>/dev/null || fail "no valid $c sample with an assertion"
   done
+  grep -q '"TxnAssertion": {' "$REPO_DIR/contracts/common/defs.v1.schema.json" || fail "defs.v1 lacks TxnAssertion"
 }
 
 # A decimal amount is rejected because valueMinor must be an integer (spec 5.1).

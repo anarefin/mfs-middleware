@@ -32,6 +32,9 @@ import org.springframework.stereotype.Service;
  *       the cached set fetches it again at once (at most every {@link #MIN_REFRESH}), so a rotated key
  *       works without waiting for the cache.
  *   <li>{@code PIN_TRANSPORT}: the newest version as PEM ({@code GET /auth/v1/pin-key}).
+ *   <li>{@code ASSERTION_SIGN} (ticket 71): every version in use, public members only ({@code GET
+ *       /auth/v1/.well-known/assertion-jwks.json}): the core verifies the transaction assertions
+ *       with it.
  * </ul>
  *
  * mw-crypto down and nothing cached: 503 MW-SYS-050.
@@ -50,6 +53,7 @@ public class JwksService {
   private final Clock clock;
   private volatile Cached<Map<String, Object>> signing;
   private volatile Cached<PinKey> pinKey;
+  private volatile Cached<Map<String, Object>> assertion;
 
   public JwksService(CryptoClient crypto, TokenProperties props, Clock clock) {
     this.crypto = crypto;
@@ -62,6 +66,16 @@ public class JwksService {
     Cached<Map<String, Object>> c = signing;
     if (c == null || expired(c.at(), props.jwksCacheTtl())) {
       c = fetchSigning();
+    }
+    return c.value();
+  }
+
+  /** The ASSERTION_SIGN JWK Set as served at {@code /.well-known/assertion-jwks.json}. */
+  public Map<String, Object> assertionJwks() {
+    Cached<Map<String, Object>> c = assertion;
+    if (c == null || expired(c.at(), props.jwksCacheTtl())) {
+      c = new Cached<>(publicSet(crypto.jwks("ASSERTION_SIGN")), clock.instant());
+      assertion = c;
     }
     return c.value();
   }
@@ -89,7 +103,13 @@ public class JwksService {
   }
 
   private synchronized Cached<Map<String, Object>> fetchSigning() {
-    Map<String, Object> raw = crypto.jwks("JWT_SIGN");
+    Cached<Map<String, Object>> c = new Cached<>(publicSet(crypto.jwks("JWT_SIGN")), clock.instant());
+    signing = c;
+    return c;
+  }
+
+  /** Only the public members of every key of a mw-crypto set. */
+  private static Map<String, Object> publicSet(Map<String, Object> raw) {
     List<Map<String, Object>> keys = new ArrayList<>();
     for (Object k : (List<?>) raw.get("keys")) {
       if (k instanceof Map<?, ?> m) {
@@ -102,9 +122,7 @@ public class JwksService {
         keys.add(pub);
       }
     }
-    Cached<Map<String, Object>> c = new Cached<>(Map.of("keys", List.copyOf(keys)), clock.instant());
-    signing = c;
-    return c;
+    return Map.of("keys", List.copyOf(keys));
   }
 
   private static PinKey newestPinKey(Map<String, Object> set) {

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits wallet authentication API (mw-auth)
-  version: 1.1.0
+  version: 1.2.0
   description: |
     Public API v1 of mw-auth (spec 9.1, 18.7, D21), behind APISIX route `/auth/v1/*` (no auth plugin
     at the edge, rate limited per MSISDN and per address; not rewritten: the device signs the path it
@@ -253,6 +253,23 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/JwkSet" }
         "503": { $ref: "#/components/responses/Error" }
+  /auth/v1/.well-known/assertion-jwks.json:
+    get:
+      operationId: getAssertionJwks
+      summary: The transaction assertions' JWK Set (ticket 71)
+      description: >-
+        Every version in use of the mw-crypto key `ASSERTION_SIGN` (EC P-256, ES256; public members
+        only), from mw-crypto (cached, `mw.auth.tokens.jwks-cache-ttl`). The core (mw-core-mock)
+        fetches it at start and refreshes it on a timer, never on the money path, and verifies the
+        assertions of `POST /internal/v1/txn-authorisations` (auth-internal.v1) with it.
+      security: []
+      responses:
+        "200":
+          description: The JWK Set
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EcJwkSet" }
+        "503": { $ref: "#/components/responses/Error" }
   /auth/v1/.well-known/openid-configuration:
     get:
       operationId: getDiscovery
@@ -422,6 +439,25 @@ components:
                 - { required: [d] }
                 - { required: [p] }
                 - { required: [q] }
+    EcJwkSet:
+      type: object
+      description: The ASSERTION_SIGN keys (EC P-256), public members only
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            required: [kty, kid, alg, crv, x, y]
+            properties:
+              kty: { type: string, enum: [EC] }
+              kid: { type: string }
+              alg: { type: string, enum: [ES256] }
+              use: { type: string, enum: [sig] }
+              crv: { type: string, enum: [P-256] }
+              x: { type: string }
+              y: { type: string }
+            not: { required: [d] }
     Discovery:
       type: object
       required: [issuer, jwks_uri, id_token_signing_alg_values_supported]

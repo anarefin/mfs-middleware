@@ -23,6 +23,16 @@ class ApiContractsTest {
   }
 
   @Test
+  void mwAuthsAssertionKeySetIsConsumedAsItsContractShapesIt() {
+    String auth = "api/mw-auth/auth.v1.openapi.yaml";
+    assertThat(ContractManifest.consumedApis()).containsExactly(auth);
+    JsonNode served = JSON.readTree(
+        new com.nimbusds.jose.jwk.JWKSet(mfs.mw.core.mock.security.TestAssertions.KEY.toPublicJWK()).toString());
+    assertThat(OpenApiSchemas.response(auth, "/auth/v1/.well-known/assertion-jwks.json", "get", "200").validate(served))
+        .as("the test key set the ITs verify with is shaped as mw-auth serves it").isEmpty();
+  }
+
+  @Test
   void aServedWalletIsTheContractsWallet() {
     JsonNode body = JSON.readTree(JSON.writeValueAsString(new WalletBalance("01712000001", "CUSTOMER", "ACTIVE", 10, 2, 8)));
     for (String status : new String[] {"200", "201"}) {

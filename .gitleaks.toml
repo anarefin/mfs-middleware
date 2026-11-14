@@ -8,7 +8,7 @@ title = "Bits MFS middleware"
 useDefault = true
 
 [[allowlists]]
-description = "Test fixtures and samples: UUID idempotency keys, partner config keys, card-token masking samples, a key generated in the test, the base64 of 'not a key', placeholder .env values in shell tests"
+description = "Test fixtures and samples: UUID idempotency keys, partner config keys, card-token masking samples, a key generated in the test, the base64 of 'not a key', placeholder .env values in shell tests, fake-signature assertion samples"
 regexTarget = "line"
 regexes = [
   '''"idempotencyKey"\s*:\s*"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"''',
@@ -18,6 +18,8 @@ regexes = [
   '''"bm90IGEga2V5"''',
   '''=k3yFromDotEnv''',
   '''=s3cretFromDotEnv''',
+  # contract samples of the transaction assertion (ticket 71): the signature segment is base64url("fake-signature...")
+  '''"assertion"\s*:\s*"eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.ZmFrZS1zaWduYXR1cmU[A-Za-z0-9_-]*"''',
 ]
 
 [[allowlists]]

@@ -32,6 +32,12 @@ public class WellKnownController {
     return ResponseEntity.ok().cacheControl(CacheControl.maxAge(props.jwksCacheTtl())).body(jwks.signingJwks());
   }
 
+  /** The ASSERTION_SIGN keys the core verifies transaction assertions with (ticket 71). */
+  @GetMapping("/auth/v1/.well-known/assertion-jwks.json")
+  public ResponseEntity<Map<String, Object>> assertionJwks() {
+    return ResponseEntity.ok().cacheControl(CacheControl.maxAge(props.jwksCacheTtl())).body(jwks.assertionJwks());
+  }
+
   @GetMapping("/auth/v1/.well-known/openid-configuration")
   public Map<String, Object> discovery() {
     Map<String, Object> d = new LinkedHashMap<>();

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits wallet authentication internal API (mw-auth)
-  version: 1.1.0
+  version: 1.2.0
   description: |
     Internal API of mw-auth (spec 18.7, ADR D24), on its internal port (`https://mw-auth:8443`, the
     `app` zone network; not routed by APISIX). mTLS is mandatory: the TLS handshake needs a client
@@ -16,7 +16,12 @@ info:
     on every app request; the session answer carries the fingerprint of the device's current key and
     its binding time (ticket 69, security review of 68), so a key cached before a rebind or a key
     replacement is dropped within the gateway's session-confirmation cache (10 s). Later tickets add
-    the PIN, lock and assertion operations (70, 71).
+    the PIN and lock operations (70).
+
+    Ticket 71 (spec 18.7, D22): `POST /internal/v1/txn-authorisations`, the transaction
+    authorisation assertion the channels (mw-app-gateway, mw-ussd, mw-checkout only; mw-admin-api
+    403 MW-AUTH-002) fetch before they publish `mw.txn.request.v1`. The core verifies it with the
+    public set at `GET /auth/v1/.well-known/assertion-jwks.json` (auth.v1).
 
     Dev only (ticket 69): `POST /internal/v1/seed/pins`, the seeder's first PINs, exists only with
     `mw.auth.seed-api.enabled=true` (the dev stack), on the plain public port (the seeder has no
@@ -75,6 +80,45 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/txn-authorisations:
+    post:
+      operationId: authoriseTransaction
+      summary: PIN check, then a single-use transaction assertion bound to the transaction
+      description: >-
+        Callers: mw-app-gateway, mw-ussd, mw-checkout (else 403 MW-AUTH-002). In this order: the
+        wallet (exactly one of walletId and msisdn, else 400 MW-VAL-001; unknown 403 MW-AUTH-002) is
+        ACTIVE and not locked (403 MW-AUTH-043, 423 MW-AUTH-041 with retryAfter, 423 MW-AUTH-042); an
+        app's deviceId is the wallet's bound device (401 MW-AUTH-047); a live assertion under the
+        same wallet and idempotency key is returned again without a PIN check when the transaction
+        is the same, and refused 409 MW-IDEM-001 when it differs; then the PIN through mw-crypto
+        (wrong 401 MW-AUTH-040, counted; no PIN 403 MW-AUTH-045). The answer is a compact JWS
+        (ES256, mw-crypto ASSERTION_SIGN, header kid `<keyId>.v<n>` and typ `txn-assertion+jwt`)
+        with claims `iss` mw-auth, `aud` core, `sub` walletId, `jti` (UUIDv7), `iat`, `exp` (iat +
+        60 s), `txnHash`, `channel`, `authMethod` PIN, `deviceId` (when sent), `newDevice` (the
+        wallet's device was bound less than 24 h ago). `txnHash` is the base64url SHA-256 (no
+        padding) of the RFC 8785 canonical JSON of `{txnType, amount, currency, payer {type, id},
+        payee {type, id}, idempotencyKey, channel}`, the values of the `mw.txn.request.v1` the
+        channel then publishes (payer = debitParty, payee = creditParty, amount = valueMinor).
+        mw-crypto or the session store down: 503 MW-SYS-050 / MW-SYS-012 (retryable).
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TxnAuthorisationRequest" }
+      responses:
+        "200":
+          description: The assertion
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TxnAuthorisation" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "423": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
   /internal/v1/seed/pins:
     post:
@@ -190,6 +234,49 @@ components:
             properties:
               walletId: { type: string }
               outcome: { type: string, enum: [CREATED, UNCHANGED, UNKNOWN_WALLET, WEAK] }
+    TxnAuthorisationRequest:
+      type: object
+      required: [channel, encryptedPin, txn]
+      properties:
+        walletId: { type: string, minLength: 1, maxLength: 64, description: "The app's wallet (exactly one of walletId and msisdn)" }
+        msisdn: { type: string, pattern: "^(\\+?880|0)1[3-9][0-9]{8}$", description: USSD and checkout name the wallet by its MSISDN }
+        channel: { type: string, pattern: "^[A-Z][A-Z_]{1,31}$", description: "The mw.txn.request.v1 channel, e.g. CUSTOMER_APP, USSD, WEB_CHECKOUT" }
+        deviceId: { type: string, minLength: 1, maxLength: 128, description: The app's bound device (app channels only) }
+        encryptedPin:
+          type: object
+          required: [keyId, ciphertext]
+          description: The PIN encrypted under the mw-crypto PIN_TRANSPORT key (GET /auth/v1/pin-key)
+          properties:
+            keyId: { type: string }
+            ciphertext: { type: string, maxLength: 4096 }
+        txn:
+          type: object
+          required: [txnType, amount, currency, payer, payee, idempotencyKey]
+          properties:
+            txnType: { type: string, pattern: "^[A-Z][A-Z0-9_]{1,31}$" }
+            amount: { type: integer, minimum: 1, description: Minor units (the request's amount.valueMinor) }
+            currency: { type: string, pattern: "^[A-Z]{3}$" }
+            payer: { $ref: "#/components/schemas/TxnParty" }
+            payee: { $ref: "#/components/schemas/TxnParty" }
+            idempotencyKey: { type: string, minLength: 1, maxLength: 64 }
+    TxnParty:
+      type: object
+      required: [type, id]
+      description: The request's debitParty / creditParty, type and id only
+      properties:
+        type: { type: string, pattern: "^[A-Z][A-Z_]{1,31}$" }
+        id: { type: string, minLength: 1, maxLength: 128 }
+    TxnAuthorisation:
+      type: object
+      required: [assertion, expiresAt, newDevice]
+      properties:
+        assertion:
+          type: string
+          maxLength: 4096
+          pattern: "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+          description: The compact JWS for mw.txn.request.v1 `assertion`
+        expiresAt: { type: string, format: date-time }
+        newDevice: { type: boolean }
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]

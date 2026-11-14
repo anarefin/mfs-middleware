@@ -277,7 +277,7 @@ public class CoreCommandService {
     Instant dayStart = clock.instant().truncatedTo(ChronoUnit.DAYS);
     long usedToday = wallets.debitedSince(debit.id(), dayStart);
 
-    Optional<Reason> refusal = rules.check(p, debit, credit, amount, fee, usedToday);
+    Optional<Reason> refusal = rules.check(cmd.txnId(), p, debit, credit, amount, fee, usedToday);
     if (refusal.isPresent()) {
       return reject(cmd, failureType, coreRef, refusal.get());
     }
@@ -309,7 +309,7 @@ public class CoreCommandService {
     long amount = p.amount().valueMinor();
     long fee = rules.fee(p.txnType());
     long usedToday = wallets.debitedSince(debit.id(), clock.instant().truncatedTo(ChronoUnit.DAYS));
-    Optional<Reason> refusal = rules.check(p, debit, null, amount, fee, usedToday);
+    Optional<Reason> refusal = rules.check(cmd.txnId(), p, debit, null, amount, fee, usedToday);
     if (refusal.isPresent()) {
       return reject(cmd, "TransactionRejected", coreRef, refusal.get());
     }
@@ -325,7 +325,7 @@ public class CoreCommandService {
       return reject(cmd, "TransactionRejected", coreRef, Reason.CREDIT_WALLET_NOT_FOUND);
     }
     Wallet credit = wallets.lock(creditId.get());
-    Optional<Reason> refusal = rules.checkPayee(p, credit, p.amount().valueMinor());
+    Optional<Reason> refusal = rules.checkPayee(cmd.txnId(), p, credit, p.amount().valueMinor());
     if (refusal.isPresent()) {
       return reject(cmd, "TransactionRejected", coreRef, refusal.get());
     }
@@ -335,7 +335,7 @@ public class CoreCommandService {
   }
 
   private CoreEvent reject(CoreCommand cmd, String failureType, String coreRef, Reason reason) {
-    return events.rejected(cmd, failureType, coreRef, reason.name(), reason.message);
+    return events.rejected(cmd, failureType, coreRef, reason.code(), reason.message);
   }
 
   private CoreEvent.BalanceAfter balanceOf(String walletId) {
