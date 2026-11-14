@@ -35,7 +35,7 @@
 64-payshield-provider-simulator             63                open
 65-mw-crypto-xmldsig-http-signatures        63                done     27m      37 files +3007 −20     c5facff6, merge dccaa1c9
 66-openbao-pki-mtls                         62                done     24m      40 files +2975 −70     d8032171..596a1e05
-67-mw-auth-scaffold                         63,66             open
+67-mw-auth-scaffold                         63,66             done     39m      145 files +10665 −58   d50edf8d..510b25f4 (+merges)
 68-move-device-otp-sessions-to-mw-auth      67                open
 69-mw-auth-login-tokens                     68                open
 70-pin-lifecycle-lockout-revocation         69                open
