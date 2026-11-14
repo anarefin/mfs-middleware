@@ -106,6 +106,16 @@ export function mayDecide(cr: ChangeRequest, operator: string | null | undefined
   return cr.status === "PENDING" && checkerRoles(cr).some((r) => roles.includes(r)) && !!operator && cr.makerId !== operator;
 }
 
+/**
+ * A key request left APPROVING (ticket 75: mw-crypto did not answer the approval's call): another
+ * security-admin than the maker may retry the approval (the same change request id is sent again);
+ * nobody can reject it any more.
+ */
+export function mayRetryApproval(cr: ChangeRequest, operator: string | null | undefined, roles: readonly string[]): boolean {
+  return cr.status === "APPROVING" && cr.resourceType === "key" && roles.includes(KEY_CHECKER_ROLE) && !!operator
+    && cr.makerId !== operator;
+}
+
 const WALLET_ID = /^01[3-9]\d{8}$/;
 
 /** A wallet id (its MSISDN) in any form (01..., 880..., +880 with spaces or dashes) -> 01XXXXXXXXX. */

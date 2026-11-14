@@ -846,7 +846,8 @@ components:
       enum: [LOCKED, ACTIVE, RESET]
     ChangeRequestStatus:
       type: string
-      enum: [PENDING, APPROVED, REJECTED, EXPIRED]
+      description: APPROVING (ticket 75) = claimed by a checker whose approval calls mw-crypto; reject and expiry refuse it
+      enum: [PENDING, APPROVING, APPROVED, REJECTED, EXPIRED]
     ChangeRequest:
       type: object
       description: >-

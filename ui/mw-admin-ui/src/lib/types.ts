@@ -88,7 +88,7 @@ export type TxnDetail = {
 
 export type TxnAction = "INQUIRE" | "FORCE_COMMIT" | "FORCE_RELEASE" | "REVERSE";
 export type WalletAction = "UNLOCK" | "PIN_RESET";
-export type ChangeRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
+export type ChangeRequestStatus = "PENDING" | "APPROVING" | "APPROVED" | "REJECTED" | "EXPIRED";
 
 export type PartnerAction = "ENABLE" | "DISABLE" | "SET_TIMEOUTS" | "UPSERT";
 export type ContentAction = "PUBLISH";

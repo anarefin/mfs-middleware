@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkerLabel, diffLabel, mayDecide } from "./approvals";
+import { checkerLabel, diffLabel, mayDecide, mayRetryApproval } from "./approvals";
 import {
   canAdminKeys, canReadKeys, ceremonyStep, kcvMatches, mayEnterComponent, parseCheckValue, parseComponent, parseKeyId,
   parsePurpose, retirable,
@@ -57,5 +57,11 @@ describe("keys (ticket 75)", () => {
     expect(mayDecide(pendingKeyRotation, "seed-ops-checker", ["ops-checker"])).toBe(false);
     expect(checkerLabel(pendingKeyRotation)).toBe("another security-admin");
     expect(diffLabel(pendingKeyRotation)).toEqual({ before: "pin-hmac.v2 ACTIVE", after: "pin-hmac.v3 ACTIVE" });
+    // claim-first (APPROVING): only a retry of the approval, never by the maker, never a reject
+    const approving = { ...pendingKeyRotation, status: "APPROVING" as const };
+    expect(mayDecide(approving, "seed-ops-secadmin2", ["security-admin"])).toBe(false);
+    expect(mayRetryApproval(approving, "seed-ops-secadmin2", ["security-admin"])).toBe(true);
+    expect(mayRetryApproval(approving, "seed-ops-secadmin1", ["security-admin"])).toBe(false);
+    expect(mayRetryApproval(pendingKeyRotation, "seed-ops-secadmin2", ["security-admin"])).toBe(false);
   });
 });

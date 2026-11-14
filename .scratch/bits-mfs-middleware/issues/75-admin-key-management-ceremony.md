@@ -32,7 +32,9 @@
 - mw-admin-api calls mw-crypto synchronously over mTLS (key-admin client), idempotent on the change
   request id: `PUT /internal/v1/key-changes/{id}` (generate / rotate / retire, no bootstrap flag) and
   `/internal/v1/ceremonies/{id}/components|commit|abort`; not an outbox command, because the ceremony is
-  interactive and returns the KCV. `mw.crypto.bootstrap-keys` stays false outside dev.
+  interactive and returns the KCV. Approval is claim-first (PENDING -> APPROVING, then the call, then APPROVED;
+  a refusal goes back to PENDING; reject / expiry refuse APPROVING; `KeyApprovalRaceIT`).
+  `mw.crypto.bootstrap-keys` stays false outside dev.
 - HSM-side combine: SoftHSM 2.6.1 has no `CKM_XOR_BASE_AND_DATA` and the p11-kit RPC refuses
   `CKM_AES_KEY_WRAP`, so the two components (P-256 scalars, check value = SHA-256 of the compressed
   `d·G`, 3 bytes) are combined by `CKM_ECDH1_DERIVE` into an HMAC-SHA256 key (`x(d1·d2·G)`), KCV =

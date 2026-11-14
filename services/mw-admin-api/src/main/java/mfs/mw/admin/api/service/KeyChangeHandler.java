@@ -22,13 +22,10 @@ import org.springframework.stereotype.Component;
  * Approval of a key change request (ticket 75, resourceType {@code key}, spec 18.8, OWN-08): the
  * checker is a security-admin who is not the maker (the shared rule) and signed in with MFA at most
  * {@code mw.admin-api.key-mfa-max-age} ago ({@link #checkDecider}, also on reject). The change
- * itself is mw-crypto's: {@link #prepare} calls its key API before the decision transaction, which
- * mw-crypto applies once per change request id (a retried approval answers the same result). If
- * the decision then loses a race (a parallel reject or expiry), mw-crypto has applied a change
- * whose row is not APPROVED (409 MW-VAL-033 to the checker); both services log it with the change
- * request id ({@code admin.key_change.applied}, {@code crypto.key_change.applied}). Accepted: only
- * security-admins decide these, one at a time, and the result stays visible on the keys page.
- * A rejected or expired ceremony has its staged key destroyed ({@link #closed}, best effort).
+ * itself is mw-crypto's and is approved claim-first ({@link #claimFirst}): the request is APPROVING
+ * before {@link #prepare} calls mw-crypto's key API (idempotent on the change request id), so a
+ * parallel reject or expiry, which act on PENDING only, can never win after the call. A rejected or
+ * expired ceremony has its staged key destroyed ({@link #closed}, best effort).
  */
 @Component
 public class KeyChangeHandler implements ResourceChangeHandler {
@@ -52,6 +49,11 @@ public class KeyChangeHandler implements ResourceChangeHandler {
   @Override
   public Set<AdminRole> checkers() {
     return AdminRole.KEY_ADMIN;
+  }
+
+  @Override
+  public boolean claimFirst() {
+    return true;
   }
 
   @Override

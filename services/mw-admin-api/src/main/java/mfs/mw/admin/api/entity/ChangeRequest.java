@@ -49,6 +49,11 @@ public record ChangeRequest(
 
   public enum Status {
     PENDING,
+    /**
+     * Claimed by a checker whose approval calls another service synchronously (ticket 75, key
+     * changes): reject and expiry refuse it; it ends APPROVED, or PENDING again on a refusal.
+     */
+    APPROVING,
     APPROVED,
     REJECTED,
     EXPIRED

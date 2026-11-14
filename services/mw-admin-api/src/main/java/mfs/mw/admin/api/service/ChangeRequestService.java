@@ -201,7 +201,7 @@ public class ChangeRequestService {
   // --- checker --------------------------------------------------------------------------------
 
   public ChangeRequestView approve(Operator checker, UUID id) {
-    ChangeRequest cr = decidable(checker, id);
+    ChangeRequest cr = decidable(checker, id, true);
     if (ChangeRequest.PIN_RESET.equals(cr.resourceType())) {
       return approvePinReset(checker, cr);
     }
@@ -249,6 +249,9 @@ public class ChangeRequestService {
   }
 
   private ChangeRequestView approveOther(Operator checker, ChangeRequest cr) {
+    if (handler(cr.resourceType()).claimFirst()) {
+      return approveClaimFirst(checker, cr);
+    }
     Instant now = clock.instant();
     String correlationId = correlationId();
     ResourceChangeHandler.Approval approval = handler(cr.resourceType()).prepare(cr, checker, now, correlationId);
@@ -257,6 +260,49 @@ public class ChangeRequestService {
           Map<String, Object> payload = new LinkedHashMap<>(approval.payload());
           payload.putAll(approval.apply().get());
           if (!requests.decide(cr.id(), ChangeRequest.Status.APPROVED, checker.username(), checker.subject(), null, payload, now)) {
+            throw decided();
+          }
+          audit(ChangeRequestMapper.approved(cr, checker.username(), approval.sentAs(), correlationId, now), cr);
+        });
+    logDecision("admin.change_request.approved", cr, checker.username());
+    return found(cr.id());
+  }
+
+  /**
+   * Claim-first approval (ticket 75, see {@link ResourceChangeHandler#claimFirst()}): (1) PENDING ->
+   * APPROVING in one conditional update (a retry of a request already APPROVING skips it); (2) the
+   * handler's remote call, idempotent on the change request id; (3) APPROVING -> APPROVED with the
+   * payload and the audit in one transaction. A definite refusal of the call (4xx) puts the request
+   * back to PENDING; a call without an answer (timeout, 5xx) leaves it APPROVING. A parallel reject
+   * or expiry acts on PENDING only, so it can never win after the call: an applied change always
+   * belongs to an APPROVED (or still APPROVING) request.
+   */
+  private ChangeRequestView approveClaimFirst(Operator checker, ChangeRequest cr) {
+    ResourceChangeHandler h = handler(cr.resourceType());
+    if (cr.status() == ChangeRequest.Status.PENDING) {
+      Boolean claimed = tx.execute(s -> requests.claim(cr.id(), checker.username(), checker.subject()));
+      if (!Boolean.TRUE.equals(claimed)) {
+        throw decided();
+      }
+      logDecision("admin.change_request.approving", cr, checker.username());
+    }
+    Instant now = clock.instant();
+    String correlationId = correlationId();
+    ResourceChangeHandler.Approval approval;
+    try {
+      approval = h.prepare(cr, checker, now, correlationId);
+    } catch (MwException e) {
+      if (e.status().is4xxClientError()) {
+        tx.executeWithoutResult(s -> requests.release(cr.id()));
+        logDecision("admin.change_request.released", cr, checker.username());
+      }
+      throw e;
+    }
+    tx.executeWithoutResult(
+        s -> {
+          Map<String, Object> payload = new LinkedHashMap<>(approval.payload());
+          payload.putAll(approval.apply().get());
+          if (!requests.finishApproved(cr.id(), checker.username(), checker.subject(), payload, now)) {
             throw decided();
           }
           audit(ChangeRequestMapper.approved(cr, checker.username(), approval.sentAs(), correlationId, now), cr);
@@ -320,7 +366,7 @@ public class ChangeRequestService {
   }
 
   public ChangeRequestView reject(Operator checker, UUID id, String reason) {
-    ChangeRequest cr = decidable(checker, id);
+    ChangeRequest cr = decidable(checker, id, false);
     Instant now = clock.instant();
     tx.executeWithoutResult(
         s -> {
@@ -419,8 +465,11 @@ public class ChangeRequestService {
         });
   }
 
-  /** A request this checker may decide now; an expired one is marked EXPIRED first, then refused. */
-  private ChangeRequest decidable(Operator checker, UUID id) {
+  /**
+   * A request this checker may decide now; an expired one is marked EXPIRED first, then refused. An
+   * APPROVING request (claim-first types) may only be approved again (a retry), never rejected.
+   */
+  private ChangeRequest decidable(Operator checker, UUID id, boolean approving) {
     if (!checker.hasAny(AdminRole.ANY_CHECKER)) {
       throw new ForbiddenException("Deciding a change request needs a checker role");
     }
@@ -446,6 +495,13 @@ public class ChangeRequestService {
     }
     if (cr.status() == ChangeRequest.Status.EXPIRED) {
       throw expired();
+    }
+    if (cr.status() == ChangeRequest.Status.APPROVING) {
+      if (approving && typeHandler != null && typeHandler.claimFirst()) {
+        return cr;
+      }
+      throw new MwException(ErrorCodes.VAL_REQUEST_DECIDED, "The change request is being approved")
+          .withStatus(HttpStatus.CONFLICT);
     }
     if (cr.status() != ChangeRequest.Status.PENDING) {
       throw decided();

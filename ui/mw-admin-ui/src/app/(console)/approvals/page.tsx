@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { Input, NativeSelect } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { checkerLabel, diffLabel, mayDecide } from "@/lib/approvals";
+import { checkerLabel, diffLabel, mayDecide, mayRetryApproval } from "@/lib/approvals";
 import { formatAmount, formatTime } from "@/lib/format";
 import { adminApi, operatorToken } from "@/lib/server/admin";
 import { BASE_PATH } from "@/lib/server/env";
@@ -23,7 +23,7 @@ import { ApiError } from "../api-error";
 // the diff (status the maker saw -> status the action leads to) and what will be sent. A checker
 // sees Approve / Reject on requests somebody else filed; the maker never on their own.
 
-const FILTERS = ["PENDING", "APPROVED", "REJECTED", "EXPIRED", "all"] as const;
+const FILTERS = ["PENDING", "APPROVING", "APPROVED", "REJECTED", "EXPIRED", "all"] as const;
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -98,6 +98,16 @@ function Decision({ cr, operator, roles }: { cr: ChangeRequest; operator?: strin
         </ActionForm>
       </div>
     );
+  }
+  if (mayRetryApproval(cr, operator, roles)) {
+    return (
+      <ActionForm action={approveRequest.bind(null, cr.id)} label={`Approve ${cr.id}`}>
+        <Button type="submit" size="sm">Retry approval</Button>
+      </ActionForm>
+    );
+  }
+  if (cr.status === "APPROVING") {
+    return <span className="text-xs text-muted-foreground italic">being approved: mw-crypto has not answered yet</span>;
   }
   if (cr.status === "PENDING") {
     return <span className="text-xs text-muted-foreground italic">{cr.makerId === operator ? "your request: another checker decides" : `waiting for ${checkerLabel(cr)}`}</span>;

@@ -26,6 +26,7 @@ public record ChangeRequestView(
   /** A request's status as {@code admin.v1} names it (list filter {@code ?status=}). */
   public enum Status {
     PENDING,
+    APPROVING,
     APPROVED,
     REJECTED,
     EXPIRED
