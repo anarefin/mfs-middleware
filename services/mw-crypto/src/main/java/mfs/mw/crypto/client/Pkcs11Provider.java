@@ -7,6 +7,7 @@ import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
+import java.security.Key;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
@@ -15,15 +16,19 @@ import java.security.Provider;
 import java.security.ProviderException;
 import java.security.PublicKey;
 import java.security.SecureRandom;
+import java.security.Signature;
 import java.security.Security;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
+import java.security.interfaces.RSAPublicKey;
 import java.security.spec.ECGenParameterSpec;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -33,7 +38,10 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
+import javax.crypto.Mac;
+import javax.crypto.SecretKey;
 import mfs.mw.crypto.config.CryptoProperties;
 import mfs.mw.crypto.exception.CryptoErrors;
 import org.bouncycastle.asn1.x500.X500Name;
@@ -73,6 +81,8 @@ public class Pkcs11Provider implements CryptoProvider {
   private static final Logger log = LoggerFactory.getLogger(Pkcs11Provider.class);
   private static final Duration CERT_LIFE = Duration.ofDays(36500);
   private static final long CKF_OS_LOCKING_OK = 0x2L;
+  private static final int WRAP_IV = 16;
+  private static final SecureRandom RANDOM = new SecureRandom();
 
   private final CryptoProperties.Pkcs11 props;
   private final Semaphore sessions;
@@ -140,6 +150,174 @@ public class Pkcs11Provider implements CryptoProvider {
       }
       return null;
     });
+  }
+
+  /**
+   * The raw RSA decrypt ({@code CKM_RSA_X_509}) runs in the HSM, the OAEP decoding (SHA-256,
+   * MGF1-SHA-256) here: SunPKCS11 has no OAEP cipher. A block that is no RSA ciphertext of this key
+   * (wrong length, not below the modulus) never reaches the HSM. The raw block is zeroed.
+   */
+  @Override
+  public byte[] decryptOaep(String label, byte[] ciphertext) {
+    byte[] raw = call("pin-decrypt", t -> {
+      PrivateKey key = privateKey(t, label);
+      BigInteger modulus = ((RSAPublicKey) t.keyStore().getCertificate(label).getPublicKey()).getModulus();
+      int k = (modulus.bitLength() + 7) / 8;
+      if (ciphertext.length != k || new BigInteger(1, ciphertext).compareTo(modulus) >= 0) {
+        return null;
+      }
+      Cipher rsa = Cipher.getInstance("RSA/ECB/NoPadding", t.provider());
+      rsa.init(Cipher.DECRYPT_MODE, key);
+      byte[] out = rsa.doFinal(ciphertext);
+      return out.length == 0 ? null : withLength(out, k);
+    });
+    if (raw == null) {
+      throw CryptoErrors.badPinBlock();
+    }
+    try {
+      return OaepDecoder.decode(raw);
+    } finally {
+      Arrays.fill(raw, (byte) 0);
+    }
+  }
+
+  @Override
+  public List<byte[]> hmac(String label, List<byte[]> messages) {
+    return call("hmac", t -> {
+      Key key = t.keyStore().getKey(label, null);
+      if (!(key instanceof SecretKey secret)) {
+        throw new GeneralSecurityException("no secret key under the label");
+      }
+      Mac mac = Mac.getInstance("HmacSHA256", t.provider());
+      mac.init(secret);
+      List<byte[]> out = new ArrayList<>(messages.size());
+      for (byte[] m : messages) {
+        out.add(mac.doFinal(m));
+      }
+      return out;
+    });
+  }
+
+  @Override
+  public byte[] sign(String label, SignatureAlgorithm algorithm, byte[] data) {
+    return call("sign", t -> {
+      Signature s =
+          switch (algorithm) {
+            case RS256 -> Signature.getInstance("SHA256withRSA", t.provider());
+            case PS256 -> {
+              Signature pss = Signature.getInstance("SHA256withRSASSA-PSS", t.provider());
+              pss.setParameter(algorithm.pssParameters());
+              yield pss;
+            }
+            case ES256 -> Signature.getInstance("SHA256withECDSA", t.provider());
+          };
+      s.initSign(privateKey(t, label));
+      s.update(data);
+      return s.sign();
+    });
+  }
+
+  /**
+   * AES-256-CTR under the KEK in the HSM, with a random 16-byte initial counter block: the HSM
+   * encrypts the counter blocks ({@code CKM_AES_ECB}, the forward cipher only) and the keystream is
+   * XORed with the data key here; the result is {@code iv(16) ‖ ciphertext}, the same bytes as JCA
+   * {@code AES/CTR/NoPadding}. Not GCM, CBC or key wrap: over the p11-kit RPC to the token {@code
+   * CKM_AES_GCM} fails with {@code CKR_DEVICE_ERROR} and a CBC decrypt with {@code
+   * CKR_FUNCTION_NOT_SUPPORTED}. The wrapped key needs no tag of its own: a changed one unwraps to
+   * another data key, and the envelope's own GCM tag then fails ({@code MW-VAL-016}).
+   */
+  @Override
+  public byte[] wrapKey(String label, byte[] dataKey) {
+    byte[] iv = new byte[WRAP_IV];
+    RANDOM.nextBytes(iv);
+    byte[] out = new byte[WRAP_IV + dataKey.length];
+    System.arraycopy(iv, 0, out, 0, WRAP_IV);
+    byte[] stream = keystream("wrap", label, iv, dataKey.length);
+    try {
+      for (int i = 0; i < dataKey.length; i++) {
+        out[WRAP_IV + i] = (byte) (dataKey[i] ^ stream[i]);
+      }
+      return out;
+    } finally {
+      Arrays.fill(stream, (byte) 0);
+    }
+  }
+
+  @Override
+  public byte[] unwrapKey(String label, byte[] wrapped) {
+    if (wrapped.length <= WRAP_IV) {
+      throw CryptoErrors.badEnvelope();
+    }
+    byte[] iv = Arrays.copyOf(wrapped, WRAP_IV);
+    int n = wrapped.length - WRAP_IV;
+    byte[] stream = keystream("unwrap", label, iv, n);
+    try {
+      byte[] key = new byte[n];
+      for (int i = 0; i < n; i++) {
+        key[i] = (byte) (wrapped[WRAP_IV + i] ^ stream[i]);
+      }
+      return key;
+    } finally {
+      Arrays.fill(stream, (byte) 0);
+    }
+  }
+
+  /** {@code length} bytes of AES-CTR keystream from counter block {@code iv}, made in the HSM. */
+  private byte[] keystream(String op, String label, byte[] iv, int length) {
+    byte[] counters = counterBlocks(iv, (length + WRAP_IV - 1) / WRAP_IV);
+    byte[] stream = call(op, t -> {
+      Cipher ecb = Cipher.getInstance("AES/ECB/NoPadding", t.provider());
+      ecb.init(Cipher.ENCRYPT_MODE, secretKey(t, label));
+      return ecb.doFinal(counters);
+    });
+    try {
+      return Arrays.copyOf(stream, length);
+    } finally {
+      Arrays.fill(stream, (byte) 0);
+    }
+  }
+
+  /** {@code n} counter blocks from {@code iv}, incremented as one 128-bit big-endian number (as JCA CTR). */
+  static byte[] counterBlocks(byte[] iv, int n) {
+    byte[] out = new byte[n * WRAP_IV];
+    byte[] block = iv.clone();
+    for (int b = 0; b < n; b++) {
+      System.arraycopy(block, 0, out, b * WRAP_IV, WRAP_IV);
+      for (int i = WRAP_IV - 1; i >= 0 && ++block[i] == 0; i--) {
+        // carry into the next byte
+      }
+    }
+    return out;
+  }
+
+  private static PrivateKey privateKey(Token t, String label) throws GeneralSecurityException {
+    if (!(t.keyStore().getKey(label, null) instanceof PrivateKey key)) {
+      throw new GeneralSecurityException("no private key under the label");
+    }
+    return key;
+  }
+
+  private static SecretKey secretKey(Token t, String label) throws GeneralSecurityException {
+    if (!(t.keyStore().getKey(label, null) instanceof SecretKey key)) {
+      throw new GeneralSecurityException("no secret key under the label");
+    }
+    return key;
+  }
+
+  /**
+   * The raw RSA output as exactly {@code k} bytes: SunPKCS11 may drop leading zero bytes. The input
+   * is zeroed when it is copied.
+   */
+  static byte[] withLength(byte[] out, int k) {
+    if (out.length == k) {
+      return out;
+    }
+    byte[] block = new byte[k];
+    if (out.length < k) {
+      System.arraycopy(out, 0, block, k - out.length, out.length);
+    }
+    Arrays.fill(out, (byte) 0);
+    return block;
   }
 
   @Override

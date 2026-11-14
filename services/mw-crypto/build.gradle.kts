@@ -64,6 +64,9 @@ dependencies {
     // PKCS#11 keeps a private key as a key store entry only next to a certificate: the self-signed
     // placeholder certificate of each key pair is built and signed inside the HSM (client/Pkcs11Provider).
     implementation("org.bouncycastle:bcpkix-jdk18on:1.84")
+    // SunPKCS11 has no OAEP cipher: the HSM does the raw RSA step of the PIN block, BouncyCastle's
+    // OAEP decoding the padding (client/OaepDecoder).
+    implementation("org.bouncycastle:bcprov-jdk18on:1.84")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")

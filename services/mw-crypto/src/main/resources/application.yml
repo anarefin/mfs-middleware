@@ -204,6 +204,19 @@ mw:
       max-sessions: 8
       acquire-timeout: 2s
       call-timeout: 5s
+    # Who may run which operation (security/CallerPolicy; caller = the service JWT's azp, which mTLS
+    # ties to the client certificate's CN). Deny by default: a purpose without an entry is refused
+    # (403 MW-AUTH-002). A caller of a new key purpose (KEK_<x>, TOKENISE_<x>, HMAC_<x>) adds it here.
+    authz:
+      pin-clients: mw-auth
+      purposes:
+        JWT_SIGN: mw-auth
+        ASSERTION_SIGN: mw-auth
+        AUDIT_ANCHOR_SIGN: mw-audit-dw
+        TOKENISE_MSISDN: mw-auth,mw-audit-dw
+        TOKENISE_NID: mw-auth,mw-audit-dw
+        TOKENISE_ACCOUNT: mw-audit-dw
+        KEK_COLUMN: mw-auth
   # This service's certificate from OpenBao PKI (spec 18.2, 18.4, D24; config/TlsProperties,
   # config/ServiceCertificateManager): issued at start through Spring Cloud Vault (AppRole policy:
   # pki_int/issue/mw-crypto only), renewed at two thirds of its life, never written to disk.

@@ -15,7 +15,8 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
 - Purposes (`service/KeyPurpose`): `PIN_TRANSPORT` (RSA 3072, JWK `RSA-OAEP-256`/`enc`), `PIN_HMAC`
   (HMAC-SHA256), `JWT_SIGN` (RSA 3072, RS256: D21 amendment 2026-11-14, APISIX verifies RSA JWKS only),
   `ASSERTION_SIGN` and `AUDIT_ANCHOR_SIGN` (EC P-256, ES256), `TOKENISE_<domain>` (HMAC-SHA256),
-  `KEK_<purpose>` (AES-256), `XMLDSIG` (RSA 3072). Default keyId = purpose in lower case with hyphens.
+  `HMAC_<use>` (HMAC-SHA256: partner signatures, webhooks; ticket 63), `KEK_<purpose>` (AES-256),
+  `XMLDSIG` (RSA 3072). Default keyId = purpose in lower case with hyphens.
 - Rotation (`service/KeyService.rotate`) adds a version: ACTIVE -> VERIFY_ONLY, an older VERIFY_ONLY ->
   RETIRED (verification accepts the current and the previous version only). Retired HSM objects are not
   destroyed here (`CryptoProvider.destroy` exists for the ceremony, ticket 75).
@@ -24,8 +25,11 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   creates the missing key of every `mw.crypto.bootstrap-purposes` entry on start and every
   `bootstrap-period` (30 s) after, idempotently; an HSM that is not up yet defers it to the next run.
 - Errors: `MW-VAL-010` unknown keyId (404), `MW-VAL-011` unknown purpose (400), `MW-VAL-012` keyId exists
-  (409), `MW-VAL-013` symmetric key has no public key (400), `MW-SYS-010` HSM unavailable (503, retryable,
-  fail closed; `exception/CryptoErrors`), `MW-AUTH-001/002` internal JWT.
+  (409), `MW-VAL-013` symmetric key has no public key (400), `MW-VAL-014` PIN block does not decrypt or
+  holds no 5-digit PIN (400), `MW-VAL-015` key of another purpose or a version not usable for the
+  operation (400), `MW-VAL-016` envelope fails its integrity check (400), `MW-VAL-001` bad body (shape,
+  base64, length), `MW-SYS-010` HSM unavailable (503, retryable, fail closed; `exception/CryptoErrors`),
+  `MW-AUTH-001/002` internal JWT. A wrong PIN is `{match: false}`, not an error.
 - Access (spec 18.2, D24, ticket 66): mTLS is mandatory on the API port 8080 and the JWT stays required.
   See "mTLS" below. Generate (`POST /internal/v1/keys`) and rotate need a key-admin client
   (`mw.internal-auth.key-admin-clients`, `mw-admin-api`); generate also needs `mw.crypto.bootstrap-keys=true`
@@ -40,8 +44,18 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
 ## Provider SPI and PKCS#11
 
 - `client/CryptoProvider` (name, `capabilities()` from `client/Capability`, `generateKey(label,
-  KeyAlgorithm)`, `publicKey`, `destroy`, `probe`). The key's row names its provider; `KeyService` looks
-  providers up by name and checks the purpose's capability. Operations are added by tickets 63-65.
+  KeyAlgorithm)`, `publicKey`, `destroy`, `probe`; ticket 63: `decryptOaep`, `hmac` (a batch in one
+  session), `sign(label, SignatureAlgorithm)`, `wrapKey` / `unwrapKey`). The key's row names its
+  provider; `KeyService` and `service/HsmKeys` look providers up by name and check the purpose.
+- PKCS#11 operations over the p11-kit RPC (what works against SoftHSM, `client/OperationsIT`): the
+  PIN block is a raw RSA decrypt (`RSA/ECB/NoPadding`, `CKM_RSA_X_509`) in the HSM and OAEP decoding
+  (SHA-256, MGF1-SHA-256) in `client/OaepDecoder` (BouncyCastle `OAEPEncoding`; SunPKCS11 has no
+  OAEP cipher); a block of the wrong length or not below the modulus never reaches the HSM. HMAC
+  `HmacSHA256`; signatures `SHA256withRSA`, `SHA256withRSASSA-PSS`, `SHA256withECDSA` (DER, turned into
+  `R ‖ S` for JWS). The KEK wrap is AES-256-CTR built on `AES/ECB/NoPadding` of the counter blocks in
+  the HSM (byte for byte JCA `AES/CTR`): over the RPC `CKM_AES_GCM` fails with `CKR_DEVICE_ERROR` (and
+  drops the connection) and a CBC decrypt with `CKR_FUNCTION_NOT_SUPPORTED`. The wrapped key has no
+  tag of its own; the envelope's GCM tag catches a changed one.
 - `client/Pkcs11Provider`: JDK SunPKCS11 against `mw.crypto.pkcs11.library` (`/usr/lib/libp11-kit.so.0`,
   the p11-kit proxy) and `slot-list-index` 0. The image's only p11-kit module is
   `remote: |socat - TCP:softhsm:5657,...` (the softhsm `mw-crypto` token, `deploy/softhsm/README.md`).
@@ -61,6 +75,62 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
 - Image: Alpine JRE (`eclipse-temurin:25.0.5_8-jre-alpine`) with `p11-kit=0.26.2-r0`, `socat`, `bash`
   (healthcheck). The p11-kit client must match the softhsm server's version: Ubuntu noble's 0.25.3 logs in
   but fails every key generation with `CKR_DEVICE_MEMORY` (`scripts/test/test_softhsm.sh` checks it).
+
+## Operations (ticket 63, spec 18.7, 18.8)
+
+- Key references (`service/HsmKeys`): a keyId means its ACTIVE version, a kid `<keyId>.v<n>` that
+  version. New values (sign, derive, tokenise, encrypt) take ACTIVE only; checks of old values (verify,
+  decrypt) also VERIFY_ONLY; RETIRED never. By purpose: the key under the purpose's default keyId, else
+  the first ACTIVE one. Every provider call is timed as `crypto.op.duration{op}`.
+- PIN (`service/PinService`, caller mw-auth): `POST /internal/v1/pin/verify` `{walletId,
+  encryptedPin{keyId, ciphertext}, storedHmac, hmacKeyId(kid)}` -> `{match, rehash?}`; `POST
+  /internal/v1/pin/derive` `{walletId, encryptedPin, policyInput?, hmacKeyId?(keyId)}` -> `{weak:
+  false, hmac, hmacKeyId}` or `{weak: true, rule}`. HMAC-SHA256 under `PIN_HMAC` over `walletId ‖ 0x00
+  ‖ PIN` (UTF-8 walletId, no NUL allowed in it), `MessageDigest.isEqual`. The PIN must be exactly 5
+  ASCII digits. The clear PIN and every buffer holding it (raw RSA block, HMAC message) are `byte[]`
+  zeroed in `finally`. `rehash` = the value under the ACTIVE version on a match under a VERIFY_ONLY
+  one. Weak-PIN rules (`service/WeakPinPolicy`, inputs from mw-auth): `REPEATED_DIGIT`, `SEQUENCE`
+  (ascending/descending, wrapping 9->0), `MSISDN_DIGITS` (any 5 consecutive), `BIRTH_YEAR` (contained),
+  `LAST_PIN` (HMAC of the new PIN under `lastHmacKeyId` equals `lastHmac`).
+- JWS (`service/JwsService`, `HsmJwsSigner`: a Nimbus `JWSSigner` that calls the provider): `POST
+  /internal/v1/jws/sign` `{keyId | purpose, alg?, header?, payload}` -> `{jws, kid, alg}`; RSA keys RS256
+  (default) or PS256, EC keys ES256; header `kid` = key version; `alg`, `kid`, `jku`, `jwk`, `x5*`,
+  `crit`, `b64`, `enc`, `zip` are refused in `header`; payload at most 64 KiB. `GET
+  /internal/v1/jwks/{purpose}`: the JWK Set of every ACTIVE and VERIFY_ONLY version of the purpose's keys.
+- HMAC (`service/HmacService`): `POST /internal/v1/hmac/sign` / `verify`, `HMAC_<use>` keys only (an
+  HMAC oracle under `PIN_HMAC` or `TOKENISE_*` would let a caller brute-force PINs or reverse tokens).
+- Tokens (`service/TokenService`): `POST /internal/v1/tokens` `{domain: MSISDN|NID|ACCOUNT, values[]
+  (1..500, each <= 64 chars)}` -> `{domain, kid, tokens[]}`, token `<DOMAIN>_` + base32 (RFC 4648, no
+  padding) of HMAC-SHA256 under `TOKENISE_<domain>` over the value's UTF-8 bytes as given (callers
+  normalise); one HSM session per batch. A rotation gives new tokens.
+- Envelope (`service/EnvelopeService`): `POST /internal/v1/envelope/encrypt` `{kekId | purpose
+  (KEK_<x>), plaintext (<= 1 MiB), aad?}` -> `{kekId(kid), wrappedKey, iv, ciphertext, aad}`; fresh
+  AES-256 data key, AES-256-GCM (12-byte nonce, 128-bit tag) in the JVM, data key wrapped in the HSM and
+  zeroed; `/decrypt` takes that object back -> `{plaintext}`.
+- Per-operation authorisation (security review of ticket 63; `security/CallerPolicy`, configured by
+  `config/OperationAuthzProperties` = `mw.crypto.authz` in `application.yml`): the caller is the
+  service JWT's `azp` (ticket 66 ties it to the client certificate CN). Deny by default, 403
+  `MW-AUTH-002` and WARN `security.internal_call_denied` reason `OPERATION_NOT_ALLOWED`. The services
+  check it before any HSM call (a keyId is first resolved to its purpose from metadata only).
+
+  | Operation | Rule | Dev default |
+  | --- | --- | --- |
+  | `/pin/verify`, `/pin/derive` | `mw.crypto.authz.pin-clients` | `mw-auth` |
+  | `/jws/sign` (by purpose or keyId) | `mw.crypto.authz.purposes.<PURPOSE>` | `JWT_SIGN`, `ASSERTION_SIGN`: `mw-auth`; `AUDIT_ANCHOR_SIGN`: `mw-audit-dw` |
+  | `/tokens` | `purposes.TOKENISE_<domain>` | `TOKENISE_MSISDN`, `TOKENISE_NID`: `mw-auth`, `mw-audit-dw`; `TOKENISE_ACCOUNT`: `mw-audit-dw` |
+  | `/envelope/encrypt`, `/decrypt` | `purposes.KEK_<purpose>` | `KEK_COLUMN`: `mw-auth`; `KEK_FILE`: nobody |
+  | `/hmac/sign`, `/verify` | `purposes.HMAC_<use>` | none yet |
+  | `/jwks/{purpose}`, `/keys`, `/keys/{keyId}/public` | every allowed caller | |
+  | generate, rotate | ticket 66 key-admin rule | `mw-admin-api` |
+
+  A caller ticket (67 mw-auth, 70, 71, 74 mw-audit-dw, a new KEK/TOKENISE/HMAC purpose) adds its
+  client to the purpose's entry in `application.yml` (or overrides it per environment) in the same
+  change. Tests: `controller/OperationAuthzTest` (`@WebMvcTest` with the real services: wrong caller
+  per operation 403, right caller OK).
+- Masking and logging: no payload logging here, ever. Every secret request/response field is
+  `@Sensitive(SECRET)` (walletId and MSISDNs `MSISDN`) and every operation DTO's `toString()` is
+  `MaskingPolicy.describe`; services log only event, kid, outcome. Bean Validation messages never echo
+  values. Tests: `dto/OperationDtoMaskingTest` and the log check of `client/OperationsIT`.
 
 ## mTLS (ticket 66, D24)
 
@@ -114,11 +184,21 @@ No PKCS#11 tooling on the host (user decision 2026-11-14): PKCS#11 never runs in
   -> `crypto_hsm_up 0` and 503 `MW-SYS-010`, HSM started -> recovered. Tickets 63-65 add their operation
   ITs on the same `HsmStack` (start it in `@BeforeAll`; keys from the bootstrap or created per test with
   their own keyIds, never relying on test order across classes).
+- `client/OperationsIT` (ticket 63): every operation against the token with keys of its own keyIds
+  (`it-pin-transport`, `it-pin-hmac`, `hmac-it`, `kek-it`; JWS and tokens use the bootstrap keys, which
+  it never rotates): PIN derive/verify/weak/bad blocks, rotation of transport and PIN HMAC keys with the
+  re-hash, RS256/PS256/ES256 against the JWKS, HMAC, tokens, envelope tamper and KEK rotation, then no
+  request or answer value in the container log.
 - Everything above the SPI runs without an HSM: `client/FakeCryptoProvider` (test, JDK keys in memory,
-  named `pkcs11`, `down(true)` fails closed) replaces `Pkcs11Provider` with
+  named `pkcs11`, `down(true)` fails closed, `putHmacKey` for known answers, `lastDecrypted()` for the
+  zeroing checks) replaces `Pkcs11Provider` with
   `mw.crypto.pkcs11.enabled=false` (`service/KeyServiceIT`: real PostgreSQL); plain unit tests for
   `KeyPurpose`, `KeyMapper`, `Pkcs11Provider` without a library (fails closed), `HsmHealthService`;
-  `@WebMvcTest` `controller/KeyControllerTest` with `SecurityConfig` and `InternalTokens`.
+  `@WebMvcTest` `controller/KeyControllerTest` with `SecurityConfig` and `InternalTokens`. Ticket 63:
+  `service/PinServiceTest` (HMAC known answer computed outside Java, match, re-hash, weak PIN, bad blocks,
+  the PIN buffer all zero after every call), `WeakPinPolicyTest`, `JwsServiceTest`,
+  `OtherOperationsTest` (HMAC, token known answer, envelope), `client/OaepDecoderTest` (OAEP decoding,
+  CTR counter blocks = JCA CTR), `controller/OperationControllersTest`, `contracts/OperationContractsTest`.
 - `scripts/test/test_softhsm.sh` fails when `src/test/resources/softhsm/` differs from `deploy/softhsm`:
   change both together (copy the folder again).
 
@@ -126,8 +206,10 @@ No PKCS#11 tooling on the host (user decision 2026-11-14): PKCS#11 never runs in
 
 - `contracts/api/mw-crypto/crypto-internal.v1.openapi.yaml`: `GET /internal/v1/keys`, `POST
   /internal/v1/keys` (dev and bootstrap only until the ceremony), `POST /internal/v1/keys/{keyId}/rotate`,
-  `GET /internal/v1/keys/{keyId}/public` (PEM and JWK per live version plus a JWK Set). Checked by
-  `contracts/ProducedContractsTest`.
+  `GET /internal/v1/keys/{keyId}/public` (PEM and JWK per live version plus a JWK Set); ticket 63 the
+  operations `/internal/v1/pin/{verify,derive}`, `/jws/sign`, `/jwks/{purpose}`, `/hmac/{sign,verify}`,
+  `/tokens`, `/envelope/{encrypt,decrypt}`. Checked by `contracts/ProducedContractsTest` and
+  `contracts/OperationContractsTest`.
 
 ## Contracts used
 

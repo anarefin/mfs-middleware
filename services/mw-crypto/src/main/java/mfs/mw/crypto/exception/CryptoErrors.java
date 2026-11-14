@@ -1,5 +1,7 @@
 package mfs.mw.crypto.exception;
 
+import java.util.List;
+import mfs.mw.crypto.dto.ErrorDetail;
 import org.springframework.http.HttpStatus;
 
 /**
@@ -31,6 +33,26 @@ public final class CryptoErrors {
 
   public static MwException noPublicKey(String keyId) {
     return new MwException(ErrorCodes.VAL_NO_PUBLIC_KEY, "Key " + keyId + " is symmetric: no public key");
+  }
+
+  /** The PIN block does not decrypt, or holds no 5-digit PIN. Never says which, nor any of its content. */
+  public static MwException badPinBlock() {
+    return new MwException(ErrorCodes.VAL_BAD_PIN_BLOCK, "PIN block invalid");
+  }
+
+  /** The key {@code ref} cannot do {@code operation} (purpose or state). */
+  public static MwException keyNotUsable(String ref, String operation) {
+    return new MwException(ErrorCodes.VAL_KEY_NOT_USABLE, "Key " + ref + " cannot be used for " + operation);
+  }
+
+  public static MwException badEnvelope() {
+    return new MwException(ErrorCodes.VAL_BAD_ENVELOPE, "Envelope cannot be decrypted");
+  }
+
+  /** A field that is not what it must be (bad base64, wrong length): 400 {@code MW-VAL-001}. */
+  public static MwException invalidField(String field, String issue) {
+    return new MwException(ErrorCodes.VAL_INVALID, "Request validation failed")
+        .withDetails(List.of(new ErrorDetail(field, issue)));
   }
 
   /** Whether {@code e} is an HSM failure (for the probe and the metrics). */
