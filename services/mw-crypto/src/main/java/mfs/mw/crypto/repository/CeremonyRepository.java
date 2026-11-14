@@ -52,6 +52,14 @@ public class CeremonyRepository {
         .update();
   }
 
+  /** An ABORTED tombstone for an id never opened (abort is terminal per id); a duplicate id throws. */
+  public void insertAborted(UUID id, Instant now) {
+    jdbc.sql("INSERT INTO ceremony (" + COLUMNS + ") VALUES (:id, NULL, NULL, NULL, 'ABORTED', NULL, NULL, NULL, :t, :t)")
+        .param("id", id)
+        .param("t", Timestamp.from(now))
+        .update();
+  }
+
   public void update(UUID id, Ceremony.State state, String componentLabel, String stagedLabel, String checkValue, Instant now) {
     jdbc.sql("UPDATE ceremony SET state = :s, component_label = :c, staged_label = :l, check_value = :kcv, updated_at = :t"
             + " WHERE ceremony_id = :id")
@@ -90,7 +98,7 @@ public class CeremonyRepository {
         rs.getObject("ceremony_id", UUID.class),
         rs.getString("key_id"),
         rs.getString("purpose"),
-        rs.getInt("version"),
+        (Integer) rs.getObject("version"),
         Ceremony.State.valueOf(rs.getString("state")),
         rs.getString("component_label"),
         rs.getString("staged_label"),

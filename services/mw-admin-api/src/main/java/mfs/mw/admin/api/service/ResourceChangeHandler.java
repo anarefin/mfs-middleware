@@ -43,6 +43,16 @@ public interface ResourceChangeHandler {
   }
 
   /**
+   * Claim-first types: whether the other service applied the change of request {@code cr} (asked
+   * by its id before a claim is given up, and by the reconciler). Present with the entries to add to
+   * the payload when it was applied, empty when it says it was not; throw an {@code MwException}
+   * when it cannot tell (the claim then stays APPROVING).
+   */
+  default java.util.Optional<Map<String, Object>> applied(ChangeRequest cr) {
+    throw new UnsupportedOperationException(resourceType() + " is not approved claim-first");
+  }
+
+  /**
    * The work an approval does; throw an {@code MwException} when the request can no longer be
    * applied (the request then stays PENDING). Called outside the transaction; {@code apply} runs
    * inside it and may throw too (everything rolls back).

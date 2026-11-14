@@ -94,6 +94,10 @@ class CeremonyServiceIT {
     UUID id = UUID.randomUUID();
     byte[] c1 = component();
     byte[] c2 = component();
+    assertThat(ceremonies.open(id, "pin-hmac", "PIN_HMAC").state()).isEqualTo("OPEN");
+    // opening again with the same values is the same ceremony
+    assertThat(ceremonies.open(id, "pin-hmac", "PIN_HMAC").kid()).isEqualTo("pin-hmac.v1");
+    assertThat(code(catchThrowable(() -> ceremonies.open(id, "other-key", "PIN_HMAC")))).isEqualTo("MW-VAL-018");
 
     CeremonyView first = ceremonies.component(id, share("pin-hmac", "sec1", c1));
     assertThat(first.state()).isEqualTo("OPEN");
@@ -128,6 +132,7 @@ class CeremonyServiceIT {
   void commitBeforeBothSharesAndAWrongCheckValueAreRefused() {
     UUID id = UUID.randomUUID();
     byte[] c1 = component();
+    ceremonies.open(id, "pin-hmac", "PIN_HMAC");
     CeremonyComponentRequest bad =
         new CeremonyComponentRequest("pin-hmac", "PIN_HMAC", "sec1", HexFormat.of().formatHex(c1), "000000");
     assertThat(code(catchThrowable(() -> ceremonies.component(id, bad)))).isEqualTo("MW-VAL-017");
@@ -135,7 +140,7 @@ class CeremonyServiceIT {
     ceremonies.component(id, share("pin-hmac", "sec1", c1));
     assertThat(code(catchThrowable(() -> ceremonies.commit(id, "a", "b")))).isEqualTo("MW-VAL-018");
     // another ceremony of the same key cannot start while this one is live
-    assertThat(code(catchThrowable(() -> ceremonies.component(UUID.randomUUID(), share("pin-hmac", "sec2", component())))))
+    assertThat(code(catchThrowable(() -> ceremonies.open(UUID.randomUUID(), "pin-hmac", "PIN_HMAC"))))
         .isEqualTo("MW-VAL-018");
   }
 
@@ -144,12 +149,13 @@ class CeremonyServiceIT {
     byte[] c = component();
     CeremonyComponentRequest req = new CeremonyComponentRequest("kek-column", "KEK_COLUMN", "sec1", HexFormat.of().formatHex(c),
         CeremonyComponents.checkValue(c));
-    assertThat(code(catchThrowable(() -> ceremonies.component(UUID.randomUUID(), req)))).isEqualTo("MW-VAL-015");
+    assertThat(code(catchThrowable(() -> ceremonies.open(UUID.randomUUID(), req.keyId(), req.purpose())))).isEqualTo("MW-VAL-015");
   }
 
   @Test
   void abortDestroysTheStagedObjects() {
     UUID id = UUID.randomUUID();
+    ceremonies.open(id, "pin-hmac", "PIN_HMAC");
     ceremonies.component(id, share("pin-hmac", "sec1", component()));
     ceremonies.component(id, share("pin-hmac", "sec2", component()));
     ceremonies.abort(id);
@@ -157,6 +163,41 @@ class CeremonyServiceIT {
     assertThat(ceremonies.get(id).state()).isEqualTo("ABORTED");
     ceremonies.abort(id);
     ceremonies.abort(UUID.randomUUID());
+  }
+
+  @Test
+  void aComponentNeedsAnOpenCeremonyAndAbortIsTerminalPerId() {
+    // a component of a ceremony never opened is refused: entry never opens one
+    assertThat(code(catchThrowable(() -> ceremonies.component(UUID.randomUUID(), share("pin-hmac", "sec1", component())))))
+        .isEqualTo("MW-VAL-003");
+    // an abort that arrives first (the request was rejected) leaves a tombstone: no later open or component
+    UUID late = UUID.randomUUID();
+    ceremonies.abort(late);
+    assertThat(ceremonies.get(late).state()).isEqualTo("ABORTED");
+    assertThat(code(catchThrowable(() -> ceremonies.open(late, "pin-hmac", "PIN_HMAC")))).isEqualTo("MW-VAL-018");
+    assertThat(code(catchThrowable(() -> ceremonies.component(late, share("pin-hmac", "sec1", component())))))
+        .isEqualTo("MW-VAL-018");
+    // a component after the abort of an open one is refused and nothing stays in the HSM
+    UUID id = UUID.randomUUID();
+    ceremonies.open(id, "pin-hmac", "PIN_HMAC");
+    ceremonies.component(id, share("pin-hmac", "sec1", component()));
+    ceremonies.abort(id);
+    assertThat(code(catchThrowable(() -> ceremonies.component(id, share("pin-hmac", "sec2", component())))))
+        .isEqualTo("MW-VAL-018");
+    assertThat(hsm.labels()).isEmpty();
+    // and a new ceremony of the key can start
+    assertThat(ceremonies.open(UUID.randomUUID(), "pin-hmac", "PIN_HMAC").state()).isEqualTo("OPEN");
+  }
+
+  @Test
+  void theStateOfAKeyChangeIsReadByItsId() {
+    UUID id = UUID.randomUUID();
+    assertThat(changes.state(id).applied()).isFalse();
+    changes.apply(id, new KeyChangeRequest(KeyChangeRequest.Action.GENERATE, "hmac-y", "HMAC_Y", null, "a", "b"));
+    var state = changes.state(id);
+    assertThat(state.applied()).isTrue();
+    assertThat(state.action()).isEqualTo("GENERATE");
+    assertThat(state.kid()).isEqualTo("hmac-y.v1");
   }
 
   @Test

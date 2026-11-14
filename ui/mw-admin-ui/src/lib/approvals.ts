@@ -107,13 +107,13 @@ export function mayDecide(cr: ChangeRequest, operator: string | null | undefined
 }
 
 /**
- * A key request left APPROVING (ticket 75: mw-crypto did not answer the approval's call): another
- * security-admin than the maker may retry the approval (the same change request id is sent again);
- * nobody can reject it any more.
+ * A key request left APPROVING (ticket 75: mw-crypto did not answer the approval's call): only the
+ * checker who claimed it may retry the approval (the same change request id is sent again), within
+ * mw-admin-api's lease (5 min; after it the reconciler resolves it); nobody can reject it.
  */
 export function mayRetryApproval(cr: ChangeRequest, operator: string | null | undefined, roles: readonly string[]): boolean {
   return cr.status === "APPROVING" && cr.resourceType === "key" && roles.includes(KEY_CHECKER_ROLE) && !!operator
-    && cr.makerId !== operator;
+    && cr.makerId !== operator && cr.checkerId === operator;
 }
 
 const WALLET_ID = /^01[3-9]\d{8}$/;

@@ -43,7 +43,7 @@ public final class CryptoKeys {
   /** A ceremony as mw-crypto reports it. */
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record Ceremony(
-      UUID ceremonyId, String keyId, String purpose, int version, String kid, String state, List<Share> shares,
+      UUID ceremonyId, String keyId, String purpose, Integer version, String kid, String state, List<Share> shares,
       String checkValue) {
     public Ceremony {
       shares = shares == null ? List.of() : List.copyOf(shares);
@@ -52,4 +52,8 @@ public final class CryptoKeys {
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record Share(int share, String custodian, Instant enteredAt) {}
+
+  /** Whether mw-crypto applied the change of one change request id ({@code GET /internal/v1/key-changes/{id}}). */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record ChangeState(UUID changeRequestId, boolean applied, String action, String keyId, String kid) {}
 }

@@ -143,6 +143,14 @@ public final class HsmStack {
     return postAs(path, json, token, azp(token));
   }
 
+  /** PUT with a client certificate of the token's azp. */
+  public static HttpResponse<String> put(String path, String json, String token) {
+    return send(
+        HttpRequest.newBuilder(uri(path)).header("Content-Type", "application/json")
+            .PUT(HttpRequest.BodyPublishers.ofString(json)),
+        token, azp(token));
+  }
+
   /** GET presenting a client certificate of role {@code certRole} (null: no client certificate). */
   public static HttpResponse<String> getAs(String path, String token, String certRole) {
     return send(HttpRequest.newBuilder(uri(path)).GET(), token, certRole);

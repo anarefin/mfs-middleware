@@ -4,6 +4,8 @@ import jakarta.validation.Valid;
 import java.util.UUID;
 import mfs.mw.crypto.dto.CeremonyCommitRequest;
 import mfs.mw.crypto.dto.CeremonyComponentRequest;
+import mfs.mw.crypto.dto.CeremonyOpenRequest;
+import mfs.mw.crypto.dto.KeyChangeState;
 import mfs.mw.crypto.dto.CeremonyView;
 import mfs.mw.crypto.dto.KeyChangeRequest;
 import mfs.mw.crypto.dto.KeyView;
@@ -38,6 +40,16 @@ public class CeremonyController {
   @PutMapping("/key-changes/{changeRequestId}")
   public KeyView keyChange(@PathVariable UUID changeRequestId, @Valid @RequestBody KeyChangeRequest request) {
     return changes.apply(changeRequestId, request);
+  }
+
+  @GetMapping("/key-changes/{changeRequestId}")
+  public KeyChangeState keyChangeState(@PathVariable UUID changeRequestId) {
+    return changes.state(changeRequestId);
+  }
+
+  @PutMapping("/ceremonies/{ceremonyId}")
+  public CeremonyView open(@PathVariable UUID ceremonyId, @Valid @RequestBody CeremonyOpenRequest request) {
+    return ceremonies.open(ceremonyId, request.keyId(), request.purpose());
   }
 
   @GetMapping("/ceremonies/{ceremonyId}")

@@ -98,6 +98,12 @@ class KeyCeremonyApiIT {
       respond(ex, 401, "{\"code\":\"MW-AUTH-001\"}");
     } else if (path.equals("/internal/v1/keys")) {
       respond(ex, 200, KEYS);
+    } else if (path.startsWith("/internal/v1/key-changes/") && "GET".equals(ex.getRequestMethod())) {
+      respond(ex, 200, "{\"changeRequestId\":\"" + path.split("/")[4] + "\",\"applied\":false}");
+    } else if (path.matches("/internal/v1/ceremonies/[0-9a-f-]+") && "PUT".equals(ex.getRequestMethod())) {
+      // opened at filing time (ticket 75 review)
+      respond(ex, 200, "{\"ceremonyId\":\"" + path.split("/")[4] + "\",\"keyId\":\"pin-hmac\",\"purpose\":\"PIN_HMAC\","
+          + "\"version\":3,\"kid\":\"pin-hmac.v3\",\"state\":\"OPEN\",\"shares\":[],\"checkValue\":null}");
     } else if (path.startsWith("/internal/v1/key-changes/") || path.endsWith("/commit")) {
       respond(ex, 200, KEY_V3);
     } else if (path.endsWith("/abort")) {

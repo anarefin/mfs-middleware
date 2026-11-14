@@ -60,6 +60,12 @@ class CeremonyIT {
     return c;
   }
 
+  static void open(UUID id, String keyId) {
+    HttpResponse<String> r = HsmStack.put("/internal/v1/ceremonies/" + id,
+        "{\"keyId\":\"" + keyId + "\",\"purpose\":\"HMAC_IT\"}", admin());
+    assertThat(r.statusCode()).as(r.body()).isEqualTo(200);
+  }
+
   static HttpResponse<String> enter(UUID id, String custodian, byte[] component) {
     String hex = HexFormat.of().formatHex(component);
     return HsmStack.post("/internal/v1/ceremonies/" + id + "/components",
@@ -91,6 +97,7 @@ class CeremonyIT {
     byte[] c1 = component();
     byte[] c2 = component();
     byte[] expected = CeremonyComponents.combined(c1, c2);
+    open(id, KEY);
 
     JsonNode first = ok(enter(id, "seed-ops-secadmin1", c1));
     assertThat(first.get("state").asString()).isEqualTo("OPEN");
@@ -118,6 +125,7 @@ class CeremonyIT {
     UUID second = UUID.randomUUID();
     byte[] d1 = component();
     byte[] d2 = component();
+    open(second, KEY);
     ok(enter(second, "seed-ops-secadmin2", d1));
     ok(enter(second, "seed-ops-secadmin1", d2));
     JsonNode rotated = ok(HsmStack.post("/internal/v1/ceremonies/" + second + "/commit",
@@ -133,6 +141,7 @@ class CeremonyIT {
     byte[] c1 = component();
     String body = "{\"keyId\":\"hmac-ceremony-abort-it\",\"purpose\":\"HMAC_IT\",\"custodian\":\"a\",\"component\":\""
         + HexFormat.of().formatHex(c1) + "\",\"checkValue\":\"000000\"}";
+    open(id, "hmac-ceremony-abort-it");
     HttpResponse<String> wrong = HsmStack.post("/internal/v1/ceremonies/" + id + "/components", body, admin());
     assertThat(wrong.statusCode()).isEqualTo(400);
     assertThat(wrong.body()).contains("MW-VAL-017");
@@ -142,6 +151,9 @@ class CeremonyIT {
     assertThat(HsmStack.post("/internal/v1/ceremonies/" + id + "/abort", "{}", admin()).statusCode()).isEqualTo(204);
     assertThat(ok(HsmStack.get("/internal/v1/ceremonies/" + id, admin())).get("state").asString()).isEqualTo("ABORTED");
     assertThat(HsmStack.get("/internal/v1/keys", admin()).body()).doesNotContain("hmac-ceremony-abort-it");
+    // abort is terminal per id: no component after it
+    assertThat(HsmStack.post("/internal/v1/ceremonies/" + id + "/components", body.replace("000000",
+        CeremonyComponents.checkValue(c1)), admin()).statusCode()).isEqualTo(409);
   }
 
   @Test
