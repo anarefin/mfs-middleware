@@ -19,6 +19,8 @@ public class CoreEventMapper {
 
   static final String UNKNOWN_REASON = "UNKNOWN";
   static final String FALLBACK_MESSAGE = "Rejected by the core";
+  /** The one non-core reason code: an assertion the core refused, passed through as it is. */
+  static final String ASSERTION_REFUSED = "MW-AUTH-046";
 
   private static final Pattern REASON = Pattern.compile("[A-Z0-9_]+");
 
@@ -111,6 +113,12 @@ public class CoreEventMapper {
   /** The status error for a failure event: code {@code MW-CORE-<reason>}, not retryable. */
   public ErrorInfo error(CoreEvent event) {
     String reason = event.reasonCode();
+    if (ASSERTION_REFUSED.equals(reason)) {
+      // the core refused mw-auth's transaction assertion (spec 18.7, D22; ticket 71): its own code
+      return new ErrorInfo(ASSERTION_REFUSED,
+          "Transaction authorisation invalid or already used; enter your PIN again",
+          "লেনদেনের অনুমোদন অবৈধ বা আগেই ব্যবহৃত; আবার পিন দিন", false);
+    }
     if (reason == null || !REASON.matcher(reason).matches()) {
       reason = UNKNOWN_REASON;
     }

@@ -183,4 +183,16 @@ public final class TestData {
         Map.of("parentTxnId", "01933b8e-0000-7000-8000-000000000001", "lineNo", "2"),
         NOW);
   }
+
+  /** A fake compact JWS in the shape of mw-auth's transaction assertion (ticket 71). */
+  public static final String ASSERTION =
+      "eyJhbGciOiJFUzI1NiIsImtpZCI6ImFzc2VydGlvbi1zaWduLnYxIn0.eyJqdGkiOiJ4In0.ZmFrZS1zaWduYXR1cmU";
+
+  /** {@code r} as a channel sends it once it uses mw-auth's assertion: the assertion and no PIN. */
+  public static TxnRequest withAssertion(TxnRequest r) {
+    return new TxnRequest(
+        r.schemaVersion(), r.txnId(), r.idempotencyKey(), r.correlationId(), r.channel(), r.txnType(),
+        r.initiator(), r.debitParty(), r.creditParty(), r.amount(), r.partner(), r.originalTxnId(), null,
+        ASSERTION, r.locale(), r.metadata(), r.attributes(), r.requestedAt());
+  }
 }

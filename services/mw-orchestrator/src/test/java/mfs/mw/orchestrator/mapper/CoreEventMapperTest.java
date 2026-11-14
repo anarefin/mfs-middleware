@@ -104,4 +104,15 @@ class CoreEventMapperTest {
               assertThat(e.message()).isEqualTo("Rejected by the core");
             });
   }
+
+  @Test
+  void aRefusedAssertionKeepsTheCoresAuthCode() {
+    ErrorInfo error = mapper.error(event("TransactionRejected", "FAILURE", "MW-AUTH-046", "{}"));
+    assertThat(error.code()).isEqualTo("MW-AUTH-046");
+    assertThat(error.message()).isEqualTo("Transaction authorisation invalid or already used; enter your PIN again");
+    assertThat(error.messageBn()).isNotBlank();
+    assertThat(error.retryable()).isFalse();
+    assertThat(mapper.error(event("TransactionRejected", "FAILURE", "MW-AUTH-001", "{}")).code())
+        .as("only the core's own auth code passes through").isEqualTo("MW-CORE-UNKNOWN");
+  }
 }

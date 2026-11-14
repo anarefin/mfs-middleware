@@ -227,6 +227,16 @@ mw:
       refresh-ttl: 30d
       jwks-cache-ttl: 5m
       jwks-uri: ${MW_AUTH_JWKS_URI:http://mw-auth:8080/auth/v1/.well-known/jwks.json}
+    # The transaction authorisation assertion (spec 18.7, D22, ticket 71; config/AssertionProperties):
+    # POST /internal/v1/txn-authorisations, ES256 by the mw-crypto key ASSERTION_SIGN, single use by jti
+    # at the core, which verifies it with GET /auth/v1/.well-known/assertion-jwks.json. A repeat with the
+    # same idempotency key inside the ttl returns the same assertion (Valkey assert:{walletId}:{key}).
+    assertion:
+      issuer: mw-auth
+      audience: core
+      ttl: 60s
+      new-device-window: 24h
+      callers: mw-app-gateway,mw-ussd,mw-checkout
     # Dev only (ticket 69): POST /internal/v1/seed/pins, the seeder's first PINs, without a token
     # (controller/SeedController). Off unless the dev stack sets MW_AUTH_SEED_API_ENABLED=true.
     seed-api:

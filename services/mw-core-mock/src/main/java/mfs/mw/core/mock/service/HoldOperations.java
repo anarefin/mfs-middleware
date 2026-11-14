@@ -64,7 +64,7 @@ class HoldOperations {
     long amount = p.amount().valueMinor();
     long fee = rules.fee(p.txnType());
     Instant dayStart = clock.instant().truncatedTo(ChronoUnit.DAYS);
-    Optional<Reason> refusal = rules.check(p, debit, null, amount, fee, wallets.debitedSince(debit.id(), dayStart));
+    Optional<Reason> refusal = rules.check(cmd.txnId(), p, debit, null, amount, fee, wallets.debitedSince(debit.id(), dayStart));
     if (refusal.isPresent()) {
       return rejected(cmd, coreRef, refusal.get());
     }
@@ -122,11 +122,11 @@ class HoldOperations {
   }
 
   private CoreEvent rejected(CoreCommand cmd, String coreRef, Reason reason) {
-    return events.rejected(cmd, "HoldRejected", coreRef, reason.name(), reason.message);
+    return events.rejected(cmd, "HoldRejected", coreRef, reason.code(), reason.message);
   }
 
   private CoreEvent failed(CoreCommand cmd, String coreRef, Reason reason, String holdId) {
-    return events.rejected(cmd, CoreEventMapper.failureType(cmd.commandType()), coreRef, reason.name(), reason.message, Map.of("holdId", holdId));
+    return events.rejected(cmd, CoreEventMapper.failureType(cmd.commandType()), coreRef, reason.code(), reason.message, Map.of("holdId", holdId));
   }
 
   private CoreEvent.BalanceAfter balanceOf(String walletId) {

@@ -147,16 +147,48 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   lookup on every app request (it caches a confirmation 10 s and a device key 5 min) rather than trusting a `sid`
   claim: a logout, a lock or a new binding must end app access at once, which a 5 min token cannot. The fingerprint
   (security review of 68, fixed in 69) lets the gateway drop a cached key of a replaced binding within the 10 s.
+- Transaction authorisation assertion (spec 18.7, D22, ticket 71; `controller/TxnAuthorisationController`,
+  `service/TxnAuthorisationService`, `service/PinVerification`, `repository/AssertionCache`, `util/TxnHash`,
+  `util/CanonicalJson`, `util/UuidV7`, `config/AssertionProperties` `mw.auth.assertion.*`): `POST
+  /internal/v1/txn-authorisations` on the internal mTLS port, callers `mw.auth.assertion.callers`
+  (mw-app-gateway, mw-ussd, mw-checkout; mw-admin-api and anyone else 403 `MW-AUTH-002`). Body `{walletId |
+  msisdn (exactly one, else 400 MW-VAL-001), channel, deviceId?, encryptedPin, txn: {txnType, amount (minor),
+  currency, payer {type, id}, payee {type, id}, idempotencyKey}}`. Order: wallet known (else 403 `MW-AUTH-002`),
+  `WalletAccess.check` (043/041/042), a sent `deviceId` must be the wallet's bound device (401 `MW-AUTH-047`),
+  then Valkey `assert:{walletId}:{idempotencyKey}` (value `<exp ms>|<txnHash>|<newDevice>|<jws>`, TTL = life,
+  `SET NX`; the life is also checked against the service clock): a live entry for the same `txnHash` is
+  returned again **without a PIN check**, for another hash 409 `MW-IDEM-001`; then the PIN through
+  `PinVerification` (wrong 401 `MW-AUTH-040`, counted; none 403 `MW-AUTH-045`) and the JWS by mw-crypto
+  `ASSERTION_SIGN` (ES256, kid `<keyId>.v<n>`, header `typ txn-assertion+jwt`): `iss` mw-auth, `aud` core,
+  `sub` walletId, `jti` UUIDv7, `iat`, `exp` = iat + 60 s, `txnHash`, `channel`, `authMethod` PIN,
+  `deviceId` (when sent), `newDevice` (the wallet's bound device's `boundAt` within `new-device-window` 24 h).
+  200 `{assertion, expiresAt, newDevice}`; INFO `auth.txn.authorised` carries only the jti.
+  `txnHash` = base64url (no padding) SHA-256 of the RFC 8785 canonical JSON of `{txnType, amount, currency,
+  payer {type, id}, payee {type, id}, idempotencyKey, channel}` with the values of the `mw.txn.request.v1`
+  the channel then publishes (payer = debitParty, payee = creditParty, amount = valueMinor, the request's
+  idempotencyKey); mw-core-mock has a byte-identical copy (`TxnHashTest` literals in both).
+  **PIN check seam (ticket 71, for ticket 70):** the assertion uses the interface `service/PinVerification`,
+  implemented today by `PinService` (ticket 69's simple counter); ticket 70's lockout escalation replaces
+  the implementation behind it, the caller does not change.
+  **Assertion JWK Set decision (ticket 71):** a separate public document `GET
+  /auth/v1/.well-known/assertion-jwks.json` (`WellKnownController`, `JwksService.assertionJwks`, mw-crypto
+  `/jwks/ASSERTION_SIGN`, public members only, cached `jwks-cache-ttl`), not mixed into the access tokens'
+  `jwks.json` (APISIX reads that one and accepts RSA only). mw-core-mock fetches it over plain HTTP on the
+  public port 8080 (`http://mw-auth:8080/...`); the `auth-v1` APISIX route also exposes it at the edge
+  (public keys only). mw-crypto needed no change: `mw.crypto.authz.purposes.ASSERTION_SIGN` already names
+  mw-auth, and ASSERTION_SIGN is a dev bootstrap purpose.
 - Error codes so far: `MW-AUTH-001..007`, `010..012`, `040..045`, `047`, `048` (18.7; `046` is the core's),
-  `MW-VAL-001`, `MW-VAL-022`, `MW-VAL-BODY_TOO_LARGE`, `MW-SYS-010`, `MW-SYS-012`, `MW-SYS-050/051`.
+  `MW-IDEM-001` (ticket 71), `MW-VAL-001`, `MW-VAL-022`, `MW-VAL-BODY_TOO_LARGE`, `MW-SYS-010`, `MW-SYS-012`,
+  `MW-SYS-050/051`.
 
 ## Contracts owned
 
 - `api/mw-auth/auth.v1.openapi.yaml` (public API: OTP and devices, ticket 68; login, tokens, key documents, ticket
-  69; `contracts/ApiContractsTest`, derived body schemas in `src/main/resources/derived-schemas/`,
+  69; the assertion JWK Set `EcJwkSet`, ticket 71; `contracts/ApiContractsTest`, derived body schemas in `src/main/resources/derived-schemas/`,
   `scripts/derived-schemas.sh --write` after a change).
 - `api/mw-auth/auth-internal.v1.openapi.yaml` (internal API: the device lookups of ticket 68, the session's key
-  fingerprint and the dev seed API of ticket 69; tickets 70-71 add their operations). `auth.wallet-lock.v1` comes
+  fingerprint and the dev seed API of ticket 69; `POST /internal/v1/txn-authorisations`, ticket 71; ticket 70
+  adds its operations). `auth.wallet-lock.v1` comes
   with ticket 70.
 
 ## Contracts used
@@ -197,6 +229,12 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   rotation and reuse, another device, logout, a foreign token, the first PIN flow, the JWK Set and discovery,
   the PIN key, the seed API), `controller/DeviceControllerTest` (body schemas of OTP, binding, login, refresh;
   no token needed, a stale bearer ignored, logout and first PIN need one).
+- Ticket 71: `util/TxnHashTest` (canonical JSON and hash against literals worked out outside Java; the same
+  txn in another field order gives the same JSON), `security/TxnAuthorisationIT` (PostgreSQL + Valkey,
+  mw-crypto a behaving mock signing ES256 with an in-test P-256 key; the clock a `@TestBean MutableClock`):
+  claims verified against the served assertion JWK Set, USSD by MSISDN, newDevice, wrong PIN counted, PIN
+  lock (no PIN check), blocked wallet, no PIN, reuse inside the life (one PIN check), same key other txn 409,
+  a new assertion after the life, device of another wallet, callers, walletId xor msisdn, mw-crypto down).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 

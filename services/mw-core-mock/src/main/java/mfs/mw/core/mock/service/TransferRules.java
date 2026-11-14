@@ -16,7 +16,9 @@ import org.springframework.stereotype.Component;
  * validate, post and hold. The PIN check keeps the lockout count (spec 9.1): a wrong PIN counts
  * one failure and the {@code pinMaxFailures}-th in a row locks the wallet; a correct PIN resets
  * the count. It runs inside the command transaction, so a replayed command (answered from the
- * command log) never counts twice.
+ * command log) never counts twice. A transfer carrying mw-auth's assertion (ticket 71) is
+ * authorised by it instead ({@link AssertionCheck}): no PIN, no bcrypt, no lockout count; the
+ * PIN path stays for the channels that still send {@code encryptedPin} until ticket 72.
  */
 @Component
 class TransferRules {
@@ -28,18 +30,21 @@ class TransferRules {
   private final PasswordEncoder encoder;
   private final WalletRepository wallets;
   private final WalletStateEvents stateEvents;
+  private final AssertionCheck assertions;
 
   TransferRules(
       CoreMockProperties props,
       PinCipher pins,
       PasswordEncoder encoder,
       WalletRepository wallets,
-      WalletStateEvents stateEvents) {
+      WalletStateEvents stateEvents,
+      AssertionCheck assertions) {
     this.props = props;
     this.pins = pins;
     this.encoder = encoder;
     this.wallets = wallets;
     this.stateEvents = stateEvents;
+    this.assertions = assertions;
   }
 
   long fee(String txnType) {
@@ -52,14 +57,14 @@ class TransferRules {
    * own PIN, so the PIN and its lockout count apply to that wallet; there are no funds or daily
    * debit limits to check, only the per-transaction limit.
    */
-  Optional<Reason> checkPayee(TransferPayload p, Wallet credit, long amount) {
+  Optional<Reason> checkPayee(String txnId, TransferPayload p, Wallet credit, long amount) {
     if (credit.locked()) {
       return Optional.of(Reason.ACCOUNT_LOCKED);
     }
     if (!credit.active()) {
       return Optional.of(Reason.CREDIT_ACCOUNT_BLOCKED);
     }
-    Optional<Reason> wrongPin = checkPin(p, credit);
+    Optional<Reason> wrongPin = authorise(txnId, p, credit);
     if (wrongPin.isPresent()) {
       return wrongPin;
     }
@@ -70,6 +75,11 @@ class TransferRules {
       return Optional.of(Reason.LIMIT_EXCEEDED_PER_TXN);
     }
     return Optional.empty();
+  }
+
+  /** The assertion of {@code wallet} when the command carries one, else its PIN. */
+  private Optional<Reason> authorise(String txnId, TransferPayload p, Wallet wallet) {
+    return p.assertion() != null ? assertions.check(p, wallet, txnId) : checkPin(p, wallet);
   }
 
   /** The PIN of {@code wallet}, with the lockout count (spec 9.1). */
@@ -92,9 +102,11 @@ class TransferRules {
     return Optional.empty();
   }
 
-  /** @param credit the receiving wallet, or {@code null} when it is not a wallet of this core (hold) */
+  /**
+   * @param txnId the command's transaction (an assertion's jti is bound to it)
+   * @param credit the receiving wallet, or {@code null} when it is not a wallet of this core (hold) */
   Optional<Reason> check(
-      TransferPayload p, Wallet debit, Wallet credit, long amount, long fee, long usedToday) {
+      String txnId, TransferPayload p, Wallet debit, Wallet credit, long amount, long fee, long usedToday) {
     CoreMockProperties.WalletTypes types = props.walletTypes().get(p.txnType());
     if (types != null
         && (!types.debit().equals(debit.type()) || (credit != null && !types.credit().equals(credit.type())))) {
@@ -111,7 +123,7 @@ class TransferRules {
     }
     // BULK_DISBURSE carries no PIN (maker-checker in the org portal); its wallet types (ORG ->
     // CUSTOMER) are configured, so no other payer passes here without a PIN
-    Optional<Reason> wrongPin = p.pinRequired() ? checkPin(p, debit) : Optional.empty();
+    Optional<Reason> wrongPin = p.pinRequired() ? authorise(txnId, p, debit) : Optional.empty();
     if (wrongPin.isPresent()) {
       return wrongPin;
     }

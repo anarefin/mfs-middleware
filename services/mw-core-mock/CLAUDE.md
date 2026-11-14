@@ -129,9 +129,34 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   A status set by hand in SQL (tests) publishes nothing. Test: `service/WalletStateEventsIT`.
 - Reason codes (core reasons, mapped by the orchestrator): `WALLET_NOT_FOUND`,
   `CREDIT_WALLET_NOT_FOUND`, `INVALID_COUNTERPARTY`, `ACCOUNT_LOCKED`, `ACCOUNT_BLOCKED`,
-  `CREDIT_ACCOUNT_BLOCKED`, `SAME_WALLET`, `INVALID_PIN`, `INVALID_PIN_BLOCK`, `INVALID_AMOUNT`,
+  `CREDIT_ACCOUNT_BLOCKED`, `SAME_WALLET`, `INVALID_PIN`, `INVALID_PIN_BLOCK`, `MW-AUTH-046` (assertion), `INVALID_AMOUNT`,
   `LIMIT_EXCEEDED_PER_TXN`, `LIMIT_EXCEEDED_DAILY`, `INSUFFICIENT_BALANCE`, plus the hold and
   reversal reasons above and `WALLET_NOT_LOCKED` (unlock). Check order: wallets, wallet types, status, PIN, amount, limits, funds.
+- Transaction assertion (spec 18.7, D22, ticket 71; `service/AssertionCheck`, `security/AssertionKeys`,
+  `client/AssertionJwksClient`, `repository/UsedAssertionRepository`, `util/TxnHash` + `util/CanonicalJson`
+  (copied from mw-auth), `config/AssertionProperties` `mw.coremock.assertion.*`): a ValidateTransaction,
+  PostTransfer or HoldFunds carrying `assertion` (plus `idempotencyKey`, else malformed) is authorised by it
+  instead of the PIN, in the PIN's place in the check order: **no PIN decrypt, no bcrypt, no lockout count**.
+  Checks: compact JWS, alg ES256 only, kid in mw-auth's set, signature, `iss` mw-auth, `aud` contains core,
+  `sub` = the authorising wallet (payer; the payee of ADD_MONEY_BANK), `authMethod` PIN, `txnHash` = the hash
+  recomputed from the command (txnType, amount, currency, debit and credit party type+id, the payload's
+  idempotencyKey, the assertion's `channel`), then the jti in `coremock.used_assertion` (V8): used by
+  another txnId refused; used by this txnId (the PostTransfer after its ValidateTransaction) accepted
+  without the expiry check; unused: `exp` + `clock-skew` 30 s must not have passed (and `iat` not in the
+  future), then the jti is claimed for this txnId in the command transaction. Every refusal is the
+  command's failure event with reasonCode **`MW-AUTH-046`** (`Reason.ASSERTION_INVALID`, `Reason.code()`;
+  the orchestrator passes it on as it is), WARN `core.assertion.refused` with the cause, never the token.
+  Key set: `GET http://mw-auth:8080/auth/v1/.well-known/assertion-jwks.json` (contract `auth.v1`, consumed
+  API), fetched at start (`scheduler/AssertionKeyRefreshJob`, an `ApplicationRunner`) and every
+  `refresh-period` 30 s (not ShedLock-guarded: a per-instance cache), never on a command; a failure keeps
+  the last set (WARN `core.assertion.jwks_failed`), an unknown kid is refused until the next refresh.
+  Used jtis are purged `used-retention` (1 d) after `exp` (`service/UsedAssertionPurge`,
+  `scheduler/UsedAssertionPurgeJob`, ShedLock `used-assertion-purge`, `purge-cron`). Commands with the
+  deprecated `encryptedPin` keep the PIN path below until ticket 72 removes it (`PinCipher`,
+  `PinKeyProvider`, `PinKeyController` stay until then). Tests: `service/AssertionRulesIT` (validate + post
+  of one txn, hold, tampered amount, other idempotency key, wrong aud, other wallet, foreign key and
+  garbage, jti replayed on another txn, expired vs within skew, purge), `security/TestAssertions` (in-test
+  key + JWKS server, wired by `TestInfrastructure`), `util/TxnHashTest`, `contracts/ApiContractsTest`.
 - PIN: RSA-OAEP with SHA-256 (hash and MGF1), PKCS#8 private key from OpenBao
   (`mw.coremock.pin.private-key`), checked against the wallet's bcrypt hash. The plaintext is never
   logged or stored. `GET /core-mock/v1/pin-public-key` exports `{keyId, algorithm, publicKeyPem}`.

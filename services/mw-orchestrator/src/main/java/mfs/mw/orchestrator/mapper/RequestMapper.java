@@ -57,10 +57,14 @@ public class RequestMapper {
     }
   }
 
-  /** A new transaction in RECEIVED; the PIN ciphertext is held apart from the stored request. */
+  /**
+   * A new transaction in RECEIVED; the PIN ciphertext is held apart from the stored request. A
+   * request with an assertion stores nothing PIN-related (ticket 71): its ciphertext, if a channel
+   * still sends one, is dropped.
+   */
   public TransactionRecord toRecord(TxnRequest r, String replyTo, Instant now) {
     return new TransactionRecord(
         UUID.fromString(r.txnId()), now, now, r.withoutPin(), Status.RECEIVED, null, replyTo, null,
-        null, null, r.encryptedPin(), null, null, null);
+        null, null, r.assertion() != null ? null : r.encryptedPin(), null, null, null);
   }
 }
