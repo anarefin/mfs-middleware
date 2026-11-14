@@ -61,11 +61,11 @@ Most scenarios pay from customer01 (01711000001), and one run spends about 4,000
 15,000 BDT a core-mock wallet may debit per UTC day: on one wallet the 4th run of a day would fail
 with `MW-CORE-LIMIT_EXCEEDED_DAILY`. So run.sh gives every run a **run customer** from mw-seeder's
 pool (`seed-run-customer01..24`, MSISDN `01714NN0001`, 10,000,000 BDT each, persona `run-customer`
-in the seed manifest): `run_customer.mjs` takes the one used least on this UTC day, at most 3 runs a
+in the seed manifest, realm `mw-auth`: an app login, no Keycloak user): `run_customer.mjs` takes the one used least on this UTC day, at most 3 runs a
 day each (12,000 BDT), and refuses with the fix when the pool is used up (72 runs a day). lib.js then
 plays customer01 as it: `MW.forRun` swaps customer01's number (`1711000001`, so the `0...` and `880...`
 forms) in the scenario source before it runs, so everything sent, signed and expected uses the run
-customer, and `MW.loginUser` logs `customers/customer01` in as the run customer. Its number masks as
+customer, and `MW.loginUser` logs customer01 in at mw-auth as the run customer. Its number masks as
 `0171****001` like customer01's, and mw-notify's dev contacts give it customer01's email address. A
 run without `runCustomerMsisdn` (Newman by hand) plays customer01 itself. The 10,000-row payout
 (folder 90) pays the real 01711000001, so it checks 01711000002 instead.
@@ -77,9 +77,9 @@ Request names start with their requirement tags (`[p2p tsq] a transfer whose cor
 
 | What | Path | Notes |
 | --- | --- | --- |
-| App API | `/app/v1/*` | real route; customers-realm token (`customer01`, `agent01`, `merchant01`, ... of the realm import) |
+| App API | `/app/v1/*` | real route; mw-auth token (MSISDN + app PIN `MW_SEED_APP_PIN` + bound device, `/auth/v1/*`): `customer01`, `agent01`, `merchant01`, ... on core-mock's seed wallets |
 | Org portal, admin API, checkout, partner callbacks, USSD | `/portal/org/v1/*`, `/admin/v1/*`, `/checkout/*`, `/partner/*`, `/ussd/*` | real routes |
-| Tokens | `/auth/realms/{customers,portals}/...`; `/auth/realms/ops/...` (test-only, key-auth) | ops: dev-only client `mw-e2e-ops`, users `ops-e2e-maker01` / `ops-e2e-checker01` |
+| Tokens | `/auth/realms/portals/...`; `/auth/realms/ops/...` (test-only, key-auth) | both realms demand TOTP: portals users (`org-maker01`, ...) with the pre-set `KC_PORTALS_TEST_TOTP_SECRET`, ops: dev-only client `mw-e2e-ops`, users `ops-e2e-maker01` / `ops-e2e-checker01` with `KC_OPS_TEST_TOTP_SECRET` (ticket 73) |
 | core-mock test API | `/test/core-mock/v1/*` | test-only (`MW_E2E_ROUTES=1`), key-auth `MW_E2E_API_KEY` |
 | simulators, mail | `/test/sim/*`, `/test/mail/*` | test-only, key-auth |
 | REVERSAL, handled request | `/test/orchestrator/v1/reversals`, `/test/orchestrator/v1/txn-requests/{key}` | test-only mw-orchestrator API (`contracts/api/mw-orchestrator/orchestrator-test.v1.openapi.yaml`); replaces kafka-console-producer and psql |

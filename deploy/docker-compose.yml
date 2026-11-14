@@ -379,12 +379,12 @@ services:
       KC_DB_PASSWORD: ${KC_DB_PASSWORD:?cp dev.env.defaults .env}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?cp dev.env.defaults .env}
       # resolved by Keycloak in the realm files (${VAR} placeholders) on import
-      KC_PARTNER_SIM_SECRET: ${KC_PARTNER_SIM_SECRET:?cp dev.env.defaults .env}
-      KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?cp dev.env.defaults .env}
       KC_OPS_TEST_PASSWORD: ${KC_OPS_TEST_PASSWORD:?cp dev.env.defaults .env}
       # TOTP secret of the dev-only e2e operators ops-e2e-maker01 / ops-e2e-checker01 (ticket 37)
       KC_OPS_TEST_TOTP_SECRET: ${KC_OPS_TEST_TOTP_SECRET:?cp dev.env.defaults .env}
       KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?cp dev.env.defaults .env}
+      # pre-set TOTP secret of the portals test users (ticket 73)
+      KC_PORTALS_TEST_TOTP_SECRET: ${KC_PORTALS_TEST_TOTP_SECRET:?cp dev.env.defaults .env}
       # realm services: internal API clients (/internal/v1/** of mw-orchestrator, mw-audit-dw)
       KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?cp dev.env.defaults .env}
       KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
@@ -651,6 +651,8 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       openbao: { condition: service_healthy }
+      # registers partner-sim's private_key_jwt certificate in realm partners (ticket 73)
+      keycloak: { condition: service_healthy }
     environment:
       PGHOST: postgres
       PGUSER: ${POSTGRES_USER:-mw_admin}
@@ -658,6 +660,10 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD:?cp dev.env.defaults .env}
       BAO_ADDR: ${VAULT_ADDR:-http://openbao:8200}
       INIT_FILE: /openbao/file/dev-init.json
+      # Keycloak admin REST on the data network (lib.sh partner_sim_client_key, ticket 73)
+      KC_URL: http://keycloak:8080
+      KC_BOOTSTRAP_ADMIN_USERNAME: kc-admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?cp dev.env.defaults .env}
       OUT_ROOT: /out
       # deploy/.env values synced into the services' secrets on every run (services.sh sync_env)
       VALKEY_PASSWORD: ${VALKEY_PASSWORD:?cp dev.env.defaults .env}
@@ -1226,6 +1232,8 @@ services:
       # the app users log in at mw-auth with the seeded app PIN (ticket 69)
       MW_SEED_APP_PIN: ${MW_SEED_APP_PIN:-}
       KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?cp dev.env.defaults .env}
+      # the portals realm demands TOTP (ticket 73): the org users' pre-set secret
+      KC_PORTALS_TEST_TOTP_SECRET: ${KC_PORTALS_TEST_TOTP_SECRET:?cp dev.env.defaults .env}
       CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?cp dev.env.defaults .env}
     depends_on:
       apisix: { condition: service_healthy }
@@ -1295,7 +1303,7 @@ services:
       KC_OPS_TEST_PASSWORD: ${KC_OPS_TEST_PASSWORD:?cp dev.env.defaults .env}
       KC_OPS_TEST_TOTP_SECRET: ${KC_OPS_TEST_TOTP_SECRET:?cp dev.env.defaults .env}
       KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?cp dev.env.defaults .env}
-      KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?cp dev.env.defaults .env}
+      KC_PORTALS_TEST_TOTP_SECRET: ${KC_PORTALS_TEST_TOTP_SECRET:?cp dev.env.defaults .env}
       # The dev app PIN of the app wallets at mw-auth (ticket 69, step seed-app-pins): a fixed fake value.
       MW_SEED_APP_PIN: ${MW_SEED_APP_PIN:-}
     deploy:

@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Prints the current ops console one-time code (TOTP) of a persona with a pre-set secret, so a tester
-# signs in to https://localhost/console without an authenticator app (docs/testing-guide.html):
+# Prints the current one-time code (TOTP) of an ops or portal persona with a pre-set secret, so a
+# tester signs in to https://localhost/console (or an org portal login) without an authenticator app
+# (docs/testing-guide.html):
 #   scripts/totp.sh [PERSONA]     (default seed-ops-maker)
-# Realm ops (deploy/keycloak/realms/ops-realm.json): RFC 6238, HmacSHA256, 6 digits, 30 s. The secret
-# KC_OPS_TEST_TOTP_SECRET (deploy/.env) is keyed as its raw UTF-8 bytes, never base32-decoded: the same
-# algorithm as mw-seeder util/Totp, tests/api/lib.js and ui/mw-admin-ui/e2e/support/totp.ts.
-# Personas with the secret: seed-ops-* (mw-seeder) and ops-e2e-* (realm import). The other ops users
+# Realms ops and portals (deploy/keycloak/realms): RFC 6238, HmacSHA256, 6 digits, 30 s. The secret
+# (deploy/.env: KC_OPS_TEST_TOTP_SECRET for ops, KC_PORTALS_TEST_TOTP_SECRET for portals, ticket 73) is
+# keyed as its raw UTF-8 bytes, never base32-decoded: the same algorithm as mw-seeder util/Totp,
+# tests/api/lib.js and ui/mw-admin-ui/e2e/support/totp.ts.
+# Personas with a pre-set secret: ops seed-ops-* (mw-seeder) and ops-e2e-* (realm import); every
+# portals user: seed-org-* (mw-seeder) and org-*, sp-viewer01 (realm import). The other ops users
 # (ops-maker01, ...) enrol their own authenticator app at the first sign-in.
 # MW_TOTP_TIME=<epoch seconds> fixes the clock (tests).
 set -eu
@@ -13,12 +16,13 @@ set -eu
 
 persona="${1:-seed-ops-maker}"
 case "$persona" in
-  seed-ops-maker|seed-ops-checker|seed-ops-viewer|seed-ops-compliance|ops-e2e-maker01|ops-e2e-checker01) ;;
-  *) die "totp: $persona has no pre-set secret; it enrols an authenticator app (FreeOTP or Aegis, SHA-256) at its first sign-in. Pre-set: seed-ops-maker, seed-ops-checker, seed-ops-viewer, seed-ops-compliance, ops-e2e-maker01, ops-e2e-checker01" ;;
+  seed-ops-maker|seed-ops-checker|seed-ops-viewer|seed-ops-compliance|ops-e2e-maker01|ops-e2e-checker01) var=KC_OPS_TEST_TOTP_SECRET ;;
+  seed-org-maker|seed-org-checker|org-maker01|org-checker01|org-makerchecker01|org-checker02|sp-viewer01) var=KC_PORTALS_TEST_TOTP_SECRET ;;
+  *) die "totp: $persona has no pre-set secret; it enrols an authenticator app (FreeOTP or Aegis, SHA-256) at its first sign-in. Pre-set: seed-ops-maker, seed-ops-checker, seed-ops-viewer, seed-ops-compliance, ops-e2e-maker01, ops-e2e-checker01 (ops); seed-org-maker, seed-org-checker, org-maker01, org-checker01, org-makerchecker01, org-checker02, sp-viewer01 (portals)" ;;
 esac
 [ -f "$STACK_ENV" ] || die "totp: deploy/.env does not exist (cd deploy && cp dev.env.defaults .env)"
-secret="$(sed -n 's/^KC_OPS_TEST_TOTP_SECRET=//p' "$STACK_ENV" | tail -1)"
-[ -n "$secret" ] || die "totp: KC_OPS_TEST_TOTP_SECRET is not in deploy/.env (see deploy/dev.env.defaults)"
+secret="$(sed -n "s/^$var=//p" "$STACK_ENV" | tail -1)"
+[ -n "$secret" ] || die "totp: $var is not in deploy/.env (see deploy/dev.env.defaults)"
 command -v node >/dev/null 2>&1 || die "totp: node is not on PATH (prerequisite: Node.js 24)"
 
 MW_TOTP_SECRET="$secret" MW_TOTP_PERSONA="$persona" node -e '

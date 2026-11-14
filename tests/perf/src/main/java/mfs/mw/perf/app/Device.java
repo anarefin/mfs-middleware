@@ -73,6 +73,16 @@ public final class Device {
     return h;
   }
 
+  /**
+   * The device signature headers alone (no bearer): mw-auth's {@code /auth/v1} binding, login and
+   * refresh calls take none (ticket 69).
+   */
+  public Map<String, String> signedHeaders(String method, String path, String body) {
+    Map<String, String> h = signedHeaders("unused", method, path, body);
+    h.remove("Authorization");
+    return h;
+  }
+
   private String sign(String canonical) {
     try {
       Signature s = Signature.getInstance("SHA256withECDSA");

@@ -11,6 +11,19 @@ export const sha256Hex = (s: string): string => createHash("sha256").update(s, "
 const hmacHex = (secret: string, s: string): string => createHmac("sha256", secret).update(s, "utf8").digest("hex");
 const hmacB64 = (secret: string, s: string): string => createHmac("sha256", secret).update(s, "utf8").digest("base64");
 
+/**
+ * RFC 6238 TOTP as Keycloak's realms portals and ops check it (ticket 73): HmacSHA256 keyed with the
+ * secret's raw UTF-8 bytes (never base32-decoded), 6 digits, 30 s steps. As tests/api/lib.js totp().
+ */
+export function totp(secret: string, atMs: number = Date.now()): string {
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(atMs / 30000)));
+  const h = createHmac("sha256", Buffer.from(secret, "utf8")).update(counter).digest();
+  const o = h.readUInt8(h.length - 1) & 0x0f;
+  const bin = h.readUInt32BE(o) & 0x7fffffff;
+  return String(bin % 1000000).padStart(6, "0");
+}
+
 export type DeviceKey = { privatePem: string; publicKey: string };
 
 /** A new device key: the private key as PKCS#8 PEM, the public key as base64 SPKI DER (what POST /auth/v1/devices at mw-auth takes). */

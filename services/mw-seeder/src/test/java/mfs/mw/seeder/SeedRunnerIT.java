@@ -45,11 +45,11 @@ class SeedRunnerIT {
           "ops/seed-ops-viewer", List.of("viewer"),
           "ops/seed-ops-compliance", List.of("compliance-officer"),
           "portals/seed-org-maker", List.of("org-maker"),
-          "portals/seed-org-checker", List.of("org-checker"),
-          "customers/seed-customer01", List.of("customer"),
-          "customers/seed-customer02", List.of("customer"),
-          "customers/seed-agent01", List.of("agent"),
-          "customers/seed-merchant01", List.of("merchant"));
+          "portals/seed-org-checker", List.of("org-checker"));
+
+  /** The app users: listed in the manifest for an mw-auth login, never created in Keycloak (ticket 73). */
+  private static final List<String> APP_USERS =
+      new ArrayList<>(List.of("seed-customer01", "seed-customer02", "seed-agent01", "seed-merchant01"));
 
   /** The API suite's run customers (tests/api/run_customer.mjs): seed-run-customer01..24, 01714NN0001. */
   private static final int RUN_CUSTOMERS = 24;
@@ -63,7 +63,7 @@ class SeedRunnerIT {
 
   static {
     for (int i = 1; i <= RUN_CUSTOMERS; i++) {
-      USERS.put(String.format("customers/seed-run-customer%02d", i), List.of("customer"));
+      APP_USERS.add(String.format("seed-run-customer%02d", i));
       WALLETS.put(String.format("01714%02d0001", i), "CUSTOMER");
     }
   }
@@ -101,7 +101,7 @@ class SeedRunnerIT {
                 "--mw.seeder.realms.ops.password=fake-ops-password",
                 "--mw.seeder.realms.ops.totp-secret=fake-totp-secret",
                 "--mw.seeder.realms.portals.password=fake-portals-password",
-                "--mw.seeder.realms.customers.password=fake-customers-password",
+                "--mw.seeder.realms.portals.totp-secret=fake-portals-totp-secret",
                 "--mw.seeder.initial-backoff=10ms",
                 "--mw.seeder.max-backoff=50ms"));
     a.addAll(List.of(extra));
@@ -127,13 +127,28 @@ class SeedRunnerIT {
     assertThat(json.readTree(compliance.getBodyAsString()).path("credentials").findValuesAsString("type"))
         .as("the compliance officer logs in with password + TOTP like the other ops personas")
         .containsExactly("password", "otp");
+    LoggedRequest orgMaker =
+        requests(RequestMethod.POST, "/admin/realms/portals/users").stream()
+            .filter(r -> r.getBodyAsString().contains("seed-org-maker")).findFirst().orElseThrow();
+    JsonNode org = json.readTree(orgMaker.getBodyAsString());
+    assertThat(org.path("credentials").findValuesAsString("type"))
+        .as("the portals realm demands TOTP (ticket 73): the org personas get the pre-set secret")
+        .containsExactly("password", "otp");
+    assertThat(org.path("credentials").get(1).path("secretData").asString()).isEqualTo("{\"value\":\"fake-portals-totp-secret\"}");
+    assertThat(requests(RequestMethod.GET, "/admin/realms/customers/.*")).as("no customers realm").isEmpty();
     LoggedRequest opsToken =
         requests(RequestMethod.POST, "/realms/ops/protocol/openid-connect/token").getFirst();
     assertThat(opsToken.getBodyAsString()).contains("client_id=mw-e2e-ops", "totp=");
     Path manifest = dir.resolve("seed/manifest.json");
     String first = Files.readString(manifest);
     JsonNode m = json.readTree(first);
-    assertThat(m.path("personas")).hasSize(USERS.size());
+    assertThat(m.path("personas")).hasSize(USERS.size() + APP_USERS.size());
+    for (JsonNode p : m.path("personas")) {
+      if (APP_USERS.contains(p.path("username").asString())) {
+        assertThat(p.path("realm").asString()).isEqualTo("mw-auth");
+        assertThat(p.path("passwordEnv").asString()).isEqualTo("MW_SEED_APP_PIN");
+      }
+    }
     assertThat(m.path("wallets")).hasSize(WALLETS.size());
     assertThat(m.path("partners").get(0).path("enabled").asBoolean()).isTrue();
     assertThat(m.path("ussdMenus").get(0).path("version").asInt()).isEqualTo(1);
@@ -141,7 +156,7 @@ class SeedRunnerIT {
     assertThat(m.path("appPins").path("pinEnv").asString()).isEqualTo("MW_SEED_APP_PIN");
     long appWallets = WALLETS.values().stream().filter(t -> !t.equals("ORG")).count();
     assertThat(m.path("appPins").path("walletIds")).hasSize((int) appWallets + 5); // + the realm imports' app users
-    assertThat(first).doesNotContain("fake-ops-password", "fake-totp-secret", "fake-admin-password", "13579");
+    assertThat(first).doesNotContain("fake-ops-password", "fake-totp-secret", "fake-portals-totp-secret", "fake-admin-password", "13579");
     LoggedRequest pins = requests(RequestMethod.POST, "/internal/v1/seed/pins").getFirst();
     assertThat(pins.getBodyAsString()).contains("\"keyId\":\"pin-transport.v1\"").doesNotContain("13579");
 
@@ -178,7 +193,7 @@ class SeedRunnerIT {
     wm.stubFor(get("/ready").willReturn(aResponse().withStatus(200)));
     wm.stubFor(post("/realms/master/protocol/openid-connect/token").willReturn(okJson("{\"access_token\":\"admin\",\"expires_in\":60}")));
     wm.stubFor(post("/realms/ops/protocol/openid-connect/token").willReturn(okJson("{\"access_token\":\"ops\",\"expires_in\":300}")));
-    for (String realm : List.of("ops", "portals", "customers")) {
+    for (String realm : List.of("ops", "portals")) {
       wm.stubFor(get(urlPathEqualTo("/admin/realms/" + realm + "/clients")).willReturn(okJson("[{\"id\":\"c\"}]")));
     }
     USERS.forEach(this::stubUser);

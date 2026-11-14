@@ -14,8 +14,9 @@ test_the_login_helper_refuses_a_wrong_argument() {
 
 test_edge_test_gets_its_app_tokens_from_mw_auth() {
   grep -q 'scripts/lib/mw-auth-token.mjs' "$REPO_DIR/scripts/edge-test.sh" || fail "edge-test.sh does not use the mw-auth login helper"
-  if grep -q 'realms/customers/protocol/openid-connect/token' "$REPO_DIR/scripts/edge-test.sh" \
-    && ! grep -q 'kc_customer_token' "$REPO_DIR/scripts/edge-test.sh"; then
-    fail "edge-test.sh still takes its app tokens from the Keycloak customers realm"
+  # ticket 73: the Keycloak customers realm is gone, so nothing may log in there any more
+  if grep -qE 'realms/customers|kc_customer_token|KC_CUSTOMERS' "$REPO_DIR/scripts/edge-test.sh"; then
+    fail "edge-test.sh still uses the Keycloak customers realm"
   fi
+  return 0
 }

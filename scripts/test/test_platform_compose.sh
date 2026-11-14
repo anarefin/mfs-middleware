@@ -9,17 +9,18 @@ MINIMAL_SERVICES="mw-admin-api mw-app-gateway mw-audit-dw mw-auth mw-core-mock m
 PLATFORM_SERVICES="kafka kafka-init postgres valkey keycloak openbao etcd etcd-init apisix apisix-init greenmail"
 ONE_SHOT="kafka-init etcd-init apisix-init"
 SECRET_VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALTH_PASSWORD
-  POSTGRES_PASSWORD VALKEY_PASSWORD KC_BOOTSTRAP_ADMIN_PASSWORD KC_PARTNER_SIM_SECRET
-  KC_CUSTOMERS_TEST_PASSWORD KC_OPS_TEST_PASSWORD KC_OPS_TEST_TOTP_SECRET KC_PORTALS_TEST_PASSWORD KC_DB_PASSWORD
+  POSTGRES_PASSWORD VALKEY_PASSWORD KC_BOOTSTRAP_ADMIN_PASSWORD
+  KC_OPS_TEST_PASSWORD KC_OPS_TEST_TOTP_SECRET KC_PORTALS_TEST_PASSWORD KC_PORTALS_TEST_TOTP_SECRET KC_DB_PASSWORD
   MW_E2E_API_KEY BILLAGG_HMAC_SECRET C2WBANK_HMAC_SECRET CHECKOUT_DEMO_MERCHANT_SECRET
   KC_MW_PORTAL_API_SECRET KC_MW_ADMIN_API_SECRET KC_MW_AUDIT_DW_SECRET KC_MW_AUTH_SECRET KC_MW_APP_GATEWAY_SECRET MW_ADMIN_UI_AUTH_SECRET
   USSD_GP_GATEWAY_SECRET USSD_ROBI_GATEWAY_SECRET USSD_BL_GATEWAY_SECRET USSD_TELETALK_GATEWAY_SECRET
   SOFTHSM_MWCRYPTO_SO_PIN SOFTHSM_MWCRYPTO_USER_PIN SOFTHSM_PAYSIM_SO_PIN SOFTHSM_PAYSIM_USER_PIN"
 # The tester logins: fixed, documented fake values (ADR D9 amendment, docs/testing-guide.html section 1),
 # committed in deploy/dev.env.defaults like every other dev value.
-FIXED_VARS="KC_OPS_TEST_PASSWORD=ops-test-pass KC_CUSTOMERS_TEST_PASSWORD=app-test-pass
+FIXED_VARS="KC_OPS_TEST_PASSWORD=ops-test-pass
   KC_PORTALS_TEST_PASSWORD=portal-test-pass KC_BOOTSTRAP_ADMIN_PASSWORD=kc-admin-test-pass
-  KC_OPS_TEST_TOTP_SECRET=opstesttotpsecretnotarealsecret1 MW_E2E_API_KEY=e2e-test-apikey MW_SEED_APP_PIN=13579"
+  KC_OPS_TEST_TOTP_SECRET=opstesttotpsecretnotarealsecret1
+  KC_PORTALS_TEST_TOTP_SECRET=portalstesttotpsecretnotreal0001 MW_E2E_API_KEY=e2e-test-apikey MW_SEED_APP_PIN=13579"
 # Not secrets, but generated into the same .env and required by the platform file (no fallback):
 # each MNO's USSD source allow-list (comma-separated CIDRs, item A4).
 ADDRESS_VARS="USSD_GP_ALLOWED_CIDRS USSD_ROBI_ALLOWED_CIDRS USSD_BL_ALLOWED_CIDRS USSD_TELETALK_ALLOWED_CIDRS"
@@ -280,8 +281,9 @@ test_provision_waits_for_healthy_postgres_and_openbao_through_compose_not_sleep_
   # the scripts themselves never poll (scripts/test/test_provision.sh)
   compose_json | jq -e '.services.provision | .depends_on.postgres.condition == "service_healthy"
     and .depends_on.openbao.condition == "service_healthy" and .restart == "no"
+    and .depends_on.keycloak.condition == "service_healthy" and .environment.KC_BOOTSTRAP_ADMIN_PASSWORD == "t"
     and .labels["mw.oneshot"] == "true" and .build.context != null' >/dev/null \
-    || fail "provision is not a one-shot waiting for healthy postgres and openbao"
+    || fail "provision is not a one-shot waiting for healthy postgres, openbao and keycloak (partner-sim certificate, ticket 73)"
 }
 
 test_provision_writes_each_service_its_own_approle_volume_only() {
@@ -663,17 +665,30 @@ test_smoke_copies_the_dev_env_defaults_before_reading_the_stack() {
   grep -q '^APISIX_ADMIN_KEY=' deploy/.env || fail "smoke.sh did not copy deploy/dev.env.defaults to deploy/.env"
 }
 
-# ---- Keycloak ops realm MFA (spec 18.2) ----
+# ---- Keycloak realms (spec 18.2, D21, ticket 73) ----
 
-test_ops_realm_enforces_totp_for_every_user_and_in_the_browser_flow() {
-  local f="$REALMS_DIR/ops-realm.json" flow bad
-  # every user either must enrol TOTP before a first token, or has one enrolled (the dev-only e2e
-  # operators of ticket 37, whose seeded secret the suite uses to compute the code)
+# The realm set after ticket 73: ops, portals, partners, services. The app users log in at mw-auth
+# (MSISDN + PIN, D21): no customers realm, no APISIX route to its token endpoint, no test password.
+test_keycloak_realms_are_ops_portals_partners_services_only() {
+  local names
+  names="$(jq -r .realm "$REALMS_DIR"/*-realm.json | sort | tr '\n' ' ')"
+  [ "$names" = "ops partners portals services " ] || fail "realms: $names"
+  [ ! -e "$REPO_DIR/deploy/apisix/routes/auth-customers-token.json" ] || fail "the customers token route is still applied"
+  grep -qE '^routes/auth-customers-token( |$)' "$REPO_DIR/deploy/apisix/retired.txt" \
+    || fail "routes/auth-customers-token is not in deploy/apisix/retired.txt (it would stay in etcd)"
+  grep -q 'KC_CUSTOMERS' "$REPO_DIR/deploy/dev.env.defaults" "$STACK_FILE" && fail "KC_CUSTOMERS_* still in deploy/"
+  return 0
+}
+
+# realm_requires_totp FILE: every user enrols TOTP before a first token or has one enrolled, and the
+# browser flow requires the password form and then the OTP form (never conditional).
+realm_requires_totp() {
+  local f="$1" flow bad
   bad="$(jq -r '.users[] | select(((.requiredActions // []) | index("CONFIGURE_TOTP") | not)
     and ((.credentials // []) | map(.type) | index("otp") | not)) | .username' "$f")"
-  [ -z "$bad" ] || fail "ops users without the CONFIGURE_TOTP required action or an OTP credential: $bad"
+  [ -z "$bad" ] || fail "$(basename "$f") users without the CONFIGURE_TOTP required action or an OTP credential: $bad"
   flow="$(jq -r '.browserFlow // empty' "$f")"
-  [ -n "$flow" ] && [ "$flow" != "browser" ] || fail "ops realm keeps the built-in browser flow (OTP only conditional)"
+  [ -n "$flow" ] && [ "$flow" != "browser" ] || fail "$(basename "$f") keeps the built-in browser flow (OTP only conditional)"
   # executions reachable from the browser flow: OTP and password forms REQUIRED, and
   # the sub-flows holding them REQUIRED or ALTERNATIVE (never CONDITIONAL/DISABLED)
   jq -e --arg top "$flow" '
@@ -684,8 +699,59 @@ test_ops_realm_enforces_totp_for_every_user_and_in_the_browser_flow() {
     | ($ex | any(.authenticator == "auth-otp-form" and .requirement == "REQUIRED"))
       and ($ex | any(.authenticator == "auth-username-password-form" and .requirement == "REQUIRED"))
       and ($ex | all(.requirement != "CONDITIONAL"))' "$f" >/dev/null \
-    || fail "browser flow '$flow' does not require auth-otp-form after the password form"
-  jq -e '.otpPolicyType == "totp"' "$f" >/dev/null || fail "ops realm OTP policy is not TOTP"
+    || fail "$(basename "$f") browser flow '$flow' does not require auth-otp-form after the password form"
+  jq -e '.otpPolicyType == "totp" and .otpPolicyAlgorithm == "HmacSHA256" and .otpPolicyDigits == 6
+    and .otpPolicyPeriod == 30' "$f" >/dev/null || fail "$(basename "$f") OTP policy is not TOTP HmacSHA256/6/30"
+}
+
+test_ops_realm_enforces_totp_for_every_user_and_in_the_browser_flow() {
+  realm_requires_totp "$REALMS_DIR/ops-realm.json"
+}
+
+# Ticket 73: the portals demand TOTP as ops does; their test users have the pre-set, documented fake
+# secret KC_PORTALS_TEST_TOTP_SECRET (scripts/totp.sh prints their codes).
+test_portals_realm_enforces_totp_with_the_preset_test_secret() {
+  local f="$REALMS_DIR/portals-realm.json" bad
+  realm_requires_totp "$f"
+  bad="$(jq -r '.users[] | select([(.credentials // [])[] | select(.type == "otp")
+    | .secretData | fromjson | .value] != ["${KC_PORTALS_TEST_TOTP_SECRET}"]) | .username' "$f")"
+  [ -z "$bad" ] || fail "portals users without the pre-set TOTP secret: $bad"
+}
+
+# Ticket 73: brute-force detection (temporary lockout with a growing wait, never permanent), a password
+# policy (12+ characters, not the username, last 5 not reused) and short access tokens in every realm.
+test_every_realm_has_brute_force_detection_a_password_policy_and_short_tokens() {
+  local f
+  for f in "$REALMS_DIR"/*-realm.json; do
+    jq -e '.bruteForceProtected == true and .permanentLockout == false
+      and .failureFactor >= 1 and .failureFactor <= 5 and .waitIncrementSeconds >= 60
+      and .maxFailureWaitSeconds >= 900' "$f" >/dev/null \
+      || fail "$(basename "$f") brute force: $(jq -c '{bruteForceProtected, permanentLockout, failureFactor, waitIncrementSeconds, maxFailureWaitSeconds}' "$f")"
+    jq -e '(.passwordPolicy // "") | (test("length[(]12[)]") and test("notUsername[(]") and test("passwordHistory[(]5[)]"))' "$f" >/dev/null \
+      || fail "$(basename "$f") password policy: $(jq -r '.passwordPolicy // "none"' "$f")"
+    jq -e '.accessTokenLifespan <= 300 and .ssoSessionIdleTimeout <= 1800 and .ssoSessionMaxLifespan <= 36000
+      and (.offlineSessionMaxLifespanEnabled // false) == true' "$f" >/dev/null \
+      || fail "$(basename "$f") token lifetimes: $(jq -c '{accessTokenLifespan, ssoSessionIdleTimeout, ssoSessionMaxLifespan, offlineSessionMaxLifespanEnabled}' "$f")"
+  done
+  # every committed dev password satisfies the policy (the realm import and the seeder would fail)
+  local v val
+  for v in KC_OPS_TEST_PASSWORD KC_PORTALS_TEST_PASSWORD; do
+    val="$(sed -n "s/^$v=//p" "$REPO_DIR/deploy/dev.env.defaults")"
+    [ "${#val}" -ge 12 ] || fail "$v is shorter than the 12 the password policy demands"
+  done
+}
+
+# Ticket 73: partner-sim authenticates with private_key_jwt (signed JWT client assertion, RS256); the
+# certificate is registered by the provision one-shot, no client secret exists.
+test_partner_sim_uses_private_key_jwt_and_has_no_client_secret() {
+  local f="$REALMS_DIR/partners-realm.json"
+  jq -e '.clients[] | select(.clientId == "partner-sim") | .clientAuthenticatorType == "client-jwt"
+    and has("secret") == false and .serviceAccountsEnabled
+    and .attributes["token.endpoint.auth.signing.alg"] == "RS256"
+    and .attributes["use.jwks.url"] == "false"' "$f" >/dev/null \
+    || fail "partner-sim: $(jq -c '.clients[] | select(.clientId == "partner-sim")' "$f")"
+  grep -q KC_PARTNER_SIM_SECRET "$REPO_DIR/deploy/dev.env.defaults" "$STACK_FILE" && fail "KC_PARTNER_SIM_SECRET still in deploy/"
+  return 0
 }
 
 # Brute-force detection on the ops realm (security review, ticket 37): its direct grant is reachable

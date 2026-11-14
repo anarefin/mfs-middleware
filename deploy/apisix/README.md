@@ -88,8 +88,8 @@ Route `app-v1` (`/app/v1/*`), in plugin order:
    3.19's `openid-connect` (lua-resty-openidc 1.9.0) verifies RSA JWKS only, which is why `JWT_SIGN`
    is RSA 3072 / RS256 (user decision, D21 amendment); `jwt-auth` has no JWKS and no issuer check and
    would need a consumer per key version re-applied on every rotation. mw-app-gateway verifies the token
-   again (RS256, `typ at+jwt`, issuer, audience). The Keycloak `customers` token is refused here now
-   (another issuer); the realm itself goes in ticket 73.
+   again (RS256, `typ at+jwt`, issuer, audience). A Keycloak token is refused here (another
+   issuer); the Keycloak realm `customers` is removed (ticket 73).
 3. No `request-validation`: the submit body (`POST /app/v1/transactions`) is signed by the app's
    bound device (ticket 29), and request-validation forwards a JSON body it validated re-encoded
    (APISIX 3.x `set_body_data`, not configurable), so the gateway could no longer verify the
@@ -278,15 +278,13 @@ over.
 
 ## Host routes for the API suite (tickets 10, 58)
 
-- `routes/auth-customers-token.json` (always applied): `POST
-  /auth/realms/customers/protocol/openid-connect/token`, only Keycloak's public token endpoint of
-  realm `customers` (client `mw-app` is public; no other Keycloak path is exposed). Host and
-  `X-Forwarded-*` are pinned to `keycloak:8080`, so the token's `iss` is
-  `http://keycloak:8080/realms/customers`, the issuer `app-v1`'s discovery expects. Revisit when
-  a public Keycloak hostname (`KC_HOSTNAME`) is fixed.
-- `routes/auth-portals-token.json` (always applied, ticket 33): the same for realm `portals`
-  (`POST /auth/realms/portals/protocol/openid-connect/token`, public client `mw-portal`), so the
-  token's `iss` is the one `portal-org-v1`'s discovery expects.
+- `routes/auth-portals-token.json` (always applied, ticket 33): `POST
+  /auth/realms/portals/protocol/openid-connect/token`, only Keycloak's public token endpoint of
+  realm `portals` (public client `mw-portal`; no other Keycloak path is exposed). Host and
+  `X-Forwarded-*` are pinned to `keycloak:8080`, so the token's `iss` is the one `portal-org-v1`'s
+  discovery expects. The realm demands TOTP (ticket 73): a password grant carries the form field
+  `totp`. Revisit when a public Keycloak hostname (`KC_HOSTNAME`) is fixed. The realm `customers`
+  and its route `auth-customers-token` are gone (ticket 73, D21; listed in `retired.txt`).
 - `routes-test/auth-ops-token.json` (TEST ONLY, ticket 37; moved out of `routes/` after the
   security review: the ops realm's direct grant is never on the public gateway): the same for realm
   `ops` (dev-only public client `mw-e2e-ops`, direct grant only, no browser flow; the console's

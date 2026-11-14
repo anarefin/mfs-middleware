@@ -49,11 +49,13 @@ Dev/test stack only, never real secrets. The logins testers type are fixed, docu
    merchant01 01911000001 | merchant02 01911000002 | seed-customer01 01712000001 | seed-agent01 01812000001
    transaction PIN (core, until ticket 72): 1234
    A token from the shell: MW_SEED_APP_PIN=... node scripts/lib/mw-auth-token.mjs 01711000001
-   (binds a new device; MW_EDGE_URL, MW_SIM_URL). Keycloak realm customers (password
-   $(v KC_CUSTOMERS_TEST_PASSWORD)) stays until ticket 73 but the app API no longer accepts its tokens
+   (binds a new device; MW_EDGE_URL, MW_SIM_URL). There is no Keycloak login for app users.
 
-== Portal users (realm portals, client mw-portal)   password: $(v KC_PORTALS_TEST_PASSWORD)
-   org-maker01, org-checker01, org-makerchecker01 (org ORG001), org-checker02 (other org), sp-viewer01
+== Portal users (realm portals, client mw-portal: password + 6-digit one-time code)   password: $(v KC_PORTALS_TEST_PASSWORD)
+   Every portal user has the pre-set code secret (no authenticator app needed):
+     seed-org-maker, seed-org-checker (org ORG001)   code: scripts/totp.sh seed-org-maker
+     org-maker01, org-checker01, org-makerchecker01 (org ORG001), org-checker02 (other org), sp-viewer01
+                                                     code: scripts/totp.sh org-maker01
 
 == Keycloak admin (no browser console at the edge; use kcadm.sh in the container)
    user kc-admin   password $(v KC_BOOTSTRAP_ADMIN_PASSWORD)

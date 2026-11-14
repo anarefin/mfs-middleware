@@ -64,7 +64,7 @@ a finding to document (what missed, the diagnostics), not a broken suite.
 | ADD_MONEY_BANK | 7 % | 500 Tk from a linked c2wbank account into the customer's wallet |
 | USSD_P2P | 5 % | robi USSD session played by the USSD gateway simulator (`/test/sim/ussdgw/sessions`): English, Send Money 10 Tk to a perf customer |
 
-Every app submit is a real app request: customers-realm token, bound device, signed body with
+Every app submit is a real app request: mw-auth access token, bound device, signed body with
 timestamp and nonce, fresh `Idempotency-Key`, PIN `1234` encrypted with the core's key, and the
 synchronous answer awaited (200 COMPLETED, or the intended 502). Amounts are whole taka, so no
 simulator magic fraction is hit. Open model: arrivals per second, one transaction per virtual user,
@@ -73,13 +73,15 @@ transaction).
 
 ## Users and wallets
 
-Setup (`stack/Provisioning`, in the simulation's `before`) creates the perf users in realm
-`customers` with a Keycloak partial import (`docker compose exec keycloak kcadm.sh`, `SKIP` existing,
-password `KC_CUSTOMERS_TEST_PASSWORD`): `perf-c001..perf-c200` on wallets `01711000101..300`,
-`perf-a01..perf-a30` on agents `01811000011..040`; USSD customers `01711000301..400` need no user.
-None is a wallet the e2e suite uses. It then fetches every token (renewed in the background), and
-binds one new device per user with the binding OTP read from the SMSC simulator (about 230 bindings,
-16 at a time). Pools are sized for APISIX's quotas: 120 app requests/min per token subject, 120 USSD
+Setup (`stack/Provisioning`, in the simulation's `before`) logs the perf users in at mw-auth as an
+app does (ticket 73: no Keycloak user; the flow of `scripts/lib/mw-auth-token.mjs`):
+`perf-c001..perf-c200` on wallets `01711000101..300`, `perf-a01..perf-a30` on agents
+`01811000011..040`; USSD customers `01711000301..400` need no login. None is a wallet the e2e suite
+uses. It sets the dev app PIN `MW_SEED_APP_PIN` on every perf wallet through mw-auth's dev-only seed
+API (`POST /internal/v1/seed/pins` on the dev host port `MW_PORT_AUTH`, default 8095; idempotent),
+then binds one new device per user with the binding OTP read from the SMSC simulator and logs in
+(about 230 bindings, 16 at a time); the tokens are renewed in the background with their refresh
+tokens (`POST /auth/v1/tokens/refresh`, signed by the device). Pools are sized for APISIX's quotas: 120 app requests/min per token subject, 120 USSD
 hops/min per MSISDN.
 
 Balances and limits (default run, about 33,700 transactions): a customer is debited about 3,800 Tk

@@ -11,7 +11,7 @@
 # Then the SECRETS_AHEAD entries of services.sh: KV values only, for a service not in the stack yet.
 # Each service still gets only its own secret, role and AppRole; only this one-shot holds the
 # OpenBao root token and the PostgreSQL admin password, and it exits when done.
-# Compose starts it once postgres and openbao are healthy, so nothing here polls.
+# Compose starts it once postgres, openbao and keycloak are healthy, so nothing here polls.
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

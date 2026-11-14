@@ -96,7 +96,7 @@ function environment() {
   const values = [
     ['baseUrl', 'https://localhost:443'], ['ocsTimeoutMs', '20000'],
     ['e2eApiKey', ''], ['appPin', ''], ['kcPortalsPassword', ''], ['kcOpsPassword', ''],
-    ['kcOpsTotpSecret', ''], ['billaggSecret', ''], ['checkoutSecret', ''], ['runCustomerUser', ''], ['runCustomerMsisdn', ''],
+    ['kcOpsTotpSecret', ''], ['kcPortalsTotpSecret', ''], ['billaggSecret', ''], ['checkoutSecret', ''], ['runCustomerUser', ''], ['runCustomerMsisdn', ''],
   ].map(([key, value]) => ({ key, value, enabled: true }));
   return { name: 'Bits MFS middleware local stack', values, _postman_variable_scope: 'environment' };
 }

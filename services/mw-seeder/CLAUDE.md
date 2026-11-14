@@ -25,10 +25,14 @@ this file says what is specific to this module.
      Keycloak `:9000/health/ready`, `/actuator/health/readiness` of every long-running mw-* service.
   2. `seed-identities`: the personas of `mw.seeder.users` in Keycloak (admin REST as the bootstrap admin
      `KC_BOOTSTRAP_ADMIN_*`, master realm, `admin-cli`). Missing user: created with the realm's test
-     password and, in realm ops, a TOTP credential (the realm import's format: HmacSHA256, 6 digits,
-     30 s, secret `KC_OPS_TEST_TOTP_SECRET`), plus its realm roles. Existing user: only the missing roles
-     are added; credentials are never touched. The realms' clients (`mw.seeder.realms.<r>.clients`) must
-     exist (the realm imports create them) or the step fails.
+     password and, in realms ops and portals, a TOTP credential (the realm import's format: HmacSHA256, 6
+     digits, 30 s, secret `KC_OPS_TEST_TOTP_SECRET` / `KC_PORTALS_TEST_TOTP_SECRET`, ticket 73), plus its
+     realm roles. Existing user: only the missing roles are added; credentials are never touched. The
+     realms' clients (`mw.seeder.realms.<r>.clients`) must exist (the realm imports create them) or the
+     step fails. A realm with `keycloak: false` is not in Keycloak: `mw-auth`, the app users (ticket 73:
+     the Keycloak `customers` realm is gone; they log in at mw-auth with MSISDN + the dev app PIN). Its
+     users are only listed in the manifest (realm `mw-auth`, `passwordEnv` `MW_SEED_APP_PIN`, no
+     `loginClient`), with no Keycloak call and not counted in the step result.
   3. `seed-core-accounts`: the wallets of `mw.seeder.wallets` in mw-core-mock: GET, and only if unknown
      the test-only `PUT /core-mock/v1/wallets/{walletId}` (create-if-absent, seed PIN, opening balance, no
      ledger entries; an existing wallet keeps whatever balance tests left).
@@ -81,20 +85,24 @@ this file says what is specific to this module.
   `seed-ops-checker` (viewer, ops-checker), `seed-ops-viewer` (viewer), `seed-ops-compliance`
   (compliance-officer, as the realm import's `ops-compliance01`: the console's audited PII reveal);
   all four with password + TOTP; portals `seed-org-maker`,
-  `seed-org-checker` (orgId ORG001); customers `seed-customer01`/`02` (`01712000001`/`2`), `seed-agent01`
-  (`01812000001`), `seed-merchant01` (`01912000001`); wallets for those MSISDNs plus org `01312000001`,
+  `seed-org-checker` (orgId ORG001, password + TOTP); app users (realm `mw-auth`, no Keycloak user)
+  `seed-customer01`/`02` (`01712000001`/`2`), `seed-agent01` (`01812000001`), `seed-merchant01` (`01912000001`); wallets for those MSISDNs plus org `01312000001`,
   outside mw-core-mock's own seed ranges (`0171100xxxx`, ...). The API suite's run customers `seed-run-customer01..24` (persona
   `run-customer`, role customer, MSISDN `01714NN0001`: masks as `0171****001` like customer01) with
   CUSTOMER wallets of 10,000,000 BDT: each `scripts/api-test.sh` run plays customer01 as one of them
   (`tests/api/run_customer.mjs`, at most 3 runs per UTC day each), so repeated runs never reach a
   wallet's daily debit limit (`tests/api/README.md`). The realm imports' own users
-  (`ops-e2e-maker01`, `customer01`, `org-maker01`, ...) stay for the Newman suite (`tests/api`), which
-  still logs in as several of them, and for manual use.
+  (`ops-e2e-maker01`, `org-maker01`, ...) and core-mock's own app wallets (`customer01` = `01711000001`,
+  ...; app PIN from `extra-wallet-ids`) stay for the Newman suite (`tests/api`), which still logs in as
+  several of them, and for manual use.
 
 ## Logging in as the seeded personas (Newman, Playwright)
 
-- Password: `deploy/.env` variable `passwordEnv` of the persona (e.g. `KC_OPS_TEST_PASSWORD`).
-- Realm ops demands a TOTP code: compute it from `KC_OPS_TEST_TOTP_SECRET` with RFC 6238, HmacSHA256,
+- Password: `deploy/.env` variable `passwordEnv` of the persona (e.g. `KC_OPS_TEST_PASSWORD`). Realm
+  `mw-auth` personas: `passwordEnv` names the app PIN (`MW_SEED_APP_PIN`); log in at mw-auth
+  (`scripts/lib/mw-auth-token.mjs`, MSISDN from `attributes.msisdn`).
+- Realms ops and portals demand a TOTP code: compute it from the persona's `totpSecretEnv`
+  (`KC_OPS_TEST_TOTP_SECRET`, `KC_PORTALS_TEST_TOTP_SECRET`) with RFC 6238, HmacSHA256,
   6 digits, 30 s, **keyed with the secret's UTF-8 bytes as they are** (Keycloak stores the raw string;
   do not base32-decode it). `util/Totp` (and the e2e suite's `support/Totp`) is the reference; RFC 6238
   SHA-256 vectors are in `util/TotpTest`.

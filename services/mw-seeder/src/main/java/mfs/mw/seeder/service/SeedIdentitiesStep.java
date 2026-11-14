@@ -22,7 +22,9 @@ import org.springframework.stereotype.Service;
  * A missing user is created with its realm's test password (and TOTP credential where the realm
  * demands a code) and its realm roles; an existing one only gets the roles it lacks (its
  * credentials are left alone). The clients each realm lists must already exist (the realm imports
- * create them); a missing one fails the step.
+ * create them); a missing one fails the step. The users of a realm that is not in Keycloak (the app
+ * users, who log in at mw-auth with MSISDN + the dev app PIN; ticket 73) are only listed for the
+ * manifest: no Keycloak call, not counted.
  */
 @Service
 @Order(2)
@@ -46,6 +48,9 @@ public class SeedIdentitiesStep implements SeedStep {
   @Override
   public StepResult run(SeedContext ctx) {
     for (Map.Entry<String, Realm> realm : props.realms().entrySet()) {
+      if (!realm.getValue().inKeycloak()) {
+        continue;
+      }
       for (String client : realm.getValue().clients()) {
         if (!keycloak.clientExists(realm.getKey(), client)) {
           throw new IllegalStateException("client " + client + " does not exist in realm " + realm.getKey());
@@ -59,7 +64,9 @@ public class SeedIdentitiesStep implements SeedStep {
       if (realm == null) {
         throw new IllegalStateException("user " + user.username() + ": no settings for realm " + user.realm());
       }
-      result = result.plus(ensure(user, realm));
+      if (realm.inKeycloak()) {
+        result = result.plus(ensure(user, realm));
+      }
       personas.add(
           new SeedManifest.Persona(
               user.persona(), user.realm(), user.username(), user.roles(), user.attributes(), realm.loginClient(),

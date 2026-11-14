@@ -38,8 +38,8 @@ import mfs.mw.perf.ussd.UssdSessions;
 /**
  * MVP acceptance criterion 7 (spec WP28): a mix of every MVP flow ({@link Flow}, shares in {@code
  * ScenarioMix}) at the target rate on the single MVP host, open model (arrivals per second, one
- * transaction per virtual user). App flows go through APISIX exactly as the app does (customers
- * realm token, bound device, signed submit, PIN encrypted for the core) and wait for the synchronous
+ * transaction per virtual user). App flows go through APISIX exactly as the app does (mw-auth
+ * access token, bound device, signed submit, PIN encrypted for the core) and wait for the synchronous
  * answer; a share of them reads the transaction back. USSD P2P sessions are played by the USSD
  * gateway simulator. Every transaction is written to {@code build/reports/perf/txns.csv}; {@code
  * ./gradlew perfOverhead} then subtracts core and simulator time (tests/perf/README.md).

@@ -116,7 +116,7 @@ Through the edge:
 | --- | --- |
 | `/console` | admin console (`mw-admin-ui`) |
 | `/realms/ops/*` | Keycloak realm `ops`, browser login of the console only |
-| `/app/v1/*` | `mw-app-gateway` (customer, agent, merchant apps; realm `customers` JWT) |
+| `/app/v1/*` | `mw-app-gateway` (customer, agent, merchant apps; mw-auth access JWT, D21) |
 | `/portal/org/v1/*` | `mw-portal-api` (realm `portals` JWT) |
 | `/admin/v1/*` | `mw-admin-api` (realm `ops` JWT) |
 | `/checkout/*`, `/ussd/<mno>`, `/partner/*/callback/*` | checkout, MNO USSD gateways, partner callbacks |
