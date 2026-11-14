@@ -13,7 +13,10 @@
 #   - a criterion is not 1-5 (or "-"), or a Covers item is unknown or claimed outside its criterion;
 #   - a Covers item is claimed by a request without the tag its flow / outcome demands (so a tag
 #     removed from a request name fails here);
-#   - a coverage item the MVP acceptance criteria demand is claimed by no request.
+#   - a coverage item the MVP acceptance criteria demand is claimed by no request;
+#   - (ticket 76) a row's optional fifth column holds something that is not a spec requirement id
+#     (FR-nn, SEC-nn, NFR-nn), or a request with a security tag (auth, pin, lock, assertion, crypto)
+#     names none.
 # Run by scripts/contracts-lint.sh (./gradlew :contractsLint); self-test scripts/test/test_api_traceability.sh.
 set -eu
 . "$(dirname "$0")/lib/common.sh"
@@ -37,7 +40,10 @@ import json, re, sys
 
 TAGS = {"health", "seed", "p2p", "device", "cash", "merchant", "topup", "billpay", "callback", "addmoney", "c2w",
         "checkout", "ipn", "notify", "tsq", "reversal", "admin", "operator", "partner-config", "wallet-unlock",
-        "ussd", "smpp", "bulk", "sp-query", "dlq", "auth", "edge"}
+        "ussd", "smpp", "bulk", "sp-query", "dlq", "auth", "edge", "pin", "lock", "assertion", "crypto"}
+# ticket 76: a request with one of these tags proves a security requirement and names its ids
+SECURITY_TAGS = {"auth", "pin", "lock", "assertion", "crypto"}
+REQ_ID = re.compile(r"^(FR|SEC|NFR)-\d\d$")
 FLOWS = {"P2P app": "p2p", "CASH_IN app": "cash", "CASH_OUT app": "cash", "TOPUP app": "topup", "BILL_PAY app": "billpay",
          "ADD_MONEY_BANK app": "addmoney", "MERCHANT_PAY app": "merchant", "MERCHANT_PAY checkout": "checkout"}
 USSD_FLOWS = ["P2P ussd", "CASH_OUT ussd", "TOPUP ussd", "BILL_PAY ussd"]
@@ -81,14 +87,16 @@ for folder in coll.get("item", []):
             if t not in TAGS:
                 errors.append("unknown tag '%s' in request %s %s" % (t, num, name))
 
-ROW = re.compile(r"^\|\s*(\d\d)\s*\|\s*(.+?)\s*\|\s*([0-9, -]+?)\s*\|\s*(.*?)\s*\|\s*$")
+ROW = re.compile(r"^\|\s*(\d\d)\s*\|\s*(.+?)\s*\|\s*([0-9, -]+?)\s*\|\s*([^|]*?)\s*\|(?:\s*([^|]*?)\s*\|)?\s*$")
 rows = []
+reqs = {}
 for line in open(sys.argv[2], encoding="utf-8"):
     m = ROW.match(line.rstrip("\n"))
     if m:
         crit = {int(c) for c in m.group(3).replace(" ", "").split(",") if c and c != "-"}
         covers = [c.strip() for c in m.group(4).split(";") if c.strip()]
         rows.append((m.group(1), m.group(2), crit, covers))
+        reqs["%s %s" % (m.group(1), m.group(2))] = [r.strip() for r in (m.group(5) or "").split(",") if r.strip()]
 
 existing = ["%s %s" % r for r in requests]
 mapped = ["%s %s" % (r[0], r[1]) for r in rows]
@@ -102,6 +110,15 @@ for r in sorted({x for x in mapped if mapped.count(x) > 1}):
     errors.append("request mapped twice: " + r)
 for r in sorted({x for x in existing if existing.count(x) > 1}):
     errors.append("request name used twice in one folder: " + r)
+
+for num, name, crit, covers in rows:
+    ids = reqs["%s %s" % (num, name)]
+    for r in ids:
+        if not REQ_ID.match(r):
+            errors.append("'%s' of %s %s is not a requirement id (FR-nn, SEC-nn, NFR-nn)" % (r, num, name))
+    m = re.match(r"^\[([a-z0-9 -]+)\]", name)
+    if m and SECURITY_TAGS.intersection(m.group(1).split()) and not ids:
+        errors.append("security request names no requirement id: %s %s" % (num, name))
 
 claimed = set()
 for num, name, crit, covers in rows:

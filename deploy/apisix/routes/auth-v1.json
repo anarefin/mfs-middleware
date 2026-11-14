@@ -1,8 +1,8 @@
 {
   "name": "auth-v1",
-  "desc": "mw-auth public API v1 (18.7, D21; tickets 68-69): OTP, binding, login, refresh, logout, first PIN. No auth plugin (device signature, OTP, PIN; mw-auth checks its own tokens). No rewrite (the device signs). Quota per hashed MSISDN and per address",
+  "desc": "mw-auth public API v1 (18.7, D21; tickets 68-70, 76): OTP, binding, login, refresh, logout, PIN set/change/reset (POST, PUT). No auth plugin (mw-auth checks device signature, OTP, PIN, own tokens). No rewrite. Quota per hashed MSISDN and per address",
   "uri": "/auth/v1/*",
-  "methods": ["POST"],
+  "methods": ["POST", "PUT"],
   "plugins": {
     "client-control": {
       "max_body_size": 16384

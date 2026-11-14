@@ -1,0 +1,4 @@
+{
+  "name": "26 Transaction authorisation assertion: PIN before the saga, reuse, USSD and checkout",
+  "description": "Ticket 76: every channel asks mw-auth for a signed assertion before it publishes (tickets 71-72, spec 18.7, D22); the core accepts nothing else. The expiry after its 60 s life is in folder 90."
+}

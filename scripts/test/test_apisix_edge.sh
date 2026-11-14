@@ -152,6 +152,23 @@ test_the_audit_dw_test_route_is_test_only_behind_key_auth() {
     || fail "audit test route must be GET /test/audit-dw/v1/* to mw-audit-dw: $(jq -c '{methods,uri,upstream}' "$r")"
 }
 
+# Ticket 76: mw-crypto's dev-only payShield test API (plain port 8082, never the mTLS internal API) is
+# test-only behind the same gate, payshield paths only, rewritten to the service's /test/v1/payshield/*.
+test_the_crypto_test_route_is_test_only_behind_key_auth() {
+  MW_E2E_ROUTES= MW_E2E_API_KEY= render || fail "dry run failed: $OUT"
+  [ -f out/routes/test-crypto.json ] && fail "crypto test route applied without MW_E2E_ROUTES=1"
+  assert_out_contains "DELETE /apisix/admin/routes/test-crypto"
+  MW_E2E_ROUTES=1 MW_E2E_API_KEY=k3yFromDotEnv CHECKOUT_DEMO_MERCHANT_SECRET=s3cretFromDotEnv render || fail "dry run failed: $OUT"
+  local r=out/routes/test-crypto.json
+  [ -f "$r" ] || fail "crypto test route not applied with MW_E2E_ROUTES=1"
+  jq -e '.plugins["key-auth"] and .plugins["consumer-restriction"].whitelist == ["mw_e2e"]
+    and (.plugins["ip-restriction"].whitelist | index("0.0.0.0/0") | not)' "$r" >/dev/null \
+    || fail "crypto test route lacks the test gate: $(jq -c .plugins "$r")"
+  jq -e '.uri == "/test/crypto/v1/payshield/*" and .upstream.nodes == {"mw-crypto:8082": 1}
+    and .plugins["proxy-rewrite"].regex_uri == ["^/test/crypto(/v1/payshield/.*)$", "/test$1"]' "$r" >/dev/null \
+    || fail "crypto test route must send /test/crypto/v1/payshield/* to mw-crypto:8082 /test/v1/payshield/*: $(jq -c '{uri,upstream,plugins}' "$r")"
+}
+
 # Ticket 58: the orchestrator's test API (publish a REVERSAL, idempotency lookup) is test-only,
 # behind the same gate, and rewrites /test/orchestrator/v1/* to the service's /test/v1/*.
 test_the_orchestrator_test_route_is_test_only_behind_key_auth() {
@@ -516,6 +533,9 @@ test_auth_route_sends_the_device_api_to_mw_auth_untouched() {
   [ -n "$r" ] || fail "no auth-v1 route rendered (have: $(ls out/routes))"
   printf '%s' "$r" | jq -e '.uri == "/auth/v1/*" and .upstream.nodes == {"mw-auth:8080": 1}' >/dev/null \
     || fail "auth-v1 must send /auth/v1/* to mw-auth:8080: $(printf '%s' "$r" | jq -c '{uri, upstream}')"
+  # ticket 76: PUT for the PIN change (PUT /auth/v1/pin) and the reset's new PIN (PUT .../pin)
+  printf '%s' "$r" | jq -e '.methods == ["POST", "PUT"]' >/dev/null \
+    || fail "auth-v1 must take POST and PUT: $(printf '%s' "$r" | jq -c '.methods')"
   printf '%s' "$r" | jq -e '.plugins | has("request-validation") or has("proxy-rewrite") or has("body-transformer") | not' >/dev/null \
     || fail "auth-v1 rewrites the path or body the device signed"
   printf '%s' "$r" | jq -e '.plugins["client-control"].max_body_size > 0
@@ -527,9 +547,16 @@ test_auth_route_sends_the_device_api_to_mw_auth_untouched() {
   printf '%s' "$r" | jq -r '.plugins["serverless-pre-function"].functions[]' | grep -q 'resty.sha256' \
     || fail "auth-v1 must key its quota on the hashed MSISDN"
   r="$(obj routes auth-v1-keys)"
-  printf '%s' "$r" | jq -e '.uris == ["/auth/v1/.well-known/jwks.json", "/auth/v1/pin-key"] and .methods == ["GET"]
+  printf '%s' "$r" | jq -e '.uris == ["/auth/v1/.well-known/jwks.json", "/auth/v1/.well-known/assertion-jwks.json", "/auth/v1/pin-key"] and .methods == ["GET"]
     and .upstream.nodes == {"mw-auth:8080": 1} and .plugins["limit-count"].key == "remote_addr"' >/dev/null \
     || fail "auth-v1-keys: $(printf '%s' "$r" | jq -c '{uris, methods, plugins: (.plugins | keys)}')"
+  # ticket 76: the app polls its PIN reset (GET /auth/v1/pin-resets/{id}), a quota per address
+  r="$(obj routes auth-v1-pin-resets)"
+  [ -n "$r" ] || fail "no auth-v1-pin-resets route rendered"
+  printf '%s' "$r" | jq -e '.uri == "/auth/v1/pin-resets/*" and .methods == ["GET"]
+    and .upstream.nodes == {"mw-auth:8080": 1} and .plugins["limit-count"].key == "remote_addr"
+    and (.plugins | has("proxy-rewrite") | not)' >/dev/null \
+    || fail "auth-v1-pin-resets: $(printf '%s' "$r" | jq -c '{uri, methods, plugins: (.plugins | keys)}')"
 }
 
 # Ticket 69 (D21 amendment): app-v1 verifies mw-auth's RS256 access tokens with openid-connect against

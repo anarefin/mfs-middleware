@@ -1,0 +1,4 @@
+{
+  "name": "27 HSM gateway payShield: PVV generate and verify on the stack (dev-only test API)",
+  "description": "Ticket 76 (ticket 64 acceptance): mw-crypto's payShield provider against the mw-simulators payShield simulator, driven through mw-crypto's dev-only test API (/test/crypto/v1/payshield/*, MW_CRYPTO_TEST_API_ENABLED, test-only client mw-e2e-crypto bound to TPK and PVK in dev only)."
+}

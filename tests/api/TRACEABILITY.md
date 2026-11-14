@@ -13,7 +13,7 @@ and `tsq`; `ops *` needs `operator` or `admin`; `<FLOW> ussd *` and `ussd http` 
 Requirement tags are the Cucumber flow tags without `@` (`p2p`, `cash`, `topup`, `billpay`,
 `callback`, `addmoney`, `c2w`, `merchant`, `checkout`, `ipn`, `notify`, `tsq`, `device`, `reversal`,
 `admin`, `operator`, `partner-config`, `wallet-unlock`, `ussd`, `smpp`, `bulk`, `sp-query`, `dlq` (retry topics to the DLQ, ticket 58, no Cucumber flow), plus
-`health` and `seed` for folder 00, `auth` (mw-auth's login and tokens, ticket 69) and `edge` (an APISIX edge policy proved through the edge)); the module tags (`@mw-*`) were run filters, not requirements, and
+`health` and `seed` for folder 00, `auth` (mw-auth's login and tokens, ticket 69), `edge` (an APISIX edge policy proved through the edge), and since ticket 76 `pin` (the PIN lifecycle: policy, change, resets), `lock` (the PIN lockout and its unlock), `assertion` (the transaction authorisation assertion of every channel) and `crypto` (the HSM gateway mw-crypto)); the module tags (`@mw-*`) were run filters, not requirements, and
 are not carried over (`make api-test FOLDER=` selects folders).
 
 | # | Criterion | Where it is proved |
@@ -35,10 +35,17 @@ Covers vocabulary: `<TXN_TYPE> <app|checkout|ussd> <success|failure|tsq-commit|t
 `ops <search-txnId|search-msisdn|timeline|audit|reversal-approved>`, `ussd <http|smpp>`.
 Criteria `-` = supporting scenario (edge security, bulk, portal, config), no MVP criterion.
 
+Requirements (ticket 76): the optional fifth column names the spec requirement ids a request proves
+(spec "Requirements traceability": `FR-01` gateway and auth, `FR-05` idempotency, `FR-18` audit trail,
+`FR-19`/`FR-20` maker-checker, `SEC-04`/`SEC-05` encryption, keys and the HSM gateway, `SEC-09` RBAC,
+MFA and wallet authentication (18.7), `SEC-10` masking). A request tagged `auth`, `pin`, `lock`,
+`assertion` or `crypto` must name at least one; `scripts/check-api-traceability.sh` checks the ids'
+form (`FR-nn`, `SEC-nn`, `NFR-nn`).
+
 ## Requests
 
-| Folder | Request | Criteria | Covers |
-| --- | --- | --- | --- |
+| Folder | Request | Criteria | Covers | Requirements |
+| --- | --- | --- | --- | --- |
 | 00 | [health seed] the seeded personas sign in and the seeded wallets exist | - | |
 | 00 | [health] the edge and every test-only route answer | - | |
 | 00 | [health] the money path is warm: a P2P per app user completes | - | |
@@ -108,10 +115,10 @@ Criteria `-` = supporting scenario (edge security, bulk, portal, config), no MVP
 | 02 | [device p2p] a P2P with a valid signature passes | 1 |  |
 | 02 | [device p2p] a replayed signed request is rejected and moves no money again | 1, 2 |  |
 | 02 | [device p2p] a body changed after signing is rejected | 1 |  |
-| 02 | [device auth] a login on the bound device gets mw-auth tokens and the same signed login again is a replay | - |  |
-| 02 | [device auth] a wrong PIN at login is refused | - |  |
-| 02 | [device auth] a refresh rotates the token and the used token again revokes the session | - |  |
-| 02 | [device auth edge] the app API refuses no token and serves an mw-auth token; the JWK Set is public | - |  |
+| 02 | [device auth] a login on the bound device gets mw-auth tokens and the same signed login again is a replay | - |  | SEC-09, FR-01 |
+| 02 | [device auth] a wrong PIN at login is refused | - |  | SEC-09 |
+| 02 | [device auth] a refresh rotates the token and the used token again revokes the session | - |  | SEC-09 |
+| 02 | [device auth edge] the app API refuses no token and serves an mw-auth token; the JWK Set is public | - |  | FR-01, SEC-09 |
 | 04 | [merchant] a customer pays a merchant and the merchant sees the collection | 1 | MERCHANT_PAY app success |
 | 04 | [merchant] a payment the customer's balance cannot cover is rejected and moves no money | 1 | MERCHANT_PAY app failure |
 | 04 | [merchant] a merchant payment to a wallet that is not a merchant is refused by the core | 1 | MERCHANT_PAY app failure |
@@ -184,3 +191,22 @@ Criteria `-` = supporting scenario (edge security, bulk, portal, config), no MVP
 | 18 | [ussd] a bad number is refused and asked again, and no money moves | 1, 5 | ussd http |
 | 18 | [ussd] a wrong PIN is refused by mw-auth and asked again, the right one then pays once | 1, 5 | ussd http |
 | 16 | [admin wallet-unlock] three wrong PINs lock the PIN at mw-auth, an approved unlock lets the next correct-PIN P2P succeed | - |  |
+| 24 | [auth] an OTP for an unknown MSISDN is refused; a known wallet gets a masked answer and the SMS | - |  | SEC-09, SEC-10 |
+| 24 | [auth] a wallet without a PIN logs in with a LOGIN OTP, sets its first PIN and gets a PIN session | - |  | SEC-09, FR-01 |
+| 24 | [auth device] a wrong binding OTP is refused, the right one binds the device and a new-device SMS follows | - |  | SEC-09 |
+| 24 | [auth device] binding a second device unbinds the first: its login and refresh are refused, the new one logs in | - |  | SEC-09, FR-01 |
+| 24 | [auth] logout ends the session: the refresh token is revoked and the app API refuses the token | - |  | SEC-09, FR-01 |
+| 24 | [auth edge] the key documents are public: access-token JWKS RS256, assertion JWKS ES256, the PIN transport key | - |  | SEC-04, FR-01 |
+| 25 | [auth pin] a weak PIN is refused naming the rule; a good one is set | - |  | SEC-09, SEC-04 |
+| 25 | [auth pin] a PIN change needs the current PIN, refuses the same PIN again and replaces the session | - |  | SEC-09 |
+| 25 | [auth pin] a self-service reset is verified by the core, sets a new PIN and ends every session | - |  | SEC-09 |
+| 25 | [auth pin admin] a care PIN reset needs a second operator; the customer then sets a new PIN on a new phone | - |  | SEC-09, FR-20 |
+| 25 | [auth pin lock admin] three wrong PINs lock the PIN, the right one is not even checked, an approved ops unlock opens it | - |  | SEC-09, FR-20 |
+| 26 | [assertion p2p] a wrong PIN is refused by mw-auth before the saga: the orchestrator never sees the request | - |  | SEC-09, FR-04 |
+| 26 | [assertion p2p] a resend with the same idempotency key inside the assertion life reuses it: same txnId, money moves once | - |  | SEC-09, FR-05 |
+| 26 | [assertion ussd lock] USSD asks mw-auth for the assertion: wrong PINs are asked again, the third locks the PIN and ends the session | - |  | SEC-09, FR-10 |
+| 26 | [assertion checkout] a wrong PIN at checkout is refused by mw-auth and the session stays open; a new OTP and the right PIN pay once | - |  | SEC-09, FR-02 |
+| 27 | [crypto] a PIN block under the TPK gets a PVV from the payShield; it verifies the PIN and refuses another | - |  | SEC-04, SEC-05 |
+| 27 | [crypto] the test-only client is bound to the TPK and PVK only: a ZPK block is refused, the PVK is never served | - |  | SEC-04, SEC-09 |
+| 90 | [auth pin lock] the lockout escalates: level 1, level 2 after it ran out, then a permanent lock that only a reset ends | - |  | SEC-09 |
+| 90 | [assertion p2p] after the assertion life (60 s) a resend with the same key checks the PIN again; the right PIN gets the same txnId | - |  | SEC-09, FR-05 |

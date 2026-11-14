@@ -126,6 +126,28 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   `MW-VAL-015`), the block length must fit (`MW-VAL-001`). `account` is the ISO 9564 "PAN" (12-19
   digits with the check digit; a wallet's account number, a card PAN never enters the middleware),
   `@Sensitive(ACCOUNT)`; blocks and PVVs `SECRET`.
+- **Dev-only payShield test API (ticket 76; ticket 64 acceptance: PVV generate + verify on the stack).**
+  `config/TestApiProperties` `mw.crypto.test-api.{enabled, port 8082, client mw-e2e-crypto}`,
+  `config/TestApiConfig`, `filter/TestApiPortFilter`, `controller/PayShieldTestController`,
+  `service/PayShieldTestService`, `security/TestApiCaller`, `dto/PayShieldTestKey`; contract
+  `api/mw-crypto/crypto-test.v1.openapi.yaml`. **Off by default and outside dev:** only
+  `MW_CRYPTO_TEST_API_ENABLED=true` turns it on, and only `deploy/dev.env.defaults` sets it (compose
+  default `false`); no other environment may set it or the two binding knobs below. When on: a plain
+  HTTP connector on 8082 (not published to the host; the test-only APISIX route `test-crypto`,
+  `/test/crypto/v1/payshield/*`, key-auth `mw_e2e`, applied only with `MW_E2E_ROUTES=1`) that answers
+  only `/test/v1/payshield/**` (the mTLS port 8080 answers no `/test/**`; `TestApiPortFilter`, bare 404
+  both ways). `GET /test/v1/payshield/keys/{purpose}` -> `{keyId, kid, purpose, keyBlock}`: the ACTIVE
+  TPK / ZPK / TPK_AES / ZPK_AES and its blob under the simulator's LMK (what mw-simulators' `POST
+  /sim/payshield/pinblock` takes as `key`; never a clear key; a PVK or any other purpose `400
+  MW-VAL-015`). `POST /test/v1/payshield/pvv/generate|verify` = `/internal/v1/pvv/*`, run as the
+  test-only client `mw-e2e-crypto` (`TestApiCaller` swaps the security context for the call; a token
+  sent along grants nothing), so the caller policy decides as for any caller: the dev profile binds that
+  client to `TPK` and `PVK` only (`mw.crypto.authz.purposes.TPK: ${MW_CRYPTO_AUTHZ_PURPOSES_TPK:}`,
+  `PVK` likewise, `mw-e2e-crypto` in `dev.env.defaults`; empty, i.e. deny, everywhere else); a ZPK is
+  still 403 `MW-AUTH-002`. Newman folder 27 builds an ISO 0 block with the simulator, generates the PVV
+  and verifies it (and a wrong PIN `match: false`). Tests: `controller/PayShieldTestControllerTest`,
+  `filter/TestApiPortFilterTest`, `config/TestApiDefaultsTest` (off and unbound in the image config),
+  `contracts/PayShieldTestApiContractsTest`.
 - Caller policy: each key's purpose (`TPK`, `ZPK`, `TPK_AES`, `ZPK_AES`, `PVK`) in `mw.crypto.authz.purposes`;
   none bound yet (deny by default). The ATM / interop adapter ticket adds its client there and to
   `allowed-clients`.
@@ -377,6 +399,8 @@ No PKCS#11 tooling on the host (user decision 2026-11-14): PKCS#11 never runs in
   `/tokens`, `/envelope/{encrypt,decrypt}`; ticket 65 `/xmldsig/{sign,verify}` and
   `/http-signature/{sign,verify}`; ticket 64 `/pinblock/translate`, `/pvv/{generate,verify}`. Checked by
   `contracts/ProducedContractsTest`, `contracts/OperationContractsTest` and `contracts/PayShieldContractsTest`.
+- `contracts/api/mw-crypto/crypto-test.v1.openapi.yaml` (ticket 76, dev-only, not a product contract):
+  the payShield test API above; `contracts/PayShieldTestApiContractsTest`.
 
 ## Contracts used
 

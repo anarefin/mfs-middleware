@@ -91,3 +91,37 @@ test_a_request_mapped_twice_fails() {
   assert_fails run_check
   assert_out_contains "mapped twice: 01 [bulk] a supporting scenario"
 }
+
+# Ticket 76: an optional fifth column names the spec requirement ids a request proves (SEC-04,
+# SEC-09, FR-05, ...); a request with a security tag (auth, pin, lock, assertion, crypto) must name one.
+plant_security_row() {
+  python3 - "$PWD/collection.json" "$PWD/TRACEABILITY.md" "$1" <<'PY'
+import json, sys
+c = json.load(open(sys.argv[1]))
+name = "[auth pin] a PIN change needs the current PIN"
+c["item"][1]["item"].append({"name": name, "request": {"method": "GET", "url": "x"}})
+json.dump(c, open(sys.argv[1], "w"))
+open(sys.argv[2], "a").write("| 01 | %s | - | | %s |\n" % (name, sys.argv[3]))
+PY
+}
+
+test_requirement_ids_in_the_fifth_column_pass() {
+  plant_suite
+  plant_security_row "SEC-09, FR-01"
+  assert_ok run_check
+  assert_out_contains "api traceability: ok"
+}
+
+test_a_security_request_without_a_requirement_id_fails() {
+  plant_suite
+  plant_security_row ""
+  assert_fails run_check
+  assert_out_contains "names no requirement id: 01 [auth pin] a PIN change needs the current PIN"
+}
+
+test_a_malformed_requirement_id_fails() {
+  plant_suite
+  plant_security_row "SEC-9"
+  assert_fails run_check
+  assert_out_contains "'SEC-9' of 01 [auth pin] a PIN change needs the current PIN is not a requirement id"
+}

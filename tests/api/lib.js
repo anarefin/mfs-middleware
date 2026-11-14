@@ -44,11 +44,22 @@
     const req = { url: (path.startsWith('http') ? path : v('baseUrl') + path), method, header };
     if (body) req.body = body;
     let res;
-    for (let attempt = 0; ; attempt++) {
-      try { res = await sendRaw(req); break; } catch (e) {
+    for (let attempt = 0, limited = 0; ; attempt++) {
+      try { res = await sendRaw(req); } catch (e) {
         if (attempt >= 2) throw new Error(method + ' ' + path + ' failed: ' + e.message);
         await sleep(500);
+        continue;
       }
+      // The edge's own quota on mw-auth's API (route auth-v1: per wallet and per address, ticket 69)
+      // answers MW-SYS-RATE_LIMITED before mw-auth sees the request (no nonce spent, nothing counted):
+      // a busy suite waits for the window and sends the same request again (ticket 76). mw-auth's own
+      // 429 (MW-VAL-022, OTP quota) is an answer and is returned.
+      if (res.code === 429 && path.startsWith('/auth/v1/') && limited < 3 && /MW-SYS-RATE_LIMITED/.test(res.text())) {
+        limited++;
+        await sleep(limited === 1 ? 2000 : 31000);
+        continue;
+      }
+      break;
     }
     const raw = res.text();
     let parsed = null;
@@ -366,6 +377,110 @@
     async billers(user) { return http('GET', '/app/v1/billers', { headers: await app.headers(user) }); },
     async fetchBill(user, biller, bill) { return http('POST', '/app/v1/billers/' + biller + '/fetch-bill', { headers: await app.headers(user), json: { billNumber: bill } }); },
     async collections(user) { return http('GET', '/app/v1/merchant/collections', { headers: await app.headers(user) }); },
+  };
+
+  // ---------- mw-auth's public API step by step (ticket 76: folders 24-26, 90) ----------
+  // The scenarios that bind, lock, reset or change a PIN never touch the shared app users: each takes
+  // a fresh wallet of its own, one of core-mock's seeded customers 01711000500..01711000999 (mw-seeder
+  // gives an app PIN only to its own wallets and to customer01/02, agent01, merchant01/02). mw-auth
+  // tells whether a wallet has a PIN: a LOGIN OTP is only sent to a wallet without one (else 403
+  // MW-AUTH-002), so fresh() tries random ones until one answers 202; a later run finds them taken.
+  const OTP_TEXT = {
+    BIND: /Your Bits code to bind a new device is ([0-9]{6})/,
+    LOGIN: /Your Bits code to sign in and set your PIN is ([0-9]{6})/,
+    RESET: /Your Bits code to reset your PIN is ([0-9]{6})/,
+  };
+  const auth = {
+    /** A new EC P-256 device key that no user's cache holds. */
+    async device() { return device('auth-' + uuid()); },
+    /** POST /auth/v1/otp from the device (unsigned, X-Device-Id). */
+    otp(d, msisdn, purpose) {
+      return http('POST', '/auth/v1/otp', { headers: { 'X-Device-Id': d.id }, json: { msisdn, purpose, locale: 'en' } });
+    },
+    /** The codes of one purpose the SMSC simulator holds for the wallet. */
+    async codes(msisdn, purpose) {
+      return (await sim.sms(msisdn)).map(m => OTP_TEXT[purpose].exec(m.text || '')).filter(Boolean).map(m => m[1]);
+    },
+    /** Asks an OTP of purpose and reads the new code from the SMSC simulator: {r, code}. */
+    async ask(d, msisdn, purpose) {
+      const before = await auth.codes(msisdn, purpose);
+      const r = await auth.otp(d, msisdn, purpose);
+      if (r.status !== 202) return { r, code: null };
+      const fresh = await poll(async () => (await auth.codes(msisdn, purpose)).filter(c => !before.includes(c)), l => l.length > 0, 30000, 500);
+      return { r, code: fresh.length ? fresh[fresh.length - 1] : null };
+    },
+    /** POST /auth/v1/devices signed by the device being bound; pin null for a wallet without a PIN. */
+    async bind(d, msisdn, otp, pin) {
+      const b = { msisdn, publicKey: d.pub, otp };
+      if (pin !== null && pin !== undefined) b.encryptedPin = await encryptAppPin(pin);
+      const body = JSON.stringify(b);
+      return http('POST', '/auth/v1/devices', { headers: await deviceSigned(d, 'POST', '/auth/v1/devices', body), raw: body });
+    },
+    /** POST /auth/v1/sessions signed by the device: with {pin} or with {otp} (a wallet without a PIN). */
+    async login(d, msisdn, by) {
+      const b = { msisdn };
+      if (by.otp) b.otp = by.otp; else b.encryptedPin = await encryptAppPin(by.pin);
+      const body = JSON.stringify(b);
+      return http('POST', '/auth/v1/sessions', { headers: await deviceSigned(d, 'POST', '/auth/v1/sessions', body), raw: body });
+    },
+    async refresh(d, refreshToken) {
+      const body = JSON.stringify({ refreshToken });
+      return http('POST', '/auth/v1/tokens/refresh', { headers: await deviceSigned(d, 'POST', '/auth/v1/tokens/refresh', body), raw: body });
+    },
+    logout(access) { return http('POST', '/auth/v1/sessions/logout', { headers: { Authorization: 'Bearer ' + access }, raw: '' }); },
+    /** POST /auth/v1/pin: the first PIN, with the token of an OTP login. */
+    async setPin(access, pin) {
+      return http('POST', '/auth/v1/pin', { headers: { Authorization: 'Bearer ' + access }, json: { encryptedPin: await encryptAppPin(pin) } });
+    },
+    /** PUT /auth/v1/pin: the PIN change, with the token of a PIN login and the current PIN. */
+    async changePin(access, pin, newPin) {
+      return http('PUT', '/auth/v1/pin', { headers: { Authorization: 'Bearer ' + access },
+        json: { encryptedPin: await encryptAppPin(pin), newEncryptedPin: await encryptAppPin(newPin) } });
+    },
+    /** POST /auth/v1/pin-resets: self-service (factors, signed by the bound device) or the care take-up (unsigned). */
+    async startReset(d, msisdn, otp, factors) {
+      const b = Object.assign({ msisdn, otp }, factors || {});
+      const body = JSON.stringify(b);
+      const headers = factors ? await deviceSigned(d, 'POST', '/auth/v1/pin-resets', body) : { 'X-Device-Id': d.id };
+      return http('POST', '/auth/v1/pin-resets', { headers, raw: body });
+    },
+    reset(d, id) { return http('GET', '/auth/v1/pin-resets/' + id, { headers: { 'X-Device-Id': d.id } }); },
+    async resetPin(d, id, pin) {
+      return http('PUT', '/auth/v1/pin-resets/' + id + '/pin', { headers: { 'X-Device-Id': d.id }, json: { encryptedPin: await encryptAppPin(pin) } });
+    },
+    /** The app API with a token and its device (the gateway checks the live session per request). */
+    billers(access, d) { return http('GET', '/app/v1/billers', { headers: { Authorization: 'Bearer ' + access, 'X-Device-Id': d.id } }); },
+    /**
+     * A fresh wallet of the scenario (see above) with a bound device: {msisdn, d, otpLogin} after the
+     * OTP login (no PIN yet), or with pin given also the first PIN set: {.., pin, tokens}.
+     */
+    async fresh(S, pin) {
+      let msisdn = null, d = null;
+      for (let i = 0; i < 25 && !msisdn; i++) {
+        const candidate = '017110' + String(500 + Math.floor(Math.random() * 500)).padStart(5, '0');
+        const probe = await auth.device();
+        const r = await auth.otp(probe, candidate, 'LOGIN');
+        if (r.status === 202) { msisdn = candidate; d = probe; }
+        else if (r.status !== 403) throw new Error('LOGIN OTP probe of a fresh wallet: ' + r);
+      }
+      S.check('a fresh wallet without an app PIN', !!msisdn);
+      const bindOtp = await auth.ask(d, msisdn, 'BIND');
+      S.eq('binding OTP sent (202)', bindOtp.r.status, 202, String(bindOtp.r));
+      const b = await auth.bind(d, msisdn, bindOtp.code, null);
+      S.eq('the device is bound without a PIN (201)', b.status, 201, String(b));
+      const loginOtp = await auth.ask(d, msisdn, 'LOGIN');
+      S.eq('LOGIN OTP sent (202)', loginOtp.r.status, 202, String(loginOtp.r));
+      const l = await auth.login(d, msisdn, { otp: loginOtp.code });
+      S.eq('OTP login (200)', l.status, 200, String(l));
+      const w = { msisdn, d, otpLogin: l.body, boundAt: b.body.boundAt };
+      if (pin) {
+        const p = await auth.setPin(l.body.accessToken, pin);
+        S.eq('first PIN set (200)', p.status, 200, String(p));
+        w.pin = pin;
+        w.tokens = p.body;
+      }
+      return w;
+    },
   };
 
   // ---------- Admin API (/admin/v1/*, realm ops) ----------
@@ -768,7 +883,7 @@
 
   const MW = {
     http, must, poll, sleep, uuid, unique, short, totp, claims, hmacHex, hmacB64, sha256Hex, encryptPin, encryptAppPin, token, bearer,
-    core, sim, app, admin, portal, checkout, callbacks, testApi, run, FINAL, IPN_URL, v, CV,
+    core, sim, app, auth, admin, portal, checkout, callbacks, testApi, run, FINAL, IPN_URL, v, CV,
     fixture: n => JSON.parse(CV.get('fixtures'))[n],
     /** The seeded PIN of every app wallet (MW_SEED_APP_PIN); mw-auth checks it for every channel (ticket 72). */
     get pin() { return v('appPin'); },

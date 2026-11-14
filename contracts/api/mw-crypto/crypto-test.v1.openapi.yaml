@@ -1,0 +1,173 @@
+openapi: 3.1.0
+info:
+  title: Bits HSM gateway payShield test API v1 (mw-crypto, dev-only)
+  version: 1.0.0
+  description: |
+    Dev-only test API of mw-crypto (ticket 76; ticket 64 acceptance), never part of the product: the
+    host Newman suite (`tests/api`, folder 27) exercises PVV generate and verify on the running stack
+    through the test-only APISIX route `/test/crypto/v1/*` (deploy/apisix/routes-test/test-crypto.json,
+    applied only with `MW_E2E_ROUTES=1`, key-auth consumer `mw_e2e`, private source addresses only).
+    Off unless mw-crypto runs with `MW_CRYPTO_TEST_API_ENABLED=true` (`mw.crypto.test-api.enabled`;
+    only `deploy/dev.env.defaults` sets it). When on it is served on a plain connector of its own
+    (port 8082, never published), which answers nothing else; the mTLS internal port never answers
+    `/test/**`. No token: every operation runs as the test-only client `mw-e2e-crypto`, which only the
+    dev profile binds to the TPK and PVK purposes (`MW_CRYPTO_AUTHZ_PURPOSES_TPK`, `_PVK`), so the
+    caller policy still decides (403 MW-AUTH-002 for any other key). Every error is the 5.3 envelope.
+servers:
+  - url: http://mw-crypto:8082
+paths:
+  /test/v1/payshield/keys/{purpose}:
+    get:
+      operationId: getTestPinKey
+      summary: The ACTIVE PIN key of a payShield purpose and its blob under the LMK
+      description: >-
+        What a terminal or switch sharing the key would be loaded with: the key under the simulator's
+        LMK (not a clear key), which the simulator's `POST /sim/payshield/pinblock` takes as `key` to
+        build a PIN block. Only PIN keys (TPK, ZPK, TPK_AES, ZPK_AES); a PVK or any other purpose is
+        400 MW-VAL-015, an unknown purpose 400 MW-VAL-011, no key 404 MW-VAL-010.
+      parameters:
+        - name: purpose
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[A-Z][A-Z0-9_]{0,31}$" }
+        - $ref: "#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: The key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TestPinKey" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /test/v1/payshield/pvv/generate:
+    post:
+      operationId: generateTestPvv
+      summary: crypto-internal.v1 generatePvv, run as the test-only client
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PvvGenerateRequest" }
+      responses:
+        "200":
+          description: The PVV and the PVK version
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PvvGenerated" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /test/v1/payshield/pvv/verify:
+    post:
+      operationId: verifyTestPvv
+      summary: crypto-internal.v1 verifyPvv, run as the test-only client (a wrong PIN is match false)
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PvvVerifyRequest" }
+      responses:
+        "200":
+          description: Whether the PIN matches the PVV
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PvvVerified" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+components:
+  parameters:
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema: { type: string }
+  responses:
+    Error:
+      description: Error envelope (spec 5.3)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    KeyRef:
+      type: string
+      description: "A keyId, or a kid <keyId>.v<n>"
+      pattern: "^[a-z0-9][a-z0-9-]{0,62}(\\.v[1-9][0-9]{0,5})?$"
+    TestPinKey:
+      type: object
+      required: [keyId, kid, purpose, keyBlock]
+      additionalProperties: false
+      properties:
+        keyId: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$" }
+        kid: { $ref: "#/components/schemas/KeyRef" }
+        purpose: { type: string, enum: [TPK, ZPK, TPK_AES, ZPK_AES] }
+        keyBlock:
+          type: string
+          description: The key under the LMK (U = triple DES, S = AES), as the simulator's A0 returned it
+          pattern: "^[US][0-9A-F]{32}$"
+    Account:
+      type: string
+      pattern: "^[0-9]{12,19}$"
+    PinBlockInput:
+      type: object
+      required: [keyId, format, block]
+      additionalProperties: false
+      properties:
+        keyId: { $ref: "#/components/schemas/KeyRef" }
+        format: { type: string, enum: [ISO0, ISO1, ISO3, ISO4] }
+        block: { type: string, pattern: "^([0-9A-Fa-f]{16}|[0-9A-Fa-f]{32})$" }
+    PvvGenerateRequest:
+      type: object
+      required: [pvkId, pvki, pinBlock, account]
+      additionalProperties: false
+      properties:
+        pvkId: { $ref: "#/components/schemas/KeyRef" }
+        pvki: { type: integer, minimum: 0, maximum: 9 }
+        pinBlock: { $ref: "#/components/schemas/PinBlockInput" }
+        account: { $ref: "#/components/schemas/Account" }
+    PvvVerifyRequest:
+      type: object
+      required: [pvkId, pvki, pinBlock, account, pvv]
+      additionalProperties: false
+      properties:
+        pvkId: { $ref: "#/components/schemas/KeyRef" }
+        pvki: { type: integer, minimum: 0, maximum: 9 }
+        pinBlock: { $ref: "#/components/schemas/PinBlockInput" }
+        account: { $ref: "#/components/schemas/Account" }
+        pvv: { type: string, pattern: "^[0-9]{4}$" }
+    PvvGenerated:
+      type: object
+      required: [pvv, pvkId, pvki]
+      properties:
+        pvv: { type: string, pattern: "^[0-9]{4}$" }
+        pvkId: { $ref: "#/components/schemas/KeyRef" }
+        pvki: { type: integer }
+    PvvVerified:
+      type: object
+      required: [match, pvkId]
+      properties:
+        match: { type: boolean }
+        pvkId: { $ref: "#/components/schemas/KeyRef" }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

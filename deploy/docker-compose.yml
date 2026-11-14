@@ -763,6 +763,12 @@ services:
       # the payShield provider (ticket 64) against the simulator in mw-simulators (host commands on
       # mw-simulators:1500); the bootstrap also creates the PVK, TPK, ZPK (+ _AES) keys there
       MW_CRYPTO_PAYSHIELD_ENABLED: "true"
+      # DEV ONLY (ticket 76): the payShield test API on the plain port 8082 (never published; the
+      # test-only APISIX route /test/crypto/v1/*) and its test-only client bound to TPK and PVK;
+      # off unless deploy/.env sets them (only dev.env.defaults does)
+      MW_CRYPTO_TEST_API_ENABLED: ${MW_CRYPTO_TEST_API_ENABLED:-false}
+      MW_CRYPTO_AUTHZ_PURPOSES_TPK: ${MW_CRYPTO_AUTHZ_PURPOSES_TPK:-}
+      MW_CRYPTO_AUTHZ_PURPOSES_PVK: ${MW_CRYPTO_AUTHZ_PURPOSES_PVK:-}
     # mTLS (D24, ticket 66): 8080 (and the published 8094) needs a client certificate of the OpenBao
     # intermediate pki_int; the service issues its own at start (pki_int/issue/mw-crypto, provision).
     # Probes and metrics are on the plain management port 8081, inside the network only.

@@ -1,0 +1,4 @@
+{
+  "name": "24 mw-auth: OTP, device binding, first PIN, login, tokens, logout",
+  "description": "Ticket 76: mw-auth's public API (tickets 68-69, spec 18.7, D21) black-box through APISIX. Every scenario takes a fresh wallet of its own (lib.js auth.fresh), never a shared app user."
+}

@@ -48,7 +48,10 @@ through `pm.sendRequest` (Newman waits for them; `--timeout-script` 15 min).
   EC P-256 key, binding OTP read from the SMSC simulator, every submit signed), `encryptPin`,
   `core` (core-mock balances, faults), `sim` (simulators, SMSC, mail, USSD gateway, merchant IPN),
   `admin`, `portal`, `checkout` (APISIX hmac-auth signing, result and IPN verification),
-  `callbacks` (billagg HMAC), `testApi` (the test-only orchestrator and audit-dw endpoints).
+  `callbacks` (billagg HMAC), `testApi` (the test-only orchestrator and audit-dw endpoints),
+  `auth` (ticket 76: mw-auth's public API step by step: OTP per purpose with the code read from the
+  SMSC simulator, binding, OTP or PIN login, refresh, logout, first PIN, PIN change, the resets; and
+  `auth.fresh(S, pin)`, a fresh wallet of the scenario's own, below).
 - `S` (one per request): the Cucumber steps as checks; each check is a `pm.test`, the first failing
   one stops the scenario, `S.after(fn)` clean-ups always run (core faults, simulator scenarios,
   partner restore). Money is always compared before/after (`S.note`, `S.changedBy`, `S.noChange`,
@@ -70,6 +73,17 @@ customer, and `MW.loginUser` logs customer01 in at mw-auth as the run customer. 
 run without `runCustomerMsisdn` (Newman by hand) plays customer01 itself. The 10,000-row payout
 (folder 90) pays the real 01711000001, so it checks 01711000002 instead.
 
+**Fresh wallets (ticket 76).** The security folders 24-26 and two folder 90 scenarios bind second
+devices, lock PINs, reset and change them: they never use a shared app user but `MW.auth.fresh`, one
+of core-mock's seeded customers `01711000500..01711000999` that has no app PIN yet (mw-seeder sets one
+only on its own wallets and customer01/02, agent01, merchant01/02). mw-auth tells: a `LOGIN` OTP goes
+only to a wallet without a PIN, so `fresh` tries random ones until one answers 202, binds a new
+device, logs in with the OTP and sets the first PIN. Each run uses up about a dozen of the 500 wallets, so
+a stack takes some 40 runs before `deploy/reset.sh` is needed (the scenario then fails on "a fresh
+wallet without an app PIN"). The edge's own quota on `/auth/v1/*` (20 per minute per wallet, 5 per
+second per address) is waited out by `MW.http` (`MW-SYS-RATE_LIMITED` only; mw-auth's own 429 is an
+answer).
+
 Request names start with their requirement tags (`[p2p tsq] a transfer whose core reply is lost
 ...`), the Cucumber flow tags; `TRACEABILITY.md` lists the vocabulary and the rule.
 
@@ -83,6 +97,7 @@ Request names start with their requirement tags (`[p2p tsq] a transfer whose cor
 | core-mock test API | `/test/core-mock/v1/*` | test-only (`MW_E2E_ROUTES=1`), key-auth `MW_E2E_API_KEY` |
 | simulators, mail | `/test/sim/*`, `/test/mail/*` | test-only, key-auth |
 | REVERSAL, handled request | `/test/orchestrator/v1/reversals`, `/test/orchestrator/v1/txn-requests/{key}` | test-only mw-orchestrator API (`contracts/api/mw-orchestrator/orchestrator-test.v1.openapi.yaml`); replaces kafka-console-producer and psql |
+| payShield test API | `/test/crypto/v1/payshield/*` | test-only mw-crypto API (`contracts/api/mw-crypto/crypto-test.v1.openapi.yaml`, ticket 76): a PIN key's LMK blob for `/test/sim/payshield/pinblock`, PVV generate / verify as the test-only client `mw-e2e-crypto`; only with `MW_CRYPTO_TEST_API_ENABLED=true` (dev) |
 | batch audit, hash chain | `/test/audit-dw/v1/audit/events`, `/test/audit-dw/v1/audit/chains/{month}` | test-only mw-audit-dw API (`contracts/api/mw-audit-dw/audit-dw-test.v1.openapi.yaml`); a transaction's audit trail is read from the admin API detail |
 
 Folder 00 checks the edge, the test routes and the mw-seeder baseline (seeded personas sign in,
@@ -100,5 +115,5 @@ partner deadline 8 s. The same file gives `mw-seeder` the short ocs limit
 (`MW_SEED_OCS_TIMEOUT_MS` in `deploy/dev.env.defaults`). run.sh passes the seeded ocs limit (`build/seed/manifest.json`) to
 the scenarios, which size their partner delays from it, so the suite also runs (slower) on a stack
 with production timers. Each request logs `scenario took N s`. Folder 90 holds what stays slow (the
-10,000-row payout; the retry-to-DLQ request, some 11 min with production retry delays). APISIX re-resolves service names every 5 s (`dns_resolver_valid`), so a
+10,000-row payout; the retry-to-DLQ request, some 11 min with production retry delays; ticket 76: the PIN lockout escalation to level 3, about 4.5 min with the dev lock timers, and the assertion expiry after its 60 s life). APISIX re-resolves service names every 5 s (`dns_resolver_valid`), so a
 recreated container is reached at its new address.

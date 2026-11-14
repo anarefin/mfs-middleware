@@ -1,7 +1,7 @@
 {
   "name": "auth-v1-keys",
-  "desc": "mw-auth public keys (18.7; ticket 69): the access tokens' JWK Set and the PIN transport key. GET only, quota per address. The discovery document is not routed: only APISIX reads it, in-stack",
-  "uris": ["/auth/v1/.well-known/jwks.json", "/auth/v1/pin-key"],
+  "desc": "mw-auth public keys (18.7; tickets 69, 76): the access tokens' and assertions' JWK Sets, the PIN transport key. GET only, quota per address. The discovery document is not routed: only APISIX reads it, in-stack",
+  "uris": ["/auth/v1/.well-known/jwks.json", "/auth/v1/.well-known/assertion-jwks.json", "/auth/v1/pin-key"],
   "methods": ["GET"],
   "plugins": {
     "client-control": {

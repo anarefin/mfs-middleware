@@ -107,11 +107,12 @@ Route `app-v1` (`/app/v1/*`), in plugin order:
    see "Rate-limiter degradation alert" below). A perf run with one test user needs more users
    or a higher count.
 
-Route `auth-v1` (`/auth/v1/*`, POST only, tickets 68-69) -> `mw-auth:8080` (mw-auth's public port;
-its mTLS internal port 8443 is never routed, nor `/internal/*` on any port), path and body unchanged:
-the OTP (`POST /auth/v1/otp`), device binding (`POST /auth/v1/devices`), login (`POST
-/auth/v1/sessions`), refresh (`POST /auth/v1/tokens/refresh`), logout (`POST /auth/v1/sessions/logout`)
-and the first PIN (`POST /auth/v1/pin`).
+Route `auth-v1` (`/auth/v1/*`, POST and PUT, tickets 68-70; PUT added in ticket 76) -> `mw-auth:8080`
+(mw-auth's public port; its mTLS internal port 8443 is never routed, nor `/internal/*` on any port), path
+and body unchanged: the OTP (`POST /auth/v1/otp`), device binding (`POST /auth/v1/devices`), login (`POST
+/auth/v1/sessions`), refresh (`POST /auth/v1/tokens/refresh`), logout (`POST /auth/v1/sessions/logout`),
+the first PIN (`POST /auth/v1/pin`), the PIN change (`PUT /auth/v1/pin`), the PIN reset (`POST
+/auth/v1/pin-resets`) and its new PIN (`PUT /auth/v1/pin-resets/{id}/pin`).
 
 1. `client-control` `max_body_size` 16 KiB (413): the bodies are an MSISDN, a key, an OTP, a PIN block.
 2. No auth plugin (ticket 69): these requests prove the wallet themselves (device signature, OTP,
@@ -125,9 +126,14 @@ and the first PIN (`POST /auth/v1/pin`).
 6. `limit-req` 5 requests/s, burst 20, per `remote_addr` (local to the node, 429): the per-address
    limit next to the per-wallet one (one `limit-count` per route).
 
-Route `auth-v1-keys` (`GET /auth/v1/.well-known/jwks.json`, `GET /auth/v1/pin-key`, ticket 69) ->
-`mw-auth:8080`: the access tokens' JWK Set and the PIN transport key the apps encrypt the PIN with; no
-auth, `limit-count` 120 / 60 s per `remote_addr`. The discovery document
+Route `auth-v1-keys` (`GET /auth/v1/.well-known/jwks.json`, `GET /auth/v1/.well-known/assertion-jwks.json`,
+`GET /auth/v1/pin-key`, tickets 69, 71, 76) -> `mw-auth:8080`: the access tokens' JWK Set, the transaction
+assertions' (ES256) JWK Set and the PIN transport key the apps encrypt the PIN with; no auth,
+`limit-count` 120 / 60 s per `remote_addr`.
+
+Route `auth-v1-pin-resets` (`GET /auth/v1/pin-resets/*`, ticket 76) -> `mw-auth:8080`: the state of a
+PIN reset, which the app polls while the core checks the factors (mw-auth answers only the device that
+opened it, `X-Device-Id`); no body, no auth plugin, `limit-count` 60 / 60 s per `remote_addr`. The discovery document
 (`/auth/v1/.well-known/openid-configuration`, which names the in-stack JWKS URL) is not routed: only
 APISIX reads it, inside the stack.
 
@@ -307,7 +313,11 @@ over.
   /test/audit-dw/v1/*` -> mw-audit-dw's test API `/test/v1/audit/*`: audit event search and the
   hash-chain check of one month, ticket 58) and `test-orchestrator` (`/test/orchestrator/v1/*` ->
   mw-orchestrator's test API `/test/v1/*`: publish a REVERSAL of a transaction, see whether a
-  request's idempotency key was handled, ticket 58), all with `ip-restriction` (loopback and
+  request's idempotency key was handled, ticket 58) and `test-crypto` (`/test/crypto/v1/payshield/*` ->
+mw-crypto's dev-only payShield test API `/test/v1/payshield/*` on its plain port 8082, never the mTLS
+internal API: a PIN key's LMK blob for the simulator's PIN block helper, PVV generate and verify as the
+test-only client `mw-e2e-crypto`, ticket 76; mw-crypto serves it only with `MW_CRYPTO_TEST_API_ENABLED=true`),
+all with `ip-restriction` (loopback and
   private ranges only), `key-auth` (header `apikey`, hidden from the upstream) and
   `consumer-restriction` to consumer `mw_e2e`, whose key is `"@env:MW_E2E_API_KEY"`: a fixed fake dev value
   (`e2e-test-apikey`) committed in `deploy/dev.env.defaults` and copied to the gitignored

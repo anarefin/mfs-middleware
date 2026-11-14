@@ -1,0 +1,4 @@
+{
+  "name": "25 mw-auth PIN lifecycle: policy, change, self-service and care reset, lockout, ops unlock",
+  "description": "Ticket 76: mw-auth's PIN lifecycle (ticket 70, spec 18.7, D20) black-box, with the dev lockout timers of deploy/dev.env.defaults (MW_AUTH_LOCK_TRIES=3, MW_AUTH_LOCK_LEVEL1=1m). Each scenario takes a fresh wallet of its own."
+}

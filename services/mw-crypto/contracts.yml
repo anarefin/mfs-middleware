@@ -9,6 +9,8 @@ produces:
   events: []
   apis:
     - api/mw-crypto/crypto-internal.v1.openapi.yaml
+    # dev-only payShield test API (ticket 76, mw.crypto.test-api.enabled)
+    - api/mw-crypto/crypto-test.v1.openapi.yaml
 consumes:
   events: []
   apis: []

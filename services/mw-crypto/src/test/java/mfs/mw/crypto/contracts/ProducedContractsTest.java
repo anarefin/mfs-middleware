@@ -46,7 +46,7 @@ class ProducedContractsTest {
 
   @Test
   void theManifestListsExactlyThisApi() {
-    assertThat(ContractManifest.load().producedApis()).containsExactly(API);
+    assertThat(ContractManifest.load().producedApis()).containsExactly(API, PayShieldTestApiContractsTest.TEST_API);
   }
 
   @Test

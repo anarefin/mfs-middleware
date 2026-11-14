@@ -1,4 +1,4 @@
 {
   "name": "90 Slow",
-  "description": "What stays slow (the 10,000-row payout; the full retry-to-DLQ path, slow with production retry delays); run with ALL=1."
+  "description": "What stays slow (the 10,000-row payout; the full retry-to-DLQ path, slow with production retry delays; the PIN lockout escalation and the assertion expiry, ticket 76); run with ALL=1."
 }
