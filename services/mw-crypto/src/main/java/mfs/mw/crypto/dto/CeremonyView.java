@@ -13,7 +13,7 @@ import java.util.UUID;
  * @param checkValue the combined key's KCV (6 hex digits) once both shares are in
  */
 public record CeremonyView(
-    UUID ceremonyId, String keyId, String purpose, int version, String kid, String state, List<Share> shares,
+    UUID ceremonyId, String keyId, String purpose, Integer version, String kid, String state, List<Share> shares,
     String checkValue) {
 
   public CeremonyView {

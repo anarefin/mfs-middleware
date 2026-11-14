@@ -72,7 +72,43 @@ public class CeremonyService {
     return view(ceremonies.find(id).orElseThrow(() -> notFound(id)));
   }
 
-  /** One custodian's component; the first opens the ceremony, the second combines. */
+  /**
+   * Opens the ceremony of mw-admin-api's KEY_CEREMONY request {@code id} for {@code keyId} (version 1
+   * of a new key or the next version), at filing time. Idempotent: the same values answer the
+   * ceremony as it is; other values, or an aborted id (abort is terminal), are 409.
+   */
+  @Transactional
+  public CeremonyView open(UUID id, String keyId, String purposeName) {
+    KeyPurpose purpose = KeyPurpose.parse(purposeName);
+    if (purpose.algorithm() != KeyAlgorithm.HMAC_SHA256) {
+      throw CryptoErrors.keyNotUsable(keyId, "a key ceremony (" + purpose.name() + ")");
+    }
+    Optional<Ceremony> found = ceremonies.lock(id);
+    if (found.isPresent()) {
+      Ceremony c = found.get();
+      if (c.state() == Ceremony.State.ABORTED) {
+        throw CryptoErrors.keyChangeConflict("The ceremony was aborted");
+      }
+      if (!keyId.equals(c.keyId()) || !purpose.name().equals(c.purpose())) {
+        throw CryptoErrors.keyChangeConflict("The ceremony is for another key");
+      }
+      return view(c);
+    }
+    return view(open(id, keyId, purpose, clock.instant()));
+  }
+
+  /** The live (OPEN, COMBINED) ceremonies, for mw-admin-api's reconciler. */
+  @Transactional(readOnly = true)
+  public mfs.mw.crypto.dto.LiveCeremonies live() {
+    return new mfs.mw.crypto.dto.LiveCeremonies(ceremonies.live().stream()
+        .map(c -> new mfs.mw.crypto.dto.LiveCeremonies.Item(c.ceremonyId(), c.keyId(), c.state().name(), c.createdAt()))
+        .toList());
+  }
+
+  /**
+   * One custodian's component of an OPEN ceremony (never opens one: a component in flight while the
+   * request was rejected must not start a ceremony); the first is stored, the second combines.
+   */
   @Transactional
   public CeremonyView component(UUID id, CeremonyComponentRequest r) {
     byte[] component = CeremonyComponents.parse(r.component());
@@ -88,8 +124,11 @@ public class CeremonyService {
         throw CryptoErrors.keyNotUsable(r.keyId(), "a key ceremony (" + purpose.name() + ")");
       }
       Instant now = clock.instant();
-      Ceremony c = ceremonies.lock(id).orElseGet(() -> open(id, r.keyId(), purpose, now));
-      if (!c.keyId().equals(r.keyId()) || !c.purpose().equals(purpose.name())) {
+      Ceremony c = ceremonies.lock(id).orElseThrow(() -> notFound(id));
+      if (c.state() != Ceremony.State.OPEN) {
+        throw CryptoErrors.keyChangeConflict("The ceremony takes no more components");
+      }
+      if (!r.keyId().equals(c.keyId()) || !purpose.name().equals(c.purpose())) {
         throw CryptoErrors.keyChangeConflict("The ceremony is for another key");
       }
       if (c.state() != Ceremony.State.OPEN) {
@@ -153,11 +192,26 @@ public class CeremonyService {
     return key;
   }
 
-  /** Destroys the staged objects; nothing to do for an unknown or aborted one; a committed one is 409. */
+  /**
+   * Destroys the staged objects; terminal per id: an id never opened gets an ABORTED tombstone, so a
+   * late open or component of it is refused. Aborted again: nothing to do; committed: 409.
+   */
   @Transactional
   public void abort(UUID id) {
     Optional<Ceremony> found = ceremonies.lock(id);
-    if (found.isEmpty() || found.get().state() == Ceremony.State.ABORTED) {
+    if (found.isEmpty()) {
+      try {
+        ceremonies.insertAborted(id, clock.instant());
+      } catch (DuplicateKeyException e) {
+        throw CryptoErrors.keyChangeConflict("The ceremony is being opened; abort again");
+      }
+      log.atInfo()
+          .addKeyValue("event", "crypto.ceremony.aborted")
+          .addKeyValue("ceremonyId", id.toString())
+          .log("Ceremony aborted before it was opened");
+      return;
+    }
+    if (found.get().state() == Ceremony.State.ABORTED) {
       return;
     }
     Ceremony c = found.get();
@@ -208,7 +262,8 @@ public class CeremonyService {
 
   private static CeremonyView view(Ceremony c) {
     return new CeremonyView(
-        c.ceremonyId(), c.keyId(), c.purpose(), c.version(), CryptoKey.kid(c.keyId(), c.version()), c.state().name(),
+        c.ceremonyId(), c.keyId(), c.purpose(), c.version(),
+        c.keyId() == null ? null : CryptoKey.kid(c.keyId(), c.version()), c.state().name(),
         c.shares().stream().map(s -> new CeremonyView.Share(s.share(), s.custodian(), s.enteredAt())).toList(),
         c.checkValue());
   }

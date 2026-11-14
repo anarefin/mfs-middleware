@@ -86,36 +86,76 @@ public class ChangeRequestRepository {
         == 1;
   }
 
+  /** The claim of an APPROVING request: holder, token, when taken (V8). */
+  public record Claim(String checkerId, String checkerSub, UUID token, Instant claimedAt) {}
+
   /**
-   * Claim-first approval (ticket 75): PENDING -> APPROVING for this checker, in one conditional
-   * update; only the winner goes on to call the other service.
+   * Claim-first approval (ticket 75): PENDING -> APPROVING for this checker with a fresh claim
+   * {@code token}, in one conditional update; only the winner goes on to call the other service.
    *
    * @return false when it is no longer PENDING (decided, or claimed by another approval)
    */
-  public boolean claim(UUID id, String checkerId, String checkerSub) {
+  public boolean claim(UUID id, String checkerId, String checkerSub, UUID token, Instant at) {
     return jdbc.update(
-            "update change_request set status = 'APPROVING', checker_id = ?, checker_sub = ?"
-                + " where id = ? and status = 'PENDING'",
-            checkerId, checkerSub, id)
+            "update change_request set status = 'APPROVING', checker_id = ?, checker_sub = ?, claim_token = ?,"
+                + " claimed_at = ?, attempt_started_at = ? where id = ? and status = 'PENDING'",
+            checkerId, checkerSub, token, Timestamp.from(at), Timestamp.from(at), id)
         == 1;
   }
 
-  /** APPROVING -> APPROVED with the final payload. @return false when it is not APPROVING */
-  public boolean finishApproved(UUID id, String checkerId, String checkerSub, Map<String, Object> payload, Instant at) {
-    return jdbc.update(
-            "update change_request set status = 'APPROVED', checker_id = ?, checker_sub = ?, payload = ?::jsonb,"
-                + " decided_at = ? where id = ? and status = 'APPROVING'",
-            checkerId, checkerSub, json.writeValueAsString(payload), Timestamp.from(at), id)
-        == 1;
-  }
-
-  /** APPROVING -> PENDING after a definite refusal of the other service: the request can be decided again. */
-  public boolean release(UUID id) {
-    return jdbc.update(
-            "update change_request set status = 'PENDING', checker_id = null, checker_sub = null"
-                + " where id = ? and status = 'APPROVING'",
+  /** The claim of request {@code id} while it is APPROVING. */
+  public Optional<Claim> claimOf(UUID id) {
+    return jdbc.query(
+            "select checker_id, checker_sub, claim_token, claimed_at from change_request where id = ? and status = 'APPROVING'",
+            (rs, i) -> new Claim(rs.getString("checker_id"), rs.getString("checker_sub"),
+                rs.getObject("claim_token", UUID.class), instant(rs, "claimed_at")),
             id)
+        .stream().findFirst();
+  }
+
+  /** The holder starts another attempt (a retry): refreshes {@code attempt_started_at}. */
+  public boolean touchAttempt(UUID id, Claim claim, Instant at) {
+    return jdbc.update(
+            "update change_request set attempt_started_at = ? where id = ? and status = 'APPROVING'"
+                + " and checker_sub = ? and claim_token = ?",
+            Timestamp.from(at), id, claim.checkerSub(), claim.token())
         == 1;
+  }
+
+  /** APPROVING -> APPROVED by the claim holder (sub and token) with the final payload. */
+  public boolean finishApproved(UUID id, Claim claim, Map<String, Object> payload, Instant at) {
+    return jdbc.update(
+            "update change_request set status = 'APPROVED', payload = ?::jsonb, decided_at = ?, claim_token = null"
+                + " where id = ? and status = 'APPROVING' and checker_sub = ? and claim_token = ?",
+            json.writeValueAsString(payload), Timestamp.from(at), id, claim.checkerSub(), claim.token())
+        == 1;
+  }
+
+  /** APPROVING -> PENDING by the claim holder, once the other service said the change was not applied. */
+  public boolean release(UUID id, Claim claim) {
+    return jdbc.update(
+            "update change_request set status = 'PENDING', checker_id = null, checker_sub = null, claim_token = null,"
+                + " claimed_at = null, attempt_started_at = null"
+                + " where id = ? and status = 'APPROVING' and checker_sub = ? and claim_token = ?",
+            id, claim.checkerSub(), claim.token())
+        == 1;
+  }
+
+  /** APPROVING -> EXPIRED (reconciler: not applied and past {@code expires_at}). */
+  public boolean expireClaimed(UUID id, Claim claim, Instant at) {
+    return jdbc.update(
+            "update change_request set status = 'EXPIRED', checker_id = null, checker_sub = null, claim_token = null,"
+                + " decided_at = ? where id = ? and status = 'APPROVING' and checker_sub = ? and claim_token = ?",
+            Timestamp.from(at), id, claim.checkerSub(), claim.token())
+        == 1;
+  }
+
+  /** APPROVING requests whose last attempt started before {@code before}, oldest first. */
+  public List<ChangeRequest> staleApproving(Instant before, int limit) {
+    return jdbc.query(
+        "select " + COLUMNS + " from change_request where status = 'APPROVING' and attempt_started_at < ?"
+            + " order by attempt_started_at limit ?",
+        rows, Timestamp.from(before), limit);
   }
 
   /** PENDING requests whose {@code expires_at} is at or before {@code now}, oldest first, locked. */

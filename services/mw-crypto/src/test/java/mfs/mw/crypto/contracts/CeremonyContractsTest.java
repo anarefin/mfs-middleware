@@ -49,6 +49,26 @@ class CeremonyContractsTest {
         List.of(new CeremonyView.Share(1, "seed-ops-secadmin1", T0)), null));
     valid(schema, new CeremonyView(id, "pin-hmac", "PIN_HMAC", 2, "pin-hmac.v2", "COMBINED",
         List.of(new CeremonyView.Share(1, "a", T0), new CeremonyView.Share(2, "b", T0)), "A1B2C3"));
+    // an abort before the open leaves a tombstone without a key
+    valid(OpenApiSchemas.response(API, "/internal/v1/ceremonies/{ceremonyId}", "get", "200"),
+        new CeremonyView(id, null, null, null, null, "ABORTED", List.of(), null));
+    valid(OpenApiSchemas.component(API, "CeremonyOpenRequest"), new mfs.mw.crypto.dto.CeremonyOpenRequest("pin-hmac", "PIN_HMAC"));
+  }
+
+  @Test
+  void keyChangeStateMatchesTheContract() {
+    Schema schema = OpenApiSchemas.response(API, "/internal/v1/key-changes/{changeRequestId}", "get", "200");
+    valid(schema, new mfs.mw.crypto.dto.KeyChangeState(UUID.randomUUID(), false, false, null, null, null));
+    valid(schema, new mfs.mw.crypto.dto.KeyChangeState(UUID.randomUUID(), true, false, "ROTATE", "pin-hmac", "pin-hmac.v2"));
+    valid(OpenApiSchemas.response(API, "/internal/v1/key-changes/{changeRequestId}/cancel", "post", "200"),
+        new mfs.mw.crypto.dto.KeyChangeState(UUID.randomUUID(), false, true, null, null, null));
+  }
+
+  @Test
+  void liveCeremoniesMatchTheContract() {
+    valid(OpenApiSchemas.response(API, "/internal/v1/ceremonies", "get", "200"),
+        new mfs.mw.crypto.dto.LiveCeremonies(List.of(
+            new mfs.mw.crypto.dto.LiveCeremonies.Item(UUID.randomUUID(), "pin-hmac", "OPEN", T0))));
   }
 
   @Test

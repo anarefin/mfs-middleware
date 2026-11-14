@@ -41,6 +41,13 @@ public class CeremonyRepository {
         .map(c -> withShares(c));
   }
 
+  /** The OPEN and COMBINED ceremonies, oldest first. */
+  public List<Ceremony> live() {
+    return jdbc.sql("SELECT " + COLUMNS + " FROM ceremony WHERE state IN ('OPEN', 'COMBINED') ORDER BY created_at")
+        .query((rs, n) -> row(rs))
+        .list();
+  }
+
   /** A new OPEN ceremony; a live one for the same key throws DuplicateKeyException. */
   public void insert(UUID id, String keyId, String purpose, int version, Instant now) {
     jdbc.sql("INSERT INTO ceremony (" + COLUMNS + ") VALUES (:id, :k, :p, :v, 'OPEN', NULL, NULL, NULL, :t, :t)")
@@ -48,6 +55,14 @@ public class CeremonyRepository {
         .param("k", keyId)
         .param("p", purpose)
         .param("v", version)
+        .param("t", Timestamp.from(now))
+        .update();
+  }
+
+  /** An ABORTED tombstone for an id never opened (abort is terminal per id); a duplicate id throws. */
+  public void insertAborted(UUID id, Instant now) {
+    jdbc.sql("INSERT INTO ceremony (" + COLUMNS + ") VALUES (:id, NULL, NULL, NULL, 'ABORTED', NULL, NULL, NULL, :t, :t)")
+        .param("id", id)
         .param("t", Timestamp.from(now))
         .update();
   }
@@ -90,7 +105,7 @@ public class CeremonyRepository {
         rs.getObject("ceremony_id", UUID.class),
         rs.getString("key_id"),
         rs.getString("purpose"),
-        rs.getInt("version"),
+        (Integer) rs.getObject("version"),
         Ceremony.State.valueOf(rs.getString("state")),
         rs.getString("component_label"),
         rs.getString("staged_label"),

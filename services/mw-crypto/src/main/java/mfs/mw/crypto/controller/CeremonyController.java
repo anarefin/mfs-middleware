@@ -4,6 +4,8 @@ import jakarta.validation.Valid;
 import java.util.UUID;
 import mfs.mw.crypto.dto.CeremonyCommitRequest;
 import mfs.mw.crypto.dto.CeremonyComponentRequest;
+import mfs.mw.crypto.dto.CeremonyOpenRequest;
+import mfs.mw.crypto.dto.KeyChangeState;
 import mfs.mw.crypto.dto.CeremonyView;
 import mfs.mw.crypto.dto.KeyChangeRequest;
 import mfs.mw.crypto.dto.KeyView;
@@ -38,6 +40,29 @@ public class CeremonyController {
   @PutMapping("/key-changes/{changeRequestId}")
   public KeyView keyChange(@PathVariable UUID changeRequestId, @Valid @RequestBody KeyChangeRequest request) {
     return changes.apply(changeRequestId, request);
+  }
+
+  @GetMapping("/key-changes/{changeRequestId}")
+  public KeyChangeState keyChangeState(@PathVariable UUID changeRequestId) {
+    return changes.state(changeRequestId);
+  }
+
+  /** Makes "not applied" binding for attempt {@code changeRequestId} (terminal unless applied). */
+  @PostMapping("/key-changes/{changeRequestId}/cancel")
+  public KeyChangeState cancelKeyChange(@PathVariable UUID changeRequestId) {
+    return changes.cancel(changeRequestId);
+  }
+
+  @GetMapping("/ceremonies")
+  public mfs.mw.crypto.dto.LiveCeremonies liveCeremonies(
+      @org.springframework.web.bind.annotation.RequestParam
+          @jakarta.validation.constraints.Pattern(regexp = "LIVE") String state) {
+    return ceremonies.live();
+  }
+
+  @PutMapping("/ceremonies/{ceremonyId}")
+  public CeremonyView open(@PathVariable UUID ceremonyId, @Valid @RequestBody CeremonyOpenRequest request) {
+    return ceremonies.open(ceremonyId, request.keyId(), request.purpose());
   }
 
   @GetMapping("/ceremonies/{ceremonyId}")

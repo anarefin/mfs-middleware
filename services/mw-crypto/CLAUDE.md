@@ -151,16 +151,28 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   version?, makerId, checkerId}` -> the key; once per id (`crypto.key_change`, V5); a repeat with the
   same action and keyId answers the key as it is, other values `409 MW-VAL-018`. RETIRE takes a
   VERIFY_ONLY version only (`KeyService.retire`; the ACTIVE one: rotate first, `409 MW-VAL-018`). GENERATE
-  here needs no bootstrap flag.
+  here needs no bootstrap flag. The id is mw-admin-api's approval attempt (its claim token), not the
+  change request. **"Not applied" is binding** (security review, V7): `POST
+  /internal/v1/key-changes/{id}/cancel` writes a terminal CANCELLED row unless the attempt was
+  applied (both insert the id's row with `ON CONFLICT DO NOTHING`, so an apply and a cancel
+  serialise on the primary key and exactly one wins; the apply inserts its row before it changes the
+  key, in the same transaction); a PUT of a cancelled id is `409 MW-VAL-018`; it answers `{changeId,
+  applied, cancelled, action?, keyId?, kid?}`, as `GET /internal/v1/key-changes/{id}` does.
+  `GET /internal/v1/ceremonies?state=LIVE` lists the OPEN and COMBINED ceremonies (mw-admin-api's
+  reconciler aborts the orphans).
 - Ceremony (`service/CeremonyService`, tables `crypto.ceremony` and `crypto.custodian_share_log`
   (who and when, never a component), V5): the id is mw-admin-api's KEY_CEREMONY change request.
+  `PUT /internal/v1/ceremonies/{id} {keyId, purpose}` opens it at filing time (version 1 of a new key
+  or the next version; one live ceremony per key; idempotent, other values or an aborted id `409`).
   `POST /internal/v1/ceremonies/{id}/components {keyId, purpose, custodian, component (64 hex),
-  checkValue (6 hex)}`: the first opens the ceremony (version 1 of a new key or the next version; one
-  live ceremony per key) and is stored as `ceremony-<id>.c1`; the second (another custodian, else
+  checkValue (6 hex)}` needs an OPEN ceremony (never opens one: `404 MW-VAL-003` for an id not opened,
+  `409` once aborted; security review: a component in flight while the request is rejected must not
+  start a ceremony); the first is stored as `ceremony-<id>.c1`; the second (another custodian, else
   `409 MW-VAL-018`) is combined with it inside the HSM into the staged label `<keyId>.v<n>`, the c1
   object is destroyed, and only the KCV is returned. `.../commit {makerId, checkerId}` (approval)
   inserts the version ACTIVE (older ones move on as on rotate; the key changed meanwhile `409`);
-  `.../abort` (reject, expiry) destroys the staged objects; `GET .../{id}`. Errors `MW-VAL-017`
+  `.../abort` (reject, expiry) destroys the staged objects and is terminal per id: an id never opened
+  gets an ABORTED tombstone without a key (V6), so a late open or component is refused; `GET .../{id}`. Errors `MW-VAL-017`
   (component is no P-256 scalar or does not match its check value), `MW-VAL-018` (state conflict),
   `MW-VAL-015` (purpose not for a ceremony). The component is `@Sensitive(SECRET)`, parsed into a
   `byte[]` zeroed in `finally`, never logged (log events `crypto.ceremony.opened|component_entered|

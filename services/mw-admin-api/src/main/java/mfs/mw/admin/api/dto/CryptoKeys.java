@@ -43,7 +43,7 @@ public final class CryptoKeys {
   /** A ceremony as mw-crypto reports it. */
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record Ceremony(
-      UUID ceremonyId, String keyId, String purpose, int version, String kid, String state, List<Share> shares,
+      UUID ceremonyId, String keyId, String purpose, Integer version, String kid, String state, List<Share> shares,
       String checkValue) {
     public Ceremony {
       shares = shares == null ? List.of() : List.copyOf(shares);
@@ -52,4 +52,19 @@ public final class CryptoKeys {
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record Share(int share, String custodian, Instant enteredAt) {}
+
+  /** An approval attempt's state at mw-crypto ({@code POST /internal/v1/key-changes/{id}/cancel}). */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record ChangeState(UUID changeId, boolean applied, boolean cancelled, String action, String keyId, String kid) {}
+
+  /** {@code GET /internal/v1/ceremonies?state=LIVE}. */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record LiveCeremonies(List<Live> items) {
+    public LiveCeremonies {
+      items = items == null ? List.of() : List.copyOf(items);
+    }
+  }
+
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record Live(UUID ceremonyId, String keyId, String state, Instant createdAt) {}
 }

@@ -2,6 +2,8 @@ package mfs.mw.admin.api.service;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.Set;
 import mfs.mw.admin.api.dto.Operator;
 import mfs.mw.admin.api.entity.ChangeRequest;
@@ -41,6 +43,45 @@ public interface ResourceChangeHandler {
   default boolean claimFirst() {
     return false;
   }
+
+  /**
+   * Claim-first types: checks that need no remote call, before the claim (ticket 75: a ceremony
+   * needs both components); throw an {@code MwException} to refuse (the request stays PENDING).
+   */
+  default void precheck(ChangeRequest cr) {}
+
+  /**
+   * Claim-first types: {@link #prepare} for approval attempt {@code attemptId} (the claim token,
+   * the same on every retry of one claim), the id the other service applies the change under.
+   */
+  default Approval prepare(ChangeRequest cr, Operator checker, Instant now, String correlationId, UUID attemptId) {
+    return prepare(cr, checker, now, correlationId);
+  }
+
+  /**
+   * Claim-first types: settles attempt {@code attemptId} at the other service before the claim is
+   * given up, making "not applied" binding (security review): present with the payload entries
+   * when it was applied, empty when it is now cancelled for good (a late call of that attempt is
+   * refused there); throw an {@code MwException} when it cannot tell (the claim stays APPROVING).
+   */
+  default Optional<Map<String, Object>> settle(ChangeRequest cr, UUID attemptId) {
+    throw new UnsupportedOperationException(resourceType() + " is not approved claim-first");
+  }
+
+  /**
+   * Whether a request whose attempt was cancelled can be approved again (back to PENDING, a new
+   * attempt id); false makes it EXPIRED (a key ceremony: its cancel aborts the ceremony for good).
+   */
+  default boolean reusableAfterCancel(ChangeRequest cr) {
+    return true;
+  }
+
+  /**
+   * Reconciler hook for state the other service keeps on its own (ticket 75: ceremonies left open
+   * for requests that were rejected, expired or never filed); {@code find} reads a request,
+   * {@code olderThan} spares what may still be in flight. Nothing by default.
+   */
+  default void reconcile(java.util.function.Function<UUID, Optional<ChangeRequest>> find, Instant olderThan) {}
 
   /**
    * The work an approval does; throw an {@code MwException} when the request can no longer be

@@ -86,6 +86,40 @@ public class CryptoKeyClient {
         CryptoKeys.Key.class, "key.change");
   }
 
+  /**
+   * Cancels approval attempt {@code changeId} unless it was applied ("not applied" becomes binding:
+   * a later PUT of the id is refused); answers applied or cancelled.
+   */
+  public CryptoKeys.ChangeState cancelKeyChange(UUID changeId) {
+    return read(send("POST", "/internal/v1/key-changes/" + changeId + "/cancel", Map.of(), "key.change.cancel"),
+        CryptoKeys.ChangeState.class, "key.change.cancel");
+  }
+
+  /** The live (OPEN, COMBINED) ceremonies at mw-crypto. */
+  public CryptoKeys.LiveCeremonies liveCeremonies() {
+    return read(send("GET", "/internal/v1/ceremonies?state=LIVE", null, "ceremony.live"),
+        CryptoKeys.LiveCeremonies.class, "ceremony.live");
+  }
+
+  /** Opens the ceremony of KEY_CEREMONY request {@code ceremonyId} (at filing time; idempotent). */
+  public CryptoKeys.Ceremony openCeremony(UUID ceremonyId, String keyId, String purpose) {
+    return read(send("PUT", "/internal/v1/ceremonies/" + ceremonyId, Map.of("keyId", keyId, "purpose", purpose),
+        "ceremony.open"), CryptoKeys.Ceremony.class, "ceremony.open");
+  }
+
+  /** The ceremony as mw-crypto has it; empty when it has none of that id (404). */
+  public java.util.Optional<CryptoKeys.Ceremony> ceremony(UUID ceremonyId) {
+    try {
+      return java.util.Optional.of(read(send("GET", "/internal/v1/ceremonies/" + ceremonyId, null, "ceremony.get"),
+          CryptoKeys.Ceremony.class, "ceremony.get"));
+    } catch (MwException e) {
+      if (ErrorCodes.VAL_NOT_FOUND.equals(e.code())) {
+        return java.util.Optional.empty();
+      }
+      throw e;
+    }
+  }
+
   /** One custodian's component of ceremony {@code ceremonyId}; the component is only in the body. */
   public CryptoKeys.Ceremony enterComponent(
       UUID ceremonyId, String keyId, String purpose, String custodian, String component, String checkValue) {

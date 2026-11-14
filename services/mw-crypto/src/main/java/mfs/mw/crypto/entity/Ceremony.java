@@ -8,13 +8,14 @@ import java.util.UUID;
  * One key ceremony ({@code crypto.ceremony}, ticket 75): metadata only. {@code componentLabel} is
  * the HSM label of the first custodian's component while the second is awaited, {@code
  * stagedLabel} the combined key's label until commit; {@code shares} who entered what share when
- * ({@code crypto.custodian_share_log}).
+ * ({@code crypto.custodian_share_log}). An ABORTED tombstone (aborted before it was opened) has no
+ * keyId, purpose or version.
  */
 public record Ceremony(
     UUID ceremonyId,
     String keyId,
     String purpose,
-    int version,
+    Integer version,
     State state,
     String componentLabel,
     String stagedLabel,
