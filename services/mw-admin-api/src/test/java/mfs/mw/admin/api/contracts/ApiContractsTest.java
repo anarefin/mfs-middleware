@@ -55,7 +55,8 @@ class ApiContractsTest {
         "recordedAt":"2026-11-05T10:00:03Z","at":"2026-11-05T10:00:00Z","txnId":"%s","correlationId":"corr-1",
         "actor":{"type":"user","id":"ops-compliance01"},"action":"admin.txn.msisdn.revealed",
         "resource":"transaction/%1$s","outcome":"SUCCESS","service":"mw-admin-api","sourceIp":"10.0.0.1",
-        "after":{"role":"compliance-officer","fields":["initiator.id"]}}],"limit":500,"offset":0}
+        "after":{"role":"compliance-officer","fields":["initiator.id"]}}],"limit":500,"offset":0,
+        "anchor":{"status":"BROKEN","lastAnchorDate":"2026-11-04","verifiedAt":"2026-11-05T00:30:00Z"}}
       """
           .formatted(TXN_ID);
 
@@ -88,8 +89,9 @@ class ApiContractsTest {
     assertThat(d.partnerCalls()).extracting(AdminTxn.PartnerCall::partnerRef).containsExactly("P-77");
     assertThat(a.items().get(0).seq()).isEqualTo(3L);
     assertThat(a.items().get(0).actor().id()).isEqualTo("ops-compliance01");
+    assertThat(a.anchor().status()).isEqualTo("BROKEN");
 
-    TxnDetailView view = new TxnDetailView(d.transaction(), d.timeline(), d.partnerCalls(), a.items(), false);
+    TxnDetailView view = new TxnDetailView(d.transaction(), d.timeline(), d.partnerCalls(), a.items(), a.anchor(), false);
     Schema served = OpenApiSchemas.response(ADMIN, "/admin/v1/transactions/{txnId}", "get", "200");
     assertValid(served, view);
     // the schema really is applied: a detail without its audit trail is refused

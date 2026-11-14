@@ -38,8 +38,16 @@ public final class AuditTrail {
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record Actor(String type, String id) {}
 
+  /**
+   * Status of mw-audit-dw's signed daily anchors (ticket 74): INTACT, BROKEN, UNVERIFIED or OFF,
+   * the newest anchor's UTC day and when they were last checked.
+   */
   @JsonIgnoreProperties(ignoreUnknown = true)
-  public record Page(List<Entry> items, int limit, int offset) {
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  public record Anchor(String status, String lastAnchorDate, Instant verifiedAt) {}
+
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record Page(List<Entry> items, int limit, int offset, Anchor anchor) {
 
     public Page {
       items = items == null ? List.of() : List.copyOf(items);

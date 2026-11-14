@@ -33,7 +33,7 @@
 62-mw-crypto-scaffold                       61                done     46m      140 files +10402 −51   d86b16ab..a3cbd979
 63-mw-crypto-operations                     62                done     40m      63 files +4147 −33     d8032171..d5b7757f
 64-payshield-provider-simulator             63                open
-65-mw-crypto-xmldsig-http-signatures        63                open
+65-mw-crypto-xmldsig-http-signatures        63                done     27m      37 files +3007 −20     c5facff6, merge dccaa1c9
 66-openbao-pki-mtls                         62                done     24m      40 files +2975 −70     d8032171..596a1e05
 67-mw-auth-scaffold                         63,66             open
 68-move-device-otp-sessions-to-mw-auth      67                open
@@ -42,6 +42,6 @@
 71-txn-authorisation-assertion              69                open
 72-channels-switch-to-assertion             71,70             open
 73-keycloak-realm-hardening                 69                open
-74-audit-anchor-signing                     63,66             open
+74-audit-anchor-signing                     63,66             done     19m      49 files +1681 −51     1f1a8a6f..9aec2426 (+review fix)
 75-admin-key-management-ceremony            64,70             open
 76-security-tests-docs                      72,73,75          open

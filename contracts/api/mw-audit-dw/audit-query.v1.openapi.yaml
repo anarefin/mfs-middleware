@@ -9,7 +9,8 @@ info:
     `audit_reader`. Values are returned as stored, i.e. already masked (spec 18.3); operator
     usernames (actor.id of a `user`) are staff data and are not masked. MSISDN search is done on
     the transaction (mw-orchestrator `txn-query.v1`, keyed hash), then the audit trail by txnId.
-    Every error is the 5.3 envelope.
+    Every page also carries the status of the signed daily anchors (`anchor`, ticket 74) for the
+    admin console's audit view. Every error is the 5.3 envelope.
 servers:
   - url: http://mw-audit-dw:8080
 security:
@@ -96,13 +97,26 @@ components:
         after: { type: object }
     AuditPage:
       type: object
-      required: [items, limit, offset]
+      required: [items, limit, offset, anchor]
       properties:
         items:
           type: array
           items: { $ref: "#/components/schemas/AuditEntry" }
         limit: { type: integer }
         offset: { type: integer }
+        anchor: { $ref: "#/components/schemas/AnchorStatus" }
+    AnchorStatus:
+      type: object
+      description: >-
+        Status of the signed daily audit anchors (ticket 74, spec 14.3) as of the last hourly
+        verification: INTACT (every anchor's signature, chain and chain heads check out), BROKEN
+        (at least one does not; alert audit.anchor.broken), UNVERIFIED (not checked since the
+        service started, or mw-crypto's JWKS could not be read), OFF (anchoring switched off).
+      required: [status]
+      properties:
+        status: { type: string, enum: [INTACT, BROKEN, UNVERIFIED, "OFF"] }
+        lastAnchorDate: { type: string, format: date, description: The newest anchor (UTC day) }
+        verifiedAt: { type: string, format: date-time, description: When the anchors were last checked }
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]

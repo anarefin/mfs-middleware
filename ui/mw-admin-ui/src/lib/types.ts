@@ -70,11 +70,19 @@ export type AuditEntry = {
   sourceIp?: string;
 };
 
+/** Status of the signed daily audit anchors (ticket 74, mw-audit-dw). */
+export type AuditAnchor = {
+  status: "INTACT" | "BROKEN" | "UNVERIFIED" | "OFF";
+  lastAnchorDate?: string;
+  verifiedAt?: string;
+};
+
 export type TxnDetail = {
   transaction: Txn;
   timeline: TimelineEntry[];
   partnerCalls: PartnerCall[];
   auditTrail: AuditEntry[];
+  auditAnchor?: AuditAnchor;
   revealed: boolean;
 };
 

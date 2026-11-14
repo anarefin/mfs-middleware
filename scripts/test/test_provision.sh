@@ -6,7 +6,7 @@
 PROVISION_DIR="$REPO_DIR/deploy/provision"
 # the generated .env values the compose block passes in (obviously fake)
 PROVISION_ENV="VALKEY_PASSWORD=valkey-t BILLAGG_HMAC_SECRET=billagg-t C2WBANK_HMAC_SECRET=c2w-t
-  CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t
+  CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t
   USSD_GP_GATEWAY_SECRET=gp-t USSD_ROBI_GATEWAY_SECRET=robi-t USSD_BL_GATEWAY_SECRET=bl-t
   USSD_TELETALK_GATEWAY_SECRET=teletalk-t SOFTHSM_MWCRYPTO_USER_PIN=hsm-pin-t"
 
@@ -136,6 +136,7 @@ test_provision_writes_the_service_specific_keys() {
     [ "$(kv mw-simulators "sim.ussd-gateway.credentials.$m")" = "$m-t" ] || fail "sim ussd $m"
   done
   [ "$(kv mw-admin-api mw.admin-api.internal-auth.client-secret)" = admin-t ] || fail "admin-api client secret"
+  [ "$(kv mw-audit-dw mw.audit-dw.anchor.crypto.client-secret)" = audit-dw-t ] || fail "audit-dw client secret"
   [ "$(kv mw-portal-api mw.portal-api.orchestrator.auth.client-secret)" = portal-t ] || fail "portal-api client secret"
   [ "$(kv mw-checkout mw.checkout.merchants.merchant_demo.secret)" = merchant-t ] || fail "checkout merchant"
   [ "$(wc -c <.kv/secret/mw-notify/mw.notify.smpp.password | tr -d ' ')" = 8 ] || fail "SMPP password not 8 chars"
