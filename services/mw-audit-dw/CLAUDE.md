@@ -120,6 +120,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
+- `config/ServiceCertificateManager` + `config/TlsProperties` (ticket 66, D24; template copy): this
+  service's OpenBao certificate (`pki_int/issue/mw-audit-dw`, role and policy from `PKI_SERVICES` in
+  `deploy/provision/services.sh`), in memory, renewed at two thirds of 72 h, gauge
+  `tls.certificate.expiry.seconds`. Off (`mw.tls.enabled`, `MW_TLS_ENABLED`) until ticket 74 calls
+  mw-crypto (mTLS mandatory there): build that client once on `clientSslContext()` and send the
+  client-credentials JWT too (template `CLAUDE.md`, "Service certificate and mTLS").
+  `client/MtlsClientIT` proves the caller side (OpenBao container `PkiTestAuthority`, a server that
+  needs a client certificate, a renewal, no certificate = failed handshake).
 - `messaging/EventPublisher`: Kafka records with the 6.1 headers, idempotent `acks=all` producer.
 - `route/RetryTopicRouteBuilder` + `messaging/RetryDelayListener`: subclass per consumed topic; retry
   topics 10 s / 1 min / 10 min then DLQ (19.2); per-record commit; no sleeps on Kafka threads.

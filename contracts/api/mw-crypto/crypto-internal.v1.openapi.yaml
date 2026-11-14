@@ -6,18 +6,27 @@ info:
     Internal API of mw-crypto, the only HSM client (ticket 62, spec 18.8, ADR D23): key management
     by keyId. Every other service asks it by keyId and never holds key material; only key metadata
     is returned, and public keys. Its callers are mw-admin-api (key screens, ticket 75), mw-auth
-    (ticket 67) and mw-audit-dw (ticket 74), over the `app` zone network (`http://mw-crypto:8080`);
-    it is not routed by APISIX. mTLS is added by ticket 66 (D24). The operations (PIN verify, JWS
-    sign, HMAC, tokenise, envelope, XML-DSig) are added by tickets 63-65.
+    (ticket 67) and mw-audit-dw (ticket 74), over the `app` zone network (`https://mw-crypto:8080`);
+    it is not routed by APISIX. The operations (PIN verify, JWS sign, HMAC, tokenise, envelope,
+    XML-DSig) are added by tickets 63-65.
+
+    mTLS is mandatory (ticket 66, D24): the TLS handshake needs a client certificate issued by the
+    OpenBao services intermediate CA (`pki_int`, one role per service, CN = service name); without
+    one the handshake fails. The caller also sends its client-credentials JWT, whose `azp` must
+    equal the certificate's CN (else 403 MW-AUTH-002). Generating and rotating keys is narrower than
+    reading: only the key-admin clients (`mw.internal-auth.key-admin-clients`, mw-admin-api), and
+    generation only while the dev key bootstrap is on (`mw.crypto.bootstrap-keys`) until the key
+    ceremony (ticket 75); otherwise 403 MW-AUTH-002.
 
     Key versions: a key has versions `<keyId>.v<n>` (the JWS `kid` and HSM label). Rotation adds a
     version; the previous ACTIVE one becomes VERIFY_ONLY (verification still accepts it), an older
     VERIFY_ONLY one RETIRED. When the HSM cannot be reached the request fails closed with 503
     MW-SYS-010 (retryable). Every error is the 5.3 envelope.
 servers:
-  - url: http://mw-crypto:8080
+  - url: https://mw-crypto:8080
 security:
   - internalClientCredentials: []
+    serviceCertificate: []
 paths:
   /internal/v1/keys:
     get:
@@ -37,7 +46,8 @@ paths:
       operationId: generateKey
       summary: Generate a key (dev and bootstrap only until the key ceremony, ticket 75)
       description: >-
-        Generates version 1 of a new key in the HSM. Errors: 400 MW-VAL-001 (bad body), 400
+        Generates version 1 of a new key in the HSM. Key-admin clients only, and only while the
+        dev key bootstrap is on (403 MW-AUTH-002 otherwise). Errors: 400 MW-VAL-001 (bad body), 400
         MW-VAL-011 (unknown purpose), 409 MW-VAL-012 (keyId exists), 503 MW-SYS-010 (HSM down).
       parameters:
         - $ref: "#/components/parameters/CorrelationId"
@@ -62,7 +72,8 @@ paths:
       operationId: rotateKey
       summary: Add a version; the previous one stays VERIFY_ONLY until retired
       description: >-
-        Errors: 404 MW-VAL-010 (unknown keyId), 503 MW-SYS-010 (HSM down).
+        Key-admin clients only (403 MW-AUTH-002 otherwise). Errors: 404 MW-VAL-010 (unknown keyId),
+        503 MW-SYS-010 (HSM down).
       parameters:
         - $ref: "#/components/parameters/KeyId"
         - $ref: "#/components/parameters/CorrelationId"
@@ -105,12 +116,17 @@ components:
       description: >-
         Keycloak realm `services` client-credentials JWT (spec 18.2). The service checks
         signature, expiry, exact issuer and that `aud` contains `mw-crypto`; the caller (`azp`)
-        must be mw-admin-api, mw-auth or mw-audit-dw. No or bad token: 401 MW-AUTH-001; another
-        client: 403 MW-AUTH-002.
+        must be mw-admin-api, mw-auth or mw-audit-dw and equal the client certificate's CN. No or
+        bad token: 401 MW-AUTH-001; another client: 403 MW-AUTH-002.
       flows:
         clientCredentials:
           tokenUrl: http://keycloak:8080/realms/services/protocol/openid-connect/token
           scopes: {}
+    serviceCertificate:
+      type: mutualTLS
+      description: >-
+        A client certificate of the OpenBao services intermediate CA (`pki_int/issue/<service>`, CN
+        = the calling service, at most 72 h). Required by the handshake (D24).
   parameters:
     KeyId:
       name: keyId

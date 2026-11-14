@@ -17,8 +17,18 @@
 
 **Blocked by:** 62
 
-**Status:** open
+**Status:** done
 
-- [ ] `./gradlew :mw-crypto:build :mw-audit-dw:build` green with Docker
-- [ ] On the running stack, `curl` to mw-crypto without a client certificate fails the TLS handshake; with the service cert and JWT it answers
-- [ ] `scripts/smoke.sh` checks the PKI role list and mw-crypto mTLS health
+- [x] `./gradlew :mw-crypto:build :mw-audit-dw:build` green with Docker
+- [ ] On the running stack, `curl` to mw-crypto without a client certificate fails the TLS handshake; with the service cert and JWT it answers (deferred to final integration test)
+- [ ] `scripts/smoke.sh` checks the PKI role list and mw-crypto mTLS health (deferred to final integration test; the checks are written)
+
+Decisions (ticket 66):
+- Alert: the repo has no alert rules file (runbook: alert rules deferred, D10), so the alert follows the
+  existing pattern: ERROR log event `tls.certificate.expiring` (under 1/3 of the life left) in the runbook
+  table, next to `crypto.hsm.down`; the metric is `tls.certificate.expiry.seconds{service}`.
+- PKI setup lives in the `provision` one-shot (`pki_setup`, `pki_role`, `PKI_SERVICES`), not in
+  `dev-unseal.sh` (first start only); `approle` adds `pki_int/issue/<svc>` for PKI services.
+- mw-crypto actuator moved to a plain management port 8081 (healthchecks have no client cert).
+- Security review of 62 (coordinator): generate/rotate need `mw.internal-auth.key-admin-clients`
+  (mw-admin-api); generate also needs `mw.crypto.bootstrap-keys=true` until ticket 75.

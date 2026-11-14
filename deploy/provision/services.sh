@@ -11,6 +11,12 @@
 # AppRole), <service>:<function>, run after SERVICES. Empty while every service is in SERVICES.
 SECRETS_AHEAD=""
 
+# PKI_SERVICES: the services with a certificate from OpenBao PKI (mTLS phase 1, spec 18.2, D24, ticket
+# 66): the two mTLS servers (mw-crypto; mw-auth's internal API, ticket 67) and every caller of them.
+# Each gets a pki_int role named after it (CN and SAN = its compose DNS name, 72 h) and its AppRole
+# policy may issue from that role only. A role may exist before its service is in SERVICES.
+PKI_SERVICES="mw-crypto mw-auth mw-app-gateway mw-ussd mw-checkout mw-audit-dw mw-admin-api"
+
 SERVICES="mw-core-mock:core-mock mw-crypto:crypto mw-simulators:simulators mw-orchestrator:orchestrator
   mw-audit-dw:audit-dw mw-app-gateway:app-gateway mw-notify:notify mw-ussd:ussd mw-admin-api:admin-api
   mw-adapter-telco:adapter-telco mw-adapter-billpay:adapter-billpay mw-adapter-bank:adapter-bank

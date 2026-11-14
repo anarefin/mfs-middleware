@@ -30,9 +30,12 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
 /**
  * The key API (crypto-internal.v1): mapping, validation, the 5.3 envelope and the internal service
- * JWT in front of it (signature, issuer, audience mw-crypto, azp allow-list).
+ * JWT in front of it (signature, issuer, audience mw-crypto, azp allow-list, key-admin clients for
+ * generate and rotate). {@link KeyControllerMtlsTest}: mTLS on, generation off.
  */
-@WebMvcTest(controllers = KeyController.class, properties = "spring.test.mockmvc.print=none")
+@WebMvcTest(
+    controllers = KeyController.class,
+    properties = {"spring.test.mockmvc.print=none", "mw.crypto.bootstrap-keys=true"})
 @Import(SecurityConfig.class)
 class KeyControllerTest {
 
@@ -130,5 +133,22 @@ class KeyControllerTest {
     assertThat(get("/internal/v1/keys", InternalTokens.forClient("mw-portal-api"))).hasStatus(403)
         .bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-002");
     verify(keys, never()).list();
+  }
+
+  @Test
+  void onlyKeyAdminClientsGenerateOrRotate() {
+    MvcTestResult gen = mvc.post().uri("/internal/v1/keys")
+        .header(HttpHeaders.AUTHORIZATION, InternalTokens.bearer("mw-auth"))
+        .contentType(MediaType.APPLICATION_JSON).content("{\"purpose\":\"JWT_SIGN\"}").exchange();
+    assertThat(gen).hasStatus(403).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-002");
+    MvcTestResult rot = mvc.post().uri("/internal/v1/keys/jwt-sign/rotate")
+        .header(HttpHeaders.AUTHORIZATION, InternalTokens.bearer("mw-audit-dw")).exchange();
+    assertThat(rot).hasStatus(403).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-002");
+    verify(keys, never()).generate(anyString(), any());
+    verify(keys, never()).rotate(anyString());
+
+    // reading stays open to every allowed caller
+    when(keys.list()).thenReturn(new KeyView.Page(List.of(jwtSign())));
+    assertThat(get("/internal/v1/keys", InternalTokens.forClient("mw-auth"))).hasStatusOk();
   }
 }

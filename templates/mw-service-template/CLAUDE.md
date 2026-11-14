@@ -28,6 +28,34 @@ and keep `scripts/test/test_service_template.sh` green.
 | Image: copies the fixed jar `build/libs/mw-service-template.jar` (never a stale one), extracts its layers, no AOT cache and no SBOM in the image (`scripts/security.sh` builds its own); `JVM_OPTS` build arg = `JAVA_TOOL_OPTIONS` (the dev stack sets Serial GC there and only sizes in `JDK_JAVA_OPTIONS`, ticket 55), non-root uid 10001, readiness `HEALTHCHECK` | `Dockerfile` | 20.1 |
 | Compose: no `compose.yml` in the module (ADR D16); `scaffold.sh` prints the service block for `deploy/docker-compose.yml`, which merges `x-app` (read-only FS, tmpfs `/tmp`, `unless-stopped`, readiness healthcheck, zone networks `app`, `data`) and sets the limits | `scaffold.sh` | 20.2 |
 
+## Service certificate and mTLS (ticket 66, D24)
+
+`config/ServiceCertificateManager` + `config/TlsProperties` (`mw.tls.*`, off by default:
+`MW_TLS_ENABLED`). On, the service issues its certificate from OpenBao PKI at start
+(`pki_int/issue/<service>` through Spring Cloud Vault's `VaultOperations`; CN = service name, SAN =
+`mw.tls.alt-names`, the compose DNS name), keeps key and chain in an in-memory `KeyStore` (never on
+disk), trusts the issuing intermediate only, renews at two thirds of the life (retry every
+`retry-period` on failure) and exposes `tls.certificate.expiry.seconds{service}`; the alert is the
+ERROR log event `tls.certificate.expiring` (under a third of the life left). The start fails when it
+cannot issue. Turning it on needs the service in `PKI_SERVICES` of `deploy/provision/services.sh`
+(its `pki_int` role and the AppRole policy allowing `pki_int/issue/<service>` only).
+
+- **Caller** of an mTLS server (mw-crypto; mw-auth's internal API, ticket 67): build the client
+  once on `manager.clientSslContext()` (key and trust managers always use the current certificate,
+  so renewals need no rebuild), and send the client-credentials JWT as well (the callee checks
+  `azp` == certificate CN):
+  `RestClient.builder().baseUrl("https://mw-crypto:8080").requestFactory(new JdkClientHttpRequestFactory(HttpClient.newBuilder().sslContext(manager.clientSslContext()).build())).build()`.
+  Put the `SSLContext` on the callee's client only, not on the Keycloak token call. Inject the manager
+  as `ObjectProvider<ServiceCertificateManager>` when the service can also run without it.
+- **Server** (mTLS mandatory): `server.ssl.enabled: ${mw.tls.enabled}`, `server.ssl.bundle:
+  ${mw.tls.bundle}`, `server.ssl.client-auth: need` (the manager registers the bundle and updates it
+  on renewal; Tomcat reloads it), actuator on its own plain port (`management.server.port: 8081`,
+  `management.server.ssl.enabled: false`, or it inherits the mTLS), the image and compose healthcheck
+  on 8081, and the azp == CN check in the internal caller policy (as `services/mw-crypto`).
+- Tests: `PkiTestAuthority` (OpenBao dev container with root, intermediate and per-service roles, as
+  provisioned) and `client/MtlsClientIT` (issue, renewal by a moved clock, the client presenting the
+  renewed certificate to a server that needs one, no certificate = failed handshake).
+
 ## Kafka, Camel, resilience, Flyway (WP05 part)
 
 | Piece | Where | Spec |

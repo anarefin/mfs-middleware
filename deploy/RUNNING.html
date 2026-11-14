@@ -196,8 +196,9 @@ docker compose --profile core --profile seed ps -a mw-seeder   <span class="c">#
 docker compose --profile core --profile seed ps -a
 <span class="c"># readiness of one service</span>
 curl -s localhost:8081/actuator/health/readiness
-<span class="c"># readiness of all of them (8081-8094)</span>
-for p in $(seq 8081 8094); do printf "%s " $p; curl -s localhost:$p/actuator/health/readiness; echo; done
+<span class="c"># readiness of all of them (8081-8093; mw-crypto on 8094 needs a client certificate, mTLS: its health is the compose healthcheck)</span>
+for p in $(seq 8081 8093); do printf "%s " $p; curl -s localhost:$p/actuator/health/readiness; echo; done
+docker compose ps mw-crypto
 <span class="c"># the edge and the two consoles</span>
 curl -sk https://localhost/healthz
 curl -s -o /dev/null -w "%{http_code}\n" localhost:3000/console/api/health

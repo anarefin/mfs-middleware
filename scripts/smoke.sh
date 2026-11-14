@@ -6,8 +6,10 @@
 # publishes a port beyond 127.0.0.1; every topic in deploy/kafka/topics.txt exists with RF 1 and the
 # planned partition count; Kafka produce/consume; a PostgreSQL connection; a Valkey ping;
 # Keycloak in production mode with its realms in PostgreSQL; a Keycloak token for every test user and the partner client (ops users: refused until
-# TOTP is enrolled, and the ops browser flow requires OTP); an OpenBao KV read; the
-# APISIX /healthz route over HTTPS on the published port; no rate-limiter degradation logged.
+# TOTP is enrolled, and the ops browser flow requires OTP); an OpenBao KV read; the OpenBao PKI
+# roles of mTLS phase 1 and, when mw-crypto runs, its certificate metric, a refused handshake without
+# a client certificate and a 200 with one plus the JWT; the APISIX /healthz route over HTTPS on the
+# published port; no rate-limiter degradation logged.
 set -uo pipefail
 . "$(dirname "$0")/lib/common.sh"
 
@@ -106,6 +108,43 @@ check "valkey ping (auth required)" \
 check "openbao KV read secret/mw/smoke" \
   dc exec -T openbao sh -c 'BAO_TOKEN="$(sed -n "s/.*\"root_token\": *\"\([^\"]*\)\".*/\1/p" /openbao/file/dev-init.json)" bao kv get -field=value secret/mw/smoke | grep -qx ok'
 
+# ---- OpenBao PKI and mw-crypto mTLS (ticket 66, D24) ----
+# bao_sh CMD: a bao command in the openbao container as the dev root token
+bao_sh() { dc exec -T openbao sh -c 'export BAO_TOKEN="$(sed -n "s/.*\"root_token\": *\"\([^\"]*\)\".*/\1/p" /openbao/file/dev-init.json)"; '"$1"; }
+pki_roles() {
+  local out r
+  out="$(bao_sh 'bao list -format=json pki_int/roles')" || { echo "$out"; return 1; }
+  for r in mw-crypto mw-auth mw-app-gateway mw-ussd mw-checkout mw-audit-dw mw-admin-api; do
+    printf '%s' "$out" | jq -e --arg r "$r" 'index($r) != null' >/dev/null || { echo "no PKI role $r in $out"; return 1; }
+  done
+}
+check "openbao PKI: intermediate pki_int with a role per mTLS service" pki_roles
+if dc ps --status running --services | grep -qx mw-crypto; then
+  crypto_url="https://127.0.0.1:${MW_PORT_CRYPTO:-8094}/internal/v1/keys"
+  crypto_cert_metric() {
+    dc exec -T mw-crypto bash -c 'exec 3<>/dev/tcp/127.0.0.1/8081 && printf "GET /actuator/prometheus HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && cat <&3' \
+      | grep -q '^tls_certificate_expiry_seconds{.*service="mw-crypto"'
+  }
+  check "mw-crypto serves its OpenBao certificate (tls_certificate_expiry_seconds on 8081)" crypto_cert_metric
+  crypto_no_cert() { ! curl -sk --max-time 5 -o /dev/null "$crypto_url"; }
+  check "mw-crypto fails the TLS handshake without a client certificate" crypto_no_cert
+  # a 5-minute mw-admin-api certificate from pki_int plus its client-credentials JWT: 200
+  crypto_mtls() {
+    local d issued tok code
+    d="$(mktemp -d)"
+    issued="$(bao_sh 'bao write -format=json pki_int/issue/mw-admin-api common_name=mw-admin-api ttl=5m')" || { rm -rf "$d"; return 1; }
+    printf '%s' "$issued" | jq -r .data.certificate >"$d/cert.pem"
+    (umask 077; printf '%s' "$issued" | jq -r .data.private_key >"$d/key.pem")
+    tok="$(docker run --rm --network "$ops_net" "$CURL_IMAGE" -sf --data-urlencode grant_type=client_credentials \
+      --data-urlencode client_id=mw-admin-api --data-urlencode "client_secret=$KC_MW_ADMIN_API_SECRET" \
+      http://keycloak:8080/realms/services/protocol/openid-connect/token | jq -r .access_token)"
+    code="$(curl -sk --max-time 5 -o /dev/null -w '%{http_code}' --cert "$d/cert.pem" --key "$d/key.pem" \
+      -H "Authorization: Bearer $tok" "$crypto_url")"
+    rm -rf "$d"
+    [ "$code" = 200 ] || { echo "got HTTP $code, want 200"; return 1; }
+  }
+fi
+
 # ---- Keycloak tokens (from a throwaway curl container on the ops network) ----
 ops_net="$(docker network ls --format '{{.Name}}' --filter "label=com.docker.compose.project=$project" --filter "label=com.docker.compose.network=ops" | head -1)"
 token() { # token REALM FORM...
@@ -156,6 +195,10 @@ for realm_file in "$MW_ROOT"/deploy/keycloak/realms/*-realm.json; do
     check "keycloak token $realm/$cid (client credentials)" token "$realm" grant_type=client_credentials "client_id=$cid" "client_secret=$(resolve "$secret")"
   done < <(jq -r '.clients[] | select(.serviceAccountsEnabled) | "\(.clientId) \(.secret)"' "$realm_file")
 done
+# needs ops_net (above); defined with the OpenBao PKI checks when mw-crypto runs
+if declare -F crypto_mtls >/dev/null; then
+  check "mw-crypto answers an mw-admin-api client certificate plus its JWT (mTLS)" crypto_mtls
+fi
 
 # ops realm browser flow as imported: password form and OTP form both REQUIRED (18.2)
 ops_browser_flow_requires_otp() {
