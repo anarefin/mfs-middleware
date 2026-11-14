@@ -41,7 +41,7 @@ class JwsServiceTest {
     CryptoProperties props = new CryptoProperties("pkcs11", false, List.of(), Duration.ofSeconds(30),
         Duration.ofSeconds(10), new CryptoProperties.Pkcs11("/nope", 0, "", 1, Duration.ofSeconds(1), Duration.ofSeconds(1)));
     KeyService keyService = new KeyService(f.repo, List.of(f.hsm), props, new KeyMapper(), Clock.systemUTC(), f.meters);
-    jws = new JwsService(f.keys, keyService);
+    jws = new JwsService(f.keys, keyService, f.callers);
   }
 
   RSAPublicKey rsa(String label) {

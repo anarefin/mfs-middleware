@@ -5,6 +5,7 @@ import java.util.List;
 import mfs.mw.crypto.client.Capability;
 import mfs.mw.crypto.dto.TokeniseRequest;
 import mfs.mw.crypto.dto.TokensView;
+import mfs.mw.crypto.security.CallerPolicy;
 import mfs.mw.crypto.service.HsmKeys.Resolved;
 import mfs.mw.crypto.util.Bytes;
 import org.springframework.stereotype.Service;
@@ -19,13 +20,16 @@ import org.springframework.stereotype.Service;
 public class TokenService {
 
   private final HsmKeys keys;
+  private final CallerPolicy callers;
 
-  public TokenService(HsmKeys keys) {
+  public TokenService(HsmKeys keys, CallerPolicy callers) {
+    this.callers = callers;
     this.keys = keys;
   }
 
   public TokensView tokenise(TokeniseRequest r) {
     String domain = r.domain().name();
+    callers.requirePurpose("TOKENISE_" + domain, "tokenise");
     Resolved key = keys.activeByPurpose("TOKENISE_" + domain, p -> p.capability() == Capability.TOKENISE, "tokenise");
     List<byte[]> values = r.values().stream().map(v -> v.getBytes(StandardCharsets.UTF_8)).toList();
     List<byte[]> macs = keys.run("tokenise", key, p -> p.hmac(key.label(), values));

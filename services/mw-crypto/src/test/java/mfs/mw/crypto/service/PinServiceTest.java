@@ -35,7 +35,7 @@ class PinServiceTest {
         .key("pin-hmac", 1, "PIN_HMAC", KeyState.ACTIVE)
         .key("jwt-sign", 1, "JWT_SIGN", KeyState.ACTIVE);
     f.hsm.putHmacKey("pin-hmac.v1", filled(0x0b));
-    pins = new PinService(f.keys);
+    pins = new PinService(f.keys, f.callers);
   }
 
   static byte[] filled(int b) {
@@ -83,7 +83,7 @@ class PinServiceTest {
         .key("pin-hmac", 1, "PIN_HMAC", KeyState.VERIFY_ONLY)
         .key("pin-hmac", 2, "PIN_HMAC", KeyState.ACTIVE);
     rotated.hsm.putHmacKey("pin-hmac.v1", filled(0x0b));
-    PinService service = new PinService(rotated.keys);
+    PinService service = new PinService(rotated.keys, rotated.callers);
 
     // a block for the previous transport version still decrypts
     VerifyPinResponse r = service.verify(
@@ -108,7 +108,7 @@ class PinServiceTest {
         .key("pin-transport", 1, "PIN_TRANSPORT", KeyState.ACTIVE)
         .key("pin-hmac", 1, "PIN_HMAC", KeyState.RETIRED)
         .key("pin-hmac", 2, "PIN_HMAC", KeyState.ACTIVE);
-    PinService service = new PinService(retired.keys);
+    PinService service = new PinService(retired.keys, retired.callers);
     assertThatThrownBy(() -> service.verify(new VerifyPinRequest(WALLET, retired.encrypt("pin-transport", "40973"),
         KAT_40973, "pin-hmac.v1"))).satisfies(e -> assertThat(code(e)).isEqualTo("MW-VAL-015"));
     assertThatThrownBy(() -> verify(f.encrypt("pin-transport", "40973"), KAT_40973, "jwt-sign.v1"))

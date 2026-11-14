@@ -37,9 +37,9 @@ class OtherOperationsTest {
         .key("kek-column", 1, "KEK_COLUMN", KeyState.VERIFY_ONLY)
         .key("kek-column", 2, "KEK_COLUMN", KeyState.ACTIVE);
     f.hsm.putHmacKey("tokenise-msisdn.v1", new byte[32]);
-    hmac = new HmacService(f.keys);
-    tokens = new TokenService(f.keys);
-    envelopes = new EnvelopeService(f.keys);
+    hmac = new HmacService(f.keys, f.callers);
+    tokens = new TokenService(f.keys, f.callers);
+    envelopes = new EnvelopeService(f.keys, f.callers);
   }
 
   static String code(Throwable e) {

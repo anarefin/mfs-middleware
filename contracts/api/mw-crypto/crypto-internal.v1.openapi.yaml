@@ -19,6 +19,15 @@ info:
     generation only while the dev key bootstrap is on (`mw.crypto.bootstrap-keys`) until the key
     ceremony (ticket 75); otherwise 403 MW-AUTH-002.
 
+    Operations are authorised per caller (the JWT `azp`, equal to the certificate CN), deny by
+    default, 403 MW-AUTH-002 otherwise (`mw.crypto.authz`): `/pin/**` only mw-auth; `/jws/sign` by
+    the key's purpose (also when named by keyId): JWT_SIGN and ASSERTION_SIGN mw-auth,
+    AUDIT_ANCHOR_SIGN mw-audit-dw; `/tokens`, `/envelope/**` and `/hmac/**` by the key's purpose
+    (TOKENISE_<domain>, KEK_<purpose>, HMAC_<use>) bound to its clients in configuration (dev
+    defaults: TOKENISE_MSISDN and TOKENISE_NID mw-auth and mw-audit-dw, TOKENISE_ACCOUNT mw-audit-dw,
+    KEK_COLUMN mw-auth; no HMAC_<use> and no other KEK_<purpose> yet). Public keys and
+    `/jwks/{purpose}` stay open to every allowed caller.
+
     Key references: an operation names a key by keyId (its ACTIVE version) or by kid
     (`<keyId>.v<n>`, that version). New values (sign, derive, tokenise, encrypt) use the ACTIVE
     version only; checks of existing values (verify, decrypt) also accept the VERIFY_ONLY one. Errors

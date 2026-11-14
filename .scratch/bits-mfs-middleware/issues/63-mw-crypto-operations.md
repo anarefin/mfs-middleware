@@ -37,4 +37,5 @@
 - KEK wrap: AES-256-CTR on HSM `AES/ECB` counter blocks (over the p11-kit RPC GCM fails with `CKR_DEVICE_ERROR`, a CBC decrypt with `CKR_FUNCTION_NOT_SUPPORTED`); the envelope's own GCM tag covers a changed wrapped key.
 - `derive` takes an optional `hmacKeyId` (keyId) to choose the PIN_HMAC key; default the `PIN_HMAC` purpose key.
 - New codes: `MW-VAL-014` bad PIN block, `MW-VAL-015` key not usable for the operation, `MW-VAL-016` bad envelope.
+- Per-operation authorisation (security review): `security/CallerPolicy` + `mw.crypto.authz` (deny by default, 403 `MW-AUTH-002`): PIN only mw-auth; JWS per purpose (JWT_SIGN/ASSERTION_SIGN mw-auth, AUDIT_ANCHOR_SIGN mw-audit-dw, also by keyId); TOKENISE_/KEK_/HMAC_ purposes bound per entry (dev: TOKENISE_MSISDN/NID mw-auth+mw-audit-dw, TOKENISE_ACCOUNT mw-audit-dw, KEK_COLUMN mw-auth). Map in `services/mw-crypto/CLAUDE.md`.
 - Zeroing is checked in unit tests (the buffer the SPI hands out is all zero after every call); the HMAC known answer is a unit test with a known key (SoftHSM keys are not extractable, so the IT checks determinism and verify instead).

@@ -107,6 +107,26 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   (KEK_<x>), plaintext (<= 1 MiB), aad?}` -> `{kekId(kid), wrappedKey, iv, ciphertext, aad}`; fresh
   AES-256 data key, AES-256-GCM (12-byte nonce, 128-bit tag) in the JVM, data key wrapped in the HSM and
   zeroed; `/decrypt` takes that object back -> `{plaintext}`.
+- Per-operation authorisation (security review of ticket 63; `security/CallerPolicy`, configured by
+  `config/OperationAuthzProperties` = `mw.crypto.authz` in `application.yml`): the caller is the
+  service JWT's `azp` (ticket 66 ties it to the client certificate CN). Deny by default, 403
+  `MW-AUTH-002` and WARN `security.internal_call_denied` reason `OPERATION_NOT_ALLOWED`. The services
+  check it before any HSM call (a keyId is first resolved to its purpose from metadata only).
+
+  | Operation | Rule | Dev default |
+  | --- | --- | --- |
+  | `/pin/verify`, `/pin/derive` | `mw.crypto.authz.pin-clients` | `mw-auth` |
+  | `/jws/sign` (by purpose or keyId) | `mw.crypto.authz.purposes.<PURPOSE>` | `JWT_SIGN`, `ASSERTION_SIGN`: `mw-auth`; `AUDIT_ANCHOR_SIGN`: `mw-audit-dw` |
+  | `/tokens` | `purposes.TOKENISE_<domain>` | `TOKENISE_MSISDN`, `TOKENISE_NID`: `mw-auth`, `mw-audit-dw`; `TOKENISE_ACCOUNT`: `mw-audit-dw` |
+  | `/envelope/encrypt`, `/decrypt` | `purposes.KEK_<purpose>` | `KEK_COLUMN`: `mw-auth`; `KEK_FILE`: nobody |
+  | `/hmac/sign`, `/verify` | `purposes.HMAC_<use>` | none yet |
+  | `/jwks/{purpose}`, `/keys`, `/keys/{keyId}/public` | every allowed caller | |
+  | generate, rotate | ticket 66 key-admin rule | `mw-admin-api` |
+
+  A caller ticket (67 mw-auth, 70, 71, 74 mw-audit-dw, a new KEK/TOKENISE/HMAC purpose) adds its
+  client to the purpose's entry in `application.yml` (or overrides it per environment) in the same
+  change. Tests: `controller/OperationAuthzTest` (`@WebMvcTest` with the real services: wrong caller
+  per operation 403, right caller OK).
 - Masking and logging: no payload logging here, ever. Every secret request/response field is
   `@Sensitive(SECRET)` (walletId and MSISDNs `MSISDN`) and every operation DTO's `toString()` is
   `MaskingPolicy.describe`; services log only event, kid, outcome. Bean Validation messages never echo

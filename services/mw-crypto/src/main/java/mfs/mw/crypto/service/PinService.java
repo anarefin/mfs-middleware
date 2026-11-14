@@ -14,6 +14,7 @@ import mfs.mw.crypto.dto.VerifyPinRequest;
 import mfs.mw.crypto.dto.VerifyPinResponse;
 import mfs.mw.crypto.entity.KeyState;
 import mfs.mw.crypto.exception.CryptoErrors;
+import mfs.mw.crypto.security.CallerPolicy;
 import mfs.mw.crypto.service.HsmKeys.Resolved;
 import mfs.mw.crypto.service.HsmKeys.Use;
 import mfs.mw.crypto.util.Bytes;
@@ -39,8 +40,10 @@ public class PinService {
   private static final Predicate<KeyPurpose> PIN_HMAC = p -> "PIN_HMAC".equals(p.name());
 
   private final HsmKeys keys;
+  private final CallerPolicy callers;
 
-  public PinService(HsmKeys keys) {
+  public PinService(HsmKeys keys, CallerPolicy callers) {
+    this.callers = callers;
     this.keys = keys;
   }
 
@@ -49,6 +52,7 @@ public class PinService {
    * VERIFY_ONLY {@code PIN_HMAC} version the answer carries the value under the ACTIVE one.
    */
   public VerifyPinResponse verify(VerifyPinRequest r) {
+    callers.requirePin("pin-verify");
     Resolved hmacKey = keys.resolve(r.hmacKeyId(), Use.CHECK, PIN_HMAC, "pin-verify");
     byte[] stored = Bytes.decode("storedHmac", r.storedHmac());
     byte[] pin = decrypt(r.encryptedPin(), "pin-verify");
@@ -73,6 +77,7 @@ public class PinService {
 
   /** The HMAC to store for a new PIN, or the weak-PIN rule it breaks. */
   public DerivePinResponse derive(DerivePinRequest r) {
+    callers.requirePin("pin-derive");
     Resolved active =
         r.hmacKeyId() != null
             ? keys.resolve(r.hmacKeyId(), Use.CREATE, PIN_HMAC, "pin-derive")

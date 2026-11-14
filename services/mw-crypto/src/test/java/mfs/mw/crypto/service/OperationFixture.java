@@ -15,6 +15,8 @@ import javax.crypto.Cipher;
 import javax.crypto.spec.OAEPParameterSpec;
 import javax.crypto.spec.PSource;
 import mfs.mw.crypto.client.FakeCryptoProvider;
+import mfs.mw.crypto.config.OperationAuthzProperties;
+import mfs.mw.crypto.security.CallerPolicy;
 import mfs.mw.crypto.dto.EncryptedPin;
 import mfs.mw.crypto.entity.CryptoKey;
 import mfs.mw.crypto.entity.KeyState;
@@ -32,6 +34,15 @@ final class OperationFixture {
   final KeyRepository repo = mock(KeyRepository.class);
   final SimpleMeterRegistry meters = new SimpleMeterRegistry();
   final HsmKeys keys = new HsmKeys(repo, List.of(hsm), meters);
+  /** Allows every caller: the per-operation rules are tested in controller/OperationAuthzTest. */
+  final CallerPolicy callers =
+      new CallerPolicy(new OperationAuthzProperties(null, null)) {
+        @Override
+        public void requirePin(String operation) {}
+
+        @Override
+        public void requirePurpose(String purpose, String operation) {}
+      };
   private final List<CryptoKey> rows = new ArrayList<>();
 
   OperationFixture() {

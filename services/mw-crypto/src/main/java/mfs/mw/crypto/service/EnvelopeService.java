@@ -14,6 +14,7 @@ import mfs.mw.crypto.dto.PlaintextView;
 import mfs.mw.crypto.exception.CryptoErrors;
 import mfs.mw.crypto.exception.ErrorCodes;
 import mfs.mw.crypto.exception.MwException;
+import mfs.mw.crypto.security.CallerPolicy;
 import mfs.mw.crypto.service.HsmKeys.Resolved;
 import mfs.mw.crypto.service.HsmKeys.Use;
 import mfs.mw.crypto.util.Bytes;
@@ -35,8 +36,10 @@ public class EnvelopeService {
   private static final Predicate<KeyPurpose> KEK = p -> p.capability() == Capability.ENVELOPE;
 
   private final HsmKeys keys;
+  private final CallerPolicy callers;
 
-  public EnvelopeService(HsmKeys keys) {
+  public EnvelopeService(HsmKeys keys, CallerPolicy callers) {
+    this.callers = callers;
     this.keys = keys;
   }
 
@@ -44,10 +47,14 @@ public class EnvelopeService {
     if ((r.kekId() == null) == (r.purpose() == null)) {
       throw CryptoErrors.invalidField("kekId", "exactly one of kekId and purpose");
     }
+    if (r.purpose() != null) {
+      callers.requirePurpose(r.purpose(), "envelope-encrypt");
+    }
     Resolved kek =
         r.kekId() != null
             ? keys.resolve(r.kekId(), Use.CREATE, KEK, "envelope-encrypt")
             : keys.activeByPurpose(r.purpose(), KEK, "envelope-encrypt");
+    callers.requirePurpose(kek.purpose().name(), "envelope-encrypt");
     byte[] plaintext = Bytes.decode("plaintext", r.plaintext());
     byte[] aad = r.aad() == null ? null : Bytes.decode("aad", r.aad());
     byte[] dataKey = new byte[32];
@@ -67,6 +74,7 @@ public class EnvelopeService {
 
   public PlaintextView decrypt(Envelope e) {
     Resolved kek = keys.resolve(e.kekId(), Use.CHECK, KEK, "envelope-decrypt");
+    callers.requirePurpose(kek.purpose().name(), "envelope-decrypt");
     byte[] wrapped = Bytes.decode("wrappedKey", e.wrappedKey());
     byte[] iv = Bytes.decode("iv", e.iv());
     byte[] ciphertext = Bytes.decode("ciphertext", e.ciphertext());

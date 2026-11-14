@@ -47,7 +47,7 @@ class OperationsIT {
   static void keys() throws Exception {
     HsmStack.start();
     for (String[] k : new String[][] {
-        {"PIN_TRANSPORT", "it-pin-transport"}, {"PIN_HMAC", "it-pin-hmac"}, {"HMAC_IT", "hmac-it"}, {"KEK_IT", "kek-it"}}) {
+        {"PIN_TRANSPORT", "it-pin-transport"}, {"PIN_HMAC", "it-pin-hmac"}, {"HMAC_IT", "hmac-it"}, {"KEK_COLUMN", "kek-it"}}) {
       HttpResponse<String> r = admin("/internal/v1/keys", "{\"purpose\":\"" + k[0] + "\",\"keyId\":\"" + k[1] + "\"}");
       assertThat(r.statusCode()).as(r.body()).isIn(201, 409);
     }
@@ -212,6 +212,13 @@ class OperationsIT {
     JWSObject jws = JWSObject.parse(secret(es.get("jws").asString()));
     assertThat(jws.getHeader().getAlgorithm().getName()).isEqualTo("ES256");
     assertThat(jws.verify(new ECDSAVerifier(ec.getKeyByKeyId(jws.getHeader().getKeyID()).toECKey()))).isTrue();
+
+    // per-operation authorisation over mTLS: the caller is the certificate-bound azp
+    error(HsmStack.post("/internal/v1/jws/sign", "{\"purpose\":\"JWT_SIGN\",\"payload\":{}}",
+        InternalTokens.forClient("mw-audit-dw")), 403, "MW-AUTH-002");
+    error(post("/internal/v1/jws/sign", "{\"purpose\":\"AUDIT_ANCHOR_SIGN\",\"payload\":{}}"), 403, "MW-AUTH-002");
+    assertThat(HsmStack.post("/internal/v1/jws/sign", "{\"purpose\":\"AUDIT_ANCHOR_SIGN\",\"payload\":{}}",
+        InternalTokens.forClient("mw-audit-dw")).statusCode()).isEqualTo(200);
   }
 
   @Test

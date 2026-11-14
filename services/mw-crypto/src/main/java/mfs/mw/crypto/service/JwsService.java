@@ -19,6 +19,7 @@ import mfs.mw.crypto.entity.CryptoKey;
 import mfs.mw.crypto.exception.CryptoErrors;
 import mfs.mw.crypto.exception.ErrorCodes;
 import mfs.mw.crypto.exception.MwException;
+import mfs.mw.crypto.security.CallerPolicy;
 import mfs.mw.crypto.service.HsmKeys.Resolved;
 import mfs.mw.crypto.service.HsmKeys.Use;
 import org.springframework.stereotype.Service;
@@ -39,9 +40,11 @@ public class JwsService {
       List.of("alg", "kid", "jku", "jwk", "x5u", "x5c", "x5t", "x5t#S256", "crit", "b64", "enc", "zip");
 
   private final HsmKeys keys;
+  private final CallerPolicy callers;
   private final KeyService keyService;
 
-  public JwsService(HsmKeys keys, KeyService keyService) {
+  public JwsService(HsmKeys keys, KeyService keyService, CallerPolicy callers) {
+    this.callers = callers;
     this.keys = keys;
     this.keyService = keyService;
   }
@@ -50,10 +53,15 @@ public class JwsService {
     if ((r.keyId() == null) == (r.purpose() == null)) {
       throw CryptoErrors.invalidField("keyId", "exactly one of keyId and purpose");
     }
+    if (r.purpose() != null) {
+      callers.requirePurpose(r.purpose(), "jws-sign");
+    }
     Resolved key =
         r.keyId() != null
             ? keys.resolve(r.keyId(), Use.CREATE, JWS, "jws-sign")
             : keys.activeByPurpose(r.purpose(), JWS, "jws-sign");
+    // by keyId: the key's purpose decides (metadata only; no HSM call before this)
+    callers.requirePurpose(key.purpose().name(), "jws-sign");
     SignatureAlgorithm alg = algorithm(key, r.alg());
     Payload payload = new Payload(r.payload());
     if (payload.toBytes().length > MAX_PAYLOAD_BYTES) {

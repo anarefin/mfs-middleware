@@ -10,6 +10,7 @@ import mfs.mw.crypto.dto.HmacVerifyRequest;
 import mfs.mw.crypto.dto.HmacView;
 import mfs.mw.crypto.entity.CryptoKey;
 import mfs.mw.crypto.entity.KeyState;
+import mfs.mw.crypto.security.CallerPolicy;
 import mfs.mw.crypto.service.HsmKeys.Resolved;
 import mfs.mw.crypto.service.HsmKeys.Use;
 import mfs.mw.crypto.util.Bytes;
@@ -27,13 +28,16 @@ public class HmacService {
   private static final Predicate<KeyPurpose> HMAC = p -> p.capability() == Capability.HMAC;
 
   private final HsmKeys keys;
+  private final CallerPolicy callers;
 
-  public HmacService(HsmKeys keys) {
+  public HmacService(HsmKeys keys, CallerPolicy callers) {
+    this.callers = callers;
     this.keys = keys;
   }
 
   public HmacView sign(HmacSignRequest r) {
     Resolved key = keys.resolve(r.keyId(), Use.CREATE, HMAC, "hmac-sign");
+    callers.requirePurpose(key.purpose().name(), "hmac-sign");
     byte[] data = Bytes.decode("data", r.data());
     byte[] mac = keys.run("hmac", key, p -> p.hmac(key.label(), List.of(data)).getFirst());
     return HmacView.signed(Bytes.encode(mac), key.kid());
@@ -41,6 +45,7 @@ public class HmacService {
 
   public HmacView verify(HmacVerifyRequest r) {
     Resolved named = keys.resolve(r.keyId(), Use.CHECK, HMAC, "hmac-verify");
+    callers.requirePurpose(named.purpose().name(), "hmac-verify");
     byte[] data = Bytes.decode("data", r.data());
     byte[] expected = Bytes.decode("mac", r.mac());
     List<Resolved> candidates = r.keyId().equals(named.key().keyId()) ? live(named) : List.of(named);
