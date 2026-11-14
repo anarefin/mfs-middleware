@@ -11,7 +11,9 @@ import mfs.mw.crypto.exception.CryptoErrors;
  * of D21), which fixes its algorithm, the provider capability it needs and, for a key pair, how its
  * public key is published as a JWK. {@code TOKENISE_<domain>}, {@code HMAC_<use>} (partner and webhook
  * signatures, ticket 63) and {@code KEK_<purpose>} name one key
- * per domain, use or purpose ({@code [A-Z][A-Z0-9]{0,23}}).
+ * per domain, use or purpose ({@code [A-Z][A-Z0-9]{0,23}}). The payShield purposes (ticket 64): {@code
+ * ZPK}, {@code TPK} (triple DES PIN keys), {@code ZPK_AES}, {@code TPK_AES} (AES-128, ISO format 4)
+ * and {@code PVK} (the Visa PVV key pair).
  *
  * @param name the purpose as stored ({@code crypto.key.purpose})
  * @param jwkAlgorithm the JWK {@code alg} of the public key, null for a secret key
@@ -34,6 +36,10 @@ public record KeyPurpose(
       case "ASSERTION_SIGN", "AUDIT_ANCHOR_SIGN" ->
           new KeyPurpose(name, KeyAlgorithm.EC_P256, Capability.JWS, "ES256", "sig");
       case "XMLDSIG" -> new KeyPurpose(name, KeyAlgorithm.RSA_3072, Capability.XMLDSIG, "RS256", "sig");
+      // payShield (ticket 64): zone and terminal PIN keys (triple DES; _AES for ISO format 4), PVK pair
+      case "ZPK", "TPK" -> new KeyPurpose(name, KeyAlgorithm.TDES_2KEY, Capability.PIN_BLOCK, null, null);
+      case "ZPK_AES", "TPK_AES" -> new KeyPurpose(name, KeyAlgorithm.AES_128, Capability.PIN_BLOCK, null, null);
+      case "PVK" -> new KeyPurpose(name, KeyAlgorithm.TDES_2KEY, Capability.PVV, null, null);
       // RFC 9421 HTTP message signatures (ticket 65): rsa-pss-sha512 (or rsa-v1_5-sha256), ecdsa-p256-sha256
       case "HTTP_SIGN_RSA" -> new KeyPurpose(name, KeyAlgorithm.RSA_3072, Capability.XMLDSIG, "PS512", "sig");
       case "HTTP_SIGN_EC" -> new KeyPurpose(name, KeyAlgorithm.EC_P256, Capability.XMLDSIG, "ES256", "sig");

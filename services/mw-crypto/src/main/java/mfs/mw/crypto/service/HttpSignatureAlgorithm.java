@@ -33,7 +33,8 @@ enum HttpSignatureAlgorithm {
       case EC_P256 -> ECDSA_P256_SHA256;
       case RSA_3072 -> RSA_PSS_SHA512;
       case HMAC_SHA256 -> HMAC_SHA256;
-      case AES_256 -> throw new IllegalArgumentException("no HTTP signature with an AES key");
+      case AES_256, AES_128, TDES_2KEY ->
+          throw new IllegalArgumentException("no HTTP signature with a cipher key");
     };
   }
 }

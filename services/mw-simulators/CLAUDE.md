@@ -110,6 +110,58 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   `POST /sim/merchant/ipn/scenario {failNext, failStatus? (default 500), ipnId? (only that IPN)}`,
   `GET /sim/merchant/ipn/received[?ipnId=]`, `DELETE /sim/merchant/ipn/received` (resets all). Not in
   `sim.partners`.
+- payShield 10K simulator (ticket 64, spec 18.8, D23; `client/PayShieldServer`, `service/PayShieldService`,
+  `service/PayShieldKeys`, `util/PinBlocks`, `util/PayShieldCrypto`, `controller/PayShieldController`;
+  `sim.payshield.*`): TCP on `sim.payshield.port` (1500, internal network only; off in host tests).
+  Frame: 2-byte big-endian length, header (`header-length`, 4 chars, echoed: the host correlates by
+  it), then command code and fields in ASCII; many commands per connection. Answer: response code
+  (second letter + 1: `CA -> CB`), 2-digit error code, fields. Errors `00`, `01` PIN verification
+  failure, `10` / `11` parity error of the first / second key field, `15` invalid input, `68` command
+  disabled (also any unknown command), `69` PIN block format not permitted: `CA` / `CC` from ISO 0, 3
+  or 4 into ISO 1 while the payShield security setting "allow translation to non-PAN formats" is off
+  (`sim.payshield.allow-non-pan-translation`, default false; ISO 1 binds the PIN to no account). Fields (simulator layout; keys are 33-char blobs, see below;
+  a PIN block is 16 hex under a `U` key, 32 under an `S` key; `acct` = 12 digits (rightmost without
+  the check digit), or 2-digit length + whole PAN when a format 4 block is involved):
+  - `NC` -> `ND00` + LMK check value (16H) + firmware `1500-0000`.
+  - `A0` mode (`0`, or `1` = also under a ZMK) + key type (`000` ZMK, `001` ZPK, `002` TPK/PVK, `00A`
+    ZEK) + scheme (`U` double length TDES, `S` AES-128) [+ ZMK blob + `U`] -> `A100` + blob [+ `U` + 32H
+    under the ZMK] + KCV (6H).
+  - `CA` TPK + ZPK, `CC` ZPK + ZPK: + max PIN length (2N) + block + source and destination format
+    codes (`01` ISO 0, `05` ISO 1, `47` ISO 3, `48` ISO 4) + acct -> `CB00`/`CD00` + PIN length + block
+    + destination format.
+  - `JC` TPK / `JE` ZPK + block + format + acct -> `JD00`/`JF00` + the PIN under the LMK (32H).
+  - `DG` PVK + PIN under the LMK + acct (12N) + PVKI (1N) -> `DH00` + PVV (4N, Visa).
+  - `DC` TPK / `EC` ZPK + PVK + block + format + acct + PVKI + PVV -> `DD00`/`ED00`, or `01`.
+  - `M0` / `M2` mode (`00` ECB, `01` CBC) + `1` + `1` (hex in and out) + `00A` + ZEK [+ IV] + length
+    (4H, bytes) + data (hex) -> `M100`/`M300` + length + data.
+  - Keys under the LMK (`service/PayShieldKeys`): scheme + 32H = the key xor a per-type variant
+    (SHA-256 of a fixed label), encrypted under the LMK; a TDES blob of another type unwraps without odd
+    parity (`10`/`11`). PINs under the LMK the same way. ISO 9564-1 formats 0, 1, 3 (TDES) and 4 (AES,
+    `util/PinBlocks`), PINs of 4 to 12 digits.
+  - LMK (`client/LmkStore`, `sim.payshield.lmk-store`): `pkcs11` (`client/Pkcs11LmkStore`, the stack)
+    = an AES-256 token object `lmk` in the SoftHSM `paysim` token (softhsm:5658 through the image's
+    p11-kit proxy, user PIN `sim.payshield.pkcs11.user-pin` from OpenBao `secret/mw-simulators`,
+    `SOFTHSM_PAYSIM_USER_PIN` by `provision_mw_simulators`), generated on first use and kept across
+    restarts. Over the p11-kit RPC the token only encrypts (an ECB decrypt fails with
+    `CKR_FUNCTION_NOT_SUPPORTED`), so a block under the LMK is a 4-round Feistel network on the token's
+    AES encryption. `memory` (`client/InMemoryLmkStore`): a fresh LMK per start, host tests only. The
+    working keys are clear in the simulator's memory while it runs a command (a test-only simulator).
+    An LMK failure closes the connection unanswered. Message content is never logged.
+  - Control: `POST|GET|DELETE /sim/payshield/scenario {latencyMs, errorCode, outage, commands[]}`
+    (`errorCode` for the listed commands, or all; `outage` closes every connection unanswered). Test
+    helper `POST /sim/payshield/pinblock {keyType TPK|ZPK, key (blob), format ISO0|ISO1|ISO3|ISO4, pin,
+    pan}` -> `{block}`: what the ATM or switch sharing the key sends. Not in `sim.partners` (no
+    recording).
+  - Image: Alpine JRE (as mw-crypto) with `p11-kit=0.26.2-r0` (must match softhsm's), `socat`, `bash`;
+    the only p11-kit module is `remote: |socat - TCP:softhsm:5658,...`. Compose waits for a healthy
+    `softhsm`. Tests: `util/PayShieldCryptoTest` (DES worked example, KCV, format 0 example, PVV
+    decimalisation, round trips of every format), `service/PayShieldServiceTest` (every command,
+    error codes, scenario), `client/PayShieldServerTest` (framing, header, latency, outage),
+    `client/Pkcs11LmkStoreTest` (the Feistel construction, fail closed), `controller/PayShieldControllerTest`,
+    `PayShieldSimulatorIT` (this image built from the Dockerfile and the boot jar, the `test` task
+    depends on `bootJar`, against a SoftHSM built from `src/test/resources/softhsm/`, a checked copy of
+    `deploy/softhsm` (`scripts/test/test_softhsm.sh`): commands with the LMK in the token, and a second
+    simulator on the same token keeps the LMK).
 - Adding a simulator: add its name to `sim.partners`, a controller under `/<partner>/...`, reuse
   the store, recorder, `SimMode`/`MagicAmounts` and callback service.
 - Dev provisioning (`provision_mw_simulators` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role

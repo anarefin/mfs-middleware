@@ -157,6 +157,22 @@ sim:
       port: 2776
       mnos: [gp]
       screen-timeout: 15s
+  # payShield 10K simulator (ticket 64, spec 18.8, D23): host commands over TCP for mw-crypto's
+  # payShield provider (internal network only). The LMK is a token object of the SoftHSM paysim
+  # token (softhsm:5658 through the image's p11-kit proxy; user PIN from OpenBao secret/mw-simulators
+  # sim.payshield.pkcs11.user-pin); host tests use lmk-store: memory.
+  payshield:
+    enabled: true
+    port: 1500
+    header-length: 4
+    lmk-store: pkcs11
+    # payShield security setting: off = CA/CC from ISO 0, 3, 4 into ISO 1 answer error 69
+    allow-non-pan-translation: false
+    pkcs11:
+      library: /usr/lib/libp11-kit.so.0
+      slot-list-index: 0
+      user-pin: ""
+      lmk-label: lmk
 
 mw:
   kafka:

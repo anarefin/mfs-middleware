@@ -20,6 +20,11 @@ sim:
     smpp:
       # Off in tests (port clashes between cached contexts); UssdSmppGatewayIT switches it on.
       enabled: false
+  payshield:
+    # Off in tests (port clashes between cached contexts); PayShieldServerTest starts its own and
+    # PayShieldSimulatorIT runs the image against the SoftHSM paysim token. No PKCS#11 on the host.
+    enabled: false
+    lmk-store: memory
 camel:
   component:
     kafka:

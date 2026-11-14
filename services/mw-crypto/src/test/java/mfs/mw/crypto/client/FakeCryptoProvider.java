@@ -85,6 +85,7 @@ public class FakeCryptoProvider implements CryptoProvider {
             case EC_P256 -> ec();
             case HMAC_SHA256 -> new SecretKeySpec(random(32), "HmacSHA256");
             case AES_256 -> new SecretKeySpec(random(32), "AES");
+            case TDES_2KEY, AES_128 -> new SecretKeySpec(random(16), "AES");
           };
       keys.put(label, key);
     } catch (GeneralSecurityException e) {
