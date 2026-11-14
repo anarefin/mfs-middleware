@@ -152,10 +152,22 @@ public class KeyAdminService {
     payload.put("shares", List.of());
     String before = key.map(k -> k.active() == null ? "none" : k.active().kid() + " ACTIVE").orElse("none");
     // the ceremony is opened in mw-crypto inside the filing transaction (security review): a component
-    // never opens one, so a component in flight while the request is rejected cannot start a ceremony
-    return changes.open(maker, ChangeRequest.KEY, body.keyId(), KeyAction.KEY_CEREMONY.name(), body.reason(),
-        () -> new ChangeRequestService.Opening(payload, diff(before, kid + " ACTIVE"),
-            cr -> crypto.openCeremony(cr.id(), body.keyId(), body.purpose())));
+    // never opens one, so a component in flight while the request is rejected cannot start a ceremony.
+    // If the transaction fails after the open (or the open's answer was lost), abort it again
+    // (idempotent, terminal per id); the reconciler aborts what this misses.
+    java.util.concurrent.atomic.AtomicReference<UUID> opening = new java.util.concurrent.atomic.AtomicReference<>();
+    try {
+      return changes.open(maker, ChangeRequest.KEY, body.keyId(), KeyAction.KEY_CEREMONY.name(), body.reason(),
+          () -> new ChangeRequestService.Opening(payload, diff(before, kid + " ACTIVE"), cr -> {
+            opening.set(cr.id());
+            crypto.openCeremony(cr.id(), body.keyId(), body.purpose());
+          }));
+    } catch (RuntimeException e) {
+      if (opening.get() != null) {
+        abortQuietly(opening.get(), "filing failed");
+      }
+      throw e;
+    }
   }
 
   /** The ceremony's progress, from its change request. */
@@ -206,15 +218,11 @@ public class KeyAdminService {
               return requests.find(id).orElseThrow();
             });
     if (updated == null) {
-      // rejected or expired while the component was on its way: abort again (idempotent, terminal)
-      try {
-        crypto.abort(id);
-      } catch (MwException e) {
-        log.atWarn()
-            .addKeyValue("event", "admin.key_ceremony.abort_failed")
-            .addKeyValue("changeRequestId", id.toString())
-            .addKeyValue("errorCode", e.code())
-            .log("mw-crypto could not abort the ceremony after a late component");
+      // the request left PENDING while the component was on its way: abort only when it was rejected or
+      // expired (idempotent, terminal); APPROVING (a commit may be under way) is left alone
+      ChangeRequest.Status now2 = requests.find(id).map(ChangeRequest::status).orElse(ChangeRequest.Status.REJECTED);
+      if (now2 == ChangeRequest.Status.REJECTED || now2 == ChangeRequest.Status.EXPIRED) {
+        abortQuietly(id, "late component");
       }
       throw new MwException(ErrorCodes.VAL_REQUEST_DECIDED, "The ceremony was decided meanwhile")
           .withStatus(HttpStatus.CONFLICT);
@@ -226,6 +234,18 @@ public class KeyAdminService {
         .addKeyValue("custodian", custodian.username())
         .log("key ceremony component entered");
     return view(updated);
+  }
+
+  private void abortQuietly(UUID id, String why) {
+    try {
+      crypto.abort(id);
+    } catch (MwException e) {
+      log.atWarn()
+          .addKeyValue("event", "admin.key_ceremony.abort_failed")
+          .addKeyValue("changeRequestId", id.toString())
+          .addKeyValue("errorCode", e.code())
+          .log("mw-crypto could not abort the ceremony (" + why + "); the reconciler retries");
+    }
   }
 
   private ChangeRequest ceremonyRequest(UUID id) {

@@ -35,34 +35,48 @@ public class KeyChangeService {
     this.clock = clock;
   }
 
-  /**
-   * Whether the change of {@code changeRequestId} was applied (mw-admin-api asks before it gives a
-   * claimed approval up), with the key's ACTIVE kid when it was.
-   */
+  /** The state of approval attempt {@code changeId}: applied, cancelled, or neither yet. */
   @Transactional(readOnly = true)
-  public KeyChangeState state(UUID changeRequestId) {
-    return changes.find(changeRequestId)
-        .map(a -> {
-          KeyView k = keys.find(a.keyId());
-          String kid = k.versions().stream().filter(v -> "ACTIVE".equals(v.state())).map(KeyView.Version::kid)
-              .findFirst().orElse(k.versions().getLast().kid());
-          return new KeyChangeState(changeRequestId, true, a.action(), a.keyId(), kid);
-        })
-        .orElse(new KeyChangeState(changeRequestId, false, null, null, null));
+  public KeyChangeState state(UUID changeId) {
+    return changes.find(changeId).map(c -> view(c)).orElse(new KeyChangeState(changeId, false, false, null, null, null));
   }
 
+  /**
+   * Makes "not applied" binding (security review): a terminal CANCELLED tombstone for {@code
+   * changeId} unless it was applied; atomic with {@link #apply} (both insert the id's row, the
+   * second waits for the first). Idempotent; answers applied or cancelled.
+   */
   @Transactional
-  public KeyView apply(UUID changeRequestId, KeyChangeRequest r) {
-    Optional<KeyChangeRepository.Applied> done = changes.find(changeRequestId);
-    if (done.isPresent()) {
-      KeyChangeRepository.Applied a = done.get();
-      if (!a.action().equals(r.action().name()) || !a.keyId().equals(r.keyId())) {
+  public KeyChangeState cancel(UUID changeId) {
+    if (changes.insertCancelled(changeId, clock.instant())) {
+      log.atInfo()
+          .addKeyValue("event", "crypto.key_change.cancelled")
+          .addKeyValue("changeId", changeId.toString())
+          .log("Key change attempt cancelled");
+    }
+    return view(changes.find(changeId).orElseThrow());
+  }
+
+  /**
+   * Applies attempt {@code changeId} once: the id's APPLIED row is inserted first (refused when the
+   * id was cancelled), then the change runs in the same transaction. A repeat with the same action
+   * and key answers the key as it is now.
+   */
+  @Transactional
+  public KeyView apply(UUID changeId, KeyChangeRequest r) {
+    if (r.makerId().equals(r.checkerId())) {
+      throw CryptoErrors.keyChangeConflict("Maker and checker must differ");
+    }
+    if (!changes.insertApplied(changeId, r.action().name(), r.keyId(), r.version(), r.makerId(), r.checkerId(),
+        clock.instant())) {
+      KeyChangeRepository.Change c = changes.find(changeId).orElseThrow();
+      if (!c.applied()) {
+        throw CryptoErrors.keyChangeConflict("This key change was cancelled");
+      }
+      if (!c.action().equals(r.action().name()) || !c.keyId().equals(r.keyId())) {
         throw CryptoErrors.keyChangeConflict("This change request was applied with other values");
       }
       return keys.find(r.keyId());
-    }
-    if (r.makerId().equals(r.checkerId())) {
-      throw CryptoErrors.keyChangeConflict("Maker and checker must differ");
     }
     KeyView view =
         switch (r.action()) {
@@ -80,15 +94,24 @@ public class KeyChangeService {
             yield keys.retire(r.keyId(), r.version());
           }
         };
-    changes.insert(changeRequestId, r.action().name(), r.keyId(), r.version(), r.makerId(), r.checkerId(), clock.instant());
     log.atInfo()
         .addKeyValue("event", "crypto.key_change.applied")
-        .addKeyValue("changeRequestId", changeRequestId.toString())
+        .addKeyValue("changeId", changeId.toString())
         .addKeyValue("action", r.action().name())
         .addKeyValue("keyId", r.keyId())
         .addKeyValue("makerId", r.makerId())
         .addKeyValue("checkerId", r.checkerId())
         .log("Approved key change applied");
     return view;
+  }
+
+  private KeyChangeState view(KeyChangeRepository.Change c) {
+    if (!c.applied()) {
+      return new KeyChangeState(c.changeId(), false, true, null, null, null);
+    }
+    KeyView k = keys.find(c.keyId());
+    String kid = k.versions().stream().filter(v -> "ACTIVE".equals(v.state())).map(KeyView.Version::kid)
+        .findFirst().orElse(k.versions().getLast().kid());
+    return new KeyChangeState(c.changeId(), true, false, c.action(), c.keyId(), kid);
   }
 }

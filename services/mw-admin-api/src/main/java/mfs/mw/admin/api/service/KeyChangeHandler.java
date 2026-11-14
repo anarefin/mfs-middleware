@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.Set;
 import mfs.mw.admin.api.client.CryptoKeyClient;
 import mfs.mw.admin.api.config.AdminApiProperties;
@@ -62,21 +63,37 @@ public class KeyChangeHandler implements ResourceChangeHandler {
     requireFreshMfa(checker, now, props);
   }
 
+  /** A ceremony is approved only once both components are in (no remote call: before the claim). */
+  @Override
+  public void precheck(ChangeRequest cr) {
+    if (KeyAction.KEY_CEREMONY.name().equals(cr.action()) && cr.payload().get("checkValue") == null) {
+      throw new MwException(ErrorCodes.VAL_CEREMONY_INCOMPLETE, "Both custodians must enter their components first")
+          .withStatus(HttpStatus.CONFLICT);
+    }
+  }
+
   @Override
   public Approval prepare(ChangeRequest cr, Operator checker, Instant now, String correlationId) {
+    throw new IllegalStateException("key changes are approved claim-first with an attempt id");
+  }
+
+  /**
+   * The ceremony is committed under its own id (the change request's: the ceremony spans the
+   * components); a key change is PUT under the approval attempt's id ({@code attemptId}, the claim
+   * token), so a cancelled attempt never blocks a later approval of the same request.
+   */
+  @Override
+  public Approval prepare(ChangeRequest cr, Operator checker, Instant now, String correlationId, UUID attemptId) {
+    precheck(cr);
     KeyAction action = KeyAction.valueOf(cr.action());
     String keyId = String.valueOf(cr.payload().get("keyId"));
     CryptoKeys.Key key;
     if (action == KeyAction.KEY_CEREMONY) {
-      if (cr.payload().get("checkValue") == null) {
-        throw new MwException(ErrorCodes.VAL_CEREMONY_INCOMPLETE, "Both custodians must enter their components first")
-            .withStatus(HttpStatus.CONFLICT);
-      }
       key = crypto.commit(cr.id(), cr.makerId(), checker.username());
     } else {
       Object version = cr.payload().get("version");
       key = crypto.applyChange(
-          cr.id(), action.name().substring("KEY_".length()), keyId, (String) cr.payload().get("purpose"),
+          attemptId, action.name().substring("KEY_".length()), keyId, (String) cr.payload().get("purpose"),
           version instanceof Number n ? n.intValue() : null, cr.makerId(), checker.username());
     }
     CryptoKeys.Version active = key.active();
@@ -86,6 +103,7 @@ public class KeyChangeHandler implements ResourceChangeHandler {
     log.atInfo()
         .addKeyValue("event", "admin.key_change.applied")
         .addKeyValue("changeRequestId", cr.id().toString())
+        .addKeyValue("attemptId", attemptId.toString())
         .addKeyValue("action", cr.action())
         .addKeyValue("keyId", keyId)
         .log("mw-crypto applied the key change");
@@ -93,19 +111,67 @@ public class KeyChangeHandler implements ResourceChangeHandler {
   }
 
   /**
-   * mw-crypto's state of this request's change: a ceremony COMMITTED, or a key change applied for
-   * this id. Its own failures (unreachable) propagate: the claim then stays APPROVING.
+   * Makes "not applied" binding at mw-crypto before a claim is given up: a key change attempt is
+   * cancelled unless applied ({@code POST /internal/v1/key-changes/{attemptId}/cancel}); a ceremony is
+   * aborted unless committed (abort is terminal; a 409 means committed, read back). Present = applied.
    */
   @Override
-  public Optional<Map<String, Object>> applied(ChangeRequest cr) {
+  public Optional<Map<String, Object>> settle(ChangeRequest cr, UUID attemptId) {
     if (KeyAction.KEY_CEREMONY.name().equals(cr.action())) {
-      return crypto.ceremony(cr.id())
-          .filter(c -> "COMMITTED".equals(c.state()))
-          .map(c -> Map.<String, Object>of("appliedKid", c.kid()));
+      try {
+        crypto.abort(cr.id());
+        return Optional.empty();
+      } catch (MwException e) {
+        if (!e.status().is4xxClientError()) {
+          throw e;
+        }
+        return crypto.ceremony(cr.id())
+            .filter(c -> "COMMITTED".equals(c.state()))
+            .map(c -> Map.<String, Object>of("appliedKid", c.kid()))
+            .map(Optional::of)
+            .orElseThrow(() -> e);
+      }
     }
-    CryptoKeys.ChangeState s = crypto.keyChangeState(cr.id());
-    return s.applied() && s.kid() != null ? Optional.of(Map.<String, Object>of("appliedKid", s.kid()))
-        : s.applied() ? Optional.of(Map.<String, Object>of()) : Optional.empty();
+    CryptoKeys.ChangeState s = crypto.cancelKeyChange(attemptId);
+    if (s.applied()) {
+      return Optional.of(s.kid() == null ? Map.of() : Map.of("appliedKid", s.kid()));
+    }
+    if (s.cancelled()) {
+      return Optional.empty();
+    }
+    throw new MwException(ErrorCodes.SYS_CRYPTO_UNAVAILABLE, "mw-crypto neither applied nor cancelled the change")
+        .withStatus(HttpStatus.SERVICE_UNAVAILABLE);
+  }
+
+  /** A cancelled ceremony is aborted for good: its request expires instead of going back to PENDING. */
+  @Override
+  public boolean reusableAfterCancel(ChangeRequest cr) {
+    return !KeyAction.KEY_CEREMONY.name().equals(cr.action());
+  }
+
+  /**
+   * Aborts ceremonies mw-crypto still has OPEN or COMBINED whose request was rejected, expired or
+   * never committed to this database (the filing transaction failed, or an abort failed while
+   * mw-crypto was down); ceremonies younger than {@code olderThan} may still be being filed.
+   */
+  @Override
+  public void reconcile(java.util.function.Function<UUID, Optional<ChangeRequest>> find, Instant olderThan) {
+    for (CryptoKeys.Live c : crypto.liveCeremonies().items()) {
+      if (c.createdAt() == null || !c.createdAt().isBefore(olderThan)) {
+        continue;
+      }
+      Optional<ChangeRequest> cr = find.apply(c.ceremonyId());
+      boolean dead = cr.isEmpty()
+          || cr.get().status() == ChangeRequest.Status.REJECTED
+          || cr.get().status() == ChangeRequest.Status.EXPIRED;
+      if (dead) {
+        crypto.abort(c.ceremonyId());
+        log.atInfo()
+            .addKeyValue("event", "admin.key_ceremony.orphan_aborted")
+            .addKeyValue("changeRequestId", c.ceremonyId().toString())
+            .log("aborted a ceremony whose request is gone, rejected or expired");
+      }
+    }
   }
 
   @Override

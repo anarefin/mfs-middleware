@@ -85,6 +85,8 @@ public class ChangeRequestService {
   private final ChangeRequestProperties props;
   private final Clock clock;
   private final Map<String, ResourceChangeHandler> handlers;
+  /** The reconciler leaves a claim alone until its last attempt is older than lease + read timeout. */
+  private final java.time.Duration attemptGrace;
 
   public ChangeRequestService(
       ChangeRequestRepository requests,
@@ -93,7 +95,9 @@ public class ChangeRequestService {
       TransactionTemplate tx,
       ChangeRequestProperties props,
       Clock clock,
-      List<ResourceChangeHandler> handlers) {
+      List<ResourceChangeHandler> handlers,
+      mfs.mw.admin.api.config.AdminApiProperties api) {
+    this.attemptGrace = props.approvingLease().plus(api.readTimeout());
     this.requests = requests;
     this.orchestrator = orchestrator;
     this.outbox = outbox;
@@ -282,6 +286,7 @@ public class ChangeRequestService {
     Instant now = clock.instant();
     ChangeRequestRepository.Claim claim;
     if (cr.status() == ChangeRequest.Status.PENDING) {
+      h.precheck(cr);
       claim = new ChangeRequestRepository.Claim(checker.username(), checker.subject(), UUID.randomUUID(), now);
       Boolean claimed =
           tx.execute(s -> requests.claim(cr.id(), claim.checkerId(), claim.checkerSub(), claim.token(), claim.claimedAt()));
@@ -300,19 +305,24 @@ public class ChangeRequestService {
                 "The approval's lease is over; it is resolved from mw-crypto's state shortly")
             .withStatus(HttpStatus.CONFLICT);
       }
+      Boolean touched = tx.execute(s -> requests.touchAttempt(cr.id(), claim, now));
+      if (!Boolean.TRUE.equals(touched)) {
+        throw decided();
+      }
     }
     String correlationId = correlationId();
     ResourceChangeHandler.Approval approval;
     try {
-      approval = h.prepare(cr, checker, now, correlationId);
+      approval = h.prepare(cr, checker, now, correlationId, claim.token());
     } catch (MwException e) {
       if (!e.status().is4xxClientError()) {
         throw e; // no answer: the claim stays APPROVING for a retry or the reconciler
       }
-      // a refusal may answer a retry of a change already applied: ask the other service first
+      // a refusal may answer a retry of a change already applied: settle the attempt first, which
+      // also makes "not applied" binding at the other service
       Optional<Map<String, Object>> applied;
       try {
-        applied = h.applied(cr);
+        applied = h.settle(cr, claim.token());
       } catch (MwException unknown) {
         throw e;
       }
@@ -320,8 +330,7 @@ public class ChangeRequestService {
         finishClaimed(cr, claim, applied.get(), h, now, correlationId);
         return found(cr.id());
       }
-      tx.executeWithoutResult(s -> requests.release(cr.id(), claim));
-      logDecision("admin.change_request.released", cr, checker.username());
+      giveUp(cr, claim, h, now, correlationId, false);
       throw e;
     }
     tx.executeWithoutResult(
@@ -335,6 +344,29 @@ public class ChangeRequestService {
         });
     logDecision("admin.change_request.approved", cr, claim.checkerId());
     return found(cr.id());
+  }
+
+  /**
+   * After the other service cancelled the attempt: back to PENDING (a new attempt id later), or
+   * EXPIRED when {@code expiresAt} passed ({@code expireDue} true) or the request cannot be approved
+   * again ({@link ResourceChangeHandler#reusableAfterCancel}).
+   */
+  private void giveUp(
+      ChangeRequest cr, ChangeRequestRepository.Claim claim, ResourceChangeHandler h, Instant now, String correlationId,
+      boolean expireDue) {
+    if ((expireDue && cr.expiredAt(now)) || !h.reusableAfterCancel(cr)) {
+      tx.executeWithoutResult(
+          s -> {
+            if (requests.expireClaimed(cr.id(), claim, now)) {
+              closed(cr, ChangeRequest.Status.EXPIRED, null, now);
+              audit(ChangeRequestMapper.expired(cr, correlationId, now), cr);
+            }
+          });
+      logDecision("admin.change_request.expired", cr, null);
+    } else {
+      tx.executeWithoutResult(s -> requests.release(cr.id(), claim));
+      logDecision("admin.change_request.released", cr, claim.checkerId());
+    }
   }
 
   /** APPROVING -> APPROVED for a change the other service reports applied, with its audit. */
@@ -355,15 +387,17 @@ public class ChangeRequestService {
   }
 
   /**
-   * Resolves APPROVING requests whose claim lease is over (ticket 75; {@code
-   * scheduler/ApprovingReconcileJob}): the other service applied the change -> APPROVED; it did not
-   * -> EXPIRED once {@code expiresAt} passed, else PENDING again; it cannot tell -> left for the next
-   * run. Returns how many were resolved.
+   * Resolves APPROVING requests whose last attempt is older than the lease plus the client read
+   * timeout (ticket 75; {@code scheduler/ApprovingReconcileJob}): the attempt is settled at the other
+   * service (cancelled unless applied, so a call still in flight cannot apply afterwards); applied ->
+   * APPROVED, cancelled -> EXPIRED once {@code expiresAt} passed (or not reusable), else PENDING;
+   * cannot tell -> next run. Then each handler's own reconcile (orphan ceremonies). Returns how many
+   * requests were resolved.
    */
   public int reconcileApproving() {
     Instant now = clock.instant();
     int n = 0;
-    for (ChangeRequest cr : requests.staleApproving(now.minus(props.approvingLease()), props.expiryBatch())) {
+    for (ChangeRequest cr : requests.staleApproving(now.minus(attemptGrace), props.expiryBatch())) {
       ResourceChangeHandler h = handlers.get(cr.resourceType());
       Optional<ChangeRequestRepository.Claim> claim = requests.claimOf(cr.id());
       if (h == null || claim.isEmpty()) {
@@ -371,32 +405,34 @@ public class ChangeRequestService {
       }
       Optional<Map<String, Object>> applied;
       try {
-        applied = h.applied(cr);
+        applied = h.settle(cr, claim.get().token());
       } catch (MwException e) {
         log.atWarn()
             .addKeyValue("event", "admin.change_request.reconcile_deferred")
             .addKeyValue("changeRequestId", cr.id().toString())
             .addKeyValue("errorCode", e.code())
-            .log("cannot tell whether the claimed change was applied; next run");
+            .log("cannot settle the claimed change; next run");
         continue;
       }
       String correlationId = correlationId();
       if (applied.isPresent()) {
         finishClaimed(cr, claim.get(), applied.get(), h, now, correlationId);
-      } else if (cr.expiredAt(now)) {
-        tx.executeWithoutResult(
-            s -> {
-              if (requests.expireClaimed(cr.id(), claim.get(), now)) {
-                closed(cr, ChangeRequest.Status.EXPIRED, null, now);
-                audit(ChangeRequestMapper.expired(cr, correlationId, now), cr);
-              }
-            });
-        logDecision("admin.change_request.expired", cr, null);
       } else {
-        tx.executeWithoutResult(s -> requests.release(cr.id(), claim.get()));
-        logDecision("admin.change_request.released", cr, null);
+        giveUp(cr, claim.get(), h, now, correlationId, true);
       }
       n++;
+    }
+    Instant olderThan = now.minus(attemptGrace);
+    for (ResourceChangeHandler h : handlers.values()) {
+      try {
+        h.reconcile(requests::find, olderThan);
+      } catch (MwException e) {
+        log.atWarn()
+            .addKeyValue("event", "admin.change_request.reconcile_deferred")
+            .addKeyValue("resourceType", h.resourceType())
+            .addKeyValue("errorCode", e.code())
+            .log("handler reconcile failed; next run");
+      }
     }
     return n;
   }

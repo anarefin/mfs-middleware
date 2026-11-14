@@ -139,10 +139,10 @@ paths:
   /internal/v1/key-changes/{changeRequestId}:
     get:
       operationId: getKeyChange
-      summary: Whether the approved change of this change request id was applied
+      summary: Whether approval attempt {changeRequestId} was applied, cancelled, or neither yet
       description: >-
-        mw-admin-api asks before it gives a claimed approval up (a 4xx on a retried PUT may follow a
-        change already applied). `applied: false` means no change was applied for this id.
+        The id is mw-admin-api's approval attempt (the claim token of one claim; a request released to
+        PENDING is approved later under a new id).
       parameters:
         - $ref: "#/components/parameters/ChangeRequestId"
         - $ref: "#/components/parameters/CorrelationId"
@@ -159,7 +159,8 @@ paths:
       summary: Apply a key change approved under dual control in mw-admin-api (ticket 75)
       description: >-
         GENERATE (version 1 of a new key, no bootstrap flag needed), ROTATE (add a version) or
-        RETIRE (a VERIFY_ONLY version). Applied once per change request id; a repeat with the same
+        RETIRE (a VERIFY_ONLY version). The id is mw-admin-api's approval attempt (claim token);
+        a cancelled id is refused (409 MW-VAL-018). Applied once per id; a repeat with the same
         action and keyId answers the key as it is now. Key-admin clients only (403 MW-AUTH-002).
         Errors: 400 MW-VAL-001 (bad body), 400 MW-VAL-011 (unknown purpose), 404 MW-VAL-010
         (unknown key or version), 409 MW-VAL-012 (keyId exists), 409 MW-VAL-018 (maker equals
@@ -184,6 +185,55 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/key-changes/{changeRequestId}/cancel:
+    post:
+      operationId: cancelKeyChange
+      summary: Make "not applied" binding for an approval attempt (idempotent)
+      description: >-
+        Writes a terminal CANCELLED tombstone for the id unless the change was applied, atomically with
+        the PUT (whichever comes first wins); a later PUT of a cancelled id is 409 MW-VAL-018. Answers
+        applied (with the key's ACTIVE kid) or cancelled. mw-admin-api calls it before it gives a
+        claimed approval up (a refusal, or the reconciler after the lease).
+      parameters:
+        - $ref: "#/components/parameters/ChangeRequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: Applied or cancelled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KeyChangeState" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/ceremonies:
+    get:
+      operationId: listLiveCeremonies
+      summary: The live (OPEN, COMBINED) ceremonies, for mw-admin-api's reconciler
+      parameters:
+        - { name: state, in: query, required: true, schema: { type: string, enum: [LIVE] } }
+        - $ref: "#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: The live ceremonies, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [ceremonyId, keyId, state, createdAt]
+                      properties:
+                        ceremonyId: { type: string, format: uuid }
+                        keyId: { $ref: "#/components/schemas/KeyId" }
+                        state: { type: string, enum: [OPEN, COMBINED] }
+                        createdAt: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
   /internal/v1/ceremonies/{ceremonyId}:
     put:
       operationId: openCeremony
@@ -838,10 +888,11 @@ components:
         purpose: { $ref: "#/components/schemas/Purpose" }
     KeyChangeState:
       type: object
-      required: [changeRequestId, applied]
+      required: [changeId, applied, cancelled]
       properties:
-        changeRequestId: { type: string, format: uuid }
+        changeId: { type: string, format: uuid, description: The approval attempt id }
         applied: { type: boolean }
+        cancelled: { type: boolean, description: "Terminal: a later PUT of the id is refused" }
         action: { type: string, enum: [GENERATE, ROTATE, RETIRE] }
         keyId: { $ref: "#/components/schemas/KeyId" }
         kid: { type: string, description: "The key's ACTIVE version now, when applied" }

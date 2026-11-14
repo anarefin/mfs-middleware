@@ -41,6 +41,13 @@ public class CeremonyRepository {
         .map(c -> withShares(c));
   }
 
+  /** The OPEN and COMBINED ceremonies, oldest first. */
+  public List<Ceremony> live() {
+    return jdbc.sql("SELECT " + COLUMNS + " FROM ceremony WHERE state IN ('OPEN', 'COMBINED') ORDER BY created_at")
+        .query((rs, n) -> row(rs))
+        .list();
+  }
+
   /** A new OPEN ceremony; a live one for the same key throws DuplicateKeyException. */
   public void insert(UUID id, String keyId, String purpose, int version, Instant now) {
     jdbc.sql("INSERT INTO ceremony (" + COLUMNS + ") VALUES (:id, :k, :p, :v, 'OPEN', NULL, NULL, NULL, :t, :t)")

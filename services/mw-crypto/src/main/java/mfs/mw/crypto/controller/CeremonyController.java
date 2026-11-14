@@ -47,6 +47,19 @@ public class CeremonyController {
     return changes.state(changeRequestId);
   }
 
+  /** Makes "not applied" binding for attempt {@code changeRequestId} (terminal unless applied). */
+  @PostMapping("/key-changes/{changeRequestId}/cancel")
+  public KeyChangeState cancelKeyChange(@PathVariable UUID changeRequestId) {
+    return changes.cancel(changeRequestId);
+  }
+
+  @GetMapping("/ceremonies")
+  public mfs.mw.crypto.dto.LiveCeremonies liveCeremonies(
+      @org.springframework.web.bind.annotation.RequestParam
+          @jakarta.validation.constraints.Pattern(regexp = "LIVE") String state) {
+    return ceremonies.live();
+  }
+
   @PutMapping("/ceremonies/{ceremonyId}")
   public CeremonyView open(@PathVariable UUID ceremonyId, @Valid @RequestBody CeremonyOpenRequest request) {
     return ceremonies.open(ceremonyId, request.keyId(), request.purpose());

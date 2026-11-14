@@ -86,10 +86,19 @@ public class CryptoKeyClient {
         CryptoKeys.Key.class, "key.change");
   }
 
-  /** Whether the change of {@code changeRequestId} was applied (asked before a claim is given up). */
-  public CryptoKeys.ChangeState keyChangeState(UUID changeRequestId) {
-    return read(send("GET", "/internal/v1/key-changes/" + changeRequestId, null, "key.change.state"),
-        CryptoKeys.ChangeState.class, "key.change.state");
+  /**
+   * Cancels approval attempt {@code changeId} unless it was applied ("not applied" becomes binding:
+   * a later PUT of the id is refused); answers applied or cancelled.
+   */
+  public CryptoKeys.ChangeState cancelKeyChange(UUID changeId) {
+    return read(send("POST", "/internal/v1/key-changes/" + changeId + "/cancel", Map.of(), "key.change.cancel"),
+        CryptoKeys.ChangeState.class, "key.change.cancel");
+  }
+
+  /** The live (OPEN, COMBINED) ceremonies at mw-crypto. */
+  public CryptoKeys.LiveCeremonies liveCeremonies() {
+    return read(send("GET", "/internal/v1/ceremonies?state=LIVE", null, "ceremony.live"),
+        CryptoKeys.LiveCeremonies.class, "ceremony.live");
   }
 
   /** Opens the ceremony of KEY_CEREMONY request {@code ceremonyId} (at filing time; idempotent). */

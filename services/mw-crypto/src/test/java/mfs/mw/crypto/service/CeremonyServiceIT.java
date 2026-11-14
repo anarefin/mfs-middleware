@@ -201,6 +201,38 @@ class CeremonyServiceIT {
   }
 
   @Test
+  void aCancelledChangeIsRefusedAndACancelAfterTheApplyAnswersApplied() {
+    UUID late = UUID.randomUUID();
+    KeyChangeRequest gen = new KeyChangeRequest(KeyChangeRequest.Action.GENERATE, "hmac-z", "HMAC_Z", null, "a", "b");
+    // the reconciler cancels first: "not applied" is binding
+    var cancelled = changes.cancel(late);
+    assertThat(cancelled.cancelled()).isTrue();
+    assertThat(cancelled.applied()).isFalse();
+    assertThat(changes.cancel(late).cancelled()).as("idempotent").isTrue();
+    // the PUT still in flight arrives after the cancel: refused, nothing generated
+    assertThat(code(catchThrowable(() -> changes.apply(late, gen)))).isEqualTo("MW-VAL-018");
+    assertThat(keys.list().items()).isEmpty();
+    assertThat(changes.state(late).cancelled()).isTrue();
+
+    // applied first: the cancel answers applied and changes nothing
+    UUID done = UUID.randomUUID();
+    changes.apply(done, gen);
+    var applied = changes.cancel(done);
+    assertThat(applied.applied()).isTrue();
+    assertThat(applied.cancelled()).isFalse();
+    assertThat(applied.kid()).isEqualTo("hmac-z.v1");
+  }
+
+  @Test
+  void liveCeremoniesAreListedForTheReconciler() {
+    UUID open = UUID.randomUUID();
+    ceremonies.open(open, "pin-hmac", "PIN_HMAC");
+    UUID aborted = UUID.randomUUID();
+    ceremonies.abort(aborted);
+    assertThat(ceremonies.live().items()).extracting(mfs.mw.crypto.dto.LiveCeremonies.Item::ceremonyId).containsExactly(open);
+  }
+
+  @Test
   void approvedChangesApplyOnceAndRetireOnlyAnOldVersion() {
     UUID gen = UUID.randomUUID();
     KeyChangeRequest generate =

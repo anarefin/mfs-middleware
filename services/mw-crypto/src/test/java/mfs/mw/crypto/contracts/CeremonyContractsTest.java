@@ -58,8 +58,17 @@ class CeremonyContractsTest {
   @Test
   void keyChangeStateMatchesTheContract() {
     Schema schema = OpenApiSchemas.response(API, "/internal/v1/key-changes/{changeRequestId}", "get", "200");
-    valid(schema, new mfs.mw.crypto.dto.KeyChangeState(UUID.randomUUID(), false, null, null, null));
-    valid(schema, new mfs.mw.crypto.dto.KeyChangeState(UUID.randomUUID(), true, "ROTATE", "pin-hmac", "pin-hmac.v2"));
+    valid(schema, new mfs.mw.crypto.dto.KeyChangeState(UUID.randomUUID(), false, false, null, null, null));
+    valid(schema, new mfs.mw.crypto.dto.KeyChangeState(UUID.randomUUID(), true, false, "ROTATE", "pin-hmac", "pin-hmac.v2"));
+    valid(OpenApiSchemas.response(API, "/internal/v1/key-changes/{changeRequestId}/cancel", "post", "200"),
+        new mfs.mw.crypto.dto.KeyChangeState(UUID.randomUUID(), false, true, null, null, null));
+  }
+
+  @Test
+  void liveCeremoniesMatchTheContract() {
+    valid(OpenApiSchemas.response(API, "/internal/v1/ceremonies", "get", "200"),
+        new mfs.mw.crypto.dto.LiveCeremonies(List.of(
+            new mfs.mw.crypto.dto.LiveCeremonies.Item(UUID.randomUUID(), "pin-hmac", "OPEN", T0))));
   }
 
   @Test

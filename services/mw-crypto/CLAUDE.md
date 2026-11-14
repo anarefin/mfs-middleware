@@ -151,8 +151,15 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   version?, makerId, checkerId}` -> the key; once per id (`crypto.key_change`, V5); a repeat with the
   same action and keyId answers the key as it is, other values `409 MW-VAL-018`. RETIRE takes a
   VERIFY_ONLY version only (`KeyService.retire`; the ACTIVE one: rotate first, `409 MW-VAL-018`). GENERATE
-  here needs no bootstrap flag. `GET /internal/v1/key-changes/{id}` -> `{changeRequestId, applied,
-  action?, keyId?, kid?}` (mw-admin-api asks before it gives a claimed approval up).
+  here needs no bootstrap flag. The id is mw-admin-api's approval attempt (its claim token), not the
+  change request. **"Not applied" is binding** (security review, V7): `POST
+  /internal/v1/key-changes/{id}/cancel` writes a terminal CANCELLED row unless the attempt was
+  applied (both insert the id's row with `ON CONFLICT DO NOTHING`, so an apply and a cancel
+  serialise on the primary key and exactly one wins; the apply inserts its row before it changes the
+  key, in the same transaction); a PUT of a cancelled id is `409 MW-VAL-018`; it answers `{changeId,
+  applied, cancelled, action?, keyId?, kid?}`, as `GET /internal/v1/key-changes/{id}` does.
+  `GET /internal/v1/ceremonies?state=LIVE` lists the OPEN and COMBINED ceremonies (mw-admin-api's
+  reconciler aborts the orphans).
 - Ceremony (`service/CeremonyService`, tables `crypto.ceremony` and `crypto.custodian_share_log`
   (who and when, never a component), V5): the id is mw-admin-api's KEY_CEREMONY change request.
   `PUT /internal/v1/ceremonies/{id} {keyId, purpose}` opens it at filing time (version 1 of a new key
