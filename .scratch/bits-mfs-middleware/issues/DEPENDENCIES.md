@@ -29,8 +29,8 @@
 59-admin-ui-playwright-live                 56,57             done     27m+fix  see 2ad973ce,d614ac37   040c26d2..d614ac37
 # --- Security group run (plan spec-mobile-money-middleware-rfp-md-spe-shiny-sparrow, decided 2026-11-14). Row order = run order.
 60-security-spec-adrs                       —                 done     -        spec + 5 ADRs          -
-61-softhsm-container                        60                open
-62-mw-crypto-scaffold                       61                open
+61-softhsm-container                        60                done     13m      26 files +579 −18      4acf2a67..d86b16ab
+62-mw-crypto-scaffold                       61                done     46m      140 files +10402 −51   d86b16ab..a3cbd979
 63-mw-crypto-operations                     62                open
 64-payshield-provider-simulator             63                open
 65-mw-crypto-xmldsig-http-signatures        63                open
