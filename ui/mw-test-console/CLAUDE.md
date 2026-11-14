@@ -24,8 +24,8 @@ customers, holds the stack's generated test credentials and has no sign-in.
   the SMS received and every step, expandable.
 - `lib/server/tokens.ts`: Keycloak password grant through APISIX (`customers`/`mw-app`,
   `portals`/`mw-portal`), cached per user, refreshed. `lib/server/device.ts`: the app's bound device
-  per user (EC P-256 key; OTP via `POST /app/v1/devices/otp`, read from the SMSC simulator; `POST
-  /app/v1/devices`; `POST /app/v1/sessions` after 4 min idle; signature over method, path, body hash,
+  per user, bound at mw-auth (ticket 68; EC P-256 key; OTP via `POST /auth/v1/otp`, read from the SMSC simulator; `POST
+  /auth/v1/devices`; `POST /auth/v1/sessions` after 4 min idle; signature over method, path, body hash,
   timestamp, nonce, device id). `lib/crypto.ts` (pure, Node crypto): signing, RSA-OAEP-SHA256 PIN
   encryption with the core key from `/test/core-mock/v1/pin-public-key`, checkout hmac-auth, result
   and IPN checks; ported from `tests/api/lib.js`. State (tokens, devices, last submit, PIN key) is in

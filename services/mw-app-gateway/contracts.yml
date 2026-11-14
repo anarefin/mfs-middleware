@@ -1,9 +1,12 @@
 # Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
+# Ticket 68: the binding OTP / new-device SMS (mw.notify.request.v1) moved to mw-auth with the device
+# API; the gateway asks mw-auth's internal API for device keys and sessions (client/AuthClient).
 produces:
   events:
     - events/mw-orchestrator/mw.txn.request.v1.schema.json
-    - events/mw-notify/mw.notify.request.v1.schema.json
   apis: [api/mw-app-gateway/app.v1.openapi.yaml]
 consumes:
   events: [events/mw-orchestrator/mw.txn.status.v1.schema.json]
-  apis: [api/mw-adapter-billpay/billpay.v1.openapi.yaml]
+  apis:
+    - api/mw-adapter-billpay/billpay.v1.openapi.yaml
+    - api/mw-auth/auth-internal.v1.openapi.yaml

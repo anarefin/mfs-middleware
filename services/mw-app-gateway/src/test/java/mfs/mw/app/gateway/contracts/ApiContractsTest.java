@@ -21,8 +21,7 @@ import mfs.mw.app.gateway.dto.Bill;
 import mfs.mw.app.gateway.dto.Biller;
 import mfs.mw.app.gateway.dto.BillerList;
 import mfs.mw.app.gateway.dto.CollectionList;
-import mfs.mw.app.gateway.dto.DeviceOtpSent;
-import mfs.mw.app.gateway.dto.DeviceSession;
+import mfs.mw.app.gateway.dto.BoundDevice;
 import mfs.mw.app.gateway.dto.EncryptedPin;
 import mfs.mw.app.gateway.dto.ErrorDetail;
 import mfs.mw.app.gateway.dto.ErrorEnvelope;
@@ -33,8 +32,6 @@ import mfs.mw.app.gateway.dto.TransactionRequest;
 import mfs.mw.app.gateway.dto.TransactionView;
 import mfs.mw.app.gateway.mapper.CollectionMapper;
 import mfs.mw.app.gateway.mapper.RequestMapper;
-import mfs.mw.app.gateway.util.MaskingPolicy;
-import mfs.mw.app.gateway.util.SensitiveType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,6 +52,7 @@ class ApiContractsTest {
   static final JsonMapper JSON = ServiceJson.MAPPER;
   static final String APP_API = "api/mw-app-gateway/app.v1.openapi.yaml";
   static final String BILLPAY_API = "api/mw-adapter-billpay/billpay.v1.openapi.yaml";
+  static final String AUTH_API = "api/mw-auth/auth-internal.v1.openapi.yaml";
   static final String TXN_ID = "019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c0d";
   static final String CORRELATION_ID = "019a4f6e-0000-7a3b-8c4d-5e6f7a8b9c0d";
   static final Instant NOW = Instant.parse("2026-11-04T06:00:00Z");
@@ -63,7 +61,7 @@ class ApiContractsTest {
   void theManifestListsTheseApis() {
     ContractManifest manifest = ContractManifest.load();
     assertThat(manifest.producedApis()).containsExactly(APP_API);
-    assertThat(manifest.consumedApis()).containsExactly(BILLPAY_API);
+    assertThat(manifest.consumedApis()).containsExactly(BILLPAY_API, AUTH_API);
   }
 
   // ---- served: app.v1 ----
@@ -127,11 +125,25 @@ class ApiContractsTest {
         new Bill("DESCO", "1234567", new Amount(66_700L, "BDT"), null, null));
   }
 
+  // ---- called: mw-auth's internal API (AuthClient, ticket 68) ----
+
   @Test
-  void deviceResponsesMatchTheContract() {
-    assertValid(OpenApiSchemas.component(APP_API, "DeviceOtpSent"),
-        new DeviceOtpSent(MaskingPolicy.mask(SensitiveType.MSISDN, "01711000001"), NOW.plusSeconds(120), 4));
-    assertValid(OpenApiSchemas.component(APP_API, "DeviceSession"), new DeviceSession("device-1", 300));
+  void aContractShapedBoundDeviceDeserialises() {
+    String answer = "{\"deviceId\":\"device-0001\",\"walletId\":\"01711000001\","
+        + "\"publicKey\":\"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE\",\"boundAt\":\"2026-11-14T06:00:00Z\"}";
+    assertThat(OpenApiSchemas.component(AUTH_API, "BoundDevice").validate(JSON.readTree(answer))).isEmpty();
+
+    assertThat(JSON.readValue(answer, BoundDevice.class)).isEqualTo(new BoundDevice(
+        "device-0001", "01711000001", "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE", Instant.parse("2026-11-14T06:00:00Z")));
+  }
+
+  @Test
+  void theAuthClientPathsAreInTheContract() {
+    assertThat(OpenApiSchemas.at(AUTH_API, "paths", "/internal/v1/devices/{deviceId}", "get", "responses", "200",
+        "content", "application/json", "schema").validate(JSON.readTree("{}"))).isNotEmpty();
+    assertThat(OpenApiSchemas.at(AUTH_API, "paths", "/internal/v1/sessions/{walletId}/{deviceId}", "get", "responses",
+        "200", "content", "application/json", "schema").validate(JSON.readTree(
+            "{\"walletId\":\"01711000001\",\"deviceId\":\"device-0001\",\"idleTimeoutSeconds\":300}"))).isEmpty();
   }
 
   @Test

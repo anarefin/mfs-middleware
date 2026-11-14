@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits app API (mw-app-gateway)
-  version: 1.2.0
+  version: 1.3.0
   description: |
     Mobile apps API v1 (spec 8.2, 9.1), served by mw-app-gateway behind APISIX route `/app/v1/*`.
     Bearer JWT from Keycloak realm `customers`; the payer wallet is the token's `msisdn` claim.
@@ -13,26 +13,21 @@ info:
     the envelope: 401 MW-AUTH-001, 413 MW-VAL-BODY_TOO_LARGE (body over 64 KiB), 429
     MW-SYS-RATE_LIMITED (per-user quota, retryable).
 
-    Device binding (spec 9.1, 18.6, ticket 29). Every request comes from a device bound to the
-    token's wallet (`X-Device-Id`, bound with `POST /app/v1/devices`) with a live session (Valkey
-    `sess:{sub}:{deviceId}`, idle timeout 5 min, extended by every request; `POST /app/v1/sessions`
-    opens a new one). One active device per wallet: binding a device replaces the others and
-    opening a session ends theirs. Signed requests (binding, session open, transaction submit)
+    Device binding (spec 9.1, 18.6; ticket 29, moved to mw-auth in ticket 68). Every request comes
+    from a device bound to the token's wallet (`X-Device-Id`, bound at mw-auth with `POST
+    /auth/v1/devices`, contract `api/mw-auth/auth.v1.openapi.yaml`) with a live mw-auth session
+    (`sess:{walletId}:{deviceId}`, idle timeout 5 min, extended by every request; `POST
+    /auth/v1/sessions` opens a new one). One bound device per wallet: binding another device ends
+    this one's session. The gateway verifies; it reads the device's public key from mw-auth and keeps
+    it up to 5 min, and reuses a confirmed session up to 10 s. Signed requests (transaction submit)
     carry `X-Timestamp` (epoch milliseconds, within ±5 min of the gateway), `X-Nonce` (used once
     per device) and `X-Signature`: base64 ECDSA P-256 SHA-256 (ASN.1 DER or 64-byte r||s) by the
     device key over the UTF-8 text of these six lines joined by a line feed: method, path (with
     "?query" if any), lower-case hex SHA-256 of the exact body bytes (of nothing when there is no
     body), X-Timestamp, X-Nonce, X-Device-Id. Errors (401): MW-AUTH-003 device missing or not
-    bound (or replaced), MW-AUTH-004 signature missing or not valid, MW-AUTH-005 timestamp outside
+    bound to this wallet, MW-AUTH-004 signature missing or not valid, MW-AUTH-005 timestamp outside
     the window, MW-AUTH-006 nonce already used (replay), MW-AUTH-007 no live session; 503
-    MW-SYS-012 (retryable) when the session store cannot be asked.
-
-    Binding OTP (review A5): binding a device needs an OTP, asked for with `POST /app/v1/devices/otp`
-    (X-Device-Id of the device to bind) and sent by SMS to the token's wallet (mw-notify, OTP
-    priority, valid 2 min). It binds only that device, once; 3 checks per OTP (the third wrong one
-    voids it), at most 5 OTPs per wallet in 15 min. Errors: 401 MW-AUTH-010 wrong OTP, MW-AUTH-011 no
-    OTP for this device (none asked, expired, spent or replaced), MW-AUTH-012 checks used up; 429
-    MW-VAL-022 OTP limit reached. After a binding the wallet gets an SMS that a new device was bound.
+    MW-SYS-012 (retryable) when mw-auth or the gateway's cache cannot be asked.
     The gateway itself also refuses bodies over 64 KiB with 413 MW-VAL-BODY_TOO_LARGE.
 servers:
   - url: https://localhost
@@ -215,95 +210,13 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
-  /app/v1/devices/otp:
-    post:
-      operationId: sendDeviceOtp
-      summary: Send a binding OTP for this device by SMS to the token's wallet
-      description: >-
-        Not signed (the device key is not bound yet). A new OTP replaces the wallet's previous one
-        and resets its checks. The body is optional; `locale` picks the SMS language (default bn),
-        also used for the "new device bound" SMS. A missing or malformed X-Device-Id is 401
-        MW-AUTH-003; 429 MW-VAL-022 when the wallet's OTP limit is reached.
-      parameters:
-        - { $ref: "#/components/parameters/DeviceId" }
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/DeviceOtpRequest" }
-      responses:
-        "202":
-          description: OTP sent
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/DeviceOtpSent" }
-        "400": { $ref: "#/components/responses/Error" }
-        "401": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
-  /app/v1/devices:
-    post:
-      operationId: bindDevice
-      summary: Bind this device to the token's wallet and open a session
-      description: >-
-        Needs the OTP sent for this device (POST /app/v1/devices/otp; 401 MW-AUTH-010/011/012
-        otherwise), checked after the signature and nonce.
-        Signed with the private key of the public key in the body (proof of possession). Binding
-        the same X-Device-Id again replaces its key. With one active device per wallet the
-        wallet's other devices are replaced (their requests then get MW-AUTH-003) and their
-        sessions ended. A key that is not EC P-256 is 400 MW-VAL-001 naming `publicKey`.
-      parameters:
-        - { $ref: "#/components/parameters/DeviceId" }
-        - { $ref: "#/components/parameters/Timestamp" }
-        - { $ref: "#/components/parameters/Nonce" }
-        - { $ref: "#/components/parameters/Signature" }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/DeviceBindingRequest" }
-      responses:
-        "201":
-          description: Bound; a session is open
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/DeviceSession" }
-        "400": { $ref: "#/components/responses/Error" }
-        "401": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
-  /app/v1/sessions:
-    post:
-      operationId: openSession
-      summary: Open a new session on a bound device (no body)
-      description: >-
-        After the idle timeout (MW-AUTH-007), or to move to this device. Signed by the bound
-        device key over an empty body. With one active device per wallet the other devices'
-        sessions end.
-      parameters:
-        - { $ref: "#/components/parameters/DeviceId" }
-        - { $ref: "#/components/parameters/Timestamp" }
-        - { $ref: "#/components/parameters/Nonce" }
-        - { $ref: "#/components/parameters/Signature" }
-      responses:
-        "200":
-          description: Session open
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/DeviceSession" }
-        "401": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "429": { $ref: "#/components/responses/Error" }
-        "503": { $ref: "#/components/responses/Error" }
 components:
   parameters:
     DeviceId:
       name: X-Device-Id
       in: header
       required: true
-      description: The device bound to the token's wallet (POST /app/v1/devices).
+      description: The device bound to the token's wallet (POST /auth/v1/devices at mw-auth).
       schema: { type: string, pattern: "^[A-Za-z0-9._:-]{8,128}$" }
     Timestamp:
       name: X-Timestamp
@@ -335,37 +248,6 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
   schemas:
-    DeviceBindingRequest:
-      type: object
-      additionalProperties: false
-      required: [publicKey, otp]
-      properties:
-        publicKey:
-          type: string
-          maxLength: 512
-          description: The device's EC P-256 public key, base64 X.509 SubjectPublicKeyInfo (DER).
-        otp:
-          type: string
-          pattern: "^[0-9]{6}$"
-          description: The OTP sent by SMS for this device (POST /app/v1/devices/otp).
-    DeviceOtpRequest:
-      type: object
-      additionalProperties: false
-      properties:
-        locale: { type: string, enum: [bn, en] }
-    DeviceOtpSent:
-      type: object
-      required: [wallet, otpExpiresAt, sendsLeft]
-      properties:
-        wallet: { type: string, description: "The wallet the SMS went to, masked (0171****789)" }
-        otpExpiresAt: { type: string, format: date-time }
-        sendsLeft: { type: integer, description: OTPs the wallet may still ask for in the current window }
-    DeviceSession:
-      type: object
-      required: [deviceId, idleTimeoutSeconds]
-      properties:
-        deviceId: { type: string }
-        idleTimeoutSeconds: { type: integer, description: Session idle timeout in seconds }
     Msisdn:
       type: string
       description: Accepted forms 01XNNNNNNNN, 8801XNNNNNNNN, +8801XNNNNNNNN; forwarded as 01XNNNNNNNN.

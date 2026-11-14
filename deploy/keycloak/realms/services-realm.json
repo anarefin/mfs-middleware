@@ -138,6 +138,32 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "mw-app-gateway",
+      "name": "mw-app-gateway (mw-auth internal API: device keys and sessions of the device gate)",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_MW_APP_GATEWAY_SECRET}",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "fullScopeAllowed": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "aud-mw-auth",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "mw-auth",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
     }
   ],
   "users": [
@@ -169,6 +195,14 @@
       "username": "service-account-mw-auth",
       "enabled": true,
       "serviceAccountClientId": "mw-auth",
+      "realmRoles": [
+        "internal-api"
+      ]
+    },
+    {
+      "username": "service-account-mw-app-gateway",
+      "enabled": true,
+      "serviceAccountClientId": "mw-app-gateway",
       "realmRoles": [
         "internal-api"
       ]

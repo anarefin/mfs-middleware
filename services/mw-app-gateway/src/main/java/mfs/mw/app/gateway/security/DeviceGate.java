@@ -18,7 +18,7 @@ public @interface DeviceGate {
   Level value();
 
   enum Level {
-    /** The handler checks the device itself (binding: signed with the key being registered). */
+    /** No device needed (none today: device binding moved to mw-auth, ticket 68). */
     NONE,
     /** Bound device and a live session. */
     SESSION,

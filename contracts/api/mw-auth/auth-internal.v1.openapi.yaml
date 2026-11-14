@@ -1,0 +1,139 @@
+openapi: 3.1.0
+info:
+  title: Bits wallet authentication internal API (mw-auth)
+  version: 1.0.0
+  description: |
+    Internal API of mw-auth (spec 18.7, ADR D24), on its internal port (`https://mw-auth:8443`, the
+    `app` zone network; not routed by APISIX). mTLS is mandatory: the TLS handshake needs a client
+    certificate issued by the OpenBao services intermediate CA (`pki_int`, CN = service name), and
+    the caller sends its Keycloak realm `services` client-credentials JWT (`aud` contains `mw-auth`),
+    whose `azp` must be on the allow-list (mw-app-gateway, mw-ussd, mw-checkout, mw-admin-api) and
+    equal the certificate's CN. No or bad token: 401 MW-AUTH-001; another client, a certificate of
+    another service, or the public port: 403 MW-AUTH-002. Every error is the 5.3 envelope.
+
+    Ticket 68: the device lookups of mw-app-gateway's device gate. The gateway verifies a signed
+    app request itself with the device's public key (cached up to 5 min) and asks for the session
+    on every app request; later tickets add the PIN, lock and assertion operations (70, 71).
+servers:
+  - url: https://mw-auth:8443
+security:
+  - internalClientCredentials: []
+    serviceCertificate: []
+paths:
+  /internal/v1/devices/{deviceId}:
+    get:
+      operationId: getBoundDevice
+      summary: A bound device, its wallet and public key
+      description: >-
+        For the caller's request signature check: the device must be bound to the wallet of the
+        app's token (the caller compares `walletId`). A device that is not bound (never, or unbound
+        by a later binding of its wallet) is 404 MW-AUTH-003; a malformed device id 401 MW-AUTH-003.
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: The bound device
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoundDevice" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/sessions/{walletId}/{deviceId}:
+    get:
+      operationId: checkSession
+      summary: The wallet's live session on the device, extended by its idle timeout
+      description: >-
+        Every app request asks for it: a live session (`sess:{walletId}:{deviceId}`) is extended by
+        its idle timeout (sliding) and returned; none (idle timeout, ended by a binding of another
+        device) is 404 MW-AUTH-007. 503 MW-SYS-012 (retryable) when the session store cannot be
+        asked.
+      parameters:
+        - name: walletId
+          in: path
+          required: true
+          description: The wallet of the app's token (mw-core-mock uses the MSISDN).
+          schema: { type: string, maxLength: 64 }
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: The live session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LiveSession" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    internalClientCredentials:
+      type: oauth2
+      description: >-
+        Keycloak realm `services` client-credentials JWT (spec 18.2). mw-auth checks signature,
+        expiry, exact issuer and that `aud` contains `mw-auth`; the caller (`azp`) must be
+        mw-app-gateway, mw-ussd, mw-checkout or mw-admin-api and equal the client certificate's CN.
+      flows:
+        clientCredentials:
+          tokenUrl: http://keycloak:8080/realms/services/protocol/openid-connect/token
+          scopes: {}
+    serviceCertificate:
+      type: mutualTLS
+      description: >-
+        A client certificate of the OpenBao services intermediate CA (`pki_int/issue/<service>`, CN
+        = the calling service, at most 72 h). Required by the handshake (D24).
+  parameters:
+    DeviceId:
+      name: deviceId
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[A-Za-z0-9._:-]{8,128}$" }
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema: { type: string, maxLength: 128 }
+  responses:
+    Error:
+      description: Error envelope (spec 5.3)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    BoundDevice:
+      type: object
+      required: [deviceId, walletId, publicKey, boundAt]
+      properties:
+        deviceId: { type: string }
+        walletId: { type: string }
+        publicKey:
+          type: string
+          description: The device's EC P-256 public key, base64 X.509 SubjectPublicKeyInfo (DER).
+        boundAt: { type: string, format: date-time }
+    LiveSession:
+      type: object
+      required: [walletId, deviceId, idleTimeoutSeconds]
+      properties:
+        walletId: { type: string }
+        deviceId: { type: string }
+        idleTimeoutSeconds: { type: integer, description: The session's idle timeout in seconds }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

@@ -97,6 +97,19 @@ Route `app-v1` (`/app/v1/*`), in plugin order:
    see "Rate-limiter degradation alert" below). A perf run with one test user needs more users
    or a higher count.
 
+Route `auth-v1` (`/auth/v1/*`, POST only, ticket 68) -> `mw-auth:8080` (mw-auth's public port; its
+mTLS internal port 8443 is never routed), path and body unchanged: device binding (`POST
+/auth/v1/otp`, `POST /auth/v1/devices`) and sessions (`POST /auth/v1/sessions`), moved here from
+`/app/v1/devices*` (nothing to retire: those paths were served by the `app-v1` route, which stays).
+
+1. `client-control` `max_body_size` 16 KiB (413): the bodies are a key and an OTP.
+2. `openid-connect` as on `app-v1` (realm `customers`, `iat_slack` 10 s) until mw-auth issues its
+   own tokens (ticket 69); mw-auth verifies the token again.
+3. No `request-validation` and no rewrite: the bind and session-open requests are signed by the
+   device over the path and the raw body; mw-auth checks the derived schemas itself (table below).
+4. `serverless-pre-function` and `limit-count` as on `app-v1`, 30 requests / 60 s per token
+   subject, group `auth-v1`.
+
 Route `partner-billagg-callback` (`/partner/billagg/callback/*`, POST only, ticket 22) ->
 `mw-adapter-billpay:8080`, path and body unchanged (the partner signed them):
 
@@ -217,16 +230,16 @@ service; each keeps its own body cap, 413 `MW-VAL-BODY_TOO_LARGE`). Every public
 | Route | Endpoint | Service: check | Derived schema (contract source) |
 | --- | --- | --- | --- |
 | `app-v1` | `POST /app/v1/transactions` | mw-app-gateway: `BodySchemaInterceptor` (cached bytes, the ones the device signs) | `app-v1-transaction-request.json` (`TransactionRequest`) |
-| `app-v1` | `POST /app/v1/devices/otp` (body optional) | mw-app-gateway, as above | `app-v1-device-otp-request.json` (`DeviceOtpRequest`) |
-| `app-v1` | `POST /app/v1/devices` | mw-app-gateway, as above | `app-v1-device-binding-request.json` (`DeviceBindingRequest`) |
 | `app-v1` | `POST /app/v1/billers/{code}/fetch-bill` | mw-app-gateway, as above | `app-v1-fetch-bill-request.json` (`FetchBillRequest`) |
+| `auth-v1` | `POST /auth/v1/otp` (body optional) | mw-auth: `BodySchemaInterceptor` (cached bytes, the ones the device signs) | `auth-v1-otp-request.json` (`DeviceOtpRequest`) |
+| `auth-v1` | `POST /auth/v1/devices` | mw-auth, as above | `auth-v1-device-binding-request.json` (`DeviceBindingRequest`) |
 | `checkout-v1-sessions` | `POST /checkout/v1/sessions` | mw-checkout: `BodySchemaAdvice` | `checkout-v1-create-session.json` (`CreateSessionRequest`) |
 | `checkout-pay` | `POST /checkout/pay/v1/{token}/otp` | mw-checkout, as above | `checkout-pay-v1-otp.json` (`OtpRequest`) |
 | `checkout-pay` | `POST /checkout/pay/v1/{token}/confirm` | mw-checkout, as above | `checkout-pay-v1-confirm.json` (`ConfirmRequest`) |
 | `portal-org-v1` | `POST /portal/org/v1/bulk/batches/{batchId}/reject` | mw-portal-api: `BodySchemaAdvice` | `portal-org-v1-reject-request.json` (inline reject body) |
 | `ussd-http-<mno>` | `POST /ussd/{mno}` | mw-ussd: `BodySchemaAdvice` | `ussd-http-v1-step.json` (`UssdStep`) |
 
-No body, so no schema: `POST /app/v1/sessions`, `POST /checkout/pay/v1/{token}/cancel`, portal
+No body, so no schema: `POST /auth/v1/sessions`, `POST /checkout/pay/v1/{token}/cancel`, portal
 approve/pause/resume. Not JSON: the portal CSV upload (`POST /portal/org/v1/bulk/batches`, `text/csv`),
 checked by mw-portal-api's `BulkCsvParser` (header, rows, row and byte caps). Partner callbacks
 (`partner-billagg-callback`, `partner-c2wbank-callback`) have a partner-specific wire format, not a

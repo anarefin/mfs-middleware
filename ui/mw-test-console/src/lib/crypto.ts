@@ -13,7 +13,7 @@ const hmacB64 = (secret: string, s: string): string => createHmac("sha256", secr
 
 export type DeviceKey = { privatePem: string; publicKey: string };
 
-/** A new device key: the private key as PKCS#8 PEM, the public key as base64 SPKI DER (what POST /app/v1/devices takes). */
+/** A new device key: the private key as PKCS#8 PEM, the public key as base64 SPKI DER (what POST /auth/v1/devices at mw-auth takes). */
 export function newDeviceKey(): DeviceKey {
   const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
   return {

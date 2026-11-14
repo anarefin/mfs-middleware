@@ -16,7 +16,7 @@ describe("device signature", () => {
 
   it("signs with the device key so its SPKI public key verifies", () => {
     const k = newDeviceKey();
-    const text = canonical("POST", "/app/v1/devices", "{}", "1", "n", "d");
+    const text = canonical("POST", "/auth/v1/devices", "{}", "1", "n", "d");
     const sig = signCanonical(k.privatePem, text);
     const pub = createPublicKey({ key: Buffer.from(k.publicKey, "base64"), format: "der", type: "spki" });
     expect(verify("sha256", Buffer.from(text), pub, Buffer.from(sig, "base64"))).toBe(true);

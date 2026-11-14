@@ -65,7 +65,8 @@
 #   CRYPTO_MEM_LIMIT (320M)     mw-crypto            275 (ticket 62: start + key bootstrap, heap CRYPTO_XMX)
 #   CRYPTO_XMX (112m)           heap (-Xms = -Xmx) of mw-crypto: no Kafka consumers, a pool of 3
 #   AUTH_MEM_LIMIT (320M)       mw-auth              not measured yet (ticket 67: sized like mw-crypto, which
-#                                                    peaks at 275 with the same heap; re-measure at the gate)
+#                                                    peaks at 275 with the same heap; ticket 68 adds a Lettuce
+#                                                    client for Valkey; re-measure at the gate)
 #   AUTH_XMX (112m)             heap (-Xms = -Xmx) of mw-auth: one Kafka consumer group, a pool of 3
 #   APP_XMX (160m)              heap (-Xms = -Xmx) of every mw-* service (x-jvm-env)
 #   KAFKA_MEM (576M)            kafka                469  (KAFKA_HEAP (256m) fixed heap; 1 partition per topic, MW_KAFKA_PARTITIONS)
@@ -389,6 +390,7 @@ services:
       KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUDIT_DW_SECRET: ${KC_MW_AUDIT_DW_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUTH_SECRET: ${KC_MW_AUTH_SECRET:?cp dev.env.defaults .env}
+      KC_MW_APP_GATEWAY_SECRET: ${KC_MW_APP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       JAVA_OPTS_KC_HEAP: -Xms128m -Xmx384m
     volumes:
       - ./keycloak/realms:/opt/keycloak/data/import:ro
@@ -665,6 +667,7 @@ services:
       KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUDIT_DW_SECRET: ${KC_MW_AUDIT_DW_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUTH_SECRET: ${KC_MW_AUTH_SECRET:?cp dev.env.defaults .env}
+      KC_MW_APP_GATEWAY_SECRET: ${KC_MW_APP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?cp dev.env.defaults .env}
       USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?cp dev.env.defaults .env}
@@ -769,7 +772,8 @@ services:
   # Wallet authentication and PIN custody (ticket 67, spec 18.7, ADRs D20-D22). Keeps auth.wallet, a
   # projection of the core's WalletStateChanged events (core.wallet.event.v1), with the MSISDN hashed
   # and encrypted through mw-crypto (mTLS + realm services client mw-auth). Ports: 8080 public
-  # /auth/v1/** (published as 8095, behind APISIX from ticket 69), 8443 internal /internal/v1/** with
+  # /auth/v1/** (published as 8095; behind APISIX route auth-v1 since ticket 68: device binding, OTP,
+  # sessions, with Valkey sessions and nonces), 8443 internal /internal/v1/** with
   # mTLS (D24: client certificate of pki_int + service JWT; not published), 8081 actuator (plain, not
   # published).
   mw-auth:
@@ -791,6 +795,13 @@ services:
         -Xms${AUTH_XMX:-112m} -Xmx${AUTH_XMX:-112m} -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m -Xss512k
         -XX:MaxDirectMemorySize=64m
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+      # Valkey for device sessions and the nonce cache (ticket 68, 18.7); its password comes from OpenBao.
+      VALKEY_HOST: ${VALKEY_HOST:-valkey}
+      # The app's Keycloak realm `customers` token on /auth/v1/* until mw-auth issues its own (ticket 69).
+      MW_APP_JWK_SET_URI: ${MW_APP_JWK_SET_URI:-http://keycloak:8080/realms/customers/protocol/openid-connect/certs}
+      # Binding OTPs per wallet in 15 min (default 5): dev only raises it, so repeated API suite runs
+      # (each binds every test user's new device once) do not hit the limit. Moved from mw-app-gateway.
+      MW_AUTH_DEVICE_OTP_MAX_SENDS: ${MW_AUTH_DEVICE_OTP_MAX_SENDS:-20}
     healthcheck:
       test:
         - CMD
@@ -910,6 +921,8 @@ services:
       # reached only through the edge: its routes are applied first (and the one-shot is started by
       # a plain `up`, which `up --wait` needs: a one-shot nothing depends on counts as a failure)
       apisix-init: { condition: service_completed_successfully }
+      # the device gate asks mw-auth for device keys and sessions (ticket 68; fails closed without it)
+      mw-auth: { condition: service_healthy }
     volumes:
       - app-gateway-approle:/run/mw/approle:ro
     environment:
@@ -923,9 +936,9 @@ services:
       MW_APP_JWK_SET_URI: ${MW_APP_JWK_SET_URI:-http://keycloak:8080/realms/customers/protocol/openid-connect/certs}
       # Synchronous wait for a terminal status before 202 PROCESSING (7.5).
       MW_APP_REPLY_BUDGET: ${MW_APP_REPLY_BUDGET:-25s}
-      # Binding OTPs per wallet in 15 min (default 5): dev only raises it, so repeated API suite runs
-      # (each binds every test user's new device once) do not hit the limit.
-      MW_APP_DEVICE_OTP_MAX_SENDS: ${MW_APP_DEVICE_OTP_MAX_SENDS:-20}
+      # mTLS client certificate (pki_int/issue/mw-app-gateway) for mw-auth's internal API: the device
+      # gate reads device keys and sessions there (ticket 68, D24)
+      MW_TLS_ENABLED: "true"
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }

@@ -81,6 +81,8 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers-kafka")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
     testImplementation("org.apache.camel:camel-test-spring-junit6")
+    // client/AuthClientIT: mw-auth's internal port and the Keycloak token endpoint stand-ins (mTLS).
+    testImplementation("org.wiremock:wiremock-standalone:3.13.1")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

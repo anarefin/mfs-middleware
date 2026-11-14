@@ -248,6 +248,7 @@
     });
   }
   const BIND_OTP = /Your Bits code to bind a new device is ([0-9]{6})/;
+  /** Binds the user's device at mw-auth on first use (/auth/v1/otp, /auth/v1/devices; ticket 68), reopens an idle session. */
   async function ready(user) {
     const d = await device(user);
     if (!d.bound) {
@@ -255,16 +256,16 @@
       const otps = async () => (await sim.sms(wallet)).map(m => BIND_OTP.exec(m.text || '')).filter(Boolean).map(m => m[1]);
       const before = await otps();
       const h = Object.assign(await bearer('customers', user), { 'X-Device-Id': d.id });
-      const r = await http('POST', '/app/v1/devices/otp', { headers: h, raw: '{"locale":"en"}' });
+      const r = await http('POST', '/auth/v1/otp', { headers: h, raw: '{"locale":"en"}' });
       if (r.status !== 202) throw new Error('asking for the binding OTP of ' + user + ' failed: ' + r);
       const fresh = await poll(async () => (await otps()).filter(c => !before.includes(c)), l => l.length > 0, 30000);
       if (!fresh.length) throw new Error('no binding OTP SMS reached the wallet of ' + user);
       const body = JSON.stringify({ publicKey: d.pub, otp: fresh[fresh.length - 1] });
-      const b = await http('POST', '/app/v1/devices', { headers: await signedHeaders(user, d, 'POST', '/app/v1/devices', body), raw: body });
+      const b = await http('POST', '/auth/v1/devices', { headers: await signedHeaders(user, d, 'POST', '/auth/v1/devices', body), raw: body });
       if (b.status !== 201) throw new Error('binding the device of ' + user + ' failed: ' + b);
       d.bound = true;
     } else if (Date.now() - d.lastUse > 4 * 60000) {
-      const r = await http('POST', '/app/v1/sessions', { headers: await signedHeaders(user, d, 'POST', '/app/v1/sessions', ''), raw: '' });
+      const r = await http('POST', '/auth/v1/sessions', { headers: await signedHeaders(user, d, 'POST', '/auth/v1/sessions', ''), raw: '' });
       if (r.status !== 200) throw new Error('opening a session for ' + user + ' failed: ' + r);
     }
     d.lastUse = Date.now();
@@ -272,8 +273,18 @@
     return d;
   }
 
-  // ---------- App API (/app/v1/*) ----------
+  // ---------- App API (/app/v1/*; device binding and sessions at mw-auth /auth/v1/*) ----------
   const app = {
+    /** A signed session open at mw-auth for the user's bound device, sent twice with the same signature. */
+    async openSessionTwice(user) {
+      const d = await ready(user);
+      const h = await signedHeaders(user, d, 'POST', '/auth/v1/sessions', '');
+      const first = await http('POST', '/auth/v1/sessions', { headers: h, raw: '' });
+      const again = await http('POST', '/auth/v1/sessions', { headers: h, raw: '' });
+      d.lastUse = Date.now();
+      saveDevice(user, d);
+      return { first, again };
+    },
     async headers(user) { const d = await ready(user); return Object.assign(await bearer('customers', user), { 'X-Device-Id': d.id }); },
     /** A transaction body: txnType, credit party, amount (poisha) and the encrypted PIN. */
     async request(txnType, credit, amount, pin) {

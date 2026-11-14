@@ -513,8 +513,10 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <h3><span class="id">3.1</span>Device binding</h3>
     <ol>
       <li><span class="ui">User (customers realm)</span> <code>customer01</code>, press <span class="ui">Re-bind (new device)</span>.</li>
-      <li>Expect three steps: <i>ask for the binding OTP</i> (HTTP 202), <i>read the OTP from the SMSC simulator</i>
-        (the 6-digit OTP shown), <i>bind the device</i> (HTTP 201).</li>
+      <li>Expect three steps: <i>ask for the binding OTP</i> (<code>POST /auth/v1/otp</code>, HTTP 202), <i>read the
+        OTP from the SMSC simulator</i> (the 6-digit OTP shown), <i>bind the device</i> (<code>POST /auth/v1/devices</code>,
+        HTTP 201). Since ticket 68 mw-auth owns device binding, the OTP and sessions; mw-app-gateway only verifies the
+        signature with the key it reads from mw-auth.</li>
       <li><span class="ui">Bind device</span> on an already bound user does nothing new (no OTP steps): that is correct.</li>
       <li>Check: page <span class="ui">SMS &amp; email</span>, number <code>01711000001</code>, <span class="ui">Read</span>:
         the binding code SMS is there.</li>
@@ -645,7 +647,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <tr><td>Type <code>customer02</code> as user (never submitted before), press <span class="ui">Resend the last submit (same Idempotency-Key)</span></td><td>"no earlier submit of customer02 in this console (submit one first)": the last submit is remembered per user</td></tr>
       <tr><td>User <code>merchant02</code>, <span class="ui">Bind device</span>, then <span class="ui">Merchant collections</span></td><td>device bound for merchant02 (01911000002); its collections list (empty until someone pays 01911000002)</td></tr>
       <tr><td>User <code>seed-customer01</code> (typed, not in the suggestions), P2P to <code>01711000002</code>, Tk 10</td><td>the first submit binds a device, then <code>COMPLETED</code>; payer <code>01712000001</code> <code>-Tk 15.00</code></td></tr>
-      <tr><td>Leave the console idle for more than 4 minutes, then Submit</td><td>an extra first step <i>open a new app session for the bound device (signed)</i> (<code>POST /app/v1/sessions</code>); if that fails, the console binds the device again</td></tr>
+      <tr><td>Leave the console idle for more than 4 minutes, then Submit</td><td>an extra first step <i>open a new app session for the bound device (signed)</i> (<code>POST /auth/v1/sessions</code>, at mw-auth); if that fails, the console binds the device again</td></tr>
     </table></div>
   </div>
 </section>
@@ -1267,6 +1269,7 @@ scripts/log-scan.sh</pre></div>
     <tr><td><code>MW-CORE-LIMIT_EXCEEDED_DAILY</code></td><td>the wallet spent Tk 15,000 today (UTC): use customer02, or start fresh (0.1)</td></tr>
     <tr><td><code>MW-CORE-ACCOUNT_LOCKED</code></td><td>five wrong PINs: unlock (9.8)</td></tr>
     <tr><td>A submit says no binding OTP arrived</td><td>mw-notify or the simulators are down: <code>docker compose -f deploy/docker-compose.yml ps</code></td></tr>
+    <tr><td>Every app request answers <code>MW-SYS-012</code></td><td>mw-app-gateway cannot ask mw-auth (device keys, sessions) or Valkey: check <code>docker compose -f deploy/docker-compose.yml ps mw-auth valkey</code>; after a realm change (the <code>mw-app-gateway</code> services client) <code>deploy/reset.sh</code></td></tr>
     <tr><td>Sign-in refused with <code>ops-test-pass</code> (or <code>app-test-pass</code>, <code>portal-test-pass</code>)</td><td>your <code>deploy/.env</code> or the volumes hold other values than <code>deploy/dev.env.defaults</code>: use the values <code>scripts/creds.sh</code> prints, or start fresh: <code>cp deploy/dev.env.defaults deploy/.env</code>, <code>deploy/reset.sh</code>, then step 0.1</td></tr>
     <tr><td>The console's login page says "Your session has ended. Sign in again." on the first visit</td><td>a console cookie from before a <code>deploy/reset.sh</code>: just sign in (1.3)</td></tr>
     <tr><td><code>dev-root-token</code>: "permission denied"</td><td>the OpenBao volume predates it: use the token <code>scripts/creds.sh</code> prints (or <code>deploy/reset.sh</code>)</td></tr>

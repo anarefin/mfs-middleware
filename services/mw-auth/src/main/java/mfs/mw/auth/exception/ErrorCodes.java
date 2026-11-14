@@ -16,10 +16,38 @@ public final class ErrorCodes {
   /** Unexpected failure; details stay in the log, never in the response. */
   public static final String SYS_INTERNAL = "MW-SYS-001";
 
-  /** No, bad or expired internal service JWT (401). */
+  /** Body over the 64 KiB cap (the same code as the APISIX edge's 413): HTTP 413. */
+  public static final String VAL_BODY_TOO_LARGE = "MW-VAL-BODY_TOO_LARGE";
+
+  /** No, bad or expired token: an internal service JWT, or the app's bearer token (401). */
   public static final String AUTH_UNAUTHENTICATED = "MW-AUTH-001";
-  /** The calling client may not use this API (403). */
+  /** The calling client may not use this API, or the token carries no wallet / app role (403). */
   public static final String AUTH_FORBIDDEN = "MW-AUTH-002";
+
+  // Device binding, signed requests, sessions and the binding OTP (spec 9.1, 18.6; moved from
+  // mw-app-gateway in ticket 68 with the same codes).
+  /** X-Device-Id missing or malformed, or not a device bound to this wallet (any more): 401. */
+  public static final String AUTH_DEVICE_NOT_BOUND = "MW-AUTH-003";
+  /** Request signature headers missing or the signature (or nonce form) does not verify: 401. */
+  public static final String AUTH_BAD_SIGNATURE = "MW-AUTH-004";
+  /** X-Timestamp unreadable or outside the allowed clock skew (5 min): 401. */
+  public static final String AUTH_STALE_TIMESTAMP = "MW-AUTH-005";
+  /** X-Nonce already used by this device (a replayed request): 401. */
+  public static final String AUTH_REPLAYED = "MW-AUTH-006";
+  /** No live session for this device (idle timeout, or ended by another device): 401. */
+  public static final String AUTH_NO_SESSION = "MW-AUTH-007";
+  /** Wrong device binding OTP: 401. */
+  public static final String AUTH_OTP_WRONG = "MW-AUTH-010";
+  /** No binding OTP asked for this device, or it expired or was spent: 401, ask for a new one. */
+  public static final String AUTH_OTP_EXPIRED = "MW-AUTH-011";
+  /** Too many wrong binding OTPs: 401, ask for a new one. */
+  public static final String AUTH_OTP_LOCKED = "MW-AUTH-012";
+  /** The wallet was sent its maximum of binding OTPs for now: 429. */
+  public static final String VAL_OTP_LIMIT = "MW-VAL-022";
+  /** Kafka did not take the OTP SMS in time; nothing was sent, the app may retry: 503. */
+  public static final String SYS_UNAVAILABLE = "MW-SYS-010";
+  /** Valkey (sessions, nonce cache) could not be asked; nothing was done, retryable: 503. */
+  public static final String SYS_SESSION_STORE_UNAVAILABLE = "MW-SYS-012";
 
   /**
    * mw-crypto not reachable, timed out, circuit open or answered 5xx (spec 18.7: fail closed; 503,

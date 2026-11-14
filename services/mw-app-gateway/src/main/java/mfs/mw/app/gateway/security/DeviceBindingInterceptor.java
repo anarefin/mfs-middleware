@@ -5,7 +5,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import mfs.mw.app.gateway.dto.AppUser;
 import mfs.mw.app.gateway.exception.ErrorCodes;
 import mfs.mw.app.gateway.exception.MwException;
-import mfs.mw.app.gateway.service.DeviceBindingService;
+import mfs.mw.app.gateway.service.DeviceVerifier;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -13,17 +13,17 @@ import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 /**
- * The device gate on {@code /app/**} (spec 9.1, ticket 29), after the bearer token was verified:
+ * The device gate on {@code /app/**} (spec 9.1, tickets 29 and 68; {@code service/DeviceVerifier}), after the bearer token was verified:
  * per handler {@link DeviceGate} level, a bound device with a live session, plus a valid signature
  * and fresh nonce for sensitive operations. Failures are {@link MwException}s, so the global
  * handler answers with the 5.3 envelope and the handler never runs.
  */
 public class DeviceBindingInterceptor implements HandlerInterceptor {
 
-  private final DeviceBindingService devices;
+  private final DeviceVerifier devices;
   private final AppUserResolver users;
 
-  public DeviceBindingInterceptor(DeviceBindingService devices, AppUserResolver users) {
+  public DeviceBindingInterceptor(DeviceVerifier devices, AppUserResolver users) {
     this.devices = devices;
     this.users = users;
   }
@@ -41,9 +41,9 @@ public class DeviceBindingInterceptor implements HandlerInterceptor {
     Jwt jwt = jwt();
     AppUser user = users.resolve(jwt);
     if (level == DeviceGate.Level.SIGNED) {
-      devices.verifySigned(jwt.getSubject(), user, SignedRequests.from(request));
+      devices.verifySigned(user, SignedRequests.from(request));
     } else {
-      devices.checkSession(jwt.getSubject(), user, request.getHeader(SignedRequests.DEVICE_ID));
+      devices.checkSession(user, request.getHeader(SignedRequests.DEVICE_ID));
     }
     return true;
   }

@@ -13,7 +13,6 @@ import mfs.mw.app.gateway.dto.AppUser;
 import mfs.mw.app.gateway.dto.EncryptedPin;
 import mfs.mw.app.gateway.dto.PartnerRef;
 import mfs.mw.app.gateway.dto.TransactionRequest;
-import mfs.mw.app.gateway.mapper.DeviceNotificationMapper;
 import mfs.mw.app.gateway.mapper.RequestMapper;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
@@ -40,9 +39,7 @@ class ProducedContractsTest {
 
   /** Fixtures per manifest entry: the messages the publisher sends on that topic. */
   static final Map<String, Supplier<List<Object>>> FIXTURES =
-      Map.of(
-          "events/mw-orchestrator/mw.txn.request.v1.schema.json", ProducedContractsTest::txnRequests,
-          "events/mw-notify/mw.notify.request.v1.schema.json", ProducedContractsTest::notifyRequests);
+      Map.of("events/mw-orchestrator/mw.txn.request.v1.schema.json", ProducedContractsTest::txnRequests);
 
   /** {@code TransactionService.submit}: one request per supported txnType. */
   static List<Object> txnRequests() {
@@ -79,14 +76,6 @@ class ProducedContractsTest {
             TXN_ID, CORRELATION_ID, NOW));
   }
 
-  /** {@code DeviceOtpService} (OTP, straight to Kafka) and {@code DeviceBindingService} (outbox). */
-  static List<Object> notifyRequests() {
-    DeviceNotificationMapper mapper = new DeviceNotificationMapper();
-    return List.of(
-        mapper.otp("01711000001", "123456", null, NOW.plusSeconds(120), CORRELATION_ID),
-        mapper.otp("01711000001", "654321", "en", NOW.plusSeconds(120), CORRELATION_ID),
-        mapper.bound("01711000001", "bn", CORRELATION_ID));
-  }
 
   @TestFactory
   Stream<DynamicTest> everyProducedEventMatchesItsSchema() {

@@ -40,6 +40,17 @@ spring:
       maximum-pool-size: 5
   flyway:
     schemas: auth
+  # Valkey (Lettuce) for device sessions and the signed-request nonce cache (spec 9.1, 18.7,
+  # ticket 68). The password comes from OpenBao (secret/mw-auth, spring.data.redis.password), never
+  # written here. Short timeouts; the device API fails closed (503 MW-SYS-012).
+  data:
+    redis:
+      host: ${VALKEY_HOST:valkey}
+      port: ${VALKEY_PORT:6379}
+      timeout: 500ms
+      connect-timeout: 500ms
+      repositories:
+        enabled: false
 
 # Kafka through Camel (spec 6.1, 19.2). Single KRaft node; topics come from deploy/kafka/.
 camel:
@@ -52,6 +63,11 @@ camel:
       request-required-acks: all
       enable-idempotence: true
       max-in-flight-request: 5
+      # A binding OTP request waits for its SMS publish: when Kafka is down it must fail fast with
+      # 503 MW-SYS-010 (nothing sent) instead of blocking for the client defaults (60 s, 2 min).
+      max-block-ms: 5000
+      request-timeout-ms: 5000
+      delivery-timeout-ms: 10000
       # Consumers: one group per service; a failure that cannot even be parked on a retry
       # topic stops the partition instead of committing past the record.
       group-id: ${spring.application.name}
@@ -157,6 +173,9 @@ management:
       enabled: true
     readinessstate:
       enabled: true
+    # Valkey only serves the device API, which answers 503 MW-SYS-012 itself while it is down.
+    redis:
+      enabled: false
   tracing:
     sampling:
       probability: 1.0
@@ -181,6 +200,27 @@ mw:
   auth:
     # The public plain-HTTP connector for /auth/v1/** behind APISIX (tickets 68-69).
     public-port: ${MW_AUTH_PUBLIC_PORT:8080}
+    # Device binding, signed requests, sessions and the binding OTP (spec 9.1, 18.6, 18.7; moved from
+    # mw-app-gateway in ticket 68): one bound device per wallet (auth.device), sessions
+    # sess:{walletId}:{deviceId} in Valkey with a sliding idle timeout, nonces used once. See
+    # config/DeviceBindingProperties.
+    device-binding:
+      clock-skew: 5m
+      idle-timeout: ${MW_AUTH_SESSION_IDLE_TIMEOUT:5m}
+      idle-timeout-by-channel: {}
+      # Binding a device needs an OTP sent by SMS to the token's wallet through mw-notify (review A5):
+      # checks per OTP and sends per wallet and window are enforced with conditional updates.
+      otp:
+        ttl: 2m
+        max-attempts: 3
+        max-sends: ${MW_AUTH_DEVICE_OTP_MAX_SENDS:5}
+        send-window: 15m
+      notify-topic: mw.notify.request.v1
+    # The app's bearer token on /auth/v1/** until mw-auth issues its own (ticket 69): Keycloak realm
+    # `customers`, as mw-app-gateway checks it. Keys are fetched on the first token.
+    customer-jwt:
+      jwk-set-uri: ${MW_APP_JWK_SET_URI:http://keycloak:8080/realms/customers/protocol/openid-connect/certs}
+      realm-path: /realms/customers
     consumer:
       # route/CoreWalletEventRoute: the wallet projection from the core (D5). Off in tests by default.
       enabled: true
