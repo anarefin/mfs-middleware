@@ -24,7 +24,12 @@ class KeyPurposeTest {
     "TOKENISE_MSISDN, HMAC_SHA256, TOKENISE, tokenise-msisdn, ,",
     "KEK_COLUMN, AES_256, ENVELOPE, kek-column, ,",
     "HMAC_WEBHOOK, HMAC_SHA256, HMAC, hmac-webhook, ,",
-    "XMLDSIG, RSA_3072, XMLDSIG, xmldsig, RS256, sig"
+    "XMLDSIG, RSA_3072, XMLDSIG, xmldsig, RS256, sig",
+    "ZPK, TDES_2KEY, PIN_BLOCK, zpk, ,",
+    "TPK, TDES_2KEY, PIN_BLOCK, tpk, ,",
+    "ZPK_AES, AES_128, PIN_BLOCK, zpk-aes, ,",
+    "TPK_AES, AES_128, PIN_BLOCK, tpk-aes, ,",
+    "PVK, TDES_2KEY, PVV, pvk, ,"
   })
   void eachPurposeHasItsAlgorithmCapabilityAndDefaultKeyId(
       String name, KeyAlgorithm algorithm, Capability capability, String keyId, String jwkAlg, String use) {
@@ -39,7 +44,7 @@ class KeyPurposeTest {
 
   @ParameterizedTest
   @ValueSource(strings = {"", "jwt_sign", "TOKENISE_", "KEK_", "TOKENISE_msisdn", "SIGN", "KEK_A-B", "HMAC_", "HMAC_a",
-      "TOKENISE_ABCDEFGHIJKLMNOPQRSTUVWXYZ"})
+      "TOKENISE_ABCDEFGHIJKLMNOPQRSTUVWXYZ", "ZMK", "PVK_AES"})
   void anythingElseIsAnUnknownPurpose(String name) {
     assertThatThrownBy(() -> KeyPurpose.parse(name))
         .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-VAL-011"));

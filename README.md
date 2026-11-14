@@ -156,7 +156,12 @@ fake values too:
 | Token label (variable) | User PIN (variable) | SO PIN (variable) | Port | Used by |
 | --- | --- | --- | --- | --- |
 | `mw-crypto` (`SOFTHSM_MWCRYPTO_LABEL`) | `dev-mwcrypto-user-pin` (`SOFTHSM_MWCRYPTO_USER_PIN`, copied to OpenBao `secret/mw-crypto`) | `dev-mwcrypto-so-pin` (`SOFTHSM_MWCRYPTO_SO_PIN`) | 5657 | `mw-crypto` |
-| `paysim` (`SOFTHSM_PAYSIM_LABEL`) | `dev-paysim-user-pin` (`SOFTHSM_PAYSIM_USER_PIN`) | `dev-paysim-so-pin` (`SOFTHSM_PAYSIM_SO_PIN`) | 5658 | payShield simulator (`mw-simulators`) |
+| `paysim` (`SOFTHSM_PAYSIM_LABEL`) | `dev-paysim-user-pin` (`SOFTHSM_PAYSIM_USER_PIN`, copied to OpenBao `secret/mw-simulators`) | `dev-paysim-so-pin` (`SOFTHSM_PAYSIM_SO_PIN`) | 5658 | payShield simulator (`mw-simulators`) |
+
+The payShield 10K simulator (ticket 64) listens for host commands on `mw-simulators:1500` (internal
+network only, not published) and keeps its LMK in the `paysim` token; `mw-crypto`'s payShield provider
+uses it in the dev stack. Its control API is `/sim/payshield/scenario` and the test helper
+`/sim/payshield/pinblock` (`services/mw-simulators/CLAUDE.md`).
 
 ## Rebuild one service after a code change
 

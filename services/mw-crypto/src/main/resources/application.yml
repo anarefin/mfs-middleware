@@ -80,6 +80,16 @@ resilience4j:
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 5
         automatic-transition-from-open-to-half-open-enabled: true
+    instances:
+      # The payShield provider (ticket 64, client/PayShieldProvider): only transport failures count
+      # (connect, timeout, dropped connection, wrong header); an error code in an answer does not.
+      payshield:
+        base-config: default
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        slow-call-duration-threshold: 2400ms
+        wait-duration-in-open-state: 10s
   bulkhead:
     configs:
       default:
@@ -204,6 +214,21 @@ mw:
       max-sessions: 8
       acquire-timeout: 2s
       call-timeout: 5s
+    # The Thales payShield 10K provider (ticket 64, config/PayShieldProperties, client/PayShieldProvider):
+    # ISO 9564 PIN block translation and PVV; in dev the mw-simulators simulator. Off unless turned on
+    # (the production HSM vendor is open point 22; the dev stack sets MW_CRYPTO_PAYSHIELD_ENABLED=true).
+    payshield:
+      enabled: ${MW_CRYPTO_PAYSHIELD_ENABLED:false}
+      host: ${MW_CRYPTO_PAYSHIELD_HOST:mw-simulators}
+      port: 1500
+      header-length: 4
+      pool-size: 4
+      connect-timeout: 2s
+      # 80% of it is the breaker's slow-call threshold (resilience4j instance payshield)
+      call-timeout: 3s
+      acquire-timeout: 2s
+      # added to bootstrap-purposes (dev bootstrap) while the provider is on
+      bootstrap-purposes: [PVK, TPK, ZPK, TPK_AES, ZPK_AES]
     # Who may run which operation (security/CallerPolicy; caller = the service JWT's azp, which mTLS
     # ties to the client certificate's CN). Deny by default: a purpose without an entry is refused
     # (403 MW-AUTH-002). A caller of a new key purpose (KEK_<x>, TOKENISE_<x>, HMAC_<x>) adds it here.
@@ -217,6 +242,8 @@ mw:
         TOKENISE_NID: mw-auth,mw-audit-dw
         TOKENISE_ACCOUNT: mw-audit-dw
         KEK_COLUMN: mw-auth
+        # /pinblock/translate and /pvv/** (ticket 64) check every key's purpose (TPK, ZPK, TPK_AES,
+        # ZPK_AES, PVK): no caller yet; the ATM and interop adapters add theirs here.
   # This service's certificate from OpenBao PKI (spec 18.2, 18.4, D24; config/TlsProperties,
   # config/ServiceCertificateManager): issued at start through Spring Cloud Vault (AppRole policy:
   # pki_int/issue/mw-crypto only), renewed at two thirds of its life, never written to disk.

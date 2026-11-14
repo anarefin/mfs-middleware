@@ -9,7 +9,11 @@ public enum KeyAlgorithm {
   /** 256-bit HMAC-SHA256 secret: PIN HMAC, tokenisation. */
   HMAC_SHA256(false),
   /** AES-256 secret: key encryption keys of envelope encryption. */
-  AES_256(false);
+  AES_256(false),
+  /** Double length triple DES key (payShield, under the LMK): ZPK, TPK, PVK (ticket 64). */
+  TDES_2KEY(false),
+  /** AES-128 key (payShield, under the LMK): ZPK and TPK of ISO 9564 format 4 PIN blocks (ticket 64). */
+  AES_128(false);
 
   private final boolean asymmetric;
 

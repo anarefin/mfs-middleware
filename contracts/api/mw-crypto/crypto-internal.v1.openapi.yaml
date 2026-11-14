@@ -9,7 +9,8 @@ info:
     (ticket 67) and mw-audit-dw (ticket 74), over the `app` zone network (`https://mw-crypto:8080`);
     it is not routed by APISIX. The operations of ticket 63: PIN verify and derive, JWS sign and
     JWKS, HMAC sign and verify, tokenisation, envelope encryption (XML-DSig and HTTP signatures
-    follow in ticket 65).
+    follow in ticket 65). Ticket 64: ISO 9564 PIN block translation and Visa PVV on the payShield
+    provider (`/pinblock/translate`, `/pvv/{generate,verify}`).
 
     mTLS is mandatory (ticket 66, D24): the TLS handshake needs a client certificate issued by the
     OpenBao services intermediate CA (`pki_int`, one role per service, CN = service name); without
@@ -348,6 +349,86 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/pinblock/translate:
+    post:
+      operationId: translatePinBlock
+      summary: Re-encipher an ISO 9564 PIN block under a ZPK (payShield CA / CC, ticket 64)
+      description: >-
+        The PIN block under a TPK (payShield CA) or ZPK (CC) as a block of the destination format
+        under a ZPK; the clear PIN exists only inside the HSM. ISO4 needs an AES key (TPK_AES,
+        ZPK_AES), ISO0, ISO1 and ISO3 a triple DES key (TPK, ZPK), else 400 MW-VAL-015. Authorised by
+        the purpose of both keys (`mw.crypto.authz.purposes`; no caller is bound yet: the ATM and
+        interop adapters will be). A block the HSM refuses is 400 MW-VAL-014; a key it refuses
+        (parity) 400 MW-VAL-015; the HSM down or refusing the command 503 MW-SYS-010.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TranslatePinBlockRequest" }
+      responses:
+        "200":
+          description: The translated block and the ZPK version
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TranslatedPinBlock" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/pvv/generate:
+    post:
+      operationId: generatePvv
+      summary: Visa PVV of the PIN in a PIN block (payShield JC / JE + DG, ticket 64)
+      description: >-
+        The 4-digit Visa PIN verification value of the PIN in `pinBlock` (under a TPK or ZPK) under
+        the ACTIVE version of the PVK pair `pvkId` and the index `pvki`. Authorised by the purpose of
+        both keys (no caller bound yet). Errors as /pinblock/translate.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PvvGenerateRequest" }
+      responses:
+        "200":
+          description: The PVV and the PVK version
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PvvGenerated" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/pvv/verify:
+    post:
+      operationId: verifyPvv
+      summary: Check the PIN in a PIN block against a stored PVV (payShield DC / EC, ticket 64)
+      description: >-
+        A wrong PIN (payShield error 01) is `match: false`, not an error. The PVK may be the ACTIVE or
+        the VERIFY_ONLY version. Authorised by the purpose of both keys (no caller bound yet).
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PvvVerifyRequest" }
+      responses:
+        "200":
+          description: Match or not
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PvvVerified" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     internalClientCredentials:
@@ -393,8 +474,9 @@ components:
         Spec 18.8 key purpose: PIN_TRANSPORT (RSA 3072), PIN_HMAC (HMAC-SHA256), JWT_SIGN (RSA
         3072, RS256), ASSERTION_SIGN and AUDIT_ANCHOR_SIGN (EC P-256, ES256), TOKENISE_<domain>
         (HMAC-SHA256), HMAC_<use> (HMAC-SHA256: partner signatures, webhooks), KEK_<purpose>
-        (AES-256), XMLDSIG (RSA 3072).
-      pattern: "^(PIN_TRANSPORT|PIN_HMAC|JWT_SIGN|ASSERTION_SIGN|AUDIT_ANCHOR_SIGN|XMLDSIG|TOKENISE_[A-Z][A-Z0-9]{0,23}|HMAC_[A-Z][A-Z0-9]{0,23}|KEK_[A-Z][A-Z0-9]{0,23})$"
+        (AES-256), XMLDSIG (RSA 3072); payShield (ticket 64): ZPK, TPK, PVK (double length triple DES,
+        under the LMK), ZPK_AES, TPK_AES (AES-128, ISO format 4).
+      pattern: "^(PIN_TRANSPORT|PIN_HMAC|JWT_SIGN|ASSERTION_SIGN|AUDIT_ANCHOR_SIGN|XMLDSIG|ZPK|TPK|ZPK_AES|TPK_AES|PVK|TOKENISE_[A-Z][A-Z0-9]{0,23}|HMAC_[A-Z][A-Z0-9]{0,23}|KEK_[A-Z][A-Z0-9]{0,23})$"
     GenerateKeyRequest:
       type: object
       required: [purpose]
@@ -422,8 +504,8 @@ components:
       properties:
         keyId: { $ref: "#/components/schemas/KeyId" }
         purpose: { $ref: "#/components/schemas/Purpose" }
-        algorithm: { type: string, enum: [RSA_3072, EC_P256, HMAC_SHA256, AES_256] }
-        provider: { type: string, description: "The provider holding the key (pkcs11)" }
+        algorithm: { type: string, enum: [RSA_3072, EC_P256, HMAC_SHA256, AES_256, TDES_2KEY, AES_128] }
+        provider: { type: string, description: "The provider holding the key (pkcs11, payshield)" }
         versions:
           type: array
           minItems: 1
@@ -735,3 +817,98 @@ components:
             properties:
               field: { type: string }
               issue: { type: string }
+    PinBlockFormat:
+      type: string
+      description: >-
+        ISO 9564-1 format: ISO0, ISO1, ISO3 (16 hex digits under a triple DES key) or ISO4 (32 hex
+        digits under an AES-128 key)
+      enum: [ISO0, ISO1, ISO3, ISO4]
+    PinBlockHex:
+      type: string
+      description: An enciphered PIN block, hex (16 digits, or 32 for ISO4)
+      pattern: "^([0-9A-Fa-f]{16}|[0-9A-Fa-f]{32})$"
+    Account:
+      type: string
+      description: >-
+        The account number the PIN block is bound to (ISO 9564 "PAN"), with its check digit; for a
+        wallet its account number (a card PAN never enters the middleware)
+      pattern: "^[0-9]{12,19}$"
+    PinBlockInput:
+      type: object
+      required: [keyId, format, block]
+      additionalProperties: false
+      properties:
+        keyId:
+          description: The TPK, ZPK, TPK_AES or ZPK_AES the block is under (keyId or kid)
+          $ref: "#/components/schemas/KeyRef"
+        format: { $ref: "#/components/schemas/PinBlockFormat" }
+        block: { $ref: "#/components/schemas/PinBlockHex" }
+    TranslatePinBlockRequest:
+      type: object
+      required: [source, destination, account]
+      additionalProperties: false
+      properties:
+        source: { $ref: "#/components/schemas/PinBlockInput" }
+        destination:
+          type: object
+          required: [keyId, format]
+          additionalProperties: false
+          properties:
+            keyId:
+              description: The ZPK or ZPK_AES (its ACTIVE version, or a kid)
+              $ref: "#/components/schemas/KeyRef"
+            format: { $ref: "#/components/schemas/PinBlockFormat" }
+        account: { $ref: "#/components/schemas/Account" }
+    TranslatedPinBlock:
+      type: object
+      required: [block, format, keyId]
+      additionalProperties: false
+      properties:
+        block:
+          type: string
+          description: The new block, upper-case hex
+          pattern: "^([0-9A-F]{16}|[0-9A-F]{32})$"
+        format: { $ref: "#/components/schemas/PinBlockFormat" }
+        keyId:
+          description: The ZPK version (kid) the block is under
+          $ref: "#/components/schemas/KeyRef"
+    PvvGenerateRequest:
+      type: object
+      required: [pvkId, pvki, pinBlock, account]
+      additionalProperties: false
+      properties:
+        pvkId:
+          description: "The PVK pair (keyId = its ACTIVE version)"
+          $ref: "#/components/schemas/KeyRef"
+        pvki: { type: integer, minimum: 0, maximum: 9, description: PVK index, part of the PVV input }
+        pinBlock: { $ref: "#/components/schemas/PinBlockInput" }
+        account: { $ref: "#/components/schemas/Account" }
+    PvvVerifyRequest:
+      type: object
+      required: [pvkId, pvki, pinBlock, account, pvv]
+      additionalProperties: false
+      properties:
+        pvkId:
+          description: "The PVK pair (keyId = its ACTIVE version, or the kid the PVV was made with)"
+          $ref: "#/components/schemas/KeyRef"
+        pvki: { type: integer, minimum: 0, maximum: 9 }
+        pinBlock: { $ref: "#/components/schemas/PinBlockInput" }
+        account: { $ref: "#/components/schemas/Account" }
+        pvv: { type: string, pattern: "^[0-9]{4}$", description: The stored PVV }
+    PvvGenerated:
+      type: object
+      required: [pvv, pvkId, pvki]
+      additionalProperties: false
+      properties:
+        pvv: { type: string, pattern: "^[0-9]{4}$" }
+        pvkId:
+          description: The PVK version (kid)
+          $ref: "#/components/schemas/KeyRef"
+        pvki: { type: integer, minimum: 0, maximum: 9 }
+    PvvVerified:
+      type: object
+      required: [match, pvkId]
+      additionalProperties: false
+      properties:
+        match: { type: boolean }
+        pvkId: { $ref: "#/components/schemas/KeyRef" }

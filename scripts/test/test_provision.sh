@@ -8,7 +8,7 @@ PROVISION_DIR="$REPO_DIR/deploy/provision"
 PROVISION_ENV="VALKEY_PASSWORD=valkey-t BILLAGG_HMAC_SECRET=billagg-t C2WBANK_HMAC_SECRET=c2w-t
   CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t
   USSD_GP_GATEWAY_SECRET=gp-t USSD_ROBI_GATEWAY_SECRET=robi-t USSD_BL_GATEWAY_SECRET=bl-t
-  USSD_TELETALK_GATEWAY_SECRET=teletalk-t SOFTHSM_MWCRYPTO_USER_PIN=hsm-pin-t"
+  USSD_TELETALK_GATEWAY_SECRET=teletalk-t SOFTHSM_MWCRYPTO_USER_PIN=hsm-pin-t SOFTHSM_PAYSIM_USER_PIN=paysim-pin-t"
 
 provision_fixture() {
   mkdir -p .bin .kv out
@@ -154,6 +154,8 @@ test_provision_writes_the_service_specific_keys() {
   # mw-crypto (ticket 62): the softhsm mw-crypto token's user PIN (ticket 61), its role and schema
   [ "$(kv mw-crypto mw.crypto.pkcs11.user-pin)" = hsm-pin-t ] || fail "mw-crypto token PIN"
   grep -q 'role=crypto_rw .*schema=crypto' .psql-calls || fail "mw-crypto role/schema"
+  # mw-simulators (ticket 64): the softhsm paysim token's user PIN for the payShield simulator
+  [ "$(kv mw-simulators sim.payshield.pkcs11.user-pin)" = paysim-pin-t ] || fail "paysim token PIN"
   # one role + schema per plain service
   grep -q 'role=orchestrator_rw .*schema=txn' .psql-calls || fail "orchestrator role/schema"
   # mw-admin-api also owns schema partner (its Flyway migrates both)

@@ -6,6 +6,7 @@ import java.security.PublicKey;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -74,14 +75,11 @@ public class KeyService {
     return keys.purposes();
   }
 
-  /** A new key, version 1, ACTIVE, in the default provider. */
+  /** A new key, version 1, ACTIVE, in the default provider, or the provider that serves the purpose. */
   @Transactional
   public KeyView generate(String purposeName, String requestedKeyId) {
     KeyPurpose purpose = KeyPurpose.parse(purposeName);
-    CryptoProvider provider = provider(defaultProvider);
-    if (!provider.capabilities().contains(purpose.capability())) {
-      throw CryptoErrors.unknownPurpose(purposeName + " (provider " + provider.name() + " cannot serve it)");
-    }
+    CryptoProvider provider = providerFor(purpose);
     String keyId = requestedKeyId == null || requestedKeyId.isBlank() ? purpose.defaultKeyId() : requestedKeyId;
     if (!keys.findVersions(keyId).isEmpty()) {
       throw CryptoErrors.keyExists(keyId);
@@ -92,10 +90,7 @@ public class KeyService {
     } catch (DuplicateKeyException e) {
       throw CryptoErrors.keyExists(keyId);
     }
-    timed("generate", provider, () -> {
-      provider.generateKey(key.hsmLabel(), purpose.algorithm());
-      return null;
-    });
+    create(provider, key, purpose);
     log.atInfo()
         .addKeyValue("event", "crypto.key.generated")
         .addKeyValue("keyId", keyId)
@@ -133,10 +128,7 @@ public class KeyService {
     }
     CryptoKey added = version(keyId, newest.version() + 1, purpose, provider.name());
     keys.insert(added);
-    timed("generate", provider, () -> {
-      provider.generateKey(added.hsmLabel(), purpose.algorithm());
-      return null;
-    });
+    create(provider, added, purpose);
     after.add(added);
     log.atInfo()
         .addKeyValue("event", "crypto.key.rotated")
@@ -171,6 +163,30 @@ public class KeyService {
     String kid = CryptoKey.kid(keyId, version);
     return new CryptoKey(
         keyId, version, purpose.name(), purpose.algorithm().name(), provider, kid, KeyState.ACTIVE, clock.instant(), null);
+  }
+
+  /**
+   * Generates the key of {@code key} in {@code provider}; a provider that returns another reference
+   * than the label (payShield: the key blob under the LMK, ticket 64) has it stored as the HSM label.
+   */
+  private void create(CryptoProvider provider, CryptoKey key, KeyPurpose purpose) {
+    String ref = timed("generate", provider,
+        () -> provider.createKey(key.hsmLabel(), purpose.algorithm(), purpose.name()));
+    if (ref != null && !ref.equals(key.hsmLabel())) {
+      keys.updateLabel(key.keyId(), key.version(), ref);
+    }
+  }
+
+  /** The default provider when it serves the purpose, else the first provider that does. */
+  private CryptoProvider providerFor(KeyPurpose purpose) {
+    CryptoProvider preferred = provider(defaultProvider);
+    if (preferred.capabilities().contains(purpose.capability())) {
+      return preferred;
+    }
+    return providers.values().stream()
+        .filter(p -> p.capabilities().contains(purpose.capability()))
+        .min(Comparator.comparing(CryptoProvider::name))
+        .orElseThrow(() -> CryptoErrors.unknownPurpose(purpose.name() + " (no provider can serve it)"));
   }
 
   private CryptoProvider provider(String name) {

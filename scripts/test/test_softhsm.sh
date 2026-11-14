@@ -179,6 +179,11 @@ test_provision_gets_the_mw_crypto_user_pin() {
     || fail "provision does not get SOFTHSM_MWCRYPTO_USER_PIN"
 }
 
+test_provision_gets_the_paysim_user_pin() {
+  [ "$(softhsm_service '.services.provision.environment.SOFTHSM_PAYSIM_USER_PIN')" = '"dev-paysim-user-pin"' ] \
+    || fail "provision does not get SOFTHSM_PAYSIM_USER_PIN"
+}
+
 test_docs_record_the_access_shape_and_the_knobs() {
   local r="$SOFTHSM_DIR/README.md" v
   [ -f "$r" ] || fail "no deploy/softhsm/README.md"
@@ -215,4 +220,28 @@ test_mw_crypto_image_reaches_its_token_through_the_p11_kit_proxy() {
     || fail "mw-crypto image keeps other p11-kit modules (slot 0 would be ambiguous)"
   [ "$(softhsm_service '.services["mw-crypto"].depends_on.softhsm.condition')" = '"service_healthy"' ] \
     || fail "mw-crypto does not wait for a healthy softhsm"
+}
+
+# ---- mw-simulators (ticket 64): the payShield simulator keeps its LMK in the paysim token ----
+
+test_mw_simulators_test_copy_matches_deploy_softhsm() {
+  # PayShieldSimulatorIT builds the softhsm image from the module's own copy (module isolation)
+  local copy="$REPO_DIR/services/mw-simulators/src/test/resources/softhsm" d
+  [ -d "$copy" ] || fail "no services/mw-simulators/src/test/resources/softhsm"
+  d="$(diff -r "$SOFTHSM_DIR" "$copy" 2>&1)" \
+    || fail "services/mw-simulators/src/test/resources/softhsm drifted from deploy/softhsm (copy the folder again): $d"
+}
+
+test_mw_simulators_image_reaches_the_paysim_token_through_the_p11_kit_proxy() {
+  local f="$REPO_DIR/services/mw-simulators/Dockerfile" server client
+  server="$(grep -oE 'p11-kit=[0-9][^ ]*' "$SOFTHSM_DIR/Dockerfile" | head -1)"
+  client="$(grep -oE 'p11-kit=[0-9][^ ]*' "$f" | head -1)"
+  [ -n "$server" ] && [ "$server" = "$client" ] || fail "mw-simulators p11-kit ($client) differs from softhsm's ($server)"
+  grep -q 'socat=' "$f" || fail "mw-simulators image lacks socat"
+  grep -q 'remote: |socat - TCP:softhsm:5658' "$f" || fail "mw-simulators module file does not dial softhsm:5658"
+  if grep -q 'softhsm:5657' "$f"; then fail "mw-simulators must not reach the mw-crypto token"; fi
+  grep -qF 'rm -f /usr/share/p11-kit/modules/*.module' "$f" \
+    || fail "mw-simulators image keeps other p11-kit modules (slot 0 would be ambiguous)"
+  [ "$(softhsm_service '.services["mw-simulators"].depends_on.softhsm.condition')" = '"service_healthy"' ] \
+    || fail "mw-simulators does not wait for a healthy softhsm"
 }
