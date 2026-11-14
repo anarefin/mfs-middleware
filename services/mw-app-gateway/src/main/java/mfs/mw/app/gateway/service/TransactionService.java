@@ -9,6 +9,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import mfs.mw.app.gateway.client.AuthClient;
 import mfs.mw.app.gateway.config.AppGatewayProperties;
 import mfs.mw.app.gateway.dto.AppUser;
 import mfs.mw.app.gateway.dto.ErrorDetail;
@@ -35,7 +36,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 /**
- * App transactions (spec 9.1, 7.5): mints the txnId, publishes the canonical request with this
+ * App transactions (spec 9.1, 7.5): mints the txnId, gets mw-auth's transaction assertion for the
+ * PIN and the request's values (ticket 72, D22), publishes the canonical request with this
  * instance's {@code mw-reply-to}, then waits on the HTTP request's own (virtual) thread for the
  * answer, at most the reply budget. Idempotency itself is decided by mw-orchestrator (7.3); this
  * service only requires the key and passes it on.
@@ -55,6 +57,7 @@ public class TransactionService {
   private final AppGatewayProperties props;
   private final Clock clock;
   private final BillerService billers;
+  private final AuthClient auth;
 
   public TransactionService(
       EventPublisher publisher,
@@ -63,7 +66,8 @@ public class TransactionService {
       AppTransactionRepository transactions,
       AppGatewayProperties props,
       Clock clock,
-      BillerService billers) {
+      BillerService billers,
+      AuthClient auth) {
     this.publisher = publisher;
     this.waiters = waiters;
     this.mapper = mapper;
@@ -71,6 +75,7 @@ public class TransactionService {
     this.props = props;
     this.clock = clock;
     this.billers = billers;
+    this.auth = auth;
   }
 
   public SubmitResult submit(AppUser user, String idempotencyKey, TransactionRequest body) {
@@ -93,7 +98,11 @@ public class TransactionService {
     Instant now = clock.instant();
     String txnId = UuidV7.next(clock).toString();
     String correlationId = correlationId();
-    TxnRequest req = mapper.toRequest(user, idempotencyKey, body, txnId, correlationId, now, partner);
+    TxnRequest unauthorised = mapper.toRequest(user, idempotencyKey, body, txnId, correlationId, now, partner);
+    // the PIN goes to mw-auth only (ticket 72): its refusal (wrong PIN 401, lock 423, ...) is
+    // answered at once and nothing is published; the request carries the assertion instead
+    TxnRequest req = unauthorised.withAssertion(
+        auth.authorise(mapper.toAuthorisation(user, user.deviceId(), unauthorised, body.encryptedPin())).assertion());
 
     CompletableFuture<StatusMessage> answer =
         waiters.register(txnId, idempotencyKey, req.initiator().id());

@@ -26,6 +26,22 @@
     "more": {
       "bn": "0 আরও",
       "en": "0 More"
+    },
+    "wrongPin": {
+      "bn": "ভুল পিন। আর {triesLeft} বার চেষ্টা করা যাবে।",
+      "en": "Wrong PIN. {triesLeft} tries left."
+    },
+    "pinLocked": {
+      "bn": "পিন সাময়িকভাবে লক। পরে আবার চেষ্টা করুন।",
+      "en": "Your PIN is locked for now. Please try again later."
+    },
+    "pinBlocked": {
+      "bn": "পিন লক। অ্যাপে পিন রিসেট করুন বা কাস্টমার কেয়ারে কল করুন।",
+      "en": "Your PIN is locked. Reset it in the app or call customer care."
+    },
+    "walletLocked": {
+      "bn": "আপনার অ্যাকাউন্ট লক। কাস্টমার কেয়ারে কল করুন।",
+      "en": "Your account is locked. Please call customer care."
     }
   },
   "nodes": {
@@ -148,8 +164,8 @@
       "validator": {
         "type": "pin",
         "error": {
-          "bn": "পিন ৪ অঙ্কের।",
-          "en": "The PIN has 4 digits."
+          "bn": "পিন ৫ অঙ্কের।",
+          "en": "The PIN has 5 digits."
         }
       },
       "next": "p2p.send"
@@ -247,8 +263,8 @@
       "validator": {
         "type": "pin",
         "error": {
-          "bn": "পিন ৪ অঙ্কের।",
-          "en": "The PIN has 4 digits."
+          "bn": "পিন ৫ অঙ্কের।",
+          "en": "The PIN has 5 digits."
         }
       },
       "next": "co.send"
@@ -384,8 +400,8 @@
       "validator": {
         "type": "pin",
         "error": {
-          "bn": "পিন ৪ অঙ্কের।",
-          "en": "The PIN has 4 digits."
+          "bn": "পিন ৫ অঙ্কের।",
+          "en": "The PIN has 5 digits."
         }
       },
       "next": "tu.send"
@@ -483,8 +499,8 @@
       "validator": {
         "type": "pin",
         "error": {
-          "bn": "পিন ৪ অঙ্কের।",
-          "en": "The PIN has 4 digits."
+          "bn": "পিন ৫ অঙ্কের।",
+          "en": "The PIN has 5 digits."
         }
       },
       "next": "bp.send"

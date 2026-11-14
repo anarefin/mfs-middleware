@@ -21,5 +21,19 @@ public final class ErrorCodes {
   /** No menu is live for the MNO, or a session's menu version is gone. */
   public static final String SYS_NO_MENU = "MW-SYS-020";
 
+  /**
+   * mw-auth (txn authorisation, PIN transport key) cannot be asked: unreachable, timed out, breaker
+   * open, a 5xx or an unreadable answer (fail closed; ticket 72).
+   */
+  public static final String SYS_AUTH_UNAVAILABLE = "MW-SYS-012";
+
+  /** mw-auth's answers the USSD engine acts on (ticket 72; codes owned by mw-auth). */
+  public static final String AUTH_WRONG_PIN = "MW-AUTH-040";
+  public static final String AUTH_PIN_LOCKED = "MW-AUTH-041";
+  public static final String AUTH_PIN_LOCKED_PERMANENT = "MW-AUTH-042";
+  public static final String AUTH_WALLET_LOCKED = "MW-AUTH-043";
+  /** mw-crypto refused the PIN block (mw-auth's code): with a stale transport key id, refetch it. */
+  public static final String SYS_CRYPTO_REFUSED = "MW-SYS-051";
+
   private ErrorCodes() {}
 }

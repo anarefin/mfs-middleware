@@ -8,7 +8,6 @@ import mfs.mw.core.mock.dto.CoreCommand;
 import mfs.mw.core.mock.dto.CoreEvent;
 import mfs.mw.core.mock.dto.Fault.FaultMode;
 import mfs.mw.core.mock.dto.FaultRequest;
-import mfs.mw.core.mock.security.PinKeyProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,14 +42,13 @@ class FaultInjectionIT {
       FaultRegistry faults,
       WalletSeeder seeder,
       JdbcTemplate jdbc,
-      PinKeyProvider keys,
       JsonMapper json) {
     this.service = service;
     this.faults = faults;
     this.seeder = seeder;
     this.jdbc = jdbc;
     this.json = json;
-    this.cmds = new CoreCommandsTestSupport(keys, json);
+    this.cmds = new CoreCommandsTestSupport(json);
   }
 
   @BeforeEach
@@ -89,7 +87,7 @@ class FaultInjectionIT {
   void aDroppedReplyIsNeverPublishedButQueryTransactionKnowsTheTrueOutcome() {
     faults.add(fault(FaultMode.DROP_REPLY, "PostTransfer", null, null, null, null));
     String txn = txn();
-    CoreCommand post = cmds.post(txn, A, B, 100_000, "1234");
+    CoreCommand post = cmds.post(txn, A, B, 100_000);
 
     CoreEvent decided = handle(post);
 
@@ -108,7 +106,7 @@ class FaultInjectionIT {
   void aDroppedRejectionIsAlsoTrulyRecorded() {
     faults.add(fault(FaultMode.DROP_REPLY, null, null, null, null, null));
     String txn = txn();
-    handle(cmds.post(txn, A, B, 100_000, "0000"));
+    handle(cmds.post(txn, A, B, 600_000)); // above the per-transaction limit: rejected
     faults.reset();
 
     assertThat(outbox()).isZero();
@@ -119,7 +117,7 @@ class FaultInjectionIT {
   void aDuplicatedReplyIsPublishedTwiceWithTheSameEventId() {
     faults.add(fault(FaultMode.DUPLICATE_REPLY, "PostTransfer", null, null, null, null));
 
-    handle(cmds.post(txn(), A, B, 100_000, "1234"));
+    handle(cmds.post(txn(), A, B, 100_000));
 
     List<String> ids = jdbc.queryForList("select payload->>'eventId' from outbox order by id", String.class);
     assertThat(ids).hasSize(2);
@@ -131,7 +129,7 @@ class FaultInjectionIT {
   void aDelayedReplyIsHeldBackUntilItsTimeHasCome() {
     faults.add(fault(FaultMode.DELAY, null, null, 60_000L, null, null));
 
-    handle(cmds.post(txn(), A, B, 1_000, "1234"));
+    handle(cmds.post(txn(), A, B, 1_000));
 
     assertThat(jdbc.queryForObject("select available_at > now() + interval '50 seconds' from outbox", Boolean.class)).isTrue();
   }
@@ -141,7 +139,7 @@ class FaultInjectionIT {
     faults.add(fault(FaultMode.REJECT, "PostTransfer", null, null, "CORE_UNAVAILABLE", null));
     String txn = txn();
 
-    CoreEvent e = handle(cmds.post(txn, A, B, 100_000, "1234"));
+    CoreEvent e = handle(cmds.post(txn, A, B, 100_000));
 
     assertThat(e.eventType()).isEqualTo("TransferRejected");
     assertThat(e.outcome()).isEqualTo(CoreEvent.Outcome.FAILURE);
@@ -155,12 +153,12 @@ class FaultInjectionIT {
   void rejectionUsesTheFailureEventOfEachCommandType() {
     faults.add(fault(FaultMode.REJECT, null, null, null, null, null));
 
-    assertThat(handle(cmds.holdFunds(txn(), A, 1_000, "1234")).eventType()).isEqualTo("HoldRejected");
+    assertThat(handle(cmds.holdFunds(txn(), A, 1_000)).eventType()).isEqualTo("HoldRejected");
     assertThat(handle(cmds.commitHold(txn(), "H")).eventType()).isEqualTo("CommitFailed");
     assertThat(handle(cmds.releaseHold(txn(), "H")).eventType()).isEqualTo("ReleaseFailed");
     assertThat(handle(cmds.creditWallet(txn(), A, 1_000)).eventType()).isEqualTo("CreditRejected");
     assertThat(handle(cmds.reverse(txn(), txn(), 1_000)).eventType()).isEqualTo("ReversalRejected");
-    CoreEvent validated = handle(cmds.validate(txn(), A, B, 1_000, "1234"));
+    CoreEvent validated = handle(cmds.validate(txn(), A, B, 1_000));
     assertThat(validated.eventType()).isEqualTo("TransactionRejected");
     assertThat(validated.reasonCode()).isEqualTo("INJECTED_REJECT");
     // a status inquiry has no failure event: it is answered normally
@@ -172,8 +170,8 @@ class FaultInjectionIT {
     String victim = txn();
     faults.add(fault(FaultMode.DROP_REPLY, null, victim, null, null, null));
 
-    handle(cmds.post(victim, A, B, 1_000, "1234"));
-    handle(cmds.post(txn(), A, B, 1_000, "1234"));
+    handle(cmds.post(victim, A, B, 1_000));
+    handle(cmds.post(txn(), A, B, 1_000));
 
     assertThat(outbox()).isEqualTo(1);
   }
@@ -182,9 +180,9 @@ class FaultInjectionIT {
   void aFaultWithATimesLimitFiresThatOftenAndThenStops() {
     faults.add(fault(FaultMode.DROP_REPLY, null, null, null, null, 2));
 
-    handle(cmds.post(txn(), A, B, 1_000, "1234"));
-    handle(cmds.post(txn(), A, B, 1_000, "1234"));
-    handle(cmds.post(txn(), A, B, 1_000, "1234"));
+    handle(cmds.post(txn(), A, B, 1_000));
+    handle(cmds.post(txn(), A, B, 1_000));
+    handle(cmds.post(txn(), A, B, 1_000));
 
     assertThat(outbox()).isEqualTo(1);
     assertThat(faults.list()).isEmpty();
@@ -199,14 +197,14 @@ class FaultInjectionIT {
     faults.reset();
 
     assertThat(faults.list()).isEmpty();
-    assertThat(handle(cmds.post(txn(), A, B, 1_000, "1234")).eventType()).isEqualTo("TransferPosted");
+    assertThat(handle(cmds.post(txn(), A, B, 1_000)).eventType()).isEqualTo("TransferPosted");
     assertThat(outbox()).isEqualTo(1);
   }
 
   @Test
   void aRedeliveredCommandAfterADroppedReplyGetsTheStoredEventWhenTheFaultIsGone() {
     faults.add(fault(FaultMode.DROP_REPLY, null, null, null, null, 1));
-    CoreCommand post = cmds.post(txn(), A, B, 1_000, "1234");
+    CoreCommand post = cmds.post(txn(), A, B, 1_000);
     CoreEvent first = handle(post);
     assertThat(outbox()).isZero();
 

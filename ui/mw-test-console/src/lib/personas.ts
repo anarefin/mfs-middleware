@@ -1,4 +1,4 @@
-// The users the test console signs in as. App users: core-mock's own seed wallets (core PIN 1234),
+// The users the test console signs in as. App users: core-mock's own seed wallets (PIN 13579 at mw-auth, ticket 72),
 // logged in at mw-auth with the seeded app PIN; any other app user can be typed in as well (mw-seeder's
 // seed-customer01, or an MSISDN). Portal users: the realm portals import's users (deploy/keycloak/realms,
 // password + the pre-set TOTP secret).

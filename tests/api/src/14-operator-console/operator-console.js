@@ -5,7 +5,7 @@ export default [
     name: '[admin operator p2p] an operator finds a P2P by txnId and by MSISDN and sees its timeline and audit trail',
     run: async (MW, S) => {
       await S.note(['01711000001', '01711000002', 'FEE-POOL']);
-      await S.p2p('customer01', '01711000002', 1000, '1234');
+      await S.p2p('customer01', '01711000002', 1000, MW.pin);
       S.status(200);
       const id = S.txnId();
       const mine = r => ((r.body || {}).items || []).filter(t => t.txnId === id);
@@ -29,7 +29,7 @@ export default [
     name: '[admin operator reversal] an operator finds a P2P by MSISDN and reverses it once a second operator approves',
     run: async (MW, S) => {
       await S.note(['01711000001', '01711000002', 'FEE-POOL']);
-      await S.p2p('customer01', '01711000002', 1000, '1234');
+      await S.p2p('customer01', '01711000002', 1000, MW.pin);
       S.status(200);
       const id = S.txnId();
       const mine = r => ((r.body || {}).items || []).filter(t => t.txnId === id);

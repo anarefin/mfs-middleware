@@ -301,7 +301,7 @@ over.
 - Test-only objects, `routes-test/` + `consumers-test/`: applied only when `apisix-init` runs with
   `MW_E2E_ROUTES=1`, which `make api-test` (`tests/api/run.sh`) and `make perf` (`scripts/suite.sh`) do on the running stack; every
   other run (a default `make up`) DELETEs them. Today: `test-core-mock` (`/test/core-mock/v1/*` ->
-  core-mock's test/admin API: balances, PIN key, faults) and `test-simulators` (`/test/sim/*` ->
+  core-mock's test/admin API: balances, faults) and `test-simulators` (`/test/sim/*` ->
   mw-simulators' control API: forced scenarios) and `test-mail` (`GET /test/mail/*` -> GreenMail's
   REST API `/api/*`: mailboxes of the dev mail server, ticket 25) and `test-audit-dw` (`GET
   /test/audit-dw/v1/*` -> mw-audit-dw's test API `/test/v1/audit/*`: audit event search and the

@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import mfs.mw.orchestrator.dto.EncryptedPin;
 import mfs.mw.orchestrator.dto.ErrorInfo;
 import mfs.mw.orchestrator.dto.TxnDetail;
 import mfs.mw.orchestrator.dto.TxnRequest;
@@ -27,7 +26,7 @@ public class TransactionRepository {
 
   private static final String COLUMNS =
       "txn_id, created_at, updated_at, status, previous_status, reply_to, fee_minor, core_ref,"
-          + " error_code, error_message, error_message_bn, error_retryable, encrypted_pin::text,"
+          + " error_code, error_message, error_message_bn, error_retryable,"
           + " request::text, hold_id, partner_ref, reversal_txn_id";
 
   private final JdbcTemplate jdbc;
@@ -49,8 +48,8 @@ public class TransactionRepository {
     jdbc.update(
         "insert into transaction (txn_id, created_at, updated_at, requested_at, channel, txn_type,"
             + " status, previous_status, initiator_id, initiator_type, initiator_hash, payee_hash,"
-            + " correlation_id, idempotency_key, reply_to, amount_minor, currency, encrypted_pin, request)"
-            + " values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb)",
+            + " correlation_id, idempotency_key, reply_to, amount_minor, currency, request)"
+            + " values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)",
         rec.txnId(),
         Timestamp.from(rec.createdAt()),
         Timestamp.from(rec.updatedAt()),
@@ -68,7 +67,6 @@ public class TransactionRepository {
         rec.replyTo(),
         r.amount().valueMinor(),
         r.amount().currency(),
-        rec.encryptedPin() == null ? null : json.writeValueAsString(rec.encryptedPin()),
         json.writeValueAsString(r));
   }
 
@@ -77,7 +75,7 @@ public class TransactionRepository {
     jdbc.update(
         "update transaction set updated_at = ?, status = ?, previous_status = ?, fee_minor = ?,"
             + " core_ref = ?, error_code = ?, error_message = ?, error_message_bn = ?,"
-            + " error_retryable = ?, encrypted_pin = ?::jsonb, hold_id = ?, partner_ref = ?,"
+            + " error_retryable = ?, hold_id = ?, partner_ref = ?,"
             + " reversal_txn_id = ?, version = version + 1"
             + " where txn_id = ?",
         Timestamp.from(rec.updatedAt()),
@@ -89,7 +87,6 @@ public class TransactionRepository {
         rec.error() == null ? null : rec.error().message(),
         rec.error() == null ? null : rec.error().messageBn(),
         rec.error() == null ? null : rec.error().retryable(),
-        rec.encryptedPin() == null ? null : json.writeValueAsString(rec.encryptedPin()),
         rec.holdId(),
         rec.partnerRef(),
         rec.reversalTxnId(),
@@ -267,7 +264,6 @@ public class TransactionRepository {
             : new ErrorInfo(
                 code, rs.getString("error_message"), rs.getString("error_message_bn"),
                 rs.getBoolean("error_retryable"));
-    String pin = rs.getString("encrypted_pin");
     String prev = rs.getString("previous_status");
     Long fee = rs.getObject("fee_minor", Long.class);
     return new TransactionRecord(
@@ -281,7 +277,6 @@ public class TransactionRepository {
         fee,
         rs.getString("core_ref"),
         error,
-        pin == null ? null : json.readValue(pin, EncryptedPin.class),
         rs.getString("hold_id"),
         rs.getString("partner_ref"),
         rs.getObject("reversal_txn_id", UUID.class));

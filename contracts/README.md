@@ -8,7 +8,7 @@ Files only, no code (spec 4.2, 4.3, D14). Modules read this folder through the
 ```
 OWNERS.yml                                         owning service per file
 EXTERNAL.yml                                       event-contract sides played outside the repo
-common/defs.v1.schema.json                         shared types: Amount, Party, Msisdn, EncryptedPin,
+common/defs.v1.schema.json                         shared types: Amount, Party, Msisdn, TxnAssertion,
                                                    TxnId, CorrelationId, SchemaVersion, ...
 events/<owner>/<topic>.schema.json                 one schema per topic (JSON Schema 2020-12)
 events/<owner>/<topic>/<Msg>.payload.schema.json   multi-type topics: one payload schema per message type
@@ -90,8 +90,8 @@ A contract change is its own WP, made by the topic's owner (ground rule "Contrac
    `"type": "object"`, its fields and `required`. Use the `common/defs.v1` types by relative `$ref`.
 4. Add `samples/core.command.v1/NewThing/valid-<case>.json` and `invalid-<reason>.json` (whole
    envelope messages), and `expected-errors.json` stating each invalid sample's errors, e.g.
-   `{ "invalid-without-pin.json": ["/payload must have required property 'encryptedPin'"] }`.
-   Run `make contracts-lint`; on a mismatch it prints the errors the sample actually produced.
+   `{ "invalid-without-assertion.json": ["/payload must have required property 'assertion'"] }`.
+   Run `./gradlew :contractsLint`; on a mismatch it prints the errors the sample actually produced.
 5. No OWNERS.yml entry is needed: the payload belongs to the envelope.
 
 ## Splitting a family out of a shared payload

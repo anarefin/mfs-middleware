@@ -66,9 +66,9 @@ test_repo_has_the_v1_contract_set_under_each_owning_service() {
   done
 }
 
-# Core commands needing customer authorisation carry mw-auth's assertion (18.7, D22) or, until
-# ticket 72, the deprecated encryptedPin: each has an invalid sample stated to fail for carrying
-# neither, and a valid sample with an assertion.
+# Core commands needing customer authorisation carry mw-auth's assertion (18.7, D22): each has an
+# invalid sample stated to fail for a missing assertion and a valid sample with one. Since ticket 72
+# no PIN travels on Kafka: no event schema or sample names encryptedPin.
 test_repo_core_command_requires_authorisation_on_authorising_commands() {
   local s="$REPO_DIR/contracts/events/mw-orchestrator/samples/core.command.v1" c
   for c in ValidateTransaction HoldFunds PostTransfer; do
@@ -77,6 +77,8 @@ test_repo_core_command_requires_authorisation_on_authorising_commands() {
     grep -lq '"assertion"' "$s/$c"/valid-*.json 2>/dev/null || fail "no valid $c sample with an assertion"
   done
   grep -q '"TxnAssertion": {' "$REPO_DIR/contracts/common/defs.v1.schema.json" || fail "defs.v1 lacks TxnAssertion"
+  grep -rlq 'encryptedPin' "$REPO_DIR/contracts/events" && fail "an event contract still carries encryptedPin (removed in ticket 72)"
+  return 0
 }
 
 # A decimal amount is rejected because valueMinor must be an integer (spec 5.1).

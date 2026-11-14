@@ -69,7 +69,8 @@ public class CoreEventMapper {
     payload.put("msisdn", w.msisdn());
     payload.put("walletType", w.type());
     payload.put("status", w.status());
-    payload.put("hasPin", w.hasPin());
+    // the core holds no PIN since ticket 72: mw-auth decides "has a PIN" from its auth.credential
+    payload.put("hasPin", false);
     payload.put("version", w.version());
     payload.put("change", change);
     return new CoreEvent(

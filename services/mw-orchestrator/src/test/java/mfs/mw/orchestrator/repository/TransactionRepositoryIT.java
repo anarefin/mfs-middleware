@@ -62,7 +62,7 @@ class TransactionRepositoryIT {
   private static TransactionRecord received(TxnRequest req) {
     return new TransactionRecord(
         UUID.fromString(req.txnId()), T0, T0, req, Status.RECEIVED, null, "gw-1", null, null, null,
-        req.encryptedPin(), null, null, null);
+        null, null, null);
   }
 
   private TransactionRecord inserted() {
@@ -88,12 +88,12 @@ class TransactionRepositoryIT {
     assertThat(found.replyTo()).isEqualTo("gw-1");
     assertThat(found.request().txnId()).isEqualTo(rec.request().txnId());
     assertThat(found.request().amount().valueMinor()).isEqualTo(5_000);
-    assertThat(found.encryptedPin()).isEqualTo(rec.encryptedPin());
+    assertThat(found.request().assertion()).isEqualTo(TestData.ASSERTION);
     assertThat(repo.find(UUID.randomUUID())).isEmpty();
   }
 
   @Test
-  void anUpdateKeepsEveryMutableColumnAndATerminalStateDropsThePin() {
+  void anUpdateKeepsEveryMutableColumn() {
     TransactionRecord rec = inserted();
     ErrorInfo error = new ErrorInfo("MW-CORE-INSUFFICIENT_BALANCE", "Insufficient balance", "অপর্যাপ্ত ব্যালেন্স", false);
     TransactionRecord moved =
@@ -109,7 +109,6 @@ class TransactionRepositoryIT {
     assertThat(found.holdId()).isEqualTo("HOLD-1");
     assertThat(found.partnerRef()).isEqualTo("REF-1");
     assertThat(found.error()).isEqualTo(error);
-    assertThat(found.encryptedPin()).isNull();
     assertThat(found.updatedAt()).isEqualTo(T0.plusSeconds(2));
   }
 

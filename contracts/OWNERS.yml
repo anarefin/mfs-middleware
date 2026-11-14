@@ -11,7 +11,7 @@
 # audit event), that consumer owns the contract, as a server owns its API.
 # Core events are owned by mw-core-mock until the core team takes over (open point 1).
 #
-# common/ holds the shared types every schema $refs (Amount, Party, Msisdn, EncryptedPin,
+# common/ holds the shared types every schema $refs (Amount, Party, Msisdn, TxnAssertion,
 # TxnId, CorrelationId, SchemaVersion...). It has no service folder, so its owner is named
 # here and may be any service. Owner: mw-orchestrator, because
 #   - it owns 6 of the 11 topics and produces or consumes every financial message, so a change

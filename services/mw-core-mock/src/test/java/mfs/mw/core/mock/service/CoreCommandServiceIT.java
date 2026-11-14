@@ -12,8 +12,6 @@ import mfs.mw.core.mock.dto.Amount;
 import mfs.mw.core.mock.dto.CoreCommand;
 import mfs.mw.core.mock.dto.CoreEvent;
 import mfs.mw.core.mock.dto.Party;
-import mfs.mw.core.mock.security.PinKeyProvider;
-import mfs.mw.core.mock.security.TestPins;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,7 +39,6 @@ class CoreCommandServiceIT {
   private final CoreCommandService service;
   private final WalletSeeder seeder;
   private final JdbcTemplate jdbc;
-  private final PinKeyProvider keys;
   private final JsonMapper json;
 
   @Autowired
@@ -49,12 +46,10 @@ class CoreCommandServiceIT {
       CoreCommandService service,
       WalletSeeder seeder,
       JdbcTemplate jdbc,
-      PinKeyProvider keys,
       JsonMapper json) {
     this.service = service;
     this.seeder = seeder;
     this.jdbc = jdbc;
-    this.keys = keys;
     this.json = json;
   }
 
@@ -66,19 +61,15 @@ class CoreCommandServiceIT {
 
   // --- helpers ------------------------------------------------------------------------------
 
-  private CoreCommand command(String type, String commandId, String from, String to, long minor, String pin) {
+  /** A P2P from {@code from}, authorised by mw-auth's assertion of {@code authoriser} (normally the payer). */
+  private CoreCommand command(String type, String commandId, String from, String to, long minor, String authoriser) {
     String txnId = uuidV7Shaped();
-    JsonNode payload =
-        json.valueToTree(
-            new java.util.LinkedHashMap<String, Object>() {
-              {
-                put("txnType", "P2P");
-                put("debitParty", new Party("WALLET", from, null, "CUSTOMER"));
-                put("creditParty", new Party("WALLET", to, null, "CUSTOMER"));
-                put("amount", Amount.bdt(minor));
-                put("encryptedPin", TestPins.encrypt(keys.publicKeyPem(), keys.keyId(), pin));
-              }
-            });
+    java.util.Map<String, Object> p = new java.util.LinkedHashMap<>();
+    p.put("txnType", "P2P");
+    p.put("debitParty", new Party("WALLET", from, null, "CUSTOMER"));
+    p.put("creditParty", new Party("WALLET", to, null, "CUSTOMER"));
+    p.put("amount", Amount.bdt(minor));
+    JsonNode payload = json.valueToTree(CoreCommandsTestSupport.authorised(p, authoriser));
     Instant now = Instant.now();
     return new CoreCommand(1, type, commandId, txnId, "corr-" + txnId, now, now.plusSeconds(300), payload);
   }
@@ -89,13 +80,17 @@ class CoreCommandServiceIT {
     return u.substring(0, 14) + "7" + u.substring(15);
   }
 
-  private CoreCommand post(String from, String to, long minor, String pin) {
-    CoreCommand c = command("PostTransfer", "x", from, to, minor, pin);
+  private CoreCommand post(String from, String to, long minor) {
+    return postAuthorisedBy(from, to, minor, from);
+  }
+
+  private CoreCommand postAuthorisedBy(String from, String to, long minor, String authoriser) {
+    CoreCommand c = command("PostTransfer", "x", from, to, minor, authoriser);
     return new CoreCommand(1, c.commandType(), c.txnId() + ":post", c.txnId(), c.correlationId(), c.issuedAt(), c.expiresAt(), c.payload());
   }
 
-  private CoreCommand validate(String from, String to, long minor, String pin) {
-    CoreCommand c = command("ValidateTransaction", "x", from, to, minor, pin);
+  private CoreCommand validate(String from, String to, long minor, String authoriser) {
+    CoreCommand c = command("ValidateTransaction", "x", from, to, minor, authoriser);
     return new CoreCommand(1, c.commandType(), c.txnId() + ":validate", c.txnId(), c.correlationId(), c.issuedAt(), c.expiresAt(), c.payload());
   }
 
@@ -121,7 +116,7 @@ class CoreCommandServiceIT {
 
   @Test
   void validateSucceedsWithFeeAndLimitsAndMovesNoMoney() {
-    CoreEvent e = handle(validate(CUSTOMER_A, CUSTOMER_B, 100_000, "1234"));
+    CoreEvent e = handle(validate(CUSTOMER_A, CUSTOMER_B, 100_000, CUSTOMER_A));
 
     assertThat(e.eventType()).isEqualTo("TransactionValidated");
     assertThat(e.outcome()).isEqualTo(CoreEvent.Outcome.SUCCESS);
@@ -132,19 +127,19 @@ class CoreCommandServiceIT {
   }
 
   @Test
-  void validateWithWrongPinIsRejected() {
-    CoreEvent e = handle(validate(CUSTOMER_A, CUSTOMER_B, 100_000, "9999"));
+  void validateAuthorisedByAnotherWalletIsRejected() {
+    CoreEvent e = handle(validate(CUSTOMER_A, CUSTOMER_B, 100_000, CUSTOMER_B));
 
     assertThat(e.eventType()).isEqualTo("TransactionRejected");
     assertThat(e.outcome()).isEqualTo(CoreEvent.Outcome.FAILURE);
-    assertThat(e.reasonCode()).isEqualTo("INVALID_PIN");
+    assertThat(e.reasonCode()).isEqualTo("MW-AUTH-046");
   }
 
   // --- PostTransfer -------------------------------------------------------------------------
 
   @Test
   void postTransferMovesAmountAndFeeInDoubleEntry() {
-    CoreEvent e = handle(post(CUSTOMER_A, CUSTOMER_B, 100_000, "1234"));
+    CoreEvent e = handle(post(CUSTOMER_A, CUSTOMER_B, 100_000));
 
     assertThat(e.eventType()).isEqualTo("TransferPosted");
     assertThat(e.coreRef()).startsWith("CORE-");
@@ -160,27 +155,18 @@ class CoreCommandServiceIT {
   }
 
   @Test
-  void wrongPinIsRejectedAndNothingMoves() {
-    CoreEvent e = handle(post(CUSTOMER_A, CUSTOMER_B, 100_000, "0000"));
+  void anAssertionOfAnotherWalletIsRejectedAndNothingMoves() {
+    CoreEvent e = handle(postAuthorisedBy(CUSTOMER_A, CUSTOMER_B, 100_000, CUSTOMER_B));
 
     assertThat(e.eventType()).isEqualTo("TransferRejected");
-    assertThat(e.reasonCode()).isEqualTo("INVALID_PIN");
+    assertThat(e.reasonCode()).isEqualTo("MW-AUTH-046");
     assertThat(balance(CUSTOMER_A)).isEqualTo(1_000_000);
     assertThat(jdbc.queryForObject("select count(*) from entry", Long.class)).isZero();
   }
 
   @Test
-  void undecryptablePinIsAnInvalidPinBlock() {
-    CoreCommand c = post(CUSTOMER_A, CUSTOMER_B, 1_000, "1234");
-    ((tools.jackson.databind.node.ObjectNode) c.payload().path("encryptedPin"))
-        .put("ciphertext", "bm90LWEtcGlu");
-
-    assertThat(handle(c).reasonCode()).isEqualTo("INVALID_PIN_BLOCK");
-  }
-
-  @Test
   void insufficientFundsIsRejected() {
-    CoreEvent e = handle(post(BROKE_MERCHANT, CUSTOMER_B, 100, "1234"));
+    CoreEvent e = handle(post(BROKE_MERCHANT, CUSTOMER_B, 100));
 
     assertThat(e.eventType()).isEqualTo("TransferRejected");
     assertThat(e.reasonCode()).isEqualTo("INSUFFICIENT_BALANCE");
@@ -190,14 +176,14 @@ class CoreCommandServiceIT {
   @Test
   void amountPlusFeeMustBeCoveredByTheBalance() {
     // balance 1,000,000; 499,500 + 500 fee is fine, but two of them leave too little for the fee
-    handle(post(CUSTOMER_A, CUSTOMER_B, 499_500, "1234"));
-    assertThat(handle(post(CUSTOMER_A, CUSTOMER_B, 499_501, "1234")).reasonCode())
+    handle(post(CUSTOMER_A, CUSTOMER_B, 499_500));
+    assertThat(handle(post(CUSTOMER_A, CUSTOMER_B, 499_501)).reasonCode())
         .isEqualTo("INSUFFICIENT_BALANCE");
   }
 
   @Test
   void overThePerTransactionLimitIsRejected() {
-    CoreEvent e = handle(post(AGENT, CUSTOMER_B, 500_001, "1234"));
+    CoreEvent e = handle(post(AGENT, CUSTOMER_B, 500_001));
 
     assertThat(e.eventType()).isEqualTo("TransferRejected");
     assertThat(e.reasonCode()).isEqualTo("LIMIT_EXCEEDED_PER_TXN");
@@ -206,30 +192,30 @@ class CoreCommandServiceIT {
   @Test
   void overTheDailyLimitIsRejected() {
     for (int i = 0; i < 3; i++) {
-      assertThat(handle(post(AGENT, CUSTOMER_B, 500_000, "1234")).eventType()).isEqualTo("TransferPosted");
+      assertThat(handle(post(AGENT, CUSTOMER_B, 500_000)).eventType()).isEqualTo("TransferPosted");
     }
 
-    CoreEvent e = handle(post(AGENT, CUSTOMER_B, 100, "1234"));
+    CoreEvent e = handle(post(AGENT, CUSTOMER_B, 100));
     assertThat(e.reasonCode()).isEqualTo("LIMIT_EXCEEDED_DAILY");
   }
 
   @Test
   void blockedAndUnknownWalletsAndOddRequestsAreRejected() {
     jdbc.update("update wallet set status = 'BLOCKED' where id = ?", CUSTOMER_A);
-    assertThat(handle(post(CUSTOMER_A, CUSTOMER_B, 100, "1234")).reasonCode()).isEqualTo("ACCOUNT_BLOCKED");
-    assertThat(handle(post(CUSTOMER_B, CUSTOMER_A, 100, "1234")).reasonCode()).isEqualTo("CREDIT_ACCOUNT_BLOCKED");
-    assertThat(handle(post("01700000000", CUSTOMER_B, 100, "1234")).reasonCode()).isEqualTo("WALLET_NOT_FOUND");
-    assertThat(handle(post(CUSTOMER_B, "01700000000", 100, "1234")).reasonCode())
+    assertThat(handle(post(CUSTOMER_A, CUSTOMER_B, 100)).reasonCode()).isEqualTo("ACCOUNT_BLOCKED");
+    assertThat(handle(post(CUSTOMER_B, CUSTOMER_A, 100)).reasonCode()).isEqualTo("CREDIT_ACCOUNT_BLOCKED");
+    assertThat(handle(post("01700000000", CUSTOMER_B, 100)).reasonCode()).isEqualTo("WALLET_NOT_FOUND");
+    assertThat(handle(post(CUSTOMER_B, "01700000000", 100)).reasonCode())
         .isEqualTo("CREDIT_WALLET_NOT_FOUND");
-    assertThat(handle(post(CUSTOMER_B, CUSTOMER_B, 100, "1234")).reasonCode()).isEqualTo("SAME_WALLET");
-    assertThat(handle(post(CUSTOMER_B, AGENT, 0, "1234")).reasonCode()).isEqualTo("INVALID_AMOUNT");
+    assertThat(handle(post(CUSTOMER_B, CUSTOMER_B, 100)).reasonCode()).isEqualTo("SAME_WALLET");
+    assertThat(handle(post(CUSTOMER_B, AGENT, 0)).reasonCode()).isEqualTo("INVALID_AMOUNT");
   }
 
   // --- idempotency, invariant, odd commands -------------------------------------------------
 
   @Test
   void theSameCommandIdTwiceGivesOneLedgerEffectAndTwoIdenticalResultEvents() {
-    CoreCommand c = post(CUSTOMER_A, CUSTOMER_B, 100_000, "1234");
+    CoreCommand c = post(CUSTOMER_A, CUSTOMER_B, 100_000);
 
     CoreEvent first = handle(c);
     CoreEvent second = handle(c);
@@ -245,7 +231,7 @@ class CoreCommandServiceIT {
 
   @Test
   void aRepeatedFailureAlsoReturnsTheSameFailureEvenIfTheWorldChanged() {
-    CoreCommand c = post(BROKE_MERCHANT, CUSTOMER_B, 100, "1234");
+    CoreCommand c = post(BROKE_MERCHANT, CUSTOMER_B, 100);
     CoreEvent first = handle(c);
     jdbc.update("update wallet set balance_minor = 10000 where id = ?", BROKE_MERCHANT);
 
@@ -255,7 +241,7 @@ class CoreCommandServiceIT {
 
   @Test
   void eventsAreStoredInTheOutboxKeyedByTxnIdWithTheCommandsCorrelation() {
-    CoreCommand c = post(CUSTOMER_A, CUSTOMER_B, 100, "1234");
+    CoreCommand c = post(CUSTOMER_A, CUSTOMER_B, 100);
     handle(c);
 
     assertThat(jdbc.queryForObject("select msg_key from outbox", String.class)).isEqualTo(c.txnId());
@@ -273,8 +259,8 @@ class CoreCommandServiceIT {
       String from = wallets.get(random.nextInt(wallets.size()));
       String to = wallets.get(random.nextInt(wallets.size()));
       long amount = 1 + random.nextInt(600_000);
-      String pin = random.nextInt(10) == 0 ? "0000" : "1234";
-      if ("TransferPosted".equals(handle(post(from, to, amount, pin)).eventType())) {
+      String authoriser = random.nextInt(10) == 0 ? "01799999990" : from; // 1 in 10 not the payer's
+      if ("TransferPosted".equals(handle(postAuthorisedBy(from, to, amount, authoriser)).eventType())) {
         posted++;
       }
     }
@@ -287,7 +273,7 @@ class CoreCommandServiceIT {
 
   @Test
   void expiredCommandsAreDroppedWithoutAnEvent() {
-    CoreCommand c = post(CUSTOMER_A, CUSTOMER_B, 100, "1234");
+    CoreCommand c = post(CUSTOMER_A, CUSTOMER_B, 100);
     CoreCommand stale =
         new CoreCommand(1, c.commandType(), c.commandId(), c.txnId(), c.correlationId(),
             Instant.now().minusSeconds(60), Instant.now().minusSeconds(30), c.payload());
@@ -299,7 +285,7 @@ class CoreCommandServiceIT {
 
   @Test
   void commandTypesTheCoreMockDoesNotKnowAreIgnored() {
-    CoreCommand c = command("ApplyComplianceAction", "h-1", CUSTOMER_A, CUSTOMER_B, 100, "1234");
+    CoreCommand c = command("ApplyComplianceAction", "h-1", CUSTOMER_A, CUSTOMER_B, 100, CUSTOMER_A);
 
     assertThat(service.handle(c)).isEmpty();
   }

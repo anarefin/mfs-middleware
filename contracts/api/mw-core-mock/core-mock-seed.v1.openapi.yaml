@@ -9,8 +9,8 @@ info:
     `MW_COREMOCK_SEED_API_ENABLED=true` (`mw.coremock.seed-api.enabled`; the dev stack sets it);
     off, a PUT is 405 and the mock seeds only its own fixed ranges on start.
 
-    A seeded wallet's id is its MSISDN; it gets the mock's seed PIN (`mw.coremock.seed.pin`, fake)
-    and its opening balance without ledger entries, as the mock's own start-up seed does. The PUT
+    A seeded wallet's id is its MSISDN; it gets no PIN (the core holds none since ticket 72;
+    first PINs are set at mw-auth) and its opening balance without ledger entries, as the mock's own start-up seed does. The PUT
     is create-if-absent: an existing wallet is answered as it is (200) and never changed, whatever
     the body says, so tests that moved its balance keep their numbers.
 servers:

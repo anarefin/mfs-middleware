@@ -6,8 +6,8 @@ import mfs.mw.ussd.util.SensitiveType;
 
 /**
  * An ACTION node's call into a flow: the session, the menu path taken, the canonical fields from
- * the node's mapping ({@code creditParty}, {@code amount} in taka) and the PIN ciphertext
- * encrypted on receipt (never stored).
+ * the node's mapping ({@code creditParty}, {@code amount} in taka) and the PIN block
+ * encrypted on receipt under the transport key (never stored; sent to mw-auth only).
  */
 public record FlowRequest(
     String flow,

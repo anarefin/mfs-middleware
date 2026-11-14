@@ -11,15 +11,16 @@ export default [
       await S.note(['01711000001', '01911000001']);
       const co = await checkoutSession(MW, S, 2500);
       const page = await MW.checkout.page(co.token);
-      const key = await MW.http('GET', '/test/core-mock/v1/pin-public-key', { apikey: true });
-      S.eq('the checkout page shows 2500 poisha for Demo Shop with the core PIN key',
-        [page.status, page.body.merchantName, page.body.amount.valueMinor, page.body.pinKey.keyId], [200, 'Demo Shop', 2500, key.body.keyId]);
+      const key = await MW.http('GET', '/auth/v1/pin-key');
+      S.eq('the checkout page shows 2500 poisha for Demo Shop with the PIN transport key (ticket 72)',
+        [page.status, page.body.merchantName, page.body.amount.valueMinor, page.body.pinKey.keyId, page.body.pinKey.algorithm],
+        [200, 'Demo Shop', 2500, key.body.keyId, 'RSA-OAEP-SHA-256']);
       await co.otp('01711000001');
-      S.record(await MW.checkout.confirm(co.token, co.code === '000000' ? '999999' : '000000', '1234'));
+      S.record(await MW.checkout.confirm(co.token, co.code === '000000' ? '999999' : '000000', MW.pin));
       S.status(401);
       S.code('MW-AUTH-010');
       await S.noChange();
-      S.record(await MW.checkout.confirm(co.token, co.code, '1234'));
+      S.record(await MW.checkout.confirm(co.token, co.code, MW.pin));
       S.status(200);
       S.eq('the checkout result is PAID', S.last().body.status, 'PAID');
       await S.changedBy({ '01711000001': -2500, '01911000001': 2500 });
@@ -34,7 +35,7 @@ export default [
       const co = await checkoutSession(MW, S, 1500);
       await S.reject('ValidateTransaction', 'INSUFFICIENT_BALANCE');
       await co.otp('01711000001');
-      S.record(await MW.checkout.confirm(co.token, co.code, '1234'));
+      S.record(await MW.checkout.confirm(co.token, co.code, MW.pin));
       S.status(200);
       S.eq('the checkout result is FAILED', S.last().body.status, 'FAILED');
       await S.noChange();
@@ -49,7 +50,7 @@ export default [
       S.after(() => MW.sim.ipnAcceptAll());
       await MW.sim.ipnFail(co.sessionId, 2, 503);
       await co.otp('01711000001');
-      S.record(await MW.checkout.confirm(co.token, co.code, '1234'));
+      S.record(await MW.checkout.confirm(co.token, co.code, MW.pin));
       S.status(200);
       S.eq('the checkout result is PAID', S.last().body.status, 'PAID');
       const got = await MW.poll(() => MW.sim.ipnReceived(co.sessionId), l => l.length >= 3, 90000, 1000);
@@ -76,10 +77,10 @@ export default [
       await S.note(['01711000001', '01911000001']);
       const co = await checkoutSession(MW, S, 1300);
       await co.otp('01711000001');
-      S.record(await MW.checkout.confirm(co.token, co.code, '1234'));
+      S.record(await MW.checkout.confirm(co.token, co.code, MW.pin));
       S.status(200);
       S.eq('the checkout result is PAID', S.last().body.status, 'PAID');
-      S.record(await MW.checkout.confirm(co.token, co.code, '1234'));
+      S.record(await MW.checkout.confirm(co.token, co.code, MW.pin));
       S.status(409);
       S.code('MW-VAL-021');
       await S.changedBy({ '01711000001': -1300, '01911000001': 1300 });
@@ -93,7 +94,7 @@ export default [
       const co = await checkoutSession(MW, S, 1400);
       await S.dropReply('PostTransfer');
       await co.otp('01711000001');
-      S.record(await MW.checkout.confirm(co.token, co.code, '1234'));
+      S.record(await MW.checkout.confirm(co.token, co.code, MW.pin));
       S.status(202);
       await co.seesWithin('PAID', 120);
       await S.changedBy({ '01711000001': -1400, '01911000001': 1400 });
@@ -107,7 +108,7 @@ export default [
       const co = await checkoutSession(MW, S, 1600);
       await S.refusalLost('PostTransfer');
       await co.otp('01711000001');
-      S.record(await MW.checkout.confirm(co.token, co.code, '1234'));
+      S.record(await MW.checkout.confirm(co.token, co.code, MW.pin));
       S.status(202);
       await co.seesWithin('FAILED', 120);
       await S.noChange();

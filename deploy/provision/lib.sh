@@ -48,28 +48,6 @@ sync_env() {
   log "$SVC: $1 synced from $2"
 }
 
-# copy_key <from-svc> <from-key> <to-key>: another service's value, copied on every run (the core's
-# PIN public key: the core team handing it over). The source must already exist (manifest order).
-copy_key() {
-  has_field "$2" "secret/$1" || die "$SVC: no $2 in secret/$1 (is $1 provisioned before $SVC?)"
-  field "$2" "secret/$1" >"$tmp/v"
-  kv_set "$3=@$tmp/v"
-  rm -f "$tmp/v"
-  log "$SVC: $3 copied from secret/$1"
-}
-
-# pin_keypair <key-id>: the core mock's RSA-2048 PIN key pair, created once (channels keep working).
-pin_keypair() {
-  if has_field mw.coremock.pin.private-key; then return 0; fi
-  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$tmp/private.pem" 2>/dev/null
-  openssl pkey -in "$tmp/private.pem" -pubout -out "$tmp/public.pem"
-  printf '%s' "$1" >"$tmp/kid"
-  kv_set "mw.coremock.pin.private-key=@$tmp/private.pem" "mw.coremock.pin.public-key=@$tmp/public.pem" \
-    "mw.coremock.pin.key-id=@$tmp/kid"
-  rm -f "$tmp/private.pem" "$tmp/public.pem" "$tmp/kid"
-  log "$SVC: created PIN key pair $1"
-}
-
 # db_role <role> <schema> [<schema>...]: login role with spring.datasource.password, every schema
 # owned by it (search_path the first), CONNECT only on the database. The advisory lock serialises
 # against anything else changing the database ACL at the same time ("tuple concurrently updated").

@@ -9,7 +9,11 @@ import java.util.function.Supplier;
 import mfs.mw.app.gateway.config.AuthClientProperties;
 import mfs.mw.app.gateway.config.ServiceCertificateManager;
 import mfs.mw.app.gateway.dto.BoundDevice;
+import mfs.mw.app.gateway.dto.ErrorEnvelope;
 import mfs.mw.app.gateway.dto.LiveSession;
+import mfs.mw.app.gateway.dto.PinKey;
+import mfs.mw.app.gateway.dto.TxnAuthorisation;
+import mfs.mw.app.gateway.dto.TxnAuthorisationRequest;
 import mfs.mw.app.gateway.exception.ErrorCodes;
 import mfs.mw.app.gateway.exception.MwException;
 import org.slf4j.Logger;
@@ -23,48 +27,79 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
- * mw-auth's internal API (ticket 68; contract {@code api/mw-auth/auth-internal.v1.openapi.yaml},
- * spec 18.7, D24): over mTLS with this service's OpenBao certificate ({@link
- * ServiceCertificateManager#clientSslContext()}, CN {@code mw-app-gateway}) and a client-credentials
- * JWT of the same client ({@link ServiceTokenClient}). Every call has a 2 s timeout ({@code
- * mw.app-gateway.auth.timeout}) and goes through the circuit breaker {@code mw-auth}. A 404 is an
- * answer (no bound device, no live session); everything else that is not 200 fails closed with
- * {@code MW-SYS-012} (503, retryable: the session store cannot be asked); a 401 drops the cached
- * token and retries once. Nothing sent or received is logged.
+ * mw-auth (tickets 68, 72; contracts {@code api/mw-auth/auth-internal.v1.openapi.yaml} and {@code
+ * auth.v1.openapi.yaml}, spec 18.7, D22, D24).
+ *
+ * <ul>
+ *   <li>The internal port over mTLS with this service's OpenBao certificate ({@link
+ *       ServiceCertificateManager#clientSslContext()}, CN {@code mw-app-gateway}) and a
+ *       client-credentials JWT of the same client ({@link ServiceTokenClient}): the device gate's
+ *       {@link #device} and {@link #session}, and the transaction assertion {@link #authorise}.
+ *   <li>The public port without a token: the PIN transport key {@link #pinKey}.
+ * </ul>
+ *
+ * Every call has a 2 s timeout ({@code mw.app-gateway.auth.timeout}) and goes through the circuit
+ * breaker {@code mw-auth}. For the lookups a 404 is an answer (no bound device, no live session);
+ * for {@link #authorise} mw-auth's 4xx envelope is the answer and passes through as it is (code,
+ * status, messages, details: a wrong PIN 401 MW-AUTH-040, a lock 423 MW-AUTH-041/042, ...).
+ * Everything else fails closed with {@code MW-SYS-012} (503, retryable). A 401 {@code MW-AUTH-001}
+ * (or one without an envelope: the service token refused) drops the cached token and retries once;
+ * any other 401 (a wrong PIN) is never retried, so a PIN is checked once. HTTP/1.1 only (a
+ * cleartext h2c upgrade of a POST is refused by some servers). Nothing sent or received is logged.
  */
 @Component
 public class AuthClient {
 
   static final String BREAKER = "mw-auth";
   private static final Logger log = LoggerFactory.getLogger(AuthClient.class);
+  private static final String TOKEN_REFUSED = "MW-AUTH-001";
 
   private final RestClient rest;
+  private final RestClient open;
+  private final AuthClientProperties props;
   private final ServiceTokenClient tokens;
   private final CircuitBreaker breaker;
+  private final JsonMapper json;
 
   public AuthClient(
       AuthClientProperties props,
       ServiceTokenClient tokens,
       CircuitBreakerRegistry breakers,
-      ObjectProvider<ServiceCertificateManager> certificates) {
-    HttpClient.Builder http =
-        HttpClient.newBuilder().connectTimeout(props.connectTimeout()).followRedirects(HttpClient.Redirect.NEVER);
+      ObjectProvider<ServiceCertificateManager> certificates,
+      JsonMapper json) {
+    HttpClient.Builder http = http(props);
     ServiceCertificateManager manager = certificates.getIfAvailable();
     if (manager != null) {
       http.sslContext(manager.clientSslContext());
     }
-    JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(http.build());
-    factory.setReadTimeout(props.timeout());
-    this.rest = RestClient.builder().baseUrl(props.baseUrl().toString()).requestFactory(factory).build();
+    this.rest = RestClient.builder().baseUrl(props.baseUrl().toString()).requestFactory(factory(http, props)).build();
+    this.open = RestClient.builder().requestFactory(factory(http(props), props)).build();
+    this.props = props;
     this.tokens = tokens;
     this.breaker = breakers.circuitBreaker(BREAKER);
+    this.json = json;
+  }
+
+  private static HttpClient.Builder http(AuthClientProperties props) {
+    return HttpClient.newBuilder()
+        .connectTimeout(props.connectTimeout())
+        .followRedirects(HttpClient.Redirect.NEVER)
+        .version(HttpClient.Version.HTTP_1_1);
+  }
+
+  private static JdkClientHttpRequestFactory factory(HttpClient.Builder http, AuthClientProperties props) {
+    JdkClientHttpRequestFactory f = new JdkClientHttpRequestFactory(http.build());
+    f.setReadTimeout(props.timeout());
+    return f;
   }
 
   /** The bound device {@code deviceId} with its wallet and public key; empty when not bound. */
   public Optional<BoundDevice> device(String deviceId) {
-    BoundDevice d = call("device", "/internal/v1/devices/{deviceId}", BoundDevice.class, deviceId);
+    BoundDevice d = lookup("device", "/internal/v1/devices/{deviceId}", BoundDevice.class, deviceId);
     if (d != null && (d.walletId() == null || d.publicKey() == null)) {
       throw unavailable("device", null);
     }
@@ -76,15 +111,60 @@ public class AuthClient {
    * there is none or the device is not bound to the wallet (any more). mw-auth extends it by asking.
    */
   public Optional<LiveSession> session(String walletId, String deviceId) {
-    LiveSession s = call("session", "/internal/v1/sessions/{walletId}/{deviceId}", LiveSession.class, walletId, deviceId);
+    LiveSession s =
+        lookup("session", "/internal/v1/sessions/{walletId}/{deviceId}", LiveSession.class, walletId, deviceId);
     if (s != null && s.deviceKeyFingerprint() == null) {
       throw unavailable("session", null);
     }
     return Optional.ofNullable(s);
   }
 
+  /**
+   * mw-auth's assertion for {@code body} (PIN check first); mw-auth's refusal as an {@link
+   * MwException} with its code, status, messages and details.
+   */
+  public TxnAuthorisation authorise(TxnAuthorisationRequest body) {
+    String op = "txn-authorisation";
+    TxnAuthorisation a;
+    try {
+      a = breaker.executeSupplier(() -> withToken(() -> post("/internal/v1/txn-authorisations", body)));
+    } catch (HttpClientErrorException e) {
+      ErrorEnvelope envelope = envelope(e.getResponseBodyAsByteArray());
+      if (envelope == null) {
+        throw refused(op, e);
+      }
+      MwException answer =
+          new MwException(envelope.code(), envelope.message())
+              .withStatus(HttpStatus.valueOf(e.getStatusCode().value()))
+              .withRetryable(envelope.retryable())
+              .withDetails(envelope.details());
+      throw envelope.messageBn() == null ? answer : answer.withMessageBn(envelope.messageBn());
+    } catch (CallNotPermittedException | RestClientException e) {
+      throw unavailable(op, e);
+    }
+    if (a == null || a.assertion() == null || a.assertion().isBlank()) {
+      throw unavailable(op, null);
+    }
+    return a;
+  }
+
+  /** The newest PIN transport key (mw-auth's public port, no token). */
+  public PinKey pinKey() {
+    PinKey k;
+    try {
+      k = breaker.executeSupplier(
+          () -> headers(open.get().uri(props.pinKeyUri())).retrieve().body(PinKey.class));
+    } catch (CallNotPermittedException | RestClientException e) {
+      throw unavailable("pin-key", e);
+    }
+    if (k == null || k.keyId() == null || k.keyId().isBlank() || k.publicKeyPem() == null) {
+      throw unavailable("pin-key", null);
+    }
+    return k;
+  }
+
   /** The answer, or null on a 404. */
-  private <T> T call(String op, String path, Class<T> type, Object... vars) {
+  private <T> T lookup(String op, String path, Class<T> type, Object... vars) {
     try {
       return breaker.executeSupplier(() -> withToken(() -> get(path, type, vars)));
     } catch (HttpClientErrorException.NotFound e) {
@@ -92,12 +172,7 @@ public class AuthClient {
     } catch (CallNotPermittedException e) {
       throw unavailable(op, e);
     } catch (HttpClientErrorException e) {
-      log.atWarn()
-          .addKeyValue("event", "auth.call.refused")
-          .addKeyValue("op", op)
-          .addKeyValue("status", e.getStatusCode().value())
-          .log("mw-auth refused the call; failing closed");
-      throw unavailable(op, e);
+      throw refused(op, e);
     } catch (MwException e) {
       throw e;
     } catch (RestClientException e) {
@@ -105,27 +180,68 @@ public class AuthClient {
     }
   }
 
-  /** A 401 means the cached token is stale (expired, realm reset): fetch a new one, once. */
+  /**
+   * A 401 MW-AUTH-001 (or one without an envelope) means the cached token is stale (expired, realm
+   * reset): fetch a new one, once. Any other 401 is mw-auth's answer.
+   */
   private <T> T withToken(Supplier<T> call) {
     try {
       return call.get();
     } catch (HttpClientErrorException.Unauthorized e) {
+      ErrorEnvelope envelope = envelope(e.getResponseBodyAsByteArray());
+      if (envelope != null && !TOKEN_REFUSED.equals(envelope.code())) {
+        throw e;
+      }
       tokens.invalidate();
       return call.get();
     }
   }
 
   private <T> T get(String path, Class<T> type, Object... vars) {
-    RestClient.RequestHeadersSpec<?> req =
-        rest.get()
-            .uri(path, vars)
-            .accept(MediaType.APPLICATION_JSON)
-            .header("Authorization", "Bearer " + tokens.token());
+    return headers(rest.get().uri(path, vars).header("Authorization", "Bearer " + tokens.token()))
+        .retrieve()
+        .body(type);
+  }
+
+  private TxnAuthorisation post(String path, Object body) {
+    return headers(
+            rest.post()
+                .uri(path)
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Authorization", "Bearer " + tokens.token())
+                .body(body))
+        .retrieve()
+        .body(TxnAuthorisation.class);
+  }
+
+  private static <S extends RestClient.RequestHeadersSpec<?>> S headers(S spec) {
+    spec.accept(MediaType.APPLICATION_JSON);
     String correlationId = MDC.get("correlationId");
     if (correlationId != null) {
-      req = req.header("X-Correlation-Id", correlationId);
+      spec.header("X-Correlation-Id", correlationId);
     }
-    return req.retrieve().body(type);
+    return spec;
+  }
+
+  private ErrorEnvelope envelope(byte[] body) {
+    if (body == null || body.length == 0) {
+      return null;
+    }
+    try {
+      ErrorEnvelope e = json.readValue(body, ErrorEnvelope.class);
+      return e == null || e.code() == null || e.code().isBlank() ? null : e;
+    } catch (JacksonException | IllegalArgumentException e) {
+      return null;
+    }
+  }
+
+  private static MwException refused(String op, HttpClientErrorException e) {
+    log.atWarn()
+        .addKeyValue("event", "auth.call.refused")
+        .addKeyValue("op", op)
+        .addKeyValue("status", e.getStatusCode().value())
+        .log("mw-auth refused the call; failing closed");
+    return unavailable(op, e);
   }
 
   private static MwException unavailable(String op, Throwable cause) {

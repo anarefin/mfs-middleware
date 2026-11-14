@@ -1,10 +1,13 @@
 package mfs.mw.core.mock.entity;
 
-/** A ledger wallet row (own schema only). Balances are minor units. */
-public record Wallet(
-    String id, String msisdn, String type, String status, long balanceMinor, long heldMinor, String pinHash) {
+/** A ledger wallet row (own schema only). Balances are minor units. The core holds no PIN (ticket 72). */
+public record Wallet(String id, String msisdn, String type, String status, long balanceMinor, long heldMinor) {
 
-  /** Locked after too many consecutive wrong PINs: cannot pay, can still receive. */
+  /**
+   * Locked by the core for its own reasons (a real core: compliance, fraud, dormancy; ticket 72
+   * removed the PIN lockout, which mw-auth now owns): cannot pay, can still receive; lifted by
+   * {@code UnlockWallet}.
+   */
   public static final String LOCKED = "LOCKED";
 
   public boolean active() {
@@ -15,7 +18,7 @@ public record Wallet(
     return LOCKED.equals(status);
   }
 
-  /** May be credited: active, or only PIN-locked. */
+  /** May be credited: active, or only locked. */
   public boolean canReceive() {
     return active() || locked();
   }

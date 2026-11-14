@@ -6,6 +6,11 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import java.util.List;
 import java.util.Map;
 import mfs.mw.app.gateway.PostgresOnlyInfrastructure;
+import mfs.mw.app.gateway.client.AuthClient;
+import mfs.mw.app.gateway.dto.TxnAuthorisation;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -38,8 +43,13 @@ class KafkaUnavailableIT {
     this.jdbc = jdbc;
   }
 
+  /** mw-auth answers (ticket 72): only Kafka is down here. */
+  @MockitoBean AuthClient auth;
+
   @Test
   void publishFailureIsRetryable503AndNothingIsAccepted() {
+    when(auth.authorise(any()))
+        .thenReturn(new TxnAuthorisation("eyJh.eyJq.c2ln", java.time.Instant.now().plusSeconds(60), false));
     Integer before = jdbc.queryForObject("select count(*) from app_transaction", Integer.class);
     long start = System.nanoTime();
 

@@ -14,10 +14,11 @@ import javax.crypto.spec.PSource;
 import mfs.mw.ussd.dto.EncryptedPin;
 
 /**
- * This service's own RSA-OAEP helper (spec 9.2, M11, WP18): the PIN a customer types on USSD is
- * encrypted with the core's public key the moment it is received, the same way the apps do it
- * (OAEP with SHA-256 and MGF1-SHA-256, Base64), so only the core can read it. The plain PIN lives
- * only in the caller's local variable; it is never stored, logged or returned.
+ * This service's own RSA-OAEP helper (spec 9.2, 18.7, D20; ticket 72): the PIN a customer types on
+ * USSD is encrypted the moment it is received under the mw-crypto {@code PIN_TRANSPORT} public key
+ * (from mw-auth {@code GET /auth/v1/pin-key}, held by {@code service/PinTransport}), the same way
+ * the apps do it (OAEP with SHA-256 and MGF1-SHA-256, Base64), so only mw-crypto can read it. The
+ * plain PIN lives only in the caller's local variable; it is never stored, logged or returned.
  */
 public final class PinCipher {
 
@@ -29,8 +30,8 @@ public final class PinCipher {
   private final SecureRandom random = new SecureRandom();
 
   /**
-   * @param keyId the core's id of the key pair, forwarded with the ciphertext
-   * @param publicKeyPem the core's public key, X.509 SubjectPublicKeyInfo in PEM
+   * @param keyId the transport key's kid, sent with the ciphertext
+   * @param publicKeyPem the transport public key, X.509 SubjectPublicKeyInfo in PEM
    */
   public PinCipher(String keyId, String publicKeyPem) {
     if (keyId == null || keyId.isBlank()) {
@@ -38,6 +39,10 @@ public final class PinCipher {
     }
     this.keyId = keyId;
     this.key = parse(publicKeyPem);
+  }
+
+  public String keyId() {
+    return keyId;
   }
 
   public EncryptedPin encrypt(String pin) {

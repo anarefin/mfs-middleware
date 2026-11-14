@@ -75,6 +75,27 @@ test_log_scan_finds_a_plain_pin_and_any_pin_ciphertext() {
   assert_out_contains "FINDING ciphertext"
 }
 
+# Ticket 72: mw-auth's transaction assertion (a compact JWS) is a bearer credential for one
+# transaction: in a log it is a finding, wherever it appears; only its jti may be logged.
+test_log_scan_finds_an_assertion_but_passes_its_jti() {
+  local jws="eyJhbGciOiJFUzI1NiIsInR5cCI6InR4bi1hc3NlcnRpb24rand0In0.eyJqdGkiOiIwMTlhNGY2ZSJ9.c2lnbmF0dXJlLW9mLXRoZS1jb3Jl"
+  assert_fails scan_lines "{\"message\":\"sent $jws\"}"
+  assert_out_contains "FINDING assertion"
+  assert_out_lacks "$jws"
+  assert_fails scan_lines '{"assertion":"abc.def.ghi"}'
+  assert_out_contains "FINDING assertion"
+  assert_ok scan_lines \
+    '{"event":"auth.txn.authorised","jti":"019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c0d"}' \
+    '{"assertion":"****","note":"assertion refused"}' \
+    '{"assertion":null}'
+}
+
+test_log_scan_finds_a_transport_key_pin_ciphertext() {
+  # RSA-3072 OAEP under the mw-crypto PIN_TRANSPORT key: 512 base64 characters
+  assert_fails scan_lines "{\"body\":\"x $(head -c 384 /dev/urandom | base64 | tr -d '\n=')\"}"
+  assert_out_contains "FINDING ciphertext"
+}
+
 test_log_scan_finds_an_unmasked_nid() {
   assert_fails scan_lines '{"nid":"1990123456789"}'
   assert_out_contains "FINDING nid"

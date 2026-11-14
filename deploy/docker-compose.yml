@@ -391,6 +391,8 @@ services:
       KC_MW_AUDIT_DW_SECRET: ${KC_MW_AUDIT_DW_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUTH_SECRET: ${KC_MW_AUTH_SECRET:?cp dev.env.defaults .env}
       KC_MW_APP_GATEWAY_SECRET: ${KC_MW_APP_GATEWAY_SECRET:?cp dev.env.defaults .env}
+      KC_MW_USSD_SECRET: ${KC_MW_USSD_SECRET:?cp dev.env.defaults .env}
+      KC_MW_CHECKOUT_SECRET: ${KC_MW_CHECKOUT_SECRET:?cp dev.env.defaults .env}
       JAVA_OPTS_KC_HEAP: -Xms128m -Xmx384m
     volumes:
       - ./keycloak/realms:/opt/keycloak/data/import:ro
@@ -674,6 +676,8 @@ services:
       KC_MW_AUDIT_DW_SECRET: ${KC_MW_AUDIT_DW_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUTH_SECRET: ${KC_MW_AUTH_SECRET:?cp dev.env.defaults .env}
       KC_MW_APP_GATEWAY_SECRET: ${KC_MW_APP_GATEWAY_SECRET:?cp dev.env.defaults .env}
+      KC_MW_USSD_SECRET: ${KC_MW_USSD_SECRET:?cp dev.env.defaults .env}
+      KC_MW_CHECKOUT_SECRET: ${KC_MW_CHECKOUT_SECRET:?cp dev.env.defaults .env}
       KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?cp dev.env.defaults .env}
       USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?cp dev.env.defaults .env}
@@ -1002,6 +1006,8 @@ services:
     build: { context: ../services/mw-ussd, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
+      # every PIN goes to mw-auth for the transaction assertion (ticket 72; fails closed without it)
+      mw-auth: { condition: service_healthy }
     volumes:
       - ussd-approle:/run/mw/approle:ro
     environment:
@@ -1014,6 +1020,9 @@ services:
       # GP USSD over SMPP (WP19): binds to the USSD gateway simulator's SMPP port in dev.
       MW_USSD_SMPP_GP_HOST: ${MW_USSD_SMPP_GP_HOST:-mw-simulators}
       MW_USSD_SMPP_GP_PORT: ${MW_USSD_SMPP_GP_PORT:-2776}
+      # mTLS client certificate (pki_int/issue/mw-ussd) for mw-auth's internal API: the transaction
+      # assertion of every PIN (ticket 72, D22, D24)
+      MW_TLS_ENABLED: "true"
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
@@ -1159,6 +1168,8 @@ services:
     build: { context: ../services/mw-checkout, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
+      # the checkout OTP and every PIN go to mw-auth (ticket 72; fails closed without it)
+      mw-auth: { condition: service_healthy }
     volumes:
       - checkout-approle:/run/mw/approle:ro
     environment:
@@ -1175,6 +1186,9 @@ services:
       # against (the packaged default is the spec's 1m,5m,30m,2h,6h; set this to try it).
       MW_CHECKOUT_IPN_RETRY_DELAYS: ${MW_CHECKOUT_IPN_RETRY_DELAYS:-10s,20s,30s,1m,2m}
       MW_CHECKOUT_IPN_POLL_PERIOD: ${MW_CHECKOUT_IPN_POLL_PERIOD:-2s}
+      # mTLS client certificate (pki_int/issue/mw-checkout) for mw-auth's internal API: the checkout
+      # OTP and the transaction assertion (ticket 72, D22, D24)
+      MW_TLS_ENABLED: "true"
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }

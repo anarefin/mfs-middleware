@@ -80,7 +80,7 @@ class ManualReviewExitIT {
     return new TxnRequest(
         base.schemaVersion(), base.txnId(), base.idempotencyKey(), base.correlationId(), base.channel(), txnType,
         base.initiator(), base.debitParty(), base.creditParty(), base.amount(), base.partner(), base.originalTxnId(),
-        base.encryptedPin(), base.locale(), base.metadata(), base.attributes(), base.requestedAt());
+        base.assertion(), base.locale(), base.metadata(), base.attributes(), base.requestedAt());
   }
 
   /** Accepts {@code req} and parks it in MANUAL_REVIEW, as an operator would find it. */

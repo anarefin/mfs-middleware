@@ -7,8 +7,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import mfs.mw.ussd.UssdApplication;
-import mfs.mw.ussd.util.PinCipher;
-import mfs.mw.ussd.util.TestPinKeys;
 import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.WebApplicationType;
@@ -21,8 +19,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
  * Secrets bind from OpenBao at start-up through Spring Cloud Vault (spec 18.4): a value written
- * to {@code secret/<service>} shows up in the {@code mw.service} properties, and the core's PIN
- * public key ({@code mw.ussd.pin.*}) comes from there too.
+ * to {@code secret/<service>} shows up in the {@code mw.service} properties, and the mw-auth client
+ * secret ({@code mw.ussd.auth.client-secret}, ticket 72) comes from there too.
  */
 @Testcontainers(disabledWithoutDocker = true)
 class VaultConfigBindingIT {
@@ -52,8 +50,7 @@ class VaultConfigBindingIT {
                             JsonMapper.builder().build().createObjectNode()
                                 .set("data", JsonMapper.builder().build().createObjectNode()
                                     .put("mw.service.env", "from-openbao")
-                                    .put("mw.ussd.pin.key-id", "core-pin-from-openbao")
-                                    .put("mw.ussd.pin.public-key", TestPinKeys.pem()))
+                                    .put("mw.ussd.auth.client-secret", "fake-secret-from-openbao"))
                                 .toString()))
                     .build(),
                 HttpResponse.BodyHandlers.ofString());
@@ -71,8 +68,8 @@ class VaultConfigBindingIT {
                 "--spring.cloud.vault.authentication=TOKEN",
                 "--spring.cloud.vault.token=" + TOKEN)) {
       assertThat(ctx.getBean(MwServiceProperties.class).env()).isEqualTo("from-openbao");
-      assertThat(ctx.getBean(UssdProperties.class).pin().keyId()).isEqualTo("core-pin-from-openbao");
-      assertThat(ctx.getBean(PinCipher.class).encrypt("4826").keyId()).isEqualTo("core-pin-from-openbao");
+      assertThat(ctx.getBean(AuthClientProperties.class).clientSecret()).isEqualTo("fake-secret-from-openbao");
+      assertThat(ctx.getBean(AuthClientProperties.class).toString()).doesNotContain("fake-secret-from-openbao");
     }
   }
 }

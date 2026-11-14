@@ -8,11 +8,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import mfs.mw.checkout.client.AuthClient;
 import mfs.mw.checkout.config.CheckoutProperties;
 import mfs.mw.checkout.dto.Amount;
 import mfs.mw.checkout.dto.ConfirmRequest;
 import mfs.mw.checkout.dto.ErrorInfo;
-import mfs.mw.checkout.dto.NotificationRequest;
 import mfs.mw.checkout.dto.OtpSent;
 import mfs.mw.checkout.dto.PageView;
 import mfs.mw.checkout.dto.PayResult;
@@ -26,11 +26,9 @@ import mfs.mw.checkout.mapper.CheckoutMapper;
 import mfs.mw.checkout.messaging.EventMetadata;
 import mfs.mw.checkout.messaging.EventPublisher;
 import mfs.mw.checkout.messaging.MwHeaders;
-import mfs.mw.checkout.messaging.OutboxWriter;
 import mfs.mw.checkout.repository.SessionRepository;
 import mfs.mw.checkout.util.MaskingPolicy;
 import mfs.mw.checkout.util.Msisdn;
-import mfs.mw.checkout.util.OtpCodes;
 import mfs.mw.checkout.util.SensitiveType;
 import mfs.mw.checkout.util.UuidV7;
 import org.slf4j.Logger;
@@ -38,14 +36,15 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The hosted page API (spec 9.3 step 2): the page holds only the pay token from the checkout URL.
- * The customer names the paying wallet, gets an OTP by SMS (through mw-notify, OTP priority),
- * then confirms with the OTP and the PIN ciphertext; the service submits one MERCHANT_PAY per
- * session to mw-orchestrator and waits, on the HTTP request's own (virtual) thread, at most the
- * reply budget (spec 7.5). Every state change is a conditional update, so a race cannot pay twice.
+ * The customer names the paying wallet, gets an OTP by SMS (sent and checked by mw-auth since
+ * ticket 72), then confirms with the OTP and the PIN ciphertext (under the PIN transport key); mw-auth
+ * checks the PIN and gives the transaction assertion, and the service submits one MERCHANT_PAY per
+ * session carrying it to mw-orchestrator and waits, on the HTTP request's own (virtual) thread, at
+ * most the reply budget (spec 7.5). Every state change is a conditional update, so a race cannot pay
+ * twice; no call to mw-auth runs inside a database transaction.
  */
 @Service
 public class CheckoutPayService {
@@ -55,7 +54,7 @@ public class CheckoutPayService {
   private final SessionRepository sessions;
   private final CheckoutProperties props;
   private final CheckoutMapper mapper;
-  private final OutboxWriter outbox;
+  private final AuthClient auth;
   private final EventPublisher publisher;
   private final ReplyWaiters waiters;
   private final SessionOutcomes outcomes;
@@ -66,7 +65,7 @@ public class CheckoutPayService {
       SessionRepository sessions,
       CheckoutProperties props,
       CheckoutMapper mapper,
-      OutboxWriter outbox,
+      AuthClient auth,
       EventPublisher publisher,
       ReplyWaiters waiters,
       SessionOutcomes outcomes,
@@ -75,7 +74,7 @@ public class CheckoutPayService {
     this.sessions = sessions;
     this.props = props;
     this.mapper = mapper;
-    this.outbox = outbox;
+    this.auth = auth;
     this.publisher = publisher;
     this.waiters = waiters;
     this.outcomes = outcomes;
@@ -86,15 +85,19 @@ public class CheckoutPayService {
   public PageView page(String token) {
     CheckoutSession s = byToken(token);
     SessionStatus status = s.statusAt(clock.instant());
+    // only a page that can still pay needs the key (a terminal one shows its redirect)
+    PageView.PinKey key = status == SessionStatus.OPEN ? auth.pinKey().map(PageView.PinKey::of).orElse(null) : null;
     return new PageView(
         merchantName(s), s.orderId(), s.description(), new Amount(s.amountMinor(), s.currency()), status,
         s.expiresAt(), s.payerMsisdn() == null ? null : MaskingPolicy.mask(SensitiveType.MSISDN, s.payerMsisdn()),
-        new PageView.PinKey(props.pin().keyId(), props.pin().publicKey()),
-        s.txnId() == null ? null : s.txnId().toString(), links.redirectUrl(s));
+        key, s.txnId() == null ? null : s.txnId().toString(), links.redirectUrl(s));
   }
 
-  /** A new OTP to {@code wallet}, sent through the outbox with the session change. */
-  @Transactional
+  /**
+   * A new OTP to {@code wallet}, sent by mw-auth (purpose CHECKOUT, bound to this session; ticket 72).
+   * The send is counted on the session first (at most {@code otp-max-sends}); mw-auth also limits the
+   * wallet's OTPs per window and refuses an unknown or blocked wallet (passed through).
+   */
   public OtpSent sendOtp(String token, String wallet) {
     CheckoutSession s = byToken(token);
     Instant now = clock.instant();
@@ -103,62 +106,44 @@ public class CheckoutPayService {
       throw otpLimit();
     }
     String payer = Msisdn.canonical(wallet);
-    String otp = OtpCodes.newOtp();
-    Instant otpExpiry = now.plus(props.otpTtl());
-    if (!sessions.otpIssued(s.sessionId(), payer, OtpCodes.hash(s.sessionId(), otp), otpExpiry, props.otpMaxSends(), now)) {
+    if (!sessions.otpRequested(s.sessionId(), payer, props.otpMaxSends(), now)) {
       // a concurrent request changed the session in between
-      CheckoutSession again = byToken(token);
-      requireOpen(again, now);
+      requireOpen(byToken(token), now);
       throw otpLimit();
     }
-    CheckoutSession updated = byToken(token);
-    String correlationId = correlationId();
-    NotificationRequest sms =
-        mapper.toOtpNotification(updated, merchantName(s), otp, updated.otpSends(), otpExpiry, correlationId);
-    // no transaction yet: the 6.1 txn and idempotency headers carry the messageId (as mw-notify does)
-    outbox.append(
-        props.notifyTopic(), payer, new EventMetadata(correlationId, sms.messageId(), sms.messageId(), 1), sms);
+    int sessionLeft = props.otpMaxSends() - byToken(token).otpSends();
+    OtpSent sent = auth.sendOtp(payer, s.sessionId(), s.locale(), CheckoutMapper.taka(s.amountMinor()), merchantName(s));
     log.atInfo()
         .addKeyValue("event", "checkout.otp.sent")
         .addKeyValue("sessionId", s.sessionId().toString())
         .log("checkout OTP requested");
-    return new OtpSent(
-        MaskingPolicy.mask(SensitiveType.MSISDN, payer), otpExpiry, props.otpMaxSends() - updated.otpSends());
+    return new OtpSent(sent.wallet(), sent.otpExpiresAt(), Math.max(0, Math.min(sessionLeft, sent.sendsLeft())));
   }
 
-  /** Checks the OTP, then submits the MERCHANT_PAY and waits for its outcome within the budget. */
+  /**
+   * mw-auth checks and spends the OTP, then checks the PIN and gives the assertion for exactly the
+   * request about to be published (ticket 72, D22); only then OPEN -> PAYING and the MERCHANT_PAY
+   * goes out with the assertion; then waits for its outcome within the budget. Every refusal leaves
+   * the session OPEN.
+   */
   public PayResult confirm(String token, ConfirmRequest req) {
     CheckoutSession s = byToken(token);
     Instant now = clock.instant();
     requireOpen(s, now);
-    int max = props.otpMaxAttempts();
-    if (s.otpAttempts() >= max) {
-      throw otpLocked();
+    if (s.payerMsisdn() == null) {
+      throw new MwException(ErrorCodes.AUTH_OTP_EXPIRED, "Request an OTP first");
     }
-    if (s.otpHash() == null || s.otpExpiresAt() == null || !now.isBefore(s.otpExpiresAt())) {
+    auth.verifyOtp(s.payerMsisdn(), s.sessionId(), req.otp());
+    UUID txnId = UuidV7.next(clock);
+    String correlationId = correlationId();
+    TxnRequest draft = mapper.toTxnRequest(s, txnId.toString(), correlationId, now);
+    String assertion = auth.authorise(mapper.toAuthorisation(draft, req.encryptedPin()));
+    if (!sessions.claimForPayment(s.sessionId(), s.payerMsisdn(), txnId, clock.instant())) {
+      // paid, cancelled or expired meanwhile, or another wallet asked for an OTP since
+      requireOpen(byToken(token), clock.instant());
       throw new MwException(ErrorCodes.AUTH_OTP_EXPIRED, "Request a new OTP");
     }
-    // Every guess takes one of the OTP's checks atomically before it is compared: parallel
-    // guesses cannot get more than max comparisons (a row count of 0 means none is left).
-    if (!sessions.reserveOtpAttempt(s.sessionId(), s.otpHash(), max, now)) {
-      throw refusedCheck(token, now);
-    }
-    String hash = OtpCodes.hash(s.sessionId(), req.otp());
-    if (!OtpCodes.matches(s.otpHash(), hash)) {
-      sessions.voidOtpIfExhausted(s.sessionId(), s.otpHash(), max, now);
-      log.atInfo()
-          .addKeyValue("event", "checkout.otp.wrong")
-          .addKeyValue("sessionId", s.sessionId().toString())
-          .log("wrong checkout OTP");
-      throw new MwException(ErrorCodes.AUTH_OTP_WRONG, "Wrong OTP");
-    }
-    UUID txnId = UuidV7.next(clock);
-    if (!sessions.claimForPayment(s.sessionId(), s.otpHash(), txnId, max, now)) {
-      throw refusedCheck(token, now);
-    }
-    CheckoutSession paying = byToken(token);
-    String correlationId = correlationId();
-    TxnRequest txn = mapper.toTxnRequest(paying, txnId.toString(), correlationId, req.encryptedPin(), now);
+    TxnRequest txn = draft.withAssertion(assertion);
     CompletableFuture<StatusMessage> answer =
         waiters.register(txn.txnId(), txn.idempotencyKey(), txn.initiator().id());
     try {
@@ -253,23 +238,6 @@ public class CheckoutPayService {
   private String merchantName(CheckoutSession s) {
     CheckoutProperties.Merchant m = props.merchant(s.merchantId());
     return m == null ? s.merchantId() : m.name();
-  }
-
-  /**
-   * Why an atomic OTP check or claim was refused: the session state first (410/409), then no
-   * check left on the OTP (locked), else the OTP was replaced or spent meanwhile.
-   */
-  private MwException refusedCheck(String token, Instant now) {
-    CheckoutSession again = byToken(token);
-    requireOpen(again, now);
-    if (again.otpAttempts() >= props.otpMaxAttempts()) {
-      return otpLocked();
-    }
-    return new MwException(ErrorCodes.AUTH_OTP_EXPIRED, "Request a new OTP");
-  }
-
-  private static MwException otpLocked() {
-    return new MwException(ErrorCodes.AUTH_OTP_LOCKED, "Too many wrong OTPs, request a new one");
   }
 
   private static MwException otpLimit() {

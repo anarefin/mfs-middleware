@@ -176,6 +176,58 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "mw-ussd",
+      "name": "mw-ussd (mw-auth internal API: transaction authorisation, ticket 72)",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_MW_USSD_SECRET}",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "fullScopeAllowed": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "aud-mw-auth",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "mw-auth",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "mw-checkout",
+      "name": "mw-checkout (mw-auth internal API: checkout OTP and transaction authorisation, ticket 72)",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_MW_CHECKOUT_SECRET}",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "fullScopeAllowed": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "aud-mw-auth",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "mw-auth",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
     }
   ],
   "users": [
@@ -215,6 +267,22 @@
       "username": "service-account-mw-app-gateway",
       "enabled": true,
       "serviceAccountClientId": "mw-app-gateway",
+      "realmRoles": [
+        "internal-api"
+      ]
+    },
+    {
+      "username": "service-account-mw-ussd",
+      "enabled": true,
+      "serviceAccountClientId": "mw-ussd",
+      "realmRoles": [
+        "internal-api"
+      ]
+    },
+    {
+      "username": "service-account-mw-checkout",
+      "enabled": true,
+      "serviceAccountClientId": "mw-checkout",
       "realmRoles": [
         "internal-api"
       ]

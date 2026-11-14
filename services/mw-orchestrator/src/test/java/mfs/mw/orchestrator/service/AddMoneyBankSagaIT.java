@@ -263,7 +263,7 @@ class AddMoneyBankSagaIT {
     transactions.accept(req, "gw-1");
     String txn = req.txnId();
 
-    coreEvents.handle(event("TransactionRejected", txn, txn + ":validate", "FAILURE", "INVALID_PIN"));
+    coreEvents.handle(event("TransactionRejected", txn, txn + ":validate", "FAILURE", "INSUFFICIENT_BALANCE"));
 
     assertThat(statuses(txn)).endsWith("REJECTED");
     assertThat(outbox(PARTNER_TOPIC, txn)).isEmpty();

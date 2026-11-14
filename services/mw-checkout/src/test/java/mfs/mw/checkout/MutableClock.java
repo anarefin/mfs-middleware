@@ -20,6 +20,10 @@ public final class MutableClock extends Clock {
     now.updateAndGet(i -> i.plus(d));
   }
 
+  public void set(Instant instant) {
+    now.set(instant);
+  }
+
   @Override
   public ZoneId getZone() {
     return ZoneOffset.UTC;

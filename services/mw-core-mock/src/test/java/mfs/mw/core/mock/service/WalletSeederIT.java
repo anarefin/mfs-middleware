@@ -10,7 +10,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 /**
  * The ledger is seeded on start (spec 6, "Core mock"): 1,000 customers, 50 agents, 20 merchants and
@@ -22,13 +21,11 @@ class WalletSeederIT {
 
   private final JdbcTemplate jdbc;
   private final WalletSeeder seeder;
-  private final PasswordEncoder encoder;
 
   @Autowired
-  WalletSeederIT(JdbcTemplate jdbc, WalletSeeder seeder, PasswordEncoder encoder) {
+  WalletSeederIT(JdbcTemplate jdbc, WalletSeeder seeder) {
     this.jdbc = jdbc;
     this.seeder = seeder;
-    this.encoder = encoder;
   }
 
   private Map<String, Long> countsByType() {
@@ -65,13 +62,12 @@ class WalletSeederIT {
   }
 
   @Test
-  void seededWalletsShareTheFakeSeedPinAsBcryptHash() {
+  void theLedgerHoldsNoPinMaterial() {
     seeder.reset();
-    String hash =
-        jdbc.queryForObject("select pin_hash from wallet where id = '01711000001'", String.class);
-
-    assertThat(hash).startsWith("$2");
-    assertThat(encoder.matches("1234", hash)).isTrue();
+    // ticket 72: PINs live in mw-auth only; the wallet table has no PIN column left
+    assertThat(jdbc.queryForObject(
+        "select count(*) from information_schema.columns where table_name = 'wallet' and column_name like 'pin%'",
+        Integer.class)).isZero();
   }
 
   @Test

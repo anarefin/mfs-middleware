@@ -22,20 +22,20 @@ import tools.jackson.databind.json.JsonMapper;
 class AppRequestsTest {
 
   private static final JsonMapper JSON = JsonMapper.builder().build();
-  private static final KeyPair CORE_KEY = rsa();
-  private static final PinCipher PIN = new PinCipher("core-pin-test", CORE_KEY.getPublic());
-  private final AppRequests requests = new AppRequests(PIN, "1234");
+  private static final KeyPair TRANSPORT_KEY = rsa();
+  private static final PinCipher PIN = new PinCipher("PIN_TRANSPORT.v1", TRANSPORT_KEY.getPublic());
+  private final AppRequests requests = new AppRequests(PIN, "13579");
 
   @Test
-  void a_p2p_names_the_counterparty_wallet_and_carries_the_pin_encrypted_for_the_core() throws Exception {
+  void a_p2p_names_the_counterparty_wallet_and_carries_the_pin_under_the_transport_key() throws Exception {
     JsonNode b = JSON.readTree(requests.p2p("01711000102"));
 
     assertThat(b.path("txnType").asString()).isEqualTo("P2P");
     assertThat(b.path("creditParty").path("id").asString()).isEqualTo("01711000102");
     assertThat(b.path("amount").path("valueMinor").asLong()).isEqualTo(1000);
     assertThat(b.path("amount").path("currency").asString()).isEqualTo("BDT");
-    assertThat(b.path("encryptedPin").path("keyId").asString()).isEqualTo("core-pin-test");
-    assertThat(decrypt(b.path("encryptedPin").path("ciphertext").asString())).isEqualTo("1234");
+    assertThat(b.path("encryptedPin").path("keyId").asString()).isEqualTo("PIN_TRANSPORT.v1");
+    assertThat(decrypt(b.path("encryptedPin").path("ciphertext").asString())).isEqualTo("13579");
   }
 
   @Test
@@ -133,7 +133,7 @@ class AppRequestsTest {
 
   private static String decrypt(String b64) throws Exception {
     Cipher c = Cipher.getInstance("RSA/ECB/OAEPPadding");
-    c.init(Cipher.DECRYPT_MODE, CORE_KEY.getPrivate(),
+    c.init(Cipher.DECRYPT_MODE, TRANSPORT_KEY.getPrivate(),
         new OAEPParameterSpec("SHA-256", "MGF1", MGF1ParameterSpec.SHA256, PSource.PSpecified.DEFAULT));
     return new String(c.doFinal(Base64.getDecoder().decode(b64)), StandardCharsets.UTF_8);
   }

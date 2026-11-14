@@ -10,7 +10,6 @@ import mfs.mw.core.mock.dto.Amount;
 import mfs.mw.core.mock.dto.CoreCommand;
 import mfs.mw.core.mock.dto.CoreEvent;
 import mfs.mw.core.mock.dto.Party;
-import mfs.mw.core.mock.security.PinKeyProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,12 +42,12 @@ class CoreCommandsIT {
 
   @Autowired
   CoreCommandsIT(
-      CoreCommandService service, WalletSeeder seeder, JdbcTemplate jdbc, PinKeyProvider keys, JsonMapper json) {
+      CoreCommandService service, WalletSeeder seeder, JdbcTemplate jdbc, JsonMapper json) {
     this.service = service;
     this.seeder = seeder;
     this.jdbc = jdbc;
     this.json = json;
-    this.cmds = new CoreCommandsTestSupport(keys, json);
+    this.cmds = new CoreCommandsTestSupport(json);
   }
 
   @BeforeEach
@@ -97,8 +96,9 @@ class CoreCommandsIT {
   // --- BILL_PAY: the credit side is outside the core (ticket 21) -----------------------------
 
   private CoreCommand billPay(String type, String step, String txn, long minor) {
-    var p = cmds.transfer("BILL_PAY", A, A, minor, "1234");
+    var p = cmds.transfer("BILL_PAY", A, A, minor);
     p.put("creditParty", new mfs.mw.core.mock.dto.Party("BILLER_ACCOUNT", "DESCO-1234567", null, null));
+    CoreCommandsTestSupport.authorised(p, A);
     return cmds.command(type, txn, txn + ":" + step, p);
   }
 
@@ -123,8 +123,9 @@ class CoreCommandsIT {
   // --- TOPUP: the credit side is the mobile number to recharge, not a wallet (ticket 17) ----
 
   private CoreCommand topupValidate(String txn, String msisdn) {
-    var p = cmds.transfer("TOPUP", A, A, 2_000, "1234");
+    var p = cmds.transfer("TOPUP", A, A, 2_000);
     p.put("creditParty", new mfs.mw.core.mock.dto.Party("MSISDN", msisdn, null, null));
+    CoreCommandsTestSupport.authorised(p, A);
     return cmds.command("ValidateTransaction", txn, txn + ":validate", p);
   }
 
@@ -142,16 +143,18 @@ class CoreCommandsIT {
 
   // --- ADD_MONEY_BANK: the debit side is outside the core (ticket 23) -----------------------
 
-  private CoreCommand addMoney(String txn, String payee, long minor, String pin) {
-    var p = cmds.transfer("ADD_MONEY_BANK", A, payee, minor, pin);
+  /** The payee authorises an add money (its wallet is the assertion's subject). */
+  private CoreCommand addMoney(String txn, String payee, long minor) {
+    var p = cmds.transfer("ADD_MONEY_BANK", A, payee, minor);
     p.put("debitParty", new mfs.mw.core.mock.dto.Party("BANK_ACCOUNT", "1234567890123", null, null));
+    CoreCommandsTestSupport.authorised(p, payee);
     return cmds.command("ValidateTransaction", txn, txn + ":validate", p);
   }
 
   @Test
-  void anAddMoneyFromABankAccountValidatesThePayeeWalletAndItsPinAndMovesNothing() {
+  void anAddMoneyFromABankAccountValidatesThePayeeWalletAndItsAssertionAndMovesNothing() {
     long before = balance(A);
-    CoreEvent e = handle(addMoney(txn(), A, 50_000, "1234"));
+    CoreEvent e = handle(addMoney(txn(), A, 50_000));
     assertThat(e.eventType()).isEqualTo("TransactionValidated");
     assertThat(json.valueToTree(e.payload()).path("fee").path("valueMinor").asLong()).isZero();
     assertThat(balance(A)).isEqualTo(before);
@@ -159,23 +162,26 @@ class CoreCommandsIT {
   }
 
   @Test
-  void anAddMoneyIsRefusedForAWrongPinOfThePayeeWallet() {
-    CoreEvent e = handle(addMoney(txn(), A, 50_000, "9999"));
+  void anAddMoneyAuthorisedByAnotherWalletIsRefused() {
+    String txn = txn();
+    var p = cmds.transfer("ADD_MONEY_BANK", A, A, 50_000);
+    p.put("debitParty", new mfs.mw.core.mock.dto.Party("BANK_ACCOUNT", "1234567890123", null, null));
+    CoreCommandsTestSupport.authorised(p, B);
+    CoreEvent e = handle(cmds.command("ValidateTransaction", txn, txn + ":validate", p));
     assertThat(e.eventType()).isEqualTo("TransactionRejected");
-    assertThat(e.reasonCode()).isEqualTo("INVALID_PIN");
-    assertThat(jdbc.queryForObject("select pin_failures from wallet where id = ?", Integer.class, A)).isEqualTo(1);
+    assertThat(e.reasonCode()).isEqualTo("MW-AUTH-046");
   }
 
   @Test
   void anAddMoneyToAnUnknownWalletIsRefused() {
-    CoreEvent e = handle(addMoney(txn(), "01799999999", 50_000, "1234"));
+    CoreEvent e = handle(addMoney(txn(), "01799999999", 50_000));
     assertThat(e.eventType()).isEqualTo("TransactionRejected");
     assertThat(e.reasonCode()).isEqualTo("CREDIT_WALLET_NOT_FOUND");
   }
 
   @Test
   void anAddMoneyAboveThePerTransactionLimitIsRefusedWhateverTheWalletHolds() {
-    CoreEvent e = handle(addMoney(txn(), A, 100_000_000, "1234"));
+    CoreEvent e = handle(addMoney(txn(), A, 100_000_000));
     assertThat(e.eventType()).isEqualTo("TransactionRejected");
     assertThat(e.reasonCode()).isEqualTo("LIMIT_EXCEEDED_PER_TXN");
   }
@@ -183,8 +189,9 @@ class CoreCommandsIT {
   @Test
   void anAddMoneyIsNeverPostedDirectlyFromABankAccount() {
     String txn = txn();
-    var p = cmds.transfer("ADD_MONEY_BANK", A, A, 50_000, "1234");
+    var p = cmds.transfer("ADD_MONEY_BANK", A, A, 50_000);
     p.put("debitParty", new mfs.mw.core.mock.dto.Party("BANK_ACCOUNT", "1234567890123", null, null));
+    CoreCommandsTestSupport.authorised(p, A);
     CoreEvent post = handle(cmds.command("PostTransfer", txn, txn + ":post", p));
     assertThat(post.eventType()).isEqualTo("TransferRejected");
     assertThat(post.reasonCode()).isEqualTo("WALLET_NOT_FOUND");
@@ -196,7 +203,7 @@ class CoreCommandsIT {
   void holdReducesAvailableBalanceButNotTheLedgerBalance() {
     long before = total();
 
-    CoreEvent e = handle(cmds.holdFunds(txn(), A, 100_000, "1234"));
+    CoreEvent e = handle(cmds.holdFunds(txn(), A, 100_000));
 
     assertThat(e.eventType()).isEqualTo("FundsHeld");
     assertThat(e.outcome()).isEqualTo(CoreEvent.Outcome.SUCCESS);
@@ -210,26 +217,28 @@ class CoreCommandsIT {
 
   @Test
   void aHoldCountsAgainstWhatCanBeSpent() {
-    handle(cmds.holdFunds(txn(), A, 400_000, "1234"));
-    handle(cmds.holdFunds(txn(), A, 400_000, "1234"));
+    handle(cmds.holdFunds(txn(), A, 400_000));
+    handle(cmds.holdFunds(txn(), A, 400_000));
 
-    CoreEvent third = handle(cmds.holdFunds(txn(), A, 400_000, "1234"));
+    CoreEvent third = handle(cmds.holdFunds(txn(), A, 400_000));
     assertThat(third.eventType()).isEqualTo("HoldRejected");
     assertThat(third.outcome()).isEqualTo(CoreEvent.Outcome.FAILURE);
     assertThat(third.reasonCode()).isEqualTo("INSUFFICIENT_BALANCE");
 
-    CoreEvent transfer = handle(cmds.post(txn(), A, B, 300_000, "1234"));
+    CoreEvent transfer = handle(cmds.post(txn(), A, B, 300_000));
     assertThat(transfer.reasonCode()).isEqualTo("INSUFFICIENT_BALANCE");
     assertInvariants();
   }
 
   @Test
-  void holdIsRejectedForWrongPinUnknownWalletAndBadAmount() {
-    CoreEvent pin = handle(cmds.holdFunds(txn(), A, 1_000, "0000"));
-    assertThat(pin.eventType()).isEqualTo("HoldRejected");
-    assertThat(pin.reasonCode()).isEqualTo("INVALID_PIN");
-    assertThat(handle(cmds.holdFunds(txn(), "01700000000", 1_000, "1234")).reasonCode()).isEqualTo("WALLET_NOT_FOUND");
-    assertThat(handle(cmds.holdFunds(txn(), A, 0, "1234")).reasonCode()).isEqualTo("INVALID_AMOUNT");
+  void holdIsRejectedForAnotherWalletsAssertionUnknownWalletAndBadAmount() {
+    String t = txn();
+    CoreEvent foreign = handle(cmds.command("HoldFunds", t, t + ":hold",
+        CoreCommandsTestSupport.authorised(cmds.transfer("TOPUP", A, A, 1_000), B)));
+    assertThat(foreign.eventType()).isEqualTo("HoldRejected");
+    assertThat(foreign.reasonCode()).isEqualTo("MW-AUTH-046");
+    assertThat(handle(cmds.holdFunds(txn(), "01700000000", 1_000)).reasonCode()).isEqualTo("WALLET_NOT_FOUND");
+    assertThat(handle(cmds.holdFunds(txn(), A, 0)).reasonCode()).isEqualTo("INVALID_AMOUNT");
     assertThat(held(A)).isZero();
     assertThat(jdbc.queryForObject("select count(*) from hold", Long.class)).isZero();
   }
@@ -238,7 +247,7 @@ class CoreCommandsIT {
   void commitMovesTheMoneyAndTheFeeAndFreesTheHold() {
     long before = total();
     String txn = txn();
-    String hold = holdId(handle(cmds.holdFunds(txn, A, 100_000, "1234")));
+    String hold = holdId(handle(cmds.holdFunds(txn, A, 100_000)));
 
     CoreEvent e = handle(cmds.commitHold(txn, hold));
 
@@ -264,12 +273,12 @@ class CoreCommandsIT {
     assertThat(unknown.reasonCode()).isEqualTo("HOLD_NOT_FOUND");
 
     String txn2 = txn();
-    String released = holdId(handle(cmds.holdFunds(txn2, A, 10_000, "1234")));
+    String released = holdId(handle(cmds.holdFunds(txn2, A, 10_000)));
     handle(cmds.releaseHold(txn2, released));
     assertThat(handle(cmds.commitHold(txn2, released)).reasonCode()).isEqualTo("HOLD_RELEASED");
 
     String txn3 = txn();
-    String committed = holdId(handle(cmds.holdFunds(txn3, A, 10_000, "1234")));
+    String committed = holdId(handle(cmds.holdFunds(txn3, A, 10_000)));
     handle(cmds.commitHold(txn3, committed));
     long after = balance(A);
     CoreCommand again = cmds.command("CommitHold", txn3, txn3 + ":commit-2", Map.of("holdId", committed));
@@ -282,7 +291,7 @@ class CoreCommandsIT {
   void releaseRestoresAvailabilityAndMovesNothing() {
     long before = total();
     String txn = txn();
-    String hold = holdId(handle(cmds.holdFunds(txn, A, 100_000, "1234")));
+    String hold = holdId(handle(cmds.holdFunds(txn, A, 100_000)));
 
     CoreEvent e = handle(cmds.releaseHold(txn, hold));
 
@@ -291,9 +300,9 @@ class CoreCommandsIT {
     assertThat(balance(A)).isEqualTo(1_000_000);
     assertThat(jdbc.queryForObject("select count(*) from entry", Long.class)).isZero();
     assertThat(total()).isEqualTo(before);
-    handle(cmds.holdFunds(txn(), A, 400_000, "1234"));
-    handle(cmds.holdFunds(txn(), A, 400_000, "1234")); // 800,400 held: only the release made room below
-    assertThat(handle(cmds.post(txn(), A, B, 190_000, "1234")).eventType()).isEqualTo("TransferPosted");
+    handle(cmds.holdFunds(txn(), A, 400_000));
+    handle(cmds.holdFunds(txn(), A, 400_000)); // 800,400 held: only the release made room below
+    assertThat(handle(cmds.post(txn(), A, B, 190_000)).eventType()).isEqualTo("TransferPosted");
     assertInvariants();
   }
 
@@ -304,14 +313,14 @@ class CoreCommandsIT {
     assertThat(unknown.reasonCode()).isEqualTo("HOLD_NOT_FOUND");
 
     String txn2 = txn();
-    String committed = holdId(handle(cmds.holdFunds(txn2, A, 10_000, "1234")));
+    String committed = holdId(handle(cmds.holdFunds(txn2, A, 10_000)));
     handle(cmds.commitHold(txn2, committed));
     CoreEvent e = handle(cmds.releaseHold(txn2, committed));
     assertThat(e.eventType()).isEqualTo("ReleaseFailed");
     assertThat(e.reasonCode()).isEqualTo("HOLD_ALREADY_COMMITTED");
 
     String txn3 = txn();
-    String released = holdId(handle(cmds.holdFunds(txn3, A, 10_000, "1234")));
+    String released = holdId(handle(cmds.holdFunds(txn3, A, 10_000)));
     handle(cmds.releaseHold(txn3, released));
     CoreCommand again = cmds.command("ReleaseHold", txn3, txn3 + ":release-2", Map.of("holdId", released));
     assertThat(handle(again).eventType()).isEqualTo("HoldReleased");
@@ -387,7 +396,7 @@ class CoreCommandsIT {
   void reversingAPostedTransferGivesEverythingBackIncludingTheFee() {
     long before = total();
     String original = txn();
-    handle(cmds.post(original, A, B, 100_000, "1234"));
+    handle(cmds.post(original, A, B, 100_000));
 
     CoreEvent e = handle(cmds.reverse(txn(), original, 100_000));
 
@@ -402,7 +411,7 @@ class CoreCommandsIT {
   @Test
   void reversingACommittedHoldGivesTheMoneyBack() {
     String original = txn();
-    handle(cmds.commitHold(original, holdId(handle(cmds.holdFunds(original, A, 50_000, "1234")))));
+    handle(cmds.commitHold(original, holdId(handle(cmds.holdFunds(original, A, 50_000)))));
 
     assertThat(handle(cmds.reverse(txn(), original, 50_000)).eventType()).isEqualTo("TransactionReversed");
     assertThat(balance(A)).isEqualTo(1_000_000);
@@ -415,14 +424,14 @@ class CoreCommandsIT {
     assertThat(handle(cmds.reverse(txn(), txn(), 100)).reasonCode()).isEqualTo("ORIGINAL_NOT_FOUND");
 
     String original = txn();
-    handle(cmds.post(original, A, B, 100_000, "1234"));
+    handle(cmds.post(original, A, B, 100_000));
     assertThat(handle(cmds.reverse(txn(), original, 99_999)).reasonCode()).isEqualTo("AMOUNT_MISMATCH");
     handle(cmds.reverse(txn(), original, 100_000));
     assertThat(handle(cmds.reverse(txn(), original, 100_000)).reasonCode()).isEqualTo("ALREADY_REVERSED");
 
     String spent = txn();
-    handle(cmds.post(spent, A, BROKE, 100_000, "1234"));
-    handle(cmds.post(txn(), BROKE, B, 99_000, "1234")); // the receiver spent what it got
+    handle(cmds.post(spent, A, BROKE, 100_000));
+    handle(cmds.post(txn(), BROKE, B, 99_000)); // the receiver spent what it got
     CoreEvent e = handle(cmds.reverse(txn(), spent, 100_000));
     assertThat(e.eventType()).isEqualTo("ReversalRejected");
     assertThat(e.reasonCode()).isEqualTo("INSUFFICIENT_BALANCE");
@@ -432,13 +441,13 @@ class CoreCommandsIT {
   @Test
   void aReversalCannotBeReversedAndAHeldTransactionIsNotYetReversible() {
     String original = txn();
-    handle(cmds.post(original, A, B, 1_000, "1234"));
+    handle(cmds.post(original, A, B, 1_000));
     String reversal = txn();
     handle(cmds.reverse(reversal, original, 1_000));
     assertThat(handle(cmds.reverse(txn(), reversal, 1_000)).reasonCode()).isEqualTo("ORIGINAL_NOT_REVERSIBLE");
 
     String held = txn();
-    handle(cmds.holdFunds(held, A, 1_000, "1234"));
+    handle(cmds.holdFunds(held, A, 1_000));
     assertThat(handle(cmds.reverse(txn(), held, 1_000)).reasonCode()).isEqualTo("ORIGINAL_NOT_FOUND");
   }
 
@@ -453,7 +462,7 @@ class CoreCommandsIT {
     assertThat(status(notFound)).isEqualTo("NOT_FOUND");
 
     String txn = txn();
-    CoreEvent funds = handle(cmds.holdFunds(txn, A, 1_000, "1234"));
+    CoreEvent funds = handle(cmds.holdFunds(txn, A, 1_000));
     CoreEvent held = handle(cmds.query(txn));
     assertThat(status(held)).isEqualTo("HELD");
     assertThat(json.valueToTree(held.payload()).path("holdId").asString()).isEqualTo(holdId(funds));
@@ -463,11 +472,11 @@ class CoreCommandsIT {
     assertThat(status(handle(cmds.query(txn)))).isEqualTo("REVERSED");
 
     String released = txn();
-    handle(cmds.releaseHold(released, holdId(handle(cmds.holdFunds(released, A, 1_000, "1234")))));
+    handle(cmds.releaseHold(released, holdId(handle(cmds.holdFunds(released, A, 1_000)))));
     assertThat(status(handle(cmds.query(released)))).isEqualTo("RELEASED");
 
     String posted = txn();
-    handle(cmds.post(posted, A, B, 1_000, "1234"));
+    handle(cmds.post(posted, A, B, 1_000));
     assertThat(status(handle(cmds.query(posted)))).isEqualTo("POSTED");
 
     String credited = txn();
@@ -475,20 +484,20 @@ class CoreCommandsIT {
     assertThat(status(handle(cmds.query(credited)))).isEqualTo("CREDITED");
 
     String validated = txn();
-    handle(cmds.validate(validated, A, B, 1_000, "1234"));
+    handle(cmds.validate(validated, A, B, 1_000));
     assertThat(status(handle(cmds.query(validated)))).isEqualTo("VALIDATED");
 
     String rejected = txn();
-    handle(cmds.post(rejected, A, B, 1_000, "0000"));
+    handle(cmds.post(rejected, A, B, 600_000)); // above the per-transaction limit
     assertThat(status(handle(cmds.query(rejected)))).isEqualTo("REJECTED");
   }
 
   @Test
   void queryNarrowedToACommandAnswersForThatCommandOnly() {
     String txn = txn();
-    CoreCommand validate = cmds.validate(txn, A, B, 1_000, "1234");
+    CoreCommand validate = cmds.validate(txn, A, B, 1_000);
     handle(validate);
-    handle(cmds.post(txn, A, B, 1_000, "1234"));
+    handle(cmds.post(txn, A, B, 1_000));
 
     assertThat(status(handle(cmds.queryCommand(txn, validate.commandId())))).isEqualTo("VALIDATED");
     assertThat(status(handle(cmds.queryCommand(txn, "never-seen")))).isEqualTo("NOT_FOUND");
@@ -508,7 +517,7 @@ class CoreCommandsIT {
       switch (random.nextInt(6)) {
         case 0 -> {
           String txn = txn();
-          CoreEvent e = handle(cmds.holdFunds(txn, w, 1 + random.nextInt(300_000), "1234"));
+          CoreEvent e = handle(cmds.holdFunds(txn, w, 1 + random.nextInt(300_000)));
           if ("FundsHeld".equals(e.eventType())) {
             open.add(new String[] {txn, holdId(e)});
           }
@@ -528,7 +537,7 @@ class CoreCommandsIT {
         }
         case 3 -> {
           String txn = txn();
-          if ("TransferPosted".equals(handle(cmds.post(txn, w, wallets.get(random.nextInt(wallets.size())), 1 + random.nextInt(300_000), "1234")).eventType())) {
+          if ("TransferPosted".equals(handle(cmds.post(txn, w, wallets.get(random.nextInt(wallets.size())), 1 + random.nextInt(300_000))).eventType())) {
             posted.add(txn);
           }
         }

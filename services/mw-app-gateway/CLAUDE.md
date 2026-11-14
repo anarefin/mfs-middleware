@@ -6,7 +6,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 ## Responsibilities
 
 - App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, ADD_MONEY_BANK,
-  TOPUP and BILL_PAY, `mw.app-gateway.supported-txn-types`), `GET /app/v1/transactions/{txnId}`,
+  TOPUP and BILL_PAY, `mw.app-gateway.supported-txn-types`), `GET /app/v1/transactions/{txnId}`, `GET /app/v1/pin-key`,
   `GET /app/v1/billers`, `POST /app/v1/billers/{code}/fetch-bill` and `GET /app/v1/merchant/collections` behind the APISIX
   route `/app/v1/*` (`deploy/apisix/routes/app-v1.json`, `openid-connect` bearer-only against mw-auth's
   discovery document since ticket 69).
@@ -67,7 +67,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   open breaker or any other refusal is `503 MW-SYS-012` (fail closed; Valkey and mw-auth are not in the health
   groups). Valkey password `spring.data.redis.password` synced into `secret/mw-app-gateway`. Tests not about it
   run with `device-binding.enabled=false` (test `config/application.yml`); `security/DeviceBindingIT` runs the gate
-  on real Valkey with `AuthClient` stubbed, `client/AuthClientIT` the client against a WireMock mTLS server.
+  on real Valkey with `AuthClient` stubbed, `client/AuthClientIT` the client against a WireMock mTLS server (ticket 72
+  adds the authorisation: body, refusals passed through and never retried, the token refresh on MW-AUTH-001, fail
+  closed; and the transport key on the public port). `SyncReplyIT` and `KafkaUnavailableIT` stub `AuthClient`
+  (`@MockitoBean`) with a fixed assertion.
 - Removed in ticket 68 (now in mw-auth): `POST /app/v1/devices/otp`, `POST /app/v1/devices`, `POST
   /app/v1/sessions`, the OTP publish to `mw.notify.request.v1`, tables `app_device` and `app_device_otp` (dropped by
   `V9__drop_device_tables.sql`; no data migration, a dev stack is reseeded). The outbox, its relay and the
@@ -82,7 +85,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   trailing content or a non-object `400 MW-VAL-001`, schema errors `400 MW-VAL-001` with dotted fields (no
   pattern/format in the schema, so no request value in a message). Then `Idempotency-Key` required, 1..64
   visible ASCII (`MW-VAL-001`, detail field `Idempotency-Key`); body by Bean Validation (`MW-VAL-001`, `amount.valueMinor` > 0, PIN
-  ciphertext required); unsupported `txnType` `MW-VAL-010`; for P2P/CASH_IN/CASH_OUT/MERCHANT_PAY a
+  ciphertext required: it goes to mw-auth); unsupported `txnType` `MW-VAL-010`; for P2P/CASH_IN/CASH_OUT/MERCHANT_PAY a
   counterparty equal to the caller's own wallet `MW-VAL-012` (the core enforces the real wallet
   types per txnType: `MW-CORE-INVALID_COUNTERPARTY`); `attributes` keys allow-listed
   (`mw.app-gateway.allowed-attributes`, only `reference`), so a client can never set reserved
@@ -126,11 +129,29 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   dependency; Kafka request/reply would misuse orchestrator-owned partner topics).
 - Submit (`service/TransactionService`): mints a UUIDv7 txnId (`util/UuidV7`), maps to the
   canonical `mw.txn.request.v1` (`mapper/RequestMapper`; initiator MSISDN = token wallet; debit = token
-  wallet (its own PIN), credit = body wallet (walletType AGENT for CASH_OUT, MERCHANT for MERCHANT_PAY, else CUSTOMER); PIN ciphertext copied untouched, never logged), registers a waiter, then
-  publishes directly (not via the outbox) with header `mw-reply-to = instanceId`. Kafka refusing
+  wallet (its own PIN), credit = body wallet (walletType AGENT for CASH_OUT, MERCHANT for MERCHANT_PAY, else CUSTOMER)), then
+  asks mw-auth for the transaction assertion (below), registers a waiter, then publishes directly (not via the outbox) with header `mw-reply-to = instanceId`. Kafka refusing
   or timing out (`max-block-ms`/`delivery-timeout-ms` 5 s/10 s) -> `503 MW-SYS-010`, retryable,
   nothing recorded. Idempotency is decided by mw-orchestrator (7.3); this service only requires
   and forwards the key.
+- Transaction assertion (ticket 72, spec 18.7, D22; `AuthClient.authorise`, `RequestMapper.toAuthorisation`): for
+  every submitted type (all of them need the payer's PIN) `TransactionService` sends `POST /internal/v1/txn-authorisations
+  {walletId (the token's MSISDN), channel, deviceId (the token's `deviceId` claim, `AppUser.deviceId`), encryptedPin,
+  txn {txnType, amount (valueMinor), currency, payer = debitParty {type, id}, payee = creditParty {type, id},
+  idempotencyKey}}`, built from the very `mw.txn.request.v1` it then publishes (mw-auth hashes these values into the
+  assertion's `txnHash` and the core recomputes it from the request: `TransactionServiceTest` checks they are
+  identical), and publishes the request with `assertion` and no `encryptedPin` (the PIN ciphertext goes to mw-auth
+  only, never to Kafka, never logged). mw-auth's refusal passes through at once with its code, status, messages and
+  details, nothing published or recorded: `401 MW-AUTH-040` (wrong PIN, `triesLeft`), `423 MW-AUTH-041` (`retryAfter`)
+  / `042`, `403 MW-AUTH-043` / `045` / `002`, `401 MW-AUTH-047`, `409 MW-IDEM-001`; mw-auth unreachable `503
+  MW-SYS-012` (retryable). A repeat with the same key inside the assertion's 60 s gets the same assertion from mw-auth
+  without a second PIN check; the orchestrator still decides idempotency. A 401 is retried with a new service token
+  only when its code is `MW-AUTH-001` (or it has no envelope), so a wrong PIN is checked once.
+- PIN transport key (ticket 72; `controller/PinKeyController`, `service/PinKeyService`): `GET /app/v1/pin-key` (token
+  only, `@DeviceGate(NONE)`) answers `{keyId, algorithm RSA-OAEP-SHA-256, publicKeyPem}`, mw-auth's public `GET
+  /auth/v1/pin-key` (`mw.app-gateway.auth.pin-key-uri`, `http://mw-auth:8080/auth/v1/pin-key`, no token: the newest
+  mw-crypto `PIN_TRANSPORT` version), reused `pin-key-ttl` (5 min); while mw-auth cannot be asked the last key is
+  served; none yet `503 MW-SYS-012`. The app encrypts the PIN's UTF-8 bytes with RSA-OAEP (SHA-256, MGF1 SHA-256).
 - Sync wait (7.5): `service/ReplyWaiters` (`txnId -> future`); `route/StatusReplyRoute` consumes
   `mw.txn.status.v1` with group `mw-app-gateway.reply.<instanceId>` (latest offset, auto-commit,
   no retry), keeps records whose `mw-reply-to` is this instance and only completes futures, so
@@ -182,7 +203,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   against the schema in `RequestMapperTest` and `SyncReplyIT`).
 - `api/mw-auth/auth-internal.v1.openapi.yaml` (client, ticket 68: `GET /internal/v1/devices/{deviceId}`, `GET
   /internal/v1/sessions/{walletId}/{deviceId}`; own types `dto/BoundDevice`, `dto/LiveSession` (key fingerprint,
-  ticket 69), checked in `ApiContractsTest`). The app token itself is mw-auth's (`api/mw-auth/auth.v1.openapi.yaml`
+  ticket 69); ticket 72: `POST /internal/v1/txn-authorisations`, own types `dto/TxnAuthorisationRequest`,
+  `dto/TxnAuthorisation`; checked in `ApiContractsTest`) and `api/mw-auth/auth.v1.openapi.yaml` (`GET /auth/v1/pin-key`,
+  `dto/PinKey`, served unchanged as the app API's `PinKey`). The app token itself is mw-auth's (`api/mw-auth/auth.v1.openapi.yaml`
   describes its claims; tested by `security/AppTokenDecoderTest`, `security/AppUserResolverTest`).
 - `events/mw-orchestrator/mw.txn.status.v1` (consumed; own type `dto/StatusMessage`, unknown
   fields ignored) and the orchestrator's `mw-reply-to` / duplicate-answer conventions.

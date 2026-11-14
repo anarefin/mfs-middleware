@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 class KafkaTransactionFlowKeyTest {
 
   static final Instant T0 = Instant.parse("2026-11-06T09:00:00Z");
-  static final EncryptedPin PIN = new EncryptedPin("core-pin-dev-1", "Y2lwaGVy");
+  static final EncryptedPin PIN = new EncryptedPin("PIN_TRANSPORT.v1", "Y2lwaGVy");
 
   static FlowRequest p2p(String sessionId, Instant startedAt) {
     UssdSession s = new UssdSession("gp", sessionId, "01711000001", "main", 1, "en", "x.send", List.of("main:1"),

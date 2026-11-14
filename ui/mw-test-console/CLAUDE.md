@@ -31,8 +31,8 @@ customers, holds the stack's generated test credentials and has no sign-in.
   `GET /auth/v1/pin-key`; login `POST /auth/v1/sessions` (MSISDN + PIN), again after 4 min idle;
   `POST /auth/v1/tokens/refresh` before the access token expires; the mw-auth access token is the app
   API's bearer; signature over method, path, body hash, timestamp, nonce, device id). `lib/crypto.ts`
-  (pure, Node crypto): signing, RSA-OAEP-SHA256 PIN encryption (transactions still with the core key
-  from `/test/core-mock/v1/pin-public-key` until ticket 72), checkout hmac-auth, result
+  (pure, Node crypto): signing, RSA-OAEP-SHA256 PIN encryption (every PIN under the mw-crypto
+  transport key from `GET /auth/v1/pin-key`; checkout with the page's `pinKey`; ticket 72), checkout hmac-auth, result
   and IPN checks; ported from `tests/api/lib.js`. State (tokens, devices, last submit, PIN key) is in
   process memory (`globalThis`): a restart forgets it and the next submit binds again. Binding here
   replaces the API suite's device for that user (one active device per wallet).

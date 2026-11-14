@@ -34,7 +34,7 @@ async function check(label: string, fn: () => Promise<boolean>, fix: string) {
 export default async function Home() {
   const checks = await Promise.all([
     check("APISIX edge answers /healthz", async () => (await edge("GET", "/healthz")).status === 200, "start the stack (deploy/RUNNING.html)"),
-    check("test-only routes are on (core-mock PIN key)", async () => (await edge("GET", "/test/core-mock/v1/pin-public-key", { apikey: true })).status === 200, "scripts/tester.sh (re-applies the test routes)"),
+    check("test-only routes are on (core-mock wallets)", async () => (await edge("GET", "/test/core-mock/v1/wallets/01711000001", { apikey: true })).status === 200, "scripts/tester.sh (re-applies the test routes)"),
     check("simulators answer (SMPP binds of mw-ussd)", async () => (await edge("GET", "/test/sim/ussdgw/smpp/binds", { apikey: true })).status === 200, "start the stack; docker compose logs mw-simulators"),
   ]);
   const wallets = await Promise.all(SEEDED_WALLETS.map(async (w) => ({ ...w, wallet: await core.wallet(w.msisdn).catch(() => null) })));
@@ -89,7 +89,7 @@ export default async function Home() {
               </TableBody>
             </Table>
           </div>
-          <Hint>Every seeded wallet&apos;s PIN is 1234. A wallet may debit Tk 15,000 per UTC day (core-mock limit).</Hint>
+          <Hint>Every seeded app wallet&apos;s PIN is 13579 (MW_SEED_APP_PIN, checked by mw-auth for app, USSD and checkout). A wallet may debit Tk 15,000 per UTC day (core-mock limit).</Hint>
         </Panel>
         <Panel title="Where to test what" icon={Compass} className="lg:col-span-2">
           <ul className="m-0 grid list-none gap-2 p-0 text-sm sm:grid-cols-2">

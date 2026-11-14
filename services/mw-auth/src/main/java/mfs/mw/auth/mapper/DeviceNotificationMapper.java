@@ -22,6 +22,8 @@ public class DeviceNotificationMapper {
   public static final String LOGIN_OTP_TEMPLATE = "LOGIN_OTP";
   /** The PIN reset OTP (ticket 70; mw-notify V12). */
   public static final String RESET_OTP_TEMPLATE = "PIN_RESET_OTP";
+  /** The hosted checkout page's OTP (ticket 72; mw-notify V8, params otp, amount, merchant). */
+  public static final String CHECKOUT_OTP_TEMPLATE = "CHECKOUT_OTP";
   /** A care PIN reset was approved: ask for a reset OTP in the app (ticket 70; mw-notify V12). */
   public static final String RESET_APPROVED_TEMPLATE = "PIN_RESET_APPROVED";
   /** The wallet's PIN was changed or reset (ticket 70; mw-notify V12). */
@@ -36,14 +38,27 @@ public class DeviceNotificationMapper {
   /** The OTP SMS of a purpose: {@code BIND} (device binding), {@code LOGIN} (first PIN) or {@code RESET}. */
   public NotificationRequest otp(
       String wallet, String otp, String locale, Instant expiresAt, String correlationId, String purpose) {
+    return otp(wallet, otp, locale, expiresAt, correlationId, purpose, Map.of());
+  }
+
+  /**
+   * As above with extra template parameters ({@code CHECKOUT}: {@code amount}, {@code merchant} of
+   * template {@code CHECKOUT_OTP}, ticket 72); {@code otp} always wins over a same-named extra.
+   */
+  public NotificationRequest otp(
+      String wallet, String otp, String locale, Instant expiresAt, String correlationId, String purpose,
+      Map<String, String> extra) {
     String template = switch (purpose) {
       case "LOGIN" -> LOGIN_OTP_TEMPLATE;
       case "RESET" -> RESET_OTP_TEMPLATE;
+      case "CHECKOUT" -> CHECKOUT_OTP_TEMPLATE;
       default -> OTP_TEMPLATE;
     };
+    Map<String, String> params = new java.util.LinkedHashMap<>(extra == null ? Map.of() : extra);
+    params.put("otp", otp);
     return new NotificationRequest(
         1, "device-otp:" + UUID.randomUUID(), correlationId, new NotificationRequest.Recipient(wallet),
-        template, locale(locale), Map.of("otp", otp), List.of("SMS"), "OTP", expiresAt);
+        template, locale(locale), Map.copyOf(params), List.of("SMS"), "OTP", expiresAt);
   }
 
   public NotificationRequest bound(String wallet, String locale, String correlationId) {

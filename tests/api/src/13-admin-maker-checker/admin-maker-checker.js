@@ -6,7 +6,7 @@ export default [
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
       await S.reject('CommitHold', 'INJECTED_REJECT');
-      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, '1234');
+      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);
       await S.appShows('MANUAL_REVIEW', 30);
       S.crFrom(await MW.admin.ask('ops-e2e-maker01', S.txnId(), 'FORCE_COMMIT', 'OCS confirmed the top-up'));
       await S.crIs('PENDING');
@@ -24,7 +24,7 @@ export default [
     name: '[admin reversal] a completed P2P is reversed after a second operator approves',
     run: async (MW, S) => {
       await S.note(['01711000001', '01711000002', 'FEE-POOL']);
-      await S.p2p('customer01', '01711000002', 1000, '1234');
+      await S.p2p('customer01', '01711000002', 1000, MW.pin);
       S.status(200);
       S.crFrom(await MW.admin.ask('ops-e2e-maker01', S.txnId(), 'REVERSE', 'customer complaint, wrong number'));
       await MW.admin.approve('ops-e2e-checker01', S.crId);
@@ -37,7 +37,7 @@ export default [
   {
     name: '[admin reversal] a rejected reversal changes nothing',
     run: async (MW, S) => {
-      await S.p2p('customer01', '01711000002', 1000, '1234');
+      await S.p2p('customer01', '01711000002', 1000, MW.pin);
       S.status(200);
       S.crFrom(await MW.admin.ask('ops-e2e-maker01', S.txnId(), 'REVERSE', 'customer complaint'));
       await MW.admin.reject('ops-e2e-checker01', S.crId, 'transfer was correct');

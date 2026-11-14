@@ -78,7 +78,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   menu's `unavailable` text). Language `mw.ussd.default-language` (bn) at dial-in, toggled by a
   MENU option with `switchLanguage` (no profile lookup yet). Validators (`service/InputValidator`):
   msisdn (canonical, `notSelf`), amount (taka, <= 2 decimals, min/max, stored as `500.00`), pin
-  (4 digits unless `pattern`), numeric (digit count min/max), regex. A bad input re-prompts with
+  (5 digits unless `pattern`: mw-crypto's PIN rule since ticket 72), numeric (digit count min/max), regex. A bad input re-prompts with
   the validator's `error` (or the menu's `invalid`) above the screen; `max-invalid-attempts` (3)
   in a row end the session. Placeholders `{input}` / `{txnId}` / `{error}` in texts. A screen over
   the MNO limit is cut (TRUNCATE) or paged with the menu's `more` option ("0 More", PAGE).
@@ -96,17 +96,47 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 - Sessions: Valkey `ussd:{mno}:{sessionId}` (`repository/ValkeySessionStore`, JSON
   `dto/UssdSession`: node, path, inputs, language, menu version, pending pages), TTL = MNO session
   timeout + `session-grace` (30 s); a CONTINUE from another MSISDN is treated as expired. The PIN
-  never reaches the session: it is encrypted on receipt (`util/PinCipher`, RSA-OAEP SHA-256 with
-  the core's public key, `mw.ussd.pin.key-id` / `public-key` from OpenBao) and handed straight to
-  the ACTION, forwarded once in `encryptedPin`.
+  never reaches the session: it is encrypted on receipt (`util/PinCipher`, RSA-OAEP SHA-256 /
+  MGF1-SHA-256 under the mw-crypto `PIN_TRANSPORT` key held by `service/PinTransport`) and handed
+  straight to the ACTION, which sends it once to mw-auth (never to Kafka).
+- PIN transport key (ticket 72, spec 18.7, D20): `service/PinTransport` asks mw-auth `GET /auth/v1/pin-key`
+  (public port, no token; `mw.ussd.auth.pin-key-uri`, `{keyId, algorithm, publicKeyPem}`) once the service is
+  up (a failure is only logged `ussd.pin_key.unavailable`: mw-auth may start later; the first PIN asks again),
+  keeps it `pin-key-ttl` (10 m) and drops it when mw-auth answers `MW-SYS-051` (mw-crypto refused the PIN
+  block, e.g. a rotated key; that step ends `unavailable`, the next PIN uses the new key). No key can be had:
+  the step ends `unavailable`. The core's PIN key (M11: `mw.ussd.pin.*`, its OpenBao copy) is gone.
+- Transaction authorisation (ticket 72, D22; `client/AuthClient`, `config/AuthClientProperties`
+  `mw.ussd.auth.*`, contract `api/mw-auth/auth-internal.v1.openapi.yaml`): before publishing,
+  `KafkaTransactionFlow` sends `POST /internal/v1/txn-authorisations {msisdn, channel USSD, encryptedPin, txn
+  {txnType, amount (valueMinor), currency, payer = debitParty {type, id}, payee = creditParty {type, id},
+  idempotencyKey}}` built by `TxnRequestMapper.authorisation` from the very request it then publishes (mw-auth
+  hashes these values into the assertion's `txnHash`; the core recomputes it from the request, so they must
+  be identical: `TxnRequestMapperTest`), and publishes the request with `assertion` only. Over mTLS with this
+  service's OpenBao certificate (`config/ServiceCertificateManager` + `TlsProperties` from the template,
+  `mw.tls.enabled`: off in the image default and tests, `MW_TLS_ENABLED=true` in compose; PKI role `mw-ussd`)
+  and a Keycloak realm `services` client-credentials JWT of client `mw-ussd` (`client/ServiceTokenClient`,
+  audience mapper `aud-mw-auth`; secret `mw.ussd.auth.client-secret` in `secret/mw-ussd`, synced from
+  `KC_MW_USSD_SECRET`; on mw-auth's internal allow-list and `mw.auth.assertion.callers`). HTTP/1.1, timeout
+  2 s, Resilience4j breaker `mw-auth` (count based, 4xx ignored). mw-auth's error envelope is an answer
+  (`exception/AuthRefusedException`): `MW-AUTH-040` (wrong PIN, `triesLeft`) -> flow `WRONG_PIN`, the engine
+  shows the PIN input again with the menu's `wrongPin` text (`{triesLeft}` filled in), not counted as an
+  invalid input: it keeps asking as long as mw-auth says wrong, mw-auth's lockout decides when that ends;
+  `MW-AUTH-041` -> `pinLocked`, `042` -> `pinBlocked`, `043` -> `walletLocked`, each ending the session
+  (flow `LOCKED`); any other refusal (`045` no PIN, `002`, `047`, `MW-IDEM-001`) -> `onFailure` with mw-auth's
+  message. Nothing is published on a refusal. A 401 `MW-AUTH-001` (service token refused) drops the cached
+  token and retries once; no other 401 is retried, so a PIN is checked once. Unreachable, 5xx, timeout, open
+  breaker or an answer without an assertion -> `MW-SYS-012`, the step ends `unavailable`. The four PIN texts
+  are in the seed menu (bn/en) and built into the engine (`UssdEngine.PIN_TEXTS`) for menus published without
+  them; `MenuValidator` does not require them. Event `txn.authorisation.refused` (errorCode only); nothing of
+  the PIN or the assertion is logged.
 - ACTION -> `service/KafkaTransactionFlow`: idempotency key `sha256(USSD|msisdn|sessionId@startedAtMillis|menuPath|
   amountMinor|target)` hex (the session start: SMPP session numbers are reused) (spec 7.3 rule 1, `service/IdempotencyKeys`; menuPath = the node ids and
   choices taken, e.g. `main:1>p2p.recipient>p2p.amount>p2p.confirm:1>p2p.pin`), UUIDv7 txnId,
   canonical `mw.txn.request.v1` (`mapper/TxnRequestMapper`: channel USSD, initiator MSISDN, debit
   the CUSTOMER wallet; credit per flow: P2P CUSTOMER wallet, CASH_OUT AGENT wallet, TOPUP bare
   MSISDN + partner {operator, productCode}, BILL_PAY `BILLER_ACCOUNT` + partner {aggregator,
-  `BILL`, billerCode}; `metadata {ussdSessionId, mno}`, locale = session language)
-  published with `mw-reply-to = instanceId`; the MNO request's (virtual) thread waits at most
+  `BILL`, billerCode}; `metadata {ussdSessionId, mno}`, locale = session language), authorised by mw-auth
+  (above) and published with `assertion` and `mw-reply-to = instanceId`; the MNO request's (virtual) thread waits at most
   `sync-budget` (8 s) on `service/ReplyWaiters`, completed by `route/StatusReplyRoute` /
   `messaging/StatusReplyListener` (group `mw-ussd.reply.<instanceId>`, latest offset, never
   blocks). COMPLETED -> the node's `onSuccess`; FAILED/REJECTED -> `onFailure` with the status
@@ -115,9 +145,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   Flows: P2P, CASH_OUT, TOPUP, BILL_PAY (`TxnRequestMapper.FLOWS`); agents cash in from the Agent
   app, not over USSD.
 - Dev provisioning (`provision_mw_ussd` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role `ussd_rw`,
-  schema `ussd`, `secret/mw-ussd` (DB password; Valkey password from `VALKEY_PASSWORD`; the core's
-  PIN public key and key id copied from `secret/mw-core-mock`, playing the core team's hand-over),
-  AppRole `mw-ussd`.
+  schema `ussd`, `secret/mw-ussd` (DB password; Valkey password from `VALKEY_PASSWORD`;
+  `mw.ussd.auth.client-secret` from `KC_MW_USSD_SECRET`), AppRole `mw-ussd`, PKI role `mw-ussd`. Keycloak
+  realm `services` client `mw-ussd` (audience `mw-auth`): a running stack needs `deploy/reset.sh` to import it.
+  Compose waits for a healthy mw-auth.
 
 ## Contracts owned
 
@@ -137,6 +168,20 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   orchestrator's `mw-reply-to` / duplicate-answer conventions.
 - `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (called: biller list, bill fetch; own types
   `dto/Biller`, `dto/Bill`; `client/BillPayClient`, copied from mw-app-gateway).
+- `api/mw-auth/auth-internal.v1.openapi.yaml` (called, ticket 72: `POST /internal/v1/txn-authorisations`; own
+  types `dto/TxnAuthorisationRequest`, `dto/TxnAuthorisation`) and `api/mw-auth/auth.v1.openapi.yaml` (`GET
+  /auth/v1/pin-key`; `dto/PinKey`), checked in `ApiContractsTest` (the mapper's request bodies, the answers).
+
+## Tests (ticket 72)
+
+- `client/AuthClientIT` (WireMock mw-auth over mTLS with an OpenBao PKI certificate, `PkiTestAuthority`):
+  body and token, refusals as answers (a wrong PIN sent once, never opening the breaker), 401 MW-AUTH-001
+  refresh, transport key, fail closed; `client/MtlsClientIT` (template copy). `service/KafkaTransactionFlowTest`
+  (authorisation = published values, assertion published, refusals publish nothing, MW-SYS-051 drops the key),
+  `service/PinTransportTest`, `UssdEngineTest` (wrong PIN asks again, locks end the session, unavailable). The
+  `*IT` classes that start the app use `AuthStub` (one plain-HTTP WireMock per JVM: token, transport key from
+  `util/TestPinKeys`, a fixed assertion; `AuthStub.refuse` for refusals; mTLS off in tests);
+  `UssdHttpFlowIT` decrypts the PIN mw-auth received and checks it saw exactly the published values.
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
@@ -149,8 +194,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 - `exception/`: `MwException`, `ErrorCategory` (namespace -> HTTP status, retryable),
   `ErrorCodes`, `GlobalExceptionHandler` building `dto/ErrorEnvelope`. Logs show route
   templates, never raw URIs.
-- `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3; mark every personal field. Inputs
-  and the PIN ciphertext are `SECRET`.
+- `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3; mark every personal field. Inputs,
+  the PIN block and the assertion are `SECRET`.
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.

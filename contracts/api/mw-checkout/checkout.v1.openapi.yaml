@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits web checkout (mw-checkout)
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Web checkout (spec 9.3, ticket 31). Two APIs:
 
@@ -15,12 +15,25 @@ info:
     - Hosted page API `/checkout/pay/v1/{token}/*`, called by the checkout page in the customer's
       browser (route `checkout-pay`, no login: the pay token from `checkoutUrl` is the bearer).
       The customer names the paying wallet, receives an OTP by SMS, then confirms with the OTP and
-      the PIN encrypted with the core's public key (RSA-OAEP SHA-256; `pinKey` of the page view),
-      which submits one MERCHANT_PAY to the merchant's wallet.
+      the PIN encrypted with the PIN transport key (mw-crypto `PIN_TRANSPORT`, RSA-OAEP SHA-256 in
+      the browser with WebCrypto; `pinKey` of the page view), which submits one MERCHANT_PAY to the
+      merchant's wallet.
+
+    Since ticket 72 (spec 9.3, 18.7, D22) mw-auth sends and checks the OTP (purpose CHECKOUT,
+    bound to the session) and checks the PIN: confirm first spends the OTP at mw-auth, then asks
+    mw-auth for the transaction assertion (PIN check, lockout) and publishes the payment with it.
+    mw-auth's refusals are answered with its code and status: OTP 401 `MW-AUTH-010` (wrong),
+    `MW-AUTH-011` (none, expired, spent or replaced), `MW-AUTH-012` (checks used up); PIN 401
+    `MW-AUTH-040` (wrong, `details` `triesLeft`), 423 `MW-AUTH-041` (locked, `details` `retryAfter`
+    seconds) or `MW-AUTH-042` (locked until a PIN reset), 403 `MW-AUTH-043` (wallet blocked),
+    `MW-AUTH-045` (the wallet has no PIN), `MW-AUTH-002` (wallet not known); mw-auth unreachable 503
+    `MW-SYS-012` (retryable). The session stays OPEN on every refusal; the OTP is spent once
+    checked, so a wrong PIN needs a new OTP (at most 3 per session).
 
     A session can be paid for 15 minutes (then EXPIRED, 410 `MW-VAL-020` on every pay action); an
-    OTP is valid 2 minutes, 3 wrong OTPs void it, a session sends at most 3 OTPs. One payment per
-    session: a failed payment ends the session (FAILED); the merchant creates a new one.
+    OTP is valid 2 minutes, 3 wrong OTPs void it, a session sends at most 3 OTPs (and mw-auth at
+    most 5 per wallet in 15 minutes, 429 `MW-VAL-022`). One payment per session: a failed payment
+    ends the session (FAILED); the merchant creates a new one.
 
     Signed result (the browser's return to the merchant): on a terminal status (PAID, FAILED,
     CANCELLED, EXPIRED) the page sends the browser to the merchant URL (PAID -> successUrl,
@@ -128,16 +141,26 @@ paths:
             schema: { $ref: "#/components/schemas/OtpRequest" }
       responses:
         "202":
-          description: OTP sent (asynchronously, through mw-notify)
+          description: OTP sent by mw-auth (asynchronously, through mw-notify)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/OtpSent" }
         "400": { $ref: "#/components/responses/Invalid" }
+        "403":
+          description: The wallet is not known (MW-AUTH-002) or blocked (MW-AUTH-043)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/NotOpen" }
         "410": { $ref: "#/components/responses/Expired" }
         "429":
-          description: The session sent its maximum number of OTPs (MW-VAL-022)
+          description: The session or the wallet sent its maximum number of OTPs (MW-VAL-022)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "503":
+          description: mw-auth unreachable (MW-SYS-012) or the SMS could not be queued (MW-SYS-010), retryable
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
@@ -165,15 +188,34 @@ paths:
               schema: { $ref: "#/components/schemas/PayResult" }
         "400": { $ref: "#/components/responses/Invalid" }
         "401":
-          description: Wrong OTP (MW-AUTH-010), no or expired OTP (MW-AUTH-011), too many wrong OTPs (MW-AUTH-012)
+          description: >-
+            mw-auth: wrong OTP (MW-AUTH-010), no, expired or spent OTP (MW-AUTH-011), too many wrong
+            OTPs (MW-AUTH-012), wrong PIN (MW-AUTH-040, details triesLeft)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "403":
+          description: >-
+            mw-auth: wallet not known (MW-AUTH-002), blocked (MW-AUTH-043) or without a PIN (MW-AUTH-045)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/NotOpen" }
+        "409":
+          description: Not OPEN any more (MW-VAL-021), or mw-auth's idempotency conflict (MW-IDEM-001)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
         "410": { $ref: "#/components/responses/Expired" }
+        "423":
+          description: "mw-auth: PIN locked (MW-AUTH-041, details retryAfter seconds; MW-AUTH-042 until a reset)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
         "503":
-          description: The payment could not be sent (MW-SYS-010, retryable); nothing was paid
+          description: >-
+            mw-auth unreachable (MW-SYS-012) or the payment could not be sent (MW-SYS-010); retryable,
+            nothing was paid
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
@@ -338,7 +380,7 @@ components:
         updatedAt: { type: string, format: date-time }
     PageView:
       type: object
-      required: [merchantName, orderId, amount, status, expiresAt, pinKey]
+      required: [merchantName, orderId, amount, status, expiresAt]
       properties:
         merchantName: { type: string }
         orderId: { type: string }
@@ -349,10 +391,14 @@ components:
         wallet: { type: string, description: "The paying wallet once named, masked" }
         pinKey:
           type: object
-          required: [keyId]
+          description: >-
+            The PIN transport key (mw-crypto PIN_TRANSPORT via mw-auth GET /auth/v1/pin-key, ticket
+            72). Left out while mw-auth cannot give one and none was fetched before: reload the page.
+          required: [keyId, algorithm, publicKey]
           properties:
-            keyId: { type: string }
-            publicKey: { type: string, description: "The core's RSA public key (PEM); encrypt the PIN with RSA-OAEP SHA-256" }
+            keyId: { type: string, description: "Send it as encryptedPin.keyId" }
+            algorithm: { type: string, description: "RSA-OAEP-SHA-256: RSA-OAEP with SHA-256 and MGF1-SHA-256" }
+            publicKey: { type: string, description: "PEM SubjectPublicKeyInfo (RSA 3072); encrypt the PIN's UTF-8 bytes, send standard base64" }
         txnId: { type: string, format: uuid }
         redirectUrl: { type: string, format: uri, description: "Set once terminal: the signed merchant URL" }
     OtpRequest:
@@ -379,7 +425,7 @@ components:
           required: [keyId, ciphertext]
           properties:
             keyId: { type: string, maxLength: 128 }
-            ciphertext: { type: string, maxLength: 4096, description: "Base64 RSA-OAEP SHA-256 ciphertext" }
+            ciphertext: { type: string, maxLength: 4096, description: "Base64 RSA-OAEP SHA-256 ciphertext under pinKey" }
     PayResult:
       type: object
       required: [status]

@@ -119,24 +119,14 @@
   const forge = () => pinned('forge', 'forgeUrl', 'forgeSha256', 'forge');
   const elliptic = () => pinned('elliptic', 'ellipticUrl', 'ellipticSha256', 'elliptic');
 
+  // ---------- PIN (ticket 72): one PIN per wallet, held by mw-auth, under the mw-crypto transport key ----------
+  /**
+   * A transaction PIN as an app, USSD or the checkout page encrypts it: RSA-OAEP, SHA-256 (hash and
+   * MGF1) under the mw-crypto PIN_TRANSPORT key (the same key as the login PIN: GET /auth/v1/pin-key,
+   * served to apps as GET /app/v1/pin-key and in the checkout page's pinKey); {keyId, ciphertext}.
+   */
+  async function encryptPin(pin) { return encryptAppPin(pin); }
   // ---------- core-mock test API (/test/core-mock/v1/*) ----------
-  async function pinKey() {
-    let k = CV.get('_pinKey');
-    if (!k) {
-      const r = await must('GET', '/test/core-mock/v1/pin-public-key', { apikey: true });
-      k = JSON.stringify({ keyId: r.body.keyId, pem: r.body.publicKeyPem });
-      CV.set('_pinKey', k);
-    }
-    return JSON.parse(k);
-  }
-  /** The PIN as an app encrypts it: RSA-OAEP, SHA-256 (hash and MGF1), core key; {keyId, ciphertext}. */
-  async function encryptPin(pin) {
-    const f = await forge();
-    const k = await pinKey();
-    const pub = f.pki.publicKeyFromPem(k.pem);
-    const ct = pub.encrypt(f.util.encodeUtf8(String(pin)), 'RSA-OAEP', { md: f.md.sha256.create(), mgf1: { md: f.md.sha256.create() } });
-    return { keyId: k.keyId, ciphertext: f.util.encode64(ct) };
-  }
   /** mw-auth's PIN transport key (GET /auth/v1/pin-key, public; ticket 69): the key the app login PIN is encrypted with. */
   async function authPinKey() {
     let k = CV.get('_authPinKey');
@@ -780,6 +770,10 @@
     http, must, poll, sleep, uuid, unique, short, totp, claims, hmacHex, hmacB64, sha256Hex, encryptPin, encryptAppPin, token, bearer,
     core, sim, app, admin, portal, checkout, callbacks, testApi, run, FINAL, IPN_URL, v, CV,
     fixture: n => JSON.parse(CV.get('fixtures'))[n],
+    /** The seeded PIN of every app wallet (MW_SEED_APP_PIN); mw-auth checks it for every channel (ticket 72). */
+    get pin() { return v('appPin'); },
+    /** A PIN that is not the wallet's (5 digits as mw-crypto's PIN rule wants; mw-auth answers 401 MW-AUTH-040). */
+    WRONG_PIN: '97531',
     ocsLimit, forRun, appWallet: msisdnOf,
   };
   return MW;

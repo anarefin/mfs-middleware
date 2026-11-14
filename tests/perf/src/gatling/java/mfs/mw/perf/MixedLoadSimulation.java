@@ -39,7 +39,7 @@ import mfs.mw.perf.ussd.UssdSessions;
  * MVP acceptance criterion 7 (spec WP28): a mix of every MVP flow ({@link Flow}, shares in {@code
  * ScenarioMix}) at the target rate on the single MVP host, open model (arrivals per second, one
  * transaction per virtual user). App flows go through APISIX exactly as the app does (mw-auth
- * access token, bound device, signed submit, PIN encrypted for the core) and wait for the synchronous
+ * access token, bound device, signed submit, PIN under the transport key for mw-auth) and wait for the synchronous
  * answer; a share of them reads the transaction back. USSD P2P sessions are played by the USSD
  * gateway simulator. Every transaction is written to {@code build/reports/perf/txns.csv}; {@code
  * ./gradlew perfOverhead} then subtracts core and simulator time (tests/perf/README.md).
@@ -50,7 +50,6 @@ import mfs.mw.perf.ussd.UssdSessions;
  */
 public final class MixedLoadSimulation extends Simulation {
 
-  private static final String PIN = "1234";
   private static final String SUBMIT = "/app/v1/transactions";
   private static final String REFUSED_CODE = "MW-PTR-GP-TOPUP_REJECTED";
 
@@ -65,6 +64,7 @@ public final class MixedLoadSimulation extends Simulation {
 
   private volatile Provisioning.Ready ready;
   private volatile AppRequests requests;
+  private volatile String pin;
   private volatile TxnLog txnLog;
   private volatile String e2eApiKey;
 
@@ -97,7 +97,8 @@ public final class MixedLoadSimulation extends Simulation {
   @Override
   public void before() {
     ready = Provisioning.prepare(users, settings.setupParallelism());
-    requests = new AppRequests(ready.pin(), PIN);
+    requests = new AppRequests(ready.pin(), ready.plainPin());
+    pin = ready.plainPin();
     e2eApiKey = Stack.get().devCredential("MW_E2E_API_KEY");
     txnLog = new TxnLog(runDir);
     Instant from = Instant.now().plus(settings.ramp());
@@ -215,7 +216,7 @@ public final class MixedLoadSimulation extends Simulation {
           long n = nextUssd.getAndIncrement();
           String to = users.customers().get((int) (n % users.customers().size())).msisdn();
           return session
-              .set("ussdBody", UssdSessions.p2p(wallets.get((int) (n % wallets.size())), to, PIN))
+              .set("ussdBody", UssdSessions.p2p(wallets.get((int) (n % wallets.size())), to, pin))
               .set("t0", System.currentTimeMillis());
         })
         .exec(http(Flow.USSD_P2P.name())

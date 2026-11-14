@@ -6,7 +6,7 @@ export default [
     name: '[reversal] a completed P2P is reversed and every balance is restored',
     run: async (MW, S) => {
       await S.note(['01711000001', '01711000002', 'FEE-POOL']);
-      await S.p2p('customer01', '01711000002', 1000, '1234');
+      await S.p2p('customer01', '01711000002', 1000, MW.pin);
       S.status(200);
       S.txnStatus('COMPLETED');
       await MW.testApi.reverse(S.txnId());
@@ -20,7 +20,7 @@ export default [
     name: '[reversal] a second reversal of the same transaction moves no money again',
     run: async (MW, S) => {
       await S.note(['01711000001', '01711000002', 'FEE-POOL']);
-      await S.p2p('customer01', '01711000002', 1000, '1234');
+      await S.p2p('customer01', '01711000002', 1000, MW.pin);
       S.status(200);
       await MW.testApi.reverse(S.txnId());
       await S.appShows('REVERSED');
@@ -37,7 +37,7 @@ export default [
     run: async (MW, S) => {
       await S.note(['01711000001', '01711000002', 'FEE-POOL']);
       await S.reject('ReverseTransaction', 'INSUFFICIENT_BALANCE');
-      await S.p2p('customer01', '01711000002', 1000, '1234');
+      await S.p2p('customer01', '01711000002', 1000, MW.pin);
       S.status(200);
       await MW.testApi.reverse(S.txnId());
       await S.appShows('MANUAL_REVIEW');

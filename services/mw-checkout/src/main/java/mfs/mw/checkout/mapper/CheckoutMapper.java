@@ -2,35 +2,33 @@ package mfs.mw.checkout.mapper;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.List;
 import java.util.Map;
 import mfs.mw.checkout.dto.Amount;
 import mfs.mw.checkout.dto.EncryptedPin;
-import mfs.mw.checkout.dto.NotificationRequest;
 import mfs.mw.checkout.dto.Party;
+import mfs.mw.checkout.dto.TxnAuthorisationRequest;
 import mfs.mw.checkout.dto.TxnRequest;
 import mfs.mw.checkout.entity.CheckoutSession;
 import org.springframework.stereotype.Component;
 
 /**
- * A checkout session to the canonical messages it sends (spec 5.1, 9.3, 10.1): the MERCHANT_PAY
- * request (customer wallet, its own PIN, to the merchant wallet; channel WEB_CHECKOUT) and the
- * OTP SMS.
+ * A checkout session to the canonical messages it sends (spec 5.1, 9.3): the MERCHANT_PAY request
+ * (customer wallet to the merchant wallet; channel WEB_CHECKOUT) and, built from that very request,
+ * the transaction mw-auth binds its assertion to (ticket 72, D22).
  */
 @Component
 public class CheckoutMapper {
 
   public static final String CHANNEL = "WEB_CHECKOUT";
   public static final String MERCHANT_PAY = "MERCHANT_PAY";
-  public static final String OTP_TEMPLATE = "CHECKOUT_OTP";
 
   /** One payment per session: the orchestrator answers a repeat with the stored transaction. */
   public static String idempotencyKey(CheckoutSession s) {
     return "checkout:" + s.sessionId();
   }
 
-  public TxnRequest toTxnRequest(
-      CheckoutSession s, String txnId, String correlationId, EncryptedPin pin, Instant now) {
+  /** The request without its assertion; {@link TxnRequest#withAssertion} adds mw-auth's. */
+  public TxnRequest toTxnRequest(CheckoutSession s, String txnId, String correlationId, Instant now) {
     return new TxnRequest(
         1,
         txnId,
@@ -42,7 +40,7 @@ public class CheckoutMapper {
         Party.wallet(s.payerMsisdn(), "CUSTOMER"),
         Party.wallet(s.merchantWallet(), "MERCHANT"),
         new Amount(s.amountMinor(), s.currency()),
-        pin,
+        null,
         s.locale(),
         Map.of(
             "checkoutSessionId", s.sessionId().toString(),
@@ -53,25 +51,25 @@ public class CheckoutMapper {
   }
 
   /**
-   * The OTP SMS. {@code sendNo} counts the session's OTPs, so a resend is a new message and a
-   * redelivery of the same one is dropped by mw-notify (messageId is its idempotency key).
+   * What mw-auth hashes into the assertion's txnHash, taken from the request to be published (decision
+   * of ticket 71): payer = debitParty, payee = creditParty (type and id), amount = valueMinor, the
+   * request's currency, idempotencyKey and channel.
    */
-  public NotificationRequest toOtpNotification(
-      CheckoutSession s, String merchantName, String otp, int sendNo, Instant expiresAt, String correlationId) {
-    return new NotificationRequest(
-        1,
-        "checkout-otp:" + s.sessionId() + ":" + sendNo,
-        correlationId,
-        new NotificationRequest.Recipient(s.payerMsisdn()),
-        OTP_TEMPLATE,
-        s.locale(),
-        Map.of("otp", otp, "amount", taka(s.amountMinor()), "merchant", merchantName),
-        List.of("SMS"),
-        "OTP",
-        expiresAt);
+  public TxnAuthorisationRequest toAuthorisation(TxnRequest txn, EncryptedPin pin) {
+    return new TxnAuthorisationRequest(
+        txn.initiator().id(),
+        txn.channel(),
+        pin,
+        new TxnAuthorisationRequest.Txn(
+            txn.txnType(),
+            txn.amount().valueMinor(),
+            txn.amount().currency(),
+            new TxnAuthorisationRequest.TxnParty(txn.debitParty().type(), txn.debitParty().id()),
+            new TxnAuthorisationRequest.TxnParty(txn.creditParty().type(), txn.creditParty().id()),
+            txn.idempotencyKey()));
   }
 
-  /** Poisha to taka with two decimals ({@code 2550 -> "25.50"}). */
+  /** Poisha to taka with two decimals ({@code 2550 -> "25.50"}): the OTP SMS amount. */
   public static String taka(long minor) {
     return BigDecimal.valueOf(minor).movePointLeft(2).setScale(2).toPlainString();
   }

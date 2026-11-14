@@ -175,6 +175,6 @@ public class CoreCommandMapper {
     var req = rec.request();
     return new CoreCommand(
         1, type, commandId(txnId, step), txnId, req.correlationId(), now, now.plus(ttl),
-        TransferPayload.of(req, rec.encryptedPin()));
+        TransferPayload.of(req));
   }
 }

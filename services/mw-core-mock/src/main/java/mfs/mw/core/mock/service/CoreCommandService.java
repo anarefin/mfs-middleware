@@ -216,8 +216,8 @@ public class CoreCommandService {
   }
 
   /**
-   * UnlockWallet (ticket 52): clears the PIN lockout of a LOCKED wallet (status ACTIVE, failure
-   * count 0). A wallet that is not LOCKED (active, or blocked for another reason) is refused
+   * UnlockWallet (ticket 52): lifts a core-side lock (status LOCKED -> ACTIVE; since ticket 72 the core
+   * has no PIN lockout). A wallet that is not LOCKED (active, or blocked for another reason) is refused
    * {@code WALLET_NOT_LOCKED} and left as it is; an unknown one {@code WALLET_NOT_FOUND}.
    */
   private CoreEvent unlock(CoreCommand cmd, String coreRef) {
@@ -231,10 +231,10 @@ public class CoreCommandService {
     }
     stateEvents.statusChanged(id.get());
     log.atInfo()
-        .addKeyValue("event", "wallet.pin.unlocked")
+        .addKeyValue("event", "wallet.unlocked")
         .addKeyValue("txnId", cmd.txnId())
         .addKeyValue("walletType", wallets.get(id.get()).type())
-        .log("wallet PIN lockout cleared by ops");
+        .log("wallet lock lifted by ops");
     return events.succeeded(cmd, "WalletUnlocked", coreRef, null, Map.of("walletId", id.get()));
   }
 
@@ -242,7 +242,7 @@ public class CoreCommandService {
    * VerifyCustomerFactors (ticket 70): mw-auth's self-service PIN reset asks whether the KYC factors
    * match. The factors come as TOKENISE_NID hashes the mock cannot recompute (it holds no KYC data and
    * no mw-crypto key), so it checks only the wallet: unknown {@code WALLET_NOT_FOUND}, BLOCKED or HOLD
-   * {@code WALLET_NOT_ACTIVE} (a core PIN lock, LOCKED, does not stop a reset), else verified. A
+   * {@code WALLET_NOT_ACTIVE} (a core-side lock, LOCKED, does not stop a reset), else verified. A
    * mismatch is played with a REJECT fault ({@code reasonCode FACTORS_MISMATCH}). A real core compares
    * the hashes with its own KYC record under the shared tokenisation (open point for the core team).
    */

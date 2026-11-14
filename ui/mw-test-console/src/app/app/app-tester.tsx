@@ -77,7 +77,7 @@ export function AppTester() {
             </Field>
             <Row>
               <Field label="Amount (Tk)"><Input name="amount" defaultValue={DEFAULT_AMOUNT[type]} data-testid="amount" className="tabular-nums" /></Field>
-              <Field label="PIN"><Input name="pin" type="password" defaultValue="1234" autoComplete="off" data-testid="pin" /></Field>
+              <Field label="PIN"><Input name="pin" type="password" defaultValue="13579" autoComplete="off" data-testid="pin" /></Field>
             </Row>
             <Field label="Idempotency-Key (empty = new)"><Input name="idempotencyKey" placeholder="tc-…" className="font-mono" /></Field>
             <Button type="submit" disabled={busy} data-testid="submit">

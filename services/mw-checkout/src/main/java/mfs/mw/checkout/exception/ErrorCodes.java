@@ -24,12 +24,11 @@ public final class ErrorCodes {
   public static final String AUTH_NO_MERCHANT = "MW-AUTH-001";
   /** The APISIX consumer is not a configured checkout merchant: 403. */
   public static final String AUTH_UNKNOWN_MERCHANT = "MW-AUTH-002";
-  /** Wrong OTP: 401. */
-  public static final String AUTH_OTP_WRONG = "MW-AUTH-010";
-  /** No OTP was requested, or it expired: 401, request a new one. */
+  /**
+   * No OTP was requested for this session: 401, request one. (Wrong, expired and used-up OTPs, the
+   * PIN and its locks are mw-auth's answers, passed through with their codes; ticket 72.)
+   */
   public static final String AUTH_OTP_EXPIRED = "MW-AUTH-011";
-  /** Too many wrong OTPs: 401, request a new one. */
-  public static final String AUTH_OTP_LOCKED = "MW-AUTH-012";
   /** The session's pay window (15 min) has passed: 410. */
   public static final String VAL_SESSION_EXPIRED = "MW-VAL-020";
   /** The session is not OPEN any more (paying, paid, failed or cancelled): 409. */
@@ -40,6 +39,11 @@ public final class ErrorCodes {
   public static final String IDEM_ORDER_CONFLICT = "MW-IDEM-002";
   /** Kafka refused or timed out the payment request; nothing was sent: 503, retryable. */
   public static final String SYS_UNAVAILABLE = "MW-SYS-010";
+  /**
+   * mw-auth (OTP, PIN transport key, transaction assertion) could not be asked: unreachable, timed
+   * out, breaker open, a 5xx or an unreadable answer (ticket 72; fail closed): 503, retryable.
+   */
+  public static final String SYS_AUTH_UNAVAILABLE = "MW-SYS-012";
 
   private ErrorCodes() {}
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Container log scan (spec 18.3, 21.1, WP29, ticket 46): no PIN (plain or ciphertext), no
+# Container log scan (spec 18.3, 21.1, WP29, tickets 46, 72): no PIN (plain or ciphertext), no assertion, no
 # unmasked MSISDN and no unmasked NID in any log line.
 # Usage: scripts/log-scan.sh            every container log of the MVP project (run after scripts/api-test.sh)
 #        scripts/log-scan.sh FILE...    the given files ('-' = stdin), e.g. saved logs
@@ -14,7 +14,11 @@
 #   nid        a field named nid / nationalId / national_id / nidNumber holding 10-17 digits
 #   pin        a field named pin / newPin / oldPin / pinBlock holding anything but stars or
 #              [REDACTED]; also a field named encryptedPin / pinCiphertext / ciphertext with any value
-#   ciphertext a base64 run of 340+ characters (RSA-2048 OAEP ciphertext is 344): PIN-shaped
+#   ciphertext a base64 run of 340+ characters (RSA-2048 OAEP ciphertext is 344, the RSA-3072
+#              mw-crypto PIN_TRANSPORT one 512): PIN-shaped
+#   assertion  mw-auth's transaction assertion (ticket 72): any compact JWS eyJ...eyJ...sig (an
+#              access token too), or a field named assertion with a value; only its jti (a UUID)
+#              may be logged
 # False positives that are justified go into scripts/log-scan.allow (one extended regex per
 # line, matched against the whole line; '#' comments), each with its reason.
 set -uo pipefail
@@ -71,6 +75,10 @@ scan() { # scan SOURCE-LABEL < lines
         v = substr(lower, RSTART, RLENGTH); if (v !~ /(null|redacted)$/) report("pin", substr(line, RSTART, RLENGTH))
       }
       if (match(lower, /(^|[^a-z])"?(encryptedpin|pinciphertext|ciphertext)"?[ ]*[:=][ ]*("[^"*\[]|\{)/)) report("pin", substr(line, RSTART, RLENGTH))
+      # the mw-auth transaction assertion (ticket 72): any compact JWS (base64url JOSE header and
+      # payload, both JSON objects, so they start eyJ) or a field named assertion with a value
+      if (match(line, /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/)) report("assertion", substr(line, RSTART, RLENGTH))
+      else if (match(lower, /(^|[^a-z])"?assertion"?[ ]*[:=][ ]*"[^"*\[]/)) report("assertion", substr(line, RSTART, RLENGTH))
       t = line
       gsub(/[^A-Za-z0-9+\/]/, " ", t)
       k = split(t, parts, " ")
@@ -96,7 +104,7 @@ else
   done
 fi
 if [ "$rc" -ne 0 ]; then
-  printf 'log-scan FAILED: PIN, ciphertext or unmasked MSISDN/NID in the logs above\n' >&2
+  printf 'log-scan FAILED: PIN, ciphertext, assertion or unmasked MSISDN/NID in the logs above\n' >&2
 else
   info "log-scan: no PIN, PIN ciphertext, unmasked MSISDN or NID found"
 fi

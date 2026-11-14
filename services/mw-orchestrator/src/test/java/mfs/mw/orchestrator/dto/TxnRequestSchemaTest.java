@@ -32,18 +32,17 @@ class TxnRequestSchemaTest {
   }
 
   @Test
-  void withoutPinDropsOnlyTheCiphertext() {
+  void anOldChannelsPinCiphertextIsIgnoredAndTheAssertionKept() {
     TxnRequest r =
         JSON.readValue(
             """
             {"schemaVersion":1,"txnId":"t","idempotencyKey":"k","correlationId":"c","channel":"USSD",
-             "txnType":"P2P","amount":{"valueMinor":5,"currency":"BDT"},
+             "txnType":"P2P","amount":{"valueMinor":5,"currency":"BDT"},"assertion":"a.b.c",
              "encryptedPin":{"keyId":"k1","ciphertext":"abc"},"requestedAt":"2026-11-03T08:15:30Z"}
             """,
             TxnRequest.class);
-    TxnRequest stripped = r.withoutPin();
-    assertThat(stripped.encryptedPin()).isNull();
-    assertThat(JSON.writeValueAsString(stripped)).doesNotContain("abc");
-    assertThat(stripped.amount()).isEqualTo(r.amount());
+    assertThat(JSON.writeValueAsString(r)).doesNotContain("encryptedPin", "abc");
+    assertThat(r.assertion()).isEqualTo("a.b.c");
+    assertThat(r.amount().valueMinor()).isEqualTo(5);
   }
 }

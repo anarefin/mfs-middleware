@@ -1,9 +1,12 @@
 # Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
+# Ticket 72: the OTP SMS moved to mw-auth (no mw.notify.request.v1 here any more); mw-auth's internal
+# API (checkout OTP, transaction assertion; client/AuthClient) and its public PIN transport key.
 produces:
   events:
     - events/mw-orchestrator/mw.txn.request.v1.schema.json
-    - events/mw-notify/mw.notify.request.v1.schema.json
   apis: [api/mw-checkout/checkout.v1.openapi.yaml]
 consumes:
   events: [events/mw-orchestrator/mw.txn.status.v1.schema.json]
-  apis: []
+  apis:
+    - api/mw-auth/auth-internal.v1.openapi.yaml
+    - api/mw-auth/auth.v1.openapi.yaml

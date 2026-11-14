@@ -1,6 +1,6 @@
 import "server-only";
 // The test-only APIs behind APISIX key-auth (deploy/apisix/routes-test, MW_E2E_ROUTES=1):
-// core-mock (/test/core-mock/v1: wallets, faults, PIN key), the simulators (/test/sim: partner
+// core-mock (/test/core-mock/v1: wallets, faults), the simulators (/test/sim: partner
 // scenarios, recorded requests, callback replay, SMSC, USSD gateway, merchant IPN) and GreenMail.
 
 import { encryptPin, type EncryptedPin } from "@/lib/crypto";
@@ -14,15 +14,23 @@ export const core = {
     const r = await edge("GET", `/test/core-mock/v1/wallets/${encodeURIComponent(id)}`, { apikey: true });
     return r.status === 200 ? (r.body as Wallet) : null;
   },
-  async pinKey(): Promise<{ keyId: string; publicKeyPem: string }> {
-    const g = globalThis as unknown as { __tcPinKey?: { keyId: string; publicKeyPem: string } };
-    if (g.__tcPinKey) return g.__tcPinKey;
-    const r = await edge("GET", "/test/core-mock/v1/pin-public-key", { apikey: true });
-    if (r.status !== 200) throw new EdgeError(`the core's PIN key is not available (HTTP ${r.status}): are the test routes on (scripts/tester.sh)?`);
-    return (g.__tcPinKey = r.body as { keyId: string; publicKeyPem: string });
+};
+
+/**
+ * The transaction PIN (ticket 72): one PIN per wallet, held by mw-auth, encrypted under the mw-crypto
+ * PIN_TRANSPORT key, the key an app gets from GET /app/v1/pin-key and the checkout page in its
+ * `pinKey` (both mw-auth's GET /auth/v1/pin-key, public, read here). The core has no PIN key any more.
+ */
+export const pins = {
+  async transportKey(): Promise<{ keyId: string; publicKeyPem: string }> {
+    const g = globalThis as unknown as { __tcTransportKey?: { keyId: string; publicKeyPem: string } };
+    if (g.__tcTransportKey) return g.__tcTransportKey;
+    const r = await edge("GET", "/auth/v1/pin-key");
+    if (r.status !== 200) throw new EdgeError(`mw-auth's PIN transport key is not available (HTTP ${r.status})`);
+    return (g.__tcTransportKey = r.body as { keyId: string; publicKeyPem: string });
   },
   async encrypt(pin: string): Promise<EncryptedPin> {
-    const k = await core.pinKey();
+    const k = await pins.transportKey();
     return encryptPin(pin, k.publicKeyPem, k.keyId);
   },
 };

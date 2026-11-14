@@ -32,7 +32,7 @@ export default [
   {
     name: '[sp-query billpay] the org a biller belongs to sees the bill payments it collects, tagged PAYEE',
     run: async (MW, S) => {
-      await S.billPay('customer01', 'DESCO', '1234567', 66700, '1234');
+      await S.billPay('customer01', 'DESCO', '1234567', 66700, MW.pin);
       S.status(200);
       S.txnStatus('COMPLETED');
       const id = S.txnId();

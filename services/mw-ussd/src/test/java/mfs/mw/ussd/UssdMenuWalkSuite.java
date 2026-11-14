@@ -23,7 +23,7 @@ public abstract class UssdMenuWalkSuite {
 
   public static final String CUSTOMER = "8801712345678";
   static final String PAYEE = "01812345678";
-  static final String PIN = "4826";
+  static final String PIN = "48261";
 
   /** A played session: the screens in order (dial-in answer first) and whether mw-ussd ended it. */
   public record Walk(List<String> screens, boolean ended) {

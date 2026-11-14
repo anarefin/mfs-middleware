@@ -8,12 +8,19 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import mfs.mw.ussd.client.AuthClient;
 import mfs.mw.ussd.config.UssdProperties;
+import mfs.mw.ussd.dto.ErrorDetail;
+import mfs.mw.ussd.dto.ErrorEnvelope;
+import mfs.mw.ussd.dto.ErrorInfo;
 import mfs.mw.ussd.dto.FlowOutcome;
 import mfs.mw.ussd.dto.FlowRequest;
 import mfs.mw.ussd.dto.StatusMessage;
 import mfs.mw.ussd.dto.TerminalStatus;
 import mfs.mw.ussd.dto.TxnRequest;
+import mfs.mw.ussd.exception.AuthRefusedException;
+import mfs.mw.ussd.exception.ErrorCodes;
+import mfs.mw.ussd.exception.MwException;
 import mfs.mw.ussd.mapper.TxnRequestMapper;
 import mfs.mw.ussd.messaging.EventMetadata;
 import mfs.mw.ussd.messaging.EventPublisher;
@@ -26,9 +33,14 @@ import org.springframework.stereotype.Service;
 
 /**
  * Hands a USSD transaction to mw-orchestrator (spec 9.2, 7.5): derives the idempotency key (7.3
- * rule 1), mints the txnId, publishes the canonical request with this instance's {@code
- * mw-reply-to}, then waits on the MNO request's own (virtual) thread at most the 8 s budget. No
- * Kafka thread waits: the reply consumer only completes the future.
+ * rule 1), mints the txnId, builds the canonical request, has mw-auth check the PIN and issue the
+ * transaction assertion for exactly that request (ticket 72, D22), publishes it with the assertion
+ * and this instance's {@code mw-reply-to}, then waits on the MNO request's own (virtual) thread at
+ * most the 8 s budget. No Kafka thread waits: the reply consumer only completes the future.
+ * mw-auth's refusals end the flow before anything is published: a wrong PIN is {@code WRONG_PIN}
+ * (the engine asks again), a PIN or wallet lock {@code LOCKED}, any other refusal {@code FAILED}
+ * with mw-auth's message; mw-auth unreachable is {@code UNAVAILABLE}. A PIN block mw-crypto refused
+ * ({@code MW-SYS-051}, e.g. a rotated transport key) also drops the cached transport key.
  */
 @Service
 public class KafkaTransactionFlow implements TransactionFlow {
@@ -38,14 +50,24 @@ public class KafkaTransactionFlow implements TransactionFlow {
   private final EventPublisher publisher;
   private final ReplyWaiters waiters;
   private final TxnRequestMapper mapper;
+  private final AuthClient auth;
+  private final PinTransport pins;
   private final UssdProperties props;
   private final Clock clock;
 
   public KafkaTransactionFlow(
-      EventPublisher publisher, ReplyWaiters waiters, TxnRequestMapper mapper, UssdProperties props, Clock clock) {
+      EventPublisher publisher,
+      ReplyWaiters waiters,
+      TxnRequestMapper mapper,
+      AuthClient auth,
+      PinTransport pins,
+      UssdProperties props,
+      Clock clock) {
     this.publisher = publisher;
     this.waiters = waiters;
     this.mapper = mapper;
+    this.auth = auth;
+    this.pins = pins;
     this.props = props;
     this.clock = clock;
   }
@@ -73,7 +95,19 @@ public class KafkaTransactionFlow implements TransactionFlow {
     Instant now = clock.instant();
     String txnId = UuidV7.next(clock).toString();
     String correlationId = correlationId();
-    TxnRequest req = mapper.toRequest(request, txnId, key, correlationId, now);
+    TxnRequest unsigned = mapper.toRequest(request, txnId, key, correlationId, now);
+    if (request.pin() == null) {
+      throw new IllegalStateException("an ACTION is reached from its PIN input only");
+    }
+    String assertion;
+    try {
+      assertion = auth.authorise(mapper.authorisation(unsigned, request.pin())).assertion();
+    } catch (AuthRefusedException e) {
+      return refused(e, txnId);
+    } catch (MwException e) {
+      return new FlowOutcome(FlowOutcome.Kind.UNAVAILABLE, null, null);
+    }
+    TxnRequest req = unsigned.withAssertion(assertion);
 
     CompletableFuture<StatusMessage> answer = waiters.register(txnId, key, req.initiator().id());
     try {
@@ -103,6 +137,35 @@ public class KafkaTransactionFlow implements TransactionFlow {
     return end.success()
         ? new FlowOutcome(FlowOutcome.Kind.COMPLETED, status.txnId(), null)
         : new FlowOutcome(FlowOutcome.Kind.FAILED, status.txnId(), status.error());
+  }
+
+  /** mw-auth's refusal as the flow's outcome; nothing was published. */
+  private FlowOutcome refused(AuthRefusedException e, String txnId) {
+    ErrorEnvelope env = e.envelope();
+    log.atInfo()
+        .addKeyValue("event", "txn.authorisation.refused")
+        .addKeyValue("txnId", txnId)
+        .addKeyValue("errorCode", env.code())
+        .log("mw-auth refused the transaction authorisation");
+    ErrorInfo error = new ErrorInfo(env.code(), env.message(), env.messageBn(), env.retryable());
+    return switch (env.code()) {
+      case ErrorCodes.AUTH_WRONG_PIN -> new FlowOutcome(FlowOutcome.Kind.WRONG_PIN, null, error, detail(env, "triesLeft"));
+      case ErrorCodes.AUTH_PIN_LOCKED, ErrorCodes.AUTH_PIN_LOCKED_PERMANENT, ErrorCodes.AUTH_WALLET_LOCKED ->
+          new FlowOutcome(FlowOutcome.Kind.LOCKED, null, error);
+      case ErrorCodes.SYS_CRYPTO_REFUSED -> {
+        pins.refresh();
+        yield new FlowOutcome(FlowOutcome.Kind.UNAVAILABLE, null, null);
+      }
+      default -> new FlowOutcome(FlowOutcome.Kind.FAILED, null, error);
+    };
+  }
+
+  private static String detail(ErrorEnvelope env, String field) {
+    return env.details().stream()
+        .filter(d -> field.equals(d.field()))
+        .map(ErrorDetail::issue)
+        .findFirst()
+        .orElse(null);
   }
 
   private StatusMessage await(CompletableFuture<StatusMessage> answer, String txnId) {

@@ -14,7 +14,6 @@ import mfs.mw.core.mock.dto.Amount;
 import mfs.mw.core.mock.dto.CoreCommand;
 import mfs.mw.core.mock.dto.CoreEvent;
 import mfs.mw.core.mock.dto.Party;
-import mfs.mw.core.mock.security.PinKeyProvider;
 import mfs.mw.core.mock.security.TestAssertions;
 import mfs.mw.core.mock.util.TxnHash;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,11 +27,11 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * mw-auth's transaction assertion at the core (spec 18.7, D22; ticket 71), against a real
  * PostgreSQL ledger: ValidateTransaction, PostTransfer and HoldFunds carrying an {@code assertion}
- * instead of a PIN are authorised by its ES256 signature (key set fetched from {@link
+ * are authorised by its ES256 signature (key set fetched from {@link
  * TestAssertions#jwksUri()}), {@code aud} core, {@code exp} with 30 s skew, the {@code txnHash}
  * recomputed from the command, {@code sub} = the authorising wallet and a {@code jti} used by no
  * other transaction ({@code coremock.used_assertion}). Every refusal is the command's failure event
- * with reason {@code MW-AUTH-046} and moves nothing; no PIN is checked and no lockout counted.
+ * with reason {@code MW-AUTH-046} and moves nothing; the core checks no PIN (ticket 72).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Import(TestInfrastructure.class)
@@ -51,12 +50,12 @@ class AssertionRulesIT {
 
   @Autowired
   AssertionRulesIT(CoreCommandService service, WalletSeeder seeder, UsedAssertionPurge purge, JdbcTemplate jdbc,
-      PinKeyProvider keys, JsonMapper json) {
+      JsonMapper json) {
     this.service = service;
     this.seeder = seeder;
     this.purge = purge;
     this.jdbc = jdbc;
-    this.cmds = new CoreCommandsTestSupport(keys, json);
+    this.cmds = new CoreCommandsTestSupport(json);
   }
 
   @BeforeEach
@@ -108,7 +107,6 @@ class AssertionRulesIT {
     assertThat(handle(validate(txn, 10_000, a, key)).eventType()).isEqualTo("TransactionValidated");
     assertThat(handle(post(txn, 10_000, a, key)).eventType()).isEqualTo("TransferPosted");
     assertThat(balance(B)).isEqualTo(before + 10_000);
-    assertThat(jdbc.queryForObject("select pin_failures from wallet where id = ?", Integer.class, A)).isZero();
   }
 
   @Test

@@ -25,7 +25,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `BulkDisburseFlow` (ticket 34, one child of an org bulk batch, sent by mw-portal-api) is validate +
   post too: debit `{ORG, <org wallet>}`, credit the customer's WALLET, **no PIN** (the org
   authorised the batch by maker-checker; `core.command.v1` ValidateTransaction/PostTransfer require
-  `encryptedPin` for every txnType but BULK_DISBURSE). Only channels in
+  `assertion` + `idempotencyKey` for every txnType but BULK_DISBURSE). Only channels in
   `mw.orchestrator.bulk-channels` (default `ORG_PORTAL`) may send one, else REJECTED `MW-AUTH-021`
   (`BulkDisburseSagaIT`); the core restricts it to ORG -> CUSTOMER. The portal derives txnId and
   key per row, so a resent child is answered from the idempotency record. The batch's parent
@@ -213,7 +213,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - Intake (`service/TransactionService`): idempotency in `txn.idempotency`, scope (channel,
   initiator id, key), TTL 72 h (`mw.orchestrator.idempotency-ttl`). The request hash is SHA-256
   over the business content (channel, type, parties, amount, partner, originalTxnId,
-  attributes), not txnId, correlationId, requestedAt or the PIN ciphertext. Same key + same hash:
+  attributes), not txnId, correlationId, requestedAt or the assertion. Same key + same hash:
   a status record for the STORED txnId with the current status and `attributes.requestTxnId` =
   txnId of the repeated request (so a channel waiting on its own txnId can match it); same key
   + other hash: REJECTED status under the new request's txnId with `MW-IDEM-001`, no transaction
@@ -265,22 +265,21 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - Transaction assertion (spec 18.7, D22, ticket 71): a `mw.txn.request.v1` with `assertion` (mw-auth's JWS)
   keeps it in the stored request (it is no PIN material; `dto/TxnRequest.assertion`, `@Sensitive`) and
   `TransferPayload.of` copies it, with the request's `idempotencyKey` (part of its txnHash), into
-  ValidateTransaction, PostTransfer and HoldFunds instead of `encryptedPin`; such a request stores nothing
-  PIN-related (`RequestMapper.toRecord` drops a ciphertext sent beside it, `encrypted_pin` stays null). It is
-  not part of the idempotency request hash. A request without one keeps the PIN path below until ticket 72
-  (which drops `encrypted_pin` in V11+). A core refusal with reasonCode `MW-AUTH-046` (assertion invalid or
-  used) becomes the status error `MW-AUTH-046` as it is (`CoreEventMapper`), not `MW-CORE-*`. Tests:
-  `mapper/CoreCommandMapperTest` (the assertion reaches every authorising command, schema-valid; no PIN kept),
-  `mapper/CoreEventMapperTest`.
-- PIN: only ciphertext. It is kept in `transaction.encrypted_pin` (jsonb) because PostTransfer
-  follows ValidateTransaction, and cleared (`TransactionRecord.moved`, the one write path) on every
-  transition into COMPLETED, REJECTED, FAILED, REVERSED or MANUAL_REVIEW (ticket 50, spec 18.3;
-  `entity/TransactionRecordPinTest` walks every state-machine path). The stored
-  request never contains it; it is never logged (`@Sensitive`).
+  ValidateTransaction, PostTransfer and HoldFunds. It is not part of the idempotency request hash. A core
+  refusal with reasonCode `MW-AUTH-046` (assertion invalid or used) becomes the status error `MW-AUTH-046` as
+  it is (`CoreEventMapper`), not `MW-CORE-*`. Tests: `mapper/CoreCommandMapperTest` (the assertion reaches
+  every authorising command, schema-valid; a bulk child sends none), `mapper/CoreEventMapperTest`.
+- No PIN (ticket 72, M11 removed): the channels check the PIN at mw-auth and send only the assertion; the
+  contracts carry no `encryptedPin` any more, `transaction.encrypted_pin` and its wipe on terminal states are
+  gone (`V11__drop_encrypted_pin.sql`; V10 is the Java search-hash migration), and an old channel's
+  `encryptedPin` would be ignored as an unknown field (`dto/TxnRequestSchemaTest`). The core reasons
+  `INVALID_PIN` / `INVALID_PIN_BLOCK` are gone with mw-core-mock's PIN check (no text kept for them; an
+  unknown reason still maps to `MW-CORE-<reason>` with the generic text); `ACCOUNT_LOCKED` now means a
+  core-side lock (mw-core-mock CLAUDE.md).
 - `mw-reply-to` (7.5): copied from the request record to every status record (and to the answer
   for a repeated request, taken from the repeated request). Stored in `transaction.reply_to`.
 - Schema `txn` (role `orchestrator_rw`): `transaction`, `saga_step`, `saga_timer`, `idempotency`
-  (+ `outbox`, `inbox`, `shedlock`, `partner_call`, `core_call`); migrations V1..V10 (V6 `reversal_txn_id`, V7 drops
+  (+ `outbox`, `inbox`, `shedlock`, `partner_call`, `core_call`); migrations V1..V11 (V11 drops `transaction.encrypted_pin`, ticket 72; V6 `reversal_txn_id`, V7 drops
   `idempotency.response`, V8 `initiator_hash` + `partner_call`, ticket 35; V9 `initiator_type`,
   `payee_hash`, `timeline_seq` + `saga_step.seq`, `core_call`; V10 = Java migration
   `repository/SearchHashMigration`, a Spring bean Flyway picks up, re-hashing every older row as

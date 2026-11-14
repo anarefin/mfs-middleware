@@ -49,8 +49,8 @@ class ApiContractsTest {
     return new CheckoutSession(
         SESSION, "tok", "merchant_demo", "01911000001", "ORD-42", 2550, "BDT", "Order 42", "en",
         "https://shop.example.test/ok", "https://shop.example.test/fail", "https://shop.example.test/cancel",
-        "https://shop.example.test/ipn", status, "01711000001", "hash", NOW.plusSeconds(120),
-        0, 1, txnId, errorCode, NOW, NOW.plusSeconds(900), NOW.plusSeconds(30));
+        "https://shop.example.test/ipn", status, "01711000001",
+        1, txnId, errorCode, NOW, NOW.plusSeconds(900), NOW.plusSeconds(30));
   }
 
   static void assertValid(String component, Object body) {
@@ -70,7 +70,30 @@ class ApiContractsTest {
   void theManifestListsThisApi() {
     ContractManifest manifest = ContractManifest.load();
     assertThat(manifest.producedApis()).containsExactly(API);
-    assertThat(manifest.consumedApis()).isEmpty();
+    assertThat(manifest.consumedApis()).containsExactlyInAnyOrder(AUTH_INTERNAL, AUTH_PUBLIC);
+  }
+
+  static final String AUTH_INTERNAL = "api/mw-auth/auth-internal.v1.openapi.yaml";
+  static final String AUTH_PUBLIC = "api/mw-auth/auth.v1.openapi.yaml";
+
+  static void assertValidAt(String api, String component, Object value) {
+    tools.jackson.databind.JsonNode tree = ServiceJson.MAPPER.readTree(ServiceJson.MAPPER.writeValueAsString(value));
+    assertThat(OpenApiSchemas.component(api, component).validate(tree)).as("%s %s: %s", api, component, tree).isEmpty();
+  }
+
+  @Test
+  void mwAuthRequestsAndAnswersMatchItsContracts() {
+    // client/AuthClient: what this service sends ...
+    assertValidAt(AUTH_INTERNAL, "ChannelOtpRequest",
+        new mfs.mw.checkout.dto.AuthOtpRequest("01711000001", "CHECKOUT", SESSION.toString(), "bn", "25.50", "Demo Shop"));
+    assertValidAt(AUTH_INTERNAL, "ChannelOtpVerification",
+        new mfs.mw.checkout.dto.AuthOtpVerification("01711000001", "CHECKOUT", SESSION.toString(), "123456"));
+    // ... and the answers it reads into its own types
+    assertValidAt(AUTH_INTERNAL, "ChannelOtpSent", new OtpSent("0171****001", NOW.plusSeconds(120), 4));
+    assertValidAt(AUTH_INTERNAL, "TxnAuthorisation", new mfs.mw.checkout.dto.TxnAuthorisation(
+        "eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiIwMTcxMTAwMDAwMSJ9.c2lnbmF0dXJl", NOW.plusSeconds(60), false));
+    assertValidAt(AUTH_PUBLIC, "PinKey", new mfs.mw.checkout.dto.TransportKey(
+        "pin-transport.v1", "RSA-OAEP-SHA-256", "-----BEGIN PUBLIC KEY-----\nMIIB\n-----END PUBLIC KEY-----\n"));
   }
 
   @Test
@@ -98,12 +121,12 @@ class ApiContractsTest {
     CheckoutSession paid = session(SessionStatus.PAID, TXN_ID, null);
     assertValid("PageView",
         new PageView("Demo Shop", "ORD-42", "Order 42", new Amount(2550L, "BDT"), SessionStatus.OPEN,
-            NOW.plusSeconds(900), null, new PageView.PinKey("core-pin-dev-1", "-----BEGIN PUBLIC KEY-----"),
-            null, null));
+            NOW.plusSeconds(900), null,
+            new PageView.PinKey("pin-transport.v1", "RSA-OAEP-SHA-256", "-----BEGIN PUBLIC KEY-----"), null, null));
     assertValid("PageView",
         new PageView("Demo Shop", "ORD-42", null, new Amount(2550L, "BDT"), SessionStatus.PAID,
             NOW.plusSeconds(900), MaskingPolicy.mask(SensitiveType.MSISDN, "01711000001"),
-            new PageView.PinKey("core-pin-dev-1", null), TXN_ID.toString(), redirect(paid, SessionStatus.PAID)));
+            null, TXN_ID.toString(), redirect(paid, SessionStatus.PAID)));
     assertValid("OtpSent",
         new OtpSent(MaskingPolicy.mask(SensitiveType.MSISDN, "01711000001"), NOW.plusSeconds(120), 4));
     assertValid("PayResult", new PayResult(SessionStatus.PAYING, TXN_ID.toString(), null, null));

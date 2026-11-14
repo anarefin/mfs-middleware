@@ -15,7 +15,7 @@ import tools.jackson.databind.json.JsonMapper;
  * The schema loader resolves {@code https://contracts.bits.mw/} ids, and the relative {@code $ref}s
  * between envelope, payload and {@code common/} schemas, from {@code mwContractsDir} (spec 4.3 rule
  * 2; ticket 48). core.command.v1 HoldFunds is the worked example: envelope -> HoldFunds payload ->
- * common/defs.v1 EncryptedPin and Amount.
+ * common/defs.v1 TxnAssertion and Amount.
  */
 class ContractSchemasTest {
 
@@ -44,12 +44,12 @@ class ContractSchemasTest {
   }
 
   @Test
-  void holdFundsWithoutEncryptedPinIsRejectedByThePayloadSchema() throws Exception {
-    List<Error> errors = validateHoldFunds("invalid-hold-funds-without-pin.json");
+  void holdFundsWithoutAssertionIsRejectedByThePayloadSchema() throws Exception {
+    List<Error> errors = validateHoldFunds("invalid-hold-funds-without-assertion.json");
 
     assertThat(errors)
         .extracting(Error::getMessage)
-        .anySatisfy(m -> assertThat(m).contains("encryptedPin"));
+        .anySatisfy(m -> assertThat(m).contains("assertion"));
   }
 
   @Test

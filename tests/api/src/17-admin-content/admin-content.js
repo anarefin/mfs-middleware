@@ -42,7 +42,7 @@ export default [
       const prefix = 'Bits ' + S.token + ': you got Tk 10.00 from 0171****001. TrxID ';
       let got = [];
       for (let attempt = 0; attempt < 4 && !got.length; attempt++) {
-        await S.dial('robi', '01711000001', '*268#', '9, 1, 01711000002, 10, 1, 1234');
+        await S.dial('robi', '01711000001', '*268#', '9, 1, 01711000002, 10, 1, ' + MW.pin);
         S.ussdEnds('Tk 10.00 sent to 01711000002. TxnID ');
         got = await MW.poll(async () => (await MW.sim.sms('01711000002')).filter(m => (m.text || '').startsWith(prefix) && m.dlrStatus),
           l => l.length > 0, 10000, 1000);

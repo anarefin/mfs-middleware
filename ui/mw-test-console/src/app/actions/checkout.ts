@@ -4,7 +4,7 @@
 // the OTP the SMSC simulator received and the PIN; the merchant checks the signed redirect and
 // the signed IPN the simulator's merchant endpoint received. The merchant secret stays here.
 
-import { checkoutHeaders, queryOf, verifyCheckoutResult, verifyIpn } from "@/lib/crypto";
+import { checkoutHeaders, encryptPin, queryOf, verifyCheckoutResult, verifyIpn } from "@/lib/crypto";
 import { normaliseMsisdn, takaToMinor } from "@/lib/format";
 import type { Outcome } from "@/lib/types";
 import { Trace, poll } from "@/lib/server/edge";
@@ -67,8 +67,13 @@ export async function checkout(prev: CheckoutState, form: FormData): Promise<Che
         const pin = str(form, "pin");
         if (!/^\d{6}$/.test(otp) || !/^\d{4,6}$/.test(pin)) return out("the OTP is 6 digits, the PIN 4 to 6");
         const before = co.wallet ? await core.wallet(co.wallet) : null;
+        // the hosted page encrypts the PIN with the page's pinKey (the PIN transport key; WebCrypto
+        // RSA-OAEP SHA-256 in a browser, the same OAEP here)
+        const view = await t.call("page: read the session and its PIN key", "GET", `/checkout/pay/v1/${co.token}`, {}, [200]);
+        const pk = (view.body as { pinKey?: { keyId: string; publicKey: string } } | null)?.pinKey;
+        if (!pk) return out("the page offers no PIN key (session not OPEN, or mw-auth unreachable)");
         const r = await t.call("payer: confirm with OTP and the encrypted PIN", "POST", `/checkout/pay/v1/${co.token}/confirm`,
-          { json: { otp, encryptedPin: await core.encrypt(pin) } }, [200]);
+          { json: { otp, encryptedPin: encryptPin(pin, pk.publicKey, pk.keyId) } }, [200]);
         const after = co.wallet ? await core.wallet(co.wallet) : null;
         const b = (r.body ?? {}) as { status?: string; txnId?: string };
         if (before && after) t.note("payer balance", `${taka(before.balanceMinor)} -> ${taka(after.balanceMinor)}`);

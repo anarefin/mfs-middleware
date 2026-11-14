@@ -65,7 +65,7 @@ a finding to document (what missed, the diagnostics), not a broken suite.
 | USSD_P2P | 5 % | robi USSD session played by the USSD gateway simulator (`/test/sim/ussdgw/sessions`): English, Send Money 10 Tk to a perf customer |
 
 Every app submit is a real app request: mw-auth access token, bound device, signed body with
-timestamp and nonce, fresh `Idempotency-Key`, PIN `1234` encrypted with the core's key, and the
+timestamp and nonce, fresh `Idempotency-Key`, the PIN `MW_SEED_APP_PIN` encrypted under mw-auth's transport key (`GET /auth/v1/pin-key`; mw-auth checks it, ticket 72), and the
 synchronous answer awaited (200 COMPLETED, or the intended 502). Amounts are whole taka, so no
 simulator magic fraction is hit. Open model: arrivals per second, one transaction per virtual user,
 one shared keep-alive connection pool (the run measures the middleware, not a TLS handshake per

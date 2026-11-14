@@ -9,7 +9,6 @@ import mfs.mw.core.mock.contracts.ContractSchemas;
 import mfs.mw.core.mock.dto.CoreCommand;
 import mfs.mw.core.mock.dto.Fault.FaultMode;
 import mfs.mw.core.mock.dto.FaultRequest;
-import mfs.mw.core.mock.security.PinKeyProvider;
 import mfs.mw.core.mock.service.CoreCommandsTestSupport;
 import mfs.mw.core.mock.service.FaultRegistry;
 import mfs.mw.core.mock.service.WalletSeeder;
@@ -64,7 +63,6 @@ class CorePaymentKafkaIT {
       WalletSeeder seeder,
       FaultRegistry faults,
       JdbcTemplate jdbc,
-      PinKeyProvider keys,
       JsonMapper json) {
     this.publisher = publisher;
     this.kafka = kafka;
@@ -72,7 +70,7 @@ class CorePaymentKafkaIT {
     this.faults = faults;
     this.jdbc = jdbc;
     this.json = json;
-    this.cmds = new CoreCommandsTestSupport(keys, json);
+    this.cmds = new CoreCommandsTestSupport(json);
   }
 
   @BeforeEach
@@ -97,7 +95,7 @@ class CorePaymentKafkaIT {
   @Test
   void aPaymentCommandIsAnsweredOnThePaymentEventTopic() {
     String txn = CoreCommandsTestSupport.txnId();
-    CoreCommand hold = cmds.holdFunds(txn, A, 5_000, "1234");
+    CoreCommand hold = cmds.holdFunds(txn, A, 5_000);
     send(PAYMENT_COMMANDS, hold);
 
     JsonNode e = json.readTree(events(PAYMENT_EVENTS, txn, 1).get(0).value());

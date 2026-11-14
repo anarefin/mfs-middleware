@@ -27,8 +27,9 @@ import tools.jackson.databind.node.ObjectNode;
  * through mw-auth's dev-only seed API (idempotent: a wallet with a PIN is left alone), then each user
  * binds one fresh device (binding OTP {@code POST /auth/v1/otp}, read from the SMSC simulator, signed
  * {@code POST /auth/v1/devices} with the PIN) and logs in (signed {@code POST /auth/v1/sessions}).
- * Also fetches the core's PIN key (transactions carry the core PIN until ticket 72). Needs the
- * test-only routes ({@code scripts/suite.sh perf} applies them like {@code scripts/api-test.sh}).
+ * Transactions take the same PIN under the same transport key (ticket 72: mw-auth checks it and
+ * issues the assertion; the core has no PIN key any more). Needs the test-only routes ({@code
+ * scripts/suite.sh perf} applies them like {@code scripts/api-test.sh}) for the SMSC simulator.
  */
 public final class Provisioning {
 
@@ -36,15 +37,17 @@ public final class Provisioning {
   /** The code of the English binding OTP SMS (mw-notify template DEVICE_BIND_OTP). */
   private static final Pattern OTP = Pattern.compile("Your Bits code to bind a new device is ([0-9]{6})");
 
-  /** What the load needs: the core's PIN key, the users' mw-auth tokens, each app user's bound device. */
-  public record Ready(PinCipher pin, Tokens tokens, Map<String, Device> devices) {}
+  /**
+   * What the load needs: the PIN transport key and the wallets' PIN (MW_SEED_APP_PIN), the users'
+   * mw-auth tokens, each app user's bound device.
+   */
+  public record Ready(PinCipher pin, String plainPin, Tokens tokens, Map<String, Device> devices) {}
 
   private Provisioning() {}
 
   public static Ready prepare(PerfUsers users, int parallelism) {
     Stack stack = Stack.get();
     String appPin = stack.devCredential("MW_SEED_APP_PIN");
-    PinCipher pin = pinKey();
     PinCipher transport = transportKey();
     log.info("event=perf.setup.users customers={} agents={}", users.customers().size(), users.agents().size());
     seedAppPins(users.appUsers(), transport, appPin);
@@ -69,15 +72,7 @@ public final class Provisioning {
       throw new IllegalStateException("binding the perf devices failed: " + e.getMessage(), e);
     }
     tokens.start();
-    return new Ready(pin, tokens, Map.copyOf(devices));
-  }
-
-  private static PinCipher pinKey() {
-    Http.Response r = Http.get(Stack.get().url("test/core-mock/v1/pin-public-key"), apiKey());
-    if (r.status() != 200) {
-      throw new IllegalStateException("PIN public key (test-only routes applied? scripts/suite.sh perf does it): " + r.status());
-    }
-    return PinCipher.fromPem(r.body().get("keyId").asString(), r.body().get("publicKeyPem").asString());
+    return new Ready(transport, appPin, tokens, Map.copyOf(devices));
   }
 
   /** mw-auth's PIN transport key ({@code GET /auth/v1/pin-key}): the app PIN is encrypted under it. */

@@ -12,8 +12,6 @@ import mfs.mw.core.mock.dto.Amount;
 import mfs.mw.core.mock.dto.CoreCommand;
 import mfs.mw.core.mock.dto.CoreEvent;
 import mfs.mw.core.mock.dto.Party;
-import mfs.mw.core.mock.security.PinKeyProvider;
-import mfs.mw.core.mock.security.TestPins;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,8 +22,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Wallet rules the core owns: which wallet types a txnType may move money between (agent cash
- * in / cash out) and the PIN lockout after consecutive wrong PINs (spec 9.1), against a real
- * PostgreSQL ledger. Every event is checked against {@code core.event.v1}.
+ * in / cash out), a core-side lock (status LOCKED; the PIN lockout moved to mw-auth in ticket 72)
+ * and its ops unlock, against a real PostgreSQL ledger. Transfers carry mw-auth's assertion. Every event is checked against {@code core.event.v1}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Import(TestInfrastructure.class)
@@ -41,16 +39,14 @@ class WalletRulesIT {
   private final CoreCommandService service;
   private final WalletSeeder seeder;
   private final JdbcTemplate jdbc;
-  private final PinKeyProvider keys;
   private final JsonMapper json;
 
   @Autowired
   WalletRulesIT(
-      CoreCommandService service, WalletSeeder seeder, JdbcTemplate jdbc, PinKeyProvider keys, JsonMapper json) {
+      CoreCommandService service, WalletSeeder seeder, JdbcTemplate jdbc, JsonMapper json) {
     this.service = service;
     this.seeder = seeder;
     this.jdbc = jdbc;
-    this.keys = keys;
     this.json = json;
   }
 
@@ -60,7 +56,7 @@ class WalletRulesIT {
     jdbc.update("delete from outbox");
   }
 
-  private CoreCommand command(String commandType, String txnType, String from, String to, long minor, String pin) {
+  private CoreCommand command(String commandType, String txnType, String from, String to, long minor) {
     String u = UUID.randomUUID().toString();
     String txnId = u.substring(0, 14) + "7" + u.substring(15);
     Map<String, Object> payload = new LinkedHashMap<>();
@@ -68,8 +64,8 @@ class WalletRulesIT {
     payload.put("debitParty", new Party("WALLET", from, null, null));
     payload.put("creditParty", new Party("WALLET", to, null, null));
     payload.put("amount", Amount.bdt(minor));
-    if (pin != null) {
-      payload.put("encryptedPin", TestPins.encrypt(keys.publicKeyPem(), keys.keyId(), pin));
+    if (!"BULK_DISBURSE".equals(txnType)) { // a bulk child carries no assertion (maker-checker)
+      CoreCommandsTestSupport.authorised(payload, from);
     }
     String suffix = "PostTransfer".equals(commandType) ? ":post" : ":validate";
     Instant now = Instant.now();
@@ -85,8 +81,8 @@ class WalletRulesIT {
     return e;
   }
 
-  private String validate(String txnType, String from, String to, String pin) {
-    CoreEvent e = handle(command("ValidateTransaction", txnType, from, to, 1_000, pin));
+  private String validate(String txnType, String from, String to) {
+    CoreEvent e = handle(command("ValidateTransaction", txnType, from, to, 1_000));
     return e.outcome() == CoreEvent.Outcome.SUCCESS ? "OK" : e.reasonCode();
   }
 
@@ -102,31 +98,31 @@ class WalletRulesIT {
 
   @Test
   void cashInRunsOnlyFromAnAgentToACustomer() {
-    assertThat(validate("CASH_IN", AGENT, CUSTOMER_A, "1234")).isEqualTo("OK");
-    assertThat(validate("CASH_IN", CUSTOMER_A, CUSTOMER_B, "1234")).isEqualTo("INVALID_COUNTERPARTY");
-    assertThat(validate("CASH_IN", AGENT, AGENT_2, "1234")).isEqualTo("INVALID_COUNTERPARTY");
-    assertThat(validate("CASH_IN", CUSTOMER_A, AGENT, "1234")).isEqualTo("INVALID_COUNTERPARTY");
+    assertThat(validate("CASH_IN", AGENT, CUSTOMER_A)).isEqualTo("OK");
+    assertThat(validate("CASH_IN", CUSTOMER_A, CUSTOMER_B)).isEqualTo("INVALID_COUNTERPARTY");
+    assertThat(validate("CASH_IN", AGENT, AGENT_2)).isEqualTo("INVALID_COUNTERPARTY");
+    assertThat(validate("CASH_IN", CUSTOMER_A, AGENT)).isEqualTo("INVALID_COUNTERPARTY");
   }
 
   @Test
   void cashOutRunsOnlyFromACustomerToAnAgent() {
-    assertThat(validate("CASH_OUT", CUSTOMER_A, AGENT, "1234")).isEqualTo("OK");
-    assertThat(validate("CASH_OUT", AGENT, CUSTOMER_A, "1234")).isEqualTo("INVALID_COUNTERPARTY");
-    assertThat(validate("CASH_OUT", CUSTOMER_A, CUSTOMER_B, "1234")).isEqualTo("INVALID_COUNTERPARTY");
+    assertThat(validate("CASH_OUT", CUSTOMER_A, AGENT)).isEqualTo("OK");
+    assertThat(validate("CASH_OUT", AGENT, CUSTOMER_A)).isEqualTo("INVALID_COUNTERPARTY");
+    assertThat(validate("CASH_OUT", CUSTOMER_A, CUSTOMER_B)).isEqualTo("INVALID_COUNTERPARTY");
   }
 
   @Test
   void merchantPayRunsOnlyFromACustomerToAMerchant() {
-    assertThat(validate("MERCHANT_PAY", CUSTOMER_A, MERCHANT, "1234")).isEqualTo("OK");
-    assertThat(validate("MERCHANT_PAY", CUSTOMER_A, CUSTOMER_B, "1234")).isEqualTo("INVALID_COUNTERPARTY");
-    assertThat(validate("MERCHANT_PAY", CUSTOMER_A, AGENT, "1234")).isEqualTo("INVALID_COUNTERPARTY");
-    assertThat(validate("MERCHANT_PAY", AGENT, MERCHANT, "1234")).isEqualTo("INVALID_COUNTERPARTY");
-    assertThat(validate("MERCHANT_PAY", MERCHANT, CUSTOMER_A, "1234")).isEqualTo("INVALID_COUNTERPARTY");
+    assertThat(validate("MERCHANT_PAY", CUSTOMER_A, MERCHANT)).isEqualTo("OK");
+    assertThat(validate("MERCHANT_PAY", CUSTOMER_A, CUSTOMER_B)).isEqualTo("INVALID_COUNTERPARTY");
+    assertThat(validate("MERCHANT_PAY", CUSTOMER_A, AGENT)).isEqualTo("INVALID_COUNTERPARTY");
+    assertThat(validate("MERCHANT_PAY", AGENT, MERCHANT)).isEqualTo("INVALID_COUNTERPARTY");
+    assertThat(validate("MERCHANT_PAY", MERCHANT, CUSTOMER_A)).isEqualTo("INVALID_COUNTERPARTY");
   }
 
   @Test
   void aMerchantPaymentMovesTheAmountToTheMerchantWithoutAFee() {
-    CoreEvent e = handle(command("PostTransfer", "MERCHANT_PAY", CUSTOMER_A, MERCHANT, 25_000, "1234"));
+    CoreEvent e = handle(command("PostTransfer", "MERCHANT_PAY", CUSTOMER_A, MERCHANT, 25_000));
     assertThat(e.eventType()).isEqualTo("TransferPosted");
     assertThat(balance(CUSTOMER_A)).isEqualTo(1_000_000 - 25_000);
     assertThat(balance(MERCHANT)).isEqualTo(25_000);
@@ -134,27 +130,27 @@ class WalletRulesIT {
 
   @Test
   void aWrongCounterpartyIsRefusedOnPostTooAndMovesNoMoney() {
-    CoreEvent e = handle(command("PostTransfer", "CASH_OUT", AGENT, CUSTOMER_A, 1_000, "1234"));
+    CoreEvent e = handle(command("PostTransfer", "CASH_OUT", AGENT, CUSTOMER_A, 1_000));
     assertThat(e.eventType()).isEqualTo("TransferRejected");
     assertThat(e.reasonCode()).isEqualTo("INVALID_COUNTERPARTY");
     assertThat(balance(AGENT)).isEqualTo(10_000_000);
     assertThat(balance(CUSTOMER_A)).isEqualTo(1_000_000);
   }
 
-  // --- BULK_DISBURSE (ticket 34): org -> customer, authorised by maker-checker, no PIN --------
+  // --- BULK_DISBURSE (ticket 34): org -> customer, authorised by maker-checker, no assertion -
 
   @Test
-  void bulkDisburseRunsOnlyFromAnOrgToACustomerWithoutAPin() {
-    assertThat(validate("BULK_DISBURSE", ORG, CUSTOMER_A, null)).isEqualTo("OK");
-    assertThat(validate("BULK_DISBURSE", CUSTOMER_A, CUSTOMER_B, null)).isEqualTo("INVALID_COUNTERPARTY");
-    assertThat(validate("BULK_DISBURSE", ORG, AGENT, null)).isEqualTo("INVALID_COUNTERPARTY");
+  void bulkDisburseRunsOnlyFromAnOrgToACustomerWithoutAnAssertion() {
+    assertThat(validate("BULK_DISBURSE", ORG, CUSTOMER_A)).isEqualTo("OK");
+    assertThat(validate("BULK_DISBURSE", CUSTOMER_A, CUSTOMER_B)).isEqualTo("INVALID_COUNTERPARTY");
+    assertThat(validate("BULK_DISBURSE", ORG, AGENT)).isEqualTo("INVALID_COUNTERPARTY");
   }
 
   @Test
   void anOrgPaysOutMoreInADayThanAWalletLimitAllows() {
     long perTxn = 500_000; // the per-transaction cap of every wallet
     for (int i = 0; i < 4; i++) { // 4 x 5,000 taka > the 15,000 taka daily limit of a customer
-      CoreEvent e = handle(command("PostTransfer", "BULK_DISBURSE", ORG, CUSTOMER_B, perTxn, null));
+      CoreEvent e = handle(command("PostTransfer", "BULK_DISBURSE", ORG, CUSTOMER_B, perTxn));
       assertThat(e.eventType()).as("payout %d", i).isEqualTo("TransferPosted");
     }
     assertThat(balance(ORG)).isEqualTo(100_000_000 - 4 * perTxn);
@@ -163,61 +159,32 @@ class WalletRulesIT {
 
   @Test
   void typesWithoutARuleAreNotRestricted() {
-    assertThat(validate("P2P", CUSTOMER_A, CUSTOMER_B, "1234")).isEqualTo("OK");
+    assertThat(validate("P2P", CUSTOMER_A, CUSTOMER_B)).isEqualTo("OK");
   }
 
   @Test
-  void aWrongCounterpartyIsDecidedBeforeThePinAndCountsNoPinFailure() {
-    for (int i = 0; i < 6; i++) {
-      assertThat(validate("CASH_IN", CUSTOMER_A, CUSTOMER_B, "9999")).isEqualTo("INVALID_COUNTERPARTY");
-    }
-    assertThat(status(CUSTOMER_A)).isEqualTo("ACTIVE");
-    assertThat(validate("P2P", CUSTOMER_A, CUSTOMER_B, "1234")).isEqualTo("OK");
+  void aWrongCounterpartyIsDecidedBeforeTheAssertion() {
+    Integer claimed = jdbc.queryForObject("select count(*) from used_assertion", Integer.class);
+    CoreCommand c = command("ValidateTransaction", "CASH_IN", CUSTOMER_A, CUSTOMER_B, 1_000);
+    assertThat(handle(c).reasonCode()).isEqualTo("INVALID_COUNTERPARTY");
+    // the assertion was not looked at, so its jti is not claimed
+    assertThat(jdbc.queryForObject("select count(*) from used_assertion", Integer.class)).isEqualTo(claimed);
   }
 
-  // --- PIN lockout --------------------------------------------------------------------------
+  // --- core-side lock (ticket 72: the core keeps no PIN lockout; mw-auth owns it) --------------
 
   @Test
-  void fiveConsecutiveWrongPinsLockTheWallet() {
-    for (int i = 1; i <= 4; i++) {
-      assertThat(validate("P2P", CUSTOMER_A, CUSTOMER_B, "9999")).as("attempt %d", i).isEqualTo("INVALID_PIN");
-      assertThat(status(CUSTOMER_A)).isEqualTo("ACTIVE");
-    }
-    assertThat(validate("P2P", CUSTOMER_A, CUSTOMER_B, "9999")).isEqualTo("INVALID_PIN");
+  void aLockedWalletIsRefusedAsPayerBeforeItsAssertion() {
+    lockOut(CUSTOMER_A);
+    assertThat(validate("P2P", CUSTOMER_A, CUSTOMER_B)).isEqualTo("ACCOUNT_LOCKED");
     assertThat(status(CUSTOMER_A)).isEqualTo("LOCKED");
-
-    assertThat(validate("P2P", CUSTOMER_A, CUSTOMER_B, "1234")).isEqualTo("ACCOUNT_LOCKED");
-  }
-
-  @Test
-  void aCorrectPinResetsTheCount() {
-    for (int i = 0; i < 4; i++) {
-      validate("P2P", CUSTOMER_A, CUSTOMER_B, "9999");
-    }
-    assertThat(validate("P2P", CUSTOMER_A, CUSTOMER_B, "1234")).isEqualTo("OK");
-    for (int i = 0; i < 4; i++) {
-      assertThat(validate("P2P", CUSTOMER_A, CUSTOMER_B, "9999")).isEqualTo("INVALID_PIN");
-    }
-    assertThat(status(CUSTOMER_A)).isEqualTo("ACTIVE");
-  }
-
-  @Test
-  void aRepeatedWrongPinCommandCountsOnce() {
-    CoreCommand wrong = command("ValidateTransaction", "P2P", CUSTOMER_A, CUSTOMER_B, 1_000, "9999");
-    for (int i = 0; i < 6; i++) {
-      assertThat(handle(wrong).reasonCode()).isEqualTo("INVALID_PIN");
-    }
-    assertThat(status(CUSTOMER_A)).isEqualTo("ACTIVE");
   }
 
   @Test
   void aLockedWalletCanStillReceiveMoney() {
-    for (int i = 0; i < 5; i++) {
-      validate("P2P", CUSTOMER_A, CUSTOMER_B, "9999");
-    }
-    assertThat(status(CUSTOMER_A)).isEqualTo("LOCKED");
+    lockOut(CUSTOMER_A);
 
-    CoreEvent e = handle(command("PostTransfer", "P2P", CUSTOMER_B, CUSTOMER_A, 1_000, "1234"));
+    CoreEvent e = handle(command("PostTransfer", "P2P", CUSTOMER_B, CUSTOMER_A, 1_000));
     assertThat(e.eventType()).isEqualTo("TransferPosted");
     assertThat(balance(CUSTOMER_A)).isEqualTo(1_001_000);
   }
@@ -251,7 +218,7 @@ class WalletRulesIT {
   }
 
   @Test
-  void customerFactorsOfAnActiveOrPinLockedWalletAreVerified() {
+  void customerFactorsOfAnActiveOrLockedWalletAreVerified() {
     String reset = UUID.randomUUID().toString();
     CoreEvent e = handle(factors(CUSTOMER_A, reset));
     assertThat(e.eventType()).isEqualTo("CustomerFactorsVerified");
@@ -304,15 +271,14 @@ class WalletRulesIT {
     return json.convertValue(envelope, CoreCommand.class);
   }
 
+  /** A core-side lock, as a real core sets it for its own reasons (the mock has no API for it). */
   private void lockOut(String wallet) {
-    for (int i = 0; i < 5; i++) {
-      validate("P2P", wallet, CUSTOMER_B, "9999");
-    }
+    jdbc.update("update wallet set status = 'LOCKED' where id = ?", wallet);
     assertThat(status(wallet)).isEqualTo("LOCKED");
   }
 
   @Test
-  void anUnlockClearsTheLockAndTheFailureCountOnce() {
+  void anUnlockLiftsTheLockOnce() {
     lockOut(CUSTOMER_A);
     CoreCommand unlock = unlock(CUSTOMER_A);
 
@@ -322,8 +288,7 @@ class WalletRulesIT {
     assertThat(e.commandId()).isEqualTo(unlock.commandId());
     assertThat(e.payload()).containsEntry("walletId", CUSTOMER_A);
     assertThat(status(CUSTOMER_A)).isEqualTo("ACTIVE");
-    assertThat(jdbc.queryForObject("select pin_failures from wallet where id = ?", Integer.class, CUSTOMER_A)).isZero();
-    assertThat(validate("P2P", CUSTOMER_A, CUSTOMER_B, "1234")).isEqualTo("OK");
+    assertThat(validate("P2P", CUSTOMER_A, CUSTOMER_B)).isEqualTo("OK");
 
     // lock it again: a replay of the same command answers from the log and changes nothing
     lockOut(CUSTOMER_A);
@@ -334,25 +299,12 @@ class WalletRulesIT {
   }
 
   @Test
-  void anUnlockAfterTheUnlockCountsFailuresAfresh() {
-    lockOut(CUSTOMER_A);
-    handle(unlock(CUSTOMER_A));
-    for (int i = 0; i < 4; i++) {
-      assertThat(validate("P2P", CUSTOMER_A, CUSTOMER_B, "9999")).isEqualTo("INVALID_PIN");
-    }
-    assertThat(status(CUSTOMER_A)).isEqualTo("ACTIVE");
-  }
-
-  @Test
   void anUnlockOfAWalletThatIsNotLockedIsRejected() {
-    validate("P2P", CUSTOMER_A, CUSTOMER_B, "9999");
-
     CoreEvent e = handle(unlock(CUSTOMER_A));
     assertThat(e.eventType()).isEqualTo("UnlockRejected");
     assertThat(e.outcome()).isEqualTo(CoreEvent.Outcome.FAILURE);
     assertThat(e.reasonCode()).isEqualTo("WALLET_NOT_LOCKED");
     assertThat(status(CUSTOMER_A)).isEqualTo("ACTIVE");
-    assertThat(jdbc.queryForObject("select pin_failures from wallet where id = ?", Integer.class, CUSTOMER_A)).isEqualTo(1);
   }
 
   @Test

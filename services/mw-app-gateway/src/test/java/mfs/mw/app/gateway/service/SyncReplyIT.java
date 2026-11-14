@@ -1,6 +1,8 @@
 package mfs.mw.app.gateway.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 
 import java.time.Duration;
@@ -9,6 +11,12 @@ import java.util.Map;
 import java.util.UUID;
 import mfs.mw.app.gateway.TestInfrastructure;
 import mfs.mw.app.gateway.TestTopics;
+import mfs.mw.app.gateway.client.AuthClient;
+import mfs.mw.app.gateway.dto.ErrorDetail;
+import mfs.mw.app.gateway.dto.TxnAuthorisation;
+import mfs.mw.app.gateway.exception.MwException;
+import org.springframework.http.HttpStatus;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import mfs.mw.app.gateway.contracts.ContractSchemas;
 import mfs.mw.app.gateway.messaging.KafkaTestConsumer;
 import mfs.mw.app.gateway.messaging.OrchestratorStub;
@@ -74,9 +82,29 @@ class SyncReplyIT {
     orchestrator.close();
   }
 
+  /** mw-auth (ticket 72): every PIN is right unless a test says otherwise. */
+  @MockitoBean AuthClient auth;
+
+  static final String ASSERTION = "eyJhbGciOiJFUzI1NiJ9.eyJqdGkiOiJpdCJ9.c2lnbmF0dXJl";
+
   @BeforeEach
   void replyConsumerReady() {
+    when(auth.authorise(any()))
+        .thenReturn(new TxnAuthorisation(ASSERTION, java.time.Instant.now().plusSeconds(60), false));
     TestTopics.awaitGroupStable("mw-app-gateway.reply.it-gw-1", Duration.ofSeconds(60));
+  }
+
+  @Test
+  void aWrongPinAtMwAuthIsAnsweredWithItsCodeAndStatus() {
+    when(auth.authorise(any()))
+        .thenThrow(new MwException("MW-AUTH-040", "Wrong PIN").withStatus(HttpStatus.UNAUTHORIZED)
+            .withDetails(List.of(new ErrorDetail("triesLeft", "2"))));
+
+    MvcTestResult r = submit("wrong-pin-1", 1000);
+
+    assertThat(r).hasStatus(401);
+    assertThat(r).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-040");
+    assertThat(r).bodyJson().extractingPath("$.details[0].field").isEqualTo("triesLeft");
   }
 
   static RequestPostProcessor user(String msisdn) {
@@ -149,8 +177,9 @@ class SyncReplyIT {
     assertThat(req.path("initiator").path("id").asString()).isEqualTo(PAYER);
     assertThat(req.path("debitParty").path("id").asString()).isEqualTo(PAYER);
     assertThat(req.path("creditParty").path("id").asString()).isEqualTo(PAYEE);
-    assertThat(req.path("encryptedPin").path("ciphertext").asString()).isEqualTo(CIPHERTEXT);
-    assertThat(req.path("encryptedPin").path("keyId").asString()).isEqualTo("core-pin-1");
+    assertThat(req.has("encryptedPin")).isFalse();
+    assertThat(req.path("assertion").asString()).isEqualTo(ASSERTION);
+    assertThat(published.value()).doesNotContain(CIPHERTEXT);
     assertThat(req.path("locale").asString()).isEqualTo("bn");
     assertThat(KafkaTestConsumer.headers(published))
         .containsEntry("mw-reply-to", "it-gw-1")

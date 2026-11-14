@@ -27,13 +27,13 @@ class CoreCommandMapperTest {
   }
 
   @Test
-  void validateTransactionIsAValidCommandThatCarriesThePinCiphertext() {
+  void validateTransactionIsAValidCommandThatCarriesTheAssertion() {
     CoreCommand c = mapper.validate(rec, TestData.NOW, Duration.ofSeconds(60));
 
     assertThat(c.commandType()).isEqualTo("ValidateTransaction");
     assertThat(c.commandId()).isEqualTo(rec.txnId() + ":validate");
     assertThat(c.expiresAt()).isEqualTo(TestData.NOW.plusSeconds(60));
-    assertThat(json.writeValueAsString(c)).contains("ZmFrZS1jaXBoZXJ0ZXh0");
+    assertThat(json.writeValueAsString(c)).contains(TestData.ASSERTION);
     assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(c))).isEmpty();
   }
 
@@ -79,7 +79,7 @@ class CoreCommandMapperTest {
     assertThat(payload.path("creditParty").path("id").asString()).isEqualTo("01711000001");
     assertThat(payload.path("debitParty").path("type").asString()).isEqualTo("BANK_ACCOUNT");
     assertThat(payload.path("amount").path("valueMinor").asLong()).isEqualTo(50_000);
-    assertThat(json.writeValueAsString(c)).doesNotContain("encryptedPin", "ZmFrZS1jaXBoZXJ0ZXh0");
+    assertThat(json.writeValueAsString(c)).doesNotContain("assertion", TestData.ASSERTION);
     assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(c))).isEmpty();
   }
 
@@ -112,27 +112,29 @@ class CoreCommandMapperTest {
   }
 
   @Test
-  void aRequestWithAnAssertionStoresNoPin() {
-    TxnRequest both = TestData.withAssertion(TestData.p2p(TestData.txnId(), "key-b", 5_000));
-    both = new TxnRequest(both.schemaVersion(), both.txnId(), both.idempotencyKey(), both.correlationId(),
-        both.channel(), both.txnType(), both.initiator(), both.debitParty(), both.creditParty(), both.amount(),
-        both.partner(), both.originalTxnId(), new mfs.mw.orchestrator.dto.EncryptedPin("k", "ZmFrZQ=="),
-        both.assertion(), both.locale(), both.metadata(), both.attributes(), both.requestedAt());
+  void anOldChannelsPinCiphertextIsDroppedOnIntakeAndNeverReachesTheCore() {
+    TxnRequest legacy = json.readValue(
+        json.writeValueAsString(TestData.p2p(TestData.txnId(), "key-b", 5_000))
+            .replaceFirst("^\\{", "{\"encryptedPin\":{\"keyId\":\"k\",\"ciphertext\":\"ZmFrZQ==\"},"),
+        TxnRequest.class);
 
-    TransactionRecord r = new RequestMapper(json).toRecord(both, null, TestData.NOW);
+    TransactionRecord r = new RequestMapper(json).toRecord(legacy, null, TestData.NOW);
 
-    assertThat(r.encryptedPin()).isNull();
-    assertThat(r.request().encryptedPin()).isNull();
+    assertThat(json.writeValueAsString(r.request())).doesNotContain("encryptedPin", "ZmFrZQ==");
     assertThat(r.request().assertion()).isEqualTo(TestData.ASSERTION);
     var payload = json.valueToTree(mapper.validate(r, TestData.NOW, Duration.ofSeconds(60))).path("payload");
     assertThat(payload.has("encryptedPin")).isFalse();
   }
 
   @Test
-  void aRequestWithThePinOnlyStillSendsThePinAndNoIdempotencyKey() {
-    var payload = json.valueToTree(mapper.validate(rec, TestData.NOW, Duration.ofSeconds(60))).path("payload");
+  void aBulkChildSendsNeitherAssertionNorIdempotencyKey() {
+    TransactionRecord bulk = new RequestMapper(json)
+        .toRecord(TestData.bulkChild(TestData.txnId(), "key-k", 1_000, "01711000002"), null, TestData.NOW);
+
+    var c = mapper.validate(bulk, TestData.NOW, Duration.ofSeconds(60));
+    var payload = json.valueToTree(c).path("payload");
     assertThat(payload.has("assertion")).isFalse();
-    assertThat(payload.has("encryptedPin")).isTrue();
     assertThat(payload.has("idempotencyKey")).isFalse();
+    assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(c))).isEmpty();
   }
 }

@@ -95,6 +95,18 @@ class ApiContractsTest {
   }
 
   @Test
+  void theChannelOtpBodiesMatchTheInternalContract() {
+    assertValid(OpenApiSchemas.component(INTERNAL_API, "ChannelOtpSent"),
+        new mfs.mw.auth.dto.DeviceOtpSent("0171****001", NOW.plusSeconds(120), 4));
+    assertValid(OpenApiSchemas.component(INTERNAL_API, "ChannelOtpRequest"),
+        new mfs.mw.auth.dto.InternalOtpRequest(
+            "01711000001", "CHECKOUT", "3f6b1c2d-4e5f-4a6b-9c7d-8e9f0a1b2c3d", "en", "250.00", "Demo Shop"));
+    assertValid(OpenApiSchemas.component(INTERNAL_API, "ChannelOtpVerification"),
+        new mfs.mw.auth.dto.InternalOtpVerification(
+            "01711000001", "CHECKOUT", "3f6b1c2d-4e5f-4a6b-9c7d-8e9f0a1b2c3d", "123456"));
+  }
+
+  @Test
   void pinResetResponsesMatchTheContracts() {
     String id = "3f6b1c2d-4e5f-4a6b-9c7d-8e9f0a1b2c3d";
     assertValid(OpenApiSchemas.component(PUBLIC_API, "PinReset"),

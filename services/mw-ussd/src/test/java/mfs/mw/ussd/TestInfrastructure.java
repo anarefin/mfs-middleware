@@ -5,7 +5,6 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.concurrent.atomic.AtomicInteger;
-import mfs.mw.ussd.util.TestPinKeys;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.DynamicPropertyRegistrar;
@@ -18,7 +17,8 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  * Real infrastructure for tests that start the application context (spec 22.1): PostgreSQL 18, a
  * single-node KRaft Kafka and Valkey (USSD sessions), the platform stack's versions (Kafka as its
  * GraalVM native build, apache/kafka-native: same broker, starts in about a second on little memory
- * and CPU), and a PIN key pair generated per run in place of the core's. This module owns its fixtures (no shared
+ * and CPU), and mw-auth as a WireMock stub ({@link AuthStub}: service token, PIN transport key generated per
+ * run, assertions). This module owns its fixtures (no shared
  * test kit). Import it with {@code @Import(TestInfrastructure.class)}; such a test class is a
  * {@code *IT}, which {@link DockerAvailableCondition} skips when Docker is not available.
  *
@@ -89,8 +89,8 @@ public class TestInfrastructure {
   }
 
   /**
-   * Wires this context to its own database, the shared Kafka and Valkey, and the per-run test PIN
-   * key (no key is checked in).
+   * Wires this context to its own database, the shared Kafka and Valkey, and the mw-auth stub
+   * (no key is checked in).
    */
   @Bean
   DynamicPropertyRegistrar testInfrastructureProperties() {
@@ -103,8 +103,11 @@ public class TestInfrastructure {
       registry.add("camel.component.kafka.brokers", KAFKA::getBootstrapServers);
       registry.add("spring.data.redis.host", VALKEY::getHost);
       registry.add("spring.data.redis.port", () -> VALKEY.getMappedPort(6379));
-      registry.add("mw.ussd.pin.key-id", () -> "core-pin-test");
-      registry.add("mw.ussd.pin.public-key", TestPinKeys::pem);
+      // mw-auth: the WireMock stub (plain HTTP, mTLS off in tests; ticket 72)
+      String auth = AuthStub.baseUrl();
+      registry.add("mw.ussd.auth.base-url", () -> auth);
+      registry.add("mw.ussd.auth.token-uri", () -> auth + "/token");
+      registry.add("mw.ussd.auth.pin-key-uri", () -> auth + "/auth/v1/pin-key");
     };
   }
 

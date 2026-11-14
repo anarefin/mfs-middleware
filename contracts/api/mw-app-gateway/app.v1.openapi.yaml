@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits app API (mw-app-gateway)
-  version: 1.3.0
+  version: 1.4.0
   description: |
     Mobile apps API v1 (spec 8.2, 9.1), served by mw-app-gateway behind APISIX route `/app/v1/*`.
     Bearer access JWT from mw-auth (spec 18.7, D21; MSISDN + PIN login on a bound device); the payer
@@ -47,12 +47,19 @@ paths:
         customer's own wallet);
         `agent` sends CASH_IN (the agent's float pays the customer in `creditParty`); `merchant`
         sends nothing (it reads its collections, GET /app/v1/merchant/collections). The payer is
-        the token's wallet (for ADD_MONEY_BANK the receiver) and `encryptedPin` its PIN. Any other combination is 403
+        the token's wallet (for ADD_MONEY_BANK the receiver) and `encryptedPin` its PIN, under the PIN
+        transport key of GET /app/v1/pin-key (ticket 72). Any other combination is 403
         MW-AUTH-002. For P2P, CASH_IN, CASH_OUT and MERCHANT_PAY a counterparty equal to the caller's
         own wallet is 400 MW-VAL-012; the core refuses wallets of the wrong type for
         CASH_IN/CASH_OUT/MERCHANT_PAY (422
-        MW-CORE-INVALID_COUNTERPARTY) and locks a wallet after 5 wrong PINs in a row (422
-        MW-CORE-ACCOUNT_LOCKED).
+        MW-CORE-INVALID_COUNTERPARTY) and a wallet it locked itself (422 MW-CORE-ACCOUNT_LOCKED).
+        Before anything is published the gateway asks mw-auth for the transaction assertion (spec
+        18.7, D22): mw-auth checks the PIN and its lockout, and its refusal is answered at once with
+        its code and status, nothing published: 401 MW-AUTH-040 wrong PIN (`details` triesLeft), 423
+        MW-AUTH-041 PIN locked for now (`details` retryAfter) or MW-AUTH-042 until a reset, 403
+        MW-AUTH-043 wallet locked, 403 MW-AUTH-045 no PIN set, 401 MW-AUTH-047 device not the
+        wallet's bound one, 409 MW-IDEM-001 the key already authorised another transaction;
+        mw-auth unreachable 503 MW-SYS-012 (retryable).
       parameters:
         - name: Idempotency-Key
           in: header
@@ -94,6 +101,11 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "413": { $ref: "#/components/responses/Error" }
+        "423":
+          description: The PIN is locked at mw-auth (MW-AUTH-041 with retryAfter, MW-AUTH-042 until a reset)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
         "429": { $ref: "#/components/responses/Error" }
         "422":
           description: Core rejection (MW-CORE-<reason>), with txnId
@@ -108,11 +120,32 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
         "503":
-          description: Kafka unavailable (MW-SYS-010, retryable); nothing was accepted
+          description: >-
+            Kafka unavailable (MW-SYS-010, retryable) or mw-auth unreachable (MW-SYS-012,
+            retryable); nothing was accepted
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
         "504": { $ref: "#/components/responses/Error" }
+  /app/v1/pin-key:
+    get:
+      operationId: getPinKey
+      summary: The PIN transport public key the app encrypts the PIN with
+      description: >-
+        Ticket 72 (spec 18.7, D20): the newest mw-crypto `PIN_TRANSPORT` key (RSA 3072) as mw-auth
+        serves it (`GET /auth/v1/pin-key`), reused by the gateway for up to 5 min. The app encrypts
+        the PIN's UTF-8 bytes with RSA-OAEP (SHA-256, MGF1 SHA-256), sends the ciphertext as
+        standard base64 and `keyId` as `encryptedPin.keyId`. Needs the token only (no device
+        signature). 503 MW-SYS-012 (retryable) when mw-auth cannot be asked and no key is held.
+      responses:
+        "200":
+          description: The key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PinKey" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /app/v1/merchant/collections:
     get:
       operationId: listMerchantCollections
@@ -249,6 +282,13 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
   schemas:
+    PinKey:
+      type: object
+      required: [keyId, algorithm, publicKeyPem]
+      properties:
+        keyId: { type: string, minLength: 1, maxLength: 128, description: "The kid to send as encryptedPin.keyId (`<keyId>.v<n>`)" }
+        algorithm: { type: string, enum: [RSA-OAEP-SHA-256], description: "RSA-OAEP, SHA-256 hash and MGF1" }
+        publicKeyPem: { type: string, description: PEM SubjectPublicKeyInfo }
     Msisdn:
       type: string
       description: Accepted forms 01XNNNNNNNN, 8801XNNNNNNNN, +8801XNNNNNNNN; forwarded as 01XNNNNNNNN.
@@ -381,8 +421,8 @@ components:
           type: object
           required: [keyId, ciphertext]
           description: >-
-            PIN encrypted by the app with the core's public key (RSA-OAEP, SHA-256 hash and MGF1),
-            base64; passed through untouched.
+            PIN encrypted by the app under the PIN transport key of `keyId` (GET /app/v1/pin-key;
+            RSA-OAEP, SHA-256 hash and MGF1), base64; passed to mw-auth untouched, never published.
           properties:
             keyId: { type: string, minLength: 1, maxLength: 128 }
             ciphertext: { type: string, minLength: 1, maxLength: 4096 }

@@ -17,8 +17,18 @@ import mfs.mw.ussd.dto.Amount;
 import mfs.mw.ussd.dto.Bill;
 import mfs.mw.ussd.dto.Biller;
 import mfs.mw.ussd.dto.ErrorDetail;
+import mfs.mw.ussd.dto.EncryptedPin;
 import mfs.mw.ussd.dto.ErrorEnvelope;
 import mfs.mw.ussd.dto.HttpUssdResponse;
+import mfs.mw.ussd.dto.PinKey;
+import mfs.mw.ussd.dto.TxnAuthorisation;
+import mfs.mw.ussd.dto.TxnAuthorisationRequest;
+import mfs.mw.ussd.dto.TxnRequest;
+import mfs.mw.ussd.dto.UssdSession;
+import mfs.mw.ussd.dto.FlowRequest;
+import mfs.mw.ussd.mapper.TxnRequestMapper;
+import java.time.Instant;
+import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,13 +48,15 @@ class ApiContractsTest {
   static final JsonMapper JSON = ServiceJson.MAPPER;
   static final String USSD_API = "api/mw-ussd/ussd-http.v1.openapi.yaml";
   static final String BILLPAY_API = "api/mw-adapter-billpay/billpay.v1.openapi.yaml";
+  static final String AUTH_API = "api/mw-auth/auth-internal.v1.openapi.yaml";
+  static final String AUTH_PUBLIC_API = "api/mw-auth/auth.v1.openapi.yaml";
   static final String CORRELATION_ID = "019a4f6e-0000-7a3b-8c4d-5e6f7a8b9c0d";
 
   @Test
   void theManifestListsTheseApis() {
     ContractManifest manifest = ContractManifest.load();
     assertThat(manifest.producedApis()).containsExactly(USSD_API);
-    assertThat(manifest.consumedApis()).containsExactly(BILLPAY_API);
+    assertThat(manifest.consumedApis()).containsExactly(BILLPAY_API, AUTH_API, AUTH_PUBLIC_API);
   }
 
   // ---- served: ussd-http.v1 ----
@@ -71,6 +83,46 @@ class ApiContractsTest {
     assertValid(schema, new ErrorEnvelope("MW-VAL-001", "Invalid request", null, null, CORRELATION_ID, false,
         List.of(new ErrorDetail("msisdn", "not a Bangladeshi mobile number"))));
     assertValid(schema, new ErrorEnvelope("MW-VAL-003", "Unknown MNO", null, null, CORRELATION_ID, false, null));
+  }
+
+  // ---- called: mw-auth (AuthClient, ticket 72) ----
+
+  @Test
+  void theAuthorisationRequestTheMapperBuildsMatchesTheContract() {
+    Instant now = Instant.parse("2026-11-15T10:00:00Z");
+    UssdSession s = new UssdSession("robi", "sess-1", "01712345678", "main", 2, "en", "x.send", List.of(), Map.of(), 0,
+        List.of(), false, now);
+    TxnRequestMapper mapper = new TxnRequestMapper();
+    EncryptedPin pin = new EncryptedPin("PIN_TRANSPORT.v1", "Y2lwaGVy");
+    for (FlowRequest f : List.of(
+        new FlowRequest("P2P", s, "p", Map.of("creditParty", "01812345678", "amount", "500.50"), pin),
+        new FlowRequest("BILL_PAY", s, "p",
+            Map.of("creditParty", "1234567", "amount", "667", "partnerId", "billagg", "billerCode", "DESCO"), pin))) {
+      TxnRequest req = mapper.toRequest(f, "019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c0d", "k".repeat(64), CORRELATION_ID, now);
+      TxnAuthorisationRequest body = mapper.authorisation(req, pin);
+      assertValid(OpenApiSchemas.at(AUTH_API, "paths", "/internal/v1/txn-authorisations", "post", "requestBody",
+          "content", "application/json", "schema"), body);
+    }
+  }
+
+  @Test
+  void contractShapedMwAuthAnswersDeserialise() {
+    String authorised = "{\"assertion\":\"eyJhbGciOiJFUzI1NiJ9.eyJqdGkiOiJ0In0.c2lnbmF0dXJl\","
+        + "\"expiresAt\":\"2026-11-15T10:01:00Z\",\"newDevice\":false}";
+    assertThat(OpenApiSchemas.component(AUTH_API, "TxnAuthorisation").validate(JSON.readTree(authorised))).isEmpty();
+    assertThat(JSON.readValue(authorised, TxnAuthorisation.class).assertion()).startsWith("eyJ");
+
+    String key = "{\"keyId\":\"PIN_TRANSPORT.v1\",\"algorithm\":\"RSA-OAEP-SHA-256\",\"publicKeyPem\":\"-----BEGIN PUBLIC KEY-----\"}";
+    assertThat(OpenApiSchemas.at(AUTH_PUBLIC_API, "paths", "/auth/v1/pin-key", "get", "responses", "200", "content",
+        "application/json", "schema").validate(JSON.readTree(key))).isEmpty();
+    assertThat(JSON.readValue(key, PinKey.class)).isEqualTo(
+        new PinKey("PIN_TRANSPORT.v1", "RSA-OAEP-SHA-256", "-----BEGIN PUBLIC KEY-----"));
+
+    String wrong = "{\"code\":\"MW-AUTH-040\",\"message\":\"Wrong PIN\",\"correlationId\":\"c\",\"retryable\":false,"
+        + "\"details\":[{\"field\":\"triesLeft\",\"issue\":\"2\"}]}";
+    assertThat(OpenApiSchemas.component(AUTH_API, "ErrorEnvelope").validate(JSON.readTree(wrong))).isEmpty();
+    assertThat(JSON.readValue(wrong, ErrorEnvelope.class).details())
+        .containsExactly(new ErrorDetail("triesLeft", "2"));
   }
 
   // ---- called: billpay.v1 (BillPayClient) ----

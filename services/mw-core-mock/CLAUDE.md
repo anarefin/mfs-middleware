@@ -9,7 +9,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   the real core with no change to the orchestrator.
 - Consumes `core.wallet.command.v1` (`route/CoreWalletCommandRoute`) and `core.payment.command.v1`
   (`route/CorePaymentCommandRoute`), both with retry topics + DLQ. Handled: `ValidateTransaction`
-  (fee, limits, PIN, account status; moves no money), `PostTransfer` (double-entry debit/credit plus
+  (fee, limits, assertion, account status; moves no money), `PostTransfer` (double-entry debit/credit plus
   fee), `HoldFunds`, `CommitHold`, `ReleaseHold`, `CreditWallet`, `ReverseTransaction`,
   `QueryTransaction`, `UnlockWallet` (ticket 52), `VerifyCustomerFactors` (ticket 70). `ApplyComplianceAction`
   and unknown types are logged and ignored.
@@ -21,8 +21,17 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   e.g. `FACTORS_MISMATCH`; `CoreEventMapper.factorsRejected` carries the resetId). The real core compares
   the hashes with its KYC record (open point). Events on `core.wallet.event.v1` with commandId
   `pin-reset:<resetId>`; mw-orchestrator drops them (`txn.unknown`), mw-auth consumes them.
-- Ticket 70 also moved the ops unlock's PIN part to mw-auth (`auth.wallet-lock.v1`); `UnlockWallet`
-  stays for this core's own LOCKED status while it still checks PINs (ticket 72 decides).
+- **No PIN in the core (ticket 72, D20, D22; M11 removed).** The core holds, decrypts and checks no PIN
+  and keeps no PIN lockout: mw-auth checks the PIN and locks (ticket 70) and the core only verifies its
+  transaction assertion (below). Gone: `security/PinCipher`, `PinKeyProvider`, `controller/PinKeyController`
+  (`GET /core-mock/v1/pin-public-key`), `dto/EncryptedPin`, bcrypt (`spring-security-crypto`), `mw.coremock.pin.*`,
+  `pin-max-failures`, `seed.pin`, the reasons `INVALID_PIN` / `INVALID_PIN_BLOCK`; `V9__drop_core_pin.sql` drops
+  `wallet.pin_hash` and `wallet.pin_failures`. `WalletStateChanged.hasPin` is always false (mw-auth decides a
+  first PIN from `auth.credential`). **UnlockWallet decision:** status `LOCKED`, `WalletRepository.unlock` and
+  `UnlockWallet` STAY, for core-side account locks (a real core locks an account for its own reasons:
+  compliance, fraud, dormancy). The mock no longer sets LOCKED itself (no API either; tests set it in SQL), so
+  ops unlock (mw-admin-api) keeps sending both mw-auth `UNLOCK` on `auth.wallet-lock.v1` (the PIN lock) and core
+  `UnlockWallet` (a core lock; `WALLET_NOT_LOCKED` when there is none, which is harmless).
 - **Topic decision (spec 6.3 does not say which command goes where):** the mock accepts every
   command type on either command topic and answers on the paired event topic (wallet command ->
   `core.wallet.event.v1`, payment command -> `core.payment.event.v1`). The handler never looks at
@@ -31,7 +40,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   wallet topic for every other command. The mock keeps accepting any command on either topic. A command that is repeated on the other topic is answered from
   `command_log`, on the topic it arrived on.
 - `ValidateTransaction` whose credit party is outside the core (`BILLER_ACCOUNT`, `BANK_ACCOUNT`,
-  `CARD_TOKEN`; ticket 21, BILL_PAY) checks the payer side only (wallet types, status, PIN,
+  `CARD_TOKEN`; ticket 21, BILL_PAY) checks the payer side only (wallet types, status, assertion,
   limits, funds with the type's fee); `PostTransfer` still needs a credit wallet
   (`CREDIT_WALLET_NOT_FOUND`): such flows hold, then commit to `SETTLEMENT`. A TOPUP's credit
   party `MSISDN` (the number recharged; `PAYER_SIDE_ONLY_PAYEES`) is validated the same way: it
@@ -39,8 +48,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 - `ValidateTransaction` whose debit party is outside the core (`BANK_ACCOUNT`, `CARD_TOKEN`,
   `BILLER_ACCOUNT`; ticket 23, ADD_MONEY_BANK / C2W) checks the receiving wallet only: it exists
   (`CREDIT_WALLET_NOT_FOUND`), not LOCKED (`ACCOUNT_LOCKED`) or blocked
-  (`CREDIT_ACCOUNT_BLOCKED`), its own PIN (the customer authorises the add money; lockout counts
-  on that wallet), amount, per-transaction limit; no funds or daily debit check, fee of the type
+  (`CREDIT_ACCOUNT_BLOCKED`), the assertion with that wallet as subject (the customer authorises the add
+  money), amount, per-transaction limit; no funds or daily debit check, fee of the type
   (none configured). Moves nothing: the money arrives by `CreditWallet` from `SETTLEMENT` once the
   bank confirmed the debit. `PostTransfer` / `HoldFunds` from such a party are refused
   `WALLET_NOT_FOUND`.
@@ -51,7 +60,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   `command_log` row. Idempotent on `commandId`: the first result event is stored verbatim and a
   repeated command gets the same event again (a second outbox row, one ledger effect). A command
   whose `expiresAt` passed before it was first seen is dropped without an event.
-- Holds: `HoldFunds` runs the same checks as a transfer on the payer (PIN, limits, available funds;
+- Holds: `HoldFunds` runs the same checks as a transfer on the payer (assertion, limits, available funds;
   the credit party need not be a wallet) and reserves `amount + fee` in `wallet.held_minor`: the
   ledger balance is unchanged, the available balance (`balance - held`) shrinks, so later holds and
   transfers see less. `CommitHold` debits payer (amount to the `SETTLEMENT` system wallet, fee to
@@ -60,7 +69,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   `HOLD_RELEASED`, release of a committed one `HOLD_ALREADY_COMMITTED`, unknown ids `HOLD_NOT_FOUND`.
   `holdId` is `HOLD-<coreRef>`.
 - `CreditWallet`: money from the `SETTLEMENT` wallet (seeded with 10^12 poisha so the sum of all
-  balances is constant), no PIN, no fee. A txn is credited once whatever the commandId (an operator's
+  balances is constant), no assertion, no fee. A txn is credited once whatever the commandId (an operator's
   fresh `<txnId>:credit:manual-<n>` round): an already credited txn is answered `WalletCredited` without
   effect, a reversed one refused `ALREADY_REVERSED`. `ReverseTransaction`: undoes every entry (fee included) of
   `originalTxnId` once, under the reversal's own txnId, with `REVERSAL` entries; the amount must
@@ -85,40 +94,34 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   the log (REJECT does not re-decide), but DELAY/DROP/DUPLICATE still shape that reply.
 - Balances (admin API, not a product contract): `GET /core-mock/v1/wallets/{walletId}` (id or MSISDN)
   -> `{walletId, type, status, balanceMinor, heldMinor, availableMinor}`, unknown `400 MW-VAL-003`.
-  The e2e suite reads it (and the PIN key and faults) through the dev-only APISIX route
+  The e2e suite reads it (and the faults) through the dev-only APISIX route
   `/test/core-mock/v1/*` (`deploy/apisix/routes/test-core-mock.json`).
 - Wallet seed API (ticket 57, test-only, for mw-seeder; contract `api/mw-core-mock/core-mock-seed.v1.openapi.yaml`):
   `PUT /core-mock/v1/wallets/{walletId}` `{type: CUSTOMER|AGENT|MERCHANT|ORG, openingBalanceMinor}`
   (`controller/WalletSeedController` -> `service/WalletSeedService` -> `WalletRepository.insertIfAbsent`):
-  create-if-absent with id = MSISDN (`01[3-9]` + 8 digits, else 400 MW-VAL-001), the seed PIN and the
-  opening balance, no ledger entries (as `WalletSeeder`); 201 created, 200 already there (never changed,
+  create-if-absent with id = MSISDN (`01[3-9]` + 8 digits, else 400 MW-VAL-001) and the
+  opening balance (no PIN: mw-seeder sets first PINs at mw-auth), no ledger entries (as `WalletSeeder`); 201 created, 200 already there (never changed,
   whatever the body). Only with `mw.coremock.seed-api.enabled=true` (`MW_COREMOCK_SEED_API_ENABLED`, set by
   `deploy/docker-compose.yml`; default off: a PUT is then 405). No APISIX route: mw-seeder calls it
   inside the app network.
 - Ledger in schema `coremock` (role `coremock_rw`): `wallet`, `hold`, `entry`, `command_log`, `reversal`.
   Seed (on start, idempotent, `WalletSeeder`): 1,000 customers `01711000001..`, 50 agents
   `01811000001..`, 20 merchants `01911000001..`, 2 orgs `01311000001..` (wallet id = MSISDN) and the
-  system wallets `FEE-POOL` and `SETTLEMENT`. All share the fake seed PIN `1234` (bcrypt). Balances, fees and limits
+  system wallets `FEE-POOL` and `SETTLEMENT`. No PIN (mw-auth holds PINs). Balances, fees and limits
   are `mw.coremock.*` in `application.yml`; fee is a flat amount per `txnType`, debited from the payer
   on top of the amount; limits are per transaction and per UTC day (sum of transfer debits).
 - Wallet types per `txnType` (`mw.coremock.wallet-types`, debit -> credit): CASH_IN AGENT ->
   CUSTOMER, CASH_OUT CUSTOMER -> AGENT, MERCHANT_PAY CUSTOMER -> MERCHANT (ticket 30, fee 0),
   BULK_DISBURSE ORG -> CUSTOMER (ticket 34, fee 0); other types unrestricted. BULK_DISBURSE carries
-  no PIN (contract: the org authorised the batch by maker-checker; `TransferPayload.pinRequired`),
-  so no PIN check or lockout for it; any other transfer without `encryptedPin` is malformed.
+  no assertion (contract: the org authorised the batch by maker-checker; `TransferPayload.authorisationRequired`);
+  any other transfer without `assertion` + `idempotencyKey` is malformed (retry topics, DLQ).
   `limits.wallet-types.<type>.daily-minor` overrides the daily debit limit per wallet type (ORG
   50,000,000 taka: a whole 10,000-row batch in a day); the per-transaction limit applies to all. Wrong types `INVALID_COUNTERPARTY`
-  (validate, post and hold; decided before the PIN, so it never counts a PIN failure).
-- PIN lockout (spec 9.1, rule owned by the core): `wallet.pin_failures` counts consecutive wrong
-  PINs on the debit wallet (validate, post, hold), a correct PIN resets it, the
-  `mw.coremock.pin-max-failures`-th (5) in a row sets status `LOCKED` (log event
-  `wallet.pin.locked`). A LOCKED wallet is refused as payer with `ACCOUNT_LOCKED` (before its PIN
-  is checked) but can still be credited. Counting runs in the command transaction, so a replay
-  answered from `command_log` never counts twice.
-- Unlock (ticket 52, M2 gate decision): `UnlockWallet` (sent by mw-admin-api after maker-checker
-  approval, payload `subject` WALLET + `changeRequestId`, `makerId`, `checkerId`) sets a LOCKED wallet
-  back to ACTIVE with `pin_failures` 0 (`WalletRepository.unlock`, guarded by `status = 'LOCKED'`;
-  log event `wallet.pin.unlocked`) and answers `WalletUnlocked {walletId}`. A wallet that is not
+  (validate, post and hold; decided before the assertion, so its jti is not claimed).
+- Unlock (ticket 52, M2 gate decision; a core-side lock since ticket 72): `UnlockWallet` (sent by mw-admin-api
+  after maker-checker approval, payload `subject` WALLET + `changeRequestId`, `makerId`, `checkerId`) sets a
+  LOCKED wallet back to ACTIVE (`WalletRepository.unlock`, guarded by `status = 'LOCKED'`; log event
+  `wallet.unlocked`) and answers `WalletUnlocked {walletId}`. A wallet that is not
   LOCKED (ACTIVE, or BLOCKED for another reason: an unlock never lifts a block) gets `UnlockRejected
   WALLET_NOT_LOCKED`, an unknown one `WALLET_NOT_FOUND`; nothing changes. Idempotent on `commandId`
   like every command (a replay is answered from `command_log`, even after the wallet locked again).
@@ -129,25 +132,25 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 - Wallet state feed (ticket 67, spec 18.7, D5; `service/WalletStateEvents`, `mapper/CoreEventMapper.walletStateChanged`):
   `WalletStateChanged` on `core.wallet.event.v1` for every wallet with an MSISDN, through the outbox in
   the transaction of the change, key = walletId: `CREATED` (`WalletSeeder.seed` for the rows it inserts,
-  the seed API when it creates), `STATUS_CHANGED` (the PIN lock in `TransferRules`, the unlock), and with
+  the seed API when it creates), `STATUS_CHANGED` (the unlock), and with
   `mw.coremock.wallet-snapshot-on-start` (compose `MW_COREMOCK_WALLET_SNAPSHOT=true`, default off) a
   `SNAPSHOT` of every wallet after the seed on start. Payload `{walletId, msisdn, walletType, status,
-  hasPin, version, change}`; `wallet.version` (V7) comes from one sequence `wallet_version_seq` and takes
+  hasPin (always false since ticket 72), version, change}`; `wallet.version` (V7) comes from one sequence `wallet_version_seq` and takes
   the next value on every status change, so it only grows, also across a ledger reset. Envelope (no
   command answered): a fresh UUIDv7 txnId (`util/UuidV7`), commandId `wallet-state:<txnId>`, coreRef
   `WALLET-V<version>`, outcome SUCCESS. mw-auth projects it; mw-orchestrator drops it (`txn.unknown`).
   A status set by hand in SQL (tests) publishes nothing. Test: `service/WalletStateEventsIT`.
 - Reason codes (core reasons, mapped by the orchestrator): `WALLET_NOT_FOUND`,
   `CREDIT_WALLET_NOT_FOUND`, `INVALID_COUNTERPARTY`, `ACCOUNT_LOCKED`, `ACCOUNT_BLOCKED`,
-  `CREDIT_ACCOUNT_BLOCKED`, `SAME_WALLET`, `INVALID_PIN`, `INVALID_PIN_BLOCK`, `MW-AUTH-046` (assertion), `INVALID_AMOUNT`,
+  `CREDIT_ACCOUNT_BLOCKED`, `SAME_WALLET`, `MW-AUTH-046` (assertion), `INVALID_AMOUNT`,
   `LIMIT_EXCEEDED_PER_TXN`, `LIMIT_EXCEEDED_DAILY`, `INSUFFICIENT_BALANCE`, plus the hold and
   reversal reasons above, `WALLET_NOT_LOCKED` (unlock), `FACTORS_MISMATCH` and `WALLET_NOT_ACTIVE`
-  (VerifyCustomerFactors). Check order: wallets, wallet types, status, PIN, amount, limits, funds.
+  (VerifyCustomerFactors). Check order: wallets, wallet types, status, assertion, amount, limits, funds.
 - Transaction assertion (spec 18.7, D22, ticket 71; `service/AssertionCheck`, `security/AssertionKeys`,
   `client/AssertionJwksClient`, `repository/UsedAssertionRepository`, `util/TxnHash` + `util/CanonicalJson`
   (copied from mw-auth), `config/AssertionProperties` `mw.coremock.assertion.*`): a ValidateTransaction,
-  PostTransfer or HoldFunds carrying `assertion` (plus `idempotencyKey`, else malformed) is authorised by it
-  instead of the PIN, in the PIN's place in the check order: **no PIN decrypt, no bcrypt, no lockout count**.
+  PostTransfer or HoldFunds (every type but BULK_DISBURSE) must carry `assertion` plus `idempotencyKey` (else
+  malformed) and is authorised by it, between status and amount in the check order.
   Checks: compact JWS, alg ES256 only, kid in mw-auth's set, signature, `iss` mw-auth, `aud` contains core,
   `sub` = the authorising wallet (payer; the payee of ADD_MONEY_BANK), `authMethod` PIN, `txnHash` = the hash
   recomputed from the command (txnType, amount, currency, debit and credit party type+id, the payload's
@@ -162,18 +165,13 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   `refresh-period` 30 s (not ShedLock-guarded: a per-instance cache), never on a command; a failure keeps
   the last set (WARN `core.assertion.jwks_failed`), an unknown kid is refused until the next refresh.
   Used jtis are purged `used-retention` (1 d) after `exp` (`service/UsedAssertionPurge`,
-  `scheduler/UsedAssertionPurgeJob`, ShedLock `used-assertion-purge`, `purge-cron`). Commands with the
-  deprecated `encryptedPin` keep the PIN path below until ticket 72 removes it (`PinCipher`,
-  `PinKeyProvider`, `PinKeyController` stay until then). Tests: `service/AssertionRulesIT` (validate + post
+  `scheduler/UsedAssertionPurgeJob`, ShedLock `used-assertion-purge`, `purge-cron`). A stray `encryptedPin` is ignored (unknown field) and authorises nothing. Tests: `service/AssertionRulesIT` (validate + post
   of one txn, hold, tampered amount, other idempotency key, wrong aud, other wallet, foreign key and
   garbage, jti replayed on another txn, expired vs within skew, purge), `security/TestAssertions` (in-test
   key + JWKS server, wired by `TestInfrastructure`), `util/TxnHashTest`, `contracts/ApiContractsTest`.
-- PIN: RSA-OAEP with SHA-256 (hash and MGF1), PKCS#8 private key from OpenBao
-  (`mw.coremock.pin.private-key`), checked against the wallet's bcrypt hash. The plaintext is never
-  logged or stored. `GET /core-mock/v1/pin-public-key` exports `{keyId, algorithm, publicKeyPem}`.
 - Dev provisioning (`provision_mw_core_mock` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): creates role
-  and schema `coremock`, `secret/mw-core-mock` (DB password, PIN key pair, created once and never
-  overwritten) and the AppRole `mw-core-mock`; role-id/secret-id land in a volume the service reads
+  and schema `coremock`, `secret/mw-core-mock` (DB password, created once and never
+  overwritten; no PIN key pair since ticket 72) and the AppRole `mw-core-mock`; role-id/secret-id land in a volume the service reads
   as a Spring configtree (`/run/mw/approle`).
 
 ## Contracts owned

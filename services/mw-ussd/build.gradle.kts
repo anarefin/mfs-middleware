@@ -79,6 +79,8 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers-kafka")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
     testImplementation("org.apache.camel:camel-test-spring-junit6")
+    // mw-auth stub (client/AuthClientIT over mTLS, the flows in the *IT classes; ticket 72), as mw-app-gateway
+    testImplementation("org.wiremock:wiremock-standalone:3.13.1")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

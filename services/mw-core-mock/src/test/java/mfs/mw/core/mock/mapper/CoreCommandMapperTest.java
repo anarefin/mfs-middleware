@@ -34,14 +34,11 @@ class CoreCommandMapperTest {
     CoreCommand cmd = mapper.command(Files.readString(sample));
 
     var p = mapper.transfer(cmd);
-    if (!p.pinRequired()) {
-      assertThat(p.encryptedPin()).isNull(); // BULK_DISBURSE, ticket 34
-      assertThat(p.assertion()).isNull();
-    } else if (p.assertion() != null) {
-      assertThat(p.encryptedPin()).isNull(); // ticket 71: the assertion instead of the PIN
-      assertThat(p.idempotencyKey()).isNotBlank();
+    if (!p.authorisationRequired()) {
+      assertThat(p.assertion()).isNull(); // BULK_DISBURSE, ticket 34
     } else {
-      assertThat(p.encryptedPin().ciphertext()).isNotBlank();
+      assertThat(p.assertion()).isNotBlank(); // ticket 72: the assertion is the only authorisation
+      assertThat(p.idempotencyKey()).isNotBlank();
     }
     assertThat(p.debitParty().id()).isNotBlank();
   }
@@ -57,13 +54,16 @@ class CoreCommandMapperTest {
   }
 
   @Test
-  void aTransferWithoutPinIsRejectedUnlessItIsABulkDisbursement() {
+  void aTransferWithoutAssertionIsRejectedUnlessItIsABulkDisbursement() {
     String body =
         "{\"schemaVersion\":1,\"commandType\":\"PostTransfer\",\"commandId\":\"c\",\"txnId\":\"t\",\"payload\":{\"txnType\":\"%s\","
             + "\"debitParty\":{\"type\":\"ORG\",\"id\":\"01311000001\"},\"creditParty\":{\"type\":\"WALLET\","
             + "\"id\":\"01711000001\"},\"amount\":{\"valueMinor\":100,\"currency\":\"BDT\"}}}";
     assertThatThrownBy(() -> mapper.transfer(mapper.command(body.formatted("P2P")))).isInstanceOf(MwException.class);
-    assertThat(mapper.transfer(mapper.command(body.formatted("BULK_DISBURSE"))).encryptedPin()).isNull();
+    assertThat(mapper.transfer(mapper.command(body.formatted("BULK_DISBURSE"))).assertion()).isNull();
+    // a stray PIN ciphertext (the scheme removed in ticket 72) does not authorise anything
+    String withPin = body.formatted("P2P").replace("\"currency\":\"BDT\"}", "\"currency\":\"BDT\"},\"encryptedPin\":{\"keyId\":\"k\",\"ciphertext\":\"ZmFrZQ==\"}");
+    assertThatThrownBy(() -> mapper.transfer(mapper.command(withPin))).isInstanceOf(MwException.class);
   }
 
   @Test

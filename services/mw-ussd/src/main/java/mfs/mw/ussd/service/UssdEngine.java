@@ -24,7 +24,6 @@ import mfs.mw.ussd.dto.UssdRequest;
 import mfs.mw.ussd.dto.UssdResponse;
 import mfs.mw.ussd.dto.UssdSession;
 import mfs.mw.ussd.repository.UssdSessionStore;
-import mfs.mw.ussd.util.PinCipher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -32,9 +31,13 @@ import org.springframework.stereotype.Service;
 /**
  * The USSD menu engine (spec 9.2): walks a menu tree (MENU, INPUT, CONFIRM, ACTION, DYNAMIC, END)
  * one step per request, whatever the transport. Session state lives in Valkey with TTL = MNO
- * timeout + grace; a PIN input is encrypted with the core's public key on receipt and handed
- * straight to the following ACTION, so it never reaches the session. Screens longer than the
- * MNO's maximum are truncated or paged per MNO configuration.
+ * timeout + grace; a PIN input is encrypted under the mw-crypto transport key on receipt ({@link
+ * PinTransport}) and handed straight to the following ACTION, so it never reaches the session.
+ * mw-auth checks it before anything is published (ticket 72): a wrong PIN asks for the PIN again
+ * with the menu's {@code wrongPin} text (as long as mw-auth answers wrong PIN; its lockout rule
+ * decides when that ends), a lock ends the session with {@code pinLocked}, {@code pinBlocked} or
+ * {@code walletLocked}. Screens longer than the MNO's maximum are truncated or paged per MNO
+ * configuration.
  */
 @Service
 public class UssdEngine {
@@ -45,13 +48,25 @@ public class UssdEngine {
   /** An ACTION mapping value starting with this is a literal, not an input name ({@code =PREPAID}). */
   public static final String LITERAL = "=";
   private static final String UNAVAILABLE_FALLBACK = "Service temporarily unavailable. Please try later.";
+  /** The PIN texts when a menu (e.g. one published before ticket 72) carries none. */
+  static final Map<String, Text> PIN_TEXTS =
+      Map.of(
+          Menu.WRONG_PIN,
+          new Text("ভুল পিন। আর {triesLeft} বার চেষ্টা করা যাবে।", "Wrong PIN. {triesLeft} tries left."),
+          Menu.PIN_LOCKED,
+          new Text("পিন সাময়িকভাবে লক। পরে আবার চেষ্টা করুন।", "Your PIN is locked for now. Please try again later."),
+          Menu.PIN_BLOCKED,
+          new Text("পিন লক। অ্যাপে পিন রিসেট করুন বা কাস্টমার কেয়ারে কল করুন।",
+              "Your PIN is locked. Reset it in the app or call customer care."),
+          Menu.WALLET_LOCKED,
+          new Text("আপনার অ্যাকাউন্ট লক। কাস্টমার কেয়ারে কল করুন।", "Your account is locked. Please call customer care."));
 
   private final MenuCatalog menus;
   private final UssdSessionStore sessions;
   private final InputValidator validator;
   private final ScreenFormatter formatter;
   private final TransactionFlow flow;
-  private final PinCipher pins;
+  private final PinTransport pins;
   private final DynamicLists lists;
   private final Lookups lookups;
   private final UssdProperties props;
@@ -63,7 +78,7 @@ public class UssdEngine {
       InputValidator validator,
       ScreenFormatter formatter,
       TransactionFlow flow,
-      PinCipher pins,
+      PinTransport pins,
       DynamicLists lists,
       Lookups lookups,
       UssdProperties props,
@@ -256,7 +271,43 @@ public class UssdEngine {
       }
       case PROCESSING -> endWith(menu, s, Menu.PROCESSING);
       case UNAVAILABLE -> endWith(menu, s, Menu.UNAVAILABLE);
+      case WRONG_PIN -> askPinAgain(menu, s, outcome.triesLeft());
+      case LOCKED -> show(menu, s, pinText(menu, lockMessage(outcome.error()), s.language(), Map.of()), true);
     };
+  }
+
+  /**
+   * Back to the PIN input the ACTION came from (the last step of the path), with the wrong-PIN text
+   * above it. Not counted as an invalid input: mw-auth counts wrong PINs and locks.
+   */
+  private UssdResponse askPinAgain(Menu menu, UssdSession s, String triesLeft) {
+    List<String> path = s.path();
+    MenuNode pin = path.isEmpty() ? null : menu.nodes().get(path.getLast());
+    if (pin == null || pin.type() != NodeType.INPUT || pin.validator() == null || !pin.validator().isPin()) {
+      return endWith(menu, s, Menu.UNAVAILABLE);
+    }
+    UssdSession back = s.at(path.getLast(), path.subList(0, path.size() - 1), s.inputs(), s.language());
+    Map<String, String> vars = Map.of("triesLeft", triesLeft == null ? "" : triesLeft);
+    String prefix = pinText(menu, Menu.WRONG_PIN, s.language(), vars);
+    return show(menu, back, prefix + "\n" + render(pin, back, Map.of()), false);
+  }
+
+  private static String lockMessage(ErrorInfo error) {
+    String code = error == null ? "" : error.code();
+    return switch (code) {
+      case "MW-AUTH-041" -> Menu.PIN_LOCKED;
+      case "MW-AUTH-042" -> Menu.PIN_BLOCKED;
+      default -> Menu.WALLET_LOCKED;
+    };
+  }
+
+  /** The menu's text for {@code key}, else the built-in one, with {@code vars} filled in. */
+  private static String pinText(Menu menu, String key, String lang, Map<String, String> vars) {
+    String t = menu.message(key, lang);
+    if (t.isEmpty()) {
+      t = PIN_TEXTS.get(key).in(lang);
+    }
+    return interpolate(t, Map.of(), vars);
   }
 
   private UssdResponse endWith(Menu menu, UssdSession s, String message) {

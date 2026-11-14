@@ -5,7 +5,7 @@ export default [
     name: '[ussd topup] a top-up of the own number over USSD in English completes',
     run: async (MW, S) => {
       await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE-POOL']);
-      await S.dial('robi', '01711000001', '*268#', '9, 3, 1, 20, 1, 1234');
+      await S.dial('robi', '01711000001', '*268#', '9, 3, 1, 20, 1, ' + MW.pin);
       S.ussdScreens([
         'Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English',
         'Bits\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা',
@@ -23,7 +23,7 @@ export default [
     name: '[ussd topup] a top-up of another number over USSD in Bangla completes',
     run: async (MW, S) => {
       await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE-POOL']);
-      await S.dial('robi', '01711000001', '*268#', '3, 2, 01711000002, 1, 20, 1, 1234');
+      await S.dial('robi', '01711000001', '*268#', '3, 2, 01711000002, 1, 20, 1, ' + MW.pin);
       S.ussdEnds('01711000002 নম্বরে 20.00 টাকা রিচার্জ হয়েছে।');
       await S.changedBy({ '01711000001': -2200, '01811000001': 0, 'SETTLEMENT': 2000, 'FEE-POOL': 200 });
     },
@@ -32,7 +32,7 @@ export default [
     name: '[ussd topup] an operator refusal over USSD moves no money',
     run: async (MW, S) => {
       await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE-POOL']);
-      await S.dial('robi', '01711000001', '*268#', '9, 3, 2, 01711000999, 1, 20, 1, 1234');
+      await S.dial('robi', '01711000001', '*268#', '9, 3, 2, 01711000999, 1, 20, 1, ' + MW.pin);
       S.ussdEnds('Recharge failed: ');
       await S.noChange();
       await S.noHold('01711000001');
@@ -42,7 +42,7 @@ export default [
     name: '[ussd billpay] a bill pay over USSD in English fetches the bill and pays it',
     run: async (MW, S) => {
       await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE-POOL']);
-      await S.dial('robi', '01711000001', '*268#', '9, 4, 1, 1234567, 1, 1234');
+      await S.dial('robi', '01711000001', '*268#', '9, 4, 1, 1234567, 1, ' + MW.pin);
       S.ussdScreens([
         'Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English',
         'Bits\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা',
@@ -60,7 +60,7 @@ export default [
     name: '[ussd billpay] a bill pay over USSD in Bangla completes',
     run: async (MW, S) => {
       await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE-POOL']);
-      await S.dial('robi', '01711000001', '*268#', '4, 1, 1234567, 1, 1234');
+      await S.dial('robi', '01711000001', '*268#', '4, 1, 1234567, 1, ' + MW.pin);
       S.ussdEnds('DESCO বিল 1234567: 667.00 টাকা দেওয়া হয়েছে।');
       await S.changedBy({ '01711000001': -67000, '01811000001': 0, 'SETTLEMENT': 66700, 'FEE-POOL': 300 });
     },
@@ -78,7 +78,7 @@ export default [
     name: '[ussd cash] a customer cash-out to an agent over USSD completes',
     run: async (MW, S) => {
       await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE-POOL']);
-      await S.dial('robi', '01711000001', '*268#', '9, 2, 01811000001, 50, 1, 1234');
+      await S.dial('robi', '01711000001', '*268#', '9, 2, 01811000001, 50, 1, ' + MW.pin);
       S.ussdEnds('Tk 50.00 cashed out at agent 01811000001. TxnID ');
       await S.changedBy({ '01711000001': -6000, '01811000001': 5000, 'SETTLEMENT': 0, 'FEE-POOL': 1000 });
     },

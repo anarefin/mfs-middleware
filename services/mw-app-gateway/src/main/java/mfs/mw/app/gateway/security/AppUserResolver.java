@@ -37,14 +37,15 @@ public class AppUserResolver {
       throw new MwException(ErrorCodes.AUTH_PIN_NOT_SET, "Set your PIN first").withStatus(HttpStatus.FORBIDDEN);
     }
     String role = jwt.getClaimAsString(ROLE_CLAIM);
+    String device = jwt.getClaimAsString(DEVICE_CLAIM);
     if ("customer".equals(role)) {
-      return new AppUser(msisdn, "CUSTOMER_APP", "CUSTOMER");
+      return new AppUser(msisdn, "CUSTOMER_APP", "CUSTOMER", device);
     }
     if ("agent".equals(role)) {
-      return new AppUser(msisdn, "AGENT_APP", "AGENT");
+      return new AppUser(msisdn, "AGENT_APP", "AGENT", device);
     }
     if ("merchant".equals(role)) {
-      return new AppUser(msisdn, "MERCHANT_APP", "MERCHANT");
+      return new AppUser(msisdn, "MERCHANT_APP", "MERCHANT", device);
     }
     throw forbidden("This app role cannot use this operation");
   }

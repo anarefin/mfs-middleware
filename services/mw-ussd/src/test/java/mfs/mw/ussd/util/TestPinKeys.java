@@ -10,12 +10,12 @@ import javax.crypto.spec.OAEPParameterSpec;
 import javax.crypto.spec.PSource;
 import mfs.mw.ussd.dto.EncryptedPin;
 
-/** A PIN key pair generated per test run, standing in for the core's (no key is checked in). */
+/** A PIN key pair generated per test run, standing in for the mw-crypto PIN_TRANSPORT key (no key is checked in). */
 public final class TestPinKeys {
 
   private TestPinKeys() {}
 
-  /** A throwaway test key pair standing in for the core's (never a real key). */
+  /** A throwaway test key pair standing in for the transport key (never a real key). */
   public static final KeyPair KEYS = generate();
 
   private static KeyPair generate() {
@@ -28,7 +28,7 @@ public final class TestPinKeys {
     }
   }
 
-  /** The test public key as PEM, as the core exports it. */
+  /** The test public key as PEM, as mw-auth serves it (GET /auth/v1/pin-key). */
   public static String pem() {
     String b64 =
         Base64.getMimeEncoder(64, "\n".getBytes(StandardCharsets.US_ASCII))
@@ -36,7 +36,7 @@ public final class TestPinKeys {
     return "-----BEGIN PUBLIC KEY-----\n" + b64 + "\n-----END PUBLIC KEY-----\n";
   }
 
-  /** What the core does: RSA-OAEP, SHA-256 and MGF1-SHA-256, with its private key. */
+  /** What mw-crypto does: RSA-OAEP, SHA-256 and MGF1-SHA-256, with its private key. */
   public static String decrypt(EncryptedPin pin) throws Exception {
     Cipher c = Cipher.getInstance("RSA/ECB/OAEPPadding");
     c.init(

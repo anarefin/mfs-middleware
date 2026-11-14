@@ -8,7 +8,8 @@ import java.util.Map;
  * code; a running session keeps the version it started on.
  *
  * @param messages engine texts: {@code invalid}, {@code tooManyAttempts}, {@code expired},
- *     {@code processing}, {@code unavailable}, {@code more}
+ *     {@code processing}, {@code unavailable}, {@code more}; optional (ticket 72) {@code wrongPin},
+ *     {@code pinLocked}, {@code pinBlocked}, {@code walletLocked}
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record Menu(
@@ -20,6 +21,14 @@ public record Menu(
   public static final String PROCESSING = "processing";
   public static final String UNAVAILABLE = "unavailable";
   public static final String MORE = "more";
+  /** mw-auth said wrong PIN (ticket 72); {@code {triesLeft}} is filled in. Optional: built-in default. */
+  public static final String WRONG_PIN = "wrongPin";
+  /** The PIN is locked for a while (MW-AUTH-041). Optional. */
+  public static final String PIN_LOCKED = "pinLocked";
+  /** The PIN is locked until a reset (MW-AUTH-042). Optional. */
+  public static final String PIN_BLOCKED = "pinBlocked";
+  /** The wallet is locked or not active (MW-AUTH-043). Optional. */
+  public static final String WALLET_LOCKED = "walletLocked";
 
   public Menu {
     messages = messages == null ? Map.of() : Map.copyOf(messages);

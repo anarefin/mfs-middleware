@@ -188,7 +188,7 @@ class InquirySagaIT {
     TxnRequest req =
         new TxnRequest(1, t.txnId(), t.idempotencyKey(), t.correlationId(), t.channel(), t.txnType(),
             t.initiator(), t.debitParty(), t.creditParty(), t.amount(),
-            new PartnerRef(partnerId, "PREPAID", null), null, t.encryptedPin(), t.locale(), null, null,
+            new PartnerRef(partnerId, "PREPAID", null), null, t.assertion(), t.locale(), null, null,
             t.requestedAt());
     transactions.accept(req, "gw-1");
     String txn = req.txnId();
@@ -368,7 +368,6 @@ class InquirySagaIT {
 
     assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING", "POSTING", "UNKNOWN", "COMPLETED");
     assertThat(timersOf(txn)).isZero();
-    assertThat(jdbc.queryForObject("select encrypted_pin is null from transaction where txn_id = ?::uuid", Boolean.class, txn)).isTrue();
     assertAllValid(txn);
   }
 

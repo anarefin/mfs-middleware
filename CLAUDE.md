@@ -148,7 +148,8 @@ field marked `@Sensitive`:
   `880`/`+880`) whose digits are joined by single `-`, `.`, `_`, `:` or spaces, e.g. spread over UUID
   groups (`aaaa0171-2345-678a-…`).
 - PIN: never logged or stored; the middleware only ever handles ciphertext (RSA-OAEP,
-  SHA-256 with the core's public key). Card PAN never enters the middleware.
+  SHA-256 under the mw-crypto PIN transport key, checked only by mw-auth through mw-crypto; ticket 72): the core
+  gets mw-auth's transaction assertion, never PIN material. Card PAN never enters the middleware.
 
 ## Log fields
 

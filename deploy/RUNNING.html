@@ -181,8 +181,7 @@ docker compose --profile core --profile seed ps -a mw-seeder   <span class="c">#
     <p>The test suites sign in as the seeded personas, so they need <code>mw-seeder</code> at <code>exited (0)</code>. What you get:</p>
     <ul>
       <li>At start-up: <code>mw-core-mock</code> creates 1,000 customer wallets <code>01711000001…</code>, 50 agents
-        <code>01811000001…</code>, 20 merchants <code>01911000001…</code>, 2 orgs <code>01311000001…</code>, all with the fake PIN
-        <code>1234</code>. Keycloak imports its realms (ops, portals, services, partners) with test users; app users log in at mw-auth.</li>
+        <code>01811000001…</code>, 20 merchants <code>01911000001…</code>, 2 orgs <code>01311000001…</code>, (no PIN at the core: mw-auth holds the PINs, the app wallets' PIN is <code>13579</code>, ticket 72). Keycloak imports its realms (ops, portals, services, partners) with test users; app users log in at mw-auth.</li>
       <li>From <code>mw-seeder</code>: the personas <code>seed-ops-maker</code>, <code>seed-ops-checker</code>,
         <code>seed-ops-viewer</code>, <code>seed-ops-compliance</code>, <code>seed-org-maker</code>, <code>seed-org-checker</code>,
         <code>seed-customer01/02</code>, <code>seed-agent01</code>, <code>seed-merchant01</code> with their wallets

@@ -12,8 +12,6 @@ import mfs.mw.core.mock.TestInfrastructure;
 import mfs.mw.core.mock.contracts.ContractSchemas;
 import mfs.mw.core.mock.dto.Amount;
 import mfs.mw.core.mock.dto.Party;
-import mfs.mw.core.mock.security.PinKeyProvider;
-import mfs.mw.core.mock.security.TestPins;
 import mfs.mw.core.mock.service.WalletSeeder;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,7 +23,6 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.testcontainers.kafka.KafkaContainer;
 import tools.jackson.databind.JsonNode;
@@ -34,7 +31,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Core-mock end to end over Kafka: a command on {@code core.wallet.command.v1} is answered on
  * {@code core.wallet.event.v1} (through the outbox relay); a repeated {@code commandId} gets the
- * same event again. PIN plaintext never reaches the logs (SEC-10).
+ * same event again. The transaction assertion never reaches the logs (SEC-10).
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
@@ -50,15 +47,12 @@ class CoreWalletKafkaIT {
 
   static final String COMMANDS = "core.wallet.command.v1";
   static final String EVENTS = "core.wallet.event.v1";
-  static final String PIN = "739105";
-  static final String WRONG_PIN = "482716";
+  static final String PAYER = "01711000005";
 
   private final EventPublisher publisher;
   private final KafkaContainer kafka;
   private final JdbcTemplate jdbc;
   private final WalletSeeder seeder;
-  private final PasswordEncoder encoder;
-  private final PinKeyProvider keys;
   private final JsonMapper json;
 
   @Autowired
@@ -67,25 +61,21 @@ class CoreWalletKafkaIT {
       KafkaContainer kafka,
       JdbcTemplate jdbc,
       WalletSeeder seeder,
-      PasswordEncoder encoder,
-      PinKeyProvider keys,
       JsonMapper json) {
     this.publisher = publisher;
     this.kafka = kafka;
     this.jdbc = jdbc;
     this.seeder = seeder;
-    this.encoder = encoder;
-    this.keys = keys;
     this.json = json;
   }
 
   @BeforeEach
   void freshLedger() {
     seeder.reset();
-    jdbc.update("update wallet set pin_hash = ? where id = '01711000005'", encoder.encode(PIN));
   }
 
-  private String send(String commandId, String txnId, String pin) {
+  /** Publishes a P2P from {@link #PAYER} authorised by {@code authoriser}; returns its assertion. */
+  private String send(String commandId, String txnId, String authoriser) {
     Instant now = Instant.now();
     Map<String, Object> cmd = new LinkedHashMap<>();
     cmd.put("schemaVersion", 1);
@@ -100,10 +90,10 @@ class CoreWalletKafkaIT {
     payload.put("debitParty", new Party("WALLET", "01711000005", null, "CUSTOMER"));
     payload.put("creditParty", new Party("WALLET", "01711000006", null, "CUSTOMER"));
     payload.put("amount", Amount.bdt(25_000));
-    payload.put("encryptedPin", TestPins.encrypt(keys.publicKeyPem(), keys.keyId(), pin));
+    mfs.mw.core.mock.service.CoreCommandsTestSupport.authorised(payload, authoriser);
     cmd.put("payload", payload);
     publisher.publish(COMMANDS, txnId, new EventMetadata("corr-kafka-it", txnId, commandId, 1), cmd);
-    return commandId;
+    return (String) payload.get("assertion");
   }
 
   private List<ConsumerRecord<String, String>> events(String txnId, int count) {
@@ -118,8 +108,8 @@ class CoreWalletKafkaIT {
   @Test
   void aCommandIsAnsweredOnTheEventTopicAndARepeatGetsTheSameEvent() {
     String txn = txnId();
-    send(txn + ":post", txn, PIN);
-    send(txn + ":post", txn, PIN);
+    send(txn + ":post", txn, PAYER);
+    send(txn + ":post", txn, PAYER);
 
     List<ConsumerRecord<String, String>> got = events(txn, 2);
 
@@ -134,17 +124,17 @@ class CoreWalletKafkaIT {
   }
 
   @Test
-  void pinPlaintextNeverAppearsInTheLogs(CapturedOutput output) {
+  void theAssertionNeverAppearsInTheLogs(CapturedOutput output) {
     String ok = txnId();
     String bad = txnId();
-    send(ok + ":post", ok, PIN);
-    send(bad + ":post", bad, WRONG_PIN);
+    String good = send(ok + ":post", ok, PAYER);
+    String foreign = send(bad + ":post", bad, "01711000006"); // refused MW-AUTH-046
 
     assertThat(events(ok, 1)).hasSize(1);
     assertThat(events(bad, 1)).hasSize(1);
     assertThat(jdbc.queryForObject("select count(*) from command_log", Long.class)).isEqualTo(2L);
 
     assertThat(output.getAll()).contains("core.command.handled");
-    assertThat(output.getAll()).doesNotContain(PIN).doesNotContain(WRONG_PIN);
+    assertThat(output.getAll()).doesNotContain(good).doesNotContain(foreign);
   }
 }

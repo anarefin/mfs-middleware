@@ -51,8 +51,6 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-aspectj")
     // Own schema, migrated by Flyway on start-up (16.4).
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
-    // bcrypt for the PIN hashes (spec M11); only the crypto module, no Spring Security web stack.
-    implementation("org.springframework.security:spring-security-crypto")
     // ES256 verify of mw-auth's transaction assertions and their JWK Set (ticket 71); the library
     // only, no Spring Security web stack (the version Spring Security brings in mw-auth).
     implementation("com.nimbusds:nimbus-jose-jwt:10.9.1")

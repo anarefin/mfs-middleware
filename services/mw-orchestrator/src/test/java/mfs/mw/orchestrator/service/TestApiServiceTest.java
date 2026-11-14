@@ -57,7 +57,7 @@ class TestApiServiceTest {
             new Party("WALLET", "01711000001", null, null), new Party("WALLET", "01711000002", null, null),
             Amount.bdt(1000), null, null, null, null, null, null, NOW);
     return new TransactionRecord(
-        ORIGINAL, NOW, NOW, req, Status.COMPLETED, Status.POSTING, null, 500L, "core-1", null, null, null, null, null);
+        ORIGINAL, NOW, NOW, req, Status.COMPLETED, Status.POSTING, null, 500L, "core-1", null, null, null, null);
   }
 
   @Test

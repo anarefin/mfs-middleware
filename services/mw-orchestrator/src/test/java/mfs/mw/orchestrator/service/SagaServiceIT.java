@@ -165,8 +165,8 @@ class SagaServiceIT {
     assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING", "POSTING");
     assertThat(commands(txn).get(1).path("commandType").asString()).isEqualTo("PostTransfer");
     assertThat(commands(txn).get(1).path("commandId").asString()).isEqualTo(txn + ":post");
-    assertThat(commands(txn).get(1).path("payload").path("encryptedPin").path("ciphertext").asString())
-        .isEqualTo("ZmFrZS1jaXBoZXJ0ZXh0");
+    assertThat(commands(txn).get(1).path("payload").path("assertion").asString())
+        .isEqualTo(mfs.mw.orchestrator.TestData.ASSERTION);
 
     coreEvents.handle(event("TransferPosted", txn, "post", null, "{}"));
     assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING", "POSTING", "COMPLETED");
@@ -175,7 +175,6 @@ class SagaServiceIT {
     assertThat(done.path("fee").path("valueMinor").asLong()).isEqualTo(500);
     assertThat(done.path("coreRef").asString()).isEqualTo("CORE-1");
 
-    assertThat(jdbc.queryForObject("select encrypted_pin is null from transaction where txn_id = ?::uuid", Boolean.class, txn)).isTrue();
     assertThat(jdbc.queryForObject("select count(*) from saga_timer", Long.class)).isZero();
     assertThat(jdbc.queryForObject("select count(*) from saga_step where txn_id = ?::uuid", Long.class, txn)).isEqualTo(3);
     assertAllValid(txn);
@@ -272,7 +271,6 @@ class SagaServiceIT {
 
     assertThat(status(txn)).isEqualTo("REJECTED");
     assertThat(lastStatus(txn).path("error").path("code").asString()).isEqualTo("MW-CORE-LIMIT_EXCEEDED_DAILY");
-    assertThat(jdbc.queryForObject("select encrypted_pin is null from transaction where txn_id = ?::uuid", Boolean.class, txn)).isTrue();
     assertAllValid(txn);
   }
 
@@ -282,7 +280,7 @@ class SagaServiceIT {
     TxnRequest topup =
         new TxnRequest(1, p2p.txnId(), "k-topup", p2p.correlationId(), p2p.channel(), "ATM_CASH_IN",
             p2p.initiator(), p2p.debitParty(), p2p.creditParty(), p2p.amount(), null, null,
-            p2p.encryptedPin(), null, null, null, p2p.requestedAt());
+            p2p.assertion(), null, null, null, p2p.requestedAt());
     transactions.accept(topup, null);
 
     assertThat(statuses(p2p.txnId())).containsExactly("RECEIVED", "REJECTED");

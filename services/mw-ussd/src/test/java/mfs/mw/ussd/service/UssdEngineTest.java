@@ -22,7 +22,6 @@ import mfs.mw.ussd.dto.UssdResponse;
 import mfs.mw.ussd.dto.UssdSession;
 import mfs.mw.ussd.mapper.MenuParser;
 import mfs.mw.ussd.repository.UssdSessionStore;
-import mfs.mw.ussd.util.PinCipher;
 import mfs.mw.ussd.util.TestPinKeys;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -74,8 +73,7 @@ class UssdEngineTest {
   static UssdProperties props(UssdProperties.Overflow overflow, int gsm) {
     return new UssdProperties(
         "test-instance", "mw.txn.request.v1", "mw.txn.status.v1", Duration.ofSeconds(8), Duration.ofSeconds(30),
-        "bn", 3, new UssdProperties.Pin("core-pin-test", TestPinKeys.pem()),
-        Map.of("robi", new UssdProperties.Mno(UssdProperties.Transport.HTTP, List.of("*247#"), gsm, 70,
+        "bn", 3, Map.of("robi", new UssdProperties.Mno(UssdProperties.Transport.HTTP, List.of("*247#"), gsm, 70,
             Duration.ofSeconds(120), overflow, "CON", "END", null)),
         Map.of());
   }
@@ -98,7 +96,7 @@ class UssdEngineTest {
     };
     return new UssdEngine(
         catalog, sessions, new InputValidator(), new ScreenFormatter(), flow,
-        new PinCipher("core-pin-test", TestPinKeys.pem()), new DynamicLists(p, BILLS), new Lookups(BILLS), p,
+        TestPinTransport.create(), new DynamicLists(p, BILLS), new Lookups(BILLS), p,
         Clock.fixed(Instant.parse("2026-11-04T10:00:00Z"), ZoneOffset.UTC));
   }
 
@@ -118,7 +116,7 @@ class UssdEngineTest {
     assertThat(send("s1", "500").text()).isEqualTo("01812345678 নম্বরে 500.00 টাকা পাঠাবেন?\n1 নিশ্চিত করুন\n2 বাতিল");
     assertThat(send("s1", "1").text()).isEqualTo("আপনার পিন দিন");
 
-    UssdResponse done = send("s1", "4826");
+    UssdResponse done = send("s1", "48261");
 
     assertThat(done.end()).isTrue();
     assertThat(done.text())
@@ -129,7 +127,7 @@ class UssdEngineTest {
     assertThat(req.session().msisdn()).isEqualTo(CUSTOMER);
     assertThat(req.session().language()).isEqualTo("bn");
     assertThat(req.menuPath()).isEqualTo("main:1>p2p.recipient>p2p.amount>p2p.confirm:1>p2p.pin");
-    assertThat(TestPinKeys.decrypt(req.pin())).isEqualTo("4826");
+    assertThat(TestPinKeys.decrypt(req.pin())).isEqualTo("48261");
     assertThat(sessions.values).isEmpty();
   }
 
@@ -142,7 +140,7 @@ class UssdEngineTest {
     assertThat(send("s2", "120.5").text()).isEqualTo("Send Tk 120.50 to 01812345678?\n1 Confirm\n2 Cancel");
     assertThat(send("s2", "1").text()).isEqualTo("Enter your PIN");
 
-    UssdResponse done = send("s2", "4826");
+    UssdResponse done = send("s2", "48261");
 
     assertThat(done.end()).isTrue();
     assertThat(done.text()).isEqualTo("Tk 120.50 sent to 01812345678. TxnID 019a0000-0000-7000-8000-000000000001");
@@ -157,14 +155,14 @@ class UssdEngineTest {
     send("s3", "500");
     send("s3", "1");
     // a mistyped PIN keeps the session at the PIN prompt: look inside it
-    assertThat(send("s3", "48a6").text()).isEqualTo("পিন ৪ অঙ্কের।\nআপনার পিন দিন");
+    assertThat(send("s3", "48a6").text()).isEqualTo("পিন ৫ অঙ্কের।\nআপনার পিন দিন");
     String stored = sessions.values.get("ussd:robi:s3");
     assertThat(stored).doesNotContain("48a6").contains("\"nodeId\":\"p2p.pin\"");
 
-    send("s3", "4826");
+    send("s3", "48261");
 
     assertThat(sessions.values).doesNotContainKey("ussd:robi:s3");
-    assertThat(flow.requests.getFirst().pin().ciphertext()).doesNotContain("4826");
+    assertThat(flow.requests.getFirst().pin().ciphertext()).doesNotContain("48261");
   }
 
   @Test
@@ -227,7 +225,7 @@ class UssdEngineTest {
     send("s9", PAYEE);
     send("s9", "500");
     send("s9", "1");
-    UssdResponse r = send("s9", "4826");
+    UssdResponse r = send("s9", "48261");
     assertThat(r.end()).isTrue();
     assertThat(r.text()).isEqualTo("Your request is being processed. You will get the result by SMS.");
   }
@@ -241,7 +239,106 @@ class UssdEngineTest {
     send("s10", PAYEE);
     send("s10", "500");
     send("s10", "1");
-    assertThat(send("s10", "4826").text()).isEqualTo("সেন্ড মানি ব্যর্থ: অপর্যাপ্ত ব্যালেন্স");
+    assertThat(send("s10", "48261").text()).isEqualTo("সেন্ড মানি ব্যর্থ: অপর্যাপ্ত ব্যালেন্স");
+  }
+
+  static String clearPin(FlowRequest r) {
+    try {
+      return TestPinKeys.decrypt(r.pin());
+    } catch (Exception e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  /** Dials {@code s} and walks an English P2P of Tk 500 to the PIN prompt. */
+  void toPinPrompt(String s) {
+    dial(s);
+    send(s, "9");
+    send(s, "1");
+    send(s, PAYEE);
+    send(s, "500");
+    assertThat(send(s, "1").text()).isEqualTo("Enter your PIN");
+  }
+
+  @Test
+  void aWrongPinAsksForThePinAgainAsLongAsMwAuthSaysWrong() {
+    flow.next = new FlowOutcome(FlowOutcome.Kind.WRONG_PIN, null,
+        new ErrorInfo("MW-AUTH-040", "Wrong PIN", null, false), "2");
+    toPinPrompt("w1");
+
+    UssdResponse again = send("w1", "11111");
+    assertThat(again.end()).isFalse();
+    assertThat(again.text()).isEqualTo("Wrong PIN. 2 tries left.\nEnter your PIN");
+    assertThat(sessions.values.get("ussd:robi:w1")).contains("\"nodeId\":\"p2p.pin\"").doesNotContain("11111");
+
+    flow.next = new FlowOutcome(FlowOutcome.Kind.WRONG_PIN, null,
+        new ErrorInfo("MW-AUTH-040", "Wrong PIN", null, false), "1");
+    assertThat(send("w1", "22222").text()).isEqualTo("Wrong PIN. 1 tries left.\nEnter your PIN");
+
+    flow.next = new FlowOutcome(FlowOutcome.Kind.COMPLETED, "019a0000-0000-7000-8000-000000000003", null);
+    UssdResponse done = send("w1", "48261");
+    assertThat(done.end()).isTrue();
+    assertThat(done.text()).startsWith("Tk 500.00 sent to 01812345678.");
+    // every try reached the flow on the same menu path (the same idempotency key), each with its own PIN
+    assertThat(flow.requests).hasSize(3).extracting(FlowRequest::menuPath).containsOnly(
+        "main:9>main:1>p2p.recipient>p2p.amount>p2p.confirm:1>p2p.pin");
+    assertThat(flow.requests).extracting(UssdEngineTest::clearPin)
+        .containsExactly("11111", "22222", "48261");
+  }
+
+  @Test
+  void aWrongPinIsNotCountedAsAnInvalidInput() {
+    flow.next = new FlowOutcome(FlowOutcome.Kind.WRONG_PIN, null, new ErrorInfo("MW-AUTH-040", "Wrong", null, false), "4");
+    toPinPrompt("w2");
+    for (int i = 0; i < 4; i++) {
+      assertThat(send("w2", "11111").end()).isFalse();
+    }
+  }
+
+  @Test
+  void aTemporaryPinLockEndsTheSessionInItsLanguage() {
+    flow.next = new FlowOutcome(FlowOutcome.Kind.LOCKED, null, new ErrorInfo("MW-AUTH-041", "Locked", null, false));
+    dial("l1");
+    send("l1", "1");
+    send("l1", PAYEE);
+    send("l1", "500");
+    send("l1", "1");
+    UssdResponse r = send("l1", "48261");
+    assertThat(r.end()).isTrue();
+    assertThat(r.text()).isEqualTo("পিন সাময়িকভাবে লক। পরে আবার চেষ্টা করুন।");
+    assertThat(sessions.values).doesNotContainKey("ussd:robi:l1");
+  }
+
+  @Test
+  void aPermanentPinLockAndAWalletLockEndTheSession() {
+    flow.next = new FlowOutcome(FlowOutcome.Kind.LOCKED, null, new ErrorInfo("MW-AUTH-042", "Locked", null, false));
+    toPinPrompt("l2");
+    assertThat(send("l2", "48261").text()).isEqualTo("Your PIN is locked. Reset it in the app or call customer care.");
+
+    flow.next = new FlowOutcome(FlowOutcome.Kind.LOCKED, null, new ErrorInfo("MW-AUTH-043", "Locked", null, false));
+    toPinPrompt("l3");
+    UssdResponse r = send("l3", "48261");
+    assertThat(r.end()).isTrue();
+    assertThat(r.text()).isEqualTo("Your account is locked. Please call customer care.");
+  }
+
+  @Test
+  void mwAuthUnavailableEndsWithUnavailable() {
+    flow.next = new FlowOutcome(FlowOutcome.Kind.UNAVAILABLE, null, null);
+    toPinPrompt("u1");
+    UssdResponse r = send("u1", "48261");
+    assertThat(r.end()).isTrue();
+    assertThat(r.text()).isEqualTo("Service temporarily unavailable. Please try later.");
+  }
+
+  @Test
+  void aMenuWithoutThePinTextsUsesTheBuiltInOnes() {
+    assertThat(UssdEngine.PIN_TEXTS.keySet())
+        .containsExactlyInAnyOrder(Menu.WRONG_PIN, Menu.PIN_LOCKED, Menu.PIN_BLOCKED, Menu.WALLET_LOCKED);
+    for (String key : UssdEngine.PIN_TEXTS.keySet()) {
+      assertThat(MENU.message(key, "en")).isEqualTo(UssdEngine.PIN_TEXTS.get(key).en());
+      assertThat(MENU.message(key, "bn")).isEqualTo(UssdEngine.PIN_TEXTS.get(key).bn());
+    }
   }
 
   @Test

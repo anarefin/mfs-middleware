@@ -6,7 +6,6 @@ import mfs.mw.core.mock.config.CoreMockProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
  * Seeds the ledger: 1,000 customers ({@code 01711000001..}), 50 agents ({@code 01811000001..}),
  * 20 merchants ({@code 01911000001..}), 2 orgs ({@code 01311000001..}) and two system wallets
  * ({@link #FEE_WALLET} collects fees, {@link #SETTLEMENT_WALLET} is the outside world). Ids, types and balances are fixed, so the seed is
- * identical on every run; all wallets share one fake PIN (its bcrypt hash is computed once).
+ * identical on every run. No PIN: the core holds none since ticket 72 (mw-auth owns the PINs).
  */
 @Service
 public class WalletSeeder {
@@ -30,14 +29,11 @@ public class WalletSeeder {
   private static final Logger log = LoggerFactory.getLogger(WalletSeeder.class);
 
   private final JdbcTemplate jdbc;
-  private final PasswordEncoder encoder;
   private final CoreMockProperties props;
   private final WalletStateEvents stateEvents;
 
-  public WalletSeeder(
-      JdbcTemplate jdbc, PasswordEncoder encoder, CoreMockProperties props, WalletStateEvents stateEvents) {
+  public WalletSeeder(JdbcTemplate jdbc, CoreMockProperties props, WalletStateEvents stateEvents) {
     this.jdbc = jdbc;
-    this.encoder = encoder;
     this.props = props;
     this.stateEvents = stateEvents;
   }
@@ -48,25 +44,20 @@ public class WalletSeeder {
    */
   @Transactional
   public void seed() {
-    String pinHash = encoder.encode(props.seed().pin());
     CoreMockProperties.Seed s = props.seed();
     List<String> created = new ArrayList<>();
-    created.addAll(insert("CUSTOMER", "0171100", 1000, s.customerBalanceMinor(), pinHash));
-    created.addAll(insert("AGENT", "0181100", 50, s.agentBalanceMinor(), pinHash));
-    created.addAll(insert("MERCHANT", "0191100", 20, s.merchantBalanceMinor(), pinHash));
-    created.addAll(insert("ORG", "0131100", 2, s.orgBalanceMinor(), pinHash));
+    created.addAll(insert("CUSTOMER", "0171100", 1000, s.customerBalanceMinor()));
+    created.addAll(insert("AGENT", "0181100", 50, s.agentBalanceMinor()));
+    created.addAll(insert("MERCHANT", "0191100", 20, s.merchantBalanceMinor()));
+    created.addAll(insert("ORG", "0131100", 2, s.orgBalanceMinor()));
     stateEvents.created(created);
     jdbc.update(
-        "insert into wallet (id, msisdn, type, balance_minor, pin_hash) "
-            + "values (?, null, 'SYSTEM', 0, ?) on conflict do nothing",
-        FEE_WALLET,
-        pinHash);
+        "insert into wallet (id, msisdn, type, balance_minor) values (?, null, 'SYSTEM', 0) on conflict do nothing",
+        FEE_WALLET);
     jdbc.update(
-        "insert into wallet (id, msisdn, type, balance_minor, pin_hash) "
-            + "values (?, null, 'SYSTEM', ?, ?) on conflict do nothing",
+        "insert into wallet (id, msisdn, type, balance_minor) values (?, null, 'SYSTEM', ?) on conflict do nothing",
         SETTLEMENT_WALLET,
-        SETTLEMENT_SEED_MINOR,
-        pinHash);
+        SETTLEMENT_SEED_MINOR);
   }
 
   /** Wipes the ledger (wallets, entries, holds, command log) and seeds it again. */
@@ -78,17 +69,16 @@ public class WalletSeeder {
   }
 
   /** Inserts the missing wallets of a range; returns the ids it inserted. */
-  private List<String> insert(String type, String prefix, int count, long balance, String pinHash) {
+  private List<String> insert(String type, String prefix, int count, long balance) {
     return jdbc.queryForList(
-        "insert into wallet (id, msisdn, type, balance_minor, pin_hash) "
-            + "select ? || lpad(n::text, 4, '0'), ? || lpad(n::text, 4, '0'), ?, ?, ? "
+        "insert into wallet (id, msisdn, type, balance_minor) "
+            + "select ? || lpad(n::text, 4, '0'), ? || lpad(n::text, 4, '0'), ?, ? "
             + "from generate_series(1, ?) n on conflict do nothing returning id",
         String.class,
         prefix,
         prefix,
         type,
         balance,
-        pinHash,
         count);
   }
 }

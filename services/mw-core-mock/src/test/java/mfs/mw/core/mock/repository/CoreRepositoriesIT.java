@@ -66,7 +66,7 @@ class CoreRepositoriesIT {
     msisdn = String.format("0151%07d", n % 10_000_000L); // 015 is never seeded
     walletId = "TEST-" + UUID.randomUUID();
     jdbc.update(
-        "insert into wallet (id, msisdn, type, balance_minor, pin_hash) values (?, ?, 'CUSTOMER', 10000, 'not-a-real-hash')",
+        "insert into wallet (id, msisdn, type, balance_minor) values (?, ?, 'CUSTOMER', 10000)",
         walletId, msisdn);
   }
 
@@ -125,16 +125,6 @@ class CoreRepositoriesIT {
 
     release.countDown();
     holder.get(10, TimeUnit.SECONDS);
-  }
-
-  @Test
-  void wrongPinsLockTheWalletAtTheLimitAndAResetClearsTheCount() {
-    assertThat(wallets.recordPinFailure(walletId, 3)).isFalse();
-    wallets.resetPinFailures(walletId);
-    assertThat(wallets.recordPinFailure(walletId, 3)).isFalse();
-    assertThat(wallets.recordPinFailure(walletId, 3)).isFalse();
-    assertThat(wallets.recordPinFailure(walletId, 3)).isTrue();
-    assertThat(wallets.get(walletId).status()).isEqualTo("LOCKED");
   }
 
   @Test

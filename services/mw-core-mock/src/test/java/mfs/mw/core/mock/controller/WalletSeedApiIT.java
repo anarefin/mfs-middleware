@@ -12,7 +12,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 
 /** The seed API on the real ledger schema (ticket 57): create-if-absent, seed PIN, never a change. */
@@ -26,14 +25,12 @@ class WalletSeedApiIT {
   private final MockMvcTester mvc;
   private final WalletSeeder seeder;
   private final JdbcTemplate jdbc;
-  private final PasswordEncoder encoder;
 
   @Autowired
-  WalletSeedApiIT(MockMvcTester mvc, WalletSeeder seeder, JdbcTemplate jdbc, PasswordEncoder encoder) {
+  WalletSeedApiIT(MockMvcTester mvc, WalletSeeder seeder, JdbcTemplate jdbc) {
     this.mvc = mvc;
     this.seeder = seeder;
     this.jdbc = jdbc;
-    this.encoder = encoder;
   }
 
   @BeforeEach
@@ -47,12 +44,10 @@ class WalletSeedApiIT {
   }
 
   @Test
-  void createsTheWalletOnceWithTheSeedPinAndLeavesItAloneAfterwards() {
+  void createsTheWalletOnceAndLeavesItAloneAfterwards() {
     assertThat(put("01712000001", "AGENT", 7000)).hasStatus(201).bodyJson()
         .isLenientlyEqualTo("{\"walletId\":\"01712000001\",\"type\":\"AGENT\",\"status\":\"ACTIVE\",\"balanceMinor\":7000}");
     assertThat(mvc.get().uri(URI + "01712000001")).hasStatusOk();
-    String hash = jdbc.queryForObject("select pin_hash from wallet where id = ?", String.class, "01712000001");
-    assertThat(encoder.matches("1234", hash)).isTrue();
     assertThat(jdbc.queryForObject("select msisdn from wallet where id = ?", String.class, "01712000001")).isEqualTo("01712000001");
 
     jdbc.update("update wallet set balance_minor = 5 where id = ?", "01712000001");

@@ -13,14 +13,14 @@ export default [
       await MW.poll(async () => {
         S.responses = [];
         await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
-        return S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, '1234');
+        return S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);
       }, x => !!x.body && x.body.code === 'MW-SYS-PARTNER_DISABLED', 30000, 1000);
       S.code('MW-SYS-PARTNER_DISABLED');
       await S.appShows('FAILED');
       await S.noChange();
       await S.noHold('01711000001');
       await change(MW, S, 'ocs', { action: 'ENABLE', reason: 'api: partner back' });
-      const ok = await MW.poll(async () => { S.responses = []; return S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, '1234'); },
+      const ok = await MW.poll(async () => { S.responses = []; return S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin); },
         x => x.status === 200, 30000, 1000);
       S.status(200, ok);
       S.txnStatus('COMPLETED');
@@ -36,7 +36,7 @@ export default [
       await S.force('ocs', { latencyMs: latency, errorRate: 0.0, outage: false, callbackMode: 'NONE', callbackDelayMs: 0 });
       await change(MW, S, 'ocs', { action: 'SET_TIMEOUTS', reason: 'api: fail faster', timeouts: { timeoutMs: Math.floor(latency / 2) } });
       // until the adapter applies the lower limit the slow answer still completes synchronously (200)
-      const r = await MW.poll(async () => { S.responses = []; return S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, '1234'); },
+      const r = await MW.poll(async () => { S.responses = []; return S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin); },
         x => x.status === 202, 40000, 500);
       S.status(202, r);
       await MW.sim.reset('ocs');

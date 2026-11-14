@@ -43,7 +43,7 @@ class UssdHttpFlowIT {
 
   static final String CUSTOMER = "8801712345678";
   static final String PAYEE = "01812345678";
-  static final String PIN = "4826";
+  static final String PIN = "48261";
   static final JsonMapper JSON = JsonMapper.builder().build();
 
   private final MockMvcTester http;
@@ -146,9 +146,20 @@ class UssdHttpFlowIT {
     assertThat(req.path("creditParty").path("id").asString()).isEqualTo(PAYEE);
     assertThat(req.path("amount").path("valueMinor").asLong()).isEqualTo(OrchestratorStub.COMPLETES);
     assertThat(req.path("idempotencyKey").asString()).matches("[0-9a-f]{64}");
-    assertThat(req.path("encryptedPin").path("keyId").asString()).isEqualTo("core-pin-test");
-    String ciphertext = req.path("encryptedPin").path("ciphertext").asString();
-    assertThat(TestPinKeys.decrypt(new mfs.mw.ussd.dto.EncryptedPin("core-pin-test", ciphertext))).isEqualTo(PIN);
+    // the request carries mw-auth's assertion, never the PIN (ticket 72)
+    assertThat(req.has("encryptedPin")).isFalse();
+    assertThat(req.path("assertion").asString()).isEqualTo(AuthStub.ASSERTION);
+    // mw-auth was asked with the PIN under the transport key and exactly the published values
+    JsonNode asked = AuthStub.authorisations().getLast();
+    assertThat(asked.path("msisdn").asString()).isEqualTo("01712345678");
+    assertThat(asked.path("channel").asString()).isEqualTo("USSD");
+    assertThat(asked.path("encryptedPin").path("keyId").asString()).isEqualTo(AuthStub.KEY_ID);
+    String ciphertext = asked.path("encryptedPin").path("ciphertext").asString();
+    assertThat(TestPinKeys.decrypt(new mfs.mw.ussd.dto.EncryptedPin(AuthStub.KEY_ID, ciphertext))).isEqualTo(PIN);
+    assertThat(asked.path("txn").path("idempotencyKey").asString()).isEqualTo(req.path("idempotencyKey").asString());
+    assertThat(asked.path("txn").path("amount").asLong()).isEqualTo(req.path("amount").path("valueMinor").asLong());
+    assertThat(asked.path("txn").path("payer").path("id").asString()).isEqualTo(req.path("debitParty").path("id").asString());
+    assertThat(asked.path("txn").path("payee").path("id").asString()).isEqualTo(req.path("creditParty").path("id").asString());
     assertThat(done.path("message").asString()).endsWith(req.path("txnId").asString());
     assertThat(valkey.hasKey("ussd:robi:" + session)).isFalse();
   }
@@ -175,10 +186,31 @@ class UssdHttpFlowIT {
 
     step(session, "CONTINUE", PIN);
 
-    String ciphertext =
-        JSON.readTree(orchestrator.requests().getLast().value()).path("encryptedPin").path("ciphertext").asString();
+    String ciphertext = AuthStub.authorisations().getLast().path("encryptedPin").path("ciphertext").asString();
     assertThat(seenSessions).isNotEmpty();
     assertThat(seenSessions).allSatisfy(v -> assertThat(v).doesNotContain(PIN).doesNotContain(ciphertext));
+  }
+
+  @Test
+  void aWrongPinIsAskedAgainAndALockEndsTheSessionWithNothingPublished() {
+    String session = "it-" + UUID.randomUUID();
+    walkToPin(session, true, "10");
+    int published = orchestrator.requests().size();
+    try {
+      AuthStub.refuse(401, "MW-AUTH-040", "triesLeft", "2");
+      JsonNode again = step(session, "CONTINUE", "11111");
+      assertThat(again.path("flag").asString()).isEqualTo("CON");
+      assertThat(again.path("message").asString()).isEqualTo("Wrong PIN. 2 tries left.\nEnter your PIN");
+
+      AuthStub.refuse(423, "MW-AUTH-041", "retryAfter", "60");
+      JsonNode locked = step(session, "CONTINUE", "22222");
+      assertThat(locked.path("flag").asString()).isEqualTo("END");
+      assertThat(locked.path("message").asString()).isEqualTo("Your PIN is locked for now. Please try again later.");
+    } finally {
+      AuthStub.defaults();
+    }
+    assertThat(orchestrator.requests()).hasSize(published);
+    assertThat(valkey.hasKey("ussd:robi:" + session)).isFalse();
   }
 
   @Test

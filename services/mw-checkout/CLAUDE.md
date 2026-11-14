@@ -27,24 +27,34 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   errorCode, ...}`; another merchant's session 404.
 - Hosted page API (`controller/HostedPageController`, `service/CheckoutPayService`), APISIX route
   `checkout-pay` (no login; the pay token, 32 random bytes base64url, is the bearer):
-  `GET /checkout/pay/v1/{token}` (merchant name, amount, status, masked wallet, `pinKey` = the core's
-  PIN public key from OpenBao for RSA-OAEP SHA-256 in the page, `redirectUrl` once terminal);
-  `POST .../otp {wallet}` 202 (6-digit OTP, SecureRandom, stored only as sha256(sessionId:otp), valid
-  `otp-ttl` 2 min; at most `otp-max-sends` 3 per session `429 MW-VAL-022`) sent as
-  `mw.notify.request.v1` (template `CHECKOUT_OTP` seeded in mw-notify, priority OTP, SMS, expiresAt
-  = OTP expiry, messageId `checkout-otp:<sessionId>:<n>`) through the outbox with the session update;
-  the statement that marks the row sent also removes its `params.otp` (review A8: `messaging/OutboxRelay.markSent`,
-  the only checkout-specific change to the copied batched relay; V6 scrubbed rows relayed before), so no OTP
-  stays in clear for the 7 day purge; an unacknowledged row keeps it for the next attempt;
-  `POST .../confirm {otp, encryptedPin}`: no/expired OTP `401 MW-AUTH-011`, wrong `401 MW-AUTH-010`,
-  after `otp-max-attempts` 3 checks `401 MW-AUTH-012` until a new OTP. Every guess first reserves one
-  check atomically (`SessionRepository.reserveOtpAttempt`: `otp_attempts < max` in the UPDATE, row
-  count 0 = locked), so parallel guesses never get more than 3 comparisons; the wrong guess that used
-  the last check voids the OTP hash, and the claim also requires `otp_attempts <= max`. Then OPEN -> PAYING
-  (conditional update, OTP spent) and MERCHANT_PAY (`mapper/CheckoutMapper`: channel WEB_CHECKOUT,
-  initiator/debit the customer wallet CUSTOMER, credit the merchant wallet MERCHANT, PIN ciphertext
-  untouched, idempotency key `checkout:<sessionId>`, metadata checkoutSessionId/merchantId/orderId)
-  published with `mw-reply-to = instanceId`; waits `reply-budget` (25 s) on `service/ReplyWaiters`
+  `GET /checkout/pay/v1/{token}` (merchant name, amount, status, masked wallet, `pinKey {keyId,
+  algorithm, publicKey}` = the mw-crypto `PIN_TRANSPORT` key from mw-auth `GET /auth/v1/pin-key`
+  (cached `pin-key-ttl` 5 min, the last copy kept while mw-auth is down; left out when none was ever
+  fetched, and on a session that is no longer OPEN) for WebCrypto RSA-OAEP SHA-256 in the page,
+  `redirectUrl` once terminal);
+  `POST .../otp {wallet}` 202: counted on the session first (`otp_sends`, at most `otp-max-sends` 3 per
+  session `429 MW-VAL-022`, payer recorded), then sent by mw-auth (ticket 72: `POST /internal/v1/otp`,
+  purpose `CHECKOUT`, bound to the sessionId, template `CHECKOUT_OTP` with amount (taka) and merchant
+  name; mw-auth's own rules: 2 min, 3 checks, one OTP per wallet, 5 per wallet in 15 min `429
+  MW-VAL-022`, unknown wallet `403 MW-AUTH-002`, blocked `403 MW-AUTH-043`); answer `{wallet (masked),
+  otpExpiresAt, sendsLeft}` with the lower of the session's and mw-auth's sends left;
+  `POST .../confirm {otp, encryptedPin}` (ticket 72): no OTP asked on the session `401 MW-AUTH-011`;
+  mw-auth checks and spends the OTP (`POST /internal/v1/otp/verifications`: `401 MW-AUTH-010` wrong,
+  `011` none/expired/spent, `012` checks used up); then MERCHANT_PAY is built (`mapper/CheckoutMapper`:
+  channel WEB_CHECKOUT, initiator/debit the customer wallet CUSTOMER, credit the merchant wallet
+  MERCHANT, idempotency key `checkout:<sessionId>`, metadata checkoutSessionId/merchantId/orderId) and
+  mw-auth `POST /internal/v1/txn-authorisations` is asked with exactly its values
+  (`CheckoutMapper.toAuthorisation`: msisdn, channel, the PIN ciphertext untouched, txn {txnType,
+  amount = valueMinor, currency, payer = debitParty, payee = creditParty, idempotencyKey}; decision
+  of ticket 71: anything else fails the core's txnHash check): wrong PIN `401 MW-AUTH-040` (details
+  `triesLeft`), lock `423 MW-AUTH-041`/`042`, `403 MW-AUTH-043`/`045`/`002`, `409 MW-IDEM-001`, all
+  passed through with code, status, details and Bangla text. Only then OPEN -> PAYING (conditional
+  update: still OPEN, unexpired, the same payer) and the request goes out with `assertion` (no PIN
+  material on Kafka), published with `mw-reply-to = instanceId`; every refusal leaves the session
+  OPEN. **OTP spent decision (ticket 72):** the OTP is spent by its check, before the PIN, so a wrong
+  PIN needs a new OTP (the session allows 3; mw-auth's PIN lockout counts the PINs); the OTP check
+  comes first so the PIN is never tried without the second factor. No mw-auth call runs inside a
+  database transaction. Waits `reply-budget` (25 s) on `service/ReplyWaiters`
   (`route/StatusReplyRoute`, group `mw-checkout.reply.<instanceId>`). Answer 200 `{status PAID|FAILED,
   txnId, error?, redirectUrl}` or 202 PAYING (page polls GET). Kafka down `503 MW-SYS-010` and the
   session is OPEN again. `POST .../cancel` -> CANCELLED. `GET .../return` -> 303 to the signed URL
@@ -82,12 +92,30 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   errorCode?, ts, signature` = hex HMAC-SHA256(merchant secret, `bits-checkout-result.v1\n` + the
   fields joined by `\n`); described for merchants in the contract.
 - Table `checkout.ipn_delivery` (V5): one row per IPN attempt (see above).
-- Table `checkout.session` (V4): token, merchant, order, amount, URLs, status, payer, OTP hash /
-  expiry / attempts / sends, txn_id, error_code, times.
+- Table `checkout.session` (V4): token, merchant, order, amount, URLs, status, payer, OTP sends,
+  txn_id, error_code, times (V7, ticket 72, dropped the OTP hash, expiry and attempts: mw-auth's now).
+- mw-auth client (ticket 72; `client/AuthClient`, `client/ServiceTokenClient` (mw-app-gateway's copy),
+  `config/AuthClientProperties` `mw.checkout.auth.*`, `config/ServiceCertificateManager` + `TlsProperties`
+  from the template, `mw.tls.enabled` off in the image default and tests, `MW_TLS_ENABLED=true` in
+  compose; PKI role `mw-checkout`): internal API `https://mw-auth:8443` (`MW_AUTH_URL`) over mTLS with this
+  service's OpenBao certificate and a Keycloak realm `services` client-credentials JWT of client
+  `mw-checkout` (audience mapper `aud-mw-auth`; secret `mw.checkout.auth.client-secret` in
+  `secret/mw-checkout`, synced from `KC_MW_CHECKOUT_SECRET`; on mw-auth's allow-list and its
+  `mw.auth.assertion.callers`); the PIN key on the public port (`MW_AUTH_PIN_KEY_URI`,
+  `http://mw-auth:8080/auth/v1/pin-key`). Timeout 2 s, Resilience4j breaker `mw-auth` (count based, 4xx
+  ignored). mw-auth's 4xx envelope passes through; only a 401 `MW-AUTH-001` (this service's token) drops
+  the token and retries once (a wrong PIN is never sent twice); unreachable, timeout, open breaker, 5xx,
+  unreadable answer: `503 MW-SYS-012` (retryable, fail closed). Nothing sent or received is logged.
+- Removed in ticket 72: the core's PIN key (`mw.checkout.pin.*`, `CheckoutProperties.Pin`), the
+  service's own OTP (`util/OtpCodes` keeps only the pay token; `otp-ttl`, `otp-max-attempts`,
+  `notify-topic`), the CHECKOUT_OTP outbox publish and `dto/NotificationRequest` (no
+  `mw.notify.request.v1` produced here any more), and with it the OTP scrub in `messaging/OutboxRelay.markSent`
+  (the relay is the template's copy again; V6 stays as history) and `messaging/OutboxRelayOtpIT`.
 - Dev provisioning (`provision_mw_checkout` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role `checkout_rw`, schema `checkout`,
   `secret/mw-checkout` (DB password; `mw.checkout.merchants.merchant_demo.secret` from
-  `CHECKOUT_DEMO_MERCHANT_SECRET`, the same value as the test-only APISIX consumer; the core's PIN
-  public key + key id copied from `secret/mw-core-mock`), AppRole `mw-checkout`.
+  `CHECKOUT_DEMO_MERCHANT_SECRET`, the same value as the test-only APISIX consumer;
+  `mw.checkout.auth.client-secret` from `KC_MW_CHECKOUT_SECRET`), AppRole `mw-checkout`, PKI role
+  `mw-checkout`. Keycloak realm `services` client `mw-checkout` (audience `mw-auth`).
 
 ## Contracts owned
 
@@ -103,23 +131,31 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 - `contracts.yml` (module root) is the machine-readable list of the events and APIs here, checked by
   `./gradlew :contractsLint` and tested without Docker by `contracts/ProducedContractsTest` (every produced
   event built by `CheckoutMapper` validates), `contracts/ConsumedContractsTest` (every valid sample reads
-  into the own DTO) and `contracts/ApiContractsTest` (checkout API responses and the IPN body). No other
-  module's API is called (`consumes.apis` empty).
-- `events/mw-orchestrator/mw.txn.request.v1` (produced; `dto/TxnRequest`, checked in `CheckoutMapperTest`).
+  into the own DTO) and `contracts/ApiContractsTest` (checkout API responses, the IPN body, and the
+  mw-auth requests and answers below).
+- `events/mw-orchestrator/mw.txn.request.v1` (produced with `assertion`; `dto/TxnRequest`, checked in `CheckoutMapperTest`).
 - `events/mw-orchestrator/mw.txn.status.v1` (consumed; `dto/StatusMessage`) and the `mw-reply-to` convention.
-- `events/mw-notify/mw.notify.request.v1` (produced; `dto/NotificationRequest`, checked in `CheckoutMapperTest`).
+- `api/mw-auth/auth-internal.v1.openapi.yaml` (client, ticket 72: `POST /internal/v1/otp`, `POST
+  /internal/v1/otp/verifications`, `POST /internal/v1/txn-authorisations`; own types `dto/AuthOtpRequest`,
+  `dto/AuthOtpVerification`, `dto/OtpSent`, `dto/TxnAuthorisationRequest`, `dto/TxnAuthorisation`) and
+  `api/mw-auth/auth.v1.openapi.yaml` (`GET /auth/v1/pin-key`, `dto/TransportKey`).
 
 ## Tests
 
-- `CheckoutFlowIT` (PostgreSQL + Kafka, `messaging/OrchestratorStub`, `MutableClock`: create, OTP from
-  the notify request, wrong/expired/locked OTP, pay, core rejection, late answer via projection,
-  cancel, expiry, merchant auth, idempotent create, refused IPN URLs); `IpnDeliveryIT` (local merchant
+- `CheckoutFlowIT` (PostgreSQL + Kafka, `messaging/OrchestratorStub`, `MutableClock`, mw-auth played by
+  `client/FakeAuth` behind a mocked `AuthClient`: create, the OTP through mw-auth bound to the session,
+  wrong OTP, pay with the assertion (the authorisation asked with exactly the published values, no PIN
+  on Kafka), wrong PIN / PIN lock / mw-auth down passed through with the session left OPEN, core
+  rejection, late answer via projection, cancel, expiry, merchant auth, idempotent create, refused IPN
+  URLs; mw-auth's own OTP rules are tested in mw-auth `security/CheckoutOtpIT`);
+  `client/AuthClientTest` (local HTTP server as mw-auth and Keycloak: pass-through, own-token retry only
+  on `MW-AUTH-001`, fail closed, PIN key cache); `client/MtlsClientIT` (template copy); `IpnDeliveryIT` (local merchant
   HTTP server, `MutableClock`: fail twice then 2xx on the schedule, six attempts then none, timeout,
   internal target refused); `client/MerchantIpnClientTest` (pinned address, Host kept),
   `client/MerchantIpnTlsTest` (keytool certificates: SNI and certificate checked against the name);
   `service/IpnRetryScheduleTest`, `security/IpnUrlPolicyTest` (one case per IPv6 rule),
-  `security/IpnSignerTest` (openssl vector); `repository/SessionRepositoryIT`; `messaging/OutboxRelayOtpIT`
-  (OTP on Kafka, gone from the row once relayed, other topics untouched);
+  `security/IpnSignerTest` (openssl vector); `repository/SessionRepositoryIT` (one claim wins, the claim
+  needs the wallet the last OTP went to, send limit);
   `security/ResultSignerTest` (vector from openssl); `mapper/CheckoutMapperTest` (contract schemas);
   `service/SessionBodySchemaTest`, `controller/MerchantSessionControllerTest`,
   `controller/HostedPageControllerTest` (schema before the service).
@@ -137,7 +173,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   `ErrorCodes`, `GlobalExceptionHandler` building `dto/ErrorEnvelope`. Logs show route
   templates, never raw URIs (the pay token stays out of the service's logs).
 - `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3; mark every personal field. OTP, pay
-  token, PIN ciphertext and merchant secret are `SECRET`.
+  token, PIN ciphertext, the assertion and merchant secret are `SECRET`.
+- `config/ServiceCertificateManager` + `TlsProperties` (ticket 66 template, copied in ticket 72).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
 - `messaging/EventPublisher`: Kafka records with the 6.1 headers (+ extra headers such as

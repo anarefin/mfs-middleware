@@ -1,7 +1,12 @@
 # Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
+# Ticket 72: the PIN is checked by mw-auth (txn authorisation, internal API over mTLS) and encrypted
+# under its transport key (auth.v1 GET /auth/v1/pin-key); the request carries the assertion.
 produces:
   events: [events/mw-orchestrator/mw.txn.request.v1.schema.json]
   apis: [api/mw-ussd/ussd-http.v1.openapi.yaml]
 consumes:
   events: [events/mw-orchestrator/mw.txn.status.v1.schema.json, events/mw-admin-api/mw.config.changed.v1.schema.json]
-  apis: [api/mw-adapter-billpay/billpay.v1.openapi.yaml]
+  apis:
+    - api/mw-adapter-billpay/billpay.v1.openapi.yaml
+    - api/mw-auth/auth-internal.v1.openapi.yaml
+    - api/mw-auth/auth.v1.openapi.yaml

@@ -63,7 +63,7 @@ public class MerchantSessionService {
             UuidV7.next(clock), OtpCodes.newPayToken(), merchantId, merchant.wallet(), req.orderId(),
             req.amount().valueMinor(), req.amount().currency(), req.description(),
             req.locale() == null ? "bn" : req.locale(), req.successUrl(), req.failUrl(), req.cancelUrl(),
-            req.ipnUrl(), SessionStatus.OPEN, null, null, null, 0, 0, null, null, now,
+            req.ipnUrl(), SessionStatus.OPEN, null, 0, null, null, now,
             now.plus(props.sessionTtl()), now);
     if (sessions.insert(s)) {
       log.atInfo()

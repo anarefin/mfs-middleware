@@ -5,8 +5,6 @@
 # then writes the AppRole. Steps: lib.sh. A new service adds an entry and a function here, plus its
 # approle volume in the `provision` block (scripts/new-service.sh prints both).
 #
-# mw-core-mock comes first: mw-ussd and mw-checkout copy its PIN public key.
-#
 # SECRETS_AHEAD: secrets written for a service that is not in the stack yet (no role, schema or
 # AppRole), <service>:<function>, run after SERVICES. Empty while every service is in SERVICES.
 SECRETS_AHEAD=""
@@ -22,10 +20,10 @@ SERVICES="mw-core-mock:core-mock mw-crypto:crypto mw-auth:auth mw-simulators:sim
   mw-adapter-telco:adapter-telco mw-adapter-billpay:adapter-billpay mw-adapter-bank:adapter-bank
   mw-portal-api:portal-api mw-checkout:checkout"
 
-# Ledger stand-in; the PIN private key lives only here (M11).
+# Ledger stand-in. No PIN key since ticket 72 (D22): it verifies mw-auth's assertions with the
+# public set at mw-auth's assertion-jwks.json, which needs no secret.
 provision_mw_core_mock() {
   gen_once spring.datasource.password 40
-  pin_keypair "${PIN_KEY_ID:-core-pin-dev-1}"
   db_role coremock_rw coremock
 }
 
@@ -122,12 +120,13 @@ provision_mw_notify() {
   db_role notify_rw notify
 }
 
-# Valkey: USSD sessions. The core's PIN public key + key id (delivered like a secret, M11).
+# Valkey: USSD sessions. Its realm services client secret for mw-auth's internal API (txn
+# authorisation, ticket 72); its certificate comes from PKI_SERVICES; the PIN transport key it
+# fetches from mw-auth's public port (no secret).
 provision_mw_ussd() {
   gen_once spring.datasource.password 40
   sync_env spring.data.redis.password VALKEY_PASSWORD
-  copy_key mw-core-mock mw.coremock.pin.public-key mw.ussd.pin.public-key
-  copy_key mw-core-mock mw.coremock.pin.key-id mw.ussd.pin.key-id
+  sync_env mw.ussd.auth.client-secret KC_MW_USSD_SECRET
   db_role ussd_rw ussd
 }
 
@@ -166,12 +165,12 @@ provision_mw_portal_api() {
 }
 
 # The dev merchant's signing secret (ticket 31; the same value as the APISIX hmac-auth consumer
-# merchant_demo) and the core's PIN public key + key id.
+# merchant_demo) and its realm services client secret for mw-auth's internal API (checkout OTP and
+# txn authorisation, ticket 72); its certificate comes from PKI_SERVICES.
 provision_mw_checkout() {
   gen_once spring.datasource.password 40
   sync_env mw.checkout.merchants.merchant_demo.secret CHECKOUT_DEMO_MERCHANT_SECRET
-  copy_key mw-core-mock mw.coremock.pin.public-key mw.checkout.pin.public-key
-  copy_key mw-core-mock mw.coremock.pin.key-id mw.checkout.pin.key-id
+  sync_env mw.checkout.auth.client-secret KC_MW_CHECKOUT_SECRET
   db_role checkout_rw checkout
 }
 

@@ -9,7 +9,7 @@ import { FINAL, type BalanceRow, type Outcome, type SmsRow } from "@/lib/types";
 import { deviceHeaders, deviceState, ready, signedHeaders } from "@/lib/server/device";
 import { EdgeError, Trace, edge, poll, sleep, type EdgeResponse } from "@/lib/server/edge";
 import { publicUrl } from "@/lib/server/env";
-import { core, sim } from "@/lib/server/test-apis";
+import { core, pins, sim } from "@/lib/server/test-apis";
 import { walletOf } from "@/lib/server/tokens";
 
 export type AppState = Outcome | null;
@@ -131,12 +131,12 @@ export async function submitTxn(_prev: AppState, form: FormData): Promise<AppSta
   if (!USER.test(user)) return fail(t, "choose a user");
   if (!(TXN_TYPES as readonly string[]).includes(type)) return fail(t, "choose a flow");
   if (!amount) return fail(t, "the amount is taka with at most 2 decimals, e.g. 10 or 20.13");
-  if (!/^\d{4,6}$/.test(pin)) return fail(t, "the PIN is 4 to 6 digits (seeded wallets: 1234)");
+  if (!/^\d{4,6}$/.test(pin)) return fail(t, "the PIN is 4 to 6 digits (seeded wallets: 13579, MW_SEED_APP_PIN)");
   const started = Date.now();
   return guarded(t, async () => {
     const payer = walletOf(user);
-    const encryptedPin = await core.encrypt(pin);
-    t.note("encrypt the PIN on the device", "RSA-OAEP SHA-256 with the core's public key: the PIN never travels in clear");
+    const encryptedPin = await pins.encrypt(pin);
+    t.note("encrypt the PIN on the device", "RSA-OAEP SHA-256 under the PIN transport key (GET /app/v1/pin-key): mw-auth checks it and the request carries its assertion, never the PIN");
     const built = buildBody(type, form, amount, encryptedPin);
     if (typeof built === "string") return fail(t, built);
     // FEE-POOL: core-mock's fee account (P2P Tk 5, top-up Tk 2, …: the payer pays amount + fee)

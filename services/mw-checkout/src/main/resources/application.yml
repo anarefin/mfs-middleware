@@ -86,6 +86,19 @@ resilience4j:
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 5
         automatic-transition-from-open-to-half-open-enabled: true
+    instances:
+      # mw-auth (client/AuthClient, ticket 72): the OTP and the assertion fail closed while it is out.
+      # Counts calls: opens after half of the last 20 failed (min 10), probes again after 10 s. A 4xx
+      # (wrong OTP or PIN, a lock) is an answer, not an outage.
+      mw-auth:
+        base-config: default
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        slow-call-duration-threshold: 1500ms
+        wait-duration-in-open-state: 10s
+        ignore-exceptions:
+          - org.springframework.web.client.HttpClientErrorException
   bulkhead:
     configs:
       default:
@@ -147,6 +160,20 @@ management:
       type: w3c
 
 mw:
+  # This service's certificate from OpenBao PKI (spec 18.2, 18.4, D24; config/TlsProperties,
+  # config/ServiceCertificateManager, from the template; ticket 72): the client certificate for
+  # mw-auth's internal API. Off by default and in tests; compose sets MW_TLS_ENABLED=true. On, it
+  # issues pki_int/issue/mw-checkout at start, renews at two thirds of the life and never writes the
+  # key to disk.
+  tls:
+    enabled: ${MW_TLS_ENABLED:false}
+    pki-mount: pki_int
+    role: ${spring.application.name}
+    common-name: ${spring.application.name}
+    alt-names: ${MW_TLS_ALT_NAMES:${spring.application.name}}
+    ttl: 72h
+    retry-period: 1m
+    bundle: mw-service
   kafka:
     retry:
       # Non-blocking retry topics <topic>.<group>.retry.1..3, then <topic>.<group>.dlq (19.2).
@@ -176,22 +203,28 @@ mw:
     instance-id: ${HOSTNAME:}
     request-topic: mw.txn.request.v1
     status-topic: mw.txn.status.v1
-    notify-topic: mw.notify.request.v1
     # A session can be paid this long after it was created (spec 9.3).
     session-ttl: 15m
-    # OTP validity (the OTP default expiry of mw-notify), wrong OTPs before it is void, OTPs per session.
-    otp-ttl: 2m
-    otp-max-attempts: 3
+    # OTPs one session may ask mw-auth for (ticket 72: mw-auth sends and checks the OTP, 2 min, 3
+    # checks, and limits the wallet's OTPs per window too).
     otp-max-sends: 3
     # A pay request waits this long for the final status, then answers 202 PAYING (spec 7.5).
     reply-budget: ${MW_CHECKOUT_REPLY_BUDGET:25s}
     # The hosted page (front-end not built here, spec open point 16); checkoutUrl = this + pay token.
     page-base-url: ${MW_CHECKOUT_PAGE_BASE_URL:https://localhost/checkout/page/}
-    pin:
-      # The core's PIN key (M11), handed to the hosted page to encrypt the PIN. key-id and
-      # public-key come from OpenBao (secret/mw-checkout), copied there from the core's export.
-      key-id: ${MW_CHECKOUT_PIN_KEY_ID:core-pin-dev-1}
-      public-key: ${MW_CHECKOUT_PIN_PUBLIC_KEY:}
+    # mw-auth (ticket 72; config/AuthClientProperties, client/AuthClient): the checkout OTP and the
+    # transaction assertion on its internal port over mTLS (mw.tls) with a Keycloak realm services
+    # token of client mw-checkout (audience mw-auth); the PIN transport key on its public port.
+    auth:
+      base-url: ${MW_AUTH_URL:https://mw-auth:8443}
+      token-uri: ${MW_INTERNAL_TOKEN_URI:http://keycloak:8080/realms/services/protocol/openid-connect/token}
+      client-id: mw-checkout
+      # client-secret: from OpenBao secret/mw-checkout (key mw.checkout.auth.client-secret), never here
+      client-secret: ""
+      timeout: 2s
+      connect-timeout: 1s
+      pin-key-uri: ${MW_AUTH_PIN_KEY_URI:http://mw-auth:8080/auth/v1/pin-key}
+      pin-key-ttl: 5m
     # Checkout merchants by APISIX hmac-auth consumer name. Onboarding through mw-admin-api comes
     # later; until then one dev merchant. Its secret (signs the redirect result and, ticket 32, the
     # IPN) comes from OpenBao only: mw.checkout.merchants.<id>.secret in secret/mw-checkout.

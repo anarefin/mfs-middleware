@@ -18,12 +18,10 @@ import org.springframework.validation.annotation.Validated;
  * @param instanceId value of the {@code mw-reply-to} header and suffix of the reply consumer
  *     group; blank means a random id per start
  * @param sessionTtl how long a new session can be paid (15 min, spec 9.3)
- * @param otpTtl how long an OTP is valid (2 min, the OTP default expiry of mw-notify)
- * @param otpMaxAttempts wrong OTPs before the OTP is void and a new one must be requested
- * @param otpMaxSends OTPs one session may send
+ * @param otpMaxSends OTPs one session may ask mw-auth for (mw-auth also limits the wallet's OTPs
+ *     per window; ticket 72)
  * @param replyBudget how long a pay request waits for the final status before it answers 202
  * @param pageBaseUrl the hosted checkout page; {@code checkoutUrl} = this + the pay token
- * @param pin the core's PIN key, handed to the hosted page so it can encrypt the PIN
  * @param merchants checkout merchants by APISIX consumer name (the {@code hmac-auth} consumer)
  */
 @Validated
@@ -32,14 +30,10 @@ public record CheckoutProperties(
     String instanceId,
     @NotBlank String requestTopic,
     @NotBlank String statusTopic,
-    @NotBlank String notifyTopic,
     @NotNull Duration sessionTtl,
-    @NotNull Duration otpTtl,
-    @Positive int otpMaxAttempts,
     @Positive int otpMaxSends,
     @NotNull Duration replyBudget,
     @NotBlank String pageBaseUrl,
-    @Valid @NotNull Pin pin,
     Map<String, @Valid Merchant> merchants) {
 
   public CheckoutProperties {
@@ -51,12 +45,6 @@ public record CheckoutProperties(
   public Merchant merchant(String id) {
     return id == null ? null : merchants.get(id);
   }
-
-  /**
-   * @param keyId the core's key id, forwarded with every ciphertext
-   * @param publicKey X.509 PEM (or Base64 DER) of the core's public key; not a secret
-   */
-  public record Pin(@NotBlank String keyId, String publicKey) {}
 
   /**
    * One checkout merchant.

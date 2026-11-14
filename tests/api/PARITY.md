@@ -22,7 +22,7 @@ Changes that apply to every row:
 | add-money-bank.feature | a replayed bank callback has no second effect | 08 | [addmoney c2w callback] a replayed bank callback has no second effect | mapped |  |
 | add-money-bank.feature | a callback the bank sends twice credits the wallet once | 08 | [addmoney c2w callback] a callback the bank sends twice credits the wallet once | mapped |  |
 | add-money-bank.feature | a debit the bank refuses fails and moves nothing | 08 | [addmoney c2w] a debit the bank refuses fails and moves nothing | mapped |  |
-| add-money-bank.feature | a wrong PIN is refused by the core and the bank is never asked | 08 | [addmoney c2w] a wrong PIN is refused by the core and the bank is never asked | mapped |  |
+| add-money-bank.feature | a wrong PIN is refused by the core and the bank is never asked | 08 | [addmoney c2w] a wrong PIN is refused by mw-auth and the bank is never asked | mapped |  |
 | add-money-bank.feature | a bank timeout is resolved by status inquiry and the wallet is credited | 08 | [addmoney c2w tsq] a bank timeout is resolved by status inquiry and the wallet is credited | mapped |  |
 | add-money-bank.feature | an add-money request sent twice with the same idempotency key credits the wallet once | 08 | [addmoney c2w] an add-money request sent twice with the same idempotency key credits the wallet once | mapped |  |
 | add-money-bank.feature | a bank timeout the debit did not survive is resolved by status inquiry and fails | 08 | [addmoney c2w tsq] a bank timeout the debit did not survive is resolved by status inquiry and fails | mapped |  |
@@ -113,7 +113,7 @@ Changes that apply to every row:
 | operator-console.feature | an operator finds a P2P by txnId and by MSISDN and sees its timeline and audit trail | 14 | [admin operator p2p] an operator finds a P2P by txnId and by MSISDN and sees its timeline and audit trail | mapped |  |
 | operator-console.feature | an operator finds a P2P by MSISDN and reverses it once a second operator approves | 14 | [admin operator reversal] an operator finds a P2P by MSISDN and reverses it once a second operator approves | mapped |  |
 | p2p.feature | a P2P completes and moves the money once | 01 | [p2p] a P2P completes and moves the money once | mapped |  |
-| p2p.feature | a core rejection (<reason>) moves no money (row: a core rejection (wrong PIN) moves no money) | 01 | [p2p] a core rejection (wrong PIN) moves no money | mapped |  |
+| p2p.feature | a core rejection (<reason>) moves no money (row: a core rejection (wrong PIN) moves no money) | 01 | [p2p] a wrong PIN is refused by mw-auth at once, nothing published, no money moves | mapped |  |
 | p2p.feature | a core rejection (<reason>) moves no money (row: a core rejection (over per-txn limit) moves no money) | 01 | [p2p] a core rejection (over per-txn limit) moves no money | mapped |  |
 | p2p.feature | the same idempotency key sent twice debits once and returns the same txnId | 01 | [p2p] the same idempotency key sent twice debits once and returns the same txnId | mapped |  |
 | p2p.feature | the same idempotency key with a different body is refused | 01 | [p2p] the same idempotency key with a different body is refused | mapped |  |
@@ -130,7 +130,7 @@ Changes that apply to every row:
 | sp-query.feature | a portal user without an org role may not query | 23 | [sp-query] a portal user without an org role may not query | mapped |  |
 | topup.feature | a successful top-up debits the payer once and leaves nothing held | 05 | [topup] a successful top-up debits the payer once and leaves nothing held | mapped |  |
 | topup.feature | an operator refusal releases the hold and moves no money | 05 | [topup] an operator refusal releases the hold and moves no money | mapped |  |
-| topup.feature | a wrong PIN is refused by the core before anything is held | 05 | [topup] a wrong PIN is refused by the core before anything is held | mapped |  |
+| topup.feature | a wrong PIN is refused by the core before anything is held | 05 | [topup] a wrong PIN is refused by mw-auth before anything is published or held | mapped |  |
 | topup.feature | a hold whose reply is lost is found by a status query and released | 05 | [topup] a hold whose reply is lost is found by a status query and released | mapped |  |
 | topup.feature | the same idempotency key sent twice tops up once and returns the same txnId | 05 | [topup] the same idempotency key sent twice tops up once and returns the same txnId | mapped |  |
 | topup.feature | a top-up without operator is refused by the app API | 05 | [topup] a top-up without operator is refused by the app API | mapped |  |
@@ -153,8 +153,8 @@ Changes that apply to every row:
 | ussd.feature | a P2P over USSD in English completes and moves the money once | 18 | [ussd p2p] a P2P over USSD in English completes and moves the money once | mapped |  |
 | ussd.feature | a P2P over USSD in Bangla completes and moves the money once | 18 | [ussd p2p] a P2P over USSD in Bangla completes and moves the money once | mapped |  |
 | ussd.feature | a bad number is refused and asked again, and no money moves | 18 | [ussd] a bad number is refused and asked again, and no money moves | mapped |  |
-| ussd.feature | a wrong PIN is refused by the core and no money moves | 18 | [ussd] a wrong PIN is refused by the core and no money moves | mapped |  |
-| wallet-unlock.feature | five wrong PINs lock the wallet, an approved unlock lets the next correct-PIN P2P succeed | 16 | [admin wallet-unlock] five wrong PINs lock the wallet, an approved unlock lets the next correct-PIN P2P succeed | mapped |  |
+| ussd.feature | a wrong PIN is refused by the core and no money moves | 18 | [ussd] a wrong PIN is refused by mw-auth and asked again, the right one then pays once | mapped |  |
+| wallet-unlock.feature | five wrong PINs lock the wallet, an approved unlock lets the next correct-PIN P2P succeed | 16 | [admin wallet-unlock] three wrong PINs lock the PIN at mw-auth, an approved unlock lets the next correct-PIN P2P succeed | mapped |  |
 
 ## Additions (no Cucumber scenario)
 

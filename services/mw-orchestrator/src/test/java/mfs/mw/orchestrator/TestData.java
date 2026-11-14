@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import mfs.mw.orchestrator.dto.Amount;
-import mfs.mw.orchestrator.dto.EncryptedPin;
 import mfs.mw.orchestrator.dto.PartnerRef;
 import mfs.mw.orchestrator.dto.Party;
 import mfs.mw.orchestrator.dto.TxnRequest;
@@ -37,7 +36,7 @@ public final class TestData {
         Amount.bdt(amountMinor),
         new PartnerRef("gp", "PREPAID", null),
         null,
-        new EncryptedPin("core-pin-test-1", "ZmFrZS1jaXBoZXJ0ZXh0"),
+        ASSERTION,
         "en",
         null,
         null,
@@ -59,7 +58,7 @@ public final class TestData {
         Amount.bdt(amountMinor),
         new PartnerRef("billagg", "BILL", "DESCO"),
         null,
-        new EncryptedPin("core-pin-test-1", "ZmFrZS1jaXBoZXJ0ZXh0"),
+        ASSERTION,
         "en",
         null,
         null,
@@ -81,7 +80,7 @@ public final class TestData {
         Amount.bdt(amountMinor),
         null,
         null,
-        new EncryptedPin("core-pin-test-1", "ZmFrZS1jaXBoZXJ0ZXh0"),
+        ASSERTION,
         "en",
         null,
         null,
@@ -106,7 +105,7 @@ public final class TestData {
         Amount.bdt(amountMinor),
         new PartnerRef("c2wbank", "C2W", null),
         null,
-        new EncryptedPin("core-pin-test-1", "ZmFrZS1jaXBoZXJ0ZXh0"),
+        ASSERTION,
         "en",
         null,
         null,
@@ -152,7 +151,7 @@ public final class TestData {
         Amount.bdt(amountMinor),
         null,
         null,
-        new EncryptedPin("core-pin-test-1", "ZmFrZS1jaXBoZXJ0ZXh0"),
+        ASSERTION,
         "en",
         Map.of("deviceId", "dev-test-1"),
         null,
@@ -188,11 +187,11 @@ public final class TestData {
   public static final String ASSERTION =
       "eyJhbGciOiJFUzI1NiIsImtpZCI6ImFzc2VydGlvbi1zaWduLnYxIn0.eyJqdGkiOiJ4In0.ZmFrZS1zaWduYXR1cmU";
 
-  /** {@code r} as a channel sends it once it uses mw-auth's assertion: the assertion and no PIN. */
+  /** {@code r} with the fake assertion (every TestData request carries it since ticket 72). */
   public static TxnRequest withAssertion(TxnRequest r) {
     return new TxnRequest(
         r.schemaVersion(), r.txnId(), r.idempotencyKey(), r.correlationId(), r.channel(), r.txnType(),
-        r.initiator(), r.debitParty(), r.creditParty(), r.amount(), r.partner(), r.originalTxnId(), null,
+        r.initiator(), r.debitParty(), r.creditParty(), r.amount(), r.partner(), r.originalTxnId(),
         ASSERTION, r.locale(), r.metadata(), r.attributes(), r.requestedAt());
   }
 }

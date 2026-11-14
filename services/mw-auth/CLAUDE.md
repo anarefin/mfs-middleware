@@ -17,7 +17,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   (hash, family, device, expiry, rotation, revoked), `pin_reset` (`SELF` / `CARE`, one open per wallet),
   plus the chassis `outbox`, `inbox`, `shedlock`; `device_otp` (V5, ticket 68; V6 adds its `purpose`
   BIND/LOGIN and `refresh_token.amr`; V7, ticket 70: purpose RESET, `pin_reset` status VERIFIED and its
-  `device_id`, `expires_at`, `change_request_id`, `command_id`, `reason`). Code so far: `wallet` (`repository/WalletRepository`), `device`
+  `device_id`, `expires_at`, `change_request_id`, `command_id`, `reason`; V8, ticket 72: purpose CHECKOUT). Code so far: `wallet` (`repository/WalletRepository`), `device`
   (`repository/DeviceRepository`), `device_otp` (`repository/DeviceOtpRepository`), `credential`,
   `attempt`, `lock` (`repository/CredentialRepository`), `refresh_token` (`repository/RefreshTokenRepository`),
   `pin_reset` (`repository/PinResetRepository`, ticket 70).
@@ -211,7 +211,8 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
     `auth.wallet-lock.v1`, group `mw-auth`, retry topics + DLQ, `deploy/kafka/topics.txt`): once per
     `commandId` (inbox `mw-auth.wallet-lock`): `LOCK` = an ADMIN lock (403 `MW-AUTH-043` everywhere) +
     every refresh token revoked + session closed; `UNLOCK` = ADMIN lock and PIN lock (every level,
-    count) removed (mw-admin-api's approved ops unlock, ticket 52); `REVOKE_SESSIONS` = revoke and close
+    count) removed (mw-admin-api's approved ops unlock, ticket 52; it also sends core `UnlockWallet`, which since
+    ticket 72 lifts only a core-side account lock: the core has no PIN lockout, mw-auth's is the only one); `REVOKE_SESSIONS` = revoke and close
     only; `PIN_RESET` (with `changeRequestId`, `makerId`) = the approved care reset above (its own
     idempotency, no inbox row). The Valkey session close runs on every delivery (idempotent). Unknown wallet: skipped
     (logged); malformed: `MW-VAL-002` (retry topics, DLQ). Audited `auth.wallet.locked|unlocked|sessions_revoked`.
@@ -249,6 +250,20 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   public port 8080 (`http://mw-auth:8080/...`); the `auth-v1` APISIX route also exposes it at the edge
   (public keys only). mw-crypto needed no change: `mw.crypto.authz.purposes.ASSERTION_SIGN` already names
   mw-auth, and ASSERTION_SIGN is a dev bootstrap purpose.
+- Checkout OTP (ticket 72, spec 9.3; `controller/InternalOtpController`, `service/ChannelOtpService`,
+  `dto/InternalOtpRequest`, `dto/InternalOtpVerification`; internal mTLS port, only client
+  `mw-checkout` (`ChannelOtpService.CHECKOUT_CALLER`, any other allowed client 403 `MW-AUTH-002`)): `POST
+  /internal/v1/otp {msisdn, purpose CHECKOUT, bindingId (the checkout sessionId, the device id rule),
+  locale?, amount (taka "25.50"), merchant}` -> 202 `{wallet (masked), otpExpiresAt, sendsLeft}`: the
+  wallet known (403 `MW-AUTH-002`) and `WalletAccess.checkActive` (403 `MW-AUTH-043`; a PIN lock is the
+  assertion's to answer), then `DeviceOtpService.send` with purpose `CHECKOUT` and the binding in
+  `device_otp.device_id` (V8 adds the purpose), template `CHECKOUT_OTP` (mw-notify V8; params `otp`,
+  `amount`, `merchant`), the same limits (429 `MW-VAL-022`, Kafka down 503 `MW-SYS-010`). **One OTP per
+  wallet:** a checkout OTP replaces a pending BIND/LOGIN/RESET OTP of the wallet (and the other way
+  round); accepted, as one person rarely binds a device and pays a web checkout in the same 2 minutes.
+  `POST /internal/v1/otp/verifications {msisdn, purpose, bindingId, otp}` -> 204: `DeviceOtpService.check`
+  (401 `MW-AUTH-010/011/012`, an OTP of another binding or purpose 011) then `consume` (spent once; a
+  second check 011). Tested by `security/CheckoutOtpIT`.
 - Error codes so far: `MW-AUTH-001..007`, `010..012`, `040..045`, `047`, `048` (18.7; `046` is the core's),
   `MW-IDEM-001` (ticket 71), `MW-VAL-001`, `MW-VAL-003`, `MW-VAL-022`, `MW-VAL-030/031` (reset, ticket 70),
   `MW-VAL-BODY_TOO_LARGE`, `MW-SYS-010`, `MW-SYS-012`, `MW-SYS-050/051`.
@@ -260,7 +275,8 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   `scripts/derived-schemas.sh --write` after a change).
 - `api/mw-auth/auth-internal.v1.openapi.yaml` (internal API: the device lookups of ticket 68, the session's key
   fingerprint and the dev seed API of ticket 69; `POST /internal/v1/txn-authorisations`, ticket 71; the care PIN
-  reset `POST /internal/v1/pin-resets`, ticket 70).
+  reset `POST /internal/v1/pin-resets`, ticket 70; the checkout OTP `POST /internal/v1/otp` and
+  `/internal/v1/otp/verifications`, ticket 72, bodies checked in `contracts/ApiContractsTest`).
 - `events/mw-auth/auth.wallet-lock.v1.schema.json` (ticket 70; consumed here, produced by mw-admin-api;
   `contracts/ConsumedContractsTest` reads the samples through `mapper/WalletLockMapper`).
 

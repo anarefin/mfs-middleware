@@ -163,8 +163,6 @@ mw:
         ORG: { daily-minor: 5000000000 }
     seed:
       enabled: true
-      # Fake PIN shared by every seeded wallet; test double only.
-      pin: "1234"
       customer-balance-minor: 1000000
       agent-balance-minor: 10000000
       merchant-balance-minor: 0
@@ -174,18 +172,11 @@ mw:
       CASH_IN: { debit: AGENT, credit: CUSTOMER }
       CASH_OUT: { debit: CUSTOMER, credit: AGENT }
       MERCHANT_PAY: { debit: CUSTOMER, credit: MERCHANT }
-      # Org bulk payout child (ticket 34): no PIN (maker-checker in the org portal), so only an org
+      # Org bulk payout child (ticket 34): no assertion (maker-checker in the org portal), so only an org
       # wallet may pay and only a customer may receive.
       BULK_DISBURSE: { debit: ORG, credit: CUSTOMER }
-    # Consecutive wrong PINs that lock a wallet (spec 9.1); a correct PIN resets the count.
-    pin-max-failures: 5
-    pin:
-      key-id: core-pin-dev-1
-      # PKCS#8 private key; from OpenBao (secret/mw-core-mock, key mw.coremock.pin.private-key).
-      private-key: ""
-      bcrypt-strength: 10
     # mw-auth's transaction assertions (spec 18.7, D22, ticket 71; config/AssertionProperties): a
-    # transfer or hold carrying `assertion` is authorised by it instead of the PIN (no bcrypt, no
+    # transfer or hold is authorised by its `assertion` (the core holds no PIN since ticket 72; no
     # lockout). The key set is a config call, not on the money path: fetched at start and every
     # refresh-period; a failure keeps the last set. Used jtis in coremock.used_assertion.
     assertion:

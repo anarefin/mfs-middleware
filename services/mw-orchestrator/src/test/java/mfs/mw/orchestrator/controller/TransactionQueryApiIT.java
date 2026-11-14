@@ -286,7 +286,7 @@ class TransactionQueryApiIT {
         new TxnRequest(
             base.schemaVersion(), base.txnId(), base.idempotencyKey(), base.correlationId(), base.channel(),
             base.txnType(), new mfs.mw.orchestrator.dto.Party("ORG", "01711000009", null, null), base.debitParty(),
-            base.creditParty(), base.amount(), base.partner(), base.originalTxnId(), base.encryptedPin(),
+            base.creditParty(), base.amount(), base.partner(), base.originalTxnId(), base.assertion(),
             base.locale(), base.metadata(), base.attributes(), base.requestedAt());
     transactions.accept(req, null);
 

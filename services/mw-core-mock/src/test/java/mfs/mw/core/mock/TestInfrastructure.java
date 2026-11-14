@@ -1,13 +1,9 @@
 package mfs.mw.core.mock;
 
-import java.security.GeneralSecurityException;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.Base64;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -65,22 +61,6 @@ public class TestInfrastructure {
 
   static final JvmScopedKafka KAFKA = new JvmScopedKafka("apache/kafka-native:4.3.2");
 
-  /** Throwaway PIN key pair for this JVM: no key material is committed. */
-  public static final KeyPair PIN_KEYS = generate();
-
-  /** The service's key id in tests ({@code mw.coremock.pin.key-id}, set in test application.yml). */
-  public static final String PIN_KEY_ID = "core-pin-test-1";
-
-  private static KeyPair generate() {
-    try {
-      KeyPairGenerator g = KeyPairGenerator.getInstance("RSA");
-      g.initialize(2048);
-      return g.generateKeyPair();
-    } catch (GeneralSecurityException e) {
-      throw new IllegalStateException(e);
-    }
-  }
-
   /** Starts both containers once (in parallel); later calls are no-ops. */
   static synchronized void start() {
     if (!POSTGRES.isRunning() || !KAFKA.isRunning()) {
@@ -102,7 +82,7 @@ public class TestInfrastructure {
     return POSTGRES.getJdbcUrl().replaceFirst("/[^/?]+(\\?|$)", "/" + database + "$1");
   }
 
-  /** Wires this context to its own database, to the shared Kafka and to the test PIN key. */
+  /** Wires this context to its own database, to the shared Kafka and to the test assertion key set. */
   @Bean
   DynamicPropertyRegistrar testInfrastructureProperties() {
     String url = createContextDatabase();
@@ -112,9 +92,6 @@ public class TestInfrastructure {
       registry.add("spring.datasource.password", POSTGRES::getPassword);
       // Camel's Kafka component does not read Spring Boot's Kafka connection details.
       registry.add("camel.component.kafka.brokers", KAFKA::getBootstrapServers);
-      registry.add(
-          "mw.coremock.pin.private-key",
-          () -> Base64.getEncoder().encodeToString(PIN_KEYS.getPrivate().getEncoded()));
       // mw-auth's assertion key set (ticket 71), served by the test's own JWKS server
       registry.add("mw.coremock.assertion.jwks-uri", mfs.mw.core.mock.security.TestAssertions::jwksUri);
     };

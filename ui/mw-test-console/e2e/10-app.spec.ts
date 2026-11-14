@@ -29,10 +29,10 @@ test.describe("@app app flows", () => {
 
   test("a wrong PIN is refused and moves nothing", async ({ page }) => {
     await page.goto("app");
-    await page.getByTestId("pin").fill("9999");
+    await page.getByTestId("pin").fill("97531");
     const r = await submit(page, "P2P", "01711000002", "10");
-    await expect(r.getByTestId("txn-status")).toHaveText("REJECTED");
-    await expect(r.getByTestId("headline")).toContainText("MW-CORE-INVALID_PIN");
+    // ticket 72: mw-auth refuses it before anything is published (no txnId)
+    await expect(r.getByTestId("headline")).toContainText("MW-AUTH-040");
     await expect(r.getByTestId("delta-01711000001")).toHaveText("Tk 0.00");
   });
 

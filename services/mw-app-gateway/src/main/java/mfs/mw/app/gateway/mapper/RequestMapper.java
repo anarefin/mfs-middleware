@@ -5,6 +5,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import mfs.mw.app.gateway.dto.AppUser;
+import mfs.mw.app.gateway.dto.EncryptedPin;
+import mfs.mw.app.gateway.dto.TxnAuthorisationRequest;
 import mfs.mw.app.gateway.dto.PartnerRef;
 import mfs.mw.app.gateway.dto.Party;
 import mfs.mw.app.gateway.dto.StatusMessage;
@@ -18,8 +20,8 @@ import org.springframework.stereotype.Component;
  * App request to the canonical {@code mw.txn.request.v1} (spec 5.1, 9). The initiator and payer is
  * the token's wallet (customer for P2P and CASH_OUT, agent float for CASH_IN), the payee the
  * wallet named in the body (an agent for CASH_OUT, a merchant for MERCHANT_PAY). MSISDNs go out in the canonical form
- * {@code 01XNNNNNNNN} only; the PIN ciphertext is
- * copied as received, never inspected or changed (18.3).
+ * {@code 01XNNNNNNNN} only. The PIN ciphertext never goes into the request: it goes to mw-auth
+ * ({@link #toAuthorisation}), whose assertion the request carries (ticket 72).
  */
 @Component
 public class RequestMapper {
@@ -97,7 +99,7 @@ public class RequestMapper {
         credit,
         body.amount(),
         partner,
-        body.encryptedPin(),
+        null,
         body.locale(),
         null,
         forwardable(body.attributes()),
@@ -144,6 +146,28 @@ public class RequestMapper {
     Map<String, String> out = new LinkedHashMap<>(attributes);
     out.keySet().removeAll(RESERVED_ATTRIBUTES);
     return out.isEmpty() ? null : out;
+  }
+
+  /**
+   * mw-auth's txn-authorisation for {@code req} (ticket 72, decision of ticket 71): exactly the
+   * values published on {@code mw.txn.request.v1} (txnType, amount in minor units, currency, payer =
+   * debitParty, payee = creditParty, idempotencyKey, channel), else the core's txnHash differs. The
+   * wallet is the token's (mw-auth's walletId is the MSISDN), the device the app's bound one.
+   */
+  public TxnAuthorisationRequest toAuthorisation(
+      AppUser user, String deviceId, TxnRequest req, EncryptedPin encryptedPin) {
+    return new TxnAuthorisationRequest(
+        user.msisdn(),
+        req.channel(),
+        deviceId,
+        encryptedPin,
+        new TxnAuthorisationRequest.Txn(
+            req.txnType(),
+            req.amount().valueMinor(),
+            req.amount().currency(),
+            new TxnAuthorisationRequest.TxnParty(req.debitParty().type(), req.debitParty().id()),
+            new TxnAuthorisationRequest.TxnParty(req.creditParty().type(), req.creditParty().id()),
+            req.idempotencyKey()));
   }
 
   /** What {@code GET} shows right after acceptance, before the orchestrator's first status. */

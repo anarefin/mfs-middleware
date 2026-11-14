@@ -10,8 +10,9 @@ import mfs.mw.orchestrator.util.SensitiveType;
 /**
  * A request on {@code mw.txn.request.v1} (contract {@code mw.txn.request.v1}, owned by this
  * service). Unknown fields are ignored. {@code assertion} is mw-auth's transaction authorisation
- * (ticket 71); while channels still send {@code encryptedPin} (until ticket 72) an assertion wins
- * and the ciphertext is not kept.
+ * (spec 18.7, D22): no PIN material, so it is stored with the request (PostTransfer and HoldFunds
+ * carry it after ValidateTransaction). Since ticket 72 no PIN ciphertext reaches this service; an
+ * old channel's {@code encryptedPin} would be ignored as an unknown field.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -28,14 +29,13 @@ public record TxnRequest(
     Amount amount,
     PartnerRef partner,
     String originalTxnId,
-    EncryptedPin encryptedPin,
     @Sensitive(SensitiveType.SECRET) String assertion,
     String locale,
     Map<String, String> metadata,
     Map<String, String> attributes,
     Instant requestedAt) {
 
-  /** A request without an assertion (the channels before ticket 72, bulk children, reversals). */
+  /** A request without an assertion (bulk children, reversals). */
   public TxnRequest(
       int schemaVersion,
       String txnId,
@@ -49,24 +49,11 @@ public record TxnRequest(
       Amount amount,
       PartnerRef partner,
       String originalTxnId,
-      EncryptedPin encryptedPin,
       String locale,
       Map<String, String> metadata,
       Map<String, String> attributes,
       Instant requestedAt) {
     this(schemaVersion, txnId, idempotencyKey, correlationId, channel, txnType, initiator, debitParty,
-        creditParty, amount, partner, originalTxnId, encryptedPin, null, locale, metadata, attributes, requestedAt);
-  }
-
-  /**
-   * The request as stored: everything except the PIN ciphertext, which has its own column. The
-   * assertion (spec 18.7, D22) is no PIN material and stays: PostTransfer and HoldFunds carry it
-   * after ValidateTransaction.
-   */
-  public TxnRequest withoutPin() {
-    return new TxnRequest(
-        schemaVersion, txnId, idempotencyKey, correlationId, channel, txnType, initiator,
-        debitParty, creditParty, amount, partner, originalTxnId, null, assertion, locale, metadata,
-        attributes, requestedAt);
+        creditParty, amount, partner, originalTxnId, null, locale, metadata, attributes, requestedAt);
   }
 }

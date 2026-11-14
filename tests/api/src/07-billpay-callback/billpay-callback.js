@@ -7,7 +7,7 @@ export default [
       await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
       S.after(() => MW.sim.reset('billagg'));
       await MW.callbacks.billaggCallbacks('ONCE');
-      await S.billPay('customer01', 'DESCO', '1234567', 66700, '1234');
+      await S.billPay('customer01', 'DESCO', '1234567', 66700, MW.pin);
       await S.appShows('COMPLETED', 25);
       await S.changedBy({ '01711000001': -67000, 'SETTLEMENT': 66700, 'FEE-POOL': 300 });
       await S.noHold('01711000001');
@@ -21,7 +21,7 @@ export default [
       await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
       S.after(() => MW.sim.reset('billagg'));
       await MW.callbacks.billaggCallbacks('ONCE');
-      await S.billPay('customer01', 'DESCO', '1234999', 10000, '1234');
+      await S.billPay('customer01', 'DESCO', '1234999', 10000, MW.pin);
       await S.appShows('FAILED', 25, 'MW-PTR-BILLAGG-PAYMENT_REFUSED');
       await S.noChange();
       await S.noHold('01711000001');
@@ -33,7 +33,7 @@ export default [
       await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
       S.after(() => MW.sim.reset('billagg'));
       await MW.callbacks.billaggCallbacks('DUPLICATE');
-      await S.billPay('customer01', 'DESCO', '1234567', 5100, '1234');
+      await S.billPay('customer01', 'DESCO', '1234567', 5100, MW.pin);
       await S.appShows('COMPLETED', 25);
       const target = await MW.sim.replay('billagg', MW.callbacks.reference(S.txnId()));
       S.eq('the replayed callback was acknowledged', target, 200);
@@ -49,7 +49,7 @@ export default [
       await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
       S.after(() => MW.sim.reset('billagg'));
       await MW.callbacks.billaggCallbacks('OUT_OF_ORDER');
-      await S.billPay('customer01', 'DESCO', '1234567', 5200, '1234');
+      await S.billPay('customer01', 'DESCO', '1234567', 5200, MW.pin);
       await S.appShows('COMPLETED', 25);
       await S.auditCallback('partner.callback.late', 'SUCCESS', 'PENDING', 30);
       await S.appShows('COMPLETED');
@@ -64,7 +64,7 @@ export default [
       await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
       S.after(() => MW.sim.reset('billagg'));
       await MW.callbacks.billaggCallbacks('LATE', MW.ocsLimit() <= 5000 ? 20000 : 90000);
-      await S.billPay('customer01', 'DESCO', '1234567', 5300, '1234');
+      await S.billPay('customer01', 'DESCO', '1234567', 5300, MW.pin);
       await S.appShows('COMPLETED', 120);
       await S.auditCallback('partner.callback.late', 'SUCCESS', 'SUCCESS', 100);
       await S.appShows('COMPLETED');
@@ -78,7 +78,7 @@ export default [
       await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
       S.after(() => MW.sim.reset('billagg'));
       await MW.callbacks.billaggCallbacks('ONCE');
-      await S.billPay('customer01', 'DESCO', '1234567', 5400, '1234');
+      await S.billPay('customer01', 'DESCO', '1234567', 5400, MW.pin);
       await S.appShows('COMPLETED', 25);
       const cb = await MW.callbacks.send(MW.callbacks.body(MW.callbacks.reference(S.txnId()), 'FAILED', '3003'), MW.v('billaggSecret'));
       S.status(200, cb);
@@ -93,7 +93,7 @@ export default [
       await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
       S.after(() => MW.sim.reset('billagg'));
       await MW.callbacks.billaggCallbacks('ONCE');
-      await S.billPay('customer01', 'DESCO', '1234567', 5500, '1234');
+      await S.billPay('customer01', 'DESCO', '1234567', 5500, MW.pin);
       await S.appShows('COMPLETED', 25);
       const cb = await MW.callbacks.send(MW.callbacks.body(MW.callbacks.reference(S.txnId()), 'FAILED', '3003'), 'not-the-partner-secret');
       S.status(401, cb);

@@ -21,8 +21,7 @@ public class SessionRepository {
 
   private static final String COLUMNS =
       "session_id, pay_token, merchant_id, merchant_wallet, order_id, amount_minor, currency, description,"
-          + " locale, success_url, fail_url, cancel_url, ipn_url, status, payer_msisdn, otp_hash, otp_expires_at,"
-          + " otp_attempts, otp_sends, txn_id, error_code, created_at, expires_at, updated_at";
+          + " locale, success_url, fail_url, cancel_url, ipn_url, status, payer_msisdn, otp_sends, txn_id, error_code, created_at, expires_at, updated_at";
 
   private final JdbcClient jdbc;
 
@@ -66,54 +65,27 @@ public class SessionRepository {
   }
 
   /**
-   * A new OTP for {@code payer}: replaces the previous one, resets the attempts, counts the send.
-   * Only while the session is OPEN, unexpired and below {@code maxSends}.
+   * The session asks mw-auth for one more OTP for {@code payer} (ticket 72): records the paying
+   * wallet and counts the send, only while the session is OPEN, unexpired and below {@code maxSends}.
    */
-  public boolean otpIssued(
-      UUID sessionId, String payer, String otpHash, Instant otpExpiresAt, int maxSends, Instant now) {
+  public boolean otpRequested(UUID sessionId, String payer, int maxSends, Instant now) {
     return jdbc.sql(
-                "update session set payer_msisdn = ?, otp_hash = ?, otp_expires_at = ?, otp_attempts = 0,"
-                    + " otp_sends = otp_sends + 1, updated_at = ?"
+                "update session set payer_msisdn = ?, otp_sends = otp_sends + 1, updated_at = ?"
                     + " where session_id = ? and status = 'OPEN' and expires_at > ? and otp_sends < ?")
-            .params(payer, otpHash, ts(otpExpiresAt), ts(now), sessionId, ts(now), maxSends)
+            .params(payer, ts(now), sessionId, ts(now), maxSends)
             .update()
         == 1;
   }
 
   /**
-   * Takes one of the current OTP's {@code max} checks before the guess is compared, in one atomic
-   * statement: parallel guesses cannot all be compared before the counter moves, so at most
-   * {@code max} guesses are ever evaluated per OTP. False: no check left (or the OTP was replaced,
-   * spent or voided, or the session is no longer OPEN).
+   * OPEN -> PAYING with the payment's txnId, only if still OPEN, unexpired and still paid by {@code
+   * payer} (the wallet whose OTP and PIN mw-auth checked). Once per session.
    */
-  public boolean reserveOtpAttempt(UUID sessionId, String otpHash, int max, Instant now) {
+  public boolean claimForPayment(UUID sessionId, String payer, UUID txnId, Instant now) {
     return jdbc.sql(
-                "update session set otp_attempts = otp_attempts + 1, updated_at = ?"
-                    + " where session_id = ? and status = 'OPEN' and otp_hash = ? and otp_attempts < ?")
-            .params(ts(now), sessionId, otpHash, max)
-            .update()
-        == 1;
-  }
-
-  /** After a wrong guess that used the last check, the OTP is voided (a new one must be requested). */
-  public void voidOtpIfExhausted(UUID sessionId, String otpHash, int max, Instant now) {
-    jdbc.sql(
-            "update session set otp_hash = null, updated_at = ?"
-                + " where session_id = ? and otp_hash = ? and otp_attempts >= ?")
-        .params(ts(now), sessionId, otpHash, max)
-        .update();
-  }
-
-  /**
-   * OPEN -> PAYING with the payment's txnId, only if still OPEN, unexpired, the OTP checked is
-   * still the current one and its check was within the {@code max} reserved ones. The OTP is spent.
-   */
-  public boolean claimForPayment(UUID sessionId, String otpHash, UUID txnId, int max, Instant now) {
-    return jdbc.sql(
-                "update session set status = 'PAYING', txn_id = ?, otp_hash = null, updated_at = ?"
-                    + " where session_id = ? and status = 'OPEN' and expires_at > ? and otp_hash = ?"
-                    + " and otp_attempts <= ?")
-            .params(txnId, ts(now), sessionId, ts(now), otpHash, max)
+                "update session set status = 'PAYING', txn_id = ?, updated_at = ?"
+                    + " where session_id = ? and status = 'OPEN' and expires_at > ? and payer_msisdn = ?")
+            .params(txnId, ts(now), sessionId, ts(now), payer)
             .update()
         == 1;
   }
@@ -140,7 +112,7 @@ public class SessionRepository {
   /** OPEN -> CANCELLED while unexpired. */
   public boolean cancel(UUID sessionId, Instant now) {
     return jdbc.sql(
-                "update session set status = 'CANCELLED', otp_hash = null, updated_at = ?"
+                "update session set status = 'CANCELLED', updated_at = ?"
                     + " where session_id = ? and status = 'OPEN' and expires_at > ?")
             .params(ts(now), sessionId, ts(now))
             .update()
@@ -171,9 +143,6 @@ public class SessionRepository {
         rs.getString("ipn_url"),
         SessionStatus.valueOf(rs.getString("status")),
         rs.getString("payer_msisdn"),
-        rs.getString("otp_hash"),
-        instant(rs.getTimestamp("otp_expires_at")),
-        rs.getInt("otp_attempts"),
         rs.getInt("otp_sends"),
         rs.getObject("txn_id", UUID.class),
         rs.getString("error_code"),

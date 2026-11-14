@@ -7,8 +7,10 @@ import mfs.mw.app.gateway.util.Sensitive;
 import mfs.mw.app.gateway.util.SensitiveType;
 
 /**
- * PIN ciphertext exactly as the app sent it (RSA-OAEP, SHA-256, with the core's public key;
- * contract {@code EncryptedPin}). This service never decrypts, changes or logs it (18.3).
+ * PIN ciphertext exactly as the app sent it: RSA-OAEP (SHA-256, MGF1 SHA-256) under the mw-crypto
+ * {@code PIN_TRANSPORT} key {@code keyId} ({@code GET /app/v1/pin-key}; ticket 72). This service
+ * never decrypts, changes or logs it (18.3); it goes to mw-auth's txn-authorisations only, never
+ * on Kafka.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record EncryptedPin(

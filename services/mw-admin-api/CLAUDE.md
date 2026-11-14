@@ -113,9 +113,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `<changeRequestId>:auth-unlock`, key the wallet id, actor the checker, `payload.authCommandId`), so
   mw-auth lifts its PIN lock (every level) and any ADMIN lock; audit `after.sentAs`
   `auth.wallet-lock.v1,core.wallet.command.v1`. **Decision:** `UnlockWallet` to the core stays, because
-  mw-core-mock still locks a wallet (status LOCKED) on 5 wrong core PINs until ticket 72 removes the
-  core PIN check; ticket 72 decides whether the core keeps account locks (then UnlockWallet stays for
-  them) or both the LOCKED status and UnlockWallet go.
+  the core may lock an account for its own reasons. Ticket 72 removed the core PIN check and its lockout
+  and kept the core's LOCKED status and `UnlockWallet` for such core-side locks (mw-core-mock CLAUDE.md), so
+  both commands stay: UNLOCK lifts the mw-auth PIN / ADMIN lock, `UnlockWallet` a core lock (`UnlockRejected
+  WALLET_NOT_LOCKED` when there is none, harmless).
 - Care PIN reset (ticket 70, spec 18.7): `POST /admin/v1/wallets/{walletId}/change-requests {action:
   PIN_RESET, reason}` (same maker role and id rules) opens a change request of resourceType
   `pin_reset` (`ChangeRequest.PIN_RESET`, handled like `wallet`: `ChangeRequest.walletLike`, masked id,

@@ -22,7 +22,6 @@ import org.springframework.validation.annotation.Validated;
  * @param sessionGrace added to the MNO session timeout for the Valkey TTL (30 s, spec 9.2)
  * @param defaultLanguage {@code bn} or {@code en} at dial-in (no customer profile lookup yet)
  * @param maxInvalidAttempts invalid inputs in a row on one screen before the session ends
- * @param pin the core's PIN encryption key (public key from OpenBao in the stack)
  * @param mno per MNO ({@code gp}, {@code robi}, {@code bl}, {@code teletalk})
  * @param lists static lists for DYNAMIC nodes, by source name
  */
@@ -36,7 +35,6 @@ public record UssdProperties(
     @NotNull Duration sessionGrace,
     @NotBlank String defaultLanguage,
     @Positive int maxInvalidAttempts,
-    @Valid @NotNull Pin pin,
     Map<String, @Valid Mno> mno,
     Map<String, List<ListItem>> lists) {
 
@@ -57,12 +55,6 @@ public record UssdProperties(
     TRUNCATE,
     PAGE
   }
-
-  /**
-   * @param keyId the core's key id, forwarded with every ciphertext
-   * @param publicKey X.509 PEM of the core's public key (not a secret; delivered like one)
-   */
-  public record Pin(@NotBlank String keyId, String publicKey) {}
 
   /**
    * Per-MNO configuration ({@code mw.ussd.mno.<gp|robi|teletalk|bl>}, spec 9.2).

@@ -11,6 +11,7 @@
     "debitParty": { "type": "WALLET", "id": "01711000001" },
     "creditParty": { "type": "MSISDN", "id": "01711000001" },
     "amount": { "valueMinor": 20.5, "currency": "BDT" },
-    "encryptedPin": { "keyId": "core-pin-2026-01", "ciphertext": "ZmFrZS1jaXBoZXJ0ZXh0LW5vdC1hLXBpbg==" }
+    "assertion": "eyJhbGciOiJFUzI1NiJ9.eyJqdGkiOiJzYW1wbGUifQ.ZmFrZS1zaWduYXR1cmU",
+    "idempotencyKey": "6f1c2a9e-3b4d-4e5f-8a7b-1c2d3e4f5a6b"
   }
 }

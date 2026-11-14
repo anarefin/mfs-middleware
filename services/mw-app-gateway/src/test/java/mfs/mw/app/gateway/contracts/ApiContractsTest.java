@@ -62,7 +62,7 @@ class ApiContractsTest {
   void theManifestListsTheseApis() {
     ContractManifest manifest = ContractManifest.load();
     assertThat(manifest.producedApis()).containsExactly(APP_API);
-    assertThat(manifest.consumedApis()).containsExactly(BILLPAY_API, AUTH_API);
+    assertThat(manifest.consumedApis()).containsExactly(BILLPAY_API, AUTH_API, AUTH_PUBLIC_API);
   }
 
   // ---- served: app.v1 ----
@@ -146,6 +146,29 @@ class ApiContractsTest {
         "200", "content", "application/json", "schema").validate(JSON.readTree(
             "{\"walletId\":\"01711000001\",\"deviceId\":\"device-0001\",\"idleTimeoutSeconds\":300,\"deviceKeyFingerprint\":\"abababababababababababababababababababababababababababababababab\",\"boundAt\":\"2026-11-14T06:00:00Z\"}")))
         .isEmpty();
+  }
+
+  static final String AUTH_PUBLIC_API = "api/mw-auth/auth.v1.openapi.yaml";
+
+  @Test
+  void theAuthorisationRequestMatchesMwAuthsContractAndItsAnswersDeserialise() {
+    RequestMapper mapper = new RequestMapper();
+    AppUser user = new AppUser("01711000001", "CUSTOMER_APP", "CUSTOMER", "device-0001");
+    TransactionRequest p2p = new TransactionRequest(
+        "P2P", new TransactionRequest.CounterParty(null, "01711000002"), new Amount(12_345L, "BDT"),
+        new EncryptedPin("PIN_TRANSPORT.v1", "b3BhcXVl"), "en", null);
+    var req = mapper.toRequest(user, "key-1", p2p, TXN_ID, CORRELATION_ID, NOW);
+    assertValid(OpenApiSchemas.component(AUTH_API, "TxnAuthorisationRequest"),
+        mapper.toAuthorisation(user, user.deviceId(), req, p2p.encryptedPin()));
+
+    String answer = "{\"assertion\":\"aaa.bbb.ccc\",\"expiresAt\":\"2026-11-15T06:01:00Z\",\"newDevice\":false}";
+    assertThat(OpenApiSchemas.component(AUTH_API, "TxnAuthorisation").validate(JSON.readTree(answer))).isEmpty();
+    assertThat(JSON.readValue(answer, mfs.mw.app.gateway.dto.TxnAuthorisation.class).assertion()).isEqualTo("aaa.bbb.ccc");
+
+    String key = "{\"keyId\":\"PIN_TRANSPORT.v1\",\"algorithm\":\"RSA-OAEP-SHA-256\",\"publicKeyPem\":\"-----BEGIN PUBLIC KEY-----\"}";
+    assertThat(OpenApiSchemas.component(AUTH_PUBLIC_API, "PinKey").validate(JSON.readTree(key))).isEmpty();
+    // served to the apps unchanged (GET /app/v1/pin-key)
+    assertValid(OpenApiSchemas.component(APP_API, "PinKey"), JSON.readValue(key, mfs.mw.app.gateway.dto.PinKey.class));
   }
 
   @Test

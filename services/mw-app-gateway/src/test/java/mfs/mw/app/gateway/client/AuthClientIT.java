@@ -29,6 +29,9 @@ import mfs.mw.app.gateway.config.AuthClientProperties;
 import mfs.mw.app.gateway.config.ServiceCertificateManager;
 import mfs.mw.app.gateway.config.TlsProperties;
 import mfs.mw.app.gateway.dto.BoundDevice;
+import mfs.mw.app.gateway.dto.EncryptedPin;
+import mfs.mw.app.gateway.dto.PinKey;
+import mfs.mw.app.gateway.dto.TxnAuthorisationRequest;
 import mfs.mw.app.gateway.exception.MwException;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -117,7 +120,9 @@ class AuthClientIT {
         "mw-app-gateway",
         "fake-it-secret",
         Duration.ofMillis(300),
-        Duration.ofMillis(500));
+        Duration.ofMillis(500),
+        URI.create("http://127.0.0.1:" + keycloak.port() + "/auth/v1/pin-key"),
+        Duration.ofMinutes(10));
   }
 
   static ObjectProvider<ServiceCertificateManager> provider(ServiceCertificateManager m) {
@@ -136,7 +141,7 @@ class AuthClientIT {
                 .ignoreExceptions(HttpClientErrorException.class)
                 .build());
     AuthClientProperties props = props();
-    return new AuthClient(props, new ServiceTokenClient(props, JSON, Clock.systemUTC()), breakers, certs);
+    return new AuthClient(props, new ServiceTokenClient(props, JSON, Clock.systemUTC()), breakers, certs, JSON);
   }
 
   static void assertFailsClosed(Runnable call) {
@@ -235,5 +240,97 @@ class AuthClientIT {
 
     assertFailsClosed(() -> noCert.device("device-0001"));
     authServer.verify(0, getRequestedFor(urlEqualTo(DEVICE)));
+  }
+
+  static final String AUTHORISE = "/internal/v1/txn-authorisations";
+  static final TxnAuthorisationRequest AUTH_REQ =
+      new TxnAuthorisationRequest(
+          "01711000001", "CUSTOMER_APP", "device-0001", new EncryptedPin("PIN_TRANSPORT.v1", "Y2lwaGVy"),
+          new TxnAuthorisationRequest.Txn(
+              "P2P", 10000L, "BDT", new TxnAuthorisationRequest.TxnParty("WALLET", "01711000001"),
+              new TxnAuthorisationRequest.TxnParty("WALLET", "01711000002"), "idem-1"));
+
+  static String envelope(String code) {
+    return "{\"code\":\"" + code + "\",\"message\":\"m\",\"messageBn\":\"bn\",\"correlationId\":\"c\","
+        + "\"retryable\":false,\"details\":[{\"field\":\"triesLeft\",\"issue\":\"2\"}]}";
+  }
+
+  @Test
+  void anAuthorisationPostsTheTransactionAndAnswersTheAssertion() {
+    authServer.stubFor(post(urlEqualTo(AUTHORISE)).willReturn(okJson(
+        "{\"assertion\":\"aaa.bbb.ccc\",\"expiresAt\":\"2026-11-15T06:01:00Z\",\"newDevice\":false}")));
+
+    assertThat(client.authorise(AUTH_REQ).assertion()).isEqualTo("aaa.bbb.ccc");
+
+    authServer.verify(postRequestedFor(urlEqualTo(AUTHORISE))
+        .withHeader("Authorization", equalTo("Bearer tok-1"))
+        .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.equalToJson(
+            "{\"walletId\":\"01711000001\",\"channel\":\"CUSTOMER_APP\",\"deviceId\":\"device-0001\","
+                + "\"encryptedPin\":{\"keyId\":\"PIN_TRANSPORT.v1\",\"ciphertext\":\"Y2lwaGVy\"},"
+                + "\"txn\":{\"txnType\":\"P2P\",\"amount\":10000,\"currency\":\"BDT\","
+                + "\"payer\":{\"type\":\"WALLET\",\"id\":\"01711000001\"},"
+                + "\"payee\":{\"type\":\"WALLET\",\"id\":\"01711000002\"},\"idempotencyKey\":\"idem-1\"}}")));
+  }
+
+  @Test
+  void aWrongPinOrALockPassesThroughWithItsStatusAndIsNeverRetried() {
+    authServer.stubFor(post(urlEqualTo(AUTHORISE)).willReturn(aResponse().withStatus(401)
+        .withHeader("Content-Type", "application/json").withBody(envelope("MW-AUTH-040"))));
+
+    assertThatThrownBy(() -> client.authorise(AUTH_REQ))
+        .isInstanceOfSatisfying(MwException.class, e -> {
+          assertThat(e.code()).isEqualTo("MW-AUTH-040");
+          assertThat(e.status().value()).isEqualTo(401);
+          assertThat(e.messageBn()).isEqualTo("bn");
+          assertThat(e.details()).extracting(d -> d.field()).containsExactly("triesLeft");
+        });
+    authServer.verify(1, postRequestedFor(urlEqualTo(AUTHORISE)));
+    keycloak.verify(1, postRequestedFor(urlEqualTo("/token")));
+
+    authServer.stubFor(post(urlEqualTo(AUTHORISE)).willReturn(aResponse().withStatus(423)
+        .withHeader("Content-Type", "application/json").withBody(envelope("MW-AUTH-041"))));
+    assertThatThrownBy(() -> client.authorise(AUTH_REQ))
+        .isInstanceOfSatisfying(MwException.class, e -> {
+          assertThat(e.code()).isEqualTo("MW-AUTH-041");
+          assertThat(e.status().value()).isEqualTo(423);
+        });
+  }
+
+  @Test
+  void aRefusedServiceTokenIsRefreshedOnceForAnAuthorisation() {
+    authServer.stubFor(post(urlEqualTo(AUTHORISE)).inScenario("a").whenScenarioStateIs(Scenario.STARTED)
+        .willReturn(aResponse().withStatus(401).withHeader("Content-Type", "application/json")
+            .withBody(envelope("MW-AUTH-001"))).willSetStateTo("again"));
+    authServer.stubFor(post(urlEqualTo(AUTHORISE)).inScenario("a").whenScenarioStateIs("again")
+        .willReturn(okJson("{\"assertion\":\"aaa.bbb.ccc\",\"expiresAt\":\"2026-11-15T06:01:00Z\",\"newDevice\":true}")));
+
+    assertThat(client.authorise(AUTH_REQ).newDevice()).isTrue();
+    keycloak.verify(2, postRequestedFor(urlEqualTo("/token")));
+  }
+
+  @Test
+  void anAuthorisationOutageFailsClosed() {
+    authServer.stubFor(post(urlEqualTo(AUTHORISE)).willReturn(aResponse().withStatus(503)
+        .withHeader("Content-Type", "application/json").withBody(envelope("MW-SYS-050"))));
+
+    assertFailsClosed(() -> client.authorise(AUTH_REQ));
+  }
+
+  @Test
+  void thePinKeyIsReadFromThePublicPortWithoutAToken() {
+    keycloak.stubFor(get(urlEqualTo("/auth/v1/pin-key")).willReturn(okJson(
+        "{\"keyId\":\"PIN_TRANSPORT.v2\",\"algorithm\":\"RSA-OAEP-SHA-256\",\"publicKeyPem\":\"-----BEGIN PUBLIC KEY-----\"}")));
+
+    PinKey k = client.pinKey();
+
+    assertThat(k.keyId()).isEqualTo("PIN_TRANSPORT.v2");
+    keycloak.verify(getRequestedFor(urlEqualTo("/auth/v1/pin-key")).withoutHeader("Authorization"));
+  }
+
+  @Test
+  void aPinKeyOutageFailsClosed() {
+    keycloak.stubFor(get(urlEqualTo("/auth/v1/pin-key")).willReturn(aResponse().withStatus(503)));
+
+    assertFailsClosed(() -> client.pinKey());
   }
 }

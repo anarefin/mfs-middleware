@@ -41,8 +41,17 @@ class ProducedContractsTest {
   static final Map<String, Supplier<List<Object>>> FIXTURES =
       Map.of("events/mw-orchestrator/mw.txn.request.v1.schema.json", ProducedContractsTest::txnRequests);
 
-  /** {@code TransactionService.submit}: one request per supported txnType. */
+  /** mw-auth's assertion (a compact JWS) as {@code TransactionService.submit} adds it (ticket 72). */
+  static final String ASSERTION = "eyJhbGciOiJFUzI1NiIsInR5cCI6InR4bi1hc3NlcnRpb24rand0In0.eyJqdGkiOiJ4In0.c2lnbmF0dXJl";
+
+  /** {@code TransactionService.submit}: one request per supported txnType, with its assertion. */
   static List<Object> txnRequests() {
+    return unauthorised().stream()
+        .map(r -> (Object) ((mfs.mw.app.gateway.dto.TxnRequest) r).withAssertion(ASSERTION))
+        .toList();
+  }
+
+  static List<Object> unauthorised() {
     RequestMapper mapper = new RequestMapper();
     return List.of(
         mapper.toRequest(CUSTOMER, "key-p2p",

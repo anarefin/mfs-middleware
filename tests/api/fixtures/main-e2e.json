@@ -148,8 +148,8 @@
       "validator": {
         "type": "pin",
         "error": {
-          "bn": "পিন ৪ অঙ্কের।",
-          "en": "The PIN has 4 digits."
+          "bn": "পিন ৫ অঙ্কের।",
+          "en": "The PIN has 5 digits."
         }
       },
       "next": "p2p.send"
@@ -247,8 +247,8 @@
       "validator": {
         "type": "pin",
         "error": {
-          "bn": "পিন ৪ অঙ্কের।",
-          "en": "The PIN has 4 digits."
+          "bn": "পিন ৫ অঙ্কের।",
+          "en": "The PIN has 5 digits."
         }
       },
       "next": "co.send"
@@ -384,8 +384,8 @@
       "validator": {
         "type": "pin",
         "error": {
-          "bn": "পিন ৪ অঙ্কের।",
-          "en": "The PIN has 4 digits."
+          "bn": "পিন ৫ অঙ্কের।",
+          "en": "The PIN has 5 digits."
         }
       },
       "next": "tu.send"
@@ -483,8 +483,8 @@
       "validator": {
         "type": "pin",
         "error": {
-          "bn": "পিন ৪ অঙ্কের।",
-          "en": "The PIN has 4 digits."
+          "bn": "পিন ৫ অঙ্কের।",
+          "en": "The PIN has 5 digits."
         }
       },
       "next": "bp.send"

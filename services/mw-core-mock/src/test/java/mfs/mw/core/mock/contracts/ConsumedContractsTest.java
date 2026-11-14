@@ -52,9 +52,9 @@ class ConsumedContractsTest {
   /** Invalid samples (folder/file under samples/core.command.v1) the mapper itself refuses. */
   static final List<String> REJECTED_BY_MAPPER =
       List.of(
-          "ValidateTransaction/invalid-validate-without-pin.json",
-          "PostTransfer/invalid-post-transfer-without-pin.json",
-          "HoldFunds/invalid-hold-funds-without-pin.json",
+          "ValidateTransaction/invalid-validate-without-assertion.json",
+          "PostTransfer/invalid-post-transfer-without-assertion.json",
+          "HoldFunds/invalid-hold-funds-without-assertion.json",
           "ReleaseHold/invalid-release-without-hold-id.json",
           "CreditWallet/invalid-credit-without-credit-party.json",
           "ReverseTransaction/invalid-reverse-without-original.json",

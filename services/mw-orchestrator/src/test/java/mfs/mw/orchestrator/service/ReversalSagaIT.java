@@ -357,7 +357,7 @@ class ReversalSagaIT {
     TxnRequest p2p = TestData.p2p(TestData.txnId(), "key-" + TestData.txnId(), 5_000);
     transactions.accept(p2p, "gw-1");
     String original = p2p.txnId();
-    coreEvents.handle(event("TransactionRejected", original, original + ":validate", "INVALID_PIN"));
+    coreEvents.handle(event("TransactionRejected", original, original + ":validate", "INSUFFICIENT_BALANCE"));
 
     String reversal = reverse(original, 5_000, "rev-" + original);
 

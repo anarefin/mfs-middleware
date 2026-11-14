@@ -65,7 +65,7 @@
     },
     "EncryptedPin": {
       "type": "object",
-      "description": "PIN encrypted with the core's public key keyId (RSA-OAEP, SHA-256); the middleware never decrypts it (spec 6.3). Deprecated (D22): replaced by TxnAssertion; removed in ticket 72.",
+      "description": "PIN encrypted under the mw-crypto PIN_TRANSPORT key keyId (RSA-OAEP, SHA-256; GET /auth/v1/pin-key). It travels only from a channel to mw-auth (spec 18.7, D20, D22), never on Kafka and never to the core: the core sees mw-auth's TxnAssertion instead (the core PIN scheme M11 was removed in ticket 72).",
       "required": ["keyId", "ciphertext"],
       "properties": {
         "keyId": { "type": "string", "minLength": 1 },

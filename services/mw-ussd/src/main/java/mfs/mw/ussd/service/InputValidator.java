@@ -18,7 +18,7 @@ public class InputValidator {
 
   private static final Pattern AMOUNT = Pattern.compile("[0-9]{1,9}(\\.[0-9]{1,2})?");
   private static final Pattern DIGITS = Pattern.compile("[0-9]+");
-  private static final String DEFAULT_PIN = "[0-9]{4}";
+  private static final String DEFAULT_PIN = "[0-9]{5}";
 
   public Optional<String> validate(ValidatorSpec spec, String input, String ownMsisdn) {
     String v = input == null ? "" : input.trim();

@@ -4,7 +4,7 @@ export default [
   {
     name: '[p2p notify] sender and receiver get the right SMS text',
     run: async (MW, S) => {
-      await S.p2p('customer01', '01711000002', 1000, '1234');
+      await S.p2p('customer01', '01711000002', 1000, MW.pin);
       S.status(200);
       S.txnStatus('COMPLETED');
       await S.sms('01711000001', 'আপনি 0171****002 নম্বরে ৳10.00 পাঠিয়েছেন। ফি ৳5.00। TrxID {txnId}');

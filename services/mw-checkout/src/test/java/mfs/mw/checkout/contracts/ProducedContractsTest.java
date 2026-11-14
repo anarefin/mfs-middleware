@@ -9,7 +9,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
-import mfs.mw.checkout.dto.EncryptedPin;
 import mfs.mw.checkout.dto.SessionStatus;
 import mfs.mw.checkout.entity.CheckoutSession;
 import mfs.mw.checkout.mapper.CheckoutMapper;
@@ -22,7 +21,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Every event this module produces ({@code produces.events} of {@code contracts.yml}), built by
  * {@link CheckoutMapper} from a fixture session and serialised as {@code EventPublisher} (the pay
- * request) / {@code OutboxWriter} (the OTP SMS) do ({@code writeValueAsString} on the service's
+ * request) does ({@code writeValueAsString} on the service's
  * JsonMapper), is valid against its schema. A manifest entry without a fixture fails, and so
  * does a fixture the manifest does not list.
  */
@@ -38,33 +37,23 @@ class ProducedContractsTest {
     return new CheckoutSession(
         SESSION, "tok", "merchant_demo", "01911000001", "ORD-42", 2550, "BDT", description, locale,
         "https://shop.example.test/ok", "https://shop.example.test/fail", "https://shop.example.test/cancel",
-        "https://shop.example.test/ipn", SessionStatus.PAYING, "01711000001", "hash", NOW.plusSeconds(120),
-        0, 1, null, null, NOW, NOW.plusSeconds(900), NOW);
+        "https://shop.example.test/ipn", SessionStatus.PAYING, "01711000001",
+        1, null, null, NOW, NOW.plusSeconds(900), NOW);
   }
 
   /** Fixtures per manifest entry: the messages the service sends on that topic. */
   static final Map<String, Supplier<List<Object>>> FIXTURES =
-      Map.of(
-          "events/mw-orchestrator/mw.txn.request.v1.schema.json", ProducedContractsTest::txnRequests,
-          "events/mw-notify/mw.notify.request.v1.schema.json", ProducedContractsTest::notifyRequests);
+      Map.of("events/mw-orchestrator/mw.txn.request.v1.schema.json", ProducedContractsTest::txnRequests);
 
-  /** {@code CheckoutPayService.confirm}: the MERCHANT_PAY request. */
+  /** A compact JWS shape as mw-auth answers it (ticket 72). */
+  static final String ASSERTION = "eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiIwMTcxMTAwMDAwMSJ9.c2lnbmF0dXJl";
+
+  /** {@code CheckoutPayService.confirm}: the MERCHANT_PAY request with mw-auth's assertion. */
   static List<Object> txnRequests() {
     CheckoutMapper mapper = new CheckoutMapper();
-    EncryptedPin pin = new EncryptedPin("core-pin-dev-1", "Y2lwaGVy");
     return List.of(
-        mapper.toTxnRequest(session("en", "Order 42"), TXN_ID, CORRELATION_ID, pin, NOW),
-        mapper.toTxnRequest(session("bn", null), TXN_ID, CORRELATION_ID, pin, NOW));
-  }
-
-  /** {@code CheckoutPayService.sendOtp}: the OTP SMS (outbox). */
-  static List<Object> notifyRequests() {
-    CheckoutMapper mapper = new CheckoutMapper();
-    return List.of(
-        mapper.toOtpNotification(session("en", "Order 42"), "Demo Shop", "123456", 1, NOW.plusSeconds(120),
-            CORRELATION_ID),
-        mapper.toOtpNotification(session("bn", null), "Demo Shop", "654321", 3, NOW.plusSeconds(120),
-            CORRELATION_ID));
+        mapper.toTxnRequest(session("en", "Order 42"), TXN_ID, CORRELATION_ID, NOW).withAssertion(ASSERTION),
+        mapper.toTxnRequest(session("bn", null), TXN_ID, CORRELATION_ID, NOW).withAssertion(ASSERTION));
   }
 
   @TestFactory

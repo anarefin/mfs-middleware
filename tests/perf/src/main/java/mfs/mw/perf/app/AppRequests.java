@@ -27,7 +27,10 @@ public final class AppRequests {
   private final PinCipher pin;
   private final String plainPin;
 
-  /** @param plainPin the seeded wallets' fake PIN (mw-core-mock {@code mw.coremock.seed.pin}) */
+  /**
+   * @param pin the PIN transport key (mw-auth {@code GET /auth/v1/pin-key}, ticket 72)
+   * @param plainPin the seeded wallets' fake PIN ({@code MW_SEED_APP_PIN}, held by mw-auth)
+   */
   public AppRequests(PinCipher pin, String plainPin) {
     this.pin = pin;
     this.plainPin = plainPin;

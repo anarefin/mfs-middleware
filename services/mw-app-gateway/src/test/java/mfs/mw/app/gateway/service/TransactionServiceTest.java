@@ -39,6 +39,13 @@ class TransactionServiceTest {
   final AppTransactionRepository repo = mock(AppTransactionRepository.class);
   final ReplyWaiters waiters = new ReplyWaiters();
   final BillerService billers = mock(BillerService.class);
+  static final String ASSERTION = "eyJhbGciOiJFUzI1NiJ9.eyJqdGkiOiJ4In0.c2ln";
+  final mfs.mw.app.gateway.client.AuthClient auth = mock(mfs.mw.app.gateway.client.AuthClient.class);
+
+  {
+    org.mockito.Mockito.when(auth.authorise(any()))
+        .thenReturn(new mfs.mw.app.gateway.dto.TxnAuthorisation(ASSERTION, Instant.parse("2026-11-04T06:01:00Z"), false));
+  }
   final TransactionService service =
       new TransactionService(
           publisher, waiters, new RequestMapper(), repo,
@@ -52,7 +59,7 @@ class TransactionServiceTest {
                   "CASH_OUT", List.of("CUSTOMER"),
                   "MERCHANT_PAY", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-          billers);
+          billers, auth);
 
   static TransactionRequest body(String txnType) {
     return body(txnType, null);
@@ -87,7 +94,7 @@ class TransactionServiceTest {
               List.of("P2P", "TOPUP"), List.of("reference"), new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
               Map.of("P2P", List.of("CUSTOMER"), "TOPUP", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-          billers);
+          billers, auth);
 
   static TransactionRequest flow(String txnType, String creditType, TransactionRequest.Partner partner) {
     return new TransactionRequest(
@@ -138,7 +145,7 @@ class TransactionServiceTest {
               new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
               Map.of("P2P", List.of("CUSTOMER"), "BILL_PAY", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-          billers);
+          billers, auth);
 
   static TransactionRequest bill(String creditType, String id, TransactionRequest.Partner partner) {
     return new TransactionRequest(
@@ -200,7 +207,7 @@ class TransactionServiceTest {
               new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
               Map.of("P2P", List.of("CUSTOMER"), "ADD_MONEY_BANK", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-          billers);
+          billers, auth);
 
   static TransactionRequest addMoney(
       TransactionRequest.CounterParty credit, TransactionRequest.BankAccount debit, TransactionRequest.Partner partner) {
@@ -257,7 +264,7 @@ class TransactionServiceTest {
                 new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
                 Map.of("TOPUP", List.of("CUSTOMER"))),
             Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-            billers);
+            billers, auth);
     TransactionRequest topup =
         new TransactionRequest(
             "TOPUP", new TransactionRequest.CounterParty("MSISDN", "01711000002"), new Amount(100L, "BDT"),
@@ -499,6 +506,46 @@ class TransactionServiceTest {
               assertThat(e.retryable()).isTrue();
             });
     verify(repo, never()).insertAccepted(any(), any(), any(), any());
+    assertThat(waiters.size()).isZero();
+  }
+
+  @Test
+  void mwAuthIsAskedWithExactlyThePublishedValuesAndTheRequestCarriesOnlyTheAssertion() {
+    AppUser device = new AppUser("01711000001", "CUSTOMER_APP", "CUSTOMER", "device-0001");
+    EncryptedPin pin = new EncryptedPin("PIN_TRANSPORT.v1", "Y2lwaGVy");
+    service.submit(device, "key-a", new TransactionRequest(
+        "P2P", new TransactionRequest.CounterParty(null, "+8801711000002"), new Amount(2500L, "BDT"), pin, null, null));
+
+    var asked = org.mockito.ArgumentCaptor.forClass(mfs.mw.app.gateway.dto.TxnAuthorisationRequest.class);
+    verify(auth).authorise(asked.capture());
+    var sent = org.mockito.ArgumentCaptor.forClass(Object.class);
+    verify(publisher).publish(anyString(), anyString(), any(), sent.capture(), anyMap());
+    var req = (mfs.mw.app.gateway.dto.TxnRequest) sent.getValue();
+    var a = asked.getValue();
+    assertThat(a.walletId()).isEqualTo("01711000001");
+    assertThat(a.deviceId()).isEqualTo("device-0001");
+    assertThat(a.encryptedPin()).isEqualTo(pin);
+    assertThat(a.channel()).isEqualTo(req.channel());
+    assertThat(a.txn().txnType()).isEqualTo(req.txnType());
+    assertThat(a.txn().amount()).isEqualTo(req.amount().valueMinor());
+    assertThat(a.txn().currency()).isEqualTo(req.amount().currency());
+    assertThat(a.txn().payer().type()).isEqualTo(req.debitParty().type());
+    assertThat(a.txn().payer().id()).isEqualTo(req.debitParty().id());
+    assertThat(a.txn().payee().type()).isEqualTo(req.creditParty().type());
+    assertThat(a.txn().payee().id()).isEqualTo("01711000002").isEqualTo(req.creditParty().id());
+    assertThat(a.txn().idempotencyKey()).isEqualTo("key-a").isEqualTo(req.idempotencyKey());
+    assertThat(req.assertion()).isEqualTo(ASSERTION);
+  }
+
+  @Test
+  void aMwAuthRefusalIsAnsweredAtOnceAndNothingIsPublished() {
+    MwException wrongPin =
+        new MwException("MW-AUTH-040", "Wrong PIN").withStatus(org.springframework.http.HttpStatus.UNAUTHORIZED);
+    org.mockito.Mockito.when(auth.authorise(any())).thenThrow(wrongPin);
+
+    assertThatThrownBy(() -> service.submit(USER, "key", body("P2P"))).isSameAs(wrongPin);
+
+    verifyNoInteractions(publisher, repo);
     assertThat(waiters.size()).isZero();
   }
 

@@ -1,6 +1,9 @@
 # Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
 # Ticket 68: the binding OTP / new-device SMS (mw.notify.request.v1) moved to mw-auth with the device
 # API; the gateway asks mw-auth's internal API for device keys and sessions (client/AuthClient).
+# Ticket 72: the PIN is checked by mw-auth (txn authorisation, internal API over mTLS) under its
+# transport key (auth.v1 GET /auth/v1/pin-key, served as GET /app/v1/pin-key); the request carries
+# the assertion.
 produces:
   events:
     - events/mw-orchestrator/mw.txn.request.v1.schema.json
@@ -10,3 +13,4 @@ consumes:
   apis:
     - api/mw-adapter-billpay/billpay.v1.openapi.yaml
     - api/mw-auth/auth-internal.v1.openapi.yaml
+    - api/mw-auth/auth.v1.openapi.yaml

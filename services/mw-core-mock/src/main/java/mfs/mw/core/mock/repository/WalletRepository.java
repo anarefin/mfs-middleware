@@ -21,8 +21,7 @@ public class WalletRepository {
               rs.getString("type"),
               rs.getString("status"),
               rs.getLong("balance_minor"),
-              rs.getLong("held_minor"),
-              rs.getString("pin_hash"));
+              rs.getLong("held_minor"));
 
   private static final RowMapper<WalletState> STATE =
       (rs, i) ->
@@ -31,10 +30,9 @@ public class WalletRepository {
               rs.getString("msisdn"),
               rs.getString("type"),
               rs.getString("status"),
-              rs.getString("pin_hash") != null && !rs.getString("pin_hash").isEmpty(),
               rs.getLong("version"));
 
-  private static final String STATE_COLUMNS = "select id, msisdn, type, status, pin_hash, version from wallet ";
+  private static final String STATE_COLUMNS = "select id, msisdn, type, status, version from wallet ";
 
   private final JdbcTemplate jdbc;
 
@@ -53,10 +51,10 @@ public class WalletRepository {
    * Inserts an ACTIVE wallet whose id and MSISDN are {@code id} (test-only seed API, ticket 57);
    * false, changing nothing, when one with that id already exists.
    */
-  public boolean insertIfAbsent(String id, String type, long balanceMinor, String pinHash) {
+  public boolean insertIfAbsent(String id, String type, long balanceMinor) {
     return jdbc.update(
-            "insert into wallet (id, msisdn, type, balance_minor, pin_hash) values (?, ?, ?, ?, ?) on conflict do nothing",
-            id, id, type, balanceMinor, pinHash)
+            "insert into wallet (id, msisdn, type, balance_minor) values (?, ?, ?, ?) on conflict do nothing",
+            id, id, type, balanceMinor)
         == 1;
   }
 
@@ -88,32 +86,12 @@ public class WalletRepository {
   }
 
   /**
-   * Counts one more consecutive wrong PIN and locks the wallet (status {@code LOCKED}) when the
-   * count reaches {@code maxFailures}. Returns true when this call locked it.
-   */
-  public boolean recordPinFailure(String id, int maxFailures) {
-    // Only reached for an ACTIVE wallet (a LOCKED one is refused before its PIN is checked).
-    String status =
-        jdbc.queryForObject(
-            "update wallet set pin_failures = pin_failures + 1, "
-                + "status = case when pin_failures + 1 >= ? and status = 'ACTIVE' then 'LOCKED' else status end, "
-                + "version = case when pin_failures + 1 >= ? and status = 'ACTIVE' then nextval('wallet_version_seq') else version end "
-                + "where id = ? returning status",
-            String.class, maxFailures, maxFailures, id);
-    return "LOCKED".equals(status);
-  }
-
-  /** A correct PIN: the consecutive failure count starts again. */
-  public void resetPinFailures(String id) {
-    jdbc.update("update wallet set pin_failures = 0 where id = ? and pin_failures > 0", id);
-  }
-
-  /**
-   * Ops unlock (ticket 52): a PIN-LOCKED wallet back to ACTIVE with its failure count cleared.
-   * Returns false, changing nothing, when the wallet is not LOCKED (active, or blocked otherwise).
+   * Ops unlock (ticket 52): a core-LOCKED wallet back to ACTIVE (since ticket 72 a core-side lock,
+   * not a PIN lockout). Returns false, changing nothing, when the wallet is not LOCKED (active, or
+   * blocked otherwise).
    */
   public boolean unlock(String id) {
-    return jdbc.update("update wallet set status = 'ACTIVE', pin_failures = 0, version = nextval('wallet_version_seq') "
+    return jdbc.update("update wallet set status = 'ACTIVE', version = nextval('wallet_version_seq') "
                 + "where id = ? and status = 'LOCKED'", id) == 1;
   }
 

@@ -220,13 +220,13 @@ scripts/creds.sh</pre></div>
   <h3>Test data you will use</h3>
   <div class="table-wrap"><table>
     <tr><th>Who</th><th>User</th><th>Wallet</th><th>Wallet PIN</th></tr>
-    <tr><td>Customer 1 (payer in most tests)</td><td>customer01</td><td>01711000001</td><td>1234</td></tr>
-    <tr><td>Customer 2 (payee)</td><td>customer02</td><td>01711000002</td><td>1234</td></tr>
-    <tr><td>Agent</td><td>agent01</td><td>01811000001</td><td>1234</td></tr>
-    <tr><td>Merchant "Demo Shop"</td><td>merchant01</td><td>01911000001</td><td>1234</td></tr>
-    <tr><td>Second merchant</td><td>merchant02</td><td>01911000002</td><td>1234</td></tr>
-    <tr><td>Third seeded customer (core-mock only, no login)</td><td>-</td><td>01711000003</td><td>1234</td></tr>
-    <tr><td>Seeder customer (type the name; <a href="#c3-10">3.10</a>)</td><td>seed-customer01</td><td>01712000001</td><td>1234</td></tr>
+    <tr><td>Customer 1 (payer in most tests)</td><td>customer01</td><td>01711000001</td><td>13579</td></tr>
+    <tr><td>Customer 2 (payee)</td><td>customer02</td><td>01711000002</td><td>13579</td></tr>
+    <tr><td>Agent</td><td>agent01</td><td>01811000001</td><td>13579</td></tr>
+    <tr><td>Merchant "Demo Shop"</td><td>merchant01</td><td>01911000001</td><td>13579</td></tr>
+    <tr><td>Second merchant</td><td>merchant02</td><td>01911000002</td><td>13579</td></tr>
+    <tr><td>Third seeded customer (core-mock only, no login)</td><td>-</td><td>01711000003</td><td>13579</td></tr>
+    <tr><td>Seeder customer (type the name; <a href="#c3-10">3.10</a>)</td><td>seed-customer01</td><td>01712000001</td><td>13579</td></tr>
     <tr><td>Bulk payees (seeded)</td><td>-</td><td>01711000101 onwards</td><td>-</td></tr>
   </table></div>
   <p>Every app user signs in at mw-auth with its MSISDN, the app PIN <code>13579</code> and a bound device (ticket 69);
@@ -426,15 +426,14 @@ docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token ope
     "permission denied" means the token is wrong (old volume: use <code>scripts/creds.sh</code>).</p>
     <div class="table-wrap"><table>
       <tr><th>Path</th><th>Holds</th></tr>
-      <tr><td><code>secret/mw-core-mock</code></td><td>the PIN encryption key pair (<code>mw.coremock.pin.*</code>, key id <code>core-pin-dev-1</code>)</td></tr>
-      <tr><td><code>secret/mw-ussd</code>, <code>secret/mw-checkout</code></td><td>the PIN public key; checkout also the merchant <code>merchant_demo</code> secret</td></tr>
+      <tr><td><code>secret/mw-ussd</code>, <code>secret/mw-checkout</code></td><td>the client secret for mw-auth's internal API (<code>mw.ussd.auth.client-secret</code>, <code>mw.checkout.auth.client-secret</code>); checkout also the merchant <code>merchant_demo</code> secret. No PIN key anywhere: since ticket 72 the PIN is encrypted under the mw-crypto transport key and checked by mw-auth</td></tr>
       <tr><td><code>secret/mw-adapter-billpay</code>, <code>secret/mw-adapter-bank</code></td><td>the partner callback HMAC secrets</td></tr>
       <tr><td><code>secret/mw-simulators</code></td><td>the simulators' side of the callback and USSD gateway secrets</td></tr>
       <tr><td><code>secret/mw-notify</code></td><td>the SMSC (SMPP) password</td></tr>
       <tr><td>every <code>secret/mw-*</code></td><td><code>spring.datasource.password</code> (the service's own database user)</td></tr>
     </table></div>
-    <p>A tester rarely needs these: the PIN public key is also served at
-    <code>GET /test/core-mock/v1/pin-public-key</code> (header <code>apikey: e2e-test-apikey</code>, 1.7).</p>
+    <p>A tester rarely needs these: the PIN transport key is public at
+    <code>GET /auth/v1/pin-key</code> (apps also get it at <code>GET /app/v1/pin-key</code>, the checkout page in its <code>pinKey</code>).</p>
   </div>
 
   <div class="case" id="c1-7">
@@ -442,7 +441,7 @@ docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token ope
     <p><b>Test-only routes</b> (<code>/test/core-mock/…</code>, <code>/test/sim/…</code>, <code>/test/mail/…</code>)
     need the header <code>apikey: e2e-test-apikey</code> and exist only after <code>scripts/tester.sh</code>
     (or <code>scripts/api-test.sh</code>):</p>
-    <div class="cmd"><pre>curl -sk https://localhost/test/core-mock/v1/pin-public-key -H 'apikey: e2e-test-apikey'</pre></div>
+    <div class="cmd"><pre>curl -sk https://localhost/test/core-mock/v1/wallets/01711000001 -H 'apikey: e2e-test-apikey'</pre></div>
     <p><b>Tokens</b> (JWT) for the business APIs: a form POST to the gateway. All login clients are public: no client secret.</p>
     <div class="cmd"><pre><span class="c"># app user -> /app/v1/*: mw-auth login (binds a new device, reads the OTP from the SMSC simulator)</span>
 MW_SEED_APP_PIN=13579 node scripts/lib/mw-auth-token.mjs 01711000001
@@ -485,7 +484,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
   <h2><span class="num">2</span> Reading a test console result</h2>
   <p>The panel on the right of each page shows the result of the last button you pressed:</p>
   <ol>
-    <li><b>Headline</b>: green ✔ or red ✖, the txnId and status, and the error code if refused (e.g. <code>REJECTED MW-CORE-INVALID_PIN</code>).</li>
+    <li><b>Headline</b>: green ✔ or red ✖, the txnId and status, and the error code if refused (e.g. <code>refused: MW-AUTH-040 Wrong PIN</code>).</li>
     <li><b>Final status</b> with the link <span class="ui">open in the ops console ↗</span> (timeline, partner calls, audit trail).</li>
     <li><b>Balances</b> of every wallet involved: before, after, change, amount held now.</li>
     <li><b>SMS received since the submit.</b></li>
@@ -512,7 +511,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
   <p>Page <span class="ui">App flows</span>. Block 1 <i>Who is signed in</i>, block 2 <i>Flow</i>, block 3 <i>Look things up</i>.
   <b>Sign-in: none.</b> The console signs in as the user in <span class="ui">User (app login at mw-auth)</span> at mw-auth: it
   binds a device for it the first time (OTP + app PIN <code>13579</code>), logs in with the MSISDN and the app PIN, and signs
-  every request. The transaction PIN is <code>1234</code> (the core's, until ticket 72). Under <span class="ui">Transaction type</span> a hint says what the chosen type does.</p>
+  every request. The transaction PIN is the app PIN <code>13579</code> (<code>MW_SEED_APP_PIN</code>): mw-auth checks it and issues the assertion the request carries (ticket 72). Under <span class="ui">Transaction type</span> a hint says what the chosen type does.</p>
   <div class="warn"><b>Pick the transaction type first, then the user.</b> Choosing a
   <span class="ui">Transaction type</span> resets the user, counterparty and amount to that type's defaults
   (the defaults below already fit each case).</div>
@@ -534,7 +533,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
   <div class="case" id="c3-2">
     <h3><span class="id">3.2</span>Send money (P2P)</h3>
     <ol>
-      <li>Type <span class="ui">Send money (P2P)</span> (user <code>customer01</code>, counterparty <code>01711000002</code>, amount <code>10</code>, PIN <code>1234</code>), press <span class="ui">Submit</span>.</li>
+      <li>Type <span class="ui">Send money (P2P)</span> (user <code>customer01</code>, counterparty <code>01711000002</code>, amount <code>10</code>, PIN <code>13579</code>), press <span class="ui">Submit</span>.</li>
       <li>Expect <code>COMPLETED</code>; balances payer <code>-Tk 15.00</code>, payee <code>Tk 10.00</code>,
         FEE-POOL <code>Tk 5.00</code>; two SMS (Bangla by default) with masked numbers (<code>0171****002</code>).</li>
     </ol>
@@ -543,7 +542,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <tr><th>Do</th><th>Expect</th></tr>
       <tr><td>press <span class="ui">Resend the last submit (same Idempotency-Key)</span></td><td>the <b>same txnId</b>, every balance change <code>Tk 0.00</code></td></tr>
       <tr><td>type your own value (e.g. <code>qa-key-0001</code>) in <span class="ui">Idempotency-Key (empty = new)</span>, Submit; the field empties after each submit, so type the <b>same</b> value again and Submit</td><td>the second answer has the first's txnId and every change <code>Tk 0.00</code></td></tr>
-      <tr><td>PIN <code>9999</code></td><td>red ✖ <code>REJECTED MW-CORE-INVALID_PIN</code>, HTTP 422, no balance change. Not 5 times in a row (locks the wallet; 9.8)</td></tr>
+      <tr><td>PIN <code>97531</code></td><td>red ✖ <code>refused: MW-AUTH-040 Wrong PIN</code>, HTTP 401 from mw-auth (no txnId, nothing published), no balance change. Not 3 times in a row (locks the PIN at mw-auth; 9.8)</td></tr>
       <tr><td>amount <code>6000</code></td><td><code>REJECTED MW-CORE-LIMIT_EXCEEDED_PER_TXN</code></td></tr>
     </table></div>
     <p>Then open the link <span class="ui">open in the ops console ↗</span>: the timeline shows the states and the core command (9.3).</p>
@@ -593,7 +592,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <tr><td>amount <code>20.77</code></td><td>takes up to a minute: <code>COMPLETED</code> after the status inquiry, charged once</td></tr>
       <tr><td>amount <code>20.99</code></td><td>after a minute the result says <code>UNKNOWN</code> and <i>Held now</i> grows by Tk 22.99: it stays so (see magic values); keep its txnId for 9.6</td></tr>
       <tr><td>amount <code>20.55</code></td><td><code>COMPLETED</code></td></tr>
-      <tr><td>PIN <code>9999</code></td><td><code>REJECTED</code>; the operator was never called (<span class="ui">Simulators &amp; faults</span> → ocs → <span class="ui">Show scenario and last 10 requests</span>: no new request)</td></tr>
+      <tr><td>PIN <code>97531</code></td><td><code>refused: MW-AUTH-040</code> (mw-auth, HTTP 401, nothing published); the operator was never called (<span class="ui">Simulators &amp; faults</span> → ocs → <span class="ui">Show scenario and last 10 requests</span>: no new request)</td></tr>
     </table></div>
   </div>
 
@@ -627,7 +626,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <div class="table-wrap"><table>
       <tr><th>Change</th><th>Expect</th></tr>
       <tr><td>account <code>1234567890999</code></td><td>red ✖ <code>REJECTED MW-PTR-C2WBANK-DEBIT_REFUSED</code>, nothing credited</td></tr>
-      <tr><td>PIN <code>9999</code></td><td><code>REJECTED</code>, the bank is never asked</td></tr>
+      <tr><td>PIN <code>97531</code></td><td><code>refused: MW-AUTH-040</code> (mw-auth, HTTP 401), the bank is never asked</td></tr>
       <tr><td>amount <code>500.13</code></td><td><code>COMPLETED</code>, wallet <code>Tk 500.13</code>: the status inquiry finds the debit</td></tr>
       <tr><td><span class="ui">Resend the last submit</span></td><td>credited once</td></tr>
     </table></div>
@@ -647,7 +646,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <tr><th>Do</th><th>Expect</th></tr>
       <tr><td><span class="ui">User (app login at mw-auth)</span> empty or <code>nobody</code>, Submit</td><td>"choose a user"</td></tr>
       <tr><td>Amount <code>10.123</code> or <code>abc</code></td><td>"the amount is taka with at most 2 decimals, e.g. 10 or 20.13"</td></tr>
-      <tr><td>PIN <code>12</code></td><td>"the PIN is 4 to 6 digits (seeded wallets: 1234)"</td></tr>
+      <tr><td>PIN <code>12</code></td><td>"the PIN is 4 to 6 digits (seeded wallets: 13579, MW_SEED_APP_PIN)"</td></tr>
       <tr><td>P2P counterparty <code>12345</code></td><td>"the counterparty must be a wallet number (01XXXXXXXXX)"</td></tr>
       <tr><td>Top-up, number to top up <code>12345</code></td><td>"the number to top up must be a mobile number"</td></tr>
       <tr><td>Bill payment, bill number empty</td><td>"enter the bill number"</td></tr>
@@ -677,7 +676,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <ol>
       <li><span class="ui">MNO (transport)</span> <code>robi (HTTP)</code>, <span class="ui">Subscriber</span> <code>01711000001</code>, <span class="ui">Code</span> <code>*268#</code>, <span class="ui">Dial</span>. The screen shows the Bangla main menu.</li>
       <li>Send <code>9</code>: the menu switches to English.</li>
-      <li>Send <code>1</code> (Send Money), <code>01711000002</code>, <code>10</code>, <code>1</code> (confirm), <code>1234</code> (PIN).</li>
+      <li>Send <code>1</code> (Send Money), <code>01711000002</code>, <code>10</code>, <code>1</code> (confirm), <code>13579</code> (PIN).</li>
       <li>Expect: the session ends (<code>[END]</code> in the <i>Transcript</i>) with a confirmation carrying the TxnID;
         the PIN shows as <code>****</code>; on <span class="ui">Home</span> payer -Tk 15, payee +Tk 10; SMS to both.</li>
     </ol>
@@ -697,12 +696,12 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <h3><span class="id">4.3</span>Other menus (robi, after <code>9</code> for English)</h3>
     <div class="table-wrap"><table>
       <tr><th>Inputs after <code>9</code></th><th>Flow</th><th>Expect</th></tr>
-      <tr><td><code>1, 01711000002, 10, 1, 9999</code></td><td>wrong PIN</td><td>ends with a PIN error, nothing moved</td></tr>
+      <tr><td><code>1, 01711000002, 10, 1, 97531</code></td><td>wrong PIN</td><td>"Wrong PIN. 2 tries left." and the PIN is asked again (mw-auth checks it, ticket 72); <code>13579</code> then pays; three wrong ones lock the PIN and end the session</td></tr>
       <tr><td><code>1, 12345</code></td><td>invalid number</td><td>"Enter a valid mobile number", session stays open</td></tr>
-      <tr><td><code>2, 01811000001, 50, 1, 1234</code></td><td>cash out to the agent</td><td>ends with the TxnID</td></tr>
-      <tr><td><code>3, 1, 20, 1, 1234</code></td><td>recharge own number</td><td>success or processing</td></tr>
-      <tr><td><code>3, 2, 01711000999, 1, 20, 1, 1234</code></td><td>recharge another number (the <code>1</code> after the number picks the operator gp)</td><td>"Recharge failed: Subscriber not eligible for recharge"</td></tr>
-      <tr><td><code>4, 1, 1234567, 1, 1234</code></td><td>pay bill (first biller, DESCO)</td><td>"Tk 667.00 paid for DESCO bill 1234567. TxnID …"</td></tr>
+      <tr><td><code>2, 01811000001, 50, 1, 13579</code></td><td>cash out to the agent</td><td>ends with the TxnID</td></tr>
+      <tr><td><code>3, 1, 20, 1, 13579</code></td><td>recharge own number</td><td>success or processing</td></tr>
+      <tr><td><code>3, 2, 01711000999, 1, 20, 1, 13579</code></td><td>recharge another number (the <code>1</code> after the number picks the operator gp)</td><td>"Recharge failed: Subscriber not eligible for recharge"</td></tr>
+      <tr><td><code>4, 1, 1234567, 1, 13579</code></td><td>pay bill (first biller, DESCO)</td><td>"Tk 667.00 paid for DESCO bill 1234567. TxnID …"</td></tr>
       <tr><td><code>4, 1, 1234404</code></td><td>unknown bill</td><td>bill not found</td></tr>
     </table></div>
     <p>Without <code>9</code> the same flows run in Bangla: check the Bangla texts and that the SMS are in
@@ -901,7 +900,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
         Expect HTTP 201, status <code>OPEN</code>; the step shows the signed request (Date, Digest, Signature). The <code>/checkout/page/…</code> link in the result is where a real shop would send the buyer; the MVP has no hosted HTML page, the next step plays it.</li>
       <li>Block 2 (buyer): <span class="ui">Open the checkout page</span>: "Demo Shop Tk 25.00 (OPEN)".</li>
       <li><span class="ui">Payer wallet</span> <code>01711000001</code>, <span class="ui">Send OTP</span>: HTTP 202, the OTP is read from the SMS and filled in.</li>
-      <li><span class="ui">PIN</span> <code>1234</code>, <span class="ui">Pay</span>: <code>result PAID</code> with a txnId; payer balance lower.</li>
+      <li><span class="ui">PIN</span> <code>13579</code>, <span class="ui">Pay</span> (the console reads the page's <code>pinKey</code>, the PIN transport key, and encrypts with it; mw-auth checks the OTP and the PIN): <code>result PAID</code> with a txnId; payer balance lower.</li>
       <li>Block 3: <span class="ui">Return to the shop (signed redirect)</span>: HTTP 303 to the shop's ok URL, status PAID, <i>signature valid</i>.</li>
       <li><span class="ui">Shop server: session status and IPNs</span>: session PAID; one IPN answered 200 with a valid signature.</li>
     </ol>
@@ -1122,11 +1121,11 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <h3><span class="id">9.8</span>Wallet unlock</h3>
     <p><b>Sign in as:</b> window A <code>seed-ops-maker</code>, window B <code>seed-ops-checker</code>; test console needs none.</p>
     <ol>
-      <li>Test console App: type P2P, user <code>customer02</code>, counterparty <code>01711000001</code>, PIN <code>9999</code>, <span class="ui">Submit</span> <b>five times</b>.
-        Then PIN <code>1234</code>: <code>MW-CORE-ACCOUNT_LOCKED</code>. <i>A wallet in core-mock</i> <code>01711000002</code>: LOCKED.</li>
+      <li>Test console App: type P2P, user <code>customer02</code>, counterparty <code>01711000001</code>, PIN <code>97531</code>, <span class="ui">Submit</span> <b>three times</b>
+        (<code>MW-AUTH-040</code> twice, then <code>MW-AUTH-041</code>: the PIN is locked at mw-auth, 1 min in dev). Then PIN <code>13579</code>: still <code>MW-AUTH-041</code> (HTTP 423).</li>
       <li>Ops console <span class="ui">Wallets</span> (maker), card <i>Unlock a PIN-locked wallet</i>: <span class="ui">Wallet (MSISDN)</span> <code>01711000002</code>
         (also accepted: <code>8801711000002</code>, <code>+880 1711-000002</code>), Reason, <span class="ui">Request unlock</span>. Checker approves (<code>LOCKED -&gt; ACTIVE</code>).</li>
-      <li>The console does not show the core's answer: check <i>A wallet in core-mock</i>: ACTIVE. A P2P with <code>1234</code> completes.</li>
+      <li>The unlock reaches mw-auth over <code>auth.wallet-lock.v1</code> (and the core gets <code>UnlockWallet</code> for a core-side lock): a P2P with <code>13579</code> completes within seconds.</li>
       <li>Negative: a malformed number gives <code>MW-VAL-001</code> (9.0); unlocking a wallet that is not locked is refused by the core at approval
         (the console shows only "Decision recorded.": check <i>A wallet in core-mock</i>); every user without ops-maker (checker, viewer,
         compliance, auditor, <code>ops-admin01</code>) sees "Only an ops-maker files unlock requests."</li>
@@ -1172,7 +1171,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
         error applied and requested: <code>MW-VAL-040</code> with details.</li>
       <li><b>Preview walk</b> (nothing is sent): <span class="ui">Dialling MSISDN (sample)</span> (01712345678), <span class="ui">Language</span> en,
         <span class="ui">Action outcome</span> completed, <span class="ui">Dial</span>, then <span class="ui">Reply</span> + <span class="ui">Send</span>
-        <code>1, 01711000002, 10, 1, 1234</code>: "Money sent. TxnID PREVIEW-TXN", "Session ended.", the PIN shown as <code>****</code>.
+        <code>1, 01711000002, 10, 1, 13579</code>: "Money sent. TxnID PREVIEW-TXN", "Session ended.", the PIN shown as <code>****</code>.
         Again with outcome failed (ends "Preview: the core refused"), processing (ends with the processing message), three invalid
         replies (ends with the tooManyAttempts message). A DYNAMIC node lists sample items "&lt;source&gt; 1", "&lt;source&gt; 2".</li>
       <li><b>Propose</b> (card <i>Propose this version</i>, maker): MNOs gp / robi / bl / teletalk (all ticked), <span class="ui">Go-live &lt;mno&gt;</span> per MNO

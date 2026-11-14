@@ -63,6 +63,11 @@ public class DeviceOtpService {
   public static final String LOGIN = "LOGIN";
   /** A PIN reset (ticket 70): self-service on the bound device, or a care reset on any device. */
   public static final String RESET = "RESET";
+  /**
+   * The hosted checkout page's OTP (ticket 72): bound to the checkout sessionId (in place of the
+   * device id), asked by mw-checkout over the internal API.
+   */
+  public static final String CHECKOUT = "CHECKOUT";
 
   /** A new binding OTP for {@code deviceId} by SMS to {@code wallet}; replaces the wallet's previous one. */
   public DeviceOtpSent send(String wallet, String deviceId, String locale) {
@@ -74,6 +79,12 @@ public class DeviceOtpService {
    * {@code msisdn}; replaces the wallet's previous OTP (of any purpose).
    */
   public DeviceOtpSent send(String wallet, String msisdn, String deviceId, String locale, String purpose) {
+    return send(wallet, msisdn, deviceId, locale, purpose, java.util.Map.of());
+  }
+
+  /** As above, with extra SMS template parameters (the checkout OTP's amount and merchant). */
+  public DeviceOtpSent send(
+      String wallet, String msisdn, String deviceId, String locale, String purpose, java.util.Map<String, String> params) {
     DeviceBindingProperties.Otp cfg = props.otp();
     Instant now = clock.instant();
     String otp = OtpCodes.newOtp();
@@ -85,7 +96,7 @@ public class DeviceOtpService {
         .orElseThrow(() -> new MwException(ErrorCodes.VAL_OTP_LIMIT, "No more OTPs for now, try again later")
             .withStatus(HttpStatus.TOO_MANY_REQUESTS));
     String correlationId = correlationId();
-    NotificationRequest sms = notifications.otp(msisdn, otp, lang, expiresAt, correlationId, purpose);
+    NotificationRequest sms = notifications.otp(msisdn, otp, lang, expiresAt, correlationId, purpose, params);
     try {
       // no transaction: the 6.1 txn and idempotency headers carry the messageId (as mw-notify does)
       publisher.publish(

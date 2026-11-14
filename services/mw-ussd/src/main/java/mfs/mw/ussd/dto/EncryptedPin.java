@@ -7,8 +7,9 @@ import mfs.mw.ussd.util.Sensitive;
 import mfs.mw.ussd.util.SensitiveType;
 
 /**
- * PIN ciphertext exactly as the app sent it (RSA-OAEP, SHA-256, with the core's public key;
- * contract {@code EncryptedPin}). This service never decrypts, changes or logs it (18.3).
+ * The PIN a customer typed, encrypted on receipt under the mw-crypto {@code PIN_TRANSPORT} key
+ * (RSA-OAEP, SHA-256, MGF1-SHA-256; ticket 72) and sent to mw-auth only, once. Never stored, logged
+ * or published.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record EncryptedPin(

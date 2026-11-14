@@ -4,9 +4,10 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 
 /**
- * {@code GET /checkout/pay/v1/{token}}: what the hosted page shows. {@code pinKey} is the core's
- * public key the page encrypts the PIN with (RSA-OAEP SHA-256); {@code redirectUrl} is set once
- * the session is terminal (the signed result for the merchant).
+ * {@code GET /checkout/pay/v1/{token}}: what the hosted page shows. {@code pinKey} is the PIN
+ * transport key (mw-crypto {@code PIN_TRANSPORT} from mw-auth, ticket 72) the page encrypts the PIN
+ * with (WebCrypto RSA-OAEP SHA-256), left out while none can be fetched; {@code redirectUrl} is set
+ * once the session is terminal (the signed result for the merchant).
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record PageView(
@@ -21,10 +22,11 @@ public record PageView(
     String txnId,
     String redirectUrl) {
 
-  /**
-   * The core's PIN encryption key; {@code publicKey} is left out, not null, while none is
-   * configured (contract {@code PageView}: an optional string).
-   */
-  @JsonInclude(JsonInclude.Include.NON_NULL)
-  public record PinKey(String keyId, String publicKey) {}
+  /** The PIN transport key: kid to send as {@code encryptedPin.keyId}, algorithm, PEM. */
+  public record PinKey(String keyId, String algorithm, String publicKey) {
+
+    public static PinKey of(TransportKey k) {
+      return new PinKey(k.keyId(), k.algorithm(), k.publicKeyPem());
+    }
+  }
 }

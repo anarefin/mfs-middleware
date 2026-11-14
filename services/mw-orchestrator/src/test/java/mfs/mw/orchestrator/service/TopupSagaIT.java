@@ -195,7 +195,7 @@ class TopupSagaIT {
     assertThat(hold.path("commandId").asString()).isEqualTo(txn + ":hold");
     assertThat(hold.path("payload").path("txnType").asString()).isEqualTo("TOPUP");
     assertThat(hold.path("payload").path("creditParty").path("type").asString()).isEqualTo("MSISDN");
-    assertThat(hold.path("payload").path("encryptedPin").path("ciphertext").asString()).isEqualTo("ZmFrZS1jaXBoZXJ0ZXh0");
+    assertThat(hold.path("payload").path("assertion").asString()).isEqualTo(mfs.mw.orchestrator.TestData.ASSERTION);
 
     coreEvents.handle(event("FundsHeld", txn, txn + ":hold", null, "{\"holdId\":\"HOLD-CORE-7\"}"));
     assertThat(statuses(txn)).endsWith("PARTNER_PENDING");
@@ -231,7 +231,6 @@ class TopupSagaIT {
     assertThat(outbox("core.payment.command.v1", txn)).extracting(c -> c.path("commandType").asString())
         .containsExactly("HoldFunds", "CommitHold");
     assertThat(commandTypes(txn)).containsExactly("ValidateTransaction", "HoldFunds", "CommitHold");
-    assertThat(jdbc.queryForObject("select encrypted_pin is null from transaction where txn_id = ?::uuid", Boolean.class, txn)).isTrue();
     assertThat(jdbc.queryForObject("select count(*) from saga_timer", Long.class)).isZero();
     assertAllValid(txn);
   }
@@ -495,7 +494,7 @@ class TopupSagaIT {
     TxnRequest noPartner =
         new TxnRequest(1, t.txnId(), t.idempotencyKey(), t.correlationId(), t.channel(), "TOPUP",
             t.initiator(), t.debitParty(), t.creditParty(), t.amount(), null, null,
-            t.encryptedPin(), null, null, null, t.requestedAt());
+            t.assertion(), null, null, null, t.requestedAt());
     transactions.accept(noPartner, null);
 
     assertThat(statuses(t.txnId())).containsExactly("RECEIVED", "REJECTED");

@@ -9,9 +9,12 @@ mw:
     # The IPN job is off in tests; IpnDeliveryIT calls IpnDeliveryService.deliverDue() itself.
     ipn:
       enabled: false
-    pin:
-      key-id: core-pin-test-1
-      public-key: not-a-real-key
+    # mw-auth is stubbed in the tests that need it (CheckoutFlowIT, client/AuthClientTest); nothing
+    # listens on these.
+    auth:
+      base-url: http://127.0.0.1:9/
+      token-uri: http://127.0.0.1:9/token
+      pin-key-uri: http://127.0.0.1:9/auth/v1/pin-key
     # Obviously fake secrets, tests only.
     merchants:
       merchant_demo:

@@ -255,12 +255,12 @@ class IpnDeliveryIT {
         new CheckoutSession(
             UUID.randomUUID(), "tok-" + UUID.randomUUID(), "merchant_demo", "01911000001", "ORD-" + UUID.randomUUID(),
             1000, "BDT", null, "en", "https://s.example.test/ok", "https://s.example.test/fail",
-            "https://s.example.test/cancel", ipnUrl, SessionStatus.OPEN, null, null, null, 0, 0, null, null, now,
+            "https://s.example.test/cancel", ipnUrl, SessionStatus.OPEN, null, 0, null, null, now,
             now.plusSeconds(900), now);
     sessions.insert(s);
-    sessions.otpIssued(s.sessionId(), "01711000001", "h", now.plusSeconds(120), 3, now);
+    sessions.otpRequested(s.sessionId(), "01711000001", 3, now);
     UUID txnId = UUID.randomUUID();
-    assertThat(sessions.claimForPayment(s.sessionId(), "h", txnId, 3, now)).isTrue();
+    assertThat(sessions.claimForPayment(s.sessionId(), "01711000001", txnId, now)).isTrue();
     return sessions.findById(s.sessionId()).orElseThrow();
   }
 

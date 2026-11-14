@@ -1,7 +1,6 @@
 package mfs.mw.core.mock.service;
 
 import java.util.regex.Pattern;
-import mfs.mw.core.mock.config.CoreMockProperties;
 import mfs.mw.core.mock.dto.WalletBalance;
 import mfs.mw.core.mock.exception.ErrorCodes;
 import mfs.mw.core.mock.exception.MwException;
@@ -10,12 +9,11 @@ import mfs.mw.core.mock.util.MaskingPolicy;
 import mfs.mw.core.mock.util.SensitiveType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Test-only wallet seeding (ticket 57, used by mw-seeder): create-if-absent with the seed PIN and an
+ * Test-only wallet seeding (ticket 57, used by mw-seeder): create-if-absent with an
  * opening balance (no ledger entries, as {@link WalletSeeder} seeds its own ranges). An existing
  * wallet is returned as it is and never changed.
  */
@@ -30,20 +28,14 @@ public class WalletSeedService {
 
   private final WalletRepository wallets;
   private final WalletBalances balances;
-  private final PasswordEncoder encoder;
-  private final CoreMockProperties props;
   private final WalletStateEvents stateEvents;
 
   public WalletSeedService(
       WalletRepository wallets,
       WalletBalances balances,
-      PasswordEncoder encoder,
-      CoreMockProperties props,
       WalletStateEvents stateEvents) {
     this.wallets = wallets;
     this.balances = balances;
-    this.encoder = encoder;
-    this.props = props;
     this.stateEvents = stateEvents;
   }
 
@@ -54,7 +46,7 @@ public class WalletSeedService {
     }
     boolean created =
         wallets.resolveId(walletId).isEmpty()
-            && wallets.insertIfAbsent(walletId, type, openingBalanceMinor, encoder.encode(props.seed().pin()));
+            && wallets.insertIfAbsent(walletId, type, openingBalanceMinor);
     if (created) {
       stateEvents.created(java.util.List.of(walletId));
       log.atInfo()

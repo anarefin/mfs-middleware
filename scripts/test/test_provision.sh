@@ -6,7 +6,7 @@
 PROVISION_DIR="$REPO_DIR/deploy/provision"
 # the generated .env values the compose block passes in (obviously fake)
 PROVISION_ENV="VALKEY_PASSWORD=valkey-t BILLAGG_HMAC_SECRET=billagg-t C2WBANK_HMAC_SECRET=c2w-t
-  CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_AUTH_SECRET=auth-t KC_MW_APP_GATEWAY_SECRET=app-gateway-t
+  CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_AUTH_SECRET=auth-t KC_MW_APP_GATEWAY_SECRET=app-gateway-t KC_MW_USSD_SECRET=ussd-t KC_MW_CHECKOUT_SECRET=checkout-t
   USSD_GP_GATEWAY_SECRET=gp-t USSD_ROBI_GATEWAY_SECRET=robi-t USSD_BL_GATEWAY_SECRET=bl-t
   USSD_TELETALK_GATEWAY_SECRET=teletalk-t SOFTHSM_MWCRYPTO_USER_PIN=hsm-pin-t SOFTHSM_PAYSIM_USER_PIN=paysim-pin-t
   KC_URL=http://kc:8080 KC_BOOTSTRAP_ADMIN_USERNAME=kc-admin KC_BOOTSTRAP_ADMIN_PASSWORD=kc-admin-t"
@@ -165,12 +165,12 @@ test_provision_writes_the_service_specific_keys() {
   grep -q 'owner=audit_dw_rw' .psql-calls && grep -q 'writer=audit_writer' .psql-calls \
     && grep -q 'reader=audit_reader' .psql-calls || fail "audit-dw roles not provisioned"
   # core-mock key pair, copied to ussd and checkout
-  [ "$(kv mw-core-mock mw.coremock.pin.private-key)" = PRIVATE-PEM ] || fail "core private key"
-  [ "$(kv mw-core-mock mw.coremock.pin.key-id)" = core-pin-dev-1 ] || fail "core key id"
-  [ "$(kv mw-ussd mw.ussd.pin.public-key)" = PUBLIC-PEM ] || fail "ussd PIN key"
-  [ "$(kv mw-ussd mw.ussd.pin.key-id)" = core-pin-dev-1 ] || fail "ussd key id"
-  [ "$(kv mw-checkout mw.checkout.pin.public-key)" = PUBLIC-PEM ] || fail "checkout PIN key"
-  [ "$(kv mw-checkout mw.checkout.pin.key-id)" = core-pin-dev-1 ] || fail "checkout key id"
+  # ticket 72: no core PIN key pair any more (mw-auth's assertion instead), nor its copies
+  [ ! -e ".kv/secret/mw-core-mock/mw.coremock.pin.private-key" ] || fail "core PIN key still created"
+  [ ! -e ".kv/secret/mw-ussd/mw.ussd.pin.public-key" ] || fail "core PIN key still copied to mw-ussd"
+  [ ! -e ".kv/secret/mw-checkout/mw.checkout.pin.public-key" ] || fail "core PIN key still copied to mw-checkout"
+  [ "$(kv mw-ussd mw.ussd.auth.client-secret)" = ussd-t ] || fail "ussd mw-auth client secret"
+  [ "$(kv mw-checkout mw.checkout.auth.client-secret)" = checkout-t ] || fail "checkout mw-auth client secret"
   # mw-crypto (ticket 62): the softhsm mw-crypto token's user PIN (ticket 61), its role and schema
   [ "$(kv mw-crypto mw.crypto.pkcs11.user-pin)" = hsm-pin-t ] || fail "mw-crypto token PIN"
   grep -q 'role=crypto_rw .*schema=crypto' .psql-calls || fail "mw-crypto role/schema"
@@ -259,15 +259,13 @@ test_pki_services_may_issue_from_their_own_role_only() {
 test_a_second_run_keeps_generated_secrets_and_resyncs_env_ones() {
   provision_fixture
   assert_ok run_provision
-  local pw hk pk
+  local pw hk
   pw="$(kv mw-orchestrator spring.datasource.password)"
   hk="$(kv mw-orchestrator mw.orchestrator.search.hash-key)"
-  pk="$(kv mw-core-mock mw.coremock.pin.private-key)"
   : >.openssl-calls
   assert_ok run_provision VALKEY_PASSWORD=valkey-new
   [ "$(kv mw-orchestrator spring.datasource.password)" = "$pw" ] || fail "database password regenerated"
   [ "$(kv mw-orchestrator mw.orchestrator.search.hash-key)" = "$hk" ] || fail "hash key regenerated"
-  [ "$(kv mw-core-mock mw.coremock.pin.private-key)" = "$pk" ] || fail "PIN key regenerated"
   [ ! -s .openssl-calls ] || fail "openssl ran again: $(cat .openssl-calls)"
   [ "$(kv mw-orchestrator spring.data.redis.password)" = valkey-new ] || fail "valkey not resynced"
 }

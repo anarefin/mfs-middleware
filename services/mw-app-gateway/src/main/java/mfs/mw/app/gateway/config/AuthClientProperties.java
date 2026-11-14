@@ -18,6 +18,9 @@ import org.springframework.validation.annotation.Validated;
  * @param clientSecret from OpenBao {@code secret/mw-app-gateway} only, never in a file
  * @param timeout per call (2 s; a slower answer fails closed)
  * @param connectTimeout TCP and TLS connect
+ * @param pinKeyUri mw-auth's public {@code GET /auth/v1/pin-key} (plain HTTP inside the network, no
+ *     token; ticket 72), served to the apps as {@code GET /app/v1/pin-key}
+ * @param pinKeyTtl how long the key is reused before mw-auth is asked again
  */
 @Validated
 @ConfigurationProperties("mw.app-gateway.auth")
@@ -27,7 +30,9 @@ public record AuthClientProperties(
     @NotBlank String clientId,
     String clientSecret,
     @NotNull Duration timeout,
-    @NotNull Duration connectTimeout) {
+    @NotNull Duration connectTimeout,
+    @NotNull URI pinKeyUri,
+    @NotNull Duration pinKeyTtl) {
 
   public AuthClientProperties {
     clientSecret = clientSecret == null ? "" : clientSecret;
@@ -36,6 +41,7 @@ public record AuthClientProperties(
   @Override
   public String toString() {
     return "AuthClientProperties[baseUrl=" + baseUrl + ", tokenUri=" + tokenUri + ", clientId=" + clientId
-        + ", clientSecret=****, timeout=" + timeout + ", connectTimeout=" + connectTimeout + "]";
+        + ", clientSecret=****, timeout=" + timeout + ", connectTimeout=" + connectTimeout
+        + ", pinKeyUri=" + pinKeyUri + ", pinKeyTtl=" + pinKeyTtl + "]";
   }
 }

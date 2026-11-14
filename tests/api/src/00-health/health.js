@@ -8,11 +8,11 @@ export default [
         S.check('environment has ' + k + ' (run.sh reads it from deploy/.env)', !!MW.v(k));
       }
       S.status(200, await MW.http('GET', '/healthz'));
-      S.status(200, await MW.http('GET', '/test/core-mock/v1/pin-public-key', { apikey: true }));
+      S.status(200, await MW.http('GET', '/test/core-mock/v1/wallets/01711000001', { apikey: true }));
       S.status(200, await MW.http('GET', '/test/sim/smsc/messages?msisdn=01711000001', { apikey: true }));
       S.status(200, await MW.http('GET', '/test/audit-dw/v1/audit/events?limit=1', { apikey: true }));
       S.status(404, await MW.http('GET', '/test/orchestrator/v1/txn-requests/api-unknown-key', { apikey: true }));
-      S.status(401, await MW.http('GET', '/test/core-mock/v1/pin-public-key'));
+      S.status(401, await MW.http('GET', '/test/core-mock/v1/wallets/01711000001'));
     },
   },
   {
@@ -22,7 +22,7 @@ export default [
     run: async (MW, S) => {
       for (const [user, type, credit] of [['customer01', 'P2P', '01711000002'], ['agent01', 'CASH_IN', '01711000001']]) {
         S.responses = [];
-        await S.txn(user, type, credit, 100, '1234');
+        await S.txn(user, type, credit, 100, MW.pin);
         await S.appShows('COMPLETED', 60);
       }
     },

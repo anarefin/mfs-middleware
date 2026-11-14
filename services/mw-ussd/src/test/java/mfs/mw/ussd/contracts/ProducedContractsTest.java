@@ -31,7 +31,9 @@ class ProducedContractsTest {
   static final Instant NOW = Instant.parse("2026-11-04T10:00:00Z");
   static final String TXN_ID = "019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c0d";
   static final String CORRELATION_ID = "019a4f6e-0000-7a3b-8c4d-5e6f7a8b9c0d";
-  static final EncryptedPin PIN = new EncryptedPin("core-pin-dev-1", "Y2lwaGVy");
+  static final EncryptedPin PIN = new EncryptedPin("PIN_TRANSPORT.v1", "Y2lwaGVy");
+  /** As published: with mw-auth's assertion, never the PIN (ticket 72). */
+  static final String ASSERTION = "eyJhbGciOiJFUzI1NiJ9.eyJqdGkiOiJ0In0.c2lnbmF0dXJl";
 
   static UssdSession session(String mno, String language) {
     return new UssdSession(mno, "sess-1", "01712345678", "main", 1, language, "x.send", List.of("main:1"),
@@ -57,7 +59,7 @@ class ProducedContractsTest {
     assertThat(flows.stream().map(FlowRequest::flow).toList())
         .containsExactlyInAnyOrderElementsOf(TxnRequestMapper.FLOWS);
     return flows.stream()
-        .map(f -> (Object) mapper.toRequest(f, TXN_ID, "k".repeat(64), CORRELATION_ID, NOW))
+        .map(f -> (Object) mapper.toRequest(f, TXN_ID, "k".repeat(64), CORRELATION_ID, NOW).withAssertion(ASSERTION))
         .toList();
   }
 

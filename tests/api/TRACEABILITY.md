@@ -46,7 +46,7 @@ Criteria `-` = supporting scenario (edge security, bulk, portal, config), no MVP
 | 08 | [addmoney c2w callback] a replayed bank callback has no second effect | 1, 2 |  |
 | 08 | [addmoney c2w callback] a callback the bank sends twice credits the wallet once | 1, 2 |  |
 | 08 | [addmoney c2w] a debit the bank refuses fails and moves nothing | 1 | ADD_MONEY_BANK app failure |
-| 08 | [addmoney c2w] a wrong PIN is refused by the core and the bank is never asked | 1 | ADD_MONEY_BANK app failure |
+| 08 | [addmoney c2w] a wrong PIN is refused by mw-auth and the bank is never asked | 1 | ADD_MONEY_BANK app failure |
 | 08 | [addmoney c2w tsq] a bank timeout is resolved by status inquiry and the wallet is credited | 1 | ADD_MONEY_BANK app tsq-commit |
 | 08 | [addmoney c2w] an add-money request sent twice with the same idempotency key credits the wallet once | 2 | ADD_MONEY_BANK app idempotent |
 | 08 | [addmoney c2w tsq] a bank timeout the debit did not survive is resolved by status inquiry and fails | 1 | ADD_MONEY_BANK app tsq-release |
@@ -142,7 +142,7 @@ Criteria `-` = supporting scenario (edge security, bulk, portal, config), no MVP
 | 14 | [admin operator p2p] an operator finds a P2P by txnId and by MSISDN and sees its timeline and audit trail | 4 | ops search-txnId; ops search-msisdn; ops timeline; ops audit |
 | 14 | [admin operator reversal] an operator finds a P2P by MSISDN and reverses it once a second operator approves | 4 | ops search-msisdn; ops reversal-approved; ops audit |
 | 01 | [p2p] a P2P completes and moves the money once | 1 | P2P app success |
-| 01 | [p2p] a core rejection (wrong PIN) moves no money | 1 | P2P app failure |
+| 01 | [p2p] a wrong PIN is refused by mw-auth at once, nothing published, no money moves | 1 | P2P app failure |
 | 01 | [p2p] a core rejection (over per-txn limit) moves no money | 1 | P2P app failure |
 | 01 | [p2p] the same idempotency key sent twice debits once and returns the same txnId | 2 | P2P app idempotent |
 | 01 | [p2p] the same idempotency key with a different body is refused | 2 |  |
@@ -159,7 +159,7 @@ Criteria `-` = supporting scenario (edge security, bulk, portal, config), no MVP
 | 23 | [sp-query] a portal user without an org role may not query | - |  |
 | 05 | [topup] a successful top-up debits the payer once and leaves nothing held | 1 | TOPUP app success |
 | 05 | [topup] an operator refusal releases the hold and moves no money | 1 | TOPUP app failure |
-| 05 | [topup] a wrong PIN is refused by the core before anything is held | 1 | TOPUP app failure |
+| 05 | [topup] a wrong PIN is refused by mw-auth before anything is published or held | 1 | TOPUP app failure |
 | 05 | [topup] a hold whose reply is lost is found by a status query and released | 1 |  |
 | 05 | [topup] the same idempotency key sent twice tops up once and returns the same txnId | 2 | TOPUP app idempotent |
 | 05 | [topup] a top-up without operator is refused by the app API | 1 |  |
@@ -182,5 +182,5 @@ Criteria `-` = supporting scenario (edge security, bulk, portal, config), no MVP
 | 18 | [ussd p2p] a P2P over USSD in English completes and moves the money once | 1, 5 | P2P ussd success; ussd http |
 | 18 | [ussd p2p] a P2P over USSD in Bangla completes and moves the money once | 1, 5 | P2P ussd success; ussd http |
 | 18 | [ussd] a bad number is refused and asked again, and no money moves | 1, 5 | ussd http |
-| 18 | [ussd] a wrong PIN is refused by the core and no money moves | 1, 5 | ussd http |
-| 16 | [admin wallet-unlock] five wrong PINs lock the wallet, an approved unlock lets the next correct-PIN P2P succeed | - |  |
+| 18 | [ussd] a wrong PIN is refused by mw-auth and asked again, the right one then pays once | 1, 5 | ussd http |
+| 16 | [admin wallet-unlock] three wrong PINs lock the PIN at mw-auth, an approved unlock lets the next correct-PIN P2P succeed | - |  |

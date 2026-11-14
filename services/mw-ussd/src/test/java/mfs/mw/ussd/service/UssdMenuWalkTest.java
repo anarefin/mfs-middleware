@@ -24,7 +24,6 @@ import mfs.mw.ussd.exception.BillPayUnavailableException;
 import mfs.mw.ussd.dto.ErrorEnvelope;
 import mfs.mw.ussd.dto.Amount;
 import mfs.mw.ussd.mapper.MenuParser;
-import mfs.mw.ussd.util.PinCipher;
 import mfs.mw.ussd.util.TestPinKeys;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -69,8 +68,7 @@ class UssdMenuWalkTest {
   static UssdProperties props() {
     return new UssdProperties(
         "test-instance", "mw.txn.request.v1", "mw.txn.status.v1", Duration.ofSeconds(8), Duration.ofSeconds(30),
-        "bn", 3, new UssdProperties.Pin("core-pin-test", TestPinKeys.pem()),
-        Map.of(
+        "bn", 3, Map.of(
             "robi", new UssdProperties.Mno(UssdProperties.Transport.HTTP, List.of("*268#"), 182, 70,
                 Duration.ofSeconds(120), UssdProperties.Overflow.PAGE, "CON", "END", null),
             "bl", new UssdProperties.Mno(UssdProperties.Transport.HTTP, List.of("*268#"), 182, 70,
@@ -102,7 +100,7 @@ class UssdMenuWalkTest {
     };
     return new UssdEngine(
         catalog, sessions, new InputValidator(), new ScreenFormatter(), flow,
-        new PinCipher("core-pin-test", TestPinKeys.pem()), new DynamicLists(p, bills), new Lookups(bills), p,
+        TestPinTransport.create(), new DynamicLists(p, bills), new Lookups(bills), p,
         Clock.fixed(Instant.parse("2026-11-04T10:00:00Z"), ZoneOffset.UTC));
   }
 
@@ -133,7 +131,7 @@ class UssdMenuWalkTest {
         .isEqualTo("এজেন্ট 01812345678: 500.00 টাকা ক্যাশ আউট?\n1 নিশ্চিত করুন\n2 বাতিল");
     assertThat(send("c1", "1").text()).isEqualTo("আপনার পিন দিন");
 
-    UssdResponse done = send("c1", "4826");
+    UssdResponse done = send("c1", "48261");
 
     assertThat(done.end()).isTrue();
     assertThat(done.text()).isEqualTo("এজেন্ট 01812345678 থেকে 500.00 টাকা ক্যাশ আউট হয়েছে।");
@@ -141,7 +139,7 @@ class UssdMenuWalkTest {
     assertThat(req.flow()).isEqualTo("CASH_OUT");
     assertThat(req.fields()).containsEntry("creditParty", AGENT).containsEntry("amount", "500.00");
     assertThat(req.menuPath()).isEqualTo("main:2>co.agent>co.amount>co.confirm:1>co.pin");
-    assertThat(TestPinKeys.decrypt(req.pin())).isEqualTo("4826");
+    assertThat(TestPinKeys.decrypt(req.pin())).isEqualTo("48261");
     assertThat(sessions.values).isEmpty();
   }
 
@@ -155,7 +153,7 @@ class UssdMenuWalkTest {
     assertThat(send("c2", "20").text()).isEqualTo("Enter an amount from Tk 50 to 25000.\nEnter amount (Tk)");
     assertThat(send("c2", "500").text()).isEqualTo("Cash out Tk 500.00 at agent 01812345678?\n1 Confirm\n2 Cancel");
     assertThat(send("c2", "1").text()).isEqualTo("Enter your PIN");
-    assertThat(send("c2", "4826").text()).isEqualTo("Tk 500.00 cashed out at agent 01812345678. TxnID " + TXN);
+    assertThat(send("c2", "48261").text()).isEqualTo("Tk 500.00 cashed out at agent 01812345678. TxnID " + TXN);
     assertThat(flow.requests.getFirst().session().language()).isEqualTo("en");
   }
 
@@ -170,7 +168,7 @@ class UssdMenuWalkTest {
         .isEqualTo("01712345678 নম্বরে 50.00 টাকা রিচার্জ করবেন?\n1 নিশ্চিত করুন\n2 বাতিল");
     assertThat(send("t1", "1").text()).isEqualTo("আপনার পিন দিন");
 
-    UssdResponse done = send("t1", "4826");
+    UssdResponse done = send("t1", "48261");
 
     assertThat(done.end()).isTrue();
     assertThat(done.text()).isEqualTo("01712345678 নম্বরে 50.00 টাকা রিচার্জ হয়েছে।");
@@ -191,7 +189,7 @@ class UssdMenuWalkTest {
   @Test
   void topUpOfTheOwnNumberOnBlGoesToTheBanglalinkOperator() {
     engine.handle(new UssdRequest("bl", "t9", CUSTOMER, UssdEvent.BEGIN, "*268#"));
-    for (String input : new String[] {"3", "1", "50", "1", "4826"}) {
+    for (String input : new String[] {"3", "1", "50", "1", "48261"}) {
       engine.handle(new UssdRequest("bl", "t9", CUSTOMER, UssdEvent.CONTINUE, input));
     }
 
@@ -218,7 +216,7 @@ class UssdMenuWalkTest {
     assertThat(send("t2", "20").text()).isEqualTo("Recharge Tk 20.00 to 01912345678?\n1 Confirm\n2 Cancel");
     send("t2", "1");
 
-    assertThat(send("t2", "4826").text()).isEqualTo("Tk 20.00 recharged to 01912345678. TxnID " + TXN);
+    assertThat(send("t2", "48261").text()).isEqualTo("Tk 20.00 recharged to 01912345678. TxnID " + TXN);
     FlowRequest req = flow.requests.getFirst();
     assertThat(req.fields())
         .containsEntry("creditParty", OTHER)
@@ -237,7 +235,7 @@ class UssdMenuWalkTest {
     send("t3", "4");
     send("t3", "20");
     send("t3", "1");
-    assertThat(send("t3", "4826").text()).isEqualTo("01912345678 নম্বরে 20.00 টাকা রিচার্জ হয়েছে।");
+    assertThat(send("t3", "48261").text()).isEqualTo("01912345678 নম্বরে 20.00 টাকা রিচার্জ হয়েছে।");
     assertThat(flow.requests.getFirst().fields()).containsEntry("partnerId", "teletalk");
   }
 
@@ -251,7 +249,7 @@ class UssdMenuWalkTest {
     send("t4", "1");
     send("t4", "20");
     send("t4", "1");
-    assertThat(send("t4", "4826").text()).isEqualTo("Recharge failed: Top-up rejected by the operator");
+    assertThat(send("t4", "48261").text()).isEqualTo("Recharge failed: Top-up rejected by the operator");
   }
 
   // --- BILL_PAY ---
@@ -266,7 +264,7 @@ class UssdMenuWalkTest {
     assertThat(bills.fetched).containsExactly("DESCO/1234567");
     assertThat(send("b1", "1").text()).isEqualTo("আপনার পিন দিন");
 
-    UssdResponse done = send("b1", "4826");
+    UssdResponse done = send("b1", "48261");
 
     assertThat(done.end()).isTrue();
     assertThat(done.text()).isEqualTo("DESCO বিল 1234567: 667.00 টাকা দেওয়া হয়েছে।");
@@ -289,7 +287,7 @@ class UssdMenuWalkTest {
     assertThat(send("b2", "12").text()).isEqualTo("Enter a valid bill number.\nEnter WASA bill number");
     assertThat(send("b2", "1234567").text()).isEqualTo("Pay Tk 667.00 for WASA bill 1234567?\n1 Confirm\n2 Cancel");
     send("b2", "1");
-    assertThat(send("b2", "4826").text()).isEqualTo("Tk 667.00 paid for WASA bill 1234567. TxnID " + TXN);
+    assertThat(send("b2", "48261").text()).isEqualTo("Tk 667.00 paid for WASA bill 1234567. TxnID " + TXN);
     assertThat(flow.requests.getFirst().fields()).containsEntry("billerCode", "WASA");
   }
 
@@ -336,19 +334,19 @@ class UssdMenuWalkTest {
     // walk every path in Bangla and check each screen is a single page (no "0 আরও")
     List<String> screens = new ArrayList<>();
     screens.add(dial("w1").text());
-    for (String in : List.of("2", AGENT, "25000", "1", "4826")) {
+    for (String in : List.of("2", AGENT, "25000", "1", "48261")) {
       screens.add(send("w1", in).text());
     }
     dial("w2");
-    for (String in : List.of("3", "2", OTHER, "3", "1000", "1", "4826")) {
+    for (String in : List.of("3", "2", OTHER, "3", "1000", "1", "48261")) {
       screens.add(send("w2", in).text());
     }
     dial("w3");
-    for (String in : List.of("4", "1", "12345678901234", "1", "4826")) {
+    for (String in : List.of("4", "1", "12345678901234", "1", "48261")) {
       screens.add(send("w3", in).text());
     }
     dial("w4");
-    for (String in : List.of("1", AGENT, "25000", "1", "4826")) {
+    for (String in : List.of("1", AGENT, "25000", "1", "48261")) {
       screens.add(send("w4", in).text());
     }
     assertThat(screens).allSatisfy(s -> assertThat(s).hasSizeLessThanOrEqualTo(70).doesNotEndWith("0 আরও"));

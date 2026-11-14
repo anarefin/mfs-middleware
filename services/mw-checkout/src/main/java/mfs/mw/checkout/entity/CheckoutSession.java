@@ -8,7 +8,8 @@ import mfs.mw.checkout.util.SensitiveType;
 
 /**
  * A row of {@code checkout.session} (spec 9.3, 16.2). Never leaves the service layer. The pay
- * token is the hosted page's bearer secret (in the checkout URL); the OTP is kept only as a hash.
+ * token is the hosted page's bearer secret (in the checkout URL). The OTP itself is mw-auth's (ticket
+ * 72); the session keeps the paying wallet and how many OTPs it asked for.
  */
 public record CheckoutSession(
     UUID sessionId,
@@ -26,9 +27,6 @@ public record CheckoutSession(
     String ipnUrl,
     SessionStatus status,
     @Sensitive(SensitiveType.MSISDN) String payerMsisdn,
-    @Sensitive(SensitiveType.SECRET) String otpHash,
-    Instant otpExpiresAt,
-    int otpAttempts,
     int otpSends,
     UUID txnId,
     String errorCode,

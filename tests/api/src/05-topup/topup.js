@@ -6,7 +6,7 @@ export default [
     name: '[topup] a successful top-up debits the payer once and leaves nothing held',
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
-      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, '1234');
+      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);
       S.status(200);
       S.txnStatus('COMPLETED');
       await S.changedBy({ '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE-POOL': 200 });
@@ -18,7 +18,7 @@ export default [
     name: '[topup] an operator refusal releases the hold and moves no money',
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
-      await S.topup('customer01', 'gp', 'PREPAID', '01711000999', 2000, '1234');
+      await S.topup('customer01', 'gp', 'PREPAID', '01711000999', 2000, MW.pin);
       S.status(502);
       S.code('MW-PTR-GP-TOPUP_REJECTED');
       S.carriesTxnId();
@@ -28,12 +28,12 @@ export default [
     },
   },
   {
-    name: '[topup] a wrong PIN is refused by the core before anything is held',
+    name: '[topup] a wrong PIN is refused by mw-auth before anything is published or held',
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
-      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, '9999');
-      S.status(422);
-      S.code('MW-CORE-INVALID_PIN');
+      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.WRONG_PIN);
+      S.status(401);
+      S.code('MW-AUTH-040');
       await S.noChange();
     },
   },
@@ -42,7 +42,7 @@ export default [
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
       await S.dropReply('HoldFunds');
-      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, '1234');
+      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);
       S.status(504);
       S.code('MW-TMO-002');
       await S.noChange();
@@ -54,7 +54,7 @@ export default [
     name: '[topup] the same idempotency key sent twice tops up once and returns the same txnId',
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
-      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, '1234');
+      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);
       await S.repeat();
       S.status(200);
       S.sameTxnId();
@@ -67,7 +67,7 @@ export default [
     name: '[topup] a top-up without operator is refused by the app API',
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
-      await S.topup('customer01', null, null, '01711000002', 2000, '1234');
+      await S.topup('customer01', null, null, '01711000002', 2000, MW.pin);
       S.status(400);
       S.code('MW-VAL-001');
       await S.noChange();
@@ -77,7 +77,7 @@ export default [
     name: '[topup tsq] an OCS timeout is resolved by status inquiry and the hold is committed',
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
-      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2013, '1234');
+      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2013, MW.pin);
       S.status(202);
       S.txnStatus('PROCESSING');
       await S.appShows('COMPLETED', 120);
@@ -90,7 +90,7 @@ export default [
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
       await S.lateUnapplied('ocs');
-      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, '1234');
+      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);
       S.status(202);
       S.txnStatus('PROCESSING');
       await S.normalOnceAnswered('ocs', '/ocs/v1/topup');
@@ -102,7 +102,7 @@ export default [
   {
     name: '[topup tsq] a top-up resolved by status inquiry records UNKNOWN in its audit trail',
     run: async (MW, S) => {
-      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2013, '1234');
+      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2013, MW.pin);
       await S.appShows('COMPLETED', 120);
       await S.auditStates('RECEIVED, VALIDATING, HOLDING, PARTNER_PENDING, UNKNOWN, COMMITTING, COMPLETED');
     },
@@ -110,7 +110,7 @@ export default [
   {
     name: '[topup] a completed top-up leaves an audit trail of the hold path',
     run: async (MW, S) => {
-      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, '1234');
+      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);
       S.status(200);
       await S.auditStates('RECEIVED, VALIDATING, HOLDING, PARTNER_PENDING, COMMITTING, COMPLETED');
       await S.auditPartnerCall('mw-adapter-telco');

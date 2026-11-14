@@ -6,7 +6,7 @@ export default [
     run: async (MW, S) => {
       await bound(MW, S);
       await S.note(['01711000001', '01711000002', 'FEE-POOL']);
-      await S.dial('gp', '01711000001', '*268#', '9, 1, 01711000002, 10, 1, 1234');
+      await S.dial('gp', '01711000001', '*268#', '9, 1, 01711000002, 10, 1, ' + MW.pin);
       S.ussdScreens([
         'Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English',
         'Bits\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা',

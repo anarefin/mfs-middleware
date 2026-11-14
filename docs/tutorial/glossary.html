@@ -75,7 +75,8 @@
     <dt>Outbox</dt><dd>A table where a service writes outgoing messages in the same database transaction as its business change; a relay publishes them.</dd>
     <dt>P2P</dt><dd>Person to person: send money.</dd>
     <dt>Partner reference</dt><dd>The stable id we give a partner for one transaction (top-up: <code>BITS</code> + txnId in hex), so a repeat is recognisable.</dd>
-    <dt>PIN ciphertext</dt><dd>The PIN encrypted with the core's public key (RSA-OAEP). The middleware carries it but cannot read it.</dd>
+    <dt>PIN ciphertext</dt><dd>The PIN encrypted under the mw-crypto PIN transport key (RSA-OAEP). Only mw-crypto, inside the HSM, can read it; the channel sends it to mw-auth once.</dd>
+    <dt>Transaction assertion</dt><dd>mw-auth's signed (ES256) single-use token that says this wallet's PIN authorised this transaction (ADR D22). It travels in <code>mw.txn.request.v1</code> to the core instead of the PIN.</dd>
     <dt>Post</dt><dd>Move money in one step (<code>PostTransfer</code>), no hold.</dd>
     <dt>Reply budget</dt><dd>How long a channel service waits for a final status before answering "processing" (app 25 s, USSD 8 s).</dd>
     <dt>Reversal</dt><dd>Undoing a completed transaction with a new <code>REVERSAL</code> transaction, after maker-checker.</dd>

@@ -110,8 +110,8 @@ scripts/smoke.sh          # containers, topics, Kafka, PG, Valkey, Keycloak toke
 ```
 
 Seeded on start, no extra step: `mw-core-mock` creates 1,000 customer wallets `01711000001..`,
-50 agents `01811000001..`, 20 merchants `01911000001..`, 2 orgs `01311000001..`, all with the fake
-PIN `1234`; Keycloak imports its realms with test users (table below); the simulators, USSD menus,
+50 agents `01811000001..`, 20 merchants `01911000001..`, 2 orgs `01311000001..` (no PIN at the core
+since ticket 72: mw-auth holds the PINs, mw-seeder sets the app wallets' PIN `13579`); Keycloak imports its realms with test users (table below); the simulators, USSD menus,
 SMS/email templates and partner configs load their dev data.
 
 `mw-seeder` (profile `seed`, ticket 57) adds, through the services' APIs only (no SQL), the
@@ -147,7 +147,7 @@ The values come from `deploy/dev.env.defaults`; `scripts/creds.sh` prints the on
 | `ops` | `seed-ops-maker`, `seed-ops-checker`, `seed-ops-viewer`, `seed-ops-compliance` (seeded; code: `scripts/totp.sh <user>`) | `ops-test-pass` (`KC_OPS_TEST_PASSWORD`) | admin console, manual tests |
 | `ops` | `ops-viewer01`, `ops-maker01`, `ops-checker01`, `ops-admin01`, `ops-compliance01`, `ops-auditor01` (TOTP enrolled at first sign-in) | `ops-test-pass` | admin console |
 | `ops` | `ops-e2e-maker01`, `ops-e2e-checker01` (TOTP preset from `KC_OPS_TEST_TOTP_SECRET`) | `ops-test-pass` | API suite |
-| mw-auth (no realm, ticket 69) | the app wallets `01711000001` (customer01), `01711000002`, `01811000001` (agent01), `01911000001` (merchant01), `01911000002` and mw-seeder's app wallets: log in with MSISDN + app PIN + a bound device; transactions still take the core PIN `1234` until ticket 72 | app PIN `13579` (`MW_SEED_APP_PIN`, set by mw-seeder through mw-auth's dev-only seed API, `MW_AUTH_SEED_API_ENABLED=true`) | app API, API suite, test console, `scripts/edge-test.sh` |
+| mw-auth (no realm, ticket 69) | the app wallets `01711000001` (customer01), `01711000002`, `01811000001` (agent01), `01911000001` (merchant01), `01911000002` and mw-seeder's app wallets: log in with MSISDN + app PIN + a bound device; transactions (app, USSD, checkout) take the same PIN, checked by mw-auth (ticket 72) | app PIN `13579` (`MW_SEED_APP_PIN`, set by mw-seeder through mw-auth's dev-only seed API, `MW_AUTH_SEED_API_ENABLED=true`) | app API, API suite, test console, `scripts/edge-test.sh` |
 | `portals` | `seed-org-maker`, `seed-org-checker` (seeded), `org-maker01`, `org-checker01`, `org-checker02`, `org-makerchecker01`, `sp-viewer01`: the realm demands TOTP (ticket 73), every user has the pre-set secret `KC_PORTALS_TEST_TOTP_SECRET` (code: `scripts/totp.sh <user>`) | `portal-test-pass` (`KC_PORTALS_TEST_PASSWORD`) | org / SP portal API |
 | `master` | `kc-admin` (kcadm.sh in the container only) | `kc-admin-test-pass` (`KC_BOOTSTRAP_ADMIN_PASSWORD`) | Keycloak admin |
 
@@ -319,7 +319,10 @@ peaks, is the header of `deploy/docker-compose.yml`.
 
 With the defaults the long-running limits add up to 8176 of the 8192 MiB guard (ticket 62 added
 `mw-crypto` at 320M and trimmed `ADMIN_UI_MEM` 160M -> 64M; ticket 67 added `mw-auth` at 320M and
-trimmed `APP_MEM_LIMIT` 416M -> 384M on its ten services). Raise `APP_MEM_LIMIT` in `deploy/.env` if a
+trimmed `APP_MEM_LIMIT` 416M -> 384M on its ten services). Ticket 72 (channels on mw-auth's
+assertion, the core PIN scheme removed) adds no container and no limit: mw-ussd and mw-checkout gain
+an mTLS client (a few MiB inside their 384M) and mw-core-mock loses bcrypt, so the core profile stays
+at 8176 of 8192 MiB; no stack was measured for it, so no limit was cut. Raise `APP_MEM_LIMIT` in `deploy/.env` if a
 service is killed for memory (exit 137). Raise `ADMIN_UI_MEM` in `deploy/.env` if
 the admin console is killed for memory under a long Playwright run.
 

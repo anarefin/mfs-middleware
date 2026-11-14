@@ -5,6 +5,8 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
 import mfs.mw.ussd.dto.Amount;
+import mfs.mw.ussd.dto.EncryptedPin;
+import mfs.mw.ussd.dto.TxnAuthorisationRequest;
 import mfs.mw.ussd.dto.FlowRequest;
 import mfs.mw.ussd.dto.PartnerRef;
 import mfs.mw.ussd.dto.Party;
@@ -17,8 +19,9 @@ import org.springframework.stereotype.Component;
  * initiator and payer is the dialling subscriber's customer wallet (USSD serves customers; agents
  * cash in from the Agent app). The payee per flow: P2P the customer wallet entered, CASH_OUT the
  * agent's wallet, TOPUP the bare MSISDN to recharge with the operator as partner, BILL_PAY the bill
- * number as a {@code BILLER_ACCOUNT} with the biller's aggregator as partner. The PIN ciphertext
- * is the one encrypted on receipt; it is passed on once.
+ * number as a {@code BILLER_ACCOUNT} with the biller's aggregator as partner. The request goes out
+ * with mw-auth's assertion only (ticket 72): {@link #authorisation} builds the authorisation body from
+ * exactly the request's values, so the assertion's txnHash matches what the core sees.
  */
 @Component
 public class TxnRequestMapper {
@@ -68,11 +71,30 @@ public class TxnRequestMapper {
         creditParty(req.flow(), f.get(FlowRequest.CREDIT_PARTY)),
         new Amount(minor(f.get(FlowRequest.AMOUNT)), Amount.BDT),
         partner(req.flow(), f),
-        req.pin(),
+        null,
         s.language(),
         Map.of("ussdSessionId", s.sessionId(), "mno", s.mno()),
         null,
         now);
+  }
+
+  /**
+   * mw-auth's authorisation body for {@code req} (decision of ticket 71): the dialling subscriber's
+   * MSISDN, channel USSD, the PIN block and the transaction with the request's own values (payer =
+   * debitParty, payee = creditParty, amount = valueMinor, the same idempotency key).
+   */
+  public TxnAuthorisationRequest authorisation(TxnRequest req, EncryptedPin pin) {
+    return new TxnAuthorisationRequest(
+        req.initiator().id(),
+        req.channel(),
+        pin,
+        new TxnAuthorisationRequest.Txn(
+            req.txnType(),
+            req.amount().valueMinor(),
+            req.amount().currency(),
+            new TxnAuthorisationRequest.TxnParty(req.debitParty().type(), req.debitParty().id()),
+            new TxnAuthorisationRequest.TxnParty(req.creditParty().type(), req.creditParty().id()),
+            req.idempotencyKey()));
   }
 
   private static Party creditParty(String flow, String id) {

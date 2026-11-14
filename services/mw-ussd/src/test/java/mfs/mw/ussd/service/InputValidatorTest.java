@@ -45,9 +45,9 @@ class InputValidatorTest {
   }
 
   @Test
-  void pinIsFourDigitsUnlessTheMenuSaysOtherwise() {
-    assertThat(validator.validate(spec("pin", null, null, null, false), "4826", "x")).contains("4826");
-    assertThat(validator.validate(spec("pin", null, null, null, false), "482", "x")).isEmpty();
+  void pinIsFiveFiguresUnlessTheMenuSaysOtherwise() {
+    assertThat(validator.validate(spec("pin", null, null, null, false), "48261", "x")).contains("48261");
+    assertThat(validator.validate(spec("pin", null, null, null, false), "4826", "x")).isEmpty();
     assertThat(validator.validate(spec("pin", null, null, null, false), "48a6", "x")).isEmpty();
     assertThat(validator.validate(spec("pin", "[0-9]{6}", null, null, false), "482611", "x")).contains("482611");
   }

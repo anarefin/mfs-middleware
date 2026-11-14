@@ -92,7 +92,7 @@ class ProducedContractsTest {
               () -> EVENTS.succeeded(command("HoldFunds", "hold"), "FundsHeld", CORE_REF, null, Map.of("holdId", HOLD_ID))),
           Map.entry(
               EVENT + "#HoldRejected",
-              () -> EVENTS.rejected(command("HoldFunds", "hold"), "HoldRejected", CORE_REF, "INVALID_PIN", "Invalid PIN")),
+              () -> EVENTS.rejected(command("HoldFunds", "hold"), "HoldRejected", CORE_REF, "MW-AUTH-046", "Transaction authorisation invalid or already used")),
           Map.entry(
               EVENT + "#HoldCommitted",
               () -> EVENTS.succeeded(
@@ -162,7 +162,7 @@ class ProducedContractsTest {
           Map.entry(
               EVENT + "#WalletStateChanged",
               () -> EVENTS.walletStateChanged(
-                  new WalletState("01711000001", "01711000001", "CUSTOMER", "LOCKED", true, 1093), "STATUS_CHANGED")));
+                  new WalletState("01711000001", "01711000001", "CUSTOMER", "LOCKED", 1093), "STATUS_CHANGED")));
 
   /** As CoreCommandService: stored in command_log as JSON, read back, appended to the outbox. */
   static JsonNode asPublished(CoreEvent decided) {

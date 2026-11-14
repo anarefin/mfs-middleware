@@ -34,8 +34,6 @@ public class CoreEventMapper {
           Map.entry("ACCOUNT_BLOCKED", new Text("Account is blocked", "অ্যাকাউন্ট ব্লক করা আছে")),
           Map.entry("CREDIT_ACCOUNT_BLOCKED", new Text("Receiver account is blocked", "প্রাপকের অ্যাকাউন্ট ব্লক করা আছে")),
           Map.entry("SAME_WALLET", new Text("Sender and receiver are the same", "প্রেরক ও প্রাপক একই")),
-          Map.entry("INVALID_PIN", new Text("Invalid PIN", "ভুল পিন")),
-          Map.entry("INVALID_PIN_BLOCK", new Text("PIN could not be read", "পিন পড়া যায়নি")),
           Map.entry("INVALID_AMOUNT", new Text("Invalid amount", "অবৈধ পরিমাণ")),
           Map.entry("LIMIT_EXCEEDED_PER_TXN", new Text("Per-transaction limit exceeded", "প্রতি লেনদেনের সীমা অতিক্রম")),
           Map.entry("LIMIT_EXCEEDED_DAILY", new Text("Daily limit exceeded", "দৈনিক সীমা অতিক্রম")),
@@ -46,8 +44,8 @@ public class CoreEventMapper {
           Map.entry(
               "ACCOUNT_LOCKED",
               new Text(
-                  "Account is locked after too many wrong PINs",
-                  "বারবার ভুল পিন দেওয়ায় অ্যাকাউন্ট লক করা হয়েছে")));
+                  "Account is locked, contact customer care",
+                  "অ্যাকাউন্ট লক করা আছে, গ্রাহক সেবায় যোগাযোগ করুন")));
 
   /**
    * The saga event for a core result; empty for event types no wired flow consumes yet.
