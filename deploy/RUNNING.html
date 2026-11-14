@@ -196,9 +196,9 @@ docker compose --profile core --profile seed ps -a mw-seeder   <span class="c">#
 docker compose --profile core --profile seed ps -a
 <span class="c"># readiness of one service</span>
 curl -s localhost:8081/actuator/health/readiness
-<span class="c"># readiness of all of them (8081-8093; mw-crypto on 8094 needs a client certificate, mTLS: its health is the compose healthcheck)</span>
+<span class="c"># readiness of all of them (8081-8093; mw-crypto on 8094 needs a client certificate, mTLS, and mw-auth on 8095 has no actuator: their health is the compose healthcheck)</span>
 for p in $(seq 8081 8093); do printf "%s " $p; curl -s localhost:$p/actuator/health/readiness; echo; done
-docker compose ps mw-crypto
+docker compose ps mw-crypto mw-auth
 <span class="c"># the edge and the two consoles</span>
 curl -sk https://localhost/healthz
 curl -s -o /dev/null -w "%{http_code}\n" localhost:3000/console/api/health
@@ -229,6 +229,7 @@ docker compose logs -f mw-orchestrator</pre></div>
       <tr><td>8092</td><td>mw-checkout</td><td>web checkout and IPN</td><td><code>/checkout/*</code></td><td>core</td></tr>
       <tr><td>8093</td><td>mw-portal-api</td><td>org bulk disbursement, SP query</td><td><code>/portal/org/v1/*</code></td><td>core</td></tr>
       <tr><td>8094</td><td>mw-crypto</td><td>HSM gateway: keys by keyId (softhsm token in dev)</td><td>internal</td><td>minimal, core</td></tr>
+      <tr><td>8095</td><td>mw-auth</td><td>wallet authentication: projection of the core's wallets (logins from ticket 69)</td><td>internal</td><td>minimal, core</td></tr>
       <tr><td>3000</td><td>mw-admin-ui</td><td>admin console (Next.js, base path <code>/console</code>; sign in through 443)</td><td><code>/console</code></td><td>core</td></tr>
       <tr><td>3001</td><td>mw-test-console</td><td>test console, dev/test only</td><td><code>/tester</code></td><td>tester</td></tr>
       <tr><td>—</td><td>mw-seeder</td><td>one-shot seeder</td><td>none</td><td>seed (always with core)</td></tr>

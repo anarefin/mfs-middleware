@@ -448,8 +448,9 @@ paths:
       description: >-
         Parses the received `Signature-Input` and `Signature` field values (RFC 8941), rebuilds the
         signature base from the caller's component values and checks, in this order: the fields
-        parse and hold `label` (MALFORMED_SIGNATURE), `requiredComponents` are covered
-        (REQUIRED_COMPONENT_NOT_COVERED), every covered component has a value (COMPONENT_MISSING),
+        parse and hold `label` (MALFORMED_SIGNATURE), `requiredComponents` are covered, compared by
+        full identity (name and parameters, so a covered `"content-digest";req` does not satisfy a
+        required `content-digest`) (REQUIRED_COMPONENT_NOT_COVERED), every covered component has a value (COMPONENT_MISSING),
         `keyid` equals `expectedKeyid` (KEY_MISMATCH), `alg` fits (ALGORITHM_NOT_ALLOWED), `expires`
         (EXPIRED), `created` at most 60 s ahead (CREATED_IN_FUTURE) and within `maxAgeSeconds`
         (CREATED_MISSING, TOO_OLD), then the signature (SIGNATURE_MISMATCH). Under a keyId its ACTIVE
@@ -1094,7 +1095,13 @@ components:
         requiredComponents:
           type: array
           maxItems: 64
-          items: { $ref: "#/components/schemas/HttpComponentName" }
+          description: >-
+            Compared by full identity: a bare name (`content-digest`) is that component without
+            parameters only; the RFC 9421 serialised identifier (`"content-digest";sf`,
+            `"example-dict";key="a"`) is exactly that component with exactly those parameters
+          items:
+            type: string
+            pattern: "^(@?[a-z0-9!#$%&'*+.^_`|~-]{1,128}|\"@?[a-z0-9!#$%&'*+.^_`|~-]{1,128}\"(;[a-z]{1,8}(=\"[ !#-\\[\\]-~]{0,256}\")?){0,4})$"
         expectedKeyid:
           description: When set, the signature's keyid parameter must equal it
           $ref: "#/components/schemas/SfString"

@@ -27,12 +27,19 @@ class TransferRules {
   private final PinCipher pins;
   private final PasswordEncoder encoder;
   private final WalletRepository wallets;
+  private final WalletStateEvents stateEvents;
 
-  TransferRules(CoreMockProperties props, PinCipher pins, PasswordEncoder encoder, WalletRepository wallets) {
+  TransferRules(
+      CoreMockProperties props,
+      PinCipher pins,
+      PasswordEncoder encoder,
+      WalletRepository wallets,
+      WalletStateEvents stateEvents) {
     this.props = props;
     this.pins = pins;
     this.encoder = encoder;
     this.wallets = wallets;
+    this.stateEvents = stateEvents;
   }
 
   long fee(String txnType) {
@@ -73,6 +80,7 @@ class TransferRules {
     }
     if (!encoder.matches(pin.get(), wallet.pinHash())) {
       if (wallets.recordPinFailure(wallet.id(), props.pinMaxFailures())) {
+        stateEvents.statusChanged(wallet.id());
         log.atWarn()
             .addKeyValue("event", "wallet.pin.locked")
             .addKeyValue("walletType", wallet.type())

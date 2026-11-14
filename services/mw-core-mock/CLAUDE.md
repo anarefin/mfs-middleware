@@ -116,6 +116,17 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   topic (`core.wallet.event.v1`); mw-orchestrator drops them (`txn.unknown`) and mw-admin-api does
   not consume them. Reject faults apply (`UnlockRejected`). QueryTransaction of an unlock's txnId is
   not meaningful (reported REJECTED; nobody asks).
+- Wallet state feed (ticket 67, spec 18.7, D5; `service/WalletStateEvents`, `mapper/CoreEventMapper.walletStateChanged`):
+  `WalletStateChanged` on `core.wallet.event.v1` for every wallet with an MSISDN, through the outbox in
+  the transaction of the change, key = walletId: `CREATED` (`WalletSeeder.seed` for the rows it inserts,
+  the seed API when it creates), `STATUS_CHANGED` (the PIN lock in `TransferRules`, the unlock), and with
+  `mw.coremock.wallet-snapshot-on-start` (compose `MW_COREMOCK_WALLET_SNAPSHOT=true`, default off) a
+  `SNAPSHOT` of every wallet after the seed on start. Payload `{walletId, msisdn, walletType, status,
+  hasPin, version, change}`; `wallet.version` (V7) comes from one sequence `wallet_version_seq` and takes
+  the next value on every status change, so it only grows, also across a ledger reset. Envelope (no
+  command answered): a fresh UUIDv7 txnId (`util/UuidV7`), commandId `wallet-state:<txnId>`, coreRef
+  `WALLET-V<version>`, outcome SUCCESS. mw-auth projects it; mw-orchestrator drops it (`txn.unknown`).
+  A status set by hand in SQL (tests) publishes nothing. Test: `service/WalletStateEventsIT`.
 - Reason codes (core reasons, mapped by the orchestrator): `WALLET_NOT_FOUND`,
   `CREDIT_WALLET_NOT_FOUND`, `INVALID_COUNTERPARTY`, `ACCOUNT_LOCKED`, `ACCOUNT_BLOCKED`,
   `CREDIT_ACCOUNT_BLOCKED`, `SAME_WALLET`, `INVALID_PIN`, `INVALID_PIN_BLOCK`, `INVALID_AMOUNT`,
@@ -133,7 +144,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 
 - `events/mw-core-mock/core.event.v1.schema.json` and its per-event payload schemas (topics
   `core.wallet.event.v1`, `core.payment.event.v1`). Tests validate every emitted event against it.
-- Machine-readable list: `contracts.yml` (produces 17 `core.event.v1` types, consumes the 9 handled
+- Machine-readable list: `contracts.yml` (produces 18 `core.event.v1` types (ticket 67: `WalletStateChanged`), consumes the 9 handled
   `core.command.v1` types; `ApplyComplianceAction` is ignored, so neither it nor `ComplianceAction*` is
   listed), checked by `./gradlew :contractsLint`, tested by `contracts/ProducedContractsTest` /
   `ConsumedContractsTest` (no Spring, no Docker). The fault and balance admin API is not a product

@@ -1,0 +1,31 @@
+# Test-only overrides, merged over src/main/resources/application.yml.
+mw:
+  outbox:
+    relay:
+      # Off by default in tests: Spring caches test contexts, and a relay left running in one
+      # would publish rows another test is checking. Tests that need it switch it on and close
+      # their context afterwards (@DirtiesContext).
+      enabled: false
+      # Tests that switch it on want each hop at once, not after a 500 ms idle wait.
+      period: 50ms
+  retention:
+    # The purge job's schedule is off in tests; OutboxInboxPurgeConformanceIT calls it directly.
+    cron: "-"
+  auth:
+    # A random public port beside the random internal one (RANDOM_PORT contexts).
+    public-port: 0
+    consumer:
+      # The wallet projection route is off by default; WalletProjectionKafkaIT switches it on.
+      enabled: false
+  internal-auth:
+    issuer: http://keycloak.test/realms/services
+  # The host test JVM has no OpenBao by default: plain HTTP. The mTLS ITs turn it on with
+  # PkiTestAuthority (controller/InternalApiMtlsIT, client/CryptoClientIT).
+  tls:
+    enabled: false
+camel:
+  component:
+    kafka:
+      # A closing test context does not wait the default 30 s per consumer for one caught mid-rebalance
+      # (cached contexts share the consumer group); nothing in a test depends on that drain.
+      shutdown-timeout: 100

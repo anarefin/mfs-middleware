@@ -5,14 +5,14 @@
 
 STACK_FILE="$REPO_DIR/deploy/docker-compose.yml"
 # the P2P and cash path of the API suite folders 01 / 03 (profile minimal)
-MINIMAL_SERVICES="mw-admin-api mw-app-gateway mw-audit-dw mw-core-mock mw-crypto mw-notify mw-orchestrator mw-simulators mw-ussd"
+MINIMAL_SERVICES="mw-admin-api mw-app-gateway mw-audit-dw mw-auth mw-core-mock mw-crypto mw-notify mw-orchestrator mw-simulators mw-ussd"
 PLATFORM_SERVICES="kafka kafka-init postgres valkey keycloak openbao etcd etcd-init apisix apisix-init greenmail"
 ONE_SHOT="kafka-init etcd-init apisix-init"
 SECRET_VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALTH_PASSWORD
   POSTGRES_PASSWORD VALKEY_PASSWORD KC_BOOTSTRAP_ADMIN_PASSWORD KC_PARTNER_SIM_SECRET
   KC_CUSTOMERS_TEST_PASSWORD KC_OPS_TEST_PASSWORD KC_OPS_TEST_TOTP_SECRET KC_PORTALS_TEST_PASSWORD KC_DB_PASSWORD
   MW_E2E_API_KEY BILLAGG_HMAC_SECRET C2WBANK_HMAC_SECRET CHECKOUT_DEMO_MERCHANT_SECRET
-  KC_MW_PORTAL_API_SECRET KC_MW_ADMIN_API_SECRET KC_MW_AUDIT_DW_SECRET MW_ADMIN_UI_AUTH_SECRET
+  KC_MW_PORTAL_API_SECRET KC_MW_ADMIN_API_SECRET KC_MW_AUDIT_DW_SECRET KC_MW_AUTH_SECRET MW_ADMIN_UI_AUTH_SECRET
   USSD_GP_GATEWAY_SECRET USSD_ROBI_GATEWAY_SECRET USSD_BL_GATEWAY_SECRET USSD_TELETALK_GATEWAY_SECRET
   SOFTHSM_MWCRYPTO_SO_PIN SOFTHSM_MWCRYPTO_USER_PIN SOFTHSM_PAYSIM_SO_PIN SOFTHSM_PAYSIM_USER_PIN"
 # The tester logins: fixed, documented fake values (ADR D9 amendment, docs/testing-guide.html section 1),
@@ -191,6 +191,7 @@ mw-admin-api:127.0.0.1:8088->8080
 mw-admin-ui:127.0.0.1:3000->3000
 mw-app-gateway:127.0.0.1:8081->8080
 mw-audit-dw:127.0.0.1:8087->8080
+mw-auth:127.0.0.1:8095->8080
 mw-checkout:127.0.0.1:8092->8080
 mw-core-mock:127.0.0.1:8084->8080
 mw-crypto:127.0.0.1:8094->8080
@@ -383,9 +384,9 @@ test_every_long_running_memory_limit_is_a_knob_with_the_laptop_default() {
   # the defaults are today's laptop values (MiB)
   j="$(compose_json)"
   expect="kafka=576 keycloak=608 postgres=320 apisix=384 greenmail=160 openbao=128 etcd=64 valkey=64 softhsm=48
-    mw-admin-ui=64 mw-crypto=320 mw-simulators=384 mw-orchestrator=448 mw-audit-dw=448 mw-core-mock=416 mw-notify=416
-    mw-app-gateway=416 mw-ussd=416 mw-admin-api=416 mw-adapter-telco=416 mw-adapter-billpay=416
-    mw-adapter-bank=416 mw-portal-api=416 mw-checkout=416"
+    mw-admin-ui=64 mw-crypto=320 mw-auth=320 mw-simulators=384 mw-orchestrator=448 mw-audit-dw=448 mw-core-mock=384
+    mw-notify=384 mw-app-gateway=384 mw-ussd=384 mw-admin-api=384 mw-adapter-telco=384 mw-adapter-billpay=384
+    mw-adapter-bank=384 mw-portal-api=384 mw-checkout=384"
   for s in $expect; do
     want=$(( ${s#*=} * 1048576 ))
     got="$(printf '%s' "$j" | jq -r --arg s "${s%%=*}" '.services[$s].deploy.resources.limits.memory')"
@@ -395,6 +396,8 @@ test_every_long_running_memory_limit_is_a_knob_with_the_laptop_default() {
     || fail "APP_XMX default is not a fixed 160m heap"
   printf '%s' "$j" | jq -e '.services["mw-crypto"].environment.JDK_JAVA_OPTIONS | test("-Xms112m -Xmx112m ")' >/dev/null \
     || fail "CRYPTO_XMX default is not a fixed 112m heap"
+  printf '%s' "$j" | jq -e '.services["mw-auth"].environment.JDK_JAVA_OPTIONS | test("-Xms112m -Xmx112m ")' >/dev/null \
+    || fail "AUTH_XMX default is not a fixed 112m heap"
   printf '%s' "$j" | jq -e '.services.kafka.environment.KAFKA_HEAP_OPTS == "-Xms256m -Xmx256m"' >/dev/null \
     || fail "KAFKA_HEAP default is not 256m"
   return 0
@@ -403,14 +406,16 @@ test_every_long_running_memory_limit_is_a_knob_with_the_laptop_default() {
 test_memory_knobs_override_the_limits_and_the_heap() {
   local j
   j="$(compose_json APP_MEM_LIMIT=512M APP_MEM_LIMIT_LARGE=640M SIM_MEM_LIMIT=400M KAFKA_MEM=1G APP_XMX=200m \
-    CRYPTO_MEM_LIMIT=384M CRYPTO_XMX=128m)"
+    CRYPTO_MEM_LIMIT=384M CRYPTO_XMX=128m AUTH_MEM_LIMIT=352M AUTH_XMX=144m)"
   printf '%s' "$j" | jq -e '(.services["mw-notify"].deploy.resources.limits.memory | tonumber) == 536870912
     and (.services["mw-orchestrator"].deploy.resources.limits.memory | tonumber) == 671088640
     and (.services["mw-simulators"].deploy.resources.limits.memory | tonumber) == 419430400
     and (.services.kafka.deploy.resources.limits.memory | tonumber) == 1073741824
     and (.services["mw-notify"].environment.JDK_JAVA_OPTIONS | test("-Xms200m -Xmx200m "))
     and (.services["mw-crypto"].deploy.resources.limits.memory | tonumber) == 402653184
-    and (.services["mw-crypto"].environment.JDK_JAVA_OPTIONS | test("-Xms128m -Xmx128m "))' >/dev/null \
+    and (.services["mw-crypto"].environment.JDK_JAVA_OPTIONS | test("-Xms128m -Xmx128m "))
+    and (.services["mw-auth"].deploy.resources.limits.memory | tonumber) == 369098752
+    and (.services["mw-auth"].environment.JDK_JAVA_OPTIONS | test("-Xms144m -Xmx144m "))' >/dev/null \
     || fail "memory knobs not honoured: $(printf '%s' "$j" | jq -c '[.services["mw-notify","mw-orchestrator","mw-simulators","kafka"].deploy.resources.limits.memory]')"
 }
 

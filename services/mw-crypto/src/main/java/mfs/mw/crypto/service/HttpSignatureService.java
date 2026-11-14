@@ -134,6 +134,7 @@ public class HttpSignatureService {
     }
     HttpSignatureAlgorithm requested = requested(r.alg(), keyAlg);
     Map<String, String> given = values(r.components(), null);
+    Set<String> required = required(r.requiredComponents());
 
     Map<String, Object> inputs;
     Map<String, Object> signatures;
@@ -148,7 +149,6 @@ public class HttpSignatureService {
         || !(signatures.get(label) instanceof Item sigItem) || !(sigItem.value() instanceof byte[] signature)) {
       return SignatureCheck.invalid("MALFORMED_SIGNATURE");
     }
-    Set<String> names = new HashSet<>();
     Map<String, String> values = new HashMap<>();
     for (Item item : list.items()) {
       if (!(item.value() instanceof String name) || !validParams(item.params())) {
@@ -158,10 +158,9 @@ public class HttpSignatureService {
       if (values.containsKey(id)) {
         return SignatureCheck.invalid("MALFORMED_SIGNATURE");
       }
-      names.add(name);
       values.put(id, given.get(id));
     }
-    if (r.requiredComponents() != null && !names.containsAll(r.requiredComponents())) {
+    if (!values.keySet().containsAll(required)) {
       return SignatureCheck.invalid("REQUIRED_COMPONENT_NOT_COVERED");
     }
     if (values.containsValue(null)) {
@@ -306,6 +305,40 @@ public class HttpSignatureService {
       if (covered != null) {
         covered.add(new Item(c.name(), new LinkedHashMap<>(params)));
       }
+    }
+    return out;
+  }
+
+  /**
+   * The identities the signature must cover (security review of ticket 65): a bare name means that
+   * component without parameters only; a serialised identifier ({@code "content-digest";sf}) means
+   * exactly that component with exactly those parameters. Compared as {@link #identity}, the same
+   * string the signature base uses, so {@code "content-digest";req} never satisfies {@code
+   * content-digest}. A malformed entry is 400 {@code MW-VAL-001}.
+   */
+  private static Set<String> required(List<String> entries) {
+    Set<String> out = new HashSet<>();
+    if (entries == null) {
+      return out;
+    }
+    for (int k = 0; k < entries.size(); k++) {
+      String e = entries.get(k);
+      String field = "requiredComponents[" + k + "]";
+      if (e != null && !e.startsWith("\"") && e.matches(Formats.HTTP_COMPONENT)) {
+        out.add(identity(e, Map.of()));
+        continue;
+      }
+      Item item;
+      try {
+        item = e == null ? null : StructuredFields.parseItem(e);
+      } catch (IllegalArgumentException ex) {
+        item = null;
+      }
+      if (item == null || !(item.value() instanceof String name) || !name.matches(Formats.HTTP_COMPONENT)
+          || name.equals("@signature-params") || !validParams(item.params())) {
+        throw CryptoErrors.invalidField(field, "a component name or an RFC 9421 component identifier");
+      }
+      out.add(identity(name, item.params()));
     }
     return out;
   }

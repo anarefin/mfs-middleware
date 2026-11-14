@@ -1,0 +1,15 @@
+# Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
+# `#<Msg>` names one message type of a multi-type topic, e.g.
+#   events/mw-orchestrator/core.command.v1.schema.json#HoldFunds
+# `./gradlew :contractsLint` checks every entry exists; the module's build.gradle.kts tracks the listed
+# contracts as test inputs, so only the modules a contract change affects re-run their tests.
+# Ticket 67: the wallet projection from the core (WalletStateChanged, contracts/ConsumedContractsTest)
+# and mw-crypto as a client (client/CryptoClient: tokens, envelope). The internal API of mw-auth
+# itself gets its contract with its first operation (ticket 71).
+produces:
+  events: []
+  apis: []
+consumes:
+  events:
+    - events/mw-core-mock/core.event.v1.schema.json#WalletStateChanged
+  apis: [api/mw-crypto/crypto-internal.v1.openapi.yaml]

@@ -14,7 +14,7 @@
 #   (none)    platform services and one-shots: always start
 #   minimal   the P2P and cash path the API suite folders 01 and 03 need (orchestrator, core mock,
 #             app gateway, simulators, notify, audit-dw, ussd, admin-api; softhsm and mw-crypto, the HSM
-#             gateway the security tickets 67-72 put on that path)
+#             gateway, and mw-auth, wallet authentication: the security tickets 67-72 put them on that path)
 #   core      every mw-* service and mw-admin-ui
 #   seed      mw-seeder (ticket 57)
 #
@@ -28,7 +28,7 @@
 # ops = Keycloak, OpenBao, APISIX Admin API callers. ops has a fixed subnet (MW_OPS_SUBNET)
 # because the APISIX Admin API only accepts callers from it. etcd sits alone on the internal
 # `etcd` network with APISIX (and its init step). Host ports (dev stack, BitsPay pattern; ADR D3
-# amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8094), the
+# amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8095), the
 # two consoles (3000, 3001) and the platform (postgres 5432, valkey 6379, kafka 9094, keycloak 8180,
 # openbao 8200, greenmail 8025 / 3025, softhsm 5657 / 5658) also publish a port on 127.0.0.1 only
 # (MW_PORT_<NAME> moves one). The direct ports skip the edge policies (JWT, HMAC, quotas) and are for poking at one
@@ -57,12 +57,16 @@
 #   knob (default)              containers           measured peak MiB (RUNNING.html start + seed +
 #                                                    api-test folders 00, 01, 05, 2026-11-06, heap 160m;
 #                                                    *: full Cucumber run 2026-11-05)
-#   APP_MEM_LIMIT (416M)        every other mw-*     313-362 (Serial GC, tiered JIT; Hikari pool 3, 4 for the busy three)
+#   APP_MEM_LIMIT (384M)        every other mw-*     313-362 (Serial GC, tiered JIT; Hikari pool 3, 4 for the busy three;
+#                                                    416 -> 384 in ticket 67 to free memory for mw-auth: 10 x 32 MiB)
 #   APP_MEM_LIMIT_LARGE (448M)  mw-orchestrator,     369, 320
 #                               mw-audit-dw
 #   SIM_MEM_LIMIT (384M)        mw-simulators        287
 #   CRYPTO_MEM_LIMIT (320M)     mw-crypto            275 (ticket 62: start + key bootstrap, heap CRYPTO_XMX)
 #   CRYPTO_XMX (112m)           heap (-Xms = -Xmx) of mw-crypto: no Kafka consumers, a pool of 3
+#   AUTH_MEM_LIMIT (320M)       mw-auth              not measured yet (ticket 67: sized like mw-crypto, which
+#                                                    peaks at 275 with the same heap; re-measure at the gate)
+#   AUTH_XMX (112m)             heap (-Xms = -Xmx) of mw-auth: one Kafka consumer group, a pool of 3
 #   APP_XMX (160m)              heap (-Xms = -Xmx) of every mw-* service (x-jvm-env)
 #   KAFKA_MEM (576M)            kafka                469  (KAFKA_HEAP (256m) fixed heap; 1 partition per topic, MW_KAFKA_PARTITIONS)
 #   KEYCLOAK_MEM (608M)         keycloak             483  (heap 128..384m)
@@ -75,7 +79,8 @@
 #   VALKEY_MEM (64M)            valkey                 8
 #   ADMIN_UI_MEM (64M)          mw-admin-ui           46  (Node.js standalone server; 160 -> 64 in ticket 62
 #                                                    to free memory for mw-crypto: peak x 1.3, rounded up)
-#   long-running total with the defaults: 8176 of the 8192 guard (sum of the measured peaks: 6249)
+#   long-running total with the defaults: 8176 of the 8192 guard (ticket 67: -320 APP_MEM_LIMIT, +320
+#                                                    mw-auth; sum of the measured peaks: 6249 without mw-auth)
 #   fixed (outside the guard): one-shots exit before their service starts: provision 128,
 #   kafka-init 512 (3 parallel CLI JVMs; 8 were OOM-killed at 384), apisix-init 256, etcd-init 64,
 #   mw-seeder 256; mw-test-console 192 (profile tester)
@@ -177,6 +182,7 @@ volumes:
   # role-id / secret-id written by provision, each read by its own service only (Spring configtree)
   core-mock-approle:
   crypto-approle:
+  auth-approle:
   simulators-approle:
   adapter-telco-approle:
   adapter-billpay-approle:
@@ -382,6 +388,7 @@ services:
       KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?cp dev.env.defaults .env}
       KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUDIT_DW_SECRET: ${KC_MW_AUDIT_DW_SECRET:?cp dev.env.defaults .env}
+      KC_MW_AUTH_SECRET: ${KC_MW_AUTH_SECRET:?cp dev.env.defaults .env}
       JAVA_OPTS_KC_HEAP: -Xms128m -Xmx384m
     volumes:
       - ./keycloak/realms:/opt/keycloak/data/import:ro
@@ -657,6 +664,7 @@ services:
       CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?cp dev.env.defaults .env}
       KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUDIT_DW_SECRET: ${KC_MW_AUDIT_DW_SECRET:?cp dev.env.defaults .env}
+      KC_MW_AUTH_SECRET: ${KC_MW_AUTH_SECRET:?cp dev.env.defaults .env}
       KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?cp dev.env.defaults .env}
       USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?cp dev.env.defaults .env}
@@ -671,6 +679,7 @@ services:
       # one volume per service, at /out/<dir> as listed in services.sh
       - core-mock-approle:/out/core-mock
       - crypto-approle:/out/crypto
+      - auth-approle:/out/auth
       - simulators-approle:/out/simulators
       - orchestrator-approle:/out/orchestrator
       - audit-dw-approle:/out/audit-dw
@@ -706,9 +715,12 @@ services:
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
       # Dev stack only: the test-only wallet seed API mw-seeder uses (ticket 57, core-mock-seed.v1).
       MW_COREMOCK_SEED_API_ENABLED: "true"
+      # Dev stack only: every wallet as WalletStateChanged SNAPSHOT on start (ticket 67), so mw-auth's
+      # wallet projection catches up with a ledger it missed (idempotent by version).
+      MW_COREMOCK_WALLET_SNAPSHOT: "true"
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
 
   # The HSM gateway (ticket 62, spec 18.8, ADR D23): the only HSM client. Logs in to the softhsm
   # mw-crypto token (user PIN from OpenBao secret/mw-crypto) over the p11-kit proxy of its image and
@@ -758,6 +770,49 @@ services:
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${CRYPTO_MEM_LIMIT:-320M}" }
+
+  # Wallet authentication and PIN custody (ticket 67, spec 18.7, ADRs D20-D22). Keeps auth.wallet, a
+  # projection of the core's WalletStateChanged events (core.wallet.event.v1), with the MSISDN hashed
+  # and encrypted through mw-crypto (mTLS + realm services client mw-auth). Ports: 8080 public
+  # /auth/v1/** (published as 8095, behind APISIX from ticket 69), 8443 internal /internal/v1/** with
+  # mTLS (D24: client certificate of pki_int + service JWT; not published), 8081 actuator (plain, not
+  # published).
+  mw-auth:
+    <<: *app
+    profiles: *minimal
+    ports:
+      - "127.0.0.1:${MW_PORT_AUTH:-8095}:8080"
+    image: mfs-mw/mw-auth:local
+    build: { context: ../services/mw-auth, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+      mw-crypto: { condition: service_healthy }
+    volumes:
+      - auth-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      # its own heap knob (AUTH_XMX), the other sizes as x-jvm-env
+      JDK_JAVA_OPTIONS: >-
+        -Xms${AUTH_XMX:-112m} -Xmx${AUTH_XMX:-112m} -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m -Xss512k
+        -XX:MaxDirectMemorySize=64m
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/8081 &&
+          printf 'GET /actuator/health/readiness HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"status":"UP"' <&3
+      interval: 5s
+      timeout: 3s
+      start_period: 30s
+      start_interval: 1s
+      retries: 3
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: "${AUTH_MEM_LIMIT:-320M}" }
 
   # Partner, SMSC and USSD gateway simulators (OCS, bill aggregator, C2W bank, merchant IPN).
   mw-simulators:
@@ -880,7 +935,7 @@ services:
       MW_APP_DEVICE_OTP_MAX_SENDS: ${MW_APP_DEVICE_OTP_MAX_SENDS:-20}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
 
   # SMS over SMPP and email over SMTP (spec 10).
   mw-notify:
@@ -910,7 +965,7 @@ services:
       MW_NOTIFY_FLYWAY_LOCATIONS: ${MW_NOTIFY_FLYWAY_LOCATIONS:-classpath:db/migration,classpath:db/dev}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
 
   # USSD menus over HTTP and SMPP (spec 9.2); in minimal for the @p2p / @cash USSD scenarios.
   mw-ussd:
@@ -936,7 +991,7 @@ services:
       MW_USSD_SMPP_GP_PORT: ${MW_USSD_SMPP_GP_PORT:-2776}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
 
   # Operator admin API (spec 15); in minimal for the @p2p operator and template scenarios.
   mw-admin-api:
@@ -961,7 +1016,7 @@ services:
       MW_ADMIN_JWK_SET_URI: ${MW_ADMIN_JWK_SET_URI:-http://keycloak:8080/realms/ops/protocol/openid-connect/certs}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
 
   # ------------------------------------------------------------ core: the rest of the stack
   # Mobile top-up adapter: OCS (spec 12); the dev profile seeds the partners on the simulator.
@@ -987,7 +1042,7 @@ services:
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
 
   # Bill payment adapter: utility bill aggregator (spec 12).
   mw-adapter-billpay:
@@ -1015,7 +1070,7 @@ services:
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
 
   # Add money adapter: C2W bank (spec 12).
   mw-adapter-bank:
@@ -1042,7 +1097,7 @@ services:
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
 
   # Organisation portal API and bulk disbursement (spec 8.2, 9.4).
   mw-portal-api:
@@ -1067,7 +1122,7 @@ services:
       MW_BULK_RATE_PER_SECOND: ${MW_BULK_RATE_PER_SECOND:-50}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
 
   # Merchant checkout API and hosted payment page API (spec 9.3).
   mw-checkout:
@@ -1097,7 +1152,7 @@ services:
       MW_CHECKOUT_IPN_POLL_PERIOD: ${MW_CHECKOUT_IPN_POLL_PERIOD:-2s}
     deploy:
       resources:
-        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
 
   # The admin console (Next.js, spec 15.1). Operation zone only (18.1): the `ops` network, where
   # APISIX (which routes /console/* here and /admin/v1/* to mw-admin-api) and Keycloak are. The
@@ -1197,6 +1252,7 @@ services:
       mw-orchestrator: { condition: service_healthy }
       mw-core-mock: { condition: service_healthy }
       mw-crypto: { condition: service_healthy }
+      mw-auth: { condition: service_healthy }
       mw-admin-api: { condition: service_healthy }
       mw-app-gateway: { condition: service_healthy }
       mw-simulators: { condition: service_healthy }
