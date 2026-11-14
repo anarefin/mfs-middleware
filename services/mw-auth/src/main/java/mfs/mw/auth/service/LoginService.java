@@ -5,9 +5,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import mfs.mw.auth.client.CryptoClient;
 import mfs.mw.auth.config.DeviceBindingProperties;
-import mfs.mw.auth.dto.CryptoEnvelope;
 import mfs.mw.auth.dto.EncryptedPin;
 import mfs.mw.auth.dto.ErrorDetail;
 import mfs.mw.auth.dto.PinHmac;
@@ -26,7 +24,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Wallet login and the session's tokens (spec 18.7 steps 3-5, D21; ticket 69).
@@ -34,7 +31,7 @@ import tools.jackson.databind.json.JsonMapper;
  * <ul>
  *   <li>Login ({@code POST /auth/v1/sessions}), in this order: the wallet's status and locks ({@link
  *       WalletAccess#check}), the device bound to this wallet (MW-AUTH-047) and its signature, then the
- *       PIN through mw-crypto ({@link PinService}); a wallet without a PIN gives a {@code LOGIN} OTP
+ *       PIN through {@link PinVerifier} (lockout); a wallet without a PIN gives a {@code LOGIN} OTP
  *       instead and gets {@code amr} [otp, device]. Tokens by {@link TokenService}; the session {@code
  *       sess:{walletId}:{deviceId}} is opened with the app's idle timeout.
  *   <li>Refresh: signed by the device the token was issued to, rotated ({@link TokenService#rotate}),
@@ -59,14 +56,16 @@ public class LoginService {
   private final DeviceRepository devices;
   private final SignedRequestCheck signed;
   private final PinService pins;
+  private final PinVerifier verifier;
+  private final AuditTrail audit;
+  private final org.springframework.transaction.support.TransactionTemplate tx;
   private final DeviceOtpService otps;
   private final TokenService tokens;
   private final RefreshTokenRepository refresh;
   private final CredentialRepository credentials;
   private final DeviceSessionStore sessions;
   private final DeviceBindingProperties props;
-  private final CryptoClient crypto;
-  private final JsonMapper json;
+  private final PinNotices notices;
   private final java.time.Clock clock;
 
   public LoginService(
@@ -74,27 +73,31 @@ public class LoginService {
       DeviceRepository devices,
       SignedRequestCheck signed,
       PinService pins,
+      PinVerifier verifier,
+      AuditTrail audit,
+      org.springframework.transaction.support.TransactionTemplate tx,
       DeviceOtpService otps,
       TokenService tokens,
       RefreshTokenRepository refresh,
       CredentialRepository credentials,
       DeviceSessionStore sessions,
       DeviceBindingProperties props,
-      CryptoClient crypto,
-      JsonMapper json,
+      PinNotices notices,
       java.time.Clock clock) {
     this.wallets = wallets;
     this.devices = devices;
     this.signed = signed;
     this.pins = pins;
+    this.verifier = verifier;
+    this.audit = audit;
+    this.tx = tx;
     this.otps = otps;
     this.tokens = tokens;
     this.refresh = refresh;
     this.credentials = credentials;
     this.sessions = sessions;
     this.props = props;
-    this.crypto = crypto;
-    this.json = json;
+    this.notices = notices;
     this.clock = clock;
   }
 
@@ -117,7 +120,7 @@ public class LoginService {
     boolean hasPin = wallets.hasPin(w.walletId());
     List<String> amr;
     if (pin != null) {
-      pins.verify(w.walletId(), pin);
+      verifier.verify(w.walletId(), pin);
       amr = PIN_AMR;
     } else {
       if (hasPin) {
@@ -146,7 +149,7 @@ public class LoginService {
     AuthWallet w = wallets.byId(current.walletId()).orElseThrow(LoginService::deviceMismatch);
     String role = TokenService.role(w.type());
     wallets.check(w);
-    TokenPair pair = tokens.issue(w, msisdnOf(w), deviceId, current.amr(), current.family());
+    TokenPair pair = tokens.issue(w, wallets.msisdnOf(w), deviceId, current.amr(), current.family());
     Duration idle = open(w.walletId(), deviceId, role);
     log.atInfo().addKeyValue("event", "auth.refresh").addKeyValue("channel", channel(role))
         .log("Tokens refreshed on device {}", deviceId);
@@ -170,7 +173,7 @@ public class LoginService {
     }
     String role = TokenService.role(w.type());
     wallets.check(w);
-    PinHmac hmac = pins.derive(walletId, pin, null);
+    PinHmac hmac = pins.newPin(w, msisdn, pin);
     if (!credentials.insertIfAbsent(walletId, hmac, clock.instant())) {
       throw new MwException(ErrorCodes.AUTH_FORBIDDEN, "A PIN is already set").withStatus(HttpStatus.FORBIDDEN);
     }
@@ -178,6 +181,43 @@ public class LoginService {
     TokenPair pair = tokens.issue(w, msisdn, deviceId, PIN_AMR);
     Duration idle = open(walletId, deviceId, role);
     log.atInfo().addKeyValue("event", "auth.pin.set").log("First PIN set on device {}", deviceId);
+    return pair.withSession(idle.toSeconds(), true);
+  }
+
+  /**
+   * PIN change ({@code PUT /auth/v1/pin}, ticket 70): the bearer of a PIN session (an OTP session: 403
+   * MW-AUTH-045), its family live; the wallet's status and locks, then the current PIN through {@link
+   * PinVerifier} (counted, locked), then the new PIN against the policy; the credential replaced
+   * (the old PIN kept for the reuse rule), audited, the wallet told by SMS; the session replaced by a
+   * new one with a fresh {@code amr}.
+   */
+  public TokenPair changePin(
+      String walletId, String msisdn, String deviceId, String sid, List<String> amr, EncryptedPin current,
+      EncryptedPin next) {
+    UUID family = UUID.fromString(sid);
+    AuthWallet w = wallets.byId(walletId).orElseThrow(LoginService::forbidden);
+    if (!refresh.familyLive(family, clock.instant())) {
+      throw new MwException(ErrorCodes.AUTH_UNAUTHENTICATED, "Session ended; sign in again");
+    }
+    if (amr == null || !amr.contains("pin")) {
+      throw PinService.notSet();
+    }
+    String role = TokenService.role(w.type());
+    wallets.check(w);
+    verifier.verify(walletId, current);
+    PinHmac hmac = pins.newPin(w, msisdn, next);
+    java.time.Instant now = clock.instant();
+    tx.executeWithoutResult(status -> {
+      var before = credentials.credential(walletId);
+      credentials.replace(walletId, hmac, pins.historyAfter(before), now);
+      audit.record("auth.pin.changed", walletId, mfs.mw.auth.mapper.AuditEventMapper.wallet(walletId), "SUCCESS",
+          null, Map.of("channel", channel(role)));
+      notices.pinChanged(msisdn);
+    });
+    tokens.revoke(family);
+    TokenPair pair = tokens.issue(w, msisdn, deviceId, PIN_AMR);
+    Duration idle = open(walletId, deviceId, role);
+    log.atInfo().addKeyValue("event", "auth.pin.changed").log("PIN changed on device {}", deviceId);
     return pair.withSession(idle.toSeconds(), true);
   }
 
@@ -191,11 +231,6 @@ public class LoginService {
     return devices.find(deviceId)
         .filter(x -> x.bound() && x.walletId().equals(walletId))
         .orElseThrow(LoginService::deviceMismatch);
-  }
-
-  private String msisdnOf(AuthWallet w) {
-    CryptoEnvelope env = json.readValue(w.msisdnEnc(), CryptoEnvelope.class);
-    return new String(crypto.decrypt(env), java.nio.charset.StandardCharsets.UTF_8);
   }
 
   private static PublicKey key(AuthDevice d) {

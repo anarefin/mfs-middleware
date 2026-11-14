@@ -86,7 +86,7 @@ class DeviceControllerTest {
   void anOtpRequestBreakingTheSchemaIsRefusedBeforeTheService() {
     for (String body : new String[] {
         null, "{\"locale\":\"en\"}", "{\"msisdn\":\"" + MSISDN + "\",\"locale\":\"fr\"}",
-        "{\"msisdn\":\"" + MSISDN + "\",\"purpose\":\"RESET\"}", "{\"msisdn\":\"" + MSISDN + "\",\"lang\":\"en\"}",
+        "{\"msisdn\":\"" + MSISDN + "\",\"purpose\":\"CHECKOUT\"}", "{\"msisdn\":\"" + MSISDN + "\",\"lang\":\"en\"}",
         "{\"msisdn\":\"12345\"}", "[]", "{} {}", "{"}) {
       assertThat(post("/auth/v1/otp", body)).as(body).hasStatus(400)
           .bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-001");

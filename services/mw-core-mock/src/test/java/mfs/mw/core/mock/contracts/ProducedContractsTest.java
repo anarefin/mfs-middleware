@@ -47,6 +47,15 @@ class ProducedContractsTest {
         1, type, TXN + ":" + step, TXN, "corr-0001", issued, issued.plusSeconds(5), JSON.createObjectNode());
   }
 
+  static final String RESET_ID = "3f6b1c2d-4e5f-4a6b-9c7d-8e9f0a1b2c3d";
+
+  /** mw-auth's VerifyCustomerFactors (ticket 70): commandId pin-reset:<resetId>. */
+  static CoreCommand factorsCommand() {
+    Instant issued = Instant.parse("2026-11-14T08:15:30Z");
+    return new CoreCommand(1, "VerifyCustomerFactors", "pin-reset:" + RESET_ID, TXN, "corr-0070", issued,
+        issued.plusSeconds(900), JSON.createObjectNode());
+  }
+
   static List<CoreEvent.BalanceAfter> balances() {
     return List.of(
         new CoreEvent.BalanceAfter("01711000001", Amount.bdt(1_200_000)),
@@ -142,6 +151,14 @@ class ProducedContractsTest {
               () -> EVENTS.rejected(
                   command("UnlockWallet", "unlock"), CoreEventMapper.failureType("UnlockWallet"), CORE_REF,
                   "WALLET_NOT_LOCKED", "Wallet is not locked")),
+          Map.entry(
+              EVENT + "#CustomerFactorsVerified",
+              () -> EVENTS.succeeded(factorsCommand(), "CustomerFactorsVerified", CORE_REF, null,
+                  Map.of("walletId", "01711000001", "resetId", RESET_ID))),
+          Map.entry(
+              EVENT + "#CustomerFactorsRejected",
+              () -> EVENTS.factorsRejected(factorsCommand(), CORE_REF, "FACTORS_MISMATCH", "KYC factors do not match",
+                  RESET_ID)),
           Map.entry(
               EVENT + "#WalletStateChanged",
               () -> EVENTS.walletStateChanged(

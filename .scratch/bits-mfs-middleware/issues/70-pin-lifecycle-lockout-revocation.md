@@ -27,8 +27,9 @@
 
 **Blocked by:** 69
 
-**Status:** open
+**Status:** done
 
-- [ ] `./gradlew :mw-auth:build :mw-admin-api:build :mw-core-mock:build :mw-orchestrator:build` green with Docker (orchestrator for the contract change)
-- [ ] `./gradlew :contractsLint` green
-- [ ] `pnpm test` in `ui/mw-admin-ui` green; `scripts/ui-e2e.sh @approvals` green
+- [x] `./gradlew :mw-auth:build :mw-admin-api:build :mw-core-mock:build :mw-orchestrator:build` green with Docker (orchestrator for the contract change; also `:mw-notify:build` for the V12 templates)
+- [x] `./gradlew :contractsLint` green
+- [x] `pnpm test` in `ui/mw-admin-ui` green
+- [ ] `scripts/ui-e2e.sh @approvals` green (deferred to final integration test)

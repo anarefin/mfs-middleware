@@ -20,6 +20,12 @@ public class DeviceNotificationMapper {
   public static final String BOUND_TEMPLATE = "DEVICE_BOUND";
   /** The first-PIN login OTP (ticket 69; mw-notify V11). */
   public static final String LOGIN_OTP_TEMPLATE = "LOGIN_OTP";
+  /** The PIN reset OTP (ticket 70; mw-notify V12). */
+  public static final String RESET_OTP_TEMPLATE = "PIN_RESET_OTP";
+  /** A care PIN reset was approved: ask for a reset OTP in the app (ticket 70; mw-notify V12). */
+  public static final String RESET_APPROVED_TEMPLATE = "PIN_RESET_APPROVED";
+  /** The wallet's PIN was changed or reset (ticket 70; mw-notify V12). */
+  public static final String PIN_CHANGED_TEMPLATE = "PIN_CHANGED";
   /** mw-notify's default locale, used when the app names none. */
   public static final String DEFAULT_LOCALE = "bn";
 
@@ -27,10 +33,14 @@ public class DeviceNotificationMapper {
     return otp(wallet, otp, locale, expiresAt, correlationId, "BIND");
   }
 
-  /** The OTP SMS of a purpose: {@code BIND} (device binding) or {@code LOGIN} (first PIN). */
+  /** The OTP SMS of a purpose: {@code BIND} (device binding), {@code LOGIN} (first PIN) or {@code RESET}. */
   public NotificationRequest otp(
       String wallet, String otp, String locale, Instant expiresAt, String correlationId, String purpose) {
-    String template = "LOGIN".equals(purpose) ? LOGIN_OTP_TEMPLATE : OTP_TEMPLATE;
+    String template = switch (purpose) {
+      case "LOGIN" -> LOGIN_OTP_TEMPLATE;
+      case "RESET" -> RESET_OTP_TEMPLATE;
+      default -> OTP_TEMPLATE;
+    };
     return new NotificationRequest(
         1, "device-otp:" + UUID.randomUUID(), correlationId, new NotificationRequest.Recipient(wallet),
         template, locale(locale), Map.of("otp", otp), List.of("SMS"), "OTP", expiresAt);
@@ -40,6 +50,13 @@ public class DeviceNotificationMapper {
     return new NotificationRequest(
         1, "device-bound:" + UUID.randomUUID(), correlationId, new NotificationRequest.Recipient(wallet),
         BOUND_TEMPLATE, locale(locale), Map.of(), List.of("SMS"), "TXN", null);
+  }
+
+  /** A notice without parameters (template {@code PIN_RESET_APPROVED}, {@code PIN_CHANGED}), priority TXN. */
+  public NotificationRequest notice(String wallet, String template, String locale, String correlationId) {
+    return new NotificationRequest(
+        1, "pin-notice:" + UUID.randomUUID(), correlationId, new NotificationRequest.Recipient(wallet),
+        template, locale(locale), Map.of(), List.of("SMS"), "TXN", null);
   }
 
   public static String locale(String locale) {

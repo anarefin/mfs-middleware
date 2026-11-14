@@ -93,7 +93,8 @@ edge config, `provision` every service's OpenBao secret, database role, schema a
 14 services and the admin console, then the one-shot `mw-seeder`. `provision` runs again on every
 `up` and creates what is missing, so a new service's schema appears without dropping volumes.
 `deploy/.env` carries the short test timers (core and partner deadlines, status inquiry, reversal,
-retry topics, bulk, IPN) the API suite needs; for the production timers delete the timer block from
+retry topics, bulk, IPN, and the mw-auth PIN lockout levels `MW_AUTH_LOCK_TRIES`, `MW_AUTH_LOCK_LEVEL1`,
+`MW_AUTH_LOCK_LEVEL2`, `MW_AUTH_LOCK_DECAY`: 1 min and 3 min instead of 1 h and 24 h) the API suite needs; for the production timers delete the timer block from
 `deploy/.env` and run the start command again (it recreates the services). On a warm Docker cache the command takes 1–2 minutes; the first run pulls the platform
 images and builds 16 images.
 

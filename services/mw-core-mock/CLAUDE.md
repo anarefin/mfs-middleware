@@ -11,8 +11,18 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   (`route/CorePaymentCommandRoute`), both with retry topics + DLQ. Handled: `ValidateTransaction`
   (fee, limits, PIN, account status; moves no money), `PostTransfer` (double-entry debit/credit plus
   fee), `HoldFunds`, `CommitHold`, `ReleaseHold`, `CreditWallet`, `ReverseTransaction`,
-  `QueryTransaction`, `UnlockWallet` (ticket 52). `ApplyComplianceAction` and unknown types are
-  logged and ignored.
+  `QueryTransaction`, `UnlockWallet` (ticket 52), `VerifyCustomerFactors` (ticket 70). `ApplyComplianceAction`
+  and unknown types are logged and ignored.
+- `VerifyCustomerFactors` (ticket 70, mw-auth's self-service PIN reset; `dto/FactorsPayload`,
+  `CoreCommandMapper.factors`): the KYC factors arrive as TOKENISE_NID hashes the mock cannot recompute
+  (no KYC data, no mw-crypto key), so it checks the wallet only: unknown `CustomerFactorsRejected
+  WALLET_NOT_FOUND`, BLOCKED / HOLD `WALLET_NOT_ACTIVE` (a core LOCKED wallet may still reset), else
+  `CustomerFactorsVerified {walletId, resetId}`; a mismatch is played with a REJECT fault (`reasonCode`
+  e.g. `FACTORS_MISMATCH`; `CoreEventMapper.factorsRejected` carries the resetId). The real core compares
+  the hashes with its KYC record (open point). Events on `core.wallet.event.v1` with commandId
+  `pin-reset:<resetId>`; mw-orchestrator drops them (`txn.unknown`), mw-auth consumes them.
+- Ticket 70 also moved the ops unlock's PIN part to mw-auth (`auth.wallet-lock.v1`); `UnlockWallet`
+  stays for this core's own LOCKED status while it still checks PINs (ticket 72 decides).
 - **Topic decision (spec 6.3 does not say which command goes where):** the mock accepts every
   command type on either command topic and answers on the paired event topic (wallet command ->
   `core.wallet.event.v1`, payment command -> `core.payment.event.v1`). The handler never looks at
@@ -131,7 +141,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   `CREDIT_WALLET_NOT_FOUND`, `INVALID_COUNTERPARTY`, `ACCOUNT_LOCKED`, `ACCOUNT_BLOCKED`,
   `CREDIT_ACCOUNT_BLOCKED`, `SAME_WALLET`, `INVALID_PIN`, `INVALID_PIN_BLOCK`, `INVALID_AMOUNT`,
   `LIMIT_EXCEEDED_PER_TXN`, `LIMIT_EXCEEDED_DAILY`, `INSUFFICIENT_BALANCE`, plus the hold and
-  reversal reasons above and `WALLET_NOT_LOCKED` (unlock). Check order: wallets, wallet types, status, PIN, amount, limits, funds.
+  reversal reasons above, `WALLET_NOT_LOCKED` (unlock), `FACTORS_MISMATCH` and `WALLET_NOT_ACTIVE`
+  (VerifyCustomerFactors). Check order: wallets, wallet types, status, PIN, amount, limits, funds.
 - PIN: RSA-OAEP with SHA-256 (hash and MGF1), PKCS#8 private key from OpenBao
   (`mw.coremock.pin.private-key`), checked against the wallet's bcrypt hash. The plaintext is never
   logged or stored. `GET /core-mock/v1/pin-public-key` exports `{keyId, algorithm, publicKeyPem}`.

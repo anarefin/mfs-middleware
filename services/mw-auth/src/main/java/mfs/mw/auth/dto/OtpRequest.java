@@ -8,9 +8,9 @@ import mfs.mw.auth.util.SensitiveType;
 
 /**
  * Body of {@code POST /auth/v1/otp}: the wallet's MSISDN, the purpose ({@code BIND}, the default, or
- * {@code LOGIN} for a first PIN) and the SMS language (mw-notify's default bn when absent).
+ * {@code LOGIN} for a first PIN, {@code RESET} for a PIN reset) and the SMS language (mw-notify's default bn when absent).
  */
 public record OtpRequest(
     @NotBlank @Pattern(regexp = Msisdn.PATTERN) @Sensitive(SensitiveType.MSISDN) String msisdn,
-    @Pattern(regexp = "BIND|LOGIN") String purpose,
+    @Pattern(regexp = "BIND|LOGIN|RESET") String purpose,
     @Pattern(regexp = "bn|en") String locale) {}

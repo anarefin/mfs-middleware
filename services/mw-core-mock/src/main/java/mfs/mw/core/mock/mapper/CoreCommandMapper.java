@@ -6,6 +6,7 @@ import mfs.mw.core.mock.dto.HoldPayload;
 import mfs.mw.core.mock.dto.QueryPayload;
 import mfs.mw.core.mock.dto.ReversePayload;
 import mfs.mw.core.mock.dto.TransferPayload;
+import mfs.mw.core.mock.dto.FactorsPayload;
 import mfs.mw.core.mock.dto.UnlockPayload;
 import mfs.mw.core.mock.exception.ErrorCodes;
 import mfs.mw.core.mock.exception.MwException;
@@ -95,6 +96,17 @@ public class CoreCommandMapper {
     UnlockPayload p = read(cmd, UnlockPayload.class);
     if (p == null || p.subject() == null || !"WALLET".equals(p.subject().type()) || blank(p.subject().id())) {
       throw new MwException(ErrorCodes.VAL_INVALID, "unlock payload is incomplete");
+    }
+    return p;
+  }
+
+  /** VerifyCustomerFactors (ticket 70): the wallet, the reset and the hashed factors, all required. */
+  public FactorsPayload factors(CoreCommand cmd) {
+    FactorsPayload p = read(cmd, FactorsPayload.class);
+    if (p == null || p.subject() == null || !"WALLET".equals(p.subject().type()) || blank(p.subject().id())
+        || blank(p.resetId()) || p.factors() == null || blank(p.factors().nidLast4Token())
+        || blank(p.factors().dateOfBirthToken()) || blank(p.factors().tokenKid())) {
+      throw new MwException(ErrorCodes.VAL_INVALID, "VerifyCustomerFactors payload is incomplete");
     }
     return p;
   }

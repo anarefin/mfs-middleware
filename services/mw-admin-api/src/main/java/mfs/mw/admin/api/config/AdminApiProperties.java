@@ -21,6 +21,7 @@ import org.springframework.validation.annotation.Validated;
  * @param internalAuth the client-credentials identity for {@code /internal/v1/**} (M3 gate decision)
  * @param orchestrator mw-orchestrator, e.g. {@code http://mw-orchestrator:8080}
  * @param auditDw mw-audit-dw, e.g. {@code http://mw-audit-dw:8080}
+ * @param auth mw-auth's internal port (mTLS), e.g. {@code https://mw-auth:8443} (ticket 70: the care PIN reset)
  * @param auditTrailLimit most audit events shown with one transaction (audit-query caps at 500)
  */
 @Validated
@@ -30,6 +31,7 @@ public record AdminApiProperties(
     @Valid @NotNull InternalAuth internalAuth,
     @Valid @NotNull Upstream orchestrator,
     @Valid @NotNull Upstream auditDw,
+    @Valid @NotNull Upstream auth,
     @NotNull @DefaultValue("2s") Duration connectTimeout,
     @NotNull @DefaultValue("5s") Duration readTimeout,
     @DefaultValue("500") @Min(1) @Max(500) int auditTrailLimit) {

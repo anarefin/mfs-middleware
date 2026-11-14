@@ -15,7 +15,9 @@ produces:
     - events/mw-admin-api/mw.config.changed.v1.schema.json
     - events/mw-orchestrator/mw.txn.request.v1.schema.json
     - events/mw-orchestrator/core.command.v1.schema.json#UnlockWallet
+    # ticket 70: the ops unlock also lifts mw-auth's PIN lock
+    - events/mw-auth/auth.wallet-lock.v1.schema.json
   apis:   [api/mw-admin-api/admin.v1.openapi.yaml]
 consumes:
   events: []
-  apis:   [api/mw-orchestrator/txn-query.v1.openapi.yaml, api/mw-audit-dw/audit-query.v1.openapi.yaml]
+  apis:   [api/mw-orchestrator/txn-query.v1.openapi.yaml, api/mw-audit-dw/audit-query.v1.openapi.yaml, api/mw-auth/auth-internal.v1.openapi.yaml]

@@ -175,6 +175,19 @@ mw:
     inbox: 7d
     batch-size: 1000
     cron: "0 0 * * * *"
+  # This service's certificate from OpenBao PKI (spec 18.2, D24; config/TlsProperties,
+  # config/ServiceCertificateManager, copied from the template, ticket 70): the client certificate
+  # mw-auth's internal port asks for (CN mw-admin-api == the token's azp). Client side only: the
+  # admin API itself stays plain HTTP behind APISIX. Off in tests.
+  tls:
+    enabled: ${MW_TLS_ENABLED:false}
+    pki-mount: pki_int
+    role: ${spring.application.name}
+    common-name: ${spring.application.name}
+    alt-names: ${MW_TLS_ALT_NAMES:${spring.application.name}}
+    ttl: 72h
+    retry-period: 1m
+    bundle: mw-service
   change-requests:
     # Maker-checker (spec 15.3, ticket 37): a request not decided within ttl expires; the
     # ShedLock-guarded expiry job (scheduler/ChangeRequestExpiryJob) marks and audits them.
@@ -197,6 +210,10 @@ mw:
       base-url: ${MW_ORCHESTRATOR_BASE_URL:http://mw-orchestrator:8080}
     audit-dw:
       base-url: ${MW_AUDIT_DW_BASE_URL:http://mw-audit-dw:8080}
+    # mw-auth's internal API (ticket 70: the care PIN reset on approval) over mTLS with this service's
+    # OpenBao certificate (mw.tls below) and the same services token (audience mw-auth).
+    auth:
+      base-url: ${MW_AUTH_INTERNAL_URL:https://mw-auth:8443}
     connect-timeout: 2s
     read-timeout: 5s
     # audit events shown with one transaction (audit-query.v1 caps a page at 500)

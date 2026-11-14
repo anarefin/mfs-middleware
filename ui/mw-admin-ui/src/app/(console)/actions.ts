@@ -9,7 +9,7 @@ import type { PartnerChangeBody } from "@/lib/admin-api";
 import { parseReason, parseTimeouts, parseWalletId } from "@/lib/approvals";
 import { adminApi, operatorToken } from "@/lib/server/admin";
 import { parseTemplateKey, templateProblems, type TemplateKey, type TemplateTexts } from "@/lib/templates";
-import type { ApiResult, ChangeRequest, ErrorEnvelope, PartnerAction, TxnAction } from "@/lib/types";
+import type { ApiResult, ChangeRequest, ErrorEnvelope, PartnerAction, TxnAction, WalletAction } from "@/lib/types";
 import { parseActivations, parseMenu, parseMenuId } from "@/lib/ussd-menu";
 
 export type ActionState = { status: number; error: ErrorEnvelope } | null;
@@ -51,11 +51,20 @@ export async function requestTxnAction(txnId: string, _prev: ActionState, form: 
 
 /** Maker: unlock a PIN-locked wallet (ticket 52). */
 export async function requestWalletUnlock(_prev: ActionState, form: FormData): Promise<ActionState> {
+  return requestWallet(form, "UNLOCK");
+}
+
+/** Maker: a care PIN reset of a wallet (ticket 70; mw-auth opens it once a checker approves). */
+export async function requestPinReset(_prev: ActionState, form: FormData): Promise<ActionState> {
+  return requestWallet(form, "PIN_RESET");
+}
+
+async function requestWallet(form: FormData, action: WalletAction): Promise<ActionState> {
   const walletId = parseWalletId(String(form.get("walletId") ?? ""));
   const reason = parseReason(form.get("reason"));
   if (!walletId) return invalid("walletId", "an MSISDN 01[3-9]XXXXXXXX");
   if (!reason) return invalid("reason", "1 to 500 characters");
-  const r = await adminApi().requestWalletAction(await token(), walletId, "UNLOCK", reason);
+  const r = await adminApi().requestWalletAction(await token(), walletId, action, reason);
   if (!r.ok) return refused(r);
   redirect(`/approvals?created=${encodeURIComponent(r.data.id)}`);
 }

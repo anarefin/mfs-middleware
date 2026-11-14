@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits wallet authentication internal API (mw-auth)
-  version: 1.1.0
+  version: 1.2.0
   description: |
     Internal API of mw-auth (spec 18.7, ADR D24), on its internal port (`https://mw-auth:8443`, the
     `app` zone network; not routed by APISIX). mTLS is mandatory: the TLS handshake needs a client
@@ -99,6 +99,40 @@ paths:
               schema: { $ref: "#/components/schemas/SeedPinsResult" }
         "400": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/pin-resets:
+    post:
+      operationId: approveCarePinReset
+      summary: An approved care PIN reset (mw-admin-api, after maker-checker)
+      description: >-
+        Ticket 70, spec 18.7 care reset. Only the client `mw-admin-api` (any other allowed client: 403
+        MW-AUTH-002). Called when an ops-checker approves an ops-maker's PIN_RESET change request:
+        mw-auth opens a `CARE` reset in status `APPROVED` (an open self-service reset of the wallet is
+        expired) and sends the customer an SMS to ask for a `RESET` OTP in the app and set a new PIN
+        (no KYC step). Idempotent on `changeRequestId`: the same request again answers the same reset
+        (200). A wallet mw-auth does not know is 404 MW-VAL-003.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CarePinResetRequest" }
+      responses:
+        "200":
+          description: The reset of this change request (already opened before)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CarePinReset" }
+        "201":
+          description: Reset opened, SMS queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CarePinReset" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     internalClientCredentials:
@@ -190,6 +224,24 @@ components:
             properties:
               walletId: { type: string }
               outcome: { type: string, enum: [CREATED, UNCHANGED, UNKNOWN_WALLET, WEAK] }
+    CarePinResetRequest:
+      type: object
+      additionalProperties: false
+      required: [walletId, changeRequestId, makerId, checkerId]
+      properties:
+        walletId: { type: string, pattern: "^[A-Za-z0-9._:+-]{1,64}$", description: The core's wallet id }
+        changeRequestId: { type: string, format: uuid }
+        makerId: { type: string, minLength: 1, maxLength: 128 }
+        checkerId: { type: string, minLength: 1, maxLength: 128 }
+        reason: { type: string, maxLength: 500 }
+        locale: { type: string, enum: [bn, en] }
+    CarePinReset:
+      type: object
+      required: [resetId, status, expiresAt]
+      properties:
+        resetId: { type: string, format: uuid }
+        status: { type: string, enum: [APPROVED, VERIFIED, DONE, EXPIRED] }
+        expiresAt: { type: string, format: date-time }
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]

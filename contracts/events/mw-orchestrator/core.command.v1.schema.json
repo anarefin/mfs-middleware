@@ -8,7 +8,7 @@
   "properties": {
     "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
     "commandType": {
-      "enum": ["ValidateTransaction", "HoldFunds", "CommitHold", "ReleaseHold", "PostTransfer", "CreditWallet", "ReverseTransaction", "QueryTransaction", "ApplyComplianceAction", "UnlockWallet"]
+      "enum": ["ValidateTransaction", "HoldFunds", "CommitHold", "ReleaseHold", "PostTransfer", "CreditWallet", "ReverseTransaction", "QueryTransaction", "ApplyComplianceAction", "UnlockWallet", "VerifyCustomerFactors"]
     },
     "commandId": { "$ref": "../../common/defs.v1.schema.json#/$defs/CommandId" },
     "txnId": { "$ref": "../../common/defs.v1.schema.json#/$defs/TxnId" },
@@ -80,6 +80,13 @@
       "properties": {
         "commandType": { "const": "UnlockWallet" },
         "payload": { "$ref": "core.command.v1/UnlockWallet.payload.schema.json" }
+      }
+    },
+    {
+      "properties": {
+        "commandType": { "const": "VerifyCustomerFactors" },
+        "commandId": { "type": "string", "pattern": "^pin-reset:" },
+        "payload": { "$ref": "core.command.v1/VerifyCustomerFactors.payload.schema.json" }
       }
     }
   ]

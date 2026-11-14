@@ -7,6 +7,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import mfs.mw.auth.dto.BoundDevice;
+import mfs.mw.auth.dto.CarePinReset;
+import mfs.mw.auth.dto.PinResetView;
 import mfs.mw.auth.dto.DeviceBound;
 import mfs.mw.auth.dto.DeviceOtpSent;
 import mfs.mw.auth.dto.PinKey;
@@ -76,6 +78,17 @@ class ApiContractsTest {
         new LiveSession("01711000001", "device-0001", 300, "ab".repeat(32), NOW));
     assertValid(OpenApiSchemas.component(INTERNAL_API, "SeedPinsResult"),
         new SeedPinsResult(List.of(new SeedPinsResult.Outcome("01711000001", "CREATED"))));
+  }
+
+  @Test
+  void pinResetResponsesMatchTheContracts() {
+    String id = "3f6b1c2d-4e5f-4a6b-9c7d-8e9f0a1b2c3d";
+    assertValid(OpenApiSchemas.component(PUBLIC_API, "PinReset"),
+        new PinResetView(id, "SELF", "PENDING_KYC", NOW.plusSeconds(900), null));
+    assertValid(OpenApiSchemas.component(PUBLIC_API, "PinReset"),
+        new PinResetView(id, "SELF", "REJECTED", NOW.plusSeconds(900), "FACTORS_MISMATCH"));
+    assertValid(OpenApiSchemas.component(INTERNAL_API, "CarePinReset"),
+        new CarePinReset(id, "APPROVED", NOW.plusSeconds(259200)));
   }
 
   @Test

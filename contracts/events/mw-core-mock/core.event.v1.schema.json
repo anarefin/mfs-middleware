@@ -8,7 +8,7 @@
   "properties": {
     "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
     "eventType": {
-      "enum": ["TransactionValidated", "TransactionRejected", "FundsHeld", "HoldRejected", "HoldCommitted", "CommitFailed", "HoldReleased", "ReleaseFailed", "TransferPosted", "TransferRejected", "WalletCredited", "CreditRejected", "TransactionReversed", "ReversalRejected", "TransactionStatus", "ComplianceActionApplied", "ComplianceActionRejected", "WalletUnlocked", "UnlockRejected", "WalletStateChanged"]
+      "enum": ["TransactionValidated", "TransactionRejected", "FundsHeld", "HoldRejected", "HoldCommitted", "CommitFailed", "HoldReleased", "ReleaseFailed", "TransferPosted", "TransferRejected", "WalletCredited", "CreditRejected", "TransactionReversed", "ReversalRejected", "TransactionStatus", "ComplianceActionApplied", "ComplianceActionRejected", "WalletUnlocked", "UnlockRejected", "WalletStateChanged", "CustomerFactorsVerified", "CustomerFactorsRejected"]
     },
     "eventId": { "type": "string", "format": "uuid", "description": "Unique per event; consumers dedupe on it (inbox)." },
     "commandId": { "$ref": "../../common/defs.v1.schema.json#/$defs/CommandId" },
@@ -182,6 +182,23 @@
         "outcome": { "const": "SUCCESS" },
         "commandId": { "type": "string", "pattern": "^wallet-state:" }
       }
+    },
+    {
+      "properties": {
+        "eventType": { "const": "CustomerFactorsVerified" },
+        "payload": { "$ref": "core.event.v1/CustomerFactorsVerified.payload.schema.json" },
+        "outcome": { "const": "SUCCESS" },
+        "commandId": { "type": "string", "pattern": "^pin-reset:" }
+      }
+    },
+    {
+      "properties": {
+        "eventType": { "const": "CustomerFactorsRejected" },
+        "payload": { "$ref": "core.event.v1/CustomerFactorsRejected.payload.schema.json" },
+        "outcome": { "const": "FAILURE" },
+        "commandId": { "type": "string", "pattern": "^pin-reset:" }
+      },
+      "required": ["reasonCode"]
     }
   ]
 }

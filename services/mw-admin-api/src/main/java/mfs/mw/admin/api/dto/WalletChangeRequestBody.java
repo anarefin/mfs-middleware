@@ -13,7 +13,15 @@ public record WalletChangeRequestBody(@NotNull WalletActionType action, @NotBlan
 
   /** The operator actions on one wallet. */
   public enum WalletActionType {
-    /** Clear the PIN lockout (status LOCKED after 5 wrong PINs). */
-    UNLOCK
+    /**
+     * Clear the PIN lockout: mw-auth's PIN lock (every level) and ADMIN lock on {@code
+     * auth.wallet-lock.v1} (ticket 70), and the core's own LOCKED status (UnlockWallet, ticket 52).
+     */
+    UNLOCK,
+    /**
+     * A care PIN reset (ticket 70): on approval mw-auth opens a reset the customer completes with a
+     * reset OTP and a new PIN, no KYC step; resourceType {@code pin_reset}.
+     */
+    PIN_RESET
   }
 }

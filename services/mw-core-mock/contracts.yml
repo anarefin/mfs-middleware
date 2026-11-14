@@ -22,6 +22,9 @@ produces:
     - events/mw-core-mock/core.event.v1.schema.json#UnlockRejected
     # ticket 67: the wallet projection feed for mw-auth (create, status change, dev snapshot on start)
     - events/mw-core-mock/core.event.v1.schema.json#WalletStateChanged
+    # ticket 70: answers to mw-auth's VerifyCustomerFactors (self-service PIN reset)
+    - events/mw-core-mock/core.event.v1.schema.json#CustomerFactorsVerified
+    - events/mw-core-mock/core.event.v1.schema.json#CustomerFactorsRejected
   # ticket 57: the test-only wallet seed API (PUT behind mw.coremock.seed-api.enabled) and the wallet read
   apis: [api/mw-core-mock/core-mock-seed.v1.openapi.yaml]
 consumes:
@@ -35,4 +38,5 @@ consumes:
     - events/mw-orchestrator/core.command.v1.schema.json#ReverseTransaction
     - events/mw-orchestrator/core.command.v1.schema.json#QueryTransaction
     - events/mw-orchestrator/core.command.v1.schema.json#UnlockWallet
+    - events/mw-orchestrator/core.command.v1.schema.json#VerifyCustomerFactors
   apis: []

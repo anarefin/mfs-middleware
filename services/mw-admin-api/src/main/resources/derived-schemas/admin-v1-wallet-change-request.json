@@ -10,7 +10,8 @@
     "action": {
       "type": "string",
       "enum": [
-        "UNLOCK"
+        "UNLOCK",
+        "PIN_RESET"
       ]
     },
     "reason": {

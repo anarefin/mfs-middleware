@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "commandId": "5f0c2a9e-1b3d-4e6f-8a7b-9c0d1e2f3a4b:auth-unlock",
+  "action": "UNLOCK",
+  "walletId": "01711000001",
+  "reason": "Customer verified by phone, PIN lock lifted",
+  "actor": { "type": "user", "id": "ops-checker01" },
+  "changeRequestId": "5f0c2a9e-1b3d-4e6f-8a7b-9c0d1e2f3a4b",
+  "correlationId": "corr-0070",
+  "issuedAt": "2026-11-14T08:15:30Z"
+}

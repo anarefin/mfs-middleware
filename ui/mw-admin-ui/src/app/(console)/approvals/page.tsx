@@ -51,6 +51,10 @@ function Resource({ cr }: { cr: ChangeRequest }) {
     const q = new URLSearchParams({ code: code ?? "", channel: channel ?? "", locale: locale ?? "" });
     return <Link className="font-mono text-xs" href={`/templates?${q}`}>notify_template {cr.resourceId}</Link>;
   }
+  if (cr.resourceType === "pin_reset") {
+    // ticket 70: a care PIN reset; the wallet id arrives masked
+    return <span className="font-mono text-xs">PIN reset {cr.resourceId}</span>;
+  }
   return <span className="font-mono text-xs">{cr.resourceType} {cr.resourceId}</span>;
 }
 
@@ -61,6 +65,7 @@ function Payload({ cr }: { cr: ChangeRequest }) {
   if (typeof p.reversalTxnId === "string") parts.push(`reversal ${p.reversalTxnId}`);
   if (typeof p.actionId === "string") parts.push(`action ${p.actionId}`);
   if (typeof p.commandId === "string") parts.push(`command ${p.commandId}`);
+  if (typeof p.resetId === "string") parts.push(`reset ${p.resetId}`);
   if (cr.resourceType === "partner" && typeof p.version === "number") parts.push(`published v${p.version}`);
   if ((cr.resourceType === "ussd_menu" || cr.resourceType === "notify_template") && typeof p.version === "number") {
     parts.push(`${cr.status === "APPROVED" ? "published" : "version"} v${p.version}`);

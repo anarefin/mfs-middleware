@@ -61,6 +61,8 @@ public class DeviceOtpService {
   /** OTP purposes (ticket 69): device binding, and the first-PIN login of a wallet without a PIN. */
   public static final String BIND = "BIND";
   public static final String LOGIN = "LOGIN";
+  /** A PIN reset (ticket 70): self-service on the bound device, or a care reset on any device. */
+  public static final String RESET = "RESET";
 
   /** A new binding OTP for {@code deviceId} by SMS to {@code wallet}; replaces the wallet's previous one. */
   public DeviceOtpSent send(String wallet, String deviceId, String locale) {

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bits.mw/events/mw-core-mock/core.event.v1/CustomerFactorsVerified.payload.schema.json",
+  "title": "core.event.v1 CustomerFactorsVerified payload",
+  "description": "Success of VerifyCustomerFactors (ticket 70): the KYC factors of the self-service PIN reset match the wallet's KYC record. mw-auth moves the reset to VERIFIED; mw-orchestrator finds no transaction and drops it.",
+  "type": "object",
+  "required": ["walletId", "resetId"],
+  "properties": {
+    "walletId": { "type": "string", "minLength": 1 },
+    "resetId": { "type": "string", "format": "uuid" }
+  }
+}

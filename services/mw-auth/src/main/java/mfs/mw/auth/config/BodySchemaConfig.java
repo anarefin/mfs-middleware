@@ -15,7 +15,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The body schema checks of every {@code auth.v1} JSON body (M3 gate decision A6, copied from
+ * The body schema checks of every {@code auth.v1} JSON body (POST, and the PUTs of ticket 70) (M3 gate decision A6, copied from
  * mw-app-gateway with the device API, ticket 68; APISIX validates no body): {@code /auth/**} POST
  * bodies (at most 64 KiB, else 413) are kept in memory ({@link CachedBodyFilter}) so the schema
  * check, the device signature and the controller all read the same bytes; each check runs after
@@ -52,11 +52,23 @@ public class BodySchemaConfig implements WebMvcConfigurer {
     add(registry, BodySchema.LOGIN, false, "/auth/v1/sessions");
     add(registry, BodySchema.REFRESH, false, "/auth/v1/tokens/refresh");
     add(registry, BodySchema.SET_PIN, false, "/auth/v1/pin");
+    // ticket 70: PIN change and reset
+    add(registry, BodySchema.CHANGE_PIN, "PUT", "/auth/v1/pin");
+    add(registry, BodySchema.PIN_RESET, false, "/auth/v1/pin-resets");
+    add(registry, BodySchema.SET_PIN, "PUT", "/auth/v1/pin-resets/*/pin");
   }
 
   private void add(InterceptorRegistry registry, String schema, boolean optional, String path) {
+    add(registry, schema, optional, "POST", path);
+  }
+
+  private void add(InterceptorRegistry registry, String schema, String method, String path) {
+    add(registry, schema, false, method, path);
+  }
+
+  private void add(InterceptorRegistry registry, String schema, boolean optional, String method, String path) {
     registry
-        .addInterceptor(new BodySchemaInterceptor(new BodySchema(json, schema), optional))
+        .addInterceptor(new BodySchemaInterceptor(new BodySchema(json, schema), optional, method))
         .addPathPatterns(path)
         .order(ORDER);
   }

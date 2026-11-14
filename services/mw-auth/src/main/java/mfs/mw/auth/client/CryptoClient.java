@@ -101,6 +101,18 @@ public class CryptoClient {
     return new MsisdnToken(t.tokens().getFirst(), t.kid());
   }
 
+  /**
+   * The deterministic tokens of KYC factors under TOKENISE_NID (ticket 70: the self-service reset's
+   * factors, each bound to the wallet by the caller), in order, with the key version.
+   */
+  public CryptoTokens tokeniseNid(List<String> values) {
+    CryptoTokens t = call("tokenise", "/internal/v1/tokens", new CryptoTokeniseRequest("NID", values), CryptoTokens.class);
+    if (t == null || t.tokens() == null || t.tokens().size() != values.size() || t.kid() == null) {
+      throw unavailable("tokenise", null);
+    }
+    return t;
+  }
+
   /** Encrypts {@code plaintext} under {@code purpose} (a KEK_ purpose), bound to {@code aad}. */
   public CryptoEnvelope encrypt(String purpose, byte[] plaintext, byte[] aad) {
     Base64.Encoder b64 = Base64.getEncoder();

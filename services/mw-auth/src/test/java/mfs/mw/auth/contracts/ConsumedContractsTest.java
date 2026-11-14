@@ -9,9 +9,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
+import mfs.mw.auth.dto.CustomerFactorsAnswer;
+import mfs.mw.auth.dto.WalletLockCommand;
 import mfs.mw.auth.dto.WalletStateChanged;
 import mfs.mw.auth.exception.MwException;
 import mfs.mw.auth.mapper.WalletEventMapper;
+import mfs.mw.auth.mapper.WalletLockMapper;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
@@ -30,6 +33,7 @@ class ConsumedContractsTest {
 
   static final JsonMapper JSON = JsonMapper.builder().findAndAddModules().build();
   static final WalletEventMapper MAPPER = new WalletEventMapper(JSON);
+  static final WalletLockMapper LOCKS = new WalletLockMapper(JSON);
   static final String WALLET_STATE = "events/mw-core-mock/core.event.v1.schema.json#WalletStateChanged";
 
   static final Map<String, Consumer<String>> READERS =
@@ -42,7 +46,29 @@ class ConsumedContractsTest {
             assertThat(e.payload().version()).isPositive();
             assertThat(e.payload().hasPin()).isNotNull();
             assertThat(WalletEventMapper.nationalMsisdn(e.payload().msisdn())).matches("01[3-9]\\d{8}");
+          },
+          "events/mw-core-mock/core.event.v1.schema.json#CustomerFactorsVerified",
+          body -> {
+            CustomerFactorsAnswer a = MAPPER.readFactorsAnswer(body).orElseThrow();
+            assertThat(a.verified()).isTrue();
+            assertThat(a.eventId()).isNotBlank();
+            assertThat(a.commandId()).startsWith("pin-reset:");
+            assertThat(MAPPER.read(body)).as("not a wallet state").isEmpty();
+          },
+          "events/mw-core-mock/core.event.v1.schema.json#CustomerFactorsRejected",
+          body -> {
+            CustomerFactorsAnswer a = MAPPER.readFactorsAnswer(body).orElseThrow();
+            assertThat(a.verified()).isFalse();
+            assertThat(a.reasonCode()).isNotBlank();
+          },
+          "events/mw-auth/auth.wallet-lock.v1.schema.json",
+          body -> {
+            WalletLockCommand c = LOCKS.read(body);
+            assertThat(c.commandId()).isNotBlank();
+            assertThat(c.walletId()).isNotBlank();
+            assertThat(c.actor().id()).isNotBlank();
           });
+
 
   static final ContractManifest MANIFEST = ContractManifest.load();
 
@@ -72,6 +98,21 @@ class ConsumedContractsTest {
   void anotherCoreEventIsNotAWalletState() throws Exception {
     Path sample = ContractManifest.validSamples("events/mw-core-mock/core.event.v1.schema.json#WalletUnlocked").getFirst();
     assertThat(MAPPER.read(Files.readString(sample))).isEmpty();
+  }
+
+  @Test
+  void invalidWalletLockCommandsAreRefused() throws Exception {
+    Path dir = ContractSchemas.contractsDir().resolve("events/mw-auth/samples/auth.wallet-lock.v1");
+    for (String name : List.of("invalid-unknown-action.json", "invalid-without-actor.json")) {
+      String body = Files.readString(dir.resolve(name));
+      assertThatThrownBy(() -> LOCKS.read(body)).as(name).isInstanceOf(MwException.class);
+    }
+  }
+
+  @Test
+  void aWalletStateIsNotAFactorsAnswer() throws Exception {
+    Path sample = ContractManifest.validSamples(WALLET_STATE).getFirst();
+    assertThat(MAPPER.readFactorsAnswer(Files.readString(sample))).isEmpty();
   }
 
   @Test

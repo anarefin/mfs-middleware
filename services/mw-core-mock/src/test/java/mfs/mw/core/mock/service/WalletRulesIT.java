@@ -222,6 +222,61 @@ class WalletRulesIT {
     assertThat(balance(CUSTOMER_A)).isEqualTo(1_001_000);
   }
 
+  // --- VerifyCustomerFactors (ticket 70) -----------------------------------------------------
+
+  private CoreCommand factors(String wallet, String resetId) {
+    String u = UUID.randomUUID().toString();
+    String txnId = u.substring(0, 14) + "7" + u.substring(15);
+    Instant now = Instant.now();
+    Map<String, Object> envelope = new LinkedHashMap<>();
+    envelope.put("schemaVersion", 1);
+    envelope.put("commandType", "VerifyCustomerFactors");
+    envelope.put("commandId", "pin-reset:" + resetId);
+    envelope.put("txnId", txnId);
+    envelope.put("correlationId", "corr-" + txnId);
+    envelope.put("issuedAt", now.toString());
+    envelope.put("expiresAt", now.plusSeconds(300).toString());
+    envelope.put("payload", Map.of("subject", Map.of("type", "WALLET", "id", wallet), "resetId", resetId,
+        "factors", Map.of("nidLast4Token", "NID_MZXW6YTB", "dateOfBirthToken", "NID_ONSWG4TF", "tokenKid",
+            "tokenise-nid.v1")));
+    assertThat(ContractSchemas.schema("events/mw-orchestrator/core.command.v1.schema.json").validate(json.valueToTree(envelope)))
+        .as("VerifyCustomerFactors against core.command.v1")
+        .isEmpty();
+    return json.convertValue(envelope, CoreCommand.class);
+  }
+
+  private void assertCoreEvent(CoreEvent e) {
+    assertThat(ContractSchemas.schema("events/mw-core-mock/core.event.v1.schema.json")
+        .validate(json.readTree(json.writeValueAsString(e)))).as(e.eventType()).isEmpty();
+  }
+
+  @Test
+  void customerFactorsOfAnActiveOrPinLockedWalletAreVerified() {
+    String reset = UUID.randomUUID().toString();
+    CoreEvent e = handle(factors(CUSTOMER_A, reset));
+    assertThat(e.eventType()).isEqualTo("CustomerFactorsVerified");
+    assertThat(e.outcome()).isEqualTo(CoreEvent.Outcome.SUCCESS);
+    assertThat(e.payload()).containsEntry("resetId", reset).containsEntry("walletId", CUSTOMER_A);
+    assertCoreEvent(e);
+
+    lockOut(CUSTOMER_A);
+    assertThat(handle(factors(CUSTOMER_A, UUID.randomUUID().toString())).eventType())
+        .isEqualTo("CustomerFactorsVerified");
+  }
+
+  @Test
+  void customerFactorsOfAnUnknownOrBlockedWalletAreRejected() {
+    CoreEvent unknown = handle(factors("01799999998", UUID.randomUUID().toString()));
+    assertThat(unknown.eventType()).isEqualTo("CustomerFactorsRejected");
+    assertThat(unknown.reasonCode()).isEqualTo("WALLET_NOT_FOUND");
+    assertCoreEvent(unknown);
+
+    jdbc.update("update wallet set status = 'BLOCKED' where id = ?", CUSTOMER_A);
+    CoreEvent blocked = handle(factors(CUSTOMER_A, UUID.randomUUID().toString()));
+    assertThat(blocked.reasonCode()).isEqualTo("WALLET_NOT_ACTIVE");
+    assertThat(blocked.payload()).containsKey("resetId");
+  }
+
   // --- ops unlock (ticket 52) ---------------------------------------------------------------
 
   private CoreCommand unlock(String wallet) {

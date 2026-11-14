@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits admin API v1 (mw-admin-api)
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Operations console API (ticket 36, spec 15). Reached by mw-admin-ui server-side through the
     internal APISIX route `/admin/v1/*` (Keycloak realm `ops`, password + TOTP); never by a browser
@@ -148,11 +148,15 @@ paths:
       operationId: requestWalletAction
       summary: Ask for an operator action on a wallet (maker)
       description: >-
-        Role `ops-maker` (ticket 52). UNLOCK clears the PIN lockout of a wallet locked after 5 wrong
-        PINs. Nothing is applied until a different user (`ops-checker`) approves; the approval sends
-        `UnlockWallet` to the core, which refuses it when the wallet is not locked. One open request
-        per wallet. The request expires 72 h after creation. The wallet id is shown masked in every
-        answer.
+        Role `ops-maker` (ticket 52). UNLOCK clears the PIN lockout of a wallet. Nothing is applied
+        until a different user (`ops-checker`) approves; the approval sends UNLOCK on
+        `auth.wallet-lock.v1` (mw-auth lifts its PIN lock, every level, and any ADMIN lock; ticket 70)
+        and `UnlockWallet` to the core (its own LOCKED status; refused when the wallet is not locked
+        there). PIN_RESET (ticket 70) is a care PIN reset: `resourceType` `pin_reset`; the approval
+        asks mw-auth to open a reset (503 MW-SYS-040 when mw-auth is down: the request stays
+        PENDING; 409 MW-VAL-030 when mw-auth does not know the wallet), and the customer gets an SMS
+        to set a new PIN in the app with a reset OTP. One open request per wallet and type. The
+        request expires 72 h after creation. The wallet id is shown masked in every answer.
       parameters:
         - { name: walletId, in: path, required: true, schema: { type: string, pattern: "^01[3-9][0-9]{8}$" }, description: The wallet id (its MSISDN, 11 digits) }
         - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
@@ -689,11 +693,13 @@ components:
       enum: [INQUIRE, FORCE_COMMIT, FORCE_RELEASE, REVERSE]
     WalletAction:
       type: string
-      enum: [UNLOCK]
+      enum: [UNLOCK, PIN_RESET]
     WalletStatus:
       type: string
-      description: The wallet's PIN-lock state an UNLOCK expects (LOCKED) and leads to (ACTIVE); the core decides.
-      enum: [LOCKED, ACTIVE]
+      description: >-
+        The wallet's PIN-lock state an UNLOCK expects (LOCKED) and leads to (ACTIVE); a PIN_RESET
+        leads to RESET (a new PIN set by the customer).
+      enum: [LOCKED, ACTIVE, RESET]
     ChangeRequestStatus:
       type: string
       enum: [PENDING, APPROVED, REJECTED, EXPIRED]
@@ -708,7 +714,8 @@ components:
         approved, the published `version`.
         A `wallet` request (UNLOCK, ticket 52): `resourceId` the masked wallet id, `diff` LOCKED ->
         ACTIVE, `payload.unlockTxnId` (the UUIDv7 the core command and the audit carry) and, once
-        approved, `commandId`. A `ussd_menu` / `notify_template` request (ticket 39, action PUBLISH):
+        approved, `commandId` and `authCommandId`. A `pin_reset` request (PIN_RESET, ticket 70): the
+        same, `diff` LOCKED -> RESET and, once approved, `resetId` (mw-auth's reset). A `ussd_menu` / `notify_template` request (ticket 39, action PUBLISH):
         `payload` the version to publish and, once approved, its `configKey` and `version`.
       required: [id, resourceType, resourceId, action, payload, diff, makerId, status, reason, createdAt, expiresAt]
       properties:
@@ -787,7 +794,7 @@ components:
         offset: { type: integer }
     ResourceType:
       type: string
-      enum: [transaction, wallet, partner, ussd_menu, notify_template]
+      enum: [transaction, wallet, pin_reset, partner, ussd_menu, notify_template]
     ContentAction:
       type: string
       description: A USSD menu or notify template version to publish (ticket 39)

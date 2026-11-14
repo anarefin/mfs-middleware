@@ -64,6 +64,7 @@ class InternalClientAuthTest {
                 base.resolve("/realms/services/protocol/openid-connect/token"), "mw-admin-api", SECRET),
             new AdminApiProperties.Upstream(base),
             new AdminApiProperties.Upstream(URI.create(base + "/")),
+            new AdminApiProperties.Upstream(base),
             Duration.ofSeconds(2),
             Duration.ofSeconds(5),
             500);

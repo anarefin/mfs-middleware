@@ -44,6 +44,11 @@ public class BodySchema {
   /** {@code POST /auth/v1/pin}, from {@code SetPinRequest}. */
   public static final String SET_PIN = "derived-schemas/auth-v1-set-pin-request.json";
 
+  /** {@code PUT /auth/v1/pin} (change), from {@code ChangePinRequest} (ticket 70). */
+  public static final String CHANGE_PIN = "derived-schemas/auth-v1-change-pin-request.json";
+  /** {@code POST /auth/v1/pin-resets}, from {@code PinResetRequest} (ticket 70). */
+  public static final String PIN_RESET = "derived-schemas/auth-v1-pin-reset-request.json";
+
   private final ObjectReader reader;
   private final Schema schema;
 

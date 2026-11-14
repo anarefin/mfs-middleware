@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canMake, canMakePartner, diffLabel, mayDecide, parseReason, parseTimeouts, parseWalletId, txnActionGate, txnActionsFor } from "./approvals";
+import { ACTION_LABELS, RESOURCE_LABELS, canMake, canMakePartner, diffLabel, mayDecide, parseReason, parseTimeouts, parseWalletId, txnActionGate, txnActionsFor } from "./approvals";
 import type { ChangeRequest, Txn } from "./types";
 
 const txn = (over: Partial<Txn>): Txn => ({
@@ -72,6 +72,25 @@ describe("who may act", () => {
     expect(mayDecide(cr({}), "ops-viewer01", ["viewer"])).toBe(false);
     expect(mayDecide(cr({ status: "APPROVED" }), "ops-checker01", ["ops-checker"])).toBe(false);
     expect(mayDecide(cr({}), undefined, ["ops-checker"])).toBe(false);
+  });
+});
+
+describe("care PIN reset requests (ticket 70)", () => {
+  const reset = cr({
+    resourceType: "pin_reset", resourceId: "0171****321", action: "PIN_RESET",
+    diff: { before: { status: "LOCKED" }, after: { status: "RESET" } },
+  });
+
+  it("shows the status diff like a wallet request and has its labels", () => {
+    expect(diffLabel(reset)).toEqual({ before: "LOCKED", after: "RESET" });
+    expect(ACTION_LABELS.PIN_RESET).toBe("Request PIN reset");
+    expect(RESOURCE_LABELS.pin_reset).toBe("PIN reset");
+  });
+
+  it("is decided by an ops-checker who did not file it", () => {
+    expect(mayDecide(reset, "ops-checker01", ["ops-checker"])).toBe(true);
+    expect(mayDecide(reset, "ops-maker01", ["ops-maker", "ops-checker"])).toBe(false);
+    expect(mayDecide(reset, "int-checker01", ["integration-checker"])).toBe(false);
   });
 });
 

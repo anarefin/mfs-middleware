@@ -1,0 +1,47 @@
+{
+  "x-mw-derived-from": "api/mw-auth/auth.v1.openapi.yaml#/components/schemas/ChangePinRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "encryptedPin",
+    "newEncryptedPin"
+  ],
+  "properties": {
+    "encryptedPin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "keyId",
+        "ciphertext"
+      ],
+      "properties": {
+        "keyId": {
+          "type": "string"
+        },
+        "ciphertext": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      }
+    },
+    "newEncryptedPin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "keyId",
+        "ciphertext"
+      ],
+      "properties": {
+        "keyId": {
+          "type": "string"
+        },
+        "ciphertext": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      }
+    }
+  }
+}

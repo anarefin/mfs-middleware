@@ -31,6 +31,16 @@ public record ChangeRequest(
   public static final String TRANSACTION = "transaction";
   /** A wallet (ticket 52): resourceId the wallet id (its MSISDN), masked in every view and audit. */
   public static final String WALLET = "wallet";
+  /**
+   * A care PIN reset of a wallet (ticket 70): handled as a wallet request (same id rules, masking,
+   * roles), its own type so it never collides with an open unlock of the same wallet.
+   */
+  public static final String PIN_RESET = "pin_reset";
+
+  /** A request on a wallet: {@link #WALLET} (unlock) or {@link #PIN_RESET}. */
+  public static boolean walletLike(String resourceType) {
+    return WALLET.equals(resourceType) || PIN_RESET.equals(resourceType);
+  }
 
   public enum Status {
     PENDING,

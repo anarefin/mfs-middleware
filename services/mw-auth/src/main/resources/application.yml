@@ -227,6 +227,27 @@ mw:
       refresh-ttl: 30d
       jwks-cache-ttl: 5m
       jwks-uri: ${MW_AUTH_JWKS_URI:http://mw-auth:8080/auth/v1/.well-known/jwks.json}
+    # The PIN lifecycle (spec 18.7, D20, ticket 70; config/PinProperties): the weak-PIN rules run in
+    # mw-crypto with the inputs mw-auth passes; the last `history` PINs may not be reused. Lockout: every
+    # `tries` wrong PINs lock the PIN one level up (level 1 for level1, level 2 for level2, level 3 until
+    # a reset); the level history is forgotten `decay` after the last lock. Dev compose sets short
+    # MW_AUTH_LOCK_* values (deploy/dev.env.defaults).
+    pin:
+      history: 3
+      lock:
+        tries: ${MW_AUTH_LOCK_TRIES:3}
+        level1: ${MW_AUTH_LOCK_LEVEL1:1h}
+        level2: ${MW_AUTH_LOCK_LEVEL2:24h}
+        decay: ${MW_AUTH_LOCK_DECAY:30d}
+      reset:
+        # a self-service reset (and a care reset once its OTP is checked) lives this long
+        ttl: 15m
+        # an approved care reset waits this long for the customer's OTP
+        care-ttl: 72h
+        # VerifyCustomerFactors to the core (core.wallet.command.v1; the core drops it after expiresAt)
+        command-topic: core.wallet.command.v1
+        command-ttl: 15m
+      audit-topic: mw.audit.event.v1
     # Dev only (ticket 69): POST /internal/v1/seed/pins, the seeder's first PINs, without a token
     # (controller/SeedController). Off unless the dev stack sets MW_AUTH_SEED_API_ENABLED=true.
     seed-api:

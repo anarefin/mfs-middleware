@@ -1,0 +1,4 @@
+{
+  "invalid-unknown-action.json": ["/action must be equal to one of the allowed values"],
+  "invalid-without-actor.json": ["/ must have required property 'actor'"]
+}

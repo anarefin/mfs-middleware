@@ -33,6 +33,15 @@ export const pendingReversal: ChangeRequest = {
   createdAt: "2026-11-05T10:00:00Z", expiresAt: "2026-11-06T10:00:00Z",
 } as ChangeRequest;
 
+/** An approved care PIN reset (ticket 70): wallet id masked, mw-auth's resetId in the payload. */
+export const approvedPinReset: ChangeRequest = {
+  id: "0193a1b2-0000-7000-8000-000000000070", resourceType: "pin_reset", resourceId: "0171****321", action: "PIN_RESET",
+  payload: { unlockTxnId: "0193a1b2-0000-7000-8000-0000000000a0", resetId: "3f6b1c2d-4e5f-4a6b-9c7d-8e9f0a1b2c3d" },
+  diff: { before: { status: "LOCKED" }, after: { status: "RESET" } },
+  makerId: "seed-ops-maker", checkerId: "seed-ops-checker", reason: "lost phone, identity checked", status: "APPROVED",
+  createdAt: "2026-11-05T10:00:00Z", decidedAt: "2026-11-05T10:05:00Z", expiresAt: "2026-11-08T10:00:00Z",
+} as ChangeRequest;
+
 export const page = (items: ChangeRequest[]): ChangeRequestPage => ({ items, limit: 1, offset: 0 }) as ChangeRequestPage;
 
 /** What APISIX / mw-admin-api answer while the change-request list is down. */

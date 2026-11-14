@@ -1,0 +1,4 @@
+{
+  "invalid-factors-in-clear.json": ["/payload/factors/nidLast4Token must match pattern \"^NID_[A-Z2-7]+$\""],
+  "invalid-without-factors.json": ["/payload must have required property 'factors'"]
+}

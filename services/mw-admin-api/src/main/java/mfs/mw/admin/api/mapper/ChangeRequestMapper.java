@@ -13,6 +13,7 @@ import mfs.mw.admin.api.dto.ChangeRequestView;
 import mfs.mw.admin.api.dto.ReversalRequest;
 import mfs.mw.admin.api.dto.TxnAction;
 import mfs.mw.admin.api.dto.UnlockWalletCommand;
+import mfs.mw.admin.api.dto.WalletLockCommand;
 import mfs.mw.admin.api.entity.ChangeRequest;
 import mfs.mw.admin.api.util.MaskingPolicy;
 import mfs.mw.admin.api.util.SensitiveType;
@@ -164,6 +165,16 @@ public final class ChangeRequestMapper {
             new UnlockWalletCommand.Subject("WALLET", cr.resourceId()), cr.id().toString(), cr.makerId(), checkerId));
   }
 
+  /**
+   * The approved unlock for mw-auth ({@code auth.wallet-lock.v1} UNLOCK, ticket 70): commandId
+   * {@code <changeRequestId>:auth-unlock}, key the wallet id, actor the checker.
+   */
+  public static WalletLockCommand authUnlock(ChangeRequest cr, String checkerId, String correlationId, Instant at) {
+    return new WalletLockCommand(1, cr.id() + ":auth-unlock", WalletLockCommand.UNLOCK, cr.resourceId(),
+        "Approved ops unlock " + cr.id(), new WalletLockCommand.Actor("user", checkerId), cr.id().toString(),
+        CorrelationIds.orNew(correlationId), at);
+  }
+
   /** The core command id of a wallet unlock: the core is idempotent on it. */
   public static String unlockCommandId(ChangeRequest cr) {
     return cr.id() + ":unlock";
@@ -180,7 +191,7 @@ public final class ChangeRequestMapper {
   }
 
   private static boolean wallet(ChangeRequest cr) {
-    return ChangeRequest.WALLET.equals(cr.resourceType());
+    return ChangeRequest.walletLike(cr.resourceType());
   }
 
   private static String statusKey(ChangeRequest cr) {

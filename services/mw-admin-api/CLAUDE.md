@@ -60,7 +60,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   approval (moved on: `409 MW-VAL-030`, request stays PENDING); expired: marked EXPIRED + audited,
   `409 MW-VAL-032`; decided already `409 MW-VAL-033` (the `status = 'PENDING'` update guard).
   `GET /admin/v1/change-requests[?status&resourceType&resourceId&limit&offset]` (`resourceType`
-  transaction|wallet|partner|ussd_menu|notify_template; `status` is `dto/ChangeRequestView.Status`), `GET .../{id}`
+  transaction|wallet|pin_reset|partner|ussd_menu|notify_template; `status` is `dto/ChangeRequestView.Status`), `GET .../{id}`
   (`READ_CHANGE_REQUESTS`: the transaction readers and integration-maker/checker, ticket 38; an
   operator without `READ_TRANSACTIONS` sees partner requests only: transaction and wallet ones are
   left out of the list, `?resourceType=transaction|wallet` and their detail are 403).
@@ -108,6 +108,28 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   Decisions (no product owner): ops-maker / ops-checker act on wallets as on transactions; the
   core's answer (`WalletUnlocked` / `UnlockRejected`) is not consumed here (as for ticket 37, the
   result is not tracked; mw-core-mock's wallet view shows it); the reason text is not sent to the core.
+  **Ticket 70:** the same approval transaction also writes UNLOCK on `auth.wallet-lock.v1` (owned by
+  mw-auth; `dto/WalletLockCommand`, `ChangeRequestMapper.authUnlock`: commandId
+  `<changeRequestId>:auth-unlock`, key the wallet id, actor the checker, `payload.authCommandId`), so
+  mw-auth lifts its PIN lock (every level) and any ADMIN lock; audit `after.sentAs`
+  `auth.wallet-lock.v1,core.wallet.command.v1`. **Decision:** `UnlockWallet` to the core stays, because
+  mw-core-mock still locks a wallet (status LOCKED) on 5 wrong core PINs until ticket 72 removes the
+  core PIN check; ticket 72 decides whether the core keeps account locks (then UnlockWallet stays for
+  them) or both the LOCKED status and UnlockWallet go.
+- Care PIN reset (ticket 70, spec 18.7): `POST /admin/v1/wallets/{walletId}/change-requests {action:
+  PIN_RESET, reason}` (same maker role and id rules) opens a change request of resourceType
+  `pin_reset` (`ChangeRequest.PIN_RESET`, handled like `wallet`: `ChangeRequest.walletLike`, masked id,
+  `payload.unlockTxnId` as txnId of its audits, `diff` LOCKED -> RESET, its own one-open-per-wallet, so
+  it never collides with an unlock), approved by an ops-checker (`TXN_CHECKER`). Approval: first
+  `client/AuthPinResetClient` `POST /internal/v1/pin-resets {walletId, changeRequestId, makerId,
+  checkerId, reason (scrubbed)}` at mw-auth (`mw.admin-api.auth.base-url`, `MW_AUTH_INTERNAL_URL`,
+  `https://mw-auth:8443`; mTLS with this service's OpenBao certificate, `config/ServiceCertificateManager`
+  + `TlsProperties` copied from the template, `mw.tls.enabled`, compose `MW_TLS_ENABLED=true`, client
+  side only; the services token now also carries audience `mw-auth`, Keycloak mapper `aud-mw-auth`),
+  outside the transaction and idempotent at mw-auth on the change request id; mw-auth down / 5xx / 401
+  `503 MW-SYS-040` (request stays PENDING, approve again), unknown wallet `409 MW-VAL-030`; then one
+  transaction: APPROVED with `payload.resetId`, audit (`sentAs` `mw-auth:/internal/v1/pin-resets`).
+  Test `controller/PinResetApiIT` (stub mw-auth validated against `auth-internal.v1`).
 - Partner config (ticket 38, spec 15.2 Partners, 15.3, 16.2, 20.4; `controller/PartnerController` ->
   `service/PartnerConfigService` (reads, maker) and `service/PartnerChangeHandler` (approval) ->
   `repository/PartnerRepository`, schema `partner` (own, V5: `partner`, `endpoint`, `mapping`,
@@ -222,11 +244,13 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `events/mw-audit-dw/mw.audit.event.v1` (own type `dto/AuditEvent`;
   `contracts/ProducedContractsTest`, and `AdminTransactionApiIT` validates the outbox row),
   `events/mw-admin-api/mw.txn.action.v1` (`dto/TxnAction`) and a REVERSAL on
+  `events/mw-auth/auth.wallet-lock.v1` (ticket 70, `dto/WalletLockCommand`; `WalletUnlockApiIT`),
   `events/mw-orchestrator/mw.txn.request.v1` (`dto/ReversalRequest`; `ChangeRequestApiIT`
   validates both outbox rows), `events/mw-admin-api/mw.config.changed.v1` (`dto/ConfigChangedEvent`;
   `PartnerConfigApiIT` and `ContentChangeApiIT` validate the outbox rows), serves
   `admin.v1`; consumes `api/mw-orchestrator/txn-query.v1` (own type `dto/AdminTxn`) and
-  `api/mw-audit-dw/audit-query.v1` (own type `dto/AuditTrail`), unknown fields ignored
+  `api/mw-audit-dw/audit-query.v1` (own type `dto/AuditTrail`) and (ticket 70) `api/mw-auth/auth-internal.v1`
+  `POST /internal/v1/pin-resets` (`client/AuthPinResetClient`), unknown fields ignored
   (`contracts/ApiContractsTest` reads contract-shaped answers). No consumed events.
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)

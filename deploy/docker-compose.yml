@@ -808,6 +808,13 @@ services:
       # Binding OTPs per wallet in 15 min (default 5): dev only raises it, so repeated API suite runs
       # (each binds every test user's new device once) do not hit the limit. Moved from mw-app-gateway.
       MW_AUTH_DEVICE_OTP_MAX_SENDS: ${MW_AUTH_DEVICE_OTP_MAX_SENDS:-20}
+      # PIN lockout (ticket 70, spec 18.7, D20): wrong PINs per level and how long levels 1 and 2 last
+      # (level 3 is until a reset), and when the level history is forgotten. Defaults are the
+      # production values; dev.env.defaults shortens the levels so the lockout can be played by hand.
+      MW_AUTH_LOCK_TRIES: ${MW_AUTH_LOCK_TRIES:-3}
+      MW_AUTH_LOCK_LEVEL1: ${MW_AUTH_LOCK_LEVEL1:-1h}
+      MW_AUTH_LOCK_LEVEL2: ${MW_AUTH_LOCK_LEVEL2:-24h}
+      MW_AUTH_LOCK_DECAY: ${MW_AUTH_LOCK_DECAY:-30d}
     healthcheck:
       test:
         - CMD
@@ -1026,6 +1033,10 @@ services:
       # the recorded MVP deviation of 18.1, on `data`: the service reaches it over `data` and
       # joins no ops network (the ops subnet may call the APISIX Admin API).
       MW_ADMIN_JWK_SET_URI: ${MW_ADMIN_JWK_SET_URI:-http://keycloak:8080/realms/ops/protocol/openid-connect/certs}
+      # mTLS client certificate (pki_int/issue/mw-admin-api) for mw-auth's internal port: the care
+      # PIN reset on approval (ticket 70); the admin API itself stays plain HTTP behind APISIX.
+      MW_TLS_ENABLED: "true"
+      MW_AUTH_INTERNAL_URL: ${MW_AUTH_INTERNAL_URL:-https://mw-auth:8443}
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }

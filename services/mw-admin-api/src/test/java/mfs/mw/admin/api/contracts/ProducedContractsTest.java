@@ -131,7 +131,9 @@ class ProducedContractsTest {
               List.of(
                   ChangeRequestMapper.unlock(unlockRequest(), "ops-checker01", "corr-1", AT, Duration.ofHours(1)),
                   ChangeRequestMapper.unlock(unlockRequest(), "ops-checker01", "admin-" + UUID.randomUUID(), AT,
-                      Duration.ofMinutes(5))));
+                      Duration.ofMinutes(5))),
+          "events/mw-auth/auth.wallet-lock.v1.schema.json",
+          () -> List.of(ChangeRequestMapper.authUnlock(unlockRequest(), "ops-checker01", "corr-1", AT)));
 
   /** A PENDING wallet unlock as the maker leaves it (ticket 52). */
   static ChangeRequest unlockRequest() {

@@ -49,8 +49,8 @@ public final class ErrorCodes {
   /** Valkey (sessions, nonce cache) could not be asked; nothing was done, retryable: 503. */
   public static final String SYS_SESSION_STORE_UNAVAILABLE = "MW-SYS-012";
 
-  // Login and tokens (spec 18.7, ticket 69; the lockout levels of 041/042 come with ticket 70).
-  /** Wrong PIN (the failure is counted): 401. */
+  // Login and tokens (spec 18.7, ticket 69); the lockout levels of 041/042 (ticket 70, service/PinVerifier).
+  /** Wrong PIN (the failure is counted; details: triesLeft): 401. */
   public static final String AUTH_WRONG_PIN = "MW-AUTH-040";
   /** The wallet's PIN is locked for now (details: retryAfter): 423. */
   public static final String AUTH_PIN_LOCKED = "MW-AUTH-041";
@@ -66,6 +66,12 @@ public final class ErrorCodes {
   public static final String AUTH_DEVICE_MISMATCH = "MW-AUTH-047";
   /** A refresh token already rotated or revoked was used again; its whole family is revoked: 401. */
   public static final String AUTH_REFRESH_REUSED = "MW-AUTH-048";
+
+  // PIN reset (ticket 70).
+  /** A care reset of the wallet is open: a self-service reset cannot start meanwhile: 409. */
+  public static final String VAL_RESET_OPEN = "MW-VAL-030";
+  /** The reset is not (or no longer) VERIFIED: pending, rejected, done or expired: 409. */
+  public static final String VAL_RESET_NOT_READY = "MW-VAL-031";
 
   /**
    * mw-crypto not reachable, timed out, circuit open or answered 5xx (spec 18.7: fail closed; 503,

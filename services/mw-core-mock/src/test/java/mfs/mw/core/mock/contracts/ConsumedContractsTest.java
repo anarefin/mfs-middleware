@@ -46,7 +46,8 @@ class ConsumedContractsTest {
           "CreditWallet", CoreCommandMapper::credit,
           "ReverseTransaction", CoreCommandMapper::reverse,
           "QueryTransaction", CoreCommandMapper::query,
-          "UnlockWallet", CoreCommandMapper::unlock);
+          "UnlockWallet", CoreCommandMapper::unlock,
+          "VerifyCustomerFactors", CoreCommandMapper::factors);
 
   /** Invalid samples (folder/file under samples/core.command.v1) the mapper itself refuses. */
   static final List<String> REJECTED_BY_MAPPER =
@@ -57,7 +58,8 @@ class ConsumedContractsTest {
           "ReleaseHold/invalid-release-without-hold-id.json",
           "CreditWallet/invalid-credit-without-credit-party.json",
           "ReverseTransaction/invalid-reverse-without-original.json",
-          "UnlockWallet/invalid-unlock-msisdn-subject.json");
+          "UnlockWallet/invalid-unlock-msisdn-subject.json",
+          "VerifyCustomerFactors/invalid-without-factors.json");
 
   static CoreCommand read(Path sample) throws Exception {
     CoreCommand cmd = MAPPER.command(Files.readString(sample));

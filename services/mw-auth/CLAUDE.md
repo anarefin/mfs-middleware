@@ -16,14 +16,17 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   permanent; `ADMIN` locks), `device` (one bound device per wallet: partial unique index), `refresh_token`
   (hash, family, device, expiry, rotation, revoked), `pin_reset` (`SELF` / `CARE`, one open per wallet),
   plus the chassis `outbox`, `inbox`, `shedlock`; `device_otp` (V5, ticket 68; V6 adds its `purpose`
-  BIND/LOGIN and `refresh_token.amr`). Code so far: `wallet` (`repository/WalletRepository`), `device`
+  BIND/LOGIN and `refresh_token.amr`; V7, ticket 70: purpose RESET, `pin_reset` status VERIFIED and its
+  `device_id`, `expires_at`, `change_request_id`, `command_id`, `reason`). Code so far: `wallet` (`repository/WalletRepository`), `device`
   (`repository/DeviceRepository`), `device_otp` (`repository/DeviceOtpRepository`), `credential`,
-  `attempt`, `lock` (`repository/CredentialRepository`), `refresh_token` (`repository/RefreshTokenRepository`).
+  `attempt`, `lock` (`repository/CredentialRepository`), `refresh_token` (`repository/RefreshTokenRepository`),
+  `pin_reset` (`repository/PinResetRepository`, ticket 70).
 - Wallet projection (D5; `route/CoreWalletEventRoute` -> `messaging/CoreWalletEventListener` ->
   `service/WalletProjectionService`, `mapper/WalletEventMapper`, `dto/WalletStateChanged`): consumes
   `core.wallet.event.v1` in group `mw-auth` (retry topics + DLQ; `deploy/kafka/topics.txt`). Only
-  `WalletStateChanged` is read; the topic's other events (replies to mw-orchestrator) are skipped without
-  an inbox row. Every WalletStateChanged goes through the inbox (consumer `mw-auth.wallet-projection`,
+  `WalletStateChanged` is read for the projection (and, ticket 70, `CustomerFactorsVerified` /
+  `CustomerFactorsRejected` for the PIN reset, below); the topic's other events (replies to
+  mw-orchestrator) are skipped without an inbox row. Every WalletStateChanged goes through the inbox (consumer `mw-auth.wallet-projection`,
   eventId) and replaces the row only with a higher `version` (`upsertIfNewer` / `updateIfNewer`), so
   duplicates, the dev snapshot and out-of-order events change nothing. A wallet seen for the first time
   gets its MSISDN (normalised to `01XXXXXXXXX`) tokenised (`msisdn_token`, keyed hash under
@@ -97,8 +100,8 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   `service/TokenService`, `service/PinService`, `config/TokenProperties` `mw.auth.tokens.*`):
   - `POST /auth/v1/sessions {msisdn, encryptedPin | otp}` signed by the bound device: wallet status and
     locks, the device bound to this wallet (else or unknown MSISDN `401 MW-AUTH-047`) and its signature,
-    then the PIN through mw-crypto `/pin/verify` (wrong: `401 MW-AUTH-040`, counted in `auth.attempt`;
-    a match resets the count and stores a rotated key's rehash; the lockout levels are ticket 70) or, for
+    then the PIN through `service/PinVerifier` (lockout, below; wrong: `401 MW-AUTH-040` with `triesLeft`,
+    counted in `auth.attempt`; a match resets the count and stores a rotated key's rehash) or, for
     a wallet without a PIN, a `LOGIN` OTP (`amr` [otp, device]; with a PIN the OTP is `400 MW-VAL-001`;
     no PIN but a PIN sent `403 MW-AUTH-045`). Opens `sess:{walletId}:{deviceId}` with the app's idle
     timeout. 200 `{accessToken, tokenType, expiresIn, refreshToken, refreshExpiresIn, sessionId,
@@ -114,10 +117,9 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
     wallet checked again; new tokens in the same family (the MSISDN claim decrypted from `msisdn_enc`).
   - `POST /auth/v1/sessions/logout` (bearer): family revoked, session closed, 204.
   - First PIN: `POST /auth/v1/pin {encryptedPin}` (bearer of the OTP login, its family still live, wallet
-    without a credential, else `403 MW-AUTH-002`): mw-crypto `/pin/derive` (weak `400 MW-AUTH-044`, the
-    rule in `details`; policy inputs come with ticket 70), the HMAC stored, the OTP family revoked, new
-    tokens with `amr` [pin, device].
-  - Own-token verifier (`security/OwnTokenDecoder`, logout and first PIN): RS256 only, `typ at+jwt`, key
+    without a credential, else `403 MW-AUTH-002`): the PIN policy (`service/PinService.newPin`, below), the
+    HMAC stored, the OTP family revoked, new tokens with `amr` [pin, device].
+  - Own-token verifier (`security/OwnTokenDecoder`, logout, first PIN and PIN change): RS256 only, `typ at+jwt`, key
     by kid from the cached JWT_SIGN set (an unknown kid refetches it, at most every 10 s), expiry, exact
     issuer, audience, `sid`. Not `JwtValidators.createDefault*`: since Spring Security 7 they accept `typ
     JWT` only. A bearer sent to an open endpoint is ignored (bearer resolver only on the two token paths).
@@ -147,8 +149,75 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   lookup on every app request (it caches a confirmation 10 s and a device key 5 min) rather than trusting a `sid`
   claim: a logout, a lock or a new binding must end app access at once, which a 5 min token cannot. The fingerprint
   (security review of 68, fixed in 69) lets the gateway drop a cached key of a replaced binding within the 10 s.
+- PIN lifecycle (ticket 70, spec 18.7, D20; `config/PinProperties` `mw.auth.pin.*`, compose knobs
+  `MW_AUTH_LOCK_TRIES`, `MW_AUTH_LOCK_LEVEL1`, `MW_AUTH_LOCK_LEVEL2`, `MW_AUTH_LOCK_DECAY`, short in
+  `deploy/dev.env.defaults`: 1 min / 3 min):
+  - **`service/PinVerifier` is the one PIN check** (login, device binding, PIN change; ticket 71's
+    assertion through it too). Interface for callers:
+    `public void verify(String walletId, EncryptedPin pin)` (returns only on a correct PIN; throws
+    `MwException` 403 `MW-AUTH-043` ADMIN lock, 423 `MW-AUTH-041` with `retryAfter` / `MW-AUTH-042` PIN
+    lock, 403 `MW-AUTH-045` no PIN, 401 `MW-AUTH-040` wrong with `triesLeft`, 503 `MW-SYS-050` mw-crypto
+    down, nothing counted), `public void requireUnlocked(String walletId)` (the lock part only) and
+    `public boolean clearPinLock(String walletId)` (reset, ops unlock; inside the caller's transaction).
+    The caller checks the wallet's status first (`WalletAccess.check`, or `checkActive` where a PIN lock
+    must not stop it). Order: the locks BEFORE mw-crypto (a locked wallet costs no HSM call and is no
+    oracle), then mw-crypto `/pin/verify`; a wrong PIN runs one transaction under the wallet row's lock
+    (`select ... for update`): a PIN lock taken meanwhile wins (not counted), else the count; the
+    `tries`-th wrong PIN moves the PIN lock one level up (level 1 `level1` 1 h, level 2 `level2` 24 h, level 3
+    until a reset), resets the count, audits `auth.pin.locked` and is answered with the new lock. A
+    correct PIN resets the count, not the level: the `lock` row stays after its `until` as the level
+    history, forgotten `decay` (30 d) after the lock was taken.
+  - Policy (`service/PinService.newPin`; first PIN, change, reset): mw-crypto `/pin/derive` runs the
+    weak-PIN rules on the clear PIN with `policyInput` {msisdn (canonical, decrypted from `msisdn_enc`
+    where needed), birthYear (the projection's, when the core supplies it), lastHmac/lastHmacKeyId (the
+    current PIN)}; the earlier PINs (`credential.last_hmacs`, `mw.auth.pin.history` 3 = the current and
+    2 earlier) are compared here on the HMAC under the same kid (`LAST_PIN`). Weak: 400 `MW-AUTH-044`
+    with the rule. The dev seed API passes no inputs.
+  - Change: `PUT /auth/v1/pin {encryptedPin, newEncryptedPin}` (bearer of a PIN session; an OTP session
+    `403 MW-AUTH-045`; family live): status and locks, the current PIN through `PinVerifier`, the policy;
+    one transaction: credential replaced (old PIN into the history), audit `auth.pin.changed`, SMS
+    `PIN_CHANGED`; the family revoked and new tokens with a fresh `amr` [pin, device].
+  - Reset (`service/PinResetService`, `controller/PinResetController`, `entity/PinReset`): self-service
+    `POST /auth/v1/otp` purpose `RESET` (bound device only, or any device while a care reset is
+    APPROVED; else 403 `MW-AUTH-002`; template `PIN_RESET_OTP`), `POST /auth/v1/pin-resets {msisdn, otp,
+    nidLast4, dateOfBirth}` signed by the bound device (wallet ACTIVE and no ADMIN lock; a PIN lock does
+    not stop a reset; an open CARE reset `409 MW-VAL-030`): the RESET OTP, the factors tokenised by
+    mw-crypto under `TOKENISE_NID` as `<walletId>:<nid4>` and `<walletId>:<YYYY-MM-DD>`
+    (`CryptoClient.tokeniseNid`), then one transaction: OTP spent, an older open SELF reset expired, the
+    reset `PENDING_KYC` (random UUIDv4 id = the device's capability, `ttl` 15 min) and
+    `VerifyCustomerFactors` on `core.wallet.command.v1` through the outbox (`dto/VerifyCustomerFactorsCommand`,
+    UUIDv7 txnId, commandId `pin-reset:<resetId>`). The core's `CustomerFactorsVerified` /
+    `CustomerFactorsRejected` (inbox consumer `mw-auth.pin-reset`, matched on commandId) move it to
+    `VERIFIED` / `REJECTED` (reason the core's code); a late answer changes nothing. `GET
+    /auth/v1/pin-resets/{id}` and `PUT /auth/v1/pin-resets/{id}/pin {encryptedPin}` only for the reset's
+    device (`X-Device-Id`, else 404 `MW-VAL-003`), the PUT only while `VERIFIED` and unexpired (409
+    `MW-VAL-031`): the policy, then one transaction: `DONE`, credential replaced, the PIN lock and count
+    cleared, audit `auth.pin_reset.done`, SMS `PIN_CHANGED`; afterwards every refresh token revoked and
+    the bound device's session closed. Care: `POST /internal/v1/pin-resets {walletId, changeRequestId,
+    makerId, checkerId, reason?, locale?}` (`controller/InternalPinResetController`, only client
+    `mw-admin-api`, else 403; idempotent on `changeRequestId`: 201 new, 200 the same reset): open
+    resets expired, a `CARE` reset `APPROVED` for `care-ttl` 72 h, audit, SMS `PIN_RESET_APPROVED`; the
+    customer then asks a RESET OTP on any device (a lost phone) and `POST /auth/v1/pin-resets {msisdn,
+    otp}` unsigned takes it up: `VERIFIED` for that device for `ttl`; then the same PUT. Bind the new
+    device after the reset (OTP + the new PIN).
+  - **KYC decision:** the factors leave only as TOKENISE_NID hashes bound to the wallet; mw-core-mock
+    cannot recompute them and checks only the wallet (open point for the real core: a shared
+    tokenisation or its own check).
+  - Wallet lock topic (`route/WalletLockRoute` -> `messaging/WalletLockListener` ->
+    `service/WalletLockService`, `mapper/WalletLockMapper`, `dto/WalletLockCommand`; owned contract
+    `auth.wallet-lock.v1`, group `mw-auth`, retry topics + DLQ, `deploy/kafka/topics.txt`): once per
+    `commandId` (inbox `mw-auth.wallet-lock`): `LOCK` = an ADMIN lock (403 `MW-AUTH-043` everywhere) +
+    every refresh token revoked + session closed; `UNLOCK` = ADMIN lock and PIN lock (every level,
+    count) removed (mw-admin-api's approved ops unlock, ticket 52); `REVOKE_SESSIONS` = revoke and close
+    only. The Valkey session close runs on every delivery (idempotent). Unknown wallet: skipped
+    (logged); malformed: `MW-VAL-002` (retry topics, DLQ). Audited `auth.wallet.locked|unlocked|sessions_revoked`.
+  - Audit (`service/AuditTrail`, `mapper/AuditEventMapper`, `dto/AuditEvent`): `mw.audit.event.v1`
+    through the outbox in the change's transaction, resource `wallet/<masked id>`, key the resource,
+    only levels / statuses / reasons, never PIN material or factors. SMS through the outbox:
+    `service/PinNotices` (`PIN_CHANGED`, `PIN_RESET_APPROVED`; mw-notify V12).
 - Error codes so far: `MW-AUTH-001..007`, `010..012`, `040..045`, `047`, `048` (18.7; `046` is the core's),
-  `MW-VAL-001`, `MW-VAL-022`, `MW-VAL-BODY_TOO_LARGE`, `MW-SYS-010`, `MW-SYS-012`, `MW-SYS-050/051`.
+  `MW-VAL-001`, `MW-VAL-003`, `MW-VAL-022`, `MW-VAL-030/031` (reset, ticket 70), `MW-VAL-BODY_TOO_LARGE`,
+  `MW-SYS-010`, `MW-SYS-012`, `MW-SYS-050/051`.
 
 ## Contracts owned
 
@@ -156,15 +225,22 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   69; `contracts/ApiContractsTest`, derived body schemas in `src/main/resources/derived-schemas/`,
   `scripts/derived-schemas.sh --write` after a change).
 - `api/mw-auth/auth-internal.v1.openapi.yaml` (internal API: the device lookups of ticket 68, the session's key
-  fingerprint and the dev seed API of ticket 69; tickets 70-71 add their operations). `auth.wallet-lock.v1` comes
-  with ticket 70.
+  fingerprint and the dev seed API of ticket 69; ticket 70 the care PIN reset `POST /internal/v1/pin-resets`;
+  ticket 71 its operations).
+- `events/mw-auth/auth.wallet-lock.v1.schema.json` (ticket 70; consumed here, produced by mw-admin-api;
+  `contracts/ConsumedContractsTest` reads the samples through `mapper/WalletLockMapper`).
 
 ## Contracts used
 
 - `events/mw-core-mock/core.event.v1.schema.json#WalletStateChanged` (own type `dto/WalletStateChanged`;
-  `contracts/ConsumedContractsTest` reads every sample through `mapper/WalletEventMapper`).
+  `contracts/ConsumedContractsTest` reads every sample through `mapper/WalletEventMapper`), and (ticket 70)
+  `#CustomerFactorsVerified`, `#CustomerFactorsRejected` (`WalletEventMapper.readFactorsAnswer`).
+- `events/mw-orchestrator/core.command.v1.schema.json#VerifyCustomerFactors` (produced, ticket 70: the
+  owner mw-orchestrator's file, changed as this ticket's proposal; `contracts/ProducedContractsTest`).
+- `events/mw-audit-dw/mw.audit.event.v1` (produced, ticket 70).
 - `api/mw-crypto/crypto-internal.v1.openapi.yaml` as a client (`/tokens`, `/envelope/encrypt`,
-  `/envelope/decrypt`, `/pin/verify`, `/pin/derive`, `/jws/sign`, `/jwks/{purpose}`; own types `dto/Crypto*`,
+  `/envelope/decrypt`, `/pin/verify`, `/pin/derive`, `/jws/sign`, `/jwks/{purpose}`; ticket 70 `/tokens` domain
+  NID, allowed to mw-auth by mw-crypto's `TOKENISE_NID` entry; own types `dto/Crypto*`,
   `dto/EncryptedPin`, `dto/PinHmac`).
 - `events/mw-notify/mw.notify.request.v1` (produced, ticket 68: the binding OTP and the new device SMS; own type
   `dto/NotificationRequest`; `contracts/ProducedContractsTest`, `mapper/DeviceNotificationMapperTest`).
@@ -197,6 +273,17 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   rotation and reuse, another device, logout, a foreign token, the first PIN flow, the JWK Set and discovery,
   the PIN key, the seed API), `controller/DeviceControllerTest` (body schemas of OTP, binding, login, refresh;
   no token needed, a stale bearer ignored, logout and first PIN need one).
+
+- Ticket 70: `security/PinLifecycleIT` (PostgreSQL + Valkey, mw-crypto a behaving mock): the lockout
+  levels through login (041 with retryAfter, 24 h, 042 permanent; no mw-crypto call while locked), the
+  decay, device binding counting and refusing while locked, parallel wrong PINs never skipping a level,
+  PIN change (step-up, policy inputs, LAST_PIN, family revoked), the self-service reset with the core's
+  answer (command validated against core.command.v1, factors never in clear, wrong device 404, not ready
+  409, weak 044, lock cleared, tokens revoked), the rejection and a duplicate answer, the reset's
+  device/signature/OTP rules, the care reset (only mw-admin-api, idempotent, a new device);
+  `messaging/WalletLockKafkaIT` (Kafka + Valkey: LOCK, UNLOCK, duplicate, REVOKE_SESSIONS, unknown
+  wallet, malformed, the core's answer on core.wallet.event.v1); `service/PinServiceTest` (policy inputs,
+  every rule mw-crypto names, LAST_PIN on the history, the history kept).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 

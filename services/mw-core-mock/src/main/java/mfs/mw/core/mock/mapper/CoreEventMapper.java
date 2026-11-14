@@ -42,6 +42,12 @@ public class CoreEventMapper {
     return event(cmd, failureType, coreRef, CoreEvent.Outcome.FAILURE, reasonCode, message, null, Map.of());
   }
 
+  /** CustomerFactorsRejected (ticket 70): carries the reset id the contract requires. */
+  public CoreEvent factorsRejected(CoreCommand cmd, String coreRef, String reasonCode, String message, String resetId) {
+    return event(cmd, "CustomerFactorsRejected", coreRef, CoreEvent.Outcome.FAILURE, reasonCode, message, null,
+        Map.of("resetId", resetId));
+  }
+
   /** A success event of any command type, with the given payload and optional balances. */
   public CoreEvent succeeded(
       CoreCommand cmd, String type, String coreRef, List<CoreEvent.BalanceAfter> balances, Map<String, Object> payload) {
@@ -92,6 +98,7 @@ public class CoreEventMapper {
       case "CreditWallet" -> "CreditRejected";
       case "ReverseTransaction" -> "ReversalRejected";
       case "UnlockWallet" -> "UnlockRejected";
+      case "VerifyCustomerFactors" -> "CustomerFactorsRejected";
       default -> null;
     };
   }

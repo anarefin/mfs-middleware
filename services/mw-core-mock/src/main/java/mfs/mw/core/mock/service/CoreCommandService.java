@@ -12,6 +12,7 @@ import mfs.mw.core.mock.config.CoreMockProperties;
 import mfs.mw.core.mock.dto.Amount;
 import mfs.mw.core.mock.dto.CoreCommand;
 import mfs.mw.core.mock.dto.CoreEvent;
+import mfs.mw.core.mock.dto.FactorsPayload;
 import mfs.mw.core.mock.dto.Fault;
 import mfs.mw.core.mock.dto.TransferPayload;
 import mfs.mw.core.mock.dto.UnlockPayload;
@@ -44,6 +45,7 @@ public class CoreCommandService {
   public static final String PAYMENT_EVENT_TOPIC = "core.payment.event.v1";
   static final String VALIDATE = "ValidateTransaction";
   static final String POST = "PostTransfer";
+  static final String VERIFY_FACTORS = "VerifyCustomerFactors";
   /** Party types that are never a wallet of this core: paid outside it by a partner. */
   static final Set<String> EXTERNAL_CREDIT_TYPES = Set.of("BILLER_ACCOUNT", "BANK_ACCOUNT", "CARD_TOKEN");
   /**
@@ -53,7 +55,7 @@ public class CoreCommandService {
    */
   static final Set<String> PAYER_SIDE_ONLY_PAYEES = Set.of("BILLER_ACCOUNT", "BANK_ACCOUNT", "CARD_TOKEN", "MSISDN");
   private static final Set<String> HANDLED =
-      Set.of(VALIDATE, POST, "HoldFunds", "CommitHold", "ReleaseHold", "CreditWallet", "ReverseTransaction", "QueryTransaction", "UnlockWallet");
+      Set.of(VALIDATE, POST, "HoldFunds", "CommitHold", "ReleaseHold", "CreditWallet", "ReverseTransaction", "QueryTransaction", "UnlockWallet", VERIFY_FACTORS);
 
   private static final Logger log = LoggerFactory.getLogger(CoreCommandService.class);
 
@@ -153,7 +155,10 @@ public class CoreCommandService {
           hit.stream().filter(f -> f.mode() == Fault.FaultMode.REJECT).findFirst();
       String failureType = CoreEventMapper.failureType(cmd.commandType());
       CoreEvent decided;
-      if (reject.isPresent() && failureType != null) {
+      if (reject.isPresent() && VERIFY_FACTORS.equals(cmd.commandType())) {
+        decided = events.factorsRejected(cmd, coreRef(), reject.get().reasonCode(), "Injected rejection",
+            commands.factors(cmd).resetId());
+      } else if (reject.isPresent() && failureType != null) {
         decided = events.rejected(cmd, failureType, coreRef(), reject.get().reasonCode(), "Injected rejection");
       } else {
         decided = execute(cmd);
@@ -205,6 +210,7 @@ public class CoreCommandService {
       case "ReverseTransaction" -> postingOps.reverse(cmd, coreRef);
       case "QueryTransaction" -> statusOps.query(cmd, coreRef);
       case "UnlockWallet" -> unlock(cmd, coreRef);
+      case VERIFY_FACTORS -> verifyFactors(cmd, coreRef);
       default -> transfer(cmd, coreRef);
     };
   }
@@ -230,6 +236,32 @@ public class CoreCommandService {
         .addKeyValue("walletType", wallets.get(id.get()).type())
         .log("wallet PIN lockout cleared by ops");
     return events.succeeded(cmd, "WalletUnlocked", coreRef, null, Map.of("walletId", id.get()));
+  }
+
+  /**
+   * VerifyCustomerFactors (ticket 70): mw-auth's self-service PIN reset asks whether the KYC factors
+   * match. The factors come as TOKENISE_NID hashes the mock cannot recompute (it holds no KYC data and
+   * no mw-crypto key), so it checks only the wallet: unknown {@code WALLET_NOT_FOUND}, BLOCKED or HOLD
+   * {@code WALLET_NOT_ACTIVE} (a core PIN lock, LOCKED, does not stop a reset), else verified. A
+   * mismatch is played with a REJECT fault ({@code reasonCode FACTORS_MISMATCH}). A real core compares
+   * the hashes with its own KYC record under the shared tokenisation (open point for the core team).
+   */
+  private CoreEvent verifyFactors(CoreCommand cmd, String coreRef) {
+    FactorsPayload p = commands.factors(cmd);
+    Optional<String> id = wallets.resolveId(p.subject().id());
+    if (id.isEmpty()) {
+      return events.factorsRejected(cmd, coreRef, Reason.WALLET_NOT_FOUND.name(), Reason.WALLET_NOT_FOUND.message,
+          p.resetId());
+    }
+    Wallet w = wallets.get(id.get());
+    if (!w.active() && !w.locked()) {
+      return events.factorsRejected(cmd, coreRef, Reason.WALLET_NOT_ACTIVE.name(), Reason.WALLET_NOT_ACTIVE.message,
+          p.resetId());
+    }
+    log.atInfo().addKeyValue("event", "core.kyc.factors_verified").addKeyValue("txnId", cmd.txnId())
+        .log("KYC factors of a PIN reset accepted");
+    return events.succeeded(cmd, "CustomerFactorsVerified", coreRef, null,
+        Map.of("walletId", id.get(), "resetId", p.resetId()));
   }
 
   /** ValidateTransaction and PostTransfer. */

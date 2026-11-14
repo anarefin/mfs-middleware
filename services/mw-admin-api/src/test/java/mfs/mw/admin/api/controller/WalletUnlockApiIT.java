@@ -32,7 +32,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Ops unlock of a PIN-locked wallet (ticket 52): an ops-maker asks, a different ops-checker
  * approves; the approval sends exactly one {@code UnlockWallet} on {@code core.wallet.command.v1}
- * through the outbox, in the same transaction as the status change and its audit. Request and
+ * and (ticket 70) one UNLOCK on {@code auth.wallet-lock.v1} for mw-auth through the outbox, in the same transaction as the status change and its audit. Request and
  * decision are audited; the MSISDN never leaves masked-free in the view or the audit.
  */
 @SpringBootTest(properties = "mw.outbox.relay.enabled=false")
@@ -44,6 +44,7 @@ class WalletUnlockApiIT {
   static final String WALLET = "01711000123";
   static final String CONTRACT = "api/mw-admin-api/admin.v1.openapi.yaml";
   static final String COMMAND_TOPIC = "core.wallet.command.v1";
+  static final String LOCK_TOPIC = "auth.wallet-lock.v1";
 
   @TestConfiguration(proxyBeanMethods = false)
   static class TestClock {
@@ -166,7 +167,20 @@ class WalletUnlockApiIT {
     assertEvent("events/mw-audit-dw/mw.audit.event.v1.schema.json", approved);
     assertThat(approved.path("actor").path("id").asString()).isEqualTo("ops-checker01");
     assertThat(approved.path("txnId").asString()).isEqualTo(cmd.path("txnId").asString());
-    assertThat(approved.path("after").path("sentAs").asString()).isEqualTo(COMMAND_TOPIC);
+    assertThat(approved.path("after").path("sentAs").asString()).isEqualTo(LOCK_TOPIC + "," + COMMAND_TOPIC);
+
+    // ticket 70: mw-auth lifts its own PIN lock (and any ADMIN lock) on auth.wallet-lock.v1
+    List<JsonNode> locks = outbox(LOCK_TOPIC);
+    assertThat(locks).hasSize(1);
+    JsonNode lock = locks.getFirst();
+    assertEvent("events/mw-auth/auth.wallet-lock.v1.schema.json", lock);
+    assertThat(lock.path("action").asString()).isEqualTo("UNLOCK");
+    assertThat(lock.path("walletId").asString()).isEqualTo(WALLET);
+    assertThat(lock.path("commandId").asString()).isEqualTo(id + ":auth-unlock");
+    assertThat(lock.path("actor").path("id").asString()).isEqualTo("ops-checker01");
+    assertThat(lock.path("changeRequestId").asString()).isEqualTo(id);
+    assertThat(jdbc.queryForObject("select msg_key from outbox where topic = ?", String.class, LOCK_TOPIC))
+        .isEqualTo(WALLET);
     assertThat(approved.path("before").path("walletStatus").asString()).isEqualTo("LOCKED");
     assertThat(approved.toString()).doesNotContain(WALLET);
     assertThat(created.toString()).doesNotContain(WALLET);
@@ -207,6 +221,7 @@ class WalletUnlockApiIT {
     String id = asked();
     assertThat(reject(CHECKER, id)).hasStatus(200);
     assertThat(outbox(COMMAND_TOPIC)).isEmpty();
+    assertThat(outbox(LOCK_TOPIC)).isEmpty();
     assertThat(audits("admin.change_request.rejected")).hasSize(1);
   }
 

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits wallet authentication API (mw-auth)
-  version: 1.1.0
+  version: 1.2.0
   description: |
     Public API v1 of mw-auth (spec 9.1, 18.7, D21), behind APISIX route `/auth/v1/*` (no auth plugin
     at the edge, rate limited per MSISDN and per address; not rewritten: the device signs the path it
@@ -31,8 +31,9 @@ info:
     missing or not valid, MW-AUTH-005 timestamp outside the window, MW-AUTH-006 nonce already used
     (replay); 503 MW-SYS-012 (retryable) when the session store cannot be asked.
 
-    OTP (review A5, spec 18.7 step 1): purpose `BIND` (binding a device) or `LOGIN` (the first PIN of
-    a wallet without one). Sent by SMS to the wallet (mw-notify, OTP priority, valid 2 min), stored
+    OTP (review A5, spec 18.7 step 1): purpose `BIND` (binding a device), `LOGIN` (the first PIN of
+    a wallet without one) or `RESET` (a PIN reset, ticket 70: only on the wallet's bound device, or on
+    any device while the wallet has an approved care reset; else 403 MW-AUTH-002). Sent by SMS to the wallet (mw-notify, OTP priority, valid 2 min), stored
     only as a hash bound to wallet, device and purpose; one current OTP per wallet; 3 checks per OTP
     (the third wrong one voids it), at most 5 OTPs per wallet in 15 min. Errors: 401 MW-AUTH-010
     wrong OTP, MW-AUTH-011 no OTP for this device and purpose (none asked, expired, spent or
@@ -43,11 +44,35 @@ info:
     MW-AUTH-043), its locks (PIN lock: 423 MW-AUTH-041 with `retryAfter`, or MW-AUTH-042 until a
     reset; admin lock: 403 MW-AUTH-043), the device bound to this wallet and its signature (401
     MW-AUTH-047, MW-AUTH-004..006), then the PIN through mw-crypto (wrong: 401 MW-AUTH-040, the
-    failure counted; the lockout levels come with ticket 70). A wallet without a PIN (first PIN) logs
+    failure counted, `triesLeft` in `details`; see the lockout below). A wallet without a PIN (first PIN) logs
     in with a `LOGIN` OTP instead: its token has `amr` [otp, device], `pinSet` false, and only `POST
     /auth/v1/pin` accepts it (mw-app-gateway answers 403 MW-AUTH-045). A login opens the session
     `sess:{walletId}:{deviceId}` (idle timeout 5 min, sliding: every app request extends it).
     mw-crypto unreachable: 503 MW-SYS-050 (retryable), nothing is let through.
+
+    PIN policy and lockout (spec 18.7, D20, ticket 70). A new PIN (first PIN, change, reset) is 5
+    digits and refused with 400 MW-AUTH-044 (the rule in `details`: REPEATED_DIGIT, SEQUENCE,
+    MSISDN_DIGITS, BIRTH_YEAR, LAST_PIN) when it is one digit repeated, an ascending or descending
+    run, 5 consecutive digits of the MSISDN, contains the birth year (when the core supplies it) or
+    is one of the last 3 PINs. Every PIN check (login, binding, change) counts a wrong PIN; after 3
+    wrong PINs the PIN is locked for 1 h (level 1), after 3 more for 24 h (level 2), after 3 more
+    until a reset (level 3); the wrong PIN that locks is answered with the lock itself. A locked
+    PIN is refused before it reaches mw-crypto: 423 MW-AUTH-041 (`retryAfter` seconds in
+    `details`) or MW-AUTH-042 (until a reset). A correct PIN resets the count, not the level: the
+    level history decays after 30 days without a lock (all of these are configuration). A PIN reset
+    or an ops unlock clears the lock.
+
+    PIN reset (spec 18.7, ticket 70). Self-service: `POST /auth/v1/otp` purpose `RESET` on the bound
+    device, then `POST /auth/v1/pin-resets` (signed) with the OTP, the last 4 NID digits and the date
+    of birth: mw-auth asks the core to check the factors (hashed, never in clear) and answers 202
+    `PENDING_KYC`; the app polls `GET /auth/v1/pin-resets/{resetId}` until `VERIFIED` (or
+    `REJECTED`), then sets the PIN with `PUT /auth/v1/pin-resets/{resetId}/pin`. Care: an operator's
+    approved request (mw-admin-api maker-checker) opens a reset in status `APPROVED` and the customer
+    gets an SMS; on any device (a lost phone) the app asks for a `RESET` OTP and calls `POST
+    /auth/v1/pin-resets` without factors and unsigned: the reset becomes `VERIFIED` for that device.
+    Setting the PIN clears the PIN lock, ends every session and revokes every refresh token of the
+    wallet; then log in (on a new device: bind it first). A reset lives 15 min (care: 72 h until its
+    OTP); the reset id is the capability of the device that opened it (other devices: 404).
 
     Access token claims: `iss` (the discovery `issuer`), `aud` `mw-app`, `sub` walletId, `msisdn`,
     `role` (customer, agent, merchant, distributor, dso: from the wallet type), `deviceId`, `amr`,
@@ -200,10 +225,9 @@ paths:
       operationId: setFirstPin
       summary: Set the first PIN (after an OTP login) and get tokens with `amr` [pin, device]
       description: >-
-        Only for a wallet without a PIN (else 403 MW-AUTH-002; changing a PIN comes with ticket 70),
-        with the token of its OTP login (session still open, else 401 MW-AUTH-001). The PIN is any 5
-        digits mw-crypto accepts (a weak PIN is 400 MW-AUTH-044 naming the rule; the full policy comes
-        with ticket 70). The OTP session is replaced by a new one.
+        Only for a wallet without a PIN (else 403 MW-AUTH-002; change it with PUT), with the token of
+        its OTP login (session still open, else 401 MW-AUTH-001). The PIN policy applies (400
+        MW-AUTH-044 naming the rule). The OTP session is replaced by a new one.
       security:
         - bearer: []
       requestBody:
@@ -220,6 +244,121 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+    put:
+      operationId: changePin
+      summary: Change the PIN (logged in; step-up with the current PIN in the request)
+      description: >-
+        Ticket 70. The bearer of a PIN session (`amr` with `pin`; an OTP session: 403 MW-AUTH-045),
+        its family still live (else 401 MW-AUTH-001). The wallet's status and locks as at login, then
+        the current PIN (`encryptedPin`, counted and locked as at login: 401 MW-AUTH-040, 423
+        MW-AUTH-041/042), then the new PIN against the policy (400 MW-AUTH-044). The session is
+        replaced by a new one with a fresh `amr` [pin, device]; the wallet gets an SMS that its PIN
+        was changed.
+      security:
+        - bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChangePinRequest" }
+      responses:
+        "200":
+          description: PIN changed; new tokens
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "423": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /auth/v1/pin-resets:
+    post:
+      operationId: startPinReset
+      summary: Start a self-service PIN reset, or take up an approved care reset
+      description: >-
+        With `nidLast4` and `dateOfBirth` (self-service): signed by the wallet's bound device (401
+        MW-AUTH-047 otherwise), needs the `RESET` OTP of this device; the wallet must be active (403
+        MW-AUTH-043; a PIN lock does not stop a reset); 202 `PENDING_KYC` and the core checks the
+        factors. An open care reset of the wallet: 409 MW-VAL-030. Without factors (care): unsigned,
+        only when the wallet has an approved care reset (else 403 MW-AUTH-002), needs the `RESET` OTP
+        of this device; 202 `VERIFIED` for this device. An earlier open self-service reset of the
+        wallet is replaced.
+      security: []
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+        - { $ref: "#/components/parameters/OptionalTimestamp" }
+        - { $ref: "#/components/parameters/OptionalNonce" }
+        - { $ref: "#/components/parameters/OptionalSignature" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PinResetRequest" }
+      responses:
+        "202":
+          description: Reset opened
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PinReset" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /auth/v1/pin-resets/{resetId}:
+    get:
+      operationId: getPinReset
+      summary: The state of a PIN reset (the app polls it while the core checks the factors)
+      description: >-
+        Only for the device that opened the reset (any other: 404 MW-VAL-003). An open reset past its
+        `expiresAt` is `EXPIRED`. `REJECTED` carries the core's reason (`FACTORS_MISMATCH`,
+        `WALLET_NOT_FOUND`, `WALLET_NOT_ACTIVE`).
+      security: []
+      parameters:
+        - { $ref: "#/components/parameters/ResetId" }
+        - { $ref: "#/components/parameters/DeviceId" }
+      responses:
+        "200":
+          description: The reset
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PinReset" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /auth/v1/pin-resets/{resetId}/pin:
+    put:
+      operationId: setResetPin
+      summary: Set the new PIN of a verified reset
+      description: >-
+        Only for the device that opened the reset (else 404 MW-VAL-003) and only while it is
+        `VERIFIED` and not expired (else 409 MW-VAL-031). The PIN policy applies (400 MW-AUTH-044;
+        the reset stays `VERIFIED`, try another PIN). Sets the PIN, clears the PIN lock and the
+        wrong-PIN count, ends every session and refresh token of the wallet; the reset is `DONE`.
+      security: []
+      parameters:
+        - { $ref: "#/components/parameters/ResetId" }
+        - { $ref: "#/components/parameters/DeviceId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetPinRequest" }
+      responses:
+        "200":
+          description: PIN set; the reset is DONE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PinReset" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
   /auth/v1/pin-key:
@@ -294,6 +433,29 @@ components:
       required: true
       description: Base64 ECDSA P-256 SHA-256 signature of the canonical request text (see info).
       schema: { type: string, maxLength: 256 }
+    OptionalTimestamp:
+      name: X-Timestamp
+      in: header
+      required: false
+      description: As X-Timestamp; required for a self-service reset (signed).
+      schema: { type: string, pattern: "^[0-9]{1,15}$" }
+    OptionalNonce:
+      name: X-Nonce
+      in: header
+      required: false
+      description: As X-Nonce; required for a self-service reset (signed).
+      schema: { type: string, pattern: "^[A-Za-z0-9._:-]{16,128}$" }
+    OptionalSignature:
+      name: X-Signature
+      in: header
+      required: false
+      description: As X-Signature; required for a self-service reset (signed by the bound device).
+      schema: { type: string, maxLength: 256 }
+    ResetId:
+      name: resetId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
   securitySchemes:
     bearer:
       type: http
@@ -331,7 +493,7 @@ components:
       required: [msisdn]
       properties:
         msisdn: { $ref: "#/components/schemas/Msisdn" }
-        purpose: { type: string, enum: [BIND, LOGIN], description: "Default BIND" }
+        purpose: { type: string, enum: [BIND, LOGIN, RESET], description: "Default BIND" }
         locale: { type: string, enum: [bn, en] }
     DeviceBindingRequest:
       type: object
@@ -368,6 +530,34 @@ components:
       required: [encryptedPin]
       properties:
         encryptedPin: { $ref: "#/components/schemas/EncryptedPin" }
+    ChangePinRequest:
+      type: object
+      additionalProperties: false
+      required: [encryptedPin, newEncryptedPin]
+      properties:
+        encryptedPin: { $ref: "#/components/schemas/EncryptedPin" }
+        newEncryptedPin: { $ref: "#/components/schemas/EncryptedPin" }
+    PinResetRequest:
+      type: object
+      additionalProperties: false
+      required: [msisdn, otp]
+      properties:
+        msisdn: { $ref: "#/components/schemas/Msisdn" }
+        otp: { $ref: "#/components/schemas/Otp" }
+        nidLast4: { type: string, pattern: "^[0-9]{4}$", description: "The last 4 digits of the NID (self-service)" }
+        dateOfBirth: { type: string, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", description: "Date of birth, YYYY-MM-DD (self-service)" }
+      anyOf:
+        - { required: [nidLast4, dateOfBirth] }
+        - { not: { anyOf: [{ required: [nidLast4] }, { required: [dateOfBirth] }] } }
+    PinReset:
+      type: object
+      required: [resetId, kind, status, expiresAt]
+      properties:
+        resetId: { type: string, format: uuid }
+        kind: { type: string, enum: [SELF, CARE] }
+        status: { type: string, enum: [PENDING_KYC, APPROVED, VERIFIED, DONE, REJECTED, EXPIRED] }
+        expiresAt: { type: string, format: date-time }
+        reason: { type: string, description: "REJECTED: the core's reason code" }
     DeviceOtpSent:
       type: object
       required: [wallet, otpExpiresAt, sendsLeft]

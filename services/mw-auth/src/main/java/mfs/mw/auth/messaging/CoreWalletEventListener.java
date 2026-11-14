@@ -1,5 +1,7 @@
 package mfs.mw.auth.messaging;
 
+import mfs.mw.auth.mapper.WalletEventMapper;
+import mfs.mw.auth.service.PinResetService;
 import mfs.mw.auth.service.WalletProjectionService;
 import org.apache.camel.Exchange;
 import org.springframework.stereotype.Component;
@@ -12,12 +14,19 @@ import org.springframework.stereotype.Component;
 public class CoreWalletEventListener {
 
   private final WalletProjectionService projection;
+  private final WalletEventMapper mapper;
+  private final PinResetService resets;
 
-  public CoreWalletEventListener(WalletProjectionService projection) {
+  public CoreWalletEventListener(WalletProjectionService projection, WalletEventMapper mapper, PinResetService resets) {
     this.projection = projection;
+    this.mapper = mapper;
+    this.resets = resets;
   }
 
+  /** WalletStateChanged feeds the projection; the answers to VerifyCustomerFactors move a PIN reset (ticket 70). */
   public void handle(Exchange exchange) {
-    projection.handle(exchange.getMessage().getBody(String.class));
+    String body = exchange.getMessage().getBody(String.class);
+    projection.handle(body);
+    mapper.readFactorsAnswer(body).ifPresent(resets::kycAnswered);
   }
 }

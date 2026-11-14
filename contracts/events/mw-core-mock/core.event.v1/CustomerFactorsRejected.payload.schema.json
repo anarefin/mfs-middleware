@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bits.mw/events/mw-core-mock/core.event.v1/CustomerFactorsRejected.payload.schema.json",
+  "title": "core.event.v1 CustomerFactorsRejected payload",
+  "description": "Failure of VerifyCustomerFactors (ticket 70); the reason is the envelope reasonCode (FACTORS_MISMATCH, WALLET_NOT_FOUND, WALLET_NOT_ACTIVE). mw-auth moves the reset to REJECTED. Never says which factor did not match.",
+  "type": "object",
+  "required": ["resetId"],
+  "properties": {
+    "resetId": { "type": "string", "format": "uuid" }
+  }
+}

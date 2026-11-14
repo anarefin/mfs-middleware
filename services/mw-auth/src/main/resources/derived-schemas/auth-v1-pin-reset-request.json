@@ -1,0 +1,47 @@
+{
+  "x-mw-derived-from": "api/mw-auth/auth.v1.openapi.yaml#/components/schemas/PinResetRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "msisdn",
+    "otp"
+  ],
+  "properties": {
+    "msisdn": {
+      "type": "string"
+    },
+    "otp": {
+      "type": "string"
+    },
+    "nidLast4": {
+      "type": "string"
+    },
+    "dateOfBirth": {
+      "type": "string"
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "nidLast4",
+        "dateOfBirth"
+      ]
+    },
+    {
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "nidLast4"
+            ]
+          },
+          {
+            "required": [
+              "dateOfBirth"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-// Maker-checker rules as the console shows them (spec 15.3, tickets 37, 38, 39, 41, 42, 52).
+// Maker-checker rules as the console shows them (spec 15.3, tickets 37, 38, 39, 41, 42, 52, 70).
 // mw-admin-api decides and enforces every one of them; these only choose which buttons an
 // operator sees.
 
@@ -17,7 +17,23 @@ export const ACTION_LABELS: Record<string, string> = {
   FORCE_COMMIT: "Request force commit",
   FORCE_RELEASE: "Request force release",
   UNLOCK: "Request unlock",
+  PIN_RESET: "Request PIN reset",
 };
+
+/** How the approvals inbox names a resource type (ticket 70: the care PIN reset). */
+export const RESOURCE_LABELS: Record<string, string> = {
+  transaction: "Transaction",
+  wallet: "Wallet",
+  pin_reset: "PIN reset",
+  partner: "Partner",
+  ussd_menu: "USSD menu",
+  notify_template: "Template",
+};
+
+/** A request on one wallet (ticket 52 unlock, ticket 70 care PIN reset): status diff, masked id. */
+export function walletRequest(cr: ChangeRequest): boolean {
+  return cr.resourceType === "wallet" || cr.resourceType === "pin_reset";
+}
 
 /** The actions mw-admin-api accepts for a transaction in this state (409 MW-VAL-030 otherwise). */
 export function txnActionsFor(t: Txn): TxnAction[] {
@@ -92,7 +108,7 @@ export function parseReason(raw: unknown): string | null {
 
 function side(cr: ChangeRequest, s: ChangeSide | undefined): string {
   if (!s) return "-";
-  if (cr.resourceType === "transaction" || cr.resourceType === "wallet") return s.status ?? "-";
+  if (cr.resourceType === "transaction" || walletRequest(cr)) return s.status ?? "-";
   if (cr.resourceType === "ussd_menu" || cr.resourceType === "notify_template") {
     return typeof s.version === "number" ? `v${s.version}` : "-";
   }

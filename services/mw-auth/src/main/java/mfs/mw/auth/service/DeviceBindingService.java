@@ -48,7 +48,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  *       PIN ({@link DeviceOtpService}).
  *   <li>Bind ({@code POST /auth/v1/devices}): signed with the key being registered (proof of
  *       possession), the wallet's status and locks ({@link WalletAccess#check}), the {@code BIND} OTP
- *       (each check reserved atomically) and, when the wallet has a PIN, the PIN ({@link PinService});
+ *       (each check reserved atomically) and, when the wallet has a PIN, the PIN ({@link PinVerifier}: lockout);
  *       then in one transaction the OTP is spent, the wallet's other bound device unbound, the device
  *       bound to this wallet and a "new device bound" SMS queued (outbox, mw-notify). Afterwards the
  *       sessions of the devices that lost their binding (and this device's own) are closed and the
@@ -69,7 +69,8 @@ public class DeviceBindingService {
   private final DeviceBindingProperties props;
   private final SignedRequestCheck signed;
   private final DeviceOtpService otps;
-  private final PinService pins;
+  private final PinVerifier pins;
+  private final PinResetService resets;
   private final RefreshTokenRepository refresh;
   private final DeviceNotificationMapper notifications;
   private final OutboxWriter outbox;
@@ -83,7 +84,8 @@ public class DeviceBindingService {
       DeviceBindingProperties props,
       SignedRequestCheck signed,
       DeviceOtpService otps,
-      PinService pins,
+      PinVerifier pins,
+      PinResetService resets,
       RefreshTokenRepository refresh,
       DeviceNotificationMapper notifications,
       OutboxWriter outbox,
@@ -96,6 +98,7 @@ public class DeviceBindingService {
     this.signed = signed;
     this.otps = otps;
     this.pins = pins;
+    this.resets = resets;
     this.refresh = refresh;
     this.notifications = notifications;
     this.outbox = outbox;
@@ -105,7 +108,8 @@ public class DeviceBindingService {
 
   /**
    * An OTP of {@code purpose} for the device in {@code X-Device-Id}, by SMS to the wallet of the
-   * MSISDN. 403 MW-AUTH-002 for an unknown wallet, or a {@code LOGIN} OTP for a wallet with a PIN.
+   * MSISDN. 403 MW-AUTH-002 for an unknown wallet, a {@code LOGIN} OTP for a wallet with a PIN, or a {@code
+   * RESET} OTP for a device other than the bound one while no care reset is approved (ticket 70).
    */
   public DeviceOtpSent sendOtp(String msisdnIn, String deviceId, String purpose, String locale) {
     String id = SignedRequestCheck.deviceId(deviceId);
@@ -114,6 +118,13 @@ public class DeviceBindingService {
     AuthWallet w = known(msisdn);
     if (DeviceOtpService.LOGIN.equals(p) && wallets.hasPin(w.walletId())) {
       throw new MwException(ErrorCodes.AUTH_FORBIDDEN, "This wallet has a PIN: sign in with it")
+          .withStatus(HttpStatus.FORBIDDEN);
+    }
+    if (DeviceOtpService.RESET.equals(p)
+        && devices.boundOf(w.walletId()).filter(d -> d.deviceId().equals(id)).isEmpty()
+        && !resets.careWaiting(w.walletId())) {
+      // a reset OTP goes to the bound device, or to any device once a care reset was approved
+      throw new MwException(ErrorCodes.AUTH_FORBIDDEN, "A PIN reset needs the bound device or an approved care reset")
           .withStatus(HttpStatus.FORBIDDEN);
     }
     return otps.send(w.walletId(), msisdn, id, locale, p);

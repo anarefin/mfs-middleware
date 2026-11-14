@@ -1,11 +1,10 @@
 package mfs.mw.auth.service;
 
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 import mfs.mw.auth.client.CryptoClient;
+import mfs.mw.auth.dto.CryptoEnvelope;
 import mfs.mw.auth.dto.ErrorDetail;
 import mfs.mw.auth.entity.AuthWallet;
 import mfs.mw.auth.exception.ErrorCodes;
@@ -15,6 +14,7 @@ import mfs.mw.auth.repository.WalletRepository;
 import mfs.mw.auth.util.Msisdn;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Finding a wallet by its MSISDN and the checks every login-like request makes first (spec 18.7):
@@ -28,13 +28,16 @@ public class WalletAccess {
   private final WalletRepository wallets;
   private final CredentialRepository credentials;
   private final CryptoClient crypto;
-  private final Clock clock;
+  private final PinVerifier pins;
+  private final JsonMapper json;
 
-  public WalletAccess(WalletRepository wallets, CredentialRepository credentials, CryptoClient crypto, Clock clock) {
+  public WalletAccess(
+      WalletRepository wallets, CredentialRepository credentials, CryptoClient crypto, PinVerifier pins, JsonMapper json) {
     this.wallets = wallets;
     this.credentials = credentials;
     this.crypto = crypto;
-    this.clock = clock;
+    this.pins = pins;
+    this.json = json;
   }
 
   /** The canonical MSISDN ({@code 01XXXXXXXXX}); 400 MW-VAL-001 when it is not one. */
@@ -63,28 +66,30 @@ public class WalletAccess {
 
   /** Active at the core and not locked; see the class comment for the codes. */
   public void check(AuthWallet w) {
+    checkActive(w);
+    pins.requireUnlocked(w.walletId());
+  }
+
+  /**
+   * Active at the core and no ADMIN lock (403 MW-AUTH-043); a PIN lock is let through: a PIN reset
+   * is what lifts it (ticket 70).
+   */
+  public void checkActive(AuthWallet w) {
     if (!"ACTIVE".equals(w.status())) {
       throw walletLocked();
     }
-    Instant now = clock.instant();
-    for (CredentialRepository.Lock lock : credentials.locks(w.walletId())) {
-      if ("ADMIN".equals(lock.kind())) {
-        throw walletLocked();
-      }
-      if (lock.until() == null) {
-        throw new MwException(ErrorCodes.AUTH_PIN_LOCKED_PERMANENT, "PIN locked; reset your PIN")
-            .withStatus(HttpStatus.LOCKED);
-      }
-      if (lock.until().isAfter(now)) {
-        long retryAfter = Math.max(1, Duration.between(now, lock.until()).toSeconds());
-        throw new MwException(ErrorCodes.AUTH_PIN_LOCKED, "PIN locked; try again later")
-            .withStatus(HttpStatus.LOCKED)
-            .withDetails(List.of(new ErrorDetail("retryAfter", Long.toString(retryAfter))));
-      }
+    if (credentials.lock(w.walletId(), PinVerifier.ADMIN).isPresent()) {
+      throw walletLocked();
     }
   }
 
+  /** The wallet's MSISDN, decrypted from its mw-crypto envelope (the SMS and the PIN policy need it). */
+  public String msisdnOf(AuthWallet w) {
+    CryptoEnvelope env = json.readValue(w.msisdnEnc(), CryptoEnvelope.class);
+    return new String(crypto.decrypt(env), StandardCharsets.UTF_8);
+  }
+
   private static MwException walletLocked() {
-    return new MwException(ErrorCodes.AUTH_WALLET_LOCKED, "Wallet locked").withStatus(HttpStatus.FORBIDDEN);
+    return PinVerifier.walletLocked();
   }
 }

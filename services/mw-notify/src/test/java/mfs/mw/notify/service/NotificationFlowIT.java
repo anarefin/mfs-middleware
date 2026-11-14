@@ -199,7 +199,7 @@ class NotificationFlowIT {
 
   @Test
   void theDeviceTemplatesHaveABanglaVersion() {
-    for (String code : List.of("DEVICE_BIND_OTP", "DEVICE_BOUND", "LOGIN_OTP")) {
+    for (String code : List.of("DEVICE_BIND_OTP", "DEVICE_BOUND", "LOGIN_OTP", "PIN_RESET_OTP", "PIN_RESET_APPROVED", "PIN_CHANGED")) {
       assertThat(jdbc.queryForObject(
           "select count(*) from template where code = ? and locale = 'bn' and channel = 'SMS'", Integer.class, code))
           .as(code).isEqualTo(1);

@@ -10,7 +10,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
 /**
- * Keeps the body of {@code /auth/**} POSTs in memory ({@link CachedBodyRequest}) so the body
+ * Keeps the body of {@code /auth/**} POSTs and PUTs (ticket 70) in memory ({@link CachedBodyRequest}) so the body
  * schema checks, the device signature hash (ticket 29) and the controller read the same bytes, the
  * ones the client sent. A body over {@link CachedBodyRequest#MAX_BODY} is answered 413
  * MW-VAL-BODY_TOO_LARGE with the 5.3 envelope (through the global handler, as the security entry
@@ -29,7 +29,8 @@ public class CachedBodyFilter extends OncePerRequestFilter {
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest request) {
-    return !"POST".equals(request.getMethod()) || !request.getRequestURI().startsWith("/auth/");
+    return !("POST".equals(request.getMethod()) || "PUT".equals(request.getMethod()))
+        || !request.getRequestURI().startsWith("/auth/");
   }
 
   @Override

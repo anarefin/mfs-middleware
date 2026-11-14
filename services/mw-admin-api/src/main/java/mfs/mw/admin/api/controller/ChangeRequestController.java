@@ -59,7 +59,7 @@ public class ChangeRequestController {
   public ChangeRequestView.Page list(
       @AuthenticationPrincipal Jwt jwt,
       @RequestParam(required = false) ChangeRequestView.Status status,
-      @RequestParam(required = false) @Pattern(regexp = "transaction|wallet|partner|ussd_menu|notify_template") String resourceType,
+      @RequestParam(required = false) @Pattern(regexp = "transaction|wallet|pin_reset|partner|ussd_menu|notify_template") String resourceType,
       @RequestParam(required = false) @Size(min = 1, max = 128) String resourceId,
       @RequestParam(defaultValue = "50") @Min(1) @Max(200) int limit,
       @RequestParam(defaultValue = "0") @Min(0) @Max(100_000) int offset) {

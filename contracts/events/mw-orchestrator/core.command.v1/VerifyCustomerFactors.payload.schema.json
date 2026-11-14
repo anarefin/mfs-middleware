@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bits.mw/events/mw-orchestrator/core.command.v1/VerifyCustomerFactors.payload.schema.json",
+  "title": "core.command.v1 VerifyCustomerFactors payload",
+  "description": "Self-service PIN reset (spec 18.7, ticket 70): mw-auth asks the core whether the KYC factors the customer typed (last 4 NID digits, date of birth) match the wallet's KYC record. Sent by mw-auth (proposed to the owner mw-orchestrator in ticket 70) on core.wallet.command.v1, txnId a fresh UUIDv7, commandId pin-reset:<resetId>, key txnId. The factors never travel in clear: each is a keyed hash made by mw-crypto under TOKENISE_NID over '<walletId>:<factor>' (the date as YYYY-MM-DD), so it is bound to the wallet. The core answers CustomerFactorsVerified, or CustomerFactorsRejected (reasonCode FACTORS_MISMATCH, WALLET_NOT_FOUND, WALLET_NOT_ACTIVE). Carries no PIN.",
+  "type": "object",
+  "required": ["subject", "resetId", "factors"],
+  "additionalProperties": false,
+  "properties": {
+    "subject": {
+      "type": "object",
+      "allOf": [{ "$ref": "../../../common/defs.v1.schema.json#/$defs/Party" }],
+      "properties": { "type": { "const": "WALLET" } },
+      "description": "The wallet whose PIN is reset: its id (the MSISDN for app wallets)."
+    },
+    "resetId": { "type": "string", "format": "uuid", "description": "The mw-auth PIN reset request." },
+    "factors": {
+      "type": "object",
+      "required": ["nidLast4Token", "dateOfBirthToken", "tokenKid"],
+      "additionalProperties": false,
+      "properties": {
+        "nidLast4Token": { "type": "string", "pattern": "^NID_[A-Z2-7]+$", "description": "TOKENISE_NID hash of '<walletId>:<last 4 NID digits>'." },
+        "dateOfBirthToken": { "type": "string", "pattern": "^NID_[A-Z2-7]+$", "description": "TOKENISE_NID hash of '<walletId>:<YYYY-MM-DD>'." },
+        "tokenKid": { "type": "string", "minLength": 1, "maxLength": 128, "description": "The TOKENISE_NID key version (<keyId>.v<n>) both hashes were made with." }
+      }
+    }
+  }
+}

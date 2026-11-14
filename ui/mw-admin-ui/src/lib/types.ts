@@ -87,12 +87,12 @@ export type TxnDetail = {
 };
 
 export type TxnAction = "INQUIRE" | "FORCE_COMMIT" | "FORCE_RELEASE" | "REVERSE";
-export type WalletAction = "UNLOCK";
+export type WalletAction = "UNLOCK" | "PIN_RESET";
 export type ChangeRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
 
 export type PartnerAction = "ENABLE" | "DISABLE" | "SET_TIMEOUTS" | "UPSERT";
 export type ContentAction = "PUBLISH";
-export type ResourceType = "transaction" | "wallet" | "partner" | "ussd_menu" | "notify_template";
+export type ResourceType = "transaction" | "wallet" | "pin_reset" | "partner" | "ussd_menu" | "notify_template";
 
 /**
  * One side of a change request's diff: a transaction / wallet `status`; a partner's changed config
