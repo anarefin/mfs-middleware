@@ -37,7 +37,7 @@
 66-openbao-pki-mtls                         62                done     24m      40 files +2975 −70     d8032171..596a1e05
 67-mw-auth-scaffold                         63,66             done     39m      145 files +10665 −58   d50edf8d..510b25f4 (+merges)
 68-move-device-otp-sessions-to-mw-auth      67                done     37m      114 files +4805 −1035  88428dfa (+merge d1bda1e0)
-69-mw-auth-login-tokens                     68                open
+69-mw-auth-login-tokens                     68                done     53m      151 files +5335 −930   7db63d47..1ebf8b47
 70-pin-lifecycle-lockout-revocation         69                open
 71-txn-authorisation-assertion              69                open
 72-channels-switch-to-assertion             71,70             open
