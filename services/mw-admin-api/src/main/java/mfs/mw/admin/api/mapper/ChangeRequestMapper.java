@@ -171,7 +171,20 @@ public final class ChangeRequestMapper {
    */
   public static WalletLockCommand authUnlock(ChangeRequest cr, String checkerId, String correlationId, Instant at) {
     return new WalletLockCommand(1, cr.id() + ":auth-unlock", WalletLockCommand.UNLOCK, cr.resourceId(),
-        "Approved ops unlock " + cr.id(), new WalletLockCommand.Actor("user", checkerId), cr.id().toString(),
+        "Approved ops unlock " + cr.id(), new WalletLockCommand.Actor("user", checkerId), cr.id().toString(), null,
+        CorrelationIds.orNew(correlationId), at);
+  }
+
+  /**
+   * The approved care PIN reset for mw-auth ({@code auth.wallet-lock.v1} PIN_RESET, security review
+   * of ticket 70): commandId {@code <changeRequestId>:pin-reset}, the reason scrubbed, maker and
+   * checker; mw-auth opens the reset idempotently on the change request id.
+   */
+  public static WalletLockCommand pinReset(ChangeRequest cr, String checkerId, String correlationId, Instant at) {
+    String reason = MaskingPolicy.scrub(cr.reason());
+    return new WalletLockCommand(1, cr.id() + ":pin-reset", WalletLockCommand.PIN_RESET, cr.resourceId(),
+        reason == null || reason.isBlank() ? "Approved care PIN reset " + cr.id() : reason,
+        new WalletLockCommand.Actor("user", checkerId), cr.id().toString(), cr.makerId(),
         CorrelationIds.orNew(correlationId), at);
   }
 

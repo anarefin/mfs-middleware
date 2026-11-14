@@ -5,7 +5,19 @@
   "sslRequired": "external",
   "registrationAllowed": false,
   "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "maxDeltaTimeSeconds": 43200,
+  "quickLoginCheckMilliSeconds": 1000,
+  "minimumQuickLoginWaitSeconds": 60,
+  "passwordPolicy": "length(12) and notUsername(undefined) and passwordHistory(5)",
   "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 28800,
+  "offlineSessionMaxLifespanEnabled": true,
+  "offlineSessionMaxLifespan": 86400,
   "roles": {
     "realm": [
       {
@@ -69,6 +81,12 @@
           "type": "password",
           "value": "${KC_PORTALS_TEST_PASSWORD}",
           "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "dev/test pre-set (KC_PORTALS_TEST_TOTP_SECRET)",
+          "secretData": "{\"value\":\"${KC_PORTALS_TEST_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA256\"}"
         }
       ],
       "realmRoles": [
@@ -92,6 +110,12 @@
           "type": "password",
           "value": "${KC_PORTALS_TEST_PASSWORD}",
           "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "dev/test pre-set (KC_PORTALS_TEST_TOTP_SECRET)",
+          "secretData": "{\"value\":\"${KC_PORTALS_TEST_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA256\"}"
         }
       ],
       "realmRoles": [
@@ -115,6 +139,12 @@
           "type": "password",
           "value": "${KC_PORTALS_TEST_PASSWORD}",
           "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "dev/test pre-set (KC_PORTALS_TEST_TOTP_SECRET)",
+          "secretData": "{\"value\":\"${KC_PORTALS_TEST_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA256\"}"
         }
       ],
       "realmRoles": [
@@ -139,6 +169,12 @@
           "type": "password",
           "value": "${KC_PORTALS_TEST_PASSWORD}",
           "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "dev/test pre-set (KC_PORTALS_TEST_TOTP_SECRET)",
+          "secretData": "{\"value\":\"${KC_PORTALS_TEST_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA256\"}"
         }
       ],
       "realmRoles": [
@@ -162,6 +198,12 @@
           "type": "password",
           "value": "${KC_PORTALS_TEST_PASSWORD}",
           "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "dev/test pre-set (KC_PORTALS_TEST_TOTP_SECRET)",
+          "secretData": "{\"value\":\"${KC_PORTALS_TEST_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA256\"}"
         }
       ],
       "realmRoles": [
@@ -181,5 +223,59 @@
         }
       }
     ]
-  }
+  },
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA256",
+  "otpPolicyDigits": 6,
+  "otpPolicyPeriod": 30,
+  "browserFlow": "browser-mfa",
+  "authenticatorConfig": [],
+  "authenticationFlows": [
+    {
+      "alias": "browser-mfa",
+      "description": "Portal login: password and TOTP both required (spec 18.2, ticket 73)",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "authenticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticatorFlow": true,
+          "flowAlias": "browser-mfa forms",
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false
+        }
+      ]
+    },
+    {
+      "alias": "browser-mfa forms",
+      "description": "Username/password, then OTP (never conditional)",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-username-password-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "userSetupAllowed": false
+        }
+      ]
+    }
+  ]
 }

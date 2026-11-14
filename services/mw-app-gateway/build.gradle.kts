@@ -42,7 +42,7 @@ dependencies {
     implementation("io.micrometer:micrometer-tracing-bridge-brave")
     implementation("io.micrometer:micrometer-registry-prometheus")
     implementation("org.springframework.cloud:spring-cloud-starter-vault-config")
-    // Keycloak JWT (realm customers) on /app/v1/** (spec 9.1, 18.2).
+    // mw-auth access JWT on /app/v1/** (spec 9.1, 18.7).
     implementation("org.springframework.boot:spring-boot-starter-security-oauth2-resource-server")
 
     // Valkey (Lettuce): device sessions and the signed-request nonce cache (spec 9.1, 18.6).

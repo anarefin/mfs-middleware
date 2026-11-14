@@ -1,7 +1,7 @@
 import { createHash, createHmac, generateKeyPairSync, privateDecrypt, constants, verify, createPublicKey } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
-  canonical, checkoutHeaders, encryptPin, httpDate, newDeviceKey, queryOf, sha256Hex, signCanonical, verifyCheckoutResult, verifyIpn,
+  canonical, checkoutHeaders, encryptPin, httpDate, newDeviceKey, queryOf, sha256Hex, signCanonical, totp, verifyCheckoutResult, verifyIpn,
 } from "./crypto";
 
 describe("device signature", () => {
@@ -80,5 +80,14 @@ describe("checkout merchant hmac-auth", () => {
   it("reads a redirect's query", () => {
     expect(queryOf("https://shop.example.test/ok?cart=7&status=PAID&x=a+b")).toEqual({ cart: "7", status: "PAID", x: "a b" });
     expect(queryOf("https://shop.example.test/ok")).toEqual({});
+  });
+});
+
+// Ticket 73: the portals realm demands TOTP as Keycloak checks it (HmacSHA256 keyed with the
+// secret's raw UTF-8 bytes, 6 digits, 30 s). RFC 6238 appendix B, SHA-256 seed: the last 6 digits.
+describe("portal TOTP", () => {
+  it("matches the RFC 6238 SHA-256 vectors", () => {
+    expect(totp("12345678901234567890123456789012", 59_000)).toBe("119246");
+    expect(totp("12345678901234567890123456789012", 1_111_111_109_000)).toBe("084774");
   });
 });

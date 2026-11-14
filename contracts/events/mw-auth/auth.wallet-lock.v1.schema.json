@@ -2,13 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.bits.mw/events/mw-auth/auth.wallet-lock.v1.schema.json",
   "title": "auth.wallet-lock.v1",
-  "description": "Wallet lock command for mw-auth (spec 18.7 Revocation, ticket 70), owned by its consumer mw-auth. Produced by mw-admin-api after maker-checker approval (ops UNLOCK of ticket 52), later by mw-compliance and mw-care-api. LOCK puts an ADMIN lock on the wallet and ends every session and refresh family (login and assertions are refused with MW-AUTH-043 until UNLOCK); UNLOCK removes the ADMIN lock and the PIN lockout (every level, the wrong-PIN count to 0); REVOKE_SESSIONS ends every session and refresh family and locks nothing. Applied once per commandId (inbox); a wallet mw-auth does not know is skipped. Key: walletId. Consumers ignore unknown fields; only additive changes within v1.",
+  "description": "Wallet lock command for mw-auth (spec 18.7 Revocation, ticket 70), owned by its consumer mw-auth. Produced by mw-admin-api after maker-checker approval (ops UNLOCK of ticket 52, care PIN_RESET), later by mw-compliance and mw-care-api. LOCK puts an ADMIN lock on the wallet and ends every session and refresh family (login and assertions are refused with MW-AUTH-043 until UNLOCK); UNLOCK removes the ADMIN lock and the PIN lockout (every level, the wrong-PIN count to 0); REVOKE_SESSIONS ends every session and refresh family and locks nothing; PIN_RESET (security review of ticket 70: written in the same transaction as the approval, so a reject or expiry that wins the race opens nothing) opens an approved care PIN reset (mw-auth, idempotent on changeRequestId; the customer gets an SMS and sets a new PIN with a reset OTP). Applied once per commandId (inbox); a wallet mw-auth does not know is skipped. Key: walletId. Consumers ignore unknown fields; only additive changes within v1.",
   "type": "object",
   "required": ["schemaVersion", "commandId", "action", "walletId", "reason", "actor", "correlationId", "issuedAt"],
   "properties": {
     "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
     "commandId": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Unique per command; the consumer's dedup key." },
-    "action": { "enum": ["LOCK", "UNLOCK", "REVOKE_SESSIONS"] },
+    "action": { "enum": ["LOCK", "UNLOCK", "REVOKE_SESSIONS", "PIN_RESET"] },
     "walletId": { "type": "string", "minLength": 1, "maxLength": 64, "description": "The core's wallet id (the MSISDN for app wallets)." },
     "reason": { "type": "string", "minLength": 1, "maxLength": 500, "description": "Why, free text (an operator's reason, a compliance case); kept with the lock and in the audit trail." },
     "actor": {
@@ -19,8 +19,11 @@
         "id": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Operator username (the checker) or the producing service." }
       }
     },
-    "changeRequestId": { "type": "string", "format": "uuid", "description": "The approved mw-admin-api change request, when there is one." },
+    "changeRequestId": { "type": "string", "format": "uuid", "description": "The approved mw-admin-api change request, when there is one; required for PIN_RESET (the reset's idempotency key)." },
+    "makerId": { "type": "string", "minLength": 1, "maxLength": 128, "description": "PIN_RESET: the operator who asked for it (the actor is the checker)." },
     "correlationId": { "$ref": "../../common/defs.v1.schema.json#/$defs/CorrelationId" },
     "issuedAt": { "type": "string", "format": "date-time" }
-  }
+  },
+  "if": { "properties": { "action": { "const": "PIN_RESET" } }, "required": ["action"] },
+  "then": { "required": ["changeRequestId", "makerId"] }
 }

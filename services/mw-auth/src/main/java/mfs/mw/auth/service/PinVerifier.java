@@ -43,7 +43,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * Nothing about the PIN is logged.
  */
 @Service
-public class PinVerifier {
+public class PinVerifier implements PinVerification {
 
   static final String PIN = "PIN";
   static final String ADMIN = "ADMIN";
@@ -76,6 +76,7 @@ public class PinVerifier {
    * Returns normally only on a correct PIN; the caller checks the wallet's status at the core first
    * ({@link WalletAccess#check}).
    */
+  @Override
   public void verify(String walletId, EncryptedPin pin) {
     requireUnlocked(walletId);
     PinHmac stored = credentials.find(walletId).orElseThrow(PinService::notSet);

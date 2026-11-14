@@ -16,7 +16,7 @@
     "coreRef": { "type": "string", "minLength": 1 },
     "occurredAt": { "type": "string", "format": "date-time" },
     "outcome": { "enum": ["SUCCESS", "FAILURE"] },
-    "reasonCode": { "type": "string", "minLength": 1, "description": "Core reason; mapped by the orchestrator to MW-CORE-*." },
+    "reasonCode": { "type": "string", "minLength": 1, "description": "Core reason; mapped by the orchestrator to MW-CORE-*. One exception (ticket 71): MW-AUTH-046, a refused transaction assertion, passed on as it is." },
     "reasonMessage": { "type": "string" },
     "balancesAfter": {
       "type": "array",

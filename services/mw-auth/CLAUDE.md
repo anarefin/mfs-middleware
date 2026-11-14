@@ -193,9 +193,12 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
     device (`X-Device-Id`, else 404 `MW-VAL-003`), the PUT only while `VERIFIED` and unexpired (409
     `MW-VAL-031`): the policy, then one transaction: `DONE`, credential replaced, the PIN lock and count
     cleared, audit `auth.pin_reset.done`, SMS `PIN_CHANGED`; afterwards every refresh token revoked and
-    the bound device's session closed. Care: `POST /internal/v1/pin-resets {walletId, changeRequestId,
-    makerId, checkerId, reason?, locale?}` (`controller/InternalPinResetController`, only client
-    `mw-admin-api`, else 403; idempotent on `changeRequestId`: 201 new, 200 the same reset): open
+    the bound device's session closed. Care (`PinResetService.approveCare`, idempotent on
+    `changeRequestId`): from mw-admin-api's committed PIN_RESET on `auth.wallet-lock.v1` (security
+    review of ticket 70: written in the approval's transaction, so a reject that wins the race opens
+    nothing), or `POST /internal/v1/pin-resets {walletId, changeRequestId, makerId, checkerId, reason?,
+    locale?}` (`controller/InternalPinResetController`, only client `mw-admin-api`, else 403; 201 new,
+    200 the same reset; kept for a synchronous caller such as mw-care-api, unused by mw-admin-api): open
     resets expired, a `CARE` reset `APPROVED` for `care-ttl` 72 h, audit, SMS `PIN_RESET_APPROVED`; the
     customer then asks a RESET OTP on any device (a lost phone) and `POST /auth/v1/pin-resets {msisdn,
     otp}` unsigned takes it up: `VERIFIED` for that device for `ttl`; then the same PUT. Bind the new
@@ -209,24 +212,55 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
     `commandId` (inbox `mw-auth.wallet-lock`): `LOCK` = an ADMIN lock (403 `MW-AUTH-043` everywhere) +
     every refresh token revoked + session closed; `UNLOCK` = ADMIN lock and PIN lock (every level,
     count) removed (mw-admin-api's approved ops unlock, ticket 52); `REVOKE_SESSIONS` = revoke and close
-    only. The Valkey session close runs on every delivery (idempotent). Unknown wallet: skipped
+    only; `PIN_RESET` (with `changeRequestId`, `makerId`) = the approved care reset above (its own
+    idempotency, no inbox row). The Valkey session close runs on every delivery (idempotent). Unknown wallet: skipped
     (logged); malformed: `MW-VAL-002` (retry topics, DLQ). Audited `auth.wallet.locked|unlocked|sessions_revoked`.
   - Audit (`service/AuditTrail`, `mapper/AuditEventMapper`, `dto/AuditEvent`): `mw.audit.event.v1`
     through the outbox in the change's transaction, resource `wallet/<masked id>`, key the resource,
     only levels / statuses / reasons, never PIN material or factors. SMS through the outbox:
     `service/PinNotices` (`PIN_CHANGED`, `PIN_RESET_APPROVED`; mw-notify V12).
+- Transaction authorisation assertion (spec 18.7, D22, ticket 71; `controller/TxnAuthorisationController`,
+  `service/TxnAuthorisationService`, `service/PinVerification`, `repository/AssertionCache`, `util/TxnHash`,
+  `util/CanonicalJson`, `util/UuidV7`, `config/AssertionProperties` `mw.auth.assertion.*`): `POST
+  /internal/v1/txn-authorisations` on the internal mTLS port, callers `mw.auth.assertion.callers`
+  (mw-app-gateway, mw-ussd, mw-checkout; mw-admin-api and anyone else 403 `MW-AUTH-002`). Body `{walletId |
+  msisdn (exactly one, else 400 MW-VAL-001), channel, deviceId?, encryptedPin, txn: {txnType, amount (minor),
+  currency, payer {type, id}, payee {type, id}, idempotencyKey}}`. Order: wallet known (else 403 `MW-AUTH-002`),
+  `WalletAccess.check` (043/041/042), a sent `deviceId` must be the wallet's bound device (401 `MW-AUTH-047`),
+  then Valkey `assert:{walletId}:{idempotencyKey}` (value `<exp ms>|<txnHash>|<newDevice>|<jws>`, TTL = life,
+  `SET NX`; the life is also checked against the service clock): a live entry for the same `txnHash` is
+  returned again **without a PIN check**, for another hash 409 `MW-IDEM-001`; then the PIN through
+  `PinVerification` (lockout: wrong 401 `MW-AUTH-040`, counted, the tries-th locks 423; none 403 `MW-AUTH-045`) and the JWS by mw-crypto
+  `ASSERTION_SIGN` (ES256, kid `<keyId>.v<n>`, header `typ txn-assertion+jwt`): `iss` mw-auth, `aud` core,
+  `sub` walletId, `jti` UUIDv7, `iat`, `exp` = iat + 60 s, `txnHash`, `channel`, `authMethod` PIN,
+  `deviceId` (when sent), `newDevice` (the wallet's bound device's `boundAt` within `new-device-window` 24 h).
+  200 `{assertion, expiresAt, newDevice}`; INFO `auth.txn.authorised` carries only the jti.
+  `txnHash` = base64url (no padding) SHA-256 of the RFC 8785 canonical JSON of `{txnType, amount, currency,
+  payer {type, id}, payee {type, id}, idempotencyKey, channel}` with the values of the `mw.txn.request.v1`
+  the channel then publishes (payer = debitParty, payee = creditParty, amount = valueMinor, the request's
+  idempotencyKey); mw-core-mock has a byte-identical copy (`TxnHashTest` literals in both).
+  **PIN check seam (ticket 71, for ticket 70):** the assertion uses the interface `service/PinVerification`,
+  implemented by `service/PinVerifier` since ticket 70 (the lockout above: the locks before mw-crypto,
+  a wrong PIN counted and escalated, `security/PinLifecycleIT` proves it for the assertion too).
+  **Assertion JWK Set decision (ticket 71):** a separate public document `GET
+  /auth/v1/.well-known/assertion-jwks.json` (`WellKnownController`, `JwksService.assertionJwks`, mw-crypto
+  `/jwks/ASSERTION_SIGN`, public members only, cached `jwks-cache-ttl`), not mixed into the access tokens'
+  `jwks.json` (APISIX reads that one and accepts RSA only). mw-core-mock fetches it over plain HTTP on the
+  public port 8080 (`http://mw-auth:8080/...`); the `auth-v1` APISIX route also exposes it at the edge
+  (public keys only). mw-crypto needed no change: `mw.crypto.authz.purposes.ASSERTION_SIGN` already names
+  mw-auth, and ASSERTION_SIGN is a dev bootstrap purpose.
 - Error codes so far: `MW-AUTH-001..007`, `010..012`, `040..045`, `047`, `048` (18.7; `046` is the core's),
-  `MW-VAL-001`, `MW-VAL-003`, `MW-VAL-022`, `MW-VAL-030/031` (reset, ticket 70), `MW-VAL-BODY_TOO_LARGE`,
-  `MW-SYS-010`, `MW-SYS-012`, `MW-SYS-050/051`.
+  `MW-IDEM-001` (ticket 71), `MW-VAL-001`, `MW-VAL-003`, `MW-VAL-022`, `MW-VAL-030/031` (reset, ticket 70),
+  `MW-VAL-BODY_TOO_LARGE`, `MW-SYS-010`, `MW-SYS-012`, `MW-SYS-050/051`.
 
 ## Contracts owned
 
 - `api/mw-auth/auth.v1.openapi.yaml` (public API: OTP and devices, ticket 68; login, tokens, key documents, ticket
-  69; `contracts/ApiContractsTest`, derived body schemas in `src/main/resources/derived-schemas/`,
+  69; the assertion JWK Set `EcJwkSet`, ticket 71; `contracts/ApiContractsTest`, derived body schemas in `src/main/resources/derived-schemas/`,
   `scripts/derived-schemas.sh --write` after a change).
 - `api/mw-auth/auth-internal.v1.openapi.yaml` (internal API: the device lookups of ticket 68, the session's key
-  fingerprint and the dev seed API of ticket 69; ticket 70 the care PIN reset `POST /internal/v1/pin-resets`;
-  ticket 71 its operations).
+  fingerprint and the dev seed API of ticket 69; `POST /internal/v1/txn-authorisations`, ticket 71; the care PIN
+  reset `POST /internal/v1/pin-resets`, ticket 70).
 - `events/mw-auth/auth.wallet-lock.v1.schema.json` (ticket 70; consumed here, produced by mw-admin-api;
   `contracts/ConsumedContractsTest` reads the samples through `mapper/WalletLockMapper`).
 
@@ -273,6 +307,12 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   rotation and reuse, another device, logout, a foreign token, the first PIN flow, the JWK Set and discovery,
   the PIN key, the seed API), `controller/DeviceControllerTest` (body schemas of OTP, binding, login, refresh;
   no token needed, a stale bearer ignored, logout and first PIN need one).
+- Ticket 71: `util/TxnHashTest` (canonical JSON and hash against literals worked out outside Java; the same
+  txn in another field order gives the same JSON), `security/TxnAuthorisationIT` (PostgreSQL + Valkey,
+  mw-crypto a behaving mock signing ES256 with an in-test P-256 key; the clock a `@TestBean MutableClock`):
+  claims verified against the served assertion JWK Set, USSD by MSISDN, newDevice, wrong PIN counted, PIN
+  lock (no PIN check), blocked wallet, no PIN, reuse inside the life (one PIN check), same key other txn 409,
+  a new assertion after the life, device of another wallet, callers, walletId xor msisdn, mw-crypto down).
 
 - Ticket 70: `security/PinLifecycleIT` (PostgreSQL + Valkey, mw-crypto a behaving mock): the lockout
   levels through login (041 with retryAfter, 24 h, 042 permanent; no mw-crypto call while locked), the

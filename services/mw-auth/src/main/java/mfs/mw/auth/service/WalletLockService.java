@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import mfs.mw.auth.dto.AuditEvent;
+import mfs.mw.auth.dto.CarePinResetRequest;
 import mfs.mw.auth.dto.WalletLockCommand;
 import mfs.mw.auth.mapper.AuditEventMapper;
 import mfs.mw.auth.mapper.WalletLockMapper;
@@ -25,7 +26,10 @@ import org.springframework.stereotype.Service;
  *       refresh token revoked, the session closed;
  *   <li>{@code UNLOCK}: the ADMIN lock and the PIN lock (every level, the count) removed (the ops
  *       unlock of ticket 52 lands here);
- *   <li>{@code REVOKE_SESSIONS}: every refresh token revoked, the session closed, nothing locked.
+ *   <li>{@code REVOKE_SESSIONS}: every refresh token revoked, the session closed, nothing locked;
+ *   <li>{@code PIN_RESET}: an approved care PIN reset ({@link PinResetService#approveCare}, idempotent
+ *       on the change request id instead of the inbox), written by mw-admin-api in the approval's
+ *       transaction (security review of ticket 70: a reject that wins the race opens nothing).
  * </ul>
  *
  * Each is audited. A wallet this service does not know is skipped (logged). The Valkey session is
@@ -72,6 +76,14 @@ public class WalletLockService {
     if (wallets.find(cmd.walletId()).isEmpty()) {
       log.atWarn().addKeyValue("event", "auth.wallet_lock.unknown_wallet").addKeyValue("action", cmd.action())
           .log("Wallet lock command for a wallet not projected; skipped");
+      return;
+    }
+    if (WalletLockCommand.PIN_RESET.equals(cmd.action())) {
+      // idempotent on the change request id (a redelivery answers the reset already open)
+      PinResetService.Care care = resets.approveCare(new CarePinResetRequest(cmd.walletId(),
+          java.util.UUID.fromString(cmd.changeRequestId()), cmd.makerId(), cmd.actor().id(), cmd.reason(), null));
+      log.atInfo().addKeyValue("event", care.created() ? "auth.wallet_lock.applied" : "auth.wallet_lock.duplicate")
+          .addKeyValue("action", cmd.action()).log("Care PIN reset command handled");
       return;
     }
     boolean applied = inbox.processOnce(CONSUMER, cmd.commandId(), () -> apply(cmd));

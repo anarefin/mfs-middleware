@@ -24,7 +24,7 @@ class SeedIdentitiesStepTest {
     final Map<String, Map<String, String>> ids = new HashMap<>();
     final Map<String, Set<String>> roles = new HashMap<>();
     final Map<String, NewUser> created = new HashMap<>();
-    final Set<String> clients = new HashSet<>(Set.of("ops/mw-e2e-ops", "ops/mw-admin-ui", "customers/mw-app"));
+    final Set<String> clients = new HashSet<>(Set.of("ops/mw-e2e-ops", "ops/mw-admin-ui"));
     final List<String> writes = new ArrayList<>();
 
     @Override
@@ -67,15 +67,13 @@ class SeedIdentitiesStepTest {
 
     StepResult r = step.run(ctx);
 
-    assertThat(r).isEqualTo(StepResult.created(3));
+    assertThat(r).isEqualTo(StepResult.created(2));
     assertThat(kc.roles.get("ops:seed-ops-maker")).containsExactlyInAnyOrder("viewer", "ops-maker");
     NewUser maker = kc.created.get("ops:seed-ops-maker");
     assertThat(maker.password()).isEqualTo("fake-ops-password");
     assertThat(maker.totpSecret()).isEqualTo("JBSWY3DPEHPK3PXPFAKE");
     assertThat(maker.email()).endsWith("@example.test");
-    NewUser customer = kc.created.get("customers:seed-customer01");
-    assertThat(customer.totpSecret()).isNull();
-    assertThat(customer.attributes()).containsEntry("msisdn", "01712000001");
+    assertThat(kc.writes).noneMatch(w -> w.contains("seed-customer01"));
 
     SeedManifest.Persona p = ctx.personas().getFirst();
     assertThat(p)
@@ -86,13 +84,28 @@ class SeedIdentitiesStepTest {
     assertThat(ctx.personas().get(2).totpSecretEnv()).isNull();
   }
 
+  /** Ticket 73: the app users have no Keycloak user (the customers realm is gone); they log in at mw-auth. */
+  @Test
+  void anAppUserIsListedForMwAuthLoginButNeverCreatedInKeycloak() {
+    SeedContext ctx = new SeedContext();
+
+    step.run(ctx);
+
+    assertThat(kc.ids).doesNotContainKey("mw-auth");
+    assertThat(ctx.personas().get(2))
+        .isEqualTo(
+            new SeedManifest.Persona(
+                "customer", "mw-auth", "seed-customer01", List.of("customer"), Map.of("msisdn", "01712000001"), null,
+                "MW_SEED_APP_PIN", null));
+  }
+
   @Test
   void aSecondRunFindsEveryoneAndWritesNothing() {
     step.run(new SeedContext());
     kc.writes.clear();
     SeedContext ctx = new SeedContext();
 
-    assertThat(step.run(ctx)).isEqualTo(StepResult.unchanged(3));
+    assertThat(step.run(ctx)).isEqualTo(StepResult.unchanged(2));
     assertThat(kc.writes).isEmpty();
     assertThat(ctx.personas()).hasSize(3);
   }
@@ -104,7 +117,7 @@ class SeedIdentitiesStepTest {
 
     StepResult r = step.run(new SeedContext());
 
-    assertThat(r).isEqualTo(new StepResult(2, 1, 0));
+    assertThat(r).isEqualTo(new StepResult(1, 1, 0));
     assertThat(kc.writes).contains("roles u1 [ops-maker]").doesNotContain("create ops:seed-ops-maker");
   }
 

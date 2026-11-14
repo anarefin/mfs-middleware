@@ -38,7 +38,10 @@ public class CoreCommandMapper {
     return cmd;
   }
 
-  /** The payload of ValidateTransaction / PostTransfer. */
+  /**
+   * The payload of ValidateTransaction / PostTransfer / HoldFunds: an authorising transfer needs an
+   * assertion (with its idempotencyKey) or, until ticket 72, an encryptedPin.
+   */
   public TransferPayload transfer(CoreCommand cmd) {
     TransferPayload p;
     try {
@@ -52,7 +55,8 @@ public class CoreCommandMapper {
         || p.creditParty() == null
         || blank(p.creditParty().id())
         || p.amount() == null
-        || (p.encryptedPin() == null && p.pinRequired())) {
+        || (p.assertion() == null && p.encryptedPin() == null && p.pinRequired())
+        || (p.assertion() != null && blank(p.idempotencyKey()))) {
       throw new MwException(ErrorCodes.VAL_INVALID, "transfer payload is incomplete");
     }
     return p;

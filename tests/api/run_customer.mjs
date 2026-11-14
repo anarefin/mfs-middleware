@@ -6,7 +6,7 @@
 // The scenarios pay mostly from customer01 (01711000001). One run spends about 4,000 BDT of a wallet's
 // daily debit limit in mw-core-mock (15,000 BDT per UTC day), so a 4th run on one day would fail with
 // MW-CORE-LIMIT_EXCEEDED_DAILY. Instead every run pays from one of mw-seeder's run customers
-// (persona "run-customer" in the seed manifest: own Keycloak user and wallet, MSISDN 0171????001 so
+// (persona "run-customer", realm mw-auth in the seed manifest: own wallet with the app PIN, MSISDN 0171????001 so
 // it masks like customer01): the one used least on this UTC day (ties: the first), at most
 // RUNS_PER_DAY times a day (3 x 4,000 < 15,000). LEDGER (build/api-test/run-customers.tsv) holds one
 // "<day>\t<username>" line per pick; a partial run counts as a full one. lib.js then plays customer01
@@ -22,7 +22,7 @@ if (!manifestPath || !ledgerPath) {
 }
 const day = dayArg || new Date().toISOString().slice(0, 10);
 const pool = (JSON.parse(readFileSync(manifestPath, 'utf8')).personas || [])
-  .filter(p => p.persona === 'run-customer' && p.realm === 'customers' && p.attributes && p.attributes.msisdn);
+  .filter(p => p.persona === 'run-customer' && p.realm === 'mw-auth' && p.attributes && p.attributes.msisdn);
 if (!pool.length) {
   console.error(`run_customer: the seed manifest ${manifestPath} has no run customers: start the stack with --profile seed (mw-seeder must exit 0)`);
   process.exit(1);

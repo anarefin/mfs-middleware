@@ -32,10 +32,10 @@ public class DeviceRepository {
         .findFirst();
   }
 
-  /** The wallet's bound device, if any (one at most: the partial unique index). */
-  public Optional<AuthDevice> boundOf(String walletId) {
-    return jdbc
-        .query("SELECT " + COLUMNS + " FROM device WHERE wallet_id = ? AND unbound_at IS NULL", (rs, n) -> row(rs), walletId)
+  /** The wallet's bound device, if it has one (at most one: the partial unique index). */
+  public Optional<AuthDevice> findBound(String walletId) {
+    return jdbc.query("SELECT " + COLUMNS + " FROM device WHERE wallet_id = ? AND unbound_at IS NULL",
+            (rs, n) -> row(rs), walletId)
         .stream()
         .findFirst();
   }

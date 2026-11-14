@@ -157,3 +157,41 @@ approle() {
   chmod 0400 "$OUT"/spring.cloud.vault.app-role.*
   log "$SVC: AppRole ready"
 }
+
+# partner_sim_client_key: the private_key_jwt credential of the Keycloak client partner-sim (realm
+# partners, ticket 73, spec 18.2): an RSA-2048 key pair and a self-signed certificate, created once in
+# the current secret (the simulator signs its client assertion with the private key; no client secret
+# exists), then the certificate is registered on the client on every run (Keycloak's admin REST as the
+# bootstrap admin), so a re-imported realm gets it back. Compose starts provision once keycloak is
+# healthy. Credentials go to curl through files (@file), never on its command line.
+partner_sim_client_key() {
+  : "${KC_URL:=http://keycloak:8080}"
+  [ -n "${KC_BOOTSTRAP_ADMIN_PASSWORD:-}" ] || die "$SVC: KC_BOOTSTRAP_ADMIN_PASSWORD is not set (cp dev.env.defaults .env first)"
+  if ! has_field sim.partner-sim.private-key; then
+    openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 -subj /CN=partner-sim \
+      -keyout "$tmp/partner.key" -out "$tmp/partner.crt" 2>/dev/null
+    printf partner-sim >"$tmp/cid"
+    kv_set "sim.partner-sim.private-key=@$tmp/partner.key" "sim.partner-sim.certificate=@$tmp/partner.crt" \
+      "sim.partner-sim.client-id=@$tmp/cid"
+    rm -f "$tmp/partner.key" "$tmp/partner.crt" "$tmp/cid"
+    log "$SVC: created the partner-sim key pair (private_key_jwt)"
+  fi
+  field sim.partner-sim.certificate >"$tmp/partner.crt"
+  printf '%s' "$KC_BOOTSTRAP_ADMIN_PASSWORD" >"$tmp/kcpw"
+  at="$(curl -sf --max-time 10 --data-urlencode grant_type=password --data-urlencode client_id=admin-cli \
+    --data-urlencode "username=${KC_BOOTSTRAP_ADMIN_USERNAME:-kc-admin}" --data-urlencode "password@$tmp/kcpw" \
+    "$KC_URL/realms/master/protocol/openid-connect/token" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')" || at=""
+  rm -f "$tmp/kcpw"
+  [ -n "$at" ] || { rm -f "$tmp/partner.crt"; die "$SVC: no Keycloak admin token for the partner-sim certificate ($KC_URL)"; }
+  printf 'Authorization: Bearer %s' "$at" >"$tmp/kcauth"
+  id="$(curl -sf --max-time 10 -H "@$tmp/kcauth" "$KC_URL/admin/realms/partners/clients?clientId=partner-sim" \
+    | sed -n 's/^\[{"id":"\([^"]*\)".*/\1/p')" || id=""
+  ok=""
+  if [ -n "$id" ] && curl -sf --max-time 10 -o /dev/null -H "@$tmp/kcauth" -F "keystoreFormat=Certificate PEM" \
+    -F "file=@$tmp/partner.crt" "$KC_URL/admin/realms/partners/clients/$id/certificates/jwt.credential/upload-certificate"; then
+    ok=1
+  fi
+  rm -f "$tmp/kcauth" "$tmp/partner.crt"
+  [ -n "$ok" ] || die "$SVC: cannot register the partner-sim certificate in realm partners ($KC_URL)"
+  log "$SVC: partner-sim certificate registered in realm partners"
+}

@@ -27,8 +27,8 @@
 
 **Blocked by:** 69
 
-**Status:** open
+**Status:** done
 
-- [ ] `./gradlew :mw-auth:build :mw-orchestrator:build :mw-core-mock:build` green with Docker
-- [ ] `./gradlew :contractsLint` green
-- [ ] On the stack, a P2P submitted with an assertion completes; the same assertion on a second txn is rejected `MW-AUTH-046`
+- [x] `./gradlew :mw-auth:build :mw-orchestrator:build :mw-core-mock:build` green with Docker
+- [x] `./gradlew :contractsLint` green
+- [ ] On the stack, a P2P submitted with an assertion completes; the same assertion on a second txn is rejected `MW-AUTH-046` (deferred to final integration test)

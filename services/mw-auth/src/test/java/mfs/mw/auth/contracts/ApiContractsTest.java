@@ -14,6 +14,7 @@ import mfs.mw.auth.dto.DeviceOtpSent;
 import mfs.mw.auth.dto.PinKey;
 import mfs.mw.auth.dto.SeedPinsResult;
 import mfs.mw.auth.dto.TokenPair;
+import mfs.mw.auth.dto.TxnAuthorisation;
 import mfs.mw.auth.dto.ErrorDetail;
 import mfs.mw.auth.dto.ErrorEnvelope;
 import mfs.mw.auth.dto.LiveSession;
@@ -68,6 +69,19 @@ class ApiContractsTest {
     assertThat(OpenApiSchemas.component(PUBLIC_API, "JwkSet").validate(JSON.readTree(
         "{\"keys\":[{\"kty\":\"RSA\",\"kid\":\"k\",\"alg\":\"RS256\",\"use\":\"sig\",\"d\":\"secret\"}]}")))
         .as("a private member is refused").isNotEmpty();
+  }
+
+  @Test
+  void theAssertionKeySetAndTheAssertionMatchTheContracts() {
+    assertValid(OpenApiSchemas.component(PUBLIC_API, "EcJwkSet"),
+        Map.of("keys", List.of(Map.of("kty", "EC", "kid", "assertion-sign.v1", "alg", "ES256", "use", "sig",
+            "crv", "P-256", "x", "AQAB", "y", "AQAB"))));
+    assertThat(OpenApiSchemas.component(PUBLIC_API, "EcJwkSet").validate(JSON.readTree(
+        "{\"keys\":[{\"kty\":\"EC\",\"kid\":\"k\",\"alg\":\"ES256\",\"use\":\"sig\",\"crv\":\"P-256\",\"x\":\"A\","
+            + "\"y\":\"A\",\"d\":\"secret\"}]}")))
+        .as("a private member is refused").isNotEmpty();
+    assertValid(OpenApiSchemas.component(INTERNAL_API, "TxnAuthorisation"),
+        new TxnAuthorisation("eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJ4In0.c2ln", NOW.plusSeconds(60), false));
   }
 
   @Test

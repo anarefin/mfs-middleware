@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "commandId": "7a1c2b3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d:pin-reset",
+  "action": "PIN_RESET",
+  "walletId": "01711000321",
+  "reason": "Lost phone, identity checked at branch",
+  "actor": { "type": "user", "id": "ops-checker01" },
+  "changeRequestId": "7a1c2b3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+  "makerId": "ops-maker01",
+  "correlationId": "corr-0070",
+  "issuedAt": "2026-11-14T08:15:30Z"
+}

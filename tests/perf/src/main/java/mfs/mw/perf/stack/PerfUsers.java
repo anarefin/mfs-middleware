@@ -3,25 +3,23 @@ package mfs.mw.perf.stack;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.IntStream;
-import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.node.ObjectNode;
 
 /**
  * The perf run's users and wallets, all on wallets mw-core-mock seeds (1,000 customers
  * {@code 01711000001..}, 50 agents {@code 01811000001..}, 20 merchants {@code 01911000001..}) and
  * none the e2e suite uses: app customers {@code perf-c001..} on {@code 01711000101..}, USSD
- * customers (no Keycloak user) after them, agents {@code perf-a01..} on {@code 01811000011..},
+ * customers (no app login) after them, agents {@code perf-a01..} on {@code 01811000011..},
  * merchants {@code 01911000003..01911000010}.
  *
  * <p>APISIX allows 120 app requests per minute per token subject and 120 USSD hops per minute per
  * MSISDN, so the pools are sized to keep every user well under that at the target rate.
  *
- * <p>The app users exist only in the running stack's Keycloak: {@link #partialImport} is the realm
- * partial import that {@code Provisioning} applies with {@code ifResourceExists: SKIP} (idempotent).
+ * <p>The app users log in at mw-auth with MSISDN + the dev app PIN (ticket 73: no Keycloak user);
+ * {@code Provisioning} sets that PIN on their wallets and binds a device for each.
  */
 public final class PerfUsers {
 
-  /** A Keycloak user of realm customers: username, wallet (msisdn attribute), realm role. */
+  /** An app user: a label for the logs, its wallet (MSISDN, the mw-auth login), its role. */
   public record User(String username, String msisdn, String role) {}
 
   private static final int FIRST_CUSTOMER = 101;
@@ -87,27 +85,6 @@ public final class PerfUsers {
     List<User> all = new ArrayList<>(customers);
     all.addAll(agents);
     return all;
-  }
-
-  /** Keycloak partial import (realm customers) creating every app user, skipping existing ones. */
-  public String partialImport(String password) {
-    JsonMapper json = JsonMapper.builder().build();
-    ObjectNode root = json.createObjectNode();
-    root.put("ifResourceExists", "SKIP");
-    var users = root.putArray("users");
-    for (User u : appUsers()) {
-      ObjectNode n = users.addObject();
-      n.put("username", u.username());
-      n.put("enabled", true);
-      n.put("emailVerified", true);
-      n.put("firstName", "Perf");
-      n.put("lastName", "Load");
-      n.put("email", u.username() + "@example.test");
-      n.putArray("credentials").addObject().put("type", "password").put("value", password).put("temporary", false);
-      n.putArray("realmRoles").add(u.role());
-      n.putObject("attributes").putArray("msisdn").add(u.msisdn());
-    }
-    return json.writeValueAsString(root);
   }
 
   private static String wallet(String prefix, int n) {

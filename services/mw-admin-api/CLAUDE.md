@@ -120,16 +120,17 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   PIN_RESET, reason}` (same maker role and id rules) opens a change request of resourceType
   `pin_reset` (`ChangeRequest.PIN_RESET`, handled like `wallet`: `ChangeRequest.walletLike`, masked id,
   `payload.unlockTxnId` as txnId of its audits, `diff` LOCKED -> RESET, its own one-open-per-wallet, so
-  it never collides with an unlock), approved by an ops-checker (`TXN_CHECKER`). Approval: first
-  `client/AuthPinResetClient` `POST /internal/v1/pin-resets {walletId, changeRequestId, makerId,
-  checkerId, reason (scrubbed)}` at mw-auth (`mw.admin-api.auth.base-url`, `MW_AUTH_INTERNAL_URL`,
-  `https://mw-auth:8443`; mTLS with this service's OpenBao certificate, `config/ServiceCertificateManager`
-  + `TlsProperties` copied from the template, `mw.tls.enabled`, compose `MW_TLS_ENABLED=true`, client
-  side only; the services token now also carries audience `mw-auth`, Keycloak mapper `aud-mw-auth`),
-  outside the transaction and idempotent at mw-auth on the change request id; mw-auth down / 5xx / 401
-  `503 MW-SYS-040` (request stays PENDING, approve again), unknown wallet `409 MW-VAL-030`; then one
-  transaction: APPROVED with `payload.resetId`, audit (`sentAs` `mw-auth:/internal/v1/pin-resets`).
-  Test `controller/PinResetApiIT` (stub mw-auth validated against `auth-internal.v1`).
+  it never collides with an unlock), approved by an ops-checker (`TXN_CHECKER`). Approval = ONE
+  transaction like every approval (spec 6.4): the conditional PENDING -> APPROVED update claims the row,
+  PIN_RESET on `auth.wallet-lock.v1` through the outbox (`ChangeRequestMapper.pinReset`: commandId
+  `<changeRequestId>:pin-reset`, changeRequestId, makerId, actor the checker, reason scrubbed;
+  `payload.authCommandId`) and the audit (`sentAs` `auth.wallet-lock.v1`); mw-auth opens the reset from
+  the committed command, idempotent on the change request id. **Security review of ticket 70
+  (maker-checker TOCTOU):** the first version called mw-auth's `POST /internal/v1/pin-resets` before
+  the conditional update committed, so a reject or expiry winning the race left an open reset; now no
+  remote call happens before the decision (no mTLS client in this service). Test
+  `controller/PinResetApiIT` (the command validated against its contract, approve vs reject raced
+  10 times: a rejected request never has a command, the maker / integration roles refused).
 - Partner config (ticket 38, spec 15.2 Partners, 15.3, 16.2, 20.4; `controller/PartnerController` ->
   `service/PartnerConfigService` (reads, maker) and `service/PartnerChangeHandler` (approval) ->
   `repository/PartnerRepository`, schema `partner` (own, V5: `partner`, `endpoint`, `mapping`,
@@ -244,13 +245,13 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `events/mw-audit-dw/mw.audit.event.v1` (own type `dto/AuditEvent`;
   `contracts/ProducedContractsTest`, and `AdminTransactionApiIT` validates the outbox row),
   `events/mw-admin-api/mw.txn.action.v1` (`dto/TxnAction`) and a REVERSAL on
-  `events/mw-auth/auth.wallet-lock.v1` (ticket 70, `dto/WalletLockCommand`; `WalletUnlockApiIT`),
+  `events/mw-auth/auth.wallet-lock.v1` (ticket 70, `dto/WalletLockCommand` UNLOCK and PIN_RESET;
+  `WalletUnlockApiIT`, `PinResetApiIT`),
   `events/mw-orchestrator/mw.txn.request.v1` (`dto/ReversalRequest`; `ChangeRequestApiIT`
   validates both outbox rows), `events/mw-admin-api/mw.config.changed.v1` (`dto/ConfigChangedEvent`;
   `PartnerConfigApiIT` and `ContentChangeApiIT` validate the outbox rows), serves
   `admin.v1`; consumes `api/mw-orchestrator/txn-query.v1` (own type `dto/AdminTxn`) and
-  `api/mw-audit-dw/audit-query.v1` (own type `dto/AuditTrail`) and (ticket 70) `api/mw-auth/auth-internal.v1`
-  `POST /internal/v1/pin-resets` (`client/AuthPinResetClient`), unknown fields ignored
+  `api/mw-audit-dw/audit-query.v1` (own type `dto/AuditTrail`), unknown fields ignored
   (`contracts/ApiContractsTest` reads contract-shaped answers). No consumed events.
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)

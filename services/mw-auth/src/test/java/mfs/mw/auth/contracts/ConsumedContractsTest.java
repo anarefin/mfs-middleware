@@ -103,7 +103,8 @@ class ConsumedContractsTest {
   @Test
   void invalidWalletLockCommandsAreRefused() throws Exception {
     Path dir = ContractSchemas.contractsDir().resolve("events/mw-auth/samples/auth.wallet-lock.v1");
-    for (String name : List.of("invalid-unknown-action.json", "invalid-without-actor.json")) {
+    for (String name : List.of("invalid-unknown-action.json", "invalid-without-actor.json",
+        "invalid-pin-reset-without-change-request.json")) {
       String body = Files.readString(dir.resolve(name));
       assertThatThrownBy(() -> LOCKS.read(body)).as(name).isInstanceOf(MwException.class);
     }

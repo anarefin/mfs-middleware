@@ -121,7 +121,7 @@ public class DeviceBindingService {
           .withStatus(HttpStatus.FORBIDDEN);
     }
     if (DeviceOtpService.RESET.equals(p)
-        && devices.boundOf(w.walletId()).filter(d -> d.deviceId().equals(id)).isEmpty()
+        && devices.findBound(w.walletId()).filter(d -> d.deviceId().equals(id)).isEmpty()
         && !resets.careWaiting(w.walletId())) {
       // a reset OTP goes to the bound device, or to any device once a care reset was approved
       throw new MwException(ErrorCodes.AUTH_FORBIDDEN, "A PIN reset needs the bound device or an approved care reset")

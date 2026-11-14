@@ -20,4 +20,4 @@ produces:
   apis:   [api/mw-admin-api/admin.v1.openapi.yaml]
 consumes:
   events: []
-  apis:   [api/mw-orchestrator/txn-query.v1.openapi.yaml, api/mw-audit-dw/audit-query.v1.openapi.yaml, api/mw-auth/auth-internal.v1.openapi.yaml]
+  apis:   [api/mw-orchestrator/txn-query.v1.openapi.yaml, api/mw-audit-dw/audit-query.v1.openapi.yaml]

@@ -4,7 +4,7 @@ export default [
   {
     name: '[health] the edge and every test-only route answer',
     run: async (MW, S) => {
-      for (const k of ['e2eApiKey', 'appPin', 'kcPortalsPassword', 'kcOpsPassword', 'kcOpsTotpSecret', 'billaggSecret', 'checkoutSecret']) {
+      for (const k of ['e2eApiKey', 'appPin', 'kcPortalsPassword', 'kcOpsPassword', 'kcOpsTotpSecret', 'kcPortalsTotpSecret', 'billaggSecret', 'checkoutSecret']) {
         S.check('environment has ' + k + ' (run.sh reads it from deploy/.env)', !!MW.v(k));
       }
       S.status(200, await MW.http('GET', '/healthz'));
@@ -31,7 +31,7 @@ export default [
     name: '[health seed] the seeded personas sign in and the seeded wallets exist',
     run: async (MW, S) => {
       S.check('customer seed-customer01 logs in at mw-auth', !!(await MW.app.session('seed-customer01')).access);
-      S.check('portal seed-org-maker has a token', !!(await MW.token('portals', 'seed-org-maker')));
+      S.check('portal seed-org-maker has a token (password + TOTP)', !!(await MW.token('portals', 'seed-org-maker')));
       S.check('ops seed-ops-viewer has a token (password + TOTP)', !!(await MW.token('ops', 'seed-ops-viewer')));
       for (const w of ['01712000001', '01712000002', '01812000001', '01912000001', '01312000001']) {
         const r = await MW.http('GET', '/test/core-mock/v1/wallets/' + w, { apikey: true });

@@ -21,7 +21,15 @@
       "$ref": "../../common/defs.v1.schema.json#/$defs/TxnId",
       "description": "Set for REVERSAL: the transaction being compensated."
     },
-    "encryptedPin": { "$ref": "../../common/defs.v1.schema.json#/$defs/EncryptedPin" },
+    "encryptedPin": {
+      "$ref": "../../common/defs.v1.schema.json#/$defs/EncryptedPin",
+      "deprecated": true,
+      "description": "Deprecated (D22): the channels switch to assertion in ticket 72, which removes this field. Ignored when assertion is present."
+    },
+    "assertion": {
+      "$ref": "../../common/defs.v1.schema.json#/$defs/TxnAssertion",
+      "description": "mw-auth's transaction authorisation assertion for this request (spec 18.7, D22); the orchestrator copies it into ValidateTransaction, HoldFunds and PostTransfer. Bulk children carry none."
+    },
     "requestedAt": { "type": "string", "format": "date-time" },
     "locale": { "$ref": "../../common/defs.v1.schema.json#/$defs/Locale" },
     "metadata": {

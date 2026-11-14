@@ -192,10 +192,11 @@
   };
 
   // ---------- Tokens (Keycloak through APISIX), cached per user, refreshed with the refresh token ----------
-  // App users log in at mw-auth (ticket 69, below); Keycloak keeps portals and ops (customers goes in ticket 73).
+  // App users log in at mw-auth (ticket 69, below); Keycloak keeps portals and ops, both with TOTP
+  // (ticket 73: the portals users have the pre-set kcPortalsTotpSecret). ops: test-only route, key-auth.
   const REALMS = {
-    portals: { client: 'mw-portal', password: 'kcPortalsPassword' },
-    ops: { client: 'mw-e2e-ops', password: 'kcOpsPassword', totp: true },
+    portals: { client: 'mw-portal', password: 'kcPortalsPassword', totp: 'kcPortalsTotpSecret' },
+    ops: { client: 'mw-e2e-ops', password: 'kcOpsPassword', totp: 'kcOpsTotpSecret', apikey: true },
   };
   async function token(realm, user) {
     const key = 'tok:' + realm + '/' + user;
@@ -207,7 +208,7 @@
       const t = JSON.parse(raw);
       if (t.exp - 30000 > now) return t.access;
       if (t.refresh && t.rexp - 30000 > now) {
-        const r = await http('POST', path, { apikey: !!cfg.totp, form: { client_id: cfg.client, grant_type: 'refresh_token', refresh_token: t.refresh } });
+        const r = await http('POST', path, { apikey: !!cfg.apikey, form: { client_id: cfg.client, grant_type: 'refresh_token', refresh_token: t.refresh } });
         if (r.status === 200) return store(key, r.body);
       }
     }
@@ -218,10 +219,10 @@
         // Keycloak refuses a code this user already used: wait for the next 30 s step if needed
         const step = Math.floor(Date.now() / 30000);
         if (CV.get('totpStep:' + user) === String(step)) await sleep(30000 - (Date.now() % 30000) + 200);
-        form.totp = totp(v('kcOpsTotpSecret'));
+        form.totp = totp(v(cfg.totp));
         CV.set('totpStep:' + user, String(Math.floor(Date.now() / 30000)));
       }
-      r = await http('POST', path, { apikey: !!cfg.totp, form });
+      r = await http('POST', path, { apikey: !!cfg.apikey, form });
       if (r.status === 200) return store(key, r.body);
       if (r.status !== 401 && r.status !== 429 && r.status !== 400) break;
       await sleep(r.status === 429 ? 7000 : 1000);
@@ -269,8 +270,8 @@
   }
 
   // ---------- App login at mw-auth (ticket 69): MSISDN + PIN + bound device ----------
-  // The app users and their wallets (customers-realm.json's users = core-mock seed wallets; the
-  // seeded ones of mw-seeder); every one has the seeded app PIN (appPin = MW_SEED_APP_PIN).
+  // The app users and their wallets (core-mock's own seed wallets and the seeded ones of mw-seeder,
+  // realm mw-auth in the manifest); every one has the seeded app PIN (appPin = MW_SEED_APP_PIN).
   const APP_USERS = {
     customer01: '01711000001', customer02: '01711000002', agent01: '01811000001', merchant01: '01911000001',
     merchant02: '01911000002', 'seed-customer01': '01712000001', 'seed-customer02': '01712000002',

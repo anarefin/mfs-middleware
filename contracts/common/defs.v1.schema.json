@@ -65,12 +65,19 @@
     },
     "EncryptedPin": {
       "type": "object",
-      "description": "PIN encrypted with the core's public key keyId (RSA-OAEP, SHA-256); the middleware never decrypts it (spec 6.3).",
+      "description": "PIN encrypted with the core's public key keyId (RSA-OAEP, SHA-256); the middleware never decrypts it (spec 6.3). Deprecated (D22): replaced by TxnAssertion; removed in ticket 72.",
       "required": ["keyId", "ciphertext"],
       "properties": {
         "keyId": { "type": "string", "minLength": 1 },
         "ciphertext": { "type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9+/]+={0,2}$", "contentEncoding": "base64" }
       }
+    },
+    "TxnAssertion": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 4096,
+      "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+      "description": "Transaction authorisation assertion (spec 18.7, D22): a compact JWS (ES256, mw-crypto ASSERTION_SIGN, kid <keyId>.v<n>) issued by mw-auth after the PIN check, 60 s, single use by jti, aud core; claims iss, aud, sub (walletId), jti, iat, exp, txnHash (base64url SHA-256 of the RFC 8785 canonical JSON of {txnType, amount (valueMinor), currency, payer {type, id}, payee {type, id}, idempotencyKey, channel}), channel, authMethod PIN, deviceId?, newDevice. Not PIN material; the core checks it against mw-auth's assertion JWK Set."
     },
     "Channel": {
       "enum": ["CUSTOMER_APP", "AGENT_APP", "MERCHANT_APP", "DISTRIBUTOR_APP", "DSO_APP", "PARTNER_APP", "USSD", "WEB_CHECKOUT", "ORG_PORTAL", "SP_PORTAL", "PARTNER_API", "SYSTEM"]

@@ -10,14 +10,16 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Reads {@code auth.wallet-lock.v1} records (ticket 70). A record without what the consumer needs
- * (schemaVersion 1, commandId, a known action, walletId, reason, actor id) is malformed ({@code
+ * (schemaVersion 1, commandId, a known action, walletId, reason, actor id; PIN_RESET also a UUID
+ * changeRequestId and makerId) is malformed ({@code
  * MW-VAL-002}: retry topics, then the DLQ).
  */
 @Component
 public class WalletLockMapper {
 
   private static final Set<String> ACTIONS =
-      Set.of(WalletLockCommand.LOCK, WalletLockCommand.UNLOCK, WalletLockCommand.REVOKE_SESSIONS);
+      Set.of(WalletLockCommand.LOCK, WalletLockCommand.UNLOCK, WalletLockCommand.REVOKE_SESSIONS,
+          WalletLockCommand.PIN_RESET);
 
   private final JsonMapper json;
 
@@ -36,7 +38,19 @@ public class WalletLockMapper {
         || blank(cmd.reason()) || cmd.actor() == null || blank(cmd.actor().id())) {
       throw malformed("wallet lock command lacks a required field");
     }
+    if (WalletLockCommand.PIN_RESET.equals(cmd.action()) && (blank(cmd.makerId()) || !uuid(cmd.changeRequestId()))) {
+      throw malformed("PIN_RESET needs changeRequestId and makerId");
+    }
     return cmd;
+  }
+
+  private static boolean uuid(String s) {
+    try {
+      java.util.UUID.fromString(s);
+      return true;
+    } catch (RuntimeException e) {
+      return false;
+    }
   }
 
   private static boolean blank(String s) {

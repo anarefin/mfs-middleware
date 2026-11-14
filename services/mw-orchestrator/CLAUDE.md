@@ -262,6 +262,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `MW-TMO-003` (not found by inquiry, retryable), `MW-TMO-004` (inquiry exhausted),
   `MW-TMO-005` (conflicting inquiry answer), reversal `MW-VAL-020..022`, operator action not allowed `MW-VAL-023`, `MW-AUTH-020`, `MW-TMO-020`, bulk channel `MW-AUTH-021`;
   partner codes come from the adapter's reply.
+- Transaction assertion (spec 18.7, D22, ticket 71): a `mw.txn.request.v1` with `assertion` (mw-auth's JWS)
+  keeps it in the stored request (it is no PIN material; `dto/TxnRequest.assertion`, `@Sensitive`) and
+  `TransferPayload.of` copies it, with the request's `idempotencyKey` (part of its txnHash), into
+  ValidateTransaction, PostTransfer and HoldFunds instead of `encryptedPin`; such a request stores nothing
+  PIN-related (`RequestMapper.toRecord` drops a ciphertext sent beside it, `encrypted_pin` stays null). It is
+  not part of the idempotency request hash. A request without one keeps the PIN path below until ticket 72
+  (which drops `encrypted_pin` in V11+). A core refusal with reasonCode `MW-AUTH-046` (assertion invalid or
+  used) becomes the status error `MW-AUTH-046` as it is (`CoreEventMapper`), not `MW-CORE-*`. Tests:
+  `mapper/CoreCommandMapperTest` (the assertion reaches every authorising command, schema-valid; no PIN kept),
+  `mapper/CoreEventMapperTest`.
 - PIN: only ciphertext. It is kept in `transaction.encrypted_pin` (jsonb) because PostTransfer
   follows ValidateTransaction, and cleared (`TransactionRecord.moved`, the one write path) on every
   transition into COMPLETED, REJECTED, FAILED, REVERSED or MANUAL_REVIEW (ticket 50, spec 18.3;

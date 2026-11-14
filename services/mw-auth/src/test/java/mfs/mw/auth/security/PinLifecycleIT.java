@@ -262,6 +262,35 @@ class PinLifecycleIT {
     assertThat(jdbc.queryForObject("select count(*) from device where device_id = ?", Integer.class, next.id())).isZero();
   }
 
+  MvcTestResult authorise(String pin) {
+    String body = "{\"walletId\":\"" + msisdn + "\",\"channel\":\"USSD\",\"encryptedPin\":" + pinJson(pin)
+        + ",\"txn\":{\"txnType\":\"P2P\",\"amount\":1000,\"currency\":\"BDT\",\"payer\":{\"type\":\"WALLET\",\"id\":\""
+        + msisdn + "\"},\"payee\":{\"type\":\"WALLET\",\"id\":\"01811000002\"},\"idempotencyKey\":\""
+        + UUID.randomUUID() + "\"}}";
+    return mvc.post().uri("/internal/v1/txn-authorisations").contentType(MediaType.APPLICATION_JSON).content(body)
+        .header("Authorization", InternalTokens.bearer("mw-ussd")).exchange();
+  }
+
+  @Test
+  void theTransactionAssertionCountsWrongPinsLocksAndThenRefusesBeforeMwCrypto() throws Exception {
+    assertCode(authorise(WRONG), 401, "MW-AUTH-040");
+    assertCode(login(WRONG), 401, "MW-AUTH-040");
+    MvcTestResult locking = authorise(WRONG);
+    assertCode(locking, 423, "MW-AUTH-041");
+    assertThat(pinLock()).as("login and assertion share the count").containsEntry("level", 1);
+
+    clearInvocations(crypto);
+    assertCode(authorise(PIN), 423, "MW-AUTH-041");
+    verify(crypto, never()).verifyPin(anyString(), any(), anyString(), anyString());
+    verify(crypto, never()).signJws(any(), any(), any(), any());
+
+    jdbc.update("insert into lock (wallet_id, kind, level, until, reason, actor) values (?, 'ADMIN', 1, null, 'it', 'it')",
+        msisdn);
+    lockRunsOut();
+    assertCode(authorise(PIN), 403, "MW-AUTH-043");
+    verify(crypto, never()).verifyPin(anyString(), any(), anyString(), anyString());
+  }
+
   @Test
   void parallelWrongPinsNeverSkipALevel() throws Exception {
     List<Thread> threads = new java.util.ArrayList<>();

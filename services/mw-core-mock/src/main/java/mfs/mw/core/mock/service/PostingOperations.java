@@ -122,7 +122,7 @@ class PostingOperations {
   }
 
   private CoreEvent rejected(CoreCommand cmd, String type, String coreRef, Reason reason) {
-    return events.rejected(cmd, type, coreRef, reason.name(), reason.message);
+    return events.rejected(cmd, type, coreRef, reason.code(), reason.message);
   }
 
   private CoreEvent.BalanceAfter balanceOf(String walletId) {

@@ -12,7 +12,7 @@
 # then logs in): node >= 22 is needed. Binding unbinds the wallets' previous devices.
 #
 # Checks (ticket 13 acceptance, plus the 5.3 envelope on every edge error):
-#   - no, garbage or badly signed bearer token, or a token of another issuer (a Keycloak customers
+#   - no, garbage or badly signed bearer token, or a token of another issuer (a Keycloak services
 #     token) -> 401 MW-AUTH-001 envelope with a correlationId; an mw-auth token on a bound device
 #     reaches mw-app-gateway (200); unknown path 404 and unreachable upstream 502 get the envelope.
 #     Token expiry: covered by the static iat_slack check and mw-app-gateway's tests (mw-auth's
@@ -78,11 +78,12 @@ app_login() {
   MW_EDGE_URL="$base" MW_SIM_URL="http://127.0.0.1:$sim_port" MW_SEED_APP_PIN="$MW_SEED_APP_PIN" \
     node "$MW_ROOT/scripts/lib/mw-auth-token.mjs" "$1"
 }
-# kc_customer_token USER: a Keycloak realm customers token (another issuer; the realm goes in ticket 73)
-kc_customer_token() {
-  ops_curl --data-urlencode grant_type=password --data-urlencode client_id=mw-app \
-    --data-urlencode "username=$1" --data-urlencode "password=$KC_CUSTOMERS_TEST_PASSWORD" \
-    http://keycloak:8080/realms/customers/protocol/openid-connect/token | jq -r '.access_token // empty'
+# kc_service_token: a Keycloak token (realm services, client credentials of mw-admin-api): another
+# issuer for app-v1 (the customers realm is gone, ticket 73)
+kc_service_token() {
+  ops_curl --data-urlencode grant_type=client_credentials --data-urlencode client_id=mw-admin-api \
+    --data-urlencode "client_secret=$KC_MW_ADMIN_API_SECRET" \
+    http://keycloak:8080/realms/services/protocol/openid-connect/token | jq -r '.access_token // empty'
 }
 claims() { printf '%s' "$1" | cut -d. -f2 | tr '_-' '/+' | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | base64 -d 2>/dev/null; }
 # call METHOD PATH [curl args...]: response status in $status, headers in $tmp/h, body in $tmp/b
@@ -162,13 +163,13 @@ tampered_token() { # customer01's token with merchant01's signature: bad signatu
 }
 check "token with a bad signature -> 401 MW-AUTH-001 envelope" tampered_token
 
-# another issuer: the Keycloak customers token apps used before ticket 69 is refused at the edge
+# another issuer: a valid Keycloak token (realm services) is refused at the edge
 keycloak_token_refused() {
   local t
-  t="$(kc_customer_token customer01)"; [ -n "$t" ] || { echo "no Keycloak customers token for customer01"; return 1; }
+  t="$(kc_service_token)"; [ -n "$t" ] || { echo "no Keycloak services token for mw-admin-api"; return 1; }
   call GET /app/v1/transactions/x -H "Authorization: Bearer $t" && envelope 401 MW-AUTH-001
 }
-check "Keycloak customers token (another issuer) -> 401 MW-AUTH-001 envelope" keycloak_token_refused
+check "Keycloak token (another issuer) -> 401 MW-AUTH-001 envelope" keycloak_token_refused
 # an mw-auth token on its bound device passes the edge and mw-app-gateway's device gate
 mw_auth_token_passes() {
   call GET /app/v1/billers -H "Authorization: Bearer $customer" -H "X-Device-Id: $customer_device"

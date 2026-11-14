@@ -115,6 +115,8 @@ public class TestInfrastructure {
       registry.add(
           "mw.coremock.pin.private-key",
           () -> Base64.getEncoder().encodeToString(PIN_KEYS.getPrivate().getEncoded()));
+      // mw-auth's assertion key set (ticket 71), served by the test's own JWKS server
+      registry.add("mw.coremock.assertion.jwks-uri", mfs.mw.core.mock.security.TestAssertions::jwksUri);
     };
   }
 

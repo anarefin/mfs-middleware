@@ -135,7 +135,7 @@ node --version  <span class="c"># 22 or newer</span></pre></div>
 cp dev.env.defaults .env</pre></div>
     <p>Run every <code>docker compose</code> command below from inside <code>deploy/</code>. Compose reads <code>.env</code> there
       on its own, so no <code>--env-file</code> flag is needed.</p>
-    <p>The logins a tester types: ops <code>ops-test-pass</code>, app <code>app-test-pass</code>, portal <code>portal-test-pass</code>,
+    <p>The logins a tester types: ops <code>ops-test-pass</code>, app PIN <code>13579</code>, portal <code>portal-test-pass</code> (one-time codes: <code>scripts/totp.sh</code>),
       Keycloak admin <code>kc-admin-test-pass</code>, test-route apikey <code>e2e-test-apikey</code>
       (<code>scripts/creds.sh</code> prints them all; <a href="../docs/testing-guide.html">testing guide</a>, section 1).</p>
     <div class="warn">The volumes are initialised with these values. If you change a credential in <code>.env</code>, reset
@@ -182,7 +182,7 @@ docker compose --profile core --profile seed ps -a mw-seeder   <span class="c">#
     <ul>
       <li>At start-up: <code>mw-core-mock</code> creates 1,000 customer wallets <code>01711000001…</code>, 50 agents
         <code>01811000001…</code>, 20 merchants <code>01911000001…</code>, 2 orgs <code>01311000001…</code>, all with the fake PIN
-        <code>1234</code>. Keycloak imports its realms (ops, customers, portals) with test users.</li>
+        <code>1234</code>. Keycloak imports its realms (ops, portals, services, partners) with test users; app users log in at mw-auth.</li>
       <li>From <code>mw-seeder</code>: the personas <code>seed-ops-maker</code>, <code>seed-ops-checker</code>,
         <code>seed-ops-viewer</code>, <code>seed-ops-compliance</code>, <code>seed-org-maker</code>, <code>seed-org-checker</code>,
         <code>seed-customer01/02</code>, <code>seed-agent01</code>, <code>seed-merchant01</code> with their wallets
@@ -242,7 +242,7 @@ docker compose logs -f mw-orchestrator</pre></div>
       <tr><td>5432</td><td>postgres (18)</td><td>every service's schema; user <code>mw_admin</code>, password <code>POSTGRES_PASSWORD</code> from <code>.env</code></td></tr>
       <tr><td>9094</td><td>kafka (KRaft)</td><td>host listener <code>localhost:9094</code> (containers use <code>kafka:9092</code>); 1 partition per topic</td></tr>
       <tr><td>6379</td><td>valkey</td><td>sessions and rate limits; password <code>VALKEY_PASSWORD</code></td></tr>
-      <tr><td>8180</td><td>keycloak</td><td>realms ops, customers, portals, services (the console login goes through 443)</td></tr>
+      <tr><td>8180</td><td>keycloak</td><td>realms ops, portals, services, partners (the console login goes through 443)</td></tr>
       <tr><td>8200</td><td>openbao</td><td>service secrets (dev mode)</td></tr>
       <tr><td>8025 / 3025</td><td>greenmail</td><td>test mailbox: API / SMTP</td></tr>
       <tr><td>—</td><td>etcd</td><td>APISIX configuration; never published</td></tr>

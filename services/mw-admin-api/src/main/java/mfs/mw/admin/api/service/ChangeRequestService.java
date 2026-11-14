@@ -1,7 +1,6 @@
 package mfs.mw.admin.api.service;
 
 import mfs.mw.admin.api.util.CorrelationIds;
-import mfs.mw.admin.api.util.MaskingPolicy;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -24,7 +23,6 @@ import mfs.mw.admin.api.dto.ReversalRequest;
 import mfs.mw.admin.api.dto.TxnAction;
 import mfs.mw.admin.api.dto.UnlockWalletCommand;
 import mfs.mw.admin.api.dto.WalletLockCommand;
-import mfs.mw.admin.api.client.AuthPinResetClient;
 import mfs.mw.admin.api.dto.WalletChangeRequestBody.WalletActionType;
 import mfs.mw.admin.api.entity.ChangeRequest;
 import mfs.mw.admin.api.entity.Partner;
@@ -74,8 +72,6 @@ public class ChangeRequestService {
   static final String CORE_COMMAND_TOPIC = "core.wallet.command.v1";
   /** mw-auth's wallet lock commands (ticket 70): the unlock lifts mw-auth's PIN and ADMIN locks. */
   static final String WALLET_LOCK_TOPIC = "auth.wallet-lock.v1";
-  /** What a care PIN reset approval is sent as (the audit's {@code sentAs}): mw-auth's internal API. */
-  static final String PIN_RESET_SENT_AS = "mw-auth:/internal/v1/pin-resets";
   static final String PIN_RESET_DONE = "RESET";
   static final String WALLET_LOCKED = "LOCKED";
   static final String WALLET_ACTIVE = "ACTIVE";
@@ -89,7 +85,6 @@ public class ChangeRequestService {
   private final ChangeRequestProperties props;
   private final Clock clock;
   private final Map<String, ResourceChangeHandler> handlers;
-  private final AuthPinResetClient pinResets;
 
   public ChangeRequestService(
       ChangeRequestRepository requests,
@@ -98,9 +93,7 @@ public class ChangeRequestService {
       TransactionTemplate tx,
       ChangeRequestProperties props,
       Clock clock,
-      List<ResourceChangeHandler> handlers,
-      AuthPinResetClient pinResets) {
-    this.pinResets = pinResets;
+      List<ResourceChangeHandler> handlers) {
     this.requests = requests;
     this.orchestrator = orchestrator;
     this.outbox = outbox;
@@ -301,25 +294,26 @@ public class ChangeRequestService {
   }
 
   /**
-   * Approval of a care PIN reset (ticket 70): mw-auth opens the reset first ({@code POST
-   * /internal/v1/pin-resets}, outside the transaction, idempotent on the change request id: an
-   * approval that fails after it, or a retry after mw-auth was down, opens nothing twice; mw-auth
-   * down leaves the request PENDING, 503), then one transaction: row APPROVED ({@code
-   * payload.resetId}) + audit.
+   * Approval of a care PIN reset (ticket 70; security review: no remote call before the decision),
+   * one transaction like every approval (spec 6.4): the conditional PENDING -> APPROVED update claims
+   * the row, then PIN_RESET on {@code auth.wallet-lock.v1} through the outbox ({@code
+   * payload.authCommandId}) and the audit. mw-auth opens the reset only from that committed command,
+   * so a reject or an expiry that wins the race leaves nothing to undo.
    */
   private ChangeRequestView approvePinReset(Operator checker, ChangeRequest cr) {
     Instant now = clock.instant();
     String correlationId = correlationId();
-    AuthPinResetClient.CareReset reset =
-        pinResets.approve(cr.resourceId(), cr.id(), cr.makerId(), checker.username(), MaskingPolicy.scrub(cr.reason()));
+    WalletLockCommand cmd = ChangeRequestMapper.pinReset(cr, checker.username(), correlationId, now);
     Map<String, Object> payload = new LinkedHashMap<>(cr.payload());
-    payload.put("resetId", reset.resetId());
+    payload.put("authCommandId", cmd.commandId());
     tx.executeWithoutResult(
         s -> {
           if (!requests.decide(cr.id(), ChangeRequest.Status.APPROVED, checker.username(), checker.subject(), null, payload, now)) {
             throw decided();
           }
-          audit(ChangeRequestMapper.approved(cr, checker.username(), PIN_RESET_SENT_AS, correlationId, now), cr);
+          outbox.append(WALLET_LOCK_TOPIC, cmd.walletId(),
+              new EventMetadata(correlationId, ChangeRequestMapper.unlockTxnId(cr), cmd.commandId(), 1), cmd);
+          audit(ChangeRequestMapper.approved(cr, checker.username(), WALLET_LOCK_TOPIC, correlationId, now), cr);
         });
     logDecision("admin.change_request.approved", cr, checker.username());
     return found(cr.id());

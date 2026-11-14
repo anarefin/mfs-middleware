@@ -4,17 +4,14 @@ import static mfs.mw.admin.api.controller.WalletUnlockApiIT.operator;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.networknt.schema.Schema;
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import mfs.mw.admin.api.TestInfrastructure;
 import mfs.mw.admin.api.contracts.ContractSchemas;
 import mfs.mw.admin.api.contracts.OpenApiSchemas;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,8 +20,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -33,10 +28,10 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The care PIN reset of ticket 70 through the maker-checker engine: an ops-maker asks (resourceType
- * {@code pin_reset}), a different ops-checker approves; the approval asks mw-auth (here a stub of
- * {@code POST /internal/v1/pin-resets}, validated against {@code auth-internal.v1}) to open the reset
- * with the services token, idempotent on the change request id; mw-auth down leaves the request
- * PENDING. A pending unlock of the same wallet does not block it.
+ * {@code pin_reset}), a different ops-checker approves. The approval is one transaction (security
+ * review of ticket 70): the conditional PENDING -> APPROVED update, PIN_RESET on {@code
+ * auth.wallet-lock.v1} through the outbox (mw-auth opens the reset from it), the audit. No remote
+ * call happens before the decision, so a reject that wins a race leaves no reset behind.
  */
 @SpringBootTest(properties = "mw.outbox.relay.enabled=false")
 @AutoConfigureMockMvc
@@ -44,54 +39,7 @@ import tools.jackson.databind.json.JsonMapper;
 class PinResetApiIT {
 
   static final String WALLET = "01711000321";
-  static final String TOKEN = "service-token-70";
-  static final String AUTH_CONTRACT = "api/mw-auth/auth-internal.v1.openapi.yaml";
-  static final List<String> CALLS = new CopyOnWriteArrayList<>();
-  static volatile int authStatus = 201;
-  static final HttpServer AUTH = startStub();
-
-  static HttpServer startStub() {
-    try {
-      HttpServer s = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-      s.createContext("/internal/v1/pin-resets", PinResetApiIT::pinResets);
-      s.createContext("/token", ex -> respond(ex, 200, "{\"access_token\":\"" + TOKEN + "\",\"expires_in\":300}"));
-      s.start();
-      return s;
-    } catch (IOException e) {
-      throw new IllegalStateException(e);
-    }
-  }
-
-  static void pinResets(HttpExchange ex) throws IOException {
-    String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-    CALLS.add(ex.getRequestHeaders().getFirst("Authorization") + " " + body);
-    if (authStatus >= 300) {
-      respond(ex, authStatus, "{\"code\":\"MW-SYS-001\",\"message\":\"x\",\"correlationId\":\"c\",\"retryable\":true,\"details\":[]}");
-    } else {
-      respond(ex, authStatus,
-          "{\"resetId\":\"3f6b1c2d-4e5f-4a6b-9c7d-8e9f0a1b2c3d\",\"status\":\"APPROVED\",\"expiresAt\":\"2026-11-17T10:00:00Z\"}");
-    }
-  }
-
-  static void respond(HttpExchange ex, int status, String body) throws IOException {
-    byte[] b = body.getBytes(StandardCharsets.UTF_8);
-    ex.getResponseHeaders().add("Content-Type", "application/json");
-    ex.sendResponseHeaders(status, b.length);
-    ex.getResponseBody().write(b);
-    ex.close();
-  }
-
-  @AfterAll
-  static void stopStub() {
-    AUTH.stop(0);
-  }
-
-  @DynamicPropertySource
-  static void upstreams(DynamicPropertyRegistry registry) {
-    String base = "http://127.0.0.1:" + AUTH.getAddress().getPort();
-    registry.add("mw.admin-api.auth.base-url", () -> base);
-    registry.add("mw.admin-api.internal-auth.token-uri", () -> base + "/token");
-  }
+  static final String LOCK_TOPIC = "auth.wallet-lock.v1";
 
   static final RequestPostProcessor MAKER = operator("ops-maker01", "viewer", "ops-maker");
   static final RequestPostProcessor CHECKER = operator("ops-checker01", "viewer", "ops-checker");
@@ -112,8 +60,6 @@ class PinResetApiIT {
     jdbc.update("delete from outbox");
     jdbc.update("delete from content_version");
     jdbc.update("delete from change_request");
-    CALLS.clear();
-    authStatus = 201;
   }
 
   private JsonNode body(MvcTestResult r) {
@@ -130,13 +76,22 @@ class PinResetApiIT {
     return mvc.post().uri("/admin/v1/change-requests/{id}/approve", id).with(who).exchange();
   }
 
+  private MvcTestResult reject(RequestPostProcessor who, String id) {
+    return mvc.post().uri("/admin/v1/change-requests/{id}/reject", id).with(who)
+        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"not verified\"}").exchange();
+  }
+
+  private List<JsonNode> outbox(String topic) {
+    return jdbc.queryForList("select payload::text from outbox where topic = ? order by id", String.class, topic)
+        .stream().map(json::readTree).toList();
+  }
+
   private List<JsonNode> audits(String action) {
-    return jdbc.queryForList("select payload::text from outbox where topic = 'mw.audit.event.v1' order by id", String.class)
-        .stream().map(json::readTree).filter(e -> e.path("action").asString().equals(action)).toList();
+    return outbox("mw.audit.event.v1").stream().filter(e -> e.path("action").asString().equals(action)).toList();
   }
 
   @Test
-  void anApprovedPinResetAsksMwAuthOnceAndIsAudited() {
+  void anApprovedPinResetSendsOnePinResetCommandToMwAuthAndIsAudited() {
     MvcTestResult created = ask(MAKER, "PIN_RESET");
     assertThat(created).hasStatus(201);
     JsonNode cr = body(created);
@@ -146,7 +101,7 @@ class PinResetApiIT {
     assertThat(cr.path("resourceType").asString()).isEqualTo("pin_reset");
     assertThat(cr.path("resourceId").asString()).isEqualTo("0171****321");
     assertThat(cr.path("diff").path("after").path("status").asString()).isEqualTo("RESET");
-    assertThat(CALLS).as("nothing before the approval").isEmpty();
+    assertThat(outbox(LOCK_TOPIC)).as("nothing before the approval").isEmpty();
     assertThat(ask(MAKER, "UNLOCK")).as("an unlock of the same wallet is another request").hasStatus(201);
     assertThat(ask(MAKER, "PIN_RESET")).as("one open reset request per wallet").hasStatus(409);
 
@@ -154,43 +109,65 @@ class PinResetApiIT {
     MvcTestResult approved = approve(CHECKER, id);
     assertThat(approved).hasStatus(200);
     assertThat(body(approved).path("status").asString()).isEqualTo("APPROVED");
-    assertThat(body(approved).path("payload").path("resetId").asString()).isEqualTo("3f6b1c2d-4e5f-4a6b-9c7d-8e9f0a1b2c3d");
+    assertThat(body(approved).path("payload").path("authCommandId").asString()).isEqualTo(id + ":pin-reset");
 
-    assertThat(CALLS).hasSize(1);
-    String call = CALLS.getFirst();
-    assertThat(call).startsWith("Bearer " + TOKEN + " ");
-    JsonNode sent = json.readTree(call.substring(call.indexOf('{')));
-    Schema request = OpenApiSchemas.component(AUTH_CONTRACT, "CarePinResetRequest");
-    assertThat(request.validate(sent)).as("%s", sent).isEmpty();
-    assertThat(sent.path("walletId").asString()).isEqualTo(WALLET);
-    assertThat(sent.path("changeRequestId").asString()).isEqualTo(id);
-    assertThat(sent.path("makerId").asString()).isEqualTo("ops-maker01");
-    assertThat(sent.path("checkerId").asString()).isEqualTo("ops-checker01");
+    List<JsonNode> commands = outbox(LOCK_TOPIC);
+    assertThat(commands).hasSize(1);
+    JsonNode cmd = commands.getFirst();
+    assertThat(ContractSchemas.schema("events/mw-auth/auth.wallet-lock.v1.schema.json").validate(cmd)).as("%s", cmd)
+        .isEmpty();
+    assertThat(cmd.path("action").asString()).isEqualTo("PIN_RESET");
+    assertThat(cmd.path("walletId").asString()).isEqualTo(WALLET);
+    assertThat(cmd.path("changeRequestId").asString()).isEqualTo(id);
+    assertThat(cmd.path("makerId").asString()).isEqualTo("ops-maker01");
+    assertThat(cmd.path("actor").path("id").asString()).isEqualTo("ops-checker01");
+    assertThat(jdbc.queryForObject("select msg_key from outbox where topic = ?", String.class, LOCK_TOPIC))
+        .isEqualTo(WALLET);
+    assertThat(jdbc.queryForObject("select count(*) from outbox where topic = 'core.wallet.command.v1'", Integer.class))
+        .as("a reset sends no core command").isZero();
 
     JsonNode audit = audits("admin.change_request.approved").getFirst();
     assertThat(ContractSchemas.schema("events/mw-audit-dw/mw.audit.event.v1.schema.json").validate(audit)).isEmpty();
     assertThat(audit.path("resource").asString()).isEqualTo("pin_reset/0171****321");
-    assertThat(audit.path("after").path("sentAs").asString()).isEqualTo("mw-auth:/internal/v1/pin-resets");
+    assertThat(audit.path("after").path("sentAs").asString()).isEqualTo(LOCK_TOPIC);
     assertThat(audit.toString()).doesNotContain(WALLET);
-    assertThat(jdbc.queryForObject("select count(*) from outbox where topic in ('auth.wallet-lock.v1', 'core.wallet.command.v1')",
-        Integer.class)).as("a reset sends no lock command").isZero();
   }
 
   @Test
-  void mwAuthDownLeavesTheRequestPendingAndARetrySucceeds() {
+  void aRejectThatWinsTheRaceLeavesNoResetCommand() throws Exception {
+    RequestPostProcessor checker2 = operator("ops-checker02", "ops-checker");
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+    try {
+      for (int round = 0; round < 10; round++) {
+        reset();
+        String id = body(ask(MAKER, "PIN_RESET")).path("id").asString();
+        Callable<Integer> approving = () -> approve(CHECKER, id).getResponse().getStatus();
+        Callable<Integer> rejecting = () -> reject(checker2, id).getResponse().getStatus();
+        Future<Integer> a = pool.submit(approving);
+        Future<Integer> r = pool.submit(rejecting);
+        int approveStatus = a.get();
+        int rejectStatus = r.get();
+        assertThat(List.of(approveStatus, rejectStatus)).as("exactly one decision wins").containsExactlyInAnyOrder(200, 409);
+        String status = jdbc.queryForObject("select status from change_request where id = ?::uuid", String.class, id);
+        int commands = outbox(LOCK_TOPIC).size();
+        if ("REJECTED".equals(status)) {
+          assertThat(commands).as("round %d: rejected, so no reset", round).isZero();
+        } else {
+          assertThat(status).isEqualTo("APPROVED");
+          assertThat(commands).isEqualTo(1);
+        }
+      }
+    } finally {
+      pool.shutdownNow();
+    }
+    // and the plain order: rejected first, then an approval is refused and sends nothing
+    reset();
     String id = body(ask(MAKER, "PIN_RESET")).path("id").asString();
-    authStatus = 503;
-    MvcTestResult down = approve(CHECKER, id);
-    assertThat(down).hasStatus(503);
-    assertThat(body(down).path("code").asString()).isEqualTo("MW-SYS-040");
-    assertThat(jdbc.queryForObject("select status from change_request where id = ?::uuid", String.class, id))
-        .isEqualTo("PENDING");
-    assertThat(audits("admin.change_request.approved")).isEmpty();
-
-    authStatus = 200;
-    assertThat(approve(CHECKER, id)).hasStatus(200);
-    assertThat(CALLS).hasSize(2);
-    assertThat(CALLS.get(0).substring(CALLS.get(0).indexOf('{'))).isEqualTo(CALLS.get(1).substring(CALLS.get(1).indexOf('{')));
+    assertThat(reject(CHECKER, id)).hasStatus(200);
+    MvcTestResult late = approve(checker2, id);
+    assertThat(late).hasStatus(409);
+    assertThat(body(late).path("code").asString()).isEqualTo("MW-VAL-033");
+    assertThat(outbox(LOCK_TOPIC)).isEmpty();
   }
 
   @Test
@@ -201,7 +178,7 @@ class PinResetApiIT {
     assertThat(own).hasStatus(403);
     assertThat(body(own).path("code").asString()).isEqualTo("MW-AUTH-030");
     assertThat(approve(operator("int-checker01", "integration-checker"), id)).hasStatus(403);
-    assertThat(CALLS).isEmpty();
+    assertThat(outbox(LOCK_TOPIC)).isEmpty();
     MvcTestResult list = mvc.get().uri("/admin/v1/change-requests?resourceType=pin_reset").with(CHECKER).exchange();
     assertThat(list).hasStatus(200);
     assertThat(body(list).path("items").size()).isEqualTo(1);

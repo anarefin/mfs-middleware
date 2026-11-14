@@ -7,9 +7,9 @@ dev_env() {
 APISIX_ADMIN_KEY=fake-apisix-admin
 KC_BOOTSTRAP_ADMIN_PASSWORD=fake-kc-admin
 KC_OPS_TEST_PASSWORD=fake-ops-pw
-KC_CUSTOMERS_TEST_PASSWORD=fake-customers-pw
 KC_PORTALS_TEST_PASSWORD=fake-portals-pw
 KC_OPS_TEST_TOTP_SECRET=12345678901234567890123456789012
+KC_PORTALS_TEST_TOTP_SECRET=portals-fake-totp-secret-0000001
 MW_E2E_API_KEY=fake-e2e-key
 MW_SEED_APP_PIN=97531
 CHECKOUT_DEMO_MERCHANT_SECRET=fake-checkout
@@ -60,6 +60,21 @@ test_totp_matches_the_rfc6238_sha256_vector() {
   assert_out_contains "seed-ops-maker"
 }
 
+# Ticket 73: the portals realm demands TOTP; its test users share the pre-set KC_PORTALS_TEST_TOTP_SECRET.
+test_totp_prints_portal_codes_from_the_portals_secret() {
+  dev_env
+  MW_TOTP_TIME=59 assert_ok mw_run "$PWD" totp.sh seed-org-maker
+  local portal="$OUT"
+  assert_out_contains "seed-org-maker"
+  MW_TOTP_TIME=59 assert_ok mw_run "$PWD" totp.sh org-checker01
+  MW_TOTP_TIME=59 assert_ok mw_run "$PWD" totp.sh seed-ops-maker
+  [ "${portal#*: }" != "${OUT#*: }" ] || fail "portal code made from the ops secret"
+  # the code of the portals secret at T=59 (HmacSHA256 keyed with its UTF-8 bytes, 6 digits)
+  local want
+  want="$(node -e 'const c=require("node:crypto");const b=Buffer.alloc(8);b.writeBigUInt64BE(1n);const h=c.createHmac("sha256",Buffer.from("portals-fake-totp-secret-0000001","utf8")).update(b).digest();const o=h[h.length-1]&15;console.log(String((((h[o]&127)<<24)|(h[o+1]<<16)|(h[o+2]<<8)|h[o+3])%1e6).padStart(6,"0"))')"
+  case "$portal" in *"seed-org-maker: $want "*) ;; *) fail "want $want: $portal" ;; esac
+}
+
 test_totp_changes_every_30_seconds() {
   dev_env
   MW_TOTP_TIME=59 mw_run "$PWD" totp.sh; a="$OUT"
@@ -87,13 +102,16 @@ test_creds_without_dev_env_says_how_to_create_it() {
 test_creds_prints_every_login_and_key() {
   dev_env; docker_stub up
   assert_ok mw_run "$PWD" creds.sh
-  for v in fake-apisix-admin fake-kc-admin fake-ops-pw fake-customers-pw fake-portals-pw fake-e2e-key \
+  for v in fake-apisix-admin fake-kc-admin fake-ops-pw fake-portals-pw fake-e2e-key "scripts/totp.sh seed-org-maker" \
            fake-checkout fake-billagg fake-c2wbank fake-gp fake-robi fake-bl fake-teletalk dev-root-token \
            https://localhost/tester https://localhost/console seed-ops-maker customer01 org-maker01 kc-admin \
            "scripts/totp.sh seed-ops-maker" fake-mwcrypto-label fake-mwcrypto-so fake-mwcrypto-user \
            fake-paysim-label fake-paysim-so fake-paysim-user "app PIN (mw-auth login): 97531" "scripts/lib/mw-auth-token.mjs"; do
     assert_out_contains "$v"
   done
+  # ticket 73: no customers realm any more
+  assert_out_lacks "realm customers"
+  assert_out_lacks "KC_CUSTOMERS"
 }
 
 test_creds_works_when_the_stack_is_down() {

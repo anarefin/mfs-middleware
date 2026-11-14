@@ -39,9 +39,9 @@
 68-move-device-otp-sessions-to-mw-auth      67                done     37m      114 files +4805 −1035  88428dfa (+merge d1bda1e0)
 69-mw-auth-login-tokens                     68                done     53m      151 files +5335 −930   7db63d47..1ebf8b47
 70-pin-lifecycle-lockout-revocation         69                open
-71-txn-authorisation-assertion              69                open
+71-txn-authorisation-assertion              69                done     32m      78+ files ~+2700       dc3d4dc5 (contracts), 1faaa4ec
 72-channels-switch-to-assertion             71,70             open
-73-keycloak-realm-hardening                 69                open
+73-keycloak-realm-hardening                 69                done     22m      69 files +850 −551     6d5f5379..2766ca17
 74-audit-anchor-signing                     63,66             done     19m      49 files +1681 −51     1f1a8a6f..9aec2426 (+review fix)
 75-admin-key-management-ceremony            64,70             open
 76-security-tests-docs                      72,73,75          open

@@ -198,7 +198,7 @@ scripts/creds.sh</pre></div>
 
   <h3 id="c0-2">Step 0.2: open the test console</h3>
   <p><b>Sign-in: none.</b> The test console signs in by itself as the user you pick on each page (app users at
-  mw-auth with the app PIN <code>13579</code>, portals password <code>portal-test-pass</code>, apikey <code>e2e-test-apikey</code>).</p>
+  mw-auth with the app PIN <code>13579</code>, portal users with the password <code>portal-test-pass</code> and their pre-set one-time code, apikey <code>e2e-test-apikey</code>).</p>
   <ol>
     <li>Open <a href="https://localhost/tester">https://localhost/tester</a>. The certificate is self-signed:
       accept it once (Chrome: <span class="ui">Advanced</span> → <span class="ui">Proceed to localhost</span>;
@@ -273,13 +273,14 @@ scripts/creds.sh</pre></div>
       <tr><td><code>ops-maker01</code>, <code>ops-checker01</code>, <code>ops-viewer01</code>, <code>ops-compliance01</code>, <code>ops-auditor01</code>, <code>ops-admin01</code></td><td>enrol an authenticator app at the first sign-in (1.4)</td></tr>
       <tr><td colspan="2">Five wrong passwords or codes lock the user for 1-15 min (unlock: 1.5)</td></tr>
       <tr><td>App users (mw-auth login: MSISDN + app PIN + bound device)</td><td><code>customer01</code>, <code>customer02</code>, <code>agent01</code>, <code>merchant01</code>, <code>merchant02</code>, <code>seed-customer01</code>, …</td><td>app PIN <code>13579</code></td><td>transaction PIN of every wallet: <code>1234</code></td></tr>
-      <tr><td>Portal users (realm <code>portals</code>, client <code>mw-portal</code>)</td><td><code>org-maker01</code>, <code>org-checker01</code>, <code>org-makerchecker01</code>, <code>org-checker02</code>, <code>sp-viewer01</code>, <code>seed-org-maker</code>, <code>seed-org-checker</code></td><td><code>portal-test-pass</code></td><td>-</td></tr>
+      <tr><td>Portal users (realm <code>portals</code>, client <code>mw-portal</code>)</td><td><code>org-maker01</code>, <code>org-checker01</code>, <code>org-makerchecker01</code>, <code>org-checker02</code>, <code>sp-viewer01</code>, <code>seed-org-maker</code>, <code>seed-org-checker</code></td><td><code>portal-test-pass</code></td><td>6-digit code: <code>scripts/totp.sh &lt;user&gt;</code> (every portal user has the pre-set secret)</td></tr>
       <tr><td>Keycloak admin (realm <code>master</code>)</td><td><code>kc-admin</code></td><td><code>kc-admin-test-pass</code></td><td>no web console; commands in 1.5</td></tr>
       <tr><td>OpenBao (secrets store)</td><td>-</td><td>token <code>dev-root-token</code></td><td>no web UI; commands in 1.6</td></tr>
       <tr><td rowspan="2">SoftHSM PKCS#11 tokens (<code>softhsm</code>, <code>deploy/softhsm/README.md</code>)</td><td>token <code>mw-crypto</code> (port 5657)</td><td>user PIN <code>dev-mwcrypto-user-pin</code></td><td>SO PIN <code>dev-mwcrypto-so-pin</code>; used by <code>mw-crypto</code> (its PIN is also in OpenBao <code>secret/mw-crypto</code>)</td></tr>
       <tr><td>token <code>paysim</code> (port 5658)</td><td>user PIN <code>dev-paysim-user-pin</code></td><td>SO PIN <code>dev-paysim-so-pin</code>; the payShield simulator's LMK store</td></tr>
       <tr><td>Test-only API routes (<code>/test/…</code>, Postman)</td><td>-</td><td>header <code>apikey: e2e-test-apikey</code></td><td>exist after <code>scripts/tester.sh</code> or <code>scripts/api-test.sh</code></td></tr>
       <tr><td>Ops one-time-code secret (for your own TOTP tool)</td><td>-</td><td><code>opstesttotpsecretnotarealsecret1</code></td><td>HmacSHA256, 6 digits, 30 s, the raw text as key (not base32)</td></tr>
+      <tr><td>Portals one-time-code secret (same algorithm)</td><td>-</td><td><code>portalstesttotpsecretnotreal0001</code> (<code>KC_PORTALS_TEST_TOTP_SECRET</code>)</td><td>every portal user</td></tr>
     </table></div>
   </div>
 
@@ -293,7 +294,7 @@ scripts/creds.sh</pre></div>
       <tr><td>Test console</td><td>the URL; no sign-in</td><td>-</td></tr>
       <tr><td>Ops console</td><td>the one password of every ops user and which users need an authenticator app</td><td><code>ops-test-pass</code> (<code>KC_OPS_TEST_PASSWORD</code>)</td></tr>
       <tr><td>App users</td><td>the app PIN of the seeded app wallets at mw-auth</td><td><code>13579</code> (<code>MW_SEED_APP_PIN</code>)</td></tr>
-      <tr><td>Portal users</td><td>password of the portals realm users</td><td><code>portal-test-pass</code> (<code>KC_PORTALS_TEST_PASSWORD</code>)</td></tr>
+      <tr><td>Portal users</td><td>password of the portals realm users and how to get their one-time code</td><td><code>portal-test-pass</code> (<code>KC_PORTALS_TEST_PASSWORD</code>); <code>scripts/totp.sh seed-org-maker</code></td></tr>
       <tr><td>Keycloak admin</td><td>user <code>kc-admin</code> and its password</td><td><code>kc-admin-test-pass</code> (<code>KC_BOOTSTRAP_ADMIN_PASSWORD</code>)</td></tr>
       <tr><td>OpenBao</td><td>the token (only while the stack is up)</td><td><code>dev-root-token</code> (an older OpenBao volume: its random root token)</td></tr>
       <tr><td>APISIX</td><td>the <code>apikey</code> of the test-only routes; the admin API key</td><td><code>e2e-test-apikey</code> (<code>MW_E2E_API_KEY</code>); admin key <code>dev-apisix-admin-key</code> (<code>APISIX_ADMIN_KEY</code>)</td></tr>
@@ -301,8 +302,8 @@ scripts/creds.sh</pre></div>
       <tr><td>SoftHSM tokens</td><td>label, port, user and SO PIN of each dev/test PKCS#11 token</td><td><code>mw-crypto</code> 5657 <code>dev-mwcrypto-user-pin</code> / <code>dev-mwcrypto-so-pin</code>; <code>paysim</code> 5658 <code>dev-paysim-user-pin</code> / <code>dev-paysim-so-pin</code> (<code>SOFTHSM_MWCRYPTO_LABEL</code>, <code>SOFTHSM_MWCRYPTO_USER_PIN</code>, …)</td></tr>
       <tr><td>USSD gateways</td><td>basic-auth password per operator (user <code>ussd-gp</code>, <code>ussd-robi</code>, <code>ussd-bl</code>, <code>ussd-teletalk</code>)</td><td><code>dev-ussd-gp-pass</code>, <code>dev-ussd-robi-pass</code>, … (<code>USSD_GP_GATEWAY_SECRET</code>, …)</td></tr>
     </table></div>
-    <p>One value only: <code>grep KC_OPS_TEST_PASSWORD deploy/.env</code>. The test console reads the customers and
-    portals passwords, the apikey and the merchant secret from <code>deploy/.env</code> when <code>scripts/tester.sh</code> starts it.</p>
+    <p>One value only: <code>grep KC_OPS_TEST_PASSWORD deploy/.env</code>. The test console reads the app PIN, the
+    portals password and one-time-code secret, the apikey and the merchant secret from <code>deploy/.env</code> when <code>scripts/tester.sh</code> starts it.</p>
     <div class="note">On a shared test host you need no file access: the fixed values above work there too
     (if that host was set up after <code>deploy/reset.sh</code>). Only <code>scripts/totp.sh</code> needs a terminal on the host:
     ask whoever runs it, or compute the code yourself from the secret in 1.0 with a TOTP tool set to SHA-256.</div>
@@ -372,7 +373,7 @@ scripts/creds.sh</pre></div>
      --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
   $k get users $c -r ops --fields username,enabled,requiredActions
   rm -f /tmp/kc.config'</pre></div>
-    <p>Expect one line per ops user. <code>-r customers</code> or <code>-r portals</code> lists those realms.</p>
+    <p>Expect one line per ops user. <code>-r portals</code> lists that realm.</p>
     <h4>Reset a user's one-time code (enrol again at the next sign-in)</h4>
     <div class="cmd"><pre>docker compose -f deploy/docker-compose.yml exec keycloak sh -c '
   k=/opt/keycloak/bin/kcadm.sh; c="--config /tmp/kc.config"
@@ -401,8 +402,11 @@ scripts/creds.sh</pre></div>
      --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
   $k set-password $c -r ops --username ops-maker01 --new-password ops-test-pass
   rm -f /tmp/kc.config'</pre></div>
-    <p>Realms: <code>ops</code> (console), <code>customers</code> (no longer accepted by the app API since ticket 69; removed in ticket 73), <code>portals</code>
-    (org/SP portal, <code>portal-test-pass</code>), <code>partners</code>, <code>services</code> (service to service). Their
+    <p>Realms: <code>ops</code> (console, password + one-time code), <code>portals</code>
+    (org/SP portal, <code>portal-test-pass</code> + one-time code), <code>partners</code> (<code>partner-sim</code>: a signed
+    client assertion, no secret), <code>services</code> (service to service). App users have no realm: they log in at
+    mw-auth. Every realm locks a user for 1-15 min after five wrong passwords or codes, and a new password needs 12+
+    characters, not the username, none of the last five. Their
     definitions are in <code>deploy/keycloak/realms</code>. <code>deploy/reset.sh</code> re-imports them and resets every user.</p>
   </div>
 
@@ -444,8 +448,10 @@ docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token ope
 MW_SEED_APP_PIN=13579 node scripts/lib/mw-auth-token.mjs 01711000001
 <span class="c"># then send accessToken as the bearer and deviceId as X-Device-Id</span>
 <span class="c"># portal user (realm portals) -> /portal/org/v1/*</span>
+<span class="c"># run scripts/totp.sh org-maker01 first and put its 6 digits after totp=</span>
 curl -sk https://localhost/auth/realms/portals/protocol/openid-connect/token \
-  -d client_id=mw-portal -d grant_type=password -d username=org-maker01 -d password=portal-test-pass
+  -d client_id=mw-portal -d grant_type=password -d username=org-maker01 -d password=portal-test-pass \
+  -d totp=123456
 <span class="c"># ops user (realm ops) -> /admin/v1/*: pre-set code users only, plus the apikey header;</span>
 <span class="c"># run scripts/totp.sh seed-ops-viewer first and put its 6 digits after totp=</span>
 curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'apikey: e2e-test-apikey' \
@@ -464,6 +470,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <tr><td><code>kcPortalsPassword</code></td><td><code>portal-test-pass</code></td></tr>
       <tr><td><code>kcOpsPassword</code></td><td><code>ops-test-pass</code></td></tr>
       <tr><td><code>kcOpsTotpSecret</code></td><td><code>opstesttotpsecretnotarealsecret1</code></td></tr>
+      <tr><td><code>kcPortalsTotpSecret</code></td><td><code>portalstesttotpsecretnotreal0001</code></td></tr>
       <tr><td><code>billaggSecret</code>, <code>checkoutSecret</code></td><td><code>dev-billagg-hmac-secret</code> and <code>dev-checkout-merchant-secret</code> (<code>BILLAGG_HMAC_SECRET</code>, <code>CHECKOUT_DEMO_MERCHANT_SECRET</code>)</td></tr>
     </table></div>
     <p>The collection signs requests itself. Or run the whole suite: <code>scripts/api-test.sh</code> (it fills them from <code>deploy/.env</code>).</p>
@@ -503,7 +510,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
 <section id="s3">
   <h2><span class="num">3</span> App flows</h2>
   <p>Page <span class="ui">App flows</span>. Block 1 <i>Who is signed in</i>, block 2 <i>Flow</i>, block 3 <i>Look things up</i>.
-  <b>Sign-in: none.</b> The console signs in as the user in <span class="ui">User (customers realm)</span> at mw-auth: it
+  <b>Sign-in: none.</b> The console signs in as the user in <span class="ui">User (app login at mw-auth)</span> at mw-auth: it
   binds a device for it the first time (OTP + app PIN <code>13579</code>), logs in with the MSISDN and the app PIN, and signs
   every request. The transaction PIN is <code>1234</code> (the core's, until ticket 72). Under <span class="ui">Transaction type</span> a hint says what the chosen type does.</p>
   <div class="warn"><b>Pick the transaction type first, then the user.</b> Choosing a
@@ -513,7 +520,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
   <div class="case" id="c3-1">
     <h3><span class="id">3.1</span>Device binding</h3>
     <ol>
-      <li><span class="ui">User (customers realm)</span> <code>customer01</code>, press <span class="ui">Re-bind (new device)</span>.</li>
+      <li><span class="ui">User (app login at mw-auth)</span> <code>customer01</code>, press <span class="ui">Re-bind (new device)</span>.</li>
       <li>Expect three steps: <i>ask for the binding OTP</i> (<code>POST /auth/v1/otp</code>, HTTP 202), <i>read the
         OTP from the SMSC simulator</i> (the 6-digit OTP shown), <i>bind the device</i> (<code>POST /auth/v1/devices</code>,
         HTTP 201). Since ticket 68 mw-auth owns device binding, the OTP and sessions; mw-app-gateway only verifies the
@@ -638,7 +645,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <p>These are checked in the console before anything is sent; each shows a red ✖ with the text below and no steps.</p>
     <div class="table-wrap"><table>
       <tr><th>Do</th><th>Expect</th></tr>
-      <tr><td><span class="ui">User (customers realm)</span> empty or <code>nobody</code>, Submit</td><td>"choose a user"</td></tr>
+      <tr><td><span class="ui">User (app login at mw-auth)</span> empty or <code>nobody</code>, Submit</td><td>"choose a user"</td></tr>
       <tr><td>Amount <code>10.123</code> or <code>abc</code></td><td>"the amount is taka with at most 2 decimals, e.g. 10 or 20.13"</td></tr>
       <tr><td>PIN <code>12</code></td><td>"the PIN is 4 to 6 digits (seeded wallets: 1234)"</td></tr>
       <tr><td>P2P counterparty <code>12345</code></td><td>"the counterparty must be a wallet number (01XXXXXXXXX)"</td></tr>
@@ -918,7 +925,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
 <section id="s8">
   <h2><span class="num">8</span> Bulk disbursement and SP query</h2>
   <p>Page <span class="ui">Bulk portal</span>. <b>Sign-in: none.</b> The <span class="ui">Portal user</span> select decides who acts
-  (the console signs in as that user with the password <code>portal-test-pass</code>); the upload button names the current
+  (the console signs in as that user with the password <code>portal-test-pass</code> and the user's pre-set one-time code); the upload button names the current
   user (<span class="ui">Upload as …</span>). Users: org-maker01 (ORG001 maker: uploads), org-checker01 (ORG001 checker:
   approves, rejects, pauses, resumes), org-makerchecker01 (ORG001 both), org-checker02 (ORG002 checker: other org; SP
   query as payee), sp-viewer01 (no organisation: refused, 403). The seeder's <code>seed-org-maker</code> /
@@ -1271,7 +1278,7 @@ scripts/log-scan.sh</pre></div>
     <tr><td><code>MW-CORE-ACCOUNT_LOCKED</code></td><td>five wrong PINs: unlock (9.8)</td></tr>
     <tr><td>A submit says no binding OTP arrived</td><td>mw-notify or the simulators are down: <code>docker compose -f deploy/docker-compose.yml ps</code></td></tr>
     <tr><td>Every app request answers <code>MW-SYS-012</code></td><td>mw-app-gateway cannot ask mw-auth (device keys, sessions) or Valkey: check <code>docker compose -f deploy/docker-compose.yml ps mw-auth valkey</code>; after a realm change (the <code>mw-app-gateway</code> services client) <code>deploy/reset.sh</code></td></tr>
-    <tr><td>Sign-in refused with <code>ops-test-pass</code> (or <code>app-test-pass</code>, <code>portal-test-pass</code>)</td><td>your <code>deploy/.env</code> or the volumes hold other values than <code>deploy/dev.env.defaults</code>: use the values <code>scripts/creds.sh</code> prints, or start fresh: <code>cp deploy/dev.env.defaults deploy/.env</code>, <code>deploy/reset.sh</code>, then step 0.1</td></tr>
+    <tr><td>Sign-in refused with <code>ops-test-pass</code> (or <code>portal-test-pass</code>, app PIN <code>13579</code>)</td><td>your <code>deploy/.env</code> or the volumes hold other values than <code>deploy/dev.env.defaults</code>: use the values <code>scripts/creds.sh</code> prints, or start fresh: <code>cp deploy/dev.env.defaults deploy/.env</code>, <code>deploy/reset.sh</code>, then step 0.1</td></tr>
     <tr><td>The console's login page says "Your session has ended. Sign in again." on the first visit</td><td>a console cookie from before a <code>deploy/reset.sh</code>: just sign in (1.3)</td></tr>
     <tr><td><code>dev-root-token</code>: "permission denied"</td><td>the OpenBao volume predates it: use the token <code>scripts/creds.sh</code> prints (or <code>deploy/reset.sh</code>)</td></tr>
     <tr><td>Console sign-in: "Invalid authenticator code"</td><td>the code was used already or expired: wait for the next one (<code>scripts/totp.sh</code>); with your own app use FreeOTP/Aegis (SHA-256)</td></tr>

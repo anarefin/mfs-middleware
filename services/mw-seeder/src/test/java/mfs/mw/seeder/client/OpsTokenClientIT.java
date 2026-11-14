@@ -56,7 +56,7 @@ class OpsTokenClientIT {
             true, Duration.ofSeconds(5), Map.of(), Duration.ofMillis(5), Duration.ofMillis(5), null, null,
             new SeederProperties.Endpoints(URI.create("http://localhost:" + wm.port()), null, null, null),
             List.of(), null,
-            Map.of("ops", new SeederProperties.Realm("fake-password", "P", "fake-secret", "S", "mw-e2e-ops", List.of())),
+            Map.of("ops", new SeederProperties.Realm(null, "fake-password", "P", "fake-secret", "S", "mw-e2e-ops", List.of())),
             List.of(), new SeederProperties.Operators("ops", "mw-e2e-ops", "m", "c"), List.of(), List.of(), null, null);
     return new OpsTokenClient(new HttpJson(Duration.ofSeconds(1), Duration.ofSeconds(2), SeederConfig.jsonMapper()), props, clock);
   }

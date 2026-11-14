@@ -16,12 +16,15 @@ public record WalletLockCommand(
     @Sensitive(SensitiveType.SECRET) String reason,
     Actor actor,
     String changeRequestId,
+    String makerId,
     String correlationId,
     Instant issuedAt) {
 
   public static final String LOCK = "LOCK";
   public static final String UNLOCK = "UNLOCK";
   public static final String REVOKE_SESSIONS = "REVOKE_SESSIONS";
+  /** An approved care PIN reset (security review of ticket 70: committed with the approval). */
+  public static final String PIN_RESET = "PIN_RESET";
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record Actor(String type, String id) {}

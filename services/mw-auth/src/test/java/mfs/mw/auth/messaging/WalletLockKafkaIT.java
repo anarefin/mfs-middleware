@@ -192,6 +192,34 @@ class WalletLockKafkaIT {
   }
 
   @Test
+  void anApprovedCarePinResetOpensTheResetOnceFromTheCommittedCommand() {
+    UUID cr = UUID.randomUUID();
+    Map<String, Object> c = new LinkedHashMap<>();
+    c.put("schemaVersion", 1);
+    c.put("commandId", cr + ":pin-reset");
+    c.put("action", "PIN_RESET");
+    c.put("walletId", wallet);
+    c.put("reason", "lost phone");
+    c.put("actor", Map.of("type", "user", "id", "ops-checker01"));
+    c.put("changeRequestId", cr.toString());
+    c.put("makerId", "ops-maker01");
+    c.put("correlationId", "corr-it");
+    c.put("issuedAt", Instant.now().toString());
+    org.mockito.BDDMockito.given(crypto.decrypt(org.mockito.ArgumentMatchers.any()))
+        .willReturn(wallet.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    publisher.publish(TOPIC, wallet, new EventMetadata("corr-it", cr.toString(), cr + ":pin-reset", 1), c);
+    publisher.publish(TOPIC, wallet, new EventMetadata("corr-it", cr.toString(), cr + ":pin-reset", 1), c);
+    String marker = command("REVOKE_SESSIONS", wallet);
+    await(() -> processed("mw-auth.wallet-lock", marker));
+    assertThat(jdbc.queryForObject("select count(*) from pin_reset where change_request_id = ?", Integer.class, cr))
+        .as("a redelivery opens nothing twice").isEqualTo(1);
+    assertThat(jdbc.queryForObject("select status || '/' || kind from pin_reset where change_request_id = ?",
+        String.class, cr)).isEqualTo("APPROVED/CARE");
+    assertThat(jdbc.queryForObject("select count(*) from outbox where topic = 'mw.notify.request.v1'"
+        + " and payload->>'templateCode' = 'PIN_RESET_APPROVED'", Integer.class)).isEqualTo(1);
+  }
+
+  @Test
   void theCoresAnswerOnTheWalletEventTopicMovesAPendingReset() {
     UUID reset = UUID.randomUUID();
     jdbc.update("insert into pin_reset (id, wallet_id, kind, status, requested_by, device_id, expires_at, command_id)"

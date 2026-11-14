@@ -70,7 +70,7 @@
 
   <h3>Step by step</h3>
   <ol class="steps">
-    <li><strong>The app calls APISIX.</strong> The request carries a Keycloak login token (realm <code>customers</code>),
+    <li><strong>The app calls APISIX.</strong> The request carries an mw-auth access token (MSISDN + PIN login on the bound device),
       an <code>Idempotency-Key</code>, and a signature made with a key stored on the phone when the device was bound.
       APISIX checks the token and size limits and forwards to the app gateway.</li>
     <li><strong>The app gateway checks the request.</strong> Is this user allowed this transaction type (a customer may

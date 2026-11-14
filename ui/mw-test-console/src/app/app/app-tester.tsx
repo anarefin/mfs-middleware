@@ -38,7 +38,7 @@ export function AppTester() {
     <TwoColumns>
       <div className="flex min-w-0 flex-col gap-5">
         <Panel title="1. Who is signed in" icon={UserRound}>
-          <Field label="User (customers realm)">
+          <Field label="User (app login at mw-auth)">
             <Input list="app-users" value={user} onChange={(e) => setUser(e.target.value)} name="user-visible" data-testid="app-user" />
             <datalist id="app-users">
               {APP_PERSONAS.map((p) => <option key={p.user} value={p.user}>{p.label}, {p.msisdn}</option>)}

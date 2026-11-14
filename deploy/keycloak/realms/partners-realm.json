@@ -5,7 +5,19 @@
   "sslRequired": "external",
   "registrationAllowed": false,
   "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "maxDeltaTimeSeconds": 43200,
+  "quickLoginCheckMilliSeconds": 1000,
+  "minimumQuickLoginWaitSeconds": 60,
+  "passwordPolicy": "length(12) and notUsername(undefined) and passwordHistory(5)",
   "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionMaxLifespanEnabled": true,
+  "offlineSessionMaxLifespan": 86400,
   "roles": {
     "realm": [
       {
@@ -20,12 +32,15 @@
       "name": "Simulated partner",
       "enabled": true,
       "publicClient": false,
-      "clientAuthenticatorType": "client-secret",
-      "secret": "${KC_PARTNER_SIM_SECRET}",
+      "clientAuthenticatorType": "client-jwt",
       "serviceAccountsEnabled": true,
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
-      "protocol": "openid-connect"
+      "protocol": "openid-connect",
+      "attributes": {
+        "token.endpoint.auth.signing.alg": "RS256",
+        "use.jwks.url": "false"
+      }
     }
   ],
   "users": [

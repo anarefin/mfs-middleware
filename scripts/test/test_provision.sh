@@ -8,7 +8,8 @@ PROVISION_DIR="$REPO_DIR/deploy/provision"
 PROVISION_ENV="VALKEY_PASSWORD=valkey-t BILLAGG_HMAC_SECRET=billagg-t C2WBANK_HMAC_SECRET=c2w-t
   CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_AUTH_SECRET=auth-t KC_MW_APP_GATEWAY_SECRET=app-gateway-t
   USSD_GP_GATEWAY_SECRET=gp-t USSD_ROBI_GATEWAY_SECRET=robi-t USSD_BL_GATEWAY_SECRET=bl-t
-  USSD_TELETALK_GATEWAY_SECRET=teletalk-t SOFTHSM_MWCRYPTO_USER_PIN=hsm-pin-t SOFTHSM_PAYSIM_USER_PIN=paysim-pin-t"
+  USSD_TELETALK_GATEWAY_SECRET=teletalk-t SOFTHSM_MWCRYPTO_USER_PIN=hsm-pin-t SOFTHSM_PAYSIM_USER_PIN=paysim-pin-t
+  KC_URL=http://kc:8080 KC_BOOTSTRAP_ADMIN_USERNAME=kc-admin KC_BOOTSTRAP_ADMIN_PASSWORD=kc-admin-t"
 
 provision_fixture() {
   mkdir -p .bin .kv out
@@ -71,13 +72,31 @@ EOF
 #!/bin/sh
 root="$(cd "$(dirname "$0")/.." && pwd)"
 echo "openssl $*" >>"$root/.openssl-calls"
-out=""; while [ $# -gt 0 ]; do [ "$1" = -out ] && out="$2"; shift; done
+out=""; keyout=""; while [ $# -gt 0 ]; do [ "$1" = -out ] && out="$2"; [ "$1" = -keyout ] && keyout="$2"; shift; done
 case " $(tail -1 "$root/.openssl-calls") " in
+  *" req "*) printf 'PARTNER-KEY-PEM' >"$keyout"; printf 'PARTNER-CERT-PEM' >"$out" ;;
   *" -pubout "*) printf 'PUBLIC-PEM' >"$out" ;;
   *) printf 'PRIVATE-PEM' >"$out" ;;
 esac
 EOF
-  chmod +x .bin/bao .bin/psql .bin/openssl
+  # stub curl: Keycloak's token endpoint, client lookup and certificate upload (ticket 73)
+  cat >.bin/curl <<'EOF'
+#!/bin/sh
+root="$(cd "$(dirname "$0")/.." && pwd)"
+echo "curl $*" >>"$root/.curl-calls"
+for a in "$@"; do case "$a" in
+  password@*) cp "${a#password@}" "$root/.kc-admin-password" ;;
+  file=@*) cp "${a#file=@}" "$root/.kc-uploaded-cert" ;;
+  @*) cp "${a#@}" "$root/.kc-auth-header" ;;
+esac; done
+case "$*" in
+  *"http://kc:8080/realms/master/protocol/openid-connect/token"*) printf '{"access_token":"kc-at","expires_in":60}' ;;
+  *"http://kc:8080/admin/realms/partners/clients?clientId=partner-sim"*) printf '[{"id":"0b5d-uuid","clientId":"partner-sim"}]' ;;
+  *"http://kc:8080/admin/realms/partners/clients/0b5d-uuid/certificates/jwt.credential/upload-certificate"*) printf '{"certificate":"MII"}' ;;
+  *) exit 22 ;;
+esac
+EOF
+  chmod +x .bin/bao .bin/psql .bin/openssl .bin/curl
 }
 
 run_provision() {
@@ -169,6 +188,38 @@ test_provision_writes_the_service_specific_keys() {
   # mw-admin-api also owns schema partner (its Flyway migrates both)
   grep -q 'role=admin_api_rw .*schema=admin ' .psql-calls || fail "admin-api role/schema"
   grep -q 'role=admin_api_rw .*schema=partner ' .psql-calls || fail "admin-api second schema partner"
+}
+
+# Ticket 73: partner-sim authenticates at Keycloak (realm partners) with private_key_jwt. Provision makes
+# its RSA key pair and self-signed certificate once (private key in secret/mw-simulators for the
+# simulator) and registers the certificate on the client on every run (no client secret exists).
+test_provision_makes_the_partner_sim_key_once_and_registers_its_certificate_at_keycloak() {
+  provision_fixture
+  assert_ok run_provision
+  [ "$(kv mw-simulators sim.partner-sim.private-key)" = PARTNER-KEY-PEM ] || fail "partner-sim private key not in secret/mw-simulators"
+  [ "$(kv mw-simulators sim.partner-sim.certificate)" = PARTNER-CERT-PEM ] || fail "partner-sim certificate not in secret/mw-simulators"
+  [ "$(kv mw-simulators sim.partner-sim.client-id)" = partner-sim ] || fail "partner-sim client id"
+  grep -q '^openssl req -x509 -newkey rsa:2048 .*-subj /CN=partner-sim' .openssl-calls || fail "no RSA key + certificate: $(cat .openssl-calls)"
+  [ "$(cat .kc-uploaded-cert)" = PARTNER-CERT-PEM ] || fail "certificate not uploaded to Keycloak"
+  grep -q 'keystoreFormat=Certificate PEM' .curl-calls || fail "upload is not a Certificate PEM"
+  [ "$(cat .kc-admin-password)" = kc-admin-t ] || fail "admin password not sent from a file"
+  grep -q 'Bearer kc-at' .kc-auth-header || fail "admin calls without the admin token header file"
+  grep -q 'kc-admin-t\|kc-at' .curl-calls && fail "a credential on the curl command line: $(cat .curl-calls)"
+  assert_out_contains "mw-simulators: partner-sim certificate registered in realm partners"
+  # second run: the key stays, the certificate is registered again (a re-imported realm gets it back)
+  : >.openssl-calls; rm -f .kc-uploaded-cert
+  assert_ok run_provision
+  grep -q 'req -x509' .openssl-calls && fail "partner-sim key regenerated"
+  [ "$(cat .kc-uploaded-cert)" = PARTNER-CERT-PEM ] || fail "certificate not registered again"
+  return 0
+}
+
+test_provision_fails_when_keycloak_refuses_the_partner_sim_certificate() {
+  provision_fixture
+  assert_fails run_provision KC_BOOTSTRAP_ADMIN_PASSWORD=
+  assert_out_contains "KC_BOOTSTRAP_ADMIN_PASSWORD"
+  assert_fails run_provision KC_URL=http://other:8080
+  assert_out_contains "partner-sim"
 }
 
 # mTLS phase 1 (ticket 66, D24): root + intermediate CA once, a pki_int role per PKI_SERVICES entry

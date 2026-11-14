@@ -153,9 +153,8 @@ paths:
         `auth.wallet-lock.v1` (mw-auth lifts its PIN lock, every level, and any ADMIN lock; ticket 70)
         and `UnlockWallet` to the core (its own LOCKED status; refused when the wallet is not locked
         there). PIN_RESET (ticket 70) is a care PIN reset: `resourceType` `pin_reset`; the approval
-        asks mw-auth to open a reset (503 MW-SYS-040 when mw-auth is down: the request stays
-        PENDING; 409 MW-VAL-030 when mw-auth does not know the wallet), and the customer gets an SMS
-        to set a new PIN in the app with a reset OTP. One open request per wallet and type. The
+        sends PIN_RESET on `auth.wallet-lock.v1` in the approval's transaction, mw-auth opens the reset
+        from it and the customer gets an SMS to set a new PIN in the app with a reset OTP. One open request per wallet and type. The
         request expires 72 h after creation. The wallet id is shown masked in every answer.
       parameters:
         - { name: walletId, in: path, required: true, schema: { type: string, pattern: "^01[3-9][0-9]{8}$" }, description: The wallet id (its MSISDN, 11 digits) }
@@ -715,7 +714,7 @@ components:
         A `wallet` request (UNLOCK, ticket 52): `resourceId` the masked wallet id, `diff` LOCKED ->
         ACTIVE, `payload.unlockTxnId` (the UUIDv7 the core command and the audit carry) and, once
         approved, `commandId` and `authCommandId`. A `pin_reset` request (PIN_RESET, ticket 70): the
-        same, `diff` LOCKED -> RESET and, once approved, `resetId` (mw-auth's reset). A `ussd_menu` / `notify_template` request (ticket 39, action PUBLISH):
+        same, `diff` LOCKED -> RESET and, once approved, `authCommandId` (the PIN_RESET command to mw-auth). A `ussd_menu` / `notify_template` request (ticket 39, action PUBLISH):
         `payload` the version to publish and, once approved, its `configKey` and `version`.
       required: [id, resourceType, resourceId, action, payload, diff, makerId, status, reason, createdAt, expiresAt]
       properties:

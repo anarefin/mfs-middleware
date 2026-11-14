@@ -5,6 +5,9 @@ mw:
       key-id: core-pin-test-1
       # fast hashes; the private key is generated per JVM by TestInfrastructure
       bcrypt-strength: 4
+    assertion:
+      # the purge runs only when a test calls it; the key set comes from TestAssertions (TestInfrastructure)
+      purge-cron: "-"
     consumer:
       # Off by default in tests (see the relay note below); CoreWalletKafkaIT switches it on.
       enabled: false

@@ -39,4 +39,5 @@ consumes:
     - events/mw-orchestrator/core.command.v1.schema.json#QueryTransaction
     - events/mw-orchestrator/core.command.v1.schema.json#UnlockWallet
     - events/mw-orchestrator/core.command.v1.schema.json#VerifyCustomerFactors
-  apis: []
+  # ticket 71: GET /auth/v1/.well-known/assertion-jwks.json, the keys of the transaction assertions
+  apis: [api/mw-auth/auth.v1.openapi.yaml]

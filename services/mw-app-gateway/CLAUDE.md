@@ -15,7 +15,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   key of mw-auth's JWK Set (`mw.app-gateway.jwt.jwk-set-uri`, `http://mw-auth:8080/auth/v1/.well-known/jwks.json`,
   fetched on first use and again on an unknown kid), expiry, the exact issuer (`mw.app-gateway.jwt.issuer`
   = mw-auth's `mw.auth.tokens.issuer`, `mw-auth`) and audience `mw-app`. Not `JwtValidators.createDefault*`:
-  since Spring Security 7 they accept `typ JWT` only. A Keycloak `customers` token is refused (another
+  since Spring Security 7 they accept `typ JWT` only. A Keycloak token is refused (another
   issuer); `security/RealmIssuerValidator` is gone. The payer wallet is the `msisdn` claim, the channel
   follows the `role` claim (from the wallet type at mw-auth): `customer` -> `CUSTOMER_APP`/`CUSTOMER`,
   `agent` -> `AGENT_APP`/`AGENT`, `merchant` -> `MERCHANT_APP`/`MERCHANT` (WP20, ticket 30); any other role

@@ -66,6 +66,11 @@ public final class ErrorCodes {
   public static final String AUTH_DEVICE_MISMATCH = "MW-AUTH-047";
   /** A refresh token already rotated or revoked was used again; its whole family is revoked: 401. */
   public static final String AUTH_REFRESH_REUSED = "MW-AUTH-048";
+  /**
+   * The idempotency key of a live transaction assertion was sent with another transaction (ticket
+   * 71): 409.
+   */
+  public static final String IDEM_CONFLICT = "MW-IDEM-001";
 
   // PIN reset (ticket 70).
   /** A care reset of the wallet is open: a self-service reset cannot start meanwhile: 409. */
