@@ -19,6 +19,12 @@ public final class Formats {
   public static final int MAX_PEM = 16_384;
   /** An RFC 9421 component name: a derived component {@code @x} or a lower-case field name (ticket 65). */
   public static final String HTTP_COMPONENT = "@?[a-z0-9!#$%&'*+.^_`|~-]{1,128}";
+  /**
+   * A required component: a bare name (that component without parameters) or the RFC 9421 serialised
+   * identifier with its parameters, e.g. {@code "content-digest";sf} or {@code "example-dict";key="a"}.
+   */
+  public static final String HTTP_COMPONENT_ID =
+      HTTP_COMPONENT + "|\"" + HTTP_COMPONENT + "\"(;[a-z]{1,8}(=\"[ !#-\\[\\]-~]{0,256}\")?){0,4}";
   /** The RFC 9421 algorithms mw-crypto signs and verifies with. */
   public static final String HTTP_SIGNATURE_ALG = "ecdsa-p256-sha256|rsa-pss-sha512|rsa-v1_5-sha256|hmac-sha256";
   /** An RFC 8941 dictionary key (a signature label). */

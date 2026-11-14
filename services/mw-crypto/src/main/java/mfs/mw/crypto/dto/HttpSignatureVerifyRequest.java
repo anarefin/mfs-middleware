@@ -18,8 +18,9 @@ import mfs.mw.crypto.util.MaskingPolicy;
  * @param alg the algorithm the caller expects; else the signature's {@code alg} parameter, else by key
  * @param label default: the only signature in the fields
  * @param components the values of the covered components, taken from the received message
- * @param requiredComponents component names the signature must cover (e.g. {@code @method}, {@code
- *     content-digest})
+ * @param requiredComponents the components the signature must cover, compared by full identity: a
+ *     bare name ({@code content-digest}) only that component without parameters, a serialised
+ *     identifier ({@code "content-digest";sf}) exactly that component and parameters
  * @param expectedKeyid when set, the signature's {@code keyid} parameter must equal it (a partner's own key name)
  * @param maxAgeSeconds when set, {@code created} must be present and at most this old
  */
@@ -31,7 +32,7 @@ public record HttpSignatureVerifyRequest(
     @NotBlank @Size(max = Formats.MAX_SIGNATURE_FIELD) String signatureInput,
     @NotBlank @Size(max = Formats.MAX_SIGNATURE_FIELD) String signature,
     @NotNull @Size(max = 64) List<@Valid @NotNull HttpComponent> components,
-    @Size(max = 64) List<@NotNull @Pattern(regexp = Formats.HTTP_COMPONENT) String> requiredComponents,
+    @Size(max = 64) List<@NotNull @Pattern(regexp = Formats.HTTP_COMPONENT_ID) String> requiredComponents,
     @Size(max = 256) @Pattern(regexp = Formats.SF_STRING) String expectedKeyid,
     @Positive Long maxAgeSeconds) {
 
