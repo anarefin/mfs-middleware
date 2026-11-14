@@ -7,6 +7,7 @@ import java.net.http.HttpClient;
 import java.util.function.Supplier;
 import mfs.mw.ussd.config.AuthClientProperties;
 import mfs.mw.ussd.config.ServiceCertificateManager;
+import mfs.mw.ussd.dto.ChannelPinKey;
 import mfs.mw.ussd.dto.ErrorEnvelope;
 import mfs.mw.ussd.dto.PinKey;
 import mfs.mw.ussd.dto.TxnAuthorisation;
@@ -38,7 +39,8 @@ import tools.jackson.databind.json.JsonMapper;
  *       mTLS with this service's OpenBao certificate ({@link
  *       ServiceCertificateManager#clientSslContext()}, CN {@code mw-ussd}) and a client-credentials
  *       JWT of the same client ({@link ServiceTokenClient}).
- *   <li>{@link #pinKey}: {@code GET /auth/v1/pin-key} on the public port, no token.
+ *   <li>{@link #pinKey}: {@code GET /internal/v1/pin-key} on the same internal port, mTLS and token
+ *       (security review of ticket 72: never the plain public port; a {@code PIN_TRANSPORT} key only).
  * </ul>
  *
  * Every call has a 2 s timeout and goes through the circuit breaker {@code mw-auth}. mw-auth's error
@@ -56,8 +58,6 @@ public class AuthClient {
   private static final String TOKEN_REFUSED = "MW-AUTH-001";
 
   private final RestClient internal;
-  private final RestClient open;
-  private final AuthClientProperties props;
   private final ServiceTokenClient tokens;
   private final CircuitBreaker breaker;
   private final JsonMapper json;
@@ -77,12 +77,6 @@ public class AuthClient {
       http.sslContext(manager.clientSslContext());
     }
     this.internal = RestClient.builder().baseUrl(props.baseUrl().toString()).requestFactory(factory(http, props)).build();
-    HttpClient.Builder plain =
-        HttpClient.newBuilder().connectTimeout(props.connectTimeout()).followRedirects(HttpClient.Redirect.NEVER)
-            // HTTP/1.1: a cleartext h2c upgrade of a POST with a body is refused by some servers (tests run plain)
-            .version(HttpClient.Version.HTTP_1_1);
-    this.open = RestClient.builder().requestFactory(factory(plain, props)).build();
-    this.props = props;
     this.tokens = tokens;
     this.breaker = breakers.circuitBreaker(BREAKER);
     this.json = json;
@@ -106,13 +100,27 @@ public class AuthClient {
     return a;
   }
 
-  /** The newest PIN transport key. */
+  /**
+   * The newest PIN transport key, over the internal mTLS port with the service token (security
+   * review of ticket 72: never from the plain public port); a key of another purpose is refused.
+   * Any refusal is an outage here ({@code MW-SYS-012}), not an answer.
+   */
   public PinKey pinKey() {
-    PinKey k = call("pin-key", () -> request(open.get().uri(props.pinKeyUri())).retrieve().body(PinKey.class));
-    if (k == null || k.keyId() == null || k.keyId().isBlank() || k.publicKeyPem() == null) {
+    ChannelPinKey k;
+    try {
+      k = call("pin-key", () -> withToken(() -> request(
+              internal.get().uri("/internal/v1/pin-key").header("Authorization", "Bearer " + tokens.token()))
+          .retrieve().body(ChannelPinKey.class)));
+    } catch (AuthRefusedException e) {
+      throw unavailable("pin-key", e);
+    }
+    if (k == null || !k.isPinTransport()) {
+      log.atWarn().addKeyValue("event", "auth.pin_key.refused")
+          .addKeyValue("purpose", k == null || k.purpose() == null ? "none" : k.purpose())
+          .log("mw-auth answered no PIN_TRANSPORT key; refused");
       throw unavailable("pin-key", null);
     }
-    return k;
+    return k.toPinKey();
   }
 
   private <T> T call(String op, Supplier<T> call) {

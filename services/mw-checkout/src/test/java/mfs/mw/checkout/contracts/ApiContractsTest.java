@@ -70,11 +70,10 @@ class ApiContractsTest {
   void theManifestListsThisApi() {
     ContractManifest manifest = ContractManifest.load();
     assertThat(manifest.producedApis()).containsExactly(API);
-    assertThat(manifest.consumedApis()).containsExactlyInAnyOrder(AUTH_INTERNAL, AUTH_PUBLIC);
+    assertThat(manifest.consumedApis()).containsExactlyInAnyOrder(AUTH_INTERNAL);
   }
 
   static final String AUTH_INTERNAL = "api/mw-auth/auth-internal.v1.openapi.yaml";
-  static final String AUTH_PUBLIC = "api/mw-auth/auth.v1.openapi.yaml";
 
   static void assertValidAt(String api, String component, Object value) {
     tools.jackson.databind.JsonNode tree = ServiceJson.MAPPER.readTree(ServiceJson.MAPPER.writeValueAsString(value));
@@ -92,8 +91,9 @@ class ApiContractsTest {
     assertValidAt(AUTH_INTERNAL, "ChannelOtpSent", new OtpSent("0171****001", NOW.plusSeconds(120), 4));
     assertValidAt(AUTH_INTERNAL, "TxnAuthorisation", new mfs.mw.checkout.dto.TxnAuthorisation(
         "eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiIwMTcxMTAwMDAwMSJ9.c2lnbmF0dXJl", NOW.plusSeconds(60), false));
-    assertValidAt(AUTH_PUBLIC, "PinKey", new mfs.mw.checkout.dto.TransportKey(
-        "pin-transport.v1", "RSA-OAEP-SHA-256", "-----BEGIN PUBLIC KEY-----\nMIIB\n-----END PUBLIC KEY-----\n"));
+    assertValidAt(AUTH_INTERNAL, "ChannelPinKey", new mfs.mw.checkout.dto.ChannelPinKey(
+        "pin-transport.v1", "RSA-OAEP-SHA-256", "-----BEGIN PUBLIC KEY-----\nMIIB\n-----END PUBLIC KEY-----\n",
+        "PIN_TRANSPORT"));
   }
 
   @Test

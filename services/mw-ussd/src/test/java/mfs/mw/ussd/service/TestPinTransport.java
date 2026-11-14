@@ -21,7 +21,7 @@ final class TestPinTransport {
   static AuthClientProperties props() {
     URI u = URI.create("http://localhost:1");
     return new AuthClientProperties(
-        u, u, "mw-ussd", "", Duration.ofSeconds(2), Duration.ofSeconds(1), u, Duration.ofMinutes(10));
+        u, u, "mw-ussd", "", Duration.ofSeconds(2), Duration.ofSeconds(1), Duration.ofMinutes(10));
   }
 
   static AuthClient auth() {

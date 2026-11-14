@@ -28,8 +28,7 @@ class PinKeyServiceTest {
   final AuthClientProperties props =
       new AuthClientProperties(
           URI.create("https://mw-auth:8443"), URI.create("http://keycloak/token"), "mw-app-gateway", "",
-          Duration.ofSeconds(2), Duration.ofSeconds(1), URI.create("http://mw-auth:8080/auth/v1/pin-key"),
-          Duration.ofMinutes(5));
+          Duration.ofSeconds(2), Duration.ofSeconds(1), Duration.ofMinutes(5));
   final PinKeyService service = new PinKeyService(auth, props, clock);
 
   @Test

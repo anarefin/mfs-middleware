@@ -49,14 +49,13 @@ class ApiContractsTest {
   static final String USSD_API = "api/mw-ussd/ussd-http.v1.openapi.yaml";
   static final String BILLPAY_API = "api/mw-adapter-billpay/billpay.v1.openapi.yaml";
   static final String AUTH_API = "api/mw-auth/auth-internal.v1.openapi.yaml";
-  static final String AUTH_PUBLIC_API = "api/mw-auth/auth.v1.openapi.yaml";
   static final String CORRELATION_ID = "019a4f6e-0000-7a3b-8c4d-5e6f7a8b9c0d";
 
   @Test
   void theManifestListsTheseApis() {
     ContractManifest manifest = ContractManifest.load();
     assertThat(manifest.producedApis()).containsExactly(USSD_API);
-    assertThat(manifest.consumedApis()).containsExactly(BILLPAY_API, AUTH_API, AUTH_PUBLIC_API);
+    assertThat(manifest.consumedApis()).containsExactly(BILLPAY_API, AUTH_API);
   }
 
   // ---- served: ussd-http.v1 ----
@@ -112,10 +111,13 @@ class ApiContractsTest {
     assertThat(OpenApiSchemas.component(AUTH_API, "TxnAuthorisation").validate(JSON.readTree(authorised))).isEmpty();
     assertThat(JSON.readValue(authorised, TxnAuthorisation.class).assertion()).startsWith("eyJ");
 
-    String key = "{\"keyId\":\"PIN_TRANSPORT.v1\",\"algorithm\":\"RSA-OAEP-SHA-256\",\"publicKeyPem\":\"-----BEGIN PUBLIC KEY-----\"}";
-    assertThat(OpenApiSchemas.at(AUTH_PUBLIC_API, "paths", "/auth/v1/pin-key", "get", "responses", "200", "content",
+    String key = "{\"keyId\":\"PIN_TRANSPORT.v1\",\"algorithm\":\"RSA-OAEP-SHA-256\",\"publicKeyPem\":\"-----BEGIN PUBLIC KEY-----\","
+        + "\"purpose\":\"PIN_TRANSPORT\"}";
+    assertThat(OpenApiSchemas.at(AUTH_API, "paths", "/internal/v1/pin-key", "get", "responses", "200", "content",
         "application/json", "schema").validate(JSON.readTree(key))).isEmpty();
-    assertThat(JSON.readValue(key, PinKey.class)).isEqualTo(
+    mfs.mw.ussd.dto.ChannelPinKey read = JSON.readValue(key, mfs.mw.ussd.dto.ChannelPinKey.class);
+    assertThat(read.isPinTransport()).isTrue();
+    assertThat(read.toPinKey()).isEqualTo(
         new PinKey("PIN_TRANSPORT.v1", "RSA-OAEP-SHA-256", "-----BEGIN PUBLIC KEY-----"));
 
     String wrong = "{\"code\":\"MW-AUTH-040\",\"message\":\"Wrong PIN\",\"correlationId\":\"c\",\"retryable\":false,"

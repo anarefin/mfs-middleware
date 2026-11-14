@@ -99,8 +99,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   never reaches the session: it is encrypted on receipt (`util/PinCipher`, RSA-OAEP SHA-256 /
   MGF1-SHA-256 under the mw-crypto `PIN_TRANSPORT` key held by `service/PinTransport`) and handed
   straight to the ACTION, which sends it once to mw-auth (never to Kafka).
-- PIN transport key (ticket 72, spec 18.7, D20): `service/PinTransport` asks mw-auth `GET /auth/v1/pin-key`
-  (public port, no token; `mw.ussd.auth.pin-key-uri`, `{keyId, algorithm, publicKeyPem}`) once the service is
+- PIN transport key (ticket 72, spec 18.7, D20): `service/PinTransport` asks mw-auth `GET /internal/v1/pin-key`
+  (the internal port over the same mTLS client and service token as the assertion, `{keyId, algorithm,
+  publicKeyPem, purpose}`; security review of ticket 72: never from the plain public port, and a key whose
+  `purpose` is not `PIN_TRANSPORT` is refused as an outage, `dto/ChannelPinKey`) once the service is
   up (a failure is only logged `ussd.pin_key.unavailable`: mw-auth may start later; the first PIN asks again),
   keeps it `pin-key-ttl` (10 m) and drops it when mw-auth answers `MW-SYS-051` (mw-crypto refused the PIN
   block, e.g. a rotated key; that step ends `unavailable`, the next PIN uses the new key). No key can be had:
@@ -169,8 +171,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 - `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (called: biller list, bill fetch; own types
   `dto/Biller`, `dto/Bill`; `client/BillPayClient`, copied from mw-app-gateway).
 - `api/mw-auth/auth-internal.v1.openapi.yaml` (called, ticket 72: `POST /internal/v1/txn-authorisations`; own
-  types `dto/TxnAuthorisationRequest`, `dto/TxnAuthorisation`) and `api/mw-auth/auth.v1.openapi.yaml` (`GET
-  /auth/v1/pin-key`; `dto/PinKey`), checked in `ApiContractsTest` (the mapper's request bodies, the answers).
+  types `dto/TxnAuthorisationRequest`, `dto/TxnAuthorisation`; and `GET /internal/v1/pin-key`, `dto/ChannelPinKey`
+  -> `dto/PinKey`), checked in `ApiContractsTest` (the mapper's request bodies, the answers). The public
+  `api/mw-auth/auth.v1.openapi.yaml` is not used any more (security review of ticket 72).
 
 ## Tests (ticket 72)
 

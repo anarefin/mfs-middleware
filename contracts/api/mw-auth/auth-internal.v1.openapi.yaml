@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits wallet authentication internal API (mw-auth)
-  version: 1.4.0
+  version: 1.5.0
   description: |
     Internal API of mw-auth (spec 18.7, ADR D24), on its internal port (`https://mw-auth:8443`, the
     `app` zone network; not routed by APISIX). mTLS is mandatory: the TLS handshake needs a client
@@ -146,6 +146,27 @@ paths:
               schema: { $ref: "#/components/schemas/SeedPinsResult" }
         "400": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/pin-key:
+    get:
+      operationId: getChannelPinKey
+      summary: The PIN transport key for the channels
+      description: >-
+        Security review of ticket 72. Callers: mw-app-gateway, mw-ussd, mw-checkout (the assertion's
+        callers; anyone else 403 MW-AUTH-002), over mTLS with their services token. The same newest
+        mw-crypto `PIN_TRANSPORT` version as the public `GET /auth/v1/pin-key` (auth.v1, kept for
+        the apps), with its key `purpose`: a channel refuses a key of any other purpose. mw-crypto
+        down and nothing cached: 503 MW-SYS-050 (retryable).
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: The key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChannelPinKey" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /internal/v1/otp:
     post:
       operationId: sendChannelOtp
@@ -155,8 +176,10 @@ paths:
         MW-AUTH-002). Purpose `CHECKOUT`, bound to `bindingId` (the checkout sessionId) instead of a
         device. The same rules as a device OTP (auth.v1 `POST /auth/v1/otp`): 6 digits by SMS through
         mw-notify (template `CHECKOUT_OTP` with `amount` and `merchant`, OTP priority, valid 2 min),
-        stored as a hash only, one current OTP per wallet (it replaces a pending BIND, LOGIN or RESET
-        OTP of the wallet), 3 checks, at most 5 OTPs per wallet in 15 min (429 MW-VAL-022). The wallet
+        stored as a hash only in its own slot: one current OTP per wallet, purpose and session, so it
+        never replaces or uses up a device OTP (BIND, LOGIN, RESET) of the wallet nor another
+        session's OTP; 3 checks; its own quota of at most 5 checkout OTPs per wallet in 15 min, over
+        all its sessions and apart from the device OTP's (429 MW-VAL-022). The wallet
         must be known (else 403 MW-AUTH-002) and ACTIVE without an admin lock (403 MW-AUTH-043); a PIN
         lock is answered by the assertion. Kafka down: 503 MW-SYS-010 (retryable).
       parameters:
@@ -269,6 +292,14 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
   schemas:
+    ChannelPinKey:
+      type: object
+      required: [keyId, algorithm, publicKeyPem, purpose]
+      properties:
+        keyId: { type: string, minLength: 1, description: "kid <keyId>.v<n>, sent back in encryptedPin.keyId" }
+        algorithm: { type: string, enum: [RSA-OAEP-SHA-256] }
+        publicKeyPem: { type: string, description: PEM SubjectPublicKeyInfo }
+        purpose: { type: string, enum: [PIN_TRANSPORT], description: The mw-crypto key purpose }
     BoundDevice:
       type: object
       required: [deviceId, walletId, publicKey, boundAt]

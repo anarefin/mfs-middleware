@@ -107,6 +107,13 @@ class ApiContractsTest {
   }
 
   @Test
+  void theChannelPinKeyMatchesTheInternalContract() {
+    assertValid(OpenApiSchemas.component(INTERNAL_API, "ChannelPinKey"),
+        mfs.mw.auth.dto.InternalPinKey.of(new mfs.mw.auth.dto.PinKey(
+            "pin-transport.v2", "RSA-OAEP-SHA-256", "-----BEGIN PUBLIC KEY-----\nAA==\n-----END PUBLIC KEY-----\n")));
+  }
+
+  @Test
   void pinResetResponsesMatchTheContracts() {
     String id = "3f6b1c2d-4e5f-4a6b-9c7d-8e9f0a1b2c3d";
     assertValid(OpenApiSchemas.component(PUBLIC_API, "PinReset"),

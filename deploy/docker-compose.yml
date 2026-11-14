@@ -818,6 +818,9 @@ services:
       # Binding OTPs per wallet in 15 min (default 5): dev only raises it, so repeated API suite runs
       # (each binds every test user's new device once) do not hit the limit. Moved from mw-app-gateway.
       MW_AUTH_DEVICE_OTP_MAX_SENDS: ${MW_AUTH_DEVICE_OTP_MAX_SENDS:-20}
+      # Checkout OTPs per wallet in 15 min (default 5; their own quota, apart from the device OTPs, ticket
+      # 72): dev only raises it, so the API suite's checkout sessions for customer01 do not hit it.
+      MW_AUTH_CHANNEL_OTP_MAX_SENDS: ${MW_AUTH_CHANNEL_OTP_MAX_SENDS:-20}
       # PIN lockout (ticket 70, spec 18.7, D20): wrong PINs per level and how long levels 1 and 2 last
       # (level 3 is until a reset), and when the level history is forgotten. Defaults are the
       # production values; dev.env.defaults shortens the levels so the lockout can be played by hand.

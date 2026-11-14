@@ -32,8 +32,8 @@
 
 Decisions (ticket 72):
 - Ops unlock: core `UnlockWallet`, status LOCKED and `WalletRepository.unlock` stay, for core-side account locks only (the core has no PIN lockout any more; mw-auth's is the only one). Recorded in mw-core-mock, mw-admin-api and mw-auth CLAUDE.md.
-- Checkout OTP: mw-auth `POST /internal/v1/otp` + `/internal/v1/otp/verifications` (purpose CHECKOUT, bound to the sessionId, client mw-checkout only); one OTP per wallet, so a checkout OTP replaces a pending BIND/LOGIN/RESET one. The OTP is spent before the PIN check (a wrong PIN needs a new OTP).
-- Transport key: every channel reads mw-auth's public `GET /auth/v1/pin-key`; mw-app-gateway serves it as `GET /app/v1/pin-key` (cached 5 min, last key kept while mw-auth is down).
+- Checkout OTP: mw-auth `POST /internal/v1/otp` + `/internal/v1/otp/verifications` (purpose CHECKOUT, bound to the sessionId, client mw-checkout only). Security review: its own slot (`channel_otp`, per wallet, purpose and session) and its own per-wallet send quota (`mw.auth.channel-otp.max-sends`, `MW_AUTH_CHANNEL_OTP_MAX_SENDS`), so it never replaces or uses up a device OTP. The OTP is spent before the PIN check (a wrong PIN needs a new OTP).
+- Transport key: the channels read it from mw-auth `GET /internal/v1/pin-key` over mTLS with their services token and refuse a key whose `purpose` is not `PIN_TRANSPORT` (security review); the public `GET /auth/v1/pin-key` stays for the apps only. mw-app-gateway serves it as `GET /app/v1/pin-key` (cached 5 min, last key kept while mw-auth is down).
 - USSD PIN is 5 digits (mw-crypto's rule); the wrong-PIN re-prompt and the lock texts are menu messages with built-in fallbacks.
 - `$defs.EncryptedPin` stays in common/defs (re-described: channel to mw-auth only); migrations: orchestrator V11, core-mock V9, mw-auth V8, mw-checkout V7.
 - Compose budget unchanged at 8176/8192 MiB: the ticket adds no container or limit; nothing measured, nothing trimmed (README).

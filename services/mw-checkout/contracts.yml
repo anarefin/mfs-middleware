@@ -9,4 +9,3 @@ consumes:
   events: [events/mw-orchestrator/mw.txn.status.v1.schema.json]
   apis:
     - api/mw-auth/auth-internal.v1.openapi.yaml
-    - api/mw-auth/auth.v1.openapi.yaml

@@ -9,6 +9,7 @@ import java.util.function.Supplier;
 import mfs.mw.app.gateway.config.AuthClientProperties;
 import mfs.mw.app.gateway.config.ServiceCertificateManager;
 import mfs.mw.app.gateway.dto.BoundDevice;
+import mfs.mw.app.gateway.dto.ChannelPinKey;
 import mfs.mw.app.gateway.dto.ErrorEnvelope;
 import mfs.mw.app.gateway.dto.LiveSession;
 import mfs.mw.app.gateway.dto.PinKey;
@@ -35,11 +36,12 @@ import tools.jackson.databind.json.JsonMapper;
  * auth.v1.openapi.yaml}, spec 18.7, D22, D24).
  *
  * <ul>
- *   <li>The internal port over mTLS with this service's OpenBao certificate ({@link
+ *   <li>Only the internal port, over mTLS with this service's OpenBao certificate ({@link
  *       ServiceCertificateManager#clientSslContext()}, CN {@code mw-app-gateway}) and a
  *       client-credentials JWT of the same client ({@link ServiceTokenClient}): the device gate's
- *       {@link #device} and {@link #session}, and the transaction assertion {@link #authorise}.
- *   <li>The public port without a token: the PIN transport key {@link #pinKey}.
+ *       {@link #device} and {@link #session}, the transaction assertion {@link #authorise} and the
+ *       PIN transport key {@link #pinKey} (security review of ticket 72: a {@code PIN_TRANSPORT}
+ *       key only, never from the plain public port).
  * </ul>
  *
  * Every call has a 2 s timeout ({@code mw.app-gateway.auth.timeout}) and goes through the circuit
@@ -59,8 +61,6 @@ public class AuthClient {
   private static final String TOKEN_REFUSED = "MW-AUTH-001";
 
   private final RestClient rest;
-  private final RestClient open;
-  private final AuthClientProperties props;
   private final ServiceTokenClient tokens;
   private final CircuitBreaker breaker;
   private final JsonMapper json;
@@ -77,8 +77,6 @@ public class AuthClient {
       http.sslContext(manager.clientSslContext());
     }
     this.rest = RestClient.builder().baseUrl(props.baseUrl().toString()).requestFactory(factory(http, props)).build();
-    this.open = RestClient.builder().requestFactory(factory(http(props), props)).build();
-    this.props = props;
     this.tokens = tokens;
     this.breaker = breakers.circuitBreaker(BREAKER);
     this.json = json;
@@ -148,19 +146,19 @@ public class AuthClient {
     return a;
   }
 
-  /** The newest PIN transport key (mw-auth's public port, no token). */
+  /**
+   * The newest PIN transport key, over the internal mTLS port with the service token (security
+   * review of ticket 72: never from the plain public port); a key of another purpose is refused.
+   */
   public PinKey pinKey() {
-    PinKey k;
-    try {
-      k = breaker.executeSupplier(
-          () -> headers(open.get().uri(props.pinKeyUri())).retrieve().body(PinKey.class));
-    } catch (CallNotPermittedException | RestClientException e) {
-      throw unavailable("pin-key", e);
-    }
-    if (k == null || k.keyId() == null || k.keyId().isBlank() || k.publicKeyPem() == null) {
+    ChannelPinKey k = lookup("pin-key", "/internal/v1/pin-key", ChannelPinKey.class);
+    if (k == null || !k.isPinTransport()) {
+      log.atWarn().addKeyValue("event", "auth.pin_key.refused")
+          .addKeyValue("purpose", k == null || k.purpose() == null ? "none" : k.purpose())
+          .log("mw-auth answered no PIN_TRANSPORT key; refused");
       throw unavailable("pin-key", null);
     }
-    return k;
+    return k.forApps();
   }
 
   /** The answer, or null on a 404. */

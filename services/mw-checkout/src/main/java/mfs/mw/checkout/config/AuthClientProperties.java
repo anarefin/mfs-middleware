@@ -19,9 +19,9 @@ import org.springframework.validation.annotation.Validated;
  * @param clientSecret from OpenBao {@code secret/mw-checkout} only, never in a file
  * @param timeout per call (2 s; a slower answer fails closed)
  * @param connectTimeout TCP and TLS connect
- * @param pinKeyUri {@code GET /auth/v1/pin-key} on mw-auth's public port: the mw-crypto
- *     {@code PIN_TRANSPORT} key the hosted page encrypts the PIN with
- * @param pinKeyTtl how long a fetched transport key is reused
+ * @param pinKeyTtl how long a fetched transport key (mw-auth {@code GET /internal/v1/pin-key} on
+ *     {@code baseUrl}, the key the hosted page encrypts the PIN with; security review of ticket 72) is
+ *     reused
  */
 @Validated
 @ConfigurationProperties("mw.checkout.auth")
@@ -32,7 +32,6 @@ public record AuthClientProperties(
     String clientSecret,
     @NotNull Duration timeout,
     @NotNull Duration connectTimeout,
-    @NotNull URI pinKeyUri,
     @NotNull Duration pinKeyTtl) {
 
   public AuthClientProperties {
@@ -42,7 +41,7 @@ public record AuthClientProperties(
   @Override
   public String toString() {
     return "AuthClientProperties[baseUrl=" + baseUrl + ", tokenUri=" + tokenUri + ", clientId=" + clientId
-        + ", clientSecret=****, timeout=" + timeout + ", connectTimeout=" + connectTimeout + ", pinKeyUri="
-        + pinKeyUri + ", pinKeyTtl=" + pinKeyTtl + "]";
+        + ", clientSecret=****, timeout=" + timeout + ", connectTimeout=" + connectTimeout
+        + ", pinKeyTtl=" + pinKeyTtl + "]";
   }
 }

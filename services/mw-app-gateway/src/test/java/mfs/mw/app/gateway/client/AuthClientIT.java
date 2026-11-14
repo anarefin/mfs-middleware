@@ -121,7 +121,6 @@ class AuthClientIT {
         "fake-it-secret",
         Duration.ofMillis(300),
         Duration.ofMillis(500),
-        URI.create("http://127.0.0.1:" + keycloak.port() + "/auth/v1/pin-key"),
         Duration.ofMinutes(10));
   }
 
@@ -316,21 +315,42 @@ class AuthClientIT {
     assertFailsClosed(() -> client.authorise(AUTH_REQ));
   }
 
+  static final String PIN_KEY = "/internal/v1/pin-key";
+
+  static String pinKey(String purpose) {
+    return "{\"keyId\":\"PIN_TRANSPORT.v2\",\"algorithm\":\"RSA-OAEP-SHA-256\",\"publicKeyPem\":\"-----BEGIN PUBLIC KEY-----\","
+        + "\"purpose\":\"" + purpose + "\"}";
+  }
+
+  /** Security review of ticket 72: the transport key over the internal mTLS port with the service token. */
   @Test
-  void thePinKeyIsReadFromThePublicPortWithoutAToken() {
-    keycloak.stubFor(get(urlEqualTo("/auth/v1/pin-key")).willReturn(okJson(
-        "{\"keyId\":\"PIN_TRANSPORT.v2\",\"algorithm\":\"RSA-OAEP-SHA-256\",\"publicKeyPem\":\"-----BEGIN PUBLIC KEY-----\"}")));
+  void thePinKeyIsReadOverMtlsWithTheServiceToken() {
+    authServer.stubFor(get(urlEqualTo(PIN_KEY)).willReturn(okJson(pinKey("PIN_TRANSPORT"))));
 
     PinKey k = client.pinKey();
 
     assertThat(k.keyId()).isEqualTo("PIN_TRANSPORT.v2");
-    keycloak.verify(getRequestedFor(urlEqualTo("/auth/v1/pin-key")).withoutHeader("Authorization"));
+    authServer.verify(getRequestedFor(urlEqualTo(PIN_KEY)).withHeader("Authorization", equalTo("Bearer tok-1")));
   }
 
   @Test
-  void aPinKeyOutageFailsClosed() {
-    keycloak.stubFor(get(urlEqualTo("/auth/v1/pin-key")).willReturn(aResponse().withStatus(503)));
-
+  void aKeyOfAnotherPurposeOrWithoutOneIsRefused() {
+    authServer.stubFor(get(urlEqualTo(PIN_KEY)).willReturn(okJson(pinKey("JWT_SIGN"))));
     assertFailsClosed(() -> client.pinKey());
+
+    authServer.stubFor(get(urlEqualTo(PIN_KEY)).willReturn(okJson(
+        "{\"keyId\":\"k.v1\",\"algorithm\":\"RSA-OAEP-SHA-256\",\"publicKeyPem\":\"-----BEGIN PUBLIC KEY-----\"}")));
+    assertFailsClosed(() -> client.pinKey());
+  }
+
+  @Test
+  void aPinKeyOutageOrAMissingClientCertificateFailsClosed() {
+    authServer.stubFor(get(urlEqualTo(PIN_KEY)).willReturn(aResponse().withStatus(503)));
+    assertFailsClosed(() -> client.pinKey());
+
+    authServer.stubFor(get(urlEqualTo(PIN_KEY)).willReturn(okJson(pinKey("PIN_TRANSPORT"))));
+    authServer.resetRequests();
+    assertFailsClosed(() -> client(provider(null)).pinKey());
+    authServer.verify(0, getRequestedFor(urlEqualTo(PIN_KEY)));
   }
 }

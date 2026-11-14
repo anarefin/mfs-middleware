@@ -72,8 +72,7 @@ class AuthClientTest {
     String base = "http://127.0.0.1:" + server.getAddress().getPort();
     clock = new MutableClock(Instant.parse("2026-11-15T10:00:00Z"));
     AuthClientProperties props = new AuthClientProperties(URI.create(base), URI.create(base + "/token"), "mw-checkout",
-        "fake-secret-not-real", Duration.ofSeconds(2), Duration.ofSeconds(1), URI.create(base + "/auth/v1/pin-key"),
-        Duration.ofMinutes(5));
+        "fake-secret-not-real", Duration.ofSeconds(2), Duration.ofSeconds(1), Duration.ofMinutes(5));
     client = new AuthClient(props, new ServiceTokenClient(props, JSON, clock), CircuitBreakerRegistry.ofDefaults(),
         new StaticListableBeanFactory().getBeanProvider(ServiceCertificateManager.class), JSON, clock);
   }
@@ -187,23 +186,38 @@ class AuthClientTest {
     assertThat(down.code()).isEqualTo("MW-SYS-012");
   }
 
+  static String pinKey(String purpose) {
+    return "{\"keyId\":\"pin-transport.v1\",\"algorithm\":\"RSA-OAEP-SHA-256\",\"publicKeyPem\":\"-----BEGIN PUBLIC KEY-----\""
+        + (purpose == null ? "" : ",\"purpose\":\"" + purpose + "\"") + "}";
+  }
+
+  /** Security review of ticket 72: the transport key on the internal port with the service token. */
   @Test
-  void thePinKeyIsCachedAndKeptWhileMwAuthIsDown() {
-    answers.put("/auth/v1/pin-key", new String[] {"200",
-        "{\"keyId\":\"pin-transport.v1\",\"algorithm\":\"RSA-OAEP-SHA-256\",\"publicKeyPem\":\"-----BEGIN PUBLIC KEY-----\"}"});
+  void thePinKeyComesFromTheInternalPortWithTheTokenAndIsCachedAndKeptWhileMwAuthIsDown() {
+    answers.put("/internal/v1/pin-key", new String[] {"200", pinKey("PIN_TRANSPORT")});
     assertThat(client.pinKey()).get().extracting(k -> k.keyId()).isEqualTo("pin-transport.v1");
     assertThat(client.pinKey()).isPresent();
-    assertThat(calls).as("cached").hasSize(1);
+    assertThat(calls).as("cached").containsExactly("GET /internal/v1/pin-key Bearer tok-1");
 
     clock.advance(Duration.ofMinutes(6));
-    answers.put("/auth/v1/pin-key", new String[] {"503", envelope("MW-SYS-050", "[]")});
+    answers.put("/internal/v1/pin-key", new String[] {"503", envelope("MW-SYS-050", "[]")});
     assertThat(client.pinKey()).get().extracting(k -> k.keyId()).isEqualTo("pin-transport.v1");
     assertThat(calls).hasSize(2);
   }
 
   @Test
   void noPinKeyWithoutAnyAnswer() {
-    answers.put("/auth/v1/pin-key", new String[] {"503", envelope("MW-SYS-050", "[]")});
+    answers.put("/internal/v1/pin-key", new String[] {"503", envelope("MW-SYS-050", "[]")});
     assertThat(client.pinKey()).isEmpty();
+  }
+
+  @Test
+  void aKeyOfAnotherPurposeOrWithoutOneIsRefusedAndNeverCached() {
+    answers.put("/internal/v1/pin-key", new String[] {"200", pinKey("JWT_SIGN")});
+    assertThat(client.pinKey()).isEmpty();
+    answers.put("/internal/v1/pin-key", new String[] {"200", pinKey(null)});
+    assertThat(client.pinKey()).isEmpty();
+    answers.put("/internal/v1/pin-key", new String[] {"200", pinKey("PIN_TRANSPORT")});
+    assertThat(client.pinKey()).isPresent();
   }
 }

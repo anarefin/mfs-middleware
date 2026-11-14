@@ -242,8 +242,9 @@ mw:
         - { value: teletalk, label: { bn: টেলিটক, en: Teletalk } }
     # mw-auth (ticket 72; client/AuthClient, config/AuthClientProperties; spec 18.7, D22, D24): the
     # transaction authorisation on the internal port over mTLS (mw.tls) with a Keycloak realm services
-    # client-credentials JWT of client mw-ussd (audience mw-auth), and the PIN transport key on the
-    # public port (no token; service/PinTransport, asked again after pin-key-ttl or a refused PIN block).
+    # client-credentials JWT of client mw-ussd (audience mw-auth), also for the PIN transport key
+    # (GET /internal/v1/pin-key, a PIN_TRANSPORT key only; security review of ticket 72;
+    # service/PinTransport, asked again after pin-key-ttl or a refused PIN block).
     auth:
       base-url: ${MW_AUTH_URL:https://mw-auth:8443}
       token-uri: ${MW_INTERNAL_TOKEN_URI:http://keycloak:8080/realms/services/protocol/openid-connect/token}
@@ -252,7 +253,6 @@ mw:
       client-secret: ""
       timeout: 2s
       connect-timeout: 1s
-      pin-key-uri: ${MW_AUTH_PIN_KEY_URI:http://mw-auth:8080/auth/v1/pin-key}
       pin-key-ttl: 10m
     # Per MNO (spec 9.2): transport, short codes, screen limits (GSM-7 / UCS-2), session timeout
     # (MNO limit, TBC), overflow TRUNCATE|PAGE and the HTTP continue/end flag values. GP runs

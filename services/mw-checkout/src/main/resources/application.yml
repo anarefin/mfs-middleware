@@ -223,7 +223,8 @@ mw:
       client-secret: ""
       timeout: 2s
       connect-timeout: 1s
-      pin-key-uri: ${MW_AUTH_PIN_KEY_URI:http://mw-auth:8080/auth/v1/pin-key}
+      # the PIN transport key: GET /internal/v1/pin-key on base-url (mTLS + token; security review of
+      # ticket 72), a PIN_TRANSPORT key only, reused pin-key-ttl
       pin-key-ttl: 5m
     # Checkout merchants by APISIX hmac-auth consumer name. Onboarding through mw-admin-api comes
     # later; until then one dev merchant. Its secret (signs the redirect result and, ticket 32, the

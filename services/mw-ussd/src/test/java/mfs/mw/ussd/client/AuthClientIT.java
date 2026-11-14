@@ -2,6 +2,7 @@ package mfs.mw.ussd.client;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.matching;
@@ -124,7 +125,6 @@ class AuthClientIT {
         "fake-it-secret",
         Duration.ofMillis(300),
         Duration.ofMillis(500),
-        URI.create("http://127.0.0.1:" + plain.port() + "/auth/v1/pin-key"),
         Duration.ofMinutes(10));
   }
 
@@ -234,14 +234,40 @@ class AuthClientIT {
     plain.verify(2, postRequestedFor(urlEqualTo("/token")));
   }
 
+  static final String PIN_KEY = "/internal/v1/pin-key";
+
+  static String pinKey(String purpose) {
+    return "{\"keyId\":\"PIN_TRANSPORT.v2\",\"algorithm\":\"RSA-OAEP-SHA-256\",\"publicKeyPem\":\"-----BEGIN PUBLIC KEY-----\","
+        + "\"purpose\":\"" + purpose + "\"}";
+  }
+
+  /** Security review of ticket 72: the transport key over the internal mTLS port with the service token. */
   @Test
-  void theTransportKeyComesFromThePublicPort() {
-    plain.stubFor(get(urlEqualTo("/auth/v1/pin-key")).willReturn(okJson(
-        "{\"keyId\":\"PIN_TRANSPORT.v2\",\"algorithm\":\"RSA-OAEP-SHA-256\",\"publicKeyPem\":\"-----BEGIN PUBLIC KEY-----\"}")));
+  void theTransportKeyComesOverMtlsWithTheServiceToken() {
+    authServer.stubFor(get(urlEqualTo(PIN_KEY)).willReturn(okJson(pinKey("PIN_TRANSPORT"))));
 
     PinKey k = client.pinKey();
 
     assertThat(k.keyId()).isEqualTo("PIN_TRANSPORT.v2");
+    authServer.verify(getRequestedFor(urlEqualTo(PIN_KEY)).withHeader("Authorization", equalTo("Bearer tok-1")));
+  }
+
+  @Test
+  void aKeyOfAnotherPurposeOrWithoutOneIsRefused() {
+    authServer.stubFor(get(urlEqualTo(PIN_KEY)).willReturn(okJson(pinKey("JWT_SIGN"))));
+    assertFailsClosed(() -> client.pinKey());
+
+    authServer.stubFor(get(urlEqualTo(PIN_KEY)).willReturn(okJson(
+        "{\"keyId\":\"k.v1\",\"algorithm\":\"RSA-OAEP-SHA-256\",\"publicKeyPem\":\"-----BEGIN PUBLIC KEY-----\"}")));
+    assertFailsClosed(() -> client.pinKey());
+  }
+
+  @Test
+  void withoutTheClientCertificateNoTransportKeyIsRead() {
+    authServer.stubFor(get(urlEqualTo(PIN_KEY)).willReturn(okJson(pinKey("PIN_TRANSPORT"))));
+    authServer.resetRequests();
+    assertFailsClosed(() -> client(provider(null)).pinKey());
+    authServer.verify(0, getRequestedFor(urlEqualTo(PIN_KEY)));
   }
 
   @Test
@@ -252,7 +278,7 @@ class AuthClientIT {
     authServer.stubFor(post(urlEqualTo(TXN_AUTH)).willReturn(okJson("{\"expiresAt\":\"2026-11-15T10:01:00Z\"}")));
     assertFailsClosed(() -> client.authorise(BODY));
 
-    plain.stubFor(get(urlEqualTo("/auth/v1/pin-key")).willReturn(aResponse().withStatus(503)));
+    authServer.stubFor(get(urlEqualTo(PIN_KEY)).willReturn(aResponse().withStatus(503)));
     assertFailsClosed(() -> client.pinKey());
   }
 

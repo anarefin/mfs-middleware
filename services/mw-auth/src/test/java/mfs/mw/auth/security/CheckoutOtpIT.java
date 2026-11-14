@@ -32,7 +32,9 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
  * The checkout OTP (ticket 72, spec 9.3): {@code POST /internal/v1/otp} and {@code POST
  * /internal/v1/otp/verifications} with a services token of mw-checkout, purpose {@code CHECKOUT}
  * bound to the checkout session instead of a device, against real PostgreSQL. The SMS is read from
- * the mocked publisher (template {@code CHECKOUT_OTP} with amount and merchant).
+ * the mocked publisher (template {@code CHECKOUT_OTP} with amount and merchant). Security review of
+ * ticket 72: a checkout OTP has its own slot ({@code channel_otp}, wallet + purpose + session) and its
+ * own send quota, so it never replaces or uses up a device OTP (BIND/LOGIN/RESET) and the other way round.
  */
 @SpringBootTest(properties = {"mw.outbox.relay.enabled=false", "spring.data.redis.timeout=3s"})
 @AutoConfigureMockMvc
@@ -44,6 +46,7 @@ class CheckoutOtpIT {
 
   private final MockMvcTester mvc;
   private final JdbcTemplate jdbc;
+  private final mfs.mw.auth.service.DeviceOtpService deviceOtps;
 
   @MockitoBean EventPublisher publisher;
   @MockitoBean CryptoClient crypto;
@@ -52,9 +55,10 @@ class CheckoutOtpIT {
   String sessionId;
 
   @Autowired
-  CheckoutOtpIT(MockMvcTester mvc, JdbcTemplate jdbc) {
+  CheckoutOtpIT(MockMvcTester mvc, JdbcTemplate jdbc, mfs.mw.auth.service.DeviceOtpService deviceOtps) {
     this.mvc = mvc;
     this.jdbc = jdbc;
+    this.deviceOtps = deviceOtps;
   }
 
   @BeforeEach
@@ -88,6 +92,15 @@ class CheckoutOtpIT {
     assertThat(r).bodyJson().extractingPath("$.code").isEqualTo(code);
   }
 
+  /** A device-binding OTP of the wallet for {@code deviceId}, read from the SMS request. */
+  String sendBindOtp(String deviceId) {
+    clearInvocations(publisher);
+    deviceOtps.send(msisdn, deviceId, "en");
+    ArgumentCaptor<Object> sms = ArgumentCaptor.forClass(Object.class);
+    verify(publisher).publish(eq("mw.notify.request.v1"), eq(msisdn), any(), sms.capture());
+    return ((NotificationRequest) sms.getValue()).params().get("otp");
+  }
+
   /** Sends one OTP and returns it, read from the SMS request. */
   String sendOtp() {
     clearInvocations(publisher);
@@ -113,8 +126,11 @@ class CheckoutOtpIT {
     assertThat(n.params()).containsEntry("amount", "250.00").containsEntry("merchant", "Demo Shop")
         .containsKey("otp");
     assertThat(n.priority()).isEqualTo("OTP");
-    assertThat(jdbc.queryForObject("select purpose from device_otp where wallet_id = ?", String.class, msisdn))
-        .isEqualTo("CHECKOUT");
+    assertThat(jdbc.queryForObject(
+            "select count(*) from channel_otp where wallet_id = ? and purpose = 'CHECKOUT' and binding_id = ?",
+            Integer.class, msisdn, sessionId)).isEqualTo(1);
+    assertThat(jdbc.queryForObject("select count(*) from device_otp where wallet_id = ?", Integer.class, msisdn))
+        .isZero();
   }
 
   @Test
@@ -128,9 +144,34 @@ class CheckoutOtpIT {
   void anOtpOfAnotherSessionOrPurposeIsRefused() {
     String otp = sendOtp();
     assertCode(post("mw-checkout", VERIFY, verifyBody(UUID.randomUUID().toString(), otp)), 401, "MW-AUTH-011");
-    // a device-binding OTP is not a checkout OTP
-    jdbc.update("update device_otp set purpose = 'BIND' where wallet_id = ?", msisdn);
-    assertCode(post("mw-checkout", VERIFY, verifyBody(sessionId, otp)), 401, "MW-AUTH-011");
+    // a device-binding OTP, even one sent for a device id equal to the session id, is not a checkout OTP
+    String other = UUID.randomUUID().toString();
+    String bindOtp = sendBindOtp(other);
+    assertCode(post("mw-checkout", VERIFY, verifyBody(other, bindOtp)), 401, "MW-AUTH-011");
+    // and the session's own OTP still works
+    assertThat(post("mw-checkout", VERIFY, verifyBody(sessionId, otp))).hasStatus(204);
+  }
+
+  @Test
+  void aCheckoutOtpNeverReplacesAPendingDeviceOtpNorTheOtherWayRound() {
+    String device = "device-" + UUID.randomUUID();
+    String bindOtp = sendBindOtp(device);
+    String checkoutOtp = sendOtp();
+    // the BIND OTP survives the checkout OTP ...
+    deviceOtps.check(msisdn, device, bindOtp);
+    // ... and a new BIND OTP leaves the checkout OTP alone
+    sendBindOtp(device);
+    assertThat(post("mw-checkout", VERIFY, verifyBody(sessionId, checkoutOtp))).hasStatus(204);
+  }
+
+  @Test
+  void twoCheckoutSessionsHoldTheirOwnOtps() {
+    String first = sendOtp();
+    String firstSession = sessionId;
+    sessionId = UUID.randomUUID().toString();
+    String second = sendOtp();
+    assertThat(post("mw-checkout", VERIFY, verifyBody(firstSession, first))).hasStatus(204);
+    assertThat(post("mw-checkout", VERIFY, verifyBody(sessionId, second))).hasStatus(204);
   }
 
   @Test
@@ -163,11 +204,19 @@ class CheckoutOtpIT {
   }
 
   @Test
-  void theSendLimitPerWalletAppliesToCheckoutOtps() {
+  void checkoutOtpsHaveTheirOwnSendQuotaPerWallet() {
+    // device OTP sends do not use up the checkout quota ...
+    for (int i = 0; i < 3; i++) {
+      sendBindOtp("device-" + i + "-" + UUID.randomUUID());
+    }
+    // ... the quota counts every checkout session of the wallet (mw.auth.channel-otp.max-sends 5) ...
     for (int i = 0; i < 5; i++) {
+      sessionId = UUID.randomUUID().toString();
       assertThat(post("mw-checkout", SEND, sendBody())).hasStatus(202);
     }
     assertCode(post("mw-checkout", SEND, sendBody()), 429, "MW-VAL-022");
+    // ... and an exhausted checkout quota does not stop a device OTP
+    sendBindOtp("device-after-" + UUID.randomUUID());
   }
 
   @Test

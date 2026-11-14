@@ -18,8 +18,8 @@ import org.springframework.validation.annotation.Validated;
  * @param clientSecret from OpenBao {@code secret/mw-ussd} only, never in a file
  * @param timeout per call (2 s; a slower answer fails closed)
  * @param connectTimeout TCP and TLS connect
- * @param pinKeyUri mw-auth {@code GET /auth/v1/pin-key} on its public port
- * @param pinKeyTtl how long a fetched transport key is used before it is asked again
+ * @param pinKeyTtl how long a fetched transport key (mw-auth {@code GET /internal/v1/pin-key} on
+ *     {@code baseUrl}, over mTLS; security review of ticket 72) is used before it is asked again
  */
 @Validated
 @ConfigurationProperties("mw.ussd.auth")
@@ -30,7 +30,6 @@ public record AuthClientProperties(
     String clientSecret,
     @NotNull Duration timeout,
     @NotNull Duration connectTimeout,
-    @NotNull URI pinKeyUri,
     @NotNull Duration pinKeyTtl) {
 
   public AuthClientProperties {
@@ -40,7 +39,7 @@ public record AuthClientProperties(
   @Override
   public String toString() {
     return "AuthClientProperties[baseUrl=" + baseUrl + ", tokenUri=" + tokenUri + ", clientId=" + clientId
-        + ", clientSecret=****, timeout=" + timeout + ", connectTimeout=" + connectTimeout + ", pinKeyUri="
-        + pinKeyUri + ", pinKeyTtl=" + pinKeyTtl + "]";
+        + ", clientSecret=****, timeout=" + timeout + ", connectTimeout=" + connectTimeout
+        + ", pinKeyTtl=" + pinKeyTtl + "]";
   }
 }

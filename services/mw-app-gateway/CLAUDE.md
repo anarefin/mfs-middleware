@@ -148,9 +148,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   without a second PIN check; the orchestrator still decides idempotency. A 401 is retried with a new service token
   only when its code is `MW-AUTH-001` (or it has no envelope), so a wrong PIN is checked once.
 - PIN transport key (ticket 72; `controller/PinKeyController`, `service/PinKeyService`): `GET /app/v1/pin-key` (token
-  only, `@DeviceGate(NONE)`) answers `{keyId, algorithm RSA-OAEP-SHA-256, publicKeyPem}`, mw-auth's public `GET
-  /auth/v1/pin-key` (`mw.app-gateway.auth.pin-key-uri`, `http://mw-auth:8080/auth/v1/pin-key`, no token: the newest
-  mw-crypto `PIN_TRANSPORT` version), reused `pin-key-ttl` (5 min); while mw-auth cannot be asked the last key is
+  only, `@DeviceGate(NONE)`) answers `{keyId, algorithm RSA-OAEP-SHA-256, publicKeyPem}`, the newest mw-crypto
+  `PIN_TRANSPORT` version read from mw-auth `GET /internal/v1/pin-key` over the same mTLS client and service token as
+  the assertion (security review of ticket 72: never from the plain public port; `dto/ChannelPinKey`, a key whose
+  `purpose` is not `PIN_TRANSPORT` is refused, `503 MW-SYS-012`), reused `pin-key-ttl` (5 min); while mw-auth cannot be asked the last key is
   served; none yet `503 MW-SYS-012`. The app encrypts the PIN's UTF-8 bytes with RSA-OAEP (SHA-256, MGF1 SHA-256).
 - Sync wait (7.5): `service/ReplyWaiters` (`txnId -> future`); `route/StatusReplyRoute` consumes
   `mw.txn.status.v1` with group `mw-app-gateway.reply.<instanceId>` (latest offset, auto-commit,

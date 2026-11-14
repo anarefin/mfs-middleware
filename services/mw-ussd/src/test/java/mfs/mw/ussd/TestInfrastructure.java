@@ -107,7 +107,6 @@ public class TestInfrastructure {
       String auth = AuthStub.baseUrl();
       registry.add("mw.ussd.auth.base-url", () -> auth);
       registry.add("mw.ussd.auth.token-uri", () -> auth + "/token");
-      registry.add("mw.ussd.auth.pin-key-uri", () -> auth + "/auth/v1/pin-key");
     };
   }
 

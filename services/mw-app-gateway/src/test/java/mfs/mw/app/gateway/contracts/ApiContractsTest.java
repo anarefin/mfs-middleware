@@ -167,6 +167,11 @@ class ApiContractsTest {
 
     String key = "{\"keyId\":\"PIN_TRANSPORT.v1\",\"algorithm\":\"RSA-OAEP-SHA-256\",\"publicKeyPem\":\"-----BEGIN PUBLIC KEY-----\"}";
     assertThat(OpenApiSchemas.component(AUTH_PUBLIC_API, "PinKey").validate(JSON.readTree(key))).isEmpty();
+    // what the gateway reads: mw-auth's internal key with its purpose (security review of ticket 72)
+    String internal = "{\"keyId\":\"PIN_TRANSPORT.v1\",\"algorithm\":\"RSA-OAEP-SHA-256\","
+        + "\"publicKeyPem\":\"-----BEGIN PUBLIC KEY-----\",\"purpose\":\"PIN_TRANSPORT\"}";
+    assertThat(OpenApiSchemas.component(AUTH_API, "ChannelPinKey").validate(JSON.readTree(internal))).isEmpty();
+    assertThat(JSON.readValue(internal, mfs.mw.app.gateway.dto.ChannelPinKey.class).isPinTransport()).isTrue();
     // served to the apps unchanged (GET /app/v1/pin-key)
     assertValid(OpenApiSchemas.component(APP_API, "PinKey"), JSON.readValue(key, mfs.mw.app.gateway.dto.PinKey.class));
   }

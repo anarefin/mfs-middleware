@@ -472,6 +472,26 @@ class LoginIT {
     assertThat(der).isEqualTo(pinKeyV2.toRSAPublicKey().getEncoded());
   }
 
+  /**
+   * Security review of ticket 72: the channels read the transport key over the internal mTLS port
+   * with their services token, the purpose named, never from the plain public port.
+   */
+  @Test
+  void theChannelsReadTheTransportKeyOnTheInternalPortWithTheirToken() throws Exception {
+    for (String channel : List.of("mw-app-gateway", "mw-ussd", "mw-checkout")) {
+      MvcTestResult r = mvc.get().uri("/internal/v1/pin-key").header("Authorization", InternalTokens.bearer(channel)).exchange();
+      assertThat(r).hasStatus(200);
+      assertThat(r).bodyJson().extractingPath("$.keyId").isEqualTo("pin-transport.v2");
+      assertThat(r).bodyJson().extractingPath("$.purpose").isEqualTo("PIN_TRANSPORT");
+      assertThat(r).bodyJson().extractingPath("$.algorithm").isEqualTo("RSA-OAEP-SHA-256");
+      assertThat(field(r, "$.publicKeyPem")).isEqualTo(field(mvc.get().uri("/auth/v1/pin-key").exchange(), "$.publicKeyPem"));
+    }
+    assertThat(mvc.get().uri("/internal/v1/pin-key").exchange()).hasStatus(401);
+    MvcTestResult admin = mvc.get().uri("/internal/v1/pin-key").header("Authorization", InternalTokens.bearer("mw-admin-api")).exchange();
+    assertThat(admin).hasStatus(403);
+    assertThat(admin).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-002");
+  }
+
   // --- the dev seed API ---
 
   @Test

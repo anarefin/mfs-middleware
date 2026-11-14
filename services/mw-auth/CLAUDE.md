@@ -17,7 +17,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   (hash, family, device, expiry, rotation, revoked), `pin_reset` (`SELF` / `CARE`, one open per wallet),
   plus the chassis `outbox`, `inbox`, `shedlock`; `device_otp` (V5, ticket 68; V6 adds its `purpose`
   BIND/LOGIN and `refresh_token.amr`; V7, ticket 70: purpose RESET, `pin_reset` status VERIFIED and its
-  `device_id`, `expires_at`, `change_request_id`, `command_id`, `reason`; V8, ticket 72: purpose CHECKOUT). Code so far: `wallet` (`repository/WalletRepository`), `device`
+  `device_id`, `expires_at`, `change_request_id`, `command_id`, `reason`); `channel_otp` + `channel_otp_quota` (V8, ticket 72: the checkout OTP, its own slot and quota, `repository/ChannelOtpRepository`). Code so far: `wallet` (`repository/WalletRepository`), `device`
   (`repository/DeviceRepository`), `device_otp` (`repository/DeviceOtpRepository`), `credential`,
   `attempt`, `lock` (`repository/CredentialRepository`), `refresh_token` (`repository/RefreshTokenRepository`),
   `pin_reset` (`repository/PinResetRepository`, ticket 70).
@@ -256,14 +256,27 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   /internal/v1/otp {msisdn, purpose CHECKOUT, bindingId (the checkout sessionId, the device id rule),
   locale?, amount (taka "25.50"), merchant}` -> 202 `{wallet (masked), otpExpiresAt, sendsLeft}`: the
   wallet known (403 `MW-AUTH-002`) and `WalletAccess.checkActive` (403 `MW-AUTH-043`; a PIN lock is the
-  assertion's to answer), then `DeviceOtpService.send` with purpose `CHECKOUT` and the binding in
-  `device_otp.device_id` (V8 adds the purpose), template `CHECKOUT_OTP` (mw-notify V8; params `otp`,
-  `amount`, `merchant`), the same limits (429 `MW-VAL-022`, Kafka down 503 `MW-SYS-010`). **One OTP per
-  wallet:** a checkout OTP replaces a pending BIND/LOGIN/RESET OTP of the wallet (and the other way
-  round); accepted, as one person rarely binds a device and pays a web checkout in the same 2 minutes.
-  `POST /internal/v1/otp/verifications {msisdn, purpose, bindingId, otp}` -> 204: `DeviceOtpService.check`
-  (401 `MW-AUTH-010/011/012`, an OTP of another binding or purpose 011) then `consume` (spent once; a
-  second check 011). Tested by `security/CheckoutOtpIT`.
+  assertion's to answer), then the OTP in **its own slot** (security review of ticket 72; V8
+  `channel_otp`, one row per wallet, purpose and session, `repository/ChannelOtpRepository`; hash bound
+  to wallet, purpose and session): it never replaces or uses up a device OTP (`device_otp`,
+  BIND/LOGIN/RESET) nor another session's OTP, and the other way round. Its own send quota per wallet
+  and purpose over all its sessions (`channel_otp_quota`, `mw.auth.channel-otp.*`
+  (`config/ChannelOtpProperties`): ttl 2 min, 3 checks, `max-sends` 5 per `send-window` 15 min,
+  `MW_AUTH_CHANNEL_OTP_MAX_SENDS`, dev compose 20), counted and the slot written in one conditional
+  statement (429 `MW-VAL-022`); a wallet's expired checkout OTPs are deleted when it asks a new one.
+  Template `CHECKOUT_OTP` (mw-notify V8; params `otp`, `amount`, `merchant`), straight to Kafka (503
+  `MW-SYS-010`). `POST /internal/v1/otp/verifications {msisdn, purpose, bindingId, otp}` -> 204: only
+  the same purpose and session match (401 `MW-AUTH-011` otherwise or when none, expired, spent or void;
+  `010` wrong; `012` checks used up; each check reserved atomically, the wrong guess that uses the last
+  one voids it), then spent once. Tested by `security/CheckoutOtpIT` (own slot both ways, two sessions,
+  own quota both ways).
+- Channel PIN transport key (security review of ticket 72; `controller/InternalPinKeyController`,
+  `service/ChannelPinKeyService`, `dto/InternalPinKey`): `GET /internal/v1/pin-key` on the internal mTLS
+  port for the assertion's callers (`mw.auth.assertion.callers`; anyone else 403 `MW-AUTH-002`) ->
+  `{keyId, algorithm, publicKeyPem, purpose PIN_TRANSPORT}`, the same newest version as the public `GET
+  /auth/v1/pin-key` (which stays for the apps only). mw-app-gateway, mw-ussd and mw-checkout read the key
+  here, never from the plain public port, and refuse a key of any other purpose. Tested in
+  `security/LoginIT`.
 - Error codes so far: `MW-AUTH-001..007`, `010..012`, `040..045`, `047`, `048` (18.7; `046` is the core's),
   `MW-IDEM-001` (ticket 71), `MW-VAL-001`, `MW-VAL-003`, `MW-VAL-022`, `MW-VAL-030/031` (reset, ticket 70),
   `MW-VAL-BODY_TOO_LARGE`, `MW-SYS-010`, `MW-SYS-012`, `MW-SYS-050/051`.

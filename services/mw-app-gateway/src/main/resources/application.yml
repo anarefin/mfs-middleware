@@ -268,9 +268,9 @@ mw:
       client-secret: ""
       timeout: 2s
       connect-timeout: 1s
-      # the PIN transport key (mw-crypto PIN_TRANSPORT) on mw-auth's public port, no token
-      # (ticket 72); GET /app/v1/pin-key serves it to the apps, reused for pin-key-ttl
-      pin-key-uri: ${MW_AUTH_PIN_KEY_URI:http://mw-auth:8080/auth/v1/pin-key}
+      # the PIN transport key (mw-crypto PIN_TRANSPORT) from mw-auth's internal GET /internal/v1/pin-key
+      # over the same mTLS client and token (ticket 72, security review); GET /app/v1/pin-key serves it
+      # to the apps, reused for pin-key-ttl
       pin-key-ttl: 5m
     jwt:
       # mw-auth's access tokens (ticket 69, spec 18.7, D21): RS256, typ at+jwt, exact issuer and

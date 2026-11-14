@@ -15,6 +15,7 @@ import mfs.mw.checkout.config.AuthClientProperties;
 import mfs.mw.checkout.config.ServiceCertificateManager;
 import mfs.mw.checkout.dto.AuthOtpRequest;
 import mfs.mw.checkout.dto.AuthOtpVerification;
+import mfs.mw.checkout.dto.ChannelPinKey;
 import mfs.mw.checkout.dto.ErrorDetail;
 import mfs.mw.checkout.dto.OtpSent;
 import mfs.mw.checkout.dto.TransportKey;
@@ -38,17 +39,19 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * mw-auth for the hosted page (ticket 72; contracts {@code api/mw-auth/auth-internal.v1.openapi.yaml},
- * {@code api/mw-auth/auth.v1.openapi.yaml}; spec 9.3, 18.7, D22, D24). The internal API (the checkout
- * OTP, the transaction assertion) over mTLS with this service's OpenBao certificate ({@link
+ * mw-auth for the hosted page (ticket 72; contract {@code api/mw-auth/auth-internal.v1.openapi.yaml};
+ * spec 9.3, 18.7, D22, D24). The internal API (the checkout OTP, the transaction assertion, the PIN
+ * transport key) over mTLS with this service's OpenBao certificate ({@link
  * ServiceCertificateManager#clientSslContext()}, CN {@code mw-checkout}) and a client-credentials JWT
  * of the same client ({@link ServiceTokenClient}); 2 s timeout, circuit breaker {@code mw-auth}
  * (4xx ignored). mw-auth's refusals (its 4xx error envelope) pass through with their code, status,
  * details and Bangla text; only a 401 {@code MW-AUTH-001} (this service's token) drops the cached
  * token and retries once, so a wrong PIN is never sent twice. Anything else (unreachable, timeout,
  * breaker open, 5xx, unreadable) is {@code MW-SYS-012} (503, retryable; fail closed). The PIN
- * transport key comes from the plain public port, cached {@code pin-key-ttl}; the last copy is kept
- * while mw-auth cannot be asked. Nothing sent or received is logged.
+ * transport key comes from {@code GET /internal/v1/pin-key} on the same channel (security review of
+ * ticket 72: never the plain public port; a key whose purpose is not {@code PIN_TRANSPORT} is
+ * refused), cached {@code pin-key-ttl}; the last good copy is kept while mw-auth cannot be asked.
+ * Nothing sent or received is logged.
  */
 @Component
 public class AuthClient {
@@ -62,7 +65,6 @@ public class AuthClient {
 
   private final AuthClientProperties props;
   private final RestClient internal;
-  private final RestClient open;
   private final ServiceTokenClient tokens;
   private final CircuitBreaker breaker;
   private final JsonMapper json;
@@ -84,9 +86,6 @@ public class AuthClient {
       http.sslContext(manager.clientSslContext());
     }
     this.internal = RestClient.builder().baseUrl(props.baseUrl().toString()).requestFactory(factory(http)).build();
-    this.open = RestClient.builder().requestFactory(factory(
-        HttpClient.newBuilder().connectTimeout(props.connectTimeout()).followRedirects(HttpClient.Redirect.NEVER)))
-        .build();
     this.tokens = tokens;
     this.breaker = breakers.circuitBreaker(BREAKER);
     this.json = json;
@@ -133,11 +132,23 @@ public class AuthClient {
       return Optional.of(c.key());
     }
     try {
-      TransportKey k = open.get().uri(props.pinKeyUri()).accept(MediaType.APPLICATION_JSON).retrieve()
-          .body(TransportKey.class);
-      if (k == null || blank(k.keyId()) || blank(k.publicKeyPem())) {
-        throw new IllegalStateException("no key in the answer");
+      // the internal mTLS port with the service token (security review of ticket 72), never the plain public port
+      ChannelPinKey answer = breaker.executeSupplier(() -> withToken(() -> {
+        RestClient.RequestHeadersSpec<?> req = internal.get().uri("/internal/v1/pin-key")
+            .accept(MediaType.APPLICATION_JSON).header("Authorization", "Bearer " + tokens.token());
+        String correlationId = MDC.get("correlationId");
+        if (correlationId != null) {
+          req = req.header("X-Correlation-Id", correlationId);
+        }
+        return req.retrieve().body(ChannelPinKey.class);
+      }));
+      if (answer == null || !answer.isPinTransport()) {
+        log.atWarn().addKeyValue("event", "auth.pin_key.refused")
+            .addKeyValue("purpose", answer == null || answer.purpose() == null ? "none" : answer.purpose())
+            .log("mw-auth answered no PIN_TRANSPORT key; refused");
+        throw new IllegalStateException("not a PIN_TRANSPORT key");
       }
+      TransportKey k = answer.toTransportKey();
       pinKey = new CachedKey(k, now);
       return Optional.of(k);
     } catch (RuntimeException e) {
@@ -235,9 +246,5 @@ public class AuthClient {
     return new MwException(ErrorCodes.SYS_AUTH_UNAVAILABLE, "Service temporarily unavailable, try again", cause)
         .withStatus(HttpStatus.SERVICE_UNAVAILABLE)
         .withRetryable(true);
-  }
-
-  private static boolean blank(String s) {
-    return s == null || s.isBlank();
   }
 }

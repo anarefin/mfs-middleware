@@ -28,15 +28,17 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 - Hosted page API (`controller/HostedPageController`, `service/CheckoutPayService`), APISIX route
   `checkout-pay` (no login; the pay token, 32 random bytes base64url, is the bearer):
   `GET /checkout/pay/v1/{token}` (merchant name, amount, status, masked wallet, `pinKey {keyId,
-  algorithm, publicKey}` = the mw-crypto `PIN_TRANSPORT` key from mw-auth `GET /auth/v1/pin-key`
+  algorithm, publicKey}` = the mw-crypto `PIN_TRANSPORT` key from mw-auth `GET /internal/v1/pin-key`
+  (the internal mTLS port with the service token; security review of ticket 72: never the plain public
+  port, and a key whose `purpose` is not `PIN_TRANSPORT` is refused, `dto/ChannelPinKey`)
   (cached `pin-key-ttl` 5 min, the last copy kept while mw-auth is down; left out when none was ever
   fetched, and on a session that is no longer OPEN) for WebCrypto RSA-OAEP SHA-256 in the page,
   `redirectUrl` once terminal);
   `POST .../otp {wallet}` 202: counted on the session first (`otp_sends`, at most `otp-max-sends` 3 per
   session `429 MW-VAL-022`, payer recorded), then sent by mw-auth (ticket 72: `POST /internal/v1/otp`,
   purpose `CHECKOUT`, bound to the sessionId, template `CHECKOUT_OTP` with amount (taka) and merchant
-  name; mw-auth's own rules: 2 min, 3 checks, one OTP per wallet, 5 per wallet in 15 min `429
-  MW-VAL-022`, unknown wallet `403 MW-AUTH-002`, blocked `403 MW-AUTH-043`); answer `{wallet (masked),
+  name; mw-auth's own rules: 2 min, 3 checks, its own slot per wallet and session (never replacing a
+  device OTP), its own quota of 5 checkout OTPs per wallet in 15 min `429 MW-VAL-022`, unknown wallet `403 MW-AUTH-002`, blocked `403 MW-AUTH-043`); answer `{wallet (masked),
   otpExpiresAt, sendsLeft}` with the lower of the session's and mw-auth's sends left;
   `POST .../confirm {otp, encryptedPin}` (ticket 72): no OTP asked on the session `401 MW-AUTH-011`;
   mw-auth checks and spends the OTP (`POST /internal/v1/otp/verifications`: `401 MW-AUTH-010` wrong,
@@ -101,8 +103,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   service's OpenBao certificate and a Keycloak realm `services` client-credentials JWT of client
   `mw-checkout` (audience mapper `aud-mw-auth`; secret `mw.checkout.auth.client-secret` in
   `secret/mw-checkout`, synced from `KC_MW_CHECKOUT_SECRET`; on mw-auth's allow-list and its
-  `mw.auth.assertion.callers`); the PIN key on the public port (`MW_AUTH_PIN_KEY_URI`,
-  `http://mw-auth:8080/auth/v1/pin-key`). Timeout 2 s, Resilience4j breaker `mw-auth` (count based, 4xx
+  `mw.auth.assertion.callers`); the PIN key on the same internal port (`GET /internal/v1/pin-key`). Timeout 2 s, Resilience4j breaker `mw-auth` (count based, 4xx
   ignored). mw-auth's 4xx envelope passes through; only a 401 `MW-AUTH-001` (this service's token) drops
   the token and retries once (a wrong PIN is never sent twice); unreachable, timeout, open breaker, 5xx,
   unreadable answer: `503 MW-SYS-012` (retryable, fail closed). Nothing sent or received is logged.
@@ -137,8 +138,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 - `events/mw-orchestrator/mw.txn.status.v1` (consumed; `dto/StatusMessage`) and the `mw-reply-to` convention.
 - `api/mw-auth/auth-internal.v1.openapi.yaml` (client, ticket 72: `POST /internal/v1/otp`, `POST
   /internal/v1/otp/verifications`, `POST /internal/v1/txn-authorisations`; own types `dto/AuthOtpRequest`,
-  `dto/AuthOtpVerification`, `dto/OtpSent`, `dto/TxnAuthorisationRequest`, `dto/TxnAuthorisation`) and
-  `api/mw-auth/auth.v1.openapi.yaml` (`GET /auth/v1/pin-key`, `dto/TransportKey`).
+  `dto/AuthOtpVerification`, `dto/OtpSent`, `dto/TxnAuthorisationRequest`, `dto/TxnAuthorisation`; `GET
+  /internal/v1/pin-key`, `dto/ChannelPinKey` -> `dto/TransportKey`).
 
 ## Tests
 

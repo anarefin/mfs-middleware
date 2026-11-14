@@ -49,9 +49,10 @@ public final class AuthStub {
   public static synchronized void defaults() {
     server.resetMappings();
     server.stubFor(post(urlEqualTo("/token")).willReturn(okJson("{\"access_token\":\"tok\",\"expires_in\":300}")));
-    server.stubFor(get(urlEqualTo("/auth/v1/pin-key")).willReturn(okJson(
+    server.stubFor(get(urlEqualTo("/internal/v1/pin-key")).willReturn(okJson(
         JSON.writeValueAsString(java.util.Map.of(
-            "keyId", KEY_ID, "algorithm", "RSA-OAEP-SHA-256", "publicKeyPem", TestPinKeys.pem())))));
+            "keyId", KEY_ID, "algorithm", "RSA-OAEP-SHA-256", "publicKeyPem", TestPinKeys.pem(),
+            "purpose", "PIN_TRANSPORT")))));
     server.stubFor(post(urlEqualTo(TXN_AUTH)).willReturn(okJson(
         "{\"assertion\":\"" + ASSERTION + "\",\"expiresAt\":\"2030-01-01T00:00:00Z\",\"newDevice\":false}")));
   }
