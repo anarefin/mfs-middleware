@@ -43,5 +43,5 @@
 72-channels-switch-to-assertion             71,70             open
 73-keycloak-realm-hardening                 69                done     22m      69 files +850 −551     6d5f5379..2766ca17
 74-audit-anchor-signing                     63,66             done     19m      49 files +1681 −51     1f1a8a6f..9aec2426 (+review fix)
-75-admin-key-management-ceremony            64,70             open
+75-admin-key-management-ceremony            64,70             done     78m      90+ files +4782 −65    dafbc2d2..5f6e7c6b (+race fix)
 76-security-tests-docs                      72,73,75          open
