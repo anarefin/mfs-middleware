@@ -82,7 +82,8 @@ class AdminTransactionApiIT {
          "recordedAt":"2026-11-03T08:15:34Z","at":"2026-11-03T08:15:32Z","txnId":"%1$s","correlationId":"corr-1",
          "actor":{"type":"system","id":"mw-orchestrator"},"action":"txn.state.changed","resource":"transaction/%1$s",
          "outcome":"SUCCESS","service":"mw-orchestrator","before":{"status":"POSTING"},"after":{"status":"COMPLETED"}}],
-       "limit":500,"offset":0}
+       "limit":500,"offset":0,
+       "anchor":{"status":"INTACT","lastAnchorDate":"2026-11-13","verifiedAt":"2026-11-14T00:30:00Z"}}
       """
           .formatted(TXN);
 
@@ -286,6 +287,9 @@ class AdminTransactionApiIT {
     assertThat(detail.path("auditTrail").valueStream().map(e -> e.path("seq").asLong()).toList()).containsExactly(7L, 9L);
     assertThat(detail.path("auditTrail").get(1).path("after").path("status").asString()).isEqualTo("COMPLETED");
     assertThat(detail.path("revealed").asBoolean()).isFalse();
+    // ticket 74: the signed daily anchors' status, as mw-audit-dw reports it
+    assertThat(detail.path("auditAnchor").path("status").asString()).isEqualTo("INTACT");
+    assertThat(detail.path("auditAnchor").path("lastAnchorDate").asString()).isEqualTo("2026-11-13");
     assertValid("/admin/v1/transactions/{txnId}", detail);
     assertThat(QUERIES).anyMatch(q -> q.startsWith("/internal/v1/audit/events?") && q.contains("txnId=" + TXN));
     assertThat(detail.toString()).doesNotContain(RAW_MSISDN);

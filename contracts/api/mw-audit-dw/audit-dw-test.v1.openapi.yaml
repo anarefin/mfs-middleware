@@ -113,13 +113,26 @@ components:
         after: { type: object }
     AuditPage:
       type: object
-      required: [items, limit, offset]
+      required: [items, limit, offset, anchor]
       properties:
         items:
           type: array
           items: { $ref: "#/components/schemas/AuditEntry" }
         limit: { type: integer }
         offset: { type: integer }
+        anchor: { $ref: "#/components/schemas/AnchorStatus" }
+    AnchorStatus:
+      type: object
+      description: >-
+        Status of the signed daily audit anchors (ticket 74, spec 14.3) as of the last hourly
+        verification: INTACT (every anchor's signature, chain and chain heads check out), BROKEN
+        (at least one does not; alert audit.anchor.broken), UNVERIFIED (not checked since the
+        service started, or mw-crypto's JWKS could not be read), OFF (anchoring switched off).
+      required: [status]
+      properties:
+        status: { type: string, enum: [INTACT, BROKEN, UNVERIFIED, "OFF"] }
+        lastAnchorDate: { type: string, format: date, description: The newest anchor (UTC day) }
+        verifiedAt: { type: string, format: date-time, description: When the anchors were last checked }
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]

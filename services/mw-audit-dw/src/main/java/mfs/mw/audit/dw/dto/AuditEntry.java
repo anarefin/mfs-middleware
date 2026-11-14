@@ -28,6 +28,9 @@ public record AuditEntry(
     JsonNode before,
     JsonNode after) {
 
-  /** One page of results, oldest first. */
-  public record Page(List<AuditEntry> items, int limit, int offset) {}
+  /**
+   * One page of results, oldest first, with the status of the signed daily anchors (ticket 74) for
+   * the admin console's audit view.
+   */
+  public record Page(List<AuditEntry> items, int limit, int offset, AnchorStatus anchor) {}
 }

@@ -670,6 +670,17 @@ components:
         auditTrail:
           type: array
           items: { $ref: "#/components/schemas/AuditEntry" }
+        auditAnchor:
+          type: object
+          description: >-
+            Status of the signed daily audit anchors (ticket 74, mw-audit-dw audit-query.v1
+            AuditPage.anchor): INTACT, BROKEN (a signature, the anchor chain or a chain head does not
+            check out), UNVERIFIED (not checked yet or the signing keys could not be read), OFF.
+          required: [status]
+          properties:
+            status: { type: string, enum: [INTACT, BROKEN, UNVERIFIED, "OFF"] }
+            lastAnchorDate: { type: string, format: date }
+            verifiedAt: { type: string, format: date-time }
         revealed:
           type: boolean
           description: true when MSISDN party ids are unmasked (and the reveal was audited)

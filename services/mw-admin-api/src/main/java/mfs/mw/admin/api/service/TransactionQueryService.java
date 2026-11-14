@@ -106,7 +106,8 @@ public class TransactionQueryService {
     }
     grantedBy.ifPresent(role -> reveals.record(operator, role, txnId));
     return new TxnDetailView(
-        detail.transaction(), detail.timeline(), detail.partnerCalls(), trail.items(), grantedBy.isPresent());
+        detail.transaction(), detail.timeline(), detail.partnerCalls(), trail.items(), trail.anchor(),
+        grantedBy.isPresent());
   }
 
   private static void requireReader(Operator operator) {

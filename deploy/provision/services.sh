@@ -66,6 +66,8 @@ provision_mw_audit_dw() {
   gen_once spring.datasource.password 40
   gen_once spring.flyway.password 40
   gen_once mw.audit-dw.chain-verify.reader-password 40
+  # its Keycloak realm services client for mw-crypto (ticket 74, the signed audit anchor)
+  sync_env mw.audit-dw.anchor.crypto.client-secret KC_MW_AUDIT_DW_SECRET
   field spring.flyway.password >"$tmp/ownerpw"
   field spring.datasource.password >"$tmp/writerpw"
   field mw.audit-dw.chain-verify.reader-password >"$tmp/readerpw"

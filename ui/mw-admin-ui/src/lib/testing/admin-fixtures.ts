@@ -22,6 +22,7 @@ export const completedP2p: TxnDetail = {
   ],
   partnerCalls: [],
   auditTrail: [],
+  auditAnchor: { status: "INTACT", lastAnchorDate: "2026-11-04", verifiedAt: "2026-11-05T00:30:00.000Z" },
   revealed: false,
 } as TxnDetail;
 

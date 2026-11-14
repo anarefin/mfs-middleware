@@ -11,6 +11,33 @@
 
 **Blocked by:** 63, 66
 
-**Status:** open
+**Status:** done
 
-- [ ] `./gradlew :mw-audit-dw:build` green with Docker; a tampered row or anchor is detected in an IT
+- [x] `./gradlew :mw-audit-dw:build` green with Docker; a tampered row or anchor is detected in an IT
+  (`service/AuditAnchorIT`: a chain rewritten and re-sealed by a superuser, a forged anchor, a deleted anchor)
+- [x] `./gradlew :mw-admin-api:build`, `pnpm test` in `ui/mw-admin-ui`, `:checkIsolation :checkFieldInjection
+  :contractsLint :composeCheck :scriptTests` green
+- [ ] On the running stack (after `deploy/reset.sh`: the new Keycloak client): mw-audit-dw starts with its
+  certificate, signs the day's anchor at mw-crypto, `<date>.jws` lands in the `audit-anchors` volume, the
+  console's audit trail shows "Anchors intact" (deferred to final integration test)
+
+**Decisions recorded (ticket asked):**
+- Anchor shape: the chains are monthly, so a day's anchor covers the head of every monthly chain written
+  that UTC day: `{date, heads[{partition: yyyy-MM, hash: hex of the chain's last row recorded before
+  midnight, rowCount: that row's seq}], prevAnchorHash: hex SHA-256 of the previous anchor's compact JWS
+  (64 zeros first)}`. A day without writes gets an anchor with empty heads, so anchors are daily without
+  gaps from the first day of the first chain's month; a missing day is a verification failure.
+- Signed ES256 with header `typ: mw-audit-anchor+jws`; job hourly at :15 UTC, catching up every past day
+  not yet anchored (at most 31 per run), so a mw-crypto outage only delays the anchor.
+- Export: no export folder existed, so a new one: `mw.audit-dw.anchor.export-dir`
+  (`/var/lib/mw/audit-anchors`, compose named volume `audit-anchors`), one `<date>.jws` per day; WORM stays TBC.
+- Verification lives in the hourly `AuditChainVerifyJob` (after the chains); alerts are log events
+  (`audit.anchor.broken` ERROR, `audit.anchor.failed` ERROR, `audit.anchor.unverifiable` WARN) plus the gauge
+  `mw.audit.anchor.broken`; runbook rows added. The status is in-memory (UNVERIFIED until the first check
+  after a start) and travels as `AuditPage.anchor` (audit-query.v1, required) -> mw-admin-api
+  `TxnDetail.auditAnchor` (admin.v1, optional) -> the console's audit trail badge `audit-anchor`.
+- Security review follow-up: expected days (first chain month's day 1 up to the last day ended more than
+  `mw.audit-dw.anchor.grace` = 3 h ago) must have an anchor, every stored anchor must equal its exported
+  `<date>.jws`, and the job never re-signs a day whose file exists (row missing + file = BROKEN). An export
+  folder that cannot be read is WARN `audit.anchor.unverifiable` / status UNVERIFIED. Covered in
+  `AuditAnchorIT` (tail deletion, delete-all with and without the export, re-signed anchor vs export).

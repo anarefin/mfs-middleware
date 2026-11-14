@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import mfs.mw.audit.dw.dto.AnchorStatus;
 import mfs.mw.audit.dw.dto.AuditEntry;
 import mfs.mw.audit.dw.dto.AuditEvent;
 import mfs.mw.audit.dw.dto.AuditSearchCriteria;
@@ -50,7 +51,7 @@ class AuditTestControllerTest {
             UUID.randomUUID().toString(), "2026-11", 7L, Instant.parse("2026-11-06T10:00:00Z"),
             Instant.parse("2026-11-06T10:00:00Z"), null, "corr-1", new AuditEvent.Actor("user", "org-checker01"),
             "bulk.batch.approved", "bulk-batch/b1", "SUCCESS", "mw-portal-api", null, null, null, null);
-    when(search.search(any())).thenReturn(new AuditEntry.Page(List.of(e), 100, 0));
+    when(search.search(any())).thenReturn(new AuditEntry.Page(List.of(e), 100, 0, AnchorStatus.off()));
 
     assertThat(mvc.get().uri("/test/v1/audit/events?resource=bulk-batch/b1"))
         .hasStatusOk()
