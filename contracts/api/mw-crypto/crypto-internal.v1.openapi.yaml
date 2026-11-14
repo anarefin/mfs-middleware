@@ -482,8 +482,10 @@ paths:
         under a ZPK; the clear PIN exists only inside the HSM. ISO4 needs an AES key (TPK_AES,
         ZPK_AES), ISO0, ISO1 and ISO3 a triple DES key (TPK, ZPK), else 400 MW-VAL-015. Authorised by
         the purpose of both keys (`mw.crypto.authz.purposes`; no caller is bound yet: the ATM and
-        interop adapters will be). A block the HSM refuses is 400 MW-VAL-014; a key it refuses
-        (parity) 400 MW-VAL-015; the HSM down or refusing the command 503 MW-SYS-010.
+        interop adapters will be). Only the configured format pairs translate (never ISO0, ISO3 or
+        ISO4 into ISO1, which binds the PIN to no account): else 400 MW-VAL-015. A block the HSM
+        refuses is 400 MW-VAL-014; a key it refuses (parity) 400 MW-VAL-015; the HSM down or refusing
+        the command 503 MW-SYS-010.
       parameters:
         - $ref: "#/components/parameters/CorrelationId"
       requestBody:
@@ -533,8 +535,11 @@ paths:
       operationId: verifyPvv
       summary: Check the PIN in a PIN block against a stored PVV (payShield DC / EC, ticket 64)
       description: >-
-        A wrong PIN (payShield error 01) is `match: false`, not an error. The PVK may be the ACTIVE or
-        the VERIFY_ONLY version. Authorised by the purpose of both keys (no caller bound yet).
+        A wrong PIN (payShield error 01) and any PIN block the HSM refuses are both `match: false`,
+        not an error, so the answer is no oracle on the PIN; only request-shape checks before the HSM
+        (400 MW-VAL-*) and key or HSM failures stay errors. Attempt counting and lockout are the
+        caller's job. The PVK may be the ACTIVE or the VERIFY_ONLY version. Authorised by the purpose
+        of both keys (no caller bound yet).
       parameters:
         - $ref: "#/components/parameters/CorrelationId"
       requestBody:

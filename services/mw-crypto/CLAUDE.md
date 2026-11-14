@@ -96,9 +96,25 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   returns it; `KeyRepository.updateLabel`), never a clear key; `destroy` is a no-op. The dev bootstrap adds
   `mw.crypto.payshield.bootstrap-purposes` (PVK, TPK, ZPK, TPK_AES, ZPK_AES) after the others while the
   provider is on.
-- Error mapping: `01` on `DC`/`EC` -> `{match: false}`; `10`/`11` (key parity: a corrupt blob or one of
-  another type) -> 400 `MW-VAL-015`; `15` -> 400 `MW-VAL-014` on PIN and PVV commands; `68` and anything
-  else -> 503 `MW-SYS-010`.
+- Error mapping: `10`/`11` (key parity: a corrupt blob or one of another type) and `69` (format not
+  permitted) -> 400 `MW-VAL-015`; `15` -> 400 `MW-VAL-014` on translate and PVV generate; `68` and
+  anything else -> 503 `MW-SYS-010`. PVV verify (security review): every PIN failure (`01`, and `15`,
+  `20` and any other PIN block error once the request passed the checks here) is `{match: false}`, so the
+  error code is no oracle on the PIN; the real code is only logged (WARN `crypto.pvv.verify_refused`
+  with `hsmError`, never the block). Only the request-shape checks before the HSM call stay `MW-VAL-*`,
+  and key or HSM failures (`10`, `11`, `68`) stay errors (they do not depend on the PIN). Attempt
+  counting and lockout are the caller's job (mw-auth, ticket 70, for wallet PINs; the ATM / interop
+  adapter for card-style PINs), and the `account` must be resolved server side by that adapter from
+  its own records, never taken from an untrusted client.
+- Format pairs (security review, format downgrade): `/pinblock/translate` accepts only the pairs in
+  `mw.crypto.payshield.allowed-translations` (`FROM:TO`), else 400 `MW-VAL-015` before any HSM call.
+  Default (`PayShieldProperties.DEFAULT_TRANSLATIONS`): same format; ISO 0 <-> 3; ISO 0 / 3 -> 4 and
+  4 -> 0 / 3 (all PAN-bound, so the PIN stays tied to the account; 4 -> 0/3 is kept because switches
+  and schemes that speak only the triple DES formats still need it, at the cost of TDES instead of AES
+  on that hop); ISO 1 -> 0 / 3 / 4 (binding a PIN to the account only adds protection). Never ISO 0, 3
+  or 4 -> ISO 1: ISO 1 binds the PIN to no account, so such a block can be replayed against any
+  account. The simulator refuses the same by default (error `69`, payShield security setting "allow
+  translation to non-PAN formats" off), which maps to `MW-VAL-015` too.
 - API (`service/PinBlockService`, `controller/PinBlockController`, `controller/PvvController`; for the
   later ATM and interop adapters): `POST /internal/v1/pinblock/translate {source{keyId, format, block},
   destination{keyId, format}, account}` -> `{block, format, keyId(kid)}` (`CA` from a TPK, `CC` from a

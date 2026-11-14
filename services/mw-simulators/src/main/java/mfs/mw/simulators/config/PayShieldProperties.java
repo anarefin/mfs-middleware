@@ -10,10 +10,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param headerLength characters of the message header the host sends and gets back (4)
  * @param lmkStore {@code pkcs11}: the LMK is a token object of the SoftHSM {@code paysim} token (the
  *     stack); {@code memory}: a fresh LMK in memory (host tests)
+ * @param allowNonPanTranslation the payShield security setting "allow translation to non-PAN
+ *     formats" (default off: {@code CA} / {@code CC} from ISO 0, 3 or 4 into ISO 1 answer {@code 69};
+ *     read by {@code service/PayShieldService})
  * @param pkcs11 the {@code paysim} token
  */
 @ConfigurationProperties("sim.payshield")
-public record PayShieldProperties(boolean enabled, int port, int headerLength, String lmkStore, Pkcs11 pkcs11) {
+public record PayShieldProperties(
+    boolean enabled, int port, int headerLength, String lmkStore, boolean allowNonPanTranslation, Pkcs11 pkcs11) {
 
   public PayShieldProperties {
     headerLength = headerLength == 0 ? 4 : headerLength;

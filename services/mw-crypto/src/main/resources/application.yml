@@ -229,6 +229,10 @@ mw:
       acquire-timeout: 2s
       # added to bootstrap-purposes (dev bootstrap) while the provider is on
       bootstrap-purposes: [PVK, TPK, ZPK, TPK_AES, ZPK_AES]
+      # PIN block format pairs /pinblock/translate accepts (FROM:TO); never from ISO 0, 3 or 4 into
+      # ISO 1, which binds the PIN to no account (CLAUDE.md "payShield provider")
+      allowed-translations: [ISO0:ISO0, ISO1:ISO1, ISO3:ISO3, ISO4:ISO4, ISO0:ISO3, ISO3:ISO0, ISO0:ISO4,
+        ISO3:ISO4, ISO4:ISO0, ISO4:ISO3, ISO1:ISO0, ISO1:ISO3, ISO1:ISO4]
     # Who may run which operation (security/CallerPolicy; caller = the service JWT's azp, which mTLS
     # ties to the client certificate's CN). Deny by default: a purpose without an entry is refused
     # (403 MW-AUTH-002). A caller of a new key purpose (KEK_<x>, TOKENISE_<x>, HMAC_<x>) adds it here.

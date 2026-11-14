@@ -117,7 +117,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   it), then command code and fields in ASCII; many commands per connection. Answer: response code
   (second letter + 1: `CA -> CB`), 2-digit error code, fields. Errors `00`, `01` PIN verification
   failure, `10` / `11` parity error of the first / second key field, `15` invalid input, `68` command
-  disabled (also any unknown command). Fields (simulator layout; keys are 33-char blobs, see below;
+  disabled (also any unknown command), `69` PIN block format not permitted: `CA` / `CC` from ISO 0, 3
+  or 4 into ISO 1 while the payShield security setting "allow translation to non-PAN formats" is off
+  (`sim.payshield.allow-non-pan-translation`, default false; ISO 1 binds the PIN to no account). Fields (simulator layout; keys are 33-char blobs, see below;
   a PIN block is 16 hex under a `U` key, 32 under an `S` key; `acct` = 12 digits (rightmost without
   the check digit), or 2-digit length + whole PAN when a format 4 block is involved):
   - `NC` -> `ND00` + LMK check value (16H) + firmware `1500-0000`.

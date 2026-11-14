@@ -135,11 +135,26 @@ public class PayShieldProvider implements CryptoProvider, PinBlockProvider {
     String cmd = key.terminal() ? "DC" : "EC";
     String answer = command("pvv-verify", cmd,
         key.ref() + pvkRef + block + format.code() + accountField(account, format, format) + pvki + pvv);
-    if (answer.startsWith("01")) {
-      return false;
+    String error = answer.substring(0, 2);
+    switch (error) {
+      case "00" -> {
+        return true;
+      }
+      // key and HSM failures do not depend on the PIN: they stay errors
+      case "10", "11", "68" -> {
+        ok("pvv-verify", answer);
+        return false;
+      }
+      default -> {
+        // 01 and every PIN block error (15, 20, ...) answer the same no match, so the error code is
+        // no oracle on the PIN; the real code is logged here only
+        if (!"01".equals(error)) {
+          log.atWarn().addKeyValue("event", "crypto.pvv.verify_refused").addKeyValue("provider", NAME)
+              .addKeyValue("hsmError", error).log("PVV verify refused by the HSM: answered as no match");
+        }
+        return false;
+      }
     }
-    ok("pvv-verify", answer);
-    return true;
   }
 
   @Override
@@ -226,6 +241,7 @@ public class PayShieldProvider implements CryptoProvider, PinBlockProvider {
         return answer.substring(2);
       }
       case "10", "11" -> throw CryptoErrors.keyNotUsable("(payShield key, parity error " + error + ")", op);
+      case "69" -> throw CryptoErrors.keyNotUsable("(payShield: PIN block format not permitted)", op);
       case "15" -> throw op.startsWith("pin") || op.startsWith("pvv")
           ? CryptoErrors.badPinBlock()
           : CryptoErrors.invalidField("request", "refused by the HSM");

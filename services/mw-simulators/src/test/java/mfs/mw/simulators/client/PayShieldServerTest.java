@@ -31,8 +31,8 @@ class PayShieldServerTest {
 
   @BeforeEach
   void start() {
-    PayShieldProperties props = new PayShieldProperties(true, 0, 4, "memory", null);
-    server = new PayShieldServer(new PayShieldService(new PayShieldKeys(new InMemoryLmkStore()), scenario), scenario,
+    PayShieldProperties props = new PayShieldProperties(true, 0, 4, "memory", false, null);
+    server = new PayShieldServer(new PayShieldService(new PayShieldKeys(new InMemoryLmkStore()), scenario, false), scenario,
         props);
     server.start();
   }

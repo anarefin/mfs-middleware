@@ -94,7 +94,7 @@ class PayShieldProviderTest {
   PayShieldProvider provider(Duration callTimeout) throws IOException {
     hsm = new FakeHsm();
     var props = new PayShieldProperties(true, "127.0.0.1", hsm.server.getLocalPort(), 4, 2, Duration.ofSeconds(1),
-        callTimeout, Duration.ofSeconds(1), List.of());
+        callTimeout, Duration.ofSeconds(1), List.of(), null);
     var breakers = CircuitBreakerRegistry.of(CircuitBreakerConfig.custom()
         .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.COUNT_BASED)
         .slidingWindowSize(4).minimumNumberOfCalls(4).failureRateThreshold(50)
@@ -167,6 +167,33 @@ class PayShieldProviderTest {
     hsm.answer = b -> "DD01";
     assertThat(provider.verifyPvv(PVK, new PinKey(TPK, true), "1".repeat(16), PinBlockFormat.ISO0,
         "4000001234562000", 1, "1234")).isFalse();
+  }
+
+  @Test
+  void everyPinFailureOnVerifyIsNoMatchSoErrorCodesAreNoOracle() throws IOException {
+    provider(Duration.ofSeconds(2));
+    PinKey tpk = new PinKey(TPK, true);
+    for (String code : new String[] {"01", "15", "20", "24"}) {
+      hsm.answer = b -> "DD" + code;
+      assertThat(provider.verifyPvv(PVK, tpk, "1".repeat(16), PinBlockFormat.ISO0, "4000001234562000", 1, "1234"))
+          .as(code).isFalse();
+    }
+    // key and HSM failures do not depend on the PIN: they stay errors
+    hsm.answer = b -> "DD10";
+    assertThatThrownBy(() -> provider.verifyPvv(PVK, tpk, "1".repeat(16), PinBlockFormat.ISO0, "4000001234562000", 1,
+        "1234")).satisfies(e -> assertThat(code(e)).isEqualTo("MW-VAL-015"));
+    hsm.answer = b -> "DD68";
+    assertThatThrownBy(() -> provider.verifyPvv(PVK, tpk, "1".repeat(16), PinBlockFormat.ISO0, "4000001234562000", 1,
+        "1234")).satisfies(e -> assertThat(code(e)).isEqualTo("MW-SYS-010"));
+  }
+
+  @Test
+  void aFormatTheHsmDisallowsIsAKeyNotUsable() throws IOException {
+    provider(Duration.ofSeconds(2));
+    hsm.answer = b -> "CB69";
+    assertThatThrownBy(() -> provider.translate(new PinKey(TPK, true), "1".repeat(16), PinBlockFormat.ISO0,
+        new PinKey(ZPK, false), PinBlockFormat.ISO1, "4000001234562000"))
+        .satisfies(e -> assertThat(code(e)).isEqualTo("MW-VAL-015"));
   }
 
   @Test

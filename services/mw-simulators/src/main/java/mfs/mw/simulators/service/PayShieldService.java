@@ -8,6 +8,7 @@ import mfs.mw.simulators.service.PayShieldKeys.ParityException;
 import mfs.mw.simulators.util.PayShieldCrypto;
 import mfs.mw.simulators.util.PinBlocks;
 import mfs.mw.simulators.util.PinBlocks.Format;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
@@ -16,7 +17,8 @@ import org.springframework.stereotype.Service;
  * second letter advanced: {@code CA -> CB}), the 2-digit error code and the response fields. Error
  * codes: {@code 00} OK, {@code 01} PIN verification failure, {@code 10} / {@code 11} parity error of
  * the first / second key field, {@code 15} invalid input, {@code 68} command disabled (also an
- * unknown command). Field layouts (CLAUDE.md "payShield simulator"): keys are 33-character blobs
+ * unknown command), {@code 69} a translation from a PAN-bound format into ISO 1 while that is not
+ * allowed (the default). Field layouts (CLAUDE.md "payShield simulator"): keys are 33-character blobs
  * under the LMK ({@link PayShieldKeys}); a PIN block is 16 hex digits under a {@code U} key and 32
  * under an {@code S} (AES) key; the account field is 12 digits (the rightmost 12 without the check
  * digit), or a 2-digit length and the whole PAN when a PIN block of ISO format 4 is involved.
@@ -29,10 +31,18 @@ public class PayShieldService {
 
   private final PayShieldKeys keys;
   private final PayShieldScenarioStore scenario;
+  private final boolean allowNonPanTranslation;
 
-  public PayShieldService(PayShieldKeys keys, PayShieldScenarioStore scenario) {
+  /**
+   * @param allowNonPanTranslation the payShield security setting "allow translation to non-PAN
+   *     formats": off (the default), {@code CA} / {@code CC} from a PAN-bound format (ISO 0, 3, 4)
+   *     into ISO 1 answer error {@code 69} (PIN block format not permitted)
+   */
+  public PayShieldService(PayShieldKeys keys, PayShieldScenarioStore scenario,
+      @Value("${sim.payshield.allow-non-pan-translation:false}") boolean allowNonPanTranslation) {
     this.keys = keys;
     this.scenario = scenario;
+    this.allowNonPanTranslation = allowNonPanTranslation;
   }
 
   /** A failed command: its error code. */
@@ -154,6 +164,9 @@ public class PayShieldService {
       Format to = Format.fromCode(f.take(2));
       checkFormat(from, source);
       checkFormat(to, dest);
+      if (!allowNonPanTranslation && to == Format.ISO1 && from != Format.ISO1) {
+        throw new CommandError("69");
+      }
       String pan = account(f, from, to);
       f.end();
       String pin = PinBlocks.decipher(from, block, pan, source.clear());

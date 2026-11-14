@@ -100,7 +100,7 @@ class PayShieldProviderIT {
             .withStartupTimeout(Duration.ofMinutes(3)));
     simulator.start();
     var props = new PayShieldProperties(true, simulator.getHost(), simulator.getMappedPort(1500), 4, 2,
-        Duration.ofSeconds(2), Duration.ofSeconds(5), Duration.ofSeconds(2), List.of());
+        Duration.ofSeconds(2), Duration.ofSeconds(5), Duration.ofSeconds(2), List.of(), null);
     provider = new PayShieldProvider(props, CircuitBreakerRegistry.ofDefaults());
   }
 

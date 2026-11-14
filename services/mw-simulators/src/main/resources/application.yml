@@ -166,6 +166,8 @@ sim:
     port: 1500
     header-length: 4
     lmk-store: pkcs11
+    # payShield security setting: off = CA/CC from ISO 0, 3, 4 into ISO 1 answer error 69
+    allow-non-pan-translation: false
     pkcs11:
       library: /usr/lib/libp11-kit.so.0
       slot-list-index: 0

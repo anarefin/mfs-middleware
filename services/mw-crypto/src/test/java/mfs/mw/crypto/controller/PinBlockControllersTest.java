@@ -21,6 +21,7 @@ import mfs.mw.crypto.client.PayShieldProvider;
 import mfs.mw.crypto.client.PinBlockFormat;
 import mfs.mw.crypto.client.PinBlockProvider.PinKey;
 import mfs.mw.crypto.config.OperationAuthzProperties;
+import mfs.mw.crypto.config.PayShieldProperties;
 import mfs.mw.crypto.config.SecurityConfig;
 import mfs.mw.crypto.entity.CryptoKey;
 import mfs.mw.crypto.entity.KeyState;
@@ -72,7 +73,7 @@ class PinBlockControllersTest {
   static final String ACCOUNT = "4000001234562000";
 
   @TestConfiguration(proxyBeanMethods = false)
-  @EnableConfigurationProperties(OperationAuthzProperties.class)
+  @EnableConfigurationProperties({OperationAuthzProperties.class, PayShieldProperties.class})
   static class Beans {
     @Bean
     PayShieldProvider payShieldProvider() {
@@ -182,6 +183,23 @@ class PinBlockControllersTest {
     error(post(ATM, "/internal/v1/pinblock/translate", translate("nope", "ISO0", "0".repeat(16), "zpk", "ISO0")),
         404, "MW-VAL-010");
     verify(hsm, never()).translate(any(), anyString(), any(), any(), any(), anyString());
+  }
+
+  @Test
+  void aTranslationOutOfAPanBoundFormatIntoIso1IsRefused() {
+    for (String from : new String[] {"ISO0", "ISO3"}) {
+      error(post(ATM, "/internal/v1/pinblock/translate", translate("tpk", from, "0".repeat(16), "zpk", "ISO1")),
+          400, "MW-VAL-015");
+    }
+    error(post(ATM, "/internal/v1/pinblock/translate", translate("zpk-aes", "ISO4", "0".repeat(32), "zpk", "ISO1")),
+        400, "MW-VAL-015");
+    verify(hsm, never()).translate(any(), anyString(), any(), any(), any(), anyString());
+    // into a PAN-bound format, and between them, is allowed by default
+    when(hsm.translate(any(), anyString(), any(), any(), any(), anyString())).thenReturn("0".repeat(16));
+    assertThat(post(ATM, "/internal/v1/pinblock/translate", translate("tpk", "ISO1", "0".repeat(16), "zpk", "ISO0")))
+        .hasStatusOk();
+    assertThat(post(ATM, "/internal/v1/pinblock/translate", translate("tpk", "ISO0", "0".repeat(16), "zpk", "ISO3")))
+        .hasStatusOk();
   }
 
   @Test

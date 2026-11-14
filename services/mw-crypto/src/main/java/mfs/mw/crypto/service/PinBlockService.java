@@ -7,6 +7,7 @@ import mfs.mw.crypto.client.KeyAlgorithm;
 import mfs.mw.crypto.client.PinBlockFormat;
 import mfs.mw.crypto.client.PinBlockProvider;
 import mfs.mw.crypto.client.PinBlockProvider.PinKey;
+import mfs.mw.crypto.config.PayShieldProperties;
 import mfs.mw.crypto.dto.PinBlockInput;
 import mfs.mw.crypto.dto.PvvRequest;
 import mfs.mw.crypto.dto.PvvView;
@@ -26,8 +27,12 @@ import org.springframework.stereotype.Service;
  * version, a kid that version; translation targets and PVV generation take ACTIVE only), checked for
  * its purpose (source TPK/ZPK, target ZPK, PVK), the format against the key ({@code ISO4} needs an
  * {@code _AES} key, the others a triple DES one; else {@code MW-VAL-015}) and the block length
- * against the format ({@code MW-VAL-001}), and the caller against every key's purpose ({@code
- * security/CallerPolicy}, deny by default: no caller is bound yet). The clear PIN never leaves the
+ * against the format ({@code MW-VAL-001}), the format pair against {@code
+ * mw.crypto.payshield.allowed-translations} (never a PAN-bound format into ISO 1: {@code
+ * MW-VAL-015}), and the caller against every key's purpose ({@code security/CallerPolicy}, deny by
+ * default: no caller is bound yet). PIN attempt counting and lockout are the caller's job, and the
+ * account must come from the caller's own records (the ATM / interop adapter resolves it server
+ * side), never from an untrusted client. The clear PIN never leaves the
  * HSM; nothing here logs a block, PVV or account.
  */
 @Service
@@ -40,10 +45,12 @@ public class PinBlockService {
 
   private final HsmKeys keys;
   private final CallerPolicy callers;
+  private final PayShieldProperties props;
 
-  public PinBlockService(HsmKeys keys, CallerPolicy callers) {
+  public PinBlockService(HsmKeys keys, CallerPolicy callers, PayShieldProperties props) {
     this.keys = keys;
     this.callers = callers;
+    this.props = props;
   }
 
   public TranslatedPinBlock translate(TranslatePinBlockRequest r) {
@@ -54,6 +61,11 @@ public class PinBlockService {
     callers.requirePurpose(dest.purpose().name(), op);
     String block = block(r.source(), source, op);
     fits(r.destination().format(), dest, op);
+    if (!props.translationAllowed(r.source().format(), r.destination().format())) {
+      // a PAN-bound block (ISO 0, 3, 4) must never come out as ISO 1, bound to no account
+      throw CryptoErrors.keyNotUsable(dest.kid(), op + " from " + r.source().format() + " to "
+          + r.destination().format() + " (not an allowed translation)");
+    }
     PinBlockProvider hsm = pinBlockProvider(source, op);
     sameProvider(source, dest, op);
     String out = keys.run(op, source, p -> hsm.translate(pinKey(source), block, r.source().format(), pinKey(dest),

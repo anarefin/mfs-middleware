@@ -72,11 +72,19 @@ class PayShieldKeyServiceTest {
   }
 
   @Test
+  void theDefaultTranslationsNeverLeaveAPanBoundFormatForIso1() {
+    var props = new PayShieldProperties(true, null, 0, 0, 0, null, null, null, null, null);
+    assertThat(props.allowedTranslations()).contains("ISO0:ISO0", "ISO0:ISO3", "ISO3:ISO0", "ISO0:ISO4", "ISO3:ISO4",
+        "ISO4:ISO0", "ISO4:ISO3", "ISO4:ISO4", "ISO1:ISO0", "ISO1:ISO1")
+        .doesNotContain("ISO0:ISO1", "ISO3:ISO1", "ISO4:ISO1");
+  }
+
+  @Test
   void bootstrapAddsThePayShieldPurposesOnlyWhenTheProviderIsOn() {
     when(repo.purposes()).thenReturn(new ArrayList<>(List.of("JWT_SIGN")));
-    var on = new PayShieldProperties(true, null, 0, 0, 0, null, null, null, List.of("PVK", "TPK"));
+    var on = new PayShieldProperties(true, null, 0, 0, 0, null, null, null, List.of("PVK", "TPK"), null);
     assertThat(new KeyBootstrapService(service, props, on).ensureKeys()).containsExactly("PVK", "TPK");
-    var off = new PayShieldProperties(false, null, 0, 0, 0, null, null, null, List.of("PVK", "TPK"));
+    var off = new PayShieldProperties(false, null, 0, 0, 0, null, null, null, List.of("PVK", "TPK"), null);
     assertThat(new KeyBootstrapService(service, props, off).ensureKeys()).isEmpty();
   }
 }

@@ -39,7 +39,7 @@ class PayShieldServiceTest {
   void setUp() {
     scenario = new PayShieldScenarioStore();
     keys = new PayShieldKeys(new InMemoryLmkStore());
-    service = new PayShieldService(keys, scenario);
+    service = new PayShieldService(keys, scenario, false);
     tpk = keys.wrap(PayShieldKeys.KeyType.TPK, TPK, 'U');
     zpk = keys.wrap(PayShieldKeys.KeyType.ZPK, ZPK, 'U');
     pvk = keys.wrap(PayShieldKeys.KeyType.PVK, PayShieldCrypto.withOddParity(PVK), 'U');
@@ -89,7 +89,8 @@ class PayShieldServiceTest {
   @Test
   void translateZpkToZpkFormat3To1() {
     String zpk2 = keys.wrap(PayShieldKeys.KeyType.ZPK, TPK, 'U');
-    String r = service.handle("CC" + zpk + zpk2 + "12" + block(Format.ISO3, "987654", ZPK) + "4705" + ACCOUNT);
+    String r = new PayShieldService(keys, scenario, true)
+        .handle("CC" + zpk + zpk2 + "12" + block(Format.ISO3, "987654", ZPK) + "4705" + ACCOUNT);
     assertThat(r).startsWith("CD0006").endsWith("05");
     assertThat(PinBlocks.decipher(Format.ISO1, HEX.parseHex(r.substring(6, 22)), PAN, TPK)).isEqualTo("987654");
   }
@@ -140,6 +141,23 @@ class PayShieldServiceTest {
         .isEqualTo("CB10");
     assertThat(service.handle("CA" + tpk + tpk + "12" + block(Format.ISO0, "1234", TPK) + "0101" + ACCOUNT))
         .isEqualTo("CB11");
+  }
+
+  @Test
+  void translationOutOfAPanBoundFormatIntoIso1IsDisallowed() {
+    // payShield security setting "allow translation to non-PAN formats" off (default): error 69
+    assertThat(service.handle("CA" + tpk + zpk + "12" + block(Format.ISO0, "1234", TPK) + "0105" + ACCOUNT))
+        .isEqualTo("CB69");
+    assertThat(service.handle("CC" + zpk + zpk + "12" + block(Format.ISO3, "1234", ZPK) + "4705" + ACCOUNT))
+        .isEqualTo("CD69");
+    // ISO 1 to ISO 1 and ISO 1 into a PAN-bound format stay allowed
+    assertThat(service.handle("CA" + tpk + zpk + "12" + block(Format.ISO1, "1234", TPK) + "0505" + ACCOUNT))
+        .startsWith("CB00");
+    assertThat(service.handle("CA" + tpk + zpk + "12" + block(Format.ISO1, "1234", TPK) + "0501" + ACCOUNT))
+        .startsWith("CB00");
+    var permissive = new PayShieldService(keys, scenario, true);
+    assertThat(permissive.handle("CA" + tpk + zpk + "12" + block(Format.ISO0, "1234", TPK) + "0105" + ACCOUNT))
+        .startsWith("CB00");
   }
 
   @Test
