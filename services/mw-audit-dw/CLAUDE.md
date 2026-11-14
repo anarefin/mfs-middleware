@@ -43,7 +43,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   in PostgreSQL's `jsonb::text` form, obtained from PostgreSQL before hashing). `HashChainTest`
   pins the format with a golden vector. `audit.chain_head` (month, last seq, last hash) is
   locked `FOR UPDATE` to append (one writer per month at a time) and anchors the tail, so a
-  deleted last row is detected too. Daily anchor export to WORM is not built (spec: TBC).
+  deleted last row is detected too. The signed daily anchor (ticket 74) is below.
 - Verification: `service/AuditChainVerifier.verify(month)` -> `ChainVerification` (intact, or the
   first broken `seq` and why); `months()` lists the chains. The service role cannot read
   `audit.event`, so the verifier gets a reading role's `JdbcTemplate`.
@@ -56,6 +56,44 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   reason) and gauge `mw.audit.chain.broken` (broken months of the last run, 0 = intact); every run logs
   `audit.chain.verified`. `AuditChainVerifyIT` tampers a row as superuser and checks the reader can only
   read and the writer still cannot SELECT.
+- Signed daily anchor (ticket 74, spec 14.3 decision 2026-11-14; `service/AnchorService`,
+  `scheduler/AuditAnchorJob` ShedLock `audit-anchor`, cron `mw.audit-dw.anchor.cron` UTC hourly at :15,
+  `-` off as in tests). **Shape (decision, the chains are monthly, not daily):** one anchor per UTC day,
+  claims `dto/AuditAnchor` `{date, heads[{partition, hash, rowCount}], prevAnchorHash}`: a head per
+  monthly chain that received rows that day = its last row recorded before midnight (`partition` =
+  the chain's `yyyy-MM`, `hash` = that row's hash in hex, `rowCount` = its seq), read as `audit_reader`
+  (`AuditChainVerifier.heads`, index `event_recorded_at_idx`); a day without writes gets an anchor with
+  no heads, so there is one anchor per day without gaps from the first day of the first chain's month;
+  `prevAnchorHash` = hex SHA-256 of the previous anchor's compact JWS (64 zeros for the first). Each run
+  signs every past day not yet anchored (at most `catch-up-days`, 31), oldest first, and stops at the
+  first failure (ERROR `audit.anchor.failed`; the day stays due). Signing: `client/CryptoClient` ->
+  mw-crypto `POST /internal/v1/jws/sign` purpose `AUDIT_ANCHOR_SIGN` (ES256, header `typ`
+  `mw-audit-anchor+jws`, bound to this service in mw-crypto's `mw.crypto.authz`) over mTLS (the JDK
+  client is built once on `ServiceCertificateManager.clientSslContext()`; `MW_TLS_ENABLED=true` in the
+  stack) with a client-credentials JWT from `client/ServiceTokenClient` (Keycloak realm `services`
+  client `mw-audit-dw`, audience mapper `aud-mw-crypto`, secret `mw.audit-dw.anchor.crypto.client-secret`
+  in OpenBao from `KC_MW_AUDIT_DW_SECRET`; config `mw.audit-dw.anchor.crypto.*`). Stored INSERT-only in
+  `audit.anchor` (V6: date PK, payload, jws, kid, anchor_hash, prev_anchor_hash; append-only trigger;
+  writer SELECT/INSERT, reader SELECT) as the writer, INFO `audit.anchor.signed`. Export: written to
+  `mw.audit-dw.anchor.export-dir` (`/var/lib/mw/audit-anchors`, compose volume `audit-anchors`; blank =
+  off) as `<date>.jws` (temp file + atomic move, never overwritten); the WORM target stays TBC; a failed
+  write is ERROR `audit.anchor.export_failed` (the anchor stays stored). Verification:
+  `AuditChainVerifyJob` runs `AnchorService.verifyAll()` after the chains: per anchor (first failure
+  wins) the stored hash = SHA-256 of the JWS, ES256 signature and `typ` against mw-crypto's
+  `GET /internal/v1/jwks/AUDIT_ANCHOR_SIGN` by kid ("signature does not verify"), the date, no missing
+  day ("anchor missing before it"), the anchor chain ("anchor chain broken"), and the heads equal to the
+  heads recomputed from `audit.event` now ("chain heads differ": catches a chain a superuser rewrote and
+  re-sealed consistently, which the hash chain alone cannot). A failure is ERROR `audit.anchor.broken`
+  (date, reason) and gauge `mw.audit.anchor.broken`; an unreadable JWKS is WARN
+  `audit.anchor.unverifiable`. The last result is the `anchor` field of every audit search page
+  (`dto/AnchorStatus` INTACT / BROKEN / UNVERIFIED (not checked since start) / OFF (anchoring off),
+  lastAnchorDate, verifiedAt), shown by mw-admin-api as `auditAnchor` of the transaction detail and by the
+  admin console's audit trail card. Not detected: deleting the newest anchors (the exported files are
+  the outside copy). Off with `mw.audit-dw.anchor.enabled=false` (it also needs chain verification on).
+  Tests: `service/AuditAnchorIT` (stand-in `client/CryptoStub` with its own EC key: one anchor per day,
+  the chain, export, a consistently rewritten chain caught, a forged and a missing anchor caught, the
+  writer cannot change an anchor, mw-crypto down leaves the day due), `client/CryptoClientTest` (request =
+  mw-crypto contract `JwsSignRequest`, token reuse, failures).
 - Producers today: mw-orchestrator (`txn.state.changed`, `partner.callback.late`,
   `txn.outcome.conflict`, `partner.callback.rejected`) and the three adapters
   (`partner.call.completed`, S6: masked partner request/response in `after`), and mw-portal-api
@@ -77,24 +115,29 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   covers the masked values.
 - Roles (16.4): the service runs as `audit_writer` (INSERT only on `event` and `event_key`; SELECT/INSERT/UPDATE
   on `chain_head`; EXECUTE `ensure_month_partition`; DML on the chassis `inbox`/`outbox`/
-  `shedlock`). Flyway runs as the schema owner `audit_dw_rw` (`SPRING_FLYWAY_USER` +
+  `shedlock`; SELECT/INSERT on `anchor`). Flyway runs as the schema owner `audit_dw_rw` (`SPRING_FLYWAY_USER` +
   `spring.flyway.password` from OpenBao); V4 grants the writer. `audit_reader` (V5): USAGE on the
-  schema and SELECT on `event` and `chain_head` only. Nobody holds UPDATE/DELETE on
-  `event`. A superuser can still bypass everything, which the chain detects (`AuditTrailIT`).
+  schema and SELECT on `event` and `chain_head` only (V6: and `anchor`). Nobody holds UPDATE/DELETE on
+  `event` or `anchor`. A superuser can still bypass everything, which the chain detects (`AuditTrailIT`).
 - Dev provisioning (`provision_mw_audit_dw` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): roles
   `audit_dw_rw`, `audit_writer` and `audit_reader`, schema `audit`, `secret/mw-audit-dw` (the three DB
-  passwords, never overwritten; the reader's is `mw.audit-dw.chain-verify.reader-password`) and the AppRole `mw-audit-dw` (configtree volume).
+  passwords, never overwritten; the reader's is `mw.audit-dw.chain-verify.reader-password`; the mw-crypto
+  client secret `mw.audit-dw.anchor.crypto.client-secret` from `KC_MW_AUDIT_DW_SECRET`) and the AppRole
+  `mw-audit-dw` (configtree volume). The Keycloak client is in `deploy/keycloak/realms/services-realm.json`:
+  a running dev stack needs `deploy/reset.sh` to import it.
 
 ## Contracts owned
 
 - `events/mw-audit-dw/mw.audit.event.v1.schema.json` (+ samples): own type `dto/AuditEvent`,
   checked by `AuditEventSchemaTest`. Produced by every service, consumed here.
-- `api/mw-audit-dw/audit-query.v1.openapi.yaml` (internal audit search, ticket 35).
+- `api/mw-audit-dw/audit-query.v1.openapi.yaml` (internal audit search, ticket 35; `AuditPage.anchor`,
+  ticket 74).
 - `api/mw-audit-dw/audit-dw-test.v1.openapi.yaml` (test-only audit search and chain check, ticket 58).
 
 ## Contracts used
 
-- None besides its own `mw.audit.event.v1`.
+- Its own `mw.audit.event.v1`, and `api/mw-crypto/crypto-internal.v1.openapi.yaml` (`/jws/sign`,
+  `/jwks/AUDIT_ANCHOR_SIGN`, ticket 74).
 - `contracts.yml`: the machine-readable list of what this module produces and consumes (checked
   by `./gradlew :contractsLint`, tested by `contracts/ConsumedContractsTest` (every valid sample reads
   into `dto/AuditEvent`) and `contracts/ApiContractsTest` (search responses against
@@ -123,8 +166,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 - `config/ServiceCertificateManager` + `config/TlsProperties` (ticket 66, D24; template copy): this
   service's OpenBao certificate (`pki_int/issue/mw-audit-dw`, role and policy from `PKI_SERVICES` in
   `deploy/provision/services.sh`), in memory, renewed at two thirds of 72 h, gauge
-  `tls.certificate.expiry.seconds`. Off (`mw.tls.enabled`, `MW_TLS_ENABLED`) until ticket 74 calls
-  mw-crypto (mTLS mandatory there): build that client once on `clientSslContext()` and send the
+  `tls.certificate.expiry.seconds`. On in the stack (`MW_TLS_ENABLED=true`, ticket 74; default off, so
+  tests need no OpenBao): `client/CryptoClient` is built once on `clientSslContext()` and sends the
   client-credentials JWT too (template `CLAUDE.md`, "Service certificate and mTLS").
   `client/MtlsClientIT` proves the caller side (OpenBao container `PkiTestAuthority`, a server that
   needs a client certificate, a renewal, no certificate = failed handshake).

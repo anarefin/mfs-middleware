@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.networknt.schema.Schema;
 import java.time.Instant;
 import java.util.List;
+import mfs.mw.audit.dw.dto.AnchorStatus;
 import mfs.mw.audit.dw.dto.AuditEntry;
 import mfs.mw.audit.dw.dto.AuditEvent;
 import mfs.mw.audit.dw.dto.ErrorDetail;
@@ -44,6 +45,8 @@ class ApiContractsTest {
         JSON.readTree("{\"status\":\"POSTING\"}"), JSON.readTree("{\"status\":\"COMPLETED\"}"));
   }
 
+  static final AnchorStatus INTACT = new AnchorStatus(AnchorStatus.INTACT, "2026-11-04", AT);
+
   static AuditEntry minimal() {
     return new AuditEntry(
         "1a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d", "2026-11", 1L, AT, AT, null, "corr-2",
@@ -54,8 +57,16 @@ class ApiContractsTest {
   @Test
   void searchPageMatchesTheContract() {
     Schema page = OpenApiSchemas.response(API, "/internal/v1/audit/events", "get", "200");
-    assertValid(page, new AuditEntry.Page(List.of(full(), minimal()), 100, 0));
-    assertValid(page, new AuditEntry.Page(List.of(), 1, 0));
+    assertValid(page, new AuditEntry.Page(List.of(full(), minimal()), 100, 0, INTACT));
+    assertValid(page, new AuditEntry.Page(List.of(), 1, 0, AnchorStatus.off()));
+    assertValid(page, new AuditEntry.Page(List.of(), 1, 0, new AnchorStatus(AnchorStatus.UNVERIFIED, null, null)));
+    assertValid(page, new AuditEntry.Page(List.of(), 1, 0, new AnchorStatus(AnchorStatus.BROKEN, "2026-11-04", AT)));
+    // ticket 74: the anchor status is part of every page, with a known status
+    ObjectNode noAnchor = (ObjectNode) asMvc(new AuditEntry.Page(List.of(), 1, 0, INTACT));
+    noAnchor.remove("anchor");
+    assertThat(page.validate(noAnchor)).isNotEmpty();
+    assertThat(page.validate(asMvc(new AuditEntry.Page(List.of(), 1, 0, new AnchorStatus("FINE", null, null)))))
+        .isNotEmpty();
     assertValid(OpenApiSchemas.component(API, "AuditEntry"), full());
     // the schema really is applied: an entry without its chain position is refused
     ObjectNode noSeq = (ObjectNode) asMvc(minimal());
@@ -78,7 +89,7 @@ class ApiContractsTest {
   void testApiResponsesMatchTheirContract() {
     assertValid(
         OpenApiSchemas.response(TEST_API, "/test/v1/audit/events", "get", "200"),
-        new AuditEntry.Page(List.of(full(), minimal()), 100, 0));
+        new AuditEntry.Page(List.of(full(), minimal()), 100, 0, INTACT));
     Schema chain = OpenApiSchemas.response(TEST_API, "/test/v1/audit/chains/{month}", "get", "200");
     assertValid(chain, new ChainVerification("2026-11", true, 42, null, null));
     assertValid(chain, new ChainVerification("2026-11", false, 42, 7L, "hash does not match the row"));

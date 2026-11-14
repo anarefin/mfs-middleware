@@ -32,9 +32,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `client/OrchestratorQueryClient`, `client/AuditQueryClient`; contract `api/mw-admin-api/admin.v1`):
   `GET /admin/v1/transactions` (txnId, msisdn in any form, partnerRef, status, txnType, `[from, to)`,
   limit 1..200, offset; passed to `txn-query.v1` without `orgId`) and `GET
-  /admin/v1/transactions/{txnId}[?reveal=true]` -> `{transaction, timeline, partnerCalls, auditTrail,
+  /admin/v1/transactions/{txnId}[?reveal=true]` -> `{transaction, timeline, partnerCalls, auditTrail, auditAnchor,
   revealed}`: timeline (STATE and CORE entries) and partner calls from mw-orchestrator, audit trail
-  (`?txnId=`, first `audit-trail-limit` 500) from mw-audit-dw. Unknown txn `404 MW-VAL-003`; either
+  (`?txnId=`, first `audit-trail-limit` 500) and the signed daily anchors' status (`auditAnchor` = its page's `anchor`, ticket 74; absent if mw-audit-dw sends none) from mw-audit-dw. Unknown txn `404 MW-VAL-003`; either
   API down / non-200 / unreadable `503 MW-SYS-040` (retryable). Values are masked as the
   orchestrator masks them (MSISDN `0171****789`, accounts last 4, names initial); audit entries as
   stored (masked).

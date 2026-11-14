@@ -139,11 +139,11 @@ management:
 
 mw:
   # This service's certificate from OpenBao PKI (spec 18.2, 18.4, D24; config/TlsProperties,
-  # config/ServiceCertificateManager): off until the service calls an mTLS server (mw-crypto, the
-  # mw-auth internal API): ticket 74 (audit anchor signing at mw-crypto) turns it on. On, it issues
-  # pki_int/issue/mw-audit-dw at start (role and policy from PKI_SERVICES of
-  # deploy/provision/services.sh), renews at two thirds of the life and never writes the key to
-  # disk; callers use ServiceCertificateManager.clientSslContext().
+  # config/ServiceCertificateManager): the mTLS client certificate of the audit anchor calls to
+  # mw-crypto (ticket 74; mandatory there). The stack sets MW_TLS_ENABLED=true; tests run without
+  # it (plain-HTTP stand-in). On, it issues pki_int/issue/mw-audit-dw at start (role and policy from
+  # PKI_SERVICES of deploy/provision/services.sh), renews at two thirds of the life and never
+  # writes the key to disk; client/CryptoClient is built on ServiceCertificateManager.clientSslContext().
   tls:
     enabled: ${MW_TLS_ENABLED:false}
     pki-mount: pki_int
@@ -199,6 +199,26 @@ mw:
       enabled: true
       cron: "0 30 * * * *"
       reader-username: audit_reader
+    # Signed daily anchor (ticket 74, spec 14.3; service/AnchorService, scheduler/AuditAnchorJob,
+    # ShedLock audit-anchor): every past UTC day not yet anchored is signed at mw-crypto (purpose
+    # AUDIT_ANCHOR_SIGN), stored in audit.anchor (INSERT-only) and written to export-dir as
+    # <date>.jws (WORM target TBC; blank = no export). The hourly chain verification also checks
+    # every anchor (ERROR audit.anchor.broken, gauge mw_audit_anchor_broken). Needs chain-verify
+    # (it reads the heads as audit_reader).
+    anchor:
+      enabled: true
+      cron: "0 15 * * * *"
+      export-dir: ${MW_AUDIT_DW_ANCHOR_EXPORT_DIR:/var/lib/mw/audit-anchors}
+      catch-up-days: 31
+      # mw-crypto over mTLS (mw.tls) plus a Keycloak realm services client-credentials token (client
+      # mw-audit-dw, audience mw-crypto); the client secret is mw.audit-dw.anchor.crypto.client-secret in
+      # OpenBao (secret/mw-audit-dw), never written here.
+      crypto:
+        base-url: ${MW_CRYPTO_BASE_URL:https://mw-crypto:8080}
+        token-uri: ${MW_INTERNAL_TOKEN_URI:http://keycloak:8080/realms/services/protocol/openid-connect/token}
+        client-id: mw-audit-dw
+        connect-timeout: 2s
+        read-timeout: 10s
   service:
     name: ${spring.application.name}
     version: ${MW_VERSION:0.1.0-SNAPSHOT}

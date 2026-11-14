@@ -6,6 +6,7 @@ import { StatusBadge, statusTone } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardSection, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { anchorBadge } from "@/lib/audit-anchor";
 import { formatAmount, formatTime, partyLabel } from "@/lib/format";
 import { canReveal } from "@/lib/oidc";
 import { adminApi, operatorToken } from "@/lib/server/admin";
@@ -93,7 +94,8 @@ export default async function TransactionPage({ params, searchParams }: Props) {
     );
   }
 
-  const { transaction: t, timeline, partnerCalls, auditTrail, revealed } = result.data;
+  const { transaction: t, timeline, partnerCalls, auditTrail, auditAnchor, revealed } = result.data;
+  const anchor = anchorBadge(auditAnchor);
   return (
     <>
       <div className="flex flex-col gap-2">
@@ -164,7 +166,10 @@ export default async function TransactionPage({ params, searchParams }: Props) {
       </Card>
 
       <Card className="overflow-hidden">
-        <CardHeader><CardTitle><ScrollText />Audit trail</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle><ScrollText />Audit trail</CardTitle>
+          <Badge tone={anchor.tone} dot data-testid="audit-anchor" title={auditAnchor?.verifiedAt ? `Checked ${formatTime(auditAnchor.verifiedAt)}` : undefined}>{anchor.label}</Badge>
+        </CardHeader>
         {auditTrail.length === 0 ? <EmptyNote>No audit records.</EmptyNote> : (
           <Table data-testid="audit-trail">
             <TableHeader><TableRow><TableHead>At</TableHead><TableHead>Action</TableHead><TableHead>Actor</TableHead><TableHead>Outcome</TableHead><TableHead>Service</TableHead><TableHead>Resource</TableHead></TableRow></TableHeader>
