@@ -16,7 +16,9 @@ import org.springframework.stereotype.Repository;
  *   <li>{@code devkey:{deviceId}}: the bound device's wallet and public key as mw-auth answered
  *       them, kept {@code device-key-ttl} (5 min);
  *   <li>{@code sesschk:{walletId}:{deviceId}}: mw-auth confirmed a live session, kept {@code
- *       session-cache-ttl} (10 s), so a burst of requests asks mw-auth once;
+ *       session-cache-ttl} (10 s), so a burst of requests asks mw-auth once; the value is the
+ *       fingerprint of the device key mw-auth answered with (ticket 69), so a cached key of a
+ *       replaced binding is never confirmed;
  *   <li>{@code nonce:{deviceId}:{nonce}}: a signed request's nonce, set once ({@code SET NX PX}).
  *       mw-auth keeps its nonces under the same key in the same Valkey, so a nonce is used once
  *       per device across both services.
@@ -54,14 +56,20 @@ public class DeviceGateStore {
     }
   }
 
-  public boolean sessionConfirmed(String walletId, String deviceId) {
-    return Boolean.TRUE.equals(call(() -> valkey.hasKey(sessionKey(walletId, deviceId))));
+  /** Drops a cached device (its binding changed at mw-auth). */
+  public void evictDeviceKey(String deviceId) {
+    call(() -> valkey.delete("devkey:" + deviceId));
   }
 
-  public void confirmSession(String walletId, String deviceId, Duration ttl) {
+  /** The key fingerprint of a recent session confirmation, empty when none is cached. */
+  public Optional<String> sessionConfirmed(String walletId, String deviceId) {
+    return Optional.ofNullable(call(() -> valkey.opsForValue().get(sessionKey(walletId, deviceId))));
+  }
+
+  public void confirmSession(String walletId, String deviceId, String fingerprint, Duration ttl) {
     if (ttl.isPositive()) {
       call(() -> {
-        valkey.opsForValue().set(sessionKey(walletId, deviceId), "1", ttl);
+        valkey.opsForValue().set(sessionKey(walletId, deviceId), fingerprint, ttl);
         return null;
       });
     }

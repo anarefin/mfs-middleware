@@ -1,32 +1,21 @@
 {
   "name": "auth-v1",
-  "desc": "mw-auth device API v1 (spec 9.1, 18.7; ticket 68, was /app/v1/devices*): Keycloak customers JWT until ticket 69 (verified again upstream), small body cap, no URI or body rewrite (the device signs both), quota per token subject in Valkey",
+  "desc": "mw-auth public API v1 (18.7, D21; tickets 68-69): OTP, binding, login, refresh, logout, first PIN. No auth plugin (device signature, OTP, PIN; mw-auth checks its own tokens). No rewrite (the device signs). Quota per hashed MSISDN and per address",
   "uri": "/auth/v1/*",
   "methods": ["POST"],
   "plugins": {
     "client-control": {
       "max_body_size": 16384
     },
-    "openid-connect": {
-      "discovery": "http://keycloak:8080/realms/customers/.well-known/openid-configuration",
-      "client_id": "mw-app",
-      "bearer_only": true,
-      "use_jwks": true,
-      "realm": "customers",
-      "iat_slack": 10,
-      "set_access_token_header": false,
-      "set_userinfo_header": false,
-      "set_id_token_header": false
-    },
     "serverless-pre-function": {
       "phase": "access",
-      "functions": ["@lua:lua/consumer-from-jwt.lua"]
+      "functions": ["@lua:lua/auth-rate-key.lua"]
     },
     "limit-count": {
-      "count": 30,
+      "count": 20,
       "time_window": 60,
       "key_type": "var",
-      "key": "mw_consumer",
+      "key": "mw_auth_key",
       "group": "auth-v1",
       "rejected_code": 429,
       "show_limit_quota_header": true,
@@ -36,6 +25,15 @@
       "redis_password": "$env://VALKEY_PASSWORD",
       "redis_database": 0,
       "redis_timeout": 1000,
+      "allow_degradation": true
+    },
+    "limit-req": {
+      "rate": 5,
+      "burst": 20,
+      "key_type": "var",
+      "key": "remote_addr",
+      "rejected_code": 429,
+      "nodelay": true,
       "allow_degradation": true
     }
   },

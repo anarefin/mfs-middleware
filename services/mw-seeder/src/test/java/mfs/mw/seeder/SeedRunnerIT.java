@@ -31,10 +31,10 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The whole seeder, as the container runs it ({@link SeederApplication#run}), against WireMock
- * stand-ins for Keycloak, mw-admin-api, mw-core-mock and the readiness probes, each stateful
+ * stand-ins for Keycloak, mw-admin-api, mw-core-mock, mw-auth and the readiness probes, each stateful
  * (WireMock scenarios: a user exists once it was created, a partner is enabled once its change was
  * approved, ...). The first run seeds and exits 0; the second exits 0 with no create call at all
- * and the same manifest; a platform that never gets ready exits 1.
+ * and the same manifest (mw-auth's idempotent seed-PIN call aside); a platform that never gets ready exits 1.
  */
 class SeedRunnerIT {
 
@@ -92,6 +92,8 @@ class SeedRunnerIT {
                 "--mw.seeder.endpoints.keycloak=" + base,
                 "--mw.seeder.endpoints.admin-api=" + base,
                 "--mw.seeder.endpoints.core-mock=" + base,
+                "--mw.seeder.endpoints.auth=" + base,
+                "--mw.seeder.app-pins.pin=13579",
                 "--mw.seeder.readiness[0].name=platform",
                 "--mw.seeder.readiness[0].url=" + base + "/ready",
                 "--mw.seeder.manifest-path=" + dir.resolve("seed/manifest.json"),
@@ -136,7 +138,12 @@ class SeedRunnerIT {
     assertThat(m.path("partners").get(0).path("enabled").asBoolean()).isTrue();
     assertThat(m.path("ussdMenus").get(0).path("version").asInt()).isEqualTo(1);
     assertThat(m.path("templates")).hasSize(2);
-    assertThat(first).doesNotContain("fake-ops-password", "fake-totp-secret", "fake-admin-password");
+    assertThat(m.path("appPins").path("pinEnv").asString()).isEqualTo("MW_SEED_APP_PIN");
+    long appWallets = WALLETS.values().stream().filter(t -> !t.equals("ORG")).count();
+    assertThat(m.path("appPins").path("walletIds")).hasSize((int) appWallets + 5); // + the realm imports' app users
+    assertThat(first).doesNotContain("fake-ops-password", "fake-totp-secret", "fake-admin-password", "13579");
+    LoggedRequest pins = requests(RequestMethod.POST, "/internal/v1/seed/pins").getFirst();
+    assertThat(pins.getBodyAsString()).contains("\"keyId\":\"pin-transport.v1\"").doesNotContain("13579");
 
     wm.resetRequests();
     assertThat(SeederApplication.run(args())).isZero();
@@ -145,6 +152,7 @@ class SeedRunnerIT {
         wm.findAll(anyRequestedFor(anyUrl())).stream()
             .filter(r -> !r.getMethod().equals(RequestMethod.GET))
             .filter(r -> !r.getUrl().contains("/protocol/openid-connect/token"))
+            .filter(r -> !r.getUrl().equals("/internal/v1/seed/pins")) // idempotent: mw-auth answers UNCHANGED
             .toList();
     assertThat(writes).as("create/change calls on the second run").isEmpty();
     assertThat(Files.readString(manifest)).isEqualTo(first);
@@ -176,6 +184,7 @@ class SeedRunnerIT {
     USERS.forEach(this::stubUser);
     WALLETS.forEach(this::stubWallet);
     stubPartner();
+    stubAuth();
     wm.stubFor(get(urlPathEqualTo("/admin/v1/change-requests")).willReturn(okJson("{\"items\":[],\"limit\":200,\"offset\":0}")));
     stubContent("menu-main", "/admin/v1/ussd-menus/main", "ussd-menu/main");
     stubContent("tpl-en", "/admin/v1/notify-templates/TXN_P2P_RECEIVED/SMS/en", "template/TXN_P2P_RECEIVED/SMS/en");
@@ -214,6 +223,24 @@ class SeedRunnerIT {
     wm.stubFor(put(path).withRequestBody(matchingJsonPath("$.type", equalTo(type)))
         .inScenario(walletId).whenScenarioStateIs(STARTED).willSetStateTo("created")
         .willReturn(aResponse().withStatus(201).withHeader("Content-Type", "application/json").withBody(view)));
+  }
+
+  /** mw-auth: the PIN transport key (a real RSA key, so the seeder can encrypt) and the seed API. */
+  private void stubAuth() {
+    try {
+      var g = java.security.KeyPairGenerator.getInstance("RSA");
+      g.initialize(2048);
+      String b64 = java.util.Base64.getEncoder().encodeToString(g.generateKeyPair().getPublic().getEncoded());
+      String pem = "-----BEGIN PUBLIC KEY-----\\n" + b64 + "\\n-----END PUBLIC KEY-----\\n";
+      wm.stubFor(get("/auth/v1/pin-key").willReturn(okJson(
+          "{\"keyId\":\"pin-transport.v1\",\"algorithm\":\"RSA-OAEP-SHA-256\",\"publicKeyPem\":\"" + pem + "\"}")));
+    } catch (java.security.NoSuchAlgorithmException e) {
+      throw new IllegalStateException(e);
+    }
+    wm.stubFor(post("/internal/v1/seed/pins").inScenario("pins").whenScenarioStateIs(STARTED).willSetStateTo("set")
+        .willReturn(okJson("{\"results\":[{\"walletId\":\"01712000001\",\"outcome\":\"CREATED\"}]}")));
+    wm.stubFor(post("/internal/v1/seed/pins").inScenario("pins").whenScenarioStateIs("set")
+        .willReturn(okJson("{\"results\":[{\"walletId\":\"01712000001\",\"outcome\":\"UNCHANGED\"}]}")));
   }
 
   /** ocs starts disabled at 20 s: one ENABLE request, approved, puts it back. */

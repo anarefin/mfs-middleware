@@ -18,7 +18,8 @@ this file says what is specific to this module.
   on failure; `main` hands it to `System.exit`.
 - Every step is idempotent (looks up before it creates) and reports `created / updated / unchanged`
   (`service/StepResult`); the log line `seed.step.completed` carries `outcome`. A second run on a seeded
-  stack is `UNCHANGED` for every step and makes no create or change call (only GETs and token requests).
+  stack is `UNCHANGED` for every step and makes no create or change call (only GETs, token requests and
+  mw-auth's idempotent seed-PIN call, which answers UNCHANGED).
 - Steps (ids, in order):
   1. `await-platform-ready`: GET each `mw.seeder.readiness` URL until 200: APISIX `:7085/status/ready`,
      Keycloak `:9000/health/ready`, `/actuator/health/readiness` of every long-running mw-* service.
@@ -41,27 +42,38 @@ this file says what is specific to this module.
      admin refuses a change request for it; (d) the simulated aggregator derives every bill from its
      number (due = 100 taka + the last three digits), so there are no bills to create. A bill-pay test
      needs only a seeded customer wallet.
-  4. `seed-partner-configs`: each partner of `mw.seeder.partners` at its baseline in mw-admin-api
+  4. `seed-app-pins` (ticket 69): the app wallets log in at mw-auth with MSISDN + PIN, so every seeded
+     CUSTOMER, AGENT and MERCHANT wallet plus `mw.seeder.app-pins.extra-wallet-ids` (the realm imports'
+     app users customer01/02, agent01, merchant01/02: core-mock's own seed wallets) gets the dev app PIN
+     (`mw.seeder.app-pins.pin`, `MW_SEED_APP_PIN`, fake `13579` in `dev.env.defaults`). The PIN is encrypted
+     as an app does (`util/PinCipher`, RSA-OAEP SHA-256 under the key of mw-auth's `GET /auth/v1/pin-key`)
+     and set with mw-auth's dev-only `POST /internal/v1/seed/pins` (`client/AuthSeedClient`, endpoint
+     `mw.seeder.endpoints.auth` = `http://mw-auth:8080`, plain public port, no token; needs
+     `MW_AUTH_SEED_API_ENABLED=true`). mw-auth leaves a wallet with a PIN alone (UNCHANGED); a wallet it
+     has not projected yet from the core's wallet events makes the step retry (503). No PIN configured:
+     skipped with a WARN.
+  5. `seed-partner-configs`: each partner of `mw.seeder.partners` at its baseline in mw-admin-api
      (enabled, `timeoutMs` 20 s, the e2e suite's restore values). Each difference: the seed maker asks
      (ENABLE / DISABLE / SET_TIMEOUTS), the seed checker approves (publishes to the adapters). At its
      baseline (the fresh-stack case): nothing is asked (the admin refuses a change that changes
      nothing). Pending requests of the seed maker are approved first; one of another operator fails the
      step (one open request per resource; the seeder never decides someone else's). A partner unknown to
      mw-admin-api (its dev seeds) fails the step.
-  5. `seed-admin-content`: the USSD menu `main` (all four MNOs) and the SMS templates
+  6. `seed-admin-content`: the USSD menu `main` (all four MNOs) and the SMS templates
      `TXN_P2P_RECEIVED` bn/en, proposed and approved through mw-admin-api, so the console has a first
      admin-made version. The values are copies of what mw-ussd (`menus/main-v2.json` ->
      `src/main/resources/seed-content/menus/main.json`) and mw-notify (V5 rows, in `application.yml`)
      ship, so publishing changes no text a test reads: keep the copies identical. Content with any
      PUBLISHED admin version is left alone; a version the seed maker left PENDING is approved.
-  6. `write-manifest`: the manifest (below), replaced atomically only when its content changed.
+  7. `write-manifest`: the manifest (below), replaced atomically only when its content changed.
 - Manifest (`dto/SeedManifest`, `schemaVersion` 1): written to `mw.seeder.manifest-path`
   (`/run/mw/seed/manifest.json`, the `seed-manifest` volume); `scripts/api-test.sh` and `scripts/ui-e2e.sh` copy it to
   `build/seed/manifest.json` (host; read it from Newman and Playwright, or mount the volume read-only
   in a container). It is deterministic (no timestamps or run ids) and holds no secret:
   `{schemaVersion, personas[{persona, realm, username, roles, attributes, loginClient, passwordEnv,
   totpSecretEnv?}], wallets[{walletId, type, openingBalanceMinor}], partners[{partnerId, family, version,
-  enabled, timeoutMs}], ussdMenus[{menuId, version, mnos}], templates[{code, channel, locale, version}]}`.
+  enabled, timeoutMs}], ussdMenus[{menuId, version, mnos}], templates[{code, channel, locale, version}],
+  appPins{pinEnv, walletIds[]}}` (`appPins`: the wallets with the dev app PIN and the variable that holds it).
   Passwords and the TOTP secret are named by their `deploy/.env` variable. Every seeded wallet has
   mw-core-mock's seed PIN (`mw.coremock.seed.pin`, the fake `1234`). It is also logged once, masked
   (`seed.manifest`, MSISDNs `0171****001`).
@@ -110,7 +122,10 @@ this file says what is specific to this module.
   PUT `/core-mock/v1/wallets/{walletId}`, own types `dto/WalletSeedRequest`, `WalletView`.
 - Keycloak (third party, no contract file): admin REST (`/admin/realms/{realm}/users`, `roles`,
   `role-mappings`, `clients`) and the token endpoint.
-- `contracts.yml` lists the two APIs; `contracts/ConsumedContractsTest` validates every request body the
+- `api/mw-auth/auth.v1.openapi.yaml` (`GET /auth/v1/pin-key`, own type `dto/PinKeyView`) and
+  `api/mw-auth/auth-internal.v1.openapi.yaml` (dev-only `POST /internal/v1/seed/pins`, own types
+  `dto/SeedPinsRequest`, `dto/SeedPinsResult`; ticket 69).
+- `contracts.yml` lists the four APIs; `contracts/ConsumedContractsTest` validates every request body the
   seeder sends against the OpenAPI request schema and reads contract-shaped answers into its types.
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)

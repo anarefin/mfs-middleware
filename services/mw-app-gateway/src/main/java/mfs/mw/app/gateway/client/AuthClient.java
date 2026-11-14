@@ -9,6 +9,7 @@ import java.util.function.Supplier;
 import mfs.mw.app.gateway.config.AuthClientProperties;
 import mfs.mw.app.gateway.config.ServiceCertificateManager;
 import mfs.mw.app.gateway.dto.BoundDevice;
+import mfs.mw.app.gateway.dto.LiveSession;
 import mfs.mw.app.gateway.exception.ErrorCodes;
 import mfs.mw.app.gateway.exception.MwException;
 import org.slf4j.Logger;
@@ -70,9 +71,16 @@ public class AuthClient {
     return Optional.ofNullable(d);
   }
 
-  /** Whether the wallet has a live session on the device; mw-auth extends it by asking. */
-  public boolean session(String walletId, String deviceId) {
-    return call("session", "/internal/v1/sessions/{walletId}/{deviceId}", Object.class, walletId, deviceId) != null;
+  /**
+   * The wallet's live session on the device with the device's current key fingerprint; empty when
+   * there is none or the device is not bound to the wallet (any more). mw-auth extends it by asking.
+   */
+  public Optional<LiveSession> session(String walletId, String deviceId) {
+    LiveSession s = call("session", "/internal/v1/sessions/{walletId}/{deviceId}", LiveSession.class, walletId, deviceId);
+    if (s != null && s.deviceKeyFingerprint() == null) {
+      throw unavailable("session", null);
+    }
+    return Optional.ofNullable(s);
   }
 
   /** The answer, or null on a 404. */

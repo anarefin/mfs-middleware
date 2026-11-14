@@ -51,7 +51,7 @@ class KafkaUnavailableIT {
                     .jwt(
                         j ->
                             j.claim("msisdn", "01711000001")
-                                .claim("realm_access", Map.of("roles", List.of("customer")))))
+                                .claim("role", "customer").claim("amr", List.of("pin", "device"))))
             .header("Idempotency-Key", "kafka-down-1")
             .contentType(MediaType.APPLICATION_JSON)
             .content(

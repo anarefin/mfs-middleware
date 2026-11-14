@@ -16,6 +16,7 @@ public class SeedContext {
   private final List<SeedManifest.Partner> partners = new ArrayList<>();
   private final List<SeedManifest.UssdMenu> menus = new ArrayList<>();
   private final List<SeedManifest.Template> templates = new ArrayList<>();
+  private SeedManifest.AppPins appPins;
 
   public List<SeedManifest.Persona> personas() {
     return personas;
@@ -37,6 +38,14 @@ public class SeedContext {
     return templates;
   }
 
+  public SeedManifest.AppPins appPins() {
+    return appPins;
+  }
+
+  public void setAppPins(SeedManifest.AppPins appPins) {
+    this.appPins = appPins;
+  }
+
   public SeedManifest manifest() {
     return new SeedManifest(
         SeedManifest.SCHEMA_VERSION,
@@ -44,6 +53,7 @@ public class SeedContext {
         List.copyOf(wallets),
         List.copyOf(partners),
         List.copyOf(menus),
-        List.copyOf(templates));
+        List.copyOf(templates),
+        appPins);
   }
 }

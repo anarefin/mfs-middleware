@@ -30,7 +30,8 @@ public record SeederProperties(
     Operators operators,
     List<WalletSpec> wallets,
     List<PartnerSpec> partners,
-    Content content) {
+    Content content,
+    AppPins appPins) {
 
   public SeederProperties {
     stepTimeouts = stepTimeouts == null ? Map.of() : stepTimeouts;
@@ -45,7 +46,19 @@ public record SeederProperties(
   public record Http(Duration connectTimeout, Duration readTimeout) {}
 
   /** Base URLs inside the stack's networks (the services directly, not through APISIX). */
-  public record Endpoints(URI keycloak, URI adminApi, URI coreMock) {}
+  public record Endpoints(URI keycloak, URI adminApi, URI coreMock, URI auth) {}
+
+  /**
+   * The dev app PIN of the app wallets at mw-auth (ticket 69): the PIN (a fixed fake value from
+   * {@code deploy/.env}), the name of its variable (for the manifest) and the wallets beyond the seeded
+   * app wallets that get it (the realm imports' app users).
+   */
+  public record AppPins(String pin, String pinEnv, List<String> extraWalletIds) {
+
+    public AppPins {
+      extraWalletIds = extraWalletIds == null ? List.of() : extraWalletIds;
+    }
+  }
 
   /** One readiness probe of await-platform-ready: ready when GET {@code url} answers 200. */
   public record Readiness(String name, URI url) {}

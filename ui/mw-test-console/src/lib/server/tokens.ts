@@ -1,14 +1,15 @@
 import "server-only";
-// Keycloak tokens through APISIX (password grant of the dev clients mw-app and mw-portal), cached
-// per user in this process and refreshed with the refresh token.
+// Keycloak realm portals tokens through APISIX (password grant of the dev client mw-portal), cached
+// per user in this process and refreshed with the refresh token. App users log in at mw-auth since
+// ticket 69 (lib/server/device.ts); their wallets are the personas' MSISDNs.
 
-import { customersPassword, portalsPassword } from "./env";
+import { APP_PERSONAS } from "@/lib/personas";
+import { portalsPassword } from "./env";
 import { EdgeError, edge, sleep } from "./edge";
 
-export type Realm = "customers" | "portals";
+export type Realm = "portals";
 
-const CLIENT: Record<Realm, string> = { customers: "mw-app", portals: "mw-portal" };
-const password = (realm: Realm) => (realm === "customers" ? customersPassword() : portalsPassword());
+const CLIENT: Record<Realm, string> = { portals: "mw-portal" };
 
 type Cached = { access: string; refresh?: string; exp: number; rexp: number };
 const g = globalThis as unknown as { __tcTokens?: Map<string, Cached> };
@@ -34,7 +35,7 @@ export async function token(realm: Realm, user: string): Promise<string> {
   }
   let last = "";
   for (let i = 0; i < 3; i++) {
-    const r = await edge("POST", path, { form: { client_id: CLIENT[realm], grant_type: "password", username: user, password: password(realm) } });
+    const r = await edge("POST", path, { form: { client_id: CLIENT[realm], grant_type: "password", username: user, password: portalsPassword() } });
     if (r.status === 200) return store(key, r.body as never);
     last = `HTTP ${r.status} ${r.raw.slice(0, 300)}`;
     if (![400, 401, 429].includes(r.status)) break;
@@ -45,16 +46,25 @@ export async function token(realm: Realm, user: string): Promise<string> {
 
 export const bearer = async (realm: Realm, user: string) => ({ Authorization: `Bearer ${await token(realm, user)}` });
 
-/** The claims of a JWT (not verified: the edge verifies; this only reads the msisdn / roles). */
+/** The claims of a JWT (not verified: the edge verifies; this only reads them). */
 export function claims(jwt: string): Record<string, unknown> {
   const part = jwt.split(".")[1] ?? "";
   return JSON.parse(Buffer.from(part, "base64url").toString("utf8")) as Record<string, unknown>;
 }
 
-export async function walletOf(user: string): Promise<string> {
-  const m = claims(await token("customers", user)).msisdn;
-  if (typeof m !== "string") throw new EdgeError(`the token of ${user} carries no msisdn claim`);
-  return m;
+/** mw-seeder's app users beyond the personas (every app wallet has the seeded app PIN). */
+const SEEDED_APP_USERS: Record<string, string> = {
+  "seed-customer01": "01712000001", "seed-customer02": "01712000002", "seed-agent01": "01812000001",
+  "seed-merchant01": "01912000001",
+};
+
+/** The wallet (MSISDN) an app user logs in with at mw-auth; an MSISDN typed in is its own wallet. */
+export function walletOf(user: string): string {
+  const p = APP_PERSONAS.find((x) => x.user === user);
+  if (p) return p.msisdn;
+  if (SEEDED_APP_USERS[user]) return SEEDED_APP_USERS[user];
+  if (/^01[3-9][0-9]{8}$/.test(user)) return user;
+  throw new EdgeError(`no wallet known for app user ${user} (type a persona, a seed-* user or an MSISDN)`);
 }
 
 export function forgetTokens(): void {

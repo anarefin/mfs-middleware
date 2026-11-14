@@ -52,10 +52,12 @@ public record AppGatewayProperties(
   }
 
   /**
-   * @param jwkSetUri the realm's signing keys, fetched lazily on the first token
-   * @param realmPath required ending of the token's {@code iss}: the host part depends on the URL
-   *     the client used to get the token (Keycloak {@code KC_HOSTNAME_STRICT=false}); the realm
-   *     is pinned by the path and by the realm's own keys
+   * The app token: an mw-auth access token (ticket 69, spec 18.7, D21).
+   *
+   * @param jwkSetUri mw-auth's JWK Set ({@code /auth/v1/.well-known/jwks.json}), fetched lazily on
+   *     the first token and again on an unknown kid
+   * @param issuer the exact {@code iss} (mw-auth's {@code mw.auth.tokens.issuer})
+   * @param audience required in {@code aud} (mw-auth's {@code mw.auth.tokens.audience})
    */
-  public record Jwt(@NotBlank String jwkSetUri, @NotBlank String realmPath) {}
+  public record Jwt(@NotBlank String jwkSetUri, @NotBlank String issuer, @NotBlank String audience) {}
 }

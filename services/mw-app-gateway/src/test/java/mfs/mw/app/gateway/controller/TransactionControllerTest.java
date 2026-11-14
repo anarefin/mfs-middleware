@@ -54,7 +54,7 @@ class TransactionControllerTest {
 
   static RequestPostProcessor customer() {
     return jwt()
-        .jwt(j -> j.claim("msisdn", MSISDN).claim("realm_access", Map.of("roles", List.of("customer"))));
+        .jwt(j -> j.claim("msisdn", MSISDN).claim("role", "customer").claim("amr", List.of("pin", "device")));
   }
 
   MvcTestResult post(RequestPostProcessor auth, String key, String body) {
@@ -216,7 +216,7 @@ class TransactionControllerTest {
   void tokenWithoutMsisdnOrServedRoleIsForbidden() {
     MvcTestResult noMsisdn =
         post(
-            jwt().jwt(j -> j.claim("realm_access", Map.of("roles", List.of("customer")))),
+            jwt().jwt(j -> j.claim("role", "customer").claim("amr", List.of("pin", "device"))),
             "k",
             BODY.formatted(100));
     assertThat(noMsisdn).hasStatus(403);
@@ -228,7 +228,7 @@ class TransactionControllerTest {
                 .jwt(
                     j ->
                         j.claim("msisdn", "01911000001")
-                            .claim("realm_access", Map.of("roles", List.of("distributor")))),
+                            .claim("role", "distributor").claim("amr", List.of("pin", "device"))),
             "k",
             BODY.formatted(100));
     assertThat(distributor).hasStatus(403);
@@ -249,7 +249,7 @@ class TransactionControllerTest {
                 .jwt(
                     j ->
                         j.claim("msisdn", "01911000001")
-                            .claim("realm_access", Map.of("roles", List.of("merchant")))),
+                            .claim("role", "merchant").claim("amr", List.of("pin", "device"))),
             "key-merchant",
             BODY.formatted(100));
     assertThat(r).hasStatus(403);
@@ -267,7 +267,7 @@ class TransactionControllerTest {
                 .jwt(
                     j ->
                         j.claim("msisdn", "8801811000001")
-                            .claim("realm_access", Map.of("roles", List.of("agent")))),
+                            .claim("role", "agent").claim("amr", List.of("pin", "device"))),
             "key-agent",
             BODY.formatted(100).replace("\"P2P\"", "\"CASH_IN\""));
     assertThat(r).hasStatus(200);

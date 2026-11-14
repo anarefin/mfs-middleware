@@ -81,7 +81,7 @@ class SyncReplyIT {
 
   static RequestPostProcessor user(String msisdn) {
     return jwt()
-        .jwt(j -> j.claim("msisdn", msisdn).claim("realm_access", Map.of("roles", List.of("customer"))));
+        .jwt(j -> j.claim("msisdn", msisdn).claim("role", "customer").claim("amr", List.of("pin", "device")));
   }
 
   MvcTestResult submit(String key, long amount) {

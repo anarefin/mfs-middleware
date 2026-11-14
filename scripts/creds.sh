@@ -44,9 +44,13 @@ Dev/test stack only, never real secrets. The logins testers type are fixed, docu
      ops-maker01, ops-checker01, ops-viewer01, ops-compliance01, ops-auditor01,
      ops-admin01 (viewer, integration-maker, security-admin)
 
-== App users (realm customers, client mw-app)   password: $(v KC_CUSTOMERS_TEST_PASSWORD)
+== App users: mw-auth login (MSISDN + PIN + bound device; ticket 69)   app PIN (mw-auth login): $(v MW_SEED_APP_PIN)
    customer01 01711000001 | customer02 01711000002 | agent01 01811000001
-   merchant01 01911000001 | merchant02               wallet PIN of every wallet: 1234
+   merchant01 01911000001 | merchant02 01911000002 | seed-customer01 01712000001 | seed-agent01 01812000001
+   transaction PIN (core, until ticket 72): 1234
+   A token from the shell: MW_SEED_APP_PIN=... node scripts/lib/mw-auth-token.mjs 01711000001
+   (binds a new device; MW_EDGE_URL, MW_SIM_URL). Keycloak realm customers (password
+   $(v KC_CUSTOMERS_TEST_PASSWORD)) stays until ticket 73 but the app API no longer accepts its tokens
 
 == Portal users (realm portals, client mw-portal)   password: $(v KC_PORTALS_TEST_PASSWORD)
    org-maker01, org-checker01, org-makerchecker01 (org ORG001), org-checker02 (other org), sp-viewer01

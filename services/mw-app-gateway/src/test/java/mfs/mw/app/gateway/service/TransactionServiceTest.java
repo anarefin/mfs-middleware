@@ -45,7 +45,7 @@ class TransactionServiceTest {
           new AppGatewayProperties(
               Duration.ofMillis(50), "gw-unit", "mw.txn.request.v1", "mw.txn.status.v1",
               List.of("P2P", "CASH_IN", "CASH_OUT", "BILL_PAY", "MERCHANT_PAY"), List.of("reference"),
-              new AppGatewayProperties.Jwt("http://kc/certs", "/realms/customers"),
+              new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
               Map.of(
                   "P2P", List.of("CUSTOMER"),
                   "CASH_IN", List.of("AGENT"),
@@ -84,7 +84,7 @@ class TransactionServiceTest {
           publisher, waiters, new RequestMapper(), repo,
           new AppGatewayProperties(
               Duration.ofMillis(50), "gw-unit", "mw.txn.request.v1", "mw.txn.status.v1",
-              List.of("P2P", "TOPUP"), List.of("reference"), new AppGatewayProperties.Jwt("http://kc/certs", "/realms/customers"),
+              List.of("P2P", "TOPUP"), List.of("reference"), new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
               Map.of("P2P", List.of("CUSTOMER"), "TOPUP", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
           billers);
@@ -135,7 +135,7 @@ class TransactionServiceTest {
           new AppGatewayProperties(
               Duration.ofMillis(50), "gw-unit", "mw.txn.request.v1", "mw.txn.status.v1",
               List.of("P2P", "BILL_PAY"), List.of("reference"),
-              new AppGatewayProperties.Jwt("http://kc/certs", "/realms/customers"),
+              new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
               Map.of("P2P", List.of("CUSTOMER"), "BILL_PAY", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
           billers);
@@ -197,7 +197,7 @@ class TransactionServiceTest {
           new AppGatewayProperties(
               Duration.ofMillis(50), "gw-unit", "mw.txn.request.v1", "mw.txn.status.v1",
               List.of("P2P", "ADD_MONEY_BANK"), List.of("reference"),
-              new AppGatewayProperties.Jwt("http://kc/certs", "/realms/customers"),
+              new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
               Map.of("P2P", List.of("CUSTOMER"), "ADD_MONEY_BANK", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
           billers);
@@ -254,7 +254,7 @@ class TransactionServiceTest {
             new AppGatewayProperties(
                 Duration.ofMillis(50), "gw-unit", "mw.txn.request.v1", "mw.txn.status.v1",
                 List.of("TOPUP"), List.of("reference"),
-                new AppGatewayProperties.Jwt("http://kc/certs", "/realms/customers"),
+                new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
                 Map.of("TOPUP", List.of("CUSTOMER"))),
             Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
             billers);

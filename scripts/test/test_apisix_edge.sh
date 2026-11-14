@@ -244,7 +244,10 @@ test_every_public_json_body_has_a_derived_schema_in_its_service() {
   local row file src req
   for row in \
     "mw-app-gateway/app-v1-transaction-request.json|api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/TransactionRequest|txnType" \
-    "mw-auth/auth-v1-otp-request.json|api/mw-auth/auth.v1.openapi.yaml#/components/schemas/DeviceOtpRequest|" \
+    "mw-auth/auth-v1-otp-request.json|api/mw-auth/auth.v1.openapi.yaml#/components/schemas/OtpRequest|msisdn" \
+    "mw-auth/auth-v1-login-request.json|api/mw-auth/auth.v1.openapi.yaml#/components/schemas/LoginRequest|msisdn" \
+    "mw-auth/auth-v1-refresh-request.json|api/mw-auth/auth.v1.openapi.yaml#/components/schemas/RefreshRequest|refreshToken" \
+    "mw-auth/auth-v1-set-pin-request.json|api/mw-auth/auth.v1.openapi.yaml#/components/schemas/SetPinRequest|encryptedPin" \
     "mw-auth/auth-v1-device-binding-request.json|api/mw-auth/auth.v1.openapi.yaml#/components/schemas/DeviceBindingRequest|otp" \
     "mw-app-gateway/app-v1-fetch-bill-request.json|api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/FetchBillRequest|billNumber" \
     "mw-checkout/checkout-v1-create-session.json|api/mw-checkout/checkout.v1.openapi.yaml#/components/schemas/CreateSessionRequest|orderId" \
@@ -504,7 +507,8 @@ test_app_route_leaves_the_signed_body_untouched() {
 
 # Ticket 68: the device API moved from /app/v1/devices* to mw-auth's /auth/v1/* (public port 8080,
 # never the mTLS internal one). The device signs the path and the raw body: no rewrite of either.
-# Until ticket 69 it takes the same Keycloak customers token as app-v1, quota per token subject.
+# Ticket 69: no auth plugin (the requests prove the wallet themselves; mw-auth verifies its own
+# tokens), a quota per wallet (hashed MSISDN of the body, never the MSISDN) and one per address.
 test_auth_route_sends_the_device_api_to_mw_auth_untouched() {
   render || fail "dry run failed"
   local r
@@ -515,9 +519,30 @@ test_auth_route_sends_the_device_api_to_mw_auth_untouched() {
   printf '%s' "$r" | jq -e '.plugins | has("request-validation") or has("proxy-rewrite") or has("body-transformer") | not' >/dev/null \
     || fail "auth-v1 rewrites the path or body the device signed"
   printf '%s' "$r" | jq -e '.plugins["client-control"].max_body_size > 0
-    and .plugins["openid-connect"].bearer_only == true and .plugins["openid-connect"].iat_slack <= 30
-    and .plugins["limit-count"].key == "mw_consumer" and .plugins["limit-count"].group == "auth-v1"' >/dev/null \
+    and (.plugins | has("openid-connect") or has("jwt-auth") or has("key-auth") | not)
+    and .plugins["limit-count"].key == "mw_auth_key" and .plugins["limit-count"].group == "auth-v1"
+    and .plugins["limit-req"].key == "remote_addr" and .plugins["limit-req"].rejected_code == 429
+    and .plugins["serverless-pre-function"].phase == "access"' >/dev/null \
     || fail "auth-v1 plugins: $(printf '%s' "$r" | jq -c '.plugins | keys')"
+  printf '%s' "$r" | jq -r '.plugins["serverless-pre-function"].functions[]' | grep -q 'resty.sha256' \
+    || fail "auth-v1 must key its quota on the hashed MSISDN"
+  r="$(obj routes auth-v1-keys)"
+  printf '%s' "$r" | jq -e '.uris == ["/auth/v1/.well-known/jwks.json", "/auth/v1/pin-key"] and .methods == ["GET"]
+    and .upstream.nodes == {"mw-auth:8080": 1} and .plugins["limit-count"].key == "remote_addr"' >/dev/null \
+    || fail "auth-v1-keys: $(printf '%s' "$r" | jq -c '{uris, methods, plugins: (.plugins | keys)}')"
+}
+
+# Ticket 69 (D21 amendment): app-v1 verifies mw-auth's RS256 access tokens with openid-connect against
+# mw-auth's discovery document (issuer + JWK Set; an unknown kid refetches the set), not Keycloak.
+test_app_route_verifies_mw_auth_tokens() {
+  render || fail "dry run failed"
+  obj routes app-v1 | jq -e '.plugins["openid-connect"]
+    | .discovery == "http://mw-auth:8080/auth/v1/.well-known/openid-configuration"
+    and .bearer_only == true and .use_jwks == true and .client_id == "mw-app"' >/dev/null \
+    || fail "app-v1 openid-connect: $(obj routes app-v1 | jq -c '.plugins["openid-connect"]')"
+  if grep -q 'realms/customers' "$REPO_DIR/deploy/apisix/routes/app-v1.json" "$REPO_DIR/deploy/apisix/routes/auth-v1.json"; then
+    fail "app-v1 / auth-v1 still name the Keycloak customers realm"
+  fi
 }
 
 test_the_edge_never_logs_bodies() {

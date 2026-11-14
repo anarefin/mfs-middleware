@@ -58,30 +58,43 @@ public class DeviceOtpService {
     this.clock = clock;
   }
 
-  /** A new OTP for {@code deviceId} by SMS to {@code wallet}; replaces the wallet's previous one. */
+  /** OTP purposes (ticket 69): device binding, and the first-PIN login of a wallet without a PIN. */
+  public static final String BIND = "BIND";
+  public static final String LOGIN = "LOGIN";
+
+  /** A new binding OTP for {@code deviceId} by SMS to {@code wallet}; replaces the wallet's previous one. */
   public DeviceOtpSent send(String wallet, String deviceId, String locale) {
+    return send(wallet, wallet, deviceId, locale, BIND);
+  }
+
+  /**
+   * A new OTP of {@code purpose} for {@code deviceId} of wallet {@code wallet}, by SMS to its
+   * {@code msisdn}; replaces the wallet's previous OTP (of any purpose).
+   */
+  public DeviceOtpSent send(String wallet, String msisdn, String deviceId, String locale, String purpose) {
     DeviceBindingProperties.Otp cfg = props.otp();
     Instant now = clock.instant();
     String otp = OtpCodes.newOtp();
     Instant expiresAt = now.plus(cfg.ttl());
     String lang = DeviceNotificationMapper.locale(locale);
     int sends = otps
-        .issue(wallet, deviceId, OtpCodes.hash(wallet, deviceId, otp), lang, expiresAt, cfg.maxSends(),
+        .issue(wallet, deviceId, purpose, OtpCodes.hash(wallet, deviceId, otp), lang, expiresAt, cfg.maxSends(),
             cfg.sendWindow(), now)
         .orElseThrow(() -> new MwException(ErrorCodes.VAL_OTP_LIMIT, "No more OTPs for now, try again later")
             .withStatus(HttpStatus.TOO_MANY_REQUESTS));
     String correlationId = correlationId();
-    NotificationRequest sms = notifications.otp(wallet, otp, lang, expiresAt, correlationId);
+    NotificationRequest sms = notifications.otp(msisdn, otp, lang, expiresAt, correlationId, purpose);
     try {
       // no transaction: the 6.1 txn and idempotency headers carry the messageId (as mw-notify does)
       publisher.publish(
-          props.notifyTopic(), wallet, new EventMetadata(correlationId, sms.messageId(), sms.messageId(), 1), sms);
+          props.notifyTopic(), msisdn, new EventMetadata(correlationId, sms.messageId(), sms.messageId(), 1), sms);
     } catch (RuntimeException e) {
       throw new MwException(ErrorCodes.SYS_UNAVAILABLE, "Service temporarily unavailable, try again", e)
           .withStatus(HttpStatus.SERVICE_UNAVAILABLE);
     }
-    log.atInfo().addKeyValue("event", "device.otp.sent").log("Binding OTP sent for device {}", deviceId);
-    return new DeviceOtpSent(MaskingPolicy.mask(SensitiveType.MSISDN, wallet), expiresAt, cfg.maxSends() - sends);
+    log.atInfo().addKeyValue("event", "device.otp.sent").addKeyValue("purpose", purpose)
+        .log("OTP sent for device {}", deviceId);
+    return new DeviceOtpSent(MaskingPolicy.mask(SensitiveType.MSISDN, msisdn), expiresAt, cfg.maxSends() - sends);
   }
 
   /**
@@ -90,13 +103,19 @@ public class DeviceOtpService {
    * wrong. A match is returned; the binding spends it with {@link #consume} in its transaction.
    */
   public Checked check(String wallet, String deviceId, String otp) {
+    return check(wallet, deviceId, otp, BIND);
+  }
+
+  /** As {@link #check(String, String, String)}; an OTP sent for another purpose is MW-AUTH-011. */
+  public Checked check(String wallet, String deviceId, String otp, String purpose) {
     int max = props.otp().maxAttempts();
     Instant now = clock.instant();
     DeviceOtp current = otps.find(wallet).orElseThrow(DeviceOtpService::expired);
     if (current.attempts() >= max) {
       throw locked();
     }
-    if (current.otpHash() == null || !deviceId.equals(current.deviceId()) || !now.isBefore(current.expiresAt())) {
+    if (current.otpHash() == null || !deviceId.equals(current.deviceId()) || !purpose.equals(current.purpose())
+        || !now.isBefore(current.expiresAt())) {
       throw expired();
     }
     if (!otps.reserveAttempt(wallet, deviceId, current.otpHash(), max, now)) {

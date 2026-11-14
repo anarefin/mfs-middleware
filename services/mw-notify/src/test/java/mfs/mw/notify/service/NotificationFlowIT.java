@@ -185,8 +185,21 @@ class NotificationFlowIT {
   }
 
   @Test
+  void theLoginOtpIsRendered() {
+    notifications.accept(
+        new NotificationRequest(
+            1, id(), null, "corr-l1", new NotificationRequest.Recipient("01711000001", null, null, null),
+            "LOGIN_OTP", "en", Map.of("otp", "042917"), List.of(Channel.SMS), Priority.OTP, null, null));
+
+    dispatcher.dispatchDue();
+
+    assertThat(smsc.sent()).extracting(s -> new String(s.part().shortMessage(), StandardCharsets.US_ASCII))
+        .containsExactly("Your Bits code to sign in and set your PIN is 042917. Valid 2 minutes. Never share it.");
+  }
+
+  @Test
   void theDeviceTemplatesHaveABanglaVersion() {
-    for (String code : List.of("DEVICE_BIND_OTP", "DEVICE_BOUND")) {
+    for (String code : List.of("DEVICE_BIND_OTP", "DEVICE_BOUND", "LOGIN_OTP")) {
       assertThat(jdbc.queryForObject(
           "select count(*) from template where code = ? and locale = 'bn' and channel = 'SMS'", Integer.class, code))
           .as(code).isEqualTo(1);

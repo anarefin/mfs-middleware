@@ -137,6 +137,24 @@
     const ct = pub.encrypt(f.util.encodeUtf8(String(pin)), 'RSA-OAEP', { md: f.md.sha256.create(), mgf1: { md: f.md.sha256.create() } });
     return { keyId: k.keyId, ciphertext: f.util.encode64(ct) };
   }
+  /** mw-auth's PIN transport key (GET /auth/v1/pin-key, public; ticket 69): the key the app login PIN is encrypted with. */
+  async function authPinKey() {
+    let k = CV.get('_authPinKey');
+    if (!k) {
+      const r = await must('GET', '/auth/v1/pin-key');
+      k = JSON.stringify({ keyId: r.body.keyId, pem: r.body.publicKeyPem });
+      CV.set('_authPinKey', k);
+    }
+    return JSON.parse(k);
+  }
+  /** The app PIN as an app encrypts it for mw-auth: RSA-OAEP SHA-256 under the mw-crypto PIN transport key. */
+  async function encryptAppPin(pin) {
+    const f = await forge();
+    const k = await authPinKey();
+    const pub = f.pki.publicKeyFromPem(k.pem);
+    const ct = pub.encrypt(f.util.encodeUtf8(String(pin)), 'RSA-OAEP', { md: f.md.sha256.create(), mgf1: { md: f.md.sha256.create() } });
+    return { keyId: k.keyId, ciphertext: f.util.encode64(ct) };
+  }
   const core = {
     async wallet(id) { return (await must('GET', '/test/core-mock/v1/wallets/' + id, { apikey: true })).body; },
     async fault(f) { await must('POST', '/test/core-mock/v1/faults', { apikey: true, json: f }, [201]); },
@@ -174,13 +192,12 @@
   };
 
   // ---------- Tokens (Keycloak through APISIX), cached per user, refreshed with the refresh token ----------
+  // App users log in at mw-auth (ticket 69, below); Keycloak keeps portals and ops (customers goes in ticket 73).
   const REALMS = {
-    customers: { client: 'mw-app', password: 'kcCustomersPassword' },
     portals: { client: 'mw-portal', password: 'kcPortalsPassword' },
     ops: { client: 'mw-e2e-ops', password: 'kcOpsPassword', totp: true },
   };
   async function token(realm, user) {
-    user = loginUser(realm, user);
     const key = 'tok:' + realm + '/' + user;
     const raw = CV.get(key);
     const now = Date.now();
@@ -239,34 +256,71 @@
     const der = key.sign(sha256Hex(canonical)).toDER('hex');
     return hexToB64(der);
   }
-  async function signedHeaders(user, d, method, path, body) {
+  /** The device signature headers of spec 9.1 (no bearer: mw-auth's /auth/v1 takes none). */
+  async function deviceSigned(d, method, path, body) {
     const ts = String(Date.now());
     const nonce = 'api-' + uuid();
     const canonical = [method, path, sha256Hex(body), ts, nonce, d.id].join('\n');
-    return Object.assign(await bearer('customers', user), {
-      'X-Device-Id': d.id, 'X-Timestamp': ts, 'X-Nonce': nonce, 'X-Signature': await sign(d, canonical),
-    });
+    return { 'X-Device-Id': d.id, 'X-Timestamp': ts, 'X-Nonce': nonce, 'X-Signature': await sign(d, canonical) };
+  }
+  /** A signed app request: the user's mw-auth access token plus the device signature. */
+  async function signedHeaders(user, d, method, path, body) {
+    return Object.assign({ Authorization: 'Bearer ' + d.access }, await deviceSigned(d, method, path, body));
+  }
+
+  // ---------- App login at mw-auth (ticket 69): MSISDN + PIN + bound device ----------
+  // The app users and their wallets (customers-realm.json's users = core-mock seed wallets; the
+  // seeded ones of mw-seeder); every one has the seeded app PIN (appPin = MW_SEED_APP_PIN).
+  const APP_USERS = {
+    customer01: '01711000001', customer02: '01711000002', agent01: '01811000001', merchant01: '01911000001',
+    merchant02: '01911000002', 'seed-customer01': '01712000001', 'seed-customer02': '01712000002',
+    'seed-agent01': '01812000001', 'seed-merchant01': '01912000001',
+  };
+  function msisdnOf(user) {
+    const c = runCustomer();
+    if (c && user === 'customer01') return c.msisdn;
+    if (!APP_USERS[user]) throw new Error('no wallet known for app user ' + user);
+    return APP_USERS[user];
+  }
+  async function appLogin(d, msisdn, pin) {
+    const body = JSON.stringify({ msisdn, encryptedPin: await encryptAppPin(pin) });
+    return http('POST', '/auth/v1/sessions', { headers: await deviceSigned(d, 'POST', '/auth/v1/sessions', body), raw: body });
+  }
+  function keepTokens(d, b) {
+    d.access = b.accessToken; d.refresh = b.refreshToken;
+    d.exp = Date.now() + b.expiresIn * 1000; d.lastUse = Date.now();
   }
   const BIND_OTP = /Your Bits code to bind a new device is ([0-9]{6})/;
-  /** Binds the user's device at mw-auth on first use (/auth/v1/otp, /auth/v1/devices; ticket 68), reopens an idle session. */
+  /**
+   * The user's bound device with a live session and a fresh access token: binds it at mw-auth on first
+   * use (/auth/v1/otp with the MSISDN, the OTP from the SMSC simulator, /auth/v1/devices with the PIN),
+   * logs in (/auth/v1/sessions), refreshes the access token before it expires, logs in again after the
+   * idle timeout (4 min unused: the session is gone at 5).
+   */
   async function ready(user) {
     const d = await device(user);
-    if (!d.bound) {
-      const wallet = claims(await token('customers', user)).msisdn;
-      const otps = async () => (await sim.sms(wallet)).map(m => BIND_OTP.exec(m.text || '')).filter(Boolean).map(m => m[1]);
+    const msisdn = msisdnOf(user);
+    if (!d.bound || d.msisdn !== msisdn) {
+      const otps = async () => (await sim.sms(msisdn)).map(m => BIND_OTP.exec(m.text || '')).filter(Boolean).map(m => m[1]);
       const before = await otps();
-      const h = Object.assign(await bearer('customers', user), { 'X-Device-Id': d.id });
-      const r = await http('POST', '/auth/v1/otp', { headers: h, raw: '{"locale":"en"}' });
+      const r = await http('POST', '/auth/v1/otp', { headers: { 'X-Device-Id': d.id }, json: { msisdn, purpose: 'BIND', locale: 'en' } });
       if (r.status !== 202) throw new Error('asking for the binding OTP of ' + user + ' failed: ' + r);
       const fresh = await poll(async () => (await otps()).filter(c => !before.includes(c)), l => l.length > 0, 30000);
       if (!fresh.length) throw new Error('no binding OTP SMS reached the wallet of ' + user);
-      const body = JSON.stringify({ publicKey: d.pub, otp: fresh[fresh.length - 1] });
-      const b = await http('POST', '/auth/v1/devices', { headers: await signedHeaders(user, d, 'POST', '/auth/v1/devices', body), raw: body });
+      const body = JSON.stringify({ msisdn, publicKey: d.pub, otp: fresh[fresh.length - 1], encryptedPin: await encryptAppPin(v('appPin')) });
+      const b = await http('POST', '/auth/v1/devices', { headers: await deviceSigned(d, 'POST', '/auth/v1/devices', body), raw: body });
       if (b.status !== 201) throw new Error('binding the device of ' + user + ' failed: ' + b);
-      d.bound = true;
-    } else if (Date.now() - d.lastUse > 4 * 60000) {
-      const r = await http('POST', '/auth/v1/sessions', { headers: await signedHeaders(user, d, 'POST', '/auth/v1/sessions', ''), raw: '' });
-      if (r.status !== 200) throw new Error('opening a session for ' + user + ' failed: ' + r);
+      d.bound = true; d.msisdn = msisdn; d.access = null;
+    }
+    if (!d.access || Date.now() - d.lastUse > 4 * 60000) {
+      const r = await appLogin(d, msisdn, v('appPin'));
+      if (r.status !== 200) throw new Error('logging in ' + user + ' at mw-auth failed: ' + r);
+      keepTokens(d, r.body);
+    } else if (d.exp - 30000 < Date.now()) {
+      const body = JSON.stringify({ refreshToken: d.refresh });
+      const r = await http('POST', '/auth/v1/tokens/refresh', { headers: await deviceSigned(d, 'POST', '/auth/v1/tokens/refresh', body), raw: body });
+      if (r.status !== 200) throw new Error('refreshing the tokens of ' + user + ' failed: ' + r);
+      keepTokens(d, r.body);
     }
     d.lastUse = Date.now();
     saveDevice(user, d);
@@ -275,17 +329,35 @@
 
   // ---------- App API (/app/v1/*; device binding and sessions at mw-auth /auth/v1/*) ----------
   const app = {
-    /** A signed session open at mw-auth for the user's bound device, sent twice with the same signature. */
-    async openSessionTwice(user) {
+    /** The same signed login at mw-auth sent twice (the second is a replay). */
+    async loginTwice(user) {
       const d = await ready(user);
-      const h = await signedHeaders(user, d, 'POST', '/auth/v1/sessions', '');
-      const first = await http('POST', '/auth/v1/sessions', { headers: h, raw: '' });
-      const again = await http('POST', '/auth/v1/sessions', { headers: h, raw: '' });
-      d.lastUse = Date.now();
+      const body = JSON.stringify({ msisdn: msisdnOf(user), encryptedPin: await encryptAppPin(v('appPin')) });
+      const h = await deviceSigned(d, 'POST', '/auth/v1/sessions', body);
+      const first = await http('POST', '/auth/v1/sessions', { headers: h, raw: body });
+      const again = await http('POST', '/auth/v1/sessions', { headers: h, raw: body });
+      if (first.status === 200) keepTokens(d, first.body);
       saveDevice(user, d);
       return { first, again };
     },
-    async headers(user) { const d = await ready(user); return Object.assign(await bearer('customers', user), { 'X-Device-Id': d.id }); },
+    /** A signed login with another PIN (a wrong one: the failure is counted at mw-auth). */
+    async loginWithPin(user, pin) { const d = await ready(user); return appLogin(d, msisdnOf(user), pin); },
+    /** A signed refresh of the user's current refresh token, and the same token once more. */
+    async refreshTwice(user) {
+      const d = await ready(user);
+      const send = async t => {
+        const body = JSON.stringify({ refreshToken: t });
+        return http('POST', '/auth/v1/tokens/refresh', { headers: await deviceSigned(d, 'POST', '/auth/v1/tokens/refresh', body), raw: body });
+      };
+      const used = d.refresh;
+      const first = await send(used);
+      const again = await send(used);
+      d.access = null; // the family is revoked: log in again next time
+      saveDevice(user, d);
+      return { first, again };
+    },
+    async session(user) { return ready(user); },
+    async headers(user) { const d = await ready(user); return { Authorization: 'Bearer ' + d.access, 'X-Device-Id': d.id }; },
     /** A transaction body: txnType, credit party, amount (poisha) and the encrypted PIN. */
     async request(txnType, credit, amount, pin) {
       return { txnType, creditParty: { id: credit }, amount: { valueMinor: amount, currency: 'BDT' }, encryptedPin: await encryptPin(pin) };
@@ -445,7 +517,7 @@
   // 15,000 BDT a core-mock wallet may debit per UTC day. So every run plays customer01 as the run
   // customer run.sh passed (mw-seeder's seed-run-customerNN, MSISDN 01714NN0001, which masks as
   // 0171****001 too): its scenario source has customer01's number swapped in every form (0..., 880...)
-  // before it runs, and the customers-realm login of customer01 becomes the run customer's. Without
+  // before it runs, and the app login of customer01 becomes the run customer's (msisdnOf). Without
   // runCustomerMsisdn (a manual run) nothing changes.
   const CUSTOMER01_CORE = '1711000001';
   function runCustomer() {
@@ -455,10 +527,6 @@
   function forRun(src) {
     const c = runCustomer();
     return c ? src.split(CUSTOMER01_CORE).join(c.msisdn.slice(1)) : src;
-  }
-  function loginUser(realm, user) {
-    const c = runCustomer();
-    return c && c.user && realm === 'customers' && user === 'customer01' ? c.user : user;
   }
 
   // ---------- Unique data ----------
@@ -708,10 +776,10 @@
   }
 
   const MW = {
-    http, must, poll, sleep, uuid, unique, short, totp, claims, hmacHex, hmacB64, sha256Hex, encryptPin, token, bearer,
+    http, must, poll, sleep, uuid, unique, short, totp, claims, hmacHex, hmacB64, sha256Hex, encryptPin, encryptAppPin, token, bearer,
     core, sim, app, admin, portal, checkout, callbacks, testApi, run, FINAL, IPN_URL, v, CV,
     fixture: n => JSON.parse(CV.get('fixtures'))[n],
-    ocsLimit, forRun, loginUser,
+    ocsLimit, forRun, appWallet: msisdnOf,
   };
   return MW;
 })();

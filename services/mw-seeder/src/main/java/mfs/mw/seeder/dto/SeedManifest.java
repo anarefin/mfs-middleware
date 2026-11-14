@@ -17,7 +17,8 @@ public record SeedManifest(
     List<Wallet> wallets,
     List<Partner> partners,
     List<UssdMenu> ussdMenus,
-    List<Template> templates) {
+    List<Template> templates,
+    AppPins appPins) {
 
   public static final int SCHEMA_VERSION = 1;
 
@@ -45,6 +46,12 @@ public record SeedManifest(
 
   /** A USSD menu version published through mw-admin-api, live for {@code mnos}. */
   public record UssdMenu(String menuId, int version, List<String> mnos) {}
+
+  /**
+   * The app wallets that log in at mw-auth with the dev app PIN (ticket 69): the {@code deploy/.env}
+   * variable that holds the PIN, and the wallets. Null when the seeder set no app PIN.
+   */
+  public record AppPins(String pinEnv, @Sensitive(SensitiveType.MSISDN) List<String> walletIds) {}
 
   /** A notification template version published through mw-admin-api. */
   public record Template(String code, String channel, String locale, int version) {}

@@ -47,7 +47,7 @@ class MerchantControllerTest {
   }
 
   static RequestPostProcessor token(String msisdn, String role) {
-    return jwt().jwt(j -> j.claim("msisdn", msisdn).claim("realm_access", Map.of("roles", List.of(role))));
+    return jwt().jwt(j -> j.claim("msisdn", msisdn).claim("role", role).claim("amr", List.of("pin", "device")));
   }
 
   MvcTestResult get(RequestPostProcessor auth, String query) {

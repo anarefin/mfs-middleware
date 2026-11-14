@@ -1,6 +1,6 @@
 {
   "name": "app-v1",
-  "desc": "Mobile apps API v1 (spec 8.2, 8.3): Keycloak realm customers bearer JWT verified with the realm's JWKS (verified again upstream), body cap (mw-app-gateway checks the submit body schema on the bytes the device signed), quota per token subject in Valkey",
+  "desc": "Mobile apps API v1 (8.2, 8.3, D21): mw-auth RS256 access token verified by openid-connect with mw-auth's discovery document (ticket 69; verified again upstream), body cap, quota per token subject in Valkey",
   "uri": "/app/v1/*",
   "methods": ["GET", "POST"],
   "plugins": {
@@ -8,11 +8,11 @@
       "max_body_size": 65536
     },
     "openid-connect": {
-      "discovery": "http://keycloak:8080/realms/customers/.well-known/openid-configuration",
+      "discovery": "http://mw-auth:8080/auth/v1/.well-known/openid-configuration",
       "client_id": "mw-app",
       "bearer_only": true,
       "use_jwks": true,
-      "realm": "customers",
+      "realm": "mw-app",
       "iat_slack": 10,
       "set_access_token_header": false,
       "set_userinfo_header": false,

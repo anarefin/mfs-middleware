@@ -26,8 +26,10 @@ import mfs.mw.app.gateway.TestInfrastructure;
 import mfs.mw.app.gateway.ValkeyInfrastructure;
 import mfs.mw.app.gateway.client.AuthClient;
 import mfs.mw.app.gateway.dto.BoundDevice;
+import mfs.mw.app.gateway.dto.LiveSession;
 import mfs.mw.app.gateway.dto.SubmitResult;
 import mfs.mw.app.gateway.dto.TransactionView;
+import mfs.mw.app.gateway.service.DeviceVerifier;
 import mfs.mw.app.gateway.service.RequestSignatures;
 import mfs.mw.app.gateway.service.TransactionService;
 import org.junit.jupiter.api.BeforeEach;
@@ -93,8 +95,13 @@ class DeviceBindingIT {
         .thenReturn(SubmitResult.processing(TransactionView.processing(TXN_ID)));
     when(transactions.find(any(), any())).thenReturn(TransactionView.processing(TXN_ID));
     when(auth.device(anyString())).thenAnswer(i -> Optional.ofNullable(bound.get(i.<String>getArgument(0))));
-    when(auth.session(anyString(), anyString()))
-        .thenAnswer(i -> sessions.contains(i.getArgument(0) + ":" + i.getArgument(1)));
+    when(auth.session(anyString(), anyString())).thenAnswer(i -> {
+      String w = i.getArgument(0);
+      BoundDevice d = bound.get(i.<String>getArgument(1));
+      return d != null && d.walletId().equals(w) && sessions.contains(w + ":" + d.deviceId())
+          ? Optional.of(new LiveSession(w, d.deviceId(), 300, DeviceVerifier.fingerprint(d.publicKey()), d.boundAt()))
+          : Optional.empty();
+    });
   }
 
   record Device(String id, KeyPair key) {
@@ -135,7 +142,7 @@ class DeviceBindingIT {
   RequestPostProcessor token() {
     return jwt()
         .jwt(j -> j.subject("sub-" + msisdn).claim("msisdn", msisdn)
-            .claim("realm_access", Map.of("roles", List.of("customer"))));
+            .claim("role", "customer").claim("amr", List.of("pin", "device")));
   }
 
   MvcTestResult post(String path, String body, Signed signed, String idempotencyKey) {
@@ -260,6 +267,21 @@ class DeviceBindingIT {
     bound.put(d.id(), new BoundDevice(d.id(), "01799999999", d.publicKey(), Instant.now()));
     assertCode(submitSigned(d), 401, "MW-AUTH-003");
     assertCode(status(d.id()), 401, "MW-AUTH-003");
+  }
+
+  @Test
+  void aTokenIssuedToAnotherDeviceIsRejected() throws Exception {
+    Device d = bind();
+    var r = mvc.get().uri("/app/v1/transactions/" + TXN_ID)
+        .with(jwt().jwt(j -> j.subject(msisdn).claim("msisdn", msisdn).claim("role", "customer")
+            .claim("amr", List.of("pin", "device")).claim("deviceId", "dev-other-device")))
+        .header("X-Device-Id", d.id()).exchange();
+    assertCode(r, 401, "MW-AUTH-003");
+    var mine = mvc.get().uri("/app/v1/transactions/" + TXN_ID)
+        .with(jwt().jwt(j -> j.subject(msisdn).claim("msisdn", msisdn).claim("role", "customer")
+            .claim("amr", List.of("pin", "device")).claim("deviceId", d.id())))
+        .header("X-Device-Id", d.id()).exchange();
+    assertThat(mine).hasStatus(200);
   }
 
   @Test

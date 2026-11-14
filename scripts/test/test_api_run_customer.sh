@@ -59,16 +59,15 @@ test_lib_plays_customer01_as_the_run_customer_in_every_number_form_and_keeps_the
     const src = "S.p2p(\"customer01\", \"01711000002\"); [\"01711000001\", \"+8801711000001\", `to 01711000001?`, \"0171****001\"]";
     const out = MW.forRun(src);
     ok(out === "S.p2p(\"customer01\", \"01711000002\"); [\"01714050001\", \"+8801714050001\", `to 01714050001?`, \"0171****001\"]", "substituted: " + out);
-    ok(MW.loginUser("customers", "customer01") === "seed-run-customer05", "customer01 logs in as the run customer");
-    ok(MW.loginUser("customers", "customer02") === "customer02", "customer02 stays");
-    ok(MW.loginUser("ops", "customer01") === "customer01", "other realms stay");
+    ok(MW.appWallet("customer01") === "01714050001", "customer01 logs in at mw-auth as the run customer");
+    ok(MW.appWallet("customer02") === "01711000002", "customer02 stays");
   ' || fail "lib.js does not play customer01 as the run customer"
 }
 
 test_lib_without_a_run_customer_changes_nothing() {
   lib_check '' '' '
     ok(MW.forRun("x(\"01711000001\")") === "x(\"01711000001\")", "unchanged source");
-    ok(MW.loginUser("customers", "customer01") === "customer01", "unchanged user");
+    ok(MW.appWallet("customer01") === "01711000001", "unchanged wallet");
   ' || fail "lib.js changed a run without a run customer"
 }
 

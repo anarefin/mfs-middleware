@@ -5,9 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.networknt.schema.Schema;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import mfs.mw.auth.dto.BoundDevice;
+import mfs.mw.auth.dto.DeviceBound;
 import mfs.mw.auth.dto.DeviceOtpSent;
-import mfs.mw.auth.dto.DeviceSession;
+import mfs.mw.auth.dto.PinKey;
+import mfs.mw.auth.dto.SeedPinsResult;
+import mfs.mw.auth.dto.TokenPair;
 import mfs.mw.auth.dto.ErrorDetail;
 import mfs.mw.auth.dto.ErrorEnvelope;
 import mfs.mw.auth.dto.LiveSession;
@@ -46,14 +50,32 @@ class ApiContractsTest {
   void deviceResponsesMatchThePublicContract() {
     assertValid(OpenApiSchemas.component(PUBLIC_API, "DeviceOtpSent"),
         new DeviceOtpSent(MaskingPolicy.mask(SensitiveType.MSISDN, "01711000001"), NOW.plusSeconds(120), 4));
-    assertValid(OpenApiSchemas.component(PUBLIC_API, "DeviceSession"), new DeviceSession("device-1", 300));
+    assertValid(OpenApiSchemas.component(PUBLIC_API, "DeviceBound"), new DeviceBound("device-1", "0171****001", NOW));
+  }
+
+  @Test
+  void tokenAndKeyResponsesMatchThePublicContract() {
+    assertValid(OpenApiSchemas.component(PUBLIC_API, "TokenResponse"),
+        new TokenPair("eyJ.eyJ.sig", "Bearer", 300, "A".repeat(43), 2592000, "019a4f6e-0000-7a3b-8c4d-5e6f7a8b9c0d",
+            300, false));
+    assertValid(OpenApiSchemas.component(PUBLIC_API, "PinKey"),
+        new PinKey("pin-transport.v1", "RSA-OAEP-SHA-256", "-----BEGIN PUBLIC KEY-----\nMII=\n-----END PUBLIC KEY-----\n"));
+    assertValid(OpenApiSchemas.component(PUBLIC_API, "JwkSet"),
+        Map.of("keys", List.of(Map.of("kty", "RSA", "kid", "jwt-sign.v1", "alg", "RS256", "use", "sig", "n", "AQAB",
+            "e", "AQAB"))));
+    assertThat(OpenApiSchemas.component(PUBLIC_API, "JwkSet").validate(JSON.readTree(
+        "{\"keys\":[{\"kty\":\"RSA\",\"kid\":\"k\",\"alg\":\"RS256\",\"use\":\"sig\",\"d\":\"secret\"}]}")))
+        .as("a private member is refused").isNotEmpty();
   }
 
   @Test
   void lookupsMatchTheInternalContract() {
     assertValid(OpenApiSchemas.component(INTERNAL_API, "BoundDevice"),
         new BoundDevice("device-0001", "01711000001", "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE", NOW));
-    assertValid(OpenApiSchemas.component(INTERNAL_API, "LiveSession"), new LiveSession("01711000001", "device-0001", 300));
+    assertValid(OpenApiSchemas.component(INTERNAL_API, "LiveSession"),
+        new LiveSession("01711000001", "device-0001", 300, "ab".repeat(32), NOW));
+    assertValid(OpenApiSchemas.component(INTERNAL_API, "SeedPinsResult"),
+        new SeedPinsResult(List.of(new SeedPinsResult.Outcome("01711000001", "CREATED"))));
   }
 
   @Test

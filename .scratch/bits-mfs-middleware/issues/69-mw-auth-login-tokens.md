@@ -20,7 +20,7 @@
 
 **Blocked by:** 68
 
-**Status:** open
+**Status:** done
 
-- [ ] `./gradlew :mw-auth:build :mw-app-gateway:build :mw-seeder:build` green with Docker
-- [ ] `scripts/edge-test.sh` and `scripts/api-test.sh` app folders green on a fresh seeded stack
+- [x] `./gradlew :mw-auth:build :mw-app-gateway:build :mw-seeder:build` green with Docker
+- [ ] `scripts/edge-test.sh` and `scripts/api-test.sh` app folders green on a fresh seeded stack (deferred to final integration test)

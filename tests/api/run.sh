@@ -57,7 +57,7 @@ port="$(env_value MW_HTTPS_PORT)"
 base_url="${MW_API_BASE_URL:-https://localhost:${port:-${MW_HTTPS_PORT:-443}}}"
 secrets=(
   "e2eApiKey=$(env_value MW_E2E_API_KEY)"
-  "kcCustomersPassword=$(env_value KC_CUSTOMERS_TEST_PASSWORD)"
+  "appPin=$(env_value MW_SEED_APP_PIN)"
   "kcPortalsPassword=$(env_value KC_PORTALS_TEST_PASSWORD)"
   "kcOpsPassword=$(env_value KC_OPS_TEST_PASSWORD)"
   "kcOpsTotpSecret=$(env_value KC_OPS_TEST_TOTP_SECRET)"
@@ -109,7 +109,7 @@ npx --yes "$newman" run "$collection" -e "$state" "${args[@]}" "${env_args[@]}" 
 # Keep the run state, never the secrets.
 node -e '
   const fs = require("fs"); const p = process.argv[1]; const env = JSON.parse(fs.readFileSync(p, "utf8"));
-  const secret = new Set(["e2eApiKey","kcCustomersPassword","kcPortalsPassword","kcOpsPassword","kcOpsTotpSecret","billaggSecret","checkoutSecret"]);
+  const secret = new Set(["e2eApiKey","appPin","kcPortalsPassword","kcOpsPassword","kcOpsTotpSecret","billaggSecret","checkoutSecret"]);
   for (const v of env.values) if (secret.has(v.key)) v.value = "";
   fs.writeFileSync(p, JSON.stringify(env, null, 2) + "\n");' "$state"
 exit $status

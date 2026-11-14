@@ -8,15 +8,20 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 - App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, ADD_MONEY_BANK,
   TOPUP and BILL_PAY, `mw.app-gateway.supported-txn-types`), `GET /app/v1/transactions/{txnId}`,
   `GET /app/v1/billers`, `POST /app/v1/billers/{code}/fetch-bill` and `GET /app/v1/merchant/collections` behind the APISIX
-  route `/app/v1/*` (`deploy/apisix/routes/app-v1.json`, `openid-connect` bearer-only on realm
-  `customers`).
-- Auth (`config/SecurityConfig`, `security/`): bearer JWT of Keycloak realm `customers` on
-  `/app/**`, verified again here (JWKS `mw.app-gateway.jwt.jwk-set-uri`, expiry, issuer must end
-  with `/realms/customers`: the host part follows the URL the client used). The payer wallet is
-  the `msisdn` claim (user attribute + `mw-app` client mapper in `customers-realm.json`), the
-  channel follows the realm role: `customer` -> `CUSTOMER_APP`/`CUSTOMER`, `agent` ->
-  `AGENT_APP`/`AGENT`, `merchant` -> `MERCHANT_APP`/`MERCHANT` (WP20, ticket 30; a token with several of
-  these roles is served by the first in that order, any other role is 403).
+  route `/app/v1/*` (`deploy/apisix/routes/app-v1.json`, `openid-connect` bearer-only against mw-auth's
+  discovery document since ticket 69).
+- Auth (`config/SecurityConfig`, `security/`; ticket 69, D21): the bearer is an mw-auth access token on
+  `/app/**`, verified again here (`SecurityConfig.appTokenDecoder`): RS256 only, header `typ at+jwt`, a
+  key of mw-auth's JWK Set (`mw.app-gateway.jwt.jwk-set-uri`, `http://mw-auth:8080/auth/v1/.well-known/jwks.json`,
+  fetched on first use and again on an unknown kid), expiry, the exact issuer (`mw.app-gateway.jwt.issuer`
+  = mw-auth's `mw.auth.tokens.issuer`, `mw-auth`) and audience `mw-app`. Not `JwtValidators.createDefault*`:
+  since Spring Security 7 they accept `typ JWT` only. A Keycloak `customers` token is refused (another
+  issuer); `security/RealmIssuerValidator` is gone. The payer wallet is the `msisdn` claim, the channel
+  follows the `role` claim (from the wallet type at mw-auth): `customer` -> `CUSTOMER_APP`/`CUSTOMER`,
+  `agent` -> `AGENT_APP`/`AGENT`, `merchant` -> `MERCHANT_APP`/`MERCHANT` (WP20, ticket 30); any other role
+  (distributor, dso: no app here yet) is 403 `MW-AUTH-002`; a token whose `amr` lacks `pin` (a first-PIN
+  OTP login) is 403 `MW-AUTH-045`; a token whose `deviceId` claim is not the request's `X-Device-Id` is 401
+  `MW-AUTH-003` (device gate).
   Role per `txnType` (`mw.app-gateway.txn-type-roles`, checked at submit after the type check):
   P2P, CASH_OUT, MERCHANT_PAY, TOPUP, BILL_PAY and ADD_MONEY_BANK customer only, CASH_IN agent only; the merchant
   initiates nothing (`AppGatewayConfigTest` checks no type lists MERCHANT) (switch here, nowhere else). Deny by
@@ -38,14 +43,19 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   NX, TTL 2x skew + 30 s; the same key mw-auth uses, so a nonce is used once across both; `MW-AUTH-006`). The body
   hashed is the received body (`filter/CachedBodyFilter`, at most 64 KiB read with `readNBytes(limit+1)`, a larger
   one `413 MW-VAL-BODY_TOO_LARGE` as at the edge): exactly the bytes the schema check and the controller parse; no
-  hash is taken from a header. That is why APISIX runs no request-validation on this route. Order: device,
-  timestamp, signature, nonce, session.
-- **Session check decision (ticket 68):** every app request asks mw-auth `GET
+  hash is taken from a header. That is why APISIX runs no request-validation on this route. Order: device, token device,
+  session (with the key fingerprint, ticket 69), timestamp, signature, nonce.
+- **Session check decision (ticket 68, kept in ticket 69):** every app request asks mw-auth `GET
   /internal/v1/sessions/{walletId}/{deviceId}` (which extends the sliding idle timeout; 404 -> `401 MW-AUTH-007`),
-  not a session claim in the token (ticket 69 may revisit with mw-auth's own tokens). A confirmation is cached in
-  Valkey `sesschk:{walletId}:{deviceId}` for `session-cache-ttl` (10 s; 0 = ask every time), so a burst asks once
-  and an ended session (another device bound at mw-auth) passes here for at most 10 s. The device key cache does
-  not need a `device.unbound` notice: an unbound device's session is ended by mw-auth, which the session check sees.
+  not the token's `sid` claim: a logout, a lock or a new binding at mw-auth must end app access at once, which a 5
+  min token cannot. A confirmation is cached in Valkey `sesschk:{walletId}:{deviceId}` for `session-cache-ttl`
+  (10 s; 0 = ask every time), so a burst asks once and an ended session passes here for at most 10 s.
+- Stale device keys (security review of ticket 68, fixed in ticket 69; `service/DeviceVerifier`): the session
+  answer carries the fingerprint (hex SHA-256 of the SPKI DER) of the device's current key; the confirmation
+  cache keeps it. The session is checked before the signature; a cached `devkey` whose fingerprint differs is
+  evicted and fetched again once (still different, or another wallet: `401 MW-AUTH-003`), and a session 404
+  evicts the cached key too, so a rebinding or key replacement stops the old key within the 10 s confirmation
+  TTL instead of the 5 min key cache (`service/DeviceVerifierTest`).
 - mw-auth client (`client/AuthClient`, `client/ServiceTokenClient`, `config/AuthClientProperties`
   `mw.app-gateway.auth.*`; contract `api/mw-auth/auth-internal.v1.openapi.yaml`): `https://mw-auth:8443` over mTLS
   with this service's OpenBao certificate (`config/ServiceCertificateManager` + `TlsProperties` from the template,
@@ -171,7 +181,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 - `events/mw-orchestrator/mw.txn.request.v1` (produced; own type `dto/TxnRequest`, validated
   against the schema in `RequestMapperTest` and `SyncReplyIT`).
 - `api/mw-auth/auth-internal.v1.openapi.yaml` (client, ticket 68: `GET /internal/v1/devices/{deviceId}`, `GET
-  /internal/v1/sessions/{walletId}/{deviceId}`; own type `dto/BoundDevice`, checked in `ApiContractsTest`).
+  /internal/v1/sessions/{walletId}/{deviceId}`; own types `dto/BoundDevice`, `dto/LiveSession` (key fingerprint,
+  ticket 69), checked in `ApiContractsTest`). The app token itself is mw-auth's (`api/mw-auth/auth.v1.openapi.yaml`
+  describes its claims; tested by `security/AppTokenDecoderTest`, `security/AppUserResolverTest`).
 - `events/mw-orchestrator/mw.txn.status.v1` (consumed; own type `dto/StatusMessage`, unknown
   fields ignored) and the orchestrator's `mw-reply-to` / duplicate-answer conventions.
 

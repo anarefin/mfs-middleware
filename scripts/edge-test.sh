@@ -6,9 +6,19 @@
 # the mw-app-gateway log are reached from inside the project (throwaway curl containers on the
 # ops network, docker compose exec/logs), as scripts/smoke.sh does.
 #
+# App tokens (ticket 69) are mw-auth access tokens of customer01 (01711000001) and merchant01
+# (01911000001), obtained the way an app does by scripts/lib/mw-auth-token.mjs (binds a new device
+# with the OTP read from the SMSC simulator's dev host port and the seeded app PIN MW_SEED_APP_PIN,
+# then logs in): node >= 22 is needed. Binding unbinds the wallets' previous devices.
+#
 # Checks (ticket 13 acceptance, plus the 5.3 envelope on every edge error):
-#   - no, garbage, badly signed or expired bearer token -> 401 MW-AUTH-001 envelope with a
-#     correlationId; unknown path 404 and unreachable upstream 502 also get the envelope
+#   - no, garbage or badly signed bearer token, or a token of another issuer (a Keycloak customers
+#     token) -> 401 MW-AUTH-001 envelope with a correlationId; an mw-auth token on a bound device
+#     reaches mw-app-gateway (200); unknown path 404 and unreachable upstream 502 get the envelope.
+#     Token expiry: covered by the static iat_slack check and mw-app-gateway's tests (mw-auth's
+#     tokens live 5 min, too long to wait for here)
+#   - mw-auth's /auth/v1/* (ticket 69): reachable without a token (mw-auth answers its own codes),
+#     its JWK Set public, a quota per hashed MSISDN (429, counter in Valkey without the MSISDN)
 #   - a submit body that breaks the schema -> 400 MW-VAL-001 (checked by mw-app-gateway on the
 #     bytes the device signed: the edge must not re-encode it, ticket 29); a valid body reaches it
 #     byte for byte; an oversized body -> 413 at the edge
@@ -39,6 +49,7 @@ set -uo pipefail
 
 stack_compose
 command -v jq >/dev/null || die "edge-test: jq is required"
+command -v node >/dev/null || die "edge-test: node (>= 22) is required (scripts/lib/mw-auth-token.mjs)"
 [ -f "$STACK_ENV" ] || die "edge-test: no deploy/.env; run `cd deploy && cp dev.env.defaults .env` and start the stack first"
 set -a; . "$STACK_ENV"; set +a
 
@@ -50,9 +61,9 @@ https_port="$(dc port apisix 9443 2>/dev/null | head -1 | sed 's/.*://')"
 ops_net="$(docker network ls --format '{{.Name}}' --filter "label=com.docker.compose.project=$project" --filter "label=com.docker.compose.network=ops" | head -1)"
 base="https://localhost:$https_port"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/edge-test.XXXXXX")"
+sim_port="$(dc port mw-simulators 8080 2>/dev/null | head -1 | sed 's/.*://')"
 # temporary objects, removed on exit (named here: checks run in subshells)
 echo_route="mw-edge-test-echo-$$"
-kc_client="mw-edge-test-$$"
 
 passed=0; failed=0
 ok() { passed=$((passed + 1)); printf 'ok   %s\n' "$*"; }
@@ -62,8 +73,14 @@ check() { local name="$1" out; shift; if out="$("$@" 2>&1)"; then ok "$name"; el
 # ---- helpers ----
 ops_curl() { docker run --rm --network "$ops_net" "$CURL_IMAGE" -s --max-time 20 "$@"; }
 admin() { local m="$1" p="$2"; shift 2; ops_curl -X "$m" -H "X-API-KEY: $APISIX_ADMIN_KEY" "$@" "http://apisix:9180/apisix/admin/$p"; }
-token() { # token USER [CLIENT]
-  ops_curl --data-urlencode grant_type=password --data-urlencode "client_id=${2:-mw-app}" \
+# app_login MSISDN: mw-auth's token response for the wallet (+ deviceId), logged in as an app does
+app_login() {
+  MW_EDGE_URL="$base" MW_SIM_URL="http://127.0.0.1:$sim_port" MW_SEED_APP_PIN="$MW_SEED_APP_PIN" \
+    node "$MW_ROOT/scripts/lib/mw-auth-token.mjs" "$1"
+}
+# kc_customer_token USER: a Keycloak realm customers token (another issuer; the realm goes in ticket 73)
+kc_customer_token() {
+  ops_curl --data-urlencode grant_type=password --data-urlencode client_id=mw-app \
     --data-urlencode "username=$1" --data-urlencode "password=$KC_CUSTOMERS_TEST_PASSWORD" \
     http://keycloak:8080/realms/customers/protocol/openid-connect/token | jq -r '.access_token // empty'
 }
@@ -101,12 +118,8 @@ gateway_logged() {
 uniq_id() { printf 'edge-test-%s-%s' "$1" "$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n' | tr '0-9' 'g-p')"; }
 
 cleanup() {
-  local at id
   dc start valkey >/dev/null 2>&1
   admin DELETE "routes/$echo_route" -o /dev/null
-  at="$(kc_admin_token)"
-  id="$(ops_curl -H "Authorization: Bearer $at" "http://keycloak:8080/admin/realms/customers/clients?clientId=$kc_client" | jq -r '.[0].id // empty')"
-  [ -n "$id" ] && ops_curl -o /dev/null -X DELETE -H "Authorization: Bearer $at" "http://keycloak:8080/admin/realms/customers/clients/$id"
   rm -rf "$tmp"
 }
 trap cleanup EXIT
@@ -119,8 +132,13 @@ kc_admin_token() {
 }
 
 info "edge-test: project $project, $base"
-customer="$(token customer01)"; merchant="$(token merchant01)"
-[ -n "$customer" ] && [ -n "$merchant" ] || die "edge-test: no Keycloak token for customer01/merchant01"
+[ -n "$sim_port" ] || die "edge-test: mw-simulators publishes no dev host port (MW_PORT_SIMULATORS)"
+[ -n "${MW_SEED_APP_PIN:-}" ] || die "edge-test: MW_SEED_APP_PIN is not in deploy/.env (cp dev.env.defaults .env)"
+customer_login="$(app_login 01711000001)" || die "edge-test: no mw-auth login for customer01: $customer_login"
+merchant_login="$(app_login 01911000001)" || die "edge-test: no mw-auth login for merchant01: $merchant_login"
+customer="$(printf '%s' "$customer_login" | jq -r .accessToken)"; customer_device="$(printf '%s' "$customer_login" | jq -r .deviceId)"
+merchant="$(printf '%s' "$merchant_login" | jq -r .accessToken)"
+[ -n "$customer" ] && [ -n "$merchant" ] || die "edge-test: no mw-auth token for customer01/merchant01"
 valid_body='{"txnType":"P2P","creditParty":{"type":"WALLET","id":"01711000002"},"amount":{"valueMinor":100,"currency":"BDT"},"encryptedPin":{"keyId":"k1","ciphertext":"dGVzdA=="}}'
 
 # ---- 401 ----
@@ -132,38 +150,57 @@ check "garbage bearer token -> 401 MW-AUTH-001 envelope" garbage_token
 portal_no_token() { call GET /portal/org/v1/bulk/batches && envelope 401 MW-AUTH-001; }
 check "portal: no bearer token -> 401 MW-AUTH-001 envelope" portal_no_token
 portal_wrong_realm() { call GET /portal/org/v1/bulk/batches -H "Authorization: Bearer $customer" && envelope 401 MW-AUTH-001; }
-check "portal: realm customers token -> 401 MW-AUTH-001 envelope" portal_wrong_realm
+check "portal: mw-auth app token -> 401 MW-AUTH-001 envelope" portal_wrong_realm
 
 # admin route (ticket 36): realm ops only (ops users need TOTP, so only the refusals are checked here)
 admin_no_token() { call GET /admin/v1/transactions && envelope 401 MW-AUTH-001; }
 check "admin: no bearer token -> 401 MW-AUTH-001 envelope" admin_no_token
 admin_wrong_realm() { call GET /admin/v1/transactions -H "Authorization: Bearer $customer" && envelope 401 MW-AUTH-001; }
-check "admin: realm customers token -> 401 MW-AUTH-001 envelope" admin_wrong_realm
+check "admin: mw-auth app token -> 401 MW-AUTH-001 envelope" admin_wrong_realm
 tampered_token() { # customer01's token with merchant01's signature: bad signature
   call GET /app/v1/transactions/x -H "Authorization: Bearer ${customer%.*}.${merchant##*.}" && envelope 401 MW-AUTH-001
 }
 check "token with a bad signature -> 401 MW-AUTH-001 envelope" tampered_token
 
-# expired: a token from a temporary public client whose tokens live 1 s
-expired_token() {
-  local at cid="$kc_client" t exp now slack
-  # openid-connect accepts a token until exp + iat_slack (clock skew; plugin default 120 s)
-  slack="$(jq -r '.plugins["openid-connect"].iat_slack // 120' "$MW_ROOT/deploy/apisix/routes/app-v1.json")"
-  at="$(kc_admin_token)"; [ -n "$at" ] || { echo "no Keycloak admin token"; return 1; }
-  ops_curl -o /dev/null -H "Authorization: Bearer $at" -H 'Content-Type: application/json' \
-    -d "{\"clientId\":\"$cid\",\"publicClient\":true,\"directAccessGrantsEnabled\":true,\"standardFlowEnabled\":false,\"attributes\":{\"access.token.lifespan\":\"1\"}}" \
-    http://keycloak:8080/admin/realms/customers/clients
-  t="$(token customer01 "$cid")"; [ -n "$t" ] || { echo "no token from the temporary client"; return 1; }
-  exp="$(claims "$t" | jq -r .exp)"
-  now="$(date +%s)"; [ "$exp" -le $((now + 2)) ] || { echo "token lives until $exp (now $now)"; return 1; }
-  # control: within the grace the edge lets the same token through (mw-app-gateway answers)
-  call GET /app/v1/transactions/x -H "Authorization: Bearer $t"
-  [ "$status" != 401 ] || { echo "token refused before it expired: $(head -c 300 "$tmp/b")"; return 1; }
-  now="$(date +%s)"
-  sleep $((exp - now + slack + 2))
+# another issuer: the Keycloak customers token apps used before ticket 69 is refused at the edge
+keycloak_token_refused() {
+  local t
+  t="$(kc_customer_token customer01)"; [ -n "$t" ] || { echo "no Keycloak customers token for customer01"; return 1; }
   call GET /app/v1/transactions/x -H "Authorization: Bearer $t" && envelope 401 MW-AUTH-001
 }
-check "expired bearer token -> 401 MW-AUTH-001 envelope" expired_token
+check "Keycloak customers token (another issuer) -> 401 MW-AUTH-001 envelope" keycloak_token_refused
+# an mw-auth token on its bound device passes the edge and mw-app-gateway's device gate
+mw_auth_token_passes() {
+  call GET /app/v1/billers -H "Authorization: Bearer $customer" -H "X-Device-Id: $customer_device"
+  [ "$status" = 200 ] || { echo "HTTP $status, want 200: $(head -c 300 "$tmp/b")"; return 1; }
+  jq -e '.billers | type == "array"' "$tmp/b" >/dev/null || { echo "not the billers list: $(head -c 300 "$tmp/b")"; return 1; }
+}
+check "mw-auth access token on its bound device -> 200 from mw-app-gateway" mw_auth_token_passes
+
+# ---- mw-auth /auth/v1/* (ticket 69): no auth plugin, keys public, quota per hashed MSISDN ----
+auth_reachable_without_token() { # mw-auth's own MW-AUTH-003 (no X-Device-Id): APISIX never sends it
+  call POST /auth/v1/sessions -H 'Content-Type: application/json' -d '{"msisdn":"01711000001","otp":"123456"}'
+  [ "$status" = 401 ] && [ "$(jq -r .code "$tmp/b")" = MW-AUTH-003 ] || { echo "HTTP $status: $(head -c 300 "$tmp/b")"; return 1; }
+}
+check "auth: login reaches mw-auth without a token (its own 401 MW-AUTH-003)" auth_reachable_without_token
+auth_jwks_public() {
+  call GET /auth/v1/.well-known/jwks.json
+  [ "$status" = 200 ] && jq -e '.keys | length > 0 and all(.kty == "RSA" and .alg == "RS256" and (has("d") | not))' "$tmp/b" >/dev/null \
+    || { echo "HTTP $status: $(head -c 300 "$tmp/b")"; return 1; }
+  call GET /auth/v1/.well-known/openid-configuration && envelope 404 MW-VAL-003
+}
+check "auth: JWK Set public (RSA, RS256, no private member); discovery document not routed" auth_jwks_public
+auth_quota_per_msisdn() { # an MSISDN mw-auth does not know: nothing is sent, the edge still counts
+  local m=01799000123 codes hash keys urls=()
+  for _ in $(seq 1 26); do urls+=(-o /dev/null -H 'Content-Type: application/json' -H 'X-Device-Id: edge-test-device' -d "{\"msisdn\":\"$m\"}" "$base/auth/v1/otp"); done
+  codes="$(curl -sk --max-time 60 -w '%{http_code}\n' "${urls[@]}")"
+  printf '%s\n' "$codes" | grep -qx 429 || { echo "no 429 in 26 OTP requests: $(printf '%s\n' "$codes" | sort | uniq -c | tr '\n' ' ')"; return 1; }
+  hash="$(printf '%s' "$m" | shasum -a 256 | cut -d' ' -f1)"
+  keys="$(dc exec -T valkey valkey-cli --scan --pattern "*msisdn:$hash*")"
+  [ -n "$keys" ] || { echo "no Valkey counter for the hashed MSISDN"; return 1; }
+  if dc exec -T valkey valkey-cli --scan --pattern "*$m*" | grep -q .; then echo "a Valkey key holds the MSISDN"; return 1; fi
+}
+check "auth: over the per-MSISDN quota -> 429; Valkey counter keyed by the hashed MSISDN only" auth_quota_per_msisdn
 
 # ---- correlation ID, upstream reached ----
 # mw-app-gateway answers an app request without X-Device-Id with its own 401 MW-AUTH-003 (device

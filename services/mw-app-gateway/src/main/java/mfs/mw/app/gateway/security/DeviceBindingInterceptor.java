@@ -40,6 +40,11 @@ public class DeviceBindingInterceptor implements HandlerInterceptor {
     }
     Jwt jwt = jwt();
     AppUser user = users.resolve(jwt);
+    // an mw-auth token is issued to one device (ticket 69): it serves no other
+    String tokenDevice = jwt.getClaimAsString(AppUserResolver.DEVICE_CLAIM);
+    if (tokenDevice != null && !tokenDevice.equals(request.getHeader(SignedRequests.DEVICE_ID))) {
+      throw new MwException(ErrorCodes.AUTH_DEVICE_NOT_BOUND, "Token not issued to this device");
+    }
     if (level == DeviceGate.Level.SIGNED) {
       devices.verifySigned(user, SignedRequests.from(request));
     } else {

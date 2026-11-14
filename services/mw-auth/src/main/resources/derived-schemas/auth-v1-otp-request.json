@@ -1,8 +1,21 @@
 {
-  "x-mw-derived-from": "api/mw-auth/auth.v1.openapi.yaml#/components/schemas/DeviceOtpRequest",
+  "x-mw-derived-from": "api/mw-auth/auth.v1.openapi.yaml#/components/schemas/OtpRequest",
   "type": "object",
   "additionalProperties": false,
+  "required": [
+    "msisdn"
+  ],
   "properties": {
+    "msisdn": {
+      "type": "string"
+    },
+    "purpose": {
+      "type": "string",
+      "enum": [
+        "BIND",
+        "LOGIN"
+      ]
+    },
     "locale": {
       "type": "string",
       "enum": [

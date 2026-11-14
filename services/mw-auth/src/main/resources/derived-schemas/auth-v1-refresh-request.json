@@ -1,0 +1,15 @@
+{
+  "x-mw-derived-from": "api/mw-auth/auth.v1.openapi.yaml#/components/schemas/RefreshRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "refreshToken"
+  ],
+  "properties": {
+    "refreshToken": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 128
+    }
+  }
+}

@@ -7,10 +7,18 @@ import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 import mfs.mw.auth.config.AuthProperties;
 import mfs.mw.auth.config.ServiceCertificateManager;
+import mfs.mw.auth.dto.CryptoDerivePinRequest;
 import mfs.mw.auth.dto.CryptoEnvelope;
+import mfs.mw.auth.dto.CryptoJwsSignRequest;
+import mfs.mw.auth.dto.CryptoJwsSigned;
+import mfs.mw.auth.dto.CryptoPinDerived;
+import mfs.mw.auth.dto.CryptoPinVerified;
+import mfs.mw.auth.dto.CryptoVerifyPinRequest;
+import mfs.mw.auth.dto.EncryptedPin;
 import mfs.mw.auth.dto.CryptoEnvelopeRequest;
 import mfs.mw.auth.dto.CryptoPlaintext;
 import mfs.mw.auth.dto.CryptoTokeniseRequest;
@@ -38,10 +46,10 @@ import org.springframework.web.client.RestClientException;
  * retryable); any other refusal {@code MW-SYS-051}; a 401 drops the cached token and retries once.
  * Nothing sent or received is logged (no payload logging, values are MSISDNs and ciphertexts).
  *
- * <p>Operations used so far (ticket 67): MSISDN tokenisation (the keyed hash of {@code auth.wallet})
- * and envelope encryption under {@code KEK_COLUMN} (the encrypted MSISDN). mw-crypto allows mw-auth
- * both ({@code mw.crypto.authz.purposes.TOKENISE_MSISDN}, {@code KEK_COLUMN}). PIN and JWS follow in
- * tickets 69-71.
+ * <p>Operations: MSISDN tokenisation (the keyed hash of {@code auth.wallet}) and envelope
+ * encryption under {@code KEK_COLUMN} (the encrypted MSISDN), ticket 67; PIN verify and derive, the
+ * access token signature ({@code JWT_SIGN}, RS256) and the JWK Sets of {@code JWT_SIGN} and {@code
+ * PIN_TRANSPORT}, ticket 69. mw-crypto allows mw-auth all of them ({@code mw.crypto.authz}).
  */
 @Component
 public class CryptoClient {
@@ -117,18 +125,67 @@ public class CryptoClient {
     return Base64.getDecoder().decode(p.plaintext().getBytes(StandardCharsets.US_ASCII));
   }
 
+  /** Checks a PIN block against the stored HMAC (match or not; a rehash under the ACTIVE version). */
+  public CryptoPinVerified verifyPin(String walletId, EncryptedPin pin, String storedHmac, String hmacKeyId) {
+    CryptoPinVerified v =
+        call("pin.verify", "/internal/v1/pin/verify",
+            new CryptoVerifyPinRequest(walletId, pin, storedHmac, hmacKeyId), CryptoPinVerified.class);
+    if (v == null) {
+      throw unavailable("pin.verify", null);
+    }
+    return v;
+  }
+
+  /** The PIN HMAC to store for a new PIN, or the weak-PIN rule it breaks. */
+  public CryptoPinDerived derivePin(String walletId, EncryptedPin pin, Map<String, Object> policyInput) {
+    CryptoPinDerived d =
+        call("pin.derive", "/internal/v1/pin/derive", new CryptoDerivePinRequest(walletId, pin, policyInput),
+            CryptoPinDerived.class);
+    if (d == null || (!d.weak() && (d.hmac() == null || d.hmacKeyId() == null))) {
+      throw unavailable("pin.derive", null);
+    }
+    return d;
+  }
+
+  /** A compact JWS over {@code claims} by the ACTIVE key of {@code purpose}, with extra header members. */
+  public CryptoJwsSigned signJws(String purpose, String alg, Map<String, Object> header, Map<String, Object> claims) {
+    CryptoJwsSigned s =
+        call("jws.sign", "/internal/v1/jws/sign", new CryptoJwsSignRequest(purpose, alg, header, claims),
+            CryptoJwsSigned.class);
+    if (s == null || s.jws() == null || s.kid() == null) {
+      throw unavailable("jws.sign", null);
+    }
+    return s;
+  }
+
+  /** The JWK Set (JSON) of every key version in use of an asymmetric purpose. */
+  @SuppressWarnings("unchecked")
+  public Map<String, Object> jwks(String purpose) {
+    Map<String, Object> set;
+    try {
+      set = breaker.executeSupplier(() -> withToken(() -> get("/internal/v1/jwks/" + purpose, Map.class)));
+    } catch (CallNotPermittedException e) {
+      throw unavailable("jwks", e);
+    } catch (HttpClientErrorException e) {
+      throw refused("jwks", e);
+    } catch (MwException e) {
+      throw e;
+    } catch (RestClientException e) {
+      throw unavailable("jwks", e);
+    }
+    if (set == null || !(set.get("keys") instanceof List<?>)) {
+      throw unavailable("jwks", null);
+    }
+    return set;
+  }
+
   private <T> T call(String op, String path, Object body, Class<T> type) {
     try {
       return breaker.executeSupplier(() -> withToken(() -> post(path, body, type)));
     } catch (CallNotPermittedException e) {
       throw unavailable(op, e);
     } catch (HttpClientErrorException e) {
-      log.atWarn()
-          .addKeyValue("event", "crypto.call.refused")
-          .addKeyValue("op", op)
-          .addKeyValue("status", e.getStatusCode().value())
-          .log("mw-crypto refused the call");
-      throw new MwException(ErrorCodes.SYS_CRYPTO_REFUSED, "mw-crypto refused " + op, e).withRetryable(false);
+      throw refused(op, e);
     } catch (MwException e) {
       throw e;
     } catch (RestClientException e) {
@@ -144,6 +201,25 @@ public class CryptoClient {
       tokens.invalidate();
       return call.get();
     }
+  }
+
+  private static MwException refused(String op, HttpClientErrorException e) {
+    log.atWarn()
+        .addKeyValue("event", "crypto.call.refused")
+        .addKeyValue("op", op)
+        .addKeyValue("status", e.getStatusCode().value())
+        .log("mw-crypto refused the call");
+    return new MwException(ErrorCodes.SYS_CRYPTO_REFUSED, "mw-crypto refused " + op, e).withRetryable(false);
+  }
+
+  private <T> T get(String path, Class<T> type) {
+    RestClient.RequestHeadersSpec<?> req =
+        rest.get().uri(path).accept(MediaType.APPLICATION_JSON).header("Authorization", "Bearer " + tokens.token());
+    String correlationId = MDC.get("correlationId");
+    if (correlationId != null) {
+      req = req.header("X-Correlation-Id", correlationId);
+    }
+    return req.retrieve().body(type);
   }
 
   private <T> T post(String path, Object body, Class<T> type) {

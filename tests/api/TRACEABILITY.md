@@ -13,7 +13,7 @@ and `tsq`; `ops *` needs `operator` or `admin`; `<FLOW> ussd *` and `ussd http` 
 Requirement tags are the Cucumber flow tags without `@` (`p2p`, `cash`, `topup`, `billpay`,
 `callback`, `addmoney`, `c2w`, `merchant`, `checkout`, `ipn`, `notify`, `tsq`, `device`, `reversal`,
 `admin`, `operator`, `partner-config`, `wallet-unlock`, `ussd`, `smpp`, `bulk`, `sp-query`, `dlq` (retry topics to the DLQ, ticket 58, no Cucumber flow), plus
-`health` and `seed` for folder 00); the module tags (`@mw-*`) were run filters, not requirements, and
+`health` and `seed` for folder 00, `auth` (mw-auth's login and tokens, ticket 69) and `edge` (an APISIX edge policy proved through the edge)); the module tags (`@mw-*`) were run filters, not requirements, and
 are not carried over (`make api-test FOLDER=` selects folders).
 
 | # | Criterion | Where it is proved |
@@ -108,7 +108,10 @@ Criteria `-` = supporting scenario (edge security, bulk, portal, config), no MVP
 | 02 | [device p2p] a P2P with a valid signature passes | 1 |  |
 | 02 | [device p2p] a replayed signed request is rejected and moves no money again | 1, 2 |  |
 | 02 | [device p2p] a body changed after signing is rejected | 1 |  |
-| 02 | [device] a bound device opens a new session at mw-auth and the same signed open again is a replay | - |  |
+| 02 | [device auth] a login on the bound device gets mw-auth tokens and the same signed login again is a replay | - |  |
+| 02 | [device auth] a wrong PIN at login is refused | - |  |
+| 02 | [device auth] a refresh rotates the token and the used token again revokes the session | - |  |
+| 02 | [device auth edge] the app API refuses no token and serves an mw-auth token; the JWK Set is public | - |  |
 | 04 | [merchant] a customer pays a merchant and the merchant sees the collection | 1 | MERCHANT_PAY app success |
 | 04 | [merchant] a payment the customer's balance cannot cover is rejected and moves no money | 1 | MERCHANT_PAY app failure |
 | 04 | [merchant] a merchant payment to a wallet that is not a merchant is refused by the core | 1 | MERCHANT_PAY app failure |

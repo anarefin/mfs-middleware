@@ -1,0 +1,46 @@
+{
+  "x-mw-derived-from": "api/mw-auth/auth.v1.openapi.yaml#/components/schemas/LoginRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "msisdn"
+  ],
+  "properties": {
+    "msisdn": {
+      "type": "string"
+    },
+    "encryptedPin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "keyId",
+        "ciphertext"
+      ],
+      "properties": {
+        "keyId": {
+          "type": "string"
+        },
+        "ciphertext": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      }
+    },
+    "otp": {
+      "type": "string"
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "encryptedPin"
+      ]
+    },
+    {
+      "required": [
+        "otp"
+      ]
+    }
+  ]
+}

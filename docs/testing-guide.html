@@ -197,8 +197,8 @@ scripts/creds.sh</pre></div>
   test-only routes and <code>/tester</code> answers 404.</div>
 
   <h3 id="c0-2">Step 0.2: open the test console</h3>
-  <p><b>Sign-in: none.</b> The test console signs in by itself as the user you pick on each page (customers
-  password <code>app-test-pass</code>, portals password <code>portal-test-pass</code>, apikey <code>e2e-test-apikey</code>).</p>
+  <p><b>Sign-in: none.</b> The test console signs in by itself as the user you pick on each page (app users at
+  mw-auth with the app PIN <code>13579</code>, portals password <code>portal-test-pass</code>, apikey <code>e2e-test-apikey</code>).</p>
   <ol>
     <li>Open <a href="https://localhost/tester">https://localhost/tester</a>. The certificate is self-signed:
       accept it once (Chrome: <span class="ui">Advanced</span> → <span class="ui">Proceed to localhost</span>;
@@ -229,7 +229,8 @@ scripts/creds.sh</pre></div>
     <tr><td>Seeder customer (type the name; <a href="#c3-10">3.10</a>)</td><td>seed-customer01</td><td>01712000001</td><td>1234</td></tr>
     <tr><td>Bulk payees (seeded)</td><td>-</td><td>01711000101 onwards</td><td>-</td></tr>
   </table></div>
-  <p>Every app user signs in with the password <code>app-test-pass</code>; the test console does it for you.</p>
+  <p>Every app user signs in at mw-auth with its MSISDN, the app PIN <code>13579</code> and a bound device (ticket 69);
+  the test console does it for you. The PIN column is the transaction PIN the core checks until ticket 72.</p>
   <p><b>Fees and limits.</b> The core charges the payer the amount <b>plus a fee</b> into the
   <code>FEE-POOL</code> account (P2P Tk 5, top-up Tk 2, …). A Tk 10 P2P therefore shows <code>-Tk 15.00</code>
   on the payer, <code>Tk 10.00</code> on the payee and <code>Tk 5.00</code> on FEE-POOL (a gain has no + sign). Other fees: cash out Tk 10, top-up Tk 2, bill payment Tk 3, merchant payment and add money none. Limits: Tk 5,000
@@ -271,7 +272,7 @@ scripts/creds.sh</pre></div>
       <tr><td><code>ops-e2e-maker01</code>, <code>ops-e2e-checker01</code></td><td>code: <code>scripts/totp.sh &lt;user&gt;</code> (the API suite uses them too)</td></tr>
       <tr><td><code>ops-maker01</code>, <code>ops-checker01</code>, <code>ops-viewer01</code>, <code>ops-compliance01</code>, <code>ops-auditor01</code>, <code>ops-admin01</code></td><td>enrol an authenticator app at the first sign-in (1.4)</td></tr>
       <tr><td colspan="2">Five wrong passwords or codes lock the user for 1-15 min (unlock: 1.5)</td></tr>
-      <tr><td>App users (realm <code>customers</code>, client <code>mw-app</code>)</td><td><code>customer01</code>, <code>customer02</code>, <code>agent01</code>, <code>merchant01</code>, <code>merchant02</code>, <code>seed-customer01</code>, …</td><td><code>app-test-pass</code></td><td>wallet PIN of every wallet: <code>1234</code></td></tr>
+      <tr><td>App users (mw-auth login: MSISDN + app PIN + bound device)</td><td><code>customer01</code>, <code>customer02</code>, <code>agent01</code>, <code>merchant01</code>, <code>merchant02</code>, <code>seed-customer01</code>, …</td><td>app PIN <code>13579</code></td><td>transaction PIN of every wallet: <code>1234</code></td></tr>
       <tr><td>Portal users (realm <code>portals</code>, client <code>mw-portal</code>)</td><td><code>org-maker01</code>, <code>org-checker01</code>, <code>org-makerchecker01</code>, <code>org-checker02</code>, <code>sp-viewer01</code>, <code>seed-org-maker</code>, <code>seed-org-checker</code></td><td><code>portal-test-pass</code></td><td>-</td></tr>
       <tr><td>Keycloak admin (realm <code>master</code>)</td><td><code>kc-admin</code></td><td><code>kc-admin-test-pass</code></td><td>no web console; commands in 1.5</td></tr>
       <tr><td>OpenBao (secrets store)</td><td>-</td><td>token <code>dev-root-token</code></td><td>no web UI; commands in 1.6</td></tr>
@@ -291,7 +292,7 @@ scripts/creds.sh</pre></div>
       <tr><th>Block</th><th>What it gives you</th><th>Value / taken from</th></tr>
       <tr><td>Test console</td><td>the URL; no sign-in</td><td>-</td></tr>
       <tr><td>Ops console</td><td>the one password of every ops user and which users need an authenticator app</td><td><code>ops-test-pass</code> (<code>KC_OPS_TEST_PASSWORD</code>)</td></tr>
-      <tr><td>App users</td><td>password of the customers realm users</td><td><code>app-test-pass</code> (<code>KC_CUSTOMERS_TEST_PASSWORD</code>)</td></tr>
+      <tr><td>App users</td><td>the app PIN of the seeded app wallets at mw-auth</td><td><code>13579</code> (<code>MW_SEED_APP_PIN</code>)</td></tr>
       <tr><td>Portal users</td><td>password of the portals realm users</td><td><code>portal-test-pass</code> (<code>KC_PORTALS_TEST_PASSWORD</code>)</td></tr>
       <tr><td>Keycloak admin</td><td>user <code>kc-admin</code> and its password</td><td><code>kc-admin-test-pass</code> (<code>KC_BOOTSTRAP_ADMIN_PASSWORD</code>)</td></tr>
       <tr><td>OpenBao</td><td>the token (only while the stack is up)</td><td><code>dev-root-token</code> (an older OpenBao volume: its random root token)</td></tr>
@@ -400,7 +401,7 @@ scripts/creds.sh</pre></div>
      --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
   $k set-password $c -r ops --username ops-maker01 --new-password ops-test-pass
   rm -f /tmp/kc.config'</pre></div>
-    <p>Realms: <code>ops</code> (console), <code>customers</code> (app, password <code>app-test-pass</code>), <code>portals</code>
+    <p>Realms: <code>ops</code> (console), <code>customers</code> (no longer accepted by the app API since ticket 69; removed in ticket 73), <code>portals</code>
     (org/SP portal, <code>portal-test-pass</code>), <code>partners</code>, <code>services</code> (service to service). Their
     definitions are in <code>deploy/keycloak/realms</code>. <code>deploy/reset.sh</code> re-imports them and resets every user.</p>
   </div>
@@ -439,9 +440,9 @@ docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token ope
     (or <code>scripts/api-test.sh</code>):</p>
     <div class="cmd"><pre>curl -sk https://localhost/test/core-mock/v1/pin-public-key -H 'apikey: e2e-test-apikey'</pre></div>
     <p><b>Tokens</b> (JWT) for the business APIs: a form POST to the gateway. All login clients are public: no client secret.</p>
-    <div class="cmd"><pre><span class="c"># app user (realm customers) -> /app/v1/*</span>
-curl -sk https://localhost/auth/realms/customers/protocol/openid-connect/token \
-  -d client_id=mw-app -d grant_type=password -d username=customer01 -d password=app-test-pass
+    <div class="cmd"><pre><span class="c"># app user -> /app/v1/*: mw-auth login (binds a new device, reads the OTP from the SMSC simulator)</span>
+MW_SEED_APP_PIN=13579 node scripts/lib/mw-auth-token.mjs 01711000001
+<span class="c"># then send accessToken as the bearer and deviceId as X-Device-Id</span>
 <span class="c"># portal user (realm portals) -> /portal/org/v1/*</span>
 curl -sk https://localhost/auth/realms/portals/protocol/openid-connect/token \
   -d client_id=mw-portal -d grant_type=password -d username=org-maker01 -d password=portal-test-pass
@@ -459,7 +460,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <div class="table-wrap"><table>
       <tr><th>Variable</th><th>Value</th></tr>
       <tr><td><code>e2eApiKey</code></td><td><code>e2e-test-apikey</code></td></tr>
-      <tr><td><code>kcCustomersPassword</code></td><td><code>app-test-pass</code></td></tr>
+      <tr><td><code>appPin</code></td><td><code>13579</code></td></tr>
       <tr><td><code>kcPortalsPassword</code></td><td><code>portal-test-pass</code></td></tr>
       <tr><td><code>kcOpsPassword</code></td><td><code>ops-test-pass</code></td></tr>
       <tr><td><code>kcOpsTotpSecret</code></td><td><code>opstesttotpsecretnotarealsecret1</code></td></tr>
@@ -502,9 +503,9 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
 <section id="s3">
   <h2><span class="num">3</span> App flows</h2>
   <p>Page <span class="ui">App flows</span>. Block 1 <i>Who is signed in</i>, block 2 <i>Flow</i>, block 3 <i>Look things up</i>.
-  <b>Sign-in: none.</b> The console signs in as the user in <span class="ui">User (customers realm)</span> with the
-  password <code>app-test-pass</code>, binds a device for it the first time, and signs every request. The wallet PIN is
-  <code>1234</code>. Under <span class="ui">Transaction type</span> a hint says what the chosen type does.</p>
+  <b>Sign-in: none.</b> The console signs in as the user in <span class="ui">User (customers realm)</span> at mw-auth: it
+  binds a device for it the first time (OTP + app PIN <code>13579</code>), logs in with the MSISDN and the app PIN, and signs
+  every request. The transaction PIN is <code>1234</code> (the core's, until ticket 72). Under <span class="ui">Transaction type</span> a hint says what the chosen type does.</p>
   <div class="warn"><b>Pick the transaction type first, then the user.</b> Choosing a
   <span class="ui">Transaction type</span> resets the user, counterparty and amount to that type's defaults
   (the defaults below already fit each case).</div>

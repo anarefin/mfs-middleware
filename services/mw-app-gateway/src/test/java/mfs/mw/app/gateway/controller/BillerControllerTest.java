@@ -43,7 +43,7 @@ class BillerControllerTest {
 
   static RequestPostProcessor customer() {
     return jwt()
-        .jwt(j -> j.claim("msisdn", "01711000001").claim("realm_access", Map.of("roles", List.of("customer"))));
+        .jwt(j -> j.claim("msisdn", "01711000001").claim("role", "customer").claim("amr", List.of("pin", "device")));
   }
 
   MvcTestResult fetch(RequestPostProcessor auth, String code, String body) {

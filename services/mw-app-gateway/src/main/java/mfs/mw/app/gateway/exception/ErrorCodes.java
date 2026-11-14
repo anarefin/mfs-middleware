@@ -23,6 +23,8 @@ public final class ErrorCodes {
   public static final String AUTH_UNAUTHENTICATED = "MW-AUTH-001";
   /** Valid token, but no wallet (claim msisdn) or a role this endpoint does not serve: HTTP 403. */
   public static final String AUTH_FORBIDDEN = "MW-AUTH-002";
+  /** The token is of a session without a PIN (first-PIN OTP login at mw-auth): 403 (ticket 69). */
+  public static final String AUTH_PIN_NOT_SET = "MW-AUTH-045";
   /** X-Device-Id missing, or not a device bound to this wallet (any more): HTTP 401. */
   public static final String AUTH_DEVICE_NOT_BOUND = "MW-AUTH-003";
   /** Request signature headers missing or the signature does not verify: HTTP 401. */

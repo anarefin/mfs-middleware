@@ -42,7 +42,7 @@ export async function bindDevice(_prev: AppState, form: FormData): Promise<AppSt
   return guarded(t, async () => {
     await ready(t, user, form.get("force") === "1");
     const s = deviceState(user);
-    return { ok: !t.failed, headline: `device ${s.deviceId} bound for ${user} (${await walletOf(user)})`, steps: t.steps };
+    return { ok: !t.failed, headline: `device ${s.deviceId} bound for ${user} (${walletOf(user)})`, steps: t.steps };
   });
 }
 
@@ -134,7 +134,7 @@ export async function submitTxn(_prev: AppState, form: FormData): Promise<AppSta
   if (!/^\d{4,6}$/.test(pin)) return fail(t, "the PIN is 4 to 6 digits (seeded wallets: 1234)");
   const started = Date.now();
   return guarded(t, async () => {
-    const payer = await walletOf(user);
+    const payer = walletOf(user);
     const encryptedPin = await core.encrypt(pin);
     t.note("encrypt the PIN on the device", "RSA-OAEP SHA-256 with the core's public key: the PIN never travels in clear");
     const built = buildBody(type, form, amount, encryptedPin);

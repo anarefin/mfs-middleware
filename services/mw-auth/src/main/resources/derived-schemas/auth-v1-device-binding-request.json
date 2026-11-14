@@ -3,16 +3,38 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
+    "msisdn",
     "publicKey",
     "otp"
   ],
   "properties": {
+    "msisdn": {
+      "type": "string"
+    },
     "publicKey": {
       "type": "string",
       "maxLength": 512
     },
     "otp": {
       "type": "string"
+    },
+    "encryptedPin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "keyId",
+        "ciphertext"
+      ],
+      "properties": {
+        "keyId": {
+          "type": "string"
+        },
+        "ciphertext": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      }
     }
   }
 }

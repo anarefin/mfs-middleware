@@ -802,8 +802,9 @@ services:
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
       # Valkey for device sessions and the nonce cache (ticket 68, 18.7); its password comes from OpenBao.
       VALKEY_HOST: ${VALKEY_HOST:-valkey}
-      # The app's Keycloak realm `customers` token on /auth/v1/* until mw-auth issues its own (ticket 69).
-      MW_APP_JWK_SET_URI: ${MW_APP_JWK_SET_URI:-http://keycloak:8080/realms/customers/protocol/openid-connect/certs}
+      # DEV ONLY: POST /internal/v1/seed/pins, the seeder's first app PINs (ticket 69); dev.env.defaults
+      # switches it on, the default is off.
+      MW_AUTH_SEED_API_ENABLED: ${MW_AUTH_SEED_API_ENABLED:-false}
       # Binding OTPs per wallet in 15 min (default 5): dev only raises it, so repeated API suite runs
       # (each binds every test user's new device once) do not hit the limit. Moved from mw-app-gateway.
       MW_AUTH_DEVICE_OTP_MAX_SENDS: ${MW_AUTH_DEVICE_OTP_MAX_SENDS:-20}
@@ -937,10 +938,8 @@ services:
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "4"
       # Valkey for device sessions and the nonce cache (9.1, 18.6); its password comes from OpenBao.
       VALKEY_HOST: ${VALKEY_HOST:-valkey}
-      # Signing keys of Keycloak realm `customers` (spec 9.1). Keycloak sits on `ops` and, as
-      # the recorded MVP deviation of 18.1, on `data`: the service reaches it over `data` and
-      # joins no ops network (the ops subnet may call the APISIX Admin API).
-      MW_APP_JWK_SET_URI: ${MW_APP_JWK_SET_URI:-http://keycloak:8080/realms/customers/protocol/openid-connect/certs}
+      # The app tokens' signing keys: mw-auth's JWK Set on its public port (ticket 69, D21; RS256).
+      MW_APP_JWK_SET_URI: ${MW_APP_JWK_SET_URI:-http://mw-auth:8080/auth/v1/.well-known/jwks.json}
       # Synchronous wait for a terminal status before 202 PROCESSING (7.5).
       MW_APP_REPLY_BUDGET: ${MW_APP_REPLY_BUDGET:-25s}
       # mTLS client certificate (pki_int/issue/mw-app-gateway) for mw-auth's internal API: the device
@@ -1224,7 +1223,8 @@ services:
       EDGE_URL: http://apisix:9080
       PUBLIC_URL: ${MW_ADMIN_UI_PUBLIC_URL:-https://localhost}
       MW_E2E_API_KEY: ${MW_E2E_API_KEY:?cp dev.env.defaults .env}
-      KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?cp dev.env.defaults .env}
+      # the app users log in at mw-auth with the seeded app PIN (ticket 69)
+      MW_SEED_APP_PIN: ${MW_SEED_APP_PIN:-}
       KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?cp dev.env.defaults .env}
       CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?cp dev.env.defaults .env}
     depends_on:
@@ -1296,6 +1296,8 @@ services:
       KC_OPS_TEST_TOTP_SECRET: ${KC_OPS_TEST_TOTP_SECRET:?cp dev.env.defaults .env}
       KC_PORTALS_TEST_PASSWORD: ${KC_PORTALS_TEST_PASSWORD:?cp dev.env.defaults .env}
       KC_CUSTOMERS_TEST_PASSWORD: ${KC_CUSTOMERS_TEST_PASSWORD:?cp dev.env.defaults .env}
+      # The dev app PIN of the app wallets at mw-auth (ticket 69, step seed-app-pins): a fixed fake value.
+      MW_SEED_APP_PIN: ${MW_SEED_APP_PIN:-}
     deploy:
       resources:
         limits: { cpus: "1.0", memory: 256M }

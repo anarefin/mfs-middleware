@@ -22,7 +22,7 @@ import org.springframework.stereotype.Service;
  * full configs live with the adapters); one it does not know fails the step.
  */
 @Service
-@Order(4)
+@Order(5)
 public class SeedPartnerConfigsStep implements SeedStep {
 
   static final String REASON = "seed: partner baseline (mw-seeder)";

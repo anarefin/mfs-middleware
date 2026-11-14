@@ -269,6 +269,8 @@ mw:
       timeout: 2s
       connect-timeout: 1s
     jwt:
-      # Keycloak realm `customers` (spec 9.1). Keys are fetched on the first token.
-      jwk-set-uri: ${MW_APP_JWK_SET_URI:http://keycloak:8080/realms/customers/protocol/openid-connect/certs}
-      realm-path: /realms/customers
+      # mw-auth's access tokens (ticket 69, spec 18.7, D21): RS256, typ at+jwt, exact issuer and
+      # audience. Keys are fetched on the first token (and again on an unknown kid).
+      jwk-set-uri: ${MW_APP_JWK_SET_URI:http://mw-auth:8080/auth/v1/.well-known/jwks.json}
+      issuer: ${MW_AUTH_TOKEN_ISSUER:mw-auth}
+      audience: mw-app

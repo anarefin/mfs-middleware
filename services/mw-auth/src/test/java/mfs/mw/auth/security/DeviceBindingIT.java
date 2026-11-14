@@ -2,6 +2,8 @@ package mfs.mw.auth.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
@@ -23,6 +25,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import mfs.mw.auth.TestInfrastructure;
 import mfs.mw.auth.ValkeyInfrastructure;
+import mfs.mw.auth.client.CryptoClient;
+import mfs.mw.auth.dto.CryptoJwsSigned;
 import mfs.mw.auth.dto.NotificationRequest;
 import mfs.mw.auth.messaging.EventPublisher;
 import mfs.mw.auth.service.RequestSignatures;
@@ -48,6 +52,9 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
  * internal lookups the gateway's verifier asks for ({@code /internal/v1/devices/{id}}, {@code
  * /internal/v1/sessions/{walletId}/{deviceId}}, with a services token of mw-app-gateway). The Kafka
  * publisher is a mock that hands the test the OTP SMS, as the SMSC would hand it to the customer.
+ * Since ticket 69 no bearer token: the wallet is named by its MSISDN (mw-crypto's tokenisation is a
+ * mock: {@code tok-<msisdn>}); a session is opened by a login, here the first-PIN OTP login (the
+ * test wallets have no PIN). {@code LoginIT} covers the PIN login and the tokens.
  */
 @SpringBootTest(
     properties = {
@@ -64,6 +71,7 @@ class DeviceBindingIT {
   private final StringRedisTemplate valkey;
 
   @MockitoBean EventPublisher publisher;
+  @MockitoBean CryptoClient crypto;
 
   private String msisdn;
 
@@ -78,6 +86,10 @@ class DeviceBindingIT {
   @BeforeEach
   void freshWallet() {
     msisdn = newWallet();
+    when(crypto.tokeniseMsisdn(anyString()))
+        .thenAnswer(inv -> new CryptoClient.MsisdnToken("tok-" + inv.getArgument(0), "tokenise-msisdn.v1"));
+    when(crypto.signJws(anyString(), anyString(), any(), any()))
+        .thenReturn(new CryptoJwsSigned("eyJh.eyJp.c2ln", "jwt-sign.v1", "RS256"));
   }
 
   String newWallet() {
@@ -108,7 +120,11 @@ class DeviceBindingIT {
   record Signed(String deviceId, String timestamp, String nonce, String signature) {}
 
   static Signed sign(Device device, String method, String path, String body) throws Exception {
-    String ts = Long.toString(Instant.now().toEpochMilli());
+    return signAt(device, method, path, body, Instant.now());
+  }
+
+  static Signed signAt(Device device, String method, String path, String body, Instant at) throws Exception {
+    String ts = Long.toString(at.toEpochMilli());
     String nonce = "n-" + UUID.randomUUID();
     String canonical =
         String.join("\n", method, path, RequestSignatures.sha256Hex(body.getBytes(StandardCharsets.UTF_8)), ts, nonce,
@@ -119,10 +135,7 @@ class DeviceBindingIT {
     return new Signed(device.id(), ts, nonce, Base64.getEncoder().encodeToString(s.sign()));
   }
 
-  RequestPostProcessor token() {
-    return token(msisdn);
-  }
-
+  /** Some JWT that is not a services token of an allowed client. */
   static RequestPostProcessor token(String wallet) {
     return jwt()
         .jwt(j -> j.subject("sub-" + wallet).claim("msisdn", wallet)
@@ -130,7 +143,7 @@ class DeviceBindingIT {
   }
 
   MvcTestResult post(String path, String body, Signed signed) {
-    var req = mvc.post().uri(path).with(token()).contentType(MediaType.APPLICATION_JSON).content(body);
+    var req = mvc.post().uri(path).contentType(MediaType.APPLICATION_JSON).content(body);
     if (signed != null) {
       req = req.header("X-Device-Id", signed.deviceId())
           .header("X-Timestamp", signed.timestamp())
@@ -141,8 +154,12 @@ class DeviceBindingIT {
   }
 
   MvcTestResult askOtp(String deviceId) {
-    var req = mvc.post().uri("/auth/v1/otp").with(token()).contentType(MediaType.APPLICATION_JSON)
-        .content("{\"locale\":\"en\"}");
+    return askOtp(deviceId, "BIND");
+  }
+
+  MvcTestResult askOtp(String deviceId, String purpose) {
+    var req = mvc.post().uri("/auth/v1/otp").contentType(MediaType.APPLICATION_JSON)
+        .content("{\"msisdn\":\"" + msisdn + "\",\"purpose\":\"" + purpose + "\",\"locale\":\"en\"}");
     if (deviceId != null) {
       req = req.header("X-Device-Id", deviceId);
     }
@@ -151,8 +168,12 @@ class DeviceBindingIT {
 
   /** Asks for a binding OTP for {@code device} and returns the code the SMS carried. */
   String otpFor(Device device) {
+    return otpFor(device, "BIND");
+  }
+
+  String otpFor(Device device, String purpose) {
     clearInvocations(publisher);
-    assertThat(askOtp(device.id())).hasStatus(202);
+    assertThat(askOtp(device.id(), purpose)).hasStatus(202);
     return lastSms().params().get("otp");
   }
 
@@ -162,8 +183,8 @@ class DeviceBindingIT {
     return (NotificationRequest) sent.getValue();
   }
 
-  static String bindBody(Device device, String otp) {
-    return "{\"publicKey\":\"" + device.publicKey() + "\",\"otp\":\"" + otp + "\"}";
+  String bindBody(Device device, String otp) {
+    return "{\"msisdn\":\"" + msisdn + "\",\"publicKey\":\"" + device.publicKey() + "\",\"otp\":\"" + otp + "\"}";
   }
 
   MvcTestResult bindWith(Device device, String otp) throws Exception {
@@ -175,8 +196,10 @@ class DeviceBindingIT {
     return bindWith(device, otpFor(device));
   }
 
+  /** Opens a session: the first-PIN login with a LOGIN OTP (the test wallets have no PIN). */
   MvcTestResult openSession(Device device) throws Exception {
-    return post("/auth/v1/sessions", "", sign(device, "POST", "/auth/v1/sessions", ""));
+    String body = "{\"msisdn\":\"" + msisdn + "\",\"otp\":\"" + otpFor(device, "LOGIN") + "\"}";
+    return post("/auth/v1/sessions", body, sign(device, "POST", "/auth/v1/sessions", body));
   }
 
   static String wrong(String otp) {
@@ -207,7 +230,9 @@ class DeviceBindingIT {
     MvcTestResult bound = bind(d);
     assertThat(bound).hasStatus(201);
     assertThat(bound).bodyJson().extractingPath("$.deviceId").isEqualTo(d.id());
-    assertThat(bound).bodyJson().extractingPath("$.idleTimeoutSeconds").isEqualTo(300);
+    assertThat(bound).bodyJson().extractingPath("$.wallet").isEqualTo(msisdn.substring(0, 4) + "****" + msisdn.substring(8));
+    assertCode(session(d), 404, "MW-AUTH-007"); // a binding opens no session: log in next
+    assertThat(openSession(d)).hasStatus(200);
 
     MvcTestResult key = device(d);
     assertThat(key).hasStatus(200);
@@ -217,7 +242,27 @@ class DeviceBindingIT {
     MvcTestResult live = session(d);
     assertThat(live).hasStatus(200);
     assertThat(live).bodyJson().extractingPath("$.idleTimeoutSeconds").isEqualTo(300);
+    assertThat(live).bodyJson().extractingPath("$.deviceKeyFingerprint").isEqualTo(
+        mfs.mw.auth.service.DeviceBindingService.fingerprint(d.publicKey()));
+    assertThat(live).bodyJson().extractingPath("$.boundAt").isNotNull();
     assertThat(valkey.getExpire("sess:" + msisdn + ":" + d.id())).isPositive();
+  }
+
+  @Test
+  void aKeyReplacedByARebindingChangesTheSessionsFingerprint() throws Exception {
+    Device d = Device.create();
+    bind(d);
+    openSession(d);
+    String before = com.jayway.jsonpath.JsonPath.read(session(d).getResponse().getContentAsString(),
+        "$.deviceKeyFingerprint");
+    Device sameIdNewKey = new Device(d.id(), Device.create().key());
+    assertThat(bind(sameIdNewKey)).hasStatus(201);
+    assertCode(session(d), 404, "MW-AUTH-007"); // the rebinding ended the session
+    openSession(sameIdNewKey);
+    String after = com.jayway.jsonpath.JsonPath.read(session(d).getResponse().getContentAsString(),
+        "$.deviceKeyFingerprint");
+    assertThat(after).isNotEqualTo(before)
+        .isEqualTo(mfs.mw.auth.service.DeviceBindingService.fingerprint(sameIdNewKey.publicKey()));
   }
 
   @Test
@@ -225,12 +270,27 @@ class DeviceBindingIT {
     Device d = Device.create();
     bind(d);
     assertCode(mvc.get().uri("/internal/v1/devices/" + d.id()).exchange(), 401, "MW-AUTH-001");
-    assertCode(mvc.get().uri("/internal/v1/devices/" + d.id()).with(token()).exchange(), 403, "MW-AUTH-002");
+    assertCode(mvc.get().uri("/internal/v1/devices/" + d.id()).with(token(msisdn)).exchange(), 403, "MW-AUTH-002");
   }
 
   @Test
-  void theDeviceApiNeedsTheAppToken() {
-    assertCode(mvc.post().uri("/auth/v1/otp").header("X-Device-Id", "dev-00000001").exchange(), 401, "MW-AUTH-001");
+  void theSeedApiIsOffUnlessSwitchedOn() {
+    assertCode(mvc.post().uri("/internal/v1/seed/pins").contentType(MediaType.APPLICATION_JSON)
+        .content("{\"pins\":[]}").exchange(), 401, "MW-AUTH-001");
+  }
+
+  @Test
+  void anOtpForAnotherPurposeDoesNotBind() throws Exception {
+    Device d = Device.create();
+    String login = otpFor(d, "LOGIN");
+    assertCode(bindWith(d, login), 401, "MW-AUTH-011");
+  }
+
+  @Test
+  void aLoginOtpIsSentWithItsOwnTemplate() throws Exception {
+    Device d = Device.create();
+    otpFor(d, "LOGIN");
+    assertThat(lastSms().templateCode()).isEqualTo("LOGIN_OTP");
   }
 
   @Test
@@ -259,19 +319,17 @@ class DeviceBindingIT {
   @Test
   void aStaleTimestampIsRejected() throws Exception {
     Device d = Device.create();
-    bind(d);
-    Signed fresh = sign(d, "POST", "/auth/v1/sessions", "");
-    Signed old = new Signed(d.id(), Long.toString(Instant.now().minusSeconds(600).toEpochMilli()), fresh.nonce(),
-        fresh.signature());
-    assertCode(post("/auth/v1/sessions", "", old), 401, "MW-AUTH-005");
+    String body = bindBody(d, otpFor(d));
+    Signed old = signAt(d, "POST", "/auth/v1/devices", body, Instant.now().minusSeconds(600));
+    assertCode(post("/auth/v1/devices", body, old), 401, "MW-AUTH-005");
   }
 
   @Test
   void anUnboundDeviceHasNoKeyNoSessionAndCannotOpenOne() throws Exception {
     Device d = Device.create();
     assertCode(device(d), 404, "MW-AUTH-003");
-    assertCode(session(d), 404, "MW-AUTH-007");
-    assertCode(openSession(d), 401, "MW-AUTH-003");
+    assertCode(session(d), 404, "MW-AUTH-003");
+    assertCode(openSession(d), 401, "MW-AUTH-047");
     assertCode(internal("/internal/v1/devices/short"), 401, "MW-AUTH-003");
   }
 
@@ -280,12 +338,16 @@ class DeviceBindingIT {
     Device first = Device.create();
     Device second = Device.create();
     bind(first);
+    assertThat(openSession(first)).hasStatus(200);
     bind(second);
     assertCode(device(first), 404, "MW-AUTH-003");
-    assertCode(session(first), 404, "MW-AUTH-007");
-    assertCode(openSession(first), 401, "MW-AUTH-003");
+    assertCode(session(first), 404, "MW-AUTH-003");
+    assertCode(openSession(first), 401, "MW-AUTH-047");
     assertThat(device(second)).hasStatus(200);
+    assertThat(openSession(second)).hasStatus(200);
     assertThat(session(second)).hasStatus(200);
+    assertThat(jdbc.queryForObject("select count(*) from refresh_token where wallet_id = ? and not revoked",
+        Integer.class, msisdn)).as("the first device's session was revoked").isEqualTo(1);
     assertThat(jdbc.queryForObject("select count(*) from device where wallet_id = ? and unbound_at is null",
         Integer.class, msisdn)).isEqualTo(1);
   }
@@ -294,32 +356,35 @@ class DeviceBindingIT {
   void aDeviceBoundByAnotherWalletMovesThereAndItsSessionHereEnds() throws Exception {
     Device d = Device.create();
     bind(d);
+    openSession(d);
     String mine = msisdn;
     msisdn = newWallet();
     assertThat(bind(d)).hasStatus(201);
 
     MvcTestResult key = device(d);
     assertThat(key).bodyJson().extractingPath("$.walletId").isEqualTo(msisdn);
-    assertCode(internal("/internal/v1/sessions/" + mine + "/" + d.id()), 404, "MW-AUTH-007");
+    assertCode(internal("/internal/v1/sessions/" + mine + "/" + d.id()), 404, "MW-AUTH-003");
+    assertThat(valkey.hasKey("sess:" + mine + ":" + d.id())).isFalse();
   }
 
   @Test
-  void anExpiredSessionIsGoneUntilASignedSessionOpen() throws Exception {
+  void anExpiredSessionIsGoneUntilTheNextLogin() throws Exception {
     Device d = Device.create();
     bind(d);
+    openSession(d);
     valkey.delete("sess:" + msisdn + ":" + d.id()); // what the idle timeout does
     assertCode(session(d), 404, "MW-AUTH-007");
 
     MvcTestResult opened = openSession(d);
     assertThat(opened).hasStatus(200);
-    assertThat(opened).bodyJson().extractingPath("$.deviceId").isEqualTo(d.id());
+    assertThat(opened).bodyJson().extractingPath("$.idleTimeoutSeconds").isEqualTo(300);
     assertThat(session(d)).hasStatus(200);
   }
 
   @Test
   void aKeyThatIsNotP256IsRefusedAtBinding() throws Exception {
     Device d = Device.create();
-    String body = "{\"publicKey\":\"bm90IGEga2V5\",\"otp\":\"" + otpFor(d) + "\"}";
+    String body = "{\"msisdn\":\"" + msisdn + "\",\"publicKey\":\"bm90IGEga2V5\",\"otp\":\"" + otpFor(d) + "\"}";
     assertCode(post("/auth/v1/devices", body, sign(d, "POST", "/auth/v1/devices", body)), 400, "MW-VAL-001");
   }
 
@@ -336,7 +401,7 @@ class DeviceBindingIT {
   // --- the binding OTP (review A5) ---
 
   @Test
-  void theOtpGoesBySmsToTheTokensWalletWithOtpPriority() throws Exception {
+  void theOtpGoesBySmsToTheWalletWithOtpPriority() throws Exception {
     Device d = Device.create();
     MvcTestResult r = askOtp(d.id());
     assertThat(r).hasStatus(202);
@@ -363,7 +428,7 @@ class DeviceBindingIT {
   @Test
   void aBindingWithoutAnOtpIsRefused() throws Exception {
     Device d = Device.create();
-    String body = "{\"publicKey\":\"" + d.publicKey() + "\"}";
+    String body = "{\"msisdn\":\"" + msisdn + "\",\"publicKey\":\"" + d.publicKey() + "\"}";
     MvcTestResult r = post("/auth/v1/devices", body, sign(d, "POST", "/auth/v1/devices", body));
     assertCode(r, 400, "MW-VAL-001");
     assertThat(r).bodyJson().extractingPath("$.details[0].field").isEqualTo("otp");

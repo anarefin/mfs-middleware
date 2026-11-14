@@ -19,7 +19,7 @@ SECRET_VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALT
 # committed in deploy/dev.env.defaults like every other dev value.
 FIXED_VARS="KC_OPS_TEST_PASSWORD=ops-test-pass KC_CUSTOMERS_TEST_PASSWORD=app-test-pass
   KC_PORTALS_TEST_PASSWORD=portal-test-pass KC_BOOTSTRAP_ADMIN_PASSWORD=kc-admin-test-pass
-  KC_OPS_TEST_TOTP_SECRET=opstesttotpsecretnotarealsecret1 MW_E2E_API_KEY=e2e-test-apikey"
+  KC_OPS_TEST_TOTP_SECRET=opstesttotpsecretnotarealsecret1 MW_E2E_API_KEY=e2e-test-apikey MW_SEED_APP_PIN=13579"
 # Not secrets, but generated into the same .env and required by the platform file (no fallback):
 # each MNO's USSD source allow-list (comma-separated CIDRs, item A4).
 ADDRESS_VARS="USSD_GP_ALLOWED_CIDRS USSD_ROBI_ALLOWED_CIDRS USSD_BL_ALLOWED_CIDRS USSD_TELETALK_ALLOWED_CIDRS"

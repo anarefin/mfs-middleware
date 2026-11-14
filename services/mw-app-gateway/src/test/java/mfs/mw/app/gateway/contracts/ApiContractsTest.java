@@ -22,6 +22,7 @@ import mfs.mw.app.gateway.dto.Biller;
 import mfs.mw.app.gateway.dto.BillerList;
 import mfs.mw.app.gateway.dto.CollectionList;
 import mfs.mw.app.gateway.dto.BoundDevice;
+import mfs.mw.app.gateway.dto.LiveSession;
 import mfs.mw.app.gateway.dto.EncryptedPin;
 import mfs.mw.app.gateway.dto.ErrorDetail;
 import mfs.mw.app.gateway.dto.ErrorEnvelope;
@@ -143,7 +144,16 @@ class ApiContractsTest {
         "content", "application/json", "schema").validate(JSON.readTree("{}"))).isNotEmpty();
     assertThat(OpenApiSchemas.at(AUTH_API, "paths", "/internal/v1/sessions/{walletId}/{deviceId}", "get", "responses",
         "200", "content", "application/json", "schema").validate(JSON.readTree(
-            "{\"walletId\":\"01711000001\",\"deviceId\":\"device-0001\",\"idleTimeoutSeconds\":300}"))).isEmpty();
+            "{\"walletId\":\"01711000001\",\"deviceId\":\"device-0001\",\"idleTimeoutSeconds\":300,\"deviceKeyFingerprint\":\"abababababababababababababababababababababababababababababababab\",\"boundAt\":\"2026-11-14T06:00:00Z\"}")))
+        .isEmpty();
+  }
+
+  @Test
+  void aContractShapedLiveSessionDeserialises() {
+    String answer = "{\"walletId\":\"01711000001\",\"deviceId\":\"device-0001\",\"idleTimeoutSeconds\":300,\"deviceKeyFingerprint\":\"abababababababababababababababababababababababababababababababab\",\"boundAt\":\"2026-11-14T06:00:00Z\"}";
+    assertThat(OpenApiSchemas.component(AUTH_API, "LiveSession").validate(JSON.readTree(answer))).isEmpty();
+    assertThat(JSON.readValue(answer, LiveSession.class)).isEqualTo(new LiveSession(
+        "01711000001", "device-0001", 300, "abababababababababababababababababababababababababababababababab", Instant.parse("2026-11-14T06:00:00Z")));
   }
 
   @Test

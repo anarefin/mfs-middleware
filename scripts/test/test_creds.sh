@@ -11,6 +11,7 @@ KC_CUSTOMERS_TEST_PASSWORD=fake-customers-pw
 KC_PORTALS_TEST_PASSWORD=fake-portals-pw
 KC_OPS_TEST_TOTP_SECRET=12345678901234567890123456789012
 MW_E2E_API_KEY=fake-e2e-key
+MW_SEED_APP_PIN=97531
 CHECKOUT_DEMO_MERCHANT_SECRET=fake-checkout
 BILLAGG_HMAC_SECRET=fake-billagg
 C2WBANK_HMAC_SECRET=fake-c2wbank
@@ -90,7 +91,7 @@ test_creds_prints_every_login_and_key() {
            fake-checkout fake-billagg fake-c2wbank fake-gp fake-robi fake-bl fake-teletalk dev-root-token \
            https://localhost/tester https://localhost/console seed-ops-maker customer01 org-maker01 kc-admin \
            "scripts/totp.sh seed-ops-maker" fake-mwcrypto-label fake-mwcrypto-so fake-mwcrypto-user \
-           fake-paysim-label fake-paysim-so fake-paysim-user; do
+           fake-paysim-label fake-paysim-so fake-paysim-user "app PIN (mw-auth login): 97531" "scripts/lib/mw-auth-token.mjs"; do
     assert_out_contains "$v"
   done
 }

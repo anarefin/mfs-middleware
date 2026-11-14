@@ -7,14 +7,13 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Device binding (spec 9.1, 18.7, ticket 68): its settings, the app token of {@code /auth/v1/**}
- * until ticket 69 ({@link CustomerJwtProperties}), and Valkey (sessions, nonces) failing fast while
+ * Device binding (spec 9.1, 18.7, ticket 68): its settings and Valkey (sessions, nonces) failing fast while
  * disconnected, so the device API answers 503 MW-SYS-012 instead of waiting; Valkey is kept out of
  * the health groups ({@code application.yml}) so the internal API is not taken out of readiness
  * with it.
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties({DeviceBindingProperties.class, CustomerJwtProperties.class})
+@EnableConfigurationProperties({DeviceBindingProperties.class, TokenProperties.class})
 public class DeviceBindingConfig {
 
   @Bean

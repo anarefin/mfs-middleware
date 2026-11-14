@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits wallet authentication internal API (mw-auth)
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Internal API of mw-auth (spec 18.7, ADR D24), on its internal port (`https://mw-auth:8443`, the
     `app` zone network; not routed by APISIX). mTLS is mandatory: the TLS handshake needs a client
@@ -13,7 +13,14 @@ info:
 
     Ticket 68: the device lookups of mw-app-gateway's device gate. The gateway verifies a signed
     app request itself with the device's public key (cached up to 5 min) and asks for the session
-    on every app request; later tickets add the PIN, lock and assertion operations (70, 71).
+    on every app request; the session answer carries the fingerprint of the device's current key and
+    its binding time (ticket 69, security review of 68), so a key cached before a rebind or a key
+    replacement is dropped within the gateway's session-confirmation cache (10 s). Later tickets add
+    the PIN, lock and assertion operations (70, 71).
+
+    Dev only (ticket 69): `POST /internal/v1/seed/pins`, the seeder's first PINs, exists only with
+    `mw.auth.seed-api.enabled=true` (the dev stack), on the plain public port (the seeder has no
+    client certificate) and without a token; APISIX never routes `/internal/*`.
 servers:
   - url: https://mw-auth:8443
 security:
@@ -47,9 +54,10 @@ paths:
       summary: The wallet's live session on the device, extended by its idle timeout
       description: >-
         Every app request asks for it: a live session (`sess:{walletId}:{deviceId}`) is extended by
-        its idle timeout (sliding) and returned; none (idle timeout, ended by a binding of another
-        device) is 404 MW-AUTH-007. 503 MW-SYS-012 (retryable) when the session store cannot be
-        asked.
+        its idle timeout (sliding) and returned with the device's current key fingerprint and binding
+        time; none (idle timeout, logout, ended by a binding of another device) is 404 MW-AUTH-007; a
+        device no longer bound to this wallet is 404 MW-AUTH-003. 503 MW-SYS-012 (retryable) when the
+        session store cannot be asked.
       parameters:
         - name: walletId
           in: path
@@ -67,6 +75,29 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/seed/pins:
+    post:
+      operationId: seedPins
+      summary: "Dev only: first PINs of seeded wallets (mw-seeder)"
+      description: >-
+        Only with `mw.auth.seed-api.enabled=true`; no token, plain public port. Each PIN is an
+        `encryptedPin` under the PIN transport key (GET /auth/v1/pin-key): mw-auth stores the HMAC
+        mw-crypto derives. A wallet that already has a PIN is left alone (UNCHANGED); a wallet not
+        projected yet is UNKNOWN_WALLET (the seeder retries); a PIN mw-crypto refuses as weak is WEAK.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SeedPinsRequest" }
+      responses:
+        "200":
+          description: One outcome per wallet, in request order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SeedPinsResult" }
+        "400": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
@@ -115,11 +146,50 @@ components:
         boundAt: { type: string, format: date-time }
     LiveSession:
       type: object
-      required: [walletId, deviceId, idleTimeoutSeconds]
+      required: [walletId, deviceId, idleTimeoutSeconds, deviceKeyFingerprint, boundAt]
       properties:
         walletId: { type: string }
         deviceId: { type: string }
         idleTimeoutSeconds: { type: integer, description: The session's idle timeout in seconds }
+        deviceKeyFingerprint:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          description: Lower-case hex SHA-256 of the device's current public key (the SubjectPublicKeyInfo DER bytes)
+        boundAt: { type: string, format: date-time, description: When the device's current key was bound }
+    SeedPinsRequest:
+      type: object
+      additionalProperties: false
+      required: [pins]
+      properties:
+        pins:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            type: object
+            additionalProperties: false
+            required: [walletId, encryptedPin]
+            properties:
+              walletId: { type: string, pattern: "^[A-Za-z0-9._:+-]{1,64}$" }
+              encryptedPin:
+                type: object
+                additionalProperties: false
+                required: [keyId, ciphertext]
+                properties:
+                  keyId: { type: string }
+                  ciphertext: { type: string, maxLength: 4096 }
+    SeedPinsResult:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            required: [walletId, outcome]
+            properties:
+              walletId: { type: string }
+              outcome: { type: string, enum: [CREATED, UNCHANGED, UNKNOWN_WALLET, WEAK] }
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]

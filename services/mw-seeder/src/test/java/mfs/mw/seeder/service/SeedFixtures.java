@@ -31,7 +31,8 @@ final class SeedFixtures {
         Duration.ofMillis(20),
         manifest,
         new SeederProperties.Http(Duration.ofSeconds(1), Duration.ofSeconds(1)),
-        new SeederProperties.Endpoints(URI.create("http://kc"), URI.create("http://admin"), URI.create("http://core")),
+        new SeederProperties.Endpoints(URI.create("http://kc"), URI.create("http://admin"), URI.create("http://core"),
+            URI.create("http://auth")),
         List.of(
             new SeederProperties.Readiness("apisix", URI.create("http://apisix:7085/status/ready")),
             new SeederProperties.Readiness("mw-admin-api", URI.create("http://mw-admin-api:8080/actuator/health/readiness"))),
@@ -50,6 +51,7 @@ final class SeedFixtures {
         List.of(new PartnerSpec("ocs", true, 20_000L)),
         new Content(
             List.of(new MenuSpec("main", "classpath:seed-content/menus/main.json", List.of("gp", "robi"))),
-            List.of(new TemplateSpec("TXN_P2P_RECEIVED", "SMS", "en", "You have received Tk {{amount}}", null, "Bits"))));
+            List.of(new TemplateSpec("TXN_P2P_RECEIVED", "SMS", "en", "You have received Tk {{amount}}", null, "Bits"))),
+        new SeederProperties.AppPins("13579", "MW_SEED_APP_PIN", List.of("01711000001")));
   }
 }

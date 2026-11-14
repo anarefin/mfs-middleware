@@ -10,3 +10,6 @@ consumes:
   apis:
     - api/mw-admin-api/admin.v1.openapi.yaml
     - api/mw-core-mock/core-mock-seed.v1.openapi.yaml
+    # ticket 69: the PIN transport key and the dev-only first PINs of the app wallets
+    - api/mw-auth/auth.v1.openapi.yaml
+    - api/mw-auth/auth-internal.v1.openapi.yaml

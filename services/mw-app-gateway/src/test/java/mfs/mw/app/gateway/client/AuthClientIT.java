@@ -59,7 +59,8 @@ class AuthClientIT {
   static final String SESSION = "/internal/v1/sessions/01711000001/device-0001";
   static final String BOUND = "{\"deviceId\":\"device-0001\",\"walletId\":\"01711000001\","
       + "\"publicKey\":\"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE\",\"boundAt\":\"2026-11-14T06:00:00Z\"}";
-  static final String LIVE = "{\"walletId\":\"01711000001\",\"deviceId\":\"device-0001\",\"idleTimeoutSeconds\":300}";
+  static final String LIVE = "{\"walletId\":\"01711000001\",\"deviceId\":\"device-0001\",\"idleTimeoutSeconds\":300,"
+      + "\"deviceKeyFingerprint\":\"abababababababababababababababababababababababababababababababab\",\"boundAt\":\"2026-11-14T06:00:00Z\"}";
   static final String NOT_BOUND = "{\"code\":\"MW-AUTH-003\",\"message\":\"Device not bound\",\"correlationId\":\"c\","
       + "\"retryable\":false,\"details\":[]}";
 
@@ -170,16 +171,17 @@ class AuthClientIT {
 
     for (int i = 0; i < 6; i++) { // never opens the breaker
       assertThat(client.device("device-0001")).isEmpty();
-      assertThat(client.session("01711000001", "device-0001")).isFalse();
+      assertThat(client.session("01711000001", "device-0001")).isEmpty();
     }
   }
 
   @Test
-  void aLiveSessionIsTrueAndTheTokenIsReused() {
+  void aLiveSessionIsAnsweredWithTheKeyFingerprintAndTheTokenIsReused() {
     authServer.stubFor(get(urlEqualTo(SESSION)).willReturn(okJson(LIVE)));
 
-    assertThat(client.session("01711000001", "device-0001")).isTrue();
-    assertThat(client.session("01711000001", "device-0001")).isTrue();
+    assertThat(client.session("01711000001", "device-0001")).get()
+        .extracting(s -> s.deviceKeyFingerprint()).isEqualTo("abababababababababababababababababababababababababababababababab");
+    assertThat(client.session("01711000001", "device-0001")).isPresent();
     keycloak.verify(1, postRequestedFor(urlEqualTo("/token")));
   }
 
@@ -194,7 +196,7 @@ class AuthClientIT {
     authServer.stubFor(get(urlEqualTo(SESSION)).withHeader("Authorization", equalTo("Bearer new"))
         .willReturn(okJson(LIVE)));
 
-    assertThat(client.session("01711000001", "device-0001")).isTrue();
+    assertThat(client.session("01711000001", "device-0001")).isPresent();
     keycloak.verify(2, postRequestedFor(urlEqualTo("/token")));
   }
 

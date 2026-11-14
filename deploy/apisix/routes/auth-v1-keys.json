@@ -1,0 +1,33 @@
+{
+  "name": "auth-v1-keys",
+  "desc": "mw-auth public keys (18.7; ticket 69): the access tokens' JWK Set and the PIN transport key. GET only, quota per address. The discovery document is not routed: only APISIX reads it, in-stack",
+  "uris": ["/auth/v1/.well-known/jwks.json", "/auth/v1/pin-key"],
+  "methods": ["GET"],
+  "plugins": {
+    "client-control": {
+      "max_body_size": 1024
+    },
+    "limit-count": {
+      "count": 120,
+      "time_window": 60,
+      "key_type": "var",
+      "key": "remote_addr",
+      "group": "auth-v1-keys",
+      "rejected_code": 429,
+      "show_limit_quota_header": true,
+      "policy": "redis",
+      "redis_host": "valkey",
+      "redis_port": 6379,
+      "redis_password": "$env://VALKEY_PASSWORD",
+      "redis_database": 0,
+      "redis_timeout": 1000,
+      "allow_degradation": true
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": { "connect": 5, "send": 10, "read": 10 },
+    "nodes": { "mw-auth:8080": 1 }
+  }
+}

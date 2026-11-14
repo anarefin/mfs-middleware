@@ -40,6 +40,8 @@ mw:
       keycloak: ${MW_SEED_KEYCLOAK_URL:http://keycloak:8080}
       admin-api: ${MW_SEED_ADMIN_API_URL:http://mw-admin-api:8080}
       core-mock: ${MW_SEED_CORE_MOCK_URL:http://mw-core-mock:8080}
+      # mw-auth's public port (ticket 69): GET /auth/v1/pin-key and the dev-only POST /internal/v1/seed/pins.
+      auth: ${MW_SEED_AUTH_URL:http://mw-auth:8080}
     readiness:
       - { name: apisix, url: "${MW_SEED_APISIX_READY_URL:http://apisix:7085/status/ready}" }
       - { name: keycloak, url: "${MW_SEED_KEYCLOAK_READY_URL:http://keycloak:9000/health/ready}" }
@@ -56,6 +58,9 @@ mw:
       - { name: mw-adapter-bank, url: "http://mw-adapter-bank:8080/actuator/health/readiness" }
       - { name: mw-checkout, url: "http://mw-checkout:8080/actuator/health/readiness" }
       - { name: mw-portal-api, url: "http://mw-portal-api:8080/actuator/health/readiness" }
+      # mw-crypto and mw-auth serve actuator on their plain management port 8081 (their API ports need mTLS)
+      - { name: mw-crypto, url: "http://mw-crypto:8081/actuator/health/readiness" }
+      - { name: mw-auth, url: "http://mw-auth:8081/actuator/health/readiness" }
     keycloak-admin:
       realm: master
       client-id: admin-cli
@@ -181,3 +186,10 @@ mw:
           locale: bn
           body: "আপনি {{counterparty}} নম্বর থেকে ৳{{amount}} পেয়েছেন। TrxID {{txnId}}"
           sender-id: Bits
+    # The dev app PIN (ticket 69, step seed-app-pins): the app wallets above (CUSTOMER, AGENT, MERCHANT)
+    # plus the realm imports' app users (customer01/02, agent01, merchant01/02 of customers-realm.json,
+    # core-mock's own seed wallets) log in at mw-auth with it. A fixed fake value from deploy/.env.
+    app-pins:
+      pin: ${MW_SEED_APP_PIN:}
+      pin-env: MW_SEED_APP_PIN
+      extra-wallet-ids: ["01711000001", "01711000002", "01811000001", "01911000001", "01911000002"]

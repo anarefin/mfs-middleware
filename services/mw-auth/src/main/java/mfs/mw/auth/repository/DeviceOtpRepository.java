@@ -27,7 +27,7 @@ public class DeviceOtpRepository {
   public Optional<DeviceOtp> find(String walletId) {
     return jdbc
         .query(
-            "SELECT wallet_id, device_id, otp_hash, locale, expires_at, attempts, sends"
+            "SELECT wallet_id, device_id, otp_hash, locale, expires_at, attempts, sends, purpose"
                 + " FROM device_otp WHERE wallet_id = ?",
             (rs, n) -> row(rs), walletId)
         .stream()
@@ -42,15 +42,22 @@ public class DeviceOtpRepository {
   public Optional<Integer> issue(
       String walletId, String deviceId, String otpHash, String locale, Instant expiresAt, int maxSends,
       Duration window, Instant now) {
+    return issue(walletId, deviceId, "BIND", otpHash, locale, expiresAt, maxSends, window, now);
+  }
+
+  /** As {@link #issue(String, String, String, String, Instant, int, Duration, Instant)}, for an OTP purpose. */
+  public Optional<Integer> issue(
+      String walletId, String deviceId, String purpose, String otpHash, String locale, Instant expiresAt,
+      int maxSends, Duration window, Instant now) {
     Timestamp windowOver = ts(now.minus(window));
     return jdbc
         .query(
             """
             INSERT INTO device_otp
-              (wallet_id, device_id, otp_hash, locale, expires_at, attempts, sends, window_start, updated_at)
-            VALUES (?, ?, ?, ?, ?, 0, 1, ?, ?)
+              (wallet_id, device_id, otp_hash, locale, expires_at, attempts, sends, window_start, updated_at, purpose)
+            VALUES (?, ?, ?, ?, ?, 0, 1, ?, ?, ?)
             ON CONFLICT (wallet_id) DO UPDATE
-              SET device_id = excluded.device_id, otp_hash = excluded.otp_hash, locale = excluded.locale,
+              SET device_id = excluded.device_id, purpose = excluded.purpose, otp_hash = excluded.otp_hash, locale = excluded.locale,
                   expires_at = excluded.expires_at, attempts = 0,
                   sends = CASE WHEN device_otp.window_start <= ? THEN 1 ELSE device_otp.sends + 1 END,
                   window_start = CASE WHEN device_otp.window_start <= ? THEN excluded.window_start
@@ -60,7 +67,7 @@ public class DeviceOtpRepository {
             RETURNING sends
             """,
             (rs, n) -> rs.getInt(1),
-            walletId, deviceId, otpHash, locale, ts(expiresAt), ts(now), ts(now),
+            walletId, deviceId, otpHash, locale, ts(expiresAt), ts(now), ts(now), purpose,
             windowOver, windowOver, windowOver, maxSends)
         .stream()
         .findFirst();
@@ -110,6 +117,6 @@ public class DeviceOtpRepository {
   private static DeviceOtp row(ResultSet rs) throws SQLException {
     return new DeviceOtp(
         rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getTimestamp(5).toInstant(),
-        rs.getInt(6), rs.getInt(7));
+        rs.getInt(6), rs.getInt(7), rs.getString(8));
   }
 }

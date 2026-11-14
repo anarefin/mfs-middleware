@@ -15,7 +15,8 @@ export const edgeUrl = (): string => (process.env.EDGE_URL || "http://apisix:908
 export const publicUrl = (): string => (process.env.PUBLIC_URL || "https://localhost").replace(/\/+$/, "");
 /** key-auth of the test-only routes (/test/*), consumer mw_e2e. */
 export const e2eApiKey = (): string => required("MW_E2E_API_KEY");
-export const customersPassword = (): string => required("KC_CUSTOMERS_TEST_PASSWORD");
+/** The app PIN of every seeded app wallet at mw-auth (MW_SEED_APP_PIN, ticket 69). */
+export const appPin = (): string => required("MW_SEED_APP_PIN");
 export const portalsPassword = (): string => required("KC_PORTALS_TEST_PASSWORD");
 /** hmac-auth secret of the dev merchant merchant-demo (wallet 01911000001, "Demo Shop"). */
 export const checkoutSecret = (): string => required("CHECKOUT_DEMO_MERCHANT_SECRET");

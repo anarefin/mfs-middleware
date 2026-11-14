@@ -22,12 +22,16 @@ customers, holds the stack's generated test credentials and has no sign-in.
   answer redacted by `lib/redact.ts`, ms). Every action returns an `Outcome` (`lib/types.ts`): the
   page (`app/components/result.tsx`) shows the headline, final status, core balances before/after,
   the SMS received and every step, expandable.
-- `lib/server/tokens.ts`: Keycloak password grant through APISIX (`customers`/`mw-app`,
-  `portals`/`mw-portal`), cached per user, refreshed. `lib/server/device.ts`: the app's bound device
-  per user, bound at mw-auth (ticket 68; EC P-256 key; OTP via `POST /auth/v1/otp`, read from the SMSC simulator; `POST
-  /auth/v1/devices`; `POST /auth/v1/sessions` after 4 min idle; signature over method, path, body hash,
-  timestamp, nonce, device id). `lib/crypto.ts` (pure, Node crypto): signing, RSA-OAEP-SHA256 PIN
-  encryption with the core key from `/test/core-mock/v1/pin-public-key`, checkout hmac-auth, result
+- `lib/server/tokens.ts`: Keycloak password grant through APISIX (`portals`/`mw-portal`), cached per
+  user, refreshed; `walletOf` (an app user's MSISDN: the personas, mw-seeder's `seed-*` app users, or an
+  MSISDN typed in). `lib/server/device.ts`: the app's bound device and mw-auth session per user
+  (tickets 68-69; EC P-256 key; `POST /auth/v1/otp` with the MSISDN, the OTP read from the SMSC
+  simulator; `POST /auth/v1/devices` with the app PIN `MW_SEED_APP_PIN` encrypted under mw-auth's
+  `GET /auth/v1/pin-key`; login `POST /auth/v1/sessions` (MSISDN + PIN), again after 4 min idle;
+  `POST /auth/v1/tokens/refresh` before the access token expires; the mw-auth access token is the app
+  API's bearer; signature over method, path, body hash, timestamp, nonce, device id). `lib/crypto.ts`
+  (pure, Node crypto): signing, RSA-OAEP-SHA256 PIN encryption (transactions still with the core key
+  from `/test/core-mock/v1/pin-public-key` until ticket 72), checkout hmac-auth, result
   and IPN checks; ported from `tests/api/lib.js`. State (tokens, devices, last submit, PIN key) is in
   process memory (`globalThis`): a restart forgets it and the next submit binds again. Binding here
   replaces the API suite's device for that user (one active device per wallet).
@@ -61,7 +65,7 @@ kept.
 - `Dockerfile`: standalone output, node 24 alpine, uid 10001, npm/npx/corepack removed (as mw-admin-ui).
 - `deploy/docker-compose.yml` service `mw-test-console`, profile `tester` (not `core`: outside
   `make compose-check`'s budget, about 192 MiB), network `app`, read-only root. Env: `EDGE_URL`,
-  `PUBLIC_URL` (links to `/console`), `MW_E2E_API_KEY`, `KC_CUSTOMERS_TEST_PASSWORD`,
+  `PUBLIC_URL` (links to `/console`), `MW_E2E_API_KEY`, `MW_SEED_APP_PIN` (ticket 69),
   `KC_PORTALS_TEST_PASSWORD`, `CHECKOUT_DEMO_MERCHANT_SECRET` from `deploy/.env`.
 - APISIX `deploy/apisix/routes-test/test-console.json`: `/tester`, `/tester/*` to
   `mw-test-console:3000`, private source addresses only, read timeout 180 s (a flow with a status

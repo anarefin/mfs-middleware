@@ -33,10 +33,16 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public class BodySchema {
 
-  /** {@code POST /auth/v1/otp} (optional body), from {@code DeviceOtpRequest}. */
+  /** {@code POST /auth/v1/otp}, from {@code OtpRequest}. */
   public static final String DEVICE_OTP = "derived-schemas/auth-v1-otp-request.json";
   /** {@code POST /auth/v1/devices}, from {@code DeviceBindingRequest}. */
   public static final String DEVICE_BINDING = "derived-schemas/auth-v1-device-binding-request.json";
+  /** {@code POST /auth/v1/sessions} (login), from {@code LoginRequest} (ticket 69). */
+  public static final String LOGIN = "derived-schemas/auth-v1-login-request.json";
+  /** {@code POST /auth/v1/tokens/refresh}, from {@code RefreshRequest}. */
+  public static final String REFRESH = "derived-schemas/auth-v1-refresh-request.json";
+  /** {@code POST /auth/v1/pin}, from {@code SetPinRequest}. */
+  public static final String SET_PIN = "derived-schemas/auth-v1-set-pin-request.json";
 
   private final ObjectReader reader;
   private final Schema schema;

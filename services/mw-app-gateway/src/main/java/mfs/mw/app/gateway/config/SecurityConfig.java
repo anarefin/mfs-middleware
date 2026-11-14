@@ -2,7 +2,6 @@ package mfs.mw.app.gateway.config;
 
 import mfs.mw.app.gateway.exception.ErrorCodes;
 import mfs.mw.app.gateway.exception.MwException;
-import mfs.mw.app.gateway.security.RealmIssuerValidator;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -12,9 +11,14 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import com.nimbusds.jose.JOSEObjectType;
+import com.nimbusds.jose.proc.DefaultJOSEObjectTypeVerifier;
+import java.util.List;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.jwt.JwtClaimValidator;
+import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
+import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
@@ -22,7 +26,8 @@ import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
 /**
- * Bearer JWT from Keycloak realm {@code customers} on {@code /app/**} (spec 9.1, 18.2);
+ * Bearer JWT issued by mw-auth on {@code /app/**} (spec 9.1, 18.7, D21; ticket 69, until then the
+ * Keycloak realm {@code customers});
  * everything else (actuator probes, unknown paths) stays open inside the app network, which only
  * APISIX and Compose healthchecks reach. Auth failures are the 5.3 envelope, built by the global
  * handler. Security headers come from the chassis filter, so Spring Security's are off.
@@ -66,13 +71,26 @@ public class SecurityConfig {
     return http.build();
   }
 
-  /** Signature from the realm's JWKS (fetched on first use), expiry, and the realm in {@code iss}. */
   @Bean
   JwtDecoder jwtDecoder(AppGatewayProperties props) {
-    NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(props.jwt().jwkSetUri()).build();
+    return appTokenDecoder(props.jwt());
+  }
+
+  /**
+   * An mw-auth access token: RS256 only (the builder's default) by a key of mw-auth's JWK Set
+   * (fetched on first use, again on an unknown kid), header {@code typ at+jwt}, expiry, the exact
+   * issuer and the audience. Not {@code JwtValidators.createDefault*}: since Spring Security 7 they
+   * accept {@code typ JWT} only.
+   */
+  public static JwtDecoder appTokenDecoder(AppGatewayProperties.Jwt jwt) {
+    NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwt.jwkSetUri())
+        .jwtProcessorCustomizer(p -> p.setJWSTypeVerifier(new DefaultJOSEObjectTypeVerifier<>(new JOSEObjectType("at+jwt"))))
+        .build();
     decoder.setJwtValidator(
         new DelegatingOAuth2TokenValidator<>(
-            JwtValidators.createDefault(), new RealmIssuerValidator(props.jwt().realmPath())));
+            new JwtTimestampValidator(),
+            new JwtIssuerValidator(jwt.issuer()),
+            new JwtClaimValidator<List<String>>("aud", aud -> aud != null && aud.contains(jwt.audience()))));
     return decoder;
   }
 }

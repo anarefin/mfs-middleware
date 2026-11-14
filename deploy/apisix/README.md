@@ -78,8 +78,18 @@ Edge error codes:
 Route `app-v1` (`/app/v1/*`), in plugin order:
 
 1. `client-control` `max_body_size` 64 KiB (413).
-2. `openid-connect` bearer-only, realm `customers` JWKS, `iat_slack` 10 s (the plugin's default
-   accepts a token 120 s past `exp`).
+2. `openid-connect` bearer-only against mw-auth (ticket 69, D21 amendment): `discovery`
+   `http://mw-auth:8080/auth/v1/.well-known/openid-configuration` (mw-auth serves `issuer` and the
+   in-stack `jwks_uri`), `use_jwks`, `client_id` `mw-app` (required by the plugin's schema; the
+   token's `aud`), `iat_slack` 10 s (the plugin's default accepts a token 120 s past `exp`). The issuer
+   is the discovery document's (exact match). An unknown `kid` makes the plugin fetch the JWK Set again,
+   so a rotated `JWT_SIGN` key works at once; a discovery or JWKS fetch failure is 401 (fail closed).
+   **Choice (ticket 69):** `openid-connect` with mw-auth's discovery document, not `jwt-auth`: APISIX
+   3.19's `openid-connect` (lua-resty-openidc 1.9.0) verifies RSA JWKS only, which is why `JWT_SIGN`
+   is RSA 3072 / RS256 (user decision, D21 amendment); `jwt-auth` has no JWKS and no issuer check and
+   would need a consumer per key version re-applied on every rotation. mw-app-gateway verifies the token
+   again (RS256, `typ at+jwt`, issuer, audience). The Keycloak `customers` token is refused here now
+   (another issuer); the realm itself goes in ticket 73.
 3. No `request-validation`: the submit body (`POST /app/v1/transactions`) is signed by the app's
    bound device (ticket 29), and request-validation forwards a JSON body it validated re-encoded
    (APISIX 3.x `set_body_data`, not configurable), so the gateway could no longer verify the
@@ -97,18 +107,29 @@ Route `app-v1` (`/app/v1/*`), in plugin order:
    see "Rate-limiter degradation alert" below). A perf run with one test user needs more users
    or a higher count.
 
-Route `auth-v1` (`/auth/v1/*`, POST only, ticket 68) -> `mw-auth:8080` (mw-auth's public port; its
-mTLS internal port 8443 is never routed), path and body unchanged: device binding (`POST
-/auth/v1/otp`, `POST /auth/v1/devices`) and sessions (`POST /auth/v1/sessions`), moved here from
-`/app/v1/devices*` (nothing to retire: those paths were served by the `app-v1` route, which stays).
+Route `auth-v1` (`/auth/v1/*`, POST only, tickets 68-69) -> `mw-auth:8080` (mw-auth's public port;
+its mTLS internal port 8443 is never routed, nor `/internal/*` on any port), path and body unchanged:
+the OTP (`POST /auth/v1/otp`), device binding (`POST /auth/v1/devices`), login (`POST
+/auth/v1/sessions`), refresh (`POST /auth/v1/tokens/refresh`), logout (`POST /auth/v1/sessions/logout`)
+and the first PIN (`POST /auth/v1/pin`).
 
-1. `client-control` `max_body_size` 16 KiB (413): the bodies are a key and an OTP.
-2. `openid-connect` as on `app-v1` (realm `customers`, `iat_slack` 10 s) until mw-auth issues its
-   own tokens (ticket 69); mw-auth verifies the token again.
-3. No `request-validation` and no rewrite: the bind and session-open requests are signed by the
-   device over the path and the raw body; mw-auth checks the derived schemas itself (table below).
-4. `serverless-pre-function` and `limit-count` as on `app-v1`, 30 requests / 60 s per token
-   subject, group `auth-v1`.
+1. `client-control` `max_body_size` 16 KiB (413): the bodies are an MSISDN, a key, an OTP, a PIN block.
+2. No auth plugin (ticket 69): these requests prove the wallet themselves (device signature, OTP,
+   PIN); logout and the first PIN carry mw-auth's own access token, which mw-auth verifies.
+3. No `request-validation` and no rewrite: binding, login and refresh are signed by the device over
+   the path and the raw body; mw-auth checks the derived schemas itself (table below).
+4. `serverless-pre-function` (access, `lua/auth-rate-key.lua`): `ctx.var.mw_auth_key` =
+   `msisdn:<sha256 hex of the canonical MSISDN of the body>` (never the MSISDN itself), else
+   `sub:<bearer sub>` (logout, first PIN; not verified here, mw-auth does), else unset (per address).
+5. `limit-count` 20 requests / 60 s per that key, group `auth-v1`, Valkey as on `app-v1`.
+6. `limit-req` 5 requests/s, burst 20, per `remote_addr` (local to the node, 429): the per-address
+   limit next to the per-wallet one (one `limit-count` per route).
+
+Route `auth-v1-keys` (`GET /auth/v1/.well-known/jwks.json`, `GET /auth/v1/pin-key`, ticket 69) ->
+`mw-auth:8080`: the access tokens' JWK Set and the PIN transport key the apps encrypt the PIN with; no
+auth, `limit-count` 120 / 60 s per `remote_addr`. The discovery document
+(`/auth/v1/.well-known/openid-configuration`, which names the in-stack JWKS URL) is not routed: only
+APISIX reads it, inside the stack.
 
 Route `partner-billagg-callback` (`/partner/billagg/callback/*`, POST only, ticket 22) ->
 `mw-adapter-billpay:8080`, path and body unchanged (the partner signed them):
@@ -231,15 +252,18 @@ service; each keeps its own body cap, 413 `MW-VAL-BODY_TOO_LARGE`). Every public
 | --- | --- | --- | --- |
 | `app-v1` | `POST /app/v1/transactions` | mw-app-gateway: `BodySchemaInterceptor` (cached bytes, the ones the device signs) | `app-v1-transaction-request.json` (`TransactionRequest`) |
 | `app-v1` | `POST /app/v1/billers/{code}/fetch-bill` | mw-app-gateway, as above | `app-v1-fetch-bill-request.json` (`FetchBillRequest`) |
-| `auth-v1` | `POST /auth/v1/otp` (body optional) | mw-auth: `BodySchemaInterceptor` (cached bytes, the ones the device signs) | `auth-v1-otp-request.json` (`DeviceOtpRequest`) |
+| `auth-v1` | `POST /auth/v1/otp` | mw-auth: `BodySchemaInterceptor` (cached bytes, the ones the device signs) | `auth-v1-otp-request.json` (`OtpRequest`) |
 | `auth-v1` | `POST /auth/v1/devices` | mw-auth, as above | `auth-v1-device-binding-request.json` (`DeviceBindingRequest`) |
+| `auth-v1` | `POST /auth/v1/sessions` | mw-auth, as above | `auth-v1-login-request.json` (`LoginRequest`) |
+| `auth-v1` | `POST /auth/v1/tokens/refresh` | mw-auth, as above | `auth-v1-refresh-request.json` (`RefreshRequest`) |
+| `auth-v1` | `POST /auth/v1/pin` | mw-auth, as above | `auth-v1-set-pin-request.json` (`SetPinRequest`) |
 | `checkout-v1-sessions` | `POST /checkout/v1/sessions` | mw-checkout: `BodySchemaAdvice` | `checkout-v1-create-session.json` (`CreateSessionRequest`) |
 | `checkout-pay` | `POST /checkout/pay/v1/{token}/otp` | mw-checkout, as above | `checkout-pay-v1-otp.json` (`OtpRequest`) |
 | `checkout-pay` | `POST /checkout/pay/v1/{token}/confirm` | mw-checkout, as above | `checkout-pay-v1-confirm.json` (`ConfirmRequest`) |
 | `portal-org-v1` | `POST /portal/org/v1/bulk/batches/{batchId}/reject` | mw-portal-api: `BodySchemaAdvice` | `portal-org-v1-reject-request.json` (inline reject body) |
 | `ussd-http-<mno>` | `POST /ussd/{mno}` | mw-ussd: `BodySchemaAdvice` | `ussd-http-v1-step.json` (`UssdStep`) |
 
-No body, so no schema: `POST /auth/v1/sessions`, `POST /checkout/pay/v1/{token}/cancel`, portal
+No body, so no schema: `POST /auth/v1/sessions/logout`, `POST /checkout/pay/v1/{token}/cancel`, portal
 approve/pause/resume. Not JSON: the portal CSV upload (`POST /portal/org/v1/bulk/batches`, `text/csv`),
 checked by mw-portal-api's `BulkCsvParser` (header, rows, row and byte caps). Partner callbacks
 (`partner-billagg-callback`, `partner-c2wbank-callback`) have a partner-specific wire format, not a

@@ -208,7 +208,7 @@ mw:
       clock-skew: 5m
       idle-timeout: ${MW_AUTH_SESSION_IDLE_TIMEOUT:5m}
       idle-timeout-by-channel: {}
-      # Binding a device needs an OTP sent by SMS to the token's wallet through mw-notify (review A5):
+      # OTPs (BIND, LOGIN) go by SMS to the wallet of the MSISDN through mw-notify (review A5):
       # checks per OTP and sends per wallet and window are enforced with conditional updates.
       otp:
         ttl: 2m
@@ -216,11 +216,21 @@ mw:
         max-sends: ${MW_AUTH_DEVICE_OTP_MAX_SENDS:5}
         send-window: 15m
       notify-topic: mw.notify.request.v1
-    # The app's bearer token on /auth/v1/** until mw-auth issues its own (ticket 69): Keycloak realm
-    # `customers`, as mw-app-gateway checks it. Keys are fetched on the first token.
-    customer-jwt:
-      jwk-set-uri: ${MW_APP_JWK_SET_URI:http://keycloak:8080/realms/customers/protocol/openid-connect/certs}
-      realm-path: /realms/customers
+    # The wallet users' tokens (spec 18.7, D21, ticket 69; config/TokenProperties): access JWT RS256 by
+    # the mw-crypto key JWT_SIGN, refresh token opaque and rotated. The issuer is what the discovery
+    # document says and what APISIX (route app-v1) and mw-app-gateway compare exactly; jwks-uri is the
+    # in-stack URL of GET /auth/v1/.well-known/jwks.json that the discovery document names.
+    tokens:
+      issuer: ${MW_AUTH_TOKEN_ISSUER:mw-auth}
+      audience: mw-app
+      access-ttl: ${MW_AUTH_ACCESS_TTL:5m}
+      refresh-ttl: 30d
+      jwks-cache-ttl: 5m
+      jwks-uri: ${MW_AUTH_JWKS_URI:http://mw-auth:8080/auth/v1/.well-known/jwks.json}
+    # Dev only (ticket 69): POST /internal/v1/seed/pins, the seeder's first PINs, without a token
+    # (controller/SeedController). Off unless the dev stack sets MW_AUTH_SEED_API_ENABLED=true.
+    seed-api:
+      enabled: ${MW_AUTH_SEED_API_ENABLED:false}
     consumer:
       # route/CoreWalletEventRoute: the wallet projection from the core (D5). Off in tests by default.
       enabled: true

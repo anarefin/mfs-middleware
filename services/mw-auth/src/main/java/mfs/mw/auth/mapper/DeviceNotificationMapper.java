@@ -18,13 +18,22 @@ public class DeviceNotificationMapper {
 
   public static final String OTP_TEMPLATE = "DEVICE_BIND_OTP";
   public static final String BOUND_TEMPLATE = "DEVICE_BOUND";
+  /** The first-PIN login OTP (ticket 69; mw-notify V11). */
+  public static final String LOGIN_OTP_TEMPLATE = "LOGIN_OTP";
   /** mw-notify's default locale, used when the app names none. */
   public static final String DEFAULT_LOCALE = "bn";
 
   public NotificationRequest otp(String wallet, String otp, String locale, Instant expiresAt, String correlationId) {
+    return otp(wallet, otp, locale, expiresAt, correlationId, "BIND");
+  }
+
+  /** The OTP SMS of a purpose: {@code BIND} (device binding) or {@code LOGIN} (first PIN). */
+  public NotificationRequest otp(
+      String wallet, String otp, String locale, Instant expiresAt, String correlationId, String purpose) {
+    String template = "LOGIN".equals(purpose) ? LOGIN_OTP_TEMPLATE : OTP_TEMPLATE;
     return new NotificationRequest(
         1, "device-otp:" + UUID.randomUUID(), correlationId, new NotificationRequest.Recipient(wallet),
-        OTP_TEMPLATE, locale(locale), Map.of("otp", otp), List.of("SMS"), "OTP", expiresAt);
+        template, locale(locale), Map.of("otp", otp), List.of("SMS"), "OTP", expiresAt);
   }
 
   public NotificationRequest bound(String wallet, String locale, String correlationId) {

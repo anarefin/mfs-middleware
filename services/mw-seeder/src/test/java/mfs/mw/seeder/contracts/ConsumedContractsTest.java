@@ -11,6 +11,9 @@ import mfs.mw.seeder.dto.ContentVersionView;
 import mfs.mw.seeder.dto.MenuProposal;
 import mfs.mw.seeder.dto.PartnerChangeRequest;
 import mfs.mw.seeder.dto.PartnerView;
+import mfs.mw.seeder.dto.PinKeyView;
+import mfs.mw.seeder.dto.SeedPinsRequest;
+import mfs.mw.seeder.dto.SeedPinsResult;
 import mfs.mw.seeder.dto.TemplateProposal;
 import mfs.mw.seeder.dto.WalletSeedRequest;
 import mfs.mw.seeder.dto.WalletView;
@@ -29,6 +32,8 @@ class ConsumedContractsTest {
   static final JsonMapper JSON = SeederConfig.jsonMapper();
   static final String ADMIN = "api/mw-admin-api/admin.v1.openapi.yaml";
   static final String CORE = "api/mw-core-mock/core-mock-seed.v1.openapi.yaml";
+  static final String AUTH = "api/mw-auth/auth.v1.openapi.yaml";
+  static final String AUTH_INTERNAL = "api/mw-auth/auth-internal.v1.openapi.yaml";
 
   static void assertValid(Schema schema, Object body) {
     JsonNode node = JSON.readTree(JSON.writeValueAsString(body));
@@ -38,10 +43,24 @@ class ConsumedContractsTest {
   @Test
   void theManifestListsExactlyTheseApis() {
     ContractManifest m = ContractManifest.load();
-    assertThat(m.consumedApis()).containsExactlyInAnyOrder(ADMIN, CORE);
+    assertThat(m.consumedApis()).containsExactlyInAnyOrder(ADMIN, CORE, AUTH, AUTH_INTERNAL);
     assertThat(m.producedApis()).isEmpty();
     assertThat(m.producedEvents()).isEmpty();
     assertThat(m.consumedEvents()).isEmpty();
+  }
+
+  @Test
+  void theSeedPinBodyIsMwAuthsAndItsAnswersRead() {
+    assertValid(OpenApiSchemas.request(AUTH_INTERNAL, "/internal/v1/seed/pins", "post"),
+        new SeedPinsRequest(List.of(new SeedPinsRequest.Pin("01712000001",
+            new SeedPinsRequest.EncryptedPin("pin-transport.v1", "Y2lwaGVy")))));
+    String result = "{\"results\":[{\"walletId\":\"01712000001\",\"outcome\":\"CREATED\"}]}";
+    assertThat(OpenApiSchemas.component(AUTH_INTERNAL, "SeedPinsResult").validate(JSON.readTree(result))).isEmpty();
+    assertThat(JSON.readValue(result, SeedPinsResult.class).results().getFirst().outcome()).isEqualTo("CREATED");
+
+    String key = "{\"keyId\":\"pin-transport.v1\",\"algorithm\":\"RSA-OAEP-SHA-256\",\"publicKeyPem\":\"-----BEGIN PUBLIC KEY-----\\nMII=\\n-----END PUBLIC KEY-----\\n\"}";
+    assertThat(OpenApiSchemas.component(AUTH, "PinKey").validate(JSON.readTree(key))).isEmpty();
+    assertThat(JSON.readValue(key, PinKeyView.class).keyId()).isEqualTo("pin-transport.v1");
   }
 
   @Test
