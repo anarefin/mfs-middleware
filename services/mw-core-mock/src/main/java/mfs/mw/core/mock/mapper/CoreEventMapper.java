@@ -7,11 +7,15 @@ import java.util.UUID;
 import mfs.mw.core.mock.dto.Amount;
 import mfs.mw.core.mock.dto.CoreCommand;
 import mfs.mw.core.mock.dto.CoreEvent;
+import mfs.mw.core.mock.entity.WalletState;
+import mfs.mw.core.mock.util.UuidV7;
 import org.springframework.stereotype.Component;
 
 /** Builds the {@code core.event.v1} envelope for a command (spec 6.3). */
 @Component
 public class CoreEventMapper {
+
+  public static final String WALLET_STATE_CHANGED = "WalletStateChanged";
 
   private final Clock clock;
 
@@ -42,6 +46,39 @@ public class CoreEventMapper {
   public CoreEvent succeeded(
       CoreCommand cmd, String type, String coreRef, List<CoreEvent.BalanceAfter> balances, Map<String, Object> payload) {
     return event(cmd, type, coreRef, CoreEvent.Outcome.SUCCESS, null, null, balances, payload);
+  }
+
+  /**
+   * WalletStateChanged (ticket 67, spec 18.7, D5): the wallet's state, answering no command. The
+   * envelope's command fields get fresh values: a UUIDv7 txnId (mw-orchestrator finds no
+   * transaction for it and drops the event), commandId {@code wallet-state:<txnId>}, coreRef
+   * {@code WALLET-V<version>}; outcome SUCCESS.
+   *
+   * @param change CREATED, STATUS_CHANGED or SNAPSHOT
+   */
+  public CoreEvent walletStateChanged(WalletState w, String change) {
+    String txnId = UuidV7.at(clock.instant()).toString();
+    Map<String, Object> payload = new java.util.LinkedHashMap<>();
+    payload.put("walletId", w.id());
+    payload.put("msisdn", w.msisdn());
+    payload.put("walletType", w.type());
+    payload.put("status", w.status());
+    payload.put("hasPin", w.hasPin());
+    payload.put("version", w.version());
+    payload.put("change", change);
+    return new CoreEvent(
+        1,
+        WALLET_STATE_CHANGED,
+        UUID.randomUUID().toString(),
+        "wallet-state:" + txnId,
+        txnId,
+        "WALLET-V" + w.version(),
+        clock.instant(),
+        CoreEvent.Outcome.SUCCESS,
+        null,
+        null,
+        null,
+        payload);
   }
 
   /** The failure event type of a command (spec 6.3), or {@code null} for QueryTransaction. */

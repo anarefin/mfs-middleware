@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bits.mw/events/mw-core-mock/core.event.v1/WalletStateChanged.payload.schema.json",
+  "title": "core.event.v1 WalletStateChanged payload",
+  "description": "A wallet's state as the core holds it (ticket 67, spec 18.7, D5): published on create, on every status change and in a snapshot of every wallet (dev, on start). version only grows for a wallet (also across a core reset); a consumer keeps the state of the highest version it saw and ignores an equal or lower one, so duplicates, snapshots and out-of-order delivery are harmless. Only wallets a person logs in to (with an MSISDN) are published, never system wallets.",
+  "type": "object",
+  "required": ["walletId", "msisdn", "walletType", "status", "hasPin", "version", "change"],
+  "additionalProperties": false,
+  "properties": {
+    "walletId": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "msisdn": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Msisdn" },
+    "walletType": { "enum": ["CUSTOMER", "AGENT", "MERCHANT", "ORG", "DISTRIBUTOR", "DSO"] },
+    "status": {
+      "enum": ["ACTIVE", "BLOCKED", "HOLD", "LOCKED"],
+      "description": "LOCKED = the core's PIN lockout; BLOCKED and HOLD = compliance states."
+    },
+    "hasPin": { "type": "boolean", "description": "false: the wallet must set a first PIN (spec 18.7 login step 4)." },
+    "birthYear": { "type": "integer", "minimum": 1900, "maximum": 2100, "description": "When the core has it (weak-PIN rule)." },
+    "version": { "type": "integer", "minimum": 1 },
+    "change": { "enum": ["CREATED", "STATUS_CHANGED", "SNAPSHOT"] }
+  }
+}

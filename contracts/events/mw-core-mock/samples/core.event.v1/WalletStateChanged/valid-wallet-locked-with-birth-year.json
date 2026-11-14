@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "eventType": "WalletStateChanged",
+  "eventId": "6b1d3c2e-4f5a-4b6c-8d7e-9f0a1b2c3d41",
+  "commandId": "wallet-state:01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7aa1",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7aa1",
+  "coreRef": "WALLET-V1093",
+  "occurredAt": "2026-11-14T08:20:00Z",
+  "outcome": "SUCCESS",
+  "payload": {
+    "walletId": "01811000001",
+    "msisdn": "88001811000001",
+    "walletType": "AGENT",
+    "status": "LOCKED",
+    "hasPin": true,
+    "birthYear": 1990,
+    "version": 1093,
+    "change": "STATUS_CHANGED"
+  }
+}

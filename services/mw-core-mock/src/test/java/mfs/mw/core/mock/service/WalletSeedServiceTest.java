@@ -27,7 +27,7 @@ class WalletSeedServiceTest {
   private final WalletBalances balances = mock(WalletBalances.class);
   private final PasswordEncoder encoder = mock(PasswordEncoder.class);
   private final CoreMockProperties props = mock(CoreMockProperties.class);
-  private final WalletSeedService service = new WalletSeedService(wallets, balances, encoder, props);
+  private final WalletSeedService service = new WalletSeedService(wallets, balances, encoder, props, mock(WalletStateEvents.class));
 
   private final Logger logger = (Logger) LoggerFactory.getLogger(WalletSeedService.class);
   private final ListAppender<ILoggingEvent> logs = new ListAppender<>();

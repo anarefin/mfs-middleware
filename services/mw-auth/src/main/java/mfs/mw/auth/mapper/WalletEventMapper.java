@@ -1,0 +1,74 @@
+package mfs.mw.auth.mapper;
+
+import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Pattern;
+import mfs.mw.auth.dto.WalletStateChanged;
+import mfs.mw.auth.exception.ErrorCodes;
+import mfs.mw.auth.exception.MwException;
+import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
+/**
+ * Reads {@code core.wallet.event.v1} records (ticket 67). The topic carries every core reply to
+ * mw-orchestrator as well; only {@code WalletStateChanged} is projected, the rest is empty. A
+ * WalletStateChanged without the fields the projection needs is malformed ({@code MW-VAL-002}: the
+ * route parks it on the retry topics, then the DLQ). MSISDNs are normalised to the national form
+ * {@code 01XXXXXXXXX} (the contract allows an {@code 880} / {@code +880} prefix), so the keyed hash
+ * of one number is always the same.
+ */
+@Component
+public class WalletEventMapper {
+
+  private static final Pattern MSISDN = Pattern.compile("^(?:\\+?880)?(01[3-9]\\d{8})$");
+  private static final Set<String> TYPES = Set.of("CUSTOMER", "AGENT", "MERCHANT", "ORG", "DISTRIBUTOR", "DSO");
+  private static final Set<String> STATUSES = Set.of("ACTIVE", "BLOCKED", "HOLD", "LOCKED");
+
+  private final JsonMapper json;
+
+  public WalletEventMapper(JsonMapper json) {
+    this.json = json;
+  }
+
+  /** The wallet state of a WalletStateChanged record; empty for any other core event. */
+  public Optional<WalletStateChanged> read(String body) {
+    JsonNode tree;
+    try {
+      tree = json.readTree(body);
+    } catch (JacksonException e) {
+      throw malformed("core event is not JSON");
+    }
+    if (!WalletStateChanged.TYPE.equals(tree.path("eventType").asString(""))) {
+      return Optional.empty();
+    }
+    WalletStateChanged e;
+    try {
+      e = json.treeToValue(tree, WalletStateChanged.class);
+    } catch (JacksonException ex) {
+      throw malformed("WalletStateChanged unreadable");
+    }
+    WalletStateChanged.State s = e.payload();
+    if (e.eventId() == null || e.eventId().isBlank() || s == null || s.walletId() == null || s.walletId().isBlank()
+        || s.version() == null || s.version() < 1 || s.hasPin() == null
+        || !TYPES.contains(s.walletType()) || !STATUSES.contains(s.status())
+        || s.msisdn() == null || !MSISDN.matcher(s.msisdn()).matches()) {
+      throw malformed("WalletStateChanged lacks a required field");
+    }
+    return Optional.of(e);
+  }
+
+  /** The national form {@code 01XXXXXXXXX} of a contract MSISDN. */
+  public static String nationalMsisdn(String msisdn) {
+    var m = MSISDN.matcher(msisdn);
+    if (!m.matches()) {
+      throw malformed("not an MSISDN");
+    }
+    return m.group(1);
+  }
+
+  private static MwException malformed(String message) {
+    return new MwException(ErrorCodes.VAL_MALFORMED, message);
+  }
+}

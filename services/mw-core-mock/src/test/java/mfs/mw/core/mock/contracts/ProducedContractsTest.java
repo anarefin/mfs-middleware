@@ -13,6 +13,7 @@ import java.util.stream.Stream;
 import mfs.mw.core.mock.dto.Amount;
 import mfs.mw.core.mock.dto.CoreCommand;
 import mfs.mw.core.mock.dto.CoreEvent;
+import mfs.mw.core.mock.entity.WalletState;
 import mfs.mw.core.mock.mapper.CoreEventMapper;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
@@ -140,7 +141,11 @@ class ProducedContractsTest {
               EVENT + "#UnlockRejected",
               () -> EVENTS.rejected(
                   command("UnlockWallet", "unlock"), CoreEventMapper.failureType("UnlockWallet"), CORE_REF,
-                  "WALLET_NOT_LOCKED", "Wallet is not locked")));
+                  "WALLET_NOT_LOCKED", "Wallet is not locked")),
+          Map.entry(
+              EVENT + "#WalletStateChanged",
+              () -> EVENTS.walletStateChanged(
+                  new WalletState("01711000001", "01711000001", "CUSTOMER", "LOCKED", true, 1093), "STATUS_CHANGED")));
 
   /** As CoreCommandService: stored in command_log as JSON, read back, appended to the outbox. */
   static JsonNode asPublished(CoreEvent decided) {
