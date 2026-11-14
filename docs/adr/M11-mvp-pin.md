@@ -1,6 +1,6 @@
 # M11: PIN: encrypted with the core's key from day one
 
-Status: Accepted, 2026-11-03. M2 gate: the ciphertext may sit on the transaction row until a terminal state, then it is wiped.
+Status: Accepted, 2026-11-03; superseded 2026-11-14 by D20 and D22 (in force until tickets 71–72 are built). M2 gate: the ciphertext may sit on the transaction row until a terminal state, then it is wiped.
 
 ## Context
 

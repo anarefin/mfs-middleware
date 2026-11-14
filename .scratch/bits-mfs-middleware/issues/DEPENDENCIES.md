@@ -27,3 +27,21 @@
 57-mw-seeder                                56                done     48m      see a5962796            31210399..a5962796
 58-newman-api-suite                         57                done     217m     see 0762cdf3            040c26d2..bc4f222e
 59-admin-ui-playwright-live                 56,57             done     27m+fix  see 2ad973ce,d614ac37   040c26d2..d614ac37
+# --- Security group run (plan spec-mobile-money-middleware-rfp-md-spe-shiny-sparrow, decided 2026-11-14). Row order = run order.
+60-security-spec-adrs                       —                 done     -        spec + 5 ADRs          -
+61-softhsm-container                        60                open
+62-mw-crypto-scaffold                       61                open
+63-mw-crypto-operations                     62                open
+64-payshield-provider-simulator             63                open
+65-mw-crypto-xmldsig-http-signatures        63                open
+66-openbao-pki-mtls                         62                open
+67-mw-auth-scaffold                         63,66             open
+68-move-device-otp-sessions-to-mw-auth      67                open
+69-mw-auth-login-tokens                     68                open
+70-pin-lifecycle-lockout-revocation         69                open
+71-txn-authorisation-assertion              69                open
+72-channels-switch-to-assertion             71,70             open
+73-keycloak-realm-hardening                 69                open
+74-audit-anchor-signing                     63,66             open
+75-admin-key-management-ceremony            64,70             open
+76-security-tests-docs                      72,73,75          open

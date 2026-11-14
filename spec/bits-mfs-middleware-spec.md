@@ -8,6 +8,8 @@ This spec turns the Bits *Mobile Money Middleware RFP v0.1* into a build-ready d
 
 **Conventions.** MUST / SHOULD / MAY follow RFC 2119. Values marked **TBC** are assumptions to confirm (section 25). `mw-*` names modules and services.
 
+**Revision 6 (Nov 14, 2026).** Security group of the RFP service catalogue (`spec/new-middleware-services.md`): two new services, `mw-auth` (wallet login, devices, OTP, sessions, PIN custody, transaction authorisation assertion) and `mw-crypto` (the only HSM client). Adds decisions D20–D24 (PIN custody in the middleware, which supersedes M11; `mw-auth` as the wallet token issuer; the transaction authorisation assertion; the HSM gateway with PKCS#11 and payShield providers; mTLS phase 1). Sections changed: 0, 2, 4.1, 8.2, 9.1–9.3, 14.3, 16.2, 18.2–18.4, new 18.7 and 18.8, 22.2, 24, 25. Each change is marked **Decision 2026-11-14**. Built by tickets 60–76; until then the code still follows M11.
+
 **Revision 5 (Nov 6, 2026).** D6 and sections 3, 4 and 15.1 name Next.js 16.4.1, the version the admin console runs since the ticket 46 security pass. The decisions in both tables have one architecture decision record each in `docs/adr/` (WP30).
 
 **Revision 4 (Nov 5, 2026).** Syncs the spec with the M2 gate decisions of 2026-11-04 and what tickets 07–23 and 50 built: new state-table rows (7.2), late conflicting partner results, idempotency as built (7.3), the inquiry schedule and cut-off (7.4), core-only reversal, core topic routing (6.3), channel roles (9.1), the bill-fetch HTTP exception, adapter-verified partner callbacks and APISIX configured as JSON through the Admin API (8), the audit trail as built (14.3) and PIN ciphertext and masking rules (18.3). Each override is marked **Decision 2026-11-04**.
@@ -38,6 +40,11 @@ This spec turns the Bits *Mobile Money Middleware RFP v0.1* into a build-ready d
 | D16 | Stack file | One hand-written `deploy/docker-compose.yml` with profiles (platform always; `minimal`, `core`, `seed`) for the whole single-host stack; images built on request (`make build`) and reused by `make up`; **Decision 2026-11-13** (D18): no Makefile, `docker compose … up -d --build` builds the images from the jars of `./gradlew clean build`; supersedes the per-module `compose.yml` of 4.2/4.3 and D12 (ticket 56, 2026-11-06) |
 | D18 | Pipeline | No Makefile: `./gradlew clean build` from the repo root is the full gate (every module's tests and boot jar, plus the repo checks `checkIsolation`, `checkFieldInjection`, `contractsLint`, `composeCheck`, `scriptTests` in the root `check`); the stack runs with plain `docker compose` from `deploy/`, and the live checks are scripts in `scripts/` run directly (2026-11-13) |
 | D19 | Module tests | One `test` task per module runs unit, slice, contract, Testcontainers `*IT` and `@Conformance` tests in one JVM (one PostgreSQL and one Kafka per test JVM, a fresh database per Spring context, no container reuse; Testcontainers tests skipped without Docker); no JaCoCo coverage gate, which amends the 80% coverage gate of 22.1 for the MVP (2026-11-13) |
+| D20 | PIN custody | The middleware owns the wallet PIN (2026-11-14, supersedes M11): `mw-auth` verifies it through `mw-crypto`, owns the PIN policy (5 digits, weak PINs refused) and the lockout (3 wrong tries, then 1 h, 24 h, permanent until reset); the PIN is stored as HMAC-SHA256 under an HSM key over walletId and PIN, never as a reversible value; PVV and ISO 9564 PIN blocks only for ATM and interop (18.7, 18.8) |
+| D21 | Wallet token issuer | `mw-auth` issues the access (5 min) and refresh (30 days, rotating, device-bound) JWTs of customers, agents, merchants, distributors and DSOs after MSISDN + PIN + bound device, signed by an `mw-crypto` key and published as JWKS; the Keycloak `customers` realm is retired; Keycloak keeps `ops`, `portals` (TOTP added), `partners` (`private_key_jwt`) and `services` (2026-11-14, 18.2, 18.7) |
+| D22 | Transaction authorisation | PIN on every financial transaction. The channel (`mw-app-gateway`, `mw-ussd`, `mw-checkout`) sends the PIN ciphertext and the transaction hash to `mw-auth` over internal HTTP before it submits; `mw-auth` returns a single-use JWS assertion (60 s) bound to that hash; the transaction request and core commands carry only the assertion, which the core checks; no PIN, plain or encrypted, on Kafka or in `txn` (2026-11-14, 18.7) |
+| D23 | HSM gateway | `mw-crypto` is the only HSM client, with a provider SPI and two providers: PKCS#11 (SoftHSMv2 in dev and test) for wallet PINs, JWS signing, HMAC, tokenisation and envelope encryption; Thales payShield 10K host commands (a simulator in `mw-simulators`) for ISO 9564 PIN translation and PVV; plus XML-DSig and key ceremony with split knowledge (2026-11-14, 18.8) |
+| D24 | Service mTLS, phase 1 | OpenBao PKI issues 72 h service certificates; mTLS is mandatory on `mw-crypto` and on the internal API of `mw-auth`; other services keep the client-credentials JWT alone until a later ticket (2026-11-14, 18.2, 18.4) |
 
 ### Assumed sizing (TBC)
 
@@ -61,7 +68,7 @@ The MVP proves every core pattern of the middleware on one Docker Compose host: 
 | M8 | Footprint | Single host, Docker Compose, no HA; the same single-instance model as production (D11), only smaller |
 | M9 | Serialisation | JSON on Kafka with JSON Schema files in Git; no Apicurio, Avro or Harbor |
 | M10 | Delivery | Built mainly by coding agents (Claude Code); work is sliced into small, testable packages (next section) |
-| M11 | PIN | Target scheme from day one: apps encrypt the PIN with the core's public key (RSA-OAEP); mw-ussd encrypts on receipt; the middleware only forwards ciphertext (it may hold the ciphertext on the transaction row until a terminal state, 18.3); mw-core-mock holds the private key (in OpenBao) and checks a bcrypt hash |
+| M11 | PIN | Target scheme from day one: apps encrypt the PIN with the core's public key (RSA-OAEP); mw-ussd encrypts on receipt; the middleware only forwards ciphertext (it may hold the ciphertext on the transaction row until a terminal state, 18.3); mw-core-mock holds the private key (in OpenBao) and checks a bcrypt hash. **Superseded 2026-11-14 by D20 and D22** once tickets 71–72 are built |
 | M12 | Code review | An Bits engineer reviews and approves every pull request, including agent-written ones; milestone demos on top |
 | M13 | Repo and CI | GitHub repo owned by Bits; no CI/CD in the MVP. Tests run locally; the PR carries the test report and the reviewer re-runs the gate before merging (originally Makefile targets and `make verify`; **Decision 2026-11-13** (D18): `./gradlew clean build`) |
 
@@ -302,7 +309,7 @@ flowchart LR
     orch -.->|secrets| bao
 ```
 
-*Figure 2.1: middleware architecture (Revision 2).* Each large box is a Docker Compose network that stands for a security zone (18.1), and every component is a single container with no standby (D11, D12). Solid arrows are request paths; dotted arrows are callbacks, storage, secrets and control traffic. Every service reads its secrets from OpenBao and writes its own schema in PostgreSQL; only a few of those links are drawn to keep the figure readable. All links to Kafka are produce/consume: there are no direct service-to-service calls on the money path, and only the orchestrator sends commands to the core. The one read-only exception is the bill fetch (biller list and fetch-bill), which `mw-app-gateway` asks `mw-adapter-billpay` over internal HTTP; it moves no money (9.1, **Decision 2026-11-04**).
+*Figure 2.1: middleware architecture (Revision 2).* Each large box is a Docker Compose network that stands for a security zone (18.1), and every component is a single container with no standby (D11, D12). Solid arrows are request paths; dotted arrows are callbacks, storage, secrets and control traffic. Every service reads its secrets from OpenBao and writes its own schema in PostgreSQL; only a few of those links are drawn to keep the figure readable. All links to Kafka are produce/consume: there are no direct service-to-service calls on the money path, and only the orchestrator sends commands to the core. The one read-only exception is the bill fetch (biller list and fetch-bill), which `mw-app-gateway` asks `mw-adapter-billpay` over internal HTTP; it moves no money (9.1, **Decision 2026-11-04**). The second exception is the PIN authorisation (**Decision 2026-11-14**, D22): a channel asks `mw-auth` for a transaction assertion over internal HTTP (mTLS + JWT) before it publishes the request; it moves no money either, and the money still goes over Kafka.
 
 ### 2.1 Request flow (example: prepaid top-up from the app)
 
@@ -355,13 +362,15 @@ Every runtime component is open source under a permissive licence, which satisfi
 
 ## 4. Service decomposition and repository layout
 
-The middleware is 14 runtime services, the admin UI and two test-only services (core mock and simulators), grouped so that a failing partner adapter can be restarted or redeployed without touching channels or the orchestrator (NFR-07). Every service is a stateless, self-contained Spring Boot 4 + Camel application with no shared library (D13, D14); state lives in PostgreSQL, Kafka or Valkey.
+The middleware is 16 runtime services (14, plus `mw-auth` and `mw-crypto` from revision 6), the admin UI and two test-only services (core mock and simulators), grouped so that a failing partner adapter can be restarted or redeployed without touching channels or the orchestrator (NFR-07). Every service is a stateless, self-contained Spring Boot 4 + Camel application with no shared library (D13, D14); state lives in PostgreSQL, Kafka or Valkey.
 
 ### 4.1 Services
 
 | Service | Zone | Responsibility | Inbound | Outbound | State |
 | --- | --- | --- | --- | --- | --- |
-| `mw-app-gateway` | App | App Middleware: REST/SOAP facade for six apps, device/session binding, request normalisation | APISIX (REST, SOAP) | Kafka `mw.txn.request` | Valkey (session) |
+| `mw-app-gateway` | App | App Middleware: REST/SOAP facade for six apps, request normalisation; validates `mw-auth` tokens and device request signatures (device binding itself moved to `mw-auth`, **Decision 2026-11-14**) | APISIX (REST, SOAP) | Kafka `mw.txn.request`, `mw-auth` (assertion) | Valkey (device-key cache) |
+| `mw-auth` | App | Wallet login (MSISDN + PIN + device), device binding, OTP, sessions, step-up, PIN set/change/reset/lockout, transaction authorisation assertion, wallet lock and revocation (18.7) | APISIX `/auth/v1`, internal API (mTLS) | `mw-crypto`, Kafka `mw.notify.request`, `mw.audit.event` | PG `auth`, Valkey (sessions, nonces, assertion jti) |
+| `mw-crypto` | App | The only HSM client: PIN transport decrypt and HMAC verify, PIN-block translation, PVV, JWS/XML/HMAC signing, tokenisation, envelope encryption, key management and ceremony (18.8) | Internal API (mTLS only) | HSM (PKCS#11, payShield host commands) | PG `crypto` (key metadata only) |
 | `mw-ussd` | App | USSD menu engine, session state, per-MNO transport (SMPP or HTTP) | MNO gateways | Kafka, Valkey | Valkey, PG `ussd` |
 | `mw-checkout` | App | Web checkout sessions, merchant redirect and signed callbacks | APISIX | Kafka | PG `checkout` |
 | `mw-portal-api` | App | Org and SP portal back end: bulk disbursement upload, SP operations | APISIX | Kafka, SFTP | PG `bulk` |
@@ -677,7 +686,8 @@ APISIX is the single north-south entry point for HTTP traffic from apps, checkou
 
 | Prefix | Consumers | Auth plugin(s) | Upstream |
 | --- | --- | --- | --- |
-| `/app/v1/*` | Six mobile apps | `openid-connect` (Keycloak, JWT), device-binding header check | `mw-app-gateway` |
+| `/app/v1/*` | Six mobile apps | JWT checked against the `mw-auth` JWKS (`openid-connect` with Keycloak `customers` until ticket 69, **Decision 2026-11-14**), device-binding header check | `mw-app-gateway` |
+| `/auth/v1/*` | Six mobile apps, checkout page | none for login, OTP, device bind and refresh (the service authenticates by MSISDN + PIN + device signature), `limit-count` per MSISDN and per address; JWT for PIN change and logout (**Decision 2026-11-14**) | `mw-auth` |
 | `/app/soap/*` | Legacy SOAP app clients (TBC whether needed) | WS-Security validated in CXF; `key-auth` at gateway | `mw-app-gateway` |
 | `/ussd/{mno}/*` | MNO HTTP USSD gateways | `ip-restriction` + `basic-auth` per MNO with `consumer-restriction` binding the credential to its `{mno}` (as built; another scheme only if an MNO contract requires it) | `mw-ussd` |
 | `/checkout/v1/*` | Merchants (server-to-server) | `hmac-auth` (merchant secret) | `mw-checkout` |
@@ -709,10 +719,10 @@ Each channel service authenticates, normalises the request to the canonical mode
 ### 9.1 App Middleware (`mw-app-gateway`)
 
 - REST/JSON is primary; a SOAP facade (CXF) is offered only if existing app builds require it (TBC, open point).
-- Authentication: Keycloak realm `customers` (and one per app family) issues short-lived JWT (5 min) + refresh token; PIN verification is a core call (`VerifyPin` is not used; instead the app sends the PIN encrypted with the core's public key inside the transaction request, and only the core decrypts and checks it).
-- Device binding: `X-Device-Id` + device public key registered at onboarding; sensitive operations require a request signature (ECDSA P-256 over method, path, body hash, timestamp) verified by the gateway service.
-- Session: Valkey key `sess:{subject}:{deviceId}`, idle timeout 5 min (configurable per app); single active device per customer wallet (configurable).
-- Throttling per subject and device on top of APISIX limits. PIN lockout after 5 failures is owned by the core, not the middleware; a locked wallet is unlocked by operations through the admin console with maker-checker (ticket 52) (**Decision 2026-11-04**).
+- Authentication: Keycloak realm `customers` (and one per app family) issues short-lived JWT (5 min) + refresh token; PIN verification is a core call (`VerifyPin` is not used; instead the app sends the PIN encrypted with the core's public key inside the transaction request, and only the core decrypts and checks it). **Decision 2026-11-14** (D21, D22, from tickets 69–72): `mw-auth` issues the tokens after MSISDN + PIN + bound device (18.7); for every financial `txnType` the app sends the PIN encrypted with the `mw-crypto` transport key, and `mw-app-gateway` exchanges it at `mw-auth` for a transaction assertion before it publishes `mw.txn.request.v1`, which then carries the assertion and no PIN. A wrong PIN is answered at once (`MW-AUTH-040`), before any saga starts.
+- Device binding: `X-Device-Id` + device public key registered at onboarding; sensitive operations require a request signature (ECDSA P-256 over method, path, body hash, timestamp) verified by the gateway service. **Decision 2026-11-14** (ticket 68): registration, OTP, sessions and nonces move to `mw-auth`; `mw-app-gateway` keeps the signature check with the device key read from `mw-auth` and cached.
+- Session: Valkey key `sess:{subject}:{deviceId}`, idle timeout 5 min (configurable per app); single active device per customer wallet (configurable). Owned by `mw-auth` from ticket 68.
+- Throttling per subject and device on top of APISIX limits. PIN lockout after 5 failures is owned by the core, not the middleware; a locked wallet is unlocked by operations through the admin console with maker-checker (ticket 52) (**Decision 2026-11-04**). **Decision 2026-11-14** (D20, ticket 70): `mw-auth` owns the lockout (3 wrong tries, escalating locks); the ops unlock goes to `mw-auth` as a `auth.wallet-lock` command instead of the core `UnlockWallet`.
 - Roles (**Decision 2026-11-04**): the role map from token role to allowed `txnType`s is deny-by-default (a type with no entry is refused for every role, a role not listed for a type gets 403 `MW-AUTH-002`). `CASH_IN` is agent-initiated (payee the customer); `CASH_OUT` is customer-initiated with the customer's own PIN, payee the agent; `P2P`, `MERCHANT_PAY`, `TOPUP`, `BILL_PAY` and `ADD_MONEY_BANK` are customer-initiated; the merchant app initiates no money movement. The core enforces the wallet types per `txnType`.
 - Endpoints (v1, indicative): `POST /transactions` (all `txnType`s), `GET /transactions/{txnId}`, `GET /transactions?from&to`, `POST /quotes` (fee preview via `ValidateTransaction`), `GET /billers`, `POST /billers/{code}/fetch-bill`, `GET /operators`, `POST /kyc/nid-verify`.
 - Bill fetch (**Decision 2026-11-04**): the biller list and fetch-bill go from `mw-app-gateway` to `mw-adapter-billpay` over internal HTTP (unreachable: 503 `MW-SYS-011`, retryable). This is the one read-only exception to "no service-to-service calls on the money path" (2): it moves no money, and the payment itself still goes over Kafka.
@@ -737,7 +747,7 @@ Per-MNO configuration (`ussd.mno.<gp|robi|teletalk|bl>`): transport type, short 
 - Menus are edited in the admin console, versioned, approved by maker-checker, and activated per MNO with a scheduled go-live; running sessions finish on the version they started.
 - Session state in Valkey: `ussd:{mno}:{sessionId}` holding node path, inputs (the plaintext PIN is never stored; it is encrypted with the core's public key on receipt, and only the ciphertext is forwarded, 18.3), language, and version; TTL = MNO timeout + 30 s.
 - When a transaction exceeds the 8 s synchronous budget, the menu ends with "Your request is being processed" and the final result arrives by SMS.
-- PIN entry on USSD is passed to the core for verification inside the transaction command, never logged.
+- PIN entry on USSD is passed to the core for verification inside the transaction command, never logged. **Decision 2026-11-14** (D22, ticket 72): `mw-ussd` encrypts the digits on receipt with the `mw-crypto` PIN transport public key (fetched by `keyId` and cached) and asks `mw-auth` for the assertion like an app; a USSD session has no device key, so its identity is the MSISDN the MNO delivers plus the PIN on every transaction.
 
 **9.2.1 SMPP session management (shared with notify)**
 
@@ -749,7 +759,7 @@ Per-MNO configuration (`ussd.mno.<gp|robi|teletalk|bl>`): transport type, short 
 ### 9.3 Web checkout (`mw-checkout`)
 
 1. Merchant server calls `POST /checkout/v1/sessions` (HMAC-signed) with amount, order ID, success/fail/cancel URLs, IPN URL. Returns `checkoutUrl` + `sessionId` (TTL 15 min).
-2. Customer opens the hosted page, enters wallet number, receives OTP (via notify), enters PIN; page calls `mw-checkout`, which submits `MERCHANT_PAY`.
+2. Customer opens the hosted page, enters wallet number, receives OTP (via notify), enters PIN; page calls `mw-checkout`, which submits `MERCHANT_PAY`. **Decision 2026-11-14** (D22, ticket 72): the OTP is issued and checked by `mw-auth`, scoped to the checkout session; the page encrypts the PIN in the browser with the `mw-crypto` transport key; `mw-checkout` gets the assertion from `mw-auth` and submits with it.
 3. On terminal status, browser is redirected to the merchant URL with a signed result; independently, a server-to-server IPN (HMAC-SHA256 signature, retried 1 min, 5 min, 30 min, 2 h, 6 h) is posted to the merchant.
 4. Merchant can call `GET /checkout/v1/sessions/{id}` and `POST /checkout/v1/refunds` (refund = reversal flow, partial allowed if the core allows).
 
@@ -911,7 +921,7 @@ Files are checksummed, stored raw (immutable) for audit, and processed once (fil
 ### 14.3 Audit trail (FR-18)
 
 - Every service emits `AuditEvent { auditId, txnId?, correlationId, actor (system|user|partner), action, resource, before?, after?, payloadRef?, outcome, at, sourceIp?, service }` to `mw.audit.event.v1`.
-- `mw-audit-dw` writes to `audit.event` (append-only, monthly RANGE partitions on `recorded_at`, the writer's UTC clock, not the event's own time). The writer role `audit_writer` is INSERT-only; no UPDATE/DELETE grants to anyone; a hash chain (`prevHash`, `hash` = SHA-256 over row + prevHash per partition) makes tampering detectable, and a scheduled job verifies the chain of every month as the read-only role `audit_reader` and alerts on a break (built in ticket 50); daily anchor hash exported to WORM storage (TBC).
+- `mw-audit-dw` writes to `audit.event` (append-only, monthly RANGE partitions on `recorded_at`, the writer's UTC clock, not the event's own time). The writer role `audit_writer` is INSERT-only; no UPDATE/DELETE grants to anyone; a hash chain (`prevHash`, `hash` = SHA-256 over row + prevHash per partition) makes tampering detectable, and a scheduled job verifies the chain of every month as the read-only role `audit_reader` and alerts on a break (built in ticket 50); daily anchor hash exported to WORM storage (TBC). **Decision 2026-11-14** (ticket 74): the daily anchor (every chain head of the day) is signed as a JWS by an `mw-crypto` key, stored in `audit.anchor` and exported; the verify job checks the signature as well as the chain.
 - Raw request/response bodies (masked) stored as compressed JSONB in `audit.payload`, referenced by `payloadRef`.
 - Search in the admin console by txnId, MSISDN (searched via a keyed hash, so raw MSISDN need not be indexed), partner, time window, actor.
 - Operator actions (config change, manual retry, reversal, approval) are audited with before/after values. The operator's username stays in full in `actor.id`: masking covers customers, not staff (18.3).
@@ -988,6 +998,8 @@ The middleware uses one PostgreSQL 18 instance, run as a Compose container with 
 | `compliance` | compliance | `kyc_consent`, `aml_export`, `aml_instruction`, `deny_list` |
 | `audit` | audit-dw | `event`, `payload`, `anchor` |
 | `admin` | admin-api | `change_request`, `feature_flag`, `retention_policy`, `user_pref` |
+| `auth` | auth (**Decision 2026-11-14**) | `wallet` (projection of the core's wallet events: walletId, MSISDN, type, status), `credential` (PIN HMAC, keyId, policy version), `attempt`, `lock`, `device`, `refresh_token`, `pin_reset`, `outbox`, `inbox` |
+| `crypto` | crypto (**Decision 2026-11-14**) | `key` (metadata only: keyId, purpose, algorithm, provider, HSM label, state, versions), `ceremony`, `custodian_share_log`; no key material |
 
 Cross-service reads go through APIs, not tables: `mw-admin-api` gets transaction search and saga timelines from an internal query API on `mw-orchestrator` and audit search from an internal API on `mw-audit-dw`.
 
@@ -1103,6 +1115,7 @@ On a Compose host each zone is its own user-defined network (`dmz`, `app`, `data
 ### 18.2 Identity and access
 
 - Keycloak realms: `ops` (staff, MFA mandatory, AD/LDAP federation TBC), `portals`, `customers`/apps, `partners` (client-credentials). Service-to-service: mTLS with Vault-issued short-lived certs (≤ 72 h) + client-credentials JWT where a service calls an HTTP API.
+- **Decision 2026-11-14** (D21, D24, tickets 66, 73): the `customers` realm, its APISIX token route and its test password are removed; wallet users authenticate at `mw-auth` (18.7). `portals` gets TOTP MFA (org makers and checkers move money in bulk); `partners` clients authenticate with `private_key_jwt` instead of shared secrets; every realm gets brute-force detection and a password policy. mTLS phase 1: OpenBao PKI (an intermediate CA under an offline root, roles per service) issues 72 h certificates, renewed by the service at two thirds of their life; mTLS is mandatory on `mw-crypto` and on the `mw-auth` internal API; every other internal call keeps the client-credentials JWT alone until a follow-up ticket.
 - Least privilege: Kafka ACLs per service principal (produce/consume only its topics); DB roles per service; Vault policies per service path.
 - Privileged access only via bastion with session recording (ENV-14); break-glass accounts time-bound and alerted.
 
@@ -1110,7 +1123,7 @@ On a Compose host each zone is its own user-defined network (`dmz`, `app`, `data
 
 - In transit: TLS 1.2+ everywhere, including Kafka (SASL\_SSL with mTLS or SCRAM), PostgreSQL (`sslmode=verify-full`), Valkey (TLS), SMPP over TLS or VPN where MNO supports it.
 - At rest: disk encryption on all hosts; application-level encryption for NID, bank account numbers and PIN-related blobs via Vault transit (keys can be backed by Bits's HSM, SEC-04).
-- PIN: the plaintext PIN is never logged or stored; encrypted end to end from app to core (decided): the app encrypts with the core's public key (RSA-OAEP, SHA-256), the middleware passes only ciphertext, and only the core decrypts. USSD PIN is encrypted at the USSD service on receipt. Exception (**Decision 2026-11-04**): the PIN ciphertext may be held on the orchestrator's transaction row (`txn.transaction.encrypted_pin`) while the saga still needs it (e.g. `PostTransfer` after `ValidateTransaction`), and is wiped on every transition into a terminal state (`COMPLETED`, `FAILED`, `REJECTED`, `REVERSED`) or `MANUAL_REVIEW`; tests walk every path to a terminal state and check it is cleared. The ciphertext is never logged and never part of the stored request or the idempotency hash.
+- PIN: the plaintext PIN is never logged or stored; encrypted end to end from app to core (decided): the app encrypts with the core's public key (RSA-OAEP, SHA-256), the middleware passes only ciphertext, and only the core decrypts. USSD PIN is encrypted at the USSD service on receipt. Exception (**Decision 2026-11-04**): the PIN ciphertext may be held on the orchestrator's transaction row (`txn.transaction.encrypted_pin`) while the saga still needs it (e.g. `PostTransfer` after `ValidateTransaction`), and is wiped on every transition into a terminal state (`COMPLETED`, `FAILED`, `REJECTED`, `REVERSED`) or `MANUAL_REVIEW`; tests walk every path to a terminal state and check it is cleared. The ciphertext is never logged and never part of the stored request or the idempotency hash. **Decision 2026-11-14** (D20, D22, tickets 71–72): the PIN is encrypted with the `mw-crypto` transport key instead of the core's, only `mw-auth` passes the ciphertext on (to `mw-crypto`), and the transaction request and core commands carry the assertion instead; `txn.transaction.encrypted_pin` is dropped.
 - Masking (SEC-10): a `MaskingPolicy` in each service's `util` package (copied from the template, D14, and checked by the conformance suite) applied to logs, audit payloads and admin views — MSISDN `0171****789`, NID last 3, account last 4, names first initial; party ids are masked by their party `type` (a wallet or MSISDN as an MSISDN, a bank account or any other type last 4 only). Name masking covers customers, not staff: an operator's username stays in full in audit `actor.id` (**Decision 2026-11-04**). Enforced by a log appender filter plus unit tests on every DTO with a `@Sensitive` annotation.
 - Card data: PAN never enters middleware; CyberSource tokenisation (Flex/Microform) and bank-hosted pages keep Bits out of PCI scope where possible (SEC-02).
 - Non-production: only synthetic or masked data (ENV-12); a masking job produces UAT data from production extracts on approval.
@@ -1121,6 +1134,7 @@ On a Compose host each zone is its own user-defined network (`dmz`, `app`, `data
 - Services authenticate to Vault with AppRole (secret-id delivered at deploy time) or TLS cert auth; Spring Cloud Vault loads secrets at start and renews leases.
 - Docker Compose files reference no secret values; secret material is injected at runtime (Vault Agent sidecar container rendering to a tmpfs volume).
 - Certificate expiry alerts at 30/14/7 days; partner cert rotation runbook.
+- **Decision 2026-11-14** (D23, D24): OpenBao PKI issues the service certificates of 18.2 (ticket 66); a service exposes the expiry of its own certificate as a metric and the alert rule fires at a third of the life left. Key material for PINs, signing, tokenisation and envelope encryption lives in the HSM behind `mw-crypto` (18.8), not in OpenBao transit; new column encryption (NID, account numbers) uses `mw-crypto` envelope encryption too. OpenBao keeps KV (including the PKCS#11 token user PIN `mw-crypto` logs in with), PKI and database credentials. The payShield LMK components stay offline with their custodians.
 
 ### 18.5 Secure SDLC (SEC-06, SEC-07)
 
@@ -1136,6 +1150,64 @@ On a Compose host each zone is its own user-defined network (`dmz`, `app`, `data
 - Replay protection on signed requests (timestamp ± 5 min + nonce cache).
 - Security headers on all HTTP responses; no stack traces in errors.
 - Containers run as non-root, read-only root FS, dropped capabilities, distroless or minimal base images.
+
+### 18.7 Wallet authentication and PIN custody (`mw-auth`, **Decision 2026-11-14**, D20–D22)
+
+`mw-auth` is the one place a wallet user (customer, agent, merchant, distributor, DSO) proves who they are. It never sees a clear PIN: it passes the PIN ciphertext to `mw-crypto` and gets back match or no match. Built by tickets 67–72.
+
+**Wallet data.** `mw-auth` keeps `auth.wallet`, a projection of the core's wallet events (walletId, MSISDN, wallet type, status, has-PIN), so login never calls the core synchronously (D5). The KYC factors of a self-service PIN reset (last NID digits, date of birth) are checked by the core: `mw-auth` sends a `VerifyCustomerFactors` command and waits for the event asynchronously; the reset request stays `PENDING_KYC` meanwhile and the app polls it.
+
+**Login and tokens (D21).**
+
+1. `POST /auth/v1/otp` (MSISDN, deviceId, purpose `LOGIN`/`BIND`/`RESET`/`CHECKOUT`): OTP by SMS through `mw-notify` (priority OTP), stored only as a hash bound to wallet, device and purpose; sends per window and guesses capped (the rules built in ticket 18, moved from `mw-app-gateway`).
+2. `POST /auth/v1/devices` (bind): OTP + PIN ciphertext + device public key (P-256) + proof of possession. Binding replaces the earlier device, ends its sessions and refresh tokens, and sends an SMS alert. For 24 h (config) the wallet's assertions carry `newDevice: true`; the core decides what that caps.
+3. `POST /auth/v1/sessions` (login): MSISDN + PIN ciphertext + device signature → access JWT (5 min, claims `sub` walletId, `msisdn`, `role` from the wallet type, `deviceId`, `amr`) and refresh token (30 days, opaque, stored hashed, device-bound, rotated on every use; reuse of a rotated token revokes the whole family). Signed by an `mw-crypto` key; JWKS at `/auth/v1/.well-known/jwks.json`.
+4. First PIN: a wallet the core reports active without a PIN logs in with OTP and must set a PIN before anything else.
+5. Idle session timeout 5 min (sliding, Valkey `sess:{walletId}:{deviceId}`); logout and revocation delete the session and the refresh family.
+
+**PIN policy and lockout (D20).** Five digits; refused: all one digit, ascending or descending runs, any 5 consecutive digits of the MSISDN, the birth year when the core supplies it, the last PIN. Three wrong tries lock the wallet's PIN for 1 h, the next three for 24 h, the next three permanently until a reset (all config). Counters and locks are in `auth.attempt` / `auth.lock`, updated atomically. A locked PIN refuses login and assertions with `MW-AUTH-041` (locked, retry-after) or `MW-AUTH-042` (permanent).
+
+**PIN change and reset.** Change: logged in, step-up with the old PIN, new PIN checked against the policy. Self-service reset: OTP on the bound device + KYC factors (verified by the core) → new PIN. Care reset (permanent lock or no bound device): an operator raises a reset request (maker-checker in `mw-admin-api`; later from `mw-care-api`); once approved the customer gets an OTP and sets a new PIN. Every change, reset and lock is audited (`mw.audit.event.v1`, actor and outcome, no PIN material).
+
+**Transaction authorisation assertion (D22).** `POST /internal/v1/txn-authorisations` (mTLS + service JWT; callers `mw-app-gateway`, `mw-ussd`, `mw-checkout`):
+
+- Request: walletId (or MSISDN for USSD and checkout), channel, PIN ciphertext `{keyId, ciphertext}`, and the transaction hash: SHA-256 over the canonical JSON of `{txnType, amount, currency, payer, payee, idempotencyKey, channel}`.
+- `mw-auth` checks the wallet status, the lock, then the PIN through `mw-crypto`, and counts a failure.
+- Response: a compact JWS (ES256, `kid` from `mw-crypto`) with `iss` `mw-auth`, `aud` `core`, `sub` walletId, `jti`, `iat`, `exp` (iat + 60 s), `txnHash`, `channel`, `authMethod` (`PIN`), `deviceId` (app only), `newDevice`.
+- The channel puts the assertion in `mw.txn.request.v1`; the orchestrator copies it into `ValidateTransaction`, `HoldFunds` and `PostTransfer`. The core recomputes the hash, checks signature (JWKS), `exp`, `aud` and that the `jti` is unused. One assertion authorises one transaction; a retry with the same idempotency key reuses it within its life, after that the customer enters the PIN again.
+- `BULK_DISBURSE` children carry no assertion (the org authorised the batch, ticket 34). Agent-initiated `CASH_IN` carries the agent's assertion.
+
+**Revocation.** The command topic `auth.wallet-lock.v1` (owned by `mw-auth`; produced by `mw-admin-api` today, by `mw-compliance` and `mw-care-api` later) with actions `LOCK`, `UNLOCK`, `REVOKE_SESSIONS`: a lock ends every session and refresh family and refuses login and assertions with `MW-AUTH-043` until unlocked.
+
+**Step-up.** PIN change, device bind, and profile changes ask for a fresh OTP or PIN even within a session (`amr` claim and a step-up window of 2 min).
+
+**Error codes.** `MW-AUTH-010/011/012` (OTP wrong, expired, locked; as built), `MW-AUTH-040` wrong PIN (with tries left), `041`/`042`/`043` locks, `044` weak PIN, `045` PIN not set, `046` assertion invalid or used (core side), `047` device not bound, `048` refresh token reused (`MW-AUTH-001..007`, `020`, `021`, `030` keep their current meaning). `mw-crypto` unreachable: `MW-SYS-*`, retryable, and the request fails closed.
+
+### 18.8 HSM gateway (`mw-crypto`, **Decision 2026-11-14**, D23)
+
+`mw-crypto` is the only process that talks to an HSM. Every other service asks it over its internal API (mTLS only, D24), by `keyId`, and never holds key material. Built by tickets 61–66.
+
+**Provider SPI.** `CryptoProvider` with capabilities per provider: `Pkcs11Provider` (the JDK SunPKCS11 provider against SoftHSMv2 in dev and test, the production HSM's PKCS#11 library later) and `PayShieldProvider` (Thales payShield 10K host commands over TCP with a 2-byte length header; in dev the `mw-simulators` payShield simulator, which keeps its LMK-encrypted keys in SoftHSMv2). A key's metadata names its provider.
+
+**Operations.**
+
+| Operation | Provider | Used by |
+| --- | --- | --- |
+| PIN transport public key by `keyId` (RSA 3072, OAEP SHA-256) | PKCS#11 | apps (at build or start), `mw-ussd`, checkout page |
+| PIN verify / set / change: decrypt the transport block, HMAC-SHA256 under the PIN key over walletId and PIN, compare with the stored value in constant time | PKCS#11 | `mw-auth` |
+| PIN-block translation ISO 9564 formats 0 and 4 (`CA` TPK to ZPK, `CC` ZPK to ZPK), PVV generate and verify (`DG`, `DC`, `EC`), key generate (`A0`), data encrypt (`M0`, `M2`), diagnostics (`NC`) | payShield | ATM and interop adapters (later), tests |
+| JWS sign (ES256, PS256) and JWKS per key | PKCS#11 | `mw-auth` tokens and assertions, audit anchor |
+| HMAC sign and verify | PKCS#11 | partner signatures, webhooks |
+| Deterministic tokenisation (HMAC-based, per-domain key) of MSISDN, NID and account numbers | PKCS#11 | data warehouse export, audit search keys |
+| Envelope encryption (AES-256-GCM data keys wrapped by a KEK in the HSM) | PKCS#11 | NID and account columns, files |
+| XML-DSig sign and verify (RSA-SHA256, exclusive C14N) and HTTP-message signatures | PKCS#11 | NPSB / ISO 20022, SOAP partners |
+| Key list, generate, rotate, retire by `keyId`; public keys | both | `mw-admin-api` key screens |
+
+**Key hierarchy.** PIN transport key pair, PIN HMAC key, JWT signing key, assertion signing key, audit-anchor signing key, tokenisation keys per domain, KEKs per purpose, XML-DSig key pair; on the payShield side LMK, ZPK, PVK. Every key has versions; rotation adds a version, verification accepts the current and the previous version until retired, and a rotated PIN HMAC key re-hashes on the next successful verify.
+
+**Key ceremony.** Generating or importing a top-level key needs two custodians from the `ops` realm role `security-admin` (split knowledge, dual control): one raises the ceremony, the second approves in the admin console (maker-checker), each enters their own component or confirmation; every step is audited. Built in ticket 75.
+
+**Clear PIN in memory.** On the PKCS#11 provider the transport block is decrypted inside `mw-crypto` (SoftHSM and most general-purpose HSMs return the plaintext to the caller): the clear PIN exists only as a `byte[]` in `mw-crypto`, is zeroed right after the HMAC, and is never logged, stored or sent on. Only the payShield provider keeps the clear PIN inside the HSM; moving wallet PIN verification onto it is an option once the production HSM is chosen (open point 22).
 
 ## 19. Non-functional requirements and resilience
 
@@ -1283,6 +1355,7 @@ No integration is "done" until it passes against its simulator in the pipeline a
 - One Spring Boot app hosting a simulator per external party: 4 OCS, utility aggregator, 4 bill aggregators, merchant SOAP, generic bank (SOAP + REST, configurable per bank), UCB ATM, CyberSource, UCB IMT (outbound caller too), NPSB/BanglaQR (ISO 20022), EC, SMSC + 4 USSD gateways (SMPP and HTTP), SMTP (GreenMail), push, SFTP servers (AML, trust bank, DW, partners) generating MT940/MT942 and settlement files.
 - **Scenario control:** behaviour chosen by magic values (e.g. amount ending `.13` → timeout, MSISDN suffix `999` → business failure) and by a control API (`POST /sim/{partner}/scenario`) for latency, error rate, outage, duplicate callback, late callback, out-of-order callback.
 - Simulators record every request for assertions and can replay a callback on demand.
+- **Decision 2026-11-14** (D23, tickets 61, 64): a payShield 10K simulator (TCP host commands of 18.8, LMK-encrypted keys kept in SoftHSMv2) runs inside `mw-simulators`; a `softhsm` container (SoftHSMv2 with a PKCS#11 socket, tokens initialised by a script with fake, documented PINs) serves `mw-crypto` and the simulator in dev and test. Neither is used outside dev and test.
 - Simulators double as the core stub: they consume `core.*.command` and emit `core.*.event` with configurable outcomes, so the middleware is testable before the core is ready.
 
 ### 22.3 Test data (ENV-12)
@@ -1344,7 +1417,7 @@ Every RFP requirement maps to at least one section of this spec; items marked *o
 | OWN-03 | Open-source runtime | 3 |
 | OWN-05 | SBOM | 3, 20.1 |
 | OWN-06 | Reproducible build | 20.1, 20.2 |
-| OWN-07, OWN-08 | No back doors; Bits holds credentials | 18.2, 18.4, 20.5 |
+| OWN-07, OWN-08 | No back doors; Bits holds credentials | 18.2, 18.4, 18.8 (key ceremony, custodians), 20.5 |
 | OWN-09 | Handover package | 12.2, 23 (E20) |
 | OWN-11 | Data residency | 17, 20 |
 | FR-01 | Gateway, auth, rate limit | 8 |
@@ -1367,15 +1440,15 @@ Every RFP requirement maps to at least one section of this spec; items marked *o
 | NFR-01 … NFR-10 | Non-functional | 19 |
 | SEC-01, SEC-03, SEC-11, SEC-12 | Regulatory, ISO 27001, incident, audit rights | Process; 18 |
 | SEC-02 | PCI scope | 11.1 (CyberSource), 18.3 |
-| SEC-04, SEC-05 | Encryption, secrets | 18.3, 18.4 |
+| SEC-04, SEC-05 | Encryption, secrets | 18.3, 18.4, 18.7, 18.8 (HSM gateway) |
 | SEC-06, SEC-07 | Secure SDLC, pen test | 18.5, 22.1 |
 | SEC-08 | Zones | 18.1 |
-| SEC-09 | RBAC, MFA | 15.4, 18.2 |
-| SEC-10 | Masking | 18.3, 21.1 |
+| SEC-09 | RBAC, MFA | 15.4, 18.2, 18.7 |
+| SEC-10 | Masking | 18.3, 18.8 (tokenisation), 21.1 |
 | ENV-01 | Source control | 4.2, 20.3 |
 | ENV-02 | CI/CD | *outside spec* (capabilities in 18.5, 20.2) |
 | ENV-03, ENV-04 | IaC, containers | 20.1, 20.2 |
-| ENV-05, ENV-06 | Config, secrets, certs | 20.4, 18.4 |
+| ENV-05, ENV-06 | Config, secrets, certs | 20.4, 18.2, 18.4 |
 | ENV-07, ENV-08, ENV-09 | Observability, alerting, business dashboards | 21 (contract); tooling *outside spec* |
 | ENV-10, ENV-11, ENV-12 | Simulators, tests, test data | 22 |
 | ENV-13 | Backup and restore | 20.5 |
@@ -1388,7 +1461,7 @@ These items block or change parts of the design; owners and dates should be set 
 
 | # | Question | Affects | Assumed for now |
 | --- | --- | --- | --- |
-| 1 | Core team: confirm the Kafka command/event contract (6.3), PIN verification, `commandId` dedup that still holds after a middleware restore | 6.3, 7, 19.3 | Contract as proposed |
+| 1 | Core team: confirm the Kafka command/event contract (6.3), PIN verification, (PIN verification moved to the middleware 2026-11-14, see open point 23) `commandId` dedup that still holds after a middleware restore | 6.3, 7, 19.3 | Contract as proposed |
 | 2 | Business: are 99.5% availability and a 4 h RTO acceptable without HA (D11)? | 0, 19 | Yes, TBC |
 | 3 | Real volumes: users, daily txns, peak TPS, 3–5 year growth | 19 | 1,500 / 300 TPS |
 | 4 | Per-MNO USSD transport (SMPP vs HTTP), session timeouts, short codes, bind limits | 9.2 | MVP: GP via SMPP live, others config-ready; production values still needed |
@@ -1409,3 +1482,6 @@ These items block or change parts of the design; owners and dates should be set 
 | 19 | Database isolation | 16 | Decided: one PostgreSQL database, one schema per service, no cross-schema access |
 | 20 | Version management across modules | 3, 4.2 | Decided: each module pins its own versions in its own `libs.versions.toml`; root is a composite build with no shared configuration; drift reported by `make versions-check` (D14) |
 | 21 | Where contracts live | 4.2, 4.3, 6.1, 8.4 | Decided: one root `contracts/` folder (files only), owner per file in `OWNERS.yml`; modules read it via `mwContractsDir` |
+| 22 | Production HSM vendor and model (decides the payShield or other host-command provider, and whether wallet PIN verification moves inside the HSM, 18.8) | 18.8 | Thales payShield 10K command set simulated; PKCS#11 for wallet PINs (**Decision 2026-11-14**) |
+| 23 | Core team: accept the `mw-auth` transaction assertion instead of the PIN, publish wallet events (`mw-auth` projection) and answer `VerifyCustomerFactors` | 6.3, 18.7 | As proposed; `mw-core-mock` implements it (**Decision 2026-11-14**) |
+| 24 | Production key ceremony: custodians, HSM partitions, offline root CA for OpenBao PKI | 18.4, 18.8 | Two `security-admin` custodians, dual control (**Decision 2026-11-14**) |

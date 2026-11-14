@@ -1,0 +1,31 @@
+# 63: mw-crypto operations: PIN HMAC, JWS, HMAC, tokenisation, envelope encryption
+
+**What to build:** The PKCS#11 operations of spec 18.8 on top of ticket 62.
+
+- **PIN:**
+  - `POST /internal/v1/pin/verify` takes `{walletId, encryptedPin{keyId, ciphertext}, storedHmac, hmacKeyId}` and returns `{match, rehash?}`. `POST /internal/v1/pin/derive` takes `{walletId, encryptedPin, policyInput?}` and returns `{hmac, hmacKeyId}`, for PIN set and change.
+  - The RSA-OAEP decrypt (SHA-256, MGF1-SHA-256, the same parameters as today's `PinCipher`) runs in the HSM session. The PIN is checked to be exactly 5 ASCII digits. HMAC-SHA256 under `PIN_HMAC` is taken over `walletId ‖ 0x00 ‖ PIN`, and the comparison is constant-time.
+  - The clear PIN is a `byte[]`, zeroed in `finally`, and never a `String`.
+  - `rehash` is returned when the stored value used a VERIFY_ONLY key version.
+  - The weak-PIN policy runs here, because it needs the clear PIN. The rules (spec 18.7) are configured in mw-auth and passed as `policyInput` (MSISDN, birth year, last HMAC). The answer is `{weak: true, rule}`, never the PIN.
+- **JWS:** `POST /internal/v1/jws/sign` (`{keyId or purpose, header claims, payload}` returns a compact JWS, ES256 or PS256) and `GET /internal/v1/jwks/{purpose}` (current and previous versions, with `kid` = keyId:version). Use Nimbus JOSE with a custom signer that calls the PKCS#11 key.
+- **HMAC:** `POST /internal/v1/hmac/sign` and `/verify`.
+- **Tokenisation:** `POST /internal/v1/tokens` with `{domain: MSISDN|NID|ACCOUNT, values[]}` returns deterministic tokens: base32 of HMAC under `TOKENISE_<domain>`, prefixed by the domain. Batch size is capped.
+- **Envelope encryption:** `POST /internal/v1/envelope/encrypt` and `/decrypt`. AES-256-GCM with a fresh data key wrapped by `KEK_<purpose>`. The output is `{kekId, wrappedKey, iv, ciphertext, aad}`.
+- **Masking and logging:** request DTO fields are `@Sensitive` (ciphertext, HMAC, values). Payload logging is never allowed in this service, and a test proves no field reaches a log line.
+- **Errors:**
+  - `MW-VAL-*` for a bad block or a wrong length;
+  - `{match: false}` for a wrong PIN, which is not an error;
+  - `MW-SYS-*` when the HSM is down.
+
+**Tests:**
+- unit tests with the SunPKCS11 provider mocked at the SPI;
+- IT against SoftHSM for every operation, including key rotation (verify with the previous version, rehash flag), zeroing (the buffer is all zero after the call) and a known-answer test for the HMAC;
+- contract fixtures.
+
+**Blocked by:** 62
+
+**Status:** open
+
+- [ ] `./gradlew :mw-crypto:build` green with Docker
+- [ ] `scripts/log-scan.sh` clean after an IT-equivalent run against the stack (no PIN, PIN ciphertext or HMAC in logs)

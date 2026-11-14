@@ -1,6 +1,6 @@
 # Architecture decision records
 
-One record per decision in the spec's two decision tables: D1–D19 ("Decisions confirmed"; D17 has a record but no table row) and
+One record per decision in the spec's two decision tables: D1–D24 ("Decisions confirmed"; D17 has a record but no table row) and
 M1–M13 ("MVP decisions"). The spec stays the source of the decision text; these records add the
 context, the consequences and where the decision lives in the repo. Later refinements (milestone
 gate decisions) are noted in each record's Status line; the spec marks them **Decision
@@ -31,6 +31,11 @@ the repo". A new decision gets the next free id in its table (spec first, then a
 | D17 | [A dev/test-only test console for manual testing](D17-test-console.md) | Accepted, 2026-11-07 |
 | D18 | [No Makefile: `./gradlew clean build` is the gate](D18-no-makefile.md) | Accepted, 2026-11-13 (amends M13 and D16) |
 | D19 | [One test task per module, no coverage gate](D19-single-test-task.md) | Accepted, 2026-11-13 (amends spec 22.1 and the ticket-53 test tiers) |
+| D20 | [The middleware owns the wallet PIN](D20-pin-custody.md) | Accepted, 2026-11-14 (spec revision 6; supersedes M11) |
+| D21 | [mw-auth issues the wallet users' tokens](D21-wallet-token-issuer.md) | Accepted, 2026-11-14 (spec revision 6) |
+| D22 | [PIN on every transaction, exchanged for a signed assertion](D22-transaction-assertion.md) | Accepted, 2026-11-14 (spec revision 6) |
+| D23 | [mw-crypto is the only HSM client (PKCS#11 and payShield)](D23-hsm-gateway.md) | Accepted, 2026-11-14 (spec revision 6) |
+| D24 | [Service mTLS, phase 1](D24-service-mtls-phase-1.md) | Accepted, 2026-11-14 (spec revision 6) |
 | M1 | [MVP flows](M1-mvp-flows.md) | Accepted, 2026-11-03 |
 | M2 | [MVP channels](M2-mvp-channels.md) | Accepted, 2026-11-03 |
 | M3 | [USSD: SMPP and HTTP both built, GP live over SMPP](M3-mvp-ussd-transport.md) | Accepted, 2026-11-03 |
@@ -41,6 +46,6 @@ the repo". A new decision gets the next free id in its table (spec first, then a
 | M8 | [Single host, Docker Compose, no HA](M8-mvp-footprint.md) | Accepted, 2026-11-03 |
 | M9 | [JSON on Kafka with JSON Schema in Git](M9-mvp-serialisation.md) | Accepted, 2026-11-03 |
 | M10 | [Built mainly by coding agents](M10-mvp-delivery.md) | Accepted, 2026-11-03; gate amended 2026-11-13 (D18, D19) |
-| M11 | [PIN: encrypted with the core's key from day one](M11-mvp-pin.md) | Accepted, 2026-11-03 |
+| M11 | [PIN: encrypted with the core's key from day one](M11-mvp-pin.md) | Accepted, 2026-11-03; superseded 2026-11-14 by D20, D22 |
 | M12 | [Human review of every pull request, milestone demos](M12-mvp-code-review.md) | Accepted, 2026-11-03 |
 | M13 | [GitHub repo, no CI/CD: the local build is the pipeline](M13-mvp-repo-and-ci.md) | Accepted, 2026-11-03; amended 2026-11-13 by D18 |
