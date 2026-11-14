@@ -6,7 +6,7 @@
 PROVISION_DIR="$REPO_DIR/deploy/provision"
 # the generated .env values the compose block passes in (obviously fake)
 PROVISION_ENV="VALKEY_PASSWORD=valkey-t BILLAGG_HMAC_SECRET=billagg-t C2WBANK_HMAC_SECRET=c2w-t
-  CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t
+  CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_AUTH_SECRET=auth-t
   USSD_GP_GATEWAY_SECRET=gp-t USSD_ROBI_GATEWAY_SECRET=robi-t USSD_BL_GATEWAY_SECRET=bl-t
   USSD_TELETALK_GATEWAY_SECRET=teletalk-t SOFTHSM_MWCRYPTO_USER_PIN=hsm-pin-t"
 
@@ -94,7 +94,7 @@ manifest_services() { (. "$PROVISION_DIR/services.sh"; printf '%s\n' $SERVICES);
 
 test_every_service_with_an_approle_volume_is_in_the_manifest() {
   local s
-  for s in mw-core-mock mw-crypto mw-simulators mw-orchestrator mw-audit-dw mw-app-gateway mw-notify mw-ussd \
+  for s in mw-core-mock mw-crypto mw-auth mw-simulators mw-orchestrator mw-audit-dw mw-app-gateway mw-notify mw-ussd \
     mw-admin-api mw-adapter-telco mw-adapter-billpay mw-adapter-bank mw-portal-api mw-checkout; do
     manifest_services | grep -q "^$s:" || fail "$s missing from deploy/provision/services.sh"
   done
@@ -117,7 +117,7 @@ test_provision_creates_every_secret_role_and_approle() {
     grep -q "^bao policy write $s -$" .bao-calls || fail "$s: no policy"
     grep -q "^bao write auth/approle/role/$s token_policies=$s " .bao-calls || fail "$s: no AppRole"
   done
-  assert_out_contains "provision: 14 services provisioned"
+  assert_out_contains "provision: 15 services provisioned"
 }
 
 test_provision_writes_the_service_specific_keys() {
@@ -155,6 +155,9 @@ test_provision_writes_the_service_specific_keys() {
   # mw-crypto (ticket 62): the softhsm mw-crypto token's user PIN (ticket 61), its role and schema
   [ "$(kv mw-crypto mw.crypto.pkcs11.user-pin)" = hsm-pin-t ] || fail "mw-crypto token PIN"
   grep -q 'role=crypto_rw .*schema=crypto' .psql-calls || fail "mw-crypto role/schema"
+  # mw-auth (ticket 67): its realm services client secret for mw-crypto, its role and schema
+  [ "$(kv mw-auth mw.auth.crypto.client-secret)" = auth-t ] || fail "mw-auth client secret"
+  grep -q 'role=auth_rw .*schema=auth' .psql-calls || fail "mw-auth role/schema"
   # one role + schema per plain service
   grep -q 'role=orchestrator_rw .*schema=txn' .psql-calls || fail "orchestrator role/schema"
   # mw-admin-api also owns schema partner (its Flyway migrates both)

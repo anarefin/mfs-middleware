@@ -69,6 +69,7 @@ public class CoreCommandService {
   private final StatusOperations statusOps;
   private final FaultRegistry faults;
   private final OutboxWriter outbox;
+  private final WalletStateEvents stateEvents;
   private final JsonMapper json;
   private final Clock clock;
 
@@ -86,6 +87,7 @@ public class CoreCommandService {
       StatusOperations statusOps,
       FaultRegistry faults,
       OutboxWriter outbox,
+      WalletStateEvents stateEvents,
       JsonMapper json,
       Clock clock) {
     this.props = props;
@@ -100,6 +102,7 @@ public class CoreCommandService {
     this.statusOps = statusOps;
     this.faults = faults;
     this.outbox = outbox;
+    this.stateEvents = stateEvents;
     this.json = json;
     this.clock = clock;
   }
@@ -220,6 +223,7 @@ public class CoreCommandService {
     if (!wallets.unlock(id.get())) {
       return reject(cmd, "UnlockRejected", coreRef, Reason.WALLET_NOT_LOCKED);
     }
+    stateEvents.statusChanged(id.get());
     log.atInfo()
         .addKeyValue("event", "wallet.pin.unlocked")
         .addKeyValue("txnId", cmd.txnId())

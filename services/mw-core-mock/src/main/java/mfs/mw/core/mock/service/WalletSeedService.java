@@ -32,13 +32,19 @@ public class WalletSeedService {
   private final WalletBalances balances;
   private final PasswordEncoder encoder;
   private final CoreMockProperties props;
+  private final WalletStateEvents stateEvents;
 
   public WalletSeedService(
-      WalletRepository wallets, WalletBalances balances, PasswordEncoder encoder, CoreMockProperties props) {
+      WalletRepository wallets,
+      WalletBalances balances,
+      PasswordEncoder encoder,
+      CoreMockProperties props,
+      WalletStateEvents stateEvents) {
     this.wallets = wallets;
     this.balances = balances;
     this.encoder = encoder;
     this.props = props;
+    this.stateEvents = stateEvents;
   }
 
   @Transactional
@@ -50,6 +56,7 @@ public class WalletSeedService {
         wallets.resolveId(walletId).isEmpty()
             && wallets.insertIfAbsent(walletId, type, openingBalanceMinor, encoder.encode(props.seed().pin()));
     if (created) {
+      stateEvents.created(java.util.List.of(walletId));
       log.atInfo()
           .addKeyValue("event", "coremock.wallet.seeded")
           .log("seeded {} wallet {}", type, MaskingPolicy.mask(SensitiveType.MSISDN, walletId));

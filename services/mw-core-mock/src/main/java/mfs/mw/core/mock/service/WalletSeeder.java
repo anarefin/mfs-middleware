@@ -1,5 +1,7 @@
 package mfs.mw.core.mock.service;
 
+import java.util.ArrayList;
+import java.util.List;
 import mfs.mw.core.mock.config.CoreMockProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,22 +32,30 @@ public class WalletSeeder {
   private final JdbcTemplate jdbc;
   private final PasswordEncoder encoder;
   private final CoreMockProperties props;
+  private final WalletStateEvents stateEvents;
 
-  public WalletSeeder(JdbcTemplate jdbc, PasswordEncoder encoder, CoreMockProperties props) {
+  public WalletSeeder(
+      JdbcTemplate jdbc, PasswordEncoder encoder, CoreMockProperties props, WalletStateEvents stateEvents) {
     this.jdbc = jdbc;
     this.encoder = encoder;
     this.props = props;
+    this.stateEvents = stateEvents;
   }
 
-  /** Adds the seed wallets that are missing; existing rows are left alone. */
+  /**
+   * Adds the seed wallets that are missing; existing rows are left alone. Each wallet added is
+   * published as WalletStateChanged CREATED in the same transaction (ticket 67).
+   */
   @Transactional
   public void seed() {
     String pinHash = encoder.encode(props.seed().pin());
     CoreMockProperties.Seed s = props.seed();
-    insert("CUSTOMER", "0171100", 1000, s.customerBalanceMinor(), pinHash);
-    insert("AGENT", "0181100", 50, s.agentBalanceMinor(), pinHash);
-    insert("MERCHANT", "0191100", 20, s.merchantBalanceMinor(), pinHash);
-    insert("ORG", "0131100", 2, s.orgBalanceMinor(), pinHash);
+    List<String> created = new ArrayList<>();
+    created.addAll(insert("CUSTOMER", "0171100", 1000, s.customerBalanceMinor(), pinHash));
+    created.addAll(insert("AGENT", "0181100", 50, s.agentBalanceMinor(), pinHash));
+    created.addAll(insert("MERCHANT", "0191100", 20, s.merchantBalanceMinor(), pinHash));
+    created.addAll(insert("ORG", "0131100", 2, s.orgBalanceMinor(), pinHash));
+    stateEvents.created(created);
     jdbc.update(
         "insert into wallet (id, msisdn, type, balance_minor, pin_hash) "
             + "values (?, null, 'SYSTEM', 0, ?) on conflict do nothing",
@@ -67,11 +77,13 @@ public class WalletSeeder {
     log.atInfo().addKeyValue("event", "coremock.seed.reset").log("ledger reset to the seed");
   }
 
-  private void insert(String type, String prefix, int count, long balance, String pinHash) {
-    jdbc.update(
+  /** Inserts the missing wallets of a range; returns the ids it inserted. */
+  private List<String> insert(String type, String prefix, int count, long balance, String pinHash) {
+    return jdbc.queryForList(
         "insert into wallet (id, msisdn, type, balance_minor, pin_hash) "
             + "select ? || lpad(n::text, 4, '0'), ? || lpad(n::text, 4, '0'), ?, ?, ? "
-            + "from generate_series(1, ?) n on conflict do nothing",
+            + "from generate_series(1, ?) n on conflict do nothing returning id",
+        String.class,
         prefix,
         prefix,
         type,

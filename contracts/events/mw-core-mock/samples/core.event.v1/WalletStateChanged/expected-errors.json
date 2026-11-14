@@ -1,0 +1,5 @@
+{
+  "invalid-without-version.json": ["/payload must have required property 'version'"],
+  "invalid-unknown-status.json": ["/payload/status must be equal to one of the allowed values"],
+  "invalid-failure-outcome.json": ["/outcome must be equal to constant"]
+}

@@ -296,11 +296,12 @@ peaks, is the header of `deploy/docker-compose.yml`.
 
 | Knob (default) | Containers |
 | --- | --- |
-| `APP_MEM_LIMIT` (416M) | every `mw-*` service except the ones below |
+| `APP_MEM_LIMIT` (384M) | every `mw-*` service except the ones below (was 416M; trimmed in ticket 67 to free memory for `mw-auth`: measured peaks 313-362 MiB) |
 | `APP_MEM_LIMIT_LARGE` (448M) | `mw-orchestrator`, `mw-audit-dw` |
 | `SIM_MEM_LIMIT` (384M) | `mw-simulators` |
 | `CRYPTO_MEM_LIMIT` (320M), `CRYPTO_XMX` (112m) | `mw-crypto` (its own limit and heap: no Kafka consumers, a pool of 3; measured 275 MiB) |
-| `APP_XMX` (160m) | heap (`-Xms` = `-Xmx`) of every `mw-*` service except `mw-crypto` |
+| `AUTH_MEM_LIMIT` (320M), `AUTH_XMX` (112m) | `mw-auth` (its own limit and heap, sized like `mw-crypto`; not measured on a stack yet, ticket 67) |
+| `APP_XMX` (160m) | heap (`-Xms` = `-Xmx`) of every `mw-*` service except `mw-crypto` and `mw-auth` |
 | `KAFKA_MEM` (576M), `KAFKA_HEAP` (256m) | `kafka` |
 | `KEYCLOAK_MEM` (608M) | `keycloak` |
 | `APISIX_MEM` (384M) | `apisix` |
@@ -311,7 +312,9 @@ peaks, is the header of `deploy/docker-compose.yml`.
 | `ADMIN_UI_MEM` (64M) | `mw-admin-ui` (was 160M; trimmed in ticket 62 to free memory for `mw-crypto`: measured peak 46 MiB x 1.3, rounded up to 32 MiB) |
 
 With the defaults the long-running limits add up to 8176 of the 8192 MiB guard (ticket 62 added
-`mw-crypto` at 320M and trimmed `ADMIN_UI_MEM` 160M -> 64M). Raise `ADMIN_UI_MEM` in `deploy/.env` if
+`mw-crypto` at 320M and trimmed `ADMIN_UI_MEM` 160M -> 64M; ticket 67 added `mw-auth` at 320M and
+trimmed `APP_MEM_LIMIT` 416M -> 384M on its ten services). Raise `APP_MEM_LIMIT` in `deploy/.env` if a
+service is killed for memory (exit 137). Raise `ADMIN_UI_MEM` in `deploy/.env` if
 the admin console is killed for memory under a long Playwright run.
 
 Other settings: `MW_HTTPS_PORT` (published edge port, default 443), `MW_PORT_<NAME>` (the direct
@@ -341,6 +344,7 @@ https://localhost on 443. Production stays edge-only (ADR D3 amendment).
 | 8092 | `mw-checkout` (`MW_PORT_CHECKOUT`) |
 | 8093 | `mw-portal-api` (`MW_PORT_PORTAL_API`) |
 | 8094 | `mw-crypto`, the HSM gateway (`MW_PORT_CRYPTO`) |
+| 8095 | `mw-auth`, wallet authentication: its public port (`MW_PORT_AUTH`; the mTLS internal API 8443 is not published) |
 | 3000 | `mw-admin-ui`, path `/console` (`MW_PORT_ADMIN_UI`) |
 | 3001 | `mw-test-console`, profile `tester` (`MW_PORT_TEST_CONSOLE`) |
 | 5432 | `postgres` (`MW_PORT_POSTGRES`) |
