@@ -49,6 +49,15 @@ public class BodySchema {
   /** {@code POST /admin/v1/notify-templates/{code}/{channel}/{locale}/change-requests} (ticket 39). */
   public static final String TEMPLATE_CHANGE = "derived-schemas/admin-v1-template-change-request.json";
 
+  /** {@code POST /admin/v1/keys/change-requests} (ticket 75). */
+  public static final String KEY_CHANGE = "derived-schemas/admin-v1-key-change-request.json";
+
+  /** {@code POST /admin/v1/key-ceremonies} (ticket 75). */
+  public static final String KEY_CEREMONY = "derived-schemas/admin-v1-key-ceremony-request.json";
+
+  /** {@code POST /admin/v1/key-ceremonies/{id}/components} (ticket 75). */
+  public static final String KEY_COMPONENT = "derived-schemas/admin-v1-key-component-request.json";
+
   private final ObjectReader reader;
   private final Schema schema;
 

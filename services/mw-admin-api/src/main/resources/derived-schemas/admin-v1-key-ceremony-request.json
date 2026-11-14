@@ -1,0 +1,23 @@
+{
+  "x-mw-derived-from": "api/mw-admin-api/admin.v1.openapi.yaml#/paths/~1admin~1v1~1key-ceremonies/post/requestBody/content/application~1json/schema",
+  "type": "object",
+  "required": [
+    "keyId",
+    "purpose",
+    "reason"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "keyId": {
+      "type": "string"
+    },
+    "purpose": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    }
+  }
+}

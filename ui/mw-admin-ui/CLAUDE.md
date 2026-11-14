@@ -108,6 +108,18 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
     partner UPSERT / onboarding, the ops-emergency direct change, and maker withdrawal are not offered;
     go-live / valid-from inputs are UTC like every time in the console; the menu check in the UI only
     warns (a stricter UI copy could refuse what the API accepts), the template check blocks (exact copy).
+- Keys and the key ceremony (ticket 75; `lib/keys.ts`, actions `requestKeyChange`, `startKeyCeremony`,
+  `enterKeyComponent`): `/console/keys` (security-admin or auditor: every mw-crypto key with its
+  versions and state; a security-admin also gets "Request rotation", "Request retirement" of a
+  VERIFY_ONLY version, "Generate a key in the HSM" and "Key ceremony"). `/console/keys/ceremony/{id}`
+  is the wizard: steps Custodian 1, Custodian 2, KCV confirmation (`ceremonyStep`); the component form
+  (password field, 64 hex digits and the 6-digit check value) only for a security-admin who did not
+  enter share 1 (`mayEnterComponent`); the component is posted once and never shown back. Once both
+  are in, the KCV and a "Compare KCV" GET form (`kcvMatches`). The inbox links a key request to the
+  keys page or the wizard, shows `n/2 components`, `KCV ...`, `applied <kid>`; key requests are
+  decided by another security-admin (`approvals.ts` `checkerRoles`, `checkerLabel`). Every key
+  action needs a sign-in of the last 5 minutes (mw-admin-api `MW-AUTH-031`, shown as the envelope).
+  Playwright `e2e/60-keys.spec.ts` (`@keys`, personas `secadmin1` / `secadmin2` = `seed-ops-secadmin1|2`).
 - `/console/api/health` -> `{"status":"UP"}` (container healthcheck, public).
 
 ## UI stack
@@ -194,7 +206,9 @@ html, junit `test-results/junit.xml`). `e2e/support/`:
   what an interrupted run left PENDING), `ussd.ts` (a real P2P: seeded customer `01712000001` ->
   `01712000002`, Tk 10, over robi's HTTP USSD route, English so the end screen carries the TxnID).
 - Specs: `00-smoke` (`@smoke`), `10-console` (`@console`), `20-approvals` (`@approvals`),
-  `30-partners` (`@partners`), `40-ussd` (`@ussd`), `50-templates` (`@templates`). Idempotent across
+  `30-partners` (`@partners`), `40-ussd` (`@ussd`), `50-templates` (`@templates`), `60-keys` (`@keys`:
+  a ceremony with two custodians and the KCV computed in the test from the two components, then a
+  rotation; a key id of its own per run). Idempotent across
   runs: own transactions per run, inbox rows by id, partner `ocs` put back as found, menu and template
   versions published with go-live / valid-from 2099 so mw-ussd and mw-notify keep serving the seeded
   texts the API suite reads.

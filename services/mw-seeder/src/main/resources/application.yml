@@ -100,6 +100,10 @@ mw:
       - { persona: viewer, realm: ops, username: seed-ops-viewer, roles: [viewer] }
       # roles as the realm import's ops-compliance01 (the PII reveal of the console, ticket 59)
       - { persona: compliance, realm: ops, username: seed-ops-compliance, roles: [compliance-officer] }
+      # two security-admins (ticket 75): maker and checker of key changes, the two custodians of the
+      # key ceremony; pre-set TOTP like the other ops personas (scripts/totp.sh seed-ops-secadmin1)
+      - { persona: secadmin1, realm: ops, username: seed-ops-secadmin1, roles: [security-admin] }
+      - { persona: secadmin2, realm: ops, username: seed-ops-secadmin2, roles: [security-admin] }
       - { persona: org-maker, realm: portals, username: seed-org-maker, roles: [org-maker], attributes: { orgId: ORG001 } }
       - { persona: org-checker, realm: portals, username: seed-org-checker, roles: [org-checker], attributes: { orgId: ORG001 } }
       - { persona: customer, realm: mw-auth, username: seed-customer01, roles: [customer], attributes: { msisdn: "01712000001" } }

@@ -356,26 +356,46 @@ public class ChangeRequestService {
   public ChangeRequestView get(Operator operator, UUID id) {
     requireReader(operator);
     ChangeRequest cr = requests.find(id).orElseThrow(ChangeRequestService::notFound);
-    if (!Partner.RESOURCE_TYPE.equals(cr.resourceType()) && !operator.hasAny(AdminRole.READ_TRANSACTIONS)) {
+    Set<String> visible = visibleTypes(operator);
+    if (visible != null && !visible.contains(cr.resourceType())) {
       throw new ForbiddenException("This operation needs a transaction viewing role");
     }
     return ChangeRequestMapper.view(cr);
   }
 
-  /** Newest first; an operator who may not read transactions sees partner requests only. */
+  /**
+   * Newest first; an operator who may not read transactions sees partner requests (partner
+   * readers) and key requests (key readers, ticket 75) only.
+   */
   public ChangeRequestView.Page list(
       Operator operator, ChangeRequestView.Status shown, String resourceType, String resourceId, int limit, int offset) {
     requireReader(operator);
     ChangeRequest.Status status = ChangeRequestMapper.status(shown);
+    Set<String> visible = visibleTypes(operator);
     List<ChangeRequest> rows;
-    if (operator.hasAny(AdminRole.READ_TRANSACTIONS)) {
+    if (visible == null) {
       rows = requests.list(status, resourceType, resourceId, limit, offset);
-    } else if (resourceType != null && !Partner.RESOURCE_TYPE.equals(resourceType)) {
+    } else if (resourceType != null && !visible.contains(resourceType)) {
       throw new ForbiddenException("This operation needs a transaction viewing role");
     } else {
-      rows = requests.list(status, resourceType == null ? Partner.RESOURCE_TYPE : resourceType, resourceId, limit, offset);
+      rows = requests.listTypes(status, resourceType == null ? visible : Set.of(resourceType), resourceId, limit, offset);
     }
     return new ChangeRequestView.Page(rows.stream().map(ChangeRequestMapper::view).toList(), limit, offset);
+  }
+
+  /** The resource types an operator may read, null for all (transaction readers). */
+  private static Set<String> visibleTypes(Operator operator) {
+    if (operator.hasAny(AdminRole.READ_TRANSACTIONS)) {
+      return null;
+    }
+    Set<String> out = new java.util.LinkedHashSet<>();
+    if (operator.hasAny(AdminRole.READ_PARTNERS)) {
+      out.add(Partner.RESOURCE_TYPE);
+    }
+    if (operator.hasAny(AdminRole.READ_KEYS)) {
+      out.add(ChangeRequest.KEY);
+    }
+    return out;
   }
 
   // --- rules ----------------------------------------------------------------------------------
@@ -419,6 +439,10 @@ public class ChangeRequestService {
           .log("maker tried to decide own change request");
       throw new MwException(ErrorCodes.AUTH_OWN_REQUEST, "The maker of a change request cannot decide it")
           .withStatus(HttpStatus.FORBIDDEN);
+    }
+    ResourceChangeHandler typeHandler = handlers.get(cr.resourceType());
+    if (typeHandler != null) {
+      typeHandler.checkDecider(cr, checker, clock.instant());
     }
     if (cr.status() == ChangeRequest.Status.EXPIRED) {
       throw expired();

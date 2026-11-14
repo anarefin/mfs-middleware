@@ -17,5 +17,11 @@ public enum Capability {
   /** ISO 9564 PIN-block translation (payShield). */
   PIN_BLOCK,
   /** PVV generate and verify (payShield). */
-  PVV
+  PVV,
+  /**
+   * Key ceremony (ticket 75): store a custodian's component in the HSM and combine it with the
+   * second one inside the HSM ({@link CryptoProvider#storeComponent}, {@link
+   * CryptoProvider#combineComponents}).
+   */
+  CEREMONY
 }

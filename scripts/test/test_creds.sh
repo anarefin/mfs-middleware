@@ -63,6 +63,8 @@ test_totp_matches_the_rfc6238_sha256_vector() {
 # Ticket 73: the portals realm demands TOTP; its test users share the pre-set KC_PORTALS_TEST_TOTP_SECRET.
 test_totp_prints_portal_codes_from_the_portals_secret() {
   dev_env
+  MW_TOTP_TIME=59 assert_ok mw_run "$PWD" totp.sh seed-ops-secadmin2
+  assert_out_contains "seed-ops-secadmin2"
   MW_TOTP_TIME=59 assert_ok mw_run "$PWD" totp.sh seed-org-maker
   local portal="$OUT"
   assert_out_contains "seed-org-maker"

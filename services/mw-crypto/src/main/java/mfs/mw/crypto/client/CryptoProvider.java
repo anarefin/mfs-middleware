@@ -66,6 +66,26 @@ public interface CryptoProvider {
    */
   byte[] unwrapKey(String label, byte[] wrapped);
 
+  /**
+   * Key ceremony (ticket 75): stores a custodian's component (a P-256 scalar, {@code
+   * util/CeremonyComponents}) under {@code label} as a sensitive, never extractable token object
+   * that can only derive. The caller zeroes {@code component}.
+   */
+  default void storeComponent(String label, byte[] component) {
+    throw new UnsupportedOperationException(name() + " has no key ceremony");
+  }
+
+  /**
+   * Key ceremony (ticket 75): derives, inside the HSM, the HMAC-SHA256 key {@code x(d1·d2·G)} from
+   * the component stored under {@code firstLabel} and the second component (ECDH with its public
+   * point; the JVM never holds the result), stores it under {@code targetLabel} as a sensitive,
+   * never extractable token object and returns its HMAC over 16 zero bytes (the KCV input). The
+   * caller zeroes {@code second}.
+   */
+  default byte[] combineComponents(String firstLabel, byte[] second, String targetLabel) {
+    throw new UnsupportedOperationException(name() + " has no key ceremony");
+  }
+
   /** A cheap round trip to the HSM: true when it answers and the session is logged in. */
   boolean probe();
 }

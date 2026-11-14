@@ -50,6 +50,21 @@ info:
     `mw.config.changed.v1` in one database transaction. mw-ussd activates a menu per MNO at its
     go-live (running sessions keep their version); mw-notify switches to a template at its
     `validFrom`.
+
+    Keys and the key ceremony (ticket 75, spec 18.8, D23, OWN-08): `GET /admin/v1/keys` lists the
+    mw-crypto keys and versions (metadata only; `security-admin` or `auditor`). Generating, rotating
+    and retiring a key (KEY_GENERATE, KEY_ROTATE, KEY_RETIRE) and the key ceremony (KEY_CEREMONY)
+    are change requests with `resourceType` `key` (resourceId the keyId): maker and checker must be
+    two different `security-admin` users, each with a fresh MFA (the token's `auth_time` at most 5
+    minutes old when they file, enter a component or decide; else 403 MW-AUTH-031, sign in
+    again). On approval mw-admin-api calls the mw-crypto key API (idempotent on the change request
+    id). A ceremony: the maker files it, then two custodians (two different `security-admin`
+    users, each in their own session) each enter a component (64 hex digits with its 6-digit
+    check value); mw-crypto combines them inside the HSM and returns the KCV only, which the
+    checker compares with the expected one before approving (approval before both components: 409
+    MW-VAL-050). Components are never stored or logged; the audit has who and when. Rejection or
+    expiry destroys the staged key. mw-crypto's own refusals pass through with its code (400
+    MW-VAL-017 bad component, 409 MW-VAL-018 conflict, ...); mw-crypto down is 503 MW-SYS-042.
 servers:
   - url: https://localhost
 security:
@@ -180,6 +195,136 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /admin/v1/keys:
+    get:
+      operationId: listKeys
+      summary: The mw-crypto keys and their versions (metadata only)
+      description: Roles `security-admin` or `auditor` (ticket 75). 503 MW-SYS-042 when mw-crypto is down.
+      responses:
+        "200":
+          description: The keys
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KeyPage" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /admin/v1/keys/change-requests:
+    post:
+      operationId: requestKeyChange
+      summary: Ask for a key generation, rotation or retirement (maker, security-admin)
+      description: >-
+        Role `security-admin`, fresh MFA (403 MW-AUTH-031). KEY_GENERATE needs `purpose` and a
+        keyId that does not exist; KEY_ROTATE an existing key; KEY_RETIRE a VERIFY_ONLY `version`
+        (409 MW-VAL-030 otherwise). Applied by mw-crypto when a different security-admin approves.
+      parameters:
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, keyId, reason]
+              additionalProperties: false
+              properties:
+                action: { type: string, enum: [KEY_GENERATE, KEY_ROTATE, KEY_RETIRE] }
+                keyId: { $ref: "#/components/schemas/KeyId" }
+                purpose: { $ref: "#/components/schemas/KeyPurpose" }
+                version: { type: integer, minimum: 1, maximum: 999999 }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "201":
+          description: The change request, PENDING
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /admin/v1/key-ceremonies:
+    post:
+      operationId: startKeyCeremony
+      summary: Start a key ceremony (maker, security-admin)
+      description: >-
+        A KEY_CEREMONY change request for `keyId` (version 1 of a new key or the next version of
+        an existing one). HMAC-SHA256 purposes only (PIN_HMAC, TOKENISE_<domain>, HMAC_<use>; 400
+        MW-VAL-001 otherwise). Role `security-admin`, fresh MFA.
+      parameters:
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [keyId, purpose, reason]
+              additionalProperties: false
+              properties:
+                keyId: { $ref: "#/components/schemas/KeyId" }
+                purpose: { $ref: "#/components/schemas/KeyPurpose" }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "201":
+          description: The change request, PENDING
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /admin/v1/key-ceremonies/{id}:
+    get:
+      operationId: getKeyCeremony
+      summary: A key ceremony's progress (who entered which share, when; the KCV once combined)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The ceremony
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KeyCeremony" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /admin/v1/key-ceremonies/{id}/components:
+    post:
+      operationId: enterKeyComponent
+      summary: One custodian's component (security-admin, own session, fresh MFA)
+      description: >-
+        The component goes to mw-crypto and is never stored or logged here; the answer shows the
+        KCV once both components are in. The same custodian cannot enter both (409 MW-VAL-018).
+        Only while the request is PENDING (409 MW-VAL-033 / MW-VAL-032).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [component, checkValue]
+              additionalProperties: false
+              properties:
+                component: { type: string, pattern: "^[0-9A-Fa-f]{64}$", description: "32 bytes as hex; never stored" }
+                checkValue: { type: string, pattern: "^[0-9A-Fa-f]{6}$" }
+      responses:
+        "200":
+          description: The ceremony after the share
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KeyCeremony" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /admin/v1/partners:
     get:
       operationId: listPartners
@@ -716,6 +861,9 @@ components:
         approved, `commandId` and `authCommandId`. A `pin_reset` request (PIN_RESET, ticket 70): the
         same, `diff` LOCKED -> RESET and, once approved, `authCommandId` (the PIN_RESET command to mw-auth). A `ussd_menu` / `notify_template` request (ticket 39, action PUBLISH):
         `payload` the version to publish and, once approved, its `configKey` and `version`.
+        A `key` request (ticket 75): `payload` the `keyId`, `purpose`, `version` (retire) and, for a
+        ceremony, the `kid` it makes, the `shares` entered (share, custodian, enteredAt) and the
+        combined `checkValue`; `diff` the key version before and after (`kid`, `state`).
       required: [id, resourceType, resourceId, action, payload, diff, makerId, status, reason, createdAt, expiresAt]
       properties:
         id: { type: string, format: uuid }
@@ -727,6 +875,7 @@ components:
             - { $ref: "#/components/schemas/WalletAction" }
             - { $ref: "#/components/schemas/PartnerAction" }
             - { $ref: "#/components/schemas/ContentAction" }
+            - { $ref: "#/components/schemas/KeyAction" }
         payload: { type: object }
         diff:
           type: object
@@ -793,7 +942,63 @@ components:
         offset: { type: integer }
     ResourceType:
       type: string
-      enum: [transaction, wallet, pin_reset, partner, ussd_menu, notify_template]
+      enum: [transaction, wallet, pin_reset, partner, ussd_menu, notify_template, key]
+    KeyAction:
+      type: string
+      description: Key changes and the key ceremony (ticket 75)
+      enum: [KEY_GENERATE, KEY_ROTATE, KEY_RETIRE, KEY_CEREMONY]
+    KeyId:
+      type: string
+      pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+    KeyPurpose:
+      type: string
+      pattern: "^[A-Z][A-Z0-9_]{0,63}$"
+    Key:
+      type: object
+      required: [keyId, purpose, algorithm, provider, versions]
+      properties:
+        keyId: { $ref: "#/components/schemas/KeyId" }
+        purpose: { $ref: "#/components/schemas/KeyPurpose" }
+        algorithm: { type: string }
+        provider: { type: string }
+        versions:
+          type: array
+          items:
+            type: object
+            required: [version, kid, state, createdAt]
+            properties:
+              version: { type: integer, minimum: 1 }
+              kid: { type: string }
+              state: { type: string, enum: [ACTIVE, VERIFY_ONLY, RETIRED] }
+              createdAt: { type: string, format: date-time }
+              rotatedAt: { type: [string, "null"], format: date-time }
+    KeyPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Key" }
+    KeyCeremony:
+      type: object
+      required: [changeRequestId, keyId, purpose, status, shares]
+      properties:
+        changeRequestId: { type: string, format: uuid }
+        keyId: { $ref: "#/components/schemas/KeyId" }
+        purpose: { $ref: "#/components/schemas/KeyPurpose" }
+        kid: { type: string, description: "The key version it makes, once the first share is in" }
+        status: { $ref: "#/components/schemas/ChangeRequestStatus" }
+        shares:
+          type: array
+          maxItems: 2
+          items:
+            type: object
+            required: [share, custodian, enteredAt]
+            properties:
+              share: { type: integer, enum: [1, 2] }
+              custodian: { type: string }
+              enteredAt: { type: string, format: date-time }
+        checkValue: { type: string, pattern: "^[0-9A-F]{6}$", description: The combined key's KCV, once both shares are in }
     ContentAction:
       type: string
       description: A USSD menu or notify template version to publish (ticket 39)

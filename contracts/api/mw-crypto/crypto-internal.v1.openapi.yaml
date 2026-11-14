@@ -21,8 +21,11 @@ info:
     one the handshake fails. The caller also sends its client-credentials JWT, whose `azp` must
     equal the certificate's CN (else 403 MW-AUTH-002). Generating and rotating keys is narrower than
     reading: only the key-admin clients (`mw.internal-auth.key-admin-clients`, mw-admin-api), and
-    generation only while the dev key bootstrap is on (`mw.crypto.bootstrap-keys`) until the key
-    ceremony (ticket 75); otherwise 403 MW-AUTH-002.
+    generation only while the dev key bootstrap is on (`mw.crypto.bootstrap-keys`); otherwise 403
+    MW-AUTH-002. The production route (ticket 75, OWN-08) is dual control in mw-admin-api: an
+    approved change request applied with `PUT /key-changes/{changeRequestId}` (generate, rotate,
+    retire; no bootstrap flag needed) or the key ceremony `/ceremonies/**` (two custodians'
+    components combined inside the HSM, the KCV returned only). Both are key-admin clients only.
 
     Operations are authorised per caller (the JWT `azp`, equal to the certificate CN), deny by
     default, 403 MW-AUTH-002 otherwise (`mw.crypto.authz`): `/pin/**` only mw-auth; `/jws/sign` by
@@ -132,6 +135,127 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/key-changes/{changeRequestId}:
+    put:
+      operationId: applyKeyChange
+      summary: Apply a key change approved under dual control in mw-admin-api (ticket 75)
+      description: >-
+        GENERATE (version 1 of a new key, no bootstrap flag needed), ROTATE (add a version) or
+        RETIRE (a VERIFY_ONLY version). Applied once per change request id; a repeat with the same
+        action and keyId answers the key as it is now. Key-admin clients only (403 MW-AUTH-002).
+        Errors: 400 MW-VAL-001 (bad body), 400 MW-VAL-011 (unknown purpose), 404 MW-VAL-010
+        (unknown key or version), 409 MW-VAL-012 (keyId exists), 409 MW-VAL-018 (maker equals
+        checker, a replay with other values, the ACTIVE version to retire), 503 MW-SYS-010.
+      parameters:
+        - $ref: "#/components/parameters/ChangeRequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KeyChangeRequest" }
+      responses:
+        "200":
+          description: The key after the change
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Key" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/ceremonies/{ceremonyId}:
+    get:
+      operationId: getCeremony
+      summary: A key ceremony (who entered which share, when; the KCV once combined)
+      parameters:
+        - $ref: "#/components/parameters/CeremonyId"
+        - $ref: "#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: The ceremony
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ceremony" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /internal/v1/ceremonies/{ceremonyId}/components:
+    post:
+      operationId: enterCeremonyComponent
+      summary: One custodian's component; the second is combined with the first inside the HSM
+      description: >-
+        The ceremony id is mw-admin-api's KEY_CEREMONY change request. The first component opens
+        the ceremony for keyId and purpose (version 1 of a new key, or the next version) and is
+        stored in the HSM as a derive-only object; the second, from another custodian, is combined
+        with it inside the HSM (ECDH of the two P-256 scalars, CKM_ECDH1_DERIVE) into the staged
+        key version, and only its KCV is returned. The key is not usable before commit. Components
+        are never stored or logged. Purposes: HMAC-SHA256 keys (PIN_HMAC, TOKENISE_<domain>,
+        HMAC_<use>). Key-admin clients only. Errors: 400 MW-VAL-001 (bad body), 400 MW-VAL-015
+        (purpose not for a ceremony, or another purpose than the key's), 400 MW-VAL-017 (component
+        is no scalar or does not match its check value), 409 MW-VAL-018 (another live ceremony of
+        the key, same custodian twice, no more components taken), 503 MW-SYS-010.
+      parameters:
+        - $ref: "#/components/parameters/CeremonyId"
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CeremonyComponentRequest" }
+      responses:
+        "200":
+          description: The ceremony after the share
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ceremony" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/ceremonies/{ceremonyId}/commit:
+    post:
+      operationId: commitCeremony
+      summary: The approved ceremony's key version becomes ACTIVE (idempotent)
+      description: >-
+        Errors: 404 MW-VAL-003 (no such ceremony), 409 MW-VAL-018 (not both shares in, maker equals
+        checker, the key changed meanwhile).
+      parameters:
+        - $ref: "#/components/parameters/CeremonyId"
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CeremonyCommitRequest" }
+      responses:
+        "200":
+          description: The key with the new ACTIVE version
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Key" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /internal/v1/ceremonies/{ceremonyId}/abort:
+    post:
+      operationId: abortCeremony
+      summary: Destroy the ceremony's staged HSM objects (rejected or expired request; idempotent)
+      description: An unknown or aborted ceremony is no error. Errors 409 MW-VAL-018 (committed).
+      parameters:
+        - $ref: "#/components/parameters/CeremonyId"
+        - $ref: "#/components/parameters/CorrelationId"
+      responses:
+        "204": { description: Aborted }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
   /internal/v1/pin/verify:
     post:
@@ -583,6 +707,16 @@ components:
       in: path
       required: true
       schema: { $ref: "#/components/schemas/KeyId" }
+    ChangeRequestId:
+      name: changeRequestId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CeremonyId:
+      name: ceremonyId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
     CorrelationId:
       name: X-Correlation-Id
       in: header
@@ -617,6 +751,69 @@ components:
         keyId:
           description: Default the purpose in lower case with hyphens (JWT_SIGN -> jwt-sign)
           $ref: "#/components/schemas/KeyId"
+    OperatorId:
+      type: string
+      pattern: "^[A-Za-z0-9._@-]{1,128}$"
+    KeyChangeRequest:
+      type: object
+      required: [action, keyId, makerId, checkerId]
+      additionalProperties: false
+      properties:
+        action: { type: string, enum: [GENERATE, ROTATE, RETIRE] }
+        keyId: { $ref: "#/components/schemas/KeyId" }
+        purpose:
+          description: GENERATE only
+          $ref: "#/components/schemas/Purpose"
+        version: { type: integer, minimum: 1, maximum: 999999, description: "RETIRE only: a VERIFY_ONLY version" }
+        makerId: { $ref: "#/components/schemas/OperatorId" }
+        checkerId: { $ref: "#/components/schemas/OperatorId" }
+    CeremonyComponentRequest:
+      type: object
+      required: [keyId, purpose, custodian, component, checkValue]
+      additionalProperties: false
+      properties:
+        keyId: { $ref: "#/components/schemas/KeyId" }
+        purpose: { $ref: "#/components/schemas/Purpose" }
+        custodian: { $ref: "#/components/schemas/OperatorId" }
+        component:
+          type: string
+          pattern: "^[0-9A-Fa-f]{64}$"
+          description: 32 bytes, a P-256 scalar (0 < d < n); never logged or stored
+        checkValue:
+          type: string
+          pattern: "^[0-9A-Fa-f]{6}$"
+          description: First 3 bytes of SHA-256 over the compressed point d·G
+    CeremonyCommitRequest:
+      type: object
+      required: [makerId, checkerId]
+      additionalProperties: false
+      properties:
+        makerId: { $ref: "#/components/schemas/OperatorId" }
+        checkerId: { $ref: "#/components/schemas/OperatorId" }
+    Ceremony:
+      type: object
+      required: [ceremonyId, keyId, purpose, version, kid, state, shares]
+      properties:
+        ceremonyId: { type: string, format: uuid }
+        keyId: { $ref: "#/components/schemas/KeyId" }
+        purpose: { $ref: "#/components/schemas/Purpose" }
+        version: { type: integer, minimum: 1 }
+        kid: { type: string }
+        state: { type: string, enum: [OPEN, COMBINED, COMMITTED, ABORTED] }
+        shares:
+          type: array
+          maxItems: 2
+          items:
+            type: object
+            required: [share, custodian, enteredAt]
+            properties:
+              share: { type: integer, enum: [1, 2] }
+              custodian: { $ref: "#/components/schemas/OperatorId" }
+              enteredAt: { type: string, format: date-time }
+        checkValue:
+          type: [string, "null"]
+          pattern: "^[0-9A-F]{6}$"
+          description: The combined key's KCV (HMAC-SHA256 over 16 zero bytes, first 3 bytes)
     KeyVersion:
       type: object
       required: [version, kid, state, createdAt]

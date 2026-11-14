@@ -6,6 +6,9 @@ import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.util.Map;
 import mfs.mw.admin.api.dto.ChangeRequestBody;
+import mfs.mw.admin.api.dto.KeyCeremonyBody;
+import mfs.mw.admin.api.dto.KeyChangeBody;
+import mfs.mw.admin.api.dto.KeyComponentBody;
 import mfs.mw.admin.api.dto.PartnerChangeRequestBody;
 import mfs.mw.admin.api.dto.RejectBody;
 import mfs.mw.admin.api.dto.TemplateChangeBody;
@@ -50,7 +53,10 @@ public class BodySchemaAdvice extends RequestBodyAdviceAdapter {
             RejectBody.class, new BodySchema(json, BodySchema.REJECT),
             PartnerChangeRequestBody.class, new BodySchema(json, BodySchema.PARTNER_CHANGE_REQUEST),
             UssdMenuChangeBody.class, new BodySchema(json, BodySchema.USSD_MENU_CHANGE),
-            TemplateChangeBody.class, new BodySchema(json, BodySchema.TEMPLATE_CHANGE));
+            TemplateChangeBody.class, new BodySchema(json, BodySchema.TEMPLATE_CHANGE),
+            KeyChangeBody.class, new BodySchema(json, BodySchema.KEY_CHANGE),
+            KeyCeremonyBody.class, new BodySchema(json, BodySchema.KEY_CEREMONY),
+            KeyComponentBody.class, new BodySchema(json, BodySchema.KEY_COMPONENT));
   }
 
   @Override

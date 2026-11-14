@@ -116,7 +116,7 @@ SMS/email templates and partner configs load their dev data.
 
 `mw-seeder` (profile `seed`, ticket 57) adds, through the services' APIs only (no SQL), the
 baseline the API and Playwright suites share: the personas `seed-ops-maker`, `seed-ops-checker`,
-`seed-ops-viewer`, `seed-ops-compliance` (realm ops, with the TOTP secret `KC_OPS_TEST_TOTP_SECRET`),
+`seed-ops-viewer`, `seed-ops-compliance`, `seed-ops-secadmin1`, `seed-ops-secadmin2` (realm ops, with the TOTP secret `KC_OPS_TEST_TOTP_SECRET`),
 `seed-org-maker`, `seed-org-checker`, `seed-customer01`/`02`, `seed-agent01`, `seed-merchant01` with
 their core-mock wallets (`01712000001`, ...), the OCS partner at its baseline and a first admin
 version of the USSD main menu and the P2P received SMS, all through maker-checker. It is
@@ -144,7 +144,7 @@ The values come from `deploy/dev.env.defaults`; `scripts/creds.sh` prints the on
 
 | Realm | Users | Password (variable) | Used by |
 | --- | --- | --- | --- |
-| `ops` | `seed-ops-maker`, `seed-ops-checker`, `seed-ops-viewer`, `seed-ops-compliance` (seeded; code: `scripts/totp.sh <user>`) | `ops-test-pass` (`KC_OPS_TEST_PASSWORD`) | admin console, manual tests |
+| `ops` | `seed-ops-maker`, `seed-ops-checker`, `seed-ops-viewer`, `seed-ops-compliance`, `seed-ops-secadmin1`, `seed-ops-secadmin2` (security-admin: keys and the key ceremony) (seeded; code: `scripts/totp.sh <user>`) | `ops-test-pass` (`KC_OPS_TEST_PASSWORD`) | admin console, manual tests |
 | `ops` | `ops-viewer01`, `ops-maker01`, `ops-checker01`, `ops-admin01`, `ops-compliance01`, `ops-auditor01` (TOTP enrolled at first sign-in) | `ops-test-pass` | admin console |
 | `ops` | `ops-e2e-maker01`, `ops-e2e-checker01` (TOTP preset from `KC_OPS_TEST_TOTP_SECRET`) | `ops-test-pass` | API suite |
 | mw-auth (no realm, ticket 69) | the app wallets `01711000001` (customer01), `01711000002`, `01811000001` (agent01), `01911000001` (merchant01), `01911000002` and mw-seeder's app wallets: log in with MSISDN + app PIN + a bound device; transactions still take the core PIN `1234` until ticket 72 | app PIN `13579` (`MW_SEED_APP_PIN`, set by mw-seeder through mw-auth's dev-only seed API, `MW_AUTH_SEED_API_ENABLED=true`) | app API, API suite, test console, `scripts/edge-test.sh` |
@@ -275,11 +275,11 @@ Every script prints its usage in its header comment. They read the running stack
 | `scripts/smoke.sh` | live checks: every platform container healthy and the one-shots exited 0, topics, Kafka produce/consume, PostgreSQL, Valkey, Keycloak tokens for every test user, OpenBao, APISIX `/healthz` |
 | `scripts/edge-test.sh` | APISIX edge policies on the running stack: 401/400/413/429 envelopes, header stripping, correlation ID, quotas, mw-auth's `/auth/v1` and its tokens on `app-v1` (app logins by `scripts/lib/mw-auth-token.mjs`), partner and checkout callbacks, USSD credentials, idempotent apply |
 | `scripts/api-test.sh [FOLDER] [ALL]` | Newman API suite in `tests/api` against the running, seeded stack (with the test timers of `deploy/.env`): every folder but `90 Slow`, or the given ones (numbers or names, comma-separated, e.g. `scripts/api-test.sh "01, 03"`); `1` as the second argument adds `90 Slow`. Re-applies the test-only gateway routes first; JUnit report `tests/api/build/newman-report.xml` |
-| `scripts/ui-e2e.sh [GREP]` | admin console Playwright suite (`ui/mw-admin-ui/e2e`) on the running, seeded stack: real Keycloak logins as the seeded personas, the real mw-admin-api behind APISIX; tags `@smoke`, `@console`, `@approvals`, `@partners`, `@ussd`, `@templates`; installs pnpm packages and Chromium when needed |
+| `scripts/ui-e2e.sh [GREP]` | admin console Playwright suite (`ui/mw-admin-ui/e2e`) on the running, seeded stack: real Keycloak logins as the seeded personas, the real mw-admin-api behind APISIX; tags `@smoke`, `@console`, `@approvals`, `@partners`, `@ussd`, `@templates`, `@keys`; installs pnpm packages and Chromium when needed |
 | `scripts/tester.sh` | start the dev/test-only test console (`ui/mw-test-console`, ADR D17): re-applies the test-only gateway routes with `/tester`, starts `mw-test-console` (profile `tester`, about 192 MiB outside the core budget), prints https://localhost/tester; a later `docker compose up` removes the routes again (run it once more) |
 | `scripts/tester-e2e.sh [GREP]` | the test console's Playwright suite (`ui/mw-test-console/e2e`) after `scripts/tester.sh`: app flows with balances, USSD over HTTP and SMPP, a lost core reply resolved by the status inquiry, checkout with IPN, a bulk batch |
 | `scripts/creds.sh` | print every login and key a tester needs (ops, app and portal users, Keycloak admin, the OpenBao root token while the stack is up, APISIX keys, partner and merchant signing secrets, USSD gateway passwords), from `deploy/.env` |
-| `scripts/totp.sh [PERSONA]` | the current one-time code of an ops or portals persona with a pre-set secret (default `seed-ops-maker`; also `seed-ops-checker`, `seed-ops-viewer`, `seed-ops-compliance`, `ops-e2e-*`; portals `seed-org-*`, `org-*`, `sp-viewer01`) |
+| `scripts/totp.sh [PERSONA]` | the current one-time code of an ops or portals persona with a pre-set secret (default `seed-ops-maker`; also `seed-ops-checker`, `seed-ops-viewer`, `seed-ops-compliance`, `seed-ops-secadmin1`, `seed-ops-secadmin2`, `ops-e2e-*`; portals `seed-org-*`, `org-*`, `sp-viewer01`) |
 | `scripts/log-scan.sh [FILE...]` | scan every container log of the stack (or the given files) for a PIN, PIN ciphertext or an unmasked MSISDN / NID; findings printed masked |
 | `scripts/security.sh [MODULE]` | gitleaks, CycloneDX SBOM + trivy per module (builds its boot jar), trivy on the built and pinned images; with the stack up also the ZAP baseline and the log scan (`SECURITY_LIVE=1 scripts/security.sh` makes them mandatory). Decisions in `docs/security-findings.md` |
 | `scripts/chaos.sh` | kill every `mw-*` container, then `kafka` and `postgres`, mid-flow under load; fails on a transaction left non-terminal or core-mock ledger damage (criterion 3); report in `build/chaos/`; knobs such as `CHAOS_TARGETS="mw-orchestrator kafka" scripts/chaos.sh` in its header. About 15–20 min per target |

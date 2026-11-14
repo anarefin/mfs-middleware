@@ -62,11 +62,24 @@ public enum AdminRole {
               VIEWER, OPS_MAKER, OPS_CHECKER, OPS_EMERGENCY, INTEGRATION_MAKER, INTEGRATION_CHECKER, RECON_MAKER,
               RECON_CHECKER, COMPLIANCE_OFFICER, AUDITOR));
 
-  /** See change requests: whoever may read transactions or partners. */
-  public static final Set<AdminRole> READ_CHANGE_REQUESTS = READ_PARTNERS;
+  /**
+   * Key changes and the key ceremony (ticket 75, spec 18.8, OWN-08): file, enter a component, and
+   * decide (maker and checker two different users, each with a fresh MFA).
+   */
+  public static final Set<AdminRole> KEY_ADMIN = Set.copyOf(EnumSet.of(SECURITY_ADMIN));
+
+  /** See the mw-crypto keys and their versions (metadata only; ticket 75). */
+  public static final Set<AdminRole> READ_KEYS = Set.copyOf(EnumSet.of(SECURITY_ADMIN, AUDITOR));
+
+  /** See change requests: whoever may read transactions, partners or keys (security-admin: key requests). */
+  public static final Set<AdminRole> READ_CHANGE_REQUESTS =
+      Set.copyOf(EnumSet.of(
+          VIEWER, OPS_MAKER, OPS_CHECKER, OPS_EMERGENCY, INTEGRATION_MAKER, INTEGRATION_CHECKER, RECON_MAKER,
+          RECON_CHECKER, COMPLIANCE_OFFICER, AUDITOR, SECURITY_ADMIN));
 
   /** Decide some change request (the service checks the resource type's own checker set). */
-  public static final Set<AdminRole> ANY_CHECKER = Set.copyOf(EnumSet.of(OPS_CHECKER, INTEGRATION_CHECKER));
+  public static final Set<AdminRole> ANY_CHECKER =
+      Set.copyOf(EnumSet.of(OPS_CHECKER, INTEGRATION_CHECKER, SECURITY_ADMIN));
 
   /**
    * Propose a new version of a USSD menu or a notify template (spec 15.2 USSD, Notifications;

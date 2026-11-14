@@ -110,7 +110,95 @@ public class KeyService {
     CryptoKey newest = versions.getLast();
     KeyPurpose purpose = KeyPurpose.parse(newest.purpose());
     CryptoProvider provider = provider(newest.provider());
+    List<CryptoKey> after = shiftStates(versions, clock.instant());
+    CryptoKey added = version(keyId, newest.version() + 1, purpose, provider.name());
+    keys.insert(added);
+    create(provider, added, purpose);
+    after.add(added);
+    log.atInfo()
+        .addKeyValue("event", "crypto.key.rotated")
+        .addKeyValue("keyId", keyId)
+        .addKeyValue("kid", added.kid())
+        .log("Key rotated");
+    return mapper.toView(after);
+  }
+
+  /** One key and its versions. */
+  @Transactional(readOnly = true)
+  public KeyView find(String keyId) {
+    List<CryptoKey> versions = keys.findVersions(keyId);
+    if (versions.isEmpty()) {
+      throw CryptoErrors.unknownKey(keyId);
+    }
+    return mapper.toView(versions);
+  }
+
+  /**
+   * Retires one VERIFY_ONLY version (ticket 75, approved in mw-admin-api): verification no longer
+   * accepts it. The ACTIVE version cannot be retired (rotate first) and a RETIRED one stays so. The
+   * HSM object is kept (destroying it is a separate, later step of key destruction).
+   */
+  @Transactional
+  public KeyView retire(String keyId, int version) {
+    List<CryptoKey> versions = keys.lockVersions(keyId);
+    if (versions.isEmpty()) {
+      throw CryptoErrors.unknownKey(keyId);
+    }
+    CryptoKey v = versions.stream().filter(k -> k.version() == version).findFirst()
+        .orElseThrow(() -> CryptoErrors.unknownKey(CryptoKey.kid(keyId, version)));
+    if (v.state() == KeyState.ACTIVE) {
+      throw CryptoErrors.keyChangeConflict("The ACTIVE version cannot be retired; rotate the key first");
+    }
+    List<CryptoKey> after = new ArrayList<>();
     Instant now = clock.instant();
+    for (CryptoKey k : versions) {
+      if (k.version() == version && k.state() == KeyState.VERIFY_ONLY) {
+        keys.updateState(keyId, version, KeyState.RETIRED, now);
+        after.add(k.withState(KeyState.RETIRED, now));
+      } else {
+        after.add(k);
+      }
+    }
+    log.atInfo()
+        .addKeyValue("event", "crypto.key.retired")
+        .addKeyValue("keyId", keyId)
+        .addKeyValue("kid", v.kid())
+        .log("Key version retired");
+    return mapper.toView(after);
+  }
+
+  /**
+   * Makes a key version the key ceremony already put in the HSM under {@code hsmLabel} (ticket 75)
+   * the ACTIVE one: version 1 of a new key, or the next version of an existing one (the older
+   * versions move on as on {@link #rotate}). {@code version} must still be the next one, else 409.
+   */
+  @Transactional
+  public KeyView activate(String keyId, String purposeName, String provider, int version, String hsmLabel) {
+    KeyPurpose purpose = KeyPurpose.parse(purposeName);
+    List<CryptoKey> versions = keys.lockVersions(keyId);
+    int next = versions.isEmpty() ? 1 : versions.getLast().version() + 1;
+    if (next != version) {
+      throw CryptoErrors.keyChangeConflict("The key changed during the ceremony; start it again");
+    }
+    if (!versions.isEmpty() && !versions.getLast().purpose().equals(purpose.name())) {
+      throw CryptoErrors.keyNotUsable(keyId, purpose.name());
+    }
+    List<CryptoKey> after = shiftStates(versions, clock.instant());
+    CryptoKey added =
+        new CryptoKey(keyId, version, purpose.name(), purpose.algorithm().name(), provider, hsmLabel, KeyState.ACTIVE,
+            clock.instant(), null);
+    keys.insert(added);
+    after.add(added);
+    log.atInfo()
+        .addKeyValue("event", "crypto.key.activated")
+        .addKeyValue("keyId", keyId)
+        .addKeyValue("kid", added.kid())
+        .log("Ceremony key version activated");
+    return mapper.toView(after);
+  }
+
+  /** ACTIVE -> VERIFY_ONLY, VERIFY_ONLY -> RETIRED, written; the versions as they are after. */
+  private List<CryptoKey> shiftStates(List<CryptoKey> versions, Instant now) {
     List<CryptoKey> after = new ArrayList<>();
     for (CryptoKey v : versions) {
       KeyState next =
@@ -126,16 +214,7 @@ public class KeyService {
         after.add(v);
       }
     }
-    CryptoKey added = version(keyId, newest.version() + 1, purpose, provider.name());
-    keys.insert(added);
-    create(provider, added, purpose);
-    after.add(added);
-    log.atInfo()
-        .addKeyValue("event", "crypto.key.rotated")
-        .addKeyValue("keyId", keyId)
-        .addKeyValue("kid", added.kid())
-        .log("Key rotated");
-    return mapper.toView(after);
+    return after;
   }
 
   /** The public keys of the versions still in use (ACTIVE, VERIFY_ONLY). */

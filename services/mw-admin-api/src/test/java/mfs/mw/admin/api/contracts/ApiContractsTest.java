@@ -26,6 +26,7 @@ class ApiContractsTest {
   static final String QUERY = "api/mw-orchestrator/txn-query.v1.openapi.yaml";
   static final String AUDIT = "api/mw-audit-dw/audit-query.v1.openapi.yaml";
   static final String TXN_ID = "019a5b2e-1c00-7abc-8def-000000000002";
+  static final String CRYPTO = "api/mw-crypto/crypto-internal.v1.openapi.yaml";
 
   static final String TXN_JSON =
       """
@@ -98,6 +99,26 @@ class ApiContractsTest {
     JsonNode noTrail = JSON.readTree(JSON.writeValueAsString(view));
     ((tools.jackson.databind.node.ObjectNode) noTrail).remove("auditTrail");
     assertThat(served.validate(noTrail)).isNotEmpty();
+  }
+
+  /** Ticket 75: mw-crypto's key page and ceremony read into the client types; the keys are served as admin.v1. */
+  @Test
+  void contractShapedKeyAndCeremonyAnswersReadIntoTheClientTypes() {
+    String keys = "{\"items\":[{\"keyId\":\"pin-hmac\",\"purpose\":\"PIN_HMAC\",\"algorithm\":\"HMAC_SHA256\","
+        + "\"provider\":\"pkcs11\",\"versions\":[{\"version\":1,\"kid\":\"pin-hmac.v1\",\"state\":\"ACTIVE\","
+        + "\"createdAt\":\"2026-11-15T10:00:00Z\",\"rotatedAt\":null}]}]}";
+    String ceremony = "{\"ceremonyId\":\"0193a1b2-0000-7000-8000-000000000076\",\"keyId\":\"pin-hmac\","
+        + "\"purpose\":\"PIN_HMAC\",\"version\":2,\"kid\":\"pin-hmac.v2\",\"state\":\"COMBINED\",\"shares\":["
+        + "{\"share\":1,\"custodian\":\"a\",\"enteredAt\":\"2026-11-15T10:00:00Z\"},"
+        + "{\"share\":2,\"custodian\":\"b\",\"enteredAt\":\"2026-11-15T10:01:00Z\"}],\"checkValue\":\"A1B2C3\"}";
+    assertThat(OpenApiSchemas.response(CRYPTO, "/internal/v1/keys", "get", "200").validate(JSON.readTree(keys))).isEmpty();
+    assertThat(OpenApiSchemas.component(CRYPTO, "Ceremony").validate(JSON.readTree(ceremony))).isEmpty();
+    mfs.mw.admin.api.dto.CryptoKeys.Page page = JSON.readValue(keys, mfs.mw.admin.api.dto.CryptoKeys.Page.class);
+    assertThat(page.items().getFirst().active().kid()).isEqualTo("pin-hmac.v1");
+    mfs.mw.admin.api.dto.CryptoKeys.Ceremony c = JSON.readValue(ceremony, mfs.mw.admin.api.dto.CryptoKeys.Ceremony.class);
+    assertThat(c.checkValue()).isEqualTo("A1B2C3");
+    assertThat(c.shares()).hasSize(2);
+    assertValid(OpenApiSchemas.response(ADMIN, "/admin/v1/keys", "get", "200"), page);
   }
 
   @Test

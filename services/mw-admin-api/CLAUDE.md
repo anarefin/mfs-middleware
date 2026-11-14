@@ -205,6 +205,44 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   only in those services (the admin lists only versions made here); the compacted topic keeps only
   the latest record per key, so a consumer starting on an empty database gets the latest version
   only (fine for the single-instance MVP with persistent databases).
+- Keys and the key ceremony (ticket 75, spec 18.8, D23, OWN-08; `controller/KeyController` ->
+  `service/KeyAdminService`, approval `service/KeyChangeHandler` (resourceType `key`,
+  `ChangeRequest.KEY`, resourceId the keyId), `client/CryptoKeyClient`): `GET /admin/v1/keys` (mw-crypto's
+  key list, `AdminRole.READ_KEYS` = security-admin, auditor); `POST /admin/v1/keys/change-requests
+  {action KEY_GENERATE|KEY_ROTATE|KEY_RETIRE, keyId, purpose?, version?, reason}` (checked against the
+  key as mw-crypto has it: generate a keyId that does not exist, rotate an existing key, retire a
+  VERIFY_ONLY version, else `409 MW-VAL-030`; diff `{before|after: {key: "<kid> <state>"}}`); `POST
+  /admin/v1/key-ceremonies {keyId, purpose (PIN_HMAC|TOKENISE_*|HMAC_*), reason}` -> a KEY_CEREMONY
+  request (payload `keyId, purpose, kid, shares[]`); `POST /admin/v1/key-ceremonies/{id}/components
+  {component, checkValue}` (a custodian in their own session: the component goes to mw-crypto in the
+  request only, never stored, logged or audited; payload gets `shares[{share, custodian, enteredAt}]`
+  and, once both are in, `checkValue` (the KCV), through `ChangeRequestRepository.updatePendingPayload`;
+  audit `admin.key_ceremony.component_entered`, actor the custodian, after `{share, custodian,
+  checkValue?}`); `GET /admin/v1/key-ceremonies/{id}`. Roles: `AdminRole.KEY_ADMIN` = security-admin
+  makes, enters components and decides (added to `ANY_CHECKER`; the handler's `checkers()`), maker !=
+  checker is the shared rule (`403 MW-AUTH-030`). **Fresh MFA:** `dto/Operator.authTime` from the
+  token's `auth_time` (`security/OperatorResolver`); every key action (file, enter a component, approve,
+  reject: the new `ResourceChangeHandler.checkDecider` hook) needs it at most
+  `mw.admin-api.key-mfa-max-age` (5 min) old, else `403 MW-AUTH-031` (sign in again); a token without
+  `auth_time` is stale. Approval (`KeyChangeHandler.prepare`, before the decision transaction):
+  KEY_CEREMONY needs the KCV in the payload (`409 MW-VAL-050`) and calls `POST
+  /internal/v1/ceremonies/{id}/commit`; the others `PUT /internal/v1/key-changes/{id}`; both idempotent
+  on the change request id at mw-crypto, so a retried approval is safe; the payload gets
+  `appliedKid`, audit `sentAs` `mw-crypto`. Reject / expiry of a ceremony calls `.../abort` (best
+  effort, WARN `admin.key_ceremony.abort_failed`). Decision: synchronous mTLS call, not an outbox
+  command (the ceremony is interactive and returns the KCV); the race "mw-crypto applied, then a
+  parallel reject won the row" is accepted (both sides log the change request id, the keys page
+  shows the result). mw-crypto's own `MW-VAL-*` refusals pass through with their code and status
+  (`MW-VAL-017` bad component, `MW-VAL-018` same custodian / conflict); unreachable, 5xx or another
+  refusal `503 MW-SYS-042`. Visibility: an operator without `READ_TRANSACTIONS` sees partner requests
+  (`READ_PARTNERS`) and key requests (`READ_KEYS`) only (`ChangeRequestService.visibleTypes`;
+  security-admin is now in `READ_CHANGE_REQUESTS`). mTLS client: `config/ServiceCertificateManager` +
+  `config/TlsProperties` copied from mw-audit-dw (`mw.tls.enabled`, default false, compose
+  `MW_TLS_ENABLED=true`; PKI role from `PKI_SERVICES`), mw-crypto at `mw.admin-api.crypto.base-url`
+  (`MW_CRYPTO_URL`, `https://mw-crypto:8080`); the services-realm token already carries audience
+  `mw-crypto`. Test `controller/KeyCeremonyApiIT` (stand-in mw-crypto: same-user approval, stale MFA
+  for maker, checker and a token without auth_time, ops-checker refused, ceremony before both
+  components, same custodian, components never in the row / outbox, commit and abort calls).
 - Internal API identity (M3 gate decision; `client/ServiceTokenClient`, `client/InternalApiCaller`):
   Keycloak realm `services` client `mw-admin-api` (client credentials, HTTP Basic, token carries
   audiences mw-orchestrator and mw-audit-dw), cached until 30 s before `expires_in`, dropped on a
@@ -251,7 +289,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   validates both outbox rows), `events/mw-admin-api/mw.config.changed.v1` (`dto/ConfigChangedEvent`;
   `PartnerConfigApiIT` and `ContentChangeApiIT` validate the outbox rows), serves
   `admin.v1`; consumes `api/mw-orchestrator/txn-query.v1` (own type `dto/AdminTxn`) and
-  `api/mw-audit-dw/audit-query.v1` (own type `dto/AuditTrail`), unknown fields ignored
+  `api/mw-audit-dw/audit-query.v1` (own type `dto/AuditTrail`) and `api/mw-crypto/crypto-internal.v1`
+  (ticket 75, own type `dto/CryptoKeys`), unknown fields ignored
   (`contracts/ApiContractsTest` reads contract-shaped answers). No consumed events.
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)

@@ -23,6 +23,13 @@ public interface ResourceChangeHandler {
   Set<AdminRole> checkers();
 
   /**
+   * Extra rules on the operator deciding (approve or reject) a request of this type, after the
+   * shared ones (ticket 75: a fresh MFA for keys); throw an {@code MwException} to refuse. Nothing
+   * by default.
+   */
+  default void checkDecider(ChangeRequest cr, Operator checker, Instant now) {}
+
+  /**
    * The work an approval does; throw an {@code MwException} when the request can no longer be
    * applied (the request then stays PENDING). Called outside the transaction; {@code apply} runs
    * inside it and may throw too (everything rolls back).

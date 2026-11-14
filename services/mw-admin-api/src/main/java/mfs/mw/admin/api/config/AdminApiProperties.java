@@ -22,6 +22,9 @@ import org.springframework.validation.annotation.Validated;
  * @param orchestrator mw-orchestrator, e.g. {@code http://mw-orchestrator:8080}
  * @param auditDw mw-audit-dw, e.g. {@code http://mw-audit-dw:8080}
  * @param auditTrailLimit most audit events shown with one transaction (audit-query caps at 500)
+ * @param crypto mw-crypto's key API (ticket 75), {@code https://mw-crypto:8080}, mTLS with this
+ *     service's certificate ({@code config/ServiceCertificateManager}, {@code mw.tls.enabled})
+ * @param keyMfaMaxAge how old the operator's {@code auth_time} may be for a key action (ticket 75, 5 min)
  */
 @Validated
 @ConfigurationProperties("mw.admin-api")
@@ -30,9 +33,11 @@ public record AdminApiProperties(
     @Valid @NotNull InternalAuth internalAuth,
     @Valid @NotNull Upstream orchestrator,
     @Valid @NotNull Upstream auditDw,
+    @Valid @NotNull Upstream crypto,
     @NotNull @DefaultValue("2s") Duration connectTimeout,
     @NotNull @DefaultValue("5s") Duration readTimeout,
-    @DefaultValue("500") @Min(1) @Max(500) int auditTrailLimit) {
+    @DefaultValue("500") @Min(1) @Max(500) int auditTrailLimit,
+    @NotNull @DefaultValue("5m") Duration keyMfaMaxAge) {
 
   /**
    * @param jwkSetUri the realm's signing keys, fetched lazily on the first token
