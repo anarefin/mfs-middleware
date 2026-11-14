@@ -16,9 +16,9 @@ set -eu
 
 persona="${1:-seed-ops-maker}"
 case "$persona" in
-  seed-ops-maker|seed-ops-checker|seed-ops-viewer|seed-ops-compliance|ops-e2e-maker01|ops-e2e-checker01) var=KC_OPS_TEST_TOTP_SECRET ;;
+  seed-ops-maker|seed-ops-checker|seed-ops-viewer|seed-ops-compliance|seed-ops-secadmin1|seed-ops-secadmin2|ops-e2e-maker01|ops-e2e-checker01) var=KC_OPS_TEST_TOTP_SECRET ;;
   seed-org-maker|seed-org-checker|org-maker01|org-checker01|org-makerchecker01|org-checker02|sp-viewer01) var=KC_PORTALS_TEST_TOTP_SECRET ;;
-  *) die "totp: $persona has no pre-set secret; it enrols an authenticator app (FreeOTP or Aegis, SHA-256) at its first sign-in. Pre-set: seed-ops-maker, seed-ops-checker, seed-ops-viewer, seed-ops-compliance, ops-e2e-maker01, ops-e2e-checker01 (ops); seed-org-maker, seed-org-checker, org-maker01, org-checker01, org-makerchecker01, org-checker02, sp-viewer01 (portals)" ;;
+  *) die "totp: $persona has no pre-set secret; it enrols an authenticator app (FreeOTP or Aegis, SHA-256) at its first sign-in. Pre-set: seed-ops-maker, seed-ops-checker, seed-ops-viewer, seed-ops-compliance, seed-ops-secadmin1, seed-ops-secadmin2, ops-e2e-maker01, ops-e2e-checker01 (ops); seed-org-maker, seed-org-checker, org-maker01, org-checker01, org-makerchecker01, org-checker02, sp-viewer01 (portals)" ;;
 esac
 [ -f "$STACK_ENV" ] || die "totp: deploy/.env does not exist (cd deploy && cp dev.env.defaults .env)"
 secret="$(sed -n "s/^$var=//p" "$STACK_ENV" | tail -1)"

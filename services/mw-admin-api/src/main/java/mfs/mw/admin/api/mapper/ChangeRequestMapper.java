@@ -37,6 +37,7 @@ public final class ChangeRequestMapper {
   public static final String APPROVED = "admin.change_request.approved";
   public static final String REJECTED = "admin.change_request.rejected";
   public static final String EXPIRED = "admin.change_request.expired";
+  public static final String COMPONENT_ENTERED = "admin.key_ceremony.component_entered";
   /** Payload key of a wallet request's txnId (ticket 52). */
   public static final String UNLOCK_TXN_ID = "unlockTxnId";
 
@@ -104,6 +105,22 @@ public final class ChangeRequestMapper {
       before = Map.of(statusKey(cr), cr.statusBefore());
     }
     return event(cr, correlationId, "user", cr.makerId(), CREATED, before, after, cr.createdAt());
+  }
+
+  /**
+   * A custodian entered share {@code share} of a key ceremony (ticket 75): who and when, never the
+   * component; actor the custodian.
+   */
+  public static AuditEvent componentEntered(
+      ChangeRequest cr, String custodian, int share, String checkValue, String correlationId, Instant at) {
+    Map<String, Object> after = new java.util.LinkedHashMap<>();
+    after.put("changeRequestId", cr.id().toString());
+    after.put("share", share);
+    after.put("custodian", custodian);
+    if (checkValue != null) {
+      after.put("checkValue", checkValue);
+    }
+    return event(cr, correlationId, "user", custodian, COMPONENT_ENTERED, Map.of("shares", share - 1), after, at);
   }
 
   public static AuditEvent approved(ChangeRequest cr, String checkerId, String sentAs, String correlationId, Instant at) {

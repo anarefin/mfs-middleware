@@ -45,6 +45,17 @@ public final class CryptoErrors {
     return new MwException(ErrorCodes.VAL_KEY_NOT_USABLE, "Key " + ref + " cannot be used for " + operation);
   }
 
+  /** A ceremony component that is not usable; never says more, never echoes it. */
+  public static MwException badComponent(String field) {
+    return new MwException(ErrorCodes.VAL_BAD_COMPONENT, "Component invalid")
+        .withDetails(List.of(new ErrorDetail(field, "invalid")));
+  }
+
+  /** A ceremony or key change that does not fit the current state: 409. */
+  public static MwException keyChangeConflict(String message) {
+    return new MwException(ErrorCodes.VAL_KEY_CHANGE_CONFLICT, message).withStatus(HttpStatus.CONFLICT);
+  }
+
   public static MwException badEnvelope() {
     return new MwException(ErrorCodes.VAL_BAD_ENVELOPE, "Envelope cannot be decrypted");
   }

@@ -36,6 +36,11 @@ public record ChangeRequest(
    * roles), its own type so it never collides with an open unlock of the same wallet.
    */
   public static final String PIN_RESET = "pin_reset";
+  /**
+   * An mw-crypto key (ticket 75): resourceId the keyId; actions KEY_GENERATE, KEY_ROTATE,
+   * KEY_RETIRE and KEY_CEREMONY, decided by security-admins with a fresh MFA.
+   */
+  public static final String KEY = "key";
 
   /** A request on a wallet: {@link #WALLET} (unlock) or {@link #PIN_RESET}. */
   public static boolean walletLike(String resourceType) {
@@ -44,6 +49,11 @@ public record ChangeRequest(
 
   public enum Status {
     PENDING,
+    /**
+     * Claimed by a checker whose approval calls another service synchronously (ticket 75, key
+     * changes): reject and expiry refuse it; it ends APPROVED, or PENDING again on a refusal.
+     */
+    APPROVING,
     APPROVED,
     REJECTED,
     EXPIRED

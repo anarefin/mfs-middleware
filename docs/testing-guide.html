@@ -150,6 +150,7 @@ Every login is printed where a step needs it; <a href="#c1-0">1.0 Logins at a gl
       <tr><td class="tick"></td><td>USSD menu editor, preview, publish per MNO</td><td><a href="#c9-10">9.10</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>SMS and email templates: preview, publish, reject</td><td><a href="#c9-11">9.11</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>What each role can and cannot do</td><td><a href="#c9-12">9.12</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>Keys, rotation and the key ceremony</td><td><a href="#c9-13">9.13</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Follow a transaction in the logs; health checks</td><td><a href="#s10">10</a></td><td>Terminal</td></tr>
     </tbody>
   </table></div>
@@ -267,7 +268,7 @@ scripts/creds.sh</pre></div>
       <tr><th>Where</th><th>User</th><th>Password</th><th>Second factor / note</th></tr>
       <tr><td>Test console <a href="https://localhost/tester">/tester</a></td><td>-</td><td>-</td><td>no sign-in: it signs in as the users below by itself</td></tr>
       <tr><td rowspan="4">Ops console <a href="https://localhost/console">/console</a> (realm <code>ops</code>)</td>
-        <td><code>seed-ops-maker</code>, <code>seed-ops-checker</code>, <code>seed-ops-viewer</code>, <code>seed-ops-compliance</code> (after <code>mw-seeder</code> ran)</td>
+        <td><code>seed-ops-maker</code>, <code>seed-ops-checker</code>, <code>seed-ops-viewer</code>, <code>seed-ops-compliance</code>, <code>seed-ops-secadmin1</code>, <code>seed-ops-secadmin2</code> (after <code>mw-seeder</code> ran)</td>
         <td rowspan="4"><code>ops-test-pass</code></td><td>6-digit code: <code>scripts/totp.sh &lt;user&gt;</code> (no phone app)</td></tr>
       <tr><td><code>ops-e2e-maker01</code>, <code>ops-e2e-checker01</code></td><td>code: <code>scripts/totp.sh &lt;user&gt;</code> (the API suite uses them too)</td></tr>
       <tr><td><code>ops-maker01</code>, <code>ops-checker01</code>, <code>ops-viewer01</code>, <code>ops-compliance01</code>, <code>ops-auditor01</code>, <code>ops-admin01</code></td><td>enrol an authenticator app at the first sign-in (1.4)</td></tr>
@@ -317,6 +318,7 @@ scripts/creds.sh</pre></div>
       <tr><td><code>seed-ops-checker</code>, <code>ops-e2e-checker01</code>, <code>ops-checker01</code></td><td>viewer, ops-checker</td><td>read; <b>approve or reject</b> the requests of others (also partner changes)</td></tr>
       <tr><td><code>seed-ops-viewer</code>, <code>ops-viewer01</code></td><td>viewer</td><td>read only</td></tr>
       <tr><td><code>seed-ops-compliance</code>, <code>ops-compliance01</code></td><td>compliance-officer</td><td>read; reveal a full MSISDN (audited)</td></tr>
+      <tr><td><code>seed-ops-secadmin1</code>, <code>seed-ops-secadmin2</code></td><td>security-admin</td><td>Keys page; request, approve (the other's) and run the key ceremony (9.13)</td></tr>
       <tr><td><code>ops-auditor01</code></td><td>auditor</td><td>read; reveal a full MSISDN (audited)</td><td rowspan="2">authenticator app (1.4)</td></tr>
       <tr><td><code>ops-admin01</code></td><td>viewer, integration-maker, security-admin</td><td>read; request partner changes only</td></tr>
     </table></div>
@@ -1221,7 +1223,31 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <tr><td><code>seed-ops-maker</code></td><td>every Request form</td><td>Approve on its own requests; Reveal</td></tr>
       <tr><td><code>seed-ops-compliance</code>, <code>ops-auditor01</code></td><td>Reveal MSISDN (audited)</td><td>Request and Approve buttons</td></tr>
       <tr><td><code>ops-admin01</code></td><td>Partners → Change and Timeouts cards</td><td>Wallets unlock, menu and template proposals, transaction actions, Approve</td></tr>
+      <tr><td><code>seed-ops-secadmin1</code></td><td>Keys with its Request forms; Approve on the other security-admin's key requests</td><td>Approve on its own key requests; any other Request form</td></tr>
     </table></div>
+  </div>
+
+  <div class="case" id="c9-13">
+    <h3><span class="id">9.13</span>Keys and the key ceremony (ticket 75)</h3>
+    <p><b>Sign in as:</b> <code>seed-ops-secadmin1</code> and, in a second browser profile, <code>seed-ops-secadmin2</code>
+      (<code>ops-test-pass</code> + <code>scripts/totp.sh &lt;user&gt;</code>). Every key action needs a sign-in of the last
+      5 minutes: after that the API answers <code>MW-AUTH-031</code>; sign out and in again.</p>
+    <ol>
+      <li><span class="ui">Keys</span>: every HSM key with its versions (ACTIVE, VERIFY_ONLY, RETIRED); no key material.
+        <code>ops-auditor01</code> sees the same list without the forms; an ops user sees "Only a security-admin or an auditor sees the keys."</li>
+      <li>Rotation: secadmin1 <span class="ui">Request rotation</span> on a key; in Approvals secadmin1 has no Approve button,
+        secadmin2 approves; the key shows a new ACTIVE version and the old one VERIFY_ONLY.
+        <span class="ui">Request retirement</span> takes a VERIFY_ONLY version only.</li>
+      <li>Ceremony: secadmin1 <span class="ui">Start ceremony</span> (key id e.g. <code>hmac-manual-1</code>, purpose
+        <code>HMAC_MANUAL</code>). Make two components (fake, dev only) and their check values:
+        <code>node -e 'const c=require("crypto");const e=c.createECDH("prime256v1");e.generateKeys();const d=e.getPrivateKey();console.log(d.toString("hex"),c.createHash("sha256").update(e.getPublicKey(null,"compressed")).digest("hex").slice(0,6))'</code>
+        (run twice). secadmin1 enters component 1 on the wizard; it is not offered component 2.</li>
+      <li>secadmin2 opens the same wizard (link in Approvals) and enters component 2: the page shows the KCV.
+        <span class="ui">Compare KCV</span> with a wrong value says it does not match.</li>
+      <li>secadmin2 approves in Approvals: the key appears ACTIVE on Keys. Approving before both components are in is
+        refused with <code>MW-VAL-050</code>; rejecting destroys the staged key.</li>
+      <li><code>scripts/log-scan.sh</code> and <code>docker compose logs mw-crypto mw-admin-api</code>: the components never appear.</li>
+    </ol>
   </div>
 </section>
 

@@ -11,6 +11,9 @@ import java.security.Key;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
+import java.security.interfaces.ECPrivateKey;
+import java.security.interfaces.ECPublicKey;
+import mfs.mw.crypto.util.CeremonyComponents;
 import java.security.PrivateKey;
 import java.security.Provider;
 import java.security.ProviderException;
@@ -39,6 +42,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import javax.crypto.Cipher;
+import javax.crypto.KeyAgreement;
 import javax.crypto.KeyGenerator;
 import javax.crypto.Mac;
 import javax.crypto.SecretKey;
@@ -115,7 +119,7 @@ public class Pkcs11Provider implements CryptoProvider {
   public Set<Capability> capabilities() {
     return EnumSet.of(
         Capability.PIN_HMAC, Capability.JWS, Capability.HMAC, Capability.TOKENISE, Capability.ENVELOPE,
-        Capability.XMLDSIG);
+        Capability.XMLDSIG, Capability.CEREMONY);
   }
 
   @Override
@@ -325,6 +329,45 @@ public class Pkcs11Provider implements CryptoProvider {
     return block;
   }
 
+  /**
+   * The component becomes an EC P-256 private key token object (sensitive, not extractable, {@code
+   * CKA_DERIVE} by the {@code attributes(import, ...)} line of the configuration), stored next to a
+   * placeholder certificate as every key pair here. The JDK key built from it is only on the stack
+   * of this call.
+   */
+  @Override
+  public void storeComponent(String label, byte[] component) {
+    ECPrivateKey priv = CeremonyComponents.privateKey(component);
+    KeyPair pair = new KeyPair(CeremonyComponents.publicKey(component), priv);
+    call("ceremony-component", t -> {
+      X509Certificate cert = placeholderCertificate(null, label, pair, "SHA256withECDSA");
+      t.keyStore().setKeyEntry(label, priv, null, new Certificate[] {cert});
+      return null;
+    });
+  }
+
+  /**
+   * ECDH ({@code CKM_ECDH1_DERIVE}, {@code CKD_NULL}) of the stored component with the second
+   * component's public point, in the HSM, into a generic secret ({@code CKA_VALUE_LEN} 32 from the
+   * configuration), copied to a token object under {@code targetLabel}; then its HMAC over 16 zero
+   * bytes for the KCV. Why not XOR: SoftHSM has no {@code CKM_XOR_BASE_AND_DATA} and the p11-kit
+   * RPC refuses {@code CKM_AES_KEY_WRAP} (CLAUDE.md "Key ceremony").
+   */
+  @Override
+  public byte[] combineComponents(String firstLabel, byte[] second, String targetLabel) {
+    ECPublicKey point = CeremonyComponents.publicKey(second);
+    return call("ceremony-combine", t -> {
+      KeyAgreement ecdh = KeyAgreement.getInstance("ECDH", t.provider());
+      ecdh.init(privateKey(t, firstLabel));
+      ecdh.doPhase(point, true);
+      SecretKey derived = ecdh.generateSecret("Generic");
+      t.keyStore().setEntry(targetLabel, new KeyStore.SecretKeyEntry(derived), null);
+      Mac mac = Mac.getInstance("HmacSHA256", t.provider());
+      mac.init(secretKey(t, targetLabel));
+      return mac.doFinal(CeremonyComponents.kcvInput());
+    });
+  }
+
   @Override
   public boolean probe() {
     try {
@@ -499,6 +542,14 @@ public class Pkcs11Provider implements CryptoProvider {
         "  CKA_SENSITIVE = true",
         "  CKA_EXTRACTABLE = false",
         "}",
+        // key ceremony (ticket 75): an imported component may derive (ECDH); a derived generic
+        // secret is 32 bytes (SoftHSM needs the length; HMAC keys are generated with 32 anyway)
+        "attributes(import, CKO_PRIVATE_KEY, CKK_EC) = {",
+        "  CKA_DERIVE = true",
+        "}",
+        "attributes(generate, CKO_SECRET_KEY, CKK_GENERIC_SECRET) = {",
+        "  CKA_VALUE_LEN = 32",
+        "}",
         "");
   }
 
@@ -535,7 +586,9 @@ public class Pkcs11Provider implements CryptoProvider {
         new JcaX509v3CertificateBuilder(
                 name, BigInteger.valueOf(now.toEpochMilli()), Date.from(now), Date.from(now.plus(CERT_LIFE)),
                 name, pair.getPublic())
-            .build(new JcaContentSignerBuilder(sigAlg).setProvider(p).build(signer));
+            .build(p == null
+                ? new JcaContentSignerBuilder(sigAlg).build(signer)
+                : new JcaContentSignerBuilder(sigAlg).setProvider(p).build(signer));
     return new JcaX509CertificateConverter().getCertificate(holder);
   }
 }

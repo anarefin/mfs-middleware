@@ -38,6 +38,14 @@ public final class ErrorCodes {
   public static final String VAL_KEY_NOT_USABLE = "MW-VAL-015";
   /** The envelope (wrapped key, iv, ciphertext, aad) fails its integrity check: 400. */
   public static final String VAL_BAD_ENVELOPE = "MW-VAL-016";
+  /** Key ceremony (ticket 75): a component that is no P-256 scalar or does not match its check value: 400. */
+  public static final String VAL_BAD_COMPONENT = "MW-VAL-017";
+  /**
+   * Key ceremony or approved key change (ticket 75) in the wrong state: another live ceremony of the
+   * key, the same custodian twice, a commit before both shares, maker equal to checker, a replay
+   * with other values, a version that may not be retired: 409.
+   */
+  public static final String VAL_KEY_CHANGE_CONFLICT = "MW-VAL-018";
   /**
    * The HSM cannot be reached, refused the login or failed the operation: 503, retryable. The
    * request fails closed (spec 18.8, D23).

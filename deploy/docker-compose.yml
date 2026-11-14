@@ -1048,6 +1048,9 @@ services:
       # the recorded MVP deviation of 18.1, on `data`: the service reaches it over `data` and
       # joins no ops network (the ops subnet may call the APISIX Admin API).
       MW_ADMIN_JWK_SET_URI: ${MW_ADMIN_JWK_SET_URI:-http://keycloak:8080/realms/ops/protocol/openid-connect/certs}
+      # mTLS client certificate (pki_int/issue/mw-admin-api) for the key screens and the key ceremony
+      # at mw-crypto (ticket 75)
+      MW_TLS_ENABLED: "true"
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }

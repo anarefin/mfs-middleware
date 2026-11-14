@@ -88,11 +88,12 @@ export type TxnDetail = {
 
 export type TxnAction = "INQUIRE" | "FORCE_COMMIT" | "FORCE_RELEASE" | "REVERSE";
 export type WalletAction = "UNLOCK" | "PIN_RESET";
-export type ChangeRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
+export type ChangeRequestStatus = "PENDING" | "APPROVING" | "APPROVED" | "REJECTED" | "EXPIRED";
 
 export type PartnerAction = "ENABLE" | "DISABLE" | "SET_TIMEOUTS" | "UPSERT";
 export type ContentAction = "PUBLISH";
-export type ResourceType = "transaction" | "wallet" | "pin_reset" | "partner" | "ussd_menu" | "notify_template";
+export type KeyAction = "KEY_GENERATE" | "KEY_ROTATE" | "KEY_RETIRE" | "KEY_CEREMONY";
+export type ResourceType = "transaction" | "wallet" | "pin_reset" | "partner" | "ussd_menu" | "notify_template" | "key";
 
 /**
  * One side of a change request's diff: a transaction / wallet `status`; a partner's changed config
@@ -105,7 +106,7 @@ export type ChangeRequest = {
   id: string;
   resourceType: ResourceType;
   resourceId: string;
-  action: TxnAction | WalletAction | PartnerAction | ContentAction;
+  action: TxnAction | WalletAction | PartnerAction | ContentAction | KeyAction;
   payload: Record<string, unknown>;
   diff: { before: ChangeSide; after: ChangeSide };
   makerId: string;
@@ -119,6 +120,24 @@ export type ChangeRequest = {
 };
 
 export type ChangeRequestPage = { items: ChangeRequest[]; limit: number; offset: number };
+
+// --- keys and the key ceremony (ticket 75) ---
+export type KeyState = "ACTIVE" | "VERIFY_ONLY" | "RETIRED";
+export type KeyVersion = { version: number; kid: string; state: KeyState; createdAt: string; rotatedAt?: string | null };
+/** An mw-crypto key: metadata only (admin.v1 `Key`). */
+export type Key = { keyId: string; purpose: string; algorithm: string; provider: string; versions: KeyVersion[] };
+export type KeyPage = { items: Key[] };
+export type KeyShare = { share: 1 | 2; custodian: string; enteredAt: string };
+/** A key ceremony's progress (admin.v1 `KeyCeremony`): who entered which share, the KCV once combined. */
+export type KeyCeremony = {
+  changeRequestId: string;
+  keyId: string;
+  purpose: string;
+  kid?: string;
+  status: ChangeRequestStatus;
+  shares: KeyShare[];
+  checkValue?: string;
+};
 
 // --- partners (ticket 38) ---
 export type PartnerFamily = "telco" | "billpay" | "bank";

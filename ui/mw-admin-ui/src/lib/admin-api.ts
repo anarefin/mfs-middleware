@@ -5,7 +5,7 @@
 import type { TemplateKey } from "./templates";
 import type { Menu } from "./ussd-menu";
 import type {
-  ApiResult, ChangeRequest, ChangeRequestPage, ContentVersion, ContentVersionPage, ErrorEnvelope, Partner,
+  ApiResult, ChangeRequest, ChangeRequestPage, ContentVersion, ContentVersionPage, ErrorEnvelope, KeyCeremony, KeyPage, Partner,
   PartnerAction, PartnerConfig, PartnerFamily, PartnerPage, PartnerTimeouts, TxnAction, TxnDetail, TxnPage, WalletAction,
 } from "./types";
 
@@ -24,6 +24,15 @@ const templatePath = (k: TemplateKey) =>
 
 /** Our own code when the admin API could not be reached or did not answer with an envelope. */
 export const UNREACHABLE = "MW-SYS-041";
+
+/** `POST /admin/v1/keys/change-requests` (ticket 75). */
+export type KeyChangeBody = {
+  action: "KEY_GENERATE" | "KEY_ROTATE" | "KEY_RETIRE";
+  keyId: string;
+  purpose?: string;
+  version?: number;
+  reason: string;
+};
 
 function isEnvelope(v: unknown): v is ErrorEnvelope {
   return typeof v === "object" && v !== null && typeof (v as ErrorEnvelope).code === "string"
@@ -106,6 +115,22 @@ export function createAdminApi(opts: AdminApiOptions) {
     },
     rejectChangeRequest(token: string, id: string, reason: string): Promise<ApiResult<ChangeRequest>> {
       return post<ChangeRequest>(token, `/admin/v1/change-requests/${encodeURIComponent(id)}/reject`, { reason });
+    },
+    // keys and the key ceremony (ticket 75)
+    listKeys(token: string): Promise<ApiResult<KeyPage>> {
+      return get<KeyPage>(token, "/admin/v1/keys");
+    },
+    requestKeyChange(token: string, body: KeyChangeBody): Promise<ApiResult<ChangeRequest>> {
+      return post<ChangeRequest>(token, "/admin/v1/keys/change-requests", body);
+    },
+    startKeyCeremony(token: string, body: { keyId: string; purpose: string; reason: string }): Promise<ApiResult<ChangeRequest>> {
+      return post<ChangeRequest>(token, "/admin/v1/key-ceremonies", body);
+    },
+    getKeyCeremony(token: string, id: string): Promise<ApiResult<KeyCeremony>> {
+      return get<KeyCeremony>(token, `/admin/v1/key-ceremonies/${encodeURIComponent(id)}`);
+    },
+    enterKeyComponent(token: string, id: string, component: string, checkValue: string): Promise<ApiResult<KeyCeremony>> {
+      return post<KeyCeremony>(token, `/admin/v1/key-ceremonies/${encodeURIComponent(id)}/components`, { component, checkValue });
     },
     // partners (ticket 38)
     listPartners(token: string): Promise<ApiResult<PartnerPage>> {

@@ -40,6 +40,8 @@ Dev/test stack only, never real secrets. The logins testers type are fixed, docu
      seed-ops-checker     viewer, ops-checker         code: scripts/totp.sh seed-ops-checker
      seed-ops-viewer      viewer (read only)          code: scripts/totp.sh seed-ops-viewer
      seed-ops-compliance  compliance-officer          code: scripts/totp.sh seed-ops-compliance
+     seed-ops-secadmin1   security-admin (keys)       code: scripts/totp.sh seed-ops-secadmin1
+     seed-ops-secadmin2   security-admin (keys)       code: scripts/totp.sh seed-ops-secadmin2
    Enrol an authenticator app at the first sign-in (FreeOTP or Aegis; the codes are SHA-256):
      ops-maker01, ops-checker01, ops-viewer01, ops-compliance01, ops-auditor01,
      ops-admin01 (viewer, integration-maker, security-admin)

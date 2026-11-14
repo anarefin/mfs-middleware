@@ -72,7 +72,7 @@ public class FakeCryptoProvider implements CryptoProvider {
   public Set<Capability> capabilities() {
     return EnumSet.of(
         Capability.PIN_HMAC, Capability.JWS, Capability.HMAC, Capability.TOKENISE, Capability.ENVELOPE,
-        Capability.XMLDSIG);
+        Capability.XMLDSIG, Capability.CEREMONY);
   }
 
   @Override
@@ -187,6 +187,32 @@ public class FakeCryptoProvider implements CryptoProvider {
       Cipher c = Cipher.getInstance("AES/CTR/NoPadding");
       c.init(Cipher.DECRYPT_MODE, secret(label, "unwrap"), new IvParameterSpec(wrapped, 0, 16));
       return c.doFinal(wrapped, 16, wrapped.length - 16);
+    } catch (GeneralSecurityException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  @Override
+  public void storeComponent(String label, byte[] component) {
+    check("ceremony-component");
+    keys.put(label, mfs.mw.crypto.util.CeremonyComponents.privateKey(component));
+  }
+
+  @Override
+  public byte[] combineComponents(String firstLabel, byte[] second, String targetLabel) {
+    check("ceremony-combine");
+    if (!(keys.get(firstLabel) instanceof java.security.PrivateKey first)) {
+      throw CryptoErrors.hsmUnavailable("ceremony-combine", null);
+    }
+    try {
+      javax.crypto.KeyAgreement ecdh = javax.crypto.KeyAgreement.getInstance("ECDH");
+      ecdh.init(first);
+      ecdh.doPhase(mfs.mw.crypto.util.CeremonyComponents.publicKey(second), true);
+      SecretKey key = new SecretKeySpec(ecdh.generateSecret(), "HmacSHA256");
+      keys.put(targetLabel, key);
+      Mac mac = Mac.getInstance("HmacSHA256");
+      mac.init(key);
+      return mac.doFinal(mfs.mw.crypto.util.CeremonyComponents.kcvInput());
     } catch (GeneralSecurityException e) {
       throw new IllegalStateException(e);
     }

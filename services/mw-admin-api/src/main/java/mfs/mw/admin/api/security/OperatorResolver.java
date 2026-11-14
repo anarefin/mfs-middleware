@@ -1,5 +1,6 @@
 package mfs.mw.admin.api.security;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -24,7 +25,23 @@ public class OperatorResolver {
       throw new ForbiddenException("Token carries no subject");
     }
     String username = jwt.getClaimAsString("preferred_username");
-    return new Operator(sub, username == null || username.isBlank() ? sub : username, AdminRole.from(realmRoles(jwt)));
+    return new Operator(
+        sub, username == null || username.isBlank() ? sub : username, AdminRole.from(realmRoles(jwt)), authTime(jwt));
+  }
+
+  /** OIDC {@code auth_time} (epoch seconds; Keycloak puts it in access tokens), null when absent or unreadable. */
+  static Instant authTime(Jwt jwt) {
+    Object v = jwt.getClaims().get("auth_time");
+    if (v instanceof Instant i) {
+      return i;
+    }
+    if (v instanceof Number n) {
+      return Instant.ofEpochSecond(n.longValue());
+    }
+    if (v instanceof String s && s.matches("\\d{1,12}")) {
+      return Instant.ofEpochSecond(Long.parseLong(s));
+    }
+    return null;
   }
 
   /** The token's realm roles, as Keycloak puts them in {@code realm_access.roles}. */

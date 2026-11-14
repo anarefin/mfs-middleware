@@ -20,4 +20,6 @@ produces:
   apis:   [api/mw-admin-api/admin.v1.openapi.yaml]
 consumes:
   events: []
-  apis:   [api/mw-orchestrator/txn-query.v1.openapi.yaml, api/mw-audit-dw/audit-query.v1.openapi.yaml]
+  # ticket 75: the key list, approved key changes and the key ceremony at mw-crypto
+  apis:   [api/mw-orchestrator/txn-query.v1.openapi.yaml, api/mw-audit-dw/audit-query.v1.openapi.yaml,
+           api/mw-crypto/crypto-internal.v1.openapi.yaml]

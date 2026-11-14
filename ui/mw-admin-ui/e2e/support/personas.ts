@@ -3,11 +3,12 @@ import { manifestPath } from "./env";
 
 /**
  * The seeded ops personas (mw-seeder, ticket 57) the suite signs in as; `compliance` (compliance-officer)
- * drives the audited MSISDN reveal. Names and roles come from the
+ * drives the audited MSISDN reveal; `secadmin1` / `secadmin2` (security-admin, ticket 75) the key
+ * screens and the two custodians of the key ceremony. Names and roles come from the
  * seed manifest (build/seed/manifest.json after scripts/ui-e2e.sh copied it out of mw-seeder); the password and TOTP secret from the
  * deploy/.env variables the manifest names (scripts/ui-e2e.sh exports them), never from the repo.
  */
-export const PERSONAS = ["maker", "checker", "viewer", "compliance"] as const;
+export const PERSONAS = ["maker", "checker", "viewer", "compliance", "secadmin1", "secadmin2"] as const;
 export type PersonaName = (typeof PERSONAS)[number];
 
 export type ManifestPersona = {

@@ -45,5 +45,14 @@ public final class ErrorCodes {
   /** A proposed menu tree or template is not usable (details name each problem): HTTP 400. */
   public static final String VAL_CONTENT_INVALID = "MW-VAL-040";
 
+  // --- keys and the key ceremony (ticket 75) ---
+
+  /** A key action needs a fresh MFA: the token's auth_time is older than 5 minutes; sign in again: 403. */
+  public static final String AUTH_STALE_MFA = "MW-AUTH-031";
+  /** A KEY_CEREMONY request approved before both components are in: 409. */
+  public static final String VAL_CEREMONY_INCOMPLETE = "MW-VAL-050";
+  /** mw-crypto is unreachable or answered unusably: 503, retryable. */
+  public static final String SYS_CRYPTO_UNAVAILABLE = "MW-SYS-042";
+
   private ErrorCodes() {}
 }

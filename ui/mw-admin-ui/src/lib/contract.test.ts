@@ -8,7 +8,9 @@ import { resolve } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { approvedPinReset, completedP2p, page, pendingReversal, unavailable } from "./testing/admin-fixtures";
+import {
+  approvedPinReset, ceremonyCombined, ceremonyOneShare, completedP2p, keyPage, page, pendingKeyRotation, pendingReversal, unavailable,
+} from "./testing/admin-fixtures";
 
 const contractsDir = process.env.MW_CONTRACTS_DIR ?? resolve(__dirname, "../../../../contracts");
 const doc = parse(readFileSync(resolve(contractsDir, "api/mw-admin-api/admin.v1.openapi.yaml"), "utf8"));
@@ -32,6 +34,13 @@ describe("component-test fixtures match admin.v1", () => {
     check("ChangeRequestPage", page([]));
     check("ChangeRequestPage", page([pendingReversal]));
     check("ChangeRequest", approvedPinReset);
+  });
+
+  it("keys and ceremonies are KeyPage / KeyCeremony (ticket 75)", () => {
+    check("KeyPage", keyPage);
+    check("ChangeRequest", pendingKeyRotation);
+    check("KeyCeremony", ceremonyOneShare);
+    check("KeyCeremony", ceremonyCombined);
   });
 
   it("the failure is the 5.3 envelope", () => {

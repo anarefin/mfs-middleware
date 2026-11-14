@@ -1,4 +1,4 @@
-import { ArrowLeftRight, CircleCheck, FileText, Plug, Smartphone, Wallet, type LucideIcon } from "lucide-react";
+import { ArrowLeftRight, CircleCheck, FileText, KeyRound, Plug, Smartphone, Wallet, type LucideIcon } from "lucide-react";
 
 export type NavItem = { href: string; label: string; icon: LucideIcon; hint: string };
 
@@ -10,6 +10,7 @@ export const NAV: NavItem[] = [
   { href: "/partners", label: "Partners", icon: Plug, hint: "Partner state and timeouts" },
   { href: "/ussd", label: "USSD menus", icon: Smartphone, hint: "Edit and preview USSD menus" },
   { href: "/templates", label: "Templates", icon: FileText, hint: "SMS and email templates" },
+  { href: "/keys", label: "Keys", icon: KeyRound, hint: "HSM keys, rotation and the key ceremony" },
 ];
 
 export function activeNav(pathname: string): NavItem | undefined {

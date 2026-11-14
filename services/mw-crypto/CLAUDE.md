@@ -23,7 +23,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   default provider when it serves the purpose, else in the provider that does (`KeyService`).
 - Rotation (`service/KeyService.rotate`) adds a version: ACTIVE -> VERIFY_ONLY, an older VERIFY_ONLY ->
   RETIRED (verification accepts the current and the previous version only). Retired HSM objects are not
-  destroyed here (`CryptoProvider.destroy` exists for the ceremony, ticket 75).
+  destroyed here (`CryptoProvider.destroy` is used by the ceremony for its staged objects, ticket 75).
 - Dev bootstrap (`scheduler/KeyBootstrap` -> `service/KeyBootstrapService`, ShedLock `key-bootstrap`):
   with `mw.crypto.bootstrap-keys=true` (compose sets `MW_CRYPTO_BOOTSTRAP_KEYS=true`; default false) it
   creates the missing key of every `mw.crypto.bootstrap-purposes` entry on start and every
@@ -37,7 +37,9 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
 - Access (spec 18.2, D24, ticket 66): mTLS is mandatory on the API port 8080 and the JWT stays required.
   See "mTLS" below. Generate (`POST /internal/v1/keys`) and rotate need a key-admin client
   (`mw.internal-auth.key-admin-clients`, `mw-admin-api`); generate also needs `mw.crypto.bootstrap-keys=true`
-  (dev only) until the ceremony (ticket 75); reads stay open to every allowed caller. Refusals are 403
+  (dev only; it stays false outside dev). The production route is dual control (ticket 75, "Key
+  ceremony" below): `PUT /internal/v1/key-changes/{id}` and `/internal/v1/ceremonies/**`, key-admin
+  clients only, no bootstrap flag. Reads stay open to every allowed caller. Refusals are 403
   `MW-AUTH-002` with WARN `security.internal_call_denied` and a reason (`CLIENT_NOT_ALLOWED`,
   `NO_CLIENT_CERT`, `CERT_MISMATCH`, `NOT_KEY_ADMIN`, `KEY_GENERATION_DISABLED`).
 - Metrics and alert: `crypto.op.duration{op,provider,outcome}` (timer around every provider call),
@@ -136,6 +138,54 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   module's image: `./gradlew :mw-simulators:bootJar && docker build -t mfs-mw/mw-simulators:local
   services/mw-simulators`).
 
+## Key ceremony and approved key changes (ticket 75, spec 18.8, D23, OWN-08)
+
+- Decision (how mw-crypto accepts an approved change): mw-admin-api holds the maker-checker request
+  and calls mw-crypto synchronously over mTLS (key-admin client `mw-admin-api`), idempotent on the
+  change request id, instead of an outbox command: the ceremony is interactive (each custodian's
+  component goes in and the KCV comes back in the same request) and the approval needs mw-crypto's
+  answer. mw-crypto trusts the key-admin client for the dual control and checks only maker != checker
+  again (`MW-VAL-018`).
+- Approved changes (`service/KeyChangeService`, `controller/CeremonyController`): `PUT
+  /internal/v1/key-changes/{changeRequestId} {action GENERATE|ROTATE|RETIRE, keyId, purpose?,
+  version?, makerId, checkerId}` -> the key; once per id (`crypto.key_change`, V5); a repeat with the
+  same action and keyId answers the key as it is, other values `409 MW-VAL-018`. RETIRE takes a
+  VERIFY_ONLY version only (`KeyService.retire`; the ACTIVE one: rotate first, `409 MW-VAL-018`). GENERATE
+  here needs no bootstrap flag.
+- Ceremony (`service/CeremonyService`, tables `crypto.ceremony` and `crypto.custodian_share_log`
+  (who and when, never a component), V5): the id is mw-admin-api's KEY_CEREMONY change request.
+  `POST /internal/v1/ceremonies/{id}/components {keyId, purpose, custodian, component (64 hex),
+  checkValue (6 hex)}`: the first opens the ceremony (version 1 of a new key or the next version; one
+  live ceremony per key) and is stored as `ceremony-<id>.c1`; the second (another custodian, else
+  `409 MW-VAL-018`) is combined with it inside the HSM into the staged label `<keyId>.v<n>`, the c1
+  object is destroyed, and only the KCV is returned. `.../commit {makerId, checkerId}` (approval)
+  inserts the version ACTIVE (older ones move on as on rotate; the key changed meanwhile `409`);
+  `.../abort` (reject, expiry) destroys the staged objects; `GET .../{id}`. Errors `MW-VAL-017`
+  (component is no P-256 scalar or does not match its check value), `MW-VAL-018` (state conflict),
+  `MW-VAL-015` (purpose not for a ceremony). The component is `@Sensitive(SECRET)`, parsed into a
+  `byte[]` zeroed in `finally`, never logged (log events `crypto.ceremony.opened|component_entered|
+  committed|aborted` carry ids, share number, custodian).
+- Combination (`util/CeremonyComponents`, `CryptoProvider.storeComponent` / `combineComponents`,
+  capability `CEREMONY`): a component is a P-256 private scalar `d` (`0 < d < n`); its check value the
+  first 3 bytes of SHA-256 over the compressed `d·G`; the key is the ECDH secret `x(d1·d2·G)`
+  (`CKM_ECDH1_DERIVE`, `CKD_NULL`) as a 32-byte generic secret (HMAC-SHA256 key); its KCV the first 3
+  bytes of HMAC-SHA256 over 16 zero bytes. Component 1 is imported as a sensitive, non-extractable EC
+  key with `CKA_DERIVE` (config line `attributes(import, CKO_PRIVATE_KEY, CKK_EC)`); the derived
+  secret gets `CKA_VALUE_LEN` 32 (`attributes(generate, CKO_SECRET_KEY, CKK_GENERIC_SECRET)`).
+  Why not XOR components: SoftHSM 2.6.1 has no `CKM_XOR_BASE_AND_DATA`, the p11-kit RPC refuses
+  `CKM_AES_KEY_WRAP` (`CKR_MECHANISM_INVALID`, probed 2026-11-15) and SunPKCS11 cannot pass
+  `CK_KEY_DERIVATION_STRING_DATA`; ECDH derive works over the RPC. Consequence: the ceremony makes a
+  new key from two shares; it cannot import an existing key value (that needs a production HSM with
+  XOR or key wrap, open point 22).
+- Purposes: HMAC-SHA256 keys only (`PIN_HMAC`, `TOKENISE_<domain>`, `HMAC_<use>`). Follow-ups: KEKs
+  (AES: JCA ECDH yields only a generic secret; needs a direct `C_DeriveKey` template) and the payShield
+  LMK import into the simulator (`FK`-style key forming in mw-simulators) are not built.
+- Tests: `util/CeremonyComponentsTest` (ECDH equals the JDK's, check value of G), `service/CeremonyServiceIT`
+  (PostgreSQL + fake provider: shares, same custodian, commit before both, abort, retire, replay),
+  `contracts/CeremonyContractsTest`, `client/CeremonyIT` (SoftHSM: two components give the expected KCV
+  and the committed key HMACs as the key computed outside; a second ceremony rotates; abort; only the
+  key-admin client; no component in the log).
+
 ## Operations (ticket 63, spec 18.7, 18.8)
 
 - Key references (`service/HsmKeys`): a keyId means its ACTIVE version, a kid `<keyId>.v<n>` that
@@ -185,6 +235,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   | `/http-signature/sign`, `/verify` | the key's purpose (`HTTP_SIGN_RSA`, `HTTP_SIGN_EC`, `HMAC_<use>`); a partner PEM by its key type | none yet |
   | `/jwks/{purpose}`, `/keys`, `/keys/{keyId}/public` | every allowed caller | |
   | generate, rotate | ticket 66 key-admin rule | `mw-admin-api` |
+  | `/key-changes/**`, `/ceremonies/**` (ticket 75) | key-admin rule, no bootstrap flag | `mw-admin-api` |
 
   A caller ticket (67 mw-auth, 70, 71, 74 mw-audit-dw, a new KEK/TOKENISE/HMAC purpose, the ATM, interop
   and merchant SOAP adapters for XML-DSig and HTTP signatures) adds its
@@ -307,7 +358,9 @@ No PKCS#11 tooling on the host (user decision 2026-11-14): PKCS#11 never runs in
 
 - `contracts/api/mw-crypto/crypto-internal.v1.openapi.yaml`: `GET /internal/v1/keys`, `POST
   /internal/v1/keys` (dev and bootstrap only until the ceremony), `POST /internal/v1/keys/{keyId}/rotate`,
-  `GET /internal/v1/keys/{keyId}/public` (PEM and JWK per live version plus a JWK Set); ticket 63 the
+  `GET /internal/v1/keys/{keyId}/public` (PEM and JWK per live version plus a JWK Set); ticket 75
+  `PUT /internal/v1/key-changes/{id}` and `/internal/v1/ceremonies/{id}[/components|/commit|/abort]`
+  (`contracts/CeremonyContractsTest`); ticket 63 the
   operations `/internal/v1/pin/{verify,derive}`, `/jws/sign`, `/jwks/{purpose}`, `/hmac/{sign,verify}`,
   `/tokens`, `/envelope/{encrypt,decrypt}`; ticket 65 `/xmldsig/{sign,verify}` and
   `/http-signature/{sign,verify}`; ticket 64 `/pinblock/translate`, `/pvv/{generate,verify}`. Checked by

@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { Input, NativeSelect } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { diffLabel, mayDecide } from "@/lib/approvals";
+import { checkerLabel, diffLabel, mayDecide, mayRetryApproval } from "@/lib/approvals";
 import { formatAmount, formatTime } from "@/lib/format";
 import { adminApi, operatorToken } from "@/lib/server/admin";
 import { BASE_PATH } from "@/lib/server/env";
@@ -23,7 +23,7 @@ import { ApiError } from "../api-error";
 // the diff (status the maker saw -> status the action leads to) and what will be sent. A checker
 // sees Approve / Reject on requests somebody else filed; the maker never on their own.
 
-const FILTERS = ["PENDING", "APPROVED", "REJECTED", "EXPIRED", "all"] as const;
+const FILTERS = ["PENDING", "APPROVING", "APPROVED", "REJECTED", "EXPIRED", "all"] as const;
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -51,6 +51,12 @@ function Resource({ cr }: { cr: ChangeRequest }) {
     const q = new URLSearchParams({ code: code ?? "", channel: channel ?? "", locale: locale ?? "" });
     return <Link className="font-mono text-xs" href={`/templates?${q}`}>notify_template {cr.resourceId}</Link>;
   }
+  if (cr.resourceType === "key") {
+    // ticket 75: a ceremony links to its wizard, the other key requests to the keys page
+    return cr.action === "KEY_CEREMONY"
+      ? <Link className="font-mono text-xs" href={`/keys/ceremony/${cr.id}`}>key ceremony {cr.resourceId}</Link>
+      : <Link className="font-mono text-xs" href="/keys">key {cr.resourceId}</Link>;
+  }
   if (cr.resourceType === "pin_reset") {
     // ticket 70: a care PIN reset; the wallet id arrives masked
     return <span className="font-mono text-xs">PIN reset {cr.resourceId}</span>;
@@ -71,6 +77,11 @@ function Payload({ cr }: { cr: ChangeRequest }) {
     parts.push(`${cr.status === "APPROVED" ? "published" : "version"} v${p.version}`);
   }
   if (cr.resourceType === "notify_template" && typeof p.body === "string") parts.push(p.body);
+  if (cr.resourceType === "key") {
+    if (Array.isArray(p.shares)) parts.push(`${p.shares.length}/2 components`);
+    if (typeof p.checkValue === "string") parts.push(`KCV ${p.checkValue}`);
+    if (typeof p.appliedKid === "string") parts.push(`applied ${p.appliedKid}`);
+  }
   return <span className="font-mono text-xs break-words">{parts.join(" / ") || "-"}</span>;
 }
 
@@ -88,8 +99,18 @@ function Decision({ cr, operator, roles }: { cr: ChangeRequest; operator?: strin
       </div>
     );
   }
+  if (mayRetryApproval(cr, operator, roles)) {
+    return (
+      <ActionForm action={approveRequest.bind(null, cr.id)} label={`Approve ${cr.id}`}>
+        <Button type="submit" size="sm">Retry approval</Button>
+      </ActionForm>
+    );
+  }
+  if (cr.status === "APPROVING") {
+    return <span className="text-xs text-muted-foreground italic">being approved: mw-crypto has not answered yet</span>;
+  }
   if (cr.status === "PENDING") {
-    return <span className="text-xs text-muted-foreground italic">{cr.makerId === operator ? "your request: another checker decides" : "waiting for an ops-checker"}</span>;
+    return <span className="text-xs text-muted-foreground italic">{cr.makerId === operator ? "your request: another checker decides" : `waiting for ${checkerLabel(cr)}`}</span>;
   }
   return (
     <span className="text-xs tabular-nums">

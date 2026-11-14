@@ -75,6 +75,13 @@ public class SecurityConfig {
                     .access(roles(r -> r.stream().anyMatch(AdminRole.READ_CHANGE_REQUESTS::contains)))
                     .requestMatchers(HttpMethod.GET, "/admin/v1/partners", "/admin/v1/partners/*")
                     .access(roles(r -> r.stream().anyMatch(AdminRole.READ_PARTNERS::contains)))
+                    // keys and the key ceremony (ticket 75); the service checks again, with the fresh MFA
+                    .requestMatchers(HttpMethod.GET, "/admin/v1/keys", "/admin/v1/key-ceremonies/*")
+                    .access(roles(r -> r.stream().anyMatch(AdminRole.READ_KEYS::contains)))
+                    .requestMatchers(
+                        HttpMethod.POST, "/admin/v1/keys/change-requests", "/admin/v1/key-ceremonies",
+                        "/admin/v1/key-ceremonies/*/components")
+                    .access(roles(r -> r.stream().anyMatch(AdminRole.KEY_ADMIN::contains)))
                     // maker-checker on transactions (37), wallets (52) and partners (38); the service checks again
                     .requestMatchers(
                         HttpMethod.POST, "/admin/v1/transactions/*/change-requests", "/admin/v1/wallets/*/change-requests")

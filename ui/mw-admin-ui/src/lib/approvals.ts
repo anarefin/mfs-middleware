@@ -18,6 +18,10 @@ export const ACTION_LABELS: Record<string, string> = {
   FORCE_RELEASE: "Request force release",
   UNLOCK: "Request unlock",
   PIN_RESET: "Request PIN reset",
+  KEY_GENERATE: "Generate key",
+  KEY_ROTATE: "Rotate key",
+  KEY_RETIRE: "Retire key version",
+  KEY_CEREMONY: "Key ceremony",
 };
 
 /** How the approvals inbox names a resource type (ticket 70: the care PIN reset). */
@@ -28,6 +32,7 @@ export const RESOURCE_LABELS: Record<string, string> = {
   partner: "Partner",
   ussd_menu: "USSD menu",
   notify_template: "Template",
+  key: "Key",
 };
 
 /** A request on one wallet (ticket 52 unlock, ticket 70 care PIN reset): status diff, masked id. */
@@ -75,8 +80,20 @@ export function canMakePartner(roles: readonly string[]): boolean {
   return PARTNER_MAKER_ROLES.some((r) => roles.includes(r));
 }
 
+/** mw-admin-api AdminRole.KEY_ADMIN (ticket 75): key requests are decided by another security-admin. */
+export const KEY_CHECKER_ROLE = "security-admin";
+
 function checkerRoles(cr: ChangeRequest): readonly string[] {
-  return cr.resourceType === "partner" ? PARTNER_CHECKER_ROLES : [CHECKER_ROLE];
+  if (cr.resourceType === "partner") return PARTNER_CHECKER_ROLES;
+  if (cr.resourceType === "key") return [KEY_CHECKER_ROLE];
+  return [CHECKER_ROLE];
+}
+
+/** Who decides this request, for the "waiting for ..." line. */
+export function checkerLabel(cr: ChangeRequest): string {
+  if (cr.resourceType === "partner") return "an ops-checker or integration-checker";
+  if (cr.resourceType === "key") return "another security-admin";
+  return "an ops-checker";
 }
 
 /**
@@ -87,6 +104,16 @@ function checkerRoles(cr: ChangeRequest): readonly string[] {
  */
 export function mayDecide(cr: ChangeRequest, operator: string | null | undefined, roles: readonly string[]): boolean {
   return cr.status === "PENDING" && checkerRoles(cr).some((r) => roles.includes(r)) && !!operator && cr.makerId !== operator;
+}
+
+/**
+ * A key request left APPROVING (ticket 75: mw-crypto did not answer the approval's call): another
+ * security-admin than the maker may retry the approval (the same change request id is sent again);
+ * nobody can reject it any more.
+ */
+export function mayRetryApproval(cr: ChangeRequest, operator: string | null | undefined, roles: readonly string[]): boolean {
+  return cr.status === "APPROVING" && cr.resourceType === "key" && roles.includes(KEY_CHECKER_ROLE) && !!operator
+    && cr.makerId !== operator;
 }
 
 const WALLET_ID = /^01[3-9]\d{8}$/;
@@ -112,6 +139,7 @@ function side(cr: ChangeRequest, s: ChangeSide | undefined): string {
   if (cr.resourceType === "ussd_menu" || cr.resourceType === "notify_template") {
     return typeof s.version === "number" ? `v${s.version}` : "-";
   }
+  if (cr.resourceType === "key") return typeof s.key === "string" ? s.key : "-";
   // partner: the changed top-level config fields (objects in short; never a secret, refs only)
   const parts = Object.keys(s).sort().map((k) => {
     const v = s[k];

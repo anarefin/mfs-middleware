@@ -23,6 +23,26 @@ public interface ResourceChangeHandler {
   Set<AdminRole> checkers();
 
   /**
+   * Extra rules on the operator deciding (approve or reject) a request of this type, after the
+   * shared ones (ticket 75: a fresh MFA for keys); throw an {@code MwException} to refuse. Nothing
+   * by default.
+   */
+  default void checkDecider(ChangeRequest cr, Operator checker, Instant now) {}
+
+  /**
+   * Whether the approval's effect is a synchronous call to another service (ticket 75: mw-crypto),
+   * approved claim-first: the request is moved PENDING -> APPROVING before {@link #prepare} (which
+   * then makes the call, idempotent on the change request id), and APPROVING -> APPROVED after it;
+   * a definite refusal (4xx) puts it back to PENDING, a failure without an answer (timeout, 5xx)
+   * leaves it APPROVING for a retry of the approval, which calls again with the same id. Reject and
+   * expiry refuse an APPROVING request. False by default (the effect goes through the outbox in the
+   * decision transaction).
+   */
+  default boolean claimFirst() {
+    return false;
+  }
+
+  /**
    * The work an approval does; throw an {@code MwException} when the request can no longer be
    * applied (the request then stays PENDING). Called outside the transaction; {@code apply} runs
    * inside it and may throw too (everything rolls back).

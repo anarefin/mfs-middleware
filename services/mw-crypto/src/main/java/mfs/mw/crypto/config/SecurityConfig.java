@@ -83,6 +83,14 @@ public class SecurityConfig {
                                 auth.get() != null
                                     && auth.get().getPrincipal() instanceof Jwt jwt
                                     && policy.allowsKeyAdmin(jwt, ctx.getRequest(), false)))
+                    // dual-control key changes and the key ceremony (ticket 75): key-admin clients only
+                    .requestMatchers("/internal/v1/key-changes/**", "/internal/v1/ceremonies/**")
+                    .access(
+                        (auth, ctx) ->
+                            new AuthorizationDecision(
+                                auth.get() != null
+                                    && auth.get().getPrincipal() instanceof Jwt jwt
+                                    && policy.allowsKeyAdmin(jwt, ctx.getRequest(), false)))
                     .requestMatchers("/internal/**")
                     .access(
                         (auth, ctx) ->

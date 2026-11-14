@@ -187,6 +187,21 @@ mw:
     name: ${spring.application.name}
     version: ${MW_VERSION:0.1.0-SNAPSHOT}
     env: ${MW_ENV:local}
+  # This service's client certificate from OpenBao PKI (spec 18.2, 18.4, D24; ticket 75): mw-crypto
+  # needs mTLS. The stack sets MW_TLS_ENABLED=true; tests run without it (plain-HTTP stand-in). On, it
+  # issues pki_int/issue/mw-admin-api at start (role and policy from PKI_SERVICES of
+  # deploy/provision/services.sh), renews at two thirds of the life and never writes the key to disk;
+  # client/CryptoKeyClient is built on ServiceCertificateManager.clientSslContext(). The admin API
+  # itself stays plain HTTP behind APISIX.
+  tls:
+    enabled: ${MW_TLS_ENABLED:false}
+    pki-mount: pki_int
+    role: ${spring.application.name}
+    common-name: ${spring.application.name}
+    alt-names: ${MW_TLS_ALT_NAMES:${spring.application.name}}
+    ttl: 72h
+    retry-period: 1m
+    bundle: mw-service
   admin-api:
     jwt:
       # Keycloak realm `ops` (operators, password + TOTP; spec 15.1, 18.2). Keys fetched on the first token.
@@ -197,6 +212,12 @@ mw:
       base-url: ${MW_ORCHESTRATOR_BASE_URL:http://mw-orchestrator:8080}
     audit-dw:
       base-url: ${MW_AUDIT_DW_BASE_URL:http://mw-audit-dw:8080}
+    # mw-crypto's key API (ticket 75: key screens, approved key changes, the key ceremony): mTLS with
+    # this service's certificate (mw.tls below) plus the services-realm token (audience mw-crypto).
+    crypto:
+      base-url: ${MW_CRYPTO_URL:https://mw-crypto:8080}
+    # a key action (file, enter a component, decide) needs auth_time at most this old (fresh MFA)
+    key-mfa-max-age: 5m
     connect-timeout: 2s
     read-timeout: 5s
     # audit events shown with one transaction (audit-query.v1 caps a page at 500)

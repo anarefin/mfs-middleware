@@ -44,6 +44,8 @@ class SeedRunnerIT {
           "ops/seed-ops-checker", List.of("viewer", "ops-checker"),
           "ops/seed-ops-viewer", List.of("viewer"),
           "ops/seed-ops-compliance", List.of("compliance-officer"),
+          "ops/seed-ops-secadmin1", List.of("security-admin"),
+          "ops/seed-ops-secadmin2", List.of("security-admin"),
           "portals/seed-org-maker", List.of("org-maker"),
           "portals/seed-org-checker", List.of("org-checker"));
 

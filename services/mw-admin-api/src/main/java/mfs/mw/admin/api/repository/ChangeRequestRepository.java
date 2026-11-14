@@ -74,12 +74,76 @@ public class ChangeRequestRepository {
         == 1;
   }
 
+  /**
+   * Replaces the payload of a request that is still PENDING (ticket 75: a key ceremony's shares).
+   *
+   * @return false when it is no longer PENDING
+   */
+  public boolean updatePendingPayload(UUID id, Map<String, Object> payload) {
+    return jdbc.update(
+            "update change_request set payload = ?::jsonb where id = ? and status = 'PENDING'",
+            json.writeValueAsString(payload), id)
+        == 1;
+  }
+
+  /**
+   * Claim-first approval (ticket 75): PENDING -> APPROVING for this checker, in one conditional
+   * update; only the winner goes on to call the other service.
+   *
+   * @return false when it is no longer PENDING (decided, or claimed by another approval)
+   */
+  public boolean claim(UUID id, String checkerId, String checkerSub) {
+    return jdbc.update(
+            "update change_request set status = 'APPROVING', checker_id = ?, checker_sub = ?"
+                + " where id = ? and status = 'PENDING'",
+            checkerId, checkerSub, id)
+        == 1;
+  }
+
+  /** APPROVING -> APPROVED with the final payload. @return false when it is not APPROVING */
+  public boolean finishApproved(UUID id, String checkerId, String checkerSub, Map<String, Object> payload, Instant at) {
+    return jdbc.update(
+            "update change_request set status = 'APPROVED', checker_id = ?, checker_sub = ?, payload = ?::jsonb,"
+                + " decided_at = ? where id = ? and status = 'APPROVING'",
+            checkerId, checkerSub, json.writeValueAsString(payload), Timestamp.from(at), id)
+        == 1;
+  }
+
+  /** APPROVING -> PENDING after a definite refusal of the other service: the request can be decided again. */
+  public boolean release(UUID id) {
+    return jdbc.update(
+            "update change_request set status = 'PENDING', checker_id = null, checker_sub = null"
+                + " where id = ? and status = 'APPROVING'",
+            id)
+        == 1;
+  }
+
   /** PENDING requests whose {@code expires_at} is at or before {@code now}, oldest first, locked. */
   public List<ChangeRequest> duePendingForUpdate(Instant now, int limit) {
     return jdbc.query(
         "select " + COLUMNS + " from change_request where status = 'PENDING' and expires_at <= ?"
             + " order by expires_at limit ? for update skip locked",
         rows, Timestamp.from(now), limit);
+  }
+
+  /** Newest first, only the given resource types (an operator's visible ones); null filters are left out. */
+  public List<ChangeRequest> listTypes(
+      ChangeRequest.Status status, java.util.Collection<String> resourceTypes, String resourceId, int limit, int offset) {
+    StringBuilder sql = new StringBuilder("select " + COLUMNS + " from change_request where resource_type = any (?)");
+    List<Object> args = new ArrayList<>();
+    args.add(resourceTypes.toArray(String[]::new));
+    if (status != null) {
+      sql.append(" and status = ?");
+      args.add(status.name());
+    }
+    if (resourceId != null) {
+      sql.append(" and resource_id = ?");
+      args.add(resourceId);
+    }
+    sql.append(" order by created_at desc, id limit ? offset ?");
+    args.add(limit);
+    args.add(offset);
+    return jdbc.query(sql.toString(), rows, args.toArray());
   }
 
   /** Newest first; null filters are left out. */

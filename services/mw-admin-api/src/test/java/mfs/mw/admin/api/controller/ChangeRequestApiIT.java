@@ -437,7 +437,11 @@ class ChangeRequestApiIT {
     assertThat(mvc.get().uri("/admin/v1/change-requests?resourceType=transaction").with(integration).exchange())
         .hasStatus(403);
     assertThat(mvc.get().uri("/admin/v1/change-requests/{id}", id).with(integration).exchange()).hasStatus(403);
-    assertThat(mvc.get().uri("/admin/v1/change-requests").with(operator("sec01", "security-admin")).exchange())
+    // a security-admin reads key requests only (ticket 75): the transaction request is not shown
+    MvcTestResult keysOnly = mvc.get().uri("/admin/v1/change-requests").with(operator("sec01", "security-admin")).exchange();
+    assertThat(keysOnly).hasStatus(200);
+    assertThat(body(keysOnly).path("items")).isEmpty();
+    assertThat(mvc.get().uri("/admin/v1/change-requests/{id}", id).with(operator("sec01", "security-admin")).exchange())
         .hasStatus(403);
   }
 }

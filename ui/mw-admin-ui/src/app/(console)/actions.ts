@@ -5,7 +5,8 @@
 // operator goes to the approvals inbox; a refusal comes back as the API's envelope.
 
 import { redirect } from "next/navigation";
-import type { PartnerChangeBody } from "@/lib/admin-api";
+import type { KeyChangeBody, PartnerChangeBody } from "@/lib/admin-api";
+import { CEREMONY_PURPOSE, parseCheckValue, parseComponent, parseKeyId, parsePurpose } from "@/lib/keys";
 import { parseReason, parseTimeouts, parseWalletId } from "@/lib/approvals";
 import { adminApi, operatorToken } from "@/lib/server/admin";
 import { parseTemplateKey, templateProblems, type TemplateKey, type TemplateTexts } from "@/lib/templates";
@@ -171,4 +172,60 @@ export async function rejectRequest(id: string, _prev: ActionState, form: FormDa
   const r = await adminApi().rejectChangeRequest(await token(), id, reason);
   if (!r.ok) return refused(r);
   redirect(`/approvals?status=all&decided=${encodeURIComponent(id)}`);
+}
+
+// --- keys and the key ceremony (ticket 75) ---
+
+const KEY_FORM_ACTIONS = ["KEY_GENERATE", "KEY_ROTATE", "KEY_RETIRE"] as const;
+
+/** Maker (security-admin, fresh MFA): generate, rotate or retire a key version. */
+export async function requestKeyChange(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const action = form.get("action");
+  const keyId = parseKeyId(form.get("keyId"));
+  const reason = parseReason(form.get("reason"));
+  if (typeof action !== "string" || !(KEY_FORM_ACTIONS as readonly string[]).includes(action)) return invalid("action", "not allowed");
+  if (!keyId) return invalid("keyId", "lower-case letters, digits and hyphens");
+  if (!reason) return invalid("reason", "1 to 500 characters");
+  const body: KeyChangeBody = { action: action as KeyChangeBody["action"], keyId, reason };
+  if (action === "KEY_GENERATE") {
+    const purpose = parsePurpose(form.get("purpose"));
+    if (!purpose) return invalid("purpose", "a key purpose, e.g. HMAC_WEBHOOK");
+    body.purpose = purpose;
+  }
+  if (action === "KEY_RETIRE") {
+    const v = Number(form.get("version"));
+    if (!Number.isInteger(v) || v < 1) return invalid("version", "a VERIFY_ONLY version");
+    body.version = v;
+  }
+  const r = await adminApi().requestKeyChange(await token(), body);
+  if (!r.ok) return refused(r);
+  redirect(`/approvals?created=${encodeURIComponent(r.data.id)}`);
+}
+
+/** Maker (security-admin): start a key ceremony; the custodians then enter their components. */
+export async function startKeyCeremony(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const keyId = parseKeyId(form.get("keyId"));
+  const purpose = parsePurpose(form.get("purpose"));
+  const reason = parseReason(form.get("reason"));
+  if (!keyId) return invalid("keyId", "lower-case letters, digits and hyphens");
+  if (!purpose || !CEREMONY_PURPOSE.test(purpose)) return invalid("purpose", "PIN_HMAC, TOKENISE_<domain> or HMAC_<use>");
+  if (!reason) return invalid("reason", "1 to 500 characters");
+  const r = await adminApi().startKeyCeremony(await token(), { keyId, purpose, reason });
+  if (!r.ok) return refused(r);
+  redirect(`/keys/ceremony/${encodeURIComponent(r.data.id)}`);
+}
+
+/**
+ * Custodian (security-admin, own session, fresh MFA): one component and its check value. The
+ * component passes through this server to mw-admin-api and mw-crypto only: never logged or kept.
+ */
+export async function enterKeyComponent(id: string, _prev: ActionState, form: FormData): Promise<ActionState> {
+  if (!UUID.test(id)) return invalid("id", "not a ceremony id");
+  const component = parseComponent(form.get("component"));
+  const checkValue = parseCheckValue(form.get("checkValue"));
+  if (!component) return invalid("component", "64 hex digits");
+  if (!checkValue) return invalid("checkValue", "6 hex digits");
+  const r = await adminApi().enterKeyComponent(await token(), id, component, checkValue);
+  if (!r.ok) return { status: r.status, error: r.error };
+  redirect(`/keys/ceremony/${encodeURIComponent(id)}?entered=${r.data.shares.length}`);
 }
