@@ -26,8 +26,20 @@
 
 **Blocked by:** 63, 66
 
-**Status:** open
+**Status:** done
 
-- [ ] `./gradlew :mw-auth:build :mw-core-mock:build` green with Docker
-- [ ] `./gradlew :contractsLint :composeCheck :checkIsolation` green
-- [ ] On the seeded stack, `auth.wallet` holds every seeded wallet
+- [x] `./gradlew :mw-auth:build :mw-core-mock:build` green with Docker
+- [x] `./gradlew :contractsLint :composeCheck :checkIsolation` green
+- [ ] On the seeded stack, `auth.wallet` holds every seeded wallet (deferred to final integration test)
+
+**Decisions recorded (ticket 67):**
+
+- `WalletStateChanged` keeps the `core.event.v1` envelope unchanged: a fresh UUIDv7 `txnId`, `commandId`
+  `wallet-state:<txnId>`, `coreRef` `WALLET-V<version>`, outcome SUCCESS, Kafka key = walletId.
+  mw-orchestrator parses the txnId, finds no transaction and drops it (`txn.unknown`), as it already does
+  for `WalletUnlocked`; no orchestrator change. The version comes from one core-mock sequence, so it only
+  grows, also across a ledger reset (`services/mw-core-mock/CLAUDE.md`, `services/mw-auth/CLAUDE.md`).
+- mw-auth ports: 8443 internal (mTLS, mw-crypto's server setup), 8080 public (added plain connector),
+  8081 actuator. Compose budget: `APP_MEM_LIMIT` 416M -> 384M (10 services, -320 MiB), mw-auth
+  `AUTH_MEM_LIMIT` 320M / `AUTH_XMX` 112m (sized like mw-crypto, not measured yet): total stays 8176 MiB.
+- mw-crypto `mw.crypto.authz` already allows mw-auth for `TOKENISE_MSISDN` and `KEK_COLUMN`: unchanged.

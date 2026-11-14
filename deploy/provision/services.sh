@@ -17,7 +17,7 @@ SECRETS_AHEAD=""
 # policy may issue from that role only. A role may exist before its service is in SERVICES.
 PKI_SERVICES="mw-crypto mw-auth mw-app-gateway mw-ussd mw-checkout mw-audit-dw mw-admin-api"
 
-SERVICES="mw-core-mock:core-mock mw-crypto:crypto mw-simulators:simulators mw-orchestrator:orchestrator
+SERVICES="mw-core-mock:core-mock mw-crypto:crypto mw-auth:auth mw-simulators:simulators mw-orchestrator:orchestrator
   mw-audit-dw:audit-dw mw-app-gateway:app-gateway mw-notify:notify mw-ussd:ussd mw-admin-api:admin-api
   mw-adapter-telco:adapter-telco mw-adapter-billpay:adapter-billpay mw-adapter-bank:adapter-bank
   mw-portal-api:portal-api mw-checkout:checkout"
@@ -35,6 +35,14 @@ provision_mw_crypto() {
   gen_once spring.datasource.password 40
   sync_env mw.crypto.pkcs11.user-pin SOFTHSM_MWCRYPTO_USER_PIN
   db_role crypto_rw crypto
+}
+
+# Wallet authentication (ticket 67, spec 18.7): its own schema auth; its Keycloak realm services client
+# for mw-crypto (tokenise, envelope; later PIN and JWS); its certificate comes from PKI_SERVICES.
+provision_mw_auth() {
+  gen_once spring.datasource.password 40
+  sync_env mw.auth.crypto.client-secret KC_MW_AUTH_SECRET
+  db_role auth_rw auth
 }
 
 # Partner, SMSC and USSD gateway simulators: they sign with the same secrets the adapters verify
