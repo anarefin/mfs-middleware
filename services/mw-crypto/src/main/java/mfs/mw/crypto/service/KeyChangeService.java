@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.util.Optional;
 import java.util.UUID;
 import mfs.mw.crypto.dto.KeyChangeRequest;
+import mfs.mw.crypto.dto.KeyChangeState;
 import mfs.mw.crypto.dto.KeyView;
 import mfs.mw.crypto.exception.CryptoErrors;
 import mfs.mw.crypto.repository.KeyChangeRepository;
@@ -32,6 +33,22 @@ public class KeyChangeService {
     this.changes = changes;
     this.keys = keys;
     this.clock = clock;
+  }
+
+  /**
+   * Whether the change of {@code changeRequestId} was applied (mw-admin-api asks before it gives a
+   * claimed approval up), with the key's ACTIVE kid when it was.
+   */
+  @Transactional(readOnly = true)
+  public KeyChangeState state(UUID changeRequestId) {
+    return changes.find(changeRequestId)
+        .map(a -> {
+          KeyView k = keys.find(a.keyId());
+          String kid = k.versions().stream().filter(v -> "ACTIVE".equals(v.state())).map(KeyView.Version::kid)
+              .findFirst().orElse(k.versions().getLast().kid());
+          return new KeyChangeState(changeRequestId, true, a.action(), a.keyId(), kid);
+        })
+        .orElse(new KeyChangeState(changeRequestId, false, null, null, null));
   }
 
   @Transactional

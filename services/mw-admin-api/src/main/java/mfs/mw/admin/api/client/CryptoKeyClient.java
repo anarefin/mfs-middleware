@@ -86,6 +86,31 @@ public class CryptoKeyClient {
         CryptoKeys.Key.class, "key.change");
   }
 
+  /** Whether the change of {@code changeRequestId} was applied (asked before a claim is given up). */
+  public CryptoKeys.ChangeState keyChangeState(UUID changeRequestId) {
+    return read(send("GET", "/internal/v1/key-changes/" + changeRequestId, null, "key.change.state"),
+        CryptoKeys.ChangeState.class, "key.change.state");
+  }
+
+  /** Opens the ceremony of KEY_CEREMONY request {@code ceremonyId} (at filing time; idempotent). */
+  public CryptoKeys.Ceremony openCeremony(UUID ceremonyId, String keyId, String purpose) {
+    return read(send("PUT", "/internal/v1/ceremonies/" + ceremonyId, Map.of("keyId", keyId, "purpose", purpose),
+        "ceremony.open"), CryptoKeys.Ceremony.class, "ceremony.open");
+  }
+
+  /** The ceremony as mw-crypto has it; empty when it has none of that id (404). */
+  public java.util.Optional<CryptoKeys.Ceremony> ceremony(UUID ceremonyId) {
+    try {
+      return java.util.Optional.of(read(send("GET", "/internal/v1/ceremonies/" + ceremonyId, null, "ceremony.get"),
+          CryptoKeys.Ceremony.class, "ceremony.get"));
+    } catch (MwException e) {
+      if (ErrorCodes.VAL_NOT_FOUND.equals(e.code())) {
+        return java.util.Optional.empty();
+      }
+      throw e;
+    }
+  }
+
   /** One custodian's component of ceremony {@code ceremonyId}; the component is only in the body. */
   public CryptoKeys.Ceremony enterComponent(
       UUID ceremonyId, String keyId, String purpose, String custodian, String component, String checkValue) {

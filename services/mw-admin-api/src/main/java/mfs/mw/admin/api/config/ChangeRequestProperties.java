@@ -16,6 +16,9 @@ import org.springframework.validation.annotation.Validated;
  * @param expiryBatch most requests expired per run
  * @param unlockCommandTtl {@code expiresAt - issuedAt} of the {@code UnlockWallet} an approval
  *     sends (ticket 52); the core drops it unseen after that, so it covers an outbox backlog
+ * @param approvingLease how long the checker who claimed a claim-first approval (ticket 75) may
+ *     retry it; after that only {@code scheduler/ApprovingReconcileJob} resolves it
+ * @param approvingReconcileCron when that job runs ("-" off)
  */
 @Validated
 @ConfigurationProperties("mw.change-requests")
@@ -23,4 +26,6 @@ public record ChangeRequestProperties(
     @NotNull @DefaultValue("72h") Duration ttl,
     @NotNull @DefaultValue("0 */5 * * * *") String expiryCron,
     @DefaultValue("500") @Min(1) @Max(10_000) int expiryBatch,
-    @NotNull @DefaultValue("1h") Duration unlockCommandTtl) {}
+    @NotNull @DefaultValue("1h") Duration unlockCommandTtl,
+    @NotNull @DefaultValue("5m") Duration approvingLease,
+    @NotNull @DefaultValue("0 * * * * *") String approvingReconcileCron) {}

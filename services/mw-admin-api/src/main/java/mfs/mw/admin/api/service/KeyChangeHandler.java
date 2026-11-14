@@ -3,6 +3,7 @@ package mfs.mw.admin.api.service;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import mfs.mw.admin.api.client.CryptoKeyClient;
 import mfs.mw.admin.api.config.AdminApiProperties;
@@ -89,6 +90,22 @@ public class KeyChangeHandler implements ResourceChangeHandler {
         .addKeyValue("keyId", keyId)
         .log("mw-crypto applied the key change");
     return new Approval(cr.payload(), SENT_AS, () -> added);
+  }
+
+  /**
+   * mw-crypto's state of this request's change: a ceremony COMMITTED, or a key change applied for
+   * this id. Its own failures (unreachable) propagate: the claim then stays APPROVING.
+   */
+  @Override
+  public Optional<Map<String, Object>> applied(ChangeRequest cr) {
+    if (KeyAction.KEY_CEREMONY.name().equals(cr.action())) {
+      return crypto.ceremony(cr.id())
+          .filter(c -> "COMMITTED".equals(c.state()))
+          .map(c -> Map.<String, Object>of("appliedKid", c.kid()));
+    }
+    CryptoKeys.ChangeState s = crypto.keyChangeState(cr.id());
+    return s.applied() && s.kid() != null ? Optional.of(Map.<String, Object>of("appliedKid", s.kid()))
+        : s.applied() ? Optional.of(Map.<String, Object>of()) : Optional.empty();
   }
 
   @Override

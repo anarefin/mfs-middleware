@@ -58,10 +58,11 @@ describe("keys (ticket 75)", () => {
     expect(checkerLabel(pendingKeyRotation)).toBe("another security-admin");
     expect(diffLabel(pendingKeyRotation)).toEqual({ before: "pin-hmac.v2 ACTIVE", after: "pin-hmac.v3 ACTIVE" });
     // claim-first (APPROVING): only a retry of the approval, never by the maker, never a reject
-    const approving = { ...pendingKeyRotation, status: "APPROVING" as const };
+    const approving = { ...pendingKeyRotation, status: "APPROVING" as const, checkerId: "seed-ops-secadmin2" };
     expect(mayDecide(approving, "seed-ops-secadmin2", ["security-admin"])).toBe(false);
     expect(mayRetryApproval(approving, "seed-ops-secadmin2", ["security-admin"])).toBe(true);
     expect(mayRetryApproval(approving, "seed-ops-secadmin1", ["security-admin"])).toBe(false);
+    expect(mayRetryApproval(approving, "seed-ops-secadmin3", ["security-admin"])).toBe(false);
     expect(mayRetryApproval(pendingKeyRotation, "seed-ops-secadmin2", ["security-admin"])).toBe(false);
   });
 });

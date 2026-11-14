@@ -151,8 +151,11 @@ public class KeyAdminService {
     payload.put("kid", kid);
     payload.put("shares", List.of());
     String before = key.map(k -> k.active() == null ? "none" : k.active().kid() + " ACTIVE").orElse("none");
-    return changes.open(maker, ChangeRequest.KEY, body.keyId(), KeyAction.KEY_CEREMONY.name(), payload,
-        diff(before, kid + " ACTIVE"), body.reason());
+    // the ceremony is opened in mw-crypto inside the filing transaction (security review): a component
+    // never opens one, so a component in flight while the request is rejected cannot start a ceremony
+    return changes.open(maker, ChangeRequest.KEY, body.keyId(), KeyAction.KEY_CEREMONY.name(), body.reason(),
+        () -> new ChangeRequestService.Opening(payload, diff(before, kid + " ACTIVE"),
+            cr -> crypto.openCeremony(cr.id(), body.keyId(), body.purpose())));
   }
 
   /** The ceremony's progress, from its change request. */
@@ -194,8 +197,7 @@ public class KeyAdminService {
         tx.execute(
             s -> {
               if (!requests.updatePendingPayload(id, payload)) {
-                throw new MwException(ErrorCodes.VAL_REQUEST_DECIDED, "The ceremony was decided meanwhile")
-                    .withStatus(HttpStatus.CONFLICT);
+                return null;
               }
               AuditEvent e = ChangeRequestMapper.componentEntered(cr, custodian.username(), share, c.checkValue(),
                   correlationId, now);
@@ -203,6 +205,20 @@ public class KeyAdminService {
                   new EventMetadata(e.correlationId(), cr.id().toString(), e.auditId(), 1), e);
               return requests.find(id).orElseThrow();
             });
+    if (updated == null) {
+      // rejected or expired while the component was on its way: abort again (idempotent, terminal)
+      try {
+        crypto.abort(id);
+      } catch (MwException e) {
+        log.atWarn()
+            .addKeyValue("event", "admin.key_ceremony.abort_failed")
+            .addKeyValue("changeRequestId", id.toString())
+            .addKeyValue("errorCode", e.code())
+            .log("mw-crypto could not abort the ceremony after a late component");
+      }
+      throw new MwException(ErrorCodes.VAL_REQUEST_DECIDED, "The ceremony was decided meanwhile")
+          .withStatus(HttpStatus.CONFLICT);
+    }
     log.atInfo()
         .addKeyValue("event", "admin.key_ceremony.component_entered")
         .addKeyValue("changeRequestId", id.toString())

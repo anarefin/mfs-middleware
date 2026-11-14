@@ -137,6 +137,23 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
   /internal/v1/key-changes/{changeRequestId}:
+    get:
+      operationId: getKeyChange
+      summary: Whether the approved change of this change request id was applied
+      description: >-
+        mw-admin-api asks before it gives a claimed approval up (a 4xx on a retried PUT may follow a
+        change already applied). `applied: false` means no change was applied for this id.
+      parameters:
+        - $ref: "#/components/parameters/ChangeRequestId"
+        - $ref: "#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: The change's state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KeyChangeState" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
     put:
       operationId: applyKeyChange
       summary: Apply a key change approved under dual control in mw-admin-api (ticket 75)
@@ -168,6 +185,32 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
   /internal/v1/ceremonies/{ceremonyId}:
+    put:
+      operationId: openCeremony
+      summary: Open the ceremony of a KEY_CEREMONY change request (at filing time; idempotent)
+      description: >-
+        Version 1 of a new key or the next version of an existing one. The same values answer the
+        ceremony as it is. Errors: 400 MW-VAL-015 (purpose not for a ceremony or another purpose
+        than the key's), 409 MW-VAL-018 (other values, another live ceremony of the key, or the id
+        was aborted: abort is terminal per id).
+      parameters:
+        - $ref: "#/components/parameters/CeremonyId"
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CeremonyOpenRequest" }
+      responses:
+        "200":
+          description: The ceremony
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ceremony" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
     get:
       operationId: getCeremony
       summary: A key ceremony (who entered which share, when; the KCV once combined)
@@ -188,9 +231,10 @@ paths:
       operationId: enterCeremonyComponent
       summary: One custodian's component; the second is combined with the first inside the HSM
       description: >-
-        The ceremony id is mw-admin-api's KEY_CEREMONY change request. The first component opens
-        the ceremony for keyId and purpose (version 1 of a new key, or the next version) and is
-        stored in the HSM as a derive-only object; the second, from another custodian, is combined
+        The ceremony id is mw-admin-api's KEY_CEREMONY change request; the ceremony must be OPEN
+        (opened by `PUT /ceremonies/{ceremonyId}`, never by a component: 404 MW-VAL-003 for an id not
+        opened, 409 MW-VAL-018 once aborted). The first component is stored in the HSM as a
+        derive-only object; the second, from another custodian, is combined
         with it inside the HSM (ECDH of the two P-256 scalars, CKM_ECDH1_DERIVE) into the staged
         key version, and only its KCV is returned. The key is not usable before commit. Components
         are never stored or logged. Purposes: HMAC-SHA256 keys (PIN_HMAC, TOKENISE_<domain>,
@@ -247,7 +291,9 @@ paths:
     post:
       operationId: abortCeremony
       summary: Destroy the ceremony's staged HSM objects (rejected or expired request; idempotent)
-      description: An unknown or aborted ceremony is no error. Errors 409 MW-VAL-018 (committed).
+      description: >-
+        Terminal per id: an id never opened gets an ABORTED tombstone, so a late open or component is
+        refused; aborted again is no error. Errors 409 MW-VAL-018 (committed).
       parameters:
         - $ref: "#/components/parameters/CeremonyId"
         - $ref: "#/components/parameters/CorrelationId"
@@ -783,6 +829,22 @@ components:
           type: string
           pattern: "^[0-9A-Fa-f]{6}$"
           description: First 3 bytes of SHA-256 over the compressed point d·G
+    CeremonyOpenRequest:
+      type: object
+      required: [keyId, purpose]
+      additionalProperties: false
+      properties:
+        keyId: { $ref: "#/components/schemas/KeyId" }
+        purpose: { $ref: "#/components/schemas/Purpose" }
+    KeyChangeState:
+      type: object
+      required: [changeRequestId, applied]
+      properties:
+        changeRequestId: { type: string, format: uuid }
+        applied: { type: boolean }
+        action: { type: string, enum: [GENERATE, ROTATE, RETIRE] }
+        keyId: { $ref: "#/components/schemas/KeyId" }
+        kid: { type: string, description: "The key's ACTIVE version now, when applied" }
     CeremonyCommitRequest:
       type: object
       required: [makerId, checkerId]
@@ -792,13 +854,14 @@ components:
         checkerId: { $ref: "#/components/schemas/OperatorId" }
     Ceremony:
       type: object
+      description: An ABORTED tombstone (aborted before it was opened) has keyId, purpose, version and kid null.
       required: [ceremonyId, keyId, purpose, version, kid, state, shares]
       properties:
         ceremonyId: { type: string, format: uuid }
-        keyId: { $ref: "#/components/schemas/KeyId" }
-        purpose: { $ref: "#/components/schemas/Purpose" }
-        version: { type: integer, minimum: 1 }
-        kid: { type: string }
+        keyId: { type: [string, "null"], pattern: "^[a-z0-9][a-z0-9-]{0,62}$" }
+        purpose: { type: [string, "null"] }
+        version: { type: [integer, "null"], minimum: 1 }
+        kid: { type: [string, "null"] }
         state: { type: string, enum: [OPEN, COMBINED, COMMITTED, ABORTED] }
         shares:
           type: array

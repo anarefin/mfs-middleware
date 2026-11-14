@@ -230,15 +230,29 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   only that winner calls mw-crypto (`KeyChangeHandler.prepare`): KEY_CEREMONY needs the KCV in the
   payload (`409 MW-VAL-050`) and calls `POST /internal/v1/ceremonies/{id}/commit`, the others `PUT
   /internal/v1/key-changes/{id}`, both idempotent on the change request id; (3) APPROVING -> APPROVED
-  with the payload (`appliedKid`) and the audit (`sentAs` `mw-crypto`) in one transaction. A definite
-  refusal (4xx) puts the request back to PENDING (checker cleared); no answer (timeout, 5xx, `503
-  MW-SYS-042`) leaves it APPROVING, and a retry of the approval (any security-admin but the maker; the
-  console's "Retry approval") calls again with the same id. Reject and expiry act on PENDING only:
-  an APPROVING request is refused (`409 MW-VAL-033`), never expired, and still blocks a second open
-  request of the key (unique index on PENDING and APPROVING). So an applied key change never belongs
-  to a REJECTED request (`controller/KeyApprovalRaceIT`: approve vs reject raced 10 times, refusal back
-  to PENDING, timeout then retry). Reject / expiry of a ceremony calls `.../abort` (best effort, WARN
-  `admin.key_ceremony.abort_failed`). Decision: synchronous mTLS call, not an outbox command (the
+  with the payload (`appliedKid`) and the audit (`sentAs` `mw-crypto`) in one transaction. The claim
+  (V8: `checker_sub`, a random `claim_token`, `claimed_at`) is finished or released only by its holder
+  (both in the conditional UPDATE). A refusal (4xx) is not trusted alone (security review: a retry may
+  get a 4xx for a change already applied): the handler asks mw-crypto for the change's state by the
+  change request id (`ResourceChangeHandler.applied`: `GET /internal/v1/key-changes/{id}`, a ceremony
+  COMMITTED at `GET /internal/v1/ceremonies/{id}`); applied -> APPROVED, "not applied" -> released to
+  PENDING (checker cleared), cannot tell -> stays APPROVING. No answer (timeout, 5xx, `503 MW-SYS-042`)
+  leaves it APPROVING; only the claiming checker may retry (same id; the console's "Retry approval"),
+  and only within `mw.change-requests.approving-lease` (5 min). Past the lease
+  `scheduler/ApprovingReconcileJob` (ShedLock `change-request-approving-reconcile`,
+  `approving-reconcile-cron` every minute, `ChangeRequestService.reconcileApproving`) asks mw-crypto:
+  applied -> APPROVED, not applied -> EXPIRED once `expires_at` passed (else PENDING), cannot tell ->
+  next run. Reject and expiry act on PENDING only: an APPROVING request is refused (`409 MW-VAL-033`)
+  and still blocks a second open request of the key (unique index on PENDING and APPROVING); its
+  `expires_at` stays in force through the reconciler. So an applied key change never belongs to a
+  REJECTED request. Ceremonies: mw-crypto opens the ceremony at filing time (`PUT
+  /internal/v1/ceremonies/{id}` inside the filing transaction); a component never opens one, and abort
+  is terminal per id there, so a component in flight while the request is rejected is refused or
+  aborted (a component whose payload update finds the request decided aborts again). Reject / expiry
+  of a ceremony calls `.../abort` (best effort, WARN `admin.key_ceremony.abort_failed`). Tests
+  `controller/KeyApprovalRaceIT` (stateful stand-in mw-crypto: approve vs reject, ceremony commit vs
+  reject and component vs reject each raced 10 times; refusal of a change applied / not applied /
+  unknown; timeout, retry by the claiming checker only, lease and reconciler). Decision: synchronous mTLS call, not an outbox command (the
   ceremony is interactive and returns the KCV). mw-crypto's own `MW-VAL-*` refusals pass through with their code and status
   (`MW-VAL-017` bad component, `MW-VAL-018` same custodian / conflict); unreachable, 5xx or another
   refusal `503 MW-SYS-042`. Visibility: an operator without `READ_TRANSACTIONS` sees partner requests
