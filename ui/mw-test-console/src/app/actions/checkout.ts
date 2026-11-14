@@ -75,8 +75,15 @@ export async function checkout(prev: CheckoutState, form: FormData): Promise<Che
         const r = await t.call("payer: confirm with OTP and the encrypted PIN", "POST", `/checkout/pay/v1/${co.token}/confirm`,
           { json: { otp, encryptedPin: encryptPin(pin, pk.publicKey, pk.keyId) } }, [200]);
         const after = co.wallet ? await core.wallet(co.wallet) : null;
-        const b = (r.body ?? {}) as { status?: string; txnId?: string };
+        const b = (r.body ?? {}) as { status?: string; txnId?: string; code?: string; message?: string };
         if (before && after) t.note("payer balance", `${taka(before.balanceMinor)} -> ${taka(after.balanceMinor)}`);
+        if (r.status !== 200 && b.code) {
+          // ticket 72: mw-auth checks (and spends) the OTP first, then the PIN for the assertion; a
+          // refusal leaves the session OPEN, and a wrong PIN needs a new OTP (the old one is spent)
+          t.note("what next", "the session stays OPEN: ask a new OTP (the checked one is spent), then pay with the right PIN");
+          co.otp = undefined;
+          return out(`refused ${b.code}: ${b.message ?? ""}`.trim());
+        }
         return out(`result ${b.status ?? r.status}${b.txnId ? ` (txn ${b.txnId})` : ""}`, { txnId: b.txnId });
       }
       case "return": {

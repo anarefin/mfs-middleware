@@ -122,9 +122,10 @@ Manual walk (acceptance criterion 4), after `scripts/api-test.sh 01` so there ar
 7. USSD menus (`/console/ussd?menuId=main`) and SMS templates (`/console/templates`): edit,
    preview (the preview walk runs in the browser only, PIN shown as `****`), propose, approve as
    the checker; the new version shows PUBLISHED.
-8. Wallets (`/console/wallets`): request UNLOCK for a wallet and approve it as the checker. The
-   core unlocks only a LOCKED wallet (five wrong PINs in a row; `scripts/api-test.sh 16` shows
-   the whole path) and the console does not show the core's answer.
+8. Wallets (`/console/wallets`): request UNLOCK for a wallet and approve it as the checker. Since
+   ticket 72 the PIN lock is mw-auth's (three wrong PINs, `MW_AUTH_LOCK_TRIES`): the approval lifts
+   it over `auth.wallet-lock.v1` within seconds (and sends the core `UnlockWallet` for a core-side
+   lock); `scripts/api-test.sh 16` shows the whole path.
 
 ## M6 Hardening
 
@@ -144,3 +145,42 @@ What it proves: the acceptance suite (WP26), chaos (WP27), 100 TPS (WP28), the s
 Step 1 is the whole build gate: there is no separate slower run. A second `./gradlew clean build`
 with nothing changed restores every module from the build cache in seconds; `--rerun-tasks` runs
 everything again.
+
+## Security: mw-auth and mw-crypto (tickets 61-76)
+
+What it proves: wallet users are authenticated by mw-auth (device binding, MSISDN + PIN login, RS256
+tokens, a signed assertion per transaction) and every key stays behind mw-crypto (SoftHSM over
+PKCS#11, the payShield simulator), every internal hop on mTLS (spec 18.7, 18.8; ADRs D20-D24).
+
+```sh
+scripts/api-test.sh "24, 25, 26, 27"    # mw-auth, PIN lifecycle, assertion, payShield PVV
+scripts/api-test.sh "02, 16"            # signed requests, refresh reuse; ops unlock of a PIN lock
+scripts/edge-test.sh                    # /auth/v1 quotas, tokens through openid-connect on /app/v1
+scripts/tester.sh && scripts/tester-e2e.sh @auth
+scripts/ui-e2e.sh @keys                 # key rotation and the dual-control key ceremony
+scripts/log-scan.sh                     # no PIN, PIN ciphertext, assertion or unmasked MSISDN in any log
+```
+
+By hand (`docs/testing-guide.html` section 3.11):
+
+1. Test console `/tester/auth`: create a fresh wallet (LOGIN OTP, first PIN), log in: the result shows
+   `amr pin,device`. Try the first PIN `12345`: refused `MW-AUTH-044 SEQUENCE`.
+2. Bind a second device: the old phone's login is refused (`MW-AUTH-047`), the step shows the
+   new-device window (newDevice on the wallet's assertions for 24 h), the wallet gets the "new device"
+   SMS (Inbox).
+3. Three wrong PINs: `MW-AUTH-040` with 2 and 1 tries left, then `423 MW-AUTH-041` with `retryAfter`
+   (1 min with the dev timers); the right PIN is refused too. The same wallet on the USSD phone shows
+   "Your PIN is locked for now": one lock for every channel. Unlock it in `/console/wallets` (maker
+   asks, checker approves) and log in again.
+4. Care reset: in `/console/wallets` request "PIN reset" for the wallet, approve as the checker; in
+   the test console "Take up a care reset (new phone)": reset OTP on a new phone, new PIN, phone bound.
+5. Web checkout with a wrong PIN: "refused MW-AUTH-040", the session stays OPEN; a new OTP and the
+   right PIN pay.
+6. `/console/keys` as `seed-ops-secadmin1` (TOTP `scripts/totp.sh seed-ops-secadmin1`): request a
+   rotation of `jwt-sign`, approve as `seed-ops-secadmin2`: a new ACTIVE version, the old one
+   VERIFY_ONLY; app logins keep working (tokens of both versions verify).
+7. `docker compose stop softhsm` (from `deploy/`): a login answers `503 MW-SYS-050`, nothing counted;
+   `docker compose start softhsm`: mw-crypto logs `crypto.hsm.up` and logins work again without a restart.
+
+`SECURITY_LIVE=1 scripts/security.sh` covers the new images (trivy) and the ZAP baseline on the edge
+including `/auth/v1`; its findings are in `docs/security-findings.md`.

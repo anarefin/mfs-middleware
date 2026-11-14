@@ -33,6 +33,14 @@ when a spec decision row has no ADR: a new script, knob or decision updates thes
   `Dockerfile`, `contracts.yml`, `CLAUDE.md`; no wrapper, settings file, `gradle.properties` or
   version catalog of its own (no `compose.yml` either: ADR D16). `bootJar` writes the fixed name
   `build/libs/mw-<name>.jar`, which the `Dockerfile` copies.
+- The services: channels `mw-app-gateway`, `mw-ussd`, `mw-checkout`, `mw-portal-api`; the saga
+  `mw-orchestrator`; partners `mw-adapter-telco`, `mw-adapter-billpay`, `mw-adapter-bank`; support
+  `mw-notify`, `mw-audit-dw`, `mw-admin-api`; security (tickets 61-76, spec 18.7-18.8, ADRs D20-D24)
+  `mw-auth` (wallet authentication: OTP, device binding, login and RS256 tokens, PIN custody, lockout
+  and resets, the ES256 transaction assertion; public `/auth/v1`, mTLS `/internal/v1`) and `mw-crypto`
+  (the HSM gateway, the only process that talks to an HSM: SoftHSM over PKCS#11 (`deploy/softhsm`) and
+  the payShield simulator; mTLS API only, caller policy per key purpose); test doubles `mw-core-mock`,
+  `mw-simulators`, one-shot `mw-seeder`.
 - `ui/mw-admin-ui/`: the Next.js admin console (spec 4.2), own `package.json` (pnpm), `Dockerfile`,
   `CLAUDE.md`; tests `pnpm test` (Vitest, no stack) and `scripts/ui-e2e.sh` (Playwright against the
   running, seeded stack). Not a Gradle module.
@@ -197,7 +205,7 @@ outbox every 50 ms and give Camel's Kafka consumers a 100 ms shutdown timeout, a
 | `scripts/api-test.sh [FOLDER] [ALL]` | Newman API suite in `tests/api` (`tests/api/README.md`) against the running, seeded stack started with the default `dev.env.defaults` timers: one request per scenario, folders `00`-`27` (`"01, 05"` by number or full name; `ALL` = `1` adds `90 Slow`); `tests/api/run.sh` re-runs `apisix-init` with `MW_E2E_ROUTES=1` (test-only routes, key-auth), runs a pinned Newman with `npx`, JUnit report `tests/api/build/newman-report.xml`. Request names carry the requirement tags `scripts/check-api-traceability.sh` checks against `tests/api/TRACEABILITY.md`; regenerate the collection with `node tests/api/build_collection.mjs` |
 | `scripts/ui-e2e.sh [GREP]` | admin UI Playwright suite (`ui/mw-admin-ui/e2e`, numbered specs tagged `@smoke`, `@console`, `@approvals`, `@partners`, `@ussd`, `@templates`, `@keys`) against the running, seeded stack (no mock): real Keycloak logins as the seeded ops personas, the real mw-admin-api behind APISIX; installs pnpm packages / Chromium when needed; credentials from `deploy/.env`, personas from `build/seed/manifest.json`; global setup fails in seconds with the fix when the stack is not ready; idempotent |
 | `scripts/tester.sh` | dev/test-only test console (`ui/mw-test-console`, ADR D17): re-runs `apisix-init` with `MW_E2E_ROUTES=1`, starts `mw-test-console` (profile `tester`, outside the core budget), prints https://localhost/tester; walkthrough in `docs/testing-guide.html` |
-| `scripts/tester-e2e.sh [GREP]` | the test console's Playwright suite (`ui/mw-test-console/e2e`, tags `@smoke`, `@app`, `@ussd`, `@failures`, `@checkout`, `@bulk`) on the running, seeded stack started with the default `dev.env.defaults` timers, after `scripts/tester.sh` |
+| `scripts/tester-e2e.sh [GREP]` | the test console's Playwright suite (`ui/mw-test-console/e2e`, tags `@smoke`, `@app`, `@ussd`, `@failures`, `@checkout`, `@bulk`, `@auth`) on the running, seeded stack started with the default `dev.env.defaults` timers, after `scripts/tester.sh` |
 | `scripts/creds.sh` | print every dev/test login and key (`deploy/.env`, the OpenBao root token while the stack is up) for testers (`docs/testing-guide.html` section 1) |
 | `scripts/totp.sh [PERSONA]` | current ops console TOTP of a persona with the pre-set secret (default `seed-ops-maker`; HmacSHA256, raw UTF-8 key as mw-seeder `util/Totp`) |
 | `scripts/security.sh [M]` | security pass (WP29): gitleaks over the files not gitignored, CycloneDX SBOM + trivy per module (from its boot jar), trivy on the built `mfs-mw/*:local` images and the pinned third-party images (HIGH/CRITICAL fail; accepted findings with reason + expiry in `.trivyignore.yaml` / `deploy/trivyignore-third-party.yaml`); with the stack up also the ZAP baseline on APISIX and `scripts/log-scan.sh` (`SECURITY_LIVE=1` makes them mandatory: the gate runs it after `scripts/api-test.sh`); register `docs/security-findings.md` |

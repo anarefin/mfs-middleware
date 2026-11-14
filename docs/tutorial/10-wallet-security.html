@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wallet Security</title>
+<link rel="stylesheet" href="tutorial.css">
+<script src="diagrams.js" defer></script>
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> tutorial</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="01-what-is-mfs.html">1 MFS</a>
+    <a href="02-architecture.html">2 Architecture</a>
+    <a href="03-core-ideas.html">3 Core ideas</a>
+    <a href="04-money-flows.html">4 Money</a>
+    <a href="05-partner-flows.html">5 Partners</a>
+    <a href="06-checkout-bulk.html">6 Checkout &amp; bulk</a>
+    <a href="07-ops-platform.html">7 Ops</a>
+    <a href="08-first-day.html">8 First day</a>
+    <a href="09-how-we-work.html">9 How we work</a>
+    <a href="10-wallet-security.html" aria-current="page">10 Security</a>
+    <a href="glossary.html">Glossary</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Chapter 10</div>
+  <h1>Wallet security: mw-auth and mw-crypto</h1>
+  <p class="lead">Who may move money is decided by two services. <code>mw-auth</code> proves who the wallet user is and holds
+    their PIN; <code>mw-crypto</code> is the only process that talks to an HSM, so no other service ever holds a key. This
+    chapter follows a login, a payment and a PIN reset through both (spec 18.7 and 18.8, ADRs D20 to D24).</p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#pieces">The two services</a></li>
+    <li><a href="#login">Binding a phone and logging in</a></li>
+    <li><a href="#assertion">Paying: the transaction assertion</a></li>
+    <li><a href="#pin">The PIN's life: policy, lockout, change, reset</a></li>
+    <li><a href="#hsm">Inside mw-crypto: keys and the HSM</a></li>
+    <li><a href="#mtls">Service to service: mTLS</a></li>
+    <li><a href="#try">Try it</a></li>
+  </ol></div>
+
+  <h2 id="pieces">The two services</h2>
+  <div class="box plain">
+    <div class="tag">In plain English</div>
+    <p>The phone never sends a PIN in clear. It encrypts it with a public key whose private half lives in the HSM. mw-auth passes
+      the encrypted PIN to mw-crypto, which opens it inside its own memory, compares a keyed hash and wipes it. mw-auth stores only
+      that keyed hash. When a payment is approved, mw-auth signs a short-lived note, the <strong>assertion</strong>, that says
+      "this wallet's owner approved exactly this transaction"; the core checks the signature and pays nothing without it.</p>
+  </div>
+  <div class="table-wrap"><table>
+    <tr><th>Service</th><th>Does</th><th>Never does</th></tr>
+    <tr><td><code>mw-auth</code></td><td>OTP by SMS, device binding (one phone per wallet), login with MSISDN + PIN + a device signature, RS256 access tokens (5 min) and rotating refresh tokens, the PIN's policy, lockout and resets, the ES256 transaction assertion</td><td>see a clear PIN or hold a key</td></tr>
+    <tr><td><code>mw-crypto</code></td><td>PIN verify and derive, JWS signing and JWK Sets, tokenisation, envelope encryption, HMAC, XML-DSig, HTTP signatures, payShield PIN blocks and PVV, key lifecycle and the key ceremony</td><td>accept a caller without a client certificate, or let a caller use a key purpose it is not bound to</td></tr>
+  </table></div>
+
+  <h2 id="login">Binding a phone and logging in</h2>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+    actors: Phone | APISIX | mw-auth | mw-crypto | mw-notify
+    Phone -> APISIX : POST /auth/v1/otp {msisdn, purpose BIND}
+    APISIX -> mw-auth : route auth-v1 (quota per hashed MSISDN)
+    mw-auth => mw-notify : mw.notify.request.v1 DEVICE_BIND_OTP (OTP never stored in clear)
+    Phone -> mw-auth : POST /auth/v1/devices {msisdn, publicKey, otp, encryptedPin} signed by the new key
+    mw-auth -> mw-crypto : /internal/v1/pin/verify (mTLS)
+    note mw-auth : old phone unbound, its sessions ended, "new device bound" SMS
+    Phone -> mw-auth : POST /auth/v1/sessions {msisdn, encryptedPin} signed
+    mw-auth -> mw-crypto : /pin/verify, then /jws/sign JWT_SIGN (RS256)
+    mw-auth -> Phone : access token (amr pin, device; 5 min) + refresh token
+  </script></div>
+  <div class="legend"><span class="h"><i></i>HTTP</span><span class="k"><i></i>Kafka</span></div>
+  <figcaption>Figure 10.1: binding a phone, then logging in.</figcaption></figure>
+  <ul>
+    <li>Every sensitive request is signed by the phone's EC P-256 key over method, path, body hash, timestamp, nonce and device id;
+      a nonce works once (<code>MW-AUTH-006</code>), a changed body fails (<code>MW-AUTH-004</code>).</li>
+    <li>A wallet without a PIN logs in once with a <code>LOGIN</code> OTP and must set its first PIN (<code>POST /auth/v1/pin</code>).</li>
+    <li>APISIX checks the access token on <code>/app/v1/*</code> against mw-auth's JWK Set; mw-app-gateway then asks mw-auth whether
+      the session is still live, so a logout or a new binding ends access within seconds.</li>
+    <li>A refresh token is used once: reusing a rotated one revokes the whole family (<code>MW-AUTH-048</code>).</li>
+  </ul>
+
+  <h2 id="assertion">Paying: the transaction assertion</h2>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+    actors: Channel | mw-auth | mw-crypto | mw-orchestrator | Core
+    Channel -> mw-auth : POST /internal/v1/txn-authorisations {msisdn, encryptedPin, txn}
+    mw-auth -> mw-crypto : /pin/verify (locks checked first)
+    mw-auth -> mw-crypto : /jws/sign ASSERTION_SIGN (ES256, 60 s, txnHash)
+    mw-auth -> Channel : {assertion}
+    Channel => mw-orchestrator : mw.txn.request.v1 with the assertion (no PIN material)
+    mw-orchestrator => Core : ValidateTransaction / PostTransfer with the assertion
+    note Core : checks signature, txnHash, jti once; else MW-AUTH-046
+  </script></div>
+  <div class="legend"><span class="h"><i></i>HTTP</span><span class="k"><i></i>Kafka</span></div>
+  <figcaption>Figure 10.2: every channel (app, USSD, checkout) gets an assertion before it publishes.</figcaption></figure>
+  <ul>
+    <li>The <code>txnHash</code> is the SHA-256 of the canonical JSON of type, amount, currency, payer, payee, idempotency key and
+      channel: change one value on the way and the core refuses it.</li>
+    <li>A wrong PIN is refused before anything is published: the orchestrator never sees the request.</li>
+    <li>A resend with the same idempotency key within the 60 s gets the same assertion back without a second PIN check; another
+      transaction under that key is <code>409 MW-IDEM-001</code>.</li>
+    <li>The assertion carries <code>newDevice: true</code> for 24 h after a binding, a cooling-off flag the core can act on.</li>
+  </ul>
+
+  <h2 id="pin">The PIN's life: policy, lockout, change, reset</h2>
+  <ol class="steps">
+    <li><strong>Policy.</strong> 5 digits; no repeated digit, no run (<code>34567</code>, <code>09876</code>), not part of the MSISDN,
+      not the birth year, not one of the last 3 PINs: <code>400 MW-AUTH-044</code> naming the rule.</li>
+    <li><strong>Lockout.</strong> 3 wrong PINs (any channel) lock the PIN for 1 h, then 24 h, then until a reset
+      (<code>MW-AUTH-041</code> with <code>retryAfter</code>, then <code>042</code>). A locked wallet costs no HSM call. The dev
+      stack shortens them (<code>MW_AUTH_LOCK_LEVEL1=1m</code>, <code>MW_AUTH_LOCK_LEVEL2=3m</code>).</li>
+    <li><strong>Change.</strong> Logged in with the PIN, the current PIN as step-up: the session is replaced, an SMS goes out.</li>
+    <li><strong>Self-service reset.</strong> A reset OTP on the bound phone plus NID last 4 and birth date, which the core checks
+      (they leave mw-auth only as tokens); then the new PIN, every session ended.</li>
+    <li><strong>Care reset.</strong> Phone lost: care asks <code>PIN_RESET</code> in the ops console, a second operator approves
+      (maker-checker); mw-auth opens the reset from <code>auth.wallet-lock.v1</code> and the customer finishes it on the new phone.</li>
+    <li><strong>Ops unlock.</strong> UNLOCK with maker-checker lifts every PIN level at once.</li>
+  </ol>
+  <div class="box where"><div class="tag">Where it lives (mw-auth)</div><ul>
+    <li><a href="../../services/mw-auth/src/main/java/mfs/mw/auth/service/PinVerifier.java"><code>service/PinVerifier</code></a> (the one PIN check),
+      <code>service/PinService</code> (policy), <code>service/PinResetService</code>, <code>service/LoginService</code>,
+      <code>service/TokenService</code>,
+      <a href="../../services/mw-auth/src/main/java/mfs/mw/auth/service/TxnAuthorisationService.java"><code>service/TxnAuthorisationService</code></a>.</li>
+    <li>The rules in full: <a href="../../services/mw-auth/CLAUDE.md">services/mw-auth/CLAUDE.md</a>; spec 18.7; ADRs D20 to D22.</li>
+  </ul></div>
+
+  <h2 id="hsm">Inside mw-crypto: keys and the HSM</h2>
+  <p>mw-crypto has two providers behind one interface: PKCS#11 (SoftHSMv2 in dev and test, the production HSM later) and the
+    Thales payShield 10K host-command protocol (a simulator in dev). A key has a purpose (<code>PIN_TRANSPORT</code>,
+    <code>PIN_HMAC</code>, <code>JWT_SIGN</code>, <code>ASSERTION_SIGN</code>, <code>AUDIT_ANCHOR_SIGN</code>, <code>TOKENISE_*</code>,
+    <code>KEK_*</code>, <code>XMLDSIG</code>, <code>HTTP_SIGN_RSA</code>, <code>HTTP_SIGN_EC</code>, and on the payShield <code>ZPK</code>,
+    <code>TPK</code>, <code>PVK</code>, <code>ZPK_AES</code>, <code>TPK_AES</code>) and versions: rotation adds a version and keeps the
+    previous one for verification until it is retired.</p>
+  <ul>
+    <li>Deny by default: each caller is bound to the purposes it may use (<code>mw.crypto.authz</code>); anything else is
+      <code>403 MW-AUTH-002</code>.</li>
+    <li>Key changes and the key ceremony are dual-control in the ops console (two <code>security-admin</code> users, each with a fresh
+      sign-in; a ceremony takes each custodian's own component).</li>
+    <li>An HSM outage fails closed: no login, no payment, nothing counted.</li>
+  </ul>
+  <div class="box where"><div class="tag">Where it lives (mw-crypto)</div><ul>
+    <li><a href="../../services/mw-crypto/src/main/java/mfs/mw/crypto/client/Pkcs11Provider.java"><code>client/Pkcs11Provider</code></a>,
+      <code>client/PayShieldProvider</code>, <code>security/CallerPolicy</code>, <code>service/PinService</code>,
+      <code>service/KeyService</code>, <code>service/CeremonyService</code>.</li>
+    <li><a href="../../services/mw-crypto/CLAUDE.md">services/mw-crypto/CLAUDE.md</a>; the SoftHSM tokens: <a href="../../deploy/softhsm/README.md">deploy/softhsm/README.md</a>; spec 18.8; ADR D23.</li>
+  </ul></div>
+
+  <h2 id="mtls">Service to service: mTLS</h2>
+  <p>mw-crypto's API and mw-auth's internal API take only callers with a client certificate from OpenBao's <code>pki_int</code>
+    (72 h, renewed by each service at two thirds of its life) <em>and</em> a Keycloak service token whose <code>azp</code> equals the
+    certificate's name (D24). A token stolen from one service is useless from another.</p>
+
+  <h2 id="try">Try it</h2>
+  <div class="box try"><div class="tag">Try it</div>
+    <p>Test console <code>/tester/auth</code>: create a fresh wallet, log in, bind a second device, change and reset the PIN, lock it
+      (testing guide section 3.11). The API suite's folders <code>24</code>-<code>27</code> do the same black-box:
+      <code>scripts/api-test.sh "24, 25, 26, 27"</code>. The security demo is in <a href="../demo.md">docs/demo.md</a>.</p></div>
+
+  <nav class="pager">
+    <a href="09-how-we-work.html"><small>Previous</small>← 9. How we work</a>
+    <a class="next" href="glossary.html"><small>Next</small>Glossary →</a>
+  </nav>
+</main>
+</body>
+</html>

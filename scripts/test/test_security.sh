@@ -149,6 +149,8 @@ test_security_runs_zap_on_the_edge_and_the_log_scan_when_the_stack_is_up() {
   grep -q 'zap-baseline.py' .tool-calls || fail "no ZAP baseline: $(cat .tool-calls)"
   grep -q -- '--network mfs-mw_dmz' .tool-calls || fail "ZAP not on the dmz network"
   grep -q 'https://apisix:9443/' .tool-calls || fail "ZAP not aimed at APISIX"
+  # ticket 76: mw-auth's public API at the edge is scanned too
+  grep -q 'https://apisix:9443/auth/v1/' .tool-calls || fail "ZAP does not scan /auth/v1: $(grep zap .tool-calls)"
   grep -q 'logs --no-color' .tool-calls || fail "no log scan"
 }
 

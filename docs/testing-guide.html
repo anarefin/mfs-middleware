@@ -120,6 +120,7 @@ Every login is printed where a step needs it; <a href="#c1-0">1.0 Logins at a gl
       <tr><td class="tick"></td><td>Add money from bank (C2W) with signed callback</td><td><a href="#c3-8">3.8</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Transaction status as the app sees it</td><td><a href="#c3-9">3.9</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>App flows input checks, other users, resend rules</td><td><a href="#c3-10">3.10</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Wallet auth: first PIN, login, second device, PIN change, resets, lockout</td><td><a href="#c3-11">3.11</a></td><td>Both</td></tr>
       <tr><td class="tick"></td><td>USSD over HTTP (robi)</td><td><a href="#c4-1">4.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>USSD over SMPP (gp) and re-bind</td><td><a href="#c4-2">4.2</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>USSD other menus, Bangla, invalid input</td><td><a href="#c4-3">4.3</a></td><td>Test console</td></tr>
@@ -226,7 +227,7 @@ scripts/creds.sh</pre></div>
     <tr><td>Agent</td><td>agent01</td><td>01811000001</td><td>13579</td></tr>
     <tr><td>Merchant "Demo Shop"</td><td>merchant01</td><td>01911000001</td><td>13579</td></tr>
     <tr><td>Second merchant</td><td>merchant02</td><td>01911000002</td><td>13579</td></tr>
-    <tr><td>Third seeded customer (core-mock only, no login)</td><td>-</td><td>01711000003</td><td>13579</td></tr>
+    <tr><td>Third seeded customer (core-mock only, no app PIN, no login)</td><td>-</td><td>01711000003</td><td>-</td></tr>
     <tr><td>Seeder customer (type the name; <a href="#c3-10">3.10</a>)</td><td>seed-customer01</td><td>01712000001</td><td>13579</td></tr>
     <tr><td>Bulk payees (seeded)</td><td>-</td><td>01711000101 onwards</td><td>-</td></tr>
   </table></div>
@@ -657,6 +658,27 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <tr><td>User <code>merchant02</code>, <span class="ui">Bind device</span>, then <span class="ui">Merchant collections</span></td><td>device bound for merchant02 (01911000002); its collections list (empty until someone pays 01911000002)</td></tr>
       <tr><td>User <code>seed-customer01</code> (typed, not in the suggestions), P2P to <code>01711000002</code>, Tk 10</td><td>the first submit binds a device, then <code>COMPLETED</code>; payer <code>01712000001</code> <code>-Tk 15.00</code></td></tr>
       <tr><td>Leave the console idle for more than 4 minutes, then Submit</td><td>an extra first step <i>open a new app session for the bound device (signed)</i> (<code>POST /auth/v1/sessions</code>, at mw-auth); if that fails, the console binds the device again</td></tr>
+    </table></div>
+  </div>
+
+  <div class="case" id="c3-11">
+    <h3><span class="id">3.11</span>Wallet authentication at mw-auth (fresh wallets)</h3>
+    <p>Test console <span class="ui">Wallet auth</span> (<code>/tester/auth</code>, ticket 76). It works only on wallets it makes
+    itself: one of core-mock's customers <code>01711000500</code>..<code>01711000999</code> that has no app PIN yet, so the
+    seeded users and their PIN <code>13579</code> are never touched. Every PIN is 5 digits and leaves the console only encrypted
+    under the mw-crypto transport key.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Do</th><th>Expect</th></tr>
+      <tr><td>First PIN <code>48207</code>, <span class="ui">Create a fresh wallet</span></td><td>"fresh wallet 01711000xyz ready: device bound, first PIN set"; steps: LOGIN OTP probe, BIND OTP (read from the SMSC simulator), bind without a PIN, OTP login (amr otp, device), first PIN (new tokens, amr pin, device). The wallet field fills in</td></tr>
+      <tr><td>The same with first PIN <code>11111</code>, <code>34567</code> or the wallet's last five digits</td><td>red: the first PIN step answers 400 <code>MW-AUTH-044</code> naming the rule (<code>REPEATED_DIGIT</code>, <code>SEQUENCE</code>, <code>MSISDN_DIGITS</code>)</td></tr>
+      <tr><td>PIN <code>48207</code>, <span class="ui">Log in with the PIN</span></td><td>"logged in: amr pin,device, …, token 300 s"</td></tr>
+      <tr><td><span class="ui">Bind a second device</span></td><td>"second device … bound at T; cooling (newDevice) until T + 24 h"; the old phone's login answers 401 <code>MW-AUTH-047</code> and its refresh 401; an SMS "A new device was bound to your Bits wallet…" (Inbox). The step <i>new-device (cooling) flag</i> explains: mw-auth marks every transaction assertion of the wallet <code>newDevice: true</code> for 24 h after the binding; the flag travels only in the signed assertion to the core</td></tr>
+      <tr><td>Current <code>48207</code>, new <code>61938</code>, <span class="ui">Change PIN</span>; then log in with <code>48207</code> and with <code>61938</code></td><td>"PIN changed …", SMS "Your Bits PIN was changed…"; the old PIN 401 <code>MW-AUTH-040</code>, the new one logs in. New = current: 400 <code>MW-AUTH-044</code> <code>LAST_PIN</code></td></tr>
+      <tr><td>New PIN <code>73052</code>, <span class="ui">Self-service reset</span> (NID last 4 and birth date: any values, core-mock checks only the wallet)</td><td>"self-service reset … DONE"; steps: RESET OTP on the bound device, reset <code>PENDING_KYC</code>, polled until <code>VERIFIED</code> (the core's answer), new PIN set. Every session of the wallet is ended: log in again with <code>73052</code></td></tr>
+      <tr><td>Care reset: in the ops console as <code>seed-ops-maker</code> ask <span class="ui">PIN reset</span> for the wallet (Wallets), approve as <code>seed-ops-checker</code>; then here new PIN <code>73052</code>, <span class="ui">Take up a care reset (new phone)</span></td><td>SMS "Your Bits PIN reset was approved…"; "care reset … DONE on the new phone; it is bound with the new PIN". Before the approval the new phone's reset OTP is refused (403 <code>MW-AUTH-002</code>)</td></tr>
+      <tr><td><span class="ui">Three wrong PINs</span>, then <span class="ui">Log in with the PIN</span> with the right one</td><td>wrong 1 and 2: 401 <code>MW-AUTH-040</code> with 2 and 1 tries left; the third 423 <code>MW-AUTH-041</code> with <code>retryAfter</code> (at most 60 s with the dev timers <code>MW_AUTH_LOCK_LEVEL1=1m</code>); the right PIN is refused the same way without being checked. Unlock: ops-maker asks UNLOCK on the wallet, ops-checker approves (<a href="#c9-8">9.8</a>); or wait the minute. Three more wrong PINs after it: level 2 (<code>MW_AUTH_LOCK_LEVEL2=3m</code>), then permanent (<code>MW-AUTH-042</code>) until a reset</td></tr>
+      <tr><td>USSD (<a href="#c4-1">4.1</a>) as the fresh wallet: type its number as subscriber, send money, a wrong PIN</td><td>"Wrong PIN. 2 tries left." and the PIN is asked again; the third wrong PIN ends the session "Your PIN is locked for now…": one PIN and one lockout for every channel</td></tr>
+      <tr><td>Web checkout (<a href="#c7-1">7.1</a>): after the OTP pay with PIN <code>97531</code></td><td>"refused MW-AUTH-040"; the session stays OPEN; the OTP was spent by its check, so <span class="ui">Send OTP</span> again and pay with <code>13579</code>: PAID</td></tr>
     </table></div>
   </div>
 </section>
@@ -1338,6 +1360,8 @@ scripts/log-scan.sh</pre></div>
     <tr><td>9.8 wallet unlock</td><td><code>16</code></td></tr>
     <tr><td>9.9 partners</td><td><code>15</code></td></tr>
     <tr><td>9.10, 9.11 menus and templates</td><td><code>17</code></td></tr>
+    <tr><td>3.11 wallet auth (login, PIN lifecycle, assertion)</td><td><code>24, 25, 26</code> (lockout escalation and assertion expiry in <code>90</code>); test console <code>scripts/tester-e2e.sh @auth</code></td></tr>
+    <tr><td>9.13 keys; payShield PVV</td><td><code>27</code> (mw-crypto's dev-only payShield test API); ops console <code>scripts/ui-e2e.sh @keys</code></td></tr>
   </table></div>
 </section>
 

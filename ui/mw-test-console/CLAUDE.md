@@ -44,7 +44,12 @@ customers, holds the stack's generated test credentials and has no sign-in.
   scenario forms, recorded requests, callback replay, core-mock faults, wallet lookup, SMPP binds /
   drop / throttle), `/inbox` (SMSC and GreenMail), `/checkout` (create, page, OTP, pay, signed
   redirect, IPNs), `/bulk` (sample CSV, upload, approve / reject / pause / resume, status, result,
-  transactions, SP query). Personas: `lib/personas.ts` (core-mock's app wallets, the portals realm
+  transactions, SP query), `/auth` (ticket 76, wallet authentication at mw-auth on fresh wallets of its
+  own: `lib/auth.ts` (pure: OTP texts, fresh candidates 01711000500..999, the new-device window),
+  `lib/server/auth.ts`, `actions/auth.ts`: fresh wallet with its first PIN via the LOGIN OTP, PIN login,
+  a second device (old one refused, the newDevice cooling window until boundAt + 24 h shown; the flag
+  itself travels only in the assertion to the core), PIN change, self-service reset, taking up a care
+  reset approved in `/console` on a new phone, three wrong PINs to the lock). Personas: `lib/personas.ts` (core-mock's app wallets, the portals realm
   import's users; any other user can be typed in).
 - An add money from the bank first sets c2wbank callbacks ONCE when the simulator has none (a step
   says so), as every API suite scenario does.
@@ -82,7 +87,7 @@ kept.
 | `pnpm test` | `tsc --noEmit` + Vitest (`src/**/*.test.ts`: crypto, formats, redaction, headers; no stack) |
 | from `deploy/`: `docker compose --profile tester build mw-test-console` | the image `mfs-mw/mw-test-console:local` |
 | `scripts/tester.sh` (repo root) | test routes on, start the container, print https://localhost/tester |
-| `scripts/tester-e2e.sh [GREP]` (repo root) | Playwright (`e2e/*.spec.ts`, file order, one worker) against the console on the running, seeded stack (from `deploy/`: `docker compose --profile core --profile seed up -d --build --wait`, then `scripts/tester.sh`); `E2E_BASE_URL` |
+| `scripts/tester-e2e.sh [GREP]` (repo root) | Playwright (`e2e/*.spec.ts`, file order, one worker; tags `@smoke`, `@app`, `@ussd`, `@failures`, `@checkout`, `@bulk`, `@auth` (ticket 76: `e2e/60-auth.spec.ts`)) against the console on the running, seeded stack (from `deploy/`: `docker compose --profile core --profile seed up -d --build --wait`, then `scripts/tester.sh`); `E2E_BASE_URL` |
 | `pnpm dev` | dev server on :3001 against the stack: `EDGE_URL=https://localhost`, `NODE_EXTRA_CA_CERTS=<file>` with the stack's self-signed edge certificate (`docker compose -f deploy/docker-compose.yml cp apisix:/usr/local/apisix/conf/cert/edge.crt build/edge.crt`; TLS verification stays on) plus the five credentials above in the environment; then `E2E_BASE_URL=http://localhost:3001 pnpm test:e2e` |
 
 The e2e specs check money with deltas (fee included: P2P Tk 5, top-up Tk 2) and reset the simulators

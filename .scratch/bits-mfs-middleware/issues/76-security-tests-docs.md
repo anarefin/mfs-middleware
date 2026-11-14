@@ -19,7 +19,17 @@
 
 **Blocked by:** 72, 73, 75
 
-**Status:** open
+**Status:** done
 
-- [ ] Milestone gate: `./gradlew clean build -PwithSlow`; `deploy/reset.sh`, then up with core and seed profiles; `scripts/smoke.sh`, `scripts/edge-test.sh`, `scripts/api-test.sh` (all folders), `scripts/ui-e2e.sh`, `scripts/tester-e2e.sh`, `scripts/log-scan.sh`, `scripts/security.sh` all green (no load or chaos tests)
-- [ ] `./gradlew :scriptTests :contractsLint` green
+- [ ] Milestone gate: `./gradlew clean build -PwithSlow`; `deploy/reset.sh`, then up with core and seed profiles; `scripts/smoke.sh`, `scripts/edge-test.sh`, `scripts/api-test.sh` (all folders), `scripts/ui-e2e.sh`, `scripts/tester-e2e.sh`, `scripts/log-scan.sh`, `scripts/security.sh` all green (no load or chaos tests) (deferred to final integration test)
+- [x] `./gradlew :scriptTests :contractsLint` green
+
+**Notes (implementation, 2026-11-15):** `MW_AUTH_LOCK_*` already in `deploy/dev.env.defaults` (ticket 70).
+Newman folders 24-27 + two folder 90 scenarios; `TRACEABILITY.md` gained a Requirements column
+(checked). Edge gaps found while writing the requests and fixed: `auth-v1` takes PUT (PIN change,
+reset PIN), assertion JWKS added to `auth-v1-keys`, new route `auth-v1-pin-resets` (GET reset status).
+Review queue: spec 18.8 key hierarchy amended; dev-only mw-crypto payShield test API (folder 27) with
+the test client `mw-e2e-crypto` bound to TPK/PVK in `dev.env.defaults` only; mw-admin-api test menu
+copy 5-digit PIN. The `newDevice` flag is only in the assertion to the core, so the test console
+shows the window derived from `boundAt` (+24 h). Security pass: placeholder in
+`docs/security-findings.md` for the gate.

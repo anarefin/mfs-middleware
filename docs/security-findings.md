@@ -147,3 +147,19 @@ the third-party scan only (`scripts/security.sh`); the edge serves the certifica
 
 ZAP and log-scan findings below high: decided per alert in `deploy/zap/decisions.tsv` (the gate
 fails on an alert without a decision); the log scan has no "below high": any finding fails.
+
+## Security group pass (tickets 61-76): to be filled by the milestone gate, 2026-11-15
+
+Placeholder (ticket 76). The coordinator runs the pass at the milestone gate on a fresh stack
+(`deploy/reset.sh`, then the core and seed profiles with the default `deploy/dev.env.defaults`
+timers, then `scripts/api-test.sh` and `SECURITY_LIVE=1 scripts/security.sh`) and records here what
+it found and decided. Not run in ticket 76.
+
+| Stage | Scope new in this group | Result | Decisions |
+| --- | --- | --- | --- |
+| secrets (gitleaks) | mw-auth, mw-crypto, `deploy/softhsm`, the dev-only fake values in `deploy/dev.env.defaults` (SoftHSM PINs, `MW_SEED_APP_PIN`, the TOTP secrets) | pending | |
+| deps (SBOM + trivy) | `mw-auth`, `mw-crypto` (Bouncy Castle), `mw-simulators` (payShield simulator) | pending | |
+| own images | `mfs-mw/mw-auth:local`, `mfs-mw/mw-crypto:local` (Alpine, p11-kit 0.26.2), `mfs-mw/mw-simulators:local` (Alpine) | pending | |
+| third-party images | the `softhsm` image built from `deploy/softhsm` | pending | |
+| ZAP baseline | `https://apisix:9443/auth/v1/pin-key` added to the targets (mw-auth's public API at the edge) | pending | |
+| log scan | PIN ciphertext, the assertion (compact JWS in field `assertion`), OTPs, refresh tokens | pending | |

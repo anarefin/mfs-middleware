@@ -90,7 +90,7 @@ docker compose --profile core --profile seed wait mw-seeder     # ends with "exi
 Compose builds the images (`mfs-mw/<service>:local`), then starts everything in dependency order:
 the platform, the one-shots (`kafka-init` creates the topics, `etcd-init` and `apisix-init` the
 edge config, `provision` every service's OpenBao secret, database role, schema and AppRole), the
-14 services and the admin console, then the one-shot `mw-seeder`. `provision` runs again on every
+15 services (mw-auth and mw-crypto included) and the admin console, then the one-shot `mw-seeder`. `provision` runs again on every
 `up` and creates what is missing, so a new service's schema appears without dropping volumes.
 `deploy/.env` carries the short test timers (core and partner deadlines, status inquiry, reversal,
 retry topics, bulk, IPN, and the mw-auth PIN lockout levels `MW_AUTH_LOCK_TRIES`, `MW_AUTH_LOCK_LEVEL1`,
@@ -239,8 +239,13 @@ API suite folders (`tests/api/src`, details in `tests/api/README.md`): `00` edge
 baseline, `01`–`04` P2P, device binding, cash in / out, merchant payment, `05`–`08` top-up, bill
 pay, add money from bank, `09` checkout and IPN, `10`–`11` notifications, `12` reversal, `13`–`17`
 admin (maker-checker, console search, partner config, wallet unlock, menus and templates),
-`18`–`20` USSD over HTTP and SMPP, `21`–`23` bulk disbursement and SP query, `90` the 10,000-row
-bulk payout (slow).
+`18`–`20` USSD over HTTP and SMPP, `21`–`23` bulk disbursement and SP query, and since ticket 76 the
+security folders: `24` mw-auth (OTP, device binding, first PIN, login, logout, key documents), `25`
+the PIN lifecycle (policy, change, self-service and care reset, lockout, ops unlock), `26` the
+transaction assertion (PIN before the saga, reuse, USSD, checkout), `27` the payShield PVV through
+mw-crypto's dev-only test API; `90` the 10,000-row bulk payout, the retry-to-DLQ path, the PIN
+lockout escalation and the assertion expiry (slow). Folders 24-26 use fresh wallets of their own
+(core-mock customers `01711000500..01711000999` without an app PIN), never the seeded users.
 
 No load tests on a laptop: `scripts/chaos.sh` and `scripts/suite.sh perf` need a bigger host and a
 fresh stack.
@@ -382,6 +387,9 @@ on 8080 inside the container).
 | `wait mw-seeder` prints a non-zero code | `docker compose --profile core --profile seed logs mw-seeder`: the line `seed.step.failed` names the step. An open change request left in the console blocks it: approve or reject it, then start again. |
 | Every console or suite sign-in fails | The seeder has not finished, or `deploy/.env` holds other values than the volumes: `scripts/creds.sh` prints the current values; `./reset.sh` and copy `dev.env.defaults` again. |
 | 404 on `/test/...` routes | Expected after an `up`: `scripts/api-test.sh` and `scripts/tester.sh` re-apply the test-only routes. |
+| API folder 24-26 fails on "a fresh wallet without an app PIN" | Earlier runs gave every core-mock customer `01711000500..01711000999` a PIN (about a dozen per run): `deploy/reset.sh` and start again. |
+| API folder 27 answers 404 or 403 | mw-crypto's dev-only payShield test API is off: `deploy/.env` lacks `MW_CRYPTO_TEST_API_ENABLED=true`, `MW_CRYPTO_AUTHZ_PURPOSES_TPK` and `_PVK` (`mw-e2e-crypto`) from `dev.env.defaults`; copy them and recreate `mw-crypto`. Never set them outside dev. |
+| An app login answers 423 `MW-AUTH-041` / `042` | The wallet's PIN is locked at mw-auth (`MW_AUTH_LOCK_*`): wait the `retryAfter`, or unlock it in the ops console (maker asks UNLOCK, checker approves); `docs/runbook.md` "Wallet PIN lock". |
 | API suite timer scenarios fail | `deploy/.env` lacks the test timer block (deleted for production timers, or an old file). Copy `dev.env.defaults` to `.env` again and rerun the start command (it recreates the services). |
 | 502 from the edge right after rebuilding one service | APISIX still points at the old container: `docker compose restart apisix`. |
 | `scripts/smoke.sh` reports a partition mismatch | The Kafka volume is from a stack with more partitions per topic: `deploy/reset.sh` once. |
@@ -396,7 +404,8 @@ Recovery and operations in depth: [docs/runbook.md](docs/runbook.md).
 | Channels | `mw-app-gateway` (apps), `mw-ussd` (USSD over SMPP and HTTP), `mw-checkout` (web checkout, IPN), `mw-portal-api` (org bulk disbursement, SP query) |
 | Core flow | `mw-orchestrator` (saga, idempotency, TSQ, reversal), `mw-core-mock` (ledger, fault injection) |
 | Partners | `mw-adapter-telco`, `mw-adapter-billpay`, `mw-adapter-bank` |
-| Support | `mw-notify` (SMS over SMPP, email), `mw-audit-dw` (hash-chained audit trail), `mw-admin-api`, `mw-admin-ui` (console at `/console`) |
+| Security | `mw-auth` (wallet authentication: OTP, device binding, login and RS256 tokens, PIN custody and lockout, resets, the ES256 transaction assertion; public `/auth/v1`, mTLS internal API), `mw-crypto` (the HSM gateway: the only process that talks to an HSM, SoftHSM over PKCS#11 and the payShield simulator in dev; mTLS internal API only), `softhsm` |
+| Support | `mw-notify` (SMS over SMPP, email), `mw-audit-dw` (hash-chained audit trail, signed daily anchor), `mw-admin-api` (also key management and the key ceremony), `mw-admin-ui` (console at `/console`) |
 | Platform | `kafka` (KRaft), `postgres` (18), `valkey`, `keycloak`, `openbao`, one-shots `kafka-init` and `provision` (every service's secret, database role and AppRole, `deploy/provision`), `softhsm` (dev/test PKCS#11 tokens, profiles `minimal` and `core`, `deploy/softhsm`) |
 | Test | `mw-simulators` (OCS, bill aggregator, C2W bank, SMSC, USSD gateway), `greenmail`, `mw-seeder` (profile `seed`), `mw-test-console` (profile `tester`) |
 
@@ -405,7 +414,7 @@ The compose profiles: no profile = the platform (always starts), `minimal` = the
 [D16](docs/adr/D16-single-compose-file.md)).
 
 Repository layout: `contracts/` (OpenAPI and JSON Schema files, owner per file in
-`contracts/OWNERS.yml`), `services/mw-*` (14 subprojects of the root Gradle build), `ui/mw-admin-ui`
+`contracts/OWNERS.yml`), `services/mw-*` (16 subprojects of the root Gradle build), `ui/mw-admin-ui`
 (Next.js 16.4.1), `ui/mw-test-console`, `templates/mw-service-template`, `deploy/` (the stack file
 `deploy/docker-compose.yml`, APISIX, Kafka topics, provisioning, the softhsm image, ZAP decisions), `tests/api`
 (Newman API suite), `tests/perf` (Gatling, its own build), `scripts/` (the repo checks and operator

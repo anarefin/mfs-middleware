@@ -21,7 +21,8 @@
 #   Findings below high are written to build/security/*-below-high.json (report only); their
 #   decisions are in docs/security-findings.md.
 # Live stages (need the running stack, then scripts/api-test.sh):
-#   - zap:      ZAP baseline (passive) on the APISIX edge from inside the dmz network, gated by
+#   - zap:      ZAP baseline (passive) on the APISIX edge from inside the dmz network (/, /console/ and,
+#               ticket 76, mw-auth's /auth/v1 public key route; MW_ZAP_TARGETS overrides), gated by
 #               scripts/lib/zap-gate.py against deploy/zap/decisions.tsv (high fails, and so
 #               does any alert without a decision)
 #   - logs:     scripts/log-scan.sh over every container log of the project (no PIN, PIN
@@ -209,7 +210,7 @@ elif stack_up; then
   project="$(stack_project)"
   net="${project}_dmz"
   zap_dir="$OUT/zap"; rm -rf "$zap_dir"; mkdir -p "$zap_dir"; chmod 777 "$zap_dir"
-  for target in ${MW_ZAP_TARGETS:-https://apisix:9443/ https://apisix:9443/console/}; do
+  for target in ${MW_ZAP_TARGETS:-https://apisix:9443/ https://apisix:9443/console/ https://apisix:9443/auth/v1/pin-key}; do
     s="$(slug "$target")"
     info "security: ZAP baseline on $target (network $net)"
     docker run --rm --network "$net" -v "$zap_dir:/zap/wrk:rw" \

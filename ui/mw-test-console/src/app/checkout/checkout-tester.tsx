@@ -34,7 +34,7 @@ export function CheckoutTester() {
           </Row>
           <Row>
             <Field label="OTP (filled from the SMS)"><Input name="otp" defaultValue={d?.otp ? String(d.otp) : ""} key={String(d?.otp ?? "")} data-testid="co-otp-value" className="font-mono" /></Field>
-            <Field label="PIN"><Input name="pin" type="password" defaultValue="13579" autoComplete="off" /></Field>
+            <Field label="PIN"><Input name="pin" type="password" defaultValue="13579" autoComplete="off" data-testid="co-pin" /></Field>
           </Row>
           <Button type="submit" name="op" value="confirm" disabled={pending || !d?.token} data-testid="co-confirm">Pay</Button>
           <Hint>Try a wrong OTP (MW-AUTH-010, nothing paid) or Pay twice (the second is refused).</Hint>

@@ -222,6 +222,75 @@ dc exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select
 | Docker out of disk | `docker system df`, then `docker image prune` and `docker builder prune` (keeps volumes) |
 | Anything else after a crash of the host | `dc down`, then start again; as the last resort `deploy/reset.sh`, then start again (loses every transaction; the seed data comes back) |
 
+## Security operations (mw-auth, mw-crypto; ticket 76)
+
+### HSM down
+
+Symptom: `crypto.hsm.down` in mw-crypto's log (gauge `crypto_hsm_up` 0); logins, PIN changes,
+transactions (the assertion is signed by mw-crypto), tokens and the audit anchor fail closed with 503
+`MW-SYS-050` (mw-auth) or `MW-SYS-010` (mw-crypto). Nothing is accepted that cannot be checked, and no
+PIN is counted while it lasts.
+
+1. `dc ps softhsm mw-crypto` and `dc logs --tail 50 softhsm mw-crypto`. In dev the HSM is the
+   `softhsm` container (p11-kit RPC on 5657 / 5658, `deploy/softhsm/README.md`); the payShield
+   simulator is in `mw-simulators` (TCP 1500, its LMK in the `paysim` token).
+2. `dc start softhsm` (or `dc restart softhsm`); mw-crypto reconnects by itself within
+   `hsm-probe-period` (10 s) and logs `crypto.hsm.up`. No restart of mw-crypto is needed.
+3. A token that lost its keys (a `softhsm` volume dropped by hand) cannot be repaired: the dev
+   bootstrap makes new keys, so every PIN, token and assertion made before is void: `deploy/reset.sh`.
+
+### Certificate expiry (mTLS, D24)
+
+Every internal hop to mw-crypto and mw-auth's internal API is mTLS with a 72 h certificate from
+OpenBao `pki_int` that each service issues itself at start and renews at two thirds of its life.
+
+1. WARN `tls.certificate.renew_failed` (retried every minute) then ERROR `tls.certificate.expiring`
+   (less than a third left; gauge `tls_certificate_expiry_seconds`): check `dc ps openbao` (sealed or
+   down?) and the service's AppRole (`dc logs provision | grep pki`).
+2. Once a certificate expired, its callers fail the handshake (mw-auth: `MW-SYS-050`; the channels:
+   `MW-SYS-012`). Restart the service whose certificate expired (`dc restart <service>`): it issues a
+   new one at start. A stack stopped for more than 72 h does the same on the next start by itself.
+3. 403 `MW-AUTH-002` with reason `CERT_MISMATCH` in mw-crypto's or mw-auth's log: the caller's token
+   (`azp`) and certificate CN differ, a configuration error (Keycloak client or PKI role), not expiry.
+
+### Key rotation and the key ceremony (ticket 75)
+
+Keys live in the HSM; mw-crypto keeps only metadata (keyId, versions, states). Every change is
+dual-control in the ops console (`/console/keys`, role `security-admin`, seeded
+`seed-ops-secadmin1` / `seed-ops-secadmin2`, TOTP `scripts/totp.sh seed-ops-secadmin1`), each step with
+a sign-in no older than 5 min (else 403 `MW-AUTH-031`: sign in again).
+
+1. Rotate: one security-admin files KEY_ROTATE for the keyId with a reason, the other approves. The
+   new version becomes ACTIVE, the old one VERIFY_ONLY: tokens, assertions and PINs made with it keep
+   verifying (a PIN under a rotated PIN_HMAC key is re-hashed at its next correct check).
+2. Retire the VERIFY_ONLY version later (KEY_RETIRE, same two-person rule) once nothing made under
+   it can still arrive: the access tokens' 5 min plus the refresh tokens' 30 days for `JWT_SIGN`, 60 s
+   plus the core's clock skew for `ASSERTION_SIGN`, never for a key that verifies stored data
+   (`PIN_HMAC` until every wallet re-hashed, `TOKENISE_*`, `KEK_*`).
+3. A top-level key (PIN_HMAC, TOKENISE_*, HMAC_*) imported from components: KEY_CEREMONY. Each
+   custodian enters their own component and its check value in their own session; the request is
+   approved only with both in; the KCV shown must match the paper record. A rejected or expired
+   ceremony is aborted at mw-crypto.
+4. mw-auth and mw-core-mock pick a new JWKS version up by themselves (an unknown kid refetches the
+   set; core-mock refreshes the assertion set every 30 s).
+
+### Wallet PIN lock and unlock
+
+mw-auth's lockout (spec 18.7, ticket 70; knobs `MW_AUTH_LOCK_TRIES`, `MW_AUTH_LOCK_LEVEL1`,
+`MW_AUTH_LOCK_LEVEL2`, `MW_AUTH_LOCK_DECAY`; production 3 tries, 1 h, 24 h, then until a reset): the
+customer gets 401 `MW-AUTH-040` with `triesLeft`, then 423 `MW-AUTH-041` with `retryAfter` (levels 1
+and 2) or `MW-AUTH-042` (level 3, permanent) on every channel (app, USSD, checkout).
+
+1. Identify the customer (branch or care call). Level 1 and 2 end by themselves.
+2. Unlock now: an ops-maker asks UNLOCK for the wallet (console, wallet page; `POST
+   /admin/v1/wallets/{walletId}/change-requests {action: UNLOCK}`), an ops-checker approves; mw-auth
+   lifts every PIN level and any ADMIN lock from `auth.wallet-lock.v1` within seconds (audit
+   `auth.wallet.unlocked`).
+3. Forgotten PIN: the customer resets it in the app (RESET OTP on the bound device, NID last 4 and
+   birth date checked by the core), or, phone lost, care asks PIN_RESET (maker) and a checker
+   approves; the customer then asks a reset OTP on the new phone within 72 h, sets the new PIN and
+   binds the phone. A reset clears the PIN lock.
+
 ## Backup and restore
 
 Not automated in the MVP (spec 20.5; the restore drill is deferred). For a manual copy before a
