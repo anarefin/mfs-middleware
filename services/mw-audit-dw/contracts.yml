@@ -4,4 +4,5 @@ produces:
   apis:   [api/mw-audit-dw/audit-query.v1.openapi.yaml, api/mw-audit-dw/audit-dw-test.v1.openapi.yaml]
 consumes:
   events: [events/mw-audit-dw/mw.audit.event.v1.schema.json]
-  apis:   []
+  # ticket 74: the daily anchor is signed at mw-crypto (/jws/sign AUDIT_ANCHOR_SIGN, /jwks)
+  apis:   [api/mw-crypto/crypto-internal.v1.openapi.yaml]

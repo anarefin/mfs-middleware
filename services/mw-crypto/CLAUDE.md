@@ -16,7 +16,9 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   (HMAC-SHA256), `JWT_SIGN` (RSA 3072, RS256: D21 amendment 2026-11-14, APISIX verifies RSA JWKS only),
   `ASSERTION_SIGN` and `AUDIT_ANCHOR_SIGN` (EC P-256, ES256), `TOKENISE_<domain>` (HMAC-SHA256),
   `HMAC_<use>` (HMAC-SHA256: partner signatures, webhooks; ticket 63), `KEK_<purpose>` (AES-256),
-  `XMLDSIG` (RSA 3072); payShield (ticket 64): `ZPK`, `TPK`, `PVK` (`TDES_2KEY`), `ZPK_AES`, `TPK_AES`
+  `XMLDSIG` (RSA 3072), `HTTP_SIGN_RSA` (RSA 3072, JWK `PS512`) and `HTTP_SIGN_EC` (EC P-256, ES256) for
+  RFC 9421 HTTP signatures (ticket 65: own keys, so no key signs for two protocols; not in the dev
+  bootstrap list); payShield (ticket 64): `ZPK`, `TPK`, `PVK` (`TDES_2KEY`), `ZPK_AES`, `TPK_AES`
   (`AES_128`, ISO format 4). Default keyId = purpose in lower case with hyphens. A key is generated in the
   default provider when it serves the purpose, else in the provider that does (`KeyService`).
 - Rotation (`service/KeyService.rotate`) adds a version: ACTIVE -> VERIFY_ONLY, an older VERIFY_ONLY ->
@@ -53,8 +55,8 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   PIN block is a raw RSA decrypt (`RSA/ECB/NoPadding`, `CKM_RSA_X_509`) in the HSM and OAEP decoding
   (SHA-256, MGF1-SHA-256) in `client/OaepDecoder` (BouncyCastle `OAEPEncoding`; SunPKCS11 has no
   OAEP cipher); a block of the wrong length or not below the modulus never reaches the HSM. HMAC
-  `HmacSHA256`; signatures `SHA256withRSA`, `SHA256withRSASSA-PSS`, `SHA256withECDSA` (DER, turned into
-  `R ‖ S` for JWS). The KEK wrap is AES-256-CTR built on `AES/ECB/NoPadding` of the counter blocks in
+  `HmacSHA256`; signatures `SHA256withRSA`, `SHA256withRSASSA-PSS`, `SHA512withRSASSA-PSS` (ticket 65,
+  `SignatureAlgorithm.PS512`), `SHA256withECDSA` (DER, turned into `R ‖ S` for JWS and RFC 9421). The KEK wrap is AES-256-CTR built on `AES/ECB/NoPadding` of the counter blocks in
   the HSM (byte for byte JCA `AES/CTR`): over the RPC `CKM_AES_GCM` fails with `CKR_DEVICE_ERROR` (and
   drops the connection) and a CBC decrypt with `CKR_FUNCTION_NOT_SUPPORTED`. The wrapped key has no
   tag of its own; the envelope's GCM tag catches a changed one.
@@ -163,13 +165,41 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   | `/envelope/encrypt`, `/decrypt` | `purposes.KEK_<purpose>` | `KEK_COLUMN`: `mw-auth`; `KEK_FILE`: nobody |
   | `/hmac/sign`, `/verify` | `purposes.HMAC_<use>` | none yet |
   | `/pinblock/translate`, `/pvv/generate`, `/pvv/verify` (ticket 64) | `purposes.<TPK, ZPK, TPK_AES, ZPK_AES, PVK>` of every key | none yet |
+  | `/xmldsig/sign`, `/verify` (also with a partner PEM) | `purposes.XMLDSIG` | none yet |
+  | `/http-signature/sign`, `/verify` | the key's purpose (`HTTP_SIGN_RSA`, `HTTP_SIGN_EC`, `HMAC_<use>`); a partner PEM by its key type | none yet |
   | `/jwks/{purpose}`, `/keys`, `/keys/{keyId}/public` | every allowed caller | |
   | generate, rotate | ticket 66 key-admin rule | `mw-admin-api` |
 
-  A caller ticket (67 mw-auth, 70, 71, 74 mw-audit-dw, a new KEK/TOKENISE/HMAC purpose) adds its
+  A caller ticket (67 mw-auth, 70, 71, 74 mw-audit-dw, a new KEK/TOKENISE/HMAC purpose, the ATM, interop
+  and merchant SOAP adapters for XML-DSig and HTTP signatures) adds its
   client to the purpose's entry in `application.yml` (or overrides it per environment) in the same
   change. Tests: `controller/OperationAuthzTest` (`@WebMvcTest` with the real services: wrong caller
   per operation 403, right caller OK).
+- XML-DSig (`service/XmlDsigService`, ticket 65; NPSB / BanglaQR ISO 20022, SOAP partners): `POST
+  /internal/v1/xmldsig/sign` `{keyId?, xml}` -> `{xml, kid}` and `/verify` `{xml, keyId | certificatePem}`
+  -> `{valid, kid?, reason?}` (`dto/SignatureCheck`; a bad signature is `valid: false`, not an error).
+  One profile: enveloped, one `Reference URI=""` (enveloped + exclusive C14N transforms, SHA-256),
+  exclusive C14N `SignedInfo`, RSA-SHA256, `KeyInfo/KeyName` = kid, the `ds:Signature` last child of the
+  document element. The JDK signer (`javax.xml.crypto.dsig`) signs through `HsmXmlSignatureProvider`, a
+  private JCA provider (context property `org.jcp.xml.dsig.internal.dom.SignatureProvider`) whose key
+  is only a reference to the HSM key version. Verify accepts only that profile, which refuses signature
+  wrapping: one `ds:Signature`, child of the root, one whole-document reference, no `ds:Object`; the key
+  is the caller's (`keyId`: ACTIVE then VERIFY_ONLY, or a partner certificate / public key PEM, RSA >=
+  2048 or EC P-256, certificate validity checked), never the document's `KeyInfo`; JDK secure
+  validation on. `util/SafeXml`: no DOCTYPE (XXE and entity expansion off), no external DTD / schema /
+  XInclude, secure processing, depth 256; documents at most 1 MiB; a bad document is `MW-VAL-001`.
+- HTTP message signatures (`service/HttpSignatureService`, RFC 9421, ticket 65): the caller has the
+  message and sends the covered components `{name, params?, value}` (values derived as RFC 9421
+  section 2 says; printable ASCII, no line break). `POST /internal/v1/http-signature/sign` `{keyId,
+  alg?, label? (sig1), components, created? (now), expires?, nonce?, tag?}` -> `{label, kid, alg,
+  signatureInput, signature}` (the dictionary members for the two fields; params created, expires,
+  nonce, keyid = kid, alg, tag). Algorithms: `ecdsa-p256-sha256` (`HTTP_SIGN_EC`, `R ‖ S`),
+  `rsa-pss-sha512` (default) or `rsa-v1_5-sha256` (`HTTP_SIGN_RSA`), `hmac-sha256` (`HMAC_<use>`).
+  `/verify` `{keyId | certificatePem, alg?, label?, signatureInput, signature, components,
+  requiredComponents?, expectedKeyid?, maxAgeSeconds?}` parses the received fields (`util/StructuredFields`,
+  RFC 8941 subset), rebuilds the base and answers `SignatureCheck` (reasons in the OpenAPI); `created` may
+  be 60 s ahead. A partner `keyid` is checked only through `expectedKeyid`; a kid of the key in `keyid`
+  picks that version.
 - Masking and logging: no payload logging here, ever. Every secret request/response field is
   `@Sensitive(SECRET)` (walletId and MSISDNs `MSISDN`) and every operation DTO's `toString()` is
   `MaskingPolicy.describe`; services log only event, kid, outcome. Bean Validation messages never echo
@@ -242,6 +272,15 @@ No PKCS#11 tooling on the host (user decision 2026-11-14): PKCS#11 never runs in
   the PIN buffer all zero after every call), `WeakPinPolicyTest`, `JwsServiceTest`,
   `OtherOperationsTest` (HMAC, token known answer, envelope), `client/OaepDecoderTest` (OAEP decoding,
   CTR counter blocks = JCA CTR), `controller/OperationControllersTest`, `contracts/OperationContractsTest`.
+  Ticket 65: `service/XmlDsigServiceTest` (JDK-validated round trip, previous version, tamper, two
+  wrapping attacks incl. a correctly signed Id reference in `ds:Object`, SHA-1 refused, XXE / billion
+  laughs / size, partner PEM and expired certificate, document KeyInfo ignored),
+  `service/HttpSignatureServiceTest` (RFC 9421 B.2.5 hmac-sha256 known answer, ES256 / PS512 / RS256
+  checked by the JDK over a hand-written base, component parameters, tamper, time window, bad input),
+  `controller/SignatureControllersTest`, `controller/SignatureAuthzTest` (denied to every caller by
+  default), `contracts/SignatureContractsTest`, `dto/SignatureDtoMaskingTest`, and `client/SignaturesIT`
+  (keys `xmldsig-it`, `http-sign-rsa-it`, `http-sign-ec-it`, `hmac-sig-it`; `HsmStack` binds the purposes
+  to mw-auth for the IT only).
 - `scripts/test/test_softhsm.sh` fails when `src/test/resources/softhsm/` differs from `deploy/softhsm`:
   change both together (copy the folder again).
 
@@ -251,9 +290,9 @@ No PKCS#11 tooling on the host (user decision 2026-11-14): PKCS#11 never runs in
   /internal/v1/keys` (dev and bootstrap only until the ceremony), `POST /internal/v1/keys/{keyId}/rotate`,
   `GET /internal/v1/keys/{keyId}/public` (PEM and JWK per live version plus a JWK Set); ticket 63 the
   operations `/internal/v1/pin/{verify,derive}`, `/jws/sign`, `/jwks/{purpose}`, `/hmac/{sign,verify}`,
-  `/tokens`, `/envelope/{encrypt,decrypt}`; ticket 64 `/pinblock/translate`, `/pvv/{generate,verify}`.
-  Checked by `contracts/ProducedContractsTest`, `contracts/OperationContractsTest` and
-  `contracts/PayShieldContractsTest`.
+  `/tokens`, `/envelope/{encrypt,decrypt}`; ticket 65 `/xmldsig/{sign,verify}` and
+  `/http-signature/{sign,verify}`; ticket 64 `/pinblock/translate`, `/pvv/{generate,verify}`. Checked by
+  `contracts/ProducedContractsTest`, `contracts/OperationContractsTest` and `contracts/PayShieldContractsTest`.
 
 ## Contracts used
 

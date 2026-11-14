@@ -40,6 +40,9 @@ public record KeyPurpose(
       case "ZPK", "TPK" -> new KeyPurpose(name, KeyAlgorithm.TDES_2KEY, Capability.PIN_BLOCK, null, null);
       case "ZPK_AES", "TPK_AES" -> new KeyPurpose(name, KeyAlgorithm.AES_128, Capability.PIN_BLOCK, null, null);
       case "PVK" -> new KeyPurpose(name, KeyAlgorithm.TDES_2KEY, Capability.PVV, null, null);
+      // RFC 9421 HTTP message signatures (ticket 65): rsa-pss-sha512 (or rsa-v1_5-sha256), ecdsa-p256-sha256
+      case "HTTP_SIGN_RSA" -> new KeyPurpose(name, KeyAlgorithm.RSA_3072, Capability.XMLDSIG, "PS512", "sig");
+      case "HTTP_SIGN_EC" -> new KeyPurpose(name, KeyAlgorithm.EC_P256, Capability.XMLDSIG, "ES256", "sig");
       default -> {
         if (suffixed(name, "TOKENISE_")) {
           yield new KeyPurpose(name, KeyAlgorithm.HMAC_SHA256, Capability.TOKENISE, null, null);

@@ -8,9 +8,13 @@ info:
     is returned, and public keys. Its callers are mw-admin-api (key screens, ticket 75), mw-auth
     (ticket 67) and mw-audit-dw (ticket 74), over the `app` zone network (`https://mw-crypto:8080`);
     it is not routed by APISIX. The operations of ticket 63: PIN verify and derive, JWS sign and
-    JWKS, HMAC sign and verify, tokenisation, envelope encryption (XML-DSig and HTTP signatures
-    follow in ticket 65). Ticket 64: ISO 9564 PIN block translation and Visa PVV on the payShield
-    provider (`/pinblock/translate`, `/pvv/{generate,verify}`).
+    JWKS, HMAC sign and verify, tokenisation, envelope encryption. Ticket 65: XML-DSig sign and verify
+    (`/xmldsig/**`) and RFC 9421 HTTP message signatures (`/http-signature/**`), building blocks
+    for the ATM, interop and merchant SOAP adapters (no caller bound yet: purposes XMLDSIG,
+    HTTP_SIGN_RSA, HTTP_SIGN_EC and HMAC_<use> are denied until an adapter ticket binds its client).
+    Ticket 64: ISO 9564 PIN block translation and Visa PVV on the payShield provider
+    (`/pinblock/translate`, `/pvv/{generate,verify}`; purposes TPK, ZPK, TPK_AES, ZPK_AES, PVK, no
+    caller bound yet).
 
     mTLS is mandatory (ticket 66, D24): the TLS handshake needs a client certificate issued by the
     OpenBao services intermediate CA (`pki_int`, one role per service, CN = service name); without
@@ -215,7 +219,7 @@ paths:
       summary: JWK Set of every version in use (current and previous) of the keys of a purpose
       description: >-
         For an asymmetric purpose (JWT_SIGN, ASSERTION_SIGN, AUDIT_ANCHOR_SIGN, PIN_TRANSPORT,
-        XMLDSIG); kid = `<keyId>.v<n>`. A purpose without keys gives an empty set. Errors: 400
+        XMLDSIG, HTTP_SIGN_RSA, HTTP_SIGN_EC); kid = `<keyId>.v<n>`. A purpose without keys gives an empty set. Errors: 400
         MW-VAL-011 (unknown purpose), 400 MW-VAL-013 (symmetric purpose), 503 MW-SYS-010.
       parameters:
         - name: purpose
@@ -349,6 +353,126 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/xmldsig/sign:
+    post:
+      operationId: signXml
+      summary: Enveloped XML-DSig signature (RSA-SHA256, exclusive C14N) by an XMLDSIG key (ticket 65)
+      description: >-
+        One profile (NPSB / BanglaQR ISO 20022, SOAP partners): `ds:Signature` appended as the last
+        child of the document element, one `Reference URI=""` with the enveloped-signature and
+        exclusive C14N transforms and SHA-256, `SignedInfo` in exclusive C14N, RSA-SHA256 in the HSM,
+        `KeyInfo/KeyName` = the key version. The document is at most 1 MiB and has no DOCTYPE (XXE
+        off): otherwise 400 MW-VAL-001. Caller policy: purpose XMLDSIG (no caller bound yet).
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/XmlDsigSignRequest" }
+      responses:
+        "200":
+          description: The signed document and the key version
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/XmlDsigSigned" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/xmldsig/verify:
+    post:
+      operationId: verifyXml
+      summary: Verify an enveloped XML-DSig signature under an XMLDSIG key or a partner PEM (ticket 65)
+      description: >-
+        Only the sign profile verifies, which refuses signature wrapping: exactly one `ds:Signature`
+        (else MULTIPLE_SIGNATURES / SIGNATURE_MISSING), a child of the document element
+        (SIGNATURE_PLACEMENT), one reference to the whole document and no `ds:Object`
+        (REFERENCE_NOT_ALLOWED), RSA-SHA256, SHA-256 and exclusive C14N (ALGORITHM_NOT_ALLOWED). The
+        key is the one named here, never the document's KeyInfo; a certificate outside its validity
+        is CERTIFICATE_NOT_VALID. A signature that does not verify is `valid: false` with a reason,
+        not an error. Caller policy: purpose XMLDSIG, also with a PEM.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/XmlDsigVerifyRequest" }
+      responses:
+        "200":
+          description: Valid or not, the key version that matched, or the reason
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SignatureCheck" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/http-signature/sign:
+    post:
+      operationId: signHttpMessage
+      summary: RFC 9421 HTTP message signature over the given components (ticket 65)
+      description: >-
+        The caller derives the component values from its message (RFC 9421 section 2); mw-crypto
+        builds the signature base, signs it in the HSM and answers the `Signature-Input` and
+        `Signature` dictionary members. Keys: HTTP_SIGN_EC (ecdsa-p256-sha256), HTTP_SIGN_RSA
+        (rsa-pss-sha512, default, or rsa-v1_5-sha256), HMAC_<use> (hmac-sha256). Parameters `created`
+        (default now), `expires`, `nonce`, `keyid` (the key version), `alg`, `tag`. A value with a
+        line break or a non-printable character, a component named twice, `@signature-params` or an
+        unknown component parameter is 400 MW-VAL-001. Caller policy: the key's purpose (none bound yet).
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HttpSignatureSignRequest" }
+      responses:
+        "200":
+          description: The Signature-Input and Signature members
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HttpSignatureSigned" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/http-signature/verify:
+    post:
+      operationId: verifyHttpMessage
+      summary: Verify an RFC 9421 HTTP message signature (ticket 65)
+      description: >-
+        Parses the received `Signature-Input` and `Signature` field values (RFC 8941), rebuilds the
+        signature base from the caller's component values and checks, in this order: the fields
+        parse and hold `label` (MALFORMED_SIGNATURE), `requiredComponents` are covered
+        (REQUIRED_COMPONENT_NOT_COVERED), every covered component has a value (COMPONENT_MISSING),
+        `keyid` equals `expectedKeyid` (KEY_MISMATCH), `alg` fits (ALGORITHM_NOT_ALLOWED), `expires`
+        (EXPIRED), `created` at most 60 s ahead (CREATED_IN_FUTURE) and within `maxAgeSeconds`
+        (CREATED_MISSING, TOO_OLD), then the signature (SIGNATURE_MISMATCH). Under a keyId its ACTIVE
+        and VERIFY_ONLY versions are tried (a kid in `keyid` picks one); a partner PEM is RSA or EC
+        P-256. Caller policy: the key's purpose; a PEM by its type (HTTP_SIGN_RSA or HTTP_SIGN_EC).
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HttpSignatureVerifyRequest" }
+      responses:
+        "200":
+          description: Valid or not, the key version that matched, or the reason
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SignatureCheck" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /internal/v1/pinblock/translate:
     post:
       operationId: translatePinBlock
@@ -474,9 +598,10 @@ components:
         Spec 18.8 key purpose: PIN_TRANSPORT (RSA 3072), PIN_HMAC (HMAC-SHA256), JWT_SIGN (RSA
         3072, RS256), ASSERTION_SIGN and AUDIT_ANCHOR_SIGN (EC P-256, ES256), TOKENISE_<domain>
         (HMAC-SHA256), HMAC_<use> (HMAC-SHA256: partner signatures, webhooks), KEK_<purpose>
-        (AES-256), XMLDSIG (RSA 3072); payShield (ticket 64): ZPK, TPK, PVK (double length triple DES,
-        under the LMK), ZPK_AES, TPK_AES (AES-128, ISO format 4).
-      pattern: "^(PIN_TRANSPORT|PIN_HMAC|JWT_SIGN|ASSERTION_SIGN|AUDIT_ANCHOR_SIGN|XMLDSIG|ZPK|TPK|ZPK_AES|TPK_AES|PVK|TOKENISE_[A-Z][A-Z0-9]{0,23}|HMAC_[A-Z][A-Z0-9]{0,23}|KEK_[A-Z][A-Z0-9]{0,23})$"
+        (AES-256), XMLDSIG (RSA 3072), HTTP_SIGN_RSA (RSA 3072, RFC 9421 rsa-pss-sha512 /
+        rsa-v1_5-sha256), HTTP_SIGN_EC (EC P-256, ecdsa-p256-sha256); payShield (ticket 64): ZPK, TPK,
+        PVK (double length triple DES, under the LMK), ZPK_AES, TPK_AES (AES-128, ISO format 4).
+      pattern: "^(PIN_TRANSPORT|PIN_HMAC|JWT_SIGN|ASSERTION_SIGN|AUDIT_ANCHOR_SIGN|XMLDSIG|HTTP_SIGN_RSA|HTTP_SIGN_EC|ZPK|TPK|ZPK_AES|TPK_AES|PVK|TOKENISE_[A-Z][A-Z0-9]{0,23}|HMAC_[A-Z][A-Z0-9]{0,23}|KEK_[A-Z][A-Z0-9]{0,23})$"
     GenerateKeyRequest:
       type: object
       required: [purpose]
@@ -817,6 +942,163 @@ components:
             properties:
               field: { type: string }
               issue: { type: string }
+    XmlDocument:
+      description: A UTF-8 XML document without DOCTYPE, standard base64, at most 1 MiB
+      allOf: [{ $ref: "#/components/schemas/Base64" }]
+      minLength: 1
+      maxLength: 1398104
+    PartnerPem:
+      type: string
+      description: The partner's X.509 certificate or public key in PEM (RSA >= 2048 bits or EC P-256)
+      pattern: "^\\s*-----BEGIN (CERTIFICATE|PUBLIC KEY)-----"
+      maxLength: 16384
+    XmlDsigSignRequest:
+      type: object
+      required: [xml]
+      additionalProperties: false
+      properties:
+        keyId:
+          description: An XMLDSIG key (its ACTIVE version); default the key of purpose XMLDSIG
+          $ref: "#/components/schemas/KeyRef"
+        xml: { $ref: "#/components/schemas/XmlDocument" }
+    XmlDsigSigned:
+      type: object
+      required: [xml, kid]
+      additionalProperties: false
+      properties:
+        xml: { $ref: "#/components/schemas/XmlDocument" }
+        kid: { type: string }
+    XmlDsigVerifyRequest:
+      type: object
+      required: [xml]
+      additionalProperties: false
+      properties:
+        xml: { $ref: "#/components/schemas/XmlDocument" }
+        keyId:
+          description: An XMLDSIG key here (ACTIVE and VERIFY_ONLY versions are tried) or a kid
+          $ref: "#/components/schemas/KeyRef"
+        certificatePem: { $ref: "#/components/schemas/PartnerPem" }
+      oneOf:
+        - required: [keyId]
+          not: { required: [certificatePem] }
+        - required: [certificatePem]
+          not: { required: [keyId] }
+    SignatureCheck:
+      type: object
+      required: [valid]
+      additionalProperties: false
+      properties:
+        valid: { type: boolean }
+        kid: { type: string, description: The key version that matched (valid under a keyId) }
+        reason:
+          type: string
+          description: Why the signature is not valid
+          enum: [SIGNATURE_MISSING, MULTIPLE_SIGNATURES, SIGNATURE_PLACEMENT, ALGORITHM_NOT_ALLOWED,
+            REFERENCE_NOT_ALLOWED, MALFORMED_SIGNATURE, DIGEST_MISMATCH, SIGNATURE_MISMATCH,
+            CERTIFICATE_NOT_VALID, COMPONENT_MISSING, REQUIRED_COMPONENT_NOT_COVERED, KEY_MISMATCH,
+            CREATED_MISSING, TOO_OLD, CREATED_IN_FUTURE, EXPIRED]
+    HttpSignatureAlg:
+      type: string
+      enum: [ecdsa-p256-sha256, rsa-pss-sha512, rsa-v1_5-sha256, hmac-sha256]
+    HttpComponentName:
+      type: string
+      description: A derived component (`@method`, `@authority`, `@path`, `@query-param`, ...) or a lower-case field name
+      pattern: "^@?[a-z0-9!#$%&'*+.^_`|~-]{1,128}$"
+    SfString:
+      type: string
+      maxLength: 256
+      pattern: "^[ !#-\\[\\]-~]*$"
+    HttpComponent:
+      type: object
+      required: [name, value]
+      additionalProperties: false
+      properties:
+        name: { $ref: "#/components/schemas/HttpComponentName" }
+        params:
+          type: object
+          description: Component parameters (RFC 9421 2.1)
+          maxProperties: 4
+          additionalProperties: false
+          properties:
+            sf: { const: true }
+            bs: { const: true }
+            req: { const: true }
+            tr: { const: true }
+            key: { $ref: "#/components/schemas/SfString" }
+            name: { $ref: "#/components/schemas/SfString" }
+        value:
+          type: string
+          description: The component value derived from the message; printable ASCII, no line break
+          maxLength: 8192
+    HttpSignatureSignRequest:
+      type: object
+      required: [keyId, components]
+      additionalProperties: false
+      properties:
+        keyId:
+          description: An HTTP_SIGN_EC, HTTP_SIGN_RSA or HMAC_<use> key (its ACTIVE version)
+          $ref: "#/components/schemas/KeyRef"
+        alg:
+          description: Default by key (EC ecdsa-p256-sha256, RSA rsa-pss-sha512, HMAC hmac-sha256)
+          $ref: "#/components/schemas/HttpSignatureAlg"
+        label: { type: string, pattern: "^[a-z*][a-z0-9_.*-]{0,63}$", description: "Default sig1" }
+        components:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items: { $ref: "#/components/schemas/HttpComponent" }
+        created: { type: integer, minimum: 0, description: "Unix seconds, default now" }
+        expires: { type: integer, minimum: 0, description: "Unix seconds, after created" }
+        nonce: { $ref: "#/components/schemas/SfString" }
+        tag: { $ref: "#/components/schemas/SfString" }
+    HttpSignatureSigned:
+      type: object
+      required: [label, kid, alg, signatureInput, signature]
+      additionalProperties: false
+      properties:
+        label: { type: string }
+        kid: { type: string }
+        alg: { $ref: "#/components/schemas/HttpSignatureAlg" }
+        signatureInput:
+          type: string
+          description: >-
+            The Signature-Input member, e.g. `sig1=("@method" "content-digest");created=1763107200;keyid="http-sign-ec.v1";alg="ecdsa-p256-sha256"`
+        signature: { type: string, description: "The Signature member, `sig1=:<base64>:`" }
+    HttpSignatureVerifyRequest:
+      type: object
+      required: [signatureInput, signature, components]
+      additionalProperties: false
+      properties:
+        keyId:
+          description: A key here (ACTIVE and VERIFY_ONLY versions are tried) or a kid
+          $ref: "#/components/schemas/KeyRef"
+        certificatePem: { $ref: "#/components/schemas/PartnerPem" }
+        alg:
+          description: The algorithm expected; else the signature's alg parameter, else by key
+          $ref: "#/components/schemas/HttpSignatureAlg"
+        label:
+          type: string
+          pattern: "^[a-z*][a-z0-9_.*-]{0,63}$"
+          description: The signature to check; default the only one in the fields
+        signatureInput: { type: string, minLength: 1, maxLength: 16384, description: The received Signature-Input field value }
+        signature: { type: string, minLength: 1, maxLength: 16384, description: The received Signature field value }
+        components:
+          type: array
+          maxItems: 64
+          items: { $ref: "#/components/schemas/HttpComponent" }
+        requiredComponents:
+          type: array
+          maxItems: 64
+          items: { $ref: "#/components/schemas/HttpComponentName" }
+        expectedKeyid:
+          description: When set, the signature's keyid parameter must equal it
+          $ref: "#/components/schemas/SfString"
+        maxAgeSeconds: { type: integer, minimum: 1, description: "When set, created must be present and at most this old" }
+      oneOf:
+        - required: [keyId]
+          not: { required: [certificatePem] }
+        - required: [certificatePem]
+          not: { required: [keyId] }
     PinBlockFormat:
       type: string
       description: >-

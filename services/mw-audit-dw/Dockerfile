@@ -25,6 +25,10 @@ COPY --from=extract /build/extracted/application/ ./
 ARG JVM_OPTS="-XX:+UseZGC -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
 ENV JAVA_TOOL_OPTIONS="${JVM_OPTS}"
 
+# Export folder of the signed daily audit anchors (ticket 74): a volume in the stack, owned by the
+# service user so a fresh named volume inherits the ownership.
+RUN mkdir -p /var/lib/mw/audit-anchors && chown 10001:10001 /var/lib/mw/audit-anchors
+
 USER 10001:10001
 EXPOSE 8080
 

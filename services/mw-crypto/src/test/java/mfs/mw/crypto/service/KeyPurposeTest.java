@@ -29,7 +29,9 @@ class KeyPurposeTest {
     "TPK, TDES_2KEY, PIN_BLOCK, tpk, ,",
     "ZPK_AES, AES_128, PIN_BLOCK, zpk-aes, ,",
     "TPK_AES, AES_128, PIN_BLOCK, tpk-aes, ,",
-    "PVK, TDES_2KEY, PVV, pvk, ,"
+    "PVK, TDES_2KEY, PVV, pvk, ,",
+    "HTTP_SIGN_RSA, RSA_3072, XMLDSIG, http-sign-rsa, PS512, sig",
+    "HTTP_SIGN_EC, EC_P256, XMLDSIG, http-sign-ec, ES256, sig"
   })
   void eachPurposeHasItsAlgorithmCapabilityAndDefaultKeyId(
       String name, KeyAlgorithm algorithm, Capability capability, String keyId, String jwkAlg, String use) {

@@ -37,7 +37,7 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
 - Screens: `/console/transactions` (GET form: txnId, MSISDN in any form, partnerRef, status,
   type, from/to UTC days -> `[from, to)`; `lib/search.ts` checks them as the contract does, an
   empty form does not query; paging 50), `/console/transactions/{txnId}` (summary, saga timeline
-  STATE/CORE, partner calls, audit trail; "Reveal MSISDN (audited)" link only for
+  STATE/CORE, partner calls, audit trail with the signed-anchor badge `audit-anchor` (ticket 74); "Reveal MSISDN (audited)" link only for
   compliance-officer / auditor, `?reveal=true`, mw-admin-api decides and audits). Values are shown
   as the API masks them.
 - Maker-checker (ticket 41, spec 15.3; wallet unlock screen of ticket 52). Writes are server

@@ -193,6 +193,8 @@ volumes:
   seed-manifest:
   # SoftHSMv2 token files (ticket 61): mounted only by softhsm, so keys never sit in another container
   softhsm-tokens:
+  # mw-audit-dw's export of the signed daily audit anchors (ticket 74; WORM target TBC)
+  audit-anchors:
 
 services:
   # ------------------------------------------------------------ platform (no profile: always start)
@@ -379,6 +381,7 @@ services:
       # realm services: internal API clients (/internal/v1/** of mw-orchestrator, mw-audit-dw)
       KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?cp dev.env.defaults .env}
       KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
+      KC_MW_AUDIT_DW_SECRET: ${KC_MW_AUDIT_DW_SECRET:?cp dev.env.defaults .env}
       JAVA_OPTS_KC_HEAP: -Xms128m -Xmx384m
     volumes:
       - ./keycloak/realms:/opt/keycloak/data/import:ro
@@ -653,6 +656,7 @@ services:
       C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?cp dev.env.defaults .env}
       CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?cp dev.env.defaults .env}
       KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
+      KC_MW_AUDIT_DW_SECRET: ${KC_MW_AUDIT_DW_SECRET:?cp dev.env.defaults .env}
       KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?cp dev.env.defaults .env}
       USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?cp dev.env.defaults .env}
@@ -828,9 +832,13 @@ services:
       <<: *infra-deps
     volumes:
       - audit-dw-approle:/run/mw/approle:ro
+      # signed daily audit anchors as <date>.jws (ticket 74; the WORM target is TBC)
+      - audit-anchors:/var/lib/mw/audit-anchors
     environment:
       <<: *jvm-env
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+      # mTLS client certificate (pki_int/issue/mw-audit-dw) for the anchor signing at mw-crypto (ticket 74)
+      MW_TLS_ENABLED: "true"
       # Runs as the INSERT-only writer; Flyway migrates as the schema owner (14.3, 16.4).
       DB_USERNAME: audit_writer
       SPRING_FLYWAY_USER: audit_dw_rw

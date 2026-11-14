@@ -86,6 +86,32 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "mw-audit-dw",
+      "name": "mw-audit-dw (mw-crypto: signs the daily audit anchor)",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_MW_AUDIT_DW_SECRET}",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "fullScopeAllowed": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "aud-mw-crypto",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "mw-crypto",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
     }
   ],
   "users": [
@@ -101,6 +127,14 @@
       "username": "service-account-mw-admin-api",
       "enabled": true,
       "serviceAccountClientId": "mw-admin-api",
+      "realmRoles": [
+        "internal-api"
+      ]
+    },
+    {
+      "username": "service-account-mw-audit-dw",
+      "enabled": true,
+      "serviceAccountClientId": "mw-audit-dw",
       "realmRoles": [
         "internal-api"
       ]
