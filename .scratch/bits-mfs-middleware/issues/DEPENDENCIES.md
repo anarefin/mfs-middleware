@@ -31,7 +31,7 @@
 60-security-spec-adrs                       —                 done     -        spec + 5 ADRs          -
 61-softhsm-container                        60                done     13m      26 files +579 −18      4acf2a67..d86b16ab
 62-mw-crypto-scaffold                       61                done     46m      140 files +10402 −51   d86b16ab..a3cbd979
-63-mw-crypto-operations                     62                open
+63-mw-crypto-operations                     62                done     40m      63 files +4147 −33     d8032171..d5b7757f
 64-payshield-provider-simulator             63                open
 65-mw-crypto-xmldsig-http-signatures        63                open
 66-openbao-pki-mtls                         62                done     24m      40 files +2975 −70     d8032171..596a1e05
