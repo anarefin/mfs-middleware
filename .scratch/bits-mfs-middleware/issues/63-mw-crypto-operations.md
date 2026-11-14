@@ -25,7 +25,16 @@
 
 **Blocked by:** 62
 
-**Status:** open
+**Status:** done
 
-- [ ] `./gradlew :mw-crypto:build` green with Docker
-- [ ] `scripts/log-scan.sh` clean after an IT-equivalent run against the stack (no PIN, PIN ciphertext or HMAC in logs)
+- [x] `./gradlew :mw-crypto:build` green with Docker
+- [ ] `scripts/log-scan.sh` clean after an IT-equivalent run against the stack (no PIN, PIN ciphertext or HMAC in logs) (deferred to final integration test; `client/OperationsIT` already checks the mw-crypto container log for every request and answer value)
+
+**Decisions (ticket 63):**
+- kid stays `<keyId>.v<n>` (ticket 62), not `keyId:version`; `hmacKeyId` in verify is that kid.
+- HMAC sign/verify use a new purpose `HMAC_<use>` only; `PIN_HMAC` and `TOKENISE_*` keys never answer there (no HMAC oracle).
+- PIN block: raw RSA in the HSM plus BouncyCastle OAEP decoding in the JVM (SunPKCS11 has no OAEP cipher).
+- KEK wrap: AES-256-CTR on HSM `AES/ECB` counter blocks (over the p11-kit RPC GCM fails with `CKR_DEVICE_ERROR`, a CBC decrypt with `CKR_FUNCTION_NOT_SUPPORTED`); the envelope's own GCM tag covers a changed wrapped key.
+- `derive` takes an optional `hmacKeyId` (keyId) to choose the PIN_HMAC key; default the `PIN_HMAC` purpose key.
+- New codes: `MW-VAL-014` bad PIN block, `MW-VAL-015` key not usable for the operation, `MW-VAL-016` bad envelope.
+- Zeroing is checked in unit tests (the buffer the SPI hands out is all zero after every call); the HMAC known answer is a unit test with a known key (SoftHSM keys are not extractable, so the IT checks determinism and verify instead).

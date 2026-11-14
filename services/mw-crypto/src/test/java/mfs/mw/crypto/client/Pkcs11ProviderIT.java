@@ -9,6 +9,7 @@ import java.net.http.HttpResponse;
 import java.security.interfaces.RSAPublicKey;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Predicate;
 import mfs.mw.crypto.HsmStack;
 import mfs.mw.crypto.security.InternalTokens;
@@ -65,9 +66,15 @@ class Pkcs11ProviderIT {
     throw new AssertionError(path + " never got there; last: " + last.statusCode() + " " + last.body());
   }
 
-  static List<String> purposes(JsonNode page) {
-    List<String> out = new ArrayList<>();
-    page.get("items").forEach(k -> out.add(k.get("purpose").asString()));
+  /** The bootstrap's keys (default keyIds); other HSM ITs add keys of their own keyIds beside them. */
+  static List<JsonNode> bootstrapKeys(JsonNode page) {
+    List<JsonNode> out = new ArrayList<>();
+    page.get("items").forEach(k -> {
+      String purpose = k.get("purpose").asString();
+      if (PURPOSES.contains(purpose) && k.get("keyId").asString().equals(purpose.toLowerCase(Locale.ROOT).replace('_', '-'))) {
+        out.add(k);
+      }
+    });
     return out;
   }
 
@@ -75,9 +82,10 @@ class Pkcs11ProviderIT {
   @Order(1)
   void theBootstrapCreatesAKeyOfEveryPurposeInTheToken() throws Exception {
     JsonNode page =
-        await("/internal/v1/keys", r -> r.statusCode() == 200 && purposes(json(r)).size() == PURPOSES.size());
-    assertThat(purposes(page)).containsExactlyInAnyOrderElementsOf(PURPOSES);
-    page.get("items").forEach(k -> {
+        await("/internal/v1/keys", r -> r.statusCode() == 200 && bootstrapKeys(json(r)).size() == PURPOSES.size());
+    List<JsonNode> keys = bootstrapKeys(page);
+    assertThat(keys).extracting(k -> k.get("purpose").asString()).containsExactlyInAnyOrderElementsOf(PURPOSES);
+    keys.forEach(k -> {
       assertThat(k.get("provider").asString()).isEqualTo("pkcs11");
       assertThat(k.get("versions").get(0).get("state").asString()).isEqualTo("ACTIVE");
     });

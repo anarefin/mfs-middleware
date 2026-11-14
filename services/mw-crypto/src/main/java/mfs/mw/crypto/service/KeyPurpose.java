@@ -9,8 +9,9 @@ import mfs.mw.crypto.exception.CryptoErrors;
 /**
  * What a key is for (spec 18.8 key hierarchy; JWT_SIGN is RSA, RS256, by the 2026-11-14 amendment
  * of D21), which fixes its algorithm, the provider capability it needs and, for a key pair, how its
- * public key is published as a JWK. {@code TOKENISE_<domain>} and {@code KEK_<purpose>} name one key
- * per domain or purpose ({@code [A-Z][A-Z0-9]{0,23}}).
+ * public key is published as a JWK. {@code TOKENISE_<domain>}, {@code HMAC_<use>} (partner and webhook
+ * signatures, ticket 63) and {@code KEK_<purpose>} name one key
+ * per domain, use or purpose ({@code [A-Z][A-Z0-9]{0,23}}).
  *
  * @param name the purpose as stored ({@code crypto.key.purpose})
  * @param jwkAlgorithm the JWK {@code alg} of the public key, null for a secret key
@@ -36,6 +37,9 @@ public record KeyPurpose(
       default -> {
         if (suffixed(name, "TOKENISE_")) {
           yield new KeyPurpose(name, KeyAlgorithm.HMAC_SHA256, Capability.TOKENISE, null, null);
+        }
+        if (suffixed(name, "HMAC_")) {
+          yield new KeyPurpose(name, KeyAlgorithm.HMAC_SHA256, Capability.HMAC, null, null);
         }
         if (suffixed(name, "KEK_")) {
           yield new KeyPurpose(name, KeyAlgorithm.AES_256, Capability.ENVELOPE, null, null);

@@ -7,8 +7,18 @@ info:
     by keyId. Every other service asks it by keyId and never holds key material; only key metadata
     is returned, and public keys. Its callers are mw-admin-api (key screens, ticket 75), mw-auth
     (ticket 67) and mw-audit-dw (ticket 74), over the `app` zone network (`http://mw-crypto:8080`);
-    it is not routed by APISIX. mTLS is added by ticket 66 (D24). The operations (PIN verify, JWS
-    sign, HMAC, tokenise, envelope, XML-DSig) are added by tickets 63-65.
+    it is not routed by APISIX. mTLS is added by ticket 66 (D24). The operations of ticket 63: PIN
+    verify and derive, JWS sign and JWKS, HMAC sign and verify, tokenisation, envelope encryption
+    (XML-DSig and HTTP signatures follow in ticket 65).
+
+    Key references: an operation names a key by keyId (its ACTIVE version) or by kid
+    (`<keyId>.v<n>`, that version). New values (sign, derive, tokenise, encrypt) use the ACTIVE
+    version only; checks of existing values (verify, decrypt) also accept the VERIFY_ONLY one. Errors
+    of the operations: 400 MW-VAL-001 (bad body: shape, base64, length), 404 MW-VAL-010 (no such key
+    or version), 400 MW-VAL-014 (PIN block does not decrypt or holds no 5-digit PIN), 400 MW-VAL-015
+    (key of another purpose, or a version not usable for this), 400 MW-VAL-016 (envelope fails its
+    integrity check), 503 MW-SYS-010 (HSM down, retryable, fail closed). A wrong PIN is not an error
+    (`match: false`). Request values are never logged and never echoed in an error.
 
     Key versions: a key has versions `<keyId>.v<n>` (the JWS `kid` and HSM label). Rotation adds a
     version; the previous ACTIVE one becomes VERIFY_ONLY (verification still accepts it), an older
@@ -98,6 +108,226 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/pin/verify:
+    post:
+      operationId: verifyPin
+      summary: Check a PIN block against the stored PIN HMAC (mw-auth)
+      description: >-
+        Decrypts the transport block (RSA-OAEP SHA-256, MGF1-SHA-256) under PIN_TRANSPORT, checks the
+        PIN is exactly 5 ASCII digits, takes HMAC-SHA256 under the PIN_HMAC version hmacKeyId over
+        walletId 0x00 PIN and compares it with storedHmac in constant time. On a match under a
+        VERIFY_ONLY version, `rehash` carries the value under the ACTIVE version to store instead.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VerifyPinRequest" }
+      responses:
+        "200":
+          description: Match or no match
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VerifyPinResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/pin/derive:
+    post:
+      operationId: derivePin
+      summary: The PIN HMAC to store for a new PIN, or the weak-PIN rule it breaks (mw-auth)
+      description: >-
+        PIN set, change and reset. The weak-PIN rules of spec 18.7 run here on the clear PIN (all one
+        digit, ascending or descending run, 5 consecutive MSISDN digits, the birth year, the last PIN),
+        with the inputs mw-auth passes in policyInput. A weak PIN is answered 200 `{weak: true, rule}`
+        without an HMAC.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DerivePinRequest" }
+      responses:
+        "200":
+          description: The HMAC under the ACTIVE PIN_HMAC version, or the rule the PIN breaks
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DerivePinResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/jws/sign:
+    post:
+      operationId: signJws
+      summary: A compact JWS signed in the HSM (RS256, PS256, ES256)
+      description: >-
+        By the ACTIVE version of keyId or of the key of purpose (exactly one; JWT_SIGN,
+        ASSERTION_SIGN, AUDIT_ANCHOR_SIGN). The header kid is the key version. RSA keys sign RS256
+        (default) or PS256, EC keys ES256.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JwsSignRequest" }
+      responses:
+        "200":
+          description: The JWS
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JwsSignResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/jwks/{purpose}:
+    get:
+      operationId: getJwks
+      summary: JWK Set of every version in use (current and previous) of the keys of a purpose
+      description: >-
+        For an asymmetric purpose (JWT_SIGN, ASSERTION_SIGN, AUDIT_ANCHOR_SIGN, PIN_TRANSPORT,
+        XMLDSIG); kid = `<keyId>.v<n>`. A purpose without keys gives an empty set. Errors: 400
+        MW-VAL-011 (unknown purpose), 400 MW-VAL-013 (symmetric purpose), 503 MW-SYS-010.
+      parameters:
+        - name: purpose
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/Purpose" }
+        - $ref: "#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: The JWK Set
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JwkSet" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/hmac/sign:
+    post:
+      operationId: signHmac
+      summary: HMAC-SHA256 under an HMAC_<use> key (partner signatures, webhooks)
+      description: >-
+        Only HMAC_<use> keys: PIN_HMAC and TOKENISE_<domain> keys answer 400 MW-VAL-015 here.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HmacSignRequest" }
+      responses:
+        "200":
+          description: The HMAC and the key version
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HmacSigned" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/hmac/verify:
+    post:
+      operationId: verifyHmac
+      summary: Check an HMAC (constant time) under the ACTIVE or VERIFY_ONLY version
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HmacVerifyRequest" }
+      responses:
+        "200":
+          description: Valid or not, and the version that matched
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HmacVerified" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/tokens:
+    post:
+      operationId: tokenise
+      summary: Deterministic tokens of up to 500 values of one domain
+      description: >-
+        Token = `<DOMAIN>_` + base32 (RFC 4648, no padding) of HMAC-SHA256 under the ACTIVE
+        TOKENISE_<domain> key over the value's UTF-8 bytes, as given (the caller normalises). The same
+        value gives the same token until the key is rotated.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TokeniseRequest" }
+      responses:
+        "200":
+          description: One token per value, in order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tokens" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/envelope/encrypt:
+    post:
+      operationId: encryptEnvelope
+      summary: AES-256-GCM under a fresh data key wrapped by a KEK in the HSM
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnvelopeEncryptRequest" }
+      responses:
+        "200":
+          description: The envelope
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/envelope/decrypt:
+    post:
+      operationId: decryptEnvelope
+      summary: Open an envelope (the KEK version it names, ACTIVE or VERIFY_ONLY)
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Envelope" }
+      responses:
+        "200":
+          description: The plaintext
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Plaintext" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     internalClientCredentials:
@@ -137,8 +367,9 @@ components:
       description: >-
         Spec 18.8 key purpose: PIN_TRANSPORT (RSA 3072), PIN_HMAC (HMAC-SHA256), JWT_SIGN (RSA
         3072, RS256), ASSERTION_SIGN and AUDIT_ANCHOR_SIGN (EC P-256, ES256), TOKENISE_<domain>
-        (HMAC-SHA256), KEK_<purpose> (AES-256), XMLDSIG (RSA 3072).
-      pattern: "^(PIN_TRANSPORT|PIN_HMAC|JWT_SIGN|ASSERTION_SIGN|AUDIT_ANCHOR_SIGN|XMLDSIG|TOKENISE_[A-Z][A-Z0-9]{0,23}|KEK_[A-Z][A-Z0-9]{0,23})$"
+        (HMAC-SHA256), HMAC_<use> (HMAC-SHA256: partner signatures, webhooks), KEK_<purpose>
+        (AES-256), XMLDSIG (RSA 3072).
+      pattern: "^(PIN_TRANSPORT|PIN_HMAC|JWT_SIGN|ASSERTION_SIGN|AUDIT_ANCHOR_SIGN|XMLDSIG|TOKENISE_[A-Z][A-Z0-9]{0,23}|HMAC_[A-Z][A-Z0-9]{0,23}|KEK_[A-Z][A-Z0-9]{0,23})$"
     GenerateKeyRequest:
       type: object
       required: [purpose]
@@ -225,6 +456,243 @@ components:
             keys:
               type: array
               items: { $ref: "#/components/schemas/Jwk" }
+    KeyRef:
+      type: string
+      description: A keyId (its ACTIVE version) or a kid `<keyId>.v<n>` (that version)
+      pattern: "^[a-z0-9][a-z0-9-]{0,62}(\\.v[1-9][0-9]{0,5})?$"
+    Base64:
+      type: string
+      contentEncoding: base64
+      pattern: "^[A-Za-z0-9+/]*={0,2}$"
+    Hmac:
+      type: string
+      description: HMAC-SHA256, 32 bytes, standard base64
+      pattern: "^[A-Za-z0-9+/]{43}=$"
+    WalletId:
+      type: string
+      pattern: "^[A-Za-z0-9._:+-]{1,64}$"
+    EncryptedPin:
+      type: object
+      description: >-
+        PIN transport block: the PIN's ASCII digits encrypted RSA-OAEP (SHA-256, MGF1-SHA-256, empty
+        label) under the PIN_TRANSPORT key keyId. Never logged.
+      required: [keyId, ciphertext]
+      additionalProperties: false
+      properties:
+        keyId: { $ref: "#/components/schemas/KeyRef" }
+        ciphertext:
+          allOf: [{ $ref: "#/components/schemas/Base64" }]
+          minLength: 1
+          maxLength: 4096
+    PinHmac:
+      type: object
+      required: [hmac, hmacKeyId]
+      additionalProperties: false
+      properties:
+        hmac: { $ref: "#/components/schemas/Hmac" }
+        hmacKeyId: { $ref: "#/components/schemas/KeyRef" }
+    VerifyPinRequest:
+      type: object
+      required: [walletId, encryptedPin, storedHmac, hmacKeyId]
+      additionalProperties: false
+      properties:
+        walletId: { $ref: "#/components/schemas/WalletId" }
+        encryptedPin: { $ref: "#/components/schemas/EncryptedPin" }
+        storedHmac: { $ref: "#/components/schemas/Hmac" }
+        hmacKeyId:
+          description: The PIN_HMAC version storedHmac was made with (pin-hmac.v1)
+          $ref: "#/components/schemas/KeyRef"
+    VerifyPinResponse:
+      type: object
+      required: [match]
+      additionalProperties: false
+      properties:
+        match: { type: boolean }
+        rehash:
+          description: Only on a match under a VERIFY_ONLY version; store it in place of the old value
+          $ref: "#/components/schemas/PinHmac"
+    PinPolicyInput:
+      type: object
+      description: Inputs of the weak-PIN rules (spec 18.7), configured in mw-auth; every field optional
+      additionalProperties: false
+      properties:
+        msisdn: { type: string, pattern: "^\\+?[0-9]{8,15}$" }
+        birthYear: { type: integer, minimum: 1900, maximum: 2100 }
+        lastHmac: { $ref: "#/components/schemas/Hmac" }
+        lastHmacKeyId:
+          description: Required with lastHmac
+          $ref: "#/components/schemas/KeyRef"
+    DerivePinRequest:
+      type: object
+      required: [walletId, encryptedPin]
+      additionalProperties: false
+      properties:
+        walletId: { $ref: "#/components/schemas/WalletId" }
+        encryptedPin: { $ref: "#/components/schemas/EncryptedPin" }
+        policyInput: { $ref: "#/components/schemas/PinPolicyInput" }
+        hmacKeyId:
+          description: >-
+            Optional keyId of the PIN_HMAC key to use (its ACTIVE version); default the key of the
+            purpose PIN_HMAC (pin-hmac)
+          $ref: "#/components/schemas/KeyId"
+    DerivePinResponse:
+      type: object
+      required: [weak]
+      additionalProperties: false
+      properties:
+        weak: { type: boolean }
+        rule:
+          type: string
+          enum: [REPEATED_DIGIT, SEQUENCE, MSISDN_DIGITS, BIRTH_YEAR, LAST_PIN]
+        hmac: { $ref: "#/components/schemas/Hmac" }
+        hmacKeyId: { $ref: "#/components/schemas/KeyRef" }
+      oneOf:
+        - properties: { weak: { const: false } }
+          required: [hmac, hmacKeyId]
+          not: { required: [rule] }
+        - properties: { weak: { const: true } }
+          required: [rule]
+          not: { anyOf: [{ required: [hmac] }, { required: [hmacKeyId] }] }
+    JwsSignRequest:
+      type: object
+      required: [payload]
+      additionalProperties: false
+      properties:
+        keyId: { $ref: "#/components/schemas/KeyRef" }
+        purpose: { type: string, enum: [JWT_SIGN, ASSERTION_SIGN, AUDIT_ANCHOR_SIGN] }
+        alg:
+          type: string
+          enum: [RS256, PS256, ES256]
+          description: Default RS256 for an RSA key, ES256 for an EC key
+        header:
+          type: object
+          description: >-
+            Extra protected header members (typ, cty, private names); alg, kid, jku, jwk, x5u, x5c,
+            x5t, x5t#S256, crit, b64, enc, zip are refused (400 MW-VAL-001)
+        payload:
+          type: object
+          description: The JSON claims, at most 64 KiB serialised
+      oneOf:
+        - required: [keyId]
+          not: { required: [purpose] }
+        - required: [purpose]
+          not: { required: [keyId] }
+    JwsSignResponse:
+      type: object
+      required: [jws, kid, alg]
+      additionalProperties: false
+      properties:
+        jws: { type: string, pattern: "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]*\\.[A-Za-z0-9_-]+$" }
+        kid: { type: string, description: "<keyId>.v<n>, the header kid" }
+        alg: { type: string, enum: [RS256, PS256, ES256] }
+    JwkSet:
+      type: object
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items: { $ref: "#/components/schemas/Jwk" }
+    HmacSignRequest:
+      type: object
+      required: [keyId, data]
+      additionalProperties: false
+      properties:
+        keyId: { $ref: "#/components/schemas/KeyRef" }
+        data:
+          description: The bytes to sign, at most 64 KiB
+          allOf: [{ $ref: "#/components/schemas/Base64" }]
+          maxLength: 87384
+    HmacVerifyRequest:
+      type: object
+      required: [keyId, data, mac]
+      additionalProperties: false
+      properties:
+        keyId:
+          description: A keyId (ACTIVE and VERIFY_ONLY versions are tried) or a kid (that version)
+          $ref: "#/components/schemas/KeyRef"
+        data:
+          allOf: [{ $ref: "#/components/schemas/Base64" }]
+          maxLength: 87384
+        mac: { $ref: "#/components/schemas/Hmac" }
+    HmacSigned:
+      type: object
+      required: [mac, kid]
+      additionalProperties: false
+      properties:
+        mac: { $ref: "#/components/schemas/Hmac" }
+        kid: { type: string }
+    HmacVerified:
+      type: object
+      required: [valid]
+      additionalProperties: false
+      properties:
+        valid: { type: boolean }
+        kid: { type: string, description: The version that matched (when valid) }
+    TokeniseRequest:
+      type: object
+      required: [domain, values]
+      additionalProperties: false
+      properties:
+        domain: { type: string, enum: [MSISDN, NID, ACCOUNT] }
+        values:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items: { type: string, minLength: 1, maxLength: 64 }
+    Tokens:
+      type: object
+      required: [domain, kid, tokens]
+      additionalProperties: false
+      properties:
+        domain: { type: string, enum: [MSISDN, NID, ACCOUNT] }
+        kid: { type: string, description: The TOKENISE_<domain> key version }
+        tokens:
+          type: array
+          items: { type: string, pattern: "^(MSISDN|NID|ACCOUNT)_[A-Z2-7]{52}$" }
+    EnvelopeEncryptRequest:
+      type: object
+      required: [plaintext]
+      additionalProperties: false
+      properties:
+        kekId: { $ref: "#/components/schemas/KeyRef" }
+        purpose: { type: string, pattern: "^KEK_[A-Z][A-Z0-9]{0,23}$" }
+        plaintext:
+          description: At most 1 MiB
+          allOf: [{ $ref: "#/components/schemas/Base64" }]
+          maxLength: 1398104
+        aad:
+          description: Optional additional authenticated data, bound to the ciphertext
+          allOf: [{ $ref: "#/components/schemas/Base64" }]
+          maxLength: 87384
+      oneOf:
+        - required: [kekId]
+          not: { required: [purpose] }
+        - required: [purpose]
+          not: { required: [kekId] }
+    Envelope:
+      type: object
+      required: [kekId, wrappedKey, iv, ciphertext]
+      additionalProperties: false
+      properties:
+        kekId:
+          description: The KEK version that wrapped the data key (kek-column.v1)
+          $ref: "#/components/schemas/KeyRef"
+        wrappedKey:
+          description: The AES-256 data key wrapped in the HSM (opaque)
+          allOf: [{ $ref: "#/components/schemas/Base64" }]
+          minLength: 1
+          maxLength: 1024
+        iv: { type: string, pattern: "^[A-Za-z0-9+/]{16}$", description: 12-byte GCM nonce }
+        ciphertext:
+          description: AES-256-GCM output with the 16-byte tag at the end
+          allOf: [{ $ref: "#/components/schemas/Base64" }]
+        aad: { $ref: "#/components/schemas/Base64" }
+    Plaintext:
+      type: object
+      required: [plaintext]
+      additionalProperties: false
+      properties:
+        plaintext: { $ref: "#/components/schemas/Base64" }
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]

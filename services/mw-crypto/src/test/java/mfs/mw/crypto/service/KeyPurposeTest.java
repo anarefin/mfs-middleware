@@ -23,6 +23,7 @@ class KeyPurposeTest {
     "AUDIT_ANCHOR_SIGN, EC_P256, JWS, audit-anchor-sign, ES256, sig",
     "TOKENISE_MSISDN, HMAC_SHA256, TOKENISE, tokenise-msisdn, ,",
     "KEK_COLUMN, AES_256, ENVELOPE, kek-column, ,",
+    "HMAC_WEBHOOK, HMAC_SHA256, HMAC, hmac-webhook, ,",
     "XMLDSIG, RSA_3072, XMLDSIG, xmldsig, RS256, sig"
   })
   void eachPurposeHasItsAlgorithmCapabilityAndDefaultKeyId(
@@ -37,7 +38,7 @@ class KeyPurposeTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"", "jwt_sign", "TOKENISE_", "KEK_", "TOKENISE_msisdn", "SIGN", "KEK_A-B",
+  @ValueSource(strings = {"", "jwt_sign", "TOKENISE_", "KEK_", "TOKENISE_msisdn", "SIGN", "KEK_A-B", "HMAC_", "HMAC_a",
       "TOKENISE_ABCDEFGHIJKLMNOPQRSTUVWXYZ"})
   void anythingElseIsAnUnknownPurpose(String name) {
     assertThatThrownBy(() -> KeyPurpose.parse(name))

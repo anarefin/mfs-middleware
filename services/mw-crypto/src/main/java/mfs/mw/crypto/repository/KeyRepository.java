@@ -44,6 +44,14 @@ public class KeyRepository {
         .list();
   }
 
+  /** Every version of every key of one purpose, by keyId then version. */
+  public List<CryptoKey> findByPurpose(String purpose) {
+    return jdbc.sql("SELECT " + COLUMNS + " FROM key WHERE purpose = :p ORDER BY key_id, version")
+        .param("p", purpose)
+        .query(KeyRepository::row)
+        .list();
+  }
+
   /** The purposes that have at least one key. */
   public List<String> purposes() {
     return jdbc.sql("SELECT DISTINCT purpose FROM key").query(String.class).list();
