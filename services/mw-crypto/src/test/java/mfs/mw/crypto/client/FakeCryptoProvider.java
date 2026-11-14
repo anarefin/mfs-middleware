@@ -144,7 +144,7 @@ public class FakeCryptoProvider implements CryptoProvider {
       Signature s =
           switch (algorithm) {
             case RS256 -> Signature.getInstance("SHA256withRSA");
-            case PS256 -> {
+            case PS256, PS512 -> {
               Signature pss = Signature.getInstance("RSASSA-PSS");
               pss.setParameter(algorithm.pssParameters());
               yield pss;

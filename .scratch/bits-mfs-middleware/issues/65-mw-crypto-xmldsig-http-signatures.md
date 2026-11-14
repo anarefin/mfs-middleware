@@ -9,6 +9,6 @@
 
 **Blocked by:** 63
 
-**Status:** open
+**Status:** done
 
-- [ ] `./gradlew :mw-crypto:build` green with Docker
+- [x] `./gradlew :mw-crypto:build` green with Docker
