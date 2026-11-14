@@ -37,11 +37,13 @@ provision_mw_crypto() {
   db_role crypto_rw crypto
 }
 
-# Wallet authentication (ticket 67, spec 18.7): its own schema auth; its Keycloak realm services client
+# Wallet authentication (ticket 67, spec 18.7): its own schema auth; Valkey (device sessions, nonces:
+# ticket 68); its Keycloak realm services client
 # for mw-crypto (tokenise, envelope; later PIN and JWS); its certificate comes from PKI_SERVICES.
 provision_mw_auth() {
   gen_once spring.datasource.password 40
   sync_env mw.auth.crypto.client-secret KC_MW_AUTH_SECRET
+  sync_env spring.data.redis.password VALKEY_PASSWORD
   db_role auth_rw auth
 }
 
@@ -102,10 +104,12 @@ SQL
   log "$SVC: roles audit_dw_rw, audit_writer, audit_reader and schema audit ready"
 }
 
-# Valkey: device sessions and the nonce cache (ticket 29).
+# Valkey: the device gate's key and session caches and nonces (tickets 29, 68). Its realm services
+# client secret for mw-auth's internal API (ticket 68); its certificate comes from PKI_SERVICES.
 provision_mw_app_gateway() {
   gen_once spring.datasource.password 40
   sync_env spring.data.redis.password VALKEY_PASSWORD
+  sync_env mw.app-gateway.auth.client-secret KC_MW_APP_GATEWAY_SECRET
   db_role app_gateway_rw app_gateway
 }
 

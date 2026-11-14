@@ -24,8 +24,7 @@ import tools.jackson.databind.json.JsonMapper;
  * mapper checks (no version, an unknown status) are refused. A failure outcome is not checked by
  * the consumer (the producer's contract), so that sample is not asserted.
  *
- * <p>mw-auth produces no events yet ({@code produces.events} is empty), so it has no {@code
- * ProducedContractsTest}; {@link #producesNoEvents} makes adding one to the manifest fail here.
+ * <p>The events mw-auth produces are checked by {@code ProducedContractsTest} (ticket 68).
  */
 class ConsumedContractsTest {
 
@@ -78,11 +77,6 @@ class ConsumedContractsTest {
   @Test
   void everyReaderIsInTheManifest() {
     assertThat(MANIFEST.consumedEvents()).containsExactlyInAnyOrderElementsOf(READERS.keySet());
-  }
-
-  @Test
-  void producesNoEvents() {
-    assertThat(MANIFEST.producedEvents()).as("a produced event needs a ProducedContractsTest").isEmpty();
   }
 
   @Test

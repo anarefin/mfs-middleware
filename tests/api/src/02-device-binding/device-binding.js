@@ -1,5 +1,6 @@
-// Port of device-binding.feature. lib.js binds one EC P-256 device per user on first use (binding
-// OTP read from the SMSC simulator) and signs every submit; these scenarios replay or tamper.
+// Port of device-binding.feature. lib.js binds one EC P-256 device per user on first use at mw-auth
+// (POST /auth/v1/otp, binding OTP read from the SMSC simulator, POST /auth/v1/devices; ticket 68) and
+// signs every submit, which mw-app-gateway verifies; these scenarios replay or tamper.
 export default [
   {
     name: '[device p2p] a P2P with a valid signature passes',
@@ -33,6 +34,18 @@ export default [
       S.status(401);
       S.code('MW-AUTH-004');
       await S.noChange();
+    },
+  },
+  {
+    name: '[device] a bound device opens a new session at mw-auth and the same signed open again is a replay',
+    run: async (MW, S) => {
+      const r = await MW.app.openSessionTwice('customer01');
+      S.record(r.first);
+      S.status(200);
+      S.check('the session is for the bound device', !!(r.first.body && r.first.body.deviceId));
+      S.record(r.again);
+      S.status(401);
+      S.code('MW-AUTH-006');
     },
   },
 ];

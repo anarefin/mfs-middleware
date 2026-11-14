@@ -1,0 +1,76 @@
+package mfs.mw.auth.contracts;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.networknt.schema.Schema;
+import java.time.Instant;
+import java.util.List;
+import mfs.mw.auth.dto.BoundDevice;
+import mfs.mw.auth.dto.DeviceOtpSent;
+import mfs.mw.auth.dto.DeviceSession;
+import mfs.mw.auth.dto.ErrorDetail;
+import mfs.mw.auth.dto.ErrorEnvelope;
+import mfs.mw.auth.dto.LiveSession;
+import mfs.mw.auth.util.MaskingPolicy;
+import mfs.mw.auth.util.SensitiveType;
+import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
+/**
+ * The APIs this module serves ({@code produces.apis} of {@code contracts.yml}; ticket 68): the
+ * response bodies of the public {@code auth.v1} device API and of the internal device lookups,
+ * serialised with the service's JsonMapper (as Spring MVC writes them), validate against the
+ * OpenAPI component schemas. No Spring context, no Docker.
+ */
+class ApiContractsTest {
+
+  static final JsonMapper JSON = ServiceJson.MAPPER;
+  static final String PUBLIC_API = "api/mw-auth/auth.v1.openapi.yaml";
+  static final String INTERNAL_API = "api/mw-auth/auth-internal.v1.openapi.yaml";
+  static final String CORRELATION_ID = "019a4f6e-0000-7a3b-8c4d-5e6f7a8b9c0d";
+  static final Instant NOW = Instant.parse("2026-11-14T06:00:00Z");
+
+  @Test
+  void theManifestListsTheseApis() {
+    ContractManifest manifest = ContractManifest.load();
+    assertThat(manifest.producedApis()).containsExactly(PUBLIC_API, INTERNAL_API);
+  }
+
+  static void assertValid(Schema schema, Object body) {
+    JsonNode tree = JSON.readTree(JSON.writeValueAsString(body));
+    assertThat(schema.validate(tree)).as("%s", tree).isEmpty();
+  }
+
+  @Test
+  void deviceResponsesMatchThePublicContract() {
+    assertValid(OpenApiSchemas.component(PUBLIC_API, "DeviceOtpSent"),
+        new DeviceOtpSent(MaskingPolicy.mask(SensitiveType.MSISDN, "01711000001"), NOW.plusSeconds(120), 4));
+    assertValid(OpenApiSchemas.component(PUBLIC_API, "DeviceSession"), new DeviceSession("device-1", 300));
+  }
+
+  @Test
+  void lookupsMatchTheInternalContract() {
+    assertValid(OpenApiSchemas.component(INTERNAL_API, "BoundDevice"),
+        new BoundDevice("device-0001", "01711000001", "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE", NOW));
+    assertValid(OpenApiSchemas.component(INTERNAL_API, "LiveSession"), new LiveSession("01711000001", "device-0001", 300));
+  }
+
+  @Test
+  void errorEnvelopesMatchBothContracts() {
+    for (String api : List.of(PUBLIC_API, INTERNAL_API)) {
+      Schema schema = OpenApiSchemas.component(api, "ErrorEnvelope");
+      assertValid(schema, new ErrorEnvelope("MW-VAL-001", "Invalid request", null, null, CORRELATION_ID, false,
+          List.of(new ErrorDetail("otp", "must match \"[0-9]{6}\""))));
+      assertValid(schema, new ErrorEnvelope("MW-AUTH-007", "No live session", null, null, CORRELATION_ID, false,
+          List.of()));
+    }
+  }
+
+  @Test
+  void theOpenApiSchemasReallyValidate() {
+    // guard against a $ref that resolves to nothing (which would accept anything)
+    assertThat(OpenApiSchemas.component(INTERNAL_API, "BoundDevice").validate(JSON.readTree("{\"deviceId\":1}")))
+        .isNotEmpty();
+  }
+}

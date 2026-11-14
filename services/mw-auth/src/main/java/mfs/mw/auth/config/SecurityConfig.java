@@ -3,6 +3,7 @@ package mfs.mw.auth.config;
 import mfs.mw.auth.exception.ErrorCodes;
 import mfs.mw.auth.exception.MwException;
 import mfs.mw.auth.security.InternalCallerPolicy;
+import mfs.mw.auth.security.RealmIssuerValidator;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
@@ -30,10 +31,12 @@ import org.springframework.web.servlet.HandlerExceptionResolver;
  * JWT of an allowed client ({@link InternalAuthProperties}, {@link InternalCallerPolicy}), on the
  * internal port only ({@link PublicConnectorConfig}) and, with {@code mw.tls.enabled}, a client
  * certificate whose CN equals the token's {@code azp} (the connector itself needs a certificate of
- * the OpenBao intermediate: {@code server.ssl.client-auth: need}). Everything else is the second
- * chain, open for now: {@code /auth/v1/**} gets its own token rules in tickets 68-69 (mw-auth's
- * tokens, not Keycloak's, so the resource server never sees them); actuator is on the management
- * port. Failures are the 5.3 envelope: no or bad token 401 {@code MW-AUTH-001}, a caller that may
+ * the OpenBao intermediate: {@code server.ssl.client-auth: need}). {@code /auth/v1/**} (the device
+ * API, ticket 68) needs the app's bearer token: until mw-auth issues its own (ticket 69) the
+ * Keycloak realm {@code customers} token, checked as mw-app-gateway checks it ({@link
+ * CustomerJwtProperties}, {@link RealmIssuerValidator}; a decoder of its own, not a bean, so the
+ * internal chain keeps the services realm decoder). Everything else is open (actuator is on the
+ * management port). Failures are the 5.3 envelope: no or bad token 401 {@code MW-AUTH-001}, a caller that may
  * not ask 403 {@code MW-AUTH-002}.
  */
 @Configuration(proxyBeanMethods = false)
@@ -78,9 +81,39 @@ public class SecurityConfig {
     return http.build();
   }
 
-  /** Everything outside {@code /internal/**}: open until tickets 68-69 add the public rules. */
+  /** The device API: the app's bearer token (Keycloak realm customers until ticket 69). */
   @Bean
   @Order(2)
+  SecurityFilterChain appApiSecurity(
+      HttpSecurity http,
+      CustomerJwtProperties customers,
+      @Qualifier("handlerExceptionResolver") HandlerExceptionResolver errors)
+      throws Exception {
+    AuthenticationEntryPoint unauthenticated =
+        (req, res, e) ->
+            errors.resolveException(
+                req, res, null, new MwException(ErrorCodes.AUTH_UNAUTHENTICATED, "Authentication required"));
+    AccessDeniedHandler denied =
+        (req, res, e) ->
+            errors.resolveException(
+                req, res, null,
+                new MwException(ErrorCodes.AUTH_FORBIDDEN, "Not allowed").withStatus(HttpStatus.FORBIDDEN));
+    NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(customers.jwkSetUri()).build();
+    decoder.setJwtValidator(
+        new DelegatingOAuth2TokenValidator<>(
+            JwtValidators.createDefault(), new RealmIssuerValidator(customers.realmPath())));
+    stateless(http)
+        .securityMatcher("/auth/v1/**")
+        .authorizeHttpRequests(a -> a.anyRequest().authenticated())
+        .oauth2ResourceServer(
+            o -> o.jwt(j -> j.decoder(decoder)).authenticationEntryPoint(unauthenticated).accessDeniedHandler(denied))
+        .exceptionHandling(x -> x.authenticationEntryPoint(unauthenticated).accessDeniedHandler(denied));
+    return http.build();
+  }
+
+  /** Everything else: open (actuator probes; unknown paths are answered 404). */
+  @Bean
+  @Order(3)
   SecurityFilterChain otherSecurity(HttpSecurity http) throws Exception {
     stateless(http).authorizeHttpRequests(a -> a.anyRequest().permitAll());
     return http.build();

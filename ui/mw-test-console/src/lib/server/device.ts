@@ -52,8 +52,9 @@ export async function deviceHeaders(user: string): Promise<Record<string, string
 
 /**
  * Makes sure the user's device is bound and its session open; records each step on the trace:
- * POST /devices/otp, the OTP read from the SMSC simulator, POST /devices; or POST /sessions when
- * the bound device was idle for more than 4 minutes (the gateway closes it after 5).
+ * POST /auth/v1/otp, the OTP read from the SMSC simulator, POST /auth/v1/devices (mw-auth, ticket
+ * 68); or POST /auth/v1/sessions when
+ * the bound device was idle for more than 4 minutes (mw-auth closes it after 5).
  */
 export async function ready(t: Trace, user: string, force = false): Promise<void> {
   if (force) forgetDevice(user);
@@ -61,7 +62,7 @@ export async function ready(t: Trace, user: string, force = false): Promise<void
   if (!d.bound) {
     const wallet = await walletOf(user);
     const before = await codes(wallet, BIND_OTP);
-    const r = await t.call("1. ask for the device binding OTP (SMS to the wallet)", "POST", "/app/v1/devices/otp",
+    const r = await t.call("1. ask for the device binding OTP (SMS to the wallet)", "POST", "/auth/v1/otp",
       { headers: { ...(await bearer("customers", user)), "X-Device-Id": d.id }, raw: '{"locale":"en"}' }, [202]);
     if (r.status !== 202) throw new EdgeError("the gateway refused to send a binding OTP");
     const fresh = await poll(() => freshCodes(wallet, BIND_OTP, before), (l) => l.length > 0, 30000);
@@ -72,13 +73,13 @@ export async function ready(t: Trace, user: string, force = false): Promise<void
     }
     t.note("2. read the OTP from the SMSC simulator", `OTP ${otp} received by ${wallet}`);
     const body = JSON.stringify({ publicKey: d.key.publicKey, otp });
-    const b = await t.call("3. bind the device (public key + OTP, signed)", "POST", "/app/v1/devices",
-      { headers: await signedHeaders(user, "POST", "/app/v1/devices", body), raw: body }, [201]);
+    const b = await t.call("3. bind the device (public key + OTP, signed)", "POST", "/auth/v1/devices",
+      { headers: await signedHeaders(user, "POST", "/auth/v1/devices", body), raw: body }, [201]);
     if (b.status !== 201) throw new EdgeError("binding the device failed");
     d.bound = true;
   } else if (Date.now() - d.lastUse > 4 * 60000) {
-    const r = await t.call("open a new app session for the bound device (signed)", "POST", "/app/v1/sessions",
-      { headers: await signedHeaders(user, "POST", "/app/v1/sessions", ""), raw: "" });
+    const r = await t.call("open a new app session for the bound device (signed)", "POST", "/auth/v1/sessions",
+      { headers: await signedHeaders(user, "POST", "/auth/v1/sessions", ""), raw: "" });
     if (r.status !== 200) {
       // the gateway forgot the device (e.g. bound again elsewhere): bind once more
       forgetDevice(user);

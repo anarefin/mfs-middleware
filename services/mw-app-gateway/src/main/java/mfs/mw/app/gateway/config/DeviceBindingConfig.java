@@ -3,7 +3,7 @@ package mfs.mw.app.gateway.config;
 import io.lettuce.core.ClientOptions;
 import mfs.mw.app.gateway.security.AppUserResolver;
 import mfs.mw.app.gateway.security.DeviceBindingInterceptor;
-import mfs.mw.app.gateway.service.DeviceBindingService;
+import mfs.mw.app.gateway.service.DeviceVerifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.data.redis.autoconfigure.LettuceClientOptionsBuilderCustomizer;
@@ -13,9 +13,9 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
- * The device gate on {@code /app/**} (spec 9.1, 18.6, ticket 29): the interceptor (the body it
+ * The device gate on {@code /app/**} (spec 9.1, 18.6, tickets 29 and 68): the interceptor (the body it
  * hashes is cached by {@code BodySchemaConfig}'s filter). On unless {@code mw.app-gateway.device-binding.enabled=false} (tests
- * not about it). Valkey (sessions, nonces) fails fast while disconnected; the gate then answers
+ * not about it). Valkey (device key cache, nonces) fails fast while disconnected; the gate then answers
  * 503 MW-SYS-012 instead of letting requests through, and Valkey is kept out of the health groups
  * so the rest of the API (none, today) is not taken out of readiness with it.
  */
@@ -32,10 +32,10 @@ public class DeviceBindingConfig {
   @ConditionalOnProperty(name = "mw.app-gateway.device-binding.enabled", havingValue = "true", matchIfMissing = true)
   static class Gate implements WebMvcConfigurer {
 
-    private final DeviceBindingService devices;
+    private final DeviceVerifier devices;
     private final AppUserResolver users;
 
-    Gate(DeviceBindingService devices, AppUserResolver users) {
+    Gate(DeviceVerifier devices, AppUserResolver users) {
       this.devices = devices;
       this.users = users;
     }

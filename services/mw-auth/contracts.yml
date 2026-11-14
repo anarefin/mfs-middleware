@@ -4,11 +4,16 @@
 # `./gradlew :contractsLint` checks every entry exists; the module's build.gradle.kts tracks the listed
 # contracts as test inputs, so only the modules a contract change affects re-run their tests.
 # Ticket 67: the wallet projection from the core (WalletStateChanged, contracts/ConsumedContractsTest)
-# and mw-crypto as a client (client/CryptoClient: tokens, envelope). The internal API of mw-auth
-# itself gets its contract with its first operation (ticket 71).
+# and mw-crypto as a client (client/CryptoClient: tokens, envelope).
+# Ticket 68: the device API moved from mw-app-gateway: the public auth.v1 API, the internal API of
+# the gateway's device lookups (contracts/ApiContractsTest) and the binding OTP / new-device SMS to
+# mw-notify (contracts/ProducedContractsTest).
 produces:
-  events: []
-  apis: []
+  events:
+    - events/mw-notify/mw.notify.request.v1.schema.json
+  apis:
+    - api/mw-auth/auth.v1.openapi.yaml
+    - api/mw-auth/auth-internal.v1.openapi.yaml
 consumes:
   events:
     - events/mw-core-mock/core.event.v1.schema.json#WalletStateChanged

@@ -19,7 +19,7 @@ import tools.jackson.databind.json.JsonMapper;
  * APISIX validates no body): {@code /app/**} POST bodies (at most 64 KiB, else 413) are kept in
  * memory ({@link CachedBodyFilter}) so the schema check, the device signature and the controller
  * all read the same bytes; each check runs after the JWT and before the device gate ({@code
- * DeviceBindingConfig}). {@code POST /app/v1/sessions} takes no body and has no schema. A new JSON
+ * DeviceBindingConfig}). The device API bodies are checked by mw-auth (ticket 68). A new JSON
  * body endpoint needs its derived schema registered here.
  */
 @Configuration(proxyBeanMethods = false)
@@ -48,8 +48,6 @@ public class BodySchemaConfig implements WebMvcConfigurer {
   @Override
   public void addInterceptors(InterceptorRegistry registry) {
     add(registry, BodySchema.TRANSACTION, false, "/app/v1/transactions");
-    add(registry, BodySchema.DEVICE_OTP, true, "/app/v1/devices/otp");
-    add(registry, BodySchema.DEVICE_BINDING, false, "/app/v1/devices");
     add(registry, BodySchema.FETCH_BILL, false, "/app/v1/billers/*/fetch-bill");
   }
 

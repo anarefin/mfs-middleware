@@ -244,8 +244,8 @@ test_every_public_json_body_has_a_derived_schema_in_its_service() {
   local row file src req
   for row in \
     "mw-app-gateway/app-v1-transaction-request.json|api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/TransactionRequest|txnType" \
-    "mw-app-gateway/app-v1-device-otp-request.json|api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/DeviceOtpRequest|" \
-    "mw-app-gateway/app-v1-device-binding-request.json|api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/DeviceBindingRequest|otp" \
+    "mw-auth/auth-v1-otp-request.json|api/mw-auth/auth.v1.openapi.yaml#/components/schemas/DeviceOtpRequest|" \
+    "mw-auth/auth-v1-device-binding-request.json|api/mw-auth/auth.v1.openapi.yaml#/components/schemas/DeviceBindingRequest|otp" \
     "mw-app-gateway/app-v1-fetch-bill-request.json|api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/FetchBillRequest|billNumber" \
     "mw-checkout/checkout-v1-create-session.json|api/mw-checkout/checkout.v1.openapi.yaml#/components/schemas/CreateSessionRequest|orderId" \
     "mw-checkout/checkout-pay-v1-otp.json|api/mw-checkout/checkout.v1.openapi.yaml#/components/schemas/OtpRequest|wallet" \
@@ -500,6 +500,24 @@ test_app_route_leaves_the_signed_body_untouched() {
     || fail "a plugin rewrites the app body"
   printf '%s' "$r" | jq -e '.plugins["client-control"].max_body_size > 0' >/dev/null || fail "no body size cap"
   [ -f "$REPO_DIR/services/mw-app-gateway/src/main/resources/derived-schemas/app-v1-transaction-request.json" ] || fail "mw-app-gateway has no derived submit schema"
+}
+
+# Ticket 68: the device API moved from /app/v1/devices* to mw-auth's /auth/v1/* (public port 8080,
+# never the mTLS internal one). The device signs the path and the raw body: no rewrite of either.
+# Until ticket 69 it takes the same Keycloak customers token as app-v1, quota per token subject.
+test_auth_route_sends_the_device_api_to_mw_auth_untouched() {
+  render || fail "dry run failed"
+  local r
+  r="$(obj routes auth-v1)"
+  [ -n "$r" ] || fail "no auth-v1 route rendered (have: $(ls out/routes))"
+  printf '%s' "$r" | jq -e '.uri == "/auth/v1/*" and .upstream.nodes == {"mw-auth:8080": 1}' >/dev/null \
+    || fail "auth-v1 must send /auth/v1/* to mw-auth:8080: $(printf '%s' "$r" | jq -c '{uri, upstream}')"
+  printf '%s' "$r" | jq -e '.plugins | has("request-validation") or has("proxy-rewrite") or has("body-transformer") | not' >/dev/null \
+    || fail "auth-v1 rewrites the path or body the device signed"
+  printf '%s' "$r" | jq -e '.plugins["client-control"].max_body_size > 0
+    and .plugins["openid-connect"].bearer_only == true and .plugins["openid-connect"].iat_slack <= 30
+    and .plugins["limit-count"].key == "mw_consumer" and .plugins["limit-count"].group == "auth-v1"' >/dev/null \
+    || fail "auth-v1 plugins: $(printf '%s' "$r" | jq -c '.plugins | keys')"
 }
 
 test_the_edge_never_logs_bodies() {

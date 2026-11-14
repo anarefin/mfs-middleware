@@ -60,6 +60,16 @@ dependencies {
     implementation("net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.10.1")
     // /internal/v1/** needs a Keycloak realm services client-credentials JWT (spec 18.2, D24).
     implementation("org.springframework.boot:spring-boot-starter-security-oauth2-resource-server")
+    // Valkey (Lettuce): device sessions and the signed-request nonce cache (spec 9.1, 18.7, ticket 68).
+    implementation("org.springframework.boot:spring-boot-starter-data-redis")
+    // Request body schema checks of /auth/v1 (service/BodySchema, M3 gate decision A6; ticket 68). The
+    // validator is built on a newer Jackson 3 than Boot manages; keep Boot's, so this library does not
+    // change Jackson for the whole service (as mw-app-gateway).
+    implementation("com.networknt:json-schema-validator:3.0.8") {
+        exclude(group = "tools.jackson.core")
+        exclude(group = "tools.jackson.dataformat")
+        exclude(group = "tools.jackson", module = "jackson-bom")
+    }
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
@@ -70,7 +80,6 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers-kafka")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
     testImplementation("org.apache.camel:camel-test-spring-junit6")
-    testImplementation("com.networknt:json-schema-validator:3.0.8")
     // client/CryptoClientIT: mw-crypto and the Keycloak token endpoint stand-ins (mTLS over HTTPS).
     // After json-schema-validator: the standalone jar carries an older copy of its message bundle.
     testImplementation("org.wiremock:wiremock-standalone:3.13.1")

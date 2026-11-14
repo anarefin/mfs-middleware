@@ -6,7 +6,7 @@
 PROVISION_DIR="$REPO_DIR/deploy/provision"
 # the generated .env values the compose block passes in (obviously fake)
 PROVISION_ENV="VALKEY_PASSWORD=valkey-t BILLAGG_HMAC_SECRET=billagg-t C2WBANK_HMAC_SECRET=c2w-t
-  CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_AUTH_SECRET=auth-t
+  CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_AUTH_SECRET=auth-t KC_MW_APP_GATEWAY_SECRET=app-gateway-t
   USSD_GP_GATEWAY_SECRET=gp-t USSD_ROBI_GATEWAY_SECRET=robi-t USSD_BL_GATEWAY_SECRET=bl-t
   USSD_TELETALK_GATEWAY_SECRET=teletalk-t SOFTHSM_MWCRYPTO_USER_PIN=hsm-pin-t SOFTHSM_PAYSIM_USER_PIN=paysim-pin-t"
 
@@ -160,6 +160,10 @@ test_provision_writes_the_service_specific_keys() {
   # mw-auth (ticket 67): its realm services client secret for mw-crypto, its role and schema
   [ "$(kv mw-auth mw.auth.crypto.client-secret)" = auth-t ] || fail "mw-auth client secret"
   grep -q 'role=auth_rw .*schema=auth' .psql-calls || fail "mw-auth role/schema"
+  # ticket 68: mw-auth keeps device sessions and nonces in Valkey; mw-app-gateway calls mw-auth's
+  # internal API with its own realm services client
+  [ "$(kv mw-auth spring.data.redis.password)" = valkey-t ] || fail "mw-auth valkey"
+  [ "$(kv mw-app-gateway mw.app-gateway.auth.client-secret)" = app-gateway-t ] || fail "app-gateway mw-auth client secret"
   # one role + schema per plain service
   grep -q 'role=orchestrator_rw .*schema=txn' .psql-calls || fail "orchestrator role/schema"
   # mw-admin-api also owns schema partner (its Flyway migrates both)

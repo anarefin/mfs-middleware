@@ -21,7 +21,7 @@ import tools.jackson.databind.JsonNode;
  * Gets the running stack ready for a run, before any load: creates the perf users in Keycloak
  * (idempotent partial import through {@code docker compose exec keycloak kcadm.sh}), fetches the
  * core's PIN key and every user's token, and binds one fresh device per user exactly as the app
- * does (binding OTP read from the SMSC simulator, signed {@code POST /app/v1/devices}). Needs the
+ * does (binding OTP read from the SMSC simulator, signed {@code POST /auth/v1/devices} at mw-auth). Needs the
  * test-only routes ({@code scripts/suite.sh perf} applies them like {@code scripts/api-test.sh}).
  */
 public final class Provisioning {
@@ -79,7 +79,7 @@ public final class Provisioning {
   private static Device bind(PerfUsers.User user, String token) {
     Device d = Device.create();
     List<String> before = otpsTo(user.msisdn());
-    Http.Response asked = Http.postRaw(Stack.get().url("app/v1/devices/otp"), d.headers(token), "{\"locale\":\"en\"}");
+    Http.Response asked = Http.postRaw(Stack.get().url("auth/v1/otp"), d.headers(token), "{\"locale\":\"en\"}");
     if (asked.status() != 202) {
       throw new IllegalStateException("binding OTP of " + user.username() + ": " + asked);
     }
@@ -96,7 +96,7 @@ public final class Provisioning {
     }
     String body = "{\"publicKey\":\"" + d.publicKeyBase64() + "\",\"otp\":\"" + otp + "\"}";
     Http.Response bound =
-        Http.postRaw(Stack.get().url("app/v1/devices"), d.signedHeaders(token, "POST", "/app/v1/devices", body), body);
+        Http.postRaw(Stack.get().url("auth/v1/devices"), d.signedHeaders(token, "POST", "/auth/v1/devices", body), body);
     if (bound.status() != 201) {
       throw new IllegalStateException("binding the device of " + user.username() + ": " + bound);
     }

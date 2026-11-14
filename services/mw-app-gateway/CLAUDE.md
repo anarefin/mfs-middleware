@@ -26,45 +26,48 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   initiate `403 MW-AUTH-002`, nothing published. Other paths
   (actuator) are open inside the app network. Keycloak is reached over `data` (MVP deviation of
   18.1), not `ops`.
-- Device binding (ticket 29, spec 9.1/18.6; `config/DeviceBindingConfig`, `security/DeviceBindingInterceptor`
-  + `@DeviceGate`, `service/DeviceBindingService`, `service/RequestSignatures`, `repository/DeviceSessionStore`,
-  table `app_device` V6): after the JWT, every `/app/**` handler needs `X-Device-Id` of a device ACTIVE for the
-  token's wallet (`401 MW-AUTH-003`) and a live Valkey session `sess:{sub}:{deviceId}` (sliding idle timeout
-  `mw.app-gateway.device-binding.idle-timeout` 5 min, per channel `idle-timeout-by-channel`; `401 MW-AUTH-007`).
-  `POST /app/v1/transactions` (`@DeviceGate(SIGNED)`) also needs `X-Timestamp` (epoch ms, strictly less than
-  `clock-skew` 5 min either way, `MW-AUTH-005`), `X-Nonce` (once per device: Valkey `nonce:{deviceId}:{nonce}` SET NX,
-  TTL 2x skew + 30 s, above the 2x skew acceptance window; `MW-AUTH-006`) and `X-Signature` (ECDSA P-256 SHA-256, DER or P1363, over `METHOD\nPATH\nhex(sha256(body))\n
-  TIMESTAMP\nNONCE\nDEVICE-ID`; `MW-AUTH-004`). The body hashed is the received body (`filter/CachedBodyFilter`, at most 64 KiB read with
-  `readNBytes(limit+1)`, a larger one `413 MW-VAL-BODY_TOO_LARGE` as at the edge): exactly the bytes the
-  schema check and the controller parse; no hash is taken from a header. That is why APISIX runs no
-  request-validation on this route (it forwards a validated body re-encoded). Order:
-  device, timestamp, signature, nonce, session. `POST /app/v1/devices {publicKey, otp}` binds (signed with that key, OTP below,
-  re-bind replaces the key) and opens a session; `POST /app/v1/sessions` (signed, empty body) opens a new one.
-  `single-active-device` (true): binding replaces the wallet's other devices (REPLACED) and binding/opening
-  ends their sessions. Valkey unreachable: `503 MW-SYS-012` (fail closed; not in health groups). Valkey
-  password `spring.data.redis.password` synced into `secret/mw-app-gateway` by the init step. Tests not
-  about it run with `device-binding.enabled=false` (test `config/application.yml`); `DeviceBindingIT` runs it
-  on real PostgreSQL + Valkey (`ValkeyInfrastructure`).
-- Binding OTP (review A5; `service/DeviceOtpService`, `repository/DeviceOtpRepository`, table `app_device_otp` V8,
-  `mapper/DeviceNotificationMapper`, `mw.app-gateway.device-binding.otp.*`): `POST /app/v1/devices/otp`
-  (`X-Device-Id`, unsigned, optional `{locale: bn|en}`) -> `202 {wallet (masked), otpExpiresAt, sendsLeft}`; a
-  6-digit OTP (`util/OtpCodes`, stored only as SHA-256 of `wallet:device:otp`) goes by SMS to the token's wallet:
-  `mw.notify.request.v1` template `DEVICE_BIND_OTP`, priority OTP, published straight to Kafka (never through the
-  outbox, so the code is never at rest in clear; Kafka down `503 MW-SYS-010`). A new OTP replaces the wallet's
-  previous one. `POST /app/v1/devices` then needs `{publicKey, otp}`; after the signature and nonce each guess
-  reserves one of `max-attempts` (3) checks with a conditional UPDATE before it is compared (as mw-checkout's
-  ticket 31 fix), the third wrong one voids it; a match is spent (conditional UPDATE, once, only for the device it
-  was asked for, before `ttl` 2 min) in the binding's transaction, which also writes the "new device bound" SMS
-  (`DEVICE_BOUND`, TXN priority) to the outbox. Errors: wrong `401 MW-AUTH-010`, none for this device / expired /
-  spent `MW-AUTH-011`, checks used up `MW-AUTH-012`, more than `max-sends` (5, dev compose 20) OTPs per wallet in
-  `send-window` (15 min) `429 MW-VAL-022`. Templates live in mw-notify (`V9`).
+- Device gate (ticket 29, spec 9.1/18.6; a verifier since ticket 68: device binding, the binding OTP, sessions
+  and their nonces moved to mw-auth, `/auth/v1/*`; `config/DeviceBindingConfig`, `security/DeviceBindingInterceptor`
+  + `@DeviceGate`, `service/DeviceVerifier`, `service/RequestSignatures`, `repository/DeviceGateStore`,
+  `client/AuthClient`): after the JWT, every `/app/**` handler needs `X-Device-Id` of a device bound to the token's
+  wallet (`401 MW-AUTH-003`): its wallet and public key come from mw-auth `GET /internal/v1/devices/{deviceId}`
+  and are cached in Valkey `devkey:{deviceId}` for `device-key-ttl` (5 min). `POST /app/v1/transactions`
+  (`@DeviceGate(SIGNED)`) also needs `X-Timestamp` (epoch ms, strictly less than `clock-skew` 5 min either way,
+  `MW-AUTH-005`), `X-Signature` (ECDSA P-256 SHA-256, DER or P1363, over `METHOD\nPATH\nhex(sha256(body))\n
+  TIMESTAMP\nNONCE\nDEVICE-ID`; `MW-AUTH-004`) and `X-Nonce` (once per device: Valkey `nonce:{deviceId}:{nonce}` SET
+  NX, TTL 2x skew + 30 s; the same key mw-auth uses, so a nonce is used once across both; `MW-AUTH-006`). The body
+  hashed is the received body (`filter/CachedBodyFilter`, at most 64 KiB read with `readNBytes(limit+1)`, a larger
+  one `413 MW-VAL-BODY_TOO_LARGE` as at the edge): exactly the bytes the schema check and the controller parse; no
+  hash is taken from a header. That is why APISIX runs no request-validation on this route. Order: device,
+  timestamp, signature, nonce, session.
+- **Session check decision (ticket 68):** every app request asks mw-auth `GET
+  /internal/v1/sessions/{walletId}/{deviceId}` (which extends the sliding idle timeout; 404 -> `401 MW-AUTH-007`),
+  not a session claim in the token (ticket 69 may revisit with mw-auth's own tokens). A confirmation is cached in
+  Valkey `sesschk:{walletId}:{deviceId}` for `session-cache-ttl` (10 s; 0 = ask every time), so a burst asks once
+  and an ended session (another device bound at mw-auth) passes here for at most 10 s. The device key cache does
+  not need a `device.unbound` notice: an unbound device's session is ended by mw-auth, which the session check sees.
+- mw-auth client (`client/AuthClient`, `client/ServiceTokenClient`, `config/AuthClientProperties`
+  `mw.app-gateway.auth.*`; contract `api/mw-auth/auth-internal.v1.openapi.yaml`): `https://mw-auth:8443` over mTLS
+  with this service's OpenBao certificate (`config/ServiceCertificateManager` + `TlsProperties` from the template,
+  `mw.tls.enabled`: off in the image default and tests, `MW_TLS_ENABLED=true` in compose; PKI role
+  `mw-app-gateway`) and a Keycloak realm `services` client-credentials JWT of client `mw-app-gateway` (audience
+  mapper `aud-mw-auth`; secret `mw.app-gateway.auth.client-secret` in `secret/mw-app-gateway`, synced from
+  `KC_MW_APP_GATEWAY_SECRET`; on mw-auth's `mw.internal-auth.allowed-clients`). Timeout 2 s, Resilience4j breaker
+  `mw-auth` (count based, 4xx ignored). A 404 is an answer; mw-auth or Valkey unreachable, a 5xx, a timeout, an
+  open breaker or any other refusal is `503 MW-SYS-012` (fail closed; Valkey and mw-auth are not in the health
+  groups). Valkey password `spring.data.redis.password` synced into `secret/mw-app-gateway`. Tests not about it
+  run with `device-binding.enabled=false` (test `config/application.yml`); `security/DeviceBindingIT` runs the gate
+  on real Valkey with `AuthClient` stubbed, `client/AuthClientIT` the client against a WireMock mTLS server.
+- Removed in ticket 68 (now in mw-auth): `POST /app/v1/devices/otp`, `POST /app/v1/devices`, `POST
+  /app/v1/sessions`, the OTP publish to `mw.notify.request.v1`, tables `app_device` and `app_device_otp` (dropped by
+  `V9__drop_device_tables.sql`; no data migration, a dev stack is reseeded). The outbox, its relay and the
+  conformance suite stay as chassis although nothing appends to the outbox now.
 - Validation: body schema first (`service/BodySchema` via `filter/BodySchemaInterceptor`, one per endpoint,
   `config/BodySchemaConfig`; after the JWT, before the device gate; ticket 29 and review A6, APISIX validates no
-  body): `derived-schemas/app-v1-transaction-request.json` (`TransactionRequest`), `app-v1-device-otp-request.json`
-  (`DeviceOtpRequest`, optional: no bytes at all pass), `app-v1-device-binding-request.json` (`DeviceBindingRequest`)
-  and `app-v1-fetch-bill-request.json` (`FetchBillRequest`), derived from the contract by
+  body): `derived-schemas/app-v1-transaction-request.json` (`TransactionRequest`) and
+  `app-v1-fetch-bill-request.json` (`FetchBillRequest`), derived from the contract by
   `scripts/derived-schemas.sh --write` (`./gradlew :contractsLint` fails on drift; a new JSON body endpoint needs its
-  schema registered in `BodySchemaConfig`; `POST /app/v1/sessions` has no body), validated
+  schema registered in `BodySchemaConfig`; the device bodies moved to mw-auth in ticket 68), validated
   with json-schema-validator (runtime dependency, on Boot's Jackson) on the cached bytes; duplicate keys,
   trailing content or a non-object `400 MW-VAL-001`, schema errors `400 MW-VAL-001` with dotted fields (no
   pattern/format in the schema, so no request value in a message). Then `Idempotency-Key` required, 1..64
@@ -148,13 +151,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   MSISDN masked (`0171****789`); no fee, no PIN.
 - Dev provisioning (`provision_mw_app_gateway` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `app_gateway_rw`, schema `app_gateway`, `secret/mw-app-gateway` (DB password; `spring.data.redis.password`
-  synced from `VALKEY_PASSWORD`), AppRole.
+  synced from `VALKEY_PASSWORD`; `mw.app-gateway.auth.client-secret` from `KC_MW_APP_GATEWAY_SECRET`), AppRole, PKI
+  role `mw-app-gateway`. Keycloak realm `services` client `mw-app-gateway` (audience `mw-auth`): a running stack
+  needs `deploy/reset.sh` to import it. Compose waits for a healthy mw-auth.
 
 ## Contracts owned
 
 - `api/mw-app-gateway/app.v1.openapi.yaml` (app API v1). This service checks every JSON request body against
-  its schema in `src/main/resources/derived-schemas/` (`TransactionRequest`, `DeviceOtpRequest`,
-  `DeviceBindingRequest`, `FetchBillRequest`; `scripts/derived-schemas.sh --write` after changing one;
+  its schema in `src/main/resources/derived-schemas/` (`TransactionRequest`, `FetchBillRequest`; `scripts/derived-schemas.sh --write` after changing one;
   `./gradlew :contractsLint` fails until then). The edge answers 401/413/429 itself (`deploy/apisix/README.md`).
 
 ## Contracts used
@@ -162,12 +166,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 - `contracts.yml` (module root) is the machine-readable list of the events and APIs below, checked by
   `./gradlew :contractsLint` and tested without Docker by `contracts/ProducedContractsTest` (every produced
   event built by the real mapper validates), `contracts/ConsumedContractsTest` (every valid sample reads into
-  the own DTO) and `contracts/ApiContractsTest` (app API responses and the billpay client's requests).
+  the own DTO) and `contracts/ApiContractsTest` (app API responses, the billpay client's requests and mw-auth's answers).
 - `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (client; own types `dto/Biller`, `dto/Bill`).
 - `events/mw-orchestrator/mw.txn.request.v1` (produced; own type `dto/TxnRequest`, validated
   against the schema in `RequestMapperTest` and `SyncReplyIT`).
-- `events/mw-notify/mw.notify.request.v1` (produced: the binding OTP and the new device SMS; own type
-  `dto/NotificationRequest`, validated against the schema in `DeviceNotificationMapperTest`).
+- `api/mw-auth/auth-internal.v1.openapi.yaml` (client, ticket 68: `GET /internal/v1/devices/{deviceId}`, `GET
+  /internal/v1/sessions/{walletId}/{deviceId}`; own type `dto/BoundDevice`, checked in `ApiContractsTest`).
 - `events/mw-orchestrator/mw.txn.status.v1` (consumed; own type `dto/StatusMessage`, unknown
   fields ignored) and the orchestrator's `mw-reply-to` / duplicate-answer conventions.
 

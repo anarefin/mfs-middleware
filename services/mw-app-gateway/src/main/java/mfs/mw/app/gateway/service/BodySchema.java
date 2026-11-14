@@ -23,8 +23,8 @@ import tools.jackson.databind.json.JsonMapper;
  * the APISIX edge, ticket 29, and extended to every body, M3 gate decision A6). APISIX
  * request-validation forwards a body it validated re-encoded, so the gateway could not hash the
  * bytes the device signed; it validates the exact bytes it hashes and parses. Each schema is a
- * {@code derived-schemas/*.json} resource ({@link #TRANSACTION}, {@link #DEVICE_OTP}, {@link
- * #DEVICE_BINDING}, {@link #FETCH_BILL}), derived from the contract's request schema by {@code
+ * {@code derived-schemas/*.json} resource ({@link #TRANSACTION}, {@link #FETCH_BILL}; the device
+ * bodies moved to mw-auth in ticket 68), derived from the contract's request schema by {@code
  * scripts/derived-schemas.sh} ({@code ./gradlew :contractsLint} fails when one drifts); none has a
  * pattern or format, so no message repeats a request value.
  *
@@ -36,10 +36,6 @@ public class BodySchema {
 
   /** {@code POST /app/v1/transactions}, from {@code TransactionRequest}. */
   public static final String TRANSACTION = "derived-schemas/app-v1-transaction-request.json";
-  /** {@code POST /app/v1/devices/otp} (optional body), from {@code DeviceOtpRequest}. */
-  public static final String DEVICE_OTP = "derived-schemas/app-v1-device-otp-request.json";
-  /** {@code POST /app/v1/devices}, from {@code DeviceBindingRequest}. */
-  public static final String DEVICE_BINDING = "derived-schemas/app-v1-device-binding-request.json";
   /** {@code POST /app/v1/billers/{code}/fetch-bill}, from {@code FetchBillRequest}. */
   public static final String FETCH_BILL = "derived-schemas/app-v1-fetch-bill-request.json";
 

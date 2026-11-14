@@ -108,6 +108,7 @@ Criteria `-` = supporting scenario (edge security, bulk, portal, config), no MVP
 | 02 | [device p2p] a P2P with a valid signature passes | 1 |  |
 | 02 | [device p2p] a replayed signed request is rejected and moves no money again | 1, 2 |  |
 | 02 | [device p2p] a body changed after signing is rejected | 1 |  |
+| 02 | [device] a bound device opens a new session at mw-auth and the same signed open again is a replay | - |  |
 | 04 | [merchant] a customer pays a merchant and the merchant sees the collection | 1 | MERCHANT_PAY app success |
 | 04 | [merchant] a payment the customer's balance cannot cover is rejected and moves no money | 1 | MERCHANT_PAY app failure |
 | 04 | [merchant] a merchant payment to a wallet that is not a merchant is refused by the core | 1 | MERCHANT_PAY app failure |
