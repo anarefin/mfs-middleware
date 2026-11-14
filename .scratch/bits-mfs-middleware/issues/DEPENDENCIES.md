@@ -36,7 +36,7 @@
 65-mw-crypto-xmldsig-http-signatures        63                done     27m      37 files +3007 −20     c5facff6, merge dccaa1c9
 66-openbao-pki-mtls                         62                done     24m      40 files +2975 −70     d8032171..596a1e05
 67-mw-auth-scaffold                         63,66             done     39m      145 files +10665 −58   d50edf8d..510b25f4 (+merges)
-68-move-device-otp-sessions-to-mw-auth      67                open
+68-move-device-otp-sessions-to-mw-auth      67                done     37m      114 files +4805 −1035  88428dfa (+merge d1bda1e0)
 69-mw-auth-login-tokens                     68                open
 70-pin-lifecycle-lockout-revocation         69                open
 71-txn-authorisation-assertion              69                open
