@@ -95,7 +95,7 @@ D3 amendment 2026-11-13).
 | 8091 | `mw-adapter-bank` | `MW_PORT_ADAPTER_BANK` |
 | 8092 | `mw-checkout` | `MW_PORT_CHECKOUT` |
 | 8093 | `mw-portal-api` | `MW_PORT_PORTAL_API` |
-| 8094 | `mw-crypto` | `MW_PORT_CRYPTO` |
+| 8094 | `mw-crypto` (HTTPS with a mandatory client certificate, D24: `scripts/smoke.sh` shows a call; its actuator is on 8081 inside the network) | `MW_PORT_CRYPTO` |
 | 3000 | `mw-admin-ui` (path `/console`) | `MW_PORT_ADMIN_UI` |
 | 3001 | `mw-test-console` (profile `tester`) | `MW_PORT_TEST_CONSOLE` |
 | 5432 | `postgres` | `MW_PORT_POSTGRES` |
@@ -168,7 +168,8 @@ dc exec keycloak sh -c '
 There are no dashboards or alert rules in the MVP (D10; alert rules deferred). Services log JSON
 to stdout with fixed fields (`ts`, `level`, `service`, `correlationId`, `txnId`, `event`, ...;
 root `CLAUDE.md`, "Log fields") and expose `/actuator/health` (the container healthcheck) and
-`/actuator/prometheus` inside the network. Find a transaction's whole story by its correlation ID
+`/actuator/prometheus` inside the network (mw-crypto on its management port 8081: its API port
+8080 is mTLS only). Find a transaction's whole story by its correlation ID
 or txnId:
 
 ```sh
@@ -185,6 +186,7 @@ Log events that need a person:
 | `outbox.relay.failed` | any producer | the outbox cannot reach Kafka: check `kafka` health; rows are sent once it is back |
 | `audit.chain.broken` | mw-audit-dw | the audit hash chain failed verification: treat as an incident, keep the database as is |
 | `crypto.hsm.down` | mw-crypto | the HSM does not answer (gauge `crypto_hsm_up` 0): PIN checks, logins and signing fail closed with `MW-SYS-010`. Check `softhsm` health (dev) or the HSM; mw-crypto reconnects by itself (`crypto.hsm.up` when back) |
+| `tls.certificate.expiring` | mw-crypto (any service with `mw.tls.enabled`) | its OpenBao service certificate has less than a third of its 72 h life left: renewal at two thirds failed (WARN `tls.certificate.renew_failed`, retried every minute; gauge `tls_certificate_expiry_seconds`). Check `openbao` health and the service's AppRole policy (`pki_int/issue/<service>`, `dc logs provision`); once the certificate expires callers fail the handshake |
 | `smpp.bind.down` | mw-ussd, mw-notify | the SMPP bind to the USSD gateway or SMSC is lost; it reconnects by itself, check the peer |
 | `partner.call.failed`, `partner.route.failed` | adapters | partner errors or a route that failed to start after a config change |
 | `mw.edge.rate_limit_degraded` | apisix | Valkey is unreachable and the rate limiter fails open: check `valkey` |

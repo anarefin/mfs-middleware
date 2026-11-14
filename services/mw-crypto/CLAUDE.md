@@ -30,6 +30,12 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   operation (400), `MW-VAL-016` envelope fails its integrity check (400), `MW-VAL-001` bad body (shape,
   base64, length), `MW-SYS-010` HSM unavailable (503, retryable, fail closed; `exception/CryptoErrors`),
   `MW-AUTH-001/002` internal JWT. A wrong PIN is `{match: false}`, not an error.
+- Access (spec 18.2, D24, ticket 66): mTLS is mandatory on the API port 8080 and the JWT stays required.
+  See "mTLS" below. Generate (`POST /internal/v1/keys`) and rotate need a key-admin client
+  (`mw.internal-auth.key-admin-clients`, `mw-admin-api`); generate also needs `mw.crypto.bootstrap-keys=true`
+  (dev only) until the ceremony (ticket 75); reads stay open to every allowed caller. Refusals are 403
+  `MW-AUTH-002` with WARN `security.internal_call_denied` and a reason (`CLIENT_NOT_ALLOWED`,
+  `NO_CLIENT_CERT`, `CERT_MISMATCH`, `NOT_KEY_ADMIN`, `KEY_GENERATION_DISABLED`).
 - Metrics and alert: `crypto.op.duration{op,provider,outcome}` (timer around every provider call),
   `crypto.hsm.up{provider}` (gauge from `scheduler/HsmProbeJob` every `hsm-probe-period`, 10 s; a real
   `C_GenerateRandom` round trip). The alert is the ERROR log event `crypto.hsm.down` on the change to down
@@ -106,6 +112,34 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   `MaskingPolicy.describe`; services log only event, kid, outcome. Bean Validation messages never echo
   values. Tests: `dto/OperationDtoMaskingTest` and the log check of `client/OperationsIT`.
 
+## mTLS (ticket 66, D24)
+
+- `config/ServiceCertificateManager` (`mw.tls.*`, `config/TlsProperties`; on by default here,
+  `MW_TLS_ENABLED`) issues this service's certificate from OpenBao PKI at start
+  (`pki_int/issue/mw-crypto` through Spring Cloud Vault, AppRole policy allows only that role; CN
+  `mw-crypto`, SAN `mw.tls.alt-names`), keeps it in memory, registers it as SSL bundle `mw-service`
+  and renews it at two thirds of its life (`updateBundle`: Tomcat reloads without a restart). The
+  start fails without it. Metric `tls.certificate.expiry.seconds{service}`, alert ERROR
+  `tls.certificate.expiring` (runbook).
+- Port 8080 (`server.ssl.client-auth: need`, trust = the `pki_int` intermediate only): no client
+  certificate = failed handshake. `security/InternalCallerPolicy` then checks the JWT and that `azp`
+  equals the certificate CN (`jakarta.servlet.request.X509Certificate`). Actuator (health,
+  prometheus) is on the plain management port 8081 (`management.server.ssl.enabled: false`), which
+  the image and compose healthchecks use; it is never published.
+- Callers (mw-auth ticket 67, mw-audit-dw ticket 74, mw-admin-api ticket 75) copy
+  `config/ServiceCertificateManager` + `config/TlsProperties` from the template (already in
+  mw-audit-dw), turn on `mw.tls.enabled`, and build their client once on
+  `manager.clientSslContext()`:
+  `RestClient.builder().baseUrl("https://mw-crypto:8080").requestFactory(new JdkClientHttpRequestFactory(HttpClient.newBuilder().sslContext(manager.clientSslContext()).build())).build()`,
+  plus their client-credentials JWT (`azp` = their service name = CN). The SSL context follows
+  renewals; open connections keep the old, still valid certificate. Their role and policy come from
+  `PKI_SERVICES` in `deploy/provision/services.sh` (mw-auth, mw-app-gateway, mw-ussd, mw-checkout,
+  mw-audit-dw, mw-admin-api are already there). Template `CLAUDE.md`, "Service certificate and mTLS".
+- Tests: `config/ServiceCertificateManagerIT` (OpenBao container: issue, gauge, renewal by a moved
+  clock, bundle update, client context after renewal, failed renewal), `config/ServiceMtlsIT` (the
+  image on `HsmStack`: no client certificate, a role not allowed, a token of another client, the
+  metric), `security/InternalCallerPolicyTest`, `controller/KeyControllerMtlsTest` (`x509()`).
+
 ## HSM integration tests (decision for tickets 62-65)
 
 No PKCS#11 tooling on the host (user decision 2026-11-14): PKCS#11 never runs in the host test JVM.
@@ -115,10 +149,14 @@ No PKCS#11 tooling on the host (user decision 2026-11-14): PKCS#11 never runs in
   (a copy of `deploy/softhsm`, alias `softhsm`, fake PINs, `Wait.forHealthcheck()`), a PostgreSQL
   (alias `postgres`) and this service's own image built from the module `Dockerfile` and
   `build/libs/mw-crypto.jar` (the `test` task depends on `bootJar`; jar and Dockerfile are test inputs).
-  No OpenBao: the user PIN comes in as `MW_CRYPTO_PKCS11_USER_PIN`; Kafka points nowhere (relay off).
+  An OpenBao dev container (`PkiTestAuthority`, alias `openbao`, root + `pki_int` + a role per client
+  id, created on first use) issues the service certificate (token auth, SAN `mw-crypto,localhost`).
+  The user PIN comes in as `MW_CRYPTO_PKCS11_USER_PIN`; Kafka points nowhere (relay off).
   The container validates internal JWTs against `security/InternalTokens`' JWKS on the host through
   `Testcontainers.exposeHostPorts` (`host.testcontainers.internal`).
-- Tests drive it over HTTP: `HsmStack.get/post(path, token)` with `InternalTokens.forClient(...)`, and
+- Tests drive it over HTTPS: `HsmStack.get/post(path, token)` with `InternalTokens.forClient(...)`
+  presents a client certificate of the token's `azp` (so a test needs no mTLS code); `getAs/postAs(path,
+  token, certRole)` choose the certificate (null = none); `/actuator/**` goes to the plain port 8081; and
   `HsmStack.stopHsm()` / `startHsm()` for outage tests (the token volume survives). Container logs go to
   the test log with the prefix `mw-crypto`.
 - `client/Pkcs11ProviderIT` (ordered): bootstrap fills the token with a key of every purpose, public keys
@@ -157,7 +195,8 @@ No PKCS#11 tooling on the host (user decision 2026-11-14): PKCS#11 never runs in
 
 - None. Callers: `mw-admin-api` (Keycloak realm `services` client, audience mapper `aud-mw-crypto` added
   here), `mw-auth` (ticket 67) and `mw-audit-dw` (ticket 74) add their own clients; all three are on
-  `mw.internal-auth.allowed-clients`.
+  `mw.internal-auth.allowed-clients`, only `mw-admin-api` on `key-admin-clients`. Each also needs its
+  OpenBao certificate (see "mTLS").
 - `contracts.yml` is the machine-readable list, checked by `./gradlew :contractsLint`.
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
@@ -172,10 +211,14 @@ No PKCS#11 tooling on the host (user decision 2026-11-14): PKCS#11 never runs in
 ## Compose and provisioning
 
 - `deploy/docker-compose.yml` block `mw-crypto` (profiles `minimal` and `core`, port 8094
-  `MW_PORT_CRYPTO`, waits for a healthy `softhsm`, limit `CRYPTO_MEM_LIMIT` 320M, heap `CRYPTO_XMX` 112m;
+  `MW_PORT_CRYPTO` = the mTLS API port, healthcheck on 8081, waits for a healthy `softhsm`, limit `CRYPTO_MEM_LIMIT` 320M, heap `CRYPTO_XMX` 112m;
   measured 275 MiB after start and bootstrap). `deploy/provision/services.sh` `provision_mw_crypto`: DB
   role `crypto_rw`, schema `crypto`, `secret/mw-crypto` (`spring.datasource.password`,
   `mw.crypto.pkcs11.user-pin` from `SOFTHSM_MWCRYPTO_USER_PIN`), AppRole volume `crypto-approle`.
+  `pki_setup` / `pki_role` (`deploy/provision/lib.sh`, every `up`): dev root CA at `pki/`, intermediate
+  `pki_int/`, a role per `PKI_SERVICES` entry; `approle` adds `pki_int/issue/<svc>` to their policy.
+  `scripts/smoke.sh` checks the roles, the certificate metric, a refused handshake and a 200 with an
+  mw-admin-api certificate plus its JWT.
 
 ## Commands
 

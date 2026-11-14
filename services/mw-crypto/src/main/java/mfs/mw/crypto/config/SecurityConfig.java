@@ -4,10 +4,12 @@ import mfs.mw.crypto.exception.ErrorCodes;
 import mfs.mw.crypto.exception.MwException;
 import mfs.mw.crypto.security.InternalCallerPolicy;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -25,8 +27,12 @@ import org.springframework.web.servlet.HandlerExceptionResolver;
 
 /**
  * {@code /internal/v1/**} needs a Keycloak client-credentials JWT (spec 18.2, 18.8;
- * {@link InternalAuthProperties}, {@link InternalCallerPolicy}). Everything else (actuator probes)
- * stays open inside the app network. Failures are the 5.3 envelope from the global handler: no or
+ * {@link InternalAuthProperties}, {@link InternalCallerPolicy}) and, with {@code mw.tls.enabled}
+ * (D24, ticket 66), a client certificate whose CN equals the token's {@code azp}: the connector
+ * itself needs a certificate from the OpenBao intermediate ({@code server.ssl.client-auth: need},
+ * {@link ServiceCertificateManager}). Generating ({@code POST /internal/v1/keys}, only with {@code
+ * mw.crypto.bootstrap-keys}) and rotating keys need a key-admin client. Everything else (actuator
+ * on the management port) stays open inside the app network. Failures are the 5.3 envelope from the global handler: no or
  * bad token (signature, expiry, issuer, audience) 401 {@code MW-AUTH-001}, a caller that may not
  * ask 403 {@code MW-AUTH-002}.
  */
@@ -40,9 +46,12 @@ public class SecurityConfig {
   SecurityFilterChain internalApiSecurity(
       HttpSecurity http,
       InternalAuthProperties props,
+      @Value("${mw.tls.enabled:false}") boolean mtls,
+      @Value("${mw.crypto.bootstrap-keys:false}") boolean bootstrapKeys,
       @Qualifier("handlerExceptionResolver") HandlerExceptionResolver errors)
       throws Exception {
-    InternalCallerPolicy policy = new InternalCallerPolicy(props.allowedClients());
+    InternalCallerPolicy policy =
+        new InternalCallerPolicy(props.allowedClients(), props.keyAdminClients(), mtls, bootstrapKeys);
     AuthenticationEntryPoint unauthenticated =
         (req, res, e) ->
             errors.resolveException(
@@ -60,13 +69,27 @@ public class SecurityConfig {
         .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
             a ->
-                a.requestMatchers("/internal/**")
+                a.requestMatchers(HttpMethod.POST, "/internal/v1/keys")
                     .access(
                         (auth, ctx) ->
                             new AuthorizationDecision(
                                 auth.get() != null
                                     && auth.get().getPrincipal() instanceof Jwt jwt
-                                    && policy.allows(jwt)))
+                                    && policy.allowsKeyAdmin(jwt, ctx.getRequest(), true)))
+                    .requestMatchers(HttpMethod.POST, "/internal/v1/keys/*/rotate")
+                    .access(
+                        (auth, ctx) ->
+                            new AuthorizationDecision(
+                                auth.get() != null
+                                    && auth.get().getPrincipal() instanceof Jwt jwt
+                                    && policy.allowsKeyAdmin(jwt, ctx.getRequest(), false)))
+                    .requestMatchers("/internal/**")
+                    .access(
+                        (auth, ctx) ->
+                            new AuthorizationDecision(
+                                auth.get() != null
+                                    && auth.get().getPrincipal() instanceof Jwt jwt
+                                    && policy.allows(jwt, ctx.getRequest())))
                     .anyRequest()
                     .permitAll())
         .oauth2ResourceServer(

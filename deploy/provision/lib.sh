@@ -95,12 +95,59 @@ SQL
   log "$SVC: role $role and schema(s) $schemas ready"
 }
 
-# approle: policy reading only secret/<svc>, the AppRole, and a fresh secret-id plus the role-id in
-# the service's own volume (Spring configtree, one file per property; the service runs as 10001).
+# pki_setup: the service certificate CA of mTLS phase 1 (spec 18.2, 18.4, D24, ticket 66), once: a
+# root CA at pki/ (DEV ONLY: generated in OpenBao; production signs the intermediate with an offline
+# root, open point 24) and the intermediate at pki_int/ that issues every service certificate.
+# Mounts are made here, not in deploy/openbao/dev-unseal.sh (that runs its setup on the first start
+# only, so an existing volume would never get them). Idempotent: an existing CA is kept.
+pki_setup() {
+  mounts="$(bao secrets list -format=json)"
+  printf '%s' "$mounts" | grep -q '"pki/"' || bao secrets enable pki >/dev/null
+  printf '%s' "$mounts" | grep -q '"pki_int/"' || bao secrets enable -path=pki_int pki >/dev/null
+  bao secrets tune -max-lease-ttl=87600h pki >/dev/null
+  bao secrets tune -max-lease-ttl=720h pki_int >/dev/null
+  if [ -z "$(bao read -field=certificate pki/cert/ca 2>/dev/null)" ]; then
+    bao write -field=certificate pki/root/generate/internal common_name="mfs-mw dev root CA" \
+      issuer_name=dev-root key_type=ec key_bits=256 ttl=87600h >/dev/null
+    log "pki: created the dev root CA"
+  fi
+  if [ -z "$(bao read -field=certificate pki_int/cert/ca 2>/dev/null)" ]; then
+    bao write -field=csr pki_int/intermediate/generate/internal \
+      common_name="mfs-mw dev services intermediate CA" key_type=ec key_bits=256 >"$tmp/int.csr"
+    bao write -field=certificate pki/root/sign-intermediate csr=@"$tmp/int.csr" format=pem_bundle \
+      ttl=43800h >"$tmp/int.pem"
+    bao write pki_int/intermediate/set-signed certificate=@"$tmp/int.pem" >/dev/null
+    rm -f "$tmp/int.csr" "$tmp/int.pem"
+    log "pki: created the services intermediate CA"
+  fi
+}
+
+# pki_role <svc>: the role a service issues its own certificate from: CN and DNS SAN = the service
+# name (its compose DNS name), nothing else (no localhost, no IP), EC P-256, at most 72 h. Written
+# on every run (a changed rule takes effect).
+pki_role() {
+  bao write "pki_int/roles/$1" allowed_domains="$1" allow_bare_domains=true allow_subdomains=false \
+    allow_glob_domains=false allow_localhost=false allow_ip_sans=false enforce_hostnames=true \
+    server_flag=true client_flag=true key_type=ec key_bits=256 ttl=72h max_ttl=72h >/dev/null
+  log "pki: role $1 ready"
+}
+
+# in_pki <svc>: whether the service gets a certificate (PKI_SERVICES of services.sh).
+in_pki() {
+  case " $(printf '%s' "${PKI_SERVICES:-}" | tr '\n' ' ') " in *" $1 "*) return 0 ;; esac
+  return 1
+}
+
+# approle: policy reading only secret/<svc> (and, for a PKI_SERVICES entry, issuing from its own
+# pki_int role only), the AppRole, and a fresh secret-id plus the role-id in the service's own
+# volume (Spring configtree, one file per property; the service runs as 10001).
 approle() {
-  bao policy write "$SVC" - >/dev/null <<EOF
-path "secret/data/$SVC" { capabilities = ["read"] }
-EOF
+  {
+    printf 'path "secret/data/%s" { capabilities = ["read"] }\n' "$SVC"
+    if in_pki "$SVC"; then printf 'path "pki_int/issue/%s" { capabilities = ["update"] }\n' "$SVC"; fi
+  } >"$tmp/policy.hcl"
+  bao policy write "$SVC" - <"$tmp/policy.hcl" >/dev/null
+  rm -f "$tmp/policy.hcl"
   bao write "auth/approle/role/$SVC" token_policies="$SVC" token_ttl=1h token_max_ttl=24h secret_id_ttl=0 >/dev/null
   mkdir -p "$OUT"
   rm -f "$OUT"/spring.cloud.vault.app-role.*

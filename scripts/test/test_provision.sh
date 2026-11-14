@@ -39,9 +39,24 @@ case "$1 $2" in
       case "$v" in @*) cp "${v#@}" "$d/$k" ;; *) printf '%s' "$v" >"$d/$k" ;; esac
     done
     exit 0 ;;
-  "policy write") cat >/dev/null; exit 0 ;;
+  "policy write") cat >"$root/.policy-$3"; exit 0 ;;
+  "secrets list")
+    printf '{"secret/":{}'
+    for m in $(cat "$root/.mounts" 2>/dev/null); do printf ',"%s/":{}' "$m"; done
+    printf '}\n'; exit 0 ;;
+  "secrets enable")
+    shift 2; m=pki
+    case "$1" in -path=*) m="${1#-path=}" ;; esac
+    echo "$m" >>"$root/.mounts"; exit 0 ;;
+  "secrets tune") exit 0 ;;
 esac
 case "$*" in
+  "read -field=certificate pki/cert/ca") [ -f "$root/.pki-root" ] && cat "$root/.pki-root"; exit 0 ;;
+  "read -field=certificate pki_int/cert/ca") [ -f "$root/.pki-int" ] && cat "$root/.pki-int"; exit 0 ;;
+  "write -field=certificate pki/root/generate/internal "*) printf ROOT-PEM >"$root/.pki-root"; printf ROOT-PEM ;;
+  "write -field=csr pki_int/intermediate/generate/internal "*) printf CSR ;;
+  "write -field=certificate pki/root/sign-intermediate "*) printf INT-PEM ;;
+  "write pki_int/intermediate/set-signed "*) printf INT-PEM >"$root/.pki-int" ;;
   "read -field=role_id "*) printf 'role-id-of-%s' "$(echo "$3" | cut -d/ -f4)" ;;
   "write -f -field=secret_id "*) printf 'secret-id-%s' "$$" ;;
 esac
@@ -144,6 +159,40 @@ test_provision_writes_the_service_specific_keys() {
   # mw-admin-api also owns schema partner (its Flyway migrates both)
   grep -q 'role=admin_api_rw .*schema=admin ' .psql-calls || fail "admin-api role/schema"
   grep -q 'role=admin_api_rw .*schema=partner ' .psql-calls || fail "admin-api second schema partner"
+}
+
+# mTLS phase 1 (ticket 66, D24): root + intermediate CA once, a pki_int role per PKI_SERVICES entry
+# (CN/SAN = service name, no localhost, 72 h) on every run.
+test_provision_sets_up_the_pki_once_and_a_role_per_pki_service() {
+  provision_fixture
+  assert_ok run_provision
+  [ "$(grep -c 'pki/root/generate/internal' .bao-calls)" = 1 ] || fail "root CA not generated once"
+  grep -q '^bao secrets enable -path=pki_int pki$' .bao-calls || fail "pki_int not mounted"
+  grep -q '^bao secrets tune -max-lease-ttl=720h pki_int$' .bao-calls || fail "pki_int not tuned"
+  grep -q '^bao write -field=certificate pki/root/sign-intermediate csr=@' .bao-calls || fail "intermediate not signed by the root"
+  grep -q '^bao write pki_int/intermediate/set-signed certificate=@' .bao-calls || fail "intermediate not set"
+  local s
+  for s in mw-crypto mw-auth mw-app-gateway mw-ussd mw-checkout mw-audit-dw mw-admin-api; do
+    grep -q "^bao write pki_int/roles/$s allowed_domains=$s allow_bare_domains=true allow_subdomains=false .*allow_localhost=false .*max_ttl=72h" .bao-calls \
+      || fail "no PKI role $s"
+  done
+  assert_out_contains "pki: role mw-auth ready"
+  : >.bao-calls
+  assert_ok run_provision
+  grep -qE 'root/generate|intermediate/generate|set-signed|secrets enable' .bao-calls && fail "PKI set up again"
+  grep -q '^bao write pki_int/roles/mw-crypto ' .bao-calls || fail "roles not rewritten on the second run"
+}
+
+test_pki_services_may_issue_from_their_own_role_only() {
+  provision_fixture
+  assert_ok run_provision
+  grep -q 'path "secret/data/mw-crypto" { capabilities = \["read"\] }' .policy-mw-crypto || fail "mw-crypto KV policy"
+  grep -q 'path "pki_int/issue/mw-crypto" { capabilities = \["update"\] }' .policy-mw-crypto \
+    || fail "mw-crypto may not issue: $(cat .policy-mw-crypto)"
+  [ "$(grep -c pki_int .policy-mw-crypto)" = 1 ] || fail "mw-crypto may issue more than its own role"
+  grep -q 'pki_int/issue/mw-audit-dw"' .policy-mw-audit-dw || fail "mw-audit-dw (caller) may not issue"
+  grep -q pki .policy-mw-orchestrator && fail "mw-orchestrator may issue certificates"
+  return 0
 }
 
 test_a_second_run_keeps_generated_secrets_and_resyncs_env_ones() {

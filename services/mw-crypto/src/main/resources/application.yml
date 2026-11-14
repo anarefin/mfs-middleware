@@ -110,11 +110,25 @@ logging:
 server:
   port: 8080
   shutdown: graceful
+  # mTLS (spec 18.2, D24, ticket 66): the API port needs a client certificate of the OpenBao
+  # intermediate (handshake fails without one); the bundle is this service's own certificate,
+  # issued and renewed in memory by config/ServiceCertificateManager (mw.tls below).
+  ssl:
+    enabled: ${mw.tls.enabled}
+    bundle: ${mw.tls.bundle}
+    client-auth: need
   error:
     include-stacktrace: never
     include-message: never
 
 management:
+  # Probes and metrics on their own plain-HTTP port inside the network (the compose healthcheck has
+  # no client certificate); never published on the host. ssl.enabled=false, or it would inherit
+  # the API port's mTLS.
+  server:
+    port: 8081
+    ssl:
+      enabled: false
   endpoints:
     web:
       exposure:
@@ -190,6 +204,19 @@ mw:
       max-sessions: 8
       acquire-timeout: 2s
       call-timeout: 5s
+  # This service's certificate from OpenBao PKI (spec 18.2, 18.4, D24; config/TlsProperties,
+  # config/ServiceCertificateManager): issued at start through Spring Cloud Vault (AppRole policy:
+  # pki_int/issue/mw-crypto only), renewed at two thirds of its life, never written to disk.
+  tls:
+    enabled: ${MW_TLS_ENABLED:true}
+    pki-mount: pki_int
+    role: ${spring.application.name}
+    common-name: ${spring.application.name}
+    # the compose DNS name; the HSM ITs add localhost
+    alt-names: ${MW_TLS_ALT_NAMES:${spring.application.name}}
+    ttl: 72h
+    retry-period: 1m
+    bundle: mw-service
   # Who may call /internal/v1/** (spec 18.2; config/InternalAuthProperties). Callers: mw-admin-api
   # (key screens and ceremony, ticket 75), mw-auth (PIN, tokens, assertions, ticket 67), mw-audit-dw
   # (audit anchor, ticket 74); each has its own Keycloak realm services client.
@@ -198,3 +225,5 @@ mw:
     issuer: ${MW_INTERNAL_ISSUER:http://keycloak:8080/realms/services}
     audience: mw-crypto
     allowed-clients: mw-admin-api,mw-auth,mw-audit-dw
+    # Generate (only with bootstrap-keys, until the ceremony of ticket 75) and rotate keys.
+    key-admin-clients: mw-admin-api

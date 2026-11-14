@@ -138,6 +138,21 @@ management:
       type: w3c
 
 mw:
+  # This service's certificate from OpenBao PKI (spec 18.2, 18.4, D24; config/TlsProperties,
+  # config/ServiceCertificateManager): off until the service calls an mTLS server (mw-crypto, the
+  # mw-auth internal API): ticket 74 (audit anchor signing at mw-crypto) turns it on. On, it issues
+  # pki_int/issue/mw-audit-dw at start (role and policy from PKI_SERVICES of
+  # deploy/provision/services.sh), renews at two thirds of the life and never writes the key to
+  # disk; callers use ServiceCertificateManager.clientSslContext().
+  tls:
+    enabled: ${MW_TLS_ENABLED:false}
+    pki-mount: pki_int
+    role: ${spring.application.name}
+    common-name: ${spring.application.name}
+    alt-names: ${MW_TLS_ALT_NAMES:${spring.application.name}}
+    ttl: 72h
+    retry-period: 1m
+    bundle: mw-service
   # Internal audit search /internal/v1/** (spec 18.2, M3 gate): Keycloak client-credentials JWT of
   # realm `services` (config/SecurityConfig). Only mw-admin-api: the search has no org filter, so
   # mw-portal-api (org-scoped) is not allowed.

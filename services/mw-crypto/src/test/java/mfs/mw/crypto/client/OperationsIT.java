@@ -48,7 +48,7 @@ class OperationsIT {
     HsmStack.start();
     for (String[] k : new String[][] {
         {"PIN_TRANSPORT", "it-pin-transport"}, {"PIN_HMAC", "it-pin-hmac"}, {"HMAC_IT", "hmac-it"}, {"KEK_IT", "kek-it"}}) {
-      HttpResponse<String> r = post("/internal/v1/keys", "{\"purpose\":\"" + k[0] + "\",\"keyId\":\"" + k[1] + "\"}");
+      HttpResponse<String> r = admin("/internal/v1/keys", "{\"purpose\":\"" + k[0] + "\",\"keyId\":\"" + k[1] + "\"}");
       assertThat(r.statusCode()).as(r.body()).isIn(201, 409);
     }
     // the bootstrap keys the JWS and token tests use
@@ -78,6 +78,11 @@ class OperationsIT {
 
   static HttpResponse<String> post(String path, String json) {
     return HsmStack.post(path, json, token());
+  }
+
+  /** Generate and rotate need the key-admin client (ticket 66). */
+  static HttpResponse<String> admin(String path, String json) {
+    return HsmStack.post(path, json, InternalTokens.forClient("mw-admin-api"));
   }
 
   static JsonNode ok(HttpResponse<String> r) {
@@ -171,8 +176,8 @@ class OperationsIT {
 
     // rotate both keys: a block under the previous transport version still decrypts, the match under
     // the VERIFY_ONLY HMAC version carries the re-hash under the new ACTIVE one
-    assertThat(post("/internal/v1/keys/it-pin-hmac/rotate", "").statusCode()).isEqualTo(200);
-    assertThat(post("/internal/v1/keys/it-pin-transport/rotate", "").statusCode()).isEqualTo(200);
+    assertThat(admin("/internal/v1/keys/it-pin-hmac/rotate", "").statusCode()).isEqualTo(200);
+    assertThat(admin("/internal/v1/keys/it-pin-transport/rotate", "").statusCode()).isEqualTo(200);
     JsonNode rotated = ok(post("/internal/v1/pin/verify", verify(block("it-pin-transport.v1", transportV1, pin), h1,
         "it-pin-hmac.v1")));
     assertThat(rotated.get("match").asBoolean()).isTrue();
@@ -251,7 +256,7 @@ class OperationsIT {
     error(post("/internal/v1/envelope/decrypt", body.replace(aad, b64("other".getBytes(StandardCharsets.UTF_8)))),
         400, "MW-VAL-016");
 
-    assertThat(post("/internal/v1/keys/kek-it/rotate", "").statusCode()).isEqualTo(200);
+    assertThat(admin("/internal/v1/keys/kek-it/rotate", "").statusCode()).isEqualTo(200);
     assertThat(ok(post("/internal/v1/envelope/decrypt", body)).get("plaintext").asString()).isEqualTo(plain);
     JsonNode next = ok(post("/internal/v1/envelope/encrypt", "{\"kekId\":\"kek-it\",\"plaintext\":\"" + plain + "\"}"));
     assertThat(next.get("kekId").asString()).isNotEqualTo(kid);

@@ -4,8 +4,10 @@
 #   1. OpenBao KV secret/<svc>: generated values created once and never overwritten, deploy/.env
 #      values synced on every run, values copied from another service's secret;
 #   2. PostgreSQL: the service's login role(s) and schema (passwords synced from the secret);
-#   3. OpenBao policy + AppRole <svc> reading only that secret; the role-id and a fresh secret-id
-#      go to OUT_ROOT/<dir>, the service's own approle volume (Spring configtree).
+#   3. OpenBao policy + AppRole <svc> reading only that secret (and issuing from its own pki_int
+#      role, for a PKI_SERVICES entry); the role-id and a fresh secret-id go to OUT_ROOT/<dir>, the
+#      service's own approle volume (Spring configtree).
+# Before them: the PKI of mTLS phase 1 (root and intermediate CA once, a role per PKI_SERVICES entry).
 # Then the SECRETS_AHEAD entries of services.sh: KV values only, for a service not in the stack yet.
 # Each service still gets only its own secret, role and AppRole; only this one-shot holds the
 # OpenBao root token and the PostgreSQL admin password, and it exits when done.
@@ -22,6 +24,9 @@ OUT_ROOT="${OUT_ROOT:-/out}"
 bao_login
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
+
+pki_setup
+for s in $PKI_SERVICES; do pki_role "$s"; done
 
 n=0
 for entry in $SERVICES; do

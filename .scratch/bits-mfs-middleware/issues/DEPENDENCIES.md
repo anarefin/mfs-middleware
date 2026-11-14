@@ -34,7 +34,7 @@
 63-mw-crypto-operations                     62                open
 64-payshield-provider-simulator             63                open
 65-mw-crypto-xmldsig-http-signatures        63                open
-66-openbao-pki-mtls                         62                open
+66-openbao-pki-mtls                         62                done     24m      40 files +2975 −70     d8032171..596a1e05
 67-mw-auth-scaffold                         63,66             open
 68-move-device-otp-sessions-to-mw-auth      67                open
 69-mw-auth-login-tokens                     68                open
