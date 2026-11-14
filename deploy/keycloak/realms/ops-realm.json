@@ -12,7 +12,12 @@
   "maxDeltaTimeSeconds": 43200,
   "quickLoginCheckMilliSeconds": 1000,
   "minimumQuickLoginWaitSeconds": 60,
+  "passwordPolicy": "length(12) and notUsername(undefined) and passwordHistory(5)",
   "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 900,
+  "ssoSessionMaxLifespan": 28800,
+  "offlineSessionMaxLifespanEnabled": true,
+  "offlineSessionMaxLifespan": 86400,
   "roles": {
     "realm": [
       {

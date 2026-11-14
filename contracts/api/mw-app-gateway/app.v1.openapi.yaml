@@ -4,7 +4,8 @@ info:
   version: 1.3.0
   description: |
     Mobile apps API v1 (spec 8.2, 9.1), served by mw-app-gateway behind APISIX route `/app/v1/*`.
-    Bearer JWT from Keycloak realm `customers`; the payer wallet is the token's `msisdn` claim.
+    Bearer access JWT from mw-auth (spec 18.7, D21; MSISDN + PIN login on a bound device); the payer
+    wallet is the token's `msisdn` claim.
     Every error is the 5.3 envelope. A financial POST waits up to the reply budget (25 s,
     spec 7.5) for a terminal status: 200 with the result, 202 `PROCESSING` otherwise, then poll GET.
     Submit bodies are checked against `TransactionRequest` (a derived copy in mw-app-gateway) on the

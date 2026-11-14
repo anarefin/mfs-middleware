@@ -68,7 +68,7 @@ not rescanned (decision: the working tree is what ships; a history scan with the
 is `gitleaks git` and can be added to the gate).
 
 The dev/test tester logins are fixed, documented fake values (ADR D9 amendment: `ops-test-pass`,
-`app-test-pass`, `portal-test-pass`, `kc-admin-test-pass`, the ops TOTP secret, `e2e-test-apikey`,
+the app PIN `13579`, `portal-test-pass`, `kc-admin-test-pass`, the ops and portals TOTP secrets, `e2e-test-apikey`,
 OpenBao `dev-root-token`), committed in `deploy/dev.env.defaults` and printed in `docs/testing-guide.html`.
 Decision: accepted, because they open only a local dev/test stack.
 

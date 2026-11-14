@@ -1,6 +1,7 @@
-// The users the test console signs in as: the realm imports' test users (deploy/keycloak/realms),
-// whose wallets core-mock seeds (PIN 1234). Any other user of the realm can be typed in as well
-// (e.g. mw-seeder's seed-customer01 or seed-run-customer01).
+// The users the test console signs in as. App users: core-mock's own seed wallets (core PIN 1234),
+// logged in at mw-auth with the seeded app PIN; any other app user can be typed in as well (mw-seeder's
+// seed-customer01, or an MSISDN). Portal users: the realm portals import's users (deploy/keycloak/realms,
+// password + the pre-set TOTP secret).
 
 export type AppPersona = { user: string; msisdn: string; role: "customer" | "agent" | "merchant"; label: string };
 

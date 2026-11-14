@@ -1,10 +1,13 @@
 import "server-only";
-// Keycloak realm portals tokens through APISIX (password grant of the dev client mw-portal), cached
-// per user in this process and refreshed with the refresh token. App users log in at mw-auth since
-// ticket 69 (lib/server/device.ts); their wallets are the personas' MSISDNs.
+// Keycloak realm portals tokens through APISIX (password grant of the dev client mw-portal plus the
+// TOTP code of the users' pre-set secret: the realm demands TOTP since ticket 73), cached per user in
+// this process and refreshed with the refresh token. App users log in at mw-auth since ticket 69
+// (lib/server/device.ts); their wallets are the personas' MSISDNs.
+
+import { totp } from "@/lib/crypto";
 
 import { APP_PERSONAS } from "@/lib/personas";
-import { portalsPassword } from "./env";
+import { portalsPassword, portalsTotpSecret } from "./env";
 import { EdgeError, edge, sleep } from "./edge";
 
 export type Realm = "portals";
@@ -12,8 +15,10 @@ export type Realm = "portals";
 const CLIENT: Record<Realm, string> = { portals: "mw-portal" };
 
 type Cached = { access: string; refresh?: string; exp: number; rexp: number };
-const g = globalThis as unknown as { __tcTokens?: Map<string, Cached> };
+const g = globalThis as unknown as { __tcTokens?: Map<string, Cached>; __tcTotpSteps?: Map<string, number> };
 const cache = (g.__tcTokens ??= new Map());
+// Keycloak refuses a code a user has already used: the last 30 s step used per user
+const totpSteps = (g.__tcTotpSteps ??= new Map());
 
 function store(key: string, b: { access_token: string; refresh_token?: string; expires_in: number; refresh_expires_in?: number }): string {
   const now = Date.now();
@@ -35,7 +40,11 @@ export async function token(realm: Realm, user: string): Promise<string> {
   }
   let last = "";
   for (let i = 0; i < 3; i++) {
-    const r = await edge("POST", path, { form: { client_id: CLIENT[realm], grant_type: "password", username: user, password: portalsPassword() } });
+    if (totpSteps.get(user) === Math.floor(Date.now() / 30000)) await sleep(30000 - (Date.now() % 30000) + 200);
+    totpSteps.set(user, Math.floor(Date.now() / 30000));
+    const r = await edge("POST", path, {
+      form: { client_id: CLIENT[realm], grant_type: "password", username: user, password: portalsPassword(), totp: totp(portalsTotpSecret()) },
+    });
     if (r.status === 200) return store(key, r.body as never);
     last = `HTTP ${r.status} ${r.raw.slice(0, 300)}`;
     if (![400, 401, 429].includes(r.status)) break;

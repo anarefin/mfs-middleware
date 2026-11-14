@@ -23,8 +23,8 @@ class WriteManifestStepTest {
     ctx.personas()
         .add(
             new SeedManifest.Persona(
-                "customer", "customers", "seed-customer01", List.of("customer"), Map.of("msisdn", "01712000001"),
-                "mw-app", "KC_CUSTOMERS_TEST_PASSWORD", null));
+                "customer", "mw-auth", "seed-customer01", List.of("customer"), Map.of("msisdn", "01712000001"),
+                null, "MW_SEED_APP_PIN", null));
     ctx.wallets().add(new SeedManifest.Wallet("01712000001", "CUSTOMER", 1_000_000));
     ctx.partners().add(new SeedManifest.Partner("ocs", "telco", 0, true, 20_000L));
     return ctx;
@@ -40,7 +40,7 @@ class WriteManifestStepTest {
     JsonNode m = json.readTree(file.toFile());
     assertThat(m.path("schemaVersion").asInt()).isEqualTo(1);
     assertThat(m.path("wallets").get(0).path("walletId").asString()).isEqualTo("01712000001");
-    assertThat(m.path("personas").get(0).path("passwordEnv").asString()).isEqualTo("KC_CUSTOMERS_TEST_PASSWORD");
+    assertThat(m.path("personas").get(0).path("passwordEnv").asString()).isEqualTo("MW_SEED_APP_PIN");
     assertThat(m.path("partners").get(0).path("timeoutMs").asLong()).isEqualTo(20_000);
   }
 

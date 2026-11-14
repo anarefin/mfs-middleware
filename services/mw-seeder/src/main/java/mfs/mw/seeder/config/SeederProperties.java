@@ -69,9 +69,12 @@ public record SeederProperties(
   /**
    * A realm the seeder puts users in: their password (and TOTP secret when the realm demands a
    * code), the names of the {@code deploy/.env} variables holding them (for the manifest), the client
-   * a suite logs in with, and the clients that must exist.
+   * a suite logs in with, and the clients that must exist. {@code keycloak: false} (ticket 73): not a
+   * Keycloak realm but the users who log in at mw-auth (the app users, MSISDN + the dev app PIN): they
+   * are only listed in the manifest, no Keycloak user is made for them. Unset means a Keycloak realm.
    */
   public record Realm(
+      Boolean keycloak,
       String password,
       String passwordEnv,
       String totpSecret,
@@ -85,6 +88,11 @@ public record SeederProperties(
 
     public boolean totp() {
       return totpSecret != null && !totpSecret.isBlank();
+    }
+
+    /** Whether the realm is a Keycloak realm (the default) rather than mw-auth's app users. */
+    public boolean inKeycloak() {
+      return keycloak == null || keycloak;
     }
   }
 

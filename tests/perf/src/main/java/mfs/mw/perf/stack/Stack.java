@@ -15,8 +15,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * The running MVP stack as the perf suite sees it (as the former Cucumber suite's {@code Stack}, copied: the
  * suites share no code): the APISIX edge URL (where the edge policies apply) and {@code docker compose}
- * on the stack's project for what no API offers (Keycloak user provisioning, the post-run
- * read-only queries of the core's outbox and the audit trail).
+ * on the stack's project for what no API offers (the post-run read-only queries of the core's
+ * outbox and the audit trail).
  *
  * <p>Configuration (system properties forwarded by Gradle, or environment): {@code
  * mw.perf.base-url} / {@code MW_PERF_BASE_URL} (default {@code https://localhost:<port>} with the
@@ -65,7 +65,16 @@ public final class Stack {
     return baseUrl().resolve(path);
   }
 
-  /** A dev credential (e.g. {@code KC_CUSTOMERS_TEST_PASSWORD}); fails when missing. */
+  /** A dev setting of {@code deploy/.env} (or the environment), {@code fallback} when it is not set. */
+  public String devSetting(String name, String fallback) {
+    String v = System.getenv(name);
+    if (v == null || v.isEmpty()) {
+      v = devEnv.get(name);
+    }
+    return v == null || v.isEmpty() ? fallback : v;
+  }
+
+  /** A dev credential (e.g. {@code MW_SEED_APP_PIN}); fails when missing. */
   public String devCredential(String name) {
     String v = System.getenv(name);
     if (v == null) {

@@ -7,10 +7,10 @@ PICK="$REPO_DIR/tests/api/run_customer.mjs"
 rc_manifest() {
   local i sep="" personas=""
   for i in 01 02 03; do
-    personas="$personas$sep{\"persona\":\"run-customer\",\"realm\":\"customers\",\"username\":\"seed-run-customer$i\",\"roles\":[\"customer\"],\"attributes\":{\"msisdn\":\"01714${i}0001\"},\"loginClient\":\"mw-app\",\"passwordEnv\":\"KC_CUSTOMERS_TEST_PASSWORD\"}"
+    personas="$personas$sep{\"persona\":\"run-customer\",\"realm\":\"mw-auth\",\"username\":\"seed-run-customer$i\",\"roles\":[\"customer\"],\"attributes\":{\"msisdn\":\"01714${i}0001\"},\"passwordEnv\":\"MW_SEED_APP_PIN\"}"
     sep=","
   done
-  printf '{"schemaVersion":1,"personas":[{"persona":"customer","realm":"customers","username":"seed-customer01","roles":["customer"],"attributes":{"msisdn":"01712000001"}},%s]}\n' "$personas" >manifest.json
+  printf '{"schemaVersion":1,"personas":[{"persona":"customer","realm":"mw-auth","username":"seed-customer01","roles":["customer"],"attributes":{"msisdn":"01712000001"}},%s]}\n' "$personas" >manifest.json
 }
 
 test_the_first_run_of_a_day_takes_the_first_run_customer_and_records_it() {

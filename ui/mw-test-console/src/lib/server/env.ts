@@ -18,5 +18,7 @@ export const e2eApiKey = (): string => required("MW_E2E_API_KEY");
 /** The app PIN of every seeded app wallet at mw-auth (MW_SEED_APP_PIN, ticket 69). */
 export const appPin = (): string => required("MW_SEED_APP_PIN");
 export const portalsPassword = (): string => required("KC_PORTALS_TEST_PASSWORD");
+/** The pre-set TOTP secret of the portals test users (realm portals demands TOTP, ticket 73). */
+export const portalsTotpSecret = (): string => required("KC_PORTALS_TEST_TOTP_SECRET");
 /** hmac-auth secret of the dev merchant merchant-demo (wallet 01911000001, "Demo Shop"). */
 export const checkoutSecret = (): string => required("CHECKOUT_DEMO_MERCHANT_SECRET");

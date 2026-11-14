@@ -38,12 +38,13 @@ final class SeedFixtures {
             new SeederProperties.Readiness("mw-admin-api", URI.create("http://mw-admin-api:8080/actuator/health/readiness"))),
         new SeederProperties.KeycloakAdmin("master", "admin-cli", "kc-admin", "fake-admin-password"),
         Map.of(
-            "ops", new Realm("fake-ops-password", "KC_OPS_TEST_PASSWORD", "JBSWY3DPEHPK3PXPFAKE", "KC_OPS_TEST_TOTP_SECRET", "mw-e2e-ops", List.of("mw-e2e-ops", "mw-admin-ui")),
-            "customers", new Realm("fake-customer-password", "KC_CUSTOMERS_TEST_PASSWORD", null, null, "mw-app", List.of("mw-app"))),
+            "ops", new Realm(null, "fake-ops-password", "KC_OPS_TEST_PASSWORD", "JBSWY3DPEHPK3PXPFAKE", "KC_OPS_TEST_TOTP_SECRET", "mw-e2e-ops", List.of("mw-e2e-ops", "mw-admin-ui")),
+            // not a Keycloak realm (ticket 73): the app users log in at mw-auth with the app PIN
+            "mw-auth", new Realm(false, "13579", "MW_SEED_APP_PIN", null, null, null, List.of())),
         List.of(
             new User("maker", "ops", MAKER, List.of("viewer", "ops-maker"), Map.of()),
             new User("checker", "ops", CHECKER, List.of("viewer", "ops-checker"), Map.of()),
-            new User("customer", "customers", "seed-customer01", List.of("customer"), Map.of("msisdn", "01712000001"))),
+            new User("customer", "mw-auth", "seed-customer01", List.of("customer"), Map.of("msisdn", "01712000001"))),
         new SeederProperties.Operators("ops", "mw-e2e-ops", MAKER, CHECKER),
         List.of(
             new WalletSpec("01712000001", "CUSTOMER", 1_000_000),

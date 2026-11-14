@@ -44,19 +44,4 @@ class PerfUsersTest {
     assertThatThrownBy(() -> new PerfUsers(800, 30, 100)).hasMessageContaining("seed");
     assertThatThrownBy(() -> new PerfUsers(200, 41, 100)).hasMessageContaining("seed");
   }
-
-  @Test
-  void the_keycloak_import_creates_each_user_with_its_role_wallet_and_the_dev_password() {
-    JsonNode json = JsonMapper.builder().build().readTree(new PerfUsers(2, 1, 1).partialImport("fake-pw"));
-
-    assertThat(json.path("ifResourceExists").asString()).isEqualTo("SKIP");
-    assertThat(json.path("users")).hasSize(3);
-    JsonNode agent = json.path("users").get(2);
-    assertThat(agent.path("username").asString()).isEqualTo("perf-a01");
-    assertThat(agent.path("enabled").asBoolean()).isTrue();
-    assertThat(agent.path("realmRoles").get(0).asString()).isEqualTo("agent");
-    assertThat(agent.path("attributes").path("msisdn").get(0).asString()).isEqualTo("01811000011");
-    assertThat(agent.path("credentials").get(0).path("value").asString()).isEqualTo("fake-pw");
-    assertThat(agent.path("email").asString()).isEqualTo("perf-a01@example.test");
-  }
 }

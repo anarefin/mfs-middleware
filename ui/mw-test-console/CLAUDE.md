@@ -22,8 +22,9 @@ customers, holds the stack's generated test credentials and has no sign-in.
   answer redacted by `lib/redact.ts`, ms). Every action returns an `Outcome` (`lib/types.ts`): the
   page (`app/components/result.tsx`) shows the headline, final status, core balances before/after,
   the SMS received and every step, expandable.
-- `lib/server/tokens.ts`: Keycloak password grant through APISIX (`portals`/`mw-portal`), cached per
-  user, refreshed; `walletOf` (an app user's MSISDN: the personas, mw-seeder's `seed-*` app users, or an
+- `lib/server/tokens.ts`: Keycloak password grant through APISIX (`portals`/`mw-portal`) with the TOTP
+  code of the portals users' pre-set secret `KC_PORTALS_TEST_TOTP_SECRET` (`lib/crypto.ts` `totp`;
+  the realm demands TOTP since ticket 73; one code per user per 30 s step), cached per user, refreshed; `walletOf` (an app user's MSISDN: the personas, mw-seeder's `seed-*` app users, or an
   MSISDN typed in). `lib/server/device.ts`: the app's bound device and mw-auth session per user
   (tickets 68-69; EC P-256 key; `POST /auth/v1/otp` with the MSISDN, the OTP read from the SMSC
   simulator; `POST /auth/v1/devices` with the app PIN `MW_SEED_APP_PIN` encrypted under mw-auth's
@@ -43,8 +44,8 @@ customers, holds the stack's generated test credentials and has no sign-in.
   scenario forms, recorded requests, callback replay, core-mock faults, wallet lookup, SMPP binds /
   drop / throttle), `/inbox` (SMSC and GreenMail), `/checkout` (create, page, OTP, pay, signed
   redirect, IPNs), `/bulk` (sample CSV, upload, approve / reject / pause / resume, status, result,
-  transactions, SP query). Personas: `lib/personas.ts` (the realm imports' users; any other user can
-  be typed in).
+  transactions, SP query). Personas: `lib/personas.ts` (core-mock's app wallets, the portals realm
+  import's users; any other user can be typed in).
 - An add money from the bank first sets c2wbank callbacks ONCE when the simulator has none (a step
   says so), as every API suite scenario does.
 - `src/proxy.ts`: per-request CSP nonce (`lib/security-headers.ts`), `cache-control: no-store`;
@@ -66,7 +67,8 @@ kept.
 - `deploy/docker-compose.yml` service `mw-test-console`, profile `tester` (not `core`: outside
   `make compose-check`'s budget, about 192 MiB), network `app`, read-only root. Env: `EDGE_URL`,
   `PUBLIC_URL` (links to `/console`), `MW_E2E_API_KEY`, `MW_SEED_APP_PIN` (ticket 69),
-  `KC_PORTALS_TEST_PASSWORD`, `CHECKOUT_DEMO_MERCHANT_SECRET` from `deploy/.env`.
+  `KC_PORTALS_TEST_PASSWORD`, `KC_PORTALS_TEST_TOTP_SECRET` (ticket 73), `CHECKOUT_DEMO_MERCHANT_SECRET`
+  from `deploy/.env`.
 - APISIX `deploy/apisix/routes-test/test-console.json`: `/tester`, `/tester/*` to
   `mw-test-console:3000`, private source addresses only, read timeout 180 s (a flow with a status
   inquiry takes up to a minute). A test-only route: it exists only while `apisix-init` ran with
@@ -81,8 +83,8 @@ kept.
 | from `deploy/`: `docker compose --profile tester build mw-test-console` | the image `mfs-mw/mw-test-console:local` |
 | `scripts/tester.sh` (repo root) | test routes on, start the container, print https://localhost/tester |
 | `scripts/tester-e2e.sh [GREP]` (repo root) | Playwright (`e2e/*.spec.ts`, file order, one worker) against the console on the running, seeded stack (from `deploy/`: `docker compose --profile core --profile seed up -d --build --wait`, then `scripts/tester.sh`); `E2E_BASE_URL` |
-| `pnpm dev` | dev server on :3001 against the stack: `EDGE_URL=https://localhost`, `NODE_EXTRA_CA_CERTS=<file>` with the stack's self-signed edge certificate (`docker compose -f deploy/docker-compose.yml cp apisix:/usr/local/apisix/conf/cert/edge.crt build/edge.crt`; TLS verification stays on) plus the four credentials above in the environment; then `E2E_BASE_URL=http://localhost:3001 pnpm test:e2e` |
+| `pnpm dev` | dev server on :3001 against the stack: `EDGE_URL=https://localhost`, `NODE_EXTRA_CA_CERTS=<file>` with the stack's self-signed edge certificate (`docker compose -f deploy/docker-compose.yml cp apisix:/usr/local/apisix/conf/cert/edge.crt build/edge.crt`; TLS verification stays on) plus the five credentials above in the environment; then `E2E_BASE_URL=http://localhost:3001 pnpm test:e2e` |
 
 The e2e specs check money with deltas (fee included: P2P Tk 5, top-up Tk 2) and reset the simulators
-they change; they use the realm users customer01 / customer02 / agent01, so a run spends about Tk 700
+they change; they use the app users customer01 / customer02 / agent01, so a run spends about Tk 700
 of customer01's Tk 15,000 daily debit limit.

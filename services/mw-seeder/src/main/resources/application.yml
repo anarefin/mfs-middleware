@@ -80,15 +80,20 @@ mw:
       portals:
         password: ${KC_PORTALS_TEST_PASSWORD:}
         password-env: KC_PORTALS_TEST_PASSWORD
+        # the portals realm demands TOTP (ticket 73): the org personas get this pre-set fake secret
+        totp-secret: ${KC_PORTALS_TEST_TOTP_SECRET:}
+        totp-secret-env: KC_PORTALS_TEST_TOTP_SECRET
         login-client: mw-portal
         clients: [mw-portal]
-      customers:
-        password: ${KC_CUSTOMERS_TEST_PASSWORD:}
-        password-env: KC_CUSTOMERS_TEST_PASSWORD
-        login-client: mw-app
-        clients: [mw-app]
+      # Not a Keycloak realm (ticket 73, D21: the customers realm is gone): the app users log in at
+      # mw-auth with MSISDN + the dev app PIN (step seed-app-pins). Listed in the manifest only.
+      mw-auth:
+        keycloak: false
+        password: ${MW_SEED_APP_PIN:}
+        password-env: MW_SEED_APP_PIN
     # The shared baseline personas (ticket 57; Playwright of ticket 59 logs in as the ops ones). The
-    # realm imports' own users (ops-e2e-*, customer01, org-maker01, ...) stay for the e2e suite.
+    # realm imports' own users (ops-e2e-*, org-maker01, ...) and core-mock's own app wallets
+    # (customer01 = 01711000001, ...) stay for the e2e suite. realm mw-auth: app users (no Keycloak user).
     users:
       - { persona: maker, realm: ops, username: seed-ops-maker, roles: [viewer, ops-maker] }
       - { persona: checker, realm: ops, username: seed-ops-checker, roles: [viewer, ops-checker] }
@@ -97,37 +102,37 @@ mw:
       - { persona: compliance, realm: ops, username: seed-ops-compliance, roles: [compliance-officer] }
       - { persona: org-maker, realm: portals, username: seed-org-maker, roles: [org-maker], attributes: { orgId: ORG001 } }
       - { persona: org-checker, realm: portals, username: seed-org-checker, roles: [org-checker], attributes: { orgId: ORG001 } }
-      - { persona: customer, realm: customers, username: seed-customer01, roles: [customer], attributes: { msisdn: "01712000001" } }
-      - { persona: customer, realm: customers, username: seed-customer02, roles: [customer], attributes: { msisdn: "01712000002" } }
-      - { persona: agent, realm: customers, username: seed-agent01, roles: [agent], attributes: { msisdn: "01812000001" } }
-      - { persona: merchant, realm: customers, username: seed-merchant01, roles: [merchant], attributes: { msisdn: "01912000001" } }
+      - { persona: customer, realm: mw-auth, username: seed-customer01, roles: [customer], attributes: { msisdn: "01712000001" } }
+      - { persona: customer, realm: mw-auth, username: seed-customer02, roles: [customer], attributes: { msisdn: "01712000002" } }
+      - { persona: agent, realm: mw-auth, username: seed-agent01, roles: [agent], attributes: { msisdn: "01812000001" } }
+      - { persona: merchant, realm: mw-auth, username: seed-merchant01, roles: [merchant], attributes: { msisdn: "01912000001" } }
       # The API suite's run customers (tests/api/run_customer.mjs): each scripts/api-test.sh run pays as one of them
       # (lib.js plays customer01 as it), at most 3 runs per UTC day each, so repeated runs stay under
       # core-mock's daily debit limit. MSISDN 01714NN0001: masks as 0171****001 like customer01.
-      - { persona: run-customer, realm: customers, username: seed-run-customer01, roles: [customer], attributes: { msisdn: "01714010001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer02, roles: [customer], attributes: { msisdn: "01714020001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer03, roles: [customer], attributes: { msisdn: "01714030001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer04, roles: [customer], attributes: { msisdn: "01714040001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer05, roles: [customer], attributes: { msisdn: "01714050001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer06, roles: [customer], attributes: { msisdn: "01714060001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer07, roles: [customer], attributes: { msisdn: "01714070001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer08, roles: [customer], attributes: { msisdn: "01714080001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer09, roles: [customer], attributes: { msisdn: "01714090001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer10, roles: [customer], attributes: { msisdn: "01714100001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer11, roles: [customer], attributes: { msisdn: "01714110001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer12, roles: [customer], attributes: { msisdn: "01714120001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer13, roles: [customer], attributes: { msisdn: "01714130001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer14, roles: [customer], attributes: { msisdn: "01714140001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer15, roles: [customer], attributes: { msisdn: "01714150001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer16, roles: [customer], attributes: { msisdn: "01714160001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer17, roles: [customer], attributes: { msisdn: "01714170001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer18, roles: [customer], attributes: { msisdn: "01714180001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer19, roles: [customer], attributes: { msisdn: "01714190001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer20, roles: [customer], attributes: { msisdn: "01714200001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer21, roles: [customer], attributes: { msisdn: "01714210001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer22, roles: [customer], attributes: { msisdn: "01714220001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer23, roles: [customer], attributes: { msisdn: "01714230001" } }
-      - { persona: run-customer, realm: customers, username: seed-run-customer24, roles: [customer], attributes: { msisdn: "01714240001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer01, roles: [customer], attributes: { msisdn: "01714010001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer02, roles: [customer], attributes: { msisdn: "01714020001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer03, roles: [customer], attributes: { msisdn: "01714030001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer04, roles: [customer], attributes: { msisdn: "01714040001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer05, roles: [customer], attributes: { msisdn: "01714050001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer06, roles: [customer], attributes: { msisdn: "01714060001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer07, roles: [customer], attributes: { msisdn: "01714070001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer08, roles: [customer], attributes: { msisdn: "01714080001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer09, roles: [customer], attributes: { msisdn: "01714090001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer10, roles: [customer], attributes: { msisdn: "01714100001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer11, roles: [customer], attributes: { msisdn: "01714110001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer12, roles: [customer], attributes: { msisdn: "01714120001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer13, roles: [customer], attributes: { msisdn: "01714130001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer14, roles: [customer], attributes: { msisdn: "01714140001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer15, roles: [customer], attributes: { msisdn: "01714150001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer16, roles: [customer], attributes: { msisdn: "01714160001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer17, roles: [customer], attributes: { msisdn: "01714170001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer18, roles: [customer], attributes: { msisdn: "01714180001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer19, roles: [customer], attributes: { msisdn: "01714190001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer20, roles: [customer], attributes: { msisdn: "01714200001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer21, roles: [customer], attributes: { msisdn: "01714210001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer22, roles: [customer], attributes: { msisdn: "01714220001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer23, roles: [customer], attributes: { msisdn: "01714230001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer24, roles: [customer], attributes: { msisdn: "01714240001" } }
     # The ops personas the admin-api steps act as (maker != checker), direct-grant client + TOTP.
     operators:
       realm: ops
@@ -187,8 +192,8 @@ mw:
           body: "আপনি {{counterparty}} নম্বর থেকে ৳{{amount}} পেয়েছেন। TrxID {{txnId}}"
           sender-id: Bits
     # The dev app PIN (ticket 69, step seed-app-pins): the app wallets above (CUSTOMER, AGENT, MERCHANT)
-    # plus the realm imports' app users (customer01/02, agent01, merchant01/02 of customers-realm.json,
-    # core-mock's own seed wallets) log in at mw-auth with it. A fixed fake value from deploy/.env.
+    # plus the suites' app users customer01/02, agent01, merchant01/02 (core-mock's own seed wallets)
+    # log in at mw-auth with it. A fixed fake value from deploy/.env.
     app-pins:
       pin: ${MW_SEED_APP_PIN:}
       pin-env: MW_SEED_APP_PIN

@@ -5,8 +5,9 @@
 # Checks: every platform container healthy and the one-shots exited 0; only APISIX
 # publishes a port beyond 127.0.0.1; every topic in deploy/kafka/topics.txt exists with RF 1 and the
 # planned partition count; Kafka produce/consume; a PostgreSQL connection; a Valkey ping;
-# Keycloak in production mode with its realms in PostgreSQL; a Keycloak token for every test user and the partner client (ops users: refused until
-# TOTP is enrolled, and the ops browser flow requires OTP); an OpenBao KV read; the OpenBao PKI
+# Keycloak in production mode with its realms in PostgreSQL; a Keycloak token for every test user and service client (ops and
+# portals users: refused until TOTP is enrolled or without the code, and the ops and portals browser flows require OTP),
+# partner-sim by private_key_jwt (its key from OpenBao) and refused without an assertion; an OpenBao KV read; the OpenBao PKI
 # roles of mTLS phase 1 and, when mw-crypto runs, its certificate metric, a refused handshake without
 # a client certificate and a 200 with one plus the JWT; the APISIX /healthz route over HTTPS on the
 # published port; no rate-limiter degradation logged.
@@ -176,6 +177,32 @@ totp_required() {
   printf '%s' "$out" | jq -e '.access_token == null and .error == "invalid_grant"' >/dev/null \
     || { echo "got: $out"; return 1; }
 }
+# no_token REALM FORM...: Keycloak answers without an access token
+no_token() {
+  local realm="$1"; shift
+  local args=() f out
+  for f in "$@"; do args+=(--data-urlencode "$f"); done
+  out="$(docker run --rm --network "$ops_net" "$CURL_IMAGE" -s "${args[@]}" \
+    "http://keycloak:8080/realms/$realm/protocol/openid-connect/token")"
+  printf '%s' "$out" | jq -e '.access_token == null' >/dev/null || { echo "got a token"; return 1; }
+}
+b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+# client_jwt_token REALM CLIENT: client credentials with private_key_jwt (RFC 7523): a JWT signed RS256
+# with the client's private key, which the provision one-shot keeps in OpenBao (secret/mw-simulators,
+# sim.partner-sim.private-key; ticket 73)
+client_jwt_token() {
+  local realm="$1" cid="$2" d now head body sig
+  d="$(mktemp -d)"
+  (umask 077; bao_sh 'bao kv get -field=sim.partner-sim.private-key secret/mw-simulators' >"$d/key.pem") || { rm -rf "$d"; echo "no partner-sim key in OpenBao"; return 1; }
+  now="$(date +%s)"
+  head="$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)"
+  body="$(jq -cn --arg c "$cid" --arg a "http://keycloak:8080/realms/$realm" --arg j "smoke-$now-$$" --argjson n "$now" \
+    '{iss: $c, sub: $c, aud: $a, jti: $j, iat: $n, exp: ($n + 60)}' | b64url)"
+  sig="$(printf '%s.%s' "$head" "$body" | openssl dgst -sha256 -sign "$d/key.pem" -binary | b64url)"
+  rm -rf "$d"
+  token "$realm" grant_type=client_credentials "client_id=$cid" \
+    client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer "client_assertion=$head.$body.$sig"
+}
 for realm_file in "$MW_ROOT"/deploy/keycloak/realms/*-realm.json; do
   realm="$(jq -r .realm "$realm_file")"
   client="$(jq -r '[.clients[] | select(.publicClient and .directAccessGrantsEnabled)][0].clientId // empty' "$realm_file")"
@@ -193,30 +220,36 @@ for realm_file in "$MW_ROOT"/deploy/keycloak/realms/*-realm.json; do
   while read -r cid secret; do
     [ -n "$cid" ] || continue
     check "keycloak token $realm/$cid (client credentials)" token "$realm" grant_type=client_credentials "client_id=$cid" "client_secret=$(resolve "$secret")"
-  done < <(jq -r '.clients[] | select(.serviceAccountsEnabled) | "\(.clientId) \(.secret)"' "$realm_file")
+  done < <(jq -r '.clients[] | select(.serviceAccountsEnabled and .clientAuthenticatorType != "client-jwt") | "\(.clientId) \(.secret)"' "$realm_file")
+  while read -r cid; do
+    [ -n "$cid" ] || continue
+    check "keycloak token $realm/$cid (client credentials, private_key_jwt)" client_jwt_token "$realm" "$cid"
+    check "keycloak $realm/$cid: no token without a client assertion" no_token "$realm" grant_type=client_credentials "client_id=$cid"
+  done < <(jq -r '.clients[] | select(.serviceAccountsEnabled and .clientAuthenticatorType == "client-jwt") | .clientId' "$realm_file")
 done
 # needs ops_net (above); defined with the OpenBao PKI checks when mw-crypto runs
 if declare -F crypto_mtls >/dev/null; then
   check "mw-crypto answers an mw-admin-api client certificate plus its JWT (mTLS)" crypto_mtls
 fi
 
-# ops realm browser flow as imported: password form and OTP form both REQUIRED (18.2)
-ops_browser_flow_requires_otp() {
-  local at flow ex
+# ops and portals realm browser flows as imported: password form and OTP form both REQUIRED (18.2, ticket 73)
+browser_flow_requires_otp() {
+  local realm="$1" at flow ex
   at="$(docker run --rm --network "$ops_net" "$CURL_IMAGE" -sf --data-urlencode grant_type=password \
     --data-urlencode client_id=admin-cli --data-urlencode "username=$(sed -n 's/^KC_BOOTSTRAP_ADMIN_USERNAME=//p' "$MW_ROOT/deploy/env/keycloak.env")" \
     --data-urlencode "password=$KC_BOOTSTRAP_ADMIN_PASSWORD" \
     http://keycloak:8080/realms/master/protocol/openid-connect/token | jq -r .access_token)" || return 1
   flow="$(docker run --rm --network "$ops_net" "$CURL_IMAGE" -sf -H "Authorization: Bearer $at" \
-    http://keycloak:8080/admin/realms/ops | jq -r .browserFlow)" || return 1
-  [ "$flow" != browser ] || { echo "ops realm uses the built-in browser flow"; return 1; }
+    "http://keycloak:8080/admin/realms/$realm" | jq -r .browserFlow)" || return 1
+  [ "$flow" != browser ] || { echo "$realm realm uses the built-in browser flow"; return 1; }
   ex="$(docker run --rm --network "$ops_net" "$CURL_IMAGE" -sf -G -H "Authorization: Bearer $at" \
-    "http://keycloak:8080/admin/realms/ops/authentication/flows/$(jq -rn --arg f "$flow" '$f | @uri')/executions")" || return 1
+    "http://keycloak:8080/admin/realms/$realm/authentication/flows/$(jq -rn --arg f "$flow" '$f | @uri')/executions")" || return 1
   printf '%s' "$ex" | jq -e 'any(.[]; .providerId == "auth-otp-form" and .requirement == "REQUIRED")
     and any(.[]; .providerId == "auth-username-password-form" and .requirement == "REQUIRED")
     and all(.[]; .requirement != "CONDITIONAL")' >/dev/null || { echo "executions: $ex"; return 1; }
 }
-check "keycloak ops realm browser flow requires OTP" ops_browser_flow_requires_otp
+check "keycloak ops realm browser flow requires OTP" browser_flow_requires_otp ops
+check "keycloak portals realm browser flow requires OTP" browser_flow_requires_otp portals
 
 # Keycloak in production mode, its realms stored in its own PostgreSQL database
 kc_prod_mode() { local logs; logs="$(dc logs keycloak 2>&1)"; grep -q 'Profile prod activated' <<<"$logs"; }
@@ -224,7 +257,7 @@ check "keycloak runs in production mode" kc_prod_mode
 kc_realms_in_postgres() {
   local realms
   realms="$(dc exec -T postgres sh -c 'PGPASSWORD="$KC_DB_PASSWORD" psql -h 127.0.0.1 -U keycloak -d keycloak -tAc "select name from realm order by name"')" || return 1
-  for r in customers ops partners portals services; do printf '%s\n' "$realms" | grep -qx "$r" || { echo "realm $r not in the keycloak database: $realms"; return 1; }; done
+  for r in ops partners portals services; do printf '%s\n' "$realms" | grep -qx "$r" || { echo "realm $r not in the keycloak database: $realms"; return 1; }; done
 }
 check "keycloak realms stored in PostgreSQL (keycloak database, keycloak role)" kc_realms_in_postgres
 

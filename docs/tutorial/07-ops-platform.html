@@ -116,14 +116,16 @@
   <p>A Keycloak <strong>realm</strong> is a separate set of users with its own login rules. There is one per kind of user:</p>
   <div class="table-wrap"><table>
     <tr><th>Realm</th><th>Who</th><th>Test users</th></tr>
-    <tr><td><code>customers</code></td><td>app users: customers, agents, merchants</td><td><code>customer01</code>, <code>customer02</code>, <code>agent01</code>, <code>merchant01</code></td></tr>
     <tr><td><code>ops</code></td><td>Bits staff (password + TOTP)</td><td><code>seed-ops-maker</code>, <code>seed-ops-checker</code> and the <code>ops-*</code> users</td></tr>
-    <tr><td><code>portals</code></td><td>organisation and service-provider portal users</td><td><code>org-maker01</code>, <code>org-checker01</code></td></tr>
+    <tr><td><code>portals</code></td><td>organisation and service-provider portal users (password + TOTP)</td><td><code>org-maker01</code>, <code>org-checker01</code></td></tr>
     <tr><td><code>services</code></td><td>service accounts for internal calls between services</td><td><code>mw-portal-api</code>, <code>mw-admin-api</code></td></tr>
-    <tr><td><code>partners</code></td><td>partner systems</td><td><code>partner-sim</code></td></tr>
+    <tr><td><code>partners</code></td><td>partner systems (a signed client assertion, <code>private_key_jwt</code>; no client secret)</td><td><code>partner-sim</code></td></tr>
   </table></div>
-  <p>The test users' passwords are fixed, documented dev values (ops <code>ops-test-pass</code>, customers <code>app-test-pass</code>,
-    portals <code>portal-test-pass</code>); the other secrets are generated per laptop into the gitignored <code>deploy/.env</code>.
+  <p>App users (customers, agents, merchants) have no realm: they log in at mw-auth with their MSISDN and PIN on a bound
+    device (test users <code>customer01</code>, <code>agent01</code>, <code>merchant01</code>, app PIN <code>13579</code>).
+    Every realm locks a user out for a while after five failed logins and demands 12+ character passwords.</p>
+  <p>The test users' passwords are fixed, documented dev values (ops <code>ops-test-pass</code>,
+    portals <code>portal-test-pass</code>, one-time codes from <code>scripts/totp.sh</code>); the other secrets are generated per laptop into the gitignored <code>deploy/.env</code>.
     <code>scripts/creds.sh</code> prints them all.
     Realm files: <a href="../../deploy/keycloak">deploy/keycloak/</a>.</p>
   <p>The app has one extra layer: <strong>device binding</strong>. A login alone is not enough to move money; the phone must also be
