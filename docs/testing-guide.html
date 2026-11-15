@@ -142,17 +142,20 @@ Every login is printed where a step needs it; <a href="#c1-0">1.0 Logins at a gl
       <tr><td class="tick"></td><td>Sign in, sign out, session end, deep links, no token in the browser</td><td><a href="#c9-1">9.1</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Search transactions (all filters, paging)</td><td><a href="#c9-2">9.2</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Transaction detail: timeline, partner calls, audit trail</td><td><a href="#c9-3">9.3</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>Audit anchor badge (HSM-signed daily anchors)</td><td><a href="#c9-3b">9.3</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Audited MSISDN reveal (compliance)</td><td><a href="#c9-4">9.4</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Reversal (maker → checker), reject, refused reversal</td><td><a href="#c9-5">9.5</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>MANUAL_REVIEW: force commit, force release, manual TSQ</td><td><a href="#c9-6">9.6</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Approvals: filters, rules, error codes</td><td><a href="#c9-7">9.7</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Wallet unlock</td><td><a href="#c9-8">9.8</a></td><td>Both</td></tr>
+      <tr><td class="tick"></td><td>Care PIN reset request (maker → checker)</td><td><a href="#c9-8b">9.8</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Partners: disable, enable, timeouts</td><td><a href="#c9-9">9.9</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>USSD menu editor, preview, publish per MNO</td><td><a href="#c9-10">9.10</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>SMS and email templates: preview, publish, reject</td><td><a href="#c9-11">9.11</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>What each role can and cannot do</td><td><a href="#c9-12">9.12</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Keys, rotation and the key ceremony</td><td><a href="#c9-13">9.13</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Follow a transaction in the logs; health checks</td><td><a href="#s10">10</a></td><td>Terminal</td></tr>
+      <tr><td class="tick"></td><td>mTLS refusal and HSM down (fail closed, recovers)</td><td><a href="#c10-1">10.1</a></td><td>Terminal</td></tr>
     </tbody>
   </table></div>
 </section>
@@ -172,7 +175,7 @@ Every login is printed where a step needs it; <a href="#c1-0">1.0 Logins at a gl
       buyer, the organisation portal, the SMS and email inboxes</td><td>none</td></tr>
     <tr><td><b>Ops console</b></td><td><a href="https://localhost/console">https://localhost/console</a></td>
       <td>the operations team: search, timeline, audit trail, reversals, approvals (maker-checker), partners,
-      USSD menus, SMS/email templates, wallet unlock</td><td>Keycloak, password + one-time code (<a href="#s1">section 1</a>)</td></tr>
+      USSD menus, SMS/email templates, wallet unlock and care PIN reset, HSM keys and the key ceremony (security-admin)</td><td>Keycloak, password + one-time code (<a href="#s1">section 1</a>)</td></tr>
   </table></div>
   <p>Every action in the test console goes through the API gateway (APISIX) exactly like a real client.</p>
 
@@ -208,7 +211,7 @@ scripts/creds.sh</pre></div>
     <li>The <span class="ui">Home</span> page shows three stack checks. Expect three green ✔:
       <ul>
         <li><i>APISIX edge answers /healthz</i> (✖: "fix: start the stack (deploy/RUNNING.html)")</li>
-        <li><i>test-only routes are on (core-mock PIN key)</i> (✖: "fix: scripts/tester.sh (re-applies the test routes)")</li>
+        <li><i>test-only routes are on (core-mock wallets)</i> (✖: "fix: scripts/tester.sh (re-applies the test routes)")</li>
         <li><i>simulators answer (SMPP binds of mw-ussd)</i>: the simulators' bind list answers; whether mw-ussd is
           actually bound is checked in 4.2 (✖: "fix: start the stack; docker compose logs mw-simulators")</li>
       </ul></li>
@@ -232,11 +235,13 @@ scripts/creds.sh</pre></div>
     <tr><td>Bulk payees (seeded)</td><td>-</td><td>01711000101 onwards</td><td>-</td></tr>
   </table></div>
   <p>Every app user signs in at mw-auth with its MSISDN, the app PIN <code>13579</code> and a bound device (ticket 69);
-  the test console does it for you. The PIN column is the transaction PIN the core checks until ticket 72.</p>
+  the test console does it for you. The same PIN is the transaction PIN: mw-auth checks it (the core never sees PIN
+  material) and gives the request a signed transaction assertion that the core verifies (ticket 72).</p>
   <p><b>Fees and limits.</b> The core charges the payer the amount <b>plus a fee</b> into the
   <code>FEE-POOL</code> account (P2P Tk 5, top-up Tk 2, …). A Tk 10 P2P therefore shows <code>-Tk 15.00</code>
   on the payer, <code>Tk 10.00</code> on the payee and <code>Tk 5.00</code> on FEE-POOL (a gain has no + sign). Other fees: cash out Tk 10, top-up Tk 2, bill payment Tk 3, merchant payment and add money none. Limits: Tk 5,000
-  per transaction, Tk 15,000 debited per wallet per UTC day. Five wrong PINs in a row lock the wallet.</p>
+  per transaction, Tk 15,000 debited per wallet per UTC day. Three wrong PINs in a row lock the PIN at mw-auth, on every channel
+  (dev timers: 1 min, then 3 min, then until a reset; <a href="#c3-11">3.11</a>, <a href="#c9-8">9.8</a>).</p>
 
   <h3 id="magic">Magic values</h3>
   <p>The partner simulators react to these values; no setup needed.</p>
@@ -274,7 +279,7 @@ scripts/creds.sh</pre></div>
       <tr><td><code>ops-e2e-maker01</code>, <code>ops-e2e-checker01</code></td><td>code: <code>scripts/totp.sh &lt;user&gt;</code> (the API suite uses them too)</td></tr>
       <tr><td><code>ops-maker01</code>, <code>ops-checker01</code>, <code>ops-viewer01</code>, <code>ops-compliance01</code>, <code>ops-auditor01</code>, <code>ops-admin01</code></td><td>enrol an authenticator app at the first sign-in (1.4)</td></tr>
       <tr><td colspan="2">Five wrong passwords or codes lock the user for 1-15 min (unlock: 1.5)</td></tr>
-      <tr><td>App users (mw-auth login: MSISDN + app PIN + bound device)</td><td><code>customer01</code>, <code>customer02</code>, <code>agent01</code>, <code>merchant01</code>, <code>merchant02</code>, <code>seed-customer01</code>, …</td><td>app PIN <code>13579</code></td><td>transaction PIN of every wallet: <code>1234</code></td></tr>
+      <tr><td>App users (mw-auth login: MSISDN + app PIN + bound device)</td><td><code>customer01</code>, <code>customer02</code>, <code>agent01</code>, <code>merchant01</code>, <code>merchant02</code>, <code>seed-customer01</code>, …</td><td>app PIN <code>13579</code></td><td>the same <code>13579</code> is the transaction PIN (checked by mw-auth)</td></tr>
       <tr><td>Portal users (realm <code>portals</code>, client <code>mw-portal</code>)</td><td><code>org-maker01</code>, <code>org-checker01</code>, <code>org-makerchecker01</code>, <code>org-checker02</code>, <code>sp-viewer01</code>, <code>seed-org-maker</code>, <code>seed-org-checker</code></td><td><code>portal-test-pass</code></td><td>6-digit code: <code>scripts/totp.sh &lt;user&gt;</code> (every portal user has the pre-set secret)</td></tr>
       <tr><td>Keycloak admin (realm <code>master</code>)</td><td><code>kc-admin</code></td><td><code>kc-admin-test-pass</code></td><td>no web console; commands in 1.5</td></tr>
       <tr><td>OpenBao (secrets store)</td><td>-</td><td>token <code>dev-root-token</code></td><td>no web UI; commands in 1.6</td></tr>
@@ -419,21 +424,23 @@ scripts/creds.sh</pre></div>
     (dev only; on an OpenBao volume from before, use the token <code>scripts/creds.sh</code> prints instead). Run from the repository folder:</p>
     <div class="cmd"><pre><span class="c"># list every service's secret folder</span>
 docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token openbao bao kv list secret/
-<span class="c"># one service, e.g. the core mock's PIN key pair</span>
-docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token openbao bao kv get secret/mw-core-mock
+<span class="c"># one service, e.g. mw-crypto (the softhsm token PIN it logs in with)</span>
+docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token openbao bao kv get secret/mw-crypto
 <span class="c"># one field only</span>
 docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token openbao bao kv get -field=spring.datasource.password secret/mw-notify
-<span class="c"># the engines that are on (kv, transit, pki, database)</span>
+<span class="c"># the engines that are on (kv, transit, pki, database; pki_int issues the services' mTLS certificates)</span>
 docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token openbao bao secrets list</pre></div>
     <p>Expect <code>kv list</code> to print one key per service (<code>mw-admin-api</code>, <code>mw-core-mock</code>, …, and <code>mw/</code>).
     "permission denied" means the token is wrong (old volume: use <code>scripts/creds.sh</code>).</p>
     <div class="table-wrap"><table>
       <tr><th>Path</th><th>Holds</th></tr>
+      <tr><td><code>secret/mw-crypto</code></td><td>the user PIN of the softhsm <code>mw-crypto</code> token (<code>mw.crypto.pkcs11.user-pin</code>, from <code>SOFTHSM_MWCRYPTO_USER_PIN</code>)</td></tr>
+      <tr><td><code>secret/mw-auth</code></td><td>its Keycloak client secret for mw-crypto (<code>mw.auth.crypto.client-secret</code>) and the Valkey password</td></tr>
       <tr><td><code>secret/mw-ussd</code>, <code>secret/mw-checkout</code></td><td>the client secret for mw-auth's internal API (<code>mw.ussd.auth.client-secret</code>, <code>mw.checkout.auth.client-secret</code>); checkout also the merchant <code>merchant_demo</code> secret. No PIN key anywhere: since ticket 72 the PIN is encrypted under the mw-crypto transport key and checked by mw-auth</td></tr>
       <tr><td><code>secret/mw-adapter-billpay</code>, <code>secret/mw-adapter-bank</code></td><td>the partner callback HMAC secrets</td></tr>
-      <tr><td><code>secret/mw-simulators</code></td><td>the simulators' side of the callback and USSD gateway secrets</td></tr>
+      <tr><td><code>secret/mw-simulators</code></td><td>the simulators' side of the callback and USSD gateway secrets, the softhsm <code>paysim</code> token PIN (payShield simulator) and the simulated partner's private_key_jwt key (realm <code>partners</code>)</td></tr>
       <tr><td><code>secret/mw-notify</code></td><td>the SMSC (SMPP) password</td></tr>
-      <tr><td>every <code>secret/mw-*</code></td><td><code>spring.datasource.password</code> (the service's own database user)</td></tr>
+      <tr><td>every <code>secret/mw-*</code></td><td><code>spring.datasource.password</code> (the service's own database user); <code>secret/mw-core-mock</code> holds only that (no PIN key since ticket 72)</td></tr>
     </table></div>
     <p>A tester rarely needs these: the PIN transport key is public at
     <code>GET /auth/v1/pin-key</code> (apps also get it at <code>GET /app/v1/pin-key</code>, the checkout page in its <code>pinKey</code>).</p>
@@ -996,8 +1003,8 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
   <h2><span class="num">9</span> Ops console</h2>
   <p><a href="https://localhost/console">https://localhost/console</a>. Menu: <span class="ui">Transactions</span>
   · <span class="ui">Approvals</span> · <span class="ui">Wallets</span> · <span class="ui">Partners</span> ·
-  <span class="ui">USSD menus</span> · <span class="ui">Templates</span>; the title <i>Bits ops console</i> goes back to
-  Transactions. There is no audit, user or dashboard page: the audit trail is inside each transaction (9.3).
+  <span class="ui">USSD menus</span> · <span class="ui">Templates</span> · <span class="ui">Keys</span>; the title <i>Bits ops console</i> goes back to
+  Transactions. There is no audit, user or dashboard page: the audit trail and its anchor check are inside each transaction (9.3).
   Run a few app flows first so there are transactions. Every change follows <b>maker-checker</b>: the maker
   requests, a different checker approves; nothing is applied before the approval.</p>
   <div class="flow"><span>maker: Request …</span><b>→</b><span>Approvals: PENDING</span><b>→</b><span>checker: Approve</span><b>→</b><span>applied</span></div>
@@ -1071,6 +1078,10 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
         <code>core &lt;Command&gt;, sent Nx -&gt; result (reason)</code> ("sent 2x" = the command was retried). "No steps recorded." when empty.</li>
       <li><b>Partner calls</b> (Sent / Operation / Partner / Outcome / Partner ref / Error / Answered): top-up, bill pay and add money only;
         a P2P shows "No partner calls.". <b>Audit trail</b> (At / Action / Actor / Outcome / Service / Resource).</li>
+      <li id="c9-3b"><b>Audit anchor badge</b> next to the audit trail: mw-audit-dw signs the audit chain's head once a day at mw-crypto
+        (ticket 74) and checks the signed anchors. Expect <code>Anchors intact (signed to &lt;date&gt;)</code> (green; hover: "Checked &lt;time&gt;");
+        on a fresh stack before the first daily anchor <code>Anchors not verified yet</code>; <code>Anchoring off</code> when the job is
+        disabled. <code>Anchor check failed</code> (red) is never expected: report it as an incident (runbook <code>audit.anchor.broken</code>).</li>
       <li>Actions offered depend on the status: COMPLETED → <span class="ui">Request reversal</span> (not on a reversed one);
         UNKNOWN → <span class="ui">Request manual TSQ</span>; MANUAL_REVIEW → manual TSQ, force commit, force release (9.6);
         any other status: no buttons (the API would answer 409 <code>MW-VAL-030</code>).</li>
@@ -1153,6 +1164,11 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <li>Negative: a malformed number gives <code>MW-VAL-001</code> (9.0); unlocking a wallet that is not locked is refused by the core at approval
         (the console shows only "Decision recorded.": check <i>A wallet in core-mock</i>); every user without ops-maker (checker, viewer,
         compliance, auditor, <code>ops-admin01</code>) sees "Only an ops-maker files unlock requests."</li>
+      <li id="c9-8b"><b>Care PIN reset</b> (card <i>Care PIN reset</i> on the same page, for a customer who lost the phone): maker
+        <span class="ui">Wallet (MSISDN)</span>, Reason, <span class="ui">Request PIN reset</span>; the checker approves in Approvals. mw-auth sends
+        the SMS "Your Bits PIN reset was approved…"; the customer takes it up on a new phone within 72 h (play it in
+        <a href="#c3-11">3.11</a>, <span class="ui">Take up a care reset (new phone)</span>). Users without ops-maker see
+        "Only an ops-maker files PIN reset requests."</li>
     </ol>
   </div>
 
@@ -1260,12 +1276,16 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <li>Rotation: secadmin1 <span class="ui">Request rotation</span> on a key; in Approvals secadmin1 has no Approve button,
         secadmin2 approves; the key shows a new ACTIVE version and the old one VERIFY_ONLY.
         <span class="ui">Request retirement</span> takes a VERIFY_ONLY version only.</li>
+      <li>Generate: card <i>Generate a key in the HSM</i>, <span class="ui">Key id</span>, <span class="ui">Purpose</span>, Reason,
+        <span class="ui">Request generation</span>; once secadmin2 approves, the key is listed with version 1 ACTIVE (made inside the HSM, never shown).</li>
       <li>Ceremony: secadmin1 <span class="ui">Start ceremony</span> (key id e.g. <code>hmac-manual-1</code>, purpose
         <code>HMAC_MANUAL</code>). Make two components (fake, dev only) and their check values:
         <code>node -e 'const c=require("crypto");const e=c.createECDH("prime256v1");e.generateKeys();const d=e.getPrivateKey();console.log(d.toString("hex"),c.createHash("sha256").update(e.getPublicKey(null,"compressed")).digest("hex").slice(0,6))'</code>
-        (run twice). secadmin1 enters component 1 on the wizard; it is not offered component 2.</li>
+        (run twice). secadmin1 enters component 1 (<span class="ui">Component</span>, <span class="ui">Check value</span>, <span class="ui">Enter component</span>) on the wizard;
+        it is not offered component 2 and sees "Waiting for a second custodian (another security-admin) to enter component 2.".
+        The <i>Shares</i> table lists who entered which component and when, never the component itself.</li>
       <li>secadmin2 opens the same wizard (link in Approvals) and enters component 2: the page shows the KCV.
-        <span class="ui">Compare KCV</span> with a wrong value says it does not match.</li>
+        <span class="ui">Compare KCV</span>: the right value says "The KCV matches.", a wrong one "The KCV does not match: reject the request.".</li>
       <li>secadmin2 approves in Approvals: the key appears ACTIVE on Keys. Approving before both components are in is
         refused with <code>MW-VAL-050</code>; rejecting destroys the staged key.</li>
       <li><code>scripts/log-scan.sh</code> and <code>docker compose logs mw-crypto mw-admin-api</code>: the components never appear.</li>
@@ -1280,7 +1300,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
   is the ops console's timeline and audit trail (9.3). The technical view is the services' JSON logs.</p>
   <h3>Follow one transaction</h3>
   <div class="cmd"><pre><span class="c"># paste the txnId from a test console result</span>
-docker compose -f deploy/docker-compose.yml logs --no-log-prefix mw-app-gateway mw-orchestrator mw-core-mock mw-notify | grep '&lt;txnId&gt;'</pre></div>
+docker compose -f deploy/docker-compose.yml logs --no-log-prefix mw-app-gateway mw-auth mw-orchestrator mw-core-mock mw-notify | grep '&lt;txnId&gt;'</pre></div>
   <p>Each line is one JSON event with <code>ts</code>, <code>level</code>, <code>service</code>,
   <code>correlationId</code>, <code>txnId</code>, <code>event</code> (e.g. <code>txn.state.changed</code>,
   <code>partner.call.completed</code>), <code>errorCode</code>, <code>durationMs</code>. Check: numbers are
@@ -1290,11 +1310,35 @@ docker compose -f deploy/docker-compose.yml logs --no-log-prefix mw-app-gateway 
 docker compose -f deploy/docker-compose.yml ps
 <span class="c"># live checks: gateway, Kafka, PostgreSQL, Keycloak tokens, OpenBao ...</span>
 scripts/smoke.sh
-<span class="c"># every container log: fails on a PIN or an unmasked MSISDN / NID</span>
+<span class="c"># every container log: fails on a PIN (plain or ciphertext), an unmasked MSISDN or NID</span>
 scripts/log-scan.sh</pre></div>
   <p>In the browser: <a href="https://localhost/healthz">https://localhost/healthz</a> (gateway) and
   <a href="https://localhost/console/api/health">https://localhost/console/api/health</a> (<code>{"status":"UP"}</code>).
   Log events that need a person are listed in the <a href="runbook.md">runbook</a>.</p>
+
+  <div class="case" id="c10-1">
+    <h3><span class="id">10.1</span>Security checks: mTLS and HSM down</h3>
+    <p>mw-crypto (the only process that talks to the HSM) and mw-auth's internal API accept only callers with an OpenBao
+    service certificate (mTLS, ticket 66). <code>scripts/smoke.sh</code> checks it; expect these lines green:</p>
+    <ul>
+      <li><i>openbao PKI: intermediate pki_int with a role per mTLS service</i></li>
+      <li><i>mw-crypto serves its OpenBao certificate (tls_certificate_expiry_seconds on 8081)</i></li>
+      <li><i>mw-crypto fails the TLS handshake without a client certificate</i></li>
+    </ul>
+    <p>By hand: a call without a client certificate never gets an HTTP answer (curl reports a TLS/handshake error, no status code):</p>
+    <div class="cmd"><pre>curl -vk https://127.0.0.1:8094/internal/v1/keys</pre></div>
+    <p><b>HSM down</b> (the dev HSM is the <code>softhsm</code> container): everything that needs a key fails closed and nothing is
+    counted against the customer.</p>
+    <ol>
+      <li>Stop it: <div class="cmd"><pre>docker compose -f deploy/docker-compose.yml stop softhsm</pre></div></li>
+      <li>Test console <span class="ui">Wallet auth</span> (a wallet made in 3.11) → <span class="ui">Log in with the PIN</span>: red ✖ HTTP 503
+        <code>MW-SYS-050</code> from mw-auth. <span class="ui">App flows</span>: a P2P with PIN <code>13579</code>: red ✖ HTTP 503 <code>MW-SYS-012</code>
+        (mw-app-gateway's fail-closed code when mw-auth cannot answer), no balance change. No PIN try is used up while it lasts.</li>
+      <li>Start it again: <div class="cmd"><pre>docker compose -f deploy/docker-compose.yml start softhsm</pre></div>
+        Within about 10 s mw-crypto logs <code>crypto.hsm.up</code> (no restart needed) and the same P2P completes.</li>
+    </ol>
+    <p>The steps for operators are in the <a href="runbook.md">runbook</a> (<i>HSM down</i>, <i>Certificate expiry</i>).</p>
+  </div>
 </section>
 
 <!-- ============================================================ -->
@@ -1322,7 +1366,9 @@ scripts/log-scan.sh</pre></div>
     <tr><td>Everything times out or fails oddly</td><td>a preset or fault is still on: Home → <span class="ui">Reset every simulator and core fault</span></td></tr>
     <tr><td>Timeout tests take minutes</td><td>the stack runs production timers (the test timers block was removed from <code>deploy/.env</code>): put it back from <code>deploy/dev.env.defaults</code>, recreate the services (step 0.1), then <code>scripts/tester.sh</code></td></tr>
     <tr><td><code>MW-CORE-LIMIT_EXCEEDED_DAILY</code></td><td>the wallet spent Tk 15,000 today (UTC): use customer02, or start fresh (0.1)</td></tr>
-    <tr><td><code>MW-CORE-ACCOUNT_LOCKED</code></td><td>five wrong PINs: unlock (9.8)</td></tr>
+    <tr><td><code>MW-AUTH-041</code> (HTTP 423) or <code>MW-AUTH-042</code></td><td>three wrong PINs locked the PIN at mw-auth: wait (<code>retryAfter</code>; level 1 is 1 min in dev) or unlock (9.8); level 3 (<code>042</code>) only ends with a reset (3.11)</td></tr>
+    <tr><td><code>MW-SYS-050</code> (HTTP 503) on logins or PIN changes at mw-auth</td><td>mw-crypto or the HSM is down: <code>docker compose -f deploy/docker-compose.yml ps softhsm mw-crypto</code>, start what is stopped (10.1)</td></tr>
+    <tr><td><code>MW-AUTH-031</code> on a Keys action</td><td>the sign-in is older than 5 minutes: sign out and in again (9.13)</td></tr>
     <tr><td>A submit says no binding OTP arrived</td><td>mw-notify or the simulators are down: <code>docker compose -f deploy/docker-compose.yml ps</code></td></tr>
     <tr><td>Every app request answers <code>MW-SYS-012</code></td><td>mw-app-gateway cannot ask mw-auth (device keys, sessions) or Valkey: check <code>docker compose -f deploy/docker-compose.yml ps mw-auth valkey</code>; after a realm change (the <code>mw-app-gateway</code> services client) <code>deploy/reset.sh</code></td></tr>
     <tr><td>Sign-in refused with <code>ops-test-pass</code> (or <code>portal-test-pass</code>, app PIN <code>13579</code>)</td><td>your <code>deploy/.env</code> or the volumes hold other values than <code>deploy/dev.env.defaults</code>: use the values <code>scripts/creds.sh</code> prints, or start fresh: <code>cp deploy/dev.env.defaults deploy/.env</code>, <code>deploy/reset.sh</code>, then step 0.1</td></tr>
@@ -1362,6 +1408,7 @@ scripts/log-scan.sh</pre></div>
     <tr><td>9.10, 9.11 menus and templates</td><td><code>17</code></td></tr>
     <tr><td>3.11 wallet auth (login, PIN lifecycle, assertion)</td><td><code>24, 25, 26</code> (lockout escalation and assertion expiry in <code>90</code>); test console <code>scripts/tester-e2e.sh @auth</code></td></tr>
     <tr><td>9.13 keys; payShield PVV</td><td><code>27</code> (mw-crypto's dev-only payShield test API); ops console <code>scripts/ui-e2e.sh @keys</code></td></tr>
+    <tr><td>10.1 mTLS, log scan, security pass</td><td>no folder: <code>scripts/smoke.sh</code>, <code>scripts/log-scan.sh</code>, <code>scripts/security.sh</code></td></tr>
   </table></div>
 </section>
 
