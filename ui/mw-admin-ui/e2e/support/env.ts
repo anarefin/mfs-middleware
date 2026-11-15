@@ -19,7 +19,8 @@ export function manifestPath(): string {
 export const USSD_MNO = "robi";
 export const USSD_SECRET_ENV = "USSD_ROBI_GATEWAY_SECRET";
 
-/** The seeded customer wallets (mw-seeder application.yml); seed PIN of mw-core-mock (fake 1234). */
+/** The seeded customer wallets (mw-seeder application.yml); their transaction PIN, checked by mw-auth on every
+ * channel since ticket 72 (MW_SEED_APP_PIN in deploy/dev.env.defaults, fake 13579). */
 export const CUSTOMER_A = "01712000001";
 export const CUSTOMER_B = "01712000002";
-export const SEED_PIN = "1234";
+export const SEED_PIN = "13579";

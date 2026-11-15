@@ -99,8 +99,8 @@ test.describe("approvals", { tag: "@approvals" }, () => {
     await clearPending(browser, `wallet ${masked(CUSTOMER_B)}`);
     const maker = await operator(browser, "maker");
     await maker.getByRole("link", { name: "Wallets" }).click();
-    await maker.getByLabel("Wallet (MSISDN)").fill(`+880 ${CUSTOMER_B.slice(1, 5)}-${CUSTOMER_B.slice(5)}`);
-    await maker.getByLabel("Reason").fill("customer verified at the branch");
+    await maker.getByRole("form", { name: "Unlock request" }).getByLabel("Wallet (MSISDN)").fill(`+880 ${CUSTOMER_B.slice(1, 5)}-${CUSTOMER_B.slice(5)}`);
+    await maker.getByRole("form", { name: "Unlock request" }).getByLabel("Reason").fill("customer verified at the branch");
     await maker.getByRole("button", { name: "Request unlock" }).click();
     const id = await filedRequestId(maker);
     const mine = highlightedRow(maker);
@@ -111,8 +111,8 @@ test.describe("approvals", { tag: "@approvals" }, () => {
 
     // a second request for the same wallet is refused with the API's envelope
     await maker.goto("/console/wallets");
-    await maker.getByLabel("Wallet (MSISDN)").fill(CUSTOMER_B);
-    await maker.getByLabel("Reason").fill("again");
+    await maker.getByRole("form", { name: "Unlock request" }).getByLabel("Wallet (MSISDN)").fill(CUSTOMER_B);
+    await maker.getByRole("form", { name: "Unlock request" }).getByLabel("Reason").fill("again");
     await maker.getByRole("button", { name: "Request unlock" }).click();
     await expect(maker.locator(".error[role=alert]")).toContainText("MW-VAL-031");
 
@@ -128,8 +128,8 @@ test.describe("approvals", { tag: "@approvals" }, () => {
     need(!TXN_P2P, "no TXN_P2P from 10-console");
     await signIn(page, "maker");
     await page.goto("/console/wallets");
-    await page.getByLabel("Wallet (MSISDN)").fill("01212345678");
-    await page.getByLabel("Reason").fill("x");
+    await page.getByRole("form", { name: "Unlock request" }).getByLabel("Wallet (MSISDN)").fill("01212345678");
+    await page.getByRole("form", { name: "Unlock request" }).getByLabel("Reason").fill("x");
     await page.getByRole("button", { name: "Request unlock" }).click();
     await expect(page.locator(".error[role=alert]")).toContainText("MW-VAL-001");
 
