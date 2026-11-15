@@ -31,7 +31,8 @@ export default [
       S.status(400);
       S.code('MW-AUTH-044');
       S.check('the rule is LAST_PIN', JSON.stringify(same.body).includes('LAST_PIN'), same.body);
-      const notice = 'Your Bits PIN was changed. If this was not you, call Bits care at once.';
+      // a PIN change names no locale, so mw-notify's default bn template (V12) is the one sent
+      const notice = 'আপনার Bits পিন পরিবর্তন করা হয়েছে। এটি আপনি না করে থাকলে এখনই Bits কেয়ারে ফোন করুন।';
       const before = (await MW.sim.sms(w.msisdn)).filter(m => m.text === notice).length;
       const c = S.record(await MW.auth.changePin(t.accessToken, '48207', '61938'));
       S.status(200);
@@ -100,7 +101,8 @@ export default [
       S.status(403);
       await MW.admin.approve('ops-e2e-checker01', S.crId);
       await S.crIs('APPROVED');
-      const approved = 'Your Bits PIN reset was approved. Open the app, ask for a reset code and set a new PIN within 72 hours.';
+      // the approved care reset (auth.wallet-lock.v1) names no locale: mw-notify's default bn template (V12)
+      const approved = 'আপনার Bits পিন রিসেট অনুমোদিত হয়েছে। ৭২ ঘণ্টার মধ্যে অ্যাপে রিসেট কোড চেয়ে নতুন পিন সেট করুন।';
       const sms = await MW.poll(async () => (await MW.sim.sms(w.msisdn)).filter(m => m.text === approved), l => l.length > 0, 30000, 1000);
       S.eq('the wallet got the care reset SMS', sms.length, 1, sms);
       // mw-auth opened the CARE reset from auth.wallet-lock.v1: any device may now ask the reset OTP
