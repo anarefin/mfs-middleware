@@ -630,6 +630,14 @@ PY
 )" || fail "access log format does not mask"
 }
 
+test_the_error_log_skips_plugin_rejections_that_print_the_raw_request_line() {
+  # nginx appends the raw request line ("GET /x/01712345678 ...") to every error log entry; APISIX logs
+  # each plugin rejection (401/403/429) at warn, so a rejected request with an MSISDN in its path put
+  # it whole in the log (scripts/log-scan.sh, ticket 60-76 gate). Only error and worse is logged.
+  grep -qE '^  error_log_level: (error|crit|alert|emerg)$' "$REPO_DIR/deploy/apisix/config.yaml" \
+    || fail "nginx_config.error_log_level must be error or stricter (warn logs plugin rejections with the raw URI)"
+}
+
 test_apisix_reads_the_valkey_password_from_its_environment() {
   grep -A3 -E '^ *envs:' "$REPO_DIR/deploy/apisix/config.yaml" | grep -q 'VALKEY_PASSWORD' || fail "config.yaml does not pass VALKEY_PASSWORD to nginx"
   grep -A12 -E '^  apisix:' "$REPO_DIR/deploy/docker-compose.yml" | grep -qE 'VALKEY_PASSWORD: [$][{]VALKEY_PASSWORD:[?]' \

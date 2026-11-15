@@ -18,6 +18,11 @@ apisix:
     port: 7085
 
 nginx_config:
+  # Error log (spec 18.3, root CLAUDE.md "Masking"): nginx appends the raw request line to every
+  # entry and cannot mask it, and APISIX logs each plugin rejection (key-auth 401, limit-count 429,
+  # ...) at warn, so a rejected request with an MSISDN in its path wrote it whole (scripts/log-scan.sh).
+  # Only error and worse; the access log above still records every rejection, masked.
+  error_log_level: error
   # Environment variables the workers may read: limit-count's Valkey password is the secret
   # reference "$env://VALKEY_PASSWORD" in the route, so the password is never stored in etcd.
   envs:
