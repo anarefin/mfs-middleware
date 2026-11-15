@@ -193,8 +193,9 @@ auth_jwks_public() {
 check "auth: JWK Set public (RSA, RS256, no private member); discovery document not routed" auth_jwks_public
 auth_quota_per_msisdn() { # an MSISDN mw-auth does not know: nothing is sent, the edge still counts
   local m=01799000123 codes hash keys urls=()
-  for _ in $(seq 1 26); do urls+=(-o /dev/null -H 'Content-Type: application/json' -H 'X-Device-Id: edge-test-device' -d "{\"msisdn\":\"$m\"}" "$base/auth/v1/otp"); done
-  codes="$(curl -sk --max-time 60 -w '%{http_code}\n' "${urls[@]}")"
+  # --next between transfers: without it curl joins every -d into one body ('{..}&{..}&...', not JSON)
+  for _ in $(seq 1 26); do urls+=(--next -sk --max-time 60 -w '%{http_code}\n' -o /dev/null -H 'Content-Type: application/json' -H 'X-Device-Id: edge-test-device' -d "{\"msisdn\":\"$m\"}" "$base/auth/v1/otp"); done
+  codes="$(curl "${urls[@]:1}")"
   printf '%s\n' "$codes" | grep -qx 429 || { echo "no 429 in 26 OTP requests: $(printf '%s\n' "$codes" | sort | uniq -c | tr '\n' ' ')"; return 1; }
   hash="$(printf '%s' "$m" | shasum -a 256 | cut -d' ' -f1)"
   keys="$(dc exec -T valkey valkey-cli --scan --pattern "*msisdn:$hash*")"
