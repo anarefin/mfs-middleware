@@ -30,7 +30,7 @@ pinned in the collection (`build_collection.mjs`, `PINNED`).
 | `fixtures/*.json` | data embedded as the collection variable `fixtures` (`MW.fixture('main-e2e')`: the USSD main menu the admin-content scenario republishes) |
 | `local.postman_environment.json` | the environment: `baseUrl` and the secret names (blank; run.sh fills them from `deploy/.env`) |
 | `run_customer.mjs` | picks the run customer of a run (below) and records it in `build/api-test/run-customers.tsv` (`MW_API_RUN_LEDGER`); self-test `scripts/test/test_api_run_customer.sh` |
-| `run.sh` | the runner (options in its header); run state in `.local.postman_environment.json` (gitignored, secrets blanked after every run), JUnit report in `build/newman-report.xml` |
+| `run.sh` | the runner (options in its header); run state in `.local.postman_environment.json` (gitignored, secrets blanked after every run; `MW_API_STATE`), JUnit report in `build/newman-report.xml` (`MW_API_REPORT`); `--folder` also takes one request by its name or a prefix only it has, so the four `90 Slow` requests can run in parallel, each with its own state and report and `MW_API_SKIP_ROUTES=1` after one run has applied the routes |
 | `TRACEABILITY.md` | every request -> MVP acceptance criteria and coverage items; checked by `scripts/check-api-traceability.sh` |
 | `PARITY.md` | every Cucumber scenario -> its Newman request, step-level changes noted |
 
@@ -71,7 +71,7 @@ forms) in the scenario source before it runs, so everything sent, signed and exp
 customer, and `MW.loginUser` logs customer01 in at mw-auth as the run customer. Its number masks as
 `0171****001` like customer01's, and mw-notify's dev contacts give it customer01's email address. A
 run without `runCustomerMsisdn` (Newman by hand) plays customer01 itself. The 10,000-row payout
-(folder 90) pays the real 01711000001, so it checks 01711000002 instead.
+(folder 90) pays the real 01711000001, so it checks 01711000003 instead (01711000002 is paid by the folder's assertion scenario, which may run beside it).
 
 **Fresh wallets (ticket 76).** The security folders 24-26 and two folder 90 scenarios bind second
 devices, lock PINs, reset and change them: they never use a shared app user but `MW.auth.fresh`, one

@@ -5,7 +5,8 @@
 #
 #   tests/api/run.sh                         every folder except "90 Slow" and "99 Destructive"
 #   tests/api/run.sh --folder "01 P2P ..."   one folder by its full name or its number ("01");
-#                                            repeat --folder for several
+#                                            repeat --folder for several; also one request of a
+#                                            folder, by its full name or a prefix only it has
 #   tests/api/run.sh --all                   every folder, the slow ones included
 #
 # Reads the dev credentials from deploy/.env (a copy of deploy/dev.env.defaults), copies mw-seeder's
@@ -14,8 +15,10 @@
 # skips both), then runs a pinned Newman with npx (no --delay-request: Newman 6
 # refuses 0, and its default is no delay). Needs Node/npx and access to
 # cdnjs.cloudflare.com (node-forge and elliptic, pinned by SHA-256 in the collection). The run
-# state goes to tests/api/.local.postman_environment.json (gitignored) with every secret blanked;
-# the JUnit report to tests/api/build/newman-report.xml. Knobs: MW_API_BASE_URL (default
+# state goes to tests/api/.local.postman_environment.json (gitignored; MW_API_STATE) with every
+# secret blanked; the JUnit report to tests/api/build/newman-report.xml (MW_API_REPORT); separate
+# ones let runs go in parallel (e.g. the four requests of "90 Slow", with MW_API_SKIP_ROUTES=1).
+# Knobs: MW_API_BASE_URL (default
 # https://localhost:${MW_HTTPS_PORT:-443}), NEWMAN_VERSION, MW_SEED_MANIFEST (default
 # build/seed/manifest.json, copied out of mw-seeder), MW_API_RUN_LEDGER (default
 # build/api-test/run-customers.tsv: which run customer each run played customer01 as, run_customer.mjs).
@@ -24,7 +27,8 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
 collection="$here/mfs-mw.postman_collection.json"
-state="$here/.local.postman_environment.json"
+state="${MW_API_STATE:-$here/.local.postman_environment.json}"
+report="${MW_API_REPORT:-$here/build/newman-report.xml}"
 newman="newman@${NEWMAN_VERSION:-6.2.1}"
 
 folders=()
@@ -38,11 +42,15 @@ while [ $# -gt 0 ]; do
 done
 
 # Folder names from the collection: every folder (minus 90/99 unless --all), or the ones asked for
-# (a two-digit prefix selects the folder with that number).
+# (a two-digit prefix selects the folder with that number; a name no folder has may name one request
+# inside a folder, by its full name or a prefix no other request has).
 names="$(node -e '
   const c = require(process.argv[1]); const all = process.argv[2] === "1"; const want = process.argv.slice(3);
   const names = c.item.map(i => i.name);
-  const out = want.length ? want.map(w => names.find(n => n === w || n.startsWith(w + " ")) || ("?" + w))
+  const requests = c.item.flatMap(i => (i.item || []).map(r => r.name));
+  const unique = m => m.length === 1 ? m[0] : undefined; // an ambiguous prefix names no request
+  const out = want.length ? want.map(w => names.find(n => n === w || n.startsWith(w + " "))
+                                       || requests.find(n => n === w) || unique(requests.filter(n => n.startsWith(w))) || ("?" + w))
                           : names.filter(n => all || !/^9[0-9] /.test(n));
   console.log(out.join("\n"));' "$collection" "$all" ${folders[@]+"${folders[@]}"})"
 if grep -q '^?' <<<"$names"; then
@@ -99,13 +107,13 @@ echo "==> api-test: customer01 plays as run customer $run_user (${run_msisdn:0:4
 env_args=(--env-var "baseUrl=$base_url" --env-var "ocsTimeoutMs=$ocs_timeout"
   --env-var "runCustomerUser=$run_user" --env-var "runCustomerMsisdn=$run_msisdn")
 for s in "${secrets[@]}"; do env_args+=(--env-var "$s"); done
-mkdir -p "$here/build"
+mkdir -p "$here/build" "$(dirname "$report")" "$(dirname "$state")"
 
 status=0
 npx --yes "$newman" run "$collection" -e "$state" "${args[@]}" "${env_args[@]}" \
   --insecure --ignore-redirects --timeout-script 900000 --timeout-request 60000 \
   --export-environment "$state" \
-  --reporters cli,junit --reporter-junit-export "$here/build/newman-report.xml" || status=$?
+  --reporters cli,junit --reporter-junit-export "$report" || status=$?
 
 # Keep the run state, never the secrets.
 node -e '

@@ -43,19 +43,21 @@ export default [
   {
     name: '[assertion p2p] after the assertion life (60 s) a resend with the same key checks the PIN again; the right PIN gets the same txnId',
     run: async (MW, S) => {
-      await S.note(['01711000001', '01711000002', 'FEE-POOL']);
-      await S.p2p('customer01', '01711000002', 1000, MW.pin);
+      // pays 01712000001, not customer02: the 10,000-row payout of this folder credits 01711000001..01711001000, and
+      // the folder's requests may run in parallel
+      await S.note(['01711000001', '01712000001', 'FEE-POOL']);
+      await S.p2p('customer01', '01712000001', 1000, MW.pin);
       S.status(200);
       const idem = S.idem;
       await MW.sleep(62000);
-      await S.submit('customer01', await MW.app.request('P2P', '01711000002', 1000, MW.WRONG_PIN), idem);
+      await S.submit('customer01', await MW.app.request('P2P', '01712000001', 1000, MW.WRONG_PIN), idem);
       S.status(401);
       S.code('MW-AUTH-040');
       S.responses = S.responses.filter(x => x.status !== 401);
-      await S.submit('customer01', await MW.app.request('P2P', '01711000002', 1000, MW.pin), idem);
+      await S.submit('customer01', await MW.app.request('P2P', '01712000001', 1000, MW.pin), idem);
       S.status(200);
       S.sameTxnId();
-      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE-POOL': 500 });
+      await S.changedBy({ '01711000001': -1500, '01712000001': 1000, 'FEE-POOL': 500 });
     },
   },
 ];
