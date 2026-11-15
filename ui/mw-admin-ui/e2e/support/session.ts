@@ -73,10 +73,27 @@ export async function keycloakLogin(page: Page, name: PersonaName): Promise<stri
   return authorizeUrl;
 }
 
+/**
+ * Whether the page's cookies still sign `name` in. An APISIX 429 (the `admin-ui` quota of 600
+ * requests a minute per address: every new context loads the static chunks again, so a long run can
+ * pass it) is an envelope page at the same URL, without the operator badge: wait out the window it
+ * names (`X-RateLimit-Reset`) once and look again, instead of waiting for the badge until the test
+ * times out.
+ */
 async function signedInAs(page: Page, name: PersonaName): Promise<boolean> {
-  await page.goto("/console/transactions");
-  if (!/\/console\/transactions$/.test(page.url())) return false;
-  return (await page.getByTestId("operator").textContent())?.includes(persona(name).username) ?? false;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await page.goto("/console/transactions");
+    if (res?.status() === 429) {
+      const reset = Number(res.headers()["x-ratelimit-reset"] ?? "60");
+      await page.waitForTimeout(Math.min(Number.isFinite(reset) ? reset : 60, 60) * 1000 + 500);
+      continue;
+    }
+    if (!/\/console\/transactions$/.test(page.url())) return false;
+    const operator = page.getByTestId("operator");
+    await operator.waitFor({ timeout: 10_000 }).catch(() => undefined);
+    return (await operator.textContent({ timeout: 1_000 }).catch(() => null))?.includes(persona(name).username) ?? false;
+  }
+  return false;
 }
 
 const prefetchFree = new WeakSet<Page>();
