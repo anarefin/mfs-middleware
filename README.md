@@ -7,7 +7,9 @@ mocked core (`mw-core-mock`) and simulated partners (`mw-simulators`): 14 Spring
 one Gradle build, the admin console, and one hand-written compose file.
 
 - New to the project: [docs/tutorial/index.html](docs/tutorial/index.html), a guided tour for a new
-  developer (the architecture in plain English with diagrams, every feature's flow, a hands-on first day).
+  developer (the architecture in plain English with diagrams, every feature's flow, a hands-on first day);
+  then [docs/concepts/index.html](docs/concepts/index.html), one page per component (APISIX, Keycloak,
+  OpenBao, the HSM, the test doubles, Camel, Resilience4j, ...) and how this project uses it.
 - Design: [spec/bits-mfs-middleware-spec.md](spec/bits-mfs-middleware-spec.md) (the "MVP scope"
   section wins over sections 1–25 for the MVP).
 - Why it is built this way: [docs/adr/README.md](docs/adr/README.md), one record per decision.

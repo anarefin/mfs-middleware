@@ -19,3 +19,14 @@ for (const mno of ["robi", "gp"]) {
     await expect(page.getByTestId("ussd-transcript")).not.toContainText("you typed: 13579");
   });
 }
+
+test("@ussd USSD robi: option 5 shows the balance after the PIN", async ({ page }) => {
+  await page.goto("ussd");
+  await page.getByTestId("ussd-mno").selectOption("robi");
+  await page.getByTestId("ussd-send").click();
+  await expect(page.getByTestId("ussd-screen")).toContainText("5 ব্যালেন্স");
+  for (const k of ["9", "5", "13579"]) await press(page, k);
+  await expect(page.getByTestId("ussd-transcript")).toContainText("Your balance is Tk ");
+  await expect(page.getByTestId("ussd-transcript")).toContainText("[END]");
+  await expect(page.getByTestId("ussd-transcript")).not.toContainText("you typed: 13579");
+});

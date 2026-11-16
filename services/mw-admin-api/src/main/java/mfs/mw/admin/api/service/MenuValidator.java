@@ -38,7 +38,8 @@ public final class MenuValidator {
           "P2P", BASE,
           "CASH_OUT", BASE,
           "TOPUP", Set.of("creditParty", "amount", "partnerId", "productCode"),
-          "BILL_PAY", Set.of("creditParty", "amount", "partnerId", "billerCode"));
+          "BILL_PAY", Set.of("creditParty", "amount", "partnerId", "billerCode"),
+          "BALANCE", Set.of()); // ADR D26: the customer's own wallet, amount 0, nothing to map
 
   /** mw-ussd's INPUT lookups and their arguments (its {@code Lookups.ARGUMENTS}). */
   static final Map<String, Set<String>> LOOKUPS = Map.of("bill", Set.of("billerCode", "billNumber"));

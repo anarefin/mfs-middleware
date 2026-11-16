@@ -114,6 +114,18 @@ class TransactionRepositoryIT {
         .isZero();
   }
 
+  /** ADR D26 / D25: a BALANCE check moves no money, so it never shows in a wallet's history. */
+  @Test
+  void aBalanceCheckWritesNoWalletParties() {
+    String id = TestData.txnId();
+    TransactionRecord rec = received(TestData.balance(id, "key-" + id, "01711000001"));
+    repo.insert(rec);
+
+    assertThat(repo.find(rec.txnId())).isPresent();
+    assertThat(jdbc.queryForObject("select count(*) from wallet_txn where txn_id = ?", Integer.class, rec.txnId()))
+        .isZero();
+  }
+
   @Test
   void anUpdateKeepsEveryMutableColumn() {
     TransactionRecord rec = inserted();

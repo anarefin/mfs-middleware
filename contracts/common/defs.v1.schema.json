@@ -83,8 +83,8 @@
       "enum": ["CUSTOMER_APP", "AGENT_APP", "MERCHANT_APP", "DISTRIBUTOR_APP", "DSO_APP", "PARTNER_APP", "USSD", "WEB_CHECKOUT", "ORG_PORTAL", "SP_PORTAL", "PARTNER_API", "SYSTEM"]
     },
     "TxnType": {
-      "enum": ["P2P", "CASH_IN", "CASH_OUT", "ATM_CASH_OUT", "ATM_CASH_IN", "TOPUP", "BILL_PAY", "MERCHANT_PAY", "ADD_MONEY_CARD", "ADD_MONEY_BANK", "C2W", "W2B", "REMIT_IN", "QR_PAY_INTEROP", "BULK_DISBURSE", "REVERSAL"],
-      "description": "Spec 5.2."
+      "enum": ["P2P", "CASH_IN", "CASH_OUT", "ATM_CASH_OUT", "ATM_CASH_IN", "TOPUP", "BILL_PAY", "MERCHANT_PAY", "ADD_MONEY_CARD", "ADD_MONEY_BANK", "C2W", "W2B", "REMIT_IN", "QR_PAY_INTEROP", "BULK_DISBURSE", "REVERSAL", "BALANCE"],
+      "description": "Spec 5.2. BALANCE (balance inquiry, ADR D26) moves no money: amount 0 and creditParty = debitParty (the customer's own wallet)."
     },
     "Locale": { "enum": ["bn", "en"] },
     "StringMap": { "type": "object", "additionalProperties": { "type": "string" } }

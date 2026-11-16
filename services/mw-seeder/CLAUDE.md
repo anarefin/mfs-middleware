@@ -65,7 +65,7 @@ this file says what is specific to this module.
      mw-admin-api (its dev seeds) fails the step.
   6. `seed-admin-content`: the USSD menu `main` (all four MNOs) and the SMS templates
      `TXN_P2P_RECEIVED` bn/en, proposed and approved through mw-admin-api, so the console has a first
-     admin-made version. The values are copies of what mw-ussd (`menus/main-v2.json` ->
+     admin-made version. The values are copies of what mw-ussd (`menus/main-v3.json` ->
      `src/main/resources/seed-content/menus/main.json`) and mw-notify (V5 rows, in `application.yml`)
      ship, so publishing changes no text a test reads: keep the copies identical. Content with any
      PUBLISHED admin version is left alone; a version the seed maker left PENDING is approved.

@@ -41,7 +41,7 @@ class MenuSeederIT {
             props.instanceId(), props.requestTopic(), props.statusTopic(), props.syncBudget(), props.sessionGrace(),
             props.defaultLanguage(), props.maxInvalidAttempts(), Map.of(mno, props.mno().get("robi")),
             props.lists());
-    return new MenuSeeder(menus, one, json, Clock.systemUTC(), "menus/main-v2.json");
+    return new MenuSeeder(menus, one, json, Clock.systemUTC(), "menus/main-v3.json");
   }
 
   @Test
@@ -52,7 +52,7 @@ class MenuSeederIT {
 
     seederFor(mno).run(null);
 
-    assertThat(menus.active(mno, Instant.now()).map(MenuVersion::version)).contains(2);
+    assertThat(menus.active(mno, Instant.now()).map(MenuVersion::version)).contains(3);
   }
 
   @Test

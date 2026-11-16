@@ -312,6 +312,35 @@ class TxnAuthorisationIT {
     assertCode(authorise(appBody(PIN, 0, "k3")), 400, ErrorCodes.VAL_INVALID);
   }
 
+  String balanceBody(long amount, String payeeId, String key) {
+    String txn = "{\"txnType\":\"BALANCE\",\"amount\":" + amount + ",\"currency\":\"BDT\","
+        + "\"payer\":{\"type\":\"WALLET\",\"id\":\"" + msisdn + "\"},"
+        + "\"payee\":{\"type\":\"WALLET\",\"id\":\"" + payeeId + "\"},\"idempotencyKey\":\"" + key + "\"}";
+    return "{\"msisdn\":\"" + msisdn + "\",\"channel\":\"USSD\",\"encryptedPin\":" + pinJson(PIN)
+        + ",\"txn\":" + txn + "}";
+  }
+
+  @Test
+  void aBalanceInquiryWithZeroAndPayeeEqualToPayerGetsAnAssertion() throws Exception {
+    String key = UUID.randomUUID().toString();
+    MvcTestResult r = authorise("mw-ussd", balanceBody(0, msisdn, key));
+    assertThat(r).hasStatusOk();
+    JWTClaimsSet c = verified(field(r, "$.assertion"));
+    assertThat(c.getSubject()).isEqualTo(msisdn);
+    assertThat(c.getStringClaim("authMethod")).isEqualTo("PIN");
+    assertThat(Duration.between(c.getIssueTime().toInstant(), c.getExpirationTime().toInstant())).isEqualTo(Duration.ofSeconds(60));
+    assertThat(c.getStringClaim("txnHash")).isEqualTo(TxnHash.of("BALANCE", 0, "BDT",
+        new TxnHash.Party("WALLET", msisdn), new TxnHash.Party("WALLET", msisdn), key, "USSD"));
+  }
+
+  @Test
+  void aBalanceInquiryWithAnAmountOrAnotherPayeeIsRefusedWithoutAPinCheck() {
+    assertCode(authorise("mw-ussd", balanceBody(100, msisdn, UUID.randomUUID().toString())), 400, ErrorCodes.VAL_INVALID);
+    assertCode(authorise("mw-ussd", balanceBody(0, "01811000002", UUID.randomUUID().toString())), 400,
+        ErrorCodes.VAL_INVALID);
+    verify(crypto, never()).verifyPin(anyString(), any(), anyString(), anyString());
+  }
+
   @Test
   void mwCryptoDownFailsClosed() {
     doThrow(new MwException(ErrorCodes.SYS_CRYPTO_UNAVAILABLE, "down").withStatus(HttpStatus.SERVICE_UNAVAILABLE))

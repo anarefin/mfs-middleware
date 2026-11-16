@@ -27,7 +27,17 @@
     "requestedAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" },
     "locale": { "$ref": "../../common/defs.v1.schema.json#/$defs/Locale" },
-    "attributes": { "$ref": "../../common/defs.v1.schema.json#/$defs/StringMap" }
+    "attributes": { "$ref": "../../common/defs.v1.schema.json#/$defs/StringMap" },
+    "balance": {
+      "type": "object",
+      "description": "BALANCE COMPLETED only (ADR D26): the core's answer to BalanceInquiry, passed through for the channel that asked. Never stored by the middleware: not on the saga record, the timeline, the audit trail or a channel's history.",
+      "required": ["available", "asOf"],
+      "additionalProperties": false,
+      "properties": {
+        "available": { "$ref": "../../common/defs.v1.schema.json#/$defs/Amount" },
+        "asOf": { "type": "string", "format": "date-time" }
+      }
+    }
   },
   "allOf": [
     {

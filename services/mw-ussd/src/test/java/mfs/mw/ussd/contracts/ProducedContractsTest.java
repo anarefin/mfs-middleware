@@ -55,7 +55,8 @@ class ProducedContractsTest {
         new FlowRequest("TOPUP", session("bl", "en"), "main:3",
             Map.of("creditParty", "01612345678", "amount", "50", "partnerId", "gp", "productCode", "PREPAID"), PIN),
         new FlowRequest("BILL_PAY", session("teletalk", "bn"), "main:4",
-            Map.of("creditParty", "1234567", "amount", "667", "partnerId", "billagg", "billerCode", "DESCO"), PIN));
+            Map.of("creditParty", "1234567", "amount", "667", "partnerId", "billagg", "billerCode", "DESCO"), PIN),
+        new FlowRequest("BALANCE", session("robi", "bn"), "main:5>bal.pin", Map.of(), PIN));
     assertThat(flows.stream().map(FlowRequest::flow).toList())
         .containsExactlyInAnyOrderElementsOf(TxnRequestMapper.FLOWS);
     return flows.stream()

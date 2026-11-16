@@ -123,10 +123,12 @@ Every login is printed where a step needs it; <a href="#c1-0">1.0 Logins at a gl
       <tr><td class="tick"></td><td>App flows input checks, other users, resend rules</td><td><a href="#c3-10">3.10</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Wallet auth: first PIN, login, second device, PIN change, resets, lockout</td><td><a href="#c3-11">3.11</a></td><td>Both</td></tr>
       <tr><td class="tick"></td><td>Wallet history (sent and received, every channel)</td><td><a href="#c3-12">3.12</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Balance check in the app (PIN, nothing moves)</td><td><a href="#c3-13">3.13</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>USSD over HTTP (robi)</td><td><a href="#c4-1">4.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>USSD over SMPP (gp) and re-bind</td><td><a href="#c4-2">4.2</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>USSD other menus, Bangla, invalid input</td><td><a href="#c4-3">4.3</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>USSD phone errors and edge cases</td><td><a href="#c4-4">4.4</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>USSD balance check (option 5)</td><td><a href="#c4-5">4.5</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Core lost reply → status inquiry → COMPLETED</td><td><a href="#c5-2">5.2</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Core lost refusal → status inquiry → FAILED</td><td><a href="#c5-3">5.3</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Partner timeouts and outages on held flows</td><td><a href="#c5-4">5.4</a></td><td>Test console</td></tr>
@@ -780,6 +782,25 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <tr><td>A P2P with PIN <code>97531</code> or over the limit, then the payee's history</td><td>never listed as <code>IN</code>: a failed transfer received nothing (the payer sees <code>REJECTED</code> <code>OUT</code>, or nothing when mw-auth refused it before a txnId)</td></tr>
       <tr><td>More than 20 rows</td><td><span class="ui">More</span> loads the next 20 under them</td></tr>
       <tr><td>mw-orchestrator stopped (<code>docker compose stop mw-orchestrator</code>), <span class="ui">Refresh</span></td><td>red ✖ <code>history refused: MW-SYS-013</code>, HTTP 503, retryable (start it again afterwards)</td></tr>
+      <tr><td>A balance check (3.13), then <span class="ui">Load history</span></td><td>the check is not listed: a balance check moves nothing and is never in the history (ADR D26)</td></tr>
+    </table></div>
+  </div>
+
+  <div class="case" id="c3-13">
+    <h3><span class="id">3.13</span>Balance check</h3>
+    <p>Block <span class="ui">Balance</span>: <code>POST /app/v1/balance</code> (ADR D26), signed like a submit. mw-auth checks the PIN, the
+    core answers the wallet's <b>available</b> balance (balance minus held funds); nothing moves and the middleware stores nothing.</p>
+    <ol>
+      <li>As <code>customer01</code>, PIN <code>13579</code>, <span class="ui">Check balance</span>.</li>
+      <li>Expect: <i>Balance check</i> shows "available Tk … as of …", and the step <i>core-mock's own figure</i> is green
+        (the same amount); the signed-in card's balance did not change.</li>
+    </ol>
+    <h4>Variants</h4>
+    <div class="table-wrap"><table>
+      <tr><th>Do</th><th>Expect</th></tr>
+      <tr><td>PIN <code>97531</code></td><td><code>refused: MW-AUTH-040</code> (wrong PIN, tries left in the steps); three wrong ones lock the PIN as for any transaction</td></tr>
+      <tr><td><span class="ui">Simulators &amp; faults</span>: core fault REJECT on <code>BalanceInquiry</code>, then check</td><td><code>refused: MW-CORE-…</code> (HTTP 422)</td></tr>
+      <tr><td>As <code>agent01</code> or <code>merchant01</code></td><td>their own wallet's available balance</td></tr>
     </table></div>
   </div>
 </section>
@@ -828,6 +849,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <tr><td><code>3, 2, 01711000999, 1, 20, 1, 13579</code></td><td>recharge another number (the <code>1</code> after the number picks the operator gp)</td><td>"Recharge failed: Subscriber not eligible for recharge"</td></tr>
       <tr><td><code>4, 1, 1234567, 1, 13579</code></td><td>pay bill (first biller, DESCO)</td><td>"Tk 667.00 paid for DESCO bill 1234567. TxnID …"</td></tr>
       <tr><td><code>4, 1, 1234404</code></td><td>unknown bill</td><td>bill not found</td></tr>
+      <tr><td><code>5, 13579</code></td><td>balance (<a href="#c4-5">4.5</a>)</td><td>"Your balance is Tk …"</td></tr>
     </table></div>
     <p>Without <code>9</code> the same flows run in Bangla: check the Bangla texts and that the SMS are in
     Bangla. Three invalid entries in a row end the session ("Too many invalid entries").</p>
@@ -845,6 +867,17 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <tr><td>gp (SMPP): compare the steps with robi</td><td>over SMPP each step says "SMPP: replay the session from the dial with N input(s)" (every key press replays the session); over HTTP "send the reply in the open session (HTTP CONTINUE)"</td></tr>
       <tr><td><span class="ui">Clear</span></td><td>empties the reply box only; the session stays open</td></tr>
     </table></div>
+  </div>
+
+  <div class="case" id="c4-5">
+    <h3><span class="id">4.5</span>Balance check (option 5)</h3>
+    <ol>
+      <li>robi, subscriber <code>01711000001</code>, Dial: the main menu lists <code>5 ব্যালেন্স</code>.</li>
+      <li>Send <code>9</code> (English), <code>5</code> (Balance), <code>13579</code> (PIN).</li>
+      <li>Expect: the session ends with "Your balance is Tk …", the core's available balance (compare the signed-in card of the
+        app page or <span class="ui">Home</span>); no balance changes and <b>no SMS</b> is sent.</li>
+      <li>Without <code>9</code>: "আপনার ব্যালেন্স ৳…". A wrong PIN is asked again as in 4.3; over gp (SMPP) the same.</li>
+    </ol>
   </div>
 </section>
 

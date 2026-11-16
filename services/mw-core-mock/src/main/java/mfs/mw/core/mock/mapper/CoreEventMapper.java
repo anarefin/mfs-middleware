@@ -54,6 +54,15 @@ public class CoreEventMapper {
     return event(cmd, type, coreRef, CoreEvent.Outcome.SUCCESS, null, null, balances, payload);
   }
 
+  /** BalanceReported (ADR D26): the wallet's available balance (balance minus holds) as of now. */
+  public CoreEvent balanceReported(CoreCommand cmd, String coreRef, String walletId, Amount available) {
+    Map<String, Object> payload = new java.util.LinkedHashMap<>();
+    payload.put("walletId", walletId);
+    payload.put("available", available);
+    payload.put("asOf", clock.instant().toString());
+    return event(cmd, "BalanceReported", coreRef, CoreEvent.Outcome.SUCCESS, null, null, null, payload);
+  }
+
   /**
    * WalletStateChanged (ticket 67, spec 18.7, D5): the wallet's state, answering no command. The
    * envelope's command fields get fresh values: a UUIDv7 txnId (mw-orchestrator finds no
@@ -100,6 +109,7 @@ public class CoreEventMapper {
       case "ReverseTransaction" -> "ReversalRejected";
       case "UnlockWallet" -> "UnlockRejected";
       case "VerifyCustomerFactors" -> "CustomerFactorsRejected";
+      case "BalanceInquiry" -> "BalanceInquiryRejected";
       default -> null;
     };
   }

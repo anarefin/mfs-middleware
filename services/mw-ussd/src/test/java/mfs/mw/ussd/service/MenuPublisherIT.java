@@ -68,7 +68,7 @@ class MenuPublisherIT {
 
   /** The shipped main menu with its main screen title replaced. */
   private Map<String, Object> seedWithTitle(String bn, String en) {
-    ObjectNode tree = (ObjectNode) json.readTree(MenuParser.resource("menus/main-v2.json"));
+    ObjectNode tree = (ObjectNode) json.readTree(MenuParser.resource("menus/main-v3.json"));
     ((ObjectNode) tree.path("nodes").path("main").path("text")).put("bn", bn).put("en", en);
     return json.convertValue(tree, MAP);
   }

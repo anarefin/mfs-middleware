@@ -377,6 +377,14 @@
     async billers(user) { return http('GET', '/app/v1/billers', { headers: await app.headers(user) }); },
     async fetchBill(user, biller, bill) { return http('POST', '/app/v1/billers/' + biller + '/fetch-bill', { headers: await app.headers(user), json: { billNumber: bill } }); },
     async collections(user) { return http('GET', '/app/v1/merchant/collections', { headers: await app.headers(user) }); },
+    // the balance check (ADR D26): POST /app/v1/balance, signed like a submit, a new key per check
+    async balance(user, idem, pin) {
+      const d = await ready(user);
+      const json = JSON.stringify({ encryptedPin: await encryptPin(pin) });
+      const h = await signedHeaders(user, d, 'POST', '/app/v1/balance', json);
+      h['Idempotency-Key'] = idem;
+      return http('POST', '/app/v1/balance', { headers: h, raw: json });
+    },
     // the wallet history (ADR D25): GET /app/v1/transactions, query e.g. 'direction=IN&limit=5'
     async history(user, query) { return http('GET', '/app/v1/transactions' + (query ? '?' + query : ''), { headers: await app.headers(user) }); },
   };
@@ -728,6 +736,7 @@
       S.lastSubmit = await app.prepare(user, S.idem, body);
       return S.record(await app.send(S.lastSubmit));
     };
+    S.balance = async (user, pin) => { S.user = user; return S.record(await app.balance(user, 'api-bal-' + uuid(), pin)); };
     S.p2p = async (user, credit, amount, pin) => S.submit(user, await app.request('P2P', credit, amount, pin));
     S.txn = async (user, type, credit, amount, pin) => S.submit(user, await app.request(type, credit, amount, pin));
     S.topup = async (user, operator, product, msisdn, amount, pin) => {

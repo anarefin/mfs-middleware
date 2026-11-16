@@ -107,6 +107,19 @@ class TransactionControllerTest {
     assertThat(r).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-001");
   }
 
+  /** ADR D26: BALANCE is not a txnType of the submit (its own endpoint POST /app/v1/balance). */
+  @Test
+  void aBalanceIsNotSubmittedAsATransaction() {
+    MvcTestResult r =
+        post(customer(), "key-bal",
+            "{\"txnType\":\"BALANCE\",\"creditParty\":{\"id\":\"01711000001\"},"
+                + "\"amount\":{\"valueMinor\":1,\"currency\":\"BDT\"},"
+                + "\"encryptedPin\":{\"keyId\":\"core-pin-1\",\"ciphertext\":\"Y2lwaGVy\"}}");
+    assertThat(r).hasStatus(400);
+    assertThat(r).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-001");
+    verify(service, never()).submit(any(), any(), any());
+  }
+
   @Test
   void missingIdempotencyKeyIsMwVal() {
     MvcTestResult r = post(customer(), null, BODY.formatted(1000));

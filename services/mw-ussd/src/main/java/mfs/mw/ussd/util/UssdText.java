@@ -1,15 +1,18 @@
 package mfs.mw.ussd.util;
 
 import java.io.ByteArrayOutputStream;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 /**
  * USSD text on SMPP (spec 9.2): GSM-7 ({@code data_coding} 0, unpacked, one septet per byte) when
  * every character is in the GSM 03.38 default alphabet or its extension table (English), else
  * UCS-2 ({@code data_coding} 8, UTF-16BE: Bangla). Copied from mw-notify's encoder on purpose
- * (spec 4.3 rule 5); a USSD screen is never concatenated.
+ * (spec 4.3 rule 5); a USSD screen is never concatenated. Also how money reads on a screen
+ * ({@link #taka}).
  */
 public final class UssdText {
 
@@ -63,6 +66,14 @@ public final class UssdText {
       }
     }
     return new Encoded(GSM7, out.toByteArray());
+  }
+
+  /**
+   * Poisha as taka for a screen (ADR D26): thousands grouped, two decimals, ASCII digits in both
+   * languages ({@code 1200000} -> {@code "12,000.00"}).
+   */
+  public static String taka(long minor) {
+    return String.format(Locale.ROOT, "%,.2f", BigDecimal.valueOf(minor, 2));
   }
 
   /** Decodes UCS-2 ({@code data_coding} 8) or unpacked GSM-7 (anything else). */

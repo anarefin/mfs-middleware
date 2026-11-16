@@ -26,12 +26,15 @@ import tools.jackson.databind.json.JsonMapper;
  * ValidateTransaction and PostTransfer succeed, except that an amount of {@link #REJECT_AMOUNT}
  * is refused at validation with INSUFFICIENT_BALANCE and {@link #SILENT_AMOUNT} gets no answer to
  * PostTransfer (a core that never replies). HoldFunds, CommitHold and ReleaseHold always succeed
- * (ticket 17).
+ * (ticket 17). BalanceInquiry (ADR D26) is answered BalanceReported with {@link #AVAILABLE}, except
+ * for wallet {@link #UNKNOWN_WALLET}: BalanceInquiryRejected WALLET_NOT_FOUND.
  */
 public final class CoreStub implements AutoCloseable {
 
   public static final long REJECT_AMOUNT = 99_999;
   public static final long SILENT_AMOUNT = 77_777;
+  public static final String UNKNOWN_WALLET = "01711999999";
+  public static final long AVAILABLE = 1_200_000;
 
   private final JsonMapper json = JsonMapper.builder().build();
   private final KafkaConsumer<String, String> consumer;
@@ -83,7 +86,9 @@ public final class CoreStub implements AutoCloseable {
   private Map<String, Object> answer(JsonNode cmd) {
     String type = cmd.path("commandType").asString();
     long amount = cmd.path("payload").path("amount").path("valueMinor").asLong();
-    boolean reject = amount == REJECT_AMOUNT && "ValidateTransaction".equals(type);
+    boolean balanceRejected = "BalanceInquiry".equals(type)
+        && UNKNOWN_WALLET.equals(cmd.path("payload").path("debitParty").path("id").asString());
+    boolean reject = (amount == REJECT_AMOUNT && "ValidateTransaction".equals(type)) || balanceRejected;
     if ("PostTransfer".equals(type) && amount == SILENT_AMOUNT) {
       return null;
     }
@@ -94,6 +99,7 @@ public final class CoreStub implements AutoCloseable {
           case "HoldFunds" -> "FundsHeld";
           case "CommitHold" -> "HoldCommitted";
           case "ReleaseHold" -> "HoldReleased";
+          case "BalanceInquiry" -> balanceRejected ? "BalanceInquiryRejected" : "BalanceReported";
           default -> null;
         };
     if (eventType == null) {
@@ -109,7 +115,7 @@ public final class CoreStub implements AutoCloseable {
     e.put("occurredAt", Instant.now().toString());
     e.put("outcome", reject ? "FAILURE" : "SUCCESS");
     if (reject) {
-      e.put("reasonCode", "INSUFFICIENT_BALANCE");
+      e.put("reasonCode", balanceRejected ? "WALLET_NOT_FOUND" : "INSUFFICIENT_BALANCE");
       e.put("reasonMessage", "stub");
     }
     e.put(
@@ -117,6 +123,10 @@ public final class CoreStub implements AutoCloseable {
         switch (eventType) {
           case "TransactionValidated" -> Map.of("fee", Map.of("valueMinor", 500, "currency", "BDT"));
           case "FundsHeld" -> Map.of("holdId", "HOLD-" + cmd.path("txnId").asString().substring(0, 8));
+          case "BalanceReported" -> Map.of(
+              "walletId", cmd.path("payload").path("debitParty").path("id").asString(),
+              "available", Map.of("valueMinor", AVAILABLE, "currency", "BDT"),
+              "asOf", "2026-11-16T08:15:31Z");
           default -> Map.of();
         });
     return e;

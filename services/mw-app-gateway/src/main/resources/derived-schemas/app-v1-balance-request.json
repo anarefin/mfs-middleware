@@ -1,0 +1,36 @@
+{
+  "x-mw-derived-from": "api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/BalanceRequest",
+  "type": "object",
+  "required": [
+    "encryptedPin"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "encryptedPin": {
+      "type": "object",
+      "required": [
+        "keyId",
+        "ciphertext"
+      ],
+      "properties": {
+        "keyId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "ciphertext": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      }
+    },
+    "locale": {
+      "type": "string",
+      "enum": [
+        "bn",
+        "en"
+      ]
+    }
+  }
+}

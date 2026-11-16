@@ -5,7 +5,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 ## Responsibilities
 
-- Runs P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, BULK_DISBURSE (child), TOPUP, BILL_PAY and ADD_MONEY_BANK transactions, and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14, WP15 part).
+- Runs P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, BULK_DISBURSE (child), TOPUP, BILL_PAY and ADD_MONEY_BANK transactions, the BALANCE check (ADR D26) and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14, WP15 part).
   Consumes `mw.txn.request.v1` (`route/TxnRequestRoute`), the core results on
   `core.wallet.event.v1` (`route/CoreWalletEventRoute`) and `core.payment.event.v1` (`route/CorePaymentEventRoute`, same handler) and partner adapter answers on
   `mw.partner.reply.v1` (`route/PartnerReplyRoute`) and partner callbacks on `mw.partner.inbound.v1`
@@ -19,7 +19,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `SagaMachine.apply(status, event)` -> `Transition(from, to, effect)` or
   `exception/InvalidTransitionException`). All transitions of the 7.2 table are modelled and unit-tested;
   flows (`Flow`, one per `txnType`, found by `FlowRegistry`) are sets of reusable `Step`s
-  (VALIDATE, POST, HOLD, CALL_PARTNER, COMMIT, RELEASE, REVERSE, QUERY, INQUIRE; `Step.of(effect)`).
+  (VALIDATE, POST, HOLD, CALL_PARTNER, COMMIT, RELEASE, REVERSE, QUERY, INQUIRE, BALANCE_INQUIRY; `Step.of(effect)`).
   `P2pFlow`, `CashInFlow`, `CashOutFlow`, `MerchantPayFlow` (ticket 30) = validate + post (parties as the channel set them:
   CASH_IN agent -> customer, CASH_OUT customer -> agent, MERCHANT_PAY customer -> merchant; the core enforces the wallet types).
   `BulkDisburseFlow` (ticket 34, one child of an org bulk batch, sent by mw-portal-api) is validate +
@@ -51,11 +51,27 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `txn.outcome.conflict`). Deviations from the 7.2 table, documented here: VALIDATING ->
   PARTNER_PENDING and PARTNER_PENDING -> FAILED (no hold), and COMMITTING sends CreditWallet for
   inbound money (spec 6.3 lists CreditWallet for "add money, C2W"; POSTING is "no partner").
+  `BalanceFlow` (ADR D26, txnType BALANCE) moves no money and the middleware never stores the balance:
+  steps BALANCE_INQUIRY only (it overrides `allows`: no REVERSE, no INQUIRE). Intake refuses a BALANCE
+  with an amount other than 0 (`MW-VAL-011`; 0 is refused `MW-VAL-011` for every other type), debit and
+  credit party not the same WALLET (any MSISDN form, `SearchKeys.sameWallet`) or no assertion (`MW-VAL-001`).
+  Path: RECEIVED -`BalanceInquiryStarted`-> VALIDATING (`Effect.SEND_BALANCE_INQUIRY`: `BalanceInquiry`
+  on `core.wallet.command.v1`, commandId `<txnId>:balance`, `TransferPayload` with txnType BALANCE, amount
+  0, the wallet on both sides, assertion + idempotencyKey) -`BalanceReported`-> COMPLETED;
+  `BalanceInquiryRejected` -> FAILED `MW-CORE-<reason>` (`MW-AUTH-046` as it is); the VALIDATING deadline ->
+  FAILED `MW-TMO-001` (retryable; never UNKNOWN, no inquiry). The balance (`dto/Balance`, from
+  `CoreEventMapper.balance`) is passed transiently `SagaEngine.fire(rec, event, error, balance)` ->
+  `StatusMapper.toStatus(rec, balance)` into the COMPLETED status's `balance` only: not on the record, the
+  `saga_step`/`core_call` timeline, the audit event or `wallet_txn` (`SearchKeys.walletParties` is empty for
+  BALANCE, so a check is no wallet-history entry, ADR D25); `BalanceSagaIT` proves it. A repeated request
+  (same key) is answered COMPLETED without a balance (there is none to replay); a REVERSAL of a BALANCE is
+  refused `MW-VAL-021`. A balance answer for any other flow is refused by `SagaEngine.fire` (the event
+  answers a step the flow lacks). Tests: `BalanceFlowTest`, `BalanceSagaIT`, `BalanceKafkaIT`.
   QUERY is allowed for every flow that holds,
-  INQUIRE (status inquiry of an UNKNOWN outcome) for every flow.
+  INQUIRE (status inquiry of an UNKNOWN outcome) for every flow but BALANCE.
   A new flow implements `txnType()`, `needsHold()` and, with a partner leg, `partnerCall()`.
   `SagaEngine.perform` runs the step behind a transition's effect only when the flow has it
-  (`Flow.allows(Step)`: REVERSE and INQUIRE belong to every flow, QUERY to every flow that holds);
+  (`Flow.allows(Step)`: REVERSE and INQUIRE belong to every flow but BALANCE, QUERY to every flow that holds);
   SCHEDULE_INQUIRY arms the first inquiry slot. A transition whose effect is a step the flow lacks
   is refused by `SagaEngine.fire` as an `InvalidTransitionException` before anything is written
   (S2: ManualCommit of P2P/CASH_IN/CASH_OUT/MERCHANT_PAY, ManualRelease of ADD_MONEY_BANK); only an unknown
@@ -247,7 +263,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `reversing-timeout` and asks the core, above),
   UNKNOWN on the inquiry schedule (above). MANUAL_REVIEW and terminal states arm no timer. A late
   core reply after a timeout is ignored (state machine refuses it).
-- `commandId` = `<txnId>:validate` / `:post` / `:hold` / `:commit` / `:release` / `:credit`
+- `commandId` = `<txnId>:validate` / `:post` / `:hold` / `:commit` / `:release` / `:credit` / `:balance`
   (QueryTransaction: above; ReverseTransaction: `<reversalTxnId>:reverse`). `expiresAt` = issuedAt + `command-ttl` (60 s).
   Topics (ticket 50, M2 gate): `HoldFunds`, `CommitHold` and `ReleaseHold` (also the orphan-hold release) go to
   `core.payment.command.v1`, their results come back on `core.payment.event.v1`; every other command

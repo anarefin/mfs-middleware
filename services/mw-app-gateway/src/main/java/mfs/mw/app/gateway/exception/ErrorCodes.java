@@ -35,6 +35,11 @@ public final class ErrorCodes {
   public static final String AUTH_REPLAYED = "MW-AUTH-006";
   /** No live session for this device (idle timeout, or ended by another device): HTTP 401. */
   public static final String AUTH_NO_SESSION = "MW-AUTH-007";
+  /**
+   * No answer within the reply budget where there is nothing to finish later (a balance check, ADR
+   * D26: no 202); retryable, with a new Idempotency-Key: 504.
+   */
+  public static final String TMO_NO_ANSWER = "MW-TMO-001";
   /** Kafka did not accept the request in time; nothing was accepted, the app may retry: 503. */
   public static final String SYS_UNAVAILABLE = "MW-SYS-010";
   /** mw-adapter-billpay could not be asked (biller list, bill fetch); retryable: 503. */

@@ -77,13 +77,23 @@ public class KafkaTransactionFlow implements TransactionFlow {
    * and target, plus the session's start: an SMPP gateway reuses its session numbers 1..128
    * ({@code its_session_info}), so a later session with the same number and the same transfer is a
    * new transaction, never a replay of the earlier one. Every step of one session keeps the key.
+   * A BALANCE (ADR D26) maps no fields, so its key adds the attempt's {@code txnId}: each check is a
+   * new inquiry (another check in the same session, or after a wrong PIN, would otherwise replay the
+   * first one and its old balance).
    */
-  static String idempotencyKey(FlowRequest request) {
+  static String idempotencyKey(FlowRequest request, String txnId) {
     String amountMinor = Long.toString(TxnRequestMapper.minor(request.fields().get(FlowRequest.AMOUNT)));
+    String session = request.session().sessionId() + "@"
+        + (request.session().startedAt() == null ? "" : request.session().startedAt().toEpochMilli());
+    if (TxnRequestMapper.BALANCE.equals(request.flow())) {
+      return IdempotencyKeys.derive(
+          TxnRequestMapper.CHANNEL, request.session().msisdn(), session, request.menuPath(), TxnRequestMapper.BALANCE,
+          txnId);
+    }
     return IdempotencyKeys.derive(
         TxnRequestMapper.CHANNEL,
         request.session().msisdn(),
-        request.session().sessionId() + "@" + (request.session().startedAt() == null ? "" : request.session().startedAt().toEpochMilli()),
+        session,
         request.menuPath(),
         amountMinor,
         request.fields().get(FlowRequest.CREDIT_PARTY));
@@ -91,9 +101,9 @@ public class KafkaTransactionFlow implements TransactionFlow {
 
   @Override
   public FlowOutcome submit(FlowRequest request) {
-    String key = idempotencyKey(request);
     Instant now = clock.instant();
     String txnId = UuidV7.next(clock).toString();
+    String key = idempotencyKey(request, txnId);
     String correlationId = correlationId();
     TxnRequest unsigned = mapper.toRequest(request, txnId, key, correlationId, now);
     if (request.pin() == null) {
@@ -135,7 +145,7 @@ public class KafkaTransactionFlow implements TransactionFlow {
       return new FlowOutcome(FlowOutcome.Kind.PROCESSING, status == null ? txnId : status.txnId(), null);
     }
     return end.success()
-        ? new FlowOutcome(FlowOutcome.Kind.COMPLETED, status.txnId(), null)
+        ? new FlowOutcome(FlowOutcome.Kind.COMPLETED, status.txnId(), null, null, status.balance())
         : new FlowOutcome(FlowOutcome.Kind.FAILED, status.txnId(), status.error());
   }
 

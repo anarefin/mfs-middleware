@@ -3,7 +3,7 @@
 // MSISDN), bind the device, run one of the role's flows against a seeded counterparty or a magic
 // outcome, see every step, and the wallet's history.
 
-import { ArrowLeftRight, Loader2, RotateCcw, Search, Send, Smartphone, Store, UserRound, Wand2 } from "lucide-react";
+import { ArrowLeftRight, Landmark, Loader2, RotateCcw, Search, Send, Smartphone, Store, UserRound, Wand2 } from "lucide-react";
 import { useActionState, useEffect, useState } from "react";
 import { Busy, EmptyResult, Hint, Panel, Row, TwoColumns } from "@/components/section";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import { APP_ROLES, ROLE_LABEL, msisdnOf, userLabel, usersOf, type AppUser } fro
 import { FILL_EVENT, type FillDetail } from "@/lib/how-to";
 import { FLOWS_BY_ROLE, FLOW_HELP, type AppRole, type TxnType } from "@/lib/personas";
 import { cn } from "@/lib/utils";
-import { appRead, bindDevice, resendLast, submitTxn } from "../actions/app";
+import { appRead, bindDevice, checkBalance, resendLast, submitTxn } from "../actions/app";
 import { Result } from "../components/result";
 import { HistoryPanel } from "./history-panel";
 import { SignedInCard } from "./signed-in-card";
@@ -90,8 +90,9 @@ export function AppTester({ users }: { users: AppUser[] }) {
   const [txnState, submit, submitting] = useActionState(submitTxn, null);
   const [resendState, resend, resending] = useActionState(resendLast, null);
   const [readState, read, reading] = useActionState(appRead, null);
+  const [balanceState, balance, checking] = useActionState(checkBalance, null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const busy = binding || submitting || resending || reading;
+  const busy = binding || submitting || resending || reading || checking;
 
   const roleUsers = usersOf(users, role);
   const user = pick === OTHER ? other.trim() : pick;
@@ -171,6 +172,17 @@ export function AppTester({ users }: { users: AppUser[] }) {
             )}
           </Panel>
 
+          <Panel title="Balance" icon={Landmark}>
+            <form action={balance} className="flex flex-col gap-3">
+              <input type="hidden" name="user" value={user} />
+              <Row>
+                <Field label="PIN"><Input name="pin" defaultValue={GOOD_PIN} inputMode="numeric" className="font-mono" data-testid="balance-pin" /></Field>
+                <Button type="submit" variant="outline" disabled={busy} data-testid="check-balance"><Landmark />{checking ? "checking…" : "Check balance"}</Button>
+              </Row>
+              <Hint>POST /app/v1/balance (ADR D26): PIN checked by mw-auth, the core answers the available balance; nothing moves and it is not in the history.</Hint>
+            </form>
+          </Panel>
+
           <Panel title="3. Look things up" icon={Search}>
             <form action={read} className="flex flex-col gap-3">
               <input type="hidden" name="user" value={user} />
@@ -192,13 +204,14 @@ export function AppTester({ users }: { users: AppUser[] }) {
         </div>
         <div className="flex min-w-0 flex-col gap-5">
           {busy ? <Busy>Working… each step appears when the call returns.</Busy> : null}
-          {[txnState, resendState, bindState, readState].filter(Boolean).length === 0 ? (
+          {[txnState, resendState, bindState, readState, balanceState].filter(Boolean).length === 0 ? (
             <EmptyResult>Run something on the left: the result, balances, SMS and every API call show here.</EmptyResult>
           ) : null}
           {txnState ? <Panel title="Submit" icon={Send}><Result state={txnState} /></Panel> : null}
           {resendState ? <Panel title="Resend" icon={RotateCcw}><Result state={resendState} /></Panel> : null}
           {bindState ? <Panel title="Device" icon={Smartphone}><Result state={bindState} /></Panel> : null}
           {readState ? <Panel title="Lookup" icon={Search}><Result state={readState} /></Panel> : null}
+          {balanceState ? <Panel title="Balance check" icon={Landmark}><Result state={balanceState} /></Panel> : null}
         </div>
       </TwoColumns>
       <HistoryPanel user={user} refreshKey={refreshKey} />

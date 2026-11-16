@@ -235,7 +235,9 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   /internal/v1/txn-authorisations` on the internal mTLS port, callers `mw.auth.assertion.callers`
   (mw-app-gateway, mw-ussd, mw-checkout; mw-admin-api and anyone else 403 `MW-AUTH-002`). Body `{walletId |
   msisdn (exactly one, else 400 MW-VAL-001), channel, deviceId?, encryptedPin, txn: {txnType, amount (minor),
-  currency, payer {type, id}, payee {type, id}, idempotencyKey}}`. Order: wallet known (else 403 `MW-AUTH-002`),
+  currency, payer {type, id}, payee {type, id}, idempotencyKey}}`. Amount rule (`service/TxnAmountRule`, ADR D26):
+  at least 1, except txnType `BALANCE` (balance inquiry): 0 with payee = payer (type and id), else 400 `MW-VAL-001`
+  before any wallet lookup or PIN check. Order: wallet known (else 403 `MW-AUTH-002`),
   `WalletAccess.check` (043/041/042), a sent `deviceId` must be the wallet's bound device (401 `MW-AUTH-047`),
   then Valkey `assert:{walletId}:{idempotencyKey}` (value `<exp ms>|<txnHash>|<newDevice>|<jws>`, TTL = life,
   `SET NX`; the life is also checked against the service clock): a live entry for the same `txnHash` is
@@ -350,7 +352,8 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   mw-crypto a behaving mock signing ES256 with an in-test P-256 key; the clock a `@TestBean MutableClock`):
   claims verified against the served assertion JWK Set, USSD by MSISDN, newDevice, wrong PIN counted, PIN
   lock (no PIN check), blocked wallet, no PIN, reuse inside the life (one PIN check), same key other txn 409,
-  a new assertion after the life, device of another wallet, callers, walletId xor msisdn, mw-crypto down).
+  a new assertion after the life, device of another wallet, callers, walletId xor msisdn, mw-crypto down, a
+  BALANCE assertion and its refusals); `service/TxnAmountRuleTest` (ADR D26).
 
 - Ticket 70: `security/PinLifecycleIT` (PostgreSQL + Valkey, mw-crypto a behaving mock): the lockout
   levels through login (041 with retryAfter, 24 h, 042 permanent; no mw-crypto call while locked), the

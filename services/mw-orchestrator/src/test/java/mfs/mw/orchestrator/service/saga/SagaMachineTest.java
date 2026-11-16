@@ -34,6 +34,10 @@ class SagaMachineTest {
     row(Status.VALIDATING, new Validated(false, true), Status.PARTNER_PENDING, Effect.SEND_PARTNER_REQUEST);
     row(Status.VALIDATING, new ValidationRejected(), Status.REJECTED, Effect.NONE);
     row(Status.VALIDATING, new DeadlineExpired(), Status.FAILED, Effect.NONE);
+    // BALANCE (ADR D26): one BalanceInquiry in VALIDATING, answered COMPLETED or FAILED; no money moves
+    row(Status.RECEIVED, new BalanceInquiryStarted(), Status.VALIDATING, Effect.SEND_BALANCE_INQUIRY);
+    row(Status.VALIDATING, new BalanceReported(), Status.COMPLETED, Effect.NONE);
+    row(Status.VALIDATING, new BalanceInquiryRejected(), Status.FAILED, Effect.NONE);
 
     row(Status.HOLDING, new HoldPlaced(), Status.PARTNER_PENDING, Effect.SEND_PARTNER_REQUEST);
     row(Status.HOLDING, new HoldRejected(), Status.REJECTED, Effect.NONE);
@@ -96,7 +100,7 @@ class SagaMachineTest {
 
   private static List<SagaEvent> allEvents() {
     return List.of(
-        new ValidationStarted(), new RequestRejected(), new Validated(false), new Validated(true), new Validated(false, true),
+        new ValidationStarted(), new RequestRejected(), new BalanceInquiryStarted(), new BalanceReported(), new BalanceInquiryRejected(), new Validated(false), new Validated(true), new Validated(false, true),
         new ValidationRejected(), new HoldPlaced(), new HoldRejected(), new HoldQueryResult(true),
         new HoldQueryResult(false), new PostSucceeded(), new PostRejected(), new PartnerSucceeded(),
         new PartnerFailed(), new PartnerFailed(false), new PartnerUnknown(), new InquirySucceeded(true), new InquirySucceeded(false),
@@ -118,7 +122,7 @@ class SagaMachineTest {
 
   @Test
   void everyListedTransitionIsTakenWithItsEffect() {
-    assertThat(TABLE).hasSize(49);
+    assertThat(TABLE).hasSize(52);
     TABLE.forEach(
         (key, expect) -> {
           Transition t = SagaMachine.apply(key.from(), key.event());

@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resilience4j</title>
+<link rel="stylesheet" href="../tutorial/tutorial.css">
+<script src="../tutorial/diagrams.js" defer></script>
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> concepts</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="apisix.html">APISIX</a>
+    <a href="keycloak.html">Keycloak</a>
+    <a href="openbao.html">OpenBao</a>
+    <a href="hsm.html">HSM</a>
+    <a href="greenmail.html">GreenMail</a>
+    <a href="core-mock.html">Core mock</a>
+    <a href="simulators.html">Simulators</a>
+    <a href="camel.html">Camel</a>
+    <a href="jsonata.html">JSONata</a>
+    <a href="resilience4j.html" aria-current="page">Resilience4j</a>
+    <a href="shedlock.html">ShedLock</a>
+    <a href="testcontainers.html">Testcontainers</a>
+    <a href="../tutorial/index.html">Tutorial ↗</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Library</div>
+  <h1>Resilience4j: timeouts, circuit breakers and bulkheads</h1>
+  <p class="lead">A partner that is slow or down must not drag the middleware down with it. Resilience4j wraps each outbound call
+    with a time limit, a circuit breaker and a cap on calls in flight. And one rule matters more than any setting:
+    a payment call is never retried automatically.</p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#plain">In plain English</a></li>
+    <li><a href="#why">Why we use it here</a></li>
+    <li><a href="#wired">How it is wired</a></li>
+    <li><a href="#partner">Partner calls: the framework wrapper</a></li>
+    <li><a href="#annotations">Internal calls: annotations in <code>client/</code></a></li>
+    <li><a href="#example">Worked example: the OCS does not answer</a></li>
+    <li><a href="#where">Where it lives</a></li>
+    <li><a href="#wrong">What can go wrong</a></li>
+    <li><a href="#next">Read next</a></li>
+  </ol></div>
+
+  <h2 id="plain">In plain English</h2>
+  <div class="box plain"><div class="tag">In plain English</div>
+    <p>Think of the fuse box in a house. If one appliance shorts, its fuse blows, so the rest of the house keeps its power.
+      After a while you try the switch again. A <strong>circuit breaker</strong> does that for calls: when too many calls to one
+      partner fail, it stops calling for a while and fails at once instead.</p>
+    <p>Three more tools come in the same box. A <strong>time limiter</strong> is a kitchen timer: if the answer is not back in time,
+      stop waiting. A <strong>bulkhead</strong> (named after the walls that keep one flooded part of a ship from sinking it) is a cap on
+      how many calls may be in flight to one partner. A <strong>retry</strong> tries again after a failure, which is only safe when
+      doing the same thing twice is harmless.</p>
+  </div>
+  <div class="table-wrap"><table>
+    <tr><th>Word</th><th>Meaning</th></tr>
+    <tr><td><strong>Closed / open / half-open</strong></td><td>The breaker's states. Closed: calls go through. Open: calls fail at once with <code>CallNotPermittedException</code>. Half-open: a few trial calls decide whether to close again.</td></tr>
+    <tr><td><strong>Sliding window</strong></td><td>The recent calls the breaker looks at: the last N seconds (<code>TIME_BASED</code>) or the last N calls (<code>COUNT_BASED</code>).</td></tr>
+    <tr><td><strong>Slow call</strong></td><td>A call that succeeded but took longer than <code>slow-call-duration-threshold</code>. Too many of them also open the breaker.</td></tr>
+    <tr><td><strong>Instance</strong></td><td>One named breaker, bulkhead or retry with its own counters, for example <code>ocs</code> or <code>billpay</code>.</td></tr>
+    <tr><td><strong>Idempotent</strong></td><td>Safe to repeat: doing it twice has the same effect as once. A read is; a top-up is not.</td></tr>
+  </table></div>
+
+  <h2 id="why">Why we use it here</h2>
+  <p>Spec section 19.2 sets the defaults, with a per-partner override:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Policy</th><th>Default (spec 19.2)</th></tr>
+    <tr><td>Time limiter</td><td>Partner timeout from 11.1</td></tr>
+    <tr><td>Circuit breaker</td><td>60 s time-based window, minimum 50 calls; open at 50% failure or 50% slow calls (&gt; 80% of timeout); open 30 s; 5 half-open probes</td></tr>
+    <tr><td>Bulkhead</td><td>Semaphore, 200 concurrent calls per partner</td></tr>
+    <tr><td>Retry</td><td><em>"Only for idempotent calls (status inquiry, fetch-bill, GET): 2 retries, 200 ms → 1 s exponential + jitter"</em></td></tr>
+  </table></div>
+  <p>Spec 12.2 adds that every adapter is wrapped by the framework <em>"with: bulkhead, circuit breaker, time limiter, audit of raw
+    request/response (masked), correlation headers, metrics."</em></p>
+  <p>Why no retry on payments? If a top-up times out, the OCS may already have applied it. Sending it again could top up twice.
+    So a payment gets exactly one attempt, and an unclear outcome becomes <strong>UNKNOWN</strong>, which a later status inquiry
+    resolves (see <a href="../tutorial/03-core-ideas.html#unknown">UNKNOWN in tutorial chapter 3</a>). Partners also deduplicate on our
+    stable reference, which covers the rare duplicate that slips through.</p>
+
+  <h2 id="wired">How it is wired</h2>
+  <p>From <a href="../../services/mw-adapter-telco/build.gradle.kts">services/mw-adapter-telco/build.gradle.kts</a> (every module writes its versions inline, ADR <a href="../adr/D13-build.md">D13</a>):</p>
+  <pre><code>implementation(platform("io.github.resilience4j:resilience4j-bom:2.4.0"))
+...
+// Resilience4j for client/ calls (19.2); annotations need AspectJ.
+implementation("io.github.resilience4j:resilience4j-spring-boot4:2.4.0")
+implementation("org.springframework.boot:spring-boot-starter-aspectj")</code></pre>
+  <p>The defaults sit under <code>resilience4j</code> in each service's <code>application.yml</code>. The telco adapter's, shortened:</p>
+  <pre><code>resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-type: TIME_BASED
+        sliding-window-size: 60
+        minimum-number-of-calls: 50
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 50
+        # 80% of the default partner timeout (30 s, 11.1); partners override both.
+        slow-call-duration-threshold: 24s
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+    instances:
+      ocs:
+        base-config: default
+        slow-call-duration-threshold: 16s
+  bulkhead:
+    configs:
+      default:
+        max-concurrent-calls: 200
+        max-wait-duration: 0
+    instances:
+      ocs:
+        base-config: default
+        max-concurrent-calls: 100
+  timelimiter:
+    configs:
+      default:
+        timeout-duration: 30s
+  retry:
+    configs:
+      default:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true</code></pre>
+  <p>A few things to notice. <code>max-attempts: 3</code> means one try plus the spec's two retries. <code>max-wait-duration: 0</code> means a
+    full bulkhead refuses at once instead of queueing. The OCS breaker counts a call as slow after 16 s, 80% of its 20 s timeout.
+    The file's own comment says it plainly: <em>"never annotate a payment call with @Retry."</em></p>
+  <p>Every service except the one-shot <code>mw-seeder</code> has the dependency. They use it in two styles:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Style</th><th>Where</th><th>Instances</th></tr>
+    <tr><td><strong>Programmatic</strong>: code asks a registry for a breaker and calls <code>executeSupplier</code></td>
+      <td><code>partner/template/PartnerCallWrapper</code> in the three adapters; <code>client/AuthClient</code> in mw-app-gateway, mw-ussd and mw-checkout;
+        <code>client/CryptoClient</code> in mw-auth; <code>client/PayShieldProvider</code> in mw-crypto</td>
+      <td>one per partner (<code>ocs</code>, ...), <code>mw-auth</code>, ...</td></tr>
+    <tr><td><strong>Annotations</strong>: <code>@CircuitBreaker</code> and <code>@Retry</code> on a method</td>
+      <td><code>client/BillPayClient</code> (mw-app-gateway; mw-ussd breaker only), <code>client/OrchestratorQueryClient</code>
+        (mw-app-gateway, mw-admin-api, mw-portal-api), <code>client/AuditQueryClient</code> (mw-admin-api)</td>
+      <td><code>billpay</code>, <code>orchestrator</code>, <code>audit-dw</code></td></tr>
+  </table></div>
+
+  <h2 id="partner">Partner calls: the framework wrapper</h2>
+  <p>Every partner call in an adapter goes through <code>PartnerCallWrapper.call</code>. The wrapping is three layers deep, outside in:</p>
+  <pre><code>try {
+  response =
+      bulkhead.executeSupplier(
+          () -&gt;
+              breaker.executeSupplier(
+                  () -&gt;
+                      timeLimited(
+                          instance,
+                          () -&gt;
+                              inquiry
+                                  ? instance.adapter().inquire(call, ctx)
+                                  : instance.adapter().execute(call, ctx))));
+} catch (BulkheadFullException e) {
+  response = new PartnerResponse.NotSent(NotSentReason.BULKHEAD_FULL);
+} catch (CallNotPermittedException e) {
+  response = new PartnerResponse.NotSent(NotSentReason.CIRCUIT_OPEN);
+} catch (PartnerNotSentException e) {
+  response = new PartnerResponse.NotSent(e.reason());
+} catch (PartnerUnknownOutcomeException e) {
+  response = new PartnerResponse.Unknown(e.reason());
+}</code></pre>
+  <div class="table-wrap"><table>
+    <tr><th>What happens</th><th>Outcome</th><th>Reply code (via <code>mapper/PartnerReplyMapper</code>)</th></tr>
+    <tr><td>Bulkhead full</td><td>NOT_SENT <code>BULKHEAD_FULL</code></td><td>FAILED <code>MW-SYS-PARTNER_BUSY</code>, retryable</td></tr>
+    <tr><td>Circuit open</td><td>NOT_SENT <code>CIRCUIT_OPEN</code></td><td>FAILED <code>MW-SYS-PARTNER_CIRCUIT_OPEN</code>, retryable</td></tr>
+    <tr><td>Time limit passed</td><td>UNKNOWN <code>TIMEOUT</code></td><td>UNKNOWN <code>MW-TMO-PARTNER_TIMEOUT</code></td></tr>
+  </table></div>
+  <p>NOT_SENT means nothing left the building, so the caller may safely try again later. UNKNOWN means the partner may have acted.</p>
+  <ul>
+    <li><strong>Exactly one attempt.</strong> The class comment: <em>"Exactly one attempt: no retry here, ever (a payment is not idempotent from our side)."</em></li>
+    <li><strong>Names.</strong> The breaker and bulkhead are named by the partner config's <code>resilience</code> field, default the instance id. So the
+      <code>ocs</code> instance under <code>resilience4j.circuitbreaker.instances</code> applies to the <code>ocs</code> partner.</li>
+    <li><strong>Time limit from partner config, not YAML.</strong> Each partner instance builds its own <code>TimeLimiter</code> from <code>timeoutMs</code>
+      (<code>partner/config/PartnerConfig</code>: default 30000 ms; connect 3000 ms; read timeout = timeout + 2000 ms so the limiter decides first).
+      The OCS dev seed sets <code>timeout-ms: 20000</code> and <code>read-timeout-ms: 22000</code>. A <code>mw.config.changed.v1</code> record can change it without a restart.</li>
+    <li><strong>Only exceptions count.</strong> Transport failures, 5xx, timeouts and unreadable replies throw, so the breaker counts them. A business
+      refusal ("subscriber barred") is a normal answer and does not open the breaker.</li>
+  </ul>
+
+  <h2 id="annotations">Internal calls: annotations in <code>client/</code></h2>
+  <p>Calls between our own services that are safe to repeat use annotations. From mw-app-gateway's <code>client/BillPayClient</code>:</p>
+  <pre><code>@Retry(name = "billpay")
+@CircuitBreaker(name = "billpay")
+public List&lt;Biller&gt; billers() {
+  return json.readValue(send(request("/billpay/v1/billers").GET().build()), BILLERS);
+}</code></pre>
+  <p>The annotations are applied by a Spring proxy built with AspectJ (hence <code>spring-boot-starter-aspectj</code>). The instance tells the breaker which exceptions count:</p>
+  <pre><code>billpay:
+  base-config: default
+  minimum-number-of-calls: 20
+  record-exceptions: mfs.mw.app.gateway.exception.BillPayUnavailableException
+  ignore-exceptions: mfs.mw.app.gateway.exception.BillPayRefusedException</code></pre>
+  <p>So "the adapter is down" counts, while "this bill number does not exist" (<code>BillPayRefusedException</code>) does not. mw-ussd's copy of the
+    same client has <code>@CircuitBreaker</code> only: the MNO holds the USSD screen open, so there is time for one short attempt and no retry.</p>
+
+  <h2 id="example">Worked example: the OCS does not answer</h2>
+  <p>A customer buys airtime and the OCS hangs.</p>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+actors: mw-orchestrator | mw-adapter-telco | OCS
+mw-orchestrator => mw-adapter-telco : mw.partner.request.telco.v1 (PAY)
+mw-adapter-telco -> mw-adapter-telco : bulkhead ocs: 1 of 100 in flight
+mw-adapter-telco -> mw-adapter-telco : breaker ocs: closed, call permitted
+mw-adapter-telco -> OCS : POST /ocs/v1/topup (time limit 20 s)
+mw-adapter-telco -> mw-adapter-telco : 20 s pass: TimeoutException
+mw-adapter-telco => mw-orchestrator : mw.partner.reply.v1 UNKNOWN MW-TMO-PARTNER_TIMEOUT
+mw-orchestrator -> mw-orchestrator : txn UNKNOWN, inquiry timer armed
+mw-orchestrator => mw-adapter-telco : later: STATUS_QUERY, same reference
+mw-adapter-telco -> OCS : GET /ocs/v1/topup/{reference}
+OCS --> mw-adapter-telco : 200 SUCCESS (or 404 NOT_FOUND)
+mw-adapter-telco => mw-orchestrator : the true outcome
+  </script></div><figcaption>A timeout becomes UNKNOWN; a status inquiry finds the truth.</figcaption></figure>
+  <ol class="steps">
+    <li>The bulkhead lets the call in (fewer than 100 OCS calls in flight) and the breaker is closed.</li>
+    <li>The time limiter runs the adapter on the call executor and waits up to 20 s. After that it gives up and the wrapper reports UNKNOWN with
+      reason <code>TIMEOUT</code>. The OCS may or may not have topped up the phone, so the middleware does not guess.</li>
+    <li>The breaker records a failure. One timeout does nothing; at least 50 calls in 60 s with half failing (or slower than 16 s) would open it.</li>
+    <li>The orchestrator moves the transaction to UNKNOWN and arms an inquiry timer (swept by its ShedLock-guarded <code>SagaTimerJob</code>, see
+      <a href="shedlock.html">ShedLock</a>).</li>
+    <li>The inquiry is a <code>STATUS_QUERY</code> with the same stable reference. It also goes through the wrapper: one attempt, same limits.</li>
+  </ol>
+  <p>If the OCS is really down, the breaker opens after enough failures. For the next 30 s calls fail fast with <code>MW-SYS-PARTNER_CIRCUIT_OPEN</code>
+    and the OCS is not called at all. <code>route/TelcoRequestRouteIT</code> proves this with a 4-call <code>COUNT_BASED</code> window: four 500s, then the fifth
+    request is refused without reaching WireMock.</p>
+
+  <div class="box where" id="where"><div class="tag">Where it lives</div><ul>
+    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/template/PartnerCallWrapper.java">partner/template/PartnerCallWrapper.java</a>: the wrapper; its comment is the rule.</li>
+    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/template/PartnerInstanceFactory.java">PartnerInstanceFactory.java</a> (builds each partner's time limiter),
+      <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/config/PartnerConfig.java">partner/config/PartnerConfig.java</a> (timeout defaults).</li>
+    <li><a href="../../services/mw-adapter-telco/src/main/resources/application.yml">mw-adapter-telco application.yml</a> and
+      <a href="../../services/mw-app-gateway/src/main/resources/application.yml">mw-app-gateway application.yml</a>: the <code>resilience4j</code> blocks.</li>
+    <li><a href="../../services/mw-app-gateway/src/main/java/mfs/mw/app/gateway/client/BillPayClient.java">mw-app-gateway client/BillPayClient.java</a>: the annotation style.</li>
+    <li>Tests: <code>client/ResilienceDefaultsIT</code> (the 19.2 defaults are wired) and <code>route/TelcoRequestRouteIT</code> (timeout and open circuit).</li>
+  </ul></div>
+
+  <h2 id="wrong">What can go wrong</h2>
+  <div class="box wrong"><div class="tag">What can go wrong</div><ul>
+    <li><strong>Someone adds <code>@Retry</code> to a payment.</strong> A timed-out top-up retried is a possible double top-up. Retry is for idempotent reads only.
+      Review catches it; the YAML comment warns about it.</li>
+    <li><strong>A business error opens the breaker.</strong> Only exceptions count. If your client throws for a normal "no" answer, list that exception under
+      <code>ignore-exceptions</code>, or return the answer instead of throwing.</li>
+    <li><strong>The read timeout is shorter than the time limit.</strong> Then the HTTP client gives up first and the limiter never decides. Keep the read timeout a
+      little above it (the default is timeout + 2 s).</li>
+    <li><strong>An annotation does nothing.</strong> Annotations work only through the Spring proxy: they need the AspectJ starter, and a call from inside the same
+      class (<code>this.billers()</code>) bypasses the proxy.</li>
+    <li><strong>Tests interfere through a breaker.</strong> Breakers keep their state for the life of the Spring context. A test that trips one leaves it open for the
+      next test. <code>TelcoRequestRouteIT</code> calls <code>breakers.circuitBreaker("ocs").reset()</code> before each test.</li>
+    <li><strong>A full bulkhead looks like an outage.</strong> With <code>max-wait-duration: 0</code>, call 101 to the OCS fails at once with <code>MW-SYS-PARTNER_BUSY</code>.
+      That is by design: waiting would only pile up threads.</li>
+  </ul></div>
+
+  <h2 id="next">Read next</h2>
+  <ul>
+    <li>Spec sections 19.2 (the defaults) and 12.2 (the wrapper), in <a href="../../spec/bits-mfs-middleware-spec.md">spec/bits-mfs-middleware-spec.md</a>.</li>
+    <li><a href="../tutorial/03-core-ideas.html#unknown">Tutorial chapter 3, UNKNOWN</a> and <a href="../tutorial/05-partner-flows.html#framework">chapter 5, the adapter framework</a>.</li>
+    <li><a href="jsonata.html">JSONata</a>: the adapter that runs inside the wrapper; <a href="camel.html">Camel</a>: the route around it.</li>
+  </ul>
+
+  <nav class="pager">
+    <a href="jsonata.html"><small>Previous</small>← JSONata</a>
+    <a class="next" href="shedlock.html"><small>Next</small>ShedLock →</a>
+  </nav>
+</main>
+</body>
+</html>

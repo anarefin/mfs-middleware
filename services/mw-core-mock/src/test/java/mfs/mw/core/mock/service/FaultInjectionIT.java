@@ -158,6 +158,7 @@ class FaultInjectionIT {
     assertThat(handle(cmds.releaseHold(txn(), "H")).eventType()).isEqualTo("ReleaseFailed");
     assertThat(handle(cmds.creditWallet(txn(), A, 1_000)).eventType()).isEqualTo("CreditRejected");
     assertThat(handle(cmds.reverse(txn(), txn(), 1_000)).eventType()).isEqualTo("ReversalRejected");
+    assertThat(handle(cmds.balanceInquiry(txn(), A)).eventType()).isEqualTo("BalanceInquiryRejected");
     CoreEvent validated = handle(cmds.validate(txn(), A, B, 1_000));
     assertThat(validated.eventType()).isEqualTo("TransactionRejected");
     assertThat(validated.reasonCode()).isEqualTo("INJECTED_REJECT");

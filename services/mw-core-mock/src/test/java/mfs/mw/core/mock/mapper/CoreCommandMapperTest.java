@@ -67,6 +67,21 @@ class CoreCommandMapperTest {
   }
 
   @Test
+  void aBalanceInquiryNeedsItsAssertionAndOneWalletOnBothSides() {
+    String body =
+        "{\"schemaVersion\":1,\"commandType\":\"BalanceInquiry\",\"commandId\":\"t:balance\",\"txnId\":\"t\","
+            + "\"payload\":{\"txnType\":\"BALANCE\",\"debitParty\":{\"type\":\"WALLET\",\"id\":\"01711000001\"},"
+            + "\"creditParty\":{\"type\":\"WALLET\",\"id\":\"%s\"},\"amount\":{\"valueMinor\":0,\"currency\":\"BDT\"}%s}}";
+    String auth = ",\"assertion\":\"a.b.c\",\"idempotencyKey\":\"k\"";
+    assertThat(mapper.balance(mapper.command(body.formatted("01711000001", auth))).debitParty().id())
+        .isEqualTo("01711000001");
+    assertThatThrownBy(() -> mapper.balance(mapper.command(body.formatted("01711000001", ""))))
+        .isInstanceOf(MwException.class);
+    assertThatThrownBy(() -> mapper.balance(mapper.command(body.formatted("01711000002", auth))))
+        .isInstanceOf(MwException.class);
+  }
+
+  @Test
   void malformedJsonAndIncompleteEnvelopesAreRejected() {
     assertThatThrownBy(() -> mapper.command("{not json")).isInstanceOf(MwException.class);
     assertThatThrownBy(() -> mapper.command("{\"commandType\":\"PostTransfer\"}")).isInstanceOf(MwException.class);

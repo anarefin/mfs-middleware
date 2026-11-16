@@ -54,6 +54,9 @@ public final class OrchestratorStub implements AutoCloseable {
 
   public static final Duration SLOW_DUPLICATE_DELAY = Duration.ofMillis(4_500);
 
+  /** A BALANCE request (ADR D26, amount 0) completes with this available balance. */
+  public static final long BALANCE_MINOR = 1_200_000;
+
   public static final String STORED_TXN_ID = "019a0000-0000-7000-8000-00000000abcd";
 
   private static final JsonMapper JSON = JsonMapper.builder().build();
@@ -120,6 +123,16 @@ public final class OrchestratorStub implements AutoCloseable {
     String replyTo = KafkaTestConsumer.headers(r).get("mw-reply-to");
     String txnId = req.path("txnId").asString();
     long amount = req.path("amount").path("valueMinor").asLong();
+    if ("BALANCE".equals(req.path("txnType").asString())) {
+      send(txnId, status(req, txnId, "RECEIVED"), replyTo);
+      ObjectNode done = status(req, txnId, "COMPLETED");
+      done.put("coreRef", "CORE-STUB-BAL");
+      ObjectNode balance = done.putObject("balance");
+      balance.putObject("available").put("valueMinor", BALANCE_MINOR).put("currency", "BDT");
+      balance.put("asOf", Instant.now().toString());
+      send(txnId, done, replyTo);
+      return;
+    }
     if (amount == DUPLICATE_DONE || amount == DUPLICATE_RUNNING) {
       ObjectNode s = status(req, STORED_TXN_ID, amount == DUPLICATE_DONE ? "COMPLETED" : "POSTING");
       ObjectNode attrs = s.putObject("attributes");

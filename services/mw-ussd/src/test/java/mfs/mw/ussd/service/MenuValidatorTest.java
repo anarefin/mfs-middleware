@@ -18,7 +18,7 @@ class MenuValidatorTest {
 
   @Test
   void theSeededMenuIsValid() {
-    assertThat(MenuValidator.problems(MenuParser.parseResource(JSON, "menus/main-v2.json"))).isEmpty();
+    assertThat(MenuValidator.problems(MenuParser.parseResource(JSON, "menus/main-v3.json"))).isEmpty();
   }
 
   @Test
@@ -64,6 +64,23 @@ class MenuValidatorTest {
   }
 
   @Test
+  void aBalanceActionNeedsNoMapping() {
+    Menu m =
+        menu(
+            "\"a\":{\"type\":\"INPUT\",\"validator\":{\"type\":\"pin\"},\"next\":\"b\"},"
+                + "\"b\":{\"type\":\"ACTION\",\"flow\":\"BALANCE\",\"onSuccess\":\"d\",\"onFailure\":\"d\"},"
+                + "\"d\":{\"type\":\"END\",\"text\":{\"en\":\"Tk {balance}\"}}");
+    assertThat(MenuValidator.problems(m)).isEmpty();
+  }
+
+  @Test
+  void aBalanceActionStillNeedsItsTargets() {
+    Menu m = menu("\"a\":{\"type\":\"ACTION\",\"flow\":\"BALANCE\",\"mapping\":{},\"onSuccess\":\"x\"}");
+    assertThat(MenuValidator.problems(m))
+        .containsExactlyInAnyOrder("a: onSuccess points to missing node x", "a: onFailure points to missing node null");
+  }
+
+  @Test
   void aLookupMustBeKnownAndGetItsArguments() {
     Menu m =
         menu(
@@ -78,7 +95,7 @@ class MenuValidatorTest {
 
   @Test
   void aPublishedMenuNeedsEveryTextInBothLanguages() {
-    assertThat(MenuValidator.publishProblems(MenuParser.parseResource(JSON, "menus/main-v2.json"))).isEmpty();
+    assertThat(MenuValidator.publishProblems(MenuParser.parseResource(JSON, "menus/main-v3.json"))).isEmpty();
     Menu m =
         menu(
             "\"a\":{\"type\":\"MENU\",\"text\":{\"en\":\"A\"},"

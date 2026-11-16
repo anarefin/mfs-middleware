@@ -78,7 +78,7 @@ export function Phone() {
           </div>
         </form>
         <Hint className="mx-auto max-w-[20rem]">
-          Main menu: 1 Send Money, 2 Cash Out, 3 Mobile Recharge, 4 Pay Bill, 9 switch language (the session starts in Bangla).
+          Main menu: 1 Send Money, 2 Cash Out, 3 Recharge, 4 Pay Bill, 5 Balance, 9 switch language (the session starts in Bangla).
           PIN 13579 (5 digits). Over SMPP every key press replays the session from the dial (the simulator cannot resume an SMPP session).
         </Hint>
       </div>

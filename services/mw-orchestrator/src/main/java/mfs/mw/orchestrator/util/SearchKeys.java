@@ -20,6 +20,8 @@ public final class SearchKeys {
   public static final String BILLER = "BILLER";
   public static final String MERCHANT = "MERCHANT";
   public static final String WALLET = "WALLET";
+  /** The txnType of a balance check (ADR D26), never in a wallet's history. */
+  static final String BALANCE = "BALANCE";
 
   /** Money left the wallet (it is the debit party). */
   public static final String OUT = "OUT";
@@ -64,9 +66,13 @@ public final class SearchKeys {
    * and the credit party as {@link #IN}, each when it is a wallet (party type {@code WALLET} of
    * any wallet type, or {@code MERCHANT}), keyed {@code WALLET:<id>}. An org, a top-up MSISDN, a
    * bank account or a biller account is never a wallet here. A wallet on both sides counts once,
-   * as {@link #OUT}.
+   * as {@link #OUT}. A BALANCE check (ADR D26) moves no money and has none: it is no entry of
+   * the wallet history.
    */
   public static List<WalletParty> walletParties(TxnRequest r) {
+    if (BALANCE.equals(r.txnType())) {
+      return List.of();
+    }
     List<WalletParty> parties = new ArrayList<>(2);
     Party debit = r.debitParty();
     Party credit = r.creditParty();
@@ -79,6 +85,13 @@ public final class SearchKeys {
       parties.add(new WalletParty(new Key(WALLET, credit.id()), IN));
     }
     return List.copyOf(parties);
+  }
+
+  /** True when {@code a} and {@code b} are the same wallet (type WALLET, one MSISDN in any form). */
+  public static boolean sameWallet(Party a, Party b) {
+    return a != null && b != null && WALLET.equals(a.type()) && WALLET.equals(b.type())
+        && a.id() != null && b.id() != null && !a.id().isBlank()
+        && SearchHash.canonical(a.id()).equals(SearchHash.canonical(b.id()));
   }
 
   private static boolean isWallet(Party p) {

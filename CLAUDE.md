@@ -9,6 +9,7 @@ script, compose memory knobs, troubleshooting), `docs/runbook.md` (MVP host), `d
 per milestone M0–M6), `docs/testing-guide.html` (QA walkthrough: credentials (`scripts/creds.sh`,
 `scripts/totp.sh`), every feature by hand with the test console and the ops console),
 `docs/tutorial/` (onboarding tour for a new developer: architecture, core ideas, every feature's flow, a first day),
+`docs/concepts/` (one page per component (APISIX, Keycloak, OpenBao, the HSM, the test doubles, the libraries): how this project uses it, with a worked example),
 `docs/adr/` (one record per spec decision D1–D15, M1–M13, plus later ones). `scripts/test/test_repo_docs.sh`
 (in `./gradlew :scriptTests`) fails when they name a script, repo path, `./gradlew` task, API suite
 folder or `VAR=` knob that does not exist, when the README misses an operator script in `scripts/`, or

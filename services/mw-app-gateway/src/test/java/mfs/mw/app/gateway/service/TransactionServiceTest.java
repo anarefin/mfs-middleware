@@ -465,7 +465,7 @@ class TransactionServiceTest {
                       new mfs.mw.app.gateway.dto.Party("MSISDN", USER.msisdn(), null, null),
                       null, null, null, null, null,
                       new mfs.mw.app.gateway.dto.ErrorInfo("MW-TMO-001", "Timed out", null, true),
-                      null, null, null, null));
+                      null, null, null, null, null));
               return null;
             })
         .when(publisher)
@@ -563,14 +563,14 @@ class TransactionServiceTest {
     projection.apply(
         new StatusMessage(
             1, "T", "k", "c", "CUSTOMER_APP", "P2P", "COMPLETED", null, null, null, null, null,
-            null, null, null, null, Map.of("duplicate", "true", "requestTxnId", "T2"), null, null));
+            null, null, null, null, Map.of("duplicate", "true", "requestTxnId", "T2"), null, null, null));
     verifyNoInteractions(repo);
     assertThatThrownBy(
             () ->
                 projection.apply(
                     new StatusMessage(
                         1, "T", "k", "c", "CUSTOMER_APP", "P2P", "COMPLETED", null, null, null,
-                        null, null, null, null, null, null, null, null, null)))
+                        null, null, null, null, null, null, null, null, null, null)))
         .isInstanceOf(IllegalArgumentException.class);
   }
 }

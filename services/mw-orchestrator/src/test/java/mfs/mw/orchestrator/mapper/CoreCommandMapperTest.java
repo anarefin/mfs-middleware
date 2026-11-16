@@ -137,4 +137,24 @@ class CoreCommandMapperTest {
     assertThat(payload.has("idempotencyKey")).isFalse();
     assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(c))).isEmpty();
   }
+
+  /** ADR D26: BalanceInquiry is shaped like a transfer, under {@code <txnId>:balance}, on the wallet topic. */
+  @Test
+  void balanceInquiryIsAValidCommandWithTheAssertionAndAmountZero() {
+    TransactionRecord balance = new RequestMapper(json)
+        .toRecord(TestData.balance(TestData.txnId(), "key-b", "01711000001"), null, TestData.NOW);
+
+    CoreCommand c = mapper.balanceInquiry(balance, TestData.NOW, Duration.ofSeconds(60));
+
+    assertThat(c.commandType()).isEqualTo("BalanceInquiry");
+    assertThat(c.commandId()).isEqualTo(balance.txnId() + ":balance");
+    var payload = json.valueToTree(c).path("payload");
+    assertThat(payload.path("txnType").asString()).isEqualTo("BALANCE");
+    assertThat(payload.path("amount").path("valueMinor").asLong()).isZero();
+    assertThat(payload.path("assertion").asString()).isEqualTo(TestData.ASSERTION);
+    assertThat(payload.path("idempotencyKey").asString()).isEqualTo("key-b");
+    assertThat(payload.path("debitParty")).isEqualTo(payload.path("creditParty"));
+    assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(c))).isEmpty();
+    assertThat(mfs.mw.orchestrator.service.CoreTopics.commandTopic(c.commandType())).isEqualTo("core.wallet.command.v1");
+  }
 }

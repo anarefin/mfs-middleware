@@ -115,4 +115,36 @@ class CoreEventMapperTest {
     assertThat(mapper.error(event("TransactionRejected", "FAILURE", "MW-AUTH-001", "{}")).code())
         .as("only the core's own auth code passes through").isEqualTo("MW-CORE-UNKNOWN");
   }
+
+  // --- BALANCE (ADR D26) ---------------------------------------------------------------------
+
+  @Test
+  void balanceAnswersBecomeTheirSagaEvents() {
+    assertThat(mapper.toSagaEvent(event("BalanceReported", "SUCCESS", null, "{}"), false))
+        .contains(new BalanceReported());
+    assertThat(mapper.toSagaEvent(event("BalanceInquiryRejected", "FAILURE", "WALLET_NOT_FOUND", "{}"), false))
+        .contains(new BalanceInquiryRejected());
+  }
+
+  @Test
+  void theReportedBalanceIsReadFromThePayload() {
+    var reported = event("BalanceReported", "SUCCESS", null,
+        "{\"walletId\":\"01711000001\",\"available\":{\"valueMinor\":1200000,\"currency\":\"BDT\"},"
+            + "\"asOf\":\"2026-11-16T08:15:31Z\"}");
+
+    assertThat(mapper.balance(reported))
+        .contains(new mfs.mw.orchestrator.dto.Balance(
+            mfs.mw.orchestrator.dto.Amount.bdt(1_200_000), Instant.parse("2026-11-16T08:15:31Z")));
+    assertThat(mapper.balance(event("BalanceReported", "SUCCESS", null, "{\"asOf\":\"2026-11-16T08:15:31Z\"}")))
+        .as("no available amount, no balance").isEmpty();
+    assertThat(mapper.balance(event("TransferPosted", "SUCCESS", null, "{}"))).isEmpty();
+  }
+
+  @Test
+  void aBalanceRejectionMapsLikeAnyCoreRejection() {
+    assertThat(mapper.error(event("BalanceInquiryRejected", "FAILURE", "WALLET_NOT_FOUND", "{}")).code())
+        .isEqualTo("MW-CORE-WALLET_NOT_FOUND");
+    assertThat(mapper.error(event("BalanceInquiryRejected", "FAILURE", "MW-AUTH-046", "{}")).code())
+        .isEqualTo("MW-AUTH-046");
+  }
 }

@@ -16,8 +16,11 @@ import mfs.mw.orchestrator.repository.IdempotencyRepository;
 import mfs.mw.orchestrator.repository.TransactionRepository;
 import mfs.mw.orchestrator.service.saga.Flow;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
+import mfs.mw.orchestrator.service.saga.BalanceFlow;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.Status;
+import mfs.mw.orchestrator.service.saga.Step;
+import mfs.mw.orchestrator.util.SearchKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -113,6 +116,8 @@ public class TransactionService {
     ErrorInfo refusal = refusal(req);
     if (refusal != null) {
       engine.fire(rec, new SagaEvent.RequestRejected(), refusal);
+    } else if (flows.find(req.txnType()).orElseThrow().allows(Step.BALANCE_INQUIRY)) {
+      engine.fire(rec, new SagaEvent.BalanceInquiryStarted(), null); // ADR D26: no money moves
     } else {
       engine.fire(rec, new SagaEvent.ValidationStarted(), null);
     }
@@ -190,6 +195,11 @@ public class TransactionService {
       return;
     }
     TransactionRecord original = found.get();
+    if (!flows.find(original.request().txnType()).map(f -> f.allows(Step.REVERSE)).orElse(true)) {
+      // a BALANCE check moved no money (ADR D26): nothing to compensate
+      refuse(req, replyTo, now, ErrorCodes.VAL_NOT_REVERSIBLE, "This transaction cannot be reversed");
+      return;
+    }
     if (original.reversalTxnId() == null) {
       if (original.status() != Status.COMPLETED) {
         refuse(req, replyTo, now, ErrorCodes.VAL_NOT_REVERSIBLE, "Only a completed transaction can be reversed");
@@ -256,9 +266,33 @@ public class TransactionService {
       return new ErrorInfo(
           ErrorCodes.VAL_PARTNER_REQUIRED, "Partner and product are required for this transaction type", null, false);
     }
+    if (BalanceFlow.TXN_TYPE.equals(req.txnType())) {
+      return balanceRefusal(req);
+    }
     if (req.amount().valueMinor() <= 0) {
       return new ErrorInfo(ErrorCodes.VAL_AMOUNT, "Amount must be greater than zero", null, false);
     }
     return null;
   }
+
+  /**
+   * BALANCE (ADR D26) moves no money: amount 0 only, the customer's own wallet (type WALLET) on
+   * both sides (the same wallet in any MSISDN form), and mw-auth's assertion, which the core checks
+   * as for a transfer. Anything else is refused before the core is asked.
+   */
+  private static ErrorInfo balanceRefusal(TxnRequest req) {
+    if (req.amount().valueMinor() != 0) {
+      return new ErrorInfo(ErrorCodes.VAL_AMOUNT, "Amount must be zero for a balance inquiry", null, false);
+    }
+    if (!SearchKeys.sameWallet(req.debitParty(), req.creditParty())) {
+      return new ErrorInfo(
+          ErrorCodes.VAL_INVALID, "A balance inquiry is for one wallet: debit and credit party must be the same wallet",
+          null, false);
+    }
+    if (req.assertion() == null || req.assertion().isBlank()) {
+      return new ErrorInfo(ErrorCodes.VAL_INVALID, "A balance inquiry needs the transaction assertion", null, false);
+    }
+    return null;
+  }
+
 }

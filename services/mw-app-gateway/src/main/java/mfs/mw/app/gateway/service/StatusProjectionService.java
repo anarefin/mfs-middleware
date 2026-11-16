@@ -1,12 +1,16 @@
 package mfs.mw.app.gateway.service;
 
 import java.util.UUID;
+import mfs.mw.app.gateway.mapper.RequestMapper;
 import mfs.mw.app.gateway.dto.StatusMessage;
 import mfs.mw.app.gateway.dto.TransactionView;
 import mfs.mw.app.gateway.repository.AppTransactionRepository;
 import org.springframework.stereotype.Service;
 
-/** Keeps {@code app_transaction} at the latest status record of each app transaction. */
+/**
+ * Keeps {@code app_transaction} at the latest status record of each app transaction; a balance
+ * check ({@code BALANCE}, ADR D26) is not a transaction of the history and is skipped.
+ */
 @Service
 public class StatusProjectionService {
 
@@ -24,6 +28,10 @@ public class StatusProjectionService {
    * for the repeat shows the stored transaction instead of a row that stays RECEIVED (S3).
    */
   public void apply(StatusMessage status) {
+    if (RequestMapper.BALANCE.equals(status.txnType())) {
+      // ADR D26: a balance check is never stored, so no app view ever serves one (or its balance)
+      return;
+    }
     if (status.duplicate()) {
       linkRepeat(status);
       return;

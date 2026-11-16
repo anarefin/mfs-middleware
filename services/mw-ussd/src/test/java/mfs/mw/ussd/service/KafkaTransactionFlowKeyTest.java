@@ -29,13 +29,25 @@ class KafkaTransactionFlowKeyTest {
 
   @Test
   void theSameSessionAlwaysDerivesTheSameKey() {
-    assertThat(KafkaTransactionFlow.idempotencyKey(p2p("smpp-7-ab", T0)))
-        .isEqualTo(KafkaTransactionFlow.idempotencyKey(p2p("smpp-7-ab", T0)));
+    // a transfer's key does not depend on the attempt's txnId: a retry (e.g. after a wrong PIN) keeps it
+    assertThat(KafkaTransactionFlow.idempotencyKey(p2p("smpp-7-ab", T0), "t-1"))
+        .isEqualTo(KafkaTransactionFlow.idempotencyKey(p2p("smpp-7-ab", T0), "t-2"));
   }
 
   @Test
   void aReusedSessionNumberStartedLaterIsANewTransaction() {
-    assertThat(KafkaTransactionFlow.idempotencyKey(p2p("smpp-7-ab", T0.plusSeconds(3600))))
-        .isNotEqualTo(KafkaTransactionFlow.idempotencyKey(p2p("smpp-7-ab", T0)));
+    assertThat(KafkaTransactionFlow.idempotencyKey(p2p("smpp-7-ab", T0.plusSeconds(3600)), "t-2"))
+        .isNotEqualTo(KafkaTransactionFlow.idempotencyKey(p2p("smpp-7-ab", T0), "t-1"));
+  }
+
+  /** ADR D26: a balance check maps no fields; each check (each txnId) is a new inquiry. */
+  @Test
+  void everyBalanceCheckOfOneSessionHasItsOwnKey() {
+    UssdSession s = new UssdSession("gp", "smpp-7-ab", "01711000001", "main", 3, "en", "bal.check",
+        List.of("main:5", "bal.pin"), Map.of(), 0, List.of(), false, T0);
+    FlowRequest balance = new FlowRequest("BALANCE", s, "main:5>bal.pin", Map.of(), PIN);
+    assertThat(KafkaTransactionFlow.idempotencyKey(balance, "t-1"))
+        .isNotEqualTo(KafkaTransactionFlow.idempotencyKey(balance, "t-2"))
+        .isEqualTo(KafkaTransactionFlow.idempotencyKey(balance, "t-1"));
   }
 }

@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JSONata mappings</title>
+<link rel="stylesheet" href="../tutorial/tutorial.css">
+<script src="../tutorial/diagrams.js" defer></script>
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> concepts</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="apisix.html">APISIX</a>
+    <a href="keycloak.html">Keycloak</a>
+    <a href="openbao.html">OpenBao</a>
+    <a href="hsm.html">HSM</a>
+    <a href="greenmail.html">GreenMail</a>
+    <a href="core-mock.html">Core mock</a>
+    <a href="simulators.html">Simulators</a>
+    <a href="camel.html">Camel</a>
+    <a href="jsonata.html" aria-current="page">JSONata</a>
+    <a href="resilience4j.html">Resilience4j</a>
+    <a href="shedlock.html">ShedLock</a>
+    <a href="testcontainers.html">Testcontainers</a>
+    <a href="../tutorial/index.html">Tutorial ↗</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Library</div>
+  <h1>JSONata: partner formats as configuration</h1>
+  <p class="lead">Every partner wants its request in its own JSON shape and answers in its own shape too. Instead of a Java
+    class per partner, the adapters keep two small JSONata expressions per operation in the partner config: one builds the
+    partner's request from ours, the other turns the partner's answer into one of our outcomes.</p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#plain">In plain English</a></li>
+    <li><a href="#why">Why we use it here</a></li>
+    <li><a href="#wired">How it is wired</a></li>
+    <li><a href="#syntax">Just enough JSONata</a></li>
+    <li><a href="#contract">What a mapping gets and must give back</a></li>
+    <li><a href="#example">Worked example: the OCS top-up</a></li>
+    <li><a href="#where">Where it lives</a></li>
+    <li><a href="#wrong">What can go wrong</a></li>
+    <li><a href="#next">Read next</a></li>
+  </ol></div>
+
+  <h2 id="plain">In plain English</h2>
+  <div class="box plain"><div class="tag">In plain English</div>
+    <p>Think of a form translator at a bank counter. You hand over your form; the clerk copies the fields you filled in onto the
+      other bank's form, in their order and with their names. When their answer comes back, the clerk reads it and ticks one
+      box on your form: approved, refused or "we don't know yet". A JSONata mapping is that clerk, written as one short
+      expression.</p>
+    <p><strong>JSONata</strong> is a small query and transformation language for JSON, a bit like XPath for XML or
+      <code>jq</code> on the command line. An <strong>expression</strong> takes one JSON document as input and produces another
+      JSON value. We use the Java port <code>com.dashjoin:jsonata</code>.</p>
+  </div>
+
+  <h2 id="why">Why we use it here</h2>
+  <p>Spec section 12.1 gives the adapter framework three layers. Layer 2 is the mappings:
+    <em>"Request/response mapping as versioned JSONata expressions (for JSON) ... editable in the admin console with a test bench
+    (paste sample → see output). Error-code map is a table."</em></p>
+  <p>The point is that a new partner of a known kind should be configuration only (spec 12, ADR <a href="../adr/D1-integration-engine.md">D1</a>).
+    A field renamed by a partner is a one-line config change, not a release. Business rules that are not about the wire format
+    (fail closed, which statuses are believable, the error map) stay in Java, so a mapping cannot accidentally turn an unknown
+    answer into a refund.</p>
+  <p>Spec 12.1 also names XSLT for XML partners. None is built yet: all three adapters speak REST/JSON today. The admin console's
+    partner page shows each operation's method and path, but it has no mapping editor or test bench yet.</p>
+
+  <h2 id="wired">How it is wired</h2>
+  <p>Only the three adapters depend on it. From <a href="../../services/mw-adapter-telco/build.gradle.kts">services/mw-adapter-telco/build.gradle.kts</a>:</p>
+  <pre><code>// Adapter framework (spec 12): partner request/response mappings in JSONata.
+implementation("com.dashjoin:jsonata:0.9.10")</code></pre>
+  <div class="table-wrap"><table>
+    <tr><th>Service</th><th>Uses JSONata for</th></tr>
+    <tr><td><code>mw-adapter-telco</code></td><td>OCS top-up and status inquiry (the reference copy of the framework).</td></tr>
+    <tr><td><code>mw-adapter-billpay</code></td><td>Bill aggregator: pay, status query, signed callback and bill inquiry (async-callback template).</td></tr>
+    <tr><td><code>mw-adapter-bank</code></td><td>Bank debit: pay (202 PENDING), status query and signed callback (async-callback template).</td></tr>
+  </table></div>
+  <p>There are no <code>.jsonata</code> files. The expressions are YAML strings inside the partner config, under
+    <code>mw.partners.instances.&lt;id&gt;.operations</code>. The dev seeds are in
+    <a href="../../services/mw-adapter-telco/src/main/resources/application-dev.yml">application-dev.yml</a> (dev profile only; a production
+    start has no partners). At runtime a <code>mw.config.changed.v1</code> record from mw-admin-api adds or replaces a partner's config,
+    and mw-admin-api stores the mappings in its <code>partner.mapping</code> table.</p>
+  <p>All the Java is one small class, <code>partner/mapping/JsonataMapping</code>:</p>
+  <pre><code>public static JsonataMapping compile(String source) {
+  try {
+    Jsonata.jsonata(source);
+  } catch (RuntimeException e) {
+    throw new IllegalArgumentException(e.getMessage(), e);
+  }
+  return new JsonataMapping(source);
+}
+
+public Object evaluate(Object input) {
+  try {
+    return Jsonata.jsonata(source).evaluate(input);
+  } catch (RuntimeException e) {
+    throw new MappingException(e.getMessage(), e);
+  }
+}</code></pre>
+  <ul>
+    <li><strong><code>compile</code></strong> runs when a partner config is loaded (<code>PartnerConfig</code> checks every operation's
+      request and response). A syntax error refuses the whole config, and the last good one stays.</li>
+    <li><strong><code>evaluate</code></strong> parses the expression again on every call. That costs a little time, but it means one mapping
+      can be shared by many concurrent calls whatever the thread safety of the evaluator.</li>
+    <li>Input and output are plain JSON values: maps, lists, strings, numbers and booleans.</li>
+  </ul>
+
+  <h2 id="syntax">Just enough JSONata</h2>
+  <p>You can read every mapping in the repo with these six ideas:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Written</th><th>Means</th><th>Example</th></tr>
+    <tr><td><code>a.b</code></td><td>Field <code>b</code> inside field <code>a</code> of the input. A missing field is "undefined", not an error.</td><td><code>creditParty.id</code></td></tr>
+    <tr><td><code>{"k": expr}</code></td><td>Build a JSON object.</td><td><code>{"msisdn": creditParty.id}</code></td></tr>
+    <tr><td><code>x = y</code>, <code>!=</code>, <code>and</code></td><td>Compare (one <code>=</code>, not two) and combine.</td><td><code>status = 200</code></td></tr>
+    <tr><td><code>cond ? a : b</code></td><td>If-then-else. Chain them for several cases.</td><td><code>status = 422 ? ... : ...</code></td></tr>
+    <tr><td><code>$type(x)</code></td><td>A built-in function: the JSON type of <code>x</code> as text.</td><td><code>$type(body.ocsRef) = "string"</code></td></tr>
+    <tr><td><code>"text"</code></td><td>A string literal.</td><td><code>"SUCCESS"</code></td></tr>
+  </table></div>
+
+  <h2 id="contract">What a mapping gets and must give back</h2>
+  <p><code>partner/template/RestJsonAdapter</code> decides the input of each mapping and checks its output.</p>
+  <div class="table-wrap"><table>
+    <tr><th>Mapping</th><th>Input</th><th>Output</th></tr>
+    <tr><td><strong>request</strong></td><td>The call's <code>input</code> (<code>txnType</code>, <code>amount</code> with <code>valueMinor</code>, <code>currency</code> and
+      <code>major</code> such as <code>"20.00"</code>, <code>debitParty</code>, <code>creditParty</code>, <code>partner</code>, <code>attributes</code>), plus
+      <code>reference</code> (our stable partner reference), <code>operation</code> and <code>txnId</code>.</td>
+      <td>Any JSON value. It becomes the HTTP body.</td></tr>
+    <tr><td><strong>response</strong></td><td><code>{status, body}</code>: the HTTP status code and the parsed JSON body (<code>null</code> when the body is not JSON).</td>
+      <td><code>{outcome, partnerRef, code, message, reason}</code>, where <code>outcome</code> is <code>SUCCESS</code>, <code>FAILED</code>,
+        <code>PENDING</code> (async template only), <code>NOT_FOUND</code> (status inquiry only) or <code>UNKNOWN</code>.</td></tr>
+  </table></div>
+  <p>The adapter builds the request input like this:</p>
+  <pre><code>Map&lt;String, Object&gt; input = new LinkedHashMap&lt;&gt;(call.input());
+input.put("reference", call.reference());
+input.put("operation", call.operation());
+input.put("txnId", call.txnId());
+...
+Object mapped = JsonataMapping.compile(op.request()).evaluate(input);
+body = json.writeValueAsBytes(mapped);</code></pre>
+  <p>The mapping does not get the last word. The adapter only believes an answer that fits the facts (it <strong>fails closed</strong>):</p>
+  <ul>
+    <li>A <strong>5xx</strong> status is UNKNOWN <em>before</em> any mapping runs. The response mapping never sees it.</li>
+    <li><code>SUCCESS</code> needs a 2xx and a non-empty <code>partnerRef</code>.</li>
+    <li><code>FAILED</code> needs a <code>code</code> and a status listed in the operation's <code>definite-statuses</code>. A code listed in
+      <code>ambiguous-codes</code> becomes UNKNOWN instead.</li>
+    <li>Anything else is UNKNOWN: <code>UNEXPECTED_STATUS</code> for a believable answer on the wrong status, <code>MALFORMED_REPLY</code> for the rest.</li>
+  </ul>
+  <p>The partner's own code then goes through the <strong>error map</strong>, a plain table and not JSONata: partner code →
+    <code>MW-PTR-&lt;PARTNER&gt;-&lt;suffix&gt;</code> plus whether it is retryable. An unlisted code becomes <code>UNMAPPED</code>, not retryable.</p>
+
+  <h2 id="example">Worked example: the OCS top-up</h2>
+  <p>This is the real <code>[PAY]</code> operation of the <code>ocs</code> partner in
+    <a href="../../services/mw-adapter-telco/src/main/resources/application-dev.yml">application-dev.yml</a>:</p>
+  <pre><code>error-map:
+  "[2001]": { suffix: TOPUP_REJECTED, retryable: false }
+operations:
+  "[PAY]":
+    method: POST
+    path: /ocs/v1/topup
+    definite-statuses: [400, 422]
+    request: |
+      {"transactionId": reference, "msisdn": creditParty.id, "amount": amount.major}
+    response: |
+      status = 200
+        ? (body.status = "SUCCESS" and $type(body.ocsRef) = "string" and body.ocsRef != ""
+            ? {"outcome": "SUCCESS", "partnerRef": body.ocsRef, "code": body.code}
+            : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+      : status = 422
+        ? ($type(body.code) = "string" and body.code != ""
+            ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+      : status = 400
+        ? {"outcome": "FAILED", "code": "HTTP_400", "message": body.message}
+      : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}</code></pre>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+actors: mw-adapter-telco | JSONata | OCS
+mw-adapter-telco -> JSONata : request mapping over input + reference
+JSONata --> mw-adapter-telco : {transactionId, msisdn, amount: "20.00"}
+mw-adapter-telco -> OCS : POST /ocs/v1/topup
+OCS --> mw-adapter-telco : 422 {code: "2001", message}
+mw-adapter-telco -> JSONata : response mapping over {status: 422, body}
+JSONata --> mw-adapter-telco : {outcome: FAILED, code: "2001"}
+mw-adapter-telco -> mw-adapter-telco : 422 is definite; error map 2001 to TOPUP_REJECTED
+  </script></div><figcaption>A refused top-up: two mappings and one error-map lookup.</figcaption></figure>
+  <ol class="steps">
+    <li><strong>Request.</strong> The input has <code>reference</code> (for example <code>BITS</code> plus the transaction id without dashes),
+      <code>creditParty.id</code> (the phone number) and <code>amount.major</code> (<code>"20.00"</code> for 2000 minor units). The mapping picks those
+      three fields and renames them. The adapter sends the result as the body.</li>
+    <li><strong>Answer.</strong> The OCS says 422 with <code>{"status":"FAILED","code":"2001","message":"Subscriber barred"}</code>.</li>
+    <li><strong>Response.</strong> The mapping sees <code>status = 422</code> and a non-empty text <code>code</code>, so it returns
+      <code>{"outcome": "FAILED", "code": "2001", ...}</code>.</li>
+    <li><strong>Checks.</strong> 422 is in <code>definite-statuses</code> and 2001 is not an ambiguous code, so FAILED is believed.</li>
+    <li><strong>Error map.</strong> <code>2001</code> maps to suffix <code>TOPUP_REJECTED</code>. The partner id was <code>gp</code>, so the reply carries
+      <code>MW-PTR-GP-TOPUP_REJECTED</code>, not retryable. <code>route/TelcoRequestRouteIT</code> asserts exactly this.</li>
+  </ol>
+  <p>Had the OCS said 200 without an <code>ocsRef</code>, the mapping would return UNKNOWN with <code>MALFORMED_REPLY</code>, and the
+    orchestrator would find out the truth later with a status inquiry (the <code>[STATUS_QUERY]</code> operation just below it in the same file).</p>
+
+  <div class="box where" id="where"><div class="tag">Where it lives</div><ul>
+    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/mapping/JsonataMapping.java">partner/mapping/JsonataMapping.java</a>: compile and evaluate.</li>
+    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/template/RestJsonAdapter.java">partner/template/RestJsonAdapter.java</a>:
+      the inputs, the fail-closed checks and the error map lookup. Its class comment is the rule book.</li>
+    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/mapper/PartnerCallMapper.java">mapper/PartnerCallMapper.java</a>: builds the request mapping's input.</li>
+    <li><a href="../../services/mw-adapter-telco/src/main/resources/application-dev.yml">application-dev.yml</a>: the OCS mappings;
+      <a href="../../services/mw-adapter-telco/CLAUDE.md">services/mw-adapter-telco/CLAUDE.md</a>: the mapping contract in short.</li>
+    <li>Tests: <code>partner/template/OcsTemplateTest</code> and <code>partner/template/RestJsonTemplateTest</code> (no Docker),
+      <code>route/TelcoRequestRouteIT</code> (end to end).</li>
+  </ul></div>
+
+  <h2 id="wrong">What can go wrong</h2>
+  <div class="box wrong"><div class="tag">What can go wrong</div><ul>
+    <li><strong>The request mapping throws, or names a field that does not exist.</strong> A throw is caught and the call is
+      <code>NOT_SENT</code> with reason <code>MISCONFIGURED</code>: nothing went to the partner. A missing field is quieter: JSONata leaves it out of
+      the object, and the partner will probably refuse the request. Test new mappings against a sample.</li>
+    <li><strong>The response mapping throws or returns no <code>outcome</code>.</strong> That is UNKNOWN with <code>MALFORMED_REPLY</code>, never FAILED.
+      A refusal releases the customer's money hold, so the framework never guesses one.</li>
+    <li><strong>You wrote a branch for status 500.</strong> It never runs. 5xx answers are UNKNOWN before mapping.</li>
+    <li><strong>The YAML key loses its brackets.</strong> Spring Boot keeps a map key exactly as written only inside brackets. Without them it
+      may change the key (for example lower-case it), and the operation <code>PAY</code> or the code <code>2001</code> is then not found.
+      Write <code>"[2001]"</code> and <code>"[PAY]"</code>, quotes included, as in the seed file.</li>
+    <li><strong><code>==</code> instead of <code>=</code>.</strong> JSONata compares with a single <code>=</code>. A syntax error is caught at config load, and the
+      config is refused with the field name (<code>operations.PAY.response does not compile</code>).</li>
+    <li><strong>A mapping leaks a personal value into a log.</strong> Mappings never log, but the raw bodies are audited. List personal fields under
+      <code>sensitive-fields</code> (for OCS: <code>msisdn: MSISDN</code>) so the audit masks them.</li>
+  </ul></div>
+
+  <h2 id="next">Read next</h2>
+  <ul>
+    <li>Spec section 12 (<a href="../../spec/bits-mfs-middleware-spec.md">spec/bits-mfs-middleware-spec.md</a>): the three layers and the rules of the adapter framework.</li>
+    <li><a href="../tutorial/05-partner-flows.html#framework">Tutorial chapter 5</a>: the adapter framework and the four outcomes.</li>
+    <li><a href="../tutorial/03-core-ideas.html#unknown">Tutorial chapter 3, UNKNOWN</a>: why "we don't know" is a real answer.</li>
+    <li>The JSONata language itself: <a href="https://docs.jsonata.org/">docs.jsonata.org</a>, with a live playground at try.jsonata.org.</li>
+  </ul>
+
+  <nav class="pager">
+    <a href="camel.html"><small>Previous</small>← Camel</a>
+    <a class="next" href="resilience4j.html"><small>Next</small>Resilience4j →</a>
+  </nav>
+</main>
+</body>
+</html>

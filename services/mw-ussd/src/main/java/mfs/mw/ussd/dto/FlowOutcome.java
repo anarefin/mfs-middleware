@@ -1,5 +1,8 @@
 package mfs.mw.ussd.dto;
 
+import mfs.mw.ussd.util.Sensitive;
+import mfs.mw.ussd.util.SensitiveType;
+
 /**
  * How a flow ended within the synchronous budget.
  *
@@ -8,8 +11,11 @@ package mfs.mw.ussd.dto;
  *     ask for the PIN again; nothing was published) or LOCKED (mw-auth MW-AUTH-041/042/043: the
  *     error's code says which; nothing was published)
  * @param triesLeft WRONG_PIN only: the wrong PINs left before mw-auth locks, when it said so
+ * @param balance COMPLETED BALANCE only (ADR D26): the available balance the status carried; shown,
+ *     never stored or logged
  */
-public record FlowOutcome(Kind kind, String txnId, ErrorInfo error, String triesLeft) {
+public record FlowOutcome(
+    Kind kind, String txnId, ErrorInfo error, String triesLeft, @Sensitive(SensitiveType.SECRET) Balance balance) {
 
   public enum Kind {
     COMPLETED,
@@ -20,7 +26,11 @@ public record FlowOutcome(Kind kind, String txnId, ErrorInfo error, String tries
     LOCKED
   }
 
+  public FlowOutcome(Kind kind, String txnId, ErrorInfo error, String triesLeft) {
+    this(kind, txnId, error, triesLeft, null);
+  }
+
   public FlowOutcome(Kind kind, String txnId, ErrorInfo error) {
-    this(kind, txnId, error, null);
+    this(kind, txnId, error, null, null);
   }
 }

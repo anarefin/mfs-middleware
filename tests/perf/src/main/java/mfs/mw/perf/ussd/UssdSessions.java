@@ -13,7 +13,7 @@ import tools.jackson.databind.node.ObjectNode;
 public final class UssdSessions {
 
   public static final String PATH = "test/sim/ussdgw/sessions";
-  /** The English success screen of a USSD P2P (mw-ussd menu main-v2.json). */
+  /** The English success screen of a USSD P2P (mw-ussd menu main-v3.json). */
   private static final String SENT = "Tk 10.00 sent to ";
   private static final Pattern TXN_ID = Pattern.compile("TxnID (\\S+)");
   private static final JsonMapper JSON = JsonMapper.builder().build();

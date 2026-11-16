@@ -28,7 +28,7 @@ import tools.jackson.databind.node.ObjectNode;
  * seed-admin-content: the USSD menus and notification templates of {@code mw.seeder.content}
  * published through mw-admin-api (maker proposes, checker approves; mw-ussd and mw-notify take the
  * version from {@code mw.config.changed.v1}). The values are copies of what those services ship
- * (mw-ussd's {@code menus/main-v2.json}, mw-notify's V5 template rows), so publishing them changes
+ * (mw-ussd's {@code menus/main-v3.json}, mw-notify's V5 template rows), so publishing them changes
  * no text a test reads; it gives the console and the suites a first admin-made version. Content
  * with any PUBLISHED admin version is left alone (whoever published it); a version the seed maker
  * left PENDING is approved; one another operator left PENDING fails the step.

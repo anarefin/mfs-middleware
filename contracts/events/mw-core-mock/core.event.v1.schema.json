@@ -8,7 +8,7 @@
   "properties": {
     "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
     "eventType": {
-      "enum": ["TransactionValidated", "TransactionRejected", "FundsHeld", "HoldRejected", "HoldCommitted", "CommitFailed", "HoldReleased", "ReleaseFailed", "TransferPosted", "TransferRejected", "WalletCredited", "CreditRejected", "TransactionReversed", "ReversalRejected", "TransactionStatus", "ComplianceActionApplied", "ComplianceActionRejected", "WalletUnlocked", "UnlockRejected", "WalletStateChanged", "CustomerFactorsVerified", "CustomerFactorsRejected"]
+      "enum": ["TransactionValidated", "TransactionRejected", "FundsHeld", "HoldRejected", "HoldCommitted", "CommitFailed", "HoldReleased", "ReleaseFailed", "TransferPosted", "TransferRejected", "WalletCredited", "CreditRejected", "TransactionReversed", "ReversalRejected", "TransactionStatus", "ComplianceActionApplied", "ComplianceActionRejected", "WalletUnlocked", "UnlockRejected", "WalletStateChanged", "CustomerFactorsVerified", "CustomerFactorsRejected", "BalanceReported", "BalanceInquiryRejected"]
     },
     "eventId": { "type": "string", "format": "uuid", "description": "Unique per event; consumers dedupe on it (inbox)." },
     "commandId": { "$ref": "../../common/defs.v1.schema.json#/$defs/CommandId" },
@@ -197,6 +197,21 @@
         "payload": { "$ref": "core.event.v1/CustomerFactorsRejected.payload.schema.json" },
         "outcome": { "const": "FAILURE" },
         "commandId": { "type": "string", "pattern": "^pin-reset:" }
+      },
+      "required": ["reasonCode"]
+    },
+    {
+      "properties": {
+        "eventType": { "const": "BalanceReported" },
+        "payload": { "$ref": "core.event.v1/BalanceReported.payload.schema.json" },
+        "outcome": { "const": "SUCCESS" }
+      }
+    },
+    {
+      "properties": {
+        "eventType": { "const": "BalanceInquiryRejected" },
+        "payload": { "$ref": "core.event.v1/BalanceInquiryRejected.payload.schema.json" },
+        "outcome": { "const": "FAILURE" }
       },
       "required": ["reasonCode"]
     }

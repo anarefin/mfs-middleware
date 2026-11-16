@@ -24,7 +24,7 @@ class ReplyWaitersTest {
     return new StatusMessage(
         1, txnId, key, "c", "CUSTOMER_APP", "P2P", status, null,
         initiator == null ? null : new Party("MSISDN", initiator, null, null), null, null, null,
-        null, null, null, null, attributes, null, null);
+        null, null, null, null, attributes, null, null, null);
   }
 
   static StatusMessage status(String txnId, String status, Map<String, String> attributes) {

@@ -137,6 +137,39 @@ public final class TestData {
         NOW);
   }
 
+  /**
+   * A BALANCE check (ADR D26) of customer wallet {@code wallet}: amount 0, the wallet on both
+   * sides, authorised with mw-auth's assertion.
+   */
+  public static TxnRequest balance(String txnId, String idemKey, String wallet) {
+    return new TxnRequest(
+        1,
+        txnId,
+        idemKey,
+        "corr-" + txnId.substring(0, 8),
+        "CUSTOMER_APP",
+        "BALANCE",
+        new Party("MSISDN", wallet, null, null),
+        new Party("WALLET", wallet, null, "CUSTOMER"),
+        new Party("WALLET", wallet, null, "CUSTOMER"),
+        Amount.bdt(0),
+        null,
+        null,
+        ASSERTION,
+        "en",
+        null,
+        null,
+        NOW);
+  }
+
+  /** {@code r} with other parties and amount (refusal tests). */
+  public static TxnRequest with(TxnRequest r, Party debit, Party credit, long amountMinor) {
+    return new TxnRequest(
+        r.schemaVersion(), r.txnId(), r.idempotencyKey(), r.correlationId(), r.channel(), r.txnType(),
+        r.initiator(), debit, credit, Amount.bdt(amountMinor), r.partner(), r.originalTxnId(),
+        r.assertion(), r.locale(), r.metadata(), r.attributes(), r.requestedAt());
+  }
+
   public static TxnRequest p2p(String txnId, String idemKey, long amountMinor) {
     return new TxnRequest(
         1,

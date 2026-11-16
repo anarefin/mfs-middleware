@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wallet auth page guide</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --surface: #ffffff; --text: #1d2330; --muted: #5b6475; --border: #e2e6ee;
+    --accent: #1f6feb; --accent-soft: #e8f0fe; --code-bg: #f1f3f7; --warn-bg: #fff7e6; --warn: #8a5a00;
+    --ok: #1a7f37; --ok-bg: #eaf6ee; --bad: #b42318;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 920px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 1.9rem; margin: 0 0 4px; line-height: 1.25; }
+  .lead { color: var(--muted); margin: 0 0 24px; }
+  h2 { font-size: 1.25rem; margin: 0 0 8px; display: flex; align-items: center; gap: 10px; }
+  h3 { font-size: 1rem; margin: 16px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  .badge {
+    flex: none; min-width: 28px; height: 28px; border-radius: 14px; background: var(--accent); color: #fff;
+    font-size: .9rem; display: inline-flex; align-items: center; justify-content: center; padding: 0 6px;
+  }
+  section {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px; margin: 0 0 18px;
+  }
+  a { color: var(--accent); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em;
+         background: var(--code-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+  .ui { font-weight: 600; background: var(--accent-soft); border-radius: 4px; padding: 0 5px; }
+  .note { background: var(--accent-soft); border-radius: 8px; padding: 10px 14px; margin: 10px 0; }
+  .warn { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 10px 14px; margin: 10px 0; }
+  .ok { background: var(--ok-bg); border-radius: 8px; padding: 10px 14px; margin: 10px 0; }
+  .ok b, .warn b { display: block; font-size: .85rem; text-transform: uppercase; letter-spacing: .03em; }
+  ol, ul { padding-left: 22px; margin: 6px 0; }
+  li { margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  th, td { text-align: left; vertical-align: top; padding: 7px 8px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+  th { color: var(--muted); font-weight: 600; font-size: .9rem; }
+  .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0 4px; }
+  .layout .col { display: flex; flex-direction: column; gap: 8px; }
+  .box { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg); font-size: .92rem; }
+  .box small { display: block; color: var(--muted); }
+  .box.result { height: 100%; border-style: dashed; background: var(--surface); }
+  .flow { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .88rem;
+          background: var(--code-bg); border-radius: 8px; padding: 8px 12px; margin: 8px 0; overflow-wrap: anywhere; }
+  @media (max-width: 640px) {
+    .layout { grid-template-columns: 1fr; }
+    h1 { font-size: 1.5rem; }
+    section { padding: 14px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Wallet auth page: step-by-step guide</h1>
+  <p class="lead">
+    How to use the test console's <a href="https://localhost/tester/auth">https://localhost/tester/auth</a>.
+    The page tests wallet authentication at mw-auth: OTP, device binding, PIN login, a second device,
+    PIN change, the self-service and care PIN resets, and the lockout. Ticket 76.
+  </p>
+
+  <section>
+    <h2>Before you start</h2>
+    <ul>
+      <li>
+        Start the stack with the tester profile and the default <code>dev.env.defaults</code> timers. From <code>deploy/</code>, run:<br>
+        <code>docker compose --profile core --profile seed --profile tester up -d --build --wait</code>
+      </li>
+      <li>
+        The page works only on <b>fresh wallets it creates itself</b>: core-mock customers
+        <code>01711000500</code>..<code>01711000999</code> that have no app PIN yet.
+        It never touches the seeded users (PIN <code>13579</code>).
+      </li>
+      <li>
+        Keep the same wallet through steps 2–7. The Wallet field holds it.
+        The console keeps the wallet's state (device key, tokens) in memory: if the console restarts, create a fresh wallet again.
+      </li>
+      <li>
+        The <span class="ui">How to test</span> panel at the top has fill buttons:
+        <i>Good PINs (48207 / 61938)</i>, <i>Weak first PIN 11111</i> and <i>Reset to 73052</i>.
+      </li>
+    </ul>
+
+    <h3>Page layout</h3>
+    <div class="layout">
+      <div class="col">
+        <div class="box"><b>1. A fresh wallet</b><small>first PIN, Create, Wallet field</small></div>
+        <div class="box"><b>2. Log in, second device</b><small>PIN, Log in, Bind a second device</small></div>
+        <div class="box"><b>3. Change or reset the PIN</b><small>current/new PIN, NID last 4, DOB, three buttons</small></div>
+        <div class="box"><b>4. Lockout</b><small>Three wrong PINs</small></div>
+      </div>
+      <div class="col">
+        <div class="box result"><b>mw-auth (result)</b>
+          <small>A headline, then every HTTP call as a step: label, call, status, redacted body and time in ms.
+          Click a step to expand it. A ✖ marks a step that failed.</small></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="badge">1</span>Create a fresh wallet</h2>
+    <ol>
+      <li>In panel 1, set <b>First PIN</b> to <code>48207</code> (the default).</li>
+      <li>Press <span class="ui">Create a fresh wallet</span>.</li>
+    </ol>
+    <div class="flow">pick a free customer → LOGIN OTP (read from the SMSC simulator) → bind the device (EC key) → set the first PIN</div>
+    <div class="ok"><b>Expect</b>"fresh wallet 01711000xyz ready: device bound, first PIN set (amr …)". The <b>Wallet</b> field fills in with the number.</div>
+    <div class="warn"><b>Negative</b>A weak first PIN is refused with 400 <code>MW-AUTH-044</code>. Weak PINs are <code>11111</code> (REPEATED_DIGIT), <code>34567</code> (SEQUENCE) and the wallet's last five digits (MSISDN_DIGITS).</div>
+  </section>
+
+  <section>
+    <h2><span class="badge">2</span>Log in with the PIN</h2>
+    <ol>
+      <li>In panel 2, leave <b>PIN</b> at <code>48207</code>.</li>
+      <li>Press <span class="ui">Log in with the PIN</span>.</li>
+    </ol>
+    <div class="ok"><b>Expect</b>"logged in: amr …pin, device &lt;id&gt;, token N s".</div>
+    <div class="warn"><b>Negative</b>With a wrong PIN, the headline shows "refused MW-AUTH-040: N tries left".</div>
+  </section>
+
+  <section>
+    <h2><span class="badge">3</span>Bind a second device</h2>
+    <ol>
+      <li>In panel 2, press <span class="ui">Bind a second device</span>. The PIN in the field is used.</li>
+    </ol>
+    <div class="flow">new phone: BIND OTP → bind (key + OTP + PIN) → old phone: log in (refused) → old phone: refresh (refused) → new phone: log in</div>
+    <div class="ok"><b>Expect</b>
+      <ul>
+        <li>"second device … bound at …; cooling (newDevice) until &lt;boundAt + 24 h&gt;; the old device is out".</li>
+        <li>The old phone's steps answer 401 <code>MW-AUTH-047</code>.</li>
+        <li>An SMS about the new device. Check it in the console's Inbox page.</li>
+      </ul>
+      A wallet has only one bound device. For 24 h, its transaction assertions to the core carry <code>newDevice=true</code>. The page only shows the window: the flag itself travels only in the signed assertion.
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="badge">4</span>Change the PIN</h2>
+    <ol>
+      <li>In panel 3, set <b>Current PIN</b> to <code>48207</code> and <b>New PIN</b> to <code>61938</code>.</li>
+      <li>Press <span class="ui">Change PIN</span>. If there is no session, the console logs in first.</li>
+      <li>In panel 2, log in with <code>48207</code>: it is refused. Then log in with <code>61938</code>: it works.</li>
+    </ol>
+    <div class="ok"><b>Expect</b>"PIN changed; the session is replaced (old refresh token revoked)" and a "PIN changed" SMS.</div>
+    <div class="warn"><b>Negative</b>A new PIN equal to the current one is refused with 400 <code>MW-AUTH-044</code> (LAST_PIN). After this step, the current PIN is <code>61938</code>: update the PIN fields before the next steps.</div>
+  </section>
+
+  <section>
+    <h2><span class="badge">5</span>Self-service PIN reset</h2>
+    <ol>
+      <li>
+        In panel 3, set <b>New PIN</b> to <code>73052</code>, <b>NID last 4</b> to <code>4821</code> and <b>Date of birth</b> to <code>1990-05-17</code>.
+        The <i>Reset to 73052</i> fill button sets all of these.
+      </li>
+      <li>Press <span class="ui">Self-service reset</span>.</li>
+      <li>In panel 2, log in with <code>73052</code>.</li>
+    </ol>
+    <div class="flow">RESET OTP on the bound device → open the reset (202) → poll while PENDING_KYC (the core checks NID + DOB) → VERIFIED → set the new PIN</div>
+    <div class="ok"><b>Expect</b>"self-service reset &lt;id&gt; DONE: new PIN set, every session ended, PIN lock cleared". The login with the new PIN works.</div>
+    <div class="warn"><b>Negative</b>Only the bound device may ask a reset OTP. If the core does not verify the factors, the page stops with "the core did not verify the factors".</div>
+  </section>
+
+  <section>
+    <h2><span class="badge">6</span>Take up a care reset on a new phone</h2>
+    <p>A care reset is for a customer who lost the phone. Ops approves it first, in the ops console with maker-checker.</p>
+    <ol>
+      <li>
+        Open <code>/console</code>, Wallets, and sign in as <code>seed-ops-maker</code>. Request <span class="ui">PIN reset</span> for the wallet's number.
+        To get the one-time code, use the console's Logins &amp; secrets page or <code>scripts/totp.sh seed-ops-maker</code>.
+      </li>
+      <li>Sign in as <code>seed-ops-checker</code> and approve the request. The wallet gets the SMS "Your Bits PIN reset was approved…".</li>
+      <li>Back on the auth page, set a <b>New PIN</b> in panel 3 (for example <code>73052</code>). Press <span class="ui">Take up a care reset (new phone)</span>.</li>
+    </ol>
+    <div class="flow">new phone: RESET OTP → take up the reset → set the new PIN → BIND OTP → bind the new phone with the new PIN</div>
+    <div class="ok"><b>Expect</b>"care reset &lt;id&gt; DONE on the new phone; it is bound with the new PIN".</div>
+    <div class="warn"><b>Negative</b>Before the approval, the new phone's reset OTP is refused with 403 <code>MW-AUTH-002</code>. The page says "no reset OTP: is the care reset approved in the ops console?".</div>
+  </section>
+
+  <section>
+    <h2><span class="badge">7</span>Lockout</h2>
+    <ol>
+      <li>In panel 4, press <span class="ui">Three wrong PINs (MW_AUTH_LOCK_TRIES)</span>. The console sends <code>97531</code> three times.</li>
+      <li>In panel 2, press <span class="ui">Log in with the PIN</span> with the right PIN.</li>
+    </ol>
+    <div class="ok"><b>Expect</b>
+      <ul>
+        <li>Wrong PINs 1 and 2: 401 <code>MW-AUTH-040</code>, with 2 and then 1 tries left.</li>
+        <li>Wrong PIN 3: 423 <code>MW-AUTH-041</code> with <code>retryAfter</code>, at most 60 s with the dev timer <code>MW_AUTH_LOCK_LEVEL1=1m</code>.</li>
+        <li>The right PIN is then refused the same way ("refused MW-AUTH-041"), without being checked.</li>
+      </ul>
+    </div>
+    <div class="note">
+      <b>To unlock</b>, do one of these:
+      <ul>
+        <li>Wait out the lock.</li>
+        <li>In <code>/console</code> Wallets, an ops-maker requests the unlock and an ops-checker approves it (<a href="testing-guide.html#c9-8">testing guide 9.8</a>).</li>
+        <li>Use the <span class="ui">Unlock</span> row tool on the console's Seed data page (<a href="testing-guide.html#c1-5">testing guide 1.5</a>).</li>
+      </ul>
+      If three more wrong PINs come after the first lock, the lock goes to level 2 (<code>MW_AUTH_LOCK_LEVEL2=3m</code>). After that it is permanent (<code>MW-AUTH-042</code>) until a PIN reset.
+    </div>
+  </section>
+
+  <section>
+    <h2>Error codes on this page</h2>
+    <table>
+      <thead><tr><th>Code</th><th>HTTP</th><th>Meaning</th><th>Where you see it</th></tr></thead>
+      <tbody>
+        <tr><td><code>MW-AUTH-040</code></td><td>401</td><td>wrong PIN, with <code>triesLeft</code></td><td>steps 2, 7</td></tr>
+        <tr><td><code>MW-AUTH-041</code></td><td>423</td><td>PIN locked for a while, with <code>retryAfter</code></td><td>step 7</td></tr>
+        <tr><td><code>MW-AUTH-042</code></td><td>423</td><td>PIN locked for good until a reset</td><td>step 7, after level 2</td></tr>
+        <tr><td><code>MW-AUTH-044</code></td><td>400</td><td>weak PIN: REPEATED_DIGIT, SEQUENCE, MSISDN_DIGITS or LAST_PIN</td><td>steps 1, 4, 5, 6</td></tr>
+        <tr><td><code>MW-AUTH-047</code></td><td>401</td><td>device no longer bound to the wallet</td><td>step 3 (old phone)</td></tr>
+        <tr><td><code>MW-AUTH-002</code></td><td>403</td><td>reset OTP refused: no approved care reset</td><td>step 6, before the approval</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Related</h2>
+    <ul>
+      <li><a href="testing-guide.html#c3-11">Testing guide 3.11</a>: the same checks as a table, with the USSD and checkout PIN checks.</li>
+      <li><a href="testing-guide.html#c9-8">Testing guide 9.8</a>: wallet unlock in the ops console.</li>
+      <li>Automated run of these flows: <code>scripts/tester-e2e.sh @auth</code> (<code>ui/mw-test-console/e2e/60-auth.spec.ts</code>).</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>

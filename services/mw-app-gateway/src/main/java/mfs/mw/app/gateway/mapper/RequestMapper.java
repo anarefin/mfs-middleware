@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import mfs.mw.app.gateway.dto.Amount;
 import mfs.mw.app.gateway.dto.AppUser;
 import mfs.mw.app.gateway.dto.EncryptedPin;
 import mfs.mw.app.gateway.dto.TxnAuthorisationRequest;
@@ -38,6 +39,8 @@ public class RequestMapper {
   public static final String BILL_PAY = "BILL_PAY";
   /** Add money from a linked bank account (C2W, ticket 23): debit party is the bank account. */
   public static final String ADD_MONEY_BANK = "ADD_MONEY_BANK";
+  /** Balance inquiry (ADR D26): moves no money, never in the app history. */
+  public static final String BALANCE = "BALANCE";
   /** The canonical product of a C2W debit. */
   public static final String C2W_PRODUCT = "C2W";
 
@@ -103,6 +106,32 @@ public class RequestMapper {
         body.locale(),
         null,
         forwardable(body.attributes()),
+        now);
+  }
+
+  /**
+   * A balance check (ADR D26) as the canonical request: {@code BALANCE}, amount 0 BDT, payer =
+   * payee = the token's own wallet (its PIN authorises), no partner and no attributes.
+   */
+  public TxnRequest toBalanceRequest(
+      AppUser user, String idempotencyKey, String locale, String txnId, String correlationId, Instant now) {
+    Party own = Party.wallet(user.msisdn(), user.walletType());
+    return new TxnRequest(
+        1,
+        txnId,
+        idempotencyKey,
+        correlationId,
+        user.channel(),
+        BALANCE,
+        new Party("MSISDN", user.msisdn(), null, null),
+        own,
+        own,
+        new Amount(0L, Amount.BDT),
+        null,
+        null,
+        locale,
+        null,
+        null,
         now);
   }
 

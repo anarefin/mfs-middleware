@@ -54,6 +54,13 @@ class FaultRegistryTest {
   }
 
   @Test
+  void aFaultMayBeScopedToBalanceInquiries() {
+    registry.add(new FaultRequest(FaultMode.REJECT, "BalanceInquiry", null, null, null, null));
+    assertThat(registry.consume("BalanceInquiry", "t")).hasSize(1);
+    assertThat(registry.consume("PostTransfer", "t")).isEmpty();
+  }
+
+  @Test
   void removeAndResetClearFaults() {
     Fault one = registry.add(new FaultRequest(FaultMode.DROP_REPLY, null, null, null, null, null));
     registry.add(new FaultRequest(FaultMode.DROP_REPLY, null, null, null, null, null));

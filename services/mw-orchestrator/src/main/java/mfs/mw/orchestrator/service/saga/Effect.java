@@ -29,5 +29,7 @@ public enum Effect {
    * Ask whoever holds the unknown outcome (spec 7.4): the partner (STATUS_QUERY) for a flow with a
    * partner leg, else the core (QueryTransaction).
    */
-  SEND_INQUIRY
+  SEND_INQUIRY,
+  /** BalanceInquiry to the core (BALANCE, ADR D26); moves no money. */
+  SEND_BALANCE_INQUIRY
 }

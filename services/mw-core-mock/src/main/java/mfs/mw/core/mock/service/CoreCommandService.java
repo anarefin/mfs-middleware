@@ -46,6 +46,7 @@ public class CoreCommandService {
   static final String VALIDATE = "ValidateTransaction";
   static final String POST = "PostTransfer";
   static final String VERIFY_FACTORS = "VerifyCustomerFactors";
+  static final String BALANCE = "BalanceInquiry";
   /** Party types that are never a wallet of this core: paid outside it by a partner. */
   static final Set<String> EXTERNAL_CREDIT_TYPES = Set.of("BILLER_ACCOUNT", "BANK_ACCOUNT", "CARD_TOKEN");
   /**
@@ -55,7 +56,8 @@ public class CoreCommandService {
    */
   static final Set<String> PAYER_SIDE_ONLY_PAYEES = Set.of("BILLER_ACCOUNT", "BANK_ACCOUNT", "CARD_TOKEN", "MSISDN");
   private static final Set<String> HANDLED =
-      Set.of(VALIDATE, POST, "HoldFunds", "CommitHold", "ReleaseHold", "CreditWallet", "ReverseTransaction", "QueryTransaction", "UnlockWallet", VERIFY_FACTORS);
+      Set.of(VALIDATE, POST, "HoldFunds", "CommitHold", "ReleaseHold", "CreditWallet", "ReverseTransaction", "QueryTransaction", "UnlockWallet", VERIFY_FACTORS,
+          BALANCE);
 
   private static final Logger log = LoggerFactory.getLogger(CoreCommandService.class);
 
@@ -72,6 +74,7 @@ public class CoreCommandService {
   private final FaultRegistry faults;
   private final OutboxWriter outbox;
   private final WalletStateEvents stateEvents;
+  private final AssertionCheck assertions;
   private final JsonMapper json;
   private final Clock clock;
 
@@ -90,6 +93,7 @@ public class CoreCommandService {
       FaultRegistry faults,
       OutboxWriter outbox,
       WalletStateEvents stateEvents,
+      AssertionCheck assertions,
       JsonMapper json,
       Clock clock) {
     this.props = props;
@@ -105,6 +109,7 @@ public class CoreCommandService {
     this.faults = faults;
     this.outbox = outbox;
     this.stateEvents = stateEvents;
+    this.assertions = assertions;
     this.json = json;
     this.clock = clock;
   }
@@ -211,6 +216,7 @@ public class CoreCommandService {
       case "QueryTransaction" -> statusOps.query(cmd, coreRef);
       case "UnlockWallet" -> unlock(cmd, coreRef);
       case VERIFY_FACTORS -> verifyFactors(cmd, coreRef);
+      case BALANCE -> balance(cmd, coreRef);
       default -> transfer(cmd, coreRef);
     };
   }
@@ -262,6 +268,33 @@ public class CoreCommandService {
         .log("KYC factors of a PIN reset accepted");
     return events.succeeded(cmd, "CustomerFactorsVerified", coreRef, null,
         Map.of("walletId", id.get(), "resetId", p.resetId()));
+  }
+
+  /**
+   * BalanceInquiry (ADR D26): the available balance (balance minus holds) of an ACTIVE wallet,
+   * authorised by mw-auth's assertion (subject the wallet, as for a transfer). Unknown {@code
+   * WALLET_NOT_FOUND}, not ACTIVE (LOCKED, BLOCKED, HOLD) {@code WALLET_NOT_ACTIVE}, a refused
+   * assertion {@code MW-AUTH-046}. No ledger entry, no daily-limit use; the amount is never logged.
+   */
+  private CoreEvent balance(CoreCommand cmd, String coreRef) {
+    TransferPayload p = commands.balance(cmd);
+    Optional<String> id = wallets.resolveId(p.debitParty().id());
+    if (id.isEmpty()) {
+      return reject(cmd, "BalanceInquiryRejected", coreRef, Reason.WALLET_NOT_FOUND);
+    }
+    Wallet w = wallets.get(id.get());
+    if (!w.active()) {
+      return events.rejected(cmd, "BalanceInquiryRejected", coreRef, Reason.WALLET_NOT_ACTIVE.code(),
+          Reason.WALLET_NOT_ACTIVE.message, Map.of("walletId", w.id()));
+    }
+    Optional<Reason> refused = assertions.check(p, w, cmd.txnId());
+    if (refused.isPresent()) {
+      return events.rejected(cmd, "BalanceInquiryRejected", coreRef, refused.get().code(), refused.get().message,
+          Map.of("walletId", w.id()));
+    }
+    log.atInfo().addKeyValue("event", "core.balance.reported").addKeyValue("txnId", cmd.txnId())
+        .addKeyValue("walletType", w.type()).log("wallet balance reported");
+    return events.balanceReported(cmd, coreRef, w.id(), Amount.bdt(w.availableMinor()));
   }
 
   /** ValidateTransaction and PostTransfer. */

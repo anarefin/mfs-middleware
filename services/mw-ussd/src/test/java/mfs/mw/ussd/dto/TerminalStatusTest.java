@@ -42,6 +42,6 @@ class TerminalStatusTest {
   private static StatusMessage message(String status) {
     return new StatusMessage(
         1, "t-1", null, null, "USSD", "P2P", status, null, null, null, null, null, null, null, null,
-        null, null, null, null);
+        null, null, null, null, null);
   }
 }

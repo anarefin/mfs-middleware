@@ -39,6 +39,22 @@ class ConsumedContractsTest {
     assertThat(status.status()).isNotBlank();
     assertThat(status.channel()).isNotBlank();
     assertThat(status.awaitedTxnId()).isNotBlank();
+    // ADR D26: a BALANCE COMPLETED carries the core's answer, which BalanceService returns
+    if ("BALANCE".equals(status.txnType()) && "COMPLETED".equals(status.status())) {
+      assertThat(status.balance()).isNotNull();
+      assertThat(status.balance().available().currency()).isEqualTo("BDT");
+      assertThat(status.balance().asOf()).isNotNull();
+    }
+  }
+
+  @Test
+  void theBalanceSampleIsRead() throws java.io.IOException {
+    Path sample = ContractManifest.samples("events/mw-orchestrator/mw.txn.status.v1.schema.json", "valid").stream()
+        .filter(p -> p.getFileName().toString().equals("valid-balance-completed.json"))
+        .findFirst()
+        .orElseThrow();
+    StatusMessage status = JSON.readValue(Files.readString(sample), StatusMessage.class);
+    assertThat(status.balance().available().valueMinor()).isEqualTo(1_200_000L);
   }
 
   @TestFactory

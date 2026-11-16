@@ -82,6 +82,10 @@ class ProducedContractsTest {
             new TransactionRequest("ADD_MONEY_BANK", null, AMOUNT, PIN, null, null,
                 TransactionRequest.Partner.bank("c2wbank"),
                 new TransactionRequest.BankAccount("BANK_ACCOUNT", "1234567890123")),
+            TXN_ID, CORRELATION_ID, NOW),
+        // BalanceService.check (ADR D26): amount 0, payer = payee = the caller's wallet, any app role
+        mapper.toBalanceRequest(CUSTOMER, "key-balance", "bn", TXN_ID, CORRELATION_ID, NOW),
+        mapper.toBalanceRequest(new AppUser("01911000001", "MERCHANT_APP", "MERCHANT"), "key-balance-m", null,
             TXN_ID, CORRELATION_ID, NOW));
   }
 

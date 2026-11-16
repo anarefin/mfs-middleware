@@ -160,6 +160,15 @@ class ProducedContractsTest {
               () -> EVENTS.factorsRejected(factorsCommand(), CORE_REF, "FACTORS_MISMATCH", "KYC factors do not match",
                   RESET_ID)),
           Map.entry(
+              EVENT + "#BalanceReported",
+              () -> EVENTS.balanceReported(command("BalanceInquiry", "balance"), CORE_REF, "01711000001",
+                  Amount.bdt(1_200_000))),
+          Map.entry(
+              EVENT + "#BalanceInquiryRejected",
+              () -> EVENTS.rejected(
+                  command("BalanceInquiry", "balance"), CoreEventMapper.failureType("BalanceInquiry"), CORE_REF,
+                  "WALLET_NOT_ACTIVE", "Wallet is not active", Map.of("walletId", "01711000001"))),
+          Map.entry(
               EVENT + "#WalletStateChanged",
               () -> EVENTS.walletStateChanged(
                   new WalletState("01711000001", "01711000001", "CUSTOMER", "LOCKED", 1093), "STATUS_CHANGED")));

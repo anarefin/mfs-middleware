@@ -27,7 +27,8 @@ import org.springframework.stereotype.Service;
 /**
  * The transaction authorisation assertion (spec 18.7, D22; ticket 71). A channel sends the PIN block
  * and the transaction before it publishes {@code mw.txn.request.v1}; in this order: the caller is a
- * channel ({@code mw.auth.assertion.callers}, else 403 MW-AUTH-002), the wallet (by id or MSISDN,
+ * channel ({@code mw.auth.assertion.callers}, else 403 MW-AUTH-002), the amount rule ({@link
+ * TxnAmountRule}: at least 1, a BALANCE inquiry 0 with payee = payer; ADR D26), the wallet (by id or MSISDN,
  * exactly one) is known, ACTIVE and not locked ({@link WalletAccess#check}), an app's device is the
  * wallet's bound device (401 MW-AUTH-047), then the idempotency key: a live assertion for the same
  * transaction is returned again without a second PIN check, one for another transaction is 409
@@ -76,6 +77,7 @@ public class TxnAuthorisationService {
     if (caller == null || !props.callers().contains(caller)) {
       throw new MwException(ErrorCodes.AUTH_FORBIDDEN, "Not allowed").withStatus(HttpStatus.FORBIDDEN);
     }
+    TxnAmountRule.check(req.txn());
     AuthWallet w = wallet(req);
     wallets.check(w);
     Optional<AuthDevice> bound = devices.findBound(w.walletId());

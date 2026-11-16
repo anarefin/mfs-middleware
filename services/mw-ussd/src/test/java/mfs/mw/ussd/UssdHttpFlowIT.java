@@ -128,8 +128,8 @@ class UssdHttpFlowIT {
     List<String> screens = walkToPin(session, true, "10");
     assertThat(screens)
         .containsExactly(
-            "Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English",
-            "Bits\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা",
+            "Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n5 ব্যালেন্স\n9 English",
+            "Bits\n1 Send Money\n2 Cash Out\n3 Recharge\n4 Pay Bill\n5 Balance\n9 বাংলা",
             "Enter recipient Bits number",
             "Enter amount (Tk)",
             "Send Tk 10.00 to 01812345678?\n1 Confirm\n2 Cancel",
@@ -249,5 +249,40 @@ class UssdHttpFlowIT {
 
     assertThat(step(session, "CONTINUE", PIN).path("message").asString())
         .isEqualTo("সেন্ড মানি ব্যর্থ: অপর্যাপ্ত ব্যালেন্স");
+  }
+
+  /**
+   * ADR D26 over Kafka end to end: 5 -> PIN -> the balance the orchestrator's COMPLETED carries.
+   * mw-auth authorised exactly the published BALANCE request (amount 0, payee = payer), and two
+   * checks in a row are two inquiries (fresh idempotency keys), never a replay.
+   */
+  @Test
+  void balanceFromDialToTheBalanceScreen() {
+    List<String> keys = new ArrayList<>();
+    for (int i = 0; i < 2; i++) {
+      String session = "it-" + UUID.randomUUID();
+      assertThat(step(session, "BEGIN", "").path("message").asString()).contains("5 ব্যালেন্স");
+      step(session, "CONTINUE", "9");
+      assertThat(step(session, "CONTINUE", "5").path("message").asString()).isEqualTo("Enter your PIN");
+
+      JsonNode done = step(session, "CONTINUE", PIN);
+
+      assertThat(done.path("flag").asString()).isEqualTo("END");
+      assertThat(done.path("message").asString()).isEqualTo("Your balance is Tk 12,000.00");
+      JsonNode req = JSON.readTree(orchestrator.requests().getLast().value());
+      assertThat(req.path("txnType").asString()).isEqualTo("BALANCE");
+      assertThat(req.path("amount").path("valueMinor").asLong()).isZero();
+      assertThat(req.path("creditParty")).isEqualTo(req.path("debitParty"));
+      assertThat(req.path("debitParty").path("id").asString()).isEqualTo("01712345678");
+      assertThat(req.path("assertion").asString()).isEqualTo(AuthStub.ASSERTION);
+      JsonNode asked = AuthStub.authorisations().getLast();
+      assertThat(asked.path("txn").path("txnType").asString()).isEqualTo("BALANCE");
+      assertThat(asked.path("txn").path("amount").asLong()).isZero();
+      assertThat(asked.path("txn").path("payee")).isEqualTo(asked.path("txn").path("payer"));
+      assertThat(asked.path("txn").path("idempotencyKey").asString()).isEqualTo(req.path("idempotencyKey").asString());
+      keys.add(req.path("idempotencyKey").asString());
+      assertThat(valkey.hasKey("ussd:robi:" + session)).isFalse();
+    }
+    assertThat(keys).doesNotHaveDuplicates();
   }
 }

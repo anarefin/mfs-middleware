@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Testcontainers</title>
+<link rel="stylesheet" href="../tutorial/tutorial.css">
+<script src="../tutorial/diagrams.js" defer></script>
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> concepts</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="apisix.html">APISIX</a>
+    <a href="keycloak.html">Keycloak</a>
+    <a href="openbao.html">OpenBao</a>
+    <a href="hsm.html">HSM</a>
+    <a href="greenmail.html">GreenMail</a>
+    <a href="core-mock.html">Core mock</a>
+    <a href="simulators.html">Simulators</a>
+    <a href="camel.html">Camel</a>
+    <a href="jsonata.html">JSONata</a>
+    <a href="resilience4j.html">Resilience4j</a>
+    <a href="shedlock.html">ShedLock</a>
+    <a href="testcontainers.html" aria-current="page">Testcontainers</a>
+    <a href="../tutorial/index.html">Tutorial ↗</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Library</div>
+  <h1>Testcontainers: a real PostgreSQL and Kafka for every test run</h1>
+  <p class="lead">Our integration tests do not mock the database or Kafka. Testcontainers starts a real PostgreSQL and a real
+    Kafka in Docker when the tests need them, shares them across the whole test JVM, and throws them away at the end.
+    Without Docker, those tests are skipped and the build still passes.</p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#plain">In plain English</a></li>
+    <li><a href="#why">Why we use it here</a></li>
+    <li><a href="#wired">How it is wired</a></li>
+    <li><a href="#infra">TestInfrastructure: one of each per JVM</a></li>
+    <li><a href="#skip">Skipping without Docker</a></li>
+    <li><a href="#example">Worked example: TelcoRequestRouteIT</a></li>
+    <li><a href="#where">Where it lives</a></li>
+    <li><a href="#wrong">What can go wrong</a></li>
+    <li><a href="#next">Read next</a></li>
+  </ol></div>
+
+  <h2 id="plain">In plain English</h2>
+  <div class="box plain"><div class="tag">In plain English</div>
+    <p>Think of a driving test on a real road, not in a simulator. Before the test, a fresh car is brought round; after it,
+      the car is towed away. Testcontainers is the person who brings the car. Your test asks for "a PostgreSQL" and gets a real
+      one, running in a <strong>container</strong> (a small isolated Linux process started by Docker from an <strong>image</strong>,
+      for example <code>postgres:18.6-alpine3.24</code>).</p>
+    <p><strong>Ryuk</strong> is a tiny helper container Testcontainers starts first. When the test JVM exits, even after a crash,
+      Ryuk removes every container that run started, so nothing is left behind.</p>
+  </div>
+
+  <h2 id="why">Why we use it here</h2>
+  <p>Mocks of Kafka and SQL tell you that your code calls the mock the way you think. They cannot tell you that a Flyway migration
+    is wrong, that a <code>FOR UPDATE SKIP LOCKED</code> query really skips, or that a record really lands on a retry topic. The spec's
+    testing table (section 22) asks for integration tests with <em>"Service with real infra; each module owns its fixtures (no shared test kit)"</em>.</p>
+  <p>ADR <a href="../adr/D19-single-test-task.md">D19</a> sets the shape: <em>"one PostgreSQL and one Kafka per test JVM (singletons in the module's
+    <code>TestInfrastructure</code>), no reuse, removed by Ryuk when the JVM exits. Each Spring test context gets a fresh database"</em>, and
+    <em>"Without Docker the <code>*IT</code> and conformance classes are skipped (<code>DockerAvailableCondition</code>), not failed."</em>
+    One <code>test</code> task per module runs everything: unit, slice, contract, <code>*IT</code> and <code>@Conformance</code> tests in one JVM.</p>
+
+  <h2 id="wired">How it is wired</h2>
+  <p>From <a href="../../services/mw-adapter-telco/build.gradle.kts">services/mw-adapter-telco/build.gradle.kts</a>. The versions come from the BOM, written inline (ADR <a href="../adr/D13-build.md">D13</a>):</p>
+  <pre><code>testImplementation(platform("org.testcontainers:testcontainers-bom:2.0.5"))
+...
+testImplementation("org.testcontainers:testcontainers")
+testImplementation("org.testcontainers:testcontainers-junit-jupiter")
+testImplementation("org.testcontainers:testcontainers-postgresql")
+testImplementation("org.testcontainers:testcontainers-kafka")
+testImplementation("org.springframework.boot:spring-boot-testcontainers")</code></pre>
+  <p>The same file limits how many modules test at once, because each test JVM starts its own containers:</p>
+  <pre><code>val dockerTestSlots = gradle.sharedServices.registerIfAbsent("mwDockerTests", DockerTestSlots::class) {
+    maxParallelUsages.set(providers.gradleProperty("mwDockerTests").map(String::toInt).orElse(4))
+}
+
+tasks.test {
+    usesService(dockerTestSlots)
+    useJUnitPlatform {
+        if (!providers.gradleProperty("withSlow").isPresent) excludeTags("slow-wait")
+    }
+    maxHeapSize = "1g"
+    ...</code></pre>
+  <div class="table-wrap"><table>
+    <tr><th>Setting</th><th>Where</th><th>Effect</th></tr>
+    <tr><td><code>mwDockerTests=4</code></td><td>root <code>gradle.properties</code></td><td>At most four module test tasks (four PostgreSQL + Kafka pairs) at once on an 8-core host.</td></tr>
+    <tr><td><code>slow-wait</code> tag</td><td>each module's <code>build.gradle.kts</code></td><td>Tests that deliberately wait 2 s or more are left out unless you pass <code>-PwithSlow</code> (milestone gate).</td></tr>
+    <tr><td>test config</td><td><code>src/test/resources/config/application.yml</code></td><td>Outbox relay every 50 ms, Camel Kafka shutdown timeout 100 ms, consumers that would compete switched off.</td></tr>
+  </table></div>
+  <p>Every service except <code>mw-seeder</code> has the Testcontainers BOM and its own copy of the three test classes below.</p>
+
+  <h2 id="infra">TestInfrastructure: one of each per JVM</h2>
+  <p>A test that needs real infrastructure imports the module's <code>TestInfrastructure</code>. The containers are static fields, so there is
+    one of each per JVM:</p>
+  <pre><code>static final PostgreSQLContainer POSTGRES =
+    new PostgreSQLContainer("postgres:18.6-alpine3.24")
+        .withCommand("postgres", "-c", "fsync=off", "-c", "max_connections=600");
+
+static final JvmScopedKafka KAFKA = new JvmScopedKafka("apache/kafka-native:4.3.2");
+
+/** Starts both containers once (in parallel); later calls are no-ops. */
+static synchronized void start() {
+  if (!POSTGRES.isRunning() || !KAFKA.isRunning()) {
+    Startables.deepStart(POSTGRES, KAFKA).join();
+  }
+}</code></pre>
+  <ul>
+    <li><strong>Same versions as the stack.</strong> PostgreSQL 18 and Kafka 4.3.2. <code>apache/kafka-native</code> is Kafka built with GraalVM: the same broker, but it
+      starts in about a second on little memory.</li>
+    <li><strong><code>fsync=off</code></strong> makes PostgreSQL skip flushing to disk. Unsafe for real data, fine for a database that lives a few minutes.</li>
+    <li><strong><code>Startables.deepStart</code></strong> starts both containers in parallel, the first time a Spring context asks for them.</li>
+    <li><strong>No <code>withReuse</code>.</strong> Every run starts on new containers, so nothing needs cleaning between runs.</li>
+  </ul>
+  <p>Spring caches test contexts, and several contexts share the one PostgreSQL. So each context gets its own empty database:</p>
+  <pre><code>@Bean
+DynamicPropertyRegistrar testInfrastructureProperties() {
+  String url = createContextDatabase();
+  return registry -&gt; {
+    registry.add("spring.datasource.url", () -&gt; url);
+    registry.add("spring.datasource.username", POSTGRES::getUsername);
+    registry.add("spring.datasource.password", POSTGRES::getPassword);
+    // Camel's Kafka component does not read Spring Boot's Kafka connection details.
+    registry.add("camel.component.kafka.brokers", KAFKA::getBootstrapServers);
+  };
+}</code></pre>
+  <p>Flyway then migrates the empty <code>ctx_&lt;n&gt;</code>, and no context sees another's rows. Kafka is shared by all contexts: tests keep apart by their
+    own topics, keys and consumer groups. Kafka's <code>stop()</code> is overridden to do nothing, because Spring would otherwise stop the shared container when
+    the first context closes. PostgreSQL is deliberately not a bean at all, for the same reason.</p>
+  <p>To check what landed on a topic, tests use <code>messaging/KafkaTestConsumer</code>. It reads <em>without</em> a consumer group: it assigns the partitions,
+    seeks to the beginning and polls. No group join means no waiting for a rebalance, and every read sees the whole topic.</p>
+
+  <h2 id="skip">Skipping without Docker</h2>
+  <p>The rule (root CLAUDE.md): any test that needs Docker is named <code>*IT</code>. <code>DockerAvailableCondition</code> is a JUnit
+    <strong>execution condition</strong> (a hook that can switch a test class off) that turns that rule into behaviour:</p>
+  <pre><code>if (!outer.getSimpleName().endsWith("IT")) {
+  return ConditionEvaluationResult.enabled("needs no Docker");
+}
+return DockerClientFactory.instance().isDockerAvailable()
+    ? ConditionEvaluationResult.enabled("Docker is available")
+    : ConditionEvaluationResult.disabled("Docker is not available: " + outer.getSimpleName() + " skipped");</code></pre>
+  <p>No test class carries an annotation for it. JUnit loads it for every class through two small files:</p>
+  <pre><code># src/test/resources/junit-platform.properties
+junit.jupiter.extensions.autodetection.enabled=true
+
+# src/test/resources/META-INF/services/org.junit.jupiter.api.extension.Extension
+mfs.mw.adapter.telco.DockerAvailableCondition</code></pre>
+
+  <h2 id="example">Worked example: TelcoRequestRouteIT</h2>
+  <p><code>route/TelcoRequestRouteIT</code> tests the whole top-up path of the telco adapter: a request on Kafka in, a reply on Kafka out, with a
+    real database in between and WireMock (a small HTTP server that answers what you tell it to) playing the OCS. Its header:</p>
+  <pre><code>@CamelSpringBootTest
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.NONE,
+    properties = {
+      "mw.telco.request-consumer.enabled=true",
+      "mw.outbox.relay.enabled=true",
+      "mw.outbox.relay.period=100ms",
+      "mw.partners.instances.ocs.read-timeout-ms=4000",
+      "mw.partners.instances.ocs.timeout-ms=1500",
+      "resilience4j.circuitbreaker.instances.ocs.sliding-window-type=COUNT_BASED",
+      "resilience4j.circuitbreaker.instances.ocs.sliding-window-size=4",
+      ...
+    })
+@Import(TestInfrastructure.class)
+@DirtiesContext
+class TelcoRequestRouteIT {</code></pre>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+actors: TelcoRequestRouteIT | Kafka container | mw-adapter-telco | WireMock OCS | PostgreSQL container
+TelcoRequestRouteIT -> WireMock OCS : stub POST /ocs/v1/topup: 422 code 2001
+TelcoRequestRouteIT => Kafka container : publish request on mw.partner.request.telco.v1
+Kafka container => mw-adapter-telco : the route consumes it
+mw-adapter-telco -> WireMock OCS : POST /ocs/v1/topup
+WireMock OCS --> mw-adapter-telco : 422
+mw-adapter-telco -> PostgreSQL container : inbox + outbox row in ctx_n
+mw-adapter-telco => Kafka container : outbox relay: mw.partner.reply.v1
+TelcoRequestRouteIT -> Kafka container : KafkaTestConsumer reads replies for this txnId
+TelcoRequestRouteIT -> TelcoRequestRouteIT : validate against the contract schema, assert FAILED
+  </script></div><figcaption>One route test: real Kafka and PostgreSQL, a fake partner.</figcaption></figure>
+  <ol class="steps">
+    <li><strong>Setup.</strong> <code>@Import(TestInfrastructure.class)</code> brings the containers and the fresh database. The test switches on the request
+      consumer and the outbox relay, which the test config keeps off for other tests. <code>@DirtiesContext</code> closes this context afterwards, so its
+      running consumer does not compete with later tests.</li>
+    <li><strong>Fast failure settings.</strong> A 1.5 s time limit instead of 20 s, and a 4-call <code>COUNT_BASED</code> breaker window instead of 60 s and 50 calls,
+      keep the timeout and circuit tests quick. <code>@BeforeEach</code> resets WireMock and the <code>ocs</code> breaker.</li>
+    <li><strong>Act.</strong> The test publishes a request with a fresh transaction id (its own Kafka key, so tests never read each other's replies).</li>
+    <li><strong>Assert.</strong> <code>KafkaTestConsumer</code> waits up to 30 s for the reply keyed by that id. Every reply is validated against
+      <code>contracts/events/mw-orchestrator/mw.partner.reply.v1.schema.json</code> before the test checks <code>FAILED</code> and
+      <code>MW-PTR-GP-TOPUP_REJECTED</code>.</li>
+  </ol>
+  <p>Run just this class (Docker running), or the whole module:</p>
+  <pre><code>./gradlew :mw-adapter-telco:test --tests '*TelcoRequestRouteIT'
+./gradlew :mw-adapter-telco:test -PwithSlow     # also the two slow-wait tests in it</code></pre>
+
+  <div class="box where" id="where"><div class="tag">Where it lives</div><ul>
+    <li><a href="../../services/mw-adapter-telco/src/test/java/mfs/mw/adapter/telco/TestInfrastructure.java">TestInfrastructure.java</a>: the containers and the per-context database; its class comment explains every choice.</li>
+    <li><a href="../../services/mw-adapter-telco/src/test/java/mfs/mw/adapter/telco/DockerAvailableCondition.java">DockerAvailableCondition.java</a>,
+      <a href="../../services/mw-adapter-telco/src/test/resources/junit-platform.properties">junit-platform.properties</a>,
+      <a href="../../services/mw-adapter-telco/src/test/resources/META-INF/services/org.junit.jupiter.api.extension.Extension">META-INF/services/...Extension</a>.</li>
+    <li><a href="../../services/mw-adapter-telco/src/test/java/mfs/mw/adapter/telco/messaging/KafkaTestConsumer.java">messaging/KafkaTestConsumer.java</a>,
+      <a href="../../services/mw-adapter-telco/src/test/resources/config/application.yml">src/test/resources/config/application.yml</a> (test-only settings).</li>
+    <li><a href="../../services/mw-adapter-telco/src/test/java/mfs/mw/adapter/telco/route/TelcoRequestRouteIT.java">route/TelcoRequestRouteIT.java</a>: the worked example.</li>
+    <li>Every other module has its own copies, for example <code>services/mw-orchestrator/src/test/java/mfs/mw/orchestrator/TestInfrastructure.java</code>.</li>
+  </ul></div>
+
+  <h2 id="wrong">What can go wrong</h2>
+  <div class="box wrong"><div class="tag">What can go wrong</div><ul>
+    <li><strong>All your <code>*IT</code> tests show as skipped.</strong> Docker is not running, or Testcontainers cannot reach it. The skip reason says
+      <code>Docker is not available</code>. A gate run needs Docker.</li>
+    <li><strong>A test needs Docker but is not called <code>*IT</code>.</strong> It is not skipped, so it <em>fails</em> on a host without Docker. Rename it.</li>
+    <li><strong>A test reads another test's records.</strong> Kafka is shared by the whole JVM. Use your own topic, a fresh key (a new transaction id) or a
+      filter in <code>KafkaTestConsumer.read</code>.</li>
+    <li><strong>A cached context steals your records.</strong> A consumer left running in another cached context can take messages from the topic you test.
+      That is why the test config switches off <code>mw.telco.request-consumer.enabled</code> and the outbox relay; switch them on only in the test
+      that needs them, with <code>@DirtiesContext</code>.</li>
+    <li><strong>You added <code>withReuse(true)</code> to go faster.</strong> Don't: reused containers keep data between runs and need clean-up scripts. D19 removed exactly that.</li>
+    <li><strong>A test is slow because it waits.</strong> If the wait is the point of the test (a timeout, a retry delay, an absence window) and takes 2 s or more,
+      tag it <code>@Tag("slow-wait")</code>. Otherwise shorten the configured timer for the test, as <code>TelcoRequestRouteIT</code> does.</li>
+    <li><strong>Field injection in a test.</strong> Not even in tests: inject through the constructor, as <code>TelcoRequestRouteIT</code> does.
+      <code>./gradlew :checkFieldInjection</code> fails otherwise.</li>
+  </ul></div>
+
+  <h2 id="next">Read next</h2>
+  <ul>
+    <li><a href="../adr/D19-single-test-task.md">ADR D19</a>: one test task, no reuse, and the amendment that brought the cold build to about 3 minutes.</li>
+    <li><a href="../tutorial/09-how-we-work.html#tests">Tutorial chapter 9, tests</a>: how tests fit the definition of done.</li>
+    <li>The root <a href="../../CLAUDE.md">CLAUDE.md</a>, section "Test commands", for every Gradle command.</li>
+    <li><a href="camel.html">Camel</a> and <a href="resilience4j.html">Resilience4j</a>: what the worked example's test actually exercises.</li>
+  </ul>
+
+  <nav class="pager">
+    <a href="shedlock.html"><small>Previous</small>← ShedLock</a>
+    <a class="next" href="index.html"><small>Next</small>Start →</a>
+  </nav>
+</main>
+</body>
+</html>

@@ -85,6 +85,10 @@ class ProducedContractsTest {
     return REQUESTS.toRecord(TestData.addMoneyBank(TestData.txnId(), "key-c2w", 50_000, "1234567890123"), null, TestData.NOW);
   }
 
+  private static TransactionRecord balanceCheck() {
+    return REQUESTS.toRecord(TestData.balance(TestData.txnId(), "key-bal", "01711000001"), null, TestData.NOW);
+  }
+
   private static mfs.mw.orchestrator.service.saga.PartnerCall leg(Flow flow) {
     return flow.partnerCall().orElseThrow();
   }
@@ -122,6 +126,7 @@ class ProducedContractsTest {
     FIXTURES.put(COMMAND + "#CreditWallet", () -> COMMANDS.credit(addMoney(), TestData.NOW, TTL));
     FIXTURES.put(COMMAND + "#ReverseTransaction", () -> COMMANDS.reverse(
         p2p().withCore("CORE-1", 500L).withReversal(UUID.fromString(TestData.txnId())), TestData.NOW, TTL));
+    FIXTURES.put(COMMAND + "#BalanceInquiry", () -> COMMANDS.balanceInquiry(balanceCheck(), TestData.NOW, TTL));
     FIXTURES.put(COMMAND + "#QueryTransaction", () -> COMMANDS.query(topupHeld(), TestData.NOW, TTL));
     FIXTURES.put(PARTNER_REQUEST + "#telco", () -> PARTNER.pay(topupHeld(), leg(new TopupFlow()), TestData.NOW, PARTNER_DEADLINE));
     FIXTURES.put(PARTNER_REQUEST + "#billpay", () -> PARTNER.pay(billPay(), leg(new BillPayFlow()), TestData.NOW, PARTNER_DEADLINE));
@@ -152,6 +157,19 @@ class ProducedContractsTest {
             assertThat(body.path(typeField(path)).asString()).as("message type of %s", entry).isEqualTo(msg);
           }
         }));
+  }
+
+  /** ADR D26: the COMPLETED status of a BALANCE check carries the core's balance, passed through. */
+  @Test
+  void aCompletedBalanceStatusWithItsBalanceMatchesTheContract() {
+    JsonNode body = published(new StatusMapper().toStatus(
+        balanceCheck().moved(Status.VALIDATING, TestData.NOW, null).withCore("CORE-1", null)
+            .moved(Status.COMPLETED, TestData.NOW.plusSeconds(1), null),
+        new mfs.mw.orchestrator.dto.Balance(
+            mfs.mw.orchestrator.dto.Amount.bdt(1_200_000), TestData.NOW.plusSeconds(1))));
+
+    assertThat(body.path("balance").path("available").path("valueMinor").asLong()).isEqualTo(1_200_000);
+    assertThat(ContractSchemas.schema(STATUS).validate(body)).isEmpty();
   }
 
   @Test

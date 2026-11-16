@@ -9,7 +9,8 @@ import java.util.Map;
  *
  * @param messages engine texts: {@code invalid}, {@code tooManyAttempts}, {@code expired},
  *     {@code processing}, {@code unavailable}, {@code more}; optional (ticket 72) {@code wrongPin},
- *     {@code pinLocked}, {@code pinBlocked}, {@code walletLocked}
+ *     {@code pinLocked}, {@code pinBlocked}, {@code walletLocked}; optional (ADR D26) {@code
+ *     balanceUnavailable}
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record Menu(
@@ -29,6 +30,11 @@ public record Menu(
   public static final String PIN_BLOCKED = "pinBlocked";
   /** The wallet is locked or not active (MW-AUTH-043). Optional. */
   public static final String WALLET_LOCKED = "walletLocked";
+  /**
+   * A balance check got no final answer in time or could not be sent (ADR D26): try again. No SMS
+   * follows a balance check, so the {@code processing} text does not fit. Optional: built-in default.
+   */
+  public static final String BALANCE_UNAVAILABLE = "balanceUnavailable";
 
   public Menu {
     messages = messages == null ? Map.of() : Map.copyOf(messages);

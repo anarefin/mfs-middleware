@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import mfs.mw.ussd.config.UssdProperties;
+import mfs.mw.ussd.dto.Balance;
 import mfs.mw.ussd.dto.EncryptedPin;
 import mfs.mw.ussd.dto.ErrorInfo;
 import mfs.mw.ussd.dto.FlowOutcome;
@@ -23,7 +24,9 @@ import mfs.mw.ussd.dto.Text;
 import mfs.mw.ussd.dto.UssdRequest;
 import mfs.mw.ussd.dto.UssdResponse;
 import mfs.mw.ussd.dto.UssdSession;
+import mfs.mw.ussd.mapper.TxnRequestMapper;
 import mfs.mw.ussd.repository.UssdSessionStore;
+import mfs.mw.ussd.util.UssdText;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -36,8 +39,10 @@ import org.springframework.stereotype.Service;
  * mw-auth checks it before anything is published (ticket 72): a wrong PIN asks for the PIN again
  * with the menu's {@code wrongPin} text (as long as mw-auth answers wrong PIN; its lockout rule
  * decides when that ends), a lock ends the session with {@code pinLocked}, {@code pinBlocked} or
- * {@code walletLocked}. Screens longer than the MNO's maximum are truncated or paged per MNO
- * configuration.
+ * {@code walletLocked}. A BALANCE check (ADR D26) fills {@code {balance}} of its onSuccess text with
+ * the available balance (never stored in the session); no final answer in time ends with {@code
+ * balanceUnavailable}, as no SMS follows a balance check. Screens longer than the MNO's maximum are
+ * truncated or paged per MNO configuration.
  */
 @Service
 public class UssdEngine {
@@ -60,6 +65,9 @@ public class UssdEngine {
               "Your PIN is locked. Reset it in the app or call customer care."),
           Menu.WALLET_LOCKED,
           new Text("আপনার অ্যাকাউন্ট লক। কাস্টমার কেয়ারে কল করুন।", "Your account is locked. Please call customer care."));
+  /** The {@code balanceUnavailable} text when a menu carries none. */
+  static final Text BALANCE_UNAVAILABLE_TEXT =
+      new Text("ব্যালেন্স জানা যায়নি। আবার চেষ্টা করুন।", "Could not get your balance. Please try again.");
 
   private final MenuCatalog menus;
   private final UssdSessionStore sessions;
@@ -263,14 +271,21 @@ public class UssdEngine {
     if (outcome.txnId() != null) {
       vars.put("txnId", outcome.txnId());
     }
+    Balance balance = outcome.balance();
+    if (balance != null && balance.available() != null && balance.available().valueMinor() != null) {
+      // a screen variable only: never in the session's inputs
+      vars.put("balance", UssdText.taka(balance.available().valueMinor()));
+    }
+    boolean balanceCheck = TxnRequestMapper.BALANCE.equals(node.flow());
     return switch (outcome.kind()) {
       case COMPLETED -> enter(menu, s.at(node.onSuccess(), s.path(), s.inputs(), s.language()), vars, null);
       case FAILED -> {
         vars.put("error", errorText(outcome.error(), s.language()));
         yield enter(menu, s.at(node.onFailure(), s.path(), s.inputs(), s.language()), vars, null);
       }
-      case PROCESSING -> endWith(menu, s, Menu.PROCESSING);
-      case UNAVAILABLE -> endWith(menu, s, Menu.UNAVAILABLE);
+      // no SMS follows a balance check: "being processed, result by SMS" would promise one
+      case PROCESSING -> balanceCheck ? balanceUnavailable(menu, s) : endWith(menu, s, Menu.PROCESSING);
+      case UNAVAILABLE -> balanceCheck ? balanceUnavailable(menu, s) : endWith(menu, s, Menu.UNAVAILABLE);
       case WRONG_PIN -> askPinAgain(menu, s, outcome.triesLeft());
       case LOCKED -> show(menu, s, pinText(menu, lockMessage(outcome.error()), s.language(), Map.of()), true);
     };
@@ -308,6 +323,12 @@ public class UssdEngine {
       t = PIN_TEXTS.get(key).in(lang);
     }
     return interpolate(t, Map.of(), vars);
+  }
+
+  /** Ends a balance check without an answer: the menu's {@code balanceUnavailable}, else the built-in one. */
+  private UssdResponse balanceUnavailable(Menu menu, UssdSession s) {
+    String t = menu.message(Menu.BALANCE_UNAVAILABLE, s.language());
+    return show(menu, s, t.isEmpty() ? BALANCE_UNAVAILABLE_TEXT.in(s.language()) : t, true);
   }
 
   private UssdResponse endWith(Menu menu, UssdSession s, String message) {

@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ShedLock</title>
+<link rel="stylesheet" href="../tutorial/tutorial.css">
+<script src="../tutorial/diagrams.js" defer></script>
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> concepts</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="apisix.html">APISIX</a>
+    <a href="keycloak.html">Keycloak</a>
+    <a href="openbao.html">OpenBao</a>
+    <a href="hsm.html">HSM</a>
+    <a href="greenmail.html">GreenMail</a>
+    <a href="core-mock.html">Core mock</a>
+    <a href="simulators.html">Simulators</a>
+    <a href="camel.html">Camel</a>
+    <a href="jsonata.html">JSONata</a>
+    <a href="resilience4j.html">Resilience4j</a>
+    <a href="shedlock.html" aria-current="page">ShedLock</a>
+    <a href="testcontainers.html">Testcontainers</a>
+    <a href="../tutorial/index.html">Tutorial ↗</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Library</div>
+  <h1>ShedLock: one run of a scheduled job at a time</h1>
+  <p class="lead">Spring's <code>@Scheduled</code> runs a method on a timer in every copy of a service. ShedLock adds a lock row in the
+    service's own database, so only one copy runs the job at a time. Today every service runs as one instance, but the
+    lock is already there for the day a second one is added.</p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#plain">In plain English</a></li>
+    <li><a href="#why">Why we use it here</a></li>
+    <li><a href="#wired">How it is wired</a></li>
+    <li><a href="#how">How the lock works</a></li>
+    <li><a href="#jobs">The jobs</a></li>
+    <li><a href="#example">Worked example: the saga timer sweep</a></li>
+    <li><a href="#where">Where it lives</a></li>
+    <li><a href="#wrong">What can go wrong</a></li>
+    <li><a href="#next">Read next</a></li>
+  </ol></div>
+
+  <h2 id="plain">In plain English</h2>
+  <div class="box plain"><div class="tag">In plain English</div>
+    <p>Think of the one key to a shared meeting room, hanging on a hook. Whoever wants the room takes the key; if the hook is
+      empty, you don't wait, you just come back next time. And if someone walks off with the key, there is a rule: after a
+      set time the key counts as returned anyway. ShedLock is that hook and that rule, kept as a row in a database table.</p>
+    <p>A <strong>scheduled job</strong> is a method Spring calls on a timer (<code>@Scheduled</code>). A <strong>lock</strong> here is a row
+      in the <code>shedlock</code> table saying "job X is taken until time T, by host H".</p>
+  </div>
+
+  <h2 id="why">Why we use it here</h2>
+  <p>The spec's technology table (section 3) lists <em>"ShedLock + Spring scheduler ... Cluster-safe jobs (TSQ sweeps, file pulls)"</em>,
+    and section 7.1 says saga deadlines are <em>"swept every second by a ShedLock-guarded job."</em></p>
+  <p>Then ADR <a href="../adr/D11-no-high-availability.md">D11</a> decided on one instance of everything. Spec section 19.3 explains why ShedLock stays anyway:
+    <em>"Stateful edges (SMPP binds, SFTP pulls, scheduled jobs) run in the single instance; ShedLock stays in place so a second
+    instance could be added later without code change."</em> It is cheap: one small table and one annotation per job.</p>
+
+  <h2 id="wired">How it is wired</h2>
+  <p>From <a href="../../services/mw-adapter-telco/build.gradle.kts">services/mw-adapter-telco/build.gradle.kts</a> (versions inline, ADR <a href="../adr/D13-build.md">D13</a>):</p>
+  <pre><code>// Scheduled jobs run on one instance only (ShedLock on this service's schema, 4.4).
+implementation("net.javacrumbs.shedlock:shedlock-spring:7.10.1")
+implementation("net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.10.1")</code></pre>
+  <p>Each service turns it on in <code>config/SchedulingConfig</code>:</p>
+  <pre><code>@Configuration(proxyBeanMethods = false)
+@EnableScheduling
+@EnableSchedulerLock(defaultLockAtMostFor = "PT30M")
+public class SchedulingConfig {
+
+  @Bean
+  public LockProvider lockProvider(DataSource dataSource) {
+    return new JdbcTemplateLockProvider(
+        JdbcTemplateLockProvider.Configuration.builder()
+            .withJdbcTemplate(new JdbcTemplate(dataSource))
+            .usingDbTime()
+            .build());
+  }
+}</code></pre>
+  <ul>
+    <li><strong><code>JdbcTemplateLockProvider</code></strong> keeps locks in a plain SQL table over the service's own datasource. No extra infrastructure.</li>
+    <li><strong><code>usingDbTime()</code></strong> uses PostgreSQL's clock, not the JVM's, so two hosts with slightly different clocks still agree.</li>
+    <li><strong><code>defaultLockAtMostFor = "PT30M"</code></strong> (an ISO-8601 duration: 30 minutes) is the safety rule from the analogy, for jobs that do not set their own.</li>
+  </ul>
+  <p>The table comes from a Flyway migration in the service's own schema,
+    <a href="../../services/mw-adapter-telco/src/main/resources/db/migration/V3__shedlock_and_purge.sql">V3__shedlock_and_purge.sql</a>:</p>
+  <pre><code>CREATE TABLE shedlock (
+  name        varchar(64)  NOT NULL PRIMARY KEY,
+  lock_until  timestamp    NOT NULL,
+  locked_at   timestamp    NOT NULL,
+  locked_by   varchar(255) NOT NULL
+);</code></pre>
+  <p>Every service except <code>mw-seeder</code> (a one-shot with no timer) has the dependency, its own <code>SchedulingConfig</code> and its own <code>shedlock</code>
+    table. No service ever reads another's (root CLAUDE.md: never touch another service's schema).</p>
+
+  <h2 id="how">How the lock works</h2>
+  <p>A job is a <code>@Scheduled</code> method with a <code>@SchedulerLock</code> next to it. The purge job every service has:</p>
+  <pre><code>@Scheduled(cron = "${mw.retention.cron}")
+@SchedulerLock(name = LOCK_NAME)
+public void purge() {
+  retention.purge();
+}</code></pre>
+  <ol class="steps">
+    <li>The timer fires. Before the method runs, ShedLock tries to update the row <code>name = 'outbox-inbox-purge'</code> to
+      <code>lock_until = now + lockAtMostFor</code>, but only if <code>lock_until</code> is already in the past (inserting the row the first time).</li>
+    <li><strong>Got it:</strong> the method runs. When it ends, ShedLock sets <code>lock_until</code> to <code>now</code> (or to <code>locked_at + lockAtLeastFor</code> if that is later). The row stays.</li>
+    <li><strong>Did not get it:</strong> another instance holds the lock. The method is <em>skipped</em> for this tick. Nothing is queued.</li>
+    <li><strong>The holder crashed:</strong> nobody releases the row, but once <code>lock_until</code> passes, the next tick anywhere takes it.</li>
+  </ol>
+  <div class="table-wrap"><table>
+    <tr><th>Setting</th><th>Meaning</th><th>Pick it as</th></tr>
+    <tr><td><code>lockAtMostFor</code></td><td>How long the lock lasts if the holder dies.</td><td>Clearly longer than one normal run, short enough that a crash does not stall the job for long.</td></tr>
+    <tr><td><code>lockAtLeastFor</code></td><td>Keep the lock at least this long, even after a quick run, so a second instance whose clock ticks a little later does not run it again.</td><td><code>PT0S</code> for jobs that run every second or so.</td></tr>
+  </table></div>
+
+  <h2 id="jobs">The jobs</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Service</th><th>Job (<code>scheduler/</code>)</th><th>Schedule</th><th><code>lockAtMostFor</code></th></tr>
+    <tr><td>every service but mw-seeder</td><td><code>OutboxInboxPurgeJob</code>, lock <code>outbox-inbox-purge</code></td><td>cron <code>mw.retention.cron</code> (hourly by default)</td><td>default 30 min</td></tr>
+    <tr><td>mw-orchestrator</td><td><code>SagaTimerJob</code>, <code>ManualReviewAgeingJob</code></td><td>every 1 s; daily 06:00 UTC</td><td>30 s (at least 0 s); default</td></tr>
+    <tr><td>mw-admin-api</td><td><code>ChangeRequestExpiryJob</code>, <code>ApprovingReconcileJob</code></td><td>every 5 min; every minute</td><td>default</td></tr>
+    <tr><td>mw-audit-dw</td><td><code>AuditAnchorJob</code>, <code>AuditChainVerifyJob</code></td><td>hourly cron</td><td>default</td></tr>
+    <tr><td>mw-checkout</td><td><code>IpnDeliveryJob</code></td><td>fixed delay</td><td>15 min</td></tr>
+    <tr><td>mw-notify</td><td><code>DispatchJob</code></td><td>every 200 ms by default</td><td>5 min</td></tr>
+    <tr><td>mw-portal-api</td><td><code>BulkDispatchJob</code>, <code>BulkReconcileJob</code>, <code>BulkExpiryJob</code></td><td>fixed delay</td><td>1 min, 10 min, 10 min</td></tr>
+    <tr><td>mw-crypto</td><td><code>KeyBootstrap</code> (dev only)</td><td>fixed delay</td><td>5 min (at least 0 s)</td></tr>
+    <tr><td>mw-core-mock</td><td><code>UsedAssertionPurgeJob</code></td><td>cron</td><td>default</td></tr>
+  </table></div>
+  <p>Two jobs are left <strong>without</strong> a lock on purpose, because each instance needs its own run:
+    mw-crypto's <code>HsmProbeJob</code> (each instance reports its own HSM sessions) and mw-core-mock's <code>AssertionKeyRefreshJob</code>
+    (an in-memory key cache every instance needs). Both say so in their class comment.</p>
+
+  <h2 id="example">Worked example: the saga timer sweep</h2>
+  <p>Every saga step in mw-orchestrator has a deadline, stored in <code>saga_timer</code>. Something has to notice when one passes.
+    That is <code>SagaTimerJob</code>:</p>
+  <pre><code>@Scheduled(fixedDelayString = "${mw.orchestrator.timer.period:1s}")
+@SchedulerLock(name = LOCK_NAME, lockAtMostFor = "PT30S", lockAtLeastFor = "PT0S")
+public void sweep() {
+  timers.sweep();
+}</code></pre>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+actors: Spring scheduler | mw-orchestrator | PostgreSQL
+Spring scheduler -> mw-orchestrator : tick (1 s after the last sweep ended)
+mw-orchestrator -> PostgreSQL : take lock saga-timer-sweep until now + 30 s
+PostgreSQL --> mw-orchestrator : row updated: lock is ours
+mw-orchestrator -> PostgreSQL : select due timers ... for update skip locked
+mw-orchestrator -> mw-orchestrator : fire DeadlineExpired (POSTING to UNKNOWN, ...)
+mw-orchestrator -> PostgreSQL : commit, release lock (lock_until = now)
+  </script></div><figcaption>One sweep, guarded twice: by ShedLock and by row locks.</figcaption></figure>
+  <ol class="steps">
+    <li><code>fixedDelay</code> means "1 s after the last run <em>ended</em>", so sweeps never overlap inside one instance.</li>
+    <li>ShedLock takes <code>saga-timer-sweep</code> for at most 30 s. A sweep handles a batch of 50 timers, far quicker than that, so 30 s is
+      plenty. If the orchestrator crashes mid-sweep, the restarted one can sweep again at most 30 s after the crash, not 30 minutes.</li>
+    <li><code>lockAtLeastFor = "PT0S"</code>: the lock is released as soon as the sweep ends, so the next tick is not blocked.</li>
+    <li><code>service/SagaTimerService.sweep()</code> reads the due timers with <code>FOR UPDATE SKIP LOCKED</code>. That is a second safety
+      net: even two sweepers running at once would never pick the same timer.</li>
+    <li>For each due timer it fires <code>DeadlineExpired</code>; the state machine decides what that means (VALIDATING to FAILED, POSTING to UNKNOWN, ...),
+      and an UNKNOWN transaction's inquiry timer starts a status inquiry (see <a href="resilience4j.html#example">Resilience4j</a>).</li>
+  </ol>
+  <p>The conformance test <code>conformance/OutboxInboxPurgeConformanceIT</code> (in every service) proves the skip: it writes a
+    <code>shedlock</code> row as if <code>other-instance</code> held the purge lock, calls the job, and checks that nothing was deleted.</p>
+
+  <div class="box where" id="where"><div class="tag">Where it lives</div><ul>
+    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/config/SchedulingConfig.java">config/SchedulingConfig.java</a>: the lock provider (same in every service).</li>
+    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/scheduler/OutboxInboxPurgeJob.java">scheduler/OutboxInboxPurgeJob.java</a> and
+      <a href="../../services/mw-adapter-telco/src/main/resources/db/migration/V3__shedlock_and_purge.sql">V3__shedlock_and_purge.sql</a>.</li>
+    <li><a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/scheduler/SagaTimerJob.java">mw-orchestrator scheduler/SagaTimerJob.java</a>,
+      <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/SagaTimerService.java">service/SagaTimerService.java</a>,
+      <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/repository/SagaTimerRepository.java">repository/SagaTimerRepository.java</a> (the <code>SKIP LOCKED</code> query).</li>
+    <li>Unlocked on purpose: <a href="../../services/mw-crypto/src/main/java/mfs/mw/crypto/scheduler/HsmProbeJob.java">HsmProbeJob.java</a>,
+      <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/scheduler/AssertionKeyRefreshJob.java">AssertionKeyRefreshJob.java</a>.</li>
+    <li>Test: <a href="../../services/mw-adapter-telco/src/test/java/mfs/mw/adapter/telco/conformance/OutboxInboxPurgeConformanceIT.java">OutboxInboxPurgeConformanceIT.java</a>.</li>
+  </ul></div>
+
+  <h2 id="wrong">What can go wrong</h2>
+  <div class="box wrong"><div class="tag">What can go wrong</div><ul>
+    <li><strong>"My job did not run."</strong> A held lock means the run is skipped, not delayed. With one instance that usually means the previous run is still going
+      (or crashed and its lock has not expired yet). Look at the row: <code>select * from shedlock</code> in the service's schema.</li>
+    <li><strong>A crash stalls a fast job for 30 minutes.</strong> A job without its own <code>lockAtMostFor</code> gets the 30-minute default. Give every frequent job a short
+      one, as <code>SagaTimerJob</code> (30 s) and <code>BulkDispatchJob</code> (1 min) do.</li>
+    <li><strong><code>lockAtMostFor</code> shorter than a real run.</strong> The lock expires mid-run and a second instance could start the same job. Size it from the slowest run, with room to spare.</li>
+    <li><strong>A new service has no <code>shedlock</code> table.</strong> ShedLock does not create it. It must come from a Flyway migration in the service's own schema, like <code>V3__shedlock_and_purge.sql</code>.</li>
+    <li><strong>You deleted the lock row to "unstick" a job.</strong> Don't: ShedLock keeps its row and updates it. Wait for <code>lock_until</code> to pass, or set it to the past.
+      The purge conformance test does exactly that instead of deleting.</li>
+    <li><strong>A job that must run on every instance got a lock.</strong> Then only one instance would do it. Leave such jobs unlocked and say why in the class comment, as <code>HsmProbeJob</code> does.</li>
+  </ul></div>
+
+  <h2 id="next">Read next</h2>
+  <ul>
+    <li><a href="../adr/D11-no-high-availability.md">ADR D11</a> and spec section 19.3 (<a href="../../spec/bits-mfs-middleware-spec.md">spec/bits-mfs-middleware-spec.md</a>): why one instance, and why ShedLock stays.</li>
+    <li><a href="../tutorial/03-core-ideas.html#saga">Tutorial chapter 3, the saga</a>: what the timer sweep moves forward; <a href="../tutorial/03-core-ideas.html#outbox">the outbox</a>: what the purge job cleans.</li>
+    <li><a href="testcontainers.html">Testcontainers</a>, the next page: the real PostgreSQL these tests take the lock in.</li>
+  </ul>
+
+  <nav class="pager">
+    <a href="resilience4j.html"><small>Previous</small>← Resilience4j</a>
+    <a class="next" href="testcontainers.html"><small>Next</small>Testcontainers →</a>
+  </nav>
+</main>
+</body>
+</html>

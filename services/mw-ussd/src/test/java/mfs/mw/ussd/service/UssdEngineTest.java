@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import mfs.mw.ussd.config.UssdProperties;
+import mfs.mw.ussd.dto.Amount;
+import mfs.mw.ussd.dto.Balance;
 import mfs.mw.ussd.dto.ErrorInfo;
 import mfs.mw.ussd.dto.FlowOutcome;
 import mfs.mw.ussd.dto.FlowRequest;
@@ -34,7 +36,7 @@ class UssdEngineTest {
 
   static final JsonMapper JSON = JsonMapper.builder().build();
   static final BillDirectory BILLS = new UssdMenuWalkTest.FakeBills();
-  static final Menu MENU = MenuParser.parseResource(JSON, "menus/main-v2.json");
+  static final Menu MENU = MenuParser.parseResource(JSON, "menus/main-v3.json");
 
   /** Sessions as Valkey would hold them: serialised JSON, so a test can look inside. */
   static final class InMemorySessions implements UssdSessionStore {
@@ -110,7 +112,7 @@ class UssdEngineTest {
 
   @Test
   void p2pMenuWalkInBangla() throws Exception {
-    assertThat(dial("s1").text()).isEqualTo("Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English");
+    assertThat(dial("s1").text()).isEqualTo("Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n5 ব্যালেন্স\n9 English");
     assertThat(send("s1", "1").text()).isEqualTo("প্রাপকের Bits নম্বর দিন");
     assertThat(send("s1", PAYEE).text()).isEqualTo("টাকার পরিমাণ দিন");
     assertThat(send("s1", "500").text()).isEqualTo("01812345678 নম্বরে 500.00 টাকা পাঠাবেন?\n1 নিশ্চিত করুন\n2 বাতিল");
@@ -134,7 +136,7 @@ class UssdEngineTest {
   @Test
   void p2pMenuWalkInEnglishAfterTheLanguageSwitch() {
     dial("s2");
-    assertThat(send("s2", "9").text()).isEqualTo("Bits\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা");
+    assertThat(send("s2", "9").text()).isEqualTo("Bits\n1 Send Money\n2 Cash Out\n3 Recharge\n4 Pay Bill\n5 Balance\n9 বাংলা");
     assertThat(send("s2", "1").text()).isEqualTo("Enter recipient Bits number");
     assertThat(send("s2", "8801812345678").text()).isEqualTo("Enter amount (Tk)");
     assertThat(send("s2", "120.5").text()).isEqualTo("Send Tk 120.50 to 01812345678?\n1 Confirm\n2 Cancel");
@@ -169,7 +171,7 @@ class UssdEngineTest {
   void sessionTtlIsTheMnoTimeoutPlusThirtySeconds() {
     dial("s4");
     assertThat(sessions.ttls.get("ussd:robi:s4")).isEqualTo(Duration.ofSeconds(150));
-    assertThat(sessions.values.get("ussd:robi:s4")).contains("\"menuVersion\":2").contains("\"language\":\"bn\"");
+    assertThat(sessions.values.get("ussd:robi:s4")).contains("\"menuVersion\":3").contains("\"language\":\"bn\"");
   }
 
   @Test
@@ -339,6 +341,111 @@ class UssdEngineTest {
       assertThat(MENU.message(key, "en")).isEqualTo(UssdEngine.PIN_TEXTS.get(key).en());
       assertThat(MENU.message(key, "bn")).isEqualTo(UssdEngine.PIN_TEXTS.get(key).bn());
     }
+  }
+
+  // --- BALANCE (ADR D26): 5 -> PIN -> the available balance ---
+
+  static final Balance TWELVE_THOUSAND =
+      new Balance(new Amount(1_200_000L, Amount.BDT), Instant.parse("2026-11-16T08:15:31Z"));
+
+  @Test
+  void balanceInBanglaShowsTheAvailableBalanceAfterThePin() throws Exception {
+    flow.next = new FlowOutcome(FlowOutcome.Kind.COMPLETED, "019a0000-0000-7000-8000-000000000026", null, null,
+        TWELVE_THOUSAND);
+    dial("b1");
+    assertThat(send("b1", "5").text()).isEqualTo("আপনার পিন দিন");
+
+    UssdResponse done = send("b1", "48261");
+
+    assertThat(done.end()).isTrue();
+    assertThat(done.text()).isEqualTo("আপনার ব্যালেন্স ৳12,000.00");
+    FlowRequest req = flow.requests.getFirst();
+    assertThat(req.flow()).isEqualTo("BALANCE");
+    assertThat(req.fields()).isEmpty();
+    assertThat(req.menuPath()).isEqualTo("main:5>bal.pin");
+    assertThat(TestPinKeys.decrypt(req.pin())).isEqualTo("48261");
+    assertThat(sessions.values).isEmpty();
+  }
+
+  @Test
+  void balanceInEnglish() {
+    flow.next = new FlowOutcome(FlowOutcome.Kind.COMPLETED, "t", null, null,
+        new Balance(new Amount(5L, Amount.BDT), Instant.parse("2026-11-16T08:15:31Z")));
+    dial("b2");
+    send("b2", "9");
+    assertThat(send("b2", "5").text()).isEqualTo("Enter your PIN");
+    assertThat(send("b2", "48261").text()).isEqualTo("Your balance is Tk 0.05");
+  }
+
+  @Test
+  void aWrongPinOnBalanceAsksForThePinAgain() {
+    flow.next = new FlowOutcome(FlowOutcome.Kind.WRONG_PIN, null,
+        new ErrorInfo("MW-AUTH-040", "Wrong PIN", null, false), "2");
+    dial("b3");
+    send("b3", "9");
+    send("b3", "5");
+
+    UssdResponse again = send("b3", "11111");
+
+    assertThat(again.end()).isFalse();
+    assertThat(again.text()).isEqualTo("Wrong PIN. 2 tries left.\nEnter your PIN");
+    flow.next = new FlowOutcome(FlowOutcome.Kind.COMPLETED, "t", null, null, TWELVE_THOUSAND);
+    assertThat(send("b3", "48261").text()).isEqualTo("Your balance is Tk 12,000.00");
+    assertThat(flow.requests).hasSize(2).extracting(FlowRequest::menuPath).containsOnly("main:9>main:5>bal.pin");
+  }
+
+  @Test
+  void aLockOnBalanceEndsTheSession() {
+    flow.next = new FlowOutcome(FlowOutcome.Kind.LOCKED, null, new ErrorInfo("MW-AUTH-043", "Locked", null, false));
+    dial("b4");
+    send("b4", "5");
+    UssdResponse r = send("b4", "48261");
+    assertThat(r.end()).isTrue();
+    assertThat(r.text()).isEqualTo("আপনার অ্যাকাউন্ট লক। কাস্টমার কেয়ারে কল করুন।");
+  }
+
+  @Test
+  void aRefusedBalanceShowsTheErrorInTheSessionLanguage() {
+    flow.next = new FlowOutcome(FlowOutcome.Kind.FAILED, "t",
+        new ErrorInfo("MW-CORE-WALLET_NOT_FOUND", "Wallet not found", "ওয়ালেট পাওয়া যায়নি", false));
+    dial("b5");
+    send("b5", "5");
+    assertThat(send("b5", "48261").text()).isEqualTo("ব্যালেন্স দেখা ব্যর্থ: ওয়ালেট পাওয়া যায়নি");
+  }
+
+  @Test
+  void noBalanceWithinTheBudgetAsksToTryAgainAndPromisesNoSms() {
+    for (FlowOutcome.Kind kind : List.of(FlowOutcome.Kind.PROCESSING, FlowOutcome.Kind.UNAVAILABLE)) {
+      flow.next = new FlowOutcome(kind, kind == FlowOutcome.Kind.PROCESSING ? "t" : null, null);
+      String s = "b6-" + kind;
+      dial(s);
+      send(s, "9");
+      send(s, "5");
+
+      UssdResponse r = send(s, "48261");
+
+      assertThat(r.end()).as(kind.name()).isTrue();
+      assertThat(r.text()).as(kind.name()).isEqualTo("Could not get your balance. Please try again.").doesNotContain("SMS");
+    }
+    flow.next = new FlowOutcome(FlowOutcome.Kind.PROCESSING, "t", null);
+    dial("b7");
+    send("b7", "5");
+    assertThat(send("b7", "48261").text()).isEqualTo("ব্যালেন্স জানা যায়নি। আবার চেষ্টা করুন।");
+  }
+
+  @Test
+  void aMenuWithoutTheBalanceTextUsesTheBuiltInOne() {
+    assertThat(MENU.message(Menu.BALANCE_UNAVAILABLE, "en")).isEqualTo(UssdEngine.BALANCE_UNAVAILABLE_TEXT.en());
+    assertThat(MENU.message(Menu.BALANCE_UNAVAILABLE, "bn")).isEqualTo(UssdEngine.BALANCE_UNAVAILABLE_TEXT.bn());
+  }
+
+  @Test
+  void theCompletedBalanceIsNeverKeptInTheSession() {
+    flow.next = new FlowOutcome(FlowOutcome.Kind.COMPLETED, "t", null, null, TWELVE_THOUSAND);
+    dial("b8");
+    send("b8", "5");
+    send("b8", "48261");
+    assertThat(sessions.values).doesNotContainKey("ussd:robi:b8");
   }
 
   @Test

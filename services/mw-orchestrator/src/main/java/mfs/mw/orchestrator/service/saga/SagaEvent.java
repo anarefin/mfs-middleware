@@ -7,6 +7,18 @@ public sealed interface SagaEvent {
 
   record RequestRejected() implements SagaEvent {}
 
+  /** A BALANCE check (ADR D26) was accepted: ask the core for the wallet's balance. */
+  record BalanceInquiryStarted() implements SagaEvent {}
+
+  /**
+   * The core answered the BalanceInquiry (BalanceReported). The balance itself is not part of the
+   * event: the service passes it straight to the COMPLETED status and never stores it.
+   */
+  record BalanceReported() implements SagaEvent {}
+
+  /** The core refused the BalanceInquiry (BalanceInquiryRejected). */
+  record BalanceInquiryRejected() implements SagaEvent {}
+
   /**
    * The core accepted ValidateTransaction; {@code needsHold} comes from the flow of the txn type.
    * {@code callPartner}: inbound money (ADD_MONEY_BANK, ticket 23) holds nothing and asks the

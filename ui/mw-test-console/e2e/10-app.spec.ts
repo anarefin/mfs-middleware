@@ -42,6 +42,21 @@ test.describe("@app app flows", () => {
     await expect(r.getByTestId("delta-01711000001")).toHaveText("Tk 0.00");
   });
 
+  test("the balance check answers the available balance and moves nothing", async ({ page }) => {
+    await page.goto("app");
+    await page.getByTestId("check-balance").click();
+    const r = page.locator("section", { has: page.getByRole("heading", { name: "Balance check" }) }).getByTestId("result");
+    await expect(r.getByTestId("headline")).toContainText("available Tk ");
+  });
+
+  test("a wrong PIN on the balance check is refused with MW-AUTH-040", async ({ page }) => {
+    await page.goto("app");
+    await page.getByTestId("balance-pin").fill("97531");
+    await page.getByTestId("check-balance").click();
+    const r = page.locator("section", { has: page.getByRole("heading", { name: "Balance check" }) }).getByTestId("result");
+    await expect(r.getByTestId("headline")).toContainText("MW-AUTH-040");
+  });
+
   test("cash in by the agent credits the customer", async ({ page }) => {
     await page.goto("app");
     const r = await submit(page, "CASH_IN", "01711000001", "20", { category: "agent", user: "agent01" });

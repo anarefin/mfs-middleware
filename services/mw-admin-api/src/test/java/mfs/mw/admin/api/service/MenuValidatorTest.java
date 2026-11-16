@@ -41,6 +41,15 @@ class MenuValidatorTest {
   }
 
   @Test
+  void theMainMenuWithTheBalanceCheckIsValid() throws IOException {
+    // ADR D26: option 5, PIN, then the BALANCE flow with an empty mapping
+    try (InputStream in = MenuValidatorTest.class.getClassLoader().getResourceAsStream("menus/main-v3.json")) {
+      String v3 = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+      assertThat(MenuValidator.problems(MenuParser.parse(JSON, v3))).isEmpty();
+    }
+  }
+
+  @Test
   void aDanglingNodeIsRefused() {
     Menu m =
         menu(

@@ -64,6 +64,13 @@ class ConsumedContractsTest {
     assertThat(status.status()).isNotBlank();
     assertThat(status.channel()).isNotBlank();
     assertThat(status.awaitedTxnId()).isNotBlank();
+    if ("BALANCE".equals(status.txnType()) && "COMPLETED".equals(status.status())) {
+      // ADR D26: what the balance screen shows (UssdEngine)
+      assertThat(status.balance()).isNotNull();
+      assertThat(status.balance().available().valueMinor()).isNotNull();
+      assertThat(status.balance().available().currency()).isEqualTo("BDT");
+      assertThat(status.balance().asOf()).isNotNull();
+    }
   }
 
   @TestFactory

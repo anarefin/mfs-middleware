@@ -37,17 +37,18 @@ class ConsumedContractsTest {
 
   /** Command type -> the payload read CoreCommandService does for it (on top of the envelope). */
   static final Map<String, BiConsumer<CoreCommandMapper, CoreCommand>> PAYLOAD_READS =
-      Map.of(
-          "ValidateTransaction", CoreCommandMapper::transfer,
-          "PostTransfer", CoreCommandMapper::transfer,
-          "HoldFunds", CoreCommandMapper::transfer,
-          "CommitHold", CoreCommandMapper::hold,
-          "ReleaseHold", CoreCommandMapper::hold,
-          "CreditWallet", CoreCommandMapper::credit,
-          "ReverseTransaction", CoreCommandMapper::reverse,
-          "QueryTransaction", CoreCommandMapper::query,
-          "UnlockWallet", CoreCommandMapper::unlock,
-          "VerifyCustomerFactors", CoreCommandMapper::factors);
+      Map.ofEntries(
+          Map.entry("ValidateTransaction", CoreCommandMapper::transfer),
+          Map.entry("PostTransfer", CoreCommandMapper::transfer),
+          Map.entry("HoldFunds", CoreCommandMapper::transfer),
+          Map.entry("CommitHold", CoreCommandMapper::hold),
+          Map.entry("ReleaseHold", CoreCommandMapper::hold),
+          Map.entry("CreditWallet", CoreCommandMapper::credit),
+          Map.entry("ReverseTransaction", CoreCommandMapper::reverse),
+          Map.entry("QueryTransaction", CoreCommandMapper::query),
+          Map.entry("UnlockWallet", CoreCommandMapper::unlock),
+          Map.entry("VerifyCustomerFactors", CoreCommandMapper::factors),
+          Map.entry("BalanceInquiry", CoreCommandMapper::balance));
 
   /** Invalid samples (folder/file under samples/core.command.v1) the mapper itself refuses. */
   static final List<String> REJECTED_BY_MAPPER =
@@ -59,7 +60,8 @@ class ConsumedContractsTest {
           "CreditWallet/invalid-credit-without-credit-party.json",
           "ReverseTransaction/invalid-reverse-without-original.json",
           "UnlockWallet/invalid-unlock-msisdn-subject.json",
-          "VerifyCustomerFactors/invalid-without-factors.json");
+          "VerifyCustomerFactors/invalid-without-factors.json",
+          "BalanceInquiry/invalid-without-assertion.json");
 
   static CoreCommand read(Path sample) throws Exception {
     CoreCommand cmd = MAPPER.command(Files.readString(sample));

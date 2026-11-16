@@ -1,7 +1,9 @@
 # Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
 # Ticket 72: the PIN is checked by mw-auth (txn authorisation, internal API over mTLS) and encrypted
 # under its transport key (GET /internal/v1/pin-key on the same internal API; security review of
-# ticket 72); the request carries the assertion.
+# ticket 72); the request carries the assertion. ADR D26: BALANCE requests (amount 0, own wallet) are
+# produced on mw.txn.request.v1 and read `balance` from mw.txn.status.v1 (ProducedContractsTest,
+# ConsumedContractsTest fixtures).
 produces:
   events: [events/mw-orchestrator/mw.txn.request.v1.schema.json]
   apis: [api/mw-ussd/ussd-http.v1.openapi.yaml]

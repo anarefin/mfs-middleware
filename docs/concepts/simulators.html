@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mw-simulators and mw-seeder</title>
+<link rel="stylesheet" href="../tutorial/tutorial.css">
+<script src="../tutorial/diagrams.js" defer></script>
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> concepts</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="apisix.html">APISIX</a>
+    <a href="keycloak.html">Keycloak</a>
+    <a href="openbao.html">OpenBao</a>
+    <a href="hsm.html">HSM</a>
+    <a href="greenmail.html">GreenMail</a>
+    <a href="core-mock.html">Core mock</a>
+    <a href="simulators.html" aria-current="page">Simulators</a>
+    <a href="camel.html">Camel</a>
+    <a href="jsonata.html">JSONata</a>
+    <a href="resilience4j.html">Resilience4j</a>
+    <a href="shedlock.html">ShedLock</a>
+    <a href="testcontainers.html">Testcontainers</a>
+    <a href="../tutorial/index.html">Tutorial ↗</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Test double</div>
+  <h1>mw-simulators and mw-seeder: the outside world, faked</h1>
+  <p class="lead">A mobile-money middleware talks to many outsiders: telcos for top-ups, billers, banks, an SMS centre, the USSD gateways of four
+    mobile operators. None of them is on a developer's laptop. <code>mw-simulators</code> plays all of them in one Spring Boot app, and
+    <code>mw-seeder</code> fills the stack with known test data before anyone starts.</p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#plain">In plain English</a></li>
+    <li><a href="#why">Why we use it here</a></li>
+    <li><a href="#wired">How it is wired</a></li>
+    <li><a href="#partners">Partner simulators and magic values</a></li>
+    <li><a href="#smsc">The SMS centre</a></li>
+    <li><a href="#ussd">The USSD gateway</a></li>
+    <li><a href="#seeder">mw-seeder: the stack's starting data</a></li>
+    <li><a href="#example">Worked example: a USSD payment from a fake handset</a></li>
+    <li><a href="#where">Where it lives</a></li>
+    <li><a href="#wrong">What can go wrong</a></li>
+    <li><a href="#next">Read next</a></li>
+  </ol></div>
+
+  <h2 id="plain">In plain English</h2>
+  <div class="box plain"><div class="tag">In plain English</div>
+    <p>Think of a film set. The street looks real from the camera, but the shops are fronts and the extras do what the director tells them.
+      mw-simulators is that set. The adapters call a "telco" or a "biller" exactly as they would in production, and behind the front is
+      code that answers the way a test asked it to.</p>
+    <p>The director has two tools. <strong>Magic values</strong> are inputs that always trigger a known behaviour: a phone number ending in 999 always fails.
+      The <strong>control API</strong> changes behaviour on the fly: "the bank is down from now on". Every request is also recorded, so a test can check what was sent.</p>
+    <p>mw-seeder is the stage crew that sets the props before the first take: users, wallets, PINs and partner settings, the same every time.</p>
+  </div>
+  <div class="table-wrap"><table>
+    <tr><th>Word</th><th>Meaning</th><th>Simulated here</th></tr>
+    <tr><td><strong>OCS</strong></td><td>Online charging system: the telco system that tops up a prepaid phone.</td><td><code>/ocs/v1/topup</code></td></tr>
+    <tr><td><strong>Bill aggregator</strong></td><td>One company that collects bills for many utilities.</td><td><code>billagg</code>: DESCO, DPDC, WASA, TITAS</td></tr>
+    <tr><td><strong>C2W bank</strong></td><td>"Card/account to wallet": a bank that debits an account and calls us back.</td><td><code>c2wbank</code></td></tr>
+    <tr><td><strong>SMSC</strong></td><td>Short message service centre: the operator's SMS server. We talk to it in <strong>SMPP</strong> 3.4, the binary SMS protocol.</td><td>SMPP server on port 2775</td></tr>
+    <tr><td><strong>USSD</strong></td><td>The <code>*268#</code> menus on a basic phone. The operator's USSD gateway forwards each key press to us.</td><td>HTTP mode, or SMPP on port 2776</td></tr>
+    <tr><td><strong>IPN</strong></td><td>Instant payment notification: the webhook a shop's server gets when a checkout is paid.</td><td><code>/merchant/ipn/**</code></td></tr>
+  </table></div>
+
+  <h2 id="why">Why we use it here</h2>
+  <p>ADR <a href="../adr/M5-mvp-partners.md">M5</a> starts from the problem: <em>"Real partner APIs and test accounts are not available yet; the adapter framework must still be
+    proven end to end."</em> The decision gives each partner type one generic contract, <em>"with magic values and a control API for scenarios (timeouts, errors, callbacks, replays)."</em></p>
+  <p>Spec section 22.2 asks for the same: behaviour chosen <em>"by magic values (e.g. amount ending <code>.13</code> → timeout, MSISDN suffix <code>999</code> → business failure)
+    and by a control API"</em>, and simulators that <em>"record every request for assertions and can replay a callback on demand."</em> A real partner can never be told to
+    time out on demand. The simulators can, so every hard path (timeouts, lost callbacks, duplicates) has a test.</p>
+  <p>The simulators never ship to production. Real partners replace them through adapter configuration, not code changes.</p>
+
+  <h2 id="wired">How it is wired</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Container</th><th>Ports</th><th>Notes</th></tr>
+    <tr><td><code>mw-simulators</code></td><td>8080 HTTP (127.0.0.1:8085); inside the network only: 2775 SMSC, 2776 USSD over SMPP, 1500 payShield</td><td>Profiles <code>minimal</code> and <code>core</code>. Waits for a healthy <code>softhsm</code> (its payShield simulator keeps its master key there, see <a href="hsm.html#payshield">HSM</a>). Scenario and recorded state is in memory: a restart resets it.</td></tr>
+    <tr><td><code>mw-seeder</code></td><td>none</td><td>Profile <code>seed</code>. A one-shot: waits for every <code>mw-*</code> service to be healthy, seeds, and exits. It must exit 0.</td></tr>
+  </table></div>
+  <ul>
+    <li><strong>Who calls the simulators.</strong> The adapters (<code>mw-adapter-telco</code> to the OCS, <code>-billpay</code> to <code>billagg</code>, <code>-bank</code> to <code>c2wbank</code>),
+      mw-notify (SMPP to the SMSC), mw-ussd (bound to the USSD SMPP port), mw-checkout (IPNs) and mw-crypto (payShield).</li>
+    <li><strong>Who controls them.</strong> Tests and testers, through the test-only edge route <code>/test/sim/*</code> (<code>deploy/apisix/routes-test/test-simulators.json</code>,
+      test API key from <code>scripts/creds.sh</code>), which reaches only the <code>/sim/...</code> control API. On the laptop the direct port 8085 works too.</li>
+    <li><strong>Callback secrets.</strong> The bill aggregator and bank sign their callbacks with HMAC-SHA256, using secrets the <code>provision</code> one-shot writes to OpenBao.</li>
+    <li><strong>One timer knob.</strong> How long a simulated timeout holds its reply: <code>MW_SIM_TIMEOUT_DELAY</code> (30 s by default, shorter in <code>deploy/dev.env.defaults</code>).</li>
+  </ul>
+
+  <h2 id="partners">Partner simulators and magic values</h2>
+  <p>The OCS, bill aggregator and bank share the same mechanics. The magic values:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Input</th><th>OCS top-up</th><th>Bill aggregator</th><th>C2W bank</th></tr>
+    <tr><td>Normal</td><td>200, code <code>0000</code></td><td>200, code <code>000</code></td><td>202 PENDING, then a SUCCESS callback</td></tr>
+    <tr><td>Ends in <code>999</code></td><td>MSISDN: 422 business failure</td><td>bill number: 422 refused by the biller</td><td>account: FAILED callback</td></tr>
+    <tr><td>Amount <code>.13</code></td><td colspan="3">Timeout: the operation is applied, the reply is held (the bank sends no callback at all)</td></tr>
+    <tr><td>Amount <code>.77</code></td><td colspan="3">500 after the operation was applied</td></tr>
+    <tr><td>Amount <code>.99</code></td><td colspan="3">An unknown error code <code>9876</code></td></tr>
+    <tr><td>Amount <code>.55</code></td><td colspan="3">A malformed body (operation applied)</td></tr>
+  </table></div>
+  <p>The bill aggregator also invents bills: the amount due is Tk 100 plus the last three digits of the bill number, a number ending <code>404</code> is "not found"
+    and one ending <code>000</code> is "already paid". So no bill ever needs to be set up.</p>
+  <p>The control API, per partner (<code>ocs</code>, <code>billagg</code>, <code>c2wbank</code>):</p>
+  <ul>
+    <li><code>POST /sim/{partner}/scenario</code>: <code>forceMode</code>, <code>latencyMs</code>, <code>errorRate</code>, <code>outage</code>, <code>callbackMode</code>
+      (NONE, ONCE, DUPLICATE, LATE, OUT_OF_ORDER) and more. <code>DELETE</code> resets.</li>
+    <li><code>GET /sim/{partner}/requests</code>: what the adapter really sent, raw (Authorization and Cookie headers dropped).</li>
+    <li><code>POST /sim/{partner}/callbacks/{reference}/replay</code>: send a callback again, to prove the adapter ignores duplicates.</li>
+  </ul>
+  <p>Every partner simulator also answers a status inquiry (<code>GET /ocs/v1/topup/{transactionId}</code> and the like) with the <em>real</em> outcome. That is what lets the
+    orchestrator settle a timed-out transaction correctly.</p>
+
+  <h2 id="smsc">The SMS centre</h2>
+  <p><code>client/SmscServer</code> is an SMPP 3.4 server built on jSMPP. mw-notify binds to it like to a real operator's SMSC, submits each SMS, and gets a delivery report
+    (DLR) back 300 ms later. It decodes GSM-7 (English) and UCS-2 (Bangla) and reassembles long messages. Magic suffixes on the destination number:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Number ends in</th><th>What happens</th></tr>
+    <tr><td><code>999</code> / <code>998</code></td><td>DLR UNDELIV / EXPIRED</td></tr>
+    <tr><td><code>997</code></td><td>The first two submits are refused as throttled, then accepted</td></tr>
+    <tr><td><code>996</code></td><td>The submit is refused</td></tr>
+    <tr><td><code>995</code></td><td>Accepted, but no DLR ever comes</td></tr>
+    <tr><td>anything else</td><td>DELIVRD</td></tr>
+  </table></div>
+  <p><code>GET /sim/smsc/messages?msisdn=01711000001</code> lists what was sent to a number, with text, encoding, segments and DLR status. The test console's
+    <strong>SMS &amp; email</strong> page shows the same list next to the email from <a href="greenmail.html">GreenMail</a>.</p>
+
+  <h2 id="ussd">The USSD gateway</h2>
+  <p>A USSD session is a conversation: the phone dials <code>*268#</code>, sees a menu, presses a key, sees the next screen. The simulator plays the operator's
+    gateway in both of the ways real operators connect:</p>
+  <ul>
+    <li><strong>HTTP mode</strong> (Robi, Banglalink, Teletalk): it POSTs each step to APISIX's <code>/ussd/&lt;mno&gt;</code> route with that operator's basic-auth login,
+      just as the real gateway would.</li>
+    <li><strong>SMPP mode</strong> (Grameenphone, <code>gp</code>): mw-ussd holds SMPP binds to port 2776. The simulator sends each key press as a <code>deliver_sm</code> and reads each
+      screen from mw-ussd's <code>submit_sm</code>. <code>/sim/ussdgw/smpp/...</code> can throttle, refuse or drop the binds.</li>
+  </ul>
+  <p>Either way you drive it with one call, <code>POST /sim/ussdgw/sessions {mno, msisdn, serviceCode, inputs[]}</code>, and get every screen back. USSD sessions are
+    deliberately <strong>not</strong> recorded: their inputs carry PINs.</p>
+  <p>Two more fakes live here: the <strong>merchant IPN receiver</strong> (<code>/merchant/ipn/**</code>, plays a shop's server for mw-checkout's webhooks; it can be told to fail the next ones),
+    and the <strong>payShield 10K simulator</strong> on port 1500, described on the <a href="hsm.html#payshield">HSM page</a>.</p>
+
+  <h2 id="seeder">mw-seeder: the stack's starting data</h2>
+  <p>Tests need a known world: personas that can log in, wallets with money, PINs that work. mw-seeder builds it in one pass and then exits. It is a Spring Boot app
+    with no web server, no database and no Kafka. It runs its steps in order, each one idempotent, so a second run changes nothing:</p>
+  <ol>
+    <li><code>await-platform-ready</code>: wait until APISIX, Keycloak and every <code>mw-*</code> service report ready.</li>
+    <li><code>seed-identities</code>: the ops and portal personas in Keycloak, with roles and a pre-set one-time-code secret.</li>
+    <li><code>seed-core-accounts</code>: the wallets in mw-core-mock, through its test-only create-if-absent <code>PUT</code>. An existing wallet keeps its balance.</li>
+    <li><code>seed-app-pins</code>: the dev app PIN on every seeded customer, agent and merchant wallet. It fetches <code>GET /auth/v1/pin-key</code>, encrypts the PIN with RSA-OAEP
+      exactly as an app would, and calls mw-auth's dev-only <code>POST /internal/v1/seed/pins</code>. The PIN is the fake, documented <code>MW_SEED_APP_PIN=13579</code> from <code>deploy/dev.env.defaults</code>.</li>
+    <li><code>seed-partner-configs</code>: each partner's baseline in mw-admin-api, through the real maker-checker (a seed maker asks, a seed checker approves).</li>
+    <li><code>seed-admin-content</code>: a first admin-made version of the USSD menu and some SMS templates.</li>
+    <li><code>write-manifest</code>: a JSON list of everything seeded (personas, wallets, partners), with no secrets.</li>
+  </ol>
+  <p>The manifest lands on the <code>seed-manifest</code> volume. <code>scripts/api-test.sh</code> and <code>scripts/ui-e2e.sh</code> copy it to <code>build/seed/manifest.json</code>,
+    and Newman, Playwright and the test console read their users from it. Check the run from <code>deploy/</code>:
+    <code>docker compose --profile core --profile seed ps -a mw-seeder</code> must show <code>exited (0)</code>. A failing step stops the run, and later steps never run.</p>
+
+  <h2 id="example">Worked example: a USSD payment from a fake handset</h2>
+  <p>Play customer 01711000001 on Grameenphone, dialing <code>*268#</code> and sending Tk 10 to 01711000002 (as Newman folder 20 does):</p>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+actors: Tester | mw-simulators | mw-ussd | mw-auth | mw-orchestrator | mw-notify
+Tester -> mw-simulators : POST /test/sim/ussdgw/sessions {mno gp, inputs}
+mw-simulators -> mw-ussd : SMPP deliver_sm: dial *268#
+mw-ussd --> mw-simulators : submit_sm: main menu (Bangla)
+mw-simulators -> mw-ussd : 9, 1, 01711000002, 10, 1 (one per screen)
+mw-simulators -> mw-ussd : PIN 13579
+mw-ussd -> mw-auth : txn-authorisation (PIN encrypted)
+mw-ussd => mw-orchestrator : mw.txn.request.v1 with the assertion
+mw-ussd --> mw-simulators : submit_sm: "Tk 10.00 sent to 01711000002" (END)
+mw-simulators --> Tester : {sessionId, screens[...], ended: true}
+mw-orchestrator => mw-notify : mw.txn.status.v1 COMPLETED
+mw-notify -> mw-simulators : SMPP submit_sm to the SMSC, DLR back
+Tester -> mw-simulators : GET /test/sim/smsc/messages?msisdn=01711000001
+  </script></div><figcaption>One HTTP call plays a whole USSD session; a second one reads the SMS that followed.</figcaption></figure>
+  <ol class="steps">
+    <li><strong>Start the session.</strong> Body <code>{"mno":"gp","msisdn":"01711000001","serviceCode":"*268#","inputs":["9","1","01711000002","10","1","13579"]}</code>, with the test API key.</li>
+    <li>gp runs over SMPP, so the simulator sends the dial to mw-ussd on its SMPP bind.</li>
+    <li>mw-ussd answers with the main menu, in Bangla by default.</li>
+    <li>The simulator sends one input per screen: <code>9</code> switches to English, <code>1</code> Send Money, the recipient, the amount, <code>1</code> Confirm.</li>
+    <li>The last input is the PIN.</li>
+    <li>mw-ussd encrypts the PIN and asks mw-auth for a transaction assertion (see <a href="hsm.html#example">HSM</a>).</li>
+    <li>It publishes the request with the assertion on Kafka.</li>
+    <li>The final screen comes back with the end flag.</li>
+    <li>The simulator returns every screen it saw, so a test can compare them.</li>
+    <li>The saga completes and mw-notify gets the status event.</li>
+    <li>mw-notify submits the SMS over SMPP to the SMSC simulator, which sends a DLR back.</li>
+    <li>The tester reads the SMS. Both customers' balances (Tk 15 less, Tk 10 more) can be checked on <a href="core-mock.html">mw-core-mock</a>.</li>
+  </ol>
+
+  <div class="box where" id="where"><div class="tag">Where it lives</div><ul>
+    <li><a href="../../services/mw-simulators/CLAUDE.md">services/mw-simulators/CLAUDE.md</a>: every wire format, magic value and control endpoint. Read this next.</li>
+    <li>Partners: <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/service/MagicAmounts.java">service/MagicAmounts</a>,
+      <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/service/ScenarioStore.java">service/ScenarioStore</a>,
+      <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/service/RequestRecorder.java">service/RequestRecorder</a>,
+      <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/service/CallbackService.java">service/CallbackService</a>,
+      <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/controller/OcsController.java">controller/OcsController</a>.</li>
+    <li>SMPP and USSD: <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/client/SmscServer.java">client/SmscServer</a>,
+      <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/client/UssdSmppGateway.java">client/UssdSmppGateway</a>,
+      <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/client/UssdGatewayClient.java">client/UssdGatewayClient</a>.</li>
+    <li>Settings (ports, partners, magic suffixes): <a href="../../services/mw-simulators/src/main/resources/application.yml">application.yml</a> under <code>sim</code>.</li>
+    <li>mw-seeder: <a href="../../services/mw-seeder/CLAUDE.md">services/mw-seeder/CLAUDE.md</a> (every step and the manifest format),
+      <a href="../../services/mw-seeder/src/main/java/mfs/mw/seeder/scheduler/SeedRunner.java">scheduler/SeedRunner</a>, the steps in
+      <code>services/mw-seeder/src/main/java/mfs/mw/seeder/service</code>.</li>
+    <li>Users of the control API: <a href="../../tests/api/lib.js">tests/api/lib.js</a> (<code>MW.sim</code>) and the test console's page <strong>Simulators &amp; faults</strong>.</li>
+  </ul></div>
+
+  <h2 id="wrong">What can go wrong</h2>
+  <div class="box wrong"><div class="tag">What can go wrong</div><ul>
+    <li><strong>A scenario from an earlier test is still active.</strong> Scenarios last until reset. Reset with <code>DELETE /sim/{partner}/scenario</code>, or "Reset everything" in the
+      test console. A restart of mw-simulators also clears them (and every recorded request).</li>
+    <li><strong>An amount like Tk 50.13 "hangs".</strong> That is the timeout magic value, not a bug. Pick amounts with other fractions for happy paths, and keep test phone numbers away from 995-999 endings.</li>
+    <li><strong>USSD over gp shows <code>{status: -1}</code>.</strong> No screen came back in time or mw-ussd is not bound. <code>GET /sim/ussdgw/smpp/binds</code> shows the binds; a
+      drop or throttle scenario from another test may still be set.</li>
+    <li><strong>You looked for a USSD session in <code>/sim/.../requests</code>.</strong> It is never recorded, because the inputs carry PINs.</li>
+    <li><strong>mw-seeder exited 1.</strong> Read its log: each step logs <code>seed.step.completed</code> or why it stopped. Typical causes are a service not yet healthy
+      past the step's time limit, or a pending change request of another operator for the same partner. Run the <code>up</code> again: the steps are idempotent.</li>
+    <li><strong>Logins with the app PIN fail after a reset.</strong> <code>deploy/reset.sh</code> destroys the HSM keys and every stored PIN with them. Start with the seed profile again
+      so <code>seed-app-pins</code> sets them anew.</li>
+  </ul></div>
+
+  <h2 id="next">Read next</h2>
+  <ul>
+    <li><a href="../tutorial/05-partner-flows.html">Tutorial chapter 5</a>: the partner flows these simulators answer.</li>
+    <li><a href="../adr/M5-mvp-partners.md">ADR M5</a>, <a href="../adr/D17-test-console.md">ADR D17</a> (the test console that drives them) and spec section 22.2 in
+      <a href="../../spec/bits-mfs-middleware-spec.md">spec/bits-mfs-middleware-spec.md</a>.</li>
+    <li>The <a href="../testing-guide.html">testing guide</a>, to drive every simulator by hand.</li>
+  </ul>
+
+  <nav class="pager">
+    <a href="core-mock.html"><small>Previous</small>← Core mock</a>
+    <a class="next" href="camel.html"><small>Next</small>Camel →</a>
+  </nav>
+</main>
+</body>
+</html>

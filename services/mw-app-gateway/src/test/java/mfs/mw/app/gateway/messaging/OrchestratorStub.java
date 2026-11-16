@@ -55,6 +55,18 @@ public final class OrchestratorStub implements AutoCloseable {
 
   public static final String STORED_TXN_ID = "019a0000-0000-7000-8000-00000000abcd";
 
+  /**
+   * BALANCE requests (ADR D26, amount always 0) are answered by their idempotency key: a key
+   * starting with {@link #BALANCE_SILENT} gets RECEIVED only, one starting with {@link
+   * #BALANCE_REJECTED} the core's MW-CORE-WALLET_NOT_ACTIVE, any other COMPLETED with {@link
+   * #BALANCE_AVAILABLE}.
+   */
+  public static final String BALANCE_SILENT = "balance-silent";
+
+  public static final String BALANCE_REJECTED = "balance-rejected";
+
+  public static final long BALANCE_AVAILABLE = 1_200_000;
+
   private static final JsonMapper JSON = JsonMapper.builder().build();
 
   private final KafkaConsumer<String, String> consumer;
@@ -110,6 +122,10 @@ public final class OrchestratorStub implements AutoCloseable {
     String replyTo = KafkaTestConsumer.headers(r).get("mw-reply-to");
     String txnId = req.path("txnId").asString();
     long amount = req.path("amount").path("valueMinor").asLong();
+    if ("BALANCE".equals(req.path("txnType").asString())) {
+      answerBalance(req, txnId, replyTo);
+      return;
+    }
     if (amount == DUPLICATE_DONE || amount == DUPLICATE_RUNNING) {
       ObjectNode s = status(req, STORED_TXN_ID, amount == DUPLICATE_DONE ? "COMPLETED" : "POSTING");
       ObjectNode attrs = s.putObject("attributes");
@@ -166,6 +182,27 @@ public final class OrchestratorStub implements AutoCloseable {
     done.putObject("fee").put("valueMinor", 500).put("currency", "BDT");
     done.put("coreRef", "CORE-STUB-1");
     send(txnId, done, amount == OTHER_INSTANCE ? "some-other-instance" : replyTo);
+  }
+
+  private void answerBalance(JsonNode req, String txnId, String replyTo) {
+    String key = req.path("idempotencyKey").asString();
+    send(txnId, status(req, txnId, "RECEIVED"), replyTo);
+    if (key.startsWith(BALANCE_SILENT)) {
+      return;
+    }
+    send(txnId, status(req, txnId, "VALIDATING"), replyTo);
+    if (key.startsWith(BALANCE_REJECTED)) {
+      ObjectNode s = status(req, txnId, "REJECTED");
+      error(s, "MW-CORE-WALLET_NOT_ACTIVE", "Wallet is not active");
+      send(txnId, s, replyTo);
+      return;
+    }
+    ObjectNode done = status(req, txnId, "COMPLETED");
+    done.put("coreRef", "CORE-STUB-B");
+    ObjectNode balance = done.putObject("balance");
+    balance.putObject("available").put("valueMinor", BALANCE_AVAILABLE).put("currency", "BDT");
+    balance.put("asOf", "2026-11-16T08:15:31Z");
+    send(txnId, done, replyTo);
   }
 
   private static ObjectNode status(JsonNode req, String txnId, String status) {

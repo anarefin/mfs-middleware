@@ -53,12 +53,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   version it started on); versions are immutable and cached once parsed. `service/MenuValidator`
   refuses a tree with dangling references, missing fields, an unknown validator/flow, a regex that
   does not compile, or a PIN input that is stored or does not lead straight to an ACTION.
-  `service/MenuSeeder` stores the dev seed `menus/main-v2.json` (`mw.ussd.seed-menu`, blank = off)
+  `service/MenuSeeder` stores the dev seed `menus/main-v3.json` (`mw.ussd.seed-menu`, blank = off)
   and activates it for every configured MNO without a menu or still on an older version of the
-  seed (v1 -> v2; another menu is never replaced). Seed (ticket 28): 1 Send Money (P2P), 2 Cash Out (customer to agent), 3 Mobile
+  seed (v1/v2 -> v3; another menu is never replaced; `main-v2.json` stays as shipped). Seed (ticket 28): 1 Send Money (P2P), 2 Cash Out (customer to agent), 3 Mobile
   Recharge (1 own number: option `set` stores `{msisdn}` / `{mno}` as target and operator; 2 other
   number + DYNAMIC `operators`; product `=PREPAID`), 4 Pay Bill (DYNAMIC `billers`, bill number
-  INPUT with `lookup: bill`, CONFIRM with the fetched amount), 9 language. Every Bangla screen of
+  INPUT with `lookup: bill`, CONFIRM with the fetched amount), 5 Balance (v3, ADR D26: `bal.pin` ->
+  ACTION `bal.check` flow BALANCE, empty mapping -> `bal.done` "Tk {balance}" / `bal.failed`), 9 language
+  (v3 labels option 3 "রিচার্জ" / "Recharge" so the main screen stays within 70 UCS-2 characters). Every Bangla screen of
   the seed fits 70 UCS-2 characters (`UssdMenuWalkTest`).
 - Published menus (ticket 39, spec 9.2, 20.4): mw-admin-api's approved versions arrive on
   `mw.config.changed.v1` (compacted; `route/ConfigChangedRoute`, a `RetryTopicRouteBuilder`, group
@@ -80,7 +82,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   msisdn (canonical, `notSelf`), amount (taka, <= 2 decimals, min/max, stored as `500.00`), pin
   (5 digits unless `pattern`: mw-crypto's PIN rule since ticket 72), numeric (digit count min/max), regex. A bad input re-prompts with
   the validator's `error` (or the menu's `invalid`) above the screen; `max-invalid-attempts` (3)
-  in a row end the session. Placeholders `{input}` / `{txnId}` / `{error}` in texts. A screen over
+  in a row end the session. Placeholders `{input}` / `{txnId}` / `{error}` / `{balance}` in texts. A screen over
   the MNO limit is cut (TRUNCATE) or paged with the menu's `more` option ("0 More", PAGE).
   DYNAMIC sources (`service/DynamicLists`): `billers` = mw-adapter-billpay's live catalogue
   (`service/BillPayDirectory`, sorted by code, label = code, cached `catalogue-ttl` 60 s and kept
@@ -132,7 +134,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   them; `MenuValidator` does not require them. Event `txn.authorisation.refused` (errorCode only); nothing of
   the PIN or the assertion is logged.
 - ACTION -> `service/KafkaTransactionFlow`: idempotency key `sha256(USSD|msisdn|sessionId@startedAtMillis|menuPath|
-  amountMinor|target)` hex (the session start: SMPP session numbers are reused) (spec 7.3 rule 1, `service/IdempotencyKeys`; menuPath = the node ids and
+  amountMinor|target)` hex (BALANCE: `...|menuPath|BALANCE|txnId`, a fresh key per check: its mapping is
+  empty, so the fields alone would replay the first check) (the session start: SMPP session numbers are reused) (spec 7.3 rule 1, `service/IdempotencyKeys`; menuPath = the node ids and
   choices taken, e.g. `main:1>p2p.recipient>p2p.amount>p2p.confirm:1>p2p.pin`), UUIDv7 txnId,
   canonical `mw.txn.request.v1` (`mapper/TxnRequestMapper`: channel USSD, initiator MSISDN, debit
   the CUSTOMER wallet; credit per flow: P2P CUSTOMER wallet, CASH_OUT AGENT wallet, TOPUP bare
@@ -144,8 +147,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   blocks). COMPLETED -> the node's `onSuccess`; FAILED/REJECTED -> `onFailure` with the status
   error's text (messageBn in bn); no final status in time -> the menu's `processing` text ("being
   processed", the result by SMS once mw-notify sends it); publish failure -> `unavailable`.
-  Flows: P2P, CASH_OUT, TOPUP, BILL_PAY (`TxnRequestMapper.FLOWS`); agents cash in from the Agent
+  Flows: P2P, CASH_OUT, TOPUP, BILL_PAY, BALANCE (`TxnRequestMapper.FLOWS`); agents cash in from the Agent
   app, not over USSD.
+- Balance inquiry (ADR D26): flow BALANCE is authorised and published like a transfer (amount 0 BDT,
+  debitParty = creditParty = the CUSTOMER wallet, mw-auth txn `{BALANCE, 0, BDT, payer = payee}`, assertion).
+  COMPLETED carries `balance {available, asOf}` (`dto/Balance` on `dto/StatusMessage`, into
+  `FlowOutcome.balance`); the engine fills `{balance}` with `util/UssdText.taka` ("12,000.00", ASCII digits in bn
+  and en). The balance is a screen variable only: never in the session, never logged (`@Sensitive` SECRET).
+  PROCESSING / UNAVAILABLE of a BALANCE end with the menu's `balanceUnavailable` text (optional, built-in
+  `UssdEngine.BALANCE_UNAVAILABLE_TEXT`), never `processing` (no SMS follows a balance check); WRONG_PIN, LOCKED
+  and FAILED as for the other flows.
 - Dev provisioning (`provision_mw_ussd` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role `ussd_rw`,
   schema `ussd`, `secret/mw-ussd` (DB password; Valkey password from `VALKEY_PASSWORD`;
   `mw.ussd.auth.client-secret` from `KC_MW_USSD_SECRET`), AppRole `mw-ussd`, PKI role `mw-ussd`. Keycloak
@@ -185,6 +196,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   `*IT` classes that start the app use `AuthStub` (one plain-HTTP WireMock per JVM: token, transport key from
   `util/TestPinKeys`, a fixed assertion; `AuthStub.refuse` for refusals; mTLS off in tests);
   `UssdHttpFlowIT` decrypts the PIN mw-auth received and checks it saw exactly the published values.
+- Balance (ADR D26): `TxnRequestMapperTest` (BALANCE request and authorisation), `KafkaTransactionFlowTest` /
+  `KafkaTransactionFlowKeyTest` (balance read from the status, a fresh key per check), `UssdEngineTest` (5 -> PIN ->
+  balance, wrong PIN, lock, failure, no answer in time), `util/UssdTextTest`, and `UssdHttpFlowIT` over Kafka
+  (`messaging/OrchestratorStub` answers a BALANCE with COMPLETED and `balance` 12,000.00).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 

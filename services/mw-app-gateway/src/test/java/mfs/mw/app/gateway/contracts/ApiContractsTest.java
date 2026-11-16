@@ -82,7 +82,7 @@ class ApiContractsTest {
         1, TXN_ID, "key-1", CORRELATION_ID, "CUSTOMER_APP", txnType, state, "CORE_PENDING",
         Party.wallet("01711000001", "CUSTOMER"), Party.wallet("01711000001", "CUSTOMER"), credit,
         new Amount(12_345L, "BDT"), new Amount(500L, "BDT"), error == null ? "CORE-REF-1" : null, error,
-        "en", Map.of(), NOW, NOW.plusSeconds(2));
+        "en", Map.of(), NOW, NOW.plusSeconds(2), null);
   }
 
   @Test
@@ -101,6 +101,23 @@ class ApiContractsTest {
         new Party("BILLER_ACCOUNT", "1234567", null, null), null)));
     assertValid(schema, TransactionView.of(status("P2P", "FAILED", Party.wallet("01711000002", "CUSTOMER"),
         new ErrorInfo("MW-CORE-INSUFFICIENT_FUNDS", "Insufficient funds", "অপর্যাপ্ত ব্যালেন্স", false))));
+  }
+
+  @Test
+  void theBalanceMatchesTheContract() {
+    assertValid(OpenApiSchemas.component(APP_API, "Balance"), new mfs.mw.app.gateway.dto.BalanceView(
+        TXN_ID, new Amount(1_200_000L, "BDT"), NOW));
+    assertValid(OpenApiSchemas.component(APP_API, "Balance"), new mfs.mw.app.gateway.dto.BalanceView(
+        TXN_ID, new Amount(0L, "BDT"), NOW));
+  }
+
+  @Test
+  void theBalanceAuthorisationMatchesMwAuthsContract() {
+    RequestMapper mapper = new RequestMapper();
+    AppUser user = new AppUser("01811000001", "AGENT_APP", "AGENT", "device-0001");
+    var req = mapper.toBalanceRequest(user, "key-b", null, TXN_ID, CORRELATION_ID, NOW);
+    assertValid(OpenApiSchemas.component(AUTH_API, "TxnAuthorisationRequest"),
+        mapper.toAuthorisation(user, user.deviceId(), req, new EncryptedPin("PIN_TRANSPORT.v1", "b3BhcXVl")));
   }
 
   @Test

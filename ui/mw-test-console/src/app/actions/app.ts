@@ -4,7 +4,7 @@
 // the core-mock balances before and after, and collect the SMS the wallets received.
 
 import { historyQuery, parseHistory } from "@/lib/app-history";
-import { takaToMinor, normaliseMsisdn } from "@/lib/format";
+import { formatMinor, takaToMinor, normaliseMsisdn } from "@/lib/format";
 import { TXN_TYPES, type TxnType } from "@/lib/personas";
 import { FINAL, type BalanceRow, type Outcome, type SmsRow } from "@/lib/types";
 import { deviceHeaders, deviceState, ready, signedHeaders, type DeviceState } from "@/lib/server/device";
@@ -150,6 +150,37 @@ export async function submitTxn(_prev: AppState, form: FormData): Promise<AppSta
     const r = await t.call(`submit ${type} (signed, Idempotency-Key ${idem})`, "POST", "/app/v1/transactions",
       { headers: { ...(await signedHeaders(user, "POST", "/app/v1/transactions", json)), "Idempotency-Key": idem }, raw: json }, [200, 201, 202]);
     return finish(await follow(t, user, r, json, idem, wallets, started), before, wallets, started);
+  });
+}
+
+/**
+ * The balance check (ADR D26): signed POST /app/v1/balance with the PIN; mw-auth checks it, the core
+ * answers the available balance, and nothing moves. Compared with core-mock's own figure.
+ */
+export async function checkBalance(_prev: AppState, form: FormData): Promise<AppState> {
+  const t = new Trace();
+  const user = str(form, "user");
+  const pin = str(form, "pin");
+  if (!USER.test(user)) return fail(t, "choose a user");
+  if (!/^\d{4,6}$/.test(pin)) return fail(t, "the PIN is 4 to 6 digits (seeded wallets: 13579, MW_SEED_APP_PIN)");
+  return guarded(t, async () => {
+    const wallet = await walletOf(user);
+    const encryptedPin = await pins.encrypt(pin);
+    t.note("encrypt the PIN on the device", "RSA-OAEP SHA-256 under the PIN transport key: mw-auth checks it, the core gets its assertion");
+    await ready(t, user);
+    const json = JSON.stringify({ encryptedPin });
+    const idem = `tc-bal-${crypto.randomUUID()}`;
+    const r = await t.call(`check the balance (signed, Idempotency-Key ${idem})`, "POST", "/app/v1/balance",
+      { headers: { ...(await signedHeaders(user, "POST", "/app/v1/balance", json)), "Idempotency-Key": idem }, raw: json }, [200]);
+    const b = (r.body ?? {}) as { txnId?: string; available?: { valueMinor?: number }; asOf?: string; code?: string; message?: string };
+    if (r.status !== 200 || typeof b.available?.valueMinor !== "number") {
+      return { ok: false, headline: `refused: ${b.code ?? `HTTP ${r.status}`} ${b.message ?? ""}`.trim(), steps: t.steps, txnId: b.txnId };
+    }
+    const w = await core.wallet(wallet);
+    const coreAvailable = w ? (w.balanceMinor ?? 0) - (w.heldMinor ?? 0) : null;
+    t.note("core-mock's own figure (test API)", coreAvailable === null ? "wallet not found" : `available ${formatMinor(coreAvailable)}`, coreAvailable === b.available.valueMinor);
+    return { ok: !t.failed, headline: `available ${formatMinor(b.available.valueMinor)} as of ${b.asOf ?? "?"}`, steps: t.steps, txnId: b.txnId,
+      data: { available: formatMinor(b.available.valueMinor), asOf: b.asOf } };
   });
 }
 

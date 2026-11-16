@@ -41,7 +41,7 @@ class UssdMenuWalkTest {
   static final String TXN = "019a0000-0000-7000-8000-000000000001";
 
   static final JsonMapper JSON = JsonMapper.builder().build();
-  static final Menu MENU = MenuParser.parseResource(JSON, "menus/main-v2.json");
+  static final Menu MENU = MenuParser.parseResource(JSON, "menus/main-v3.json");
 
   /** The biller catalogue and bill fetch of mw-adapter-billpay, scripted. */
   static final class FakeBills implements BillDirectory {
@@ -115,9 +115,9 @@ class UssdMenuWalkTest {
   @Test
   void theMainMenuOffersEveryUssdFlowInBothLanguages() {
     assertThat(dial("m").text())
-        .isEqualTo("Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English");
+        .isEqualTo("Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n5 ব্যালেন্স\n9 English");
     assertThat(send("m", "9").text())
-        .isEqualTo("Bits\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা");
+        .isEqualTo("Bits\n1 Send Money\n2 Cash Out\n3 Recharge\n4 Pay Bill\n5 Balance\n9 বাংলা");
   }
 
   // --- CASH_OUT (customer to agent) ---
@@ -348,6 +348,12 @@ class UssdMenuWalkTest {
     dial("w4");
     for (String in : List.of("1", AGENT, "25000", "1", "48261")) {
       screens.add(send("w4", in).text());
+    }
+    flow.next = new mfs.mw.ussd.dto.FlowOutcome(mfs.mw.ussd.dto.FlowOutcome.Kind.COMPLETED, TXN, null, null,
+        new mfs.mw.ussd.dto.Balance(new Amount(999_999_999_99L, Amount.BDT), Instant.parse("2026-11-04T10:00:00Z")));
+    dial("w5");
+    for (String in : List.of("5", "48261")) {
+      screens.add(send("w5", in).text());
     }
     assertThat(screens).allSatisfy(s -> assertThat(s).hasSizeLessThanOrEqualTo(70).doesNotEndWith("0 আরও"));
   }

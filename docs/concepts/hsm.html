@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SoftHSM, payShield and mw-crypto</title>
+<link rel="stylesheet" href="../tutorial/tutorial.css">
+<script src="../tutorial/diagrams.js" defer></script>
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> concepts</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="apisix.html">APISIX</a>
+    <a href="keycloak.html">Keycloak</a>
+    <a href="openbao.html">OpenBao</a>
+    <a href="hsm.html" aria-current="page">HSM</a>
+    <a href="greenmail.html">GreenMail</a>
+    <a href="core-mock.html">Core mock</a>
+    <a href="simulators.html">Simulators</a>
+    <a href="camel.html">Camel</a>
+    <a href="jsonata.html">JSONata</a>
+    <a href="resilience4j.html">Resilience4j</a>
+    <a href="shedlock.html">ShedLock</a>
+    <a href="testcontainers.html">Testcontainers</a>
+    <a href="../tutorial/index.html">Tutorial ↗</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Keys</div>
+  <h1>SoftHSM, payShield and mw-crypto: where the keys live</h1>
+  <p class="lead">The keys that check a PIN or sign a payment approval must never sit in a config file or in a service's memory.
+    They live in an HSM, a locked box that does the maths for you and never hands the key out. In dev we fake that box with
+    SoftHSM and a payShield simulator, and exactly one service, <strong>mw-crypto</strong>, is allowed to talk to it.</p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#plain">In plain English</a></li>
+    <li><a href="#why">Why we use it here</a></li>
+    <li><a href="#wired">How it is wired</a></li>
+    <li><a href="#keys">Keys: purposes, ids and versions</a></li>
+    <li><a href="#pkcs11">PKCS#11 over a socket</a></li>
+    <li><a href="#payshield">The payShield simulator</a></li>
+    <li><a href="#policy">Who may use which key</a></li>
+    <li><a href="#example">Worked example: the PIN of an app payment</a></li>
+    <li><a href="#where">Where it lives</a></li>
+    <li><a href="#wrong">What can go wrong</a></li>
+    <li><a href="#next">Read next</a></li>
+  </ol></div>
+
+  <h2 id="plain">In plain English</h2>
+  <div class="box plain"><div class="tag">In plain English</div>
+    <p>Think of a notary with a seal. You never borrow the seal. You hand your document through a window, the notary stamps
+      it inside the office and hands it back. Anyone can check the stamp, but nobody outside ever holds the seal.</p>
+    <p>An <strong>HSM</strong> (hardware security module) is that office. It is a tamper-resistant device that creates keys, keeps
+      them inside, and runs the crypto operations (sign, decrypt, HMAC) itself. Programs send it data and get results back.
+      The key itself never comes out.</p>
+    <p>A real HSM costs real money and the production vendor is not chosen yet. So the dev stack uses two stand-ins:
+      <strong>SoftHSM</strong> (a software HSM that speaks the standard HSM API) and a <strong>payShield simulator</strong>
+      (a fake of the Thales payment HSM that banks use for card PINs).</p>
+  </div>
+  <p>Words you will meet on this page:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Word</th><th>Meaning</th><th>Example here</th></tr>
+    <tr><td><strong>PKCS#11</strong></td><td>The standard C API for talking to an HSM: open a session, log in with a PIN, find a key by label, ask for an operation.</td><td>Java reaches it through the JDK's built-in <code>SunPKCS11</code> provider.</td></tr>
+    <tr><td><strong>Token</strong> and <strong>slot</strong></td><td>A token is one separate key store inside the HSM, with its own login PIN. A slot is the numbered place a token shows up in.</td><td>Two tokens: <code>mw-crypto</code> and <code>paysim</code>.</td></tr>
+    <tr><td><strong>User PIN / SO PIN</strong></td><td>The token's passwords. The user PIN opens sessions; the SO (security officer) PIN only sets the token up. Not a wallet PIN.</td><td>Fake dev values; <code>scripts/creds.sh</code> prints them.</td></tr>
+    <tr><td><strong>p11-kit</strong></td><td>A Linux library that can forward PKCS#11 calls to another process, here over TCP.</td><td>Port 5657 carries mw-crypto's token.</td></tr>
+    <tr><td><strong>payShield host commands</strong></td><td>The Thales payment HSM's own protocol: two-letter commands over TCP.</td><td><code>A0</code> generates a key, <code>CA</code> translate a PIN block.</td></tr>
+    <tr><td><strong>LMK</strong></td><td>Local master key: the payShield's one root key. Every other payShield key is stored outside the HSM, encrypted under it.</td><td>Kept in the <code>paysim</code> token.</td></tr>
+    <tr><td><strong>keyId</strong>, <strong>kid</strong></td><td>The name callers use for a key, and the name of one version of it.</td><td><code>assertion-sign</code>, <code>assertion-sign.v1</code></td></tr>
+  </table></div>
+
+  <h2 id="why">Why we use it here</h2>
+  <p>The middleware owns the wallet PIN (<a href="../adr/D20-pin-custody.md">ADR D20</a>): <em>"The PIN is stored as HMAC-SHA256 under a PIN
+    key held in the HSM, over walletId and PIN [...] No reversible PIN value is stored anywhere."</em> An HMAC is a keyed hash: without the key
+    you cannot even test guesses against it, so a stolen database is worthless. That only holds if the key is somewhere nobody can copy it.</p>
+  <p><a href="../adr/D23-hsm-gateway.md">ADR D23</a> then decides who talks to the HSM: <em>"One service, <code>mw-crypto</code>, holds the HSM sessions;
+    everyone else calls its internal API by <code>keyId</code> (mTLS only, D24) and never holds key material."</em> One HSM client means one place
+    with HSM credentials and vendor code. A new production vendor is a new provider class behind the same interface, with no change to any caller.</p>
+  <p>The same ADR names the price: if mw-crypto is down, <em>"PIN checks, logins, assertions and signing fail closed"</em>. Nobody can pay,
+    but nobody can pay without a PIN either. The business side (logins, lockout, the assertion) is in
+    <a href="../tutorial/10-wallet-security.html#hsm">tutorial chapter 10</a>. This page is about the mechanics underneath.</p>
+
+  <h2 id="wired">How it is wired</h2>
+  <p>All of these run in profiles <code>minimal</code> and <code>core</code> of <code>deploy/docker-compose.yml</code>:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Container</th><th>Ports</th><th>What it does</th></tr>
+    <tr><td><code>softhsm</code></td><td>5657 (token <code>mw-crypto</code>), 5658 (token <code>paysim</code>); both also on 127.0.0.1</td><td>SoftHSMv2 with two tokens, built from <code>deploy/softhsm</code>. The token files sit on the volume <code>softhsm-tokens</code>, which no other container mounts. It creates the tokens on a fresh volume and never generates keys.</td></tr>
+    <tr><td><code>mw-crypto</code></td><td>8080 inside (mTLS), published as 127.0.0.1:8094; 8081 plain, health only</td><td>The HSM gateway. Waits for a healthy <code>softhsm</code>. Compose turns on <code>MW_CRYPTO_BOOTSTRAP_KEYS</code> (dev: create a missing key of every purpose) and <code>MW_CRYPTO_PAYSHIELD_ENABLED</code> (the payShield provider).</td></tr>
+    <tr><td><code>mw-simulators</code></td><td>1500 (payShield, internal network only)</td><td>Hosts the payShield 10K simulator among its other fakes. Keeps its LMK in the <code>paysim</code> token on 5658.</td></tr>
+    <tr><td><code>mw-auth</code></td><td>8080 public <code>/auth/v1</code> (127.0.0.1:8095); 8443 internal mTLS, not published</td><td>The main caller: PIN checks, token and assertion signing. Waits for a healthy <code>mw-crypto</code>.</td></tr>
+    <tr><td><code>provision</code></td><td>none (one-shot)</td><td>Copies the token user PINs from <code>deploy/.env</code> into OpenBao (<code>secret/mw-crypto</code> key <code>mw.crypto.pkcs11.user-pin</code>, and the paysim PIN for mw-simulators), so the services read them from OpenBao, never from a file.</td></tr>
+  </table></div>
+  <p>The token labels and PINs are the <code>SOFTHSM_*</code> variables in <code>deploy/dev.env.defaults</code> (fake, documented values).
+    They are applied only when a token is first created, so a change needs a fresh volume (see <a href="#wrong">What can go wrong</a>).
+    Key metadata (keyId, version, purpose, state, provider, HSM label; nothing secret) lives in mw-crypto's own schema <code>crypto</code>.</p>
+
+  <h2 id="keys">Keys: purposes, ids and versions</h2>
+  <p>Every key has a <strong>purpose</strong>. The purpose fixes the algorithm and what the key may be used for, so one key never
+    does two jobs. The list is in <code>service/KeyPurpose</code>:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Purpose</th><th>Algorithm</th><th>Used for</th></tr>
+    <tr><td><code>PIN_TRANSPORT</code></td><td>RSA 3072, RSA-OAEP-256</td><td>Apps and channels encrypt the PIN under its public key. Only the HSM can decrypt.</td></tr>
+    <tr><td><code>PIN_HMAC</code></td><td>HMAC-SHA256</td><td>The stored PIN value: HMAC over walletId, a zero byte, and the PIN.</td></tr>
+    <tr><td><code>JWT_SIGN</code></td><td>RSA 3072, RS256</td><td>mw-auth's access tokens for the app (APISIX verifies them).</td></tr>
+    <tr><td><code>ASSERTION_SIGN</code>, <code>AUDIT_ANCHOR_SIGN</code></td><td>EC P-256, ES256</td><td>The transaction assertion the core checks; the signed audit anchor of mw-audit-dw.</td></tr>
+    <tr><td><code>TOKENISE_*</code>, <code>HMAC_*</code>, <code>KEK_*</code></td><td>HMAC-SHA256, HMAC-SHA256, AES-256</td><td>Tokens for MSISDN/NID in the warehouse; partner and webhook signatures; envelope encryption of columns.</td></tr>
+    <tr><td><code>XMLDSIG</code>, <code>HTTP_SIGN_RSA</code>, <code>HTTP_SIGN_EC</code></td><td>RSA 3072 / EC P-256</td><td>XML signatures and RFC 9421 HTTP signatures for later partners (no caller yet).</td></tr>
+    <tr><td><code>ZPK</code>, <code>TPK</code>, <code>PVK</code>, <code>ZPK_AES</code>, <code>TPK_AES</code></td><td>triple DES / AES-128, on the payShield</td><td>Card-style PIN blocks and PVVs for ATM and switch adapters.</td></tr>
+  </table></div>
+  <ul>
+    <li><strong>keyId.</strong> Unless a caller names one, a key's id is its purpose in lower case with hyphens: <code>JWT_SIGN</code> becomes <code>jwt-sign</code>.</li>
+    <li><strong>Versions and labels.</strong> The HSM object is labelled <code>&lt;keyId&gt;.v&lt;n&gt;</code>, for example <code>pin-hmac.v1</code>.
+      The same string is the <code>kid</code> header of every JWS it signs, so a verifier knows which public key to pick.</li>
+    <li><strong>Rotation</strong> adds a version. The old ACTIVE one becomes VERIFY_ONLY (it may still check old values, never create new ones),
+      and an older VERIFY_ONLY one becomes RETIRED. New signatures always use ACTIVE. A PIN checked under a VERIFY_ONLY HMAC key comes back with
+      a <code>rehash</code> under the new key, so stored PINs move over as people log in.</li>
+    <li><strong>Where keys come from.</strong> In dev the bootstrap creates what is missing on start (and every 30 s). In production keys come only from the
+      dual-control key ceremony in the ops console: two custodians each enter a share, and the HSM combines them.</li>
+  </ul>
+
+  <h2 id="pkcs11">PKCS#11 over a socket</h2>
+  <p>SoftHSM is a library, not a server. Normally the program that uses it loads it and reads the token files itself. We do not want key
+    files inside mw-crypto's container, so <code>deploy/softhsm/README.md</code> chose "Option A": SoftHSM runs only in its own container and
+    serves each token on its own TCP port.</p>
+  <pre><code>softhsm container                                mw-crypto container
+  socat TCP-LISTEN:5657,fork                        SunPKCS11 (JDK)
+    EXEC: p11-kit remote                              loads /usr/lib/libp11-kit.so.0
+          --provider libsofthsm2.so                   one module file:
+          pkcs11:token=mw-crypto      &lt;-- TCP --&gt;     remote: |socat - TCP:softhsm:5657
+  token files on volume softhsm-tokens              slotListIndex = 0</code></pre>
+  <ul>
+    <li><strong>One port per token.</strong> Port 5657 shows only the <code>mw-crypto</code> token and 5658 only <code>paysim</code>. Each client sees exactly one slot, so
+      <code>slotListIndex = 0</code> is always the right token, and the payShield simulator simply cannot see mw-crypto's keys.</li>
+    <li><strong>Behaves like a network HSM.</strong> Callers get PKCS#11 sessions, never key files. A session still needs the token's user PIN,
+      which is why a plain TCP port is acceptable in dev and test (it is reachable only on the <code>app</code> network and 127.0.0.1).</li>
+    <li><strong>Works in Testcontainers.</strong> A TCP port maps to the host. A unix socket would not cross the Docker Desktop VM on macOS.</li>
+    <li><strong>Keys are sensitive and never extractable.</strong> They are created as token objects that refuse to be read out, even by mw-crypto.</li>
+  </ul>
+  <p>Two things work differently over this RPC bridge, and the code is shaped around them:</p>
+  <ul>
+    <li><strong>OAEP is split.</strong> SunPKCS11 has no RSA-OAEP cipher. So the HSM does the raw RSA decrypt (<code>CKM_RSA_X_509</code>, no padding) and
+      <code>client/OaepDecoder</code> removes the OAEP padding in the JVM. That is also why the clear PIN exists briefly in mw-crypto's memory, as a
+      <code>byte[]</code> that is zeroed in a <code>finally</code> block.</li>
+    <li><strong>No AES-GCM or CBC in the HSM.</strong> Over the RPC, <code>CKM_AES_GCM</code> fails and drops the connection, and a CBC decrypt is refused. So the key wrap of
+      envelope encryption is AES-256-CTR built from the HSM's plain AES (ECB) on counter blocks. The data itself is AES-GCM in the JVM.</li>
+  </ul>
+  <p>mw-crypto keeps a pool of at most 8 HSM sessions. Each call has a 5 s limit and runs on its own thread, so a hung HSM quickly fails every
+    request with 503 <code>MW-SYS-010</code> instead of piling them up. <code>scheduler/HsmProbeJob</code> asks the HSM for random bytes every 10 s
+    and sets the metric <code>crypto.hsm.up</code>; the change to down logs ERROR <code>crypto.hsm.down</code>.</p>
+
+  <h2 id="payshield">The payShield simulator</h2>
+  <p>Card schemes, ATMs and switches do not speak PKCS#11. They expect a <strong>payment HSM</strong>, and the common one is the Thales payShield 10K.
+    mw-crypto therefore has a second provider, <code>client/PayShieldProvider</code>, that sends payShield host commands over TCP to
+    <code>mw-simulators:1500</code>. In production that address would be a real payShield.</p>
+  <div class="table-wrap"><table>
+    <tr><th>Command</th><th>What it does</th></tr>
+    <tr><td><code>NC</code></td><td>Health check: answers with the LMK's check value. The provider's probe.</td></tr>
+    <tr><td><code>A0</code></td><td>Generate a key (ZPK, TPK, PVK). It comes back as a blob encrypted under the LMK.</td></tr>
+    <tr><td><code>CA</code> / <code>CC</code></td><td>Translate a PIN block from a terminal key (TPK) or zone key (ZPK) to another zone key.</td></tr>
+    <tr><td><code>JC</code> / <code>JE</code>, <code>DG</code></td><td>Turn a PIN block into a PIN under the LMK, then compute a Visa PVV from it.</td></tr>
+    <tr><td><code>DC</code> / <code>EC</code></td><td>Verify a PIN block against a stored PVV.</td></tr>
+    <tr><td><code>M0</code> / <code>M2</code></td><td>Encrypt / decrypt data under a data key.</td></tr>
+  </table></div>
+  <p>The payShield never stores working keys itself. It hands back each key encrypted under its LMK, and the caller stores that blob. So
+    mw-crypto's key table holds the blob as the version's "HSM label", never a clear key. The simulator keeps its LMK as an AES-256 object in the
+    <code>paysim</code> token (<code>client/Pkcs11LmkStore</code> in mw-simulators), so the LMK survives restarts like a real one.</p>
+  <p>On the mw-crypto side the provider keeps 4 open connections, gives each command 3 s, and sits behind a Resilience4j circuit breaker named
+    <code>payshield</code>: when the simulator stops answering, the breaker opens and calls fail at once with 503 <code>MW-SYS-010</code>.
+    No product flow uses the payShield yet. The ATM and interop adapters will be its first callers.</p>
+
+  <h2 id="policy">Who may use which key</h2>
+  <p>Holding keys in one place is only half the story. mw-crypto also decides <em>who may ask for what</em>, and the default answer is no.
+    Every call needs two things (ADR <a href="../adr/D24-service-mtls-phase-1.md">D24</a>):</p>
+  <ol>
+    <li>A <strong>client certificate</strong> from OpenBao's internal CA (mTLS). Without one the TLS handshake fails.</li>
+    <li>A <strong>service JWT</strong> from Keycloak whose <code>azp</code> (the client that asked for the token) equals the certificate's CN.
+      A token stolen from another service does not match the certificate.</li>
+  </ol>
+  <p>Then <code>security/CallerPolicy</code> checks the operation against <code>mw.crypto.authz</code> in mw-crypto's <code>application.yml</code>:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Operation</th><th>Allowed callers (dev)</th></tr>
+    <tr><td><code>/internal/v1/pin/verify</code>, <code>/pin/derive</code></td><td>mw-auth only</td></tr>
+    <tr><td><code>/jws/sign</code> with <code>JWT_SIGN</code> or <code>ASSERTION_SIGN</code></td><td>mw-auth only</td></tr>
+    <tr><td><code>/jws/sign</code> with <code>AUDIT_ANCHOR_SIGN</code></td><td>mw-audit-dw only</td></tr>
+    <tr><td><code>/tokens</code> (<code>TOKENISE_MSISDN</code>, <code>TOKENISE_NID</code>)</td><td>mw-auth, mw-audit-dw</td></tr>
+    <tr><td>generate, rotate, key changes, ceremonies</td><td>mw-admin-api (the key-admin client)</td></tr>
+    <tr><td><code>/jwks/{purpose}</code>, <code>/keys</code> (public data)</td><td>every allowed caller</td></tr>
+  </table></div>
+  <p>A refusal is 403 <code>MW-AUTH-002</code> with a WARN <code>security.internal_call_denied</code>, decided before any HSM call. There is deliberately
+    no general "HMAC this under PIN_HMAC" operation: such an oracle would let a caller test every 5-digit PIN in seconds.</p>
+
+  <h2 id="example">Worked example: the PIN of an app payment</h2>
+  <p>Customer 01711000001 sends Tk 10 from the app and types the PIN. Follow the PIN from the phone to the core:</p>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+actors: App | mw-app-gateway | mw-auth | mw-crypto | SoftHSM | mw-orchestrator | mw-core-mock
+App -> mw-auth : GET /auth/v1/pin-key (newest PIN_TRANSPORT public key)
+App -> App : RSA-OAEP-SHA256 encrypt the PIN
+App -> mw-app-gateway : POST /app/v1/transactions {encryptedPin, ...}
+mw-app-gateway -> mw-auth : POST /internal/v1/txn-authorisations (mTLS)
+mw-auth -> mw-auth : wallet known? not locked?
+mw-auth -> mw-crypto : POST /internal/v1/pin/verify {encryptedPin, storedHmac}
+mw-crypto -> SoftHSM : raw RSA decrypt (CKM_RSA_X_509)
+mw-crypto -> mw-crypto : OAEP decode in JVM, 5 digits?
+mw-crypto -> SoftHSM : HMAC-SHA256 under pin-hmac.vN
+mw-crypto --> mw-auth : {match: true}
+mw-auth -> mw-crypto : POST /internal/v1/jws/sign ASSERTION_SIGN
+mw-crypto -> SoftHSM : ECDSA P-256 sign
+mw-crypto --> mw-auth : {jws, kid: assertion-sign.v1}
+mw-auth --> mw-app-gateway : {assertion, expiresAt}
+mw-app-gateway => mw-orchestrator : mw.txn.request.v1 with the assertion
+mw-orchestrator => mw-core-mock : ValidateTransaction / PostTransfer
+mw-core-mock -> mw-core-mock : ES256 vs cached JWKS, txnHash, jti once
+  </script></div><figcaption>The PIN is turned into a signed, single-use approval before anything goes on Kafka.</figcaption></figure>
+  <ol class="steps">
+    <li><strong>The public key.</strong> The app fetches <code>GET /auth/v1/pin-key</code> (through APISIX). mw-auth serves the newest <code>PIN_TRANSPORT</code>
+      version, which it read from mw-crypto's <code>/internal/v1/jwks/PIN_TRANSPORT</code> and caches.</li>
+    <li><strong>Encrypt on the phone.</strong> The app encrypts the 5-digit PIN with RSA-OAEP (SHA-256). From here on only ciphertext travels.</li>
+    <li><strong>Payment request.</strong> The app posts the transaction with <code>encryptedPin</code> to mw-app-gateway.</li>
+    <li><strong>Ask for an assertion.</strong> mw-app-gateway calls mw-auth's internal port 8443 with mTLS and its service token.</li>
+    <li><strong>Cheap checks first.</strong> mw-auth checks the wallet is known and the PIN is not locked. A locked wallet costs no HSM call.</li>
+    <li><strong>PIN verify.</strong> mw-auth sends the ciphertext and the stored HMAC (from its own table <code>auth.credential</code>) to mw-crypto.</li>
+    <li><strong>Decrypt inside the HSM.</strong> The private key never leaves SoftHSM; it returns the raw RSA result.</li>
+    <li><strong>Unpad in the JVM.</strong> <code>OaepDecoder</code> strips the OAEP padding and checks it is exactly 5 ASCII digits (else 400 <code>MW-VAL-014</code>).</li>
+    <li><strong>HMAC inside the HSM.</strong> SoftHSM computes HMAC-SHA256 over walletId, a zero byte and the PIN, under the <code>PIN_HMAC</code> key version
+      named in the stored value. mw-crypto compares in constant time (<code>MessageDigest.isEqual</code>) and zeroes every buffer that held the PIN.</li>
+    <li><strong>The answer.</strong> <code>{match: true}</code>. A wrong PIN is <code>{match: false}</code>, not an error; mw-auth counts it and answers 401
+      <code>MW-AUTH-040</code> with the tries left.</li>
+    <li><strong>Sign the assertion.</strong> mw-auth builds the claims: <code>aud</code> core, <code>sub</code> walletId, a fresh <code>jti</code>,
+      <code>exp</code> = <code>iat</code> + 60 s, and <code>txnHash</code> (SHA-256 over the canonical JSON of the transaction). Header <code>typ txn-assertion+jwt</code>.</li>
+    <li><strong>ES256 in the HSM.</strong> SoftHSM signs with the <code>ASSERTION_SIGN</code> private key.</li>
+    <li><strong>The JWS comes back</strong> with <code>kid</code> = the key version, for example <code>assertion-sign.v1</code>.</li>
+    <li>mw-auth returns it to the channel. The PIN ciphertext stops here.</li>
+    <li>The channel publishes the request on Kafka with only the assertion.</li>
+    <li>The orchestrator forwards the assertion in its core commands.</li>
+    <li><strong>The core checks it.</strong> mw-core-mock recomputes <code>txnHash</code> from the command (RFC 8785 canonical JSON, SHA-256), verifies the ES256
+      signature against mw-auth's <code>/auth/v1/.well-known/assertion-jwks.json</code> (refreshed every 30 s), and claims the <code>jti</code> in its
+      <code>used_assertion</code> table, so the same approval cannot pay twice. See <a href="core-mock.html">mw-core-mock</a>.</li>
+  </ol>
+
+  <div class="box where" id="where"><div class="tag">Where it lives</div><ul>
+    <li><a href="../../deploy/softhsm/README.md">deploy/softhsm/README.md</a>: the access design, client recipes and how to operate the tokens. Read this next.
+      Its scripts: <a href="../../deploy/softhsm/init-tokens.sh">init-tokens.sh</a>, <a href="../../deploy/softhsm/serve.sh">serve.sh</a>,
+      <a href="../../deploy/softhsm/remote-token.sh">remote-token.sh</a>, <a href="../../deploy/softhsm/healthcheck.sh">healthcheck.sh</a>.</li>
+    <li><a href="../../services/mw-crypto/CLAUDE.md">services/mw-crypto/CLAUDE.md</a>: every operation, error code and the full caller table.</li>
+    <li>Providers: <a href="../../services/mw-crypto/src/main/java/mfs/mw/crypto/client/CryptoProvider.java">client/CryptoProvider</a> (the interface),
+      <a href="../../services/mw-crypto/src/main/java/mfs/mw/crypto/client/Pkcs11Provider.java">client/Pkcs11Provider</a>,
+      <a href="../../services/mw-crypto/src/main/java/mfs/mw/crypto/client/PayShieldProvider.java">client/PayShieldProvider</a>,
+      <a href="../../services/mw-crypto/src/main/java/mfs/mw/crypto/client/OaepDecoder.java">client/OaepDecoder</a>.</li>
+    <li>Services: <a href="../../services/mw-crypto/src/main/java/mfs/mw/crypto/service/KeyPurpose.java">service/KeyPurpose</a>,
+      <a href="../../services/mw-crypto/src/main/java/mfs/mw/crypto/service/KeyService.java">service/KeyService</a>,
+      <a href="../../services/mw-crypto/src/main/java/mfs/mw/crypto/service/PinService.java">service/PinService</a>,
+      <a href="../../services/mw-crypto/src/main/java/mfs/mw/crypto/service/JwsService.java">service/JwsService</a>,
+      <a href="../../services/mw-crypto/src/main/java/mfs/mw/crypto/service/KeyBootstrapService.java">service/KeyBootstrapService</a>,
+      <a href="../../services/mw-crypto/src/main/java/mfs/mw/crypto/security/CallerPolicy.java">security/CallerPolicy</a>.</li>
+    <li>The caller side in mw-auth: <a href="../../services/mw-auth/src/main/java/mfs/mw/auth/client/CryptoClient.java">client/CryptoClient</a>,
+      <a href="../../services/mw-auth/src/main/java/mfs/mw/auth/service/PinVerifier.java">service/PinVerifier</a>,
+      <a href="../../services/mw-auth/src/main/java/mfs/mw/auth/service/TxnAuthorisationService.java">service/TxnAuthorisationService</a>.</li>
+    <li>The simulator: <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/client/PayShieldServer.java">client/PayShieldServer</a>,
+      <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/client/Pkcs11LmkStore.java">client/Pkcs11LmkStore</a>; the field layouts in
+      <a href="../../services/mw-simulators/CLAUDE.md">services/mw-simulators/CLAUDE.md</a>.</li>
+    <li>Tests: <code>scripts/test/test_softhsm.sh</code> (the image, versions and test copies; in <code>./gradlew :scriptTests</code>) and
+      <code>./gradlew :mw-crypto:test</code>, whose HSM tests build SoftHSM and the mw-crypto image with Testcontainers.</li>
+  </ul></div>
+
+  <h2 id="wrong">What can go wrong</h2>
+  <div class="box wrong"><div class="tag">What can go wrong</div><ul>
+    <li><strong>Key generation fails with <code>CKR_DEVICE_MEMORY</code>.</strong> The client's p11-kit must speak the same RPC version as the server's.
+      Both images pin Alpine <code>p11-kit=0.26.2-r0</code>; Ubuntu noble's 0.25.3 logs in but fails every key generation. Keep the versions together
+      (<code>scripts/test/test_softhsm.sh</code> checks it).</li>
+    <li><strong>The wrong token answers.</strong> A stray module file under <code>/usr/share/p11-kit/modules/</code> or <code>/etc/pkcs11/modules/</code> in a
+      client image adds slots, and <code>slotListIndex = 0</code> may then pick the wrong one. The images delete the package's own module file on purpose.</li>
+    <li><strong>You changed a token PIN or label and now nothing logs in.</strong> PINs and labels are set only when a token is first created. Change them in
+      <code>deploy/.env</code> only together with <code>deploy/reset.sh</code>, which drops the <code>softhsm-tokens</code> volume and <strong>destroys every key</strong>.
+      Every stored PIN HMAC is then useless, so the seeder must set the app PINs again.</li>
+    <li><strong>Logins and payments all answer 503.</strong> The HSM is down or unreachable, and everything fails closed: mw-crypto answers <code>MW-SYS-010</code>,
+      mw-auth turns that into <code>MW-SYS-050</code>, and no wrong try is counted. Look for <code>crypto.hsm.down</code> in mw-crypto's log. Once softhsm is back,
+      mw-crypto re-initialises its PKCS#11 library (a JVM loads it only once, so it resets it on purpose) and recovers by itself.</li>
+    <li><strong>You added a caller and it gets 403 <code>MW-AUTH-002</code>.</strong> Deny by default: add the client to the purpose's entry in
+      <code>mw.crypto.authz</code>, and check its certificate CN equals its token's <code>azp</code>.</li>
+    <li><strong>Remember what SoftHSM is not.</strong> It is not a payment HSM. With PKCS#11 the clear PIN exists for a moment in mw-crypto's JVM (zeroed
+      right after). Only a payment HSM keeps it inside the device; that is open point 22 in the spec. Never use SoftHSM outside dev and test.</li>
+  </ul></div>
+
+  <h2 id="next">Read next</h2>
+  <ul>
+    <li><a href="../tutorial/10-wallet-security.html#assertion">Tutorial chapter 10</a>: login, the assertion and the PIN's life from the business side.</li>
+    <li><a href="../adr/D23-hsm-gateway.md">ADR D23</a>, <a href="../adr/D20-pin-custody.md">ADR D20</a> and <a href="../adr/D22-transaction-assertion.md">ADR D22</a>;
+      spec sections 18.7 and 18.8 in <a href="../../spec/bits-mfs-middleware-spec.md">spec/bits-mfs-middleware-spec.md</a>.</li>
+    <li><a href="openbao.html">OpenBao</a>, where the token PINs and the service certificates come from.</li>
+  </ul>
+
+  <nav class="pager">
+    <a href="openbao.html"><small>Previous</small>← OpenBao</a>
+    <a class="next" href="greenmail.html"><small>Next</small>GreenMail →</a>
+  </nav>
+</main>
+</body>
+</html>

@@ -78,6 +78,16 @@ class AppGatewayConfigTest {
     props.txnTypeRoles().forEach((type, roles) -> assertThat(roles).as(type).doesNotContain("MERCHANT"));
   }
 
+  /** ADR D26: a balance check has its own endpoint (POST /app/v1/balance), never a submit. */
+  @Test
+  void balanceIsNoSubmittableType() throws IOException {
+    AppGatewayProperties props = shipped();
+
+    assertThat(openApiTxnTypes()).doesNotContain("BALANCE");
+    assertThat(props.supportedTxnTypes()).doesNotContain("BALANCE");
+    assertThat(props.txnTypeRoles()).doesNotContainKey("BALANCE");
+  }
+
   @Test
   void aTypeWithoutAnEntryIsDeniedForEveryRole() throws IOException {
     AppGatewayProperties props = shipped();

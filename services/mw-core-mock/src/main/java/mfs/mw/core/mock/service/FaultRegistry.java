@@ -21,7 +21,7 @@ public class FaultRegistry {
   static final Set<String> COMMAND_TYPES =
       Set.of(
           "ValidateTransaction", "PostTransfer", "HoldFunds", "CommitHold", "ReleaseHold",
-          "CreditWallet", "ReverseTransaction", "QueryTransaction");
+          "CreditWallet", "ReverseTransaction", "QueryTransaction", "BalanceInquiry");
 
   private final List<Fault> faults = new ArrayList<>();
 

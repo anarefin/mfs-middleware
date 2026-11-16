@@ -62,6 +62,14 @@ class FlowRegistryTest {
   }
 
   @Test
+  void balanceIsRegisteredAndOnlyInquires() {
+    Flow flow = wired().find("BALANCE").orElseThrow();
+    assertThat(flow.needsHold()).isFalse();
+    assertThat(flow.steps()).containsExactly(Step.BALANCE_INQUIRY);
+    assertThat(flow.partnerCall()).isEmpty();
+  }
+
+  @Test
   void p2pStaysRegisteredAndUnknownTypesAreNot() {
     FlowRegistry registry = wired();
     assertThat(registry.find("P2P")).map(Flow::needsHold).contains(false);

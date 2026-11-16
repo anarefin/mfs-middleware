@@ -25,6 +25,9 @@ produces:
     # ticket 70: answers to mw-auth's VerifyCustomerFactors (self-service PIN reset)
     - events/mw-core-mock/core.event.v1.schema.json#CustomerFactorsVerified
     - events/mw-core-mock/core.event.v1.schema.json#CustomerFactorsRejected
+    # ADR D26: answers to mw-orchestrator's BalanceInquiry (txnType BALANCE)
+    - events/mw-core-mock/core.event.v1.schema.json#BalanceReported
+    - events/mw-core-mock/core.event.v1.schema.json#BalanceInquiryRejected
   # ticket 57: the test-only wallet seed API (PUT behind mw.coremock.seed-api.enabled) and the wallet read
   apis: [api/mw-core-mock/core-mock-seed.v1.openapi.yaml]
 consumes:
@@ -39,5 +42,6 @@ consumes:
     - events/mw-orchestrator/core.command.v1.schema.json#QueryTransaction
     - events/mw-orchestrator/core.command.v1.schema.json#UnlockWallet
     - events/mw-orchestrator/core.command.v1.schema.json#VerifyCustomerFactors
+    - events/mw-orchestrator/core.command.v1.schema.json#BalanceInquiry
   # ticket 71: GET /auth/v1/.well-known/assertion-jwks.json, the keys of the transaction assertions
   apis: [api/mw-auth/auth.v1.openapi.yaml]

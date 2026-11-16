@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mw-core-mock</title>
+<link rel="stylesheet" href="../tutorial/tutorial.css">
+<script src="../tutorial/diagrams.js" defer></script>
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> concepts</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="apisix.html">APISIX</a>
+    <a href="keycloak.html">Keycloak</a>
+    <a href="openbao.html">OpenBao</a>
+    <a href="hsm.html">HSM</a>
+    <a href="greenmail.html">GreenMail</a>
+    <a href="core-mock.html" aria-current="page">Core mock</a>
+    <a href="simulators.html">Simulators</a>
+    <a href="camel.html">Camel</a>
+    <a href="jsonata.html">JSONata</a>
+    <a href="resilience4j.html">Resilience4j</a>
+    <a href="shedlock.html">ShedLock</a>
+    <a href="testcontainers.html">Testcontainers</a>
+    <a href="../tutorial/index.html">Tutorial ↗</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Test double</div>
+  <h1>mw-core-mock: a small core with a real ledger</h1>
+  <p class="lead">The middleware never moves money itself. It asks the <strong>core</strong>, the bank-grade wallet system, over Kafka. The real core is not
+    available to us, so <code>mw-core-mock</code> plays it: a double-entry ledger that answers the same commands with the same events, plus switches
+    that let a test break it on purpose.</p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#plain">In plain English</a></li>
+    <li><a href="#why">Why we use it here</a></li>
+    <li><a href="#wired">How it is wired</a></li>
+    <li><a href="#ledger">Commands and the ledger</a></li>
+    <li><a href="#faults">Fault injection</a></li>
+    <li><a href="#example">Worked example: a lost reply</a></li>
+    <li><a href="#where">Where it lives</a></li>
+    <li><a href="#wrong">What can go wrong</a></li>
+    <li><a href="#next">Read next</a></li>
+  </ol></div>
+
+  <h2 id="plain">In plain English</h2>
+  <div class="box plain"><div class="tag">In plain English</div>
+    <p>Picture a flight simulator. Pilots train on it because it reacts like the real plane, and the instructor can switch on an engine fire whenever
+      they like. mw-core-mock is our flight simulator for the core: it keeps real balances and real rules, and a test can tell it to "lose the next reply"
+      or "refuse the next transfer".</p>
+    <p>A <strong>ledger</strong> is the book of every money movement. <strong>Double-entry</strong> means every movement is written twice, a debit on one wallet and an
+      equal credit on another, so the total of all balances never changes. If it ever does, something is broken.</p>
+  </div>
+  <div class="table-wrap"><table>
+    <tr><th>Word</th><th>Meaning</th><th>Example here</th></tr>
+    <tr><td><strong>Command</strong></td><td>A request to the core, sent on Kafka.</td><td><code>PostTransfer</code> on <code>core.wallet.command.v1</code></td></tr>
+    <tr><td><strong>Result event</strong></td><td>The core's answer, on the paired event topic.</td><td><code>TransferPosted</code> or <code>TransferRejected</code> on <code>core.wallet.event.v1</code></td></tr>
+    <tr><td><strong>commandId</strong></td><td>The id that makes a command idempotent: the same id twice has one effect and gets the same answer.</td><td><code>&lt;txnId&gt;:post</code> for the orchestrator's PostTransfer</td></tr>
+    <tr><td><strong>Hold</strong></td><td>Money reserved but not yet moved, while a partner (biller, telco) is called.</td><td><code>HoldFunds</code>, then <code>CommitHold</code> or <code>ReleaseHold</code></td></tr>
+    <tr><td><strong>Poisha</strong></td><td>One hundredth of a taka. Every amount is an integer in poisha ("minor units").</td><td>1000 = Tk 10.00</td></tr>
+  </table></div>
+
+  <h2 id="why">Why we use it here</h2>
+  <p>ADR <a href="../adr/M4-mvp-core.md">M4</a> says why a stub that always says yes is not enough: <em>"a stub that always says yes would hide the hard paths
+    (holds, insufficient funds, lost replies)."</em> So the mock has a real ledger, fees, limits and fault injection. The same ADR sets the boundary:
+    <em>"It is a test double: it never ships to production and is replaced by the real core without orchestrator change."</em></p>
+  <p>That last part is the point. mw-core-mock speaks only the Kafka contract of spec section 6.3. If the orchestrator works against it, it should work
+    against the real core, which will speak the same contract. Tests also read its balances to prove money never moves twice.</p>
+
+  <h2 id="wired">How it is wired</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Container</th><th>Ports</th><th>Notes</th></tr>
+    <tr><td><code>mw-core-mock</code></td><td>8080 inside, published as 127.0.0.1:8084</td><td>Profiles <code>minimal</code> and <code>core</code>. Its own schema <code>coremock</code> in PostgreSQL. Reads and writes only Kafka for the money path; the HTTP API is for tests.</td></tr>
+  </table></div>
+  <p>Two dev-only switches in its <code>deploy/docker-compose.yml</code> block:</p>
+  <ul>
+    <li><code>MW_COREMOCK_SEED_API_ENABLED</code>: turns on <code>PUT /core-mock/v1/wallets/{walletId}</code>, the create-if-absent call mw-seeder uses. Off by default (then a PUT is 405).</li>
+    <li><code>MW_COREMOCK_WALLET_SNAPSHOT</code>: on every start, publish a <code>WalletStateChanged</code> SNAPSHOT for every wallet, so mw-auth's copy of the wallets catches up.</li>
+  </ul>
+  <p>On its first start it seeds itself (<code>service/WalletSeeder</code>, idempotent): 1,000 customers from <code>01711000001</code>, 50 agents from <code>01811000001</code>,
+    20 merchants from <code>01911000001</code>, 2 orgs from <code>01311000001</code> (the wallet id is the MSISDN), and two system wallets: <code>FEE-POOL</code> for fees and
+    <code>SETTLEMENT</code> for money going to or coming from outside. A customer starts with Tk 10,000. There is no PIN here: mw-auth holds PINs, and the core only
+    checks the signed approval (see <a href="hsm.html#example">HSM</a>).</p>
+
+  <h2 id="ledger">Commands and the ledger</h2>
+  <p>It listens on <code>core.wallet.command.v1</code> and <code>core.payment.command.v1</code> (Camel routes <code>route/CoreWalletCommandRoute</code> and
+    <code>route/CorePaymentCommandRoute</code>) and answers on the paired event topic:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Command</th><th>What it does</th></tr>
+    <tr><td><code>ValidateTransaction</code></td><td>Runs every check, works out the fee, moves nothing.</td></tr>
+    <tr><td><code>PostTransfer</code></td><td>Debit the payer, credit the payee, debit the fee to <code>FEE-POOL</code>: one transaction, all or nothing.</td></tr>
+    <tr><td><code>HoldFunds</code>, <code>CommitHold</code>, <code>ReleaseHold</code></td><td>Reserve amount + fee; later move it to <code>SETTLEMENT</code>, or free it.</td></tr>
+    <tr><td><code>CreditWallet</code></td><td>Money in from <code>SETTLEMENT</code> (add money from a bank), once per transaction.</td></tr>
+    <tr><td><code>ReverseTransaction</code></td><td>Undo every entry of an earlier transaction, fee included.</td></tr>
+    <tr><td><code>QueryTransaction</code></td><td>"What really happened?" Reads the ledger and the command log, never the outbox, so it tells the truth even when a reply was lost.</td></tr>
+    <tr><td><code>UnlockWallet</code>, <code>VerifyCustomerFactors</code></td><td>A core-side account unlock; the KYC check of a self-service PIN reset.</td></tr>
+  </table></div>
+  <p>The checks run in a fixed order, and the first failure is the reason code: wallets exist, wallet types fit the transaction type (for example CASH_OUT
+    must be customer to agent), status, <strong>assertion</strong>, amount, limits (Tk 5,000 per transaction and Tk 15,000 per day by default), funds.</p>
+  <p>Three rules keep it trustworthy:</p>
+  <ul>
+    <li><strong>Idempotent on <code>commandId</code>.</strong> The first result event is stored in <code>command_log</code>. A repeat gets the same event again, with one ledger effect.</li>
+    <li><strong>Outbox.</strong> The ledger change, the <code>command_log</code> row and the reply event commit in one database transaction. The reply is sent afterwards by the outbox relay.
+      So a crash never leaves money moved with no reply recorded.</li>
+    <li><strong>The assertion is checked like a real core would.</strong> <code>service/AssertionCheck</code> verifies the ES256 signature against mw-auth's public key set
+      (<code>client/AssertionJwksClient</code>, fetched at start and every 30 s), recomputes <code>txnHash</code> from the command, and claims the <code>jti</code> in
+      <code>used_assertion</code> so one approval pays once. Every refusal is the reason <code>MW-AUTH-046</code>.</li>
+  </ul>
+  <p>Its tables: <code>wallet</code>, <code>hold</code>, <code>entry</code> (the ledger lines), <code>command_log</code>, <code>reversal</code>, <code>used_assertion</code>, plus the outbox and inbox.</p>
+
+  <h2 id="faults">Fault injection</h2>
+  <p>A small HTTP API (in memory, not a product contract) arms faults that match a <code>commandType</code> and/or a <code>txnId</code>, for <code>times</code> uses or until reset:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Mode</th><th>Effect</th><th>What it tests</th></tr>
+    <tr><td><code>DELAY</code></td><td>The reply is sent <code>delayMs</code> later.</td><td>Deadlines and timeouts in the saga.</td></tr>
+    <tr><td><code>DROP_REPLY</code></td><td>The command takes effect, but no reply is sent.</td><td>The unknown-outcome path: the orchestrator must ask.</td></tr>
+    <tr><td><code>DUPLICATE_REPLY</code></td><td>The reply is sent twice with the same eventId.</td><td>The orchestrator's inbox dedup.</td></tr>
+    <tr><td><code>REJECT</code></td><td>The command is refused without effect, with <code>reasonCode</code> (default <code>INJECTED_REJECT</code>).</td><td>Failure handling and error mapping.</td></tr>
+  </table></div>
+  <ul>
+    <li><code>POST /core-mock/v1/faults</code> <code>{mode, commandType?, txnId?, delayMs?, reasonCode?, times?}</code> arms one; <code>GET</code> lists; <code>DELETE</code> clears all.</li>
+    <li><code>GET /core-mock/v1/wallets/{walletId}</code> (id or MSISDN) shows <code>balanceMinor</code>, <code>heldMinor</code> and <code>availableMinor</code>.</li>
+    <li>From the host, use the test-only edge route <code>/test/core-mock/v1/*</code> (<code>deploy/apisix/routes-test/test-core-mock.json</code>, GET, POST and DELETE only,
+      test API key in an <code>apikey</code> header from <code>scripts/creds.sh</code>), or the direct dev port 8084. The test console page <strong>Simulators &amp; faults</strong> uses the same API.</li>
+  </ul>
+
+  <h2 id="example">Worked example: a lost reply</h2>
+  <p>A tester wants to see what happens when the core moves the money but its answer never arrives. They arm a fault, then send Tk 10 from 01711000001 to 01711000002:</p>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+actors: Tester | mw-app-gateway | mw-orchestrator | mw-core-mock
+Tester -> mw-core-mock : POST /test/core-mock/v1/faults {DROP_REPLY, PostTransfer, times 1}
+Tester -> mw-app-gateway : P2P Tk 10 (app or test console)
+mw-app-gateway => mw-orchestrator : mw.txn.request.v1
+mw-orchestrator => mw-core-mock : ValidateTransaction
+mw-core-mock => mw-orchestrator : TransactionValidated (fee Tk 5)
+mw-orchestrator => mw-core-mock : PostTransfer
+mw-core-mock -> mw-core-mock : post entries + command_log, no reply (fault)
+mw-orchestrator -> mw-orchestrator : POSTING deadline passes: UNKNOWN
+mw-app-gateway --> Tester : 202 PROCESSING
+mw-orchestrator => mw-core-mock : QueryTransaction (inquiry)
+mw-core-mock => mw-orchestrator : TransactionStatus POSTED
+mw-orchestrator -> mw-orchestrator : COMPLETED, money moved once
+  </script></div><figcaption>The core did its job; only the answer was lost. The orchestrator finds out by asking.</figcaption></figure>
+  <ol class="steps">
+    <li><strong>Arm the fault.</strong> <code>{"mode":"DROP_REPLY","commandType":"PostTransfer","times":1}</code>: the next PostTransfer loses its reply.</li>
+    <li>The tester sends the P2P payment.</li>
+    <li>mw-app-gateway publishes the request (with mw-auth's assertion) on Kafka.</li>
+    <li>The orchestrator asks the core to validate.</li>
+    <li>The mock runs its checks and answers normally: Tk 10 plus a Tk 5 fee.</li>
+    <li>The orchestrator asks it to post.</li>
+    <li>The mock writes the ledger entries and the <code>command_log</code> row, but the fault suppresses the reply.</li>
+    <li>The POSTING deadline runs out (2 s in the dev timers, 5 s in production), and the transaction becomes UNKNOWN.</li>
+    <li>The app gets 202 PROCESSING: "we are not sure yet".</li>
+    <li>On the inquiry schedule the orchestrator sends <code>QueryTransaction</code>.</li>
+    <li>The mock reads its ledger, not the outbox, and answers POSTED.</li>
+    <li>The transaction is COMPLETED. <code>GET /test/core-mock/v1/wallets/01711000001</code> shows Tk 15 less, exactly once.</li>
+  </ol>
+
+  <div class="box where" id="where"><div class="tag">Where it lives</div><ul>
+    <li><a href="../../services/mw-core-mock/CLAUDE.md">services/mw-core-mock/CLAUDE.md</a>: every command, reason code and rule. Read this next.</li>
+    <li>Service: <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/service/CoreCommandService.java">service/CoreCommandService</a> (dispatch),
+      <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/service/PostingOperations.java">service/PostingOperations</a>,
+      <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/service/HoldOperations.java">service/HoldOperations</a>,
+      <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/service/AssertionCheck.java">service/AssertionCheck</a>,
+      <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/service/FaultRegistry.java">service/FaultRegistry</a>,
+      <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/service/WalletSeeder.java">service/WalletSeeder</a>.</li>
+    <li>Assertion keys: <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/security/AssertionKeys.java">security/AssertionKeys</a>,
+      <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/client/AssertionJwksClient.java">client/AssertionJwksClient</a>.</li>
+    <li>Settings (fees, limits, seed balances): <a href="../../services/mw-core-mock/src/main/resources/application.yml">application.yml</a>, under <code>mw.coremock</code>.</li>
+    <li>Contracts: commands in <code>contracts/events/mw-orchestrator/core.command.v1.schema.json</code>, events in
+      <code>contracts/events/mw-core-mock/core.event.v1.schema.json</code> (owned by mw-core-mock until the real core takes them over).</li>
+  </ul></div>
+
+  <h2 id="wrong">What can go wrong</h2>
+  <div class="box wrong"><div class="tag">What can go wrong</div><ul>
+    <li><strong>Every payment is refused with <code>MW-AUTH-046</code>.</strong> That is the single code for any assertion problem: bad signature, wrong hash, expired,
+      reused <code>jti</code>. The real cause is in the mock's WARN <code>core.assertion.refused</code>.</li>
+    <li><strong>Right after mw-auth rotated its assertion key, payments fail for up to 30 s.</strong> The mock fetches the key set at start and every 30 s, never on a command.
+      An unknown <code>kid</code> is refused until the next refresh.</li>
+    <li><strong>A fault keeps firing.</strong> A fault without <code>times</code> lasts until reset. <code>DELETE /test/core-mock/v1/faults</code> clears them all. They are in memory, so a restart clears them too.</li>
+    <li><strong>Balances are not what the seed said.</strong> The seed only creates missing wallets and never resets a balance, so earlier tests leave their traces.
+      <code>deploy/reset.sh</code> gives a clean ledger.</li>
+    <li><strong>A REJECT fault seems ignored on a retry.</strong> A repeated command is answered from <code>command_log</code>; REJECT does not re-decide it. Arm the fault before the first send.</li>
+    <li><strong>Do not build business rules on the mock.</strong> It approximates a core (flat fees, simple limits). Real fees, limits and KYC belong to the real core vendor.</li>
+  </ul></div>
+
+  <h2 id="next">Read next</h2>
+  <ul>
+    <li><a href="../tutorial/04-money-flows.html">Tutorial chapter 4</a>: the money flows that drive these commands.</li>
+    <li><a href="../adr/M4-mvp-core.md">ADR M4</a> and <a href="../adr/D5-core-wallet-link.md">ADR D5</a>; spec section 6.3 in
+      <a href="../../spec/bits-mfs-middleware-spec.md">spec/bits-mfs-middleware-spec.md</a>.</li>
+    <li><a href="simulators.html">mw-simulators</a>: the same idea for every partner outside the core.</li>
+  </ul>
+
+  <nav class="pager">
+    <a href="greenmail.html"><small>Previous</small>← GreenMail</a>
+    <a class="next" href="simulators.html"><small>Next</small>Simulators →</a>
+  </nav>
+</main>
+</body>
+</html>

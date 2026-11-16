@@ -40,6 +40,17 @@
     {
       "if": { "properties": { "txnType": { "const": "REVERSAL" } }, "required": ["txnType"] },
       "then": { "required": ["originalTxnId"] }
+    },
+    {
+      "description": "BALANCE (ADR D26) moves no money: amount 0 (checked by mw-orchestrator), both parties the customer's own wallet (creditParty = debitParty, checked by mw-orchestrator), and mw-auth's assertion.",
+      "if": { "properties": { "txnType": { "const": "BALANCE" } }, "required": ["txnType"] },
+      "then": {
+        "required": ["assertion"],
+        "properties": {
+          "debitParty": { "type": "object", "properties": { "type": { "const": "WALLET" } } },
+          "creditParty": { "type": "object", "properties": { "type": { "const": "WALLET" } } }
+        }
+      }
     }
   ]
 }

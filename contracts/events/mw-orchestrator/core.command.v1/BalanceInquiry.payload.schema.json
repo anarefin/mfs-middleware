@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bits.mw/events/mw-orchestrator/core.command.v1/BalanceInquiry.payload.schema.json",
+  "title": "core.command.v1 BalanceInquiry payload",
+  "description": "Balance inquiry (ADR D26): the core answers the wallet's available balance with BalanceReported, or BalanceInquiryRejected (reasonCode WALLET_NOT_FOUND, WALLET_NOT_ACTIVE, MW-AUTH-046). Sent by mw-orchestrator on core.wallet.command.v1 for txnType BALANCE. Moves no money. Shaped like a transfer so the core checks mw-auth's assertion the same way: txnType BALANCE, amount 0, creditParty = debitParty (the customer's own wallet), with the request's idempotencyKey for the txnHash. The middleware never stores the answer (spec 3, rule 1).",
+  "type": "object",
+  "required": [
+    "txnType",
+    "debitParty",
+    "creditParty",
+    "amount",
+    "assertion",
+    "idempotencyKey"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "txnType": {
+      "const": "BALANCE"
+    },
+    "debitParty": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "../../../common/defs.v1.schema.json#/$defs/Party"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "WALLET"
+        }
+      },
+      "description": "The wallet whose balance is asked for."
+    },
+    "creditParty": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "../../../common/defs.v1.schema.json#/$defs/Party"
+        }
+      ],
+      "properties": {
+        "type": {
+          "const": "WALLET"
+        }
+      },
+      "description": "Same as debitParty."
+    },
+    "amount": {
+      "$ref": "../../../common/defs.v1.schema.json#/$defs/Amount",
+      "description": "Always 0 for BALANCE (checked by mw-orchestrator, mw-auth and the core)."
+    },
+    "assertion": {
+      "$ref": "../../../common/defs.v1.schema.json#/$defs/TxnAssertion"
+    },
+    "idempotencyKey": {
+      "$ref": "../../../common/defs.v1.schema.json#/$defs/IdempotencyKey",
+      "description": "The mw.txn.request.v1 idempotencyKey; part of the assertion's txnHash."
+    }
+  }
+}

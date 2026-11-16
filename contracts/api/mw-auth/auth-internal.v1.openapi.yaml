@@ -419,7 +419,7 @@ components:
           required: [txnType, amount, currency, payer, payee, idempotencyKey]
           properties:
             txnType: { type: string, pattern: "^[A-Z][A-Z0-9_]{1,31}$" }
-            amount: { type: integer, minimum: 1, description: Minor units (the request's amount.valueMinor) }
+            amount: { type: integer, minimum: 0, description: "Minor units (the request's amount.valueMinor); at least 1, except txnType BALANCE (ADR D26), which must be 0 with payee = payer (else 400 MW-VAL-001)" }
             currency: { type: string, pattern: "^[A-Z]{3}$" }
             payer: { $ref: "#/components/schemas/TxnParty" }
             payee: { $ref: "#/components/schemas/TxnParty" }

@@ -4,7 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import mfs.mw.auth.util.MaskingPolicy;
 import mfs.mw.auth.util.Msisdn;
@@ -25,10 +25,13 @@ public record TxnAuthorisationRequest(
     @NotNull @Valid EncryptedPin encryptedPin,
     @NotNull @Valid Txn txn) {
 
-  /** The transaction the assertion is bound to (payer = debitParty, payee = creditParty). */
+  /**
+   * The transaction the assertion is bound to (payer = debitParty, payee = creditParty). The amount is
+   * at least 1, except txnType BALANCE (ADR D26): 0 with payee = payer ({@code service/TxnAmountRule}).
+   */
   public record Txn(
       @NotBlank @Pattern(regexp = "[A-Z][A-Z0-9_]{1,31}") String txnType,
-      @Positive long amount,
+      @PositiveOrZero long amount,
       @NotBlank @Pattern(regexp = "[A-Z]{3}") String currency,
       @NotNull @Valid Party payer,
       @NotNull @Valid Party payee,

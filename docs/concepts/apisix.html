@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>APISIX and etcd</title>
+<link rel="stylesheet" href="../tutorial/tutorial.css">
+<script src="../tutorial/diagrams.js" defer></script>
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> concepts</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="apisix.html" aria-current="page">APISIX</a>
+    <a href="keycloak.html">Keycloak</a>
+    <a href="openbao.html">OpenBao</a>
+    <a href="hsm.html">HSM</a>
+    <a href="greenmail.html">GreenMail</a>
+    <a href="core-mock.html">Core mock</a>
+    <a href="simulators.html">Simulators</a>
+    <a href="camel.html">Camel</a>
+    <a href="jsonata.html">JSONata</a>
+    <a href="resilience4j.html">Resilience4j</a>
+    <a href="shedlock.html">ShedLock</a>
+    <a href="testcontainers.html">Testcontainers</a>
+    <a href="../tutorial/index.html">Tutorial ↗</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Edge</div>
+  <h1>APISIX and etcd: the front door</h1>
+  <p class="lead">Every request from outside, whether from an app, a USSD gateway, a shop or the ops console, enters through one
+    gateway: Apache APISIX on port 443. It turns away bad requests before any Spring service sees them.
+    Its configuration lives in etcd, and we fill etcd from JSON files in Git.</p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#plain">In plain English</a></li>
+    <li><a href="#why">Why we use it here</a></li>
+    <li><a href="#wired">How it is wired</a></li>
+    <li><a href="#routes">Routes and plugins</a></li>
+    <li><a href="#example">Worked example: an app payment</a></li>
+    <li><a href="#where">Where it lives</a></li>
+    <li><a href="#wrong">What can go wrong</a></li>
+    <li><a href="#next">Read next</a></li>
+  </ol></div>
+
+  <h2 id="plain">In plain English</h2>
+  <div class="box plain"><div class="tag">In plain English</div>
+    <p>Think of the security desk in an office lobby. Visitors don't walk straight to the desks: the guard checks their badge,
+      turns away anyone carrying something too big, counts how often each person comes in, and gives everyone a visitor
+      number that follows them through the building. APISIX is that guard. It is an <strong>API gateway</strong>: a reverse
+      proxy (built on nginx) that runs a chain of <strong>plugins</strong> on each request before passing it on.</p>
+    <p><strong>etcd</strong> is a small key-value database. APISIX keeps its routes and plugin settings there instead of in a config file,
+      so they can change without a restart.</p>
+  </div>
+  <p>A few APISIX words you will see everywhere:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Word</th><th>Meaning</th><th>Example here</th></tr>
+    <tr><td><strong>Route</strong></td><td>"Requests for this path go to that service, after these plugins."</td><td><code>app-v1</code>: <code>/app/v1/*</code> → <code>mw-app-gateway:8080</code></td></tr>
+    <tr><td><strong>Plugin</strong></td><td>One check or change applied to a request or response.</td><td><code>openid-connect</code> (check a token), <code>limit-count</code> (rate limit)</td></tr>
+    <tr><td><strong>Global rule</strong></td><td>Plugins that run on <em>every</em> route, even for unknown paths.</td><td><code>edge</code>: correlation id, header stripping, error envelope</td></tr>
+    <tr><td><strong>Consumer</strong></td><td>A known caller with credentials.</td><td><code>ussd_gp</code>: the Grameenphone USSD gateway's basic-auth login</td></tr>
+    <tr><td><strong>Upstream</strong></td><td>The service a route forwards to.</td><td><code>mw-app-gateway:8080</code></td></tr>
+    <tr><td><strong>Admin API</strong></td><td>APISIX's own REST API for creating routes etc. (port 9180, never published).</td><td><code>apply.sh</code> PUTs every JSON file through it</td></tr>
+  </table></div>
+
+  <h2 id="why">Why we use it here</h2>
+  <p>The decision record <a href="../adr/D3-api-gateway.md">D3</a> puts it in one line: <em>"Authentication, quotas, size caps, TLS and
+    a uniform error envelope should be enforced once, before any service."</em> If each of fifteen services did its own token
+    check and rate limit, sooner or later one would get it wrong. With one gateway there is one place to audit, and
+    <code>scripts/edge-test.sh</code> proves the rules on a running stack.</p>
+  <p>What APISIX does <strong>not</strong> do is just as important:</p>
+  <ul>
+    <li><strong>It does not check request body shapes.</strong> Each service validates its own body against its contract. On the app
+      route the device signs the raw request bytes, and APISIX's <code>request-validation</code> plugin re-encodes the JSON, which would break
+      the signature. So body schemas stay in the services (M3 gate decision).</li>
+    <li><strong>It is not the only token check.</strong> Services verify the token again (defence in depth). The gateway is the first lock, not the last.</li>
+    <li><strong>It does not verify partner callback signatures.</strong> Each partner signs differently, so the adapters check those. APISIX keeps IP allow-lists, size caps and quotas.</li>
+  </ul>
+
+  <h2 id="wired">How it is wired</h2>
+  <p>The edge is five containers in <code>deploy/docker-compose.yml</code>. None has a profile, so they start with every stack:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Container</th><th>Kind</th><th>What it does</th></tr>
+    <tr><td><code>etcd</code></td><td>long-running</td><td>Stores APISIX's configuration. Sits alone on the internal <code>etcd</code> network with APISIX; port 2379 is never published.</td></tr>
+    <tr><td><code>etcd-init</code></td><td>one-shot</td><td>Turns on etcd login (<code>deploy/etcd/init-auth.sh</code>): a <code>root</code> user, an <code>apisix</code> user that may only touch the <code>/apisix</code> prefix, and a <code>healthcheck</code> user that can read nothing.</td></tr>
+    <tr><td><code>apisix</code></td><td>long-running</td><td>The gateway. Host port 443 (knob <code>MW_HTTPS_PORT</code>) maps to 9443 inside. Static settings in <code>deploy/apisix/config.yaml</code>.</td></tr>
+    <tr><td><code>apisix-init</code></td><td>one-shot</td><td>Runs <code>deploy/apisix/apply.sh</code> on every <code>up</code>: PUTs the certificate, global rules, consumers and routes into APISIX, deletes retired ones. Services such as mw-app-gateway wait for it to finish.</td></tr>
+    <tr><td><code>apisix-init-tester</code></td><td>one-shot, profile <code>tester</code></td><td>The same script again with <code>MW_E2E_ROUTES=1</code>, which adds the test-only routes under <code>/test/*</code> and <code>/tester</code>.</td></tr>
+  </table></div>
+
+  <h3>Configuration as code</h3>
+  <p>Nobody clicks routes together in a dashboard. Everything is a file under <code>deploy/apisix/</code>:</p>
+  <pre><code>deploy/apisix/
+  config.yaml            listeners, etcd login, Admin API (loopback only), masked access log
+  apply.sh               the one-shot: PUT everything below through the Admin API
+  global_rules/edge.json plugins on every request
+  routes/&lt;id&gt;.json       one public route per file
+  consumers/&lt;name&gt;.json  known callers (the four MNO USSD gateways)
+  lua/*.lua              small Lua functions the JSON pulls in with "@lua:lua/&lt;file&gt;"
+  retired.txt            routes whose file was deleted: apply.sh deletes them from etcd too
+  routes-test/           TEST ONLY routes (core mock, simulators, mail, ...)
+  consumers-test/        TEST ONLY consumers of those routes</code></pre>
+  <p><code>apply.sh</code> fills three kinds of placeholder before each PUT, so no secret is ever in the JSON:</p>
+  <ul>
+    <li><code>"@lua:lua/edge-request.lua"</code> becomes the file's text (a serverless function).</li>
+    <li><code>"@env:NAME"</code> becomes an environment variable, for example a USSD gateway password from <code>deploy/.env</code>.</li>
+    <li><code>"@list:NAME"</code> becomes a comma-separated variable as a JSON array, for example an MNO's allowed source addresses.</li>
+  </ul>
+  <p>An unset variable fails the apply on purpose: a missing allow-list stops the stack instead of opening the route.
+    Every object has a fixed id and is PUT whole, so running the script twice leaves the same configuration (it is
+    <strong>idempotent</strong>). The README explains why we chose plain Admin API JSON over APISIX's ADC YAML tool.</p>
+
+  <h2 id="routes">Routes and plugins</h2>
+  <p>There are nineteen route files. These are the ones you will meet first:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Route</th><th>Path</th><th>Who is let in, and how</th><th>Rate limit</th></tr>
+    <tr><td><code>app-v1</code></td><td><code>/app/v1/*</code></td><td>Mobile apps. <code>openid-connect</code> checks an access token issued by <strong>mw-auth</strong> (not Keycloak, see <a href="keycloak.html#notapp">Keycloak</a>).</td><td>120 / 60 s per token subject</td></tr>
+    <tr><td><code>auth-v1</code></td><td><code>/auth/v1/*</code></td><td>Login, device binding, OTP, PIN. No auth plugin: these requests prove themselves (device signature, OTP, PIN) and mw-auth checks them.</td><td>20 / 60 s per hashed phone number, plus 5 / s per address</td></tr>
+    <tr><td><code>ussd-http-gp</code> (and <code>-robi</code>, <code>-bl</code>, <code>-teletalk</code>)</td><td><code>/ussd/gp</code></td><td>One MNO's USSD gateway: <code>ip-restriction</code> + <code>basic-auth</code> + <code>consumer-restriction</code> (GP's password is useless on Robi's route).</td><td>120 / 60 s per hashed phone number</td></tr>
+    <tr><td><code>checkout-v1-sessions</code></td><td><code>/checkout/v1/sessions</code></td><td>Merchant web shops: <code>hmac-auth</code>, then <code>proxy-rewrite</code> adds the merchant id as an <code>X-Mw-Merchant-Id</code> header.</td><td>per merchant</td></tr>
+    <tr><td><code>partner-billagg-callback</code></td><td><code>/partner/billagg/callback/*</code></td><td>A partner calling us back: <code>ip-restriction</code> only. The adapter verifies the signature.</td><td>per route</td></tr>
+    <tr><td><code>admin-v1</code></td><td><code>/admin/v1/*</code></td><td>Ops console API: <code>openid-connect</code> against the Keycloak realm <code>ops</code>.</td><td>per operator</td></tr>
+    <tr><td><code>portal-org-v1</code></td><td><code>/portal/org/v1/*</code></td><td>Organisation portal: <code>openid-connect</code>, realm <code>portals</code>.</td><td>per user</td></tr>
+  </table></div>
+
+  <h3>The global rule: what every request gets</h3>
+  <p><code>deploy/apisix/global_rules/edge.json</code> runs on every request, including 404s for unknown paths:</p>
+  <ul>
+    <li><strong>Strip <code>X-Mw-*</code> headers.</strong> Headers starting with <code>X-Mw-</code> carry facts the middleware vouches for, such as the
+      merchant id after HMAC. If a caller could send <code>X-Mw-Merchant-Id</code> themselves, they could pretend to be any shop.
+      <code>lua/edge-request.lua</code> removes every such header before any route plugin runs.</li>
+    <li><strong>Correlation id.</strong> The <code>request-id</code> plugin sets <code>X-Correlation-Id</code> (a fresh UUID when absent), forwards it and returns it.
+      Every log line in every service carries it, so one id finds the whole story. The same Lua drops a caller's id if it is
+      over 128 characters or contains a run of six or more digits. The id is logged unmasked, so it must not be able to smuggle in a phone or NID number.</li>
+    <li><strong>One error format.</strong> When APISIX itself refuses a request, <code>lua/edge-error-headers.lua</code> and
+      <code>lua/edge-error-body.lua</code> rewrite its answer into the same envelope the services use, for example 401
+      <code>{"code":"MW-AUTH-001", ...}</code>, 413 <code>MW-VAL-BODY_TOO_LARGE</code>, 429 <code>MW-SYS-RATE_LIMITED</code>, 404 <code>MW-VAL-003</code>.</li>
+    <li><strong>Security headers</strong> (HSTS, <code>nosniff</code>) and a <strong>masked access log</strong> (<code>config.yaml</code> masks MSISDNs and drops query strings).</li>
+  </ul>
+
+  <h3>Rate limits live in Valkey</h3>
+  <p>The <code>limit-count</code> plugin keeps its counters in Valkey (our Redis), so the count is shared if there is ever more than one APISIX.
+    The password is read as <code>$env://VALKEY_PASSWORD</code>, so it is never stored in etcd. Every limiter has
+    <code>allow_degradation: true</code>: if Valkey is down, requests pass <em>uncounted</em> rather than all failing, and APISIX logs
+    <code>mw.edge.rate_limit_degraded</code> so someone notices.</p>
+
+  <h2 id="example">Worked example: an app payment</h2>
+  <p>A customer taps <strong>Send money</strong>. The app sends <code>POST https://localhost/app/v1/transactions</code> with a bearer token and a
+    device-signed body. Here is what <code>deploy/apisix/routes/app-v1.json</code> does with it, in plugin order:</p>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+actors: App | APISIX | mw-auth | Valkey | mw-app-gateway
+App -> APISIX : POST /app/v1/transactions  (Bearer token)
+APISIX -> APISIX : edge rule: drop X-Mw-*, set X-Correlation-Id
+APISIX -> APISIX : client-control: body ≤ 64 KiB?
+APISIX -> mw-auth : openid-connect: discovery + JWKS (cached)
+APISIX -> APISIX : verify RS256 signature, iss, aud mw-app, exp
+APISIX -> APISIX : consumer-from-jwt.lua: key = sub:<sub>
+APISIX -> Valkey : limit-count: +1 for sub:<sub>, under 120/60 s?
+APISIX -> mw-app-gateway : forward (read timeout 35 s)
+mw-app-gateway -> mw-app-gateway : verify token again, check body schema, device signature
+mw-app-gateway --> APISIX : 202 / 200 with the service's JSON
+APISIX --> App : same answer + X-Correlation-Id
+  </script></div><figcaption>The app's payment request through the <code>app-v1</code> route.</figcaption></figure>
+  <ol class="steps">
+    <li><strong>Global rule.</strong> Any <code>X-Mw-*</code> header the app sent is removed. A bad <code>X-Correlation-Id</code> is dropped and a fresh UUID is set.</li>
+    <li><strong><code>client-control</code></strong> refuses a body over 64 KiB with 413 <code>MW-VAL-BODY_TOO_LARGE</code>.</li>
+    <li><strong><code>openid-connect</code></strong> (bearer only) reads mw-auth's discovery document at
+      <code>http://mw-auth:8080/auth/v1/.well-known/openid-configuration</code>, fetches the public keys (JWKS), and checks the token's
+      signature, issuer, audience <code>mw-app</code> and expiry (with only 10 s of clock slack). No token, a forged one or an expired one gives 401 <code>MW-AUTH-001</code>.
+      If mw-auth rotates its signing key, the unknown key id makes APISIX fetch the JWKS again, so new tokens work at once.</li>
+    <li><strong><code>consumer-from-jwt.lua</code></strong> reads the now-trusted <code>sub</code> claim and sets the variable <code>mw_consumer = sub:&lt;sub&gt;</code>.</li>
+    <li><strong><code>limit-count</code></strong> adds one to that consumer's counter in Valkey. Request 121 within a minute gets 429 <code>MW-SYS-RATE_LIMITED</code> (retryable).</li>
+    <li>The request goes to <code>mw-app-gateway:8080</code> unchanged, byte for byte, so the device signature still verifies there.</li>
+  </ol>
+  <p>A USSD request takes a different path through the same idea: <code>ip-restriction</code> (is this the MNO's address?), <code>basic-auth</code>
+    (is the password right?), <code>consumer-restriction</code> (is it <em>this</em> MNO's consumer?), then a limit keyed on a hash of the phone number, never the number itself.</p>
+
+  <div class="box where" id="where"><div class="tag">Where it lives</div><ul>
+    <li><a href="../../deploy/apisix/README.md">deploy/apisix/README.md</a>: the full route-by-route reference, error code table and every policy. Read this next.</li>
+    <li><a href="../../deploy/apisix/apply.sh">deploy/apisix/apply.sh</a>: the one-shot that loads it all; its header explains the placeholders.</li>
+    <li><a href="../../deploy/apisix/routes/app-v1.json">routes/app-v1.json</a>, <a href="../../deploy/apisix/global_rules/edge.json">global_rules/edge.json</a>,
+      <a href="../../deploy/apisix/lua/edge-request.lua">lua/edge-request.lua</a>, <a href="../../deploy/apisix/lua/consumer-from-jwt.lua">lua/consumer-from-jwt.lua</a>.</li>
+    <li><a href="../../deploy/apisix/config.yaml">deploy/apisix/config.yaml</a> (static settings), <a href="../../deploy/etcd/init-auth.sh">deploy/etcd/init-auth.sh</a> (etcd users).</li>
+    <li>Tests: <code>scripts/test/test_apisix_edge.sh</code> (offline: the JSON and Lua, in <code>./gradlew :scriptTests</code>) and
+      <code>scripts/edge-test.sh</code> (live: real 401/400/413/429 answers on the running stack).</li>
+  </ul></div>
+
+  <h2 id="wrong">What can go wrong</h2>
+  <div class="box wrong"><div class="tag">What can go wrong</div><ul>
+    <li><strong>You renamed or deleted a route file, and the old route still answers.</strong> <code>apply.sh</code> only PUTs; it never deletes what it
+      does not know about. Add the old id to <code>deploy/apisix/retired.txt</code> (for example <code>routes/ussd-http</code>) and it is removed on the next <code>up</code>.</li>
+    <li><strong>404 <code>MW-VAL-003</code> or 502 right after you rebuilt one service.</strong> Recreating a single container gives it a new IP address, and
+      APISIX still sends to the old one. Run <code>docker compose restart apisix</code> from <code>deploy/</code>. A full start does not hit this.</li>
+    <li><strong><code>/test/...</code> answers 404.</strong> The test-only routes exist only when the stack was started with <code>--profile tester</code>
+      (or after <code>scripts/tester.sh</code> / <code>scripts/api-test.sh</code>, which re-run the one-shot with <code>MW_E2E_ROUTES=1</code>). A later <code>up</code> without the profile removes them again, on purpose.</li>
+    <li><strong><code>apisix-init</code> exits non-zero.</strong> Usually a missing variable, for example a <code>USSD_GP_ALLOWED_CIDRS</code>. Run
+      <code>docker compose logs apisix-init</code>; the fix is usually <code>cp dev.env.defaults .env</code>.</li>
+    <li><strong>The console login breaks on another port.</strong> Keycloak's browser login is pinned to the public host on 443, so <code>MW_HTTPS_PORT=8443</code> breaks it.</li>
+    <li><strong>A direct port skips everything on this page.</strong> The dev stack also publishes each service on 127.0.0.1 (8081 and up) for debugging.
+      A call there has no token check, no rate limit and no header stripping. Test edge behaviour through 443 only.</li>
+    <li><strong>Adding a plugin that rewrites the body to <code>app-v1</code></strong> breaks every app payment, because the device signature covers the raw bytes. The offline test refuses it.</li>
+  </ul></div>
+
+  <h2 id="next">Read next</h2>
+  <ul>
+    <li><a href="../adr/D3-api-gateway.md">ADR D3</a>: the decision and its amendment about dev ports.</li>
+    <li>Spec section 8 (<a href="../../spec/bits-mfs-middleware-spec.md">spec/bits-mfs-middleware-spec.md</a>): route groups (8.2) and policies (8.3).</li>
+    <li><a href="../tutorial/07-ops-platform.html#apisix">Tutorial chapter 7</a> for the short version; <a href="keycloak.html">Keycloak</a> for the tokens <code>openid-connect</code> checks on the staff routes.</li>
+  </ul>
+
+  <nav class="pager">
+    <a href="index.html"><small>Previous</small>← Start</a>
+    <a class="next" href="keycloak.html"><small>Next</small>Keycloak →</a>
+  </nav>
+</main>
+</body>
+</html>

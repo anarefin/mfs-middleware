@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import mfs.mw.orchestrator.dto.Amount;
+import mfs.mw.orchestrator.dto.Balance;
 import mfs.mw.orchestrator.dto.ErrorInfo;
 import mfs.mw.orchestrator.dto.StatusMessage;
 import mfs.mw.orchestrator.dto.TxnRequest;
@@ -19,7 +20,15 @@ public class StatusMapper {
   public static final String REVERSAL_TXN_ID = "reversalTxnId";
 
   public StatusMessage toStatus(TransactionRecord rec) {
-    return build(rec, rec.request().attributes());
+    return build(rec, rec.request().attributes(), null);
+  }
+
+  /**
+   * As {@link #toStatus(TransactionRecord)}, with the core's balance of a BALANCE check (ADR D26),
+   * shown on COMPLETED only. The balance is transient: it is not on the record and is never stored.
+   */
+  public StatusMessage toStatus(TransactionRecord rec, Balance balance) {
+    return build(rec, rec.request().attributes(), rec.status() == Status.COMPLETED ? balance : null);
   }
 
   /**
@@ -34,7 +43,7 @@ public class StatusMapper {
     }
     attributes.put("requestTxnId", requestTxnId);
     attributes.put("duplicate", "true");
-    return build(stored, attributes);
+    return build(stored, attributes, null);
   }
 
   /**
@@ -54,7 +63,7 @@ public class StatusMapper {
         1, storedTxnId.toString(), req.idempotencyKey(), req.correlationId(), req.channel(),
         req.txnType(), Status.RECEIVED.name(), null, req.initiator(), req.debitParty(),
         req.creditParty(), req.amount(), null, req.partner(), null, null, req.originalTxnId(),
-        null, req.locale(), attributes, req.requestedAt(), now);
+        null, req.locale(), attributes, req.requestedAt(), now, null);
   }
 
   /** REJECTED for a request that never became a transaction (key reused with other content). */
@@ -63,14 +72,14 @@ public class StatusMapper {
         1, req.txnId(), req.idempotencyKey(), req.correlationId(), req.channel(), req.txnType(),
         Status.REJECTED.name(), null, req.initiator(), req.debitParty(), req.creditParty(),
         req.amount(), null, req.partner(), null, null, req.originalTxnId(), error, req.locale(),
-        req.attributes(), req.requestedAt(), now);
+        req.attributes(), req.requestedAt(), now, null);
   }
 
   /**
    * A transaction being (or having been) reversed names the REVERSAL request in
    * {@code attributes.reversalTxnId}, so whoever asked for the reversal can follow it.
    */
-  private StatusMessage build(TransactionRecord rec, Map<String, String> requestAttributes) {
+  private StatusMessage build(TransactionRecord rec, Map<String, String> requestAttributes, Balance balance) {
     TxnRequest req = rec.request();
     Map<String, String> attributes = requestAttributes;
     if (rec.reversalTxnId() != null) {
@@ -88,6 +97,6 @@ public class StatusMapper {
         rec.feeMinor() == null ? null : Amount.bdt(rec.feeMinor()), req.partner(), rec.partnerRef(),
         rec.coreRef(),
         req.originalTxnId(), rec.error(), req.locale(), attributes, req.requestedAt(),
-        rec.updatedAt());
+        rec.updatedAt(), balance);
   }
 }

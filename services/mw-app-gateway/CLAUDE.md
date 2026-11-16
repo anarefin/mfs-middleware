@@ -7,7 +7,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 
 - App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, ADD_MONEY_BANK,
   TOPUP and BILL_PAY, `mw.app-gateway.supported-txn-types`), `GET /app/v1/transactions` (wallet history, ADR D25),
-  `GET /app/v1/transactions/{txnId}`, `GET /app/v1/pin-key`,
+  `GET /app/v1/transactions/{txnId}`, `POST /app/v1/balance` (ADR D26), `GET /app/v1/pin-key`,
   `GET /app/v1/billers`, `POST /app/v1/billers/{code}/fetch-bill` and `GET /app/v1/merchant/collections` behind the APISIX
   route `/app/v1/*` (`deploy/apisix/routes/app-v1.json`, `openid-connect` bearer-only against mw-auth's
   discovery document since ticket 69).
@@ -38,7 +38,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   `client/AuthClient`): after the JWT, every `/app/**` handler needs `X-Device-Id` of a device bound to the token's
   wallet (`401 MW-AUTH-003`): its wallet and public key come from mw-auth `GET /internal/v1/devices/{deviceId}`
   and are cached in Valkey `devkey:{deviceId}` for `device-key-ttl` (5 min). `POST /app/v1/transactions`
-  (`@DeviceGate(SIGNED)`) also needs `X-Timestamp` (epoch ms, strictly less than `clock-skew` 5 min either way,
+  and `POST /app/v1/balance` (`@DeviceGate(SIGNED)`) also needs `X-Timestamp` (epoch ms, strictly less than `clock-skew` 5 min either way,
   `MW-AUTH-005`), `X-Signature` (ECDSA P-256 SHA-256, DER or P1363, over `METHOD\nPATH\nhex(sha256(body))\n
   TIMESTAMP\nNONCE\nDEVICE-ID`; `MW-AUTH-004`) and `X-Nonce` (once per device: Valkey `nonce:{deviceId}:{nonce}` SET
   NX, TTL 2x skew + 30 s; the same key mw-auth uses, so a nonce is used once across both; `MW-AUTH-006`). The body
@@ -78,8 +78,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   conformance suite stay as chassis although nothing appends to the outbox now.
 - Validation: body schema first (`service/BodySchema` via `filter/BodySchemaInterceptor`, one per endpoint,
   `config/BodySchemaConfig`; after the JWT, before the device gate; ticket 29 and review A6, APISIX validates no
-  body): `derived-schemas/app-v1-transaction-request.json` (`TransactionRequest`) and
-  `app-v1-fetch-bill-request.json` (`FetchBillRequest`), derived from the contract by
+  body): `derived-schemas/app-v1-transaction-request.json` (`TransactionRequest`),
+  `app-v1-balance-request.json` (`BalanceRequest`, ADR D26) and `app-v1-fetch-bill-request.json` (`FetchBillRequest`), derived from the contract by
   `scripts/derived-schemas.sh --write` (`./gradlew :contractsLint` fails on drift; a new JSON body endpoint needs its
   schema registered in `BodySchemaConfig`; the device bodies moved to mw-auth in ticket 68), validated
   with json-schema-validator (runtime dependency, on Boot's Jackson) on the cached bytes; duplicate keys,
@@ -148,6 +148,21 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   MW-SYS-012` (retryable). A repeat with the same key inside the assertion's 60 s gets the same assertion from mw-auth
   without a second PIN check; the orchestrator still decides idempotency. A 401 is retried with a new service token
   only when its code is `MW-AUTH-001` (or it has no envelope), so a wrong PIN is checked once.
+- Balance check (ADR D26, app.v1 1.6.0; `controller/BalanceController`, `service/BalanceService`,
+  `RequestMapper.toBalanceRequest`, `dto/BalanceRequest` / `dto/BalanceView`): `POST /app/v1/balance {encryptedPin,
+  locale?}` with `Idempotency-Key` (as a submit), signed (`@DeviceGate(SIGNED)`), any app role (customer, agent,
+  merchant; not in `txn-type-roles`, and BALANCE is not a txnType of `POST /app/v1/transactions`:
+  `AppGatewayConfigTest`). The wallet is the token's: mw-auth's assertion for `{txnType BALANCE, amount 0, BDT, payer =
+  payee = {WALLET, msisdn}, idempotencyKey}`, then `mw.txn.request.v1` with txnType BALANCE, amount `{0, BDT}`, debit
+  = credit = the caller's wallet (walletType from the role), the assertion; the same waiter and `mw-reply-to` as the
+  submit (`service/TxnReplyExchange`, shared with `TransactionService`: publish, 503 `MW-SYS-010`, the budgeted wait,
+  FAILED/REJECTED as the envelope). COMPLETED with `balance` -> 200 `{txnId, available, asOf}`; mw-auth refusals as for
+  a submit; `MW-CORE-*` 422; no terminal answer in the budget (or a duplicate still running, or COMPLETED without
+  `balance`) 504 `MW-TMO-001` retryable, never 202. Never stored: no `app_transaction` row at submit, and
+  `StatusProjectionService` skips every BALANCE record, so `GET /app/v1/transactions/{txnId}` never serves one; the
+  wallet history leaves it out at mw-orchestrator (ADR D25 query API). The balance is never logged
+  (`StatusMessage.balance`, `BalanceView`). Tests: `BalanceControllerTest`, `BalanceServiceTest`,
+  `StatusProjectionServiceTest`, `service/BalanceIT` (Kafka, `OrchestratorStub` answers BALANCE by key prefix).
 - PIN transport key (ticket 72; `controller/PinKeyController`, `service/PinKeyService`): `GET /app/v1/pin-key` (token
   only, `@DeviceGate(NONE)`) answers `{keyId, algorithm RSA-OAEP-SHA-256, publicKeyPem}`, the newest mw-crypto
   `PIN_TRANSPORT` version read from mw-auth `GET /internal/v1/pin-key` over the same mTLS client and service token as
@@ -212,7 +227,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 ## Contracts owned
 
 - `api/mw-app-gateway/app.v1.openapi.yaml` (app API v1). This service checks every JSON request body against
-  its schema in `src/main/resources/derived-schemas/` (`TransactionRequest`, `FetchBillRequest`; `scripts/derived-schemas.sh --write` after changing one;
+  its schema in `src/main/resources/derived-schemas/` (`TransactionRequest`, `BalanceRequest`, `FetchBillRequest`; `scripts/derived-schemas.sh --write` after changing one;
   `./gradlew :contractsLint` fails until then). The edge answers 401/413/429 itself (`deploy/apisix/README.md`).
 
 ## Contracts used

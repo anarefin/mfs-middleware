@@ -48,6 +48,7 @@ public class BodySchemaConfig implements WebMvcConfigurer {
   @Override
   public void addInterceptors(InterceptorRegistry registry) {
     add(registry, BodySchema.TRANSACTION, false, "/app/v1/transactions");
+    add(registry, BodySchema.BALANCE, false, "/app/v1/balance");
     add(registry, BodySchema.FETCH_BILL, false, "/app/v1/billers/*/fetch-bill");
   }
 

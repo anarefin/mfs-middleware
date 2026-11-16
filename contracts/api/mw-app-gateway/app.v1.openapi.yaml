@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits app API (mw-app-gateway)
-  version: 1.5.0
+  version: 1.6.0
   description: |
     Mobile apps API v1 (spec 8.2, 9.1), served by mw-app-gateway behind APISIX route `/app/v1/*`.
     Bearer access JWT from mw-auth (spec 18.7, D21; MSISDN + PIN login on a bound device); the payer
@@ -35,6 +35,10 @@ info:
     transactions, sent and received, from every channel (app, USSD, org bulk credits), as
     mw-orchestrator's query API answers it for that wallet. 503 MW-SYS-013 (retryable) when it
     cannot be asked.
+
+    Balance (1.6.0, ADR D26): POST /app/v1/balance answers the signed-in wallet's available balance
+    from the core after the PIN check; nothing moves and the gateway never stores it (it is not in
+    the history).
 servers:
   - url: https://localhost
 security:
@@ -189,6 +193,76 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
         "504": { $ref: "#/components/responses/Error" }
+  /app/v1/balance:
+    post:
+      operationId: checkBalance
+      summary: The signed-in wallet's available balance (PIN required)
+      description: >-
+        Any app role (`customer`, `agent`, `merchant`); the wallet is always the token's `msisdn`.
+        Signed like a transaction submit (`X-Timestamp`, `X-Nonce`, `X-Signature`) and
+        authorised the same way (spec 18.7, D22): the gateway asks mw-auth for the assertion of a
+        BALANCE request (amount 0, payer = payee = the wallet), then mw-orchestrator asks the core
+        (BalanceInquiry, ADR D26). The answer is the core's available balance (balance minus open
+        holds) at `asOf`; the middleware never stores it, and a balance check is not in GET
+        /app/v1/transactions. mw-auth's refusals are answered as for a submit: 401 MW-AUTH-040
+        wrong PIN (`details` triesLeft), 423 MW-AUTH-041 / MW-AUTH-042, 403 MW-AUTH-043 /
+        MW-AUTH-045, 401 MW-AUTH-047, 409 MW-IDEM-001, 503 MW-SYS-012. A core refusal is 422
+        MW-CORE-<reason> (WALLET_NOT_ACTIVE, ...). No answer within the reply budget is 504
+        MW-TMO-001 (retryable): a balance check has nothing to finish, so there is no 202; ask
+        again with a new key.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: >-
+            1 to 64 visible ASCII characters, a new one per check. The same key answers the same
+            check's result while it is still known; it never stores a balance.
+          schema: { type: string, pattern: "^[\\x21-\\x7E]{1,64}$" }
+        - { $ref: "#/components/parameters/DeviceId" }
+        - { $ref: "#/components/parameters/Timestamp" }
+        - { $ref: "#/components/parameters/Nonce" }
+        - { $ref: "#/components/parameters/Signature" }
+        - name: X-Correlation-Id
+          in: header
+          required: false
+          schema: { type: string, pattern: "^[A-Za-z0-9._:-]{1,128}$" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BalanceRequest" }
+      responses:
+        "200":
+          description: The wallet's available balance
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Balance" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "422":
+          description: Core rejection (MW-CORE-<reason>), with txnId
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "423":
+          description: The PIN is locked at mw-auth (MW-AUTH-041 with retryAfter, MW-AUTH-042 until a reset)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503":
+          description: Kafka unavailable (MW-SYS-010) or mw-auth unreachable (MW-SYS-012), retryable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "504":
+          description: The core did not answer within the reply budget (MW-TMO-001, retryable)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
   /app/v1/pin-key:
     get:
       operationId: getPinKey
@@ -495,6 +569,26 @@ components:
           maxProperties: 20
           propertyNames: { enum: [reference] }
           additionalProperties: { type: string, maxLength: 256 }
+    BalanceRequest:
+      type: object
+      required: [encryptedPin]
+      additionalProperties: false
+      properties:
+        encryptedPin:
+          type: object
+          required: [keyId, ciphertext]
+          description: As in TransactionRequest; passed to mw-auth untouched, never published.
+          properties:
+            keyId: { type: string, minLength: 1, maxLength: 128 }
+            ciphertext: { type: string, minLength: 1, maxLength: 4096 }
+        locale: { type: string, enum: [bn, en] }
+    Balance:
+      type: object
+      required: [txnId, available, asOf]
+      properties:
+        txnId: { type: string, description: The balance check (for support; not in the history) }
+        available: { $ref: "#/components/schemas/Money" }
+        asOf: { type: string, format: date-time }
     Transaction:
       type: object
       required: [txnId, status]

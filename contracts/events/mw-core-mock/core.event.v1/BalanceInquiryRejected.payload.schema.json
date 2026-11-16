@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bits.mw/events/mw-core-mock/core.event.v1/BalanceInquiryRejected.payload.schema.json",
+  "title": "core.event.v1 BalanceInquiryRejected payload",
+  "description": "Failure of BalanceInquiry (ADR D26); the reason is the envelope reasonCode (WALLET_NOT_FOUND, WALLET_NOT_ACTIVE, MW-AUTH-046 for a refused assertion).",
+  "type": "object",
+  "properties": {
+    "walletId": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

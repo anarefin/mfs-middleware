@@ -72,8 +72,8 @@ public abstract class UssdMenuWalkSuite {
 
     assertThat(w.screens().subList(0, 6))
         .containsExactly(
-            "Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English",
-            "Bits\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা",
+            "Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n5 ব্যালেন্স\n9 English",
+            "Bits\n1 Send Money\n2 Cash Out\n3 Recharge\n4 Pay Bill\n5 Balance\n9 বাংলা",
             "Enter recipient Bits number",
             "Enter amount (Tk)",
             "Send Tk 10.00 to 01812345678?\n1 Confirm\n2 Cancel",

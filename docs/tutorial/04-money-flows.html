@@ -36,6 +36,7 @@
     <li><a href="#p2p-app">Send money from the app</a></li>
     <li><a href="#p2p-ussd">Send money from a USSD phone</a></li>
     <li><a href="#cash">Cash in and cash out</a></li>
+    <li><a href="#balance">Balance check</a></li>
     <li><a href="#wrong">When things go wrong</a></li>
     <li><a href="#reversal">Reversal</a></li>
     <li><a href="#try">Try it yourself</a></li>
@@ -144,13 +145,13 @@
     <li><strong>Menus are data,</strong> not code: a JSON file, stored in versions in the database and editable in the ops console
       (with maker-checker). A menu node of type ACTION starts a transaction.</li>
     <li><strong>The session lives in Valkey,</strong> so any <code>mw-ussd</code> instance can serve the next screen.</li>
-    <li>USSD supports P2P, cash out, top-up and bill pay. There is no cash in over USSD.</li>
+    <li>USSD supports P2P, cash out, top-up, bill pay and the balance check (option 5). There is no cash in over USSD.</li>
   </ul>
   <div class="box where"><div class="tag">Where it lives</div><ul>
     <li><a href="../../services/mw-ussd/src/main/java/mfs/mw/ussd/service/UssdEngine.java"><code>service/UssdEngine</code></a> (one step per request),
       <a href="../../services/mw-ussd/src/main/java/mfs/mw/ussd/service/KafkaTransactionFlow.java"><code>service/KafkaTransactionFlow</code></a> (starts the transaction).</li>
     <li>Transports: <code>transport/HttpUssdTransport</code>, <code>transport/SmppUssdTransport</code>; the menus:
-      <a href="../../services/mw-ussd/src/main/resources/menus/main-v2.json">menus/main-v2.json</a>. Spec section 9.2.</li>
+      <a href="../../services/mw-ussd/src/main/resources/menus/main-v3.json">menus/main-v3.json</a>. Spec section 9.2.</li>
   </ul></div>
 
   <h2 id="cash">Cash in and cash out</h2>
@@ -167,6 +168,33 @@
   <p>The orchestrator flows are <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/saga/CashInFlow.java"><code>CashInFlow</code></a>
     and <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/service/saga/CashOutFlow.java"><code>CashOutFlow</code></a>.
     Compare them with <code>P2pFlow</code>: they are almost the same.</p>
+
+  <h2 id="balance">Balance check</h2>
+  <div class="box plain">
+    <div class="tag">In plain English</div>
+    <p>"How much do I have?" The middleware does not know: only the core keeps balances, and the middleware must never
+      store one. So a balance check is a tiny transaction that moves nothing: type <code>BALANCE</code>, amount 0, from the
+      customer's wallet to the same wallet. It needs the PIN like any transaction; the orchestrator asks the core
+      (<code>BalanceInquiry</code>) and hands the answer straight back to the channel.</p>
+  </div>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+    actors: Phone or app | mw-ussd / mw-app-gateway | mw-auth | mw-orchestrator | core
+    Phone or app -> mw-ussd / mw-app-gateway : USSD option 5 + PIN, or POST /app/v1/balance
+    mw-ussd / mw-app-gateway -> mw-auth : assertion for BALANCE, amount 0, payer = payee
+    mw-ussd / mw-app-gateway => mw-orchestrator : mw.txn.request.v1 txnType BALANCE
+    mw-orchestrator => core : BalanceInquiry (core.wallet.command.v1)
+    core => mw-orchestrator : BalanceReported (available, asOf)
+    mw-orchestrator => mw-ussd / mw-app-gateway : mw.txn.status.v1 COMPLETED with balance
+    mw-ussd / mw-app-gateway --> Phone or app : "Your balance is Tk 12,000.00"
+  </script></div>
+  <figcaption>Figure 4.3: the balance check (ADR D26). The balance passes through; nothing stores it.</figcaption></figure>
+  <ul>
+    <li><strong>Passed through, never stored.</strong> The balance rides on the status message only. It is not on the saga
+      record, the timeline, the audit trail or the wallet history, and no SMS is sent.</li>
+    <li><strong>No unknown outcome.</strong> If the core does not answer in time the check simply fails
+      (<code>MW-TMO-001</code>, "please try again"): nothing moved, so there is nothing to inquire about.</li>
+    <li>The decision and its trade-offs: <a href="../adr/D26-balance-inquiry.md">ADR D26</a>.</li>
+  </ul>
 
   <h2 id="wrong">When things go wrong</h2>
   <div class="box wrong"><div class="tag">What can go wrong, and what happens</div>

@@ -19,7 +19,8 @@ import org.springframework.stereotype.Component;
  * initiator and payer is the dialling subscriber's customer wallet (USSD serves customers; agents
  * cash in from the Agent app). The payee per flow: P2P the customer wallet entered, CASH_OUT the
  * agent's wallet, TOPUP the bare MSISDN to recharge with the operator as partner, BILL_PAY the bill
- * number as a {@code BILLER_ACCOUNT} with the biller's aggregator as partner. The request goes out
+ * number as a {@code BILLER_ACCOUNT} with the biller's aggregator as partner, BALANCE (ADR D26) the
+ * customer's own wallet with amount 0: a balance inquiry moves no money. The request goes out
  * with mw-auth's assertion only (ticket 72): {@link #authorisation} builds the authorisation body from
  * exactly the request's values, so the assertion's txnHash matches what the core sees.
  */
@@ -31,6 +32,8 @@ public class TxnRequestMapper {
   public static final String CASH_OUT = "CASH_OUT";
   public static final String TOPUP = "TOPUP";
   public static final String BILL_PAY = "BILL_PAY";
+  /** Balance inquiry (ADR D26): amount 0, payer = payee = the own wallet, nothing mapped. */
+  public static final String BALANCE = "BALANCE";
   /** Canonical product code of a bill payment (as mw-app-gateway sends it). */
   public static final String BILL_PRODUCT = "BILL";
 
@@ -42,7 +45,8 @@ public class TxnRequestMapper {
           P2P, BASE,
           CASH_OUT, BASE,
           TOPUP, Set.of(FlowRequest.CREDIT_PARTY, FlowRequest.AMOUNT, FlowRequest.PARTNER_ID, FlowRequest.PRODUCT_CODE),
-          BILL_PAY, Set.of(FlowRequest.CREDIT_PARTY, FlowRequest.AMOUNT, FlowRequest.PARTNER_ID, FlowRequest.BILLER_CODE));
+          BILL_PAY, Set.of(FlowRequest.CREDIT_PARTY, FlowRequest.AMOUNT, FlowRequest.PARTNER_ID, FlowRequest.BILLER_CODE),
+          BALANCE, Set.of());
 
   /** Flows an ACTION node may name. */
   public static final Set<String> FLOWS = REQUIRED_FIELDS.keySet();
@@ -59,6 +63,8 @@ public class TxnRequestMapper {
     }
     UssdSession s = req.session();
     Map<String, String> f = req.fields();
+    boolean balance = BALANCE.equals(req.flow());
+    Party payer = Party.wallet(s.msisdn(), "CUSTOMER");
     return new TxnRequest(
         1,
         txnId,
@@ -67,9 +73,9 @@ public class TxnRequestMapper {
         CHANNEL,
         req.flow(),
         new Party("MSISDN", s.msisdn(), null, null),
-        Party.wallet(s.msisdn(), "CUSTOMER"),
-        creditParty(req.flow(), f.get(FlowRequest.CREDIT_PARTY)),
-        new Amount(minor(f.get(FlowRequest.AMOUNT)), Amount.BDT),
+        payer,
+        balance ? payer : creditParty(req.flow(), f.get(FlowRequest.CREDIT_PARTY)),
+        new Amount(balance ? 0L : minor(f.get(FlowRequest.AMOUNT)), Amount.BDT),
         partner(req.flow(), f),
         null,
         s.language(),
@@ -115,8 +121,11 @@ public class TxnRequestMapper {
     };
   }
 
-  /** Taka with up to two decimals ({@code "500.00"}) to poisha. */
+  /** Taka with up to two decimals ({@code "500.00"}) to poisha; none (a BALANCE) is 0. */
   public static long minor(String taka) {
+    if (taka == null || taka.isBlank()) {
+      return 0L;
+    }
     return new BigDecimal(taka).movePointRight(2).longValueExact();
   }
 }

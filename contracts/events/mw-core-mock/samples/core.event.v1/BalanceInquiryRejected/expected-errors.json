@@ -1,0 +1,5 @@
+{
+  "invalid-rejected-without-reason.json": [
+    "/ must have required property 'reasonCode'"
+  ]
+}

@@ -46,6 +46,7 @@ This spec turns the Bits *Mobile Money Middleware RFP v0.1* into a build-ready d
 | D23 | HSM gateway | `mw-crypto` is the only HSM client, with a provider SPI and two providers: PKCS#11 (SoftHSMv2 in dev and test) for wallet PINs, JWS signing, HMAC, tokenisation and envelope encryption; Thales payShield 10K host commands (a simulator in `mw-simulators`) for ISO 9564 PIN translation and PVV; plus XML-DSig and key ceremony with split knowledge (2026-11-14, 18.8) |
 | D24 | Service mTLS, phase 1 | OpenBao PKI issues 72 h service certificates; mTLS is mandatory on `mw-crypto` and on the internal API of `mw-auth`; other services keep the client-credentials JWT alone until a later ticket (2026-11-14, 18.2, 18.4) |
 | D25 | Wallet transaction history | The app API serves the signed-in wallet's full history, sent and received, every channel (`GET /app/v1/transactions`), read from `mw-orchestrator`'s internal query API by `mw-app-gateway` as a wallet-scoped caller (search only, `walletId` always); a keyed wallet party index (`wallet_txn`) finds a wallet as debit (OUT) or credit (IN) party; IN only once the money reached it (2026-11-16, 15.2, 16.3) |
+| D26 | Balance inquiry | `BALANCE` is a transaction type that moves no money (amount 0, payer = payee = the customer's wallet), PIN-authorised like every transaction (D22); `mw-orchestrator` sends the core `BalanceInquiry` and passes the answer (`BalanceReported`: available balance, asOf) to the channel on `mw.txn.status.v1` `balance`, never storing it (rule 3.1); USSD main menu option 5, app `POST /app/v1/balance`; no SMS (2026-11-16, 5.2, 6.3, 9.1, 9.2) |
 
 ### Assumed sizing (TBC)
 
@@ -204,7 +205,7 @@ The middleware is the only path between Bits's access channels, the core wallet 
 
 ### 1.3 Boundary rules
 
-1. The middleware MUST NOT compute or store balances. It asks the core to debit, credit, hold, release or reverse, and acts on the core's result.
+1. The middleware MUST NOT compute or store balances. It asks the core to debit, credit, hold, release or reverse, and acts on the core's result. A balance inquiry (D26) asks the core and passes its answer to the channel in memory; no middleware store keeps it.
 2. All core interaction is over Kafka commands and events (D5). A request that needs a synchronous answer for a channel waits on a correlated reply event with a bounded timeout (section 7).
 3. Business decisions that depend on wallet state (limits, KYC tier, fees) are the core's. The middleware enforces only technical policy: authentication, schema, rate limits, partner availability.
 4. External parties never see core identifiers; the middleware maps between its transaction ID and each partner's reference.
@@ -528,6 +529,7 @@ Every channel request and every partner response is mapped to one canonical mode
 | `REMIT_IN` | Inbound international remittance | UCB IMT |
 | `QR_PAY_INTEROP` | BanglaQR / NPSB interoperable payment | NPSB |
 | `BULK_DISBURSE` | Org-to-many disbursement (parent + child txns) | none |
+| `BALANCE` | Balance inquiry (D26): moves no money, amount 0, payer = payee = the customer's wallet; the core's answer is passed to the channel, never stored | none |
 | `REVERSAL` | Compensating txn linked to `originalTxnId` | as original |
 
 ### 5.3 Error model
@@ -599,6 +601,7 @@ The middleware proposes this contract; the core team must confirm field names an
 | `ReverseTransaction` | Compensate a posted transaction | `TransactionReversed` | `ReversalRejected` |
 | `QueryTransaction` | Status inquiry by `txnId` / `commandId` | `TransactionStatus` | n/a |
 | `ApplyComplianceAction` | AML block / unblock / hold on a wallet | `ComplianceActionApplied` | `ComplianceActionRejected` |
+| `BalanceInquiry` | The wallet's available balance (D26), PIN-authorised by the assertion; moves nothing | `BalanceReported` (available, asOf) | `BalanceInquiryRejected` (reason) |
 
 Every command carries `{ schemaVersion, commandType, commandId, txnId, correlationId, issuedAt, expiresAt, payload }`. `expiresAt` lets the core drop a stale command it receives after the middleware has timed out. Every event carries the envelope `{ schemaVersion, eventType, eventId, commandId, txnId, coreRef, occurredAt, outcome, reasonCode?, reasonMessage?, balancesAfter?, payload }`; `balancesAfter` is optional and used only for customer messages, and failure events carry `outcome` FAILURE and a `reasonCode`. Event-specific fields sit under `payload`, one schema per event type (`contracts/events/mw-core-mock/core.event.v1/`): `payload.holdId` (FundsHeld; also on the other hold events and TransactionStatus), `payload.txnStatus` (TransactionStatus), `payload.fee`, `payload.charges` and `payload.limitsLeft` (TransactionValidated). Commands that need customer authorisation (ValidateTransaction, HoldFunds, PostTransfer) carry `payload.encryptedPin` { keyId, ciphertext } (RSA-OAEP, SHA-256); the middleware never decrypts it. Amounts on every topic are `{ valueMinor, currency }`: non-negative integer minor units (poisha), currency BDT.
 
@@ -725,7 +728,7 @@ Each channel service authenticates, normalises the request to the canonical mode
 - Session: Valkey key `sess:{subject}:{deviceId}`, idle timeout 5 min (configurable per app); single active device per customer wallet (configurable). Owned by `mw-auth` from ticket 68.
 - Throttling per subject and device on top of APISIX limits. PIN lockout after 5 failures is owned by the core, not the middleware; a locked wallet is unlocked by operations through the admin console with maker-checker (ticket 52) (**Decision 2026-11-04**). **Decision 2026-11-14** (D20, ticket 70): `mw-auth` owns the lockout (3 wrong tries, escalating locks); the ops unlock goes to `mw-auth` as a `auth.wallet-lock` command instead of the core `UnlockWallet`.
 - Roles (**Decision 2026-11-04**): the role map from token role to allowed `txnType`s is deny-by-default (a type with no entry is refused for every role, a role not listed for a type gets 403 `MW-AUTH-002`). `CASH_IN` is agent-initiated (payee the customer); `CASH_OUT` is customer-initiated with the customer's own PIN, payee the agent; `P2P`, `MERCHANT_PAY`, `TOPUP`, `BILL_PAY` and `ADD_MONEY_BANK` are customer-initiated; the merchant app initiates no money movement. The core enforces the wallet types per `txnType`.
-- Endpoints (v1, indicative): `POST /transactions` (all `txnType`s), `GET /transactions/{txnId}`, `GET /transactions?from&to`, `POST /quotes` (fee preview via `ValidateTransaction`), `GET /billers`, `POST /billers/{code}/fetch-bill`, `GET /operators`, `POST /kyc/nid-verify`.
+- Endpoints (v1, indicative): `POST /balance` (the wallet's available balance after the PIN check, D26), `POST /transactions` (all `txnType`s), `GET /transactions/{txnId}`, `GET /transactions?from&to`, `POST /quotes` (fee preview via `ValidateTransaction`), `GET /billers`, `POST /billers/{code}/fetch-bill`, `GET /operators`, `POST /kyc/nid-verify`.
 - Bill fetch (**Decision 2026-11-04**): the biller list and fetch-bill go from `mw-app-gateway` to `mw-adapter-billpay` over internal HTTP (unreachable: 503 `MW-SYS-011`, retryable). This is the one read-only exception to "no service-to-service calls on the money path" (2): it moves no money, and the payment itself still goes over Kafka.
 
 ### 9.2 USSD (`mw-ussd`, FR-10, FR-11)
@@ -747,7 +750,7 @@ Per-MNO configuration (`ussd.mno.<gp|robi|teletalk|bl>`): transport type, short 
 - Text per node in `bn` and `en`; language from customer profile (core) or a language-switch option.
 - Menus are edited in the admin console, versioned, approved by maker-checker, and activated per MNO with a scheduled go-live; running sessions finish on the version they started.
 - Session state in Valkey: `ussd:{mno}:{sessionId}` holding node path, inputs (the plaintext PIN is never stored; it is encrypted with the core's public key on receipt, and only the ciphertext is forwarded, 18.3), language, and version; TTL = MNO timeout + 30 s.
-- When a transaction exceeds the 8 s synchronous budget, the menu ends with "Your request is being processed" and the final result arrives by SMS.
+- When a transaction exceeds the 8 s synchronous budget, the menu ends with "Your request is being processed" and the final result arrives by SMS. A balance check (main menu option 5, D26: PIN, then the available balance on the screen) sends no SMS: without an answer in the budget it ends with "please try again".
 - PIN entry on USSD is passed to the core for verification inside the transaction command, never logged. **Decision 2026-11-14** (D22, ticket 72): `mw-ussd` encrypts the digits on receipt with the `mw-crypto` PIN transport public key (fetched by `keyId` and cached) and asks `mw-auth` for the assertion like an app; a USSD session has no device key, so its identity is the MSISDN the MNO delivers plus the PIN on every transaction.
 
 **9.2.1 SMPP session management (shared with notify)**

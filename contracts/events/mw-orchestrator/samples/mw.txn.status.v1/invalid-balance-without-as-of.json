@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7c26",
+  "idempotencyKey": "ussd:7f3a:balance:1",
+  "correlationId": "corr-0026",
+  "channel": "USSD",
+  "txnType": "BALANCE",
+  "status": "COMPLETED",
+  "previousStatus": "VALIDATING",
+  "initiator": {
+    "type": "MSISDN",
+    "id": "01711000001"
+  },
+  "debitParty": {
+    "type": "WALLET",
+    "id": "01711000001",
+    "walletType": "CUSTOMER"
+  },
+  "creditParty": {
+    "type": "WALLET",
+    "id": "01711000001",
+    "walletType": "CUSTOMER"
+  },
+  "amount": {
+    "valueMinor": 0,
+    "currency": "BDT"
+  },
+  "coreRef": "CORE-20261116-000026",
+  "requestedAt": "2026-11-16T08:15:30Z",
+  "updatedAt": "2026-11-16T08:15:31Z",
+  "locale": "bn",
+  "balance": {
+    "available": {
+      "valueMinor": 1200000,
+      "currency": "BDT"
+    }
+  }
+}

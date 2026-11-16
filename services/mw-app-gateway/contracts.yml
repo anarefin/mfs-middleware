@@ -6,6 +6,9 @@
 # the assertion.
 # ADR D25: the wallet history (GET /app/v1/transactions) asks mw-orchestrator's query API
 # (client/OrchestratorQueryClient, wallet-scoped caller).
+# ADR D26: POST /app/v1/balance publishes mw.txn.request.v1 with txnType BALANCE (amount 0, payer =
+# payee = the caller's wallet; ProducedContractsTest fixture) and reads the COMPLETED status's
+# `balance` (sample valid-balance-completed.json, ConsumedContractsTest).
 produces:
   events:
     - events/mw-orchestrator/mw.txn.request.v1.schema.json

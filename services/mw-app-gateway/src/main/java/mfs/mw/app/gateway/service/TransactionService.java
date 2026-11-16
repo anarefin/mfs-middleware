@@ -3,17 +3,12 @@ package mfs.mw.app.gateway.service;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import mfs.mw.app.gateway.client.AuthClient;
 import mfs.mw.app.gateway.config.AppGatewayProperties;
 import mfs.mw.app.gateway.dto.AppUser;
 import mfs.mw.app.gateway.dto.ErrorDetail;
-import mfs.mw.app.gateway.dto.ErrorInfo;
 import mfs.mw.app.gateway.dto.PartnerRef;
 import mfs.mw.app.gateway.dto.StatusMessage;
 import mfs.mw.app.gateway.dto.SubmitResult;
@@ -23,15 +18,12 @@ import mfs.mw.app.gateway.dto.TxnRequest;
 import mfs.mw.app.gateway.exception.ErrorCodes;
 import mfs.mw.app.gateway.exception.MwException;
 import mfs.mw.app.gateway.mapper.RequestMapper;
-import mfs.mw.app.gateway.messaging.EventMetadata;
 import mfs.mw.app.gateway.messaging.EventPublisher;
-import mfs.mw.app.gateway.messaging.MwHeaders;
 import mfs.mw.app.gateway.repository.AppTransactionRepository;
 import mfs.mw.app.gateway.util.Msisdn;
 import mfs.mw.app.gateway.util.UuidV7;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -50,8 +42,7 @@ public class TransactionService {
   /** Types whose counterparty is another wallet of this core. */
   private static final java.util.Set<String> WALLET_TO_WALLET = java.util.Set.of("P2P", "CASH_IN", "CASH_OUT", RequestMapper.MERCHANT_PAY);
 
-  private final EventPublisher publisher;
-  private final ReplyWaiters waiters;
+  private final TxnReplyExchange exchange;
   private final RequestMapper mapper;
   private final AppTransactionRepository transactions;
   private final AppGatewayProperties props;
@@ -68,8 +59,7 @@ public class TransactionService {
       Clock clock,
       BillerService billers,
       AuthClient auth) {
-    this.publisher = publisher;
-    this.waiters = waiters;
+    this.exchange = new TxnReplyExchange(publisher, waiters, props);
     this.mapper = mapper;
     this.transactions = transactions;
     this.props = props;
@@ -97,24 +87,14 @@ public class TransactionService {
                 : RequestMapper.partnerOf(body);
     Instant now = clock.instant();
     String txnId = UuidV7.next(clock).toString();
-    String correlationId = correlationId();
+    String correlationId = TxnReplyExchange.correlationId();
     TxnRequest unauthorised = mapper.toRequest(user, idempotencyKey, body, txnId, correlationId, now, partner);
     // the PIN goes to mw-auth only (ticket 72): its refusal (wrong PIN 401, lock 423, ...) is
     // answered at once and nothing is published; the request carries the assertion instead
     TxnRequest req = unauthorised.withAssertion(
         auth.authorise(mapper.toAuthorisation(user, user.deviceId(), unauthorised, body.encryptedPin())).assertion());
 
-    CompletableFuture<StatusMessage> answer =
-        waiters.register(txnId, idempotencyKey, req.initiator().id());
-    try {
-      publisher.publish(
-          props.requestTopic(), txnId, new EventMetadata(correlationId, txnId, idempotencyKey, 1),
-          req, Map.of(MwHeaders.REPLY_TO, props.instanceId()));
-    } catch (RuntimeException e) {
-      waiters.remove(txnId);
-      throw new MwException(ErrorCodes.SYS_UNAVAILABLE, "Service temporarily unavailable, try again", e)
-          .withStatus(HttpStatus.SERVICE_UNAVAILABLE);
-    }
+    CompletableFuture<StatusMessage> answer = exchange.publish(req);
     transactions.insertAccepted(user.msisdn(), user.channel(), mapper.accepted(req), now);
     log.atInfo()
         .addKeyValue("event", "txn.request.published")
@@ -122,7 +102,7 @@ public class TransactionService {
         .addKeyValue("channel", user.channel())
         .log("transaction request published");
 
-    StatusMessage status = await(answer, txnId);
+    StatusMessage status = exchange.await(answer, txnId);
     if (status == null) {
       return SubmitResult.processing(TransactionView.processing(txnId));
     }
@@ -220,26 +200,6 @@ public class TransactionService {
     return transactions.find(id, user.msisdn()).orElseThrow(TransactionService::notFound);
   }
 
-  /** The answer, or null when the budget ran out. Runs on the HTTP request thread only. */
-  private StatusMessage await(CompletableFuture<StatusMessage> answer, String txnId) {
-    try {
-      return answer.get(props.replyBudget().toMillis(), TimeUnit.MILLISECONDS);
-    } catch (TimeoutException e) {
-      log.atInfo()
-          .addKeyValue("event", "txn.reply.timeout")
-          .addKeyValue("txnId", txnId)
-          .log("no terminal status within the reply budget, answering 202");
-      return null;
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      return null;
-    } catch (ExecutionException e) {
-      return null;
-    } finally {
-      waiters.remove(txnId);
-    }
-  }
-
   /**
    * A duplicate answer that is still running is 202 under the stored txnId; COMPLETED/REVERSED
    * is 200; FAILED/REJECTED is the error envelope with the status's error code and txnId.
@@ -248,20 +208,8 @@ public class TransactionService {
     if (!s.terminal()) {
       return SubmitResult.processing(TransactionView.processing(s.txnId()));
     }
-    ErrorInfo error = s.error();
-    if (("FAILED".equals(s.status()) || "REJECTED".equals(s.status())) && error != null) {
-      MwException e =
-          new MwException(error.code(), error.message())
-              .withTxnId(s.txnId())
-              .withRetryable(error.retryable());
-      throw error.messageBn() == null ? e : e.withMessageBn(error.messageBn());
-    }
+    TxnReplyExchange.throwIfRefused(s);
     return SubmitResult.done(TransactionView.of(s));
-  }
-
-  private static String correlationId() {
-    String id = MDC.get("correlationId");
-    return id == null || id.isBlank() ? UUID.randomUUID().toString() : id;
   }
 
   private static MwException notFound() {

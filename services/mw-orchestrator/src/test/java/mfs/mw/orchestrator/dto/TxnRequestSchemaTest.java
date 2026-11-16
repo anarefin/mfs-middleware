@@ -26,7 +26,12 @@ class TxnRequestSchemaTest {
   void readsEverySample(Path sample) throws Exception {
     TxnRequest r = JSON.readValue(Files.readString(sample), TxnRequest.class);
     assertThat(r.txnId()).isNotBlank();
-    assertThat(r.amount().valueMinor()).isPositive();
+    // amount 0 only for a BALANCE check, which moves no money (ADR D26)
+    if ("BALANCE".equals(r.txnType())) {
+      assertThat(r.amount().valueMinor()).isZero();
+    } else {
+      assertThat(r.amount().valueMinor()).isPositive();
+    }
     assertThat(r.requestedAt()).isNotNull();
     assertThat(r.initiator().id()).isNotBlank();
   }

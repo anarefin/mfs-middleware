@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GreenMail</title>
+<link rel="stylesheet" href="../tutorial/tutorial.css">
+<script src="../tutorial/diagrams.js" defer></script>
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> concepts</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="apisix.html">APISIX</a>
+    <a href="keycloak.html">Keycloak</a>
+    <a href="openbao.html">OpenBao</a>
+    <a href="hsm.html">HSM</a>
+    <a href="greenmail.html" aria-current="page">GreenMail</a>
+    <a href="core-mock.html">Core mock</a>
+    <a href="simulators.html">Simulators</a>
+    <a href="camel.html">Camel</a>
+    <a href="jsonata.html">JSONata</a>
+    <a href="resilience4j.html">Resilience4j</a>
+    <a href="shedlock.html">ShedLock</a>
+    <a href="testcontainers.html">Testcontainers</a>
+    <a href="../tutorial/index.html">Tutorial ↗</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Test double</div>
+  <h1>GreenMail: a mail server that keeps everything</h1>
+  <p class="lead">When a bill payment succeeds, the customer gets an email receipt. In the dev stack that email must not reach a real inbox,
+    but a tester still wants to read it. GreenMail is a small mail server that accepts every message and keeps it, so tests and people can look.</p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#plain">In plain English</a></li>
+    <li><a href="#why">Why we use it here</a></li>
+    <li><a href="#wired">How it is wired</a></li>
+    <li><a href="#read">Reading the mail</a></li>
+    <li><a href="#example">Worked example: a bill-pay receipt</a></li>
+    <li><a href="#where">Where it lives</a></li>
+    <li><a href="#wrong">What can go wrong</a></li>
+    <li><a href="#next">Read next</a></li>
+  </ol></div>
+
+  <h2 id="plain">In plain English</h2>
+  <div class="box plain"><div class="tag">In plain English</div>
+    <p>Imagine a post office that never delivers anything. It takes every letter, sorts it into a pigeonhole by the address on it, and
+      lets anyone with a key to the back room read the pigeonholes. That is GreenMail.</p>
+    <p>A <strong>test double</strong> is a stand-in for a real system that behaves the same from the outside. Our code talks to GreenMail exactly as
+      it would talk to a real mail server, over <strong>SMTP</strong> (the protocol for sending email). The difference is only on the far side:
+      nothing leaves, and every mailbox can be read through a small REST API.</p>
+  </div>
+  <div class="table-wrap"><table>
+    <tr><th>Word</th><th>Meaning</th></tr>
+    <tr><td><strong>SMTP</strong></td><td>Simple Mail Transfer Protocol: how a program hands an email to a mail server. GreenMail listens for it on port 3025.</td></tr>
+    <tr><td><strong>STARTTLS</strong></td><td>An SMTP command that switches the connection to TLS. A real mail server needs it; GreenMail does not offer it.</td></tr>
+    <tr><td><strong>Mailbox</strong></td><td>GreenMail makes one on the fly for every address it receives mail for. No setup needed.</td></tr>
+  </table></div>
+
+  <h2 id="why">Why we use it here</h2>
+  <p>Spec section 22.2 lists the test doubles the stack needs, and one of them is <em>"SMTP (GreenMail)"</em>. ADR
+    <a href="../adr/M7-mvp-platform.md">M7</a> puts it among the MVP platform pieces: <em>"notifications (SMS over SMPP to the SMSC simulator, email over SMTP to GreenMail)"</em>.
+    The reasons are simple:</p>
+  <ul>
+    <li><strong>Real code path.</strong> mw-notify uses Spring's normal <code>JavaMailSender</code>. Swapping GreenMail for a real provider is a host name and port, not a code change.</li>
+    <li><strong>Nothing escapes.</strong> The seeded test addresses end in <code>example.test</code>, and even those never leave the laptop.</li>
+    <li><strong>Tests can assert on mail.</strong> The Newman suite checks that each flow sends exactly one receipt with the right subject.</li>
+  </ul>
+
+  <h2 id="wired">How it is wired</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Container</th><th>Ports</th><th>Notes</th></tr>
+    <tr><td><code>greenmail</code></td><td>3025 SMTP (127.0.0.1:3025); 8080 REST API, published as 127.0.0.1:8025</td><td>No profile, so it starts with every stack. Image <code>greenmail/standalone</code>, pinned by digest.
+      Started with <code>-Dgreenmail.setup.test.all</code> (the standard test ports) and <code>-Dgreenmail.auth.disabled</code> (no SMTP login). Mail is held in memory only.</td></tr>
+  </table></div>
+  <p>Only one service sends email: <strong>mw-notify</strong>. Its block in <code>deploy/docker-compose.yml</code> points it at GreenMail:</p>
+  <pre><code>SMTP_HOST: greenmail
+SMTP_PORT: 3025
+SMTP_STARTTLS_REQUIRED: false    # DEV ONLY: GreenMail offers no STARTTLS
+MW_NOTIFY_FLYWAY_LOCATIONS: classpath:db/migration,classpath:db/dev</code></pre>
+  <ul>
+    <li><strong>STARTTLS.</strong> mw-notify's own default <em>requires</em> STARTTLS and checks the server's identity. Only the compose override turns it off for GreenMail.
+      Production keeps the safe default.</li>
+    <li><strong>Who gets mail.</strong> An email rule needs the party's address in mw-notify's <code>contact</code> table. In dev the extra Flyway folder <code>db/dev</code> fills it
+      (<code>R__dev_contacts.sql</code>): for example 01711000001 is <code>customer01@example.test</code>. A party with no address is skipped.</li>
+    <li><strong>Which flows email.</strong> Today a successful BILL_PAY or ADD_MONEY_BANK sends an email receipt to the initiator. Everything else is SMS only.</li>
+  </ul>
+
+  <h2 id="read">Reading the mail</h2>
+  <p>Three ways, from friendliest to rawest:</p>
+  <ol>
+    <li><strong>Test console.</strong> <code>https://localhost/tester</code>, page <strong>SMS &amp; email</strong>: type a number and press Read. It shows the SMS the SMSC simulator
+      got and the email GreenMail holds for that wallet's address (<a href="../testing-guide.html">testing guide</a> section 6).</li>
+    <li><strong>Through the edge.</strong> The test-only APISIX route <code>/test/mail/*</code> (<code>deploy/apisix/routes-test/test-mail.json</code>) forwards
+      GET requests to GreenMail's <code>/api/*</code>. It needs the test API key in an <code>apikey</code> header (<code>scripts/creds.sh</code> prints it) and exists only
+      when the test-only routes are on (see <a href="apisix.html#wrong">APISIX</a>). The Newman suite and the test console both read mail this way.</li>
+    <li><strong>The direct dev port.</strong> <code>curl http://127.0.0.1:8025/api/user/customer01@example.test/messages/</code> lists that mailbox as JSON. No key; loopback only.</li>
+  </ol>
+
+  <h2 id="example">Worked example: a bill-pay receipt</h2>
+  <p>Customer 01711000001 pays a DESCO electricity bill. When the transaction is COMPLETED, a receipt goes out:</p>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+actors: mw-orchestrator | mw-notify | GreenMail | APISIX | Tester
+mw-orchestrator => mw-notify : mw.txn.status.v1 BILL_PAY COMPLETED
+mw-notify -> mw-notify : rule: EMAIL the INITIATOR; contact 01711000001?
+mw-notify -> mw-notify : render TXN_BILL_PAY_SUCCESS (subject, text, HTML)
+mw-notify -> GreenMail : SMTP to customer01@example.test
+GreenMail --> mw-notify : 250 OK (message SENT)
+Tester -> APISIX : GET /test/mail/user/customer01@example.test/messages/
+APISIX -> GreenMail : GET /api/user/customer01@example.test/messages/
+GreenMail --> Tester : [{subject: "Bits bill payment receipt, TrxID ...", ...}]
+  </script></div><figcaption>The receipt goes out over plain SMTP and is read back through the test-only route.</figcaption></figure>
+  <ol class="steps">
+    <li>The orchestrator publishes the final status of the transaction on Kafka.</li>
+    <li>mw-notify matches its rules. BILL_PAY success has an EMAIL rule for the initiator, and the dev contact table has an address for 01711000001.</li>
+    <li>It renders the email template <code>TXN_BILL_PAY_SUCCESS</code> in the customer's language: a subject, a text part and an HTML part.</li>
+    <li><code>client/SmtpEmailSender</code> sends one multipart message to <code>greenmail:3025</code>.</li>
+    <li>GreenMail accepts it and drops it into the mailbox for that address. mw-notify records the message as SENT.</li>
+    <li>A tester (or the Newman helper in <code>tests/api/lib.js</code>) asks the edge for that mailbox.</li>
+    <li>APISIX checks the key, rewrites <code>/test/mail/</code> to <code>/api/</code>, and forwards to GreenMail.</li>
+    <li>The list comes back. The suite polls until exactly one message with the expected subject is there.</li>
+  </ol>
+
+  <div class="box where" id="where"><div class="tag">Where it lives</div><ul>
+    <li><code>deploy/docker-compose.yml</code>: the <code>greenmail</code> block and mw-notify's <code>SMTP_*</code> settings.</li>
+    <li><a href="../../services/mw-notify/CLAUDE.md">services/mw-notify/CLAUDE.md</a> ("Email"); the sender
+      <a href="../../services/mw-notify/src/main/java/mfs/mw/notify/client/SmtpEmailSender.java">client/SmtpEmailSender</a>; the dev addresses
+      <a href="../../services/mw-notify/src/main/resources/db/dev/R__dev_contacts.sql">db/dev/R__dev_contacts.sql</a>; the receipt templates
+      <a href="../../services/mw-notify/src/main/resources/db/migration/V7__seed_flow_notifications.sql">V7__seed_flow_notifications.sql</a>.</li>
+    <li>The edge route <a href="../../deploy/apisix/routes-test/test-mail.json">deploy/apisix/routes-test/test-mail.json</a>.</li>
+    <li>Readers: <a href="../../tests/api/lib.js">tests/api/lib.js</a> (<code>sim.mail</code>), the test console's
+      <a href="../../ui/mw-test-console/src/lib/server/test-apis.ts">src/lib/server/test-apis.ts</a> and
+      <a href="../../ui/mw-test-console/src/app/inbox/page.tsx">src/app/inbox/page.tsx</a>.</li>
+    <li>Tests without the stack: <a href="../../services/mw-notify/src/test/java/mfs/mw/notify/service/EmailFlowIT.java">service/EmailFlowIT</a> runs an in-process GreenMail;
+      <a href="../../services/mw-notify/src/test/java/mfs/mw/notify/config/MailTlsDefaultsTest.java">config/MailTlsDefaultsTest</a> proves STARTTLS is on by default.</li>
+  </ul></div>
+
+  <h2 id="wrong">What can go wrong</h2>
+  <div class="box wrong"><div class="tag">What can go wrong</div><ul>
+    <li><strong>mw-notify against a real server fails, or against GreenMail fails after you removed the override.</strong> The service requires STARTTLS by default.
+      GreenMail has none, so only <code>SMTP_STARTTLS_REQUIRED: false</code> in compose lets it send. Never carry that override to a real environment.</li>
+    <li><strong>No email arrives.</strong> Check the flow sends one at all (only BILL_PAY and ADD_MONEY_BANK success do), and that the party has an address in
+      <code>contact</code>. A new test wallet without a row there gets SMS only.</li>
+    <li><strong>The mailbox is empty after a restart.</strong> GreenMail keeps mail in memory. Restarting the container clears every mailbox.</li>
+    <li><strong>A test sees two receipts.</strong> Many API-suite customers share <code>customer01@example.test</code>, so filter by subject or TrxID, as the suite does.</li>
+    <li><strong>"Sent" does not mean delivered.</strong> mw-notify has no bounce handling yet: SENT is final once the server accepts the message.</li>
+    <li><strong><code>/test/mail/...</code> answers 404.</strong> The test-only routes are off. Start with <code>--profile tester</code> or run <code>scripts/tester.sh</code>.</li>
+  </ul></div>
+
+  <h2 id="next">Read next</h2>
+  <ul>
+    <li><a href="simulators.html">mw-simulators</a>: the SMSC simulator, GreenMail's partner for SMS.</li>
+    <li><a href="../tutorial/07-ops-platform.html#notify">Tutorial chapter 7</a> for notifications, rules and templates.</li>
+    <li>Spec section 10 (notifications) in <a href="../../spec/bits-mfs-middleware-spec.md">spec/bits-mfs-middleware-spec.md</a>.</li>
+  </ul>
+
+  <nav class="pager">
+    <a href="hsm.html"><small>Previous</small>← HSM</a>
+    <a class="next" href="core-mock.html"><small>Next</small>Core mock →</a>
+  </nav>
+</main>
+</body>
+</html>

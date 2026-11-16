@@ -7,8 +7,8 @@ export default [
       await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE-POOL']);
       await S.dial('robi', '01711000001', '*268#', '9, 3, 1, 20, 1, ' + MW.pin);
       S.ussdScreens([
-        'Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English',
-        'Bits\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা',
+        'Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n5 ব্যালেন্স\n9 English',
+        'Bits\n1 Send Money\n2 Cash Out\n3 Recharge\n4 Pay Bill\n5 Balance\n9 বাংলা',
         'Mobile Recharge\n1 Own number\n2 Other number',
         'Enter recharge amount (Tk)',
         'Recharge Tk 20.00 to 01711000001?\n1 Confirm\n2 Cancel',
@@ -44,8 +44,8 @@ export default [
       await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE-POOL']);
       await S.dial('robi', '01711000001', '*268#', '9, 4, 1, 1234567, 1, ' + MW.pin);
       S.ussdScreens([
-        'Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 মোবাইল রিচার্জ\n4 বিল পে\n9 English',
-        'Bits\n1 Send Money\n2 Cash Out\n3 Mobile Recharge\n4 Pay Bill\n9 বাংলা',
+        'Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n5 ব্যালেন্স\n9 English',
+        'Bits\n1 Send Money\n2 Cash Out\n3 Recharge\n4 Pay Bill\n5 Balance\n9 বাংলা',
         'Select biller\n1 DESCO\n2 DPDC\n3 TITAS\n4 WASA',
         'Enter DESCO bill number',
         'Pay Tk 667.00 for DESCO bill 1234567?\n1 Confirm\n2 Cancel',

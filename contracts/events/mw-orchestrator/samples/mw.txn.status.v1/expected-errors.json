@@ -1,5 +1,6 @@
 {
   "invalid-amount-as-decimal-value.json": ["/amount must have required property 'valueMinor'"],
   "invalid-failed-without-error.json": ["/ must have required property 'error'"],
-  "invalid-unknown-status.json": ["/status must be equal to one of the allowed values"]
+  "invalid-unknown-status.json": ["/status must be equal to one of the allowed values"],
+  "invalid-balance-without-as-of.json": ["/balance must have required property 'asOf'"]
 }

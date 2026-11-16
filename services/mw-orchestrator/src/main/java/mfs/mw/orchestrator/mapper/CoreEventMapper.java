@@ -3,6 +3,10 @@ package mfs.mw.orchestrator.mapper;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
+import mfs.mw.orchestrator.dto.Amount;
+import mfs.mw.orchestrator.dto.Balance;
 import mfs.mw.orchestrator.dto.CoreEvent;
 import mfs.mw.orchestrator.dto.ErrorInfo;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
@@ -81,6 +85,9 @@ public class CoreEventMapper {
           case "ReleaseFailed" -> new ReleaseRefused();
           case "TransactionReversed" -> new ReversalAcknowledged();
           case "ReversalRejected" -> new ReversalFailed();
+          // BALANCE (ADR D26): the answer to BalanceInquiry
+          case "BalanceReported" -> new BalanceReported();
+          case "BalanceInquiryRejected" -> new BalanceInquiryRejected();
           // answer to the QueryTransaction sent after a HOLDING timeout (spec 7.2)
           case "TransactionStatus" -> new HoldQueryResult("HELD".equals(txnStatusOf(event)));
           default -> null;
@@ -91,6 +98,28 @@ public class CoreEventMapper {
   public String holdId(CoreEvent event) {
     JsonNode id = event.payload() == null ? null : event.payload().get("holdId");
     return id == null || !id.isString() || id.asString().isBlank() ? null : id.asString();
+  }
+
+  /**
+   * {@code payload.available} and {@code asOf} of a BalanceReported event (ADR D26), for the
+   * COMPLETED status only; empty for any other event or an answer without them.
+   */
+  public Optional<Balance> balance(CoreEvent event) {
+    if (!"BalanceReported".equals(event.eventType()) || event.payload() == null) {
+      return Optional.empty();
+    }
+    JsonNode available = event.payload().path("available");
+    String asOf = event.payload().path("asOf").asString(null);
+    if (!available.path("valueMinor").isIntegralNumber() || asOf == null) {
+      return Optional.empty();
+    }
+    try {
+      return Optional.of(new Balance(
+          new Amount(available.path("valueMinor").asLong(), available.path("currency").asString(Amount.BDT)),
+          Instant.parse(asOf)));
+    } catch (DateTimeParseException e) {
+      return Optional.empty();
+    }
   }
 
   /** {@code payload.txnStatus} of a TransactionStatus event, else null. */

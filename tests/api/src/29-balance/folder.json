@@ -1,0 +1,4 @@
+{
+  "name": "29 Balance check (USSD option 5, App API POST /app/v1/balance)",
+  "description": "ADR D26: BALANCE moves no money; the PIN is checked by mw-auth, mw-orchestrator asks the core (BalanceInquiry) and passes the available balance to the channel, never storing it. Not in the wallet history, no SMS."
+}

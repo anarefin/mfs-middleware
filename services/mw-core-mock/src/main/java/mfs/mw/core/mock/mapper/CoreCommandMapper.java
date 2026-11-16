@@ -62,6 +62,18 @@ public class CoreCommandMapper {
     return p;
   }
 
+  /**
+   * BalanceInquiry (ADR D26): shaped like a transfer (txnType BALANCE, amount 0) so the assertion is
+   * checked as for one; it always needs the assertion, and both parties must be the same wallet.
+   */
+  public TransferPayload balance(CoreCommand cmd) {
+    TransferPayload p = transfer(cmd);
+    if (blank(p.assertion()) || !p.debitParty().id().equals(p.creditParty().id())) {
+      throw new MwException(ErrorCodes.VAL_INVALID, "BalanceInquiry payload is incomplete");
+    }
+    return p;
+  }
+
   /** The payload of CommitHold / ReleaseHold. */
   public HoldPayload hold(CoreCommand cmd) {
     HoldPayload p = read(cmd, HoldPayload.class);

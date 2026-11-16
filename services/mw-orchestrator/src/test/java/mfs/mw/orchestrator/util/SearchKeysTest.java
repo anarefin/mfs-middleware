@@ -84,4 +84,10 @@ class SearchKeysTest {
     assertThat(SearchKeys.walletParties(TestData.p2p(TestData.txnId(), "k", 100)).toString())
         .doesNotContain("01711000001");
   }
+
+  /** ADR D26 / D25: a BALANCE check moves no money and is no entry of the wallet history. */
+  @Test
+  void aBalanceCheckHasNoWalletParties() {
+    assertThat(SearchKeys.walletParties(TestData.balance(TestData.txnId(), "k", "01711000001"))).isEmpty();
+  }
 }

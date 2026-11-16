@@ -5,11 +5,14 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
+import mfs.mw.ussd.util.Sensitive;
+import mfs.mw.ussd.util.SensitiveType;
 
 /**
  * A state change read from {@code mw.txn.status.v1} (contract {@code
  * events/mw-orchestrator/mw.txn.status.v1}, owned by mw-orchestrator). Only the fields this
- * service shows the app; unknown fields are ignored.
+ * service shows the app; unknown fields are ignored. {@code balance}: BALANCE COMPLETED only (ADR
+ * D26), shown on the screen, never stored or logged.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -32,7 +35,8 @@ public record StatusMessage(
     String locale,
     Map<String, String> attributes,
     Instant requestedAt,
-    Instant updatedAt) {
+    Instant updatedAt,
+    @Sensitive(SensitiveType.SECRET) Balance balance) {
 
   /** Attribute the orchestrator sets on the answer to a repeated request (spec 7.3). */
   public static final String REQUEST_TXN_ID = "requestTxnId";

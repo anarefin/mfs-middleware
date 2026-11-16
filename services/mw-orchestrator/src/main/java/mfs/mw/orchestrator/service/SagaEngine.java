@@ -3,11 +3,13 @@ package mfs.mw.orchestrator.service;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import mfs.mw.orchestrator.config.InquiryProperties;
 import mfs.mw.orchestrator.config.OrchestratorProperties;
 import mfs.mw.orchestrator.dto.AuditEvent;
+import mfs.mw.orchestrator.dto.Balance;
 import mfs.mw.orchestrator.dto.CoreCommand;
 import mfs.mw.orchestrator.dto.ErrorInfo;
 import mfs.mw.orchestrator.dto.PartnerRequest;
@@ -115,6 +117,15 @@ public class SagaEngine {
    *     accept the event; nothing has been written then
    */
   public TransactionRecord fire(TransactionRecord rec, SagaEvent event, ErrorInfo error) {
+    return fire(rec, event, error, null);
+  }
+
+  /**
+   * As {@link #fire(TransactionRecord, SagaEvent, ErrorInfo)}, with the core's balance of a BALANCE
+   * check (ADR D26), passed through to the status message only: it is not part of the record, so it
+   * reaches neither the {@code transaction} row, the {@code saga_step} timeline nor the audit event.
+   */
+  public TransactionRecord fire(TransactionRecord rec, SagaEvent event, ErrorInfo error, Balance balance) {
     Transition t = SagaMachine.apply(rec.status(), event);
     refuseStepOutsideFlow(rec, event, t);
     Instant now = clock.instant();
@@ -123,7 +134,7 @@ public class SagaEngine {
     if (t.changesState()) {
       transactions.update(next);
       transactions.recordStep(rec.txnId(), t.from(), t.to(), event.getClass().getSimpleName(), now);
-      publishStatus(statusMapper.toStatus(next), next.replyTo());
+      publishStatus(statusMapper.toStatus(next, balance), next.replyTo());
       audit(next, t.from(), now);
       log.atInfo()
           .addKeyValue("event", "txn.state.changed")
@@ -144,11 +155,25 @@ public class SagaEngine {
    * enter a state whose command is never sent and whose deadline resends nothing for ever.
    */
   private void refuseStepOutsideFlow(TransactionRecord rec, SagaEvent event, Transition t) {
-    Optional<Step> step = Step.of(t.effect());
     Optional<Flow> flow = flows.find(rec.request().txnType());
-    if (step.isPresent() && flow.isPresent() && !flow.get().allows(step.get())) {
-      throw new InvalidTransitionException(rec.status(), event);
+    if (flow.isEmpty()) {
+      return;
     }
+    for (Optional<Step> step : List.of(Step.of(t.effect()), answered(event))) {
+      if (step.isPresent() && !flow.get().allows(step.get())) {
+        throw new InvalidTransitionException(rec.status(), event);
+      }
+    }
+  }
+
+  /**
+   * The step an event answers, where the state alone does not tell: a balance answer belongs to a
+   * BALANCE check only, so a BalanceReported for a P2P in VALIDATING is refused (ADR D26).
+   */
+  private static Optional<Step> answered(SagaEvent event) {
+    return event instanceof SagaEvent.BalanceReported || event instanceof SagaEvent.BalanceInquiryRejected
+        ? Optional.of(Step.BALANCE_INQUIRY)
+        : Optional.empty();
   }
 
   /** Publishes a status on the status topic with the record's reply-to header. */
@@ -201,6 +226,7 @@ public class SagaEngine {
     Duration ttl = properties.commandTtl();
     switch (step.get()) {
       case VALIDATE -> send(rec, commandMapper.validate(rec, now, ttl));
+      case BALANCE_INQUIRY -> send(rec, commandMapper.balanceInquiry(rec, now, ttl));
       case POST -> send(rec, commandMapper.post(rec, now, ttl));
       case HOLD -> send(rec, commandMapper.hold(rec, now, ttl));
       // inbound money (ADD_MONEY_BANK) has no hold: its commit is crediting the wallet. A forced

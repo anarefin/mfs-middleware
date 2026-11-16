@@ -100,6 +100,50 @@ class TxnRequestMapperTest {
   }
 
   /**
+   * ADR D26: a balance inquiry moves no money: amount 0 BDT, both parties the dialling customer's own
+   * wallet, no partner; the ACTION maps no fields. Valid against the request contract once it carries
+   * mw-auth's assertion (required for BALANCE).
+   */
+  @Test
+  void balanceAsksForTheOwnWalletWithAmountZero() {
+    UssdSession s =
+        new UssdSession("robi", "sess-5", "01712345678", "main", 3, "bn", "bal.check", List.of("main:5", "bal.pin"),
+            Map.of(), 0, List.of(), false, NOW);
+    TxnRequestMapper mapper = new TxnRequestMapper();
+    EncryptedPin pin = new EncryptedPin("PIN_TRANSPORT.v1", "Y2lwaGVy");
+
+    TxnRequest req = mapper.toRequest(new FlowRequest("BALANCE", s, "main:5>bal.pin", Map.of(), pin),
+        "019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c10", "k".repeat(64), "corr-5", NOW);
+
+    JsonNode tree = JSON.valueToTree(req.withAssertion("eyJhbGciOiJFUzI1NiJ9.eyJqdGkiOiJ0In0.c2lnbmF0dXJl"));
+    assertThat(ContractSchemas.schema("events/mw-orchestrator/mw.txn.request.v1.schema.json").validate(tree))
+        .isEmpty();
+    assertThat(tree.path("txnType").asString()).isEqualTo("BALANCE");
+    assertThat(tree.path("amount").path("valueMinor").asLong()).isZero();
+    assertThat(tree.path("amount").path("currency").asString()).isEqualTo("BDT");
+    assertThat(req.creditParty()).isEqualTo(req.debitParty());
+    assertThat(tree.path("creditParty").path("type").asString()).isEqualTo("WALLET");
+    assertThat(tree.path("creditParty").path("id").asString()).isEqualTo("01712345678");
+    assertThat(tree.path("creditParty").path("walletType").asString()).isEqualTo("CUSTOMER");
+    assertThat(tree.path("partner").isMissingNode()).isTrue();
+
+    TxnAuthorisationRequest a = mapper.authorisation(req, pin);
+    assertThat(a.txn().txnType()).isEqualTo("BALANCE");
+    assertThat(a.txn().amount()).isZero();
+    assertThat(a.txn().currency()).isEqualTo("BDT");
+    assertThat(a.txn().payer()).isEqualTo(new TxnAuthorisationRequest.TxnParty("WALLET", "01712345678"));
+    assertThat(a.txn().payee()).isEqualTo(a.txn().payer());
+  }
+
+  @Test
+  void balanceNeedsNoMappedFieldsAndAMissingAmountIsZero() {
+    assertThat(TxnRequestMapper.REQUIRED_FIELDS.get("BALANCE")).isEmpty();
+    assertThat(TxnRequestMapper.FLOWS).contains("BALANCE");
+    assertThat(TxnRequestMapper.minor(null)).isZero();
+    assertThat(TxnRequestMapper.minor("")).isZero();
+  }
+
+  /**
    * Decision of ticket 71: mw-auth hashes exactly the values the request then carries (payer =
    * debitParty, payee = creditParty, amount = valueMinor, the same idempotency key and channel), or
    * the core's txnHash check fails. One case per flow.
@@ -117,7 +161,8 @@ class TxnRequestMapperTest {
         new FlowRequest("TOPUP", s, "p",
             Map.of("creditParty", "01912345678", "amount", "20", "partnerId", "gp", "productCode", "PREPAID"), pin),
         new FlowRequest("BILL_PAY", s, "p",
-            Map.of("creditParty", "1234567", "amount", "667", "partnerId", "billagg", "billerCode", "DESCO"), pin))) {
+            Map.of("creditParty", "1234567", "amount", "667", "partnerId", "billagg", "billerCode", "DESCO"), pin),
+        new FlowRequest("BALANCE", s, "p", Map.of(), pin))) {
       TxnRequest req = mapper.toRequest(f, "019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c0f", "k".repeat(64), "corr-4", NOW);
 
       TxnAuthorisationRequest a = mapper.authorisation(req, pin);

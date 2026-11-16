@@ -29,6 +29,7 @@ public class CoreCommandMapper {
   public static final String STEP_REVERSE = "reverse";
   public static final String STEP_REVERSE_QUERY = "reverse-query";
   public static final String STEP_CREDIT_CHECK = "credit-check";
+  public static final String STEP_BALANCE = "balance";
 
   public String commandId(String txnId, String step) {
     return txnId + ":" + step;
@@ -40,6 +41,15 @@ public class CoreCommandMapper {
 
   public CoreCommand post(TransactionRecord rec, Instant now, Duration ttl) {
     return transfer("PostTransfer", STEP_POST, rec, now, ttl);
+  }
+
+  /**
+   * BalanceInquiry of a BALANCE check (ADR D26): a transfer-shaped payload (txnType BALANCE, amount
+   * 0, the wallet on both sides, the assertion and idempotency key), so the core checks the
+   * assertion as for money. {@code <txnId>:balance}; sent once (a missing answer fails the check).
+   */
+  public CoreCommand balanceInquiry(TransactionRecord rec, Instant now, Duration ttl) {
+    return transfer("BalanceInquiry", STEP_BALANCE, rec, now, ttl);
   }
 
   /** HoldFunds: the same payload as a transfer; the core reserves amount + fee. */

@@ -4,7 +4,10 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 import java.util.Map;
 
-/** A state change on {@code mw.txn.status.v1} (contract {@code mw.txn.status.v1}, owned by this service). */
+/**
+ * A state change on {@code mw.txn.status.v1} (contract {@code mw.txn.status.v1}, owned by this
+ * service). {@code balance} only on the COMPLETED status of a BALANCE check (ADR D26).
+ */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record StatusMessage(
     int schemaVersion,
@@ -28,4 +31,5 @@ public record StatusMessage(
     String locale,
     Map<String, String> attributes,
     Instant requestedAt,
-    Instant updatedAt) {}
+    Instant updatedAt,
+    Balance balance) {}

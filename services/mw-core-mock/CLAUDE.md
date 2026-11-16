@@ -25,8 +25,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   (`route/CorePaymentCommandRoute`), both with retry topics + DLQ. Handled: `ValidateTransaction`
   (fee, limits, assertion, account status; moves no money), `PostTransfer` (double-entry debit/credit plus
   fee), `HoldFunds`, `CommitHold`, `ReleaseHold`, `CreditWallet`, `ReverseTransaction`,
-  `QueryTransaction`, `UnlockWallet` (ticket 52), `VerifyCustomerFactors` (ticket 70). `ApplyComplianceAction`
-  and unknown types are logged and ignored.
+  `QueryTransaction`, `UnlockWallet` (ticket 52), `VerifyCustomerFactors` (ticket 70), `BalanceInquiry`
+  (ADR D26). `ApplyComplianceAction` and unknown types are logged and ignored.
+- `BalanceInquiry` (ADR D26, txnType BALANCE, commandId `<txnId>:balance`; `CoreCommandMapper.balance`: a
+  `TransferPayload` with amount 0 and debit = credit wallet, assertion required, else malformed): unknown
+  wallet `BalanceInquiryRejected WALLET_NOT_FOUND`, not ACTIVE (LOCKED, BLOCKED, HOLD) `WALLET_NOT_ACTIVE`,
+  then the assertion (`AssertionCheck`, subject the wallet; refused `MW-AUTH-046`; its jti is claimed like a
+  transfer's), else `BalanceReported {walletId, available (balance - held), asOf (clock now)}`
+  (`CoreEventMapper.balanceReported`). No ledger entry, no daily-limit use; the amount is never logged.
+  Idempotent on commandId (a replay answers the stored balance), REJECT faults apply. Test:
+  `service/BalanceInquiryIT`.
 - `VerifyCustomerFactors` (ticket 70, mw-auth's self-service PIN reset; `dto/FactorsPayload`,
   `CoreCommandMapper.factors`): the KYC factors arrive as TOKENISE_NID hashes the mock cannot recompute
   (no KYC data, no mw-crypto key), so it checks the wallet only: unknown `CustomerFactorsRejected
@@ -70,7 +78,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 - Emits the result events (`TransactionValidated`/`TransactionRejected`, `FundsHeld`/`HoldRejected`,
   `HoldCommitted`/`CommitFailed`, `HoldReleased`/`ReleaseFailed`, `TransferPosted`/`TransferRejected`,
   `WalletCredited`/`CreditRejected`, `TransactionReversed`/`ReversalRejected`, `TransactionStatus`,
-  `WalletUnlocked`/`UnlockRejected`) through the transactional outbox, in the same transaction as the ledger change and the
+  `WalletUnlocked`/`UnlockRejected`, `BalanceReported`/`BalanceInquiryRejected`) through the transactional outbox, in the same transaction as the ledger change and the
   `command_log` row. Idempotent on `commandId`: the first result event is stored verbatim and a
   repeated command gets the same event again (a second outbox row, one ledger effect). A command
   whose `expiresAt` passed before it was first seen is dropped without an event.
@@ -159,7 +167,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   `CREDIT_ACCOUNT_BLOCKED`, `SAME_WALLET`, `MW-AUTH-046` (assertion), `INVALID_AMOUNT`,
   `LIMIT_EXCEEDED_PER_TXN`, `LIMIT_EXCEEDED_DAILY`, `INSUFFICIENT_BALANCE`, plus the hold and
   reversal reasons above, `WALLET_NOT_LOCKED` (unlock), `FACTORS_MISMATCH` and `WALLET_NOT_ACTIVE`
-  (VerifyCustomerFactors). Check order: wallets, wallet types, status, assertion, amount, limits, funds.
+  (VerifyCustomerFactors, BalanceInquiry). Check order: wallets, wallet types, status, assertion, amount, limits, funds.
 - Transaction assertion (spec 18.7, D22, ticket 71; `service/AssertionCheck`, `security/AssertionKeys`,
   `client/AssertionJwksClient`, `repository/UsedAssertionRepository`, `util/TxnHash` + `util/CanonicalJson`
   (copied from mw-auth), `config/AssertionProperties` `mw.coremock.assertion.*`): a ValidateTransaction,
@@ -192,7 +200,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 
 - `events/mw-core-mock/core.event.v1.schema.json` and its per-event payload schemas (topics
   `core.wallet.event.v1`, `core.payment.event.v1`). Tests validate every emitted event against it.
-- Machine-readable list: `contracts.yml` (produces 18 `core.event.v1` types (ticket 67: `WalletStateChanged`), consumes the 9 handled
+- Machine-readable list: `contracts.yml` (produces 22 `core.event.v1` types (ticket 67: `WalletStateChanged`; D26: `BalanceReported`,
+  `BalanceInquiryRejected`), consumes the 11 handled
   `core.command.v1` types; `ApplyComplianceAction` is ignored, so neither it nor `ComplianceAction*` is
   listed), checked by `./gradlew :contractsLint`, tested by `contracts/ProducedContractsTest` /
   `ConsumedContractsTest` (no Spring, no Docker). The fault and balance admin API is not a product

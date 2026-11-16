@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keycloak realms</title>
+<link rel="stylesheet" href="../tutorial/tutorial.css">
+<script src="../tutorial/diagrams.js" defer></script>
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> concepts</a>
+  <nav>
+    <a href="index.html">Start</a>
+    <a href="apisix.html">APISIX</a>
+    <a href="keycloak.html" aria-current="page">Keycloak</a>
+    <a href="openbao.html">OpenBao</a>
+    <a href="hsm.html">HSM</a>
+    <a href="greenmail.html">GreenMail</a>
+    <a href="core-mock.html">Core mock</a>
+    <a href="simulators.html">Simulators</a>
+    <a href="camel.html">Camel</a>
+    <a href="jsonata.html">JSONata</a>
+    <a href="resilience4j.html">Resilience4j</a>
+    <a href="shedlock.html">ShedLock</a>
+    <a href="testcontainers.html">Testcontainers</a>
+    <a href="../tutorial/index.html">Tutorial ↗</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Identity</div>
+  <h1>Keycloak: who is logging in</h1>
+  <p class="lead">Staff in the ops console, users of the organisation portal, our own services calling each other, and partner
+    systems all get their tokens from one place: Keycloak. The services never check a password themselves. They only check
+    that a token is genuine and carries the right role. Wallet app users are the one exception, and this page explains why.</p>
+
+  <div class="toc"><strong>On this page</strong><ol>
+    <li><a href="#plain">In plain English</a></li>
+    <li><a href="#why">Why we use it here</a></li>
+    <li><a href="#wired">How it is wired</a></li>
+    <li><a href="#realms">The four realms</a></li>
+    <li><a href="#notapp">Why app users are not in Keycloak</a></li>
+    <li><a href="#example">Worked example: an operator lists transactions</a></li>
+    <li><a href="#where">Where it lives</a></li>
+    <li><a href="#wrong">What can go wrong</a></li>
+    <li><a href="#next">Read next</a></li>
+  </ol></div>
+
+  <h2 id="plain">In plain English</h2>
+  <div class="box plain"><div class="tag">In plain English</div>
+    <p>Think of the badge office at a large company. You show your ID once at the office, and they print you a badge with your
+      name, your department and an expiry time. After that, every door just looks at the badge. The doors do not know your
+      password and do not need to. Keycloak is that badge office. It is an <strong>identity provider</strong>: it checks who
+      you are and hands out a signed <strong>token</strong> that says so.</p>
+    <p>The badge here is a <strong>JWT</strong> (JSON Web Token): a small JSON document with a digital signature. Anyone with
+      Keycloak's public key can check the signature, so a service can trust the token without calling Keycloak on every request.</p>
+  </div>
+  <p>A few Keycloak words you will see everywhere:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Word</th><th>Meaning</th><th>Example here</th></tr>
+    <tr><td><strong>Realm</strong></td><td>A separate world of users, roles, clients and login rules. Realms share nothing.</td><td><code>ops</code> for staff, <code>services</code> for our own services</td></tr>
+    <tr><td><strong>Client</strong></td><td>An application that asks Keycloak for tokens.</td><td><code>mw-admin-ui</code> (the ops console), <code>mw-app-gateway</code> (a service)</td></tr>
+    <tr><td><strong>Role</strong></td><td>A label on a user that a service turns into permissions.</td><td><code>ops-maker</code> may raise a change request, <code>ops-checker</code> may approve it</td></tr>
+    <tr><td><strong>Grant</strong></td><td>The way a client gets a token.</td><td>Authorization Code + PKCE for a browser; client credentials for a service</td></tr>
+    <tr><td><strong>Issuer (<code>iss</code>)</strong></td><td>The claim in a token that says who made it.</td><td><code>https://localhost/realms/ops</code></td></tr>
+    <tr><td><strong>JWKS</strong></td><td>"JSON Web Key Set": the public keys a realm signs with, published at a URL.</td><td><code>http://keycloak:8080/realms/ops/protocol/openid-connect/certs</code></td></tr>
+    <tr><td><strong>TOTP</strong></td><td>"Time-based one-time password": the six-digit code an authenticator app shows, new every 30 s.</td><td>second factor of every <code>ops</code> and <code>portals</code> login</td></tr>
+  </table></div>
+
+  <h2 id="why">Why we use it here</h2>
+  <p>The decision record <a href="../adr/D9-platform-services.md">D9</a> starts from one sentence: <em>"Identity, secrets and
+    resilience are cross-cutting and must not be invented per service."</em> Logins, two-factor codes, lockout after failed
+    attempts, password rules and key rotation are hard to get right. Keycloak is a mature open-source product that does all
+    of it, so no Spring service in this repo stores a staff password.</p>
+  <p>Later, <a href="../adr/D21-wallet-token-issuer.md">D21</a> narrowed its job: <em>"Keycloak keeps <code>ops</code> (TOTP),
+    <code>portals</code> (TOTP added), <code>partners</code> (<code>private_key_jwt</code> instead of shared secrets) and
+    <code>services</code>; every realm gets brute-force detection and a password policy."</em></p>
+  <p>Two rules follow from this:</p>
+  <ul>
+    <li><strong>Every service checks the token again.</strong> APISIX checks staff tokens at the edge, and the service behind it checks the
+      signature, issuer and roles once more (defence in depth). The gateway is the first lock, not the last.</li>
+    <li><strong>Roles are enforced in the service.</strong> Keycloak only says "this person has role <code>ops-checker</code>". What that role may
+      do is decided in the Spring Security config of the service.</li>
+  </ul>
+
+  <h2 id="wired">How it is wired</h2>
+  <p>Keycloak is one container in <code>deploy/docker-compose.yml</code>. It has no profile, so it starts with every stack:</p>
+  <div class="table-wrap"><table>
+    <tr><th>Container</th><th>Kind</th><th>What it does</th></tr>
+    <tr><td><code>keycloak</code></td><td>long-running</td><td>Keycloak 26 in production mode on PostgreSQL (its own <code>keycloak</code> database). Plain HTTP on port 8080 inside the stack, published on
+      127.0.0.1:8180 (knob <code>MW_PORT_KEYCLOAK</code>). Browsers reach it only through APISIX on 443. Health on management port 9000.</td></tr>
+    <tr><td><code>provision</code></td><td>one-shot, profiles <code>minimal</code> and <code>core</code></td><td>Waits for a healthy Keycloak, then registers the certificate of the
+      partner client <code>partner-sim</code> in realm <code>partners</code> (see <a href="openbao.html">OpenBao</a> for the rest of its job).</td></tr>
+  </table></div>
+  <p>The image is built from <code>deploy/keycloak/Dockerfile</code>. It runs <code>kc.sh build</code> once at image build time, so each start
+    can use <code>start --optimized --import-realm</code> and skip about ten seconds of start-up work. There is no custom plugin and no theme.</p>
+  <h3>Realms as files</h3>
+  <p>Nobody clicks a realm together in the Keycloak admin screen. Each realm is a JSON export in Git:</p>
+  <pre><code>deploy/keycloak/realms/
+  ops-realm.json        staff of the ops console (password + TOTP)
+  portals-realm.json    organisation and service-provider portal users (password + TOTP)
+  services-realm.json   one client per calling service (client credentials)
+  partners-realm.json   partner systems (private_key_jwt)</code></pre>
+  <p>The folder is mounted read-only into the container, and <code>--import-realm</code> loads each file on start <strong>when the realm does not
+    exist yet</strong>. Secrets are never in the JSON. The files hold placeholders such as <code>${KC_MW_ADMIN_API_SECRET}</code> or
+    <code>${KC_OPS_TEST_TOTP_SECRET}</code>, and Keycloak fills them from environment variables on import. Compose passes those variables from
+    <code>deploy/.env</code>, a copy of the committed fake dev values in <code>deploy/dev.env.defaults</code>.</p>
+  <p>The fixed settings (database URL, proxy headers, health) are in <code>deploy/env/keycloak.env</code>. <code>KC_PROXY_HEADERS=xforwarded</code> tells
+    Keycloak to trust the <code>X-Forwarded-*</code> headers APISIX sets, and <code>KC_HOSTNAME</code> is left unset on purpose: Keycloak builds its
+    URLs (and the <code>iss</code> claim) from the request. That is why the same realm can issue <code>http://keycloak:8080/realms/ops</code> to a
+    caller inside the stack and <code>https://localhost/realms/ops</code> to a browser.</p>
+
+  <h2 id="realms">The four realms</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Realm</th><th>Who</th><th>Clients</th><th>How they log in</th></tr>
+    <tr><td><code>ops</code></td><td>Bits staff using the ops console</td><td><code>mw-admin-ui</code> (public, PKCE S256); <code>mw-e2e-ops</code> (dev only, for automated tests)</td>
+      <td>Browser flow <code>browser-mfa</code>: password form, then TOTP form (HmacSHA256, 6 digits, 30 s)</td></tr>
+    <tr><td><code>portals</code></td><td>Users of the organisation and service-provider portals</td><td><code>mw-portal</code></td>
+      <td>Password + TOTP, the same <code>browser-mfa</code> flow</td></tr>
+    <tr><td><code>services</code></td><td>Our own services calling each other's internal APIs</td><td><code>mw-portal-api</code>, <code>mw-admin-api</code>, <code>mw-audit-dw</code>, <code>mw-auth</code>,
+      <code>mw-app-gateway</code>, <code>mw-ussd</code>, <code>mw-checkout</code></td>
+      <td>Client credentials: client id + client secret, no user at all</td></tr>
+    <tr><td><code>partners</code></td><td>Partner systems</td><td><code>partner-sim</code> (the simulated partner)</td>
+      <td><code>private_key_jwt</code>: the partner signs a short JWT with its own private key; there is no shared secret</td></tr>
+  </table></div>
+  <p>Roles in <code>ops</code> follow the jobs in the spec: <code>viewer</code>, <code>ops-maker</code>, <code>ops-checker</code>, <code>ops-emergency</code>,
+    <code>integration-maker</code>, <code>integration-checker</code>, <code>recon-maker</code>, <code>recon-checker</code>, <code>compliance-officer</code>,
+    <code>security-admin</code> and <code>auditor</code>. A <strong>maker</strong> proposes a change and a <strong>checker</strong> approves it, so no single person
+    can change money on their own. In <code>portals</code> the roles are <code>org-maker</code>, <code>org-checker</code> and <code>sp-viewer</code>. In
+    <code>services</code> every service account has the one role <code>internal-api</code>.</p>
+  <p>Every realm has the same safety settings: a temporary lockout after <strong>5 failed logins</strong> (not a permanent one), passwords of
+    at least 12 characters that differ from the user name and the last five passwords, and <strong>access tokens that live 5 minutes</strong>.
+    A short token limits the damage if one leaks; the console refreshes it quietly in the background.</p>
+  <h3>Two ways a service checks a Keycloak token</h3>
+  <ul>
+    <li><strong>A staff token</strong> (mw-admin-api, mw-portal-api). Spring's <code>NimbusJwtDecoder</code> fetches the realm's JWKS on the first token
+      and checks signature and expiry. A small <code>RealmIssuerValidator</code> then accepts the token only if <code>iss</code> ends with
+      <code>/realms/ops</code> (or <code>/realms/portals</code>). It compares only the end, because the host part depends on how the client reached
+      Keycloak. Each path then needs certain roles.</li>
+    <li><strong>A service token</strong> on an <code>/internal/v1</code> API (mw-orchestrator, mw-audit-dw, mw-auth, mw-crypto). The token must name the called
+      service in <code>aud</code> (audience), and its <code>azp</code> claim (the client id that asked for it) must be on that service's allow-list. An
+      <code>InternalCallerPolicy</code> class holds these rules. mw-auth and mw-crypto also require mTLS: <code>azp</code> must equal the name in the caller's
+      client certificate, which comes from <a href="openbao.html">OpenBao</a>.</li>
+  </ul>
+
+  <h2 id="notapp">Why app users are not in Keycloak</h2>
+  <p>Customers, agents and merchants using the wallet app are <strong>not</strong> Keycloak users. Until ticket 73 there was a realm
+    <code>customers</code> with a password login, but a wallet has millions of users whose real login factor is their PIN plus a bound phone.
+    Keeping a copy of every wallet user in Keycloak, and teaching Keycloak to check a PIN, would mean a second user database and a custom
+    plugin to maintain. So <a href="../adr/D21-wallet-token-issuer.md">D21</a> moved the job to our own service <strong>mw-auth</strong>:</p>
+  <ul>
+    <li>The app logs in at mw-auth with phone number (MSISDN) + PIN on a bound device.</li>
+    <li>mw-auth issues an access token signed with an RS256 key held by mw-crypto (5 minutes), plus a refresh token.</li>
+    <li>mw-auth publishes the public keys at its own JWKS URL. APISIX's <code>app-v1</code> route and mw-app-gateway check app tokens against
+      <em>that</em> JWKS. mw-app-gateway expects header <code>typ</code> = <code>at+jwt</code>, issuer exactly <code>mw-auth</code> and audience <code>mw-app</code>.</li>
+  </ul>
+  <p>The <code>customers</code> realm and its APISIX token route are gone. The old route id <code>routes/auth-customers-token</code> is listed in
+    <code>deploy/apisix/retired.txt</code>, so APISIX deletes it if an old etcd still has it. So when you see "token" in this repo, ask first:
+    a Keycloak token (staff, portal, service, partner) or an mw-auth token (app user)?</p>
+
+  <h2 id="example">Worked example: an operator lists transactions</h2>
+  <p>An operator opens <code>https://localhost/console</code>, signs in and opens the transactions page. The ops console
+    (mw-admin-ui, a Next.js app using Auth.js) never sees the password; Keycloak does. Here is the whole trip:</p>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+actors: Browser | APISIX | Keycloak | mw-admin-ui | mw-admin-api | mw-orchestrator
+Browser -> APISIX : GET /console
+APISIX -> mw-admin-ui : admin-ui route
+mw-admin-ui --> Browser : redirect to /realms/ops (code + PKCE)
+Browser -> APISIX : /realms/ops/... login pages
+APISIX -> Keycloak : auth-ops-browser: X-Forwarded-Host pinned
+Keycloak --> Browser : password form, then TOTP form
+Browser -> mw-admin-ui : back with an authorization code
+mw-admin-ui -> Keycloak : exchange code for tokens (inside the stack)
+Keycloak --> mw-admin-ui : access token, iss https://localhost/realms/ops
+mw-admin-ui -> APISIX : GET /admin/v1/transactions (Bearer)
+APISIX -> APISIX : admin-v1: openid-connect, realm ops JWKS
+APISIX -> mw-admin-api : forward
+mw-admin-api -> mw-admin-api : verify again: signature, realm, role
+mw-admin-api -> Keycloak : client credentials, realm services
+mw-admin-api -> mw-orchestrator : GET /internal/v1/transactions (service token)
+mw-orchestrator -> mw-orchestrator : aud mw-orchestrator? azp allowed?
+mw-orchestrator --> mw-admin-api : the page of transactions
+mw-admin-api --> mw-admin-ui : masked JSON
+mw-admin-ui --> Browser : the transactions page
+  </script></div><figcaption>One sign-in and one page load, with two kinds of Keycloak token.</figcaption></figure>
+  <ol class="steps">
+    <li><strong>The console sends the browser to Keycloak.</strong> mw-admin-ui starts the <strong>Authorization Code flow with PKCE</strong>: the browser is
+      redirected to <code>/realms/ops/...</code> with a one-time challenge. PKCE ("proof key for code exchange") means a stolen code is useless
+      without the secret the console kept back.</li>
+    <li><strong>APISIX passes the login pages through.</strong> The route <code>auth-ops-browser</code> forwards <code>/realms/ops/*</code> to Keycloak and sets
+      <code>X-Forwarded-Host</code>, <code>-Proto</code> and <code>-Port</code> to the public host on 443. The client's own <code>Host</code> header is never trusted, so
+      nobody can trick Keycloak into building links to another site.</li>
+    <li><strong>Two factors.</strong> The <code>browser-mfa</code> flow asks for the password, then the TOTP code. Five wrong tries lock the user for a while.</li>
+    <li><strong>Code for tokens.</strong> Keycloak redirects back with a code. mw-admin-ui swaps it for tokens on the server side, inside the stack.
+      The tokens stay in an encrypted, HTTP-only cookie; the browser's JavaScript never sees them. The token's issuer is
+      <code>https://localhost/realms/ops</code>, because that is the host Keycloak was told by APISIX.</li>
+    <li><strong>The API call.</strong> mw-admin-ui calls <code>GET /admin/v1/transactions</code> through APISIX with the token. The route <code>admin-v1</code> runs
+      <code>openid-connect</code> in bearer-only mode against the <code>ops</code> realm's keys. It accepts two issuers, the internal
+      <code>http://keycloak:8080/realms/ops</code> and the public <code>https://localhost/realms/ops</code>.</li>
+    <li><strong>The service checks again.</strong> mw-admin-api decodes the token with the realm's JWKS, runs <code>RealmIssuerValidator</code>, then its
+      <code>SecurityConfig</code> asks: does this operator have a role that may read transactions?</li>
+    <li><strong>A service token for the next hop.</strong> mw-admin-api needs data from mw-orchestrator's internal API. It cannot forward the operator's
+      token there; it gets its own token from realm <code>services</code> with the client-credentials grant (client <code>mw-admin-api</code>, secret
+      from OpenBao). That token's audience includes <code>mw-orchestrator</code>.</li>
+    <li><strong>The orchestrator checks the caller.</strong> mw-orchestrator checks the realm <code>services</code> signature and issuer, that <code>aud</code> contains
+      <code>mw-orchestrator</code>, and that <code>azp</code> is one of <code>mw-portal-api</code>, <code>mw-admin-api</code>, <code>mw-app-gateway</code>. Then it answers.</li>
+  </ol>
+
+  <div class="box where" id="where"><div class="tag">Where it lives</div><ul>
+    <li><a href="../../deploy/keycloak/realms/ops-realm.json">deploy/keycloak/realms/ops-realm.json</a>,
+      <a href="../../deploy/keycloak/realms/portals-realm.json">portals-realm.json</a>,
+      <a href="../../deploy/keycloak/realms/services-realm.json">services-realm.json</a>,
+      <a href="../../deploy/keycloak/realms/partners-realm.json">partners-realm.json</a>: the four realms.</li>
+    <li><a href="../../deploy/keycloak/Dockerfile">deploy/keycloak/Dockerfile</a> (the pre-built image) and
+      <a href="../../deploy/env/keycloak.env">deploy/env/keycloak.env</a> (database, proxy and health settings).</li>
+    <li>Edge routes: <a href="../../deploy/apisix/routes/auth-ops-browser.json">routes/auth-ops-browser.json</a>,
+      <a href="../../deploy/apisix/routes/admin-v1.json">routes/admin-v1.json</a>,
+      <a href="../../deploy/apisix/lua/ops-token-grant.lua">lua/ops-token-grant.lua</a>.</li>
+    <li>Staff token checks: <a href="../../services/mw-admin-api/src/main/java/mfs/mw/admin/api/config/SecurityConfig.java">mw-admin-api config/SecurityConfig.java</a>,
+      <a href="../../services/mw-admin-api/src/main/java/mfs/mw/admin/api/security/RealmIssuerValidator.java">security/RealmIssuerValidator.java</a>;
+      the same pattern in <a href="../../services/mw-portal-api/src/main/java/mfs/mw/portal/api/security/RealmIssuerValidator.java">mw-portal-api</a>.</li>
+    <li>Service token checks: <a href="../../services/mw-orchestrator/src/main/java/mfs/mw/orchestrator/security/InternalCallerPolicy.java">mw-orchestrator security/InternalCallerPolicy.java</a>,
+      <a href="../../services/mw-auth/src/main/java/mfs/mw/auth/security/InternalCallerPolicy.java">mw-auth</a> (with the mTLS rule).</li>
+    <li>The console's login: <a href="../../ui/mw-admin-ui/src/auth.ts">ui/mw-admin-ui/src/auth.ts</a>.</li>
+    <li>The partner certificate upload: <a href="../../deploy/provision/lib.sh">deploy/provision/lib.sh</a> (<code>partner_sim_client_key</code>).</li>
+  </ul></div>
+
+  <h2 id="wrong">What can go wrong</h2>
+  <div class="box wrong"><div class="tag">What can go wrong</div><ul>
+    <li><strong>You edited a realm file and nothing changed.</strong> Realms are imported only when they are missing. Keycloak keeps an imported realm in
+      PostgreSQL, so an edit needs <code>deploy/reset.sh</code> (which wipes every volume) and a fresh start.</li>
+    <li><strong>You changed a <code>KC_*</code> value in <code>deploy/.env</code> and the stack will not come up.</strong> Same cause: the old realm in the old volume
+      still holds the old value. Run <code>deploy/reset.sh</code>.</li>
+    <li><strong>A password grant to <code>https://localhost/realms/ops/.../token</code> answers 403.</strong> On purpose. <code>lua/ops-token-grant.lua</code> lets only
+      <code>authorization_code</code> and <code>refresh_token</code> through the public route, so nobody can guess staff passwords against the token
+      endpoint. Automated tests use the dev-only client <code>mw-e2e-ops</code> on a test-only route.</li>
+    <li><strong>401 from mw-admin-api with a token that looks fine.</strong> Look at <code>iss</code>. A token from another realm (say <code>portals</code>) has a valid signature
+      shape but fails the realm check. An expired one fails too: access tokens live only 5 minutes.</li>
+    <li><strong>The console login breaks on another port.</strong> <code>auth-ops-browser</code> pins the forwarded port to 443, so a stack on another HTTPS port gets
+      broken redirect links.</li>
+    <li><strong>An operator lost their authenticator app.</strong> On the dev stack every test user has a pre-set TOTP secret, so <code>scripts/totp.sh</code> prints
+      the current code. On a real host the TOTP credential is reset with <code>kcadm.sh</code>; the steps are in <a href="../runbook.md">docs/runbook.md</a>
+      ("An operator lost their TOTP device").</li>
+    <li><strong>"Which password do I type?"</strong> Never guess and never copy one into code. <code>scripts/creds.sh</code> prints every dev login, and the test console's
+      Logins &amp; secrets page shows them with live codes.</li>
+  </ul></div>
+
+  <h2 id="next">Read next</h2>
+  <ul>
+    <li><a href="../adr/D9-platform-services.md">ADR D9</a> (and its realm amendment) and <a href="../adr/D21-wallet-token-issuer.md">ADR D21</a> (mw-auth issues the app tokens).</li>
+    <li>Spec section 18.2 (<a href="../../spec/bits-mfs-middleware-spec.md">spec/bits-mfs-middleware-spec.md</a>): authentication for every kind of caller.</li>
+    <li><a href="../tutorial/07-ops-platform.html#keycloak">Tutorial chapter 7</a> for the short version; <a href="openbao.html">OpenBao</a> for where the client secrets and
+      service certificates come from.</li>
+  </ul>
+
+  <nav class="pager">
+    <a href="apisix.html"><small>Previous</small>← APISIX</a>
+    <a class="next" href="openbao.html"><small>Next</small>OpenBao →</a>
+  </nav>
+</main>
+</body>
+</html>

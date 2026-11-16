@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bits.mw/events/mw-core-mock/core.event.v1/BalanceReported.payload.schema.json",
+  "title": "core.event.v1 BalanceReported payload",
+  "description": "Success of BalanceInquiry (ADR D26): the wallet's available balance (balance minus open holds) at asOf. mw-orchestrator passes it to the channel on mw.txn.status.v1 and never stores it.",
+  "type": "object",
+  "required": [
+    "walletId",
+    "available",
+    "asOf"
+  ],
+  "properties": {
+    "walletId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "available": {
+      "$ref": "../../../common/defs.v1.schema.json#/$defs/Amount"
+    },
+    "asOf": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

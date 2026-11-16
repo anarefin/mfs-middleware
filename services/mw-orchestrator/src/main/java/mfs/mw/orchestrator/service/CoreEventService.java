@@ -113,7 +113,8 @@ public class CoreEventService {
     TransactionRecord current =
         rec.withCore(event.coreRef(), mapper.feeMinor(event)).withHold(mapper.holdId(event));
     try {
-      engine.fire(current, saga.get(), error);
+      // a BALANCE answer goes to the COMPLETED status only, never onto the record (ADR D26)
+      engine.fire(current, saga.get(), error, mapper.balance(event).orElse(null));
       if (saga.get() instanceof SagaEvent.CommitRefused || saga.get() instanceof SagaEvent.ReleaseRefused) {
         alerts.refused(rec.status(), rec.txnId(), error);
       }

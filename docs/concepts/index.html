@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Middleware Concepts</title>
+<link rel="stylesheet" href="../tutorial/tutorial.css">
+</head>
+<body>
+<header class="topbar"><div class="inner">
+  <a class="brand" href="index.html">Bits MFS <span>middleware</span> concepts</a>
+  <nav>
+    <a href="index.html" aria-current="page">Start</a>
+    <a href="apisix.html">APISIX</a>
+    <a href="keycloak.html">Keycloak</a>
+    <a href="openbao.html">OpenBao</a>
+    <a href="hsm.html">HSM</a>
+    <a href="greenmail.html">GreenMail</a>
+    <a href="core-mock.html">Core mock</a>
+    <a href="simulators.html">Simulators</a>
+    <a href="camel.html">Camel</a>
+    <a href="jsonata.html">JSONata</a>
+    <a href="resilience4j.html">Resilience4j</a>
+    <a href="shedlock.html">ShedLock</a>
+    <a href="testcontainers.html">Testcontainers</a>
+    <a href="../tutorial/index.html">Tutorial ↗</a>
+  </nav>
+</div></header>
+
+<main>
+  <div class="chapter-no">Start here</div>
+  <h1>The building blocks, one at a time</h1>
+  <p class="lead">You know Spring Boot and Kafka. This guide covers everything else the middleware leans on:
+    the gateway in front, the login and secret servers beside it, the fake HSM, the doubles that stand in for
+    the core and the partners, and the libraries inside every service. Each page explains one component and
+    how <em>this</em> project uses it, with a real example from the repository.</p>
+
+  <div class="box plain">
+    <div class="tag">How this differs from the tutorial</div>
+    <p>The <a href="../tutorial/index.html">tutorial</a> follows the business: money flows, partners, ops. It mentions APISIX,
+      Keycloak and OpenBao in a few lines each. These pages go the other way round. They take one component, open it up,
+      and show its config files, the classes that use it, one request from start to end, and the usual mistakes with it.
+      Read the tutorial's chapters 1 to 3 first if the words <em>saga</em>, <em>outbox</em> or <em>core</em> are new.</p>
+  </div>
+
+  <h2 id="map">Where each piece sits</h2>
+  <figure class="wide">
+    <div class="canvas">
+      <svg viewBox="0 0 960 400" role="img" aria-label="Callers reach APISIX; APISIX forwards to the mw services; the services use Keycloak, OpenBao and mw-crypto with SoftHSM beside them, and talk to test doubles that stand in for the core, partners, SMS and email">
+        <defs>
+          <marker id="ia" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2a5db0"/></marker>
+        </defs>
+        <text x="90" y="16" text-anchor="middle" class="t-sm">CALLERS</text>
+        <rect x="10" y="30" width="160" height="40" rx="8" class="n-ext"/><text x="90" y="55" text-anchor="middle" class="t-md">Mobile app</text>
+        <rect x="10" y="80" width="160" height="40" rx="8" class="n-ext"/><text x="90" y="105" text-anchor="middle" class="t-md">USSD gateway</text>
+        <rect x="10" y="130" width="160" height="40" rx="8" class="n-ext"/><text x="90" y="155" text-anchor="middle" class="t-md">Shops, portals</text>
+        <rect x="10" y="180" width="160" height="40" rx="8" class="n-ext"/><text x="90" y="205" text-anchor="middle" class="t-md">Ops console</text>
+
+        <text x="290" y="16" text-anchor="middle" class="t-sm">EDGE</text>
+        <rect x="215" y="30" width="150" height="190" rx="10" class="n-edge"/>
+        <text x="290" y="110" text-anchor="middle" class="t-lg">APISIX</text>
+        <text x="290" y="130" text-anchor="middle" class="t-sm">routes stored in etcd</text>
+        <text x="290" y="146" text-anchor="middle" class="t-sm">port 443</text>
+
+        <text x="545" y="16" text-anchor="middle" class="t-sm">THE MIDDLEWARE (mw-* services)</text>
+        <rect x="410" y="30" width="270" height="190" rx="10" class="n-mw"/>
+        <text x="545" y="62" text-anchor="middle" class="t-lg">Spring Boot services</text>
+        <text x="545" y="90" text-anchor="middle" class="t-sm">inside each one:</text>
+        <rect x="428" y="102" width="112" height="28" rx="6" class="n"/><text x="484" y="121" text-anchor="middle" class="t-md">Camel</text>
+        <rect x="550" y="102" width="112" height="28" rx="6" class="n"/><text x="606" y="121" text-anchor="middle" class="t-md">Resilience4j</text>
+        <rect x="428" y="138" width="112" height="28" rx="6" class="n"/><text x="484" y="157" text-anchor="middle" class="t-md">ShedLock</text>
+        <rect x="550" y="138" width="112" height="28" rx="6" class="n"/><text x="606" y="157" text-anchor="middle" class="t-md">JSONata</text>
+        <rect x="428" y="174" width="234" height="28" rx="6" class="n-mock"/><text x="545" y="193" text-anchor="middle" class="t-md">Testcontainers (tests only)</text>
+
+        <text x="840" y="16" text-anchor="middle" class="t-sm">IDENTITY, SECRETS, KEYS</text>
+        <rect x="725" y="30" width="225" height="50" rx="8" class="n"/><text x="837" y="52" text-anchor="middle" class="t-md">Keycloak</text><text x="837" y="69" text-anchor="middle" class="t-sm">staff, portal, service logins</text>
+        <rect x="725" y="100" width="225" height="50" rx="8" class="n"/><text x="837" y="122" text-anchor="middle" class="t-md">OpenBao</text><text x="837" y="139" text-anchor="middle" class="t-sm">secrets and certificates</text>
+        <rect x="725" y="170" width="225" height="50" rx="8" class="n"/><text x="837" y="192" text-anchor="middle" class="t-md">mw-crypto + SoftHSM</text><text x="837" y="209" text-anchor="middle" class="t-sm">the PIN and signing keys</text>
+
+        <text x="545" y="272" text-anchor="middle" class="t-sm">TEST DOUBLES (stand-ins for real outside systems)</text>
+        <rect x="300" y="285" width="150" height="56" rx="8" class="n-mock"/><text x="375" y="309" text-anchor="middle" class="t-md">mw-core-mock</text><text x="375" y="327" text-anchor="middle" class="t-sm">the wallet ledger</text>
+        <rect x="470" y="285" width="150" height="56" rx="8" class="n-mock"/><text x="545" y="309" text-anchor="middle" class="t-md">mw-simulators</text><text x="545" y="327" text-anchor="middle" class="t-sm">partners, SMSC, USSD</text>
+        <rect x="640" y="285" width="150" height="56" rx="8" class="n-mock"/><text x="715" y="309" text-anchor="middle" class="t-md">GreenMail</text><text x="715" y="327" text-anchor="middle" class="t-sm">the mail server</text>
+
+        <path d="M170,125 L213,125" class="a-http" marker-end="url(#ia)"/>
+        <path d="M365,125 L408,125" class="a-http" marker-end="url(#ia)"/>
+        <path d="M680,55 L723,55" class="a-http" marker-end="url(#ia)"/>
+        <path d="M680,125 L723,125" class="a-http" marker-end="url(#ia)"/>
+        <path d="M680,195 L723,195" class="a-http" marker-end="url(#ia)"/>
+        <path d="M545,220 L545,283" class="a-http" marker-end="url(#ia)"/>
+        <path d="M480,220 L390,283" class="a-http" marker-end="url(#ia)"/>
+        <path d="M610,220 L700,283" class="a-http" marker-end="url(#ia)"/>
+        <text x="480" y="385" text-anchor="middle" class="t-sm">Dashed boxes exist only in the dev and test stack. In production they are the real core, the real partners and a real mail server.</text>
+      </svg>
+    </div>
+    <figcaption>Every box on the right and bottom is a container in <code>deploy/docker-compose.yml</code>; the small boxes in the middle are libraries compiled into the services.</figcaption>
+  </figure>
+
+  <h2 id="pages">The pages</h2>
+  <h3>Edge, identity and secrets</h3>
+  <div class="cards">
+    <a class="card" href="apisix.html"><div class="no">EDGE</div><h3>APISIX and etcd</h3><p>The one front door. Checks tokens, counts requests, strips forged headers, writes the error envelope.</p></a>
+    <a class="card" href="keycloak.html"><div class="no">IDENTITY</div><h3>Keycloak</h3><p>Logins for staff, portal users, services and partners, in four realms. Why app users are not in it.</p></a>
+    <a class="card" href="openbao.html"><div class="no">SECRETS</div><h3>OpenBao</h3><p>Where every password and key lives, how a service logs in at start-up, and the certificates for mTLS.</p></a>
+  </div>
+  <h3>Crypto and test doubles</h3>
+  <div class="cards">
+    <a class="card" href="hsm.html"><div class="no">KEYS</div><h3>SoftHSM, payShield and mw-crypto</h3><p>The hardware security module, faked in software, and the one service allowed to talk to it.</p></a>
+    <a class="card" href="greenmail.html"><div class="no">TEST DOUBLE</div><h3>GreenMail</h3><p>A mail server that keeps every email so a tester can read it.</p></a>
+    <a class="card" href="core-mock.html"><div class="no">TEST DOUBLE</div><h3>mw-core-mock</h3><p>A small wallet ledger that answers like the real core, with switches that force failures.</p></a>
+    <a class="card" href="simulators.html"><div class="no">TEST DOUBLE</div><h3>mw-simulators and mw-seeder</h3><p>Fake telcos, billers, banks, an SMS centre and a USSD gateway; and the one-shot that fills the stack with test data.</p></a>
+  </div>
+  <h3>Libraries inside the services</h3>
+  <div class="cards">
+    <a class="card" href="camel.html"><div class="no">LIBRARY</div><h3>Apache Camel</h3><p>Kafka consumers with retry topics, and the route templates every partner call runs through.</p></a>
+    <a class="card" href="jsonata.html"><div class="no">LIBRARY</div><h3>JSONata</h3><p>Small expressions that turn our request into a partner's format and its reply back into ours.</p></a>
+    <a class="card" href="resilience4j.html"><div class="no">LIBRARY</div><h3>Resilience4j</h3><p>Timeouts, circuit breakers and bulkheads, and why a payment call is never retried.</p></a>
+    <a class="card" href="shedlock.html"><div class="no">LIBRARY</div><h3>ShedLock</h3><p>A database lock that keeps a scheduled job from running twice at once.</p></a>
+    <a class="card" href="testcontainers.html"><div class="no">LIBRARY</div><h3>Testcontainers</h3><p>A real PostgreSQL and Kafka for every test JVM, and how <code>*IT</code> tests skip without Docker.</p></a>
+  </div>
+
+  <h2 id="how">How every page is laid out</h2>
+  <p>All pages follow the same order, so you always know where to look:</p>
+  <ol class="steps">
+    <li><strong>In plain English</strong>: what the thing is, without jargon.</li>
+    <li><strong>Why we use it here</strong>: the reason, with a link to the decision record (ADR) or spec section.</li>
+    <li><strong>How it is wired</strong>: the container, its ports and profile, and the config files.</li>
+    <li><strong>Worked example</strong>: one real request or start-up, step by step, with a sequence diagram.</li>
+    <li><strong>Where it lives</strong>: the classes and files to open.</li>
+    <li><strong>What can go wrong</strong>: the usual mistakes and the fix for each.</li>
+    <li><strong>Read next</strong>: where to go deeper.</li>
+  </ol>
+  <p>In the sequence diagrams a <span style="color:var(--http)">solid blue</span> arrow is an HTTP call, a
+    <span style="color:var(--kafka)">dashed purple</span> arrow is a Kafka message and a dotted grey arrow is a reply.</p>
+
+  <div class="box note">
+    <div class="tag">Values on these pages</div>
+    <p>Every password, key and phone number shown here is a fixed, fake dev value from <code>deploy/dev.env.defaults</code>
+      or the seed data (customers <code>01711000001</code> upward). Real values never appear in the repository.
+      <code>scripts/creds.sh</code> prints the dev logins of a running stack.</p>
+  </div>
+
+  <nav class="pager"><a class="next" href="apisix.html"><small>Next</small>APISIX and etcd →</a></nav>
+</main>
+</body>
+</html>

@@ -31,7 +31,15 @@ public record StatusMessage(
     String locale,
     Map<String, String> attributes,
     Instant requestedAt,
-    Instant updatedAt) {
+    Instant updatedAt,
+    Balance balance) {
+
+  /**
+   * The core's answer to a BALANCE check (ADR D26), on its COMPLETED record only: handed to the
+   * waiting request, never stored and never logged.
+   */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record Balance(Amount available, Instant asOf) {}
 
   /** Attribute the orchestrator sets on the answer to a repeated request (spec 7.3). */
   public static final String REQUEST_TXN_ID = "requestTxnId";

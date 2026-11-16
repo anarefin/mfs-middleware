@@ -201,7 +201,7 @@ mw:
     # Partner baselines in mw-admin-api (the e2e suite's restore values: enabled, 20 s).
     partners:
       - { partner-id: ocs, enabled: true, timeout-ms: 20000 }
-    # First admin versions: copies of what mw-ussd (menus/main-v2.json) and mw-notify (V5) ship,
+    # First admin versions: copies of what mw-ussd (menus/main-v3.json) and mw-notify (V5) ship,
     # so publishing them changes no text. Keep the copies identical.
     content:
       menus:

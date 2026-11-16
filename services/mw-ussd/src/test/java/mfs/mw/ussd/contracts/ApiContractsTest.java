@@ -96,7 +96,8 @@ class ApiContractsTest {
     for (FlowRequest f : List.of(
         new FlowRequest("P2P", s, "p", Map.of("creditParty", "01812345678", "amount", "500.50"), pin),
         new FlowRequest("BILL_PAY", s, "p",
-            Map.of("creditParty", "1234567", "amount", "667", "partnerId", "billagg", "billerCode", "DESCO"), pin))) {
+            Map.of("creditParty", "1234567", "amount", "667", "partnerId", "billagg", "billerCode", "DESCO"), pin),
+        new FlowRequest("BALANCE", s, "p", Map.of(), pin))) {
       TxnRequest req = mapper.toRequest(f, "019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c0d", "k".repeat(64), CORRELATION_ID, now);
       TxnAuthorisationRequest body = mapper.authorisation(req, pin);
       assertValid(OpenApiSchemas.at(AUTH_API, "paths", "/internal/v1/txn-authorisations", "post", "requestBody",

@@ -82,4 +82,36 @@ class StatusMapperTest {
     assertThat(msg.attributes()).containsEntry("requestTxnId", again.txnId()).containsEntry("duplicate", "true");
     assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(msg))).isEmpty();
   }
+
+  // --- BALANCE (ADR D26) ---------------------------------------------------------------------
+
+  private static final mfs.mw.orchestrator.dto.Balance BALANCE = new mfs.mw.orchestrator.dto.Balance(
+      mfs.mw.orchestrator.dto.Amount.bdt(1_200_000), java.time.Instant.parse("2026-11-16T08:15:31Z"));
+
+  private TransactionRecord balanceCheck() {
+    return requests.toRecord(TestData.balance(TestData.txnId(), "key-b", "01711000001"), null, TestData.NOW)
+        .moved(Status.VALIDATING, TestData.NOW, null);
+  }
+
+  @Test
+  void aCompletedBalanceCheckCarriesThePassedBalance() {
+    TransactionRecord done = balanceCheck().withCore("CORE-1", null).moved(Status.COMPLETED, TestData.NOW, null);
+
+    StatusMessage msg = mapper.toStatus(done, BALANCE);
+
+    assertThat(msg.balance()).isEqualTo(BALANCE);
+    var tree = json.valueToTree(msg);
+    assertThat(tree.path("balance").path("available").path("valueMinor").asLong()).isEqualTo(1_200_000);
+    assertThat(tree.path("balance").path("asOf").asString()).isEqualTo("2026-11-16T08:15:31Z");
+    assertThat(ContractSchemas.schema(SCHEMA).validate(tree)).isEmpty();
+    assertThat(mapper.toStatus(done).balance()).as("the record itself has no balance").isNull();
+  }
+
+  @Test
+  void aBalanceIsOnlyEverShownOnCompleted() {
+    ErrorInfo error = new ErrorInfo("MW-CORE-WALLET_NOT_FOUND", "Wallet not found", null, false);
+    assertThat(mapper.toStatus(balanceCheck(), BALANCE).balance()).isNull();
+    assertThat(mapper.toStatus(balanceCheck().moved(Status.FAILED, TestData.NOW, error), BALANCE).balance()).isNull();
+    assertThat(json.valueToTree(mapper.toStatus(balanceCheck())).has("balance")).isFalse();
+  }
 }

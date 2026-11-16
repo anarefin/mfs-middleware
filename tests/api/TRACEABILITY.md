@@ -13,7 +13,7 @@ and `tsq`; `ops *` needs `operator` or `admin`; `<FLOW> ussd *` and `ussd http` 
 Requirement tags are the Cucumber flow tags without `@` (`p2p`, `cash`, `topup`, `billpay`,
 `callback`, `addmoney`, `c2w`, `merchant`, `checkout`, `ipn`, `notify`, `tsq`, `device`, `reversal`,
 `admin`, `operator`, `partner-config`, `wallet-unlock`, `ussd`, `smpp`, `bulk`, `sp-query`, `dlq` (retry topics to the DLQ, ticket 58, no Cucumber flow), plus
-`health` and `seed` for folder 00, `auth` (mw-auth's login and tokens, ticket 69), `edge` (an APISIX edge policy proved through the edge), and since ticket 76 `pin` (the PIN lifecycle: policy, change, resets), `lock` (the PIN lockout and its unlock), `assertion` (the transaction authorisation assertion of every channel) and `crypto` (the HSM gateway mw-crypto), and `history` (the wallet transaction history GET /app/v1/transactions, ADR D25)); the module tags (`@mw-*`) were run filters, not requirements, and
+`health` and `seed` for folder 00, `auth` (mw-auth's login and tokens, ticket 69), `edge` (an APISIX edge policy proved through the edge), and since ticket 76 `pin` (the PIN lifecycle: policy, change, resets), `lock` (the PIN lockout and its unlock), `assertion` (the transaction authorisation assertion of every channel) and `crypto` (the HSM gateway mw-crypto), `history` (the wallet transaction history GET /app/v1/transactions, ADR D25) and `balance` (the balance check over USSD and POST /app/v1/balance, ADR D26)); the module tags (`@mw-*`) were run filters, not requirements, and
 are not carried over (`make api-test FOLDER=` selects folders).
 
 | # | Criterion | Where it is proved |
@@ -212,5 +212,12 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 28 | [history cash] an agent cash-in is IN in the customer's history and OUT in the agent's | - |  |
 | 28 | [history merchant] a merchant payment is IN in the merchant's history | - |  |
 | 28 | [history] the history filters by direction, pages with hasMore and refuses bad parameters | - |  |
+| 29 | [balance ussd] option 5 asks for the PIN and shows the available balance in English; no money moves | - |  | FR-10 |
+| 29 | [balance ussd] the balance check in Bangla shows the same figure | - |  | FR-10 |
+| 29 | [balance assertion ussd] a wrong PIN on the balance check is asked again and shows no balance | - |  | SEC-09, FR-10 |
+| 29 | [balance] the app balance check answers the core's available balance and moves no money | - |  |
+| 29 | [balance assertion] a wrong PIN on the app balance check is refused by mw-auth with MW-AUTH-040 | - |  | SEC-09 |
+| 29 | [balance] a core refusal of the balance check is 422 MW-CORE-WALLET_NOT_ACTIVE | - |  |
+| 29 | [balance history] a balance check is not in the wallet history | - |  | SEC-10 |
 | 90 | [auth pin lock] the lockout escalates: level 1, level 2 after it ran out, then a permanent lock that only a reset ends | - |  | SEC-09 |
 | 90 | [assertion p2p] after the assertion life (60 s) a resend with the same key checks the PIN again; the right PIN gets the same txnId | - |  | SEC-09, FR-05 |

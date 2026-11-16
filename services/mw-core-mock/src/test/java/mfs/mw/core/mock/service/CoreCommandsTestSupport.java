@@ -104,6 +104,14 @@ public final class CoreCommandsTestSupport {
     return command("PostTransfer", txnId, txnId + ":post", transfer("P2P", from, to, minor));
   }
 
+  /**
+   * BalanceInquiry (ADR D26): shaped like a transfer of 0 BDT from the wallet to itself, authorised
+   * by mw-auth's assertion of {@code walletId}; commandId {@code <txnId>:balance}.
+   */
+  public CoreCommand balanceInquiry(String txnId, String walletId) {
+    return command("BalanceInquiry", txnId, txnId + ":balance", transfer("BALANCE", walletId, walletId, 0));
+  }
+
   public CoreCommand reverse(String txnId, String originalTxnId, long minor) {
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("originalTxnId", originalTxnId);
