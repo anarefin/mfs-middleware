@@ -190,7 +190,7 @@ export const HOW_TO: Record<PageKey, HowTo> = {
     goal: "A web shop takes a Bits payment: session, hosted page, OTP + PIN, signed redirect, IPN.",
     steps: [
       "Amount 25, language en, Create checkout session: HTTP 201, OPEN.",
-      "Open the checkout page, then Send OTP to the payer wallet (the OTP is filled in from the SMS).",
+      "View the hosted page (API; the answer shows under Result), then Send OTP to the payer wallet (the OTP is filled in from the SMS).",
       "PIN 13579, Pay: PAID with a txnId.",
       "Return to the shop (signed redirect), then Shop server: session status and IPNs.",
     ],

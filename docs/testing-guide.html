@@ -1065,7 +1065,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <ol>
       <li>Block 1 (shop): <span class="ui">Amount (Tk)</span> <code>25</code>, <span class="ui">Page language</span> <code>en</code>, <span class="ui">Create checkout session</span>.
         Expect HTTP 201, status <code>OPEN</code>; the step shows the signed request (Date, Digest, Signature). The <code>/checkout/page/…</code> link in the result is where a real shop would send the buyer; the MVP has no hosted HTML page, the next step plays it.</li>
-      <li>Block 2 (buyer): <span class="ui">Open the checkout page</span>: "Karim Traders Tk 25.00 (OPEN)".</li>
+      <li>Block 2 (buyer): <span class="ui">View the hosted page (API)</span>: the Result panel shows "page shows Karim Traders Tk 25.00 (OPEN)" (a call to the page API, no browser tab opens).</li>
       <li><span class="ui">Payer wallet</span> <code>01711000001</code>, <span class="ui">Send OTP</span>: HTTP 202, the OTP is read from the SMS and filled in.</li>
       <li><span class="ui">PIN</span> <code>13579</code>, <span class="ui">Pay</span> (the console reads the page's <code>pinKey</code>, the PIN transport key, and encrypts with it; mw-auth checks the OTP and the PIN): <code>result PAID</code> with a txnId; payer balance lower.</li>
       <li>Block 3: <span class="ui">Return to the shop (signed redirect)</span>: HTTP 303 to the shop's ok URL, status PAID, <i>signature valid</i>.</li>

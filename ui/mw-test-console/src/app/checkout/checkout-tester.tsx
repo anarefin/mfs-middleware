@@ -27,7 +27,8 @@ export function CheckoutTester() {
           {d?.sessionId ? <Hint>session <code className="font-mono">{String(d.sessionId)}</code> · order <code className="font-mono">{String(d.orderId)}</code></Hint> : null}
         </Panel>
         <Panel title="2. Buyer on the hosted page" icon={CreditCard}>
-          <Button type="submit" name="op" value="page" variant="outline" disabled={pending || !d?.token}>Open the checkout page</Button>
+          <Button type="submit" name="op" value="page" variant="outline" disabled={pending || !d?.token} data-testid="co-page">View the hosted page (API)</Button>
+          <Hint>Reads the page as the buyer&apos;s browser would; the answer (merchant, amount, status) shows under Result. Optional: Pay reads it too.</Hint>
           <Row>
             <Field label="Payer wallet"><Input name="wallet" defaultValue="01711000001" data-testid="co-wallet" className="font-mono" /></Field>
             <Button type="submit" name="op" value="otp" variant="outline" disabled={pending || !d?.token} data-testid="co-otp">Send OTP</Button>
