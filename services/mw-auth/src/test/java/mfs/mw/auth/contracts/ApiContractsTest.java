@@ -41,7 +41,7 @@ class ApiContractsTest {
   @Test
   void theManifestListsTheseApis() {
     ContractManifest manifest = ContractManifest.load();
-    assertThat(manifest.producedApis()).containsExactly(PUBLIC_API, INTERNAL_API);
+    assertThat(manifest.producedApis()).containsExactly(PUBLIC_API, INTERNAL_API, AccountTestApiContractsTest.TEST_API);
   }
 
   static void assertValid(Schema schema, Object body) {

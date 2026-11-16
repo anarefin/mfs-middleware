@@ -28,7 +28,7 @@ the repo". A new decision gets the next free id in its table (spec first, then a
 | D14 | [No shared code: contracts only, cross-cutting code copied from a template](D14-code-sharing.md) | Accepted, 2026-11-03 (spec revision 2); amended 2026-11-13: versions inline per module |
 | D15 | [Layered packages under mfs.mw.<service>](D15-code-structure.md) | Accepted, 2026-11-03 (spec revision 3) |
 | D16 | [One hand-written Compose file with profiles](D16-single-compose-file.md) | Accepted, 2026-11-06 (ticket 56; supersedes the per-module `compose.yml` of D12); amended 2026-11-13 by D18 |
-| D17 | [A dev/test-only test console for manual testing](D17-test-console.md) | Accepted, 2026-11-07 |
+| D17 | [A dev/test-only test console for manual testing](D17-test-console.md) | Accepted, 2026-11-07; amended 2026-11-15: dev secrets, seed data and account tools in the console; 2026-11-16: a pre-set code for every ops user, no Reset TOTP |
 | D18 | [No Makefile: `./gradlew clean build` is the gate](D18-no-makefile.md) | Accepted, 2026-11-13 (amends M13 and D16) |
 | D19 | [One test task per module, no coverage gate](D19-single-test-task.md) | Accepted, 2026-11-13 (amends spec 22.1 and the ticket-53 test tiers) |
 | D20 | [The middleware owns the wallet PIN](D20-pin-custody.md) | Accepted, 2026-11-14 (spec revision 6; supersedes M11) |

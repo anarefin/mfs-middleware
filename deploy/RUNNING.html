@@ -137,9 +137,12 @@ node --version  <span class="c"># 22 or newer</span></pre></div>
 cp dev.env.defaults .env</pre></div>
     <p>Run every <code>docker compose</code> command below from inside <code>deploy/</code>. Compose reads <code>.env</code> there
       on its own, so no <code>--env-file</code> flag is needed.</p>
-    <p>The logins a tester types: ops <code>ops-test-pass</code>, app PIN <code>13579</code>, portal <code>portal-test-pass</code> (one-time codes: <code>scripts/totp.sh</code>),
-      Keycloak admin <code>kc-admin-test-pass</code>, test-route apikey <code>e2e-test-apikey</code>
-      (<code>scripts/creds.sh</code> prints them all; <a href="../docs/testing-guide.html">testing guide</a>, section 1).</p>
+    <p>The logins a tester types: ops <code>ops-test-pass</code>, app PIN <code>13579</code>, portal <code>portal-test-pass</code>,
+      Keycloak admin <code>kc-admin-test-pass</code>, OpenBao token <code>dev-root-token</code> (<code>OPENBAO_DEV_ROOT_TOKEN</code>),
+      test-route apikey <code>e2e-test-apikey</code>. Once the test console runs (step 11), its pages
+      <a href="https://localhost/tester/credentials">/tester/credentials</a> (every login with a live one-time code) and
+      <a href="https://localhost/tester/seed-data">/tester/seed-data</a> (everything the seeder created) show them all; in a terminal
+      <code>scripts/creds.sh</code> and <code>scripts/totp.sh</code> (<a href="../docs/testing-guide.html">testing guide</a>, section 1).</p>
     <div class="warn">The volumes are initialised with these values. If you change a credential in <code>.env</code>, reset
       everything (<code>./reset.sh</code>, step 10) before the next start.</div>
   </section>
@@ -174,8 +177,8 @@ cp dev.env.defaults .env</pre></div>
       images and builds 20 images, so it takes a few minutes more.</p>
     <p>Then open the <strong>admin console</strong> at <a href="https://localhost/console">https://localhost/console</a>. The
       edge certificate is self-signed for localhost, so accept the browser warning. Sign in as <code>ops-maker01</code> with
-      <code>ops-test-pass</code>; the first sign-in asks you to enrol TOTP with an authenticator app
-      (<code>scripts/totp.sh</code> prints the code of a seeded persona).</p>
+      <code>ops-test-pass</code> and the one-time code <code>scripts/totp.sh ops-maker01</code> prints (or copy it from
+      the test console's Logins &amp; secrets page): every ops user has a pre-set code, no authenticator app.</p>
   </section>
 
   <section id="s5">
@@ -335,10 +338,14 @@ scripts/log-scan.sh               <span class="c"># no PIN or unmasked MSISDN / 
     </table></div>
     <h3>Test console (every feature by hand, dev/test only)</h3>
     <div class="cmd"><pre>scripts/tester.sh                 <span class="c"># test-only routes on, start mw-test-console: https://localhost/tester</span>
-scripts/tester-e2e.sh             <span class="c"># its Playwright suite (scripts/tester-e2e.sh @auth: the wallet authentication page only)</span></pre></div>
+scripts/tester-e2e.sh             <span class="c"># its Playwright suite (scripts/tester-e2e.sh @auth: wallet authentication and the account tools only)</span></pre></div>
     <p>The test console plays the mobile app, a USSD handset, the partner simulators and core faults, the checkout shop, the
       org portal and wallet authentication (its <strong>Auth</strong> page: OTP, binding, login, PIN change, lockout and reset
-      on fresh wallets); each action shows every API call, the balances before and after and the SMS. The walkthrough of every feature
+      on fresh wallets); each action shows every API call, the balances before and after and the SMS, and each txnId links to its
+      <strong>Transactions</strong> explorer (timeline, partner calls, audit trail). <strong>Logins &amp; secrets</strong> gives every
+      password with a live one-time code, the PINs and an OTP lookup; <strong>Seed data</strong> lists the seeded users, wallets
+      (real-looking names, live balances), organisations and partners, with tools to unlock a user or wallet, reset a password,
+      a one-time code or a PIN, unbind a device and set a balance. It shows the dev secrets, so it runs only on this laptop stack. The walkthrough of every feature
       is <a href="../docs/testing-guide.html">docs/testing-guide.html</a>; a demo script per milestone is <code>docs/demo.md</code>.</p>
     <div class="note">No load tests on a laptop: <code>scripts/suite.sh perf</code> and <code>scripts/chaos.sh</code> need a bigger
       host and a fresh stack.</div>
@@ -374,7 +381,8 @@ scripts/tester-e2e.sh             <span class="c"># its Playwright suite (script
         was created with the old PIN on the <code>softhsm-tokens</code> volume. Run <code>./reset.sh</code>.</li>
       <li><strong>An app login fails with a lock after wrong PINs</strong>: that is mw-auth's lockout. In dev, levels 1 and 2
         last a short time (<code>MW_AUTH_LOCK_*</code> in <code>.env</code>); level 3 needs a PIN reset (test console
-        <strong>Auth</strong> page) or an unlock in the console under <strong>Wallets</strong>.</li>
+        <strong>Auth</strong> page), an unlock in the console under <strong>Wallets</strong>, or <strong>Unlock</strong> on the
+        wallet's row of the test console's <strong>Seed data</strong> page.</li>
       <li><strong>The seeder exits non-zero</strong>: <code>docker compose --profile core --profile seed logs mw-seeder</code>; the
         line <code>seed.step.failed</code> names the step. <code>open change request of &lt;operator&gt;</code> means a pending
         request on a partner, menu or template: approve or reject it in the console, then run step 4 again.</li>

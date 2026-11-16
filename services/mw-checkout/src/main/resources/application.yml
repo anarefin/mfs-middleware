@@ -232,7 +232,7 @@ mw:
     merchants:
       merchant_demo:
         wallet: "01911000001"
-        name: Demo Shop
+        name: Karim Traders
     # Signed IPN to the merchant's ipnUrl (spec 9.3 step 3, ticket 32): attempt 1 at once, then
     # after each failure the next of retry-delays, until a 2xx or the last attempt. Every attempt is a
     # checkout.ipn_delivery row; the job (ShedLock) polls for due rows. The call is bounded by the

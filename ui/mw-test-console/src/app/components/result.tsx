@@ -4,16 +4,28 @@
 // that a result does not contain ✖.
 
 import { ChevronRight, CircleCheck, CircleX, ExternalLink, MessageSquare } from "lucide-react";
+import Link from "next/link";
 import { StatusBadge } from "@/components/status-badge";
 import { Hint, SubHeading } from "@/components/section";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatMinor } from "@/lib/format";
+import { isTxnId, txnHref } from "@/lib/txn-query";
 import type { Outcome } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+/** A txnId as a link into the transaction explorer (/tester/transactions?txnId=…). */
+export function TxnLink({ txnId, className }: { txnId: string; className?: string }) {
+  return (
+    <Link href={txnHref(txnId)} className={cn("text-link", className)} title="open in the transaction explorer" data-testid="txn-link">
+      <code className="font-mono text-sm" data-testid="txn-id">{txnId}</code>
+    </Link>
+  );
+}
 
 export function Result({ state }: { state: Outcome | null }) {
   if (!state) return null;
   const consoleUrl = state.data?.consoleUrl as string | undefined;
+  const dataTxnId = typeof state.data?.txnId === "string" && isTxnId(state.data.txnId) ? state.data.txnId : undefined;
   return (
     <div className="flex min-w-0 flex-col gap-3" aria-live="polite" data-testid="result">
       <p
@@ -31,7 +43,7 @@ export function Result({ state }: { state: Outcome | null }) {
         <p className="m-0 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
           <span className="text-muted-foreground">Final status:</span>
           <StatusBadge status={state.status} data-testid="txn-status" />
-          {state.txnId ? <><span className="text-muted-foreground">· txnId</span><code className="font-mono text-xs" data-testid="txn-id">{state.txnId}</code></> : null}
+          {state.txnId ? <><span className="text-muted-foreground">· txnId</span><TxnLink txnId={state.txnId} /></> : null}
           {consoleUrl ? (
             <>
               <span className="text-muted-foreground">·</span>
@@ -40,6 +52,10 @@ export function Result({ state }: { state: Outcome | null }) {
               </a>
             </>
           ) : null}
+        </p>
+      ) : dataTxnId ? (
+        <p className="m-0 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          <span className="text-muted-foreground">txnId</span><TxnLink txnId={dataTxnId} />
         </p>
       ) : null}
       {state.data?.idempotencyKey ? <Hint>Idempotency-Key <code className="font-mono">{String(state.data.idempotencyKey)}</code></Hint> : null}
@@ -54,7 +70,7 @@ export function Result({ state }: { state: Outcome | null }) {
                 const d = b.beforeMinor !== null && b.afterMinor !== null ? b.afterMinor - b.beforeMinor : null;
                 return (
                   <TableRow key={b.wallet}>
-                    <TableCell className="font-mono text-xs">{b.wallet}</TableCell>
+                    <TableCell className="font-mono text-sm">{b.wallet}</TableCell>
                     <TableCell className="text-right whitespace-nowrap tabular-nums">{b.beforeMinor === null ? "-" : formatMinor(b.beforeMinor)}</TableCell>
                     <TableCell className="text-right whitespace-nowrap tabular-nums">{b.afterMinor === null ? "-" : formatMinor(b.afterMinor)}</TableCell>
                     <TableCell
@@ -79,8 +95,8 @@ export function Result({ state }: { state: Outcome | null }) {
               <li key={i} className="flex items-start gap-2 rounded-md bg-muted/60 px-3 py-2 text-sm">
                 <MessageSquare className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0">
-                  <span className="font-mono text-xs">{m.destination}</span> <span lang="bn" dir="auto">{m.text}</span>{" "}
-                  <span className="text-xs text-muted-foreground">({m.dlrStatus ?? "no DLR yet"})</span>
+                  <span className="font-mono text-sm">{m.destination}</span> <span lang="bn" dir="auto">{m.text}</span>{" "}
+                  <span className="text-sm text-muted-foreground">({m.dlrStatus ?? "no DLR yet"})</span>
                 </span>
               </li>
             ))}
@@ -97,13 +113,13 @@ export function Result({ state }: { state: Outcome | null }) {
                 {s.ok ? <CircleCheck className="size-4 shrink-0 text-good" /> : <CircleX className="size-4 shrink-0 text-bad" />}
                 <span className="sr-only">{s.ok ? "✔" : "✖"}</span>
                 <span className="font-medium">{s.label}</span>
-                {s.call ? <span className="font-mono text-xs text-muted-foreground">{s.call}</span> : null}
-                {s.status !== undefined ? <span className={cn("font-mono text-xs font-semibold", s.ok ? "text-good" : "text-bad")}>HTTP {s.status}</span> : null}
-                {s.ms !== undefined ? <span className="text-xs text-muted-foreground tabular-nums">{s.ms} ms</span> : null}
-                {s.note ? <span className="text-xs text-muted-foreground">— {s.note}</span> : null}
+                {s.call ? <span className="font-mono text-sm text-muted-foreground">{s.call}</span> : null}
+                {s.status !== undefined ? <span className={cn("font-mono text-sm font-semibold", s.ok ? "text-good" : "text-bad")}>HTTP {s.status}</span> : null}
+                {s.ms !== undefined ? <span className="text-sm text-muted-foreground tabular-nums">{s.ms} ms</span> : null}
+                {s.note ? <span className="text-sm text-muted-foreground">— {s.note}</span> : null}
               </summary>
               {s.body !== undefined ? (
-                <pre className="m-0 max-h-96 overflow-auto rounded-b-md bg-screen px-3 py-2 font-mono text-xs whitespace-pre-wrap break-words text-screen-foreground">
+                <pre className="m-0 max-h-96 overflow-auto rounded-b-md bg-screen px-3 py-2 font-mono text-sm whitespace-pre-wrap break-words text-screen-foreground">
                   {typeof s.body === "string" ? s.body : JSON.stringify(s.body, null, 2)}
                 </pre>
               ) : null}

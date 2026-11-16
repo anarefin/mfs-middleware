@@ -132,7 +132,7 @@ class CheckoutFlowIT {
     assertThat(token).hasSizeGreaterThanOrEqualTo(43).doesNotContain(sessionId);
 
     JsonNode page = body(http.get().uri("/checkout/pay/v1/{t}", token).exchange());
-    assertThat(page.path("merchantName").asString()).isEqualTo("Demo Shop");
+    assertThat(page.path("merchantName").asString()).isEqualTo("Karim Traders");
     assertThat(page.path("amount").path("valueMinor").asLong()).isEqualTo(OrchestratorStub.COMPLETES);
     assertThat(page.path("status").asString()).isEqualTo("OPEN");
     assertThat(page.path("pinKey").path("keyId").asString()).isEqualTo(FakeAuth.KEY_ID);
@@ -239,7 +239,7 @@ class CheckoutFlowIT {
     String token = s.path("checkoutUrl").asString().substring(PAGE.length());
     String sessionId = s.path("sessionId").asString();
     requestOtp(token, sessionId, 1);
-    org.mockito.Mockito.verify(auth).sendOtp("01711000001", UUID.fromString(sessionId), "en", "10.00", "Demo Shop");
+    org.mockito.Mockito.verify(auth).sendOtp("01711000001", UUID.fromString(sessionId), "en", "10.00", "Karim Traders");
   }
 
   @Test

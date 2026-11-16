@@ -106,138 +106,156 @@
       "username": "ops-viewer01",
       "enabled": true,
       "emailVerified": true,
-      "firstName": "Viewer",
-      "lastName": "Test",
+      "firstName": "Shahana",
+      "lastName": "Begum",
       "email": "ops-viewer01@example.test",
       "credentials": [
         {
           "type": "password",
           "value": "${KC_OPS_TEST_PASSWORD}",
           "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "dev only",
+          "secretData": "{\"value\":\"${KC_OPS_TEST_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA256\"}"
         }
       ],
       "realmRoles": [
         "viewer"
-      ],
-      "requiredActions": [
-        "CONFIGURE_TOTP"
       ]
     },
     {
       "username": "ops-maker01",
       "enabled": true,
       "emailVerified": true,
-      "firstName": "Maker",
-      "lastName": "Test",
+      "firstName": "Imran",
+      "lastName": "Kabir",
       "email": "ops-maker01@example.test",
       "credentials": [
         {
           "type": "password",
           "value": "${KC_OPS_TEST_PASSWORD}",
           "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "dev only",
+          "secretData": "{\"value\":\"${KC_OPS_TEST_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA256\"}"
         }
       ],
       "realmRoles": [
         "viewer",
         "ops-maker"
-      ],
-      "requiredActions": [
-        "CONFIGURE_TOTP"
       ]
     },
     {
       "username": "ops-checker01",
       "enabled": true,
       "emailVerified": true,
-      "firstName": "Checker",
-      "lastName": "Test",
+      "firstName": "Taslima",
+      "lastName": "Nasreen",
       "email": "ops-checker01@example.test",
       "credentials": [
         {
           "type": "password",
           "value": "${KC_OPS_TEST_PASSWORD}",
           "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "dev only",
+          "secretData": "{\"value\":\"${KC_OPS_TEST_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA256\"}"
         }
       ],
       "realmRoles": [
         "viewer",
         "ops-checker"
-      ],
-      "requiredActions": [
-        "CONFIGURE_TOTP"
       ]
     },
     {
       "username": "ops-admin01",
       "enabled": true,
       "emailVerified": true,
-      "firstName": "Admin",
-      "lastName": "Test",
+      "firstName": "Zahid",
+      "lastName": "Hasan",
       "email": "ops-admin01@example.test",
       "credentials": [
         {
           "type": "password",
           "value": "${KC_OPS_TEST_PASSWORD}",
           "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "dev only",
+          "secretData": "{\"value\":\"${KC_OPS_TEST_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA256\"}"
         }
       ],
       "realmRoles": [
         "viewer",
         "integration-maker",
         "security-admin"
-      ],
-      "requiredActions": [
-        "CONFIGURE_TOTP"
       ]
     },
     {
       "username": "ops-compliance01",
       "enabled": true,
       "emailVerified": true,
-      "firstName": "Compliance",
-      "lastName": "Test",
+      "firstName": "Nazmul",
+      "lastName": "Huda",
       "email": "ops-compliance01@example.test",
       "credentials": [
         {
           "type": "password",
           "value": "${KC_OPS_TEST_PASSWORD}",
           "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "dev only",
+          "secretData": "{\"value\":\"${KC_OPS_TEST_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA256\"}"
         }
       ],
       "realmRoles": [
         "compliance-officer"
-      ],
-      "requiredActions": [
-        "CONFIGURE_TOTP"
       ]
     },
     {
       "username": "ops-auditor01",
       "enabled": true,
       "emailVerified": true,
-      "firstName": "Auditor",
-      "lastName": "Test",
+      "firstName": "Fahmida",
+      "lastName": "Yasmin",
       "email": "ops-auditor01@example.test",
       "credentials": [
         {
           "type": "password",
           "value": "${KC_OPS_TEST_PASSWORD}",
           "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "dev only",
+          "secretData": "{\"value\":\"${KC_OPS_TEST_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA256\"}"
         }
       ],
       "realmRoles": [
         "auditor"
-      ],
-      "requiredActions": [
-        "CONFIGURE_TOTP"
       ]
     },
     {
       "username": "ops-e2e-maker01",
       "enabled": true,
       "emailVerified": true,
-      "firstName": "E2e",
-      "lastName": "Maker",
+      "firstName": "Rashed",
+      "lastName": "Karim",
       "email": "ops-e2e-maker01@example.test",
       "credentials": [
         {
@@ -261,8 +279,8 @@
       "username": "ops-e2e-checker01",
       "enabled": true,
       "emailVerified": true,
-      "firstName": "E2e",
-      "lastName": "Checker",
+      "firstName": "Sharmin",
+      "lastName": "Akter",
       "email": "ops-e2e-checker01@example.test",
       "credentials": [
         {

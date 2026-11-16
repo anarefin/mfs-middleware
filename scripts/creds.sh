@@ -31,25 +31,27 @@ Dev/test stack only, never real secrets. The logins testers type are fixed, docu
 (docs/testing-guide.html section 1); the other keys are random per checkout (deploy/.env).
 
 == Test console  $base/tester  (scripts/tester.sh first)
+   Every login and key below, in the browser:  $base/tester/credentials
+   What the seeder created (personas, wallets):  $base/tester/seed-data
    No sign-in. It signs in as the users below by itself.
 
 == Ops console  $base/console   (Keycloak realm ops: password + 6-digit one-time code)
    Password of every ops user:  $(v KC_OPS_TEST_PASSWORD)
-   No authenticator app needed (after the seed profile ran):
+   Every ops user has the pre-set code secret (no authenticator app needed):
      seed-ops-maker       viewer, ops-maker           code: scripts/totp.sh seed-ops-maker
      seed-ops-checker     viewer, ops-checker         code: scripts/totp.sh seed-ops-checker
      seed-ops-viewer      viewer (read only)          code: scripts/totp.sh seed-ops-viewer
      seed-ops-compliance  compliance-officer          code: scripts/totp.sh seed-ops-compliance
      seed-ops-secadmin1   security-admin (keys)       code: scripts/totp.sh seed-ops-secadmin1
      seed-ops-secadmin2   security-admin (keys)       code: scripts/totp.sh seed-ops-secadmin2
-   Enrol an authenticator app at the first sign-in (FreeOTP or Aegis; the codes are SHA-256):
      ops-maker01, ops-checker01, ops-viewer01, ops-compliance01, ops-auditor01,
      ops-admin01 (viewer, integration-maker, security-admin)
+                                                  code: scripts/totp.sh ops-maker01
 
 == App users: mw-auth login (MSISDN + PIN + bound device; ticket 69)   app PIN (mw-auth login): $(v MW_SEED_APP_PIN)
    customer01 01711000001 | customer02 01711000002 | agent01 01811000001
    merchant01 01911000001 | merchant02 01911000002 | seed-customer01 01712000001 | seed-agent01 01812000001
-   transaction PIN (core, until ticket 72): 1234
+   transaction PIN (every channel, checked by mw-auth since ticket 72): the app PIN $(v MW_SEED_APP_PIN)
    A token from the shell: MW_SEED_APP_PIN=... node scripts/lib/mw-auth-token.mjs 01711000001
    (binds a new device; MW_EDGE_URL, MW_SIM_URL). There is no Keycloak login for app users.
 

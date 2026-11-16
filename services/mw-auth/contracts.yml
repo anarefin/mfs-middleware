@@ -18,6 +18,8 @@ produces:
   apis:
     - api/mw-auth/auth.v1.openapi.yaml
     - api/mw-auth/auth-internal.v1.openapi.yaml
+    # dev-only account test API of the test console (mw.auth.seed-api.enabled; contracts/AccountTestApiContractsTest)
+    - api/mw-auth/auth-test.v1.openapi.yaml
 consumes:
   events:
     - events/mw-core-mock/core.event.v1.schema.json#WalletStateChanged

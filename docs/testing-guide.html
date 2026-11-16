@@ -107,8 +107,9 @@ Every login is printed where a step needs it; <a href="#c1-0">1.0 Logins at a gl
     <thead><tr><th>Done</th><th>Feature</th><th>Case</th><th>UI</th></tr></thead>
     <tbody>
       <tr><td class="tick"></td><td>Test console Home: stack checks, seeded wallets, reset</td><td><a href="#c0-2">0.2</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Logins &amp; secrets page (live one-time codes, PINs, OTP lookup) and Seed data page</td><td><a href="#c1-1">1.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Sign in to the ops console (password + one-time code)</td><td><a href="#c1-3">1.3</a></td><td>Ops console</td></tr>
-      <tr><td class="tick"></td><td>Keycloak admin: list users, reset a code, unlock, reset a password</td><td><a href="#c1-5">1.5</a></td><td>Terminal</td></tr>
+      <tr><td class="tick"></td><td>Account tools: unlock, reset a password or a code, wallet PIN, device, balance</td><td><a href="#c1-5">1.5</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>OpenBao: list and read secrets</td><td><a href="#c1-6">1.6</a></td><td>Terminal</td></tr>
       <tr><td class="tick"></td><td>Device binding (OTP by SMS)</td><td><a href="#c3-1">3.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Send money (P2P), idempotent resend, wrong PIN, limits</td><td><a href="#c3-2">3.2</a></td><td>Test console</td></tr>
@@ -138,6 +139,7 @@ Every login is printed where a step needs it; <a href="#c1-0">1.0 Logins at a gl
       <tr><td class="tick"></td><td>Bulk disbursement: upload, approve, result file</td><td><a href="#c8-1">8.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Bulk maker-checker, reject, pause/resume, bad files</td><td><a href="#c8-2">8.2</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Service provider (SP) transaction query</td><td><a href="#c8-3">8.3</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Transaction explorer: search, timeline, partner calls, audit trail</td><td><a href="#c10-0">10</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Error box and form checks</td><td><a href="#c9-0">9.0</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Sign in, sign out, session end, deep links, no token in the browser</td><td><a href="#c9-1">9.1</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Search transactions (all filters, paging)</td><td><a href="#c9-2">9.2</a></td><td>Ops console</td></tr>
@@ -195,7 +197,7 @@ deploy/reset.sh
 (cd deploy &amp;&amp; docker compose --profile tester build mw-test-console)
 <span class="c"># turns on the test-only routes and starts the test console</span>
 scripts/tester.sh
-<span class="c"># prints every login and key you need (section 1)</span>
+<span class="c"># optional: every login and key in the terminal (the test console page Logins &amp; secrets shows the same, section 1)</span>
 scripts/creds.sh</pre></div>
   <p>The first run takes 10-15 minutes (images and dependencies); later ones a few minutes.</p>
   <div class="warn">Run <code>scripts/tester.sh</code> again after any later <code>docker compose up</code>: that removes the
@@ -216,24 +218,36 @@ scripts/creds.sh</pre></div>
           actually bound is checked in 4.2 (✖: "fix: start the stack; docker compose logs mw-simulators")</li>
       </ul></li>
     <li>Below them, the panel <i>Seeded wallets (core-mock)</i> lists 6 wallets (columns Wallet / Who / Balance / Held),
-      among them <code>01711000003</code> "core-mock seeded customer". The panel <i>Where to test what</i> links to
-      the other pages; <span class="ui">Ops console ↗</span> in the top bar opens the ops console in a new tab.</li>
+      by their holder names (e.g. "Rahim Uddin (customer01)"), among them <code>01711000003</code> "Kamal Hossain (core-mock seeded customer)". The panel <i>Where to test what</i> links to
+      the other pages; <span class="ui">Ops console ↗</span> in the top bar opens the ops console in a new tab.
+      The sidebar also has <span class="ui">Logins &amp; secrets</span>, <span class="ui">Seed data</span> and
+      <span class="ui">Transactions</span> (sections <a href="#c1-1">1.1</a>, <a href="#c1-5">1.5</a>, <a href="#c10-0">10</a>).</li>
+    <li>Every page starts with a collapsible <span class="ui">How to test</span> panel: the steps, the magic values, what to
+      expect and <span class="ui">fill</span> buttons that pre-fill the page's form for a case (e.g. "P2P Tk 10 to customer02").</li>
     <li>Press <span class="ui">Reset every simulator and core fault</span>. Expect "applied". Do this
       <b>before and after every failure test</b>.</li>
   </ol>
 
   <h3>Test data you will use</h3>
+  <p>The test console page <span class="ui">Seed data</span> (<a href="https://localhost/tester/seed-data">/tester/seed-data</a>)
+  lists all of it, live balances and logins included (<a href="#c1-1">1.1</a>). The names are fake display names; tests and
+  forms always use the user name or the MSISDN.</p>
   <div class="table-wrap"><table>
-    <tr><th>Who</th><th>User</th><th>Wallet</th><th>Wallet PIN</th></tr>
-    <tr><td>Customer 1 (payer in most tests)</td><td>customer01</td><td>01711000001</td><td>13579</td></tr>
-    <tr><td>Customer 2 (payee)</td><td>customer02</td><td>01711000002</td><td>13579</td></tr>
-    <tr><td>Agent</td><td>agent01</td><td>01811000001</td><td>13579</td></tr>
-    <tr><td>Merchant "Demo Shop"</td><td>merchant01</td><td>01911000001</td><td>13579</td></tr>
-    <tr><td>Second merchant</td><td>merchant02</td><td>01911000002</td><td>13579</td></tr>
-    <tr><td>Third seeded customer (core-mock only, no app PIN, no login)</td><td>-</td><td>01711000003</td><td>-</td></tr>
-    <tr><td>Seeder customer (type the name; <a href="#c3-10">3.10</a>)</td><td>seed-customer01</td><td>01712000001</td><td>13579</td></tr>
-    <tr><td>Bulk payees (seeded)</td><td>-</td><td>01711000101 onwards</td><td>-</td></tr>
+    <tr><th>Who</th><th>Name (holder)</th><th>User</th><th>Wallet</th><th>Wallet PIN</th></tr>
+    <tr><td>Customer 1 (payer in most tests)</td><td>Rahim Uddin</td><td>customer01</td><td>01711000001</td><td>13579</td></tr>
+    <tr><td>Customer 2 (payee)</td><td>Ayesha Siddiqua</td><td>customer02</td><td>01711000002</td><td>13579</td></tr>
+    <tr><td>Agent</td><td>Hossain Telecom (Jamal Hossain)</td><td>agent01</td><td>01811000001</td><td>13579</td></tr>
+    <tr><td>Merchant (the checkout shop)</td><td>Karim Traders</td><td>merchant01</td><td>01911000001</td><td>13579</td></tr>
+    <tr><td>Second merchant</td><td>Lalbagh Pharmacy</td><td>merchant02</td><td>01911000002</td><td>13579</td></tr>
+    <tr><td>Third seeded customer (core-mock only, no app PIN, no login)</td><td>Kamal Hossain</td><td>-</td><td>01711000003</td><td>-</td></tr>
+    <tr><td>Organisations (bulk payers)</td><td>Meghna Garments Ltd, Padma Foods Ltd</td><td>-</td><td>01311000001, 01311000002</td><td>-</td></tr>
+    <tr><td>Seeder customers (type the name; <a href="#c3-10">3.10</a>)</td><td>Sumaiya Islam, Rakibul Hasan</td><td>seed-customer01, seed-customer02</td><td>01712000001, 01712000002</td><td>13579</td></tr>
+    <tr><td>Seeder agent / merchant / org</td><td>Monir Store, Dhanmondi Bakery, Jamuna Textiles Ltd</td><td>seed-agent01, seed-merchant01</td><td>01812000001, 01912000001, 01312000001</td><td>13579</td></tr>
+    <tr><td>Bulk payees (seeded)</td><td>generated names (the Seed data lookup shows them)</td><td>-</td><td>01711000101 onwards</td><td>-</td></tr>
   </table></div>
+  <p>core-mock names every wallet it generates (1,000 customers, 50 agents, 20 merchants, 2 orgs) the same way on every
+  run. The ops and portal users have names too (1.2): they show in the consoles' headers once the stack was set up
+  with <code>deploy/reset.sh</code> (the realm import runs only on a fresh volume).</p>
   <p>Every app user signs in at mw-auth with its MSISDN, the app PIN <code>13579</code> and a bound device (ticket 69);
   the test console does it for you. The same PIN is the transaction PIN: mw-auth checks it (the core never sees PIN
   material) and gives the request a signed transaction assertion that the core verifies (ticket 72).</p>
@@ -263,7 +277,13 @@ scripts/creds.sh</pre></div>
   <p>The logins a tester types are <b>fixed, well-known test values</b>, the same on every machine: they are
   written below at every step that needs them. They are dev/test values only, never real secrets. The
   other keys (database, HMAC and gateway secrets) are fixed fake <code>dev-…</code> values. All of them come from the
-  committed file <code>deploy/dev.env.defaults</code>, copied to <code>deploy/.env</code> (step 0.1); <code>scripts/creds.sh</code> prints them.</p>
+  committed file <code>deploy/dev.env.defaults</code>, copied to <code>deploy/.env</code> (step 0.1).</p>
+  <p><b>The quickest way: two test console pages, no terminal.</b>
+  <span class="ui">Logins &amp; secrets</span> (<a href="https://localhost/tester/credentials">/tester/credentials</a>) shows every
+  login with its password and a <b>live one-time code</b>, the app PINs and every platform key;
+  <span class="ui">Seed data</span> (<a href="https://localhost/tester/seed-data">/tester/seed-data</a>) shows everything the
+  seeder created, with the login of each row next to it and the account tools of 1.5 (<a href="#c1-1">1.1</a>).
+  In a terminal, <code>scripts/creds.sh</code> and <code>scripts/totp.sh</code> print the same.</p>
   <div class="warn">The volumes are set up with the values of <code>deploy/.env</code>. To change a value, edit
   <code>deploy/.env</code>, then <code>deploy/reset.sh</code> and step 0.1 again; <code>scripts/creds.sh</code> always
   prints the values your stack has.</div>
@@ -272,17 +292,17 @@ scripts/creds.sh</pre></div>
     <h3><span class="id">1.0</span>Logins at a glance</h3>
     <div class="table-wrap"><table>
       <tr><th>Where</th><th>User</th><th>Password</th><th>Second factor / note</th></tr>
-      <tr><td>Test console <a href="https://localhost/tester">/tester</a></td><td>-</td><td>-</td><td>no sign-in: it signs in as the users below by itself</td></tr>
+      <tr><td>Test console <a href="https://localhost/tester">/tester</a></td><td>-</td><td>-</td><td>no sign-in: it signs in as the users below by itself; its <a href="https://localhost/tester/credentials">Logins &amp; secrets</a> page shows every value of this table</td></tr>
       <tr><td rowspan="4">Ops console <a href="https://localhost/console">/console</a> (realm <code>ops</code>)</td>
         <td><code>seed-ops-maker</code>, <code>seed-ops-checker</code>, <code>seed-ops-viewer</code>, <code>seed-ops-compliance</code>, <code>seed-ops-secadmin1</code>, <code>seed-ops-secadmin2</code> (after <code>mw-seeder</code> ran)</td>
-        <td rowspan="4"><code>ops-test-pass</code></td><td>6-digit code: <code>scripts/totp.sh &lt;user&gt;</code> (no phone app)</td></tr>
-      <tr><td><code>ops-e2e-maker01</code>, <code>ops-e2e-checker01</code></td><td>code: <code>scripts/totp.sh &lt;user&gt;</code> (the API suite uses them too)</td></tr>
-      <tr><td><code>ops-maker01</code>, <code>ops-checker01</code>, <code>ops-viewer01</code>, <code>ops-compliance01</code>, <code>ops-auditor01</code>, <code>ops-admin01</code></td><td>enrol an authenticator app at the first sign-in (1.4)</td></tr>
+        <td rowspan="4"><code>ops-test-pass</code></td><td>6-digit code: live on the Logins &amp; secrets page (terminal: <code>scripts/totp.sh &lt;user&gt;</code>; no phone app)</td></tr>
+      <tr><td><code>ops-e2e-maker01</code>, <code>ops-e2e-checker01</code></td><td>code: the same page or <code>scripts/totp.sh &lt;user&gt;</code> (the API suite uses them too)</td></tr>
+      <tr><td><code>ops-maker01</code>, <code>ops-checker01</code>, <code>ops-viewer01</code>, <code>ops-compliance01</code>, <code>ops-auditor01</code>, <code>ops-admin01</code></td><td>code: the same page or <code>scripts/totp.sh &lt;user&gt;</code> (the same pre-set secret; no authenticator app for anyone)</td></tr>
       <tr><td colspan="2">Five wrong passwords or codes lock the user for 1-15 min (unlock: 1.5)</td></tr>
       <tr><td>App users (mw-auth login: MSISDN + app PIN + bound device)</td><td><code>customer01</code>, <code>customer02</code>, <code>agent01</code>, <code>merchant01</code>, <code>merchant02</code>, <code>seed-customer01</code>, …</td><td>app PIN <code>13579</code></td><td>the same <code>13579</code> is the transaction PIN (checked by mw-auth)</td></tr>
-      <tr><td>Portal users (realm <code>portals</code>, client <code>mw-portal</code>)</td><td><code>org-maker01</code>, <code>org-checker01</code>, <code>org-makerchecker01</code>, <code>org-checker02</code>, <code>sp-viewer01</code>, <code>seed-org-maker</code>, <code>seed-org-checker</code></td><td><code>portal-test-pass</code></td><td>6-digit code: <code>scripts/totp.sh &lt;user&gt;</code> (every portal user has the pre-set secret)</td></tr>
-      <tr><td>Keycloak admin (realm <code>master</code>)</td><td><code>kc-admin</code></td><td><code>kc-admin-test-pass</code></td><td>no web console; commands in 1.5</td></tr>
-      <tr><td>OpenBao (secrets store)</td><td>-</td><td>token <code>dev-root-token</code></td><td>no web UI; commands in 1.6</td></tr>
+      <tr><td>Portal users (realm <code>portals</code>, client <code>mw-portal</code>)</td><td><code>org-maker01</code>, <code>org-checker01</code>, <code>org-makerchecker01</code>, <code>org-checker02</code>, <code>sp-viewer01</code>, <code>seed-org-maker</code>, <code>seed-org-checker</code></td><td><code>portal-test-pass</code></td><td>6-digit code: live on the Logins &amp; secrets page or <code>scripts/totp.sh &lt;user&gt;</code> (every portal user has the pre-set secret)</td></tr>
+      <tr><td>Keycloak admin (realm <code>master</code>)</td><td><code>kc-admin</code></td><td><code>kc-admin-test-pass</code></td><td>no web console; the account tools of 1.5 use it for you (kcadm commands there as a fallback)</td></tr>
+      <tr><td>OpenBao (secrets store)</td><td>-</td><td>token <code>dev-root-token</code> (<code>OPENBAO_DEV_ROOT_TOKEN</code>)</td><td>no web UI; commands in 1.6</td></tr>
       <tr><td rowspan="2">SoftHSM PKCS#11 tokens (<code>softhsm</code>, <code>deploy/softhsm/README.md</code>)</td><td>token <code>mw-crypto</code> (port 5657)</td><td>user PIN <code>dev-mwcrypto-user-pin</code></td><td>SO PIN <code>dev-mwcrypto-so-pin</code>; used by <code>mw-crypto</code> (its PIN is also in OpenBao <code>secret/mw-crypto</code>)</td></tr>
       <tr><td>token <code>paysim</code> (port 5658)</td><td>user PIN <code>dev-paysim-user-pin</code></td><td>SO PIN <code>dev-paysim-so-pin</code>; the payShield simulator's LMK store</td></tr>
       <tr><td>Test-only API routes (<code>/test/…</code>, Postman)</td><td>-</td><td>header <code>apikey: e2e-test-apikey</code></td><td>exist after <code>scripts/tester.sh</code> or <code>scripts/api-test.sh</code></td></tr>
@@ -292,46 +312,81 @@ scripts/creds.sh</pre></div>
   </div>
 
   <div class="case" id="c1-1">
-    <h3><span class="id">1.1</span>Print every login and key</h3>
+    <h3><span class="id">1.1</span>Every login, key and seeded record in the browser</h3>
+    <h4>Logins &amp; secrets (<a href="https://localhost/tester/credentials">/tester/credentials</a>)</h4>
+    <p>A secret is masked until you press show; every value, the usernames included, has a copy button. A value missing from <code>deploy/.env</code> shows "not set" instead.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Block</th><th>What it gives you</th></tr>
+      <tr><td>Ops console</td><td>every ops user (<code>seed-ops-*</code>, <code>ops-e2e-*</code>, <code>ops-*01</code>) with its name, username, password <code>ops-test-pass</code> and its
+        <b>live 6-digit code</b> with a countdown (it renews every 30 s)</td></tr>
+      <tr><td>Org portal</td><td>the same for the portal users (<code>portal-test-pass</code>, live code)</td></tr>
+      <tr><td>App wallets</td><td>the app and transaction PIN <code>13579</code>, a wrong PIN <code>9999</code> for refusal tests (any PIN but <code>13579</code> is wrong; the cases below use <code>97531</code>), and a
+        <span class="ui">PIN → ciphertext</span> helper: the PIN encrypted under mw-auth's PIN key, for a request you build by hand (Postman, curl)</td></tr>
+      <tr><td>Latest OTP</td><td>type an MSISDN: the latest BIND / LOGIN / RESET code it received by SMS and how old it is</td></tr>
+      <tr><td>Platform</td><td>Keycloak admin <code>kc-admin</code>, the OpenBao token, the APISIX admin key and the test-route apikey, the bill
+        aggregator and bank HMAC secrets, the USSD gateway passwords, the SoftHSM token labels and PINs</td></tr>
+    </table></div>
+    <p>To sign in to the ops console or the org portal: copy the username, the password, then the code, into the Keycloak page within its 30 s.
+    Keycloak accepts one code once per user: the same user again (e.g. after a sign-out) needs the next code.</p>
+    <h4>Seed data (<a href="https://localhost/tester/seed-data">/tester/seed-data</a>)</h4>
+    <p>What <code>mw-seeder</code> created, read from its manifest: the ops and portal users (realm imports included) with their
+    names, the app wallets with holder name, MSISDN, role, live balance and PIN, the run customers, the organisations and
+    their wallets, the partners, billers, USSD menus and templates, and the core-mock generated ranges with a lookup box
+    (type a number, get its holder and balance). Each login row has its password and live code inline, each partner its
+    HMAC secret; every username has a copy button. Every table has a filter. Without the seed profile the page says "run the seed profile". The rows also
+    carry the account tools (1.5).</p>
+    <h4>In a terminal instead</h4>
     <div class="cmd"><pre>scripts/creds.sh</pre></div>
-    <p>The output is grouped by where a value is used; use it to check which
-    values your stack really has:</p>
+    <p>It prints the two page links first, then every value grouped by where it is used:</p>
     <div class="table-wrap"><table>
       <tr><th>Block</th><th>What it gives you</th><th>Value / taken from</th></tr>
-      <tr><td>Test console</td><td>the URL; no sign-in</td><td>-</td></tr>
-      <tr><td>Ops console</td><td>the one password of every ops user and which users need an authenticator app</td><td><code>ops-test-pass</code> (<code>KC_OPS_TEST_PASSWORD</code>)</td></tr>
-      <tr><td>App users</td><td>the app PIN of the seeded app wallets at mw-auth</td><td><code>13579</code> (<code>MW_SEED_APP_PIN</code>)</td></tr>
+      <tr><td>Test console</td><td>the URL and the two pages above; no sign-in</td><td>-</td></tr>
+      <tr><td>Ops console</td><td>the one password of every ops user and how to get their one-time code (every ops user has the pre-set secret)</td><td><code>ops-test-pass</code> (<code>KC_OPS_TEST_PASSWORD</code>)</td></tr>
+      <tr><td>App users</td><td>the app PIN of the seeded app wallets at mw-auth, also the transaction PIN on every channel</td><td><code>13579</code> (<code>MW_SEED_APP_PIN</code>)</td></tr>
       <tr><td>Portal users</td><td>password of the portals realm users and how to get their one-time code</td><td><code>portal-test-pass</code> (<code>KC_PORTALS_TEST_PASSWORD</code>); <code>scripts/totp.sh seed-org-maker</code></td></tr>
       <tr><td>Keycloak admin</td><td>user <code>kc-admin</code> and its password</td><td><code>kc-admin-test-pass</code> (<code>KC_BOOTSTRAP_ADMIN_PASSWORD</code>)</td></tr>
-      <tr><td>OpenBao</td><td>the token (only while the stack is up)</td><td><code>dev-root-token</code> (an older OpenBao volume: its random root token)</td></tr>
+      <tr><td>OpenBao</td><td>the token (only while the stack is up)</td><td><code>dev-root-token</code> (<code>OPENBAO_DEV_ROOT_TOKEN</code>; an older OpenBao volume: its random root token)</td></tr>
       <tr><td>APISIX</td><td>the <code>apikey</code> of the test-only routes; the admin API key</td><td><code>e2e-test-apikey</code> (<code>MW_E2E_API_KEY</code>); admin key <code>dev-apisix-admin-key</code> (<code>APISIX_ADMIN_KEY</code>)</td></tr>
-      <tr><td>Signing secrets</td><td>checkout merchant <code>merchant-demo</code>, bill aggregator and bank callback HMAC secrets</td><td><code>dev-checkout-merchant-secret</code>, <code>dev-billagg-hmac-secret</code>, <code>dev-c2wbank-hmac-secret</code> (<code>CHECKOUT_DEMO_MERCHANT_SECRET</code>, <code>BILLAGG_HMAC_SECRET</code>, <code>C2WBANK_HMAC_SECRET</code>)</td></tr>
+      <tr><td>Signing secrets</td><td>checkout merchant <code>merchant-demo</code> (Karim Traders), bill aggregator and bank callback HMAC secrets</td><td><code>dev-checkout-merchant-secret</code>, <code>dev-billagg-hmac-secret</code>, <code>dev-c2wbank-hmac-secret</code> (<code>CHECKOUT_DEMO_MERCHANT_SECRET</code>, <code>BILLAGG_HMAC_SECRET</code>, <code>C2WBANK_HMAC_SECRET</code>)</td></tr>
       <tr><td>SoftHSM tokens</td><td>label, port, user and SO PIN of each dev/test PKCS#11 token</td><td><code>mw-crypto</code> 5657 <code>dev-mwcrypto-user-pin</code> / <code>dev-mwcrypto-so-pin</code>; <code>paysim</code> 5658 <code>dev-paysim-user-pin</code> / <code>dev-paysim-so-pin</code> (<code>SOFTHSM_MWCRYPTO_LABEL</code>, <code>SOFTHSM_MWCRYPTO_USER_PIN</code>, …)</td></tr>
       <tr><td>USSD gateways</td><td>basic-auth password per operator (user <code>ussd-gp</code>, <code>ussd-robi</code>, <code>ussd-bl</code>, <code>ussd-teletalk</code>)</td><td><code>dev-ussd-gp-pass</code>, <code>dev-ussd-robi-pass</code>, … (<code>USSD_GP_GATEWAY_SECRET</code>, …)</td></tr>
     </table></div>
-    <p>One value only: <code>grep KC_OPS_TEST_PASSWORD deploy/.env</code>. The test console reads the app PIN, the
-    portals password and one-time-code secret, the apikey and the merchant secret from <code>deploy/.env</code> when <code>scripts/tester.sh</code> starts it.</p>
-    <div class="note">On a shared test host you need no file access: the fixed values above work there too
-    (if that host was set up after <code>deploy/reset.sh</code>). Only <code>scripts/totp.sh</code> needs a terminal on the host:
-    ask whoever runs it, or compute the code yourself from the secret in 1.0 with a TOTP tool set to SHA-256.</div>
+    <p>One value only: <code>grep KC_OPS_TEST_PASSWORD deploy/.env</code>. The test console reads these values from
+    <code>deploy/.env</code> when <code>scripts/tester.sh</code> starts it (a changed value: run it again).</p>
+    <div class="note">On a shared test host you need no file access and no terminal: the fixed values above work there too
+    (if that host was set up after <code>deploy/reset.sh</code>), and the Logins &amp; secrets page gives the live one-time
+    codes. Without the test console, ask whoever runs the stack for <code>scripts/totp.sh</code>, or compute the code from
+    the secret in 1.0 with a TOTP tool set to SHA-256.</div>
   </div>
 
   <div class="case" id="c1-2">
     <h3><span class="id">1.2</span>Who is who in the ops console</h3>
     <div class="table-wrap"><table>
       <tr><th>User</th><th>Roles</th><th>Can</th><th>One-time code</th></tr>
-      <tr><td><code>seed-ops-maker</code>, <code>ops-e2e-maker01</code>, <code>ops-maker01</code></td><td>viewer, ops-maker</td><td>read; <b>request</b> reversals, force commit/release, TSQ, wallet unlocks, partner changes, USSD menu and template publishes</td><td rowspan="4"><code>seed-ops-*</code> and <code>ops-e2e-*</code>: <code>scripts/totp.sh &lt;user&gt;</code><br>(no app; <code>seed-ops-*</code> exist after <code>mw-seeder</code> ran)<br><br><code>ops-*01</code>: authenticator app (1.4)</td></tr>
+      <tr><td><code>seed-ops-maker</code>, <code>ops-e2e-maker01</code>, <code>ops-maker01</code></td><td>viewer, ops-maker</td><td>read; <b>request</b> reversals, force commit/release, TSQ, wallet unlocks, partner changes, USSD menu and template publishes</td><td rowspan="4"><code>seed-ops-*</code> and <code>ops-e2e-*</code>: live on the Logins &amp; secrets page, or <code>scripts/totp.sh &lt;user&gt;</code><br>(no app, for every ops user; <code>seed-ops-*</code> exist after <code>mw-seeder</code> ran)</td></tr>
       <tr><td><code>seed-ops-checker</code>, <code>ops-e2e-checker01</code>, <code>ops-checker01</code></td><td>viewer, ops-checker</td><td>read; <b>approve or reject</b> the requests of others (also partner changes)</td></tr>
       <tr><td><code>seed-ops-viewer</code>, <code>ops-viewer01</code></td><td>viewer</td><td>read only</td></tr>
       <tr><td><code>seed-ops-compliance</code>, <code>ops-compliance01</code></td><td>compliance-officer</td><td>read; reveal a full MSISDN (audited)</td></tr>
-      <tr><td><code>seed-ops-secadmin1</code>, <code>seed-ops-secadmin2</code></td><td>security-admin</td><td>Keys page; request, approve (the other's) and run the key ceremony (9.13)</td></tr>
-      <tr><td><code>ops-auditor01</code></td><td>auditor</td><td>read; reveal a full MSISDN (audited)</td><td rowspan="2">authenticator app (1.4)</td></tr>
+      <tr><td><code>seed-ops-secadmin1</code>, <code>seed-ops-secadmin2</code></td><td>security-admin</td><td>Keys page; request, approve (the other's) and run the key ceremony (9.13)</td><td rowspan="3">the same: live on the page or <code>scripts/totp.sh &lt;user&gt;</code></td></tr>
+      <tr><td><code>ops-auditor01</code></td><td>auditor</td><td>read; reveal a full MSISDN (audited)</td></tr>
       <tr><td><code>ops-admin01</code></td><td>viewer, integration-maker, security-admin</td><td>read; request partner changes only</td></tr>
     </table></div>
     <p>Every ops user has the password <code>ops-test-pass</code>. A maker can never approve their own
     request: you need two users, so use two browser windows (a normal one and a private/incognito one),
     each signed in as a different user. No user holds the realm roles ops-emergency, recon-maker,
     recon-checker or integration-checker: partner changes are approved by an ops-checker.</p>
+    <p><b>Display names</b> (the consoles' headers and the Seed data page; sign in with the user name):</p>
+    <div class="table-wrap"><table>
+      <tr><th>Realm</th><th>User → name</th></tr>
+      <tr><td><code>ops</code> (seeded)</td><td><code>seed-ops-maker</code> Nusrat Jahan, <code>seed-ops-checker</code> Tanvir Ahmed, <code>seed-ops-viewer</code> Farzana Akter,
+        <code>seed-ops-compliance</code> Mahmudul Hasan, <code>seed-ops-secadmin1</code> Sabbir Rahman, <code>seed-ops-secadmin2</code> Rumana Chowdhury</td></tr>
+      <tr><td><code>ops</code> (realm import)</td><td><code>ops-maker01</code> Imran Kabir, <code>ops-checker01</code> Taslima Nasreen, <code>ops-viewer01</code> Shahana Begum,
+        <code>ops-compliance01</code> Nazmul Huda, <code>ops-auditor01</code> Fahmida Yasmin, <code>ops-admin01</code> Zahid Hasan,
+        <code>ops-e2e-maker01</code> Rashed Karim, <code>ops-e2e-checker01</code> Sharmin Akter</td></tr>
+      <tr><td><code>portals</code></td><td><code>seed-org-maker</code> Shirin Sultana, <code>seed-org-checker</code> Arif Mahmud (seeded); <code>org-maker01</code> Mizanur Rahman,
+        <code>org-checker01</code> Rokeya Khatun, <code>org-makerchecker01</code> Habibur Rahman, <code>org-checker02</code> Sadia Afrin, <code>sp-viewer01</code> Anisur Rahman (realm import)</td></tr>
+    </table></div>
+    <p>The realm-import names show only on a stack set up after <code>deploy/reset.sh</code>: Keycloak imports a realm once, on a fresh volume.</p>
   </div>
 
   <div class="case" id="c1-3">
@@ -339,42 +394,58 @@ scripts/creds.sh</pre></div>
     <ol>
       <li>Open <a href="https://localhost/console">https://localhost/console</a> (accept the self-signed certificate once, as in 0.2) and press <span class="ui">Sign in with Keycloak</span>.</li>
       <li>Username <code>seed-ops-maker</code>, password <code>ops-test-pass</code>, press <span class="ui">Sign In</span>.</li>
-      <li>The next page asks for a one-time code. In a terminal, in the repository folder, run:
+      <li>The next page asks for a one-time code. In the test console, open
+        <a href="https://localhost/tester/credentials">Logins &amp; secrets</a> (or the user's row on Seed data) and copy the
+        live code of <code>seed-ops-maker</code>; the countdown shows how long it is valid. Or, in a terminal in the repository folder:
         <div class="cmd"><pre>scripts/totp.sh seed-ops-maker</pre></div>
         It prints e.g. <code>seed-ops-maker: 482913  (valid 17 s more; …)</code>. Type the 6 digits, press <span class="ui">Sign In</span>.
         With less than 5 s left, wait for the next code.</li>
       <li>Expect the <span class="ui">Transactions</span> page; the header shows <code>seed-ops-maker</code> with its roles (among them <code>viewer, ops-maker</code>; Keycloak adds <code>offline_access, uma_authorization, default-roles-ops</code>) and <span class="ui">Sign out</span>.</li>
       <li><b>The checker, for every maker-checker case:</b> open a private/incognito window, same URL, user
-        <code>seed-ops-checker</code>, password <code>ops-test-pass</code>, code <code>scripts/totp.sh seed-ops-checker</code>.</li>
+        <code>seed-ops-checker</code>, password <code>ops-test-pass</code>, its live code from the same page (or <code>scripts/totp.sh seed-ops-checker</code>).</li>
     </ol>
     <div class="warn">A code is accepted <b>once</b>. Two users have different codes, so the maker and the checker
     may sign in in the same 30 seconds; the same user twice (e.g. after a sign-out) must wait for the next
-    code. Five wrong passwords or codes lock the user for 1 to 15 minutes (wait, or unlock in 1.5).</div>
+    code. Five wrong passwords or codes lock the user for 1 to 15 minutes (wait, or <span class="ui">Unlock</span> it in 1.5).</div>
   </div>
 
   <div class="case" id="c1-4">
-    <h3><span class="id">1.4</span>Sign in with your own authenticator app</h3>
-    <p>For <code>ops-maker01</code> and the other <code>ops-*01</code> users. The codes use <b>SHA-256</b>: use
-    <b>FreeOTP</b> or <b>Aegis</b> (Android) or another app that honours the algorithm in the QR code.
-    Keycloak's setup page also names Google Authenticator, but on many phones it ignores the SHA-256 setting and its codes are refused.</p>
-    <ol>
-      <li><span class="ui">Sign in with Keycloak</span>, user <code>ops-maker01</code>, password <code>ops-test-pass</code>.</li>
-      <li>First time only: the page <i>Mobile Authenticator Setup</i> shows a barcode (QR). Scan it in the app (or <span class="ui">Unable to scan?</span> shows the key to type in).</li>
-      <li>Type the app's 6-digit code into <span class="ui">One-time code</span>, any <span class="ui">Device Name</span>, press <span class="ui">Submit</span>.</li>
-      <li>Later sign-ins: <code>ops-test-pass</code>, then the app's current code.</li>
-    </ol>
-    <p><b>Lost the phone or enrolled a wrong app?</b> Reset the user's code with the first block of 1.5.</p>
+    <h3><span class="id">1.4</span>No authenticator app</h3>
+    <p>Every ops and portal user, <code>ops-maker01</code> and the other <code>ops-*01</code> users included, has the
+    pre-set one-time-code secret: sign in as in 1.3 with the user's live code from
+    <a href="https://localhost/tester/credentials">Logins &amp; secrets</a> (copy the username, the password and the code) or
+    <code>scripts/totp.sh &lt;user&gt;</code>. Keycloak never shows the <i>Mobile Authenticator Setup</i> page on the dev stack.
+    A stack set up before this change still asks the <code>ops-*01</code> users to enrol: <code>deploy/reset.sh</code>, then step 0.1
+    (Keycloak imports a realm once, on a fresh volume).</p>
   </div>
 
   <div class="case" id="c1-5">
-    <h3><span class="id">1.5</span>Keycloak administration</h3>
+    <h3><span class="id">1.5</span>Account tools and Keycloak administration</h3>
+    <p>The rows of the test console page <a href="https://localhost/tester/seed-data">Seed data</a> carry buttons for
+    the everyday fixes. Each one that changes something asks for a confirmation that says what will change; the result shows below the row.
+    The wallet lookup box gives the same wallet buttons for any number, e.g. a fresh wallet of <a href="#c3-11">3.11</a>.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Row</th><th>Button</th><th>What it does</th></tr>
+      <tr><td rowspan="5">App wallet (e.g. <code>01711000001</code> Rahim Uddin)</td><td><span class="ui">Status</span></td><td>mw-auth's view of the wallet: PIN set, locked and until when, failed-PIN count, bound device</td></tr>
+      <tr><td><span class="ui">Unlock</span></td><td>clears the PIN lock and the failed-PIN count at mw-auth (after three wrong PINs, any level)</td></tr>
+      <tr><td><span class="ui">Reset PIN</span></td><td>sets the wallet's PIN back to the seeded <code>13579</code></td></tr>
+      <tr><td><span class="ui">Unbind device</span></td><td>unbinds the device: the next login binds a new one (the console does it by itself)</td></tr>
+      <tr><td><span class="ui">Set balance</span></td><td>sets the available balance at core-mock (the difference is booked as an ADJUSTMENT against SETTLEMENT); a missing wallet is created</td></tr>
+      <tr><td rowspan="2">Ops or portal user (e.g. <code>seed-ops-maker</code>, <code>org-maker01</code>)</td><td><span class="ui">Unlock</span></td><td>enables the user and clears Keycloak's lock after five wrong passwords or codes</td></tr>
+      <tr><td><span class="ui">Reset password</span></td><td>sets the password back to the realm's dev value (<code>ops-test-pass</code> / <code>portal-test-pass</code>), not temporary</td></tr>
+    </table></div>
+    <p>There is no one-time-code reset: every user keeps the pre-set code (1.4), which Keycloak's admin API could not put back once deleted.</p>
+    <p>The tools are a fixed list of actions (realms <code>ops</code> and <code>portals</code> only, never <code>master</code>), called through
+    test-only gateway routes: mw-auth's dev-only account test API and the Keycloak admin API as <code>kc-admin</code>. They exist only
+    while <code>scripts/tester.sh</code> (or <code>scripts/api-test.sh</code>) turned the test routes on.</p>
+    <h4>Fallback: kcadm in the Keycloak container</h4>
     <p>The Keycloak admin web console is <b>not</b> published by the gateway (only the login pages are).
-    Admin tasks run with <code>kcadm.sh</code> inside the container as user <code>kc-admin</code>, password
+    Without the test console, admin tasks run with <code>kcadm.sh</code> inside the container as user <code>kc-admin</code>, password
     <code>kc-admin-test-pass</code>. The container already has both in its environment
     (<code>$KC_BOOTSTRAP_ADMIN_USERNAME</code>, <code>$KC_BOOTSTRAP_ADMIN_PASSWORD</code>), so each block below is copied
     and run as it is, from the repository folder. Change the user name (<code>ops-maker01</code>) and the realm
     (<code>-r ops</code>) as needed.</p>
-    <h4>List the users of a realm and whether they enrolled</h4>
+    <h4>List the users of a realm</h4>
     <div class="cmd"><pre>docker compose -f deploy/docker-compose.yml exec keycloak sh -c '
   k=/opt/keycloak/bin/kcadm.sh; c="--config /tmp/kc.config"
   $k config credentials $c --server http://localhost:8080 --realm master \
@@ -382,19 +453,6 @@ scripts/creds.sh</pre></div>
   $k get users $c -r ops --fields username,enabled,requiredActions
   rm -f /tmp/kc.config'</pre></div>
     <p>Expect one line per ops user. <code>-r portals</code> lists that realm.</p>
-    <h4>Reset a user's one-time code (enrol again at the next sign-in)</h4>
-    <div class="cmd"><pre>docker compose -f deploy/docker-compose.yml exec keycloak sh -c '
-  k=/opt/keycloak/bin/kcadm.sh; c="--config /tmp/kc.config"
-  $k config credentials $c --server http://localhost:8080 --realm master \
-     --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null
-  id=$($k get users $c -r ops -q username=ops-maker01 --fields id --format csv --noquotes)
-  for cid in $($k get users/$id/credentials $c -r ops --fields id,type --format csv --noquotes | awk -F, "\$2==\"otp\"{print \$1}"); do
-    $k delete users/$id/credentials/$cid $c -r ops
-  done
-  $k update users/$id $c -r ops -s "requiredActions=[\"CONFIGURE_TOTP\"]"
-  rm -f /tmp/kc.config'</pre></div>
-    <p>Do not run it for a <code>seed-ops-*</code> or <code>ops-e2e-*</code> user: their pre-set code would be gone
-    (<code>deploy/reset.sh</code>, then step 0.1, brings it back).</p>
     <h4>Unlock a user after five wrong tries</h4>
     <div class="cmd"><pre>docker compose -f deploy/docker-compose.yml exec keycloak sh -c '
   k=/opt/keycloak/bin/kcadm.sh; c="--config /tmp/kc.config"
@@ -457,12 +515,12 @@ docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token ope
 MW_SEED_APP_PIN=13579 node scripts/lib/mw-auth-token.mjs 01711000001
 <span class="c"># then send accessToken as the bearer and deviceId as X-Device-Id</span>
 <span class="c"># portal user (realm portals) -> /portal/org/v1/*</span>
-<span class="c"># run scripts/totp.sh org-maker01 first and put its 6 digits after totp=</span>
+<span class="c"># copy org-maker01's live code from /tester/credentials (or run scripts/totp.sh org-maker01) and put its 6 digits after totp=</span>
 curl -sk https://localhost/auth/realms/portals/protocol/openid-connect/token \
   -d client_id=mw-portal -d grant_type=password -d username=org-maker01 -d password=portal-test-pass \
   -d totp=123456
 <span class="c"># ops user (realm ops) -> /admin/v1/*: pre-set code users only, plus the apikey header;</span>
-<span class="c"># run scripts/totp.sh seed-ops-viewer first and put its 6 digits after totp=</span>
+<span class="c"># copy seed-ops-viewer's live code from /tester/credentials (or run scripts/totp.sh seed-ops-viewer) and put its 6 digits after totp=</span>
 curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'apikey: e2e-test-apikey' \
   -d client_id=mw-e2e-ops -d grant_type=password -d username=seed-ops-viewer -d password=ops-test-pass \
   -d totp=123456</pre></div>
@@ -475,7 +533,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <div class="table-wrap"><table>
       <tr><th>Variable</th><th>Value</th></tr>
       <tr><td><code>e2eApiKey</code></td><td><code>e2e-test-apikey</code></td></tr>
-      <tr><td><code>appPin</code></td><td><code>13579</code></td></tr>
+      <tr><td><code>appPin</code></td><td><code>13579</code> (a hand-made request needs it encrypted: the <span class="ui">PIN → ciphertext</span> helper of 1.1)</td></tr>
       <tr><td><code>kcPortalsPassword</code></td><td><code>portal-test-pass</code></td></tr>
       <tr><td><code>kcOpsPassword</code></td><td><code>ops-test-pass</code></td></tr>
       <tr><td><code>kcOpsTotpSecret</code></td><td><code>opstesttotpsecretnotarealsecret1</code></td></tr>
@@ -495,7 +553,8 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
   <p>The panel on the right of each page shows the result of the last button you pressed:</p>
   <ol>
     <li><b>Headline</b>: green ✔ or red ✖, the txnId and status, and the error code if refused (e.g. <code>refused: MW-AUTH-040 Wrong PIN</code>).</li>
-    <li><b>Final status</b> with the link <span class="ui">open in the ops console ↗</span> (timeline, partner calls, audit trail).</li>
+    <li><b>Final status</b>: the txnId is a link to the test console's transaction explorer (section <a href="#c10-0">10</a>: timeline,
+      partner calls, audit trail, no sign-in), and <span class="ui">open in the ops console ↗</span> opens the same transaction in the ops console.</li>
     <li><b>Balances</b> of every wallet involved: before, after, change, amount held now.</li>
     <li><b>SMS received since the submit.</b></li>
     <li><b>Steps</b>: every API call in order with HTTP status and time. Click a step to see the answer.</li>
@@ -921,7 +980,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
 <!-- ============================================================ -->
 <section id="s7">
   <h2><span class="num">7</span> Web checkout</h2>
-  <p>Page <span class="ui">Web checkout</span>. The shop is "Demo Shop" (merchant wallet 01911000001). <b>Sign-in: none</b>
+  <p>Page <span class="ui">Web checkout</span>. The shop is "Karim Traders" (merchant wallet 01911000001). <b>Sign-in: none</b>
   (the console signs the shop's requests with the merchant secret and plays the buyer). The buyer buttons stay
   disabled until a session exists (step 1).</p>
   <div class="case" id="c7-1">
@@ -929,7 +988,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <ol>
       <li>Block 1 (shop): <span class="ui">Amount (Tk)</span> <code>25</code>, <span class="ui">Page language</span> <code>en</code>, <span class="ui">Create checkout session</span>.
         Expect HTTP 201, status <code>OPEN</code>; the step shows the signed request (Date, Digest, Signature). The <code>/checkout/page/…</code> link in the result is where a real shop would send the buyer; the MVP has no hosted HTML page, the next step plays it.</li>
-      <li>Block 2 (buyer): <span class="ui">Open the checkout page</span>: "Demo Shop Tk 25.00 (OPEN)".</li>
+      <li>Block 2 (buyer): <span class="ui">Open the checkout page</span>: "Karim Traders Tk 25.00 (OPEN)".</li>
       <li><span class="ui">Payer wallet</span> <code>01711000001</code>, <span class="ui">Send OTP</span>: HTTP 202, the OTP is read from the SMS and filled in.</li>
       <li><span class="ui">PIN</span> <code>13579</code>, <span class="ui">Pay</span> (the console reads the page's <code>pinKey</code>, the PIN transport key, and encrypts with it; mw-auth checks the OTP and the PIN): <code>result PAID</code> with a txnId; payer balance lower.</li>
       <li>Block 3: <span class="ui">Return to the shop (signed redirect)</span>: HTTP 303 to the shop's ok URL, status PAID, <i>signature valid</i>.</li>
@@ -988,7 +1047,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
   <div class="case" id="c8-3">
     <h3><span class="id">8.3</span>Service provider (SP) query</h3>
     <ol>
-      <li>A service provider is an organisation. ORG002 collects for biller DESCO and merchant Demo Shop (01911000001).
+      <li>A service provider is an organisation. ORG002 collects for biller DESCO and merchant Karim Traders (01911000001).
         Make a DESCO bill payment or a merchant payment first (3.5, 3.7).</li>
       <li>Portal user <code>org-checker02</code>, <b>empty</b> the <span class="ui">Batch id</span> field (it is pre-filled after an upload), <span class="ui">Transactions</span>.
         Click the step: the BILL_PAY and MERCHANT_PAY transactions with <code>"role": "PAYEE"</code>.</li>
@@ -1010,10 +1069,12 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
   <div class="flow"><span>maker: Request …</span><b>→</b><span>Approvals: PENDING</span><b>→</b><span>checker: Approve</span><b>→</b><span>applied</span></div>
   <div class="ok"><b>Sign in for section 9</b> (1.3). Password of every ops user: <code>ops-test-pass</code>.
     <ul>
-      <li><b>Window A (maker)</b>, normal window: <code>seed-ops-maker</code>, code <code>scripts/totp.sh seed-ops-maker</code></li>
-      <li><b>Window B (checker)</b>, private/incognito window: <code>seed-ops-checker</code>, code <code>scripts/totp.sh seed-ops-checker</code></li>
-      <li>Other roles when a case says so: <code>seed-ops-viewer</code>, <code>seed-ops-compliance</code> (codes with <code>scripts/totp.sh …</code>);
-        <code>ops-auditor01</code> and <code>ops-admin01</code> need an authenticator app (1.4).</li>
+      <li>One-time codes: keep the test console's <a href="https://localhost/tester/credentials">Logins &amp; secrets</a> page open in
+        a tab and copy the user's live code (terminal: <code>scripts/totp.sh &lt;user&gt;</code>).</li>
+      <li><b>Window A (maker)</b>, normal window: <code>seed-ops-maker</code> (Nusrat Jahan)</li>
+      <li><b>Window B (checker)</b>, private/incognito window: <code>seed-ops-checker</code> (Tanvir Ahmed)</li>
+      <li>Other roles when a case says so: <code>seed-ops-viewer</code>, <code>seed-ops-compliance</code>;
+        <code>ops-auditor01</code> and <code>ops-admin01</code> (the same pre-set code, 1.4).</li>
     </ul></div>
 
   <div class="case" id="c9-0">
@@ -1033,7 +1094,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
 
   <div class="case" id="c9-1">
     <h3><span class="id">9.1</span>Sign in and out</h3>
-    <p><b>Sign in as:</b> <code>seed-ops-maker</code> / <code>ops-test-pass</code> + <code>scripts/totp.sh seed-ops-maker</code>.</p>
+    <p><b>Sign in as:</b> <code>seed-ops-maker</code> / <code>ops-test-pass</code> + its live code (Logins &amp; secrets, or <code>scripts/totp.sh seed-ops-maker</code>).</p>
     <ol>
       <li>Sign in as in 1.3. The login page says <i>Operations console</i>; after the sign-in the header shows <code>seed-ops-maker</code> and its roles (among them <code>viewer, ops-maker</code>).</li>
       <li><span class="ui">Sign out</span>: back on the login page; <span class="ui">Sign in with Keycloak</span> asks for the password again (the Keycloak session ended too).</li>
@@ -1091,7 +1152,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
 
   <div class="case" id="c9-4">
     <h3><span class="id">9.4</span>Audited MSISDN reveal</h3>
-    <p><b>Sign in as:</b> <code>seed-ops-compliance</code> / <code>ops-test-pass</code> + <code>scripts/totp.sh seed-ops-compliance</code>.</p>
+    <p><b>Sign in as:</b> <code>seed-ops-compliance</code> / <code>ops-test-pass</code> + its live code (Logins &amp; secrets, or <code>scripts/totp.sh seed-ops-compliance</code>).</p>
     <ol>
       <li>Open any transaction, press <span class="ui">Reveal MSISDN (audited)</span>.</li>
       <li>Expect the full number with "MSISDNs shown unmasked; this view was audited." and <span class="ui">Mask again</span>; the audit trail gets <code>admin.txn.msisdn.revealed</code>.</li>
@@ -1170,6 +1231,8 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
         <a href="#c3-11">3.11</a>, <span class="ui">Take up a care reset (new phone)</span>). Users without ops-maker see
         "Only an ops-maker files PIN reset requests."</li>
     </ol>
+    <p>To get a wallet back between tests without maker-checker, use <span class="ui">Unlock</span> or <span class="ui">Reset PIN</span>
+    on its Seed data row (1.5): a test shortcut, not the ops process this case checks.</p>
   </div>
 
   <div class="case" id="c9-9">
@@ -1297,8 +1360,23 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
 <section id="s10">
   <h2><span class="num">10</span> Logs and health (observability)</h2>
   <p>The MVP has <b>no dashboards</b> (no Grafana, Prometheus UI, Kafka UI). The business view of a transaction
-  is the ops console's timeline and audit trail (9.3). The technical view is the services' JSON logs.</p>
-  <h3>Follow one transaction</h3>
+  is the test console's transaction explorer and the ops console's timeline and audit trail (9.3). The technical view is the services' JSON logs.</p>
+  <div class="case" id="c10-0">
+    <h3>Follow one transaction: the transaction explorer</h3>
+    <p>Test console page <span class="ui">Transactions</span> (<a href="https://localhost/tester/transactions">/tester/transactions</a>).
+    <b>Sign-in: none</b> (the console reads through mw-admin-api as <code>ops-e2e-maker01</code>, so numbers stay masked).</p>
+    <ol>
+      <li>Click a txnId in any test console result, or paste one into <span class="ui">Transaction ID</span>, or search by MSISDN
+        (e.g. <code>01711000001</code>), optionally with a status (<code>MANUAL_REVIEW</code>) or a type (<code>TOPUP</code>). The list is newest first, numbers masked (<code>0171****001</code>).</li>
+      <li>Open a row. Expect the summary (status, type, channel, amount and fee, initiator), the <b>saga timeline</b>
+        (<code>from -&gt; to on trigger</code>, core commands with <code>sent Nx -&gt; result</code>), the <b>partner calls</b>
+        (a P2P: "No partner calls."; a top-up, bill pay or add money: one row per call with its outcome) and the <b>audit trail</b> with its anchor badge.</li>
+      <li>Input checks: txnId <code>abc</code> → "the txnId must be a UUID" (nothing sent); MSISDN <code>12ab</code> → "the MSISDN must be a
+        phone number"; <code>00000000-0000-4000-8000-000000000000</code> → <code>MW-VAL-003</code>.</li>
+    </ol>
+    <p>Actions (reversal, force commit, manual TSQ, MSISDN reveal) stay in the ops console (9.3-9.6).</p>
+  </div>
+  <h3>Follow one transaction in the logs</h3>
   <div class="cmd"><pre><span class="c"># paste the txnId from a test console result</span>
 docker compose -f deploy/docker-compose.yml logs --no-log-prefix mw-app-gateway mw-auth mw-orchestrator mw-core-mock mw-notify | grep '&lt;txnId&gt;'</pre></div>
   <p>Each line is one JSON event with <code>ts</code>, <code>level</code>, <code>service</code>,
@@ -1374,9 +1452,9 @@ scripts/log-scan.sh</pre></div>
     <tr><td>Sign-in refused with <code>ops-test-pass</code> (or <code>portal-test-pass</code>, app PIN <code>13579</code>)</td><td>your <code>deploy/.env</code> or the volumes hold other values than <code>deploy/dev.env.defaults</code>: use the values <code>scripts/creds.sh</code> prints, or start fresh: <code>cp deploy/dev.env.defaults deploy/.env</code>, <code>deploy/reset.sh</code>, then step 0.1</td></tr>
     <tr><td>The console's login page says "Your session has ended. Sign in again." on the first visit</td><td>a console cookie from before a <code>deploy/reset.sh</code>: just sign in (1.3)</td></tr>
     <tr><td><code>dev-root-token</code>: "permission denied"</td><td>the OpenBao volume predates it: use the token <code>scripts/creds.sh</code> prints (or <code>deploy/reset.sh</code>)</td></tr>
-    <tr><td>Console sign-in: "Invalid authenticator code"</td><td>the code was used already or expired: wait for the next one (<code>scripts/totp.sh</code>); with your own app use FreeOTP/Aegis (SHA-256)</td></tr>
+    <tr><td>Console sign-in: "Invalid authenticator code"</td><td>the code was used already or expired: wait for the next one (Logins &amp; secrets or <code>scripts/totp.sh</code>)</td></tr>
     <tr><td>Console sign-in refused although the password and code are right</td><td>5 wrong tries lock the user for 1-15 minutes: wait, or unlock it (1.5)</td></tr>
-    <tr><td><code>scripts/totp.sh</code>: "no pre-set secret"</td><td>that user enrols an app (1.4); use a <code>seed-ops-*</code> user instead</td></tr>
+    <tr><td><code>scripts/totp.sh</code>: "no pre-set secret"</td><td>not a seeded ops or portal user name: check the spelling (the message lists every one)</td></tr>
     <tr><td>Console login loops back to Keycloak</td><td>the console only works on <code>https://localhost</code> (port 443)</td></tr>
     <tr><td><code>scripts/api-test.sh</code> fails a device test after you used the test console</td><td>each wallet has one active device; rerun the suite (it binds again)</td></tr>
   </table></div>

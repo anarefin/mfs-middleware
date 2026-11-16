@@ -3,30 +3,36 @@
 // seed-customer01, or an MSISDN). Portal users: the realm portals import's users (deploy/keycloak/realms,
 // password + the pre-set TOTP secret).
 
-export type AppPersona = { user: string; msisdn: string; role: "customer" | "agent" | "merchant"; label: string };
+export type AppPersona = { user: string; msisdn: string; role: "customer" | "agent" | "merchant"; name: string; label: string };
 
+// `name` is the wallet's holder name (core-mock's fixtures); `user` and `msisdn` are what the e2e specs select.
 export const APP_PERSONAS: readonly AppPersona[] = [
-  { user: "customer01", msisdn: "01711000001", role: "customer", label: "customer01 (customer)" },
-  { user: "customer02", msisdn: "01711000002", role: "customer", label: "customer02 (customer)" },
-  { user: "agent01", msisdn: "01811000001", role: "agent", label: "agent01 (agent: cash in)" },
-  { user: "merchant01", msisdn: "01911000001", role: "merchant", label: "merchant01 (merchant: Demo Shop)" },
-  { user: "merchant02", msisdn: "01911000002", role: "merchant", label: "merchant02 (merchant)" },
+  { user: "customer01", msisdn: "01711000001", role: "customer", name: "Rahim Uddin", label: "Rahim Uddin (customer01)" },
+  { user: "customer02", msisdn: "01711000002", role: "customer", name: "Ayesha Siddiqua", label: "Ayesha Siddiqua (customer02)" },
+  { user: "agent01", msisdn: "01811000001", role: "agent", name: "Jamal Hossain", label: "Jamal Hossain, Hossain Telecom (agent01: cash in)" },
+  { user: "merchant01", msisdn: "01911000001", role: "merchant", name: "Karim Traders", label: "Karim Traders (merchant01: checkout merchant)" },
+  { user: "merchant02", msisdn: "01911000002", role: "merchant", name: "Lalbagh Pharmacy", label: "Lalbagh Pharmacy (merchant02)" },
 ];
 
-export type PortalPersona = { user: string; label: string };
+export type PortalPersona = { user: string; name: string; label: string };
 
 export const PORTAL_PERSONAS: readonly PortalPersona[] = [
-  { user: "org-maker01", label: "org-maker01 (ORG001 maker: uploads)" },
-  { user: "org-checker01", label: "org-checker01 (ORG001 checker: approves)" },
-  { user: "org-makerchecker01", label: "org-makerchecker01 (ORG001 maker and checker)" },
-  { user: "org-checker02", label: "org-checker02 (ORG002 checker: other org; SP query as payee)" },
-  { user: "sp-viewer01", label: "sp-viewer01 (no organisation: refused, 403)" },
+  { user: "org-maker01", name: "Mizanur Rahman", label: "Mizanur Rahman (org-maker01, ORG001 maker: uploads)" },
+  { user: "org-checker01", name: "Rokeya Khatun", label: "Rokeya Khatun (org-checker01, ORG001 checker: approves)" },
+  { user: "org-makerchecker01", name: "Habibur Rahman", label: "Habibur Rahman (org-makerchecker01, ORG001 maker and checker)" },
+  { user: "org-checker02", name: "Sadia Afrin", label: "Sadia Afrin (org-checker02, ORG002 checker: other org; SP query as payee)" },
+  { user: "sp-viewer01", name: "Anisur Rahman", label: "Anisur Rahman (sp-viewer01, no organisation: refused, 403)" },
+];
+
+/** core-mock's other named fixture wallet (no app user of the console). */
+export const OTHER_FIXTURES: readonly { msisdn: string; name: string; role: "customer" }[] = [
+  { msisdn: "01711000003", name: "Kamal Hossain", role: "customer" },
 ];
 
 /** Every wallet the home page shows (core-mock's seed). */
 export const SEEDED_WALLETS: readonly { msisdn: string; who: string }[] = [
   ...APP_PERSONAS.map((p) => ({ msisdn: p.msisdn, who: p.label })),
-  { msisdn: "01711000003", who: "core-mock seeded customer" },
+  ...OTHER_FIXTURES.map((f) => ({ msisdn: f.msisdn, who: `${f.name} (core-mock seeded customer)` })),
 ];
 
 export const TXN_TYPES = ["P2P", "CASH_IN", "CASH_OUT", "MERCHANT_PAY", "TOPUP", "BILL_PAY", "ADD_MONEY_BANK"] as const;

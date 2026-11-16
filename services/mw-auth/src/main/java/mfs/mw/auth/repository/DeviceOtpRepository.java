@@ -110,6 +110,11 @@ public class DeviceOtpRepository {
         == 1;
   }
 
+  /** Forgets the wallet's OTP and its send window (dev test API unlock); true when there was one. */
+  public boolean delete(String walletId) {
+    return jdbc.update("DELETE FROM device_otp WHERE wallet_id = ?", walletId) == 1;
+  }
+
   private static Timestamp ts(Instant i) {
     return Timestamp.from(i);
   }

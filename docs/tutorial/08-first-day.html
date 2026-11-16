@@ -62,7 +62,7 @@ docker compose --profile core --profile seed up -d --build
 cd ..
 scripts/smoke.sh           <span class="c"># quick live checks: is everything up?</span>
 scripts/tester.sh          <span class="c"># start the test console: https://localhost/tester</span>
-scripts/creds.sh           <span class="c"># print every test login and password</span></code></pre>
+scripts/creds.sh           <span class="c"># print every test login and password (or open https://localhost/tester/credentials)</span></code></pre>
   <p>What just happened:</p>
   <ul>
     <li><code>./gradlew clean build</code> built every <code>services/mw-*</code> module in one Gradle run: its tests, then one
@@ -85,14 +85,17 @@ scripts/creds.sh           <span class="c"># print every test login and password
 
   <h2 id="send">3. Send money in the test console</h2>
   <p>The test console (<code>https://localhost/tester</code>) plays every outside party: the apps, a USSD phone, the partners,
-    a shop and the org portal. Open it and:</p>
+    a shop and the org portal. Its <strong>Seed data</strong> page lists every test user and wallet the seeder made
+    (fake names such as Rahim Uddin for <code>customer01</code>, live balances, logins), and <strong>Logins &amp; secrets</strong>
+    shows every password with a live one-time code. Every page starts with a <em>How to test</em> panel. Open it and:</p>
   <ol class="steps">
     <li>Go to <strong>App flows</strong>. Choose transaction type <em>Send money (P2P)</em>. The defaults are user
       <code>customer01</code>, counterparty <code>01711000002</code>, amount <code>10</code>, PIN <code>13579</code>.</li>
     <li>If it says the device is not bound, press <em>Re-bind (new device)</em> first: you will see the OTP being requested,
       read from the fake SMS centre and used. That is device binding (chapter 7).</li>
     <li>Press <strong>Submit</strong>. Expect <span class="st ok">COMPLETED</span>, the payer down Tk 15.00 (10 + the Tk 5 fee), the payee up Tk 10.00.</li>
-    <li><strong>Copy the txnId</strong> from the result. You need it for the next two steps.</li>
+    <li><strong>Copy the txnId</strong> from the result. You need it for the next two steps. (Clicking it opens the console's
+      <strong>Transactions</strong> explorer: the same timeline, partner calls and audit trail as the ops console, without a login.)</li>
     <li>Go to <strong>SMS &amp; email</strong>, number <code>01711000001</code>, <em>Read</em>: the "you sent" SMS is there, with the other
       number masked.</li>
   </ol>
@@ -109,8 +112,8 @@ docker compose logs --no-log-prefix mw-core-mock    | grep 'PASTE-TXN-ID' | jq -
   <h2 id="console">5. Find it in the ops console</h2>
   <ol class="steps">
     <li>Open <code>https://localhost/console</code>. Log in as <code>seed-ops-maker</code> with the ops password from
-      <code>scripts/creds.sh</code>.</li>
-    <li>When asked for a code, run <code>scripts/totp.sh</code> in a terminal and type the 6 digits (a code works once; for a second login, wait for the next one).</li>
+      the test console's <strong>Logins &amp; secrets</strong> page (or <code>scripts/creds.sh</code>).</li>
+    <li>When asked for a code, copy its live code from the same page (or run <code>scripts/totp.sh</code> in a terminal) and type the 6 digits (a code works once; for a second login, wait for the next one).</li>
     <li>Open <strong>Transactions</strong>, search for your txnId, open it. The timeline shows each state, when it happened and which command
       was sent to the core. Notice the phone numbers are masked even here.</li>
   </ol>

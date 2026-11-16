@@ -13,23 +13,34 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import mfs.mw.seeder.client.IdentityAdmin;
+import mfs.mw.seeder.dto.KeycloakUser;
 import mfs.mw.seeder.dto.NewUser;
 import mfs.mw.seeder.dto.SeedManifest;
 import org.junit.jupiter.api.Test;
 
 class SeedIdentitiesStepTest {
 
-  /** In-memory Keycloak: users and their realm roles per realm, plus the clients that exist. */
+  /** In-memory Keycloak: users (profile by id) and their realm roles per realm, plus the clients that exist. */
   static final class FakeKeycloak implements IdentityAdmin {
     final Map<String, Map<String, String>> ids = new HashMap<>();
+    final Map<String, KeycloakUser> profiles = new HashMap<>();
     final Map<String, Set<String>> roles = new HashMap<>();
     final Map<String, NewUser> created = new HashMap<>();
     final Set<String> clients = new HashSet<>(Set.of("ops/mw-e2e-ops", "ops/mw-admin-ui"));
     final List<String> writes = new ArrayList<>();
 
     @Override
-    public Optional<String> findUserId(String realm, String username) {
-      return Optional.ofNullable(ids.getOrDefault(realm, Map.of()).get(username));
+    public Optional<KeycloakUser> findUser(String realm, String username) {
+      return Optional.ofNullable(ids.getOrDefault(realm, Map.of()).get(username))
+          .map(id -> profiles.getOrDefault(id, new KeycloakUser(id, username, null, null, Map.of())));
+    }
+
+    /** A user the realm import made (not the seeder). */
+    void imported(String realm, String username, String first, String last, Map<String, String> attributes, Set<String> r) {
+      String id = "imp-" + username;
+      ids.computeIfAbsent(realm, k -> new HashMap<>()).put(username, id);
+      profiles.put(id, new KeycloakUser(id, username, first, last, attributes));
+      roles.put(id, new HashSet<>(r));
     }
 
     @Override
@@ -37,6 +48,7 @@ class SeedIdentitiesStepTest {
       String id = realm + ":" + user.username();
       ids.computeIfAbsent(realm, r -> new HashMap<>()).put(user.username(), id);
       created.put(id, user);
+      profiles.put(id, new KeycloakUser(id, user.username(), user.firstName(), user.lastName(), user.attributes()));
       writes.add("create " + id);
       return id;
     }
@@ -79,7 +91,7 @@ class SeedIdentitiesStepTest {
     assertThat(p)
         .isEqualTo(
             new SeedManifest.Persona(
-                "maker", "ops", "seed-ops-maker", List.of("viewer", "ops-maker"), Map.of(), "mw-e2e-ops",
+                "maker", "ops", "seed-ops-maker", "Nusrat Jahan", List.of("viewer", "ops-maker"), Map.of(), "mw-e2e-ops",
                 "KC_OPS_TEST_PASSWORD", "KC_OPS_TEST_TOTP_SECRET"));
     assertThat(ctx.personas().get(2).totpSecretEnv()).isNull();
   }
@@ -95,8 +107,49 @@ class SeedIdentitiesStepTest {
     assertThat(ctx.personas().get(2))
         .isEqualTo(
             new SeedManifest.Persona(
-                "customer", "mw-auth", "seed-customer01", List.of("customer"), Map.of("msisdn", "01712000001"), null,
-                "MW_SEED_APP_PIN", null));
+                "customer", "mw-auth", "seed-customer01", "Sumaiya Islam", List.of("customer"), Map.of("msisdn", "01712000001"),
+                null, "MW_SEED_APP_PIN", null));
+  }
+
+  @Test
+  void aNewUserGetsItsConfiguredNamesAndOneWithoutNamesTheFallback() {
+    step.run(new SeedContext());
+
+    NewUser maker = kc.created.get("ops:seed-ops-maker");
+    assertThat(maker.firstName()).isEqualTo("Nusrat");
+    assertThat(maker.lastName()).isEqualTo("Jahan");
+    NewUser checker = kc.created.get("ops:seed-ops-checker");
+    assertThat(checker.firstName()).isEqualTo("Seed");
+    assertThat(checker.lastName()).isEqualTo("Checker");
+  }
+
+  @Test
+  void aPersonaWithoutNamesHasNoDisplayName() {
+    SeedContext ctx = new SeedContext();
+    step.run(ctx);
+
+    assertThat(ctx.personas().get(1).displayName()).isNull();
+  }
+
+  @Test
+  void theRealmImportsUsersAreReadFromKeycloakForTheManifestAndNeverWritten() {
+    kc.imported("ops", "ops-e2e-maker01", "Rashed", "Karim", Map.of(), Set.of("viewer", "ops-maker", "default-roles-ops"));
+    kc.imported("ops", "ops-maker01", "Imran", "Kabir", Map.of("orgId", "ORG001"), Set.of("ops-maker", "viewer"));
+    SeedContext ctx = new SeedContext();
+
+    step.run(ctx);
+
+    assertThat(kc.writes).noneMatch(w -> w.contains("ops-e2e-maker01") || w.contains("ops-maker01"));
+    assertThat(ctx.importedUsers())
+        .as("listed in config order; one that the realm import did not make (ops-gone01) is left out")
+        .containsExactly(
+            new SeedManifest.Persona(
+                "ops-e2e-maker01", "ops", "ops-e2e-maker01", "Rashed Karim", List.of("ops-maker", "viewer"), Map.of(),
+                "mw-e2e-ops", "KC_OPS_TEST_PASSWORD", "KC_OPS_TEST_TOTP_SECRET"),
+            new SeedManifest.Persona(
+                "ops-maker01", "ops", "ops-maker01", "Imran Kabir", List.of("ops-maker", "viewer"), Map.of("orgId", "ORG001"),
+                "mw-e2e-ops", "KC_OPS_TEST_PASSWORD", null));
+    assertThat(ctx.personas()).noneMatch(p -> p.username().startsWith("ops-"));
   }
 
   @Test
@@ -136,7 +189,8 @@ class SeedIdentitiesStepTest {
     var bad = new mfs.mw.seeder.config.SeederProperties(
         props.runOnStartup(), props.stepTimeout(), props.stepTimeouts(), props.initialBackoff(), props.maxBackoff(),
         props.manifestPath(), props.http(), props.endpoints(), props.readiness(), props.keycloakAdmin(), props.realms(),
-        List.of(new mfs.mw.seeder.config.SeederProperties.User("x", "nowhere", "x1", List.of(), Map.of())),
+        List.of(new mfs.mw.seeder.config.SeederProperties.User("x", "nowhere", "x1", List.of(), Map.of(), null, null)),
+        props.importedUsers(),
         props.operators(), props.wallets(), props.partners(), props.content(), props.appPins());
 
     assertThatThrownBy(() -> new SeedIdentitiesStep(kc, bad).run(new SeedContext()))

@@ -1,3 +1,5 @@
+import { FillScope } from "@/components/fill-scope";
+import { HowToTest } from "@/components/how-to-test";
 import { PageHeader } from "@/components/page-header";
 import { Inbox } from "./inbox";
 
@@ -9,11 +11,14 @@ export default function InboxPage() {
         description={
           <>
             What mw-notify sent: SMS over SMPP to the SMSC simulator (GSM-7 for English, UCS-2 for Bangla, delivery reports) and email
-            to GreenMail. Check the language, the masked numbers (<code className="font-mono text-xs">0171****001</code>) and that each flow notified the right parties once.
+            to GreenMail. Check the language, the masked numbers (<code className="font-mono text-[0.9em]">0171****001</code>) and that each flow notified the right parties once.
           </>
         }
       />
-      <Inbox />
+      <HowToTest page="inbox" />
+      <FillScope page="inbox">
+        <Inbox />
+      </FillScope>
     </>
   );
 }

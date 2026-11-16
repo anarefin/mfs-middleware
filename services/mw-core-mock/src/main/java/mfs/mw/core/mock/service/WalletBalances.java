@@ -22,6 +22,6 @@ public class WalletBalances {
   }
 
   private static WalletBalance view(Wallet w) {
-    return new WalletBalance(w.id(), w.type(), w.status(), w.balanceMinor(), w.heldMinor(), w.availableMinor());
+    return new WalletBalance(w.id(), w.type(), w.status(), w.balanceMinor(), w.heldMinor(), w.availableMinor(), w.holderName());
   }
 }

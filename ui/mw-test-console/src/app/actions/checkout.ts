@@ -1,5 +1,5 @@
 "use server";
-// Web checkout (contracts checkout.v1): the dev merchant "Demo Shop" (APISIX hmac-auth consumer
+// Web checkout (contracts checkout.v1): the dev merchant "Karim Traders" (APISIX hmac-auth consumer
 // merchant_demo, wallet 01911000001) creates a session; the payer pays on the hosted page API with
 // the OTP the SMSC simulator received and the PIN; the merchant checks the signed redirect and
 // the signed IPN the simulator's merchant endpoint received. The merchant secret stays here.

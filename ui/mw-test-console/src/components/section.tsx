@@ -28,12 +28,12 @@ export function Panel({
 
 /** A small sub-heading inside a panel. */
 export function SubHeading({ className, ...props }: ComponentProps<"h3">) {
-  return <h3 className={cn("m-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground", className)} {...props} />;
+  return <h3 className={cn("m-0 text-sm font-semibold uppercase tracking-wide text-muted-foreground", className)} {...props} />;
 }
 
 /** Muted helper text. */
 export function Hint({ className, ...props }: ComponentProps<"p">) {
-  return <p className={cn("m-0 text-xs text-muted-foreground", className)} {...props} />;
+  return <p className={cn("m-0 text-sm text-muted-foreground", className)} {...props} />;
 }
 
 /** "working…" while an action runs. */
@@ -51,9 +51,9 @@ export function EmptyResult({ children }: { children: ReactNode }) {
   return <div className="rounded-lg border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">{children}</div>;
 }
 
-/** Form card left (about 420px), results right; one column on narrow screens. */
+/** Form card left (28rem, about 450px), results right; one column on narrow screens. */
 export function TwoColumns({ className, ...props }: ComponentProps<"div">) {
-  return <div className={cn("grid items-start gap-5 lg:grid-cols-[420px_minmax(0,1fr)]", className)} {...props} />;
+  return <div className={cn("grid items-start gap-5 lg:grid-cols-[28rem_minmax(0,1fr)]", className)} {...props} />;
 }
 
 /** A wrapping row of controls aligned at their bottom edge. */

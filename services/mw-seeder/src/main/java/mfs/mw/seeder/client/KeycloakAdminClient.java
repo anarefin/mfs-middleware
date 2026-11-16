@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import mfs.mw.seeder.config.SeederProperties;
+import mfs.mw.seeder.dto.KeycloakUser;
 import mfs.mw.seeder.dto.NewUser;
 import mfs.mw.seeder.exception.RemoteCallException;
 import org.springframework.stereotype.Component;
@@ -46,15 +47,33 @@ public class KeycloakAdminClient implements IdentityAdmin {
   }
 
   @Override
-  public Optional<String> findUserId(String realm, String username) {
+  public Optional<KeycloakUser> findUser(String realm, String username) {
     JsonNode users =
         http.tree("GET users", get("GET /admin/realms/{realm}/users", realm, "/users?exact=true&username=" + enc(username)));
     for (JsonNode u : users) {
       if (username.equalsIgnoreCase(u.path("username").asString(""))) {
-        return Optional.of(u.path("id").asString());
+        Map<String, String> attributes = new LinkedHashMap<>();
+        u.path("attributes").properties().forEach(e -> {
+          JsonNode v = e.getValue();
+          JsonNode first = v.isArray() ? v.path(0) : v;
+          if (!first.isMissingNode() && !first.isNull()) {
+            attributes.put(e.getKey(), first.asString());
+          }
+        });
+        return Optional.of(
+            new KeycloakUser(
+                u.path("id").asString(),
+                u.path("username").asString(),
+                text(u.path("firstName")),
+                text(u.path("lastName")),
+                attributes));
       }
     }
     return Optional.empty();
+  }
+
+  private static String text(JsonNode n) {
+    return n.isMissingNode() || n.isNull() ? null : n.asString();
   }
 
   @Override

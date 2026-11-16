@@ -5,6 +5,20 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 
 ## Responsibilities
 
+- Wallet holder names (`V10__wallet_holder_name.sql`, `wallet.holder_name`, optional): `WalletSeeder` gives its
+  generated ranges fixed realistic Bangladeshi names (`util/HolderNames`, by type and index: customers
+  people, agents shops, merchants businesses, orgs companies; fixtures 01711000001 Rahim Uddin,
+  01711000002 Ayesha Siddiqua, 01711000003 Kamal Hossain, 01811000001 Hossain Telecom, 01911000001 Karim
+  Traders, 01911000002 Lalbagh Pharmacy, 01311000001 Meghna Garments Ltd, 01311000002 Padma Foods Ltd),
+  filling only rows whose name is still null on every start. The wallet GET serves `holderName` (null for
+  system wallets); the seed PUT takes it and stores it on create or on an existing wallet that has none.
+  `@Sensitive(NAME)`: logs show the first initial only.
+- Test-only balance setting (the test console's "Set balance"): the seed PUT's optional `balanceMinor` sets
+  the wallet's AVAILABLE balance (new or existing; balance = it + held). Never a silent edit: the difference
+  is a double entry of kind `ADJUSTMENT` (`V11__balance_adjustment.sql`) between the wallet and `SETTLEMENT`,
+  txn/command id `adjust:<uuid>`; not a TRANSFER, so no daily-limit effect; no entry when already there.
+  `openingBalanceMinor` is unchanged (a new wallet's start balance; the seeder sends only that).
+
 - Test double of the core wallet (spec "Core mock", 6.3, WP06): never ships to production, replaced by
   the real core with no change to the orchestrator.
 - Consumes `core.wallet.command.v1` (`route/CoreWalletCommandRoute`) and `core.payment.command.v1`

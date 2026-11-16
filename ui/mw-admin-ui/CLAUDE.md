@@ -13,7 +13,7 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
 - Login (`src/auth.ts`, Auth.js / next-auth 5 beta): Keycloak realm `ops`, client `mw-admin-ui`
   (public client, Authorization Code + PKCE S256, `state` and `nonce`; direct access grants off,
   security review: the e2e password grant uses the dev-only client `mw-e2e-ops`). MFA is the realm's (browser
-  flow password + TOTP, `CONFIGURE_TOTP` on every user); the console does not check `acr`.
+  flow password + TOTP; on the dev stack every user has the pre-set OTP credential `KC_OPS_TEST_TOTP_SECRET`); the console does not check `acr`.
   The session is a JWT in an encrypted (JWE with `AUTH_SECRET`), HTTP-only, SameSite=Lax cookie
   holding access token, refresh token, expiry and roles. The session object the browser can read
   (`/console/api/auth/session`, `session` callback) is `{user.name, roles, expires, error?}`, never
@@ -200,7 +200,10 @@ html, junit `test-results/junit.xml`). `e2e/support/`:
   `e2e/.state/run.json` and a login waits for an unused step; an APISIX 429 or a refused code is
   retried inside `toPass`. Every signed-in page drops Next's link prefetches (`Next-Router-Prefetch`)
   through Chromium's Fetch domain (not `page.route`, which turns the HTTP cache off): with them a run
-  passed APISIX's `admin-ui` quota of 600 requests a minute and got 429 pages.
+  passed APISIX's `admin-ui` quota of 600 requests a minute and got 429 pages. The quota is shared by
+  every context of the run, so each signed-in page also tracks the `X-RateLimit-*` headers of `/console`
+  responses and its `goto` waits out the window when fewer than 120 requests are left, and once more
+  after a 429 document (before, a 429 on any `goto` past the login ran the test into its 90 s timeout).
 - `state.ts` (`saveState` / `readState` / `need()`, `E2E_ALLOW_SKIP=1` to run one spec alone),
   `approvals.ts` (`asChecker()` in a new browser context; rows by request id, `clearPending()` rejects
   what an interrupted run left PENDING), `ussd.ts` (a real P2P: seeded customer `01712000001` ->

@@ -21,7 +21,8 @@ public class WalletRepository {
               rs.getString("type"),
               rs.getString("status"),
               rs.getLong("balance_minor"),
-              rs.getLong("held_minor"));
+              rs.getLong("held_minor"),
+              rs.getString("holder_name"));
 
   private static final RowMapper<WalletState> STATE =
       (rs, i) ->
@@ -48,14 +49,20 @@ public class WalletRepository {
   }
 
   /**
-   * Inserts an ACTIVE wallet whose id and MSISDN are {@code id} (test-only seed API, ticket 57);
-   * false, changing nothing, when one with that id already exists.
+   * Inserts an ACTIVE wallet whose id and MSISDN are {@code id} (test-only seed API, ticket 57),
+   * with its holder's display name (may be null); false, changing nothing, when one with that id
+   * already exists.
    */
-  public boolean insertIfAbsent(String id, String type, long balanceMinor) {
+  public boolean insertIfAbsent(String id, String type, long balanceMinor, String holderName) {
     return jdbc.update(
-            "insert into wallet (id, msisdn, type, balance_minor) values (?, ?, ?, ?) on conflict do nothing",
-            id, id, type, balanceMinor)
+            "insert into wallet (id, msisdn, type, balance_minor, holder_name) values (?, ?, ?, ?, ?) on conflict do nothing",
+            id, id, type, balanceMinor, holderName)
         == 1;
+  }
+
+  /** Sets the holder's display name of a wallet that has none yet; false when it has one (or no such wallet). */
+  public boolean fillHolderName(String id, String holderName) {
+    return jdbc.update("update wallet set holder_name = ? where id = ? and holder_name is null", holderName, id) == 1;
   }
 
   /** The published state of a wallet with an MSISDN (ticket 67), empty for a system wallet. */

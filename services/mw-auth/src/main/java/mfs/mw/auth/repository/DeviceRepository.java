@@ -40,6 +40,19 @@ public class DeviceRepository {
         .findFirst();
   }
 
+  /** Every device row of the wallet, bound or not, newest binding first (dev test API). */
+  public List<AuthDevice> findByWallet(String walletId) {
+    return jdbc.query("SELECT " + COLUMNS + " FROM device WHERE wallet_id = ? ORDER BY bound_at DESC, device_id",
+        (rs, n) -> row(rs), walletId);
+  }
+
+  /** Unbinds every bound device of the wallet; returns their ids (their sessions end). */
+  public List<String> unbindAll(String walletId, Instant at) {
+    return jdbc.query(
+        "UPDATE device SET unbound_at = ? WHERE wallet_id = ? AND unbound_at IS NULL RETURNING device_id",
+        (rs, n) -> rs.getString(1), Timestamp.from(at), walletId);
+  }
+
   /** The row of {@code deviceId}, locked for the binding's transaction. */
   public Optional<AuthDevice> lock(String deviceId) {
     return jdbc

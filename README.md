@@ -128,28 +128,38 @@ Then:
 
 - **Admin console**: open https://localhost/console (the edge certificate is self-signed: accept
   the browser warning). Sign in as `seed-ops-maker`, password `ops-test-pass`, one-time code from
+  the test console page https://localhost/tester/credentials (live, with a countdown) or
   `scripts/totp.sh seed-ops-maker` (no authenticator app needed). A second operator,
   `seed-ops-checker` (code: `scripts/totp.sh seed-ops-checker`), approves what the maker requests:
-  use a private window for them. The `ops-*01` users enrol an authenticator app at their first
-  sign-in instead. Every login: `scripts/creds.sh` and [docs/testing-guide.html](docs/testing-guide.html) section 1.
+  use a private window for them. The `ops-*01` users have the same pre-set code
+  (`scripts/totp.sh ops-maker01`): no user enrols an authenticator app. Every login: `scripts/creds.sh` and [docs/testing-guide.html](docs/testing-guide.html) section 1.
 - **A first transaction**: `scripts/api-test.sh 01` runs the P2P scenarios through APISIX (the
   first run downloads Newman). Then search the console for MSISDN `01711000001`.
 - **Test every feature by hand**: `scripts/tester.sh` starts the dev/test-only test console at
   https://localhost/tester (it plays the app, a USSD handset, the partners, the checkout shop and the
   org portal); [docs/testing-guide.html](docs/testing-guide.html) walks through every feature with it.
+  Its pages `/tester/credentials` (every login with a live one-time code, the PINs, an OTP lookup, the
+  platform secrets), `/tester/seed-data` (everything mw-seeder created, with logins and account tools:
+  unlock, reset a password, a one-time code, a PIN, a device or a balance) and `/tester/transactions`
+  (search, timeline, partner calls, audit trail) replace the terminal for day-to-day testing.
 
 ### Test users (dev only: fixed, documented fake passwords; ADR D9 amendment)
 
-The values come from `deploy/dev.env.defaults`; `scripts/creds.sh` prints the ones in `deploy/.env`.
+The values come from `deploy/dev.env.defaults`; `scripts/creds.sh` prints the ones in `deploy/.env`, and
+the test console pages `/tester/credentials` and `/tester/seed-data` show them with a live one-time code.
+Users and wallets carry fake Bangladeshi display names (e.g. `seed-ops-maker` Nusrat Jahan, customer01
+Rahim Uddin, merchant01 Karim Traders, the checkout shop); usernames and MSISDNs are what logins and
+tests use. The realm-import users' names show only after `deploy/reset.sh` (Keycloak imports a realm once).
 
 | Realm | Users | Password (variable) | Used by |
 | --- | --- | --- | --- |
 | `ops` | `seed-ops-maker`, `seed-ops-checker`, `seed-ops-viewer`, `seed-ops-compliance`, `seed-ops-secadmin1`, `seed-ops-secadmin2` (security-admin: keys and the key ceremony) (seeded; code: `scripts/totp.sh <user>`) | `ops-test-pass` (`KC_OPS_TEST_PASSWORD`) | admin console, manual tests |
-| `ops` | `ops-viewer01`, `ops-maker01`, `ops-checker01`, `ops-admin01`, `ops-compliance01`, `ops-auditor01` (TOTP enrolled at first sign-in) | `ops-test-pass` | admin console |
+| `ops` | `ops-viewer01`, `ops-maker01`, `ops-checker01`, `ops-admin01`, `ops-compliance01`, `ops-auditor01` (pre-set TOTP, `scripts/totp.sh`) | `ops-test-pass` | admin console |
 | `ops` | `ops-e2e-maker01`, `ops-e2e-checker01` (TOTP preset from `KC_OPS_TEST_TOTP_SECRET`) | `ops-test-pass` | API suite |
 | mw-auth (no realm, ticket 69) | the app wallets `01711000001` (customer01), `01711000002`, `01811000001` (agent01), `01911000001` (merchant01), `01911000002` and mw-seeder's app wallets: log in with MSISDN + app PIN + a bound device; transactions (app, USSD, checkout) take the same PIN, checked by mw-auth (ticket 72) | app PIN `13579` (`MW_SEED_APP_PIN`, set by mw-seeder through mw-auth's dev-only seed API, `MW_AUTH_SEED_API_ENABLED=true`) | app API, API suite, test console, `scripts/edge-test.sh` |
 | `portals` | `seed-org-maker`, `seed-org-checker` (seeded), `org-maker01`, `org-checker01`, `org-checker02`, `org-makerchecker01`, `sp-viewer01`: the realm demands TOTP (ticket 73), every user has the pre-set secret `KC_PORTALS_TEST_TOTP_SECRET` (code: `scripts/totp.sh <user>`) | `portal-test-pass` (`KC_PORTALS_TEST_PASSWORD`) | org / SP portal API |
-| `master` | `kc-admin` (kcadm.sh in the container only) | `kc-admin-test-pass` (`KC_BOOTSTRAP_ADMIN_PASSWORD`) | Keycloak admin |
+| `master` | `kc-admin` (kcadm.sh in the container, or the test console's account tools through a test-only route) | `kc-admin-test-pass` (`KC_BOOTSTRAP_ADMIN_PASSWORD`) | Keycloak admin |
+| OpenBao | the tester token (root policy), created by `deploy/openbao/dev-unseal.sh` when the `openbao-data` volume is first initialised | `dev-root-token` (`OPENBAO_DEV_ROOT_TOKEN`; change it only together with `./reset.sh`) | `scripts/creds.sh`, test console, `bao` in the container |
 
 The `softhsm` dev/test PKCS#11 tokens (`deploy/softhsm/README.md`, ticket 61) use fixed, documented
 fake values too:
@@ -282,8 +292,8 @@ Every script prints its usage in its header comment. They read the running stack
 | `scripts/api-test.sh [FOLDER] [ALL]` | Newman API suite in `tests/api` against the running, seeded stack (with the test timers of `deploy/.env`): every folder but `90 Slow`, or the given ones (numbers or names, comma-separated, e.g. `scripts/api-test.sh "01, 03"`); `1` as the second argument adds `90 Slow`. Re-applies the test-only gateway routes first; JUnit report `tests/api/build/newman-report.xml` |
 | `scripts/ui-e2e.sh [GREP]` | admin console Playwright suite (`ui/mw-admin-ui/e2e`) on the running, seeded stack: real Keycloak logins as the seeded personas, the real mw-admin-api behind APISIX; tags `@smoke`, `@console`, `@approvals`, `@partners`, `@ussd`, `@templates`, `@keys`; installs pnpm packages and Chromium when needed |
 | `scripts/tester.sh` | start the dev/test-only test console (`ui/mw-test-console`, ADR D17): re-applies the test-only gateway routes with `/tester`, starts `mw-test-console` (profile `tester`, about 192 MiB outside the core budget), prints https://localhost/tester; a later `docker compose up` removes the routes again (run it once more) |
-| `scripts/tester-e2e.sh [GREP]` | the test console's Playwright suite (`ui/mw-test-console/e2e`) after `scripts/tester.sh`: app flows with balances, USSD over HTTP and SMPP, a lost core reply resolved by the status inquiry, checkout with IPN, a bulk batch |
-| `scripts/creds.sh` | print every login and key a tester needs (ops, app and portal users, Keycloak admin, the OpenBao root token while the stack is up, APISIX keys, partner and merchant signing secrets, USSD gateway passwords), from `deploy/.env` |
+| `scripts/tester-e2e.sh [GREP]` | the test console's Playwright suite (`ui/mw-test-console/e2e`) after `scripts/tester.sh`: app flows with balances, USSD over HTTP and SMPP, a lost core reply resolved by the status inquiry, checkout with IPN, a bulk batch, wallet authentication, the Logins & secrets and Seed data pages (a live code signs in), the account tools, the transaction explorer (tags `@smoke`, `@app`, `@ussd`, `@failures`, `@checkout`, `@bulk`, `@auth`, `@transactions`) |
+| `scripts/creds.sh` | print every login and key a tester needs (ops, app and portal users, Keycloak admin, the OpenBao root token while the stack is up, APISIX keys, partner and merchant signing secrets, USSD gateway passwords), from `deploy/.env`; first the test console pages `/tester/credentials` and `/tester/seed-data` that show the same in the browser |
 | `scripts/totp.sh [PERSONA]` | the current one-time code of an ops or portals persona with a pre-set secret (default `seed-ops-maker`; also `seed-ops-checker`, `seed-ops-viewer`, `seed-ops-compliance`, `seed-ops-secadmin1`, `seed-ops-secadmin2`, `ops-e2e-*`; portals `seed-org-*`, `org-*`, `sp-viewer01`) |
 | `scripts/log-scan.sh [FILE...]` | scan every container log of the stack (or the given files) for a PIN, PIN ciphertext or an unmasked MSISDN / NID; findings printed masked |
 | `scripts/security.sh [MODULE]` | gitleaks, CycloneDX SBOM + trivy per module (builds its boot jar), trivy on the built and pinned images; with the stack up also the ZAP baseline and the log scan (`SECURITY_LIVE=1 scripts/security.sh` makes them mandatory). Decisions in `docs/security-findings.md` |

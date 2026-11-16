@@ -39,7 +39,7 @@ export function AppTester() {
       <div className="flex min-w-0 flex-col gap-5">
         <Panel title="1. Who is signed in" icon={UserRound}>
           <Field label="User (app login at mw-auth)">
-            <Input list="app-users" value={user} onChange={(e) => setUser(e.target.value)} name="user-visible" data-testid="app-user" />
+            <Input list="app-users" value={user} onChange={(e) => setUser(e.target.value)} name="user-visible" data-fill="user" data-testid="app-user" />
             <datalist id="app-users">
               {APP_PERSONAS.map((p) => <option key={p.user} value={p.user}>{p.label}, {p.msisdn}</option>)}
             </datalist>
@@ -54,7 +54,7 @@ export function AppTester() {
 
         <Panel title="2. Flow" icon={ArrowLeftRight}>
           <Field label="Transaction type">
-            <NativeSelect value={type} onChange={(e) => pick(e.target.value as TxnType)} data-testid="txn-type">
+            <NativeSelect value={type} onChange={(e) => pick(e.target.value as TxnType)} data-fill="txnType" data-testid="txn-type">
               {TXN_TYPES.map((t) => <option key={t} value={t}>{FLOW_HELP[t].title}</option>)}
             </NativeSelect>
           </Field>

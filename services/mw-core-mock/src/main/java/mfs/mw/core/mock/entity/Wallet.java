@@ -1,7 +1,11 @@
 package mfs.mw.core.mock.entity;
 
-/** A ledger wallet row (own schema only). Balances are minor units. The core holds no PIN (ticket 72). */
-public record Wallet(String id, String msisdn, String type, String status, long balanceMinor, long heldMinor) {
+/**
+ * A ledger wallet row (own schema only). Balances are minor units. The core holds no PIN (ticket 72).
+ * {@code holderName} is the display name of the holder (null for system wallets).
+ */
+public record Wallet(
+    String id, String msisdn, String type, String status, long balanceMinor, long heldMinor, String holderName) {
 
   /**
    * Locked by the core for its own reasons (a real core: compliance, fraud, dormancy; ticket 72

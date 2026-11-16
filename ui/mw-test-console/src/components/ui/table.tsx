@@ -23,7 +23,7 @@ function TableRow({ className, ...props }: ComponentProps<"tr">) {
 }
 
 function TableHead({ className, ...props }: ComponentProps<"th">) {
-  return <th data-slot="table-head" className={cn("h-10 whitespace-nowrap px-3 text-left align-middle text-xs font-medium text-muted-foreground", className)} {...props} />;
+  return <th data-slot="table-head" className={cn("h-10 whitespace-nowrap px-3 text-left align-middle text-sm font-medium text-muted-foreground", className)} {...props} />;
 }
 
 function TableCell({ className, ...props }: ComponentProps<"td">) {

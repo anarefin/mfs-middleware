@@ -89,9 +89,9 @@
     <dt>SMSC</dt><dd>SMS centre: delivers our text messages.</dd>
     <dt>SP</dt><dd>Service provider: a business that looks up its own transactions through the portal.</dd>
     <dt>SSRF</dt><dd>Server-side request forgery: tricking our server into calling an internal address. IPN URLs are checked against it.</dd>
-    <dt>Test console</dt><dd><code>mw-test-console</code> at <code>https://localhost/tester</code>: plays every outside party for manual testing. Dev/test only.</dd>
+    <dt>Test console</dt><dd><code>mw-test-console</code> at <code>https://localhost/tester</code>: plays every outside party for manual testing, and shows the dev logins, the seed data and a transaction explorer. Dev/test only.</dd>
     <dt>Testcontainers</dt><dd>A library that starts real PostgreSQL and Kafka containers for <code>*IT</code> tests.</dd>
-    <dt>TOTP</dt><dd>Time-based one-time password: the 6-digit code from an authenticator app (ops logins). <code>scripts/totp.sh</code> prints it for test users.</dd>
+    <dt>TOTP</dt><dd>Time-based one-time password: the 6-digit code from an authenticator app (ops logins; on the dev stack every user has a pre-set code). The test console's Logins &amp; secrets page shows it live for every user; <code>scripts/totp.sh</code> prints it.</dd>
     <dt>TSQ</dt><dd>Transaction status query: asking the core or a partner "what happened to this transaction?" until the answer is clear.</dd>
     <dt>txnId</dt><dd>The id of one transaction, created by the channel service and carried everywhere.</dd>
     <dt>UNKNOWN</dt><dd>The saga state for "money may or may not have moved; we are finding out".</dd>

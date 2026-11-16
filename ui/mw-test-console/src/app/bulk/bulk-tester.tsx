@@ -28,7 +28,7 @@ export function BulkTester() {
       {/* outside the form: React resets a form after its action, which would put the select back on
           its first option while the state (and the button label) still names the chosen user */}
       <Panel title="Portal user" icon={UserRound}>
-        <NativeSelect value={user} onChange={(e) => setUser(e.target.value)} aria-label="Portal user" data-testid="bulk-user">
+        <NativeSelect value={user} onChange={(e) => setUser(e.target.value)} aria-label="Portal user" data-fill="user" data-testid="bulk-user">
           {PORTAL_PERSONAS.map((p) => <option key={p.user} value={p.user}>{p.label}</option>)}
         </NativeSelect>
       </Panel>
@@ -40,7 +40,7 @@ export function BulkTester() {
             <Field label="Tk each"><Input name="taka" defaultValue="1.00" className="tabular-nums" /></Field>
             <Button type="submit" variant="outline" name="op" value="sample" disabled={pending}>Generate sample</Button>
           </Row>
-          <Field label="CSV (msisdn,amount,reference)"><Textarea name="csv" value={csv} onChange={(e) => setCsv(e.target.value)} data-testid="bulk-csv" className="min-h-32 font-mono text-xs" /></Field>
+          <Field label="CSV (msisdn,amount,reference)"><Textarea name="csv" value={csv} onChange={(e) => setCsv(e.target.value)} data-testid="bulk-csv" className="min-h-32 font-mono text-sm" /></Field>
           <Button type="submit" name="op" value="upload" disabled={pending} data-testid="bulk-upload"><Upload />Upload as {user}</Button>
         </Panel>
         <Panel title="2. Decide and follow (checker)" icon={ClipboardCheck}>
@@ -58,7 +58,7 @@ export function BulkTester() {
             <Button type="submit" name="op" value="txns" variant="outline" disabled={pending}>Transactions</Button>
             <Button type="submit" name="op" value="list" variant="outline" disabled={pending}>List batches</Button>
           </Row>
-          <Hint>Switch the user to org-checker01 to approve org-maker01&apos;s upload. SP query: org-checker02 (ORG002 collects for DESCO and Demo Shop), empty batch id, Transactions.</Hint>
+          <Hint>Switch the user to org-checker01 to approve org-maker01&apos;s upload. SP query: org-checker02 (ORG002 collects for DESCO and Karim Traders), empty batch id, Transactions.</Hint>
         </Panel>
       </form>
       </div>

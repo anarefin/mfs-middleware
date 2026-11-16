@@ -22,7 +22,7 @@ class WalletSeedServiceTest {
 
   private final WalletRepository wallets = mock(WalletRepository.class);
   private final WalletBalances balances = mock(WalletBalances.class);
-  private final WalletSeedService service = new WalletSeedService(wallets, balances, mock(WalletStateEvents.class));
+  private final WalletSeedService service = new WalletSeedService(wallets, balances, mock(WalletStateEvents.class), mock(mfs.mw.core.mock.repository.LedgerRepository.class), java.time.Clock.systemUTC());
 
   private final Logger logger = (Logger) LoggerFactory.getLogger(WalletSeedService.class);
   private final ListAppender<ILoggingEvent> logs = new ListAppender<>();
@@ -41,14 +41,28 @@ class WalletSeedServiceTest {
   @Test
   void aNewWalletIsLoggedWithItsIdMasked() {
     when(wallets.resolveId(WALLET)).thenReturn(Optional.empty());
-    when(wallets.insertIfAbsent(WALLET, "CUSTOMER", 1000)).thenReturn(true);
+    when(wallets.insertIfAbsent(WALLET, "CUSTOMER", 1000, "Rahim Uddin")).thenReturn(true);
     when(balances.find(WALLET))
-        .thenReturn(Optional.of(new WalletBalance(WALLET, "CUSTOMER", "ACTIVE", 1000, 0, 1000)));
+        .thenReturn(Optional.of(new WalletBalance(WALLET, "CUSTOMER", "ACTIVE", 1000, 0, 1000, "Rahim Uddin")));
 
-    assertThat(service.seed(WALLET, "CUSTOMER", 1000).created()).isTrue();
+    assertThat(service.seed(WALLET, "CUSTOMER", 1000, "Rahim Uddin", null).created()).isTrue();
 
     assertThat(logs.list).hasSize(1);
     String line = logs.list.get(0).getFormattedMessage();
-    assertThat(line).contains("0171****001").doesNotContain(WALLET);
+    assertThat(line).contains("0171****001").doesNotContain(WALLET).doesNotContain("Rahim");
+  }
+
+  @Test
+  void anExistingWalletOnlyGetsAMissingHolderName() {
+    when(wallets.resolveId(WALLET)).thenReturn(Optional.of(WALLET));
+    when(balances.find(WALLET))
+        .thenReturn(Optional.of(new WalletBalance(WALLET, "CUSTOMER", "ACTIVE", 5, 0, 5, "Rahim Uddin")));
+
+    assertThat(service.seed(WALLET, "CUSTOMER", 1000, "Rahim Uddin", null).created()).isFalse();
+
+    org.mockito.Mockito.verify(wallets).fillHolderName(WALLET, "Rahim Uddin");
+    org.mockito.Mockito.verify(wallets, org.mockito.Mockito.never())
+        .insertIfAbsent(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
   }
 }

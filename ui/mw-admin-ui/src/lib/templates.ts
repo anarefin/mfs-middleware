@@ -77,7 +77,7 @@ const SAMPLES: Record<string, string> = {
   sender: "01712345678", agent: "01912345111", account: "1234567890123", accountnumber: "1234567890123",
   nid: "19901234567890123", name: "Rahim Uddin", receivername: "Karim Mia", sendername: "Rahim Uddin",
   coreref: "CORE-77001", partnerref: "GP-555001", partner: "ocs", biller: "DESCO", errorcode: "MW-CORE-INSUFFICIENT_FUNDS",
-  merchant: "Demo Shop",
+  merchant: "Karim Traders",
 };
 
 /** Sample values for the given params (an unknown name gets `<name>`). */

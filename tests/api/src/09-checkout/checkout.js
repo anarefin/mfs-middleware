@@ -1,5 +1,5 @@
 // Port of checkout.feature. The dev merchant (hmac-auth consumer merchant_demo, wallet 01911000001
-// "Demo Shop") creates a session; customer01 pays on the hosted page API with the OTP read from the
+// "Karim Traders") creates a session; customer01 pays on the hosted page API with the OTP read from the
 // SMSC simulator and the PIN; the merchant verifies the signed redirect and the signed IPN.
 // Each scenario uses S.co (its session): create(), otp(), confirm(), redirected(), sees().
 // The Cucumber step "the OTP was sent with OTP priority" read notify.message with psql; no API
@@ -12,9 +12,9 @@ export default [
       const co = await checkoutSession(MW, S, 2500);
       const page = await MW.checkout.page(co.token);
       const key = await MW.http('GET', '/auth/v1/pin-key');
-      S.eq('the checkout page shows 2500 poisha for Demo Shop with the PIN transport key (ticket 72)',
+      S.eq('the checkout page shows 2500 poisha for Karim Traders with the PIN transport key (ticket 72)',
         [page.status, page.body.merchantName, page.body.amount.valueMinor, page.body.pinKey.keyId, page.body.pinKey.algorithm],
-        [200, 'Demo Shop', 2500, key.body.keyId, 'RSA-OAEP-SHA-256']);
+        [200, 'Karim Traders', 2500, key.body.keyId, 'RSA-OAEP-SHA-256']);
       await co.otp('01711000001');
       S.record(await MW.checkout.confirm(co.token, co.code === '000000' ? '999999' : '000000', MW.pin));
       S.status(401);
@@ -142,7 +142,7 @@ async function checkoutSession(MW, S, amount) {
   S.eq('session created OPEN (201)', [r.status, r.body && r.body.status], [201, 'OPEN'], String(r));
   const co = { orderId, amount, sessionId: r.body.sessionId, token: r.body.checkoutUrl.slice(r.body.checkoutUrl.lastIndexOf('/') + 1) };
   const taka = (Math.floor(amount / 100)) + '.' + String(amount % 100).padStart(2, '0');
-  const re = /Your Bits code is ([0-9]{6}) to pay Tk ([0-9.]+) to Demo Shop/;
+  const re = /Your Bits code is ([0-9]{6}) to pay Tk ([0-9.]+) to Karim Traders/;
   const codes = async w => (await MW.sim.sms(w)).map(m => re.exec(m.text || '')).filter(m => m && m[2] === taka).map(m => m[1]);
   co.otp = async wallet => {
     const before = await codes(wallet);

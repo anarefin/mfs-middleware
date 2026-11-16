@@ -107,6 +107,12 @@ public class CredentialRepository {
     jdbc.update("delete from attempt where wallet_id = ?", walletId);
   }
 
+  /** The wrong PINs counted at the current level (0 when none). */
+  public int failures(String walletId) {
+    return jdbc.queryForList("select count from attempt where wallet_id = ?", Integer.class, walletId).stream()
+        .findFirst().orElse(0);
+  }
+
   public List<Lock> locks(String walletId) {
     return jdbc.query("select kind, level, until, created_at from lock where wallet_id = ?",
         (rs, i) -> {

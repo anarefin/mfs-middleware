@@ -54,5 +54,7 @@ files:
   api/mw-crypto/crypto-test.v1.openapi.yaml: mw-crypto
   api/mw-auth/auth.v1.openapi.yaml: mw-auth
   api/mw-auth/auth-internal.v1.openapi.yaml: mw-auth
+  # dev-only account test API for the test console (mw.auth.seed-api.enabled); not a product contract
+  api/mw-auth/auth-test.v1.openapi.yaml: mw-auth
   # test-only wallet seed API of the core test double (ticket 57); not a product contract
   api/mw-core-mock/core-mock-seed.v1.openapi.yaml: mw-core-mock

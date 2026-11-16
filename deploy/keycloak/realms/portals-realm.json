@@ -73,8 +73,8 @@
       "username": "org-maker01",
       "enabled": true,
       "emailVerified": true,
-      "firstName": "Maker",
-      "lastName": "Test",
+      "firstName": "Mizanur",
+      "lastName": "Rahman",
       "email": "org-maker01@example.test",
       "credentials": [
         {
@@ -102,8 +102,8 @@
       "username": "org-checker01",
       "enabled": true,
       "emailVerified": true,
-      "firstName": "Checker",
-      "lastName": "Test",
+      "firstName": "Rokeya",
+      "lastName": "Khatun",
       "email": "org-checker01@example.test",
       "credentials": [
         {
@@ -131,8 +131,8 @@
       "username": "org-makerchecker01",
       "enabled": true,
       "emailVerified": true,
-      "firstName": "MakerChecker",
-      "lastName": "Test",
+      "firstName": "Habibur",
+      "lastName": "Rahman",
       "email": "org-makerchecker01@example.test",
       "credentials": [
         {
@@ -161,8 +161,8 @@
       "username": "org-checker02",
       "enabled": true,
       "emailVerified": true,
-      "firstName": "Checker",
-      "lastName": "Test",
+      "firstName": "Sadia",
+      "lastName": "Afrin",
       "email": "org-checker02@example.test",
       "credentials": [
         {
@@ -190,8 +190,8 @@
       "username": "sp-viewer01",
       "enabled": true,
       "emailVerified": true,
-      "firstName": "Viewer",
-      "lastName": "Test",
+      "firstName": "Anisur",
+      "lastName": "Rahman",
       "email": "sp-viewer01@example.test",
       "credentials": [
         {

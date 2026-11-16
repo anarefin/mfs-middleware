@@ -94,49 +94,70 @@ mw:
     # The shared baseline personas (ticket 57; Playwright of ticket 59 logs in as the ops ones). The
     # realm imports' own users (ops-e2e-*, org-maker01, ...) and core-mock's own app wallets
     # (customer01 = 01711000001, ...) stay for the e2e suite. realm mw-auth: app users (no Keycloak user).
+    # first-name / last-name: the Keycloak profile of a new user and the manifest's displayName (fake,
+    # realistic Bangladeshi names; usernames, MSISDNs and emails are what tests key on).
     users:
-      - { persona: maker, realm: ops, username: seed-ops-maker, roles: [viewer, ops-maker] }
-      - { persona: checker, realm: ops, username: seed-ops-checker, roles: [viewer, ops-checker] }
-      - { persona: viewer, realm: ops, username: seed-ops-viewer, roles: [viewer] }
+      - { persona: maker, realm: ops, username: seed-ops-maker, roles: [viewer, ops-maker], first-name: Nusrat, last-name: Jahan }
+      - { persona: checker, realm: ops, username: seed-ops-checker, roles: [viewer, ops-checker], first-name: Tanvir, last-name: Ahmed }
+      - { persona: viewer, realm: ops, username: seed-ops-viewer, roles: [viewer], first-name: Farzana, last-name: Akter }
       # roles as the realm import's ops-compliance01 (the PII reveal of the console, ticket 59)
-      - { persona: compliance, realm: ops, username: seed-ops-compliance, roles: [compliance-officer] }
+      - { persona: compliance, realm: ops, username: seed-ops-compliance, roles: [compliance-officer], first-name: Mahmudul, last-name: Hasan }
       # two security-admins (ticket 75): maker and checker of key changes, the two custodians of the
       # key ceremony; pre-set TOTP like the other ops personas (scripts/totp.sh seed-ops-secadmin1)
-      - { persona: secadmin1, realm: ops, username: seed-ops-secadmin1, roles: [security-admin] }
-      - { persona: secadmin2, realm: ops, username: seed-ops-secadmin2, roles: [security-admin] }
-      - { persona: org-maker, realm: portals, username: seed-org-maker, roles: [org-maker], attributes: { orgId: ORG001 } }
-      - { persona: org-checker, realm: portals, username: seed-org-checker, roles: [org-checker], attributes: { orgId: ORG001 } }
-      - { persona: customer, realm: mw-auth, username: seed-customer01, roles: [customer], attributes: { msisdn: "01712000001" } }
-      - { persona: customer, realm: mw-auth, username: seed-customer02, roles: [customer], attributes: { msisdn: "01712000002" } }
-      - { persona: agent, realm: mw-auth, username: seed-agent01, roles: [agent], attributes: { msisdn: "01812000001" } }
-      - { persona: merchant, realm: mw-auth, username: seed-merchant01, roles: [merchant], attributes: { msisdn: "01912000001" } }
+      - { persona: secadmin1, realm: ops, username: seed-ops-secadmin1, roles: [security-admin], first-name: Sabbir, last-name: Rahman }
+      - { persona: secadmin2, realm: ops, username: seed-ops-secadmin2, roles: [security-admin], first-name: Rumana, last-name: Chowdhury }
+      - { persona: org-maker, realm: portals, username: seed-org-maker, roles: [org-maker], attributes: { orgId: ORG001 }, first-name: Shirin, last-name: Sultana }
+      - { persona: org-checker, realm: portals, username: seed-org-checker, roles: [org-checker], attributes: { orgId: ORG001 }, first-name: Arif, last-name: Mahmud }
+      - { persona: customer, realm: mw-auth, username: seed-customer01, roles: [customer], attributes: { msisdn: "01712000001" }, first-name: Sumaiya, last-name: Islam }
+      - { persona: customer, realm: mw-auth, username: seed-customer02, roles: [customer], attributes: { msisdn: "01712000002" }, first-name: Rakibul, last-name: Hasan }
+      - { persona: agent, realm: mw-auth, username: seed-agent01, roles: [agent], attributes: { msisdn: "01812000001" }, first-name: Monir, last-name: Hossain }
+      - { persona: merchant, realm: mw-auth, username: seed-merchant01, roles: [merchant], attributes: { msisdn: "01912000001" }, first-name: Dhanmondi, last-name: Bakery }
       # The API suite's run customers (tests/api/run_customer.mjs): each scripts/api-test.sh run pays as one of them
       # (lib.js plays customer01 as it), at most 3 runs per UTC day each, so repeated runs stay under
       # core-mock's daily debit limit. MSISDN 01714NN0001: masks as 0171****001 like customer01.
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer01, roles: [customer], attributes: { msisdn: "01714010001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer02, roles: [customer], attributes: { msisdn: "01714020001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer03, roles: [customer], attributes: { msisdn: "01714030001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer04, roles: [customer], attributes: { msisdn: "01714040001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer05, roles: [customer], attributes: { msisdn: "01714050001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer06, roles: [customer], attributes: { msisdn: "01714060001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer07, roles: [customer], attributes: { msisdn: "01714070001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer08, roles: [customer], attributes: { msisdn: "01714080001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer09, roles: [customer], attributes: { msisdn: "01714090001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer10, roles: [customer], attributes: { msisdn: "01714100001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer11, roles: [customer], attributes: { msisdn: "01714110001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer12, roles: [customer], attributes: { msisdn: "01714120001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer13, roles: [customer], attributes: { msisdn: "01714130001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer14, roles: [customer], attributes: { msisdn: "01714140001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer15, roles: [customer], attributes: { msisdn: "01714150001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer16, roles: [customer], attributes: { msisdn: "01714160001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer17, roles: [customer], attributes: { msisdn: "01714170001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer18, roles: [customer], attributes: { msisdn: "01714180001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer19, roles: [customer], attributes: { msisdn: "01714190001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer20, roles: [customer], attributes: { msisdn: "01714200001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer21, roles: [customer], attributes: { msisdn: "01714210001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer22, roles: [customer], attributes: { msisdn: "01714220001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer23, roles: [customer], attributes: { msisdn: "01714230001" } }
-      - { persona: run-customer, realm: mw-auth, username: seed-run-customer24, roles: [customer], attributes: { msisdn: "01714240001" } }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer01, roles: [customer], attributes: { msisdn: "01714010001" }, first-name: Sakib, last-name: Hasan }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer02, roles: [customer], attributes: { msisdn: "01714020001" }, first-name: Nadia, last-name: Islam }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer03, roles: [customer], attributes: { msisdn: "01714030001" }, first-name: Fahim, last-name: Chowdhury }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer04, roles: [customer], attributes: { msisdn: "01714040001" }, first-name: Mehjabin, last-name: Rahman }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer05, roles: [customer], attributes: { msisdn: "01714050001" }, first-name: Rubel, last-name: Miah }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer06, roles: [customer], attributes: { msisdn: "01714060001" }, first-name: Tahmina, last-name: Akter }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer07, roles: [customer], attributes: { msisdn: "01714070001" }, first-name: Shahriar, last-name: Kabir }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer08, roles: [customer], attributes: { msisdn: "01714080001" }, first-name: Afroza, last-name: Begum }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer09, roles: [customer], attributes: { msisdn: "01714090001" }, first-name: Nayeem, last-name: Hossain }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer10, roles: [customer], attributes: { msisdn: "01714100001" }, first-name: Lamia, last-name: Haque }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer11, roles: [customer], attributes: { msisdn: "01714110001" }, first-name: Asif, last-name: Iqbal }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer12, roles: [customer], attributes: { msisdn: "01714120001" }, first-name: Moushumi, last-name: Das }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer13, roles: [customer], attributes: { msisdn: "01714130001" }, first-name: Jahid, last-name: Hasan }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer14, roles: [customer], attributes: { msisdn: "01714140001" }, first-name: Rehana, last-name: Parvin }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer15, roles: [customer], attributes: { msisdn: "01714150001" }, first-name: Touhid, last-name: Alam }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer16, roles: [customer], attributes: { msisdn: "01714160001" }, first-name: Sabrina, last-name: Sultana }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer17, roles: [customer], attributes: { msisdn: "01714170001" }, first-name: Riyad, last-name: Mahmud }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer18, roles: [customer], attributes: { msisdn: "01714180001" }, first-name: Tania, last-name: Khatun }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer19, roles: [customer], attributes: { msisdn: "01714190001" }, first-name: Mehedi, last-name: Hasan }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer20, roles: [customer], attributes: { msisdn: "01714200001" }, first-name: Shapla, last-name: Roy }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer21, roles: [customer], attributes: { msisdn: "01714210001" }, first-name: Ashraful, last-name: Islam }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer22, roles: [customer], attributes: { msisdn: "01714220001" }, first-name: Popy, last-name: Sarkar }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer23, roles: [customer], attributes: { msisdn: "01714230001" }, first-name: Saiful, last-name: Alam }
+      - { persona: run-customer, realm: mw-auth, username: seed-run-customer24, roles: [customer], attributes: { msisdn: "01714240001" }, first-name: Munira, last-name: Jahan }
+    # The users the Keycloak realm imports create (deploy/keycloak/realms/ops-realm.json, portals-realm.json):
+    # never written by the seeder, only read (names, attributes, realm roles) and listed in the manifest's
+    # importedUsers, so one file describes every seeded login. preset-totp: the import gives the user the
+    # realm's pre-set TOTP secret (every ops and portals user; scripts/totp.sh): nobody enrols an
+    # authenticator app, the test console shows each user's live code.
+    imported-users:
+      - { realm: ops, username: ops-viewer01, preset-totp: true }
+      - { realm: ops, username: ops-maker01, preset-totp: true }
+      - { realm: ops, username: ops-checker01, preset-totp: true }
+      - { realm: ops, username: ops-admin01, preset-totp: true }
+      - { realm: ops, username: ops-compliance01, preset-totp: true }
+      - { realm: ops, username: ops-auditor01, preset-totp: true }
+      - { realm: ops, username: ops-e2e-maker01, preset-totp: true }
+      - { realm: ops, username: ops-e2e-checker01, preset-totp: true }
+      - { realm: portals, username: org-maker01, preset-totp: true }
+      - { realm: portals, username: org-checker01, preset-totp: true }
+      - { realm: portals, username: org-makerchecker01, preset-totp: true }
+      - { realm: portals, username: org-checker02, preset-totp: true }
+      - { realm: portals, username: sp-viewer01, preset-totp: true }
     # The ops personas the admin-api steps act as (maker != checker), direct-grant client + TOTP.
     operators:
       realm: ops
@@ -144,38 +165,39 @@ mw:
       maker: seed-ops-maker
       checker: seed-ops-checker
     # Core-mock wallets of the seed personas (outside core-mock's own 0171100xxxx.. seed ranges);
-    # balances as core-mock seeds its own (poisha). Every wallet has core-mock's seed PIN.
+    # balances as core-mock seeds its own (poisha). holder-name: the wallet's display name in core-mock
+    # (set on create, or once on an existing wallet that has none).
     wallets:
-      - { wallet-id: "01712000001", type: CUSTOMER, opening-balance-minor: 1000000 }
-      - { wallet-id: "01712000002", type: CUSTOMER, opening-balance-minor: 1000000 }
-      - { wallet-id: "01812000001", type: AGENT, opening-balance-minor: 10000000 }
-      - { wallet-id: "01912000001", type: MERCHANT, opening-balance-minor: 0 }
-      - { wallet-id: "01312000001", type: ORG, opening-balance-minor: 100000000 }
+      - { wallet-id: "01712000001", type: CUSTOMER, opening-balance-minor: 1000000, holder-name: "Sumaiya Islam" }
+      - { wallet-id: "01712000002", type: CUSTOMER, opening-balance-minor: 1000000, holder-name: "Rakibul Hasan" }
+      - { wallet-id: "01812000001", type: AGENT, opening-balance-minor: 10000000, holder-name: "Monir Store" }
+      - { wallet-id: "01912000001", type: MERCHANT, opening-balance-minor: 0, holder-name: "Dhanmondi Bakery" }
+      - { wallet-id: "01312000001", type: ORG, opening-balance-minor: 100000000, holder-name: "Jamuna Textiles Ltd" }
       # run customers (above): 10,000,000 BDT each, a run spends about 4,000 BDT
-      - { wallet-id: "01714010001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714020001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714030001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714040001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714050001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714060001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714070001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714080001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714090001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714100001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714110001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714120001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714130001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714140001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714150001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714160001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714170001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714180001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714190001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714200001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714210001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714220001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714230001", type: CUSTOMER, opening-balance-minor: 1000000000 }
-      - { wallet-id: "01714240001", type: CUSTOMER, opening-balance-minor: 1000000000 }
+      - { wallet-id: "01714010001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Sakib Hasan" }
+      - { wallet-id: "01714020001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Nadia Islam" }
+      - { wallet-id: "01714030001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Fahim Chowdhury" }
+      - { wallet-id: "01714040001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Mehjabin Rahman" }
+      - { wallet-id: "01714050001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Rubel Miah" }
+      - { wallet-id: "01714060001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Tahmina Akter" }
+      - { wallet-id: "01714070001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Shahriar Kabir" }
+      - { wallet-id: "01714080001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Afroza Begum" }
+      - { wallet-id: "01714090001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Nayeem Hossain" }
+      - { wallet-id: "01714100001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Lamia Haque" }
+      - { wallet-id: "01714110001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Asif Iqbal" }
+      - { wallet-id: "01714120001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Moushumi Das" }
+      - { wallet-id: "01714130001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Jahid Hasan" }
+      - { wallet-id: "01714140001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Rehana Parvin" }
+      - { wallet-id: "01714150001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Touhid Alam" }
+      - { wallet-id: "01714160001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Sabrina Sultana" }
+      - { wallet-id: "01714170001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Riyad Mahmud" }
+      - { wallet-id: "01714180001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Tania Khatun" }
+      - { wallet-id: "01714190001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Mehedi Hasan" }
+      - { wallet-id: "01714200001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Shapla Roy" }
+      - { wallet-id: "01714210001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Ashraful Islam" }
+      - { wallet-id: "01714220001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Popy Sarkar" }
+      - { wallet-id: "01714230001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Saiful Alam" }
+      - { wallet-id: "01714240001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Munira Jahan" }
     # Partner baselines in mw-admin-api (the e2e suite's restore values: enabled, 20 s).
     partners:
       - { partner-id: ocs, enabled: true, timeout-ms: 20000 }

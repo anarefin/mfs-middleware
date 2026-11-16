@@ -10,10 +10,13 @@ import mfs.mw.seeder.util.SensitiveType;
  * suites: written as JSON to {@code mw.seeder.manifest-path} and logged once, masked. It holds no
  * secret: a persona names the {@code deploy/.env} variables that hold its password and TOTP
  * secret. Deterministic (no timestamps), so a second run that changed nothing writes the same file.
+ * {@code importedUsers}: the users the Keycloak realm imports create (not the seeder), as Keycloak
+ * holds them, so one file describes every seeded login. Fields are only ever added (schemaVersion 1).
  */
 public record SeedManifest(
     int schemaVersion,
     List<Persona> personas,
+    List<Persona> importedUsers,
     List<Wallet> wallets,
     List<Partner> partners,
     List<UssdMenu> ussdMenus,
@@ -25,21 +28,26 @@ public record SeedManifest(
   /**
    * A Keycloak user. {@code loginClient}: the client a suite logs in with (ops: the direct-grant
    * client {@code mw-e2e-ops} for API calls; the console {@code mw-admin-ui} through its login
-   * page). {@code totpSecretEnv} is set when the realm demands a TOTP code.
+   * page). {@code totpSecretEnv} is set when the user has the realm's pre-set TOTP secret.
+   * {@code displayName}: first and last name (a person, or a merchant's business), null when none.
    */
   public record Persona(
       String persona,
       String realm,
       String username,
+      @Sensitive(SensitiveType.NAME) String displayName,
       List<String> roles,
       Map<String, String> attributes,
       String loginClient,
       String passwordEnv,
       String totpSecretEnv) {}
 
-  /** A core-mock wallet (id = MSISDN); every seeded wallet has core-mock's seed PIN. */
+  /** A core-mock wallet (id = MSISDN) and its holder's display name (null when none). */
   public record Wallet(
-      @Sensitive(SensitiveType.MSISDN) String walletId, String type, long openingBalanceMinor) {}
+      @Sensitive(SensitiveType.MSISDN) String walletId,
+      String type,
+      @Sensitive(SensitiveType.NAME) String holderName,
+      long openingBalanceMinor) {}
 
   /** A partner at its baseline in mw-admin-api ({@code version} as published there, 0 = seed). */
   public record Partner(String partnerId, String family, long version, boolean enabled, Long timeoutMs) {}

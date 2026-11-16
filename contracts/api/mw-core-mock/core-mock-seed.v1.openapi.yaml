@@ -12,7 +12,22 @@ info:
     A seeded wallet's id is its MSISDN; it gets no PIN (the core holds none since ticket 72;
     first PINs are set at mw-auth) and its opening balance without ledger entries, as the mock's own start-up seed does. The PUT
     is create-if-absent: an existing wallet is answered as it is (200) and never changed, whatever
-    the body says, so tests that moved its balance keep their numbers.
+    the body says, so tests that moved its balance keep their numbers. The one exception: an
+    optional `holderName` is stored on an existing wallet that has none yet (never overwritten).
+
+    Setting a balance (test-only, the test console's "Set balance"): with the optional
+    `balanceMinor`, the wallet (new or existing) ends with exactly that AVAILABLE balance
+    (`balanceMinor` of the answer = it + `heldMinor`, so open holds stay covered). The mock never
+    edits a balance silently: the difference is posted as a double entry of kind `ADJUSTMENT`
+    between the wallet and the `SETTLEMENT` system wallet (the outside world), so the ledger stays
+    balanced; it is no transfer and never counts against the daily debit limit. A wallet already at
+    that balance gets no entry. Without `balanceMinor` nothing about the balance changes, and
+    `openingBalanceMinor` keeps its meaning (the balance a NEW wallet starts with; ignored for an
+    existing one). With both on a new wallet: created at `openingBalanceMinor`, then adjusted.
+
+    `holderName` is the holder's display name (a person, an agent's shop, a merchant's business, an
+    org's company): the mock gives its own seeded ranges fixed realistic names, null for system
+    wallets. It is personal data: services log it masked to the first initial.
 servers:
   - url: http://mw-core-mock:8080
 paths:
@@ -22,7 +37,7 @@ paths:
       - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
     get:
       operationId: getWallet
-      summary: A wallet's type, status and balances (id or MSISDN)
+      summary: A wallet's type, status, balances and holder name (id or MSISDN)
       responses:
         "200":
           description: The wallet
@@ -36,7 +51,7 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
     put:
       operationId: seedWallet
-      summary: Create the wallet with its opening balance unless it exists (test-only)
+      summary: Create the wallet with its opening balance unless it exists; optionally set its available balance (test-only)
       requestBody:
         required: true
         content:
@@ -48,6 +63,17 @@ paths:
               properties:
                 type: { type: string, enum: [CUSTOMER, AGENT, MERCHANT, ORG] }
                 openingBalanceMinor: { type: integer, minimum: 0, maximum: 100000000000, description: Poisha }
+                holderName:
+                  type: string
+                  minLength: 1
+                  maxLength: 120
+                  pattern: "\\S"
+                  description: Holder's display name; set on create, or on an existing wallet that has none
+                balanceMinor:
+                  type: integer
+                  minimum: 0
+                  maximum: 100000000000
+                  description: Poisha. The available balance to set (new or existing wallet), posted as an ADJUSTMENT against SETTLEMENT
       responses:
         "201":
           description: Created
@@ -78,6 +104,10 @@ components:
         balanceMinor: { type: integer }
         heldMinor: { type: integer }
         availableMinor: { type: integer, description: balanceMinor - heldMinor }
+        holderName:
+          type: [string, "null"]
+          maxLength: 120
+          description: Holder's display name (person, shop, business, company); null when none (system wallets)
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]

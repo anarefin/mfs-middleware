@@ -28,7 +28,7 @@ function NavLinks({ collapsed, pathname, onNavigate }: { collapsed: boolean; pat
   const item = "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sidebar-foreground no-underline transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:no-underline";
   return (
     <nav aria-label="Sections" className="flex flex-col gap-0.5">
-      <div className={cn("px-2.5 pt-2 pb-1 text-[11px] font-medium tracking-wider text-muted-foreground uppercase", collapsed && "sr-only")}>Play a role</div>
+      <div className={cn("px-2.5 pt-2 pb-1 text-xs font-medium tracking-wider text-muted-foreground uppercase", collapsed && "sr-only")}>Play a role</div>
       {NAV.map((n) => {
         const Icon = n.icon;
         const on = active?.href === n.href;
@@ -40,7 +40,7 @@ function NavLinks({ collapsed, pathname, onNavigate }: { collapsed: boolean; pat
           </Link>
         );
       })}
-      <div className={cn("px-2.5 pt-4 pb-1 text-[11px] font-medium tracking-wider text-muted-foreground uppercase", collapsed && "sr-only")}>Elsewhere</div>
+      <div className={cn("px-2.5 pt-4 pb-1 text-xs font-medium tracking-wider text-muted-foreground uppercase", collapsed && "sr-only")}>Elsewhere</div>
       <a href="/console" target="_blank" rel="noreferrer" title={collapsed ? "Ops console" : undefined} className={cn(item, collapsed && "justify-center px-0")}>
         <ExternalLink className="size-4 shrink-0" />
         <span className={cn("truncate", collapsed && "sr-only")}>Ops console ↗</span>

@@ -12,6 +12,7 @@ import mfs.mw.seeder.dto.SeedManifest;
 public class SeedContext {
 
   private final List<SeedManifest.Persona> personas = new ArrayList<>();
+  private final List<SeedManifest.Persona> importedUsers = new ArrayList<>();
   private final List<SeedManifest.Wallet> wallets = new ArrayList<>();
   private final List<SeedManifest.Partner> partners = new ArrayList<>();
   private final List<SeedManifest.UssdMenu> menus = new ArrayList<>();
@@ -20,6 +21,10 @@ public class SeedContext {
 
   public List<SeedManifest.Persona> personas() {
     return personas;
+  }
+
+  public List<SeedManifest.Persona> importedUsers() {
+    return importedUsers;
   }
 
   public List<SeedManifest.Wallet> wallets() {
@@ -50,6 +55,7 @@ public class SeedContext {
     return new SeedManifest(
         SeedManifest.SCHEMA_VERSION,
         List.copyOf(personas),
+        List.copyOf(importedUsers),
         List.copyOf(wallets),
         List.copyOf(partners),
         List.copyOf(menus),

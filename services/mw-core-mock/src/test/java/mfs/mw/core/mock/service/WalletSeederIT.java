@@ -58,7 +58,7 @@ class WalletSeederIT {
     seeder.reset();
 
     assertThat(snapshot()).isEqualTo(first);
-    assertThat(first).contains("01711000001|CUSTOMER|ACTIVE|1000000");
+    assertThat(first).contains("01711000001|CUSTOMER|ACTIVE|1000000|Rahim Uddin");
   }
 
   @Test
@@ -78,9 +78,42 @@ class WalletSeederIT {
     assertThat(countsByType()).containsEntry("CUSTOMER", 1000L);
   }
 
+  @Test
+  void everySeededWalletHasItsDisplayNameAndTheFixturesTheCatalogueOnes() {
+    seeder.reset();
+
+    assertThat(holder("01711000001")).isEqualTo("Rahim Uddin");
+    assertThat(holder("01711000002")).isEqualTo("Ayesha Siddiqua");
+    assertThat(holder("01711000003")).isEqualTo("Kamal Hossain");
+    assertThat(holder("01811000001")).isEqualTo("Hossain Telecom");
+    assertThat(holder("01911000001")).isEqualTo("Karim Traders");
+    assertThat(holder("01911000002")).isEqualTo("Lalbagh Pharmacy");
+    assertThat(holder("01311000001")).isEqualTo("Meghna Garments Ltd");
+    assertThat(holder("01311000002")).isEqualTo("Padma Foods Ltd");
+    assertThat(jdbc.queryForObject("select count(*) from wallet where msisdn is not null and holder_name is null", Integer.class))
+        .isZero();
+    assertThat(holder(WalletSeeder.SETTLEMENT_WALLET)).isNull();
+  }
+
+  @Test
+  void seedingFillsMissingNamesOfExistingRowsAndKeepsOthers() {
+    seeder.reset();
+    jdbc.update("update wallet set holder_name = null where id = ?", "01711000002");
+    jdbc.update("update wallet set holder_name = 'Someone Else' where id = ?", "01711000003");
+
+    seeder.seed();
+
+    assertThat(holder("01711000002")).isEqualTo("Ayesha Siddiqua");
+    assertThat(holder("01711000003")).isEqualTo("Someone Else");
+  }
+
+  private String holder(String id) {
+    return jdbc.queryForObject("select holder_name from wallet where id = ?", String.class, id);
+  }
+
   private List<String> snapshot() {
     return jdbc.queryForList(
-        "select id || '|' || type || '|' || status || '|' || balance_minor from wallet order by id",
+        "select id || '|' || type || '|' || status || '|' || balance_minor || '|' || coalesce(holder_name, '-') from wallet order by id",
         String.class);
   }
 }

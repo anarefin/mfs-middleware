@@ -40,14 +40,15 @@ public class SeedCoreAccountsStep implements SeedStep {
     StepResult result = StepResult.unchanged(0);
     List<SeedManifest.Wallet> wallets = new ArrayList<>();
     for (WalletSpec w : props.wallets()) {
-      CoreAccounts.Seeded seeded = core.ensureWallet(w.walletId(), w.type(), w.openingBalanceMinor());
+      CoreAccounts.Seeded seeded = core.ensureWallet(w.walletId(), w.type(), w.openingBalanceMinor(), w.holderName());
       if (!w.type().equals(seeded.wallet().type())) {
         throw new IllegalStateException(
             "wallet " + MaskingPolicy.mask(SensitiveType.MSISDN, w.walletId()) + " exists as "
                 + seeded.wallet().type() + ", not " + w.type());
       }
-      result = result.plus(seeded.created() ? StepResult.created(1) : StepResult.unchanged(1));
-      wallets.add(new SeedManifest.Wallet(w.walletId(), w.type(), w.openingBalanceMinor()));
+      result = result.plus(
+          seeded.created() ? StepResult.created(1) : seeded.named() ? StepResult.updated(1) : StepResult.unchanged(1));
+      wallets.add(new SeedManifest.Wallet(w.walletId(), w.type(), w.holderName(), w.openingBalanceMinor()));
     }
     ctx.wallets().addAll(wallets);
     return result;

@@ -71,6 +71,15 @@ class MaskingPolicyTest {
                 + " encryptedPin=****, channel=USSD]");
   }
 
+  @Test
+  void aWalletViewShowsOnlyTheHoldersInitialAndAMaskedNumber() {
+    var wallet = new mfs.mw.core.mock.dto.WalletBalance("01711000001", "CUSTOMER", "ACTIVE", 10, 2, 8, "Rahim Uddin");
+    assertThat(MaskingPolicy.describe(wallet)).contains("holderName=R.", "walletId=0171****001")
+        .doesNotContain("Rahim", "Uddin", "01711000001");
+    var seed = new mfs.mw.core.mock.dto.WalletSeedRequest("CUSTOMER", 1000L, "Ayesha Siddiqua", 500L);
+    assertThat(MaskingPolicy.describe(seed)).contains("holderName=A.").doesNotContain("Ayesha", "Siddiqua");
+  }
+
   record Wrapper(Payer payer, int count) {}
 
   @Test

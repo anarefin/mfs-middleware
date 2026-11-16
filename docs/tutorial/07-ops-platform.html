@@ -69,8 +69,8 @@
     <li>Operator actions on transactions: FORCE_COMMIT, FORCE_RELEASE, INQUIRE (ask again now) and reversal.</li>
     <li>Roles are Keycloak roles in the <code>ops</code> realm, for example <code>ops-maker</code> and <code>ops-checker</code>
       (transactions), <code>integration-maker</code> / <code>integration-checker</code> (partner settings),
-      <code>compliance-officer</code>, <code>auditor</code> and <code>viewer</code> (enum <code>dto/AdminRole</code>). Logging in needs a password and a TOTP code (an authenticator app); for test users,
-      <code>scripts/totp.sh</code> prints the current code.</li>
+      <code>compliance-officer</code>, <code>auditor</code> and <code>viewer</code> (enum <code>dto/AdminRole</code>). Logging in needs a password and a TOTP code (an authenticator app in production); on the dev stack every
+      user has a pre-set code: the test console shows it live and <code>scripts/totp.sh</code> prints it.</li>
     <li>The browser never calls <code>mw-admin-api</code> directly: the Next.js server does, with the operator's token.</li>
   </ul>
   <div class="box where"><div class="tag">Where it lives</div><ul>
@@ -126,8 +126,10 @@
     device (test users <code>customer01</code>, <code>agent01</code>, <code>merchant01</code>, app PIN <code>13579</code>).
     Every realm locks a user out for a while after five failed logins and demands 12+ character passwords.</p>
   <p>The test users' passwords are fixed, documented dev values (ops <code>ops-test-pass</code>,
-    portals <code>portal-test-pass</code>, one-time codes from <code>scripts/totp.sh</code>); the other secrets are generated per laptop into the gitignored <code>deploy/.env</code>.
-    <code>scripts/creds.sh</code> prints them all.
+    portals <code>portal-test-pass</code>); every other dev secret is a fixed fake value too, committed in
+    <code>deploy/dev.env.defaults</code> and copied to the gitignored <code>deploy/.env</code>. The test console's
+    <strong>Logins &amp; secrets</strong> page (<code>https://localhost/tester/credentials</code>) shows them all with live
+    one-time codes; in a terminal <code>scripts/creds.sh</code> and <code>scripts/totp.sh</code>.
     Realm files: <a href="../../deploy/keycloak">deploy/keycloak/</a>.</p>
   <p>The app has one extra layer: <strong>device binding</strong>. A login alone is not enough to move money; the phone must also be
     bound (an OTP by SMS, then a key stored on the device) and must sign each request. A stolen password on another phone cannot pay.</p>
@@ -156,8 +158,8 @@
     <code>txn.state.changed</code> and <code>partner.call.completed</code>. Masking runs before anything is printed.</p>
 
   <div class="box try"><div class="tag">Try it yourself</div><ul>
-    <li>Log in to the console as <code>seed-ops-maker</code> (TOTP from <code>scripts/totp.sh</code>), open a transaction and read its timeline.
-      Raise a change request, then approve it as <code>seed-ops-checker</code> (<code>scripts/totp.sh seed-ops-checker</code>).</li>
+    <li>Log in to the console as <code>seed-ops-maker</code> (TOTP from the test console's Logins &amp; secrets page or <code>scripts/totp.sh</code>), open a transaction and read its timeline.
+      Raise a change request, then approve it as <code>seed-ops-checker</code> (its live code, or <code>scripts/totp.sh seed-ops-checker</code>).</li>
     <li>Test console page <strong>SMS &amp; email</strong> shows what <code>mw-notify</code> sent.</li>
     <li>Automated: <code>scripts/api-test.sh "10, 11, 13, 14, 15, 17"</code> and <code>scripts/ui-e2e.sh</code> (the console's browser tests).</li>
   </ul></div>

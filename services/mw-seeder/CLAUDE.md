@@ -74,10 +74,20 @@ this file says what is specific to this module.
   (`/run/mw/seed/manifest.json`, the `seed-manifest` volume); `scripts/api-test.sh` and `scripts/ui-e2e.sh` copy it to
   `build/seed/manifest.json` (host; read it from Newman and Playwright, or mount the volume read-only
   in a container). It is deterministic (no timestamps or run ids) and holds no secret:
-  `{schemaVersion, personas[{persona, realm, username, roles, attributes, loginClient, passwordEnv,
-  totpSecretEnv?}], wallets[{walletId, type, openingBalanceMinor}], partners[{partnerId, family, version,
+  `{schemaVersion, personas[{persona, realm, username, displayName?, roles, attributes, loginClient?, passwordEnv,
+  totpSecretEnv?}], importedUsers[same shape], wallets[{walletId, type, holderName?, openingBalanceMinor}], partners[{partnerId, family, version,
   enabled, timeoutMs}], ussdMenus[{menuId, version, mnos}], templates[{code, channel, locale, version}],
   appPins{pinEnv, walletIds[]}}` (`appPins`: the wallets with the dev app PIN and the variable that holds it).
+  Fields are only added, never renamed (schemaVersion stays 1; null fields are left out). `displayName`
+  is the persona's `first-name` + `last-name` from `mw.seeder.users` (realistic fake Bangladeshi names,
+  also the Keycloak profile of a new user; "Seed" + persona when unset), `holderName` the wallet's
+  `holder-name` (also sent on the core-mock PUT; an existing wallet without one gets it once).
+  `importedUsers`: the users the realm imports create (`mw.seeder.imported-users`: `ops-*01`,
+  `ops-e2e-*`, `org-*`, `sp-viewer01`), read from Keycloak in seed-identities (profile names, first value
+  of each attribute, realm roles without `default-roles-<realm>`, sorted; never written; one missing is
+  left out with a WARN); `persona` = username; `totpSecretEnv` only with `preset-totp: true` (every
+  imported ops and portals user: the realm imports give them all the pre-set secret, no authenticator app). Names are masked to the
+  first initial in the logged copy.
   Passwords and the TOTP secret are named by their `deploy/.env` variable. Every seeded wallet has
   mw-core-mock's seed PIN (`mw.coremock.seed.pin`, the fake `1234`). It is also logged once, masked
   (`seed.manifest`, MSISDNs `0171****001`).

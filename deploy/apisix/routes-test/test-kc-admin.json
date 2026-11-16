@@ -1,0 +1,36 @@
+{
+  "name": "test-kc-admin",
+  "desc": "TEST ONLY (MW_E2E_ROUTES=1): Keycloak admin API, realms ops/portals only: users (GET/PUT/POST/DELETE) and attack-detection/brute-force/users/<id> (GET/DELETE); key-auth (mw-e2e), private networks; host keycloak:8080",
+  "uri": "/test/kc/admin/realms/*",
+  "methods": ["GET", "PUT", "POST", "DELETE"],
+  "vars": ["OR",
+    ["uri", "~~", "^/test/kc/admin/realms/(ops|portals)/users(/[A-Za-z0-9_-]+)*$"],
+    ["AND",
+      ["uri", "~~", "^/test/kc/admin/realms/(ops|portals)/attack-detection/brute-force/users/[A-Za-z0-9_-]+$"],
+      ["request_method", "in", ["GET", "DELETE"]]]],
+  "plugins": {
+    "ip-restriction": {
+      "whitelist": ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128"]
+    },
+    "key-auth": { "header": "apikey", "hide_credentials": true },
+    "consumer-restriction": { "type": "consumer_name", "whitelist": ["mw_e2e"] },
+    "client-control": { "max_body_size": 65536 },
+    "proxy-rewrite": {
+      "regex_uri": ["^/test/kc(/admin/realms/(ops|portals)/.*)$", "$1"],
+      "host": "keycloak:8080",
+      "headers": {
+        "set": {
+          "X-Forwarded-Host": "keycloak",
+          "X-Forwarded-Port": "8080",
+          "X-Forwarded-Proto": "http"
+        }
+      }
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": { "connect": 5, "send": 10, "read": 10 },
+    "nodes": { "keycloak:8080": 1 }
+  }
+}

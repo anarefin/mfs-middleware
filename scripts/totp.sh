@@ -7,18 +7,19 @@
 # (deploy/.env: KC_OPS_TEST_TOTP_SECRET for ops, KC_PORTALS_TEST_TOTP_SECRET for portals, ticket 73) is
 # keyed as its raw UTF-8 bytes, never base32-decoded: the same algorithm as mw-seeder util/Totp,
 # tests/api/lib.js and ui/mw-admin-ui/e2e/support/totp.ts.
-# Personas with a pre-set secret: ops seed-ops-* (mw-seeder) and ops-e2e-* (realm import); every
-# portals user: seed-org-* (mw-seeder) and org-*, sp-viewer01 (realm import). The other ops users
-# (ops-maker01, ...) enrol their own authenticator app at the first sign-in.
+# Personas with a pre-set secret: ops seed-ops-* (mw-seeder), ops-e2e-* and ops-*01 (realm import); every
+# portals user: seed-org-* (mw-seeder) and org-*, sp-viewer01 (realm import); the ops-*01 users
+# (realm import) too: nobody enrols an authenticator app.
 # MW_TOTP_TIME=<epoch seconds> fixes the clock (tests).
 set -eu
 . "$(dirname "$0")/lib/common.sh"
 
 persona="${1:-seed-ops-maker}"
 case "$persona" in
-  seed-ops-maker|seed-ops-checker|seed-ops-viewer|seed-ops-compliance|seed-ops-secadmin1|seed-ops-secadmin2|ops-e2e-maker01|ops-e2e-checker01) var=KC_OPS_TEST_TOTP_SECRET ;;
+  seed-ops-maker|seed-ops-checker|seed-ops-viewer|seed-ops-compliance|seed-ops-secadmin1|seed-ops-secadmin2|ops-e2e-maker01|ops-e2e-checker01|\
+  ops-viewer01|ops-maker01|ops-checker01|ops-admin01|ops-compliance01|ops-auditor01) var=KC_OPS_TEST_TOTP_SECRET ;;
   seed-org-maker|seed-org-checker|org-maker01|org-checker01|org-makerchecker01|org-checker02|sp-viewer01) var=KC_PORTALS_TEST_TOTP_SECRET ;;
-  *) die "totp: $persona has no pre-set secret; it enrols an authenticator app (FreeOTP or Aegis, SHA-256) at its first sign-in. Pre-set: seed-ops-maker, seed-ops-checker, seed-ops-viewer, seed-ops-compliance, seed-ops-secadmin1, seed-ops-secadmin2, ops-e2e-maker01, ops-e2e-checker01 (ops); seed-org-maker, seed-org-checker, org-maker01, org-checker01, org-makerchecker01, org-checker02, sp-viewer01 (portals)" ;;
+  *) die "totp: $persona has no pre-set secret (not a seeded ops or portal user). Pre-set: seed-ops-maker, seed-ops-checker, seed-ops-viewer, seed-ops-compliance, seed-ops-secadmin1, seed-ops-secadmin2, ops-e2e-maker01, ops-e2e-checker01, ops-viewer01, ops-maker01, ops-checker01, ops-admin01, ops-compliance01, ops-auditor01 (ops); seed-org-maker, seed-org-checker, org-maker01, org-checker01, org-makerchecker01, org-checker02, sp-viewer01 (portals)" ;;
 esac
 [ -f "$STACK_ENV" ] || die "totp: deploy/.env does not exist (cd deploy && cp dev.env.defaults .env)"
 secret="$(sed -n "s/^$var=//p" "$STACK_ENV" | tail -1)"

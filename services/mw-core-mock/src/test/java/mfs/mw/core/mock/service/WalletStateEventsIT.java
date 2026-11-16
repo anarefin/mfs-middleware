@@ -154,8 +154,8 @@ class WalletStateEventsIT {
 
   @Test
   void theSeedApiPublishesACreatedEventOnlyWhenItCreates() {
-    seedApi.seed("01712000001", "AGENT", 0);
-    seedApi.seed("01712000001", "AGENT", 0);
+    seedApi.seed("01712000001", "AGENT", 0, null, null);
+    seedApi.seed("01712000001", "AGENT", 0, null, null);
     List<JsonNode> e = stateEvents("01712000001");
     assertThat(e).hasSize(1);
     assertThat(e.getFirst().path("payload").path("walletType").asString()).isEqualTo("AGENT");

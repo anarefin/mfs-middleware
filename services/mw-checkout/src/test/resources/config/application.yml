@@ -18,7 +18,7 @@ mw:
     merchants:
       merchant_demo:
         wallet: "01911000001"
-        name: Demo Shop
+        name: Karim Traders
         secret: test-merchant-secret-not-real
       merchant_other:
         wallet: "01911000002"

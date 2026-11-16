@@ -164,13 +164,13 @@ class AuthClientTest {
     UUID session = UUID.randomUUID();
     answers.put("/internal/v1/otp",
         new String[] {"202", "{\"wallet\":\"0171****001\",\"otpExpiresAt\":\"2026-11-15T10:02:00Z\",\"sendsLeft\":4}"});
-    OtpSent sent = client.sendOtp("01711000001", session, "bn", "25.50", "Demo Shop");
+    OtpSent sent = client.sendOtp("01711000001", session, "bn", "25.50", "Karim Traders");
     assertThat(sent.sendsLeft()).isEqualTo(4);
     var body = JSON.readTree(bodies.getFirst());
     assertThat(body.path("purpose").asString()).isEqualTo("CHECKOUT");
     assertThat(body.path("bindingId").asString()).isEqualTo(session.toString());
     assertThat(body.path("amount").asString()).isEqualTo("25.50");
-    assertThat(body.path("merchant").asString()).isEqualTo("Demo Shop");
+    assertThat(body.path("merchant").asString()).isEqualTo("Karim Traders");
   }
 
   @Test

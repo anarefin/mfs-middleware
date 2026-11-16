@@ -84,10 +84,20 @@ test_totp_changes_every_30_seconds() {
   [ "$a" != "$b" ] || fail "same code across a 30 s step"
 }
 
-test_totp_refuses_a_persona_without_a_preset_secret() {
+# Every ops user has the pre-set secret (no authenticator app): ops-*01 get the seed personas' code.
+test_totp_prints_the_ops_01_users_code_from_the_ops_secret() {
   dev_env
-  assert_fails mw_run "$PWD" totp.sh ops-maker01
-  assert_out_contains "authenticator app"
+  for user in ops-viewer01 ops-maker01 ops-checker01 ops-admin01 ops-compliance01 ops-auditor01; do
+    MW_TOTP_TIME=59 assert_ok mw_run "$PWD" totp.sh "$user"
+    assert_out_contains "$user: "
+    assert_out_contains "119246"
+  done
+}
+
+test_totp_refuses_an_unknown_persona() {
+  dev_env
+  assert_fails mw_run "$PWD" totp.sh nobody01
+  assert_out_contains "no pre-set secret"
 }
 
 test_totp_without_dev_env_says_how_to_create_it() {
@@ -107,10 +117,16 @@ test_creds_prints_every_login_and_key() {
   for v in fake-apisix-admin fake-kc-admin fake-ops-pw fake-portals-pw fake-e2e-key "scripts/totp.sh seed-org-maker" \
            fake-checkout fake-billagg fake-c2wbank fake-gp fake-robi fake-bl fake-teletalk dev-root-token \
            https://localhost/tester https://localhost/console seed-ops-maker customer01 org-maker01 kc-admin \
-           "scripts/totp.sh seed-ops-maker" fake-mwcrypto-label fake-mwcrypto-so fake-mwcrypto-user \
+           "scripts/totp.sh seed-ops-maker" "scripts/totp.sh ops-maker01" fake-mwcrypto-label fake-mwcrypto-so fake-mwcrypto-user \
            fake-paysim-label fake-paysim-so fake-paysim-user "app PIN (mw-auth login): 97531" "scripts/lib/mw-auth-token.mjs"; do
     assert_out_contains "$v"
   done
+  # the test console's own credential pages come first; the transaction PIN is the app PIN (ticket 72)
+  assert_out_contains "https://localhost/tester/credentials"
+  assert_out_contains "https://localhost/tester/seed-data"
+  assert_out_lacks "Enrol an authenticator"
+  assert_out_contains "transaction PIN (every channel, checked by mw-auth since ticket 72): the app PIN 97531"
+  assert_out_lacks "1234"
   # ticket 73: no customers realm any more
   assert_out_lacks "realm customers"
   assert_out_lacks "KC_CUSTOMERS"

@@ -31,7 +31,7 @@ public class WalletSeedController {
 
   @PutMapping("/{walletId}")
   ResponseEntity<WalletBalance> seed(@PathVariable String walletId, @Valid @RequestBody WalletSeedRequest body) {
-    WalletSeedService.Seeded s = seeds.seed(walletId, body.type(), body.openingBalanceMinor());
+    WalletSeedService.Seeded s = seeds.seed(walletId, body.type(), body.openingBalanceMinor(), body.holderName(), body.balanceMinor());
     return ResponseEntity.status(s.created() ? HttpStatus.CREATED : HttpStatus.OK).body(s.wallet());
   }
 }

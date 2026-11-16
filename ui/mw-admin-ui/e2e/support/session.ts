@@ -1,4 +1,4 @@
-import { expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { expect, type Browser, type BrowserContext, type Page, type Response } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { BASE_URL } from "./env";
@@ -96,6 +96,50 @@ async function signedInAs(page: Page, name: PersonaName): Promise<boolean> {
   return false;
 }
 
+/**
+ * The `admin-ui` quota (600 requests a minute per address) is shared by every context of the run, and
+ * each new context loads the static chunks again, so a long run can pass it: the page is then the 429
+ * envelope at the same URL and the test waits for its content until it times out. Every signed-in page
+ * reports the `X-RateLimit-*` headers APISIX sends here; its `goto` waits out the window first when
+ * fewer than QUOTA_RESERVE requests are left (one page load with its chunks fits in that), and once
+ * more after a 429 document.
+ */
+const QUOTA_RESERVE = 120;
+const quota = { remaining: Infinity, resetAt: 0 };
+
+function noteQuota(r: Response): void {
+  if (!new URL(r.url()).pathname.startsWith("/console")) return; // other routes count other quotas
+  const h = r.headers();
+  const remaining = Number(h["x-ratelimit-remaining"]);
+  const reset = Number(h["x-ratelimit-reset"]);
+  if (r.status() === 429) quota.remaining = 0;
+  else if (Number.isFinite(remaining)) quota.remaining = remaining;
+  else return;
+  if (Number.isFinite(reset)) quota.resetAt = Date.now() + Math.min(reset, 60) * 1000 + 500;
+}
+
+async function waitForQuota(page: Page): Promise<void> {
+  const wait = quota.resetAt - Date.now();
+  if (quota.remaining < QUOTA_RESERVE && wait > 0) await page.waitForTimeout(wait);
+  if (Date.now() >= quota.resetAt) quota.remaining = Infinity;
+}
+
+const quotaAware = new WeakSet<Page>();
+
+function paceGoto(page: Page): void {
+  if (quotaAware.has(page)) return;
+  quotaAware.add(page);
+  page.on("response", noteQuota);
+  const goto = page.goto.bind(page);
+  page.goto = async (url, options) => {
+    await waitForQuota(page);
+    const res = await goto(url, options);
+    if (res?.status() !== 429) return res;
+    await waitForQuota(page);
+    return goto(url, options);
+  };
+}
+
 const prefetchFree = new WeakSet<Page>();
 
 /**
@@ -125,6 +169,7 @@ async function skipPrefetches(page: Page): Promise<void> {
  * a real login (cached for the rest of the run). Lands on the search.
  */
 export async function signIn(page: Page, name: PersonaName): Promise<void> {
+  paceGoto(page);
   await skipPrefetches(page);
   const file = sessionFile(name);
   if (fs.existsSync(file)) {

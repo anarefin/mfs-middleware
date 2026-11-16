@@ -94,7 +94,7 @@ async function checkoutSession(MW, S, amount) {
   S.eq('session created OPEN (201)', [r.status, r.body && r.body.status], [201, 'OPEN'], String(r));
   const co = { orderId, amount, sessionId: r.body.sessionId, token: r.body.checkoutUrl.slice(r.body.checkoutUrl.lastIndexOf('/') + 1) };
   const taka = (Math.floor(amount / 100)) + '.' + String(amount % 100).padStart(2, '0');
-  const re = /Your Bits code is ([0-9]{6}) to pay Tk ([0-9.]+) to Demo Shop/;
+  const re = /Your Bits code is ([0-9]{6}) to pay Tk ([0-9.]+) to Karim Traders/;
   const codes = async w => (await MW.sim.sms(w)).map(m => re.exec(m.text || '')).filter(m => m && m[2] === taka).map(m => m[1]);
   co.otp = async wallet => {
     const before = await codes(wallet);

@@ -135,6 +135,15 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   per wallet `CREATED`, `UNCHANGED` (has a PIN), `UNKNOWN_WALLET` (not projected yet: the seeder retries),
   `WEAK`. No token and reachable on the plain public port (the seeder has no client certificate); APISIX
   never routes `/internal/*`; off, the path is the internal chain's (401).
+- Dev only, the same switch `mw.auth.seed-api.enabled`: the test console's account test API (contract
+  `api/mw-auth/auth-test.v1.openapi.yaml`, `controller/TestAccountController`, `service/TestAccountService`,
+  `dto/TestAccount`; APISIX test route `test-auth`, `/test/auth/v1/accounts/*` with `MW_E2E_ROUTES=1`):
+  `GET /test/v1/accounts/{walletId}` (pinSet, locked/lockedUntil, failedPinAttempts, pinLock, adminLocked,
+  deviceOtp, checkoutOtpSends, devices), `POST .../unlock` (ADMIN + PIN lock and count, device OTP and its
+  send window, checkout OTP quota), `POST .../unbind` (every device unbound, refresh tokens revoked, sessions
+  closed), `POST .../pin {encryptedPin}` (HMAC derived as for a seeded PIN, replaces the current one, history
+  forgotten); each answers the account afterwards; unknown wallet 404 `MW-VAL-003`. No token (chain 0, with
+  the seed path); off, nothing answers `/test/**` (404).
 - Valkey (`repository/DeviceSessionStore`, `config/DeviceBindingConfig` fail-fast): sessions
   `sess:{walletId}:{deviceId}` (value = the idle timeout in seconds, TTL sliding: `idle-timeout` 5 min, per channel
   `idle-timeout-by-channel`) and nonces `nonce:{deviceId}:{nonce}` (SET NX, 2x skew + 30 s; mw-app-gateway uses the

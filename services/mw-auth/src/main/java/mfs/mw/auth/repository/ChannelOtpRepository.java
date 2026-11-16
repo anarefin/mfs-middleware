@@ -107,6 +107,18 @@ public class ChannelOtpRepository {
         == 1;
   }
 
+  /** The sends counted in the wallet's current quota window of every purpose (dev test API). */
+  public int quotaSends(String walletId) {
+    Integer n = jdbc.queryForObject(
+        "SELECT coalesce(sum(sends), 0) FROM channel_otp_quota WHERE wallet_id = ?", Integer.class, walletId);
+    return n == null ? 0 : n;
+  }
+
+  /** Forgets the wallet's send quota windows (dev test API unlock); the OTPs themselves stay. */
+  public int clearQuota(String walletId) {
+    return jdbc.update("DELETE FROM channel_otp_quota WHERE wallet_id = ?", walletId);
+  }
+
   private static Timestamp ts(Instant i) {
     return Timestamp.from(i);
   }

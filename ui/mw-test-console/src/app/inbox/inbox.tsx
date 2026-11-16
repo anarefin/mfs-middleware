@@ -43,9 +43,9 @@ export function Inbox() {
               <TableBody>
                 {sms.map((m, i) => (
                   <TableRow key={i}>
-                    <TableCell className="font-mono text-xs whitespace-nowrap text-muted-foreground">{m.receivedAt}</TableCell>
-                    <TableCell className="font-mono text-xs">{m.source}</TableCell>
-                    <TableCell lang="bn" dir="auto">{m.text}<div className="mt-1 text-xs text-muted-foreground">{m.encoding} · {m.segments} part(s)</div></TableCell>
+                    <TableCell className="font-mono text-sm whitespace-nowrap text-muted-foreground">{m.receivedAt}</TableCell>
+                    <TableCell className="font-mono text-sm">{m.source}</TableCell>
+                    <TableCell lang="bn" dir="auto">{m.text}<div className="mt-1 text-sm text-muted-foreground">{m.encoding} · {m.segments} part(s)</div></TableCell>
                     <TableCell>{m.dlrStatus ? <StatusBadge status={m.dlrStatus} /> : "-"}</TableCell>
                   </TableRow>
                 ))}
@@ -57,9 +57,9 @@ export function Inbox() {
               <details key={i} className="group rounded-md border">
                 <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-sm [&::-webkit-details-marker]:hidden">
                   <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
-                  <strong className="font-medium">{m.subject}</strong> <span className="text-xs text-muted-foreground">{m.receivedDate} · {m.contentType?.split(";")[0]}</span>
+                  <strong className="font-medium">{m.subject}</strong> <span className="text-sm text-muted-foreground">{m.receivedDate} · {m.contentType?.split(";")[0]}</span>
                 </summary>
-                <pre className="m-0 max-h-96 overflow-auto rounded-b-md bg-screen px-3 py-2 font-mono text-xs whitespace-pre-wrap break-words text-screen-foreground">{m.mimeMessage?.slice(0, 6000)}</pre>
+                <pre className="m-0 max-h-96 overflow-auto rounded-b-md bg-screen px-3 py-2 font-mono text-sm whitespace-pre-wrap break-words text-screen-foreground">{m.mimeMessage?.slice(0, 6000)}</pre>
               </details>
             ))}
           </Panel>

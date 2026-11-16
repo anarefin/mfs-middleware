@@ -34,11 +34,14 @@ class ApiContractsTest {
 
   @Test
   void aServedWalletIsTheContractsWallet() {
-    JsonNode body = JSON.readTree(JSON.writeValueAsString(new WalletBalance("01712000001", "CUSTOMER", "ACTIVE", 10, 2, 8)));
+    JsonNode body = JSON.readTree(JSON.writeValueAsString(new WalletBalance("01712000001", "CUSTOMER", "ACTIVE", 10, 2, 8, "Rahim Uddin")));
     for (String status : new String[] {"200", "201"}) {
       assertThat(OpenApiSchemas.response(SEED, "/core-mock/v1/wallets/{walletId}", "put", status).validate(body)).isEmpty();
     }
     assertThat(OpenApiSchemas.response(SEED, "/core-mock/v1/wallets/{walletId}", "get", "200").validate(body)).isEmpty();
+    JsonNode system = JSON.readTree(JSON.writeValueAsString(new WalletBalance("SETTLEMENT", "SYSTEM", "ACTIVE", 10, 0, 10, null)));
+    assertThat(OpenApiSchemas.response(SEED, "/core-mock/v1/wallets/{walletId}", "get", "200").validate(system))
+        .as("a wallet without a holder (system wallets) is served with holderName null").isEmpty();
   }
 
   @Test
@@ -48,5 +51,13 @@ class ApiContractsTest {
     assertThat(schema.validate(JSON.readTree("{\"type\":\"AGENT\",\"openingBalanceMinor\":0}"))).isEmpty();
     assertThat(schema.validate(JSON.readTree("{\"type\":\"SYSTEM\",\"openingBalanceMinor\":0}"))).isNotEmpty();
     assertThat(schema.validate(JSON.readTree("{\"type\":\"AGENT\",\"openingBalanceMinor\":-1}"))).isNotEmpty();
+    assertThat(schema.validate(JSON.readTree("{\"type\":\"AGENT\",\"openingBalanceMinor\":0,\"holderName\":\"Monir Store\"}"))).isEmpty();
+    assertThat(schema.validate(JSON.readTree("{\"type\":\"AGENT\",\"openingBalanceMinor\":0,\"balanceMinor\":500}"))).isEmpty();
+    assertThat(schema.validate(JSON.readTree("{\"type\":\"AGENT\",\"openingBalanceMinor\":0,\"balanceMinor\":-1}"))).isNotEmpty();
+    assertThat(schema.validate(JSON.readTree("{\"type\":\"AGENT\",\"openingBalanceMinor\":0,\"balanceMinor\":100000000001}")))
+        .isNotEmpty();
+    assertThat(schema.validate(JSON.readTree("{\"type\":\"AGENT\",\"openingBalanceMinor\":0,\"holderName\":\"\"}"))).isNotEmpty();
+    assertThat(schema.validate(JSON.readTree("{\"type\":\"AGENT\",\"openingBalanceMinor\":0,\"holderName\":\"" + "x".repeat(121) + "\"}")))
+        .isNotEmpty();
   }
 }

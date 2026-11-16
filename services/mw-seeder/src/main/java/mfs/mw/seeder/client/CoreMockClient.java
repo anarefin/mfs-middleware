@@ -13,7 +13,8 @@ import org.springframework.stereotype.Component;
  * mw-core-mock's wallet API ({@code contracts/api/mw-core-mock/core-mock-seed.v1.openapi.yaml}):
  * looks the wallet up ({@code GET /core-mock/v1/wallets/{walletId}}, unknown = 400 MW-VAL-003) and
  * only when it is missing creates it with the test-only {@code PUT} (201 created, 200 when it
- * appeared meanwhile; never changed). The PUT is only on when core-mock runs with {@code
+ * appeared meanwhile; never changed). An existing wallet without a holder name gets the configured
+ * one through the same PUT (core-mock fills a missing name only). The PUT is only on when core-mock runs with {@code
  * MW_COREMOCK_SEED_API_ENABLED=true} (the dev stack); otherwise it is a 405.
  */
 @Component
@@ -31,14 +32,19 @@ public class CoreMockClient implements CoreAccounts {
   }
 
   @Override
-  public Seeded ensureWallet(String walletId, String type, long openingBalanceMinor) {
+  public Seeded ensureWallet(String walletId, String type, long openingBalanceMinor, String holderName) {
     URI u = base.resolve("/core-mock/v1/wallets/" + URLEncoder.encode(walletId, StandardCharsets.UTF_8));
     HttpJson.Response found = HttpJson.expect(GET, http.get(GET, u, Map.of()), 200, 400);
+    WalletSeedRequest body = new WalletSeedRequest(type, openingBalanceMinor, holderName);
     if (found.status() == 200) {
-      return new Seeded(false, http.read(GET, found, WalletView.class));
+      WalletView have = http.read(GET, found, WalletView.class);
+      if (holderName == null || have.holderName() != null) {
+        return new Seeded(false, false, have);
+      }
+      HttpJson.Response named = HttpJson.expect(PUT, http.sendJson(PUT, "PUT", u, Map.of(), body), 200);
+      return new Seeded(false, true, http.read(PUT, named, WalletView.class));
     }
-    HttpJson.Response r =
-        HttpJson.expect(PUT, http.sendJson(PUT, "PUT", u, Map.of(), new WalletSeedRequest(type, openingBalanceMinor)), 200, 201);
-    return new Seeded(r.status() == 201, http.read(PUT, r, WalletView.class));
+    HttpJson.Response r = HttpJson.expect(PUT, http.sendJson(PUT, "PUT", u, Map.of(), body), 200, 201);
+    return new Seeded(r.status() == 201, false, http.read(PUT, r, WalletView.class));
   }
 }

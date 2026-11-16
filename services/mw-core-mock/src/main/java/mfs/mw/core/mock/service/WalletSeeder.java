@@ -3,6 +3,7 @@ package mfs.mw.core.mock.service;
 import java.util.ArrayList;
 import java.util.List;
 import mfs.mw.core.mock.config.CoreMockProperties;
+import mfs.mw.core.mock.util.HolderNames;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -13,7 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
  * Seeds the ledger: 1,000 customers ({@code 01711000001..}), 50 agents ({@code 01811000001..}),
  * 20 merchants ({@code 01911000001..}), 2 orgs ({@code 01311000001..}) and two system wallets
  * ({@link #FEE_WALLET} collects fees, {@link #SETTLEMENT_WALLET} is the outside world). Ids, types and balances are fixed, so the seed is
- * identical on every run. No PIN: the core holds none since ticket 72 (mw-auth owns the PINs).
+ * identical on every run. Each generated wallet gets a fixed display name ({@link HolderNames}). No
+ * PIN: the core holds none since ticket 72 (mw-auth owns the PINs).
  */
 @Service
 public class WalletSeeder {
@@ -39,8 +41,9 @@ public class WalletSeeder {
   }
 
   /**
-   * Adds the seed wallets that are missing; existing rows are left alone. Each wallet added is
-   * published as WalletStateChanged CREATED in the same transaction (ticket 67).
+   * Adds the seed wallets that are missing; existing rows are left alone, except that a missing
+   * holder name is filled in. Each wallet added is published as WalletStateChanged CREATED in the
+   * same transaction (ticket 67).
    */
   @Transactional
   public void seed() {
@@ -51,6 +54,10 @@ public class WalletSeeder {
     created.addAll(insert("MERCHANT", "0191100", 20, s.merchantBalanceMinor()));
     created.addAll(insert("ORG", "0131100", 2, s.orgBalanceMinor()));
     stateEvents.created(created);
+    nameHolders("CUSTOMER", "0171100", 1000);
+    nameHolders("AGENT", "0181100", 50);
+    nameHolders("MERCHANT", "0191100", 20);
+    nameHolders("ORG", "0131100", 2);
     jdbc.update(
         "insert into wallet (id, msisdn, type, balance_minor) values (?, null, 'SYSTEM', 0) on conflict do nothing",
         FEE_WALLET);
@@ -66,6 +73,15 @@ public class WalletSeeder {
     jdbc.execute("truncate entry, hold, command_log, reversal, wallet");
     seed();
     log.atInfo().addKeyValue("event", "coremock.seed.reset").log("ledger reset to the seed");
+  }
+
+  /** Gives every wallet of a range that has no holder name yet its fixed one. */
+  private void nameHolders(String type, String prefix, int count) {
+    List<Object[]> rows = new ArrayList<>(count);
+    for (int n = 1; n <= count; n++) {
+      rows.add(new Object[] {HolderNames.of(type, n), prefix + String.format("%04d", n)});
+    }
+    jdbc.batchUpdate("update wallet set holder_name = ? where id = ? and holder_name is null", rows);
   }
 
   /** Inserts the missing wallets of a range; returns the ids it inserted. */

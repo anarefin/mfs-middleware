@@ -121,7 +121,7 @@ Through the edge:
 | `/admin/v1/*` | `mw-admin-api` (realm `ops` JWT) |
 | `/checkout/*`, `/ussd/<mno>`, `/partner/*/callback/*` | checkout, MNO USSD gateways, partner callbacks |
 | `/healthz` | APISIX itself |
-| `/tester` | test console (`mw-test-console`, dev/test only, ADR D17): only while the test-only routes are on (`scripts/tester.sh`), from private addresses; never on a shared or production host |
+| `/tester` | test console (`mw-test-console`, dev/test only, ADR D17): only while the test-only routes are on (`scripts/tester.sh`), from private addresses; it displays the dev secrets (`/tester/credentials`, `/tester/seed-data`) and can unlock and reset accounts through the test-only routes, so never on a shared or production host and never with real values in `deploy/.env` |
 
 The full route list and every edge policy is in `deploy/apisix/README.md`. To demo from another
 machine, browse on the host itself or forward the port (`sudo ssh -L 443:localhost:443
@@ -147,7 +147,9 @@ machine, browse on the host itself or forward the port (`sudo ssh -L 443:localho
 
 ### An operator lost their TOTP device
 
-The `ops` realm requires TOTP. Reset it so the next sign-in enrols again (`ops-maker01` here):
+The `ops` realm requires TOTP. On the dev stack every ops user has the pre-set code
+(`scripts/totp.sh <user>`), so this does not arise there; the test console has no TOTP reset. On a host
+with real operators, reset it so the next sign-in enrols again (`ops-maker01` here):
 
 ```sh
 dc exec keycloak sh -c '

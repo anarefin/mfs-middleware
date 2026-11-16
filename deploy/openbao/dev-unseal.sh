@@ -8,7 +8,8 @@
 #
 # On first start it also enables the engines the services use (KV v2 at secret/,
 # transit, PKI, database), writes secret/mw/smoke for the smoke test and creates the fixed,
-# documented tester token `dev-root-token` (root policy, no expiry; ADR D9 amendment,
+# documented tester token `dev-root-token` (knob OPENBAO_DEV_ROOT_TOKEN in dev.env.defaults; root
+# policy, no expiry; ADR D9 amendment,
 # docs/testing-guide.html 1.6), recorded in /openbao/file/dev-token for scripts/creds.sh. Then (every start) it
 # touches /openbao/file/dev-ready, which the compose healthcheck requires.
 set -eu
@@ -56,8 +57,9 @@ if [ "$first_start" = 1 ]; then
   bao secrets enable database
   bao auth enable approle
   bao kv put secret/mw/smoke value=ok >/dev/null
-  bao token create -id=dev-root-token -policy=root -orphan -display-name=dev-tester >/dev/null
-  ( umask 077; printf 'dev-root-token\n' >/openbao/file/dev-token )
+  dev_token="${OPENBAO_DEV_ROOT_TOKEN:-dev-root-token}"
+  bao token create -id="$dev_token" -policy=root -orphan -display-name=dev-tester >/dev/null
+  ( umask 077; printf '%s\n' "$dev_token" >/openbao/file/dev-token )
   chown openbao:openbao /openbao/file/dev-token
   echo "dev-unseal: engines enabled (kv v2 at secret/, transit, pki, database, approle), tester token created"
 fi

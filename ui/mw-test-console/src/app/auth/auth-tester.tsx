@@ -27,7 +27,7 @@ export function AuthTester() {
             <Button type="submit" name="op" value="fresh" disabled={pending} data-testid="auth-fresh"><UserPlus />Create a fresh wallet</Button>
           </form>
           <Field label="Wallet (made here)">
-            <Input value={wallet} onChange={(e) => setMsisdn(e.target.value)} className="font-mono" data-testid="auth-msisdn" />
+            <Input value={wallet} onChange={(e) => setMsisdn(e.target.value)} className="font-mono" data-fill="msisdn" data-testid="auth-msisdn" />
           </Field>
           <Hint>
             One of core-mock&apos;s customers 01711000500..01711000999 without an app PIN: a new device is bound, the LOGIN OTP signs in

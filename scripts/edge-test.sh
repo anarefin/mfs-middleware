@@ -42,6 +42,11 @@
 #     authorization_code passes; client mw-admin-ui has no direct grant in Keycloak
 #   - access log (M6 gate): an MSISDN in the path / referrer is logged as 0171****678, no query
 #     string, no 11-digit run anywhere in the line (path, referrer, upstream URI)
+#   - test console routes (TEST ONLY, only while MW_E2E_ROUTES=1 applied them, else skipped):
+#     test-auth, test-kc-admin-token and test-kc-admin refuse a request without the apikey (401
+#     MW-AUTH-001); with it mw-auth's account test API answers, a master token comes back and lists
+#     realm ops users and reads a user's brute-force state through test-kc-admin; other realms,
+#     admin paths or methods stay unrouted (404)
 #   - applying deploy/apisix twice is a no-op (Admin API objects identical but update_time)
 # The quota check spends merchant01's quota for the rest of the window (60 s).
 set -uo pipefail
@@ -532,6 +537,55 @@ ops_console_no_direct_grant() { # in the stack, past the edge: Keycloak itself r
     "http://keycloak:8080$ops_token" | jq -e '.access_token == null and .error == "unauthorized_client"' >/dev/null
 }
 check "keycloak: client mw-admin-ui has no direct grant (unauthorized_client)" ops_console_no_direct_grant
+
+# ---- test console routes (TEST ONLY, routes-test/: present only after an MW_E2E_ROUTES=1 apply) ----
+# Run before the idempotent apply below, which re-applies without the flag and so removes them.
+e2e_routes() {
+  [ "$(admin GET routes/test-auth -o /dev/null -w '%{http_code}')" = 200 ] \
+    && [ "$(admin GET routes/test-kc-admin-token -o /dev/null -w '%{http_code}')" = 200 ] \
+    && [ "$(admin GET routes/test-kc-admin -o /dev/null -w '%{http_code}')" = 200 ]
+}
+e2e_skip() { echo "skipped: the test-only routes exist only after scripts/api-test.sh or scripts/tester.sh (MW_E2E_ROUTES=1)"; }
+e2e_key=(-H "apikey: ${MW_E2E_API_KEY:-}")
+kc_token_path=/test/kc/realms/master/protocol/openid-connect/token
+test_auth_no_key() { e2e_routes || { e2e_skip; return 0; }; call GET /test/auth/v1/accounts/01711000001 && envelope 401 MW-AUTH-001; }
+check "test-auth without the apikey -> 401 MW-AUTH-001 at the edge" test_auth_no_key
+test_auth_with_key() {
+  e2e_routes || { e2e_skip; return 0; }
+  call GET /test/auth/v1/accounts/01711000001 "${e2e_key[@]}"
+  [ "$status" = 200 ] && jq -e '.walletId == "01711000001" and (.pinSet | type == "boolean") and (.devices | type == "array")' "$tmp/b" >/dev/null \
+    || { echo "HTTP $status: $(head -c 300 "$tmp/b")"; return 1; }
+  call GET /test/auth/v1/accounts/01700000000 "${e2e_key[@]}" && envelope 404 MW-VAL-003
+}
+check "test-auth with the apikey -> mw-auth's account test API (customer01 200, unknown wallet 404)" test_auth_with_key
+test_kc_token_no_key() {
+  e2e_routes || { e2e_skip; return 0; }
+  call POST "$kc_token_path" --data-urlencode grant_type=password --data-urlencode client_id=admin-cli \
+    --data-urlencode username=kc-admin --data-urlencode "password=$KC_BOOTSTRAP_ADMIN_PASSWORD" && envelope 401 MW-AUTH-001
+}
+check "test-kc-admin-token without the apikey -> 401 MW-AUTH-001 at the edge" test_kc_token_no_key
+test_kc_admin_no_key() { e2e_routes || { e2e_skip; return 0; }; call GET /test/kc/admin/realms/ops/users && envelope 401 MW-AUTH-001; }
+check "test-kc-admin without the apikey -> 401 MW-AUTH-001 at the edge" test_kc_admin_no_key
+test_kc_admin_with_key() {
+  local token
+  e2e_routes || { e2e_skip; return 0; }
+  call POST "$kc_token_path" "${e2e_key[@]}" --data-urlencode grant_type=password --data-urlencode client_id=admin-cli \
+    --data-urlencode "username=$(sed -n 's/^KC_BOOTSTRAP_ADMIN_USERNAME=//p' "$MW_ROOT/deploy/env/keycloak.env")" \
+    --data-urlencode "password=$KC_BOOTSTRAP_ADMIN_PASSWORD"
+  token="$(jq -r '.access_token // empty' "$tmp/b" 2>/dev/null)"
+  [ "$status" = 200 ] && [ -n "$token" ] || { echo "token: HTTP $status: $(head -c 300 "$tmp/b")"; return 1; }
+  [ "$(claims "$token" | jq -r .iss)" = http://keycloak:8080/realms/master ] || { echo "iss: $(claims "$token" | jq -r .iss)"; return 1; }
+  call GET '/test/kc/admin/realms/ops/users?max=1' "${e2e_key[@]}" -H "Authorization: Bearer $token"
+  [ "$status" = 200 ] && jq -e 'type == "array"' "$tmp/b" >/dev/null || { echo "ops users: HTTP $status: $(head -c 300 "$tmp/b")"; return 1; }
+  call GET /test/kc/admin/realms/master/users "${e2e_key[@]}" -H "Authorization: Bearer $token" && envelope 404 MW-VAL-003 || return 1
+  call GET /test/kc/admin/realms/ops/clients "${e2e_key[@]}" -H "Authorization: Bearer $token" && envelope 404 MW-VAL-003 || return 1
+  local bf; bf="/test/kc/admin/realms/ops/attack-detection/brute-force/users/$(jq -r '.[0].id' <<<"$(curl -sk --max-time 20 \
+    "${e2e_key[@]}" -H "Authorization: Bearer $token" "$base/test/kc/admin/realms/ops/users?max=1")")"
+  call GET "$bf" "${e2e_key[@]}" -H "Authorization: Bearer $token"
+  [ "$status" = 200 ] || { echo "brute-force GET: HTTP $status: $(head -c 300 "$tmp/b")"; return 1; }
+  call POST "$bf" "${e2e_key[@]}" -H "Authorization: Bearer $token" && envelope 404 MW-VAL-003
+}
+check "test-kc-admin with the apikey: master token (iss keycloak:8080) lists ops users, reads a brute-force state (POST 404); master realm and other paths 404" test_kc_admin_with_key
 
 # ---- idempotent apply ----
 dump() { for k in global_rules routes ssls; do admin GET "$k"; done | jq -S -s '[.[].list[]? | .value | del(.update_time)] | sort_by(.id)'; }

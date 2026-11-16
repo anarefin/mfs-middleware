@@ -94,12 +94,15 @@ class ConsumedContractsTest {
 
   @Test
   void theWalletSeedBodyIsTheCoreMockContractsAndItsAnswerReads() {
-    assertValid(OpenApiSchemas.request(CORE, "/core-mock/v1/wallets/{walletId}", "put"), new WalletSeedRequest("ORG", 100_000_000));
+    assertValid(OpenApiSchemas.request(CORE, "/core-mock/v1/wallets/{walletId}", "put"), new WalletSeedRequest("ORG", 100_000_000, null));
+    assertValid(OpenApiSchemas.request(CORE, "/core-mock/v1/wallets/{walletId}", "put"),
+        new WalletSeedRequest("CUSTOMER", 0, "Sumaiya Islam"));
     String answer =
-        "{\"walletId\":\"01712000001\",\"type\":\"CUSTOMER\",\"status\":\"ACTIVE\",\"balanceMinor\":10,\"heldMinor\":2,\"availableMinor\":8}";
+        "{\"walletId\":\"01712000001\",\"type\":\"CUSTOMER\",\"status\":\"ACTIVE\",\"balanceMinor\":10,\"heldMinor\":2,\"availableMinor\":8,"
+            + "\"holderName\":\"Sumaiya Islam\"}";
     assertThat(OpenApiSchemas.response(CORE, "/core-mock/v1/wallets/{walletId}", "put", "201").validate(JSON.readTree(answer))).isEmpty();
     assertThat(JSON.readValue(answer, WalletView.class))
-        .isEqualTo(new WalletView("01712000001", "CUSTOMER", "ACTIVE", 10, 2, 8));
+        .isEqualTo(new WalletView("01712000001", "CUSTOMER", "ACTIVE", 10, 2, 8, "Sumaiya Islam"));
   }
 
   @Test

@@ -107,13 +107,13 @@ Automated:
 Manual walk (acceptance criterion 4), after `scripts/api-test.sh 01` so there are transactions:
 
 1. Open https://localhost/console and sign in as `ops-maker01` (password `KC_OPS_TEST_PASSWORD`
-   from `deploy/.env`); enrol TOTP with an authenticator app at first sign-in.
+   from `deploy/.env`) and the code `scripts/totp.sh ops-maker01` prints (pre-set, no authenticator app).
 2. Transactions: search MSISDN `01711000001`. The list shows masked MSISDNs. Open a COMPLETED
    P2P: summary, saga timeline (STATE and CORE steps), partner calls, audit trail.
 3. In "Actions", type a reason and press "Request reversal". The console lands on Approvals with
    the PENDING request (diff COMPLETED -> REVERSING); the transaction page now shows a
    pending-request notice instead of the buttons.
-4. In a private window sign in as `ops-checker01` (enrol TOTP too), open Approvals and approve
+4. In a private window sign in as `ops-checker01` (`scripts/totp.sh ops-checker01`), open Approvals and approve
    the request. As `ops-maker01` the same request says another checker decides.
 5. Reload the transaction: REVERSED, with a linked REVERSAL transaction.
 6. Partners (`/console/partners`): as `ops-maker01` request "disable" for partner `ocs`;

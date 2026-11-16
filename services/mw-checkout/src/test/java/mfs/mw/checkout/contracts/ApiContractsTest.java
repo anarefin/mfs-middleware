@@ -84,7 +84,7 @@ class ApiContractsTest {
   void mwAuthRequestsAndAnswersMatchItsContracts() {
     // client/AuthClient: what this service sends ...
     assertValidAt(AUTH_INTERNAL, "ChannelOtpRequest",
-        new mfs.mw.checkout.dto.AuthOtpRequest("01711000001", "CHECKOUT", SESSION.toString(), "bn", "25.50", "Demo Shop"));
+        new mfs.mw.checkout.dto.AuthOtpRequest("01711000001", "CHECKOUT", SESSION.toString(), "bn", "25.50", "Karim Traders"));
     assertValidAt(AUTH_INTERNAL, "ChannelOtpVerification",
         new mfs.mw.checkout.dto.AuthOtpVerification("01711000001", "CHECKOUT", SESSION.toString(), "123456"));
     // ... and the answers it reads into its own types
@@ -120,11 +120,11 @@ class ApiContractsTest {
     // CheckoutPayService.page / sendOtp / confirm / cancel
     CheckoutSession paid = session(SessionStatus.PAID, TXN_ID, null);
     assertValid("PageView",
-        new PageView("Demo Shop", "ORD-42", "Order 42", new Amount(2550L, "BDT"), SessionStatus.OPEN,
+        new PageView("Karim Traders", "ORD-42", "Order 42", new Amount(2550L, "BDT"), SessionStatus.OPEN,
             NOW.plusSeconds(900), null,
             new PageView.PinKey("pin-transport.v1", "RSA-OAEP-SHA-256", "-----BEGIN PUBLIC KEY-----"), null, null));
     assertValid("PageView",
-        new PageView("Demo Shop", "ORD-42", null, new Amount(2550L, "BDT"), SessionStatus.PAID,
+        new PageView("Karim Traders", "ORD-42", null, new Amount(2550L, "BDT"), SessionStatus.PAID,
             NOW.plusSeconds(900), MaskingPolicy.mask(SensitiveType.MSISDN, "01711000001"),
             null, TXN_ID.toString(), redirect(paid, SessionStatus.PAID)));
     assertValid("OtpSent",

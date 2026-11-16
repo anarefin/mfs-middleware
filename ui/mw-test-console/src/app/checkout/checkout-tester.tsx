@@ -18,7 +18,7 @@ export function CheckoutTester() {
   return (
     <TwoColumns>
       <form action={run} className="flex min-w-0 flex-col gap-5" aria-busy={pending}>
-        <Panel title="1. Shop (merchant Demo Shop)" icon={Store}>
+        <Panel title="1. Shop (merchant Karim Traders)" icon={Store}>
           <Row>
             <Field label="Amount (Tk)"><Input name="amount" defaultValue="25" data-testid="co-amount" className="tabular-nums" /></Field>
             <Field label="Page language"><NativeSelect name="locale" defaultValue="en"><option value="en">en</option><option value="bn">bn</option></NativeSelect></Field>

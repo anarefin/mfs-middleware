@@ -25,7 +25,7 @@ import org.springframework.test.web.servlet.assertj.MockMvcTester;
 class WalletSeedControllerTest {
 
   private static final String URI = "/core-mock/v1/wallets/";
-  private static final WalletBalance NEW = new WalletBalance("01712000001", "CUSTOMER", "ACTIVE", 1000, 0, 1000);
+  private static final WalletBalance NEW = new WalletBalance("01712000001", "CUSTOMER", "ACTIVE", 1000, 0, 1000, "Rahim Uddin");
 
   @Nested
   @WebMvcTest(
@@ -48,20 +48,36 @@ class WalletSeedControllerTest {
 
     @Test
     void aNewWalletIs201WithItsView() {
-      given(seeds.seed("01712000001", "CUSTOMER", 1000)).willReturn(new WalletSeedService.Seeded(true, NEW));
+      given(seeds.seed("01712000001", "CUSTOMER", 1000, "Rahim Uddin", null)).willReturn(new WalletSeedService.Seeded(true, NEW));
 
-      assertThat(put("01712000001", "{\"type\":\"CUSTOMER\",\"openingBalanceMinor\":1000}"))
+      assertThat(put("01712000001", "{\"type\":\"CUSTOMER\",\"openingBalanceMinor\":1000,\"holderName\":\"Rahim Uddin\"}"))
           .hasStatus(201)
           .bodyJson()
           .isLenientlyEqualTo(
               "{\"walletId\":\"01712000001\",\"type\":\"CUSTOMER\",\"status\":\"ACTIVE\",\"balanceMinor\":1000,"
-                  + "\"heldMinor\":0,\"availableMinor\":1000}");
+                  + "\"heldMinor\":0,\"availableMinor\":1000,\"holderName\":\"Rahim Uddin\"}");
+    }
+
+    @Test
+    void theHolderNameIsOptional() {
+      given(seeds.seed("01712000001", "CUSTOMER", 1000, null, null)).willReturn(new WalletSeedService.Seeded(true, NEW));
+
+      assertThat(put("01712000001", "{\"type\":\"CUSTOMER\",\"openingBalanceMinor\":1000}")).hasStatus(201);
+    }
+
+    @Test
+    void balanceMinorIsPassedOnToSetTheAvailableBalance() {
+      WalletBalance set = new WalletBalance("01712000001", "CUSTOMER", "ACTIVE", 777, 0, 777, null);
+      given(seeds.seed("01712000001", "CUSTOMER", 0, null, 777L)).willReturn(new WalletSeedService.Seeded(false, set));
+
+      assertThat(put("01712000001", "{\"type\":\"CUSTOMER\",\"openingBalanceMinor\":0,\"balanceMinor\":777}"))
+          .hasStatus(200).bodyJson().extractingPath("$.availableMinor").isEqualTo(777);
     }
 
     @Test
     void anExistingWalletIs200AsItIs() {
-      WalletBalance moved = new WalletBalance("01712000001", "CUSTOMER", "ACTIVE", 42, 0, 42);
-      given(seeds.seed(eq("01712000001"), any(), anyLong())).willReturn(new WalletSeedService.Seeded(false, moved));
+      WalletBalance moved = new WalletBalance("01712000001", "CUSTOMER", "ACTIVE", 42, 0, 42, null);
+      given(seeds.seed(eq("01712000001"), any(), anyLong(), any(), any())).willReturn(new WalletSeedService.Seeded(false, moved));
 
       assertThat(put("01712000001", "{\"type\":\"CUSTOMER\",\"openingBalanceMinor\":1000}"))
           .hasStatus(200)
@@ -75,6 +91,12 @@ class WalletSeedControllerTest {
       assertThat(put("01712000001", "{\"type\":\"SYSTEM\",\"openingBalanceMinor\":1}"))
           .hasStatus(400).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-001");
       assertThat(put("01712000001", "{\"type\":\"CUSTOMER\",\"openingBalanceMinor\":-1}")).hasStatus(400);
+      assertThat(put("01712000001", "{\"type\":\"CUSTOMER\",\"openingBalanceMinor\":1,\"holderName\":\"" + "x".repeat(121) + "\"}"))
+          .hasStatus(400);
+      assertThat(put("01712000001", "{\"type\":\"CUSTOMER\",\"openingBalanceMinor\":1,\"holderName\":\" \"}")).hasStatus(400);
+      assertThat(put("01712000001", "{\"type\":\"CUSTOMER\",\"openingBalanceMinor\":1,\"balanceMinor\":-1}")).hasStatus(400);
+      assertThat(put("01712000001", "{\"type\":\"CUSTOMER\",\"openingBalanceMinor\":1,\"balanceMinor\":100000000001}"))
+          .hasStatus(400);
       verifyNoInteractions(seeds);
     }
   }

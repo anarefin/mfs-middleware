@@ -9,6 +9,8 @@ import mfs.mw.core.mock.util.SensitiveType;
  *
  * @param walletId wallet id (the MSISDN for customer, agent, merchant and org wallets)
  * @param availableMinor {@code balanceMinor - heldMinor}: what transfers and holds can still use
+ * @param holderName display name of the holder (person, shop, business, company); null for system
+ *     wallets and wallets seeded without one. Personal data: masked to the first initial in logs
  */
 public record WalletBalance(
     @Sensitive(SensitiveType.MSISDN) String walletId,
@@ -16,4 +18,5 @@ public record WalletBalance(
     String status,
     long balanceMinor,
     long heldMinor,
-    long availableMinor) {}
+    long availableMinor,
+    @Sensitive(SensitiveType.NAME) String holderName) {}

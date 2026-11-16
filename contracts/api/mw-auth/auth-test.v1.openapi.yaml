@@ -1,0 +1,202 @@
+openapi: 3.1.0
+info:
+  title: Bits wallet authentication test API v1 (mw-auth, dev-only)
+  version: 1.0.0
+  description: |
+    Dev-only test API of mw-auth, never part of the product: the test console (`ui/mw-test-console`,
+    ADR D17) shows and resets a wallet's authentication state through the test-only APISIX route
+    `/test/auth/v1/accounts/*` (deploy/apisix/routes-test/test-auth.json, applied only with
+    `MW_E2E_ROUTES=1`, key-auth consumer `mw_e2e` with header `apikey`, private source addresses only),
+    which rewrites to `/test/v1/accounts/*` here.
+    Off unless mw-auth runs with `mw.auth.seed-api.enabled=true` (compose `MW_AUTH_SEED_API_ENABLED`,
+    only `deploy/dev.env.defaults` sets it; the same switch as the seed API `POST /internal/v1/seed/pins`):
+    off, nothing answers `/test/**` (404 MW-VAL-003). On, no token is needed; it is served on the
+    plain public port (8080), which APISIX routes to.
+    The wallet id is the core's id (mw-core-mock: the MSISDN, `01XXXXXXXXX`). A wallet mw-auth has not
+    projected is 404 MW-VAL-003. Every response is the wallet's state after the action (TestAccount);
+    every error is the 5.3 envelope. Never a PIN, a PIN HMAC or an OTP in any body.
+servers:
+  - url: http://mw-auth:8080
+paths:
+  /test/v1/accounts/{walletId}:
+    get:
+      operationId: getTestAccount
+      summary: The wallet's PIN, lockout, OTP and device state
+      parameters:
+        - $ref: "#/components/parameters/WalletId"
+        - $ref: "#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: The wallet's state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TestAccount" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /test/v1/accounts/{walletId}/unlock:
+    post:
+      operationId: unlockTestAccount
+      summary: Clears every lockout and counter of the wallet
+      description: >-
+        One transaction: the ADMIN lock, the PIN lock with its level history and the wrong-PIN count,
+        the device OTP with its send window (a pending BIND / LOGIN / RESET OTP is void, MW-AUTH-012 and
+        the 429 MW-VAL-022 send limit end) and the checkout OTP send quota. The core's wallet status
+        (`walletStatus`) is the core's and is not changed. No body.
+      parameters:
+        - $ref: "#/components/parameters/WalletId"
+        - $ref: "#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: The wallet's state afterwards
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TestAccount" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /test/v1/accounts/{walletId}/unbind:
+    post:
+      operationId: unbindTestAccount
+      summary: Unbinds every device of the wallet
+      description: >-
+        Every bound device unbound and every refresh token of the wallet revoked (one transaction),
+        then the devices' sessions closed (Valkey down: 503 MW-SYS-012, retryable; the unbinding
+        stays). The app must bind a device again before it can log in. No body.
+      parameters:
+        - $ref: "#/components/parameters/WalletId"
+        - $ref: "#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: The wallet's state afterwards
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TestAccount" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /test/v1/accounts/{walletId}/pin:
+    post:
+      operationId: setTestAccountPin
+      summary: Sets the wallet's PIN, replacing the current one
+      description: >-
+        The PIN encrypted under the mw-crypto PIN transport key (`GET /auth/v1/pin-key`), as an app
+        sends it; mw-crypto derives the HMAC as for a seeded first PIN (no birth-year, MSISDN or
+        history rule; a weak PIN is still 400 MW-AUTH-044). A current PIN is replaced and the earlier
+        PINs of the reuse rule are forgotten; locks and sessions are left as they are. mw-crypto down:
+        503 MW-SYS-050 (retryable).
+      parameters:
+        - $ref: "#/components/parameters/WalletId"
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TestPinRequest" }
+      responses:
+        "200":
+          description: The wallet's state afterwards (pinSet true)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TestAccount" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+components:
+  parameters:
+    WalletId:
+      name: walletId
+      in: path
+      required: true
+      description: The core's wallet id (mw-core-mock uses the MSISDN)
+      schema: { type: string, pattern: "^[A-Za-z0-9._:+-]{1,64}$" }
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema: { type: string, maxLength: 128 }
+  responses:
+    Error:
+      description: Error envelope (spec 5.3)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    TestPinRequest:
+      type: object
+      additionalProperties: false
+      required: [encryptedPin]
+      properties:
+        encryptedPin:
+          type: object
+          additionalProperties: false
+          required: [keyId, ciphertext]
+          description: The PIN encrypted RSA-OAEP (SHA-256) under the PIN_TRANSPORT key (GET /auth/v1/pin-key)
+          properties:
+            keyId: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}(\\.v[1-9][0-9]{0,5})?$" }
+            ciphertext: { type: string, maxLength: 4096, pattern: "^[A-Za-z0-9+/]*={0,2}$" }
+    TestAccount:
+      type: object
+      additionalProperties: false
+      required: [walletId, walletStatus, pinSet, locked, failedPinAttempts, adminLocked, checkoutOtpSends, devices]
+      properties:
+        walletId: { type: string }
+        walletStatus: { type: string, description: "The core's status from the projection: ACTIVE, BLOCKED, HOLD, LOCKED" }
+        pinSet: { type: boolean, description: The wallet has a PIN (mw-auth's credential) }
+        locked: { type: boolean, description: A PIN lock or an ADMIN lock is in force now (login and PIN checks refused) }
+        lockedUntil:
+          type: string
+          format: date-time
+          description: End of the PIN lock in force (423 MW-AUTH-041); absent when not locked or locked until an unlock or reset
+        failedPinAttempts: { type: integer, minimum: 0, description: Wrong PINs counted at the current lockout level }
+        pinLock:
+          type: object
+          additionalProperties: false
+          required: [level, active]
+          description: >-
+            The PIN lockout (levels 1 and 2 end at `until`, level 3 has none: 423 MW-AUTH-042 until a reset
+            or unlock). The row stays after its end as the level history; absent when there is none.
+          properties:
+            level: { type: integer, minimum: 1 }
+            until: { type: string, format: date-time }
+            active: { type: boolean }
+        adminLocked: { type: boolean, description: "An ops lock (auth.wallet-lock.v1 LOCK) is in force: 403 MW-AUTH-043" }
+        deviceOtp:
+          type: object
+          additionalProperties: false
+          required: [purpose, sends, attempts, expiresAt, usable]
+          description: The wallet's device OTP and its send window; absent when there is none
+          properties:
+            purpose: { type: string, enum: [BIND, LOGIN, RESET] }
+            sends: { type: integer, minimum: 0, description: OTPs sent in the current send window }
+            attempts: { type: integer, minimum: 0, description: Checks used on the current OTP }
+            expiresAt: { type: string, format: date-time }
+            usable: { type: boolean, description: Not spent, void or expired, and checks left }
+        checkoutOtpSends: { type: integer, minimum: 0, description: Checkout OTPs counted in the wallet's quota window }
+        devices:
+          type: array
+          description: Every device bound to this wallet now or before, newest binding first
+          items:
+            type: object
+            additionalProperties: false
+            required: [deviceId, status, boundAt]
+            properties:
+              deviceId: { type: string }
+              status: { type: string, enum: [BOUND, UNBOUND] }
+              boundAt: { type: string, format: date-time }
+              unboundAt: { type: string, format: date-time }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

@@ -23,9 +23,14 @@ class WriteManifestStepTest {
     ctx.personas()
         .add(
             new SeedManifest.Persona(
-                "customer", "mw-auth", "seed-customer01", List.of("customer"), Map.of("msisdn", "01712000001"),
-                null, "MW_SEED_APP_PIN", null));
-    ctx.wallets().add(new SeedManifest.Wallet("01712000001", "CUSTOMER", 1_000_000));
+                "customer", "mw-auth", "seed-customer01", "Sumaiya Islam", List.of("customer"),
+                Map.of("msisdn", "01712000001"), null, "MW_SEED_APP_PIN", null));
+    ctx.importedUsers()
+        .add(
+            new SeedManifest.Persona(
+                "org-maker01", "portals", "org-maker01", "Mizanur Rahman", List.of("org-maker"), Map.of("orgId", "ORG001"),
+                "mw-portal", "KC_PORTALS_TEST_PASSWORD", "KC_PORTALS_TEST_TOTP_SECRET"));
+    ctx.wallets().add(new SeedManifest.Wallet("01712000001", "CUSTOMER", "Sumaiya Islam", 1_000_000));
     ctx.partners().add(new SeedManifest.Partner("ocs", "telco", 0, true, 20_000L));
     return ctx;
   }
@@ -42,6 +47,13 @@ class WriteManifestStepTest {
     assertThat(m.path("wallets").get(0).path("walletId").asString()).isEqualTo("01712000001");
     assertThat(m.path("personas").get(0).path("passwordEnv").asString()).isEqualTo("MW_SEED_APP_PIN");
     assertThat(m.path("partners").get(0).path("timeoutMs").asLong()).isEqualTo(20_000);
+    assertThat(m.path("personas").get(0).path("displayName").asString()).isEqualTo("Sumaiya Islam");
+    assertThat(m.path("wallets").get(0).path("holderName").asString()).isEqualTo("Sumaiya Islam");
+    JsonNode imported = m.path("importedUsers").get(0);
+    assertThat(imported.path("username").asString()).isEqualTo("org-maker01");
+    assertThat(imported.path("displayName").asString()).isEqualTo("Mizanur Rahman");
+    assertThat(imported.path("attributes").path("orgId").asString()).isEqualTo("ORG001");
+    assertThat(imported.path("totpSecretEnv").asString()).isEqualTo("KC_PORTALS_TEST_TOTP_SECRET");
   }
 
   @Test
@@ -55,7 +67,7 @@ class WriteManifestStepTest {
     assertThat(Files.readString(file)).isEqualTo(first);
 
     SeedContext more = seeded();
-    more.wallets().add(new SeedManifest.Wallet("01812000001", "AGENT", 5));
+    more.wallets().add(new SeedManifest.Wallet("01812000001", "AGENT", null, 5));
     assertThat(step.run(more)).isEqualTo(StepResult.updated(1));
   }
 
@@ -64,5 +76,8 @@ class WriteManifestStepTest {
     String logged = WriteManifestStep.masked(seeded().manifest());
 
     assertThat(logged).contains("0171****001").doesNotContain("01712000001");
+    assertThat(logged).as("names masked to the first initial (18.3)")
+        .contains("displayName=S.", "holderName=S.", "displayName=M.")
+        .doesNotContain("Sumaiya", "Islam", "Mizanur", "Rahman");
   }
 }

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import mfs.mw.seeder.config.SeederProperties;
 import mfs.mw.seeder.config.SeederProperties.Content;
+import mfs.mw.seeder.config.SeederProperties.ImportedUser;
 import mfs.mw.seeder.config.SeederProperties.MenuSpec;
 import mfs.mw.seeder.config.SeederProperties.PartnerSpec;
 import mfs.mw.seeder.config.SeederProperties.Realm;
@@ -42,13 +43,20 @@ final class SeedFixtures {
             // not a Keycloak realm (ticket 73): the app users log in at mw-auth with the app PIN
             "mw-auth", new Realm(false, "13579", "MW_SEED_APP_PIN", null, null, null, List.of())),
         List.of(
-            new User("maker", "ops", MAKER, List.of("viewer", "ops-maker"), Map.of()),
-            new User("checker", "ops", CHECKER, List.of("viewer", "ops-checker"), Map.of()),
-            new User("customer", "mw-auth", "seed-customer01", List.of("customer"), Map.of("msisdn", "01712000001"))),
+            new User("maker", "ops", MAKER, List.of("viewer", "ops-maker"), Map.of(), "Nusrat", "Jahan"),
+            // no names configured: Keycloak gets the fallback profile
+            new User("checker", "ops", CHECKER, List.of("viewer", "ops-checker"), Map.of(), null, null),
+            new User("customer", "mw-auth", "seed-customer01", List.of("customer"), Map.of("msisdn", "01712000001"),
+                "Sumaiya", "Islam")),
+        // the realm import's users: read from Keycloak for the manifest, never written
+        List.of(
+            new ImportedUser("ops", "ops-e2e-maker01", true),
+            new ImportedUser("ops", "ops-maker01", false),
+            new ImportedUser("ops", "ops-gone01", false)),
         new SeederProperties.Operators("ops", "mw-e2e-ops", MAKER, CHECKER),
         List.of(
-            new WalletSpec("01712000001", "CUSTOMER", 1_000_000),
-            new WalletSpec("01812000001", "AGENT", 5_000_000)),
+            new WalletSpec("01712000001", "CUSTOMER", 1_000_000, "Sumaiya Islam"),
+            new WalletSpec("01812000001", "AGENT", 5_000_000, null)),
         List.of(new PartnerSpec("ocs", true, 20_000L)),
         new Content(
             List.of(new MenuSpec("main", "classpath:seed-content/menus/main.json", List.of("gp", "robi"))),

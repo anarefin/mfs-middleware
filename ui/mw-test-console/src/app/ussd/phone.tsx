@@ -27,7 +27,7 @@ export function Phone() {
   const inputs = state?.data?.inputs ?? [];
 
   return (
-    <TwoColumns className="lg:grid-cols-[360px_minmax(0,1fr)]">
+    <TwoColumns className="lg:grid-cols-[23rem_minmax(0,1fr)]">
       <div className="flex min-w-0 flex-col gap-4">
         <form ref={formRef} action={(f) => { press(f); setInput(""); }} aria-busy={pending} className="flex flex-col gap-4">
           <Card className="grid grid-cols-2 gap-3 p-4">
@@ -41,19 +41,19 @@ export function Phone() {
             <Field label="Subscriber" className="col-span-2"><Input name="msisdn" value={msisdn} onChange={(e) => setMsisdn(e.target.value)} data-testid="ussd-msisdn" className="font-mono" /></Field>
           </Card>
           {/* the handset depicts hardware: fixed colours in both themes */}
-          <div className="mx-auto w-[300px] rounded-[2rem] border-4 border-[#0b0f17] bg-[#1f2937] px-4 py-5 text-white shadow-xl">
+          <div className="mx-auto w-full max-w-[20rem] rounded-[2rem] border-4 border-[#0b0f17] bg-[#1f2937] px-4 py-5 text-white shadow-xl">
             <div className="mx-auto mb-3 h-1.5 w-14 rounded-full bg-[#0b0f17]" />
-            <div className="my-1.5 flex justify-between text-[11px] text-[#cbd5e1]"><span>{mno.toUpperCase()} {mno === "gp" ? "· SMPP" : "· HTTP"}</span><span className="font-mono">{msisdn}</span></div>
+            <div className="my-1.5 flex justify-between text-xs text-[#cbd5e1]"><span>{mno.toUpperCase()} {mno === "gp" ? "· SMPP" : "· HTTP"}</span><span className="font-mono">{msisdn}</span></div>
             <div
               className={cn(
-                "min-h-[200px] rounded-md p-2.5 font-mono text-[13px] break-words whitespace-pre-wrap text-[#111] shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)]",
+                "min-h-[200px] rounded-md p-2.5 font-mono text-sm break-words whitespace-pre-wrap text-[#111] shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)]",
                 ended ? "bg-[#d1d5db]" : "bg-[#d9f99d]",
               )}
               data-testid="ussd-screen"
             >
               {pending ? "…" : last ? last.message ?? `(no screen: HTTP ${last.status})` : "Press Dial to start a session"}
             </div>
-            <div className="my-1.5 flex justify-between text-[11px] text-[#cbd5e1]"><span>{ended ? (screens.length ? "session ended" : "idle") : "session open"}</span><span>{inputs.length} input(s)</span></div>
+            <div className="my-1.5 flex justify-between text-xs text-[#cbd5e1]"><span>{ended ? (screens.length ? "session ended" : "idle") : "session open"}</span><span>{inputs.length} input(s)</span></div>
             <input name="input" value={input} onChange={(e) => setInput(e.target.value)} placeholder="reply" autoComplete="off"
               type={last && asksForPin(last.message ?? "") ? "password" : "text"} data-testid="ussd-input" disabled={ended}
               className="mt-2 h-9 w-full rounded-md border border-[#4b5563] bg-[#111827] px-3 font-mono text-sm text-white outline-none placeholder:text-[#6b7280] focus-visible:border-[#9ca3af] disabled:opacity-50" />
@@ -77,14 +77,14 @@ export function Phone() {
             </div>
           </div>
         </form>
-        <Hint className="mx-auto max-w-[300px]">
+        <Hint className="mx-auto max-w-[20rem]">
           Main menu: 1 Send Money, 2 Cash Out, 3 Mobile Recharge, 4 Pay Bill, 9 switch language (the session starts in Bangla).
           PIN 13579 (5 digits). Over SMPP every key press replays the session from the dial (the simulator cannot resume an SMPP session).
         </Hint>
       </div>
       <div className="flex min-w-0 flex-col gap-5">
         <Panel title="Transcript" icon={ScrollText}>
-          <ol className="m-0 flex list-none flex-col gap-2 p-0 text-xs" data-testid="ussd-transcript">
+          <ol className="m-0 flex list-none flex-col gap-2 p-0 text-sm" data-testid="ussd-transcript">
             {screens.map((s, i) => {
               const prevScreen = screens[i - 1];
               const typed = i > 0 ? inputs[i - 1] : undefined;

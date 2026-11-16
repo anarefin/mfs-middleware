@@ -3,6 +3,7 @@
 
 import { CircleCheck, CircleX, Compass, Server, Wallet } from "lucide-react";
 import Link from "next/link";
+import { HowToTest } from "@/components/how-to-test";
 import { PageHeader } from "@/components/page-header";
 import { Hint, Panel, SubHeading } from "@/components/section";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -21,6 +22,7 @@ const WHERE = [
   { href: "/inbox", label: "SMS & email", what: "every notification" },
   { href: "/checkout", label: "Web checkout", what: "merchant session, OTP + PIN payment, signed redirect and IPN" },
   { href: "/bulk", label: "Bulk portal", what: "CSV upload, maker-checker, execution, result file, SP query" },
+  { href: "/transactions", label: "Transactions", what: "search by txnId or MSISDN: status, saga timeline, partner calls, audit trail" },
 ];
 
 async function check(label: string, fn: () => Promise<boolean>, fix: string) {
@@ -48,10 +50,11 @@ export default async function Home() {
             (customer, agent, merchant), a USSD handset (robi over HTTP, gp over SMPP), the partners (OCS, bill aggregator, bank),
             the checkout merchant and payer, and the org portal. Ops features (search, timeline, reversal, approvals, partners,
             menus, templates, wallet unlock) are in the <a href="/console" target="_blank" rel="noreferrer" className="text-link">ops console</a>.
-            The step-by-step guide is <code className="font-mono text-xs">docs/testing-guide.html</code>.
+            The step-by-step guide is <code className="font-mono text-[0.9em]">docs/testing-guide.html</code>.
           </>
         }
       />
+      <HowToTest page="home" />
       <div className="grid items-start gap-5 lg:grid-cols-2">
         <Panel title="Stack" icon={Server}>
           <div className="overflow-hidden rounded-lg border">
@@ -64,7 +67,7 @@ export default async function Home() {
                       <span className="sr-only">{c.ok ? "✔" : "✖"}</span>
                     </TableCell>
                     <TableCell>{c.label}</TableCell>
-                    <TableCell className="text-xs text-bad">{c.ok ? "" : `fix: ${c.fix}`}</TableCell>
+                    <TableCell className="text-sm text-bad">{c.ok ? "" : `fix: ${c.fix}`}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -80,7 +83,7 @@ export default async function Home() {
               <TableBody>
                 {wallets.map((w) => (
                   <TableRow key={w.msisdn}>
-                    <TableCell className="font-mono text-xs">{w.msisdn}</TableCell>
+                    <TableCell className="font-mono text-sm">{w.msisdn}</TableCell>
                     <TableCell>{w.who}</TableCell>
                     <TableCell className="text-right whitespace-nowrap tabular-nums">{w.wallet ? formatMinor(w.wallet.balanceMinor) : "-"}</TableCell>
                     <TableCell className="text-right whitespace-nowrap tabular-nums">{w.wallet ? formatMinor(w.wallet.heldMinor) : "-"}</TableCell>

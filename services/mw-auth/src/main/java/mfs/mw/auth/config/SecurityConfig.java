@@ -39,7 +39,8 @@ import org.springframework.web.servlet.HandlerExceptionResolver;
  * device signature, OTP and PIN), except logout and the first PIN, which take mw-auth's own access
  * token ({@link OwnTokenDecoder}: RS256 against the JWT_SIGN keys, exact issuer and audience; a
  * decoder of its own, not a bean, so the internal chain keeps the services realm decoder). Dev only,
- * with {@code mw.auth.seed-api.enabled}: {@code /internal/v1/seed/**} without a token (chain 0).
+ * with {@code mw.auth.seed-api.enabled}: {@code /internal/v1/seed/**} and {@code /test/v1/accounts/**}
+ * without a token (chain 0).
  * Everything else is open (actuator is on the management port). Failures are the 5.3 envelope: no
  * or bad token 401 {@code MW-AUTH-001}, a caller that may not ask 403 {@code MW-AUTH-002}.
  */
@@ -52,12 +53,18 @@ public class SecurityConfig {
   /** The public endpoints that take mw-auth's own access token. */
   static final java.util.Set<String> TOKEN_PATHS = java.util.Set.of("/auth/v1/sessions/logout", "/auth/v1/pin");
 
-  /** Dev only: the seeder's first PINs ({@code controller/SeedController}), no token. */
+  /**
+   * Dev only: the seeder's first PINs ({@code controller/SeedController}) and the test console's
+   * account actions ({@code controller/TestAccountController}, {@code /test/v1/accounts/**}), no token.
+   * Off, neither path is open: the seed path is the internal chain's (401) and no controller answers
+   * {@code /test/**} (404).
+   */
   @Bean
   @Order(0)
   @ConditionalOnProperty(name = "mw.auth.seed-api.enabled", havingValue = "true")
   SecurityFilterChain seedApiSecurity(HttpSecurity http) throws Exception {
-    stateless(http).securityMatcher("/internal/v1/seed/**").authorizeHttpRequests(a -> a.anyRequest().permitAll());
+    stateless(http).securityMatcher("/internal/v1/seed/**", "/test/v1/accounts/**")
+        .authorizeHttpRequests(a -> a.anyRequest().permitAll());
     return http.build();
   }
 

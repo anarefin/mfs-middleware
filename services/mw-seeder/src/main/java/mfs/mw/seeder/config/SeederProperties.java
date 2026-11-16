@@ -27,6 +27,7 @@ public record SeederProperties(
     KeycloakAdmin keycloakAdmin,
     Map<String, Realm> realms,
     List<User> users,
+    List<ImportedUser> importedUsers,
     Operators operators,
     List<WalletSpec> wallets,
     List<PartnerSpec> partners,
@@ -38,6 +39,7 @@ public record SeederProperties(
     readiness = readiness == null ? List.of() : readiness;
     realms = realms == null ? Map.of() : realms;
     users = users == null ? List.of() : users;
+    importedUsers = importedUsers == null ? List.of() : importedUsers;
     wallets = wallets == null ? List.of() : wallets;
     partners = partners == null ? List.of() : partners;
     content = content == null ? new Content(List.of(), List.of()) : content;
@@ -96,8 +98,19 @@ public record SeederProperties(
     }
   }
 
-  /** A Keycloak user: persona name for the manifest, realm roles, user-profile attributes. */
-  public record User(String persona, String realm, String username, List<String> roles, Map<String, String> attributes) {
+  /**
+   * A Keycloak user: persona name for the manifest, realm roles, user-profile attributes, and the
+   * person's (or business's) first and last name: the Keycloak profile of a new user and the
+   * manifest's {@code displayName}. Names may be absent (Keycloak then gets "Seed" + the persona).
+   */
+  public record User(
+      String persona,
+      String realm,
+      String username,
+      List<String> roles,
+      Map<String, String> attributes,
+      String firstName,
+      String lastName) {
 
     public User {
       roles = roles == null ? List.of() : roles;
@@ -105,11 +118,19 @@ public record SeederProperties(
     }
   }
 
+  /**
+   * A user the realm import creates (deploy/keycloak/realms), listed in the manifest's {@code
+   * importedUsers} from what Keycloak holds; the seeder never writes it. {@code presetTotp}: the
+   * import gives it the realm's pre-set TOTP secret (every ops and portals user today); without it
+   * the manifest names no secret for the user.
+   */
+  public record ImportedUser(String realm, String username, boolean presetTotp) {}
+
   /** The two ops personas the admin-api steps act as (maker != checker), realm and direct-grant client. */
   public record Operators(String realm, String client, String maker, String checker) {}
 
-  /** A core-mock wallet: id = MSISDN, type, opening balance in poisha. */
-  public record WalletSpec(String walletId, String type, long openingBalanceMinor) {}
+  /** A core-mock wallet: id = MSISDN, type, opening balance in poisha, holder's display name (optional). */
+  public record WalletSpec(String walletId, String type, long openingBalanceMinor, String holderName) {}
 
   /** A partner's baseline in mw-admin-api: enabled, and the time limit of one call (null: any). */
   public record PartnerSpec(String partnerId, boolean enabled, Long timeoutMs) {}

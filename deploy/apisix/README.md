@@ -316,8 +316,23 @@ over.
   request's idempotency key was handled, ticket 58) and `test-crypto` (`/test/crypto/v1/payshield/*` ->
 mw-crypto's dev-only payShield test API `/test/v1/payshield/*` on its plain port 8082, never the mTLS
 internal API: a PIN key's LMK blob for the simulator's PIN block helper, PVV generate and verify as the
-test-only client `mw-e2e-crypto`, ticket 76; mw-crypto serves it only with `MW_CRYPTO_TEST_API_ENABLED=true`),
-all with `ip-restriction` (loopback and
+test-only client `mw-e2e-crypto`, ticket 76; mw-crypto serves it only with `MW_CRYPTO_TEST_API_ENABLED=true`)
+and, for the test console (`ui/mw-test-console`, ADR D17), `test-auth` (`GET`/`POST /test/auth/v1/accounts/*` ->
+mw-auth's dev-only account test API `/test/v1/accounts/*` on its plain public port 8080, contract
+`contracts/api/mw-auth/auth-test.v1.openapi.yaml`: a wallet's PIN, lockout, OTP and device state, `unlock`,
+`unbind`, `pin`; mw-auth serves it only with `MW_AUTH_SEED_API_ENABLED=true`, 16 KiB bodies) and
+`test-kc-admin-token` (`POST /test/kc/realms/master/protocol/openid-connect/token` -> Keycloak's master realm
+token endpoint, the bootstrap admin `kc-admin` with client `admin-cli`; 10 requests per minute per
+`remote_addr` like `auth-ops-token`, so the console caches the token for its lifetime) and `test-kc-admin`
+(`GET`/`PUT`/`POST`/`DELETE /test/kc/admin/realms/(ops|portals)/users[/<segment>...]` -> Keycloak's admin REST API
+`/admin/realms/$1/users$2`, plus `GET`/`DELETE` only of
+`/test/kc/admin/realms/(ops|portals)/attack-detection/brute-force/users/<id>` -> `/admin/realms/$1/attack-detection/brute-force/users/<id>`
+(the console's unlock of a brute-force lockout); matched by a `vars` expression: only realms `ops` and
+`portals`, path segments of `[A-Za-z0-9_-]` only (no `..`, no other realm or admin resource, no other method on
+the brute-force path: 404 at the edge); query strings pass through; 64 KiB bodies). Both Keycloak routes pin `Host` and `X-Forwarded-*` to `keycloak:8080`
+(`KC_HOSTNAME_STRICT=false`, `KC_PROXY_HEADERS=xforwarded`): the master token's `iss` is then
+`http://keycloak:8080/realms/master`, the issuer Keycloak's admin API expects for a request on that host.
+These are all with `ip-restriction` (loopback and
   private ranges only), `key-auth` (header `apikey`, hidden from the upstream) and
   `consumer-restriction` to consumer `mw_e2e`, whose key is `"@env:MW_E2E_API_KEY"`: a fixed fake dev value
   (`e2e-test-apikey`) committed in `deploy/dev.env.defaults` and copied to the gitignored

@@ -49,6 +49,13 @@ class SeedRunnerIT {
           "portals/seed-org-maker", List.of("org-maker"),
           "portals/seed-org-checker", List.of("org-checker"));
 
+  /** The realm imports' users (deploy/keycloak/realms): read for the manifest's importedUsers, never written. */
+  private static final List<String> IMPORTED =
+      List.of(
+          "ops/ops-viewer01", "ops/ops-maker01", "ops/ops-checker01", "ops/ops-admin01", "ops/ops-compliance01",
+          "ops/ops-auditor01", "ops/ops-e2e-maker01", "ops/ops-e2e-checker01", "portals/org-maker01",
+          "portals/org-checker01", "portals/org-makerchecker01", "portals/org-checker02", "portals/sp-viewer01");
+
   /** The app users: listed in the manifest for an mw-auth login, never created in Keycloak (ticket 73). */
   private static final List<String> APP_USERS =
       new ArrayList<>(List.of("seed-customer01", "seed-customer02", "seed-agent01", "seed-merchant01"));
@@ -123,6 +130,10 @@ class SeedRunnerIT {
     JsonNode rep = json.readTree(maker.getBodyAsString());
     assertThat(rep.path("credentials").findValuesAsString("type")).containsExactly("password", "otp");
     assertThat(rep.path("credentials").get(1).path("secretData").asString()).isEqualTo("{\"value\":\"fake-totp-secret\"}");
+    assertThat(rep.path("firstName").asString()).isEqualTo("Nusrat");
+    assertThat(rep.path("lastName").asString()).isEqualTo("Jahan");
+    assertThat(requests(RequestMethod.PUT, "/core-mock/v1/wallets/01712000001").getFirst().getBodyAsString())
+        .contains("\"holderName\":\"Sumaiya Islam\"");
     LoggedRequest compliance =
         requests(RequestMethod.POST, "/admin/realms/ops/users").stream()
             .filter(r -> r.getBodyAsString().contains("seed-ops-compliance")).findFirst().orElseThrow();
@@ -152,6 +163,28 @@ class SeedRunnerIT {
       }
     }
     assertThat(m.path("wallets")).hasSize(WALLETS.size());
+    for (JsonNode w : m.path("wallets")) {
+      assertThat(w.path("holderName").asString("")).as("every seeded wallet has a holder name").isNotBlank();
+    }
+    for (JsonNode p : m.path("personas")) {
+      assertThat(p.path("displayName").asString("")).as("every persona has a display name").isNotBlank();
+    }
+    assertThat(m.path("importedUsers")).hasSize(IMPORTED.size());
+    JsonNode e2eMaker = imported(m, "ops-e2e-maker01");
+    assertThat(e2eMaker.path("displayName").asString()).isEqualTo("Name Ops-e2e-maker01");
+    assertThat(e2eMaker.path("realm").asString()).isEqualTo("ops");
+    assertThat(e2eMaker.path("roles").toString()).isEqualTo("[\"ops-maker\",\"viewer\"]");
+    assertThat(e2eMaker.path("passwordEnv").asString()).isEqualTo("KC_OPS_TEST_PASSWORD");
+    assertThat(e2eMaker.path("totpSecretEnv").asString()).isEqualTo("KC_OPS_TEST_TOTP_SECRET");
+    assertThat(imported(m, "ops-maker01").path("totpSecretEnv").asString())
+        .as("ops-*01 have the pre-set secret too: no authenticator app")
+        .isEqualTo("KC_OPS_TEST_TOTP_SECRET");
+    JsonNode orgMaker01 = imported(m, "org-maker01");
+    assertThat(orgMaker01.path("attributes").path("orgId").asString()).isEqualTo("ORG001");
+    assertThat(orgMaker01.path("loginClient").asString()).isEqualTo("mw-portal");
+    assertThat(orgMaker01.path("totpSecretEnv").asString()).isEqualTo("KC_PORTALS_TEST_TOTP_SECRET");
+    assertThat(requests(RequestMethod.POST, "/admin/realms/[a-z]+/users").stream().map(LoggedRequest::getBodyAsString))
+        .noneMatch(b -> b.contains("ops-e2e-maker01") || b.contains("org-maker01"));
     assertThat(m.path("partners").get(0).path("enabled").asBoolean()).isTrue();
     assertThat(m.path("ussdMenus").get(0).path("version").asInt()).isEqualTo(1);
     assertThat(m.path("templates")).hasSize(2);
@@ -183,6 +216,15 @@ class SeedRunnerIT {
     assertThat(requests(RequestMethod.POST, "/admin/realms/[a-z]+/users")).isEmpty();
   }
 
+  private static JsonNode imported(JsonNode manifest, String username) {
+    for (JsonNode p : manifest.path("importedUsers")) {
+      if (p.path("username").asString().equals(username)) {
+        return p;
+      }
+    }
+    throw new AssertionError("no imported user " + username);
+  }
+
   private List<LoggedRequest> requests(RequestMethod method, String pathRegex) {
     return wm.findAll(anyRequestedFor(anyUrl())).stream()
         .filter(r -> r.getMethod().equals(method) && r.getUrl().split("\\?")[0].matches(pathRegex))
@@ -199,6 +241,7 @@ class SeedRunnerIT {
       wm.stubFor(get(urlPathEqualTo("/admin/realms/" + realm + "/clients")).willReturn(okJson("[{\"id\":\"c\"}]")));
     }
     USERS.forEach(this::stubUser);
+    IMPORTED.forEach(this::stubImportedUser);
     WALLETS.forEach(this::stubWallet);
     stubPartner();
     stubAuth();
@@ -230,9 +273,24 @@ class SeedRunnerIT {
     wm.stubFor(post(users + "/" + id + "/role-mappings/realm").willReturn(aResponse().withStatus(204)));
   }
 
+  /** A realm-import user: there from the start, with a profile, an orgId in portals and its realm roles. */
+  private void stubImportedUser(String key) {
+    String realm = key.substring(0, key.indexOf('/'));
+    String username = key.substring(key.indexOf('/') + 1);
+    String id = "imp-" + username;
+    String users = "/admin/realms/" + realm + "/users";
+    String attributes = realm.equals("portals") ? ",\"attributes\":{\"orgId\":[\"ORG001\"]}" : "";
+    wm.stubFor(get(urlPathEqualTo(users)).withQueryParam("username", equalTo(username))
+        .willReturn(okJson("[{\"id\":\"" + id + "\",\"username\":\"" + username + "\",\"firstName\":\"Name\",\"lastName\":\""
+            + Character.toUpperCase(username.charAt(0)) + username.substring(1) + "\"" + attributes + "}]")));
+    wm.stubFor(get(users + "/" + id + "/role-mappings/realm")
+        .willReturn(okJson("[{\"name\":\"viewer\"},{\"name\":\"default-roles-" + realm + "\"},{\"name\":\"ops-maker\"}]")));
+  }
+
   private void stubWallet(String walletId, String type) {
     String path = "/core-mock/v1/wallets/" + walletId;
-    String view = "{\"walletId\":\"" + walletId + "\",\"type\":\"" + type + "\",\"status\":\"ACTIVE\",\"balanceMinor\":1,\"heldMinor\":0,\"availableMinor\":1}";
+    String view = "{\"walletId\":\"" + walletId + "\",\"type\":\"" + type + "\",\"status\":\"ACTIVE\",\"balanceMinor\":1,\"heldMinor\":0,\"availableMinor\":1,"
+        + "\"holderName\":\"Holder\"}";
     wm.stubFor(get(path).inScenario(walletId).whenScenarioStateIs(STARTED)
         .willReturn(aResponse().withStatus(400).withHeader("Content-Type", "application/json")
             .withBody("{\"code\":\"MW-VAL-003\",\"message\":\"wallet not found\",\"correlationId\":\"c\",\"retryable\":false,\"details\":[]}")));

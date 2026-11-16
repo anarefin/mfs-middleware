@@ -1,4 +1,6 @@
 import { Cpu, Network, Zap } from "lucide-react";
+import { FillScope } from "@/components/fill-scope";
+import { HowToTest } from "@/components/how-to-test";
 import { PageHeader } from "@/components/page-header";
 import { Hint, Panel } from "@/components/section";
 import { PRESETS } from "@/lib/presets";
@@ -27,6 +29,7 @@ export default function Simulators() {
           </>
         }
       />
+      <HowToTest page="simulators" />
       <GroupTitle icon={Zap}>Presets</GroupTitle>
       <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
         {PRESETS.map((p) => (
@@ -44,9 +47,11 @@ export default function Simulators() {
         .77 gives 500 after send (applied), .99 an unknown code, .55 a malformed answer. Bills: due = Tk 100 + the last 3 digits; ending 404
         not found, 000 already paid.
       </Hint>
-      <PartnerForms />
-      <GroupTitle icon={Cpu}>Core and USSD gateway</GroupTitle>
-      <CoreForms />
+      <FillScope page="simulators">
+        <PartnerForms />
+        <GroupTitle icon={Cpu}>Core and USSD gateway</GroupTitle>
+        <CoreForms />
+      </FillScope>
     </>
   );
 }
