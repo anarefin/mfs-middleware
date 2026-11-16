@@ -190,6 +190,7 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 18 | [ussd p2p] a P2P over USSD in Bangla completes and moves the money once | 1, 5 | P2P ussd success; ussd http |
 | 18 | [ussd] a bad number is refused and asked again, and no money moves | 1, 5 | ussd http |
 | 18 | [ussd] a wrong PIN is refused by mw-auth and asked again, the right one then pays once | 1, 5 | ussd http |
+| 18 | [ussd] a dial with another MNO's code ends at once with the wrong-code screen, and no money moves | 1, 5 | ussd http |
 | 16 | [admin wallet-unlock] three wrong PINs lock the PIN at mw-auth, an approved unlock lets the next correct-PIN P2P succeed | - |  |
 | 24 | [auth] an OTP for an unknown MSISDN is refused; a known wallet gets a masked answer and the SMS | - |  | SEC-09, SEC-10 |
 | 24 | [auth] a wallet without a PIN logs in with a LOGIN OTP, sets its first PIN and gets a PIN session | - |  | SEC-09, FR-01 |

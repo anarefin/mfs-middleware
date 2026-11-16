@@ -48,7 +48,7 @@ class UssdHttpControllerTest {
     when(engine.handle(any())).thenReturn(new UssdResponse("s-1", "Bits\n1 Send Money", false));
 
     MvcTestResult r =
-        post("robi", "{\"sessionId\":\"s-1\",\"msisdn\":\"8801712345678\",\"serviceCode\":\"*268#\",\"input\":\"\",\"type\":\"BEGIN\"}");
+        post("robi", "{\"sessionId\":\"s-1\",\"msisdn\":\"8801712345678\",\"serviceCode\":\"*269#\",\"input\":\"\",\"type\":\"BEGIN\"}");
 
     assertThat(r).hasStatusOk();
     assertThat(r).bodyJson().extractingPath("$.message").isEqualTo("Bits\n1 Send Money");
@@ -57,7 +57,7 @@ class UssdHttpControllerTest {
     ArgumentCaptor<UssdRequest> req = ArgumentCaptor.forClass(UssdRequest.class);
     verify(engine).handle(req.capture());
     assertThat(req.getValue())
-        .isEqualTo(new UssdRequest("robi", "s-1", "01712345678", UssdEvent.BEGIN, ""));
+        .isEqualTo(new UssdRequest("robi", "s-1", "01712345678", UssdEvent.BEGIN, "", "*269#"));
   }
 
   @Test

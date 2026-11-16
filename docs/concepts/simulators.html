@@ -64,7 +64,7 @@
     <tr><td><strong>Bill aggregator</strong></td><td>One company that collects bills for many utilities.</td><td><code>billagg</code>: DESCO, DPDC, WASA, TITAS</td></tr>
     <tr><td><strong>C2W bank</strong></td><td>"Card/account to wallet": a bank that debits an account and calls us back.</td><td><code>c2wbank</code></td></tr>
     <tr><td><strong>SMSC</strong></td><td>Short message service centre: the operator's SMS server. We talk to it in <strong>SMPP</strong> 3.4, the binary SMS protocol.</td><td>SMPP server on port 2775</td></tr>
-    <tr><td><strong>USSD</strong></td><td>The <code>*268#</code> menus on a basic phone. The operator's USSD gateway forwards each key press to us.</td><td>HTTP mode, or SMPP on port 2776</td></tr>
+    <tr><td><strong>USSD</strong></td><td>The menus on a basic phone (each operator its own code: gp <code>*268#</code>, robi <code>*269#</code>, bl <code>*270#</code>, teletalk <code>*271#</code>). The operator's USSD gateway forwards each key press to us.</td><td>HTTP mode, or SMPP on port 2776</td></tr>
     <tr><td><strong>IPN</strong></td><td>Instant payment notification: the webhook a shop's server gets when a checkout is paid.</td><td><code>/merchant/ipn/**</code></td></tr>
   </table></div>
 
@@ -129,7 +129,7 @@
     <strong>SMS &amp; email</strong> page shows the same list next to the email from <a href="greenmail.html">GreenMail</a>.</p>
 
   <h2 id="ussd">The USSD gateway</h2>
-  <p>A USSD session is a conversation: the phone dials <code>*268#</code>, sees a menu, presses a key, sees the next screen. The simulator plays the operator's
+  <p>A USSD session is a conversation: the phone dials its operator's code (<code>*268#</code> on Grameenphone), sees a menu, presses a key, sees the next screen. The simulator plays the operator's
     gateway in both of the ways real operators connect:</p>
   <ul>
     <li><strong>HTTP mode</strong> (Robi, Banglalink, Teletalk): it POSTs each step to APISIX's <code>/ussd/&lt;mno&gt;</code> route with that operator's basic-auth login,

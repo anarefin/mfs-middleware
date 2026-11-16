@@ -23,7 +23,7 @@ public final class UssdSessions {
   /** A P2P of 10 taka from {@code msisdn} to {@code toWallet}, menu in English. */
   public static String p2p(String msisdn, String toWallet, String pin) {
     ObjectNode b = JSON.createObjectNode();
-    b.put("mno", "robi").put("msisdn", msisdn).put("serviceCode", "*268#");
+    b.put("mno", "robi").put("msisdn", msisdn).put("serviceCode", "*269#");
     b.putArray("inputs").add("9").add("1").add(toWallet).add("10").add("1").add(pin);
     return JSON.writeValueAsString(b);
   }

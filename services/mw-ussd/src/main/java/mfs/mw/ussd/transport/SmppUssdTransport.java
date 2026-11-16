@@ -110,7 +110,7 @@ public class SmppUssdTransport implements UssdTransport, UssdSmppListener {
     }
     routes.put(sessionId, new Route(m.mno(), m.bind(), m.address(), m.serviceCode(), m.sessionNumber(), m.sequence(),
         clock.instant()));
-    UssdRequest req = new UssdRequest(m.mno(), sessionId, msisdn, event, m.text());
+    UssdRequest req = new UssdRequest(m.mno(), sessionId, msisdn, event, m.text(), m.serviceCode());
     send(event == UssdEvent.BEGIN ? onBegin(req) : onContinue(req));
   }
 

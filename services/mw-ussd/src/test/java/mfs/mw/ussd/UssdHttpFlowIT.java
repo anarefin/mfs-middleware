@@ -95,7 +95,7 @@ class UssdHttpFlowIT {
 
   JsonNode doStep(String session, String type, String input) throws java.io.UnsupportedEncodingException {
     ObjectNode body = JSON.createObjectNode();
-    body.put("sessionId", session).put("msisdn", CUSTOMER).put("serviceCode", "*268#").put("type", type);
+    body.put("sessionId", session).put("msisdn", CUSTOMER).put("serviceCode", "*269#").put("type", type);
     if (input != null) {
       body.put("input", input);
     }

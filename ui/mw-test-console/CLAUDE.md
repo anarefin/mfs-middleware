@@ -53,9 +53,12 @@ D9 amendment), can unlock and reset accounts, and has no sign-in.
   chips fill through `FILL_EVENT`); block 4 History (`app/app/history-panel.tsx`, `appRead` case
   `history`: `GET /app/v1/transactions` as the signed-in user with the session headers, `lib/app-history.ts`
   builds the query and reads the page defensively; loaded on demand, then again after each submit;
-  type / direction filters, More by offset; an error envelope such as 503 `MW-SYS-013` shows as a result)), `/ussd` (handset: robi over HTTP resumes the open session per key press; gp over SMPP
-  replays the session from the dial with every input so far, as the simulator cannot resume SMPP;
-  inputs on a PIN screen show as ****), `/simulators` (presets in `lib/presets.ts`, per-partner
+  type / direction filters, More by offset; an error envelope such as 503 `MW-SYS-013` shows as a result)), `/ussd` (handset on the four MNOs of `lib/ussd-mnos.ts` (pure), each with its own code
+  that the Code field takes when the MNO is picked: gp `*268#` SMPP, robi `*269#`, bl `*270#`, teletalk `*271#`
+  HTTP; HTTP resumes the open session per key press, SMPP replays the session from the dial with every input so
+  far, as the simulator cannot resume SMPP; inputs on a PIN screen show as ****; a session is live only while
+  open on the MNO, number and code in the form: End (`op=end`, local hang-up) or changing one of them drops it
+  and the button goes back to Dial; a refused or non-200 step counts as ended, so no reload is ever needed), `/simulators` (presets in `lib/presets.ts`, per-partner
   scenario forms, recorded requests, callback replay, core-mock faults, wallet lookup, SMPP binds /
   drop / throttle), `/inbox` (SMSC and GreenMail), `/checkout` (create, page, OTP, pay, signed
   redirect, IPNs), `/bulk` (sample CSV, upload, approve / reject / pause / resume, status, result,

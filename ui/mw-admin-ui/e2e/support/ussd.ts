@@ -1,6 +1,6 @@
 import { expect, request } from "@playwright/test";
 import { randomUUID } from "node:crypto";
-import { BASE_URL, SEED_PIN, USSD_MNO, USSD_SECRET_ENV } from "./env";
+import { BASE_URL, SEED_PIN, USSD_CODE, USSD_MNO, USSD_SECRET_ENV } from "./env";
 
 /**
  * Makes a real transaction for the console to show: a seeded customer sends money over USSD, the
@@ -19,7 +19,7 @@ export async function p2pOverUssd(from: string, to: string, amountTk = "10"): Pr
   try {
     const sessionId = `e2e-ui-${randomUUID()}`;
     const step = async (type: "BEGIN" | "CONTINUE", input: string) => {
-      const res = await api.post(`/ussd/${USSD_MNO}`, { data: { sessionId, msisdn: from, serviceCode: "*268#", input, type } });
+      const res = await api.post(`/ussd/${USSD_MNO}`, { data: { sessionId, msisdn: from, serviceCode: USSD_CODE, input, type } });
       const text = await res.text();
       expect(res.status(), `USSD ${type} ${input === SEED_PIN ? "<pin>" : input} -> ${text}`).toBe(200);
       return JSON.parse(text) as { message: string; flag: string };

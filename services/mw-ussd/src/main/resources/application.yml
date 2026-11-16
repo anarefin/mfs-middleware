@@ -254,7 +254,8 @@ mw:
       timeout: 2s
       connect-timeout: 1s
       pin-key-ttl: 10m
-    # Per MNO (spec 9.2): transport, short codes, screen limits (GSM-7 / UCS-2), session timeout
+    # Per MNO (spec 9.2): transport, short codes (each MNO its own; a BEGIN with another code ends
+    # at once with the wrong-code screen), screen limits (GSM-7 / UCS-2), session timeout
     # (MNO limit, TBC), overflow TRUNCATE|PAGE and the HTTP continue/end flag values. GP runs
     # over SMPP (WP19, binds in mw.ussd.smpp below); the others are HTTP until their contracts say otherwise.
     mno:
@@ -269,7 +270,7 @@ mw:
         end-flag: END
       robi:
         transport: HTTP
-        short-codes: ["*268#"]
+        short-codes: ["*269#"]
         max-length-gsm: 182
         max-length-ucs2: 70
         session-timeout: 120s
@@ -278,7 +279,7 @@ mw:
         end-flag: END
       bl:
         transport: HTTP
-        short-codes: ["*268#"]
+        short-codes: ["*270#"]
         max-length-gsm: 182
         max-length-ucs2: 70
         session-timeout: 120s
@@ -289,7 +290,7 @@ mw:
         operator: banglalink
       teletalk:
         transport: HTTP
-        short-codes: ["*268#"]
+        short-codes: ["*271#"]
         max-length-gsm: 182
         max-length-ucs2: 70
         session-timeout: 120s

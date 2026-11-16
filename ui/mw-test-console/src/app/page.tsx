@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 
 const WHERE = [
   { href: "/app", label: "App flows", what: "device binding, P2P, cash in / out, merchant pay, top-up, bill pay, add money from bank, idempotent resend" },
-  { href: "/ussd", label: "USSD phone", what: "*268# menus in Bangla / English over HTTP and SMPP" },
+  { href: "/ussd", label: "USSD phone", what: "Bangla / English menus on gp, robi, bl and teletalk, each with its own code (HTTP and SMPP)" },
   { href: "/simulators", label: "Simulators & faults", what: "timeouts, refusals, callbacks, lost core replies (TSQ, UNKNOWN, MANUAL_REVIEW)" },
   { href: "/inbox", label: "SMS & email", what: "every notification" },
   { href: "/checkout", label: "Web checkout", what: "merchant session, OTP + PIN payment, signed redirect and IPN" },
@@ -47,7 +47,7 @@ export default async function Home() {
         description={
           <>
             Plays every outside party of the middleware against the local stack, through APISIX like the real clients: the mobile app
-            (customer, agent, merchant), a USSD handset (robi over HTTP, gp over SMPP), the partners (OCS, bill aggregator, bank),
+            (customer, agent, merchant), a USSD handset (robi, bl, teletalk over HTTP, gp over SMPP), the partners (OCS, bill aggregator, bank),
             the checkout merchant and payer, and the org portal. Ops features (search, timeline, reversal, approvals, partners,
             menus, templates, wallet unlock) are in the <a href="/console" target="_blank" rel="noreferrer" className="text-link">ops console</a>.
             The step-by-step guide is <code className="font-mono text-[0.9em]">docs/testing-guide.html</code>.

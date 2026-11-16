@@ -35,7 +35,7 @@ public abstract class UssdMenuWalkSuite {
 
   private OrchestratorStub orchestrator;
 
-  /** Dials *268# on robi as {@link #CUSTOMER} and sends {@code inputs} while the session is open. */
+  /** Dials robi's own code *269# (over HTTP or, by configuration, SMPP) as {@link #CUSTOMER} and sends {@code inputs} while the session is open. */
   protected abstract Walk walk(List<String> inputs);
 
   /** This subclass's {@code mw.ussd.instance-id}. */

@@ -118,7 +118,7 @@
   <h2 id="p2p-ussd">Send money from a USSD phone</h2>
   <div class="box plain">
     <div class="tag">In plain English</div>
-    <p>A basic phone has no app. The customer dials <code>*268#</code> and gets text menus: "1 Send money, 2 Cash
+    <p>A basic phone has no app. The customer dials their operator's short code (Grameenphone <code>*268#</code>, Robi <code>*269#</code>, Banglalink <code>*270#</code>, Teletalk <code>*271#</code>) and gets text menus: "1 Send money, 2 Cash
       out...". Each screen is one short request from the phone operator's USSD gateway to <code>mw-ussd</code> and one reply.
       Once the customer has entered the number, the amount and the PIN, <code>mw-ussd</code> starts exactly the same
       transaction as the app does.</p>
@@ -224,7 +224,7 @@
       <li>Test console page <strong>App flows</strong>: choose "Send money (P2P)", user <code>customer01</code>, counterparty
         <code>01711000002</code>, amount <code>10</code>, PIN <code>13579</code>. Then try PIN <code>97531</code>, and press
         "Resend the last submit" to see idempotency. Full steps: <a href="../testing-guide.html">docs/testing-guide.html</a>, sections 3 and 4.</li>
-      <li>Test console page <strong>USSD phone</strong>: dial <code>*268#</code> as <code>01711000001</code>.</li>
+      <li>Test console page <strong>USSD phone</strong>: pick an MNO (its code fills in, e.g. robi <code>*269#</code>) and dial as <code>01711000001</code>.</li>
       <li>Automated: <code>scripts/api-test.sh "01, 03, 12, 18, 19"</code> runs the P2P, cash, reversal and USSD folders of
         the API suite (<a href="../../tests/api/README.md">tests/api/</a>).</li>
     </ul>

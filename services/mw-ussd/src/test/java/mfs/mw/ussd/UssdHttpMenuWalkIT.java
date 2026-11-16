@@ -57,7 +57,7 @@ class UssdHttpMenuWalkIT extends UssdMenuWalkSuite {
 
   private JsonNode step(String session, String type, String input) {
     ObjectNode body = JSON.createObjectNode();
-    body.put("sessionId", session).put("msisdn", CUSTOMER).put("serviceCode", "*268#").put("type", type)
+    body.put("sessionId", session).put("msisdn", CUSTOMER).put("serviceCode", "*269#").put("type", type)
         .put("input", input);
     var result = http.post().uri("/ussd/robi").contentType(MediaType.APPLICATION_JSON)
         .content(JSON.writeValueAsString(body)).exchange();

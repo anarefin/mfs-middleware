@@ -67,7 +67,7 @@ components:
         serviceCode:
           type: string
           maxLength: 32
-          description: The dialled code (e.g. `*268#`).
+          description: The dialled code (e.g. `*269#`). Each MNO has its own codes (`mw.ussd.mno.<mno>.short-codes`); a BEGIN with another code ends at once (flag END, the wrong-code screen naming the MNO's code). Optional; a step without it is not checked.
         input:
           type: string
           maxLength: 182

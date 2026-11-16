@@ -44,7 +44,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   403), 4 KiB body cap, quota per MSISDN hash; this service sees no credential).
 - Per MNO (`mw.ussd.mno.<gp|robi|bl|teletalk>`, spec 9.2; `config/UssdProperties`): transport,
   short codes, screen limits (182 GSM-7 / 70 UCS-2), session timeout, overflow TRUNCATE|PAGE.
-  Dev: gp SMPP; robi, bl HTTP + PAGE; teletalk HTTP + TRUNCATE. `operator` = the MNO's top-up partnerId
+  Dev: gp SMPP; robi, bl HTTP + PAGE; teletalk HTTP + TRUNCATE. Short codes, one per MNO: gp `*268#`, robi
+  `*269#`, bl `*270#`, teletalk `*271#`. `UssdEngine` checks the dialled code on BEGIN (`dto/UssdRequest.serviceCode`:
+  HTTP `serviceCode`, SMPP destination address; whitespace ignored): another code ends the session at once with
+  the built-in `UssdEngine.WRONG_CODE_TEXT` ("Dial {code}", the MNO's first code; default language), no
+  session stored, event `ussd.session.refused`; a step without a code, or an MNO without `short-codes`, is
+  not checked. `operator` = the MNO's top-up partnerId
   at mw-adapter-telco, filled into `{mno}` of an own-number top-up (bl: `banglalink`; default the key).
 - Menus are data (`dto/Menu`, `MenuNode`, node types MENU, INPUT, CONFIRM, ACTION, DYNAMIC, END,
   text `{bn, en}`): versioned JSON in `ussd.menu`, activated per MNO with a go-live time in

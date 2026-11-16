@@ -78,19 +78,19 @@ class UssdSmppMenuWalkIT extends UssdMenuWalkSuite {
 
   @Override
   protected Walk walk(List<String> inputs) {
-    List<UssdGatewayStub.Screen> screens = GATEWAY.dial(0, CUSTOMER, "*268#", inputs);
+    List<UssdGatewayStub.Screen> screens = GATEWAY.dial(0, CUSTOMER, "*269#", inputs);
     assertThat(screens).doesNotContainNull();
     return new Walk(screens.stream().map(UssdGatewayStub.Screen::text).toList(), screens.getLast().endOfSession());
   }
 
   @Test
   void everyScreenGoesOutOnTheBindThatReceivedTheSession() {
-    List<UssdGatewayStub.Screen> screens = GATEWAY.dial(1, CUSTOMER, "*268#", p2p(true, "10", PIN));
+    List<UssdGatewayStub.Screen> screens = GATEWAY.dial(1, CUSTOMER, "*269#", p2p(true, "10", PIN));
 
     assertThat(screens).hasSize(7).allSatisfy(s -> {
       assertThat(s.bindIndex()).isEqualTo(1);
       assertThat(s.address()).isEqualTo(CUSTOMER);
-      assertThat(s.serviceCode()).isEqualTo("*268#");
+      assertThat(s.serviceCode()).isEqualTo("*269#");
     });
     assertThat(screens.subList(0, 6)).allSatisfy(s -> {
       assertThat(s.serviceOp()).isEqualTo(SmppUssdMessage.USSR_REQUEST);
@@ -118,11 +118,11 @@ class UssdSmppMenuWalkIT extends UssdMenuWalkSuite {
 
   @Test
   void aReleaseByTheSubscriberDropsTheSession() {
-    List<UssdGatewayStub.Screen> screens = GATEWAY.dial(0, CUSTOMER, "*268#", List.of("9"));
+    List<UssdGatewayStub.Screen> screens = GATEWAY.dial(0, CUSTOMER, "*269#", List.of("9"));
     int number = screens.getLast().sessionNumber();
     assertThat(valkey.keys("ussd:robi:smpp-" + number + "-*")).hasSize(1);
 
-    GATEWAY.release(0, CUSTOMER, "*268#", number);
+    GATEWAY.release(0, CUSTOMER, "*269#", number);
 
     await().atMost(Duration.ofSeconds(5)).until(() -> valkey.keys("ussd:robi:smpp-" + number + "-*").isEmpty());
   }

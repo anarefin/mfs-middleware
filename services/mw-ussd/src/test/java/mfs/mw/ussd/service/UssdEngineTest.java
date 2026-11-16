@@ -110,6 +110,50 @@ class UssdEngineTest {
     return engine.handle(new UssdRequest("robi", session, CUSTOMER, UssdEvent.CONTINUE, input));
   }
 
+  UssdResponse dialCode(String session, String serviceCode) {
+    return engine.handle(new UssdRequest("robi", session, CUSTOMER, UssdEvent.BEGIN, "", serviceCode));
+  }
+
+  @Test
+  void aBeginWithTheMnosOwnCodeOpensTheMainMenu() {
+    UssdResponse r = dialCode("c1", "*247#");
+
+    assertThat(r.end()).isFalse();
+    assertThat(r.text()).startsWith("Bits\n1 সেন্ড মানি");
+    assertThat(sessions.values).containsKey("ussd:robi:c1");
+  }
+
+  @Test
+  void aBeginWithAnotherMnosCodeEndsAtOnceAndStoresNoSession() {
+    UssdResponse r = dialCode("c2", "*268#");
+
+    assertThat(r.end()).isTrue();
+    assertThat(r.text()).isEqualTo("এই কোডটি এই নেটওয়ার্কে নেই। ডায়াল করুন *247#");
+    assertThat(sessions.values).isEmpty();
+  }
+
+  @Test
+  void theCodeIsComparedIgnoringWhitespace() {
+    assertThat(dialCode("c3", " *247# ").end()).isFalse();
+  }
+
+  @Test
+  void aBeginWithoutACodeIsAccepted() {
+    assertThat(dialCode("c4", null).end()).isFalse();
+    assertThat(dialCode("c5", "").end()).isFalse();
+  }
+
+  @Test
+  void anMnoWithoutShortCodesAcceptsAnyCode() {
+    engine = engine(new UssdProperties(
+        "test-instance", "mw.txn.request.v1", "mw.txn.status.v1", Duration.ofSeconds(8), Duration.ofSeconds(30),
+        "bn", 3, Map.of("robi", new UssdProperties.Mno(UssdProperties.Transport.HTTP, List.of(), 182, 70,
+            Duration.ofSeconds(120), UssdProperties.Overflow.PAGE, "CON", "END", null)),
+        Map.of()));
+
+    assertThat(dialCode("c6", "*999#").end()).isFalse();
+  }
+
   @Test
   void p2pMenuWalkInBangla() throws Exception {
     assertThat(dial("s1").text()).isEqualTo("Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n5 ব্যালেন্স\n9 English");

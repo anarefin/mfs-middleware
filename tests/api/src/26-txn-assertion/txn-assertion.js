@@ -46,13 +46,13 @@ export default [
       const w = await MW.auth.fresh(S, '48207');
       await S.note([w.msisdn, '01711000002']);
       const wrong = MW.WRONG_PIN;
-      await S.dial('robi', w.msisdn, '*268#', '9, 1, 01711000002, 10, 1, ' + wrong);
+      await S.dial('robi', w.msisdn, '*269#', '9, 1, 01711000002, 10, 1, ' + wrong);
       S.check('mw-auth refused the PIN and it is asked again (2 tries left)', S.session.ended === false
         && (S.session.screens[S.session.screens.length - 1].message || '').startsWith('Wrong PIN. 2 tries left.'), S.session.screens);
       // the second and the third wrong PIN of the wallet (MW_AUTH_LOCK_TRIES=3): the third locks
-      await S.dial('robi', w.msisdn, '*268#', '9, 1, 01711000002, 10, 1, ' + wrong + ', ' + wrong);
+      await S.dial('robi', w.msisdn, '*269#', '9, 1, 01711000002, 10, 1, ' + wrong + ', ' + wrong);
       S.ussdEnds('Your PIN is locked for now. Please try again later.');
-      await S.dial('robi', w.msisdn, '*268#', '9, 1, 01711000002, 10, 1, 48207');
+      await S.dial('robi', w.msisdn, '*269#', '9, 1, 01711000002, 10, 1, 48207');
       S.ussdEnds('Your PIN is locked for now. Please try again later.');
       await S.noChange();
       // the app login of the wallet is locked too: one PIN lock for every channel

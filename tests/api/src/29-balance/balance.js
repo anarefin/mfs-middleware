@@ -14,7 +14,7 @@ export default [
     run: async (MW, S) => {
       await S.note(['01711000001']);
       const available = (await MW.core.wallet('01711000001')).availableMinor;
-      await S.dial('robi', '01711000001', '*268#', '9, 5, ' + MW.pin);
+      await S.dial('robi', '01711000001', '*269#', '9, 5, ' + MW.pin);
       S.ussdScreens([
         'Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n5 ব্যালেন্স\n9 English',
         'Bits\n1 Send Money\n2 Cash Out\n3 Recharge\n4 Pay Bill\n5 Balance\n9 বাংলা',
@@ -28,14 +28,14 @@ export default [
     name: '[balance ussd] the balance check in Bangla shows the same figure',
     run: async (MW, S) => {
       const available = (await MW.core.wallet('01711000001')).availableMinor;
-      await S.dial('robi', '01711000001', '*268#', '5, ' + MW.pin);
+      await S.dial('robi', '01711000001', '*269#', '5, ' + MW.pin);
       S.ussdEnds('আপনার ব্যালেন্স ৳' + tk(available));
     },
   },
   {
     name: '[balance assertion ussd] a wrong PIN on the balance check is asked again and shows no balance',
     run: async (MW, S) => {
-      await S.dial('robi', '01711000001', '*268#', '9, 5, ' + MW.WRONG_PIN);
+      await S.dial('robi', '01711000001', '*269#', '9, 5, ' + MW.WRONG_PIN);
       const last = S.session.screens[S.session.screens.length - 1];
       S.check('the session stays open on the PIN retry', S.session.ended === false && (last.message || '').startsWith('Wrong PIN.'), S.session.screens);
     },

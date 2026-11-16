@@ -72,7 +72,24 @@ function fixtures() {
   if (existsSync(dir)) {
     for (const f of readdirSync(dir).filter(f => f.endsWith('.json')).sort()) out[f.replace(/\.json$/, '')] = JSON.parse(readFileSync(join(dir, f), 'utf8'));
   }
+  checkMenuFixture(out['main-e2e']);
   return out;
+}
+
+// main-e2e is the menu folder 17 republishes to bl: it stays live there afterwards, so it must be the
+// current seed menu, or every run strips what the seed added since (it once lost 5 Balance this way).
+const SEED_MENU = join(HERE, '..', '..', 'services', 'mw-ussd', 'src', 'main', 'resources', 'menus', 'main-v3.json');
+function checkMenuFixture(fixture) {
+  if (!fixture || !existsSync(SEED_MENU)) return;
+  const body = m => { const { menuId, version, ...rest } = m; return JSON.stringify(sorted(rest)); };
+  if (body(fixture) !== body(JSON.parse(readFileSync(SEED_MENU, 'utf8')))) {
+    throw new Error(`fixtures/main-e2e.json differs from ${SEED_MENU}: copy the seed menu into it`);
+  }
+}
+function sorted(v) {
+  if (Array.isArray(v)) return v.map(sorted);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.keys(v).sort().map(k => [k, sorted(v[k])]));
+  return v;
 }
 
 async function collection() {

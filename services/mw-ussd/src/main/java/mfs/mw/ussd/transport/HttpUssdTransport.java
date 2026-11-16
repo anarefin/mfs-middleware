@@ -45,7 +45,7 @@ public class HttpUssdTransport implements UssdTransport {
       throw new MwException(ErrorCodes.VAL_INVALID, "Request validation failed")
           .withDetails(java.util.List.of(new mfs.mw.ussd.dto.ErrorDetail("msisdn", "is not a mobile number")));
     }
-    UssdRequest req = new UssdRequest(mno, wire.sessionId(), msisdn, wire.type(), wire.input());
+    UssdRequest req = new UssdRequest(mno, wire.sessionId(), msisdn, wire.type(), wire.input(), wire.serviceCode());
     UssdResponse r =
         switch (wire.type()) {
           case BEGIN -> onBegin(req);

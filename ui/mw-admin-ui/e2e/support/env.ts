@@ -17,6 +17,8 @@ export function manifestPath(): string {
 
 /** The USSD gateway credential of MNO robi (HTTP transport), to play a subscriber: deploy/.env. */
 export const USSD_MNO = "robi";
+/** robi's own short code (mw-ussd mw.ussd.mno.robi.short-codes). */
+export const USSD_CODE = "*269#";
 export const USSD_SECRET_ENV = "USSD_ROBI_GATEWAY_SECRET";
 
 /** The seeded customer wallets (mw-seeder application.yml); their transaction PIN, checked by mw-auth on every

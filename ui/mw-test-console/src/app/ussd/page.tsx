@@ -10,8 +10,9 @@ export default function UssdPage() {
         title="USSD phone"
         description={
           <>
-            A handset dialling the Bits USSD service. The USSD gateway simulator plays the MNO: robi talks to mw-ussd over HTTP
-            (APISIX <code className="font-mono text-[0.9em]">/ussd/robi</code>, basic auth), gp over SMPP (mw-ussd is bound to the simulator). Same menus, same engine;
+            A handset dialling the Bits USSD service. The USSD gateway simulator plays the MNO: robi, bl and teletalk talk to mw-ussd over HTTP
+            (APISIX <code className="font-mono text-[0.9em]">/ussd/&lt;mno&gt;</code>, basic auth), gp over SMPP (mw-ussd is bound to the simulator). Each MNO has its own
+            code (gp *268#, robi *269#, bl *270#, teletalk *271#); mw-ussd ends a dial with another MNO&apos;s code at once. Same menus, same engine;
             only the transport differs. Money moved by a USSD flow shows on the Home page balances and in the ops console.
           </>
         }

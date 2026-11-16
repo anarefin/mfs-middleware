@@ -116,12 +116,13 @@ export const HOW_TO: Record<PageKey, HowTo> = {
     ],
   },
   ussd: {
-    goal: "A feature phone dialling *268#: the same menus over HTTP (robi) and SMPP (gp).",
+    goal: "A feature phone on any of the four MNOs, each with its own code: robi *269#, bl *270#, teletalk *271# over HTTP, gp *268# over SMPP.",
     steps: [
-      "MNO robi (HTTP), Subscriber 01711000001, Code *268#, Dial: the Bangla main menu.",
+      "MNO robi (HTTP), Subscriber 01711000001 (the code fills in as *269#), Dial: the Bangla main menu.",
       "Send 9 for English, then 1 (Send Money), 01711000002, 10, 1 (confirm), 13579 (PIN).",
-      "Repeat on gp (SMPP): each step replays the session from the dial.",
-      "Reload the page to start over (there is no hang-up).",
+      "Repeat on bl and teletalk (HTTP) and on gp (SMPP: each step replays the session from the dial).",
+      "End hangs up; changing the MNO, number or code drops the session too. Dial starts a new one, no reload needed.",
+      "Dial robi with gp's *268#: the session ends at once with the wrong-code screen.",
     ],
     magic: [
       { value: "PIN 97531", meaning: "\"Wrong PIN. 2 tries left.\"; three wrong ones lock the PIN on every channel" },
@@ -134,9 +135,12 @@ export const HOW_TO: Record<PageKey, HowTo> = {
       "On Home: payer -Tk 15, payee +Tk 10; SMS to both.",
     ],
     fills: [
-      { label: "robi, customer01", values: { mno: "robi", msisdn: "01711000001", serviceCode: "*268#" } },
+      { label: "robi, customer01", values: { mno: "robi", msisdn: "01711000001", serviceCode: "*269#" } },
       { label: "gp (SMPP), customer01", values: { mno: "gp", msisdn: "01711000001", serviceCode: "*268#" } },
-      { label: "robi, customer02", values: { mno: "robi", msisdn: "01711000002", serviceCode: "*268#" } },
+      { label: "bl, customer01", values: { mno: "bl", msisdn: "01711000001", serviceCode: "*270#" } },
+      { label: "teletalk, customer01", values: { mno: "teletalk", msisdn: "01711000001", serviceCode: "*271#" } },
+      { label: "robi, customer02", values: { mno: "robi", msisdn: "01711000002", serviceCode: "*269#" } },
+      { label: "robi with gp's code (refused)", values: { mno: "robi", msisdn: "01711000001", serviceCode: "*268#" } },
     ],
   },
   simulators: {

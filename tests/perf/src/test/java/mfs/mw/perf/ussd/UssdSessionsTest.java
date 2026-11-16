@@ -14,7 +14,7 @@ class UssdSessionsTest {
 
     assertThat(b.path("mno").asString()).isEqualTo("robi");
     assertThat(b.path("msisdn").asString()).isEqualTo("01711000301");
-    assertThat(b.path("serviceCode").asString()).isEqualTo("*268#");
+    assertThat(b.path("serviceCode").asString()).isEqualTo("*269#");
     // API suite folder 18 (tests/api): 9 English, 1 Send Money, recipient, amount in taka, 1 confirm, PIN
     assertThat(b.path("inputs").valueStream().map(JsonNode::asString))
         .containsExactly("9", "1", "01711000102", "10", "1", "1234");

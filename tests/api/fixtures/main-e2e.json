@@ -1,6 +1,6 @@
 {
   "menuId": "main",
-  "version": 2,
+  "version": 3,
   "start": "main",
   "messages": {
     "invalid": {
@@ -26,6 +26,26 @@
     "more": {
       "bn": "0 আরও",
       "en": "0 More"
+    },
+    "wrongPin": {
+      "bn": "ভুল পিন। আর {triesLeft} বার চেষ্টা করা যাবে।",
+      "en": "Wrong PIN. {triesLeft} tries left."
+    },
+    "pinLocked": {
+      "bn": "পিন সাময়িকভাবে লক। পরে আবার চেষ্টা করুন।",
+      "en": "Your PIN is locked for now. Please try again later."
+    },
+    "pinBlocked": {
+      "bn": "পিন লক। অ্যাপে পিন রিসেট করুন বা কাস্টমার কেয়ারে কল করুন।",
+      "en": "Your PIN is locked. Reset it in the app or call customer care."
+    },
+    "walletLocked": {
+      "bn": "আপনার অ্যাকাউন্ট লক। কাস্টমার কেয়ারে কল করুন।",
+      "en": "Your account is locked. Please call customer care."
+    },
+    "balanceUnavailable": {
+      "bn": "ব্যালেন্স জানা যায়নি। আবার চেষ্টা করুন।",
+      "en": "Could not get your balance. Please try again."
     }
   },
   "nodes": {
@@ -55,8 +75,8 @@
         {
           "key": "3",
           "label": {
-            "bn": "মোবাইল রিচার্জ",
-            "en": "Mobile Recharge"
+            "bn": "রিচার্জ",
+            "en": "Recharge"
           },
           "next": "tu.whom"
         },
@@ -67,6 +87,14 @@
             "en": "Pay Bill"
           },
           "next": "bp.biller"
+        },
+        {
+          "key": "5",
+          "label": {
+            "bn": "ব্যালেন্স",
+            "en": "Balance"
+          },
+          "next": "bal.pin"
         },
         {
           "key": "9",
@@ -513,6 +541,42 @@
       "text": {
         "bn": "বিল পে ব্যর্থ: {error}",
         "en": "Bill payment failed: {error}"
+      }
+    },
+    "bal.pin": {
+      "type": "INPUT",
+      "text": {
+        "bn": "আপনার পিন দিন",
+        "en": "Enter your PIN"
+      },
+      "validator": {
+        "type": "pin",
+        "error": {
+          "bn": "পিন ৫ অঙ্কের।",
+          "en": "The PIN has 5 digits."
+        }
+      },
+      "next": "bal.check"
+    },
+    "bal.check": {
+      "type": "ACTION",
+      "flow": "BALANCE",
+      "mapping": {},
+      "onSuccess": "bal.done",
+      "onFailure": "bal.failed"
+    },
+    "bal.done": {
+      "type": "END",
+      "text": {
+        "bn": "আপনার ব্যালেন্স ৳{balance}",
+        "en": "Your balance is Tk {balance}"
+      }
+    },
+    "bal.failed": {
+      "type": "END",
+      "text": {
+        "bn": "ব্যালেন্স দেখা ব্যর্থ: {error}",
+        "en": "Balance check failed: {error}"
       }
     },
     "cancelled": {

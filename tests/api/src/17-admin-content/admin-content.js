@@ -1,11 +1,12 @@
 // Port of admin-content.feature: a USSD menu or SMS template version through maker-checker,
 // published on mw.config.changed.v1. S.token is a random 4-digit marker per scenario, so a re-run
-// never reads an earlier run's text. The menu scenario uses bl (no other folder walks it).
+// never reads an earlier run's text. The menu scenario uses bl (no other folder walks it) and puts the
+// seed menu back on bl afterwards.
 export default [
   {
     name: '[admin] an approved menu text change shows in the next USSD session but not in a running one',
     run: async (MW, S) => {
-      const open = await MW.sim.ussd('bl', '01711000001', '*268#', []);
+      const open = await MW.sim.ussd('bl', '01711000001', '*270#', []);
       S.check('a session is open on bl', open.ended === false, open.screens);
       const menu = JSON.parse(JSON.stringify(MW.fixture('main-e2e')));
       delete menu.menuId;
@@ -13,15 +14,23 @@ export default [
       const title = 'Bits ' + S.token;
       menu.nodes.main.text.bn = title;
       menu.nodes.main.text.en = title;
+      // afterwards bl goes back to the seed menu (title "Bits"), so it shows the same screen as every other MNO
+      S.after(async () => {
+        const seed = JSON.parse(JSON.stringify(MW.fixture('main-e2e')));
+        delete seed.menuId;
+        delete seed.version;
+        const r = await MW.admin.proposeMenu('ops-e2e-maker01', 'main', { menu: seed, activations: [{ mno: 'bl' }], reason: 'api restore ' + S.token });
+        if (r.body && r.body.id) await MW.admin.approve('ops-e2e-checker01', r.body.id);
+      });
       S.crFrom(await MW.admin.proposeMenu('ops-e2e-maker01', 'main', { menu, activations: [{ mno: 'bl' }], reason: 'api title change ' + S.token }));
       await MW.admin.approve('ops-e2e-checker01', S.crId);
       await S.crIs('APPROVED');
       const want = title + '\n1 সেন্ড মানি';
-      const fresh = await MW.poll(() => MW.sim.ussd('bl', '01711000003', '*268#', []),
+      const fresh = await MW.poll(() => MW.sim.ussd('bl', '01711000003', '*270#', []),
         s => { const l = s.screens[s.screens.length - 1]; return !!l.message && l.message.startsWith(want); }, 30000, 1000);
       const first = fresh.screens[fresh.screens.length - 1].message || '';
       S.check('a new USSD session of 01711000003 on bl starts with the new title', first.startsWith(want), first);
-      const cont = await MW.sim.ussd('bl', '01711000001', '*268#', ['9'], open.sessionId);
+      const cont = await MW.sim.ussd('bl', '01711000001', '*270#', ['9'], open.sessionId);
       const last = cont.screens[cont.screens.length - 1];
       S.check('the open session shows the English main menu of the version it started on', last.status === 200
         && (last.message || '').includes('\n1 Send Money') && !(last.message || '').includes(title), cont.screens);
@@ -42,7 +51,7 @@ export default [
       const prefix = 'Bits ' + S.token + ': you got Tk 10.00 from 0171****001. TrxID ';
       let got = [];
       for (let attempt = 0; attempt < 4 && !got.length; attempt++) {
-        await S.dial('robi', '01711000001', '*268#', '9, 1, 01711000002, 10, 1, ' + MW.pin);
+        await S.dial('robi', '01711000001', '*269#', '9, 1, 01711000002, 10, 1, ' + MW.pin);
         S.ussdEnds('Tk 10.00 sent to 01711000002. TxnID ');
         got = await MW.poll(async () => (await MW.sim.sms('01711000002')).filter(m => (m.text || '').startsWith(prefix) && m.dlrStatus),
           l => l.length > 0, 10000, 1000);

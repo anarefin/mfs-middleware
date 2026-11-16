@@ -808,19 +808,26 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
 <!-- ============================================================ -->
 <section id="s4">
   <h2><span class="num">4</span> USSD</h2>
-  <p>Page <span class="ui">USSD phone</span>: a feature phone dialling <code>*268#</code>. <b>Sign-in: none</b> (the console
-  plays the operator's gateway with its own key). Above the screen a status line says <i>idle</i>,
-  <i>session open</i> or <i>session ended</i> and how many inputs were sent; on a PIN screen the reply box hides
-  what you type. <b>robi</b> is connected
-  over HTTP, <b>gp</b> over SMPP; the menus are the same. Type a reply in the box (or use the keypad),
-  then <span class="ui">Send</span>. <span class="ui">Clear</span> clears the input only. There is no hang-up: while a session is open the
-  button says <span class="ui">Send</span>; to start over <b>reload the page</b> (then it says <span class="ui">Dial</span>).
-  Reload before each row of 4.3.</p>
+  <p>Page <span class="ui">USSD phone</span>: a feature phone on any of the four operators. <b>Sign-in: none</b> (the console
+  plays the operator's gateway with its own key). Each operator has its own short code; picking the MNO fills it in:</p>
+  <div class="table-wrap"><table>
+    <tr><th>MNO</th><th>Transport</th><th>Code</th></tr>
+    <tr><td><code>gp</code> (Grameenphone)</td><td>SMPP</td><td><code>*268#</code></td></tr>
+    <tr><td><code>robi</code></td><td>HTTP</td><td><code>*269#</code></td></tr>
+    <tr><td><code>bl</code> (Banglalink)</td><td>HTTP</td><td><code>*270#</code></td></tr>
+    <tr><td><code>teletalk</code></td><td>HTTP</td><td><code>*271#</code></td></tr>
+  </table></div>
+  <p>The menus are the same on all four. Above the screen a status line says <i>idle</i>, <i>session open</i>,
+  <i>session ended</i> or <i>session dropped</i> and how many inputs were sent; on a PIN screen the reply box hides
+  what you type. Type a reply in the box (or use the keypad), then <span class="ui">Send</span>.
+  <span class="ui">Clear</span> clears the input only. <span class="ui">End</span> hangs up; changing the MNO, subscriber or code
+  during a session drops it too. Either way the button goes back to <span class="ui">Dial</span>, so a new session needs no reload.
+  Press <span class="ui">End</span> (or let the session end) before each row of 4.3.</p>
 
   <div class="case" id="c4-1">
     <h3><span class="id">4.1</span>Send money over HTTP (robi), in English</h3>
     <ol>
-      <li><span class="ui">MNO (transport)</span> <code>robi (HTTP)</code>, <span class="ui">Subscriber</span> <code>01711000001</code>, <span class="ui">Code</span> <code>*268#</code>, <span class="ui">Dial</span>. The screen shows the Bangla main menu.</li>
+      <li><span class="ui">MNO (transport)</span> <code>robi (HTTP)</code>, <span class="ui">Subscriber</span> <code>01711000001</code>, <span class="ui">Code</span> <code>*269#</code> (filled in), <span class="ui">Dial</span>. The screen shows the Bangla main menu.</li>
       <li>Send <code>9</code>: the menu switches to English.</li>
       <li>Send <code>1</code> (Send Money), <code>01711000002</code>, <code>10</code>, <code>1</code> (confirm), <code>13579</code> (PIN).</li>
       <li>Expect: the session ends (<code>[END]</code> in the <i>Transcript</i>) with a confirmation carrying the TxnID;
@@ -831,7 +838,9 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
   <div class="case" id="c4-2">
     <h3><span class="id">4.2</span>The same over SMPP (gp), and re-bind</h3>
     <ol>
-      <li>MNO <code>gp (SMPP)</code>, repeat 4.1. Expect the same screens and result.</li>
+      <li>MNO <code>gp (SMPP)</code> (code <code>*268#</code>), repeat 4.1. Expect the same screens and result. bl (<code>*270#</code>) and teletalk (<code>*271#</code>) over HTTP give the same too.</li>
+      <li>MNO <code>robi</code>, change the code to gp's <code>*268#</code>, <span class="ui">Dial</span>: the session ends at once with
+        "এই কোডটি এই নেটওয়ার্কে নেই। ডায়াল করুন *269#" (each operator serves only its own code); no money moves.</li>
       <li><span class="ui">Simulators &amp; faults</span> → <i>USSD SMPP gateway (gp)</i> → <span class="ui">Show binds</span>: mw-ussd is bound.</li>
       <li><span class="ui">Drop every bind</span>, wait 5 seconds, <span class="ui">Show binds</span>: <code>bound</code> is 2 again and the <code>binds</code> counter grew by 2 (re-bound). Dial on gp: it works.</li>
       <li><span class="ui">Throttle next 2</span> makes the gateway throttle its next 2 messages; <span class="ui">Normal</span> switches that off again.</li>

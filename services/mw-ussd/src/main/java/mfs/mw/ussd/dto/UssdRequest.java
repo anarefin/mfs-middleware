@@ -7,10 +7,20 @@ import mfs.mw.ussd.util.SensitiveType;
  * One USSD step as the engine sees it, whatever the transport (SMPP or HTTP).
  *
  * @param input what the customer typed (the service code on BEGIN); may be a PIN, so never logged
+ * @param serviceCode the dialled short code as the MNO reports it (HTTP {@code serviceCode}, SMPP
+ *     destination address); null when the MNO sends none. Checked on BEGIN against the MNO's
+ *     {@code short-codes}
  */
 public record UssdRequest(
     String mno,
     String sessionId,
     @Sensitive(SensitiveType.MSISDN) String msisdn,
     UssdEvent event,
-    @Sensitive(SensitiveType.SECRET) String input) {}
+    @Sensitive(SensitiveType.SECRET) String input,
+    String serviceCode) {
+
+  /** A step without a reported service code. */
+  public UssdRequest(String mno, String sessionId, String msisdn, UssdEvent event, String input) {
+    this(mno, sessionId, msisdn, event, input, null);
+  }
+}

@@ -68,6 +68,9 @@ public class UssdEngine {
   /** The {@code balanceUnavailable} text when a menu carries none. */
   static final Text BALANCE_UNAVAILABLE_TEXT =
       new Text("ব্যালেন্স জানা যায়নি। আবার চেষ্টা করুন।", "Could not get your balance. Please try again.");
+  /** A BEGIN with a code this MNO does not serve: {code} = the MNO's own (first) short code. */
+  static final Text WRONG_CODE_TEXT =
+      new Text("এই কোডটি এই নেটওয়ার্কে নেই। ডায়াল করুন {code}", "This code is not served on this network. Dial {code}");
 
   private final MenuCatalog menus;
   private final UssdSessionStore sessions;
@@ -125,6 +128,15 @@ public class UssdEngine {
   }
 
   private UssdResponse begin(UssdRequest r) {
+    UssdProperties.Mno config = props.mno().get(r.mno());
+    if (config != null && !servesCode(config, r.serviceCode())) {
+      log.atInfo()
+          .addKeyValue("event", "ussd.session.refused")
+          .addKeyValue("mno", r.mno())
+          .log("USSD session refused: the dialled code is not this MNO's");
+      String text = WRONG_CODE_TEXT.in(props.defaultLanguage()).replace("{code}", config.shortCodes().getFirst());
+      return new UssdResponse(r.sessionId(), text, true);
+    }
     Menu menu = menus.active(r.mno());
     UssdSession s =
         new UssdSession(
@@ -403,6 +415,19 @@ public class UssdEngine {
     String more = menu.message(Menu.MORE, lang).trim();
     int sp = more.indexOf(' ');
     return sp < 0 ? more : more.substring(0, sp);
+  }
+
+  /**
+   * Whether the MNO serves the dialled code: always when it lists no short codes or the MNO sent no
+   * code (the contract's {@code serviceCode} is optional); otherwise one of its codes, ignoring
+   * whitespace.
+   */
+  static boolean servesCode(UssdProperties.Mno config, String serviceCode) {
+    if (config.shortCodes().isEmpty() || serviceCode == null || serviceCode.isBlank()) {
+      return true;
+    }
+    String dialled = serviceCode.replaceAll("\\s", "");
+    return config.shortCodes().stream().anyMatch(c -> c.replaceAll("\\s", "").equals(dialled));
   }
 
   private String unavailableText(String mno) {
