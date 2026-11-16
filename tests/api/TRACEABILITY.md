@@ -13,7 +13,7 @@ and `tsq`; `ops *` needs `operator` or `admin`; `<FLOW> ussd *` and `ussd http` 
 Requirement tags are the Cucumber flow tags without `@` (`p2p`, `cash`, `topup`, `billpay`,
 `callback`, `addmoney`, `c2w`, `merchant`, `checkout`, `ipn`, `notify`, `tsq`, `device`, `reversal`,
 `admin`, `operator`, `partner-config`, `wallet-unlock`, `ussd`, `smpp`, `bulk`, `sp-query`, `dlq` (retry topics to the DLQ, ticket 58, no Cucumber flow), plus
-`health` and `seed` for folder 00, `auth` (mw-auth's login and tokens, ticket 69), `edge` (an APISIX edge policy proved through the edge), and since ticket 76 `pin` (the PIN lifecycle: policy, change, resets), `lock` (the PIN lockout and its unlock), `assertion` (the transaction authorisation assertion of every channel) and `crypto` (the HSM gateway mw-crypto)); the module tags (`@mw-*`) were run filters, not requirements, and
+`health` and `seed` for folder 00, `auth` (mw-auth's login and tokens, ticket 69), `edge` (an APISIX edge policy proved through the edge), and since ticket 76 `pin` (the PIN lifecycle: policy, change, resets), `lock` (the PIN lockout and its unlock), `assertion` (the transaction authorisation assertion of every channel) and `crypto` (the HSM gateway mw-crypto), and `history` (the wallet transaction history GET /app/v1/transactions, ADR D25)); the module tags (`@mw-*`) were run filters, not requirements, and
 are not carried over (`make api-test FOLDER=` selects folders).
 
 | # | Criterion | Where it is proved |
@@ -208,5 +208,9 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 26 | [assertion checkout] a wrong PIN at checkout is refused by mw-auth and the session stays open; a new OTP and the right PIN pay once | - |  | SEC-09, FR-02 |
 | 27 | [crypto] a PIN block under the TPK gets a PVV from the payShield; it verifies the PIN and refuses another | - |  | SEC-04, SEC-05 |
 | 27 | [crypto] the test-only client is bound to the TPK and PVK only: a ZPK block is refused, the PVK is never served | - |  | SEC-04, SEC-09 |
+| 28 | [history p2p] a sent transfer is OUT in the payer's history and IN in the payee's | - |  | SEC-10 |
+| 28 | [history cash] an agent cash-in is IN in the customer's history and OUT in the agent's | - |  |
+| 28 | [history merchant] a merchant payment is IN in the merchant's history | - |  |
+| 28 | [history] the history filters by direction, pages with hasMore and refuses bad parameters | - |  |
 | 90 | [auth pin lock] the lockout escalates: level 1, level 2 after it ran out, then a permanent lock that only a reset ends | - |  | SEC-09 |
 | 90 | [assertion p2p] after the assertion life (60 s) a resend with the same key checks the PIN again; the right PIN gets the same txnId | - |  | SEC-09, FR-05 |

@@ -92,6 +92,28 @@ class TransactionRepositoryIT {
     assertThat(repo.find(UUID.randomUUID())).isEmpty();
   }
 
+  /** ADR D25: the wallet parties are written with the row, keyed, and go with it. */
+  @Test
+  void anInsertWritesTheWalletPartiesWithTheRow() {
+    TransactionRecord rec = inserted();
+
+    List<String> rows =
+        jdbc.queryForList(
+            "select direction || ' ' || length(wallet_hash) || ' ' || (created_at = ?) from wallet_txn"
+                + " where txn_id = ? order by direction desc",
+            String.class, java.sql.Timestamp.from(T0), rec.txnId());
+    assertThat(rows).containsExactly("OUT 32 true", "IN 32 true");
+
+    // a repeated write of the same parties adds nothing
+    repo.insertWalletParties(rec.txnId(), T0, rec.request());
+    assertThat(jdbc.queryForObject("select count(*) from wallet_txn where txn_id = ?", Integer.class, rec.txnId()))
+        .isEqualTo(2);
+
+    jdbc.update("delete from transaction where txn_id = ?", rec.txnId());
+    assertThat(jdbc.queryForObject("select count(*) from wallet_txn where txn_id = ?", Integer.class, rec.txnId()))
+        .isZero();
+  }
+
   @Test
   void anUpdateKeepsEveryMutableColumn() {
     TransactionRecord rec = inserted();

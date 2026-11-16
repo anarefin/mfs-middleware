@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits app API (mw-app-gateway)
-  version: 1.4.0
+  version: 1.5.0
   description: |
     Mobile apps API v1 (spec 8.2, 9.1), served by mw-app-gateway behind APISIX route `/app/v1/*`.
     Bearer access JWT from mw-auth (spec 18.7, D21; MSISDN + PIN login on a bound device); the payer
@@ -30,12 +30,74 @@ info:
     the window, MW-AUTH-006 nonce already used (replay), MW-AUTH-007 no live session; 503
     MW-SYS-012 (retryable) when mw-auth or the gateway's cache cannot be asked.
     The gateway itself also refuses bodies over 64 KiB with 413 MW-VAL-BODY_TOO_LARGE.
+
+    Wallet history (1.5.0, ADR D25): GET /app/v1/transactions lists the signed-in wallet's
+    transactions, sent and received, from every channel (app, USSD, org bulk credits), as
+    mw-orchestrator's query API answers it for that wallet. 503 MW-SYS-013 (retryable) when it
+    cannot be asked.
 servers:
   - url: https://localhost
 security:
   - bearer: []
 paths:
   /app/v1/transactions:
+    get:
+      operationId: listTransactions
+      summary: The signed-in wallet's transaction history, sent and received, newest first
+      description: >-
+        Any app role (`customer`, `agent`, `merchant`); the wallet is always the token's `msisdn`,
+        never a parameter. A bound device with a live session (`X-Device-Id`), no signature:
+        nothing moves. Every channel: what the wallet paid (`direction` OUT, in any status) and
+        what paid it (`direction` IN: P2P received, cash-in, merchant payments, bulk credits, add
+        money), the latter only once the money reached the wallet (COMPLETED, REVERSING,
+        REVERSED; a failed transfer to the wallet is not shown). A reversal is the original item
+        turning REVERSED. `counterparty` is the other side, masked (MSISDN `0171****789`, account
+        last 4, name to the initial; an org bulk credit shows the org's wallet masked); the
+        wallet's own side is not repeated; `fee` and `error` only on OUT items. Items are
+        self-contained: GET /app/v1/transactions/{txnId} serves only the caller's own app
+        submissions. Offset paging: `hasMore` when another page follows. Errors: 400 MW-VAL-001
+        (a parameter out of range, `from` not before `to`), 401, 403 MW-AUTH-002 / MW-AUTH-045,
+        503 MW-SYS-013 (mw-orchestrator cannot be asked, retryable).
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, maximum: 10000, default: 0 }
+        - name: txnType
+          in: query
+          required: false
+          description: One transaction type, e.g. P2P, CASH_IN, BULK_DISBURSE
+          schema: { type: string, pattern: "^[A-Z0-9_]{1,32}$" }
+        - name: direction
+          in: query
+          required: false
+          schema: { type: string, enum: [IN, OUT] }
+        - name: from
+          in: query
+          required: false
+          description: Inclusive lower bound of requestedAt
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          description: Exclusive upper bound of requestedAt
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: One page of the history
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TransactionHistory" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
     post:
       operationId: submitTransaction
       summary: Submit a transaction (P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, TOPUP, BILL_PAY, ADD_MONEY_BANK)
@@ -446,6 +508,47 @@ components:
         creditParty: { $ref: "#/components/schemas/Party" }
         amount: { $ref: "#/components/schemas/Money" }
         fee: { $ref: "#/components/schemas/Money" }
+        coreRef: { type: string }
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            messageBn: { type: string }
+            retryable: { type: boolean }
+        requestedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    TransactionHistory:
+      type: object
+      required: [items, limit, offset, hasMore]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/HistoryItem" }
+        limit: { type: integer }
+        offset: { type: integer }
+        hasMore: { type: boolean, description: Another page follows at offset + limit }
+    HistoryItem:
+      type: object
+      required: [txnId, txnType, direction, status, amount, requestedAt, updatedAt]
+      properties:
+        txnId: { type: string, description: UUIDv7 }
+        txnType: { type: string }
+        direction:
+          type: string
+          enum: [IN, OUT]
+          description: OUT the wallet paid, IN the wallet was paid
+        status: { type: string, description: A saga state of mw.txn.status.v1 }
+        amount: { $ref: "#/components/schemas/Money" }
+        fee: { $ref: "#/components/schemas/Money" }
+        counterparty:
+          type: object
+          description: The other side, masked
+          properties:
+            type: { type: string, description: e.g. WALLET, MERCHANT, ORG, MSISDN, BILLER_ACCOUNT, BANK_ACCOUNT }
+            id: { type: string, description: "Masked: 0171****789, account last 4" }
+            name: { type: string, description: The initial only }
+            walletType: { type: string }
         coreRef: { type: string }
         error:
           type: object

@@ -152,16 +152,24 @@ management:
 
 mw:
   # Internal query API /internal/v1/** (spec 18.2, M3 gate): Keycloak client-credentials JWT of
-  # realm `services` (config/SecurityConfig). mw-portal-api must always send orgId.
+  # realm `services` (config/SecurityConfig). mw-portal-api must always send orgId; mw-app-gateway
+  # may only search one wallet's history (walletId always, ADR D25).
   internal-auth:
     jwk-set-uri: ${MW_INTERNAL_JWK_SET_URI:http://keycloak:8080/realms/services/protocol/openid-connect/certs}
     issuer: ${MW_INTERNAL_ISSUER:http://keycloak:8080/realms/services}
     audience: mw-orchestrator
-    allowed-clients: mw-portal-api,mw-admin-api
+    allowed-clients: mw-portal-api,mw-admin-api,mw-app-gateway
     org-scoped-clients: mw-portal-api
+    # GET /internal/v1/transactions only, walletId required, allow-listed query parameters only
+    wallet-scoped-clients: mw-app-gateway
     # may ask for unmasked MSISDNs (?reveal=true on the detail; ticket 36, audited by mw-admin-api)
     reveal-clients: mw-admin-api
   orchestrator:
+    # Transaction search (config/SearchProperties): the hash key and the org payees come from
+    # OpenBao / the stack; a wallet's history shows a transaction paying the wallet (IN) only in
+    # these statuses (ADR D25), its own payments (OUT) in every status.
+    search:
+      wallet-in-statuses: COMPLETED,REVERSING,REVERSED
     # Saga deadlines (spec 7.2), command lifetime (6.3), idempotency TTL (7.3), timer sweep (7.1).
     validating-timeout: 5s
     holding-timeout: 5s

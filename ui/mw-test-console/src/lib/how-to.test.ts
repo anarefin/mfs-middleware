@@ -2,7 +2,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { scenarios } from "./app-flow-options";
 import { FILL_FIELDS, HOW_TO, PAGE_KEYS, type PageKey } from "./how-to";
+import { APP_PERSONAS, FLOWS_BY_ROLE, TXN_TYPES } from "./personas";
 
 /** The client components that hold each page's form fields (credentials / seed data have no fills). */
 const SOURCES: Record<PageKey, string[]> = {
@@ -61,5 +63,19 @@ describe("how-to content", () => {
     const pages = readdirSync(appDir, { withFileTypes: true }).filter((d) => d.isDirectory() && SOURCES[d.name as PageKey]?.length);
     for (const d of pages) expect(readFileSync(join(appDir, d.name, "page.tsx"), "utf8"), d.name).toContain(`<HowToTest page="${d.name}"`);
     expect(readFileSync(join(appDir, "page.tsx"), "utf8")).toContain('<HowToTest page="home"');
+  });
+
+  it("App flows' fills pick the category, then a wallet of it, then one of its flows", () => {
+    for (const f of HOW_TO.app.fills ?? []) {
+      const keys = Object.keys(f.values);
+      expect(keys.slice(0, 3), f.label).toEqual(["category", "user", "txnType"]);
+      const p = APP_PERSONAS.find((x) => x.user === f.values.user);
+      expect(p?.role, f.label).toBe(f.values.category);
+      expect(FLOWS_BY_ROLE[p!.role], f.label).toContain(f.values.txnType);
+    }
+  });
+
+  it("App flows' scenario chips fill only declared fields", () => {
+    for (const t of TXN_TYPES) for (const c of scenarios(t, "01711000002")) for (const k of Object.keys(c.values)) expect(FILL_FIELDS.app, `${t}: ${c.label}`).toContain(k);
   });
 });

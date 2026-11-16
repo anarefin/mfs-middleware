@@ -1,8 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
 
-async function submit(page: Page, type: string, counterparty: string | null, amount: string, user?: string) {
+/** Who is signed in: the category, then the wallet (value = the app user name). */
+async function signIn(page: Page, category: "customer" | "agent" | "merchant", user: string) {
+  await page.getByTestId("app-category").selectOption(category);
+  await page.getByTestId("app-user").selectOption(user);
+}
+
+async function submit(page: Page, type: string, counterparty: string | null, amount: string, user?: { category: "customer" | "agent"; user: string }) {
+  if (user) await signIn(page, user.category, user.user);
   await page.getByTestId("txn-type").selectOption(type);
-  if (user) await page.getByTestId("app-user").fill(user);
   if (counterparty !== null) await page.getByTestId("counterparty").fill(counterparty);
   await page.getByTestId("amount").fill(amount);
   await page.getByTestId("submit").click();
@@ -38,7 +44,7 @@ test.describe("@app app flows", () => {
 
   test("cash in by the agent credits the customer", async ({ page }) => {
     await page.goto("app");
-    const r = await submit(page, "CASH_IN", "01711000001", "20", "agent01");
+    const r = await submit(page, "CASH_IN", "01711000001", "20", { category: "agent", user: "agent01" });
     await expect(r.getByTestId("txn-status")).toHaveText("COMPLETED");
     await expect(r.getByTestId("delta-01711000001")).toHaveText("Tk 20.00");
   });
@@ -61,5 +67,26 @@ test.describe("@app app flows", () => {
     const r = await submit(page, "ADD_MONEY_BANK", "1234567890123", "500");
     await expect(r.getByTestId("txn-status")).toHaveText("COMPLETED");
     await expect(r.getByTestId("delta-01711000001")).toHaveText("Tk 500.00");
+  });
+
+  test("the history shows a P2P as OUT for the payer and IN for the payee", async ({ page }) => {
+    await page.goto("app");
+    await expect(page.getByTestId("app-user")).toHaveValue("customer01");
+    const r = await submit(page, "P2P", "01711000002", "10");
+    await expect(r.getByTestId("txn-status")).toHaveText("COMPLETED");
+    const txnId = (await r.getByTestId("txn-id").textContent()) ?? "";
+    expect(txnId).toMatch(/^[0-9a-f-]{36}$/);
+
+    const history = page.getByTestId("history");
+    await history.getByTestId("history-load").click();
+    const out = history.getByTestId(`history-row-${txnId}`);
+    await expect(out.getByTestId("history-direction")).toHaveText("OUT");
+    await expect(out.getByTestId("history-status")).toHaveText("COMPLETED");
+
+    await signIn(page, "customer", "customer02");
+    await history.getByTestId("history-load").click();
+    const inRow = history.getByTestId(`history-row-${txnId}`);
+    await expect(inRow.getByTestId("history-direction")).toHaveText("IN", { timeout: 60000 });
+    await expect(inRow.getByTestId("txn-link")).toHaveAttribute("href", new RegExp(`txnId=${txnId}`));
   });
 });

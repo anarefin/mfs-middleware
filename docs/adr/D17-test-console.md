@@ -2,7 +2,8 @@
 
 Status: Accepted, 2026-11-07. Amended 2026-11-15: the console shows the dev secrets, reads the seed
 manifest and offers account tools through test-only routes (below). Amended 2026-11-16: every ops
-user has the pre-set one-time code, usernames are copyable, no Reset TOTP tool (below).
+user has the pre-set one-time code, usernames are copyable, no Reset TOTP tool (below). Amended 2026-11-16: the tester profile starts the
+console with the whole stack in one command and turns the test-only routes on by itself (below).
 
 ## Context
 
@@ -112,3 +113,21 @@ pre-set secret back.
 
 - The change shows on a fresh Keycloak volume only (`deploy/reset.sh`), as any realm-import change.
 - The superseded consequence above (Reset TOTP leaves a user without a live code) no longer applies.
+
+## Amendment 2026-11-16: one command starts everything, the tester profile included
+
+Starting the stack for manual testing took four steps: `up` with core and seed, `wait mw-seeder`,
+`--profile tester build mw-test-console` and `scripts/tester.sh` (the test-only routes). Now one
+command does all of it, from `deploy/`:
+
+    docker compose --profile core --profile seed --profile tester up -d --build --wait
+
+- The `tester` profile also has a one-shot, `apisix-init-tester`: `apisix-init` once more, with
+  `MW_E2E_ROUTES=1`, after `apisix-init`. The test-only routes (and `/tester`) are on whenever the
+  profile is up; an `up` without the profile runs `apisix-init` alone, which removes them, as before.
+  The default of `apisix-init` stays `MW_E2E_ROUTES=0`, so the non-tester edge is unchanged.
+- `mw-test-console` waits for `apisix-init-tester` and for `mw-seeder` to exit 0 (`required: false`:
+  the tester profile still works without seed). With that dependent, `up --wait` counts the seeder
+  in (a one-shot nothing depends on fails `--wait`), so the command returns healthy and seeded.
+- `--build` builds the console image with the others; `scripts/tester.sh` stays, for a stack started
+  without the tester profile.

@@ -41,6 +41,8 @@ public final class ErrorCodes {
   public static final String SYS_BILLPAY_UNAVAILABLE = "MW-SYS-011";
   /** mw-auth (device, session) or Valkey (device key cache, nonces) could not be asked; nothing was done, retryable: 503. */
   public static final String SYS_SESSION_STORE_UNAVAILABLE = "MW-SYS-012";
+  /** mw-orchestrator's query API (the wallet history, ADR D25) could not be asked; retryable: 503. */
+  public static final String SYS_ORCHESTRATOR_UNAVAILABLE = "MW-SYS-013";
   /** Unexpected failure; details stay in the log, never in the response. */
   public static final String SYS_INTERNAL = "MW-SYS-001";
 

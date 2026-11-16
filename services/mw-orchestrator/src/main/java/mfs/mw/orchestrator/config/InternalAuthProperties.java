@@ -18,6 +18,9 @@ import org.springframework.validation.annotation.Validated;
  * @param orgScopedClients allowed clients that must always send a non-blank {@code orgId}
  * @param revealClients allowed clients that may ask for unmasked MSISDNs ({@code reveal=true},
  *     ticket 36: mw-admin-api, which audits every reveal and grants it only to the roles of spec 15.4)
+ * @param walletScopedClients allowed clients that may only search one wallet's history (ADR D25:
+ *     mw-app-gateway): {@code GET /internal/v1/transactions} with a non-blank {@code walletId} and
+ *     allow-listed query parameters only
  */
 @Validated
 @ConfigurationProperties("mw.internal-auth")
@@ -27,11 +30,13 @@ public record InternalAuthProperties(
     @NotBlank String audience,
     @NotEmpty Set<String> allowedClients,
     Set<String> orgScopedClients,
-    Set<String> revealClients) {
+    Set<String> revealClients,
+    Set<String> walletScopedClients) {
 
   public InternalAuthProperties {
     allowedClients = Set.copyOf(allowedClients == null ? Set.of() : allowedClients);
     orgScopedClients = Set.copyOf(orgScopedClients == null ? Set.of() : orgScopedClients);
     revealClients = Set.copyOf(revealClients == null ? Set.of() : revealClients);
+    walletScopedClients = Set.copyOf(walletScopedClients == null ? Set.of() : walletScopedClients);
   }
 }

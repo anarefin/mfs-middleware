@@ -41,7 +41,8 @@ Gradle runs from the repo root; the `docker compose` commands run from `deploy/`
 | --- | --- |
 | Build and test (after a code change) | `./gradlew clean build` (or `./gradlew :mw-notify:build` for one module); `./gradlew bootJar` for the jars only |
 | Dev settings (first time) | `cd deploy && cp dev.env.defaults .env` |
-| Start, build the images, seed (or bring back after a reboot) | `docker compose --profile core --profile seed up -d --build`, then `docker compose --profile core --profile seed wait mw-seeder` (ends with `exited with status code 0`) |
+| Start everything (infra, services, both consoles, seed, test-only routes), build the images, wait until healthy and seeded (or bring back after a reboot) | `docker compose --profile core --profile seed --profile tester up -d --build --wait` |
+| Start and seed without the test console | `docker compose --profile core --profile seed up -d --build`, then `docker compose --profile core --profile seed wait mw-seeder` (ends with `exited with status code 0`) |
 | Production timers instead of the test ones | delete the timer block from `deploy/.env`, then `docker compose --profile core up -d` (recreates the services) |
 | Start without seeding, wait until healthy | `docker compose --profile core up -d --build --wait` |
 | Start only the P2P and cash path | `docker compose --profile minimal up -d --build` (unseeded) |
@@ -121,7 +122,7 @@ Through the edge:
 | `/admin/v1/*` | `mw-admin-api` (realm `ops` JWT) |
 | `/checkout/*`, `/ussd/<mno>`, `/partner/*/callback/*` | checkout, MNO USSD gateways, partner callbacks |
 | `/healthz` | APISIX itself |
-| `/tester` | test console (`mw-test-console`, dev/test only, ADR D17): only while the test-only routes are on (`scripts/tester.sh`), from private addresses; it displays the dev secrets (`/tester/credentials`, `/tester/seed-data`) and can unlock and reset accounts through the test-only routes, so never on a shared or production host and never with real values in `deploy/.env` |
+| `/tester` | test console (`mw-test-console`, dev/test only, ADR D17): only while the test-only routes are on (`--profile tester`, or `scripts/tester.sh` on a running stack), from private addresses; it displays the dev secrets (`/tester/credentials`, `/tester/seed-data`) and can unlock and reset accounts through the test-only routes, so never on a shared or production host and never with real values in `deploy/.env` |
 
 The full route list and every edge policy is in `deploy/apisix/README.md`. To demo from another
 machine, browse on the host itself or forward the port (`sudo ssh -L 443:localhost:443
@@ -215,9 +216,9 @@ dc exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select
 | --- | --- |
 | A service crashed or was killed | `dc start <service>` (or the start command again). The outbox resends, the inbox drops duplicates, saga timers and the status inquiry finish what was in flight; `scripts/chaos.sh` proves this for every service, Kafka and PostgreSQL |
 | Transactions stuck in `PROCESSING` / `UNKNOWN` | wait for the status inquiry schedule (30 s, 1, 2, 5 min); what it cannot settle goes to `MANUAL_REVIEW`, handled in the console |
-| `up` stops at a one-shot | `dc logs provision` (it names the service and step that failed; or `kafka-init`, `etcd-init`, `apisix-init`); most often a volume made with other credentials (see Credentials) or an OpenBao that is still sealed: `dc down`, then start again |
-| `wait mw-seeder` prints a non-zero code | `dc --profile seed logs mw-seeder`: the line `seed.step.failed` names the step. `not ready yet: <svc>` = a service never became ready (fix it, seed again); `open change request of <operator>` = a partner, menu or template has a pending request someone else made: approve or reject it in the console, then run the start command again. Seeding is idempotent, so re-running is always safe |
-| APISIX answers 404 for test routes (`/test/...`) | expected after an `up`; `scripts/api-test.sh`, `scripts/tester.sh` and `scripts/suite.sh perf` enable them |
+| `up` stops at a one-shot | `dc logs provision` (it names the service and step that failed; or `kafka-init`, `etcd-init`, `apisix-init`, `apisix-init-tester`); most often a volume made with other credentials (see Credentials) or an OpenBao that is still sealed: `dc down`, then start again |
+| `up --wait` or `wait mw-seeder` exits non-zero on the seeder | `dc --profile seed logs mw-seeder`: the line `seed.step.failed` names the step. `not ready yet: <svc>` = a service never became ready (fix it, seed again); `open change request of <operator>` = a partner, menu or template has a pending request someone else made: approve or reject it in the console, then run the start command again. Seeding is idempotent, so re-running is always safe |
+| APISIX answers 404 for test routes (`/test/...`, `/tester`) | expected after an `up` without `--profile tester`; that profile, `scripts/api-test.sh`, `scripts/tester.sh` and `scripts/suite.sh perf` enable them |
 | A service answers 404 `MW-VAL-003` for paths it serves, after `dc up -d <service>` recreated just that container | APISIX still sends to the old container IP, which another service may own now: `dc restart apisix` (a full start does not hit this) |
 | 401 from the console API after a long idle | sign out and in again (the refresh token expired) |
 | Port 443 or a direct port busy | free it, or move ours: `MW_HTTPS_PORT=8443` (APIs work, the console login does not) or `MW_PORT_<NAME>` (e.g. `MW_PORT_POSTGRES=15432`) in `deploy/.env` or in front of the `docker compose` start command |

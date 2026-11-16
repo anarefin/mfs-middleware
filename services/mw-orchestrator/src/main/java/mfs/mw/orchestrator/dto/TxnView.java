@@ -9,11 +9,13 @@ import java.util.Map;
  * txn-query.v1.openapi.yaml}). Customer data is already masked (spec 18.3): party ids by type,
  * names to the initial; no PIN, no idempotency key, no raw request. {@code role} is set only for an
  * org-scoped query (A3): {@code INITIATOR} when the org initiated it, {@code PAYEE} when the org
- * collects for its biller or merchant wallet.
+ * collects for its biller or merchant wallet. {@code direction} is set only for a wallet-scoped
+ * query (ADR D25): {@code OUT} when the wallet paid, {@code IN} when it was paid.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record TxnView(
     String role,
+    String direction,
     String txnId,
     String txnType,
     String channel,

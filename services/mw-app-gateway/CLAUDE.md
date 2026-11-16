@@ -6,7 +6,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 ## Responsibilities
 
 - App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, ADD_MONEY_BANK,
-  TOPUP and BILL_PAY, `mw.app-gateway.supported-txn-types`), `GET /app/v1/transactions/{txnId}`, `GET /app/v1/pin-key`,
+  TOPUP and BILL_PAY, `mw.app-gateway.supported-txn-types`), `GET /app/v1/transactions` (wallet history, ADR D25),
+  `GET /app/v1/transactions/{txnId}`, `GET /app/v1/pin-key`,
   `GET /app/v1/billers`, `POST /app/v1/billers/{code}/fetch-bill` and `GET /app/v1/merchant/collections` behind the APISIX
   route `/app/v1/*` (`deploy/apisix/routes/app-v1.json`, `openid-connect` bearer-only against mw-auth's
   discovery document since ticket 69).
@@ -181,10 +182,31 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   `TransactionView.merchantPayee`), status COMPLETED or REVERSED only, newest first (UUIDv7 txnId
   order). Each entry `{txnId, status, amount, payer, coreRef, requestedAt, updatedAt}` with the payer's
   MSISDN masked (`0171****789`); no fee, no PIN.
+- Wallet history (ADR D25, app.v1 1.5.0): `GET /app/v1/transactions?limit=1..100&offset=0..10000` (default
+  20 / 0; optional `txnType`, `direction` IN|OUT, `[from, to)`; out of range `MW-VAL-001`) lists the token's
+  own wallet's transactions, sent and received, from every channel, newest first:
+  `TransactionHistory {items, limit, offset, hasMore}`, each `HistoryItem {txnId, txnType, direction, status,
+  amount, fee?, counterparty {type, id, name?, walletType?}, coreRef?, error?, requestedAt, updatedAt}`
+  (`controller/TransactionController`, `service/TransactionHistoryService`, `mapper/HistoryMapper`). Any app
+  role, session level (no signature); the wallet is always `user.msisdn()`, never a parameter. Read from
+  mw-orchestrator's internal query API (`client/OrchestratorQueryClient`, copied from mw-portal-api's,
+  `config/OrchestratorClientProperties` `mw.app-gateway.orchestrator.*`, `MW_ORCHESTRATOR_BASE_URL`, plain
+  HTTP on the app network) with the same `client/ServiceTokenClient` token as mw-auth's (client
+  `mw-app-gateway`, audiences mw-auth and mw-orchestrator): always `walletId`, asks `limit + 1` to tell
+  `hasMore`, a 401 drops the token and asks once more. The orchestrator decides what is shown (IN items only
+  COMPLETED / REVERSING / REVERSED) and masks the parties; the mapper keeps the other side as `counterparty`
+  (credit party of an OUT item, debit party of an IN one) and leaves out the fee and the error of an IN
+  item; `requestedAt` is the orchestrator's `createdAt`. Unavailable (connect, timeout, no token, any other
+  status, unreadable answer, open breaker) -> `503 MW-SYS-013`, retryable (WARN
+  `orchestrator.query.unavailable`); Resilience4j `orchestrator` (retry 2, breaker counting calls). Items are
+  self-contained: `GET /app/v1/transactions/{txnId}` still serves only the caller's own app submissions.
+  Tests: `TransactionHistoryServiceTest`, `HistoryMapperTest`, `TransactionControllerTest`,
+  `client/OrchestratorQueryClientIT` (WireMock, no Docker), `ApiContractsTest`.
 - Dev provisioning (`provision_mw_app_gateway` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `app_gateway_rw`, schema `app_gateway`, `secret/mw-app-gateway` (DB password; `spring.data.redis.password`
   synced from `VALKEY_PASSWORD`; `mw.app-gateway.auth.client-secret` from `KC_MW_APP_GATEWAY_SECRET`), AppRole, PKI
-  role `mw-app-gateway`. Keycloak realm `services` client `mw-app-gateway` (audience `mw-auth`): a running stack
+  role `mw-app-gateway`. Keycloak realm `services` client `mw-app-gateway` (audiences `mw-auth` and, ADR D25,
+  `mw-orchestrator`): a running stack
   needs `deploy/reset.sh` to import it. Compose waits for a healthy mw-auth.
 
 ## Contracts owned
@@ -200,6 +222,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   event built by the real mapper validates), `contracts/ConsumedContractsTest` (every valid sample reads into
   the own DTO) and `contracts/ApiContractsTest` (app API responses, the billpay client's requests and mw-auth's answers).
 - `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (client; own types `dto/Biller`, `dto/Bill`).
+- `api/mw-orchestrator/txn-query.v1.openapi.yaml` (client, 1.3.0, ADR D25: `GET /internal/v1/transactions` with
+  `walletId`, as the wallet-scoped caller; own types `dto/QueryTxnPage`, `dto/QueryTxn`; a contract-shaped page
+  is validated and read in `ApiContractsTest`).
 - `events/mw-orchestrator/mw.txn.request.v1` (produced; own type `dto/TxnRequest`, validated
   against the schema in `RequestMapperTest` and `SyncReplyIT`).
 - `api/mw-auth/auth-internal.v1.openapi.yaml` (client, ticket 68: `GET /internal/v1/devices/{deviceId}`, `GET

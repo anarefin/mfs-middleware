@@ -13,8 +13,7 @@ assumes the earlier ones still pass.
 ./gradlew clean build           # every module's tests and jar, the repo checks (Docker running)
 cd deploy && ./reset.sh         # fresh volumes: seed balances, daily limits, Keycloak users
 cp dev.env.defaults .env        # fixed dev settings with the short test timers
-time docker compose --profile core --profile seed up -d --build
-docker compose --profile core --profile seed wait mw-seeder   # 0: the baseline the suite checks in folder 00
+time docker compose --profile core --profile seed --profile tester up -d --build --wait   # healthy and seeded: the baseline folder 00 checks
 cd .. && scripts/smoke.sh
 ```
 
@@ -26,8 +25,9 @@ the running stack by itself (it re-runs `apisix-init` with `MW_E2E_ROUTES=1`); a
 prints the check, the call and the envelope it got; the JUnit report is
 tests/api/build/newman-report.xml.
 
-To show a feature by hand instead (a browser, no API knowledge needed), run `scripts/tester.sh` and
-follow [docs/testing-guide.html](testing-guide.html): the test console plays the app, a USSD
+To show a feature by hand instead (a browser, no API knowledge needed), open https://localhost/tester
+(the start above runs the test console; `scripts/tester.sh` adds it to a stack started without
+`--profile tester`) and follow [docs/testing-guide.html](testing-guide.html): the test console plays the app, a USSD
 handset, the partners, the checkout shop and the org portal; `scripts/tester-e2e.sh` is its browser suite.
 
 ## M0 Foundation

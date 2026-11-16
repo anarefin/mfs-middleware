@@ -117,6 +117,16 @@ resilience4j:
         wait-duration-in-open-state: 10s
         ignore-exceptions:
           - org.springframework.web.client.HttpClientErrorException
+      # mw-orchestrator's query API (client/OrchestratorQueryClient, wallet history, ADR D25): counts
+      # calls like mw-auth; only unavailability counts. The history answers 503 MW-SYS-013 while open.
+      orchestrator:
+        base-config: default
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        slow-call-duration-threshold: 2500ms
+        wait-duration-in-open-state: 10s
+        record-exceptions: mfs.mw.app.gateway.exception.OrchestratorUnavailableException
   bulkhead:
     configs:
       default:
@@ -143,6 +153,10 @@ resilience4j:
         base-config: default
         retry-exceptions: mfs.mw.app.gateway.exception.BillPayUnavailableException
         ignore-exceptions: mfs.mw.app.gateway.exception.BillPayRefusedException
+      # The wallet history is an idempotent read (19.2: 2 retries, 200 ms -> 1 s).
+      orchestrator:
+        base-config: default
+        retry-exceptions: mfs.mw.app.gateway.exception.OrchestratorUnavailableException
 
 logging:
   structured:
@@ -249,6 +263,13 @@ mw:
       connect-timeout: 2s
       read-timeout: 28s
       catalogue-ttl: 60s
+    # mw-orchestrator's internal query API (wallet history GET /app/v1/transactions, ADR D25), over
+    # the app zone network with the client-credentials token of client mw-app-gateway (the same as for
+    # mw-auth; its token carries audience mw-orchestrator too). Wallet-scoped there: walletId always.
+    orchestrator:
+      base-url: ${MW_ORCHESTRATOR_BASE_URL:http://mw-orchestrator:8080}
+      connect-timeout: 1s
+      read-timeout: 3s
     # The device gate (spec 9.1, 18.6; ticket 29, a verifier since ticket 68): every /app/** request
     # comes from a device bound to the token's wallet (X-Device-Id, its key from mw-auth, cached) with
     # a live mw-auth session; a submit is signed (ECDSA P-256) and its nonce used once. Binding, the

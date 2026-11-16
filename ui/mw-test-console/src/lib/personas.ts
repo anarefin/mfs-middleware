@@ -3,7 +3,8 @@
 // seed-customer01, or an MSISDN). Portal users: the realm portals import's users (deploy/keycloak/realms,
 // password + the pre-set TOTP secret).
 
-export type AppPersona = { user: string; msisdn: string; role: "customer" | "agent" | "merchant"; name: string; label: string };
+export type AppRole = "customer" | "agent" | "merchant";
+export type AppPersona = { user: string; msisdn: string; role: AppRole; name: string; label: string };
 
 // `name` is the wallet's holder name (core-mock's fixtures); `user` and `msisdn` are what the e2e specs select.
 export const APP_PERSONAS: readonly AppPersona[] = [
@@ -38,10 +39,17 @@ export const SEEDED_WALLETS: readonly { msisdn: string; who: string }[] = [
 export const TXN_TYPES = ["P2P", "CASH_IN", "CASH_OUT", "MERCHANT_PAY", "TOPUP", "BILL_PAY", "ADD_MONEY_BANK"] as const;
 export type TxnType = (typeof TXN_TYPES)[number];
 
+/** The money flows each app role may start (the app API's role rules): a merchant only collects. */
+export const FLOWS_BY_ROLE: Record<AppRole, readonly TxnType[]> = {
+  customer: ["P2P", "CASH_OUT", "MERCHANT_PAY", "TOPUP", "BILL_PAY", "ADD_MONEY_BANK"],
+  agent: ["CASH_IN"],
+  merchant: [],
+};
+
 /** What each flow needs, its default counterparty and what to type for the magic outcomes of the simulators. */
 export const FLOW_HELP: Record<TxnType, { title: string; who: string; counterparty?: string; hint: string }> = {
   P2P: { title: "Send money (P2P)", who: "customer", counterparty: "01711000002",
-    hint: "Payer -> payee wallet. Wrong PIN 9999 is REJECTED; an unknown payee or more than the balance fails at the core." },
+    hint: "Payer -> payee wallet. Wrong PIN 97531 is refused (MW-AUTH-040); an unknown payee or more than the balance fails at the core." },
   CASH_IN: { title: "Cash in (agent -> customer)", who: "agent", counterparty: "01711000001",
     hint: "Sign in as agent01. The customer's wallet is credited, the agent's debited." },
   CASH_OUT: { title: "Cash out (customer -> agent)", who: "customer", counterparty: "01811000001",

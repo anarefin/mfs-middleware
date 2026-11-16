@@ -65,6 +65,20 @@ class ApiContractsTest {
     assertThat(OpenApiSchemas.component(API, "TxnPage").validate(body(page))).isEmpty();
   }
 
+  /** A wallet-scoped page (1.3.0, ADR D25): each item tagged with the wallet's direction. */
+  @Test
+  void aWalletPageMatchesTxnPageAndAnUnknownDirectionDoesNot() {
+    TransactionRecord bulk =
+        REQUESTS.toRecord(TestData.bulkChild(TestData.txnId(), "key-b", 10_000, "01711000001"), null, TestData.NOW);
+    TxnPage page = new TxnPage(
+        List.of(TransactionViewMapper.toView(topupFailed(), null, "OUT", false),
+            TransactionViewMapper.toView(bulk, null, "IN", false)), 21, 0);
+
+    assertThat(OpenApiSchemas.component(API, "TxnPage").validate(body(page))).isEmpty();
+    TxnPage bad = new TxnPage(List.of(TransactionViewMapper.toView(bulk, null, "SIDEWAYS", false)), 21, 0);
+    assertThat(OpenApiSchemas.component(API, "TxnPage").validate(body(bad))).isNotEmpty();
+  }
+
   @Test
   void aDetailWithTimelineAndPartnerCallsMatchesTxnDetail() {
     TxnDetail detail = new TxnDetail(

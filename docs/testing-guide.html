@@ -122,6 +122,7 @@ Every login is printed where a step needs it; <a href="#c1-0">1.0 Logins at a gl
       <tr><td class="tick"></td><td>Transaction status as the app sees it</td><td><a href="#c3-9">3.9</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>App flows input checks, other users, resend rules</td><td><a href="#c3-10">3.10</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Wallet auth: first PIN, login, second device, PIN change, resets, lockout</td><td><a href="#c3-11">3.11</a></td><td>Both</td></tr>
+      <tr><td class="tick"></td><td>Wallet history (sent and received, every channel)</td><td><a href="#c3-12">3.12</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>USSD over HTTP (robi)</td><td><a href="#c4-1">4.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>USSD over SMPP (gp) and re-bind</td><td><a href="#c4-2">4.2</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>USSD other menus, Bangla, invalid input</td><td><a href="#c4-3">4.3</a></td><td>Test console</td></tr>
@@ -189,19 +190,18 @@ Every login is printed where a step needs it; <a href="#c1-0">1.0 Logins at a gl
 (cd deploy &amp;&amp; cp dev.env.defaults .env)
 <span class="c"># fresh volumes: seeded balances, daily limits, users</span>
 deploy/reset.sh
-<span class="c"># build the images, start the stack and seed it (Compose reads deploy/.env itself; with its short timers, timeout tests take seconds, not minutes)</span>
-(cd deploy &amp;&amp; docker compose --profile core --profile seed up -d --build)
-<span class="c"># waits for the seeder (users, wallets, partners, templates): ends with "exited with status code 0"</span>
-(cd deploy &amp;&amp; docker compose --profile core --profile seed wait mw-seeder)
-<span class="c"># the test console image (first time and after a test console change)</span>
-(cd deploy &amp;&amp; docker compose --profile tester build mw-test-console)
-<span class="c"># turns on the test-only routes and starts the test console</span>
-scripts/tester.sh
+<span class="c"># one command: build every image (services, both consoles), start platform + services + consoles, seed
+# (users, wallets, partners, templates), turn on the test-only routes; returns once all is healthy and seeded
+# (Compose reads deploy/.env itself; with its short timers, timeout tests take seconds, not minutes)</span>
+(cd deploy &amp;&amp; docker compose --profile core --profile seed --profile tester up -d --build --wait)
 <span class="c"># optional: every login and key in the terminal (the test console page Logins &amp; secrets shows the same, section 1)</span>
 scripts/creds.sh</pre></div>
-  <p>The first run takes 10-15 minutes (images and dependencies); later ones a few minutes.</p>
-  <div class="warn">Run <code>scripts/tester.sh</code> again after any later <code>docker compose up</code>: that removes the
-  test-only routes and <code>/tester</code> answers 404.</div>
+  <p>The first run takes 10-15 minutes (images and dependencies); later ones a few minutes. A non-zero exit names the
+  container that failed: <code>(cd deploy &amp;&amp; docker compose --profile core --profile seed --profile tester ps -a)</code>,
+  then its <code>logs</code> (the seeder's line <code>seed.step.failed</code> names the step).</p>
+  <div class="warn">Always start with all three profiles. A <code>docker compose up</code> without <code>--profile tester</code>
+  removes the test-only routes and <code>/tester</code> answers 404: run the command above again (or <code>scripts/tester.sh</code>,
+  which adds the console to a stack that is already running).</div>
 
   <h3 id="c0-2">Step 0.2: open the test console</h3>
   <p><b>Sign-in: none.</b> The test console signs in by itself as the user you pick on each page (app users at
@@ -305,7 +305,7 @@ scripts/creds.sh</pre></div>
       <tr><td>OpenBao (secrets store)</td><td>-</td><td>token <code>dev-root-token</code> (<code>OPENBAO_DEV_ROOT_TOKEN</code>)</td><td>no web UI; commands in 1.6</td></tr>
       <tr><td rowspan="2">SoftHSM PKCS#11 tokens (<code>softhsm</code>, <code>deploy/softhsm/README.md</code>)</td><td>token <code>mw-crypto</code> (port 5657)</td><td>user PIN <code>dev-mwcrypto-user-pin</code></td><td>SO PIN <code>dev-mwcrypto-so-pin</code>; used by <code>mw-crypto</code> (its PIN is also in OpenBao <code>secret/mw-crypto</code>)</td></tr>
       <tr><td>token <code>paysim</code> (port 5658)</td><td>user PIN <code>dev-paysim-user-pin</code></td><td>SO PIN <code>dev-paysim-so-pin</code>; the payShield simulator's LMK store</td></tr>
-      <tr><td>Test-only API routes (<code>/test/…</code>, Postman)</td><td>-</td><td>header <code>apikey: e2e-test-apikey</code></td><td>exist after <code>scripts/tester.sh</code> or <code>scripts/api-test.sh</code></td></tr>
+      <tr><td>Test-only API routes (<code>/test/…</code>, Postman)</td><td>-</td><td>header <code>apikey: e2e-test-apikey</code></td><td>exist while the stack runs with <code>--profile tester</code> (step 0.1), after <code>scripts/tester.sh</code> or <code>scripts/api-test.sh</code></td></tr>
       <tr><td>Ops one-time-code secret (for your own TOTP tool)</td><td>-</td><td><code>opstesttotpsecretnotarealsecret1</code></td><td>HmacSHA256, 6 digits, 30 s, the raw text as key (not base32)</td></tr>
       <tr><td>Portals one-time-code secret (same algorithm)</td><td>-</td><td><code>portalstesttotpsecretnotreal0001</code> (<code>KC_PORTALS_TEST_TOTP_SECRET</code>)</td><td>every portal user</td></tr>
     </table></div>
@@ -352,7 +352,7 @@ scripts/creds.sh</pre></div>
       <tr><td>USSD gateways</td><td>basic-auth password per operator (user <code>ussd-gp</code>, <code>ussd-robi</code>, <code>ussd-bl</code>, <code>ussd-teletalk</code>)</td><td><code>dev-ussd-gp-pass</code>, <code>dev-ussd-robi-pass</code>, … (<code>USSD_GP_GATEWAY_SECRET</code>, …)</td></tr>
     </table></div>
     <p>One value only: <code>grep KC_OPS_TEST_PASSWORD deploy/.env</code>. The test console reads these values from
-    <code>deploy/.env</code> when <code>scripts/tester.sh</code> starts it (a changed value: run it again).</p>
+    <code>deploy/.env</code> when it starts (a changed value: run the step 0.1 start command again).</p>
     <div class="note">On a shared test host you need no file access and no terminal: the fixed values above work there too
     (if that host was set up after <code>deploy/reset.sh</code>), and the Logins &amp; secrets page gives the live one-time
     codes. Without the test console, ask whoever runs the stack for <code>scripts/totp.sh</code>, or compute the code from
@@ -437,7 +437,7 @@ scripts/creds.sh</pre></div>
     <p>There is no one-time-code reset: every user keeps the pre-set code (1.4), which Keycloak's admin API could not put back once deleted.</p>
     <p>The tools are a fixed list of actions (realms <code>ops</code> and <code>portals</code> only, never <code>master</code>), called through
     test-only gateway routes: mw-auth's dev-only account test API and the Keycloak admin API as <code>kc-admin</code>. They exist only
-    while <code>scripts/tester.sh</code> (or <code>scripts/api-test.sh</code>) turned the test routes on.</p>
+    while the test routes are on (the step 0.1 start with <code>--profile tester</code>, <code>scripts/tester.sh</code> or <code>scripts/api-test.sh</code>).</p>
     <h4>Fallback: kcadm in the Keycloak container</h4>
     <p>The Keycloak admin web console is <b>not</b> published by the gateway (only the login pages are).
     Without the test console, admin tasks run with <code>kcadm.sh</code> inside the container as user <code>kc-admin</code>, password
@@ -507,7 +507,7 @@ docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token ope
   <div class="case" id="c1-7">
     <h3><span class="id">1.7</span>API keys and tokens (Postman, curl)</h3>
     <p><b>Test-only routes</b> (<code>/test/core-mock/…</code>, <code>/test/sim/…</code>, <code>/test/mail/…</code>)
-    need the header <code>apikey: e2e-test-apikey</code> and exist only after <code>scripts/tester.sh</code>
+    need the header <code>apikey: e2e-test-apikey</code> and exist only with <code>--profile tester</code> (step 0.1), after <code>scripts/tester.sh</code>
     (or <code>scripts/api-test.sh</code>):</p>
     <div class="cmd"><pre>curl -sk https://localhost/test/core-mock/v1/wallets/01711000001 -H 'apikey: e2e-test-apikey'</pre></div>
     <p><b>Tokens</b> (JWT) for the business APIs: a form POST to the gateway. All login clients are public: no client secret.</p>
@@ -577,18 +577,28 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
 <!-- ============================================================ -->
 <section id="s3">
   <h2><span class="num">3</span> App flows</h2>
-  <p>Page <span class="ui">App flows</span>. Block 1 <i>Who is signed in</i>, block 2 <i>Flow</i>, block 3 <i>Look things up</i>.
-  <b>Sign-in: none.</b> The console signs in as the user in <span class="ui">User (app login at mw-auth)</span> at mw-auth: it
+  <p>Page <span class="ui">App flows</span>. Block 1 <i>Who is signed in</i>, block 2 <i>Flow</i>, block 3 <i>Look things up</i>,
+  block 4 <i>History</i> (below, full width).
+  <b>Sign-in: none.</b> Pick a <span class="ui">Category</span> (Customer, Agent, Merchant), then a <span class="ui">Wallet</span>:
+  every seeded wallet with the app PIN is listed by holder name, number and user (e.g. <i>Rahim Uddin, 01711000001 (customer01)</i>;
+  mw-seeder's <code>seed-*</code> users and the API suite's run customers too), or <span class="ui">Other MSISDN…</span> for any
+  other wallet. The card under it shows the holder name, number, live balance and held amount, and whether this console has
+  a device bound and a live session for it (refresh button; it refreshes after every submit). The console signs in as that user at mw-auth: it
   binds a device for it the first time (OTP + app PIN <code>13579</code>), logs in with the MSISDN and the app PIN, and signs
   every request. The transaction PIN is the app PIN <code>13579</code> (<code>MW_SEED_APP_PIN</code>): mw-auth checks it and issues the assertion the request carries (ticket 72). Under <span class="ui">Transaction type</span> a hint says what the chosen type does.</p>
-  <div class="warn"><b>Pick the transaction type first, then the user.</b> Choosing a
-  <span class="ui">Transaction type</span> resets the user, counterparty and amount to that type's defaults
-  (the defaults below already fit each case).</div>
+  <div class="warn"><b>Pick who is signed in first, then the flow.</b> <span class="ui">Transaction type</span> lists only
+  the role's flows (a customer: P2P, cash out, merchant payment, top-up, bill payment, add money; an agent: cash in; a merchant:
+  none, it only collects), and choosing a category picks its first flow. A flow (or a wallet) change resets the counterparty and
+  amount to that flow's defaults (the defaults below already fit each case). The counterparty is a list of the seeded wallets the
+  flow pays (never yourself) and the simulators' magic numbers, with <span class="ui">Custom…</span> for any other value (the text
+  box under it). The <span class="ui">Scenario</span> chips fill counterparty, amount and PIN for one outcome: <i>Happy path</i>,
+  <i>Wrong PIN (97531)</i>, <i>Over the per-txn limit (6000)</i>, and for the partner flows <i>refuses (…999)</i>, <i>Timeout →
+  status inquiry (.13)</i>, <i>500 after send (.77)</i>, bill not found / already paid; then press Submit.</div>
 
   <div class="case" id="c3-1">
     <h3><span class="id">3.1</span>Device binding</h3>
     <ol>
-      <li><span class="ui">User (app login at mw-auth)</span> <code>customer01</code>, press <span class="ui">Re-bind (new device)</span>.</li>
+      <li><span class="ui">Category</span> Customer, <span class="ui">Wallet</span> <code>customer01</code>, press <span class="ui">Re-bind (new device)</span>.</li>
       <li>Expect three steps: <i>ask for the binding OTP</i> (<code>POST /auth/v1/otp</code>, HTTP 202), <i>read the
         OTP from the SMSC simulator</i> (the 6-digit OTP shown), <i>bind the device</i> (<code>POST /auth/v1/devices</code>,
         HTTP 201). Since ticket 68 mw-auth owns device binding, the OTP and sessions; mw-app-gateway only verifies the
@@ -620,7 +630,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
   <div class="case" id="c3-3">
     <h3><span class="id">3.3</span>Cash in (agent → customer)</h3>
     <ol>
-      <li>Type <span class="ui">Cash in (agent -&gt; customer)</span> (user <code>agent01</code>, counterparty <code>01711000001</code>, amount <code>20</code>), <span class="ui">Submit</span>.</li>
+      <li><span class="ui">Category</span> Agent (wallet <code>agent01</code>, flow <span class="ui">Cash in (agent -&gt; customer)</span>), counterparty <code>01711000001</code>, amount <code>20</code>, <span class="ui">Submit</span>.</li>
       <li>Expect <code>COMPLETED</code>, customer <code>+Tk 20.00</code>, agent debited, SMS to both.</li>
       <li>Negative: counterparty <code>01911000001</code> (a merchant, not a customer): <code>REJECTED MW-CORE-INVALID_COUNTERPARTY</code>. Counterparty <code>01811000001</code> is agent01's own wallet: refused at once with <code>MW-VAL-012</code> (own wallet).</li>
     </ol>
@@ -640,7 +650,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <ol>
       <li>Type <span class="ui">Merchant payment (in-app)</span> (counterparty <code>01911000001</code>, amount <code>25</code>), <span class="ui">Submit</span>.</li>
       <li>Expect <code>COMPLETED</code>, merchant wallet <code>+Tk 25.00</code>.</li>
-      <li>Change the user to <code>merchant01</code>, press <span class="ui">Merchant collections</span> (block 3); the first time it binds merchant01's device. Click the step <i>the merchant's collections</i>: the payment is listed with the payer masked.</li>
+      <li><span class="ui">Category</span> Merchant, wallet <code>merchant01</code> (block 2 says a merchant starts no flow), press <span class="ui">Merchant collections</span> (block 3); the first time it binds merchant01's device. Click the step <i>the merchant's collections</i>: the payment is listed with the payer masked.</li>
       <li>Negative: counterparty <code>01711000002</code> (not a merchant): <code>REJECTED MW-CORE-INVALID_COUNTERPARTY</code>.</li>
     </ol>
   </div>
@@ -713,16 +723,17 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <p>These are checked in the console before anything is sent; each shows a red ✖ with the text below and no steps.</p>
     <div class="table-wrap"><table>
       <tr><th>Do</th><th>Expect</th></tr>
-      <tr><td><span class="ui">User (app login at mw-auth)</span> empty or <code>nobody</code>, Submit</td><td>"choose a user"</td></tr>
+      <tr><td><span class="ui">Wallet</span> <span class="ui">Other MSISDN…</span> left empty, Submit</td><td>"choose a user"</td></tr>
+      <tr><td><span class="ui">Other MSISDN…</span> <code>12345</code>, Submit</td><td>red ✖ "no wallet known for app user 12345 (pick a seeded wallet or type an MSISDN)"</td></tr>
       <tr><td>Amount <code>10.123</code> or <code>abc</code></td><td>"the amount is taka with at most 2 decimals, e.g. 10 or 20.13"</td></tr>
       <tr><td>PIN <code>12</code></td><td>"the PIN is 4 to 6 digits (seeded wallets: 13579, MW_SEED_APP_PIN)"</td></tr>
       <tr><td>P2P counterparty <code>12345</code></td><td>"the counterparty must be a wallet number (01XXXXXXXXX)"</td></tr>
       <tr><td>Top-up, number to top up <code>12345</code></td><td>"the number to top up must be a mobile number"</td></tr>
       <tr><td>Bill payment, bill number empty</td><td>"enter the bill number"</td></tr>
       <tr><td>Add money, bank account <code>123</code></td><td>"the bank account number is 6 to 20 digits"</td></tr>
-      <tr><td>Type <code>customer02</code> as user (never submitted before), press <span class="ui">Resend the last submit (same Idempotency-Key)</span></td><td>"no earlier submit of customer02 in this console (submit one first)": the last submit is remembered per user</td></tr>
-      <tr><td>User <code>merchant02</code>, <span class="ui">Bind device</span>, then <span class="ui">Merchant collections</span></td><td>device bound for merchant02 (01911000002); its collections list (empty until someone pays 01911000002)</td></tr>
-      <tr><td>User <code>seed-customer01</code> (typed, not in the suggestions), P2P to <code>01711000002</code>, Tk 10</td><td>the first submit binds a device, then <code>COMPLETED</code>; payer <code>01712000001</code> <code>-Tk 15.00</code></td></tr>
+      <tr><td>Pick <code>customer02</code> (never submitted before), press <span class="ui">Resend the last submit (same Idempotency-Key)</span></td><td>"no earlier submit of customer02 in this console (submit one first)": the last submit is remembered per user</td></tr>
+      <tr><td>Merchant <code>merchant02</code>, <span class="ui">Bind device</span>, then <span class="ui">Merchant collections</span></td><td>device bound for merchant02 (01911000002); its collections list (empty until someone pays 01911000002)</td></tr>
+      <tr><td>Wallet <i>Sumaiya Islam, 01712000001 (seed-customer01)</i>, P2P to <code>01711000002</code>, Tk 10</td><td>the first submit binds a device, then <code>COMPLETED</code>; payer <code>01712000001</code> <code>-Tk 15.00</code></td></tr>
       <tr><td>Leave the console idle for more than 4 minutes, then Submit</td><td>an extra first step <i>open a new app session for the bound device (signed)</i> (<code>POST /auth/v1/sessions</code>, at mw-auth); if that fails, the console binds the device again</td></tr>
     </table></div>
   </div>
@@ -745,6 +756,30 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <tr><td><span class="ui">Three wrong PINs</span>, then <span class="ui">Log in with the PIN</span> with the right one</td><td>wrong 1 and 2: 401 <code>MW-AUTH-040</code> with 2 and 1 tries left; the third 423 <code>MW-AUTH-041</code> with <code>retryAfter</code> (at most 60 s with the dev timers <code>MW_AUTH_LOCK_LEVEL1=1m</code>); the right PIN is refused the same way without being checked. Unlock: ops-maker asks UNLOCK on the wallet, ops-checker approves (<a href="#c9-8">9.8</a>); or wait the minute. Three more wrong PINs after it: level 2 (<code>MW_AUTH_LOCK_LEVEL2=3m</code>), then permanent (<code>MW-AUTH-042</code>) until a reset</td></tr>
       <tr><td>USSD (<a href="#c4-1">4.1</a>) as the fresh wallet: type its number as subscriber, send money, a wrong PIN</td><td>"Wrong PIN. 2 tries left." and the PIN is asked again; the third wrong PIN ends the session "Your PIN is locked for now…": one PIN and one lockout for every channel</td></tr>
       <tr><td>Web checkout (<a href="#c7-1">7.1</a>): after the OTP pay with PIN <code>97531</code></td><td>"refused MW-AUTH-040"; the session stays OPEN; the OTP was spent by its check, so <span class="ui">Send OTP</span> again and pay with <code>13579</code>: PAID</td></tr>
+    </table></div>
+  </div>
+
+  <div class="case" id="c3-12">
+    <h3><span class="id">3.12</span>Wallet history</h3>
+    <p>Block 4 <span class="ui">History</span>: the signed-in wallet's transactions through the app API
+    (<code>GET /app/v1/transactions</code>, as the app does: the mw-auth session, no device signature), newest first, sent
+    (<code>OUT</code>) and received (<code>IN</code>) on every channel (app, USSD, bulk credits). Press
+    <span class="ui">Load history</span> (the first time it binds the device, like any app call); once shown it reloads after
+    every submit. Each txnId opens the transaction explorer.</p>
+    <ol>
+      <li>As <code>customer01</code>, P2P Tk 10 to <code>01711000002</code>, <span class="ui">Load history</span>: the row is
+        <code>OUT</code> <code>P2P</code>, counterparty masked (<code>0171****002</code>), <code>-Tk 10.00</code>, fee <code>Tk 5.00</code>, <code>COMPLETED</code>.</li>
+      <li>Pick <code>customer02</code>, <span class="ui">Load history</span>: the same txnId as <code>IN</code>, <code>+Tk 10.00</code>, no fee.</li>
+      <li>As <code>agent01</code> cash in Tk 20 to <code>01711000001</code>; back as <code>customer01</code>: the cash in is <code>IN</code>.</li>
+      <li>As <code>merchant01</code> after a merchant payment (3.5): the payment is <code>IN</code>.</li>
+    </ol>
+    <h4>Variants</h4>
+    <div class="table-wrap"><table>
+      <tr><th>Do</th><th>Expect</th></tr>
+      <tr><td><span class="ui">Type</span> <code>P2P</code>, <span class="ui">Direction</span> <code>IN (received)</code></td><td>only received P2P rows; <i>No transactions for these filters</i> when none</td></tr>
+      <tr><td>A P2P with PIN <code>97531</code> or over the limit, then the payee's history</td><td>never listed as <code>IN</code>: a failed transfer received nothing (the payer sees <code>REJECTED</code> <code>OUT</code>, or nothing when mw-auth refused it before a txnId)</td></tr>
+      <tr><td>More than 20 rows</td><td><span class="ui">More</span> loads the next 20 under them</td></tr>
+      <tr><td>mw-orchestrator stopped (<code>docker compose stop mw-orchestrator</code>), <span class="ui">Refresh</span></td><td>red ✖ <code>history refused: MW-SYS-013</code>, HTTP 503, retryable (start it again afterwards)</td></tr>
     </table></div>
   </div>
 </section>
@@ -1439,10 +1474,10 @@ scripts/log-scan.sh</pre></div>
   <h2><span class="num">12</span> Troubleshooting</h2>
   <div class="table-wrap"><table>
     <tr><th>Symptom</th><th>Fix</th></tr>
-    <tr><td><code>/tester</code> answers 404 or a JSON error</td><td>a later <code>docker compose up</code> removed the test routes: <code>scripts/tester.sh</code></td></tr>
-    <tr><td>Home shows ✖ "test-only routes are on"</td><td><code>scripts/tester.sh</code></td></tr>
+    <tr><td><code>/tester</code> answers 404 or a JSON error</td><td>a later <code>docker compose up</code> without <code>--profile tester</code> removed the test routes: the step 0.1 start command (or <code>scripts/tester.sh</code>)</td></tr>
+    <tr><td>Home shows ✖ "test-only routes are on"</td><td>the step 0.1 start command (or <code>scripts/tester.sh</code>)</td></tr>
     <tr><td>Everything times out or fails oddly</td><td>a preset or fault is still on: Home → <span class="ui">Reset every simulator and core fault</span></td></tr>
-    <tr><td>Timeout tests take minutes</td><td>the stack runs production timers (the test timers block was removed from <code>deploy/.env</code>): put it back from <code>deploy/dev.env.defaults</code>, recreate the services (step 0.1), then <code>scripts/tester.sh</code></td></tr>
+    <tr><td>Timeout tests take minutes</td><td>the stack runs production timers (the test timers block was removed from <code>deploy/.env</code>): put it back from <code>deploy/dev.env.defaults</code>, recreate the services (the step 0.1 start command)</td></tr>
     <tr><td><code>MW-CORE-LIMIT_EXCEEDED_DAILY</code></td><td>the wallet spent Tk 15,000 today (UTC): use customer02, or start fresh (0.1)</td></tr>
     <tr><td><code>MW-AUTH-041</code> (HTTP 423) or <code>MW-AUTH-042</code></td><td>three wrong PINs locked the PIN at mw-auth: wait (<code>retryAfter</code>; level 1 is 1 min in dev) or unlock (9.8); level 3 (<code>042</code>) only ends with a reset (3.11)</td></tr>
     <tr><td><code>MW-SYS-050</code> (HTTP 503) on logins or PIN changes at mw-auth</td><td>mw-crypto or the HSM is down: <code>docker compose -f deploy/docker-compose.yml ps softhsm mw-crypto</code>, start what is stopped (10.1)</td></tr>

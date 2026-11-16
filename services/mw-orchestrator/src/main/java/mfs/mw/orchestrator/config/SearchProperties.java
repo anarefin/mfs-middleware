@@ -4,8 +4,10 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.Map;
+import mfs.mw.orchestrator.service.saga.Status;
 import mfs.mw.orchestrator.util.SearchKeys;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.validation.annotation.Validated;
 
 /**
@@ -18,15 +20,25 @@ import org.springframework.validation.annotation.Validated;
  *     BILLER:<billerCode>} or {@code MERCHANT:<wallet MSISDN>} (A3): an org-scoped query also
  *     returns the transactions paying one of them, tagged {@code PAYEE}. An org that is not listed
  *     sees only what it initiated.
+ * @param walletInStatuses the statuses in which a wallet's history shows a transaction that pays
+ *     the wallet ({@code IN}, ADR D25): only once the money reached it (default COMPLETED,
+ *     REVERSING, REVERSED); a failed transfer to the wallet gave it nothing and is not shown. The
+ *     wallet's own payments ({@code OUT}) are shown in every status.
  */
 @Validated
 @ConfigurationProperties("mw.orchestrator.search")
-public record SearchProperties(@NotBlank @Size(min = 32) String hashKey, Map<String, List<String>> orgPayees) {
+public record SearchProperties(
+    @NotBlank @Size(min = 32) String hashKey,
+    Map<String, List<String>> orgPayees,
+    @DefaultValue({"COMPLETED", "REVERSING", "REVERSED"}) List<String> walletInStatuses) {
 
   public SearchProperties {
     orgPayees = orgPayees == null ? Map.of() : Map.copyOf(orgPayees);
     // fail at start on a malformed entry, not at the first query
     orgPayees.values().forEach(list -> list.forEach(SearchKeys.Key::parse));
+    walletInStatuses =
+        walletInStatuses == null ? List.of() : walletInStatuses.stream().map(String::strip).toList();
+    walletInStatuses.forEach(Status::valueOf);
   }
 
   /** The payees {@code orgId} collects for; empty when it collects for none. */
@@ -36,6 +48,7 @@ public record SearchProperties(@NotBlank @Size(min = 32) String hashKey, Map<Str
 
   @Override
   public String toString() {
-    return "SearchProperties[hashKey=****, orgPayees=" + orgPayees.keySet() + "]";
+    return "SearchProperties[hashKey=****, orgPayees=" + orgPayees.keySet() + ", walletInStatuses="
+        + walletInStatuses + "]";
   }
 }

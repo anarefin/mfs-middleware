@@ -54,6 +54,7 @@ class ApiContractsTest {
   static final String APP_API = "api/mw-app-gateway/app.v1.openapi.yaml";
   static final String BILLPAY_API = "api/mw-adapter-billpay/billpay.v1.openapi.yaml";
   static final String AUTH_API = "api/mw-auth/auth-internal.v1.openapi.yaml";
+  static final String QUERY_API = "api/mw-orchestrator/txn-query.v1.openapi.yaml";
   static final String TXN_ID = "019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c0d";
   static final String CORRELATION_ID = "019a4f6e-0000-7a3b-8c4d-5e6f7a8b9c0d";
   static final Instant NOW = Instant.parse("2026-11-04T06:00:00Z");
@@ -62,7 +63,7 @@ class ApiContractsTest {
   void theManifestListsTheseApis() {
     ContractManifest manifest = ContractManifest.load();
     assertThat(manifest.producedApis()).containsExactly(APP_API);
-    assertThat(manifest.consumedApis()).containsExactly(BILLPAY_API, AUTH_API, AUTH_PUBLIC_API);
+    assertThat(manifest.consumedApis()).containsExactly(BILLPAY_API, AUTH_API, AUTH_PUBLIC_API, QUERY_API);
   }
 
   // ---- served: app.v1 ----
@@ -124,6 +125,42 @@ class ApiContractsTest {
         new Bill("DESCO", "1234567", new Amount(66_700L, "BDT"), "2026-11-14", "2026-11"));
     assertValid(OpenApiSchemas.component(APP_API, "Bill"),
         new Bill("DESCO", "1234567", new Amount(66_700L, "BDT"), null, null));
+  }
+
+  // ---- served: the wallet history; called: mw-orchestrator's query API (ADR D25) ----
+
+  static final String QUERY_PAGE = "{\"items\":["
+      + "{\"txnId\":\"" + TXN_ID + "\",\"direction\":\"OUT\",\"txnType\":\"P2P\",\"channel\":\"CUSTOMER_APP\","
+      + "\"status\":\"FAILED\",\"createdAt\":\"2026-11-16T06:00:00Z\",\"updatedAt\":\"2026-11-16T06:00:02Z\","
+      + "\"correlationId\":\"c-1\",\"amount\":{\"valueMinor\":5000,\"currency\":\"BDT\"},"
+      + "\"fee\":{\"valueMinor\":0,\"currency\":\"BDT\"},"
+      + "\"initiator\":{\"type\":\"MSISDN\",\"id\":\"0171****001\"},"
+      + "\"debitParty\":{\"type\":\"WALLET\",\"id\":\"0171****001\",\"walletType\":\"CUSTOMER\"},"
+      + "\"creditParty\":{\"type\":\"WALLET\",\"id\":\"0171****002\",\"name\":\"R\",\"walletType\":\"CUSTOMER\"},"
+      + "\"error\":{\"code\":\"MW-CORE-INSUFFICIENT_BALANCE\",\"message\":\"Insufficient balance\",\"retryable\":false}},"
+      + "{\"txnId\":\"019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c0e\",\"direction\":\"IN\",\"txnType\":\"BULK_DISBURSE\","
+      + "\"channel\":\"ORG_PORTAL\",\"status\":\"COMPLETED\",\"createdAt\":\"2026-11-16T05:00:00Z\","
+      + "\"updatedAt\":\"2026-11-16T05:00:01Z\",\"amount\":{\"valueMinor\":1000,\"currency\":\"BDT\"},"
+      + "\"debitParty\":{\"type\":\"ORG\",\"id\":\"*******0001\"},"
+      + "\"creditParty\":{\"type\":\"WALLET\",\"id\":\"0171****001\",\"walletType\":\"CUSTOMER\"},"
+      + "\"coreRef\":\"CORE-9\",\"attributes\":{\"parentTxnId\":\"p-1\"}}],\"limit\":21,\"offset\":0}";
+
+  @Test
+  void aContractShapedWalletPageDeserialisesAndItsHistoryMatchesTheAppContract() {
+    assertThat(OpenApiSchemas.component(QUERY_API, "TxnPage").validate(JSON.readTree(QUERY_PAGE))).isEmpty();
+    mfs.mw.app.gateway.dto.QueryTxnPage page = JSON.readValue(QUERY_PAGE, mfs.mw.app.gateway.dto.QueryTxnPage.class);
+    assertThat(page.items()).extracting(mfs.mw.app.gateway.dto.QueryTxn::direction).containsExactly("OUT", "IN");
+
+    mfs.mw.app.gateway.mapper.HistoryMapper mapper = new mfs.mw.app.gateway.mapper.HistoryMapper();
+    Schema schema = OpenApiSchemas.component(APP_API, "TransactionHistory");
+    assertValid(schema, new mfs.mw.app.gateway.dto.TransactionHistory(
+        page.items().stream().map(mapper::toItem).toList(), 20, 0, false));
+    assertValid(schema, new mfs.mw.app.gateway.dto.TransactionHistory(List.of(), 20, 40, false));
+    // guard: a direction outside the enum is refused
+    assertThat(schema.validate(JSON.readTree("{\"items\":[{\"txnId\":\"x\",\"txnType\":\"P2P\",\"direction\":\"BOTH\","
+        + "\"status\":\"COMPLETED\",\"amount\":{\"valueMinor\":1,\"currency\":\"BDT\"},"
+        + "\"counterparty\":{\"type\":\"WALLET\",\"id\":\"0171****002\"},\"requestedAt\":\"2026-11-16T05:00:00Z\","
+        + "\"updatedAt\":\"2026-11-16T05:00:00Z\"}],\"limit\":20,\"offset\":0,\"hasMore\":false}"))).isNotEmpty();
   }
 
   // ---- called: mw-auth's internal API (AuthClient, ticket 68) ----

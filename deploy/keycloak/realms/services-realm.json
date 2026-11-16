@@ -153,7 +153,7 @@
     },
     {
       "clientId": "mw-app-gateway",
-      "name": "mw-app-gateway (mw-auth internal API: device keys and sessions of the device gate)",
+      "name": "mw-app-gateway (mw-auth internal API: device keys and sessions of the device gate; mw-orchestrator query API: wallet history)",
       "enabled": true,
       "publicClient": false,
       "clientAuthenticatorType": "client-secret",
@@ -171,6 +171,16 @@
           "protocolMapper": "oidc-audience-mapper",
           "config": {
             "included.custom.audience": "mw-auth",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "aud-mw-orchestrator",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "mw-orchestrator",
             "access.token.claim": "true",
             "id.token.claim": "false"
           }

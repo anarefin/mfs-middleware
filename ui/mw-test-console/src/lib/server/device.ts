@@ -13,7 +13,7 @@ import { walletOf } from "./tokens";
 
 type Device = {
   id: string; key: DeviceKey; bound: boolean; lastUse: number;
-  access?: string; refresh?: string; exp?: number;
+  access?: string; refresh?: string; exp?: number; loggedInAt?: number;
 };
 const g = globalThis as unknown as { __tcDevices?: Map<string, Device>; __tcAuthPinKey?: { keyId: string; publicKeyPem: string } };
 const devices = (g.__tcDevices ??= new Map());
@@ -33,9 +33,14 @@ export function forgetDevice(user: string): void {
   devices.delete(user);
 }
 
-export function deviceState(user: string): { bound: boolean; deviceId?: string } {
+export type DeviceState = { bound: boolean; deviceId?: string; loggedInAt?: number; lastUse?: number; session: boolean };
+
+/** The user's device in this console: bound or not, and its mw-auth session (login time; live while used within 4 min). */
+export function deviceState(user: string): DeviceState {
   const d = devices.get(user);
-  return d ? { bound: d.bound, deviceId: d.id } : { bound: false };
+  if (!d) return { bound: false, session: false };
+  const session = Boolean(d.access) && Date.now() - d.lastUse <= 4 * 60000;
+  return { bound: d.bound, deviceId: d.id, loggedInAt: d.access ? d.loggedInAt : undefined, lastUse: d.lastUse || undefined, session };
 }
 
 /** The app PIN encrypted under mw-auth's PIN transport key (GET /auth/v1/pin-key, public). */
@@ -87,7 +92,7 @@ function keep(d: Device, body: unknown): void {
 export async function ready(t: Trace, user: string, force = false): Promise<void> {
   if (force) forgetDevice(user);
   const d = deviceOf(user);
-  const wallet = walletOf(user);
+  const wallet = await walletOf(user);
   if (!d.bound) {
     const before = await codes(wallet, BIND_OTP);
     const r = await t.call("1. ask for the device binding OTP (SMS to the wallet)", "POST", "/auth/v1/otp",
@@ -119,6 +124,7 @@ export async function ready(t: Trace, user: string, force = false): Promise<void
       throw new EdgeError("the login at mw-auth failed");
     }
     keep(d, r.body);
+    d.loggedInAt = Date.now();
   } else if ((d.exp ?? 0) - 30000 < Date.now()) {
     const body = JSON.stringify({ refreshToken: d.refresh });
     const r = await t.call("refresh the tokens at mw-auth (signed)", "POST", "/auth/v1/tokens/refresh",

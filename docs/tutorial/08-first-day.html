@@ -58,10 +58,9 @@
 <pre><code>./gradlew clean build      <span class="c"># compile, test and package every service jar (the Testcontainers tests need Docker)</span>
 cd deploy
 cp dev.env.defaults .env   <span class="c"># the dev settings: fixed fake credentials and short timers (once)</span>
-docker compose --profile core --profile seed up -d --build
+docker compose --profile core --profile seed --profile tester up -d --build --wait   <span class="c"># everything, seeded; test console at https://localhost/tester</span>
 cd ..
 scripts/smoke.sh           <span class="c"># quick live checks: is everything up?</span>
-scripts/tester.sh          <span class="c"># start the test console: https://localhost/tester</span>
 scripts/creds.sh           <span class="c"># print every test login and password (or open https://localhost/tester/credentials)</span></code></pre>
   <p>What just happened:</p>
   <ul>
@@ -71,8 +70,9 @@ scripts/creds.sh           <span class="c"># print every test login and password
       obviously fake dev credentials, the USSD allow-lists and short test timers. Compose reads <code>deploy/.env</code> by
       itself, so no <code>docker compose</code> command needs an extra flag; the scripts copy it themselves when it is
       missing. The volumes are set up with these values: change one only together with <code>deploy/reset.sh</code>.</li>
-    <li><code>docker compose … up -d --build</code> built the images from those jars and started the containers; the seed profile
-      also ran <code>mw-seeder</code>, which creates the test users, wallets and balances. The test timers block of
+    <li><code>docker compose … up -d --build --wait</code> built the images from those jars (and both consoles), started the
+      containers and waited until all were healthy and seeded: the seed profile ran <code>mw-seeder</code>, which creates the
+      test users, wallets and balances, and the tester profile turned on the test-only gateway routes and started the test console. The test timers block of
       <code>deploy/.env</code> shortens the timeouts and the status-inquiry schedule so failures resolve in seconds, not hours.
       Delete that block (and recreate the services) for the production values.</li>
     <li>The first start also ran one-shot jobs: <code>kafka-init</code> created the topics, <code>provision</code> created each

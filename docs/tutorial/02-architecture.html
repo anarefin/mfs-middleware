@@ -240,7 +240,7 @@
     <tr><td><code>minimal</code></td><td>Platform plus the services for send money and cash.</td><td><code>docker compose --profile minimal up -d</code></td></tr>
     <tr><td><code>core</code></td><td>Everything.</td><td><code>docker compose --profile core up -d</code></td></tr>
     <tr><td><code>seed</code></td><td>The seeder (test data).</td><td><code>docker compose --profile core --profile seed up -d</code></td></tr>
-    <tr><td><code>tester</code></td><td>The test console.</td><td><code>scripts/tester.sh</code></td></tr>
+    <tr><td><code>tester</code></td><td>The test console and the test-only gateway routes.</td><td><code>docker compose --profile core --profile seed --profile tester up -d --build --wait</code> (everything in one command)</td></tr>
   </table></div>
 
   <h2 id="isolation">No shared code, on purpose</h2>

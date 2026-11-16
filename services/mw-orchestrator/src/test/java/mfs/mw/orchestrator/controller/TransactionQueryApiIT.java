@@ -354,6 +354,136 @@ class TransactionQueryApiIT {
     }
   }
 
+  // --- wallet history (ADR D25) -------------------------------------------------------------
+
+  /** As mw-app-gateway asks: its wallet-scoped token, always with walletId. */
+  private JsonNode wallet(String walletId, String extra) throws Exception {
+    HttpRequest req =
+        HttpRequest.newBuilder(
+                URI.create("http://localhost:" + port + "/internal/v1/transactions?walletId=" + enc(walletId) + extra))
+            .header("Authorization", mfs.mw.orchestrator.security.InternalTokens.bearer("mw-app-gateway"))
+            .build();
+    HttpResponse<String> res = HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.ofString());
+    assertThat(res.statusCode()).as(res.body()).isEqualTo(200);
+    return json.readTree(res.body());
+  }
+
+  private static List<String> directions(JsonNode page) {
+    return page.path("items").valueStream().map(n -> n.path("direction").asString()).toList();
+  }
+
+  private void setStatus(String txnId, String status) {
+    jdbc.update("update transaction set status = ? where txn_id = ?::uuid", status, txnId);
+  }
+
+  private String accepted(TxnRequest req, String status) {
+    transactions.accept(req, "gw-1");
+    if (status != null) {
+      setStatus(req.txnId(), status);
+    }
+    clock.advance(Duration.ofSeconds(1));
+    return req.txnId();
+  }
+
+  private static TxnRequest cashIn(String customer) {
+    TxnRequest base = TestData.p2p(TestData.txnId(), "key-" + TestData.txnId(), 3_000);
+    return new TxnRequest(
+        base.schemaVersion(), base.txnId(), base.idempotencyKey(), base.correlationId(), "AGENT_APP", "CASH_IN",
+        new mfs.mw.orchestrator.dto.Party("MSISDN", "01811000001", null, null),
+        new mfs.mw.orchestrator.dto.Party("WALLET", "01811000001", null, "AGENT"),
+        new mfs.mw.orchestrator.dto.Party("WALLET", customer, null, "CUSTOMER"), base.amount(), null, null,
+        base.assertion(), base.locale(), null, null, base.requestedAt());
+  }
+
+  @Test
+  void aWalletsHistoryHasWhatItSentAndWhatReachedItEveryChannelTaggedWithTheDirection() throws Exception {
+    String sent = accepted(TestData.p2p(TestData.txnId(), "key-" + TestData.txnId(), 5_000), "COMPLETED");
+    String cashIn = accepted(cashIn("01711000001"), "COMPLETED");
+    String bulk = accepted(TestData.bulkChild(TestData.txnId(), "key-" + TestData.txnId(), 1_000, "01711000001"),
+        "COMPLETED");
+    String merchant = accepted(TestData.merchantPay(TestData.txnId(), "key-" + TestData.txnId(), 2_500, "01911000001"),
+        "COMPLETED");
+    String addMoney = accepted(TestData.addMoneyBank(TestData.txnId(), "key-" + TestData.txnId(), 10_000,
+        "1234567890123"), "COMPLETED");
+    String topup = accepted(TestData.topup(TestData.txnId(), "key-" + TestData.txnId(), 2_000, "01711000002"), null);
+
+    JsonNode mine = wallet("01711000001", "");
+    assertThat(txnIds(mine)).containsExactly(topup, addMoney, merchant, bulk, cashIn, sent);
+    assertThat(directions(mine)).containsExactly("OUT", "IN", "OUT", "IN", "IN", "OUT");
+    // any accepted form of the number finds the same wallet
+    assertThat(txnIds(wallet("+880 1711-000001", ""))).isEqualTo(txnIds(mine));
+    // the bulk credit shows the org wallet masked, the cash-in the agent masked
+    JsonNode bulkItem = mine.path("items").get(3);
+    assertThat(bulkItem.path("debitParty").path("type").asString()).isEqualTo("ORG");
+    assertThat(bulkItem.path("debitParty").path("id").asString()).doesNotContain("01311000001");
+    assertThat(mine.path("items").get(4).path("debitParty").path("id").asString()).isEqualTo("0181****001");
+    assertThat(mine.toString())
+        .doesNotContain("01711000001").doesNotContain("01811000001").doesNotContain("01911000001")
+        .doesNotContain("1234567890123");
+
+    // the payee sides: customer02 got the P2P (not the top-up of its number), the merchant its payment
+    JsonNode payee = wallet("01711000002", "");
+    assertThat(txnIds(payee)).containsExactly(sent);
+    assertThat(directions(payee)).containsExactly("IN");
+    assertThat(txnIds(wallet("01911000001", ""))).containsExactly(merchant);
+    assertThat(txnIds(wallet("01811000001", ""))).containsExactly(cashIn);
+    assertThat(directions(wallet("01811000001", ""))).containsExactly("OUT");
+  }
+
+  @Test
+  void aTransferToTheWalletIsShownOnlyOnceTheMoneyReachedIt() throws Exception {
+    String failed = accepted(TestData.p2p(TestData.txnId(), "key-" + TestData.txnId(), 5_000), "FAILED");
+    String running = accepted(TestData.p2p(TestData.txnId(), "key-" + TestData.txnId(), 5_000), null);
+    String reversed = accepted(TestData.p2p(TestData.txnId(), "key-" + TestData.txnId(), 5_000), "REVERSED");
+    String reversing = accepted(TestData.p2p(TestData.txnId(), "key-" + TestData.txnId(), 5_000), "REVERSING");
+
+    assertThat(txnIds(wallet("01711000002", ""))).containsExactly(reversing, reversed);
+    // the payer sees every one of its own payments, whatever their status
+    assertThat(txnIds(wallet("01711000001", ""))).containsExactly(reversing, reversed, running, failed);
+  }
+
+  @Test
+  void theWalletHistoryFiltersByDirectionTypeAndDateAndPages() throws Exception {
+    String sent = accepted(TestData.p2p(TestData.txnId(), "key-" + TestData.txnId(), 5_000), "COMPLETED");
+    Instant cut = clock.instant();
+    String cashIn = accepted(cashIn("01711000001"), "COMPLETED");
+    String topup = accepted(TestData.topup(TestData.txnId(), "key-" + TestData.txnId(), 2_000, "01711000002"), null);
+
+    assertThat(txnIds(wallet("01711000001", "&direction=OUT"))).containsExactly(topup, sent);
+    assertThat(txnIds(wallet("01711000001", "&direction=IN"))).containsExactly(cashIn);
+    assertThat(txnIds(wallet("01711000001", "&txnType=P2P"))).containsExactly(sent);
+    assertThat(txnIds(wallet("01711000001", "&from=" + cut))).containsExactly(topup, cashIn);
+    assertThat(txnIds(wallet("01711000001", "&to=" + cut))).containsExactly(sent);
+    assertThat(txnIds(wallet("01711000001", "&limit=2"))).containsExactly(topup, cashIn);
+    assertThat(txnIds(wallet("01711000001", "&limit=2&offset=2"))).containsExactly(sent);
+    assertThat(txnIds(wallet("01711000009", ""))).isEmpty();
+  }
+
+  @Test
+  void aDirectionNeedsAWalletAndAnUnscopedSearchTagsNoDirection() throws Exception {
+    String sent = accepted(TestData.p2p(TestData.txnId(), "key-" + TestData.txnId(), 5_000), "COMPLETED");
+
+    HttpResponse<String> res = get("/internal/v1/transactions?direction=IN");
+    assertThat(res.statusCode()).isEqualTo(400);
+    assertThat(json.readTree(res.body()).path("code").asString()).isEqualTo("MW-VAL-001");
+    assertThat(get("/internal/v1/transactions?walletId=01711000001&direction=SIDEWAYS").statusCode()).isEqualTo(400);
+    assertThat(ok("/internal/v1/transactions?txnId=" + sent).path("items").get(0).has("direction")).isFalse();
+  }
+
+  @Test
+  void theWalletIndexIsKeyedAndTheRawNumberIsNotStored() {
+    String sent = accepted(TestData.p2p(TestData.txnId(), "key-" + TestData.txnId(), 5_000), null);
+
+    List<byte[]> hashes =
+        jdbc.queryForList("select wallet_hash from wallet_txn where txn_id = ?::uuid", byte[].class, sent);
+    assertThat(hashes).hasSize(2).allSatisfy(h -> assertThat(h).hasSize(32));
+    List<String> columns =
+        jdbc.queryForList(
+            "select column_name from information_schema.columns where table_schema = 'txn' and table_name = 'wallet_txn'",
+            String.class);
+    assertThat(columns).containsExactlyInAnyOrder("wallet_hash", "txn_id", "direction", "created_at");
+  }
+
   // --- detail and timeline -------------------------------------------------------------------
 
   @Test

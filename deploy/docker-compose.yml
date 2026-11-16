@@ -2,11 +2,15 @@
 # topology", 20.2; ADR D16 replaces the per-module compose.yml files). Edit this file directly.
 #
 # Start the whole stack without any script (from deploy/, after `./gradlew clean build` made the
-# boot jars and `cp dev.env.defaults .env` made the settings file Compose reads on its own):
-#   docker compose --profile core --profile seed up -d --build
+# boot jars and `cp dev.env.defaults .env` made the settings file Compose reads on its own), in one
+# command: platform, every mw-* service, both consoles, the seed and the test-only routes; it builds
+# the images and returns once everything is healthy and seeded (non-zero: `docker compose logs mw-seeder`):
+#   docker compose --profile core --profile seed --profile tester up -d --build --wait
+# Without the test console and its routes: `--profile core --profile seed up -d --build`, then
+# `docker compose --profile core --profile seed wait mw-seeder` (nothing else waits for the seeder there).
 # Every one-shot is reached from that command: kafka-init and provision gate every mw-* service
 # (x-infra-deps), etcd-init gates apisix, apisix-init gates mw-app-gateway and mw-admin-ui (and
-# mw-seeder). provision re-runs on every `up` (an exited one-shot is started again) and creates
+# mw-seeder and apisix-init-tester), apisix-init-tester and mw-seeder gate mw-test-console. provision re-runs on every `up` (an exited one-shot is started again) and creates
 # missing roles and schemas idempotently, so a new service's schema appears without `down -v`.
 # ./reset.sh drops every container and volume of every profile.
 #
@@ -17,6 +21,8 @@
 #             gateway, and mw-auth, wallet authentication: the security tickets 67-72 put them on that path)
 #   core      every mw-* service and mw-admin-ui
 #   seed      mw-seeder (ticket 57)
+#   tester    mw-test-console (ADR D17, dev/test only) and apisix-init-tester, the one-shot that turns the
+#             test-only routes on; the console waits for mw-seeder when the seed profile is on
 #
 # Credentials (18.4): this file holds no secret value. deploy/.env (gitignored, a copy of the
 # committed dev.env.defaults with fixed, obviously fake dev values; ADR D9) holds every one, and Compose reads it to interpolate ${VAR} placeholders (it is not
@@ -83,7 +89,8 @@
 #   long-running total with the defaults: 8176 of the 8192 guard (ticket 67: -320 APP_MEM_LIMIT, +320
 #                                                    mw-auth; sum of the measured peaks: 6249 without mw-auth)
 #   fixed (outside the guard): one-shots exit before their service starts: provision 128,
-#   kafka-init 512 (3 parallel CLI JVMs; 8 were OOM-killed at 384), apisix-init 256, etcd-init 64,
+#   kafka-init 512 (3 parallel CLI JVMs; 8 were OOM-killed at 384), apisix-init 256 (apisix-init-tester
+#   the same), etcd-init 64,
 #   mw-seeder 256; mw-test-console 192 (profile tester)
 #
 # Recalibrate by sampling `docker stats` through one stack start + API suite run: limit about
@@ -528,7 +535,7 @@ services:
         limits: { cpus: "1", memory: "${APISIX_MEM:-384M}" }
     logging: *logging
 
-  apisix-init:
+  apisix-init: &apisix-init
     image: apache/apisix:3.19.0-debian@sha256:9a7e45dc943fbf10ec916d1232bae4cda9302ae28a4696cfb83c2da01d261141
     restart: "no"
     labels: { mw.oneshot: "true" }
@@ -536,7 +543,7 @@ services:
     depends_on:
       apisix: { condition: service_healthy }
     entrypoint: ["/bin/bash", "/deploy/apisix/apply.sh"]
-    environment:
+    environment: &apisix-init-env
       APISIX_ADMIN: apisix:9180
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?cp dev.env.defaults .env}
       # Test-only objects (deploy/apisix/routes-test, consumers-test): off unless scripts/api-test.sh
@@ -570,6 +577,19 @@ services:
       resources:
         limits: { cpus: "1", memory: 256m }
     logging: *logging
+
+  # apisix-init-tester (profile tester, ADR D17 amendment 2026-11-16): apisix-init once more with the
+  # test-only objects on (MW_E2E_ROUTES=1: routes-test/, consumers-test/, the console's /tester), after
+  # apisix-init, so `--profile tester up` turns them on by itself. apply.sh is idempotent; a later `up`
+  # without the tester profile re-runs apisix-init (MW_E2E_ROUTES=0), which removes them again.
+  apisix-init-tester:
+    <<: *apisix-init
+    profiles: [tester]
+    depends_on:
+      apisix-init: { condition: service_completed_successfully }
+    environment:
+      <<: *apisix-init-env
+      MW_E2E_ROUTES: "1"
 
   greenmail:
     image: greenmail/standalone:2.1.15@sha256:309ba544ea482e5d4265d09921cdab07c8dad2cc4481d715c9b8ff5d3f0a149f
@@ -1297,8 +1317,13 @@ services:
       SEED_MANIFEST: /run/mw/seed/manifest.json
     volumes:
       - seed-manifest:/run/mw/seed:ro
+    # The one-command start (`--profile core --profile seed --profile tester up -d --build --wait`) returns
+    # once this console is healthy: after the test routes are on and after mw-seeder exited 0 (skipped
+    # when the seed profile is off), so --wait means "seeded" too.
     depends_on:
       apisix: { condition: service_healthy }
+      apisix-init-tester: { condition: service_completed_successfully }
+      mw-seeder: { condition: service_completed_successfully, required: false }
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/tester/api/health | grep -q UP"]
       interval: 5s

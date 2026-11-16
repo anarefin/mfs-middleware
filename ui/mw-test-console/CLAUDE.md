@@ -30,8 +30,8 @@ D9 amendment), can unlock and reset accounts, and has no sign-in.
   the SMS received and every step, expandable.
 - `lib/server/tokens.ts`: Keycloak password grant through APISIX (`portals`/`mw-portal`) with the TOTP
   code of the portals users' pre-set secret `KC_PORTALS_TEST_TOTP_SECRET` (`lib/crypto.ts` `totp`;
-  the realm demands TOTP since ticket 73; one code per user per 30 s step), cached per user, refreshed; `walletOf` (an app user's MSISDN: the personas, mw-seeder's `seed-*` app users, or an
-  MSISDN typed in). `lib/server/device.ts`: the app's bound device and mw-auth session per user
+  the realm demands TOTP since ticket 73; one code per user per 30 s step), cached per user, refreshed; `walletOf` (async: an app user's MSISDN from `knownAppUsers()`, i.e. `lib/app-users.ts`
+  over the manifest, or an MSISDN typed in). `lib/server/device.ts`: the app's bound device and mw-auth session per user
   (tickets 68-69; EC P-256 key; `POST /auth/v1/otp` with the MSISDN, the OTP read from the SMSC
   simulator; `POST /auth/v1/devices` with the app PIN `MW_SEED_APP_PIN` encrypted under mw-auth's
   `GET /auth/v1/pin-key`; login `POST /auth/v1/sessions` (MSISDN + PIN), again after 4 min idle;
@@ -44,7 +44,16 @@ D9 amendment), can unlock and reset accounts, and has no sign-in.
   replaces the API suite's device for that user (one active device per wallet).
 - Pages: `/` (stack checks, seeded balances, reset), `/app` (bind, the seven app flows, resend with
   the same Idempotency-Key, billers / fetch bill / status / merchant collections; `FEE-POOL` shown as
-  the fee), `/ussd` (handset: robi over HTTP resumes the open session per key press; gp over SMPP
+  the fee; who is signed in = Category -> Wallet: `lib/app-users.ts` (pure) lists the PIN-ready wallets
+  (manifest `appPins.walletIds`; personas, `seed-*` mw-auth personas, run customers last; the personas
+  only without a manifest), loaded by the server page, plus "Other MSISDN…"; the signed-in card
+  (`app/app/signed-in-card.tsx`, action `walletCard`: core-mock balance / held, `deviceState` bound and
+  login time) reloads after every call; flows per role `FLOWS_BY_ROLE` in `lib/personas.ts` (merchant:
+  none); counterparty lists, magic numbers and the scenario chips in `lib/app-flow-options.ts` (pure;
+  chips fill through `FILL_EVENT`); block 4 History (`app/app/history-panel.tsx`, `appRead` case
+  `history`: `GET /app/v1/transactions` as the signed-in user with the session headers, `lib/app-history.ts`
+  builds the query and reads the page defensively; loaded on demand, then again after each submit;
+  type / direction filters, More by offset; an error envelope such as 503 `MW-SYS-013` shows as a result)), `/ussd` (handset: robi over HTTP resumes the open session per key press; gp over SMPP
   replays the session from the dial with every input so far, as the simulator cannot resume SMPP;
   inputs on a PIN screen show as ****), `/simulators` (presets in `lib/presets.ts`, per-partner
   scenario forms, recorded requests, callback replay, core-mock faults, wallet lookup, SMPP binds /
@@ -88,8 +97,9 @@ D9 amendment), can unlock and reset accounts, and has no sign-in.
   `lib/how-to.ts`, pure and unit-tested, written from `docs/testing-guide.html`) with fill buttons
   that pre-fill the page's form (`components/fill-scope.tsx`: `name=` / `data-fill=` controls).
 - Personas: `lib/personas.ts` (core-mock's app wallets with their holder names, e.g. "Rahim Uddin
-  (customer01)", the portals realm import's users with names; any other user can be typed in).
-  Display names only: user names and MSISDNs are what the forms and the e2e specs select.
+  (customer01)", the portals realm import's users with names; any other app wallet through "Other MSISDN…").
+  Display names only: user names and MSISDNs are what the forms and the e2e specs select (App flows:
+  `app-category` then `app-user`, whose option values are the user names).
 - An add money from the bank first sets c2wbank callbacks ONCE when the simulator has none (a step
   says so), as every API suite scenario does.
 - `src/proxy.ts`: per-request CSP nonce (`lib/security-headers.ts`), `cache-control: no-store`;
@@ -122,9 +132,13 @@ kept.
   holds no secret; it is empty until the seed profile ran).
 - APISIX `deploy/apisix/routes-test/test-console.json`: `/tester`, `/tester/*` to
   `mw-test-console:3000`, private source addresses only, read timeout 180 s (a flow with a status
-  inquiry takes up to a minute). A test-only route: it exists only while `apisix-init` ran with
-  `MW_E2E_ROUTES=1` (`scripts/tester.sh`, `scripts/api-test.sh`); a plain `docker compose up` removes
-  it. The account tools use the test-only routes `test-auth.json`, `test-kc-admin-token.json` and
+  inquiry takes up to a minute). A test-only route: it exists only while `apisix-init` or
+  `apisix-init-tester` (profile `tester`) ran with `MW_E2E_ROUTES=1` (`--profile tester up`,
+  `scripts/tester.sh`, `scripts/api-test.sh`); an `up` without `--profile tester` removes it.
+- Start order (compose): `mw-test-console` waits for `apisix-init-tester` and, when the seed profile
+  is on, for `mw-seeder` to exit 0 (`required: false`), so the one-command start
+  `docker compose --profile core --profile seed --profile tester up -d --build --wait` returns
+  healthy and seeded. The account tools use the test-only routes `test-auth.json`, `test-kc-admin-token.json` and
   `test-kc-admin.json` (same conditions; `deploy/apisix/README.md`).
 
 ## Commands
@@ -132,10 +146,10 @@ kept.
 | Command | What it does |
 | --- | --- |
 | `pnpm install` | dependencies (pinned, `pnpm-lock.yaml`) |
-| `pnpm test` | `tsc --noEmit` + Vitest (`src/**/*.test.ts`: crypto, formats, redaction, headers, `env.optional`, TOTP window, token cache, seed manifest and catalogue, OTP lookup, account-tool lists, txn query, how-to (every page, every fill target), personas, nav; no stack) |
-| from `deploy/`: `docker compose --profile tester build mw-test-console` | the image `mfs-mw/mw-test-console:local` |
-| `scripts/tester.sh` (repo root) | test routes on, start the container, print https://localhost/tester |
-| `scripts/tester-e2e.sh [GREP]` (repo root) | Playwright (`e2e/*.spec.ts`, file order, one worker; tags `@smoke`, `@app`, `@ussd`, `@failures`, `@checkout`, `@bulk`, `@auth` (ticket 76: `e2e/60-auth.spec.ts`; also `e2e/85-account-tools.spec.ts`: a wallet locked by wrong PINs unlocked from the tools, a portal password reset), `@transactions` (`e2e/90-transactions.spec.ts`); `e2e/70-credentials.spec.ts` and `e2e/80-seed-data.spec.ts` are `@smoke` (a live TOTP code signs in, seeded rows with names, balances and PINs)) against the console on the running, seeded stack (from `deploy/`: `docker compose --profile core --profile seed up -d --build --wait`, then `scripts/tester.sh`); `E2E_BASE_URL` |
+| `pnpm test` | `tsc --noEmit` + Vitest (`src/**/*.test.ts`: crypto, formats, redaction, headers, `env.optional`, TOTP window, token cache, seed manifest and catalogue, OTP lookup, account-tool lists, txn query, how-to (every page, every fill target), personas and role flows, app users, app flow options, app history; no stack) |
+| from `deploy/`: `docker compose --profile core --profile seed --profile tester up -d --build --wait` | the whole stack in one command: builds this image (`mfs-mw/mw-test-console:local`) with the others, turns the test routes on, starts the console after the seed |
+| `scripts/tester.sh` (repo root) | on a stack started without `--profile tester`: test routes on, start the container (never builds), print https://localhost/tester |
+| `scripts/tester-e2e.sh [GREP]` (repo root) | Playwright (`e2e/*.spec.ts`, file order, one worker; tags `@smoke`, `@app`, `@ussd`, `@failures`, `@checkout`, `@bulk`, `@auth` (ticket 76: `e2e/60-auth.spec.ts`; also `e2e/85-account-tools.spec.ts`: a wallet locked by wrong PINs unlocked from the tools, a portal password reset), `@transactions` (`e2e/90-transactions.spec.ts`); `e2e/70-credentials.spec.ts` and `e2e/80-seed-data.spec.ts` are `@smoke` (a live TOTP code signs in, seeded rows with names, balances and PINs)) against the console on the running, seeded stack (from `deploy/`: `docker compose --profile core --profile seed --profile tester up -d --build --wait`); `E2E_BASE_URL` |
 | `pnpm dev` | dev server on :3001 against the stack: `EDGE_URL=https://localhost`, `NODE_EXTRA_CA_CERTS=<file>` with the stack's self-signed edge certificate (`docker compose -f deploy/docker-compose.yml cp apisix:/usr/local/apisix/conf/cert/edge.crt build/edge.crt`; TLS verification stays on) plus the env values above (at least the five of the first group) and `SEED_MANIFEST` pointing at a copy of `build/seed/manifest.json`; then `E2E_BASE_URL=http://localhost:3001 pnpm test:e2e` |
 
 The e2e specs check money with deltas (fee included: P2P Tk 5, top-up Tk 2) and reset the simulators

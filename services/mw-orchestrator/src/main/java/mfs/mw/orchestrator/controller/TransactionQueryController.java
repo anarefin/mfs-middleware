@@ -19,8 +19,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Internal query API (ticket 35, contract {@code api/mw-orchestrator/txn-query.v1.openapi.yaml}):
- * reached over the {@code app} network by mw-admin-api and mw-portal-api only; no APISIX route
- * exposes it.
+ * reached over the {@code app} network by mw-admin-api, mw-portal-api (org-scoped) and
+ * mw-app-gateway (wallet-scoped search only, ADR D25); no APISIX route exposes it.
  */
 @RestController
 @RequestMapping("/internal/v1/transactions")
@@ -37,6 +37,8 @@ public class TransactionQueryController {
       @RequestParam(required = false) UUID txnId,
       @RequestParam(required = false) @Pattern(regexp = "\\+?[0-9 -]{8,20}") String msisdn,
       @RequestParam(required = false) @Size(min = 1, max = 64) String orgId,
+      @RequestParam(required = false) @Pattern(regexp = "\\+?[0-9 -]{8,20}") String walletId,
+      @RequestParam(required = false) @Pattern(regexp = "IN|OUT") String direction,
       @RequestParam(required = false) @Size(min = 1, max = 128) String partnerRef,
       @RequestParam(required = false) Status status,
       @RequestParam(required = false) @Pattern(regexp = "[A-Z0-9_]{1,32}") String txnType,
@@ -47,7 +49,7 @@ public class TransactionQueryController {
       @RequestParam(defaultValue = "0") @Min(0) @Max(100_000) int offset) {
     return queries.search(
         new TxnSearchCriteria(
-            txnId, msisdn, orgId, partnerRef, status == null ? null : status.name(), txnType, parentTxnId,
+            txnId, msisdn, orgId, walletId, direction, partnerRef, status == null ? null : status.name(), txnType, parentTxnId,
             from, to, limit, offset));
   }
 

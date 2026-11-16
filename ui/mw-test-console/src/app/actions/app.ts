@@ -3,10 +3,11 @@
 // a money flow (signed, PIN encrypted with the core key), follow it to its final status, compare
 // the core-mock balances before and after, and collect the SMS the wallets received.
 
+import { historyQuery, parseHistory } from "@/lib/app-history";
 import { takaToMinor, normaliseMsisdn } from "@/lib/format";
 import { TXN_TYPES, type TxnType } from "@/lib/personas";
 import { FINAL, type BalanceRow, type Outcome, type SmsRow } from "@/lib/types";
-import { deviceHeaders, deviceState, ready, signedHeaders } from "@/lib/server/device";
+import { deviceHeaders, deviceState, ready, signedHeaders, type DeviceState } from "@/lib/server/device";
 import { EdgeError, Trace, edge, poll, sleep, type EdgeResponse } from "@/lib/server/edge";
 import { publicUrl } from "@/lib/server/env";
 import { core, pins, sim } from "@/lib/server/test-apis";
@@ -42,7 +43,7 @@ export async function bindDevice(_prev: AppState, form: FormData): Promise<AppSt
   return guarded(t, async () => {
     await ready(t, user, form.get("force") === "1");
     const s = deviceState(user);
-    return { ok: !t.failed, headline: `device ${s.deviceId} bound for ${user} (${walletOf(user)})`, steps: t.steps };
+    return { ok: !t.failed, headline: `device ${s.deviceId} bound for ${user} (${await walletOf(user)})`, steps: t.steps };
   });
 }
 
@@ -134,7 +135,7 @@ export async function submitTxn(_prev: AppState, form: FormData): Promise<AppSta
   if (!/^\d{4,6}$/.test(pin)) return fail(t, "the PIN is 4 to 6 digits (seeded wallets: 13579, MW_SEED_APP_PIN)");
   const started = Date.now();
   return guarded(t, async () => {
-    const payer = walletOf(user);
+    const payer = await walletOf(user);
     const encryptedPin = await pins.encrypt(pin);
     t.note("encrypt the PIN on the device", "RSA-OAEP SHA-256 under the PIN transport key (GET /app/v1/pin-key): mw-auth checks it and the request carries its assertion, never the PIN");
     const built = buildBody(type, form, amount, encryptedPin);
@@ -195,12 +196,50 @@ export async function appRead(_prev: AppState, form: FormData): Promise<AppState
         break;
       }
       case "collections":
-        await t.call("the merchant's collections (sign in as merchant01)", "GET", "/app/v1/merchant/collections", { headers: h });
+        await t.call("the merchant's collections (sign in as a merchant)", "GET", "/app/v1/merchant/collections", { headers: h });
         break;
+      case "history": {
+        const q = historyQuery({ txnType: form.get("txnType"), direction: form.get("direction"), offset: form.get("offset") });
+        if (!q.ok) throw new EdgeError(q.error);
+        const r = await t.call("the wallet's history (sent and received, every channel)", "GET", `/app/v1/transactions?${q.query}`, { headers: h });
+        const page = r.status === 200 ? parseHistory(r.body) : null;
+        if (r.status === 200 && !page) t.note("read the history", "the answer is not a history page", false);
+        const env = (r.body ?? {}) as { code?: string; message?: string };
+        return {
+          ok: !t.failed,
+          headline: page ? `${page.items.length} transaction(s) from offset ${q.offset}${page.hasMore ? ", more to load" : ""}` : `history refused: ${env.code ?? `HTTP ${r.status}`} ${env.message ?? ""}`.trim(),
+          steps: t.steps,
+          data: { history: page, offset: q.offset },
+        };
+      }
       default:
         throw new EdgeError("unknown read");
     }
     const last = t.steps[t.steps.length - 1];
     return { ok: !t.failed, headline: `${last?.call} -> HTTP ${last?.status}`, steps: t.steps };
   });
+}
+
+export type WalletCard = {
+  ok: boolean;
+  error?: string;
+  user: string;
+  msisdn?: string;
+  balanceMinor?: number | null;
+  heldMinor?: number | null;
+  device?: DeviceState;
+  at: number;
+};
+
+/** The signed-in card: the wallet, its live core-mock balance and held amount, and this console's device and session for the user. */
+export async function walletCard(user: string): Promise<WalletCard> {
+  const at = Date.now();
+  if (!USER.test(user)) return { ok: false, error: "choose a user", user, at };
+  try {
+    const msisdn = await walletOf(user);
+    const w = await core.wallet(msisdn);
+    return { ok: true, user, msisdn, balanceMinor: w?.balanceMinor ?? null, heldMinor: w?.heldMinor ?? null, device: deviceState(user), at };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message, user, at };
+  }
 }

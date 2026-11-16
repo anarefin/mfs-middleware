@@ -16,6 +16,8 @@ import mfs.mw.app.gateway.dto.SubmitResult;
 import mfs.mw.app.gateway.dto.TransactionView;
 import mfs.mw.app.gateway.exception.MwException;
 import mfs.mw.app.gateway.security.AppUserResolver;
+import mfs.mw.app.gateway.dto.TransactionHistory;
+import mfs.mw.app.gateway.service.TransactionHistoryService;
 import mfs.mw.app.gateway.service.TransactionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,6 +48,7 @@ class TransactionControllerTest {
   private final MockMvcTester mvc;
 
   @MockitoBean TransactionService service;
+  @MockitoBean TransactionHistoryService history;
 
   @Autowired
   TransactionControllerTest(MockMvcTester mvc) {
@@ -317,5 +320,69 @@ class TransactionControllerTest {
   @Test
   void getWithoutTokenIs401() {
     assertThat(mvc.get().uri("/app/v1/transactions/" + TXN_ID).exchange()).hasStatus(401);
+  }
+
+  // ---- GET /app/v1/transactions: the wallet history (ADR D25) ----
+
+  @Test
+  void theHistoryIsTheTokensWalletWithTheDefaultPage() {
+    when(history.history(CUSTOMER, 20, 0, null, null, null, null))
+        .thenReturn(new TransactionHistory(List.of(), 20, 0, false));
+    MvcTestResult r = mvc.get().uri("/app/v1/transactions").with(customer()).exchange();
+    assertThat(r).hasStatus(200);
+    assertThat(r).bodyJson().extractingPath("$.limit").isEqualTo(20);
+    assertThat(r).bodyJson().extractingPath("$.hasMore").isEqualTo(false);
+    verify(history).history(CUSTOMER, 20, 0, null, null, null, null);
+  }
+
+  @Test
+  void theHistoryFiltersArePassedAndTheWalletIsNeverAParameter() {
+    when(history.history(any(), eq(5), eq(10), eq("P2P"), eq("IN"), any(), any()))
+        .thenReturn(new TransactionHistory(List.of(), 5, 10, true));
+    MvcTestResult r = mvc.get()
+        .uri("/app/v1/transactions?limit=5&offset=10&txnType=P2P&direction=IN"
+            + "&from=2026-11-01T00:00:00Z&to=2026-11-02T00:00:00Z&walletId=01711000009")
+        .with(customer()).exchange();
+    assertThat(r).hasStatus(200);
+    verify(history).history(CUSTOMER, 5, 10, "P2P", "IN", java.time.Instant.parse("2026-11-01T00:00:00Z"),
+        java.time.Instant.parse("2026-11-02T00:00:00Z"));
+  }
+
+  @Test
+  void everyAppRoleReadsItsOwnHistory() {
+    when(history.history(any(), eq(20), eq(0), any(), any(), any(), any()))
+        .thenReturn(new TransactionHistory(List.of(), 20, 0, false));
+    for (String[] who : new String[][] {{"agent", "01811000001"}, {"merchant", "01911000001"}}) {
+      MvcTestResult r = mvc.get().uri("/app/v1/transactions")
+          .with(jwt().jwt(j -> j.claim("msisdn", who[1]).claim("role", who[0]).claim("amr", List.of("pin", "device"))))
+          .exchange();
+      assertThat(r).as(who[0]).hasStatus(200);
+    }
+    verify(history).history(new AppUser("01811000001", "AGENT_APP", "AGENT"), 20, 0, null, null, null, null);
+    verify(history).history(new AppUser("01911000001", "MERCHANT_APP", "MERCHANT"), 20, 0, null, null, null, null);
+  }
+
+  @Test
+  void badHistoryParametersAreMwValAndNothingIsAsked() {
+    for (String q : List.of("limit=0", "limit=101", "offset=-1", "offset=10001", "direction=BOTH",
+        "txnType=p2p", "from=yesterday", "limit=x")) {
+      MvcTestResult r = mvc.get().uri("/app/v1/transactions?" + q).with(customer()).exchange();
+      assertThat(r).as(q).hasStatus(400);
+      assertThat(r).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-001");
+    }
+    verify(history, never()).history(any(), org.mockito.ArgumentMatchers.anyInt(),
+        org.mockito.ArgumentMatchers.anyInt(), any(), any(), any(), any());
+  }
+
+  @Test
+  void theHistoryWithoutTokenIs401AndAnUnavailableOrchestratorIsTheEnvelope() {
+    assertThat(mvc.get().uri("/app/v1/transactions").exchange()).hasStatus(401);
+    when(history.history(any(), eq(20), eq(0), any(), any(), any(), any()))
+        .thenThrow(new MwException("MW-SYS-013", "Transaction history temporarily unavailable, try again")
+            .withStatus(HttpStatus.SERVICE_UNAVAILABLE).withRetryable(true));
+    MvcTestResult r = mvc.get().uri("/app/v1/transactions").with(customer()).exchange();
+    assertThat(r).hasStatus(503);
+    assertThat(r).bodyJson().extractingPath("$.code").isEqualTo("MW-SYS-013");
+    assertThat(r).bodyJson().extractingPath("$.retryable").isEqualTo(true);
   }
 }

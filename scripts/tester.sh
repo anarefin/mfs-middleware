@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Starts the test console (ui/mw-test-console, ADR D17; dev/test only) on the running stack and
-# prints its URL. Start and seed the stack first (deploy/RUNNING.html), then scripts/tester.sh.
+# Starts the test console (ui/mw-test-console, ADR D17; dev/test only) on a running stack that was
+# started without the tester profile, and prints its URL. The one-command start does all of this
+# itself (from deploy/: docker compose --profile core --profile seed --profile tester up -d --build
+# --wait; deploy/RUNNING.html); this script is for adding the console to a stack already up.
 #   1. re-runs apisix-init with MW_E2E_ROUTES=1: the test-only routes (core-mock, simulators, mail,
 #      the merchant_demo consumer) and the console's own route /tester (routes-test/test-console.json);
 #      a later `docker compose up` re-runs apisix-init without them (run scripts/tester.sh once more);
-#   2. docker compose --profile core --profile tester up -d --wait mw-test-console (never builds:
-#      `docker compose --profile tester build mw-test-console` in deploy/ builds mfs-mw/mw-test-console:local).
+#   2. docker compose --profile core --profile tester up -d --wait mw-test-console (never builds: the
+#      one-command start's --build, or `docker compose --profile tester build mw-test-console` in
+#      deploy/, builds mfs-mw/mw-test-console:local).
 # Memory: about 192 MiB on top of the core profile (the tester profile is outside scripts/compose-check.sh).
 set -eu
 . "$(dirname "$0")/lib/common.sh"

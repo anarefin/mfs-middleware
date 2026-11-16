@@ -30,6 +30,11 @@ import org.springframework.transaction.annotation.Transactional;
  * initiated it (initiator {@code {ORG, orgId}}, type checked, never an MSISDN with the same text)
  * or when it pays one of the billers / merchant wallets the org collects for ({@code
  * mw.orchestrator.search.org-payees}); each is tagged {@code INITIATOR} or {@code PAYEE}.
+ *
+ * <p>Wallet scope (ADR D25): with a {@code walletId}, the transactions the wallet paid ({@code
+ * OUT}, any status) and the ones that paid it ({@code IN}, only in {@code
+ * mw.orchestrator.search.wallet-in-statuses}: a failed transfer to it gave it nothing), each tagged
+ * with its {@code direction}.
  */
 @Service
 public class TransactionQueryService {
@@ -56,12 +61,23 @@ public class TransactionQueryService {
       throw new MwException(ErrorCodes.VAL_INVALID, "Request validation failed")
           .withDetails(List.of(new ErrorDetail("from", "must be before to")));
     }
+    if (criteria.direction() != null && criteria.walletId() == null) {
+      throw new MwException(ErrorCodes.VAL_INVALID, "Request validation failed")
+          .withDetails(List.of(new ErrorDetail("direction", "needs walletId")));
+    }
     String orgId = criteria.orgId();
     List<SearchKeys.Key> payees = orgId == null ? List.of() : search.payeesOf(orgId);
-    List<TransactionRecord> found = transactions.search(criteria, payees);
+    List<TransactionRecord> found = transactions.search(criteria, payees, search.walletInStatuses());
+    byte[] wallet = criteria.walletId() == null ? null : hash.of(SearchKeys.WALLET, criteria.walletId());
     return new TxnPage(
         found.stream()
-            .map(r -> TransactionViewMapper.toView(r, orgId == null ? null : role(r, orgId).orElse(PAYEE)))
+            .map(
+                r ->
+                    TransactionViewMapper.toView(
+                        r,
+                        orgId == null ? null : role(r, orgId).orElse(PAYEE),
+                        wallet == null ? null : direction(r, wallet),
+                        false))
             .toList(),
         criteria.limit(),
         criteria.offset());
@@ -89,6 +105,15 @@ public class TransactionQueryService {
     }
     return new TxnDetail(
         TransactionViewMapper.toView(rec, role, reveal), transactions.timeline(txnId), partnerCalls.of(txnId));
+  }
+
+  /** The wallet's side of {@code rec} ({@code OUT} before {@code IN}); null when it is neither. */
+  private String direction(TransactionRecord rec, byte[] wallet) {
+    return SearchKeys.walletParties(rec.request()).stream()
+        .filter(p -> Arrays.equals(hash.of(p.key()), wallet))
+        .map(SearchKeys.WalletParty::direction)
+        .findFirst()
+        .orElse(null);
   }
 
   /** The org's role in {@code rec}: INITIATOR before PAYEE; empty when it is neither. */

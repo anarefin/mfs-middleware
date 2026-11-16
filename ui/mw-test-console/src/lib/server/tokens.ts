@@ -6,9 +6,11 @@ import "server-only";
 
 import { totp } from "@/lib/crypto";
 
+import { appUsers, msisdnOf, type AppUser } from "@/lib/app-users";
 import { APP_PERSONAS } from "@/lib/personas";
 import { portalsPassword, portalsTotpSecret } from "./env";
 import { EdgeError, edge, sleep } from "./edge";
+import { loadManifest } from "./seed";
 
 export type Realm = "portals";
 
@@ -61,19 +63,19 @@ export function claims(jwt: string): Record<string, unknown> {
   return JSON.parse(Buffer.from(part, "base64url").toString("utf8")) as Record<string, unknown>;
 }
 
-/** mw-seeder's app users beyond the personas (every app wallet has the seeded app PIN). */
-const SEEDED_APP_USERS: Record<string, string> = {
-  "seed-customer01": "01712000001", "seed-customer02": "01712000002", "seed-agent01": "01812000001",
-  "seed-merchant01": "01912000001",
-};
+/** The PIN-ready app users (lib/app-users.ts over mw-seeder's manifest; the personas only without one). */
+export async function knownAppUsers(): Promise<AppUser[]> {
+  const { manifest } = await loadManifest();
+  return appUsers(manifest);
+}
 
 /** The wallet (MSISDN) an app user logs in with at mw-auth; an MSISDN typed in is its own wallet. */
-export function walletOf(user: string): string {
+export async function walletOf(user: string): Promise<string> {
   const p = APP_PERSONAS.find((x) => x.user === user);
   if (p) return p.msisdn;
-  if (SEEDED_APP_USERS[user]) return SEEDED_APP_USERS[user];
-  if (/^01[3-9][0-9]{8}$/.test(user)) return user;
-  throw new EdgeError(`no wallet known for app user ${user} (type a persona, a seed-* user or an MSISDN)`);
+  const w = msisdnOf(await knownAppUsers(), user);
+  if (w) return w;
+  throw new EdgeError(`no wallet known for app user ${user} (pick a seeded wallet or type an MSISDN)`);
 }
 
 export function forgetTokens(): void {

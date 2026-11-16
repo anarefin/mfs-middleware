@@ -42,7 +42,8 @@ public class SecurityConfig {
       InternalAuthProperties props,
       @Qualifier("handlerExceptionResolver") HandlerExceptionResolver errors)
       throws Exception {
-    InternalCallerPolicy policy = new InternalCallerPolicy(props.allowedClients(), props.orgScopedClients(), props.revealClients());
+    InternalCallerPolicy policy = new InternalCallerPolicy(
+            props.allowedClients(), props.orgScopedClients(), props.revealClients(), props.walletScopedClients());
     AuthenticationEntryPoint unauthenticated =
         (req, res, e) ->
             errors.resolveException(

@@ -17,21 +17,33 @@ import org.springframework.security.oauth2.jwt.Jwt;
  * of a client-credentials token) must be allowed, and an org-scoped client (mw-portal-api) must
  * always send a non-blank {@code orgId}, so it can only ever read its own org's data. Only a
  * reveal client (mw-admin-api, ticket 36) may send {@code reveal} (any value but {@code false}).
+ * A wallet-scoped client (mw-app-gateway, ADR D25) may only search ({@code GET
+ * /internal/v1/transactions}, never the detail), always with a non-blank {@code walletId}, and only
+ * with the query parameters of {@link #WALLET_PARAMS}: it reads one wallet's history and nothing else.
  */
 public final class InternalCallerPolicy {
 
   static final String ORG_PARAM = "orgId";
   static final String REVEAL_PARAM = "reveal";
+  static final String WALLET_PARAM = "walletId";
+  static final String SEARCH_PATH = "/internal/v1/transactions";
+  /** The only query parameters a wallet-scoped client may send. */
+  static final Set<String> WALLET_PARAMS =
+      Set.of(WALLET_PARAM, "direction", "txnType", "status", "from", "to", "limit", "offset");
   private static final Logger log = LoggerFactory.getLogger(InternalCallerPolicy.class);
 
   private final Set<String> allowedClients;
   private final Set<String> orgScopedClients;
   private final Set<String> revealClients;
+  private final Set<String> walletScopedClients;
 
-  public InternalCallerPolicy(Set<String> allowedClients, Set<String> orgScopedClients, Set<String> revealClients) {
+  public InternalCallerPolicy(
+      Set<String> allowedClients, Set<String> orgScopedClients, Set<String> revealClients,
+      Set<String> walletScopedClients) {
     this.allowedClients = Set.copyOf(allowedClients);
     this.orgScopedClients = Set.copyOf(orgScopedClients);
     this.revealClients = Set.copyOf(revealClients);
+    this.walletScopedClients = Set.copyOf(walletScopedClients);
   }
 
   /** Whether the authenticated client may make this request. */
@@ -45,6 +57,15 @@ public final class InternalCallerPolicy {
     } else if (orgScopedClients.contains(client) && isBlank(request.getParameter(ORG_PARAM))) {
       allowed = false;
       reason = "ORG_REQUIRED";
+    } else if (walletScopedClients.contains(client) && !isSearch(request)) {
+      allowed = false;
+      reason = "PATH_NOT_ALLOWED";
+    } else if (walletScopedClients.contains(client) && isBlank(request.getParameter(WALLET_PARAM))) {
+      allowed = false;
+      reason = "WALLET_REQUIRED";
+    } else if (walletScopedClients.contains(client) && !WALLET_PARAMS.containsAll(request.getParameterMap().keySet())) {
+      allowed = false;
+      reason = "PARAM_NOT_ALLOWED";
     } else if (asksReveal(request) && !revealClients.contains(client)) {
       allowed = false;
       reason = "REVEAL_NOT_ALLOWED";
@@ -71,6 +92,14 @@ public final class InternalCallerPolicy {
           : OAuth2TokenValidatorResult.failure(
               new OAuth2Error(OAuth2ErrorCodes.INVALID_TOKEN, "token is not for this service", null));
     };
+  }
+
+  /** {@code GET /internal/v1/transactions} exactly (the search, not a detail). */
+  private static boolean isSearch(HttpServletRequest request) {
+    String uri = request.getRequestURI();
+    String context = request.getContextPath();
+    String path = uri == null ? "" : context != null && uri.startsWith(context) ? uri.substring(context.length()) : uri;
+    return "GET".equals(request.getMethod()) && SEARCH_PATH.equals(path);
   }
 
   private static boolean asksReveal(HttpServletRequest request) {

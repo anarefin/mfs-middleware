@@ -1,6 +1,6 @@
 # Architecture decision records
 
-One record per decision in the spec's two decision tables: D1–D24 ("Decisions confirmed"; D17 has a record but no table row) and
+One record per decision in the spec's two decision tables: D1–D25 ("Decisions confirmed"; D17 has a record but no table row) and
 M1–M13 ("MVP decisions"). The spec stays the source of the decision text; these records add the
 context, the consequences and where the decision lives in the repo. Later refinements (milestone
 gate decisions) are noted in each record's Status line; the spec marks them **Decision
@@ -36,6 +36,7 @@ the repo". A new decision gets the next free id in its table (spec first, then a
 | D22 | [PIN on every transaction, exchanged for a signed assertion](D22-transaction-assertion.md) | Accepted, 2026-11-14 (spec revision 6) |
 | D23 | [mw-crypto is the only HSM client (PKCS#11 and payShield)](D23-hsm-gateway.md) | Accepted, 2026-11-14 (spec revision 6) |
 | D24 | [Service mTLS, phase 1](D24-service-mtls-phase-1.md) | Accepted, 2026-11-14 (spec revision 6) |
+| D25 | [Wallet transaction history from the orchestrator's query API](D25-wallet-transaction-history.md) | Accepted, 2026-11-16 |
 | M1 | [MVP flows](M1-mvp-flows.md) | Accepted, 2026-11-03 |
 | M2 | [MVP channels](M2-mvp-channels.md) | Accepted, 2026-11-03 |
 | M3 | [USSD: SMPP and HTTP both built, GP live over SMPP](M3-mvp-ussd-transport.md) | Accepted, 2026-11-03 |

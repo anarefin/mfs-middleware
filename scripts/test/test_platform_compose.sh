@@ -434,7 +434,37 @@ test_every_one_shot_has_a_dependent_in_the_minimal_and_core_profiles() {
       | select(.key != "mw-seeder") | select(.key as $k | $deps | index($k) | not) | .key')"
     [ -z "$orphans" ] || fail "profile $p: one-shot(s) nothing depends on: $orphans"
   done
+  # the one-command start (core seed tester): every one-shot, mw-seeder included, has a dependent,
+  # so `up -d --build --wait` returns only once the stack is seeded and the test routes are on
+  j="$(COMPOSE_PROFILE="core seed tester" compose_json)" || fail "compose config (core seed tester) failed"
+  orphans="$(printf '%s' "$j" | jq -r '[.services[] | (.depends_on // {}) | keys[]] as $deps
+    | .services | to_entries[] | select((.value.labels // {})["mw.oneshot"] == "true")
+    | select(.key as $k | $deps | index($k) | not) | .key')"
+  [ -z "$orphans" ] || fail "profile core seed tester: one-shot(s) nothing depends on: $orphans"
   return 0
+}
+
+test_the_tester_profile_turns_the_test_routes_on_and_starts_the_console_after_the_seed() {
+  # ADR D17 amendment 2026-11-16: `--profile tester` applies the test-only routes itself
+  # (apisix-init-tester re-runs apply.sh with MW_E2E_ROUTES=1 after apisix-init), and the console
+  # starts once mw-seeder exited 0 (required: false, so the tester profile also works without seed)
+  local j
+  j="$(COMPOSE_PROFILE="core seed tester" compose_json)" || fail "compose config failed"
+  printf '%s' "$j" | jq -e '.services["apisix-init-tester"] | .profiles == ["tester"]
+    and .environment.MW_E2E_ROUTES == "1" and .labels["mw.oneshot"] == "true" and .restart == "no"
+    and .depends_on["apisix-init"].condition == "service_completed_successfully"
+    and .deploy.resources.limits.memory != null' >/dev/null \
+    || fail "apisix-init-tester is not a tester one-shot applying the test routes after apisix-init"
+  printf '%s' "$j" | jq -e '.services["mw-test-console"].depends_on
+    | .["apisix-init-tester"].condition == "service_completed_successfully"
+    and .["mw-seeder"].condition == "service_completed_successfully" and .["mw-seeder"].required == false' >/dev/null \
+    || fail "mw-test-console does not wait for apisix-init-tester and (optionally) mw-seeder"
+  # the plain and core starts keep the test routes off
+  j="$(compose_json)"
+  printf '%s' "$j" | jq -e '(.services | has("apisix-init-tester") | not) and .services["apisix-init"].environment.MW_E2E_ROUTES == "0"' >/dev/null \
+    || fail "the test routes are on without the tester profile"
+  # the tester profile resolves without the seed profile
+  COMPOSE_PROFILE="core tester" compose_json >/dev/null || fail "compose config (core tester) failed"
 }
 
 test_compose_files_hold_no_inline_secret_values() {

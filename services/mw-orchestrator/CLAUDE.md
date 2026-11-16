@@ -279,7 +279,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - `mw-reply-to` (7.5): copied from the request record to every status record (and to the answer
   for a repeated request, taken from the repeated request). Stored in `transaction.reply_to`.
 - Schema `txn` (role `orchestrator_rw`): `transaction`, `saga_step`, `saga_timer`, `idempotency`
-  (+ `outbox`, `inbox`, `shedlock`, `partner_call`, `core_call`); migrations V1..V11 (V11 drops `transaction.encrypted_pin`, ticket 72; V6 `reversal_txn_id`, V7 drops
+  (+ `outbox`, `inbox`, `shedlock`, `partner_call`, `core_call`, `wallet_txn`); migrations V1..V13 (V12 `wallet_txn`,
+  V13 = Java migration `repository/WalletPartyMigration` filling it for older rows, ADR D25, `WalletPartyMigrationIT`;
+  V11 drops `transaction.encrypted_pin`, ticket 72; V6 `reversal_txn_id`, V7 drops
   `idempotency.response`, V8 `initiator_hash` + `partner_call`, ticket 35; V9 `initiator_type`,
   `payee_hash`, `timeline_seq` + `saga_step.seq`, `core_call`; V10 = Java migration
   `repository/SearchHashMigration`, a Spring bean Flyway picks up, re-hashing every older row as
@@ -301,11 +303,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `partnerCalls` (`txn.partner_call`, V8: one row per PAY / STATUS_QUERY sent by
   `SagaEngine.sendToPartner`, answered by `PartnerReplyService` (outcome, partnerRef, errorCode,
   `repliedAt`), plus one CALLBACK row per callback that passed the ownership checks). Clients are
-  mw-admin-api and mw-portal-api over the `app` network; **no APISIX route**. Auth (M3 gate decision,
+  mw-admin-api, mw-portal-api and (wallet history, ADR D25) mw-app-gateway over the `app` network; **no APISIX route**. Auth (M3 gate decision,
   `config/SecurityConfig`, `security/InternalCallerPolicy`, `config/InternalAuthProperties`
   `mw.internal-auth.*`): a Keycloak client-credentials JWT of realm `services` (JWKS
   `MW_INTERNAL_JWK_SET_URI`, exact issuer `MW_INTERNAL_ISSUER`, default `http://keycloak:8080/realms/services`,
-  `aud` must contain `mw-orchestrator`); caller `azp` in `allowed-clients` (mw-portal-api, mw-admin-api),
+  `aud` must contain `mw-orchestrator`); caller `azp` in `allowed-clients` (mw-portal-api, mw-admin-api,
+  mw-app-gateway wallet-scoped, below),
   and `org-scoped-clients` (mw-portal-api) must send a non-blank `orgId` on every call. Reveal
   (ticket 36, contract 1.2.0): `GET .../{txnId}?reveal=true` from a `reveal-clients` caller
   (mw-admin-api only; anyone else sending `reveal` is 403) returns MSISDN-shaped party ids whole
@@ -332,7 +335,22 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   (`mapper/TransactionViewMapper`): parties masked by type, names to the initial, error text and the
   SP `reference` scrubbed, only the bulk attributes (`parentTxnId`, `batchId`, `lineNo`, `reference`);
   no PIN, idempotency key or raw request. `TransactionQueryApiIT` (TSQ'd top-up timeline with core
-  commands, resend count and failure reason, masking, typed org scope, payee roles).
+  commands, resend count and failure reason, masking, typed org scope, payee roles, wallet history).
+  Wallet scope (ADR D25, contract 1.3.0): `walletId` (any MSISDN form) returns the transactions the wallet
+  is the debit party of (`direction` OUT, any status) or the credit party of (`direction` IN, only in
+  `mw.orchestrator.search.wallet-in-statuses`, default COMPLETED,REVERSING,REVERSED: a failed transfer to it
+  gave it nothing), every channel; `direction` narrows it (without `walletId` 400 `MW-VAL-001`). Matched
+  through `txn.wallet_txn` (V12: `wallet_hash` = `HMAC(WALLET:<canonical MSISDN>)` under the search key,
+  `txn_id` (FK, on delete cascade), `direction`, `created_at`; index `(wallet_hash, created_at DESC, txn_id
+  DESC)`), written by `TransactionRepository.insert` in the row's transaction from
+  `util/SearchKeys.walletParties` (debit party OUT, credit party IN, each only when its type is WALLET (any
+  walletType) or MERCHANT: never ORG, a top-up MSISDN, BANK_ACCOUNT or BILLER_ACCOUNT; a wallet on both sides
+  once, as OUT); V13 fills older rows (`on conflict do nothing`). Each item carries `direction`
+  (`TransactionQueryService.direction`); unscoped results carry none. Caller: `wallet-scoped-clients`
+  (mw-app-gateway, also in `allowed-clients`) may only call `GET /internal/v1/transactions` with a non-blank
+  `walletId` and the query parameters walletId, direction, txnType, status, from, to, limit, offset;
+  anything else 403 `MW-AUTH-002`, WARN `security.internal_call_denied` reason `PATH_NOT_ALLOWED` /
+  `WALLET_REQUIRED` / `PARAM_NOT_ALLOWED` (`security/InternalCallerPolicyTest`, `InternalApiAuthIT`).
 - Test-only API (ticket 58, contract `api/mw-orchestrator/orchestrator-test.v1.openapi.yaml`;
   `controller/TestApiController` -> `service/TestApiService`, both only with
   `mw.orchestrator.test-api.enabled=true` = `MW_ORCHESTRATOR_TEST_API_ENABLED`, which only the dev
@@ -363,7 +381,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 - `events/mw-orchestrator/mw.txn.request.v1`, `mw.txn.status.v1`, `core.command.v1` (+ per-command
   payloads), `mw.partner.request.v1`, `mw.partner.reply.v1`, `mw.partner.inbound.v1`,
-  `api/mw-orchestrator/txn-query.v1.openapi.yaml` (internal query API, ticket 35),
+  `api/mw-orchestrator/txn-query.v1.openapi.yaml` (internal query API, ticket 35; 1.3.0 wallet scope, ADR D25),
   `api/mw-orchestrator/orchestrator-test.v1.openapi.yaml` (test-only API, ticket 58), and
   `common/defs.v1` (see `contracts/OWNERS.yml`). Tests validate every status and command the
   service emits against them. `core.command.v1#UnlockWallet` (ticket 52) is in this contract but

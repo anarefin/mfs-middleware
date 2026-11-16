@@ -80,23 +80,29 @@ and `deploy/reset.sh` copy it on their own when `deploy/.env` is missing. The vo
 initialised with these values: change one only together with `./reset.sh`. Deleting `deploy/.env`
 and copying it again is always safe, as the values are fixed.
 
-**3. Start and seed the stack** (from `deploy/`)
+**3. Start and seed the stack** (from `deploy/`): one command for infra, services, both consoles,
+the seed and the test-only routes
 
 ```sh
-docker compose --profile core --profile seed up -d --build --wait
-docker compose --profile core --profile seed wait mw-seeder     # ends with "exited with status code 0" once seeded
+docker compose --profile core --profile seed --profile tester up -d --build --wait
 ```
 
-Compose builds the images (`mfs-mw/<service>:local`), then starts everything in dependency order:
+It returns once every container is healthy and `mw-seeder` has exited 0 (a non-zero exit:
+`docker compose --profile core --profile seed --profile tester ps -a` names the container, then its `logs`).
+Without the test console: `docker compose --profile core --profile seed up -d --build`, then
+`docker compose --profile core --profile seed wait mw-seeder` (nothing else waits for the seeder there).
+
+Compose builds the images (`mfs-mw/<service>:local`, both consoles included), then starts everything in dependency order:
 the platform, the one-shots (`kafka-init` creates the topics, `etcd-init` and `apisix-init` the
 edge config, `provision` every service's OpenBao secret, database role, schema and AppRole), the
-15 services (mw-auth and mw-crypto included) and the admin console, then the one-shot `mw-seeder`. `provision` runs again on every
+15 services (mw-auth and mw-crypto included) and the admin console, then the one-shot `mw-seeder`,
+and with `--profile tester` the one-shot `apisix-init-tester` (the test-only routes) and the test console at https://localhost/tester. `provision` runs again on every
 `up` and creates what is missing, so a new service's schema appears without dropping volumes.
 `deploy/.env` carries the short test timers (core and partner deadlines, status inquiry, reversal,
 retry topics, bulk, IPN, and the mw-auth PIN lockout levels `MW_AUTH_LOCK_TRIES`, `MW_AUTH_LOCK_LEVEL1`,
 `MW_AUTH_LOCK_LEVEL2`, `MW_AUTH_LOCK_DECAY`: 1 min and 3 min instead of 1 h and 24 h) the API suite needs; for the production timers delete the timer block from
 `deploy/.env` and run the start command again (it recreates the services). On a warm Docker cache the command takes 1–2 minutes; the first run pulls the platform
-images and builds 16 images.
+images and builds every local image.
 
 Without the seeder: `docker compose --profile core up -d --build --wait` returns once every
 service is healthy. `docker compose --profile minimal up -d --build` starts only the P2P and cash
@@ -268,12 +274,11 @@ milestone gate run them on a fresh stack:
 ```sh
 ./gradlew clean build                                  # Docker up: every test, every repo check
 cd deploy && ./reset.sh                                # also copies dev.env.defaults to .env if missing
-docker compose --profile core --profile seed up -d --build
-docker compose --profile core --profile seed wait mw-seeder        # 0
+docker compose --profile core --profile seed --profile tester up -d --build --wait   # healthy and seeded
 cd .. && scripts/smoke.sh && scripts/edge-test.sh
 scripts/api-test.sh ""                                 # the whole API suite (but 90 Slow)
 scripts/ui-e2e.sh
-scripts/tester.sh && scripts/tester-e2e.sh
+scripts/tester-e2e.sh
 SECURITY_LIVE=1 scripts/security.sh                    # gitleaks, SBOM + trivy, ZAP baseline, log scan
 ```
 
@@ -394,9 +399,9 @@ on 8080 inside the container).
 | Containers restart or exit with code 137 | Docker is out of memory. Give Docker Desktop 8 GB, lower a knob above, or use `--profile minimal`. |
 | A one-shot (`provision`, `kafka-init`, `etcd-init`, `apisix-init`) exits non-zero | `docker compose logs provision` (it names the service and step), or that one-shot. Usually volumes created with other credentials (a changed value in `deploy/.env`): `./reset.sh`, then start again. |
 | A service stays `starting` | `docker compose logs <service>`. It is usually waiting on postgres, kafka, keycloak, openbao or provision. |
-| `wait mw-seeder` prints a non-zero code | `docker compose --profile core --profile seed logs mw-seeder`: the line `seed.step.failed` names the step. An open change request left in the console blocks it: approve or reject it, then start again. |
+| `up --wait` or `wait mw-seeder` exits non-zero on the seeder | `docker compose --profile core --profile seed logs mw-seeder`: the line `seed.step.failed` names the step. An open change request left in the console blocks it: approve or reject it, then start again. |
 | Every console or suite sign-in fails | The seeder has not finished, or `deploy/.env` holds other values than the volumes: `scripts/creds.sh` prints the current values; `./reset.sh` and copy `dev.env.defaults` again. |
-| 404 on `/test/...` routes | Expected after an `up`: `scripts/api-test.sh` and `scripts/tester.sh` re-apply the test-only routes. |
+| 404 on `/test/...` routes or `/tester` | The stack was started without `--profile tester`: start it with the three profiles again, or `scripts/tester.sh`; `scripts/api-test.sh` re-applies the test-only routes itself. |
 | API folder 24-26 fails on "a fresh wallet without an app PIN" | Earlier runs gave every core-mock customer `01711000500..01711000999` a PIN (about a dozen per run): `deploy/reset.sh` and start again. |
 | API folder 27 answers 404 or 403 | mw-crypto's dev-only payShield test API is off: `deploy/.env` lacks `MW_CRYPTO_TEST_API_ENABLED=true`, `MW_CRYPTO_AUTHZ_PURPOSES_TPK` and `_PVK` (`mw-e2e-crypto`) from `dev.env.defaults`; copy them and recreate `mw-crypto`. Never set them outside dev. |
 | An app login answers 423 `MW-AUTH-041` / `042` | The wallet's PIN is locked at mw-auth (`MW_AUTH_LOCK_*`): wait the `retryAfter`, or unlock it in the ops console (maker asks UNLOCK, checker approves); `docs/runbook.md` "Wallet PIN lock". |

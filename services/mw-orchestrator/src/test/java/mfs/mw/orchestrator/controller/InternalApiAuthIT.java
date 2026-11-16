@@ -91,6 +91,22 @@ class InternalApiAuthIT {
     assertEnvelope(get(DETAIL + "?reveal=true", InternalTokens.bearer("mw-admin-api")), 404, "MW-VAL-003");
   }
 
+  /** ADR D25: mw-app-gateway reads one wallet's history and nothing else. */
+  @Test
+  void theAppGatewayMayOnlySearchOneWalletsHistory() throws Exception {
+    String gateway = InternalTokens.bearer("mw-app-gateway");
+    assertThat(get(SEARCH + "?walletId=01711000001", gateway).statusCode()).isEqualTo(200);
+    assertThat(get(SEARCH + "?walletId=01711000001&direction=IN&limit=21&offset=0", gateway).statusCode())
+        .isEqualTo(200);
+    // no wallet, another filter, a detail, a reveal: refused before anything is read
+    assertEnvelope(get(SEARCH, gateway), 403, "MW-AUTH-002");
+    assertEnvelope(get(SEARCH + "?walletId=", gateway), 403, "MW-AUTH-002");
+    assertEnvelope(get(SEARCH + "?walletId=01711000001&msisdn=01711000002", gateway), 403, "MW-AUTH-002");
+    assertEnvelope(get(SEARCH + "?walletId=01711000001&orgId=ORG001", gateway), 403, "MW-AUTH-002");
+    assertEnvelope(get(DETAIL + "?walletId=01711000001", gateway), 403, "MW-AUTH-002");
+    assertEnvelope(get(SEARCH + "?walletId=01711000001&reveal=true", gateway), 403, "MW-AUTH-002");
+  }
+
   @Test
   void probesStayOpen() throws Exception {
     assertThat(get("/actuator/health/liveness", null).statusCode()).isEqualTo(200);

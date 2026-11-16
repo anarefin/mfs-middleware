@@ -1,0 +1,4 @@
+{
+  "name": "28 Wallet transaction history (App API GET /app/v1/transactions)",
+  "description": "ADR D25: the signed-in wallet's history, sent (OUT) and received (IN), from every channel, served by mw-orchestrator's query API for the wallet-scoped caller mw-app-gateway. Counterparties masked; IN items carry no fee."
+}

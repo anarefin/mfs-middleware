@@ -119,7 +119,7 @@ node --version  <span class="c"># 22 or newer</span></pre></div>
 ./gradlew clean build --continue      <span class="c"># list every failure, not just the first</span></pre></div>
     <div class="note">At most 4 modules' tests run at once (<code>mwDockerTests=4</code>, sized for 8 cores: each runs a test JVM,
       a PostgreSQL and a Kafka). On a smaller host or with Docker short of memory use <code>./gradlew clean build -PmwDockerTests=2</code>.
-      Build with the stack stopped (<code>docker compose --profile core --profile seed stop</code>), or the test containers
+      Build with the stack stopped (<code>docker compose --profile core --profile seed --profile tester stop</code>), or the test containers
       and the running stack compete for memory.</div>
     <p>The two web consoles (<code>ui/mw-admin-ui</code>, <code>ui/mw-test-console</code>) are not Gradle modules: their
       Dockerfiles build them in step 4. Their unit tests run with pnpm, no stack needed:
@@ -139,7 +139,7 @@ cp dev.env.defaults .env</pre></div>
       on its own, so no <code>--env-file</code> flag is needed.</p>
     <p>The logins a tester types: ops <code>ops-test-pass</code>, app PIN <code>13579</code>, portal <code>portal-test-pass</code>,
       Keycloak admin <code>kc-admin-test-pass</code>, OpenBao token <code>dev-root-token</code> (<code>OPENBAO_DEV_ROOT_TOKEN</code>),
-      test-route apikey <code>e2e-test-apikey</code>. Once the test console runs (step 11), its pages
+      test-route apikey <code>e2e-test-apikey</code>. Once the stack runs (step 4), the test console pages
       <a href="https://localhost/tester/credentials">/tester/credentials</a> (every login with a live one-time code) and
       <a href="https://localhost/tester/seed-data">/tester/seed-data</a> (everything the seeder created) show them all; in a terminal
       <code>scripts/creds.sh</code> and <code>scripts/totp.sh</code> (<a href="../docs/testing-guide.html">testing guide</a>, section 1).</p>
@@ -149,19 +149,29 @@ cp dev.env.defaults .env</pre></div>
 
   <section id="s4">
     <h2><span class="num">4</span>Start the full platform</h2>
-    <div class="cmd"><pre>docker compose --profile core --profile seed up -d --build</pre></div>
-    <p>Compose builds the images (<code>mfs-mw/&lt;service&gt;:local</code>), then starts everything in dependency order.
-      Each service waits until what it needs is healthy or has finished:</p>
+    <div class="cmd"><pre>docker compose --profile core --profile seed --profile tester up -d --build --wait</pre></div>
+    <p>One command for everything: the platform (PostgreSQL, Kafka, Valkey, Keycloak, OpenBao, APISIX, SoftHSM, GreenMail),
+      every <code>mw-*</code> service, the admin console, the test console, the seed and the test-only gateway routes.
+      Compose builds the images (<code>mfs-mw/&lt;service&gt;:local</code>, both consoles included), then starts everything in
+      dependency order, and <code>--wait</code> returns only once every container is healthy and the seeder has exited 0
+      (a non-zero exit: step 12). Each service waits until what it needs is healthy or has finished:</p>
     <div class="flow">
       <span>postgres · valkey · openbao · keycloak · softhsm</span><b>·</b><span>kafka</span><b>→</b><span>kafka-init (topics)</span><b>·</b>
       <span>etcd</span><b>→</b><span>etcd-init</span><b>→</b><span>apisix</span><b>→</b><span>apisix-init (routes)</span><b>·</b>
       <span>provision (schemas, OpenBao secrets, AppRoles, service certificate CA)</span><b>→</b><span>mw-crypto</span><b>→</b>
-      <span>mw-auth</span><b>·</b><span>the other 13 services + admin console</span><b>→</b><span>mw-seeder (one-shot)</span>
+      <span>mw-auth</span><b>·</b><span>the other 13 services + admin console</span><b>→</b><span>mw-seeder (one-shot)</span><b>·</b>
+      <span>apisix-init-tester (test-only routes)</span><b>→</b><span>mw-test-console</span>
     </div>
     <ul>
-      <li><strong>Always pass <code>--profile seed</code> with <code>--profile core</code>.</strong> The seeder runs once, after
-        <code>apisix-init</code> has finished and every service is healthy. It goes through the services' own APIs and
-        maker-checker, like an operator would. It is idempotent, so running the same command again is safe.</li>
+      <li><strong>The profiles</strong>: <code>core</code> = every service and the admin console, <code>seed</code> = the
+        seeder, <code>tester</code> = the test console plus <code>apisix-init-tester</code>, which turns on the test-only
+        routes (<code>/test/…</code>, <code>/tester</code>). The seeder runs once, after <code>apisix-init</code> has finished
+        and every service is healthy. It goes through the services' own APIs and maker-checker, like an operator would. It is
+        idempotent, so running the same command again is safe (also after a reboot).</li>
+      <li>Without the test console: <code>docker compose --profile core --profile seed up -d --build</code>, then
+        <code>docker compose --profile core --profile seed wait mw-seeder</code> (there nothing else waits for the seeder, so
+        leave out <code>--wait</code>). A later <code>up</code> without <code>--profile tester</code> also removes the test-only
+        routes again.</li>
       <li>The short test timers (status inquiry, reversal, retry topics, IPN, partner limits) come from <code>.env</code>; the
         API suite in step 11 needs them. For the production timers, delete the "Test timers" block from <code>.env</code> and
         run <code>docker compose --profile core up -d</code>.</li>
@@ -174,18 +184,19 @@ cp dev.env.defaults .env</pre></div>
         header of <code>deploy/docker-compose.yml</code>): set one in <code>.env</code> to give a container more room.</li>
     </ul>
     <p>On a warm Docker cache the whole command, seeding included, takes about 1–2 minutes. The first run pulls the platform
-      images and builds 20 images, so it takes a few minutes more.</p>
-    <p>Then open the <strong>admin console</strong> at <a href="https://localhost/console">https://localhost/console</a>. The
+      images and builds every local image, so it takes a few minutes more.</p>
+    <p>Then open the <strong>test console</strong> at <a href="https://localhost/tester">https://localhost/tester</a> (step 11)
+      or the <strong>admin console</strong> at <a href="https://localhost/console">https://localhost/console</a>. The
       edge certificate is self-signed for localhost, so accept the browser warning. Sign in as <code>ops-maker01</code> with
       <code>ops-test-pass</code> and the one-time code <code>scripts/totp.sh ops-maker01</code> prints (or copy it from
       the test console's Logins &amp; secrets page): every ops user has a pre-set code, no authenticator app.</p>
   </section>
 
   <section id="s5">
-    <h2><span class="num">5</span>Wait for the seed to finish</h2>
-    <p>The start command in step 4 already runs the seeder. Follow it until it exits:</p>
-    <div class="cmd"><pre>docker compose --profile core --profile seed logs -f mw-seeder
-docker compose --profile core --profile seed ps -a mw-seeder   <span class="c"># must show: exited (0)</span></pre></div>
+    <h2><span class="num">5</span>Check the seed</h2>
+    <p>The start command in step 4 runs the seeder and waits for it. To follow it or check it afterwards:</p>
+    <div class="cmd"><pre>docker compose --profile core --profile seed --profile tester logs -f mw-seeder
+docker compose --profile core --profile seed --profile tester ps -a mw-seeder   <span class="c"># must show: exited (0)</span></pre></div>
     <p>The test suites sign in as the seeded personas, so they need <code>mw-seeder</code> at <code>exited (0)</code>. What you get:</p>
     <ul>
       <li>At start-up: <code>mw-core-mock</code> creates 1,000 customer wallets <code>01711000001…</code>, 50 agents
@@ -204,7 +215,7 @@ docker compose --profile core --profile seed ps -a mw-seeder   <span class="c">#
   <section id="s6">
     <h2><span class="num">6</span>Verify it is running</h2>
     <div class="cmd"><pre><span class="c"># every container should show "healthy" (init jobs and the seeder show "exited (0)")</span>
-docker compose --profile core --profile seed ps -a
+docker compose --profile core --profile seed --profile tester ps -a
 <span class="c"># readiness of one service</span>
 curl -s localhost:8081/actuator/health/readiness
 <span class="c"># readiness of 8081-8093 (mw-crypto 8094 and mw-auth 8095 are mTLS-only; their readiness is on the in-container port 8081, which the compose healthcheck reads)</span>
@@ -301,12 +312,12 @@ docker compose --profile core up -d --build mw-admin-ui</pre></div>
   <section id="s10">
     <h2><span class="num">10</span>Stop and reset</h2>
     <div class="cmd"><pre><span class="c"># stop the containers, keep the data</span>
-docker compose --profile core --profile seed stop
+docker compose --profile core --profile seed --profile tester stop
 <span class="c"># remove the containers, keep the volumes</span>
-docker compose --profile core --profile seed down
+docker compose --profile core --profile seed --profile tester down
 <span class="c"># wipe ALL state together (every volume of every profile), then start again and re-seed</span>
 ./reset.sh
-docker compose --profile core --profile seed up -d --build</pre></div>
+docker compose --profile core --profile seed --profile tester up -d --build --wait</pre></div>
     <div class="warn">Never reset a single store. PostgreSQL, Kafka, Valkey, OpenBao, Keycloak and the core-mock ledger describe
       the same state, so they are always reset together with <code>./reset.sh</code>.</div>
   </section>
@@ -337,8 +348,9 @@ scripts/log-scan.sh               <span class="c"># no PIN or unmasked MSISDN / 
       <tr><td>90</td><td>10,000-row bulk payout (<code>scripts/api-test.sh "" 1</code>): heavy, not a laptop demo target</td></tr>
     </table></div>
     <h3>Test console (every feature by hand, dev/test only)</h3>
-    <div class="cmd"><pre>scripts/tester.sh                 <span class="c"># test-only routes on, start mw-test-console: https://localhost/tester</span>
-scripts/tester-e2e.sh             <span class="c"># its Playwright suite (scripts/tester-e2e.sh @auth: wallet authentication and the account tools only)</span></pre></div>
+    <p>The start command in step 4 already runs it at <a href="https://localhost/tester">https://localhost/tester</a>, with the
+      test-only routes on. <code>scripts/tester.sh</code> adds it to a stack started without <code>--profile tester</code>.</p>
+    <div class="cmd"><pre>scripts/tester-e2e.sh             <span class="c"># its Playwright suite (scripts/tester-e2e.sh @auth: wallet authentication and the account tools only)</span></pre></div>
     <p>The test console plays the mobile app, a USSD handset, the partner simulators and core faults, the checkout shop, the
       org portal and wallet authentication (its <strong>Auth</strong> page: OTP, binding, login, PIN change, lockout and reset
       on fresh wallets); each action shows every API call, the balances before and after and the SMS, and each txnId links to its
@@ -367,7 +379,8 @@ scripts/tester-e2e.sh             <span class="c"># its Playwright suite (script
         Stop it, or move the port with <code>MW_PORT_&lt;NAME&gt;</code> in <code>.env</code>. Port 443 moves with
         <code>MW_HTTPS_PORT</code> (the APIs work, the console login needs 443).</li>
       <li><strong>Containers exit with code 137</strong>: Docker is out of memory. Give Docker Desktop 8 GB, or use the minimal profile.</li>
-      <li><strong>A one-shot (<code>provision</code>, <code>kafka-init</code>, <code>etcd-init</code>, <code>apisix-init</code>) exits
+      <li><strong>A one-shot (<code>provision</code>, <code>kafka-init</code>, <code>etcd-init</code>, <code>apisix-init</code>,
+        <code>apisix-init-tester</code>) exits
         non-zero</strong>: <code>docker compose logs provision</code> names the service and step. Usually volumes created with
         other credentials (an <code>.env</code> from before <code>dev.env.defaults</code>, or an edited value): run
         <code>./reset.sh</code> and start again.</li>
@@ -383,13 +396,17 @@ scripts/tester-e2e.sh             <span class="c"># its Playwright suite (script
         last a short time (<code>MW_AUTH_LOCK_*</code> in <code>.env</code>); level 3 needs a PIN reset (test console
         <strong>Auth</strong> page), an unlock in the console under <strong>Wallets</strong>, or <strong>Unlock</strong> on the
         wallet's row of the test console's <strong>Seed data</strong> page.</li>
-      <li><strong>The seeder exits non-zero</strong>: <code>docker compose --profile core --profile seed logs mw-seeder</code>; the
+      <li><strong>The seeder exits non-zero</strong>: <code>docker compose --profile core --profile seed --profile tester logs mw-seeder</code>; the
         line <code>seed.step.failed</code> names the step. <code>open change request of &lt;operator&gt;</code> means a pending
         request on a partner, menu or template: approve or reject it in the console, then run step 4 again.</li>
-      <li><strong>404 on <code>/test/...</code> routes</strong>: expected after a start; <code>scripts/api-test.sh</code> and
-        <code>scripts/tester.sh</code> add the test-only routes.</li>
+      <li><strong>404 on <code>/test/...</code> or <code>/tester</code></strong>: the stack was started without
+        <code>--profile tester</code>. Run the step 4 command again (or <code>scripts/tester.sh</code>);
+        <code>scripts/api-test.sh</code> adds the test-only routes by itself.</li>
+      <li><strong><code>up --wait</code> exits non-zero</strong>: <code>docker compose --profile core --profile seed --profile tester ps -a</code>
+        shows the container that failed (a one-shot not at <code>exited (0)</code>, or a service not healthy); its
+        <code>logs</code> tell why (the seeder: next item).</li>
       <li><strong>Timer scenarios of the API suite fail</strong>: <code>.env</code> lacks the "Test timers" block. Copy it back from
-        <code>deploy/dev.env.defaults</code> and run <code>docker compose --profile core --profile seed up -d</code>.</li>
+        <code>deploy/dev.env.defaults</code> and run the step 4 command again.</li>
       <li><strong><code>docker compose logs</code> shows nothing for a service</strong>: services in a profile are listed only when
         you pass it: <code>docker compose --profile core logs &lt;service&gt;</code>.</li>
     </ul>

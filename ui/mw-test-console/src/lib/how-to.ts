@@ -2,8 +2,8 @@
 // magic values and what to expect, written from docs/testing-guide.html (sections 0, 2-8, 9.2-9.3).
 // A fill pre-fills the page's form: its values are keyed by the field names in FILL_FIELDS, which
 // the page's controls carry as name= or data-fill= ("scope:field" = the field inside the element
-// with data-testid="scope"). Values are applied in their order (App flows: the type first, as it
-// resets the other fields). Pure data: how-to.test.ts checks every page and every fill target.
+// with data-testid="scope"). Values are applied in their order (App flows: category, user, then the
+// type, as each one resets the fields after it). Pure data: how-to.test.ts checks every page and every fill target.
 
 export const PAGE_KEYS = ["home", "app", "auth", "ussd", "simulators", "inbox", "checkout", "bulk", "transactions", "credentials", "seed-data"] as const;
 export type PageKey = (typeof PAGE_KEYS)[number];
@@ -18,7 +18,7 @@ export type FillDetail = { page: PageKey; values: Record<string, string> };
 /** The form fields a fill may set, per page. */
 export const FILL_FIELDS: Record<PageKey, readonly string[]> = {
   home: [],
-  app: ["txnType", "user", "counterparty", "amount", "pin", "idempotencyKey", "operator", "product", "biller"],
+  app: ["category", "user", "txnType", "counterparty", "amount", "pin", "idempotencyKey", "operator", "product", "biller"],
   auth: ["pin", "newPin", "msisdn", "nidLast4", "dob"],
   ussd: ["mno", "msisdn", "serviceCode", "input"],
   simulators: [
@@ -57,13 +57,15 @@ export const HOW_TO: Record<PageKey, HowTo> = {
     ],
   },
   app: {
-    goal: "Play the mobile app: device binding, the seven money flows, resend with the same Idempotency-Key, lookups.",
+    goal: "Play the mobile app: device binding, the seven money flows, resend with the same Idempotency-Key, lookups and the wallet history.",
     steps: [
-      "Pick the transaction type first (it resets user, counterparty and amount to that type's defaults), then the user.",
+      "Pick who is signed in: a Category (customer, agent, merchant), then one of its PIN-ready seeded wallets (or Other MSISDN…); the card shows its live balance, held amount, device and session.",
+      "Pick a flow (only the role's flows: an agent cashes in, a merchant only collects), then a counterparty from the list (or Custom…) and a Scenario chip for the outcome to test.",
       "Submit: the console binds a device the first time (OTP + PIN 13579), logs in at mw-auth and signs the request.",
       "Check the result: final status, balances before / after (fee into FEE-POOL), the SMS and every step.",
       "Press Resend the last submit: same txnId, every balance change Tk 0.00.",
       "Click the txnId to open the transaction in the explorer (timeline, partner calls, audit trail).",
+      "Load the History (4): the wallet's transactions sent (OUT) and received (IN) on every channel; it reloads after each submit. Switch to the payee to see the same txnId as IN.",
     ],
     magic: [
       { value: "PIN 97531", meaning: "wrong PIN: MW-AUTH-040, HTTP 401, nothing published (not 3 times in a row: that locks the PIN)" },
@@ -75,17 +77,18 @@ export const HOW_TO: Record<PageKey, HowTo> = {
       "Cash out Tk 20: customer -Tk 30.00 (Tk 10 fee); top-up Tk 20: -Tk 22.00; bill pay Tk 100: -Tk 103.00.",
       "Add money Tk 500: the bank's signed callback completes it, wallet +Tk 500.00.",
       "Cash in to a merchant (01911000001): REJECTED MW-CORE-INVALID_COUNTERPARTY; to your own wallet: MW-VAL-012.",
+      "History: after the P2P, customer01 shows it as OUT with the Tk 5 fee, customer02 as IN; a failed transfer never shows as IN; history down: 503 MW-SYS-013.",
     ],
     fills: [
-      { label: "P2P Tk 10 to customer02", values: { txnType: "P2P", user: "customer01", counterparty: "01711000002", amount: "10", pin: "13579" } },
-      { label: "P2P with a wrong PIN", values: { txnType: "P2P", user: "customer01", counterparty: "01711000002", amount: "10", pin: "97531" } },
-      { label: "P2P over the limit (6000)", values: { txnType: "P2P", user: "customer01", counterparty: "01711000002", amount: "6000", pin: "13579" } },
-      { label: "Cash in by agent01", values: { txnType: "CASH_IN", user: "agent01", counterparty: "01711000001", amount: "20", pin: "13579" } },
-      { label: "Cash out to agent01", values: { txnType: "CASH_OUT", user: "customer01", counterparty: "01811000001", amount: "20", pin: "13579" } },
-      { label: "Top-up refused (…999)", values: { txnType: "TOPUP", user: "customer01", counterparty: "01711000999", amount: "20", operator: "gp" } },
-      { label: "Top-up times out (20.13)", values: { txnType: "TOPUP", user: "customer01", counterparty: "01711000002", amount: "20.13", operator: "gp" } },
-      { label: "Bill pay DESCO", values: { txnType: "BILL_PAY", user: "customer01", biller: "DESCO", counterparty: "1234567", amount: "100" } },
-      { label: "Add money from the bank", values: { txnType: "ADD_MONEY_BANK", user: "customer01", counterparty: "1234567890123", amount: "500" } },
+      { label: "P2P Tk 10 to customer02", values: { category: "customer", user: "customer01", txnType: "P2P", counterparty: "01711000002", amount: "10", pin: "13579" } },
+      { label: "P2P with a wrong PIN", values: { category: "customer", user: "customer01", txnType: "P2P", counterparty: "01711000002", amount: "10", pin: "97531" } },
+      { label: "P2P over the limit (6000)", values: { category: "customer", user: "customer01", txnType: "P2P", counterparty: "01711000002", amount: "6000", pin: "13579" } },
+      { label: "Cash in by agent01", values: { category: "agent", user: "agent01", txnType: "CASH_IN", counterparty: "01711000001", amount: "20", pin: "13579" } },
+      { label: "Cash out to agent01", values: { category: "customer", user: "customer01", txnType: "CASH_OUT", counterparty: "01811000001", amount: "20", pin: "13579" } },
+      { label: "Top-up refused (…999)", values: { category: "customer", user: "customer01", txnType: "TOPUP", counterparty: "01711000999", amount: "20", operator: "gp" } },
+      { label: "Top-up times out (20.13)", values: { category: "customer", user: "customer01", txnType: "TOPUP", counterparty: "01711000002", amount: "20.13", operator: "gp" } },
+      { label: "Bill pay DESCO", values: { category: "customer", user: "customer01", txnType: "BILL_PAY", biller: "DESCO", counterparty: "1234567", amount: "100" } },
+      { label: "Add money from the bank", values: { category: "customer", user: "customer01", txnType: "ADD_MONEY_BANK", counterparty: "1234567890123", amount: "500" } },
     ],
   },
   auth: {

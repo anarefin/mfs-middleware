@@ -377,6 +377,8 @@
     async billers(user) { return http('GET', '/app/v1/billers', { headers: await app.headers(user) }); },
     async fetchBill(user, biller, bill) { return http('POST', '/app/v1/billers/' + biller + '/fetch-bill', { headers: await app.headers(user), json: { billNumber: bill } }); },
     async collections(user) { return http('GET', '/app/v1/merchant/collections', { headers: await app.headers(user) }); },
+    // the wallet history (ADR D25): GET /app/v1/transactions, query e.g. 'direction=IN&limit=5'
+    async history(user, query) { return http('GET', '/app/v1/transactions' + (query ? '?' + query : ''), { headers: await app.headers(user) }); },
   };
 
   // ---------- mw-auth's public API step by step (ticket 76: folders 24-26, 90) ----------

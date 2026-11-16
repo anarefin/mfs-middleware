@@ -40,10 +40,19 @@ public final class TransactionViewMapper {
 
   /** @param reveal MSISDN party ids unmasked (ticket 36) */
   public static TxnView toView(TransactionRecord rec, String role, boolean reveal) {
+    return toView(rec, role, null, reveal);
+  }
+
+  /**
+   * @param direction the viewing wallet's side ({@code IN} / {@code OUT}, ADR D25), null when the
+   *     query is not wallet-scoped
+   */
+  public static TxnView toView(TransactionRecord rec, String role, String direction, boolean reveal) {
     TxnRequest r = rec.request();
     String currency = r.amount() == null ? Amount.BDT : r.amount().currency();
     return new TxnView(
         role,
+        direction,
         rec.txnId().toString(),
         r.txnType(),
         r.channel(),

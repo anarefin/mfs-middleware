@@ -5,9 +5,11 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import mfs.mw.orchestrator.dto.ErrorInfo;
 import mfs.mw.orchestrator.dto.TxnDetail;
 import mfs.mw.orchestrator.dto.TxnRequest;
@@ -29,6 +31,10 @@ public class TransactionRepository {
           + " error_code, error_message, error_message_bn, error_retryable,"
           + " request::text, hold_id, partner_ref, reversal_txn_id";
 
+  /** {@link #COLUMNS} of the search's {@code transaction t}. */
+  private static final String T_COLUMNS =
+      Arrays.stream(COLUMNS.split(", ")).map(c -> "t." + c).collect(Collectors.joining(", "));
+
   private final JdbcTemplate jdbc;
   private final JsonMapper json;
   private final SearchHash searchHash;
@@ -41,7 +47,8 @@ public class TransactionRepository {
 
   /**
    * Inserts a new transaction with the keyed hashes of its typed initiator id and of its payee
-   * (ticket 35 search, A2/A3).
+   * (ticket 35 search, A2/A3), and its wallet parties for the wallet history (ADR D25), in the
+   * caller's transaction.
    */
   public void insert(TransactionRecord rec) {
     TxnRequest r = rec.request();
@@ -68,6 +75,20 @@ public class TransactionRepository {
         r.amount().valueMinor(),
         r.amount().currency(),
         json.writeValueAsString(r));
+    insertWalletParties(rec.txnId(), rec.createdAt(), r);
+  }
+
+  /**
+   * The {@code wallet_txn} rows of one transaction ({@link SearchKeys#walletParties}); a row that
+   * is already there is left alone. Also used by the V13 backfill ({@code WalletPartyMigration}).
+   */
+  public void insertWalletParties(UUID txnId, Instant createdAt, TxnRequest r) {
+    for (SearchKeys.WalletParty p : SearchKeys.walletParties(r)) {
+      jdbc.update(
+          "insert into wallet_txn (wallet_hash, txn_id, direction, created_at) values (?, ?, ?, ?)"
+              + " on conflict do nothing",
+          searchHash.of(p.key()), txnId, p.direction(), Timestamp.from(createdAt));
+    }
   }
 
   /** Persists the mutable columns of a moved record and bumps the version. */
@@ -173,55 +194,73 @@ public class TransactionRepository {
    * {@code initiator_hash} and the initiator type, never through {@code initiator_id} (A2); with
    * an org id, also the transactions paying one of {@code orgPayees} through {@code payee_hash}
    * (A3). {@code parentTxnId} through the stored request's attributes (bulk children, ticket 34).
+   * With a wallet id, the transactions of that wallet's {@code wallet_txn} rows (ADR D25): the
+   * ones it paid in any status, the ones paying it only in one of {@code walletInStatuses}.
    */
-  public List<TransactionRecord> search(TxnSearchCriteria c, List<SearchKeys.Key> orgPayees) {
-    StringBuilder sql = new StringBuilder("select " + COLUMNS + " from transaction where true");
+  public List<TransactionRecord> search(
+      TxnSearchCriteria c, List<SearchKeys.Key> orgPayees, List<String> walletInStatuses) {
+    StringBuilder sql = new StringBuilder("select " + T_COLUMNS + " from transaction t");
     List<Object> args = new ArrayList<>();
+    if (c.walletId() != null) {
+      sql.append(" join wallet_txn w on w.txn_id = t.txn_id and w.wallet_hash = ?");
+      args.add(searchHash.of(SearchKeys.WALLET, c.walletId()));
+      if (c.direction() != null) {
+        sql.append(" and w.direction = ?");
+        args.add(c.direction());
+      }
+      sql.append(" and (w.direction = '").append(SearchKeys.OUT).append("'");
+      if (!walletInStatuses.isEmpty()) {
+        sql.append(" or t.status in (").append(placeholders(walletInStatuses.size())).append(")");
+        args.addAll(walletInStatuses);
+      }
+      sql.append(")");
+    }
+    sql.append(" where true");
     if (c.txnId() != null) {
-      sql.append(" and txn_id = ?");
+      sql.append(" and t.txn_id = ?");
       args.add(c.txnId());
     }
     if (c.msisdn() != null) {
       String marks = placeholders(SearchKeys.MSISDN_TYPES.size());
-      sql.append(" and initiator_type in (").append(marks).append(") and initiator_hash in (").append(marks).append(")");
+      sql.append(" and t.initiator_type in (").append(marks).append(") and t.initiator_hash in (").append(marks).append(")");
       args.addAll(SearchKeys.MSISDN_TYPES);
-      SearchKeys.MSISDN_TYPES.forEach(t -> args.add(searchHash.of(t, c.msisdn())));
+      SearchKeys.MSISDN_TYPES.forEach(type -> args.add(searchHash.of(type, c.msisdn())));
     }
     if (c.orgId() != null) {
-      sql.append(" and ((initiator_type = ? and initiator_hash = ?)");
+      sql.append(" and ((t.initiator_type = ? and t.initiator_hash = ?)");
       args.add(SearchKeys.ORG);
       args.add(searchHash.of(SearchKeys.ORG, c.orgId()));
       if (!orgPayees.isEmpty()) {
-        sql.append(" or payee_hash in (").append(placeholders(orgPayees.size())).append(")");
+        sql.append(" or t.payee_hash in (").append(placeholders(orgPayees.size())).append(")");
         orgPayees.forEach(p -> args.add(searchHash.of(p)));
       }
       sql.append(")");
     }
     if (c.partnerRef() != null) {
-      sql.append(" and partner_ref = ?");
+      sql.append(" and t.partner_ref = ?");
       args.add(c.partnerRef());
     }
     if (c.status() != null) {
-      sql.append(" and status = ?");
+      sql.append(" and t.status = ?");
       args.add(c.status());
     }
     if (c.txnType() != null) {
-      sql.append(" and txn_type = ?");
+      sql.append(" and t.txn_type = ?");
       args.add(c.txnType());
     }
     if (c.parentTxnId() != null) {
-      sql.append(" and request -> 'attributes' ->> 'parentTxnId' = ?");
+      sql.append(" and t.request -> 'attributes' ->> 'parentTxnId' = ?");
       args.add(c.parentTxnId());
     }
     if (c.from() != null) {
-      sql.append(" and created_at >= ?");
+      sql.append(" and t.created_at >= ?");
       args.add(Timestamp.from(c.from()));
     }
     if (c.to() != null) {
-      sql.append(" and created_at < ?");
+      sql.append(" and t.created_at < ?");
       args.add(Timestamp.from(c.to()));
     }
-    sql.append(" order by created_at desc, txn_id desc limit ? offset ?");
+    sql.append(" order by t.created_at desc, t.txn_id desc limit ? offset ?");
     args.add(c.limit());
     args.add(c.offset());
     return jdbc.query(sql.toString(), this::map, args.toArray());
