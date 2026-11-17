@@ -38,4 +38,19 @@ test.describe("smoke", { tag: "@smoke" }, () => {
     await expect(page).toHaveURL(/\/console\/login\?callbackUrl=/);
     await ctx.close();
   });
+
+  test("signing out before the page hydrates (a plain form post) still ends the session", async ({ browser }) => {
+    const ctx = await browser.newContext(CONTEXT_OPTIONS);
+    const page = await ctx.newPage();
+    await keycloakLogin(page, "viewer");
+    // no client JavaScript: the Sign out form posts natively, as on a slow first load
+    await page.route("**/_next/static/**/*.js", (route) => route.abort());
+    await page.goto("/console/transactions");
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page).toHaveURL(/\/console\/login/);
+    await page.unroute("**/_next/static/**/*.js");
+    await page.goto("/console/transactions");
+    await expect(page).toHaveURL(/\/console\/login\?callbackUrl=/);
+    await ctx.close();
+  });
 });

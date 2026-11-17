@@ -12,4 +12,8 @@ describe("security headers", () => {
     const keys = STATIC_SECURITY_HEADERS.map((h) => h.key);
     expect(keys).toEqual(expect.arrayContaining(["Strict-Transport-Security", "X-Frame-Options", "X-Robots-Tag"]));
   });
+  it("keeps the Origin header on same-origin form posts (server actions before hydration)", () => {
+    const h = Object.fromEntries(STATIC_SECURITY_HEADERS.map((x) => [x.key, x.value]));
+    expect(h["Referrer-Policy"]).toBe("same-origin");
+  });
 });

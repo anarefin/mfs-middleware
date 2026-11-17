@@ -27,7 +27,7 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
   (`callbackUrl` checked by `lib/redirect.ts` `safeCallback`, no open redirect); per-request CSP
   nonce (`lib/security-headers.ts`: `script-src 'self' 'nonce-…' 'strict-dynamic'`,
   `frame-ancestors 'none'`, `form-action 'self' <Keycloak origin>`); `cache-control: no-store`.
-  `next.config.ts` adds HSTS, X-Frame-Options DENY, nosniff, Referrer-Policy no-referrer,
+  `next.config.ts` adds HSTS, X-Frame-Options DENY, nosniff, Referrer-Policy same-origin (not no-referrer: under it a form posted before hydration carries `Origin: null` and Next refuses the server action, e.g. sign-out),
   Permissions-Policy, COOP to every response.
 - Data calls only server-side (`lib/server/admin.ts`, `import "server-only"`) to mw-admin-api
   (`ADMIN_API_URL`, in the stack `http://apisix:9080`, the `/admin/v1/*` route) with the operator's

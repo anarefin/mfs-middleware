@@ -22,6 +22,8 @@ describe("security headers (spec 15.1)", () => {
     expect(h["Strict-Transport-Security"]).toBe("max-age=31536000; includeSubDomains");
     expect(h["X-Frame-Options"]).toBe("DENY");
     expect(h["X-Content-Type-Options"]).toBe("nosniff");
-    expect(h["Referrer-Policy"]).toBe("no-referrer");
+    // same-origin, not no-referrer: under no-referrer a form posted before hydration carries
+    // `Origin: null` and Next.js refuses the server action (sign-out then does nothing)
+    expect(h["Referrer-Policy"]).toBe("same-origin");
   });
 });

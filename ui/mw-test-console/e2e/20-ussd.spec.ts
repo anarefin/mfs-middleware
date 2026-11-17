@@ -33,7 +33,8 @@ test("@ussd USSD robi: option 5 shows the balance after the PIN", async ({ page 
 
 test("@ussd USSD: each MNO fills in its own code", async ({ page }) => {
   await page.goto("ussd");
-  for (const [mno, code] of [["gp", "*268#"], ["robi", "*269#"], ["bl", "*270#"], ["teletalk", "*271#"]]) {
+  const codes: ReadonlyArray<readonly [string, string]> = [["gp", "*268#"], ["robi", "*269#"], ["bl", "*270#"], ["teletalk", "*271#"]];
+  for (const [mno, code] of codes) {
     await page.getByTestId("ussd-mno").selectOption(mno);
     await expect(page.getByTestId("ussd-code")).toHaveValue(code);
   }
