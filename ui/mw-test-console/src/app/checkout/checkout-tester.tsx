@@ -1,7 +1,8 @@
 "use client";
 // Web checkout in the order a real one runs: the shop creates the session, the buyer opens the
 // hosted page, gets an OTP, confirms with OTP + PIN, is sent back to the shop; the shop's server
-// receives the IPN. One form, a button per step; the session carries over between steps.
+// receives the IPN. One form, a button per step; the session (and the merchant that created it)
+// carries over between steps.
 
 import { CreditCard, ListChecks, Store, Undo2 } from "lucide-react";
 import { useActionState } from "react";
@@ -9,6 +10,7 @@ import { Busy, EmptyResult, Hint, Panel, Row, TwoColumns } from "@/components/se
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input, NativeSelect } from "@/components/ui/input";
+import { CHECKOUT_MERCHANTS, DEFAULT_CHECKOUT_MERCHANT, checkoutMerchant } from "@/lib/seed-catalogue";
 import { checkout } from "../actions/checkout";
 import { Result } from "../components/result";
 
@@ -18,13 +20,18 @@ export function CheckoutTester() {
   return (
     <TwoColumns>
       <form action={run} className="flex min-w-0 flex-col gap-5" aria-busy={pending}>
-        <Panel title="1. Shop (merchant Karim Traders)" icon={Store}>
+        <Panel title="1. Shop (merchant)" icon={Store}>
+          <Field label="Merchant">
+            <NativeSelect name="merchant" defaultValue={DEFAULT_CHECKOUT_MERCHANT.id} data-testid="co-merchant">
+              {CHECKOUT_MERCHANTS.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.walletId})</option>)}
+            </NativeSelect>
+          </Field>
           <Row>
             <Field label="Amount (Tk)"><Input name="amount" defaultValue="25" data-testid="co-amount" className="tabular-nums" /></Field>
             <Field label="Page language"><NativeSelect name="locale" defaultValue="en"><option value="en">en</option><option value="bn">bn</option></NativeSelect></Field>
           </Row>
           <Button type="submit" name="op" value="create" disabled={pending} data-testid="co-create">Create checkout session</Button>
-          {d?.sessionId ? <Hint>session <code className="font-mono">{String(d.sessionId)}</code> · order <code className="font-mono">{String(d.orderId)}</code></Hint> : null}
+          {d?.sessionId ? <Hint>{checkoutMerchant(d.merchantId).name} · session <code className="font-mono">{String(d.sessionId)}</code> · order <code className="font-mono">{String(d.orderId)}</code></Hint> : null}
         </Panel>
         <Panel title="2. Buyer on the hosted page" icon={CreditCard}>
           <Button type="submit" name="op" value="page" variant="outline" disabled={pending || !d?.token} data-testid="co-page">View the hosted page (API)</Button>

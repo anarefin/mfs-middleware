@@ -12,7 +12,7 @@ import { SecretValue } from "@/components/secret-value";
 import { TotpCode } from "@/components/totp-code";
 import { Badge } from "@/components/ui/badge";
 import { formatMinor } from "@/lib/format";
-import { BILLERS, CHECKOUT_MERCHANT, GENERATED_RANGES, ORGS, rangeLabel } from "@/lib/seed-catalogue";
+import { BILLERS, CHECKOUT_MERCHANTS, GENERATED_RANGES, ORGS, rangeLabel } from "@/lib/seed-catalogue";
 import { PORTALS_IMPORT, appWalletRows, personasOf, runCustomers, type Persona } from "@/lib/seed-manifest";
 import { envValue, loadManifest } from "@/lib/server/seed";
 import { core } from "@/lib/server/test-apis";
@@ -133,12 +133,12 @@ export default async function SeedDataPage() {
             <FilterTable id="orgs" head={["Org", "Name", "Wallet", "Balance", "Portal users"]} rows={orgRows} />
             <Hint>mw-portal-api org-wallets: the orgId claim picks the wallet a batch pays from.</Hint>
           </Panel>
-          <Panel title="Checkout merchant" icon={Store}>
-            <FilterTable id="merchant" head={["Consumer", "Name", "Wallet", "HMAC secret"]} rows={[{
-              key: CHECKOUT_MERCHANT.id, search: CHECKOUT_MERCHANT.name,
-              cells: [mono(CHECKOUT_MERCHANT.id), CHECKOUT_MERCHANT.name, mono(CHECKOUT_MERCHANT.walletId),
-                <SecretValue key="s" value={envValue(CHECKOUT_MERCHANT.secretEnv)} envName={CHECKOUT_MERCHANT.secretEnv} testId="merchant-secret" />],
-            }]} />
+          <Panel title="Checkout merchants" icon={Store}>
+            <FilterTable id="merchant" head={["Consumer", "Name", "Wallet", "HMAC secret"]} rows={CHECKOUT_MERCHANTS.map((m, i) => ({
+              key: m.id, search: `${m.id} ${m.name}`,
+              cells: [mono(m.id), m.name, mono(m.walletId),
+                <SecretValue key="s" value={envValue(m.secretEnv)} envName={m.secretEnv} testId={i === 0 ? "merchant-secret" : `merchant-secret-${m.id}`} />],
+            }))} />
           </Panel>
           <Panel title="Partners" icon={Layers}>
             <FilterTable id="partners" head={["Partner", "Family", "Version", "Enabled", "Timeout", "HMAC secret"]} rows={(manifest?.partners ?? []).map((p) => ({

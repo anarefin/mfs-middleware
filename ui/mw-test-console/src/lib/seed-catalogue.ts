@@ -15,8 +15,24 @@ export const BILLERS: readonly { code: string; name: string; category: string; p
   { code: "TITAS", name: "Titas Gas", category: "GAS", partnerId: "billagg" },
 ];
 
-/** mw-checkout application.yml mw.checkout.merchants (APISIX hmac-auth consumer -> wallet). */
-export const CHECKOUT_MERCHANT = { id: "merchant_demo", name: "Karim Traders", walletId: "01911000001", secretEnv: "CHECKOUT_DEMO_MERCHANT_SECRET" } as const;
+export type CheckoutMerchant = { id: string; keyId: string; name: string; walletId: string; secretEnv: string };
+
+/**
+ * mw-checkout application.yml mw.checkout.merchants (APISIX hmac-auth consumer -> wallet), with the
+ * consumers' key ids (deploy/apisix/consumers-test) and the deploy/.env secret each signs with.
+ */
+export const DEFAULT_CHECKOUT_MERCHANT: CheckoutMerchant =
+  { id: "merchant_demo", keyId: "merchant-demo", name: "Karim Traders", walletId: "01911000001", secretEnv: "CHECKOUT_DEMO_MERCHANT_SECRET" };
+
+export const CHECKOUT_MERCHANTS: readonly CheckoutMerchant[] = [
+  DEFAULT_CHECKOUT_MERCHANT,
+  { id: "merchant_pharmacy", keyId: "merchant-pharmacy", name: "Lalbagh Pharmacy", walletId: "01911000002", secretEnv: "CHECKOUT_PHARMACY_MERCHANT_SECRET" },
+  { id: "merchant_fashion", keyId: "merchant-fashion", name: "Gulshan Fashion House", walletId: "01911000003", secretEnv: "CHECKOUT_FASHION_MERCHANT_SECRET" },
+];
+
+/** The catalogue merchant with this id; anything else is the default (a form never names an env var). */
+export const checkoutMerchant = (id: string | undefined | null): CheckoutMerchant =>
+  CHECKOUT_MERCHANTS.find((m) => m.id === id) ?? DEFAULT_CHECKOUT_MERCHANT;
 
 export type WalletType = "CUSTOMER" | "AGENT" | "MERCHANT" | "ORG";
 

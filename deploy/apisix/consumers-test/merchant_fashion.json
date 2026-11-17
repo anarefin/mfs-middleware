@@ -1,0 +1,7 @@
+{
+  "username": "merchant_fashion",
+  "desc": "TEST ONLY (MW_E2E_ROUTES=1): dev checkout merchant Gulshan Fashion House (mw.checkout.merchants.merchant_fashion, wallet 01911000003); hmac-auth key id merchant-fashion, secret = CHECKOUT_FASHION_MERCHANT_SECRET (platform .env)",
+  "plugins": {
+    "hmac-auth": { "key_id": "merchant-fashion", "secret_key": "@env:CHECKOUT_FASHION_MERCHANT_SECRET" }
+  }
+}

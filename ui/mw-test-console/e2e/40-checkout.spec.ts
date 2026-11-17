@@ -18,3 +18,20 @@ test("@checkout checkout: session, OTP + PIN payment, signed redirect and IPN", 
     await expect(headline).toContainText("answered 200", { timeout: 3000 });
   }).toPass({ timeout: 60_000 });
 });
+
+test("@checkout checkout: another dev merchant, picked from the list, is paid and signs its own redirect", async ({ page }) => {
+  await page.goto("checkout");
+  const headline = page.getByTestId("headline");
+  await page.getByTestId("co-merchant").selectOption("merchant_pharmacy");
+  await page.getByTestId("co-amount").fill("12");
+  await page.getByTestId("co-create").click();
+  await expect(headline).toContainText("Lalbagh Pharmacy: session");
+  await page.getByTestId("co-page").click();
+  await expect(headline).toContainText("page shows Lalbagh Pharmacy Tk 12.00 (OPEN)");
+  await page.getByTestId("co-otp").click();
+  await expect(page.getByTestId("co-otp-value")).toHaveValue(/^\d{6}$/);
+  await page.getByTestId("co-confirm").click();
+  await expect(headline).toContainText("result PAID");
+  await page.getByTestId("co-return").click();
+  await expect(page.getByTestId("result")).toContainText("signature valid");
+});

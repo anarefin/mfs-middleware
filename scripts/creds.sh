@@ -77,6 +77,8 @@ Dev/test stack only, never real secrets. The logins testers type are fixed, docu
 
 == Partner and merchant signing secrets
    checkout merchant merchant-demo (hmac-auth)  $(v CHECKOUT_DEMO_MERCHANT_SECRET)
+   checkout merchant merchant-pharmacy          $(v CHECKOUT_PHARMACY_MERCHANT_SECRET)
+   checkout merchant merchant-fashion           $(v CHECKOUT_FASHION_MERCHANT_SECRET)
    bill aggregator callbacks (HMAC-SHA256)      $(v BILLAGG_HMAC_SECRET)
    bank C2W callbacks (HMAC-SHA256)             $(v C2WBANK_HMAC_SECRET)
 

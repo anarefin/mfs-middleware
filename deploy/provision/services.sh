@@ -164,12 +164,14 @@ provision_mw_portal_api() {
   db_role portal_api_rw bulk
 }
 
-# The dev merchant's signing secret (ticket 31; the same value as the APISIX hmac-auth consumer
-# merchant_demo) and its realm services client secret for mw-auth's internal API (checkout OTP and
+# The dev merchants' signing secrets (ticket 31; each the same value as its APISIX hmac-auth consumer
+# merchant_demo, merchant_pharmacy, merchant_fashion) and its realm services client secret for mw-auth's internal API (checkout OTP and
 # txn authorisation, ticket 72); its certificate comes from PKI_SERVICES.
 provision_mw_checkout() {
   gen_once spring.datasource.password 40
   sync_env mw.checkout.merchants.merchant_demo.secret CHECKOUT_DEMO_MERCHANT_SECRET
+  sync_env mw.checkout.merchants.merchant_pharmacy.secret CHECKOUT_PHARMACY_MERCHANT_SECRET
+  sync_env mw.checkout.merchants.merchant_fashion.secret CHECKOUT_FASHION_MERCHANT_SECRET
   sync_env mw.checkout.auth.client-secret KC_MW_CHECKOUT_SECRET
   db_role checkout_rw checkout
 }

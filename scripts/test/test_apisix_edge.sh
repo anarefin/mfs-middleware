@@ -10,7 +10,8 @@ APPLY="$REPO_DIR/deploy/apisix/apply.sh"
 render() {
   local dir="${1:-$REPO_DIR/deploy/apisix}"
   rm -rf out
-  # the MNO USSD consumers' passwords and allow-lists (generated .env / compose in the stack);
+  # the MNO USSD consumers' passwords and allow-lists and the extra dev checkout merchants' secrets
+  # (generated .env / compose in the stack);
   # a caller may override or empty any of them
   OUT="$(USSD_GP_GATEWAY_SECRET="${USSD_GP_GATEWAY_SECRET-fakeGpSecret}" \
     USSD_ROBI_GATEWAY_SECRET="${USSD_ROBI_GATEWAY_SECRET-fakeRobiSecret}" \
@@ -21,6 +22,8 @@ render() {
     USSD_BL_ALLOWED_CIDRS="${USSD_BL_ALLOWED_CIDRS-10.3.0.0/16}" \
     USSD_TELETALK_ALLOWED_CIDRS="${USSD_TELETALK_ALLOWED_CIDRS-10.4.0.0/16}" \
     MW_PUBLIC_HOST="${MW_PUBLIC_HOST-localhost}" \
+    CHECKOUT_PHARMACY_MERCHANT_SECRET="${CHECKOUT_PHARMACY_MERCHANT_SECRET-fakePharmacySecret}" \
+    CHECKOUT_FASHION_MERCHANT_SECRET="${CHECKOUT_FASHION_MERCHANT_SECRET-fakeFashionSecret}" \
     APISIX_DRY_RUN="$PWD/out" APISIX_CONFIG_DIR="$dir" bash "$APPLY" 2>&1)"
 }
 
@@ -117,7 +120,10 @@ test_test_only_objects_are_not_applied_by_default_and_removed_if_present() {
   MW_E2E_ROUTES= MW_E2E_API_KEY= render || fail "dry run failed: $OUT"
   [ -f out/routes/test-core-mock.json ] && fail "test route applied without MW_E2E_ROUTES=1"
   [ -f out/consumers/mw_e2e.json ] && fail "test consumer applied without MW_E2E_ROUTES=1"
-  [ -f out/consumers/merchant_demo.json ] && fail "test consumer applied without MW_E2E_ROUTES=1"
+  local m
+  for m in merchant_demo merchant_pharmacy merchant_fashion; do
+    [ -f "out/consumers/$m.json" ] && fail "test consumer $m applied without MW_E2E_ROUTES=1"
+  done
   assert_out_contains "DELETE /apisix/admin/routes/test-core-mock"
   assert_out_contains "DELETE /apisix/admin/consumers/mw_e2e"
   [ -f out/routes/app-v1.json ] || fail "regular routes must still be applied"
@@ -195,6 +201,10 @@ test_checkout_routes_use_hmac_auth_and_the_dev_merchant_is_test_only() {
   local c=out/consumers/merchant_demo.json r
   [ "$(jq -r '.plugins["hmac-auth"].secret_key' "$c")" = s3cretFromDotEnv ] || fail "merchant secret not from CHECKOUT_DEMO_MERCHANT_SECRET: $(cat "$c")"
   assert_out_lacks "s3cretFromDotEnv"
+  jq -e '.plugins["hmac-auth"] == {"key_id": "merchant-pharmacy", "secret_key": "fakePharmacySecret"}' out/consumers/merchant_pharmacy.json >/dev/null \
+    || fail "merchant_pharmacy: $(cat out/consumers/merchant_pharmacy.json)"
+  jq -e '.plugins["hmac-auth"] == {"key_id": "merchant-fashion", "secret_key": "fakeFashionSecret"}' out/consumers/merchant_fashion.json >/dev/null \
+    || fail "merchant_fashion: $(cat out/consumers/merchant_fashion.json)"
   for r in checkout-v1-sessions checkout-v1-session-get; do
     jq -e '.plugins["hmac-auth"].allowed_algorithms == ["hmac-sha256"] and (.plugins["hmac-auth"].signed_headers | index("@request-target") and index("date"))' "out/routes/$r.json" >/dev/null \
       || fail "$r: hmac-auth must sign method, path and Date: $(jq -c '.plugins["hmac-auth"]' "out/routes/$r.json")"
@@ -208,6 +218,8 @@ test_checkout_routes_use_hmac_auth_and_the_dev_merchant_is_test_only() {
     || fail "checkout-pay: $(jq -c '.plugins | keys' out/routes/checkout-pay.json)"
   MW_E2E_ROUTES= MW_E2E_API_KEY= render || fail "dry run failed: $OUT"
   assert_out_contains "DELETE /apisix/admin/consumers/merchant_demo"
+  assert_out_contains "DELETE /apisix/admin/consumers/merchant_pharmacy"
+  assert_out_contains "DELETE /apisix/admin/consumers/merchant_fashion"
 }
 
 test_e2e_flag_without_a_key_fails() {

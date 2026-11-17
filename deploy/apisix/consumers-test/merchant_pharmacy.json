@@ -1,0 +1,7 @@
+{
+  "username": "merchant_pharmacy",
+  "desc": "TEST ONLY (MW_E2E_ROUTES=1): dev checkout merchant Lalbagh Pharmacy (mw.checkout.merchants.merchant_pharmacy, wallet 01911000002); hmac-auth key id merchant-pharmacy, secret = CHECKOUT_PHARMACY_MERCHANT_SECRET (platform .env)",
+  "plugins": {
+    "hmac-auth": { "key_id": "merchant-pharmacy", "secret_key": "@env:CHECKOUT_PHARMACY_MERCHANT_SECRET" }
+  }
+}

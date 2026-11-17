@@ -113,8 +113,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   `mw.notify.request.v1` produced here any more), and with it the OTP scrub in `messaging/OutboxRelay.markSent`
   (the relay is the template's copy again; V6 stays as history) and `messaging/OutboxRelayOtpIT`.
 - Dev provisioning (`provision_mw_checkout` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role `checkout_rw`, schema `checkout`,
-  `secret/mw-checkout` (DB password; `mw.checkout.merchants.merchant_demo.secret` from
-  `CHECKOUT_DEMO_MERCHANT_SECRET`, the same value as the test-only APISIX consumer;
+  `secret/mw-checkout` (DB password; the three dev merchants' `mw.checkout.merchants.<id>.secret`:
+  `merchant_demo` (01911000001 Karim Traders) from `CHECKOUT_DEMO_MERCHANT_SECRET`, `merchant_pharmacy`
+  (01911000002 Lalbagh Pharmacy) from `CHECKOUT_PHARMACY_MERCHANT_SECRET`, `merchant_fashion` (01911000003
+  Gulshan Fashion House) from `CHECKOUT_FASHION_MERCHANT_SECRET`, each the same value as its test-only
+  APISIX consumer;
   `mw.checkout.auth.client-secret` from `KC_MW_CHECKOUT_SECRET`), AppRole `mw-checkout`, PKI role
   `mw-checkout`. Keycloak realm `services` client `mw-checkout` (audience `mw-auth`).
 

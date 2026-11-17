@@ -349,7 +349,7 @@ scripts/creds.sh</pre></div>
       <tr><td>Keycloak admin</td><td>user <code>kc-admin</code> and its password</td><td><code>kc-admin-test-pass</code> (<code>KC_BOOTSTRAP_ADMIN_PASSWORD</code>)</td></tr>
       <tr><td>OpenBao</td><td>the token (only while the stack is up)</td><td><code>dev-root-token</code> (<code>OPENBAO_DEV_ROOT_TOKEN</code>; an older OpenBao volume: its random root token)</td></tr>
       <tr><td>APISIX</td><td>the <code>apikey</code> of the test-only routes; the admin API key</td><td><code>e2e-test-apikey</code> (<code>MW_E2E_API_KEY</code>); admin key <code>dev-apisix-admin-key</code> (<code>APISIX_ADMIN_KEY</code>)</td></tr>
-      <tr><td>Signing secrets</td><td>checkout merchant <code>merchant-demo</code> (Karim Traders), bill aggregator and bank callback HMAC secrets</td><td><code>dev-checkout-merchant-secret</code>, <code>dev-billagg-hmac-secret</code>, <code>dev-c2wbank-hmac-secret</code> (<code>CHECKOUT_DEMO_MERCHANT_SECRET</code>, <code>BILLAGG_HMAC_SECRET</code>, <code>C2WBANK_HMAC_SECRET</code>)</td></tr>
+      <tr><td>Signing secrets</td><td>checkout merchants <code>merchant-demo</code> (Karim Traders), <code>merchant-pharmacy</code> (Lalbagh Pharmacy), <code>merchant-fashion</code> (Gulshan Fashion House), bill aggregator and bank callback HMAC secrets</td><td><code>dev-checkout-merchant-secret</code>, <code>dev-checkout-pharmacy-secret</code>, <code>dev-checkout-fashion-secret</code>, <code>dev-billagg-hmac-secret</code>, <code>dev-c2wbank-hmac-secret</code> (<code>CHECKOUT_DEMO_MERCHANT_SECRET</code>, <code>CHECKOUT_PHARMACY_MERCHANT_SECRET</code>, <code>CHECKOUT_FASHION_MERCHANT_SECRET</code>, <code>BILLAGG_HMAC_SECRET</code>, <code>C2WBANK_HMAC_SECRET</code>)</td></tr>
       <tr><td>SoftHSM tokens</td><td>label, port, user and SO PIN of each dev/test PKCS#11 token</td><td><code>mw-crypto</code> 5657 <code>dev-mwcrypto-user-pin</code> / <code>dev-mwcrypto-so-pin</code>; <code>paysim</code> 5658 <code>dev-paysim-user-pin</code> / <code>dev-paysim-so-pin</code> (<code>SOFTHSM_MWCRYPTO_LABEL</code>, <code>SOFTHSM_MWCRYPTO_USER_PIN</code>, …)</td></tr>
       <tr><td>USSD gateways</td><td>basic-auth password per operator (user <code>ussd-gp</code>, <code>ussd-robi</code>, <code>ussd-bl</code>, <code>ussd-teletalk</code>)</td><td><code>dev-ussd-gp-pass</code>, <code>dev-ussd-robi-pass</code>, … (<code>USSD_GP_GATEWAY_SECRET</code>, …)</td></tr>
     </table></div>
@@ -1057,13 +1057,16 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
 <!-- ============================================================ -->
 <section id="s7">
   <h2><span class="num">7</span> Web checkout</h2>
-  <p>Page <span class="ui">Web checkout</span>. The shop is "Karim Traders" (merchant wallet 01911000001). <b>Sign-in: none</b>
-  (the console signs the shop's requests with the merchant secret and plays the buyer). The buyer buttons stay
+  <p>Page <span class="ui">Web checkout</span>. The shop is picked in <span class="ui">Merchant</span>: "Karim Traders" (wallet
+  01911000001, the default), "Lalbagh Pharmacy" (01911000002) or "Gulshan Fashion House" (01911000003), each its own APISIX
+  hmac-auth consumer with its own secret. <b>Sign-in: none</b>
+  (the console signs the shop's requests with the chosen merchant's secret and plays the buyer; the redirect and the IPNs are
+  checked with the secret of the merchant that created the session). The buyer buttons stay
   disabled until a session exists (step 1).</p>
   <div class="case" id="c7-1">
     <h3><span class="id">7.1</span>Pay a checkout session</h3>
     <ol>
-      <li>Block 1 (shop): <span class="ui">Amount (Tk)</span> <code>25</code>, <span class="ui">Page language</span> <code>en</code>, <span class="ui">Create checkout session</span>.
+      <li>Block 1 (shop): <span class="ui">Merchant</span> Karim Traders, <span class="ui">Amount (Tk)</span> <code>25</code>, <span class="ui">Page language</span> <code>en</code>, <span class="ui">Create checkout session</span>.
         Expect HTTP 201, status <code>OPEN</code>; the step shows the signed request (Date, Digest, Signature). The <code>/checkout/page/…</code> link in the result is where a real shop would send the buyer; the MVP has no hosted HTML page, the next step plays it.</li>
       <li>Block 2 (buyer): <span class="ui">View the hosted page (API)</span>: the Result panel shows "page shows Karim Traders Tk 25.00 (OPEN)" (a call to the page API, no browser tab opens).</li>
       <li><span class="ui">Payer wallet</span> <code>01711000001</code>, <span class="ui">Send OTP</span>: HTTP 202, the OTP is read from the SMS and filled in.</li>

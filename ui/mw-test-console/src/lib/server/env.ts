@@ -26,8 +26,8 @@ export const appPin = (): string => required("MW_SEED_APP_PIN");
 export const portalsPassword = (): string => required("KC_PORTALS_TEST_PASSWORD");
 /** The pre-set TOTP secret of the portals test users (realm portals demands TOTP, ticket 73). */
 export const portalsTotpSecret = (): string => required("KC_PORTALS_TEST_TOTP_SECRET");
-/** hmac-auth secret of the dev merchant merchant_demo (wallet 01911000001, "Karim Traders"). */
-export const checkoutSecret = (): string => required("CHECKOUT_DEMO_MERCHANT_SECRET");
+/** hmac-auth secret of a dev checkout merchant of the catalogue (lib/seed-catalogue.ts CHECKOUT_MERCHANTS). */
+export const checkoutSecret = (m: { secretEnv: string }): string => required(m.secretEnv);
 /** mw-seeder's manifest on the read-only seed-manifest volume. */
 export const seedManifestPath = (): string => process.env.SEED_MANIFEST || "/run/mw/seed/manifest.json";
 /** Keycloak's bootstrap admin (realm master, client admin-cli): the user tools of the seed data page. */

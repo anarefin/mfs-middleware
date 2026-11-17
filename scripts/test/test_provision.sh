@@ -6,7 +6,7 @@
 PROVISION_DIR="$REPO_DIR/deploy/provision"
 # the generated .env values the compose block passes in (obviously fake)
 PROVISION_ENV="VALKEY_PASSWORD=valkey-t BILLAGG_HMAC_SECRET=billagg-t C2WBANK_HMAC_SECRET=c2w-t
-  CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_AUTH_SECRET=auth-t KC_MW_APP_GATEWAY_SECRET=app-gateway-t KC_MW_USSD_SECRET=ussd-t KC_MW_CHECKOUT_SECRET=checkout-t
+  CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t CHECKOUT_PHARMACY_MERCHANT_SECRET=pharmacy-t CHECKOUT_FASHION_MERCHANT_SECRET=fashion-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_AUTH_SECRET=auth-t KC_MW_APP_GATEWAY_SECRET=app-gateway-t KC_MW_USSD_SECRET=ussd-t KC_MW_CHECKOUT_SECRET=checkout-t
   USSD_GP_GATEWAY_SECRET=gp-t USSD_ROBI_GATEWAY_SECRET=robi-t USSD_BL_GATEWAY_SECRET=bl-t
   USSD_TELETALK_GATEWAY_SECRET=teletalk-t SOFTHSM_MWCRYPTO_USER_PIN=hsm-pin-t SOFTHSM_PAYSIM_USER_PIN=paysim-pin-t
   KC_URL=http://kc:8080 KC_BOOTSTRAP_ADMIN_USERNAME=kc-admin KC_BOOTSTRAP_ADMIN_PASSWORD=kc-admin-t"
@@ -158,6 +158,8 @@ test_provision_writes_the_service_specific_keys() {
   [ "$(kv mw-audit-dw mw.audit-dw.anchor.crypto.client-secret)" = audit-dw-t ] || fail "audit-dw client secret"
   [ "$(kv mw-portal-api mw.portal-api.orchestrator.auth.client-secret)" = portal-t ] || fail "portal-api client secret"
   [ "$(kv mw-checkout mw.checkout.merchants.merchant_demo.secret)" = merchant-t ] || fail "checkout merchant"
+  [ "$(kv mw-checkout mw.checkout.merchants.merchant_pharmacy.secret)" = pharmacy-t ] || fail "checkout merchant pharmacy"
+  [ "$(kv mw-checkout mw.checkout.merchants.merchant_fashion.secret)" = fashion-t ] || fail "checkout merchant fashion"
   [ "$(wc -c <.kv/secret/mw-notify/mw.notify.smpp.password | tr -d ' ')" = 8 ] || fail "SMPP password not 8 chars"
   # audit-dw: three roles, three passwords
   [ -s .kv/secret/mw-audit-dw/spring.flyway.password ] || fail "audit-dw owner password"

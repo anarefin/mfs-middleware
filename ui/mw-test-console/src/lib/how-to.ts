@@ -26,7 +26,7 @@ export const FILL_FIELDS: Record<PageKey, readonly string[]> = {
     "scenario-ocs:forceMode", "scenario-ocs:latencyMs", "scenario-billagg:forceMode", "scenario-c2wbank:forceMode", "msisdn",
   ],
   inbox: ["msisdn", "email"],
-  checkout: ["amount", "locale", "wallet", "pin"],
+  checkout: ["merchant", "amount", "locale", "wallet", "pin"],
   bulk: ["user", "rows", "taka", "csv", "batchId", "reason"],
   transactions: ["txnId", "msisdn", "status", "txnType"],
   credentials: [],
@@ -189,7 +189,7 @@ export const HOW_TO: Record<PageKey, HowTo> = {
   checkout: {
     goal: "A web shop takes a Bits payment: session, hosted page, OTP + PIN, signed redirect, IPN.",
     steps: [
-      "Amount 25, language en, Create checkout session: HTTP 201, OPEN.",
+      "Merchant Karim Traders (or Lalbagh Pharmacy / Gulshan Fashion House), amount 25, language en, Create checkout session: HTTP 201, OPEN.",
       "View the hosted page (API; the answer shows under Result), then Send OTP to the payer wallet (the OTP is filled in from the SMS).",
       "PIN 13579, Pay: PAID with a txnId.",
       "Return to the shop (signed redirect), then Shop server: session status and IPNs.",
@@ -203,11 +203,13 @@ export const HOW_TO: Record<PageKey, HowTo> = {
     expect: [
       "Return: HTTP 303 to the shop's ok URL, status PAID, signature valid.",
       "Shop server: session PAID, one IPN answered 200 with a valid signature.",
+      "Another merchant: the hosted page names it and its wallet is the one credited; its redirect and IPNs verify with its own secret.",
       "With the IPN preset (fails the next 2): IPNs answered 503, 503, then 200.",
     ],
     fills: [
-      { label: "Tk 25 by customer01 (en)", values: { amount: "25", locale: "en", wallet: "01711000001", pin: "13579" } },
-      { label: "Tk 25 by customer02 (bn)", values: { amount: "25", locale: "bn", wallet: "01711000002", pin: "13579" } },
+      { label: "Tk 25 by customer01 (en)", values: { merchant: "merchant_demo", amount: "25", locale: "en", wallet: "01711000001", pin: "13579" } },
+      { label: "Tk 25 by customer02 (bn)", values: { merchant: "merchant_demo", amount: "25", locale: "bn", wallet: "01711000002", pin: "13579" } },
+      { label: "Tk 40 at Lalbagh Pharmacy", values: { merchant: "merchant_pharmacy", amount: "40", locale: "en", wallet: "01711000001", pin: "13579" } },
       { label: "Wrong PIN", values: { pin: "97531" } },
     ],
   },

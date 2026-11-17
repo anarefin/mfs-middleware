@@ -1,17 +1,20 @@
 "use server";
-// Web checkout (contracts checkout.v1): the dev merchant "Karim Traders" (APISIX hmac-auth consumer
-// merchant_demo, wallet 01911000001) creates a session; the payer pays on the hosted page API with
+// Web checkout (contracts checkout.v1): one of the dev merchants (lib/seed-catalogue.ts
+// CHECKOUT_MERCHANTS: APISIX hmac-auth consumer, key id, wallet; default merchant_demo "Karim Traders")
+// creates a session; the payer pays on the hosted page API with
 // the OTP the SMSC simulator received and the PIN; the merchant checks the signed redirect and
-// the signed IPN the simulator's merchant endpoint received. The merchant secret stays here.
+// the signed IPN the simulator's merchant endpoint received. The merchant secrets stay here; the
+// redirect and the IPNs are checked with the secret of the merchant that created the session.
 
 import { checkoutHeaders, encryptPin, queryOf, verifyCheckoutResult, verifyIpn } from "@/lib/crypto";
 import { normaliseMsisdn, takaToMinor } from "@/lib/format";
+import { checkoutMerchant } from "@/lib/seed-catalogue";
 import type { Outcome } from "@/lib/types";
 import { Trace, poll } from "@/lib/server/edge";
 import { checkoutSecret } from "@/lib/server/env";
 import { core, freshCodes, codes } from "@/lib/server/test-apis";
 
-type Co = { sessionId?: string; token?: string; orderId?: string; amountMinor?: number; otp?: string; wallet?: string };
+type Co = { merchantId?: string; sessionId?: string; token?: string; orderId?: string; amountMinor?: number; otp?: string; wallet?: string };
 export type CheckoutState = (Outcome & { data: Co & Record<string, unknown> }) | null;
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -28,6 +31,7 @@ export async function checkout(prev: CheckoutState, form: FormData): Promise<Che
       case "create": {
         const amount = takaToMinor(str(form, "amount"));
         if (!amount) return out("enter an amount in taka");
+        const m = checkoutMerchant(str(form, "merchant"));
         const orderId = `TC-${crypto.randomUUID().slice(0, 8)}`;
         const body = JSON.stringify({
           orderId, amount: { valueMinor: amount, currency: "BDT" }, successUrl: "https://shop.example.test/checkout/ok?cart=7",
@@ -35,12 +39,12 @@ export async function checkout(prev: CheckoutState, form: FormData): Promise<Che
           description: `test console order ${orderId}`, locale: str(form, "locale") || "en",
         });
         const path = "/checkout/v1/sessions";
-        const r = await t.call("merchant: create a checkout session (APISIX hmac-auth: Date, Digest, Signature)", "POST", path,
-          { headers: checkoutHeaders("POST", path, body, checkoutSecret(), "merchant-demo", new Date()), raw: body }, [201]);
+        const r = await t.call(`merchant ${m.name}: create a checkout session (APISIX hmac-auth key ${m.keyId}: Date, Digest, Signature)`, "POST", path,
+          { headers: checkoutHeaders("POST", path, body, checkoutSecret(m), m.keyId, new Date()), raw: body }, [201]);
         const b = (r.body ?? {}) as { sessionId?: string; checkoutUrl?: string; status?: string };
-        Object.assign(co, { sessionId: b.sessionId, orderId, amountMinor: amount, otp: undefined,
+        Object.assign(co, { merchantId: m.id, sessionId: b.sessionId, orderId, amountMinor: amount, otp: undefined,
           token: b.checkoutUrl ? b.checkoutUrl.slice(b.checkoutUrl.lastIndexOf("/") + 1) : undefined });
-        return out(r.status === 201 ? `session ${b.sessionId} ${b.status}: the shop sends the buyer to ${b.checkoutUrl}` : "the session was not created");
+        return out(r.status === 201 ? `${m.name}: session ${b.sessionId} ${b.status}, the shop sends the buyer to ${b.checkoutUrl}` : `${m.name}: the session was not created`);
       }
       case "page": {
         if (!co.token) return out("create a session first");
@@ -91,17 +95,18 @@ export async function checkout(prev: CheckoutState, form: FormData): Promise<Che
         const r = await t.call("browser: back to the shop (303 to the signed success / fail URL)", "GET", `/checkout/pay/v1/${co.token}/return`, {}, [303]);
         const loc = r.headers.get("location") ?? "";
         const q = queryOf(loc);
-        const valid = verifyCheckoutResult(q, checkoutSecret());
+        const valid = verifyCheckoutResult(q, checkoutSecret(checkoutMerchant(co.merchantId)));
         t.note("merchant: verify the signed result", valid ? `signature valid, status ${q.status}` : "signature INVALID", valid, q);
         return out(`redirect to ${loc.split("?")[0]} with status ${q.status ?? "?"}`);
       }
       case "merchant": {
         if (!co.sessionId) return out("create a session first");
+        const m = checkoutMerchant(co.merchantId);
         const path = `/checkout/v1/sessions/${co.sessionId}`;
-        await t.call("merchant: read the session (hmac-auth)", "GET", path, { headers: checkoutHeaders("GET", path, null, checkoutSecret(), "merchant-demo", new Date()) });
+        await t.call(`merchant ${m.name}: read the session (hmac-auth)`, "GET", path, { headers: checkoutHeaders("GET", path, null, checkoutSecret(m), m.keyId, new Date()) });
         const r = await t.call("IPNs the merchant's server received (simulator)", "GET", `/test/sim/merchant/ipn/received?ipnId=${co.sessionId}`, { apikey: true });
         const list = Array.isArray(r.body) ? (r.body as { headers?: Record<string, string>; body?: string; answeredStatus?: number }[]) : [];
-        const checks = list.map((i) => ({ answered: i.answeredStatus, attempt: i.headers?.["x-bits-attempt"], signatureValid: verifyIpn(i.headers ?? {}, i.body ?? "", checkoutSecret()), body: i.body }));
+        const checks = list.map((i) => ({ answered: i.answeredStatus, attempt: i.headers?.["x-bits-attempt"], signatureValid: verifyIpn(i.headers ?? {}, i.body ?? "", checkoutSecret(m)), body: i.body }));
         t.note("merchant: verify each IPN signature", `${list.length} IPN(s)`, checks.every((c) => c.signatureValid), checks);
         return out(`${list.length} IPN(s) received, answered ${checks.map((c) => c.answered).join(", ") || "-"}`);
       }

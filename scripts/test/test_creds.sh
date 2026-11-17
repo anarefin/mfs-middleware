@@ -13,6 +13,8 @@ KC_PORTALS_TEST_TOTP_SECRET=portals-fake-totp-secret-0000001
 MW_E2E_API_KEY=fake-e2e-key
 MW_SEED_APP_PIN=97531
 CHECKOUT_DEMO_MERCHANT_SECRET=fake-checkout
+CHECKOUT_PHARMACY_MERCHANT_SECRET=fake-pharmacy
+CHECKOUT_FASHION_MERCHANT_SECRET=fake-fashion
 BILLAGG_HMAC_SECRET=fake-billagg
 C2WBANK_HMAC_SECRET=fake-c2wbank
 USSD_GP_GATEWAY_SECRET=fake-gp
@@ -115,7 +117,7 @@ test_creds_prints_every_login_and_key() {
   dev_env; docker_stub up
   assert_ok mw_run "$PWD" creds.sh
   for v in fake-apisix-admin fake-kc-admin fake-ops-pw fake-portals-pw fake-e2e-key "scripts/totp.sh seed-org-maker" \
-           fake-checkout fake-billagg fake-c2wbank fake-gp fake-robi fake-bl fake-teletalk dev-root-token \
+           fake-checkout fake-pharmacy fake-fashion fake-billagg fake-c2wbank fake-gp fake-robi fake-bl fake-teletalk dev-root-token \
            https://localhost/tester https://localhost/console seed-ops-maker customer01 org-maker01 kc-admin \
            "scripts/totp.sh seed-ops-maker" "scripts/totp.sh ops-maker01" fake-mwcrypto-label fake-mwcrypto-so fake-mwcrypto-user \
            fake-paysim-label fake-paysim-so fake-paysim-user "app PIN (mw-auth login): 97531" "scripts/lib/mw-auth-token.mjs"; do

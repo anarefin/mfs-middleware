@@ -227,12 +227,19 @@ mw:
       # ticket 72), a PIN_TRANSPORT key only, reused pin-key-ttl
       pin-key-ttl: 5m
     # Checkout merchants by APISIX hmac-auth consumer name. Onboarding through mw-admin-api comes
-    # later; until then one dev merchant. Its secret (signs the redirect result and, ticket 32, the
-    # IPN) comes from OpenBao only: mw.checkout.merchants.<id>.secret in secret/mw-checkout.
+    # later; until then three dev merchants (core-mock MERCHANT wallets, the APISIX test consumers of
+    # deploy/apisix/consumers-test). A secret (signs the redirect result and, ticket 32, the IPN) comes
+    # from OpenBao only: mw.checkout.merchants.<id>.secret in secret/mw-checkout.
     merchants:
       merchant_demo:
         wallet: "01911000001"
         name: Karim Traders
+      merchant_pharmacy:
+        wallet: "01911000002"
+        name: Lalbagh Pharmacy
+      merchant_fashion:
+        wallet: "01911000003"
+        name: Gulshan Fashion House
     # Signed IPN to the merchant's ipnUrl (spec 9.3 step 3, ticket 32): attempt 1 at once, then
     # after each failure the next of retry-delays, until a 2xx or the last attempt. Every attempt is a
     # checkout.ipn_delivery row; the job (ShedLock) polls for due rows. The call is bounded by the

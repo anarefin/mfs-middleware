@@ -60,7 +60,7 @@ D9 amendment), can unlock and reset accounts, and has no sign-in.
   open on the MNO, number and code in the form: End (`op=end`, local hang-up) or changing one of them drops it
   and the button goes back to Dial; a refused or non-200 step counts as ended, so no reload is ever needed), `/simulators` (presets in `lib/presets.ts`, per-partner
   scenario forms, recorded requests, callback replay, core-mock faults, wallet lookup, SMPP binds /
-  drop / throttle), `/inbox` (SMSC and GreenMail), `/checkout` (create, page, OTP, pay, signed
+  drop / throttle), `/inbox` (SMSC and GreenMail), `/checkout` (merchant picked from `lib/seed-catalogue.ts` `CHECKOUT_MERCHANTS`, kept with the session; create, page, OTP, pay, signed
   redirect, IPNs), `/bulk` (sample CSV, upload, approve / reject / pause / resume, status, result,
   transactions, SP query), `/auth` (ticket 76, wallet authentication at mw-auth on fresh wallets of its
   own: `lib/auth.ts` (pure: OTP texts, fresh candidates 01711000500..999, the new-device window),
@@ -126,7 +126,7 @@ kept.
   `./gradlew :composeCheck`'s budget, about 192 MiB), network `app`, read-only root. Env from
   `deploy/.env`: `EDGE_URL`, `PUBLIC_URL` (links to `/console`), `MW_E2E_API_KEY`, `MW_SEED_APP_PIN`
   (ticket 69), `KC_PORTALS_TEST_PASSWORD`, `KC_PORTALS_TEST_TOTP_SECRET` (ticket 73),
-  `CHECKOUT_DEMO_MERCHANT_SECRET`; for the logins, seed data and account tools also
+  `CHECKOUT_DEMO_MERCHANT_SECRET`, `CHECKOUT_PHARMACY_MERCHANT_SECRET`, `CHECKOUT_FASHION_MERCHANT_SECRET`; for the logins, seed data and account tools also
   `KC_OPS_TEST_PASSWORD`, `KC_OPS_TEST_TOTP_SECRET`, `KC_BOOTSTRAP_ADMIN_USERNAME`,
   `KC_BOOTSTRAP_ADMIN_PASSWORD`, `APISIX_ADMIN_KEY`, `BILLAGG_HMAC_SECRET`, `C2WBANK_HMAC_SECRET`,
   `USSD_{GP,ROBI,BL,TELETALK}_GATEWAY_SECRET`, `SOFTHSM_{MWCRYPTO,PAYSIM}_{LABEL,SO_PIN,USER_PIN}`,

@@ -206,9 +206,12 @@ Checkout (ticket 31, spec 8.2/9.3, contract `contracts/api/mw-checkout/checkout.
 
 Merchant consumers carry `hmac-auth {key_id, secret_key}`; the consumer name is the merchant id
 mw-checkout knows (`mw.checkout.merchants.<id>`). Real merchants are onboarded through
-mw-admin-api later; the dev merchant `consumers-test/merchant_demo.json` (key id `merchant-demo`,
-secret `CHECKOUT_DEMO_MERCHANT_SECRET` from the generated `.env`, also synced to
-`secret/mw-checkout` as its signing secret) exists only with `MW_E2E_ROUTES=1`. A signed request
+mw-admin-api later; the dev merchants `consumers-test/merchant_demo.json` (key id `merchant-demo`,
+secret `CHECKOUT_DEMO_MERCHANT_SECRET`, wallet 01911000001 Karim Traders), `merchant_pharmacy.json`
+(`merchant-pharmacy`, `CHECKOUT_PHARMACY_MERCHANT_SECRET`, 01911000002 Lalbagh Pharmacy) and
+`merchant_fashion.json` (`merchant-fashion`, `CHECKOUT_FASHION_MERCHANT_SECRET`, 01911000003 Gulshan
+Fashion House) take their secrets from the generated `.env` (each also synced to `secret/mw-checkout` as
+that merchant's signing secret) and exist only with `MW_E2E_ROUTES=1`. A signed request
 (APISIX 3.x `hmac-auth`): `Date: <RFC 7231 GMT>`, `Digest: SHA-256=<base64(sha256(body))>`,
 `Authorization: Signature keyId="merchant-demo",algorithm="hmac-sha256",headers="@request-target
 date digest",signature="<base64(hmac-sha256(secret, signing string))>"`, signing string =
