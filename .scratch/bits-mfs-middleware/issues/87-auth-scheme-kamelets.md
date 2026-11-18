@@ -20,7 +20,7 @@ identical, and are added to the loader and admin-api allowlists.
 
 **Blocked by:** 84
 
-**Status:** open
+**Status:** done (b4d2b1c1, 7677e0fa)
 
 - [ ] A new biller using OAuth2-CC is onboarded by config only (`NewBillerRouteIT` variant): one token call for N payments, a refresh after expiry or a 401
 - [ ] mTLS IT: the call succeeds with the named keystore and fails closed (UNKNOWN or refused) with a wrong one

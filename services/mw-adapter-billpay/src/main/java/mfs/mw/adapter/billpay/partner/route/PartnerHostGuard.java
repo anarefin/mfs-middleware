@@ -6,11 +6,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import mfs.mw.adapter.billpay.partner.auth.PartnerTlsContexts;
 import mfs.mw.adapter.billpay.partner.config.PartnerEndpointPolicy;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -26,6 +28,8 @@ import org.springframework.stereotype.Component;
  * refusal ends in {@code mw-http-call}'s fallback as NOT_SENT {@code MISCONFIGURED} and is logged
  * as {@code security.partner_target_refused}. Ticket 85 adds {@code cxf*} ({@link #soapProblem}: the
  * endpoints of {@code mw-soap-call} only); ticket 86 adds {@code sftp*}.
+ * An mTLS call (ticket 87) may also carry {@code sslContextParameters=#mwTls-<name>}, and only a
+ * context the calling partner owns ({@link PartnerTlsContexts}), over https.
  */
 @Component
 public class PartnerHostGuard extends RouteBuilder {
@@ -49,10 +53,20 @@ public class PartnerHostGuard extends RouteBuilder {
 
   private static final Logger log = LoggerFactory.getLogger(PartnerHostGuard.class);
 
+  /** The option of an mTLS call (ticket 87), checked against the calling partner's contexts. */
+  static final String TLS_OPTION = "sslContextParameters";
+
   private final PartnerEndpointPolicy policy;
+  private final PartnerTlsContexts tls;
 
   public PartnerHostGuard(PartnerEndpointPolicy policy) {
+    this(policy, PartnerTlsContexts.none());
+  }
+
+  @Autowired
+  public PartnerHostGuard(PartnerEndpointPolicy policy, PartnerTlsContexts tls) {
     this.policy = policy;
+    this.tls = tls;
   }
 
   @Override
@@ -100,10 +114,30 @@ public class PartnerHostGuard extends RouteBuilder {
     } catch (IllegalArgumentException e) {
       return "unreadable endpoint";
     }
+    String tlsContext = null;
     if (q >= 0) {
-      String option = optionProblem(plain.substring(q + 1));
+      StringBuilder rest = new StringBuilder();
+      for (String pair : plain.substring(q + 1).split("&")) {
+        String name = URLDecoder.decode(pair.indexOf('=') < 0 ? pair : pair.substring(0, pair.indexOf('=')), StandardCharsets.UTF_8);
+        if (TLS_OPTION.equals(name) && tlsContext == null) {
+          tlsContext = URLDecoder.decode(pair.substring(pair.indexOf('=') + 1), StandardCharsets.UTF_8);
+        } else {
+          rest.append(pair).append('&');
+        }
+      }
+      String option = optionProblem(rest.toString());
       if (option != null) {
         return option;
+      }
+    }
+    if (tlsContext != null) {
+      String name = tlsContext.startsWith("#" + PartnerTlsContexts.BEAN_PREFIX)
+          ? tlsContext.substring(1 + PartnerTlsContexts.BEAN_PREFIX.length()) : "";
+      if (!tls.owner(name).map(runtime.id()::equals).orElse(false)) {
+        return "TLS client context is not one of the partner's own";
+      }
+      if (!"https".equalsIgnoreCase(uri.getScheme())) {
+        return "a TLS client context needs https";
       }
     }
     return hostProblem(runtime, uri);

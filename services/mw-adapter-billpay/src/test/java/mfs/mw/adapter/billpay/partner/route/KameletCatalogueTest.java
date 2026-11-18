@@ -28,7 +28,7 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 class KameletCatalogueTest {
 
   static final Set<String> ALLOWED_SCHEMES = Set.of("kamelet", "json-validator");
-  static final Pattern URI = Pattern.compile("(?m)^\\s*-?\\s*(?:to|uri|toD):\\s*\"?([^\"\\s]+)");
+  static final Pattern URI = Pattern.compile("(?m)^\\s*-?\\s*(?:to|uri|toD):[ \\t]*\"?([^\"\\s]+)");
 
   @SuppressWarnings("unchecked")
   static List<Map<String, Object>> kamelets() throws Exception {
@@ -53,6 +53,11 @@ class KameletCatalogueTest {
   @Test
   void theSoapKameletShipsInTheLibrary() {
     assertThat(new KameletCatalogue().names()).contains("mw-soap-call");
+  }
+
+  @Test
+  void theLibraryHoldsTheAuthKameletsOfTicket87() {
+    assertThat(new KameletCatalogue().names()).contains("mw-auth-basic", "mw-auth-oauth2-cc", "mw-auth-jws");
   }
 
   @Test

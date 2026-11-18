@@ -233,6 +233,16 @@ mw:
     # This adapter's family (ticket 83): a partner record whose value.family is another one (billpay,
     # bank) belongs to another adapter and is skipped.
     family: telco
+    # mTLS client contexts (ticket 87, static config only): <name>: {partner-id: <id>, truststore: true|false}; the key store
+    # is read once at startup from secret/mw-adapter-telco/<id> (fields <name>-keystore, base64 PKCS#12,
+    # <name>-keystore-password; with truststore: true also <name>-truststore and <name>-truststore-password,
+    # a failed read leaves the context unregistered, never the JVM trust store) into the bean
+    # mwTls-<name>, which only that partner's route may name (mw-http-call sslContextRef=<name>). None by default.
+    tls:
+      contexts: {}
+    # OAuth2 client credentials (mw-auth-oauth2-cc): a token is reused until expires_in minus this skew.
+    oauth2:
+      expiry-skew: 30s
     # Where a new version's dry-run goes when its record names no sandbox (dryRun.baseUrl): {partnerId}
     # is replaced, the host joins the candidate's allowed hosts. Empty in production (each record names
     # its partner's sandbox); the dev profile points at mw-simulators' stub.

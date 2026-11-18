@@ -40,7 +40,10 @@ spec:
         type: string
       auth:
         title: Auth scheme
-        description: The mw-auth-<auth> Kamelet that signs the request (none, apikey, hmac-sha256).
+        description: >-
+          The mw-auth-<auth> Kamelet that signs the request (none, apikey, hmac-sha256, basic, oauth2-cc,
+          jws), again before each attempt. With oauth2-cc a partner 401 drops the token and the request
+          is sent once more with a fresh one (a 401 is a refusal, nothing was applied).
         type: string
         default: none
       secretField:
@@ -54,12 +57,54 @@ spec:
           - urn:alm:descriptor:com.tectonic.ui:password
       authHeader:
         title: Auth header
-        description: Header of the api key (apikey; default X-Api-Key).
+        description: Header of the api key (apikey; default X-Api-Key) or of the detached JWS (jws; default X-JWS-Signature).
         type: string
         default: ""
       keyId:
         title: Key id
-        description: Key id sent as X-Key-Id (hmac-sha256; none by default).
+        description: Key id sent as X-Key-Id (hmac-sha256) or as the JWS kid (jws); none by default.
+        type: string
+        default: ""
+      userField:
+        title: User secret field
+        description: Field of this partner's own OpenBao secret holding the user name (basic); a reference, never the value.
+        type: string
+        format: password
+        default: ""
+        x-descriptors:
+          - urn:camel:group:credentials
+          - urn:alm:descriptor:com.tectonic.ui:password
+      tokenUrl:
+        title: Token URL
+        description: OAuth2 token endpoint (oauth2-cc); static http(s), its host must be in the record's allowedHosts.
+        type: string
+        default: ""
+      clientId:
+        title: Client id
+        description: OAuth2 client id (oauth2-cc); the client secret is secretField.
+        type: string
+        default: ""
+      scope:
+        title: Scope
+        description: OAuth2 scopes requested, space-separated (oauth2-cc; none by default).
+        type: string
+        default: ""
+      audience:
+        title: Audience
+        description: OAuth2 audience parameter (oauth2-cc; none by default).
+        type: string
+        default: ""
+      alg:
+        title: JWS algorithm
+        description: RS256 or ES256 (jws); the PKCS#8 PEM key is secretField.
+        type: string
+        default: ""
+      sslContextRef:
+        title: TLS client context
+        description: >-
+          Name of a client keystore (mTLS) registered at startup from OpenBao for this partner
+          (mw.partners.tls.contexts.<name>, bean mwTls-<name>); https only. The route only names it,
+          never supplies key material. Empty = no client certificate.
         type: string
         default: ""
       partnerId:
@@ -95,14 +140,17 @@ spec:
         - setProperty:
             name: mwHttpPath
             constant: "{{path}}"
+        - setProperty:
+            name: mwHttpTlsRef
+            constant: "{{sslContextRef}}"
         - bean:
             ref: mwHttp
             method: prepare
-        - to: "kamelet:mw-auth-{{auth}}?secretField={{secretField}}&header={{authHeader}}&keyId={{keyId}}"
         - loop:
             doWhile: true
             simple: "${exchangeProperty.mwAttemptAgain} == true"
             steps:
+              - to: "kamelet:mw-auth-{{auth}}?secretField={{secretField}}&header={{authHeader}}&keyId={{keyId}}&userField={{userField}}&tokenUrl={{tokenUrl}}&clientId={{clientId}}&scope={{scope}}&audience={{audience}}&alg={{alg}}"
               - bean:
                   ref: mwHttp
                   method: beforeAttempt
@@ -114,7 +162,20 @@ spec:
                     bulkheadEnabled: true
                     bulkheadMaxConcurrentCalls: "{{bulkhead}}"
                   steps:
-                    - to: "{{url}}?throwExceptionOnFailure=false&followRedirects=false&headerFilterStrategy=#mwPartnerHeaderFilter&connectTimeout={{connectTimeoutMs}}&responseTimeout={{readTimeoutMs}}&soTimeout={{readTimeoutMs}}"
+                    # mTLS: the endpoint with the named client context is resolved only when used (toD), so
+                    # a partner without one never needs a bean mwTls-. Not optimised: Camel's http toD optimisation
+                    # would send the endpoint options as query parameters.
+                    - choice:
+                        when:
+                          - simple: "${exchangeProperty.mwHttpTls} == true"
+                            steps:
+                              - toD:
+                                  uri: "{{url}}?throwExceptionOnFailure=false&followRedirects=false&headerFilterStrategy=#mwPartnerHeaderFilter&connectTimeout={{connectTimeoutMs}}&responseTimeout={{readTimeoutMs}}&soTimeout={{readTimeoutMs}}&sslContextParameters=#mwTls-{{sslContextRef}}"
+                                  cacheSize: 1
+                                  allowOptimisedComponents: false
+                        otherwise:
+                          steps:
+                            - to: "{{url}}?throwExceptionOnFailure=false&followRedirects=false&headerFilterStrategy=#mwPartnerHeaderFilter&connectTimeout={{connectTimeoutMs}}&responseTimeout={{readTimeoutMs}}&soTimeout={{readTimeoutMs}}"
                     - bean:
                         ref: mwHttp
                         method: response

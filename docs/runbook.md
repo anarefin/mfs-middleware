@@ -280,6 +280,18 @@ partner route as config: no Java, no release, no restart for the route itself.
    mw-adapter-billpay's config and the secret fields the route names to OpenBao
    `secret/mw-adapter-billpay/<id>`, then restart mw-adapter-billpay
    (`./gradlew :mw-adapter-billpay:bootJar`, then from `deploy/`: `docker compose --profile core up -d --build mw-adapter-billpay`).
+   Auth options (ticket 87; details in `docs/concepts/camel-partner-routes.md`). Every "field" is a field
+   of `secret/<adapter>/<id>` in OpenBao:
+
+   | `mw-http-call` | Needs | OpenBao fields | Notes |
+   | --- | --- | --- | --- |
+   | `auth=apikey` | `secretField`, `authHeader` | the key | header default `X-Api-Key` |
+   | `auth=hmac-sha256` | `secretField`, `keyId` | the shared secret | |
+   | `auth=basic` | `userField`, `secretField` | user, password | RFC 7617 |
+   | `auth=oauth2-cc` | `tokenUrl`, `clientId`, `secretField`, `scope`, `audience` | client secret | `tokenUrl` host in `allowedHosts`; one token per partner until `expires_in` - 30 s (`mw.partners.oauth2.expiry-skew`); a 401 takes one fresh token; log `partner.oauth2.token_fetched` / `partner.oauth2.token_failed` (no token) |
+   | `auth=jws` | `secretField`, `alg` (`RS256`/`ES256`), `keyId`, `authHeader` | PKCS#8 PEM private key | detached JWS in `X-JWS-Signature` by default; no mw-crypto key purpose fits, so an OpenBao key (dev: a fake one) |
+   | `sslContextRef=<name>` | https `url` | `<name>-keystore` (base64 PKCS#12), `<name>-keystore-password`, with `truststore: true` also `<name>-truststore`, `<name>-truststore-password` (a failed read leaves the context unregistered, never the JVM trust store) | static config `mw.partners.tls.contexts.<name>.partner-id: <id>`, read at startup (restart after a change); log `partner.tls_context_registered` / `partner.tls_context_unavailable` |
+
 6. **A SOAP biller** (ticket 85) follows the same steps with `mw-soap-call` in place of `mw-http-call`
    (example: `deploy/partner-routes/examples/soap-biller.yaml`): `mw-map` (JSONata, the request fields) ->
    `mw-soap-call?address=<static https URL>&request=<x.xsl>&response=<y.xsl>&soapAction=<action>` (optional

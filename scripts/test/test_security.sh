@@ -82,6 +82,24 @@ test_log_scan_finds_an_unmasked_nid() {
   assert_out_contains "FINDING nid"
 }
 
+# Ticket 87: a bearer token, basic credentials or an OAuth2 token / client secret field, unmasked
+test_log_scan_finds_bearer_tokens_basic_credentials_and_token_fields_without_repeating_them() {
+  assert_ok scan_lines \
+    '{"message":"Authorization: Bearer ****","auth":"Basic ****"}' \
+    '{"access_token":"****","client_secret":"****","note":"the basic plan"}'
+  assert_fails scan_lines 'Authorization: Bearer fakeTokenValue123.abc-def'
+  assert_out_contains "FINDING credential logs.txt:1"
+  assert_out_lacks "fakeTokenValue123"
+  assert_fails scan_lines '{"authorization":"Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="}'
+  assert_out_contains "FINDING credential"
+  assert_out_lacks "QWxhZGRpbjpv"
+  assert_fails scan_lines '{"access_token":"fake-token-77","expires_in":3600}'
+  assert_out_contains "FINDING credential"
+  assert_out_lacks "fake-token-77"
+  assert_fails scan_lines 'grant_type=client_credentials&client_secret=fake-secret-9'
+  assert_out_lacks "fake-secret-9"
+}
+
 test_log_scan_honours_the_justified_allow_list() {
   mkdir -p scripts
   printf '# reason: fixture\n^ALLOWED .*\n' >scripts/log-scan.allow

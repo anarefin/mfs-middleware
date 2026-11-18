@@ -36,6 +36,13 @@ public class MwHttpStep {
 
   public static final String CORRELATION_HEADER = "X-Correlation-Id";
 
+  /** {@code mw-http-call}'s {@code sslContextRef} (ticket 87); empty: no client certificate. */
+  static final String TLS_REF = "mwHttpTlsRef";
+  /** True when the call goes out with the named client context (the Kamelet's {@code toD} branch). */
+  static final String TLS = "mwHttpTls";
+  /** True once a partner 401 was answered by sending once more with a fresh credential. */
+  static final String AUTH_RETRIED = "mwAuthRetried";
+
   private static final Logger log = LoggerFactory.getLogger(MwHttpStep.class);
 
   private final JsonMapper json;
@@ -79,8 +86,12 @@ public class MwHttpStep {
     if (correlationId != null) {
       message.setHeader(CORRELATION_HEADER, correlationId);
     }
+    String tls = exchange.getProperty(TLS_REF, "", String.class);
+    exchange.setProperty(TLS, tls != null && !tls.isEmpty());
     exchange.setProperty(PartnerExchange.ATTEMPTS, 0);
     exchange.setProperty(PartnerExchange.ATTEMPT_AGAIN, true);
+    exchange.removeProperty(AUTH_RETRIED);
+    exchange.removeProperty(MwAuthStep.REJECTED);
   }
 
   /** Before each attempt: the request body as mapped, nothing decided yet. */
@@ -97,7 +108,10 @@ public class MwHttpStep {
 
   /**
    * Reads the partner's answer. A 5xx throws, so it counts against the breaker and ends in the
-   * fallback as UNKNOWN {@code HTTP_5XX}; any other status is kept for {@code mw-classify}.
+   * fallback as UNKNOWN {@code HTTP_5XX}; any other status is kept for {@code mw-classify}. A 401
+   * to a refreshable credential ({@code mw-auth-oauth2-cc}, ticket 87) is answered once by sending
+   * again with a fresh one (any operation: a 401 is a refusal, the request was not applied); the
+   * extra attempt does not count against {@code inquiryRetries}.
    */
   public void response(Exchange exchange) {
     Integer status = exchange.getMessage().getHeader(Exchange.HTTP_RESPONSE_CODE, Integer.class);
@@ -106,6 +120,19 @@ public class MwHttpStep {
     exchange.setProperty(PartnerExchange.RESPONSE_BODY, body == null ? "" : body);
     if (status == null || status >= 500) {
       throw new PartnerServerErrorException(status == null ? 0 : status);
+    }
+    if (status == 401
+        && PartnerExchange.flag(exchange, MwAuthStep.REFRESHABLE)
+        && !PartnerExchange.flag(exchange, AUTH_RETRIED)) {
+      PartnerRuntime runtime = PartnerExchange.runtime(exchange);
+      log.atInfo()
+          .addKeyValue("event", "partner.auth.refresh")
+          .addKeyValue("partnerId", runtime.id())
+          .log("partner refused the credential (401); sending once more with a fresh one");
+      exchange.setProperty(AUTH_RETRIED, true);
+      exchange.setProperty(MwAuthStep.REJECTED, exchange.getProperty(MwAuthStep.TOKEN_GENERATION, 0L, Long.class));
+      exchange.setProperty(PartnerExchange.ATTEMPTS, exchange.getProperty(PartnerExchange.ATTEMPTS, 1, Integer.class) - 1);
+      exchange.setProperty(PartnerExchange.ATTEMPT_AGAIN, true);
     }
   }
 

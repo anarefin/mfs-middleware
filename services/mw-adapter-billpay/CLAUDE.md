@@ -145,7 +145,8 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   the breaker so it counts and ends UNKNOWN `HTTP_5XX`; a `loop` re-sends only an INQUIRY / STATUS_QUERY,
   at most `inquiryRetries`, after a timeout, 5xx, reset or failed connect; a PAY never), `mw-auth-none`,
   `mw-auth-apikey`, `mw-auth-hmac-sha256` (the `partner/auth` schemes, same wire format,
-  `AuthSchemesTest`), `mw-classify` (the fail-closed rules of the former `RestJsonAdapter.classify`:
+  `AuthSchemesTest`), and since ticket 87 `mw-auth-basic` (`userField` + `secretField`),
+  `mw-auth-oauth2-cc` and `mw-auth-jws` (below, "Auth options"), `mw-classify` (the fail-closed rules of the former `RestJsonAdapter.classify`:
   SUCCESS/PENDING need a 2xx and a reference, PENDING only with `pending=true`, FAILED a code and a
   `definiteStatuses` status, ambiguous codes AMBIGUOUS, NOT_FOUND only for STATUS_QUERY), `mw-audit`.
   `partnerId`, `timeoutMs`, `connectTimeoutMs`, `readTimeoutMs`, `bulkhead` are injected by the loader
@@ -319,6 +320,34 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   `PartnerBatchRouteLoaderTest`, `MwReconStepTest`, `KameletCatalogueTest`, `SftpReconRouteIT` (atmoz/sftp
   Testcontainer: read once, `.done`, `.error`, disabled, the sink, an unknown host key refused). Example:
   `deploy/partner-routes/examples/sftp-recon.yaml`; dev SFTP host `partner-sftp` (profile tester).
+
+- **Auth options** (ticket 87; `partner/kamelet/MwAuthStep`, `partner/auth/OAuth2ClientCredentials`,
+  `DetachedJws`, `PartnerTlsContexts`; tests `AuthKameletsTest` (AdviceWith/MockEndpoint, RFC 7617
+  vector, JWS checked by nimbus-jose-jwt), `AuthRouteLoaderTest`, `PartnerAuthKameletsIT` (WireMock),
+  `NewBillerRouteIT` (OAuth2 biller by config, OpenBao)). `mw-http-call` passes every auth parameter to
+  `mw-auth-<auth>` (Camel ignores the ones a Kamelet does not declare) and calls it inside its loop, before
+  each attempt. `basic`: `Authorization: Basic` from two secret fields. `oauth2-cc`: a client-credentials
+  token from `tokenUrl` (POST, client authenticated with HTTP Basic, `scope`/`audience` when set) sent with
+  the shared `ProducerTemplate` through the partner http component, so the host guard holds `tokenUrl` to
+  `allowedHosts` (the loader checks it at load too); cached per (partner, tokenUrl, clientId, scope,
+  audience) until `expires_in` minus `mw.partners.oauth2.expiry-skew` (30 s; none given: 60 s), one
+  request at a time per key; a partner 401 marks the token's generation rejected and `MwHttpStep.response`
+  sends once more (any operation: a 401 is a refusal; it does not count against `inquiryRetries`); a
+  second 401 is classified. Camel's `oauth2*` http options are not used: the client secret would be an
+  endpoint option (in the URI) and a refused token is not dropped. `jws`: detached JWS (RFC 7515 F) over
+  the request body, RS256 or ES256 (JOSE R||S), PKCS#8 PEM key in a secret field, `kid` = `keyId`, header
+  `authHeader` (default `X-JWS-Signature`); `services/mw-crypto` has no source on this branch, so no key
+  purpose there (user decision): the key is an OpenBao field (fake in dev only). mTLS: `sslContextRef`
+  names a context of static config `mw.partners.tls.contexts.<name>.partner-id` (`config/PartnerTlsProperties`),
+  read once when Camel starts (before the routes) from that partner's secret fields `<name>-keystore`
+  (base64 PKCS#12), `<name>-keystore-password`, with `truststore: true` `<name>-truststore`/`-password` (a failed read leaves the context unregistered, never the JVM trust store), and bound as the
+  `SSLContextParameters` bean `mwTls-<name>`; the loader and the host guard allow only the owning
+  partner and https (guard option `sslContextParameters=#mwTls-<name>`). The send with a context is a
+  `toD` (resolved only when used, so a partner without one needs no bean) with `cacheSize: 1` and
+  `allowOptimisedComponents: false` (the http toD optimisation would send the endpoint options as query
+  parameters). A wrong key store fails the handshake: UNKNOWN, never a success. `MaskingPolicy.scrub`
+  masks `Bearer`/`Basic` values and `access_token`/`refresh_token`/`id_token`/`client_secret` fields;
+  `scripts/log-scan.sh` reports them as `credential`.
 
 Choices where Camel 4.22.2 differs from the ticket text (verified in the 4.22.2 jars, Context7 not
 available): `camel-jsonata` is a component that recompiles per exchange, so mappings are compiled
