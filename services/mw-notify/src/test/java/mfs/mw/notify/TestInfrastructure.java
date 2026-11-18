@@ -88,14 +88,22 @@ public class TestInfrastructure {
     return POSTGRES.getJdbcUrl().replaceFirst("/[^/?]+(\\?|$)", "/" + database + "$1");
   }
 
-  /** Wires this context to its own database and to the shared Kafka. */
-  @Bean
-  DynamicPropertyRegistrar testInfrastructureProperties() {
+  /** Points {@code spring.datasource.*} of the context being built at its own new database. */
+  static DynamicPropertyRegistrar contextDatabase() {
     String url = createContextDatabase();
     return registry -> {
       registry.add("spring.datasource.url", () -> url);
       registry.add("spring.datasource.username", POSTGRES::getUsername);
       registry.add("spring.datasource.password", POSTGRES::getPassword);
+    };
+  }
+
+  /** Wires this context to its own database and to the shared Kafka. */
+  @Bean
+  DynamicPropertyRegistrar testInfrastructureProperties() {
+    DynamicPropertyRegistrar database = contextDatabase();
+    return registry -> {
+      database.accept(registry);
       // The containers are not @ServiceConnection beans: wire Kafka by hand.
       registry.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
     };

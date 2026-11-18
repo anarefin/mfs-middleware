@@ -58,6 +58,11 @@ spring:
       properties:
         enable.idempotence: true
         max.in.flight.requests.per.connection: 5
+        # Kafka down must fail a send fast instead of blocking for the client defaults (60 s, 2 min);
+        # the outbox relay and the retry topics retry it.
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
     consumer:
       # One group per service: listeners use groupId = "${spring.kafka.consumer.group-id}", and
       # the group is the middle part of the service's retry and DLQ topic names.
@@ -83,6 +88,12 @@ spring:
     admin:
       # Topics belong to the platform (deploy/kafka/); the service never creates any.
       auto-create: false
+      # The observed KafkaTemplate asks the admin client for the cluster id on its first send; with
+      # Kafka down that must fail as fast as the producer does, not after the client defaults (60 s).
+      operation-timeout: 5s
+      properties:
+        default.api.timeout.ms: 5000
+        request.timeout.ms: 5000
 
 # Resilience defaults for client/ calls (19.2). A partner overrides them under
 # resilience4j.<kind>.instances.<partner> (base-config: default). Retry is only for idempotent
@@ -175,8 +186,9 @@ management:
 
 mw:
   kafka:
-    # How long EventPublisher.publish waits for Kafka's acknowledgement.
-    send-timeout: 30s
+    # How long EventPublisher.publish waits for Kafka's acknowledgement (just above the producer's
+    # delivery.timeout.ms, so the producer decides first).
+    send-timeout: 12s
     listener:
       # How long a stopping listener container waits for its consumer thread.
       shutdown-timeout: 10s
