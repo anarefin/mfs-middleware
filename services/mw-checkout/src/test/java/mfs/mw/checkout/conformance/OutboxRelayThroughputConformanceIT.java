@@ -35,7 +35,7 @@ import tools.jackson.databind.json.JsonMapper;
  * The batched, pipelined outbox relay against real Kafka and PostgreSQL (spec 6.4): a backlog
  * drains well above 1,000 rows/s with every key's events in id order on Kafka, and a row Kafka
  * refuses holds back the later rows of its key (not other keys) so none is marked sent ahead of
- * it. The relay route is off (test default); the tests drive {@link OutboxRelay} themselves.
+ * it. The relay schedule is off (test default); the tests drive {@link OutboxRelay} themselves.
  */
 @Conformance
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

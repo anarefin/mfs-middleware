@@ -3,7 +3,6 @@ package mfs.mw.admin.api.conformance;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,16 +16,14 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import mfs.mw.admin.api.TestInfrastructure;
-import mfs.mw.admin.api.config.KafkaRetryProperties;
 import mfs.mw.admin.api.config.OutboxProperties;
 import mfs.mw.admin.api.messaging.EventMetadata;
 import mfs.mw.admin.api.messaging.EventPublisher;
 import mfs.mw.admin.api.messaging.Inbox;
 import mfs.mw.admin.api.messaging.KafkaTestConsumer;
+import mfs.mw.admin.api.messaging.KafkaTestTopics;
 import mfs.mw.admin.api.messaging.OutboxRelay;
 import mfs.mw.admin.api.messaging.OutboxWriter;
-import mfs.mw.admin.api.route.RetryTopicRouteBuilder;
-import org.apache.camel.Exchange;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,30 +35,36 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The outbox relay after a crash, a restart and with two instances (spec 6.4, 19.3). The relay
- * route is off here (test default), so each test drives {@link OutboxRelay} itself: a relay that
+ * schedule is off here (test default), so each test drives {@link OutboxRelay} itself: a relay that
  * dies after Kafka acknowledged its batch but before its transaction committed leaves the rows
  * unsent; the relay of the restarted service publishes it again, and the consumer's inbox
  * applies each event once. Two relays running at once never publish a row twice.
  */
 @Conformance
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
-@Import({TestInfrastructure.class, OutboxRelayRecoveryConformanceIT.Routes.class})
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.NONE,
+    properties = "spring.kafka.consumer.group-id=" + OutboxRelayRecoveryConformanceIT.GROUP)
+@Import({TestInfrastructure.class, OutboxRelayRecoveryConformanceIT.Listeners.class})
 class OutboxRelayRecoveryConformanceIT {
 
   static final String TOPIC = "conformance.outbox.recovery.v1";
   static final String CONSUMER = "conformance-recovery";
+  /** Own consumer group, so this context's retry topics are its own. */
+  static final String GROUP = "mw-admin-api-recovery-it";
 
   /** The process dying between Kafka's ack and the relay's commit. */
   static final class SimulatedCrash extends RuntimeException {
     private static final long serialVersionUID = 1L;
   }
 
-  static class EffectHandler {
+  public static class EffectHandler {
     final Inbox inbox;
     final JdbcTemplate jdbc;
     final Map<String, AtomicInteger> deliveries = new ConcurrentHashMap<>();
@@ -71,37 +74,25 @@ class OutboxRelayRecoveryConformanceIT {
       this.jdbc = jdbc;
     }
 
-    public void handle(Exchange exchange) {
-      String eventId =
-          JsonMapper.builder().build().readTree(exchange.getMessage().getBody(String.class)).get("eventId").asString();
+    @KafkaListener(topics = TOPIC, groupId = "${spring.kafka.consumer.group-id}")
+    public void handle(ConsumerRecord<String, String> record, Acknowledgment ack) {
+      String eventId = JsonMapper.builder().build().readTree(record.value()).get("eventId").asString();
       deliveries.computeIfAbsent(eventId, k -> new AtomicInteger()).incrementAndGet();
       inbox.processOnce(
           CONSUMER,
           eventId,
           () -> jdbc.update("insert into conformance_recovery_effect (event_id) values (?)", eventId));
+      ack.acknowledge();
     }
   }
 
   @TestConfiguration(proxyBeanMethods = false)
-  static class Routes {
+  static class Listeners {
+    /** The topics exist before the listener subscribes, as the platform declares them. */
     @Bean
     EffectHandler effectHandler(Inbox inbox, JdbcTemplate jdbc) {
+      KafkaTestTopics.createWithRetries(TOPIC, GROUP, 3, 1);
       return new EffectHandler(inbox, jdbc);
-    }
-
-    @Bean
-    RetryTopicRouteBuilder recoveryRoute(KafkaRetryProperties retry, Clock clock) {
-      return new RetryTopicRouteBuilder(retry, clock) {
-        @Override
-        protected String topic() {
-          return TOPIC;
-        }
-
-        @Override
-        protected String handlerUri() {
-          return "bean:effectHandler?method=handle";
-        }
-      };
     }
   }
 

@@ -20,21 +20,20 @@ import mfs.mw.notify.messaging.TxnStatusListener;
 import mfs.mw.notify.service.NotificationService;
 import mfs.mw.notify.service.TemplatePublisher;
 import mfs.mw.notify.service.TxnStatusService;
-import org.apache.camel.Exchange;
-import org.apache.camel.impl.DefaultCamelContext;
-import org.apache.camel.support.DefaultExchange;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 import org.mockito.ArgumentCaptor;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.springframework.kafka.support.Acknowledgment;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Every {@code consumes.events} entry of {@code contracts.yml} (ticket 53): each valid contract
  * sample goes through the real listener ({@link NotifyRequestListener}, {@link TxnStatusListener}:
  * read with Spring Boot's default JsonMapper, the module configures none, plus the listener's own
- * check) and reaches the service as the module's DTO. No Spring context, no Docker (a bare Camel
- * exchange carries the body).
+ * check) and reaches the service as the module's DTO. No Spring context, no Docker (a bare Kafka
+ * record carries the body).
  *
  * <p>Invalid samples: neither listener validates against the schema. {@code NotifyRequestListener}
  * refuses a request without messageId or templateCode, and Jackson refuses an unknown enum value
@@ -54,15 +53,15 @@ class ConsumedContractsTest {
   static final List<String> REJECTED_BY_LISTENER =
       List.of("events/mw-notify/samples/mw.notify.request.v1/invalid-unknown-priority.json");
 
-  static Exchange exchange(String body) {
-    Exchange exchange = new DefaultExchange(new DefaultCamelContext());
-    exchange.getMessage().setBody(body);
-    return exchange;
+  static ConsumerRecord<String, String> record(String body) {
+    return new ConsumerRecord<>("contract-test", 0, 0L, null, body);
   }
+
+  static final Acknowledgment ACK = () -> {};
 
   static NotificationRequest readRequest(String body) {
     NotificationService service = mock(NotificationService.class);
-    new NotifyRequestListener(service, JSON).handle(exchange(body));
+    new NotifyRequestListener(service, JSON).handle(record(body), ACK);
     ArgumentCaptor<NotificationRequest> captor = ArgumentCaptor.forClass(NotificationRequest.class);
     verify(service).accept(captor.capture());
     return captor.getValue();
@@ -70,7 +69,7 @@ class ConsumedContractsTest {
 
   static TxnStatusEvent readTxnStatus(String body) {
     TxnStatusService service = mock(TxnStatusService.class);
-    new TxnStatusListener(service, JSON).handle(exchange(body));
+    new TxnStatusListener(service, JSON).handle(record(body), ACK);
     ArgumentCaptor<TxnStatusEvent> captor = ArgumentCaptor.forClass(TxnStatusEvent.class);
     verify(service).onStatus(captor.capture());
     return captor.getValue();
@@ -78,7 +77,7 @@ class ConsumedContractsTest {
 
   static ConfigChangedEvent readConfig(String body) {
     TemplatePublisher service = mock(TemplatePublisher.class);
-    new ConfigChangedListener(service, JSON).handle(exchange(body));
+    new ConfigChangedListener(service, JSON).handle(record(body), ACK);
     ArgumentCaptor<ConfigChangedEvent> captor = ArgumentCaptor.forClass(ConfigChangedEvent.class);
     verify(service).onConfigChanged(captor.capture());
     return captor.getValue();
@@ -143,7 +142,7 @@ class ConsumedContractsTest {
                       Path sample = ContractSchemas.contractsDir().resolve(name);
                       String body = Files.readString(sample);
                       NotificationService service = mock(NotificationService.class);
-                      assertThatThrownBy(() -> new NotifyRequestListener(service, JSON).handle(exchange(body)))
+                      assertThatThrownBy(() -> new NotifyRequestListener(service, JSON).handle(record(body), ACK))
                           .isInstanceOf(RuntimeException.class);
                     }));
   }

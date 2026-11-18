@@ -9,9 +9,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   SMTP; push and channel fallback come later. One `notify.message` row per requested
   channel, key (message_id, channel); a channel without its address (SMS: msisdn, EMAIL: email)
   or PUSH is recorded FAILED `MW-VAL-101`; a request naming no channel is a FAILED SMS.
-- Intake (`service/NotificationService`): `mw.notify.request.v1` (`route/NotifyRequestRoute`,
-  `messaging/NotifyRequestListener`) and rules on `mw.txn.status.v1` (`route/TxnStatusRoute`,
-  `service/TxnStatusService`, `service/RuleEngine`). `messageId` is the idempotency key (with the
+- Intake (`service/NotificationService`): `mw.notify.request.v1` (`messaging/NotifyRequestListener`)
+  and the notification rules, evaluated by `service/RuleEngine` for each `mw.txn.status.v1` record
+  (`messaging/TxnStatusListener`, `service/TxnStatusService`). Both are Spring Kafka `@KafkaListener`s
+  (ADR D25) with retry topics and DLQ, stopped by `mw.notify.consumers.enabled=false` (the test default). `messageId` is the idempotency key (with the
   channel the PK of `notify.message`, duplicates dropped, event `notify.duplicate`); rule-built ids
   are `<txnId>:<sms|email>:<ruleId>`. `expiresAt` defaults by priority (`dto/Priority`: OTP 2 min, TXN 24 h,
   INFO 24 h, PROMO 72 h); an expired message is recorded EXPIRED and never sent. Listeners only
@@ -41,8 +42,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   `sender_id` per template (default `Bits`). EMAIL templates: `subject` and `body` (text part)
   required, `html_body` optional (HTML part, params HTML-escaped, `TemplateRenderer.renderHtml`).
 - Published templates (ticket 39, spec 10.3, 20.4): mw-admin-api's approved versions arrive on
-  `mw.config.changed.v1` (compacted; `route/ConfigChangedRoute`, a `RetryTopicRouteBuilder`, group
-  mw-notify, retry topics then DLQ; `messaging/ConfigChangedListener`, tombstones skipped) and
+  `mw.config.changed.v1` (compacted; `messaging/ConfigChangedListener`, group mw-notify, retry topics then
+  DLQ, tombstones skipped) and
   `service/TemplatePublisher` takes configType TEMPLATE UPSERTs (value `{code, channel, locale,
   version, body, subject?, htmlBody?, senderId?, validFrom}`; other types / DELETE ignored): one
   insert of the next ACTIVE version (numbered here; the admin version in
@@ -118,7 +119,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
-  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
+  `build.gradle.kts`; drop once the Boot BOM ships them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -130,8 +131,18 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
 - `messaging/EventPublisher`: Kafka records with the 6.1 headers, idempotent `acks=all` producer.
-- `route/RetryTopicRouteBuilder` + `messaging/RetryDelayListener`: subclass per consumed topic; retry
-  topics 10 s / 1 min / 10 min then DLQ (19.2); per-record commit; no sleeps on Kafka threads.
+- Kafka through Spring Kafka (ADR D25, from the template, ticket 81; no Camel): `config/KafkaConfig`
+  (`config/KafkaRetryProperties`, `config/MwKafkaProperties`), `messaging/RetryTopicNaming`,
+  `RetryTopicRecoverer`, `RetryDueTimeCap`, `ConsumerContextInterceptor`, `Utf8Deserializer`. Every
+  `@KafkaListener` on the default factory (`groupId = "${spring.kafka.consumer.group-id}"`,
+  `autoStartup` = the service's `consumers.enabled` switch, `ack.acknowledge()` after the record is
+  handled) gets retry topics `<topic>.<group>.retry.1..3` (10 s / 1 min / 10 min) then
+  `<topic>.<group>.dlq` (19.2, names unchanged, `deploy/kafka/topics.txt`); validation, JSON and
+  deserialisation failures go to the DLQ at once; delays pause the partition, never sleep on the
+  consumer thread. `mw.kafka.retry.exclude-topics` opts a topic out. Outbox relay:
+  `scheduler/OutboxRelayScheduler` (`mw.outbox.relay.period`, ShedLock). Conformance:
+  `messaging/RetryTopicIT`, `scheduler/OutboxRelaySchedulerIT`; `messaging/ConsumerTopicsIT` checks
+  this service's consumed topics, groups and retry/DLQ names.
 - `application.yml`: Resilience4j defaults (19.2), own schema `notify` migrated by Flyway on
   start from `db/migration` (16.4); rename the schema to the spec 16.2 name if it has one.
 

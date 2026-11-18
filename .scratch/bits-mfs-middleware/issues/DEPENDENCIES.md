@@ -30,9 +30,9 @@
 # --- Run 77-87 (planned 2026-11-18): Camel only for external integration (plan we-were-supposed-to-mellow-mccarthy). Spring Kafka for messaging; partner routes as config (Camel YAML DSL + Kamelets). Catalogue + secrets stay static (user). Row order = run order; 79/80 and 82 can run in parallel after 78; 85/86/87 in parallel after 84.
 77-camel-scope-adr-spec                     —                 done     6m       12 files +245 −44   65dac07e
 78-template-spring-kafka                    77                done     ~40m     see 921c44ac,29009b74
-79-spring-kafka-support-services            78                open
-80-spring-kafka-channels                    78                open
-81-spring-kafka-orchestrator-notify         78,79,80          open
+79-spring-kafka-support-services            78                done     ~45m     see 46900c3b
+80-spring-kafka-channels                    78                done     ~25m     see d010a0f6
+81-spring-kafka-orchestrator-notify         78,79,80          done     ~19m     see 7fade216,5b646f5b
 82-billpay-route-as-config-engine           78                open
 83-partner-route-maker-checker-dry-run      82                open
 84-route-engine-telco-bank                  83                open

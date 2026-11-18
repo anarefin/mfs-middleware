@@ -45,14 +45,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   initiator/debit the customer wallet CUSTOMER, credit the merchant wallet MERCHANT, PIN ciphertext
   untouched, idempotency key `checkout:<sessionId>`, metadata checkoutSessionId/merchantId/orderId)
   published with `mw-reply-to = instanceId`; waits `reply-budget` (25 s) on `service/ReplyWaiters`
-  (`route/StatusReplyRoute`, group `mw-checkout.reply.<instanceId>`). Answer 200 `{status PAID|FAILED,
+  (`config/StatusReplyConsumerConfig`, group `mw-checkout.reply.<instanceId>`). Answer 200 `{status PAID|FAILED,
   txnId, error?, redirectUrl}` or 202 PAYING (page polls GET). Kafka down `503 MW-SYS-010` and the
   session is OPEN again. `POST .../cancel` -> CANCELLED. `GET .../return` -> 303 to the signed URL
   (409 `MW-VAL-021` while not terminal). Expired (OPEN past expiresAt, shown EXPIRED, never stored)
   `410 MW-VAL-020` on otp/confirm/cancel; not OPEN `409 MW-VAL-021`. One payment per session: a
   failed one ends it (FAILED); the merchant creates a new session.
 - Outcomes (`service/SessionOutcomes`): PAYING -> PAID (COMPLETED) / FAILED (FAILED, REJECTED, with
-  the error code; statuses compared only through `dto/TerminalStatus`), from the paying request or from `route/StatusProjectionRoute` (shared group
+  the error code; statuses compared only through `dto/TerminalStatus`), from the paying request or from `messaging/StatusProjectionListener` (shared group
   `mw-checkout` on `mw.txn.status.v1`, channel WEB_CHECKOUT only, retry topics + DLQ) for late answers;
   first one wins. Every `service/SessionOutcomeListener` bean is called in that same transaction
   with the finished session (never calls out over the network).
@@ -129,7 +129,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
-  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
+  `build.gradle.kts`; drop once the Boot BOM ships them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -140,9 +140,22 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   token, PIN ciphertext and merchant secret are `SECRET`.
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
-- `messaging/EventPublisher`: Kafka records with the 6.1 headers (+ extra headers such as
-  `mw-reply-to`), idempotent `acks=all` producer (max-block 5 s, delivery timeout 10 s).
-- `route/RetryTopicRouteBuilder` + `messaging/RetryDelayListener`: retry topics 10 s / 1 min / 10 min then DLQ.
+- `messaging/EventPublisher`: Kafka records with the 6.1 headers (+ extra headers such as `mw-reply-to`)
+  through Spring Kafka's `KafkaTemplate` (ADR D25), idempotent `acks=all` producer; `publish` waits at most
+  `mw.kafka.send-timeout`. The admin client (asked for the cluster id by the observed template's first
+  send) is bounded like the producer (`spring.kafka.admin.operation-timeout`), so Kafka down still fails fast.
+- Spring Kafka (ADR D25, copied from the template, ticket 80): `config/KafkaConfig` (non-blocking retry topics
+  `<topic>.mw-checkout.retry.1..3` then `<topic>.mw-checkout.dlq` for every `@KafkaListener` on the default factory,
+  `messaging/RetryTopicNaming`, `RetryTopicRecoverer` (`mw-retry-*` headers, class only), `RetryDueTimeCap`,
+  `ConsumerContextInterceptor` (consumer MDC), `Utf8Deserializer`; validation/schema failures to the DLQ at
+  once); retry topics 10 s / 1 min / 10 min (`mw.kafka.retry.delays`); per-record manual ack; no sleeps on
+  Kafka threads. Consumers: `messaging/StatusProjectionListener` (retried, group `mw-checkout`) and
+  `config/StatusReplyConsumerConfig`: the per-instance reply consumer of `mw.txn.status.v1`, a container built from its own
+  `statusReplyContainerFactory` (not a `@KafkaListener`, so the retry configuration never applies to it), group
+  `mw-checkout.reply.<instanceId>`, `auto-offset-reset=latest`, auto-commit, no retry topic or DLQ, an error handler
+  that logs the exception class and skips; `messaging/StatusReplyListener.onReply` only completes futures.
+  `messaging/StatusReplyConsumerIT` runs two instances: each gets its replies, none sent before it started.
+- `scheduler/OutboxRelayScheduler`: the outbox relay schedule (`mw.outbox.relay.period`, ShedLock-guarded).
 - `application.yml`: Resilience4j defaults (19.2), own schema `checkout` (spec 16.2) migrated by Flyway.
 
 ## Commands

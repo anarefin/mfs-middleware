@@ -3,19 +3,19 @@ package mfs.mw.checkout.messaging;
 import mfs.mw.checkout.config.CheckoutProperties;
 import mfs.mw.checkout.dto.StatusMessage;
 import mfs.mw.checkout.service.ReplyWaiters;
-import org.apache.camel.Exchange;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Per-instance reply consumer of {@code mw.txn.status.v1} (spec 7.5): keeps only records whose
- * {@code mw-reply-to} is this instance and hands them to the waiting request. Never blocks and
- * never throws: a reply that cannot be read is dropped (the request then answers 202 and the app
- * polls), it is not retried.
+ * Per-instance reply consumer of {@code mw.txn.status.v1} (spec 7.5), run by the container of
+ * {@code config/StatusReplyConsumerConfig}: keeps only records whose {@code mw-reply-to} is this
+ * instance and hands them to the waiting request. Never blocks and never throws: a reply that
+ * cannot be read is dropped (the request then answers 202 and the app polls), it is not retried.
  */
-@Component("statusReplyListener")
+@Component
 public class StatusReplyListener {
 
   private static final Logger log = LoggerFactory.getLogger(StatusReplyListener.class);
@@ -30,13 +30,12 @@ public class StatusReplyListener {
     this.instanceId = props.instanceId();
   }
 
-  public void handle(Exchange exchange) {
-    if (!instanceId.equals(MwHeaders.text(exchange.getMessage().getHeader(MwHeaders.REPLY_TO)))) {
+  public void onReply(ConsumerRecord<String, String> record) {
+    if (!instanceId.equals(MwHeaders.text(record.headers().lastHeader(MwHeaders.REPLY_TO)))) {
       return;
     }
     try {
-      StatusMessage status =
-          json.readValue(exchange.getMessage().getBody(String.class), StatusMessage.class);
+      StatusMessage status = json.readValue(record.value(), StatusMessage.class);
       if (waiters.offer(status)) {
         log.atDebug()
             .addKeyValue("event", "txn.reply.matched")
