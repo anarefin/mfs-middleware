@@ -134,8 +134,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   10 times: a rejected request never has a command, the maker / integration roles refused).
 - Partner config (ticket 38, spec 15.2 Partners, 15.3, 16.2, 20.4; `controller/PartnerController` ->
   `service/PartnerConfigService` (reads, maker) and `service/PartnerChangeHandler` (approval) ->
-  `repository/PartnerRepository`, schema `partner` (own, V5: `partner`, `endpoint`, `error_map`, V7
-  `partner_route`; V8 (ticket 84) dropped `mapping`, `partner.template` and `endpoint.base_url`; Flyway
+  `repository/PartnerRepository`, schema `partner` (own, V5: `partner`, `endpoint`, `error_map`, V10
+  `partner_route`; V11 (ticket 84) dropped `mapping`, `partner.template` and `endpoint.base_url`; Flyway
   `schemas: admin,partner`, history table in `admin`), `entity/Partner`,
   `dto/PartnerConfigValue` = the adapters' `PartnerConfig` field names (camelCase), `mapper/PartnerMapper`):
   `GET /admin/v1/partners[/{partnerId}]` (`AdminRole.READ_PARTNERS` = transaction readers +
@@ -166,7 +166,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   profile (`application-dev.yml`, `SPRING_PROFILES_ACTIVE=dev` in `deploy/docker-compose.yml`) seeds
   `partner-seeds/dev/ocs.json`, `billagg.json`, `c2wbank.json` (ticket 84), copies of the adapters' dev
   seeds (mw-adapter-telco `ocs`, -billpay `billagg`, -bank `c2wbank`) with the simulator URL written
-  into the route (keep them identical; the test config seeds them too). V8 drops a version-0 seed
+  into the route (keep them identical; the test config seeds them too). V11 drops a version-0 seed
   without a route row so it is stored again in the route shape. Decisions (no product owner available): ops-maker/ops-checker may change
   partners as well as integration-* (an incident disable is an operations task); the ops-emergency
   direct change with 24 h post-approval (15.3) is not built; DELETE / tombstones are not offered (disable
@@ -197,8 +197,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   one detail per problem `{field: config.route, issue: "line N: construct: problem"}`, before any change
   request exists. `dryRun.baseUrl` must be a plain http(s) URL in `allowedHosts` (the adapters' rule).
   Approval: as above, plus `family` in the published value (every approval: each adapter applies its own
-  family only) and a `partner.partner_route` row (V7: route_yaml, mappings, allowed_hosts, family, dry_run,
-  route_status PENDING_DRY_RUN | LIVE | REJECTED (SEED for a seed, V8), problems, kamelets; V8
+  family only) and a `partner.partner_route` row (V10: route_yaml, mappings, allowed_hosts, family, dry_run,
+  route_status PENDING_DRY_RUN | LIVE | REJECTED (SEED for a seed, V11), problems, kamelets; V11
   `published_value` = the full value published) for the new version; any later ENABLE / DISABLE /
   SET_TIMEOUTS republishes the route as a new version.
   `messaging/PartnerRouteStatusListener` (group mw-admin-api, retry topics + DLQ;
