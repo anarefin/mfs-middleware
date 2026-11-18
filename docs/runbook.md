@@ -230,12 +230,63 @@ secrets that `provision` writes again on every `up`.
 
 ## Onboard a biller
 
-Stub (ADR D26, spec 12.1; filled in by ticket 83 when the route editor, maker-checker and dry-run
-land). A biller of a known kind is a partner route as config: a Camel YAML DSL route built from the
-shipped `mw-*` Kamelets, authored with Camel JBang against mw-simulators, submitted in the console
-(maker), checked by the loader (component allowlist, dry-run against the simulator) and approved by
-a checker with the hosts it may call. A new entry in the biller catalogue or a new OpenBao secret is
-config plus a restart of `mw-adapter-billpay` (static on purpose).
+ADR D26, ticket 83. A biller of a known kind (REST/JSON, an auth scheme the `mw-*` Kamelets have) is a
+partner route as config: no Java, no release, no restart for the route itself.
+
+1. **Write the route** from a Kamelet example (`deploy/partner-routes/examples/rest-apikey-biller.yaml`):
+   one `- route:` from `direct:partner-<id>` (lower-case letters, digits, hyphens), steps `mw-map` ->
+   `mw-http-call` -> `mw-classify`, then `mw-audit`; its JSONata `mappings` by name; the `allowedHosts` it
+   calls. Kaoto (the visual Camel YAML editor) can draw and edit it offline. Try it locally with Camel
+   JBang and the shipped Kamelets (flags of `camel run` in camel-jbang 4.22.2):
+
+   ```
+   camel run newco.yaml --local-kamelet-dir=services/mw-adapter-billpay/src/main/resources/kamelets --max-seconds=60
+   ```
+
+   `newco.yaml` holds the `route` text only. Point its `mw-http-call` `url` at the dev stack's
+   simulator stub (`http://127.0.0.1:8085/sim/partners/newco`, port `MW_PORT_SIMULATORS`) and give the stub
+   a canned answer first:
+
+   ```
+   curl -s -X POST http://127.0.0.1:8085/sim/stubs/newco -H 'content-type: application/json' \
+     -d '{"operation":"PAY","method":"POST","path":"/v1/payments","status":200,"body":{"receipt":"NC-1"}}'
+   curl -s http://127.0.0.1:8085/sim/stubs/newco/requests    # what the route sent
+   ```
+
+   The Kamelets' Java steps (`mwMap`, `mwHttp`, `mwClassify`, `mwAudit`, the `mw-auth-*` beans) live in
+   mw-adapter-billpay, so outside the adapter JBang checks that the route and the Kamelets load and parse;
+   the end-to-end check of the mappings is the dry-run of step 4. Switch the `url` back to the partner
+   before submitting.
+2. **Submit** it (maker: ops-maker or integration-maker): console `/console/partners/<id>`, card *Route*
+   (a new id offers *Onboard with a route* and a Family), paste the YAML, the allowed hosts, the mappings,
+   the dry-run operation and sample (the canonical call input) and the error map. API: `POST
+   /admin/v1/partners/<id>/change-requests {action: UPSERT_ROUTE, family, config: {route, mappings,
+   allowedHosts, dryRun, timeoutMs, errorMap, ambiguousCodes, sensitiveFields}, reason}`. mw-admin-api checks
+   it with a copy of the adapters' loader rules (Camel's YAML DSL schema, then the allowlist): a refusal is
+   `400 MW-VAL-041`, one detail per problem `line N: construct: problem`; nothing is filed.
+3. **Approve** it (a different operator: ops-checker or integration-checker) in Approvals. The approval
+   publishes `mw.config.changed.v1` (key `partner/<id>`, with `family`); the partner page shows the route
+   `vN waiting for its dry-run`.
+4. **Watch it reach LIVE**: mw-adapter-billpay loads the version beside the live one, sends the dry-run
+   through its candidate `direct:partner-<id>~candidate` to `mw.partners.dry-run.base-url` (dev:
+   mw-simulators' stub `/sim/partners/<id>/**`, so give the stub its answer as in step 1; production: the
+   record's `dryRun.baseUrl`, a partner sandbox in `allowedHosts`), and swaps it in only when the answer
+   is SUCCESS or PENDING. It reports on `mw.partner.route.status.v1`: the page shows `vN LIVE`, or `vN
+   REJECTED (vM still serves)` with the problems (the previous version keeps serving; fix and submit
+   again). Logs: `partner.dry_run.queued`, `config.applied`, `security.partner_route_refused`. Who still uses
+   a Kamelet: `GET /admin/v1/partners/kamelet-usage` (or mw-adapter-billpay's
+   `GET /internal/v1/partners/kamelet-usage`).
+5. **Catalogue and secret** (static by decision): add `mw.billers.<CODE>: {name, category, partner-id}` to
+   mw-adapter-billpay's config and the secret fields the route names to OpenBao
+   `secret/mw-adapter-billpay/<id>`, then restart mw-adapter-billpay
+   (`./gradlew :mw-adapter-billpay:bootJar`, then from `deploy/`: `docker compose --profile core up -d --build mw-adapter-billpay`).
+6. **Callbacks**: a biller that answers asynchronously needs an APISIX route file
+   (`deploy/apisix/routes/partner-<id>-callback.json`, as `partner-billagg-callback.json`) and
+   `deploy/apisix/apply.sh`.
+
+After an adapter restart the compacted config topic replays the latest record per partner and the
+adapter dry-runs it again; a latest record that was REJECTED leaves that partner on its seed (or no
+route) until a new version is approved (open item, ticket 84).
 
 ## Gate and security runs on this host
 

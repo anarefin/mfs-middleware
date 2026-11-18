@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "partnerId": "newco",
+  "version": 3,
+  "family": "billpay",
+  "status": "REJECTED",
+  "problems": ["dry-run PAY gave no usable answer: HTTP_5XX"],
+  "reportedBy": "mw-adapter-billpay",
+  "reportedAt": "2026-11-18T10:05:05Z"
+}

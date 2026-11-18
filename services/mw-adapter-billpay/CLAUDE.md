@@ -125,7 +125,7 @@ This module is the first; tickets 84 (telco, bank) copy it, 85-87 add Kamelets. 
   records): `route`, `mappings` (JSONata by name, `<OPERATION>.request` / `<OPERATION>.response`,
   `CALLBACK.response` for callbacks; compiled once per version, `partner/mapping/CompiledMapping`),
   `allowedHosts`, `family`, `inquiryRetries` (default 1), `resilience` (breaker/bulkhead overrides;
-  null = the resilience4j instance named by the partner id), `dryRun {operation, sample}` (ticket 83),
+  null = the resilience4j instance named by the partner id), `dryRun {operation, sample, baseUrl?}` (ticket 83),
   timeouts, `headers`, `auth` (callback verification), `errorMap`, `ambiguousCodes`, `sensitiveFields`.
   The old shape (`template` + `baseUrl` + `operations`, no `route`) still loads for one release:
   `partner/route/LegacyPartnerRoute` turns it into the same route (ticket 84 drops it).
@@ -152,7 +152,9 @@ This module is the first; tickets 84 (telco, bank) copy it, 85-87 add Kamelets. 
   description, documented properties, `format: password` + password `x-descriptors` on secret
   references, no endpoint but `kamelet:`, `json-validator:` and the partner's `{{url}}`). **Versioning:**
   a breaking change ships as a new name (`mw-http-call-v2`); the old file stays until no LIVE route uses
-  it; `PartnerRuntime.kamelets()` lists what a version uses (the admin endpoint is ticket 83).
+  it; `PartnerRuntime.kamelets()` lists what a version uses: `GET /internal/v1/partners/kamelet-usage`
+  (`controller/PartnerUsageController` -> `service/KameletUsageService`, contract `billpay.v1`) and the
+  `kamelets` of each LIVE status report.
 - **Loader** (`partner/route/PartnerRouteLoader`, order matters): record problems; no `{{` anywhere;
   SnakeYAML safe load: exactly one `- route:` holding only `from {uri: direct:partner-<id>, steps}`, no
   error-handling keys anywhere (Camel's YAML loader acts on top-level `beans`, `sslContextParameters`,
@@ -178,8 +180,31 @@ This module is the first; tickets 84 (telco, bank) copy it, 85-87 add Kamelets. 
   background (waiting up to its `timeoutMs` + 5 s so calls in flight finish on it) and removed with
   every Kamelet route whose `parent` is it. A refused record leaves the last good version live and logs
   `security.partner_route_refused` (`securityRule` true for a security rule). The previous record is
-  kept for a rollback (ticket 83). Seeds load once Camel has started; a refused seed leaves that partner
+  kept in the store's `Entry`. Seeds load once Camel has started; a refused seed leaves that partner
   without a route, never the service down. Shutdown: `camel.main.shutdown-timeout` 30 s (25 s + 5 s).
+- **Family** (ticket 83): `mw.partners.family` (`billpay`): a record whose `value.family` is another
+  family is skipped (`config.other_family`, debug), not refused.
+- **Dry-run** (ADR D26 guardrail 3, ticket 83; `partner/route/PartnerDryRun`, `PartnerConfigStore`): a
+  record with `dryRun` goes to one dry-run worker (virtual thread, records in arrival order, never the
+  Kafka thread; `partner.dry_run.queued`): the version is loaded beside the live one
+  (`PartnerRoutes.load`) and so is its candidate (`PartnerRoutes.loadCandidate`, loader with a
+  `DryRunTarget`): route `partner-<id>~candidate~v<n>` from `direct:partner-<id>~candidate`, circuit
+  breaker `mw-cb-<id>~candidate` (default config, so the live breaker never counts a dry-run; `~` is
+  outside the id characters, so no id collides), every `mw-http-call` URL rebuilt from parsed parts as
+  target base + the URL's own path and held to the strict parameter rule (no `% ? & #`, placeholder, user
+  info, query, fragment, `..`). Target: the record's `dryRun.baseUrl` (a sandbox; `PartnerConfig.problems`
+  checks its shape as a security rule, the loader its host against `allowedHosts`), else
+  `mw.partners.dry-run.base-url` with `{partnerId}` (dev: `http://mw-simulators:8080/sim/partners/{partnerId}`,
+  mw-simulators' stub; its host joins the candidate's hosts; empty in production), neither: REJECTED.
+  `dryRun.operation` (PAY, INQUIRY, STATUS_QUERY) is sent with `dryRun.sample` as `PartnerCall.input`,
+  reference `DRYRUN-<version>`, through `PartnerGateway.dryRun` (no §21.2 metrics; audited); SUCCESS or
+  PENDING pass. Pass: candidate removed, the version swapped in (unless a newer one went live meanwhile);
+  fail: both removed, the live version served throughout. Every record of version >= 1 ends in a
+  `PartnerRouteStatus` (LIVE with its Kamelets, or REJECTED with the loader's or the dry-run's problems)
+  for `messaging/PartnerRouteStatusPublisher`: `mw.partner.route.status.v1` (own contract, key partnerId,
+  `dto/PartnerRouteStatusEvent`) through the outbox in its own transaction (`PartnerRouteDryRunIT`).
+  A record without `dryRun` (seeds, the old shape) loads at once as before. Open item: after a restart
+  the replayed latest record is dry-run again; a REJECTED latest record leaves the partner on its seed.
 - **Circuit breaker per partner**: the EIP's own breaker is per processor node and dies with its route,
   so `mw-http-call` references `mw-cb-<id>`, the resilience4j instance named by the partner id, bound in
   Camel's registry by `PartnerRoutes`; its state survives a swap. Time limiter and bulkhead are per call
@@ -254,7 +279,11 @@ adapter-minted txnId) are still dropped and belong to the REMIT_IN / NPSB ticket
 
 ## Contracts owned
 
-- `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (internal API; clients mw-app-gateway and mw-ussd).
+- `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (internal API; clients mw-app-gateway and mw-ussd;
+  `GET /internal/v1/partners/kamelet-usage`, ticket 83).
+- `events/mw-adapter-billpay/mw.partner.route.status.v1` (ticket 83): LIVE / REJECTED per partner record
+  version, key partnerId; consumer mw-admin-api; telco and bank produce it too from ticket 84 (topic 6
+  partitions, 7 d, retry group mw-admin-api).
 
 ## Contracts used
 

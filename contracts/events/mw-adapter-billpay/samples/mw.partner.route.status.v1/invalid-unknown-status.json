@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "partnerId": "newco",
+  "version": 3,
+  "family": "billpay",
+  "status": "PENDING_DRY_RUN",
+  "problems": [],
+  "reportedBy": "mw-adapter-billpay",
+  "reportedAt": "2026-11-18T10:05:05Z"
+}

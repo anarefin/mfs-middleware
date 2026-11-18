@@ -16,7 +16,15 @@ public record Partner(
     PartnerConfigValue config,
     Instant updatedAt,
     String updatedBy,
-    String approvedBy) {
+    String approvedBy,
+    mfs.mw.admin.api.dto.PartnerView.Route route) {
 
   public static final String RESOURCE_TYPE = "partner";
+
+  /** A partner as written (the route state is read back, never written through this record). */
+  public Partner(
+      String id, String family, long version, PartnerConfigValue config, Instant updatedAt, String updatedBy,
+      String approvedBy) {
+    this(id, family, version, config, updatedAt, updatedBy, approvedBy, null);
+  }
 }

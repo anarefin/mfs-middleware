@@ -41,7 +41,13 @@ LIVE route uses it.
    kamelet:mw-*`, `setHeader` (not `Camel*`/`mw*`), `setBody`, `transform`, `log` (no body),
    `marshal`/`unmarshal` JSON; `constant` or a restricted `simple`; no `{{...}}`, no error handling,
    no beans, processors or raw endpoints.
-3. Dry run against mw-simulators before approval, rollback to the last good version (ticket 83).
+3. Dry-run before the version goes live (ticket 83): the approved version is loaded beside the live one
+   with a candidate (`direct:partner-<id>~candidate`, its calls sent to `mw.partners.dry-run.base-url`, in
+   dev mw-simulators' stub `/sim/partners/<id>/**`, or to the record's `dryRun.baseUrl` sandbox, own circuit
+   breaker); the record's `dryRun.operation` with `dryRun.sample` must answer SUCCESS or PENDING. Pass: the
+   version is swapped in and reported LIVE on `mw.partner.route.status.v1`; fail: both are removed, the live
+   version keeps serving, REJECTED with the problems. mw-admin-api checks the route at submit with a copy
+   of the loader's rules (`MW-VAL-041`, line and construct).
 4. The hosts of the approved record: checked when the route loads and before every send.
 
 ## Example

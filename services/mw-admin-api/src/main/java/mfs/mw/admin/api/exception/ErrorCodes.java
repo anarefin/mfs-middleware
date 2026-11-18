@@ -45,5 +45,13 @@ public final class ErrorCodes {
   /** A proposed menu tree or template is not usable (details name each problem): HTTP 400. */
   public static final String VAL_CONTENT_INVALID = "MW-VAL-040";
 
+  // --- partner routes (ticket 83, ADR D26) ---
+
+  /**
+   * A proposed partner route breaks the adapters' loader rules (details: one per problem, field
+   * {@code config.route}, issue {@code line N: construct: problem}): HTTP 400.
+   */
+  public static final String VAL_ROUTE_INVALID = "MW-VAL-041";
+
   private ErrorCodes() {}
 }

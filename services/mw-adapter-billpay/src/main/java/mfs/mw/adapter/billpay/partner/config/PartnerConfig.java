@@ -92,6 +92,9 @@ public record PartnerConfig(
   /** REST/JSON acknowledged first (PENDING), the outcome follows by signed callback. */
   public static final String ASYNC_CALLBACK = "rest-json-async-callback";
 
+  /** The operations a dry-run may send. */
+  public static final Set<String> DRY_RUN_OPERATIONS = Set.of("PAY", "INQUIRY", "STATUS_QUERY");
+
   /** The legacy route templates. */
   public static final Set<String> TEMPLATES = Set.of(REQUEST_REPLY, ASYNC_CALLBACK);
 
@@ -185,6 +188,14 @@ public record PartnerConfig(
             problems.add("errorMap." + code + ": suffix must be upper case letters, digits, underscore");
           }
         });
+    if (dryRun != null && (dryRun.operation() == null || !DRY_RUN_OPERATIONS.contains(dryRun.operation()))) {
+      problems.add("dryRun.operation must be one of " + String.join(", ", new java.util.TreeSet<>(DRY_RUN_OPERATIONS)));
+    }
+    if (dryRun != null && dryRun.baseUrl() != null && !plainBaseUrl(dryRun.baseUrl())) {
+      // the value is not echoed: it may be an attempt to reach another host
+      problems.add(SECURITY + "dryRun.baseUrl must be an absolute http(s) URL without user info, query, fragment,"
+          + " encoding or .. segments (its host is checked against allowedHosts at load)");
+    }
     if (!mfs.mw.adapter.billpay.partner.auth.AuthSchemes.NAMES.contains(auth.scheme())) {
       problems.add("unknown auth scheme " + auth.scheme());
     } else if (!"none".equals(auth.scheme()) && auth.credentialsRef() == null) {
@@ -278,6 +289,19 @@ public record PartnerConfig(
     }
   }
 
+  /** An absolute http(s) URL of scheme, host, port and a safe path only. */
+  static boolean plainBaseUrl(String url) {
+    try {
+      URI u = new URI(url);
+      String path = u.getRawPath() == null ? "" : u.getRawPath();
+      return u.getScheme() != null && Set.of("http", "https").contains(u.getScheme().toLowerCase(Locale.ROOT))
+          && u.getHost() != null && u.getRawUserInfo() == null && u.getRawQuery() == null && u.getRawFragment() == null
+          && (path.isEmpty() || (safePath(path) && path.indexOf('{') < 0 && path.indexOf('}') < 0));
+    } catch (java.net.URISyntaxException e) {
+      return false;
+    }
+  }
+
   /** True when {@code path} is a safe operation path (see {@link #SAFE_PATH}). */
   public static boolean safePath(String path) {
     return path != null
@@ -305,7 +329,16 @@ public record PartnerConfig(
       Long waitDurationInOpenStateMs,
       Integer bulkheadMaxConcurrentCalls) {}
 
-  /** What the admin console's dry run sends before approval (ticket 83). */
+  /**
+   * The dry-run a new version must pass before it goes live (ticket 83): {@code operation} sent
+   * with {@code sample} as the canonical input ({@code PartnerCall.input}) through the candidate
+   * route; {@code baseUrl} the partner's sandbox (production; must be in {@code allowedHosts}),
+   * else the environment's {@code mw.partners.dry-run.base-url}.
+   */
   @JsonIgnoreProperties(ignoreUnknown = true)
-  public record DryRun(String operation, Map<String, Object> sample) {}
+  public record DryRun(String operation, Map<String, Object> sample, String baseUrl) {
+    public DryRun {
+      sample = sample == null ? Map.of() : java.util.Collections.unmodifiableMap(new LinkedHashMap<>(sample));
+    }
+  }
 }

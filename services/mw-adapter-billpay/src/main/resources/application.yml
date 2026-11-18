@@ -234,6 +234,14 @@ mw:
     # channels and seeds send the catalogue's partner id (billagg) itself today, so no alias is needed;
     # any other id is refused MW-PTR-UNKNOWN-PARTNER.
     partner-aliases: {}
+    # This adapter's family (ticket 83): a partner record whose value.family is another one (telco,
+    # bank) belongs to another adapter and is skipped.
+    family: billpay
+    # Where a new version's dry-run goes when its record names no sandbox (dryRun.baseUrl): {partnerId}
+    # is replaced, the host joins the candidate's allowed hosts. Empty in production (each record names
+    # its partner's sandbox); the dev profile points at mw-simulators' stub.
+    dry-run:
+      base-url: ${MW_PARTNER_DRY_RUN_BASE_URL:}
     config-consumer:
       # Consumer of mw.config.changed.v1 (partner/config/PartnerConfigKafkaListener); tests switch it off.
       enabled: true

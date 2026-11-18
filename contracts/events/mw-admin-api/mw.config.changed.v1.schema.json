@@ -29,6 +29,48 @@
     {
       "if": { "properties": { "change": { "const": "UPSERT" } }, "required": ["change"] },
       "then": { "required": ["value"] }
+    },
+    {
+      "if": { "properties": { "configType": { "const": "PARTNER" } }, "required": ["configType"] },
+      "then": { "properties": { "value": { "$ref": "#/$defs/PartnerValue" } } }
     }
-  ]
+  ],
+  "$defs": {
+    "PartnerValue": {
+      "type": "object",
+      "description": "PARTNER value: the adapters' partner record (spec 12.1, ADR D26), every field optional at this level; the adapter that owns the family checks the whole record and reports LIVE / REJECTED on mw.partner.route.status.v1. Additive fields of ticket 83: route, mappings, allowedHosts, family, dryRun. The old shape (template, baseUrl, operations) stays readable for one release.",
+      "properties": {
+        "family": { "enum": ["telco", "billpay", "bank"], "description": "The adapter that applies the record; the others skip it." },
+        "enabled": { "type": "boolean" },
+        "route": { "type": "string", "minLength": 1, "maxLength": 65536, "description": "The partner's Camel YAML DSL route from direct:partner-<id>, built from the mw-* Kamelets." },
+        "mappings": {
+          "type": "object",
+          "description": "JSONata mappings by name (<OPERATION>.request, <OPERATION>.response, CALLBACK.response).",
+          "propertyNames": { "pattern": "^[A-Za-z0-9_.-]{1,64}$" },
+          "additionalProperties": { "type": "string" }
+        },
+        "allowedHosts": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 253 },
+          "description": "The hosts the route may call (guardrail 4)."
+        },
+        "dryRun": {
+          "type": "object",
+          "description": "The dry-run the version must pass before it goes live: operation sent with sample (the canonical PartnerCall input) through the candidate route, against baseUrl (a partner sandbox; must be in allowedHosts) or the environment's simulator.",
+          "required": ["operation"],
+          "properties": {
+            "operation": { "enum": ["PAY", "INQUIRY", "STATUS_QUERY"] },
+            "sample": { "type": "object" },
+            "baseUrl": { "type": "string", "format": "uri" }
+          }
+        },
+        "timeoutMs": { "type": "integer", "minimum": 1 },
+        "connectTimeoutMs": { "type": "integer", "minimum": 1 },
+        "readTimeoutMs": { "type": "integer", "minimum": 1 },
+        "errorMap": { "type": "object" },
+        "ambiguousCodes": { "type": "array", "items": { "type": "string" } },
+        "sensitiveFields": { "type": "object" }
+      }
+    }
+  }
 }

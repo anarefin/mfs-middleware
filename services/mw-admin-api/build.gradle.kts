@@ -69,6 +69,10 @@ dependencies {
         exclude(group = "tools.jackson", module = "jackson-bom")
     }
 
+    // Partner route check at submit (service/PartnerRouteValidator, ticket 83): safe YAML with marks
+    // for line numbers (version from the Boot BOM).
+    implementation("org.yaml:snakeyaml")
+
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     testImplementation("org.testcontainers:testcontainers")

@@ -7,6 +7,7 @@
 import { redirect } from "next/navigation";
 import type { PartnerChangeBody } from "@/lib/admin-api";
 import { parseReason, parseTimeouts, parseWalletId } from "@/lib/approvals";
+import { parseRouteForm } from "@/lib/partner-route";
 import { adminApi, operatorToken } from "@/lib/server/admin";
 import { parseTemplateKey, templateProblems, type TemplateKey, type TemplateTexts } from "@/lib/templates";
 import type { ApiResult, ChangeRequest, ErrorEnvelope, PartnerAction, TxnAction } from "@/lib/types";
@@ -95,6 +96,32 @@ export async function requestPartnerChange(partnerId: string, _prev: ActionState
     });
     if (!t.ok) return invalid(t.field, t.issue);
     body.timeouts = t.timeouts;
+  }
+  const r = await adminApi().requestPartnerChange(await token(), partnerId, body);
+  if (!r.ok) return refused(r);
+  redirect(`/approvals?created=${encodeURIComponent(r.data.id)}`);
+}
+
+/**
+ * Maker (ops-maker, integration-maker): a partner route as config (UPSERT_ROUTE, ADR D26, ticket
+ * 83). mw-admin-api checks the route with the adapters' loader rules (MW-VAL-041, line and
+ * construct per problem); once approved, it goes live in its adapter only after its dry-run.
+ */
+export async function requestPartnerRoute(partnerId: string, _prev: ActionState, form: FormData): Promise<ActionState> {
+  const reason = parseReason(form.get("reason"));
+  if (!PARTNER_ID.test(partnerId)) return invalid("partnerId", "not a partner id");
+  const parsed = parseRouteForm({
+    route: text(form, "route"), allowedHosts: text(form, "allowedHosts"), mappings: text(form, "mappings"),
+    dryRunOperation: text(form, "dryRunOperation"), dryRunSample: text(form, "dryRunSample"), errorMap: text(form, "errorMap"),
+    timeoutMs: text(form, "timeoutMs"),
+  });
+  if (!parsed.ok) return invalid(parsed.field, parsed.issue);
+  if (!reason) return invalid("reason", "1 to 500 characters");
+  const family = text(form, "family");
+  const body: PartnerChangeBody = { action: "UPSERT_ROUTE", reason, config: parsed.config };
+  if (family) {
+    if (!["telco", "billpay", "bank"].includes(family)) return invalid("family", "telco, billpay or bank");
+    body.family = family as PartnerChangeBody["family"];
   }
   const r = await adminApi().requestPartnerChange(await token(), partnerId, body);
   if (!r.ok) return refused(r);

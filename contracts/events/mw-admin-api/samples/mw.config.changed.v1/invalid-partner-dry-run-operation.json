@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "configKey": "partner/newco",
+  "configType": "PARTNER",
+  "change": "UPSERT",
+  "version": 2,
+  "value": {
+    "family": "billpay",
+    "route": "- route:\n    from:\n      uri: direct:partner-newco\n      steps: []\n",
+    "allowedHosts": ["api.newco.example"],
+    "dryRun": { "operation": "REFUND" }
+  },
+  "changedAt": "2026-11-18T10:00:00Z",
+  "changedBy": "ops-maker01",
+  "approvedBy": "ops-checker01"
+}

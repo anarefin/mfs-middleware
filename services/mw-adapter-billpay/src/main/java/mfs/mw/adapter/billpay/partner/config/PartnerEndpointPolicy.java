@@ -54,6 +54,7 @@ public class PartnerEndpointPolicy {
 
   /** Every rule the partner id breaks; empty when it is a simple name. */
   public List<String> idProblems(String id) {
+    // a dry-run candidate's names carry "~", outside these characters (ticket 83)
     return id == null || !INSTANCE_ID.matcher(id).matches()
         ? List.of("partner id must be lower-case letters, digits, hyphen")
         : List.of();

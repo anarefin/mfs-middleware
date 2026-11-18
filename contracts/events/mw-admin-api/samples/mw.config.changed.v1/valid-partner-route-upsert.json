@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "configKey": "partner/newco",
+  "configType": "PARTNER",
+  "change": "UPSERT",
+  "version": 1,
+  "value": {
+    "family": "billpay",
+    "enabled": true,
+    "route": "- route:\n    from:\n      uri: direct:partner-newco\n      steps:\n        - to: \"kamelet:mw-map?mapping=PAY.request\"\n        - to: \"kamelet:mw-http-call?url=https://api.newco.example&method=POST&path=/v1/payments&auth=apikey&secretField=api-key\"\n        - to: \"kamelet:mw-classify?mapping=PAY.response&definiteStatuses=422\"\n        - to: \"kamelet:mw-audit\"\n",
+    "mappings": {
+      "PAY.request": "{\"ref\": reference, \"account\": creditParty.id, \"amount\": amount.major}",
+      "PAY.response": "status = 200 ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.receipt} : {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}"
+    },
+    "allowedHosts": ["api.newco.example"],
+    "timeoutMs": 20000,
+    "errorMap": { "E1": { "suffix": "ACCOUNT_CLOSED", "retryable": false } },
+    "ambiguousCodes": ["E9"],
+    "sensitiveFields": { "account": "ACCOUNT" },
+    "dryRun": {
+      "operation": "PAY",
+      "sample": { "amount": { "major": "10.00" }, "creditParty": { "type": "BILLER_ACCOUNT", "id": "77001234" } }
+    }
+  },
+  "changedAt": "2026-11-18T10:00:00Z",
+  "changedBy": "ops-maker01",
+  "approvedBy": "ops-checker01"
+}

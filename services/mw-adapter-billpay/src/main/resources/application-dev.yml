@@ -4,6 +4,9 @@
 # MW_PARTNER_INSECURE_HTTP_HOSTS (docker-compose.yml sets it).
 mw:
   partners:
+    # Dry-runs of new partner versions go to mw-simulators' programmable stub (ticket 83).
+    dry-run:
+      base-url: ${MW_PARTNER_DRY_RUN_BASE_URL:http://mw-simulators:8080/sim/partners/{partnerId}}
     instances:
       # Utility bill aggregator REST/JSON (wire format: mw-simulators billagg), a partner route as
       # config (ADR D26). A payment is answered at once (200 SUCCESS / 422 FAILED) or accepted (202

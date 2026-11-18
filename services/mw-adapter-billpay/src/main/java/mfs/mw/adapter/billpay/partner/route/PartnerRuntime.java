@@ -44,6 +44,28 @@ public record PartnerRuntime(
     return "partner-" + id + "-v" + version;
   }
 
+  /**
+   * Marker of a dry-run candidate's route, endpoint and circuit breaker (ticket 83): {@code ~} is
+   * outside the partner id characters ({@code [a-z0-9-]}), so no partner id, whatever it ends with,
+   * can produce another partner's candidate names or a live version's.
+   */
+  public static final String CANDIDATE = "~candidate";
+
+  /** Route id of the dry-run candidate of version {@code version} of partner {@code id}. */
+  public static String candidateRouteId(String id, long version) {
+    return "partner-" + id + CANDIDATE + "~v" + version;
+  }
+
+  /** Endpoint of partner {@code id}'s dry-run candidate (one at a time). */
+  public static String candidateEndpoint(String id) {
+    return "direct:partner-" + id + CANDIDATE;
+  }
+
+  /** The {@code partnerId} a candidate's Kamelets get: it names its circuit breaker {@code mw-cb-<id>~candidate}. */
+  public static String candidatePartnerParam(String id) {
+    return id + CANDIDATE;
+  }
+
   /** Endpoint of version {@code version} of partner {@code id}. */
   public static String endpoint(String id, long version) {
     return "direct:" + routeId(id, version);

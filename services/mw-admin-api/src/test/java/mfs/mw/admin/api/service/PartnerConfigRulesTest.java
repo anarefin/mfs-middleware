@@ -67,4 +67,19 @@ class PartnerConfigRulesTest {
     assertThat(c.readTimeoutMs()).isEqualTo(22000L);
     assertThat(c.withEnabled(false).isEnabled()).isFalse();
   }
+
+  /** The adapters' rule for a route's dry-run sandbox (ticket 83 security review), mirrored at submit. */
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(strings = {
+      "https://sandbox.acme.example/v1?x=1", "https://sandbox.acme.example/v1#f", "https://u:p@sandbox.acme.example",
+      "ftp://sandbox.acme.example", "https://sandbox.acme.example/a/../b", "https://sandbox.acme.example/a%2Fb",
+      "sandbox.acme.example"})
+  void aDryRunBaseUrlMustBeAPlainAbsoluteHttpUrl(String url) {
+    org.assertj.core.api.Assertions.assertThat(PartnerConfigService.plainBaseUrl(url)).as(url).isFalse();
+  }
+
+  @Test
+  void aPlainSandboxUrlIsAccepted() {
+    org.assertj.core.api.Assertions.assertThat(PartnerConfigService.plainBaseUrl("https://sandbox.acme.example:8443/v1")).isTrue();
+  }
 }

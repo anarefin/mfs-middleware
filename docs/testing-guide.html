@@ -146,7 +146,7 @@ Every login is printed where a step needs it; <a href="#c1-0">1.0 Logins at a gl
       <tr><td class="tick"></td><td>MANUAL_REVIEW: force commit, force release, manual TSQ</td><td><a href="#c9-6">9.6</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Approvals: filters, rules, error codes</td><td><a href="#c9-7">9.7</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Wallet unlock</td><td><a href="#c9-8">9.8</a></td><td>Both</td></tr>
-      <tr><td class="tick"></td><td>Partners: disable, enable, timeouts</td><td><a href="#c9-9">9.9</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>Partners: disable, enable, timeouts, partner routes (submit, refuse, approve, LIVE / REJECTED)</td><td><a href="#c9-9">9.9</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>USSD menu editor, preview, publish per MNO</td><td><a href="#c9-10">9.10</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>SMS and email templates: preview, publish, reject</td><td><a href="#c9-11">9.11</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>What each role can and cannot do</td><td><a href="#c9-12">9.12</a></td><td>Ops console</td></tr>
@@ -1134,6 +1134,20 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
         Negative: <span class="ui">Connect (ms)</span> <code>0</code> → "a whole number 1 to 120000"; all three empty → "timeouts: at least one timeout";
         <span class="ui">Read (ms)</span> below the call timeout → "readTimeoutMs: at least timeoutMs"; read over <code>125000</code> → "a whole number 1 to 125000".</li>
       <li>As the checker or a viewer the Change and Timeouts cards are not there. An unknown partner id in the URL shows the error box.</li>
+      <li><b>Partner routes</b> (ADR D26, ticket 83). First give the simulator stub an answer:
+        <code>curl -s -X POST http://127.0.0.1:8085/sim/stubs/newco -H 'content-type: application/json' -d '{"method":"POST","path":"/v1/pay","status":200,"body":{"receipt":"NC-1"}}'</code>.
+        As the maker open <code>/console/partners/newco</code>: the error box, then <i>Onboard with a route</i> with
+        <span class="ui">Family</span>, <span class="ui">Route (Camel YAML DSL)</span> (monospace), <span class="ui">Allowed hosts</span>,
+        <span class="ui">Mappings</span>, <span class="ui">Dry-run operation</span> / <span class="ui">sample</span>, <span class="ui">Error map</span>,
+        <span class="ui">Call timeout</span>, Reason. Route: <code>direct:partner-newco</code>, steps <code>kamelet:mw-map?mapping=PAY.request</code>,
+        <code>kamelet:mw-http-call?url=http://mw-simulators:8080&amp;method=POST&amp;path=/v1/pay</code>, <code>kamelet:mw-classify?mapping=PAY.response</code>,
+        <code>kamelet:mw-audit</code>; host <code>mw-simulators</code>.</li>
+      <li>Negative: a step <code>- to: "exec:rm"</code> or <code>- bean: {ref: x}</code> → <code>MW-VAL-041</code> with
+        <code>config.route: line 5: ...</code>; a misspelt key → <code>line N: YAML DSL schema</code>; nothing reaches Approvals.</li>
+      <li>Submit the good route, approve as the checker: the partner page card <i>Route</i> shows <code>v1 waiting for its dry-run</code>,
+        then (reload) <code>v1 LIVE</code> with the Kamelets used; <code>GET /sim/stubs/newco/requests</code> shows the dry-run PAY.</li>
+      <li>Set the stub to <code>"status":500</code>, submit a changed version and approve it: <code>v2 REJECTED (v1 still serves)</code>
+        with the problem (<code>HTTP_5XX</code>); v1 keeps serving.</li>
     </ol>
   </div>
 

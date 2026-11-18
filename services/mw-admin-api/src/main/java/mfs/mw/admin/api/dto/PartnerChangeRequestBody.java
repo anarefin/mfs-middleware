@@ -24,7 +24,9 @@ public record PartnerChangeRequestBody(
     ENABLE,
     DISABLE,
     SET_TIMEOUTS,
-    UPSERT
+    UPSERT,
+    /** A partner route as config (ADR D26, ticket 83): config of the route shape. */
+    UPSERT_ROUTE
   }
 
   /** New timeouts; a field left out keeps its value. */

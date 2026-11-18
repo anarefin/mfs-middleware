@@ -147,6 +147,28 @@ public class PartnerRouteLoader {
    *     a security rule
    */
   public Loaded load(String id, long version, PartnerConfig config, PartnerProperties.Security staticSecurity) {
+    return load(id, version, config, staticSecurity, null);
+  }
+
+  /**
+   * Where a candidate's {@code mw-http-call}s go during its dry-run (ticket 83): {@code baseUrl}
+   * replaces the scheme, host and port of every call URL (the URL's own path is kept after it), and
+   * {@code extraHost}, when set (the environment's simulator, static config), is added to the
+   * record's allowed hosts. A record's own {@code dryRun.baseUrl} has no extra host: it must be in
+   * the record's allowed hosts.
+   */
+  public record DryRunTarget(String baseUrl, String extraHost) {}
+
+  /**
+   * As {@link #load(String, long, PartnerConfig, PartnerProperties.Security)}; with a {@code
+   * candidate} target, builds the dry-run candidate instead: route {@code
+   * partner-<id>~candidate~v<version>} from {@code direct:partner-<id>~candidate}, its calls sent
+   * to the target, on a circuit breaker of its own ({@code mw-cb-<id>~candidate}). Every check runs
+   * as for the live version, and the target URL is rebuilt from its parsed parts and checked as a
+   * strict parameter (no {@code % ? & #}, no placeholder) before it replaces a call URL.
+   */
+  public Loaded load(
+      String id, long version, PartnerConfig config, PartnerProperties.Security staticSecurity, DryRunTarget candidate) {
     List<String> security = new ArrayList<>(policy.idProblems(id));
     List<String> problems = new ArrayList<>();
     if (!security.isEmpty()) {
@@ -165,6 +187,10 @@ public class PartnerRouteLoader {
             ? LegacyPartnerRoute.translate(id, config, staticSecurity.allowedHosts().getOrDefault(id, List.of()))
             : config;
     List<String> allowed = policy.allowedHosts(id, record.allowedHosts());
+    if (candidate != null && candidate.extraHost() != null && !allowed.contains(candidate.extraHost())) {
+      allowed = new ArrayList<>(allowed);
+      allowed.add(candidate.extraHost());
+    }
 
     String text = record.route();
     if (text.contains("{{")) {
@@ -181,11 +207,14 @@ public class PartnerRouteLoader {
     schemaProblems(text, problems);
     refuseIfAny(id, security, problems);
 
-    String routeId = PartnerRuntime.routeId(id, version);
+    String routeId = candidate == null ? PartnerRuntime.routeId(id, version) : PartnerRuntime.candidateRouteId(id, version);
+    String endpoint = candidate == null ? PartnerRuntime.endpoint(id, version) : PartnerRuntime.candidateEndpoint(id);
     Calls calls = new Calls();
+    calls.partnerParam = candidate == null ? id : PartnerRuntime.candidatePartnerParam(id);
+    calls.dryRunBase = candidate == null ? null : candidate.baseUrl().replaceAll("/+$", "");
     injectKamelets(from, id, record, calls, security, problems);
     refuseIfAny(id, security, problems);
-    from.put("uri", PartnerRuntime.endpoint(id, version));
+    from.put("uri", endpoint);
     Map<String, Object> route = new LinkedHashMap<>();
     route.put("id", routeId);
     route.put("routeConfigurationId", PartnerRouteConfiguration.ID);
@@ -242,7 +271,7 @@ public class PartnerRouteLoader {
     }
     refuseIfAny(id, security, problems);
     return new Loaded(
-        new PartnerRuntime(id, version, record, routeId, PartnerRuntime.endpoint(id, version), mappings, values,
+        new PartnerRuntime(id, version, record, routeId, endpoint, mappings, values,
             allowed, calls.kamelets),
         definition);
   }
@@ -372,6 +401,10 @@ public class PartnerRouteLoader {
     final List<String> paths = new ArrayList<>();
     final Set<String> mappings = new LinkedHashSet<>();
     final Set<String> secretFields = new LinkedHashSet<>();
+    /** The {@code partnerId} injected into each Kamelet (it names the circuit breaker). */
+    String partnerParam;
+    /** A candidate's dry-run base URL; null for a live version. */
+    String dryRunBase;
   }
 
   @SuppressWarnings("unchecked")
@@ -463,7 +496,18 @@ public class PartnerRouteLoader {
       }
     }
     calls.kamelets.add(name);
-    StringBuilder out = new StringBuilder(uri).append(q < 0 ? '?' : '&').append("partnerId=").append(id);
+    if (calls.dryRunBase != null && name.startsWith("mw-http-call")) {
+      // the keys are plain names, set once, and url holds no % ? & #: one textual swap is exact
+      String target = dryRunUrl(calls.dryRunBase, params.getOrDefault("url", ""));
+      if (target == null) {
+        security.add("the dry-run target must be a plain http(s) URL: no user info, query, fragment, encoding,"
+            + " placeholder or .. segment");
+        return null;
+      }
+      uri = uri.replaceFirst("([?&])url=[^&]*", "$1url=" + java.util.regex.Matcher.quoteReplacement(target));
+      params.put("url", target);
+    }
+    StringBuilder out = new StringBuilder(uri).append(q < 0 ? '?' : '&').append("partnerId=").append(calls.partnerParam);
     if (name.startsWith("mw-http-call")) {
       calls.urls.add(params.getOrDefault("url", ""));
       calls.paths.add(params.getOrDefault("path", ""));
@@ -487,6 +531,46 @@ public class PartnerRouteLoader {
       calls.mappings.add(params.get("mapping"));
     }
     return out.toString();
+  }
+
+  /**
+   * The dry-run base followed by the path of {@code url}, rebuilt from the parsed parts (scheme,
+   * host, port, path; never user info, query or fragment) and held to the strict parameter rule;
+   * null when either is not a plain http(s) URL or the result breaks the rule.
+   */
+  static String dryRunUrl(String base, String url) {
+    URI b;
+    URI u;
+    try {
+      b = new URI(base);
+      u = new URI(url);
+    } catch (java.net.URISyntaxException e) {
+      return null;
+    }
+    if (b.getScheme() == null || !Set.of("http", "https").contains(b.getScheme().toLowerCase(Locale.ROOT))
+        || b.getHost() == null || b.getRawUserInfo() != null || b.getRawQuery() != null || b.getRawFragment() != null) {
+      return null;
+    }
+    String path = trimmed(b.getRawPath()) + trimmed(u.getRawPath());
+    if (!path.isEmpty() && (!PartnerConfig.safePath(path) || path.indexOf('{') >= 0 || path.indexOf('}') >= 0)) {
+      return null;
+    }
+    String target;
+    try {
+      target = new URI(b.getScheme(), null, b.getHost(), b.getPort(), path.isEmpty() ? null : path, null, null).toString();
+    } catch (java.net.URISyntaxException e) {
+      return null;
+    }
+    String decoded = java.net.URLDecoder.decode(target, java.nio.charset.StandardCharsets.UTF_8);
+    if (decoded.chars().anyMatch(c -> "%?&#".indexOf(c) >= 0) || decoded.contains("{{") || decoded.contains("}}")
+        || decoded.contains("${") || !decoded.equals(target)) {
+      return null;
+    }
+    return target;
+  }
+
+  private static String trimmed(String path) {
+    return path == null ? "" : path.replaceAll("/+$", "");
   }
 
   private int bulkhead(String id, PartnerConfig record) {

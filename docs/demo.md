@@ -102,7 +102,7 @@ Automated:
 | --- | --- | --- |
 | 1 | `scripts/api-test.sh "13, 14, 15, 16, 17"` | search by txnId and MSISDN, timeline and audit, reversal requested by a maker and approved by a different checker (maker = checker refused), partner disable/enable and timeouts, menu and template publish, wallet unlock |
 | 2 | `cd ui/mw-admin-ui && pnpm install && pnpm test` | unit, component and contract tests, no stack (Node.js 24 and pnpm) |
-| 3 | `scripts/ui-e2e.sh` | Playwright on the running stack, real Keycloak and mw-admin-api: sign-in with password + TOTP (PKCE) and sign-out, search and timeline of a P2P the suite makes over USSD, reversal approved by the checker (txn REVERSED), own request not approvable and rejected, wallet unlock, partner disable/enable and timeouts, menu and template publish (go-live 2099, so nothing a subscriber sees changes); run it twice, both pass |
+| 3 | `scripts/ui-e2e.sh` | Playwright on the running stack, real Keycloak and mw-admin-api: sign-in with password + TOTP (PKCE) and sign-out, search and timeline of a P2P the suite makes over USSD, reversal approved by the checker (txn REVERSED), own request not approvable and rejected, wallet unlock, partner disable/enable and timeouts, a partner route submitted, approved and LIVE after its dry-run (`31-partner-route`), menu and template publish (go-live 2099, so nothing a subscriber sees changes); run it twice, both pass |
 
 Manual walk (acceptance criterion 4), after `scripts/api-test.sh 01` so there are transactions:
 
@@ -119,6 +119,15 @@ Manual walk (acceptance criterion 4), after `scripts/api-test.sh 01` so there ar
 6. Partners (`/console/partners`): as `ops-maker01` request "disable" for partner `ocs`;
    approve as `ops-checker01`; the partner shows disabled at version + 1. Enable it again the same
    way (a disabled OCS fails every top-up).
+6a. Partner route (ADR D26, ticket 83): give mw-simulators' stub an answer (`curl -s -X POST
+   http://127.0.0.1:8085/sim/stubs/newco -H 'content-type: application/json' -d
+   '{"method":"POST","path":"/v1/pay","status":200,"body":{"receipt":"NC-1"}}'`), open
+   `/console/partners/newco` as `ops-maker01`, *Onboard with a route* (family billpay): route from
+   `direct:partner-newco` with `mw-http-call?url=http://mw-simulators:8080&method=POST&path=/v1/pay`,
+   allowed host `mw-simulators`, the PAY mappings. A `- to: "exec:rm"` step is refused at once
+   (`MW-VAL-041`, `line N`). Approve as `ops-checker01`; the partner page shows the route `v1 LIVE`
+   after the adapter's dry-run (a stub answering 500 shows `REJECTED` with the problem instead).
+   Runbook "Onboard a biller" has the whole loop.
 7. USSD menus (`/console/ussd?menuId=main`) and SMS templates (`/console/templates`): edit,
    preview (the preview walk runs in the browser only, PIN shown as `****`), propose, approve as
    the checker; the new version shows PUBLISHED.

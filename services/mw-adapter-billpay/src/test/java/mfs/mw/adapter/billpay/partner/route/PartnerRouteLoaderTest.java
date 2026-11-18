@@ -233,4 +233,88 @@ class PartnerRouteLoaderTest {
     assertThatThrownBy(() -> load(other.withRoute(from, other.mappings(), other.allowedHosts())))
         .hasMessageContaining("direct:partner-acme");
   }
+
+  @Test
+  void aCandidateRunsOnItsOwnEndpointAndBreakerAndCallsTheDryRunTargetInstead() {
+    PartnerRouteLoader.Loaded candidate = loader.load(
+        "acme", 3, record(GOOD.replace("http://localhost:8089", "http://localhost:8089/api")), SECURITY,
+        new PartnerRouteLoader.DryRunTarget("http://mw-simulators:8080/sim/partners/acme", "mw-simulators"));
+
+    // a namespace no partner id can produce (ids are [a-z0-9-], routes partner-<id>-v<n>)
+    assertThat(candidate.runtime().routeId()).isEqualTo("partner-acme~candidate~v3");
+    assertThat(candidate.runtime().endpoint()).isEqualTo("direct:partner-acme~candidate");
+    assertThat(candidate.route().getInput().getUri()).isEqualTo("direct:partner-acme~candidate");
+    String route = candidate.route().toString();
+    assertThat(route).contains("url=http://mw-simulators:8080/sim/partners/acme/api", "partnerId=acme~candidate")
+        .doesNotContain("localhost:8089");
+    assertThat(candidate.runtime().allowedHosts()).containsExactly("localhost", "mw-simulators");
+  }
+
+  @Test
+  void aCandidateTargetOutsideTheAllowedHostsIsRefused() {
+    assertThatThrownBy(() -> loader.load("acme", 3, record(GOOD), SECURITY,
+            new PartnerRouteLoader.DryRunTarget("https://sandbox.evil.example", null)))
+        .isInstanceOfSatisfying(PartnerConfigRefusedException.class, e -> assertThat(e.getMessage()).contains("allowedHosts"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "http://mw-simulators:8080/sim?x=1",
+      "http://mw-simulators:8080/sim#frag",
+      "http://mw-simulators:8080/sim%2F..%2Fadmin",
+      "http://mw-simulators:8080/sim/{{env:HOME}}",
+      "http://mw-simulators:8080/sim/${header.x}",
+      "http://user@mw-simulators:8080/sim",
+      "http://mw-simulators:8080/sim/../admin",
+  })
+  void aDryRunTargetWithQueryFragmentEncodingOrPlaceholdersIsRefused(String base) {
+    assertThatThrownBy(() -> loader.load("acme", 3, record(GOOD), SECURITY,
+            new PartnerRouteLoader.DryRunTarget(base, "mw-simulators")))
+        .as(base)
+        .isInstanceOfSatisfying(PartnerConfigRefusedException.class, e -> assertThat(e.security()).isTrue());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "https://sandbox.acme.example/v1?x=1",
+      "https://sandbox.acme.example/v1#f",
+      "https://u:p@sandbox.acme.example",
+      "ftp://sandbox.acme.example",
+      "https://sandbox.acme.example/a/../b",
+      "sandbox.acme.example",
+  })
+  void aRecordsDryRunBaseUrlMustBeAPlainAbsoluteHttpUrl(String baseUrl) {
+    PartnerConfig good = record(GOOD);
+    PartnerConfig bad = new PartnerConfig(
+        true, good.route(), good.mappings(), List.of("localhost", "sandbox.acme.example"), "billpay", null, null,
+        new PartnerConfig.DryRun("PAY", Map.of(), baseUrl), null, null, 3000L, 1500L, null, null, null, null, null,
+        null, null);
+
+    assertThat(bad.problems()).as(baseUrl).anySatisfy(p -> assertThat(p).startsWith(PartnerConfig.SECURITY).contains("dryRun.baseUrl"));
+  }
+
+  /**
+   * A candidate's route id, endpoint and breaker name carry {@code ~}, which no partner id
+   * ({@code ^[a-z0-9][a-z0-9-]{0,63}$}) can hold: no partner's live or candidate names reach them,
+   * whatever its id ({@code foo-candidate-v2}, {@code foo-candidate}, ...).
+   */
+  @Test
+  void aCandidateNeverCollidesWithAnotherPartnersNames() {
+    List<String> ids = List.of("foo", "foo-candidate", "foo-candidate-v2", "foo-v2", "candidate-partner-foo");
+    java.util.Set<String> names = new java.util.HashSet<>();
+    for (String id : ids) {
+      assertThat(new PartnerEndpointPolicy(SECURITY).idProblems(id)).as(id).isEmpty();
+      for (long v : new long[] {1, 2}) {
+        assertThat(names.add(PartnerRuntime.routeId(id, v))).as(id).isTrue();
+        assertThat(names.add(PartnerRuntime.endpoint(id, v))).as(id).isTrue();
+        assertThat(names.add(PartnerRuntime.candidateRouteId(id, v))).as(id).isTrue();
+      }
+      assertThat(names.add(PartnerRuntime.candidateEndpoint(id))).as(id).isTrue();
+      assertThat(names.add("mw-cb-" + PartnerRuntime.candidatePartnerParam(id))).as(id).isTrue();
+      assertThat(names.add("mw-cb-" + id)).as(id).isTrue();
+      assertThat(PartnerRuntime.candidateRouteId(id, 2)).contains("~");
+      assertThat(PartnerRuntime.candidateEndpoint(id)).contains("~");
+      assertThat(PartnerRuntime.candidatePartnerParam(id)).contains("~");
+    }
+  }
 }

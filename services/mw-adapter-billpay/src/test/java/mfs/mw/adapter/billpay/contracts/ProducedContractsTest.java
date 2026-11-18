@@ -61,7 +61,21 @@ class ProducedContractsTest {
       Map.of(
           "events/mw-orchestrator/mw.partner.reply.v1.schema.json#billpay", ProducedContractsTest::partnerReplies,
           "events/mw-orchestrator/mw.partner.inbound.v1.schema.json#billpay", ProducedContractsTest::partnerInbound,
-          "events/mw-audit-dw/mw.audit.event.v1.schema.json", ProducedContractsTest::auditEvents);
+          "events/mw-audit-dw/mw.audit.event.v1.schema.json", ProducedContractsTest::auditEvents,
+          "events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json", ProducedContractsTest::routeStatuses);
+
+  /** LIVE and REJECTED, through {@link mfs.mw.adapter.billpay.messaging.PartnerRouteStatusPublisher} itself. */
+  static List<Outbox.Record> routeStatuses(Outbox outbox) {
+    var publisher = new mfs.mw.adapter.billpay.messaging.PartnerRouteStatusPublisher(
+        outbox.writer, outbox.transactions, SERVICE,
+        new mfs.mw.adapter.billpay.partner.config.PartnerProperties(null, null, null, null, null), CLOCK);
+    publisher.publish(new mfs.mw.adapter.billpay.partner.route.PartnerRouteStatus(
+        "newco", 2, mfs.mw.adapter.billpay.partner.route.PartnerRouteStatus.Status.LIVE, List.of(),
+        List.of("mw-audit", "mw-classify", "mw-http-call", "mw-map")));
+    publisher.publish(mfs.mw.adapter.billpay.partner.route.PartnerRouteStatus.rejected(
+        "newco", 3, List.of("dry-run PAY gave no usable answer: HTTP_5XX")));
+    return outbox.records;
+  }
 
   /** One reply per outcome the mapper produces, written as {@code TopupService} writes it. */
   static List<Outbox.Record> partnerReplies(Outbox outbox) {

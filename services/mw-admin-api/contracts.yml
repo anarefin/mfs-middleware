@@ -17,5 +17,7 @@ produces:
     - events/mw-orchestrator/core.command.v1.schema.json#UnlockWallet
   apis:   [api/mw-admin-api/admin.v1.openapi.yaml]
 consumes:
-  events: []
+  # ticket 83: the adapters' LIVE / REJECTED report per partner route version (messaging/PartnerRouteStatusListener)
+  events:
+    - events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json
   apis:   [api/mw-orchestrator/txn-query.v1.openapi.yaml, api/mw-audit-dw/audit-query.v1.openapi.yaml]

@@ -53,18 +53,23 @@ public class PartnerConfigService {
   static final Pattern SUFFIX = Pattern.compile("^[A-Z0-9_]+$");
   static final Set<String> FAMILIES = Set.of("telco", "billpay", "bank");
   static final Set<String> AUTH_SCHEMES = Set.of("none", "api-key", "hmac-sha256");
+  static final Set<String> DRY_RUN_OPERATIONS = Set.of("PAY", "INQUIRY", "STATUS_QUERY");
+  static final Pattern MAPPING_NAME = Pattern.compile("^[A-Za-z0-9_.-]{1,64}$");
 
   private final PartnerRepository partners;
   private final ChangeRequestService changeRequests;
   private final JsonMapper json;
   private final Clock clock;
+  private final PartnerRouteValidator routes;
 
   public PartnerConfigService(
-      PartnerRepository partners, ChangeRequestService changeRequests, JsonMapper json, Clock clock) {
+      PartnerRepository partners, ChangeRequestService changeRequests, JsonMapper json, Clock clock,
+      PartnerRouteValidator routes) {
     this.partners = partners;
     this.changeRequests = changeRequests;
     this.json = json;
     this.clock = clock;
+    this.routes = routes;
   }
 
   // --- reads ----------------------------------------------------------------------------------
@@ -77,6 +82,23 @@ public class PartnerConfigService {
   public PartnerView get(Operator operator, String partnerId) {
     requireReader(operator);
     return partners.find(checkedId(partnerId)).map(PartnerMapper::view).orElseThrow(PartnerConfigService::notFound);
+  }
+
+  /**
+   * Kamelet usage (ticket 83): for each Kamelet of the library, the partners whose newest LIVE
+   * route version uses it, from the adapters' status reports.
+   */
+  public PartnerView.KameletUsage kameletUsage(Operator operator) {
+    requireReader(operator);
+    List<PartnerRepository.LiveRoute> live = partners.liveRoutes();
+    java.util.Set<String> names = new java.util.TreeSet<>(routes.kamelets());
+    live.forEach(r -> names.addAll(r.kamelets()));
+    return new PartnerView.KameletUsage(names.stream()
+        .map(name -> new PartnerView.KameletUsage.Kamelet(name, live.stream()
+            .filter(r -> r.kamelets().contains(name))
+            .map(r -> new PartnerView.KameletUsage.RouteRef(r.partnerId(), r.version()))
+            .toList()))
+        .toList());
   }
 
   // --- maker ----------------------------------------------------------------------------------
@@ -92,9 +114,11 @@ public class PartnerConfigService {
     unexpected(body, action, problems);
     String family;
     PartnerConfigValue next;
-    if (action == PartnerAction.UPSERT) {
+    if (action == PartnerAction.UPSERT || action == PartnerAction.UPSERT_ROUTE) {
       if (body.config() == null) {
-        problems.add(new ErrorDetail("config", "UPSERT needs the full config"));
+        problems.add(new ErrorDetail("config", action + " needs the full config"));
+      } else if (action == PartnerAction.UPSERT && body.config().hasRoute()) {
+        problems.add(new ErrorDetail("config.route", "a route is submitted with UPSERT_ROUTE"));
       }
       if (held.isEmpty() && body.family() == null) {
         problems.add(new ErrorDetail("family", "a new partner needs its family"));
@@ -118,10 +142,20 @@ public class PartnerConfigService {
             case SET_TIMEOUTS ->
                 p.config()
                     .withTimeouts(body.timeouts().connectTimeoutMs(), body.timeouts().timeoutMs(), body.timeouts().readTimeoutMs());
-            case UPSERT -> throw new IllegalStateException("handled above");
+            case UPSERT, UPSERT_ROUTE -> throw new IllegalStateException("handled above");
           };
     }
-    validate(next, problems);
+    if (next.hasRoute() || action == PartnerAction.UPSERT_ROUTE) {
+      List<ErrorDetail> route = new ArrayList<>();
+      validateRoute(id, next, problems, route);
+      refuseIfAny(problems);
+      if (!route.isEmpty()) {
+        throw new MwException(ErrorCodes.VAL_ROUTE_INVALID, "The partner route breaks the route rules")
+            .withDetails(List.copyOf(route));
+      }
+    } else {
+      validate(next, problems);
+    }
     refuseIfAny(problems);
     Map<String, Object> before = held.map(p -> asMap(p.config())).orElse(Map.of());
     Map<String, Object> after = asMap(next);
@@ -177,11 +211,12 @@ public class PartnerConfigService {
 
   /** Fields that do not belong to the action are refused rather than ignored. */
   private static void unexpected(PartnerChangeRequestBody body, PartnerAction action, List<ErrorDetail> problems) {
-    if (action != PartnerAction.UPSERT && body.config() != null) {
-      problems.add(new ErrorDetail("config", "only UPSERT takes a config"));
+    boolean upsert = action == PartnerAction.UPSERT || action == PartnerAction.UPSERT_ROUTE;
+    if (!upsert && body.config() != null) {
+      problems.add(new ErrorDetail("config", "only UPSERT and UPSERT_ROUTE take a config"));
     }
-    if (action != PartnerAction.UPSERT && body.family() != null) {
-      problems.add(new ErrorDetail("family", "only UPSERT takes a family"));
+    if (!upsert && body.family() != null) {
+      problems.add(new ErrorDetail("family", "only UPSERT and UPSERT_ROUTE take a family"));
     }
     if (action == PartnerAction.SET_TIMEOUTS && body.timeouts() == null) {
       problems.add(new ErrorDetail("timeouts", "SET_TIMEOUTS needs timeouts"));
@@ -218,6 +253,11 @@ public class PartnerConfigService {
             }
           });
     }
+    common(c, problems);
+  }
+
+  /** The rules both shapes share: error map, auth, timeouts. */
+  static void common(PartnerConfigValue c, List<ErrorDetail> problems) {
     if (c.errorMap() != null) {
       c.errorMap().forEach(
           (code, m) -> {
@@ -245,6 +285,60 @@ public class PartnerConfigService {
     }
     if (c.readTimeoutMs() != null && c.timeoutMs() != null && c.readTimeoutMs() < c.timeoutMs()) {
       problems.add(new ErrorDetail("config.readTimeoutMs", "must not be below timeoutMs (the time limiter decides first)"));
+    }
+  }
+
+  /**
+   * A config of the route shape (ADR D26, ticket 83): field problems go to {@code problems} (400
+   * MW-VAL-001), the route's own problems, from the copy of the adapters' loader rules ({@link
+   * PartnerRouteValidator}), to {@code route} (400 MW-VAL-041, one per problem with its line).
+   */
+  void validateRoute(String id, PartnerConfigValue c, List<ErrorDetail> problems, List<ErrorDetail> route) {
+    if (c.route() == null || c.route().isBlank()) {
+      problems.add(new ErrorDetail("config.route", "UPSERT_ROUTE needs the route"));
+    }
+    if (c.baseUrl() != null || c.operations() != null || c.template() != null) {
+      problems.add(new ErrorDetail("config", "a route config has no baseUrl, operations or template (the route holds them)"));
+    }
+    if (c.allowedHosts() == null || c.allowedHosts().isEmpty()) {
+      problems.add(new ErrorDetail("config.allowedHosts", "a route needs the hosts it may call"));
+    }
+    PartnerConfigValue.DryRun dryRun = c.dryRun();
+    if (dryRun == null || dryRun.operation() == null || !DRY_RUN_OPERATIONS.contains(dryRun.operation())) {
+      problems.add(new ErrorDetail("config.dryRun.operation", "a route needs a dry-run of PAY, INQUIRY or STATUS_QUERY"));
+    }
+    if (dryRun != null && dryRun.baseUrl() != null) {
+      if (!plainBaseUrl(dryRun.baseUrl())) {
+        problems.add(new ErrorDetail("config.dryRun.baseUrl",
+            "must be an absolute http(s) URL without user info, query, fragment, encoding or .. segments"));
+      } else if (c.allowedHosts() == null || c.allowedHosts().stream()
+          .noneMatch(h -> h.equalsIgnoreCase(java.net.URI.create(dryRun.baseUrl()).getHost()))) {
+        problems.add(new ErrorDetail("config.dryRun.baseUrl", "its host must be in allowedHosts"));
+      }
+    }
+    if (c.mappings() != null) {
+      c.mappings().keySet().stream()
+          .filter(name -> !MAPPING_NAME.matcher(name).matches())
+          .findFirst()
+          .ifPresent(name -> problems.add(new ErrorDetail("config.mappings", "mapping names are letters, digits, . _ -")));
+    }
+    common(c, problems);
+    if (c.route() != null && !c.route().isBlank()) {
+      routes.problems(id, c.route(), c.mappings(), c.allowedHosts())
+          .forEach(p -> route.add(new ErrorDetail("config.route", p.toString())));
+    }
+  }
+
+  /** An absolute http(s) URL of scheme, host, port and a safe path only (the adapters' rule). */
+  static boolean plainBaseUrl(String url) {
+    try {
+      java.net.URI u = new java.net.URI(url);
+      String path = u.getRawPath() == null ? "" : u.getRawPath();
+      return u.getScheme() != null && Set.of("http", "https").contains(u.getScheme().toLowerCase(java.util.Locale.ROOT))
+          && u.getHost() != null && u.getRawUserInfo() == null && u.getRawQuery() == null && u.getRawFragment() == null
+          && (path.isEmpty() || (safePath(path) && path.indexOf('{') < 0 && path.indexOf('}') < 0));
+    } catch (java.net.URISyntaxException e) {
+      return false;
     }
   }
 
