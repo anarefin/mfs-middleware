@@ -58,5 +58,5 @@ Also update `docs/testing-guide.html` and `docs/demo.md` with the walkthrough.
 - [ ] An end-to-end IT (admin-api plus billpay, Testcontainers): submit, approve, dry-run, LIVE, then a bill pay succeeds without a restart
 - [ ] A route whose dry-run fails ends `REJECTED`; the previous route still serves traffic (an IT proves a call during and after it)
 - [ ] A forbidden construct is refused at submit (`MW-VAL-*`), before any approval; a YAML DSL schema error is reported with its line
-- [ ] The runbook's Camel JBang loop works as written against the dev stack's mw-simulators (done by hand once, output in the PR)
+- [ ] The runbook's Camel JBang loop works as written against the dev stack's mw-simulators (done by hand once, output in the PR) — **waived (user 2026-11-18: ignore JBang-related features)**
 - [ ] `./gradlew :mw-admin-api:build :mw-adapter-billpay:build :mw-simulators:build :contractsLint :scriptTests` are green; `pnpm test` and `scripts/ui-e2e.sh @partners` pass on the running stack
