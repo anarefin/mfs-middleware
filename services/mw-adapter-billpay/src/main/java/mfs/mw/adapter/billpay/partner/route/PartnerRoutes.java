@@ -41,6 +41,8 @@ public class PartnerRoutes implements AutoCloseable {
   private final CircuitBreakerRegistry breakers;
   private final ExecutorService retirements = Executors.newVirtualThreadPerTaskExecutor();
   private final Map<String, String> started = new ConcurrentHashMap<>();
+  /** Route id -> the registry beans bound for it (ticket 86), removed with the route. */
+  private final Map<String, Set<String>> beans = new ConcurrentHashMap<>();
 
   public PartnerRoutes(
       CamelContext camel, PartnerRouteLoader loader, CircuitBreakerRegistry breakers) {
@@ -84,6 +86,20 @@ public class PartnerRoutes implements AutoCloseable {
 
   private PartnerRuntime start(String id, long version, PartnerRouteLoader.Loaded loaded) {
     PartnerRuntime runtime = loaded.runtime();
+    if (runtime.batch() && !runtime.config().enabled()) {
+      // ticket 86: a disabled batch route is not added at all, so its SFTP source never polls
+      log.atInfo()
+          .addKeyValue("event", "partner.route.disabled")
+          .addKeyValue("partnerId", id)
+          .addKeyValue("version", version)
+          .log("batch partner route disabled; not started");
+      return runtime;
+    }
+    // ticket 86: the SFTP credential and known hosts the route refers to (#bean:...), never in a URI
+    loaded.beans().forEach((name, value) -> camel.getRegistry().bind(name, String.class, value));
+    if (!loaded.beans().isEmpty()) {
+      beans.put(runtime.routeId(), Set.copyOf(loaded.beans().keySet()));
+    }
     try {
       ((ModelCamelContext) camel).addRouteDefinition(loaded.route());
       if (camel.getRouteController().getRouteStatus(runtime.routeId()) != ServiceStatus.Started) {
@@ -138,6 +154,9 @@ public class PartnerRoutes implements AutoCloseable {
     Set<String> ids = new LinkedHashSet<>();
     collect(routeId, ids);
     for (String id : ids) {
+      if (camel.getRoute(id) == null) {
+        continue; // never added (a disabled batch route) or already gone
+      }
       try {
         camel.getRouteController().stopRoute(id, 1, TimeUnit.SECONDS);
         camel.removeRoute(id);
@@ -150,6 +169,10 @@ public class PartnerRoutes implements AutoCloseable {
       }
     }
     started.remove(routeId);
+    Set<String> bound = beans.remove(routeId);
+    if (bound != null) {
+      bound.forEach(camel.getRegistry()::unbind);
+    }
   }
 
   /** {@code routeId} and its Kamelet routes, children first. */

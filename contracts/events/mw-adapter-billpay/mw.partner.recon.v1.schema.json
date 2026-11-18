@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bits.mw/events/mw-adapter-billpay/mw.partner.recon.v1.schema.json",
+  "title": "mw.partner.recon.v1",
+  "description": "One line of a partner's reconciliation or settlement file (spec 13 as amended by ticket 86), read by the partner adapter that owns the partner's family from the partner's SFTP host (batch partner route: Kamelets mw-sftp-source, then mw-recon). Every data line of a file is one record; all lines of a file are written through the outbox in one transaction, so a file is published whole or not at all (a file that cannot be read is moved to .error and nothing is published). A file is read once (JDBC idempotent repository on name, size and modification time); the same line of the same file always carries the same mw-idempotency-key header recon/<partnerId>/<fileId>#<lineNumber>, so a consumer deduplicates a redelivery in its inbox. Produced by mw-adapter-billpay (owner), mw-adapter-telco and mw-adapter-bank; consumer: the future mw-recon service (ticket 88; contracts/EXTERNAL.yml until it is built), which matches the lines and never moves money. Key: partnerId. fields holds the partner's columns as text, unparsed: amounts, references and statuses in the partner's own format. Consumers ignore unknown fields; only additive changes within v1.",
+  "type": "object",
+  "required": ["schemaVersion", "partnerId", "family", "fileName", "fileId", "lineNumber", "last", "fields", "reportedBy", "receivedAt"],
+  "properties": {
+    "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
+    "partnerId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$", "description": "The partner id of the batch route's record partner/<id>." },
+    "family": { "enum": ["telco", "billpay", "bank"], "description": "The family of the reporting adapter." },
+    "fileName": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The file's name on the partner host (without its directory)." },
+    "fileId": { "type": "string", "minLength": 1, "maxLength": 400, "description": "The file's identity, <fileName>-<size>-<modified epoch ms> (the idempotent repository's key without the partner id); the same for every line of one file." },
+    "lineNumber": { "type": "integer", "minimum": 1, "description": "1-based line of the file (a header line counts)." },
+    "last": { "type": "boolean", "description": "True on the file's last data line: the file is complete." },
+    "fields": {
+      "type": "object",
+      "maxProperties": 50,
+      "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$" },
+      "additionalProperties": { "type": "string", "maxLength": 500 },
+      "description": "Column name -> the line's value, as text (the route's columns, or the file's header line)."
+    },
+    "reportedBy": { "type": "string", "minLength": 1, "description": "The reporting service, e.g. mw-adapter-billpay." },
+    "receivedAt": { "type": "string", "format": "date-time", "description": "When the adapter read the file." }
+  }
+}

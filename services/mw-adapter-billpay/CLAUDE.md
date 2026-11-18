@@ -248,6 +248,38 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   `mw.partner.call.duration`, `mw.partner.circuit.state`) stay in the gateway.
 - **Callbacks** stay Java (`PartnerGateway.inbound`): the record's `auth` scheme with its secret, then
   its `CALLBACK.response` mapping.
+- **Batch partners over SFTP** (ticket 86; `partner/route/PartnerBatchRoutes`, `PartnerRecon`,
+  `partner/kamelet/MwReconStep`): a second route shape, `from: kamelet:mw-sftp-source?...` (a record of
+  its own, e.g. `billagg-recon`), whose last step is `kamelet:mw-recon`; `PartnerRuntime.batch()`. The
+  loader holds `mw-sftp-source` / `mw-sftp-sink` / `mw-recon` to short parameter lists, each value to a
+  pattern (`host` (in `allowedHosts`, internal addresses only for static dev hosts:
+  `PartnerEndpointPolicy.hostProblems`), `port`, `username`, `directory` (relative, no `..`), `auth`
+  `password|key`, `secretField`, `knownHostsField`; source `delay`, `maxMessagesPerPoll` (1-100); sink
+  `fileName` (`[A-Za-z0-9._-]` and `${date:now:<pattern>}`); recon `columns`, `delimiter`
+  `comma|semicolon|pipe|tab`); any other SFTP option (`delete`, `strictHostKeyChecking`,
+  `privateKeyFile`, ...) is a security refusal. It rebuilds the call with `partnerId` and the registry
+  references `password=` / `privateKey=#bean:mw-sftp-<routeId>-<field>` and
+  `knownHosts=#bean:mw-sftp-<routeId>-<field>`: the credential and the host's known_hosts lines are fields
+  of the partner's own OpenBao secret, read at load, bound by `PartnerRoutes` before the route starts
+  (`Loaded.beans()`) and unbound with it; never in a URI. A batch route has no `routeConfiguration` (a
+  failure must reach the file consumer) and no dry-run (refused). `enabled: false`: the route is not
+  added, so nothing polls (health DISABLED). `mw-sftp-source` (camel-sftp 4.22.2, options checked in
+  its `SftpEndpointConfigurer`): `strictHostKeyChecking=yes`, `useUserKnownHostsFile=false`,
+  `autoCreateKnownHostsFile=false` (the component's default is `no`), `readLock=changed`, `idempotent`
+  on bean `mwSftpFiles` (camel-sql `JdbcMessageIdRepository`, table `partner_file_processed`, Flyway
+  `V5`, key `<partnerId>/${file:name}-${file:size}-${file:modified}`, shared by two versions polling
+  during a swap), `move=.done`, `moveFailed=.error` (never `delete`), `streamDownload=true` with
+  `stepwise=false`, `disconnect=true`, bounded `maxMessagesPerPoll`. `mw-recon` reads the stream line by
+  line (header line or `columns`, quoted fields) and hands the lines to `messaging/PartnerReconPublisher`:
+  `mw.partner.recon.v1` (key partnerId, idempotency key `recon/<id>/<fileId>#<line>`, `last` on the
+  final line) through the outbox, every line of a file in one transaction, so a bad line (wrong field
+  count, over 8192 characters) publishes nothing and the file goes to `.error`; `split().streaming()` is
+  not used because it would publish the lines before the bad one. Choices that differ from the ticket
+  text: the known hosts come from OpenBao (`knownHosts` bytes), not a `knownHostsUri` file of the
+  adapter host; the sftp host is checked at load only (the `http*` interceptor does not see sftp). Tests:
+  `PartnerBatchRouteLoaderTest`, `MwReconStepTest`, `KameletCatalogueTest`, `SftpReconRouteIT` (atmoz/sftp
+  Testcontainer: read once, `.done`, `.error`, disabled, the sink, an unknown host key refused). Example:
+  `deploy/partner-routes/examples/sftp-recon.yaml`; dev SFTP host `partner-sftp` (profile tester).
 
 Choices where Camel 4.22.2 differs from the ticket text (verified in the 4.22.2 jars, Context7 not
 available): `camel-jsonata` is a component that recompiles per exchange, so mappings are compiled
@@ -288,6 +320,10 @@ adapter-minted txnId) are still dropped and belong to the REMIT_IN / NPSB ticket
 - `events/mw-adapter-billpay/mw.partner.route.status.v1` (ticket 83): LIVE / REJECTED per partner record
   version, key partnerId; consumer mw-admin-api; telco and bank produce it too since ticket 84 (topic 6
   partitions, 7 d, retry group mw-admin-api).
+- `events/mw-adapter-billpay/mw.partner.recon.v1` (ticket 86): one line of a partner's SFTP
+  reconciliation file (`messaging/PartnerReconPublisher`, `dto/PartnerReconEvent`), key partnerId; telco
+  and bank produce it too; consumer the future mw-recon (ticket 88; `contracts/EXTERNAL.yml` until then;
+  topic 6 partitions, 7 d, no retry group yet).
 
 ## Contracts used
 

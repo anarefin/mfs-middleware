@@ -89,9 +89,56 @@ class KameletCatalogueTest {
         if (uri.startsWith("{{url}}")) {
           continue; // the partner's http(s) URL, checked against its allowed hosts
         }
+        if (uri.startsWith("sftp:") && SFTP_KAMELETS.contains(k.get("__file"))) {
+          continue; // ticket 86: sftp only inside the two SFTP Kamelets
+        }
         String scheme = uri.substring(0, Math.max(uri.indexOf(':'), 0));
         assertThat(scheme).as(k.get("__file") + ": " + uri).isIn(ALLOWED_SCHEMES);
       }
     }
+  }
+
+  /** Ticket 86: the only Kamelets that may name the {@code sftp} component. */
+  static final Set<String> SFTP_KAMELETS = Set.of("mw-sftp-source.kamelet.yaml", "mw-sftp-sink.kamelet.yaml");
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void theSftpBatchKameletsAreTypedSourceSinkAndAction() throws Exception {
+    Map<String, String> types = new java.util.HashMap<>();
+    for (Map<String, Object> k : kamelets()) {
+      Map<String, Object> metadata = (Map<String, Object>) k.get("metadata");
+      types.put((String) metadata.get("name"),
+          (String) ((Map<String, Object>) metadata.get("labels")).get("camel.apache.org/kamelet.type"));
+    }
+    assertThat(types)
+        .containsEntry("mw-sftp-source", "source").containsEntry("mw-sftp-sink", "sink").containsEntry("mw-recon", "action");
+  }
+
+  /**
+   * Ticket 86: strict host key checking against the partner's own known hosts (never the user's
+   * file, never written), a file kept until the outbox commit (move / moveFailed, never delete), a
+   * JDBC idempotent repository keyed on name, size and modification time, a bounded poll and a
+   * streamed download.
+   */
+  @Test
+  void theSftpKameletsCheckTheHostKeyAndTheSourceNeverDeletes() throws Exception {
+    String source = null;
+    for (Map<String, Object> k : kamelets()) {
+      if (!SFTP_KAMELETS.contains(k.get("__file"))) {
+        continue;
+      }
+      String text = (String) k.get("__text");
+      assertThat(text).as((String) k.get("__file"))
+          .contains("strictHostKeyChecking=yes", "useUserKnownHostsFile=false", "autoCreateKnownHostsFile=false",
+              "knownHosts={{knownHosts}}")
+          .doesNotContain("delete=true", "strictHostKeyChecking=no");
+      if ("mw-sftp-source.kamelet.yaml".equals(k.get("__file"))) {
+        source = text;
+      }
+    }
+    assertThat(source).isNotNull().contains(
+        "idempotent=true", "idempotentKey={{partnerId}}/${file:name}-${file:size}-${file:modified}",
+        "idempotentRepository=#mwSftpFiles", "readLock=changed", "maxMessagesPerPoll={{maxMessagesPerPoll}}",
+        "move=.done", "moveFailed=.error", "streamDownload=true", "stepwise=false", "disconnect=true");
   }
 }

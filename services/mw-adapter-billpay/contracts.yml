@@ -6,6 +6,8 @@ produces:
     - events/mw-audit-dw/mw.audit.event.v1.schema.json
     # ticket 83: LIVE / REJECTED of each partner record version (messaging/PartnerRouteStatusPublisher)
     - events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json
+    # ticket 86: the lines of a partner's SFTP reconciliation file (messaging/PartnerReconPublisher)
+    - events/mw-adapter-billpay/mw.partner.recon.v1.schema.json
   apis: [api/mw-adapter-billpay/billpay.v1.openapi.yaml]
 consumes:
   events:
