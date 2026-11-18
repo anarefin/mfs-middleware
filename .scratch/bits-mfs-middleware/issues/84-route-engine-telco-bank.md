@@ -18,7 +18,7 @@ rename. Each adapter publishes `mw.partner.route.status.v1` for its own `family`
 
 **Blocked by:** 83
 
-**Status:** open
+**Status:** done (89b8dac6..3ce2acd0)
 
 - [ ] `diff -r` of the three `partner/` trees (after normalising the package) is empty; the Kamelet folders are identical
 - [ ] `./gradlew :mw-adapter-telco:build :mw-adapter-bank:build :mw-adapter-billpay:build :mw-admin-api:build :contractsLint` are green with Docker
