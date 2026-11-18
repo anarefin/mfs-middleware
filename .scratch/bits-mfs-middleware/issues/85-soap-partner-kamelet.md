@@ -25,7 +25,7 @@ interceptor as `mw-http-call`.
 
 **Blocked by:** 84
 
-**Status:** open
+**Status:** done (0926e161, 0fd772a6)
 
 - [ ] `SoapBillerRouteIT`: a SOAP biller added by a config-changed record does a fetch and a pay against the simulator stub with no Java change; a SOAP fault maps to the configured `MW-PTR-<ID>-*`
 - [ ] An XSLT using `document('http://…')` or an external entity is refused by the loader and the admin-api validator
