@@ -36,7 +36,8 @@ class ConsumedContractsTest {
   void everyValidRouteStatusSampleIsReadAndApplied() throws Exception {
     PartnerRepository partners = mock(PartnerRepository.class);
     when(partners.updateRouteStatus(anyString(), anyLong(), anyString(), any(), any(), any())).thenReturn(true);
-    PartnerRouteStatusService service = new PartnerRouteStatusService(partners, Clock.systemUTC());
+    PartnerRouteStatusService service =
+        new PartnerRouteStatusService(partners, mock(mfs.mw.admin.api.messaging.OutboxWriter.class), JSON, Clock.systemUTC());
     List<Path> samples = ContractManifest.validSamples(ROUTE_STATUS);
     assertThat(samples).isNotEmpty();
     for (Path sample : samples) {

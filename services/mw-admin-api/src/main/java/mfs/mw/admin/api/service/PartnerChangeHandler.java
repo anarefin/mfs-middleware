@@ -93,7 +93,7 @@ public class PartnerChangeHandler implements ResourceChangeHandler {
             }
           }
           if (config.hasRoute()) {
-            partners.insertRoute(new Partner(id, family, version, config, now, cr.makerId(), checker.username()), now);
+            partners.insertRoute(new Partner(id, family, version, config, now, cr.makerId(), checker.username()), value, now);
           }
           ConfigChangedEvent event =
               PartnerMapper.configChanged(id, version, value, cr.makerId(), checker.username(), correlationId, now);

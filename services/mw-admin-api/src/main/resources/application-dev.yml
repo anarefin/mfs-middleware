@@ -1,9 +1,13 @@
-# Dev profile only (SPRING_PROFILES_ACTIVE=dev, set by this module's compose.yml for the dev stack).
-# The partner seeds mirror the dev seed partners of the adapters (mw-adapter-telco's
-# application-dev.yml `ocs`): stored once at version 0 and never published, so the console can
-# disable the partner or change its timeouts (ticket 38) and publish the full config as version 1.
-# Keep a seed identical to the adapter's, or the first approved change publishes the difference.
+# Dev profile only (SPRING_PROFILES_ACTIVE=dev, set for this service in deploy/docker-compose.yml).
+# The partner seeds mirror the dev seed partners of the adapters (application-dev.yml of
+# mw-adapter-telco `ocs`, mw-adapter-billpay `billagg`, mw-adapter-bank `c2wbank`; ticket 84): stored
+# once at version 0 and never published, so the console can disable a partner, change its timeouts
+# or submit a new route and publish the full config as version 1. Keep a seed identical to the
+# adapter's (its route with the simulator URL written out), or the first approved change publishes
+# the difference.
 mw:
   partners:
     seeds:
       - classpath:partner-seeds/dev/ocs.json
+      - classpath:partner-seeds/dev/billagg.json
+      - classpath:partner-seeds/dev/c2wbank.json

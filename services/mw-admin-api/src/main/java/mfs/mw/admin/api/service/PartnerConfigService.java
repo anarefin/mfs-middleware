@@ -33,12 +33,17 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Partner config (ticket 38, spec 15.2 Partners, 20.4): reads, and the maker side of a partner
  * change request. A maker ({@link AdminRole#PARTNER_MAKER}) asks to ENABLE, DISABLE, SET_TIMEOUTS
- * or UPSERT (full config); the request stores the full config the approval will publish ({@code
- * payload.config}), the version the maker saw ({@code payload.baseVersion}, null for a new
- * partner) and the changed fields ({@code diff}). Nothing changes until a checker approves ({@link
- * PartnerChangeHandler}). The config is checked here with the adapters' structural and security
- * rules that need no adapter config (ids, paths, secret names, suffixes, URL shape); the adapters
- * check it again (host allowlist, https, JSONata) and keep the old config when they refuse it.
+ * or UPSERT_ROUTE (full config, a partner route of ADR D26); the request stores the full config the
+ * approval will publish ({@code payload.config}), the version the maker saw ({@code
+ * payload.baseVersion}, null for a new partner) and the changed fields ({@code diff}). Nothing
+ * changes until a checker approves ({@link PartnerChangeHandler}). The config is checked here with
+ * the adapters' structural and security rules that need no adapter config (ids, the route rules,
+ * secret names, suffixes, URL shape); the adapters check it again (host allowlist, https, JSONata,
+ * dry-run) and keep the old version when they refuse it.
+ *
+ * <p>Only UPSERT_ROUTE carries a dry-run (a new route must prove itself first, ticket 83). ENABLE,
+ * DISABLE and SET_TIMEOUTS publish the held route without one (ticket 84): the route is the one
+ * already running, so the adapter swaps the new version in at once.
  */
 @Service
 public class PartnerConfigService {
@@ -114,11 +119,10 @@ public class PartnerConfigService {
     unexpected(body, action, problems);
     String family;
     PartnerConfigValue next;
-    if (action == PartnerAction.UPSERT || action == PartnerAction.UPSERT_ROUTE) {
+    PartnerConfigValue base;
+    if (action == PartnerAction.UPSERT_ROUTE) {
       if (body.config() == null) {
         problems.add(new ErrorDetail("config", action + " needs the full config"));
-      } else if (action == PartnerAction.UPSERT && body.config().hasRoute()) {
-        problems.add(new ErrorDetail("config.route", "a route is submitted with UPSERT_ROUTE"));
       }
       if (held.isEmpty() && body.family() == null) {
         problems.add(new ErrorDetail("family", "a new partner needs its family"));
@@ -129,35 +133,32 @@ public class PartnerConfigService {
       refuseIfAny(problems);
       family = held.map(Partner::family).orElse(body.family());
       PartnerConfigValue c = body.config();
-      // an UPSERT that leaves enabled out keeps the partner's state (a new one starts enabled)
+      // a config that leaves enabled out keeps the partner's state (a new one starts enabled)
       next = c.enabled() != null ? c : c.withEnabled(held.map(p -> p.config().isEnabled()).orElse(true));
+      base = held.map(Partner::config).orElse(null);
     } else {
       refuseIfAny(problems);
       Partner p = held.orElseThrow(PartnerConfigService::notFound);
       family = p.family();
+      base = p.config().withoutDryRun();
       next =
           switch (action) {
-            case ENABLE -> p.config().withEnabled(true);
-            case DISABLE -> p.config().withEnabled(false);
+            case ENABLE -> base.withEnabled(true);
+            case DISABLE -> base.withEnabled(false);
             case SET_TIMEOUTS ->
-                p.config()
-                    .withTimeouts(body.timeouts().connectTimeoutMs(), body.timeouts().timeoutMs(), body.timeouts().readTimeoutMs());
-            case UPSERT, UPSERT_ROUTE -> throw new IllegalStateException("handled above");
+                base.withTimeouts(body.timeouts().connectTimeoutMs(), body.timeouts().timeoutMs(), body.timeouts().readTimeoutMs());
+            case UPSERT_ROUTE -> throw new IllegalStateException("handled above");
           };
     }
-    if (next.hasRoute() || action == PartnerAction.UPSERT_ROUTE) {
-      List<ErrorDetail> route = new ArrayList<>();
-      validateRoute(id, next, problems, route);
-      refuseIfAny(problems);
-      if (!route.isEmpty()) {
-        throw new MwException(ErrorCodes.VAL_ROUTE_INVALID, "The partner route breaks the route rules")
-            .withDetails(List.copyOf(route));
-      }
-    } else {
-      validate(next, problems);
+    List<ErrorDetail> route = new ArrayList<>();
+    validateRoute(id, next, action == PartnerAction.UPSERT_ROUTE, problems, route);
+    refuseIfAny(problems);
+    if (!route.isEmpty()) {
+      throw new MwException(ErrorCodes.VAL_ROUTE_INVALID, "The partner route breaks the route rules")
+          .withDetails(List.copyOf(route));
     }
     refuseIfAny(problems);
-    Map<String, Object> before = held.map(p -> asMap(p.config())).orElse(Map.of());
+    Map<String, Object> before = base == null ? Map.of() : asMap(base);
     Map<String, Object> after = asMap(next);
     Map<String, Object> diff = PartnerMapper.diff(before, after);
     if (diff.get("after") instanceof Map<?, ?> a && a.isEmpty() && held.isPresent()) {
@@ -187,7 +188,9 @@ public class PartnerConfigService {
     if (!FAMILIES.contains(family)) {
       problems.add(new ErrorDetail("family", "unknown family"));
     }
-    validate(config, problems);
+    List<ErrorDetail> route = new ArrayList<>();
+    validateRoute(id, config, false, problems, route);
+    problems.addAll(route);
     if (!problems.isEmpty()) {
       throw new IllegalStateException("partner seed " + id + " is invalid: " + problems);
     }
@@ -195,7 +198,9 @@ public class PartnerConfigService {
       return false;
     }
     try {
-      partners.insert(new Partner(id, family, 0, config, clock.instant(), "seed", null));
+      Partner seed = new Partner(id, family, 0, config, clock.instant(), "seed", null);
+      partners.insert(seed);
+      partners.insertSeedRoute(seed, clock.instant());
     } catch (DuplicateKeyException e) {
       return false;
     }
@@ -211,12 +216,12 @@ public class PartnerConfigService {
 
   /** Fields that do not belong to the action are refused rather than ignored. */
   private static void unexpected(PartnerChangeRequestBody body, PartnerAction action, List<ErrorDetail> problems) {
-    boolean upsert = action == PartnerAction.UPSERT || action == PartnerAction.UPSERT_ROUTE;
+    boolean upsert = action == PartnerAction.UPSERT_ROUTE;
     if (!upsert && body.config() != null) {
-      problems.add(new ErrorDetail("config", "only UPSERT and UPSERT_ROUTE take a config"));
+      problems.add(new ErrorDetail("config", "only UPSERT_ROUTE takes a config"));
     }
     if (!upsert && body.family() != null) {
-      problems.add(new ErrorDetail("family", "only UPSERT and UPSERT_ROUTE take a family"));
+      problems.add(new ErrorDetail("family", "only UPSERT_ROUTE takes a family"));
     }
     if (action == PartnerAction.SET_TIMEOUTS && body.timeouts() == null) {
       problems.add(new ErrorDetail("timeouts", "SET_TIMEOUTS needs timeouts"));
@@ -226,37 +231,7 @@ public class PartnerConfigService {
     }
   }
 
-  /**
-   * The adapters' rules that need no adapter config. Messages never repeat a value (a refused
-   * path or secret name may be an attempt to reach something else).
-   */
-  static void validate(PartnerConfigValue c, List<ErrorDetail> problems) {
-    if (c.baseUrl() == null || !absoluteHttpUrl(c.baseUrl())) {
-      problems.add(new ErrorDetail("config.baseUrl", "must be an absolute http(s) URL without user info, query or fragment"));
-    }
-    if (c.operations() == null || c.operations().isEmpty()) {
-      problems.add(new ErrorDetail("config.operations", "at least one operation is required"));
-    } else {
-      c.operations().forEach(
-          (name, op) -> {
-            String at = "config.operations." + name;
-            if (op == null || op.method() == null || op.method().isBlank()) {
-              problems.add(new ErrorDetail(at + ".method", "is required"));
-            }
-            if (op == null || !safePath(op.path())) {
-              problems.add(
-                  new ErrorDetail(at + ".path", "must be an absolute path of letters, digits, . _ ~ - / and {reference}"
-                      + ", without .. segments or //"));
-            }
-            if (op == null || op.response() == null || op.response().isBlank()) {
-              problems.add(new ErrorDetail(at + ".response", "mapping is required"));
-            }
-          });
-    }
-    common(c, problems);
-  }
-
-  /** The rules both shapes share: error map, auth, timeouts. */
+  /** The record rules besides the route: error map, auth, timeouts. */
   static void common(PartnerConfigValue c, List<ErrorDetail> problems) {
     if (c.errorMap() != null) {
       c.errorMap().forEach(
@@ -289,22 +264,24 @@ public class PartnerConfigService {
   }
 
   /**
-   * A config of the route shape (ADR D26, ticket 83): field problems go to {@code problems} (400
-   * MW-VAL-001), the route's own problems, from the copy of the adapters' loader rules ({@link
+   * A partner config (ADR D26, ticket 83): field problems go to {@code problems} (400 MW-VAL-001),
+   * the route's own problems, from the copy of the adapters' loader rules ({@link
    * PartnerRouteValidator}), to {@code route} (400 MW-VAL-041, one per problem with its line).
+   *
+   * @param needsDryRun true for UPSERT_ROUTE (a new route); ENABLE / DISABLE / SET_TIMEOUTS and the
+   *     seeds carry none
    */
-  void validateRoute(String id, PartnerConfigValue c, List<ErrorDetail> problems, List<ErrorDetail> route) {
+  void validateRoute(
+      String id, PartnerConfigValue c, boolean needsDryRun, List<ErrorDetail> problems, List<ErrorDetail> route) {
     if (c.route() == null || c.route().isBlank()) {
-      problems.add(new ErrorDetail("config.route", "UPSERT_ROUTE needs the route"));
-    }
-    if (c.baseUrl() != null || c.operations() != null || c.template() != null) {
-      problems.add(new ErrorDetail("config", "a route config has no baseUrl, operations or template (the route holds them)"));
+      problems.add(new ErrorDetail("config.route", "a partner needs its route"));
     }
     if (c.allowedHosts() == null || c.allowedHosts().isEmpty()) {
       problems.add(new ErrorDetail("config.allowedHosts", "a route needs the hosts it may call"));
     }
     PartnerConfigValue.DryRun dryRun = c.dryRun();
-    if (dryRun == null || dryRun.operation() == null || !DRY_RUN_OPERATIONS.contains(dryRun.operation())) {
+    if ((needsDryRun || dryRun != null)
+        && (dryRun == null || dryRun.operation() == null || !DRY_RUN_OPERATIONS.contains(dryRun.operation()))) {
       problems.add(new ErrorDetail("config.dryRun.operation", "a route needs a dry-run of PAY, INQUIRY or STATUS_QUERY"));
     }
     if (dryRun != null && dryRun.baseUrl() != null) {
@@ -347,19 +324,6 @@ public class PartnerConfigService {
         && SAFE_PATH.matcher(path).matches()
         && !path.contains("//")
         && java.util.Arrays.stream(path.split("/")).noneMatch(".."::equals);
-  }
-
-  private static boolean absoluteHttpUrl(String url) {
-    try {
-      java.net.URI u = new java.net.URI(url);
-      return ("https".equals(u.getScheme()) || "http".equals(u.getScheme()))
-          && u.getHost() != null
-          && u.getRawUserInfo() == null
-          && u.getRawQuery() == null
-          && u.getRawFragment() == null;
-    } catch (java.net.URISyntaxException e) {
-      return false;
-    }
   }
 
   private static String checkedId(String partnerId) {

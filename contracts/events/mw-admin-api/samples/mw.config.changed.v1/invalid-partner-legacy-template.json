@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "configKey": "partner/ocs",
+  "configType": "PARTNER",
+  "change": "UPSERT",
+  "version": 2,
+  "value": {
+    "family": "telco",
+    "enabled": true,
+    "template": "rest-json-request-reply",
+    "baseUrl": "http://mw-simulators:8080",
+    "operations": { "PAY": { "method": "POST", "path": "/ocs/v1/topup", "response": "{}" } }
+  },
+  "changedAt": "2026-11-18T10:00:00Z",
+  "changedBy": "ops.maker1",
+  "approvedBy": "ops.checker1"
+}
