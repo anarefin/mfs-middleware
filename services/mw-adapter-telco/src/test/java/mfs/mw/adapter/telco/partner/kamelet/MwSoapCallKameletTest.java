@@ -57,13 +57,19 @@ class MwSoapCallKameletTest {
       </xsl:stylesheet>
       """;
 
+  static final java.time.Clock CLOCK =
+      java.time.Clock.fixed(java.time.Instant.parse("2026-11-18T10:00:00Z"), java.time.ZoneOffset.UTC);
+
   DefaultCamelContext camel;
   MockEndpoint soap;
+  MockEndpoint soapTls;
 
   @BeforeEach
   void camel() throws Exception {
     camel = new DefaultCamelContext();
-    camel.getRegistry().bind("mwSoap", new MwSoapStep(JSON));
+    camel.getRegistry().bind("mwSoap", new MwSoapStep(JSON, CLOCK));
+    camel.getRegistry().bind("mwAuth", new MwAuthStep(CLOCK, new mfs.mw.adapter.telco.partner.auth.OAuth2ClientCredentials(
+        camel.createProducerTemplate(), JSON, CLOCK, java.time.Duration.ofSeconds(30))));
     camel.getRegistry().bind("mwHttp", new MwHttpStep(JSON));
     camel.getRegistry().bind("mwSoapHeaderFilter", new PartnerSoapHeaderFilterStrategy());
     camel.getRegistry().bind("mw-cb-acme", CircuitBreaker.class, CircuitBreaker.ofDefaults("acme"));
@@ -74,13 +80,30 @@ class MwSoapCallKameletTest {
             .to("kamelet:mw-soap-call?address=https://biller.example/ws&request=req.xsl&response=res.xsl"
                 + "&soapAction=urn:biller:Pay&wsUsername=bits&wsPasswordSecret=ws-password"
                 + "&partnerId=acme&timeoutMs=2000&connectTimeoutMs=500&readTimeoutMs=2500&bulkhead=5");
+        from("direct:basic").routeId("basic")
+            .to("kamelet:mw-soap-call?address=https://biller.example/ws&request=json&response=json&namespace=urn:biller"
+                + "&auth=basic&userField=soap-user&secretField=soap-password&sslContextRef=acme-client"
+                + "&partnerId=acme&timeoutMs=2000&connectTimeoutMs=500&readTimeoutMs=2500&bulkhead=5");
       }
     });
     camel.start();
-    String kameletRoute = camel.getRoutes().stream().filter(Route::isCreatedByKamelet).map(Route::getRouteId)
-        .findFirst().orElseThrow();
-    AdviceWith.adviceWith(camel, kameletRoute, a -> a.weaveByToUri("cxf:*").replace().to("mock:soap"));
+    // the Kamelet routes exist once used; one call each creates them before they are advised
+    for (String uri : List.of("direct:call", "direct:basic")) {
+      try {
+        camel.createProducerTemplate().request(uri, e -> { });
+      } catch (RuntimeException e) {
+        // no partner call yet: only the routes are wanted
+      }
+    }
+    for (String kameletRoute : camel.getRoutes().stream().filter(Route::isCreatedByKamelet).map(Route::getRouteId)
+        .filter(id -> id.startsWith("mw-soap-call")).toList()) {
+      AdviceWith.adviceWith(camel, kameletRoute, a -> {
+        a.weaveByType(org.apache.camel.model.ToDynamicDefinition.class).replace().to("mock:soap-tls");
+        a.weaveByToUri("cxf:*").replace().to("mock:soap");
+      });
+    }
     soap = camel.getEndpoint("mock:soap", MockEndpoint.class);
+    soapTls = camel.getEndpoint("mock:soap-tls", MockEndpoint.class);
   }
 
   @AfterEach
@@ -89,11 +112,16 @@ class MwSoapCallKameletTest {
   }
 
   Exchange call(String operation) {
+    return call("direct:call", operation);
+  }
+
+  Exchange call(String uri, String operation) {
     PartnerConfig seed = PartnerTestSeeds.devSeed().getValue();
     PartnerRuntime runtime = new PartnerRuntime("acme", 1, seed, "partner-acme-v1", "direct:partner-acme-v1",
-        Map.of(), Map.of("ws-password", "fake-acme-ws-password-for-tests"), List.of("biller.example"), Set.of("mw-soap-call"),
+        Map.of(), Map.of("ws-password", "fake-acme-ws-password-for-tests", "soap-user", "fake-soap-user",
+            "soap-password", "fake-soap-password"), List.of("biller.example"), Set.of("mw-soap-call"),
         Map.of("req.xsl", CompiledStylesheet.compile(REQUEST_XSL), "res.xsl", CompiledStylesheet.compile(RESPONSE_XSL)));
-    return camel.createProducerTemplate().request("direct:call", e -> {
+    return camel.createProducerTemplate().request(uri, e -> {
       e.setProperty(PartnerExchange.RUNTIME, runtime);
       e.setProperty(PartnerExchange.OPERATION_PROPERTY, operation);
       e.setProperty(PartnerExchange.REQUEST_BODY, "{\"bill\":\"B-1\"}");
@@ -189,6 +217,38 @@ class MwSoapCallKameletTest {
     var result = JSON.readTree(done.getMessage().getBody(String.class));
     assertThat(result.get("outcome").asString()).isEqualTo("UNKNOWN");
     assertThat(result.get("reason").asString()).isEqualTo("TIMEOUT");
+  }
+
+  /** Review of 85: Basic through mw-auth-basic, mTLS through the named context, JSON/XML both ways. */
+  @Test
+  @SuppressWarnings("unchecked")
+  void basicAndMtlsReuseTheHttpMechanismsAndJsonMapsBothWays() throws Exception {
+    soapTls.whenAnyExchangeReceived(e -> e.getMessage().setBody(answer(
+        "<b:PayResponse xmlns:b=\"urn:biller\"><b:receipt>R-2</b:receipt></b:PayResponse>")));
+    soapTls.expectedMessageCount(1);
+    soap.expectedMessageCount(0);
+
+    Exchange done = camel.createProducerTemplate().request("direct:basic", e -> {
+      e.setProperty(PartnerExchange.RUNTIME, new PartnerRuntime("acme", 1, PartnerTestSeeds.devSeed().getValue(),
+          "partner-acme-v1", "direct:partner-acme-v1", Map.of(),
+          Map.of("soap-user", "fake-soap-user", "soap-password", "fake-soap-password"), List.of("biller.example"),
+          Set.of("mw-soap-call")));
+      e.setProperty(PartnerExchange.OPERATION_PROPERTY, "PAY");
+      e.setProperty(PartnerExchange.REQUEST_BODY, "{\"Pay\":{\"bill\":\"B-2\"}}");
+      e.getMessage().setBody("{\"Pay\":{\"bill\":\"B-2\"}}");
+    });
+
+    soapTls.assertIsSatisfied();
+    soap.assertIsSatisfied();
+    Exchange sent = soapTls.getReceivedExchanges().getFirst();
+    assertThat(sent.getMessage().getHeader(MwAuthStep.AUTHORIZATION)).isEqualTo("Basic " + java.util.Base64.getEncoder()
+        .encodeToString("fake-soap-user:fake-soap-password".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+    CxfPayload<SoapHeader> payload = sent.getMessage().getBody(CxfPayload.class);
+    Element body = (Element) ((DOMSource) payload.getBodySources().getFirst()).getNode();
+    assertThat(body.getNamespaceURI()).isEqualTo(NS);
+    assertThat(body.getLocalName()).isEqualTo("Pay");
+    assertThat(body.getTextContent()).isEqualTo("B-2");
+    assertThat(done.getMessage().getBody(String.class)).isEqualTo("{\"PayResponse\":{\"receipt\":\"R-2\"}}");
   }
 
   /** The stub's answers as DOM (test data). */

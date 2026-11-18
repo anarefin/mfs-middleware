@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import io.github.resilience4j.bulkhead.BulkheadRegistry;
 import java.util.List;
 import java.util.Map;
+import mfs.mw.adapter.bank.partner.PartnerTestSeeds;
 import mfs.mw.adapter.bank.partner.auth.PartnerCredentials;
 import mfs.mw.adapter.bank.partner.config.PartnerConfig;
 import mfs.mw.adapter.bank.partner.config.PartnerConfigRefusedException;
@@ -47,7 +48,7 @@ class PartnerBatchRouteLoaderTest {
     when(credentials.read(anyString(), anyString())).thenReturn("fake-credential");
     when(credentials.read(anyString(), eq("sftp-known-hosts"))).thenReturn("[sftp.acme.test]:2222 ssh-ed25519 AAAAfake");
     loader = new PartnerRouteLoader(
-        CAMEL, new PartnerEndpointPolicy(SECURITY), new KameletCatalogue(), credentials, BulkheadRegistry.ofDefaults());
+        CAMEL, new PartnerEndpointPolicy(SECURITY), new KameletCatalogue(), credentials, BulkheadRegistry.ofDefaults(), PartnerTestSeeds.noTlsContexts());
   }
 
   @AfterAll
@@ -199,6 +200,102 @@ class PartnerBatchRouteLoaderTest {
         - to: "kamelet:mw-sftp-sink?host=sftp.acme.test&username=bits&directory=out&fileName=${header.x}.csv&secretField=sftp-password&knownHostsField=sftp-known-hosts"
         """ + RECON;
     assertRefused(batch(SOURCE, steps), true, "mw-sftp-sink");
+  }
+
+  // --- review of 86: cron polling, a short delay, a sink that builds its text ------------------
+
+  @Test
+  void theSourcePollsOnACronScheduleInsteadOfADelay() {
+    String cron = SOURCE.replace("&delay=60000", "&cron=0+0+6+*+*+MON-FRI");
+
+    String from = load(batch(cron, RECON)).route().getInput().getUri();
+
+    assertThat(from).contains("&scheduler=spring&cron=0+0+6+*+*+MON-FRI").doesNotContain("delay=");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "&cron=0+0+6+*+*",                // five fields
+      "&cron=0+0+6+*+*+*+*",            // seven fields
+      "&cron=0+0+99+*+*+*",             // no such hour
+      "&cron=0+0+6+*+*+*%26delete%3Dtrue", // an encoded option
+      "&cron=$%7Bheader.x%7D+0+6+*+*+*", // an expression
+      "&scheduler=quartz",
+  })
+  void aBadCronOrTheSchedulerItselfIsRefused(String extra) {
+    assertRefused(batch(SOURCE.replace("&delay=60000", extra), RECON), true, "mw-sftp-source");
+  }
+
+  @Test
+  void delayAndCronTogetherAreRefused() {
+    assertRefused(batch(SOURCE + "&cron=0+0+6+*+*+*", RECON), true, "delay or cron, not both");
+  }
+
+  @Test
+  void aDelayOfAHundredMillisecondsIsTheShortest() {
+    assertThat(load(batch(SOURCE.replace("delay=60000", "delay=100"), RECON)).route().getInput().getUri())
+        .contains("delay=100&");
+    assertRefused(batch(SOURCE.replace("delay=60000", "delay=99"), RECON), true, "delay must be 100");
+  }
+
+  static final String SINK_WITH_MAPPING =
+      "kamelet:mw-sftp-sink?host=sftp.acme.test&username=bits&directory=out&fileName=pay-${date:now:yyyyMMddHHmmss}.csv"
+          + "&secretField=sftp-password&knownHostsField=sftp-known-hosts&mapping=PAY.file";
+
+  static PartnerConfig fileRoute(Map<String, String> mappings) {
+    String route = """
+        - route:
+            from:
+              uri: direct:partner-acme
+              steps:
+                - to: "kamelet:mw-map?mapping=PAY.request"
+                - to: "%s"
+                - to: "kamelet:mw-classify?mapping=PAY.response&allowPending=true"
+                - to: "kamelet:mw-audit"
+        """.formatted(SINK_WITH_MAPPING);
+    return new PartnerConfig(
+        true, route, mappings, List.of("sftp.acme.test"), "billpay", null, null, null, null, null, null, null, null, null, null, null);
+  }
+
+  @Test
+  void aRequestRouteSinkBuildsItsTextWithAJsonataMapping() {
+    PartnerRouteLoader.Loaded loaded = load(fileRoute(Map.of(
+        "PAY.request", "{\"ref\": reference}",
+        "PAY.file", "\"reference\\n\" & ref",
+        "PAY.response", "{\"outcome\": \"PENDING\", \"partnerRef\": body.fileName}")));
+
+    assertThat(loaded.route().toString()).contains("mapping=PAY.file");
+    assertThat(loaded.runtime().mapping("PAY.file")).isNotNull();
+  }
+
+  @Test
+  void aDryRunCandidateNeverPutsTheFileOnThePartnersHost() {
+    PartnerConfig record = fileRoute(Map.of(
+        "PAY.request", "{\"ref\": reference}",
+        "PAY.file", "\"reference\\n\" & ref",
+        "PAY.response", "{\"outcome\": \"PENDING\", \"partnerRef\": body.fileName}"));
+
+    String live = load(record).route().toString();
+    String candidate = loader.load("acme", 3, record, new PartnerRouteLoader.DryRunTarget("http://localhost:9999", null))
+        .route().toString();
+
+    assertThat(live).contains("dryRun=false");
+    assertThat(candidate).contains("dryRun=true");
+    assertRefused(batch(SOURCE, "- to: \"" + SINK_WITH_MAPPING.replace("&mapping=PAY.file", "&dryRun=false") + "\"\n" + RECON),
+        true, "dryRun is not allowed");
+  }
+
+  @Test
+  void aSinkMappingTheRecordDoesNotHaveIsRefused() {
+    assertRefused(fileRoute(Map.of(
+            "PAY.request", "{\"ref\": reference}",
+            "PAY.response", "{\"outcome\": \"PENDING\", \"partnerRef\": body.fileName}")),
+        false, "names mapping PAY.file");
+  }
+
+  @Test
+  void aBatchRouteSinkCannotMapTheFile() {
+    assertRefused(batch(SOURCE, "- to: \"" + SINK_WITH_MAPPING + "\"\n" + RECON), true, "only a request route may map");
   }
 
   static void assertRefused(PartnerConfig config, boolean security, String problem) {

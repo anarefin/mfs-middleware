@@ -27,6 +27,7 @@ import mfs.mw.adapter.telco.partner.config.PartnerConfigRefusedException;
 import mfs.mw.adapter.telco.partner.config.PartnerEndpointPolicy;
 import mfs.mw.adapter.telco.partner.mapping.CompiledMapping;
 import mfs.mw.adapter.telco.partner.mapping.CompiledStylesheet;
+import mfs.mw.adapter.telco.partner.mapping.JsonXmlMapping;
 import io.github.resilience4j.bulkhead.BulkheadRegistry;
 import org.apache.camel.CamelContext;
 import org.apache.camel.RoutesBuilder;
@@ -52,7 +53,6 @@ import org.apache.camel.model.dataformat.JsonLibrary;
 import org.apache.camel.model.language.ExpressionDefinition;
 import org.apache.camel.support.PluginHelper;
 import org.apache.camel.support.ResourceHelper;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.LoaderOptions;
@@ -107,7 +107,11 @@ public class PartnerRouteLoader {
 
   /** {@code mw-soap-call} parameters held to the same rule (ticket 85). */
   static final Set<String> SOAP_STRICT_PARAMS =
-      Set.of("address", "soapAction", "soapVersion", "request", "response", "wsUsername", "wsPasswordSecret", "wsTokenType");
+      Set.of("address", "soapAction", "soapVersion", "request", "response", "wsUsername", "wsPasswordSecret", "wsTokenType",
+          "namespace");
+
+  /** The HTTP auth schemes of {@code mw-soap-call} (review of 85): none, or Basic through mw-auth-basic. */
+  static final Set<String> SOAP_AUTH = Set.of("none", "basic");
 
   /** A stylesheet shipped with the service: {@code classpath:partner/xslt/<name>.xsl}. */
   static final Pattern CLASSPATH_STYLESHEET = Pattern.compile("^classpath:partner/xslt/[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}\\.xsl$");
@@ -134,16 +138,6 @@ public class PartnerRouteLoader {
   private final PartnerTlsContexts tls;
   private volatile Schema yamlDslSchema;
 
-  public PartnerRouteLoader(
-      CamelContext camel,
-      PartnerEndpointPolicy policy,
-      KameletCatalogue kamelets,
-      PartnerCredentials credentials,
-      BulkheadRegistry bulkheads) {
-    this(camel, policy, kamelets, credentials, bulkheads, PartnerTlsContexts.none());
-  }
-
-  @Autowired
   public PartnerRouteLoader(
       CamelContext camel,
       PartnerEndpointPolicy policy,
@@ -240,18 +234,18 @@ public class PartnerRouteLoader {
 
     String routeId = candidate == null ? PartnerRuntime.routeId(id, version) : PartnerRuntime.candidateRouteId(id, version);
     String endpoint = candidate == null ? PartnerRuntime.endpoint(id, version) : PartnerRuntime.candidateEndpoint(id);
-    Calls calls = new Calls();
-    calls.partnerParam = candidate == null ? id : PartnerRuntime.candidatePartnerParam(id);
-    calls.dryRunBase = candidate == null ? null : candidate.baseUrl().replaceAll("/+$", "");
     // ticket 86: a batch route starts from the mw-sftp-source Kamelet instead of direct:partner-<id>
-    calls.batch = PartnerBatchRoutes.isBatchUri(from.get("uri"));
-    calls.routeId = routeId;
+    Calls calls = new Calls(
+        candidate == null ? id : PartnerRuntime.candidatePartnerParam(id),
+        candidate == null ? null : candidate.baseUrl().replaceAll("/+$", ""),
+        PartnerBatchRoutes.isBatchUri(from.get("uri")),
+        routeId);
     String batchFrom = null;
     if (calls.batch) {
       if (record.dryRun() != null || candidate != null) {
         problems.add("a batch route has no dry-run (nothing to send a sample to)");
       }
-      batchFrom = PartnerBatchRoutes.kamelet((String) from.get("uri"), true, calls.batchCalls(), security);
+      batchFrom = PartnerBatchRoutes.kamelet((String) from.get("uri"), true, calls.sftp, security);
     }
     injectKamelets(from, id, record, calls, security, problems);
     refuseIfAny(id, security, problems);
@@ -453,7 +447,10 @@ public class PartnerRouteLoader {
 
   // --- 5. Kamelet calls -----------------------------------------------------------------------
 
-  /** What the route calls, collected while the loader injects the record's parameters. */
+  /**
+   * What the route calls, collected while the loader injects the record's parameters; the route's
+   * own facts (its Kamelet partner id, dry-run base, batch shape and id) are fixed when it is made.
+   */
   private static final class Calls {
     final Set<String> kamelets = new LinkedHashSet<>();
     final List<String> urls = new ArrayList<>();
@@ -463,21 +460,19 @@ public class PartnerRouteLoader {
     /** The stylesheets {@code mw-soap-call} names (record {@code *.xsl} mappings or classpath resources). */
     final Set<String> stylesheets = new LinkedHashSet<>();
     /** The {@code partnerId} injected into each Kamelet (it names the circuit breaker). */
-    String partnerParam;
+    final String partnerParam;
     /** A candidate's dry-run base URL; null for a live version. */
-    String dryRunBase;
+    final String dryRunBase;
     /** Ticket 86: the route starts from mw-sftp-source. */
-    boolean batch;
-    String routeId;
-    /** Ticket 86: what the SFTP and recon Kamelets name (hosts, secret beans). */
-    final PartnerBatchRoutes.Calls sftp = new PartnerBatchRoutes.Calls();
+    final boolean batch;
+    /** Ticket 86: what the SFTP and recon Kamelets name (hosts, secret beans), sharing the Kamelets and mappings. */
+    final PartnerBatchRoutes.Calls sftp;
 
-    PartnerBatchRoutes.Calls batchCalls() {
-      sftp.partnerId = partnerParam;
-      sftp.routeId = routeId;
-      sftp.batch = batch;
-      sftp.kamelets = kamelets;
-      return sftp;
+    Calls(String partnerParam, String dryRunBase, boolean batch, String routeId) {
+      this.partnerParam = partnerParam;
+      this.dryRunBase = dryRunBase;
+      this.batch = batch;
+      this.sftp = new PartnerBatchRoutes.Calls(partnerParam, routeId, batch, dryRunBase != null, kamelets, mappings);
     }
   }
 
@@ -515,7 +510,7 @@ public class PartnerRouteLoader {
     }
     if (PartnerBatchRoutes.handles(uri)) {
       // ticket 86: the SFTP and recon Kamelets have their own short parameter lists
-      return PartnerBatchRoutes.kamelet(uri, false, calls.batchCalls(), security);
+      return PartnerBatchRoutes.kamelet(uri, false, calls.sftp, security);
     }
     if (uri.contains("${") || uri.contains("$simple{")) {
       security.add("a Kamelet URI must be static (no ${...})");
@@ -618,7 +613,7 @@ public class PartnerRouteLoader {
           .append("&bulkhead=").append(bulkhead(id, record));
     }
     if (soap) {
-      soapCall(params, record, calls, problems);
+      soapCall(id, params, record, calls, security, problems);
       calls.urls.add(params.getOrDefault("address", ""));
       out.append("&timeoutMs=").append(record.timeoutMs())
           .append("&connectTimeoutMs=").append(record.connectTimeoutMs())
@@ -633,19 +628,54 @@ public class PartnerRouteLoader {
 
   /**
    * The rules of one {@code mw-soap-call} (ticket 85): request and response stylesheets that are
-   * the record's {@code *.xsl} mappings or {@code classpath:partner/xslt/*.xsl} resources, SOAP
-   * 1.1 or 1.2, a WS-Security user only with the secret field of its password (read now).
+   * the record's {@code *.xsl} mappings or {@code classpath:partner/xslt/*.xsl} resources, or
+   * {@value JsonXmlMapping#NAME} (the JSON/XML convention; {@code request=json} needs a {@code
+   * namespace}), SOAP 1.1 or 1.2, a WS-Security user only with the secret field of its password
+   * (read now); since the review of 85 HTTP Basic ({@code auth=basic} with {@code userField} and
+   * {@code secretField}, read now) and an mTLS {@code sslContextRef} of the partner's own over
+   * https, as for {@code mw-http-call}.
    */
-  private static void soapCall(Map<String, String> params, PartnerConfig record, Calls calls, List<String> problems) {
+  private void soapCall(
+      String id, Map<String, String> params, PartnerConfig record, Calls calls, List<String> security, List<String> problems) {
     for (String key : List.of("request", "response")) {
       String name = params.getOrDefault(key, "");
+      if (JsonXmlMapping.NAME.equals(name)) {
+        continue;
+      }
       if (CLASSPATH_STYLESHEET.matcher(name).matches()) {
         calls.stylesheets.add(name);
       } else if (CompiledStylesheet.isStylesheet(name) && record.mappings().containsKey(name)) {
         calls.stylesheets.add(name);
       } else {
-        problems.add("mw-soap-call " + key + " must name one of the record's *.xsl mappings or a"
-            + " classpath:partner/xslt/*.xsl resource");
+        problems.add("mw-soap-call " + key + " must name one of the record's *.xsl mappings, a"
+            + " classpath:partner/xslt/*.xsl resource or json");
+      }
+    }
+    String namespace = params.getOrDefault("namespace", "");
+    if (JsonXmlMapping.NAME.equals(params.get("request")) && !JsonXmlMapping.validNamespace(namespace)) {
+      problems.add("mw-soap-call request=json needs a namespace (an urn: or http(s) URI)");
+    } else if (!namespace.isEmpty() && !JsonXmlMapping.validNamespace(namespace)) {
+      problems.add("mw-soap-call namespace must be an urn: or http(s) URI");
+    }
+    String auth = params.getOrDefault("auth", "none");
+    if (!SOAP_AUTH.contains(auth) || !kamelets.contains("mw-auth-" + auth)) {
+      security.add("mw-soap-call auth must be none or basic");
+    } else if ("basic".equals(auth)) {
+      for (String field : List.of("userField", "secretField")) {
+        String value = params.getOrDefault(field, "");
+        if (value.isEmpty()) {
+          problems.add("mw-soap-call auth basic needs a " + field);
+        } else {
+          calls.secretFields.add(value);
+        }
+      }
+    }
+    String tlsRef = params.getOrDefault("sslContextRef", "");
+    if (!tlsRef.isEmpty()) {
+      if (!tls.owner(tlsRef).map(id::equals).orElse(false)) {
+        security.add("sslContextRef " + tlsRef + " is not a TLS client context of this partner");
+      } else if (!params.getOrDefault("address", "").toLowerCase(Locale.ROOT).startsWith("https://")) {
+        security.add("sslContextRef needs an https address");
       }
     }
     if (!Set.of("1.1", "1.2").contains(params.getOrDefault("soapVersion", "1.1"))) {

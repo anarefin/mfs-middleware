@@ -869,6 +869,8 @@ services:
       # config has none) and plain http for the simulator (the packaged default allows none).
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
+      # mw-recon: data lines per reconciliation file (a longer file moves to .error).
+      MW_PARTNER_RECON_MAX_LINES: ${MW_PARTNER_RECON_MAX_LINES:-1000000}
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
@@ -897,6 +899,8 @@ services:
       MW_PARTNERS_INSTANCES_BILLAGG_READTIMEOUTMS: ${MW_BILLAGG_READ_TIMEOUT_MS:-27000}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
+      # mw-recon: data lines per reconciliation file (a longer file moves to .error).
+      MW_PARTNER_RECON_MAX_LINES: ${MW_PARTNER_RECON_MAX_LINES:-1000000}
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }
@@ -924,6 +928,8 @@ services:
       MW_PARTNERS_INSTANCES_C2WBANK_READTIMEOUTMS: ${MW_C2WBANK_READ_TIMEOUT_MS:-27000}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
+      # mw-recon: data lines per reconciliation file (a longer file moves to .error).
+      MW_PARTNER_RECON_MAX_LINES: ${MW_PARTNER_RECON_MAX_LINES:-1000000}
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-416M}" }

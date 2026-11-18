@@ -77,10 +77,13 @@ contract changes: only orchestrator-owned samples for the bank family (`valid-c2
 A partner is a record holding a Camel YAML DSL route built from the shipped `mw-*` Kamelets; the
 engine, its guardrails and its Kamelets (with the auth options of ticket 87: basic, OAuth2 client
 credentials, JWS, mTLS contexts `mw.partners.tls.contexts`) are billpay's (see mw-adapter-billpay CLAUDE.md "Partner
-engine"). The `partner/` trees (main and the shared tests) and `src/main/resources/kamelets` are
+engine"; its packages `partner/config/`, `partner/route/`, `partner/kamelet/`, `partner/auth/` and
+`partner/mapping/` (JSONata, XSLT and the JSON/XML convention of SOAP) are billpay's "Packages"). The
+`partner/` trees (main and the shared tests) and `src/main/resources/kamelets` are
 identical in the three adapters apart from the package: a fix goes into all three (check with `diff -r`
 after normalising the package). Kafka is Spring Kafka (ADR D25), as billpay. SOAP partners (ticket 85:
-`mw-soap-call`, camel-cxf PAYLOAD, XSLT stylesheets as `*.xsl` mappings) are billpay's "SOAP partners".
+`mw-soap-call`, camel-cxf PAYLOAD, XSLT stylesheets as `*.xsl` mappings or `request=json`/`response=json`, Basic
+and mTLS as `mw-http-call`) are billpay's "SOAP partners".
 
 - **Seed** `c2wbank` (`application-dev.yml`, dev profile only), an async-callback route (example:
   `deploy/partner-routes/examples/rest-async-callback.yaml`): PAY `POST /c2wbank/v1/debits

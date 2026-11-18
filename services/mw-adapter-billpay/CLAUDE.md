@@ -122,6 +122,17 @@ This module is the first; ticket 84 copied it into telco and bank (the `partner/
 tests, and the Kamelet folders are identical apart from the package), 85-87 add Kamelets. Camel stays behind
 `partner/route/PartnerGateway` (one shared `ProducerTemplate`); Kafka is Spring Kafka (below).
 
+- **Packages** (the framework exception of the root CLAUDE.md): `partner/` the SPI and
+  `PartnerFrameworkConfiguration`; `partner/config/` the record, `PartnerConfigStore`, the
+  config-changed listener, `PartnerEndpointPolicy`, `PartnerTlsProperties`; `partner/route/` the loader
+  (`PartnerRouteLoader`, `PartnerBatchRoutes`, `QueryParams`), `PartnerRoutes`, `PartnerGateway`,
+  `PartnerHostGuard`, `PartnerDnsResolver`, `PartnerDryRun`, `PartnerAudit`, `PartnerRecon`,
+  `KameletCatalogue`; `partner/kamelet/` the Java steps of the Kamelets (`mwHttp`, `mwSoap`, `mwAuth`,
+  `mwMap`, `mwClassify`, `mwAudit`, `mwRecon`, `mwSftpSink`); `partner/auth/` the auth schemes,
+  `PartnerCredentials`, `OAuth2ClientCredentials`, `DetachedJws`, `PartnerTlsContexts`; `partner/mapping/`
+  `CompiledMapping` (JSONata) and the SOAP mappings (`SoapMapping`: `CompiledStylesheet` + `StylesheetPolicy`
+  for XSLT, which also holds the one secure XML parser setup, and `JsonXmlMapping`).
+
 - **Record** (`partner/config/PartnerConfig`, `mw.partners.instances.<id>` seeds, `partner/<id>`
   records): `route`, `mappings` (JSONata by name, `<OPERATION>.request` / `<OPERATION>.response`,
   `CALLBACK.response` for callbacks; compiled once per version, `partner/mapping/CompiledMapping`),
@@ -162,7 +173,16 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   + `StylesheetPolicy`; example `deploy/partner-routes/examples/soap-biller.yaml`, simulator stub `soapbill`):
   `mw-map` (JSONata) -> `mw-soap-call?address=<static http(s) URL>&request=<x.xsl>&response=<y.xsl>&soapAction=..
   &soapVersion=1.1|1.2&wsUsername=..&wsPasswordSecret=<field>&wsTokenType=PasswordText|PasswordDigest` ->
-  `mw-classify` (`definiteStatuses=200`) -> `mw-audit`. A mapping whose name ends in `.xsl` is an XSLT 3.0
+  `mw-classify` (`definiteStatuses=200`) -> `mw-audit`. Review of 85: `auth=basic&userField=..&secretField=..`
+  calls `mw-auth-basic` before each attempt (camel-cxf sends the `Authorization` header as an HTTP header;
+  no other scheme), `sslContextRef=<name>` sends through a `toD` with `sslContextParameters=#mwTls-<name>`
+  (as `mw-http-call`: the partner's own context, https; the host guard allows that option on `cxf*` too;
+  `PartnerAuthKameletsIT` runs both against WireMock), and `request=json` / `response=json` (with
+  `namespace=<urn: or http(s) URI>`) replace a stylesheet by the fixed JSON/XML convention of
+  `partner/mapping/JsonXmlMapping` (one root key = the body element, keys elements in `namespace`, `@x`
+  attributes, arrays repeat; back: local names, `@x`, repeated elements as arrays, a fault as
+  `{"fault": {"@code", "@subcode", "@reason", "detail"}}`), so JSONata maps both sides; the DOM builds the
+  XML, a value is never markup. A mapping whose name ends in `.xsl` is an XSLT 3.0
   stylesheet (or `classpath:partner/xslt/*.xsl`), compiled once per version with Saxon-HE: the request one
   reads mw-map's JSON as its XPath 3.1 XML form (`fn:json-to-xml`) and makes the SOAP body element; the
   response one turns the SOAP body, or a fault as `<fault xmlns="urn:bits:mw:soap-fault" code subcode
@@ -294,10 +314,15 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   loader holds `mw-sftp-source` / `mw-sftp-sink` / `mw-recon` to short parameter lists, each value to a
   pattern (`host` (in `allowedHosts`, internal addresses only for static dev hosts:
   `PartnerEndpointPolicy.hostProblems`), `port`, `username`, `directory` (relative, no `..`), `auth`
-  `password|key`, `secretField`, `knownHostsField`; source `delay`, `maxMessagesPerPoll` (1-100); sink
-  `fileName` (`[A-Za-z0-9._-]` and `${date:now:<pattern>}`); recon `columns`, `delimiter`
+  `password|key`, `secretField`, `knownHostsField`; source `delay` (100 ms or more) or `cron` (a Spring
+  cron of six fields, `+` for a space; the loader adds `scheduler=spring`, never both), `maxMessagesPerPoll`
+  (1-100); sink `fileName` (`[A-Za-z0-9._-]` and `${date:now:<pattern>}`) and `mapping` (a JSONata mapping
+  of the record whose string result is the file text, CSV or fixed-width: request routes only,
+  `partner/kamelet/MwSftpSinkStep`; there the put is the partner call, `mw-classify` sees 200 and
+  `{"fileName"}`; `bindy` is not offered: it needs a Java model class per layout); recon `columns`, `delimiter`
   `comma|semicolon|pipe|tab`); any other SFTP option (`delete`, `strictHostKeyChecking`,
-  `privateKeyFile`, ...) is a security refusal. It rebuilds the call with `partnerId` and the registry
+  `privateKeyFile`, `scheduler`, ...) is a security refusal. Values are read URL-decoded (`QueryParams`, shared with
+  the host guard), as Camel reads them. It rebuilds the call with `partnerId` and the registry
   references `password=` / `privateKey=#bean:mw-sftp-<routeId>-<field>` and
   `knownHosts=#bean:mw-sftp-<routeId>-<field>`: the credential and the host's known_hosts lines are fields
   of the partner's own OpenBao secret, read at load, bound by `PartnerRoutes` before the route starts
@@ -309,11 +334,15 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   on bean `mwSftpFiles` (camel-sql `JdbcMessageIdRepository`, table `partner_file_processed`, Flyway
   `V5`, key `<partnerId>/${file:name}-${file:size}-${file:modified}`, shared by two versions polling
   during a swap), `move=.done`, `moveFailed=.error` (never `delete`), `streamDownload=true` with
-  `stepwise=false`, `disconnect=true`, bounded `maxMessagesPerPoll`. `mw-recon` reads the stream line by
+  `stepwise=false` (not the ticket's `stepwise=true`: with a stream download camel-sftp then sends `cd`
+  on the channel the open download uses; the Kamelet comment and ADR D26 say why), `disconnect=true`,
+  bounded `maxMessagesPerPoll`. `mw-recon` reads the stream line by
   line (header line or `columns`, quoted fields) and hands the lines to `messaging/PartnerReconPublisher`:
   `mw.partner.recon.v1` (key partnerId, idempotency key `recon/<id>/<fileId>#<line>`, `last` on the
   final line) through the outbox, every line of a file in one transaction, so a bad line (wrong field
-  count, over 8192 characters) publishes nothing and the file goes to `.error`; `split().streaming()` is
+  count, over 8192 characters, more data lines than `mw.partners.recon.max-lines`, env
+  `MW_PARTNER_RECON_MAX_LINES`, default 1000000) publishes nothing and the file goes to `.error`
+  (`partner.recon.file_refused` logs the reason, never content); `split().streaming()` is
   not used because it would publish the lines before the bad one. Choices that differ from the ticket
   text: the known hosts come from OpenBao (`knownHosts` bytes), not a `knownHostsUri` file of the
   adapter host; the sftp host is checked at load only (the `http*` interceptor does not see sftp). Tests:
@@ -332,7 +361,8 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   `allowedHosts` (the loader checks it at load too); cached per (partner, tokenUrl, clientId, scope,
   audience) until `expires_in` minus `mw.partners.oauth2.expiry-skew` (30 s; none given: 60 s), one
   request at a time per key; a partner 401 marks the token's generation rejected and `MwHttpStep.response`
-  sends once more (any operation: a 401 is a refusal; it does not count against `inquiryRetries`); a
+  sends once more (any operation, a PAY too: a 401 is a refusal, nothing was applied; ADR D26 amends 82's
+  "no redelivery of a PAY" for this one resend; it does not count against `inquiryRetries`); a
   second 401 is classified. Camel's `oauth2*` http options are not used: the client secret would be an
   endpoint option (in the URI) and a refused token is not dropped. `jws`: detached JWS (RFC 7515 F) over
   the request body, RS256 or ES256 (JOSE R||S), PKCS#8 PEM key in a secret field, `kid` = `keyId`, header

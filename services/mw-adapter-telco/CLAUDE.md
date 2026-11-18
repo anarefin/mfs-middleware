@@ -58,10 +58,13 @@ credentials, JWS, mTLS contexts `mw.partners.tls.contexts`) are billpay's (see m
 engine": record, route contract, Kamelets, loader allowlist, `routeConfiguration`, no redelivery of a
 PAY, lifecycle and swap, dry-run candidate `~candidate~`, family filter, hosts and
 `PartnerHttpComponent` + `PartnerDnsResolver`, headers, secrets through `SpringVaultPropertiesFunction`,
-health and metrics). The `partner/` trees (main and the shared tests) and `src/main/resources/kamelets`
+health and metrics; its packages `partner/config/`, `partner/route/`, `partner/kamelet/`, `partner/auth/` and
+`partner/mapping/` (JSONata, XSLT and the JSON/XML convention of SOAP) are billpay's "Packages"). The
+`partner/` trees (main and the shared tests) and `src/main/resources/kamelets`
 are identical in the three adapters apart from the package: a fix goes into all three (check with
 `diff -r` after normalising the package). Kafka is Spring Kafka (ADR D25), as billpay. SOAP partners (ticket 85:
-`mw-soap-call`, camel-cxf PAYLOAD, XSLT stylesheets as `*.xsl` mappings) are billpay's "SOAP partners".
+`mw-soap-call`, camel-cxf PAYLOAD, XSLT stylesheets as `*.xsl` mappings or `request=json`/`response=json`, Basic
+and mTLS as `mw-http-call`) are billpay's "SOAP partners".
 
 - **Seed** `ocs` (`application-dev.yml`, dev profile only; the packaged `application.yml` seeds none):
   PAY `POST /ocs/v1/topup {transactionId, msisdn, amount:"20.00"}` (only 422 with a code and 400 are

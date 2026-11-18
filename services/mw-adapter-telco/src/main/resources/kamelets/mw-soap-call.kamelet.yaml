@@ -1,7 +1,10 @@
 # mw-soap-call (ADR D26, ticket 85): one SOAP call to the partner through camel-cxf in PAYLOAD mode,
 # inside the same resilience4j breaker, time limit, bulkhead and host guard as mw-http-call. Never
-# retries a PAY; an INQUIRY or STATUS_QUERY goes again at most the record's inquiryRetries. A breaking
-# change ships as mw-soap-call-v2.
+# retries a PAY; an INQUIRY or STATUS_QUERY goes again at most the record's inquiryRetries. HTTP Basic
+# and mTLS reuse mw-http-call's mechanisms (review of 85): the mw-auth-basic Kamelet (auth=basic) and a
+# named client context (sslContextRef, PartnerTlsContexts). The body is made and read by an XSLT
+# stylesheet of the record or, with request=json / response=json, by the fixed JSON/XML convention
+# (JSONata on the JSON side, partner/mapping/JsonXmlMapping). A breaking change ships as mw-soap-call-v2.
 apiVersion: camel.apache.org/v1
 kind: Kamelet
 metadata:
@@ -16,12 +19,15 @@ spec:
     title: MW SOAP call
     description: >-
       Turns the request mw-map produced (JSON) into the SOAP body element with the record's request
-      stylesheet (XSLT 3.0 over the JSON's XPath 3.1 XML form), sends it to the static address in a
+      stylesheet (XSLT 3.0 over the JSON's XPath 3.1 XML form) or, with request=json, the JSON itself
+      written as XML in namespace (one root key; keys are elements, @name attributes, arrays repeat),
+      sends it to the static address in a
       SOAP 1.1 or 1.2 envelope (CXF PAYLOAD mode, no WSDL: the body element is sent as it is), with a
       WS-Security UsernameToken when wsUsername is set, inside the partner's circuit breaker with its
-      time limit and bulkhead. The SOAP body of the answer, or a SOAP fault as <fault
+      time limit and bulkhead, with HTTP Basic (auth=basic, mw-auth-basic) or an mTLS client context
+      (sslContextRef) when set. The SOAP body of the answer, or a SOAP fault as <fault
       xmlns="urn:bits:mw:soap-fault" code subcode reason><detail/></fault>, goes through the response
-      stylesheet to the JSON mw-classify maps (status 200 for both: the partner's application
+      stylesheet (or, with response=json, the same convention back) to the JSON mw-classify maps (status 200 for both: the partner's application
       answered). The SOAP action and the operation are properties and a header, never part of the
       endpoint URI. A transport error, the time limit or an open breaker ends in the fallback (UNKNOWN,
       or NOT_SENT when nothing left). Input: the request JSON; output: the answer JSON for mw-classify,
@@ -35,13 +41,53 @@ spec:
         description: Static http(s) URL of the SOAP endpoint; its host must be in the record's allowedHosts.
         type: string
       request:
-        title: Request stylesheet
-        description: The record's *.xsl mapping (or a classpath:partner/xslt/*.xsl resource) that makes the SOAP body element.
+        title: Request mapping
+        description: >-
+          The record's *.xsl mapping (or a classpath:partner/xslt/*.xsl resource) that makes the SOAP
+          body element, or json: mw-map's JSON written as XML in namespace.
         type: string
       response:
-        title: Response stylesheet
-        description: The record's *.xsl mapping (or a classpath:partner/xslt/*.xsl resource) that turns the SOAP body or fault into JSON.
+        title: Response mapping
+        description: >-
+          The record's *.xsl mapping (or a classpath:partner/xslt/*.xsl resource) that turns the SOAP
+          body or fault into JSON, or json: the body read back as JSON for mw-classify's mapping.
         type: string
+      namespace:
+        title: Body namespace
+        description: "The namespace (an urn: or http(s) URI) of the body elements of request=json; needed with it."
+        type: string
+        default: ""
+      auth:
+        title: HTTP auth
+        description: none, or basic (the mw-auth-basic Kamelet, user and password fields of the partner's secret).
+        type: string
+        enum: [none, basic]
+        default: none
+      userField:
+        title: User secret field
+        description: Field of this partner's own OpenBao secret holding the Basic user name (auth=basic); a reference, never the value.
+        type: string
+        format: password
+        default: ""
+        x-descriptors:
+          - urn:camel:group:credentials
+          - urn:alm:descriptor:com.tectonic.ui:password
+      secretField:
+        title: Password secret field
+        description: Field of this partner's own OpenBao secret holding the Basic password (auth=basic); a reference, never the value.
+        type: string
+        format: password
+        default: ""
+        x-descriptors:
+          - urn:camel:group:credentials
+          - urn:alm:descriptor:com.tectonic.ui:password
+      sslContextRef:
+        title: TLS client context
+        description: >-
+          Name of a client keystore (mTLS) registered at startup from OpenBao for this partner
+          (mw.partners.tls.contexts.<name>, bean mwTls-<name>); https only. Empty = no client certificate.
+        type: string
+        default: ""
       soapAction:
         title: SOAP action
         description: The SOAPAction (SOAP 1.1 header, SOAP 1.2 action parameter); empty for none.
@@ -107,6 +153,12 @@ spec:
             name: mwSoapResponse
             constant: "{{response}}"
         - setProperty:
+            name: mwSoapNamespace
+            constant: "{{namespace}}"
+        - setProperty:
+            name: mwSoapTlsRef
+            constant: "{{sslContextRef}}"
+        - setProperty:
             name: mwSoapAction
             constant: "{{soapAction}}"
         - setProperty:
@@ -131,6 +183,7 @@ spec:
             doWhile: true
             simple: "${exchangeProperty.mwAttemptAgain} == true"
             steps:
+              - to: "kamelet:mw-auth-{{auth}}?secretField={{secretField}}&userField={{userField}}"
               - bean:
                   ref: mwSoap
                   method: beforeAttempt
@@ -144,8 +197,22 @@ spec:
                   steps:
                     - doTry:
                         steps:
+                          # mTLS: as in mw-http-call, the endpoint with the named client context is resolved only
+                          # when used (toD), so a partner without one never needs a bean mwTls-.
                           - choice:
                               when:
+                                - simple: "${exchangeProperty.mwSoapTls} == true && '{{soapVersion}}' == '1.2'"
+                                  steps:
+                                    - toD:
+                                        uri: "cxf://{{address}}?dataFormat=PAYLOAD&headerFilterStrategy=#mwSoapHeaderFilter&bindingId=http://www.w3.org/2003/05/soap/bindings/HTTP/&sslContextParameters=#mwTls-{{sslContextRef}}"
+                                        cacheSize: 1
+                                        allowOptimisedComponents: false
+                                - simple: "${exchangeProperty.mwSoapTls} == true"
+                                  steps:
+                                    - toD:
+                                        uri: "cxf://{{address}}?dataFormat=PAYLOAD&headerFilterStrategy=#mwSoapHeaderFilter&sslContextParameters=#mwTls-{{sslContextRef}}"
+                                        cacheSize: 1
+                                        allowOptimisedComponents: false
                                 - simple: "'{{soapVersion}}' == '1.2'"
                                   steps:
                                     - to: "cxf://{{address}}?dataFormat=PAYLOAD&headerFilterStrategy=#mwSoapHeaderFilter&bindingId=http://www.w3.org/2003/05/soap/bindings/HTTP/"

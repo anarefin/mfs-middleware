@@ -44,7 +44,8 @@ public final class StylesheetPolicy {
   /** The largest stylesheet a record may hold. */
   public static final int MAX_LENGTH = 64 * 1024;
 
-  static final Set<String> FORBIDDEN_INSTRUCTIONS = Set.of(
+  /** The {@code xsl:*} elements of the source that reach outside the stylesheet (local names). */
+  static final Set<String> FORBIDDEN_XSL_ELEMENTS = Set.of(
       "import", "include", "use-package", "package", "result-document", "source-document", "merge-source",
       "evaluate", "original");
 
@@ -120,7 +121,7 @@ public final class StylesheetPolicy {
   private static void walk(Node node, Set<String> problems) {
     if (node instanceof Element e) {
       String ns = e.getNamespaceURI();
-      if (XSLT_NS.equals(ns) && FORBIDDEN_INSTRUCTIONS.contains(e.getLocalName())) {
+      if (XSLT_NS.equals(ns) && FORBIDDEN_XSL_ELEMENTS.contains(e.getLocalName())) {
         problems.add("xsl:" + e.getLocalName() + " is not allowed in a partner stylesheet (it reaches outside the stylesheet)");
       }
       foreignNamespace(ns, problems);
@@ -185,13 +186,29 @@ public final class StylesheetPolicy {
     }
   }
 
+  // --- the one secure XML parser setup (DOM here, SAX for Saxon) ---------------------------------
+
+  /**
+   * The parser features of every XML parse of a partner stylesheet or document, DOM or SAX:
+   * secure processing on, a DOCTYPE refused, no external entity or DTD loaded.
+   */
+  static final java.util.Map<String, Boolean> SECURE_FEATURES = java.util.Map.of(
+      XMLConstants.FEATURE_SECURE_PROCESSING, true,
+      "http://apache.org/xml/features/disallow-doctype-decl", true,
+      "http://xml.org/sax/features/external-general-entities", false,
+      "http://xml.org/sax/features/external-parameter-entities", false,
+      "http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+
+  /** Refuses every external entity a parser would resolve. */
+  static final org.xml.sax.EntityResolver NO_ENTITIES = (publicId, systemId) -> {
+    throw new SAXException("external entities are not allowed");
+  };
+
   /** Parses {@code xml} with every external access off and DOCTYPE refused. */
   static Document parse(String xml) {
     try {
       DocumentBuilder builder = secureFactory().newDocumentBuilder();
-      builder.setEntityResolver((publicId, systemId) -> {
-        throw new SAXException("external entities are not allowed");
-      });
+      builder.setEntityResolver(NO_ENTITIES);
       builder.setErrorHandler(SILENT);
       return builder.parse(new InputSource(new StringReader(xml)));
     } catch (ParserConfigurationException | SAXException | IOException e) {
@@ -207,16 +224,35 @@ public final class StylesheetPolicy {
   static DocumentBuilderFactory secureFactory() throws ParserConfigurationException {
     DocumentBuilderFactory f = DocumentBuilderFactory.newInstance();
     f.setNamespaceAware(true);
-    f.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-    f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-    f.setFeature("http://xml.org/sax/features/external-general-entities", false);
-    f.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-    f.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+    for (java.util.Map.Entry<String, Boolean> feature : SECURE_FEATURES.entrySet()) {
+      f.setFeature(feature.getKey(), feature.getValue());
+    }
     f.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
     f.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
     f.setXIncludeAware(false);
     f.setExpandEntityReferences(false);
     return f;
+  }
+
+  /**
+   * A SAX reader with the same setup ({@link #SECURE_FEATURES}, {@link #NO_ENTITIES}, {@link
+   * #SILENT}): the parser Saxon gets for every document it reads, at compile and at run time.
+   */
+  static org.xml.sax.XMLReader secureReader() {
+    try {
+      javax.xml.parsers.SAXParserFactory f = javax.xml.parsers.SAXParserFactory.newInstance();
+      f.setNamespaceAware(true);
+      for (java.util.Map.Entry<String, Boolean> feature : SECURE_FEATURES.entrySet()) {
+        f.setFeature(feature.getKey(), feature.getValue());
+      }
+      f.setXIncludeAware(false);
+      org.xml.sax.XMLReader reader = f.newSAXParser().getXMLReader();
+      reader.setEntityResolver(NO_ENTITIES);
+      reader.setErrorHandler(SILENT);
+      return reader;
+    } catch (ParserConfigurationException | SAXException e) {
+      throw new IllegalStateException("no secure XML parser", e);
+    }
   }
 
   private static String firstLine(String s) {

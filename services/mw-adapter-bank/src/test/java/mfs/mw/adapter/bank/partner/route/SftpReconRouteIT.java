@@ -7,7 +7,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import mfs.mw.adapter.bank.TestInfrastructure;
 import mfs.mw.adapter.bank.contracts.ContractSchemas;
@@ -19,6 +18,7 @@ import mfs.mw.adapter.bank.partner.config.PartnerProperties;
 import org.apache.camel.CamelContext;
 import org.apache.camel.ProducerTemplate;
 import org.apache.camel.builder.RouteBuilder;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -108,14 +108,19 @@ class SftpReconRouteIT {
   }
 
   void publish(String partnerId, long version, boolean enabled, String directory) {
+    publish(partnerId, version, enabled, directory, "delay=100");
+  }
+
+  /** Publishes a batch record polling {@code directory} with {@code poll} ({@code delay=...} or {@code cron=...}). */
+  void publish(String partnerId, long version, boolean enabled, String directory, String poll) {
     String route = """
         - route:
             from:
-              uri: "kamelet:mw-sftp-source?host=localhost&port=%d&username=bits&directory=%s&secretField=sftp-password&knownHostsField=sftp-known-hosts&delay=1000"
+              uri: "kamelet:mw-sftp-source?host=localhost&port=%d&username=bits&directory=%s&secretField=sftp-password&knownHostsField=sftp-known-hosts&%s"
               steps:
                 - log: "reconciliation file received"
                 - to: "kamelet:mw-recon?delimiter=comma"
-        """.formatted(SFTP.getMappedPort(22), directory);
+        """.formatted(SFTP.getMappedPort(22), directory, poll);
     Map<String, Object> value = Map.of("family", family, "enabled", enabled, "allowedHosts", List.of("localhost"), "route", route);
     store.apply(new ConfigChangedEvent(
         1, "partner/" + partnerId, ConfigChangedEvent.ConfigType.PARTNER, ConfigChangedEvent.Change.UPSERT, version, value,
@@ -134,14 +139,9 @@ class SftpReconRouteIT {
     }
   }
 
-  static void await(BooleanSupplier condition, String what) throws InterruptedException {
-    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-    while (!condition.getAsBoolean()) {
-      if (System.nanoTime() > deadline) {
-        throw new AssertionError("timed out waiting for " + what);
-      }
-      Thread.sleep(200);
-    }
+  static void await(BooleanSupplier condition, String what) {
+    Awaitility.await(what).atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(50))
+        .until(condition::getAsBoolean);
   }
 
   List<JsonNode> recon(String partnerId, String fileName) {
@@ -180,6 +180,19 @@ class SftpReconRouteIT {
     assertThat(recon("recon-a", "recon-20261119.csv")).hasSize(1);
     assertThat(recon("recon-a", "recon-20261118.csv")).hasSize(2);
     assertThat(exists(HOME + "/recon-20261118.csv")).as("the duplicate is left where it is").isTrue();
+  }
+
+  @Test
+  void aCronScheduledSourcePollsOnItsSchedule() throws Exception {
+    secrets("recon-d", knownHosts);
+    SFTP.execInContainer("sh", "-c", "mkdir -p /home/bits/out/cron && chown 1001 /home/bits/out/cron");
+    drop("/home/bits/out/cron/recon-cron.csv", "reference,amount\nBITS09,1.00\n");
+    // every second: the Spring scheduler of the file consumer, not the delay
+    publish("recon-d", 1, true, "out/cron", "cron=*+*+*+*+*+*");
+
+    await(() -> exists("/home/bits/out/cron/.done/recon-cron.csv"), "the cron-polled file in .done");
+
+    assertThat(recon("recon-d", "recon-cron.csv")).hasSize(1);
   }
 
   @Test

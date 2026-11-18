@@ -10,6 +10,7 @@ import io.github.resilience4j.bulkhead.BulkheadRegistry;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import mfs.mw.adapter.telco.partner.PartnerTestSeeds;
 import mfs.mw.adapter.telco.partner.auth.PartnerCredentials;
 import mfs.mw.adapter.telco.partner.config.PartnerConfig;
 import mfs.mw.adapter.telco.partner.config.PartnerConfigRefusedException;
@@ -58,7 +59,7 @@ class SoapRouteLoaderTest {
     when(credentials.read(anyString(), anyString())).thenReturn("fake-credential");
     loader = new PartnerRouteLoader(
         CAMEL, new PartnerEndpointPolicy(new PartnerProperties.Security(Map.of(), List.of("localhost"))),
-        new KameletCatalogue(), credentials, BulkheadRegistry.ofDefaults());
+        new KameletCatalogue(), credentials, BulkheadRegistry.ofDefaults(), PartnerTestSeeds.noTlsContexts());
   }
 
   @AfterAll
@@ -168,6 +169,56 @@ class SoapRouteLoaderTest {
     String call = CALL.contains(key + "=") ? CALL.replaceFirst(key + "=[^&]*", param) : CALL + "&" + param;
 
     assertThatThrownBy(() -> load(record(call, Map.of()))).as(param).isInstanceOf(PartnerConfigRefusedException.class);
+  }
+
+  // --- review of 85: Basic, mTLS and JSON/XML ------------------------------------------------
+
+  @Test
+  void basicAuthReadsTheUserAndPasswordFields() {
+    PartnerRouteLoader.Loaded loaded = load(record(CALL + "&auth=basic&userField=soap-user&secretField=soap-password", Map.of()));
+
+    assertThat(loaded.runtime().secrets()).containsKeys("soap-user", "soap-password");
+    assertThat(loaded.route().toString()).contains("auth=basic").doesNotContain("fake-credential");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "&auth=basic&secretField=soap-password",
+      "&auth=basic&userField=soap-user",
+      "&auth=oauth2-cc&secretField=x",
+      "&auth=hmac-sha256&secretField=x",
+  })
+  void basicNeedsBothFieldsAndNoOtherSchemeIsTaken(String params) {
+    assertThatThrownBy(() -> load(record(CALL + params, Map.of()))).as(params).isInstanceOf(PartnerConfigRefusedException.class);
+  }
+
+  @Test
+  void anMtlsContextMustBeThePartnersOwn() {
+    assertThatThrownBy(() -> load(record(CALL.replace("http://localhost:8089", "https://localhost:8443") + "&sslContextRef=other-client",
+            Map.of())))
+        .isInstanceOfSatisfying(PartnerConfigRefusedException.class, e -> {
+          assertThat(e.security()).isTrue();
+          assertThat(e.getMessage()).contains("sslContextRef");
+        });
+  }
+
+  @Test
+  void jsonOnBothSidesNeedsNoStylesheetButANamespace() {
+    String json = CALL.replace("request=PAY.request.xsl&response=PAY.response.xsl", "request=json&response=json&namespace=urn:biller:v1");
+
+    PartnerRouteLoader.Loaded loaded = load(record(json, Map.of()));
+
+    assertThat(loaded.runtime().stylesheets()).isEmpty();
+    assertThat(loaded.route().toString()).contains("request=json", "namespace=urn:biller:v1");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"", "&namespace=biller", "&namespace=javascript:alert(1)"})
+  void requestJsonWithoutAProperNamespaceIsRefused(String namespace) {
+    String json = CALL.replace("request=PAY.request.xsl", "request=json") + namespace;
+
+    assertThatThrownBy(() -> load(record(json, Map.of()))).as(namespace)
+        .isInstanceOf(PartnerConfigRefusedException.class).hasMessageContaining("namespace");
   }
 
   @Test

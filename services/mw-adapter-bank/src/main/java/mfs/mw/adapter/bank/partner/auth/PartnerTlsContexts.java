@@ -46,11 +46,6 @@ public class PartnerTlsContexts {
     this.credentials = credentials;
   }
 
-  /** No contexts (tests and tools that build the guard by hand). */
-  public static PartnerTlsContexts none() {
-    return new PartnerTlsContexts(new PartnerTlsProperties(Map.of()), null);
-  }
-
   /** Reads and binds every configured context; called once when Camel has started, before the partner routes. */
   public void register(CamelContext camel) {
     properties.contexts().forEach((name, context) -> {

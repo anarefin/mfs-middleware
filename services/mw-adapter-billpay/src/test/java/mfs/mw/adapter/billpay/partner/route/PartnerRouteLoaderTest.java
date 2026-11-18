@@ -40,7 +40,7 @@ class PartnerRouteLoaderTest {
     PartnerCredentials credentials = mock(PartnerCredentials.class);
     when(credentials.read(anyString(), anyString())).thenReturn("fake-credential");
     loader = new PartnerRouteLoader(
-        CAMEL, new PartnerEndpointPolicy(SECURITY), new KameletCatalogue(), credentials, BulkheadRegistry.ofDefaults());
+        CAMEL, new PartnerEndpointPolicy(SECURITY), new KameletCatalogue(), credentials, BulkheadRegistry.ofDefaults(), PartnerTestSeeds.noTlsContexts());
   }
 
   @AfterAll

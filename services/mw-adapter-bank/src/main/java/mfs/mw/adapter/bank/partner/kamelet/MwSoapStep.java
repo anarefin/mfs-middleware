@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -17,7 +18,8 @@ import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.transform.Source;
 import javax.xml.transform.dom.DOMSource;
 import mfs.mw.adapter.bank.partner.PartnerResponse.UnknownReason;
-import mfs.mw.adapter.bank.partner.mapping.CompiledStylesheet;
+import mfs.mw.adapter.bank.partner.mapping.JsonXmlMapping;
+import mfs.mw.adapter.bank.partner.mapping.SoapMapping;
 import mfs.mw.adapter.bank.partner.route.PartnerExchange;
 import mfs.mw.adapter.bank.partner.route.PartnerResult;
 import mfs.mw.adapter.bank.partner.route.PartnerRuntime;
@@ -36,12 +38,16 @@ import tools.jackson.databind.json.JsonMapper;
  * The Java steps of the {@code mw-soap-call} Kamelet (bean {@code mwSoap}, ticket 85). The Kamelet
  * holds the Camel side (the breaker with time limit and bulkhead, the {@code cxf} endpoint in
  * PAYLOAD mode, the INQUIRY/STATUS_QUERY loop, the fallback of {@code mw-http-call}); these steps
- * build the SOAP body with the record's request stylesheet, add the WS-Security UsernameToken,
- * and turn the answer or a SOAP fault into the JSON {@code mw-classify} maps with the response
- * stylesheet. A fault is the partner's definite answer (it maps through the record's {@code
- * errorMap}); a transport error or the time limit is the fallback's UNKNOWN (NOT_SENT when the
- * connect failed). Nothing of the request is logged; the audit sees the request JSON and the
- * answer JSON, never the XML.
+ * build the SOAP body with the record's request stylesheet (or, with {@code request=json}, the
+ * JSON/XML convention of {@link JsonXmlMapping}), add the WS-Security UsernameToken, and turn the
+ * answer or a SOAP fault into the JSON {@code mw-classify} maps with the response stylesheet (or
+ * {@code response=json}). HTTP Basic ({@code auth=basic}) is the {@code mw-auth-basic} Kamelet of
+ * {@code mw-http-call}, mTLS ({@code sslContextRef}) its named client context ({@code
+ * PartnerTlsContexts}); the steps shared with {@code mw-http-call} are {@link MwHttpStep#start} and
+ * {@link MwHttpStep#nextAttempt}. A fault is the partner's definite answer (it maps through the
+ * record's {@code errorMap}); a transport error or the time limit is the fallback's UNKNOWN
+ * (NOT_SENT when the connect failed). Nothing of the request is logged; the audit sees the request
+ * JSON and the answer JSON, never the XML.
  */
 @Component("mwSoap")
 public class MwSoapStep {
@@ -52,11 +58,33 @@ public class MwSoapStep {
 
   /** The SOAP body element the request stylesheet made (cloned for every attempt). */
   static final String ELEMENT = "mwSoapElement";
+
+  // the Kamelet's parameters, as it sets them (properties of the exchange)
+  /** {@code address}: the SOAP endpoint. */
+  static final String ADDRESS = "mwSoapAddress";
+  /** {@code request}: a stylesheet name, or {@value JsonXmlMapping#NAME}. */
+  static final String REQUEST = "mwSoapRequest";
+  /** {@code response}: a stylesheet name, or {@value JsonXmlMapping#NAME}. */
+  static final String RESPONSE = "mwSoapResponse";
+  /** {@code namespace}: the body elements' namespace of {@code request=json}. */
+  static final String NAMESPACE = "mwSoapNamespace";
+  static final String ACTION = "mwSoapAction";
+  static final String USERNAME = "mwSoapUsername";
+  static final String PASSWORD_SECRET = "mwSoapPasswordSecret";
+  static final String PASSWORD_TYPE = "mwSoapPasswordType";
+  static final String CONNECT_TIMEOUT = "mwSoapConnectTimeout";
+  static final String READ_TIMEOUT = "mwSoapReadTimeout";
+  /** {@code sslContextRef}: the named mTLS client context; empty for none. */
+  static final String TLS_REF = "mwSoapTlsRef";
+  /** True when the call goes out with the named client context (the Kamelet's {@code toD} branches). */
+  static final String TLS = "mwSoapTls";
+
+  static final String SOAP_ACTION_HEADER = "SOAPAction";
   /** The camel-cxf request context header: per-call CXF settings (timeouts). */
   static final String REQUEST_CONTEXT = "RequestContext";
   /** Headers that would change where or how CXF sends; only these steps set them. */
   static final List<String> CONTROL_HEADERS = List.of(
-      REQUEST_CONTEXT, "ResponseContext", "SOAPAction", "operationName", "operationNamespace",
+      REQUEST_CONTEXT, "ResponseContext", SOAP_ACTION_HEADER, "operationName", "operationNamespace",
       "CamelDestinationOverrideUrl", Exchange.HTTP_URI, Exchange.HTTP_PATH, Exchange.HTTP_QUERY,
       "org.apache.cxf.headers.Header.list");
 
@@ -64,9 +92,11 @@ public class MwSoapStep {
   private static final SecureRandom RANDOM = new SecureRandom();
 
   private final JsonMapper json;
+  private final Clock clock;
 
-  public MwSoapStep(JsonMapper json) {
+  public MwSoapStep(JsonMapper json, Clock clock) {
     this.json = json;
+    this.clock = clock;
   }
 
   /**
@@ -79,51 +109,43 @@ public class MwSoapStep {
     var message = exchange.getMessage();
     CONTROL_HEADERS.forEach(message::removeHeader);
     String request = exchange.getProperty(PartnerExchange.REQUEST_BODY, String.class);
-    Element element = runtime.stylesheet(exchange.getProperty("mwSoapRequest", String.class)).requestElement(request);
+    Element element = mapping(exchange, REQUEST).requestElement(request);
     exchange.setProperty(ELEMENT, element);
     if (request == null) {
       exchange.setProperty(PartnerExchange.REQUEST_BODY, "{}");
     }
-    String address = exchange.getProperty("mwSoapAddress", String.class);
+    String address = exchange.getProperty(ADDRESS, String.class);
     exchange.setProperty(PartnerExchange.HTTP_METHOD, "POST");
     exchange.setProperty(PartnerExchange.HTTP_PATH_AND_QUERY, URI.create(address).getRawPath());
-    runtime.config().headers().forEach(message::setHeader);
-    String correlationId = message.getHeader(PartnerExchange.CORRELATION_ID, String.class);
-    if (correlationId != null) {
-      message.setHeader(MwHttpStep.CORRELATION_HEADER, correlationId);
-    }
-    exchange.setProperty(PartnerExchange.ATTEMPTS, 0);
-    exchange.setProperty(PartnerExchange.ATTEMPT_AGAIN, true);
+    String tls = exchange.getProperty(TLS_REF, "", String.class);
+    exchange.setProperty(TLS, tls != null && !tls.isEmpty());
+    MwHttpStep.start(exchange, runtime);
   }
 
   /** Before each attempt: a fresh SOAP payload (and UsernameToken), nothing decided yet. */
   public void beforeAttempt(Exchange exchange) throws ParserConfigurationException {
-    exchange.setProperty(PartnerExchange.ATTEMPT_AGAIN, false);
-    exchange.setProperty(PartnerExchange.FINAL, false);
-    exchange.setProperty(PartnerExchange.ATTEMPTS, exchange.getProperty(PartnerExchange.ATTEMPTS, 0, Integer.class) + 1);
-    exchange.removeProperty(PartnerExchange.RESPONSE_STATUS);
-    exchange.removeProperty(PartnerExchange.RESPONSE_BODY);
+    MwHttpStep.nextAttempt(exchange);
     var message = exchange.getMessage();
     CONTROL_HEADERS.forEach(message::removeHeader);
     Element element = (Element) exchange.getProperty(ELEMENT, Element.class).cloneNode(true);
     List<Source> body = new ArrayList<>(List.of(new DOMSource(element)));
     List<SoapHeader> headers = new ArrayList<>();
-    String user = exchange.getProperty("mwSoapUsername", "", String.class);
+    String user = exchange.getProperty(USERNAME, "", String.class);
     if (!user.isEmpty()) {
-      String password = PartnerExchange.runtime(exchange).secret(exchange.getProperty("mwSoapPasswordSecret", String.class));
+      String password = PartnerExchange.runtime(exchange).secret(exchange.getProperty(PASSWORD_SECRET, String.class));
       headers.add(new SoapHeader(new QName(WSSE, "Security"),
-          usernameToken(user, password, exchange.getProperty("mwSoapPasswordType", "PasswordText", String.class), Instant.now())));
+          usernameToken(user, password, exchange.getProperty(PASSWORD_TYPE, "PasswordText", String.class), clock.instant())));
     }
     message.setBody(new CxfPayload<>(headers, body, Map.of()));
-    String action = exchange.getProperty("mwSoapAction", "", String.class);
+    String action = exchange.getProperty(ACTION, "", String.class);
     if (!action.isEmpty()) {
-      message.setHeader("SOAPAction", action);
+      message.setHeader(SOAP_ACTION_HEADER, action);
     }
     Map<String, Object> context = new HashMap<>();
     context.put(org.apache.cxf.message.Message.CONNECTION_TIMEOUT,
-        Long.parseLong(exchange.getProperty("mwSoapConnectTimeout", "3000", String.class)));
+        Long.parseLong(exchange.getProperty(CONNECT_TIMEOUT, "3000", String.class)));
     context.put(org.apache.cxf.message.Message.RECEIVE_TIMEOUT,
-        Long.parseLong(exchange.getProperty("mwSoapReadTimeout", "32000", String.class)));
+        Long.parseLong(exchange.getProperty(READ_TIMEOUT, "32000", String.class)));
     message.setHeader(REQUEST_CONTEXT, context);
     exchange.setProperty(PartnerExchange.SENT, true);
   }
@@ -133,7 +155,7 @@ public class MwSoapStep {
     var message = exchange.getMessage();
     String xml = message.getBody(String.class);
     CONTROL_HEADERS.forEach(message::removeHeader);
-    answer(exchange, () -> stylesheet(exchange).responseJson(xml));
+    answer(exchange, () -> mapping(exchange, RESPONSE).responseJson(xml));
   }
 
   /** A SOAP fault: the partner's definite answer, through the response stylesheet. */
@@ -147,7 +169,7 @@ public class MwSoapStep {
     }
     String code = fault.getFaultCode() == null ? null : fault.getFaultCode().getLocalPart();
     String subcode = fault.getSubCode() == null ? null : fault.getSubCode().getLocalPart();
-    answer(exchange, () -> stylesheet(exchange).faultJson(code, subcode, fault.getReason(), fault.getDetail()));
+    answer(exchange, () -> mapping(exchange, RESPONSE).faultJson(code, subcode, fault.getReason(), fault.getDetail()));
   }
 
   private void answer(Exchange exchange, java.util.function.Supplier<String> transform) {
@@ -169,8 +191,13 @@ public class MwSoapStep {
     exchange.getMessage().setBody(body);
   }
 
-  private static CompiledStylesheet stylesheet(Exchange exchange) {
-    return PartnerExchange.runtime(exchange).stylesheet(exchange.getProperty("mwSoapResponse", String.class));
+  /** The mapping the Kamelet parameter {@code property} names: {@value JsonXmlMapping#NAME} or a stylesheet. */
+  private SoapMapping mapping(Exchange exchange, String property) {
+    String name = exchange.getProperty(property, String.class);
+    if (JsonXmlMapping.NAME.equals(name)) {
+      return new JsonXmlMapping(exchange.getProperty(NAMESPACE, String.class), json);
+    }
+    return PartnerExchange.runtime(exchange).stylesheet(name);
   }
 
   /**

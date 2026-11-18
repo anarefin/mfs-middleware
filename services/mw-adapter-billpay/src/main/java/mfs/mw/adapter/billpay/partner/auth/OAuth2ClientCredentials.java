@@ -34,7 +34,7 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>The token is cached per partner client (partner id, token URL, client id, scope, audience)
  * until {@code expires_in} minus the skew ({@code mw.partners.oauth2.expiry-skew}, default 30 s;
  * no {@code expires_in}: 60 s); concurrent calls wait for one token request. A partner 401 drops
- * the token it was sent with ({@link #token}'s {@code rejected} generation), so one fresh token is
+ * the token it was sent with ({@link #token}'s {@code rejected} generation, empty for none), so one fresh token is
  * fetched. The token and the client secret are never logged, audited or put in a URI.
  */
 @Component
@@ -84,15 +84,15 @@ public class OAuth2ClientCredentials {
   /**
    * A valid token for {@code client}: the cached one, else one fetched now.
    *
-   * @param rejected generation of a token the partner just answered 401 to (dropped first); 0 for none
+   * @param rejected generation of a token the partner just answered 401 to (dropped first); empty for none
    * @throws IllegalStateException when no token could be obtained (nothing was sent to the partner)
    */
-  public Token token(PartnerRuntime runtime, Client client, String clientSecret, long rejected) {
+  public Token token(PartnerRuntime runtime, Client client, String clientSecret, java.util.OptionalLong rejected) {
     Slot slot = slots.computeIfAbsent(client, c -> new Slot());
     slot.lock.lock();
     try {
       Cached cached = slot.cached;
-      if (cached != null && rejected != 0 && cached.token().generation() == rejected) {
+      if (cached != null && rejected.isPresent() && cached.token().generation() == rejected.getAsLong()) {
         cached = null;
         slot.cached = null;
       }

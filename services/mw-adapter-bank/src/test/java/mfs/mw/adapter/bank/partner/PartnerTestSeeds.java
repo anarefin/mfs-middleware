@@ -3,8 +3,11 @@ package mfs.mw.adapter.bank.partner;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Map;
+import mfs.mw.adapter.bank.partner.auth.PartnerCredentials;
+import mfs.mw.adapter.bank.partner.auth.PartnerTlsContexts;
 import mfs.mw.adapter.bank.partner.config.PartnerConfig;
 import mfs.mw.adapter.bank.partner.config.PartnerProperties;
+import mfs.mw.adapter.bank.partner.config.PartnerTlsProperties;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.core.env.MapPropertySource;
@@ -15,6 +18,11 @@ import org.springframework.core.io.ClassPathResource;
 public final class PartnerTestSeeds {
 
   private PartnerTestSeeds() {}
+
+  /** No mTLS client contexts: nothing configured, so the credentials are never read. */
+  public static PartnerTlsContexts noTlsContexts() {
+    return new PartnerTlsContexts(new PartnerTlsProperties(Map.of()), org.mockito.Mockito.mock(PartnerCredentials.class));
+  }
 
   /** {@code mw.partners} of the dev profile, with {@code overrides} (e.g. the WireMock base URL). */
   public static PartnerProperties properties(Map<String, Object> overrides) {

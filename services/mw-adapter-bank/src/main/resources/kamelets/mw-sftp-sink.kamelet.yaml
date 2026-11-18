@@ -12,11 +12,13 @@ spec:
   definition:
     title: MW SFTP sink
     description: >-
-      Writes the body (a CSV or fixed-width text the route built) as one file under directory on the
-      partner's SFTP host (camel-sftp): uploaded under a temporary name, then renamed, never over an
+      Writes one file under directory on the partner's SFTP host (camel-sftp): the body as it is, or
+      with mapping the text (CSV or fixed-width lines) that JSONata mapping of the record makes of the
+      JSON body (request routes only). Uploaded under a temporary name, then renamed, never over an
       existing file. The host key is checked strictly against the partner's known hosts (a field of
-      its own OpenBao secret); the password or private key is a field of the same secret. Input: the
-      file content. Output: unchanged.
+      its own OpenBao secret); the password or private key is a field of the same secret. In a request
+      route the put is the partner call: mw-classify sees status 200 and the body {"fileName": ...}
+      (a failed put after the upload started is UNKNOWN). Output: the body unchanged.
     type: object
     required: [host, username, directory, fileName, partnerId, knownHosts]
     properties:
@@ -43,6 +45,18 @@ spec:
           File name: letters, digits, . _ - and ${date:now:<pattern>} tokens, e.g.
           settlement-${date:now:yyyyMMdd}.csv.
         type: string
+      dryRun:
+        title: Dry-run
+        description: Set by the route loader (true in a dry-run candidate, which writes no file); never by the route.
+        type: boolean
+        default: false
+      mapping:
+        title: Text mapping
+        description: >-
+          A JSONata mapping of the record whose result is the file text (a string), evaluated over the
+          JSON body; empty = the body as it is. Request routes only.
+        type: string
+        default: ""
       password:
         title: Password secret reference
         description: Set by the route loader from secretField (auth=password) as a registry reference, never the value.
@@ -71,4 +85,20 @@ spec:
     from:
       uri: "kamelet:source"
       steps:
-        - to: "sftp:{{host}}:{{port}}/{{directory}}?username={{username}}&password={{?password}}&privateKey={{?privateKey}}&knownHosts={{knownHosts}}&strictHostKeyChecking=yes&useUserKnownHostsFile=false&autoCreateKnownHostsFile=false&fileName={{fileName}}&fileExist=Fail&tempPrefix=.part-&disconnect=true&binary=true&connectTimeout=10000&soTimeout=30000"
+        - bean:
+            ref: mwSftpSink
+            method: "content(${exchange}, '{{mapping}}')"
+        # a dry-run candidate makes the text but puts nothing on the partner's host
+        - choice:
+            when:
+              - simple: "'{{dryRun}}' == 'true'"
+                steps:
+                  - setHeader:
+                      name: CamelFileNameProduced
+                      constant: "dry-run"
+            otherwise:
+              steps:
+                - to: "sftp:{{host}}:{{port}}/{{directory}}?username={{username}}&password={{?password}}&privateKey={{?privateKey}}&knownHosts={{knownHosts}}&strictHostKeyChecking=yes&useUserKnownHostsFile=false&autoCreateKnownHostsFile=false&fileName={{fileName}}&fileExist=Fail&tempPrefix=.part-&disconnect=true&binary=true&connectTimeout=10000&soTimeout=30000"
+        - bean:
+            ref: mwSftpSink
+            method: put

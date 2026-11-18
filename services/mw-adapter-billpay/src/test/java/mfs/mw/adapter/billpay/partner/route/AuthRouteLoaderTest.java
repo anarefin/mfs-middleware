@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import io.github.resilience4j.bulkhead.BulkheadRegistry;
 import java.util.List;
 import java.util.Map;
+import mfs.mw.adapter.billpay.partner.PartnerTestSeeds;
 import mfs.mw.adapter.billpay.partner.TestKeystores;
 import mfs.mw.adapter.billpay.partner.auth.PartnerCredentials;
 import mfs.mw.adapter.billpay.partner.auth.PartnerTlsContexts;
@@ -45,7 +46,7 @@ class AuthRouteLoaderTest {
     PartnerCredentials credentials = mock(PartnerCredentials.class);
     when(credentials.read(anyString(), anyString())).thenAnswer(i -> "fake-" + i.getArgument(1));
     loader = new PartnerRouteLoader(
-        CAMEL, new PartnerEndpointPolicy(SECURITY), new KameletCatalogue(), credentials, BulkheadRegistry.ofDefaults());
+        CAMEL, new PartnerEndpointPolicy(SECURITY), new KameletCatalogue(), credentials, BulkheadRegistry.ofDefaults(), PartnerTestSeeds.noTlsContexts());
   }
 
   @AfterAll
