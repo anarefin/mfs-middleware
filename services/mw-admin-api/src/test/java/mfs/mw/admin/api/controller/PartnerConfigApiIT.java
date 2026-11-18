@@ -34,8 +34,9 @@ import tools.jackson.databind.json.JsonMapper;
  * Partner config through maker-checker (ticket 38, spec 15.3, 20.4): a maker asks to disable a
  * partner, change its timeouts or onboard one; a different checker approves; the approval updates
  * schema {@code partner} and writes the full config as a {@code mw.config.changed.v1} PARTNER record
- * (key {@code partner/<id>}, version + 1) to the outbox in the same transaction. The partner is the
- * dev seed {@code ocs} (the adapters' own dev seed), re-seeded before each test.
+ * (key {@code partner/<id>}, version + 1) to the outbox in the same transaction. The partners are
+ * the dev seeds {@code ocs}, {@code billagg}, {@code c2wbank} (the adapters' own dev seeds, routes
+ * since ticket 84), re-seeded before each test.
  */
 @SpringBootTest(properties = "mw.outbox.relay.enabled=false")
 @AutoConfigureMockMvc
@@ -76,7 +77,7 @@ class PartnerConfigApiIT {
     jdbc.update("delete from content_version");
     jdbc.update("delete from change_request");
     jdbc.update("delete from partner.partner");
-    assertThat(seeds.seedAll()).isEqualTo(1);
+    assertThat(seeds.seedAll()).isEqualTo(3);
   }
 
   static RequestPostProcessor operator(String username, String... roles) {
@@ -179,17 +180,23 @@ class PartnerConfigApiIT {
     assertThat(record.path("approvedBy").asString()).isEqualTo("ops-checker01");
     JsonNode value = record.path("value");
     assertThat(value.path("enabled").asBoolean()).isFalse();
-    // a full snapshot, not a diff: everything else is the seed's
-    assertThat(value.path("baseUrl").asString()).isEqualTo("http://mw-simulators:8080");
+    // a full snapshot, not a diff: everything else is the seed's, its route included, and no
+    // dry-run (the route already runs, so the adapter swaps the version in at once; ticket 84)
+    assertThat(value.path("family").asString()).isEqualTo("telco");
+    assertThat(value.path("route").asString())
+        .contains("direct:partner-ocs", "url=http://mw-simulators:8080&method=POST&path=/ocs/v1/topup");
+    assertThat(value.path("mappings").path("PAY.request").asString()).contains("creditParty.id");
+    assertThat(value.path("allowedHosts").toString()).isEqualTo("[\"mw-simulators\"]");
+    assertThat(value.has("dryRun")).isFalse();
+    assertThat(value.has("template") || value.has("operations") || value.has("baseUrl")).isFalse();
     assertThat(value.path("timeoutMs").asLong()).isEqualTo(20000);
-    assertThat(value.path("operations").path("PAY").path("path").asString()).isEqualTo("/ocs/v1/topup");
-    assertThat(value.path("operations").path("STATUS_QUERY").path("definiteStatuses").toString()).isEqualTo("[200,404]");
     assertThat(value.path("errorMap").path("2001").path("suffix").asString()).isEqualTo("TOPUP_REJECTED");
     assertThat(value.path("ambiguousCodes").toString()).isEqualTo("[\"9876\"]");
 
     JsonNode after = partner("ocs");
     assertThat(after.path("version").asLong()).isEqualTo(1);
     assertThat(after.path("config").path("enabled").asBoolean()).isFalse();
+    assertThat(after.path("route").path("status").asString()).isEqualTo("PENDING_DRY_RUN");
     assertThat(after.path("approvedBy").asString()).isEqualTo("ops-checker01");
 
     List<JsonNode> audits =
@@ -222,17 +229,44 @@ class PartnerConfigApiIT {
     assertThat(partner("ocs").path("config").path("timeoutMs").asLong()).isEqualTo(5000);
   }
 
+  // --- seeds ---------------------------------------------------------------------------------
+
+  @Test
+  void theDevSeedsAreTheThreeAdaptersPartnersAsRoutes() {
+    JsonNode items = body(mvc.get().uri("/admin/v1/partners").with(CHECKER).exchange()).path("items");
+    assertValid("/admin/v1/partners", "get", "200", body(mvc.get().uri("/admin/v1/partners").with(CHECKER).exchange()));
+    assertThat(items).hasSize(3);
+    Map<String, String> families = Map.of("billagg", "billpay", "c2wbank", "bank", "ocs", "telco");
+    for (JsonNode p : items) {
+      String id = p.path("partnerId").asString();
+      assertThat(p.path("family").asString()).isEqualTo(families.get(id));
+      assertThat(p.path("version").asLong()).isZero();
+      assertThat(p.path("config").path("route").asString()).contains("uri: direct:partner-" + id, "kamelet:mw-audit");
+      assertThat(p.path("config").path("allowedHosts").toString()).isEqualTo("[\"mw-simulators\"]");
+      assertThat(p.has("route")).as("a seed has no approved version to report on").isFalse();
+    }
+    assertThat(partner("c2wbank").path("config").path("mappings").has("CALLBACK.response")).isTrue();
+  }
+
+  @Test
+  void aBillaggChangeIsAcceptedNow() {
+    String id = asked(MAKER, "billagg", "{\"action\":\"DISABLE\",\"reason\":\"aggregator incident\"}");
+    assertThat(approve(CHECKER, id)).hasStatus(200);
+    JsonNode value = outbox(CONFIG_TOPIC).getFirst().path("value");
+    assertThat(value.path("family").asString()).isEqualTo("billpay");
+    assertThat(value.path("enabled").asBoolean()).isFalse();
+  }
+
   // --- onboarding -----------------------------------------------------------------------------
 
   @Test
   void anIntegrationMakerOnboardsAPartnerWithItsFullConfig() {
     String body =
         """
-        {"action":"UPSERT","reason":"onboard robi","family":"telco","config":{
-          "baseUrl":"https://robi.example.test","timeoutMs":15000,
-          "auth":{"scheme":"api-key","credentialsRef":"api-key"},
-          "operations":{"PAY":{"method":"POST","path":"/topup","definiteStatuses":[422],
-            "request":"{\\"ref\\": reference}","response":"{\\"outcome\\": \\"UNKNOWN\\"}"}}}}
+        {"action":"UPSERT_ROUTE","reason":"onboard robi","family":"telco","config":{
+          "timeoutMs":15000,"allowedHosts":["robi.example.test"],"dryRun":{"operation":"PAY"},
+          "route":"- route:\\n    from:\\n      uri: direct:partner-robi\\n      steps:\\n        - to: \\"kamelet:mw-map?mapping=PAY.request\\"\\n        - to: \\"kamelet:mw-http-call?url=https://robi.example.test&method=POST&path=/topup&auth=apikey&secretField=api-key\\"\\n        - to: \\"kamelet:mw-classify?mapping=PAY.response&definiteStatuses=422\\"\\n        - to: \\"kamelet:mw-audit\\"\\n",
+          "mappings":{"PAY.request":"{\\"ref\\": reference}","PAY.response":"{\\"outcome\\": \\"UNKNOWN\\"}"}}}
         """;
     String id = asked(INTEGRATION_MAKER, "robi", body);
     assertThat(approve(CHECKER, id)).hasStatus(200);
@@ -242,35 +276,85 @@ class PartnerConfigApiIT {
     assertThat(record.path("configKey").asString()).isEqualTo("partner/robi");
     assertThat(record.path("version").asLong()).isEqualTo(1);
     assertThat(record.path("value").path("enabled").asBoolean()).isTrue();
-    assertThat(record.path("value").path("auth").path("credentialsRef").asString()).isEqualTo("api-key");
+    assertThat(record.path("value").path("dryRun").path("operation").asString()).isEqualTo("PAY");
     JsonNode robi = partner("robi");
     assertThat(robi.path("family").asString()).isEqualTo("telco");
-    assertThat(body(mvc.get().uri("/admin/v1/partners").with(MAKER).exchange()).path("items")).hasSize(2);
+    assertThat(body(mvc.get().uri("/admin/v1/partners").with(MAKER).exchange()).path("items")).hasSize(4);
+
+    // version 1 has not passed its dry-run yet: an ENABLE / DISABLE / SET_TIMEOUTS on it keeps the
+    // dry-run, so the unproven route still has to prove itself before the adapter loads it
+    for (String action : List.of(
+        "{\"action\":\"DISABLE\",\"reason\":\"x\"}",
+        "{\"action\":\"SET_TIMEOUTS\",\"reason\":\"x\",\"timeouts\":{\"timeoutMs\":9000}}")) {
+      String change = asked(MAKER, "robi", action);
+      assertThat(approve(CHECKER, change)).hasStatus(200);
+      JsonNode next = outbox(CONFIG_TOPIC).getLast().path("value");
+      assertThat(next.path("dryRun").path("operation").asString()).as(action).isEqualTo("PAY");
+    }
+    assertThat(partner("robi").path("route").path("status").asString()).isEqualTo("PENDING_DRY_RUN");
+  }
+
+  @Test
+  void anActionOnALiveRouteDropsItsDryRun() {
+    String body =
+        """
+        {"action":"UPSERT_ROUTE","reason":"onboard robi","family":"telco","config":{
+          "timeoutMs":15000,"allowedHosts":["robi.example.test"],"dryRun":{"operation":"PAY"},
+          "route":"- route:\\n    from:\\n      uri: direct:partner-robi\\n      steps:\\n        - to: \\"kamelet:mw-map?mapping=PAY.request\\"\\n        - to: \\"kamelet:mw-http-call?url=https://robi.example.test&method=POST&path=/topup&auth=apikey&secretField=api-key\\"\\n        - to: \\"kamelet:mw-classify?mapping=PAY.response&definiteStatuses=422\\"\\n        - to: \\"kamelet:mw-audit\\"\\n",
+          "mappings":{"PAY.request":"{\\"ref\\": reference}","PAY.response":"{\\"outcome\\": \\"UNKNOWN\\"}"}}}
+        """;
+    assertThat(approve(CHECKER, asked(INTEGRATION_MAKER, "robi", body))).hasStatus(200);
+    jdbc.update("update partner.partner_route set route_status = 'LIVE' where partner_id = 'robi' and version = 1");
+
+    assertThat(approve(CHECKER, asked(MAKER, "robi", "{\"action\":\"DISABLE\",\"reason\":\"x\"}"))).hasStatus(200);
+
+    JsonNode next = outbox(CONFIG_TOPIC).getLast().path("value");
+    assertThat(next.path("enabled").asBoolean()).isFalse();
+    assertThat(next.has("dryRun")).as("a proven route loads at once").isFalse();
   }
 
   @Test
   void anInvalidConfigIsRefusedWithoutEchoingIt() throws Exception {
     MvcTestResult noFamily =
         ask(MAKER, "robi",
-            "{\"action\":\"UPSERT\",\"reason\":\"x\",\"config\":{\"baseUrl\":\"https://robi.example.test\","
-                + "\"operations\":{\"PAY\":{\"method\":\"POST\",\"path\":\"/t\",\"response\":\"x\"}}}}");
+            "{\"action\":\"UPSERT_ROUTE\",\"reason\":\"x\",\"config\":{\"route\":\"- route: {}\","
+                + "\"allowedHosts\":[\"robi.example.test\"],\"dryRun\":{\"operation\":\"PAY\"}}}");
     assertThat(noFamily).hasStatus(400);
     assertThat(body(noFamily).path("code").asString()).isEqualTo("MW-VAL-001");
 
-    MvcTestResult badPath =
+    MvcTestResult badRef =
         ask(MAKER, "robi",
-            "{\"action\":\"UPSERT\",\"reason\":\"x\",\"family\":\"telco\",\"config\":{\"baseUrl\":\"https://u:p@evil.test\","
-                + "\"auth\":{\"scheme\":\"api-key\",\"credentialsRef\":\"../db-password\"},"
-                + "\"operations\":{\"PAY\":{\"method\":\"POST\",\"path\":\"/a/../b\",\"response\":\"x\"}}}}");
-    assertThat(badPath).hasStatus(400);
-    String text = badPath.getResponse().getContentAsString();
-    assertThat(text).contains("config.baseUrl", "config.operations.PAY.path", "config.auth.credentialsRef");
-    assertThat(text).doesNotContain("evil.test", "db-password", "/a/../b");
+            "{\"action\":\"UPSERT_ROUTE\",\"reason\":\"x\",\"family\":\"telco\",\"config\":{\"route\":\"- route: {}\","
+                + "\"allowedHosts\":[\"robi.example.test\"],\"auth\":{\"scheme\":\"api-key\",\"credentialsRef\":\"../db-password\"},"
+                + "\"dryRun\":{\"operation\":\"PAY\",\"baseUrl\":\"https://evil.test\"}}}");
+    assertThat(badRef).hasStatus(400);
+    String text = badRef.getResponse().getContentAsString();
+    assertThat(text).contains("config.auth.credentialsRef", "config.dryRun.baseUrl");
+    assertThat(text).doesNotContain("evil.test", "db-password");
 
     MvcTestResult noTimeouts = ask(MAKER, "ocs", "{\"action\":\"SET_TIMEOUTS\",\"reason\":\"x\"}");
     assertThat(noTimeouts).hasStatus(400);
     MvcTestResult unknownField = ask(MAKER, "ocs", "{\"action\":\"DISABLE\",\"reason\":\"x\",\"secret\":\"s\"}");
     assertThat(unknownField).hasStatus(400);
+    assertThat(jdbc.queryForObject("select count(*) from change_request", Integer.class)).isZero();
+  }
+
+  /** The old template shape and its action went with ticket 84: the contract refuses them. */
+  @Test
+  void theOldUpsertActionAndTemplateFieldsAreRefused() {
+    MvcTestResult upsert =
+        ask(MAKER, "robi",
+            "{\"action\":\"UPSERT\",\"reason\":\"x\",\"family\":\"telco\",\"config\":{\"timeoutMs\":1000}}");
+    assertThat(upsert).hasStatus(400);
+    assertThat(body(upsert).path("code").asString()).isEqualTo("MW-VAL-001");
+
+    MvcTestResult template =
+        ask(MAKER, "robi",
+            "{\"action\":\"UPSERT_ROUTE\",\"reason\":\"x\",\"family\":\"telco\",\"config\":{"
+                + "\"template\":\"rest-json-request-reply\",\"baseUrl\":\"https://robi.example.test\","
+                + "\"operations\":{\"PAY\":{\"method\":\"POST\",\"path\":\"/t\",\"response\":\"x\"}}}}");
+    assertThat(template).hasStatus(400);
+    assertThat(body(template).path("code").asString()).isEqualTo("MW-VAL-001");
     assertThat(jdbc.queryForObject("select count(*) from change_request", Integer.class)).isZero();
   }
 

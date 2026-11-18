@@ -89,10 +89,12 @@ public sealed interface PartnerResponse {
     CONNECT_FAILED,
     CIRCUIT_OPEN,
     BULKHEAD_FULL,
-    /** Partner disabled, or no partner config and no default (nothing to send to). */
+    /** Partner disabled (nothing to send to). */
     DISABLED,
     /** The config cannot serve this call: operation not configured, mapping or credentials failed. */
-    MISCONFIGURED
+    MISCONFIGURED,
+    /** The partnerId is neither a configured partner nor a {@code partner-aliases} entry (D26). */
+    UNKNOWN_PARTNER
   }
 
   enum UnknownReason {

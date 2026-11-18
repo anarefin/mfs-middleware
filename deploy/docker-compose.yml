@@ -91,7 +91,7 @@
 #   fixed (outside the guard): one-shots exit before their service starts: provision 128,
 #   kafka-init 512 (3 parallel CLI JVMs; 8 were OOM-killed at 384), apisix-init 256 (apisix-init-tester
 #   the same), etcd-init 64,
-#   mw-seeder 256; mw-test-console 192 (profile tester)
+#   mw-seeder 256; mw-test-console 192 and partner-sftp 64 (profile tester)
 #
 # Recalibrate by sampling `docker stats` through one stack start + API suite run: limit about
 # peak x 1.3 (JVMs less: their RSS is bounded by the flags), rounded to 32 MiB.
@@ -1113,6 +1113,8 @@ services:
       # config has none) and plain http for the simulator (the packaged default allows none).
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
+      # mw-recon: data lines per reconciliation file (a longer file moves to .error).
+      MW_PARTNER_RECON_MAX_LINES: ${MW_PARTNER_RECON_MAX_LINES:-1000000}
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
@@ -1141,6 +1143,8 @@ services:
       MW_PARTNERS_INSTANCES_BILLAGG_READTIMEOUTMS: ${MW_BILLAGG_READ_TIMEOUT_MS:-27000}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
+      # mw-recon: data lines per reconciliation file (a longer file moves to .error).
+      MW_PARTNER_RECON_MAX_LINES: ${MW_PARTNER_RECON_MAX_LINES:-1000000}
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
@@ -1168,6 +1172,8 @@ services:
       MW_PARTNERS_INSTANCES_C2WBANK_READTIMEOUTMS: ${MW_C2WBANK_READ_TIMEOUT_MS:-27000}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
+      # mw-recon: data lines per reconciliation file (a longer file moves to .error).
+      MW_PARTNER_RECON_MAX_LINES: ${MW_PARTNER_RECON_MAX_LINES:-1000000}
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
@@ -1342,6 +1348,31 @@ services:
     deploy:
       resources:
         limits: { cpus: "0.5", memory: 192M }
+
+  # partner-sftp: a partner SFTP host for the batch partner routes (ticket 86; Kamelets mw-sftp-source /
+  # mw-sftp-sink). Dev/test only (profile tester, outside the core budget, no host port): login
+  # bits / SFTP_DEV_PASSWORD (deploy/.env), directories recon and out under /home/bits. Drop a file
+  # with `docker compose cp recon.csv partner-sftp:/home/bits/recon/`; the host keys are generated at the
+  # start of a new container, so a recreated one needs its known hosts again (docs/runbook.md,
+  # "Batch partner over SFTP"). A stand-in for the partner's host, not one of ours: sshd needs root
+  # for its chroot, so it is not hardened like the mw-* containers.
+  partner-sftp:
+    profiles: [tester]
+    image: atmoz/sftp:alpine@sha256:c5fb9e4beb8b7054a4c0b65c5e11df47cc20da95ad6002e88aecff62bab06372
+    restart: unless-stopped
+    networks: [app]
+    command: ["bits:${SFTP_DEV_PASSWORD:?cp dev.env.defaults .env}:1001::recon,out"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep sshd >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      start_interval: 1s
+      retries: 3
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 64M }
+    logging: *logging
 
   # ------------------------------------------------------------ seed (ticket 57)
   # mw-seeder: one-shot API seeder (profile seed: `--profile core --profile seed up` runs it; it must

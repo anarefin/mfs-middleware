@@ -42,8 +42,8 @@ this file says what is specific to this module.
      wallet core-mock seeds itself; (b) the biller catalogue (DESCO, DPDC, WASA, TITAS -> `billagg`) is
      static mw-adapter-billpay config (`mw.billers`, served read-only by `GET /billpay/v1/billers`; no
      write API, and mw-admin-api has no biller catalogue yet, spec 11.2); (c) the `billagg` partner is the
-     adapter's own dev seed, not an mw-admin-api-managed partner (its seeds are `ocs` only), so the
-     admin refuses a change request for it; (d) the simulated aggregator derives every bill from its
+     adapter's own dev seed, mirrored as a version-0 seed in mw-admin-api since ticket 84 (with `ocs`
+     and `c2wbank`), so nothing needs seeding for it; (d) the simulated aggregator derives every bill from its
      number (due = 100 taka + the last three digits), so there are no bills to create. A bill-pay test
      needs only a seeded customer wallet.
   4. `seed-app-pins` (ticket 69): the app wallets log in at mw-auth with MSISDN + PIN, so every seeded

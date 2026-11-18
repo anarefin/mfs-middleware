@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Container log scan (spec 18.3, 21.1, WP29, tickets 46, 72): no PIN (plain or ciphertext), no assertion, no
-# unmasked MSISDN and no unmasked NID in any log line.
+# Container log scan (spec 18.3, 21.1, WP29, tickets 46, 72, 87): no PIN (plain or ciphertext), no
+# assertion, no unmasked MSISDN, no unmasked NID and no partner credential in any log line.
 # Usage: scripts/log-scan.sh            every container log of the MVP project (run after scripts/api-test.sh)
 #        scripts/log-scan.sh FILE...    the given files ('-' = stdin), e.g. saved logs
 # Exit 1 on a finding. A finding is printed with its source and line number and the matched
@@ -19,6 +19,9 @@
 #   assertion  mw-auth's transaction assertion (ticket 72): any compact JWS eyJ...eyJ...sig (an
 #              access token too), or a field named assertion with a value; only its jti (a UUID)
 #              may be logged
+#   credential (ticket 87) "Bearer" / "Basic" followed by 8+ token characters, or a field named
+#              access_token / refresh_token / id_token / client_secret with any value but stars;
+#              reported as the rule only, never any part of the value
 # False positives that are justified go into scripts/log-scan.allow (one extended regex per
 # line, matched against the whole line; '#' comments), each with its reason.
 set -uo pipefail
@@ -35,6 +38,7 @@ scan() { # scan SOURCE-LABEL < lines
     }
     function mask(s) { gsub(/[0-9]/, "#", s); if (length(s) > 24) s = substr(s, 1, 12) "..." substr(s, length(s) - 7); return s }
     function report(rule, m) { printf "FINDING %s %s:%d %s\n", rule, src, NR, mask(m); found++ }
+    function reportsecret(rule) { printf "FINDING %s %s:%d [value withheld]\n", rule, src, NR; found++ }
     # ids(s, re): s with every match of re that has no letter or digit on either side replaced by
     # "ID" (a whole token); a match glued to more letters/digits is kept as it is
     function ids(s, re,   out, prev, nxt) {
@@ -79,6 +83,8 @@ scan() { # scan SOURCE-LABEL < lines
       # payload, both JSON objects, so they start eyJ) or a field named assertion with a value
       if (match(line, /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/)) report("assertion", substr(line, RSTART, RLENGTH))
       else if (match(lower, /(^|[^a-z])"?assertion"?[ ]*[:=][ ]*"[^"*\[]/)) report("assertion", substr(line, RSTART, RLENGTH))
+      if (match(lower, /(^|[^a-z])(bearer|basic)[ \t]+[a-z0-9._~+\/=-][a-z0-9._~+\/=-][a-z0-9._~+\/=-][a-z0-9._~+\/=-][a-z0-9._~+\/=-][a-z0-9._~+\/=-][a-z0-9._~+\/=-][a-z0-9._~+\/=-]/)) reportsecret("credential")
+      else if (match(lower, /(^|[^a-z_])"?(access_token|refresh_token|id_token|client_secret)"?[ ]*[:=][ ]*"?[^"*&, }]/)) reportsecret("credential")
       t = line
       gsub(/[^A-Za-z0-9+\/]/, " ", t)
       k = split(t, parts, " ")
@@ -104,8 +110,8 @@ else
   done
 fi
 if [ "$rc" -ne 0 ]; then
-  printf 'log-scan FAILED: PIN, ciphertext, assertion or unmasked MSISDN/NID in the logs above\n' >&2
+  printf 'log-scan FAILED: PIN, ciphertext, assertion, unmasked MSISDN/NID or a credential in the logs above\n' >&2
 else
-  info "log-scan: no PIN, PIN ciphertext, unmasked MSISDN or NID found"
+  info "log-scan: no PIN, PIN ciphertext, unmasked MSISDN, NID or credential found"
 fi
 exit "$rc"

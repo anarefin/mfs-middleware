@@ -1,0 +1,186 @@
+# mw-http-call (ADR D26, ticket 82): one REST/JSON call to the partner, inside a resilience4j
+# breaker with the record's time limit and bulkhead. Never retries a PAY; an INQUIRY or STATUS_QUERY
+# goes again at most the record's inquiryRetries. A breaking change ships as mw-http-call-v2.
+apiVersion: camel.apache.org/v1
+kind: Kamelet
+metadata:
+  name: mw-http-call
+  labels:
+    camel.apache.org/kamelet.type: action
+  annotations:
+    camel.apache.org/kamelet.support.level: Stable
+    camel.apache.org/provider: Bits MFS middleware
+spec:
+  definition:
+    title: MW HTTP call
+    description: >-
+      Sends the request mw-map produced (no body when there is none) to url + path with the given
+      method, signed by the mw-auth-<auth> Kamelet, inside the partner's circuit breaker with its time
+      limit and bulkhead. The endpoint URI is static per partner: our reference goes into {reference}
+      of the path through the CamelHttpPath header, so no bill number, account or amount ever appears
+      in an endpoint URI. A 5xx, the time limit, a reset or an open breaker ends in the fallback
+      (UNKNOWN, or NOT_SENT when nothing left). Input: the partner call; output: the partner's raw
+      answer for mw-classify, or the decided outcome. partnerId, timeoutMs, connectTimeoutMs,
+      readTimeoutMs and bulkhead are set by the route loader from the record, never by the route.
+    type: object
+    required: [url, method, path, partnerId, timeoutMs, connectTimeoutMs, readTimeoutMs, bulkhead]
+    properties:
+      url:
+        title: Base URL
+        description: Static http(s) base URL of the partner (scheme, host, port, optional base path); its host must be in the record's allowedHosts.
+        type: string
+      method:
+        title: HTTP method
+        description: GET, POST, PUT, PATCH or DELETE.
+        type: string
+        enum: [GET, POST, PUT, PATCH, DELETE]
+      path:
+        title: Path
+        description: Absolute path appended to the base URL; {reference} becomes our stable reference, URL-encoded.
+        type: string
+      auth:
+        title: Auth scheme
+        description: >-
+          The mw-auth-<auth> Kamelet that signs the request (none, apikey, hmac-sha256, basic, oauth2-cc,
+          jws), again before each attempt. With oauth2-cc a partner 401 drops the token and the request
+          is sent once more with a fresh one (a 401 is a refusal, nothing was applied).
+        type: string
+        default: none
+      secretField:
+        title: Secret field
+        description: Field of this partner's own OpenBao secret (secret/<service>/<partnerId>) the auth scheme uses; a reference, never the value.
+        type: string
+        format: password
+        default: ""
+        x-descriptors:
+          - urn:camel:group:credentials
+          - urn:alm:descriptor:com.tectonic.ui:password
+      authHeader:
+        title: Auth header
+        description: Header of the api key (apikey; default X-Api-Key) or of the detached JWS (jws; default X-JWS-Signature).
+        type: string
+        default: ""
+      keyId:
+        title: Key id
+        description: Key id sent as X-Key-Id (hmac-sha256) or as the JWS kid (jws); none by default.
+        type: string
+        default: ""
+      userField:
+        title: User secret field
+        description: Field of this partner's own OpenBao secret holding the user name (basic); a reference, never the value.
+        type: string
+        format: password
+        default: ""
+        x-descriptors:
+          - urn:camel:group:credentials
+          - urn:alm:descriptor:com.tectonic.ui:password
+      tokenUrl:
+        title: Token URL
+        description: OAuth2 token endpoint (oauth2-cc); static http(s), its host must be in the record's allowedHosts.
+        type: string
+        default: ""
+      clientId:
+        title: Client id
+        description: OAuth2 client id (oauth2-cc); the client secret is secretField.
+        type: string
+        default: ""
+      scope:
+        title: Scope
+        description: OAuth2 scopes requested, space-separated (oauth2-cc; none by default).
+        type: string
+        default: ""
+      audience:
+        title: Audience
+        description: OAuth2 audience parameter (oauth2-cc; none by default).
+        type: string
+        default: ""
+      alg:
+        title: JWS algorithm
+        description: RS256 or ES256 (jws); the PKCS#8 PEM key is secretField.
+        type: string
+        default: ""
+      sslContextRef:
+        title: TLS client context
+        description: >-
+          Name of a client keystore (mTLS) registered at startup from OpenBao for this partner
+          (mw.partners.tls.contexts.<name>, bean mwTls-<name>); https only. The route only names it,
+          never supplies key material. Empty = no client certificate.
+        type: string
+        default: ""
+      partnerId:
+        title: Partner id
+        description: Set by the route loader.
+        type: string
+      timeoutMs:
+        title: Time limit
+        description: Set by the route loader from the record's timeoutMs; past it the outcome is UNKNOWN.
+        type: integer
+      connectTimeoutMs:
+        title: Connect timeout
+        description: Set by the route loader from the record's connectTimeoutMs.
+        type: integer
+      readTimeoutMs:
+        title: Read timeout
+        description: Set by the route loader from the record's readTimeoutMs.
+        type: integer
+      bulkhead:
+        title: Bulkhead
+        description: Set by the route loader; concurrent calls allowed to this partner.
+        type: integer
+  template:
+    from:
+      uri: "kamelet:source"
+      steps:
+        - setProperty:
+            name: mwHttpMethod
+            constant: "{{method}}"
+        - setProperty:
+            name: mwHttpBase
+            constant: "{{url}}"
+        - setProperty:
+            name: mwHttpPath
+            constant: "{{path}}"
+        - setProperty:
+            name: mwHttpTlsRef
+            constant: "{{sslContextRef}}"
+        - bean:
+            ref: mwHttp
+            method: prepare
+        - loop:
+            doWhile: true
+            simple: "${exchangeProperty.mwAttemptAgain} == true"
+            steps:
+              - to: "kamelet:mw-auth-{{auth}}?secretField={{secretField}}&header={{authHeader}}&keyId={{keyId}}&userField={{userField}}&tokenUrl={{tokenUrl}}&clientId={{clientId}}&scope={{scope}}&audience={{audience}}&alg={{alg}}"
+              - bean:
+                  ref: mwHttp
+                  method: beforeAttempt
+              - circuitBreaker:
+                  resilience4jConfiguration:
+                    circuitBreaker: "mw-cb-{{partnerId}}"
+                    timeoutEnabled: true
+                    timeoutDuration: "{{timeoutMs}}"
+                    bulkheadEnabled: true
+                    bulkheadMaxConcurrentCalls: "{{bulkhead}}"
+                  steps:
+                    # mTLS: the endpoint with the named client context is resolved only when used (toD), so
+                    # a partner without one never needs a bean mwTls-. Not optimised: Camel's http toD optimisation
+                    # would send the endpoint options as query parameters.
+                    - choice:
+                        when:
+                          - simple: "${exchangeProperty.mwHttpTls} == true"
+                            steps:
+                              - toD:
+                                  uri: "{{url}}?throwExceptionOnFailure=false&followRedirects=false&headerFilterStrategy=#mwPartnerHeaderFilter&connectTimeout={{connectTimeoutMs}}&responseTimeout={{readTimeoutMs}}&soTimeout={{readTimeoutMs}}&sslContextParameters=#mwTls-{{sslContextRef}}"
+                                  cacheSize: 1
+                                  allowOptimisedComponents: false
+                        otherwise:
+                          steps:
+                            - to: "{{url}}?throwExceptionOnFailure=false&followRedirects=false&headerFilterStrategy=#mwPartnerHeaderFilter&connectTimeout={{connectTimeoutMs}}&responseTimeout={{readTimeoutMs}}&soTimeout={{readTimeoutMs}}"
+                    - bean:
+                        ref: mwHttp
+                        method: response
+                  onFallback:
+                    steps:
+                      - bean:
+                          ref: mwHttp
+                          method: fallback

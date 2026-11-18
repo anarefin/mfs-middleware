@@ -3,7 +3,6 @@ package mfs.mw.adapter.billpay.contracts;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
-import com.networknt.schema.Schema;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,7 +15,7 @@ import mfs.mw.adapter.billpay.exception.MwException;
 import mfs.mw.adapter.billpay.mapper.PartnerCallMapper;
 import mfs.mw.adapter.billpay.partner.PartnerCall;
 import mfs.mw.adapter.billpay.partner.PartnerResponse;
-import mfs.mw.adapter.billpay.partner.template.PartnerGateway;
+import mfs.mw.adapter.billpay.partner.route.PartnerGateway;
 import mfs.mw.adapter.billpay.service.BillFetchService;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -40,7 +39,7 @@ class ApiContractsTest {
 
   static BillFetchService service(PartnerResponse answer) {
     PartnerGateway gateway =
-        new PartnerGateway(null, null) {
+        new PartnerGateway(null, null, null, null, null, null, null) {
           @Override
           public PartnerResponse call(PartnerCall call) {
             return answer;
@@ -64,7 +63,7 @@ class ApiContractsTest {
     List<BillerView> billers = service(null).billers();
     assertThat(billers).hasSize(2);
 
-    Schema biller = OpenApiSchemas.component(API, "Biller");
+    JsonSchema biller = OpenApiSchemas.component(API, "Biller");
     for (JsonNode b : json(billers)) {
       assertThat(biller.validate(b)).as("%s", b).isEmpty();
     }
@@ -80,7 +79,7 @@ class ApiContractsTest {
             .fetch("DESCO", "1234567");
     BillView bare = service(new PartnerResponse.Success("AGG-1", "000", Map.of("amount", "0"))).fetch("DESCO", "1234567");
 
-    Schema bill = OpenApiSchemas.component(API, "Bill");
+    JsonSchema bill = OpenApiSchemas.component(API, "Bill");
     assertThat(bill.validate(json(full))).as("%s", json(full)).isEmpty();
     assertThat(bill.validate(json(bare))).as("%s", json(bare)).isEmpty();
   }
@@ -100,11 +99,43 @@ class ApiContractsTest {
             catchThrowableOfType(MwException.class, () -> service(new PartnerResponse.Success("AGG-1", "000", Map.of("amount", "x"))).fetch("DESCO", "1")),
             new MwException("MW-VAL-001", "Request validation failed").withDetails(List.of(new ErrorDetail("billNumber", "must match"))));
 
-    Schema envelope = OpenApiSchemas.component(API, "ErrorEnvelope");
+    JsonSchema envelope = OpenApiSchemas.component(API, "ErrorEnvelope");
     for (MwException e : errors) {
       ErrorEnvelope body =
           new ErrorEnvelope(e.code(), e.getMessage(), e.messageBn(), e.txnId(), "corr-0002", e.retryable(), e.details());
       assertThat(envelope.validate(json(body))).as("%s", json(body)).isEmpty();
     }
+  }
+
+  @Test
+  void theKameletUsageMatchesTheContractAndListsTheLiveVersions() {
+    var routes = org.mockito.Mockito.mock(mfs.mw.adapter.billpay.partner.route.PartnerRoutes.class);
+    var config = new mfs.mw.adapter.billpay.partner.config.PartnerConfig(
+        true, "- route: {}", null, List.of("localhost"), "billpay", null, null, null, null, null, null, null, null, null, null, null);
+    org.mockito.Mockito.when(routes.load(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyLong(),
+            org.mockito.ArgumentMatchers.any()))
+        .thenReturn(new mfs.mw.adapter.billpay.partner.route.PartnerRuntime("newco", 4, config, "partner-newco-v4",
+            "direct:partner-newco-v4", Map.of(), Map.of(), List.of("localhost"), java.util.Set.of("mw-http-call", "mw-audit")));
+    var store = new mfs.mw.adapter.billpay.partner.config.PartnerConfigStore(
+        new mfs.mw.adapter.billpay.partner.config.PartnerProperties(null, Map.of(), null, "billpay", null), routes,
+        ServiceJson.MAPPER, org.mockito.Mockito.mock(mfs.mw.adapter.billpay.partner.route.PartnerDryRun.class), s -> {});
+    store.start();
+    store.apply(new mfs.mw.adapter.billpay.dto.ConfigChangedEvent(
+        1, "partner/newco", mfs.mw.adapter.billpay.dto.ConfigChangedEvent.ConfigType.PARTNER,
+        mfs.mw.adapter.billpay.dto.ConfigChangedEvent.Change.UPSERT, 4, Map.of("route", "- route: {}"),
+        java.time.Instant.now(), "m", "c", "corr"));
+
+    var usage = new mfs.mw.adapter.billpay.service.KameletUsageService(
+        new mfs.mw.adapter.billpay.partner.route.KameletCatalogue(), store).usage();
+
+    assertThat(OpenApiSchemas.component(API, "KameletUsage").validate(json(usage))).isEmpty();
+    assertThat(usage.kamelets()).anySatisfy(k -> {
+      assertThat(k.name()).isEqualTo("mw-http-call");
+      assertThat(k.routes()).containsExactly(new mfs.mw.adapter.billpay.dto.KameletUsageView.Route("newco", 4));
+    });
+    assertThat(usage.kamelets()).anySatisfy(k -> {
+      assertThat(k.name()).isEqualTo("mw-map");
+      assertThat(k.routes()).isEmpty();
+    });
   }
 }

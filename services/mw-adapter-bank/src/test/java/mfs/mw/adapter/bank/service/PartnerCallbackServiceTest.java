@@ -19,11 +19,11 @@ import mfs.mw.adapter.bank.messaging.EventPublisher;
 import mfs.mw.adapter.bank.messaging.Inbox;
 import mfs.mw.adapter.bank.partner.InboundCall;
 import mfs.mw.adapter.bank.partner.InboundResult;
-import mfs.mw.adapter.bank.partner.PartnerUnsupportedException;
+import mfs.mw.adapter.bank.partner.PartnerInstanceNotFoundException;
 import mfs.mw.adapter.bank.partner.config.PartnerConfigStore;
-import mfs.mw.adapter.bank.partner.template.PartnerFrameworkSeeds;
-import mfs.mw.adapter.bank.partner.template.PartnerGateway;
-import mfs.mw.adapter.bank.partner.template.PartnerInstance;
+import mfs.mw.adapter.bank.partner.PartnerTestSeeds;
+import mfs.mw.adapter.bank.partner.route.PartnerGateway;
+import mfs.mw.adapter.bank.partner.route.PartnerRuntime;
 import mfs.mw.adapter.bank.repository.PartnerReferenceRepository;
 import org.junit.jupiter.api.Test;
 
@@ -44,8 +44,8 @@ class PartnerCallbackServiceTest {
   final InboundCall call = new InboundCall("c2wbank", "POST", "/partner/c2wbank/callback/debits", Map.of(), new byte[0]);
 
   void knownPartnerAndReference() {
-    PartnerInstance instance = mock(PartnerInstance.class);
-    when(instance.config()).thenReturn(PartnerFrameworkSeeds.c2wbank());
+    PartnerRuntime instance = mock(PartnerRuntime.class);
+    when(instance.config()).thenReturn(PartnerTestSeeds.seed("c2wbank"));
     when(store.instance("c2wbank")).thenReturn(Optional.of(instance));
     when(references.findByReference(REF))
         .thenReturn(Optional.of(new PartnerReferenceRepository.Issued("01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c", "c2wbank")));
@@ -90,7 +90,7 @@ class PartnerCallbackServiceTest {
   @Test
   void aPartnerWithoutCallbacksIsNotFound() {
     knownPartnerAndReference();
-    when(gateway.inbound(call)).thenThrow(new PartnerUnsupportedException("rest-json-request-reply takes no callbacks"));
+    when(gateway.inbound(call)).thenThrow(new PartnerInstanceNotFoundException("c2wbank"));
 
     assertThatThrownBy(() -> service.receive(call))
         .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-VAL-003"));

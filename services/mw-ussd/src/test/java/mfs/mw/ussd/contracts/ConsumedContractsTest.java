@@ -9,15 +9,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import mfs.mw.ussd.dto.ConfigChangedEvent;
 import mfs.mw.ussd.dto.StatusMessage;
 import mfs.mw.ussd.messaging.ConfigChangedListener;
 import mfs.mw.ussd.service.MenuPublisher;
-import org.apache.camel.Exchange;
-import org.apache.camel.impl.DefaultCamelContext;
-import org.apache.camel.support.DefaultExchange;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
@@ -46,9 +45,10 @@ class ConsumedContractsTest {
   /** Through the real listener ({@code ConfigChangedListener}); a USSD_MENU upsert carries a menu tree. */
   static void readConfigChange(String json) {
     MenuPublisher publisher = mock(MenuPublisher.class);
-    Exchange exchange = new DefaultExchange(new DefaultCamelContext());
-    exchange.getMessage().setBody(json);
-    new ConfigChangedListener(publisher, JSON).handle(exchange);
+    AtomicBoolean acked = new AtomicBoolean();
+    new ConfigChangedListener(publisher, JSON)
+        .onConfigChanged(new ConsumerRecord<>(ConfigChangedListener.TOPIC, 0, 0L, "key", json), () -> acked.set(true));
+    assertThat(acked).isTrue();
     ArgumentCaptor<ConfigChangedEvent> captor = ArgumentCaptor.forClass(ConfigChangedEvent.class);
     verify(publisher).onConfigChanged(captor.capture());
     ConfigChangedEvent e = captor.getValue();

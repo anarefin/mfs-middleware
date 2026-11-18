@@ -33,12 +33,19 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Partner config (ticket 38, spec 15.2 Partners, 20.4): reads, and the maker side of a partner
  * change request. A maker ({@link AdminRole#PARTNER_MAKER}) asks to ENABLE, DISABLE, SET_TIMEOUTS
- * or UPSERT (full config); the request stores the full config the approval will publish ({@code
- * payload.config}), the version the maker saw ({@code payload.baseVersion}, null for a new
- * partner) and the changed fields ({@code diff}). Nothing changes until a checker approves ({@link
- * PartnerChangeHandler}). The config is checked here with the adapters' structural and security
- * rules that need no adapter config (ids, paths, secret names, suffixes, URL shape); the adapters
- * check it again (host allowlist, https, JSONata) and keep the old config when they refuse it.
+ * or UPSERT_ROUTE (full config, a partner route of ADR D26); the request stores the full config the
+ * approval will publish ({@code payload.config}), the version the maker saw ({@code
+ * payload.baseVersion}, null for a new partner) and the changed fields ({@code diff}). Nothing
+ * changes until a checker approves ({@link PartnerChangeHandler}). The config is checked here with
+ * the adapters' structural and security rules that need no adapter config (ids, the route rules,
+ * secret names, suffixes, URL shape); the adapters check it again (host allowlist, https, JSONata,
+ * dry-run) and keep the old version when they refuse it.
+ *
+ * <p>Only UPSERT_ROUTE adds a dry-run (a new route must prove itself first, ticket 83). ENABLE,
+ * DISABLE and SET_TIMEOUTS on a proven route (a seed, or a version reported LIVE) publish it without
+ * one (ticket 84): the route already runs, so the adapter swaps the new version in at once. On a
+ * route that has not passed its dry-run yet (PENDING_DRY_RUN or REJECTED) they keep its dry-run, so
+ * the gate still applies to it (review of ticket 84).
  */
 @Service
 public class PartnerConfigService {
@@ -53,18 +60,23 @@ public class PartnerConfigService {
   static final Pattern SUFFIX = Pattern.compile("^[A-Z0-9_]+$");
   static final Set<String> FAMILIES = Set.of("telco", "billpay", "bank");
   static final Set<String> AUTH_SCHEMES = Set.of("none", "api-key", "hmac-sha256");
+  static final Set<String> DRY_RUN_OPERATIONS = Set.of("PAY", "INQUIRY", "STATUS_QUERY");
+  static final Pattern MAPPING_NAME = Pattern.compile("^[A-Za-z0-9_.-]{1,64}$");
 
   private final PartnerRepository partners;
   private final ChangeRequestService changeRequests;
   private final JsonMapper json;
   private final Clock clock;
+  private final PartnerRouteValidator routes;
 
   public PartnerConfigService(
-      PartnerRepository partners, ChangeRequestService changeRequests, JsonMapper json, Clock clock) {
+      PartnerRepository partners, ChangeRequestService changeRequests, JsonMapper json, Clock clock,
+      PartnerRouteValidator routes) {
     this.partners = partners;
     this.changeRequests = changeRequests;
     this.json = json;
     this.clock = clock;
+    this.routes = routes;
   }
 
   // --- reads ----------------------------------------------------------------------------------
@@ -77,6 +89,23 @@ public class PartnerConfigService {
   public PartnerView get(Operator operator, String partnerId) {
     requireReader(operator);
     return partners.find(checkedId(partnerId)).map(PartnerMapper::view).orElseThrow(PartnerConfigService::notFound);
+  }
+
+  /**
+   * Kamelet usage (ticket 83): for each Kamelet of the library, the partners whose newest LIVE
+   * route version uses it, from the adapters' status reports.
+   */
+  public PartnerView.KameletUsage kameletUsage(Operator operator) {
+    requireReader(operator);
+    List<PartnerRepository.LiveRoute> live = partners.liveRoutes();
+    java.util.Set<String> names = new java.util.TreeSet<>(routes.kamelets());
+    live.forEach(r -> names.addAll(r.kamelets()));
+    return new PartnerView.KameletUsage(names.stream()
+        .map(name -> new PartnerView.KameletUsage.Kamelet(name, live.stream()
+            .filter(r -> r.kamelets().contains(name))
+            .map(r -> new PartnerView.KameletUsage.RouteRef(r.partnerId(), r.version()))
+            .toList()))
+        .toList());
   }
 
   // --- maker ----------------------------------------------------------------------------------
@@ -92,9 +121,10 @@ public class PartnerConfigService {
     unexpected(body, action, problems);
     String family;
     PartnerConfigValue next;
-    if (action == PartnerAction.UPSERT) {
+    PartnerConfigValue base;
+    if (action == PartnerAction.UPSERT_ROUTE) {
       if (body.config() == null) {
-        problems.add(new ErrorDetail("config", "UPSERT needs the full config"));
+        problems.add(new ErrorDetail("config", action + " needs the full config"));
       }
       if (held.isEmpty() && body.family() == null) {
         problems.add(new ErrorDetail("family", "a new partner needs its family"));
@@ -105,25 +135,32 @@ public class PartnerConfigService {
       refuseIfAny(problems);
       family = held.map(Partner::family).orElse(body.family());
       PartnerConfigValue c = body.config();
-      // an UPSERT that leaves enabled out keeps the partner's state (a new one starts enabled)
+      // a config that leaves enabled out keeps the partner's state (a new one starts enabled)
       next = c.enabled() != null ? c : c.withEnabled(held.map(p -> p.config().isEnabled()).orElse(true));
+      base = held.map(Partner::config).orElse(null);
     } else {
       refuseIfAny(problems);
       Partner p = held.orElseThrow(PartnerConfigService::notFound);
       family = p.family();
+      base = proven(p) ? p.config().withoutDryRun() : p.config();
       next =
           switch (action) {
-            case ENABLE -> p.config().withEnabled(true);
-            case DISABLE -> p.config().withEnabled(false);
+            case ENABLE -> base.withEnabled(true);
+            case DISABLE -> base.withEnabled(false);
             case SET_TIMEOUTS ->
-                p.config()
-                    .withTimeouts(body.timeouts().connectTimeoutMs(), body.timeouts().timeoutMs(), body.timeouts().readTimeoutMs());
-            case UPSERT -> throw new IllegalStateException("handled above");
+                base.withTimeouts(body.timeouts().connectTimeoutMs(), body.timeouts().timeoutMs(), body.timeouts().readTimeoutMs());
+            case UPSERT_ROUTE -> throw new IllegalStateException("handled above");
           };
     }
-    validate(next, problems);
+    List<ErrorDetail> route = new ArrayList<>();
+    validateRoute(id, next, action == PartnerAction.UPSERT_ROUTE, problems, route);
     refuseIfAny(problems);
-    Map<String, Object> before = held.map(p -> asMap(p.config())).orElse(Map.of());
+    if (!route.isEmpty()) {
+      throw new MwException(ErrorCodes.VAL_ROUTE_INVALID, "The partner route breaks the route rules")
+          .withDetails(List.copyOf(route));
+    }
+    refuseIfAny(problems);
+    Map<String, Object> before = base == null ? Map.of() : asMap(base);
     Map<String, Object> after = asMap(next);
     Map<String, Object> diff = PartnerMapper.diff(before, after);
     if (diff.get("after") instanceof Map<?, ?> a && a.isEmpty() && held.isPresent()) {
@@ -137,6 +174,17 @@ public class PartnerConfigService {
     }
     payload.put("config", after);
     return changeRequests.open(maker, Partner.RESOURCE_TYPE, id, action.name(), payload, diff, body.reason());
+  }
+
+  /**
+   * True when the partner's current route already runs: a seed (the adapters' own) or a version its
+   * adapter reported LIVE. A version still PENDING_DRY_RUN or REJECTED is not proven, so an ENABLE,
+   * DISABLE or SET_TIMEOUTS on it keeps its dry-run (review of ticket 84: dropping it would skip the
+   * dry-run gate). A pending version without a dry-run (one of these actions on a proven route, or a
+   * rollback) has none to keep.
+   */
+  private static boolean proven(Partner p) {
+    return p.route() == null || "LIVE".equals(p.route().status());
   }
 
   // --- seeds ----------------------------------------------------------------------------------
@@ -153,7 +201,9 @@ public class PartnerConfigService {
     if (!FAMILIES.contains(family)) {
       problems.add(new ErrorDetail("family", "unknown family"));
     }
-    validate(config, problems);
+    List<ErrorDetail> route = new ArrayList<>();
+    validateRoute(id, config, false, problems, route);
+    problems.addAll(route);
     if (!problems.isEmpty()) {
       throw new IllegalStateException("partner seed " + id + " is invalid: " + problems);
     }
@@ -161,7 +211,9 @@ public class PartnerConfigService {
       return false;
     }
     try {
-      partners.insert(new Partner(id, family, 0, config, clock.instant(), "seed", null));
+      Partner seed = new Partner(id, family, 0, config, clock.instant(), "seed", null);
+      partners.insert(seed);
+      partners.insertSeedRoute(seed, clock.instant());
     } catch (DuplicateKeyException e) {
       return false;
     }
@@ -177,11 +229,12 @@ public class PartnerConfigService {
 
   /** Fields that do not belong to the action are refused rather than ignored. */
   private static void unexpected(PartnerChangeRequestBody body, PartnerAction action, List<ErrorDetail> problems) {
-    if (action != PartnerAction.UPSERT && body.config() != null) {
-      problems.add(new ErrorDetail("config", "only UPSERT takes a config"));
+    boolean upsert = action == PartnerAction.UPSERT_ROUTE;
+    if (!upsert && body.config() != null) {
+      problems.add(new ErrorDetail("config", "only UPSERT_ROUTE takes a config"));
     }
-    if (action != PartnerAction.UPSERT && body.family() != null) {
-      problems.add(new ErrorDetail("family", "only UPSERT takes a family"));
+    if (!upsert && body.family() != null) {
+      problems.add(new ErrorDetail("family", "only UPSERT_ROUTE takes a family"));
     }
     if (action == PartnerAction.SET_TIMEOUTS && body.timeouts() == null) {
       problems.add(new ErrorDetail("timeouts", "SET_TIMEOUTS needs timeouts"));
@@ -191,33 +244,8 @@ public class PartnerConfigService {
     }
   }
 
-  /**
-   * The adapters' rules that need no adapter config. Messages never repeat a value (a refused
-   * path or secret name may be an attempt to reach something else).
-   */
-  static void validate(PartnerConfigValue c, List<ErrorDetail> problems) {
-    if (c.baseUrl() == null || !absoluteHttpUrl(c.baseUrl())) {
-      problems.add(new ErrorDetail("config.baseUrl", "must be an absolute http(s) URL without user info, query or fragment"));
-    }
-    if (c.operations() == null || c.operations().isEmpty()) {
-      problems.add(new ErrorDetail("config.operations", "at least one operation is required"));
-    } else {
-      c.operations().forEach(
-          (name, op) -> {
-            String at = "config.operations." + name;
-            if (op == null || op.method() == null || op.method().isBlank()) {
-              problems.add(new ErrorDetail(at + ".method", "is required"));
-            }
-            if (op == null || !safePath(op.path())) {
-              problems.add(
-                  new ErrorDetail(at + ".path", "must be an absolute path of letters, digits, . _ ~ - / and {reference}"
-                      + ", without .. segments or //"));
-            }
-            if (op == null || op.response() == null || op.response().isBlank()) {
-              problems.add(new ErrorDetail(at + ".response", "mapping is required"));
-            }
-          });
-    }
+  /** The record rules besides the route: error map, auth, timeouts. */
+  static void common(PartnerConfigValue c, List<ErrorDetail> problems) {
     if (c.errorMap() != null) {
       c.errorMap().forEach(
           (code, m) -> {
@@ -248,24 +276,72 @@ public class PartnerConfigService {
     }
   }
 
+  /**
+   * A partner config (ADR D26, ticket 83): field problems go to {@code problems} (400 MW-VAL-001),
+   * the route's own problems, from the copy of the adapters' loader rules ({@link
+   * PartnerRouteValidator}), to {@code route} (400 MW-VAL-041, one per problem with its line).
+   *
+   * @param needsDryRun true for UPSERT_ROUTE (a new route); ENABLE / DISABLE / SET_TIMEOUTS and the
+   *     seeds carry none
+   */
+  void validateRoute(
+      String id, PartnerConfigValue c, boolean needsDryRun, List<ErrorDetail> problems, List<ErrorDetail> route) {
+    if (c.route() == null || c.route().isBlank()) {
+      problems.add(new ErrorDetail("config.route", "a partner needs its route"));
+    }
+    if (c.allowedHosts() == null || c.allowedHosts().isEmpty()) {
+      problems.add(new ErrorDetail("config.allowedHosts", "a route needs the hosts it may call"));
+    }
+    PartnerConfigValue.DryRun dryRun = c.dryRun();
+    // ticket 86: a batch route (from kamelet:mw-sftp-source) takes no calls, so it has no dry-run
+    boolean batch = PartnerRouteValidator.isBatch(c.route());
+    if (batch && dryRun != null) {
+      problems.add(new ErrorDetail("config.dryRun", "a batch route has no dry-run (nothing to send a sample to)"));
+    }
+    if (!batch && (needsDryRun || dryRun != null)
+        && (dryRun == null || dryRun.operation() == null || !DRY_RUN_OPERATIONS.contains(dryRun.operation()))) {
+      problems.add(new ErrorDetail("config.dryRun.operation", "a route needs a dry-run of PAY, INQUIRY or STATUS_QUERY"));
+    }
+    if (dryRun != null && dryRun.baseUrl() != null) {
+      if (!plainBaseUrl(dryRun.baseUrl())) {
+        problems.add(new ErrorDetail("config.dryRun.baseUrl",
+            "must be an absolute http(s) URL without user info, query, fragment, encoding or .. segments"));
+      } else if (c.allowedHosts() == null || c.allowedHosts().stream()
+          .noneMatch(h -> h.equalsIgnoreCase(java.net.URI.create(dryRun.baseUrl()).getHost()))) {
+        problems.add(new ErrorDetail("config.dryRun.baseUrl", "its host must be in allowedHosts"));
+      }
+    }
+    if (c.mappings() != null) {
+      c.mappings().keySet().stream()
+          .filter(name -> !MAPPING_NAME.matcher(name).matches())
+          .findFirst()
+          .ifPresent(name -> problems.add(new ErrorDetail("config.mappings", "mapping names are letters, digits, . _ -")));
+    }
+    common(c, problems);
+    if (c.route() != null && !c.route().isBlank()) {
+      routes.problems(id, c.route(), c.mappings(), c.allowedHosts())
+          .forEach(p -> route.add(new ErrorDetail("config.route", p.toString())));
+    }
+  }
+
+  /** An absolute http(s) URL of scheme, host, port and a safe path only (the adapters' rule). */
+  static boolean plainBaseUrl(String url) {
+    try {
+      java.net.URI u = new java.net.URI(url);
+      String path = u.getRawPath() == null ? "" : u.getRawPath();
+      return u.getScheme() != null && Set.of("http", "https").contains(u.getScheme().toLowerCase(java.util.Locale.ROOT))
+          && u.getHost() != null && u.getRawUserInfo() == null && u.getRawQuery() == null && u.getRawFragment() == null
+          && (path.isEmpty() || (safePath(path) && path.indexOf('{') < 0 && path.indexOf('}') < 0));
+    } catch (java.net.URISyntaxException e) {
+      return false;
+    }
+  }
+
   static boolean safePath(String path) {
     return path != null
         && SAFE_PATH.matcher(path).matches()
         && !path.contains("//")
         && java.util.Arrays.stream(path.split("/")).noneMatch(".."::equals);
-  }
-
-  private static boolean absoluteHttpUrl(String url) {
-    try {
-      java.net.URI u = new java.net.URI(url);
-      return ("https".equals(u.getScheme()) || "http".equals(u.getScheme()))
-          && u.getHost() != null
-          && u.getRawUserInfo() == null
-          && u.getRawQuery() == null
-          && u.getRawFragment() == null;
-    } catch (java.net.URISyntaxException e) {
-      return false;
-    }
   }
 
   private static String checkedId(String partnerId) {

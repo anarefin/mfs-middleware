@@ -1,20 +1,29 @@
-# Dev profile only (SPRING_PROFILES_ACTIVE=dev): set by this module's compose.yml for the dev
-# stack and by the test config. Seed partner instances (version 0) pointing at mw-simulators
-# over plain http; the packaged application.yml has none, so a production start has no
-# partners. Plain http still needs MW_PARTNER_INSECURE_HTTP_HOSTS (compose.yml sets it).
+# Dev profile only (SPRING_PROFILES_ACTIVE=dev): set by deploy/docker-compose.yml for the dev stack
+# and by the test config. The seed partner (version 0) points at mw-simulators over plain http; the
+# packaged application.yml has none, so a production start has no partners. Plain http still needs
+# MW_PARTNER_INSECURE_HTTP_HOSTS (docker-compose.yml sets it).
 mw:
   partners:
+    # Dry-runs of new partner versions go to mw-simulators' programmable stub (ticket 83).
+    dry-run:
+      base-url: ${MW_PARTNER_DRY_RUN_BASE_URL:http://mw-simulators:8080/sim/partners/{partnerId}}
     instances:
-      # OCS REST/JSON (wire format: mw-simulators OCS). The simulator is the default target;
-      # real MNO endpoints come from per-environment overrides or config-changed records.
+      # OCS REST/JSON (wire format: mw-simulators OCS), a partner route as config (ADR D26). The
+      # simulator is the default target; real MNO endpoints come from config-changed records.
       ocs:
-        template: rest-json-request-reply
+        family: telco
         base-url: ${OCS_BASE_URL:http://mw-simulators:8080}
+        # The hosts the route may call (approved with the record; the static floor in application.yml
+        # narrows them).
+        allowed-hosts: ${MW_OCS_ALLOWED_HOSTS:mw-simulators}
         connect-timeout-ms: 3000
         # Partner timeout for telco is 20 s (spec 11.1); the read timeout sits a little above so
-        # the time limiter decides first. Resilience4j bulkhead/circuit breaker: instance "ocs".
+        # the time limit decides first. Circuit breaker and bulkhead: the resilience4j instance "ocs".
         timeout-ms: 20000
         read-timeout-ms: 22000
+        # A status inquiry goes again once after a timeout, 5xx, reset or failed connect; a top-up never.
+        inquiry-retries: 1
+        # No auth on the simulated OCS (an operator's own scheme is a record of its own).
         auth:
           scheme: none
         # Raw bodies are audited masked: these fields by rule, everything by free-text scrubbing.
@@ -22,43 +31,53 @@ mw:
           msisdn: MSISDN
         # OCS codes that do not say whether the top-up was applied: reply UNKNOWN (spec 7.4).
         ambiguous-codes: ["9876"]
-        # OCS code -> MW-PTR-<PARTNER>-<suffix>. Unlisted codes become UNMAPPED (not retryable).
+        # OCS code -> MW-PTR-OCS-<suffix>. Unlisted codes become UNMAPPED (not retryable).
         error-map:
           "[2001]": { suffix: TOPUP_REJECTED, retryable: false }
-        operations:
-          # POST /ocs/v1/topup {transactionId, msisdn, amount:"20.00"}. Only 422 with a code and
-          # 400 are rejections; any other non-2xx status is UNKNOWN (fail closed).
-          "[PAY]":
-            method: POST
-            path: /ocs/v1/topup
-            definite-statuses: [400, 422]
-            request: |
-              {"transactionId": reference, "msisdn": creditParty.id, "amount": amount.major}
-            response: |
-              status = 200
-                ? (body.status = "SUCCESS" and $type(body.ocsRef) = "string" and body.ocsRef != ""
-                    ? {"outcome": "SUCCESS", "partnerRef": body.ocsRef, "code": body.code}
-                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
-              : status = 422
-                ? ($type(body.code) = "string" and body.code != ""
+        # The route: one branch per operation, then mw-audit. PAY: POST /ocs/v1/topup {transactionId,
+        # msisdn, amount:"20.00"} (only 422 with a code and 400 are rejections; any other non-2xx is
+        # UNKNOWN, fail closed). STATUS_QUERY (spec 7.4): GET /ocs/v1/topup/{reference}.
+        route: |
+          - route:
+              from:
+                uri: direct:partner-ocs
+                steps:
+                  - choice:
+                      when:
+                        - simple: "${header.mwOperation} == 'PAY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=PAY.request"
+                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.ocs.base-url}&method=POST&path=/ocs/v1/topup&auth=none"
+                            - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=400,422"
+                        - simple: "${header.mwOperation} == 'STATUS_QUERY'"
+                          steps:
+                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.ocs.base-url}&method=GET&path=/ocs/v1/topup/{reference}&auth=none"
+                            - to: "kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200,404"
+                  - to: "kamelet:mw-audit"
+        mappings:
+          "[PAY.request]": |
+            {"transactionId": reference, "msisdn": creditParty.id, "amount": amount.major}
+          "[PAY.response]": |
+            status = 200
+              ? (body.status = "SUCCESS" and $type(body.ocsRef) = "string" and body.ocsRef != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.ocsRef, "code": body.code}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 422
+              ? ($type(body.code) = "string" and body.code != ""
+                  ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 400
+              ? {"outcome": "FAILED", "code": "HTTP_400", "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          # NOT_FOUND only for a 404 carrying the OCS' NOT_FOUND body; anything else without a
+          # definite answer is UNKNOWN.
+          "[STATUS_QUERY.response]": |
+            status = 200
+              ? (body.status = "SUCCESS" and $type(body.ocsRef) = "string" and body.ocsRef != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.ocsRef, "code": body.code}
+                  : body.status = "FAILED" and $type(body.code) = "string" and body.code != ""
                     ? {"outcome": "FAILED", "code": body.code, "message": body.message}
                     : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
-              : status = 400
-                ? {"outcome": "FAILED", "code": "HTTP_400", "message": body.message}
-              : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
-          # Status inquiry (spec 7.4): GET /ocs/v1/topup/{reference}. NOT_FOUND only for a 404
-          # carrying the OCS' NOT_FOUND body; anything else without a definite answer is UNKNOWN.
-          "[STATUS_QUERY]":
-            method: GET
-            path: /ocs/v1/topup/{reference}
-            definite-statuses: [200, 404]
-            response: |
-              status = 200
-                ? (body.status = "SUCCESS" and $type(body.ocsRef) = "string" and body.ocsRef != ""
-                    ? {"outcome": "SUCCESS", "partnerRef": body.ocsRef, "code": body.code}
-                    : body.status = "FAILED" and $type(body.code) = "string" and body.code != ""
-                      ? {"outcome": "FAILED", "code": body.code, "message": body.message}
-                      : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
-              : status = 404 and body.status = "NOT_FOUND"
-                ? {"outcome": "NOT_FOUND", "code": body.code, "message": body.message}
-              : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+            : status = 404 and body.status = "NOT_FOUND"
+              ? {"outcome": "NOT_FOUND", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}

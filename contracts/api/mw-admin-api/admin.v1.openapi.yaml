@@ -34,13 +34,16 @@ info:
     has an open request), 409 MW-VAL-032 (expired), 409 MW-VAL-033 (already decided).
     Partner config (ticket 38, spec 15.2 Partners, 15.3, 20.4): partners (schema `partner`) are
     changed only through a change request (resourceType `partner`): ENABLE, DISABLE, SET_TIMEOUTS
-    or UPSERT (onboard / replace the full config). Makers `ops-maker` or `integration-maker`,
+    or UPSERT_ROUTE (onboard / replace the full config, a partner route of ADR D26). Makers `ops-maker` or `integration-maker`,
     checkers `ops-checker` or `integration-checker` (never the maker). On approval the partner
     tables are updated, the version goes up by one and the full config is published on the
     compacted topic `mw.config.changed.v1` (key `partner/<id>`), all in one database transaction;
     the adapters swap it in without a restart. A disabled partner refuses new calls unsent
     (`MW-SYS-PARTNER_DISABLED`). 409 MW-VAL-030 also means the change would change nothing or the
-    partner changed after the request was made (the request stays PENDING).
+    partner changed after the request was made (the request stays PENDING). When an adapter
+    reports the partner's current version REJECTED, the newest version it reported LIVE before is
+    republished as the next version (changedBy `system/rollback`, ticket 84), so the latest record
+    an adapter replays on start is a good one.
 
     USSD menus and notification templates (ticket 39, spec 9.2, 10.3, 15.2): customer-facing text
     goes through the same maker-checker. An `ops-maker` proposes a version (checked at once: 400
@@ -340,6 +343,24 @@ paths:
               schema: { $ref: "#/components/schemas/PartnerPage" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
+  /admin/v1/partners/kamelet-usage:
+    get:
+      operationId: partnerKameletUsage
+      summary: Which live partner route uses which mw-* Kamelet (ticket 83)
+      description: >-
+        From the adapters' route status reports (mw.partner.route.status.v1): for each Kamelet, the
+        partners whose live route version uses it, so ops see who is still on a Kamelet before its
+        `-v2` replaces it. Same roles as the partner list.
+      parameters:
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Kamelets by name, routes by partner id
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KameletUsage" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
   /admin/v1/partners/{partnerId}:
     get:
       operationId: getPartner
@@ -363,8 +384,12 @@ paths:
       summary: Ask for a partner config change (maker)
       description: >-
         Role `ops-maker` or `integration-maker`. ENABLE / DISABLE / SET_TIMEOUTS change an existing
-        partner (404 MW-VAL-003 otherwise); SET_TIMEOUTS needs `timeouts`; UPSERT needs `config`
-        (the full config) and, for a new partner, `family`. A change that changes nothing is 409
+        partner (404 MW-VAL-003 otherwise) and republish its route without a dry-run (it already
+        runs); SET_TIMEOUTS needs `timeouts`. UPSERT_ROUTE (ADR D26, ticket 83) needs `config`
+        (`route`, `mappings`, `allowedHosts`, `dryRun`, ...) and, for a new partner, `family`: the route is checked with the adapters' loader rules first and refused 400
+        MW-VAL-041 with one detail per problem (`field` config.route, `issue` "line N: construct:
+        problem"); approved, it goes live in its adapter only once its dry-run passed (`route.status`
+        of the partner). A change that changes nothing is 409
         MW-VAL-030. One open request per partner (409 MW-VAL-031). `diff` shows the changed fields
         before and after; `payload.config` the full config that is published on approval.
       parameters:
@@ -1006,7 +1031,7 @@ components:
       enum: [PUBLISH]
     PartnerAction:
       type: string
-      enum: [ENABLE, DISABLE, SET_TIMEOUTS, UPSERT]
+      enum: [ENABLE, DISABLE, SET_TIMEOUTS, UPSERT_ROUTE]
     PartnerId:
       type: string
       pattern: "^[a-z0-9][a-z0-9-]{0,63}$"
@@ -1022,33 +1047,19 @@ components:
         connectTimeoutMs: { type: integer, minimum: 1, maximum: 120000 }
         timeoutMs: { type: integer, minimum: 1, maximum: 120000, description: Time limit of one call (past it UNKNOWN) }
         readTimeoutMs: { type: integer, minimum: 1, maximum: 125000, description: Socket read timeout (default timeoutMs + 2000) }
-    PartnerOperation:
-      type: object
-      required: [method, path, response]
-      additionalProperties: false
-      properties:
-        method: { type: string, enum: [GET, POST, PUT, PATCH, DELETE] }
-        path: { type: string, minLength: 1, maxLength: 256, pattern: "^/[A-Za-z0-9._~/{}-]*$" }
-        definiteStatuses:
-          type: array
-          maxItems: 20
-          items: { type: integer, minimum: 100, maximum: 599 }
-        request: { type: string, maxLength: 8000, description: JSONata from the canonical call to the request body }
-        response: { type: string, minLength: 1, maxLength: 8000, description: "JSONata from {status, body} to {outcome, partnerRef, code, message, reason}" }
     PartnerConfig:
       type: object
       description: >-
-        The full config of one partner instance, in the field names of the adapters' partner
-        framework (spec 12.1); published unchanged as the `value` of `mw.config.changed.v1`. Never a
-        secret: `auth.credentialsRef` names one of the partner's secrets in OpenBao. The adapters
-        check it again (endpoint host allowlist, https, JSONata compiles) and keep the previous
-        config when they refuse it.
-      required: [baseUrl, operations]
+        The full config of one partner, in the field names of the adapters' partner record (spec
+        12.1, ADR D26): a route + mappings + allowedHosts (+ dryRun for UPSERT_ROUTE); published
+        unchanged as the `value` of `mw.config.changed.v1`. Never a secret: `auth.credentialsRef`
+        names one of the partner's secrets in OpenBao (callback verification). The adapters check
+        it again (host allowlist, https, JSONata compiles, dry-run) and keep the previous version
+        when they refuse it. The old template shape (template, baseUrl, operations) went with
+        ticket 84.
       additionalProperties: false
       properties:
         enabled: { type: boolean, description: "false: every new call is refused unsent (default true)" }
-        template: { type: string, enum: [rest-json-request-reply, rest-json-async-callback] }
-        baseUrl: { type: string, minLength: 8, maxLength: 512, format: uri }
         connectTimeoutMs: { type: integer, minimum: 1, maximum: 120000 }
         timeoutMs: { type: integer, minimum: 1, maximum: 120000 }
         readTimeoutMs: { type: integer, minimum: 1, maximum: 125000 }
@@ -1066,11 +1077,6 @@ components:
               type: object
               maxProperties: 20
               additionalProperties: { type: string, maxLength: 256 }
-        operations:
-          type: object
-          minProperties: 1
-          maxProperties: 20
-          additionalProperties: { $ref: "#/components/schemas/PartnerOperation" }
         errorMap:
           type: object
           maxProperties: 500
@@ -1090,6 +1096,65 @@ components:
           maxProperties: 100
           additionalProperties: { type: string, enum: [MSISDN, NID, ACCOUNT, NAME, SECRET, PARTY_ID] }
         resilience: { type: string, minLength: 1, maxLength: 64 }
+        route:
+          type: string
+          minLength: 1
+          maxLength: 65536
+          description: The partner's Camel YAML DSL route from direct:partner-<id>, built from the mw-* Kamelets (ticket 83)
+        mappings:
+          type: object
+          maxProperties: 50
+          additionalProperties: { type: string, maxLength: 8000 }
+          description: "JSONata mappings the route names (<OPERATION>.request, <OPERATION>.response, CALLBACK.response)"
+        allowedHosts:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 253, pattern: "^[A-Za-z0-9.-]+$" }
+          description: The hosts the route may call (guardrail 4)
+        dryRun: { $ref: "#/components/schemas/PartnerDryRun" }
+    PartnerDryRun:
+      type: object
+      required: [operation]
+      additionalProperties: false
+      description: >-
+        What the adapter sends through the candidate route before the version goes live: operation
+        with sample as the canonical input; against baseUrl (a partner sandbox, must be in
+        allowedHosts) or the environment's simulator.
+      properties:
+        operation: { type: string, enum: [PAY, INQUIRY, STATUS_QUERY] }
+        sample: { type: object, maxProperties: 50 }
+        baseUrl: { type: string, minLength: 8, maxLength: 512, format: uri }
+    PartnerRouteState:
+      type: object
+      required: [version, status]
+      description: The route version last approved and what its adapter reported (mw.partner.route.status.v1)
+      properties:
+        version: { type: integer, minimum: 1 }
+        status: { type: string, enum: [PENDING_DRY_RUN, LIVE, REJECTED] }
+        problems: { type: array, items: { type: string } }
+        kamelets: { type: array, items: { type: string } }
+        statusAt: { type: string, format: date-time }
+        liveVersion: { type: integer, minimum: 1, description: The newest version reported LIVE (absent while none is) }
+    KameletUsage:
+      type: object
+      required: [kamelets]
+      properties:
+        kamelets:
+          type: array
+          items:
+            type: object
+            required: [name, routes]
+            properties:
+              name: { type: string }
+              routes:
+                type: array
+                items:
+                  type: object
+                  required: [partnerId, version]
+                  properties:
+                    partnerId: { $ref: "#/components/schemas/PartnerId" }
+                    version: { type: integer, minimum: 1 }
     Partner:
       type: object
       required: [partnerId, family, version, config, updatedAt, updatedBy]
@@ -1101,6 +1166,7 @@ components:
         updatedAt: { type: string, format: date-time }
         updatedBy: { type: string, description: The maker of the last change }
         approvedBy: { type: string, description: The checker of the last change }
+        route: { $ref: "#/components/schemas/PartnerRouteState" }
     PartnerPage:
       type: object
       required: [items]

@@ -19,11 +19,11 @@ import mfs.mw.adapter.billpay.messaging.EventPublisher;
 import mfs.mw.adapter.billpay.messaging.Inbox;
 import mfs.mw.adapter.billpay.partner.InboundCall;
 import mfs.mw.adapter.billpay.partner.InboundResult;
-import mfs.mw.adapter.billpay.partner.PartnerUnsupportedException;
+import mfs.mw.adapter.billpay.partner.PartnerInstanceNotFoundException;
 import mfs.mw.adapter.billpay.partner.config.PartnerConfigStore;
-import mfs.mw.adapter.billpay.partner.template.PartnerFrameworkSeeds;
-import mfs.mw.adapter.billpay.partner.template.PartnerGateway;
-import mfs.mw.adapter.billpay.partner.template.PartnerInstance;
+import mfs.mw.adapter.billpay.partner.PartnerTestSeeds;
+import mfs.mw.adapter.billpay.partner.route.PartnerGateway;
+import mfs.mw.adapter.billpay.partner.route.PartnerRuntime;
 import mfs.mw.adapter.billpay.repository.PartnerReferenceRepository;
 import org.junit.jupiter.api.Test;
 
@@ -44,8 +44,8 @@ class PartnerCallbackServiceTest {
   final InboundCall call = new InboundCall("billagg", "POST", "/partner/billagg/callback/payments", Map.of(), new byte[0]);
 
   void knownPartnerAndReference() {
-    PartnerInstance instance = mock(PartnerInstance.class);
-    when(instance.config()).thenReturn(PartnerFrameworkSeeds.billagg());
+    PartnerRuntime instance = mock(PartnerRuntime.class);
+    when(instance.config()).thenReturn(PartnerTestSeeds.seed("billagg"));
     when(store.instance("billagg")).thenReturn(Optional.of(instance));
     when(references.findByReference(REF))
         .thenReturn(Optional.of(new PartnerReferenceRepository.Issued("01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c", "billagg")));
@@ -90,7 +90,7 @@ class PartnerCallbackServiceTest {
   @Test
   void aPartnerWithoutCallbacksIsNotFound() {
     knownPartnerAndReference();
-    when(gateway.inbound(call)).thenThrow(new PartnerUnsupportedException("rest-json-request-reply takes no callbacks"));
+    when(gateway.inbound(call)).thenThrow(new PartnerInstanceNotFoundException("billagg"));
 
     assertThatThrownBy(() -> service.receive(call))
         .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-VAL-003"));

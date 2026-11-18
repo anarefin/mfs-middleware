@@ -23,6 +23,18 @@ public final class TelcoFixtures {
     return request("PAY", txnId, msisdn, valueMinor, Instant.now().plusSeconds(300));
   }
 
+  /** {@code request} as sent for partnerId {@code partnerId} (ADR D26 aliases). */
+  public static PartnerRequest forPartner(PartnerRequest request, String partnerId) {
+    PartnerRequest.Payload p = request.payload();
+    return new PartnerRequest(
+        request.schemaVersion(), request.family(), request.requestId(), request.txnId(), request.correlationId(),
+        request.issuedAt(), request.deadlineAt(),
+        new PartnerRequest.Payload(
+            p.operation(), p.txnType(),
+            new PartnerRequest.PartnerRef(partnerId, p.partner().productCode(), p.partner().billerCode()),
+            p.partnerTxnRef(), p.amount(), p.debitParty(), p.creditParty(), p.originalPartnerRef(), p.attributes()));
+  }
+
   /** A PAY whose deadline has passed. */
   public static PartnerRequest expiredPay(String txnId, String msisdn, long valueMinor) {
     return request("PAY", txnId, msisdn, valueMinor, Instant.now().minusSeconds(1));

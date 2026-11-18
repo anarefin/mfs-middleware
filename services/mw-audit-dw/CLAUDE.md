@@ -18,9 +18,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   read-only pool `audit-search`, max 4, same reader credentials `mw.audit-dw.chain-verify.reader-*`;
   not a `DataSource` bean). Values come back as stored (already masked); operator usernames are not
   masked. No MSISDN filter: events carry no keyed hash, so an operator finds the txn by MSISDN on
-  mw-orchestrator's query API, then its audit by txnId. `AuditSearchApiIT`. Consumes `mw.audit.event.v1` (`route/AuditEventRoute` ->
-  `messaging/AuditEventListener` -> `service/AuditService.record`) with retry topics and DLQ; an
-  unreadable event or one missing a required field throws and ends on the DLQ.
+  mw-orchestrator's query API, then its audit by txnId. `AuditSearchApiIT`. Consumes `mw.audit.event.v1` (`@KafkaListener` `messaging/AuditEventListener` ->
+  `service/AuditService.record`, off with `mw.audit-dw.consumers.enabled=false`) with retry topics and DLQ
+  (`mw.audit.event.v1.mw-audit-dw.retry.1..3`, `.dlq`); an unreadable event or one missing a required field
+  throws and ends on the DLQ (`AuditEventKafkaIT`).
 - Test-only audit API (ticket 58, contract `api/mw-audit-dw/audit-dw-test.v1.openapi.yaml`,
   `controller/AuditTestController`, `service/AuditTestService`, `AuditTestControllerTest`, `AuditTestServiceTest`): only with
   `mw.audit-dw.test-api.enabled=true` (`MW_AUDIT_DW_TEST_API_ENABLED`, set by `deploy/docker-compose.yml`
@@ -157,7 +158,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
-  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
+  `build.gradle.kts`; drop once the Boot BOM ships them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, unsafe or holding a
   run of 6+ digits or one the scrub would change (WARN `correlation.id.replaced`), MDC
@@ -180,9 +181,23 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   client-credentials JWT too (template `CLAUDE.md`, "Service certificate and mTLS").
   `client/MtlsClientIT` proves the caller side (OpenBao container `PkiTestAuthority`, a server that
   needs a client certificate, a renewal, no certificate = failed handshake).
-- `messaging/EventPublisher`: Kafka records with the 6.1 headers, idempotent `acks=all` producer.
-- `route/RetryTopicRouteBuilder` + `messaging/RetryDelayListener`: subclass per consumed topic; retry
-  topics 10 s / 1 min / 10 min then DLQ (19.2); per-record commit; no sleeps on Kafka threads.
+- Kafka through Spring Kafka (ADR D25; no Camel in this module, copied from the template, ticket 79):
+  `messaging/EventPublisher` sends records with the 6.1 headers through `KafkaTemplate` (idempotent,
+  `acks=all`, at most 5 in flight; `publish` waits for the ack, `publishStoredAsync` sends an outbox row
+  with exactly its stored headers). `config/KafkaConfig` puts every `@KafkaListener` on non-blocking retry
+  topics `<topic>.<group>.retry.1..3` (10 s / 1 min / 10 min, `mw.kafka.retry.delays`) then
+  `<topic>.<group>.dlq` (`messaging/RetryTopicNaming`, group = `spring.kafka.consumer.group-id`, the
+  service name; declared in `deploy/kafka/topics.txt`); validation and JSON failures and records that are
+  not UTF-8 go to the DLQ at once; `messaging/RetryTopicRecoverer` adds `mw-retry-attempt`,
+  `mw-original-topic`, `mw-error-class`, `mw-retry-not-before`; `messaging/RetryDueTimeCap` caps a forged
+  due time; `messaging/ConsumerContextInterceptor` puts the record's ids in the MDC. Listeners take
+  `ConsumerRecord<String, String>` and `Acknowledgment` and call `ack.acknowledge()` after handling
+  (per-record commit, AckMode `MANUAL_IMMEDIATE`); a delay pauses the partition, never sleeps on the
+  consumer thread. Settings: `spring.kafka.*`, `mw.kafka.send-timeout`, `mw.kafka.listener.shutdown-timeout`
+  (100 ms in tests), `mw.kafka.retry.exclude-topics`. `messaging/RetryTopicIT` (conformance) checks it all.
+- `scheduler/OutboxRelayScheduler`: relays the transactional outbox (`messaging/OutboxRelay`, 6.4) every
+  `mw.outbox.relay.period` after a run ends, ShedLock-guarded; off in tests (`mw.outbox.relay.enabled`).
+  Tests that consume create their topics with retry topics and DLQ first (`KafkaTestTopics.createWithRetries`).
 - `application.yml`: Resilience4j defaults (19.2), own schema `audit` migrated by Flyway on
   start from `db/migration` (16.4).
 

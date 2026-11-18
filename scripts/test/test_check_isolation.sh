@@ -228,3 +228,45 @@ test_reports_all_violations_in_one_run() {
   assert_out_contains "services/mw-a"
   assert_out_contains "services/mw-b"
 }
+
+# ADR D1 amendment / D25 (ticket 81): Camel is for partner integration only, in mw-adapter-*.
+camel_import() {
+  mkdir -p "$1/src/main/java/x"
+  printf 'package x;\n\nimport org.apache.camel.builder.RouteBuilder;\n\nclass R {}\n' >"$1/src/main/java/x/R.java"
+}
+
+test_fails_on_a_camel_import_outside_the_adapters() {
+  new_module "$PWD" services/mw-a
+  camel_import services/mw-a
+  assert_violation
+  assert_out_contains "services/mw-a: Camel outside the partner adapters"
+  assert_out_contains "src/main/java/x/R.java"
+}
+
+test_fails_on_a_camel_dependency_outside_the_adapters() {
+  new_module "$PWD" services/mw-a
+  echo 'dependencies { implementation("org.apache.camel.springboot:camel-kafka-starter") }' >>services/mw-a/build.gradle.kts
+  assert_violation
+  assert_out_contains "services/mw-a: Camel outside the partner adapters"
+  assert_out_contains "build.gradle.kts"
+}
+
+test_fails_on_camel_in_the_template() {
+  new_module "$PWD" templates/mw-service-template
+  camel_import templates/mw-service-template
+  assert_violation
+  assert_out_contains "templates/mw-service-template: Camel outside the partner adapters"
+}
+
+test_camel_is_allowed_in_a_partner_adapter() {
+  new_module "$PWD" services/mw-adapter-x
+  echo 'dependencies { implementation("org.apache.camel.springboot:camel-kafka-starter") }' >>services/mw-adapter-x/build.gradle.kts
+  camel_import services/mw-adapter-x
+  assert_ok mw_run "$PWD" check-isolation.sh
+}
+
+test_a_camel_mention_in_a_comment_is_not_a_dependency() {
+  new_module "$PWD" services/mw-a
+  printf '// no Camel here: org.apache.camel is for the adapters\n' >>services/mw-a/build.gradle.kts
+  assert_ok mw_run "$PWD" check-isolation.sh
+}

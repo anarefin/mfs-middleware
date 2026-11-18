@@ -1,5 +1,10 @@
 # Test-only overrides, merged over src/main/resources/application.yml.
 mw:
+  kafka:
+    listener:
+      # A closing test context does not wait the default 10 s per listener container for a consumer
+      # caught mid-rebalance (cached contexts share the broker); nothing in a test depends on that drain.
+      shutdown-timeout: 100ms
   outbox:
     relay:
       # Off by default in tests: Spring caches test contexts, and a relay left running in one
@@ -20,13 +25,13 @@ mw:
     expiry-cron: "-"
     # and the claim-first reconciler (ticket 75): KeyApprovalRaceIT calls it directly
     approving-reconcile-cron: "-"
+  partner-routes:
+    status-consumer:
+      # Off in tests: a cached context would compete for the topic; PartnerRouteApiIT switches it on.
+      enabled: false
   partners:
-    # The dev seed (application-dev.yml) is what the ITs change; PartnerConfigApiIT re-seeds it.
+    # The dev seeds (application-dev.yml) are what the ITs change; PartnerConfigApiIT re-seeds them.
     seeds:
       - classpath:partner-seeds/dev/ocs.json
-camel:
-  component:
-    kafka:
-      # A closing test context does not wait the default 30 s per consumer for one caught mid-rebalance
-      # (cached contexts share the consumer group); nothing in a test depends on that drain.
-      shutdown-timeout: 100
+      - classpath:partner-seeds/dev/billagg.json
+      - classpath:partner-seeds/dev/c2wbank.json

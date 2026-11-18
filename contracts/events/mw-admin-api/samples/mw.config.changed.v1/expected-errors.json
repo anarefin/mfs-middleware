@@ -1,4 +1,6 @@
 {
+  "invalid-partner-dry-run-operation.json": ["/value/dryRun/operation must be equal to one of the allowed values"],
+  "invalid-partner-legacy-template.json": ["/value must NOT be valid"],
   "invalid-upsert-without-value.json": ["/ must have required property 'value'"],
   "invalid-wrong-schema-version.json": ["/schemaVersion must be equal to constant"]
 }

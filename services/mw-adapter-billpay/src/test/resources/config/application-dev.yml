@@ -1,0 +1,7 @@
+# Test-only overrides of application-dev.yml (a profile file wins over config/application.yml).
+mw:
+  partners:
+    instances:
+      billagg:
+        # WireMock runs on localhost.
+        allowed-hosts: mw-simulators,localhost

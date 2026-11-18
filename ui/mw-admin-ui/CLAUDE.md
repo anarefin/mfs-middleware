@@ -80,6 +80,15 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
     ops-maker / integration-maker (`canMakePartner`): "Request disable" / "Request enable" and a
     timeouts form (`parseTimeouts`: whole ms, connect / call 1..120000, read 1..125000 and >= call;
     empty = unchanged; else own `MW-VAL-001`). UPSERT (full config) is not offered in the console.
+    Partner routes (ADR D26, ticket 83; user decision 2026-11-18: monospace textarea, no visual editor):
+    card *Route* (`partners/[partnerId]/route-form.tsx`, server action `requestPartnerRoute`, UPSERT_ROUTE)
+    with route YAML, allowed hosts, mappings, dry-run operation and sample, error map, call timeout
+    (`lib/partner-route.ts` `parseRouteForm` shapes it as the contract does; mw-admin-api's `MW-VAL-041`
+    shows line and construct per problem); a 404 partner id offers *Onboard with a route* with a family.
+    The page shows the route status (`routeStatusLabel`: `vN waiting for its dry-run`, `vN LIVE`, `vN
+    REJECTED (vM still serves)`), problems, Kamelets and the YAML. Playwright `31-partner-route.spec.ts`
+    (`@partners`): stub on mw-simulators (`MW_PORT_SIMULATORS`, default 8085), a refused route, then submit,
+    approve, LIVE.
   - `/console/ussd?menuId=main[&from=N]`: the versions made in the console, the editor
     (`ussd/menu-editor.tsx`, client) on the newest PUBLISHED version or `from`: tree from `start`
     (`lib/ussd-menu.ts` `tree`, unreachable nodes last), per-node form (type, bn / en texts, options
@@ -105,7 +114,7 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
     mw-admin-api's TemplateValidator and blocks the submit (own `MW-VAL-040`). Anyone may type in the
     editor to preview; only an ops-maker gets the submit.
   - Decisions (no product owner): integration-maker / -checker see Partners like the API allows;
-    partner UPSERT / onboarding, the ops-emergency direct change, and maker withdrawal are not offered;
+    partner UPSERT of the old shape, the ops-emergency direct change, and maker withdrawal are not offered;
     go-live / valid-from inputs are UTC like every time in the console; the menu check in the UI only
     warns (a stricter UI copy could refuse what the API accepts), the template check blocks (exact copy).
 - Keys and the key ceremony (ticket 75; `lib/keys.ts`, actions `requestKeyChange`, `startKeyCeremony`,

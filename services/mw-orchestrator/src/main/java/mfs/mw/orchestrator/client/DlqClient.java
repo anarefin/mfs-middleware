@@ -29,7 +29,7 @@ public class DlqClient {
 
   private final String brokers;
 
-  public DlqClient(@Value("${camel.component.kafka.brokers}") String brokers) {
+  public DlqClient(@Value("${spring.kafka.bootstrap-servers}") String brokers) {
     this.brokers = brokers;
   }
 

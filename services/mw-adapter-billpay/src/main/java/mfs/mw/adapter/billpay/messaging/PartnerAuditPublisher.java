@@ -7,7 +7,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import mfs.mw.adapter.billpay.config.MwServiceProperties;
 import mfs.mw.adapter.billpay.dto.AuditEvent;
-import mfs.mw.adapter.billpay.partner.template.PartnerAudit;
+import mfs.mw.adapter.billpay.partner.route.PartnerAudit;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;

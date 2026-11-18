@@ -90,7 +90,7 @@ export type TxnAction = "INQUIRE" | "FORCE_COMMIT" | "FORCE_RELEASE" | "REVERSE"
 export type WalletAction = "UNLOCK" | "PIN_RESET";
 export type ChangeRequestStatus = "PENDING" | "APPROVING" | "APPROVED" | "REJECTED" | "EXPIRED";
 
-export type PartnerAction = "ENABLE" | "DISABLE" | "SET_TIMEOUTS" | "UPSERT";
+export type PartnerAction = "ENABLE" | "DISABLE" | "SET_TIMEOUTS" | "UPSERT_ROUTE";
 export type ContentAction = "PUBLISH";
 export type KeyAction = "KEY_GENERATE" | "KEY_ROTATE" | "KEY_RETIRE" | "KEY_CEREMONY";
 export type ResourceType = "transaction" | "wallet" | "pin_reset" | "partner" | "ussd_menu" | "notify_template" | "key";
@@ -142,15 +142,20 @@ export type KeyCeremony = {
 // --- partners (ticket 38) ---
 export type PartnerFamily = "telco" | "billpay" | "bank";
 export type PartnerTimeouts = { connectTimeoutMs?: number; timeoutMs?: number; readTimeoutMs?: number };
-export type PartnerOperation = { method: string; path: string; definiteStatuses?: number[]; request?: string; response: string };
-/** The adapters' PartnerConfig (never a secret: `auth.credentialsRef` names one). */
+/** The dry-run a route version must pass in its adapter before it goes live (ticket 83). */
+export type PartnerDryRun = { operation: "PAY" | "INQUIRY" | "STATUS_QUERY"; sample?: Record<string, unknown>; baseUrl?: string };
+/**
+ * The adapters' partner record (never a secret: `auth.credentialsRef` names one): a route of ADR D26
+ * (`route`, `mappings`, `allowedHosts`, `dryRun`); the old template shape went with ticket 84.
+ */
 export type PartnerConfig = PartnerTimeouts & {
   enabled?: boolean;
-  template?: string;
-  baseUrl: string;
   headers?: Record<string, string>;
   auth?: { scheme?: string; credentialsRef?: string; params?: Record<string, string> };
-  operations: Record<string, PartnerOperation>;
+  route?: string;
+  mappings?: Record<string, string>;
+  allowedHosts?: string[];
+  dryRun?: PartnerDryRun;
   errorMap?: Record<string, { suffix: string; retryable?: boolean }>;
   ambiguousCodes?: string[];
   sensitiveFields?: Record<string, string>;
@@ -164,6 +169,16 @@ export type Partner = {
   updatedAt: string;
   updatedBy: string;
   approvedBy?: string;
+  route?: PartnerRouteState;
+};
+/** The route version last approved and what its adapter reported (mw.partner.route.status.v1, ticket 83). */
+export type PartnerRouteState = {
+  version: number;
+  status: "PENDING_DRY_RUN" | "LIVE" | "REJECTED";
+  problems: string[];
+  kamelets: string[];
+  statusAt?: string;
+  liveVersion?: number;
 };
 export type PartnerPage = { items: Partner[] };
 

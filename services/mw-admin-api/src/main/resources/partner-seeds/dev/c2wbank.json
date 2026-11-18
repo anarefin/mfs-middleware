@@ -1,0 +1,44 @@
+{
+  "partnerId": "c2wbank",
+  "family": "bank",
+  "config": {
+    "enabled": true,
+    "connectTimeoutMs": 3000,
+    "timeoutMs": 25000,
+    "readTimeoutMs": 27000,
+    "auth": {
+      "scheme": "hmac-sha256",
+      "credentialsRef": "hmac-secret"
+    },
+    "sensitiveFields": {
+      "accountNumber": "ACCOUNT"
+    },
+    "ambiguousCodes": [
+      "9876"
+    ],
+    "errorMap": {
+      "4001": {
+        "suffix": "ACCOUNT_NOT_LINKED",
+        "retryable": false
+      },
+      "4002": {
+        "suffix": "DEBIT_REFUSED",
+        "retryable": false
+      },
+      "4003": {
+        "suffix": "INSUFFICIENT_FUNDS",
+        "retryable": false
+      }
+    },
+    "route": "- route:\n    from:\n      uri: direct:partner-c2wbank\n      steps:\n        - choice:\n            when:\n              - simple: \"${header.mwOperation} == 'PAY'\"\n                steps:\n                  - to: \"kamelet:mw-map?mapping=PAY.request\"\n                  - to: \"kamelet:mw-http-call?url=http://mw-simulators:8080&method=POST&path=/c2wbank/v1/debits&auth=hmac-sha256&secretField=hmac-secret\"\n                  - to: \"kamelet:mw-classify?mapping=PAY.response&definiteStatuses=400,422&pending=true\"\n              - simple: \"${header.mwOperation} == 'STATUS_QUERY'\"\n                steps:\n                  - to: \"kamelet:mw-http-call?url=http://mw-simulators:8080&method=GET&path=/c2wbank/v1/debits/{reference}&auth=hmac-sha256&secretField=hmac-secret\"\n                  - to: \"kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200,404&pending=true\"\n        - to: \"kamelet:mw-audit\"\n",
+    "mappings": {
+      "PAY.request": "{\"transactionId\": reference, \"accountNumber\": debitParty.id, \"amount\": amount.major}\n",
+      "PAY.response": "status = 200\n  ? (body.status = \"SUCCESS\" and $type(body.debitRef) = \"string\" and body.debitRef != \"\"\n      ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.debitRef, \"code\": body.code}\n      : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: status = 202\n  ? (body.status = \"PENDING\"\n      ? {\"outcome\": \"PENDING\", \"partnerRef\": body.debitRef, \"code\": body.code}\n      : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: status = 422\n  ? ($type(body.code) = \"string\" and body.code != \"\"\n      ? {\"outcome\": \"FAILED\", \"code\": body.code, \"message\": body.message}\n      : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: status = 400\n  ? {\"outcome\": \"FAILED\", \"code\": \"HTTP_400\", \"message\": body.message}\n: {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}\n",
+      "STATUS_QUERY.response": "status = 200\n  ? (body.status = \"SUCCESS\" and $type(body.debitRef) = \"string\" and body.debitRef != \"\"\n      ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.debitRef, \"code\": body.code}\n      : body.status = \"FAILED\" and $type(body.code) = \"string\" and body.code != \"\"\n        ? {\"outcome\": \"FAILED\", \"code\": body.code, \"message\": body.message}\n      : body.status = \"PENDING\"\n        ? {\"outcome\": \"PENDING\", \"partnerRef\": body.debitRef, \"code\": body.code}\n        : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: status = 404 and body.status = \"NOT_FOUND\"\n  ? {\"outcome\": \"NOT_FOUND\", \"code\": body.code, \"message\": body.message}\n: {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}\n",
+      "CALLBACK.response": "$type(body.transactionId) != \"string\" or body.transactionId = \"\" ? {}\n: body.status = \"SUCCESS\" and $type(body.debitRef) = \"string\" and body.debitRef != \"\"\n  ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.debitRef, \"reference\": body.transactionId,\n     \"code\": body.code, \"message\": body.message}\n: body.status = \"FAILED\" and $type(body.code) = \"string\" and body.code != \"\"\n  ? {\"outcome\": \"FAILED\", \"partnerRef\": body.debitRef, \"reference\": body.transactionId,\n     \"code\": body.code, \"message\": body.message}\n: body.status = \"PENDING\"\n  ? {\"outcome\": \"PENDING\", \"partnerRef\": body.debitRef, \"reference\": body.transactionId,\n     \"code\": body.code, \"message\": body.message}\n: {}\n"
+    },
+    "allowedHosts": [
+      "mw-simulators"
+    ]
+  }
+}

@@ -1,6 +1,5 @@
 package mfs.mw.adapter.billpay.contracts;
 
-import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaLocation;
 import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
@@ -53,8 +52,8 @@ public final class ContractSchemas {
   }
 
   /** The schema at {@code path} under contracts/, e.g. events/mw-x/topic.v1.schema.json. */
-  public static Schema schema(String path) {
-    return REGISTRY.getSchema(SchemaLocation.of(ID_BASE + path));
+  public static JsonSchema schema(String path) {
+    return new JsonSchema(REGISTRY.getSchema(SchemaLocation.of(ID_BASE + path)));
   }
 
   /** The file a contracts {@code $id} maps to. */

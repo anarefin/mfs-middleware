@@ -99,8 +99,8 @@ public class TestInfrastructure {
       registry.add("spring.datasource.url", () -> url);
       registry.add("spring.datasource.username", POSTGRES::getUsername);
       registry.add("spring.datasource.password", POSTGRES::getPassword);
-      // Camel's Kafka component does not read Spring Boot's Kafka connection details.
-      registry.add("camel.component.kafka.brokers", KAFKA::getBootstrapServers);
+      // No @ServiceConnection on the Kafka bean: wire Spring Kafka by hand.
+      registry.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
       registry.add("spring.data.redis.host", VALKEY::getHost);
       registry.add("spring.data.redis.port", () -> VALKEY.getMappedPort(6379));
       // mw-auth: the WireMock stub (plain HTTP, mTLS off in tests; ticket 72)
@@ -108,6 +108,12 @@ public class TestInfrastructure {
       registry.add("mw.ussd.auth.base-url", () -> auth);
       registry.add("mw.ussd.auth.token-uri", () -> auth + "/token");
     };
+  }
+
+  /** The Kafka bootstrap servers, for tests that produce, consume or administer directly. */
+  public static String kafkaBootstrapServers() {
+    start();
+    return KAFKA.getBootstrapServers();
   }
 
   @Bean(destroyMethod = "")

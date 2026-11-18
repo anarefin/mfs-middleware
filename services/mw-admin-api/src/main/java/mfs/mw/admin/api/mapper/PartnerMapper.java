@@ -22,7 +22,8 @@ public final class PartnerMapper {
   private PartnerMapper() {}
 
   public static PartnerView view(Partner p) {
-    return new PartnerView(p.id(), p.family(), p.version(), p.config(), p.updatedAt(), p.updatedBy(), p.approvedBy());
+    return new PartnerView(
+        p.id(), p.family(), p.version(), p.config(), p.updatedAt(), p.updatedBy(), p.approvedBy(), p.route());
   }
 
   public static String configKey(String partnerId) {

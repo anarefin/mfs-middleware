@@ -110,8 +110,8 @@ class ConsumedContractsTest {
     String partner =
         """
         {"partnerId":"ocs","family":"telco","version":3,"updatedAt":"2026-11-06T00:00:00Z","updatedBy":"seed-ops-maker",
-         "config":{"enabled":false,"baseUrl":"http://mw-simulators:8080","timeoutMs":20000,
-           "operations":{"topup":{"method":"POST","path":"/ocs/v1/topups","response":"$"}}}}
+         "config":{"enabled":false,"timeoutMs":20000,"route":"- route: {from: {uri: direct:partner-ocs, steps: []}}",
+           "mappings":{"PAY.request":"$"},"allowedHosts":["mw-simulators"]}}
         """;
     assertThat(OpenApiSchemas.component(ADMIN, "Partner").validate(JSON.readTree(partner))).isEmpty();
     PartnerView p = JSON.readValue(partner, PartnerView.class);

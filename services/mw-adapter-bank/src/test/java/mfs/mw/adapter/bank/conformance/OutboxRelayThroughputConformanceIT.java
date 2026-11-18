@@ -28,7 +28,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.kafka.KafkaContainer;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -53,23 +52,21 @@ class OutboxRelayThroughputConformanceIT {
   private final OutboxRelay relay;
   private final JdbcTemplate jdbc;
   private final TransactionTemplate tx;
-  private final KafkaContainer kafka;
 
   @Autowired
   OutboxRelayThroughputConformanceIT(
-      OutboxWriter outbox, OutboxRelay relay, JdbcTemplate jdbc, TransactionTemplate tx, KafkaContainer kafka) {
+      OutboxWriter outbox, OutboxRelay relay, JdbcTemplate jdbc, TransactionTemplate tx) {
     this.outbox = outbox;
     this.relay = relay;
     this.jdbc = jdbc;
     this.tx = tx;
-    this.kafka = kafka;
   }
 
   /** Several partitions, so keys spread over them as in the platform topics. */
   @BeforeAll
-  static void topic(@Autowired KafkaContainer kafka) throws Exception {
+  static void topic() throws Exception {
     Properties p = new Properties();
-    p.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers());
+    p.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, TestInfrastructure.kafkaBootstrapServers());
     try (Admin admin = Admin.create(p)) {
       if (!admin.listTopics().names().get().contains(TOPIC)) {
         admin.createTopics(List.of(new NewTopic(TOPIC, PARTITIONS, (short) 1))).all().get();
@@ -103,7 +100,7 @@ class OutboxRelayThroughputConformanceIT {
 
   List<ConsumerRecord<String, String>> published(String keyPrefix, int atLeast, Duration timeout) {
     return KafkaTestConsumer.read(
-        kafka.getBootstrapServers(), TOPIC, atLeast, timeout, r -> r.key().startsWith(keyPrefix));
+        TestInfrastructure.kafkaBootstrapServers(), TOPIC, atLeast, timeout, r -> r.key().startsWith(keyPrefix));
   }
 
   static int seq(ConsumerRecord<String, String> r) {

@@ -100,8 +100,9 @@ node --version  <span class="c"># 22 or newer</span></pre></div>
     <p>The images don't compile code. Each <code>services/&lt;module&gt;/Dockerfile</code> copies
       <code>build/libs/&lt;module&gt;.jar</code>, so build the jars first. Run this from the repository root:</p>
     <div class="cmd"><pre>./gradlew clean build</pre></div>
-    <p>One Gradle build: every module's tests (unit, slice, contract, Camel route, Testcontainers and conformance, in one JVM
-      per module), every jar, and the repo checks (module isolation, no field injection, contracts lint, the compose memory
+    <p>One Gradle build: every module's tests (unit, slice, contract, Testcontainers and conformance, in one JVM per module;
+      the three adapters also run their Camel partner route tests, since Camel is used only there and every other module
+      uses Spring Kafka), every jar, and the repo checks (module isolation, no field injection, contracts lint, the compose memory
       budget, the shell tests). It worked when the last line is <code>BUILD SUCCESSFUL</code>. The Testcontainers tests need
       Docker running; without it they are skipped, not failed.</p>
     <div class="table-wrap"><table>
@@ -129,7 +130,8 @@ node --version  <span class="c"># 22 or newer</span></pre></div>
   <section id="s3">
     <h2><span class="num">3</span>Create the environment file</h2>
     <p>The <code>.env</code> file holds the dev credentials (database, Valkey, Keycloak admin and test users, client secrets,
-      simulator HMAC secrets, the console session key, the softhsm token PINs), the short test timers (including short PIN
+      simulator HMAC secrets, the console session key, the softhsm token PINs, the dev partner SFTP login <code>bits</code> /
+      <code>SFTP_DEV_PASSWORD</code>), the short test timers (including short PIN
       lockout levels) and the dev-only switches (mw-auth's seed API for the first app PINs, mw-crypto's payShield test API).
       Compose reads it to fill in the containers' settings. All values are
       fixed, obviously fake dev values committed in <code>deploy/dev.env.defaults</code>; <code>deploy/.env</code> itself is gitignored.</p>
@@ -206,9 +208,13 @@ docker compose --profile core --profile seed --profile tester ps -a mw-seeder   
       <li>From <code>mw-seeder</code>: the personas <code>seed-ops-maker</code>, <code>seed-ops-checker</code>,
         <code>seed-ops-viewer</code>, <code>seed-ops-compliance</code>, <code>seed-org-maker</code>, <code>seed-org-checker</code>,
         <code>seed-customer01/02</code>, <code>seed-agent01</code>, <code>seed-merchant01</code> with their wallets
-        (<code>01712000001…</code>), the OCS partner, the USSD main menu and the P2P SMS template. Its <code>seed-app-pins</code>
+        (<code>01712000001…</code>), the <code>ocs</code> partner baseline (enabled, call timeout) through maker-checker, the USSD
+        main menu and the P2P SMS template. Its <code>seed-app-pins</code>
         step gives every seeded customer, agent and merchant wallet the app PIN <code>13579</code>. It encrypts the PIN the way
         an app does and sets it through mw-auth's dev-only seed API.</li>
+      <li>From <code>mw-admin-api</code> (dev profile): the three dev partners <code>ocs</code> (top-up), <code>billagg</code>
+        (bill pay) and <code>c2wbank</code> (add money). Each one is a partner route (Camel YAML DSL on the shipped <code>mw-*</code>
+        Kamelets, ADR D28) at version 0 ("seed"), identical to the one its adapter loads at start-up.</li>
     </ul>
   </section>
 
@@ -243,13 +249,13 @@ docker compose logs -f mw-orchestrator</pre></div>
       <tr><td>8082</td><td>mw-ussd</td><td>USSD menus over HTTP and SMPP</td><td><code>/ussd/&lt;mno&gt;</code></td><td>minimal, core</td></tr>
       <tr><td>8083</td><td>mw-orchestrator</td><td>saga, idempotency, status inquiry, reversal</td><td>internal</td><td>minimal, core</td></tr>
       <tr><td>8084</td><td>mw-core-mock</td><td>mocked core wallet and ledger</td><td>internal</td><td>minimal, core</td></tr>
-      <tr><td>8085</td><td>mw-simulators</td><td>OCS, bill aggregator, C2W bank, SMSC, USSD gateway, payShield 10K HSM</td><td>internal</td><td>minimal, core</td></tr>
+      <tr><td>8085</td><td>mw-simulators</td><td>OCS, bill aggregator, C2W bank, SOAP biller, generic partner stub (<code>/sim/stubs</code>), SMSC, USSD gateway, payShield 10K HSM</td><td>internal</td><td>minimal, core</td></tr>
       <tr><td>8086</td><td>mw-notify</td><td>SMS over SMPP, email to GreenMail</td><td>internal</td><td>minimal, core</td></tr>
       <tr><td>8087</td><td>mw-audit-dw</td><td>hash-chained audit trail</td><td>internal</td><td>minimal, core</td></tr>
       <tr><td>8088</td><td>mw-admin-api</td><td>ops API, maker-checker</td><td><code>/admin/v1/*</code></td><td>minimal, core</td></tr>
-      <tr><td>8089</td><td>mw-adapter-telco</td><td>top-up partner adapter</td><td><code>/partner/*/callback/*</code></td><td>core</td></tr>
-      <tr><td>8090</td><td>mw-adapter-billpay</td><td>bill pay partner adapter</td><td><code>/partner/*/callback/*</code></td><td>core</td></tr>
-      <tr><td>8091</td><td>mw-adapter-bank</td><td>add money from bank</td><td><code>/partner/*/callback/*</code></td><td>core</td></tr>
+      <tr><td>8089</td><td>mw-adapter-telco</td><td>top-up partner adapter; partner routes as config (Camel YAML DSL + <code>mw-*</code> Kamelets)</td><td><code>/partner/*/callback/*</code></td><td>core</td></tr>
+      <tr><td>8090</td><td>mw-adapter-billpay</td><td>bill pay partner adapter; REST, SOAP and SFTP batch partner routes</td><td><code>/partner/*/callback/*</code></td><td>core</td></tr>
+      <tr><td>8091</td><td>mw-adapter-bank</td><td>add money from bank; partner routes as config</td><td><code>/partner/*/callback/*</code></td><td>core</td></tr>
       <tr><td>8092</td><td>mw-checkout</td><td>web checkout and IPN</td><td><code>/checkout/*</code></td><td>core</td></tr>
       <tr><td>8093</td><td>mw-portal-api</td><td>org bulk disbursement, SP query</td><td><code>/portal/org/v1/*</code></td><td>core</td></tr>
       <tr><td>8094</td><td>mw-crypto</td><td>HSM gateway, the only HSM client: keys by keyId on the softhsm token and the payShield simulator; mTLS only</td><td>internal</td><td>minimal, core</td></tr>
@@ -258,6 +264,7 @@ docker compose logs -f mw-orchestrator</pre></div>
       <tr><td>3001</td><td>mw-test-console</td><td>test console, dev/test only</td><td><code>/tester</code></td><td>tester</td></tr>
       <tr><td>—</td><td>mw-seeder</td><td>one-shot seeder</td><td>none</td><td>seed (always with core)</td></tr>
       <tr><td>5657 / 5658</td><td>softhsm</td><td>dev/test PKCS#11 tokens <code>mw-crypto</code> / <code>paysim</code> (SoftHSMv2 over p11-kit RPC; <code>deploy/softhsm/README.md</code>)</td><td>none</td><td>minimal, core</td></tr>
+      <tr><td>—</td><td>partner-sftp</td><td>a partner's SFTP host for the batch partner routes, dev/test only (login <code>bits</code>)</td><td>none</td><td>tester</td></tr>
     </table></div>
     <h3>Platform (always started)</h3>
     <div class="table-wrap"><table>
@@ -359,6 +366,13 @@ scripts/log-scan.sh               <span class="c"># no PIN or unmasked MSISDN / 
       (real-looking names, live balances), organisations and partners, with tools to unlock a user or wallet, reset a password,
       a one-time code or a PIN, unbind a device and set a balance. It shows the dev secrets, so it runs only on this laptop stack. The walkthrough of every feature
       is <a href="../docs/testing-guide.html">docs/testing-guide.html</a>; a demo script per milestone is <code>docs/demo.md</code>.</p>
+    <h3>Partner routes</h3>
+    <p>Partners are routes as config (ADR D26): a Camel YAML DSL route on the shipped <code>mw-*</code> Kamelets, onboarded and
+      changed through maker-checker on the console's <strong>Partners</strong> page. It goes live only after its dry-run against
+      mw-simulators passes. Examples to start from are in <code>deploy/partner-routes/examples/</code> (REST with an API key,
+      OAuth2 or an async callback, SOAP, an SFTP reconciliation file, an SFTP payment file). The steps, with the
+      OpenBao secrets, are in <code>docs/runbook.md</code> ("Onboard a biller", "Batch partner over SFTP"). The console's partner
+      checks run with <code>scripts/ui-e2e.sh @partners</code>.</p>
     <div class="note">No load tests on a laptop: <code>scripts/suite.sh perf</code> and <code>scripts/chaos.sh</code> need a bigger
       host and a fresh stack.</div>
   </section>
@@ -399,6 +413,12 @@ scripts/log-scan.sh               <span class="c"># no PIN or unmasked MSISDN / 
       <li><strong>The seeder exits non-zero</strong>: <code>docker compose --profile core --profile seed --profile tester logs mw-seeder</code>; the
         line <code>seed.step.failed</code> names the step. <code>open change request of &lt;operator&gt;</code> means a pending
         request on a partner, menu or template: approve or reject it in the console, then run step 4 again.</li>
+      <li><strong>A partner route stays <code>waiting for its dry-run</code> or turns <code>REJECTED</code></strong>: the partner
+        page lists the problems (for example <code>HTTP_5XX</code> from the simulator); the adapter's log has the rest
+        (<code>docker compose --profile core logs mw-adapter-billpay</code>). The last LIVE version keeps serving.</li>
+      <li><strong>An SFTP batch route stops logging in after <code>partner-sftp</code> was recreated</strong>: the container
+        made new host keys. Write the known_hosts lines into the partner's OpenBao secret again (<code>docs/runbook.md</code>,
+        "Batch partner over SFTP").</li>
       <li><strong>404 on <code>/test/...</code> or <code>/tester</code></strong>: the stack was started without
         <code>--profile tester</code>. Run the step 4 command again (or <code>scripts/tester.sh</code>);
         <code>scripts/api-test.sh</code> adds the test-only routes by itself.</li>

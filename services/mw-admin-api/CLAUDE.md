@@ -134,18 +134,20 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   10 times: a rejected request never has a command, the maker / integration roles refused).
 - Partner config (ticket 38, spec 15.2 Partners, 15.3, 16.2, 20.4; `controller/PartnerController` ->
   `service/PartnerConfigService` (reads, maker) and `service/PartnerChangeHandler` (approval) ->
-  `repository/PartnerRepository`, schema `partner` (own, V5: `partner`, `endpoint`, `mapping`,
-  `error_map`; Flyway `schemas: admin,partner`, history table in `admin`), `entity/Partner`,
+  `repository/PartnerRepository`, schema `partner` (own, V5: `partner`, `endpoint`, `error_map`, V7
+  `partner_route`; V8 (ticket 84) dropped `mapping`, `partner.template` and `endpoint.base_url`; Flyway
+  `schemas: admin,partner`, history table in `admin`), `entity/Partner`,
   `dto/PartnerConfigValue` = the adapters' `PartnerConfig` field names (camelCase), `mapper/PartnerMapper`):
   `GET /admin/v1/partners[/{partnerId}]` (`AdminRole.READ_PARTNERS` = transaction readers +
   integration-maker/checker); `POST /admin/v1/partners/{partnerId}/change-requests {action, reason,
   family?, timeouts?, config?}` (`PARTNER_MAKER` = ops-maker, integration-maker): ENABLE / DISABLE /
-  SET_TIMEOUTS (existing partner, else 404; `timeouts` only with SET_TIMEOUTS) or UPSERT (full config;
-  `family` telco|billpay|bank needed for a new partner, never changes). Fields not belonging to the
-  action, an invalid config (`PartnerConfigService.validate`: absolute http(s) baseUrl without user
-  info/query/fragment, operation method/safe path/response, credentialsRef a bare secret name, error-map
-  suffix, scheme needs a ref, positive timeouts, readTimeoutMs >= timeoutMs; messages never repeat a
-  value) -> 400 MW-VAL-001; a change that changes nothing -> 409 MW-VAL-030. The change request
+  SET_TIMEOUTS (existing partner, else 404; `timeouts` only with SET_TIMEOUTS) or UPSERT_ROUTE (full
+  config, below; `family` telco|billpay|bank needed for a new partner, never changes). The old action
+  UPSERT and the template shape (`template`, `baseUrl`, `operations`) are gone (ticket 84; the contract
+  refuses them, 400). Fields not belonging to the action, an invalid config (`PartnerConfigService.common`:
+  credentialsRef a bare secret name, error-map suffix, scheme needs a ref, positive timeouts,
+  readTimeoutMs >= timeoutMs; messages never repeat a value) -> 400 MW-VAL-001; a change that changes
+  nothing -> 409 MW-VAL-030. The change request
   (resourceType `partner`, resourceId the partner id) stores `payload {family, baseVersion?, config}`
   (full config) and `diff {before, after}` (changed top-level fields). Approve/reject on the shared
   `/admin/v1/change-requests/{id}/...` (`PARTNER_CHECKER` = ops-checker, integration-checker; never the
@@ -159,10 +161,13 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   before/after carry `config` (the diff sides; never secrets). The compacted topic replays the latest
   record per partner to every adapter start (the adapters consume from the beginning in a group of
   their own). Seeds: `mw.partners.seeds` (resource list, `config/PartnerSeedProperties`,
-  `scheduler/PartnerSeedJob` at start-up, insert-if-absent at version 0, never published); only the dev
+  `scheduler/PartnerSeedJob` at start-up, insert-if-absent at version 0, never published, checked with
+  the route rules, its route row `route_status` SEED, no `route` state in the view); only the dev
   profile (`application-dev.yml`, `SPRING_PROFILES_ACTIVE=dev` in `deploy/docker-compose.yml`) seeds
-  `partner-seeds/dev/ocs.json`, a copy of mw-adapter-telco's dev seed `ocs` (keep them identical; the
-  test config seeds it too). Decisions (no product owner available): ops-maker/ops-checker may change
+  `partner-seeds/dev/ocs.json`, `billagg.json`, `c2wbank.json` (ticket 84), copies of the adapters' dev
+  seeds (mw-adapter-telco `ocs`, -billpay `billagg`, -bank `c2wbank`) with the simulator URL written
+  into the route (keep them identical; the test config seeds them too). V8 drops a version-0 seed
+  without a route row so it is stored again in the route shape. Decisions (no product owner available): ops-maker/ops-checker may change
   partners as well as integration-* (an incident disable is an operations task); the ops-emergency
   direct change with 24 h post-approval (15.3) is not built; DELETE / tombstones are not offered (disable
   instead); the admin does not compile JSONata or know the adapters' host allowlists, so an adapter may
@@ -170,6 +175,51 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   config kept) and the admin's tables then differ from what runs; records go to every adapter (configKey
   has no family), and an adapter without an allowlist entry for the id refuses them; nothing republishes
   the snapshot after a Kafka volume loss (approve a change to republish).
+- Partner routes (ADR D26, ticket 83; same engine): action `UPSERT_ROUTE` with `config` (`route` Camel
+  YAML DSL, `mappings`, `allowedHosts`, `dryRun {operation, sample, baseUrl?}`, timeouts, `errorMap`,
+  `ambiguousCodes`, `sensitiveFields`; `family` for a new partner). Only UPSERT_ROUTE carries a
+  `dryRun`: ENABLE / DISABLE / SET_TIMEOUTS on a proven route (a seed or a version reported LIVE)
+  republish it without one (ticket 84), so the adapter swaps the version in at once; on a route still
+  PENDING_DRY_RUN or REJECTED they keep its `dryRun`, so the gate still applies (review of 84). Field problems `400 MW-VAL-001`; the route itself is checked by
+  `service/PartnerRouteValidator`, a copy of mw-adapter-billpay's `PartnerRouteLoader` rules kept identical
+  under D14 (no Camel here: the loader's walk over Camel's model runs over the SnakeYAML node tree with the
+  same allowlist; Camel's YAML DSL JSON Schema `schema/camelYamlDsl.json`, copied from camel-yaml-dsl
+  4.22.2, runs first; strict Kamelet parameter keys, the `mw-http-call` host in `allowedHosts`, the
+  ending rule, named mappings present; Kamelet library `mw.partner-routes.kamelets`; ticket 85: the
+  `mw-soap-call` rules (address host, `*.xsl` or `classpath:partner/xslt/` stylesheets, SOAP version,
+  WS-Security secret field; review of 85: `request=json`/`response=json` with a `namespace`, `auth`
+  none|basic with `userField` and `secretField`, `sslContextRef` over https; the batch Kamelets' rules
+  in `service/PartnerBatchRouteRules`, the copy of the adapters' `PartnerBatchRoutes`: values read
+  URL-decoded, `delay` (100 ms or more) or `cron`, a sink `mapping` in request routes only) and every
+  `*.xsl` mapping through `service/StylesheetPolicy`, the copy of the
+  adapters' `partner/mapping/StylesheetPolicy`: no DOCTYPE/entity, `document()`, `doc()`, includes and the
+  like, `SoapRouteValidatorTest`): `400 MW-VAL-041`,
+  one detail per problem `{field: config.route, issue: "line N: construct: problem"}`, before any change
+  request exists. `dryRun.baseUrl` must be a plain http(s) URL in `allowedHosts` (the adapters' rule).
+  Approval: as above, plus `family` in the published value (every approval: each adapter applies its own
+  family only) and a `partner.partner_route` row (V7: route_yaml, mappings, allowed_hosts, family, dry_run,
+  route_status PENDING_DRY_RUN | LIVE | REJECTED (SEED for a seed, V8), problems, kamelets; V8
+  `published_value` = the full value published) for the new version; any later ENABLE / DISABLE /
+  SET_TIMEOUTS republishes the route as a new version.
+  `messaging/PartnerRouteStatusListener` (group mw-admin-api, retry topics + DLQ;
+  `mw.partner-routes.status-consumer.enabled`, off in tests) consumes `mw.partner.route.status.v1`
+  (mw-adapter-billpay's contract, own type `dto/PartnerRouteStatusMessage`) into
+  `service/PartnerRouteStatusService` (update by key, latest report wins, a version not approved here is
+  skipped). Rollback (ticket 84, ADR D26 amendment; the restart gap of ticket 83: an adapter replays
+  only the latest record per partner): a REJECTED report for the partner's current version republishes
+  the newest version reported LIVE before it as the next version, without `dryRun`, in the same
+  transaction (review of 84, `PartnerRouteStatusService.rolledBack`): the set its dry-run proved
+  (route, mappings, allowedHosts, auth, sensitiveFields, headers, error map) as it was, enabled only
+  when both versions are (never re-enables a partner the operator disabled), the current timeouts; the
+  merged value must pass `validateRoute` again (`partner.route.rollback_refused` otherwise), and a
+  rejected version that kept that proven set is not rolled back (it would be rejected again); partner rows restored, route row PENDING_DRY_RUN, outbox record
+  changedBy / approvedBy `system/rollback`, event `partner.route.rolled_back`; a repeated or stale REJECTED
+  (another instance, a replay) does nothing, and without a LIVE predecessor nothing is published (the
+  adapter keeps its seed). Not audited on `mw.audit.event.v1` (the record and the log carry it). Views:
+  `Partner.route {version, status, problems, kamelets, statusAt, liveVersion}`; `GET
+  /admin/v1/partners/kamelet-usage` (newest LIVE version per partner, per Kamelet). Tests:
+  `PartnerRouteValidatorTest`, `PartnerRouteApiIT`, `service/PartnerRouteRollbackIT`,
+  `contracts/ConsumedContractsTest`.
 - USSD menus and notify templates (ticket 39, spec 9.2, 10.3, 15.2; `controller/ContentController` ->
   `service/ContentChangeService` -> `repository/ContentVersionRepository`, table
   `admin.content_version` V6, `entity/ContentVersion`, `mapper/ContentChangeMapper`; roles
@@ -300,7 +350,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 - `events/mw-admin-api/mw.txn.action.v1` (ticket 37): approved INQUIRE / FORCE_COMMIT /
   FORCE_RELEASE for mw-orchestrator (Kafka topic 6 partitions, 7 d, retry group mw-orchestrator).
 - `events/mw-admin-api/mw.config.changed.v1` (ticket 38): approved partner configs, PARTNER UPSERT,
-  key `partner/<id>`, value the adapters' `PartnerConfig` shape (compacted topic, 6 partitions).
+  key `partner/<id>`, value the adapters' `PartnerConfig` shape (compacted topic, 6 partitions); since
+  ticket 84 a value with `template` or `operations` is invalid, and a `system/rollback` record
+  republishes the last LIVE version.
 - `events/mw-admin-api/mw.config.changed.v1` (ticket 39): approved USSD menu and template versions,
   USSD_MENU (key `ussd-menu/<menuId>`) and TEMPLATE (key `template/<code>/<channel>/<locale>`) UPSERTs;
   value shapes in `mapper/ContentChangeMapper` and the samples `valid-ussd-menu-upsert.json`,
@@ -321,13 +373,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `admin.v1`; consumes `api/mw-orchestrator/txn-query.v1` (own type `dto/AdminTxn`) and
   `api/mw-audit-dw/audit-query.v1` (own type `dto/AuditTrail`) and `api/mw-crypto/crypto-internal.v1`
   (ticket 75, own type `dto/CryptoKeys`), unknown fields ignored
-  (`contracts/ApiContractsTest` reads contract-shaped answers). No consumed events.
+  (`contracts/ApiContractsTest` reads contract-shaped answers). Consumes
+  `events/mw-adapter-billpay/mw.partner.route.status.v1` (ticket 83, `contracts/ConsumedContractsTest`).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
-  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
+  `build.gradle.kts`; drop once the Boot BOM ships them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
   Events written without one (scheduled jobs) get a plain UUID (`util/CorrelationIds`).
@@ -341,10 +394,24 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
-- `messaging/EventPublisher`: Kafka records with the 6.1 headers, idempotent `acks=all` producer.
 - `messaging/OutboxWriter` + `OutboxRelay`: transactional outbox (6.4), used for the reveal audit.
-- `route/RetryTopicRouteBuilder` + `messaging/RetryDelayListener`: subclass per consumed topic; retry
-  topics 10 s / 1 min / 10 min then DLQ (19.2); per-record commit; no sleeps on Kafka threads.
+- Kafka through Spring Kafka (ADR D25; no Camel in this module, copied from the template, ticket 79):
+  `messaging/EventPublisher` sends records with the 6.1 headers through `KafkaTemplate` (idempotent,
+  `acks=all`, at most 5 in flight; `publish` waits for the ack, `publishStoredAsync` sends an outbox row
+  with exactly its stored headers). `config/KafkaConfig` puts every `@KafkaListener` on non-blocking retry
+  topics `<topic>.<group>.retry.1..3` (10 s / 1 min / 10 min, `mw.kafka.retry.delays`) then
+  `<topic>.<group>.dlq` (`messaging/RetryTopicNaming`, group = `spring.kafka.consumer.group-id`, the
+  service name; declared in `deploy/kafka/topics.txt`); validation and JSON failures and records that are
+  not UTF-8 go to the DLQ at once; `messaging/RetryTopicRecoverer` adds `mw-retry-attempt`,
+  `mw-original-topic`, `mw-error-class`, `mw-retry-not-before`; `messaging/RetryDueTimeCap` caps a forged
+  due time; `messaging/ConsumerContextInterceptor` puts the record's ids in the MDC. Listeners take
+  `ConsumerRecord<String, String>` and `Acknowledgment` and call `ack.acknowledge()` after handling
+  (per-record commit, AckMode `MANUAL_IMMEDIATE`); a delay pauses the partition, never sleeps on the
+  consumer thread. Settings: `spring.kafka.*`, `mw.kafka.send-timeout`, `mw.kafka.listener.shutdown-timeout`
+  (100 ms in tests), `mw.kafka.retry.exclude-topics`. `messaging/RetryTopicIT` (conformance) checks it all.
+- `scheduler/OutboxRelayScheduler`: relays the transactional outbox (`messaging/OutboxRelay`, 6.4) every
+  `mw.outbox.relay.period` after a run ends, ShedLock-guarded; off in tests (`mw.outbox.relay.enabled`).
+  Tests that consume create their topics with retry topics and DLQ first (`KafkaTestTopics.createWithRetries`).
 - `application.yml`: Resilience4j defaults (19.2), own schema `admin` (spec 16.2) migrated by Flyway
   on start from `db/migration` (16.4).
 

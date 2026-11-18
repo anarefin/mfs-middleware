@@ -45,3 +45,17 @@
 74-audit-anchor-signing                     63,66             done     19m      49 files +1681 −51     1f1a8a6f..9aec2426 (+review fix)
 75-admin-key-management-ceremony            64,70             done     78m      90+ files +4782 −65    dafbc2d2..5f6e7c6b (+race fix)
 76-security-tests-docs                      72,73,75          done     37m      77 files +3108 −71     8295b874..a58842af
+# --- Run 77-87 (planned 2026-11-18): Camel only for external integration (plan we-were-supposed-to-mellow-mccarthy). Spring Kafka for messaging; partner routes as config (Camel YAML DSL + Kamelets). Catalogue + secrets stay static (user). Row order = run order; 79/80 and 82 can run in parallel after 78; 85/86/87 in parallel after 84.
+77-camel-scope-adr-spec                     —                 done     6m       12 files +245 −44   65dac07e
+78-template-spring-kafka                    77                done     ~40m     see 921c44ac,29009b74
+79-spring-kafka-support-services            78                done     ~45m     see 46900c3b
+80-spring-kafka-channels                    78                done     ~25m     see d010a0f6
+81-spring-kafka-orchestrator-notify         78,79,80          done     ~19m     see 7fade216,5b646f5b
+82-billpay-route-as-config-engine           78                done     57m      see 8f9f6a97..f52bcc11
+83-partner-route-maker-checker-dry-run      82                done     ~90m     see fb639d47..9f4c0680
+84-route-engine-telco-bank                  83                done     ~2h      see 89b8dac6..3ce2acd0
+85-soap-partner-kamelet                     84                done     ~49m     see 0926e161,0fd772a6
+86-sftp-batch-partner-kamelets              84                done     ~28m     see 1ef30ff6
+87-auth-scheme-kamelets                     84                done     ~40m     see b4d2b1c1,7677e0fa
+88-mw-recon-matching                        86                open     (written in run 77-87, not built: user 2026-11-18)
+# --- Run 77-87 gate DONE (2026-11-18, 375bee59): review fix pass ccb8a6a5 (incl. 84 security S1/S2); gate fixes e74c2cfa (partner HttpClient auto-retry resent a PAY after 503) and c17e72f6 (admin-ui forms lost input on a refused submit). clean build (no slow-wait, user) green 3m53s; smoke 50/50; edge-test 53/53; API suite 717 assertions, 1 fail fixed by e74c2cfa (re-run 05/06/08 green); ui-e2e 18/18 after fix; tester-e2e 12/12 (after rebuilding the stale test-console image); log-scan clean. NOT RUN: slow-wait tests, perf, chaos. Open: partner audit dropped when txnId is null (bill fetch, dry-run; also on main); Next 16.4.1 security check fails local pnpm build.

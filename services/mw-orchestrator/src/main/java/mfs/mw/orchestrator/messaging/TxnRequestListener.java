@@ -2,13 +2,15 @@ package mfs.mw.orchestrator.messaging;
 
 import mfs.mw.orchestrator.dto.TxnRequest;
 import mfs.mw.orchestrator.service.TransactionService;
-import org.apache.camel.Exchange;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Handler behind the {@code mw.txn.request.v1} route: one record, one database transaction. A
- * record that cannot be read or lacks a required field throws, so the route parks it on a retry
+ * Consumes {@code mw.txn.request.v1}: one record, one database transaction. A
+ * record that cannot be read goes to the DLQ at once; one that lacks a required field throws, so the retry error handler (config/KafkaConfig) parks it on a retry
  * topic and finally the DLQ. The body is never logged (it holds MSISDNs and PIN ciphertext).
  */
 @Component("txnRequestListener")
@@ -22,8 +24,13 @@ public class TxnRequestListener {
     this.json = json;
   }
 
-  public void handle(Exchange exchange) {
-    TxnRequest req = json.readValue(exchange.getMessage().getBody(String.class), TxnRequest.class);
+  @KafkaListener(
+      id = "txnRequest",
+      topics = MwTopics.TXN_REQUEST,
+      groupId = "${spring.kafka.consumer.group-id}",
+      autoStartup = "${mw.orchestrator.consumers.enabled:true}")
+  public void handle(ConsumerRecord<String, String> record, Acknowledgment ack) {
+    TxnRequest req = json.readValue(record.value(), TxnRequest.class);
     require(req.txnId(), "txnId");
     require(req.idempotencyKey(), "idempotencyKey");
     require(req.correlationId(), "correlationId");
@@ -32,7 +39,8 @@ public class TxnRequestListener {
     if (req.initiator() == null || req.initiator().id() == null || req.amount() == null || req.requestedAt() == null) {
       throw new IllegalArgumentException("transaction request lacks initiator, amount or requestedAt");
     }
-    service.accept(req, MwHeaders.text(exchange.getMessage().getHeader(MwHeaders.REPLY_TO)));
+    service.accept(req, MwHeaders.text(record.headers().lastHeader(MwHeaders.REPLY_TO)));
+    ack.acknowledge();
   }
 
   private static void require(String value, String name) {

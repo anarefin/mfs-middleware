@@ -1,0 +1,50 @@
+{
+  "partnerId": "billagg",
+  "family": "billpay",
+  "config": {
+    "enabled": true,
+    "connectTimeoutMs": 3000,
+    "timeoutMs": 25000,
+    "readTimeoutMs": 27000,
+    "auth": {
+      "scheme": "hmac-sha256",
+      "credentialsRef": "hmac-secret"
+    },
+    "sensitiveFields": {
+      "billNumber": "ACCOUNT"
+    },
+    "ambiguousCodes": [
+      "9876"
+    ],
+    "errorMap": {
+      "3001": {
+        "suffix": "BILL_NOT_FOUND",
+        "retryable": false
+      },
+      "3002": {
+        "suffix": "BILL_ALREADY_PAID",
+        "retryable": false
+      },
+      "3003": {
+        "suffix": "PAYMENT_REFUSED",
+        "retryable": false
+      },
+      "3004": {
+        "suffix": "UNKNOWN_BILLER",
+        "retryable": false
+      }
+    },
+    "route": "- route:\n    from:\n      uri: direct:partner-billagg\n      steps:\n        - choice:\n            when:\n              - simple: \"${header.mwOperation} == 'PAY'\"\n                steps:\n                  - to: \"kamelet:mw-map?mapping=PAY.request\"\n                  - to: \"kamelet:mw-http-call?url=http://mw-simulators:8080&method=POST&path=/billagg/v1/payments&auth=hmac-sha256&secretField=hmac-secret\"\n                  - to: \"kamelet:mw-classify?mapping=PAY.response&definiteStatuses=400,422&pending=true\"\n              - simple: \"${header.mwOperation} == 'STATUS_QUERY'\"\n                steps:\n                  - to: \"kamelet:mw-http-call?url=http://mw-simulators:8080&method=GET&path=/billagg/v1/payments/{reference}&auth=hmac-sha256&secretField=hmac-secret\"\n                  - to: \"kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200,404&pending=true\"\n              - simple: \"${header.mwOperation} == 'INQUIRY'\"\n                steps:\n                  - to: \"kamelet:mw-map?mapping=INQUIRY.request\"\n                  - to: \"kamelet:mw-http-call?url=http://mw-simulators:8080&method=POST&path=/billagg/v1/bills/fetch&auth=hmac-sha256&secretField=hmac-secret\"\n                  - to: \"kamelet:mw-classify?mapping=INQUIRY.response&definiteStatuses=400,422\"\n        - to: \"kamelet:mw-audit\"\n",
+    "mappings": {
+      "PAY.request": "{\"transactionId\": reference, \"billerCode\": partner.billerCode,\n \"billNumber\": creditParty.id, \"amount\": amount.major}\n",
+      "PAY.response": "status = 200\n  ? (body.status = \"SUCCESS\" and $type(body.paymentRef) = \"string\" and body.paymentRef != \"\"\n      ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.paymentRef, \"code\": body.code}\n      : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: status = 202\n  ? (body.status = \"PENDING\"\n      ? {\"outcome\": \"PENDING\", \"partnerRef\": body.paymentRef, \"code\": body.code}\n      : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: status = 422\n  ? ($type(body.code) = \"string\" and body.code != \"\"\n      ? {\"outcome\": \"FAILED\", \"code\": body.code, \"message\": body.message}\n      : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: status = 400\n  ? {\"outcome\": \"FAILED\", \"code\": \"HTTP_400\", \"message\": body.message}\n: {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}\n",
+      "STATUS_QUERY.response": "status = 200\n  ? (body.status = \"SUCCESS\" and $type(body.paymentRef) = \"string\" and body.paymentRef != \"\"\n      ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.paymentRef, \"code\": body.code}\n      : body.status = \"FAILED\" and $type(body.code) = \"string\" and body.code != \"\"\n        ? {\"outcome\": \"FAILED\", \"code\": body.code, \"message\": body.message}\n      : body.status = \"PENDING\"\n        ? {\"outcome\": \"PENDING\", \"partnerRef\": body.paymentRef, \"code\": body.code}\n        : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: status = 404 and body.status = \"NOT_FOUND\"\n  ? {\"outcome\": \"NOT_FOUND\", \"code\": body.code, \"message\": body.message}\n: {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}\n",
+      "INQUIRY.request": "{\"billerCode\": partner.billerCode, \"billNumber\": creditParty.id}\n",
+      "INQUIRY.response": "status = 200\n  ? (body.status = \"DUE\" and $type(body.amount) = \"string\" and $type(body.billNumber) = \"string\"\n      ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.billNumber, \"code\": body.code,\n         \"attributes\": {\"amount\": body.amount, \"dueDate\": body.dueDate, \"billPeriod\": body.billPeriod}}\n      : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: status = 422\n  ? ($type(body.code) = \"string\" and body.code != \"\"\n      ? {\"outcome\": \"FAILED\", \"code\": body.code, \"message\": body.message}\n      : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: status = 400\n  ? {\"outcome\": \"FAILED\", \"code\": \"HTTP_400\", \"message\": body.message}\n: {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}\n",
+      "CALLBACK.response": "$type(body.transactionId) != \"string\" or body.transactionId = \"\" ? {}\n: body.status = \"SUCCESS\" and $type(body.paymentRef) = \"string\" and body.paymentRef != \"\"\n  ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.paymentRef, \"reference\": body.transactionId,\n     \"code\": body.code, \"message\": body.message}\n: body.status = \"FAILED\" and $type(body.code) = \"string\" and body.code != \"\"\n  ? {\"outcome\": \"FAILED\", \"partnerRef\": body.paymentRef, \"reference\": body.transactionId,\n     \"code\": body.code, \"message\": body.message}\n: body.status = \"PENDING\"\n  ? {\"outcome\": \"PENDING\", \"partnerRef\": body.paymentRef, \"reference\": body.transactionId,\n     \"code\": body.code, \"message\": body.message}\n: {}\n"
+    },
+    "allowedHosts": [
+      "mw-simulators"
+    ]
+  }
+}

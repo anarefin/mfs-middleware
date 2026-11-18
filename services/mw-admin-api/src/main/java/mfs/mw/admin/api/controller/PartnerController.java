@@ -39,6 +39,12 @@ public class PartnerController {
     return service.list(operators.resolve(jwt));
   }
 
+  /** Kamelet usage of the live partner routes (ticket 83). */
+  @GetMapping("/kamelet-usage")
+  public PartnerView.KameletUsage kameletUsage(@AuthenticationPrincipal Jwt jwt) {
+    return service.kameletUsage(operators.resolve(jwt));
+  }
+
   @GetMapping("/{partnerId}")
   public PartnerView get(@AuthenticationPrincipal Jwt jwt, @PathVariable String partnerId) {
     return service.get(operators.resolve(jwt), partnerId);

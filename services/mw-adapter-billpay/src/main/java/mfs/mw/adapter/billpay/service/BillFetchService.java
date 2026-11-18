@@ -10,8 +10,9 @@ import mfs.mw.adapter.billpay.dto.Money;
 import mfs.mw.adapter.billpay.exception.ErrorCodes;
 import mfs.mw.adapter.billpay.exception.MwException;
 import mfs.mw.adapter.billpay.mapper.PartnerCallMapper;
+import mfs.mw.adapter.billpay.mapper.PartnerReplyMapper;
 import mfs.mw.adapter.billpay.partner.PartnerResponse;
-import mfs.mw.adapter.billpay.partner.template.PartnerGateway;
+import mfs.mw.adapter.billpay.partner.route.PartnerGateway;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -61,6 +62,10 @@ public class BillFetchService {
               .withRetryable(r.retryable());
       case PartnerResponse.Ambiguous a -> throw timeout("AMBIGUOUS_CODE");
       case PartnerResponse.Unknown u -> throw timeout(u.reason().name());
+      case PartnerResponse.NotSent n when n.reason() == PartnerResponse.NotSentReason.UNKNOWN_PARTNER ->
+          throw new MwException(PartnerReplyMapper.UNKNOWN_PARTNER_CODE, "No partner serves this biller")
+              .withStatus(HttpStatus.BAD_GATEWAY)
+              .withRetryable(false);
       case PartnerResponse.NotSent n ->
           throw new MwException("MW-SYS-PARTNER_" + notSent(n.reason()), "Biller not reachable, try again")
               .withStatus(HttpStatus.SERVICE_UNAVAILABLE)
@@ -101,7 +106,7 @@ public class BillFetchService {
       case BULKHEAD_FULL -> "BUSY";
       case CONNECT_FAILED -> "UNAVAILABLE";
       case DISABLED -> "DISABLED";
-      case MISCONFIGURED -> "MISCONFIGURED";
+      case MISCONFIGURED, UNKNOWN_PARTNER -> "MISCONFIGURED";
     };
   }
 

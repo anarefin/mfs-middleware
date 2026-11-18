@@ -1,0 +1,45 @@
+# mw-recon (ADR D26, ticket 86): the last step of a batch partner route; turns a reconciliation or
+# settlement file into mw.partner.recon.v1 records.
+apiVersion: camel.apache.org/v1
+kind: Kamelet
+metadata:
+  name: mw-recon
+  labels:
+    camel.apache.org/kamelet.type: action
+  annotations:
+    camel.apache.org/kamelet.support.level: Stable
+    camel.apache.org/provider: Bits MFS middleware
+spec:
+  definition:
+    title: MW reconciliation file
+    description: >-
+      Reads the file line by line from its stream (never fully in memory) as delimited text: the
+      first line names the columns unless columns is set. Every data line becomes one
+      mw.partner.recon.v1 record (key partnerId) through the outbox, all lines of a file in one
+      transaction: a line that cannot be read (wrong number of fields, too long) fails the whole file
+      and nothing is published, so mw-sftp-source moves it to .error. Input: the file stream and the
+      Camel file headers. Output: the body unchanged.
+    type: object
+    required: [partnerId]
+    properties:
+      columns:
+        title: Columns
+        description: Column names, comma separated (letters, digits, underscore); empty = the file's first line.
+        type: string
+        default: ""
+      delimiter:
+        title: Delimiter
+        description: "Field delimiter: comma, semicolon, pipe or tab."
+        type: string
+        default: comma
+      partnerId:
+        title: Partner id
+        description: Set by the route loader.
+        type: string
+  template:
+    from:
+      uri: "kamelet:source"
+      steps:
+        - bean:
+            ref: mwRecon
+            method: "publish(${exchange}, '{{partnerId}}', '{{columns}}', '{{delimiter}}')"

@@ -1,0 +1,104 @@
+# mw-sftp-sink (ADR D26, ticket 86): puts the file a partner route built on the partner's SFTP host.
+apiVersion: camel.apache.org/v1
+kind: Kamelet
+metadata:
+  name: mw-sftp-sink
+  labels:
+    camel.apache.org/kamelet.type: sink
+  annotations:
+    camel.apache.org/kamelet.support.level: Stable
+    camel.apache.org/provider: Bits MFS middleware
+spec:
+  definition:
+    title: MW SFTP sink
+    description: >-
+      Writes one file under directory on the partner's SFTP host (camel-sftp): the body as it is, or
+      with mapping the text (CSV or fixed-width lines) that JSONata mapping of the record makes of the
+      JSON body (request routes only). Uploaded under a temporary name, then renamed, never over an
+      existing file. The host key is checked strictly against the partner's known hosts (a field of
+      its own OpenBao secret); the password or private key is a field of the same secret. In a request
+      route the put is the partner call: mw-classify sees status 200 and the body {"fileName": ...}
+      (a failed put after the upload started is UNKNOWN). Output: the body unchanged.
+    type: object
+    required: [host, username, directory, fileName, partnerId, knownHosts]
+    properties:
+      host:
+        title: Host
+        description: The partner's SFTP host, one of the record's allowedHosts.
+        type: string
+      port:
+        title: Port
+        description: SFTP port.
+        type: integer
+        default: 22
+      username:
+        title: User name
+        description: SFTP login.
+        type: string
+      directory:
+        title: Directory
+        description: Target directory, relative to the login's home (no .. segments).
+        type: string
+      fileName:
+        title: File name
+        description: >-
+          File name: letters, digits, . _ - and ${date:now:<pattern>} tokens, e.g.
+          settlement-${date:now:yyyyMMdd}.csv.
+        type: string
+      dryRun:
+        title: Dry-run
+        description: Set by the route loader (true in a dry-run candidate, which writes no file); never by the route.
+        type: boolean
+        default: false
+      mapping:
+        title: Text mapping
+        description: >-
+          A JSONata mapping of the record whose result is the file text (a string), evaluated over the
+          JSON body; empty = the body as it is. Request routes only.
+        type: string
+        default: ""
+      password:
+        title: Password secret reference
+        description: Set by the route loader from secretField (auth=password) as a registry reference, never the value.
+        type: string
+        format: password
+        x-descriptors:
+          - urn:camel:group:credentials
+          - urn:alm:descriptor:com.tectonic.ui:password
+      privateKey:
+        title: Private key secret reference
+        description: Set by the route loader from secretField (auth=key) as a registry reference, never the value.
+        type: string
+        format: password
+        x-descriptors:
+          - urn:camel:group:credentials
+          - urn:alm:descriptor:com.tectonic.ui:password
+      knownHosts:
+        title: Known hosts reference
+        description: Set by the route loader from knownHostsField (the host's known_hosts lines in the partner's secret).
+        type: string
+      partnerId:
+        title: Partner id
+        description: Set by the route loader.
+        type: string
+  template:
+    from:
+      uri: "kamelet:source"
+      steps:
+        - bean:
+            ref: mwSftpSink
+            method: "content(${exchange}, '{{mapping}}')"
+        # a dry-run candidate makes the text but puts nothing on the partner's host
+        - choice:
+            when:
+              - simple: "'{{dryRun}}' == 'true'"
+                steps:
+                  - setHeader:
+                      name: CamelFileNameProduced
+                      constant: "dry-run"
+            otherwise:
+              steps:
+                - to: "sftp:{{host}}:{{port}}/{{directory}}?username={{username}}&password={{?password}}&privateKey={{?privateKey}}&knownHosts={{knownHosts}}&strictHostKeyChecking=yes&useUserKnownHostsFile=false&autoCreateKnownHostsFile=false&fileName={{fileName}}&fileExist=Fail&tempPrefix=.part-&disconnect=true&binary=true&connectTimeout=10000&soTimeout=30000"
+        - bean:
+            ref: mwSftpSink
+            method: put

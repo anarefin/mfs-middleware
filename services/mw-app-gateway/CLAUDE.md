@@ -132,7 +132,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   canonical `mw.txn.request.v1` (`mapper/RequestMapper`; initiator MSISDN = token wallet; debit = token
   wallet (its own PIN), credit = body wallet (walletType AGENT for CASH_OUT, MERCHANT for MERCHANT_PAY, else CUSTOMER)), then
   asks mw-auth for the transaction assertion (below), registers a waiter, then publishes directly (not via the outbox) with header `mw-reply-to = instanceId`. Kafka refusing
-  or timing out (`max-block-ms`/`delivery-timeout-ms` 5 s/10 s) -> `503 MW-SYS-010`, retryable,
+  or timing out (`max.block.ms`/`delivery.timeout.ms` 5 s/10 s) -> `503 MW-SYS-010`, retryable,
   nothing recorded. Idempotency is decided by mw-orchestrator (7.3); this service only requires
   and forwards the key.
 - Transaction assertion (ticket 72, spec 18.7, D22; `AuthClient.authorise`, `RequestMapper.toAuthorisation`): for
@@ -169,7 +169,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   the assertion (security review of ticket 72: never from the plain public port; `dto/ChannelPinKey`, a key whose
   `purpose` is not `PIN_TRANSPORT` is refused, `503 MW-SYS-012`), reused `pin-key-ttl` (5 min); while mw-auth cannot be asked the last key is
   served; none yet `503 MW-SYS-012`. The app encrypts the PIN's UTF-8 bytes with RSA-OAEP (SHA-256, MGF1 SHA-256).
-- Sync wait (7.5): `service/ReplyWaiters` (`txnId -> future`); `route/StatusReplyRoute` consumes
+- Sync wait (7.5): `service/ReplyWaiters` (`txnId -> future`); `config/StatusReplyConsumerConfig` consumes
   `mw.txn.status.v1` with group `mw-app-gateway.reply.<instanceId>` (latest offset, auto-commit,
   no retry), keeps records whose `mw-reply-to` is this instance and only completes futures, so
   no Kafka thread ever waits. The HTTP (virtual) thread waits at most `reply-budget` (25 s).
@@ -181,7 +181,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   answer in time `202 {txnId, status: PROCESSING}` + `Location`. A duplicate answer carries the
   STORED txnId.
 - Status view (`GET`): table `app_transaction` (own schema `app_gateway`), the latest status of
-  every app-channel transaction, kept by `route/StatusProjectionRoute` (shared group
+  every app-channel transaction, kept by `messaging/StatusProjectionListener` (shared group
   `mw-app-gateway`, retry topics + DLQ) and seeded with RECEIVED at submit. A duplicate answer is
   not projected as a status; it links the txnId minted for the repeat (`attributes.requestTxnId`)
   to the stored txnId (`app_transaction.stored_txn_id`, V5), so when the answer comes after the
@@ -255,7 +255,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
-  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
+  `build.gradle.kts`; drop once the Boot BOM ships them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -268,9 +268,22 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
-- `messaging/EventPublisher`: Kafka records with the 6.1 headers, idempotent `acks=all` producer.
-- `route/RetryTopicRouteBuilder` + `messaging/RetryDelayListener`: subclass per consumed topic; retry
-  topics 10 s / 1 min / 10 min then DLQ (19.2); per-record commit; no sleeps on Kafka threads.
+- `messaging/EventPublisher`: Kafka records with the 6.1 headers (+ extra headers such as `mw-reply-to`)
+  through Spring Kafka's `KafkaTemplate` (ADR D25), idempotent `acks=all` producer; `publish` waits at most
+  `mw.kafka.send-timeout`. The admin client (asked for the cluster id by the observed template's first
+  send) is bounded like the producer (`spring.kafka.admin.operation-timeout`), so Kafka down still fails fast.
+- Spring Kafka (ADR D25, copied from the template, ticket 80): `config/KafkaConfig` (non-blocking retry topics
+  `<topic>.mw-app-gateway.retry.1..3` then `<topic>.mw-app-gateway.dlq` for every `@KafkaListener` on the default factory,
+  `messaging/RetryTopicNaming`, `RetryTopicRecoverer` (`mw-retry-*` headers, class only), `RetryDueTimeCap`,
+  `ConsumerContextInterceptor` (consumer MDC), `Utf8Deserializer`; validation/schema failures to the DLQ at
+  once); retry topics 10 s / 1 min / 10 min (`mw.kafka.retry.delays`); per-record manual ack; no sleeps on
+  Kafka threads. Consumers: `messaging/StatusProjectionListener` (retried, group `mw-app-gateway`) and
+  `config/StatusReplyConsumerConfig`: the per-instance reply consumer of `mw.txn.status.v1`, a container built from its own
+  `statusReplyContainerFactory` (not a `@KafkaListener`, so the retry configuration never applies to it), group
+  `mw-app-gateway.reply.<instanceId>`, `auto-offset-reset=latest`, auto-commit, no retry topic or DLQ, an error handler
+  that logs the exception class and skips; `messaging/StatusReplyListener.onReply` only completes futures.
+  `messaging/StatusReplyConsumerIT` runs two instances: each gets its replies, none sent before it started.
+- `scheduler/OutboxRelayScheduler`: the outbox relay schedule (`mw.outbox.relay.period`, ShedLock-guarded).
 - `application.yml`: Resilience4j defaults (19.2), own schema `app_gateway` migrated by Flyway on
   start from `db/migration` (16.4); spec 16.2 names no schema for this service.
 

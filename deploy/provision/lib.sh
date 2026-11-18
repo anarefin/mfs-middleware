@@ -116,12 +116,14 @@ in_pki() {
   return 1
 }
 
-# approle: policy reading only secret/<svc> (and, for a PKI_SERVICES entry, issuing from its own
-# pki_int role only), the AppRole, and a fresh secret-id plus the role-id in the service's own
+# approle: policy reading only secret/<svc> and its per-partner secrets secret/<svc>/<partner> (ADR
+# D26) (and, for a PKI_SERVICES entry, issuing from its own pki_int role only), the AppRole, and a
+# fresh secret-id plus the role-id in the service's own
 # volume (Spring configtree, one file per property; the service runs as 10001).
 approle() {
   {
     printf 'path "secret/data/%s" { capabilities = ["read"] }\n' "$SVC"
+    printf 'path "secret/data/%s/*" { capabilities = ["read"] }\n' "$SVC"
     if in_pki "$SVC"; then printf 'path "pki_int/issue/%s" { capabilities = ["update"] }\n' "$SVC"; fi
   } >"$tmp/policy.hcl"
   bao policy write "$SVC" - <"$tmp/policy.hcl" >/dev/null

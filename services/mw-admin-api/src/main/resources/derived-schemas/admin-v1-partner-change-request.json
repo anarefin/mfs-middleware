@@ -13,7 +13,7 @@
         "ENABLE",
         "DISABLE",
         "SET_TIMEOUTS",
-        "UPSERT"
+        "UPSERT_ROUTE"
       ]
     },
     "reason": {
@@ -53,26 +53,10 @@
     },
     "config": {
       "type": "object",
-      "required": [
-        "baseUrl",
-        "operations"
-      ],
       "additionalProperties": false,
       "properties": {
         "enabled": {
           "type": "boolean"
-        },
-        "template": {
-          "type": "string",
-          "enum": [
-            "rest-json-request-reply",
-            "rest-json-async-callback"
-          ]
-        },
-        "baseUrl": {
-          "type": "string",
-          "minLength": 8,
-          "maxLength": 512
         },
         "connectTimeoutMs": {
           "type": "integer",
@@ -119,55 +103,6 @@
               "additionalProperties": {
                 "type": "string",
                 "maxLength": 256
-              }
-            }
-          }
-        },
-        "operations": {
-          "type": "object",
-          "minProperties": 1,
-          "maxProperties": 20,
-          "additionalProperties": {
-            "type": "object",
-            "required": [
-              "method",
-              "path",
-              "response"
-            ],
-            "additionalProperties": false,
-            "properties": {
-              "method": {
-                "type": "string",
-                "enum": [
-                  "GET",
-                  "POST",
-                  "PUT",
-                  "PATCH",
-                  "DELETE"
-                ]
-              },
-              "path": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 256
-              },
-              "definiteStatuses": {
-                "type": "array",
-                "maxItems": 20,
-                "items": {
-                  "type": "integer",
-                  "minimum": 100,
-                  "maximum": 599
-                }
-              },
-              "request": {
-                "type": "string",
-                "maxLength": 8000
-              },
-              "response": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 8000
               }
             }
           }
@@ -221,6 +156,55 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 64
+        },
+        "route": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536
+        },
+        "mappings": {
+          "type": "object",
+          "maxProperties": 50,
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 8000
+          }
+        },
+        "allowedHosts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253
+          }
+        },
+        "dryRun": {
+          "type": "object",
+          "required": [
+            "operation"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "operation": {
+              "type": "string",
+              "enum": [
+                "PAY",
+                "INQUIRY",
+                "STATUS_QUERY"
+              ]
+            },
+            "sample": {
+              "type": "object",
+              "maxProperties": 50
+            },
+            "baseUrl": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 512
+            }
+          }
         }
       }
     }

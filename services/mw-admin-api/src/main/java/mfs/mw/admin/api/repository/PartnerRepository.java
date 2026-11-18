@@ -3,6 +3,7 @@ package mfs.mw.admin.api.repository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,20 +17,22 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Schema {@code partner} (spec 16.2, own schema of mw-admin-api; ticket 38), plain JDBC: {@code
- * partner}, {@code endpoint}, {@code mapping}, {@code error_map}, read and written as one {@link
- * Partner}. A write replaces the partner's child rows.
+ * partner}, {@code endpoint}, {@code error_map} and the route rows {@code partner_route} (one per
+ * version, ticket 83; the seed's as version 0, ticket 84), read and written as one {@link Partner}.
+ * A write replaces the partner's child rows.
  */
 @Repository
 public class PartnerRepository {
 
   private static final TypeReference<Map<String, String>> STRINGS = new TypeReference<>() {};
   private static final TypeReference<List<String>> LIST = new TypeReference<>() {};
-  private static final TypeReference<List<Integer>> INTS = new TypeReference<>() {};
+  private static final TypeReference<PartnerConfigValue.DryRun> DRY_RUN = new TypeReference<>() {};
+  private static final TypeReference<Map<String, Object>> VALUE = new TypeReference<>() {};
 
   private static final String SELECT =
-      "select p.id, p.family, p.enabled, p.template, p.connect_timeout_ms, p.timeout_ms, p.read_timeout_ms,"
+      "select p.id, p.family, p.enabled, p.connect_timeout_ms, p.timeout_ms, p.read_timeout_ms,"
           + " p.ambiguous_codes::text as ambiguous_codes, p.sensitive_fields::text as sensitive_fields, p.resilience,"
-          + " p.version, p.updated_at, p.updated_by, p.approved_by, e.base_url, e.headers::text as headers,"
+          + " p.version, p.updated_at, p.updated_by, p.approved_by, e.headers::text as headers,"
           + " e.auth_scheme, e.credentials_ref, e.auth_params::text as auth_params"
           + " from partner.partner p left join partner.endpoint e on e.partner_id = p.id";
 
@@ -42,7 +45,7 @@ public class PartnerRepository {
   }
 
   public Optional<Partner> find(String id) {
-    return jdbc.query(SELECT + " where p.id = ?", this::row, id).stream().findFirst().map(this::withChildren);
+    return jdbc.query(SELECT + " where p.id = ?", this::row, id).stream().findFirst().map(this::withChildren).map(this::withRoute);
   }
 
   /** The partner row locked for the approving transaction. */
@@ -52,17 +55,17 @@ public class PartnerRepository {
   }
 
   public List<Partner> list() {
-    return jdbc.query(SELECT + " order by p.id", this::row).stream().map(this::withChildren).toList();
+    return jdbc.query(SELECT + " order by p.id", this::row).stream().map(this::withChildren).map(this::withRoute).toList();
   }
 
   /** Inserts a partner that does not exist yet (seed or first approved UPSERT). */
   public void insert(Partner p) {
     PartnerConfigValue c = p.config();
     jdbc.update(
-        "insert into partner.partner (id, family, enabled, template, connect_timeout_ms, timeout_ms, read_timeout_ms,"
+        "insert into partner.partner (id, family, enabled, connect_timeout_ms, timeout_ms, read_timeout_ms,"
             + " ambiguous_codes, sensitive_fields, resilience, version, updated_at, updated_by, approved_by)"
-            + " values (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?)",
-        p.id(), p.family(), c.isEnabled(), c.template(), c.connectTimeoutMs(), c.timeoutMs(), c.readTimeoutMs(),
+            + " values (?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?)",
+        p.id(), p.family(), c.isEnabled(), c.connectTimeoutMs(), c.timeoutMs(), c.readTimeoutMs(),
         jsonOrNull(c.ambiguousCodes()), jsonOrNull(c.sensitiveFields()), c.resilience(), p.version(),
         Timestamp.from(p.updatedAt()), p.updatedBy(), p.approvedBy());
     insertChildren(p);
@@ -77,38 +80,128 @@ public class PartnerRepository {
     PartnerConfigValue c = p.config();
     int n =
         jdbc.update(
-            "update partner.partner set enabled = ?, template = ?, connect_timeout_ms = ?, timeout_ms = ?,"
+            "update partner.partner set enabled = ?, connect_timeout_ms = ?, timeout_ms = ?,"
                 + " read_timeout_ms = ?, ambiguous_codes = ?::jsonb, sensitive_fields = ?::jsonb, resilience = ?,"
                 + " version = ?, updated_at = ?, updated_by = ?, approved_by = ? where id = ? and version = ?",
-            c.isEnabled(), c.template(), c.connectTimeoutMs(), c.timeoutMs(), c.readTimeoutMs(),
+            c.isEnabled(), c.connectTimeoutMs(), c.timeoutMs(), c.readTimeoutMs(),
             jsonOrNull(c.ambiguousCodes()), jsonOrNull(c.sensitiveFields()), c.resilience(), p.version(),
             Timestamp.from(p.updatedAt()), p.updatedBy(), p.approvedBy(), p.id(), expectedVersion);
     if (n != 1) {
       return false;
     }
     jdbc.update("delete from partner.endpoint where partner_id = ?", p.id());
-    jdbc.update("delete from partner.mapping where partner_id = ?", p.id());
     jdbc.update("delete from partner.error_map where partner_id = ?", p.id());
     insertChildren(p);
     return true;
+  }
+
+  // --- partner routes (ticket 83) ---------------------------------------------------------------
+
+  /**
+   * Writes the route row of version {@code p.version()}, PENDING_DRY_RUN, in the approving
+   * transaction, with the full value published for it (a later rollback republishes it).
+   */
+  public void insertRoute(Partner p, Map<String, Object> publishedValue, Instant at) {
+    insertRoute(p, "PENDING_DRY_RUN", json.writeValueAsString(publishedValue), at);
+  }
+
+  /** Writes a seed's route row (version 0, SEED: never published, never reported). */
+  public void insertSeedRoute(Partner p, Instant at) {
+    insertRoute(p, "SEED", null, at);
+  }
+
+  private void insertRoute(Partner p, String status, String publishedValue, Instant at) {
+    PartnerConfigValue c = p.config();
+    jdbc.update(
+        "insert into partner.partner_route (partner_id, version, family, route_yaml, mappings, allowed_hosts, dry_run,"
+            + " route_status, published_value, created_at) values (?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?)",
+        p.id(), p.version(), p.family(), c.route(), json.writeValueAsString(c.mappings() == null ? Map.of() : c.mappings()),
+        json.writeValueAsString(c.allowedHosts() == null ? List.of() : c.allowedHosts()),
+        json.writeValueAsString(c.dryRun()), status, publishedValue, Timestamp.from(at));
+  }
+
+  /**
+   * The full value published for the newest version below {@code version} that its adapter
+   * reported LIVE (ticket 84 rollback); empty when there is none or it predates the stored values.
+   */
+  public Optional<LivePublished> lastLiveBefore(String partnerId, long version) {
+    return jdbc.query(
+            "select version, published_value::text as published_value from partner.partner_route"
+                + " where partner_id = ? and version < ? and route_status = 'LIVE' order by version desc limit 1",
+            (rs, i) -> {
+              String value = rs.getString("published_value");
+              return value == null ? null : new LivePublished(rs.getLong("version"), read(value, VALUE));
+            },
+            partnerId, version)
+        .stream().filter(java.util.Objects::nonNull).findFirst();
+  }
+
+  /** A LIVE version and the full value that was published for it. */
+  public record LivePublished(long version, Map<String, Object> value) {}
+
+  /**
+   * Records what the adapter reported for one route version.
+   *
+   * @return false when no such version was approved here
+   */
+  public boolean updateRouteStatus(
+      String partnerId, long version, String status, List<String> problems, List<String> kamelets, Instant at) {
+    return jdbc.update(
+            "update partner.partner_route set route_status = ?, problems = ?::jsonb, kamelets = ?::jsonb, status_at = ?"
+                + " where partner_id = ? and version = ?",
+            status, json.writeValueAsString(problems), json.writeValueAsString(kamelets), Timestamp.from(at), partnerId,
+            version)
+        == 1;
+  }
+
+  /** For each partner, its newest route version reported LIVE, with its Kamelets. */
+  public List<LiveRoute> liveRoutes() {
+    return jdbc.query(
+        "select distinct on (partner_id) partner_id, version, kamelets::text as kamelets from partner.partner_route"
+            + " where route_status = 'LIVE' order by partner_id, version desc",
+        (rs, i) -> new LiveRoute(rs.getString("partner_id"), rs.getLong("version"), read(rs.getString("kamelets"), LIST)));
+  }
+
+  /** A live route version and the Kamelets it uses. */
+  public record LiveRoute(String partnerId, long version, List<String> kamelets) {}
+
+  /** The partner with the route fields and state of its current version, when it has a route. */
+  private Partner withRoute(Partner p) {
+    List<Partner> out = jdbc.query(
+        "select r.route_yaml, r.mappings::text as mappings, r.allowed_hosts::text as allowed_hosts,"
+            + " r.dry_run::text as dry_run, r.route_status, r.problems::text as problems, r.kamelets::text as kamelets,"
+            + " r.status_at, (select max(l.version) from partner.partner_route l where l.partner_id = r.partner_id"
+            + " and l.route_status = 'LIVE') as live_version"
+            + " from partner.partner_route r where r.partner_id = ? and r.version = ?",
+        (rs, i) -> {
+          Timestamp statusAt = rs.getTimestamp("status_at");
+          long live = rs.getLong("live_version");
+          Long liveVersion = rs.wasNull() ? null : live;
+          PartnerConfigValue c = p.config().withRoute(
+              rs.getString("route_yaml"), read(rs.getString("mappings"), STRINGS), read(rs.getString("allowed_hosts"), LIST),
+              read(rs.getString("dry_run"), DRY_RUN));
+          if ("SEED".equals(rs.getString("route_status"))) {
+            // a seed has a route but no approved version to report on
+            return new Partner(p.id(), p.family(), p.version(), c, p.updatedAt(), p.updatedBy(), p.approvedBy());
+          }
+          return new Partner(
+              p.id(), p.family(), p.version(), c, p.updatedAt(), p.updatedBy(), p.approvedBy(),
+              new mfs.mw.admin.api.dto.PartnerView.Route(
+                  p.version(), rs.getString("route_status"), read(rs.getString("problems"), LIST),
+                  read(rs.getString("kamelets"), LIST), statusAt == null ? null : statusAt.toInstant(), liveVersion));
+        },
+        p.id(), p.version());
+    return out.isEmpty() ? p : out.getFirst();
   }
 
   private void insertChildren(Partner p) {
     PartnerConfigValue c = p.config();
     PartnerConfigValue.Auth auth = c.auth();
     jdbc.update(
-        "insert into partner.endpoint (partner_id, base_url, headers, auth_scheme, credentials_ref, auth_params)"
-            + " values (?, ?, ?::jsonb, ?, ?, ?::jsonb)",
-        p.id(), c.baseUrl(), jsonOrNull(c.headers()), auth == null ? null : auth.scheme(),
+        "insert into partner.endpoint (partner_id, headers, auth_scheme, credentials_ref, auth_params)"
+            + " values (?, ?::jsonb, ?, ?, ?::jsonb)",
+        p.id(), jsonOrNull(c.headers()), auth == null ? null : auth.scheme(),
         auth == null ? null : auth.credentialsRef(), auth == null ? null : jsonOrNull(auth.params()));
-    if (c.operations() != null) {
-      c.operations().forEach(
-          (name, op) ->
-              jdbc.update(
-                  "insert into partner.mapping (partner_id, operation, method, path, definite_statuses, request, response)"
-                      + " values (?, ?, ?, ?, ?::jsonb, ?, ?)",
-                  p.id(), name, op.method(), op.path(), jsonOrNull(op.definiteStatuses()), op.request(), op.response()));
-    }
     if (c.errorMap() != null) {
       c.errorMap().forEach(
           (code, m) ->
@@ -119,19 +212,6 @@ public class PartnerRepository {
   }
 
   private Partner withChildren(Partner p) {
-    Map<String, PartnerConfigValue.Operation> ops = new LinkedHashMap<>();
-    jdbc.query(
-        "select operation, method, path, definite_statuses::text as definite_statuses, request, response"
-            + " from partner.mapping where partner_id = ? order by operation",
-        rs -> {
-          String statuses = rs.getString("definite_statuses");
-          ops.put(
-              rs.getString("operation"),
-              new PartnerConfigValue.Operation(
-                  rs.getString("method"), rs.getString("path"), statuses == null ? null : json.readValue(statuses, INTS),
-                  rs.getString("request"), rs.getString("response")));
-        },
-        p.id());
     Map<String, PartnerConfigValue.ErrorMapping> errors = new LinkedHashMap<>();
     jdbc.query(
         "select partner_code, suffix, retryable from partner.error_map where partner_id = ? order by partner_code",
@@ -145,9 +225,9 @@ public class PartnerRepository {
     return new Partner(
         p.id(), p.family(), p.version(),
         new PartnerConfigValue(
-            c.enabled(), c.template(), c.baseUrl(), c.connectTimeoutMs(), c.timeoutMs(), c.readTimeoutMs(), c.headers(),
-            c.auth(), ops.isEmpty() ? null : ops, errors.isEmpty() ? null : errors, c.ambiguousCodes(),
-            c.sensitiveFields(), c.resilience()),
+            c.enabled(), c.connectTimeoutMs(), c.timeoutMs(), c.readTimeoutMs(), c.headers(), c.auth(),
+            errors.isEmpty() ? null : errors, c.ambiguousCodes(), c.sensitiveFields(), c.resilience(), null, null, null,
+            null),
         p.updatedAt(), p.updatedBy(), p.approvedBy());
   }
 
@@ -159,10 +239,10 @@ public class PartnerRepository {
         scheme == null && ref == null && params == null ? null : new PartnerConfigValue.Auth(scheme, ref, params);
     PartnerConfigValue config =
         new PartnerConfigValue(
-            rs.getBoolean("enabled"), rs.getString("template"), rs.getString("base_url"),
-            longOrNull(rs, "connect_timeout_ms"), longOrNull(rs, "timeout_ms"), longOrNull(rs, "read_timeout_ms"),
-            read(rs.getString("headers"), STRINGS), auth, null, null, read(rs.getString("ambiguous_codes"), LIST),
-            read(rs.getString("sensitive_fields"), STRINGS), rs.getString("resilience"));
+            rs.getBoolean("enabled"), longOrNull(rs, "connect_timeout_ms"), longOrNull(rs, "timeout_ms"),
+            longOrNull(rs, "read_timeout_ms"), read(rs.getString("headers"), STRINGS), auth, null,
+            read(rs.getString("ambiguous_codes"), LIST), read(rs.getString("sensitive_fields"), STRINGS),
+            rs.getString("resilience"), null, null, null, null);
     return new Partner(
         rs.getString("id"), rs.getString("family"), rs.getLong("version"), config,
         rs.getTimestamp("updated_at").toInstant(), rs.getString("updated_by"), rs.getString("approved_by"));

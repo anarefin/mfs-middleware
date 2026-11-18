@@ -172,11 +172,11 @@
       <svg viewBox="0 0 900 420" role="img" aria-label="Layers of an adapter from the Kafka request to the partner and back">
         <defs><marker id="c5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4a5468"/></marker></defs>
         <rect x="40" y="16" width="420" height="44" rx="8" class="n-kafka"/><text x="250" y="43" text-anchor="middle" class="t-md">Kafka: mw.partner.request.telco.v1 (PAY or STATUS_QUERY)</text>
-        <rect x="40" y="82" width="420" height="44" rx="8" class="n-mw"/><text x="250" y="101" text-anchor="middle" class="t-md" font-weight="600">request route + handler</text><text x="250" y="117" text-anchor="middle" class="t-sm">route/TelcoRequestRouteBuilder → messaging/TelcoRequestHandler</text>
+        <rect x="40" y="82" width="420" height="44" rx="8" class="n-mw"/><text x="250" y="101" text-anchor="middle" class="t-md" font-weight="600">request listener</text><text x="250" y="117" text-anchor="middle" class="t-sm">messaging/TelcoRequestHandler (Spring Kafka listener)</text>
         <rect x="40" y="148" width="420" height="44" rx="8" class="n-mw"/><text x="250" y="167" text-anchor="middle" class="t-md" font-weight="600">service</text><text x="250" y="183" text-anchor="middle" class="t-sm">TopupService: stable reference, drop expired requests, pick the partner</text>
-        <rect x="40" y="214" width="420" height="44" rx="8" class="n"/><text x="250" y="233" text-anchor="middle" class="t-md" font-weight="600">gateway + route from a template</text><text x="250" y="249" text-anchor="middle" class="t-sm">PartnerGateway → direct:partner-ocs (rest-json-request-reply)</text>
-        <rect x="40" y="280" width="420" height="44" rx="8" class="n-wait"/><text x="250" y="299" text-anchor="middle" class="t-md" font-weight="600">call wrapper</text><text x="250" y="315" text-anchor="middle" class="t-sm">PartnerCallWrapper: bulkhead → circuit breaker → time limiter, one try</text>
-        <rect x="40" y="346" width="420" height="44" rx="8" class="n"/><text x="250" y="365" text-anchor="middle" class="t-md" font-weight="600">REST/JSON call + JSONata + auth</text><text x="250" y="381" text-anchor="middle" class="t-sm">RestJsonAdapter, JsonataMapping, AuthScheme (none, API key, HMAC)</text>
+        <rect x="40" y="214" width="420" height="44" rx="8" class="n"/><text x="250" y="233" text-anchor="middle" class="t-md" font-weight="600">gateway + the partner's route</text><text x="250" y="249" text-anchor="middle" class="t-sm">PartnerGateway → direct:partner-ocs (YAML route from the record)</text>
+        <rect x="40" y="280" width="420" height="44" rx="8" class="n-wait"/><text x="250" y="299" text-anchor="middle" class="t-md" font-weight="600">mw-http-call Kamelet</text><text x="250" y="315" text-anchor="middle" class="t-sm">bulkhead → circuit breaker → time limit; a PAY is never sent twice</text>
+        <rect x="40" y="346" width="420" height="44" rx="8" class="n"/><text x="250" y="365" text-anchor="middle" class="t-md" font-weight="600">mw-map, mw-auth-*, mw-classify, mw-audit</text><text x="250" y="381" text-anchor="middle" class="t-sm">JSONata mappings, auth (none, API key, HMAC), fail-closed classify</text>
         <g class="a"><path d="M250,60 V80" marker-end="url(#c5)"/><path d="M250,126 V146" marker-end="url(#c5)"/><path d="M250,192 V212" marker-end="url(#c5)"/><path d="M250,258 V278" marker-end="url(#c5)"/><path d="M250,324 V344" marker-end="url(#c5)"/></g>
         <path d="M24,214 V390" stroke="#0f6e6a" stroke-width="2" fill="none"/>
         <text x="16" y="302" text-anchor="middle" class="t-sm" transform="rotate(-90 16 302)">partner/ framework</text>
@@ -195,36 +195,43 @@
         <path d="M710,148 V128" class="a" marker-end="url(#c5)"/>
       </svg>
     </div>
-    <figcaption>Figure 5.4: the layers of the telco adapter. Billpay and bank are the same, with their own route and service
-      classes and the <code>rest-json-async-callback</code> template.</figcaption>
+    <figcaption>Figure 5.4: the layers of the telco adapter. Billpay and bank are the same engine, with their own listener and
+      service classes and their own partner routes (bank's is an async-callback route: PENDING first, the outcome by callback).</figcaption>
   </figure>
   <h3>A partner, written as configuration</h3>
-  <p>This is the real OCS configuration from <a href="../../services/mw-adapter-telco/src/main/resources/application-dev.yml">mw-adapter-telco's application-dev.yml</a>, trimmed:</p>
+  <p>Since <a href="../adr/D26-partner-routes-as-config.md">ADR D26</a> (tickets 82–84) each partner is a Camel YAML DSL route built
+    from shipped Kamelets, approved through maker-checker. This is the real OCS seed from
+    <a href="../../services/mw-adapter-telco/src/main/resources/application-dev.yml">mw-adapter-telco's application-dev.yml</a>, trimmed:</p>
 <pre><code>mw:
   partners:
+    partner-aliases: { gp: ocs, robi: ocs, banglalink: ocs, teletalk: ocs }   <span class="c"># the ids the channels send</span>
     instances:
       ocs:
-        template: rest-json-request-reply      <span class="c"># which Camel route template to use</span>
-        base-url: ${OCS_BASE_URL:http://mw-simulators:8080}
+        family: telco
+        allowed-hosts: mw-simulators                <span class="c"># the only hosts the route may call</span>
         timeout-ms: 20000
-        auth:
-          scheme: none
-        ambiguous-codes: ["9876"]              <span class="c"># these codes mean "we do not know": UNKNOWN</span>
+        ambiguous-codes: ["9876"]                   <span class="c"># these codes mean "we do not know": UNKNOWN</span>
         error-map:
           "[2001]": { suffix: TOPUP_REJECTED, retryable: false }
-        operations:
-          "[PAY]":
-            method: POST
-            path: /ocs/v1/topup
-            request: |                         <span class="c"># JSONata: our request → their JSON</span>
-              {"transactionId": reference, "msisdn": creditParty.id, "amount": amount.major}
-            response: |                        <span class="c"># JSONata: their answer → our outcome</span>
-              status = 200
-                ? {"outcome": "SUCCESS", "partnerRef": body.ocsRef, ...}
-                : ...
-          "[STATUS_QUERY]":
-            method: GET
-            path: /ocs/v1/topup/{reference}</code></pre>
+        route: |                                    <span class="c"># Camel YAML DSL, only mw-* Kamelets</span>
+          - route:
+              from:
+                uri: direct:partner-ocs
+                steps:
+                  - choice:
+                      when:
+                        - simple: "${header.mwOperation} == 'PAY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=PAY.request"
+                            - to: "kamelet:mw-http-call?url=...&amp;method=POST&amp;path=/ocs/v1/topup&amp;auth=none"
+                            - to: "kamelet:mw-classify?mapping=PAY.response&amp;definiteStatuses=400,422"
+                        - ...                       <span class="c"># STATUS_QUERY: GET /ocs/v1/topup/{reference}</span>
+                  - to: "kamelet:mw-audit"
+        mappings:
+          "[PAY.request]": |                        <span class="c"># JSONata: our request → their JSON</span>
+            {"transactionId": reference, "msisdn": creditParty.id, "amount": amount.major}
+          "[PAY.response]": |                       <span class="c"># JSONata: their answer → our outcome</span>
+            status = 200 ? {"outcome": "SUCCESS", "partnerRef": body.ocsRef, ...} : ...</code></pre>
   <p><strong>JSONata</strong> is a small expression language for transforming JSON. Here it translates between our standard partner
     request and the partner's own format, so adding a similar partner needs no Java.</p>
   <p>Key rules of the framework (spec section 12):</p>
@@ -238,11 +245,12 @@
       checked against an allow-list of hosts.</li>
   </ul>
   <div class="box where"><div class="tag">Where it lives (telco; billpay and bank have identical copies)</div><ul>
-    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/template/PartnerRouteTemplates.java"><code>partner/template/PartnerRouteTemplates</code></a>,
-      <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/template/PartnerCallWrapper.java"><code>PartnerCallWrapper</code></a>,
-      <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/template/RestJsonAdapter.java"><code>RestJsonAdapter</code></a>.</li>
-    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/mapping/JsonataMapping.java"><code>partner/mapping/JsonataMapping</code></a>; auth schemes in <code>partner/auth/</code>; config in <code>partner/config/</code>.</li>
-    <li>The framework is described in <a href="../../services/mw-adapter-telco/CLAUDE.md">mw-adapter-telco's CLAUDE.md</a>.</li>
+    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/route/PartnerRouteLoader.java"><code>partner/route/PartnerRouteLoader</code></a>
+      (the allowlist), <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/route/PartnerGateway.java"><code>PartnerGateway</code></a>,
+      <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/config/PartnerConfigStore.java"><code>partner/config/PartnerConfigStore</code></a>.</li>
+    <li>The Kamelets in <a href="../../services/mw-adapter-telco/src/main/resources/kamelets"><code>src/main/resources/kamelets</code></a>, their Java steps in
+      <code>partner/kamelet/</code>; JSONata in <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/mapping/CompiledMapping.java"><code>partner/mapping/CompiledMapping</code></a>.</li>
+    <li>The engine is described in <a href="../../services/mw-adapter-billpay/CLAUDE.md">mw-adapter-billpay's CLAUDE.md</a> ("Partner engine").</li>
   </ul></div>
 
   <h2 id="simulators">The simulators</h2>

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Binder;
@@ -27,8 +28,8 @@ class PartnerSecurityDefaultsTest {
     PartnerProperties.Security security = packagedSecurity(Map.of());
 
     assertThat(security.insecureHttpHosts()).isEmpty();
-    assertThat(policyFor(security).problems(anyInstance(security), SIMULATOR))
-        .contains("baseUrl must use https (plain http is not allowed for this host)");
+    assertThat(policyFor(security).problems("billagg", SIMULATOR, List.of("mw-simulators")))
+        .contains("url must use https (plain http is not allowed for this host)");
   }
 
   @Test
@@ -37,7 +38,7 @@ class PartnerSecurityDefaultsTest {
         packagedSecurity(Map.of("MW_PARTNER_INSECURE_HTTP_HOSTS", "mw-simulators"));
 
     assertThat(security.insecureHttpHosts()).containsExactly("mw-simulators");
-    assertThat(policyFor(security).problems(anyInstance(security), SIMULATOR)).isEmpty();
+    assertThat(policyFor(security).problems("billagg", SIMULATOR, List.of("mw-simulators"))).isEmpty();
   }
 
   @Test
@@ -51,7 +52,10 @@ class PartnerSecurityDefaultsTest {
 
     assertThat(seeds).isNotEmpty();
     assertThat(seeds.values())
-        .allSatisfy(p -> assertThat(p.baseUrl().getHost()).isEqualTo("mw-simulators"));
+        .allSatisfy(p -> {
+          assertThat(p.allowedHosts()).containsExactly("mw-simulators");
+          assertThat(p.route()).contains("url=http://mw-simulators:8080&");
+        });
   }
 
   private static PartnerProperties packagedPartners(boolean devProfile) throws IOException {
@@ -84,14 +88,5 @@ class PartnerSecurityDefaultsTest {
 
   private static PartnerEndpointPolicy policyFor(PartnerProperties.Security security) {
     return new PartnerEndpointPolicy(security);
-  }
-
-  /** An instance whose allowlist holds the simulator host, so only the scheme rule can fail. */
-  private static String anyInstance(PartnerProperties.Security security) {
-    return security.allowedHosts().entrySet().stream()
-        .filter(e -> e.getValue().contains("mw-simulators"))
-        .map(Map.Entry::getKey)
-        .findFirst()
-        .orElseThrow();
   }
 }

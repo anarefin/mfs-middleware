@@ -25,8 +25,8 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
 /** Kafka down: the app gets a retryable 503 MW-SYS-* quickly and nothing is accepted. */
 @SpringBootTest(
     properties = {
-      "camel.component.kafka.brokers=127.0.0.1:1",
-      "camel.component.kafka.max-block-ms=1500",
+      "spring.kafka.bootstrap-servers=127.0.0.1:1",
+      "spring.kafka.producer.properties.max.block.ms=1500",
       "mw.outbox.relay.enabled=false"
     })
 @AutoConfigureMockMvc

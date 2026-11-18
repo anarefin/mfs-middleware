@@ -2,19 +2,17 @@ package mfs.mw.orchestrator.conformance;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Clock;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import mfs.mw.orchestrator.TestInfrastructure;
-import mfs.mw.orchestrator.config.KafkaRetryProperties;
 import mfs.mw.orchestrator.messaging.EventMetadata;
 import mfs.mw.orchestrator.messaging.EventPublisher;
 import mfs.mw.orchestrator.messaging.Inbox;
-import mfs.mw.orchestrator.route.RetryTopicRouteBuilder;
-import org.apache.camel.Exchange;
+import mfs.mw.orchestrator.messaging.KafkaTestTopics;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -24,6 +22,8 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.support.Acknowledgment;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -34,15 +34,20 @@ import tools.jackson.databind.json.JsonMapper;
 @Conformance
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
-    properties = "mw.kafka.retry.delays=1s,1s,1s")
-@Import({TestInfrastructure.class, InboxConformanceIT.Routes.class})
+    properties = {
+      "mw.kafka.retry.delays=1s,1s,1s",
+      "spring.kafka.consumer.group-id=" + InboxConformanceIT.GROUP
+    })
+@Import({TestInfrastructure.class, InboxConformanceIT.Listeners.class})
 class InboxConformanceIT {
 
   static final String TOPIC = "conformance.inbox.event.v1";
   static final String CONSUMER = "conformance-inbox";
+  /** Own consumer group, so this context's retry topics are its own. */
+  static final String GROUP = "mw-orchestrator-inbox-it";
 
   /** A consumer whose side effect is not idempotent by itself: it appends a row per call. */
-  static class CountingHandler {
+  public static class CountingHandler {
     final Inbox inbox;
     final JdbcTemplate jdbc;
     final Map<String, AtomicInteger> deliveries = new ConcurrentHashMap<>();
@@ -52,9 +57,9 @@ class InboxConformanceIT {
       this.jdbc = jdbc;
     }
 
-    public void handle(Exchange exchange) {
-      String eventId =
-          JsonMapper.builder().build().readTree(exchange.getMessage().getBody(String.class)).get("eventId").asString();
+    @KafkaListener(topics = TOPIC, groupId = "${spring.kafka.consumer.group-id}")
+    public void handle(ConsumerRecord<String, String> record, Acknowledgment ack) {
+      String eventId = JsonMapper.builder().build().readTree(record.value()).get("eventId").asString();
       int delivery = deliveries.computeIfAbsent(eventId, k -> new AtomicInteger()).incrementAndGet();
       inbox.processOnce(
           CONSUMER,
@@ -65,29 +70,17 @@ class InboxConformanceIT {
               throw new IllegalStateException("side effect failed after its write");
             }
           });
+      ack.acknowledge();
     }
   }
 
   @TestConfiguration(proxyBeanMethods = false)
-  static class Routes {
+  static class Listeners {
+    /** The topics exist before the listener subscribes, as the platform declares them. */
     @Bean
     CountingHandler countingHandler(Inbox inbox, JdbcTemplate jdbc) {
+      KafkaTestTopics.createWithRetries(TOPIC, GROUP, 3, 1);
       return new CountingHandler(inbox, jdbc);
-    }
-
-    @Bean
-    RetryTopicRouteBuilder inboxRoute(KafkaRetryProperties retry, Clock clock) {
-      return new RetryTopicRouteBuilder(retry, clock) {
-        @Override
-        protected String topic() {
-          return TOPIC;
-        }
-
-        @Override
-        protected String handlerUri() {
-          return "bean:countingHandler?method=handle";
-        }
-      };
     }
   }
 

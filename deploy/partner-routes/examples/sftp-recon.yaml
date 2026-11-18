@@ -1,0 +1,29 @@
+# Example batch partner record (ADR D26, ticket 86): the aggregator's daily reconciliation file over
+# SFTP, as the `value` of a mw.config.changed.v1 PARTNER record (configKey partner/billagg-recon),
+# shown as YAML. A batch route starts from the mw-sftp-source Kamelet instead of
+# direct:partner-<id> and ends with mw-recon; the adapter of the family polls the directory, reads
+# each file once, publishes every data line as mw.partner.recon.v1 (key partnerId) through the
+# outbox and moves the file to .done (a file it cannot read to .error). No dry-run: a batch route
+# takes no calls. `enabled: false` stops the polling (the route is not added).
+#
+# Secrets (never in the record): OpenBao secret/mw-adapter-billpay/billagg-recon, field
+# sftp-password (or with auth=key a private key, PEM) and field sftp-known-hosts, the host's
+# known_hosts lines (`ssh-keyscan -p <port> <host>`); host keys are checked strictly, an unknown or
+# changed key is refused before the login.
+#
+# Dev stack (docs/runbook.md, "Batch partner over SFTP"): host partner-sftp of the tester profile, login
+# bits; partner-sftp must be a static dev host of the adapter (MW_PARTNER_INSECURE_HTTP_HOSTS).
+family: billpay
+enabled: true
+allowedHosts: [partner-sftp]
+route: |
+  - route:
+      from:
+        uri: "kamelet:mw-sftp-source?host=partner-sftp&port=22&username=bits&directory=recon&secretField=sftp-password&knownHostsField=sftp-known-hosts&delay=60000&maxMessagesPerPoll=5"
+        steps:
+          - log: "reconciliation file received"
+          - to: "kamelet:mw-recon?delimiter=comma"
+# The file's first line names the columns, e.g.
+#   reference,partnerRef,amount,currency,status,paidAt
+#   BITS01933B8E7C1A7B2E9F3D2A4C5E6F7A8C,AGG-445566,500.00,BDT,SUCCESS,2026-11-18T10:15:00Z
+# or the route names them: kamelet:mw-recon?columns=reference,partnerRef,amount,currency,status,paidAt

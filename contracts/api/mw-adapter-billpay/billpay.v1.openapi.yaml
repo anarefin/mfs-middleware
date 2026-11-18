@@ -67,6 +67,20 @@ paths:
         "502": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
         "504": { $ref: "#/components/responses/Error" }
+  /internal/v1/partners/kamelet-usage:
+    get:
+      operationId: kameletUsage
+      summary: Which live partner route version uses which mw-* Kamelet (ticket 83, ADR D26 versioning)
+      description: |
+        Every Kamelet of the shipped library, with the live partner route versions that call it, so
+        ops can see who is still on a Kamelet before its `-v2` replaces it. Read-only, no personal
+        data. A dry-run candidate is never listed.
+      responses:
+        "200":
+          description: The library, sorted by Kamelet name; routes sorted by partner id
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KameletUsage" }
 components:
   responses:
     Error:
@@ -99,6 +113,25 @@ components:
             currency: { type: string, const: BDT }
         dueDate: { type: string, format: date }
         billPeriod: { type: string, description: YYYY-MM }
+    KameletUsage:
+      type: object
+      required: [kamelets]
+      properties:
+        kamelets:
+          type: array
+          items:
+            type: object
+            required: [name, routes]
+            properties:
+              name: { type: string, pattern: "^mw-[a-z0-9-]+$" }
+              routes:
+                type: array
+                items:
+                  type: object
+                  required: [partnerId, version]
+                  properties:
+                    partnerId: { type: string }
+                    version: { type: integer, minimum: 0, description: 0 is a seed of the adapter's own config }
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]

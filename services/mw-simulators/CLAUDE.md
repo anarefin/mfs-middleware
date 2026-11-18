@@ -53,6 +53,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   code: "001", paymentRef}` (every repeat too), the outcome goes by callback (`callbackMode`) as
   `{transactionId, status SUCCESS|FAILED, code, message, paymentRef}`, the status inquiry reports
   the real outcome; the TIMEOUT hold is skipped in this mode.
+- SOAP stub biller (`soapbill`, ticket 85, `controller/SoapBillerController`, `service/SoapBillerService`):
+  the SOAP case of the adapters' `mw-soap-call` (`deploy/partner-routes/examples/soap-biller.yaml`). `POST
+  /soapbill/v1` (SOAP 1.1, `text/xml` or `application/soap+xml`, namespace `urn:soapbill:v1`): `FetchBill
+  {billNumber}` -> `FetchBillResponse {billNumber, amountDue (100 taka + last three digits), dueDate}`;
+  `PayBill {billNumber, amount, reference}` -> `PayBillResponse {receipt: SB-n}` (one receipt per
+  reference); `GetPayment {reference}` -> `GetPaymentResponse {status: PAID, receipt}`. Faults (HTTP 500,
+  `soap:Client`, the code in `<detail><s:error><s:code>`): bill number ending `404` -> `3001`, ending `999`
+  on a payment -> `3003`, unknown reference `3404`, unknown operation or a request with a DOCTYPE `1000`.
+  Configurable fault: `POST /sim/soapbill/fault {faultCode: Client|Server, code, reason}` answers every call
+  with it until `DELETE /sim/soapbill/fault`. Not in `sim.partners` (no scenario or recording API).
 - C2W bank wire format (`c2wbank`, ticket 23, `controller/BankC2wController`,
   `service/BankC2wService`, `BankDebitLedger`, `mapper/BankDebitMapper`): `POST /c2wbank/v1/debits
   {transactionId, accountNumber ([0-9]{6,20}, else 400), amount}` -> always 202 `{transactionId,
@@ -162,6 +172,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
     depends on `bootJar`, against a SoftHSM built from `src/test/resources/softhsm/`, a checked copy of
     `deploy/softhsm` (`scripts/test/test_softhsm.sh`): commands with the LMK in the token, and a second
     simulator on the same token keeps the LMK).
+- Generic programmable partner stub (ticket 83, `controller/PartnerStubController`,
+  `service/PartnerStubStore`, `dto/PartnerStub`): for partner route dry-runs (the adapters'
+  `mw.partners.dry-run.base-url` in dev, `http://mw-simulators:8080/sim/partners/{partnerId}`) and manual
+  tests. Control: `POST /sim/stubs/{partnerId} {operation?, method, path ("*" = one segment), status,
+  body, headers?, delayMs?}` (same method + path replaces), `GET` the stubs, `DELETE` stubs and requests,
+  `GET /sim/stubs/{partnerId}/requests` (last 200; Authorization / Cookie dropped). Traffic: any method on
+  `/sim/partners/{partnerId}/**` gets the matching stub's answer, else 404 `{error: NO_STUB, method, path}`.
+  Any partner id works (not in `sim.partners`); in memory.
 - Adding a simulator: add its name to `sim.partners`, a controller under `/<partner>/...`, reuse
   the store, recorder, `SimMode`/`MagicAmounts` and callback service.
 - Dev provisioning (`provision_mw_simulators` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
@@ -188,7 +206,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
-  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
+  `build.gradle.kts`; drop once the Boot BOM ships them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -201,9 +219,23 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
-- `messaging/EventPublisher`: Kafka records with the 6.1 headers, idempotent `acks=all` producer.
-- `route/RetryTopicRouteBuilder` + `messaging/RetryDelayListener`: subclass per consumed topic; retry
-  topics 10 s / 1 min / 10 min then DLQ (19.2); per-record commit; no sleeps on Kafka threads.
+- Kafka through Spring Kafka (ADR D25; no Camel in this module, copied from the template, ticket 79):
+  `messaging/EventPublisher` sends records with the 6.1 headers through `KafkaTemplate` (idempotent,
+  `acks=all`, at most 5 in flight; `publish` waits for the ack, `publishStoredAsync` sends an outbox row
+  with exactly its stored headers). `config/KafkaConfig` puts every `@KafkaListener` on non-blocking retry
+  topics `<topic>.<group>.retry.1..3` (10 s / 1 min / 10 min, `mw.kafka.retry.delays`) then
+  `<topic>.<group>.dlq` (`messaging/RetryTopicNaming`, group = `spring.kafka.consumer.group-id`, the
+  service name; declared in `deploy/kafka/topics.txt`); validation and JSON failures and records that are
+  not UTF-8 go to the DLQ at once; `messaging/RetryTopicRecoverer` adds `mw-retry-attempt`,
+  `mw-original-topic`, `mw-error-class`, `mw-retry-not-before`; `messaging/RetryDueTimeCap` caps a forged
+  due time; `messaging/ConsumerContextInterceptor` puts the record's ids in the MDC. Listeners take
+  `ConsumerRecord<String, String>` and `Acknowledgment` and call `ack.acknowledge()` after handling
+  (per-record commit, AckMode `MANUAL_IMMEDIATE`); a delay pauses the partition, never sleeps on the
+  consumer thread. Settings: `spring.kafka.*`, `mw.kafka.send-timeout`, `mw.kafka.listener.shutdown-timeout`
+  (100 ms in tests), `mw.kafka.retry.exclude-topics`. `messaging/RetryTopicIT` (conformance) checks it all.
+- `scheduler/OutboxRelayScheduler`: relays the transactional outbox (`messaging/OutboxRelay`, 6.4) every
+  `mw.outbox.relay.period` after a run ends, ShedLock-guarded; off in tests (`mw.outbox.relay.enabled`).
+  Tests that consume create their topics with retry topics and DLQ first (`KafkaTestTopics.createWithRetries`).
 - `application.yml`: Resilience4j defaults (19.2), own schema `simulators` migrated by Flyway on
   start from `db/migration` (16.4); rename the schema to the spec 16.2 name if it has one.
 

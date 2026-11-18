@@ -20,7 +20,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.kafka.KafkaContainer;
 
 /**
  * Transactional outbox (spec 6.4): the business row and the outbox row are written in one DB
@@ -44,14 +43,12 @@ class OutboxConformanceIT {
   private final OutboxWriter outbox;
   private final JdbcTemplate jdbc;
   private final TransactionTemplate tx;
-  private final KafkaContainer kafka;
 
   @Autowired
-  OutboxConformanceIT(OutboxWriter outbox, JdbcTemplate jdbc, TransactionTemplate tx, KafkaContainer kafka) {
+  OutboxConformanceIT(OutboxWriter outbox, JdbcTemplate jdbc, TransactionTemplate tx) {
     this.outbox = outbox;
     this.jdbc = jdbc;
     this.tx = tx;
-    this.kafka = kafka;
   }
 
   @BeforeEach
@@ -77,7 +74,7 @@ class OutboxConformanceIT {
 
   List<ConsumerRecord<String, String>> published(String key, Duration timeout) {
     return KafkaTestConsumer.read(
-        kafka.getBootstrapServers(), TOPIC, 1, timeout, r -> key.equals(r.key()));
+        TestInfrastructure.kafkaBootstrapServers(), TOPIC, 1, timeout, r -> key.equals(r.key()));
   }
 
   int outboxRows(String key) {
@@ -119,7 +116,7 @@ class OutboxConformanceIT {
 
   @Tag("slow-wait")
   @Test
-  void rolledBackBusinessTransactionWritesNoOutboxRowAndPublishesNothing() {
+  void rolledBackBusinessTransactionWritesNoOutboxRowAndPublishesNothing() throws Exception {
     assertThatThrownBy(() -> businessOperation("TXN-OUT-RB", true))
         .isInstanceOf(IllegalStateException.class);
 
@@ -128,8 +125,10 @@ class OutboxConformanceIT {
             jdbc.queryForObject(
                 "select count(*) from conformance_business where id = ?", Integer.class, "TXN-OUT-RB"))
         .isZero();
-    // Several relay periods: nothing may be published for the rolled-back operation.
-    assertThat(published("TXN-OUT-RB", Duration.ofSeconds(3))).isEmpty();
+    // Several relay periods (200 ms): nothing may be published for the rolled-back operation.
+    Thread.sleep(1_000);
+    assertThat(KafkaTestConsumer.readToEnd(TestInfrastructure.kafkaBootstrapServers(), TOPIC, r -> "TXN-OUT-RB".equals(r.key())))
+        .isEmpty();
   }
 
   @Test

@@ -40,7 +40,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.kafka.KafkaContainer;
 import org.apache.camel.test.spring.junit6.CamelSpringBootTest;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -64,7 +63,7 @@ import tools.jackson.databind.json.JsonMapper;
       "resilience4j.circuitbreaker.instances.billagg.minimum-number-of-calls=4",
       "resilience4j.circuitbreaker.instances.billagg.failure-rate-threshold=50"
     })
-@Import(TestInfrastructure.class)
+@Import({TestInfrastructure.class, mfs.mw.adapter.billpay.BillpayTestTopics.class})
 @DirtiesContext
 class BillpayRequestRouteIT {
 
@@ -88,20 +87,20 @@ class BillpayRequestRouteIT {
   }
 
   private final EventPublisher publisher;
-  private final KafkaContainer kafka;
   private final JdbcTemplate jdbc;
   private final CircuitBreakerRegistry breakers;
+  private final io.micrometer.core.instrument.MeterRegistry meters;
 
   @Autowired
   BillpayRequestRouteIT(
       EventPublisher publisher,
-      KafkaContainer kafka,
       JdbcTemplate jdbc,
-      CircuitBreakerRegistry breakers) {
+      CircuitBreakerRegistry breakers,
+      io.micrometer.core.instrument.MeterRegistry meters) {
     this.publisher = publisher;
-    this.kafka = kafka;
     this.jdbc = jdbc;
     this.breakers = breakers;
+    this.meters = meters;
   }
 
   @BeforeEach
@@ -147,7 +146,7 @@ class BillpayRequestRouteIT {
 
     List<ConsumerRecord<String, String>> audits =
         KafkaTestConsumer.read(
-            kafka.getBootstrapServers(), AUDIT_TOPIC, 1, Duration.ofSeconds(30), r -> request.txnId().equals(r.key()));
+            TestInfrastructure.kafkaBootstrapServers(), AUDIT_TOPIC, 1, Duration.ofSeconds(30), r -> request.txnId().equals(r.key()));
     assertThat(audits).hasSize(1);
     tools.jackson.databind.JsonNode audit = JSON.readTree(audits.getFirst().value());
     assertThat(ContractSchemas.schema(AUDIT_SCHEMA).validate(audit)).as(audit.toString()).isEmpty();
@@ -192,6 +191,38 @@ class BillpayRequestRouteIT {
 
     assertThat(reply.payload().outcome()).isEqualTo("UNKNOWN");
     assertThat(reply.payload().errorCode()).isEqualTo("MW-TMO-PARTNER_TIMEOUT");
+    // ADR D26: a PAY is never sent again, not even after a timeout
+    AGG.verify(1, postRequestedFor(urlEqualTo("/billagg/v1/payments")));
+  }
+
+  /**
+   * ADR D26: a PAY redelivered by Kafka with the same requestId (here: published again) reaches
+   * the partner once and is replied to once; the second delivery is counted as a duplicate.
+   */
+  @Test
+  void aRedeliveredPayIsSentToThePartnerExactlyOnce() throws Exception {
+    stubAggregator(200, "{\"status\":\"SUCCESS\",\"code\":\"0000\",\"paymentRef\":\"AGG-1\"}");
+    PartnerRequest request = pay(newTxnId(), "1234567", 2000);
+    double before = duplicates();
+
+    send(request);
+    awaitReplies(request.txnId(), 1);
+    send(request);
+    long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+    while (duplicates() <= before && System.nanoTime() < deadline) {
+      Thread.sleep(50);
+    }
+
+    assertThat(duplicates()).isEqualTo(before + 1);
+    AGG.verify(1, postRequestedFor(urlEqualTo("/billagg/v1/payments")));
+    assertThat(KafkaTestConsumer.readToEnd(
+            TestInfrastructure.kafkaBootstrapServers(), REPLY_TOPIC, r -> request.txnId().equals(r.key())))
+        .hasSize(1);
+  }
+
+  private double duplicates() {
+    var counter = meters.find("mw.partner.request.duplicate").counter();
+    return counter == null ? 0 : counter.count();
   }
 
   @Test
@@ -323,7 +354,7 @@ class BillpayRequestRouteIT {
     AGG.verify(1, postRequestedFor(urlEqualTo("/billagg/v1/payments")));
     assertThat(
             KafkaTestConsumer.read(
-                kafka.getBootstrapServers(), RetryTopicRouteBuilder.retryTopic(REQUEST_TOPIC, "mw-adapter-billpay", 1), 1, Duration.ofSeconds(1),
+                TestInfrastructure.kafkaBootstrapServers(), mfs.mw.adapter.billpay.messaging.KafkaTestTopics.retryTopic(REQUEST_TOPIC, "mw-adapter-billpay", 1), 1, Duration.ofSeconds(1),
                 r -> request.txnId().equals(r.key())))
         .isEmpty();
   }
@@ -455,7 +486,7 @@ class BillpayRequestRouteIT {
   private List<PartnerReply> replies(String txnId, int count, Duration timeout) {
     List<ConsumerRecord<String, String>> records =
         KafkaTestConsumer.read(
-            kafka.getBootstrapServers(), REPLY_TOPIC, count, timeout, r -> txnId.equals(r.key()));
+            TestInfrastructure.kafkaBootstrapServers(), REPLY_TOPIC, count, timeout, r -> txnId.equals(r.key()));
     return records.stream()
         .map(
             r -> {

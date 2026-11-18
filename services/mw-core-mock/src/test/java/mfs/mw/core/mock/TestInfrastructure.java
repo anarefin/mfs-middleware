@@ -82,6 +82,12 @@ public class TestInfrastructure {
     return POSTGRES.getJdbcUrl().replaceFirst("/[^/?]+(\\?|$)", "/" + database + "$1");
   }
 
+  /** The Kafka bootstrap servers, for tests that produce, consume or administer directly. */
+  public static String kafkaBootstrapServers() {
+    start();
+    return KAFKA.getBootstrapServers();
+  }
+
   /** Wires this context to its own database, to the shared Kafka and to the test assertion key set. */
   @Bean
   DynamicPropertyRegistrar testInfrastructureProperties() {
@@ -90,8 +96,8 @@ public class TestInfrastructure {
       registry.add("spring.datasource.url", () -> url);
       registry.add("spring.datasource.username", POSTGRES::getUsername);
       registry.add("spring.datasource.password", POSTGRES::getPassword);
-      // Camel's Kafka component does not read Spring Boot's Kafka connection details.
-      registry.add("camel.component.kafka.brokers", KAFKA::getBootstrapServers);
+      // No @ServiceConnection on the Kafka bean (see above): wire Spring Kafka to it by hand.
+      registry.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
       // mw-auth's assertion key set (ticket 71), served by the test's own JWKS server
       registry.add("mw.coremock.assertion.jwks-uri", mfs.mw.core.mock.security.TestAssertions::jwksUri);
     };

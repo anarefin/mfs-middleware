@@ -3,6 +3,10 @@ produces:
   events:
     - events/mw-orchestrator/mw.partner.reply.v1.schema.json#telco
     - events/mw-audit-dw/mw.audit.event.v1.schema.json
+    # ticket 84: LIVE / REJECTED of each partner record version (messaging/PartnerRouteStatusPublisher)
+    - events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json
+    # ticket 86: the lines of a partner's SFTP reconciliation file (messaging/PartnerReconPublisher)
+    - events/mw-adapter-billpay/mw.partner.recon.v1.schema.json
   apis: []
 consumes:
   events:

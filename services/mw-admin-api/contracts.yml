@@ -19,7 +19,9 @@ produces:
     - events/mw-auth/auth.wallet-lock.v1.schema.json
   apis:   [api/mw-admin-api/admin.v1.openapi.yaml]
 consumes:
-  events: []
+  # ticket 83: the adapters' LIVE / REJECTED report per partner route version (messaging/PartnerRouteStatusListener)
+  events:
+    - events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json
   # ticket 75: the key list, approved key changes and the key ceremony at mw-crypto
   apis:   [api/mw-orchestrator/txn-query.v1.openapi.yaml, api/mw-audit-dw/audit-query.v1.openapi.yaml,
            api/mw-crypto/crypto-internal.v1.openapi.yaml]

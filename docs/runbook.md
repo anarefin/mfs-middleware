@@ -308,6 +308,149 @@ Restoring means a fresh stack (`deploy/reset.sh`, then start again) and feeding 
 service's outbox is in PostgreSQL), Valkey only sessions and locks, OpenBao only the generated dev
 secrets that `provision` writes again on every `up`.
 
+## Onboard a biller
+
+ADR D26, ticket 83. A biller of a known kind (REST/JSON, an auth scheme the `mw-*` Kamelets have) is a
+partner route as config: no Java, no release, no restart for the route itself.
+
+1. **Write the route** from a Kamelet example (`deploy/partner-routes/examples/rest-apikey-biller.yaml`):
+   one `- route:` from `direct:partner-<id>` (lower-case letters, digits, hyphens), steps `mw-map` ->
+   `mw-http-call` -> `mw-classify`, then `mw-audit`; its JSONata `mappings` by name; the `allowedHosts` it
+   calls. Kaoto (the visual Camel YAML editor) can draw and edit it offline. Try it locally with Camel
+   JBang and the shipped Kamelets (flags of `camel run` in camel-jbang 4.22.2):
+
+   ```
+   camel run newco.yaml --local-kamelet-dir=services/mw-adapter-billpay/src/main/resources/kamelets --max-seconds=60
+   ```
+
+   `newco.yaml` holds the `route` text only. Point its `mw-http-call` `url` at the dev stack's
+   simulator stub (`http://127.0.0.1:8085/sim/partners/newco`, port `MW_PORT_SIMULATORS`) and give the stub
+   a canned answer first:
+
+   ```
+   curl -s -X POST http://127.0.0.1:8085/sim/stubs/newco -H 'content-type: application/json' \
+     -d '{"operation":"PAY","method":"POST","path":"/v1/payments","status":200,"body":{"receipt":"NC-1"}}'
+   curl -s http://127.0.0.1:8085/sim/stubs/newco/requests    # what the route sent
+   ```
+
+   The Kamelets' Java steps (`mwMap`, `mwHttp`, `mwClassify`, `mwAudit`, the `mw-auth-*` beans) live in
+   mw-adapter-billpay, so outside the adapter JBang checks that the route and the Kamelets load and parse;
+   the end-to-end check of the mappings is the dry-run of step 4. Switch the `url` back to the partner
+   before submitting.
+2. **Submit** it (maker: ops-maker or integration-maker): console `/console/partners/<id>`, card *Route*
+   (a new id offers *Onboard with a route* and a Family), paste the YAML, the allowed hosts, the mappings,
+   the dry-run operation and sample (the canonical call input) and the error map. API: `POST
+   /admin/v1/partners/<id>/change-requests {action: UPSERT_ROUTE, family, config: {route, mappings,
+   allowedHosts, dryRun, timeoutMs, errorMap, ambiguousCodes, sensitiveFields}, reason}`. mw-admin-api checks
+   it with a copy of the adapters' loader rules (Camel's YAML DSL schema, then the allowlist): a refusal is
+   `400 MW-VAL-041`, one detail per problem `line N: construct: problem`; nothing is filed.
+3. **Approve** it (a different operator: ops-checker or integration-checker) in Approvals. The approval
+   publishes `mw.config.changed.v1` (key `partner/<id>`, with `family`); the partner page shows the route
+   `vN waiting for its dry-run`.
+4. **Watch it reach LIVE**: mw-adapter-billpay loads the version beside the live one, sends the dry-run
+   through its candidate `direct:partner-<id>~candidate` to `mw.partners.dry-run.base-url` (dev:
+   mw-simulators' stub `/sim/partners/<id>/**`, so give the stub its answer as in step 1; production: the
+   record's `dryRun.baseUrl`, a partner sandbox in `allowedHosts`), and swaps it in only when the answer
+   is SUCCESS or PENDING. It reports on `mw.partner.route.status.v1`: the page shows `vN LIVE`, or `vN
+   REJECTED (vM still serves)` with the problems (the previous version keeps serving; fix and submit
+   again). Logs: `partner.dry_run.queued`, `config.applied`, `security.partner_route_refused`. Who still uses
+   a Kamelet: `GET /admin/v1/partners/kamelet-usage` (or mw-adapter-billpay's
+   `GET /internal/v1/partners/kamelet-usage`).
+5. **Catalogue and secret** (static by decision): add `mw.billers.<CODE>: {name, category, partner-id}` to
+   mw-adapter-billpay's config and the secret fields the route names to OpenBao
+   `secret/mw-adapter-billpay/<id>`, then restart mw-adapter-billpay
+   (`./gradlew :mw-adapter-billpay:bootJar`, then from `deploy/`: `docker compose --profile core up -d --build mw-adapter-billpay`).
+   Auth options (ticket 87; details in `docs/concepts/camel-partner-routes.md`). Every "field" is a field
+   of `secret/<adapter>/<id>` in OpenBao:
+
+   | `mw-http-call` | Needs | OpenBao fields | Notes |
+   | --- | --- | --- | --- |
+   | `auth=apikey` | `secretField`, `authHeader` | the key | header default `X-Api-Key` |
+   | `auth=hmac-sha256` | `secretField`, `keyId` | the shared secret | |
+   | `auth=basic` | `userField`, `secretField` | user, password | RFC 7617 |
+   | `auth=oauth2-cc` | `tokenUrl`, `clientId`, `secretField`, `scope`, `audience` | client secret | `tokenUrl` host in `allowedHosts`; one token per partner until `expires_in` - 30 s (`mw.partners.oauth2.expiry-skew`); a 401 takes one fresh token; log `partner.oauth2.token_fetched` / `partner.oauth2.token_failed` (no token) |
+   | `auth=jws` | `secretField`, `alg` (`RS256`/`ES256`), `keyId`, `authHeader` | PKCS#8 PEM private key | detached JWS in `X-JWS-Signature` by default; no mw-crypto key purpose fits, so an OpenBao key (dev: a fake one) |
+   | `sslContextRef=<name>` | https `url` | `<name>-keystore` (base64 PKCS#12), `<name>-keystore-password`, with `truststore: true` also `<name>-truststore`, `<name>-truststore-password` (a failed read leaves the context unregistered, never the JVM trust store) | static config `mw.partners.tls.contexts.<name>.partner-id: <id>`, read at startup (restart after a change); log `partner.tls_context_registered` / `partner.tls_context_unavailable` |
+
+6. **A SOAP biller** (ticket 85) follows the same steps with `mw-soap-call` in place of `mw-http-call`
+   (example: `deploy/partner-routes/examples/soap-biller.yaml`): `mw-map` (JSONata, the request fields) ->
+   `mw-soap-call?address=<static https URL>&request=<x.xsl>&response=<y.xsl>&soapAction=<action>` (optional
+   `soapVersion=1.2`, `wsUsername` + `wsPasswordSecret=<OpenBao field>` for a WS-Security UsernameToken) ->
+   `mw-classify?...&definiteStatuses=200` -> `mw-audit`. The two stylesheets are mappings whose names end in
+   `.xsl` (XSLT 3.0): the request one reads the JSON as `fn:map` / `fn:string[@key=...]` and makes the SOAP
+   body element; the response one turns the SOAP body, or a fault (`<fault xmlns="urn:bits:mw:soap-fault"
+   code reason>` with the fault's `<detail>`), into JSON (`xsl:output method="json"`) for the JSONata
+   response mapping, whose fault code maps through `errorMap` (map a `soap:Server` fault to UNKNOWN). A
+   stylesheet that reads anything outside itself (`document()`, `doc()`, `unparsed-text()`, an include or
+   import, a DOCTYPE or entity) is refused at submit. Try it against mw-simulators' SOAP stub
+   (`http://127.0.0.1:8085/soapbill/v1`; force a fault with
+   `curl -s -X POST http://127.0.0.1:8085/sim/soapbill/fault -H 'content-type: application/json' -d '{"faultCode":"Client","code":"3003"}'`,
+   clear it with `curl -s -X DELETE http://127.0.0.1:8085/sim/soapbill/fault`). The dry-run candidate sends
+   to the generic stub `/sim/partners/<id>` like a REST route: give it the SOAP envelope as a string `body`
+   with `"headers": {"Content-Type": "text/xml"}` and the address's path as its `path`.
+   Without XSLT: `request=json&response=json&namespace=<urn: or http(s) URI>` writes the JSON mw-map made
+   as the body element (one root key, e.g. `{"PayBill": {"billNumber": ..., "@version": "2"}}`: keys are
+   elements in `namespace`, `@x` attributes, arrays repeat) and reads the answer back the same way
+   (`body.PayBillResponse.receipt`; a fault as `body.fault."@code"` and `body.fault.detail`), so both
+   mappings are JSONata. HTTP Basic and mTLS work as for REST: `auth=basic&userField=..&secretField=..`
+   and `sslContextRef=<context>` (https address) on `mw-soap-call`, next to or instead of the
+   WS-Security token.
+7. **Callbacks**: a biller that answers asynchronously needs an APISIX route file
+   (`deploy/apisix/routes/partner-<id>-callback.json`, as `partner-billagg-callback.json`) and
+   `deploy/apisix/apply.sh`.
+
+After an adapter restart the compacted config topic replays the latest record per partner and the
+adapter dry-runs it again; a latest record that was REJECTED leaves that partner on its seed (or no
+route) until a new version is approved (open item, ticket 84).
+
+## Batch partner over SFTP
+
+A partner's daily reconciliation or settlement file (ticket 86) is a batch partner route: a record of
+its own (e.g. `billagg-recon`) whose route starts from the `mw-sftp-source` Kamelet and ends with
+`mw-recon`, onboarded through the same maker-checker as a biller (no dry-run: a batch route takes no
+calls). Example: `deploy/partner-routes/examples/sftp-recon.yaml`. The adapter of the family polls the
+partner's directory, reads each file once (name, size, modification time), publishes every data line as
+`mw.partner.recon.v1` (key partnerId) through its outbox and moves the file to `.done`; a file it cannot
+read (wrong field count, line too long, no data line, more data lines than
+`MW_PARTNER_RECON_MAX_LINES=1000000` of the adapter, `mw.partners.recon.max-lines`) goes to `.error` and
+publishes nothing (`partner.recon.file_refused` in the adapter's log names the reason): fix or split it
+and drop it again. `enabled: false` (DISABLE) stops the polling. The source polls every `delay` ms (100
+or more, default 60000) or on a `cron` schedule instead (Spring cron, six fields: second minute hour
+day month weekday, `+` for a space, e.g. `cron=0+0+6+*+*+*` for 06:00 every day), never both.
+
+**Sending a file** (`mw-sftp-sink`): a request route (`direct:partner-<id>`) may put a file on the
+partner's host instead of calling it, e.g. a bank that takes payments as a file. The sink's `mapping`
+names a JSONata mapping of the record whose result is the file text (CSV or fixed-width lines:
+`$join`, `$pad`, `$formatNumber`); the put is the partner call, so `mw-classify` sees status 200 and
+the body `{"fileName": ...}` (map it to PENDING and let the partner's reconciliation file settle it);
+a put that fails after the upload started is UNKNOWN. The dry-run of a new version makes the text but
+puts no file (the loader sets the sink's `dryRun`). Example:
+`deploy/partner-routes/examples/sftp-sink-payment-file.yaml`. In a batch route the sink writes the body
+as it is (no `mapping`: a batch route has no JSON body). `bindy` is not offered (it needs a Java model
+class per layout).
+
+1. **Secrets**, in the partner's own OpenBao secret `secret/<adapter>/<id>`: the login password (field
+   named by `secretField`; with `auth=key` a PEM private key) and the host's known_hosts lines (field
+   named by `knownHostsField`). Host keys are checked strictly: an unknown or changed key is refused
+   before the login (`HostKeyException` in the adapter's log, the file stays on the host). Get the lines
+   from the partner, or check them against `ssh-keyscan -p <port> <host>`.
+2. **Allowed host**: the record's `allowedHosts` names the SFTP host; a host that resolves to a private
+   address is refused unless it is a static dev host of the adapter.
+3. **Dev stack**: the SFTP server `partner-sftp` (profile `tester`, login `bits` / `SFTP_DEV_PASSWORD` from
+   `deploy/.env`, directories `recon` and `out`). From `deploy/`:
+
+   ```
+   docker compose --profile tester up -d partner-sftp
+   docker compose exec partner-sftp sh -c 'for k in /etc/ssh/ssh_host_*_key.pub; do printf "partner-sftp %s\n" "$(cut -d" " -f1,2 $k)"; done'
+   MW_PARTNER_INSECURE_HTTP_HOSTS=mw-simulators,partner-sftp docker compose --profile core up -d mw-adapter-billpay
+   docker compose cp recon-20261118.csv partner-sftp:/home/bits/recon/
+   docker compose exec partner-sftp ls /home/bits/recon/.done /home/bits/recon/.error
+   ```
+
+   The second line prints the known_hosts lines for the `sftp-known-hosts` field; `partner-sftp` regenerates
+   its host keys when the container is recreated, so write them again then. The lines are in the
+   adapter's outbox (`mw.partner.recon.v1`) and on Kafka; their consumer, mw-recon, is ticket 88.
+
 ## Gate and security runs on this host
 
 | Run | Command | Note |

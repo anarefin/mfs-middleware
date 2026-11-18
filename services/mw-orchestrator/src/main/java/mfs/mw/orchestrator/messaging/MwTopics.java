@@ -2,7 +2,7 @@ package mfs.mw.orchestrator.messaging;
 
 /**
  * Topic names and the retry/DLQ naming rule that the service layer needs too (root CLAUDE.md:
- * {@code service} may use {@code messaging/} constants, never {@code route/}). The routes refer to
+ * {@code service} may use {@code messaging/} constants). The listeners refer to
  * these.
  */
 public final class MwTopics {
