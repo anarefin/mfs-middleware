@@ -33,7 +33,7 @@
 79-spring-kafka-support-services            78                done     ~45m     see 46900c3b
 80-spring-kafka-channels                    78                done     ~25m     see d010a0f6
 81-spring-kafka-orchestrator-notify         78,79,80          done     ~19m     see 7fade216,5b646f5b
-82-billpay-route-as-config-engine           78                open
+82-billpay-route-as-config-engine           78                done     57m      see 8f9f6a97..f52bcc11
 83-partner-route-maker-checker-dry-run      82                open
 84-route-engine-telco-bank                  83                open
 85-soap-partner-kamelet                     84                open
