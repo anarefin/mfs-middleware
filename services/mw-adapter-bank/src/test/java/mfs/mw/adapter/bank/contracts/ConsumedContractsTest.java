@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -16,9 +15,8 @@ import mfs.mw.adapter.bank.dto.PartnerRequest;
 import mfs.mw.adapter.bank.mapper.PartnerCallMapper;
 import mfs.mw.adapter.bank.partner.config.PartnerConfigListener;
 import mfs.mw.adapter.bank.partner.config.PartnerConfigStore;
-import mfs.mw.adapter.bank.partner.config.PartnerEndpointPolicy;
 import mfs.mw.adapter.bank.partner.config.PartnerProperties;
-import mfs.mw.adapter.bank.partner.template.PartnerInstanceFactory;
+import mfs.mw.adapter.bank.partner.route.PartnerRoutes;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
@@ -100,9 +98,9 @@ class ConsumedContractsTest {
     PartnerProperties.Security security = new PartnerProperties.Security(Map.of(), List.of());
     PartnerConfigStore store =
         new PartnerConfigStore(
-            new PartnerProperties(null, Map.of(), security),
-            new PartnerInstanceFactory(ref -> "fake", Clock.systemUTC(), ServiceJson.MAPPER, new PartnerEndpointPolicy(security)),
-            ServiceJson.MAPPER);
+            new PartnerProperties(null, Map.of(), security, "bank", null), org.mockito.Mockito.mock(PartnerRoutes.class), ServiceJson.MAPPER,
+            org.mockito.Mockito.mock(mfs.mw.adapter.bank.partner.route.PartnerDryRun.class), s -> {});
+    store.start();
     Path sample = ContractSchemas.contractsDir()
         .resolve(ContractManifest.Entry.of(CONFIG).samplesDir())
         .resolve("invalid-upsert-without-value.json");

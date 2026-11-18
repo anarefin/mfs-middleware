@@ -127,8 +127,18 @@ class PartnerReplyMapperTest {
     assertCode(notSent(NotSentReason.MISCONFIGURED), "MW-SYS-PARTNER_MISCONFIGURED");
     for (NotSentReason r : NotSentReason.values()) {
       assertThat(notSent(r).payload().outcome()).isEqualTo("FAILED");
-      assertThat(notSent(r).payload().retryable()).isTrue();
+      assertThat(notSent(r).payload().retryable()).isEqualTo(r != NotSentReason.UNKNOWN_PARTNER);
     }
+  }
+
+  /** ADR D26: no silent default partner; an unknown partnerId fails for good, never retried. */
+  @Test
+  void aPayForAPartnerThatIsNeitherConfiguredNorAnAliasIsAFailedUnknownPartner() {
+    PartnerReply reply = notSent(NotSentReason.UNKNOWN_PARTNER);
+
+    assertThat(reply.payload().outcome()).isEqualTo("FAILED");
+    assertThat(reply.payload().errorCode()).isEqualTo("MW-PTR-UNKNOWN-PARTNER");
+    assertThat(reply.payload().retryable()).isFalse();
   }
 
   @Test

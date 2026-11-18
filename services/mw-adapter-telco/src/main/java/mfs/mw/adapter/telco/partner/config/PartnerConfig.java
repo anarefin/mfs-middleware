@@ -10,57 +10,78 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
-import mfs.mw.adapter.telco.partner.mapping.JsonataMapping;
-import mfs.mw.adapter.telco.partner.template.PartnerTemplates;
+import mfs.mw.adapter.telco.partner.mapping.CompiledMapping;
 import mfs.mw.adapter.telco.util.SensitiveType;
 
 /**
- * One partner instance (spec 12.1 layer 1: template + parameters, layer 2: mappings and
- * error-code map). Bound from {@code mw.partners.instances.<id>} (seed) and read from the {@code
- * value} of a {@code mw.config.changed.v1} PARTNER record, with the same field names. Holds no
- * secret, only a {@link Auth#credentialsRef()}. Missing optional fields get their defaults here,
- * so every field is non-null after construction.
+ * One partner record (ADR D26, spec 12.1): the partner's Camel YAML DSL {@code route} built from
+ * the shipped mw-* Kamelets, the JSONata {@code mappings} it names, the hosts it may call, and the
+ * error-code map, timeouts and breaker settings the Kamelets read. Bound from {@code
+ * mw.partners.instances.<id>} (seed) and read from the {@code value} of a {@code
+ * mw.config.changed.v1} PARTNER record, with the same field names. Holds no secret: a route names a
+ * secret field of its own partner ({@code secretField}), and {@code auth.credentialsRef} names the
+ * one a callback is verified with. Missing optional fields get their defaults here, so every field
+ * is non-null after construction (except {@code route}, {@code family}, {@code resilience} and
+ * {@code dryRun}). The old shape ({@code template}, {@code baseUrl}, {@code operations}, tickets 20
+ * to 83) is gone since ticket 84: a record without a {@code route} is refused.
  *
  * @param enabled false: every call is refused unsent ({@code NOT_SENT DISABLED})
- * @param template route template, {@code rest-json-request-reply} (default) or {@code
- *     rest-json-async-callback}
- * @param baseUrl partner base URL; operation paths are appended
+ * @param route the partner's route, Camel YAML DSL ({@code from: direct:partner-<id>}), checked by
+ *     {@link mfs.mw.adapter.telco.partner.route.PartnerRouteLoader}
+ * @param mappings JSONata mappings by name, used by {@code mw-map} and {@code mw-classify}
+ *     ({@code <OPERATION>.request}, {@code <OPERATION>.response}; {@code CALLBACK.response} maps a
+ *     callback); compiled once per record version
+ * @param allowedHosts the hosts this partner's route may call (approved with the record); the
+ *     static {@code mw.partners.security.allowed-hosts} of the partner, when set, narrows them
+ * @param family partner family ({@code telco}, {@code billpay} or {@code bank}); an adapter skips
+ *     a record of another family
+ * @param inquiryRetries how often an INQUIRY or STATUS_QUERY is sent again after a timeout, a 5xx,
+ *     a reset or a failed connect (default 1); a PAY is never sent again
+ * @param resilience circuit breaker and bulkhead of this partner; null: the {@code resilience4j}
+ *     instance named by the partner id (or the defaults)
+ * @param dryRun the operation and sample the admin console's dry run sends (ticket 83)
  * @param connectTimeoutMs TCP connect timeout (default 3000); a failed connect means not sent
- * @param timeoutMs time limiter per call (default 30000, spec 11.1); past it the outcome is UNKNOWN
- * @param readTimeoutMs socket read timeout (default timeoutMs + 2000, so the limiter decides first)
+ * @param timeoutMs time limit per call (default 30000, spec 11.1); past it the outcome is UNKNOWN
+ * @param readTimeoutMs socket read timeout (default timeoutMs + 2000, so the limit decides first)
  * @param headers static headers sent on every call
- * @param operations canonical operation (PAY, STATUS_QUERY, CALLBACK, ...) to HTTP call and mappings
  * @param errorMap partner code to canonical code suffix ({@code MW-PTR-<PARTNER>-<suffix>}) and
  *     retryability; an unlisted code is {@code UNMAPPED}, not retryable
  * @param ambiguousCodes partner codes that do not say whether the request was applied (UNKNOWN)
  * @param sensitiveFields JSON field name to masking rule for the audit of raw bodies (free-text
  *     scrubbing applies on top)
- * @param resilience Resilience4j instance name for bulkhead and circuit breaker (default: the
- *     partner instance id)
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record PartnerConfig(
     Boolean enabled,
-    String template,
-    URI baseUrl,
+    String route,
+    Map<String, String> mappings,
+    List<String> allowedHosts,
+    String family,
+    Integer inquiryRetries,
+    Resilience resilience,
+    DryRun dryRun,
     Long connectTimeoutMs,
     Long timeoutMs,
     Long readTimeoutMs,
     Map<String, String> headers,
     Auth auth,
-    Map<String, Operation> operations,
     Map<String, ErrorMapping> errorMap,
     Set<String> ambiguousCodes,
-    Map<String, SensitiveType> sensitiveFields,
-    String resilience) {
+    Map<String, SensitiveType> sensitiveFields) {
 
   private static final Pattern SUFFIX = Pattern.compile("^[A-Z0-9_]+$");
+
+  /** A mapping name: letters, digits, dot, underscore, hyphen (it appears in a Kamelet URI). */
+  public static final Pattern MAPPING_NAME = Pattern.compile("^[A-Za-z0-9_.-]{1,64}$");
 
   /** Prefix of a problem that breaks a security rule (logged as a security event when refused). */
   public static final String SECURITY = "security: ";
 
+  /** The operations a dry-run may send. */
+  public static final Set<String> DRY_RUN_OPERATIONS = Set.of("PAY", "INQUIRY", "STATUS_QUERY");
+
   /**
-   * An operation path: absolute, plain characters and the {@code {reference}} placeholder only. No
+   * A URL path (a dry-run sandbox's base path): absolute, plain characters and the {@code {reference}} placeholder only. No
    * {@code @ : ? # \ %}, no {@code ..} segment, no {@code //}: nothing that could move the request
    * to another host, port or user info once appended to the base URL.
    */
@@ -68,33 +89,22 @@ public record PartnerConfig(
 
   public PartnerConfig {
     enabled = enabled == null || enabled;
-    template = template == null || template.isBlank() ? PartnerTemplates.REQUEST_REPLY : template;
+    route = route == null || route.isBlank() ? null : route;
+    mappings = mappings == null ? Map.of() : Map.copyOf(mappings);
+    allowedHosts = allowedHosts == null ? List.of() : allowedHosts.stream().map(h -> h.trim().toLowerCase(Locale.ROOT)).filter(h -> !h.isEmpty()).toList();
+    inquiryRetries = inquiryRetries == null ? 1 : inquiryRetries;
     connectTimeoutMs = connectTimeoutMs == null ? 3000L : connectTimeoutMs;
     timeoutMs = timeoutMs == null ? 30_000L : timeoutMs;
     readTimeoutMs = readTimeoutMs == null ? timeoutMs + 2000L : readTimeoutMs;
     headers = headers == null ? Map.of() : Map.copyOf(headers);
     auth = auth == null ? new Auth(null, null, null) : auth;
-    operations = upperKeys(operations);
     errorMap = errorMap == null ? Map.of() : Map.copyOf(errorMap);
     ambiguousCodes = ambiguousCodes == null ? Set.of() : Set.copyOf(ambiguousCodes);
     sensitiveFields = sensitiveFields == null ? Map.of() : Map.copyOf(sensitiveFields);
   }
 
-  public Duration connectTimeout() {
-    return Duration.ofMillis(connectTimeoutMs);
-  }
-
   public Duration timeout() {
     return Duration.ofMillis(timeoutMs);
-  }
-
-  public Duration readTimeout() {
-    return Duration.ofMillis(readTimeoutMs);
-  }
-
-  /** The operation config, or null when this partner does not support it. */
-  public Operation operation(String name) {
-    return name == null ? null : operations.get(name.toUpperCase(Locale.ROOT));
   }
 
   /** Error-code map entry for a partner code; {@code UNMAPPED}, not retryable, when unlisted. */
@@ -102,43 +112,50 @@ public record PartnerConfig(
     return errorMap.getOrDefault(code, ErrorMapping.UNMAPPED);
   }
 
-  /** Same config with another timeout (and the read timeout following it when it was derived). */
-  public PartnerConfig withTimeoutMs(long newTimeoutMs) {
+  /** Same record with another route, mappings and hosts. */
+  public PartnerConfig withRoute(String newRoute, Map<String, String> newMappings, List<String> newAllowedHosts) {
     return new PartnerConfig(
-        enabled, template, baseUrl, connectTimeoutMs, newTimeoutMs,
-        readTimeoutMs == timeoutMs + 2000L ? null : readTimeoutMs,
-        headers, auth, operations, errorMap, ambiguousCodes, sensitiveFields, resilience);
+        enabled, newRoute, newMappings, newAllowedHosts, family, inquiryRetries, resilience, dryRun, connectTimeoutMs,
+        timeoutMs, readTimeoutMs, headers, auth, errorMap, ambiguousCodes, sensitiveFields);
   }
 
-  /** Same config with another base URL (tests point a seed at WireMock with it). */
-  public PartnerConfig withBaseUrl(URI newBaseUrl) {
-    return new PartnerConfig(
-        enabled, template, newBaseUrl, connectTimeoutMs, timeoutMs, readTimeoutMs,
-        headers, auth, operations, errorMap, ambiguousCodes, sensitiveFields, resilience);
-  }
-
-  /** Everything that stops this config being used; empty when it is complete and compiles. */
+  /**
+   * Everything that stops this record being used, besides its route (checked by the loader);
+   * empty when it is complete and its mappings compile.
+   */
   public List<String> problems() {
     List<String> problems = new ArrayList<>();
-    if (!PartnerTemplates.ALL.contains(template)) {
-      problems.add("unknown template " + template);
-    }
-    if (baseUrl == null || baseUrl.getScheme() == null || baseUrl.getHost() == null) {
-      problems.add("baseUrl must be an absolute URL");
+    if (route == null) {
+      problems.add("a route is required");
     }
     if (connectTimeoutMs <= 0 || timeoutMs <= 0 || readTimeoutMs <= 0) {
       problems.add("timeouts must be positive");
     }
-    if (operations.isEmpty()) {
-      problems.add("at least one operation is required");
+    if (inquiryRetries < 0 || inquiryRetries > 3) {
+      problems.add("inquiryRetries must be 0 to 3");
     }
-    operations.forEach((name, op) -> op.problems(name, problems));
+    mappings.forEach(
+        (name, source) -> {
+          if (!MAPPING_NAME.matcher(name).matches()) {
+            problems.add("mapping names are letters, digits, . _ -");
+          } else {
+            compiles("mappings." + name, source, problems);
+          }
+        });
     errorMap.forEach(
         (code, m) -> {
           if (m == null || m.suffix() == null || !SUFFIX.matcher(m.suffix()).matches()) {
             problems.add("errorMap." + code + ": suffix must be upper case letters, digits, underscore");
           }
         });
+    if (dryRun != null && (dryRun.operation() == null || !DRY_RUN_OPERATIONS.contains(dryRun.operation()))) {
+      problems.add("dryRun.operation must be one of " + String.join(", ", new java.util.TreeSet<>(DRY_RUN_OPERATIONS)));
+    }
+    if (dryRun != null && dryRun.baseUrl() != null && !plainBaseUrl(dryRun.baseUrl())) {
+      // the value is not echoed: it may be an attempt to reach another host
+      problems.add(SECURITY + "dryRun.baseUrl must be an absolute http(s) URL without user info, query, fragment,"
+          + " encoding or .. segments (its host is checked against allowedHosts at load)");
+    }
     if (!mfs.mw.adapter.telco.partner.auth.AuthSchemes.NAMES.contains(auth.scheme())) {
       problems.add("unknown auth scheme " + auth.scheme());
     } else if (!"none".equals(auth.scheme()) && auth.credentialsRef() == null) {
@@ -154,19 +171,25 @@ public record PartnerConfig(
     return problems;
   }
 
-  private static Map<String, Operation> upperKeys(Map<String, Operation> in) {
-    if (in == null) {
-      return Map.of();
+  private static void compiles(String field, String source, List<String> problems) {
+    if (source == null || source.isBlank()) {
+      problems.add(field + " is empty");
+      return;
     }
-    Map<String, Operation> out = new LinkedHashMap<>();
-    in.forEach((k, v) -> out.put(k.toUpperCase(Locale.ROOT), v));
-    return Map.copyOf(out);
+    try {
+      CompiledMapping.compile(source);
+    } catch (IllegalArgumentException e) {
+      problems.add(field + " does not compile: " + e.getMessage());
+    }
   }
 
   /**
+   * How a callback of this partner is verified (ticket 22); outbound calls name their auth in the
+   * route ({@code mw-http-call?auth=...}).
+   *
    * @param scheme {@code none} (default), {@code api-key}, {@code hmac-sha256}
-   * @param credentialsRef name of one of this partner's secrets ({@code api-key}), resolved as
-   *     {@code mw.partner-secrets.<partner>.<name>}; never the secret, never a property path
+   * @param credentialsRef the secret field of this partner ({@code hmac-secret}), read from OpenBao
+   *     {@code secret/<service>/<partner>}; never the secret, never a path
    * @param params non-secret scheme parameters (header names, key id, max skew)
    */
   @JsonIgnoreProperties(ignoreUnknown = true)
@@ -177,67 +200,56 @@ public record PartnerConfig(
     }
   }
 
-  /**
-   * One canonical operation on the partner's HTTP API.
-   *
-   * @param method HTTP method
-   * @param path path appended to the base URL; {@code {reference}} is replaced by our reference
-   * @param definiteStatuses HTTP statuses whose FAILED / NOT_FOUND answers are believed; any other
-   *     status turns such an answer into UNKNOWN {@code UNEXPECTED_STATUS} (fail closed: a
-   *     rejection releases the hold). SUCCESS and PENDING need a 2xx.
-   * @param request JSONata from the canonical call to the request body (none: no body)
-   * @param response JSONata from {@code {status, body}} to {@code {outcome, partnerRef, code,
-   *     message, reason}}
-   */
-  @JsonIgnoreProperties(ignoreUnknown = true)
-  public record Operation(
-      String method, String path, List<Integer> definiteStatuses, String request, String response) {
-
-    public Operation {
-      method = method == null ? null : method.toUpperCase(Locale.ROOT);
-      definiteStatuses = definiteStatuses == null ? List.of() : List.copyOf(definiteStatuses);
+  /** An absolute http(s) URL of scheme, host, port and a safe path only. */
+  static boolean plainBaseUrl(String url) {
+    try {
+      URI u = new URI(url);
+      String path = u.getRawPath() == null ? "" : u.getRawPath();
+      return u.getScheme() != null && Set.of("http", "https").contains(u.getScheme().toLowerCase(Locale.ROOT))
+          && u.getHost() != null && u.getRawUserInfo() == null && u.getRawQuery() == null && u.getRawFragment() == null
+          && (path.isEmpty() || (safePath(path) && path.indexOf('{') < 0 && path.indexOf('}') < 0));
+    } catch (java.net.URISyntaxException e) {
+      return false;
     }
+  }
 
-    void problems(String name, List<String> problems) {
-      if (method == null || method.isBlank()) {
-        problems.add("operations." + name + ".method is required");
-      }
-      if (!safePath(path)) {
-        // the value is not echoed: it may be an attempt to reach another host
-        problems.add(
-            SECURITY
-                + "operations." + name + ".path must be an absolute path of letters, digits, . _ ~ - /"
-                + " and {reference}, without .. segments or //");
-      }
-      if (response == null || response.isBlank()) {
-        problems.add("operations." + name + ".response mapping is required");
-      }
-      compiles("operations." + name + ".request", request, problems);
-      compiles("operations." + name + ".response", response, problems);
-    }
-
-    static boolean safePath(String path) {
-      return path != null
-          && SAFE_PATH.matcher(path).matches()
-          && !path.contains("//")
-          && java.util.Arrays.stream(path.split("/")).noneMatch(".."::equals);
-    }
-
-    private static void compiles(String field, String source, List<String> problems) {
-      if (source == null || source.isBlank()) {
-        return;
-      }
-      try {
-        JsonataMapping.compile(source);
-      } catch (IllegalArgumentException e) {
-        problems.add(field + " does not compile: " + e.getMessage());
-      }
-    }
+  /** True when {@code path} is a safe path (see {@link #SAFE_PATH}). */
+  public static boolean safePath(String path) {
+    return path != null
+        && SAFE_PATH.matcher(path).matches()
+        && !path.contains("//")
+        && java.util.Arrays.stream(path.split("/")).noneMatch(".."::equals);
   }
 
   /** Canonical code suffix and retryability of one partner code. */
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record ErrorMapping(String suffix, boolean retryable) {
     public static final ErrorMapping UNMAPPED = new ErrorMapping("UNMAPPED", false);
+  }
+
+  /**
+   * The partner's circuit breaker and bulkhead; a null field keeps the default of the {@code
+   * resilience4j} instance named by the partner id.
+   */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record Resilience(
+      Float failureRateThreshold,
+      Integer slidingWindowSize,
+      Integer minimumNumberOfCalls,
+      Long slowCallDurationThresholdMs,
+      Long waitDurationInOpenStateMs,
+      Integer bulkheadMaxConcurrentCalls) {}
+
+  /**
+   * The dry-run a new version must pass before it goes live (ticket 83): {@code operation} sent
+   * with {@code sample} as the canonical input ({@code PartnerCall.input}) through the candidate
+   * route; {@code baseUrl} the partner's sandbox (production; must be in {@code allowedHosts}),
+   * else the environment's {@code mw.partners.dry-run.base-url}.
+   */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record DryRun(String operation, Map<String, Object> sample, String baseUrl) {
+    public DryRun {
+      sample = sample == null ? Map.of() : java.util.Collections.unmodifiableMap(new LinkedHashMap<>(sample));
+    }
   }
 }

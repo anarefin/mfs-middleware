@@ -3,17 +3,22 @@ package mfs.mw.adapter.bank.messaging;
 import java.util.concurrent.ExecutorService;
 import mfs.mw.adapter.bank.dto.PartnerRequest;
 import mfs.mw.adapter.bank.service.BankDebitService;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Handler behind the {@code mw.partner.request.bank.v1} route. It only parses and hands the
+ * Listener of {@code mw.partner.request.bank.v1} (key txnId; Spring Kafka retry topics and DLQ,
+ * spec 19.2, ADR D25). On by default; {@code mw.bank.request-consumer.enabled=false} keeps it
+ * from starting (tests, so a cached test context never competes for the topic). It only parses and hands the
  * request to a virtual-thread executor: the bank call (up to 25 s) never runs on the Kafka
  * consumer thread. A record that cannot be parsed, or lacks the ids a reply needs, throws, so the
- * route parks it on the retry topics and finally the DLQ (spec 19.2).
+ * error handler parks it on the retry topics and finally the DLQ (spec 19.2).
  *
  * <p>The offset is committed once the request is handed over; the reply is written by the
  * executor task (outbox + inbox, effectively-once). A crash between hand-over and reply leaves the
@@ -36,7 +41,19 @@ public class BankRequestHandler {
     this.executor = executor;
   }
 
-  /** Called by the route with the record value. */
+  public static final String TOPIC = "mw.partner.request.bank.v1";
+
+  @KafkaListener(
+      id = "bank-requests",
+      topics = TOPIC,
+      groupId = "${spring.kafka.consumer.group-id}",
+      autoStartup = "${mw.bank.request-consumer.enabled:true}")
+  public void onRecord(ConsumerRecord<String, String> record, Acknowledgment ack) {
+    handle(record.value());
+    ack.acknowledge();
+  }
+
+  /** Parses one record value and hands the request over; throws for a record it cannot use. */
   public void handle(String body) {
     PartnerRequest request = json.readValue(body, PartnerRequest.class);
     if (isBlank(request.requestId()) || isBlank(request.txnId()) || isBlank(request.correlationId())) {

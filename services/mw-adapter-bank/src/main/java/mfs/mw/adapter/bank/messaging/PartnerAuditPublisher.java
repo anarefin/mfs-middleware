@@ -7,7 +7,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import mfs.mw.adapter.bank.config.MwServiceProperties;
 import mfs.mw.adapter.bank.dto.AuditEvent;
-import mfs.mw.adapter.bank.partner.template.PartnerAudit;
+import mfs.mw.adapter.bank.partner.route.PartnerAudit;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;

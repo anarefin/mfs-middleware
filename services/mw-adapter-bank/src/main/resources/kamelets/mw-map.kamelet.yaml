@@ -1,0 +1,40 @@
+# mw-map (ADR D26, ticket 82): the partner's request body from the canonical call, by one of the
+# record's JSONata mappings (compiled once per record version).
+apiVersion: camel.apache.org/v1
+kind: Kamelet
+metadata:
+  name: mw-map
+  labels:
+    camel.apache.org/kamelet.type: action
+  annotations:
+    camel.apache.org/kamelet.support.level: Stable
+    camel.apache.org/provider: Bits MFS middleware
+spec:
+  definition:
+    title: MW map request
+    description: >-
+      Evaluates the record's JSONata mapping `mapping` over the canonical call (its input document plus
+      reference, operation and txnId) and makes the result the request body mw-http-call sends. Input:
+      the partner call JSON; output: the request body JSON. A mapping that fails ends the call NOT_SENT
+      MISCONFIGURED.
+    type: object
+    required: [mapping, partnerId]
+    properties:
+      mapping:
+        title: Mapping
+        description: Name of the record's mapping, e.g. PAY.request.
+        type: string
+      partnerId:
+        title: Partner id
+        description: Set by the route loader.
+        type: string
+  template:
+    from:
+      uri: "kamelet:source"
+      steps:
+        - setProperty:
+            name: mwMapping
+            constant: "{{mapping}}"
+        - bean:
+            ref: mwMap
+            method: request
