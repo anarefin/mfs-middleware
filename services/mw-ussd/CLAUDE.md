@@ -61,8 +61,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   INPUT with `lookup: bill`, CONFIRM with the fetched amount), 9 language. Every Bangla screen of
   the seed fits 70 UCS-2 characters (`UssdMenuWalkTest`).
 - Published menus (ticket 39, spec 9.2, 20.4): mw-admin-api's approved versions arrive on
-  `mw.config.changed.v1` (compacted; `route/ConfigChangedRoute`, a `RetryTopicRouteBuilder`, group
-  mw-ussd, retry topics then DLQ; `messaging/ConfigChangedListener`, tombstones skipped) and
+  `mw.config.changed.v1` (compacted; `messaging/ConfigChangedListener`, a retried `@KafkaListener`, group
+  mw-ussd, earliest offset, retry topics then DLQ, tombstones skipped) and
   `service/MenuPublisher` takes configType USSD_MENU UPSERTs (value `{menuId, version, menu,
   activations: [{mno, goLiveAt}]}`; other types / DELETE ignored): in one transaction the tree is
   stored as a new immutable version (numbered here: above every stored version and at least 100, so
@@ -107,7 +107,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   MSISDN + partner {operator, productCode}, BILL_PAY `BILLER_ACCOUNT` + partner {aggregator,
   `BILL`, billerCode}; `metadata {ussdSessionId, mno}`, locale = session language)
   published with `mw-reply-to = instanceId`; the MNO request's (virtual) thread waits at most
-  `sync-budget` (8 s) on `service/ReplyWaiters`, completed by `route/StatusReplyRoute` /
+  `sync-budget` (8 s) on `service/ReplyWaiters`, completed by `config/StatusReplyConsumerConfig` /
   `messaging/StatusReplyListener` (group `mw-ussd.reply.<instanceId>`, latest offset, never
   blocks). COMPLETED -> the node's `onSuccess`; FAILED/REJECTED -> `onFailure` with the status
   error's text (messageBn in bn); no final status in time -> the menu's `processing` text ("being
@@ -132,7 +132,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 - `events/mw-orchestrator/mw.txn.request.v1` (produced; own type `dto/TxnRequest`, validated in
   `TxnRequestMapperTest`).
 - `events/mw-admin-api/mw.config.changed.v1` (consumed, ticket 39; own type `dto/ConfigChangedEvent`;
-  `ConsumedContractsTest` runs every valid sample through `ConfigChangedListener`).
+  `ConsumedContractsTest` runs every valid sample through `ConfigChangedListener.onConfigChanged`).
 - `events/mw-orchestrator/mw.txn.status.v1` (consumed; own type `dto/StatusMessage`) and the
   orchestrator's `mw-reply-to` / duplicate-answer conventions.
 - `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (called: biller list, bill fetch; own types
@@ -142,7 +142,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
-  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
+  `build.gradle.kts`; drop once the Boot BOM ships them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -154,10 +154,22 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
-- `messaging/EventPublisher`: Kafka records with the 6.1 headers, idempotent `acks=all` producer
-  (max-block 3 s, delivery timeout 5 s: inside the 8 s budget).
-- `route/RetryTopicRouteBuilder` + `messaging/RetryDelayListener`: subclass per consumed topic; retry
-  topics 10 s / 1 min / 10 min then DLQ (19.2); per-record commit; no sleeps on Kafka threads.
+- `messaging/EventPublisher`: Kafka records with the 6.1 headers (+ extra headers such as `mw-reply-to`)
+  through Spring Kafka's `KafkaTemplate` (ADR D25), idempotent `acks=all` producer; `publish` waits at most
+  `mw.kafka.send-timeout`. The admin client (asked for the cluster id by the observed template's first
+  send) is bounded like the producer (`spring.kafka.admin.operation-timeout`), so Kafka down still fails fast.
+- Spring Kafka (ADR D25, copied from the template, ticket 80): `config/KafkaConfig` (non-blocking retry topics
+  `<topic>.mw-ussd.retry.1..3` then `<topic>.mw-ussd.dlq` for every `@KafkaListener` on the default factory,
+  `messaging/RetryTopicNaming`, `RetryTopicRecoverer` (`mw-retry-*` headers, class only), `RetryDueTimeCap`,
+  `ConsumerContextInterceptor` (consumer MDC), `Utf8Deserializer`; validation/schema failures to the DLQ at
+  once); retry topics 10 s / 1 min / 10 min (`mw.kafka.retry.delays`); per-record manual ack; no sleeps on
+  Kafka threads. Consumers: `messaging/ConfigChangedListener` (retried, group `mw-ussd`) and
+  `config/StatusReplyConsumerConfig`: the per-instance reply consumer of `mw.txn.status.v1`, a container built from its own
+  `statusReplyContainerFactory` (not a `@KafkaListener`, so the retry configuration never applies to it), group
+  `mw-ussd.reply.<instanceId>`, `auto-offset-reset=latest`, auto-commit, no retry topic or DLQ, an error handler
+  that logs the exception class and skips; `messaging/StatusReplyListener.onReply` only completes futures.
+  `messaging/StatusReplyConsumerIT` runs two instances: each gets its replies, none sent before it started.
+- `scheduler/OutboxRelayScheduler`: the outbox relay schedule (`mw.outbox.relay.period`, ShedLock-guarded).
 - `application.yml`: Resilience4j defaults (19.2), own schema `ussd` migrated by Flyway on start
   from `db/migration` (16.4).
 

@@ -20,14 +20,14 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Publishes unsent outbox rows to Kafka and stamps {@code sent_at} (spec 6.4, 19.3), a batch at
- * a time and pipelined. Called by the relay route ({@code route/OutboxRelayRouteBuilder}) on a
- * timer thread, never on a Kafka consumer thread.
+ * a time and pipelined. Called by {@code scheduler/OutboxRelayScheduler} on a scheduler thread,
+ * never on a Kafka consumer thread.
  *
  * <p>One batch, one transaction: claim up to {@code mw.outbox.relay.batch-size} unsent rows in
  * id order, hand every one to the idempotent producer without waiting ({@link
  * EventPublisher#publishStoredAsync}), wait for all acknowledgements, then mark the acknowledged
  * rows sent in one statement. {@link #relayPending} claims the next batch at once while batches
- * come back full, and stops (the route then waits one period) when the outbox is drained or a
+ * come back full, and stops (the scheduler then waits one period) when the outbox is drained or a
  * send failed.
  *
  * <p>Guarantees:

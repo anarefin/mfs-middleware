@@ -22,7 +22,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * The checkout OTP does not stay in clear in the outbox (review A8): the relay sends the OTP SMS
  * request to Kafka with its {@code params.otp} and, in the statement that marks the row sent,
  * removes the OTP from the stored row. Other params and other topics' records are kept as they
- * are. The relay route is off (test default); the test drives {@link OutboxRelay} itself.
+ * are. The relay schedule is off (test default); the test drives {@link OutboxRelay} itself.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Import(TestInfrastructure.class)

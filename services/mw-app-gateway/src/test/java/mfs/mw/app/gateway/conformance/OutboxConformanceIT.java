@@ -24,7 +24,7 @@ import org.testcontainers.kafka.KafkaContainer;
 
 /**
  * Transactional outbox (spec 6.4): the business row and the outbox row are written in one DB
- * transaction, and the relay route (on, as in production) publishes committed rows to Kafka
+ * transaction, and the relay schedule (on, as in production) publishes committed rows to Kafka
  * with the 6.1 headers and marks them sent. A rolled-back business transaction leaves no outbox
  * row and publishes nothing.
  *

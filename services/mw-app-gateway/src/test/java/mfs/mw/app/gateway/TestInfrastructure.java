@@ -100,9 +100,15 @@ public class TestInfrastructure {
     DynamicPropertyRegistrar database = contextDatabase();
     return registry -> {
       database.accept(registry);
-      // Camel's Kafka component does not read Spring Boot's Kafka connection details.
-      registry.add("camel.component.kafka.brokers", KAFKA::getBootstrapServers);
+      // No @ServiceConnection on the Kafka bean: wire Spring Kafka by hand.
+      registry.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
     };
+  }
+
+  /** The Kafka bootstrap servers, for tests that produce, consume or administer directly. */
+  public static String kafkaBootstrapServers() {
+    start();
+    return KAFKA.getBootstrapServers();
   }
 
   @Bean(destroyMethod = "")
