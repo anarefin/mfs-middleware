@@ -230,9 +230,10 @@ mw:
     # This adapter's family (ticket 83): a partner record whose value.family is another one (telco,
     # billpay) belongs to another adapter and is skipped.
     family: bank
-    # mTLS client contexts (ticket 87, static config only): <name>: {partner-id: <id>}; the client key store
+    # mTLS client contexts (ticket 87, static config only): <name>: {partner-id: <id>, truststore: true|false}; the key store
     # is read once at startup from secret/mw-adapter-bank/<id> (fields <name>-keystore, base64 PKCS#12,
-    # <name>-keystore-password, optional <name>-truststore and <name>-truststore-password) into the bean
+    # <name>-keystore-password; with truststore: true also <name>-truststore and <name>-truststore-password,
+    # a failed read leaves the context unregistered, never the JVM trust store) into the bean
     # mwTls-<name>, which only that partner's route may name (mw-http-call sslContextRef=<name>). None by default.
     tls:
       contexts: {}

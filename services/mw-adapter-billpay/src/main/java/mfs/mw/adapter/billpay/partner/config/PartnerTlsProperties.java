@@ -10,7 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * @param contexts name ({@code [a-z0-9-]}) -> the partner that may use it; its client keystore is
  *     read once at startup from that partner's own OpenBao secret ({@code <name>-keystore}, base64
- *     PKCS#12, {@code <name>-keystore-password}, optional {@code <name>-truststore} and {@code
+ *     PKCS#12, {@code <name>-keystore-password}, and with {@code truststore: true} {@code <name>-truststore} and {@code
  *     <name>-truststore-password}) and registered as the {@code SSLContextParameters} bean {@code
  *     mwTls-<name>}
  */
@@ -21,6 +21,15 @@ public record PartnerTlsProperties(Map<String, Context> contexts) {
     contexts = contexts == null ? Map.of() : Map.copyOf(contexts);
   }
 
-  /** @param partnerId the only partner whose route may name this context */
-  public record Context(String partnerId) {}
+  /**
+   * @param partnerId the only partner whose route may name this context
+   * @param truststore true: the server is checked against the context's own trust store ({@code
+   *     <name>-truststore}), and a context whose trust store cannot be read is not registered
+   *     (never a fall-back to the JVM trust store); false or absent: the JVM trust store
+   */
+  public record Context(String partnerId, Boolean truststore) {
+    public Context {
+      truststore = Boolean.TRUE.equals(truststore);
+    }
+  }
 }

@@ -22,7 +22,8 @@ import org.springframework.stereotype.Component;
  * context of {@link PartnerTlsProperties} is read once when Camel starts (static, D26), from its
  * partner's own OpenBao secret through {@link PartnerCredentials}, and bound in Camel's registry as
  * the {@code SSLContextParameters} bean {@code mwTls-<name>}. A context that cannot be read is
- * logged ({@code partner.tls_context_unavailable}, never the material) and not bound: a route
+ * logged ({@code partner.tls_context_unavailable}, never the material) and not bound (also when
+ * its configured trust store cannot be read: no fall-back to the JVM trust store): a route
  * naming it is refused, the service stays up. Only the owning partner's route may name a context
  * (route loader and host guard).
  */
@@ -98,23 +99,16 @@ public class PartnerTlsContexts {
     SSLContextParameters parameters = new SSLContextParameters();
     parameters.setKeyManagers(keyManagers);
     parameters.setSecureSocketProtocol("TLS");
-    String trust = optional(partner, name + "-truststore");
-    if (trust != null) {
+    if (properties.contexts().get(name).truststore()) {
+      // expected: a failed read fails the whole context (never the JVM trust store instead)
       KeyStoreParameters trustStore = new KeyStoreParameters();
-      trustStore.setKeyStore(load(trust, credentials.read(partner, name + "-truststore-password")));
+      trustStore.setKeyStore(load(
+          credentials.read(partner, name + "-truststore"), credentials.read(partner, name + "-truststore-password")));
       TrustManagersParameters trustManagers = new TrustManagersParameters();
       trustManagers.setKeyStore(trustStore);
       parameters.setTrustManagers(trustManagers);
     }
     return parameters;
-  }
-
-  private String optional(String partner, String field) {
-    try {
-      return credentials.read(partner, field);
-    } catch (IllegalStateException e) {
-      return null;
-    }
   }
 
   private static KeyStore load(String base64, String password) throws Exception {

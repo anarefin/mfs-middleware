@@ -301,7 +301,7 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   purpose there (user decision): the key is an OpenBao field (fake in dev only). mTLS: `sslContextRef`
   names a context of static config `mw.partners.tls.contexts.<name>.partner-id` (`config/PartnerTlsProperties`),
   read once when Camel starts (before the routes) from that partner's secret fields `<name>-keystore`
-  (base64 PKCS#12), `<name>-keystore-password`, optional `<name>-truststore`/`-password`, and bound as the
+  (base64 PKCS#12), `<name>-keystore-password`, with `truststore: true` `<name>-truststore`/`-password` (a failed read leaves the context unregistered, never the JVM trust store), and bound as the
   `SSLContextParameters` bean `mwTls-<name>`; the loader and the host guard allow only the owning
   partner and https (guard option `sslContextParameters=#mwTls-<name>`). The send with a context is a
   `toD` (resolved only when used, so a partner without one needs no bean) with `cacheSize: 1` and

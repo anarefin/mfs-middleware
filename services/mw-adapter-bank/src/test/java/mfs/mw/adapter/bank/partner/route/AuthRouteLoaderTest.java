@@ -117,10 +117,40 @@ class AuthRouteLoaderTest {
           : TestKeystores.base64(field.endsWith("-truststore") ? "client-trust" : "good");
     });
     Map<String, PartnerTlsProperties.Context> config = new java.util.HashMap<>();
-    contexts.forEach((name, partner) -> config.put(name, new PartnerTlsProperties.Context(partner)));
+    contexts.forEach((name, partner) -> config.put(name, new PartnerTlsProperties.Context(partner, true)));
     PartnerTlsContexts tls = new PartnerTlsContexts(new PartnerTlsProperties(config), credentials);
     tls.register(CAMEL);
     return tls;
+  }
+
+  /**
+   * Security review: a context that expects a trust store whose read fails is never registered
+   * (no fall-back to the JVM trust store), so a route naming it is refused; one without a trust
+   * store uses the JVM's on purpose.
+   */
+  @Test
+  void aContextWhoseExpectedTrustStoreCannotBeReadIsNotRegisteredAndRefused() {
+    PartnerCredentials credentials = mock(PartnerCredentials.class);
+    when(credentials.read(anyString(), anyString())).thenAnswer(i -> {
+      String field = i.getArgument(1);
+      if (field.contains("truststore")) {
+        throw new IllegalStateException("no credential " + field + " for partner acme");
+      }
+      return field.endsWith("-password") ? TestKeystores.PASSWORD : TestKeystores.base64("good");
+    });
+    PartnerTlsContexts tls = new PartnerTlsContexts(new PartnerTlsProperties(Map.of(
+        "acme-pinned", new PartnerTlsProperties.Context("acme", true),
+        "acme-jvm-trust", new PartnerTlsProperties.Context("acme", null))), credentials);
+    tls.register(CAMEL);
+
+    assertThat(tls.owner("acme-pinned")).isEmpty();
+    assertThat(CAMEL.getRegistry().lookupByName("mwTls-acme-pinned")).isNull();
+    assertThat(tls.owner("acme-jvm-trust")).contains("acme");
+    PartnerRouteLoader withTls = new PartnerRouteLoader(
+        CAMEL, new PartnerEndpointPolicy(SECURITY), new KameletCatalogue(), credentials, BulkheadRegistry.ofDefaults(), tls);
+    assertThatThrownBy(() -> withTls.load("acme", 1, record("url=https://localhost:8443&sslContextRef=acme-pinned")))
+        .isInstanceOfSatisfying(PartnerConfigRefusedException.class,
+            e -> assertThat(e.problems()).anySatisfy(p -> assertThat(p).contains("not a TLS client context")));
   }
 
   @Test

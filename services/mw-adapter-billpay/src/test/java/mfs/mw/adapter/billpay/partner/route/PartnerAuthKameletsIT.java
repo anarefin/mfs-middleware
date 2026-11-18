@@ -80,6 +80,8 @@ class PartnerAuthKameletsIT {
   static void tlsContexts(DynamicPropertyRegistry registry) {
     registry.add("mw.partners.tls.contexts.mtls-good.partner-id", () -> "tlsco");
     registry.add("mw.partners.tls.contexts.mtls-wrong.partner-id", () -> "tlsco");
+    registry.add("mw.partners.tls.contexts.mtls-good.truststore", () -> "true");
+    registry.add("mw.partners.tls.contexts.mtls-wrong.truststore", () -> "true");
   }
 
   @AfterAll
