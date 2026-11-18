@@ -1,6 +1,5 @@
 package mfs.mw.adapter.billpay.contracts;
 
-import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaLocation;
 import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
@@ -41,8 +40,8 @@ public final class OpenApiSchemas {
   }
 
   /** {@code #/components/schemas/<name>} of the OpenAPI file at {@code path} under contracts/. */
-  public static Schema component(String path, String name) {
-    return REGISTRY.getSchema(SchemaLocation.of(ID_BASE + path + "#/components/schemas/" + name));
+  public static JsonSchema component(String path, String name) {
+    return new JsonSchema(REGISTRY.getSchema(SchemaLocation.of(ID_BASE + path + "#/components/schemas/" + name)));
   }
 
   /** The OpenAPI document itself, for response schemas that are not components (arrays). */

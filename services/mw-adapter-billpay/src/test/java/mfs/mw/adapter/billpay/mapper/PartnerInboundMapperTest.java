@@ -10,7 +10,7 @@ import mfs.mw.adapter.billpay.contracts.ContractSchemas;
 import mfs.mw.adapter.billpay.dto.PartnerInbound;
 import mfs.mw.adapter.billpay.partner.InboundResult;
 import mfs.mw.adapter.billpay.partner.config.PartnerConfig;
-import mfs.mw.adapter.billpay.partner.template.PartnerFrameworkSeeds;
+import mfs.mw.adapter.billpay.partner.PartnerTestSeeds;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -24,7 +24,7 @@ class PartnerInboundMapperTest {
 
   final JsonMapper json = JsonMapper.builder().build();
   final PartnerInboundMapper mapper = new PartnerInboundMapper();
-  final PartnerConfig billagg = PartnerFrameworkSeeds.billagg();
+  final PartnerConfig billagg = PartnerTestSeeds.billagg();
 
   PartnerInbound map(InboundResult r) {
     PartnerInbound in = mapper.toInbound(r, billagg, "billagg", TXN, "corr-1", NOW);

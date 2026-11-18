@@ -17,7 +17,7 @@ import mfs.mw.adapter.billpay.partner.PartnerCall;
 import mfs.mw.adapter.billpay.partner.PartnerResponse;
 import mfs.mw.adapter.billpay.partner.PartnerResponse.NotSentReason;
 import mfs.mw.adapter.billpay.partner.PartnerResponse.UnknownReason;
-import mfs.mw.adapter.billpay.partner.template.PartnerGateway;
+import mfs.mw.adapter.billpay.partner.route.PartnerGateway;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 

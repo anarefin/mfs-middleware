@@ -9,17 +9,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
- * Security rules on where a partner config may send requests, from static config only ({@link
- * PartnerProperties.Security}). Partner config arrives on {@code mw.config.changed.v1}; whoever can
- * publish there must not be able to point a partner (and its credentials) at a host of their
- * choosing. Applied to seeds and to every config-changed record alike: the instance id must be a
- * simple name, the {@code baseUrl} host must be on that instance's allowlist, the scheme must be
- * https (http only for the explicitly allowed dev hosts), and no user info in the URL.
+ * Where a partner route may send requests (ADR D26, guardrail 4). The hosts come from the approved
+ * record ({@code allowedHosts}); the static {@code mw.partners.security.allowed-hosts} of a partner,
+ * when set, is a floor the record cannot leave. Every URL a route calls ({@code mw-http-call?url=})
+ * must name one of them, over https (http only for the explicitly allowed dev hosts), without user
+ * info. Checked when a route loads ({@code PartnerRouteLoader}) and again before every send
+ * ({@code PartnerHostGuard}, on the resolved endpoint).
  */
 @Component
 public class PartnerEndpointPolicy {
 
-  /** Partner instance ids: also the last segment of the secret prefix, so no dots. */
+  /** Partner ids: also a segment of the secret path and of route ids, so no dots or slashes. */
   public static final Pattern INSTANCE_ID = Pattern.compile("^[a-z0-9][a-z0-9-]{0,63}$");
 
   private final PartnerProperties.Security security;
@@ -33,29 +33,50 @@ public class PartnerEndpointPolicy {
     this.security = security;
   }
 
-  /** Every rule {@code baseUrl} of instance {@code id} breaks; empty when allowed. */
-  public List<String> problems(String id, URI baseUrl) {
+  /**
+   * The hosts partner {@code id} may call: its record's hosts, narrowed to the static floor when
+   * the partner has one.
+   */
+  public List<String> allowedHosts(String id, List<String> recordHosts) {
+    List<String> floor = security.allowedHosts().get(id);
+    return recordHosts.stream()
+        .filter(h -> floor == null || floor.stream().anyMatch(f -> f.equalsIgnoreCase(h)))
+        .toList();
+  }
+
+  /** Every rule the partner id breaks; empty when it is a simple name. */
+  public List<String> idProblems(String id) {
+    return id == null || !INSTANCE_ID.matcher(id).matches()
+        ? List.of("partner id must be lower-case letters, digits, hyphen")
+        : List.of();
+  }
+
+  /** Every rule {@code url} breaks for a partner allowed {@code allowed}; empty when allowed. */
+  public List<String> problems(URI url, List<String> allowed) {
     List<String> problems = new ArrayList<>();
-    if (id == null || !INSTANCE_ID.matcher(id).matches()) {
-      problems.add("partner id must be lower-case letters, digits, hyphen");
+    if (url == null || url.getHost() == null || url.getScheme() == null) {
+      problems.add("url must be an absolute http(s) URL");
       return problems;
     }
-    if (baseUrl == null || baseUrl.getHost() == null || baseUrl.getScheme() == null) {
-      return problems; // reported by PartnerConfig.problems()
-    }
-    String host = baseUrl.getHost().toLowerCase(Locale.ROOT);
-    List<String> allowed = security.allowedHosts().getOrDefault(id, List.of());
+    String host = url.getHost().toLowerCase(Locale.ROOT);
     if (allowed.stream().noneMatch(h -> h.equalsIgnoreCase(host))) {
-      problems.add("baseUrl host is not allowed for partner " + id);
+      problems.add("url host is not in the partner's allowedHosts");
     }
-    String scheme = baseUrl.getScheme().toLowerCase(Locale.ROOT);
-    boolean insecureAllowed = security.insecureHttpHosts().stream().anyMatch(h -> h.equalsIgnoreCase(host));
-    if (!"https".equals(scheme) && !("http".equals(scheme) && insecureAllowed)) {
-      problems.add("baseUrl must use https (plain http is not allowed for this host)");
+    String scheme = url.getScheme().toLowerCase(Locale.ROOT);
+    if (!"https".equals(scheme) && !("http".equals(scheme) && insecureAllowed(host))) {
+      problems.add("url must use https (plain http is not allowed for this host)");
     }
-    if (baseUrl.getRawUserInfo() != null) {
-      problems.add("baseUrl must not carry user info");
+    if (url.getRawUserInfo() != null) {
+      problems.add("url must not carry user info");
+    }
+    if (url.getRawQuery() != null || url.getRawFragment() != null) {
+      problems.add("url must not carry a query or fragment");
     }
     return problems;
+  }
+
+  /** True when {@code host} may be called over plain http (dev and test simulators). */
+  public boolean insecureAllowed(String host) {
+    return security.insecureHttpHosts().stream().anyMatch(h -> h.equalsIgnoreCase(host));
   }
 }

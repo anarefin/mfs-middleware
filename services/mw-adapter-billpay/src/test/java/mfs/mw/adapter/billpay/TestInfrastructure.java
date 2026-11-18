@@ -31,25 +31,12 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  * migrates an empty database and no context sees another's rows. Kafka is shared by all contexts;
  * tests keep apart by their own topic names, keys and consumer groups.
  *
- * <p>PostgreSQL is deliberately not a bean: Spring Boot stops a container bean when its context
- * closes, which would stop the shared container under every other cached context. Kafka stays a
- * bean because tests inject {@link KafkaContainer} for its bootstrap servers; its {@code stop()} is
- * a no-op for the same reason.
+ * <p>The containers are deliberately not Spring beans: Spring Boot stops a container bean when its
+ * context closes, which would stop the shared container under every other cached context. Tests
+ * that talk to Kafka directly use {@link #kafkaBootstrapServers()}.
  */
 @TestConfiguration(proxyBeanMethods = false)
 public class TestInfrastructure {
-
-  /** Kafka as a bean that survives the close of the context that holds it (see class doc). */
-  static final class JvmScopedKafka extends KafkaContainer {
-    JvmScopedKafka(String image) {
-      super(image);
-    }
-
-    @Override
-    public void stop() {
-      // shared by all contexts; Ryuk removes it at JVM exit
-    }
-  }
 
   /** Numbers the Spring test contexts; each gets its own database {@code ctx_<n>}. */
   private static final AtomicInteger CONTEXTS = new AtomicInteger();
@@ -59,7 +46,7 @@ public class TestInfrastructure {
       new PostgreSQLContainer("postgres:18.6-alpine3.24")
           .withCommand("postgres", "-c", "fsync=off", "-c", "max_connections=600");
 
-  static final JvmScopedKafka KAFKA = new JvmScopedKafka("apache/kafka-native:4.3.2");
+  static final KafkaContainer KAFKA = new KafkaContainer("apache/kafka-native:4.3.2");
 
   /** Starts both containers once (in parallel); later calls are no-ops. */
   static synchronized void start() {
@@ -82,6 +69,12 @@ public class TestInfrastructure {
     return POSTGRES.getJdbcUrl().replaceFirst("/[^/?]+(\\?|$)", "/" + database + "$1");
   }
 
+  /** The Kafka bootstrap servers, for tests that produce, consume or administer directly. */
+  public static String kafkaBootstrapServers() {
+    start();
+    return KAFKA.getBootstrapServers();
+  }
+
   /** Wires this context to its own database and to the shared Kafka. */
   @Bean
   DynamicPropertyRegistrar testInfrastructureProperties() {
@@ -90,14 +83,8 @@ public class TestInfrastructure {
       registry.add("spring.datasource.url", () -> url);
       registry.add("spring.datasource.username", POSTGRES::getUsername);
       registry.add("spring.datasource.password", POSTGRES::getPassword);
-      // Camel's Kafka component does not read Spring Boot's Kafka connection details.
-      registry.add("camel.component.kafka.brokers", KAFKA::getBootstrapServers);
+      // The containers are not Spring beans (see above), so no @ServiceConnection: wire Kafka by hand.
+      registry.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
     };
-  }
-
-  @Bean(destroyMethod = "")
-  KafkaContainer kafka() {
-    start();
-    return KAFKA;
   }
 }

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "classpath:partner/partner-result.schema.json",
+  "title": "Partner route result",
+  "description": "The output of every partner route (ADR D26), produced by the mw-classify Kamelet. Anything else is UNKNOWN MALFORMED_REPLY (fail closed).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["outcome"],
+  "properties": {
+    "outcome": { "enum": ["SUCCESS", "FAILED", "AMBIGUOUS", "NOT_FOUND", "PENDING", "NOT_SENT", "UNKNOWN"] },
+    "partnerRef": { "type": "string", "maxLength": 128 },
+    "code": { "type": "string", "maxLength": 64 },
+    "message": { "type": "string", "maxLength": 512 },
+    "reason": { "type": "string", "pattern": "^[A-Z0-9_]{1,32}$" },
+    "errorSuffix": { "type": "string", "pattern": "^[A-Z0-9_]{1,64}$" },
+    "retryable": { "type": "boolean" },
+    "attributes": { "type": "object", "additionalProperties": { "type": "string" } }
+  },
+  "allOf": [
+    { "if": { "properties": { "outcome": { "enum": ["SUCCESS"] } } }, "then": { "required": ["partnerRef"] } },
+    { "if": { "properties": { "outcome": { "enum": ["FAILED"] } } }, "then": { "required": ["code", "errorSuffix", "retryable"] } },
+    { "if": { "properties": { "outcome": { "enum": ["NOT_SENT", "UNKNOWN"] } } }, "then": { "required": ["reason"] } }
+  ]
+}
