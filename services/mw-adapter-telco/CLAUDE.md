@@ -78,6 +78,9 @@ are identical in the three adapters apart from the package: a fix goes into all 
   `mw.partner.route.status.v1` (`messaging/PartnerRouteStatusPublisher`, outbox), proved by the shared
   `PartnerRouteDryRunIT`. A REJECTED current version makes mw-admin-api republish the last LIVE one (D26
   amendment), so a restart replays a good record.
+- **Batch partners over SFTP** (ticket 86): billpay's `from: kamelet:mw-sftp-source` routes ending in
+  `mw-recon`, publishing `mw.partner.recon.v1` (see mw-adapter-billpay CLAUDE.md "Batch partners over
+  SFTP"; shared `SftpReconRouteIT`).
 - **No Kamelet usage endpoint** here (billpay's `GET /internal/v1/partners/kamelet-usage` is in its own
   contract): mw-admin-api builds Kamelet usage from the status reports.
 - Tests specific to this module: `partner/config/PartnerConfigReloadIT` (a gp record replaces the alias
@@ -111,6 +114,8 @@ are identical in the three adapters apart from the package: a fix goes into all 
   `robi: localhost` for the latter.
 - `events/mw-adapter-billpay/mw.partner.route.status.v1` out (owner mw-adapter-billpay; LIVE / REJECTED of
   each record version, `messaging/PartnerRouteStatusPublisher`, own type `dto/PartnerRouteStatusEvent`).
+- `events/mw-adapter-billpay/mw.partner.recon.v1` out (owner mw-adapter-billpay, ticket 86; the lines of
+  a partner's SFTP file, `messaging/PartnerReconPublisher`, own type `dto/PartnerReconEvent`).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 

@@ -30,7 +30,7 @@ bulk bill lists. They use Kamelets that wrap `camel-sftp` (Camel 4 `sftp` compon
 
 **Blocked by:** 84
 
-**Status:** open
+**Status:** done (1ef30ff6)
 
 - [ ] `SftpReconRouteIT` (an SFTP Testcontainer): a file dropped on the partner host is read once, its records publish `mw.partner.recon.v1`, and the file moves to `.done`; a bad file moves to `.error`
 - [ ] Strict host key checking is on; an unknown host key is refused

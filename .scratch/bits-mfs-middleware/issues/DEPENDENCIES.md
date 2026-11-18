@@ -37,6 +37,6 @@
 83-partner-route-maker-checker-dry-run      82                done     ~90m     see fb639d47..9f4c0680
 84-route-engine-telco-bank                  83                done     ~2h      see 89b8dac6..3ce2acd0
 85-soap-partner-kamelet                     84                open
-86-sftp-batch-partner-kamelets              84                open
+86-sftp-batch-partner-kamelets              84                done     ~28m     see 1ef30ff6
 87-auth-scheme-kamelets                     84                open
 88-mw-recon-matching                        86                open     (written in run 77-87, not built: user 2026-11-18)

@@ -249,6 +249,29 @@ class PartnerRouteApiIT {
     assertThat(r).hasStatus(201);
   }
 
+  static final String BATCH_ROUTE = """
+      - route:
+          from:
+            uri: "kamelet:mw-sftp-source?host=sftp.newco.example&username=bits&directory=recon&secretField=sftp-password&knownHostsField=sftp-known-hosts"
+            steps:
+              - to: "kamelet:mw-recon?delimiter=comma"
+      """;
+
+  /** Ticket 86: a batch route (SFTP source, mw-recon) is filed without a dry-run; one with a dry-run is refused. */
+  @Test
+  void aBatchRouteIsFiledWithoutADryRunAndRefusedWithOne() {
+    String batch = json.writeValueAsString(Map.of(
+        "action", "UPSERT_ROUTE", "reason", "NewCo recon file (ticket 86)", "family", "billpay",
+        "config", Map.of("route", BATCH_ROUTE, "allowedHosts", List.of("sftp.newco.example"))));
+    MvcTestResult filed = ask(batch);
+    assertThat(filed).hasStatus(201);
+
+    jdbc.update("delete from change_request");
+    MvcTestResult refused = ask(body(BATCH_ROUTE).replace("api.newco.example", "sftp.newco.example"));
+    assertThat(refused).hasStatus(400);
+    assertThat(read(refused).path("details").toString()).contains("config.dryRun", "a batch route has no dry-run");
+  }
+
   @Test
   void aDryRunSandboxOutsideTheAllowedHostsIsRefused() {
     String b = body(ROUTE).replace("\"operation\":\"PAY\"", "\"operation\":\"PAY\",\"baseUrl\":\"https://sandbox.evil.example\"");

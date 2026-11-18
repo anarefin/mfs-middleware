@@ -145,7 +145,7 @@ public class PartnerRouteValidator {
       problems.add(new Problem(0, "YAML", "the route is not valid YAML: " + firstLine(e.getMessage())));
       return problems;
     }
-    SequenceNode steps = structure(id, root, problems);
+    SequenceNode steps = structure(id, root, allowedHosts, problems);
     if (!problems.isEmpty() || steps == null) {
       return problems;
     }
@@ -159,7 +159,11 @@ public class PartnerRouteValidator {
     }
     Set<String> named = new LinkedHashSet<>();
     walk(steps, allowedHosts, named, problems);
-    ending(steps, problems);
+    if (isBatch(doc)) {
+      batchEnding(steps, problems);
+    } else {
+      ending(steps, problems);
+    }
     for (String name : named) {
       if (mappings == null || !mappings.containsKey(name)) {
         problems.add(new Problem(0, "mapping", "the route names mapping " + name + ", which the record does not have"));
@@ -170,7 +174,7 @@ public class PartnerRouteValidator {
 
   // --- structure (loader step 3) ----------------------------------------------------------------
 
-  private static SequenceNode structure(String id, Node root, List<Problem> problems) {
+  private static SequenceNode structure(String id, Node root, List<String> allowedHosts, List<Problem> problems) {
     if (!(root instanceof SequenceNode list) || list.getValue().size() != 1
         || !(list.getValue().getFirst() instanceof MappingNode item) || item.getValue().size() != 1
         || !"route".equals(key(item.getValue().getFirst()))) {
@@ -199,9 +203,15 @@ public class PartnerRouteValidator {
           "a partner route may not declare onException, errorHandler, intercept*, onCompletion,"
               + " doTry, routeConfiguration or circuitBreaker; the loader owns error handling"));
     }
-    if (!("direct:partner-" + id).equals(scalar(from.get("uri")))) {
-      problems.add(new Problem(line(from.get("uri") == null ? fromNode : from.get("uri")), "from",
-          "the route must start from direct:partner-" + id));
+    String fromUri = scalar(from.get("uri"));
+    Node uriNode = from.get("uri") == null ? fromNode : from.get("uri");
+    if (PartnerBatchRouteRules.isBatchUri(fromUri)) {
+      // ticket 86: a batch route starts from the mw-sftp-source Kamelet
+      PartnerBatchRouteRules.problems(fromUri, true, allowedHosts)
+          .forEach(p -> problems.add(new Problem(line(uriNode), "from", p)));
+    } else if (!("direct:partner-" + id).equals(fromUri)) {
+      problems.add(new Problem(line(uriNode), "from",
+          "the route must start from direct:partner-" + id + " (or kamelet:mw-sftp-source for a batch route)"));
     }
     return (SequenceNode) from.get("steps");
   }
@@ -439,6 +449,12 @@ public class PartnerRouteValidator {
           "'to' may call only the mw-* Kamelets (raw endpoints are refused): " + (colon < 0 ? "?" : uri.substring(0, colon))));
       return;
     }
+    if (PartnerBatchRouteRules.handles(uri)) {
+      // ticket 86: the SFTP and recon Kamelets have their own short parameter lists
+      String batchName = uri.substring("kamelet:".length(), uri.indexOf('?') < 0 ? uri.length() : uri.indexOf('?'));
+      PartnerBatchRouteRules.problems(uri, false, allowedHosts).forEach(p -> problems.add(new Problem(line, batchName, p)));
+      return;
+    }
     if (uri.contains("${") || uri.contains("$simple{")) {
       problems.add(new Problem(line, "to", "a Kamelet URI must be static (no ${...})"));
       return;
@@ -598,6 +614,33 @@ public class PartnerRouteValidator {
       }
     }
     problems.add(new Problem(line(before), "route end", "the route must end with mw-classify then mw-audit"));
+  }
+
+  /** Ticket 86: a batch route ends with {@code mw-recon}. */
+  private static void batchEnding(SequenceNode steps, List<Problem> problems) {
+    List<Node> outputs = steps.getValue();
+    if (outputs.isEmpty() || !isKamelet(outputs.getLast(), PartnerBatchRouteRules.RECON)) {
+      problems.add(new Problem(line(steps), "route end", "a batch route must end with mw-recon"));
+    }
+  }
+
+  /** True when {@code route} (YAML text) starts from {@code kamelet:mw-sftp-source} (ticket 86). */
+  public static boolean isBatch(String route) {
+    if (route == null) {
+      return false;
+    }
+    try {
+      Object doc = new Yaml(new SafeConstructor(new LoaderOptions())).load(route);
+      return isBatch(doc);
+    } catch (RuntimeException e) {
+      return false;
+    }
+  }
+
+  private static boolean isBatch(Object doc) {
+    return doc instanceof List<?> list && list.size() == 1 && list.getFirst() instanceof Map<?, ?> item
+        && item.get("route") instanceof Map<?, ?> route && route.get("from") instanceof Map<?, ?> from
+        && PartnerBatchRouteRules.isBatchUri(from.get("uri") instanceof String s ? s : null);
   }
 
   private static boolean endsWithClassify(Node steps) {
