@@ -83,6 +83,26 @@ call any URL with any component also needs guardrails.
   (telco and bank), 85 (SOAP), 86 (SFTP and `mw.partner.recon.v1`), 87 (auth schemes) and 88
   (mw-recon matching).
 
+## Amendments
+
+- 2026-11-18 (ticket 84): when an adapter reports the partner's current version REJECTED on
+  `mw.partner.route.status.v1`, mw-admin-api republishes the newest version that was reported LIVE
+  before it as the next version on `mw.config.changed.v1` (its full published value without
+  `dryRun`, changedBy/approvedBy `system/rollback`, in the same transaction as the status update),
+  so the latest record an adapter replays on restart is always a good one. A repeated or stale
+  REJECTED does nothing; with no LIVE predecessor nothing is published (the adapter keeps its seed).
+  This closes the restart gap of ticket 83 (a REJECTED latest record left the partner on its seed).
+- 2026-11-18 (ticket 84): the partner aliases as built. Telco maps every operator id the channels
+  send (`gp`, `robi`, `banglalink`, `teletalk`: mw-app-gateway, mw-ussd's operator list and MNO
+  operators, the test console) to `ocs`; the bank and billpay channels send `c2wbank` and `billagg`
+  themselves, so their maps are empty. An unknown id is refused `MW-PTR-UNKNOWN-PARTNER` (the reply
+  contract's partner codes have two segments). A partner record of its own wins over an alias.
+- 2026-11-18 (ticket 84): the old partner shape (`template`, `baseUrl`, `operations`) is gone in the
+  three adapters, mw-admin-api (action `UPSERT`) and `mw.config.changed.v1`; a record without a
+  `route` is refused. Telco and bank run the same engine and Kamelets as billpay (`diff -r` of the
+  `partner/` trees and the Kamelet folders is empty after the package rename) and publish
+  `mw.partner.route.status.v1` for their own family.
+
 ## Where in the repo
 
 - `services/mw-adapter-billpay/src/main/java/mfs/mw/adapter/billpay/partner` (the adapter framework,

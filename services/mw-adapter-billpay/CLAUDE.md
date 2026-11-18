@@ -118,7 +118,8 @@ own route as an extra layer; the adapter check stays (the `none` scheme refuses 
 
 A partner is a **record holding a Camel YAML DSL route** built from the shipped Kamelets; a new
 REST/JSON biller is a `mw.config.changed.v1` record, no Java and no restart (`NewBillerRouteIT`).
-This module is the first; tickets 84 (telco, bank) copy it, 85-87 add Kamelets. Camel stays behind
+This module is the first; ticket 84 copied it into telco and bank (the `partner/` trees, main and the shared
+tests, and the Kamelet folders are identical apart from the package), 85-87 add Kamelets. Camel stays behind
 `partner/route/PartnerGateway` (one shared `ProducerTemplate`); Kafka is Spring Kafka (below).
 
 - **Record** (`partner/config/PartnerConfig`, `mw.partners.instances.<id>` seeds, `partner/<id>`
@@ -127,8 +128,8 @@ This module is the first; tickets 84 (telco, bank) copy it, 85-87 add Kamelets. 
   `allowedHosts`, `family`, `inquiryRetries` (default 1), `resilience` (breaker/bulkhead overrides;
   null = the resilience4j instance named by the partner id), `dryRun {operation, sample, baseUrl?}` (ticket 83),
   timeouts, `headers`, `auth` (callback verification), `errorMap`, `ambiguousCodes`, `sensitiveFields`.
-  The old shape (`template` + `baseUrl` + `operations`, no `route`) still loads for one release:
-  `partner/route/LegacyPartnerRoute` turns it into the same route (ticket 84 drops it).
+  The old shape (`template` + `baseUrl` + `operations`) is gone since ticket 84: a record without a
+  `route` is refused (`a route is required`). `mw.partners.family` is required (no default).
 - **Route contract** (`partner/route/PartnerExchange`): in `from: direct:partner-<id>`, body the
   `PartnerCall` JSON, headers `mwOperation`, `mwReference`, `mwCorrelationId`, `mwPartnerId`, `mwTxnId`;
   the runtime of the version (`PartnerRuntime`) and the operation ride as exchange properties (a route
@@ -203,8 +204,11 @@ This module is the first; tickets 84 (telco, bank) copy it, 85-87 add Kamelets. 
   `PartnerRouteStatus` (LIVE with its Kamelets, or REJECTED with the loader's or the dry-run's problems)
   for `messaging/PartnerRouteStatusPublisher`: `mw.partner.route.status.v1` (own contract, key partnerId,
   `dto/PartnerRouteStatusEvent`) through the outbox in its own transaction (`PartnerRouteDryRunIT`).
-  A record without `dryRun` (seeds, the old shape) loads at once as before. Open item: after a restart
-  the replayed latest record is dry-run again; a REJECTED latest record leaves the partner on its seed.
+  A record without `dryRun` (seeds; ENABLE / DISABLE / SET_TIMEOUTS and rollback records) loads at once.
+  Restart gap (closed in ticket 84, D26 amendment): on a REJECTED report for the current version
+  mw-admin-api republishes the last LIVE version as the next one (`system/rollback`), so the latest
+  record replayed after a restart is a good one. `PartnerRouteDryRunIT` is shared by the three adapters
+  (it reads this adapter's family).
 - **Circuit breaker per partner**: the EIP's own breaker is per processor node and dies with its route,
   so `mw-http-call` references `mw-cb-<id>`, the resilience4j instance named by the partner id, bound in
   Camel's registry by `PartnerRoutes`; its state survives a swap. Time limiter and bulkhead are per call
@@ -231,7 +235,7 @@ This module is the first; tickets 84 (telco, bank) copy it, 85-87 add Kamelets. 
   Spring Cloud Vault's `VaultTemplate` (AppRole) when `VAULT_ENABLED=true`
   (`partner/auth/SpringVaultPropertiesFunction`; Camel 4.22 rebuilds its client in `doStart`, which this
   skips). Tests use a fake `hashicorp` function (`src/test/.../partner/FakeVaultFunction`, found first
-  through `META-INF/services`) and `NewBillerRouteIT` the real one against OpenBao in Testcontainers.
+  through `META-INF/services`; `fake-<partner>-<field>-for-tests` unless a test sets one) and `NewBillerRouteIT` the real one against OpenBao in Testcontainers.
 - **Aliases** (D26, user decision 2026-11-18): `mw.partners.partner-aliases` replaces `default-partner`.
   The channels and seeds send the catalogue's `partnerId` (`billagg`) itself, so the map is empty; any
   other id is refused `MW-PTR-UNKNOWN-PARTNER` (502 on the bill fetch). The reply contract's partner
@@ -282,7 +286,7 @@ adapter-minted txnId) are still dropped and belong to the REMIT_IN / NPSB ticket
 - `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (internal API; clients mw-app-gateway and mw-ussd;
   `GET /internal/v1/partners/kamelet-usage`, ticket 83).
 - `events/mw-adapter-billpay/mw.partner.route.status.v1` (ticket 83): LIVE / REJECTED per partner record
-  version, key partnerId; consumer mw-admin-api; telco and bank produce it too from ticket 84 (topic 6
+  version, key partnerId; consumer mw-admin-api; telco and bank produce it too since ticket 84 (topic 6
   partitions, 7 d, retry group mw-admin-api).
 
 ## Contracts used

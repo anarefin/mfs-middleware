@@ -22,7 +22,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.telco`. Follo
   txnId sends the same reference; the OCS returns the original outcome for a repeated one. The
   orchestrator's `partnerTxnRef` is ignored.
 - The partner call runs on a virtual-thread executor (`telcoCallExecutor` hands the request off,
-  `partnerCallExecutor` runs the HTTP call under the time limiter), never on the Kafka consumer thread.
+  the partner route runs the HTTP call inside its circuit breaker and time limit), never on the Kafka consumer thread.
   The offset is committed when the request is handed over; a crash before the reply is written leaves
   the transaction without a reply and the orchestrator's deadline turns it UNKNOWN (TSQ, spec 7.4).
 - Status inquiry (ticket 18, spec 7.4): `STATUS_QUERY` -> OCS `GET /ocs/v1/topup/{reference}` with the
@@ -50,99 +50,39 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.telco`. Follo
   `adapter_telco_rw` and schema `partner_ref`, `secret/mw-adapter-telco` (DB password, never
   overwritten) and the AppRole `mw-adapter-telco` (configtree volume at `/run/mw/approle`).
 
-## Adapter framework (`partner` package, spec 12, WP11; copied, not a library: D13/D14)
+## Partner engine (`partner` package; ADR D26, ticket 84: the copy of mw-adapter-billpay's)
 
-Partners of a known kind are config, not code. Layout:
+A partner is a record holding a Camel YAML DSL route built from the shipped `mw-*` Kamelets; the
+engine, its guardrails and its Kamelets are billpay's (see mw-adapter-billpay CLAUDE.md "Partner
+engine": record, route contract, Kamelets, loader allowlist, `routeConfiguration`, no redelivery of a
+PAY, lifecycle and swap, dry-run candidate `~candidate~`, family filter, hosts and
+`PartnerHttpComponent` + `PartnerDnsResolver`, headers, secrets through `SpringVaultPropertiesFunction`,
+health and metrics). The `partner/` trees (main and the shared tests) and `src/main/resources/kamelets`
+are identical in the three adapters apart from the package: a fix goes into all three (check with
+`diff -r` after normalising the package). Kafka is Spring Kafka (ADR D25), as billpay.
 
-- `partner/` SPI: `PartnerAdapter` (`execute`, `inquire`, `onInbound`), `AuthScheme` (`apply`/`verify`),
-  `PartnerCall` (canonical call: partnerId, operation, txnType, reference, `input` document),
-  `PartnerResponse` (Success, Rejected, Ambiguous, NotFound, Pending, NotSent, Unknown), `PartnerContext`,
-  `InboundCall`/`InboundResult`, `CredentialRef`/`CredentialResolver`, `PartnerFrameworkConfiguration`
-  (Spring wiring; every other class is a plain constructor so tests assemble it without Spring).
-- `partner/template/`: `PartnerRouteTemplates` (Camel Java-DSL route templates `rest-json-request-reply`
-  and `rest-json-async-callback`, parameter `partner`, endpoint `direct:partner-<id>`),
-  `PartnerRouteRegistrar` (one route per partner instance via `TemplatedRouteBuilder`, re-created on a
-  template change, removed on delete), `PartnerGateway` (entry point: resolves partnerId -> instance,
-  else `mw.partners.default-partner`, else NOT_SENT DISABLED), `PartnerCallWrapper` (bulkhead -> circuit
-  breaker -> time limiter, one attempt, metrics, audit), `RestJsonAdapter` (HTTP + JSONata + fail-closed
-  classification), `PartnerInstance(Factory)`, `PartnerAudit`.
-- `partner/config/`: `PartnerConfig` (one instance; same field names in `mw.partners.instances.<id>` and in
-  a config-changed `value`), `PartnerConfigStore` (immutable snapshot swapped atomically; newer
-  `version` wins; a value that is incomplete or does not compile is rejected and the old config stays;
-  seeds are version 0), `PartnerConfigRouteBuilder` + `PartnerConfigListener` (`mw.config.changed.v1`,
-  plain Kafka route: own consumer group per start, from the beginning, no commits, never throws; the
-  topic has no retry/DLQ topics), `PartnerProperties` (seeds).
-- `partner/mapping/JsonataMapping` (com.dashjoin:jsonata), `partner/auth/` (`none`, `api-key` (header
-  param, default `X-Api-Key`), `hmac-sha256` (Base64 HMAC over method, path+query, epoch-seconds
-  timestamp, hex SHA-256 of body; `X-Signature`, `X-Timestamp`, optional `X-Key-Id`; 300 s skew),
-  `EnvironmentCredentialResolver` (secret = Spring property named by the ref, filled from OpenBao;
-  refuses anything outside `mw.partner-secrets.`)).
-
-Security (config-changed records come from Kafka and ACLs are deferred, so they are untrusted):
-- `auth.credentials-ref` is a bare secret name (`^[a-z0-9][a-z0-9-]{0,63}$`), resolved as the property
-  `mw.partner-secrets.<instance>.<name>` (OpenBao `secret/mw-adapter-telco`). A partner cannot name another
-  partner's secret or any other property (DB password, Vault token); the resolver re-checks the prefix.
-- `mw.partners.security` is static config only (application.yml, per-environment overrides, OpenBao):
-  `allowed-hosts.<instance>` (hosts its `baseUrl` may name; no entry = the partner cannot be configured)
-  and `insecure-http-hosts` (plain http allowed; `MW_PARTNER_INSECURE_HTTP_HOSTS`, empty by default in
-  `application.yml` (ticket 50); only `deploy/docker-compose.yml` (dev stack) sets `mw-simulators` and the
-  test config allows `mw-simulators,localhost`; `PartnerSecurityDefaultsTest` guards the default, identical
-  in all three adapters). Everything else needs https, no user info. A seed with an http `baseUrl` therefore
-  fails start-up outside the dev stack.
-  Instance ids are `^[a-z0-9][a-z0-9-]{0,63}$`. Adding a partner by config therefore needs its host on the
-  static allowlist first (`MW_OCS_ALLOWED_HOSTS` for the seed).
-- Operation paths must match `^/[A-Za-z0-9._~/{}-]*$` with no `..` segment and no `//` (so no `@ : ? # \ %`);
-  anything else is a security refusal. At call time `RestJsonAdapter.target` re-checks that the request URI
-  keeps the baseUrl's scheme, host and port, has no user info and stays under the base path, else the call
-  is NOT_SENT `MISCONFIGURED` (`security.partner_target_refused`). Partner HTTP clients never follow
-  redirects (`Redirect.NEVER`): a 3xx is UNKNOWN `UNEXPECTED_STATUS`.
-- Seeds and config-changed records pass the same `PartnerEndpointPolicy`; a broken seed fails start-up, a
-  refused record keeps the last good config and logs `security.partner_config_refused` (configKey, version,
-  changedBy/approvedBy, reasons; never secret values or the refused ref). So a record can change operational
-  fields (enabled, timeouts, mappings, error maps, secret names) but not leave the allowlists.
-
-Rules the framework enforces whatever the mapping says (fail closed): 5xx -> UNKNOWN before mapping;
-SUCCESS/PENDING only on a 2xx (PENDING only for the async template, SUCCESS needs a partnerRef); FAILED
-only with a code and on an operation's `definite-statuses`; NOT_FOUND only for `STATUS_QUERY` and on a
-definite status; an `ambiguous-codes` code -> AMBIGUOUS; anything else -> UNKNOWN. A refused/timed-out
-connect, an open circuit, a full bulkhead, a disabled partner, a missing operation/credential or a failing
-request mapping -> NOT_SENT (nothing left). Only exceptions count towards the circuit.
-
-Response mapping contract: input `{status, body}` (`body` null when not JSON), output `{outcome, partnerRef,
-code, message, reason}`. Request mapping input: `PartnerCall.input` + `reference`, `operation`, `txnId`.
-`{reference}` in an operation path is replaced (URL-encoded). Headers sent: static `headers`,
-`X-Correlation-Id`, the auth scheme's.
-
-Wrapper output: metrics `mw_partner_call_total`, `mw_partner_call_duration_seconds` (histogram; labels
-`partner`, `txn_type`, `operation`, `status`), `mw_partner_circuit_state` (0 closed, 1 open, 2 half-open);
-one `partner.call.audit` log event per call with the raw request/response masked (`sensitive-fields` by
-rule, then free-text scrubbing; headers never), cut at 4 KB, and the same entry as a
-`partner.call.completed` audit event on `mw.audit.event.v1` (above).
-
-The OCS is the seed instance `ocs`, a dev seed in `application-dev.yml` (profile `dev`, D23: set by its service in `deploy/docker-compose.yml`
-and the test config; the packaged `application.yml` seeds no partner, so a production start has none
-until a `partner/<id>` record arrives) (`mw.partners`, base URL from `OCS_BASE_URL`,
-timeout 20 s, Resilience4j instance `ocs`: bulkhead 100, circuit breaker with 16 s slow-call threshold)
-and `default-partner: ocs`, so gp/robi/banglalink/teletalk are all served by it until they get their own
-`partner/<id>` record. Never add a retry to a partner call.
-
-Copies live in mw-adapter-billpay (ticket 21) and mw-adapter-bank (ticket 23). Billpay's one extension,
-`PartnerResponse.Success.attributes` (text values a response mapping puts under `attributes`, empty
-otherwise; `RestJsonTemplateTest.aSuccessCarriesTheMappedAttributesAsText`), was applied here too in
-ticket 23, so the three `partner` packages are identical apart from package names; a framework fix goes
-into all three.
-
-Copying it into another adapter (tickets 21, 23): copy `partner/` with its tests
-(`src/test/.../partner/`, including the `PartnerFramework` harness and the security tests), rename the
-package, add `com.dashjoin:jsonata` (version inline) to the module's `build.gradle.kts`, copy the `mw.partners` block shape into
-`application.yml` (security, default partner) and its seed partners into `application-dev.yml` (dev
-profile only; the test config activates it), `security.allowed-hosts` per instance (and
-`insecure-http-hosts` for its simulator only) and Resilience4j instances, keep secrets under
-`mw.partner-secrets.<instance>.<name>` in OpenBao, and in the test config set
-`mw.partners.config-consumer.enabled: false` and allow localhost. Keep operation paths plain (no query
-strings: put parameters in the body or a `{reference}` segment). Never relax the path rule, the target
-guard or `Redirect.NEVER`. The service layer stays the adapter's own (request checks, reference, reply
-mapping, inbox/outbox).
+- **Seed** `ocs` (`application-dev.yml`, dev profile only; the packaged `application.yml` seeds none):
+  PAY `POST /ocs/v1/topup {transactionId, msisdn, amount:"20.00"}` (only 422 with a code and 400 are
+  rejections; anything else non-2xx UNKNOWN), STATUS_QUERY `GET /ocs/v1/topup/{reference}` (404 with the
+  NOT_FOUND body is NOT_FOUND), auth none, base URL `OCS_BASE_URL`, hosts `MW_OCS_ALLOWED_HOSTS`, timeout
+  20 s, resilience4j instance `ocs` (bulkhead 100, 16 s slow-call threshold), error map `2001`
+  TOPUP_REJECTED, `9876` ambiguous. mw-admin-api's dev seed `partner-seeds/dev/ocs.json` is a copy: keep
+  them identical.
+- **Aliases** (D26, user decision 2026-11-18): `mw.partners.partner-aliases` maps every operator id the
+  channels send (`gp`, `robi`, `banglalink`, `teletalk`: mw-app-gateway, mw-ussd's operator list and MNO
+  operators, the test console) to `ocs`; a partner record of its own wins over the alias; any other id is
+  FAILED `MW-PTR-UNKNOWN-PARTNER`, not retryable, never sent (`TelcoRequestRouteIT`).
+- **Family** `telco` (`mw.partners.family`): records of billpay or bank are skipped (`config.other_family`).
+- **Route status**: every record of version >= 1 ends LIVE (with its Kamelets) or REJECTED on
+  `mw.partner.route.status.v1` (`messaging/PartnerRouteStatusPublisher`, outbox), proved by the shared
+  `PartnerRouteDryRunIT`. A REJECTED current version makes mw-admin-api republish the last LIVE one (D26
+  amendment), so a restart replays a good record.
+- **No Kamelet usage endpoint** here (billpay's `GET /internal/v1/partners/kamelet-usage` is in its own
+  contract): mw-admin-api builds Kamelet usage from the status reports.
+- Tests specific to this module: `partner/config/PartnerConfigReloadIT` (a gp record replaces the alias
+  without a restart), `PartnerConfigStartupIT` (records already on the topic when the config consumer
+  starts: it ends on the latest; route records), `route/TelcoRequestRouteIT` (every outcome, the aliases,
+  the unknown id, a redelivered PAY sent exactly once, no PAY resent after a timeout).
 
 ## Contracts owned
 
@@ -168,6 +108,8 @@ mapping, inbox/outbox).
   (record while running) and `PartnerConfigStartupIT` (records already on the topic when the config
   consumer starts: it ends on the latest version; ticket 38) cover both; the test config allows
   `robi: localhost` for the latter.
+- `events/mw-adapter-billpay/mw.partner.route.status.v1` out (owner mw-adapter-billpay; LIVE / REJECTED of
+  each record version, `messaging/PartnerRouteStatusPublisher`, own type `dto/PartnerRouteStatusEvent`).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
@@ -186,9 +128,10 @@ mapping, inbox/outbox).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
-- `messaging/EventPublisher`: Kafka records with the 6.1 headers, idempotent `acks=all` producer.
-- `route/RetryTopicRouteBuilder` + `messaging/RetryDelayListener`: subclass per consumed topic; retry
-  topics 10 s / 1 min / 10 min then DLQ (19.2); per-record commit; no sleeps on Kafka threads.
+- Spring Kafka (ADR D25, the billpay copy): `config/KafkaConfig` (retry topics `<topic>.<group>.retry.1..3`
+  10 s / 1 min / 10 min then `.dlq`), `messaging/EventPublisher`, outbox/inbox, `scheduler/OutboxRelayScheduler`,
+  the request listener acknowledges after the hand-over, `partner/config/PartnerConfigKafkaListener` replays
+  `mw.config.changed.v1` from the beginning on every start (no retry topics).
 - `application.yml`: Resilience4j defaults (19.2), own schema `partner_ref` migrated by Flyway on
   start from `db/migration` (16.4); rename the schema to the spec 16.2 name if it has one.
 
