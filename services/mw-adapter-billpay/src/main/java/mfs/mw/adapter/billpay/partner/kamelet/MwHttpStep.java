@@ -162,7 +162,8 @@ public class MwHttpStep {
       if (t instanceof BulkheadFullException) {
         return PartnerResult.notSent(NotSentReason.BULKHEAD_FULL);
       }
-      if (t instanceof PartnerHostRefusedException) {
+      if (t instanceof PartnerHostRefusedException
+          || t instanceof mfs.mw.adapter.billpay.partner.route.PartnerDnsResolver.AddressRefusedException) {
         return PartnerResult.notSent(NotSentReason.MISCONFIGURED);
       }
       if (t instanceof PartnerServerErrorException) {

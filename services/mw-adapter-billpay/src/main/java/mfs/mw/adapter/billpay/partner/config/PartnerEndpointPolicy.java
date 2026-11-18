@@ -66,7 +66,7 @@ public class PartnerEndpointPolicy {
       problems.add("url must be an absolute http(s) URL");
       return problems;
     }
-    String host = url.getHost().toLowerCase(Locale.ROOT);
+    String host = bare(url.getHost());
     if (allowed.stream().noneMatch(h -> h.equalsIgnoreCase(host))) {
       problems.add("url host is not in the partner's allowedHosts");
     }
@@ -87,6 +87,12 @@ public class PartnerEndpointPolicy {
       }
     }
     return problems;
+  }
+
+  /** {@code host} lower case, an IPv6 literal without its brackets. */
+  public static String bare(String host) {
+    String h = host.toLowerCase(Locale.ROOT);
+    return h.startsWith("[") && h.endsWith("]") ? h.substring(1, h.length() - 1) : h;
   }
 
   /** True when {@code host} is on the static dev list (plain-http hosts, the partner's floor). */
@@ -111,14 +117,31 @@ public class PartnerEndpointPolicy {
     return null;
   }
 
-  static boolean internal(InetAddress a) {
+  /** True when {@code host} is on the static dev list of any partner (plain-http hosts, floors). */
+  public boolean staticHost(String host) {
+    return insecureAllowed(host)
+        || security.allowedHosts().values().stream().flatMap(List::stream).anyMatch(h -> h.equalsIgnoreCase(host));
+  }
+
+  /**
+   * True for an address a partner may never be: IPv4 loopback, private, shared, link-local
+   * (metadata), this-network, reserved, multicast; IPv6 anything but global unicast {@code 2000::/3},
+   * and in it the transition ranges that embed an IPv4 address (6to4 {@code 2002::/16}, Teredo
+   * {@code 2001::/32}). IPv4-mapped addresses come as IPv4 ({@code InetAddress}); IPv4-compatible,
+   * NAT64 ({@code 64:ff9b::/96}, {@code 64:ff9b:1::/48}), loopback, unspecified, link-local,
+   * site-local, ULA and multicast are all outside {@code 2000::/3}.
+   */
+  public static boolean internal(InetAddress a) {
     if (a.isLoopbackAddress() || a.isAnyLocalAddress() || a.isLinkLocalAddress() || a.isSiteLocalAddress()
         || a.isMulticastAddress()) {
       return true;
     }
     byte[] b = a.getAddress();
     if (a instanceof Inet6Address) {
-      return (b[0] & 0xfe) == 0xfc; // unique local fc00::/7
+      boolean globalUnicast = (b[0] & 0xe0) == 0x20;
+      boolean sixToFour = (b[0] & 0xff) == 0x20 && (b[1] & 0xff) == 0x02;
+      boolean teredo = (b[0] & 0xff) == 0x20 && (b[1] & 0xff) == 0x01 && b[2] == 0 && b[3] == 0;
+      return !globalUnicast || sixToFour || teredo;
     }
     int first = b[0] & 0xff;
     int second = b[1] & 0xff;
