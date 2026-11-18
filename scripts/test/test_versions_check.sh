@@ -18,16 +18,16 @@ test_reports_plugin_drift_between_two_modules() {
   assert_out_contains "DRIFT plugin org.springframework.boot"
   assert_out_contains "services/mw-a=4.0.0"
   assert_out_contains "services/mw-b=4.0.1"
-  assert_out_lacks "camel"
+  assert_out_lacks "resilience4j"
 }
 
 test_reports_dependency_and_platform_drift() {
   new_module "$PWD" services/mw-a
   new_module "$PWD" services/mw-b
-  bump mw-b 'camel-spring-boot-bom:4.14.0' 'camel-spring-boot-bom:4.15.0'
+  bump mw-b 'resilience4j-bom:2.4.0' 'resilience4j-bom:2.4.1'
   assert_fails mw_run "$PWD" versions-check.sh
-  assert_out_contains "DRIFT org.apache.camel.springboot:camel-spring-boot-bom"
-  assert_out_contains "services/mw-b=4.15.0"
+  assert_out_contains "DRIFT io.github.resilience4j:resilience4j-bom"
+  assert_out_contains "services/mw-b=2.4.1"
 }
 
 test_template_is_compared_too() {
@@ -49,7 +49,7 @@ test_ignores_comment_lines_and_versionless_coordinates() {
   new_module "$PWD" services/mw-a
   new_module "$PWD" services/mw-b
   printf '// was org.junit.jupiter:junit-jupiter:5.0.0\n' >>services/mw-b/build.gradle.kts
-  echo 'dependencies { implementation("org.apache.camel.springboot:camel-kafka-starter") }' >>services/mw-b/build.gradle.kts
+  echo 'dependencies { implementation("org.springframework.boot:spring-boot-starter-kafka") }' >>services/mw-b/build.gradle.kts
   assert_ok mw_run "$PWD" versions-check.sh
 }
 
@@ -57,12 +57,12 @@ test_M_reports_only_drift_involving_that_module() {
   new_module "$PWD" services/mw-a
   new_module "$PWD" services/mw-b
   new_module "$PWD" services/mw-c
-  bump mw-b 'camel-spring-boot-bom:4.14.0' 'camel-spring-boot-bom:4.15.0'
+  bump mw-b 'resilience4j-bom:2.4.0' 'resilience4j-bom:2.4.1'
   # drift between mw-a and mw-c on a coordinate mw-b does not use
   echo 'dependencies { implementation("com.dashjoin:jsonata:0.9.8") }' >>services/mw-a/build.gradle.kts
   echo 'dependencies { implementation("com.dashjoin:jsonata:0.9.9") }' >>services/mw-c/build.gradle.kts
   assert_fails mw_run "$PWD" versions-check.sh mw-b
-  assert_out_contains "DRIFT org.apache.camel"
+  assert_out_contains "DRIFT io.github.resilience4j"
   assert_out_lacks "DRIFT com.dashjoin"
   assert_fails mw_run "$PWD" versions-check.sh
   assert_out_contains "DRIFT com.dashjoin:jsonata"
