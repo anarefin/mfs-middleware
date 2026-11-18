@@ -7,3 +7,6 @@ producers: {}
 consumers:
   # The admin console reads delivery status (spec 10.2-10.4); no module in the repo consumes it yet.
   events/mw-notify/mw.notify.status.v1.schema.json: mw-admin-api / admin console (not yet in the repo, tickets 36-40)
+  # Partner reconciliation lines from the adapters' SFTP batch routes (ticket 86); matched by the future
+  # mw-recon service (ticket 88, user decision 2026-11-18), which replaces this entry with its contracts.yml.
+  events/mw-adapter-billpay/mw.partner.recon.v1.schema.json: mw-recon (not yet in the repo, ticket 88)

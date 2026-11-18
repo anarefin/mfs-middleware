@@ -99,6 +99,9 @@ after normalising the package). Kafka is Spring Kafka (ADR D25), as billpay. SOA
   FAILED `MW-PTR-UNKNOWN-PARTNER`, not retryable, never sent (`BankRequestRouteIT`).
 - **Family** `bank`; **route status** on `mw.partner.route.status.v1` as telco (shared
   `PartnerRouteDryRunIT`); no Kamelet usage endpoint (mw-admin-api uses the status reports).
+- **Batch partners over SFTP** (ticket 86, e.g. a bank's daily settlement file): billpay's
+  `from: kamelet:mw-sftp-source` routes ending in `mw-recon`, publishing `mw.partner.recon.v1` (see
+  mw-adapter-billpay CLAUDE.md "Batch partners over SFTP"; shared `SftpReconRouteIT`).
 - Service-layer rules stay Java (`mapper/PartnerCallMapper`): PAY only for `ADD_MONEY_BANK` / `C2W`,
   debit party `BANK_ACCOUNT`, credit party `WALLET`.
 
@@ -123,6 +126,8 @@ after normalising the package). Kafka is Spring Kafka (ADR D25), as billpay. SOA
 - `events/mw-admin-api/mw.config.changed.v1` in (PARTNER route records, family `bank`), as telco.
 - `events/mw-adapter-billpay/mw.partner.route.status.v1` out (owner mw-adapter-billpay; LIVE / REJECTED
   of each record version, `messaging/PartnerRouteStatusPublisher`, own type `dto/PartnerRouteStatusEvent`).
+- `events/mw-adapter-billpay/mw.partner.recon.v1` out (owner mw-adapter-billpay, ticket 86; the lines of
+  a partner's SFTP file, `messaging/PartnerReconPublisher`, own type `dto/PartnerReconEvent`).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 

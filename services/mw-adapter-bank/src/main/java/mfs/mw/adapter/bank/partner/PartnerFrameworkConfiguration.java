@@ -55,6 +55,19 @@ public class PartnerFrameworkConfiguration {
         new mfs.mw.adapter.bank.partner.route.PartnerDnsResolver(policy));
   }
 
+  /**
+   * {@code idempotentRepository=#mwSftpFiles} of {@code mw-sftp-source} (ticket 86): the files the
+   * batch routes processed, table {@code partner_file_processed} of this service's own schema
+   * (Flyway; never created by Camel), key {@code <partnerId>/<name>-<size>-<modified>}.
+   */
+  @Bean("mwSftpFiles")
+  org.apache.camel.processor.idempotent.jdbc.JdbcMessageIdRepository mwSftpFiles(javax.sql.DataSource dataSource) {
+    var repository = new org.apache.camel.processor.idempotent.jdbc.JdbcMessageIdRepository(dataSource, "mw-sftp-source");
+    repository.setTableName("partner_file_processed");
+    repository.setCreateTableIfNotExists(false);
+    return repository;
+  }
+
   /** {@code headerFilterStrategy=#mwPartnerHeaderFilter} of {@code mw-http-call}. */
   @Bean("mwPartnerHeaderFilter")
   PartnerHeaderFilterStrategy mwPartnerHeaderFilter() {

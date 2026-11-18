@@ -92,6 +92,14 @@ public record PartnerRuntime(
     return "direct:" + routeId(id, version);
   }
 
+  /**
+   * True for a batch route (ticket 86, {@code from: kamelet:mw-sftp-source}): it polls on its own,
+   * takes no calls, and runs only while the record is enabled.
+   */
+  public boolean batch() {
+    return kamelets.contains("mw-sftp-source");
+  }
+
   /** The mapping {@code name}; fails when the record has none of that name. */
   public CompiledMapping mapping(String name) {
     CompiledMapping m = mappings.get(name);

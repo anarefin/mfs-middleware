@@ -280,7 +280,12 @@ public class PartnerConfigService {
       problems.add(new ErrorDetail("config.allowedHosts", "a route needs the hosts it may call"));
     }
     PartnerConfigValue.DryRun dryRun = c.dryRun();
-    if ((needsDryRun || dryRun != null)
+    // ticket 86: a batch route (from kamelet:mw-sftp-source) takes no calls, so it has no dry-run
+    boolean batch = PartnerRouteValidator.isBatch(c.route());
+    if (batch && dryRun != null) {
+      problems.add(new ErrorDetail("config.dryRun", "a batch route has no dry-run (nothing to send a sample to)"));
+    }
+    if (!batch && (needsDryRun || dryRun != null)
         && (dryRun == null || dryRun.operation() == null || !DRY_RUN_OPERATIONS.contains(dryRun.operation()))) {
       problems.add(new ErrorDetail("config.dryRun.operation", "a route needs a dry-run of PAY, INQUIRY or STATUS_QUERY"));
     }

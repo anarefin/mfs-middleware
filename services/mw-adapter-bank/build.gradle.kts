@@ -68,6 +68,10 @@ dependencies {
     // Neither is managed by the camel-spring-boot-bom, so both versions are written here.
     implementation("org.apache.camel:camel-cxf-soap:4.22.2")
     implementation("net.sf.saxon:Saxon-HE:13.0")
+    // Batch partners (ticket 86): the mw-sftp-source / mw-sftp-sink Kamelets (camel-sftp, JSch) and the
+    // JDBC idempotent repository of processed files (camel-sql's JdbcMessageIdRepository, own schema).
+    implementation("org.apache.camel.springboot:camel-ftp-starter")
+    implementation("org.apache.camel.springboot:camel-sql-starter")
     // Resilience4j for client/ calls (19.2); annotations need AspectJ.
     implementation("io.github.resilience4j:resilience4j-spring-boot4:2.4.0")
     implementation("org.springframework.boot:spring-boot-starter-aspectj")

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "partnerId": "billagg-recon",
+  "family": "billpay",
+  "fileName": "recon-20261118.csv",
+  "fileId": "recon-20261118.csv-182-1795507200000",
+  "lineNumber": 0,
+  "last": false,
+  "fields": { "reference": "BITS01933B8E7C1A7B2E9F3D2A4C5E6F7A8C" },
+  "reportedBy": "mw-adapter-billpay",
+  "receivedAt": "2026-11-18T23:00:05Z"
+}

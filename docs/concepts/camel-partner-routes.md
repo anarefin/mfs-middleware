@@ -30,6 +30,13 @@ First implemented in mw-adapter-billpay (ticket 82); its `CLAUDE.md` holds the d
 | `mw-auth-none`, `mw-auth-apikey`, `mw-auth-hmac-sha256` | the auth schemes; the secret is a field of the partner's own OpenBao secret, never in the route |
 | `mw-classify` | the answer to the route output, with the fail-closed rules no mapping can override; `json-validator` on the output |
 | `mw-audit` | the masked audit (`mw.audit.event.v1`) |
+| `mw-sftp-source` | ticket 86, type source: the start of a batch route (`from:`); polls the partner's SFTP directory, strict host key checking against the partner's known hosts, each file once (JDBC idempotent repository), streamed, then `.done` or `.error`, never deleted |
+| `mw-sftp-sink` | ticket 86, type sink: puts the file the route built on the partner's SFTP host (temporary name, then renamed, never over an existing file) |
+| `mw-recon` | ticket 86: the last step of a batch route; every line of the file becomes `mw.partner.recon.v1` through the outbox, a file all or nothing |
+
+A **batch route** (ticket 86) starts from `kamelet:mw-sftp-source?...` instead of
+`direct:partner-<id>` and ends with `mw-recon`; it takes no calls, has no dry-run, and polls only while
+the record is enabled (`deploy/partner-routes/examples/sftp-recon.yaml`, runbook "Batch partner over SFTP").
 
 A breaking change to a Kamelet ships under a new name (`mw-http-call-v2`); the old one stays until no
 LIVE route uses it.
