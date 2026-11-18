@@ -416,6 +416,23 @@ No PKCS#11 tooling on the host (user decision 2026-11-14): PKCS#11 never runs in
   `ErrorCategory`, `ErrorCodes`, `GlobalExceptionHandler`), `util/MaskingPolicy` + `@Sensitive`,
   `logging/JsonLogFormatter`, `config/MwServiceProperties`, the outbox / inbox / retry topic chassis
   (unused so far: mw-crypto produces and consumes no event).
+- Kafka through Spring Kafka (ADR D27; no Camel in this module, copied from the template as in
+  ticket 79): `messaging/EventPublisher` sends records with the 6.1 headers through `KafkaTemplate` (idempotent,
+  `acks=all`, at most 5 in flight; `publish` waits for the ack, `publishStoredAsync` sends an outbox row
+  with exactly its stored headers). `config/KafkaConfig` puts every `@KafkaListener` on non-blocking retry
+  topics `<topic>.<group>.retry.1..3` (10 s / 1 min / 10 min, `mw.kafka.retry.delays`) then
+  `<topic>.<group>.dlq` (`messaging/RetryTopicNaming`, group = `spring.kafka.consumer.group-id`, the
+  service name; declared in `deploy/kafka/topics.txt`); validation and JSON failures and records that are
+  not UTF-8 go to the DLQ at once; `messaging/RetryTopicRecoverer` adds `mw-retry-attempt`,
+  `mw-original-topic`, `mw-error-class`, `mw-retry-not-before`; `messaging/RetryDueTimeCap` caps a forged
+  due time; `messaging/ConsumerContextInterceptor` puts the record's ids in the MDC. Listeners take
+  `ConsumerRecord<String, String>` and `Acknowledgment` and call `ack.acknowledge()` after handling
+  (per-record commit, AckMode `MANUAL_IMMEDIATE`); a delay pauses the partition, never sleeps on the
+  consumer thread. Settings: `spring.kafka.*`, `mw.kafka.send-timeout`, `mw.kafka.listener.shutdown-timeout`
+  (100 ms in tests), `mw.kafka.retry.exclude-topics`. `messaging/RetryTopicIT` (conformance) checks it all.
+- `scheduler/OutboxRelayScheduler`: relays the transactional outbox (`messaging/OutboxRelay`, 6.4) every
+  `mw.outbox.relay.period` after a run ends, ShedLock-guarded; off in tests (`mw.outbox.relay.enabled`).
+  Tests that consume create their topics with retry topics and DLQ first (`KafkaTestTopics.createWithRetries`).
 - Internal JWT: `config/InternalAuthProperties`, `config/SecurityConfig`, `security/InternalCallerPolicy`
   (copied from mw-audit-dw without the org scoping).
 

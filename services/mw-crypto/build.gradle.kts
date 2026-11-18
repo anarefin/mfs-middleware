@@ -1,7 +1,8 @@
 // mw-crypto: copied by scaffold.sh into services/mw-<name>, where it is a self-contained
 // subproject of the root build (the template itself is never included) (spec 4.2, 4.3, D13, D14). Nothing is
-// inherited from the root; every version is written here. The Boot, Spring Cloud, Camel, Resilience4j
-// and Testcontainers BOMs are Gradle platforms and carry most versions.
+// inherited from the root; every version is written here. The Boot, Spring Cloud, Resilience4j and
+// Testcontainers BOMs are Gradle platforms and carry most versions. No Camel: Camel is only for partner
+// integration in mw-adapter-* (ADR D1 amendment); Kafka goes through Spring Kafka (ADR D27).
 plugins {
     java
     // Plugin versions must be the same in every module: Gradle rejects one plugin requested with two
@@ -24,15 +25,14 @@ repositories { mavenCentral() }
 dependencies {
     implementation(platform("org.springframework.boot:spring-boot-dependencies:4.1.2"))
     // Security pass (ticket 46, docs/security-findings.md): patch releases of transitive libraries
-    // with HIGH CVEs, above what the BOMs pin (Jackson 2 from Kafka/Camel, lz4 and snappy from
-    // kafka-clients). Drop each once the Boot / Camel BOM ships it.
+    // with HIGH CVEs, above what the BOMs pin (Jackson 2 from the Vault/Kafka clients, lz4 and snappy from
+    // kafka-clients). Drop each once the Boot BOM ships it.
     implementation(platform("com.fasterxml.jackson:jackson-bom:2.22.3"))
     constraints {
         implementation("at.yawk.lz4:lz4-java:1.11.4")
         implementation("org.xerial.snappy:snappy-java:1.1.10.9")
     }
     implementation(platform("org.springframework.cloud:spring-cloud-dependencies:2025.1.4"))
-    implementation(platform("org.apache.camel.springboot:camel-spring-boot-bom:4.22.2"))
     implementation(platform("io.github.resilience4j:resilience4j-bom:2.4.0"))
     testImplementation(platform("org.testcontainers:testcontainers-bom:2.0.5"))
 
@@ -44,9 +44,10 @@ dependencies {
     implementation("io.micrometer:micrometer-registry-prometheus")
     implementation("org.springframework.cloud:spring-cloud-starter-vault-config")
 
-    // Kafka through Camel (spec 6.1, 19.2): idempotent producer, retry topics, DLQ.
-    implementation("org.apache.camel.springboot:camel-spring-boot-starter")
-    implementation("org.apache.camel.springboot:camel-kafka-starter")
+    // Kafka through Spring Kafka (spec 6.1, 19.2, ADR D27): KafkaTemplate (idempotent producer),
+    // @KafkaListener with per-record manual ack, non-blocking retry topics, DLQ. In Boot 4 the
+    // auto-configuration is its own module, so the starter, not bare spring-kafka (version from the Boot BOM).
+    implementation("org.springframework.boot:spring-boot-starter-kafka")
     // Resilience4j for client/ calls (19.2); annotations need AspectJ.
     implementation("io.github.resilience4j:resilience4j-spring-boot4:2.4.0")
     implementation("org.springframework.boot:spring-boot-starter-aspectj")
@@ -76,7 +77,6 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers-postgresql")
     testImplementation("org.testcontainers:testcontainers-kafka")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
-    testImplementation("org.apache.camel:camel-test-spring-junit6")
     testImplementation("com.networknt:json-schema-validator:3.0.8")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
@@ -148,7 +148,7 @@ tasks.test {
     // One test task runs everything: unit, slice, contract, Testcontainers `*IT` and the @Conformance
     // suite, in one JVM sharing one PostgreSQL and one Kafka (TestInfrastructure). Without Docker the
     // `*IT` classes are skipped (DockerAvailableCondition). Classes run one at a time; a method may
-    // opt in to running beside its class-mates (@Execution(CONCURRENT): RetryTopicRouteIT).
+    // opt in to running beside its class-mates (@Execution(CONCURRENT)).
     systemProperty("junit.jupiter.execution.parallel.enabled", "true")
     // The HSM ITs (Pkcs11ProviderIT) build this module's image from the boot jar and run it next to
     // a SoftHSM container: PKCS#11 never runs in the host test JVM (CLAUDE.md, "HSM integration tests").
