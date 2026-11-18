@@ -1,7 +1,9 @@
 package mfs.mw.adapter.telco.partner.route;
 
+import java.util.Map;
 import org.apache.camel.component.http.HttpComponent;
 import org.apache.hc.client5.http.config.ConnectionConfig;
+import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.apache.hc.client5.http.io.HttpClientConnectionManager;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.client5.http.ssl.TlsSocketStrategy;
@@ -16,6 +18,13 @@ import org.apache.hc.core5.util.TimeValue;
  * plus {@code setDnsResolver}. Bound as the beans {@code http} and {@code https}, so every partner
  * call of {@code mw-http-call} connects only to checked addresses. This service makes no other HTTP
  * calls through Camel.
+ *
+ * <p>Automatic retries and redirect handling are off for every client it builds (plain, mTLS
+ * {@code sslContextParameters} and the OAuth2 token call alike): HttpClient 5's default retry
+ * strategy resends a POST by itself after a 503 or 429 (and on some I/O errors), outside the
+ * breaker, the audit and the no-redelivery rule of a PAY; a partner that applies the resend turns a
+ * FAILED txn into a COMPLETED one. The only resend is {@code MwHttpStep}'s deliberate one after a
+ * 401 (ADR D26).
  */
 public final class PartnerHttpComponent extends HttpComponent {
 
@@ -23,6 +32,19 @@ public final class PartnerHttpComponent extends HttpComponent {
 
   public PartnerHttpComponent(PartnerDnsResolver resolver) {
     this.resolver = resolver;
+  }
+
+  /**
+   * Camel's builder with retries and redirects always off. Set here rather than through {@code
+   * setAutomaticRetriesDisabled}: camel-http-starter writes its {@code camel.component.http*}
+   * defaults ({@code false}) over the bean's fields after it is built.
+   */
+  @Override
+  protected HttpClientBuilder createHttpClientBuilder(
+      String uri, Map<String, Object> parameters, Map<String, Object> httpClientOptions) {
+    return super.createHttpClientBuilder(uri, parameters, httpClientOptions)
+        .disableAutomaticRetries()
+        .disableRedirectHandling();
   }
 
   public PartnerDnsResolver resolver() {

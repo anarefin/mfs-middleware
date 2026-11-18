@@ -320,4 +320,56 @@ class PartnerAuthKameletsIT {
 
     TLS_PARTNER.verify(1, postRequestedFor(urlEqualTo("/tlsco/ws")));
   }
+
+  // --- no automatic resend by the HTTP client (fresh-stack API suite, topup tsq) ------------------
+
+  /**
+   * A partner 503 to a PAY reaches the partner once: Apache HttpClient's default retry strategy
+   * would send the POST again by itself (after Retry-After or 1 s), outside the breaker, the audit
+   * and the no-redelivery rule of a PAY, and a partner that applies the second one turns a txn
+   * expected FAILED into COMPLETED.
+   */
+  @Test
+  void aPay503ReachesThePartnerExactlyOnce() {
+    PARTNER.stubFor(post(urlEqualTo("/busyco/pay")).willReturn(aResponse().withStatus(503).withHeader("Retry-After", "1")));
+    publish("busyco", 1, local(), "auth=none");
+
+    assertThat(gateway.call(pay("busyco", "BITS-503-P"))).isInstanceOf(PartnerResponse.Unknown.class);
+
+    PARTNER.verify(1, postRequestedFor(urlEqualTo("/busyco/pay")));
+  }
+
+  @Test
+  void aPay503OverMtlsReachesThePartnerExactlyOnce() {
+    TLS_PARTNER.stubFor(post(urlEqualTo("/tlsco/pay")).willReturn(aResponse().withStatus(503).withHeader("Retry-After", "1")));
+    publish("tlsco", nextVersion("tlsco"), "https://localhost:" + TLS_PARTNER.httpsPort(), "sslContextRef=mtls-good");
+
+    assertThat(gateway.call(pay("tlsco", "BITS-503-T"))).isInstanceOf(PartnerResponse.Unknown.class);
+
+    TLS_PARTNER.verify(1, postRequestedFor(urlEqualTo("/tlsco/pay")));
+  }
+
+  @Test
+  void aTokenEndpoint503IsAskedExactlyOnceAndThePayIsNotSent() {
+    secret("busytoken", "client-secret", "fake-busy-client-secret");
+    PARTNER.stubFor(post(urlEqualTo("/busytoken/token")).willReturn(aResponse().withStatus(503).withHeader("Retry-After", "1")));
+    receipt(PARTNER, post(urlEqualTo("/busytoken/pay")));
+    publish("busytoken", 1, local(), "auth=oauth2-cc&secretField=client-secret&clientId=bits-mw&tokenUrl="
+        + local() + "/busytoken/token");
+
+    assertThat(gateway.call(pay("busytoken", "BITS-503-O"))).isInstanceOf(PartnerResponse.NotSent.class);
+
+    PARTNER.verify(1, postRequestedFor(urlEqualTo("/busytoken/token")));
+    PARTNER.verify(0, postRequestedFor(urlEqualTo("/busytoken/pay")));
+  }
+
+  @Test
+  void aSoapPay503ReachesThePartnerExactlyOnce() {
+    PARTNER.stubFor(post(urlEqualTo("/soapbusy/ws")).willReturn(aResponse().withStatus(503).withHeader("Retry-After", "1")));
+    publishSoap("soapbusy", 1, local(), "auth=none");
+
+    assertThat(gateway.call(pay("soapbusy", "BITS-503-S"))).isInstanceOf(PartnerResponse.Unknown.class);
+
+    PARTNER.verify(1, postRequestedFor(urlEqualTo("/soapbusy/ws")));
+  }
 }
