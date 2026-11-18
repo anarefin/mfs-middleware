@@ -72,14 +72,26 @@ class PartnerRouteSwapIT {
     registry.add("mw.partners.instances.billagg.base-url", () -> "http://localhost:" + AGG.port());
   }
 
-  @Autowired PartnerGateway gateway;
-  @Autowired PartnerConfigStore store;
-  @Autowired PartnerRoutes routes;
-  @Autowired PartnerRouteHealth health;
-  @Autowired CamelContext camel;
-  @Autowired MeterRegistry meters;
-  @Autowired CircuitBreakerRegistry breakers;
-  @Autowired JsonMapper json;
+  private final PartnerGateway gateway;
+  private final PartnerConfigStore store;
+  private final PartnerRoutes routes;
+  private final PartnerRouteHealth health;
+  private final CamelContext camel;
+  private final MeterRegistry meters;
+  private final CircuitBreakerRegistry breakers;
+  private final JsonMapper json;
+
+  @Autowired
+  PartnerRouteSwapIT(PartnerGateway gateway, PartnerConfigStore store, PartnerRoutes routes, PartnerRouteHealth health, CamelContext camel, MeterRegistry meters, CircuitBreakerRegistry breakers, JsonMapper json) {
+    this.gateway = gateway;
+    this.store = store;
+    this.routes = routes;
+    this.health = health;
+    this.camel = camel;
+    this.meters = meters;
+    this.breakers = breakers;
+    this.json = json;
+  }
   final PartnerCallMapper calls = new PartnerCallMapper();
 
   @BeforeEach

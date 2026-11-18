@@ -28,7 +28,7 @@ class PartnerSecurityDefaultsTest {
     PartnerProperties.Security security = packagedSecurity(Map.of());
 
     assertThat(security.insecureHttpHosts()).isEmpty();
-    assertThat(policyFor(security).problems(SIMULATOR, List.of("mw-simulators")))
+    assertThat(policyFor(security).problems("billagg", SIMULATOR, List.of("mw-simulators")))
         .contains("url must use https (plain http is not allowed for this host)");
   }
 
@@ -38,7 +38,7 @@ class PartnerSecurityDefaultsTest {
         packagedSecurity(Map.of("MW_PARTNER_INSECURE_HTTP_HOSTS", "mw-simulators"));
 
     assertThat(security.insecureHttpHosts()).containsExactly("mw-simulators");
-    assertThat(policyFor(security).problems(SIMULATOR, List.of("mw-simulators"))).isEmpty();
+    assertThat(policyFor(security).problems("billagg", SIMULATOR, List.of("mw-simulators"))).isEmpty();
   }
 
   @Test

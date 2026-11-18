@@ -117,9 +117,16 @@ class NewBillerRouteIT {
     registry.add("spring.cloud.vault.token", () -> TOKEN);
   }
 
-  @Autowired PartnerConfigStore store;
-  @Autowired BillFetchService fetch;
-  @Autowired EventPublisher publisher;
+  private final PartnerConfigStore store;
+  private final BillFetchService fetch;
+  private final EventPublisher publisher;
+
+  @Autowired
+  NewBillerRouteIT(PartnerConfigStore store, BillFetchService fetch, EventPublisher publisher) {
+    this.store = store;
+    this.fetch = fetch;
+    this.publisher = publisher;
+  }
 
   /** The new biller's record, as mw-admin-api publishes it: route, mappings, hosts; no Java. */
   static Map<String, Object> waterco(int port) {

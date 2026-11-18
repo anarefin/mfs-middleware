@@ -142,6 +142,39 @@ class PartnerRouteLoaderTest {
         .isInstanceOf(PartnerConfigRefusedException.class);
   }
 
+  /** Security review: placeholders hidden by YAML escapes, quoting or block scalars are found too. */
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "- setBody: {constant: \"\\x7b\\x7benv:HOME}}\"}",
+      "- setBody: {constant: \"\\u007b{sys:user.home}}\"}",
+      "- setBody:\n    constant: |\n      a\n      {{env:HOME}}",
+      "- setHeader: {name: X-A, simple: \"\\u0024{bean:partnerGateway}\"}",
+  })
+  void placeholdersHiddenInYamlScalarsAreRefused(String step) {
+    assertThatThrownBy(() -> load(record(step + "\n" + GOOD))).isInstanceOf(PartnerConfigRefusedException.class);
+  }
+
+  /** Security review: Kamelet parameters are checked after URL-decoding, as Camel reads them. */
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "url=https://localhost%3A8089",
+      "url=http://localhost:8089%2F%3Fx%3D1",
+      "path=/pay%3Fevil=1",
+      "path=/pay%23frag",
+      "authHeader=X-Key%26bridgeEndpoint=true",
+      "keyId=k%3Fx",
+      "path=/pay%2F..%2Fadmin",
+  })
+  void encodedKameletParametersAreRefused(String param) {
+    String key = param.substring(0, param.indexOf('='));
+    String call = GOOD.replaceFirst(key + "=[^&\"]*", java.util.regex.Matcher.quoteReplacement(param));
+    if (!call.contains(param)) {
+      call = GOOD.replace("&auth=apikey", "&" + param + "&auth=apikey");
+    }
+    String route = call;
+    assertThatThrownBy(() -> load(record(route))).isInstanceOf(PartnerConfigRefusedException.class);
+  }
+
   @Test
   void propertyPlaceholdersAreRefusedAsASecurityRule() {
     assertThatThrownBy(() -> load(record("- setBody: {constant: \"{{hashicorp:secret:mw-adapter-billpay/other#key}}\"}\n" + GOOD)))

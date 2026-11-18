@@ -99,6 +99,9 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 @Component
 public class PartnerRouteLoader {
 
+  /** Kamelet parameters that end up in the HTTP request: no {@code % ? & #}, before or after decoding. */
+  static final Set<String> STRICT_PARAMS = Set.of("url", "path", "authHeader", "keyId", "method", "auth", "secretField");
+
   static final Set<String> RESERVED_KAMELET_PARAMS =
       Set.of("partnerid", "timeoutms", "connecttimeoutms", "readtimeoutms", "bulkhead",
           "location", "templateid", "routeid", "uuid", "noerrorhandler", "bridgeerrorhandler");
@@ -168,6 +171,11 @@ public class PartnerRouteLoader {
     }
     Map<String, Object> from = structure(id, text, security, problems);
     refuseIfAny(id, security, problems);
+    // the parsed values, not the text: YAML escapes, quoting and block scalars can hide a placeholder
+    if (anyString(from, v -> v.contains("{{") || v.contains("}}"))) {
+      security.add("property placeholders ({{...}}) are not allowed in a partner route");
+    }
+    refuseIfAny(id, security, problems);
     schemaProblems(text, problems);
     refuseIfAny(id, security, problems);
 
@@ -181,7 +189,12 @@ public class PartnerRouteLoader {
     route.put("routeConfigurationId", PartnerRouteConfiguration.ID);
     route.put("from", from);
 
-    RouteDefinition definition = parse(id, routeId, dump(route), security, problems);
+    String loaded = dump(route);
+    if (loaded.contains("{{")) {
+      security.add("property placeholders ({{...}}) are not allowed in a partner route");
+      refuseIfAny(id, security, problems);
+    }
+    RouteDefinition definition = parse(id, routeId, loaded, security, problems);
     refuseIfAny(id, security, problems);
     List<ProcessorDefinition<?>> outputs = partnerOutputs(definition);
     walk(outputs, security, problems);
@@ -196,7 +209,7 @@ public class PartnerRouteLoader {
         security.add("mw-http-call url is not a URI");
         continue;
       }
-      security.addAll(policy.problems(uri, allowed));
+      security.addAll(policy.problems(id, uri, allowed));
     }
     for (String path : calls.paths) {
       if (!PartnerConfig.safePath(path)) {
@@ -285,6 +298,27 @@ public class PartnerRouteLoader {
   private static final Set<String> FORBIDDEN_KEYS =
       Set.of("onException", "errorHandler", "intercept", "interceptFrom", "interceptSendToEndpoint",
           "onCompletion", "doTry", "doCatch", "doFinally", "routeConfiguration", "circuitBreaker", "onFallback");
+
+  /** True when a key or string value anywhere in {@code node} matches {@code test}. */
+  private static boolean anyString(Object node, java.util.function.Predicate<String> test) {
+    if (node instanceof String s) {
+      return test.test(s);
+    }
+    if (node instanceof Map<?, ?> map) {
+      for (Map.Entry<?, ?> e : map.entrySet()) {
+        if (anyString(String.valueOf(e.getKey()), test) || anyString(e.getValue(), test)) {
+          return true;
+        }
+      }
+    } else if (node instanceof List<?> list) {
+      for (Object o : list) {
+        if (anyString(o, test)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
 
   private static boolean forbiddenKey(Object node) {
     if (node instanceof Map<?, ?> map) {
@@ -394,9 +428,27 @@ public class PartnerRouteLoader {
           return null;
         }
         if (value.startsWith("RAW(") && value.endsWith(")")) {
-          value = value.substring(4, value.length() - 1);
+          security.add("Kamelet parameter " + key + ": RAW(...) is not allowed");
+          return null;
         }
-        params.put(key, value);
+        if (STRICT_PARAMS.contains(key) && value.indexOf('%') >= 0) {
+          security.add("Kamelet parameter " + key + " may not be percent-encoded");
+          return null;
+        }
+        // as Camel reads it
+        String decoded;
+        try {
+          decoded = java.net.URLDecoder.decode(value, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+          security.add("Kamelet parameter " + key + " is not a valid URI value");
+          return null;
+        }
+        if (decoded.contains("{{") || decoded.contains("${") || decoded.contains("$simple{")
+            || (STRICT_PARAMS.contains(key) && decoded.chars().anyMatch(c -> "%?&#".indexOf(c) >= 0))) {
+          security.add("Kamelet parameter " + key + " has a character that is not allowed");
+          return null;
+        }
+        params.put(key, decoded);
       }
     }
     calls.kamelets.add(name);

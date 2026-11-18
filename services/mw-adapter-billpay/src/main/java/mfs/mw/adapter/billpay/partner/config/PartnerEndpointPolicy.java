@@ -1,6 +1,9 @@
 package mfs.mw.adapter.billpay.partner.config;
 
+import java.net.Inet6Address;
+import java.net.InetAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -13,8 +16,13 @@ import org.springframework.stereotype.Component;
  * record ({@code allowedHosts}); the static {@code mw.partners.security.allowed-hosts} of a partner,
  * when set, is a floor the record cannot leave. Every URL a route calls ({@code mw-http-call?url=})
  * must name one of them, over https (http only for the explicitly allowed dev hosts), without user
- * info. Checked when a route loads ({@code PartnerRouteLoader}) and again before every send
- * ({@code PartnerHostGuard}, on the resolved endpoint).
+ * info, and must not resolve to the service's own network (loopback, private, shared, link-local
+ * such as the cloud metadata address, unspecified, multicast) unless the host is on the static dev
+ * list ({@code insecure-http-hosts} or the partner's floor): an approved record can name a new
+ * biller's host without a restart, never an internal one (security review, ticket 82). Checked
+ * when a route loads ({@code PartnerRouteLoader}) and again before every send ({@code
+ * PartnerHostGuard}, on the addresses the host resolves to then; the JVM's DNS cache hands the
+ * HTTP client the same addresses).
  */
 @Component
 public class PartnerEndpointPolicy {
@@ -51,8 +59,8 @@ public class PartnerEndpointPolicy {
         : List.of();
   }
 
-  /** Every rule {@code url} breaks for a partner allowed {@code allowed}; empty when allowed. */
-  public List<String> problems(URI url, List<String> allowed) {
+  /** Every rule {@code url} breaks for partner {@code id} allowed {@code allowed}; empty when allowed. */
+  public List<String> problems(String id, URI url, List<String> allowed) {
     List<String> problems = new ArrayList<>();
     if (url == null || url.getHost() == null || url.getScheme() == null) {
       problems.add("url must be an absolute http(s) URL");
@@ -72,7 +80,52 @@ public class PartnerEndpointPolicy {
     if (url.getRawQuery() != null || url.getRawFragment() != null) {
       problems.add("url must not carry a query or fragment");
     }
+    if (!internalAddressAllowed(id, host)) {
+      String address = addressProblem(host);
+      if (address != null) {
+        problems.add(address);
+      }
+    }
     return problems;
+  }
+
+  /** True when {@code host} is on the static dev list (plain-http hosts, the partner's floor). */
+  public boolean internalAddressAllowed(String id, String host) {
+    List<String> floor = security.allowedHosts().getOrDefault(id, List.of());
+    return insecureAllowed(host) || floor.stream().anyMatch(h -> h.equalsIgnoreCase(host));
+  }
+
+  /** Why {@code host} may not be called (it does not resolve, or to an internal address); null when it may. */
+  public String addressProblem(String host) {
+    InetAddress[] addresses;
+    try {
+      addresses = InetAddress.getAllByName(host.startsWith("[") ? host.substring(1, host.length() - 1) : host);
+    } catch (UnknownHostException e) {
+      return "url host does not resolve";
+    }
+    for (InetAddress a : addresses) {
+      if (internal(a)) {
+        return "url host resolves to an internal address (loopback, private, link-local, metadata, multicast)";
+      }
+    }
+    return null;
+  }
+
+  static boolean internal(InetAddress a) {
+    if (a.isLoopbackAddress() || a.isAnyLocalAddress() || a.isLinkLocalAddress() || a.isSiteLocalAddress()
+        || a.isMulticastAddress()) {
+      return true;
+    }
+    byte[] b = a.getAddress();
+    if (a instanceof Inet6Address) {
+      return (b[0] & 0xfe) == 0xfc; // unique local fc00::/7
+    }
+    int first = b[0] & 0xff;
+    int second = b[1] & 0xff;
+    return first == 0 // this network
+        || (first == 100 && second >= 64 && second <= 127) // shared address space 100.64.0.0/10
+        || (first == 192 && second == 0 && (b[2] & 0xff) == 0) // IETF protocol assignments
+        || first >= 240; // reserved, broadcast
   }
 
   /** True when {@code host} may be called over plain http (dev and test simulators). */
