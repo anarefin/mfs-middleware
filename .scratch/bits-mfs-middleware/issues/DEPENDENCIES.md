@@ -35,7 +35,7 @@
 81-spring-kafka-orchestrator-notify         78,79,80          done     ~19m     see 7fade216,5b646f5b
 82-billpay-route-as-config-engine           78                done     57m      see 8f9f6a97..f52bcc11
 83-partner-route-maker-checker-dry-run      82                done     ~90m     see fb639d47..9f4c0680
-84-route-engine-telco-bank                  83                open
+84-route-engine-telco-bank                  83                done     ~2h      see 89b8dac6..3ce2acd0
 85-soap-partner-kamelet                     84                open
 86-sftp-batch-partner-kamelets              84                open
 87-auth-scheme-kamelets                     84                open
