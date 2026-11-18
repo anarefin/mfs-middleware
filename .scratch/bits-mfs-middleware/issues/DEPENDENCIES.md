@@ -31,8 +31,8 @@
 77-camel-scope-adr-spec                     —                 done     6m       12 files +245 −44   65dac07e
 78-template-spring-kafka                    77                done     ~40m     see 921c44ac,29009b74
 79-spring-kafka-support-services            78                done     ~45m     see 46900c3b
-80-spring-kafka-channels                    78                open
-81-spring-kafka-orchestrator-notify         78,79,80          open
+80-spring-kafka-channels                    78                done     ~25m     see d010a0f6
+81-spring-kafka-orchestrator-notify         78,79,80          done     ~19m     see 7fade216,5b646f5b
 82-billpay-route-as-config-engine           78                open
 83-partner-route-maker-checker-dry-run      82                open
 84-route-engine-telco-bank                  83                open
