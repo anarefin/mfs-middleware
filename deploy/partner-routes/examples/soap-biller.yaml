@@ -1,0 +1,93 @@
+# Example partner record (ADR D26, ticket 85): a SOAP 1.1 biller with a WS-Security UsernameToken, as
+# the `value` of a mw.config.changed.v1 PARTNER record (configKey partner/soapbill), shown as YAML.
+# mw-adapter-billpay loads it without a restart and without Java: the route is built from the shipped
+# mw-* Kamelets (mw-map -> mw-soap-call -> mw-classify, then mw-audit). mw-soap-call sends through
+# camel-cxf in PAYLOAD mode (no WSDL): the request stylesheet turns mw-map's JSON (its XPath 3.1 XML
+# form, namespace http://www.w3.org/2005/xpath-functions) into the SOAP body element; the response
+# stylesheet turns the SOAP body, or a SOAP fault given as <fault xmlns="urn:bits:mw:soap-fault" code
+# subcode reason><detail/></fault>, into JSON for the JSONata response mapping (status 200 for both).
+# A stylesheet is a mapping whose name ends in .xsl (or a classpath:partner/xslt/*.xsl resource); it
+# may not reach outside itself (no document(), doc(), unparsed-text(), xsl:include/import, entities,
+# DOCTYPE: refused by mw-admin-api and the loader). The password is read from OpenBao
+# secret/mw-adapter-billpay/soapbill, field ws-password, when the route loads. The wire format is the
+# one of mw-simulators' SOAP stub biller (POST /soapbill/v1, namespace urn:soapbill:v1); in the dev
+# stack point the address at http://mw-simulators:8080/soapbill/v1 and allow host mw-simulators.
+family: billpay
+allowedHosts: [soap.soapbill.example]
+timeoutMs: 20000
+inquiryRetries: 1
+sensitiveFields: { bill: ACCOUNT }
+errorMap:
+  "3001": { suffix: BILL_NOT_FOUND, retryable: false }
+  "3003": { suffix: PAYMENT_REFUSED, retryable: false }
+route: |
+  - route:
+      from:
+        uri: direct:partner-soapbill
+        steps:
+          - choice:
+              when:
+                - simple: "${header.mwOperation} == 'PAY'"
+                  steps:
+                    - to: "kamelet:mw-map?mapping=PAY.request"
+                    - to: "kamelet:mw-soap-call?address=https://soap.soapbill.example/soapbill/v1&request=soap.request.xsl&response=soap.response.xsl&soapAction=urn:soapbill:v1:PayBill&wsUsername=bits&wsPasswordSecret=ws-password"
+                    - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=200"
+                - simple: "${header.mwOperation} == 'STATUS_QUERY'"
+                  steps:
+                    - to: "kamelet:mw-map?mapping=STATUS_QUERY.request"
+                    - to: "kamelet:mw-soap-call?address=https://soap.soapbill.example/soapbill/v1&request=soap.request.xsl&response=soap.response.xsl&soapAction=urn:soapbill:v1:GetPayment&wsUsername=bits&wsPasswordSecret=ws-password"
+                    - to: "kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200"
+                - simple: "${header.mwOperation} == 'INQUIRY'"
+                  steps:
+                    - to: "kamelet:mw-map?mapping=INQUIRY.request"
+                    - to: "kamelet:mw-soap-call?address=https://soap.soapbill.example/soapbill/v1&request=soap.request.xsl&response=soap.response.xsl&soapAction=urn:soapbill:v1:FetchBill&wsUsername=bits&wsPasswordSecret=ws-password"
+                    - to: "kamelet:mw-classify?mapping=INQUIRY.response&definiteStatuses=200"
+          - to: "kamelet:mw-audit"
+mappings:
+  PAY.request: '{"op": "PAY", "ref": reference, "bill": creditParty.id, "amount": amount.major}'
+  STATUS_QUERY.request: '{"op": "STATUS_QUERY", "ref": reference}'
+  INQUIRY.request: '{"op": "INQUIRY", "bill": creditParty.id}'
+  soap.request.xsl: |
+    <xsl:stylesheet version="3.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+        xmlns:fn="http://www.w3.org/2005/xpath-functions" xmlns:s="urn:soapbill:v1" exclude-result-prefixes="fn">
+      <xsl:template match="/fn:map[fn:string[@key='op'] = 'PAY']">
+        <s:PayBill>
+          <s:billNumber><xsl:value-of select="fn:string[@key='bill']"/></s:billNumber>
+          <s:amount><xsl:value-of select="fn:string[@key='amount']"/></s:amount>
+          <s:reference><xsl:value-of select="fn:string[@key='ref']"/></s:reference>
+        </s:PayBill>
+      </xsl:template>
+      <xsl:template match="/fn:map[fn:string[@key='op'] = 'STATUS_QUERY']">
+        <s:GetPayment><s:reference><xsl:value-of select="fn:string[@key='ref']"/></s:reference></s:GetPayment>
+      </xsl:template>
+      <xsl:template match="/fn:map" priority="-1">
+        <s:FetchBill><s:billNumber><xsl:value-of select="fn:string[@key='bill']"/></s:billNumber></s:FetchBill>
+      </xsl:template>
+    </xsl:stylesheet>
+  soap.response.xsl: |
+    <xsl:stylesheet version="3.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+        xmlns:s="urn:soapbill:v1" xmlns:f="urn:bits:mw:soap-fault">
+      <xsl:output method="json"/>
+      <xsl:template match="/s:PayBillResponse | /s:GetPaymentResponse">
+        <xsl:sequence select="map{'receipt': string(s:receipt)}"/>
+      </xsl:template>
+      <xsl:template match="/s:FetchBillResponse">
+        <xsl:sequence select="map{'bill': string(s:billNumber), 'amount': string(s:amountDue), 'due': string(s:dueDate)}"/>
+      </xsl:template>
+      <xsl:template match="/f:fault">
+        <xsl:sequence select="map{'fault': string(@code), 'code': string(f:detail/s:error/s:code), 'text': string(@reason)}"/>
+      </xsl:template>
+    </xsl:stylesheet>
+  PAY.response: >-
+    body.receipt ? {"outcome": "SUCCESS", "partnerRef": body.receipt}
+    : body.fault = "Client" ? {"outcome": "FAILED", "code": body.code, "message": body.text}
+    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"}
+  STATUS_QUERY.response: >-
+    body.receipt ? {"outcome": "SUCCESS", "partnerRef": body.receipt}
+    : body.code = "3404" ? {"outcome": "NOT_FOUND", "code": "3404"}
+    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"}
+  INQUIRY.response: >-
+    body.amount ? {"outcome": "SUCCESS", "partnerRef": body.bill,
+    "attributes": {"amount": body.amount, "dueDate": body.due}}
+    : body.fault = "Client" ? {"outcome": "FAILED", "code": body.code}
+    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"}

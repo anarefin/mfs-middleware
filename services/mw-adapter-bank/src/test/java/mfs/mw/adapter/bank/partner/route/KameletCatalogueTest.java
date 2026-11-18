@@ -22,7 +22,8 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  * console, Kaoto): every {@code mw-*} Kamelet parses, is named after its file, has the type label,
  * a title, a description, documented properties (title, description, type), marks secret
  * references as passwords, and calls no endpoint but {@code kamelet:}, {@code http(s)}, {@code
- * json-validator} and its own beans (tickets 85 and 86 add {@code cxf}, {@code sftp}).
+ * json-validator} and its own beans ({@code cxf} only in {@code mw-soap-call}, ticket 85; ticket 86
+ * adds {@code sftp}).
  */
 class KameletCatalogueTest {
 
@@ -47,6 +48,11 @@ class KameletCatalogueTest {
   void theLibraryHoldsTheKameletsTheRoutesNeed() {
     assertThat(new KameletCatalogue().names())
         .contains("mw-http-call", "mw-map", "mw-classify", "mw-audit", "mw-auth-none", "mw-auth-apikey", "mw-auth-hmac-sha256");
+  }
+
+  @Test
+  void theSoapKameletShipsInTheLibrary() {
+    assertThat(new KameletCatalogue().names()).contains("mw-soap-call");
   }
 
   @Test
@@ -93,6 +99,12 @@ class KameletCatalogueTest {
         String uri = m.group(1);
         if (uri.startsWith("{{url}}")) {
           continue; // the partner's http(s) URL, checked against its allowed hosts
+        }
+        if (uri.startsWith("cxf:")) {
+          // ticket 85: cxf only inside mw-soap-call, to the partner's static address, PAYLOAD mode
+          assertThat(k.get("__file")).as(uri).isEqualTo("mw-soap-call.kamelet.yaml");
+          assertThat(uri).as(uri).startsWith("cxf://{{address}}?dataFormat=PAYLOAD&headerFilterStrategy=#mwSoapHeaderFilter");
+          continue;
         }
         if (uri.startsWith("sftp:") && SFTP_KAMELETS.contains(k.get("__file"))) {
           continue; // ticket 86: sftp only inside the two SFTP Kamelets

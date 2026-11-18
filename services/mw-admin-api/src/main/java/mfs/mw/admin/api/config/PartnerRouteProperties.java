@@ -14,10 +14,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties("mw.partner-routes")
 public record PartnerRouteProperties(List<String> kamelets) {
 
-  /** The library of ticket 82, with the auth Kamelets of ticket 87. */
+  /** The library of ticket 82, the auth Kamelets of ticket 87 and mw-soap-call (ticket 85). */
   public static final Set<String> LIBRARY =
       Set.of("mw-audit", "mw-auth-apikey", "mw-auth-hmac-sha256", "mw-auth-none", "mw-classify", "mw-http-call", "mw-map",
-          "mw-auth-basic", "mw-auth-oauth2-cc", "mw-auth-jws");
+          "mw-auth-basic", "mw-auth-oauth2-cc", "mw-auth-jws", "mw-soap-call");
 
   /** The batch Kamelets of ticket 86 (SFTP source and sink, reconciliation lines). */
   public static final Set<String> BATCH = Set.of("mw-recon", "mw-sftp-sink", "mw-sftp-source");

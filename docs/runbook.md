@@ -292,7 +292,23 @@ partner route as config: no Java, no release, no restart for the route itself.
    | `auth=jws` | `secretField`, `alg` (`RS256`/`ES256`), `keyId`, `authHeader` | PKCS#8 PEM private key | detached JWS in `X-JWS-Signature` by default; no mw-crypto key purpose fits, so an OpenBao key (dev: a fake one) |
    | `sslContextRef=<name>` | https `url` | `<name>-keystore` (base64 PKCS#12), `<name>-keystore-password`, with `truststore: true` also `<name>-truststore`, `<name>-truststore-password` (a failed read leaves the context unregistered, never the JVM trust store) | static config `mw.partners.tls.contexts.<name>.partner-id: <id>`, read at startup (restart after a change); log `partner.tls_context_registered` / `partner.tls_context_unavailable` |
 
-6. **Callbacks**: a biller that answers asynchronously needs an APISIX route file
+6. **A SOAP biller** (ticket 85) follows the same steps with `mw-soap-call` in place of `mw-http-call`
+   (example: `deploy/partner-routes/examples/soap-biller.yaml`): `mw-map` (JSONata, the request fields) ->
+   `mw-soap-call?address=<static https URL>&request=<x.xsl>&response=<y.xsl>&soapAction=<action>` (optional
+   `soapVersion=1.2`, `wsUsername` + `wsPasswordSecret=<OpenBao field>` for a WS-Security UsernameToken) ->
+   `mw-classify?...&definiteStatuses=200` -> `mw-audit`. The two stylesheets are mappings whose names end in
+   `.xsl` (XSLT 3.0): the request one reads the JSON as `fn:map` / `fn:string[@key=...]` and makes the SOAP
+   body element; the response one turns the SOAP body, or a fault (`<fault xmlns="urn:bits:mw:soap-fault"
+   code reason>` with the fault's `<detail>`), into JSON (`xsl:output method="json"`) for the JSONata
+   response mapping, whose fault code maps through `errorMap` (map a `soap:Server` fault to UNKNOWN). A
+   stylesheet that reads anything outside itself (`document()`, `doc()`, `unparsed-text()`, an include or
+   import, a DOCTYPE or entity) is refused at submit. Try it against mw-simulators' SOAP stub
+   (`http://127.0.0.1:8085/soapbill/v1`; force a fault with
+   `curl -s -X POST http://127.0.0.1:8085/sim/soapbill/fault -H 'content-type: application/json' -d '{"faultCode":"Client","code":"3003"}'`,
+   clear it with `curl -s -X DELETE http://127.0.0.1:8085/sim/soapbill/fault`). The dry-run candidate sends
+   to the generic stub `/sim/partners/<id>` like a REST route: give it the SOAP envelope as a string `body`
+   with `"headers": {"Content-Type": "text/xml"}` and the address's path as its `path`.
+7. **Callbacks**: a biller that answers asynchronously needs an APISIX route file
    (`deploy/apisix/routes/partner-<id>-callback.json`, as `partner-billagg-callback.json`) and
    `deploy/apisix/apply.sh`.
 

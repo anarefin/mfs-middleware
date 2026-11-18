@@ -26,6 +26,7 @@ import mfs.mw.adapter.telco.partner.config.PartnerConfig;
 import mfs.mw.adapter.telco.partner.config.PartnerConfigRefusedException;
 import mfs.mw.adapter.telco.partner.config.PartnerEndpointPolicy;
 import mfs.mw.adapter.telco.partner.mapping.CompiledMapping;
+import mfs.mw.adapter.telco.partner.mapping.CompiledStylesheet;
 import io.github.resilience4j.bulkhead.BulkheadRegistry;
 import org.apache.camel.CamelContext;
 import org.apache.camel.RoutesBuilder;
@@ -103,6 +104,13 @@ public class PartnerRouteLoader {
   /** Kamelet parameters that end up in the HTTP request: no {@code % ? & #}, before or after decoding. */
   static final Set<String> STRICT_PARAMS = Set.of("url", "path", "authHeader", "keyId", "method", "auth", "secretField",
       "userField", "tokenUrl", "clientId", "scope", "audience", "alg", "sslContextRef");
+
+  /** {@code mw-soap-call} parameters held to the same rule (ticket 85). */
+  static final Set<String> SOAP_STRICT_PARAMS =
+      Set.of("address", "soapAction", "soapVersion", "request", "response", "wsUsername", "wsPasswordSecret", "wsTokenType");
+
+  /** A stylesheet shipped with the service: {@code classpath:partner/xslt/<name>.xsl}. */
+  static final Pattern CLASSPATH_STYLESHEET = Pattern.compile("^classpath:partner/xslt/[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}\\.xsl$");
 
   private static final Pattern PARAM_KEY = Pattern.compile("^[A-Za-z][A-Za-z0-9]*$");
 
@@ -292,12 +300,17 @@ public class PartnerRouteLoader {
       }
     }
     Map<String, CompiledMapping> mappings = new LinkedHashMap<>();
-    record.mappings().forEach((name, source) -> mappings.put(name, CompiledMapping.compile(source)));
+    record.mappings().forEach((name, source) -> {
+      if (!CompiledStylesheet.isStylesheet(name)) {
+        mappings.put(name, CompiledMapping.compile(source));
+      }
+    });
     for (String name : calls.mappings) {
       if (!mappings.containsKey(name)) {
         problems.add("the route names mapping " + name + ", which the record does not have");
       }
     }
+    Map<String, CompiledStylesheet> stylesheets = stylesheets(record, calls, problems);
     refuseIfAny(id, security, problems);
 
     Map<String, String> values = new LinkedHashMap<>();
@@ -318,7 +331,7 @@ public class PartnerRouteLoader {
     calls.sftp.beans.forEach((bean, field) -> beans.put(bean, values.get(field)));
     return new Loaded(
         new PartnerRuntime(id, version, record, routeId, endpoint, mappings, values,
-            allowed, calls.kamelets),
+            allowed, calls.kamelets, stylesheets),
         definition, beans);
   }
 
@@ -447,6 +460,8 @@ public class PartnerRouteLoader {
     final List<String> paths = new ArrayList<>();
     final Set<String> mappings = new LinkedHashSet<>();
     final Set<String> secretFields = new LinkedHashSet<>();
+    /** The stylesheets {@code mw-soap-call} names (record {@code *.xsl} mappings or classpath resources). */
+    final Set<String> stylesheets = new LinkedHashSet<>();
     /** The {@code partnerId} injected into each Kamelet (it names the circuit breaker). */
     String partnerParam;
     /** A candidate's dry-run base URL; null for a live version. */
@@ -538,7 +553,7 @@ public class PartnerRouteLoader {
           security.add("Kamelet parameter " + key + ": RAW(...) is not allowed");
           return null;
         }
-        if (STRICT_PARAMS.contains(key) && value.indexOf('%') >= 0) {
+        if ((STRICT_PARAMS.contains(key) || SOAP_STRICT_PARAMS.contains(key)) && value.indexOf('%') >= 0) {
           security.add("Kamelet parameter " + key + " may not be percent-encoded");
           return null;
         }
@@ -551,7 +566,8 @@ public class PartnerRouteLoader {
           return null;
         }
         if (decoded.contains("{{") || decoded.contains("${") || decoded.contains("$simple{")
-            || (STRICT_PARAMS.contains(key) && decoded.chars().anyMatch(c -> "%?&#".indexOf(c) >= 0))) {
+            || ((STRICT_PARAMS.contains(key) || SOAP_STRICT_PARAMS.contains(key))
+                && decoded.chars().anyMatch(c -> "%?&#".indexOf(c) >= 0))) {
           security.add("Kamelet parameter " + key + " has a character that is not allowed");
           return null;
         }
@@ -559,16 +575,18 @@ public class PartnerRouteLoader {
       }
     }
     calls.kamelets.add(name);
-    if (calls.dryRunBase != null && name.startsWith("mw-http-call")) {
+    boolean soap = name.startsWith("mw-soap-call");
+    String urlParam = soap ? "address" : "url";
+    if (calls.dryRunBase != null && (name.startsWith("mw-http-call") || soap)) {
       // the keys are plain names, set once, and url holds no % ? & #: one textual swap is exact
-      String target = dryRunUrl(calls.dryRunBase, params.getOrDefault("url", ""));
+      String target = dryRunUrl(calls.dryRunBase, params.getOrDefault(urlParam, ""));
       if (target == null) {
         security.add("the dry-run target must be a plain http(s) URL: no user info, query, fragment, encoding,"
             + " placeholder or .. segment");
         return null;
       }
-      uri = uri.replaceFirst("([?&])url=[^&]*", "$1url=" + java.util.regex.Matcher.quoteReplacement(target));
-      params.put("url", target);
+      uri = uri.replaceFirst("([?&])" + urlParam + "=[^&]*", "$1" + urlParam + "=" + java.util.regex.Matcher.quoteReplacement(target));
+      params.put(urlParam, target);
     }
     StringBuilder out = new StringBuilder(uri).append(q < 0 ? '?' : '&').append("partnerId=").append(calls.partnerParam);
     if (name.startsWith("mw-http-call")) {
@@ -599,10 +617,76 @@ public class PartnerRouteLoader {
           .append("&readTimeoutMs=").append(record.readTimeoutMs())
           .append("&bulkhead=").append(bulkhead(id, record));
     }
+    if (soap) {
+      soapCall(params, record, calls, problems);
+      calls.urls.add(params.getOrDefault("address", ""));
+      out.append("&timeoutMs=").append(record.timeoutMs())
+          .append("&connectTimeoutMs=").append(record.connectTimeoutMs())
+          .append("&readTimeoutMs=").append(record.readTimeoutMs())
+          .append("&bulkhead=").append(bulkhead(id, record));
+    }
     if (params.containsKey("mapping")) {
       calls.mappings.add(params.get("mapping"));
     }
     return out.toString();
+  }
+
+  /**
+   * The rules of one {@code mw-soap-call} (ticket 85): request and response stylesheets that are
+   * the record's {@code *.xsl} mappings or {@code classpath:partner/xslt/*.xsl} resources, SOAP
+   * 1.1 or 1.2, a WS-Security user only with the secret field of its password (read now).
+   */
+  private static void soapCall(Map<String, String> params, PartnerConfig record, Calls calls, List<String> problems) {
+    for (String key : List.of("request", "response")) {
+      String name = params.getOrDefault(key, "");
+      if (CLASSPATH_STYLESHEET.matcher(name).matches()) {
+        calls.stylesheets.add(name);
+      } else if (CompiledStylesheet.isStylesheet(name) && record.mappings().containsKey(name)) {
+        calls.stylesheets.add(name);
+      } else {
+        problems.add("mw-soap-call " + key + " must name one of the record's *.xsl mappings or a"
+            + " classpath:partner/xslt/*.xsl resource");
+      }
+    }
+    if (!Set.of("1.1", "1.2").contains(params.getOrDefault("soapVersion", "1.1"))) {
+      problems.add("mw-soap-call soapVersion must be 1.1 or 1.2");
+    }
+    if (!Set.of("PasswordText", "PasswordDigest").contains(params.getOrDefault("wsTokenType", "PasswordText"))) {
+      problems.add("mw-soap-call wsTokenType must be PasswordText or PasswordDigest");
+    }
+    String user = params.getOrDefault("wsUsername", "");
+    String secret = params.getOrDefault("wsPasswordSecret", "");
+    if (!user.isEmpty() && secret.isEmpty()) {
+      problems.add("mw-soap-call wsUsername needs a wsPasswordSecret");
+    } else if (!secret.isEmpty()) {
+      calls.secretFields.add(secret);
+    }
+  }
+
+  /** The stylesheets {@code calls} names, compiled; a missing resource is a problem. */
+  private Map<String, CompiledStylesheet> stylesheets(PartnerConfig record, Calls calls, List<String> problems) {
+    Map<String, CompiledStylesheet> out = new LinkedHashMap<>();
+    for (String name : calls.stylesheets) {
+      String source = name.startsWith("classpath:") ? resource(name.substring("classpath:".length())) : record.mappings().get(name);
+      if (source == null) {
+        problems.add("stylesheet " + name + " does not exist");
+        continue;
+      }
+      try {
+        out.put(name, CompiledStylesheet.compile(source));
+      } catch (IllegalArgumentException e) {
+        problems.add("stylesheet " + name + ": " + e.getMessage());
+      }
+    }
+    return out;
+  }
+
+  private static String resource(String path) {
+    try (InputStream in = PartnerRouteLoader.class.getClassLoader().getResourceAsStream(path)) {
+      return in == null ? null : new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      return null;
+    }
   }
 
   /**

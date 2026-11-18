@@ -95,6 +95,11 @@ public class PartnerRouteValidator {
    */
   static final String CAMEL_HEADER_PACKAGE = "org.apache." + "camel";
 
+  /** {@code mw-soap-call} parameters held to the strict rule too (ticket 85). */
+  static final Set<String> SOAP_STRICT_PARAMS =
+      Set.of("address", "soapAction", "soapVersion", "request", "response", "wsUsername", "wsPasswordSecret", "wsTokenType");
+  static final Pattern CLASSPATH_STYLESHEET = Pattern.compile("^classpath:partner/xslt/[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}\\.xsl$");
+
   private static final Pattern PARAM_KEY = Pattern.compile("^[A-Za-z][A-Za-z0-9]*$");
   private static final Pattern PLACEHOLDER = Pattern.compile("\\$(?:simple)?\\{([^}]*)}");
   private static final Pattern SIMPLE_TOKEN =
@@ -168,6 +173,14 @@ public class PartnerRouteValidator {
       if (mappings == null || !mappings.containsKey(name)) {
         problems.add(new Problem(0, "mapping", "the route names mapping " + name + ", which the record does not have"));
       }
+    }
+    if (mappings != null) {
+      // ticket 85: every *.xsl mapping is an XSLT stylesheet that may not reach outside itself
+      mappings.forEach((name, source) -> {
+        if (name.endsWith(".xsl")) {
+          StylesheetPolicy.problems(source).forEach(p -> problems.add(new Problem(0, "stylesheet " + name, p)));
+        }
+      });
     }
     return problems;
   }
@@ -498,8 +511,45 @@ public class PartnerRouteValidator {
       }
       hostProblem(params.getOrDefault("url", ""), allowedHosts).ifPresent(p -> problems.add(new Problem(line, name, p)));
     }
+    if (name.startsWith("mw-soap-call")) {
+      soapCall(params, line, name, allowedHosts, named, problems);
+    }
     if (params.containsKey("mapping")) {
       named.add(params.get("mapping"));
+    }
+  }
+
+  /**
+   * The loader's rules of one {@code mw-soap-call} (ticket 85): an approved http(s) address,
+   * request and response stylesheets that are {@code *.xsl} mappings of the record (checked with
+   * {@link StylesheetPolicy} in {@link #problems}) or {@code classpath:partner/xslt/*.xsl}
+   * resources, SOAP 1.1 or 1.2, a WS-Security user only with its password's secret field.
+   */
+  private static void soapCall(Map<String, String> params, int line, String name, List<String> allowedHosts,
+      Set<String> named, List<Problem> problems) {
+    hostProblem(params.getOrDefault("address", ""), allowedHosts)
+        .ifPresent(p -> problems.add(new Problem(line, name, p.replace("mw-http-call url", "mw-soap-call address")
+            .replace("mw-http-call host", "mw-soap-call host"))));
+    for (String key : List.of("request", "response")) {
+      String stylesheet = params.getOrDefault(key, "");
+      if (CLASSPATH_STYLESHEET.matcher(stylesheet).matches()) {
+        continue;
+      }
+      if (stylesheet.endsWith(".xsl")) {
+        named.add(stylesheet);
+      } else {
+        problems.add(new Problem(line, name, "mw-soap-call " + key + " must name one of the record's *.xsl mappings"
+            + " or a classpath:partner/xslt/*.xsl resource"));
+      }
+    }
+    if (!Set.of("1.1", "1.2").contains(params.getOrDefault("soapVersion", "1.1"))) {
+      problems.add(new Problem(line, name, "mw-soap-call soapVersion must be 1.1 or 1.2"));
+    }
+    if (!Set.of("PasswordText", "PasswordDigest").contains(params.getOrDefault("wsTokenType", "PasswordText"))) {
+      problems.add(new Problem(line, name, "mw-soap-call wsTokenType must be PasswordText or PasswordDigest"));
+    }
+    if (!params.getOrDefault("wsUsername", "").isEmpty() && params.getOrDefault("wsPasswordSecret", "").isEmpty()) {
+      problems.add(new Problem(line, name, "mw-soap-call wsUsername needs a wsPasswordSecret"));
     }
   }
 
@@ -556,7 +606,7 @@ public class PartnerRouteValidator {
     if (raw.startsWith("RAW(") && raw.endsWith(")")) {
       return "Kamelet parameter " + key + ": RAW(...) is not allowed";
     }
-    if (STRICT_PARAMS.contains(key) && raw.indexOf('%') >= 0) {
+    if ((STRICT_PARAMS.contains(key) || SOAP_STRICT_PARAMS.contains(key)) && raw.indexOf('%') >= 0) {
       return "Kamelet parameter " + key + " may not be percent-encoded";
     }
     String decoded;
@@ -566,7 +616,8 @@ public class PartnerRouteValidator {
       return "Kamelet parameter " + key + " is not a valid URI value";
     }
     if (decoded.contains("{{") || decoded.contains("${") || decoded.contains("$simple{")
-        || (STRICT_PARAMS.contains(key) && decoded.chars().anyMatch(c -> "%?&#".indexOf(c) >= 0))) {
+        || ((STRICT_PARAMS.contains(key) || SOAP_STRICT_PARAMS.contains(key))
+            && decoded.chars().anyMatch(c -> "%?&#".indexOf(c) >= 0))) {
       return "Kamelet parameter " + key + " has a character that is not allowed";
     }
     return null;

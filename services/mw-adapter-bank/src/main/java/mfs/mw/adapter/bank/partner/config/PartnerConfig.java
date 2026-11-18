@@ -176,10 +176,32 @@ public record PartnerConfig(
       problems.add(field + " is empty");
       return;
     }
+    if (mfs.mw.adapter.bank.partner.mapping.CompiledStylesheet.isStylesheet(field)) {
+      stylesheet(field, source, problems);
+      return;
+    }
     try {
       CompiledMapping.compile(source);
     } catch (IllegalArgumentException e) {
       problems.add(field + " does not compile: " + e.getMessage());
+    }
+  }
+
+  /**
+   * A {@code *.xsl} mapping (ticket 85): an XSLT stylesheet for {@code mw-soap-call}. One that
+   * reaches outside itself ({@code document()}, an entity, an include, ...) breaks a security rule;
+   * one that does not compile is an ordinary problem.
+   */
+  private static void stylesheet(String field, String source, List<String> problems) {
+    List<String> policy = mfs.mw.adapter.bank.partner.mapping.StylesheetPolicy.problems(source);
+    if (!policy.isEmpty()) {
+      policy.forEach(p -> problems.add(SECURITY + field + ": " + p));
+      return;
+    }
+    try {
+      mfs.mw.adapter.bank.partner.mapping.CompiledStylesheet.compile(source);
+    } catch (IllegalArgumentException e) {
+      problems.add(field + ": " + e.getMessage());
     }
   }
 
