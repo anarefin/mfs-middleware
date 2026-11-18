@@ -358,7 +358,7 @@
     mw-app-gateway => mw-orchestrator : mw.txn.request.v1 (header mw-reply-to = this instance)
     note mw-orchestrator : runs the saga (seconds)
     mw-orchestrator => mw-app-gateway : mw.txn.status.v1 (final status, same reply-to)
-    mw-app-gateway -> mw-app-gateway : StatusReplyRoute wakes the waiter
+    mw-app-gateway -> mw-app-gateway : StatusReplyListener wakes the waiter
     mw-app-gateway --> App : 200 COMPLETED, or 202 PROCESSING after 25 s
   </script></div>
   <div class="legend"><span class="h"><i></i>HTTP</span><span class="k"><i></i>Kafka</span><span class="r"><i></i>reply</span></div>
@@ -376,7 +376,7 @@
   <p><code>mw-ussd</code> (8-second budget, then a "processing" screen) and <code>mw-checkout</code> do the same thing.</p>
   <div class="box where"><div class="tag">Where it lives</div><ul>
     <li><a href="../../services/mw-app-gateway/src/main/java/mfs/mw/app/gateway/service/ReplyWaiters.java"><code>service/ReplyWaiters</code></a> and
-      <a href="../../services/mw-app-gateway/src/main/java/mfs/mw/app/gateway/route/StatusReplyRoute.java"><code>route/StatusReplyRoute</code></a> in mw-app-gateway. Spec section 7.5.</li>
+      <a href="../../services/mw-app-gateway/src/main/java/mfs/mw/app/gateway/config/StatusReplyConsumerConfig.java"><code>config/StatusReplyConsumerConfig</code></a> and <a href="../../services/mw-app-gateway/src/main/java/mfs/mw/app/gateway/messaging/StatusReplyListener.java"><code>messaging/StatusReplyListener</code></a> in mw-app-gateway. Spec section 7.5.</li>
   </ul></div>
 
   <h2 id="errors">10. Errors, masking and the PIN</h2>

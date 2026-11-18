@@ -25,7 +25,7 @@
 
 **Status:** open
 
-- [ ] `grep -rl org.apache.camel services/{mw-app-gateway,mw-checkout,mw-ussd}` is empty
-- [ ] `./gradlew :mw-app-gateway:build :mw-checkout:build :mw-ussd:build` is green with Docker
-- [ ] There is a test showing that two instances of the same channel each get the status reply (per-instance group), and that a reply sent before startup is not replayed (`latest`)
+- [x] `grep -rl org.apache.camel services/{mw-app-gateway,mw-checkout,mw-ussd}` is empty
+- [x] `./gradlew :mw-app-gateway:build :mw-checkout:build :mw-ussd:build` is green with Docker
+- [x] There is a test showing that two instances of the same channel each get the status reply (per-instance group), and that a reply sent before startup is not replayed (`latest`)
 - [ ] With the stack up: `scripts/api-test.sh` P2P, checkout and USSD folders, plus `scripts/tester-e2e.sh @app @ussd @checkout`
