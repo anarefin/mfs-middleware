@@ -13,6 +13,7 @@ import java.time.Clock;
 import java.util.List;
 import mfs.mw.admin.api.dto.PartnerRouteStatusMessage;
 import mfs.mw.admin.api.repository.PartnerRepository;
+import mfs.mw.admin.api.service.PartnerConfigService;
 import mfs.mw.admin.api.service.PartnerRouteStatusService;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -37,7 +38,8 @@ class ConsumedContractsTest {
     PartnerRepository partners = mock(PartnerRepository.class);
     when(partners.updateRouteStatus(anyString(), anyLong(), anyString(), any(), any(), any())).thenReturn(true);
     PartnerRouteStatusService service =
-        new PartnerRouteStatusService(partners, mock(mfs.mw.admin.api.messaging.OutboxWriter.class), JSON, Clock.systemUTC());
+        new PartnerRouteStatusService(partners, mock(mfs.mw.admin.api.messaging.OutboxWriter.class), JSON, Clock.systemUTC(),
+            mock(PartnerConfigService.class));
     List<Path> samples = ContractManifest.validSamples(ROUTE_STATUS);
     assertThat(samples).isNotEmpty();
     for (Path sample : samples) {
