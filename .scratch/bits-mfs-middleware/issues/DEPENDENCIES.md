@@ -29,7 +29,7 @@
 59-admin-ui-playwright-live                 56,57             done     27m+fix  see 2ad973ce,d614ac37   040c26d2..d614ac37
 # --- Run 77-87 (planned 2026-11-18): Camel only for external integration (plan we-were-supposed-to-mellow-mccarthy). Spring Kafka for messaging; partner routes as config (Camel YAML DSL + Kamelets). Catalogue + secrets stay static (user). Row order = run order; 79/80 and 82 can run in parallel after 78; 85/86/87 in parallel after 84.
 77-camel-scope-adr-spec                     —                 done     6m       12 files +245 −44   65dac07e
-78-template-spring-kafka                    77                open
+78-template-spring-kafka                    77                done     ~40m     see 921c44ac,29009b74
 79-spring-kafka-support-services            78                open
 80-spring-kafka-channels                    78                open
 81-spring-kafka-orchestrator-notify         78,79,80          open
