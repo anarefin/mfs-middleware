@@ -228,6 +228,15 @@ Restoring means a fresh stack (`deploy/reset.sh`, then start again) and feeding 
 service's outbox is in PostgreSQL), Valkey only sessions and locks, OpenBao only the generated dev
 secrets that `provision` writes again on every `up`.
 
+## Onboard a biller
+
+Stub (ADR D26, spec 12.1; filled in by ticket 83 when the route editor, maker-checker and dry-run
+land). A biller of a known kind is a partner route as config: a Camel YAML DSL route built from the
+shipped `mw-*` Kamelets, authored with Camel JBang against mw-simulators, submitted in the console
+(maker), checked by the loader (component allowlist, dry-run against the simulator) and approved by
+a checker with the hosts it may call. A new entry in the biller catalogue or a new OpenBao secret is
+config plus a restart of `mw-adapter-billpay` (static on purpose).
+
 ## Gate and security runs on this host
 
 | Run | Command | Note |

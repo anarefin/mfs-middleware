@@ -20,7 +20,7 @@ This spec turns the Bits *Mobile Money Middleware RFP v0.1* into a build-ready d
 
 | # | Topic | Decision |
 | --- | --- | --- |
-| D1 | Integration engine | Apache Camel 4.x on Spring Boot 4, JDK 25 (virtual threads on) |
+| D1 | Integration engine | Apache Camel 4.x on Spring Boot 4, JDK 25 (virtual threads on). **Decision 2026-11-18**: Camel only in the partner adapters (`mw-adapter-*`), for partner HTTP/REST, SOAP (camel-cxf) and SFTP (camel-sftp), each partner a YAML DSL route stored as config and built from shipped Kamelets (D26); no other module depends on `org.apache.camel`; internal Kafka messaging uses Spring Kafka (D25) |
 | D2 | Messaging backbone | Apache Kafka (KRaft mode, no ZooKeeper) |
 | D3 | API gateway | Apache APISIX |
 | D4 | Middleware database | PostgreSQL 18 (confirmed), used only where the middleware needs its own state; services access it through Spring Data JDBC/JPA, no PostgREST |
@@ -38,6 +38,8 @@ This spec turns the Bits *Mobile Money Middleware RFP v0.1* into a build-ready d
 | D16 | Stack file | One hand-written `deploy/docker-compose.yml` with profiles (platform always; `minimal`, `core`, `seed`) for the whole single-host stack; images built on request (`make build`) and reused by `make up`; **Decision 2026-11-13** (D18): no Makefile, `docker compose … up -d --build` builds the images from the jars of `./gradlew clean build`; supersedes the per-module `compose.yml` of 4.2/4.3 and D12 (ticket 56, 2026-11-06) |
 | D18 | Pipeline | No Makefile: `./gradlew clean build` from the repo root is the full gate (every module's tests and boot jar, plus the repo checks `checkIsolation`, `checkFieldInjection`, `contractsLint`, `composeCheck`, `scriptTests` in the root `check`); the stack runs with plain `docker compose` from `deploy/`, and the live checks are scripts in `scripts/` run directly (2026-11-13) |
 | D19 | Module tests | One `test` task per module runs unit, slice, contract, Testcontainers `*IT` and `@Conformance` tests in one JVM (one PostgreSQL and one Kafka per test JVM, a fresh database per Spring context, no container reuse; Testcontainers tests skipped without Docker); no JaCoCo coverage gate, which amends the 80% coverage gate of 22.1 for the MVP (2026-11-13) |
+| D25 | Kafka client | Spring Kafka (`spring-kafka`, Boot-managed) in every module: `@KafkaListener` consumers with record-level manual ack, `KafkaTemplate` producers (idempotent, `acks=all`), non-blocking retry topics per D2 (10 s / 1 min / 10 min, then DLQ) with the topic names unchanged (`<topic>.<group>.retry.<n>` / `<topic>.<group>.dlq`); outbox and inbox unchanged, the outbox relay a `@Scheduled` job; consumers put the trace and correlation id into the MDC (2026-11-18) |
+| D26 | Partner routes as config | One Camel YAML DSL route per partner (`from: direct:partner-<id>`, `PartnerCall` JSON in, `{outcome, partnerRef, code, message, reason}` out) built from a reviewed Kamelet library (`mw-auth-*`, `mw-http-call`, `mw-soap-call`, `mw-sftp-*`, `mw-classify`, `mw-audit`; raw `http`/`cxf`/`sftp` only inside them); guardrails: maker-checker, a component allowlist on the parsed model, a dry-run against mw-simulators with rollback, the host allowlist in the approved record; biller catalogue and secrets static; no automatic redelivery of PAY; explicit per-adapter `partner-aliases` instead of a silent default partner (unknown id → `MW-PTR-UNKNOWN`); adapters own SFTP settlement-file ingest and publish `mw.partner.recon.v1`, mw-recon only matches (12, 13; 2026-11-18) |
 
 ### Assumed sizing (TBC)
 
@@ -138,7 +140,7 @@ The MVP is built as about 30 small work packages (WPs), each sized for one codin
 | WP02 | M0 | `deploy/docker-compose.yml` platform services (single instance each): Kafka + `kafka-init`, PostgreSQL 18, Valkey, Keycloak (realms imported), OpenBao (dev-unseal script), APISIX + etcd, GreenMail, zone networks; the module services join the same file (D16; originally one `include`d `compose.yml` per module) | WP01 | `docker compose up` healthy; smoke script passes |
 | WP03 | M0 | `templates/mw-service-template` part 1: runnable Spring Boot 4 app as a standalone Gradle build (own `settings.gradle.kts`, `build.gradle.kts`, `gradle/libs.versions.toml`, Gradle wrapper; Spring Boot and Camel BOMs as Gradle platforms), Dockerfile, `compose.yml`, `CLAUDE.md`, CycloneDX SBOM; layered package skeleton (4.4) with correlation filter, error model and global `@RestControllerAdvice`, masking (`@Sensitive`), JSON logging, Vault config binding; `make new-service` | WP01 | Template builds, tests and starts from its own directory alone; unit tests for masking and error mapping; a scaffolded copy has no reference back to the template and uses package `mfs.mw.<name>` |
 | WP04 | M0 | Contracts: JSON Schemas for transaction envelope, core commands/events, partner request/reply, notify request, audit event (encryptedPin as keyId + ciphertext on authorising commands), in root `contracts/events/<owning-service>/`, with `contracts/OWNERS.yml` and `make contracts-lint` | WP01 | Sample payloads validate against every schema; the template's schema tests load contracts through `mwContractsDir` |
-| WP05 | M0 | Template part 2: Kafka and Camel defaults, error handler with retry topics and DLQ, Resilience4j wiring, outbox relay, inbox dedup, Flyway on start, conformance test suite | WP03, WP04 | Route tests: retry, DLQ, dedup; conformance suite green on the template |
+| WP05 | M0 | Template part 2: Kafka defaults (Spring Kafka, D25; originally Kafka and Camel defaults), Spring Kafka error handler with retry topics and DLQ, Resilience4j wiring, `@Scheduled` outbox relay, inbox dedup, Flyway on start, conformance test suite; no Camel in the template (**Decision 2026-11-18**, D1 amendment) | WP03, WP04 | Listener ITs: retry, DLQ, dedup; conformance suite green on the template |
 | WP06 | M1 Core loop | `mw-core-mock`: ledger schema, command handlers, events, fault injection, seed data, PIN key pair and decryption | WP04, WP05 | Contract tests per command; balance invariants hold |
 | WP07 | M1 | `mw-orchestrator` part 1: state machine (pure Java), `txn` schema, idempotency, timers, flows `P2P`, `CASH_IN`, `CASH_OUT` | WP05, WP06 | State machine unit tests (100% transitions); e2e P2P against core-mock |
 | WP08 | M1 | `mw-app-gateway` part 1: Keycloak JWT, `POST /transactions`, `GET /transactions/{id}`, sync wait with 202 fallback, encrypted PIN passed through untouched | WP07 | e2e P2P through APISIX |
@@ -203,7 +205,7 @@ The middleware is the only path between Bits's access channels, the core wallet 
 
 ## 2. Architecture overview
 
-The middleware is a set of stateless Camel/Spring Boot services in the Application zone, joined by one Kafka backbone; channels enter through APISIX and SMPP binds in the DMZ, and only the orchestrator talks to the core.
+The middleware is a set of stateless Spring Boot services (Camel inside the partner adapters only, D1 amendment) in the Application zone, joined by one Kafka backbone; channels enter through APISIX and SMPP binds in the DMZ, and only the orchestrator talks to the core.
 
 ```mermaid
 flowchart LR
@@ -331,7 +333,9 @@ Every runtime component is open source under a permissive licence, which satisfi
 | Build | Gradle (Kotlin DSL) with wrapper per module | 9.x with JDK 25 toolchain support (TBC exact) | Apache 2.0 | Build, test, SBOM (CycloneDX Gradle plugin), image (`bootBuildImage` or Dockerfile) |
 | Runtime | Docker Engine + Docker Compose v2 | Compose ≥ 2.20 (`include`) | Apache 2.0 | Runs every component (D12) |
 | Framework | Spring Boot | 4.1.2 | Apache 2.0 | Service chassis, config, security, actuator |
-| Integration | Apache Camel (camel-spring-boot) | 4.22.2 LTS | Apache 2.0 | Routes, EIPs, protocol components |
+| Integration | Apache Camel (camel-spring-boot) | 4.22.2 LTS | Apache 2.0 | Partner adapters (`mw-adapter-*`) only (D1 amendment): partner routes, EIPs, protocol components |
+| Partner routes | `camel-yaml-dsl`, `camel-kamelet`, `camel-http`, `camel-jsonata`, `camel-resilience4j`, `camel-hashicorp-vault` | with Camel | Apache 2.0 | Partner routes as config built from the `mw-*` Kamelets, mappings, resilience, OpenBao secrets (D26) |
+| Kafka client | Spring Kafka (`spring-kafka`) | Boot-managed | Apache 2.0 | Listeners, producers, retry topics and DLQ, outbox relay in every module (D25) |
 | Messaging | Apache Kafka (KRaft) | 4.x | Apache 2.0 | Commands, events, DLQ, DW stream |
 | Serialisation | JSON (Jackson) + JSON Schema files | Jackson 3 (Boot 4 default) | Apache 2.0 | Kafka payloads as JSON; schemas versioned in Git and checked in tests (no registry in MVP) |
 | Gateway | Apache APISIX + etcd | 3.x | Apache 2.0 | North-south gateway, auth, rate limit |
@@ -340,9 +344,9 @@ Every runtime component is open source under a permissive licence, which satisfi
 | Cache / locks | Redis-compatible (Valkey) | 8.x | BSD-3 | USSD session, rate counters, short-lived idempotency cache |
 | Resilience | Resilience4j | 2.x | Apache 2.0 | Circuit breaker, bulkhead, retry, time limiter |
 | Scheduling | ShedLock + Spring scheduler | 7 | Apache 2.0 | Cluster-safe jobs (TSQ sweeps, file pulls) |
-| SOAP | Apache CXF (camel-cxf) | 4.x | Apache 2.0 | SOAP client/server, WS-Security |
-| SMPP | camel-smpp (jSMPP) | with Camel | Apache 2.0 | SMSC and SMPP-based USSD |
-| SFTP | camel-sftp (JSch fork) | with Camel | BSD-style | AML, DW, settlement files |
+| SOAP | Apache CXF (`camel-cxf-soap`) | 4.x | Apache 2.0 | SOAP partner calls in the adapters (`mw-soap-call` Kamelet), WS-Security |
+| SMPP | jSMPP | current | Apache 2.0 | SMSC and SMPP-based USSD (camel-smpp superseded: mw-ussd and mw-notify use jSMPP directly, D1 amendment) |
+| SFTP | `camel-sftp` (JSch fork) | with Camel | BSD-style | Partner and bank settlement files in the adapters (`mw-sftp-*` Kamelets, D26); AML, DW files |
 | ISO 20022 | Prowide ISO 20022 | latest | Apache 2.0 | pacs/pain/camt models for NPSB / BanglaQR |
 | SWIFT MT | Prowide Core (WIFE) | latest | Apache 2.0 | MT940 / MT942 parsing |
 | IAM | Keycloak | 26.x | Apache 2.0 | OAuth2/OIDC for admin users and partners |
@@ -355,7 +359,7 @@ Every runtime component is open source under a permissive licence, which satisfi
 
 ## 4. Service decomposition and repository layout
 
-The middleware is 14 runtime services, the admin UI and two test-only services (core mock and simulators), grouped so that a failing partner adapter can be restarted or redeployed without touching channels or the orchestrator (NFR-07). Every service is a stateless, self-contained Spring Boot 4 + Camel application with no shared library (D13, D14); state lives in PostgreSQL, Kafka or Valkey.
+The middleware is 14 runtime services, the admin UI and two test-only services (core mock and simulators), grouped so that a failing partner adapter can be restarted or redeployed without touching channels or the orchestrator (NFR-07). Every service is a stateless, self-contained Spring Boot 4 application (Spring Kafka for messaging, D25; Camel only in the partner adapters, D26) with no shared library (D13, D14); state lives in PostgreSQL, Kafka or Valkey.
 
 ### 4.1 Services
 
@@ -419,7 +423,7 @@ Every module has the same self-contained shape:
 ```
 services/mw-<name>/
 ├─ settings.gradle.kts          # standalone build; rootProject.name = "mw-<name>"
-├─ build.gradle.kts             # Spring Boot plugin, Boot and Camel BOMs as platforms, CycloneDX, Flyway, test config
+├─ build.gradle.kts             # Spring Boot plugin, Boot BOM (plus the Camel BOM in the adapters only) as platforms, CycloneDX, Flyway, test config
 ├─ gradle/libs.versions.toml    # this module's own pinned versions
 ├─ gradle.properties            # incl. mwContractsDir
 ├─ gradlew, gradle/wrapper/     # own Gradle wrapper
@@ -449,7 +453,7 @@ Every service uses the same conventional layered Spring Boot structure. A packag
 ```
 mfs.mw.<service>/
 ├─ <Service>Application.java   # @SpringBootApplication, the only class in the root package
-├─ config/                      # @Configuration and @ConfigurationProperties classes (Kafka, Camel, Resilience4j, Vault, security)
+├─ config/                      # @Configuration and @ConfigurationProperties classes (Kafka, Resilience4j, Vault, security; Camel in adapters only)
 ├─ controller/                  # @RestController: HTTP mapping, validation (@Valid), no business logic
 ├─ dto/                         # request/response records and Kafka message records (from contracts/)
 ├─ service/                     # @Service: business logic and @Transactional boundaries (interface + impl only where there are two implementations)
@@ -457,10 +461,10 @@ mfs.mw.<service>/
 ├─ entity/                      # JPA entities / JDBC aggregates for this service's own schema
 ├─ mapper/                      # DTO ↔ entity ↔ message mapping (hand-written or MapStruct)
 ├─ exception/                   # custom exceptions, error codes (5.3), global @RestControllerAdvice
-├─ messaging/                   # Kafka listeners and publishers, outbox relay, inbox dedup, retry/DLQ handling
-├─ route/                       # Camel RouteBuilder classes and YAML route templates (Java DSL or YAML, no XML DSL)
+├─ messaging/                   # Spring Kafka listeners and publishers (D25), inbox dedup, retry/DLQ handling
+├─ route/                       # partner adapters only (D1 amendment): Camel routes, the partner route loader and Kamelets (YAML DSL, no XML DSL)
 ├─ client/                      # outbound calls to other systems (partner APIs, SMSC, EC), with Resilience4j
-├─ scheduler/                   # @Scheduled jobs guarded by ShedLock (timer sweeps, TSQ, file pulls)
+├─ scheduler/                   # @Scheduled jobs guarded by ShedLock (timer sweeps, TSQ, outbox relay)
 ├─ security/                    # filters, signature/HMAC verification, JWT converters
 ├─ filter/                      # correlation ID and request logging filters
 └─ util/                        # small static helpers only (masking, hashing, crypto envelope)
@@ -473,7 +477,9 @@ Rules (best practice, enforced in review):
 3. Constructor injection only (no field injection); `@Transactional` only on `service` methods; no business logic in controllers, listeners or routes.
 4. Errors are thrown as exceptions from `exception` and turned into the error envelope (5.3) by the global `@RestControllerAdvice`; listeners route failures to retry/DLQ.
 5. A service only creates the packages it needs (an adapter has no `controller` unless it receives callbacks; `mw-notify` has no `controller` at all).
-6. Tests mirror the main packages: unit tests for `service`, `mapper` and `util`; `@WebMvcTest` for `controller`; `@DataJpaTest` with Testcontainers for `repository`; Camel route tests for `route`.
+6. Tests mirror the main packages: unit tests for `service`, `mapper` and `util`; `@WebMvcTest` for `controller`; `@DataJpaTest` with Testcontainers for `repository`; Spring Kafka listener ITs for `messaging`; Camel route tests for `route` (adapters only).
+
+**Decision 2026-11-18** (D1 amendment, D25): `route/` exists in the partner adapters only; Kafka listeners and publishers are Spring Kafka classes in `messaging/` and the outbox relay is a `scheduler/` job in every module.
 
 ## 5. Canonical data model
 
@@ -570,7 +576,8 @@ Kafka carries every financial step between services and to the core, with effect
 | `mw.compliance.instruction.v1` | compliance (AML block/hold) | orchestrator, core | subjectId | 6 | 30 d |
 | `mw.recon.result.v1` | recon | admin, audit-dw | partnerId | 6 | 30 d |
 | `dw.txn.event.v1` | audit-dw | Data Warehouse | txnId | 24 | 7 d |
-| `<topic>.<group>.retry.<n>` / `<topic>.<group>.dlq` (one set per consuming service; `<group>` = its consumer group, the service name) | Camel error handler | that service's retry consumer / ops | same | = source | 14 d |
+| `mw.partner.recon.v1` | adapters (SFTP settlement-file ingest, D26) | recon (`contracts/EXTERNAL.yml` until mw-recon is built) | partnerId | 6 | 30 d |
+| `<topic>.<group>.retry.<n>` / `<topic>.<group>.dlq` (one set per consuming service; `<group>` = its consumer group, the service name) | Spring Kafka error handler (D25; originally the Camel error handler) | that service's retry consumer / ops | same | = source | 14 d |
 
 The three partner topics share one record shape per topic (`contracts/events/mw-orchestrator/mw.partner.{request,reply,inbound}.v1`): an envelope with a `family` field (`telco`, `billpay`, `bank`, `interop`, `compliance`) and a `payload`. On `mw.partner.reply.v1` and `mw.partner.inbound.v1`, where all adapters share one topic, `family` tells the orchestrator which adapter family sent the record.
 
@@ -596,7 +603,7 @@ Topic routing (**Decision 2026-11-04**, built in ticket 50): the hold commands `
 
 ### 6.4 Reliable publishing
 
-Services that change PostgreSQL state and publish an event use the **transactional outbox**: write the business row and an `outbox` row in one DB transaction; a Camel route (or Debezium, TBC) relays outbox rows to Kafka and marks them sent. Consumers record processed `eventId`s in an `inbox` table (or a unique constraint on the business row) so a redelivered event is a no-op.
+Services that change PostgreSQL state and publish an event use the **transactional outbox**: write the business row and an `outbox` row in one DB transaction; a `@Scheduled` relay job in `scheduler/` (D25; originally a Camel route; or Debezium, TBC) sends outbox rows with `KafkaTemplate` and marks them sent. Consumers record processed `eventId`s in an `inbox` table (or a unique constraint on the business row) so a redelivered event is a no-op.
 
 ## 7. Transaction orchestration
 
@@ -606,7 +613,7 @@ Services that change PostgreSQL state and publish an event use the **transaction
 
 - Orchestration (not choreography): one owner per transaction, which keeps reversal logic in one place and makes the state auditable.
 - Each saga step = send a command (Kafka) → persist `AWAITING_<x>` with a deadline → consume the correlated reply → transition. Deadlines are stored in `txn.saga_timer`, swept every second by a ShedLock-guarded job.
-- Camel implements steps as routes; the state machine itself is plain Java (sealed interfaces + records) in `mfs.mw.orchestrator.service.saga`, unit-tested without Camel. Camel's Saga EIP is not used, because its in-memory coordinator does not persist state.
+- Steps are Spring Kafka listeners and publishers (D25; originally Camel routes); the state machine itself is plain Java (sealed interfaces + records) in `mfs.mw.orchestrator.service.saga`, unit-tested without Kafka. Camel's Saga EIP is not used, because its in-memory coordinator does not persist state.
 - One flow definition per `txnType` (e.g. `TopupFlow`, `BillPayFlow`), selected by registry; new flows reuse steps `validate`, `hold`, `callPartner`, `commit`, `release`, `reverse`, `notify`.
 
 ### 7.2 State machine
@@ -725,7 +732,7 @@ One menu engine serves four MNOs; a transport SPI hides whether an MNO uses SMPP
 
 | Transport | Mechanism | Session ID | Notes |
 | --- | --- | --- | --- |
-| `SmppUssdTransport` | camel-smpp; `deliver_sm` in, `submit_sm` out; `ussd_service_op` TLV (0x0501) for PSSR/USSR/release; `its_session_info` (0x1383) for session | `its_session_info` + source address | Bind as transceiver; one bind group per MNO; window, throttle, enquire\_link as 9.2.1 |
+| `SmppUssdTransport` | jSMPP (camel-smpp superseded by the D1 amendment); `deliver_sm` in, `submit_sm` out; `ussd_service_op` TLV (0x0501) for PSSR/USSR/release; `its_session_info` (0x1383) for session | `its_session_info` + source address | Bind as transceiver; one bind group per MNO; window, throttle, enquire\_link as 9.2.1 |
 | `HttpUssdTransport` | MNO POSTs each step to `/ussd/{mno}`; response body = next screen + `continue/end` flag | MNO-provided session ID | Payload format mapped by a per-MNO template (XML or JSON, TBC per MNO) |
 
 Per-MNO configuration (`ussd.mno.<gp|robi|teletalk|bl>`): transport type, short code(s), bind/endpoint details, max screen length (default 182 chars GSM-7, 70 for UCS-2 Bangla), session timeout (MNO limit, typically 120–180 s, TBC), encoding, response flag mapping.
@@ -778,14 +785,14 @@ Any service asks for a message by publishing a `NotificationRequest` to `mw.noti
 
 | Channel | Implementation | Delivery tracking |
 | --- | --- | --- |
-| SMS | camel-smpp, SMPP 3.4 to SMSC; bind pool per priority; GSM-7 for English, UCS-2 for Bangla, long SMS via UDH concatenation; sender ID / short code per template | `deliver_sm` DLR matched on `message_id` → `DELIVERED`, `UNDELIVERABLE`, `EXPIRED` |
-| Email | camel-mail (SMTP, STARTTLS), HTML + text templates, DKIM signing at the mail server (TBC) | `SENT` / bounce mailbox polled (IMAP) for `BOUNCED` (optional) |
+| SMS | jSMPP (camel-smpp superseded by the D1 amendment), SMPP 3.4 to SMSC; bind pool per priority; GSM-7 for English, UCS-2 for Bangla, long SMS via UDH concatenation; sender ID / short code per template | `deliver_sm` DLR matched on `message_id` → `DELIVERED`, `UNDELIVERABLE`, `EXPIRED` |
+| Email | Spring Mail (camel-mail superseded by the D1 amendment) (SMTP, STARTTLS), HTML + text templates, DKIM signing at the mail server (TBC) | `SENT` / bounce mailbox polled (IMAP) for `BOUNCED` (optional) |
 | Push | HTTPS to the App Server (open point 7: in scope or app vendor's?). If in scope, `mw-notify` calls FCM HTTP v1 and APNs directly with credentials from Vault | Provider response; app ack endpoint `POST /app/v1/notifications/{id}/ack` for `READ` |
 
 ### 10.3 Templates and rules
 
 - Templates in PostgreSQL `notify.template`: `code`, `channel`, `locale`, `version`, `subject?`, `body` (Mustache-style, logic-less), `status`, `validFrom`. Edited in the admin console with live preview and maker-checker.
-- Rules map events to templates: `on mw.txn.status where status=COMPLETED and txnType=TOPUP → SMS TXN_TOPUP_SUCCESS to initiator; if receiver differs → SMS TXN_TOPUP_RECEIVED`. Rules are rows in `notify.rule`, evaluated by a Camel route with a simple expression language (SpEL subset, sandboxed).
+- Rules map events to templates: `on mw.txn.status where status=COMPLETED and txnType=TOPUP → SMS TXN_TOPUP_SUCCESS to initiator; if receiver differs → SMS TXN_TOPUP_RECEIVED`. Rules are rows in `notify.rule`, evaluated by a Spring Kafka listener (D25; originally a Camel route) with a simple expression language (SpEL subset, sandboxed).
 - Parameters are masked per field policy before rendering (e.g. account `****1234`).
 
 ### 10.4 Retry and fallback
@@ -796,7 +803,7 @@ Any service asks for a message by publishing a `NotificationRequest` to `mw.noti
 
 ## 11. External integration specifications
 
-Every partner gets the same skeleton: a Camel route template, a config record, a mapping, a simulator and a contract test; this section fixes the per-partner variables. Partner API documents and sandboxes are not yet available (open point 5), so message fields are defined at canonical level and mapped once specs arrive.
+Every partner gets the same skeleton: a partner route as config (D26; originally a Camel route template), a config record, a mapping, a simulator and a contract test; this section fixes the per-partner variables. Partner API documents and sandboxes are not yet available (open point 5), so message fields are defined at canonical level and mapped once specs arrive.
 
 ### 11.1 Integration matrix
 
@@ -841,7 +848,8 @@ Bits's own team must be able to add a partner of a known kind with configuration
 
 ### 12.1 Layers
 
-1. **Route templates (no code).** Camel route templates for the common shapes: `rest-json-request-reply`, `rest-json-async-callback`, `soap-request-reply`, `sftp-file-out`, `sftp-file-in`, `smpp-out`. A partner instance = template + parameters in `partner.endpoint` (URL, auth scheme, timeouts, headers) created through the admin console. Templates are instantiated at runtime by `TemplatedRouteBuilder` when `mw.config.changed` announces a new or changed partner.
+1. **Partner routes as config (no code).** **Decision 2026-11-18** (D26; supersedes the Java route templates `rest-json-request-reply`, `rest-json-async-callback`, `soap-request-reply`, `sftp-file-out`, `sftp-file-in`, `smpp-out` and `TemplatedRouteBuilder`): each partner is one Camel YAML DSL route, `from: direct:partner-<id>`, with the `PartnerCall` JSON as input and `{outcome, partnerRef, code, message, reason}` as output. Routes are composed from a Kamelet library shipped as code and reviewed: `mw-auth-*`, `mw-http-call`, `mw-soap-call`, `mw-sftp-*`, `mw-classify`, `mw-audit`; raw `http`, `cxf` and `sftp` endpoints appear only inside these Kamelets. The route loader owns one shared `routeConfiguration` (partner routes may not declare `onException` or `errorHandler`), checks a component allowlist on the parsed route model, and loads a route only after maker-checker approval and a dry-run against mw-simulators, rolling back to the last good version on failure; the approved record carries the hosts the route may call. Secrets come from OpenBao through Camel's HashiCorp Vault properties function (`camel-hashicorp-vault`, `{{hashicorp:secret:…}}`), loaded at startup. The biller catalogue `mw.billers` and the secrets are static on purpose: a new entry or secret is config plus an adapter restart. A breaking Kamelet change ships under a new name (`mw-<name>-v2`); the old one stays until no LIVE route uses it. New code is needed only for a new protocol or auth scheme (a new Kamelet). A non-idempotent call (PAY) is never redelivered automatically; redelivery applies to INQUIRY and STATUS only, and a PAY with an unknown outcome is resolved by the saga through STATUS (7.4).
+   Partner ids: each adapter has an explicit `partner-aliases` map (telco: the MNO ids `gp`, `banglalink`, ... → `ocs`; billpay → `billagg`; bank → `c2wbank`) in place of the former silent `default-partner` fallback; an id that is neither a partner nor an alias is rejected with `MW-PTR-UNKNOWN`.
 2. **Mappings (low code).** Request/response mapping as versioned JSONata expressions (for JSON) or XSLT 3 (for XML, Saxon-HE), stored in `partner.mapping` and editable in the admin console with a test bench (paste sample → see output). Error-code map is a table.
 3. **Adapter SPI (code, for new kinds).** Java interfaces implemented in a new module when a template cannot fit (e.g. a custom signature scheme or binary protocol):
 
@@ -855,7 +863,15 @@ public interface PartnerAdapter {
 public interface AuthScheme { void apply(OutboundCall call, CredentialRef ref); boolean verify(InboundCall call, CredentialRef ref); }
 ```
 
-Pluggable `AuthScheme`s shipped: `api-key`, `basic`, `oauth2-client-credentials`, `hmac-sha256`, `mtls`, `ws-security-username`, `ws-security-x509`, `jws-detached`, `http-signature`, `pgp-file`.
+Pluggable `AuthScheme`s shipped: `api-key`, `basic`, `oauth2-client-credentials`, `hmac-sha256`, `mtls`, `ws-security-username`, `ws-security-x509`, `jws-detached`, `http-signature`, `pgp-file` (from 2026-11-18 as `mw-auth-*` Kamelets, D26).
+
+**Onboarding a partner of a known kind (D26).**
+
+1. Author the route in YAML from the `mw-*` Kamelets; run it locally with Camel JBang (`camel run`, Kaoto optional) against mw-simulators.
+2. Add the request/response mapping and the error-code map (layer 2).
+3. Add a catalogue entry (`mw.billers`) or an OpenBao secret if needed, then restart the adapter.
+4. Submit the route YAML in the admin console (maker); the loader checks the allowlist and runs the dry-run against mw-simulators.
+5. A checker approves it with its host allowlist; the route goes LIVE. A route that fails to load rolls back to the last good version.
 
 ### 12.2 Rules
 
@@ -866,7 +882,9 @@ Pluggable `AuthScheme`s shipped: `api-key`, `basic`, `oauth2-client-credentials`
 
 ## 13. Reconciliation and settlement (`mw-recon`)
 
-`mw-recon` matches three sources — middleware transaction log, core ledger events and partner/bank statements — and raises every mismatch as an exception with an owner (FR-14, FR-15). It reports; it never posts money. Corrections go through the normal reversal or manual-credit flows with maker-checker.
+`mw-recon` matches three sources — middleware transaction log, core ledger events and partner/bank statements — and raises every mismatch as an exception with an owner (FR-14, FR-15). It reports; it never posts money and never moves a transaction state. Corrections go through the normal reversal or manual-credit flows with maker-checker.
+
+**Decision 2026-11-18** (D26): mw-recon does matching only. The partner adapters own the ingest of partner and bank files (SFTP through the `mw-sftp-*` Kamelets, checksumming, raw storage, parsing) and publish the parsed lines as `mw.partner.recon.v1` (key `partnerId`) through their outbox. mw-recon has its own schema `recon`, consumes `mw.partner.recon.v1`, keeps its own projection of `mw.txn.status` (it never reads another service's schema) and takes the core ledger from the events the core publishes on Kafka. Until mw-recon is built (ticket 88), `contracts/EXTERNAL.yml` lists it as the consumer of `mw.partner.recon.v1`. Where 13.1 says mw-recon pulls or parses a file, read "the owning adapter does, and publishes `mw.partner.recon.v1`".
 
 ### 13.1 Ingestion
 
@@ -878,7 +896,7 @@ Pluggable `AuthScheme`s shipped: `api-key`, `basic`, `oauth2-client-credentials`
 | Middleware txn log | PostgreSQL `txn.transaction` | n/a | Continuous |
 | Core ledger | `core.*.event` (copied to `recon.core_entry`) or a core extract (TBC) | n/a | Continuous |
 
-Files are checksummed, stored raw (immutable) for audit, and processed once (file hash unique key). PGP decrypt where partners encrypt.
+Files are checksummed, stored raw (immutable) for audit, and processed once (file hash unique key). PGP decrypt where partners encrypt. All of this happens in the adapter that owns the partner (D26); mw-recon receives the parsed lines on `mw.partner.recon.v1`, and the middleware txn log through its own projection of `mw.txn.status` rather than `txn.transaction`.
 
 ### 13.2 Matching
 
@@ -1198,7 +1216,7 @@ Every service and every platform tool ships as a signed OCI image and runs under
 ### 20.1 Images
 
 - Each module builds its own image from its own multi-stage `Dockerfile` on an `eclipse-temurin:25-jre` distroless-style base (or its own `./gradlew bootBuildImage`, Paketo, Apache 2.0), and is versioned and released on its own; JVM flags: `-XX:+UseZGC -XX:MaxRAMPercentage=75`, virtual threads on (`spring.threads.virtual.enabled=true`).
-- CDS/AOT cache enabled to cut start-up; GraalVM native image NOT used initially (Camel component coverage).
+- CDS/AOT cache enabled to cut start-up; GraalVM native image NOT used initially (Camel component coverage in the adapters).
 - Tag = semantic version + Git SHA; Compose references images by digest. Images pushed to Bits's existing container registry (TBC; for the MVP a plain CNCF Distribution registry:2 is enough); CycloneDX SBOM stored with each release.
 - Health endpoints: `/actuator/health/liveness`, `/actuator/health/readiness` (readiness includes Kafka, DB, Vault), used by Compose `healthcheck`, `depends_on: condition: service_healthy` and APISIX upstream health checks.
 
@@ -1248,7 +1266,7 @@ Tooling is outside this spec (D10); this section fixes what every service MUST e
 ### 21.2 Metrics
 
 - Micrometer, exposed at `/actuator/prometheus` (Prometheus text format is the lingua franca; scraping tool is Bits's choice) and OTLP-capable if needed.
-- Required metric families (labels: `channel`, `txn_type`, `partner`, `biller`, `status`): `mw_txn_total`, `mw_txn_duration_seconds` (histogram), `mw_partner_call_total`, `mw_partner_call_duration_seconds`, `mw_partner_circuit_state`, `mw_txn_unknown_open`, `mw_manual_review_open`, `mw_idempotency_hits_total`, `mw_notify_sent_total` / `_delivered_total`, `mw_smpp_bind_up`, `mw_ussd_sessions_active`, `mw_recon_unmatched_amount`, plus JVM, Camel route, Kafka client and HikariCP defaults.
+- Required metric families (labels: `channel`, `txn_type`, `partner`, `biller`, `status`): `mw_txn_total`, `mw_txn_duration_seconds` (histogram), `mw_partner_call_total`, `mw_partner_call_duration_seconds`, `mw_partner_circuit_state`, `mw_txn_unknown_open`, `mw_manual_review_open`, `mw_idempotency_hits_total`, `mw_notify_sent_total` / `_delivered_total`, `mw_smpp_bind_up`, `mw_ussd_sessions_active`, `mw_recon_unmatched_amount`, plus JVM, Kafka client and HikariCP defaults, and Camel route metrics in the adapters.
 
 ### 21.3 Tracing and correlation
 
@@ -1267,7 +1285,9 @@ No integration is "done" until it passes against its simulator in the pipeline a
 | Layer | Tooling | Scope | Gate |
 | --- | --- | --- | --- |
 | Unit | JUnit 6, AssertJ, Mockito | Domain, state machine, mappers, masking | ≥ 80% line coverage (JaCoCo) on `service`, `mapper` and `client` packages; mutation testing (PIT) on the state machine |
-| Camel route | `camel-test-spring-junit6`, AdviceWith, mock endpoints | Every route: happy path, error handler, DLQ, timeouts | Each route has ≥ 1 test per outcome |
+| Camel route (adapters only, D1 amendment) | `camel-test-spring-junit6`, `AdviceWith`, `MockEndpoint`, `NotifyBuilder` | Every partner route and `mw-*` Kamelet: happy path, shared error handling, timeouts | Each route and Kamelet has ≥ 1 test per outcome |
+| Partner route loader (adapters, D26) | JUnit 6 + Testcontainers, mw-simulators | Component allowlist on the parsed route model (a raw `http`/`cxf`/`sftp` endpoint, `onException` or `errorHandler` in a partner route is rejected), host allowlist, dry-run against the simulator, rollback to the last good version | Each guardrail has a rejecting test |
+| Kafka listener (D25) | Spring Kafka + Testcontainers Kafka (`*IT`) | Every `@KafkaListener`: happy path, retry topics, DLQ, inbox dedup, manual ack after commit; the `@Scheduled` outbox relay | Each listener has ≥ 1 test per outcome |
 | Integration | Testcontainers (Kafka, PostgreSQL 18, Valkey, Vault/OpenBao, Keycloak) | Service with real infra; each module owns its fixtures (no shared test kit) | Required on every merge |
 | Contract | Pact (HTTP, message pacts for Kafka) between channels ↔ orchestrator ↔ adapters; core contract tested against a core stub until the core team provides a provider build | API and event compatibility | Broken pact blocks merge |
 | Schema | JSON Schema validation tests, Spectral/oasdiff, `make contracts-lint` | Event JSON Schemas, OpenAPI in `contracts/`; each consumer's types against them | Block on incompatible change |
@@ -1304,7 +1324,7 @@ Go-live readiness is the gate that matters most: it needs SIT/UAT sign-off, 3x p
 | --- | --- | --- | --- |
 | E01 Repo and build | 2 | Monorepo, Gradle composite build, per-module standalone Gradle build, SBOM and image, registry push, isolation check | Git org from Bits |
 | E02 Platform via Compose | 2 | Kafka, PostgreSQL 18, Valkey, Keycloak, Vault/OpenBao, APISIX in Compose, single instance each, Dev/SIT | Hosts |
-| E03 Service template and contracts | 2 | `mw-service-template` (masking, errors, correlation, audit emitter, Kafka/Camel defaults, outbox/inbox, conformance suite), root `contracts/` with owners and lint, adapter framework v0 inside `mw-adapter-telco` | E01 |
+| E03 Service template and contracts | 2 | `mw-service-template` (masking, errors, correlation, audit emitter, Kafka defaults (Spring Kafka, D25; originally Kafka/Camel), outbox/inbox, conformance suite), root `contracts/` with owners and lint, adapter framework v0 inside `mw-adapter-telco` | E01 |
 | E04 Orchestrator core | 2 | State machine, timers, idempotency, outbox/inbox, core command/event contract, core stub | E03, core contract draft |
 | E05 Walking skeleton | 2 | App gateway `POST /transactions` P2P → orchestrator → core stub → status reply → SMS via SMSC simulator; audit row; metrics | E02–E04 |
 | E06 Admin API + console shell | 2–3 | Keycloak login, RBAC, maker-checker engine, transaction search | E04 |
