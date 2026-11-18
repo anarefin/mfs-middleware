@@ -146,6 +146,28 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   config kept) and the admin's tables then differ from what runs; records go to every adapter (configKey
   has no family), and an adapter without an allowlist entry for the id refuses them; nothing republishes
   the snapshot after a Kafka volume loss (approve a change to republish).
+- Partner routes (ADR D26, ticket 83; same engine): action `UPSERT_ROUTE` with `config` of the route
+  shape (`route` Camel YAML DSL, `mappings`, `allowedHosts`, `dryRun {operation, sample, baseUrl?}`,
+  timeouts, `errorMap`, `ambiguousCodes`, `sensitiveFields`; no baseUrl / operations / template; `family`
+  for a new partner). Field problems `400 MW-VAL-001`; the route itself is checked by
+  `service/PartnerRouteValidator`, a copy of mw-adapter-billpay's `PartnerRouteLoader` rules kept identical
+  under D14 (no Camel here: the loader's walk over Camel's model runs over the SnakeYAML node tree with the
+  same allowlist; Camel's YAML DSL JSON Schema `schema/camelYamlDsl.json`, copied from camel-yaml-dsl
+  4.22.2, runs first; strict Kamelet parameter keys, the `mw-http-call` host in `allowedHosts`, the
+  ending rule, named mappings present; Kamelet library `mw.partner-routes.kamelets`): `400 MW-VAL-041`,
+  one detail per problem `{field: config.route, issue: "line N: construct: problem"}`, before any change
+  request exists. `dryRun.baseUrl` must be a plain http(s) URL in `allowedHosts` (the adapters' rule).
+  Approval: as UPSERT, plus `family` in the published value (every approval: each adapter applies its own
+  family only) and a `partner.partner_route` row (V7: route_yaml, mappings, allowed_hosts, family, dry_run,
+  route_status PENDING_DRY_RUN | LIVE | REJECTED, problems, kamelets) for the new version; any later
+  ENABLE / DISABLE / SET_TIMEOUTS of a route partner republishes its route as a new version.
+  `messaging/PartnerRouteStatusListener` (group mw-admin-api, retry topics + DLQ;
+  `mw.partner-routes.status-consumer.enabled`, off in tests) consumes `mw.partner.route.status.v1`
+  (mw-adapter-billpay's contract, own type `dto/PartnerRouteStatusMessage`) into
+  `service/PartnerRouteStatusService` (update by key, latest report wins, a version not approved here is
+  skipped). Views: `Partner.route {version, status, problems, kamelets, statusAt, liveVersion}`; `GET
+  /admin/v1/partners/kamelet-usage` (newest LIVE version per partner, per Kamelet). Tests:
+  `PartnerRouteValidatorTest`, `PartnerRouteApiIT`, `contracts/ConsumedContractsTest`.
 - USSD menus and notify templates (ticket 39, spec 9.2, 10.3, 15.2; `controller/ContentController` ->
   `service/ContentChangeService` -> `repository/ContentVersionRepository`, table
   `admin.content_version` V6, `entity/ContentVersion`, `mapper/ContentChangeMapper`; roles
@@ -227,7 +249,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `PartnerConfigApiIT` and `ContentChangeApiIT` validate the outbox rows), serves
   `admin.v1`; consumes `api/mw-orchestrator/txn-query.v1` (own type `dto/AdminTxn`) and
   `api/mw-audit-dw/audit-query.v1` (own type `dto/AuditTrail`), unknown fields ignored
-  (`contracts/ApiContractsTest` reads contract-shaped answers). No consumed events.
+  (`contracts/ApiContractsTest` reads contract-shaped answers). Consumes
+  `events/mw-adapter-billpay/mw.partner.route.status.v1` (ticket 83, `contracts/ConsumedContractsTest`).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 

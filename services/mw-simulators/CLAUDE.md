@@ -110,6 +110,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   `POST /sim/merchant/ipn/scenario {failNext, failStatus? (default 500), ipnId? (only that IPN)}`,
   `GET /sim/merchant/ipn/received[?ipnId=]`, `DELETE /sim/merchant/ipn/received` (resets all). Not in
   `sim.partners`.
+- Generic programmable partner stub (ticket 83, `controller/PartnerStubController`,
+  `service/PartnerStubStore`, `dto/PartnerStub`): for partner route dry-runs (the adapters'
+  `mw.partners.dry-run.base-url` in dev, `http://mw-simulators:8080/sim/partners/{partnerId}`) and manual
+  tests. Control: `POST /sim/stubs/{partnerId} {operation?, method, path ("*" = one segment), status,
+  body, headers?, delayMs?}` (same method + path replaces), `GET` the stubs, `DELETE` stubs and requests,
+  `GET /sim/stubs/{partnerId}/requests` (last 200; Authorization / Cookie dropped). Traffic: any method on
+  `/sim/partners/{partnerId}/**` gets the matching stub's answer, else 404 `{error: NO_STUB, method, path}`.
+  Any partner id works (not in `sim.partners`); in memory.
 - Adding a simulator: add its name to `sim.partners`, a controller under `/<partner>/...`, reuse
   the store, recorder, `SimMode`/`MagicAmounts` and callback service.
 - Dev provisioning (`provision_mw_simulators` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
