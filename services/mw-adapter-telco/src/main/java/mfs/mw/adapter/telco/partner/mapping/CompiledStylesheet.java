@@ -4,6 +4,7 @@ import java.io.StringReader;
 import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.transform.sax.SAXSource;
@@ -79,6 +80,59 @@ public final class CompiledStylesheet {
     if (!problems.isEmpty()) {
       throw new IllegalArgumentException(String.join("; ", problems));
     }
+    return compileTree(source);
+  }
+
+  /**
+   * Compiles {@code source} and checks the compiled expression tree (Saxon's {@code explain}
+   * export): no call or reference to a {@link StylesheetPolicy#FORBIDDEN_FUNCTIONS} function and no
+   * {@code xsl:result-document}, {@code xsl:source-document} or {@code xsl:evaluate}, however the
+   * text built it (shadow attributes, static variables). The text check of {@link #compile} runs
+   * first; this one does not depend on it.
+   */
+  static CompiledStylesheet compileTree(String source) {
+    CompiledStylesheet compiled = compileUnchecked(source);
+    List<String> problems = compiled.treeProblems();
+    if (!problems.isEmpty()) {
+      throw new IllegalArgumentException(String.join("; ", problems));
+    }
+    return compiled;
+  }
+
+  /** The compiled tree's elements that name a function, and the instructions that reach outside. */
+  static final Set<String> FORBIDDEN_INSTRUCTIONS = Set.of("resultDoc", "sourceDoc", "evaluate");
+
+  private List<String> treeProblems() {
+    Document tree;
+    try {
+      StringWriter out = new StringWriter();
+      executable.explain(SAXON.newSerializer(out));
+      tree = StylesheetPolicy.parse(out.toString());
+    } catch (SaxonApiException | IllegalArgumentException e) {
+      return List.of("the compiled stylesheet cannot be checked: " + firstLine(e.getMessage()));
+    }
+    Set<String> problems = new java.util.LinkedHashSet<>();
+    var all = tree.getElementsByTagName("*");
+    for (int i = 0; i < all.getLength(); i++) {
+      Element e = (Element) all.item(i);
+      String kind = e.getLocalName() == null ? e.getTagName() : e.getLocalName();
+      if (FORBIDDEN_INSTRUCTIONS.contains(kind)) {
+        problems.add("the compiled stylesheet holds " + kind + ", which reaches outside the stylesheet");
+      }
+      boolean call = kind.startsWith("fn") || kind.endsWith("Call") || kind.endsWith("Ref");
+      if (call && e.hasAttribute("name")) {
+        String name = e.getAttribute("name");
+        name = name.substring(Math.max(name.lastIndexOf('}'), name.lastIndexOf(':')) + 1);
+        if (StylesheetPolicy.FORBIDDEN_FUNCTIONS.contains(name)) {
+          problems.add(name + "() is not allowed in a partner stylesheet (found in the compiled stylesheet)");
+        }
+      }
+    }
+    return List.copyOf(problems);
+  }
+
+  /** Compiles {@code source} with every resolver denied, without the policy checks (tests only). */
+  static CompiledStylesheet compileUnchecked(String source) {
     XsltCompiler compiler = SAXON.newXsltCompiler();
     compiler.setResourceResolver(CompiledStylesheet::deny);
     List<XmlProcessingError> errors = new ArrayList<>();
@@ -206,6 +260,15 @@ public final class CompiledStylesheet {
 
   /** {@code xml} as a source whose parser refuses DOCTYPE and external entities. */
   static SAXSource secureSource(String xml) {
+    return new SAXSource(secureReader(), new InputSource(new StringReader(xml)));
+  }
+
+  /**
+   * An XML reader that refuses a DOCTYPE and never loads an external entity or DTD. Saxon gets it
+   * for every document it parses at run time too (its parse options), so a run-time parse refuses
+   * a DTD whatever the stylesheet says.
+   */
+  static XMLReader secureReader() {
     try {
       javax.xml.parsers.SAXParserFactory f = javax.xml.parsers.SAXParserFactory.newInstance();
       f.setNamespaceAware(true);
@@ -220,7 +283,7 @@ public final class CompiledStylesheet {
         throw new SAXException("external entities are not allowed");
       });
       reader.setErrorHandler(StylesheetPolicy.SILENT);
-      return new SAXSource(reader, new InputSource(new StringReader(xml)));
+      return reader;
     } catch (ParserConfigurationException | SAXException e) {
       throw new IllegalStateException("no secure XML parser", e);
     }
@@ -239,6 +302,25 @@ public final class CompiledStylesheet {
     });
     c.setCollectionFinder((context, uri) -> {
       throw new XPathException("collections are not allowed");
+    });
+    // every document Saxon parses itself (parse-xml and the like, should one get through) uses the
+    // secure reader and resolves no entity
+    c.setParseOptions(c.getParseOptions()
+        .withXMLReaderMaker(CompiledStylesheet::secureReader)
+        .withEntityResolver((publicId, systemId) -> {
+          throw new SAXException("external entities are not allowed");
+        }));
+    // no environment variable is visible to a stylesheet, however environment-variable() is reached
+    p.setConfigurationProperty(Feature.ENVIRONMENT_VARIABLE_RESOLVER, new net.sf.saxon.lib.EnvironmentVariableResolver() {
+      @Override
+      public Set<String> getAvailableEnvironmentVariables() {
+        return Set.of();
+      }
+
+      @Override
+      public String getEnvironmentVariable(String name) {
+        return null;
+      }
     });
     p.setConfigurationProperty(Feature.ALLOW_EXTERNAL_FUNCTIONS, false);
     p.setConfigurationProperty(Feature.XINCLUDE, false);

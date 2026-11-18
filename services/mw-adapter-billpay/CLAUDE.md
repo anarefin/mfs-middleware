@@ -171,9 +171,13 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   priority make Saxon take the last one. A stylesheet may not reach outside itself (`StylesheetPolicy`, the
   same in mw-admin-api: no DOCTYPE/entity, `document()`/`doc()`/`unparsed-text()`/`collection()`/
   `json-doc()`/`transform()`/`function-lookup()`, `xsl:import`/`include`/`result-document`/
-  `source-document`/`evaluate`, extension namespaces; a security refusal), and Saxon runs with every resource,
-  unparsed-text and collection resolver denied, external functions off, `xsl:message` dropped; the partner's
-  XML is parsed with DOCTYPE refused. The send is camel-cxf PAYLOAD dispatch (no WSDL: verified that the body
+  `source-document`/`evaluate`, `parse-xml`/`parse-xml-fragment`/`json-to-xml`, extension namespaces,
+  shadow attributes (`_select`), static params/variables, a DOCTYPE or entity even inside a value; a security
+  refusal), then the compiled tree is checked as well (Saxon's `explain` export: no `fn`/`fnRef`/`*Call` of
+  those functions, no `resultDoc`/`sourceDoc`/`evaluate`), whatever the text built. Saxon runs with every
+  resource, unparsed-text and collection resolver denied, its own parse options on a DOCTYPE-refusing reader
+  with no entity resolution, an environment-variable resolver that shows nothing, external functions off,
+  `xsl:message` dropped; the partner's XML is parsed with DOCTYPE refused (security review of ticket 85). The send is camel-cxf PAYLOAD dispatch (no WSDL: verified that the body
   element goes out as it is; an empty `wsdlURL=` breaks the dispatch, so `wsdlUrl` / `serviceName` /
   `portName` are not offered: a remote WSDL would also be fetched outside the host guard), SOAP 1.2 by
   `bindingId`, the action through camel-cxf's `SOAPAction` header, CXF connect / receive timeouts from the

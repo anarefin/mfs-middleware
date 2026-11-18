@@ -30,9 +30,13 @@ import org.xml.sax.SAXException;
  * java:}), and the functions that read a resource or call code by name ({@code doc}, {@code
  * document}, {@code unparsed-text*}, {@code collection}, {@code uri-collection}, {@code json-doc},
  * {@code transform}, {@code load-xquery-module}, {@code function-lookup}, {@code
- * environment-variable}, ...), wherever they appear (attributes, text value templates). Plain JDK
- * XML only: the copy of mw-adapter-billpay's {@code partner/mapping/StylesheetPolicy} (D14), so the maker sees the
- * adapters' refusals before approval; the adapters also compile the stylesheet with every resolver denied.
+ * environment-variable}, {@code parse-xml}, {@code parse-xml-fragment}, {@code json-to-xml}, ...),
+ * wherever they appear (attributes, text value templates), a DOCTYPE or entity declaration even in
+ * a decoded value, and what builds an expression at compile time out of sight of this check:
+ * shadow attributes ({@code _select}) and static parameters and variables. Plain JDK XML only:
+ * the copy of mw-adapter-billpay's {@code partner/mapping/StylesheetPolicy} (D14), so the maker sees
+ * the adapters' refusals before approval; the adapters also compile the stylesheet with every
+ * resolver denied and check the compiled tree.
  */
 public final class StylesheetPolicy {
 
@@ -45,10 +49,18 @@ public final class StylesheetPolicy {
       "import", "include", "use-package", "package", "result-document", "source-document", "merge-source",
       "evaluate", "original");
 
+  /**
+   * The functions a partner stylesheet may not call: those that read a resource, parse a string
+   * as XML at run time (a DTD or external entity there would be fetched), or call code by name.
+   */
+  public static final Set<String> FORBIDDEN_FUNCTIONS = Set.of(
+      "doc", "document", "doc-available", "unparsed-text", "unparsed-text-lines", "unparsed-text-available",
+      "collection", "uri-collection", "json-doc", "parse-xml", "parse-xml-fragment", "json-to-xml", "transform",
+      "load-xquery-module", "function-lookup", "environment-variable", "available-environment-variables");
+
   static final Pattern FORBIDDEN_FUNCTION = Pattern.compile(
-      "(?<![\\w.\\-])(doc|document|doc-available|unparsed-text|unparsed-text-lines|unparsed-text-available"
-          + "|collection|uri-collection|json-doc|transform|load-xquery-module|function-lookup"
-          + "|environment-variable|available-environment-variables)\\s*[(#]");
+      "(?<![\\w.\\-])(" + String.join("|", FORBIDDEN_FUNCTIONS.stream().sorted((a, b) -> b.length() - a.length()).toList())
+          + ")\\s*[(#]");
 
   private static final Pattern DECLARATION = Pattern.compile("(?i)<!\\s*(DOCTYPE|ENTITY)");
 
@@ -124,10 +136,20 @@ public final class StylesheetPolicy {
         if (name.equals("extension-element-prefixes")) {
           problems.add("extension elements are not allowed in a partner stylesheet");
         }
+        if (name.startsWith("_")) {
+          // a shadow attribute: its value builds the attribute at compile time, out of sight of this check
+          problems.add("shadow attributes (" + name + ") are not allowed in a partner stylesheet");
+        }
+        if (XSLT_NS.equals(ns) && name.equals("static") && !"no".equals(a.getValue().trim())
+            && !"false".equals(a.getValue().trim()) && !"0".equals(a.getValue().trim())) {
+          problems.add("static parameters and variables are not allowed in a partner stylesheet");
+        }
         functions(a.getValue(), problems);
+        declarations(a.getValue(), problems);
       }
     } else if (node.getNodeType() == Node.TEXT_NODE || node.getNodeType() == Node.CDATA_SECTION_NODE) {
       functions(node.getNodeValue(), problems);
+      declarations(node.getNodeValue(), problems);
     } else if (node.getNodeType() == Node.PROCESSING_INSTRUCTION_NODE) {
       problems.add("processing instructions are not allowed in a partner stylesheet");
     }
@@ -144,6 +166,13 @@ public final class StylesheetPolicy {
     if (lower.startsWith("java:") || lower.startsWith("http://saxon.sf.net") || lower.startsWith("http://exslt.org")
         || lower.startsWith("http://xml.apache.org/x")) {
       problems.add("extension namespaces (" + ns + ") are not allowed in a partner stylesheet");
+    }
+  }
+
+  /** A DOCTYPE or entity declaration in a decoded value (it would reach a run-time parser). */
+  private static void declarations(String text, Set<String> problems) {
+    if (text != null && DECLARATION.matcher(text).find()) {
+      problems.add("a stylesheet may not hold a DOCTYPE or entity declaration, not even in a value");
     }
   }
 

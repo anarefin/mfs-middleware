@@ -84,6 +84,23 @@ class SoapRouteValidatorTest {
         .anySatisfy(p -> assertThat(p.toString()).contains("DOCTYPE"));
   }
 
+  /** Security review: run-time parsing, shadow attributes, static variables, hidden declarations. */
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "<xsl:template match='/'><xsl:copy-of select=\"parse-xml('&lt;!DOCTYPE a [&lt;!ENTITY e SYSTEM &quot;http://evil.example/&quot;&gt;]&gt;&lt;a&gt;&amp;e;&lt;/a&gt;')\"/></xsl:template>",
+      "<xsl:template match='/'><xsl:copy-of select=\"parse-xml-fragment('&lt;a/&gt;')\"/></xsl:template>",
+      "<xsl:template match='/'><xsl:value-of _select=\"{concat('environment-', 'variable')}('HOME')\"/></xsl:template>",
+      "<xsl:variable name='f' static='yes' select=\"'environment-' || 'variable'\"/><xsl:template match='/'><a/></xsl:template>",
+      "<xsl:template match='/'><xsl:value-of select=\"'&lt;!ENTITY e SYSTEM &quot;file:///etc/passwd&quot;&gt;'\"/></xsl:template>",
+  })
+  void aStylesheetThatParsesOrBuildsCodeAtCompileTimeIsRefused(String body) {
+    String evil = "<xsl:stylesheet version=\"3.0\" xmlns:xsl=\"http://www.w3.org/1999/XSL/Transform\">" + body
+        + "</xsl:stylesheet>";
+
+    assertThat(check(CALL, Map.of("PAY.response.xsl", evil))).as(body)
+        .anySatisfy(p -> assertThat(p.toString()).contains("PAY.response.xsl"));
+  }
+
   @Test
   void aSoapAddressOutsideTheAllowedHostsIsRefused() {
     assertThat(check(CALL.replace("soap.acme.example", "evil.example"), Map.of()))

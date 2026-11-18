@@ -77,13 +77,75 @@ class CompiledStylesheetTest {
       "<xsl:import href='classpath:other.xsl'/>",
       "<xsl:template match='/'><xsl:result-document href='file:///tmp/x'><a/></xsl:result-document></xsl:template>",
       "<xsl:template match='/'><xsl:source-document href='http://evil.example/x'><a/></xsl:source-document></xsl:template>",
-      "<xsl:template match='/'><xsl:evaluate xpath=\"'1'\"/></xsl:template>"
+      "<xsl:template match='/'><xsl:evaluate xpath=\"'1'\"/></xsl:template>",
+      // security review: run-time parsing functions
+      "<xsl:template match='/'><xsl:copy-of select=\"parse-xml('&lt;a/&gt;')\"/></xsl:template>",
+      "<xsl:template match='/'><xsl:copy-of select=\"parse-xml-fragment('&lt;a/&gt;')\"/></xsl:template>",
+      "<xsl:template match='/'><xsl:copy-of select=\"json-to-xml('{}')\"/></xsl:template>",
+      "<xsl:template match='/'><xsl:copy-of select=\"uri-collection('file:///etc')\"/></xsl:template>",
+      // security review: a shadow attribute builds an expression the source text never shows
+      "<xsl:template match='/'><xsl:value-of _select=\"{concat('environment-', 'variable')}('HOME')\"/></xsl:template>",
+      // security review: a static variable feeds a shadow attribute
+      "<xsl:variable name='f' static='yes' select=\"'environment-' || 'variable'\"/>"
+          + "<xsl:template match='/'><xsl:value-of select='1'/></xsl:template>",
+      "<xsl:param name='p' static='yes' select=\"'x'\"/><xsl:template match='/'><a/></xsl:template>",
+      // security review: a declaration hidden in an attribute value
+      "<xsl:template match='/'><xsl:value-of select=\"'&lt;!DOCTYPE x [&lt;!ENTITY e SYSTEM &quot;file:///etc/passwd&quot;&gt;]&gt;'\"/></xsl:template>"
   })
   void aStylesheetThatReachesOutsideItselfIsRefused(String body) {
     String xsl = XSL_HEAD + body + "</xsl:stylesheet>";
 
     assertThat(StylesheetPolicy.problems(xsl)).isNotEmpty();
     assertThatThrownBy(() -> CompiledStylesheet.compile(xsl)).isInstanceOf(IllegalArgumentException.class);
+  }
+
+  /**
+   * Security review: the compiled stylesheet is checked too, whatever its text looks like. A
+   * shadow attribute fed by a static variable builds environment-variable() at compile time; the
+   * check on the compiled expression tree finds the call the text never shows.
+   */
+  @Test
+  void aForbiddenCallBuiltAtCompileTimeIsFoundInTheCompiledTree() {
+    String xsl = XSL_HEAD + "<xsl:variable name='f' static='yes' select=\"'environment-' || 'variable'\"/>"
+        + "<xsl:template match='/'><a><xsl:value-of _select=\"{$f}('PATH')\"/></a></xsl:template></xsl:stylesheet>";
+
+    assertThatThrownBy(() -> CompiledStylesheet.compileTree(xsl))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("environment-variable()");
+    assertThatThrownBy(() -> CompiledStylesheet.compileTree(XSL_HEAD
+        + "<xsl:template match='/'><xsl:copy-of select=\"let $p := parse-xml#1 return $p('&lt;a/&gt;')\"/></xsl:template>"
+        + "</xsl:stylesheet>"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("parse-xml()");
+  }
+
+  /** Security review: no environment variable is visible to a stylesheet, however it is called. */
+  @Test
+  void environmentVariablesAreInvisibleAtRunTime() {
+    CompiledStylesheet unchecked = CompiledStylesheet.compileUnchecked(XSL_HEAD
+        + "<xsl:output method='json'/><xsl:template match='/'>"
+        + "<xsl:sequence select=\"map{'v': string(environment-variable('PATH')), 'n': count(available-environment-variables())}\"/>"
+        + "</xsl:template></xsl:stylesheet>");
+
+    assertThat(unchecked.responseJson("<a/>")).isEqualTo("{\"v\":\"\",\"n\":0}");
+  }
+
+  /** Security review: run-time parsing refuses a DTD whatever the stylesheet says (parse-xml). */
+  @Test
+  void parseXmlWithADoctypeIsRefusedAtRunTime() {
+    WireMockServer probe = new WireMockServer(WireMockConfiguration.options().dynamicPort());
+    probe.start();
+    try {
+      String doc = "&lt;!DOCTYPE a [&lt;!ENTITY e SYSTEM &quot;http://localhost:" + probe.port() + "/x&quot;&gt;]&gt;&lt;a&gt;&amp;e;&lt;/a&gt;";
+      CompiledStylesheet unchecked = CompiledStylesheet.compileUnchecked(XSL_HEAD
+          + "<xsl:output method='json'/><xsl:template match='/'>"
+          + "<xsl:sequence select=\"map{'v': string(parse-xml('" + doc + "'))}\"/></xsl:template></xsl:stylesheet>");
+
+      assertThatThrownBy(() -> unchecked.responseJson("<a/>")).isInstanceOf(IllegalArgumentException.class);
+      assertThat(probe.getAllServeEvents()).isEmpty();
+    } finally {
+      probe.stop();
+    }
   }
 
   @Test
