@@ -35,8 +35,7 @@ import mfs.mw.auth.messaging.CoreWalletEventListener;
 import mfs.mw.auth.messaging.EventPublisher;
 import mfs.mw.auth.security.DeviceBindingIT.Device;
 import mfs.mw.auth.security.DeviceBindingIT.Signed;
-import org.apache.camel.CamelContext;
-import org.apache.camel.support.DefaultExchange;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -72,7 +71,6 @@ class PinLifecycleIT {
   private final JdbcTemplate jdbc;
   private final StringRedisTemplate valkey;
   private final CoreWalletEventListener coreEvents;
-  private final CamelContext camel;
   private final JsonMapper json;
 
   @MockitoBean EventPublisher publisher;
@@ -83,12 +81,11 @@ class PinLifecycleIT {
 
   @Autowired
   PinLifecycleIT(MockMvcTester mvc, JdbcTemplate jdbc, StringRedisTemplate valkey, CoreWalletEventListener coreEvents,
-      CamelContext camel, JsonMapper json) {
+      JsonMapper json) {
     this.mvc = mvc;
     this.jdbc = jdbc;
     this.valkey = valkey;
     this.coreEvents = coreEvents;
-    this.camel = camel;
     this.json = json;
   }
 
@@ -389,9 +386,8 @@ class PinLifecycleIT {
         "outcome", verified ? "SUCCESS" : "FAILURE",
         "reasonCode", verified ? "-" : "FACTORS_MISMATCH",
         "payload", Map.of("resetId", command.path("payload").path("resetId").asString(), "walletId", msisdn)));
-    var exchange = new DefaultExchange(camel);
-    exchange.getMessage().setBody(body);
-    coreEvents.handle(exchange);
+    // straight into the listener method, as its container would hand it the record (listeners off here)
+    coreEvents.handle(new ConsumerRecord<>(CoreWalletEventListener.TOPIC, 0, 0L, msisdn, body), () -> {});
   }
 
   JsonNode kycCommand(String resetId) {

@@ -1,5 +1,10 @@
 # Test-only overrides, merged over src/main/resources/application.yml.
 mw:
+  kafka:
+    listener:
+      # A closing test context does not wait the default 10 s per listener container for a consumer
+      # caught mid-rebalance (cached contexts share the broker); nothing in a test depends on that drain.
+      shutdown-timeout: 100ms
   outbox:
     relay:
       # Off by default in tests: Spring caches test contexts, and a relay left running in one
@@ -15,7 +20,7 @@ mw:
     # A random public port beside the random internal one (RANDOM_PORT contexts).
     public-port: 0
     consumer:
-      # The wallet projection route is off by default; WalletProjectionKafkaIT switches it on.
+      # Both listeners are off by default; WalletProjectionKafkaIT and WalletLockKafkaIT switch them on.
       enabled: false
   internal-auth:
     issuer: http://keycloak.test/realms/services
@@ -23,9 +28,3 @@ mw:
   # PkiTestAuthority (controller/InternalApiMtlsIT, client/CryptoClientIT).
   tls:
     enabled: false
-camel:
-  component:
-    kafka:
-      # A closing test context does not wait the default 30 s per consumer for one caught mid-rebalance
-      # (cached contexts share the consumer group); nothing in a test depends on that drain.
-      shutdown-timeout: 100

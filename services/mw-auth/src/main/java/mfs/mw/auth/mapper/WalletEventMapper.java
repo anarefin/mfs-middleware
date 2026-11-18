@@ -16,7 +16,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Reads {@code core.wallet.event.v1} records (ticket 67). The topic carries every core reply to
  * mw-orchestrator as well; only {@code WalletStateChanged} is projected, the rest is empty. A
  * WalletStateChanged without the fields the projection needs is malformed ({@code MW-VAL-002}: the
- * route parks it on the retry topics, then the DLQ). MSISDNs are normalised to the national form
+ * error handler parks it on the retry topics, then the DLQ). MSISDNs are normalised to the national form
  * {@code 01XXXXXXXXX} (the contract allows an {@code 880} / {@code +880} prefix), so the keyed hash
  * of one number is always the same.
  */

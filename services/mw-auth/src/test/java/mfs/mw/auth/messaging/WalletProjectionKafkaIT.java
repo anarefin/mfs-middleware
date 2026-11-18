@@ -22,14 +22,6 @@ import mfs.mw.auth.entity.AuthWallet;
 import mfs.mw.auth.exception.ErrorCodes;
 import mfs.mw.auth.exception.MwException;
 import mfs.mw.auth.repository.WalletRepository;
-import java.util.List;
-import java.util.concurrent.ExecutionException;
-import mfs.mw.auth.route.RetryTopicRouteBuilder;
-import org.apache.kafka.clients.admin.Admin;
-import org.apache.kafka.clients.admin.AdminClientConfig;
-import org.apache.kafka.clients.admin.NewTopic;
-import org.apache.kafka.common.errors.TopicExistsException;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -49,7 +41,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = {"mw.auth.consumer.enabled=true", "mw.kafka.retry.delays=1s,1s,1s"})
-@Import(TestInfrastructure.class)
+@Import({TestInfrastructure.class, AuthConsumedTopics.class})
 @DirtiesContext
 class WalletProjectionKafkaIT {
 
@@ -68,31 +60,6 @@ class WalletProjectionKafkaIT {
     this.publisher = publisher;
     this.wallets = wallets;
     this.jdbc = jdbc;
-  }
-
-  /** One partition each, so the order per key is the order on the topic. */
-  @BeforeAll
-  static void topics() throws Exception {
-    String group = "mw-auth";
-    List<String> names =
-        List.of(
-            TOPIC,
-            RetryTopicRouteBuilder.retryTopic(TOPIC, group, 1),
-            RetryTopicRouteBuilder.retryTopic(TOPIC, group, 2),
-            RetryTopicRouteBuilder.retryTopic(TOPIC, group, 3),
-            RetryTopicRouteBuilder.dlqTopic(TOPIC, group));
-    try (Admin admin =
-        Admin.create(Map.of(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, TestInfrastructure.kafkaBootstrapServers()))) {
-      for (String name : names) {
-        try {
-          admin.createTopics(List.of(new NewTopic(name, 1, (short) 1))).all().get();
-        } catch (ExecutionException e) {
-          if (!(e.getCause() instanceof TopicExistsException)) {
-            throw e;
-          }
-        }
-      }
-    }
   }
 
   @BeforeEach

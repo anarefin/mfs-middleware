@@ -21,7 +21,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   (`repository/DeviceRepository`), `device_otp` (`repository/DeviceOtpRepository`), `credential`,
   `attempt`, `lock` (`repository/CredentialRepository`), `refresh_token` (`repository/RefreshTokenRepository`),
   `pin_reset` (`repository/PinResetRepository`, ticket 70).
-- Wallet projection (D5; `route/CoreWalletEventRoute` -> `messaging/CoreWalletEventListener` ->
+- Wallet projection (D5; `messaging/CoreWalletEventListener` (`@KafkaListener`) ->
   `service/WalletProjectionService`, `mapper/WalletEventMapper`, `dto/WalletStateChanged`): consumes
   `core.wallet.event.v1` in group `mw-auth` (retry topics + DLQ; `deploy/kafka/topics.txt`). Only
   `WalletStateChanged` is read for the projection (and, ticket 70, `CustomerFactorsVerified` /
@@ -34,7 +34,8 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   envelope under `KEK_COLUMN` as jsonb, AAD the walletId); the MSISDN columns are never rewritten
   afterwards (a token-key rotation needs a re-tokenise job: later). `wallet_id` is the core's id, which in
   mw-core-mock is the MSISDN itself. mw-crypto down: `MW-SYS-050` before anything is written, the
-  record goes to the retry topics (fail closed). Switch: `mw.auth.consumer.enabled` (tests off).
+  record goes to the retry topics (fail closed). Switch: `mw.auth.consumer.enabled` (both listeners and
+  their retry consumers; tests off).
 - **WalletStateChanged envelope decision (ticket 67):** the `core.event.v1` envelope is kept as it is
   (no relaxed required fields): mw-core-mock fills the command fields of this unsolicited event with a
   fresh UUIDv7 `txnId`, `commandId` `wallet-state:<txnId>`, `coreRef` `WALLET-V<version>`, outcome
@@ -215,7 +216,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   - **KYC decision:** the factors leave only as TOKENISE_NID hashes bound to the wallet; mw-core-mock
     cannot recompute them and checks only the wallet (open point for the real core: a shared
     tokenisation or its own check).
-  - Wallet lock topic (`route/WalletLockRoute` -> `messaging/WalletLockListener` ->
+  - Wallet lock topic (`messaging/WalletLockListener` (`@KafkaListener`) ->
     `service/WalletLockService`, `mapper/WalletLockMapper`, `dto/WalletLockCommand`; owned contract
     `auth.wallet-lock.v1`, group `mw-auth`, retry topics + DLQ, `deploy/kafka/topics.txt`): once per
     `commandId` (inbox `mw-auth.wallet-lock`): `LOCK` = an ADMIN lock (403 `MW-AUTH-043` everywhere) +
@@ -378,9 +379,24 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
 - `config/ServiceCertificateManager` + `TlsProperties` (ticket 66, from the template).
-- `messaging/EventPublisher`, `OutboxWriter` + `OutboxRelay`, `Inbox` (used by the projection).
-- `route/RetryTopicRouteBuilder` + `messaging/RetryDelayListener`: subclass per consumed topic; retry
-  topics 10 s / 1 min / 10 min then DLQ (19.2); per-record commit; no sleeps on Kafka threads.
+- `messaging/OutboxWriter` + `OutboxRelay`, `Inbox` (used by the projection and the wallet lock topic).
+- Kafka through Spring Kafka (ADR D27; no Camel in this module, copied from the template):
+  `messaging/EventPublisher` sends records with the 6.1 headers through `KafkaTemplate` (idempotent,
+  `acks=all`, at most 5 in flight; `publish` waits for the ack, `publishStoredAsync` sends an outbox row
+  with exactly its stored headers). `config/KafkaConfig` puts every `@KafkaListener` on non-blocking retry
+  topics `<topic>.<group>.retry.1..3` (10 s / 1 min / 10 min, `mw.kafka.retry.delays`) then
+  `<topic>.<group>.dlq` (`messaging/RetryTopicNaming`, group = `spring.kafka.consumer.group-id`, the
+  service name; declared in `deploy/kafka/topics.txt`); validation and JSON failures and records that are
+  not UTF-8 go to the DLQ at once; `messaging/RetryTopicRecoverer` adds `mw-retry-attempt`,
+  `mw-original-topic`, `mw-error-class`, `mw-retry-not-before`; `messaging/RetryDueTimeCap` caps a forged
+  due time; `messaging/ConsumerContextInterceptor` puts the record's ids in the MDC. Listeners take
+  `ConsumerRecord<String, String>` and `Acknowledgment` and call `ack.acknowledge()` after handling
+  (per-record commit, AckMode `MANUAL_IMMEDIATE`); a delay pauses the partition, never sleeps on the
+  consumer thread. Settings: `spring.kafka.*`, `mw.kafka.send-timeout`, `mw.kafka.listener.shutdown-timeout`
+  (100 ms in tests), `mw.kafka.retry.exclude-topics`. `messaging/RetryTopicIT` (conformance) checks it all.
+- `scheduler/OutboxRelayScheduler`: relays the transactional outbox (`messaging/OutboxRelay`, 6.4) every
+  `mw.outbox.relay.period` after a run ends, ShedLock-guarded; off in tests (`mw.outbox.relay.enabled`).
+  Tests that consume create their topics with retry topics and DLQ first (`KafkaTestTopics.createWithRetries`).
 - `application.yml`: Resilience4j defaults (19.2), own schema `auth` migrated by Flyway on start.
 
 ## Compose and provisioning

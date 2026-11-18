@@ -5,20 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ExecutionException;
 import java.util.function.BooleanSupplier;
 import mfs.mw.auth.TestInfrastructure;
 import mfs.mw.auth.ValkeyInfrastructure;
 import mfs.mw.auth.client.CryptoClient;
-import mfs.mw.auth.route.RetryTopicRouteBuilder;
-import org.apache.kafka.clients.admin.Admin;
-import org.apache.kafka.clients.admin.AdminClientConfig;
-import org.apache.kafka.clients.admin.NewTopic;
-import org.apache.kafka.common.errors.TopicExistsException;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,7 +30,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = {"mw.auth.consumer.enabled=true", "mw.kafka.retry.delays=1s,1s,1s"})
-@Import({TestInfrastructure.class, ValkeyInfrastructure.class})
+@Import({TestInfrastructure.class, ValkeyInfrastructure.class, AuthConsumedTopics.class})
 @DirtiesContext
 class WalletLockKafkaIT {
 
@@ -59,31 +51,6 @@ class WalletLockKafkaIT {
     this.publisher = publisher;
     this.jdbc = jdbc;
     this.valkey = valkey;
-  }
-
-  @BeforeAll
-  static void topics() throws Exception {
-    String group = "mw-auth";
-    List<String> names = new java.util.ArrayList<>();
-    for (String t : List.of(TOPIC, CORE_EVENTS)) {
-      names.add(t);
-      for (int n = 1; n <= 3; n++) {
-        names.add(RetryTopicRouteBuilder.retryTopic(t, group, n));
-      }
-      names.add(RetryTopicRouteBuilder.dlqTopic(t, group));
-    }
-    try (Admin admin =
-        Admin.create(Map.of(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, TestInfrastructure.kafkaBootstrapServers()))) {
-      for (String name : names) {
-        try {
-          admin.createTopics(List.of(new NewTopic(name, 1, (short) 1))).all().get();
-        } catch (ExecutionException e) {
-          if (!(e.getCause() instanceof TopicExistsException)) {
-            throw e;
-          }
-        }
-      }
-    }
   }
 
   @BeforeEach
