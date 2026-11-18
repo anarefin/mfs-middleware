@@ -1,0 +1,40 @@
+# Example partner record (ADR D26, review of ticket 86): a bank that takes payments as files, as the
+# `value` of a mw.config.changed.v1 PARTNER record (configKey partner/filebank), shown as YAML. A request
+# route like any other (from direct:partner-<id>, ends with mw-classify then mw-audit, has a dry-run),
+# but instead of calling the bank it puts one file on the bank's SFTP host with the mw-sftp-sink Kamelet:
+# mw-map (JSONata) makes the payment JSON, the sink's `mapping` turns it into the file text (here a
+# header line and one CSV line; fixed-width works the same with $pad), and the put is the partner call:
+# mw-classify sees status 200 and the body {"fileName": "<name>"}, mapped to PENDING. The bank's
+# reconciliation file (a batch route, deploy/partner-routes/examples/sftp-recon.yaml) settles it later.
+# A put that fails after the upload started is UNKNOWN. A text mapping must give a string (at most
+# 16 MB) and runs in request routes only (a batch route has no JSON body); bindy is not offered.
+#
+# Secrets (never in the record): OpenBao secret/mw-adapter-bank/filebank, field sftp-password (or with
+# auth=key a private key, PEM) and field sftp-known-hosts, the host's known_hosts lines; host keys are
+# checked strictly. The file name may hold ${date:now:<pattern>} tokens only (no header or body value),
+# and an existing file is never overwritten (fileExist=Fail), so give it a time down to the second.
+#
+# Dev stack (docs/runbook.md, "Batch partner over SFTP"): host partner-sftp of the tester profile, login
+# bits, directory out; partner-sftp must be a static dev host of the adapter (MW_PARTNER_INSECURE_HTTP_HOSTS).
+family: bank
+enabled: true
+allowedHosts: [sftp.filebank.example]
+timeoutMs: 20000
+sensitiveFields: { account: ACCOUNT }
+dryRun: { operation: PAY }
+route: |
+  - route:
+      from:
+        uri: direct:partner-filebank
+        steps:
+          - to: "kamelet:mw-map?mapping=PAY.request"
+          - to: "kamelet:mw-sftp-sink?host=sftp.filebank.example&username=bits&directory=out&fileName=pay-${date:now:yyyyMMddHHmmssSSS}.csv&secretField=sftp-password&knownHostsField=sftp-known-hosts&mapping=PAY.file"
+          - to: "kamelet:mw-classify?mapping=PAY.response&allowPending=true"
+          - to: "kamelet:mw-audit"
+mappings:
+  PAY.request: '{"ref": reference, "account": creditParty.id, "amount": amount.major, "currency": amount.currency}'
+  PAY.file: >-
+    "reference,account,amount,currency\n" & ref & "," & account & "," & amount & "," & currency & "\n"
+  PAY.response: >-
+    status = 200 and body.fileName ? {"outcome": "PENDING", "partnerRef": body.fileName}
+    : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}

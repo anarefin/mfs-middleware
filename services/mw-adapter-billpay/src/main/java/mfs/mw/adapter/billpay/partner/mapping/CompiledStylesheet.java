@@ -50,7 +50,7 @@ import org.xml.sax.XMLReader;
  * reads the SOAP body element (or the fault document of {@link #faultJson}) and writes JSON (its
  * {@code xsl:output}, e.g. {@code method="json"}).
  */
-public final class CompiledStylesheet {
+public final class CompiledStylesheet implements SoapMapping {
 
   /** Mapping names ending in this are XSLT stylesheets, the others JSONata. */
   public static final String SUFFIX = ".xsl";
@@ -99,8 +99,12 @@ public final class CompiledStylesheet {
     return compiled;
   }
 
-  /** The compiled tree's elements that name a function, and the instructions that reach outside. */
-  static final Set<String> FORBIDDEN_INSTRUCTIONS = Set.of("resultDoc", "sourceDoc", "evaluate");
+  /**
+   * The nodes of Saxon's compiled (explained) tree that reach outside the stylesheet, whatever
+   * source built them; next to them the tree's function calls are held to {@link
+   * StylesheetPolicy#FORBIDDEN_FUNCTIONS}.
+   */
+  static final Set<String> FORBIDDEN_COMPILED_NODES = Set.of("resultDoc", "sourceDoc", "evaluate");
 
   private List<String> treeProblems() {
     Document tree;
@@ -116,7 +120,7 @@ public final class CompiledStylesheet {
     for (int i = 0; i < all.getLength(); i++) {
       Element e = (Element) all.item(i);
       String kind = e.getLocalName() == null ? e.getTagName() : e.getLocalName();
-      if (FORBIDDEN_INSTRUCTIONS.contains(kind)) {
+      if (FORBIDDEN_COMPILED_NODES.contains(kind)) {
         problems.add("the compiled stylesheet holds " + kind + ", which reaches outside the stylesheet");
       }
       boolean call = kind.startsWith("fn") || kind.endsWith("Call") || kind.endsWith("Ref");
@@ -269,24 +273,7 @@ public final class CompiledStylesheet {
    * a DTD whatever the stylesheet says.
    */
   static XMLReader secureReader() {
-    try {
-      javax.xml.parsers.SAXParserFactory f = javax.xml.parsers.SAXParserFactory.newInstance();
-      f.setNamespaceAware(true);
-      f.setFeature(javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING, true);
-      f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-      f.setFeature("http://xml.org/sax/features/external-general-entities", false);
-      f.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-      f.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-      f.setXIncludeAware(false);
-      XMLReader reader = f.newSAXParser().getXMLReader();
-      reader.setEntityResolver((publicId, systemId) -> {
-        throw new SAXException("external entities are not allowed");
-      });
-      reader.setErrorHandler(StylesheetPolicy.SILENT);
-      return reader;
-    } catch (ParserConfigurationException | SAXException e) {
-      throw new IllegalStateException("no secure XML parser", e);
-    }
+    return StylesheetPolicy.secureReader();
   }
 
   private static DocumentBuilderFactory documentBuilders() throws ParserConfigurationException {

@@ -91,10 +91,14 @@ The one sanctioned exception to one kind of class per package is the adapter fra
 `partner/` in each adapter (mw-adapter-telco, -billpay, -bank; copied, not a library): its SPI
 (`PartnerAdapter`, `AuthScheme`, `PartnerCall`, `PartnerResponse`, `InboundCall`, ...) and its
 Spring wiring `PartnerFrameworkConfiguration` sit in `partner/` itself, with its own subpackages
-`partner/config/` (partner config records, store, config-changed route and listener),
-`partner/template/` (Camel route templates, registrar, gateway, call wrapper, REST/JSON adapter,
-audit), `partner/auth/` (auth schemes, credential resolver) and `partner/mapping/` (JSONata). The
-three copies stay identical apart from the package; mw-adapter-telco's CLAUDE.md describes it. The
+`partner/config/` (partner config record, store, config-changed listener, endpoint policy, TLS
+context properties), `partner/route/` (route loader and its allowlist rules, partner routes and
+their lifecycle, gateway, host guard, DNS resolver, dry-run, audit, recon, Kamelet catalogue),
+`partner/kamelet/` (the Java steps of the `mw-*` Kamelets, whose YAML is in
+`src/main/resources/kamelets/`), `partner/auth/` (auth schemes, credential resolver, OAuth2 client
+credentials, mTLS client contexts) and `partner/mapping/` (JSONata, the SOAP mappings: XSLT
+stylesheets with their policy, and the JSON/XML convention). The three copies stay identical apart
+from the package; mw-adapter-billpay's CLAUDE.md ("Partner engine") describes it. The
 framework hands its audit to the service's `messaging/PartnerAuditPublisher`; everything else in an
 adapter follows the layered packages above.
 

@@ -28,6 +28,9 @@ import org.springframework.stereotype.Component;
 @Component("mwAuth")
 public class MwAuthStep {
 
+  /** The header of {@code mw-auth-basic} and {@code mw-auth-oauth2-cc}. */
+  public static final String AUTHORIZATION = "Authorization";
+
   /** Default header of {@code mw-auth-jws}. */
   public static final String JWS_HEADER = "X-JWS-Signature";
 
@@ -77,7 +80,7 @@ public class MwAuthStep {
     PartnerRuntime runtime = PartnerExchange.runtime(exchange);
     String pair = runtime.secret(userField) + ":" + runtime.secret(secretField);
     exchange.getMessage().setHeader(
-        "Authorization", "Basic " + Base64.getEncoder().encodeToString(pair.getBytes(StandardCharsets.UTF_8)));
+        AUTHORIZATION, "Basic " + Base64.getEncoder().encodeToString(pair.getBytes(StandardCharsets.UTF_8)));
   }
 
   /**
@@ -101,7 +104,8 @@ public class MwAuthStep {
   public void oauth2(
       Exchange exchange, String secretField, String tokenUrl, String clientId, String scope, String audience) {
     PartnerRuntime runtime = PartnerExchange.runtime(exchange);
-    long rejected = exchange.getProperty(REJECTED, 0L, Long.class);
+    Long refused = exchange.getProperty(REJECTED, Long.class);
+    java.util.OptionalLong rejected = refused == null ? java.util.OptionalLong.empty() : java.util.OptionalLong.of(refused);
     OAuth2ClientCredentials.Token token = oauth2.token(
         runtime,
         new OAuth2ClientCredentials.Client(runtime.id(), tokenUrl, clientId, scope == null ? "" : scope, audience == null ? "" : audience),
@@ -110,7 +114,7 @@ public class MwAuthStep {
     exchange.removeProperty(REJECTED);
     exchange.setProperty(REFRESHABLE, true);
     exchange.setProperty(TOKEN_GENERATION, token.generation());
-    exchange.getMessage().setHeader("Authorization", "Bearer " + token.value());
+    exchange.getMessage().setHeader(AUTHORIZATION, "Bearer " + token.value());
   }
 
   private static void apply(Exchange exchange, AuthScheme scheme) {

@@ -308,6 +308,13 @@ partner route as config: no Java, no release, no restart for the route itself.
    clear it with `curl -s -X DELETE http://127.0.0.1:8085/sim/soapbill/fault`). The dry-run candidate sends
    to the generic stub `/sim/partners/<id>` like a REST route: give it the SOAP envelope as a string `body`
    with `"headers": {"Content-Type": "text/xml"}` and the address's path as its `path`.
+   Without XSLT: `request=json&response=json&namespace=<urn: or http(s) URI>` writes the JSON mw-map made
+   as the body element (one root key, e.g. `{"PayBill": {"billNumber": ..., "@version": "2"}}`: keys are
+   elements in `namespace`, `@x` attributes, arrays repeat) and reads the answer back the same way
+   (`body.PayBillResponse.receipt`; a fault as `body.fault."@code"` and `body.fault.detail`), so both
+   mappings are JSONata. HTTP Basic and mTLS work as for REST: `auth=basic&userField=..&secretField=..`
+   and `sslContextRef=<context>` (https address) on `mw-soap-call`, next to or instead of the
+   WS-Security token.
 7. **Callbacks**: a biller that answers asynchronously needs an APISIX route file
    (`deploy/apisix/routes/partner-<id>-callback.json`, as `partner-billagg-callback.json`) and
    `deploy/apisix/apply.sh`.
@@ -324,8 +331,23 @@ its own (e.g. `billagg-recon`) whose route starts from the `mw-sftp-source` Kame
 calls). Example: `deploy/partner-routes/examples/sftp-recon.yaml`. The adapter of the family polls the
 partner's directory, reads each file once (name, size, modification time), publishes every data line as
 `mw.partner.recon.v1` (key partnerId) through its outbox and moves the file to `.done`; a file it cannot
-read (wrong field count, line too long, no data line) goes to `.error` and publishes nothing: fix it
-and drop it again. `enabled: false` (DISABLE) stops the polling.
+read (wrong field count, line too long, no data line, more data lines than
+`MW_PARTNER_RECON_MAX_LINES=1000000` of the adapter, `mw.partners.recon.max-lines`) goes to `.error` and
+publishes nothing (`partner.recon.file_refused` in the adapter's log names the reason): fix or split it
+and drop it again. `enabled: false` (DISABLE) stops the polling. The source polls every `delay` ms (100
+or more, default 60000) or on a `cron` schedule instead (Spring cron, six fields: second minute hour
+day month weekday, `+` for a space, e.g. `cron=0+0+6+*+*+*` for 06:00 every day), never both.
+
+**Sending a file** (`mw-sftp-sink`): a request route (`direct:partner-<id>`) may put a file on the
+partner's host instead of calling it, e.g. a bank that takes payments as a file. The sink's `mapping`
+names a JSONata mapping of the record whose result is the file text (CSV or fixed-width lines:
+`$join`, `$pad`, `$formatNumber`); the put is the partner call, so `mw-classify` sees status 200 and
+the body `{"fileName": ...}` (map it to PENDING and let the partner's reconciliation file settle it);
+a put that fails after the upload started is UNKNOWN. The dry-run of a new version makes the text but
+puts no file (the loader sets the sink's `dryRun`). Example:
+`deploy/partner-routes/examples/sftp-sink-payment-file.yaml`. In a batch route the sink writes the body
+as it is (no `mapping`: a batch route has no JSON body). `bindy` is not offered (it needs a Java model
+class per layout).
 
 1. **Secrets**, in the partner's own OpenBao secret `secret/<adapter>/<id>`: the login password (field
    named by `secretField`; with `auth=key` a PEM private key) and the host's known_hosts lines (field

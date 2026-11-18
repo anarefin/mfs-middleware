@@ -240,6 +240,10 @@ mw:
     # OAuth2 client credentials (mw-auth-oauth2-cc): a token is reused until expires_in minus this skew.
     oauth2:
       expiry-skew: 30s
+    # mw-recon (batch routes): data lines per file; a longer file is refused as a whole and moves to
+    # .error (all lines of a file are written in one transaction).
+    recon:
+      max-lines: ${MW_PARTNER_RECON_MAX_LINES:1000000}
     # Where a new version's dry-run goes when its record names no sandbox (dryRun.baseUrl): {partnerId}
     # is replaced, the host joins the candidate's allowed hosts. Empty in production (each record names
     # its partner's sandbox); the dev profile points at mw-simulators' stub.

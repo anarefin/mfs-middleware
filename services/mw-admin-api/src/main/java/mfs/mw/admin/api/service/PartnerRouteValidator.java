@@ -97,7 +97,15 @@ public class PartnerRouteValidator {
 
   /** {@code mw-soap-call} parameters held to the strict rule too (ticket 85). */
   static final Set<String> SOAP_STRICT_PARAMS =
-      Set.of("address", "soapAction", "soapVersion", "request", "response", "wsUsername", "wsPasswordSecret", "wsTokenType");
+      Set.of("address", "soapAction", "soapVersion", "request", "response", "wsUsername", "wsPasswordSecret", "wsTokenType",
+          "namespace");
+
+  /** {@code request=json} / {@code response=json} of {@code mw-soap-call}: the JSON/XML convention (review of 85). */
+  static final String SOAP_JSON = "json";
+
+  /** The adapters' {@code JsonXmlMapping} namespace rule: an {@code urn:} or http(s) URI. */
+  static final Pattern SOAP_NAMESPACE = Pattern.compile(
+      "^(urn:[A-Za-z0-9][A-Za-z0-9._:-]{0,199}|https?://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?(/[A-Za-z0-9._~-]*){0,20})$");
   static final Pattern CLASSPATH_STYLESHEET = Pattern.compile("^classpath:partner/xslt/[A-Za-z0-9_-][A-Za-z0-9_.-]{0,63}\\.xsl$");
 
   private static final Pattern PARAM_KEY = Pattern.compile("^[A-Za-z][A-Za-z0-9]*$");
@@ -163,8 +171,9 @@ public class PartnerRouteValidator {
       return problems;
     }
     Set<String> named = new LinkedHashSet<>();
-    walk(steps, allowedHosts, named, problems);
-    if (isBatch(doc)) {
+    boolean batch = isBatch(doc);
+    walk(steps, allowedHosts, named, batch, problems);
+    if (batch) {
       batchEnding(steps, problems);
     } else {
       ending(steps, problems);
@@ -220,7 +229,7 @@ public class PartnerRouteValidator {
     Node uriNode = from.get("uri") == null ? fromNode : from.get("uri");
     if (PartnerBatchRouteRules.isBatchUri(fromUri)) {
       // ticket 86: a batch route starts from the mw-sftp-source Kamelet
-      PartnerBatchRouteRules.problems(fromUri, true, allowedHosts)
+      PartnerBatchRouteRules.problems(fromUri, true, true, allowedHosts, new LinkedHashSet<>())
           .forEach(p -> problems.add(new Problem(line(uriNode), "from", p)));
     } else if (!("direct:partner-" + id).equals(fromUri)) {
       problems.add(new Problem(line(uriNode), "from",
@@ -322,7 +331,7 @@ public class PartnerRouteValidator {
 
   // --- steps: Kamelet calls and the allowlist (loader steps 5 and 7) ----------------------------
 
-  private void walk(SequenceNode steps, List<String> allowedHosts, Set<String> named, List<Problem> problems) {
+  private void walk(SequenceNode steps, List<String> allowedHosts, Set<String> named, boolean batch, List<Problem> problems) {
     for (Node stepNode : steps.getValue()) {
       if (!(stepNode instanceof MappingNode step) || step.getValue().size() != 1) {
         problems.add(new Problem(line(stepNode), "step", "a step is one EIP name with its settings"));
@@ -336,7 +345,7 @@ public class PartnerRouteValidator {
         continue;
       }
       switch (name) {
-        case "to" -> kamelet(value, allowedHosts, named, problems);
+        case "to" -> kamelet(value, allowedHosts, named, batch, problems);
         case "setHeader" -> {
           Map<String, Node> fields = value instanceof MappingNode m ? entries(m) : Map.of();
           String header = scalar(fields.get("name"));
@@ -349,13 +358,13 @@ public class PartnerRouteValidator {
         case "setBody", "transform" -> expression(value, Set.of(), problems, name);
         case "log" -> log(value, problems);
         case "marshal", "unmarshal" -> dataFormat(value, problems, name);
-        case "choice" -> choice(value, allowedHosts, named, problems);
+        case "choice" -> choice(value, allowedHosts, named, batch, problems);
         default -> throw new IllegalStateException(name);
       }
     }
   }
 
-  private void choice(Node value, List<String> allowedHosts, Set<String> named, List<Problem> problems) {
+  private void choice(Node value, List<String> allowedHosts, Set<String> named, boolean batch, List<Problem> problems) {
     Map<String, Node> fields = value instanceof MappingNode m ? entries(m) : Map.of();
     for (String k : fields.keySet()) {
       if (!Set.of("when", "otherwise").contains(k)) {
@@ -367,12 +376,12 @@ public class PartnerRouteValidator {
         Map<String, Node> when = w instanceof MappingNode m ? entries(m) : Map.of();
         expression(w, Set.of("steps"), problems, "when");
         if (when.get("steps") instanceof SequenceNode s) {
-          walk(s, allowedHosts, named, problems);
+          walk(s, allowedHosts, named, batch, problems);
         }
       }
     }
     if (fields.get("otherwise") instanceof MappingNode o && entries(o).get("steps") instanceof SequenceNode s) {
-      walk(s, allowedHosts, named, problems);
+      walk(s, allowedHosts, named, batch, problems);
     }
   }
 
@@ -449,7 +458,7 @@ public class PartnerRouteValidator {
     }
   }
 
-  private void kamelet(Node value, List<String> allowedHosts, Set<String> named, List<Problem> problems) {
+  private void kamelet(Node value, List<String> allowedHosts, Set<String> named, boolean batch, List<Problem> problems) {
     int line = line(value);
     if (!(value instanceof ScalarNode s)) {
       problems.add(new Problem(line, "to", "'to' must be a plain \"kamelet:mw-...\" string"));
@@ -465,7 +474,8 @@ public class PartnerRouteValidator {
     if (PartnerBatchRouteRules.handles(uri)) {
       // ticket 86: the SFTP and recon Kamelets have their own short parameter lists
       String batchName = uri.substring("kamelet:".length(), uri.indexOf('?') < 0 ? uri.length() : uri.indexOf('?'));
-      PartnerBatchRouteRules.problems(uri, false, allowedHosts).forEach(p -> problems.add(new Problem(line, batchName, p)));
+      PartnerBatchRouteRules.problems(uri, false, batch, allowedHosts, named)
+          .forEach(p -> problems.add(new Problem(line, batchName, p)));
       return;
     }
     if (uri.contains("${") || uri.contains("$simple{")) {
@@ -523,7 +533,10 @@ public class PartnerRouteValidator {
    * The loader's rules of one {@code mw-soap-call} (ticket 85): an approved http(s) address,
    * request and response stylesheets that are {@code *.xsl} mappings of the record (checked with
    * {@link StylesheetPolicy} in {@link #problems}) or {@code classpath:partner/xslt/*.xsl}
-   * resources, SOAP 1.1 or 1.2, a WS-Security user only with its password's secret field.
+   * resources, or {@value #SOAP_JSON} ({@code request=json} with a {@code namespace}), SOAP 1.1 or
+   * 1.2, a WS-Security user only with its password's secret field; HTTP Basic ({@code auth=basic}
+   * with {@code userField} and {@code secretField}) and an mTLS {@code sslContextRef} over https
+   * (review of 85).
    */
   private static void soapCall(Map<String, String> params, int line, String name, List<String> allowedHosts,
       Set<String> named, List<Problem> problems) {
@@ -532,15 +545,35 @@ public class PartnerRouteValidator {
             .replace("mw-http-call host", "mw-soap-call host"))));
     for (String key : List.of("request", "response")) {
       String stylesheet = params.getOrDefault(key, "");
-      if (CLASSPATH_STYLESHEET.matcher(stylesheet).matches()) {
+      if (SOAP_JSON.equals(stylesheet) || CLASSPATH_STYLESHEET.matcher(stylesheet).matches()) {
         continue;
       }
       if (stylesheet.endsWith(".xsl")) {
         named.add(stylesheet);
       } else {
-        problems.add(new Problem(line, name, "mw-soap-call " + key + " must name one of the record's *.xsl mappings"
-            + " or a classpath:partner/xslt/*.xsl resource"));
+        problems.add(new Problem(line, name, "mw-soap-call " + key + " must name one of the record's *.xsl mappings,"
+            + " a classpath:partner/xslt/*.xsl resource or json"));
       }
+    }
+    String namespace = params.getOrDefault("namespace", "");
+    if (SOAP_JSON.equals(params.get("request")) && !SOAP_NAMESPACE.matcher(namespace).matches()) {
+      problems.add(new Problem(line, name, "mw-soap-call request=json needs a namespace (an urn: or http(s) URI)"));
+    } else if (!namespace.isEmpty() && !SOAP_NAMESPACE.matcher(namespace).matches()) {
+      problems.add(new Problem(line, name, "mw-soap-call namespace must be an urn: or http(s) URI"));
+    }
+    String auth = params.getOrDefault("auth", "none");
+    if (!Set.of("none", "basic").contains(auth)) {
+      problems.add(new Problem(line, name, "mw-soap-call auth must be none or basic"));
+    } else if ("basic".equals(auth)) {
+      for (String field : List.of("userField", "secretField")) {
+        if (params.getOrDefault(field, "").isEmpty()) {
+          problems.add(new Problem(line, name, "mw-soap-call auth basic needs a " + field));
+        }
+      }
+    }
+    if (!params.getOrDefault("sslContextRef", "").isEmpty()
+        && !params.getOrDefault("address", "").toLowerCase(Locale.ROOT).startsWith("https://")) {
+      problems.add(new Problem(line, name, "sslContextRef needs an https address"));
     }
     if (!Set.of("1.1", "1.2").contains(params.getOrDefault("soapVersion", "1.1"))) {
       problems.add(new Problem(line, name, "mw-soap-call soapVersion must be 1.1 or 1.2"));

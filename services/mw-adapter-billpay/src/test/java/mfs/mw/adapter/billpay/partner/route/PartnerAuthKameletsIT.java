@@ -134,6 +134,11 @@ class PartnerAuthKameletsIT {
     assertThat(store.instance(partner).orElseThrow().version()).isEqualTo(version);
   }
 
+  /** The next version of {@code partner} (the mTLS partner tlsco is shared by the REST and SOAP tests). */
+  long nextVersion(String partner) {
+    return store.instance(partner).map(r -> r.version() + 1).orElse(1L);
+  }
+
   static PartnerCall pay(String partner, String reference) {
     return new PartnerCall(partner, "PAY", "BILL_PAY", "01933b8e-7c1a-7b2e-9f3d-000000000087", "corr-87", reference,
         Map.of("creditParty", Map.of("type", "BILLER_ACCOUNT", "id", "77001234")));
@@ -240,13 +245,79 @@ class PartnerAuthKameletsIT {
     String url = "https://localhost:" + TLS_PARTNER.httpsPort();
     receipt(TLS_PARTNER, post(urlEqualTo("/tlsco/pay")));
 
-    publish("tlsco", 1, url, "sslContextRef=mtls-good");
+    long v = nextVersion("tlsco");
+    publish("tlsco", v, url, "sslContextRef=mtls-good");
     assertThat(gateway.call(pay("tlsco", "BITS-87-T1"))).isInstanceOf(PartnerResponse.Success.class);
 
-    publish("tlsco", 2, url, "sslContextRef=mtls-wrong");
+    publish("tlsco", v + 1, url, "sslContextRef=mtls-wrong");
     assertThat(gateway.call(pay("tlsco", "BITS-87-T2")))
         .isInstanceOfAny(PartnerResponse.Unknown.class, PartnerResponse.NotSent.class);
 
     TLS_PARTNER.verify(1, postRequestedFor(urlEqualTo("/tlsco/pay")));
+  }
+
+  // --- review of 85: a SOAP partner on Basic or mTLS, onboarded by config ---------------------
+
+  void publishSoap(String partner, long version, String address, String soapCallParams) {
+    String route = """
+        - route:
+            from:
+              uri: direct:partner-%1$s
+              steps:
+                - to: "kamelet:mw-map?mapping=PAY.request"
+                - to: "kamelet:mw-soap-call?address=%2$s/%1$s/ws&request=json&response=json&namespace=urn:biller:v1&soapAction=urn:biller:v1:Pay&%3$s"
+                - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=200"
+                - to: "kamelet:mw-audit"
+        """.formatted(partner, address, soapCallParams);
+    Map<String, Object> value = Map.of(
+        "family", family,
+        "allowedHosts", List.of("localhost"),
+        "timeoutMs", 3000,
+        "route", route,
+        "mappings", Map.of(
+            "PAY.request", "{\"Pay\": {\"ref\": reference}}",
+            "PAY.response", "body.PayResponse.receipt ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.PayResponse.receipt}"
+                + " : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"}"));
+    store.apply(new ConfigChangedEvent(
+        1, "partner/" + partner, ConfigChangedEvent.ConfigType.PARTNER, ConfigChangedEvent.Change.UPSERT, version, value,
+        Instant.parse("2026-11-18T10:00:00Z"), "ops-maker01", "ops-checker01", "corr-85"));
+    assertThat(store.instance(partner)).as("record of %s loaded", partner).isPresent();
+    assertThat(store.instance(partner).orElseThrow().version()).isEqualTo(version);
+  }
+
+  static void soapReceipt(WireMockServer server, com.github.tomakehurst.wiremock.client.MappingBuilder request) {
+    server.stubFor(request.willReturn(aResponse().withStatus(200).withHeader("Content-Type", "text/xml; charset=UTF-8")
+        .withBody("<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body>"
+            + "<b:PayResponse xmlns:b=\"urn:biller:v1\"><b:receipt>R-85</b:receipt></b:PayResponse>"
+            + "</soap:Body></soap:Envelope>")));
+  }
+
+  @Test
+  void aSoapPartnerOnBasicGetsTheUserAndPasswordFromTheSecret() {
+    secret("soapbasic", "user", "fake-soap-user");
+    secret("soapbasic", "password", "fake-soap-password");
+    publishSoap("soapbasic", 1, local(), "auth=basic&userField=user&secretField=password");
+    soapReceipt(PARTNER, post(urlEqualTo("/soapbasic/ws"))
+        .withHeader("Authorization", equalTo("Basic "
+            + Base64.getEncoder().encodeToString("fake-soap-user:fake-soap-password".getBytes(StandardCharsets.UTF_8))))
+        .withRequestBody(matching("(?s).*<Pay xmlns=\"urn:biller:v1\"><ref>BITS-85-B</ref></Pay>.*")));
+
+    assertThat(gateway.call(pay("soapbasic", "BITS-85-B"))).isInstanceOf(PartnerResponse.Success.class);
+  }
+
+  @Test
+  void aSoapPartnerOnMtlsUsesTheNamedKeystoreAndFailsClosedWithAWrongOne() {
+    String address = "https://localhost:" + TLS_PARTNER.httpsPort();
+    soapReceipt(TLS_PARTNER, post(urlEqualTo("/tlsco/ws")));
+
+    long v = nextVersion("tlsco");
+    publishSoap("tlsco", v, address, "sslContextRef=mtls-good");
+    assertThat(gateway.call(pay("tlsco", "BITS-85-T1"))).isInstanceOf(PartnerResponse.Success.class);
+
+    publishSoap("tlsco", v + 1, address, "sslContextRef=mtls-wrong");
+    assertThat(gateway.call(pay("tlsco", "BITS-85-T2")))
+        .isInstanceOfAny(PartnerResponse.Unknown.class, PartnerResponse.NotSent.class);
+
+    TLS_PARTNER.verify(1, postRequestedFor(urlEqualTo("/tlsco/ws")));
   }
 }

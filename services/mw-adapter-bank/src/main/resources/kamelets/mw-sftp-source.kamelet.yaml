@@ -1,6 +1,15 @@
 # mw-sftp-source (ADR D26, ticket 86): the start of a batch partner route
 # (`from: kamelet:mw-sftp-source?...`): polls the partner's SFTP directory for reconciliation and
 # settlement files.
+#
+# stepwise=false on purpose (ticket 86 asked for stepwise=true; review of 86, ADR D26): with
+# streamDownload=true camel-sftp 4.22 hands the route an open ChannelSftp.get stream and, when
+# stepwise, then sends "cd" back to the start directory on that same channel while the stream is still
+# unread (SftpOperations.retrieveFileToStreamInBody). JSch runs one request at a time per channel, so
+# the cd interleaves with the open download (camel-ftp refuses the pair for FTP outright: "The option
+# stepwise is not supported for stream downloading"). stepwise=false sends no cd: it gets the file by
+# its path, which the loader keeps a relative path without . or .. segments. The stream download (a
+# file never fully in memory) is the requirement kept.
 apiVersion: camel.apache.org/v1
 kind: Kamelet
 metadata:
@@ -44,9 +53,20 @@ spec:
         type: string
       delay:
         title: Poll delay
-        description: Milliseconds between two polls (daily files need no tight poll; the connection is closed in between).
+        description: Milliseconds between two polls, 100 or more (daily files need no tight poll; the connection is closed in between). Not with cron.
         type: integer
         default: 60000
+      cron:
+        title: Poll schedule
+        description: >-
+          Spring cron expression of six fields (second minute hour day month weekday, + for a space),
+          e.g. 0+0+6+*+*+* for 06:00 every day; polls on the schedule instead of every delay ms.
+        type: string
+      scheduler:
+        title: Scheduler
+        description: Set by the route loader (spring when cron is given); never by the route.
+        type: string
+        default: none
       maxMessagesPerPoll:
         title: Files per poll
         description: At most this many files per poll.
@@ -78,6 +98,6 @@ spec:
         type: string
   template:
     from:
-      uri: "sftp:{{host}}:{{port}}/{{directory}}?username={{username}}&password={{?password}}&privateKey={{?privateKey}}&knownHosts={{knownHosts}}&strictHostKeyChecking=yes&useUserKnownHostsFile=false&autoCreateKnownHostsFile=false&delay={{delay}}&maxMessagesPerPoll={{maxMessagesPerPoll}}&readLock=changed&readLockCheckInterval=500&readLockTimeout=20000&idempotent=true&idempotentKey={{partnerId}}/${file:name}-${file:size}-${file:modified}&idempotentRepository=#mwSftpFiles&move=.done&moveFailed=.error&streamDownload=true&stepwise=false&disconnect=true&binary=true&connectTimeout=10000&soTimeout=30000"
+      uri: "sftp:{{host}}:{{port}}/{{directory}}?username={{username}}&password={{?password}}&privateKey={{?privateKey}}&knownHosts={{knownHosts}}&strictHostKeyChecking=yes&useUserKnownHostsFile=false&autoCreateKnownHostsFile=false&delay={{delay}}&scheduler={{scheduler}}&scheduler.cron={{?cron}}&maxMessagesPerPoll={{maxMessagesPerPoll}}&readLock=changed&readLockCheckInterval=500&readLockTimeout=20000&idempotent=true&idempotentKey={{partnerId}}/${file:name}-${file:size}-${file:modified}&idempotentRepository=#mwSftpFiles&move=.done&moveFailed=.error&streamDownload=true&stepwise=false&disconnect=true&binary=true&connectTimeout=10000&soTimeout=30000"
       steps:
         - to: "kamelet:sink"

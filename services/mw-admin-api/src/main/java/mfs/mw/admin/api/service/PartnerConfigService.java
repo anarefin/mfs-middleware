@@ -41,9 +41,11 @@ import tools.jackson.databind.json.JsonMapper;
  * secret names, suffixes, URL shape); the adapters check it again (host allowlist, https, JSONata,
  * dry-run) and keep the old version when they refuse it.
  *
- * <p>Only UPSERT_ROUTE carries a dry-run (a new route must prove itself first, ticket 83). ENABLE,
- * DISABLE and SET_TIMEOUTS publish the held route without one (ticket 84): the route is the one
- * already running, so the adapter swaps the new version in at once.
+ * <p>Only UPSERT_ROUTE adds a dry-run (a new route must prove itself first, ticket 83). ENABLE,
+ * DISABLE and SET_TIMEOUTS on a proven route (a seed, or a version reported LIVE) publish it without
+ * one (ticket 84): the route already runs, so the adapter swaps the new version in at once. On a
+ * route that has not passed its dry-run yet (PENDING_DRY_RUN or REJECTED) they keep its dry-run, so
+ * the gate still applies to it (review of ticket 84).
  */
 @Service
 public class PartnerConfigService {
@@ -140,7 +142,7 @@ public class PartnerConfigService {
       refuseIfAny(problems);
       Partner p = held.orElseThrow(PartnerConfigService::notFound);
       family = p.family();
-      base = p.config().withoutDryRun();
+      base = proven(p) ? p.config().withoutDryRun() : p.config();
       next =
           switch (action) {
             case ENABLE -> base.withEnabled(true);
@@ -172,6 +174,17 @@ public class PartnerConfigService {
     }
     payload.put("config", after);
     return changeRequests.open(maker, Partner.RESOURCE_TYPE, id, action.name(), payload, diff, body.reason());
+  }
+
+  /**
+   * True when the partner's current route already runs: a seed (the adapters' own) or a version its
+   * adapter reported LIVE. A version still PENDING_DRY_RUN or REJECTED is not proven, so an ENABLE,
+   * DISABLE or SET_TIMEOUTS on it keeps its dry-run (review of ticket 84: dropping it would skip the
+   * dry-run gate). A pending version without a dry-run (one of these actions on a proven route, or a
+   * rollback) has none to keep.
+   */
+  private static boolean proven(Partner p) {
+    return p.route() == null || "LIVE".equals(p.route().status());
   }
 
   // --- seeds ----------------------------------------------------------------------------------

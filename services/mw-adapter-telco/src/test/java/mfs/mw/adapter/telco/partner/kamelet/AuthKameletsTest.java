@@ -31,6 +31,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import mfs.mw.adapter.telco.partner.PartnerTestSeeds;
 import mfs.mw.adapter.telco.partner.auth.OAuth2ClientCredentials;
 import mfs.mw.adapter.telco.partner.config.PartnerConfig;
 import mfs.mw.adapter.telco.partner.config.PartnerEndpointPolicy;
@@ -80,7 +81,7 @@ class AuthKameletsTest {
     PartnerEndpointPolicy policy = new PartnerEndpointPolicy(new PartnerProperties.Security(Map.of(), List.of("localhost")));
     CAMEL.getRegistry().bind("http", new PartnerHttpComponent(new PartnerDnsResolver(policy)));
     CAMEL.getRegistry().bind("mwPartnerHeaderFilter", new PartnerHeaderFilterStrategy());
-    CAMEL.addRoutes(new PartnerHostGuard(policy));
+    CAMEL.addRoutes(new PartnerHostGuard(policy, PartnerTestSeeds.noTlsContexts()));
     CAMEL.getRegistry().bind("mwAuth", new MwAuthStep(CLOCK, new OAuth2ClientCredentials(CAMEL.createProducerTemplate(),
         JSON, CLOCK, Duration.ofSeconds(30))));
     CAMEL.addRoutes(new RouteBuilder() {

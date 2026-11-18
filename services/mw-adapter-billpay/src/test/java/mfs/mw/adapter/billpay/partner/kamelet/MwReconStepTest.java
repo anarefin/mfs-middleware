@@ -23,10 +23,11 @@ class MwReconStepTest {
 
   final List<PartnerRecon.File> files = new ArrayList<>();
   final List<PartnerRecon.Line> lines = new ArrayList<>();
-  final MwReconStep step = new MwReconStep((file, stream) -> {
+  final PartnerRecon.Sink sink = (file, stream) -> {
     files.add(file);
     stream.forEach(lines::add);
-  });
+  };
+  final MwReconStep step = new MwReconStep(sink, MwReconStep.DEFAULT_MAX_LINES);
 
   static Exchange file(String name, String content) {
     Exchange exchange = new DefaultExchange(new DefaultCamelContext());
@@ -71,6 +72,21 @@ class MwReconStepTest {
     assertThatThrownBy(() -> step.publish(file("recon.csv", "ref erence,amount\nBITS01,500.00\n"), "acme", "", "comma"))
         .isInstanceOf(MwReconStep.BadReconFileException.class)
         .hasMessageContaining("line 1");
+  }
+
+  @Test
+  void aFileWithMoreDataLinesThanTheCapFailsAsAWhole() {
+    MwReconStep capped = new MwReconStep(sink, 2);
+
+    assertThatThrownBy(() -> capped.publish(file("recon.csv", "reference\nBITS01\nBITS02\n\nBITS03\n"), "acme", "", "comma"))
+        .isInstanceOf(MwReconStep.BadReconFileException.class)
+        .hasMessageContaining("more than 2 data lines")
+        .hasMessageNotContaining("BITS03");
+  }
+
+  @Test
+  void theCapIsAtLeastOneLine() {
+    assertThatThrownBy(() -> new MwReconStep(sink, 0)).isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test

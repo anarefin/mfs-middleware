@@ -195,4 +195,16 @@ class CompiledStylesheetTest {
 
     assertThatThrownBy(() -> failing.responseJson("<a/>")).isInstanceOf(IllegalArgumentException.class);
   }
+
+  /** Review of 85: the DOM parse of the policy and the SAX reader Saxon gets share one secure setup. */
+  @Test
+  void theDomParseAndTheSaxReaderRefuseADoctypeAlike() {
+    String xxe = "<?xml version=\"1.0\"?><!DOCTYPE r [<!ENTITY x SYSTEM \"file:///etc/passwd\">]><r>&x;</r>";
+
+    assertThatThrownBy(() -> StylesheetPolicy.parse(xxe)).isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("DOCTYPE");
+    assertThatThrownBy(() -> StylesheetPolicy.secureReader().parse(new org.xml.sax.InputSource(new java.io.StringReader(xxe))))
+        .isInstanceOf(org.xml.sax.SAXException.class).hasMessageContaining("DOCTYPE");
+    assertThat(StylesheetPolicy.parse("<r a=\"1\"/>").getDocumentElement().getAttribute("a")).isEqualTo("1");
+  }
 }

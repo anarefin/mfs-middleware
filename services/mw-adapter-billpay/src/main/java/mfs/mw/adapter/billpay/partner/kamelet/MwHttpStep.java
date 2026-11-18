@@ -81,13 +81,22 @@ public class MwHttpStep {
     } else {
       message.removeHeader(Exchange.CONTENT_TYPE);
     }
+    String tls = exchange.getProperty(TLS_REF, "", String.class);
+    exchange.setProperty(TLS, tls != null && !tls.isEmpty());
+    start(exchange, runtime);
+  }
+
+  /**
+   * The start shared with {@code mw-soap-call}: the record's static headers, our correlation id,
+   * no attempt yet, the first one to come, no credential refused.
+   */
+  static void start(Exchange exchange, PartnerRuntime runtime) {
+    var message = exchange.getMessage();
     runtime.config().headers().forEach(message::setHeader);
     String correlationId = message.getHeader(PartnerExchange.CORRELATION_ID, String.class);
     if (correlationId != null) {
       message.setHeader(CORRELATION_HEADER, correlationId);
     }
-    String tls = exchange.getProperty(TLS_REF, "", String.class);
-    exchange.setProperty(TLS, tls != null && !tls.isEmpty());
     exchange.setProperty(PartnerExchange.ATTEMPTS, 0);
     exchange.setProperty(PartnerExchange.ATTEMPT_AGAIN, true);
     exchange.removeProperty(AUTH_RETRIED);
@@ -96,14 +105,23 @@ public class MwHttpStep {
 
   /** Before each attempt: the request body as mapped, nothing decided yet. */
   public void beforeAttempt(Exchange exchange) {
+    nextAttempt(exchange);
+    String body = exchange.getProperty(PartnerExchange.REQUEST_BODY, String.class);
+    exchange.getMessage().setBody(body == null || body.isEmpty() ? null : body);
+    exchange.setProperty(PartnerExchange.SENT, true);
+  }
+
+  /**
+   * Each attempt, shared with {@code mw-soap-call}: counted, nothing decided or answered yet. The
+   * caller marks it sent ({@link PartnerExchange#SENT}) once the request is ready, so a failure
+   * before that stays NOT_SENT.
+   */
+  static void nextAttempt(Exchange exchange) {
     exchange.setProperty(PartnerExchange.ATTEMPT_AGAIN, false);
     exchange.setProperty(PartnerExchange.FINAL, false);
     exchange.setProperty(PartnerExchange.ATTEMPTS, exchange.getProperty(PartnerExchange.ATTEMPTS, 0, Integer.class) + 1);
     exchange.removeProperty(PartnerExchange.RESPONSE_STATUS);
     exchange.removeProperty(PartnerExchange.RESPONSE_BODY);
-    String body = exchange.getProperty(PartnerExchange.REQUEST_BODY, String.class);
-    exchange.getMessage().setBody(body == null || body.isEmpty() ? null : body);
-    exchange.setProperty(PartnerExchange.SENT, true);
   }
 
   /**
@@ -130,7 +148,7 @@ public class MwHttpStep {
           .addKeyValue("partnerId", runtime.id())
           .log("partner refused the credential (401); sending once more with a fresh one");
       exchange.setProperty(AUTH_RETRIED, true);
-      exchange.setProperty(MwAuthStep.REJECTED, exchange.getProperty(MwAuthStep.TOKEN_GENERATION, 0L, Long.class));
+      exchange.setProperty(MwAuthStep.REJECTED, exchange.getProperty(MwAuthStep.TOKEN_GENERATION, Long.class));
       exchange.setProperty(PartnerExchange.ATTEMPTS, exchange.getProperty(PartnerExchange.ATTEMPTS, 1, Integer.class) - 1);
       exchange.setProperty(PartnerExchange.ATTEMPT_AGAIN, true);
     }

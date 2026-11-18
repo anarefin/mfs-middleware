@@ -1,8 +1,8 @@
 package mfs.mw.adapter.telco.partner.route;
 
 import java.net.URI;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -12,7 +12,6 @@ import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -27,7 +26,8 @@ import org.springframework.stereotype.Component;
  * set {@code mw-http-call} adds ({@link #OPTIONS}); the
  * refusal ends in {@code mw-http-call}'s fallback as NOT_SENT {@code MISCONFIGURED} and is logged
  * as {@code security.partner_target_refused}. Ticket 85 adds {@code cxf*} ({@link #soapProblem}: the
- * endpoints of {@code mw-soap-call} only); ticket 86 adds {@code sftp*}.
+ * endpoints of {@code mw-soap-call} only, with an mTLS context of the partner's own since the review
+ * of 85); a batch route's SFTP host is held to the record's hosts by the loader (ticket 86).
  * An mTLS call (ticket 87) may also carry {@code sslContextParameters=#mwTls-<name>}, and only a
  * context the calling partner owns ({@link PartnerTlsContexts}), over https.
  */
@@ -59,11 +59,6 @@ public class PartnerHostGuard extends RouteBuilder {
   private final PartnerEndpointPolicy policy;
   private final PartnerTlsContexts tls;
 
-  public PartnerHostGuard(PartnerEndpointPolicy policy) {
-    this(policy, PartnerTlsContexts.none());
-  }
-
-  @Autowired
   public PartnerHostGuard(PartnerEndpointPolicy policy, PartnerTlsContexts tls) {
     this.policy = policy;
     this.tls = tls;
@@ -116,31 +111,27 @@ public class PartnerHostGuard extends RouteBuilder {
     }
     String tlsContext = null;
     if (q >= 0) {
-      StringBuilder rest = new StringBuilder();
-      for (String pair : plain.substring(q + 1).split("&")) {
-        String name = URLDecoder.decode(pair.indexOf('=') < 0 ? pair : pair.substring(0, pair.indexOf('=')), StandardCharsets.UTF_8);
-        if (TLS_OPTION.equals(name) && tlsContext == null) {
-          tlsContext = URLDecoder.decode(pair.substring(pair.indexOf('=') + 1), StandardCharsets.UTF_8);
+      List<Map.Entry<String, String>> rest = new ArrayList<>();
+      List<Map.Entry<String, String>> params;
+      try {
+        params = QueryParams.parse(plain.substring(q + 1));
+      } catch (IllegalArgumentException e) {
+        return "unreadable endpoint option";
+      }
+      for (Map.Entry<String, String> p : params) {
+        if (TLS_OPTION.equals(p.getKey()) && tlsContext == null) {
+          tlsContext = p.getValue();
         } else {
-          rest.append(pair).append('&');
+          rest.add(p);
         }
       }
-      String option = optionProblem(rest.toString());
+      String option = optionProblem(rest);
       if (option != null) {
         return option;
       }
     }
-    if (tlsContext != null) {
-      String name = tlsContext.startsWith("#" + PartnerTlsContexts.BEAN_PREFIX)
-          ? tlsContext.substring(1 + PartnerTlsContexts.BEAN_PREFIX.length()) : "";
-      if (!tls.owner(name).map(runtime.id()::equals).orElse(false)) {
-        return "TLS client context is not one of the partner's own";
-      }
-      if (!"https".equalsIgnoreCase(uri.getScheme())) {
-        return "a TLS client context needs https";
-      }
-    }
-    return hostProblem(runtime, uri);
+    String tlsProblem = tlsProblem(runtime, tlsContext, uri);
+    return tlsProblem != null ? tlsProblem : hostProblem(runtime, uri);
   }
 
   /**
@@ -167,11 +158,43 @@ public class PartnerHostGuard extends RouteBuilder {
     } catch (IllegalArgumentException e) {
       return "unreadable endpoint";
     }
-    String option = soapOptionProblem(q < 0 ? "" : plain.substring(q + 1));
+    List<Map.Entry<String, String>> params;
+    try {
+      params = QueryParams.parse(q < 0 ? "" : plain.substring(q + 1));
+    } catch (IllegalArgumentException e) {
+      return "unreadable endpoint option";
+    }
+    String tlsContext = null;
+    List<Map.Entry<String, String>> rest = new ArrayList<>();
+    for (Map.Entry<String, String> p : params) {
+      if (TLS_OPTION.equals(p.getKey()) && tlsContext == null) {
+        tlsContext = p.getValue();
+      } else {
+        rest.add(p);
+      }
+    }
+    String option = soapOptionProblem(rest);
     if (option != null) {
       return option;
     }
-    return hostProblem(runtime, uri);
+    String tlsProblem = tlsProblem(runtime, tlsContext, uri);
+    return tlsProblem != null ? tlsProblem : hostProblem(runtime, uri);
+  }
+
+  /** An mTLS context (ticket 87, and SOAP since the review of 85): only one the partner owns, over https. */
+  private String tlsProblem(PartnerRuntime runtime, String tlsContext, URI uri) {
+    if (tlsContext == null) {
+      return null;
+    }
+    String name = tlsContext.startsWith("#" + PartnerTlsContexts.BEAN_PREFIX)
+        ? tlsContext.substring(1 + PartnerTlsContexts.BEAN_PREFIX.length()) : "";
+    if (!tls.owner(name).map(runtime.id()::equals).orElse(false)) {
+      return "TLS client context is not one of the partner's own";
+    }
+    if (!"https".equalsIgnoreCase(uri.getScheme())) {
+      return "a TLS client context needs https";
+    }
+    return null;
   }
 
   /** The only options a partner cxf endpoint may carry, those {@code mw-soap-call} sets. */
@@ -181,14 +204,18 @@ public class PartnerHostGuard extends RouteBuilder {
       "bindingId", Set.of("http://www.w3.org/2003/05/soap/bindings/HTTP/"));
 
   static String soapOptionProblem(String query) {
+    try {
+      return soapOptionProblem(QueryParams.parse(query));
+    } catch (IllegalArgumentException e) {
+      return "unreadable endpoint option";
+    }
+  }
+
+  private static String soapOptionProblem(List<Map.Entry<String, String>> params) {
     Set<String> seen = new java.util.HashSet<>();
-    for (String pair : query.split("&")) {
-      if (pair.isEmpty()) {
-        continue;
-      }
-      int eq = pair.indexOf('=');
-      String name = URLDecoder.decode(eq < 0 ? pair : pair.substring(0, eq), StandardCharsets.UTF_8);
-      String value = eq < 0 ? "" : URLDecoder.decode(pair.substring(eq + 1), StandardCharsets.UTF_8);
+    for (Map.Entry<String, String> p : params) {
+      String name = p.getKey();
+      String value = p.getValue();
       if (!SOAP_OPTIONS.containsKey(name) || !SOAP_OPTIONS.get(name).contains(value) || !seen.add(name)) {
         return "endpoint option " + name + " is not one mw-soap-call sets";
       }
@@ -215,13 +242,17 @@ public class PartnerHostGuard extends RouteBuilder {
 
   /** The first endpoint option outside {@link #OPTIONS} (or with another value); null when none. */
   static String optionProblem(String query) {
-    for (String pair : query.split("&")) {
-      if (pair.isEmpty()) {
-        continue;
-      }
-      int eq = pair.indexOf('=');
-      String name = URLDecoder.decode(eq < 0 ? pair : pair.substring(0, eq), StandardCharsets.UTF_8);
-      String value = eq < 0 ? "" : URLDecoder.decode(pair.substring(eq + 1), StandardCharsets.UTF_8);
+    try {
+      return optionProblem(QueryParams.parse(query));
+    } catch (IllegalArgumentException e) {
+      return "unreadable endpoint option";
+    }
+  }
+
+  private static String optionProblem(List<Map.Entry<String, String>> params) {
+    for (Map.Entry<String, String> p : params) {
+      String name = p.getKey();
+      String value = p.getValue();
       if (!OPTIONS.containsKey(name)) {
         return "endpoint option " + name + " is not one mw-http-call sets";
       }

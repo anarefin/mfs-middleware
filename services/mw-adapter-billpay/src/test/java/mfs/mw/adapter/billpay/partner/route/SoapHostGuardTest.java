@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import mfs.mw.adapter.billpay.partner.PartnerTestSeeds;
+import mfs.mw.adapter.billpay.partner.auth.PartnerTlsContexts;
 import mfs.mw.adapter.billpay.partner.config.PartnerConfig;
 import mfs.mw.adapter.billpay.partner.config.PartnerEndpointPolicy;
 import mfs.mw.adapter.billpay.partner.config.PartnerProperties;
@@ -15,7 +16,7 @@ import org.junit.jupiter.api.Test;
 class SoapHostGuardTest {
 
   final PartnerHostGuard guard =
-      new PartnerHostGuard(new PartnerEndpointPolicy(new PartnerProperties.Security(Map.of(), List.of("mw-simulators"))));
+      new PartnerHostGuard(new PartnerEndpointPolicy(new PartnerProperties.Security(Map.of(), List.of("mw-simulators"))), PartnerTestSeeds.noTlsContexts());
   static final Map.Entry<String, PartnerConfig> SEED = PartnerTestSeeds.devSeed();
 
   final PartnerRuntime partner =
@@ -51,5 +52,25 @@ class SoapHostGuardTest {
         .contains("option");
     assertThat(guard.soapProblem(partner, "cxf://http://mw-simulators:8080/soapbill?dataFormat=PAYLOAD&loggingFeatureEnabled=true", null))
         .contains("option");
+  }
+
+  /** Review of 85: mw-soap-call's mTLS, held to the rules of mw-http-call's (ticket 87). */
+  @Test
+  void anMtlsSoapCallMayNameOnlyAContextOfThePartnersOwnOverHttps() {
+    PartnerTlsContexts tls = org.mockito.Mockito.mock(PartnerTlsContexts.class);
+    org.mockito.Mockito.when(tls.owner(org.mockito.ArgumentMatchers.anyString())).thenReturn(java.util.Optional.empty());
+    org.mockito.Mockito.when(tls.owner("own-client")).thenReturn(java.util.Optional.of(SEED.getKey()));
+    org.mockito.Mockito.when(tls.owner("other-client")).thenReturn(java.util.Optional.of("someone-else"));
+    PartnerHostGuard withTls =
+        new PartnerHostGuard(new PartnerEndpointPolicy(new PartnerProperties.Security(Map.of(), List.of("mw-simulators"))), tls);
+
+    assertThat(withTls.soapProblem(partner, "cxf://https://93.184.215.14/ws" + OPTIONS + "&sslContextParameters=%23mwTls-own-client", null))
+        .isNull();
+    assertThat(withTls.soapProblem(partner, "cxf://https://93.184.215.14/ws" + OPTIONS + "&sslContextParameters=%23mwTls-other-client", null))
+        .contains("TLS client context");
+    assertThat(withTls.soapProblem(partner, "cxf://https://93.184.215.14/ws" + OPTIONS + "&sslContextParameters=%23evil", null))
+        .contains("TLS client context");
+    assertThat(withTls.soapProblem(partner, "cxf://http://mw-simulators:8080/soapbill" + OPTIONS
+        + "&sslContextParameters=%23mwTls-own-client", null)).contains("https");
   }
 }

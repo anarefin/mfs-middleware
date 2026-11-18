@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 class PartnerHostGuardTest {
 
   final PartnerHostGuard guard =
-      new PartnerHostGuard(new PartnerEndpointPolicy(new PartnerProperties.Security(Map.of(), List.of("mw-simulators"))));
+      new PartnerHostGuard(new PartnerEndpointPolicy(new PartnerProperties.Security(Map.of(), List.of("mw-simulators"))), PartnerTestSeeds.noTlsContexts());
   static final Map.Entry<String, PartnerConfig> SEED = PartnerTestSeeds.devSeed();
 
   final PartnerRuntime billagg =
