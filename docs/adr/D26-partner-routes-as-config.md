@@ -102,6 +102,46 @@ call any URL with any component also needs guardrails.
   `route` is refused. Telco and bank run the same engine and Kamelets as billpay (`diff -r` of the
   `partner/` trees and the Kamelet folders is empty after the package rename) and publish
   `mw.partner.route.status.v1` for their own family.
+- 2026-11-18 (review of tickets 84-87), rollback: the republished version is the newest LIVE
+  version's proven set (route, mappings, allowedHosts, auth, sensitiveFields, headers, error map, as
+  its dry-run passed them together), never the live route paired with the rejected version's hosts or
+  auth; the partner is enabled only when both the live and the current version are (a rollback never
+  re-enables a partner the operator disabled), and the current timeouts stay (operator state, not part
+  of the proof). The merged value passes the route rules again before it is published. A rejected
+  version that kept that proven set is not rolled back: the same set would be rejected again.
+- 2026-11-18 (review of 84), dry-run gate: ENABLE, DISABLE and SET_TIMEOUTS drop the `dryRun` only
+  when the partner's current route is proven (a seed or reported LIVE). On a version still
+  PENDING_DRY_RUN or REJECTED they keep its `dryRun`, so an unproven route never reaches the adapter
+  as one that loads at once. (Refusing the actions instead would block an emergency DISABLE while a
+  dry-run is pending.)
+- 2026-11-18 (review of 87), amends "no automatic redelivery of a PAY": `mw-http-call` sends a
+  request once more after a partner 401 to a refreshable credential (`mw-auth-oauth2-cc`), a PAY
+  too. A 401 is the partner refusing the credential before it applied anything, so the resend cannot
+  apply a payment twice; it happens at most once per call (a second 401 is classified), with a fresh
+  token, and does not count against `inquiryRetries`. Any other failure of a PAY is still never
+  resent.
+- 2026-11-18 (review of 86), `mw-sftp-source` runs `stepwise=false`, not the ticket's
+  `stepwise=true`: with `streamDownload=true` camel-sftp 4.22 (`SftpOperations
+  .retrieveFileToStreamInBody`) returns the open `ChannelSftp.get` stream and, when stepwise, then sends
+  `cd` back to the start directory on that same channel while the stream is unread; JSch serves one
+  request at a time per channel (camel-ftp refuses the pair for FTP outright). Without stepwise the
+  file is fetched by its relative path (the loader refuses `.` and `..` segments). The stream download
+  (a file never fully in memory) is the requirement kept. The source polls every `delay` ms (100 or
+  more) or on a Spring `cron` (six fields; the loader sets `scheduler=spring`), never both; `mw-recon`
+  refuses a file over `mw.partners.recon.max-lines` (`MW_PARTNER_RECON_MAX_LINES`, default 1000000)
+  as a whole, since every line of a file is written in one transaction.
+- 2026-11-18 (review of 86), `mw-sftp-sink` builds CSV or fixed-width text with a JSONata mapping of
+  the record (`mapping=`, a string result, request routes only; there the put is the partner call, and a dry-run
+  candidate makes the text but puts no file),
+  not `marshal: bindy`: bindy needs a Java model class per file layout, which a route cannot ship
+  and the loader's allowlist cannot check; JSONata runs in the same sandbox as every other mapping.
+- 2026-11-18 (review of 85), SOAP: `mw-soap-call` takes HTTP Basic through `mw-auth-basic` and mTLS
+  through a named client context (`sslContextRef`, `PartnerTlsContexts`), as `mw-http-call`, so a SOAP
+  partner on either is onboarded by config. Next to XSLT, `request=json` / `response=json` map the
+  body by a fixed JSON/XML convention (`partner/mapping/JsonXmlMapping`: keys are elements in the
+  call's `namespace`, `@name` attributes, arrays repeat; back the same way), so JSONata maps both
+  sides as the ticket asks. The DOM builds the XML (a value is never markup) and the answer is parsed
+  by the policy's secure parser; a JSONata expression never concatenates XML text.
 
 ## Where in the repo
 
