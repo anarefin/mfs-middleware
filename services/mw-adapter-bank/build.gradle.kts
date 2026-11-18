@@ -61,6 +61,10 @@ dependencies {
     implementation("org.apache.camel.springboot:camel-hashicorp-vault-starter")
     implementation("org.apache.camel.springboot:camel-micrometer-starter")
     implementation("org.apache.camel.springboot:camel-micrometer-observability-starter")
+    // Batch partners (ticket 86): the mw-sftp-source / mw-sftp-sink Kamelets (camel-sftp, JSch) and the
+    // JDBC idempotent repository of processed files (camel-sql's JdbcMessageIdRepository, own schema).
+    implementation("org.apache.camel.springboot:camel-ftp-starter")
+    implementation("org.apache.camel.springboot:camel-sql-starter")
     // Resilience4j for client/ calls (19.2); annotations need AspectJ.
     implementation("io.github.resilience4j:resilience4j-spring-boot4:2.4.0")
     implementation("org.springframework.boot:spring-boot-starter-aspectj")

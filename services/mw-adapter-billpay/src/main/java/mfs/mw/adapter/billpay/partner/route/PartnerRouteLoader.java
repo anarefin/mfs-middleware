@@ -134,8 +134,20 @@ public class PartnerRouteLoader {
     this.bulkheads = bulkheads;
   }
 
-  /** A checked record: its runtime and the route definition to add. */
-  public record Loaded(PartnerRuntime runtime, RouteDefinition route) {}
+  /**
+   * A checked record: its runtime, the route definition to add and the registry beans it refers to
+   * (ticket 86: a batch route's SFTP credential and known hosts, bound by {@link PartnerRoutes}
+   * before the route starts and removed with it; never in an endpoint URI).
+   */
+  public record Loaded(PartnerRuntime runtime, RouteDefinition route, Map<String, String> beans) {
+    public Loaded {
+      beans = Map.copyOf(beans);
+    }
+
+    public Loaded(PartnerRuntime runtime, RouteDefinition route) {
+      this(runtime, route, Map.of());
+    }
+  }
 
   /**
    * Checks record {@code config} as version {@code version} of partner {@code id}.
@@ -206,12 +218,25 @@ public class PartnerRouteLoader {
     Calls calls = new Calls();
     calls.partnerParam = candidate == null ? id : PartnerRuntime.candidatePartnerParam(id);
     calls.dryRunBase = candidate == null ? null : candidate.baseUrl().replaceAll("/+$", "");
+    // ticket 86: a batch route starts from the mw-sftp-source Kamelet instead of direct:partner-<id>
+    calls.batch = PartnerBatchRoutes.isBatchUri(from.get("uri"));
+    calls.routeId = routeId;
+    String batchFrom = null;
+    if (calls.batch) {
+      if (record.dryRun() != null || candidate != null) {
+        problems.add("a batch route has no dry-run (nothing to send a sample to)");
+      }
+      batchFrom = PartnerBatchRoutes.kamelet((String) from.get("uri"), true, calls.batchCalls(), security);
+    }
     injectKamelets(from, id, record, calls, security, problems);
     refuseIfAny(id, security, problems);
-    from.put("uri", endpoint);
+    from.put("uri", calls.batch ? batchFrom : endpoint);
     Map<String, Object> route = new LinkedHashMap<>();
     route.put("id", routeId);
-    route.put("routeConfigurationId", PartnerRouteConfiguration.ID);
+    if (!calls.batch) {
+      // a batch route's failure must reach the file consumer (moveFailed): no handled onException
+      route.put("routeConfigurationId", PartnerRouteConfiguration.ID);
+    }
     route.put("from", from);
 
     String loaded = dump(route);
@@ -223,8 +248,15 @@ public class PartnerRouteLoader {
     refuseIfAny(id, security, problems);
     List<ProcessorDefinition<?>> outputs = partnerOutputs(definition);
     walk(outputs, security, problems);
-    ending(outputs, problems);
+    if (calls.batch) {
+      PartnerBatchRoutes.ending(outputs, problems);
+    } else {
+      ending(outputs, problems);
+    }
     refuseIfAny(id, security, problems);
+    for (String host : calls.sftp.hosts) {
+      security.addAll(policy.hostProblems(id, host, allowed));
+    }
 
     for (String url : calls.urls) {
       URI uri;
@@ -253,6 +285,7 @@ public class PartnerRouteLoader {
 
     Map<String, String> values = new LinkedHashMap<>();
     Set<String> fields = new TreeSet<>(calls.secretFields);
+    fields.addAll(calls.sftp.beans.values());
     if (record.auth().credentialsRef() != null) {
       fields.add(record.auth().credentialsRef());
     }
@@ -264,10 +297,12 @@ public class PartnerRouteLoader {
       }
     }
     refuseIfAny(id, security, problems);
+    Map<String, String> beans = new LinkedHashMap<>();
+    calls.sftp.beans.forEach((bean, field) -> beans.put(bean, values.get(field)));
     return new Loaded(
         new PartnerRuntime(id, version, record, routeId, endpoint, mappings, values,
             allowed, calls.kamelets),
-        definition);
+        definition, beans);
   }
 
   private static void refuseIfAny(String id, List<String> security, List<String> problems) {
@@ -314,8 +349,8 @@ public class PartnerRouteLoader {
       security.add("a partner route may not declare onException, errorHandler, intercept*, onCompletion,"
           + " doTry, routeConfiguration or circuitBreaker; the loader owns error handling");
     }
-    if (!("direct:partner-" + id).equals(from.get("uri"))) {
-      problems.add("the route must start from direct:partner-" + id);
+    if (!("direct:partner-" + id).equals(from.get("uri")) && !PartnerBatchRoutes.isBatchUri(from.get("uri"))) {
+      problems.add("the route must start from direct:partner-" + id + " (or kamelet:mw-sftp-source for a batch route)");
     }
     return (Map<String, Object>) from;
   }
@@ -399,6 +434,19 @@ public class PartnerRouteLoader {
     String partnerParam;
     /** A candidate's dry-run base URL; null for a live version. */
     String dryRunBase;
+    /** Ticket 86: the route starts from mw-sftp-source. */
+    boolean batch;
+    String routeId;
+    /** Ticket 86: what the SFTP and recon Kamelets name (hosts, secret beans). */
+    final PartnerBatchRoutes.Calls sftp = new PartnerBatchRoutes.Calls();
+
+    PartnerBatchRoutes.Calls batchCalls() {
+      sftp.partnerId = partnerParam;
+      sftp.routeId = routeId;
+      sftp.batch = batch;
+      sftp.kamelets = kamelets;
+      return sftp;
+    }
   }
 
   @SuppressWarnings("unchecked")
@@ -432,6 +480,10 @@ public class PartnerRouteLoader {
     if (!uri.startsWith("kamelet:mw-")) {
       security.add("'to' may call only the mw-* Kamelets (raw endpoints are refused): " + scheme(uri));
       return null;
+    }
+    if (PartnerBatchRoutes.handles(uri)) {
+      // ticket 86: the SFTP and recon Kamelets have their own short parameter lists
+      return PartnerBatchRoutes.kamelet(uri, false, calls.batchCalls(), security);
     }
     if (uri.contains("${") || uri.contains("$simple{")) {
       security.add("a Kamelet URI must be static (no ${...})");

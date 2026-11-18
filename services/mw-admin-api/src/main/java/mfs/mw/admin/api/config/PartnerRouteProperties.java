@@ -18,7 +18,12 @@ public record PartnerRouteProperties(List<String> kamelets) {
   public static final Set<String> LIBRARY =
       Set.of("mw-audit", "mw-auth-apikey", "mw-auth-hmac-sha256", "mw-auth-none", "mw-classify", "mw-http-call", "mw-map");
 
+  /** The batch Kamelets of ticket 86 (SFTP source and sink, reconciliation lines). */
+  public static final Set<String> BATCH = Set.of("mw-recon", "mw-sftp-sink", "mw-sftp-source");
+
   public PartnerRouteProperties {
-    kamelets = kamelets == null || kamelets.isEmpty() ? List.copyOf(new java.util.TreeSet<>(LIBRARY)) : List.copyOf(kamelets);
+    java.util.TreeSet<String> library = new java.util.TreeSet<>(LIBRARY);
+    library.addAll(BATCH);
+    kamelets = kamelets == null || kamelets.isEmpty() ? List.copyOf(library) : List.copyOf(kamelets);
   }
 }

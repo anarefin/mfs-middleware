@@ -288,6 +288,39 @@ After an adapter restart the compacted config topic replays the latest record pe
 adapter dry-runs it again; a latest record that was REJECTED leaves that partner on its seed (or no
 route) until a new version is approved (open item, ticket 84).
 
+## Batch partner over SFTP
+
+A partner's daily reconciliation or settlement file (ticket 86) is a batch partner route: a record of
+its own (e.g. `billagg-recon`) whose route starts from the `mw-sftp-source` Kamelet and ends with
+`mw-recon`, onboarded through the same maker-checker as a biller (no dry-run: a batch route takes no
+calls). Example: `deploy/partner-routes/examples/sftp-recon.yaml`. The adapter of the family polls the
+partner's directory, reads each file once (name, size, modification time), publishes every data line as
+`mw.partner.recon.v1` (key partnerId) through its outbox and moves the file to `.done`; a file it cannot
+read (wrong field count, line too long, no data line) goes to `.error` and publishes nothing: fix it
+and drop it again. `enabled: false` (DISABLE) stops the polling.
+
+1. **Secrets**, in the partner's own OpenBao secret `secret/<adapter>/<id>`: the login password (field
+   named by `secretField`; with `auth=key` a PEM private key) and the host's known_hosts lines (field
+   named by `knownHostsField`). Host keys are checked strictly: an unknown or changed key is refused
+   before the login (`HostKeyException` in the adapter's log, the file stays on the host). Get the lines
+   from the partner, or check them against `ssh-keyscan -p <port> <host>`.
+2. **Allowed host**: the record's `allowedHosts` names the SFTP host; a host that resolves to a private
+   address is refused unless it is a static dev host of the adapter.
+3. **Dev stack**: the SFTP server `partner-sftp` (profile `tester`, login `bits` / `SFTP_DEV_PASSWORD` from
+   `deploy/.env`, directories `recon` and `out`). From `deploy/`:
+
+   ```
+   docker compose --profile tester up -d partner-sftp
+   docker compose exec partner-sftp sh -c 'for k in /etc/ssh/ssh_host_*_key.pub; do printf "partner-sftp %s\n" "$(cut -d" " -f1,2 $k)"; done'
+   MW_PARTNER_INSECURE_HTTP_HOSTS=mw-simulators,partner-sftp docker compose --profile core up -d mw-adapter-billpay
+   docker compose cp recon-20261118.csv partner-sftp:/home/bits/recon/
+   docker compose exec partner-sftp ls /home/bits/recon/.done /home/bits/recon/.error
+   ```
+
+   The second line prints the known_hosts lines for the `sftp-known-hosts` field; `partner-sftp` regenerates
+   its host keys when the container is recreated, so write them again then. The lines are in the
+   adapter's outbox (`mw.partner.recon.v1`) and on Kafka; their consumer, mw-recon, is ticket 88.
+
 ## Gate and security runs on this host
 
 | Run | Command | Note |

@@ -90,6 +90,26 @@ public class PartnerEndpointPolicy {
     return problems;
   }
 
+  /**
+   * Every rule an SFTP {@code host} breaks for partner {@code id} allowed {@code allowed} (ticket
+   * 86): one of the allowed hosts, and not resolving to the service's own network unless it is a
+   * static dev host; empty when allowed.
+   */
+  public List<String> hostProblems(String id, String host, List<String> allowed) {
+    List<String> problems = new ArrayList<>();
+    String bare = bare(host);
+    if (allowed.stream().noneMatch(h -> h.equalsIgnoreCase(bare))) {
+      problems.add("sftp host is not in the partner's allowedHosts");
+    }
+    if (!internalAddressAllowed(id, bare)) {
+      String address = addressProblem(bare);
+      if (address != null) {
+        problems.add("sftp " + address);
+      }
+    }
+    return problems;
+  }
+
   /** {@code host} lower case, an IPv6 literal without its brackets. */
   public static String bare(String host) {
     String h = host.toLowerCase(Locale.ROOT);

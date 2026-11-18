@@ -62,7 +62,21 @@ class ProducedContractsTest {
           "events/mw-orchestrator/mw.partner.reply.v1.schema.json#billpay", ProducedContractsTest::partnerReplies,
           "events/mw-orchestrator/mw.partner.inbound.v1.schema.json#billpay", ProducedContractsTest::partnerInbound,
           "events/mw-audit-dw/mw.audit.event.v1.schema.json", ProducedContractsTest::auditEvents,
-          "events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json", ProducedContractsTest::routeStatuses);
+          "events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json", ProducedContractsTest::routeStatuses,
+          "events/mw-adapter-billpay/mw.partner.recon.v1.schema.json", ProducedContractsTest::reconLines);
+
+  /** Two lines of one file, through {@link mfs.mw.adapter.billpay.messaging.PartnerReconPublisher} itself (ticket 86). */
+  static List<Outbox.Record> reconLines(Outbox outbox) {
+    var publisher = new mfs.mw.adapter.billpay.messaging.PartnerReconPublisher(
+        outbox.writer, outbox.transactions, SERVICE,
+        new mfs.mw.adapter.billpay.partner.config.PartnerProperties(null, null, null, "billpay", null), CLOCK);
+    var file = new mfs.mw.adapter.billpay.partner.route.PartnerRecon.File(
+        "billagg-recon", "recon-20261118.csv", "recon-20261118.csv-74-1795507200000");
+    publisher.publish(file, java.util.stream.Stream.of(
+        new mfs.mw.adapter.billpay.partner.route.PartnerRecon.Line(2, false, Map.of("reference", "BITS01", "amount", "500.00")),
+        new mfs.mw.adapter.billpay.partner.route.PartnerRecon.Line(3, true, Map.of("reference", "BITS02", "amount", "120.50"))));
+    return outbox.records;
+  }
 
   /** LIVE and REJECTED, through {@link mfs.mw.adapter.billpay.messaging.PartnerRouteStatusPublisher} itself. */
   static List<Outbox.Record> routeStatuses(Outbox outbox) {
