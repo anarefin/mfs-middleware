@@ -1,6 +1,6 @@
 # Architecture decision records
 
-One record per decision in the spec's two decision tables: D1–D19 ("Decisions confirmed"; D17 has a record but no table row) and
+One record per decision in the spec's two decision tables: D1–D19, D25 and D26 ("Decisions confirmed"; D17 has a record but no table row) and
 M1–M13 ("MVP decisions"). The spec stays the source of the decision text; these records add the
 context, the consequences and where the decision lives in the repo. Later refinements (milestone
 gate decisions) are noted in each record's Status line; the spec marks them **Decision
@@ -12,7 +12,7 @@ the repo". A new decision gets the next free id in its table (spec first, then a
 
 | Id | Decision | Status |
 | --- | --- | --- |
-| D1 | [Apache Camel on Spring Boot 4, JDK 25 with virtual threads](D1-integration-engine.md) | Accepted, 2026-11-03 (spec revision 1) |
+| D1 | [Apache Camel on Spring Boot 4, JDK 25 with virtual threads](D1-integration-engine.md) | Accepted, 2026-11-03 (spec revision 1); amended 2026-11-18: Camel for partner integration only (D25, D26) |
 | D2 | [Apache Kafka in KRaft mode](D2-messaging-backbone.md) | Accepted, 2026-11-03 (spec revision 1) |
 | D3 | [Apache APISIX at the edge](D3-api-gateway.md) | Accepted, 2026-11-03 (spec revision 1) |
 | D4 | [PostgreSQL 18, only where a service needs its own state](D4-middleware-database.md) | Accepted, 2026-11-03 (spec revision 1) |
@@ -31,6 +31,8 @@ the repo". A new decision gets the next free id in its table (spec first, then a
 | D17 | [A dev/test-only test console for manual testing](D17-test-console.md) | Accepted, 2026-11-07 |
 | D18 | [No Makefile: `./gradlew clean build` is the gate](D18-no-makefile.md) | Accepted, 2026-11-13 (amends M13 and D16) |
 | D19 | [One test task per module, no coverage gate](D19-single-test-task.md) | Accepted, 2026-11-13 (amends spec 22.1 and the ticket-53 test tiers) |
+| D25 | [Spring Kafka for internal messaging](D25-kafka-client.md) | Accepted, 2026-11-18 (amends D1, spec 4.4, 6.2, 6.4, 22.1) |
+| D26 | [Partner routes as config, built from shipped Kamelets](D26-partner-routes-as-config.md) | Accepted, 2026-11-18 (amends spec 12 and 13) |
 | M1 | [MVP flows](M1-mvp-flows.md) | Accepted, 2026-11-03 |
 | M2 | [MVP channels](M2-mvp-channels.md) | Accepted, 2026-11-03 |
 | M3 | [USSD: SMPP and HTTP both built, GP live over SMPP](M3-mvp-ussd-transport.md) | Accepted, 2026-11-03 |
