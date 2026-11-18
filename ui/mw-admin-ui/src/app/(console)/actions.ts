@@ -109,7 +109,7 @@ export async function requestPartnerChange(partnerId: string, _prev: ActionState
  */
 export async function requestPartnerRoute(partnerId: string, _prev: ActionState, form: FormData): Promise<ActionState> {
   const reason = parseReason(form.get("reason"));
-  if (!PARTNER_ID.test(partnerId) || partnerId.endsWith("-candidate")) return invalid("partnerId", "not a partner id");
+  if (!PARTNER_ID.test(partnerId)) return invalid("partnerId", "not a partner id");
   const parsed = parseRouteForm({
     route: text(form, "route"), allowedHosts: text(form, "allowedHosts"), mappings: text(form, "mappings"),
     dryRunOperation: text(form, "dryRunOperation"), dryRunSample: text(form, "dryRunSample"), errorMap: text(form, "errorMap"),

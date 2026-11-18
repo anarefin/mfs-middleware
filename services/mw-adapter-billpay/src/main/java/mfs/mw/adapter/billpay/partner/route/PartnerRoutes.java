@@ -67,7 +67,7 @@ public class PartnerRoutes implements AutoCloseable {
   /**
    * Checks and starts the dry-run candidate of version {@code version} of partner {@code id}
    * (ticket 83): its calls go to {@code target}, on a circuit breaker of its own ({@code
-   * mw-cb-candidate.<id>}, the default config), so a failing dry-run never opens the live one.
+   * mw-cb-<id>~candidate}, the default config), so a failing dry-run never opens the live one.
    *
    * @throws mfs.mw.adapter.billpay.partner.config.PartnerConfigRefusedException when refused
    */

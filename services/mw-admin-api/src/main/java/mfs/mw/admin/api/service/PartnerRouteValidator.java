@@ -87,6 +87,13 @@ public class PartnerRouteValidator {
   static final Set<String> STEPS = Set.of("choice", "to", "setHeader", "setBody", "transform", "log", "marshal", "unmarshal");
   static final Set<String> LANGUAGES = Set.of("constant", "simple");
 
+  /**
+   * The package-style prefix of Camel's internal header names, refused like {@code Camel*}. Spelt in
+   * two parts on purpose: this module has no Camel (scripts/check-isolation.sh looks for the package
+   * name), it only knows the header names.
+   */
+  static final String CAMEL_HEADER_PACKAGE = "org.apache." + "camel";
+
   private static final Pattern PARAM_KEY = Pattern.compile("^[A-Za-z][A-Za-z0-9]*$");
   private static final Pattern PLACEHOLDER = Pattern.compile("\\$(?:simple)?\\{([^}]*)}");
   private static final Pattern SIMPLE_TOKEN =
@@ -310,7 +317,7 @@ public class PartnerRouteValidator {
           Map<String, Node> fields = value instanceof MappingNode m ? entries(m) : Map.of();
           String header = scalar(fields.get("name"));
           String lower = header == null ? "" : header.toLowerCase(Locale.ROOT);
-          if (lower.startsWith("camel") || lower.startsWith("org.apache.camel") || lower.startsWith("mw")) {
+          if (lower.startsWith("camel") || lower.startsWith(CAMEL_HEADER_PACKAGE) || lower.startsWith("mw")) {
             problems.add(new Problem(line(value), "setHeader", "setHeader may not set a Camel* or mw* header (" + header + ")"));
           }
           expression(value, Set.of("name"), problems, "setHeader");

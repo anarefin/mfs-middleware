@@ -227,13 +227,15 @@ class PartnerRouteApiIT {
     assertThat(rejected.path("route").path("liveVersion").asLong()).isEqualTo(1);
   }
 
+  /** The adapters' candidate names carry "~", which no id can hold: no id needs reserving. */
   @Test
-  void aPartnerIdEndingInCandidateIsRefusedItIsReservedForDryRuns() {
-    MvcTestResult r = mvc.post().uri("/admin/v1/partners/newco-candidate/change-requests").with(MAKER)
-        .contentType(MediaType.APPLICATION_JSON).content(body(ROUTE.replace("partner-newco", "partner-newco-candidate"))).exchange();
+  void anIdThatLooksLikeACandidateIsAnOrdinaryPartner() {
+    jdbc.update("delete from partner.partner where id = 'newco-candidate-v2'");
+    MvcTestResult r = mvc.post().uri("/admin/v1/partners/newco-candidate-v2/change-requests").with(MAKER)
+        .contentType(MediaType.APPLICATION_JSON)
+        .content(body(ROUTE.replace("partner-newco", "partner-newco-candidate-v2"))).exchange();
 
-    assertThat(r).hasStatus(400);
-    assertThat(read(r).path("details").toString()).contains("partnerId");
+    assertThat(r).hasStatus(201);
   }
 
   @Test

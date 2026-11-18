@@ -241,11 +241,11 @@ class PartnerRouteLoaderTest {
         new PartnerRouteLoader.DryRunTarget("http://mw-simulators:8080/sim/partners/acme", "mw-simulators"));
 
     // a namespace no partner id can produce (ids are [a-z0-9-], routes partner-<id>-v<n>)
-    assertThat(candidate.runtime().routeId()).isEqualTo("candidate-partner-acme-v3");
-    assertThat(candidate.runtime().endpoint()).isEqualTo("direct:candidate-partner-acme");
-    assertThat(candidate.route().getInput().getUri()).isEqualTo("direct:candidate-partner-acme");
+    assertThat(candidate.runtime().routeId()).isEqualTo("partner-acme~candidate~v3");
+    assertThat(candidate.runtime().endpoint()).isEqualTo("direct:partner-acme~candidate");
+    assertThat(candidate.route().getInput().getUri()).isEqualTo("direct:partner-acme~candidate");
     String route = candidate.route().toString();
-    assertThat(route).contains("url=http://mw-simulators:8080/sim/partners/acme/api", "partnerId=candidate.acme")
+    assertThat(route).contains("url=http://mw-simulators:8080/sim/partners/acme/api", "partnerId=acme~candidate")
         .doesNotContain("localhost:8089");
     assertThat(candidate.runtime().allowedHosts()).containsExactly("localhost", "mw-simulators");
   }
@@ -293,9 +293,28 @@ class PartnerRouteLoaderTest {
     assertThat(bad.problems()).as(baseUrl).anySatisfy(p -> assertThat(p).startsWith(PartnerConfig.SECURITY).contains("dryRun.baseUrl"));
   }
 
+  /**
+   * A candidate's route id, endpoint and breaker name carry {@code ~}, which no partner id
+   * ({@code ^[a-z0-9][a-z0-9-]{0,63}$}) can hold: no partner's live or candidate names reach them,
+   * whatever its id ({@code foo-candidate-v2}, {@code foo-candidate}, ...).
+   */
   @Test
-  void aPartnerIdEndingInCandidateIsRefused() {
-    assertThat(new PartnerEndpointPolicy(SECURITY).idProblems("acme-candidate")).isNotEmpty();
-    assertThat(new PartnerEndpointPolicy(SECURITY).idProblems("candidates")).isEmpty();
+  void aCandidateNeverCollidesWithAnotherPartnersNames() {
+    List<String> ids = List.of("foo", "foo-candidate", "foo-candidate-v2", "foo-v2", "candidate-partner-foo");
+    java.util.Set<String> names = new java.util.HashSet<>();
+    for (String id : ids) {
+      assertThat(new PartnerEndpointPolicy(SECURITY).idProblems(id)).as(id).isEmpty();
+      for (long v : new long[] {1, 2}) {
+        assertThat(names.add(PartnerRuntime.routeId(id, v))).as(id).isTrue();
+        assertThat(names.add(PartnerRuntime.endpoint(id, v))).as(id).isTrue();
+        assertThat(names.add(PartnerRuntime.candidateRouteId(id, v))).as(id).isTrue();
+      }
+      assertThat(names.add(PartnerRuntime.candidateEndpoint(id))).as(id).isTrue();
+      assertThat(names.add("mw-cb-" + PartnerRuntime.candidatePartnerParam(id))).as(id).isTrue();
+      assertThat(names.add("mw-cb-" + id)).as(id).isTrue();
+      assertThat(PartnerRuntime.candidateRouteId(id, 2)).contains("~");
+      assertThat(PartnerRuntime.candidateEndpoint(id)).contains("~");
+      assertThat(PartnerRuntime.candidatePartnerParam(id)).contains("~");
+    }
   }
 }

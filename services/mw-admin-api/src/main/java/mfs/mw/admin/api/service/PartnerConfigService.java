@@ -363,8 +363,7 @@ public class PartnerConfigService {
   }
 
   private static String checkedId(String partnerId) {
-    // ids ending in -candidate are reserved for the adapters' dry-run candidates (ticket 83)
-    if (partnerId == null || !ID.matcher(partnerId).matches() || partnerId.endsWith("-candidate")) {
+    if (partnerId == null || !ID.matcher(partnerId).matches()) {
       throw new MwException(ErrorCodes.VAL_INVALID, "Invalid partner id")
           .withDetails(List.of(new ErrorDetail("partnerId", "lower-case letters, digits and hyphens, at most 64")));
     }

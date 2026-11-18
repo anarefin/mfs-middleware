@@ -162,8 +162,8 @@ public class PartnerRouteLoader {
   /**
    * As {@link #load(String, long, PartnerConfig, PartnerProperties.Security)}; with a {@code
    * candidate} target, builds the dry-run candidate instead: route {@code
-   * candidate-partner-<id>-v<version>} from {@code direct:candidate-partner-<id>}, its calls sent
-   * to the target, on a circuit breaker of its own ({@code mw-cb-candidate.<id>}). Every check runs
+   * partner-<id>~candidate~v<version>} from {@code direct:partner-<id>~candidate}, its calls sent
+   * to the target, on a circuit breaker of its own ({@code mw-cb-<id>~candidate}). Every check runs
    * as for the live version, and the target URL is rebuilt from its parsed parts and checked as a
    * strict parameter (no {@code % ? & #}, no placeholder) before it replaces a call URL.
    */

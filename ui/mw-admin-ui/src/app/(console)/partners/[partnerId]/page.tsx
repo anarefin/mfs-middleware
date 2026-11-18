@@ -28,7 +28,7 @@ export default async function PartnerPage({ params }: Props) {
   if (!token) redirect("/login?error=SessionExpired");
   const result = await adminApi().getPartner(token, partnerId);
   if (!result.ok) {
-    const onboard = result.status === 404 && canMakePartner(session?.roles ?? []) && !partnerId.endsWith("-candidate");
+    const onboard = result.status === 404 && canMakePartner(session?.roles ?? []);
     const pending = onboard ? await openRequest(token, "partner", partnerId) : null;
     return (
       <>
