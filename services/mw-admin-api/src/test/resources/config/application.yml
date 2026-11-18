@@ -28,6 +28,8 @@ mw:
       # Off in tests: a cached context would compete for the topic; PartnerRouteApiIT switches it on.
       enabled: false
   partners:
-    # The dev seed (application-dev.yml) is what the ITs change; PartnerConfigApiIT re-seeds it.
+    # The dev seeds (application-dev.yml) are what the ITs change; PartnerConfigApiIT re-seeds them.
     seeds:
       - classpath:partner-seeds/dev/ocs.json
+      - classpath:partner-seeds/dev/billagg.json
+      - classpath:partner-seeds/dev/c2wbank.json

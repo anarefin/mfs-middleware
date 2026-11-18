@@ -10,7 +10,7 @@ import mfs.mw.adapter.bank.contracts.ContractSchemas;
 import mfs.mw.adapter.bank.dto.PartnerInbound;
 import mfs.mw.adapter.bank.partner.InboundResult;
 import mfs.mw.adapter.bank.partner.config.PartnerConfig;
-import mfs.mw.adapter.bank.partner.template.PartnerFrameworkSeeds;
+import mfs.mw.adapter.bank.partner.PartnerTestSeeds;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -24,7 +24,7 @@ class PartnerInboundMapperTest {
 
   final JsonMapper json = JsonMapper.builder().build();
   final PartnerInboundMapper mapper = new PartnerInboundMapper();
-  final PartnerConfig c2wbank = PartnerFrameworkSeeds.c2wbank();
+  final PartnerConfig c2wbank = PartnerTestSeeds.seed("c2wbank");
 
   PartnerInbound map(InboundResult r) {
     PartnerInbound in = mapper.toInbound(r, c2wbank, "c2wbank", TXN, "corr-1", NOW);

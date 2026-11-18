@@ -113,7 +113,7 @@ test_provision_writes_the_service_specific_keys() {
   [ "$(kv mw-app-gateway spring.data.redis.password)" = valkey-t ] || fail "app-gateway valkey"
   [ "$(kv mw-ussd spring.data.redis.password)" = valkey-t ] || fail "ussd valkey"
   [ "$(kv mw-adapter-billpay/billagg hmac-secret)" = billagg-t ] || fail "billpay hmac"
-  [ "$(kv mw-adapter-bank mw.partner-secrets.c2wbank.hmac-secret)" = c2w-t ] || fail "bank hmac"
+  [ "$(kv mw-adapter-bank/c2wbank hmac-secret)" = c2w-t ] || fail "bank hmac"
   [ "$(kv mw-simulators sim.callback-secrets.billagg)" = billagg-t ] || fail "sim billagg"
   [ "$(kv mw-simulators sim.callback-secrets.c2wbank)" = c2w-t ] || fail "sim c2wbank"
   local m

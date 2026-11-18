@@ -30,8 +30,17 @@ public final class PartnerTestSeeds {
     return Binder.get(environment).bind("mw.partners", PartnerProperties.class).get();
   }
 
-  /** The billagg seed. */
-  public static PartnerConfig billagg() {
-    return properties(Map.of()).instances().get("billagg");
+  /** The adapter's one dev seed partner (telco {@code ocs}, billpay {@code billagg}, bank {@code c2wbank}). */
+  public static Map.Entry<String, PartnerConfig> devSeed() {
+    Map<String, PartnerConfig> seeds = properties(Map.of()).instances();
+    if (seeds.size() != 1) {
+      throw new IllegalStateException("expected one dev seed partner, found " + seeds.keySet());
+    }
+    return seeds.entrySet().iterator().next();
+  }
+
+  /** The dev seed of partner {@code id}. */
+  public static PartnerConfig seed(String id) {
+    return properties(Map.of()).instances().get(id);
   }
 }

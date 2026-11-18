@@ -69,7 +69,7 @@ export function parseRouteForm(f: RouteFormFields): RouteFormResult {
 
 /** What the adapter made of the route version last approved. */
 export function routeStatusLabel(route: PartnerRouteState | undefined): string {
-  if (!route) return "no route (old shape)";
+  if (!route) return "seed (the adapter's own, never published)";
   switch (route.status) {
     case "PENDING_DRY_RUN":
       return `v${route.version} waiting for its dry-run`;

@@ -98,7 +98,7 @@ class ConsumedContractsTest {
     PartnerProperties.Security security = new PartnerProperties.Security(Map.of(), List.of());
     PartnerConfigStore store =
         new PartnerConfigStore(
-            new PartnerProperties(null, Map.of(), security, null, null), org.mockito.Mockito.mock(PartnerRoutes.class), ServiceJson.MAPPER,
+            new PartnerProperties(null, Map.of(), security, "billpay", null), org.mockito.Mockito.mock(PartnerRoutes.class), ServiceJson.MAPPER,
             org.mockito.Mockito.mock(mfs.mw.adapter.billpay.partner.route.PartnerDryRun.class), s -> {});
     store.start();
     Path sample = ContractSchemas.contractsDir()

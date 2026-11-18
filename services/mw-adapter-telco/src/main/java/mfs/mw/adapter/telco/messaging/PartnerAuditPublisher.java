@@ -7,7 +7,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import mfs.mw.adapter.telco.config.MwServiceProperties;
 import mfs.mw.adapter.telco.dto.AuditEvent;
-import mfs.mw.adapter.telco.partner.template.PartnerAudit;
+import mfs.mw.adapter.telco.partner.route.PartnerAudit;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;

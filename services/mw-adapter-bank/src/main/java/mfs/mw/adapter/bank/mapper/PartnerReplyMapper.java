@@ -24,6 +24,12 @@ public class PartnerReplyMapper {
     this.clock = clock;
   }
 
+  /**
+   * A partnerId that is neither a configured partner nor an alias (ADR D26: no silent fallback).
+   * {@code MW-PTR-UNKNOWN-PARTNER}: the reply contract's partner codes have two segments.
+   */
+  public static final String UNKNOWN_PARTNER_CODE = "MW-PTR-UNKNOWN-PARTNER";
+
   public PartnerReply toReply(PartnerRequest request, String partnerRef, PartnerResponse result) {
     return switch (result) {
       case PartnerResponse.Success s ->
@@ -64,8 +70,11 @@ public class PartnerReplyMapper {
           case CONNECT_FAILED -> "MW-SYS-PARTNER_UNAVAILABLE";
           case DISABLED -> "MW-SYS-PARTNER_DISABLED";
           case MISCONFIGURED -> "MW-SYS-PARTNER_MISCONFIGURED";
+          case UNKNOWN_PARTNER -> UNKNOWN_PARTNER_CODE;
         };
-    return reply(request, partnerRef, "FAILED", null, null, code, "Bank debit not sent to the partner", true);
+    return reply(
+        request, partnerRef, "FAILED", null, null, code, "Bank debit not sent to the partner",
+        reason != PartnerResponse.NotSentReason.UNKNOWN_PARTNER);
   }
 
   /** The request may have been applied: UNKNOWN, resolved later by status inquiry (spec 7.4). */

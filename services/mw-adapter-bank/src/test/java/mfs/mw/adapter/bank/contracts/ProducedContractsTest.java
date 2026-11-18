@@ -24,8 +24,8 @@ import mfs.mw.adapter.bank.messaging.PartnerAuditPublisher;
 import mfs.mw.adapter.bank.partner.InboundResult;
 import mfs.mw.adapter.bank.partner.PartnerResponse;
 import mfs.mw.adapter.bank.partner.config.PartnerConfig;
-import mfs.mw.adapter.bank.partner.template.PartnerAudit;
-import mfs.mw.adapter.bank.partner.template.PartnerFrameworkSeeds;
+import mfs.mw.adapter.bank.partner.route.PartnerAudit;
+import mfs.mw.adapter.bank.partner.PartnerTestSeeds;
 import mfs.mw.adapter.bank.service.PartnerCallbackService;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
@@ -50,6 +50,10 @@ class ProducedContractsTest {
 
   static final Clock CLOCK = Clock.fixed(Instant.parse("2026-11-03T08:15:40Z"), ZoneOffset.UTC);
   static final MwServiceProperties SERVICE = new MwServiceProperties("mw-adapter-bank", "0.1.0", "test");
+  static final mfs.mw.adapter.bank.config.MwKafkaProperties KAFKA =
+      new mfs.mw.adapter.bank.config.MwKafkaProperties(
+          java.time.Duration.ofSeconds(1),
+          new mfs.mw.adapter.bank.config.MwKafkaProperties.Listener(java.time.Duration.ofMillis(100)));
   static final String TXN_ID = "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c";
 
   /** Fixtures keyed by manifest entry: each writes one or more events through the outbox. */
@@ -57,7 +61,21 @@ class ProducedContractsTest {
       Map.of(
           "events/mw-orchestrator/mw.partner.reply.v1.schema.json#bank", ProducedContractsTest::partnerReplies,
           "events/mw-orchestrator/mw.partner.inbound.v1.schema.json#bank", ProducedContractsTest::partnerInbound,
-          "events/mw-audit-dw/mw.audit.event.v1.schema.json", ProducedContractsTest::auditEvents);
+          "events/mw-audit-dw/mw.audit.event.v1.schema.json", ProducedContractsTest::auditEvents,
+          "events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json", ProducedContractsTest::routeStatuses);
+
+  /** LIVE and REJECTED, through {@link mfs.mw.adapter.bank.messaging.PartnerRouteStatusPublisher} itself. */
+  static List<Outbox.Record> routeStatuses(Outbox outbox) {
+    var publisher = new mfs.mw.adapter.bank.messaging.PartnerRouteStatusPublisher(
+        outbox.writer, outbox.transactions, SERVICE,
+        new mfs.mw.adapter.bank.partner.config.PartnerProperties(null, null, null, "bank", null), CLOCK);
+    publisher.publish(new mfs.mw.adapter.bank.partner.route.PartnerRouteStatus(
+        "newco", 2, mfs.mw.adapter.bank.partner.route.PartnerRouteStatus.Status.LIVE, List.of(),
+        List.of("mw-audit", "mw-classify", "mw-http-call", "mw-map")));
+    publisher.publish(mfs.mw.adapter.bank.partner.route.PartnerRouteStatus.rejected(
+        "newco", 3, List.of("dry-run PAY gave no usable answer: HTTP_5XX")));
+    return outbox.records;
+  }
 
   /** One reply per outcome the mapper produces, written as {@code TopupService} writes it. */
   static List<Outbox.Record> partnerReplies(Outbox outbox) {
@@ -97,7 +115,7 @@ class ProducedContractsTest {
    */
   static List<Outbox.Record> partnerInbound(Outbox outbox) {
     PartnerInboundMapper mapper = new PartnerInboundMapper();
-    PartnerConfig config = PartnerFrameworkSeeds.c2wbank();
+    PartnerConfig config = PartnerTestSeeds.seed("c2wbank");
     String ref = "BITS01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
     Instant now = CLOCK.instant();
     List<PartnerInbound> events =
@@ -190,7 +208,7 @@ class ProducedContractsTest {
 
     /** {@code publish} captured: the body is what its first line writes, {@code json.writeValueAsString}. */
     final EventPublisher publisher =
-        new EventPublisher(null, ServiceJson.MAPPER, null, null, SERVICE) {
+        new EventPublisher(null, null, ServiceJson.MAPPER, null, null, SERVICE, KAFKA) {
           @Override
           public void publish(String topic, String key, EventMetadata meta, Object payload) {
             records.add(new Record(topic, ServiceJson.MAPPER.writeValueAsString(payload)));
@@ -207,7 +225,7 @@ class ProducedContractsTest {
               }
             },
             ServiceJson.MAPPER,
-            new EventPublisher(null, ServiceJson.MAPPER, null, null, SERVICE) {
+            new EventPublisher(null, null, ServiceJson.MAPPER, null, null, SERVICE, KAFKA) {
               @Override
               public Map<String, String> headersFor(String topic, EventMetadata meta) {
                 return Map.of();

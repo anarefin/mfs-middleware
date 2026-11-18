@@ -12,7 +12,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import mfs.mw.adapter.billpay.partner.config.PartnerConfig;
-import mfs.mw.adapter.billpay.partner.config.PartnerProperties;
 import org.apache.camel.CamelContext;
 import org.apache.camel.Route;
 import org.apache.camel.ServiceStatus;
@@ -40,16 +39,14 @@ public class PartnerRoutes implements AutoCloseable {
   private final CamelContext camel;
   private final PartnerRouteLoader loader;
   private final CircuitBreakerRegistry breakers;
-  private final PartnerProperties properties;
   private final ExecutorService retirements = Executors.newVirtualThreadPerTaskExecutor();
   private final Map<String, String> started = new ConcurrentHashMap<>();
 
   public PartnerRoutes(
-      CamelContext camel, PartnerRouteLoader loader, CircuitBreakerRegistry breakers, PartnerProperties properties) {
+      CamelContext camel, PartnerRouteLoader loader, CircuitBreakerRegistry breakers) {
     this.camel = camel;
     this.loader = loader;
     this.breakers = breakers;
-    this.properties = properties;
   }
 
   /**
@@ -59,7 +56,7 @@ public class PartnerRoutes implements AutoCloseable {
    *     refused (nothing was added)
    */
   public PartnerRuntime load(String id, long version, PartnerConfig config) {
-    PartnerRouteLoader.Loaded loaded = loader.load(id, version, config, properties.security());
+    PartnerRouteLoader.Loaded loaded = loader.load(id, version, config);
     bindBreaker(id, loaded.runtime().config());
     return start(id, version, loaded);
   }
@@ -72,7 +69,7 @@ public class PartnerRoutes implements AutoCloseable {
    * @throws mfs.mw.adapter.billpay.partner.config.PartnerConfigRefusedException when refused
    */
   public PartnerRuntime loadCandidate(String id, long version, PartnerConfig config, PartnerRouteLoader.DryRunTarget target) {
-    PartnerRouteLoader.Loaded loaded = loader.load(id, version, config, properties.security(), target);
+    PartnerRouteLoader.Loaded loaded = loader.load(id, version, config, target);
     String name = PartnerRuntime.candidatePartnerParam(id);
     camel.getRegistry().bind("mw-cb-" + name, CircuitBreaker.class, CircuitBreaker.of(name, breakers.getDefaultConfig()));
     return start(id, version, loaded);

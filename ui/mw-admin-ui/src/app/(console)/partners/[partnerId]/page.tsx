@@ -64,28 +64,15 @@ export default async function PartnerPage({ params }: Props) {
           <dt>Family</dt><dd>{p.family}</dd>
           <dt>Version</dt><dd data-testid="partner-version">{p.version === 0 ? "seed (never published)" : `v${p.version}`}</dd>
           <dt>Changed</dt><dd>{p.updatedBy}{p.approvedBy ? `, approved by ${p.approvedBy}` : ""}, {formatTime(p.updatedAt)}</dd>
-          {c.route ? (
-            <>
-              <dt>Allowed hosts</dt><dd className="mono" data-testid="partner-hosts">{(c.allowedHosts ?? []).join(", ")}</dd>
-              <dt>Dry-run</dt><dd>{c.dryRun?.operation}{c.dryRun?.baseUrl ? <> against <span className="mono">{c.dryRun.baseUrl}</span></> : " against the environment's simulator"}</dd>
-            </>
-          ) : (
-            <>
-              <dt>Base URL</dt><dd className="mono">{c.baseUrl}</dd>
-              <dt>Template</dt><dd>{c.template ?? "rest-json-request-reply"}</dd>
-            </>
-          )}
+          <dt>Allowed hosts</dt><dd className="mono" data-testid="partner-hosts">{(c.allowedHosts ?? []).join(", ")}</dd>
+          {c.dryRun ? (
+            <><dt>Dry-run</dt><dd>{c.dryRun.operation}{c.dryRun.baseUrl ? <> against <span className="mono">{c.dryRun.baseUrl}</span></> : " against the environment's simulator"}</dd></>
+          ) : null}
           <dt>Timeouts</dt>
           <dd data-testid="partner-timeouts">
             connect {c.connectTimeoutMs ?? "-"} ms, call {c.timeoutMs ?? "-"} ms, read {c.readTimeoutMs ?? "-"} ms
           </dd>
           <dt>Auth</dt><dd>{c.auth?.scheme ?? "none"}{c.auth?.credentialsRef ? <> (secret <span className="mono">{c.auth.credentialsRef}</span>)</> : null}</dd>
-          {c.operations ? (
-            <>
-              <dt>Operations</dt>
-              <dd className="mono">{Object.entries(c.operations).map(([k, o]) => `${k} ${o.method} ${o.path}`).join(", ")}</dd>
-            </>
-          ) : null}
           <dt>Error map</dt><dd>{Object.keys(c.errorMap ?? {}).length} codes</dd>
         </dl>
       </section>
@@ -127,13 +114,9 @@ export default async function PartnerPage({ params }: Props) {
             <label>Reason<input name="reason" required maxLength={500} /></label>
             <button className="primary" type="submit">Request timeouts</button>
           </ActionForm>
-          {c.route || !c.baseUrl ? (
-            <>
-              <h2>Route</h2>
-              <p className="hint">A new route version goes live only after a checker approves it and its dry-run passes; until then the live version serves.</p>
-              <RouteForm partnerId={p.partnerId} config={c} />
-            </>
-          ) : null}
+          <h2>Route</h2>
+          <p className="hint">A new route version goes live only after a checker approves it and its dry-run passes; until then the live version serves.</p>
+          <RouteForm partnerId={p.partnerId} config={c} />
         </section>
       ) : null}
     </>

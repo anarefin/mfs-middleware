@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import mfs.mw.adapter.billpay.partner.PartnerTestSeeds;
+import mfs.mw.adapter.billpay.partner.config.PartnerConfig;
 import mfs.mw.adapter.billpay.partner.config.PartnerEndpointPolicy;
 import mfs.mw.adapter.billpay.partner.config.PartnerProperties;
 import org.junit.jupiter.api.Test;
@@ -15,8 +16,11 @@ class PartnerHostGuardTest {
 
   final PartnerHostGuard guard =
       new PartnerHostGuard(new PartnerEndpointPolicy(new PartnerProperties.Security(Map.of(), List.of("mw-simulators"))));
+  static final Map.Entry<String, PartnerConfig> SEED = PartnerTestSeeds.devSeed();
+
   final PartnerRuntime billagg =
-      new PartnerRuntime("billagg", 0, PartnerTestSeeds.billagg(), "partner-billagg-v0", "direct:partner-billagg-v0",
+      new PartnerRuntime(SEED.getKey(), 0, SEED.getValue(), "partner-" + SEED.getKey() + "-v0",
+          "direct:partner-" + SEED.getKey() + "-v0",
           Map.of(), Map.of(), List.of("mw-simulators", "93.184.215.14", "127.0.0.1"), Set.of());
 
   static final String OPTIONS =

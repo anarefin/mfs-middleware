@@ -9,15 +9,13 @@ mw:
       # Off by default in tests for the same reason as the relay: a cached context would compete
       # for the request topic. BankRequestRouteIT switches it on.
       enabled: false
-  # Obviously fake test secret for the c2wbank hmac-sha256 scheme (the real one comes from OpenBao).
-  partner-secrets:
-    c2wbank:
-      hmac-secret: fake-c2wbank-hmac-secret-for-tests
   partners:
     config-consumer:
       # Off in tests: every context would replay mw.config.changed.v1 in a group of its own.
       # PartnerConfigReloadIT switches it on.
       enabled: false
+    # The partner secrets come from the fake vault function (partner/FakeVaultFunction); the
+    # record's allowed hosts are overridden in config/application-dev.yml.
     security:
       # WireMock runs on localhost over http.
       allowed-hosts:
@@ -35,9 +33,8 @@ mw:
   retention:
     # The purge job's schedule is off in tests; OutboxInboxPurgeConformanceIT calls it directly.
     cron: "-"
-camel:
-  component:
-    kafka:
-      # A closing test context does not wait the default 30 s per consumer for one caught mid-rebalance
-      # (cached contexts share the consumer group); nothing in a test depends on that drain.
-      shutdown-timeout: 100
+  kafka:
+    listener:
+      # A closing test context does not wait the default 10 s per listener container for a consumer
+      # caught mid-rebalance (cached contexts share the broker); nothing in a test depends on that drain.
+      shutdown-timeout: 100ms

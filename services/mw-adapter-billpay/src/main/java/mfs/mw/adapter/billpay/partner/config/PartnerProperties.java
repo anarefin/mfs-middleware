@@ -15,8 +15,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     refused {@code MW-PTR-UNKNOWN-PARTNER}
  * @param instances partner id to record
  * @param security where partner routes may point
- * @param family this adapter's partner family ({@value #FAMILY}): a record of another family
- *     ({@code value.family}) is not this adapter's and is skipped, unlogged as a refusal (ticket 83)
+ * @param family this adapter's partner family ({@code telco}, {@code billpay} or {@code bank};
+ *     required, {@code mw.partners.family} in application.yml): a record of another family ({@code
+ *     value.family}) is not this adapter's and is skipped, unlogged as a refusal (ticket 83)
  * @param dryRun where dry-runs go (ticket 83)
  */
 @ConfigurationProperties("mw.partners")
@@ -27,14 +28,13 @@ public record PartnerProperties(
     String family,
     DryRun dryRun) {
 
-  /** The family of this adapter. */
-  public static final String FAMILY = "billpay";
-
   public PartnerProperties {
     partnerAliases = partnerAliases == null ? Map.of() : Map.copyOf(partnerAliases);
     instances = instances == null ? Map.of() : Map.copyOf(instances);
     security = security == null ? new Security(null, null) : security;
-    family = family == null || family.isBlank() ? FAMILY : family;
+    if (family == null || family.isBlank()) {
+      throw new IllegalArgumentException("mw.partners.family is required");
+    }
     dryRun = dryRun == null ? new DryRun(null) : dryRun;
   }
 

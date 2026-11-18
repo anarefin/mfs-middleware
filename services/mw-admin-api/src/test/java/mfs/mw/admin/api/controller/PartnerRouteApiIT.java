@@ -221,10 +221,21 @@ class PartnerRouteApiIT {
         {"schemaVersion":1,"partnerId":"newco","version":2,"family":"billpay","status":"REJECTED",
          "problems":["dry-run PAY gave no usable answer: HTTP_5XX"],
          "reportedBy":"mw-adapter-billpay","reportedAt":"2026-11-18T10:05:05Z"}""");
-    JsonNode rejected = awaitRoute("REJECTED");
-    assertThat(rejected.path("route").path("version").asLong()).isEqualTo(2);
-    assertThat(rejected.path("route").path("problems").toString()).contains("HTTP_5XX");
-    assertThat(rejected.path("route").path("liveVersion").asLong()).isEqualTo(1);
+    // ticket 84: the rejected current version is answered by republishing version 1 as version 3
+    long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+    JsonNode rolledBack = partner();
+    while (rolledBack.path("version").asLong() != 3 && System.nanoTime() < deadline) {
+      Thread.sleep(100);
+      rolledBack = partner();
+    }
+    assertThat(rolledBack.path("version").asLong()).isEqualTo(3);
+    assertThat(rolledBack.path("updatedBy").asString()).isEqualTo("system/rollback");
+    assertThat(rolledBack.path("config").path("route").asString()).isEqualTo(ROUTE);
+    assertThat(rolledBack.path("route").path("status").asString()).isEqualTo("PENDING_DRY_RUN");
+    assertThat(rolledBack.path("route").path("liveVersion").asLong()).isEqualTo(1);
+    assertThat(jdbc.queryForObject(
+            "select problems::text from partner.partner_route where partner_id = 'newco' and version = 2", String.class))
+        .contains("HTTP_5XX");
   }
 
   /** The adapters' candidate names carry "~", which no id can hold: no id needs reserving. */

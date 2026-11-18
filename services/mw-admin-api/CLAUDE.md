@@ -110,18 +110,20 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   result is not tracked; mw-core-mock's wallet view shows it); the reason text is not sent to the core.
 - Partner config (ticket 38, spec 15.2 Partners, 15.3, 16.2, 20.4; `controller/PartnerController` ->
   `service/PartnerConfigService` (reads, maker) and `service/PartnerChangeHandler` (approval) ->
-  `repository/PartnerRepository`, schema `partner` (own, V5: `partner`, `endpoint`, `mapping`,
-  `error_map`; Flyway `schemas: admin,partner`, history table in `admin`), `entity/Partner`,
+  `repository/PartnerRepository`, schema `partner` (own, V5: `partner`, `endpoint`, `error_map`, V7
+  `partner_route`; V8 (ticket 84) dropped `mapping`, `partner.template` and `endpoint.base_url`; Flyway
+  `schemas: admin,partner`, history table in `admin`), `entity/Partner`,
   `dto/PartnerConfigValue` = the adapters' `PartnerConfig` field names (camelCase), `mapper/PartnerMapper`):
   `GET /admin/v1/partners[/{partnerId}]` (`AdminRole.READ_PARTNERS` = transaction readers +
   integration-maker/checker); `POST /admin/v1/partners/{partnerId}/change-requests {action, reason,
   family?, timeouts?, config?}` (`PARTNER_MAKER` = ops-maker, integration-maker): ENABLE / DISABLE /
-  SET_TIMEOUTS (existing partner, else 404; `timeouts` only with SET_TIMEOUTS) or UPSERT (full config;
-  `family` telco|billpay|bank needed for a new partner, never changes). Fields not belonging to the
-  action, an invalid config (`PartnerConfigService.validate`: absolute http(s) baseUrl without user
-  info/query/fragment, operation method/safe path/response, credentialsRef a bare secret name, error-map
-  suffix, scheme needs a ref, positive timeouts, readTimeoutMs >= timeoutMs; messages never repeat a
-  value) -> 400 MW-VAL-001; a change that changes nothing -> 409 MW-VAL-030. The change request
+  SET_TIMEOUTS (existing partner, else 404; `timeouts` only with SET_TIMEOUTS) or UPSERT_ROUTE (full
+  config, below; `family` telco|billpay|bank needed for a new partner, never changes). The old action
+  UPSERT and the template shape (`template`, `baseUrl`, `operations`) are gone (ticket 84; the contract
+  refuses them, 400). Fields not belonging to the action, an invalid config (`PartnerConfigService.common`:
+  credentialsRef a bare secret name, error-map suffix, scheme needs a ref, positive timeouts,
+  readTimeoutMs >= timeoutMs; messages never repeat a value) -> 400 MW-VAL-001; a change that changes
+  nothing -> 409 MW-VAL-030. The change request
   (resourceType `partner`, resourceId the partner id) stores `payload {family, baseVersion?, config}`
   (full config) and `diff {before, after}` (changed top-level fields). Approve/reject on the shared
   `/admin/v1/change-requests/{id}/...` (`PARTNER_CHECKER` = ops-checker, integration-checker; never the
@@ -135,10 +137,13 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   before/after carry `config` (the diff sides; never secrets). The compacted topic replays the latest
   record per partner to every adapter start (the adapters consume from the beginning in a group of
   their own). Seeds: `mw.partners.seeds` (resource list, `config/PartnerSeedProperties`,
-  `scheduler/PartnerSeedJob` at start-up, insert-if-absent at version 0, never published); only the dev
+  `scheduler/PartnerSeedJob` at start-up, insert-if-absent at version 0, never published, checked with
+  the route rules, its route row `route_status` SEED, no `route` state in the view); only the dev
   profile (`application-dev.yml`, `SPRING_PROFILES_ACTIVE=dev` in `deploy/docker-compose.yml`) seeds
-  `partner-seeds/dev/ocs.json`, a copy of mw-adapter-telco's dev seed `ocs` (keep them identical; the
-  test config seeds it too). Decisions (no product owner available): ops-maker/ops-checker may change
+  `partner-seeds/dev/ocs.json`, `billagg.json`, `c2wbank.json` (ticket 84), copies of the adapters' dev
+  seeds (mw-adapter-telco `ocs`, -billpay `billagg`, -bank `c2wbank`) with the simulator URL written
+  into the route (keep them identical; the test config seeds them too). V8 drops a version-0 seed
+  without a route row so it is stored again in the route shape. Decisions (no product owner available): ops-maker/ops-checker may change
   partners as well as integration-* (an incident disable is an operations task); the ops-emergency
   direct change with 24 h post-approval (15.3) is not built; DELETE / tombstones are not offered (disable
   instead); the admin does not compile JSONata or know the adapters' host allowlists, so an adapter may
@@ -146,10 +151,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   config kept) and the admin's tables then differ from what runs; records go to every adapter (configKey
   has no family), and an adapter without an allowlist entry for the id refuses them; nothing republishes
   the snapshot after a Kafka volume loss (approve a change to republish).
-- Partner routes (ADR D26, ticket 83; same engine): action `UPSERT_ROUTE` with `config` of the route
-  shape (`route` Camel YAML DSL, `mappings`, `allowedHosts`, `dryRun {operation, sample, baseUrl?}`,
-  timeouts, `errorMap`, `ambiguousCodes`, `sensitiveFields`; no baseUrl / operations / template; `family`
-  for a new partner). Field problems `400 MW-VAL-001`; the route itself is checked by
+- Partner routes (ADR D26, ticket 83; same engine): action `UPSERT_ROUTE` with `config` (`route` Camel
+  YAML DSL, `mappings`, `allowedHosts`, `dryRun {operation, sample, baseUrl?}`, timeouts, `errorMap`,
+  `ambiguousCodes`, `sensitiveFields`; `family` for a new partner). Only UPSERT_ROUTE carries a
+  `dryRun`: ENABLE / DISABLE / SET_TIMEOUTS republish the held route without one (ticket 84), so the
+  adapter swaps the version in at once. Field problems `400 MW-VAL-001`; the route itself is checked by
   `service/PartnerRouteValidator`, a copy of mw-adapter-billpay's `PartnerRouteLoader` rules kept identical
   under D14 (no Camel here: the loader's walk over Camel's model runs over the SnakeYAML node tree with the
   same allowlist; Camel's YAML DSL JSON Schema `schema/camelYamlDsl.json`, copied from camel-yaml-dsl
@@ -157,17 +163,26 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   ending rule, named mappings present; Kamelet library `mw.partner-routes.kamelets`): `400 MW-VAL-041`,
   one detail per problem `{field: config.route, issue: "line N: construct: problem"}`, before any change
   request exists. `dryRun.baseUrl` must be a plain http(s) URL in `allowedHosts` (the adapters' rule).
-  Approval: as UPSERT, plus `family` in the published value (every approval: each adapter applies its own
+  Approval: as above, plus `family` in the published value (every approval: each adapter applies its own
   family only) and a `partner.partner_route` row (V7: route_yaml, mappings, allowed_hosts, family, dry_run,
-  route_status PENDING_DRY_RUN | LIVE | REJECTED, problems, kamelets) for the new version; any later
-  ENABLE / DISABLE / SET_TIMEOUTS of a route partner republishes its route as a new version.
+  route_status PENDING_DRY_RUN | LIVE | REJECTED (SEED for a seed, V8), problems, kamelets; V8
+  `published_value` = the full value published) for the new version; any later ENABLE / DISABLE /
+  SET_TIMEOUTS republishes the route as a new version.
   `messaging/PartnerRouteStatusListener` (group mw-admin-api, retry topics + DLQ;
   `mw.partner-routes.status-consumer.enabled`, off in tests) consumes `mw.partner.route.status.v1`
   (mw-adapter-billpay's contract, own type `dto/PartnerRouteStatusMessage`) into
   `service/PartnerRouteStatusService` (update by key, latest report wins, a version not approved here is
-  skipped). Views: `Partner.route {version, status, problems, kamelets, statusAt, liveVersion}`; `GET
+  skipped). Rollback (ticket 84, ADR D26 amendment; the restart gap of ticket 83: an adapter replays
+  only the latest record per partner): a REJECTED report for the partner's current version republishes
+  the newest version reported LIVE before it (its `published_value` without `dryRun`) as the next
+  version, in the same transaction: partner rows restored, route row PENDING_DRY_RUN, outbox record
+  changedBy / approvedBy `system/rollback`, event `partner.route.rolled_back`; a repeated or stale REJECTED
+  (another instance, a replay) does nothing, and without a LIVE predecessor nothing is published (the
+  adapter keeps its seed). Not audited on `mw.audit.event.v1` (the record and the log carry it). Views:
+  `Partner.route {version, status, problems, kamelets, statusAt, liveVersion}`; `GET
   /admin/v1/partners/kamelet-usage` (newest LIVE version per partner, per Kamelet). Tests:
-  `PartnerRouteValidatorTest`, `PartnerRouteApiIT`, `contracts/ConsumedContractsTest`.
+  `PartnerRouteValidatorTest`, `PartnerRouteApiIT`, `service/PartnerRouteRollbackIT`,
+  `contracts/ConsumedContractsTest`.
 - USSD menus and notify templates (ticket 39, spec 9.2, 10.3, 15.2; `controller/ContentController` ->
   `service/ContentChangeService` -> `repository/ContentVersionRepository`, table
   `admin.content_version` V6, `entity/ContentVersion`, `mapper/ContentChangeMapper`; roles
@@ -231,7 +246,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 - `events/mw-admin-api/mw.txn.action.v1` (ticket 37): approved INQUIRE / FORCE_COMMIT /
   FORCE_RELEASE for mw-orchestrator (Kafka topic 6 partitions, 7 d, retry group mw-orchestrator).
 - `events/mw-admin-api/mw.config.changed.v1` (ticket 38): approved partner configs, PARTNER UPSERT,
-  key `partner/<id>`, value the adapters' `PartnerConfig` shape (compacted topic, 6 partitions).
+  key `partner/<id>`, value the adapters' `PartnerConfig` shape (compacted topic, 6 partitions); since
+  ticket 84 a value with `template` or `operations` is invalid, and a `system/rollback` record
+  republishes the last LIVE version.
 - `events/mw-admin-api/mw.config.changed.v1` (ticket 39): approved USSD menu and template versions,
   USSD_MENU (key `ussd-menu/<menuId>`) and TEMPLATE (key `template/<code>/<channel>/<locale>`) UPSERTs;
   value shapes in `mapper/ContentChangeMapper` and the samples `valid-ussd-menu-upsert.json`,

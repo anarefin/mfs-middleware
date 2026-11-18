@@ -61,7 +61,7 @@ describe("parseRouteForm (ticket 83)", () => {
 
 describe("routeStatusLabel", () => {
   it("says what the adapter made of the version", () => {
-    expect(routeStatusLabel(undefined)).toBe("no route (old shape)");
+    expect(routeStatusLabel(undefined)).toBe("seed (the adapter's own, never published)");
     expect(routeStatusLabel({ version: 2, status: "PENDING_DRY_RUN", problems: [], kamelets: [] })).toBe("v2 waiting for its dry-run");
     expect(routeStatusLabel({ version: 2, status: "LIVE", problems: [], kamelets: [], liveVersion: 2 })).toBe("v2 LIVE");
     expect(routeStatusLabel({ version: 3, status: "REJECTED", problems: ["x"], kamelets: [], liveVersion: 2 }))

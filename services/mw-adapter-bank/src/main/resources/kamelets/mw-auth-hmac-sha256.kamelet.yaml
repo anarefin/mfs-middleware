@@ -1,0 +1,57 @@
+# mw-auth-hmac-sha256 (ADR D26, ticket 82): the hmac-sha256 scheme of partner/auth on the request
+# mw-http-call prepared. Called by mw-http-call (auth=hmac-sha256).
+apiVersion: camel.apache.org/v1
+kind: Kamelet
+metadata:
+  name: mw-auth-hmac-sha256
+  labels:
+    camel.apache.org/kamelet.type: action
+  annotations:
+    camel.apache.org/kamelet.support.level: Stable
+    camel.apache.org/provider: Bits MFS middleware
+spec:
+  definition:
+    title: MW auth HMAC-SHA256
+    description: >-
+      Signs the request: Base64 HMAC-SHA256 over method, path and query, timestamp (epoch seconds) and
+      the hex SHA-256 of the body, one per line, in X-Signature, the timestamp in X-Timestamp and the key
+      id in X-Key-Id when one is set. The shared secret is a field of this partner's own OpenBao secret,
+      read when the route loaded. Input and output: the prepared request; only headers change.
+    type: object
+    required: [secretField]
+    properties:
+      secretField:
+        title: Secret field
+        description: Field of this partner's own OpenBao secret holding the shared HMAC secret; a reference, never the value.
+        type: string
+        format: password
+        x-descriptors:
+          - urn:camel:group:credentials
+          - urn:alm:descriptor:com.tectonic.ui:password
+      keyId:
+        title: Key id
+        description: Sent as X-Key-Id when set.
+        type: string
+        default: ""
+      header:
+        title: Unused
+        description: Not used by this scheme (mw-http-call passes it to every auth Kamelet).
+        type: string
+        default: ""
+      signatureHeader:
+        title: Signature header
+        description: Header of the signature.
+        type: string
+        default: X-Signature
+      timestampHeader:
+        title: Timestamp header
+        description: Header of the timestamp.
+        type: string
+        default: X-Timestamp
+  template:
+    from:
+      uri: "kamelet:source"
+      steps:
+        - bean:
+            ref: mwAuth
+            method: "hmac(${exchange}, '{{secretField}}', '{{keyId}}', '{{signatureHeader}}', '{{timestampHeader}}')"

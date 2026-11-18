@@ -24,7 +24,7 @@ class PartnerInboundMapperTest {
 
   final JsonMapper json = JsonMapper.builder().build();
   final PartnerInboundMapper mapper = new PartnerInboundMapper();
-  final PartnerConfig billagg = PartnerTestSeeds.billagg();
+  final PartnerConfig billagg = PartnerTestSeeds.seed("billagg");
 
   PartnerInbound map(InboundResult r) {
     PartnerInbound in = mapper.toInbound(r, billagg, "billagg", TXN, "corr-1", NOW);

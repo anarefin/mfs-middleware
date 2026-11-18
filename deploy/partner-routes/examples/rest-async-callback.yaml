@@ -1,0 +1,63 @@
+# Example partner record (ADR D26, ticket 84): a REST/JSON partner bank that accepts a debit first
+# (202 PENDING) and sends the outcome later as a signed callback, as the `value` of a
+# mw.config.changed.v1 PARTNER record (configKey partner/acmebank), shown as YAML. mw-adapter-bank
+# loads it without a restart and without Java; the dev seed c2wbank
+# (services/mw-adapter-bank/src/main/resources/application-dev.yml) has the same shape.
+#
+# Only the outbound calls are the route: PAY (the debit, never sent twice) and STATUS_QUERY (spec 7.4).
+# The callback is not a route. APISIX forwards POST /partner/acmebank/callback/** to mw-adapter-bank's
+# controller/PartnerCallbackController, which verifies it with `auth` below (hmac-sha256, the field
+# hmac-secret of OpenBao secret/mw-adapter-bank/acmebank), reads it with the CALLBACK.response mapping
+# (it must return our `reference`) and publishes mw.partner.inbound.v1. The same secret signs the
+# outbound calls (secretField=hmac-secret). An APISIX route per partner bank
+# (deploy/apisix/routes/partner-c2wbank-callback.json is the dev one) is platform config.
+family: bank
+allowedHosts: [api.acmebank.example]
+timeoutMs: 25000
+inquiryRetries: 1
+auth: { scheme: hmac-sha256, credentialsRef: hmac-secret }
+sensitiveFields: { accountNumber: ACCOUNT }
+ambiguousCodes: ["9876"]
+errorMap:
+  "4001": { suffix: ACCOUNT_NOT_LINKED, retryable: false }
+  "4003": { suffix: INSUFFICIENT_FUNDS, retryable: false }
+dryRun:
+  operation: PAY
+  sample: { debitParty: { type: BANK_ACCOUNT, id: "1234567890123" }, amount: { major: "1.00" } }
+route: |
+  - route:
+      from:
+        uri: direct:partner-acmebank
+        steps:
+          - choice:
+              when:
+                - simple: "${header.mwOperation} == 'PAY'"
+                  steps:
+                    - to: "kamelet:mw-map?mapping=PAY.request"
+                    - to: "kamelet:mw-http-call?url=https://api.acmebank.example&method=POST&path=/v1/debits&auth=hmac-sha256&secretField=hmac-secret"
+                    - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=400,422&pending=true"
+                - simple: "${header.mwOperation} == 'STATUS_QUERY'"
+                  steps:
+                    - to: "kamelet:mw-http-call?url=https://api.acmebank.example&method=GET&path=/v1/debits/{reference}&auth=hmac-sha256&secretField=hmac-secret"
+                    - to: "kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200,404&pending=true"
+          - to: "kamelet:mw-audit"
+mappings:
+  PAY.request: '{"transactionId": reference, "accountNumber": debitParty.id, "amount": amount.major}'
+  PAY.response: >-
+    status = 200 and body.status = "SUCCESS" ? {"outcome": "SUCCESS", "partnerRef": body.debitRef}
+    : status = 202 and body.status = "PENDING" ? {"outcome": "PENDING", "partnerRef": body.debitRef}
+    : status = 422 and $type(body.code) = "string" ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+    : status = 400 ? {"outcome": "FAILED", "code": "HTTP_400", "message": body.message}
+    : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+  STATUS_QUERY.response: >-
+    status = 200 and body.status = "SUCCESS" ? {"outcome": "SUCCESS", "partnerRef": body.debitRef}
+    : status = 200 and body.status = "FAILED" ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+    : status = 200 and body.status = "PENDING" ? {"outcome": "PENDING", "partnerRef": body.debitRef}
+    : status = 404 and body.status = "NOT_FOUND" ? {"outcome": "NOT_FOUND", "code": body.code}
+    : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+  CALLBACK.response: >-
+    $type(body.transactionId) != "string" ? {}
+    : body.status = "SUCCESS" ? {"outcome": "SUCCESS", "partnerRef": body.debitRef, "reference": body.transactionId}
+    : body.status = "FAILED" ? {"outcome": "FAILED", "code": body.code, "reference": body.transactionId}
+    : body.status = "PENDING" ? {"outcome": "PENDING", "partnerRef": body.debitRef, "reference": body.transactionId}
+    : {}

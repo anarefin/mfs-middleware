@@ -53,8 +53,8 @@ class PartnerSecurityDefaultsTest {
     assertThat(seeds).isNotEmpty();
     assertThat(seeds.values())
         .allSatisfy(p -> {
-          assertThat(p.baseUrl().getHost()).isEqualTo("mw-simulators");
           assertThat(p.allowedHosts()).containsExactly("mw-simulators");
+          assertThat(p.route()).contains("url=http://mw-simulators:8080&");
         });
   }
 

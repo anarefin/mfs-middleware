@@ -32,7 +32,7 @@ class PartnerConfigStoreTest {
   final List<PartnerRouteStatus> statuses = new ArrayList<>();
   final PartnerConfigStore store =
       new PartnerConfigStore(
-          new PartnerProperties(null, Map.of(), null, null, null), routes, ServiceJson.MAPPER, mock(PartnerDryRun.class),
+          new PartnerProperties(null, Map.of(), null, "billpay", null), routes, ServiceJson.MAPPER, mock(PartnerDryRun.class),
           statuses::add);
 
   static ConfigChangedEvent record(String id, long version, Map<String, Object> value) {
@@ -55,8 +55,7 @@ class PartnerConfigStoreTest {
   void anAppliedRecordIsReportedLiveWithItsKameletsAndARefusedOneRejectedWithItsProblems() {
     store.start();
     PartnerConfig config = new PartnerConfig(
-        true, "- route: {}", null, List.of("localhost"), "billpay", null, null, null, null, null, null, null, null,
-        null, null, null, null, null, null);
+        true, "- route: {}", null, List.of("localhost"), "billpay", null, null, null, null, null, null, null, null, null, null, null);
     when(routes.load(anyString(), anyLong(), any()))
         .thenReturn(new PartnerRuntime("newco", 1, config, "partner-newco-v1", "direct:partner-newco-v1", Map.of(),
             Map.of(), List.of("localhost"), Set.of("mw-map", "mw-audit")))

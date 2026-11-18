@@ -40,5 +40,5 @@ rejects `org.apache.camel` outside `mw-adapter-*` (rule added by ticket 81).
 ## Where in the repo
 
 - `services/mw-orchestrator/build.gradle.kts` (versions inline, one build file per module)
-- `route/` packages, e.g. `services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/template`
+- the adapters' partner engine, e.g. `services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/route` (ADR D26)
 - spec section 3

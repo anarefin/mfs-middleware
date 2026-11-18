@@ -3,7 +3,6 @@ package mfs.mw.adapter.bank.contracts;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.networknt.schema.Error;
-import com.networknt.schema.Schema;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -30,7 +29,7 @@ class ContractSchemasTest {
   }
 
   static List<Error> validateHoldFunds(String sample) throws Exception {
-    Schema schema = ContractSchemas.schema(CORE_COMMAND);
+    JsonSchema schema = ContractSchemas.schema(CORE_COMMAND);
     return schema.validate(sample(sample));
   }
 

@@ -82,7 +82,7 @@ export type TxnAction = "INQUIRE" | "FORCE_COMMIT" | "FORCE_RELEASE" | "REVERSE"
 export type WalletAction = "UNLOCK";
 export type ChangeRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
 
-export type PartnerAction = "ENABLE" | "DISABLE" | "SET_TIMEOUTS" | "UPSERT" | "UPSERT_ROUTE";
+export type PartnerAction = "ENABLE" | "DISABLE" | "SET_TIMEOUTS" | "UPSERT_ROUTE";
 export type ContentAction = "PUBLISH";
 export type ResourceType = "transaction" | "wallet" | "partner" | "ussd_menu" | "notify_template";
 
@@ -115,20 +115,16 @@ export type ChangeRequestPage = { items: ChangeRequest[]; limit: number; offset:
 // --- partners (ticket 38) ---
 export type PartnerFamily = "telco" | "billpay" | "bank";
 export type PartnerTimeouts = { connectTimeoutMs?: number; timeoutMs?: number; readTimeoutMs?: number };
-export type PartnerOperation = { method: string; path: string; definiteStatuses?: number[]; request?: string; response: string };
 /** The dry-run a route version must pass in its adapter before it goes live (ticket 83). */
 export type PartnerDryRun = { operation: "PAY" | "INQUIRY" | "STATUS_QUERY"; sample?: Record<string, unknown>; baseUrl?: string };
 /**
- * The adapters' PartnerConfig (never a secret: `auth.credentialsRef` names one). Two shapes: the old
- * one (`baseUrl`, `operations`) and the route one of ADR D26 (`route`, `mappings`, `allowedHosts`, `dryRun`).
+ * The adapters' partner record (never a secret: `auth.credentialsRef` names one): a route of ADR D26
+ * (`route`, `mappings`, `allowedHosts`, `dryRun`); the old template shape went with ticket 84.
  */
 export type PartnerConfig = PartnerTimeouts & {
   enabled?: boolean;
-  template?: string;
-  baseUrl?: string;
   headers?: Record<string, string>;
   auth?: { scheme?: string; credentialsRef?: string; params?: Record<string, string> };
-  operations?: Record<string, PartnerOperation>;
   route?: string;
   mappings?: Record<string, string>;
   allowedHosts?: string[];

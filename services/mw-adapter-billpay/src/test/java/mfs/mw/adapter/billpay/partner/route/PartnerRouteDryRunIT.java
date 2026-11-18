@@ -21,6 +21,7 @@ import mfs.mw.adapter.billpay.messaging.PartnerRouteStatusPublisher;
 import mfs.mw.adapter.billpay.partner.PartnerCall;
 import mfs.mw.adapter.billpay.partner.PartnerResponse;
 import mfs.mw.adapter.billpay.partner.config.PartnerConfigStore;
+import mfs.mw.adapter.billpay.partner.config.PartnerProperties;
 import org.apache.camel.CamelContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,7 +42,8 @@ import tools.jackson.databind.json.JsonMapper;
  * mw.partners.dry-run.base-url}). A version whose dry-run passes is swapped in and reported LIVE,
  * and the next payment goes to the partner without a restart; a version whose dry-run fails is
  * reported REJECTED with its problems while the previous version serves every call, during the
- * dry-run and after it. Each status is an outbox row that matches {@code mw.partner.route.status.v1}.
+ * dry-run and after it. Each status is an outbox row that matches {@code mw.partner.route.status.v1}
+ * and carries this adapter's family (identical in telco, billpay and bank, ticket 84).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Import(TestInfrastructure.class)
@@ -68,13 +70,16 @@ class PartnerRouteDryRunIT {
   private final PartnerGateway gateway;
   private final JdbcTemplate jdbc;
   private final CamelContext camel;
+  private final String family;
 
   @Autowired
-  PartnerRouteDryRunIT(PartnerConfigStore store, PartnerGateway gateway, JdbcTemplate jdbc, CamelContext camel) {
+  PartnerRouteDryRunIT(
+      PartnerConfigStore store, PartnerGateway gateway, JdbcTemplate jdbc, CamelContext camel, PartnerProperties properties) {
     this.store = store;
     this.gateway = gateway;
     this.jdbc = jdbc;
     this.camel = camel;
+    this.family = properties.family();
   }
 
   @BeforeEach
@@ -84,7 +89,7 @@ class PartnerRouteDryRunIT {
   }
 
   /** The newco record as mw-admin-api publishes an UPSERT_ROUTE; {@code tag} marks the version in the request. */
-  static Map<String, Object> newco(String tag) {
+  Map<String, Object> newco(String tag) {
     String route = """
         - route:
             from:
@@ -96,7 +101,7 @@ class PartnerRouteDryRunIT {
                 - to: "kamelet:mw-audit"
         """.formatted(PARTNER.port());
     return Map.of(
-        "family", "billpay",
+        "family", family,
         "allowedHosts", List.of("localhost"),
         "timeoutMs", 3000,
         "route", route,
@@ -139,6 +144,7 @@ class PartnerRouteDryRunIT {
         JsonNode body = JSON.readTree(rows.getLast());
         assertThat(ContractSchemas.schema("events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json").validate(body))
             .as("%s", body).isEmpty();
+        assertThat(body.path("family").asString()).isEqualTo(family);
         return body;
       }
       Thread.sleep(50);
@@ -185,9 +191,10 @@ class PartnerRouteDryRunIT {
 
   @Test
   void aRecordOfAnotherFamilyIsNotThisAdaptersAndIsNotReported() throws Exception {
+    String other = "billpay".equals(family) ? "telco" : "billpay";
     store.apply(new ConfigChangedEvent(
         1, "partner/ocs-x", ConfigChangedEvent.ConfigType.PARTNER, ConfigChangedEvent.Change.UPSERT, 1,
-        Map.of("family", "telco", "route", "- route: {}"), Instant.now(), "m", "c", "corr"));
+        Map.of("family", other, "route", "- route: {}"), Instant.now(), "m", "c", "corr"));
 
     assertThat(store.instance("ocs-x")).isEmpty();
     assertThat(jdbc.queryForObject("select count(*) from outbox where topic = ? and msg_key = 'ocs-x'", Integer.class,

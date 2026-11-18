@@ -6,7 +6,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.bank`. Follow
 ## Responsibilities
 
 - Bank adapter (spec 4.1, 11.1 "Partner banks", WP16, ticket 23). Today it serves C2W /
-  ADD_MONEY_BANK only: consumes `mw.partner.request.bank.v1` (`route/BankRequestRouteBuilder`,
+  ADD_MONEY_BANK only: consumes `mw.partner.request.bank.v1` (`messaging/BankRequestHandler`, a Spring Kafka listener,
   retry topics + DLQ), checks a `PAY` / `STATUS_QUERY` request (`mapper/PartnerCallMapper`: family
   `bank`; PAY only for txnType `ADD_MONEY_BANK` / `C2W`, amount > 0, debit party `{type:
   BANK_ACCOUNT, id: [0-9]{6,20}}`, credit party `{type: WALLET}`), asks the bank once through the
@@ -58,7 +58,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.bank`. Follow
   `partner.call.audit_failed` and never fails the call. Identical in telco, billpay and bank.
 - Dev provisioning (`provision_mw_adapter_bank` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `adapter_bank_rw` and schema `bank_ref`, `secret/mw-adapter-bank` (DB password, never
-  overwritten; `mw.partner-secrets.c2wbank.hmac-secret` synced from the generated
+  overwritten), `secret/mw-adapter-bank/c2wbank` (field `hmac-secret`, synced from the generated
   `C2WBANK_HMAC_SECRET` on every run) and the AppRole `mw-adapter-bank` (configtree volume at
   `/run/mw/approle`).
 
@@ -72,37 +72,34 @@ adapter-minted txnId (REMIT_IN, QR_PAY_INTEROP inbound) and stay for their own t
 contract changes: only orchestrator-owned samples for the bank family (`valid-c2w-pay.json`,
 `valid-c2w-callback.json`) were added.
 
-## Adapter framework (`partner` package; copied from mw-adapter-billpay, D13/D14)
+## Partner engine (`partner` package; ADR D26, ticket 84: the copy of mw-adapter-billpay's)
 
-Identical to mw-adapter-telco's and mw-adapter-billpay's (see telco's CLAUDE.md for the SPI,
-route templates, config store, security rules and the fail-closed rules a mapping cannot
-override), copied with its tests including the ticket 20 target guard (safe operation paths,
-same-origin check at call time, `Redirect.NEVER`, credential prefix `mw.partner-secrets.`,
-static host allowlist). The one documented extension, billpay's `PartnerResponse.Success`
-`attributes` (text values the response mapping put under `attributes`), is in all three copies
-since ticket 23 (applied to telco too, so the three stay identical). A fix to the framework must
-be applied to all three copies (`diff -r` of the `partner` packages, package names aside, shows
-only test fixtures).
+A partner is a record holding a Camel YAML DSL route built from the shipped `mw-*` Kamelets; the
+engine, its guardrails and its Kamelets are billpay's (see mw-adapter-billpay CLAUDE.md "Partner
+engine"). The `partner/` trees (main and the shared tests) and `src/main/resources/kamelets` are
+identical in the three adapters apart from the package: a fix goes into all three (check with `diff -r`
+after normalising the package). Kafka is Spring Kafka (ADR D25), as billpay.
 
-The C2W bank is the seed instance `c2wbank`, a dev seed in `application-dev.yml` (profile `dev`, D23: set by its service in `deploy/docker-compose.yml`
-and the test config; the packaged `application.yml` seeds no partner, so a production start has none
-until a `partner/<id>` record arrives) (`mw.partners`; wire format of
-the mw-simulators bank: `POST /c2wbank/v1/debits {transactionId, accountNumber, amount:"500.00"}`
-(202 PENDING `{status, code: "100", debitRef}`; 200 SUCCESS and 422 FAILED are understood too),
-`GET /c2wbank/v1/debits/{reference}` (200 the real outcome, 404 NOT_FOUND), callback `POST
-/partner/c2wbank/callback/debits` with `{transactionId, status SUCCESS|FAILED|PENDING, code,
-message, debitRef}`), template `rest-json-async-callback`, auth `hmac-sha256` both ways (secret
-`mw.partner-secrets.c2wbank.hmac-secret`, OpenBao `secret/mw-adapter-bank`; dev value generated
-as `C2WBANK_HMAC_SECRET`; tests use an obviously fake one), base URL `C2WBANK_BASE_URL`, host
-allowlist `MW_C2WBANK_ALLOWED_HOSTS`, timeout 25 s (below the orchestrator's 30 s partner
-deadline; spec 11.1 says 30 s for banks), Resilience4j instance `c2wbank` (bulkhead 100, circuit
-breaker 20 s slow-call threshold), `default-partner: c2wbank`, `sensitive-fields: accountNumber:
-ACCOUNT`. Error map: `4001` ACCOUNT_NOT_LINKED, `4002` DEBIT_REFUSED, `4003` INSUFFICIENT_FUNDS;
-`9876` ambiguous. Never add a retry to a partner call.
-
-Masking: party ids are `@Sensitive(PARTY_ID)`, masked by the party's `type` (`util/MaskingPolicy`
-ticket 23 extension, same in mw-orchestrator and mw-app-gateway): a wallet / MSISDN id as an
-MSISDN, a bank account (and any other type) last 4 only.
+- **Seed** `c2wbank` (`application-dev.yml`, dev profile only), an async-callback route (example:
+  `deploy/partner-routes/examples/rest-async-callback.yaml`): PAY `POST /c2wbank/v1/debits
+  {transactionId, accountNumber, amount:"500.00"}` (202 PENDING `{status, code: "100", debitRef}`; 200
+  SUCCESS and 422 FAILED understood; `pending=true`), STATUS_QUERY `GET /c2wbank/v1/debits/{reference}`,
+  hmac-sha256 both ways with the field `hmac-secret` of OpenBao `secret/mw-adapter-bank/c2wbank` (dev
+  value `C2WBANK_HMAC_SECRET`, `deploy/provision/services.sh`; tests: the fake vault function's
+  `fake-c2wbank-hmac-secret-for-tests`), base URL `C2WBANK_BASE_URL`, hosts `MW_C2WBANK_ALLOWED_HOSTS`,
+  timeout 25 s (below the orchestrator's 30 s deadline), resilience4j instance `c2wbank`, error map
+  `4001` ACCOUNT_NOT_LINKED, `4002` DEBIT_REFUSED, `4003` INSUFFICIENT_FUNDS, `9876` ambiguous,
+  `CALLBACK.response` for the callback. mw-admin-api's dev seed `partner-seeds/dev/c2wbank.json` is a
+  copy: keep them identical.
+- Only the outbound call is the route; the callback still goes APISIX -> `controller/
+  PartnerCallbackController` -> `PartnerGateway.inbound` (the record's `auth` and `CALLBACK.response`)
+  -> `mw.partner.inbound.v1` (above).
+- **Aliases** (D26): the channels send `c2wbank` itself, so `partner-aliases` is empty; any other id is
+  FAILED `MW-PTR-UNKNOWN-PARTNER`, not retryable, never sent (`BankRequestRouteIT`).
+- **Family** `bank`; **route status** on `mw.partner.route.status.v1` as telco (shared
+  `PartnerRouteDryRunIT`); no Kamelet usage endpoint (mw-admin-api uses the status reports).
+- Service-layer rules stay Java (`mapper/PartnerCallMapper`): PAY only for `ADD_MONEY_BANK` / `C2W`,
+  debit party `BANK_ACCOUNT`, credit party `WALLET`.
 
 ## Contracts owned
 
@@ -122,7 +119,9 @@ MSISDN, a bank account (and any other type) last 4 only.
 - `events/mw-orchestrator/mw.partner.inbound.v1` (family `bank`, kind `CALLBACK`) out; own type
   `dto/PartnerInbound`, checked by `mapper/PartnerInboundMapperTest` and
   `controller/PartnerCallbackIT`.
-- `events/mw-admin-api/mw.config.changed.v1` in (PARTNER records), as telco.
+- `events/mw-admin-api/mw.config.changed.v1` in (PARTNER route records, family `bank`), as telco.
+- `events/mw-adapter-billpay/mw.partner.route.status.v1` out (owner mw-adapter-billpay; LIVE / REJECTED
+  of each record version, `messaging/PartnerRouteStatusPublisher`, own type `dto/PartnerRouteStatusEvent`).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 
@@ -138,9 +137,9 @@ MSISDN, a bank account (and any other type) last 4 only.
 - `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3 (+ `PARTY_ID`, above).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
-- `messaging/EventPublisher`, outbox/inbox, `route/RetryTopicRouteBuilder` +
-  `messaging/RetryDelayListener` (retry topics 10 s / 1 min / 10 min then DLQ; no sleeps on Kafka
-  threads).
+- Spring Kafka (ADR D25, the billpay copy): `config/KafkaConfig` (retry topics `<topic>.<group>.retry.1..3`
+  10 s / 1 min / 10 min then `.dlq`), `messaging/EventPublisher`, outbox/inbox, `scheduler/OutboxRelayScheduler`,
+  `partner/config/PartnerConfigKafkaListener` (replays `mw.config.changed.v1` on every start).
 - `application.yml`: Resilience4j defaults (19.2), own schema `bank_ref` migrated by Flyway.
 
 ## Commands

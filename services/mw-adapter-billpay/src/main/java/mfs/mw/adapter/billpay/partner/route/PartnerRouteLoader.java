@@ -23,7 +23,6 @@ import mfs.mw.adapter.billpay.partner.auth.PartnerCredentials;
 import mfs.mw.adapter.billpay.partner.config.PartnerConfig;
 import mfs.mw.adapter.billpay.partner.config.PartnerConfigRefusedException;
 import mfs.mw.adapter.billpay.partner.config.PartnerEndpointPolicy;
-import mfs.mw.adapter.billpay.partner.config.PartnerProperties;
 import mfs.mw.adapter.billpay.partner.mapping.CompiledMapping;
 import io.github.resilience4j.bulkhead.BulkheadRegistry;
 import org.apache.camel.CamelContext;
@@ -66,8 +65,7 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  * restConfiguration}):
  *
  * <ol>
- *   <li>the record ({@link PartnerConfig#problems()}); an old-shape record is translated ({@link
- *       LegacyPartnerRoute});
+ *   <li>the record ({@link PartnerConfig#problems()}; a record without a route is refused);
  *   <li>no {@code {{...}}} anywhere (property placeholders reach {@code env:}, {@code sys:}, the
  *       vault function, beans);
  *   <li>safe YAML: exactly one {@code - route:} whose only key is {@code from}, with only {@code
@@ -142,12 +140,11 @@ public class PartnerRouteLoader {
   /**
    * Checks record {@code config} as version {@code version} of partner {@code id}.
    *
-   * @param staticHosts the static allowlist of the partner (legacy records and the floor)
    * @throws PartnerConfigRefusedException listing every reason; {@code security()} when one breaks
    *     a security rule
    */
-  public Loaded load(String id, long version, PartnerConfig config, PartnerProperties.Security staticSecurity) {
-    return load(id, version, config, staticSecurity, null);
+  public Loaded load(String id, long version, PartnerConfig config) {
+    return load(id, version, config, null);
   }
 
   /**
@@ -160,7 +157,7 @@ public class PartnerRouteLoader {
   public record DryRunTarget(String baseUrl, String extraHost) {}
 
   /**
-   * As {@link #load(String, long, PartnerConfig, PartnerProperties.Security)}; with a {@code
+   * As {@link #load(String, long, PartnerConfig)}; with a {@code
    * candidate} target, builds the dry-run candidate instead: route {@code
    * partner-<id>~candidate~v<version>} from {@code direct:partner-<id>~candidate}, its calls sent
    * to the target, on a circuit breaker of its own ({@code mw-cb-<id>~candidate}). Every check runs
@@ -168,7 +165,7 @@ public class PartnerRouteLoader {
    * strict parameter (no {@code % ? & #}, no placeholder) before it replaces a call URL.
    */
   public Loaded load(
-      String id, long version, PartnerConfig config, PartnerProperties.Security staticSecurity, DryRunTarget candidate) {
+      String id, long version, PartnerConfig config, DryRunTarget candidate) {
     List<String> security = new ArrayList<>(policy.idProblems(id));
     List<String> problems = new ArrayList<>();
     if (!security.isEmpty()) {
@@ -182,10 +179,7 @@ public class PartnerRouteLoader {
       }
     }
     refuseIfAny(id, security, problems);
-    PartnerConfig record =
-        config.legacy()
-            ? LegacyPartnerRoute.translate(id, config, staticSecurity.allowedHosts().getOrDefault(id, List.of()))
-            : config;
+    PartnerConfig record = config;
     List<String> allowed = policy.allowedHosts(id, record.allowedHosts());
     if (candidate != null && candidate.extraHost() != null && !allowed.contains(candidate.extraHost())) {
       allowed = new ArrayList<>(allowed);

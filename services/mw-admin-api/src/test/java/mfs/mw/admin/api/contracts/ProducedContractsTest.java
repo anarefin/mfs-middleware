@@ -56,8 +56,9 @@ class ProducedContractsTest {
 
   static final Map<String, Object> CONFIG =
       Map.of(
-          "enabled", false, "baseUrl", "http://mw-simulators:8080", "timeoutMs", 20000,
-          "operations", Map.of("PAY", Map.of("method", "POST", "path", "/ocs/v1/topup", "response", "{}")));
+          "enabled", false, "timeoutMs", 20000,
+          "route", "- route: {from: {uri: direct:partner-ocs, steps: []}}",
+          "mappings", Map.of("PAY.request", "{}"), "allowedHosts", java.util.List.of("mw-simulators"));
 
   /** A PENDING USSD menu version request (ticket 39). */
   static ChangeRequest menuRequest() {

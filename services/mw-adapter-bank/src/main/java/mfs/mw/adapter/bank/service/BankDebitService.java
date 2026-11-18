@@ -1,5 +1,7 @@
 package mfs.mw.adapter.bank.service;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.util.Optional;
 import mfs.mw.adapter.bank.dto.PartnerReply;
@@ -9,7 +11,7 @@ import mfs.mw.adapter.bank.mapper.PartnerReplyMapper;
 import mfs.mw.adapter.bank.messaging.EventMetadata;
 import mfs.mw.adapter.bank.messaging.Inbox;
 import mfs.mw.adapter.bank.messaging.OutboxWriter;
-import mfs.mw.adapter.bank.partner.template.PartnerGateway;
+import mfs.mw.adapter.bank.partner.route.PartnerGateway;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -27,6 +29,8 @@ public class BankDebitService {
 
   static final String REPLY_TOPIC = "mw.partner.reply.v1";
   static final String CONSUMER = "mw-adapter-bank";
+  /** Inbox consumer of the partner-call claim, committed before the call (ticket 82). */
+  static final String CALL_CLAIM = "mw-adapter-bank.partner-call";
 
   private static final Logger log = LoggerFactory.getLogger(BankDebitService.class);
 
@@ -37,6 +41,7 @@ public class BankDebitService {
   private final Inbox inbox;
   private final OutboxWriter outbox;
   private final Clock clock;
+  private final Counter duplicates;
 
   public BankDebitService(
       PartnerCallMapper requests,
@@ -45,7 +50,8 @@ public class BankDebitService {
       PartnerGateway partners,
       Inbox inbox,
       OutboxWriter outbox,
-      Clock clock) {
+      Clock clock,
+      MeterRegistry meters) {
     this.requests = requests;
     this.replies = replies;
     this.references = references;
@@ -53,10 +59,30 @@ public class BankDebitService {
     this.inbox = inbox;
     this.outbox = outbox;
     this.clock = clock;
+    this.duplicates =
+        Counter.builder("mw.partner.request.duplicate")
+            .description("Partner requests delivered again after they were claimed; not sent again")
+            .register(meters);
   }
 
-  /** Handles one request and writes exactly one reply for its requestId. */
+  /**
+   * Handles one request and writes exactly one reply for its requestId. The request is first
+   * claimed in the inbox ({@value #CALL_CLAIM}, committed before the partner call): a request
+   * delivered again by Kafka (a retry, a rebalance, a replay) after it was claimed calls nobody
+   * and writes nothing, so a PAY reaches the partner once per requestId. If the instance dies
+   * between claim and reply, the orchestrator's partner deadline moves the transaction to UNKNOWN
+   * and the status inquiry resolves it (spec 7.4), exactly as for a crash during the call.
+   */
   public void process(PartnerRequest request) {
+    if (!inbox.processOnce(CALL_CLAIM, request.requestId(), () -> { })) {
+      log.atInfo()
+          .addKeyValue("event", "partner.call.duplicate")
+          .addKeyValue("txnId", request.txnId())
+          .addKeyValue("correlationId", request.correlationId())
+          .log("partner request already handled; not sent again");
+      duplicates.increment();
+      return;
+    }
     publish(request, replyFor(request));
   }
 

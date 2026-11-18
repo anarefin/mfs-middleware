@@ -11,7 +11,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import mfs.mw.adapter.telco.TestInfrastructure;
 import mfs.mw.adapter.telco.contracts.ContractSchemas;
@@ -20,7 +22,6 @@ import mfs.mw.adapter.telco.dto.PartnerRequest;
 import mfs.mw.adapter.telco.messaging.EventMetadata;
 import mfs.mw.adapter.telco.messaging.EventPublisher;
 import mfs.mw.adapter.telco.messaging.KafkaTestConsumer;
-import org.apache.camel.CamelContext;
 import org.apache.camel.test.spring.junit6.CamelSpringBootTest;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -31,8 +32,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.test.annotation.DirtiesContext;
-import org.testcontainers.kafka.KafkaContainer;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -41,7 +42,9 @@ import tools.jackson.databind.json.JsonMapper;
  * then v2 disabled, as mw-admin-api publishes them: full config, key {@code partner/robi}) are on
  * the topic before the config consumer starts; it then starts as on a fresh adapter start (own
  * group, from the beginning) and ends on v2, so a top-up for robi is refused fast and unsent with
- * the mapped {@code MW-SYS-PARTNER_DISABLED}. A later v3 enables it again without a restart.
+ * the mapped {@code MW-SYS-PARTNER_DISABLED} (not served by its {@code robi -> ocs} alias: a
+ * partner of its own wins). A later v3 enables it again without a restart. Records are route
+ * records (ADR D26, ticket 84) without a dry-run, as an ENABLE / DISABLE publishes them.
  */
 @CamelSpringBootTest
 @SpringBootTest(
@@ -52,7 +55,7 @@ import tools.jackson.databind.json.JsonMapper;
       "mw.outbox.relay.enabled=true",
       "mw.outbox.relay.period=100ms"
     })
-@Import(TestInfrastructure.class)
+@Import({TestInfrastructure.class, mfs.mw.adapter.telco.TelcoTestTopics.class})
 @DirtiesContext
 class PartnerConfigStartupIT {
 
@@ -65,31 +68,51 @@ class PartnerConfigStartupIT {
   }
 
   private final EventPublisher publisher;
-  private final KafkaContainer kafka;
   private final PartnerConfigStore store;
-  private final CamelContext camel;
+  private final KafkaListenerEndpointRegistry listeners;
 
   @Autowired
-  PartnerConfigStartupIT(EventPublisher publisher, KafkaContainer kafka, PartnerConfigStore store, CamelContext camel) {
+  PartnerConfigStartupIT(
+      EventPublisher publisher, PartnerConfigStore store, KafkaListenerEndpointRegistry listeners) {
     this.publisher = publisher;
-    this.kafka = kafka;
     this.store = store;
-    this.camel = camel;
+    this.listeners = listeners;
   }
 
   static String record(long version, boolean enabled) {
-    return """
-        {"schemaVersion": 1, "configKey": "partner/robi", "configType": "PARTNER", "change": "UPSERT",
-         "version": %d, "changedAt": "2026-11-06T10:00:00Z", "changedBy": "ops-maker01", "approvedBy": "ops-checker01",
-         "value": {
-           "enabled": %s, "template": "rest-json-request-reply", "baseUrl": "http://localhost:%d",
-           "connectTimeoutMs": 3000, "timeoutMs": 5000, "auth": {"scheme": "none"},
-           "operations": {"PAY": {"method": "POST", "path": "/ocs/v1/topup", "definiteStatuses": [400, 422],
-             "request": "{\\"transactionId\\": reference, \\"msisdn\\": creditParty.id, \\"amount\\": amount.major}",
-             "response": "status = 200 and body.status = \\"SUCCESS\\" ? {\\"outcome\\": \\"SUCCESS\\", \\"partnerRef\\": body.ocsRef, \\"code\\": body.code} : {\\"outcome\\": \\"UNKNOWN\\", \\"reason\\": \\"UNEXPECTED_STATUS\\"}"}}
-         }}
-        """
-        .formatted(version, enabled, ROBI.port());
+    String route = """
+        - route:
+            from:
+              uri: direct:partner-robi
+              steps:
+                - to: "kamelet:mw-map?mapping=PAY.request"
+                - to: "kamelet:mw-http-call?url=http://localhost:%d&method=POST&path=/ocs/v1/topup&auth=none"
+                - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=400,422"
+                - to: "kamelet:mw-audit"
+        """.formatted(ROBI.port());
+    Map<String, Object> value = new LinkedHashMap<>();
+    value.put("family", "telco");
+    value.put("enabled", enabled);
+    value.put("connectTimeoutMs", 3000);
+    value.put("timeoutMs", 5000);
+    value.put("auth", Map.of("scheme", "none"));
+    value.put("allowedHosts", List.of("localhost"));
+    value.put("route", route);
+    value.put("mappings", Map.of(
+        "PAY.request", "{\"transactionId\": reference, \"msisdn\": creditParty.id, \"amount\": amount.major}",
+        "PAY.response", "status = 200 and body.status = \"SUCCESS\" ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.ocsRef,"
+            + " \"code\": body.code} : {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}"));
+    Map<String, Object> record = new LinkedHashMap<>();
+    record.put("schemaVersion", 1);
+    record.put("configKey", "partner/robi");
+    record.put("configType", "PARTNER");
+    record.put("change", "UPSERT");
+    record.put("version", version);
+    record.put("changedAt", "2026-11-06T10:00:00Z");
+    record.put("changedBy", "ops-maker01");
+    record.put("approvedBy", "ops-checker01");
+    record.put("value", value);
+    return JSON.writeValueAsString(record);
   }
 
   @Test
@@ -101,7 +124,7 @@ class PartnerConfigStartupIT {
     }
     assertThat(store.instance("robi")).as("not known before the consumer starts").isEmpty();
 
-    camel.addRoutes(new PartnerConfigRouteBuilder("mw-adapter-telco"));
+    listeners.getListenerContainer("partner-config").start();
     awaitConfig(2);
     assertThat(store.instance("robi").orElseThrow().config().enabled()).isFalse();
 
@@ -145,11 +168,11 @@ class PartnerConfigStartupIT {
 
   private void publishConfig(String value) throws Exception {
     Properties props = new Properties();
-    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers());
+    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, TestInfrastructure.kafkaBootstrapServers());
     props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
     props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
     try (KafkaProducer<String, String> producer = new KafkaProducer<>(props)) {
-      producer.send(new ProducerRecord<>(PartnerConfigRouteBuilder.TOPIC, "partner/robi", value)).get();
+      producer.send(new ProducerRecord<>(PartnerConfigKafkaListener.TOPIC, "partner/robi", value)).get();
     }
   }
 
@@ -174,7 +197,7 @@ class PartnerConfigStartupIT {
   private PartnerReply awaitReply(String txnId) {
     List<ConsumerRecord<String, String>> records =
         KafkaTestConsumer.read(
-            kafka.getBootstrapServers(), "mw.partner.reply.v1", 1, Duration.ofSeconds(30), r -> txnId.equals(r.key()));
+            TestInfrastructure.kafkaBootstrapServers(), "mw.partner.reply.v1", 1, Duration.ofSeconds(30), r -> txnId.equals(r.key()));
     assertThat(records).as("reply for %s", txnId).hasSize(1);
     return JSON.readValue(records.getFirst().value(), PartnerReply.class);
   }
