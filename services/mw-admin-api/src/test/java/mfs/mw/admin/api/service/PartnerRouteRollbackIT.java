@@ -27,8 +27,10 @@ import tools.jackson.databind.json.JsonMapper;
  * The restart gap of ticket 83, closed in ticket 84 (ADR D26 amendment): an adapter that restarts
  * replays only the latest record per partner, so a REJECTED latest version would leave the partner
  * without its last good route. mw-admin-api therefore answers a REJECTED report for the partner's
- * current version by republishing the newest LIVE version's full config as the next version
- * (without a dry-run, so the adapter loads it at once), and the latest record is a good one again.
+ * current version by republishing the newest LIVE version's route as the next version (without a
+ * dry-run, so the adapter loads it at once), and the latest record is a good one again. Only the
+ * route comes back: the current enabled flag, timeouts, allowedHosts and auth stay (a rollback never
+ * re-enables a disabled partner), and a rejected version that kept the route is not rolled back.
  */
 @SpringBootTest(properties = "mw.outbox.relay.enabled=false")
 @AutoConfigureMockMvc
@@ -77,14 +79,20 @@ class PartnerRouteRollbackIT {
 
   /** Asks for and approves an UPSERT_ROUTE of rollco with this route and timeout. */
   void approvedRoute(String route, long timeoutMs) {
+    approvedRoute(route, timeoutMs, true, List.of("api.rollco.example"));
+  }
+
+  /** Asks for and approves an UPSERT_ROUTE of rollco with this route, timeout, state and hosts. */
+  void approvedRoute(String route, long timeoutMs, boolean enabled, List<String> allowedHosts) {
     String body = json.writeValueAsString(Map.of(
         "action", "UPSERT_ROUTE",
         "reason", "rollco route",
         "family", "billpay",
         "config", Map.of(
+            "enabled", enabled,
             "route", route,
             "mappings", Map.of("PAY.request", "{\"ref\": reference}", "PAY.response", "{\"outcome\": \"UNKNOWN\"}"),
-            "allowedHosts", List.of("api.rollco.example"),
+            "allowedHosts", allowedHosts,
             "timeoutMs", timeoutMs,
             "dryRun", Map.of("operation", "PAY"))));
     MvcTestResult asked = mvc.post().uri("/admin/v1/partners/rollco/change-requests").with(MAKER)
@@ -129,14 +137,15 @@ class PartnerRouteRollbackIT {
     assertThat(rollback.path("version").asLong()).isEqualTo(3);
     assertThat(rollback.path("changedBy").asString()).isEqualTo("system/rollback");
     JsonNode value = rollback.path("value");
-    // version 1's full config, without the dry-run: the adapter loads it at once
+    // version 1's route, without the dry-run (the adapter loads it at once); the rest stays version 2's
     assertThat(value.path("route").asString()).isEqualTo(ROUTE);
-    assertThat(value.path("timeoutMs").asLong()).isEqualTo(20000);
+    assertThat(value.path("timeoutMs").asLong()).isEqualTo(15000);
+    assertThat(value.path("enabled").asBoolean()).isTrue();
     assertThat(value.path("family").asString()).isEqualTo("billpay");
     assertThat(value.has("dryRun")).isFalse();
     assertThat(currentVersion()).isEqualTo(3);
     assertThat(jdbc.queryForObject(
-            "select timeout_ms from partner.partner where id = 'rollco'", Long.class)).isEqualTo(20000);
+            "select timeout_ms from partner.partner where id = 'rollco'", Long.class)).isEqualTo(15000);
     assertThat(jdbc.queryForObject(
             "select route_status from partner.partner_route where partner_id = 'rollco' and version = 3", String.class))
         .isEqualTo("PENDING_DRY_RUN");
@@ -155,6 +164,37 @@ class PartnerRouteRollbackIT {
 
     assertThat(published()).hasSize(3);
     assertThat(currentVersion()).isEqualTo(3);
+  }
+
+  @Test
+  void aRollbackKeepsTheCurrentStateAndHostsAndRestoresOnlyTheRoute() {
+    approvedRoute(ROUTE, 20000);
+    report(1, "LIVE");
+    // version 2 disables the partner, widens its hosts and changes the route
+    approvedRoute(ROUTE.replace("definiteStatuses=422", "definiteStatuses=409"), 15000, false,
+        List.of("api.rollco.example", "backup.rollco.example"));
+
+    report(2, "REJECTED");
+
+    assertThat(published()).hasSize(3);
+    JsonNode value = published().getLast().path("value");
+    assertThat(value.path("route").asString()).isEqualTo(ROUTE);
+    assertThat(value.path("enabled").asBoolean()).as("a rollback never re-enables a partner").isFalse();
+    assertThat(value.path("allowedHosts").toString()).isEqualTo("[\"api.rollco.example\",\"backup.rollco.example\"]");
+    assertThat(jdbc.queryForObject("select enabled from partner.partner where id = 'rollco'", Boolean.class)).isFalse();
+  }
+
+  @Test
+  void aRejectedVersionThatKeptTheRouteIsNotRolledBack() {
+    approvedRoute(ROUTE, 20000);
+    report(1, "LIVE");
+    // same route and mappings, other settings: republishing the live route would be rejected again
+    approvedRoute(ROUTE, 15000, true, List.of("api.rollco.example", "backup.rollco.example"));
+
+    report(2, "REJECTED");
+
+    assertThat(published()).hasSize(2);
+    assertThat(currentVersion()).isEqualTo(2);
   }
 
   @Test

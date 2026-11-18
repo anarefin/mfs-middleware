@@ -280,6 +280,37 @@ class PartnerConfigApiIT {
     JsonNode robi = partner("robi");
     assertThat(robi.path("family").asString()).isEqualTo("telco");
     assertThat(body(mvc.get().uri("/admin/v1/partners").with(MAKER).exchange()).path("items")).hasSize(4);
+
+    // version 1 has not passed its dry-run yet: an ENABLE / DISABLE / SET_TIMEOUTS on it keeps the
+    // dry-run, so the unproven route still has to prove itself before the adapter loads it
+    for (String action : List.of(
+        "{\"action\":\"DISABLE\",\"reason\":\"x\"}",
+        "{\"action\":\"SET_TIMEOUTS\",\"reason\":\"x\",\"timeouts\":{\"timeoutMs\":9000}}")) {
+      String change = asked(MAKER, "robi", action);
+      assertThat(approve(CHECKER, change)).hasStatus(200);
+      JsonNode next = outbox(CONFIG_TOPIC).getLast().path("value");
+      assertThat(next.path("dryRun").path("operation").asString()).as(action).isEqualTo("PAY");
+    }
+    assertThat(partner("robi").path("route").path("status").asString()).isEqualTo("PENDING_DRY_RUN");
+  }
+
+  @Test
+  void anActionOnALiveRouteDropsItsDryRun() {
+    String body =
+        """
+        {"action":"UPSERT_ROUTE","reason":"onboard robi","family":"telco","config":{
+          "timeoutMs":15000,"allowedHosts":["robi.example.test"],"dryRun":{"operation":"PAY"},
+          "route":"- route:\\n    from:\\n      uri: direct:partner-robi\\n      steps:\\n        - to: \\"kamelet:mw-map?mapping=PAY.request\\"\\n        - to: \\"kamelet:mw-http-call?url=https://robi.example.test&method=POST&path=/topup&auth=apikey&secretField=api-key\\"\\n        - to: \\"kamelet:mw-classify?mapping=PAY.response&definiteStatuses=422\\"\\n        - to: \\"kamelet:mw-audit\\"\\n",
+          "mappings":{"PAY.request":"{\\"ref\\": reference}","PAY.response":"{\\"outcome\\": \\"UNKNOWN\\"}"}}}
+        """;
+    assertThat(approve(CHECKER, asked(INTEGRATION_MAKER, "robi", body))).hasStatus(200);
+    jdbc.update("update partner.partner_route set route_status = 'LIVE' where partner_id = 'robi' and version = 1");
+
+    assertThat(approve(CHECKER, asked(MAKER, "robi", "{\"action\":\"DISABLE\",\"reason\":\"x\"}"))).hasStatus(200);
+
+    JsonNode next = outbox(CONFIG_TOPIC).getLast().path("value");
+    assertThat(next.path("enabled").asBoolean()).isFalse();
+    assertThat(next.has("dryRun")).as("a proven route loads at once").isFalse();
   }
 
   @Test
