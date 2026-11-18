@@ -61,6 +61,12 @@ public class PartnerFrameworkConfiguration {
     return new PartnerHeaderFilterStrategy();
   }
 
+  /** {@code headerFilterStrategy=#mwSoapHeaderFilter} of {@code mw-soap-call} (ticket 85). */
+  @Bean("mwSoapHeaderFilter")
+  mfs.mw.adapter.bank.partner.route.PartnerSoapHeaderFilterStrategy mwSoapHeaderFilter() {
+    return new mfs.mw.adapter.bank.partner.route.PartnerSoapHeaderFilterStrategy();
+  }
+
   /**
    * Partner secrets: Camel's {@code hashicorp} properties function on Spring Cloud Vault's {@code
    * VaultTemplate} (the AppRole login of {@code VAULT_ENABLED=true}), as the function alone only

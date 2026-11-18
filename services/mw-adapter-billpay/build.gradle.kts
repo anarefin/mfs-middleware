@@ -61,6 +61,13 @@ dependencies {
     implementation("org.apache.camel.springboot:camel-hashicorp-vault-starter")
     implementation("org.apache.camel.springboot:camel-micrometer-starter")
     implementation("org.apache.camel.springboot:camel-micrometer-observability-starter")
+    // SOAP partners (ticket 85): mw-soap-call sends through camel-cxf in PAYLOAD mode (the plain
+    // component, not camel-cxf-soap-starter, which brings cxf-spring-boot-starter-jaxws and its CXF
+    // servlet); the record's XSLT stylesheets are compiled with Saxon-HE (the version camel-xslt-saxon
+    // 4.22.2 uses) directly, never through the xslt-saxon component (partner/mapping/CompiledStylesheet).
+    // Neither is managed by the camel-spring-boot-bom, so both versions are written here.
+    implementation("org.apache.camel:camel-cxf-soap:4.22.2")
+    implementation("net.sf.saxon:Saxon-HE:13.0")
     // Resilience4j for client/ calls (19.2); annotations need AspectJ.
     implementation("io.github.resilience4j:resilience4j-spring-boot4:2.4.0")
     implementation("org.springframework.boot:spring-boot-starter-aspectj")

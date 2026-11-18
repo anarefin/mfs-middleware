@@ -169,6 +169,13 @@ public class MwHttpStep {
       if (t instanceof PartnerServerErrorException) {
         return PartnerResult.unknown(UnknownReason.HTTP_5XX);
       }
+      // mw-soap-call: CXF's java.net.http conduit (ticket 85)
+      if (t instanceof java.net.http.HttpConnectTimeoutException) {
+        return PartnerResult.notSent(NotSentReason.CONNECT_FAILED);
+      }
+      if (t instanceof java.net.http.HttpTimeoutException) {
+        return PartnerResult.unknown(UnknownReason.TIMEOUT);
+      }
       if (t instanceof ConnectException || t instanceof UnknownHostException
           || t.getClass().getName().equals("org.apache.hc.client5.http.ConnectTimeoutException")) {
         return PartnerResult.notSent(NotSentReason.CONNECT_FAILED);

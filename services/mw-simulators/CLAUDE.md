@@ -53,6 +53,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   code: "001", paymentRef}` (every repeat too), the outcome goes by callback (`callbackMode`) as
   `{transactionId, status SUCCESS|FAILED, code, message, paymentRef}`, the status inquiry reports
   the real outcome; the TIMEOUT hold is skipped in this mode.
+- SOAP stub biller (`soapbill`, ticket 85, `controller/SoapBillerController`, `service/SoapBillerService`):
+  the SOAP case of the adapters' `mw-soap-call` (`deploy/partner-routes/examples/soap-biller.yaml`). `POST
+  /soapbill/v1` (SOAP 1.1, `text/xml` or `application/soap+xml`, namespace `urn:soapbill:v1`): `FetchBill
+  {billNumber}` -> `FetchBillResponse {billNumber, amountDue (100 taka + last three digits), dueDate}`;
+  `PayBill {billNumber, amount, reference}` -> `PayBillResponse {receipt: SB-n}` (one receipt per
+  reference); `GetPayment {reference}` -> `GetPaymentResponse {status: PAID, receipt}`. Faults (HTTP 500,
+  `soap:Client`, the code in `<detail><s:error><s:code>`): bill number ending `404` -> `3001`, ending `999`
+  on a payment -> `3003`, unknown reference `3404`, unknown operation or a request with a DOCTYPE `1000`.
+  Configurable fault: `POST /sim/soapbill/fault {faultCode: Client|Server, code, reason}` answers every call
+  with it until `DELETE /sim/soapbill/fault`. Not in `sim.partners` (no scenario or recording API).
 - C2W bank wire format (`c2wbank`, ticket 23, `controller/BankC2wController`,
   `service/BankC2wService`, `BankDebitLedger`, `mapper/BankDebitMapper`): `POST /c2wbank/v1/debits
   {transactionId, accountNumber ([0-9]{6,20}, else 400), amount}` -> always 202 `{transactionId,

@@ -14,9 +14,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties("mw.partner-routes")
 public record PartnerRouteProperties(List<String> kamelets) {
 
-  /** The library of ticket 82. */
+  /** The library of ticket 82, and mw-soap-call (ticket 85). */
   public static final Set<String> LIBRARY =
-      Set.of("mw-audit", "mw-auth-apikey", "mw-auth-hmac-sha256", "mw-auth-none", "mw-classify", "mw-http-call", "mw-map");
+      Set.of("mw-audit", "mw-auth-apikey", "mw-auth-hmac-sha256", "mw-auth-none", "mw-classify", "mw-http-call", "mw-map",
+          "mw-soap-call");
 
   public PartnerRouteProperties {
     kamelets = kamelets == null || kamelets.isEmpty() ? List.copyOf(new java.util.TreeSet<>(LIBRARY)) : List.copyOf(kamelets);

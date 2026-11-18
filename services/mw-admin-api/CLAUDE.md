@@ -160,7 +160,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   under D14 (no Camel here: the loader's walk over Camel's model runs over the SnakeYAML node tree with the
   same allowlist; Camel's YAML DSL JSON Schema `schema/camelYamlDsl.json`, copied from camel-yaml-dsl
   4.22.2, runs first; strict Kamelet parameter keys, the `mw-http-call` host in `allowedHosts`, the
-  ending rule, named mappings present; Kamelet library `mw.partner-routes.kamelets`): `400 MW-VAL-041`,
+  ending rule, named mappings present; Kamelet library `mw.partner-routes.kamelets`; ticket 85: the
+  `mw-soap-call` rules (address host, `*.xsl` or `classpath:partner/xslt/` stylesheets, SOAP version,
+  WS-Security secret field) and every `*.xsl` mapping through `service/StylesheetPolicy`, the copy of the
+  adapters' `partner/mapping/StylesheetPolicy`: no DOCTYPE/entity, `document()`, `doc()`, includes and the
+  like, `SoapRouteValidatorTest`): `400 MW-VAL-041`,
   one detail per problem `{field: config.route, issue: "line N: construct: problem"}`, before any change
   request exists. `dryRun.baseUrl` must be a plain http(s) URL in `allowedHosts` (the adapters' rule).
   Approval: as above, plus `family` in the published value (every approval: each adapter applies its own

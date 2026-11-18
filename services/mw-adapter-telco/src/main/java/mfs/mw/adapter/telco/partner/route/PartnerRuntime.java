@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Set;
 import mfs.mw.adapter.telco.partner.config.PartnerConfig;
 import mfs.mw.adapter.telco.partner.mapping.CompiledMapping;
+import mfs.mw.adapter.telco.partner.mapping.CompiledStylesheet;
 
 /**
  * One loaded version of a partner record: what its Camel route and the mw-* Kamelets read at call
@@ -20,6 +21,8 @@ import mfs.mw.adapter.telco.partner.mapping.CompiledMapping;
  * @param secrets secret field -> value, read from OpenBao when the route loaded (never logged)
  * @param allowedHosts the hosts the route may call (record narrowed by the static floor)
  * @param kamelets the mw-* Kamelets the route uses (Kamelet usage, ticket 83)
+ * @param stylesheets the XSLT stylesheets {@code mw-soap-call} names (ticket 85): the record's
+ *     {@code *.xsl} mappings and {@code classpath:partner/xslt/} resources, compiled once
  */
 public record PartnerRuntime(
     String id,
@@ -30,13 +33,31 @@ public record PartnerRuntime(
     Map<String, CompiledMapping> mappings,
     Map<String, String> secrets,
     List<String> allowedHosts,
-    Set<String> kamelets) {
+    Set<String> kamelets,
+    Map<String, CompiledStylesheet> stylesheets) {
 
   public PartnerRuntime {
     mappings = Map.copyOf(mappings);
+    stylesheets = Map.copyOf(stylesheets);
     secrets = Map.copyOf(secrets);
     allowedHosts = List.copyOf(allowedHosts);
     kamelets = Set.copyOf(kamelets);
+  }
+
+  /** A version without stylesheets (a REST partner). */
+  public PartnerRuntime(
+      String id, long version, PartnerConfig config, String routeId, String endpoint,
+      Map<String, CompiledMapping> mappings, Map<String, String> secrets, List<String> allowedHosts, Set<String> kamelets) {
+    this(id, version, config, routeId, endpoint, mappings, secrets, allowedHosts, kamelets, Map.of());
+  }
+
+  /** The stylesheet {@code name}; fails when the version has none of that name. */
+  public CompiledStylesheet stylesheet(String name) {
+    CompiledStylesheet s = stylesheets.get(name);
+    if (s == null) {
+      throw new IllegalStateException("partner " + id + " has no stylesheet " + name);
+    }
+    return s;
   }
 
   /** Route id of version {@code version} of partner {@code id}. */

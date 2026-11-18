@@ -151,11 +151,45 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   `partnerId`, `timeoutMs`, `connectTimeoutMs`, `readTimeoutMs`, `bulkhead` are injected by the loader
   from the record, never set by a route. `KameletCatalogueTest` lints them (type label, title,
   description, documented properties, `format: password` + password `x-descriptors` on secret
-  references, no endpoint but `kamelet:`, `json-validator:` and the partner's `{{url}}`). **Versioning:**
+  references, no endpoint but `kamelet:`, `json-validator:`, the partner's `{{url}}` and, in `mw-soap-call`
+  only, `cxf://{{address}}` in PAYLOAD mode). **Versioning:**
   a breaking change ships as a new name (`mw-http-call-v2`); the old file stays until no LIVE route uses
   it; `PartnerRuntime.kamelets()` lists what a version uses: `GET /internal/v1/partners/kamelet-usage`
   (`controller/PartnerUsageController` -> `service/KameletUsageService`, contract `billpay.v1`) and the
   `kamelets` of each LIVE status report.
+- **SOAP partners** (ticket 85; `mw-soap-call`, `partner/kamelet/MwSoapStep`, `partner/mapping/CompiledStylesheet`
+  + `StylesheetPolicy`; example `deploy/partner-routes/examples/soap-biller.yaml`, simulator stub `soapbill`):
+  `mw-map` (JSONata) -> `mw-soap-call?address=<static http(s) URL>&request=<x.xsl>&response=<y.xsl>&soapAction=..
+  &soapVersion=1.1|1.2&wsUsername=..&wsPasswordSecret=<field>&wsTokenType=PasswordText|PasswordDigest` ->
+  `mw-classify` (`definiteStatuses=200`) -> `mw-audit`. A mapping whose name ends in `.xsl` is an XSLT 3.0
+  stylesheet (or `classpath:partner/xslt/*.xsl`), compiled once per version with Saxon-HE: the request one
+  reads mw-map's JSON as its XPath 3.1 XML form (`fn:json-to-xml`) and makes the SOAP body element; the
+  response one turns the SOAP body, or a fault as `<fault xmlns="urn:bits:mw:soap-fault" code subcode
+  reason><detail/></fault>`, into JSON (`xsl:output method="json"`) for the JSONata response mapping; both
+  answers report status 200 to `mw-classify` (the fault's code maps through `errorMap`; a `soap:Server`
+  fault should map to UNKNOWN). Give a catch-all `/fn:map` template `priority="-1"`: two templates of equal
+  priority make Saxon take the last one. A stylesheet may not reach outside itself (`StylesheetPolicy`, the
+  same in mw-admin-api: no DOCTYPE/entity, `document()`/`doc()`/`unparsed-text()`/`collection()`/
+  `json-doc()`/`transform()`/`function-lookup()`, `xsl:import`/`include`/`result-document`/
+  `source-document`/`evaluate`, extension namespaces; a security refusal), and Saxon runs with every resource,
+  unparsed-text and collection resolver denied, external functions off, `xsl:message` dropped; the partner's
+  XML is parsed with DOCTYPE refused. The send is camel-cxf PAYLOAD dispatch (no WSDL: verified that the body
+  element goes out as it is; an empty `wsdlURL=` breaks the dispatch, so `wsdlUrl` / `serviceName` /
+  `portName` are not offered: a remote WSDL would also be fetched outside the host guard), SOAP 1.2 by
+  `bindingId`, the action through camel-cxf's `SOAPAction` header, CXF connect / receive timeouts from the
+  record through the `RequestContext` header (`jakarta.xml.ws.client.*`), inside the same breaker, time limit,
+  bulkhead, INQUIRY loop and `mwHttp.fallback` as `mw-http-call` (a `SoapFault` is caught inside the breaker,
+  so a business fault never opens it; connect failure NOT_SENT, `HttpTimeoutException` UNKNOWN TIMEOUT).
+  `headerFilterStrategy=#mwSoapHeaderFilter` (`PartnerSoapHeaderFilterStrategy`) keeps `mw*`, `Camel*`,
+  `RequestContext` and `org.apache.cxf.*` headers in (without it they go out as HTTP headers). The
+  WS-Security UsernameToken (OASIS 1.0, built in `MwSoapStep`, no WSS4J) has its password from the record's
+  secret field (read at load). The host guard also intercepts `cxf*`: only `cxf://<address>` with
+  `dataFormat=PAYLOAD`, the header filter and the SOAP 1.2 binding id, no `CamelDestinationOverrideUrl`, then
+  the http host rules. Open item: CXF resolves the host again when it connects (the http components check
+  the connected addresses, `PartnerDnsResolver`; CXF's conduit does not). Camel's `xslt-saxon` component is
+  not used: in 4.22 its `XsltUriResolver` still resolves `http:`/`file:` in `document()` at transform time
+  (Camel 4.23 upgrade guide), and it compiles per endpoint. Saxon-HE on the classpath is also the JVM's JAXP
+  `TransformerFactory` (its service file); only DOM/StAX already parsed by CXF passes through it.
 - **Loader** (`partner/route/PartnerRouteLoader`, order matters): record problems; no `{{` anywhere;
   SnakeYAML safe load: exactly one `- route:` holding only `from {uri: direct:partner-<id>, steps}`, no
   error-handling keys anywhere (Camel's YAML loader acts on top-level `beans`, `sslContextParameters`,
@@ -227,7 +261,8 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   `CamelHttpUri` override; a refusal is NOT_SENT `MISCONFIGURED` (`security.partner_target_refused`).
 - **Headers**: `mw-http-call` sends with `headerFilterStrategy=#mwPartnerHeaderFilter`
   (`PartnerHeaderFilterStrategy`): no `mw*` or `Camel*` header leaves, and a response cannot set one.
-  `CamelHttpUri`, `CamelHttpQuery`, `CamelHttpPath` are reset by `mw-http-call` only.
+  `CamelHttpUri`, `CamelHttpQuery`, `CamelHttpPath` are reset by `mw-http-call` only; `mw-soap-call` has
+  its own filter (`mwSoapHeaderFilter`, above).
 - **Secrets**: `{{hashicorp:secret:mw-adapter-billpay/<id>#<field>}}`, Camel's HashiCorp Vault
   properties function against OpenBao KV v2 `secret/mw-adapter-billpay/<id>`, read when a route loads,
   never refreshed (D26), never logged, never in a URI or audited header (`partner/auth/PartnerCredentials`;

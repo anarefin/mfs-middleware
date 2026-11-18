@@ -280,7 +280,23 @@ partner route as config: no Java, no release, no restart for the route itself.
    mw-adapter-billpay's config and the secret fields the route names to OpenBao
    `secret/mw-adapter-billpay/<id>`, then restart mw-adapter-billpay
    (`./gradlew :mw-adapter-billpay:bootJar`, then from `deploy/`: `docker compose --profile core up -d --build mw-adapter-billpay`).
-6. **Callbacks**: a biller that answers asynchronously needs an APISIX route file
+6. **A SOAP biller** (ticket 85) follows the same steps with `mw-soap-call` in place of `mw-http-call`
+   (example: `deploy/partner-routes/examples/soap-biller.yaml`): `mw-map` (JSONata, the request fields) ->
+   `mw-soap-call?address=<static https URL>&request=<x.xsl>&response=<y.xsl>&soapAction=<action>` (optional
+   `soapVersion=1.2`, `wsUsername` + `wsPasswordSecret=<OpenBao field>` for a WS-Security UsernameToken) ->
+   `mw-classify?...&definiteStatuses=200` -> `mw-audit`. The two stylesheets are mappings whose names end in
+   `.xsl` (XSLT 3.0): the request one reads the JSON as `fn:map` / `fn:string[@key=...]` and makes the SOAP
+   body element; the response one turns the SOAP body, or a fault (`<fault xmlns="urn:bits:mw:soap-fault"
+   code reason>` with the fault's `<detail>`), into JSON (`xsl:output method="json"`) for the JSONata
+   response mapping, whose fault code maps through `errorMap` (map a `soap:Server` fault to UNKNOWN). A
+   stylesheet that reads anything outside itself (`document()`, `doc()`, `unparsed-text()`, an include or
+   import, a DOCTYPE or entity) is refused at submit. Try it against mw-simulators' SOAP stub
+   (`http://127.0.0.1:8085/soapbill/v1`; force a fault with
+   `curl -s -X POST http://127.0.0.1:8085/sim/soapbill/fault -H 'content-type: application/json' -d '{"faultCode":"Client","code":"3003"}'`,
+   clear it with `curl -s -X DELETE http://127.0.0.1:8085/sim/soapbill/fault`). The dry-run candidate sends
+   to the generic stub `/sim/partners/<id>` like a REST route: give it the SOAP envelope as a string `body`
+   with `"headers": {"Content-Type": "text/xml"}` and the address's path as its `path`.
+7. **Callbacks**: a biller that answers asynchronously needs an APISIX route file
    (`deploy/apisix/routes/partner-<id>-callback.json`, as `partner-billagg-callback.json`) and
    `deploy/apisix/apply.sh`.
 
