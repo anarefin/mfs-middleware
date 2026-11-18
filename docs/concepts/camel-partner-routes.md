@@ -28,11 +28,38 @@ First implemented in mw-adapter-billpay (ticket 82); its `CLAUDE.md` holds the d
 | `mw-map` | the request body from the canonical call, by a named JSONata mapping of the record (compiled once per version) |
 | `mw-http-call` | one call to `url` + `path` (`{reference}` = our reference), signed by `mw-auth-<auth>`, inside the partner's circuit breaker with its time limit and bulkhead; a PAY is never sent again, an INQUIRY / STATUS_QUERY at most `inquiryRetries` times |
 | `mw-auth-none`, `mw-auth-apikey`, `mw-auth-hmac-sha256` | the auth schemes; the secret is a field of the partner's own OpenBao secret, never in the route |
+| `mw-auth-basic`, `mw-auth-oauth2-cc`, `mw-auth-jws` | more auth schemes (ticket 87, below) |
 | `mw-classify` | the answer to the route output, with the fail-closed rules no mapping can override; `json-validator` on the output |
 | `mw-audit` | the masked audit (`mw.audit.event.v1`) |
 
 A breaking change to a Kamelet ships under a new name (`mw-http-call-v2`); the old one stays until no
 LIVE route uses it.
+
+## Auth options (ticket 87)
+
+`mw-http-call` names the scheme with `auth=` and passes its parameters to the `mw-auth-<auth>` Kamelet,
+again before every attempt. Every secret is a *field name* of the partner's own OpenBao secret
+`secret/<adapter>/<partnerId>`, read through Camel's HashiCorp Vault function when the route loads (static,
+D26); a value never appears in the route, a URI, a log or the audit.
+
+| Option | `mw-http-call` parameters | What goes on the wire |
+| --- | --- | --- |
+| `auth=apikey` | `secretField`, `authHeader` | the key in one header (default `X-Api-Key`) |
+| `auth=hmac-sha256` | `secretField`, `keyId` | `X-Signature` over method, path, timestamp, body hash |
+| `auth=basic` | `userField`, `secretField` (both secret fields) | `Authorization: Basic base64(user:password)` (RFC 7617) |
+| `auth=oauth2-cc` | `tokenUrl`, `clientId`, `secretField` (client secret), `scope`, `audience` | `Authorization: Bearer <token>`; the token from a client-credentials POST to `tokenUrl` (client authenticated with HTTP Basic), cached per partner until `expires_in` minus 30 s; a partner 401 drops it and the request is sent once more with a fresh one |
+| `auth=jws` | `secretField` (PKCS#8 PEM key), `alg` (`RS256`, `ES256`), `keyId`, `authHeader` | the body signed as a detached JWS `header..signature` in `authHeader` (default `X-JWS-Signature`) |
+| mTLS | `sslContextRef=<name>` (with any `auth`, https only) | the client certificate of context `<name>`: static config `mw.partners.tls.contexts.<name>.partner-id`, key store fields `<name>-keystore` (base64 PKCS#12), `<name>-keystore-password`, optional `<name>-truststore` / `<name>-truststore-password`, read at startup into the `SSLContextParameters` bean `mwTls-<name>`; only the owning partner's route may name it |
+
+The `tokenUrl` host must be in the record's `allowedHosts` like the `url`: the token request goes through
+the same partner http component, so the host guard and the checked DNS resolver apply. Camel's own
+`oauth2*` http options are not used (the client secret would be an endpoint option, and a refused token
+would not be dropped). An mTLS call with the wrong key store fails the handshake: UNKNOWN (or NOT_SENT),
+never a success.
+
+```yaml
+- to: "kamelet:mw-http-call?url=https://api.gasco.example&method=POST&path=/v1/pay&auth=oauth2-cc&secretField=client-secret&clientId=bits-mw&scope=bill.pay&tokenUrl=https://auth.gasco.example/oauth/token"
+```
 
 ## The guardrails
 

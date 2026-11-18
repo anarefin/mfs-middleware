@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Container log scan (spec 18.3, 21.1, WP29, ticket 46): no PIN (plain or ciphertext), no
-# unmasked MSISDN and no unmasked NID in any log line.
+# unmasked MSISDN, no unmasked NID and no partner credential (ticket 87) in any log line.
 # Usage: scripts/log-scan.sh            every container log of the MVP project (run after scripts/api-test.sh)
 #        scripts/log-scan.sh FILE...    the given files ('-' = stdin), e.g. saved logs
 # Exit 1 on a finding. A finding is printed with its source and line number and the matched
@@ -15,6 +15,9 @@
 #   pin        a field named pin / newPin / oldPin / pinBlock holding anything but stars or
 #              [REDACTED]; also a field named encryptedPin / pinCiphertext / ciphertext with any value
 #   ciphertext a base64 run of 340+ characters (RSA-2048 OAEP ciphertext is 344): PIN-shaped
+#   credential (ticket 87) "Bearer" / "Basic" followed by 8+ token characters, or a field named
+#              access_token / refresh_token / id_token / client_secret with any value but stars;
+#              reported as the rule only, never any part of the value
 # False positives that are justified go into scripts/log-scan.allow (one extended regex per
 # line, matched against the whole line; '#' comments), each with its reason.
 set -uo pipefail
@@ -31,6 +34,7 @@ scan() { # scan SOURCE-LABEL < lines
     }
     function mask(s) { gsub(/[0-9]/, "#", s); if (length(s) > 24) s = substr(s, 1, 12) "..." substr(s, length(s) - 7); return s }
     function report(rule, m) { printf "FINDING %s %s:%d %s\n", rule, src, NR, mask(m); found++ }
+    function reportsecret(rule) { printf "FINDING %s %s:%d [value withheld]\n", rule, src, NR; found++ }
     # ids(s, re): s with every match of re that has no letter or digit on either side replaced by
     # "ID" (a whole token); a match glued to more letters/digits is kept as it is
     function ids(s, re,   out, prev, nxt) {
@@ -71,6 +75,8 @@ scan() { # scan SOURCE-LABEL < lines
         v = substr(lower, RSTART, RLENGTH); if (v !~ /(null|redacted)$/) report("pin", substr(line, RSTART, RLENGTH))
       }
       if (match(lower, /(^|[^a-z])"?(encryptedpin|pinciphertext|ciphertext)"?[ ]*[:=][ ]*("[^"*\[]|\{)/)) report("pin", substr(line, RSTART, RLENGTH))
+      if (match(lower, /(^|[^a-z])(bearer|basic)[ \t]+[a-z0-9._~+\/=-][a-z0-9._~+\/=-][a-z0-9._~+\/=-][a-z0-9._~+\/=-][a-z0-9._~+\/=-][a-z0-9._~+\/=-][a-z0-9._~+\/=-][a-z0-9._~+\/=-]/)) reportsecret("credential")
+      else if (match(lower, /(^|[^a-z_])"?(access_token|refresh_token|id_token|client_secret)"?[ ]*[:=][ ]*"?[^"*&, }]/)) reportsecret("credential")
       t = line
       gsub(/[^A-Za-z0-9+\/]/, " ", t)
       k = split(t, parts, " ")
@@ -96,8 +102,8 @@ else
   done
 fi
 if [ "$rc" -ne 0 ]; then
-  printf 'log-scan FAILED: PIN, ciphertext or unmasked MSISDN/NID in the logs above\n' >&2
+  printf 'log-scan FAILED: PIN, ciphertext, unmasked MSISDN/NID or a credential in the logs above\n' >&2
 else
-  info "log-scan: no PIN, PIN ciphertext, unmasked MSISDN or NID found"
+  info "log-scan: no PIN, PIN ciphertext, unmasked MSISDN, NID or credential found"
 fi
 exit "$rc"

@@ -77,7 +77,8 @@ public class PartnerRouteValidator {
     }
   }
 
-  static final Set<String> STRICT_PARAMS = Set.of("url", "path", "authHeader", "keyId", "method", "auth", "secretField");
+  static final Set<String> STRICT_PARAMS = Set.of("url", "path", "authHeader", "keyId", "method", "auth", "secretField",
+      "userField", "tokenUrl", "clientId", "scope", "audience", "alg", "sslContextRef");
   static final Set<String> RESERVED_KAMELET_PARAMS =
       Set.of("partnerid", "timeoutms", "connecttimeoutms", "readtimeoutms", "bulkhead",
           "location", "templateid", "routeid", "uuid", "noerrorhandler", "bridgeerrorhandler");
@@ -472,6 +473,7 @@ public class PartnerRouteValidator {
       } else if (!"none".equals(auth) && params.getOrDefault("secretField", "").isEmpty()) {
         problems.add(new Problem(line, name, "auth " + auth + " needs a secretField"));
       }
+      authProblems(auth, params, allowedHosts).forEach(p -> problems.add(new Problem(line, name, p)));
       String path = params.getOrDefault("path", "");
       if (!SAFE_PATH.matcher(path).matches() || path.contains("//")
           || java.util.Arrays.stream(path.split("/")).anyMatch(".."::equals)) {
@@ -483,6 +485,45 @@ public class PartnerRouteValidator {
     if (params.containsKey("mapping")) {
       named.add(params.get("mapping"));
     }
+  }
+
+  /**
+   * The loader's rules for the auth options of ticket 87: {@code basic} needs a {@code userField},
+   * {@code oauth2-cc} a {@code clientId} and a {@code tokenUrl} in the record's hosts, {@code jws}
+   * alg RS256 or ES256; {@code sslContextRef} needs an https url (whether the context is the
+   * partner's own is the adapter's check, static config).
+   */
+  static List<String> authProblems(String auth, Map<String, String> params, List<String> allowedHosts) {
+    List<String> out = new ArrayList<>();
+    switch (auth) {
+      case "basic" -> {
+        if (params.getOrDefault("userField", "").isEmpty()) {
+          out.add("auth basic needs a userField");
+        }
+      }
+      case "oauth2-cc" -> {
+        if (params.getOrDefault("clientId", "").isEmpty()) {
+          out.add("auth oauth2-cc needs a clientId");
+        }
+        String tokenUrl = params.getOrDefault("tokenUrl", "");
+        if (tokenUrl.isEmpty()) {
+          out.add("auth oauth2-cc needs a tokenUrl");
+        } else {
+          hostProblem(tokenUrl, allowedHosts).ifPresent(p -> out.add("tokenUrl: " + p));
+        }
+      }
+      case "jws" -> {
+        if (!Set.of("RS256", "ES256").contains(params.getOrDefault("alg", ""))) {
+          out.add("auth jws needs alg RS256 or ES256");
+        }
+      }
+      default -> { }
+    }
+    if (!params.getOrDefault("sslContextRef", "").isEmpty()
+        && !params.getOrDefault("url", "").toLowerCase(Locale.ROOT).startsWith("https://")) {
+      out.add("sslContextRef needs an https url");
+    }
+    return out;
   }
 
   /** The loader's rule for one Kamelet parameter; null when it is accepted. */

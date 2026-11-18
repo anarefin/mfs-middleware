@@ -87,6 +87,8 @@ dependencies {
     // json-schema-validator comes with camel-json-validator (2.0.1, Jackson 2); the contract tests use
     // that version too, as one artifact can have only one version (contracts/JsonSchema).
     testImplementation("org.wiremock:wiremock-standalone:3.13.1")
+    // Independent JWS verifier for the mw-auth-jws tests (ticket 87); test only.
+    testImplementation("com.nimbusds:nimbus-jose-jwt:10.9.1")
     testImplementation("tools.jackson.dataformat:jackson-dataformat-yaml")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

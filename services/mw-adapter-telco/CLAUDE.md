@@ -53,7 +53,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.telco`. Follo
 ## Partner engine (`partner` package; ADR D26, ticket 84: the copy of mw-adapter-billpay's)
 
 A partner is a record holding a Camel YAML DSL route built from the shipped `mw-*` Kamelets; the
-engine, its guardrails and its Kamelets are billpay's (see mw-adapter-billpay CLAUDE.md "Partner
+engine, its guardrails and its Kamelets (with the auth options of ticket 87: basic, OAuth2 client
+credentials, JWS, mTLS contexts `mw.partners.tls.contexts`) are billpay's (see mw-adapter-billpay CLAUDE.md "Partner
 engine": record, route contract, Kamelets, loader allowlist, `routeConfiguration`, no redelivery of a
 PAY, lifecycle and swap, dry-run candidate `~candidate~`, family filter, hosts and
 `PartnerHttpComponent` + `PartnerDnsResolver`, headers, secrets through `SpringVaultPropertiesFunction`,

@@ -1,0 +1,58 @@
+# mw-auth-oauth2-cc (ticket 87): an OAuth2 client-credentials bearer token (RFC 6749 4.4) on the
+# request mw-http-call prepared. Called by mw-http-call (auth=oauth2-cc).
+apiVersion: camel.apache.org/v1
+kind: Kamelet
+metadata:
+  name: mw-auth-oauth2-cc
+  labels:
+    camel.apache.org/kamelet.type: action
+  annotations:
+    camel.apache.org/kamelet.support.level: Stable
+    camel.apache.org/provider: Bits MFS middleware
+spec:
+  definition:
+    title: MW auth OAuth2 client credentials
+    description: >-
+      Sets Authorization: Bearer <token>. The token comes from tokenUrl (a POST of
+      grant_type=client_credentials with scope and audience when set, the client authenticated with
+      HTTP Basic), sent through the partner http component, so tokenUrl's host must be in the record's
+      allowedHosts. The client secret is a field of this partner's own OpenBao secret, read when the
+      route loaded. The token is cached per partner client until expires_in minus the skew; a partner
+      401 drops it and mw-http-call sends once more with a fresh one. Neither token nor secret is ever
+      logged, audited or put in a URI. Input and output: the prepared request; only headers change.
+    type: object
+    required: [secretField, tokenUrl, clientId]
+    properties:
+      secretField:
+        title: Client secret field
+        description: Field of this partner's own OpenBao secret holding the OAuth2 client secret; a reference, never the value.
+        type: string
+        format: password
+        x-descriptors:
+          - urn:camel:group:credentials
+          - urn:alm:descriptor:com.tectonic.ui:password
+      tokenUrl:
+        title: Token URL
+        description: Static http(s) URL of the token endpoint; its host must be in the record's allowedHosts.
+        type: string
+      clientId:
+        title: Client id
+        description: The OAuth2 client id (not a secret).
+        type: string
+      scope:
+        title: Scope
+        description: Space-separated scopes requested (empty = none sent).
+        type: string
+        default: ""
+      audience:
+        title: Audience
+        description: The audience parameter of the token request (empty = none sent).
+        type: string
+        default: ""
+  template:
+    from:
+      uri: "kamelet:source"
+      steps:
+        - bean:
+            ref: mwAuth
+            method: "oauth2(${exchange}, '{{secretField}}', '{{tokenUrl}}', '{{clientId}}', '{{scope}}', '{{audience}}')"
