@@ -21,7 +21,7 @@ import { RouteForm } from "./route-form";
 
 // One partner (tickets 38 / 42): the published config (no secrets: credential refs only) and, for
 // ops-maker / integration-maker, enable / disable and timeouts as change requests. Ticket 83: the
-// route (ADR D26) with its status from the adapter (PENDING_DRY_RUN, LIVE, REJECTED and why), the
+// route (ADR D28) with its status from the adapter (PENDING_DRY_RUN, LIVE, REJECTED and why), the
 // route editor, and, for an id with no partner yet, onboarding with a route.
 
 const PARTNER_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;

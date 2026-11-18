@@ -34,7 +34,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * A partner route through maker-checker (ADR D26, ticket 83): the maker submits an UPSERT_ROUTE,
+ * A partner route through maker-checker (ADR D28, ticket 83): the maker submits an UPSERT_ROUTE,
  * which the copy of the adapters' loader rules checks first (a forbidden construct or a YAML DSL
  * schema error is refused {@code 400 MW-VAL-041} with its line, before any change request exists);
  * a checker approves; the approval writes {@code mw.config.changed.v1} with the route fields and

@@ -50,7 +50,7 @@ import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.kafka.support.serializer.DeserializationException;
 
 /**
- * Kafka consumer errors go to non-blocking retry topics, then the DLQ (spec 19.2, 6.2, ADR D25),
+ * Kafka consumer errors go to non-blocking retry topics, then the DLQ (spec 19.2, 6.2, ADR D27),
  * through Spring Kafka's retry topics ({@code config/KafkaConfig}) under the platform's names: a
  * record that keeps failing travels {@code <topic>.<group>.retry.1 -> .retry.2 -> .retry.3 ->
  * <topic>.<group>.dlq} with its key, body and 6.1 headers kept and the {@code mw-retry-*}

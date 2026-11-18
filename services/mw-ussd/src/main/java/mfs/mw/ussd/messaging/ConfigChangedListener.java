@@ -11,7 +11,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Consumer of {@code mw.config.changed.v1} (compacted; spec 20.4, ticket 39; consumer group {@code
  * mw-ussd}, earliest offset, so a service started on an empty group reads the latest record of
- * every key; retry topics and DLQ from {@code config/KafkaConfig}, ADR D25): reads the record and
+ * every key; retry topics and DLQ from {@code config/KafkaConfig}, ADR D27): reads the record and
  * hands it to {@link MenuPublisher}, which stores a USSD menu version in one short transaction and
  * ignores every other config type. A tombstone (empty body, compaction) is skipped. A record that
  * cannot be read, or a store that fails, throws: the error handler parks it on a retry topic and

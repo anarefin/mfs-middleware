@@ -1,7 +1,7 @@
 # D1: Apache Camel on Spring Boot 4, JDK 25 with virtual threads
 
 Status: Accepted, 2026-11-03 (spec revision 1). Versions confirmed at the M0 gate: Spring Boot 4.1.2, Camel 4.22.2 LTS.
-Amended 2026-11-18 (user decision, ticket 77): Camel for external partner integration only; internal Kafka messaging moves to Spring Kafka (D25); partner routes are config (D26).
+Amended 2026-11-18 (user decision, ticket 77): Camel for external partner integration only; internal Kafka messaging moves to Spring Kafka (D27); partner routes are config (D28).
 
 ## Context
 
@@ -21,9 +21,9 @@ Every service is a Spring Boot 4 application on JDK 25. Partner and messaging in
 
 - Camel 4 is used **only** in the partner adapters (`mw-adapter-telco`, `mw-adapter-billpay`,
   `mw-adapter-bank`), for partner HTTP/REST, SOAP (camel-cxf) and SFTP (camel-sftp).
-- Each partner is a Camel YAML DSL route stored as config and built from shipped Kamelets (D26).
+- Each partner is a Camel YAML DSL route stored as config and built from shipped Kamelets (D28).
 - No other module depends on `org.apache.camel`. Internal Kafka messaging (listeners, publishers,
-  retry topics and DLQ, the outbox relay) uses Spring Kafka (D25) in every module, the adapters
+  retry topics and DLQ, the outbox relay) uses Spring Kafka (D27) in every module, the adapters
   included.
 - The earlier camel-smpp and camel-mail lines of the spec are superseded: mw-ussd and mw-notify
   already use jSMPP and Spring Mail directly.
@@ -40,5 +40,5 @@ rejects `org.apache.camel` outside `mw-adapter-*` (rule added by ticket 81).
 ## Where in the repo
 
 - `services/mw-orchestrator/build.gradle.kts` (versions inline, one build file per module)
-- the adapters' partner engine, e.g. `services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/route` (ADR D26)
+- the adapters' partner engine, e.g. `services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/route` (ADR D28)
 - spec section 3

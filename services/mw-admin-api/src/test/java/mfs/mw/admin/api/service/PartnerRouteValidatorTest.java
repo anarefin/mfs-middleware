@@ -11,7 +11,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The maker-side copy of the adapters' route loader rules (ADR D26 guardrail 2, ticket 83): the
+ * The maker-side copy of the adapters' route loader rules (ADR D28 guardrail 2, ticket 83): the
  * same refusals as mw-adapter-billpay's {@code PartnerRouteLoaderTest}, each with the line and the
  * construct, so a maker sees them before any approval. The Camel YAML DSL JSON Schema runs first.
  */

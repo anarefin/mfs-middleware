@@ -113,7 +113,7 @@ export async function requestPartnerChange(partnerId: string, _prev: ActionState
 }
 
 /**
- * Maker (ops-maker, integration-maker): a partner route as config (UPSERT_ROUTE, ADR D26, ticket
+ * Maker (ops-maker, integration-maker): a partner route as config (UPSERT_ROUTE, ADR D28, ticket
  * 83). mw-admin-api checks the route with the adapters' loader rules (MW-VAL-041, line and
  * construct per problem); once approved, it goes live in its adapter only after its dry-run.
  */

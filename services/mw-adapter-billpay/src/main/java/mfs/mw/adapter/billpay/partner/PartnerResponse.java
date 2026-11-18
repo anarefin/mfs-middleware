@@ -93,7 +93,7 @@ public sealed interface PartnerResponse {
     DISABLED,
     /** The config cannot serve this call: operation not configured, mapping or credentials failed. */
     MISCONFIGURED,
-    /** The partnerId is neither a configured partner nor a {@code partner-aliases} entry (D26). */
+    /** The partnerId is neither a configured partner nor a {@code partner-aliases} entry (D28). */
     UNKNOWN_PARTNER
   }
 

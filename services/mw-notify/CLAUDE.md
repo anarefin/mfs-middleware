@@ -12,7 +12,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 - Intake (`service/NotificationService`): `mw.notify.request.v1` (`messaging/NotifyRequestListener`)
   and the notification rules, evaluated by `service/RuleEngine` for each `mw.txn.status.v1` record
   (`messaging/TxnStatusListener`, `service/TxnStatusService`). Both are Spring Kafka `@KafkaListener`s
-  (ADR D25) with retry topics and DLQ, stopped by `mw.notify.consumers.enabled=false` (the test default). `messageId` is the idempotency key (with the
+  (ADR D27) with retry topics and DLQ, stopped by `mw.notify.consumers.enabled=false` (the test default). `messageId` is the idempotency key (with the
   channel the PK of `notify.message`, duplicates dropped, event `notify.duplicate`); rule-built ids
   are `<txnId>:<sms|email>:<ruleId>`. `expiresAt` defaults by priority (`dto/Priority`: OTP 2 min, TXN 24 h,
   INFO 24 h, PROMO 72 h); an expired message is recorded EXPIRED and never sent. Listeners only
@@ -134,7 +134,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
 - `messaging/EventPublisher`: Kafka records with the 6.1 headers, idempotent `acks=all` producer.
-- Kafka through Spring Kafka (ADR D25, from the template, ticket 81; no Camel): `config/KafkaConfig`
+- Kafka through Spring Kafka (ADR D27, from the template, ticket 81; no Camel): `config/KafkaConfig`
   (`config/KafkaRetryProperties`, `config/MwKafkaProperties`), `messaging/RetryTopicNaming`,
   `RetryTopicRecoverer`, `RetryDueTimeCap`, `ConsumerContextInterceptor`, `Utf8Deserializer`. Every
   `@KafkaListener` on the default factory (`groupId = "${spring.kafka.consumer.group-id}"`,

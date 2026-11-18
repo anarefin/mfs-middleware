@@ -24,7 +24,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The restart gap of ticket 83, closed in ticket 84 (ADR D26 amendment): an adapter that restarts
+ * The restart gap of ticket 83, closed in ticket 84 (ADR D28 amendment): an adapter that restarts
  * replays only the latest record per partner, so a REJECTED latest version would leave the partner
  * without its last good route. mw-admin-api therefore answers a REJECTED report for the partner's
  * current version by republishing the newest LIVE version as the next version (without a dry-run,

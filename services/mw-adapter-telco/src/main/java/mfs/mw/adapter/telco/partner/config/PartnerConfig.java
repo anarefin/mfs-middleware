@@ -14,7 +14,7 @@ import mfs.mw.adapter.telco.partner.mapping.CompiledMapping;
 import mfs.mw.adapter.telco.util.SensitiveType;
 
 /**
- * One partner record (ADR D26, spec 12.1): the partner's Camel YAML DSL {@code route} built from
+ * One partner record (ADR D28, spec 12.1): the partner's Camel YAML DSL {@code route} built from
  * the shipped mw-* Kamelets, the JSONata {@code mappings} it names, the hosts it may call, and the
  * error-code map, timeouts and breaker settings the Kamelets read. Bound from {@code
  * mw.partners.instances.<id>} (seed) and read from the {@code value} of a {@code

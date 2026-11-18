@@ -44,7 +44,7 @@ import tools.jackson.databind.json.JsonMapper;
  * group, from the beginning) and ends on v2, so a top-up for robi is refused fast and unsent with
  * the mapped {@code MW-SYS-PARTNER_DISABLED} (not served by its {@code robi -> ocs} alias: a
  * partner of its own wins). A later v3 enables it again without a restart. Records are route
- * records (ADR D26, ticket 84) without a dry-run, as an ENABLE / DISABLE publishes them.
+ * records (ADR D28, ticket 84) without a dry-run, as an ENABLE / DISABLE publishes them.
  */
 @CamelSpringBootTest
 @SpringBootTest(

@@ -131,7 +131,7 @@ class PartnerReplyMapperTest {
     }
   }
 
-  /** ADR D26: no silent default partner; an unknown partnerId fails for good, never retried. */
+  /** ADR D28: no silent default partner; an unknown partnerId fails for good, never retried. */
   @Test
   void aPayForAPartnerThatIsNeitherConfiguredNorAnAliasIsAFailedUnknownPartner() {
     PartnerReply reply = notSent(NotSentReason.UNKNOWN_PARTNER);

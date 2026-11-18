@@ -1,4 +1,4 @@
-# mw-auth-hmac-sha256 (ADR D26, ticket 82): the hmac-sha256 scheme of partner/auth on the request
+# mw-auth-hmac-sha256 (ADR D28, ticket 82): the hmac-sha256 scheme of partner/auth on the request
 # mw-http-call prepared. Called by mw-http-call (auth=hmac-sha256).
 apiVersion: camel.apache.org/v1
 kind: Kamelet

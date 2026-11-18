@@ -60,7 +60,7 @@ import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 /**
- * Checks a partner record and builds its route (ADR D26, guardrail 2), never touching the running
+ * Checks a partner record and builds its route (ADR D28, guardrail 2), never touching the running
  * routes: {@link PartnerRoutes} adds what this returns. A record is refused, with every reason,
  * when anything fails; the caller keeps the last good version live.
  *

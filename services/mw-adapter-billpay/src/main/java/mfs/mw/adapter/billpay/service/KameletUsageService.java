@@ -9,7 +9,7 @@ import mfs.mw.adapter.billpay.partner.route.PartnerRuntime;
 import org.springframework.stereotype.Service;
 
 /**
- * Kamelet usage (ADR D26 versioning, ticket 83): for each Kamelet of the shipped library, the live
+ * Kamelet usage (ADR D28 versioning, ticket 83): for each Kamelet of the shipped library, the live
  * partner route versions that call it ({@code PartnerRuntime.kamelets()}). A Kamelet nobody uses
  * any more may be removed once its {@code -v2} is in place.
  */

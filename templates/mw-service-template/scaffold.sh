@@ -104,7 +104,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package \`$pkg\`
   Add context with \`log.atInfo().addKeyValue("event", "...")\` or the MDC.
 - \`config/MwServiceProperties\`: config binding; secrets from OpenBao when \`VAULT_ENABLED=true\`.
 - \`messaging/EventPublisher\`: Kafka records with the 6.1 headers through Spring Kafka's \`KafkaTemplate\`,
-  idempotent \`acks=all\` producer (ADR D25).
+  idempotent \`acks=all\` producer (ADR D27).
 - \`config/KafkaConfig\`: Spring Kafka retry topics for every \`@KafkaListener\`: \`<topic>.<group>.retry.1..3\`
   (10 s / 1 min / 10 min) then \`<topic>.<group>.dlq\` (19.2, declare them in \`deploy/kafka/topics.txt\`);
   listeners take \`ConsumerRecord<String, String>\` and \`Acknowledgment\` and acknowledge after handling

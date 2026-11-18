@@ -367,7 +367,7 @@ scripts/log-scan.sh               <span class="c"># no PIN or unmasked MSISDN / 
       a one-time code or a PIN, unbind a device and set a balance. It shows the dev secrets, so it runs only on this laptop stack. The walkthrough of every feature
       is <a href="../docs/testing-guide.html">docs/testing-guide.html</a>; a demo script per milestone is <code>docs/demo.md</code>.</p>
     <h3>Partner routes</h3>
-    <p>Partners are routes as config (ADR D26): a Camel YAML DSL route on the shipped <code>mw-*</code> Kamelets, onboarded and
+    <p>Partners are routes as config (ADR D28): a Camel YAML DSL route on the shipped <code>mw-*</code> Kamelets, onboarded and
       changed through maker-checker on the console's <strong>Partners</strong> page. It goes live only after its dry-run against
       mw-simulators passes. Examples to start from are in <code>deploy/partner-routes/examples/</code> (REST with an API key,
       OAuth2 or an async callback, SOAP, an SFTP reconciliation file, an SFTP payment file). The steps, with the

@@ -31,7 +31,7 @@ import tools.jackson.databind.json.JsonMapper;
  * The compacted topic keeps the latest record per partner: an adapter starting later replays it.
  *
  * <p>Ticket 83: the published value carries the partner's {@code family} (each adapter applies its
- * own family only), and a config of the route shape (ADR D26) also gets its {@code
+ * own family only), and a config of the route shape (ADR D28) also gets its {@code
  * partner.partner_route} row, PENDING_DRY_RUN until the adapter reports LIVE or REJECTED on {@code
  * mw.partner.route.status.v1} ({@link PartnerRouteStatusService}).
  */

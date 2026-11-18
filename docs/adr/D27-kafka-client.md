@@ -1,4 +1,4 @@
-# D25: Spring Kafka for internal messaging
+# D27: Spring Kafka for internal messaging
 
 Status: Accepted, 2026-11-18 (user decision, ticket 77). Amends D1 (Camel no longer carries Kafka
 traffic) and spec 4.4, 6.2, 6.4 and 22.1; D2 is unchanged.
@@ -32,7 +32,7 @@ listener container, error handler and non-blocking retry topics cover the same n
 
 ## Consequences
 
-- `route/` disappears from every module but the adapters (D26); its Kafka routes move to
+- `route/` disappears from every module but the adapters (D28); its Kafka routes move to
   `messaging/` and the outbox relay to `scheduler/`.
 - Each module's tests: Spring Kafka listener `*IT` classes replace the Camel route tests for Kafka
   paths; the test config gives the listener container a 100 ms shutdown timeout instead of Camel's
@@ -47,4 +47,4 @@ listener container, error handler and non-blocking retry topics cover the same n
 - `templates/mw-service-template/` (from ticket 78)
 - `messaging/` and `scheduler/` packages of every service
 - `deploy/kafka/topics.txt` (retry and DLQ topic names unchanged)
-- spec decision table (D25), sections 4.4, 6.2, 6.4, 22.1
+- spec decision table (D27), sections 4.4, 6.2, 6.4, 22.1

@@ -7,11 +7,11 @@ import org.springframework.stereotype.Component;
 
 /**
  * Partner credentials through Camel's HashiCorp Vault properties function pointed at OpenBao (ADR
- * D26): field {@code <field>} of partner {@code <id>} is {@code
+ * D28): field {@code <field>} of partner {@code <id>} is {@code
  * {{hashicorp:secret:<service>/<id>#<field>}}}, i.e. OpenBao KV v2 {@code secret/<service>/<id>}.
  * The path is built here from the partner's own id, so a record can name only a field of its own
  * secret, never another partner's or the service's. Read when a partner route loads and kept with
- * that version (no refresh: D26, static secrets). A value is never logged; a failure names the
+ * that version (no refresh: D28, static secrets). A value is never logged; a failure names the
  * partner and field only. Replaces the former {@code EnvironmentCredentialResolver}.
  */
 @Component

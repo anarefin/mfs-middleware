@@ -1,4 +1,4 @@
-// Ticket 83 (ADR D26): a partner route as config through maker-checker against the real stack. The
+// Ticket 83 (ADR D28): a partner route as config through maker-checker against the real stack. The
 // maker pastes a route for the billpay partner `e2eroute` (onboarding on the first run, a new version
 // afterwards); a route with a forbidden construct is refused at submit with its line (MW-VAL-041); the
 // checker approves; mw-adapter-billpay dry-runs it against mw-simulators' programmable stub

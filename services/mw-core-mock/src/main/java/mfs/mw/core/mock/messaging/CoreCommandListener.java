@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Consumes {@code core.wallet.command.v1} and {@code core.payment.command.v1} (spec 6.3, the
- * core's Digital Payment side), with retry topics and DLQ (19.2, ADR D25, {@code
+ * core's Digital Payment side), with retry topics and DLQ (19.2, ADR D27, {@code
  * config/KafkaConfig}): one record, one transaction (ledger, command log, outbox row), then the
  * record is acknowledged. Any command type is accepted on either topic; the reply goes to the
  * event topic that pairs with the command topic. A failure propagates, so the error handler parks

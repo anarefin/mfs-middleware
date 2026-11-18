@@ -33,7 +33,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.test.annotation.DirtiesContext;
 
 /**
- * The per-instance reply consumer of {@code mw.txn.status.v1} (spec 7.5, ADR D25) on two running
+ * The per-instance reply consumer of {@code mw.txn.status.v1} (spec 7.5, ADR D27) on two running
  * instances of this service: each has its own consumer group ({@code mw-app-gateway.reply.<id>}),
  * so each gets every status record and completes the waiters addressed to it; it starts at the
  * latest offset, so a reply sent before it started is never replayed.

@@ -1,4 +1,4 @@
-// Partner routes as config (ADR D26, ticket 83): the editor's fields -> the UPSERT_ROUTE config, and
+// Partner routes as config (ADR D28, ticket 83): the editor's fields -> the UPSERT_ROUTE config, and
 // the route status label. The route itself is checked by mw-admin-api (a copy of the adapters'
 // loader rules, MW-VAL-041 with line and construct); this only shapes the request as the contract does.
 import type { PartnerConfig, PartnerRouteState } from "./types";

@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The live partner records (spec 20.4, ADR D26): seeded from {@link PartnerProperties} when Camel
+ * The live partner records (spec 20.4, ADR D28): seeded from {@link PartnerProperties} when Camel
  * has started ({@link #start()}), then changed only by {@code mw.config.changed.v1} PARTNER records
  * ({@code configKey} {@code partner/<id>}). Each change loads the new version's route beside the old
  * one ({@link PartnerRoutes#load}), swaps the snapshot in one step (a call sees one version, never a
@@ -40,7 +40,7 @@ import tools.jackson.databind.json.JsonMapper;
  * (LIVE or REJECTED with its problems) for the {@link PartnerRouteStatus.Sink}.
  *
  * <p>A partnerId resolves to its own partner, else to a {@code partner-aliases} entry, else to
- * nothing ({@code MW-PTR-UNKNOWN-PARTNER}): there is no silent default partner (D26).
+ * nothing ({@code MW-PTR-UNKNOWN-PARTNER}): there is no silent default partner (D28).
  */
 @Component
 public class PartnerConfigStore implements AutoCloseable {

@@ -8,7 +8,7 @@ mw:
     dry-run:
       base-url: ${MW_PARTNER_DRY_RUN_BASE_URL:http://mw-simulators:8080/sim/partners/{partnerId}}
     instances:
-      # OCS REST/JSON (wire format: mw-simulators OCS), a partner route as config (ADR D26). The
+      # OCS REST/JSON (wire format: mw-simulators OCS), a partner route as config (ADR D28). The
       # simulator is the default target; real MNO endpoints come from config-changed records.
       ocs:
         family: telco

@@ -1,4 +1,4 @@
-# Example partner record (ADR D26, ticket 87): a REST/JSON biller on OAuth2 client credentials, as the
+# Example partner record (ADR D28, ticket 87): a REST/JSON biller on OAuth2 client credentials, as the
 # `value` of a mw.config.changed.v1 PARTNER record (configKey partner/gasco), shown as YAML. The token
 # endpoint's host is in allowedHosts like the API's; the client secret is OpenBao
 # secret/mw-adapter-billpay/gasco, field client-secret, read when the route loads. One token serves

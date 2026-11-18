@@ -1,4 +1,4 @@
-# mw-http-call (ADR D26, ticket 82): one REST/JSON call to the partner, inside a resilience4j
+# mw-http-call (ADR D28, ticket 82): one REST/JSON call to the partner, inside a resilience4j
 # breaker with the record's time limit and bulkhead. Never retries a PAY; an INQUIRY or STATUS_QUERY
 # goes again at most the record's inquiryRetries. A breaking change ships as mw-http-call-v2.
 apiVersion: camel.apache.org/v1

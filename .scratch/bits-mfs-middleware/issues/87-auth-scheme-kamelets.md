@@ -8,7 +8,7 @@ identical, and are added to the loader and admin-api allowlists.
 | `mw-auth-basic` | `Authorization: Basic`. User and password by `secretRef` |
 | `mw-auth-oauth2-cc` | client-credentials token from `tokenUrl` (on the host allowlist), with `clientId`, the secret by `secretRef`, `scope` and `audience`. The token is **cached** per partner until `expires_in − skew`. A 401 from the partner invalidates the cache and retries once. The token is never logged or audited |
 | `mw-auth-jws` | signs the body as a detached JWS (`alg` ES256/RS256 as a property), sets the header named in the record. The key is through mw-crypto if a fitting key purpose exists (check `services/mw-crypto` caller policy; **ask the user** before adding a key purpose there), otherwise a dev key from OpenBao |
-| mTLS (`mw-http-call` option `sslContextRef`) | a client keystore per partner, from OpenBao at startup (static, D26), registered as a named `SSLContextParameters` bean. The route can only name it, never supply key material |
+| mTLS (`mw-http-call` option `sslContextRef`) | a client keystore per partner, from OpenBao at startup (static, D28), registered as a named `SSLContextParameters` bean. The route can only name it, never supply key material |
 
 - **Secrets:** all of them come through Camel's HashiCorp Vault properties function against OpenBao (82), static at startup. The mTLS keystore is read
   the same way into a named `SSLContextParameters` bean.

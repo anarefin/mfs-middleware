@@ -1,4 +1,4 @@
-# Example batch partner record (ADR D26, ticket 86): the aggregator's daily reconciliation file over
+# Example batch partner record (ADR D28, ticket 86): the aggregator's daily reconciliation file over
 # SFTP, as the `value` of a mw.config.changed.v1 PARTNER record (configKey partner/billagg-recon),
 # shown as YAML. A batch route starts from the mw-sftp-source Kamelet instead of
 # direct:partner-<id> and ends with mw-recon; the adapter of the family polls the directory, reads

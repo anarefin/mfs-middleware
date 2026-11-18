@@ -39,7 +39,7 @@
     <dt>BDT, Tk, poisha</dt><dd>Bangladeshi taka. Tk 1 = 100 poisha. Amounts are stored as whole poisha in <code>valueMinor</code>.</dd>
     <dt>Bulk disbursement</dt><dd>An organisation paying many wallets from one CSV file, with maker-checker.</dd>
     <dt>Callback</dt><dd>A partner calling <em>us</em> later with the result of an earlier request.</dd>
-    <dt>Camel (Apache Camel)</dt><dd>An integration library used inside services for Kafka consumers, the outbox relay and partner routes. Superseded 2026-11-18 by <a href="../adr/D25-kafka-client.md">ADR D25</a>: Kafka moves to Spring Kafka; Camel stays only for partner routes in the adapters (<a href="../adr/D26-partner-routes-as-config.md">ADR D26</a>).</dd>
+    <dt>Camel (Apache Camel)</dt><dd>An integration library used inside services for Kafka consumers, the outbox relay and partner routes. Superseded 2026-11-18 by <a href="../adr/D27-kafka-client.md">ADR D27</a>: Kafka moves to Spring Kafka; Camel stays only for partner routes in the adapters (<a href="../adr/D28-partner-routes-as-config.md">ADR D28</a>).</dd>
     <dt>Circuit breaker</dt><dd>Stops calling a partner for a while after repeated failures, so a broken partner does not drag everything down.</dd>
     <dt>Command / event</dt><dd>A request to the core over Kafka ("PostTransfer") and its answer ("TransferPosted"). See <a href="03-core-ideas.html#core-contract">chapter 3</a>.</dd>
     <dt>commandId</dt><dd>The id of one command, <code>&lt;txnId&gt;:&lt;step&gt;</code>. The core uses it to recognise a repeat.</dd>

@@ -9,7 +9,7 @@ mw:
       base-url: ${MW_PARTNER_DRY_RUN_BASE_URL:http://mw-simulators:8080/sim/partners/{partnerId}}
     instances:
       # Utility bill aggregator REST/JSON (wire format: mw-simulators billagg), a partner route as
-      # config (ADR D26). A payment is answered at once (200 SUCCESS / 422 FAILED) or accepted (202
+      # config (ADR D28). A payment is answered at once (200 SUCCESS / 422 FAILED) or accepted (202
       # PENDING) with the outcome following as a signed callback to /partner/billagg/callback/payments
       # (APISIX -> controller/PartnerCallbackController), verified with auth below.
       billagg:

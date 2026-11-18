@@ -1,4 +1,4 @@
-# mw-recon (ADR D26, ticket 86): the last step of a batch partner route; turns a reconciliation or
+# mw-recon (ADR D28, ticket 86): the last step of a batch partner route; turns a reconciliation or
 # settlement file into mw.partner.recon.v1 records.
 apiVersion: camel.apache.org/v1
 kind: Kamelet

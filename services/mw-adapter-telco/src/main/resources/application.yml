@@ -40,7 +40,7 @@ spring:
       maximum-pool-size: 5
   flyway:
     schemas: partner_ref
-  # Kafka through Spring Kafka (spec 6.1, 19.2, ADR D25); retry topics, templates and interceptors
+  # Kafka through Spring Kafka (spec 6.1, 19.2, ADR D27); retry topics, templates and interceptors
   # in config/KafkaConfig. Single KRaft node; topics come from deploy/kafka/ and are never
   # auto-created by the service.
   kafka:
@@ -92,13 +92,13 @@ spring:
         default.api.timeout.ms: 5000
         request.timeout.ms: 5000
 
-# Camel, for the partner side only (ADR D1 amendment, D26): partner routes are YAML DSL loaded at
+# Camel, for the partner side only (ADR D1 amendment, D28): partner routes are YAML DSL loaded at
 # runtime (partner/route/PartnerRouteLoader) and built from the mw-* Kamelets (classpath:kamelets).
 camel:
   main:
     name: ${spring.application.name}
     # No bodies in exchange logs, no tracer, no route dumps (dumps resolve placeholders); routes
-    # are never reloaded from files (D26: a partner route changes only through its record).
+    # are never reloaded from files (D28: a partner route changes only through its record).
     message-history: false
     tracing: false
     routes-reload-enabled: false
@@ -124,7 +124,7 @@ camel:
       disable-core-processors: false
   vault:
     hashicorp:
-      # Partner secrets through Camel's HashiCorp Vault properties function against OpenBao (D26):
+      # Partner secrets through Camel's HashiCorp Vault properties function against OpenBao (D28):
       # read when a partner route loads, never refreshed. The function uses Spring Cloud Vault's
       # VaultTemplate (AppRole) when VAULT_ENABLED=true (partner/route/PartnerSecretsConfiguration).
       refresh-enabled: false
@@ -214,14 +214,14 @@ management:
       type: w3c
 
 mw:
-  # Partner engine (ADR D26, package partner): a partner is a record holding its Camel YAML DSL
+  # Partner engine (ADR D28, package partner): a partner is a record holding its Camel YAML DSL
   # route (built from the mw-* Kamelets in classpath:kamelets), its JSONata mappings, the hosts it may
   # call and its error-code map. These are seeds (version 0); a mw.config.changed.v1 PARTNER record
   # (configKey partner/<id>, same field names in camelCase) replaces or adds one without a restart.
   # Secrets are never here: a route names a field of the partner's own OpenBao secret
   # (secret/mw-adapter-telco/<partner>), read when the route loads.
   partners:
-    # partnerId a channel sends -> the partner that serves it (D26; no silent default partner). The
+    # partnerId a channel sends -> the partner that serves it (D28; no silent default partner). The
     # channels send the MNO as the top-up operator (mw-app-gateway, mw-ussd's operators list and MNO
     # operator, the test console): every one is served by the OCS until it gets a partner of its own.
     # Any other id is refused MW-PTR-UNKNOWN-PARTNER.

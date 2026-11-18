@@ -22,7 +22,7 @@ import org.springframework.vault.core.VaultTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Spring wiring of the partner engine (ADR D26; package {@code partner}): the audit sink, the
+ * Spring wiring of the partner engine (ADR D28; package {@code partner}): the audit sink, the
  * header filter of partner HTTP calls, the vault properties function for partner secrets, the
  * {@code partnerId} tag on Camel's route metrics, and the start of the partner routes once Camel
  * runs.

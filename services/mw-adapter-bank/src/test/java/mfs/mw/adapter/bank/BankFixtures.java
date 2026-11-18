@@ -27,7 +27,7 @@ public final class BankFixtures {
     return request("PAY", txnId, account, valueMinor, Instant.now().plusSeconds(300));
   }
 
-  /** {@code request} as sent for partnerId {@code partnerId} (ADR D26 aliases). */
+  /** {@code request} as sent for partnerId {@code partnerId} (ADR D28 aliases). */
   public static PartnerRequest forPartner(PartnerRequest request, String partnerId) {
     PartnerRequest.Payload p = request.payload();
     return new PartnerRequest(

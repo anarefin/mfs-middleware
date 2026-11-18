@@ -14,7 +14,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Listener of {@code mw.partner.request.telco.v1} (key txnId; Spring Kafka retry topics and DLQ,
- * spec 19.2, ADR D25). On by default; {@code mw.telco.request-consumer.enabled=false} keeps it
+ * spec 19.2, ADR D27). On by default; {@code mw.telco.request-consumer.enabled=false} keeps it
  * from starting (tests, so a cached test context never competes for the topic). It only parses and hands the
  * request to a virtual-thread executor: the OCS call (up to 20 s) never runs on the Kafka
  * consumer thread. A record that cannot be parsed, or lacks the ids a reply needs, throws, so the

@@ -9,7 +9,7 @@ import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.stereotype.Component;
 
 /**
- * {@code partners} on {@code /actuator/health} (ADR D26): one entry per partner with its live
+ * {@code partners} on {@code /actuator/health} (ADR D28): one entry per partner with its live
  * version, route and state, UP when its route runs, DOWN when it does not, DISABLED or DELETED.
  * The indicator itself stays UP, and it is not in the readiness group: one partner whose route
  * fails makes that partner DOWN, never the whole service (Camel's own health checks skip the

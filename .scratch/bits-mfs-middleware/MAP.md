@@ -63,7 +63,7 @@ Tickets: `.scratch/bits-mfs-middleware/issues/<NN>-<slug>.md`; run order + statu
 - JaCoCo 80% line gate per package on `service`, `mapper`, `client`.
 - Kafka: transactional outbox (`messaging/OutboxWriter`) + inbox dedup; listeners never block; retry topics 10s/1m/10m then DLQ
   (`route/RetryTopicRouteBuilder` today; Spring Kafka error handler, `@KafkaListener` + `KafkaTemplate`, `@Scheduled` outbox relay
-  per ADR D25, tickets 78–81; Camel only in `mw-adapter-*` for partner routes as config, ADR D26). Headers in `messaging/MwHeaders`.
+  per ADR D27, tickets 78–81; Camel only in `mw-adapter-*` for partner routes as config, ADR D28). Headers in `messaging/MwHeaders`.
 - Masking: `util/MaskingPolicy` + `@Sensitive`; never log PIN / unmasked MSISDN, NID, account, name.
 - Secrets from OpenBao (`VAULT_ENABLED`), dev init containers `init/init.sh` per service; test fixtures use fake values.
 - Keycloak realms: `ops` (operators, MFA; admin API/UI), `services` (client-credentials for internal APIs), plus app/portal realms in `deploy/`.

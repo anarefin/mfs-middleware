@@ -10,7 +10,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `core.wallet.event.v1` and `core.payment.event.v1` (one listener, `messaging/CoreEventListener`) and partner adapter answers on
   `mw.partner.reply.v1` (`messaging/PartnerReplyListener`) and partner callbacks on `mw.partner.inbound.v1`
   (`messaging/PartnerInboundListener`) and operator actions on `mw.txn.action.v1` (`messaging/TxnActionListener`,
-  ticket 37): Spring Kafka `@KafkaListener`s (ADR D25), all with retry topics and DLQ, all stopped by
+  ticket 37): Spring Kafka `@KafkaListener`s (ADR D27), all with retry topics and DLQ, all stopped by
   `mw.orchestrator.consumers.enabled=false` (the test default). Publishes every
   state change on `mw.txn.status.v1`, core commands on `core.payment.command.v1` (HoldFunds, CommitHold,
   ReleaseHold) or `core.wallet.command.v1` (every other command; `service/CoreTopics`, ticket 50) and partner
@@ -452,7 +452,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
 - `messaging/EventPublisher`: Kafka records with the 6.1 headers, idempotent `acks=all` producer.
-- Kafka through Spring Kafka (ADR D25, from the template, ticket 81; no Camel): `config/KafkaConfig`
+- Kafka through Spring Kafka (ADR D27, from the template, ticket 81; no Camel): `config/KafkaConfig`
   (`config/KafkaRetryProperties`, `config/MwKafkaProperties`), `messaging/RetryTopicNaming`,
   `RetryTopicRecoverer`, `RetryDueTimeCap`, `ConsumerContextInterceptor`, `Utf8Deserializer`. Every
   `@KafkaListener` on the default factory (`groupId = "${spring.kafka.consumer.group-id}"`,

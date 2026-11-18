@@ -181,7 +181,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   client-credentials JWT too (template `CLAUDE.md`, "Service certificate and mTLS").
   `client/MtlsClientIT` proves the caller side (OpenBao container `PkiTestAuthority`, a server that
   needs a client certificate, a renewal, no certificate = failed handshake).
-- Kafka through Spring Kafka (ADR D25; no Camel in this module, copied from the template, ticket 79):
+- Kafka through Spring Kafka (ADR D27; no Camel in this module, copied from the template, ticket 79):
   `messaging/EventPublisher` sends records with the 6.1 headers through `KafkaTemplate` (idempotent,
   `acks=all`, at most 5 in flight; `publish` waits for the ack, `publishStoredAsync` sends an outbox row
   with exactly its stored headers). `config/KafkaConfig` puts every `@KafkaListener` on non-blocking retry

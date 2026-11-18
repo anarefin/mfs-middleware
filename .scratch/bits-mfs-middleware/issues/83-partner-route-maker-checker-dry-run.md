@@ -1,6 +1,6 @@
 # 83: Partner routes through maker-checker, a dry-run against the simulator, and the admin UI editor
 
-**What to build:** The operator path for D26. A new biller's route is submitted in mw-admin-api, approved by a checker, and
+**What to build:** The operator path for D28. A new biller's route is submitted in mw-admin-api, approved by a checker, and
 dry-run by the adapter against mw-simulators. It goes live only if the dry-run passes, and is rolled back automatically if it fails.
 
 **mw-admin-api:**

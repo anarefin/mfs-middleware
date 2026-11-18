@@ -72,7 +72,7 @@ adapter-minted txnId (REMIT_IN, QR_PAY_INTEROP inbound) and stay for their own t
 contract changes: only orchestrator-owned samples for the bank family (`valid-c2w-pay.json`,
 `valid-c2w-callback.json`) were added.
 
-## Partner engine (`partner` package; ADR D26, ticket 84: the copy of mw-adapter-billpay's)
+## Partner engine (`partner` package; ADR D28, ticket 84: the copy of mw-adapter-billpay's)
 
 A partner is a record holding a Camel YAML DSL route built from the shipped `mw-*` Kamelets; the
 engine, its guardrails and its Kamelets (with the auth options of ticket 87: basic, OAuth2 client
@@ -81,7 +81,7 @@ engine"; its packages `partner/config/`, `partner/route/`, `partner/kamelet/`, `
 `partner/mapping/` (JSONata, XSLT and the JSON/XML convention of SOAP) are billpay's "Packages"). The
 `partner/` trees (main and the shared tests) and `src/main/resources/kamelets` are
 identical in the three adapters apart from the package: a fix goes into all three (check with `diff -r`
-after normalising the package). Kafka is Spring Kafka (ADR D25), as billpay. SOAP partners (ticket 85:
+after normalising the package). Kafka is Spring Kafka (ADR D27), as billpay. SOAP partners (ticket 85:
 `mw-soap-call`, camel-cxf PAYLOAD, XSLT stylesheets as `*.xsl` mappings or `request=json`/`response=json`, Basic
 and mTLS as `mw-http-call`) are billpay's "SOAP partners".
 
@@ -99,7 +99,7 @@ and mTLS as `mw-http-call`) are billpay's "SOAP partners".
 - Only the outbound call is the route; the callback still goes APISIX -> `controller/
   PartnerCallbackController` -> `PartnerGateway.inbound` (the record's `auth` and `CALLBACK.response`)
   -> `mw.partner.inbound.v1` (above).
-- **Aliases** (D26): the channels send `c2wbank` itself, so `partner-aliases` is empty; any other id is
+- **Aliases** (D28): the channels send `c2wbank` itself, so `partner-aliases` is empty; any other id is
   FAILED `MW-PTR-UNKNOWN-PARTNER`, not retryable, never sent (`BankRequestRouteIT`).
 - **Family** `bank`; **route status** on `mw.partner.route.status.v1` as telco (shared
   `PartnerRouteDryRunIT`); no Kamelet usage endpoint (mw-admin-api uses the status reports).
@@ -147,7 +147,7 @@ and mTLS as `mw-http-call`) are billpay's "SOAP partners".
 - `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3 (+ `PARTY_ID`, above).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
-- Spring Kafka (ADR D25, the billpay copy): `config/KafkaConfig` (retry topics `<topic>.<group>.retry.1..3`
+- Spring Kafka (ADR D27, the billpay copy): `config/KafkaConfig` (retry topics `<topic>.<group>.retry.1..3`
   10 s / 1 min / 10 min then `.dlq`), `messaging/EventPublisher`, outbox/inbox, `scheduler/OutboxRelayScheduler`,
   `partner/config/PartnerConfigKafkaListener` (replays `mw.config.changed.v1` on every start).
 - `application.yml`: Resilience4j defaults (19.2), own schema `bank_ref` migrated by Flyway.

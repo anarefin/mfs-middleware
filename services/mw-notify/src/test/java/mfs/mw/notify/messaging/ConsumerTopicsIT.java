@@ -14,7 +14,7 @@ import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.kafka.listener.MessageListenerContainer;
 
 /**
- * The service's three consumed topics (ADR D25): each has a listener in the service's consumer
+ * The service's three consumed topics (ADR D27): each has a listener in the service's consumer
  * group with its three retry consumers and its DLQ under the platform's names ({@code
  * deploy/kafka/topics.txt}, {@code retry=mw-notify}), and {@code
  * mw.notify.consumers.enabled=false} (the test default) keeps every one of them stopped.

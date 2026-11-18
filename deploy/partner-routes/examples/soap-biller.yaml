@@ -1,4 +1,4 @@
-# Example partner record (ADR D26, ticket 85): a SOAP 1.1 biller with a WS-Security UsernameToken, as
+# Example partner record (ADR D28, ticket 85): a SOAP 1.1 biller with a WS-Security UsernameToken, as
 # the `value` of a mw.config.changed.v1 PARTNER record (configKey partner/soapbill), shown as YAML.
 # mw-adapter-billpay loads it without a restart and without Java: the route is built from the shipped
 # mw-* Kamelets (mw-map -> mw-soap-call -> mw-classify, then mw-audit). mw-soap-call sends through

@@ -19,7 +19,7 @@ import org.springframework.kafka.core.ProducerFactory;
 
 /**
  * Every record this service publishes carries the spec 6.1 headers, keeps its partition key, and
- * goes through an idempotent {@code acks=all} producer ({@code KafkaTemplate}, ADR D25). A live
+ * goes through an idempotent {@code acks=all} producer ({@code KafkaTemplate}, ADR D27). A live
  * publish continues the caller's trace; a stored (outbox) record is sent with exactly the headers
  * it was stored with, so it continues the trace of the transaction that wrote it.
  */

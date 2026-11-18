@@ -1334,7 +1334,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
         Negative: <span class="ui">Connect (ms)</span> <code>0</code> → "a whole number 1 to 120000"; all three empty → "timeouts: at least one timeout";
         <span class="ui">Read (ms)</span> below the call timeout → "readTimeoutMs: at least timeoutMs"; read over <code>125000</code> → "a whole number 1 to 125000".</li>
       <li>As the checker or a viewer the Change and Timeouts cards are not there. An unknown partner id in the URL shows the error box.</li>
-      <li><b>Partner routes</b> (ADR D26). First give the simulator stub an answer:
+      <li><b>Partner routes</b> (ADR D28). First give the simulator stub an answer:
         <code>curl -s -X POST http://127.0.0.1:8085/sim/stubs/newco -H 'content-type: application/json' -d '{"method":"POST","path":"/v1/pay","status":200,"body":{"receipt":"NC-1"}}'</code>.
         As the maker open <code>/console/partners/newco</code>: the error box, then <i>Onboard with a route</i> with
         <span class="ui">Family</span>, <span class="ui">Route (Camel YAML DSL)</span> (monospace), <span class="ui">Allowed hosts</span>,

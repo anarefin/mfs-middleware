@@ -11,7 +11,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Shared consumer of {@code mw.txn.status.v1} (consumer group {@code mw-checkout}, retry topics
- * and DLQ from {@code config/KafkaConfig}; spec 6.2, 19.2, ADR D25): hands the final status of
+ * and DLQ from {@code config/KafkaConfig}; spec 6.2, 19.2, ADR D27): hands the final status of
  * every WEB_CHECKOUT transaction to {@link SessionOutcomes}, so every payment outcome reaches its
  * session, also one that comes after the reply budget. A record that cannot be read throws, so
  * the error handler parks it on a retry topic and finally the DLQ (a schema failure goes to the

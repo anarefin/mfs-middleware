@@ -7,7 +7,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Relays the outbox (spec 6.4, ADR D25): right after start-up and then {@code
+ * Relays the outbox (spec 6.4, ADR D27): right after start-up and then {@code
  * mw.outbox.relay.period} after each run ends, it publishes every unsent row ({@link
  * OutboxRelay#relayPending()}, which keeps going while batches come back full). A scheduler
  * thread, never a Kafka consumer thread. Off when {@code mw.outbox.relay.enabled=false} (the test

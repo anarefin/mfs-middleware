@@ -43,7 +43,7 @@ spring:
     # owned by this service; the history table lives in the first.
     schemas: admin,partner
 
-  # Kafka through Spring Kafka (spec 6.1, 19.2, ADR D25); retry topics, templates and interceptors
+  # Kafka through Spring Kafka (spec 6.1, 19.2, ADR D27); retry topics, templates and interceptors
   # in config/KafkaConfig. Single KRaft node; topics come from deploy/kafka/ and are never
   # auto-created by the service.
   kafka:
@@ -185,7 +185,7 @@ management:
       type: w3c
 
 mw:
-  # Partner routes as config (ADR D26, ticket 83). kamelets: the mw-* Kamelet library of the adapters
+  # Partner routes as config (ADR D28, ticket 83). kamelets: the mw-* Kamelet library of the adapters
   # a route may call (default: ticket 82's library; a new Kamelet ships in the adapter first, then here).
   # status-consumer: the listener of mw.partner.route.status.v1 (the adapters' LIVE / REJECTED reports).
   partner-routes:

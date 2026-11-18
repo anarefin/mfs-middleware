@@ -1,4 +1,4 @@
-# Example partner record (ADR D26): a REST/JSON biller with an API key, as the `value` of a
+# Example partner record (ADR D28): a REST/JSON biller with an API key, as the `value` of a
 # mw.config.changed.v1 PARTNER record (configKey partner/waterco), shown as YAML. mw-adapter-billpay
 # loads it without a restart and without Java: the route is built from the shipped mw-* Kamelets
 # (services/mw-adapter-billpay/src/main/resources/kamelets), checked by the route loader (allowlist,

@@ -51,12 +51,12 @@ import org.testcontainers.containers.wait.strategy.Wait;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * A new biller with no restart and no Java change (ADR D26, ticket 82 acceptance): a {@code
+ * A new biller with no restart and no Java change (ADR D28, ticket 82 acceptance): a {@code
  * mw.config.changed.v1} record for a partner the service has never seen ({@code waterco}: another
  * host, other JSON field names, an api key) arrives on Kafka; its route is built from the shipped
  * Kamelets, its key is read from OpenBao (Testcontainers, the dev image) through Camel's HashiCorp
  * Vault function, and a bill fetch and a payment against the WireMock biller succeed. The biller
- * catalogue entry is static config, on purpose (D26).
+ * catalogue entry is static config, on purpose (D28).
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,

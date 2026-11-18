@@ -35,7 +35,7 @@ import org.springframework.util.backoff.BackOffExecution;
 import tools.jackson.core.JacksonException;
 
 /**
- * Spring Kafka for this service (spec 6.1, 19.2, ADR D25). Connection, serdes, producer
+ * Spring Kafka for this service (spec 6.1, 19.2, ADR D27). Connection, serdes, producer
  * idempotence, ack mode, concurrency and observation are {@code spring.kafka.*} in {@code
  * application.yml}; this class adds what has no property:
  *

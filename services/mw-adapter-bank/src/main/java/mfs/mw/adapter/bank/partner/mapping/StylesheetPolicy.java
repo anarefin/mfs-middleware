@@ -22,7 +22,7 @@ import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
 /**
- * What an XSLT stylesheet of a partner record may hold (ticket 85, ADR D26 guardrail 2): it works
+ * What an XSLT stylesheet of a partner record may hold (ticket 85, ADR D28 guardrail 2): it works
  * on the document it is given and nothing else. Refused: a DOCTYPE or entity (XXE), {@code
  * xsl:import} / {@code xsl:include} / {@code xsl:use-package}, {@code xsl:result-document}, {@code
  * xsl:source-document}, {@code xsl:merge-source}, {@code xsl:evaluate}, extension elements and

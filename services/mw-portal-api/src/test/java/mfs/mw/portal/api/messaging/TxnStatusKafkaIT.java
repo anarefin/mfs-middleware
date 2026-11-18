@@ -18,7 +18,7 @@ import org.springframework.test.annotation.DirtiesContext;
 
 /**
  * {@code mw.txn.status.v1} reaches {@link TxnStatusListener} over real Kafka (group {@code
- * mw-portal-api}, ADR D25): a record that is not a status message is not retried (it fails the
+ * mw-portal-api}, ADR D27): a record that is not a status message is not retried (it fails the
  * same way again) and lands on {@code mw.txn.status.v1.mw-portal-api.dlq} with its key, its 6.1
  * headers and the {@code mw-*} diagnostics, instead of blocking the partition.
  */

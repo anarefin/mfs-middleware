@@ -23,7 +23,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * The route loader's guardrails (ADR D26, ticket 82), on a plain Camel context: the dev seed
+ * The route loader's guardrails (ADR D28, ticket 82), on a plain Camel context: the dev seed
  * route loads; every construct outside the allowlist is refused, before the route is added.
  */
 class PartnerRouteLoaderTest {

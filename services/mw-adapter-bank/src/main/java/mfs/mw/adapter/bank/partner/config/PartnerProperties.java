@@ -10,7 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * partner aliases, and the security settings, which only static config (application.yml,
  * per-environment overrides, OpenBao) can set: a config-changed record can never widen them.
  *
- * @param partnerAliases partnerId a channel sends -> the partner serving it (ADR D26: replaces the
+ * @param partnerAliases partnerId a channel sends -> the partner serving it (ADR D28: replaces the
  *     silent {@code default-partner}); a partnerId that is neither a partner nor an alias is
  *     refused {@code MW-PTR-UNKNOWN-PARTNER}
  * @param instances partner id to record

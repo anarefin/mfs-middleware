@@ -1,4 +1,4 @@
-# mw-map (ADR D26, ticket 82): the partner's request body from the canonical call, by one of the
+# mw-map (ADR D28, ticket 82): the partner's request body from the canonical call, by one of the
 # record's JSONata mappings (compiled once per record version).
 apiVersion: camel.apache.org/v1
 kind: Kamelet

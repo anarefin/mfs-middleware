@@ -13,13 +13,13 @@ Today ADR D1 and the spec prescribe Camel for both messaging and partners. Ticke
   - Each partner is a Camel YAML DSL route stored as config and built from shipped Kamelets.
   - No other module depends on `org.apache.camel`.
   - Reason: Camel was chosen to onboard billers without code. Using it as a Kafka client added a hand-written retry chain and `Exchange`-coupled listeners for no integration benefit.
-- **New `docs/adr/D25-kafka-client.md`:** Spring Kafka (`spring-kafka`, the version managed by Boot).
+- **New `docs/adr/D27-kafka-client.md`:** Spring Kafka (`spring-kafka`, the version managed by Boot).
   - Consumers use `@KafkaListener` with record-level manual ack; producers use `KafkaTemplate` (idempotent, `acks=all`).
   - Non-blocking retry topics follow D2 (10 s / 1 min / 10 min), then a DLQ. **The topic names stay `<topic>.<group>.retry.<n>` / `<topic>.<group>.dlq`.**
   - The outbox and inbox are unchanged (D2).
   - The outbox relay runs as `@Scheduled`.
   - Consumers extract the trace and correlation into MDC.
-- **New `docs/adr/D26-partner-routes-as-config.md`:**
+- **New `docs/adr/D28-partner-routes-as-config.md`:**
   - **One route per partner:** a Camel YAML DSL route, `from: direct:partner-<id>`. Its input is the `PartnerCall` JSON and its output is `{outcome, partnerRef, code, message, reason}`.
   - **Kamelet library** (`mw-auth-*`, `mw-http-call`, `mw-soap-call`, `mw-sftp-*`, `mw-classify`, `mw-audit`): shipped as code and reviewed. Raw `http`/`cxf`/`sftp` are allowed only inside these Kamelets.
   - **The four guardrails:**
@@ -46,13 +46,13 @@ Today ADR D1 and the spec prescribe Camel for both messaging and partners. Ticke
   - **6.2 retry/DLQ producer:** the Spring Kafka error handler, not the Camel error handler (`:573`).
   - **6.4:** the outbox relay becomes a scheduler (`:599`).
   - **WP05** (`:141`): change it.
-  - **12.1:** templates become Kamelets plus route-as-config. Add the onboarding procedure from D26.
+  - **12.1:** templates become Kamelets plus route-as-config. Add the onboarding procedure from D28.
   - **22.1 test strategy** (`:1270`):
     - Camel route tests apply to the adapters only;
     - add Spring Kafka listener ITs;
     - add the route loader's allowlist and dry-run tests;
     - keep the `AdviceWith` / `MockEndpoint` / `NotifyBuilder` row for adapter routes and Kamelets.
-  - **Decision table:** add the D25 and D26 rows.
+  - **Decision table:** add the D27 and D28 rows.
   - **Superseded camel-smpp / camel-mail mentions** (`:344`, `:728`, `:781-782`, `:788`): mw-notify and mw-ussd already use jSMPP and Spring Mail. Mark them as superseded by D1's amendment.
 - **Root `CLAUDE.md`:**
   - the package table's `route/` line;
@@ -60,14 +60,14 @@ Today ADR D1 and the spec prescribe Camel for both messaging and partners. Ticke
   - a new Never: "Never use Camel outside `mw-adapter-*`".
 - **Map and docs:**
   - `.scratch/bits-mfs-middleware/MAP.md`: update the Kafka line.
-  - `docs/concepts/` and `docs/tutorial/`: list the pages that describe Camel for Kafka. Each one is fixed in the ticket that changes the code (78–81); this ticket only adds a "superseded by D25" note.
+  - `docs/concepts/` and `docs/tutorial/`: list the pages that describe Camel for Kafka. Each one is fixed in the ticket that changes the code (78–81); this ticket only adds a "superseded by D27" note.
 - **`docs/runbook.md`:** add an "Onboard a biller" section stub (filled in by 83).
 
 **Blocked by:** —
 
 **Status:** done
 
-- [x] ADR D1 is amended; D25 and D26 exist; `docs/adr/README.md` lists them
-- [x] The spec decision table has rows D25 and D26; every Camel-for-Kafka statement in the spec is amended or marked superseded
+- [x] ADR D1 is amended; D27 and D28 exist; `docs/adr/README.md` lists them
+- [x] The spec decision table has rows D27 and D28; every Camel-for-Kafka statement in the spec is amended or marked superseded
 - [x] `./gradlew :scriptTests` passes (`test_repo_docs.sh`: every decision row has an ADR, no dangling names)
 - [x] No code changes in this ticket

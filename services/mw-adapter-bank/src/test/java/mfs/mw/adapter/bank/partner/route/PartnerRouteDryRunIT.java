@@ -36,7 +36,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The dry-run before a partner record version goes live (ADR D26 guardrail 3, ticket 83), in the
+ * The dry-run before a partner record version goes live (ADR D28 guardrail 3, ticket 83), in the
  * running service against two WireMock servers: the partner itself and the dry-run target (the
  * dev stack's mw-simulators stub {@code /sim/partners/<id>/**}, {@code
  * mw.partners.dry-run.base-url}). A version whose dry-run passes is swapped in and reported LIVE,

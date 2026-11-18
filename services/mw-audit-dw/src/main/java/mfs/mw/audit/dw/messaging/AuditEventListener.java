@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Consumes {@code mw.audit.event.v1} (spec 6.2, 14.3, 19.2, ADR D25): one record, one database
+ * Consumes {@code mw.audit.event.v1} (spec 6.2, 14.3, 19.2, ADR D27): one record, one database
  * transaction, then the record is acknowledged. A record that cannot be read or lacks a required
  * field throws, so the retry topics ({@code config/KafkaConfig}) move it on and finally to the
  * DLQ. Off with {@code mw.audit-dw.consumers.enabled=false} (the test default). The body is not

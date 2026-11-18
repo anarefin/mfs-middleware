@@ -1,11 +1,11 @@
-# Partner routes as config (Camel, ADR D26)
+# Partner routes as config (Camel, ADR D28)
 
 A partner of a known kind (a REST/JSON biller, later a telco, a bank, a SOAP or SFTP partner) is a
 record, not code: a Camel YAML DSL route built from the shipped `mw-*` Kamelets, plus the JSONata
 mappings it names, the hosts it may call and its error-code map. The record arrives on
 `mw.config.changed.v1` (maker-checker in mw-admin-api); the adapter checks it, loads it beside the
 version in use and swaps to it without a restart. Camel is used only in the `mw-adapter-*` modules
-and only for this (ADR D1 amendment); Kafka goes through Spring Kafka (ADR D25).
+and only for this (ADR D1 amendment); Kafka goes through Spring Kafka (ADR D27).
 
 First implemented in mw-adapter-billpay (ticket 82); its `CLAUDE.md` holds the details.
 
@@ -47,7 +47,7 @@ LIVE route uses it.
 `mw-http-call` names the scheme with `auth=` and passes its parameters to the `mw-auth-<auth>` Kamelet,
 again before every attempt. Every secret is a *field name* of the partner's own OpenBao secret
 `secret/<adapter>/<partnerId>`, read through Camel's HashiCorp Vault function when the route loads (static,
-D26); a value never appears in the route, a URI, a log or the audit.
+D28); a value never appears in the route, a URI, a log or the audit.
 
 | Option | `mw-http-call` parameters | What goes on the wire |
 | --- | --- | --- |

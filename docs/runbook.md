@@ -310,7 +310,7 @@ secrets that `provision` writes again on every `up`.
 
 ## Onboard a biller
 
-ADR D26, ticket 83. A biller of a known kind (REST/JSON, an auth scheme the `mw-*` Kamelets have) is a
+ADR D28, ticket 83. A biller of a known kind (REST/JSON, an auth scheme the `mw-*` Kamelets have) is a
 partner route as config: no Java, no release, no restart for the route itself.
 
 1. **Write the route** from a Kamelet example (`deploy/partner-routes/examples/rest-apikey-biller.yaml`):

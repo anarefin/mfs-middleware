@@ -7,7 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 /**
- * Kafka client settings Spring Boot has no property for (ADR D25); the rest is {@code
+ * Kafka client settings Spring Boot has no property for (ADR D27); the rest is {@code
  * spring.kafka.*} in {@code application.yml}, the retry delays are {@link KafkaRetryProperties}.
  *
  * @param sendTimeout how long {@code EventPublisher.publish} waits for Kafka's acknowledgement

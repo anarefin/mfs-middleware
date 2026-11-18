@@ -10,7 +10,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Consumes {@code mw.partner.route.status.v1} (group {@code mw-admin-api}, retry topics and DLQ,
- * ADR D25, {@code config/KafkaConfig}; ticket 83): the adapters' LIVE / REJECTED report per
+ * ADR D27, {@code config/KafkaConfig}; ticket 83): the adapters' LIVE / REJECTED report per
  * partner route version, handed to {@link PartnerRouteStatusService}, then acknowledged. A record
  * that cannot be read throws and is parked. Short database work only on the consumer thread. Off
  * with {@code mw.partner-routes.status-consumer.enabled=false} (the test default).

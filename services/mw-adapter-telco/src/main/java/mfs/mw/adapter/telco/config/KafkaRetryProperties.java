@@ -7,7 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 /**
- * Non-blocking retry topics for Kafka consumer errors (spec 19.2, ADR D25): one {@code
+ * Non-blocking retry topics for Kafka consumer errors (spec 19.2, ADR D27): one {@code
  * <topic>.<group>.retry.<n>} per delay, then {@code <topic>.<group>.dlq}. Defaults 10 s, 1 min,
  * 10 min ({@code application.yml}); the dev stack shortens them ({@code MW_KAFKA_RETRY_DELAYS}).
  *

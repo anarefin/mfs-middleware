@@ -21,7 +21,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * The partner routes in the running Camel context (ADR D26 lifecycle). {@link #load} checks a
+ * The partner routes in the running Camel context (ADR D28 lifecycle). {@link #load} checks a
  * record ({@link PartnerRouteLoader}), binds the partner's circuit breaker and adds and starts its
  * route as {@code partner-<id>-v<version>} beside the version in use; nothing changes for calls
  * until the store flips its snapshot. {@link #retire} then stops the old version in the background,

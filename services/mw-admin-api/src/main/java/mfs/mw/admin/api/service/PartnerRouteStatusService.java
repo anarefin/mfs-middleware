@@ -35,7 +35,7 @@ import tools.jackson.databind.json.JsonMapper;
  * applying is an update by key, so a redelivered record changes nothing and needs no inbox row. A
  * report for a version not approved here (a seed of the adapter's own config) is logged and skipped.
  *
- * <p>Rollback (ticket 84, ADR D26 amendment): an adapter that restarts replays only the latest
+ * <p>Rollback (ticket 84, ADR D28 amendment): an adapter that restarts replays only the latest
  * record per partner from the compacted {@code mw.config.changed.v1}, so a REJECTED latest version
  * would leave the partner on its seed (or without a route) although an older version ran. A
  * REJECTED report for the partner's <em>current</em> version therefore republishes the newest version

@@ -25,7 +25,7 @@ public class PartnerReplyMapper {
   }
 
   /**
-   * A partnerId that is neither a configured partner nor an alias (ADR D26: no silent fallback).
+   * A partnerId that is neither a configured partner nor an alias (ADR D28: no silent fallback).
    * {@code MW-PTR-UNKNOWN-PARTNER}: the reply contract's partner codes have two segments.
    */
   public static final String UNKNOWN_PARTNER_CODE = "MW-PTR-UNKNOWN-PARTNER";

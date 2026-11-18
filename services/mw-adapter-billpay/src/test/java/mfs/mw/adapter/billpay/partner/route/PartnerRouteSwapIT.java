@@ -42,7 +42,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The partner route lifecycle in the running service (ADR D26, ticket 82), through {@link
+ * The partner route lifecycle in the running service (ADR D28, ticket 82), through {@link
  * PartnerGateway} against WireMock: a call in flight during a swap completes on the old version and
  * the next one uses the new; a refused record keeps the last good route live; a PAY is sent once
  * on a timeout while an INQUIRY goes again; an unknown partnerId is refused and an alias is

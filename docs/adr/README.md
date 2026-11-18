@@ -12,7 +12,7 @@ the repo". A new decision gets the next free id in its table (spec first, then a
 
 | Id | Decision | Status |
 | --- | --- | --- |
-| D1 | [Apache Camel on Spring Boot 4, JDK 25 with virtual threads](D1-integration-engine.md) | Accepted, 2026-11-03 (spec revision 1); amended 2026-11-18: Camel for partner integration only (D25, D26) |
+| D1 | [Apache Camel on Spring Boot 4, JDK 25 with virtual threads](D1-integration-engine.md) | Accepted, 2026-11-03 (spec revision 1); amended 2026-11-18: Camel for partner integration only (D27, D28) |
 | D2 | [Apache Kafka in KRaft mode](D2-messaging-backbone.md) | Accepted, 2026-11-03 (spec revision 1) |
 | D3 | [Apache APISIX at the edge](D3-api-gateway.md) | Accepted, 2026-11-03 (spec revision 1) |
 | D4 | [PostgreSQL 18, only where a service needs its own state](D4-middleware-database.md) | Accepted, 2026-11-03 (spec revision 1) |

@@ -70,7 +70,7 @@ paths:
   /internal/v1/partners/kamelet-usage:
     get:
       operationId: kameletUsage
-      summary: Which live partner route version uses which mw-* Kamelet (ticket 83, ADR D26 versioning)
+      summary: Which live partner route version uses which mw-* Kamelet (ticket 83, ADR D28 versioning)
       description: |
         Every Kamelet of the shipped library, with the live partner route versions that call it, so
         ops can see who is still on a Kamelet before its `-v2` replaces it. Read-only, no personal

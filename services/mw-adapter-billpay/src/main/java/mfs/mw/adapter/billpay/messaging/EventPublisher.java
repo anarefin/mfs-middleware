@@ -27,7 +27,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Publishes one JSON record to Kafka with the spec 6.1 headers through Spring Kafka's {@link
  * KafkaTemplate} (idempotent producer, {@code acks=all}, at most 5 requests in flight; see {@code
- * application.yml} and {@code config/KafkaConfig}, ADR D25). The partition key is the caller's
+ * application.yml} and {@code config/KafkaConfig}, ADR D27). The partition key is the caller's
  * ({@code txnId} for transaction topics, {@code msisdn} for USSD/notify). Payloads are never
  * logged.
  *

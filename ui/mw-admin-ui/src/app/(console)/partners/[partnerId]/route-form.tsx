@@ -1,4 +1,4 @@
-// The partner route editor (ADR D26, ticket 83; user decision 2026-11-18: a monospace textarea, no
+// The partner route editor (ADR D28, ticket 83; user decision 2026-11-18: a monospace textarea, no
 // embedded visual editor). Authoring is done offline with Camel JBang and the mw-* Kamelets (Kaoto
 // optional), then pasted here; mw-admin-api checks it (MW-VAL-041 with line and construct, shown by
 // ActionForm next to the form).

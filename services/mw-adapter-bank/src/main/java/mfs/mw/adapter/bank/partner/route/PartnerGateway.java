@@ -36,7 +36,7 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The services' one entry to the partners (ADR D26): Camel stays behind this class. A call
+ * The services' one entry to the partners (ADR D28): Camel stays behind this class. A call
  * resolves its partnerId to the live version of a partner (its own record, else its {@code
  * partner-aliases} entry; else NOT_SENT {@code UNKNOWN_PARTNER}, never a silent default) and sends
  * it, synchronously, through that version's route {@code direct:partner-<id>-v<version>} with the

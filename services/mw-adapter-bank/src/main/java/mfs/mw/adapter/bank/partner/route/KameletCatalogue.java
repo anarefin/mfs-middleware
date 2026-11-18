@@ -9,7 +9,7 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Component;
 
 /**
- * The shipped Kamelet library ({@code classpath:kamelets/mw-*.kamelet.yaml}, ADR D26): the only
+ * The shipped Kamelet library ({@code classpath:kamelets/mw-*.kamelet.yaml}, ADR D28): the only
  * Kamelets a partner route may call. A breaking change to a Kamelet ships under a new name ({@code
  * mw-http-call-v2}); the old file stays until no LIVE route uses it.
  */

@@ -191,12 +191,12 @@ class BillpayRequestRouteIT {
 
     assertThat(reply.payload().outcome()).isEqualTo("UNKNOWN");
     assertThat(reply.payload().errorCode()).isEqualTo("MW-TMO-PARTNER_TIMEOUT");
-    // ADR D26: a PAY is never sent again, not even after a timeout
+    // ADR D28: a PAY is never sent again, not even after a timeout
     AGG.verify(1, postRequestedFor(urlEqualTo("/billagg/v1/payments")));
   }
 
   /**
-   * ADR D26: a PAY redelivered by Kafka with the same requestId (here: published again) reaches
+   * ADR D28: a PAY redelivered by Kafka with the same requestId (here: published again) reaches
    * the partner once and is replied to once; the second delivery is counted as a duplicate.
    */
   @Test

@@ -43,7 +43,7 @@ spring:
   flyway:
     schemas: audit
 
-  # Kafka through Spring Kafka (spec 6.1, 19.2, ADR D25); retry topics, templates and interceptors
+  # Kafka through Spring Kafka (spec 6.1, 19.2, ADR D27); retry topics, templates and interceptors
   # in config/KafkaConfig. Single KRaft node; topics come from deploy/kafka/ and are never
   # auto-created by the service.
   kafka:

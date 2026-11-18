@@ -8,7 +8,7 @@ import mfs.mw.adapter.telco.partner.PartnerResponse.NotSentReason;
 import mfs.mw.adapter.telco.partner.PartnerResponse.UnknownReason;
 
 /**
- * The output of a partner route (ADR D26): {@code {outcome, partnerRef, code, message, reason}},
+ * The output of a partner route (ADR D28): {@code {outcome, partnerRef, code, message, reason}},
  * plus what the record's error map says about a FAILED code ({@code errorSuffix}, {@code
  * retryable}) and the text {@code attributes} of a SUCCESS. Checked against {@code
  * classpath:partner/partner-result.schema.json} inside {@code mw-classify}.

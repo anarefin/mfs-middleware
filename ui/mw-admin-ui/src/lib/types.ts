@@ -145,7 +145,7 @@ export type PartnerTimeouts = { connectTimeoutMs?: number; timeoutMs?: number; r
 /** The dry-run a route version must pass in its adapter before it goes live (ticket 83). */
 export type PartnerDryRun = { operation: "PAY" | "INQUIRY" | "STATUS_QUERY"; sample?: Record<string, unknown>; baseUrl?: string };
 /**
- * The adapters' partner record (never a secret: `auth.credentialsRef` names one): a route of ADR D26
+ * The adapters' partner record (never a secret: `auth.credentialsRef` names one): a route of ADR D28
  * (`route`, `mappings`, `allowedHosts`, `dryRun`); the old template shape went with ticket 84.
  */
 export type PartnerConfig = PartnerTimeouts & {

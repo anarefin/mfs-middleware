@@ -83,8 +83,8 @@ mfs.mw.<service>/
   mapper/      DTO <-> entity <-> message
   exception/   exceptions, error codes, global @RestControllerAdvice
   messaging/   Kafka listeners/publishers, outbox relay, inbox dedup, retry/DLQ
-  route/       partner adapters only (ADR D1 amendment, D26): Camel partner routes, route loader,
-               Kamelets (YAML DSL, no XML DSL); Kafka listeners elsewhere are Spring Kafka in messaging/ (D25)
+  route/       partner adapters only (ADR D1 amendment, D28): Camel partner routes, route loader,
+               Kamelets (YAML DSL, no XML DSL); Kafka listeners elsewhere are Spring Kafka in messaging/ (D27)
   client/      outbound calls (partners, SMSC), with Resilience4j; in mw-simulators also the
                simulated SMPP servers (SMSC, USSD gateway)
   transport/   channel transports: mw-ussd's HTTP and SMPP USSD transports (MNO wire <-> engine)
@@ -186,7 +186,7 @@ deliberate wait that proves an outcome (an absence window, a timeout or retry de
 2 s or more) is tagged `@Tag("slow-wait")`: left out of every build unless `-PwithSlow` is given
 (ADR D19 amendment). Test infrastructure must never be what slows a test: test configs relay the
 outbox every 50 ms and give the Kafka listener container a 100 ms shutdown timeout (Camel's Kafka
-consumers until a module moves to Spring Kafka, ADR D25), and
+consumers until a module moves to Spring Kafka, ADR D27), and
 `KafkaTestConsumer` reads without a consumer group.
 
 | Command | What it does |
@@ -244,7 +244,7 @@ the root `./gradlew clean build -PwithSlow` and the whole API suite on a fresh s
 - Never use field injection (`@Autowired` on fields), tests included; constructor injection
   only (`./gradlew :checkFieldInjection` runs `scripts/check-field-injection.sh`).
 - Never use Camel (`org.apache.camel`) outside `mw-adapter-*` (ADR D1 amendment 2026-11-18); internal
-  Kafka messaging is Spring Kafka (ADR D25).
+  Kafka messaging is Spring Kafka (ADR D27).
 - Never block on Kafka listener threads (no synchronous waits for replies, sleeps or
   long partner calls on the consumer thread).
 - Never log a PIN or an unmasked MSISDN, NID, account number or name.

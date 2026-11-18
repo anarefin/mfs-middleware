@@ -229,7 +229,7 @@ test_reports_all_violations_in_one_run() {
   assert_out_contains "services/mw-b"
 }
 
-# ADR D1 amendment / D25 (ticket 81): Camel is for partner integration only, in mw-adapter-*.
+# ADR D1 amendment / D27 (ticket 81): Camel is for partner integration only, in mw-adapter-*.
 camel_import() {
   mkdir -p "$1/src/main/java/x"
   printf 'package x;\n\nimport org.apache.camel.builder.RouteBuilder;\n\nclass R {}\n' >"$1/src/main/java/x/R.java"

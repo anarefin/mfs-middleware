@@ -1,4 +1,4 @@
-# mw-audit (ADR D26, ticket 82): the masked audit of the partner call; the last step of every
+# mw-audit (ADR D28, ticket 82): the masked audit of the partner call; the last step of every
 # partner route.
 apiVersion: camel.apache.org/v1
 kind: Kamelet

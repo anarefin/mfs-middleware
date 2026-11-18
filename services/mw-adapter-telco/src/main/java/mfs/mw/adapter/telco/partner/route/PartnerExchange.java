@@ -3,7 +3,7 @@ package mfs.mw.adapter.telco.partner.route;
 import org.apache.camel.Exchange;
 
 /**
- * The partner route contract on a Camel exchange (ADR D26, ticket 82).
+ * The partner route contract on a Camel exchange (ADR D28, ticket 82).
  *
  * <p>In: the body is the {@code PartnerCall} JSON; the headers {@link #OPERATION} ({@code PAY},
  * {@code INQUIRY}, {@code STATUS_QUERY}), {@link #REFERENCE}, {@link #CORRELATION_ID}, {@link

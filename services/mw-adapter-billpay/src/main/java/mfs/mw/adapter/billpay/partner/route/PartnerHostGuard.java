@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * The host allowlist before every send (ADR D26, guardrail 4): one {@code
+ * The host allowlist before every send (ADR D28, guardrail 4): one {@code
  * interceptSendToEndpoint("http*")} (also {@code https:}) for the whole context, declared once at
  * start-up on an anchor route ({@value #ANCHOR}). Camel registers it as a context-wide endpoint
  * callback, so it covers every partner route version and Kamelet route; declared per partner route

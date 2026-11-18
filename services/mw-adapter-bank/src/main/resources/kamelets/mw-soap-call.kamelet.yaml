@@ -1,4 +1,4 @@
-# mw-soap-call (ADR D26, ticket 85): one SOAP call to the partner through camel-cxf in PAYLOAD mode,
+# mw-soap-call (ADR D28, ticket 85): one SOAP call to the partner through camel-cxf in PAYLOAD mode,
 # inside the same resilience4j breaker, time limit, bulkhead and host guard as mw-http-call. Never
 # retries a PAY; an INQUIRY or STATUS_QUERY goes again at most the record's inquiryRetries. HTTP Basic
 # and mTLS reuse mw-http-call's mechanisms (review of 85): the mw-auth-basic Kamelet (auth=basic) and a

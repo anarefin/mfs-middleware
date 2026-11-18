@@ -35,7 +35,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The maker-side check of a partner route (ADR D26 guardrail 2, ticket 83): a copy of the rules
+ * The maker-side check of a partner route (ADR D28 guardrail 2, ticket 83): a copy of the rules
  * of mw-adapter-billpay's {@code partner/route/PartnerRouteLoader} (kept identical under D14; the
  * adapters check every record again and stay the authority). This module has no Camel (ADR D1
  * amendment), so the loader's walk over Camel's parsed model is done here over the YAML tree with

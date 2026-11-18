@@ -34,7 +34,7 @@ info:
     has an open request), 409 MW-VAL-032 (expired), 409 MW-VAL-033 (already decided).
     Partner config (ticket 38, spec 15.2 Partners, 15.3, 20.4): partners (schema `partner`) are
     changed only through a change request (resourceType `partner`): ENABLE, DISABLE, SET_TIMEOUTS
-    or UPSERT_ROUTE (onboard / replace the full config, a partner route of ADR D26). Makers `ops-maker` or `integration-maker`,
+    or UPSERT_ROUTE (onboard / replace the full config, a partner route of ADR D28). Makers `ops-maker` or `integration-maker`,
     checkers `ops-checker` or `integration-checker` (never the maker). On approval the partner
     tables are updated, the version goes up by one and the full config is published on the
     compacted topic `mw.config.changed.v1` (key `partner/<id>`), all in one database transaction;
@@ -385,7 +385,7 @@ paths:
       description: >-
         Role `ops-maker` or `integration-maker`. ENABLE / DISABLE / SET_TIMEOUTS change an existing
         partner (404 MW-VAL-003 otherwise) and republish its route without a dry-run (it already
-        runs); SET_TIMEOUTS needs `timeouts`. UPSERT_ROUTE (ADR D26, ticket 83) needs `config`
+        runs); SET_TIMEOUTS needs `timeouts`. UPSERT_ROUTE (ADR D28, ticket 83) needs `config`
         (`route`, `mappings`, `allowedHosts`, `dryRun`, ...) and, for a new partner, `family`: the route is checked with the adapters' loader rules first and refused 400
         MW-VAL-041 with one detail per problem (`field` config.route, `issue` "line N: construct:
         problem"); approved, it goes live in its adapter only once its dry-run passed (`route.status`
@@ -1051,7 +1051,7 @@ components:
       type: object
       description: >-
         The full config of one partner, in the field names of the adapters' partner record (spec
-        12.1, ADR D26): a route + mappings + allowedHosts (+ dryRun for UPSERT_ROUTE); published
+        12.1, ADR D28): a route + mappings + allowedHosts (+ dryRun for UPSERT_ROUTE); published
         unchanged as the `value` of `mw.config.changed.v1`. Never a secret: `auth.credentialsRef`
         names one of the partner's secrets in OpenBao (callback verification). The adapters check
         it again (host allowlist, https, JSONata compiles, dry-run) and keep the previous version

@@ -43,11 +43,11 @@ dependencies {
     implementation("io.micrometer:micrometer-registry-prometheus")
     implementation("org.springframework.cloud:spring-cloud-starter-vault-config")
 
-    // Kafka through Spring Kafka (spec 6.1, 19.2, ADR D25): KafkaTemplate (idempotent producer),
+    // Kafka through Spring Kafka (spec 6.1, 19.2, ADR D27): KafkaTemplate (idempotent producer),
     // @KafkaListener with per-record manual ack, non-blocking retry topics, DLQ. In Boot 4 the
     // auto-configuration is its own module, so the starter, not bare spring-kafka (version from the Boot BOM).
     implementation("org.springframework.boot:spring-boot-starter-kafka")
-    // Camel for the partner side only (ADR D1 amendment, D26): partner routes are YAML DSL loaded at
+    // Camel for the partner side only (ADR D1 amendment, D28): partner routes are YAML DSL loaded at
     // runtime from the partner record, built from the mw-* Kamelets in src/main/resources/kamelets
     // (HTTP inside a resilience4j breaker, the result checked with json-validator, secrets through the
     // HashiCorp Vault properties function against OpenBao, route metrics and observation).

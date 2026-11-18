@@ -1,4 +1,4 @@
-# mw-classify (ADR D26, ticket 82): the partner's answer to the route result, fail closed, checked
+# mw-classify (ADR D28, ticket 82): the partner's answer to the route result, fail closed, checked
 # against the result schema.
 apiVersion: camel.apache.org/v1
 kind: Kamelet

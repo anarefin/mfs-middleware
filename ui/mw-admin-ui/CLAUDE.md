@@ -80,7 +80,7 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
     ops-maker / integration-maker (`canMakePartner`): "Request disable" / "Request enable" and a
     timeouts form (`parseTimeouts`: whole ms, connect / call 1..120000, read 1..125000 and >= call;
     empty = unchanged; else own `MW-VAL-001`). UPSERT (full config) is not offered in the console.
-    Partner routes (ADR D26, ticket 83; user decision 2026-11-18: monospace textarea, no visual editor):
+    Partner routes (ADR D28, ticket 83; user decision 2026-11-18: monospace textarea, no visual editor):
     card *Route* (`partners/[partnerId]/route-form.tsx`, server action `requestPartnerRoute`, UPSERT_ROUTE)
     with route YAML, allowed hosts, mappings, dry-run operation and sample, error map, call timeout
     (`lib/partner-route.ts` `parseRouteForm` shapes it as the contract does; mw-admin-api's `MW-VAL-041`

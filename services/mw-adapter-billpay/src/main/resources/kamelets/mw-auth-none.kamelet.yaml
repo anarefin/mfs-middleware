@@ -1,4 +1,4 @@
-# mw-auth-none (ADR D26, ticket 82): no credentials (simulators, partners secured by network only).
+# mw-auth-none (ADR D28, ticket 82): no credentials (simulators, partners secured by network only).
 # Called by mw-http-call (auth=none, the default).
 apiVersion: camel.apache.org/v1
 kind: Kamelet

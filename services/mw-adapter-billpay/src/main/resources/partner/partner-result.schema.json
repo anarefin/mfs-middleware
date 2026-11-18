@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "classpath:partner/partner-result.schema.json",
   "title": "Partner route result",
-  "description": "The output of every partner route (ADR D26), produced by the mw-classify Kamelet. Anything else is UNKNOWN MALFORMED_REPLY (fail closed).",
+  "description": "The output of every partner route (ADR D28), produced by the mw-classify Kamelet. Anything else is UNKNOWN MALFORMED_REPLY (fail closed).",
   "type": "object",
   "additionalProperties": false,
   "required": ["outcome"],

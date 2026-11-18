@@ -10,7 +10,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * Where an approved record may send requests (ADR D26 guardrail 4; security review of ticket 82):
+ * Where an approved record may send requests (ADR D28 guardrail 4; security review of ticket 82):
  * the record's hosts are the allowlist (a new biller needs no restart), but a record can never
  * reach the service's own network: loopback, private, link-local (cloud metadata), unspecified and
  * multicast addresses are refused unless the host is on the static dev list; https only, unless the

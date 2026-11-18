@@ -1,4 +1,4 @@
--- Partner routes as config (ADR D26, ticket 83), schema `partner` (own). One row per approved
+-- Partner routes as config (ADR D28, ticket 83), schema `partner` (own). One row per approved
 -- UPSERT_ROUTE version (and per later ENABLE / DISABLE / SET_TIMEOUTS of a route partner, which
 -- republish the route): the Camel YAML DSL route, its named JSONata mappings, the hosts it may call,
 -- the dry-run it must pass, the family whose adapter applies it, and what that adapter reported on

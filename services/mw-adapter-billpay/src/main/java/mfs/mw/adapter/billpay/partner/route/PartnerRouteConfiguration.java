@@ -4,7 +4,7 @@ import org.apache.camel.builder.RouteConfigurationBuilder;
 import org.springframework.stereotype.Component;
 
 /**
- * The one error handling of every partner route (ADR D26), owned by the loader, which sets it on
+ * The one error handling of every partner route (ADR D28), owned by the loader, which sets it on
  * each route it loads ({@code routeConfigurationId}); a partner route cannot declare its own. No
  * redelivery, ever: a PAY is not idempotent, and an INQUIRY / STATUS_QUERY goes again only inside
  * {@code mw-http-call}, chosen by the operation, never by the route. Any exception (a mapping that

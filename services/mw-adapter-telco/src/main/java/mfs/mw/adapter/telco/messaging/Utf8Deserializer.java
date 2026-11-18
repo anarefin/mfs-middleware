@@ -13,7 +13,7 @@ import org.apache.kafka.common.serialization.Deserializer;
  * JSON body on the platform is UTF-8 text, so such a record is a poison record. Spring Kafka's
  * {@code ErrorHandlingDeserializer} wraps this one ({@code application.yml}): the failure becomes a
  * {@code DeserializationException}, not retried, and the record goes straight to the DLQ without
- * blocking its partition (ADR D25).
+ * blocking its partition (ADR D27).
  */
 public final class Utf8Deserializer implements Deserializer<String> {
 

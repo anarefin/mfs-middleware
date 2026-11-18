@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Consumes {@code mw.config.changed.v1} (compacted, keyed by configKey) into the {@link
- * PartnerConfigStore} (Spring Kafka, ADR D25). Every instance must see every record: its consumer
+ * PartnerConfigStore} (Spring Kafka, ADR D27). Every instance must see every record: its consumer
  * group is stable per instance ({@code <service>-config-<HOSTNAME>}, so a restart never leaves an
  * orphaned group behind, where the former Camel route started a new random group each time), it
  * seeks to the beginning on every assignment and never commits, so the compacted topic replays the

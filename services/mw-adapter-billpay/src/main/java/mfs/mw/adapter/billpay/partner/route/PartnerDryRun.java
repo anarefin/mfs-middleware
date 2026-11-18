@@ -10,7 +10,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
- * The dry-run of a new partner record version (ADR D26 guardrail 3, ticket 83): its candidate
+ * The dry-run of a new partner record version (ADR D28 guardrail 3, ticket 83): its candidate
  * route ({@code direct:partner-<id>-candidate}) is sent the record's {@code dryRun.operation} with
  * {@code dryRun.sample} as the canonical input, against the dry-run target, and must answer
  * SUCCESS or PENDING: an outcome {@code mw-classify} accepted against the partner result schema

@@ -144,7 +144,7 @@ provision_mw_adapter_telco() {
 }
 
 # The dev aggregator's hmac-sha256 secret (ticket 22), shared with mw-simulators. Partner secrets
-# live one secret per partner, secret/mw-adapter-billpay/<partner> (ADR D26: read by the partner
+# live one secret per partner, secret/mw-adapter-billpay/<partner> (ADR D28: read by the partner
 # route through Camel's vault function when it loads).
 provision_mw_adapter_billpay() {
   gen_once spring.datasource.password 40
@@ -155,7 +155,7 @@ provision_mw_adapter_billpay() {
 }
 
 # The dev C2W bank's hmac-sha256 secret (ticket 23), shared with mw-simulators: the field hmac-secret
-# of the partner's own secret secret/mw-adapter-bank/c2wbank, read by its route (ADR D26, ticket 84).
+# of the partner's own secret secret/mw-adapter-bank/c2wbank, read by its route (ADR D28, ticket 84).
 provision_mw_adapter_bank() {
   gen_once spring.datasource.password 40
   KV="secret/$SVC/c2wbank"

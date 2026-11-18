@@ -1,4 +1,4 @@
-# Example partner record (ADR D26, review of ticket 86): a bank that takes payments as files, as the
+# Example partner record (ADR D28, review of ticket 86): a bank that takes payments as files, as the
 # `value` of a mw.config.changed.v1 PARTNER record (configKey partner/filebank), shown as YAML. A request
 # route like any other (from direct:partner-<id>, ends with mw-classify then mw-audit, has a dry-run),
 # but instead of calling the bank it puts one file on the bank's SFTP host with the mw-sftp-sink Kamelet:

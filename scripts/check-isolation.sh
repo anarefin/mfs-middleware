@@ -15,7 +15,7 @@
 #   - a relative path leaving the module, or parentFile/rootDir navigation; the only allowed
 #     target outside the module is the root contracts/ folder (the mwContractsDir property)
 #   - Camel (an org.apache.camel dependency or a use of org.apache.camel in src/) unless it is a
-#     partner adapter services/mw-adapter-*  (ADR D1 amendment, D25: Camel is for partners only)
+#     partner adapter services/mw-adapter-*  (ADR D1 amendment, D27: Camel is for partners only)
 # The repo root fails when it has buildSrc/ or build-logic/, a shared version catalog, or shared
 # configuration in build.gradle.kts / settings.gradle.kts (allprojects, subprojects,
 # pluginManagement, dependencyResolutionManagement, versionCatalogs, includeBuild, apply(from=)).
@@ -93,7 +93,7 @@ check_module() {
   check_camel "$mod"
 }
 
-# check_camel MODULE: Camel is for partner integration only (ADR D1 amendment, D25, D26): a module
+# check_camel MODULE: Camel is for partner integration only (ADR D1 amendment, D27, D28): a module
 # that is not services/mw-adapter-* (the template included) neither declares a Camel dependency
 # (org.apache.camel coordinates in a code line of its Gradle files) nor uses org.apache.camel in
 # its sources (src/, build output skipped).
@@ -103,12 +103,12 @@ check_camel() {
   for f in $(gradle_files "$dir"); do
     rel="${f#"$MW_ROOT"/}"
     code "$f" | grep -E 'org\.apache\.camel' | while IFS= read -r line; do
-      echo "ISOLATION $mod: Camel outside the partner adapters (ADR D1 amendment, D25): dependency in $rel:$line"; done
+      echo "ISOLATION $mod: Camel outside the partner adapters (ADR D1 amendment, D27): dependency in $rel:$line"; done
   done
   [ -d "$dir/src" ] || return 0
   grep -rnE --include='*.java' --include='*.kt' --include='*.groovy' 'org\.apache\.camel' "$dir/src" 2>/dev/null \
     | while IFS= read -r line; do
-      echo "ISOLATION $mod: Camel outside the partner adapters (ADR D1 amendment, D25): ${line#"$MW_ROOT"/}"
+      echo "ISOLATION $mod: Camel outside the partner adapters (ADR D1 amendment, D27): ${line#"$MW_ROOT"/}"
     done
 }
 

@@ -114,7 +114,7 @@ service's 5.3 envelope. Cost: an unsigned flood reaches the adapter (bounded by 
 allow-list). A partner that speaks APISIX `hmac-auth`/`jwt-auth`/mTLS can get that plugin on its
 own route as an extra layer; the adapter check stays (the `none` scheme refuses every callback).
 
-## Partner engine (`partner` package; ADR D26, ticket 82)
+## Partner engine (`partner` package; ADR D28, ticket 82)
 
 A partner is a **record holding a Camel YAML DSL route** built from the shipped Kamelets; a new
 REST/JSON biller is a `mw.config.changed.v1` record, no Java and no restart (`NewBillerRouteIT`).
@@ -244,7 +244,7 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   without a route, never the service down. Shutdown: `camel.main.shutdown-timeout` 30 s (25 s + 5 s).
 - **Family** (ticket 83): `mw.partners.family` (`billpay`): a record whose `value.family` is another
   family is skipped (`config.other_family`, debug), not refused.
-- **Dry-run** (ADR D26 guardrail 3, ticket 83; `partner/route/PartnerDryRun`, `PartnerConfigStore`): a
+- **Dry-run** (ADR D28 guardrail 3, ticket 83; `partner/route/PartnerDryRun`, `PartnerConfigStore`): a
   record with `dryRun` goes to one dry-run worker (virtual thread, records in arrival order, never the
   Kafka thread; `partner.dry_run.queued`): the version is loaded beside the live one
   (`PartnerRoutes.load`) and so is its candidate (`PartnerRoutes.loadCandidate`, loader with a
@@ -264,7 +264,7 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   for `messaging/PartnerRouteStatusPublisher`: `mw.partner.route.status.v1` (own contract, key partnerId,
   `dto/PartnerRouteStatusEvent`) through the outbox in its own transaction (`PartnerRouteDryRunIT`).
   A record without `dryRun` (seeds; ENABLE / DISABLE / SET_TIMEOUTS and rollback records) loads at once.
-  Restart gap (closed in ticket 84, D26 amendment): on a REJECTED report for the current version
+  Restart gap (closed in ticket 84, D28 amendment): on a REJECTED report for the current version
   mw-admin-api republishes the last LIVE version as the next one (`system/rollback`), so the latest
   record replayed after a restart is a good one. `PartnerRouteDryRunIT` is shared by the three adapters
   (it reads this adapter's family).
@@ -290,13 +290,13 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   its own filter (`mwSoapHeaderFilter`, above).
 - **Secrets**: `{{hashicorp:secret:mw-adapter-billpay/<id>#<field>}}`, Camel's HashiCorp Vault
   properties function against OpenBao KV v2 `secret/mw-adapter-billpay/<id>`, read when a route loads,
-  never refreshed (D26), never logged, never in a URI or audited header (`partner/auth/PartnerCredentials`;
+  never refreshed (D28), never logged, never in a URI or audited header (`partner/auth/PartnerCredentials`;
   the path is built from the partner's own id). The function only knows a static token, so it runs on
   Spring Cloud Vault's `VaultTemplate` (AppRole) when `VAULT_ENABLED=true`
   (`partner/auth/SpringVaultPropertiesFunction`; Camel 4.22 rebuilds its client in `doStart`, which this
   skips). Tests use a fake `hashicorp` function (`src/test/.../partner/FakeVaultFunction`, found first
   through `META-INF/services`; `fake-<partner>-<field>-for-tests` unless a test sets one) and `NewBillerRouteIT` the real one against OpenBao in Testcontainers.
-- **Aliases** (D26, user decision 2026-11-18): `mw.partners.partner-aliases` replaces `default-partner`.
+- **Aliases** (D28, user decision 2026-11-18): `mw.partners.partner-aliases` replaces `default-partner`.
   The channels and seeds send the catalogue's `partnerId` (`billagg`) itself, so the map is empty; any
   other id is refused `MW-PTR-UNKNOWN-PARTNER` (502 on the bill fetch). The reply contract's partner
   codes have two segments, hence not `MW-PTR-UNKNOWN`.
@@ -335,7 +335,7 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   `V5`, key `<partnerId>/${file:name}-${file:size}-${file:modified}`, shared by two versions polling
   during a swap), `move=.done`, `moveFailed=.error` (never `delete`), `streamDownload=true` with
   `stepwise=false` (not the ticket's `stepwise=true`: with a stream download camel-sftp then sends `cd`
-  on the channel the open download uses; the Kamelet comment and ADR D26 say why), `disconnect=true`,
+  on the channel the open download uses; the Kamelet comment and ADR D28 say why), `disconnect=true`,
   bounded `maxMessagesPerPoll`. `mw-recon` reads the stream line by
   line (header line or `columns`, quoted fields) and hands the lines to `messaging/PartnerReconPublisher`:
   `mw.partner.recon.v1` (key partnerId, idempotency key `recon/<id>/<fileId>#<line>`, `last` on the
@@ -361,7 +361,7 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   `allowedHosts` (the loader checks it at load too); cached per (partner, tokenUrl, clientId, scope,
   audience) until `expires_in` minus `mw.partners.oauth2.expiry-skew` (30 s; none given: 60 s), one
   request at a time per key; a partner 401 marks the token's generation rejected and `MwHttpStep.response`
-  sends once more (any operation, a PAY too: a 401 is a refusal, nothing was applied; ADR D26 amends 82's
+  sends once more (any operation, a PAY too: a 401 is a refusal, nothing was applied; ADR D28 amends 82's
   "no redelivery of a PAY" for this one resend; it does not count against `inquiryRetries`); a
   second 401 is classified. Camel's `oauth2*` http options are not used: the client secret would be an
   endpoint option (in the URI) and a refused token is not dropped. `jws`: detached JWS (RFC 7515 F) over
@@ -455,7 +455,7 @@ adapter-minted txnId) are still dropped and belong to the REMIT_IN / NPSB ticket
   `type` (wallet/MSISDN as an MSISDN, a bank account or any other type last 4 only).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
-- Spring Kafka (ADR D25, copied from the template, ticket 78): `config/KafkaConfig` (retry topics
+- Spring Kafka (ADR D27, copied from the template, ticket 78): `config/KafkaConfig` (retry topics
   `<topic>.<group>.retry.1..3` 10 s / 1 min / 10 min then `.dlq`, `messaging/RetryTopicNaming`,
   `RetryTopicRecoverer`, `RetryDueTimeCap`, `ConsumerContextInterceptor`), `messaging/EventPublisher`
   (`KafkaTemplate`), outbox/inbox, `scheduler/OutboxRelayScheduler`. Listeners: `BillpayRequestHandler`

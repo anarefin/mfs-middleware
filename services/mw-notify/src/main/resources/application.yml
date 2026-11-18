@@ -58,7 +58,7 @@ spring:
       mail.smtp.connectiontimeout: 5000
       mail.smtp.timeout: 10000
       mail.smtp.writetimeout: 10000
-  # Kafka through Spring Kafka (spec 6.1, 19.2, ADR D25); retry topics, templates and interceptors
+  # Kafka through Spring Kafka (spec 6.1, 19.2, ADR D27); retry topics, templates and interceptors
   # in config/KafkaConfig. Single KRaft node; topics come from deploy/kafka/ and are never
   # auto-created by the service.
   kafka:

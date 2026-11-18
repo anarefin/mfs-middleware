@@ -191,12 +191,12 @@ class BankRequestRouteIT {
 
     assertThat(reply.payload().outcome()).isEqualTo("UNKNOWN");
     assertThat(reply.payload().errorCode()).isEqualTo("MW-TMO-PARTNER_TIMEOUT");
-    // ADR D26: a PAY is never sent again, not even after a timeout
+    // ADR D28: a PAY is never sent again, not even after a timeout
     BANK.verify(1, postRequestedFor(urlEqualTo("/c2wbank/v1/debits")));
   }
 
   /**
-   * ADR D26 (user decision 2026-11-18): the channels send the bank's own partner id ({@code
+   * ADR D28 (user decision 2026-11-18): the channels send the bank's own partner id ({@code
    * c2wbank}), so the bank has no alias; any other id is refused unsent, not retryable, and never
    * reaches the C2W bank (no silent default partner).
    */
@@ -214,7 +214,7 @@ class BankRequestRouteIT {
   }
 
   /**
-   * ADR D26: a PAY redelivered by Kafka with the same requestId (here: published again) reaches
+   * ADR D28: a PAY redelivered by Kafka with the same requestId (here: published again) reaches
    * the partner once and is replied to once; the second delivery is counted as a duplicate.
    */
   @Test

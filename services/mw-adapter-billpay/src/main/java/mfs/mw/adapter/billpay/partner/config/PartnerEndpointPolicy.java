@@ -12,7 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
- * Where a partner route may send requests (ADR D26, guardrail 4). The hosts come from the approved
+ * Where a partner route may send requests (ADR D28, guardrail 4). The hosts come from the approved
  * record ({@code allowedHosts}); the static {@code mw.partners.security.allowed-hosts} of a partner,
  * when set, is a floor the record cannot leave. Every URL a route calls ({@code mw-http-call?url=})
  * must name one of them, over https (http only for the explicitly allowed dev hosts), without user

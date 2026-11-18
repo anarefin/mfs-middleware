@@ -8,7 +8,7 @@ import org.springframework.kafka.retrytopic.RetryTopicNamesProviderFactory;
 import org.springframework.kafka.support.Suffixer;
 
 /**
- * The platform's retry and DLQ names for Spring Kafka's retry topics (spec 6.2, 19.2, ADR D25):
+ * The platform's retry and DLQ names for Spring Kafka's retry topics (spec 6.2, 19.2, ADR D27):
  * retry {@code n} (1-based) of a consumed topic is {@code <topic>.<group>.retry.<n>} and its
  * dead-letter topic {@code <topic>.<group>.dlq}, {@code <group>} being this service's consumer
  * group (its name), so services consuming one topic never share parked records. Their consumer

@@ -1,4 +1,4 @@
-# Example partner record (ADR D26, ticket 84): a REST/JSON partner bank that accepts a debit first
+# Example partner record (ADR D28, ticket 84): a REST/JSON partner bank that accepts a debit first
 # (202 PENDING) and sends the outcome later as a signed callback, as the `value` of a
 # mw.config.changed.v1 PARTNER record (configKey partner/acmebank), shown as YAML. mw-adapter-bank
 # loads it without a restart and without Java; the dev seed c2wbank

@@ -2,7 +2,7 @@
 // subproject of the root build (the template itself is never included) (spec 4.2, 4.3, D13, D14). Nothing is
 // inherited from the root; every version is written here. The Boot, Spring Cloud, Resilience4j and
 // Testcontainers BOMs are Gradle platforms and carry most versions. No Camel: Camel is only for partner
-// integration in mw-adapter-* (ADR D1 amendment); Kafka goes through Spring Kafka (ADR D25).
+// integration in mw-adapter-* (ADR D1 amendment); Kafka goes through Spring Kafka (ADR D27).
 plugins {
     java
     // Plugin versions must be the same in every module: Gradle rejects one plugin requested with two
@@ -44,7 +44,7 @@ dependencies {
     implementation("io.micrometer:micrometer-registry-prometheus")
     implementation("org.springframework.cloud:spring-cloud-starter-vault-config")
 
-    // Kafka through Spring Kafka (spec 6.1, 19.2, ADR D25): KafkaTemplate (idempotent producer),
+    // Kafka through Spring Kafka (spec 6.1, 19.2, ADR D27): KafkaTemplate (idempotent producer),
     // @KafkaListener with per-record manual ack, non-blocking retry topics, DLQ. In Boot 4 the
     // auto-configuration is its own module, so the starter, not bare spring-kafka (version from the Boot BOM).
     implementation("org.springframework.boot:spring-boot-starter-kafka")

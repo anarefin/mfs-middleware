@@ -119,7 +119,7 @@ Manual walk (acceptance criterion 4), after `scripts/api-test.sh 01` so there ar
 6. Partners (`/console/partners`): as `ops-maker01` request "disable" for partner `ocs`;
    approve as `ops-checker01`; the partner shows disabled at version + 1. Enable it again the same
    way (a disabled OCS fails every top-up).
-6a. Partner route (ADR D26, ticket 83): give mw-simulators' stub an answer (`curl -s -X POST
+6a. Partner route (ADR D28, ticket 83): give mw-simulators' stub an answer (`curl -s -X POST
    http://127.0.0.1:8085/sim/stubs/newco -H 'content-type: application/json' -d
    '{"method":"POST","path":"/v1/pay","status":200,"body":{"receipt":"NC-1"}}'`), open
    `/console/partners/newco` as `ops-maker01`, *Onboard with a route* (family billpay): route from

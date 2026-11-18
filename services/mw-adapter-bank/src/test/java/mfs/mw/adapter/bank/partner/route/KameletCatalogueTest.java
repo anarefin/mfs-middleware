@@ -17,7 +17,7 @@ import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 /**
- * The Kamelet library lint (ADR D26, ticket 82). Camel reads only a Kamelet's name, template,
+ * The Kamelet library lint (ADR D28, ticket 82). Camel reads only a Kamelet's name, template,
  * defaults and required list; the metadata this checks is for people and tooling (the admin
  * console, Kaoto): every {@code mw-*} Kamelet parses, is named after its file, has the type label,
  * a title, a description, documented properties (title, description, type), marks secret

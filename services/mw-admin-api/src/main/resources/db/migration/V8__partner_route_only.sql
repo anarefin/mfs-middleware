@@ -1,4 +1,4 @@
--- Partner routes only (ADR D26, ticket 84): the old partner shape (route template + base URL +
+-- Partner routes only (ADR D28, ticket 84): the old partner shape (route template + base URL +
 -- operations, action UPSERT) is gone from the adapters and from this service, so its columns and
 -- table go too. Every partner is a route partner; its route fields live in partner.partner_route.
 -- A seed of the old shape (version 0, never published) is dropped so the seed job stores it again

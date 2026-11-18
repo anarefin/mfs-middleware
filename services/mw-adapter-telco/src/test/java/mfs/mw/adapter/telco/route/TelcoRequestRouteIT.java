@@ -191,12 +191,12 @@ class TelcoRequestRouteIT {
 
     assertThat(reply.payload().outcome()).isEqualTo("UNKNOWN");
     assertThat(reply.payload().errorCode()).isEqualTo("MW-TMO-PARTNER_TIMEOUT");
-    // ADR D26: a PAY is never sent again, not even after a timeout
+    // ADR D28: a PAY is never sent again, not even after a timeout
     OCS.verify(1, postRequestedFor(urlEqualTo("/ocs/v1/topup")));
   }
 
   /**
-   * ADR D26 (user decision 2026-11-18): every operator code the channels send (mw-app-gateway,
+   * ADR D28 (user decision 2026-11-18): every operator code the channels send (mw-app-gateway,
    * mw-ussd's operators and MNO operators, the test console) is a {@code partner-aliases} entry
    * served by the OCS seed, and the reply keeps the partnerId the channel sent.
    */
@@ -215,7 +215,7 @@ class TelcoRequestRouteIT {
     OCS.verify(4, postRequestedFor(urlEqualTo("/ocs/v1/topup")));
   }
 
-  /** ADR D26: an id that is neither a partner nor an alias is refused unsent, not retryable: no silent default partner. */
+  /** ADR D28: an id that is neither a partner nor an alias is refused unsent, not retryable: no silent default partner. */
   @Test
   void anOperatorWithoutAPartnerOrAliasIsRefusedUnsent() throws Exception {
     PartnerRequest request = mfs.mw.adapter.telco.TelcoFixtures.forPartner(pay(newTxnId(), "01711000322", 2000), "airtel");
@@ -230,7 +230,7 @@ class TelcoRequestRouteIT {
   }
 
   /**
-   * ADR D26: a PAY redelivered by Kafka with the same requestId (here: published again) reaches
+   * ADR D28: a PAY redelivered by Kafka with the same requestId (here: published again) reaches
    * the partner once and is replied to once; the second delivery is counted as a duplicate.
    */
   @Test

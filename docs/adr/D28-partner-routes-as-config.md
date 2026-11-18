@@ -1,4 +1,4 @@
-# D26: Partner routes as config, built from shipped Kamelets
+# D28: Partner routes as config, built from shipped Kamelets
 
 Status: Accepted, 2026-11-18 (user decisions, ticket 77). Amends spec 12 (the adapter framework's
 route templates) and spec 13 (reconciliation ingest moves to the adapters).
@@ -150,4 +150,4 @@ call any URL with any component also needs guardrails.
 - `services/mw-adapter-billpay/src/main/resources/application.yml` (partner config)
 - `contracts/EXTERNAL.yml`
 - `docs/runbook.md` ("Onboard a biller")
-- spec decision table (D26), sections 12 and 13
+- spec decision table (D28), sections 12 and 13

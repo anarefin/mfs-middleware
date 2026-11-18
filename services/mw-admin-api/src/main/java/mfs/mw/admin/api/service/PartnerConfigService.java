@@ -33,7 +33,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Partner config (ticket 38, spec 15.2 Partners, 20.4): reads, and the maker side of a partner
  * change request. A maker ({@link AdminRole#PARTNER_MAKER}) asks to ENABLE, DISABLE, SET_TIMEOUTS
- * or UPSERT_ROUTE (full config, a partner route of ADR D26); the request stores the full config the
+ * or UPSERT_ROUTE (full config, a partner route of ADR D28); the request stores the full config the
  * approval will publish ({@code payload.config}), the version the maker saw ({@code
  * payload.baseVersion}, null for a new partner) and the changed fields ({@code diff}). Nothing
  * changes until a checker approves ({@link PartnerChangeHandler}). The config is checked here with
@@ -277,7 +277,7 @@ public class PartnerConfigService {
   }
 
   /**
-   * A partner config (ADR D26, ticket 83): field problems go to {@code problems} (400 MW-VAL-001),
+   * A partner config (ADR D28, ticket 83): field problems go to {@code problems} (400 MW-VAL-001),
    * the route's own problems, from the copy of the adapters' loader rules ({@link
    * PartnerRouteValidator}), to {@code route} (400 MW-VAL-041, one per problem with its line).
    *

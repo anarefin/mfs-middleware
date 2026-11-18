@@ -53,7 +53,7 @@ public final class ErrorCodes {
   public static final String VAL_CEREMONY_INCOMPLETE = "MW-VAL-050";
   /** mw-crypto is unreachable or answered unusably: 503, retryable. */
   public static final String SYS_CRYPTO_UNAVAILABLE = "MW-SYS-042";
-  // --- partner routes (ticket 83, ADR D26) ---
+  // --- partner routes (ticket 83, ADR D28) ---
 
   /**
    * A proposed partner route breaks the adapters' loader rules (details: one per problem, field

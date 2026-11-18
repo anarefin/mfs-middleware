@@ -5,7 +5,7 @@ import java.util.Set;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Partner routes as config (ADR D26, ticket 83), maker side.
+ * Partner routes as config (ADR D28, ticket 83), maker side.
  *
  * @param kamelets the mw-* Kamelets the adapters ship ({@code classpath:kamelets} of
  *     mw-adapter-billpay); a route naming another one is refused at submit. Keep it in step with

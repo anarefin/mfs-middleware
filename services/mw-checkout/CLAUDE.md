@@ -182,10 +182,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
 - `messaging/EventPublisher`: Kafka records with the 6.1 headers (+ extra headers such as `mw-reply-to`)
-  through Spring Kafka's `KafkaTemplate` (ADR D25), idempotent `acks=all` producer; `publish` waits at most
+  through Spring Kafka's `KafkaTemplate` (ADR D27), idempotent `acks=all` producer; `publish` waits at most
   `mw.kafka.send-timeout`. The admin client (asked for the cluster id by the observed template's first
   send) is bounded like the producer (`spring.kafka.admin.operation-timeout`), so Kafka down still fails fast.
-- Spring Kafka (ADR D25, copied from the template, ticket 80): `config/KafkaConfig` (non-blocking retry topics
+- Spring Kafka (ADR D27, copied from the template, ticket 80): `config/KafkaConfig` (non-blocking retry topics
   `<topic>.mw-checkout.retry.1..3` then `<topic>.mw-checkout.dlq` for every `@KafkaListener` on the default factory,
   `messaging/RetryTopicNaming`, `RetryTopicRecoverer` (`mw-retry-*` headers, class only), `RetryDueTimeCap`,
   `ConsumerContextInterceptor` (consumer MDC), `Utf8Deserializer`; validation/schema failures to the DLQ at

@@ -8,13 +8,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The full config of one partner (ticket 38, spec 12.1, ADR D26), in the field names of the
+ * The full config of one partner (ticket 38, spec 12.1, ADR D28), in the field names of the
  * adapters' partner record ({@code partner/config/PartnerConfig} in mw-adapter-telco, -billpay,
  * -bank): published unchanged as the {@code value} of a {@code mw.config.changed.v1} PARTNER record.
  * Holds no secret: {@code auth.credentialsRef} names one of the partner's secrets in OpenBao.
  * Missing optional fields are left out (the adapters apply their defaults).
  *
- * <p>Every partner is a route (ADR D26; the old template shape went with ticket 84): {@code route}
+ * <p>Every partner is a route (ADR D28; the old template shape went with ticket 84): {@code route}
  * (Camel YAML DSL built from the mw-* Kamelets), its named JSONata {@code mappings}, the {@code
  * allowedHosts} it may call and the {@code dryRun} a new route must pass before it goes live. {@code
  * family} is not here: the approval adds the partner's family to the published value.

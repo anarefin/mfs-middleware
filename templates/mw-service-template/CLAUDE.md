@@ -58,7 +58,7 @@ cannot issue. Turning it on needs the service in `PKI_SERVICES` of `deploy/provi
 
 ## Kafka, resilience, Flyway (WP05 part)
 
-Kafka goes through Spring Kafka (ADR D25); no Camel in this template (Camel is for partner
+Kafka goes through Spring Kafka (ADR D27); no Camel in this template (Camel is for partner
 integration in `mw-adapter-*` only, ADR D1 amendment).
 
 | Piece | Where | Spec |

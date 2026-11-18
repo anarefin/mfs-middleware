@@ -1,6 +1,6 @@
 # 78: Service template on Spring Kafka (no Camel)
 
-**What to build:** Move `templates/mw-service-template/` from camel-kafka to Spring Kafka (ADR D25, ticket 77). This
+**What to build:** Move `templates/mw-service-template/` from camel-kafka to Spring Kafka (ADR D27, ticket 77). This
 template is the reference that tickets 79–82 copy into each service (D14: copied, not shared). Behaviour must not
 change: the same topics, retry/DLQ names, headers, outbox and inbox semantics.
 

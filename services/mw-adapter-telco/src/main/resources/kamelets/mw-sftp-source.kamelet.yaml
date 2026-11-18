@@ -1,8 +1,8 @@
-# mw-sftp-source (ADR D26, ticket 86): the start of a batch partner route
+# mw-sftp-source (ADR D28, ticket 86): the start of a batch partner route
 # (`from: kamelet:mw-sftp-source?...`): polls the partner's SFTP directory for reconciliation and
 # settlement files.
 #
-# stepwise=false on purpose (ticket 86 asked for stepwise=true; review of 86, ADR D26): with
+# stepwise=false on purpose (ticket 86 asked for stepwise=true; review of 86, ADR D28): with
 # streamDownload=true camel-sftp 4.22 hands the route an open ChannelSftp.get stream and, when
 # stepwise, then sends "cd" back to the start directory on that same channel while the stream is still
 # unread (SftpOperations.retrieveFileToStreamInBody). JSch runs one request at a time per channel, so

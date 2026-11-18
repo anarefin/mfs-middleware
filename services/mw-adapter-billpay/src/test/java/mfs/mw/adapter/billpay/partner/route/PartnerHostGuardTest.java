@@ -11,7 +11,7 @@ import mfs.mw.adapter.billpay.partner.config.PartnerEndpointPolicy;
 import mfs.mw.adapter.billpay.partner.config.PartnerProperties;
 import org.junit.jupiter.api.Test;
 
-/** The send-time host check (ADR D26 guardrail 4), on the resolved endpoint and the call's runtime. */
+/** The send-time host check (ADR D28 guardrail 4), on the resolved endpoint and the call's runtime. */
 class PartnerHostGuardTest {
 
   final PartnerHostGuard guard =

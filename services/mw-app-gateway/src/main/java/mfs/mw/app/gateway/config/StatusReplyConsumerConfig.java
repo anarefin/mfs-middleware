@@ -24,7 +24,7 @@ import org.springframework.kafka.listener.MessageListenerContainer;
 import org.springframework.kafka.listener.RecordInterceptor;
 
 /**
- * The per-instance reply consumer of {@code mw.txn.status.v1} (spec 7.5, ADR D25): every instance
+ * The per-instance reply consumer of {@code mw.txn.status.v1} (spec 7.5, ADR D27): every instance
  * reads every status record in its own consumer group {@code <group>.reply.<instanceId>} and
  * {@link StatusReplyListener} keeps the ones addressed to it. A reply only matters to a request
  * waiting right now, so the consumer starts at the latest offset, auto-commits, and is never

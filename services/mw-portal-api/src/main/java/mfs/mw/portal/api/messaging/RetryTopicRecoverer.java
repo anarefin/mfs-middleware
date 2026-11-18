@@ -22,7 +22,7 @@ import org.springframework.kafka.listener.TimestampedException;
 import org.springframework.kafka.retrytopic.RetryTopicHeaders;
 
 /**
- * Parks a failed record on its next retry topic or on the DLQ (spec 19.2, 6.2, ADR D25). Spring
+ * Parks a failed record on its next retry topic or on the DLQ (spec 19.2, 6.2, ADR D27). Spring
  * Kafka's retry-topic machinery decides where it goes and when it is due; this recoverer, plugged
  * in by {@code config/KafkaConfig}, adds what the platform reads on top (mw-admin-api's DLQ view
  * and replay):

@@ -1,7 +1,7 @@
 # 82: Route-as-config engine and Kamelet library in mw-adapter-billpay (REST/JSON)
 
 **What to build:** Replace the Java partner framework in mw-adapter-billpay with Camel-native **partner routes held as config**
-(ADR D26).
+(ADR D28).
 
 **Today:**
 - `PartnerRouteTemplates` is `direct:partner-{{partner}}` → `.process(java)`.
@@ -96,7 +96,7 @@ A partner call that moves money is not idempotent, and a redelivered PAY can cha
 - **Where they come from:** Camel's HashiCorp Vault properties function (`camel-hashicorp-vault`), configured with
   `camel.vault.hashicorp.*` (host, port, scheme, token or auth from the existing OpenBao setup) and pointed at OpenBao.
 - **How routes name them:** routes and Kamelets use `{{hashicorp:secret:mw-adapter-billpay/<partner>#<field>}}`. A Kamelet takes a `secretRef`, never a value.
-  Secrets are read at route start and are not refreshed. Refresh is deliberately off (D26, static secrets).
+  Secrets are read at route start and are not refreshed. Refresh is deliberately off (D28, static secrets).
 - **What it replaces:** `EnvironmentCredentialResolver` and the `mw.partner-secrets.*` Spring binding in the partner path.
 - **Logging:** a resolved value is never logged and never put in a header that is audited. The masking tests cover the auth headers.
 - **In tests:** OpenBao in Testcontainers (dev image as in `deploy/`) with fake values.

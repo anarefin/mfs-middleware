@@ -18,7 +18,7 @@ Today, besides the outbox relay, they have these consumers:
   - Change `application.yml` from `camel.component.kafka.*` to `spring.kafka.*` (the compose env vars in `deploy/docker-compose.yml` follow, if any name a camel property).
 - **mw-admin-api:**
   - `client/DlqClient` (raw `KafkaConsumer`) reads its brokers from `spring.kafka.bootstrap-servers` instead of `camel.component.kafka.brokers`.
-  - The DLQ replay keeps working on the D25 names and headers.
+  - The DLQ replay keeps working on the D27 names and headers.
 - **Tests:** port the tests that use Camel (`RetryTopicRouteIT`, `EventPublisherIT`, conformance ITs) from the template versions. The service's own listener ITs move to `ConsumerRecord`.
 - **Docs:** update each service's `CLAUDE.md`.
 

@@ -9,7 +9,7 @@ mw:
       base-url: ${MW_PARTNER_DRY_RUN_BASE_URL:http://mw-simulators:8080/sim/partners/{partnerId}}
     instances:
       # Generic partner bank for C2W / ADD_MONEY_BANK (wire format: mw-simulators c2wbank), a partner
-      # route as config (ADR D26). A debit is accepted (202 PENDING) and its outcome follows as a
+      # route as config (ADR D28). A debit is accepted (202 PENDING) and its outcome follows as a
       # signed callback to /partner/c2wbank/callback/debits (APISIX ->
       # controller/PartnerCallbackController, verified with auth below); a 200 SUCCESS / 422 FAILED
       # answer is also understood.

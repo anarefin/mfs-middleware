@@ -175,7 +175,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   config kept) and the admin's tables then differ from what runs; records go to every adapter (configKey
   has no family), and an adapter without an allowlist entry for the id refuses them; nothing republishes
   the snapshot after a Kafka volume loss (approve a change to republish).
-- Partner routes (ADR D26, ticket 83; same engine): action `UPSERT_ROUTE` with `config` (`route` Camel
+- Partner routes (ADR D28, ticket 83; same engine): action `UPSERT_ROUTE` with `config` (`route` Camel
   YAML DSL, `mappings`, `allowedHosts`, `dryRun {operation, sample, baseUrl?}`, timeouts, `errorMap`,
   `ambiguousCodes`, `sensitiveFields`; `family` for a new partner). Only UPSERT_ROUTE carries a
   `dryRun`: ENABLE / DISABLE / SET_TIMEOUTS on a proven route (a seed or a version reported LIVE)
@@ -205,7 +205,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `mw.partner-routes.status-consumer.enabled`, off in tests) consumes `mw.partner.route.status.v1`
   (mw-adapter-billpay's contract, own type `dto/PartnerRouteStatusMessage`) into
   `service/PartnerRouteStatusService` (update by key, latest report wins, a version not approved here is
-  skipped). Rollback (ticket 84, ADR D26 amendment; the restart gap of ticket 83: an adapter replays
+  skipped). Rollback (ticket 84, ADR D28 amendment; the restart gap of ticket 83: an adapter replays
   only the latest record per partner): a REJECTED report for the partner's current version republishes
   the newest version reported LIVE before it as the next version, without `dryRun`, in the same
   transaction (review of 84, `PartnerRouteStatusService.rolledBack`): the set its dry-run proved
@@ -395,7 +395,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
 - `messaging/OutboxWriter` + `OutboxRelay`: transactional outbox (6.4), used for the reveal audit.
-- Kafka through Spring Kafka (ADR D25; no Camel in this module, copied from the template, ticket 79):
+- Kafka through Spring Kafka (ADR D27; no Camel in this module, copied from the template, ticket 79):
   `messaging/EventPublisher` sends records with the 6.1 headers through `KafkaTemplate` (idempotent,
   `acks=all`, at most 5 in flight; `publish` waits for the ack, `publishStoredAsync` sends an outbox row
   with exactly its stored headers). `config/KafkaConfig` puts every `@KafkaListener` on non-blocking retry

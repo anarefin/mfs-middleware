@@ -24,7 +24,7 @@ import org.apache.hc.core5.util.TimeValue;
  * strategy resends a POST by itself after a 503 or 429 (and on some I/O errors), outside the
  * breaker, the audit and the no-redelivery rule of a PAY; a partner that applies the resend turns a
  * FAILED txn into a COMPLETED one. The only resend is {@code MwHttpStep}'s deliberate one after a
- * 401 (ADR D26).
+ * 401 (ADR D28).
  */
 public final class PartnerHttpComponent extends HttpComponent {
 

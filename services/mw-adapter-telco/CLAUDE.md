@@ -50,7 +50,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.telco`. Follo
   `adapter_telco_rw` and schema `partner_ref`, `secret/mw-adapter-telco` (DB password, never
   overwritten) and the AppRole `mw-adapter-telco` (configtree volume at `/run/mw/approle`).
 
-## Partner engine (`partner` package; ADR D26, ticket 84: the copy of mw-adapter-billpay's)
+## Partner engine (`partner` package; ADR D28, ticket 84: the copy of mw-adapter-billpay's)
 
 A partner is a record holding a Camel YAML DSL route built from the shipped `mw-*` Kamelets; the
 engine, its guardrails and its Kamelets (with the auth options of ticket 87: basic, OAuth2 client
@@ -62,7 +62,7 @@ health and metrics; its packages `partner/config/`, `partner/route/`, `partner/k
 `partner/mapping/` (JSONata, XSLT and the JSON/XML convention of SOAP) are billpay's "Packages"). The
 `partner/` trees (main and the shared tests) and `src/main/resources/kamelets`
 are identical in the three adapters apart from the package: a fix goes into all three (check with
-`diff -r` after normalising the package). Kafka is Spring Kafka (ADR D25), as billpay. SOAP partners (ticket 85:
+`diff -r` after normalising the package). Kafka is Spring Kafka (ADR D27), as billpay. SOAP partners (ticket 85:
 `mw-soap-call`, camel-cxf PAYLOAD, XSLT stylesheets as `*.xsl` mappings or `request=json`/`response=json`, Basic
 and mTLS as `mw-http-call`) are billpay's "SOAP partners".
 
@@ -73,14 +73,14 @@ and mTLS as `mw-http-call`) are billpay's "SOAP partners".
   20 s, resilience4j instance `ocs` (bulkhead 100, 16 s slow-call threshold), error map `2001`
   TOPUP_REJECTED, `9876` ambiguous. mw-admin-api's dev seed `partner-seeds/dev/ocs.json` is a copy: keep
   them identical.
-- **Aliases** (D26, user decision 2026-11-18): `mw.partners.partner-aliases` maps every operator id the
+- **Aliases** (D28, user decision 2026-11-18): `mw.partners.partner-aliases` maps every operator id the
   channels send (`gp`, `robi`, `banglalink`, `teletalk`: mw-app-gateway, mw-ussd's operator list and MNO
   operators, the test console) to `ocs`; a partner record of its own wins over the alias; any other id is
   FAILED `MW-PTR-UNKNOWN-PARTNER`, not retryable, never sent (`TelcoRequestRouteIT`).
 - **Family** `telco` (`mw.partners.family`): records of billpay or bank are skipped (`config.other_family`).
 - **Route status**: every record of version >= 1 ends LIVE (with its Kamelets) or REJECTED on
   `mw.partner.route.status.v1` (`messaging/PartnerRouteStatusPublisher`, outbox), proved by the shared
-  `PartnerRouteDryRunIT`. A REJECTED current version makes mw-admin-api republish the last LIVE one (D26
+  `PartnerRouteDryRunIT`. A REJECTED current version makes mw-admin-api republish the last LIVE one (D28
   amendment), so a restart replays a good record.
 - **Batch partners over SFTP** (ticket 86): billpay's `from: kamelet:mw-sftp-source` routes ending in
   `mw-recon`, publishing `mw.partner.recon.v1` (see mw-adapter-billpay CLAUDE.md "Batch partners over
@@ -138,7 +138,7 @@ and mTLS as `mw-http-call`) are billpay's "SOAP partners".
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
-- Spring Kafka (ADR D25, the billpay copy): `config/KafkaConfig` (retry topics `<topic>.<group>.retry.1..3`
+- Spring Kafka (ADR D27, the billpay copy): `config/KafkaConfig` (retry topics `<topic>.<group>.retry.1..3`
   10 s / 1 min / 10 min then `.dlq`), `messaging/EventPublisher`, outbox/inbox, `scheduler/OutboxRelayScheduler`,
   the request listener acknowledges after the hand-over, `partner/config/PartnerConfigKafkaListener` replays
   `mw.config.changed.v1` from the beginning on every start (no retry topics).

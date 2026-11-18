@@ -1,4 +1,4 @@
-# mw-sftp-sink (ADR D26, ticket 86): puts the file a partner route built on the partner's SFTP host.
+# mw-sftp-sink (ADR D28, ticket 86): puts the file a partner route built on the partner's SFTP host.
 apiVersion: camel.apache.org/v1
 kind: Kamelet
 metadata:

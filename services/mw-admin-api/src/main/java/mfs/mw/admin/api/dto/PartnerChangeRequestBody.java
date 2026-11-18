@@ -24,7 +24,7 @@ public record PartnerChangeRequestBody(
     ENABLE,
     DISABLE,
     SET_TIMEOUTS,
-    /** Onboard or replace a partner: its full config, a route (ADR D26, ticket 83). */
+    /** Onboard or replace a partner: its full config, a route (ADR D28, ticket 83). */
     UPSERT_ROUTE
   }
 

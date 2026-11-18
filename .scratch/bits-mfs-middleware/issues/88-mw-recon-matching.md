@@ -16,7 +16,7 @@ the core's ledger events. User decision 2026-11-18: adapters own the SFTP ingest
   amount, currency, partner status, value date), `txn_view` (projection of `mw.txn.status.v1`: `txnId`, reference,
   `partnerRef`, amount, state, timestamps), `ledger_view` (projection of whatever core ledger/posting events core-mock
   already publishes on Kafka), `recon_exception` (type, owner, `txnId`/line ref, amounts, state OPEN/RESOLVED).
-- **Consumers (Spring Kafka, template from 78):** `mw.partner.recon.v1`, `mw.txn.status.v1`, the core ledger events. Retry/DLQ as D25.
+- **Consumers (Spring Kafka, template from 78):** `mw.partner.recon.v1`, `mw.txn.status.v1`, the core ledger events. Retry/DLQ as D27.
 - **Matching rules** (per partner, config): key = `partnerId` + `partnerRef` (fallback `reference`); compare amount and
   final status. Outcomes:
   - MATCHED: partner SUCCESS, mw COMPLETED, ledger posted, same amount.
