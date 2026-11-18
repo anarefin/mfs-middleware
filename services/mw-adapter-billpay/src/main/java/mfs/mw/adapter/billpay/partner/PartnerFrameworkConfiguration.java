@@ -36,6 +36,25 @@ public class PartnerFrameworkConfiguration {
     return PartnerAudit.publishing(json, publisher);
   }
 
+  /**
+   * Camel's {@code http} and {@code https} components with the checked resolver: partner calls
+   * connect only to addresses {@link mfs.mw.adapter.billpay.partner.route.PartnerDnsResolver}
+   * resolved and checked (DNS rebinding, security review of ticket 82).
+   */
+  @Bean("http")
+  mfs.mw.adapter.billpay.partner.route.PartnerHttpComponent http(
+      mfs.mw.adapter.billpay.partner.config.PartnerEndpointPolicy policy) {
+    return new mfs.mw.adapter.billpay.partner.route.PartnerHttpComponent(
+        new mfs.mw.adapter.billpay.partner.route.PartnerDnsResolver(policy));
+  }
+
+  @Bean("https")
+  mfs.mw.adapter.billpay.partner.route.PartnerHttpComponent https(
+      mfs.mw.adapter.billpay.partner.config.PartnerEndpointPolicy policy) {
+    return new mfs.mw.adapter.billpay.partner.route.PartnerHttpComponent(
+        new mfs.mw.adapter.billpay.partner.route.PartnerDnsResolver(policy));
+  }
+
   /** {@code headerFilterStrategy=#mwPartnerHeaderFilter} of {@code mw-http-call}. */
   @Bean("mwPartnerHeaderFilter")
   PartnerHeaderFilterStrategy mwPartnerHeaderFilter() {

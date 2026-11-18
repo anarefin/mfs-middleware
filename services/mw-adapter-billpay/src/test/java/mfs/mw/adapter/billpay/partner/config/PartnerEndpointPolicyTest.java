@@ -26,7 +26,12 @@ class PartnerEndpointPolicyTest {
   @ValueSource(strings = {
       "https://127.0.0.1", "https://localhost", "https://10.1.2.3", "https://172.16.0.9", "https://192.168.1.1",
       "https://169.254.169.254", "https://0.0.0.0", "https://[::1]", "https://[fd00::1]", "https://[fe80::1]",
-      "https://224.0.0.1", "https://100.64.0.1"})
+      "https://224.0.0.1", "https://100.64.0.1",
+      // IPv6 (security review round 2): mapped, compatible, NAT64, 6to4, Teredo, site-local,
+      // multicast, unspecified: only global unicast 2000::/3 outside the transition ranges passes
+      "https://[::ffff:127.0.0.1]", "https://[::ffff:10.0.0.1]", "https://[::127.0.0.1]", "https://[::]",
+      "https://[64:ff9b::a00:1]", "https://[64:ff9b:1::a00:1]", "https://[2002:a00:1::1]",
+      "https://[2001:0:4136:e378::1]", "https://[fec0::1]", "https://[ff02::1]"})
   void aRecordCannotPointAtTheServicesOwnNetwork(String url) {
     List<String> allowed = List.of(URI.create(url).getHost().replace("[", "").replace("]", ""));
 
@@ -37,6 +42,11 @@ class PartnerEndpointPolicyTest {
   @Test
   void aPublicHttpsHostOfTheRecordIsAllowedWithoutAStaticEntry() {
     assertThat(policy.problems("waterco", URI.create("https://93.184.215.14"), List.of("93.184.215.14"))).isEmpty();
+  }
+
+  @Test
+  void aPublicGlobalUnicastIpv6HostPasses() {
+    assertThat(policy.problems("waterco", URI.create("https://[2606:4700::1111]"), List.of("2606:4700::1111"))).isEmpty();
   }
 
   @Test

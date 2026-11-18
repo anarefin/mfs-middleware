@@ -102,6 +102,8 @@ public class PartnerRouteLoader {
   /** Kamelet parameters that end up in the HTTP request: no {@code % ? & #}, before or after decoding. */
   static final Set<String> STRICT_PARAMS = Set.of("url", "path", "authHeader", "keyId", "method", "auth", "secretField");
 
+  private static final Pattern PARAM_KEY = Pattern.compile("^[A-Za-z][A-Za-z0-9]*$");
+
   static final Set<String> RESERVED_KAMELET_PARAMS =
       Set.of("partnerid", "timeoutms", "connecttimeoutms", "readtimeoutms", "bulkhead",
           "location", "templateid", "routeid", "uuid", "noerrorhandler", "bridgeerrorhandler");
@@ -423,6 +425,15 @@ public class PartnerRouteLoader {
         int eq = pair.indexOf('=');
         String key = eq < 0 ? pair : pair.substring(0, eq);
         String value = eq < 0 ? "" : pair.substring(eq + 1);
+        // a plain name, once: no encoding or odd character can make it another key for Camel
+        if (!PARAM_KEY.matcher(key).matches()) {
+          security.add("Kamelet parameter names are letters and digits");
+          return null;
+        }
+        if (params.containsKey(key)) {
+          security.add("Kamelet parameter " + key + " is set twice");
+          return null;
+        }
         if (RESERVED_KAMELET_PARAMS.contains(key.toLowerCase(Locale.ROOT))) {
           security.add("Kamelet parameter " + key + " is set by the loader, never by the route");
           return null;

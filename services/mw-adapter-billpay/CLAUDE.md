@@ -159,7 +159,7 @@ This module is the first; tickets 84 (telco, bank) copy it, 85-87 add Kamelets. 
   `restConfiguration` while parsing, so nothing else reaches it); Camel's `schema/camelYamlDsl.json`
   (networknt, draft 4); Kamelet calls only as `to: "kamelet:mw-*"` strings of the library, without
   `location`/`templateId`/... or loader parameters, `${...}` refused; parameters are URL-decoded as
-  Camel reads them, `RAW(...)` is refused and `url`/`path`/`authHeader`/`keyId` may hold no `% ? & #`;
+  Camel reads them, keys must be `^[A-Za-z][A-Za-z0-9]*$` and appear once, `RAW(...)` is refused and `url`/`path`/`authHeader`/`keyId` may hold no `% ? & #`;
   `{{` is looked for in every parsed string value (YAML escapes and block scalars cannot hide it) and in
   the YAML handed to Camel; then it injects route id
   `partner-<id>-v<version>`, `from: direct:partner-<id>-v<version>` and `routeConfigurationId
@@ -187,8 +187,11 @@ This module is the first; tickets 84 (telco, bank) copy it, 85-87 add Kamelets. 
 - **Hosts** (guardrail 4): the record's `allowedHosts`; `mw.partners.security.allowed-hosts.<id>`, when
   set, is a floor the record can only narrow; https unless `insecure-http-hosts`; a host that resolves to
   loopback, private, shared, link-local (cloud metadata), unspecified or multicast addresses is refused
-  unless it is a static dev host (`insecure-http-hosts` or the floor), at load and again at send time on
-  the resolved addresses (the JVM DNS cache gives the HTTP client the same ones). The guard also refuses
+  unless it is a static dev host (`insecure-http-hosts` or the floor), at load, again in the guard before
+  the send, and on the very addresses connected: the `http`/`https` components are
+  `partner/route/PartnerHttpComponent` with `PartnerDnsResolver` on their connection manager (resolve
+  once, check every address, return only checked ones; DNS rebinding). IPv6: only global unicast
+  `2000::/3` outside 6to4 and Teredo; IPv4-mapped addresses are checked as IPv4. The guard also refuses
   any http endpoint option but the fixed set `mw-http-call` adds (`PartnerHostGuard.OPTIONS`). Checked at load and before
   every send by one context-wide `interceptSendToEndpoint("http*")` declared once on an anchor route
   (`partner/route/PartnerHostGuard`; declared per route it would pile up callbacks), which also refuses a

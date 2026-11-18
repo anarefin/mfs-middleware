@@ -166,6 +166,19 @@ class PartnerRouteLoaderTest {
       "path=/pay%2F..%2Fadmin",
   })
   void encodedKameletParametersAreRefused(String param) {
+    encodedOrOddParameter(param);
+  }
+
+  /** Security review round 2: keys are plain names, once each; no encoding trick reaches the checks. */
+  @ParameterizedTest
+  @ValueSource(strings = {"partner%49d=billagg", "time-outMs=1", "url=https://localhost&url=https://evil.example",
+      "1x=2", "secret.field=x", "auth=none&auth=apikey"})
+  void oddOrDuplicateKameletParameterKeysAreRefused(String param) {
+    assertThatThrownBy(() -> load(record(GOOD.replace("&auth=apikey", "&" + param + "&auth=apikey"))))
+        .isInstanceOf(PartnerConfigRefusedException.class);
+  }
+
+  void encodedOrOddParameter(String param) {
     String key = param.substring(0, param.indexOf('='));
     String call = GOOD.replaceFirst(key + "=[^&\"]*", java.util.regex.Matcher.quoteReplacement(param));
     if (!call.contains(param)) {

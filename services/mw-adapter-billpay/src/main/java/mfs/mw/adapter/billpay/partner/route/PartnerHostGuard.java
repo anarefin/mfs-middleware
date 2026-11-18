@@ -94,7 +94,7 @@ public class PartnerHostGuard extends RouteBuilder {
         return option;
       }
     }
-    String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+    String host = uri.getHost() == null ? "" : PartnerEndpointPolicy.bare(uri.getHost());
     if (runtime.allowedHosts().stream().noneMatch(h -> h.equalsIgnoreCase(host))) {
       return "host not in the partner's allowedHosts";
     }

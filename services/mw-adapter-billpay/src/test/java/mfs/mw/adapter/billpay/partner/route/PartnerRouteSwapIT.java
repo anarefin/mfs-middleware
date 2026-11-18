@@ -225,6 +225,7 @@ class PartnerRouteSwapIT {
           assertThat(m.getId().getName()).startsWith("camel");
           assertThat(m.getId().getTag("partnerId")).isEqualTo("billagg");
         });
+    assertThat(camel.getComponent("http")).isInstanceOf(PartnerHttpComponent.class);
     String endpoints = camel.getEndpoints().stream().map(Endpoint::getEndpointUri).toList().toString();
     assertThat(endpoints).doesNotContain(BILL).doesNotContain("BITS-HEALTH").doesNotContain("fake-billagg-hmac-secret");
   }
