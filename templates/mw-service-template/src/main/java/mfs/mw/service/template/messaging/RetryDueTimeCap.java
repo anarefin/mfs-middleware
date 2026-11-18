@@ -15,8 +15,9 @@ import org.springframework.kafka.retrytopic.RetryTopicHeaders;
  * back (pausing its partition, never sleeping on the consumer thread) until the time in its {@code
  * retry_topic-backoff-timestamp} header, and only ignores values more than a day ahead: a record
  * written onto a retry topic with a forged far-future time would stall its partition. Here the
- * header is rewritten to {@code min(header, min(timestamp, now) + delay(n))}. A header Spring
- * Kafka cannot read (longer than 8 bytes) is left alone: it is ignored, so the record is due now.
+ * header is rewritten to {@code min(header, min(timestamp, now) + delay(n))}. A header that is not
+ * a long (empty, or longer than 8 bytes) is removed, so the record is due now: never left for a
+ * reader that might decode it differently.
  *
  * <p>Runs as a {@link RecordInterceptor} on the consumer thread, before the listener adapter;
  * records of other topics pass unchanged.
@@ -40,7 +41,13 @@ public final class RetryDueTimeCap implements RecordInterceptor<Object, Object> 
       return record;
     }
     Header due = record.headers().lastHeader(DUE);
-    if (due == null || due.value() == null || due.value().length == 0 || due.value().length > Long.BYTES) {
+    if (due == null) {
+      return record;
+    }
+    if (due.value() == null || due.value().length == 0 || due.value().length > Long.BYTES) {
+      // Not a long: Spring Kafka 4.1 ignores such a value, but no reader gets the chance to
+      // decode it differently from us. Removed, the record is due now.
+      record.headers().remove(DUE);
       return record;
     }
     long now = clock.millis();

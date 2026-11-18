@@ -351,6 +351,18 @@ class RetryTopicIT {
   }
 
   @Test
+  void aFarFutureDueTimeLongerThanALongIsDueNow() throws Exception {
+    long start = System.currentTimeMillis();
+    byte[] far = BigInteger.valueOf(start + Duration.ofHours(1).toMillis()).toByteArray();
+    byte[] nine = new byte[Long.BYTES + 1]; // leading zero bytes: the same number to a lenient reader
+    System.arraycopy(far, 0, nine, nine.length - far.length, far.length);
+    sendRaw(retryTopic(FREE_TOPIC, GROUP, 1), 1, "K-NINE", bytes("{\"case\":\"ok\"}"), Map.of(BACKOFF_HEADER, nine));
+
+    await(() -> listener.succeeded.contains("K-NINE"), Duration.ofSeconds(30));
+    assertThat(System.currentTimeMillis() - start).as("sooner than the retry.1 delay").isLessThan(RETRY_1_MS);
+  }
+
+  @Test
   void garbageDueTimeIsDueNowAndNotSentToDlq() throws Exception {
     long start = System.currentTimeMillis();
     sendRaw(retryTopic(FREE_TOPIC, GROUP, 1), 1, "K-GARBAGE", bytes("{\"case\":\"ok\"}"),
