@@ -185,6 +185,12 @@ management:
       type: w3c
 
 mw:
+  # Partner routes as config (ADR D26, ticket 83). kamelets: the mw-* Kamelet library of the adapters
+  # a route may call (default: ticket 82's library; a new Kamelet ships in the adapter first, then here).
+  # status-consumer: the listener of mw.partner.route.status.v1 (the adapters' LIVE / REJECTED reports).
+  partner-routes:
+    status-consumer:
+      enabled: true
   kafka:
     # How long EventPublisher.publish waits for Kafka's acknowledgement (just above the producer's
     # delivery.timeout.ms, so the producer decides first).

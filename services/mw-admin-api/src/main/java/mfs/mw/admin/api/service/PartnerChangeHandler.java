@@ -29,6 +29,11 @@ import tools.jackson.databind.json.JsonMapper;
  * {@code mw.config.changed.v1} PARTNER UPSERT (key {@code partner/<id>}, value the full config,
  * changedBy the maker, approvedBy the checker), so it is published only if the approval commits.
  * The compacted topic keeps the latest record per partner: an adapter starting later replays it.
+ *
+ * <p>Ticket 83: the published value carries the partner's {@code family} (each adapter applies its
+ * own family only), and a config of the route shape (ADR D26) also gets its {@code
+ * partner.partner_route} row, PENDING_DRY_RUN until the adapter reports LIVE or REJECTED on {@code
+ * mw.partner.route.status.v1} ({@link PartnerRouteStatusService}).
  */
 @Component
 public class PartnerChangeHandler implements ResourceChangeHandler {
@@ -62,8 +67,10 @@ public class PartnerChangeHandler implements ResourceChangeHandler {
     Long baseVersion = base instanceof Number n ? n.longValue() : null;
     String family = String.valueOf(cr.payload().get("family"));
     @SuppressWarnings("unchecked")
-    Map<String, Object> value = (Map<String, Object>) cr.payload().get("config");
-    PartnerConfigValue config = json.convertValue(value, PartnerConfigValue.class);
+    Map<String, Object> config0 = (Map<String, Object>) cr.payload().get("config");
+    PartnerConfigValue config = json.convertValue(config0, PartnerConfigValue.class);
+    Map<String, Object> value = new java.util.LinkedHashMap<>(config0);
+    value.put("family", family);
     return new Approval(
         cr.payload(),
         CONFIG_TOPIC,
@@ -84,6 +91,9 @@ public class PartnerChangeHandler implements ResourceChangeHandler {
             if (!partners.update(new Partner(id, family, version, config, now, cr.makerId(), checker.username()), baseVersion)) {
               throw moved();
             }
+          }
+          if (config.hasRoute()) {
+            partners.insertRoute(new Partner(id, family, version, config, now, cr.makerId(), checker.username()), now);
           }
           ConfigChangedEvent event =
               PartnerMapper.configChanged(id, version, value, cr.makerId(), checker.username(), correlationId, now);
