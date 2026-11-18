@@ -41,27 +41,46 @@ spring:
   flyway:
     schemas: simulators
 
-# Kafka through Camel (spec 6.1, 19.2). Single KRaft node; topics come from deploy/kafka/.
-camel:
-  main:
-    name: ${spring.application.name}
-  component:
-    kafka:
-      brokers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
-      # Producer: exactly one copy per send, every in-sync replica acknowledges (6.1).
-      request-required-acks: all
-      enable-idempotence: true
-      max-in-flight-request: 5
-      # Consumers: one group per service; a failure that cannot even be parked on a retry
-      # topic stops the partition instead of committing past the record.
+  # Kafka through Spring Kafka (spec 6.1, 19.2, ADR D25); retry topics, templates and interceptors
+  # in config/KafkaConfig. Single KRaft node; topics come from deploy/kafka/ and are never
+  # auto-created by the service.
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    producer:
+      # Exactly one copy per send, every in-sync replica acknowledges, order kept per key (6.1).
+      acks: all
+      # Strings, and the raw bytes of a record that could not be deserialized when it is parked
+      # on the DLQ.
+      key-serializer: org.springframework.kafka.support.serializer.StringOrBytesSerializer
+      value-serializer: org.springframework.kafka.support.serializer.StringOrBytesSerializer
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+    consumer:
+      # One group per service: listeners use groupId = "${spring.kafka.consumer.group-id}", and
+      # the group is the middle part of the service's retry and DLQ topic names.
       group-id: ${spring.application.name}
       auto-offset-reset: earliest
-      break-on-first-error: true
-      # Offsets are committed per record, only after it is handled or parked on its retry
-      # topic (RetryTopicRouteBuilder); never on poll or close. Routes that consume Kafka must
-      # commit through the CamelKafkaManualCommit header.
-      auto-commit-enable: false
-      allow-manual-commit: true
+      # Offsets are committed per record, only after it is handled (the listener acknowledges)
+      # or parked on its next retry topic or the DLQ (the error handler); never on poll or close.
+      enable-auto-commit: false
+      # A record that is not UTF-8 text fails here, goes straight to the DLQ and never blocks
+      # its partition (messaging/Utf8Deserializer wrapped by ErrorHandlingDeserializer).
+      key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.key.delegate.class: mfs.mw.simulators.messaging.Utf8Deserializer
+        spring.deserializer.value.delegate.class: mfs.mw.simulators.messaging.Utf8Deserializer
+    listener:
+      # Per-record commit, from the listener (Acknowledgment.acknowledge()) or the error handler.
+      ack-mode: manual_immediate
+      # Consumer threads per listener container; at most the topic's partition count.
+      concurrency: ${MW_KAFKA_LISTENER_CONCURRENCY:1}
+      # Micrometer observation: each record continues its traceparent (traceId/spanId in the MDC).
+      observation-enabled: true
+    admin:
+      # Topics belong to the platform (deploy/kafka/); the service never creates any.
+      auto-create: false
 
 # Resilience defaults for client/ calls (19.2). A partner overrides them under
 # resilience4j.<kind>.instances.<partner> (base-config: default). Retry is only for idempotent
@@ -160,14 +179,22 @@ sim:
 
 mw:
   kafka:
+    # How long EventPublisher.publish waits for Kafka's acknowledgement.
+    send-timeout: 30s
+    listener:
+      # How long a stopping listener container waits for its consumer thread.
+      shutdown-timeout: 10s
     retry:
       # Non-blocking retry topics <topic>.<group>.retry.1..3, then <topic>.<group>.dlq (19.2).
       delays: 10s,1m,10m
+      # Consumed topics without retry topics (none by default).
+      exclude-topics: []
   outbox:
     relay:
-      # Transactional outbox relay (6.4): claims up to batch-size unsent rows, sends them all
-      # without waiting, then stamps sent_at on the acknowledged ones in one statement. Polls
-      # again at once while batches come back full; waits one period once the outbox is drained.
+      # Transactional outbox relay (6.4, scheduler/OutboxRelayScheduler): claims up to batch-size
+      # unsent rows, sends them all without waiting, then stamps sent_at on the acknowledged ones
+      # in one statement. Polls again at once while batches come back full; waits one period once
+      # the outbox is drained.
       enabled: true
       period: 500ms
       batch-size: 500
