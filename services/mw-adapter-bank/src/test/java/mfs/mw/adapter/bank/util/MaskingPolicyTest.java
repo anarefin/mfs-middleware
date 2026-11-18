@@ -393,4 +393,18 @@ class MaskingPolicyTest {
   void aWalletTypedIdThatIsNotAnMsisdnIsMaskedAsAnAccount() {
     assertThat(MaskingPolicy.describe(new Party("WALLET", "SETTLEMENT-0000123"))).contains("id=****0123");
   }
+
+  /** Ticket 87: a bearer token, basic credentials or a token response field never survive free text. */
+  @Test
+  void scrubMasksBearerTokensBasicCredentialsAndTokenFields() {
+    assertThat(MaskingPolicy.scrub("Authorization: Bearer eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2ln-_x"))
+        .isEqualTo("Authorization: Bearer ****");
+    assertThat(MaskingPolicy.scrub("authorization=basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==, next"))
+        .isEqualTo("authorization=basic ****, next");
+    assertThat(MaskingPolicy.scrub("{\"access_token\":\"fake-token-1\",\"token_type\":\"Bearer\",\"refresh_token\": \"r-2\"}"))
+        .isEqualTo("{\"access_token\":\"****\",\"token_type\":\"Bearer\",\"refresh_token\": \"****\"}");
+    assertThat(MaskingPolicy.scrub("client_secret=fake-secret&grant_type=client_credentials"))
+        .isEqualTo("client_secret=****&grant_type=client_credentials");
+    assertThat(MaskingPolicy.scrub("the basic plan, a bearer of news")).isEqualTo("the basic plan, a bearer of news");
+  }
 }

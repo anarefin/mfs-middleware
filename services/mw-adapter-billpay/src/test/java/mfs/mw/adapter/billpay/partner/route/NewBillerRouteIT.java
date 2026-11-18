@@ -10,6 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+import com.github.tomakehurst.wiremock.stubbing.Scenario;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -67,7 +68,10 @@ import tools.jackson.databind.json.JsonMapper;
       "spring.kafka.consumer.group-id=mw-adapter-billpay-newbiller-it",
       "mw.billers.WATERCO.name=Water Co",
       "mw.billers.WATERCO.category=WATER",
-      "mw.billers.WATERCO.partner-id=waterco"
+      "mw.billers.WATERCO.partner-id=waterco",
+      "mw.billers.GASCO.name=Gas Co",
+      "mw.billers.GASCO.category=GAS",
+      "mw.billers.GASCO.partner-id=gasco"
     })
 @Import({TestInfrastructure.class, BillpayTestTopics.class})
 @DirtiesContext
@@ -89,6 +93,7 @@ class NewBillerRouteIT {
     OPENBAO.start();
     secret("billagg", Map.of("hmac-secret", "fake-billagg-hmac-secret-for-tests"));
     secret("waterco", Map.of("api-key", API_KEY));
+    secret("gasco", Map.of("client-secret", "fake-gasco-client-secret"));
   }
 
   static String vaultUri() {
@@ -210,6 +215,90 @@ class NewBillerRouteIT {
     WATERCO.verify(1, com.github.tomakehurst.wiremock.client.WireMock.putRequestedFor(urlEqualTo("/api/pay"))
         .withRequestBody(equalToJson("{\"ref\":\"BITS" + txnId.replace("-", "").toUpperCase() + "\",\"account\":\"W-123\",\"amt\":\"412.50\"}")));
     WATERCO.verify(1, postRequestedFor(urlEqualTo("/api/lookup")));
+  }
+
+  /**
+   * Ticket 87: a new biller on OAuth2 client credentials, by config only (record on Kafka, client
+   * secret in OpenBao): N payments take one token; a partner 401 (token revoked) takes one fresh
+   * token and the payment still succeeds; a token within the expiry skew is never reused.
+   */
+  @Test
+  void aNewBillerOnOAuth2ClientCredentialsTakesOneTokenForNPaymentsAndRefreshesAfterA401() throws Exception {
+    WATERCO.stubFor(post(urlEqualTo("/gas/token")).inScenario("gas-tokens").whenScenarioStateIs(Scenario.STARTED)
+        .withHeader("Authorization", equalTo("Basic " + java.util.Base64.getEncoder()
+            .encodeToString("bits-mw:fake-gasco-client-secret".getBytes(java.nio.charset.StandardCharsets.UTF_8))))
+        .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json")
+            .withBody("{\"access_token\":\"fake-gas-token-1\",\"token_type\":\"Bearer\",\"expires_in\":3600}")));
+    WATERCO.stubFor(post(urlEqualTo("/gas/pay")).withHeader("Authorization", equalTo("Bearer fake-gas-token-1"))
+        .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json")
+            .withBody("{\"result\":\"OK\",\"receipt\":\"GC-1\"}")));
+    String route = """
+        - route:
+            from:
+              uri: direct:partner-gasco
+              steps:
+                - to: "kamelet:mw-map?mapping=PAY.request"
+                - to: "kamelet:mw-http-call?url=http://localhost:%1$d&method=POST&path=/gas/pay&auth=oauth2-cc&secretField=client-secret&clientId=bits-mw&scope=bill.pay&tokenUrl=http://localhost:%1$d/gas/token"
+                - to: "kamelet:mw-classify?mapping=PAY.response"
+                - to: "kamelet:mw-audit"
+        """.formatted(WATERCO.port());
+    Map<String, Object> value = Map.of(
+        "family", "billpay",
+        "allowedHosts", List.of("localhost"),
+        "timeoutMs", 3000,
+        "route", route,
+        "mappings", Map.of(
+            "PAY.request", "{\"ref\": reference, \"account\": creditParty.id}",
+            "PAY.response", "status = 200 and body.result = \"OK\" ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.receipt}"
+                + " : {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}"));
+    publishConfig("partner/gasco", JSON.writeValueAsString(Map.of(
+        "schemaVersion", 1, "configKey", "partner/gasco", "configType", "PARTNER", "change", "UPSERT",
+        "version", 1, "changedAt", "2026-11-18T10:00:00Z", "changedBy", "ops.maker1", "approvedBy", "ops.checker1",
+        "value", value)));
+    long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+    while (store.instance("gasco").isEmpty() && System.nanoTime() < deadline) {
+      Thread.sleep(100);
+    }
+    assertThat(store.instance("gasco")).isPresent();
+
+    for (int i = 0; i < 3; i++) {
+      assertThat(payGas()).isEqualTo("SUCCESS");
+    }
+    WATERCO.verify(1, postRequestedFor(urlEqualTo("/gas/token")));
+    WATERCO.verify(3, postRequestedFor(urlEqualTo("/gas/pay")));
+
+    // the partner revokes token 1: a 401, one fresh token, the payment goes through on it
+    WATERCO.stubFor(post(urlEqualTo("/gas/pay")).withHeader("Authorization", equalTo("Bearer fake-gas-token-1"))
+        .willReturn(aResponse().withStatus(401)));
+    WATERCO.stubFor(post(urlEqualTo("/gas/token")).inScenario("gas-tokens").whenScenarioStateIs(Scenario.STARTED)
+        .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json")
+            .withBody("{\"access_token\":\"fake-gas-token-2\",\"expires_in\":3600}")));
+    WATERCO.stubFor(post(urlEqualTo("/gas/pay")).withHeader("Authorization", equalTo("Bearer fake-gas-token-2"))
+        .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json")
+            .withBody("{\"result\":\"OK\",\"receipt\":\"GC-2\"}")));
+    assertThat(payGas()).isEqualTo("SUCCESS");
+    assertThat(payGas()).isEqualTo("SUCCESS");
+    WATERCO.verify(2, postRequestedFor(urlEqualTo("/gas/token")));
+    WATERCO.verify(4, postRequestedFor(urlEqualTo("/gas/pay")).withHeader("Authorization", equalTo("Bearer fake-gas-token-1")));
+    WATERCO.verify(2, postRequestedFor(urlEqualTo("/gas/pay")).withHeader("Authorization", equalTo("Bearer fake-gas-token-2")));
+  }
+
+  /** One PAY through Kafka for the gasco biller; the reply's outcome. */
+  private String payGas() throws Exception {
+    String txnId = BillpayFixtures.newTxnId();
+    PartnerRequest base = BillpayFixtures.pay(txnId, "G-9", 10_000);
+    PartnerRequest request = new PartnerRequest(
+        base.schemaVersion(), base.family(), UUID.randomUUID().toString(), txnId, base.correlationId(), base.issuedAt(),
+        base.deadlineAt(),
+        new PartnerRequest.Payload(
+            "PAY", "BILL_PAY", new PartnerRequest.PartnerRef("gasco", "BILL", "GASCO"), "BITS-IGNORED",
+            base.payload().amount(), base.payload().debitParty(), base.payload().creditParty(), null, null));
+    publisher.publish("mw.partner.request.billpay.v1", txnId,
+        new EventMetadata(request.correlationId(), txnId, request.requestId(), 1), request);
+    List<ConsumerRecord<String, String>> replies = KafkaTestConsumer.read(
+        TestInfrastructure.kafkaBootstrapServers(), "mw.partner.reply.v1", 1, Duration.ofSeconds(30), r -> txnId.equals(r.key()));
+    assertThat(replies).hasSize(1);
+    return JSON.readValue(replies.getFirst().value(), PartnerReply.class).payload().outcome();
   }
 
   private static void publishConfig(String key, String value) throws Exception {

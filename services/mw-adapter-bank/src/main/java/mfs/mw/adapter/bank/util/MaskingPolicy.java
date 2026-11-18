@@ -46,6 +46,17 @@ public final class MaskingPolicy {
    */
   private static final Pattern LONG_NUMBER_IN_TEXT = Pattern.compile("(?<!\\d)\\d{10,}(?!\\d)");
 
+  /**
+   * HTTP credentials in free text (ticket 87): the value after {@code Bearer} or {@code Basic}
+   * (8+ token characters, so plain words stay), and the value of an OAuth2 {@code access_token},
+   * {@code refresh_token}, {@code id_token} or {@code client_secret} field (JSON or form).
+   */
+  private static final Pattern AUTH_CREDENTIAL_IN_TEXT =
+      Pattern.compile("(?i)\\b(bearer|basic)(\\s+)[A-Za-z0-9._~+/=-]{8,}");
+
+  private static final Pattern TOKEN_FIELD_IN_TEXT =
+      Pattern.compile("(?i)(\"?\\b(?:access_token|refresh_token|id_token|client_secret)\"?\\s*[:=]\\s*\"?)[^\"&,\\s}]+");
+
   private MaskingPolicy() {}
 
   /** Masks one value according to its type. {@code null} and empty stay as they are. */
@@ -93,7 +104,12 @@ public final class MaskingPolicy {
     if (text == null || text.isEmpty()) {
       return text;
     }
-    return scrubNumbers(text);
+    return scrubNumbers(scrubCredentials(text));
+  }
+
+  private static String scrubCredentials(String text) {
+    String out = AUTH_CREDENTIAL_IN_TEXT.matcher(text).replaceAll("$1$2" + STARS);
+    return TOKEN_FIELD_IN_TEXT.matcher(out).replaceAll("$1" + STARS);
   }
 
   private static String scrubNumbers(String text) {

@@ -1,0 +1,27 @@
+# Example partner record (ADR D26, ticket 87): a REST/JSON biller on OAuth2 client credentials, as the
+# `value` of a mw.config.changed.v1 PARTNER record (configKey partner/gasco), shown as YAML. The token
+# endpoint's host is in allowedHosts like the API's; the client secret is OpenBao
+# secret/mw-adapter-billpay/gasco, field client-secret, read when the route loads. One token serves
+# every call until expires_in minus 30 s; a 401 from the biller takes one fresh token.
+#
+# The other auth options on the same mw-http-call (docs/concepts/camel-partner-routes.md):
+#   auth=basic&userField=user&secretField=password
+#   auth=jws&secretField=jws-key&alg=ES256&keyId=bits-2026&authHeader=X-Signature
+#   sslContextRef=gasco-client   (mTLS; the context is static config mw.partners.tls.contexts.gasco-client)
+family: billpay
+allowedHosts: [api.gasco.example, auth.gasco.example]
+timeoutMs: 20000
+route: |
+  - route:
+      from:
+        uri: direct:partner-gasco
+        steps:
+          - to: "kamelet:mw-map?mapping=PAY.request"
+          - to: "kamelet:mw-http-call?url=https://api.gasco.example&method=POST&path=/v1/pay&auth=oauth2-cc&secretField=client-secret&clientId=bits-mw&scope=bill.pay&tokenUrl=https://auth.gasco.example/oauth/token"
+          - to: "kamelet:mw-classify?mapping=PAY.response"
+          - to: "kamelet:mw-audit"
+mappings:
+  PAY.request: '{"ref": reference, "account": creditParty.id}'
+  PAY.response: >-
+    status = 200 and body.result = "OK" ? {"outcome": "SUCCESS", "partnerRef": body.receipt}
+    : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}

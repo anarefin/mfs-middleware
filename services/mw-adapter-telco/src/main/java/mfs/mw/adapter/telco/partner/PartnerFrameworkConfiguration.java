@@ -13,6 +13,7 @@ import mfs.mw.adapter.telco.partner.route.PartnerAudit;
 import mfs.mw.adapter.telco.partner.route.PartnerHeaderFilterStrategy;
 import org.apache.camel.CamelContext;
 import mfs.mw.adapter.telco.partner.auth.SpringVaultPropertiesFunction;
+import mfs.mw.adapter.telco.partner.auth.PartnerTlsContexts;
 import org.apache.camel.spring.boot.CamelContextConfiguration;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
@@ -78,10 +79,12 @@ public class PartnerFrameworkConfiguration {
    * Partner secrets: Camel's {@code hashicorp} properties function on Spring Cloud Vault's {@code
    * VaultTemplate} (the AppRole login of {@code VAULT_ENABLED=true}), as the function alone only
    * knows a static token. Without Vault the function stays Camel's default and a route that needs
-   * a secret is refused. Then the partner routes start: seeds, then the records that came early.
+   * a secret is refused. Then the mTLS client contexts are read (ticket 87) and the partner routes
+   * start: seeds, then the records that came early.
    */
   @Bean
-  CamelContextConfiguration partnerRoutesOnStart(ObjectProvider<VaultTemplate> vault, PartnerConfigStore store) {
+  CamelContextConfiguration partnerRoutesOnStart(
+      ObjectProvider<VaultTemplate> vault, PartnerConfigStore store, PartnerTlsContexts tls) {
     return new CamelContextConfiguration() {
       @Override
       public void beforeApplicationStart(CamelContext camelContext) {
@@ -95,6 +98,7 @@ public class PartnerFrameworkConfiguration {
 
       @Override
       public void afterApplicationStart(CamelContext camelContext) {
+        tls.register(camelContext);
         store.start();
       }
     };

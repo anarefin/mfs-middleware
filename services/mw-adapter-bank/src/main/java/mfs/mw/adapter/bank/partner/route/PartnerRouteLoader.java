@@ -19,7 +19,9 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import mfs.mw.adapter.bank.partner.auth.DetachedJws;
 import mfs.mw.adapter.bank.partner.auth.PartnerCredentials;
+import mfs.mw.adapter.bank.partner.auth.PartnerTlsContexts;
 import mfs.mw.adapter.bank.partner.config.PartnerConfig;
 import mfs.mw.adapter.bank.partner.config.PartnerConfigRefusedException;
 import mfs.mw.adapter.bank.partner.config.PartnerEndpointPolicy;
@@ -49,6 +51,7 @@ import org.apache.camel.model.dataformat.JsonLibrary;
 import org.apache.camel.model.language.ExpressionDefinition;
 import org.apache.camel.support.PluginHelper;
 import org.apache.camel.support.ResourceHelper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.LoaderOptions;
@@ -98,7 +101,8 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 public class PartnerRouteLoader {
 
   /** Kamelet parameters that end up in the HTTP request: no {@code % ? & #}, before or after decoding. */
-  static final Set<String> STRICT_PARAMS = Set.of("url", "path", "authHeader", "keyId", "method", "auth", "secretField");
+  static final Set<String> STRICT_PARAMS = Set.of("url", "path", "authHeader", "keyId", "method", "auth", "secretField",
+      "userField", "tokenUrl", "clientId", "scope", "audience", "alg", "sslContextRef");
 
   private static final Pattern PARAM_KEY = Pattern.compile("^[A-Za-z][A-Za-z0-9]*$");
 
@@ -119,6 +123,7 @@ public class PartnerRouteLoader {
   private final KameletCatalogue kamelets;
   private final PartnerCredentials credentials;
   private final BulkheadRegistry bulkheads;
+  private final PartnerTlsContexts tls;
   private volatile Schema yamlDslSchema;
 
   public PartnerRouteLoader(
@@ -127,11 +132,23 @@ public class PartnerRouteLoader {
       KameletCatalogue kamelets,
       PartnerCredentials credentials,
       BulkheadRegistry bulkheads) {
+    this(camel, policy, kamelets, credentials, bulkheads, PartnerTlsContexts.none());
+  }
+
+  @Autowired
+  public PartnerRouteLoader(
+      CamelContext camel,
+      PartnerEndpointPolicy policy,
+      KameletCatalogue kamelets,
+      PartnerCredentials credentials,
+      BulkheadRegistry bulkheads,
+      PartnerTlsContexts tls) {
     this.camel = camel;
     this.policy = policy;
     this.kamelets = kamelets;
     this.credentials = credentials;
     this.bulkheads = bulkheads;
+    this.tls = tls;
   }
 
   /**
@@ -567,6 +584,15 @@ public class PartnerRouteLoader {
         } else {
           calls.secretFields.add(field);
         }
+        authProblems(id, auth, params, calls, security, problems);
+      }
+      String tlsRef = params.getOrDefault("sslContextRef", "");
+      if (!tlsRef.isEmpty()) {
+        if (!tls.owner(tlsRef).map(id::equals).orElse(false)) {
+          security.add("sslContextRef " + tlsRef + " is not a TLS client context of this partner");
+        } else if (!params.getOrDefault("url", "").toLowerCase(Locale.ROOT).startsWith("https://")) {
+          security.add("sslContextRef needs an https url");
+        }
       }
       out.append("&timeoutMs=").append(record.timeoutMs())
           .append("&connectTimeoutMs=").append(record.connectTimeoutMs())
@@ -577,6 +603,42 @@ public class PartnerRouteLoader {
       calls.mappings.add(params.get("mapping"));
     }
     return out.toString();
+  }
+
+  /**
+   * The parameters each auth scheme of ticket 87 needs: {@code basic} a {@code userField} (read
+   * from OpenBao with the password), {@code oauth2-cc} a {@code clientId} and a {@code tokenUrl}
+   * (held to the record's hosts like {@code url}), {@code jws} an {@code alg} it supports.
+   */
+  private static void authProblems(
+      String id, String auth, Map<String, String> params, Calls calls, List<String> security, List<String> problems) {
+    switch (auth) {
+      case "basic" -> {
+        String user = params.getOrDefault("userField", "");
+        if (user.isEmpty()) {
+          problems.add("auth basic needs a userField");
+        } else {
+          calls.secretFields.add(user);
+        }
+      }
+      case "oauth2-cc" -> {
+        if (params.getOrDefault("clientId", "").isEmpty()) {
+          problems.add("auth oauth2-cc needs a clientId");
+        }
+        String tokenUrl = params.getOrDefault("tokenUrl", "");
+        if (tokenUrl.isEmpty()) {
+          problems.add("auth oauth2-cc needs a tokenUrl");
+        } else {
+          calls.urls.add(tokenUrl);
+        }
+      }
+      case "jws" -> {
+        if (!DetachedJws.supports(params.get("alg"))) {
+          problems.add("auth jws needs alg RS256 or ES256");
+        }
+      }
+      default -> { }
+    }
   }
 
   /**

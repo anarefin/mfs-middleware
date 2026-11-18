@@ -1,0 +1,44 @@
+# mw-auth-basic (ticket 87): HTTP Basic authentication (RFC 7617) on the request mw-http-call
+# prepared. Called by mw-http-call (auth=basic).
+apiVersion: camel.apache.org/v1
+kind: Kamelet
+metadata:
+  name: mw-auth-basic
+  labels:
+    camel.apache.org/kamelet.type: action
+  annotations:
+    camel.apache.org/kamelet.support.level: Stable
+    camel.apache.org/provider: Bits MFS middleware
+spec:
+  definition:
+    title: MW auth basic
+    description: >-
+      Sets Authorization: Basic base64(user:password) (RFC 7617, UTF-8). User and password are two
+      fields of this partner's own OpenBao secret, read when the route loaded; neither is ever logged,
+      audited or put in a URI. Input and output: the prepared request; only headers change.
+    type: object
+    required: [secretField, userField]
+    properties:
+      secretField:
+        title: Password secret field
+        description: Field of this partner's own OpenBao secret holding the password; a reference, never the value.
+        type: string
+        format: password
+        x-descriptors:
+          - urn:camel:group:credentials
+          - urn:alm:descriptor:com.tectonic.ui:password
+      userField:
+        title: User secret field
+        description: Field of this partner's own OpenBao secret holding the user name; a reference, never the value.
+        type: string
+        format: password
+        x-descriptors:
+          - urn:camel:group:credentials
+          - urn:alm:descriptor:com.tectonic.ui:password
+  template:
+    from:
+      uri: "kamelet:source"
+      steps:
+        - bean:
+            ref: mwAuth
+            method: "basic(${exchange}, '{{userField}}', '{{secretField}}')"
