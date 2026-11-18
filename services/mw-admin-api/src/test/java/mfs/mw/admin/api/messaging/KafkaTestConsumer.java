@@ -16,7 +16,7 @@ import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.serialization.StringDeserializer;
 
 /**
- * Reads records straight from Kafka, outside Camel, so tests see exactly what was published. It
+ * Reads records straight from Kafka, outside the Spring Kafka listener containers, so tests see exactly what was published. It
  * assigns the topic's partitions itself (no consumer group), so a read never waits for a group
  * join or rebalance.
  */
