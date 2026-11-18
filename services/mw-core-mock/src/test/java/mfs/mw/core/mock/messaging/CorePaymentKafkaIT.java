@@ -39,7 +39,7 @@ import tools.jackson.databind.json.JsonMapper;
       "mw.outbox.relay.enabled=true",
       "mw.kafka.retry.delays=1s,1s,1s"
     })
-@Import(TestInfrastructure.class)
+@Import({TestInfrastructure.class, CoreCommandTopics.class})
 @DirtiesContext
 class CorePaymentKafkaIT {
 
