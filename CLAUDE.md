@@ -74,7 +74,8 @@ mfs.mw.<service>/
   mapper/      DTO <-> entity <-> message
   exception/   exceptions, error codes, global @RestControllerAdvice
   messaging/   Kafka listeners/publishers, outbox relay, inbox dedup, retry/DLQ
-  route/       Camel RouteBuilders and YAML route templates (no XML DSL)
+  route/       partner adapters only (ADR D1 amendment, D26): Camel partner routes, route loader,
+               Kamelets (YAML DSL, no XML DSL); Kafka listeners elsewhere are Spring Kafka in messaging/ (D25)
   client/      outbound calls (partners, SMSC), with Resilience4j; in mw-simulators also the
                simulated SMPP servers (SMSC, USSD gateway)
   transport/   channel transports: mw-ussd's HTTP and SMPP USSD transports (MNO wire <-> engine)
@@ -109,7 +110,7 @@ straight to Kafka so it is never stored): a port interface would have one implem
 `messaging/` and leave the dependency direction as it is, so it is not added. Listeners, relays and routes in `messaging/` still
 depend on `service`, never the other way round otherwise. Entities never leave the service layer.
 Tests mirror the main packages (unit for service/mapper/util, `@WebMvcTest` for controller,
-`*RepositoryIT` for repository, Camel route tests for route). Any test that needs Docker is a `*IT`:
+`*RepositoryIT` for repository, Spring Kafka listener `*IT`s for messaging, Camel route tests for route in the adapters). Any test that needs Docker is a `*IT`:
 it imports the module's `TestInfrastructure` (one PostgreSQL and one Kafka per test JVM, never
 reused, removed by Ryuk; a fresh database per Spring context) and `DockerAvailableCondition` skips it
 when Docker is not available. The JDBC repositories run in a `@SpringBootTest` context against that
@@ -170,7 +171,8 @@ classes are skipped, so the build still passes; a gate run needs Docker. A test 
 deliberate wait that proves an outcome (an absence window, a timeout or retry delay running out;
 2 s or more) is tagged `@Tag("slow-wait")`: left out of every build unless `-PwithSlow` is given
 (ADR D19 amendment). Test infrastructure must never be what slows a test: test configs relay the
-outbox every 50 ms and give Camel's Kafka consumers a 100 ms shutdown timeout, and
+outbox every 50 ms and give the Kafka listener container a 100 ms shutdown timeout (Camel's Kafka
+consumers until a module moves to Spring Kafka, ADR D25), and
 `KafkaTestConsumer` reads without a consumer group.
 
 | Command | What it does |
@@ -227,6 +229,8 @@ the root `./gradlew clean build -PwithSlow` and the whole API suite on a fresh s
 - Never use `System.out` / `System.err` / `printStackTrace`; log through SLF4J.
 - Never use field injection (`@Autowired` on fields), tests included; constructor injection
   only (`./gradlew :checkFieldInjection` runs `scripts/check-field-injection.sh`).
+- Never use Camel (`org.apache.camel`) outside `mw-adapter-*` (ADR D1 amendment 2026-11-18); internal
+  Kafka messaging is Spring Kafka (ADR D25).
 - Never block on Kafka listener threads (no synchronous waits for replies, sleeps or
   long partner calls on the consumer thread).
 - Never log a PIN or an unmasked MSISDN, NID, account number or name.

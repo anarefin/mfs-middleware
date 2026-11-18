@@ -65,9 +65,9 @@ Today ADR D1 and the spec prescribe Camel for both messaging and partners. Ticke
 
 **Blocked by:** —
 
-**Status:** open
+**Status:** done
 
-- [ ] ADR D1 is amended; D25 and D26 exist; `docs/adr/README.md` lists them
-- [ ] The spec decision table has rows D25 and D26; every Camel-for-Kafka statement in the spec is amended or marked superseded
-- [ ] `./gradlew :scriptTests` passes (`test_repo_docs.sh`: every decision row has an ADR, no dangling names)
-- [ ] No code changes in this ticket
+- [x] ADR D1 is amended; D25 and D26 exist; `docs/adr/README.md` lists them
+- [x] The spec decision table has rows D25 and D26; every Camel-for-Kafka statement in the spec is amended or marked superseded
+- [x] `./gradlew :scriptTests` passes (`test_repo_docs.sh`: every decision row has an ADR, no dangling names)
+- [x] No code changes in this ticket
