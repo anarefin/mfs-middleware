@@ -76,36 +76,36 @@ implementation("com.dashjoin:jsonata:0.9.10")</code></pre>
   <div class="table-wrap"><table>
     <tr><th>Service</th><th>Uses JSONata for</th></tr>
     <tr><td><code>mw-adapter-telco</code></td><td>OCS top-up and status inquiry (the reference copy of the framework).</td></tr>
-    <tr><td><code>mw-adapter-billpay</code></td><td>Bill aggregator: pay, status query, signed callback and bill inquiry (async-callback template).</td></tr>
-    <tr><td><code>mw-adapter-bank</code></td><td>Bank debit: pay (202 PENDING), status query and signed callback (async-callback template).</td></tr>
+    <tr><td><code>mw-adapter-billpay</code></td><td>Bill aggregator: pay, status query, signed callback and bill inquiry (the <code>billagg</code> route).</td></tr>
+    <tr><td><code>mw-adapter-bank</code></td><td>Bank debit: pay (202 PENDING), status query and signed callback (the <code>c2wbank</code> route).</td></tr>
   </table></div>
-  <p>There are no <code>.jsonata</code> files. The expressions are YAML strings inside the partner config, under
-    <code>mw.partners.instances.&lt;id&gt;.operations</code>. The dev seeds are in
-    <a href="../../services/mw-adapter-telco/src/main/resources/application-dev.yml">application-dev.yml</a> (dev profile only; a production
-    start has no partners). At runtime a <code>mw.config.changed.v1</code> record from mw-admin-api adds or replaces a partner's config,
-    and mw-admin-api stores the mappings in its <code>partner.mapping</code> table.</p>
-  <p>All the Java is one small class, <code>partner/mapping/JsonataMapping</code>:</p>
-  <pre><code>public static JsonataMapping compile(String source) {
+  <p>There are no <code>.jsonata</code> files. The expressions are strings in the partner record's <code>mappings</code>, by name
+    (<code>&lt;OPERATION&gt;.request</code>, <code>&lt;OPERATION&gt;.response</code>), next to the record's Camel route
+    (<a href="camel.html">Camel</a>, ADR D28). The route names the mapping it wants: <code>kamelet:mw-map?mapping=PAY.request</code> builds the
+    request body, <code>kamelet:mw-classify?mapping=PAY.response</code> reads the answer. The dev seeds are in
+    <a href="../../services/mw-adapter-telco/src/main/resources/application-dev.yml">application-dev.yml</a> (dev profile only; a production start has no partners).
+    At runtime an approved <code>mw.config.changed.v1</code> record from mw-admin-api adds or replaces a partner's whole record, mappings included.</p>
+  <p>All the Java is one small class, <code>partner/mapping/CompiledMapping</code>:</p>
+  <pre><code>public static CompiledMapping compile(String source) {
   try {
-    Jsonata.jsonata(source);
+    return new CompiledMapping(Jsonata.jsonata(source));
   } catch (RuntimeException e) {
     throw new IllegalArgumentException(e.getMessage(), e);
   }
-  return new JsonataMapping(source);
 }
 
 public Object evaluate(Object input) {
   try {
-    return Jsonata.jsonata(source).evaluate(input);
+    return expression.evaluate(input);
   } catch (RuntimeException e) {
     throw new MappingException(e.getMessage(), e);
   }
 }</code></pre>
   <ul>
-    <li><strong><code>compile</code></strong> runs when a partner config is loaded (<code>PartnerConfig</code> checks every operation's
-      request and response). A syntax error refuses the whole config, and the last good one stays.</li>
-    <li><strong><code>evaluate</code></strong> parses the expression again on every call. That costs a little time, but it means one mapping
-      can be shared by many concurrent calls whatever the thread safety of the evaluator.</li>
+    <li><strong><code>compile</code></strong> runs once when a partner record is loaded, for every mapping the route names. A syntax error refuses the
+      whole record, and the last good version stays live.</li>
+    <li><strong><code>evaluate</code></strong> reuses the compiled expression: dashjoin evaluates on a per-thread copy, so one mapping is shared by
+      concurrent calls. (Camel's own <code>jsonata:</code> component would parse the expression on every call, so the Kamelets do not use it.)</li>
     <li>Input and output are plain JSON values: maps, lists, strings, numbers and booleans.</li>
   </ul>
 
@@ -122,7 +122,8 @@ public Object evaluate(Object input) {
   </table></div>
 
   <h2 id="contract">What a mapping gets and must give back</h2>
-  <p><code>partner/template/RestJsonAdapter</code> decides the input of each mapping and checks its output.</p>
+  <p>Two Kamelet steps decide the input of each mapping and check its output: <code>partner/kamelet/MwMapStep</code> (request) and
+    <code>partner/kamelet/MwClassifyStep</code> (response).</p>
   <div class="table-wrap"><table>
     <tr><th>Mapping</th><th>Input</th><th>Output</th></tr>
     <tr><td><strong>request</strong></td><td>The call's <code>input</code> (<code>txnType</code>, <code>amount</code> with <code>valueMinor</code>, <code>currency</code> and
@@ -131,41 +132,43 @@ public Object evaluate(Object input) {
       <td>Any JSON value. It becomes the HTTP body.</td></tr>
     <tr><td><strong>response</strong></td><td><code>{status, body}</code>: the HTTP status code and the parsed JSON body (<code>null</code> when the body is not JSON).</td>
       <td><code>{outcome, partnerRef, code, message, reason}</code>, where <code>outcome</code> is <code>SUCCESS</code>, <code>FAILED</code>,
-        <code>PENDING</code> (async template only), <code>NOT_FOUND</code> (status inquiry only) or <code>UNKNOWN</code>.</td></tr>
+        <code>PENDING</code> (only where the route passes <code>pending=true</code>), <code>NOT_FOUND</code> (status inquiry only) or <code>UNKNOWN</code>.</td></tr>
   </table></div>
-  <p>The adapter builds the request input like this:</p>
+  <p><code>MwMapStep</code> builds the request input like this:</p>
   <pre><code>Map&lt;String, Object&gt; input = new LinkedHashMap&lt;&gt;(call.input());
 input.put("reference", call.reference());
 input.put("operation", call.operation());
 input.put("txnId", call.txnId());
 ...
-Object mapped = JsonataMapping.compile(op.request()).evaluate(input);
-body = json.writeValueAsBytes(mapped);</code></pre>
+Object mapped = PartnerExchange.runtime(exchange).mapping(name).evaluate(input);</code></pre>
   <p>The mapping does not get the last word. The adapter only believes an answer that fits the facts (it <strong>fails closed</strong>):</p>
   <ul>
     <li>A <strong>5xx</strong> status is UNKNOWN <em>before</em> any mapping runs. The response mapping never sees it.</li>
     <li><code>SUCCESS</code> needs a 2xx and a non-empty <code>partnerRef</code>.</li>
-    <li><code>FAILED</code> needs a <code>code</code> and a status listed in the operation's <code>definite-statuses</code>. A code listed in
-      <code>ambiguous-codes</code> becomes UNKNOWN instead.</li>
+    <li><code>FAILED</code> needs a <code>code</code> and a status listed in the route's <code>definiteStatuses</code> (a <code>mw-classify</code> parameter). A code listed in
+      <code>ambiguousCodes</code> of the record becomes UNKNOWN instead.</li>
     <li>Anything else is UNKNOWN: <code>UNEXPECTED_STATUS</code> for a believable answer on the wrong status, <code>MALFORMED_REPLY</code> for the rest.</li>
   </ul>
   <p>The partner's own code then goes through the <strong>error map</strong>, a plain table and not JSONata: partner code →
     <code>MW-PTR-&lt;PARTNER&gt;-&lt;suffix&gt;</code> plus whether it is retryable. An unlisted code becomes <code>UNMAPPED</code>, not retryable.</p>
 
   <h2 id="example">Worked example: the OCS top-up</h2>
-  <p>This is the real <code>[PAY]</code> operation of the <code>ocs</code> partner in
+  <p>This is the real PAY branch of the <code>ocs</code> partner's route and its two mappings in
     <a href="../../services/mw-adapter-telco/src/main/resources/application-dev.yml">application-dev.yml</a>:</p>
   <pre><code>error-map:
   "[2001]": { suffix: TOPUP_REJECTED, retryable: false }
-operations:
-  "[PAY]":
-    method: POST
-    path: /ocs/v1/topup
-    definite-statuses: [400, 422]
-    request: |
-      {"transactionId": reference, "msisdn": creditParty.id, "amount": amount.major}
-    response: |
-      status = 200
+route: |
+  ...
+        - simple: "${header.mwOperation} == 'PAY'"
+          steps:
+            - to: "kamelet:mw-map?mapping=PAY.request"
+            - to: "kamelet:mw-http-call?url=...&amp;method=POST&amp;path=/ocs/v1/topup&amp;auth=none"
+            - to: "kamelet:mw-classify?mapping=PAY.response&amp;definiteStatuses=400,422"
+mappings:
+  "[PAY.request]": |
+    {"transactionId": reference, "msisdn": creditParty.id, "amount": amount.major}
+  "[PAY.response]": |
+    status = 200
         ? (body.status = "SUCCESS" and $type(body.ocsRef) = "string" and body.ocsRef != ""
             ? {"outcome": "SUCCESS", "partnerRef": body.ocsRef, "code": body.code}
             : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
@@ -184,31 +187,32 @@ mw-adapter-telco -> OCS : POST /ocs/v1/topup
 OCS --> mw-adapter-telco : 422 {code: "2001", message}
 mw-adapter-telco -> JSONata : response mapping over {status: 422, body}
 JSONata --> mw-adapter-telco : {outcome: FAILED, code: "2001"}
-mw-adapter-telco -> mw-adapter-telco : 422 is definite; error map 2001 to TOPUP_REJECTED
+mw-adapter-telco -> mw-adapter-telco : mw-classify: 422 is definite; error map 2001 to TOPUP_REJECTED
   </script></div><figcaption>A refused top-up: two mappings and one error-map lookup.</figcaption></figure>
   <ol class="steps">
     <li><strong>Request.</strong> The input has <code>reference</code> (for example <code>BITS</code> plus the transaction id without dashes),
       <code>creditParty.id</code> (the phone number) and <code>amount.major</code> (<code>"20.00"</code> for 2000 minor units). The mapping picks those
-      three fields and renames them. The adapter sends the result as the body.</li>
+      three fields and renames them. <code>mw-http-call</code> sends the result as the body.</li>
     <li><strong>Answer.</strong> The OCS says 422 with <code>{"status":"FAILED","code":"2001","message":"Subscriber barred"}</code>.</li>
     <li><strong>Response.</strong> The mapping sees <code>status = 422</code> and a non-empty text <code>code</code>, so it returns
       <code>{"outcome": "FAILED", "code": "2001", ...}</code>.</li>
-    <li><strong>Checks.</strong> 422 is in <code>definite-statuses</code> and 2001 is not an ambiguous code, so FAILED is believed.</li>
+    <li><strong>Checks.</strong> 422 is in the route's <code>definiteStatuses</code> and 2001 is not an ambiguous code, so FAILED is believed.</li>
     <li><strong>Error map.</strong> <code>2001</code> maps to suffix <code>TOPUP_REJECTED</code>. The partner id was <code>gp</code>, so the reply carries
       <code>MW-PTR-GP-TOPUP_REJECTED</code>, not retryable. <code>route/TelcoRequestRouteIT</code> asserts exactly this.</li>
   </ol>
   <p>Had the OCS said 200 without an <code>ocsRef</code>, the mapping would return UNKNOWN with <code>MALFORMED_REPLY</code>, and the
-    orchestrator would find out the truth later with a status inquiry (the <code>[STATUS_QUERY]</code> operation just below it in the same file).</p>
+    orchestrator would find out the truth later with a status inquiry (the STATUS_QUERY branch and its <code>STATUS_QUERY.response</code> mapping in the same record).</p>
 
   <div class="box where" id="where"><div class="tag">Where it lives</div><ul>
-    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/mapping/JsonataMapping.java">partner/mapping/JsonataMapping.java</a>: compile and evaluate.</li>
-    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/template/RestJsonAdapter.java">partner/template/RestJsonAdapter.java</a>:
-      the inputs, the fail-closed checks and the error map lookup. Its class comment is the rule book.</li>
+    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/mapping/CompiledMapping.java">partner/mapping/CompiledMapping.java</a>: compile and evaluate.</li>
+    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/kamelet/MwMapStep.java">partner/kamelet/MwMapStep.java</a> (the request input) and
+      <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/kamelet/MwClassifyStep.java">partner/kamelet/MwClassifyStep.java</a>: the fail-closed checks and the error map lookup.
+      Its class comment is the rule book.</li>
     <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/mapper/PartnerCallMapper.java">mapper/PartnerCallMapper.java</a>: builds the request mapping's input.</li>
     <li><a href="../../services/mw-adapter-telco/src/main/resources/application-dev.yml">application-dev.yml</a>: the OCS mappings;
-      <a href="../../services/mw-adapter-telco/CLAUDE.md">services/mw-adapter-telco/CLAUDE.md</a>: the mapping contract in short.</li>
-    <li>Tests: <code>partner/template/OcsTemplateTest</code> and <code>partner/template/RestJsonTemplateTest</code> (no Docker),
-      <code>route/TelcoRequestRouteIT</code> (end to end).</li>
+      <a href="../../services/mw-adapter-telco/CLAUDE.md">services/mw-adapter-telco/CLAUDE.md</a>: the mapping contract in short; <a href="camel.html">Camel</a>: the route around the mappings.</li>
+    <li>Tests: <code>route/TelcoRequestRouteIT</code> (end to end, the refused top-up below), <code>partner/route/PartnerRouteLoaderTest</code>
+      (the route that names the mappings, no Docker).</li>
   </ul></div>
 
   <h2 id="wrong">What can go wrong</h2>
@@ -223,8 +227,8 @@ mw-adapter-telco -> mw-adapter-telco : 422 is definite; error map 2001 to TOPUP_
       may change the key (for example lower-case it), and the operation <code>PAY</code> or the code <code>2001</code> is then not found.
       Write <code>"[2001]"</code> and <code>"[PAY]"</code>, quotes included, as in the seed file.</li>
     <li><strong><code>==</code> instead of <code>=</code>.</strong> JSONata compares with a single <code>=</code>. A syntax error is caught at config load, and the
-      config is refused with the field name (<code>operations.PAY.response does not compile</code>).</li>
-    <li><strong>A mapping leaks a personal value into a log.</strong> Mappings never log, but the raw bodies are audited. List personal fields under
+      record is refused with the mapping's name (for example <code>PAY.response</code>), and the live version keeps serving.</li>
+    <li><strong>A mapping leaks a personal value into a log.</strong> Mappings never log, but the raw bodies are audited. List personal fields under the record's
       <code>sensitive-fields</code> (for OCS: <code>msisdn: MSISDN</code>) so the audit masks them.</li>
   </ul></div>
 

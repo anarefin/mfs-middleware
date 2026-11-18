@@ -133,7 +133,7 @@ implementation("org.springframework.boot:spring-boot-starter-aspectj")</code></p
   <div class="table-wrap"><table>
     <tr><th>Style</th><th>Where</th><th>Instances</th></tr>
     <tr><td><strong>Programmatic</strong>: code asks a registry for a breaker and calls <code>executeSupplier</code></td>
-      <td><code>partner/template/PartnerCallWrapper</code> in the three adapters; <code>client/AuthClient</code> in mw-app-gateway, mw-ussd and mw-checkout;
+      <td>the <code>circuitBreaker</code> step of the <code>mw-http-call</code> / <code>mw-soap-call</code> Kamelets in the three adapters (Camel's Resilience4j EIP); <code>client/AuthClient</code> in mw-app-gateway, mw-ussd and mw-checkout;
         <code>client/CryptoClient</code> in mw-auth; <code>client/PayShieldProvider</code> in mw-crypto</td>
       <td>one per partner (<code>ocs</code>, ...), <code>mw-auth</code>, ...</td></tr>
     <tr><td><strong>Annotations</strong>: <code>@CircuitBreaker</code> and <code>@Retry</code> on a method</td>
@@ -142,44 +142,51 @@ implementation("org.springframework.boot:spring-boot-starter-aspectj")</code></p
       <td><code>billpay</code>, <code>orchestrator</code>, <code>audit-dw</code></td></tr>
   </table></div>
 
-  <h2 id="partner">Partner calls: the framework wrapper</h2>
-  <p>Every partner call in an adapter goes through <code>PartnerCallWrapper.call</code>. The wrapping is three layers deep, outside in:</p>
-  <pre><code>try {
-  response =
-      bulkhead.executeSupplier(
-          () -&gt;
-              breaker.executeSupplier(
-                  () -&gt;
-                      timeLimited(
-                          instance,
-                          () -&gt;
-                              inquiry
-                                  ? instance.adapter().inquire(call, ctx)
-                                  : instance.adapter().execute(call, ctx))));
-} catch (BulkheadFullException e) {
-  response = new PartnerResponse.NotSent(NotSentReason.BULKHEAD_FULL);
-} catch (CallNotPermittedException e) {
-  response = new PartnerResponse.NotSent(NotSentReason.CIRCUIT_OPEN);
-} catch (PartnerNotSentException e) {
-  response = new PartnerResponse.NotSent(e.reason());
-} catch (PartnerUnknownOutcomeException e) {
-  response = new PartnerResponse.Unknown(e.reason());
-}</code></pre>
+  <h2 id="partner">Partner calls: inside the Kamelet</h2>
+  <p>Every partner call is a step of the partner's route (<a href="camel.html">Camel</a>): <code>kamelet:mw-http-call</code> (or <code>mw-soap-call</code>).
+    The Kamelet wraps the send in Camel's <code>circuitBreaker</code> EIP, configured for Resilience4j: breaker, time limit and bulkhead in one step.
+    From <code>src/main/resources/kamelets/mw-http-call.kamelet.yaml</code>:</p>
+  <pre><code>- loop:
+    doWhile: true
+    simple: "${exchangeProperty.mwAttemptAgain} == true"
+    steps:
+      - to: "kamelet:mw-auth-{{auth}}?..."          # signed again before every attempt
+      - circuitBreaker:
+          resilience4jConfiguration:
+            circuitBreaker: "mw-cb-{{partnerId}}"     # the partner's own breaker
+            timeoutEnabled: true
+            timeoutDuration: "{{timeoutMs}}"          # from the record
+            bulkheadEnabled: true
+            bulkheadMaxConcurrentCalls: "{{bulkhead}}"
+          steps:
+            - to: "{{url}}?throwExceptionOnFailure=false&amp;followRedirects=false&amp;..."
+            - bean: { ref: mwHttp, method: response }   # a 5xx throws here, inside the breaker
+          onFallback:
+            steps:
+              - bean: { ref: mwHttp, method: fallback } # what the failure means</code></pre>
+  <p><code>MwHttpStep.fallback</code> turns the failure into an outcome:</p>
   <div class="table-wrap"><table>
     <tr><th>What happens</th><th>Outcome</th><th>Reply code (via <code>mapper/PartnerReplyMapper</code>)</th></tr>
     <tr><td>Bulkhead full</td><td>NOT_SENT <code>BULKHEAD_FULL</code></td><td>FAILED <code>MW-SYS-PARTNER_BUSY</code>, retryable</td></tr>
     <tr><td>Circuit open</td><td>NOT_SENT <code>CIRCUIT_OPEN</code></td><td>FAILED <code>MW-SYS-PARTNER_CIRCUIT_OPEN</code>, retryable</td></tr>
+    <tr><td>Connect failed</td><td>NOT_SENT <code>CONNECT_FAILED</code></td><td>FAILED <code>MW-SYS-PARTNER_UNAVAILABLE</code>, retryable</td></tr>
     <tr><td>Time limit passed</td><td>UNKNOWN <code>TIMEOUT</code></td><td>UNKNOWN <code>MW-TMO-PARTNER_TIMEOUT</code></td></tr>
+    <tr><td>Partner answered 5xx</td><td>UNKNOWN <code>HTTP_5XX</code></td><td>UNKNOWN <code>MW-TMO-PARTNER_HTTP_5XX</code></td></tr>
   </table></div>
   <p>NOT_SENT means nothing left the building, so the caller may safely try again later. UNKNOWN means the partner may have acted.</p>
   <ul>
-    <li><strong>Exactly one attempt.</strong> The class comment: <em>"Exactly one attempt: no retry here, ever (a payment is not idempotent from our side)."</em></li>
-    <li><strong>Names.</strong> The breaker and bulkhead are named by the partner config's <code>resilience</code> field, default the instance id. So the
-      <code>ocs</code> instance under <code>resilience4j.circuitbreaker.instances</code> applies to the <code>ocs</code> partner.</li>
-    <li><strong>Time limit from partner config, not YAML.</strong> Each partner instance builds its own <code>TimeLimiter</code> from <code>timeoutMs</code>
-      (<code>partner/config/PartnerConfig</code>: default 30000 ms; connect 3000 ms; read timeout = timeout + 2000 ms so the limiter decides first).
-      The OCS dev seed sets <code>timeout-ms: 20000</code> and <code>read-timeout-ms: 22000</code>. A <code>mw.config.changed.v1</code> record can change it without a restart.</li>
-    <li><strong>Only exceptions count.</strong> Transport failures, 5xx, timeouts and unreadable replies throw, so the breaker counts them. A business
+    <li><strong>A PAY is sent once.</strong> The <code>loop</code> sends again only an <code>INQUIRY</code> or <code>STATUS_QUERY</code>, at most the record's
+      <code>inquiryRetries</code> times, after a timeout, 5xx, reset or failed connect. A payment is not idempotent from our side, so it is never
+      re-sent (the one exception: an OAuth2 token the partner refused with 401, where nothing was applied; ADR D28).</li>
+    <li><strong>Names.</strong> The breaker is the Resilience4j instance named by the partner id (the record's <code>resilience</code> overrides its
+      settings), bound in Camel's registry as <code>mw-cb-&lt;id&gt;</code> by <code>partner/route/PartnerRoutes</code>. So the <code>ocs</code> instance under
+      <code>resilience4j.circuitbreaker.instances</code> applies to the <code>ocs</code> partner, and its state survives a route swap. A dry-run uses
+      its own breaker <code>mw-cb-&lt;id&gt;~candidate</code>, so a failing dry-run never opens the live one.</li>
+    <li><strong>Time limit from the record, not YAML.</strong> The loader injects <code>timeoutMs</code>, <code>connectTimeoutMs</code>, <code>readTimeoutMs</code>
+      and <code>bulkhead</code> into the Kamelet from the partner record; a route cannot set them. The OCS dev seed sets <code>timeout-ms: 20000</code> and
+      <code>read-timeout-ms: 22000</code> (the read timeout sits above, so the time limit decides first). An approved <code>mw.config.changed.v1</code> record
+      changes them without a restart.</li>
+    <li><strong>Only exceptions count.</strong> Transport failures, 5xx (thrown on purpose inside the breaker) and timeouts count. A business
       refusal ("subscriber barred") is a normal answer and does not open the breaker.</li>
   </ul>
 
@@ -217,20 +224,22 @@ mw-adapter-telco => mw-orchestrator : the true outcome
   </script></div><figcaption>A timeout becomes UNKNOWN; a status inquiry finds the truth.</figcaption></figure>
   <ol class="steps">
     <li>The bulkhead lets the call in (fewer than 100 OCS calls in flight) and the breaker is closed.</li>
-    <li>The time limiter runs the adapter on the call executor and waits up to 20 s. After that it gives up and the wrapper reports UNKNOWN with
-      reason <code>TIMEOUT</code>. The OCS may or may not have topped up the phone, so the middleware does not guess.</li>
+    <li>The breaker's time limit (<code>timeoutDuration</code>, 20 s from the record) waits for the OCS. After that it gives up and
+      <code>MwHttpStep.fallback</code> reports UNKNOWN with reason <code>TIMEOUT</code>; a PAY is not sent again. The OCS may or may not have topped up the phone, so the middleware does not guess.</li>
     <li>The breaker records a failure. One timeout does nothing; at least 50 calls in 60 s with half failing (or slower than 16 s) would open it.</li>
     <li>The orchestrator moves the transaction to UNKNOWN and arms an inquiry timer (swept by its ShedLock-guarded <code>SagaTimerJob</code>, see
       <a href="shedlock.html">ShedLock</a>).</li>
-    <li>The inquiry is a <code>STATUS_QUERY</code> with the same stable reference. It also goes through the wrapper: one attempt, same limits.</li>
+    <li>The inquiry is a <code>STATUS_QUERY</code> with the same stable reference, through the same breaker and limits. Unlike the PAY it may be
+      sent once more after a timeout (<code>inquiry-retries: 1</code> in the OCS seed).</li>
   </ol>
   <p>If the OCS is really down, the breaker opens after enough failures. For the next 30 s calls fail fast with <code>MW-SYS-PARTNER_CIRCUIT_OPEN</code>
     and the OCS is not called at all. <code>route/TelcoRequestRouteIT</code> proves this with a 4-call <code>COUNT_BASED</code> window: four 500s, then the fifth
     request is refused without reaching WireMock.</p>
 
   <div class="box where" id="where"><div class="tag">Where it lives</div><ul>
-    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/template/PartnerCallWrapper.java">partner/template/PartnerCallWrapper.java</a>: the wrapper; its comment is the rule.</li>
-    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/template/PartnerInstanceFactory.java">PartnerInstanceFactory.java</a> (builds each partner's time limiter),
+    <li><code>services/mw-adapter-telco/src/main/resources/kamelets/mw-http-call.kamelet.yaml</code>: the breaker, time limit, bulkhead and loop;
+      <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/kamelet/MwHttpStep.java">partner/kamelet/MwHttpStep.java</a>: what a failure means (<code>fallback</code>).</li>
+    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/route/PartnerRoutes.java">partner/route/PartnerRoutes.java</a> (binds <code>mw-cb-&lt;id&gt;</code>),
       <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/config/PartnerConfig.java">partner/config/PartnerConfig.java</a> (timeout defaults).</li>
     <li><a href="../../services/mw-adapter-telco/src/main/resources/application.yml">mw-adapter-telco application.yml</a> and
       <a href="../../services/mw-app-gateway/src/main/resources/application.yml">mw-app-gateway application.yml</a>: the <code>resilience4j</code> blocks.</li>

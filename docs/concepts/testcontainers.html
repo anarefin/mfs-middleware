@@ -91,7 +91,7 @@ tasks.test {
     <tr><th>Setting</th><th>Where</th><th>Effect</th></tr>
     <tr><td><code>mwDockerTests=4</code></td><td>root <code>gradle.properties</code></td><td>At most four module test tasks (four PostgreSQL + Kafka pairs) at once on an 8-core host.</td></tr>
     <tr><td><code>slow-wait</code> tag</td><td>each module's <code>build.gradle.kts</code></td><td>Tests that deliberately wait 2 s or more are left out unless you pass <code>-PwithSlow</code> (milestone gate).</td></tr>
-    <tr><td>test config</td><td><code>src/test/resources/config/application.yml</code></td><td>Outbox relay every 50 ms, Camel Kafka shutdown timeout 100 ms, consumers that would compete switched off.</td></tr>
+    <tr><td>test config</td><td><code>src/test/resources/config/application.yml</code></td><td>Outbox relay every 50 ms, Kafka listener container shutdown timeout 100 ms (<code>mw.kafka.listener.shutdown-timeout</code>), consumers that would compete switched off.</td></tr>
   </table></div>
   <p>Every service except <code>mw-seeder</code> has the Testcontainers BOM and its own copy of the three test classes below.</p>
 
@@ -125,8 +125,8 @@ DynamicPropertyRegistrar testInfrastructureProperties() {
     registry.add("spring.datasource.url", () -&gt; url);
     registry.add("spring.datasource.username", POSTGRES::getUsername);
     registry.add("spring.datasource.password", POSTGRES::getPassword);
-    // Camel's Kafka component does not read Spring Boot's Kafka connection details.
-    registry.add("camel.component.kafka.brokers", KAFKA::getBootstrapServers);
+    // No @ServiceConnection on the Kafka bean: wire Spring Kafka to it by hand.
+    registry.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
   };
 }</code></pre>
   <p>Flyway then migrates the empty <code>ctx_&lt;n&gt;</code>, and no context sees another's rows. Kafka is shared by all contexts: tests keep apart by their

@@ -30,260 +30,142 @@
 
 <main>
   <div class="chapter-no">Library</div>
-  <h1>Apache Camel: the plumbing between Kafka, services and partners</h1>
-  <p class="lead">Camel runs inside every Spring Boot service that talks to Kafka. It reads records, hands them to a
-    Spring bean, parks failures on retry topics and publishes our outbox. In the three adapters it also runs the
-    route templates that every partner call goes through.</p>
+  <h1>Apache Camel: partner routes, and nothing else</h1>
+  <p class="lead">Camel runs only in the three partner adapters (<code>mw-adapter-telco</code>, <code>-billpay</code>, <code>-bank</code>),
+    and there only to run the <strong>partner routes</strong>: one small Camel YAML DSL route per partner, built from a reviewed
+    library of <code>mw-*</code> Kamelets, that turns our canonical partner call into the partner's HTTP, SOAP or SFTP traffic and
+    back. Kafka does not go through Camel anywhere: every module, the adapters included, reads and writes Kafka with Spring Kafka.</p>
 
-  <div class="toc"><strong>On this page</strong><ol>
-    <li><a href="#plain">In plain English</a></li>
-    <li><a href="#why">Why we use it here</a></li>
-    <li><a href="#wired">How it is wired</a></li>
-    <li><a href="#retry">Kafka consumers with retry topics</a></li>
-    <li><a href="#templates">Route templates for partners</a></li>
-    <li><a href="#example">Worked example: an airtime top-up</a></li>
-    <li><a href="#where">Where it lives</a></li>
+  <div class="box"><div class="tag">On this page</div><ul>
+    <li><a href="#where">Where Camel is, and where it is not</a></li>
+    <li><a href="#words">The words you need</a></li>
+    <li><a href="#contract">The route contract</a></li>
+    <li><a href="#kamelets">The Kamelet library</a></li>
+    <li><a href="#guardrails">The guardrails</a></li>
+    <li><a href="#example">Worked example: a bill payment</a></li>
+    <li><a href="#files">Files to read</a></li>
     <li><a href="#wrong">What can go wrong</a></li>
-    <li><a href="#next">Read next</a></li>
-  </ol></div>
+  </ul></div>
 
-  <h2 id="plain">In plain English</h2>
-  <div class="box plain"><div class="tag">In plain English</div>
-    <p>Think of a post office sorting room. Letters come in through one door. Each one goes along a fixed path of
-      conveyor belts: it is stamped, checked and dropped into the right bag. Apache Camel is that sorting room for messages.
-      You describe the belts once, in Java, and Camel moves every message along them.</p>
-    <p>A <strong>route</strong> is one such path: "take messages <em>from</em> here, do these steps, send them <em>to</em> there".
-      An <strong>endpoint</strong> is one end of a route, written as a URI such as <code>kafka:mw.partner.request.telco.v1</code>
-      or <code>direct:partner-ocs</code>. A <strong>component</strong> is the plug-in that knows how to talk to one kind of
-      endpoint (the Kafka component, the timer component, and so on).</p>
-  </div>
-  <p>A few Camel words you will see everywhere:</p>
-  <div class="table-wrap"><table>
-    <tr><th>Word</th><th>Meaning</th><th>Example here</th></tr>
-    <tr><td><strong>Route</strong></td><td>A path from one endpoint through some steps to others.</td><td>The consumer of <code>mw.partner.request.telco.v1</code></td></tr>
-    <tr><td><strong>RouteBuilder</strong></td><td>A Java class whose <code>configure()</code> method defines routes. A Spring <code>@Component</code> of this type is picked up by Camel at start.</td><td><code>route/TelcoRequestRouteBuilder</code></td></tr>
-    <tr><td><strong>Exchange</strong></td><td>One message on its way through a route, with headers and a body.</td><td>One Kafka record</td></tr>
-    <tr><td><strong>Endpoint URI</strong></td><td>Where a route reads from or writes to.</td><td><code>kafka:...</code>, <code>bean:telcoRequestHandler?method=handle</code>, <code>timer:outbox-relay</code></td></tr>
-    <tr><td><strong><code>direct:</code></strong></td><td>An in-memory endpoint. Calling it runs the route on the caller's own thread, like a method call.</td><td><code>direct:partner-ocs</code></td></tr>
-    <tr><td><strong>Route template</strong></td><td>A route with blanks (parameters). Fill in the blanks and you get a new real route.</td><td><code>rest-json-request-reply</code>, parameter <code>partner</code></td></tr>
-    <tr><td><strong>ProducerTemplate</strong></td><td>A Camel helper that lets plain Java code send a message into an endpoint and wait for the answer.</td><td><code>PartnerGateway</code></td></tr>
-  </table></div>
+  <h2 id="where">Where Camel is, and where it is not</h2>
+  <table>
+    <tr><th>Concern</th><th>Library</th><th>Where</th></tr>
+    <tr><td>Kafka consumers, retry topics, DLQ</td><td>Spring Kafka (<a href="../adr/D27-kafka-client.md">ADR D27</a>)</td>
+      <td><code>@KafkaListener</code>s in <code>messaging/</code> (and <code>partner/config/PartnerConfigKafkaListener</code> in the adapters),
+        retry topics <code>&lt;topic&gt;.&lt;group&gt;.retry.1..3</code> then <code>.dlq</code> from <code>config/KafkaConfig</code></td></tr>
+    <tr><td>Kafka producer, outbox relay</td><td>Spring Kafka</td>
+      <td><code>messaging/EventPublisher</code> (<code>KafkaTemplate</code>), <code>scheduler/OutboxRelayScheduler</code> (ShedLock)</td></tr>
+    <tr><td>A call to a partner, an SFTP batch file</td><td>Camel (<a href="../adr/D28-partner-routes-as-config.md">ADR D28</a>)</td>
+      <td>the partner route of that partner, run by <code>partner/route/PartnerRoutes</code> in each adapter</td></tr>
+  </table>
+  <p><code>./gradlew :checkIsolation</code> fails a build when any module other than <code>mw-adapter-*</code> declares a Camel
+    dependency or imports <code>org.apache.camel</code> (<a href="../adr/D1-integration-engine.md">ADR D1</a>, as amended). The XML DSL is
+    never used; routes are YAML, the adapters' own Java steps live in <code>partner/kamelet/</code>.</p>
 
-  <h2 id="why">Why we use it here</h2>
-  <p>The decision record <a href="../adr/D1-integration-engine.md">D1</a> picks Camel 4 inside every Boot app:
-    <em>"Partner and messaging integration uses Apache Camel 4 (Java and YAML route DSL, no XML DSL) inside the Spring Boot app."</em>
-    Its main payoff is in the adapters: <em>"Camel route templates turn partner onboarding into mostly configuration."</em></p>
-  <p>Spec section 12 (the adapter framework) builds on that. A partner of a known kind is a route template plus
-    parameters; a template becomes a live route at runtime through Camel's <code>TemplatedRouteBuilder</code>. So adding
-    a fifth telco is a configuration change, not a new class.</p>
-  <p>A <strong>DSL</strong> (domain-specific language) here just means the way you write routes. We write them in the
-    <strong>Java DSL</strong> (method chains like <code>from(...).to(...)</code>). D1 also allows the YAML DSL, but
-    the repo has no <code>*.camel.yaml</code> files today: every route, templates included, is Java. Virtual threads
-    are on (<code>spring.threads.virtual.enabled</code>), so a blocking partner call does not need a reactive stack.</p>
+  <h2 id="words">The words you need</h2>
+  <table>
+    <tr><th>Word</th><th>What it is</th><th>In this repo</th></tr>
+    <tr><td><strong>Route</strong></td><td>A pipeline of steps from one endpoint to another.</td><td>One per partner, <code>from: direct:partner-&lt;id&gt;</code></td></tr>
+    <tr><td><strong>Kamelet</strong></td><td>A reusable route snippet with typed parameters, called as <code>kamelet:&lt;name&gt;?param=...</code>.</td><td><code>src/main/resources/kamelets/mw-*.kamelet.yaml</code></td></tr>
+    <tr><td><strong>Partner record</strong></td><td>The route plus its JSONata mappings, allowed hosts, error map and timeouts, approved by maker-checker.</td><td><code>mw.config.changed.v1</code>, value <code>PartnerConfig</code></td></tr>
+    <tr><td><strong>Exchange</strong></td><td>One call on its way through a route, with headers and a body.</td><td>One partner call (<code>PartnerCall</code> JSON)</td></tr>
+  </table>
 
-  <h2 id="wired">How it is wired</h2>
-  <p>Every module writes its versions inline in its own <code>build.gradle.kts</code> (ADRs <a href="../adr/D13-build.md">D13</a>
-    and <a href="../adr/D14-code-sharing.md">D14</a>). From <a href="../../services/mw-adapter-telco/build.gradle.kts">services/mw-adapter-telco/build.gradle.kts</a>:</p>
-  <pre><code>implementation(platform("org.apache.camel.springboot:camel-spring-boot-bom:4.22.2"))
-...
-// Kafka through Camel (spec 6.1, 19.2): idempotent producer, retry topics, DLQ.
-implementation("org.apache.camel.springboot:camel-spring-boot-starter")
-implementation("org.apache.camel.springboot:camel-kafka-starter")
-...
-testImplementation("org.apache.camel:camel-test-spring-junit6")</code></pre>
-  <p>The Kafka settings live under <code>camel.component.kafka</code> in each service's <code>application.yml</code>
-    (from <a href="../../services/mw-adapter-telco/src/main/resources/application.yml">the telco adapter's</a>):</p>
-  <pre><code>camel:
-  component:
-    kafka:
-      brokers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
-      # Producer: exactly one copy per send, every in-sync replica acknowledges (6.1).
-      request-required-acks: all
-      enable-idempotence: true
-      max-in-flight-request: 5
-      group-id: ${spring.application.name}
-      auto-offset-reset: earliest
-      break-on-first-error: true
-      auto-commit-enable: false
-      allow-manual-commit: true</code></pre>
-  <div class="table-wrap"><table>
-    <tr><th>Key</th><th>What it means</th></tr>
-    <tr><td><code>request-required-acks: all</code>, <code>enable-idempotence: true</code></td><td>The producer waits until every in-sync broker has the record, and Kafka drops a duplicate if the producer resends.</td></tr>
-    <tr><td><code>group-id</code></td><td>One consumer group per service: the service name.</td></tr>
-    <tr><td><code>auto-commit-enable: false</code>, <code>allow-manual-commit: true</code></td><td>Offsets are never committed on a timer. A route commits each record itself, only after it is handled or parked.</td></tr>
-    <tr><td><code>break-on-first-error: true</code></td><td>If even parking a record fails, the partition stops instead of skipping past it.</td></tr>
-  </table></div>
-  <p>Which services use it:</p>
-  <div class="table-wrap"><table>
-    <tr><th>Where</th><th>What Camel does there</th></tr>
-    <tr><td>Every service with a <code>route/</code> package: all 15 <code>mw-*</code> services except the one-shot <code>mw-seeder</code></td><td>Kafka consumers through <code>route/RetryTopicRouteBuilder</code>, and the outbox relay timer <code>route/OutboxRelayRouteBuilder</code>.</td></tr>
-    <tr><td>The three adapters: <code>mw-adapter-telco</code>, <code>mw-adapter-billpay</code>, <code>mw-adapter-bank</code></td><td>Also the partner route templates in <code>partner/template/</code> and the config hot reload in <code>partner/config/</code>.</td></tr>
-  </table></div>
-  <p>The partner framework is <strong>not</strong> a library. It is written once in mw-adapter-telco and copied into the other
-    two adapters (spec 12, D14). The copies stay identical apart from the package name.</p>
-
-  <h2 id="retry">Kafka consumers with retry topics</h2>
-  <p>Every Kafka consumer in the repo is a small subclass of <code>RetryTopicRouteBuilder</code>. The subclass says only
-    which topic to read and which bean handles a record. Here is the whole telco one:</p>
-  <pre><code>@Component
-@ConditionalOnProperty(name = "mw.telco.request-consumer.enabled", havingValue = "true", matchIfMissing = true)
-public class TelcoRequestRouteBuilder extends RetryTopicRouteBuilder {
-
-  public static final String TOPIC = "mw.partner.request.telco.v1";
-  ...
-  @Override
-  protected String handlerUri() {
-    return "bean:telcoRequestHandler?method=handle";
-  }
-}</code></pre>
-  <p>The base class builds the routes. The main route, shortened:</p>
-  <pre><code>from("kafka:" + topic())
-    .routeId(topic() + ".consume")
-    .onException(Exception.class)
-    .handled(true)
-    .useOriginalMessage()
-    .process(e -&gt; park(e, 1))
-    .to("kafka:" + nextTopic(group, 1))
-    .process(RetryTopicRouteBuilder::commit)
-    .end()
-    .to(handlerUri())
-    .process(RetryTopicRouteBuilder::commit);</code></pre>
-  <p>Read it top to bottom:</p>
+  <h2 id="contract">The route contract</h2>
   <ul>
-    <li><strong>Happy path:</strong> the record goes to the handler bean, then the offset is committed.</li>
-    <li><strong>The handler throws:</strong> <code>onException</code> catches it, takes the <em>original</em> record (same key, body and headers),
-      stamps a few <code>mw-*</code> headers (attempt, original topic, error class, not-before time) and sends it to
-      <code>&lt;topic&gt;.&lt;group&gt;.retry.1</code>. Then it commits. The source partition is never blocked by one bad record.</li>
-    <li><strong>Retry topics:</strong> one more route per delay reads <code>retry.1</code>, <code>retry.2</code>, <code>retry.3</code>. If the record
-      fails again it moves on; after the last one it lands on <code>&lt;topic&gt;.&lt;group&gt;.dlq</code> (the dead-letter queue).
-      The delays are <code>mw.kafka.retry.delays: 10s,1m,10m</code> (spec 19.2).</li>
-    <li><strong>No sleeping:</strong> a retry consumer that gets a record too early <em>pauses</em> the partition
-      (<code>messaging/RetryDelayListener</code>) and checks again every 500 ms. It never calls <code>sleep</code> on the consumer thread.</li>
+    <li><strong>In:</strong> <code>from: direct:partner-&lt;id&gt;</code>; the body is the canonical call (<code>partnerId</code>, <code>operation</code>,
+      <code>txnId</code>, <code>reference</code>, <code>input</code>), the headers <code>mwOperation</code> (<code>PAY</code>, <code>INQUIRY</code>,
+      <code>STATUS_QUERY</code>), <code>mwReference</code>, <code>mwCorrelationId</code>, <code>mwPartnerId</code>, <code>mwTxnId</code>. No <code>mw*</code>
+      header ever leaves the service.</li>
+    <li><strong>Out:</strong> <code>{outcome, partnerRef, code, message, reason}</code> (plus <code>errorSuffix</code>, <code>retryable</code>, <code>attributes</code>),
+      produced and checked by <code>mw-classify</code>. A missing or invalid output is UNKNOWN: fail closed.</li>
+    <li>The route ends with <code>mw-classify</code> (directly, or at the end of every branch of a final <code>choice</code>) and then <code>mw-audit</code>.</li>
+    <li>A <strong>batch route</strong> starts from <code>kamelet:mw-sftp-source?...</code> instead and ends with <code>mw-recon</code>: it takes no calls,
+      has no dry-run and polls only while the record is enabled.</li>
   </ul>
-  <p>The topic names carry the consumer group (the service name), so two services that read the same topic never re-read each
-    other's parked records. The retry and DLQ topics are declared in <code>deploy/kafka/topics.txt</code> with
-    <code>retry=&lt;group&gt;</code>, for example <code>mw.partner.request.telco.v1 24 3d retry=mw-adapter-telco</code>.</p>
-  <p>The commit uses the header Camel puts on every record when manual commit is on (<code>KafkaConstants.MANUAL_COMMIT</code>, value
-    <code>CamelKafkaManualCommit</code>):</p>
-  <pre><code>KafkaManualCommit commit =
-    exchange.getMessage().getHeader(KafkaConstants.MANUAL_COMMIT, KafkaManualCommit.class);
-if (commit == null) {
-  throw new IllegalStateException("Kafka manual commit is not enabled for this consumer");
-}
-commit.commit();</code></pre>
-  <p>The outbox relay is a Camel route too, but on a timer, not Kafka (see <a href="../tutorial/03-core-ideas.html#outbox">the outbox idea</a>):</p>
-  <pre><code>from("timer:outbox-relay?delay=0&amp;period=" + properties.period().toMillis())
-    .routeId("outbox.relay")
-    .autoStartup(properties.enabled())
-    .process(e -&gt; relay.relayPending());</code></pre>
 
-  <h2 id="templates">Route templates for partners</h2>
-  <p>In the adapters, every partner instance (for example <code>ocs</code>, the telco's Online Charging System) gets its own
-    Camel route, made from a template. <code>partner/template/PartnerRouteTemplates</code> defines the two templates
-    the adapters ship today:</p>
-  <pre><code>for (String template : new String[] {PartnerTemplates.REQUEST_REPLY, PartnerTemplates.ASYNC_CALLBACK}) {
-  routeTemplate(template)
-      .templateParameter(PARAM, null, "partner instance id")
-      .from("direct:partner-{{" + PARAM + "}}")
-      .setHeader(INSTANCE_HEADER, constant("{{" + PARAM + "}}"))
-      .choice()
-      .when(body().isInstanceOf(InboundCall.class))
-      .process(this::inbound)
-      .otherwise()
-      .process(this::outbound)
-      .end();
-}</code></pre>
-  <p><code>REQUEST_REPLY</code> is <code>rest-json-request-reply</code> (one HTTP request, the answer in the reply).
-    <code>ASYNC_CALLBACK</code> is <code>rest-json-async-callback</code> (the partner says PENDING first and calls us back later).
-    The only parameter is <code>partner</code>, the instance id. <code>{{partner}}</code> is Camel's placeholder syntax, so the
-    template for <code>ocs</code> becomes a route that starts at <code>direct:partner-ocs</code>.</p>
-  <p>Who fills in the blanks? <code>PartnerRouteRegistrar</code> keeps one route per partner in step with the partner config:</p>
-  <pre><code>TemplatedRouteBuilder.builder(camel, template)
-    .routeId(PartnerTemplates.routeId(id))
-    .parameter(PartnerRouteTemplates.PARAM, id)
-    .add();</code></pre>
-  <ul>
-    <li>A new partner appears: a route is added. Its template changes: the route is removed and added again. It is deleted: the route goes.</li>
-    <li>The first <code>sync()</code> runs once Camel has started (a <code>CamelContextConfiguration</code> in
-      <code>partner/PartnerFrameworkConfiguration</code>), because the templates must exist first.</li>
-    <li>After that, a <code>mw.config.changed.v1</code> record triggers it. <code>partner/config/PartnerConfigRouteBuilder</code> reads that
-      topic from the beginning with a fresh consumer group on every start, so the config rebuilds itself without a restart (hot reload).</li>
-    <li>URL, timeouts, auth and mappings are read from the config at <em>call</em> time, so only a template change recreates the route.</li>
-  </ul>
-  <p>Service code never builds an endpoint URI by hand. It calls <code>PartnerGateway</code>, which uses a <code>ProducerTemplate</code>:</p>
-  <pre><code>return producer.requestBody(PartnerTemplates.endpoint(instance), call, PartnerResponse.class);</code></pre>
-  <p><code>requestBody</code> blocks until the route answers. That is fine on a virtual thread, and never allowed on a Kafka consumer
-    thread (root CLAUDE.md, "Never block on Kafka listener threads").</p>
+  <h2 id="kamelets">The Kamelet library</h2>
+  <table>
+    <tr><th>Kamelet</th><th>What it does</th></tr>
+    <tr><td><code>mw-map</code></td><td>The request body from the canonical call, by a named JSONata mapping of the record (<a href="jsonata.html">JSONata</a>).</td></tr>
+    <tr><td><code>mw-http-call</code></td><td>One call to <code>url</code> + <code>path</code>, signed by <code>mw-auth-&lt;auth&gt;</code>, inside the partner's circuit breaker,
+      time limit and bulkhead (<a href="resilience4j.html">Resilience4j</a>). A PAY is never sent twice; an INQUIRY / STATUS_QUERY at most <code>inquiryRetries</code> times.</td></tr>
+    <tr><td><code>mw-soap-call</code></td><td>The SOAP case: XSLT request and response stylesheets, SOAP 1.1 / 1.2, optional WS-Security.</td></tr>
+    <tr><td><code>mw-auth-none</code>, <code>-apikey</code>, <code>-hmac-sha256</code>, <code>-basic</code>, <code>-oauth2-cc</code>, <code>-jws</code></td>
+      <td>The auth schemes. A secret is a <em>field name</em> of the partner's own OpenBao secret <code>secret/&lt;adapter&gt;/&lt;partnerId&gt;</code>, never a value in the route.</td></tr>
+    <tr><td><code>mw-classify</code></td><td>The partner's answer to the route output, with fail-closed rules no mapping can override.</td></tr>
+    <tr><td><code>mw-audit</code></td><td>The masked audit record (<code>mw.audit.event.v1</code>).</td></tr>
+    <tr><td><code>mw-sftp-source</code>, <code>mw-sftp-sink</code>, <code>mw-recon</code></td><td>Batch files over SFTP: strict host keys, each file once, never deleted;
+      every line becomes <code>mw.partner.recon.v1</code> through the outbox, a file all or nothing.</td></tr>
+  </table>
+  <p>A breaking change to a Kamelet ships under a new name (<code>mw-http-call-v2</code>); the old one stays until no LIVE route uses it.
+    The full parameter list per auth scheme is in <a href="camel-partner-routes.md">camel-partner-routes.md</a>.</p>
 
-  <h2 id="example">Worked example: an airtime top-up</h2>
-  <p>The orchestrator asks the telco adapter to top up a phone. Here is the Camel side of it, from Kafka record to Kafka reply:</p>
-  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
-actors: mw-orchestrator | Kafka | mw-adapter-telco | OCS
-mw-orchestrator => Kafka : mw.partner.request.telco.v1 (key txnId)
-Kafka => mw-adapter-telco : route mw.partner.request.telco.v1.consume
-mw-adapter-telco -> mw-adapter-telco : TelcoRequestHandler: parse, hand to virtual thread, commit
-mw-adapter-telco -> mw-adapter-telco : TopupService: check, stable reference, PartnerGateway.call
-mw-adapter-telco -> mw-adapter-telco : direct:partner-ocs: PartnerCallWrapper, RestJsonAdapter
-mw-adapter-telco -> OCS : POST /ocs/v1/topup (JSONata-built body)
-OCS --> mw-adapter-telco : 200 {status: SUCCESS, ocsRef}
-mw-adapter-telco -> mw-adapter-telco : inbox + outbox row, one transaction
-mw-adapter-telco => Kafka : outbox.relay timer route: mw.partner.reply.v1
-Kafka => mw-orchestrator : reply SUCCESS + partnerRef
-  </script></div><figcaption>One top-up through the telco adapter's Camel routes.</figcaption></figure>
-  <ol class="steps">
-    <li>The orchestrator publishes a request on <code>mw.partner.request.telco.v1</code>, keyed by the transaction id.</li>
-    <li>The route built by <code>TelcoRequestRouteBuilder</code> reads it and calls <code>bean:telcoRequestHandler?method=handle</code>.</li>
-    <li><code>messaging/TelcoRequestHandler</code> only parses the record and hands it to the <code>telcoCallExecutor</code>
-      (a virtual-thread executor). The route then commits the offset. The OCS call (up to 20 s) never runs on the Kafka thread.
-      A record that cannot be parsed throws, so the route parks it on <code>retry.1</code>.</li>
-    <li><code>service/TopupService</code> checks the request, gets the stable partner reference for this transaction and calls
-      <code>PartnerGateway.call</code>. The partner id (say <code>gp</code>) has no config of its own, so <code>default-partner: ocs</code> serves it.</li>
-    <li><code>PartnerGateway</code> sends the call into <code>direct:partner-ocs</code>. The templated route runs <code>PartnerCallWrapper</code>
-      (bulkhead, circuit breaker, time limiter: see <a href="resilience4j.html">Resilience4j</a>), which runs <code>RestJsonAdapter</code>:
-      a <a href="jsonata.html">JSONata</a> mapping builds the body, the HTTP POST goes out, another mapping reads the answer.</li>
-    <li>Back in <code>TopupService</code>, the reply is written to the outbox together with the inbox record of the request, in one database
-      transaction. A redelivered request is then answered only once.</li>
-    <li>The <code>outbox.relay</code> timer route publishes the reply on <code>mw.partner.reply.v1</code>.</li>
+  <h2 id="guardrails">The guardrails</h2>
+  <ol>
+    <li><strong>Maker-checker</strong> in mw-admin-api: a record goes out only once a second person approves it. mw-admin-api checks the route at
+      submit with a copy of the loader's rules (<code>MW-VAL-041</code>, with line and construct).</li>
+    <li><strong>The allowlist on the parsed model</strong> (<code>partner/route/PartnerRouteLoader</code>): one route; only <code>choice</code>/<code>when</code>/<code>otherwise</code>,
+      <code>to: kamelet:mw-*</code>, <code>setHeader</code> (not <code>Camel*</code>/<code>mw*</code>), <code>setBody</code>, <code>transform</code>, <code>log</code> (no body),
+      JSON <code>marshal</code>/<code>unmarshal</code>; no property placeholders, error handlers, beans, processors or raw endpoints.</li>
+    <li><strong>A dry-run before LIVE</strong> (<code>partner/route/PartnerDryRun</code>): the approved version is loaded beside the live one as a candidate and its
+      <code>dryRun</code> sample must answer SUCCESS or PENDING against mw-simulators (or the record's sandbox). Pass: swapped in, reported LIVE on
+      <code>mw.partner.route.status.v1</code>. Fail: removed, the live version keeps serving, REJECTED with the problems; mw-admin-api republishes the last LIVE version.</li>
+    <li><strong>The approved hosts</strong>: checked when the route loads and again before every send (<code>PartnerHostGuard</code>, a checked DNS resolver).</li>
   </ol>
-  <p>The test <code>route/TelcoRequestRouteIT</code> plays exactly this with a real Kafka and PostgreSQL and WireMock as the OCS
-    (see <a href="testcontainers.html">Testcontainers</a>).</p>
 
-  <div class="box where" id="where"><div class="tag">Where it lives</div><ul>
-    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/route/RetryTopicRouteBuilder.java">route/RetryTopicRouteBuilder.java</a>: the consumer base class; its class comment explains the retry topics.</li>
-    <li><a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/route/TelcoRequestRouteBuilder.java">route/TelcoRequestRouteBuilder.java</a>,
-      <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/route/OutboxRelayRouteBuilder.java">route/OutboxRelayRouteBuilder.java</a>,
-      <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/messaging/TelcoRequestHandler.java">messaging/TelcoRequestHandler.java</a>.</li>
-    <li>Templates: <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/template/PartnerRouteTemplates.java">PartnerRouteTemplates.java</a>,
-      <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/template/PartnerRouteRegistrar.java">PartnerRouteRegistrar.java</a>,
-      <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/template/PartnerGateway.java">PartnerGateway.java</a>,
-      <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/PartnerFrameworkConfiguration.java">PartnerFrameworkConfiguration.java</a>,
-      <a href="../../services/mw-adapter-telco/src/main/java/mfs/mw/adapter/telco/partner/config/PartnerConfigRouteBuilder.java">PartnerConfigRouteBuilder.java</a>.</li>
-    <li><a href="../../services/mw-adapter-telco/CLAUDE.md">services/mw-adapter-telco/CLAUDE.md</a>: the adapter framework in one page.</li>
-    <li>Topics: <code>deploy/kafka/topics.txt</code>. Tests: <code>route/RetryTopicRouteIT</code>, <code>route/TelcoRequestRouteIT</code>,
-      <code>partner/config/PartnerConfigReloadIT</code>; run one with <code>./gradlew :mw-adapter-telco:test --tests '*RetryTopicRouteIT'</code>.</li>
+  <h2 id="example">Worked example: a bill payment</h2>
+  <p>The orchestrator asks the billpay adapter to pay a bill. Kafka is Spring Kafka on both ends; only the partner leg is Camel:</p>
+  <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
+actors: mw-orchestrator | Kafka | mw-adapter-billpay | biller
+mw-orchestrator => Kafka : mw.partner.request.billpay.v1 (key txnId)
+Kafka => mw-adapter-billpay : @KafkaListener, inbox dedup, handed to a virtual thread
+mw-adapter-billpay => biller : partner route direct:partner-billagg (mw-map, mw-http-call)
+biller => mw-adapter-billpay : 200 / 4xx / timeout
+mw-adapter-billpay -> mw-adapter-billpay : mw-classify, mw-audit, reply to the outbox
+mw-adapter-billpay => Kafka : OutboxRelayScheduler: mw.partner.reply.v1
+Kafka => mw-orchestrator : reply SUCCESS + partnerRef
+</script></div><figcaption>One bill payment: Spring Kafka in and out, Camel only for the partner leg.</figcaption></figure>
+  <p>The listener acknowledges the record once the call is handed over, so the partner call (up to its time limit) never runs on the Kafka consumer
+    thread. A complete record for a REST biller with an API key is <code>deploy/partner-routes/examples/rest-apikey-biller.yaml</code>; the dev seed
+    <code>billagg</code> is in <code>services/mw-adapter-billpay/src/main/resources/application-dev.yml</code>.</p>
+
+  <h2 id="files">Files to read</h2>
+  <div class="box"><div class="tag">Files</div><ul>
+    <li><a href="../../services/mw-adapter-billpay/CLAUDE.md">services/mw-adapter-billpay/CLAUDE.md</a>, section "Partner engine": the whole framework; telco and bank are identical copies.</li>
+    <li>Loader and runtime: <a href="../../services/mw-adapter-billpay/src/main/java/mfs/mw/adapter/billpay/partner/route/PartnerRouteLoader.java">PartnerRouteLoader.java</a>,
+      <a href="../../services/mw-adapter-billpay/src/main/java/mfs/mw/adapter/billpay/partner/route/PartnerRoutes.java">PartnerRoutes.java</a>,
+      <a href="../../services/mw-adapter-billpay/src/main/java/mfs/mw/adapter/billpay/partner/route/PartnerDryRun.java">PartnerDryRun.java</a>,
+      <a href="../../services/mw-adapter-billpay/src/main/java/mfs/mw/adapter/billpay/partner/route/PartnerGateway.java">PartnerGateway.java</a>,
+      <a href="../../services/mw-adapter-billpay/src/main/java/mfs/mw/adapter/billpay/partner/route/PartnerHostGuard.java">PartnerHostGuard.java</a>.</li>
+    <li>Kafka side: <a href="../../services/mw-adapter-billpay/src/main/java/mfs/mw/adapter/billpay/messaging/BillpayRequestHandler.java">messaging/BillpayRequestHandler.java</a>,
+      <a href="../../services/mw-adapter-billpay/src/main/java/mfs/mw/adapter/billpay/partner/config/PartnerConfigKafkaListener.java">partner/config/PartnerConfigKafkaListener.java</a>,
+      <a href="../../services/mw-adapter-billpay/src/main/java/mfs/mw/adapter/billpay/config/KafkaConfig.java">config/KafkaConfig.java</a>.</li>
+    <li>Kamelets: <code>services/mw-adapter-billpay/src/main/resources/kamelets/</code>; examples: <code>deploy/partner-routes/examples/</code>.</li>
+    <li>Tests: <code>partner/route/PartnerRouteLoaderTest</code>, <code>PartnerRouteDryRunIT</code>, <code>PartnerRouteSwapIT</code>, <code>NewBillerRouteIT</code>;
+      run one with <code>./gradlew :mw-adapter-billpay:test --tests '*PartnerRouteSwapIT'</code>.</li>
   </ul></div>
 
   <h2 id="wrong">What can go wrong</h2>
   <div class="box wrong"><div class="tag">What can go wrong</div><ul>
-    <li><strong>Your route commits nothing and re-reads the same records after a restart.</strong> Auto-commit is off. A new Kafka route must
-      commit through the <code>CamelKafkaManualCommit</code> header, or simply extend <code>RetryTopicRouteBuilder</code>, which does it for you.</li>
-    <li><strong>You set <code>spring.kafka.bootstrap-servers</code> and Camel ignores it.</strong> Camel's Kafka component does not read
-      <code>spring.kafka.*</code>. Use <code>camel.component.kafka.brokers</code> (tests set it in <code>TestInfrastructure</code>).</li>
-    <li><strong>A slow call in a handler stalls a whole partition.</strong> The handler runs on the Kafka consumer thread. Hand long work to
-      an executor as <code>TelcoRequestHandler</code> does. Never call <code>PartnerGateway</code> or <code>Thread.sleep</code> there.</li>
-    <li><strong>A call during a template change comes back as not sent.</strong> While a route is being recreated, <code>direct:partner-&lt;id&gt;</code>
-      has no consumer and Camel throws <code>DirectConsumerNotAvailableException</code>. <code>PartnerGateway</code> turns it into
-      <code>NOT_SENT</code> (reason <code>DISABLED</code>), which is safe because nothing left the building.</li>
-    <li><strong>Records pile up on a DLQ.</strong> After three failed retries a record lands on <code>&lt;topic&gt;.&lt;group&gt;.dlq</code>. The log event
-      <code>kafka.dlq.parked</code> names the topic, attempt and error class (never the payload).</li>
-    <li><strong>You wrote a route in XML.</strong> D1 rules out the XML DSL. Use the Java DSL like the rest of the repo.</li>
+    <li><strong>The route is refused with <code>MW-VAL-041</code>.</strong> It uses something outside the allowlist (a raw <code>http:</code> endpoint, a bean, a
+      <code>{{...}}</code> placeholder) or does not end with <code>mw-classify</code> then <code>mw-audit</code>. The details name the line and the construct.</li>
+    <li><strong>The version stays "waiting for its dry-run" or turns REJECTED.</strong> The partner page lists the problems (for example <code>HTTP_5XX</code>
+      from the simulator); the adapter's log has the rest. The last LIVE version keeps serving.</li>
+    <li><strong>A call is refused for its host.</strong> The <code>url</code> (or an OAuth2 <code>tokenUrl</code>) host is not in the record's
+      <code>allowedHosts</code>, or resolves to a refused address.</li>
+    <li><strong>You added Camel to another module.</strong> <code>:checkIsolation</code> fails. Kafka work belongs in Spring Kafka (<code>@KafkaListener</code>,
+      <code>KafkaTemplate</code>), copied from <code>templates/mw-service-template</code>.</li>
+    <li><strong>Records pile up on a DLQ.</strong> After three failed retries a record lands on <code>&lt;topic&gt;.&lt;group&gt;.dlq</code>; validation and JSON
+      failures go there at once. The log event names the topic, attempt and error class, never the payload.</li>
   </ul></div>
 
   <h2 id="next">Read next</h2>
   <ul>
-    <li><a href="../adr/D1-integration-engine.md">ADR D1</a>: the decision for Camel, JDK 25 and virtual threads.</li>
-    <li>Spec section 12 (<a href="../../spec/bits-mfs-middleware-spec.md">spec/bits-mfs-middleware-spec.md</a>): the adapter framework's three layers; 19.2 for the retry topics.</li>
-    <li><a href="../tutorial/05-partner-flows.html#framework">Tutorial chapter 5</a> for the adapter framework from the business side;
+    <li><a href="../adr/D28-partner-routes-as-config.md">ADR D28</a>: partner routes as config; <a href="../adr/D27-kafka-client.md">ADR D27</a>: Spring Kafka;
+      <a href="../adr/D1-integration-engine.md">ADR D1</a>: the integration engine, as amended.</li>
+    <li>Spec section 12 (<a href="../../spec/bits-mfs-middleware-spec.md">spec/bits-mfs-middleware-spec.md</a>): the adapter framework; 19.2 for the retry topics.</li>
+    <li><a href="../tutorial/05-partner-flows.html#framework">Tutorial chapter 5</a> for the partner flows from the business side;
       <a href="../tutorial/03-core-ideas.html#outbox">chapter 3</a> for the outbox and inbox.</li>
     <li><a href="jsonata.html">JSONata</a>, the next page: what the mappings inside the route do.</li>
   </ul>
