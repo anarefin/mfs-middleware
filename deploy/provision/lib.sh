@@ -95,11 +95,13 @@ SQL
   log "$SVC: role $role and schema(s) $schemas ready"
 }
 
-# approle: policy reading only secret/<svc>, the AppRole, and a fresh secret-id plus the role-id in
+# approle: policy reading only secret/<svc> and its per-partner secrets secret/<svc>/<partner> (ADR
+# D26), the AppRole, and a fresh secret-id plus the role-id in
 # the service's own volume (Spring configtree, one file per property; the service runs as 10001).
 approle() {
   bao policy write "$SVC" - >/dev/null <<EOF
 path "secret/data/$SVC" { capabilities = ["read"] }
+path "secret/data/$SVC/*" { capabilities = ["read"] }
 EOF
   bao write "auth/approle/role/$SVC" token_policies="$SVC" token_ttl=1h token_max_ttl=24h secret_id_ttl=0 >/dev/null
   mkdir -p "$OUT"

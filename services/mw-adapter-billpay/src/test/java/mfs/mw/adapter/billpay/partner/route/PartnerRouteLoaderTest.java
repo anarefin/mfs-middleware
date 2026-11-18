@@ -1,0 +1,223 @@
+package mfs.mw.adapter.billpay.partner.route;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import io.github.resilience4j.bulkhead.BulkheadRegistry;
+import java.util.List;
+import java.util.Map;
+import mfs.mw.adapter.billpay.partner.PartnerTestSeeds;
+import mfs.mw.adapter.billpay.partner.auth.PartnerCredentials;
+import mfs.mw.adapter.billpay.partner.config.PartnerConfig;
+import mfs.mw.adapter.billpay.partner.config.PartnerConfigRefusedException;
+import mfs.mw.adapter.billpay.partner.config.PartnerEndpointPolicy;
+import mfs.mw.adapter.billpay.partner.config.PartnerProperties;
+import org.apache.camel.impl.DefaultCamelContext;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+/**
+ * The route loader's guardrails (ADR D26, ticket 82), on a plain Camel context: the billagg seed
+ * route loads; every construct outside the allowlist is refused, before the route is added.
+ */
+class PartnerRouteLoaderTest {
+
+  static final PartnerProperties.Security SECURITY =
+      new PartnerProperties.Security(Map.of(), List.of("localhost", "mw-simulators"));
+  static final DefaultCamelContext CAMEL = new DefaultCamelContext();
+  static PartnerRouteLoader loader;
+
+  @BeforeAll
+  static void camel() throws Exception {
+    CAMEL.addRoutes(new PartnerRouteConfiguration());
+    CAMEL.start();
+    PartnerCredentials credentials = mock(PartnerCredentials.class);
+    when(credentials.read(anyString(), anyString())).thenReturn("fake-credential");
+    loader = new PartnerRouteLoader(
+        CAMEL, new PartnerEndpointPolicy(SECURITY), new KameletCatalogue(), credentials, BulkheadRegistry.ofDefaults());
+  }
+
+  @AfterAll
+  static void stop() {
+    CAMEL.stop();
+  }
+
+  /** A record with {@code steps} (YAML, indented under {@code steps:}) as its route. */
+  static PartnerConfig record(String steps) {
+    String route = """
+        - route:
+            from:
+              uri: direct:partner-acme
+              steps:
+        %s
+        """.formatted(steps.indent(8).stripTrailing());
+    return new PartnerConfig(
+        true, route, Map.of("PAY.request", "{\"a\": reference}", "PAY.response", "{\"outcome\": \"UNKNOWN\"}"),
+        List.of("localhost"), "billpay", null, null, null, null, null, 3000L, 1500L, null, null, null, null, null,
+        null, null);
+  }
+
+  static final String GOOD = """
+      - to: "kamelet:mw-map?mapping=PAY.request"
+      - to: "kamelet:mw-http-call?url=http://localhost:8089&method=POST&path=/pay/{reference}&auth=apikey&secretField=api-key"
+      - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=422"
+      - to: "kamelet:mw-audit"
+      """;
+
+  PartnerRouteLoader.Loaded load(PartnerConfig config) {
+    return loader.load("acme", 3, config, SECURITY);
+  }
+
+  @Test
+  void theBillaggSeedRouteLoads() {
+    PartnerConfig billagg = PartnerTestSeeds.billagg();
+
+    PartnerRouteLoader.Loaded loaded = loader.load("billagg", 0, billagg, SECURITY);
+
+    assertThat(loaded.runtime().routeId()).isEqualTo("partner-billagg-v0");
+    assertThat(loaded.route().getInput().getUri()).isEqualTo("direct:partner-billagg-v0");
+    assertThat(loaded.route().getRouteConfigurationId()).isEqualTo(PartnerRouteConfiguration.ID);
+    assertThat(loaded.runtime().kamelets()).contains("mw-map", "mw-http-call", "mw-classify", "mw-audit");
+    assertThat(loaded.runtime().secrets()).containsKey("hmac-secret");
+  }
+
+  @Test
+  void aGoodRouteGetsTheRecordsParametersInjected() {
+    PartnerRouteLoader.Loaded loaded = load(record(GOOD));
+
+    assertThat(loaded.route().toString()).contains("partnerId=acme", "timeoutMs=1500", "connectTimeoutMs=3000");
+    assertThat(loaded.runtime().secrets()).containsEntry("api-key", "fake-credential");
+    assertThat(loaded.runtime().allowedHosts()).containsExactly("localhost");
+  }
+
+  @Test
+  void anOldShapeRecordBecomesTheEquivalentRoute() {
+    PartnerConfig legacy =
+        new PartnerConfig(
+            true, null, null, null, null, null, null, null, "rest-json-request-reply",
+            java.net.URI.create("http://localhost:8089"), null, 700L, null, null, null,
+            Map.of("PAY", new PartnerConfig.Operation("POST", "/pay", List.of(422), "{\"a\": reference}", "{\"outcome\": \"UNKNOWN\"}")),
+            null, null, null);
+
+    PartnerRouteLoader.Loaded loaded = loader.load("acme", 1, legacy, new PartnerProperties.Security(
+        Map.of("acme", List.of("localhost")), List.of("localhost")));
+
+    assertThat(loaded.runtime().mappings()).containsKeys("PAY.request", "PAY.response");
+    assertThat(loaded.runtime().allowedHosts()).containsExactly("localhost");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      // raw endpoints and code
+      "- to: \"exec:rm\"",
+      "- to: \"bean:partnerGateway\"",
+      "- to: \"http://localhost:8089/pay\"",
+      "- toD: \"kamelet:mw-audit\"",
+      "- bean: {ref: partnerGateway}",
+      "- process: {ref: partnerGateway}",
+      // dynamic or resolution-changing Kamelet calls, and Kamelets outside the library
+      "- to: \"kamelet:mw-audit?x=${header.mwReference}\"",
+      "- to: \"kamelet:mw-audit?location=file:/tmp/evil\"",
+      "- to: \"kamelet:mw-audit?partnerId=billagg\"",
+      "- to: \"kamelet:other-kamelet\"",
+      // error handling belongs to the loader
+      "- onException: {exception: [java.lang.Exception], steps: [{to: \"kamelet:mw-audit\"}]}",
+      "- doTry: {steps: [{to: \"kamelet:mw-audit\"}]}",
+      // headers that redirect the call or impersonate ours, and other languages
+      "- setHeader: {name: CamelHttpUri, constant: \"http://evil\"}",
+      "- setHeader: {name: mwPartnerId, constant: other}",
+      "- setBody: {groovy: \"1\"}",
+      "- setBody: {simple: \"${bean:partnerGateway}\"}",
+      "- setBody: {simple: \"${sys.user.home}\"}",
+      "- log: \"${body}\"",
+  })
+  void everyConstructOutsideTheAllowlistIsRefused(String step) {
+    assertThatThrownBy(() -> load(record(step + "\n" + GOOD)))
+        .isInstanceOf(PartnerConfigRefusedException.class);
+  }
+
+  /** Security review: placeholders hidden by YAML escapes, quoting or block scalars are found too. */
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "- setBody: {constant: \"\\x7b\\x7benv:HOME}}\"}",
+      "- setBody: {constant: \"\\u007b{sys:user.home}}\"}",
+      "- setBody:\n    constant: |\n      a\n      {{env:HOME}}",
+      "- setHeader: {name: X-A, simple: \"\\u0024{bean:partnerGateway}\"}",
+  })
+  void placeholdersHiddenInYamlScalarsAreRefused(String step) {
+    assertThatThrownBy(() -> load(record(step + "\n" + GOOD))).isInstanceOf(PartnerConfigRefusedException.class);
+  }
+
+  /** Security review: Kamelet parameters are checked after URL-decoding, as Camel reads them. */
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "url=https://localhost%3A8089",
+      "url=http://localhost:8089%2F%3Fx%3D1",
+      "path=/pay%3Fevil=1",
+      "path=/pay%23frag",
+      "authHeader=X-Key%26bridgeEndpoint=true",
+      "keyId=k%3Fx",
+      "path=/pay%2F..%2Fadmin",
+  })
+  void encodedKameletParametersAreRefused(String param) {
+    String key = param.substring(0, param.indexOf('='));
+    String call = GOOD.replaceFirst(key + "=[^&\"]*", java.util.regex.Matcher.quoteReplacement(param));
+    if (!call.contains(param)) {
+      call = GOOD.replace("&auth=apikey", "&" + param + "&auth=apikey");
+    }
+    String route = call;
+    assertThatThrownBy(() -> load(record(route))).isInstanceOf(PartnerConfigRefusedException.class);
+  }
+
+  @Test
+  void propertyPlaceholdersAreRefusedAsASecurityRule() {
+    assertThatThrownBy(() -> load(record("- setBody: {constant: \"{{hashicorp:secret:mw-adapter-billpay/other#key}}\"}\n" + GOOD)))
+        .isInstanceOfSatisfying(PartnerConfigRefusedException.class, e -> assertThat(e.security()).isTrue());
+  }
+
+  @Test
+  void aHostOutsideTheApprovedHostsIsRefused() {
+    assertThatThrownBy(() -> load(record(GOOD.replace("http://localhost:8089", "https://evil.example"))))
+        .isInstanceOfSatisfying(PartnerConfigRefusedException.class, e -> {
+          assertThat(e.security()).isTrue();
+          assertThat(e.getMessage()).contains("allowedHosts");
+        });
+  }
+
+  @Test
+  void aRouteWithoutClassifyAndAuditIsRefused() {
+    assertThatThrownBy(() -> load(record(GOOD.replace("- to: \"kamelet:mw-audit\"\n", ""))))
+        .isInstanceOf(PartnerConfigRefusedException.class)
+        .hasMessageContaining("mw-classify then mw-audit");
+    assertThatThrownBy(() -> load(record(GOOD.replaceAll("- to: \"kamelet:mw-classify[^\\n]*\\n", ""))))
+        .isInstanceOf(PartnerConfigRefusedException.class)
+        .hasMessageContaining("mw-classify then mw-audit");
+  }
+
+  @Test
+  void anythingBesideTheOneRouteIsRefused() {
+    PartnerConfig beans = record(GOOD);
+    String withBeans = "- beans:\n    - name: x\n      type: java.lang.Object\n" + beans.route();
+    assertThatThrownBy(() -> load(beans.withRoute(withBeans, beans.mappings(), beans.allowedHosts())))
+        .isInstanceOfSatisfying(PartnerConfigRefusedException.class, e -> assertThat(e.security()).isTrue());
+    String withId = beans.route().replace("- route:\n", "- route:\n    id: mine\n");
+    assertThatThrownBy(() -> load(beans.withRoute(withId, beans.mappings(), beans.allowedHosts())))
+        .isInstanceOf(PartnerConfigRefusedException.class);
+  }
+
+  @Test
+  void aRouteNamingAMissingMappingOrFromAnotherPartnerIsRefused() {
+    assertThatThrownBy(() -> load(record(GOOD.replace("mapping=PAY.request", "mapping=NOPE"))))
+        .hasMessageContaining("mapping NOPE");
+    PartnerConfig other = record(GOOD);
+    String from = other.route().replace("direct:partner-acme", "direct:partner-billagg");
+    assertThatThrownBy(() -> load(other.withRoute(from, other.mappings(), other.allowedHosts())))
+        .hasMessageContaining("direct:partner-acme");
+  }
+}

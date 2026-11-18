@@ -6,14 +6,17 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.billpay`. Fol
 ## Responsibilities
 
 - Bill pay adapter (spec WP15 part, 7.3 rule 5, 7.4, 11): consumes `mw.partner.request.billpay.v1`
-  (`route/BillpayRequestRouteBuilder`, retry topics + DLQ), checks a `PAY` / `STATUS_QUERY` request
+  (`messaging/BillpayRequestHandler`, a Spring Kafka `@KafkaListener` with retry topics + DLQ), checks a `PAY` / `STATUS_QUERY` request
   (`mapper/PartnerCallMapper`: family `billpay`, `partner.billerCode` and a `BILLER_ACCOUNT` credit
-  party with a bill number for PAY), calls the aggregator once through the adapter framework
-  (`partner` package, below) with our stable reference, and publishes `mw.partner.reply.v1` through
-  the outbox (inbox-deduplicated on `requestId`). `service/BillPaymentService` is the copy of telco's
+  party with a bill number for PAY), claims the request in the inbox (consumer
+  `mw-adapter-billpay.partner-call`, committed before the call: a request Kafka delivers again is
+  never sent to the partner again, metric `mw.partner.request.duplicate`), calls the aggregator once
+  through its partner route (`partner` package, below) with our stable reference, and publishes
+  `mw.partner.reply.v1` through the outbox (inbox-deduplicated on `requestId`). `service/BillPaymentService` is the copy of telco's
   TopupService; replies, outcomes and safety rules are telco's (see mw-adapter-telco CLAUDE.md):
   SUCCESS (`partnerRef` = aggregator's `paymentRef`), FAILED `MW-PTR-<AGGREGATOR>-<suffix>` from
-  the instance's `error-map` (unlisted `UNMAPPED`), FAILED `MW-SYS-PARTNER_*` when nothing left
+  the record's `error-map` (unlisted `UNMAPPED`), FAILED `MW-PTR-UNKNOWN-PARTNER` (not retryable) for a
+  partnerId that is neither a partner nor a `partner-aliases` entry, FAILED `MW-SYS-PARTNER_*` when nothing left
   (retryable), UNKNOWN `MW-TMO-PARTNER_*` (status inquiry resolves it), NOT_FOUND for a
   STATUS_QUERY only, a PAY past its `deadlineAt` refused unsent (`MW-SYS-PARTNER_REQUEST_EXPIRED`),
   FAILED `MW-VAL-INVALID_PARTNER_REQUEST` for requests that cannot be mapped.
@@ -62,8 +65,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.billpay`. Fol
   `MW-PTR-<PARTNER>-<suffix>` from the error map; a FAILED with an ambiguous code is published as
   PENDING (fail closed); `partnerRef` = the aggregator's `paymentRef`, else our reference;
   `attributes.message` = the partner's message.
-- Partner-call audit (S6, spec 12.2, 17): `PartnerAudit.publishing` (wired in
-  `PartnerFrameworkConfiguration`) logs `partner.call.audit` and hands every masked entry to
+- Partner-call audit (S6, spec 12.2, 17): the `mw-audit` Kamelet (`partner/kamelet/MwAuditStep`)
+  hands every call to `partner/route/PartnerAudit.publishing` (wired in `PartnerFrameworkConfiguration`), which logs `partner.call.audit` and hands every masked entry to
   `messaging/PartnerAuditPublisher`, which writes an `AuditEvent` (`dto/AuditEvent`, contract
   `mw.audit.event.v1` owned by mw-audit-dw, unchanged) to the outbox in its own transaction
   (REQUIRES_NEW): action `partner.call.completed`, actor `system`/<service>, resource
@@ -74,7 +77,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.billpay`. Fol
   `partner.call.audit_failed` and never fails the call. Identical in telco, billpay and bank.
 - Dev provisioning (`provision_mw_adapter_billpay` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `adapter_billpay_rw` and schema `billpay_ref`, `secret/mw-adapter-billpay` (DB password, never
-  overwritten) and the AppRole `mw-adapter-billpay` (configtree volume at `/run/mw/approle`).
+  overwritten), `secret/mw-adapter-billpay/billagg` (field `hmac-secret`, from `BILLAGG_HMAC_SECRET`) and
+  the AppRole `mw-adapter-billpay` (policy: `secret/mw-adapter-billpay` and `secret/mw-adapter-billpay/*`;
+  configtree volume at `/run/mw/approle`).
 
 ## Design decision: synchronous bill fetch (ticket 21)
 
@@ -104,38 +109,133 @@ signature**; APISIX does ip allow-list, body cap and quota only. Why: the partne
 (header names, string to sign, key id, skew) is partner config here and changes with a
 config-changed record, whereas APISIX `hmac-auth` has its own fixed scheme (`Authorization:
 Signature keyId=...`) that real aggregators do not speak; the secret stays in OpenBao
-(`mw.partner-secrets.<instance>.<name>`) instead of a consumer credential in etcd; the 401 is the
+(`secret/mw-adapter-billpay/<partner>`) instead of a consumer credential in etcd; the 401 is the
 service's 5.3 envelope. Cost: an unsigned flood reaches the adapter (bounded by the quota and the
 allow-list). A partner that speaks APISIX `hmac-auth`/`jwt-auth`/mTLS can get that plugin on its
 own route as an extra layer; the adapter check stays (the `none` scheme refuses every callback).
 
-## Adapter framework (`partner` package; copied from mw-adapter-telco, D13/D14)
+## Partner engine (`partner` package; ADR D26, ticket 82)
 
-Identical to mw-adapter-telco's (see its CLAUDE.md for the SPI, route templates, config store,
-security rules and the fail-closed rules a mapping cannot override), copied with its tests after
-the ticket 20 target-guard fix (safe operation paths, same-origin check, no redirects). One
-billpay extension: `PartnerResponse.Success` carries `attributes` (text values the response
-mapping put under `attributes`; empty otherwise), used by the INQUIRY mapping to return the
-amount due (since ticket 23 also in mw-adapter-telco's and mw-adapter-bank's copies, so the
-three are identical). A fix to the framework must be applied to all three copies.
+A partner is a **record holding a Camel YAML DSL route** built from the shipped Kamelets; a new
+REST/JSON biller is a `mw.config.changed.v1` record, no Java and no restart (`NewBillerRouteIT`).
+This module is the first; tickets 84 (telco, bank) copy it, 85-87 add Kamelets. Camel stays behind
+`partner/route/PartnerGateway` (one shared `ProducerTemplate`); Kafka is Spring Kafka (below).
 
-The aggregator is the seed instance `billagg`, a dev seed in `application-dev.yml` (profile `dev`, D23: set by its service in `deploy/docker-compose.yml`
-and the test config; the packaged `application.yml` seeds no partner, so a production start has none
-until a `partner/<id>` record arrives) (`mw.partners`; wire format of
-the mw-simulators aggregator: `POST /billagg/v1/payments {transactionId, billerCode, billNumber,
-amount:"667.00"}` (200 SUCCESS, 422 FAILED, or 202 PENDING with the outcome by callback),
-`GET /billagg/v1/payments/{reference}`, `POST /billagg/v1/bills/fetch {billerCode, billNumber}`,
-callback `POST /partner/billagg/callback/payments` with the payment body), template
-`rest-json-async-callback` (ticket 22), auth `hmac-sha256` both ways (secret
-`mw.partner-secrets.billagg.hmac-secret`, OpenBao `secret/mw-adapter-billpay`; dev value
-generated as `BILLAGG_HMAC_SECRET` and written by `deploy/provision/services.sh`; tests use an obviously fake
-one), base URL `BILLAGG_BASE_URL`, host allowlist `MW_BILLAGG_ALLOWED_HOSTS`,
-timeout 25 s (below the orchestrator's 30 s partner deadline; spec 11.1 says 30 s for the
-aggregator), Resilience4j instance `billagg` (bulkhead 100, circuit breaker 20 s slow-call
-threshold), `default-partner: billagg`. Error map: `3001` BILL_NOT_FOUND, `3002`
-BILL_ALREADY_PAID, `3003` PAYMENT_REFUSED, `3004` UNKNOWN_BILLER; `9876` ambiguous. Partner
-secrets are `mw.partner-secrets.<instance>.<name>` (OpenBao `secret/mw-adapter-billpay`). Never
-add a retry to a partner call.
+- **Record** (`partner/config/PartnerConfig`, `mw.partners.instances.<id>` seeds, `partner/<id>`
+  records): `route`, `mappings` (JSONata by name, `<OPERATION>.request` / `<OPERATION>.response`,
+  `CALLBACK.response` for callbacks; compiled once per version, `partner/mapping/CompiledMapping`),
+  `allowedHosts`, `family`, `inquiryRetries` (default 1), `resilience` (breaker/bulkhead overrides;
+  null = the resilience4j instance named by the partner id), `dryRun {operation, sample}` (ticket 83),
+  timeouts, `headers`, `auth` (callback verification), `errorMap`, `ambiguousCodes`, `sensitiveFields`.
+  The old shape (`template` + `baseUrl` + `operations`, no `route`) still loads for one release:
+  `partner/route/LegacyPartnerRoute` turns it into the same route (ticket 84 drops it).
+- **Route contract** (`partner/route/PartnerExchange`): in `from: direct:partner-<id>`, body the
+  `PartnerCall` JSON, headers `mwOperation`, `mwReference`, `mwCorrelationId`, `mwPartnerId`, `mwTxnId`;
+  the runtime of the version (`PartnerRuntime`) and the operation ride as exchange properties (a route
+  cannot change them). Out: `{outcome, partnerRef, code, message, reason, errorSuffix, retryable,
+  attributes}` (`PartnerResult`), checked by `json-validator` against
+  `classpath:partner/partner-result.schema.json` in `mw-classify`; a missing or invalid one is UNKNOWN
+  (NOT_SENT `MISCONFIGURED` when nothing was sent). The route ends with `mw-classify` (directly, or at
+  the end of every branch of a final `choice`) and then `mw-audit`.
+- **Kamelets** (`src/main/resources/kamelets/*.kamelet.yaml`, Java steps in `partner/kamelet/`):
+  `mw-map` (request mapping), `mw-http-call` (url + method + path, `{reference}` URL-encoded into
+  `CamelHttpPath`; `auth=none|apikey|hmac-sha256` calls `mw-auth-<auth>`; resilience4j breaker with
+  `timeoutDuration` = the record's `timeoutMs` and a bulkhead; `onFallback` always; a 5xx throws inside
+  the breaker so it counts and ends UNKNOWN `HTTP_5XX`; a `loop` re-sends only an INQUIRY / STATUS_QUERY,
+  at most `inquiryRetries`, after a timeout, 5xx, reset or failed connect; a PAY never), `mw-auth-none`,
+  `mw-auth-apikey`, `mw-auth-hmac-sha256` (the `partner/auth` schemes, same wire format,
+  `AuthSchemesTest`), `mw-classify` (the fail-closed rules of the former `RestJsonAdapter.classify`:
+  SUCCESS/PENDING need a 2xx and a reference, PENDING only with `pending=true`, FAILED a code and a
+  `definiteStatuses` status, ambiguous codes AMBIGUOUS, NOT_FOUND only for STATUS_QUERY), `mw-audit`.
+  `partnerId`, `timeoutMs`, `connectTimeoutMs`, `readTimeoutMs`, `bulkhead` are injected by the loader
+  from the record, never set by a route. `KameletCatalogueTest` lints them (type label, title,
+  description, documented properties, `format: password` + password `x-descriptors` on secret
+  references, no endpoint but `kamelet:`, `json-validator:` and the partner's `{{url}}`). **Versioning:**
+  a breaking change ships as a new name (`mw-http-call-v2`); the old file stays until no LIVE route uses
+  it; `PartnerRuntime.kamelets()` lists what a version uses (the admin endpoint is ticket 83).
+- **Loader** (`partner/route/PartnerRouteLoader`, order matters): record problems; no `{{` anywhere;
+  SnakeYAML safe load: exactly one `- route:` holding only `from {uri: direct:partner-<id>, steps}`, no
+  error-handling keys anywhere (Camel's YAML loader acts on top-level `beans`, `sslContextParameters`,
+  `restConfiguration` while parsing, so nothing else reaches it); Camel's `schema/camelYamlDsl.json`
+  (networknt, draft 4); Kamelet calls only as `to: "kamelet:mw-*"` strings of the library, without
+  `location`/`templateId`/... or loader parameters, `${...}` refused; parameters are URL-decoded as
+  Camel reads them, `RAW(...)` is refused and `url`/`path`/`authHeader`/`keyId` may hold no `% ? & #`;
+  `{{` is looked for in every parsed string value (YAML escapes and block scalars cannot hide it) and in
+  the YAML handed to Camel; then it injects route id
+  `partner-<id>-v<version>`, `from: direct:partner-<id>-v<version>` and `routeConfigurationId
+  mw-partner` into the tree (Camel binds route configurations while it parses, too late afterwards)
+  and Camel parses it (`RoutesLoader`); the model walk is an allowlist (`choice`/`when`/`otherwise`,
+  `to`, `setHeader` not `Camel*`/`mw*`, `setBody`, `transform`, `log` without the body, JSON
+  `marshal`/`unmarshal`; `constant` or `simple` reading only `${body}`, `${header.x}`, `${variable.x}`,
+  `${date:now}`); every `mw-http-call` URL against the record's hosts; mappings exist; secret fields read
+  now. `PartnerRouteLoaderTest` covers each refusal.
+- **Error handling** (`partner/route/PartnerRouteConfiguration`): one `routeConfiguration` `mw-partner`
+  for every partner route, `defaultErrorHandler` with no redeliveries (`noErrorHandler` would ignore
+  `onException`), `onException(Exception)` handled -> `mwAudit.failed`. `camel.main.message-history`,
+  `tracing`, `routes-reload-enabled` off.
+- **Lifecycle** (`partner/route/PartnerRoutes`, `partner/config/PartnerConfigStore`): a new version is
+  loaded and started beside the live one, the snapshot flips, then the old version is stopped in the
+  background (waiting up to its `timeoutMs` + 5 s so calls in flight finish on it) and removed with
+  every Kamelet route whose `parent` is it. A refused record leaves the last good version live and logs
+  `security.partner_route_refused` (`securityRule` true for a security rule). The previous record is
+  kept for a rollback (ticket 83). Seeds load once Camel has started; a refused seed leaves that partner
+  without a route, never the service down. Shutdown: `camel.main.shutdown-timeout` 30 s (25 s + 5 s).
+- **Circuit breaker per partner**: the EIP's own breaker is per processor node and dies with its route,
+  so `mw-http-call` references `mw-cb-<id>`, the resilience4j instance named by the partner id, bound in
+  Camel's registry by `PartnerRoutes`; its state survives a swap. Time limiter and bulkhead are per call
+  site (Camel).
+- **Hosts** (guardrail 4): the record's `allowedHosts`; `mw.partners.security.allowed-hosts.<id>`, when
+  set, is a floor the record can only narrow; https unless `insecure-http-hosts`; a host that resolves to
+  loopback, private, shared, link-local (cloud metadata), unspecified or multicast addresses is refused
+  unless it is a static dev host (`insecure-http-hosts` or the floor), at load and again at send time on
+  the resolved addresses (the JVM DNS cache gives the HTTP client the same ones). The guard also refuses
+  any http endpoint option but the fixed set `mw-http-call` adds (`PartnerHostGuard.OPTIONS`). Checked at load and before
+  every send by one context-wide `interceptSendToEndpoint("http*")` declared once on an anchor route
+  (`partner/route/PartnerHostGuard`; declared per route it would pile up callbacks), which also refuses a
+  `CamelHttpUri` override; a refusal is NOT_SENT `MISCONFIGURED` (`security.partner_target_refused`).
+- **Headers**: `mw-http-call` sends with `headerFilterStrategy=#mwPartnerHeaderFilter`
+  (`PartnerHeaderFilterStrategy`): no `mw*` or `Camel*` header leaves, and a response cannot set one.
+  `CamelHttpUri`, `CamelHttpQuery`, `CamelHttpPath` are reset by `mw-http-call` only.
+- **Secrets**: `{{hashicorp:secret:mw-adapter-billpay/<id>#<field>}}`, Camel's HashiCorp Vault
+  properties function against OpenBao KV v2 `secret/mw-adapter-billpay/<id>`, read when a route loads,
+  never refreshed (D26), never logged, never in a URI or audited header (`partner/auth/PartnerCredentials`;
+  the path is built from the partner's own id). The function only knows a static token, so it runs on
+  Spring Cloud Vault's `VaultTemplate` (AppRole) when `VAULT_ENABLED=true`
+  (`partner/auth/SpringVaultPropertiesFunction`; Camel 4.22 rebuilds its client in `doStart`, which this
+  skips). Tests use a fake `hashicorp` function (`src/test/.../partner/FakeVaultFunction`, found first
+  through `META-INF/services`) and `NewBillerRouteIT` the real one against OpenBao in Testcontainers.
+- **Aliases** (D26, user decision 2026-11-18): `mw.partners.partner-aliases` replaces `default-partner`.
+  The channels and seeds send the catalogue's `partnerId` (`billagg`) itself, so the map is empty; any
+  other id is refused `MW-PTR-UNKNOWN-PARTNER` (502 on the bill fetch). The reply contract's partner
+  codes have two segments, hence not `MW-PTR-UNKNOWN`.
+- **Health and metrics**: `partners` on `/actuator/health` (`PartnerRouteHealth`: per partner UP, DOWN,
+  DISABLED, DELETED; the indicator stays UP and is not in the readiness group), Camel's own checks skip
+  `partner-*` and `mw-*` routes (`camel.health.exclude-pattern`; Camel's readiness would otherwise turn the
+  whole service not ready). Camel route metrics get a `partnerId` tag (`PartnerFrameworkConfiguration`
+  `MeterFilter`), `camel.metrics.uri-tag-enabled` off; the §21.2 metrics (`mw.partner.call`,
+  `mw.partner.call.duration`, `mw.partner.circuit.state`) stay in the gateway.
+- **Callbacks** stay Java (`PartnerGateway.inbound`): the record's `auth` scheme with its secret, then
+  its `CALLBACK.response` mapping.
+
+Choices where Camel 4.22.2 differs from the ticket text (verified in the 4.22.2 jars, Context7 not
+available): `camel-jsonata` is a component that recompiles per exchange, so mappings are compiled
+once by `CompiledMapping` inside the Kamelet beans and `camel-jsonata-starter` is not used;
+`camel-observation` is deprecated, so `camel-micrometer-observability-starter` (its
+`trace-processors` / `disable-core-processors` must be set, the starter has no defaults); Kamelet
+`dataTypes` are not declared (an `out` type without a registered transformer fails at runtime), the
+types are in each description; the YAML `kamelet:` EIP form is refused, only `to: "kamelet:..."`;
+`camel-json-validator` brings networknt json-schema-validator 2.0.1 (Jackson 2), so the contract tests
+use it too through `contracts/JsonSchema` (one artifact, one version). The outbound `traceparent` is
+not asserted yet (open item).
+
+The aggregator is the seed `billagg` in `application-dev.yml` (profile `dev`; the packaged
+`application.yml` seeds no partner): a YAML route with PAY (`POST /billagg/v1/payments`), STATUS_QUERY
+(`GET /billagg/v1/payments/{reference}`), INQUIRY (`POST /billagg/v1/bills/fetch`), hmac-sha256 both
+ways (field `hmac-secret` of `secret/mw-adapter-billpay/billagg`), base URL `BILLAGG_BASE_URL`, hosts
+`MW_BILLAGG_ALLOWED_HOSTS`, timeout 25 s (below the orchestrator's 30 s deadline), resilience4j instance
+`billagg` (bulkhead 100, 20 s slow-call threshold). Error map `3001` BILL_NOT_FOUND, `3002`
+BILL_ALREADY_PAID, `3003` PAYMENT_REFUSED, `3004` UNKNOWN_BILLER; `9876` ambiguous. An example record:
+`deploy/partner-routes/examples/rest-apikey-biller.yaml`; the concept page: `docs/concepts/camel-partner-routes.md`.
 
 Ticket 23 (bank C2W) copied this chain with the framework into mw-adapter-bank (see its
 CLAUDE.md): a CALLBACK operation mapping that returns our `reference`, an
@@ -185,9 +285,16 @@ adapter-minted txnId) are still dropped and belong to the REMIT_IN / NPSB ticket
   `type` (wallet/MSISDN as an MSISDN, a bank account or any other type last 4 only).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
-- `messaging/EventPublisher`, outbox/inbox, `route/RetryTopicRouteBuilder` +
-  `messaging/RetryDelayListener` (retry topics 10 s / 1 min / 10 min then DLQ; no sleeps on Kafka
-  threads).
+- Spring Kafka (ADR D25, copied from the template, ticket 78): `config/KafkaConfig` (retry topics
+  `<topic>.<group>.retry.1..3` 10 s / 1 min / 10 min then `.dlq`, `messaging/RetryTopicNaming`,
+  `RetryTopicRecoverer`, `RetryDueTimeCap`, `ConsumerContextInterceptor`), `messaging/EventPublisher`
+  (`KafkaTemplate`), outbox/inbox, `scheduler/OutboxRelayScheduler`. Listeners: `BillpayRequestHandler`
+  (`mw.billpay.request-consumer.enabled`) acknowledges after the hand-over;
+  `partner/config/PartnerConfigKafkaListener` (`mw.partners.config-consumer.enabled`) has a stable
+  per-instance group `<service>-config-<HOSTNAME>`, seeks to the beginning on every assignment and never
+  commits (the former Camel route left a random group behind per start); `mw.config.changed.v1` has no
+  retry topics here (`mw.kafka.retry.exclude-topics`). Admin and producer timeouts are bounded (5 s,
+  delivery 10 s, `mw.kafka.send-timeout` 12 s) so a callback fails fast with Kafka down.
 - `application.yml`: Resilience4j defaults (19.2), own schema `billpay_ref` migrated by Flyway.
 
 ## Commands

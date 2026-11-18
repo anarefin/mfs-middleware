@@ -15,11 +15,10 @@ import mfs.mw.adapter.billpay.partner.InboundCall;
 import mfs.mw.adapter.billpay.partner.InboundResult;
 import mfs.mw.adapter.billpay.partner.PartnerAuthenticationException;
 import mfs.mw.adapter.billpay.partner.PartnerInstanceNotFoundException;
-import mfs.mw.adapter.billpay.partner.PartnerUnsupportedException;
 import mfs.mw.adapter.billpay.partner.config.PartnerConfigStore;
-import mfs.mw.adapter.billpay.partner.mapping.JsonataMapping;
-import mfs.mw.adapter.billpay.partner.template.PartnerGateway;
-import mfs.mw.adapter.billpay.partner.template.PartnerInstance;
+import mfs.mw.adapter.billpay.partner.mapping.CompiledMapping;
+import mfs.mw.adapter.billpay.partner.route.PartnerGateway;
+import mfs.mw.adapter.billpay.partner.route.PartnerRuntime;
 import mfs.mw.adapter.billpay.repository.PartnerReferenceRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -82,7 +81,7 @@ public class PartnerCallbackService {
   }
 
   public CallbackAck receive(InboundCall call) {
-    PartnerInstance instance =
+    PartnerRuntime instance =
         store.instance(call.partnerId()).orElseThrow(() -> notFound(call.partnerId(), "partner.callback.unknown_partner"));
     InboundResult result = verifyAndMap(call);
     String reference = result.reference();
@@ -134,9 +133,9 @@ public class PartnerCallbackService {
           .addKeyValue("partnerId", call.partnerId())
           .log("partner callback signature did not verify; rejected, nothing published");
       throw new MwException(ErrorCodes.AUTH_SIGNATURE, "The callback signature is not valid").withStatus(HttpStatus.UNAUTHORIZED);
-    } catch (PartnerInstanceNotFoundException | PartnerUnsupportedException e) {
+    } catch (PartnerInstanceNotFoundException e) {
       throw notFound(call.partnerId(), "partner.callback.unsupported");
-    } catch (JsonataMapping.MappingException e) {
+    } catch (CompiledMapping.MappingException e) {
       log.atWarn()
           .addKeyValue("event", "partner.callback.unreadable")
           .addKeyValue("partnerId", call.partnerId())

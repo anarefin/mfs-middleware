@@ -43,9 +43,24 @@ dependencies {
     implementation("io.micrometer:micrometer-registry-prometheus")
     implementation("org.springframework.cloud:spring-cloud-starter-vault-config")
 
-    // Kafka through Camel (spec 6.1, 19.2): idempotent producer, retry topics, DLQ.
+    // Kafka through Spring Kafka (spec 6.1, 19.2, ADR D25): KafkaTemplate (idempotent producer),
+    // @KafkaListener with per-record manual ack, non-blocking retry topics, DLQ. In Boot 4 the
+    // auto-configuration is its own module, so the starter, not bare spring-kafka (version from the Boot BOM).
+    implementation("org.springframework.boot:spring-boot-starter-kafka")
+    // Camel for the partner side only (ADR D1 amendment, D26): partner routes are YAML DSL loaded at
+    // runtime from the partner record, built from the mw-* Kamelets in src/main/resources/kamelets
+    // (HTTP inside a resilience4j breaker, the result checked with json-validator, secrets through the
+    // HashiCorp Vault properties function against OpenBao, route metrics and observation).
     implementation("org.apache.camel.springboot:camel-spring-boot-starter")
-    implementation("org.apache.camel.springboot:camel-kafka-starter")
+    implementation("org.apache.camel.springboot:camel-yaml-dsl-starter")
+    implementation("org.apache.camel.springboot:camel-kamelet-starter")
+    implementation("org.apache.camel.springboot:camel-http-starter")
+    implementation("org.apache.camel.springboot:camel-resilience4j-starter")
+    implementation("org.apache.camel.springboot:camel-jackson-starter")
+    implementation("org.apache.camel.springboot:camel-json-validator-starter")
+    implementation("org.apache.camel.springboot:camel-hashicorp-vault-starter")
+    implementation("org.apache.camel.springboot:camel-micrometer-starter")
+    implementation("org.apache.camel.springboot:camel-micrometer-observability-starter")
     // Resilience4j for client/ calls (19.2); annotations need AspectJ.
     implementation("io.github.resilience4j:resilience4j-spring-boot4:2.4.0")
     implementation("org.springframework.boot:spring-boot-starter-aspectj")
@@ -57,7 +72,8 @@ dependencies {
     // Scheduled jobs run on one instance only (ShedLock on this service's schema, 4.4).
     implementation("net.javacrumbs.shedlock:shedlock-spring:7.10.1")
     implementation("net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.10.1")
-    // Adapter framework (spec 12): partner request/response mappings in JSONata.
+    // Partner request/response mappings in JSONata, compiled once per partner record version by the
+    // mw-* Kamelets' beans (camel-jsonata recompiles on every exchange, so it is not used).
     implementation("com.dashjoin:jsonata:0.9.10")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
@@ -68,8 +84,10 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers-kafka")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
     testImplementation("org.apache.camel:camel-test-spring-junit6")
-    testImplementation("com.networknt:json-schema-validator:3.0.8")
+    // json-schema-validator comes with camel-json-validator (2.0.1, Jackson 2); the contract tests use
+    // that version too, as one artifact can have only one version (contracts/JsonSchema).
     testImplementation("org.wiremock:wiremock-standalone:3.13.1")
+    testImplementation("tools.jackson.dataformat:jackson-dataformat-yaml")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

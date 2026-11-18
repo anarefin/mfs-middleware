@@ -23,7 +23,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.env.Environment;
-import org.testcontainers.kafka.KafkaContainer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -35,7 +34,7 @@ import tools.jackson.databind.json.JsonMapper;
  * reference or partner, or an unreadable body is refused and publishes nothing.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Import(TestInfrastructure.class)
+@Import({TestInfrastructure.class, mfs.mw.adapter.billpay.BillpayTestTopics.class})
 class PartnerCallbackIT {
 
   static final String SECRET = "fake-billagg-hmac-secret-for-tests"; // src/test/resources/config
@@ -46,13 +45,11 @@ class PartnerCallbackIT {
 
   private final HttpClient http = HttpClient.newHttpClient();
   private final PartnerReferenceService references;
-  private final KafkaContainer kafka;
   private final String base;
 
   @Autowired
-  PartnerCallbackIT(PartnerReferenceService references, KafkaContainer kafka, Environment env) {
+  PartnerCallbackIT(PartnerReferenceService references, Environment env) {
     this.references = references;
-    this.kafka = kafka;
     this.base = "http://localhost:" + env.getProperty("local.server.port");
   }
 
@@ -85,7 +82,7 @@ class PartnerCallbackIT {
   }
 
   List<ConsumerRecord<String, String>> published(String txnId, int atLeast, Duration wait) {
-    return KafkaTestConsumer.read(kafka.getBootstrapServers(), TOPIC, atLeast, wait, r -> txnId.equals(r.key()));
+    return KafkaTestConsumer.read(TestInfrastructure.kafkaBootstrapServers(), TOPIC, atLeast, wait, r -> txnId.equals(r.key()));
   }
 
   /** A reference this adapter issued for a PAY (as BillPaymentService does before the call). */

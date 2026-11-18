@@ -33,7 +33,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.kafka.KafkaContainer;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -52,7 +51,7 @@ import tools.jackson.databind.json.JsonMapper;
       "mw.outbox.relay.enabled=true",
       "mw.outbox.relay.period=100ms"
     })
-@Import(TestInfrastructure.class)
+@Import({TestInfrastructure.class, mfs.mw.adapter.billpay.BillpayTestTopics.class})
 @DirtiesContext
 class PartnerConfigReloadIT {
 
@@ -70,13 +69,11 @@ class PartnerConfigReloadIT {
   }
 
   private final EventPublisher publisher;
-  private final KafkaContainer kafka;
   private final PartnerConfigStore store;
 
   @Autowired
-  PartnerConfigReloadIT(EventPublisher publisher, KafkaContainer kafka, PartnerConfigStore store) {
+  PartnerConfigReloadIT(EventPublisher publisher, PartnerConfigStore store) {
     this.publisher = publisher;
-    this.kafka = kafka;
     this.store = store;
   }
 
@@ -132,11 +129,11 @@ class PartnerConfigReloadIT {
 
   private void publishConfig(String key, String value) throws Exception {
     Properties props = new Properties();
-    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers());
+    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, TestInfrastructure.kafkaBootstrapServers());
     props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
     props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
     try (KafkaProducer<String, String> producer = new KafkaProducer<>(props)) {
-      producer.send(new ProducerRecord<>(PartnerConfigRouteBuilder.TOPIC, key, value)).get();
+      producer.send(new ProducerRecord<>(PartnerConfigKafkaListener.TOPIC, key, value)).get();
     }
   }
 
@@ -162,7 +159,7 @@ class PartnerConfigReloadIT {
   private PartnerReply awaitReply(String txnId) {
     List<ConsumerRecord<String, String>> records =
         KafkaTestConsumer.read(
-            kafka.getBootstrapServers(), "mw.partner.reply.v1", 1, Duration.ofSeconds(30), r -> txnId.equals(r.key()));
+            TestInfrastructure.kafkaBootstrapServers(), "mw.partner.reply.v1", 1, Duration.ofSeconds(30), r -> txnId.equals(r.key()));
     assertThat(records).as("reply for %s", txnId).hasSize(1);
     return JSON.readValue(records.getFirst().value(), PartnerReply.class);
   }

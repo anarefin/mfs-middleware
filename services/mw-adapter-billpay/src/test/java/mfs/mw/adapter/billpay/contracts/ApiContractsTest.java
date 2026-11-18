@@ -3,7 +3,6 @@ package mfs.mw.adapter.billpay.contracts;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
-import com.networknt.schema.Schema;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,7 +15,7 @@ import mfs.mw.adapter.billpay.exception.MwException;
 import mfs.mw.adapter.billpay.mapper.PartnerCallMapper;
 import mfs.mw.adapter.billpay.partner.PartnerCall;
 import mfs.mw.adapter.billpay.partner.PartnerResponse;
-import mfs.mw.adapter.billpay.partner.template.PartnerGateway;
+import mfs.mw.adapter.billpay.partner.route.PartnerGateway;
 import mfs.mw.adapter.billpay.service.BillFetchService;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -40,7 +39,7 @@ class ApiContractsTest {
 
   static BillFetchService service(PartnerResponse answer) {
     PartnerGateway gateway =
-        new PartnerGateway(null, null) {
+        new PartnerGateway(null, null, null, null, null, null, null) {
           @Override
           public PartnerResponse call(PartnerCall call) {
             return answer;
@@ -64,7 +63,7 @@ class ApiContractsTest {
     List<BillerView> billers = service(null).billers();
     assertThat(billers).hasSize(2);
 
-    Schema biller = OpenApiSchemas.component(API, "Biller");
+    JsonSchema biller = OpenApiSchemas.component(API, "Biller");
     for (JsonNode b : json(billers)) {
       assertThat(biller.validate(b)).as("%s", b).isEmpty();
     }
@@ -80,7 +79,7 @@ class ApiContractsTest {
             .fetch("DESCO", "1234567");
     BillView bare = service(new PartnerResponse.Success("AGG-1", "000", Map.of("amount", "0"))).fetch("DESCO", "1234567");
 
-    Schema bill = OpenApiSchemas.component(API, "Bill");
+    JsonSchema bill = OpenApiSchemas.component(API, "Bill");
     assertThat(bill.validate(json(full))).as("%s", json(full)).isEmpty();
     assertThat(bill.validate(json(bare))).as("%s", json(bare)).isEmpty();
   }
@@ -100,7 +99,7 @@ class ApiContractsTest {
             catchThrowableOfType(MwException.class, () -> service(new PartnerResponse.Success("AGG-1", "000", Map.of("amount", "x"))).fetch("DESCO", "1")),
             new MwException("MW-VAL-001", "Request validation failed").withDetails(List.of(new ErrorDetail("billNumber", "must match"))));
 
-    Schema envelope = OpenApiSchemas.component(API, "ErrorEnvelope");
+    JsonSchema envelope = OpenApiSchemas.component(API, "ErrorEnvelope");
     for (MwException e : errors) {
       ErrorEnvelope body =
           new ErrorEnvelope(e.code(), e.getMessage(), e.messageBn(), e.txnId(), "corr-0002", e.retryable(), e.details());
