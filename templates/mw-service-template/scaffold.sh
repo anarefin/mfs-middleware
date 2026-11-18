@@ -103,9 +103,13 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package \`$pkg\`
 - \`logging/JsonLogFormatter\`: JSON log lines with the 21.1 fields, masking before output.
   Add context with \`log.atInfo().addKeyValue("event", "...")\` or the MDC.
 - \`config/MwServiceProperties\`: config binding; secrets from OpenBao when \`VAULT_ENABLED=true\`.
-- \`messaging/EventPublisher\`: Kafka records with the 6.1 headers, idempotent \`acks=all\` producer.
-- \`route/RetryTopicRouteBuilder\` + \`messaging/RetryDelayListener\`: subclass per consumed topic; retry
-  topics 10 s / 1 min / 10 min then DLQ (19.2); per-record commit; no sleeps on Kafka threads.
+- \`messaging/EventPublisher\`: Kafka records with the 6.1 headers through Spring Kafka's \`KafkaTemplate\`,
+  idempotent \`acks=all\` producer (ADR D25).
+- \`config/KafkaConfig\`: Spring Kafka retry topics for every \`@KafkaListener\`: \`<topic>.<group>.retry.1..3\`
+  (10 s / 1 min / 10 min) then \`<topic>.<group>.dlq\` (19.2, declare them in \`deploy/kafka/topics.txt\`);
+  listeners take \`ConsumerRecord<String, String>\` and \`Acknowledgment\` and acknowledge after handling
+  (per-record commit); no sleeps or long work on Kafka threads.
+- \`scheduler/OutboxRelayScheduler\`: relays the transactional outbox (\`messaging/OutboxRelay\`, 6.4).
 - \`application.yml\`: Resilience4j defaults (19.2), own schema \`$snake\` migrated by Flyway on
   start from \`db/migration\` (16.4); rename the schema to the spec 16.2 name if it has one.
 
