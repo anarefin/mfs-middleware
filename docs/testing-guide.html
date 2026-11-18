@@ -146,7 +146,7 @@ Every login is printed where a step needs it; <a href="#c1-0">1.0 Logins at a gl
       <tr><td class="tick"></td><td>MANUAL_REVIEW: force commit, force release, manual TSQ</td><td><a href="#c9-6">9.6</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Approvals: filters, rules, error codes</td><td><a href="#c9-7">9.7</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Wallet unlock</td><td><a href="#c9-8">9.8</a></td><td>Both</td></tr>
-      <tr><td class="tick"></td><td>Partners: disable, enable, timeouts, partner routes (submit, refuse, approve, LIVE / REJECTED)</td><td><a href="#c9-9">9.9</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>Partners: disable, enable, timeouts, partner routes (submit, refuse, approve, LIVE / REJECTED; SOAP and SFTP batch optional)</td><td><a href="#c9-9">9.9</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>USSD menu editor, preview, publish per MNO</td><td><a href="#c9-10">9.10</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>SMS and email templates: preview, publish, reject</td><td><a href="#c9-11">9.11</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>What each role can and cannot do</td><td><a href="#c9-12">9.12</a></td><td>Ops console</td></tr>
@@ -275,6 +275,7 @@ scripts/creds.sh</pre></div>
       <tr><td>Portal users (realm <code>portals</code>, client <code>mw-portal</code>)</td><td><code>org-maker01</code>, <code>org-checker01</code>, <code>org-makerchecker01</code>, <code>org-checker02</code>, <code>sp-viewer01</code>, <code>seed-org-maker</code>, <code>seed-org-checker</code></td><td><code>portal-test-pass</code></td><td>-</td></tr>
       <tr><td>Keycloak admin (realm <code>master</code>)</td><td><code>kc-admin</code></td><td><code>kc-admin-test-pass</code></td><td>no web console; commands in 1.5</td></tr>
       <tr><td>OpenBao (secrets store)</td><td>-</td><td>token <code>dev-root-token</code></td><td>no web UI; commands in 1.6</td></tr>
+      <tr><td>Partner SFTP host <code>partner-sftp</code> (profile <code>tester</code>, no host port)</td><td><code>bits</code></td><td><code>SFTP_DEV_PASSWORD</code> in <code>deploy/.env</code> (<code>dev-sftp-password</code>)</td><td>only for the SFTP batch routes (9.9); <code>scripts/creds.sh</code> does not print it</td></tr>
       <tr><td>Test-only API routes (<code>/test/…</code>, Postman)</td><td>-</td><td>header <code>apikey: e2e-test-apikey</code></td><td>exist after <code>scripts/tester.sh</code> or <code>scripts/api-test.sh</code></td></tr>
       <tr><td>Ops one-time-code secret (for your own TOTP tool)</td><td>-</td><td><code>opstesttotpsecretnotarealsecret1</code></td><td>HmacSHA256, 6 digits, 30 s, the raw text as key (not base32)</td></tr>
     </table></div>
@@ -420,7 +421,7 @@ docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token ope
       <tr><th>Path</th><th>Holds</th></tr>
       <tr><td><code>secret/mw-core-mock</code></td><td>the PIN encryption key pair (<code>mw.coremock.pin.*</code>, key id <code>core-pin-dev-1</code>)</td></tr>
       <tr><td><code>secret/mw-ussd</code>, <code>secret/mw-checkout</code></td><td>the PIN public key; checkout also the merchant <code>merchant_demo</code> secret</td></tr>
-      <tr><td><code>secret/mw-adapter-billpay</code>, <code>secret/mw-adapter-bank</code></td><td>the partner callback HMAC secrets</td></tr>
+      <tr><td><code>secret/mw-adapter-billpay/billagg</code>, <code>secret/mw-adapter-bank/c2wbank</code></td><td>one secret per partner (ADR D26): field <code>hmac-secret</code>, the callback HMAC secret, read by the partner route when it loads; a new partner's secrets go in <code>secret/&lt;adapter&gt;/&lt;partner&gt;</code></td></tr>
       <tr><td><code>secret/mw-simulators</code></td><td>the simulators' side of the callback and USSD gateway secrets</td></tr>
       <tr><td><code>secret/mw-notify</code></td><td>the SMSC (SMPP) password</td></tr>
       <tr><td>every <code>secret/mw-*</code></td><td><code>spring.datasource.password</code> (the service's own database user)</td></tr>
@@ -1124,17 +1125,21 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <h3><span class="id">9.9</span>Partners</h3>
     <p><b>Sign in as:</b> window A <code>seed-ops-maker</code> (or <code>ops-admin01</code>, integration-maker), window B <code>seed-ops-checker</code>.</p>
     <ol>
-      <li><span class="ui">Partners</span>: the partners managed here (<code>ocs</code> on the dev stack) with Family, State, Connect / Timeout / Read,
-        Version ("seed" or vN), Changed by, Approved by, Updated.</li>
+      <li><span class="ui">Partners</span>: the partners managed here, on the dev stack the three seeds of mw-admin-api
+        (<code>ocs</code> telco, <code>billagg</code> billpay, <code>c2wbank</code> bank; each one a partner route on the shipped
+        <code>mw-*</code> Kamelets) with Family, State, Connect / Timeout / Read, Version ("seed" or vN), Changed by, Approved by, Updated.</li>
       <li>Open <code>ocs</code> (<span class="ui">Back to partners</span> returns): State, Family, Version ("seed (never published)" before the first change),
-        Changed, Base URL, Template, Timeouts, Auth (only the secret's reference name, never a secret), Operations, Error map "N codes".</li>
+        Changed, Allowed hosts (<code>mw-simulators</code>), Dry-run (only when the record has one), Timeouts, Auth (the scheme and only the
+        secret's reference name, never a secret), Error map "N codes". Below: the card <i>Route</i> (Status, Problems, Kamelets, Reported and the
+        route's YAML: <code>direct:partner-ocs</code> with <code>kamelet:mw-map</code>, <code>mw-http-call</code>, <code>mw-classify</code>,
+        <code>mw-audit</code>) and, for a maker, the route editor (second card <i>Route</i>).</li>
       <li>Card <i>Change</i>: Reason, <span class="ui">Request disable</span>; checker approves (<code>enabled=true -&gt; enabled=false</code>). Version + 1. A test console top-up now fails at once: <code>REJECTED MW-SYS-PARTNER_DISABLED</code>.</li>
       <li><span class="ui">Request enable</span> the same way; the top-up works again.</li>
       <li>Card <i>Timeouts</i>: <span class="ui">Call timeout (ms)</span> e.g. <code>8000</code>, Reason, <span class="ui">Request timeouts</span>, approve: new version.
         Negative: <span class="ui">Connect (ms)</span> <code>0</code> → "a whole number 1 to 120000"; all three empty → "timeouts: at least one timeout";
         <span class="ui">Read (ms)</span> below the call timeout → "readTimeoutMs: at least timeoutMs"; read over <code>125000</code> → "a whole number 1 to 125000".</li>
       <li>As the checker or a viewer the Change and Timeouts cards are not there. An unknown partner id in the URL shows the error box.</li>
-      <li><b>Partner routes</b> (ADR D26, ticket 83). First give the simulator stub an answer:
+      <li><b>Partner routes</b> (ADR D26). First give the simulator stub an answer:
         <code>curl -s -X POST http://127.0.0.1:8085/sim/stubs/newco -H 'content-type: application/json' -d '{"method":"POST","path":"/v1/pay","status":200,"body":{"receipt":"NC-1"}}'</code>.
         As the maker open <code>/console/partners/newco</code>: the error box, then <i>Onboard with a route</i> with
         <span class="ui">Family</span>, <span class="ui">Route (Camel YAML DSL)</span> (monospace), <span class="ui">Allowed hosts</span>,
@@ -1148,6 +1153,15 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
         then (reload) <code>v1 LIVE</code> with the Kamelets used; <code>GET /sim/stubs/newco/requests</code> shows the dry-run PAY.</li>
       <li>Set the stub to <code>"status":500</code>, submit a changed version and approve it: <code>v2 REJECTED (v1 still serves)</code>
         with the problem (<code>HTTP_5XX</code>); v1 keeps serving.</li>
+      <li>Optional, other route kinds (the partner's secret goes into OpenBao first; steps and commands in <code>docs/runbook.md</code>,
+        "Onboard a biller" and "Batch partner over SFTP"):
+        <b>SOAP</b>: onboard <code>soapbill</code> from <code>deploy/partner-routes/examples/soap-biller.yaml</code> with the address
+        <code>http://mw-simulators:8080/soapbill/v1</code> and host <code>mw-simulators</code> (the simulator's SOAP biller): the dry-run
+        makes it <code>v1 LIVE</code>, Kamelets <code>mw-map, mw-soap-call, mw-classify, mw-audit</code>.
+        <b>SFTP batch</b>: start <code>partner-sftp</code> (profile <code>tester</code>), onboard <code>billagg-recon</code> from
+        <code>deploy/partner-routes/examples/sftp-recon.yaml</code> (no dry-run: a batch route takes no calls), drop a CSV in
+        <code>/home/bits/recon/</code>: it moves to <code>.done</code> and each line is a <code>mw.partner.recon.v1</code> event;
+        a file with a wrong field count moves to <code>.error</code>.</li>
     </ol>
   </div>
 
@@ -1260,7 +1274,8 @@ scripts/log-scan.sh</pre></div>
     <li>NPSB / BanglaQR interoperable QR payments</li>
     <li>Bank account verification / lookup and card payments</li>
     <li>Checkout cancel from the hosted page, and a single portal transaction lookup (the API exists, the test console has no button)</li>
-    <li>Maker withdrawing their own request; partner onboarding or full config replace in the console</li>
+    <li>Maker withdrawing their own request</li>
+    <li>Consuming the partners' reconciliation lines (<code>mw.partner.recon.v1</code>): mw-recon is a later ticket</li>
     <li>Monitoring dashboards and alert rules</li>
     <li>Live partner integrations: every partner is a simulator</li>
   </ul>
@@ -1311,7 +1326,7 @@ scripts/log-scan.sh</pre></div>
     <tr><td>9.2, 9.3 search and timeline</td><td><code>14</code></td></tr>
     <tr><td>9.5 reversal</td><td><code>12, 13</code></td></tr>
     <tr><td>9.8 wallet unlock</td><td><code>16</code></td></tr>
-    <tr><td>9.9 partners</td><td><code>15</code></td></tr>
+    <tr><td>9.9 partners</td><td><code>15</code>; partner routes also <code>scripts/ui-e2e.sh @partners</code></td></tr>
     <tr><td>9.10, 9.11 menus and templates</td><td><code>17</code></td></tr>
   </table></div>
 </section>
