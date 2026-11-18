@@ -99,6 +99,15 @@ public class PartnerGateway {
     return response;
   }
 
+  /**
+   * Sends a dry-run {@code call} through {@code candidate}, a version that is not live (ticket 83):
+   * no partner resolution, no enabled check, no §21.2 metrics (they count real traffic). Audited
+   * by {@code mw-audit} as every call.
+   */
+  public PartnerResponse dryRun(PartnerRuntime candidate, PartnerCall call) {
+    return send(candidate, call, System.nanoTime());
+  }
+
   private PartnerResponse send(PartnerRuntime runtime, PartnerCall call, long start) {
     registerCircuitGauge(runtime.id());
     String body = json.writeValueAsString(call);

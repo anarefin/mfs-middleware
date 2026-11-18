@@ -92,6 +92,9 @@ public record PartnerConfig(
   /** REST/JSON acknowledged first (PENDING), the outcome follows by signed callback. */
   public static final String ASYNC_CALLBACK = "rest-json-async-callback";
 
+  /** The operations a dry-run may send. */
+  public static final Set<String> DRY_RUN_OPERATIONS = Set.of("PAY", "INQUIRY", "STATUS_QUERY");
+
   /** The legacy route templates. */
   public static final Set<String> TEMPLATES = Set.of(REQUEST_REPLY, ASYNC_CALLBACK);
 
@@ -185,6 +188,9 @@ public record PartnerConfig(
             problems.add("errorMap." + code + ": suffix must be upper case letters, digits, underscore");
           }
         });
+    if (dryRun != null && (dryRun.operation() == null || !DRY_RUN_OPERATIONS.contains(dryRun.operation()))) {
+      problems.add("dryRun.operation must be one of " + String.join(", ", new java.util.TreeSet<>(DRY_RUN_OPERATIONS)));
+    }
     if (!mfs.mw.adapter.billpay.partner.auth.AuthSchemes.NAMES.contains(auth.scheme())) {
       problems.add("unknown auth scheme " + auth.scheme());
     } else if (!"none".equals(auth.scheme()) && auth.credentialsRef() == null) {
@@ -305,7 +311,16 @@ public record PartnerConfig(
       Long waitDurationInOpenStateMs,
       Integer bulkheadMaxConcurrentCalls) {}
 
-  /** What the admin console's dry run sends before approval (ticket 83). */
+  /**
+   * The dry-run a new version must pass before it goes live (ticket 83): {@code operation} sent
+   * with {@code sample} as the canonical input ({@code PartnerCall.input}) through the candidate
+   * route; {@code baseUrl} the partner's sandbox (production; must be in {@code allowedHosts}),
+   * else the environment's {@code mw.partners.dry-run.base-url}.
+   */
   @JsonIgnoreProperties(ignoreUnknown = true)
-  public record DryRun(String operation, Map<String, Object> sample) {}
+  public record DryRun(String operation, Map<String, Object> sample, String baseUrl) {
+    public DryRun {
+      sample = sample == null ? Map.of() : java.util.Collections.unmodifiableMap(new LinkedHashMap<>(sample));
+    }
+  }
 }

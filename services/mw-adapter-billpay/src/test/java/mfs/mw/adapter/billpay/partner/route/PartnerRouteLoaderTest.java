@@ -233,4 +233,26 @@ class PartnerRouteLoaderTest {
     assertThatThrownBy(() -> load(other.withRoute(from, other.mappings(), other.allowedHosts())))
         .hasMessageContaining("direct:partner-acme");
   }
+
+  @Test
+  void aCandidateRunsOnItsOwnEndpointAndBreakerAndCallsTheDryRunTargetInstead() {
+    PartnerRouteLoader.Loaded candidate = loader.load(
+        "acme", 3, record(GOOD.replace("http://localhost:8089", "http://localhost:8089/api")), SECURITY,
+        new PartnerRouteLoader.DryRunTarget("http://mw-simulators:8080/sim/partners/acme", "mw-simulators"));
+
+    assertThat(candidate.runtime().routeId()).isEqualTo("partner-acme-candidate-v3");
+    assertThat(candidate.runtime().endpoint()).isEqualTo("direct:partner-acme-candidate");
+    assertThat(candidate.route().getInput().getUri()).isEqualTo("direct:partner-acme-candidate");
+    String route = candidate.route().toString();
+    assertThat(route).contains("url=http://mw-simulators:8080/sim/partners/acme/api", "partnerId=acme-candidate")
+        .doesNotContain("localhost:8089");
+    assertThat(candidate.runtime().allowedHosts()).containsExactly("localhost", "mw-simulators");
+  }
+
+  @Test
+  void aCandidateTargetOutsideTheAllowedHostsIsRefused() {
+    assertThatThrownBy(() -> loader.load("acme", 3, record(GOOD), SECURITY,
+            new PartnerRouteLoader.DryRunTarget("https://sandbox.evil.example", null)))
+        .isInstanceOfSatisfying(PartnerConfigRefusedException.class, e -> assertThat(e.getMessage()).contains("allowedHosts"));
+  }
 }

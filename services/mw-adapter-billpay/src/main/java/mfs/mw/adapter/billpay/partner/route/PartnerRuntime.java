@@ -44,6 +44,19 @@ public record PartnerRuntime(
     return "partner-" + id + "-v" + version;
   }
 
+  /** Suffix of a dry-run candidate's route, endpoint and circuit breaker (ticket 83). */
+  public static final String CANDIDATE = "-candidate";
+
+  /** Route id of the dry-run candidate of version {@code version} of partner {@code id}. */
+  public static String candidateRouteId(String id, long version) {
+    return "partner-" + id + CANDIDATE + "-v" + version;
+  }
+
+  /** Endpoint of partner {@code id}'s dry-run candidate (one at a time). */
+  public static String candidateEndpoint(String id) {
+    return "direct:partner-" + id + CANDIDATE;
+  }
+
   /** Endpoint of version {@code version} of partner {@code id}. */
   public static String endpoint(String id, long version) {
     return "direct:" + routeId(id, version);

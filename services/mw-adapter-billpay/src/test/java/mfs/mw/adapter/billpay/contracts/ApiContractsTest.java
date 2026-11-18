@@ -106,4 +106,37 @@ class ApiContractsTest {
       assertThat(envelope.validate(json(body))).as("%s", json(body)).isEmpty();
     }
   }
+
+  @Test
+  void theKameletUsageMatchesTheContractAndListsTheLiveVersions() {
+    var routes = org.mockito.Mockito.mock(mfs.mw.adapter.billpay.partner.route.PartnerRoutes.class);
+    var config = new mfs.mw.adapter.billpay.partner.config.PartnerConfig(
+        true, "- route: {}", null, List.of("localhost"), "billpay", null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null);
+    org.mockito.Mockito.when(routes.load(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyLong(),
+            org.mockito.ArgumentMatchers.any()))
+        .thenReturn(new mfs.mw.adapter.billpay.partner.route.PartnerRuntime("newco", 4, config, "partner-newco-v4",
+            "direct:partner-newco-v4", Map.of(), Map.of(), List.of("localhost"), java.util.Set.of("mw-http-call", "mw-audit")));
+    var store = new mfs.mw.adapter.billpay.partner.config.PartnerConfigStore(
+        new mfs.mw.adapter.billpay.partner.config.PartnerProperties(null, Map.of(), null, null, null), routes,
+        ServiceJson.MAPPER, org.mockito.Mockito.mock(mfs.mw.adapter.billpay.partner.route.PartnerDryRun.class), s -> {});
+    store.start();
+    store.apply(new mfs.mw.adapter.billpay.dto.ConfigChangedEvent(
+        1, "partner/newco", mfs.mw.adapter.billpay.dto.ConfigChangedEvent.ConfigType.PARTNER,
+        mfs.mw.adapter.billpay.dto.ConfigChangedEvent.Change.UPSERT, 4, Map.of("route", "- route: {}"),
+        java.time.Instant.now(), "m", "c", "corr"));
+
+    var usage = new mfs.mw.adapter.billpay.service.KameletUsageService(
+        new mfs.mw.adapter.billpay.partner.route.KameletCatalogue(), store).usage();
+
+    assertThat(OpenApiSchemas.component(API, "KameletUsage").validate(json(usage))).isEmpty();
+    assertThat(usage.kamelets()).anySatisfy(k -> {
+      assertThat(k.name()).isEqualTo("mw-http-call");
+      assertThat(k.routes()).containsExactly(new mfs.mw.adapter.billpay.dto.KameletUsageView.Route("newco", 4));
+    });
+    assertThat(usage.kamelets()).anySatisfy(k -> {
+      assertThat(k.name()).isEqualTo("mw-map");
+      assertThat(k.routes()).isEmpty();
+    });
+  }
 }
