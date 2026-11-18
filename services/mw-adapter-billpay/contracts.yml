@@ -4,6 +4,8 @@ produces:
     - events/mw-orchestrator/mw.partner.reply.v1.schema.json#billpay
     - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#billpay
     - events/mw-audit-dw/mw.audit.event.v1.schema.json
+    # ticket 83: LIVE / REJECTED of each partner record version (messaging/PartnerRouteStatusPublisher)
+    - events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json
   apis: [api/mw-adapter-billpay/billpay.v1.openapi.yaml]
 consumes:
   events:
