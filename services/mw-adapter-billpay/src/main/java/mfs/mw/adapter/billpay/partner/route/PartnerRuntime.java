@@ -11,9 +11,9 @@ import mfs.mw.adapter.billpay.partner.mapping.CompiledMapping;
  * time. Built by {@link PartnerRouteLoader} and replaced as a whole when a new version loads, so a
  * call sees one version from start to end.
  *
- * @param id partner id ({@code billagg})
+ * @param id partner id
  * @param version record version ({@code 0} for the seed)
- * @param config the record (for a legacy record, after its translation to a route)
+ * @param config the record
  * @param routeId the partner route's id, {@code partner-<id>-v<version>}
  * @param endpoint the partner route's endpoint, {@code direct:partner-<id>-v<version>}
  * @param mappings the record's JSONata mappings, compiled once

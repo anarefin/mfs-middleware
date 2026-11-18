@@ -23,7 +23,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * The route loader's guardrails (ADR D26, ticket 82), on a plain Camel context: the billagg seed
+ * The route loader's guardrails (ADR D26, ticket 82), on a plain Camel context: the dev seed
  * route loads; every construct outside the allowlist is refused, before the route is added.
  */
 class PartnerRouteLoaderTest {
@@ -58,9 +58,7 @@ class PartnerRouteLoaderTest {
         %s
         """.formatted(steps.indent(8).stripTrailing());
     return new PartnerConfig(
-        true, route, Map.of("PAY.request", "{\"a\": reference}", "PAY.response", "{\"outcome\": \"UNKNOWN\"}"),
-        List.of("localhost"), "billpay", null, null, null, null, null, 3000L, 1500L, null, null, null, null, null,
-        null, null);
+        true, route, Map.of("PAY.request", "{\"a\": reference}", "PAY.response", "{\"outcome\": \"UNKNOWN\"}"), List.of("localhost"), "billpay", null, null, null, 3000L, 1500L, null, null, null, null, null, null);
   }
 
   static final String GOOD = """
@@ -71,20 +69,21 @@ class PartnerRouteLoaderTest {
       """;
 
   PartnerRouteLoader.Loaded load(PartnerConfig config) {
-    return loader.load("acme", 3, config, SECURITY);
+    return loader.load("acme", 3, config);
   }
 
   @Test
-  void theBillaggSeedRouteLoads() {
-    PartnerConfig billagg = PartnerTestSeeds.billagg();
+  void theDevSeedRouteLoads() {
+    Map.Entry<String, PartnerConfig> seed = PartnerTestSeeds.devSeed();
 
-    PartnerRouteLoader.Loaded loaded = loader.load("billagg", 0, billagg, SECURITY);
+    PartnerRouteLoader.Loaded loaded = loader.load(seed.getKey(), 0, seed.getValue());
 
-    assertThat(loaded.runtime().routeId()).isEqualTo("partner-billagg-v0");
-    assertThat(loaded.route().getInput().getUri()).isEqualTo("direct:partner-billagg-v0");
+    assertThat(loaded.runtime().routeId()).isEqualTo("partner-" + seed.getKey() + "-v0");
+    assertThat(loaded.route().getInput().getUri()).isEqualTo("direct:partner-" + seed.getKey() + "-v0");
     assertThat(loaded.route().getRouteConfigurationId()).isEqualTo(PartnerRouteConfiguration.ID);
     assertThat(loaded.runtime().kamelets()).contains("mw-map", "mw-http-call", "mw-classify", "mw-audit");
-    assertThat(loaded.runtime().secrets()).containsKey("hmac-secret");
+    assertThat(loaded.runtime().secrets().keySet())
+        .allSatisfy(field -> assertThat(seed.getValue().route()).contains("secretField=" + field));
   }
 
   @Test
@@ -97,19 +96,11 @@ class PartnerRouteLoaderTest {
   }
 
   @Test
-  void anOldShapeRecordBecomesTheEquivalentRoute() {
-    PartnerConfig legacy =
-        new PartnerConfig(
-            true, null, null, null, null, null, null, null, "rest-json-request-reply",
-            java.net.URI.create("http://localhost:8089"), null, 700L, null, null, null,
-            Map.of("PAY", new PartnerConfig.Operation("POST", "/pay", List.of(422), "{\"a\": reference}", "{\"outcome\": \"UNKNOWN\"}")),
-            null, null, null);
+  void aRecordWithoutARouteIsRefused() {
+    PartnerConfig routeless = record(GOOD).withRoute(null, Map.of(), List.of("localhost"));
 
-    PartnerRouteLoader.Loaded loaded = loader.load("acme", 1, legacy, new PartnerProperties.Security(
-        Map.of("acme", List.of("localhost")), List.of("localhost")));
-
-    assertThat(loaded.runtime().mappings()).containsKeys("PAY.request", "PAY.response");
-    assertThat(loaded.runtime().allowedHosts()).containsExactly("localhost");
+    assertThatThrownBy(() -> load(routeless))
+        .isInstanceOfSatisfying(PartnerConfigRefusedException.class, e -> assertThat(e.problems()).contains("a route is required"));
   }
 
   @ParameterizedTest
@@ -237,7 +228,7 @@ class PartnerRouteLoaderTest {
   @Test
   void aCandidateRunsOnItsOwnEndpointAndBreakerAndCallsTheDryRunTargetInstead() {
     PartnerRouteLoader.Loaded candidate = loader.load(
-        "acme", 3, record(GOOD.replace("http://localhost:8089", "http://localhost:8089/api")), SECURITY,
+        "acme", 3, record(GOOD.replace("http://localhost:8089", "http://localhost:8089/api")),
         new PartnerRouteLoader.DryRunTarget("http://mw-simulators:8080/sim/partners/acme", "mw-simulators"));
 
     // a namespace no partner id can produce (ids are [a-z0-9-], routes partner-<id>-v<n>)
@@ -252,7 +243,7 @@ class PartnerRouteLoaderTest {
 
   @Test
   void aCandidateTargetOutsideTheAllowedHostsIsRefused() {
-    assertThatThrownBy(() -> loader.load("acme", 3, record(GOOD), SECURITY,
+    assertThatThrownBy(() -> loader.load("acme", 3, record(GOOD),
             new PartnerRouteLoader.DryRunTarget("https://sandbox.evil.example", null)))
         .isInstanceOfSatisfying(PartnerConfigRefusedException.class, e -> assertThat(e.getMessage()).contains("allowedHosts"));
   }
@@ -268,7 +259,7 @@ class PartnerRouteLoaderTest {
       "http://mw-simulators:8080/sim/../admin",
   })
   void aDryRunTargetWithQueryFragmentEncodingOrPlaceholdersIsRefused(String base) {
-    assertThatThrownBy(() -> loader.load("acme", 3, record(GOOD), SECURITY,
+    assertThatThrownBy(() -> loader.load("acme", 3, record(GOOD),
             new PartnerRouteLoader.DryRunTarget(base, "mw-simulators")))
         .as(base)
         .isInstanceOfSatisfying(PartnerConfigRefusedException.class, e -> assertThat(e.security()).isTrue());
@@ -286,9 +277,7 @@ class PartnerRouteLoaderTest {
   void aRecordsDryRunBaseUrlMustBeAPlainAbsoluteHttpUrl(String baseUrl) {
     PartnerConfig good = record(GOOD);
     PartnerConfig bad = new PartnerConfig(
-        true, good.route(), good.mappings(), List.of("localhost", "sandbox.acme.example"), "billpay", null, null,
-        new PartnerConfig.DryRun("PAY", Map.of(), baseUrl), null, null, 3000L, 1500L, null, null, null, null, null,
-        null, null);
+        true, good.route(), good.mappings(), List.of("localhost", "sandbox.acme.example"), "billpay", null, null, new PartnerConfig.DryRun("PAY", Map.of(), baseUrl), 3000L, 1500L, null, null, null, null, null, null);
 
     assertThat(bad.problems()).as(baseUrl).anySatisfy(p -> assertThat(p).startsWith(PartnerConfig.SECURITY).contains("dryRun.baseUrl"));
   }

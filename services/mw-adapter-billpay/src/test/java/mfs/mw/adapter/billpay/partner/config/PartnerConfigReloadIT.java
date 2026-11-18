@@ -12,6 +12,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import mfs.mw.adapter.billpay.TestInfrastructure;
 import mfs.mw.adapter.billpay.contracts.ContractSchemas;
@@ -84,19 +85,40 @@ class PartnerConfigReloadIT {
     send(before);
     assertThat(awaitReply(before.txnId()).payload().outcome()).isEqualTo("SUCCESS");
 
-    String event =
+    String route =
         """
-        {"schemaVersion": 1, "configKey": "partner/billagg", "configType": "PARTNER", "change": "UPSERT",
-         "version": 1, "changedAt": "2026-11-04T10:00:00Z", "changedBy": "ops.maker1", "approvedBy": "ops.checker1",
-         "value": {
-           "template": "rest-json-request-reply", "baseUrl": "http://localhost:%d", "timeoutMs": 700,
-           "errorMap": {"3003": {"suffix": "PAYMENT_REFUSED", "retryable": false}},
-           "operations": {"PAY": {"method": "POST", "path": "/billagg/v1/payments", "definiteStatuses": [400, 422],
-             "request": "{\\"transactionId\\": reference, \\"billNumber\\": creditParty.id, \\"amount\\": amount.major, \\"channel\\": \\"Bits\\"}",
-             "response": "status = 200 and body.status = \\"SUCCESS\\" ? {\\"outcome\\": \\"SUCCESS\\", \\"partnerRef\\": body.paymentRef, \\"code\\": body.code} : {\\"outcome\\": \\"UNKNOWN\\", \\"reason\\": \\"UNEXPECTED_STATUS\\"}"}}
-         }}
+        - route:
+            from:
+              uri: direct:partner-billagg
+              steps:
+                - to: "kamelet:mw-map?mapping=PAY.request"
+                - to: "kamelet:mw-http-call?url=http://localhost:%d&method=POST&path=/billagg/v1/payments&auth=none"
+                - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=400,422"
+                - to: "kamelet:mw-audit"
         """
             .formatted(AGG.port());
+    Map<String, Object> value = new java.util.LinkedHashMap<>();
+    value.put("family", "billpay");
+    value.put("route", route);
+    value.put("mappings", Map.of(
+        "PAY.request",
+        "{\"transactionId\": reference, \"billNumber\": creditParty.id, \"amount\": amount.major, \"channel\": \"Bits\"}",
+        "PAY.response",
+        "status = 200 and body.status = \"SUCCESS\" ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.paymentRef, \"code\": body.code} : {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}"));
+    value.put("allowedHosts", List.of("localhost"));
+    value.put("timeoutMs", 700);
+    value.put("errorMap", Map.of("3003", Map.of("suffix", "PAYMENT_REFUSED", "retryable", false)));
+    Map<String, Object> record = new java.util.LinkedHashMap<>();
+    record.put("schemaVersion", 1);
+    record.put("configKey", "partner/billagg");
+    record.put("configType", "PARTNER");
+    record.put("change", "UPSERT");
+    record.put("version", 1);
+    record.put("changedAt", "2026-11-04T10:00:00Z");
+    record.put("changedBy", "ops.maker1");
+    record.put("approvedBy", "ops.checker1");
+    record.put("value", value);
+    String event = JSON.writeValueAsString(record);
     assertThat(ContractSchemas.schema(CONFIG_SCHEMA).validate(JSON.readTree(event))).isEmpty();
     publishConfig("partner/billagg", event);
     awaitConfig("billagg", 1);

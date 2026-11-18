@@ -45,7 +45,7 @@ class PartnerCallbackServiceTest {
 
   void knownPartnerAndReference() {
     PartnerRuntime instance = mock(PartnerRuntime.class);
-    when(instance.config()).thenReturn(PartnerTestSeeds.billagg());
+    when(instance.config()).thenReturn(PartnerTestSeeds.seed("billagg"));
     when(store.instance("billagg")).thenReturn(Optional.of(instance));
     when(references.findByReference(REF))
         .thenReturn(Optional.of(new PartnerReferenceRepository.Issued("01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c", "billagg")));

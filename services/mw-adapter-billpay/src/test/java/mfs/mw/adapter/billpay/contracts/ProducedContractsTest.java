@@ -68,7 +68,7 @@ class ProducedContractsTest {
   static List<Outbox.Record> routeStatuses(Outbox outbox) {
     var publisher = new mfs.mw.adapter.billpay.messaging.PartnerRouteStatusPublisher(
         outbox.writer, outbox.transactions, SERVICE,
-        new mfs.mw.adapter.billpay.partner.config.PartnerProperties(null, null, null, null, null), CLOCK);
+        new mfs.mw.adapter.billpay.partner.config.PartnerProperties(null, null, null, "billpay", null), CLOCK);
     publisher.publish(new mfs.mw.adapter.billpay.partner.route.PartnerRouteStatus(
         "newco", 2, mfs.mw.adapter.billpay.partner.route.PartnerRouteStatus.Status.LIVE, List.of(),
         List.of("mw-audit", "mw-classify", "mw-http-call", "mw-map")));
@@ -115,7 +115,7 @@ class ProducedContractsTest {
    */
   static List<Outbox.Record> partnerInbound(Outbox outbox) {
     PartnerInboundMapper mapper = new PartnerInboundMapper();
-    PartnerConfig config = PartnerTestSeeds.billagg();
+    PartnerConfig config = PartnerTestSeeds.seed("billagg");
     String ref = "BITS01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
     Instant now = CLOCK.instant();
     List<PartnerInbound> events =
