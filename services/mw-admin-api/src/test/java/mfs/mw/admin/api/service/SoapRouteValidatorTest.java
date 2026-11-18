@@ -124,4 +124,31 @@ class SoapRouteValidatorTest {
     assertThat(check(CALL.replace("&wsPasswordSecret=ws-password", ""), Map.of()))
         .anySatisfy(p -> assertThat(p.toString()).contains("wsPasswordSecret"));
   }
+
+  // --- review of 85: the adapters' Basic, mTLS and JSON/XML rules -----------------------------
+
+  @Test
+  void basicMtlsAndJsonBothWaysAreAccepted() {
+    String call = CALL.replace("request=PAY.request.xsl&response=PAY.response.xsl", "request=json&response=json&namespace=urn:acme:v1")
+        + "&auth=basic&userField=soap-user&secretField=soap-password&sslContextRef=acme-client";
+
+    assertThat(check(call, Map.of())).isEmpty();
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "&auth=basic&secretField=soap-password",
+      "&auth=oauth2-cc&secretField=x",
+      "&namespace=biller",
+  })
+  void aBasicWithoutItsFieldsAnotherSchemeOrABadNamespaceIsRefused(String params) {
+    assertThat(check(CALL + params, Map.of())).as(params).isNotEmpty();
+  }
+
+  @Test
+  void requestJsonNeedsANamespaceAndMtlsAnHttpsAddress() {
+    assertThat(check(CALL.replace("request=PAY.request.xsl", "request=json"), Map.of()).toString()).contains("namespace");
+    assertThat(check(CALL.replace("https://", "http://") + "&sslContextRef=acme-client", Map.of()).toString())
+        .contains("https");
+  }
 }

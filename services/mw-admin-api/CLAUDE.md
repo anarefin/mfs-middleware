@@ -154,15 +154,20 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 - Partner routes (ADR D26, ticket 83; same engine): action `UPSERT_ROUTE` with `config` (`route` Camel
   YAML DSL, `mappings`, `allowedHosts`, `dryRun {operation, sample, baseUrl?}`, timeouts, `errorMap`,
   `ambiguousCodes`, `sensitiveFields`; `family` for a new partner). Only UPSERT_ROUTE carries a
-  `dryRun`: ENABLE / DISABLE / SET_TIMEOUTS republish the held route without one (ticket 84), so the
-  adapter swaps the version in at once. Field problems `400 MW-VAL-001`; the route itself is checked by
+  `dryRun`: ENABLE / DISABLE / SET_TIMEOUTS on a proven route (a seed or a version reported LIVE)
+  republish it without one (ticket 84), so the adapter swaps the version in at once; on a route still
+  PENDING_DRY_RUN or REJECTED they keep its `dryRun`, so the gate still applies (review of 84). Field problems `400 MW-VAL-001`; the route itself is checked by
   `service/PartnerRouteValidator`, a copy of mw-adapter-billpay's `PartnerRouteLoader` rules kept identical
   under D14 (no Camel here: the loader's walk over Camel's model runs over the SnakeYAML node tree with the
   same allowlist; Camel's YAML DSL JSON Schema `schema/camelYamlDsl.json`, copied from camel-yaml-dsl
   4.22.2, runs first; strict Kamelet parameter keys, the `mw-http-call` host in `allowedHosts`, the
   ending rule, named mappings present; Kamelet library `mw.partner-routes.kamelets`; ticket 85: the
   `mw-soap-call` rules (address host, `*.xsl` or `classpath:partner/xslt/` stylesheets, SOAP version,
-  WS-Security secret field) and every `*.xsl` mapping through `service/StylesheetPolicy`, the copy of the
+  WS-Security secret field; review of 85: `request=json`/`response=json` with a `namespace`, `auth`
+  none|basic with `userField` and `secretField`, `sslContextRef` over https; the batch Kamelets' rules
+  in `service/PartnerBatchRouteRules`, the copy of the adapters' `PartnerBatchRoutes`: values read
+  URL-decoded, `delay` (100 ms or more) or `cron`, a sink `mapping` in request routes only) and every
+  `*.xsl` mapping through `service/StylesheetPolicy`, the copy of the
   adapters' `partner/mapping/StylesheetPolicy`: no DOCTYPE/entity, `document()`, `doc()`, includes and the
   like, `SoapRouteValidatorTest`): `400 MW-VAL-041`,
   one detail per problem `{field: config.route, issue: "line N: construct: problem"}`, before any change
@@ -178,8 +183,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `service/PartnerRouteStatusService` (update by key, latest report wins, a version not approved here is
   skipped). Rollback (ticket 84, ADR D26 amendment; the restart gap of ticket 83: an adapter replays
   only the latest record per partner): a REJECTED report for the partner's current version republishes
-  the newest version reported LIVE before it (its `published_value` without `dryRun`) as the next
-  version, in the same transaction: partner rows restored, route row PENDING_DRY_RUN, outbox record
+  the newest version reported LIVE before it as the next version, without `dryRun`, in the same
+  transaction (review of 84, `PartnerRouteStatusService.rolledBack`): the set its dry-run proved
+  (route, mappings, allowedHosts, auth, sensitiveFields, headers, error map) as it was, enabled only
+  when both versions are (never re-enables a partner the operator disabled), the current timeouts; the
+  merged value must pass `validateRoute` again (`partner.route.rollback_refused` otherwise), and a
+  rejected version that kept that proven set is not rolled back (it would be rejected again); partner rows restored, route row PENDING_DRY_RUN, outbox record
   changedBy / approvedBy `system/rollback`, event `partner.route.rolled_back`; a repeated or stale REJECTED
   (another instance, a replay) does nothing, and without a LIVE predecessor nothing is published (the
   adapter keeps its seed). Not audited on `mw.audit.event.v1` (the record and the log carry it). Views:
