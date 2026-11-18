@@ -54,8 +54,12 @@ public class PartnerEndpointPolicy {
 
   /** Every rule the partner id breaks; empty when it is a simple name. */
   public List<String> idProblems(String id) {
-    return id == null || !INSTANCE_ID.matcher(id).matches()
-        ? List.of("partner id must be lower-case letters, digits, hyphen")
+    if (id == null || !INSTANCE_ID.matcher(id).matches()) {
+      return List.of("partner id must be lower-case letters, digits, hyphen");
+    }
+    // reserved for dry-run candidates (ticket 83)
+    return id.endsWith("-candidate")
+        ? List.of("partner id may not end with -candidate (reserved for dry-runs)")
         : List.of();
   }
 

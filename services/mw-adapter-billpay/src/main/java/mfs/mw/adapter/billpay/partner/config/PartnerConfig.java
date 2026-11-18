@@ -191,6 +191,11 @@ public record PartnerConfig(
     if (dryRun != null && (dryRun.operation() == null || !DRY_RUN_OPERATIONS.contains(dryRun.operation()))) {
       problems.add("dryRun.operation must be one of " + String.join(", ", new java.util.TreeSet<>(DRY_RUN_OPERATIONS)));
     }
+    if (dryRun != null && dryRun.baseUrl() != null && !plainBaseUrl(dryRun.baseUrl())) {
+      // the value is not echoed: it may be an attempt to reach another host
+      problems.add(SECURITY + "dryRun.baseUrl must be an absolute http(s) URL without user info, query, fragment,"
+          + " encoding or .. segments (its host is checked against allowedHosts at load)");
+    }
     if (!mfs.mw.adapter.billpay.partner.auth.AuthSchemes.NAMES.contains(auth.scheme())) {
       problems.add("unknown auth scheme " + auth.scheme());
     } else if (!"none".equals(auth.scheme()) && auth.credentialsRef() == null) {
@@ -281,6 +286,19 @@ public record PartnerConfig(
         compiles("operations." + name + ".request", request, problems);
       }
       compiles("operations." + name + ".response", response, problems);
+    }
+  }
+
+  /** An absolute http(s) URL of scheme, host, port and a safe path only. */
+  static boolean plainBaseUrl(String url) {
+    try {
+      URI u = new URI(url);
+      String path = u.getRawPath() == null ? "" : u.getRawPath();
+      return u.getScheme() != null && Set.of("http", "https").contains(u.getScheme().toLowerCase(Locale.ROOT))
+          && u.getHost() != null && u.getRawUserInfo() == null && u.getRawQuery() == null && u.getRawFragment() == null
+          && (path.isEmpty() || (safePath(path) && path.indexOf('{') < 0 && path.indexOf('}') < 0));
+    } catch (java.net.URISyntaxException e) {
+      return false;
     }
   }
 

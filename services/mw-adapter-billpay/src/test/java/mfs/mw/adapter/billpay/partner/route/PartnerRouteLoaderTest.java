@@ -240,11 +240,12 @@ class PartnerRouteLoaderTest {
         "acme", 3, record(GOOD.replace("http://localhost:8089", "http://localhost:8089/api")), SECURITY,
         new PartnerRouteLoader.DryRunTarget("http://mw-simulators:8080/sim/partners/acme", "mw-simulators"));
 
-    assertThat(candidate.runtime().routeId()).isEqualTo("partner-acme-candidate-v3");
-    assertThat(candidate.runtime().endpoint()).isEqualTo("direct:partner-acme-candidate");
-    assertThat(candidate.route().getInput().getUri()).isEqualTo("direct:partner-acme-candidate");
+    // a namespace no partner id can produce (ids are [a-z0-9-], routes partner-<id>-v<n>)
+    assertThat(candidate.runtime().routeId()).isEqualTo("candidate-partner-acme-v3");
+    assertThat(candidate.runtime().endpoint()).isEqualTo("direct:candidate-partner-acme");
+    assertThat(candidate.route().getInput().getUri()).isEqualTo("direct:candidate-partner-acme");
     String route = candidate.route().toString();
-    assertThat(route).contains("url=http://mw-simulators:8080/sim/partners/acme/api", "partnerId=acme-candidate")
+    assertThat(route).contains("url=http://mw-simulators:8080/sim/partners/acme/api", "partnerId=candidate.acme")
         .doesNotContain("localhost:8089");
     assertThat(candidate.runtime().allowedHosts()).containsExactly("localhost", "mw-simulators");
   }
@@ -254,5 +255,47 @@ class PartnerRouteLoaderTest {
     assertThatThrownBy(() -> loader.load("acme", 3, record(GOOD), SECURITY,
             new PartnerRouteLoader.DryRunTarget("https://sandbox.evil.example", null)))
         .isInstanceOfSatisfying(PartnerConfigRefusedException.class, e -> assertThat(e.getMessage()).contains("allowedHosts"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "http://mw-simulators:8080/sim?x=1",
+      "http://mw-simulators:8080/sim#frag",
+      "http://mw-simulators:8080/sim%2F..%2Fadmin",
+      "http://mw-simulators:8080/sim/{{env:HOME}}",
+      "http://mw-simulators:8080/sim/${header.x}",
+      "http://user@mw-simulators:8080/sim",
+      "http://mw-simulators:8080/sim/../admin",
+  })
+  void aDryRunTargetWithQueryFragmentEncodingOrPlaceholdersIsRefused(String base) {
+    assertThatThrownBy(() -> loader.load("acme", 3, record(GOOD), SECURITY,
+            new PartnerRouteLoader.DryRunTarget(base, "mw-simulators")))
+        .as(base)
+        .isInstanceOfSatisfying(PartnerConfigRefusedException.class, e -> assertThat(e.security()).isTrue());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "https://sandbox.acme.example/v1?x=1",
+      "https://sandbox.acme.example/v1#f",
+      "https://u:p@sandbox.acme.example",
+      "ftp://sandbox.acme.example",
+      "https://sandbox.acme.example/a/../b",
+      "sandbox.acme.example",
+  })
+  void aRecordsDryRunBaseUrlMustBeAPlainAbsoluteHttpUrl(String baseUrl) {
+    PartnerConfig good = record(GOOD);
+    PartnerConfig bad = new PartnerConfig(
+        true, good.route(), good.mappings(), List.of("localhost", "sandbox.acme.example"), "billpay", null, null,
+        new PartnerConfig.DryRun("PAY", Map.of(), baseUrl), null, null, 3000L, 1500L, null, null, null, null, null,
+        null, null);
+
+    assertThat(bad.problems()).as(baseUrl).anySatisfy(p -> assertThat(p).startsWith(PartnerConfig.SECURITY).contains("dryRun.baseUrl"));
+  }
+
+  @Test
+  void aPartnerIdEndingInCandidateIsRefused() {
+    assertThat(new PartnerEndpointPolicy(SECURITY).idProblems("acme-candidate")).isNotEmpty();
+    assertThat(new PartnerEndpointPolicy(SECURITY).idProblems("candidates")).isEmpty();
   }
 }

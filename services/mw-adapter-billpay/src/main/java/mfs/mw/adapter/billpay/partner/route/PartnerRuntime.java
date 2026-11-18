@@ -44,17 +44,28 @@ public record PartnerRuntime(
     return "partner-" + id + "-v" + version;
   }
 
-  /** Suffix of a dry-run candidate's route, endpoint and circuit breaker (ticket 83). */
-  public static final String CANDIDATE = "-candidate";
+  /**
+   * Prefix of a dry-run candidate's route and endpoint (ticket 83): a live route id is {@code
+   * partner-<id>-v<n>}, so {@code candidate-partner-...} is a namespace no partner id can reach.
+   */
+  public static final String CANDIDATE = "candidate-";
 
   /** Route id of the dry-run candidate of version {@code version} of partner {@code id}. */
   public static String candidateRouteId(String id, long version) {
-    return "partner-" + id + CANDIDATE + "-v" + version;
+    return CANDIDATE + routeId(id, version);
   }
 
   /** Endpoint of partner {@code id}'s dry-run candidate (one at a time). */
   public static String candidateEndpoint(String id) {
-    return "direct:partner-" + id + CANDIDATE;
+    return "direct:" + CANDIDATE + "partner-" + id;
+  }
+
+  /**
+   * The {@code partnerId} a candidate's Kamelets get (it names its circuit breaker {@code
+   * mw-cb-candidate.<id>}): the dot is outside the partner id characters, so it is never a partner's.
+   */
+  public static String candidatePartnerParam(String id) {
+    return "candidate." + id;
   }
 
   /** Endpoint of version {@code version} of partner {@code id}. */

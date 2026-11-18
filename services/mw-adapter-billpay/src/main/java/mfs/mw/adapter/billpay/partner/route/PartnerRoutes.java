@@ -67,15 +67,14 @@ public class PartnerRoutes implements AutoCloseable {
   /**
    * Checks and starts the dry-run candidate of version {@code version} of partner {@code id}
    * (ticket 83): its calls go to {@code target}, on a circuit breaker of its own ({@code
-   * mw-cb-<id>-candidate}, the default config), so a failing dry-run never opens the live one.
+   * mw-cb-candidate.<id>}, the default config), so a failing dry-run never opens the live one.
    *
    * @throws mfs.mw.adapter.billpay.partner.config.PartnerConfigRefusedException when refused
    */
   public PartnerRuntime loadCandidate(String id, long version, PartnerConfig config, PartnerRouteLoader.DryRunTarget target) {
     PartnerRouteLoader.Loaded loaded = loader.load(id, version, config, properties.security(), target);
-    camel.getRegistry().bind(
-        "mw-cb-" + id + PartnerRuntime.CANDIDATE, CircuitBreaker.class,
-        CircuitBreaker.of(id + PartnerRuntime.CANDIDATE, breakers.getDefaultConfig()));
+    String name = PartnerRuntime.candidatePartnerParam(id);
+    camel.getRegistry().bind("mw-cb-" + name, CircuitBreaker.class, CircuitBreaker.of(name, breakers.getDefaultConfig()));
     return start(id, version, loaded);
   }
 
