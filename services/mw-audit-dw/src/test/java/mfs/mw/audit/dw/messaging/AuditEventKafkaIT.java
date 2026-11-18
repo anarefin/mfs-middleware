@@ -8,42 +8,51 @@ import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
 import mfs.mw.audit.dw.TestInfrastructure;
-import mfs.mw.audit.dw.route.RetryTopicRouteBuilder;
 import mfs.mw.audit.dw.service.AuditChainVerifier;
 import mfs.mw.audit.dw.service.ChainVerification;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
-import org.testcontainers.kafka.KafkaContainer;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
  * {@code mw.audit.event.v1} end to end over real Kafka and PostgreSQL: what a producer publishes
  * lands in {@code audit.event}, a redelivered auditId once, and a record that is not an audit
- * event ends on the DLQ instead of blocking the partition.
+ * event ends on the DLQ ({@code <topic>.mw-audit-dw.dlq}, through the Spring Kafka retry topics)
+ * instead of blocking the partition. The retry delays are shortened here.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
-    properties = {"mw.audit-dw.consumers.enabled=true", "mw.kafka.retry.delays=1s,1s,1s"})
-@Import(TestInfrastructure.class)
+    properties = {"mw.audit-dw.consumers.enabled=true", "mw.kafka.retry.delays=100ms,100ms,100ms"})
+@Import({TestInfrastructure.class, AuditEventKafkaIT.Topics.class})
 @DirtiesContext
 class AuditEventKafkaIT {
 
   static final String TOPIC = "mw.audit.event.v1";
+  static final String GROUP = "mw-audit-dw";
+
+  /** The topic, its retry topics and its DLQ exist before the listener subscribes, as the platform declares them. */
+  @TestConfiguration(proxyBeanMethods = false)
+  static class Topics {
+    @Bean
+    String auditEventTopics() {
+      KafkaTestTopics.createWithRetries(TOPIC, GROUP, 3, 1);
+      return TOPIC;
+    }
+  }
 
   private final EventPublisher publisher;
-  private final KafkaContainer kafka;
   private final JdbcTemplate jdbc;
   private final JsonMapper json;
 
   @Autowired
-  AuditEventKafkaIT(EventPublisher publisher, KafkaContainer kafka, JdbcTemplate jdbc, JsonMapper json) {
+  AuditEventKafkaIT(EventPublisher publisher, JdbcTemplate jdbc, JsonMapper json) {
     this.publisher = publisher;
-    this.kafka = kafka;
     this.jdbc = jdbc;
     this.json = json;
   }
@@ -97,7 +106,6 @@ class AuditEventKafkaIT {
     assertThat(v.intact()).as(v.toString()).isTrue();
   }
 
-  @Tag("slow-wait")
   @Test
   void aRecordThatIsNotAnAuditEventEndsOnTheDlq() {
     String key = UUID.randomUUID().toString();
@@ -105,7 +113,11 @@ class AuditEventKafkaIT {
 
     assertThat(
             KafkaTestConsumer.read(
-                kafka.getBootstrapServers(), RetryTopicRouteBuilder.dlqTopic(TOPIC, "mw-audit-dw"), 1, Duration.ofSeconds(60), r -> key.equals(r.key())))
+                TestInfrastructure.kafkaBootstrapServers(),
+                KafkaTestTopics.dlqTopic(TOPIC, GROUP),
+                1,
+                Duration.ofSeconds(60),
+                r -> key.equals(r.key())))
         .hasSize(1);
   }
 }
