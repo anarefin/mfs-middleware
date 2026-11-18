@@ -6,11 +6,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 ## Responsibilities
 
 - Runs P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, BULK_DISBURSE (child), TOPUP, BILL_PAY and ADD_MONEY_BANK transactions, and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14, WP15 part).
-  Consumes `mw.txn.request.v1` (`route/TxnRequestRoute`), the core results on
-  `core.wallet.event.v1` (`route/CoreWalletEventRoute`) and `core.payment.event.v1` (`route/CorePaymentEventRoute`, same handler) and partner adapter answers on
-  `mw.partner.reply.v1` (`route/PartnerReplyRoute`) and partner callbacks on `mw.partner.inbound.v1`
-  (`route/PartnerInboundRoute`) and operator actions on `mw.txn.action.v1` (`route/TxnActionRoute`,
-  ticket 37), all with retry topics and DLQ. Publishes every
+  Consumes `mw.txn.request.v1` (`messaging/TxnRequestListener`), the core results on
+  `core.wallet.event.v1` and `core.payment.event.v1` (one listener, `messaging/CoreEventListener`) and partner adapter answers on
+  `mw.partner.reply.v1` (`messaging/PartnerReplyListener`) and partner callbacks on `mw.partner.inbound.v1`
+  (`messaging/PartnerInboundListener`) and operator actions on `mw.txn.action.v1` (`messaging/TxnActionListener`,
+  ticket 37): Spring Kafka `@KafkaListener`s (ADR D25), all with retry topics and DLQ, all stopped by
+  `mw.orchestrator.consumers.enabled=false` (the test default). Publishes every
   state change on `mw.txn.status.v1`, core commands on `core.payment.command.v1` (HoldFunds, CommitHold,
   ReleaseHold) or `core.wallet.command.v1` (every other command; `service/CoreTopics`, ticket 50) and partner
   requests on `mw.partner.request.<family>.v1`, all through the transactional outbox, in the same
@@ -115,7 +116,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   (the daily ageing check above reports it); ManualCommit / ManualRelease come from the admin API
   (below) and are refused for a flow without the step (S2).
 - Operator actions (ticket 37, maker-checker approved in mw-admin-api): `mw.txn.action.v1` (contract
-  owned by mw-admin-api; `route/TxnActionRoute`, retry topics + DLQ, `messaging/TxnActionListener`,
+  owned by mw-admin-api; `messaging/TxnActionListener`, retry topics + DLQ,
   own type `dto/TxnAction`) -> `service/OperatorActionService`, inbox key `actionId` (consumer
   `orchestrator.txn-actions`): FORCE_COMMIT = ManualCommit, FORCE_RELEASE = ManualRelease (MANUAL_REVIEW
   only), INQUIRE = `SagaEvent.ManualInquiry` (UNKNOWN or MANUAL_REVIEW, self-transition with
@@ -394,7 +395,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 - Security pass (ticket 46, `docs/security-findings.md`): `build.gradle.kts` raises the transitive
   Jackson 2 (BOM), lz4-java and snappy-java to patch releases with the HIGH CVE fixes (written inline in
-  `build.gradle.kts`; drop once the Boot / Camel BOMs ship them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
+  `build.gradle.kts`; drop once the Boot BOM ships them); the shared dev provisioning image `deploy/provision/Dockerfile` runs `apk upgrade` and removes gosu. `scripts/security.sh <this module>` scans the SBOM and the
   `mfs-mw/*:local` images (HIGH/CRITICAL fail; accepted ones in `.trivyignore.yaml` with a reason and expiry).
 - `filter/CorrelationIdFilter`: `X-Correlation-Id` in, generated if absent, MDC `correlationId`.
 - `filter/SecurityHeadersFilter`: security headers on every response (18.6).
@@ -408,8 +409,18 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
 - `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
 - `messaging/EventPublisher`: Kafka records with the 6.1 headers, idempotent `acks=all` producer.
-- `route/RetryTopicRouteBuilder` + `messaging/RetryDelayListener`: subclass per consumed topic; retry
-  topics 10 s / 1 min / 10 min then DLQ (19.2); per-record commit; no sleeps on Kafka threads.
+- Kafka through Spring Kafka (ADR D25, from the template, ticket 81; no Camel): `config/KafkaConfig`
+  (`config/KafkaRetryProperties`, `config/MwKafkaProperties`), `messaging/RetryTopicNaming`,
+  `RetryTopicRecoverer`, `RetryDueTimeCap`, `ConsumerContextInterceptor`, `Utf8Deserializer`. Every
+  `@KafkaListener` on the default factory (`groupId = "${spring.kafka.consumer.group-id}"`,
+  `autoStartup` = the service's `consumers.enabled` switch, `ack.acknowledge()` after the record is
+  handled) gets retry topics `<topic>.<group>.retry.1..3` (10 s / 1 min / 10 min) then
+  `<topic>.<group>.dlq` (19.2, names unchanged, `deploy/kafka/topics.txt`); validation, JSON and
+  deserialisation failures go to the DLQ at once; delays pause the partition, never sleep on the
+  consumer thread. `mw.kafka.retry.exclude-topics` opts a topic out. Outbox relay:
+  `scheduler/OutboxRelayScheduler` (`mw.outbox.relay.period`, ShedLock). Conformance:
+  `messaging/RetryTopicIT`, `scheduler/OutboxRelaySchedulerIT`; `messaging/ConsumerTopicsIT` checks
+  this service's consumed topics, groups and retry/DLQ names.
 - `application.yml`: Resilience4j defaults (19.2), own schema `txn` migrated by Flyway on
   start from `db/migration` (16.4).
 
