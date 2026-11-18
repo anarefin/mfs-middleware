@@ -64,7 +64,7 @@ public class TestApiService {
     this.idempotency = idempotency;
     this.publisher = publisher;
     this.dlq = dlq;
-    // the consumer group is the service name (application.yml camel.component.kafka.group-id)
+    // the consumer group is the service name (application.yml spring.kafka.consumer.group-id)
     this.dlqTopic = MwTopics.dlqTopic(MwTopics.TXN_REQUEST, service.name());
     this.clock = clock;
   }

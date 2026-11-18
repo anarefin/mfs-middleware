@@ -11,6 +11,11 @@ mw:
   retention:
     # The purge job's schedule is off in tests; OutboxInboxPurgeConformanceIT calls it directly.
     cron: "-"
+  kafka:
+    listener:
+      # A closing test context does not wait the default 10 s per listener container for a consumer
+      # caught mid-rebalance (cached contexts share the broker); nothing in a test depends on that drain.
+      shutdown-timeout: 100ms
   notify:
     # No SMSC, dispatcher or consumers in tests unless a test switches them on.
     smpp:
@@ -27,9 +32,3 @@ spring:
       # The in-process GreenMail of the email tests offers no STARTTLS (explicit test override; the
       # shipped default requires it, MailTlsDefaultsTest).
       mail.smtp.starttls.required: false
-camel:
-  component:
-    kafka:
-      # A closing test context does not wait the default 30 s per consumer for one caught mid-rebalance
-      # (cached contexts share the consumer group); nothing in a test depends on that drain.
-      shutdown-timeout: 100

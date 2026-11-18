@@ -23,7 +23,7 @@ plugins {
     id("org.springframework.boot") version "4.0.0"
 }
 dependencies {
-    implementation(platform("org.apache.camel.springboot:camel-spring-boot-bom:4.14.0"))
+    implementation(platform("io.github.resilience4j:resilience4j-bom:2.4.0"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
 }
 EOF

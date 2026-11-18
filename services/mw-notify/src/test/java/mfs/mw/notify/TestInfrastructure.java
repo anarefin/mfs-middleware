@@ -68,6 +68,12 @@ public class TestInfrastructure {
     }
   }
 
+  /** The Kafka bootstrap servers, for tests that produce, consume or administer directly. */
+  public static String kafkaBootstrapServers() {
+    start();
+    return KAFKA.getBootstrapServers();
+  }
+
   /** Creates the next context's empty database and returns its JDBC URL. */
   static String createContextDatabase() {
     start();
@@ -90,8 +96,8 @@ public class TestInfrastructure {
       registry.add("spring.datasource.url", () -> url);
       registry.add("spring.datasource.username", POSTGRES::getUsername);
       registry.add("spring.datasource.password", POSTGRES::getPassword);
-      // Camel's Kafka component does not read Spring Boot's Kafka connection details.
-      registry.add("camel.component.kafka.brokers", KAFKA::getBootstrapServers);
+      // The containers are not @ServiceConnection beans: wire Kafka by hand.
+      registry.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
     };
   }
 
