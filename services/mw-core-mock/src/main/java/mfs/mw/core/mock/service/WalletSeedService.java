@@ -3,6 +3,7 @@ package mfs.mw.core.mock.service;
 import java.time.Clock;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import mfs.mw.core.mock.entity.LedgerEntry;
 import mfs.mw.core.mock.entity.Wallet;
 import mfs.mw.core.mock.repository.LedgerRepository;
 import mfs.mw.core.mock.dto.WalletBalance;
@@ -58,7 +59,8 @@ public class WalletSeedService {
       throw new MwException(ErrorCodes.VAL_INVALID, "walletId must be a mobile number");
     }
     boolean exists = wallets.resolveId(walletId).isPresent();
-    boolean created = !exists && wallets.insertIfAbsent(walletId, type, openingBalanceMinor, holderName);
+    // ORG (mw-seeder's name) is stored as ORGANISATION (ticket 94); a seeded wallet has full KYC
+    boolean created = !exists && wallets.insertIfAbsent(walletId, Wallet.canonicalType(type), "FULL", openingBalanceMinor, holderName);
     if (exists && holderName != null) {
       wallets.fillHolderName(walletId, holderName);
     }
@@ -88,11 +90,9 @@ public class WalletSeedService {
     long amount = Math.abs(delta);
     String from = delta > 0 ? WalletSeeder.SETTLEMENT_WALLET : walletId;
     String to = delta > 0 ? walletId : WalletSeeder.SETTLEMENT_WALLET;
-    var at = clock.instant();
-    ledger.append(ref, ref, from, "DEBIT", "ADJUSTMENT", amount, at);
-    ledger.append(ref, ref, to, "CREDIT", "ADJUSTMENT", amount, at);
-    wallets.adjustBalance(from, -amount);
-    wallets.adjustBalance(to, amount);
+    ledger.post(ref, ref, null, java.util.List.of(
+        new LedgerEntry(from, "DEBIT", "ADJUSTMENT", amount), new LedgerEntry(to, "CREDIT", "ADJUSTMENT", amount)),
+        clock.instant());
     log.atInfo()
         .addKeyValue("event", "coremock.wallet.balance.set")
         .log("set available balance of {} to {} ({} {})", MaskingPolicy.mask(SensitiveType.MSISDN, walletId),

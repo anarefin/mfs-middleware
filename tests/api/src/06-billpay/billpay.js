@@ -5,7 +5,7 @@ export default [
   {
     name: '[billpay] the customer sees the billers and fetches the amount due on a bill',
     run: async (MW, S) => {
-      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       const b = S.record(await MW.app.billers('customer01'));
       S.status(200);
       const billers = (b.body || {}).billers || [];
@@ -21,7 +21,7 @@ export default [
   {
     name: '[billpay] a bill of a SOAP biller (KGDCL) is fetched and paid through the aggregator to COMPLETED',
     run: async (MW, S) => {
-      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       // KGDCL is one of billagg's SOAP billers (KGDCL, JGTDSL, BTCL, LINK3): fetch and pay go over
       // POST /billagg/v1/soap; the simulator refuses a SOAP biller on the REST paths (3004).
       const f = S.record(await MW.app.fetchBill('customer01', 'KGDCL', '7654321'));
@@ -30,7 +30,7 @@ export default [
       await S.billPay('customer01', 'KGDCL', '7654321', 42100, MW.pin);
       S.status(200);
       S.txnStatus('COMPLETED');
-      await S.changedBy({ '01711000001': -42400, 'SETTLEMENT': 42100, 'FEE-POOL': 300 });
+      await S.changedBy({ '01711000001': -42400, 'SETTLEMENT': 42100, 'FEE_INCOME': 261 });
       await S.noHold('01711000001');
       await S.appShows('COMPLETED');
     },
@@ -54,11 +54,11 @@ export default [
   {
     name: '[billpay] a paid bill debits the payer once and leaves nothing held',
     run: async (MW, S) => {
-      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.billPay('customer01', 'DESCO', '1234567', 66700, MW.pin);
       S.status(200);
       S.txnStatus('COMPLETED');
-      await S.changedBy({ '01711000001': -67000, 'SETTLEMENT': 66700, 'FEE-POOL': 300 });
+      await S.changedBy({ '01711000001': -67000, 'SETTLEMENT': 66700, 'FEE_INCOME': 261 });
       await S.noHold('01711000001');
       await S.appShows('COMPLETED');
     },
@@ -66,7 +66,7 @@ export default [
   {
     name: '[billpay] a biller refusal releases the hold and moves no money',
     run: async (MW, S) => {
-      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.billPay('customer01', 'DESCO', '1234999', 10000, MW.pin);
       S.status(502);
       S.code('MW-PTR-BILLAGG-PAYMENT_REFUSED');
@@ -79,7 +79,7 @@ export default [
   {
     name: '[billpay] a bill payment without a biller is refused by the app API',
     run: async (MW, S) => {
-      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.billPay('customer01', null, '1234567', 10000, MW.pin);
       S.status(400);
       S.code('MW-VAL-001');
@@ -89,12 +89,12 @@ export default [
   {
     name: '[billpay tsq] an aggregator timeout is resolved by status inquiry and the hold is committed',
     run: async (MW, S) => {
-      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.billPay('customer01', 'DESCO', '1234567', 10013, MW.pin);
       S.status(202);
       S.txnStatus('PROCESSING');
       await S.appShows('COMPLETED', 120);
-      await S.changedBy({ '01711000001': -10313, 'SETTLEMENT': 10013, 'FEE-POOL': 300 });
+      await S.changedBy({ '01711000001': -10313, 'SETTLEMENT': 10013, 'FEE_INCOME': 261 });
       await S.noHold('01711000001');
     },
   },
@@ -110,20 +110,20 @@ export default [
   {
     name: '[billpay] a bill payment sent twice with the same idempotency key pays the bill once',
     run: async (MW, S) => {
-      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.billPay('customer01', 'DESCO', '1234567', 10000, MW.pin);
       await S.repeat();
       S.status(200);
       S.sameTxnId();
       S.txnStatus('COMPLETED');
-      await S.changedBy({ '01711000001': -10300, 'SETTLEMENT': 10000, 'FEE-POOL': 300 });
+      await S.changedBy({ '01711000001': -10300, 'SETTLEMENT': 10000, 'FEE_INCOME': 261 });
       await S.noHold('01711000001');
     },
   },
   {
     name: '[billpay tsq] an aggregator timeout the payment did not survive is resolved by status inquiry and released',
     run: async (MW, S) => {
-      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.lateUnapplied('billagg');
       await S.billPay('customer01', 'DESCO', '1234567', 10000, MW.pin);
       S.status(202);

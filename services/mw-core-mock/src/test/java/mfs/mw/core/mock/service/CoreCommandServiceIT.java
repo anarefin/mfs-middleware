@@ -145,7 +145,9 @@ class CoreCommandServiceIT {
     assertThat(e.coreRef()).startsWith("CORE-");
     assertThat(balance(CUSTOMER_A)).isEqualTo(1_000_000 - 100_000 - 500);
     assertThat(balance(CUSTOMER_B)).isEqualTo(1_000_000 + 100_000);
-    assertThat(balance(WalletSeeder.FEE_WALLET)).isEqualTo(500);
+    // the 5 Tk fee carries 0.65 Tk VAT (15 % inclusive, ticket 94)
+    assertThat(balance(WalletSeeder.FEE_INCOME)).isEqualTo(435);
+    assertThat(balance(WalletSeeder.VAT_PAYABLE)).isEqualTo(65);
     assertThat(e.balancesAfter())
         .extracting(CoreEvent.BalanceAfter::walletId)
         .containsExactlyInAnyOrder(CUSTOMER_A, CUSTOMER_B);
@@ -222,7 +224,7 @@ class CoreCommandServiceIT {
 
     assertThat(second).isEqualTo(first);
     assertThat(balance(CUSTOMER_A)).isEqualTo(1_000_000 - 100_500);
-    assertThat(jdbc.queryForObject("select count(*) from entry", Long.class)).isEqualTo(4L);
+    assertThat(jdbc.queryForObject("select count(*) from entry", Long.class)).isEqualTo(5L);
     List<String> published =
         jdbc.queryForList("select payload::text from outbox where topic = 'core.wallet.event.v1' order by id", String.class);
     assertThat(published).hasSize(2);

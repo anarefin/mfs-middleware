@@ -28,6 +28,8 @@ produces:
     # ADR D26: answers to mw-orchestrator's BalanceInquiry (txnType BALANCE)
     - events/mw-core-mock/core.event.v1.schema.json#BalanceReported
     - events/mw-core-mock/core.event.v1.schema.json#BalanceInquiryRejected
+    # ticket 94 (FRS 7.3): a hold the core released on expiry; mw-orchestrator handles it from ticket 95
+    - events/mw-core-mock/core.event.v1.schema.json#HoldExpired
   # ticket 57: the test-only wallet seed API (PUT behind mw.coremock.seed-api.enabled) and the wallet read;
   # ticket 93 (ADR D31): the core wallet REST API /core/v1 (FRS 7.2)
   apis: [api/mw-core-mock/core-mock-seed.v1.openapi.yaml, api/mw-core-mock/core-wallet.v1.openapi.yaml]

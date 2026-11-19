@@ -12,7 +12,7 @@ export default [
       // retried until the adapter took the change: a top-up that still went through is not checked
       await MW.poll(async () => {
         S.responses = [];
-        await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+        await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
         return S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);
       }, x => !!x.body && x.body.code === 'MW-SYS-PARTNER_DISABLED', 30000, 1000);
       S.code('MW-SYS-PARTNER_DISABLED');

@@ -87,8 +87,17 @@ class WalletRepositoryIT {
 
   @Test
   void theSchemaRefusesAStatusOutsideTheCoresSet() {
-    assertThatThrownBy(() -> wallets.upsertIfNewer(wallet("01711000001", "CLOSED", 1)))
+    assertThatThrownBy(() -> wallets.upsertIfNewer(wallet("01711000001", "FROZEN", 1)))
         .isInstanceOf(DataIntegrityViolationException.class);
+  }
+
+  @Test
+  void theCoresDormantAndClosedStatusesAreStored() {
+    // ticket 94 (FRS 7.1, V9)
+    wallets.upsertIfNewer(wallet("01711000001", "DORMANT", 1));
+    wallets.upsertIfNewer(wallet("01711000002", "CLOSED", 1));
+    assertThat(jdbc.queryForList("select status from wallet order by wallet_id", String.class))
+        .containsExactly("DORMANT", "CLOSED");
   }
 
   @Test

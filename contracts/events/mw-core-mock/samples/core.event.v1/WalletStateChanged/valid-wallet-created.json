@@ -12,6 +12,7 @@
     "msisdn": "01711000001",
     "walletType": "CUSTOMER",
     "status": "ACTIVE",
+    "kycLevel": "FULL",
     "hasPin": true,
     "version": 17,
     "change": "CREATED"

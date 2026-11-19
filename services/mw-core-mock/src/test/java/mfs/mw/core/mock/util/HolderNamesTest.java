@@ -23,6 +23,8 @@ class HolderNamesTest {
     assertThat(HolderNames.of("MERCHANT", 2)).isEqualTo("Lalbagh Pharmacy");
     assertThat(HolderNames.of("ORG", 1)).isEqualTo("Meghna Garments Ltd");
     assertThat(HolderNames.of("ORG", 2)).isEqualTo("Padma Foods Ltd");
+    assertThat(HolderNames.of("ORGANISATION", 3)).isEqualTo("Karnaphuli Shipping Ltd");
+    assertThat(HolderNames.of("DISTRIBUTOR", 1)).isEqualTo("Dhaka Distribution House");
   }
 
   @Test

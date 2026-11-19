@@ -80,7 +80,7 @@ class ProducedContractsTest {
                 Map<String, Amount> left = new LinkedHashMap<>();
                 left.put("PER_TXN", Amount.bdt(2_500_000));
                 left.put("DAILY", Amount.bdt(5_000_000));
-                return EVENTS.validated(command("ValidateTransaction", "validate"), CORE_REF, 500, left);
+                return EVENTS.validated(command("ValidateTransaction", "validate"), CORE_REF, 500, 65, left);
               }),
           Map.entry(
               EVENT + "#TransactionRejected",
@@ -171,7 +171,13 @@ class ProducedContractsTest {
           Map.entry(
               EVENT + "#WalletStateChanged",
               () -> EVENTS.walletStateChanged(
-                  new WalletState("01711000001", "01711000001", "CUSTOMER", "LOCKED", 1093), "STATUS_CHANGED")));
+                  new WalletState("01711000001", "01711000001", "CUSTOMER", "LOCKED", "FULL", 1093), "STATUS_CHANGED")),
+          Map.entry(
+              EVENT + "#HoldExpired",
+              () -> EVENTS.holdExpired(
+                  new mfs.mw.core.mock.entity.Hold(HOLD_ID, "01711000001", TXN, "TOPUP", 100_000, 200, 26, 0,
+                      "SETTLEMENT_OCS_GP", "EXPIRED", Instant.parse("2026-11-03T08:45:30Z")),
+                  List.of(new CoreEvent.BalanceAfter("01711000001", Amount.bdt(1_000_000))))));
 
   /** As CoreCommandService: stored in command_log as JSON, read back, appended to the outbox. */
   static JsonNode asPublished(CoreEvent decided) {

@@ -9,6 +9,9 @@ mw:
       # caught mid-rebalance (cached contexts share the broker); nothing in a test depends on that drain.
       shutdown-timeout: 100ms
   coremock:
+    hold-expiry:
+      # HoldExpiryIT runs the expiry itself (with its own clock); no background run moves a test's holds
+      cron: "-"
     assertion:
       # the purge runs only when a test calls it; the key set comes from TestAssertions (TestInfrastructure)
       purge-cron: "-"

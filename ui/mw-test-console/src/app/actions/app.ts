@@ -141,8 +141,9 @@ export async function submitTxn(_prev: AppState, form: FormData): Promise<AppSta
     t.note("encrypt the PIN on the device", "RSA-OAEP SHA-256 under the PIN transport key (GET /app/v1/pin-key): mw-auth checks it and the request carries its assertion, never the PIN");
     const built = buildBody(type, form, amount, encryptedPin);
     if (typeof built === "string") return fail(t, built);
-    // FEE-POOL: core-mock's fee account (P2P Tk 5, top-up Tk 2, …: the payer pays amount + fee)
-    const wallets = [payer, ...(built.credit && built.credit !== payer ? [built.credit] : []), "FEE-POOL"];
+    // FEE_INCOME: core-mock's fee income (ticket 94: the payer pays amount + fee, P2P Tk 5, top-up Tk 2, …;
+    // the 15 % VAT inside the fee goes to VAT_PAYABLE, a cash out's agent/distributor shares to COMMISSION_PAYABLE)
+    const wallets = [payer, ...(built.credit && built.credit !== payer ? [built.credit] : []), "FEE_INCOME"];
     const before = await balances(wallets);
     if (type === "ADD_MONEY_BANK") await ensureBankCallback(t);
     await ready(t, user);

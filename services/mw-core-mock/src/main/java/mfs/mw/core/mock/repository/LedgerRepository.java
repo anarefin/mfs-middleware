@@ -2,6 +2,7 @@ package mfs.mw.core.mock.repository;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import mfs.mw.core.mock.entity.LedgerEntry;
 import mfs.mw.core.mock.entity.PostedEntry;
@@ -33,6 +34,29 @@ public class LedgerRepository {
         Timestamp.from(at));
   }
 
+  /**
+   * Posts one transaction's legs (ticket 94): each leg moves its wallet's balance and writes its entry
+   * with the balance right after it, in one statement. Legs go in wallet id order (people's MSISDNs
+   * before the system wallets, the order every multi-wallet change locks in, so concurrent postings
+   * cannot deadlock), a wallet's credits before its debits (no balance dips below zero on the way).
+   * The legs must balance (debits = credits).
+   */
+  public void post(String commandId, String txnId, String txnType, List<LedgerEntry> legs, Instant at) {
+    long net = legs.stream().mapToLong(l -> l.debit() ? -l.amountMinor() : l.amountMinor()).sum();
+    if (net != 0) {
+      throw new IllegalStateException("unbalanced posting of " + txnId + ": " + net);
+    }
+    legs.stream()
+        .filter(l -> l.amountMinor() > 0)
+        .sorted(Comparator.comparing(LedgerEntry::walletId).thenComparing(LedgerEntry::debit))
+        .forEach(l -> jdbc.update(
+            "with w as (update wallet set balance_minor = balance_minor + ? where id = ? returning balance_minor) "
+                + "insert into entry (command_id, txn_id, txn_type, wallet_id, direction, kind, amount_minor, "
+                + "balance_after_minor, created_at) select ?, ?, ?, ?, ?, ?, ?, w.balance_minor, ? from w",
+            l.debit() ? -l.amountMinor() : l.amountMinor(), l.walletId(),
+            commandId, txnId, txnType, l.walletId(), l.direction(), l.kind(), l.amountMinor(), Timestamp.from(at)));
+  }
+
   public long nextCoreSequence() {
     Long n = jdbc.queryForObject("select nextval('core_ref_seq')", Long.class);
     return n == null ? 0 : n;
@@ -48,21 +72,26 @@ public class LedgerRepository {
 
   private static final RowMapper<PostedEntry> POSTED =
       (rs, i) -> new PostedEntry(rs.getString("txn_id"), rs.getString("wallet_id"), rs.getString("direction"),
-          rs.getString("kind"), rs.getLong("amount_minor"), rs.getTimestamp("created_at").toInstant());
+          rs.getString("kind"), rs.getLong("amount_minor"), rs.getObject("balance_after_minor", Long.class),
+          rs.getTimestamp("created_at").toInstant());
+  private static final String POSTED_COLUMNS =
+      "select txn_id, wallet_id, direction, kind, amount_minor, balance_after_minor, created_at from entry ";
 
   /** Every entry of {@code txnId} with its time, in posting order (WAL-13, ticket 93). */
   public List<PostedEntry> postedOf(String txnId) {
     return jdbc.query(
-        "select txn_id, wallet_id, direction, kind, amount_minor, created_at from entry where txn_id = ? order by id",
+        POSTED_COLUMNS + "where txn_id = ? order by id",
         POSTED, txnId);
   }
 
-  /** At most {@code limit} entries of a wallet in [from, to), oldest first (WAL-12, ticket 93). */
-  public List<PostedEntry> postedOfWallet(String walletId, Instant from, Instant to, int limit) {
+  /**
+   * At most {@code limit} entries of a wallet in [from, to), oldest first, skipping the first {@code
+   * offset} (WAL-12, tickets 93, 94).
+   */
+  public List<PostedEntry> postedOfWallet(String walletId, Instant from, Instant to, int limit, long offset) {
     return jdbc.query(
-        "select txn_id, wallet_id, direction, kind, amount_minor, created_at from entry "
-            + "where wallet_id = ? and created_at >= ? and created_at < ? order by created_at, id limit ?",
-        POSTED, walletId, Timestamp.from(from), Timestamp.from(to), limit);
+        POSTED_COLUMNS + "where wallet_id = ? and created_at >= ? and created_at < ? order by created_at, id limit ? offset ?",
+        POSTED, walletId, Timestamp.from(from), Timestamp.from(to), limit, offset);
   }
 
   public boolean isReversed(String originalTxnId) {

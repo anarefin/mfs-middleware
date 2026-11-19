@@ -37,10 +37,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   assertion `401 MW-AUTH-046`; an unknown hold `422 MW-CORE-HOLD_NOT_FOUND` (no command, no event).
   Holds and transfers need mw-auth's assertion in `X-Txn-Assertion` plus the body's `idempotencyKey`
   (`security/TxnAssertionHeader`: missing `401 MW-AUTH-046` before anything runs; BULK_DISBURSE needs
-  none), then `AssertionCheck` as on the command; credits need none. Reads write nothing: accounts,
-  balance (available/held/total), charges (flat fee, VAT and commission 0 until ticket 94), limits (per txn
-  and daily, `allowed` + `reasonCode`), statements (entries by wallet and `[from, to)`, `limit` <= 500;
-  balance after each entry in 94), transactions (`StatusOperations.current`, the QueryTransaction view,
+  none), then `AssertionCheck` as on the command; credits need none. Reads write nothing: accounts
+  (type, status, `kycLevel`), balance (available/held/total), charges (the tariff sheet, below: fee, VAT,
+  commission and its split; `customerType` default CUSTOMER), limits (the limit sheet: `allowed` +
+  `reasonCode`, `remaining` perTxn/daily/monthly/dailyCount/monthlyCount), statements (entries by wallet
+  and `[from, to)`, `limit` <= 500, `page` from 0 + `hasMore`, each entry's `balanceAfter`), transactions (`StatusOperations.current`, the QueryTransaction view,
   plus every entry). WAL-02 `/pin/verify` is not built (D20, D22, D31). Auth: `/core/v1/**` needs a
   Keycloak realm `services` client-credentials JWT (`config/SecurityConfig`, `config/InternalAuthProperties`
   `mw.internal-auth.*`: exact issuer, `aud` mw-core-mock, `azp` in `allowed-clients` mw-orchestrator,
@@ -113,13 +114,26 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 - Holds: `HoldFunds` runs the same checks as a transfer on the payer (assertion, limits, available funds;
   the credit party need not be a wallet) and reserves `amount + fee` in `wallet.held_minor`: the
   ledger balance is unchanged, the available balance (`balance - held`) shrinks, so later holds and
-  transfers see less. `CommitHold` debits payer (amount to the `SETTLEMENT` system wallet, fee to
-  `FEE-POOL`) and frees the hold; `ReleaseHold` only frees it. Committing a committed hold or
-  releasing a released one (new commandId) succeeds without effect; commit of a released hold fails
-  `HOLD_RELEASED`, release of a committed one `HOLD_ALREADY_COMMITTED`, unknown ids `HOLD_NOT_FOUND`.
-  `holdId` is `HOLD-<coreRef>`.
-- `CreditWallet`: money from the `SETTLEMENT` wallet (seeded with 10^12 poisha so the sum of all
-  balances is constant), no assertion, no fee. A txn is credited once whatever the commandId (an operator's
+  transfers see less. The hold keeps its txnType, the fee's VAT and commission and the settlement wallet
+  its commit credits (`attributes.settlementWallet` of the payload, REST `settlementWallet`; absent =
+  `SETTLEMENT`; not a SYSTEM `SETTLEMENT*` wallet `HoldRejected SETTLEMENT_WALLET_NOT_FOUND`; V13).
+  `CommitHold` debits the payer (amount to that settlement wallet, the fee split into `FEE_INCOME`,
+  `VAT_PAYABLE`, `COMMISSION_PAYABLE`) and frees the hold; `ReleaseHold` only frees it. Committing a
+  committed hold or releasing a released one (new commandId) succeeds without effect; commit of a released
+  hold fails `HOLD_RELEASED`, release of a committed one `HOLD_ALREADY_COMMITTED`, unknown ids
+  `HOLD_NOT_FOUND`. `holdId` is `HOLD-<coreRef>`.
+- Hold expiry (ticket 94, FRS 7.3; `service/HoldExpiry`, `scheduler/HoldExpiryJob` ShedLock `hold-expiry`,
+  `mw.coremock.hold-ttl` 30m, `mw.coremock.hold-expiry.cron` every 15 s ("-" in tests), `batch-size` 500):
+  `hold.expires_at` = placed + ttl; a HELD hold past it is released in its own transaction (status
+  `EXPIRED`, reservation freed) and `HoldExpired {holdId, walletId, amount, fee, expiresAt}` goes to
+  `core.payment.event.v1` through the outbox, once (key and txnId the hold's, commandId
+  `hold-expiry:<holdId>`, coreRef the hold's, balance after). Then commit fails `HOLD_EXPIRED`, release
+  succeeds without effect, QueryTransaction / WAL-13 report `RELEASED` (the money is back). mw-orchestrator
+  drops the event today (unmapped) and handles it from ticket 95. Test: `service/HoldExpiryIT`.
+- `CreditWallet`: money from a settlement wallet: the one `attributes.settlementWallet` (REST
+  `settlementWallet`) names, e.g. `SETTLEMENT_NPSB`, `SETTLEMENT_UCB_IMT` (unknown: `CreditRejected
+  SETTLEMENT_WALLET_NOT_FOUND`), else `SETTLEMENT` (seeded with 10^12 poisha, the partners' with 10^11, so
+  the sum of all balances is constant), no assertion, no fee. A txn is credited once whatever the commandId (an operator's
   fresh `<txnId>:credit:manual-<n>` round): an already credited txn is answered `WalletCredited` without
   effect, a reversed one refused `ALREADY_REVERSED`. `ReverseTransaction`: undoes every entry (fee included) of
   `originalTxnId` once, under the reversal's own txnId, with `REVERSAL` entries; the amount must
@@ -147,26 +161,59 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   The e2e suite reads it (and the faults) through the dev-only APISIX route
   `/test/core-mock/v1/*` (`deploy/apisix/routes/test-core-mock.json`).
 - Wallet seed API (ticket 57, test-only, for mw-seeder; contract `api/mw-core-mock/core-mock-seed.v1.openapi.yaml`):
-  `PUT /core-mock/v1/wallets/{walletId}` `{type: CUSTOMER|AGENT|MERCHANT|ORG, openingBalanceMinor}`
+  `PUT /core-mock/v1/wallets/{walletId}` `{type: CUSTOMER|AGENT|MERCHANT|DISTRIBUTOR|ORG|ORGANISATION (ORG stored as
+  ORGANISATION, full KYC), openingBalanceMinor}`
   (`controller/WalletSeedController` -> `service/WalletSeedService` -> `WalletRepository.insertIfAbsent`):
   create-if-absent with id = MSISDN (`01[3-9]` + 8 digits, else 400 MW-VAL-001) and the
   opening balance (no PIN: mw-seeder sets first PINs at mw-auth), no ledger entries (as `WalletSeeder`); 201 created, 200 already there (never changed,
   whatever the body). Only with `mw.coremock.seed-api.enabled=true` (`MW_COREMOCK_SEED_API_ENABLED`, set by
   `deploy/docker-compose.yml`; default off: a PUT is then 405). No APISIX route: mw-seeder calls it
   inside the app network.
-- Ledger in schema `coremock` (role `coremock_rw`): `wallet`, `hold`, `entry`, `command_log`, `reversal`.
-  Seed (on start, idempotent, `WalletSeeder`): 1,000 customers `01711000001..`, 50 agents
-  `01811000001..`, 20 merchants `01911000001..`, 2 orgs `01311000001..` (wallet id = MSISDN) and the
-  system wallets `FEE-POOL` and `SETTLEMENT`. No PIN (mw-auth holds PINs). Balances, fees and limits
-  are `mw.coremock.*` in `application.yml`; fee is a flat amount per `txnType`, debited from the payer
-  on top of the amount; limits are per transaction and per UTC day (sum of transfer debits).
+- Ledger in schema `coremock` (role `coremock_rw`): `wallet`, `hold`, `entry`, `command_log`, `reversal`,
+  `tariff`, `limit_rule` (V13, ticket 94, FRS 7.1). Accounts: type CUSTOMER, AGENT, MERCHANT, DISTRIBUTOR,
+  ORGANISATION (ORG before 94: V13 renamed the rows; `Wallet.canonicalType` still reads ORG from the seed
+  PUT, `wallet-types` config and the seed files), SYSTEM; status ACTIVE, LOCKED, BLOCKED, HOLD, DORMANT
+  (cannot pay `ACCOUNT_DORMANT`, can receive), CLOSED (neither: `ACCOUNT_CLOSED` /
+  `CREDIT_ACCOUNT_BLOCKED`); `kyc_level` BASIC / FULL. Every posting goes through `LedgerRepository.post`:
+  each leg moves its wallet and writes its entry with `balance_after_minor` and `txn_type` in one
+  statement, legs in wallet id order (people before system wallets: the lock order), credits before
+  debits, and refused unless they balance (FRS 7.3: every txnId sums to zero; `LedgerInvariantIT`).
+  `FEE-POOL` became `FEE_INCOME` (V13 moved its balance and entries).
+- Seed (on every start, idempotent, `WalletSeeder` + `service/SeedFiles`, files
+  `src/main/resources/seed/<mw.coremock.seed.version, v1>/`): `wallets.csv` (ranges, wallet id = MSISDN:
+  1,000 customers `01711000001..` (`..0901..1000` BASIC KYC), 50 agents `01811000001..`, 10 distributors
+  `01611000001..`, 20 merchants `01911000001..`, 3 organisations `01311000001..`), `system-wallets.csv`
+  (`FEE_INCOME`, `VAT_PAYABLE`, `COMMISSION_PAYABLE`, `SETTLEMENT`, `SETTLEMENT_OCS_GP|ROBI|AIRTEL|TELETALK|BL`,
+  `SETTLEMENT_BILLER_DESCO|DPDC|WASA|TITAS`, `SETTLEMENT_AGG_BILLAGG`, `SETTLEMENT_BANK_UCB|BRAC|DBBL`,
+  `SETTLEMENT_NPSB`, `SETTLEMENT_CYBERSOURCE`, `SETTLEMENT_UCB_IMT`, `SETTLEMENT_UCB_ATM`), `tariff.csv` and
+  `limits.csv`. Wallets already there are left alone (missing holder names filled), the two sheets are
+  replaced by the files. No PIN (mw-auth holds PINs). Test: `service/WalletSeederIT`.
+- Tariff (ticket 94, FRS 7.1, WAL-04; `service/Tariff`, pure, `TariffTest`): the row of the txnType whose
+  `[slab_min, slab_max]` holds the amount, channel and customer (payer wallet) type equal or `*`, the most
+  specific (channel before customer type), else no charges. The commands carry no channel, so only `*`
+  channel rows apply to them. The fee is paid on top of the amount, VAT inside it: `vat = fee * pct / (100
+  + pct)` half up; each `commission_split` share (`AGENT:40|DISTRIBUTOR:10`, percent of the fee net of
+  VAT) rounded down; FEE_INCOME keeps the rest, so the legs add up to the fee exactly. Sheet v1: P2P 5 Tk,
+  cash out 10 Tk (40 % agent, 10 % distributor), top-up 2 Tk, bill pay 3 Tk up to 5,000 Tk, higher slabs
+  above; others free; VAT 15 %. Fee legs: payer DEBIT FEE (the fee), FEE_INCOME CREDIT FEE, VAT_PAYABLE
+  CREDIT VAT, COMMISSION_PAYABLE CREDIT COMMISSION (`service/Legs`). `TransactionValidated.charges` =
+  `SERVICE_FEE` (net of VAT) + `VAT`.
+- Limits (ticket 94, FRS 7.1, WAL-05; `service/Limits`, pure, `LimitsTest`; applied by
+  `TransferRules.limits`): the payer's rule, the most specific of txnType, wallet type, KYC level (each or
+  `*`); checks per txn min (`LIMIT_BELOW_MIN_PER_TXN`) and max (`LIMIT_EXCEEDED_PER_TXN`), daily amount
+  (`LIMIT_EXCEEDED_DAILY`) and count (`LIMIT_EXCEEDED_DAILY_COUNT`), monthly amount (`LIMIT_EXCEEDED_MONTHLY`)
+  and count (`LIMIT_EXCEEDED_MONTHLY_COUNT`), UTC days and months, over TRANSFER debits (distinct txns for
+  counts; a typed rule counts only its txnType's debits, a `*` rule all); empty = no limit. Sheet v1: `*`
+  5,000 Tk per txn, 15,000 Tk and 1,000 txns a day, 2,00,000 Tk a month; BASIC customers 1,000 Tk / 3,000 Tk
+  a day; P2P and cash out of FULL customers count limits; ORGANISATION 50,000,000 Tk a day (a whole bulk
+  batch). Counts are generous on purpose (the API suite reruns on one stack in a day). The payee of money
+  from outside (ADD_MONEY_BANK validate) is checked against its own rule's per-txn min/max only.
 - Wallet types per `txnType` (`mw.coremock.wallet-types`, debit -> credit): CASH_IN AGENT ->
   CUSTOMER, CASH_OUT CUSTOMER -> AGENT, MERCHANT_PAY CUSTOMER -> MERCHANT (ticket 30, fee 0),
-  BULK_DISBURSE ORG -> CUSTOMER (ticket 34, fee 0); other types unrestricted. BULK_DISBURSE carries
+  BULK_DISBURSE ORGANISATION -> CUSTOMER (ticket 34, fee 0); other types unrestricted. BULK_DISBURSE carries
   no assertion (contract: the org authorised the batch by maker-checker; `TransferPayload.authorisationRequired`);
   any other transfer without `assertion` + `idempotencyKey` is malformed (retry topics, DLQ).
-  `limits.wallet-types.<type>.daily-minor` overrides the daily debit limit per wallet type (ORG
-  50,000,000 taka: a whole 10,000-row batch in a day); the per-transaction limit applies to all. Wrong types `INVALID_COUNTERPARTY`
+  Wrong types `INVALID_COUNTERPARTY`
   (validate, post and hold; decided before the assertion, so its jti is not claimed).
 - Unlock (ticket 52, M2 gate decision; a core-side lock since ticket 72): `UnlockWallet` (sent by mw-admin-api
   after maker-checker approval, payload `subject` WALLET + `changeRequestId`, `makerId`, `checkerId`) sets a
@@ -184,8 +231,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   the transaction of the change, key = walletId: `CREATED` (`WalletSeeder.seed` for the rows it inserts,
   the seed API when it creates), `STATUS_CHANGED` (the unlock), and with
   `mw.coremock.wallet-snapshot-on-start` (compose `MW_COREMOCK_WALLET_SNAPSHOT=true`, default off) a
-  `SNAPSHOT` of every wallet after the seed on start. Payload `{walletId, msisdn, walletType, status,
-  hasPin (always false since ticket 72), version, change}`; `wallet.version` (V7) comes from one sequence `wallet_version_seq` and takes
+  `SNAPSHOT` of every wallet after the seed on start. Payload `{walletId, msisdn, walletType (ORGANISATION
+  for an organisation since ticket 94; mw-auth stores it as ORG), status (DORMANT, CLOSED since 94), kycLevel
+  (94), hasPin (always false since ticket 72), version, change}`; `wallet.version` (V7) comes from one sequence `wallet_version_seq` and takes
   the next value on every status change, so it only grows, also across a ledger reset. Envelope (no
   command answered): a fresh UUIDv7 txnId (`util/UuidV7`), commandId `wallet-state:<txnId>`, coreRef
   `WALLET-V<version>`, outcome SUCCESS. mw-auth projects it; mw-orchestrator drops it (`txn.unknown`).
@@ -193,7 +241,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 - Reason codes (core reasons, mapped by the orchestrator): `WALLET_NOT_FOUND`,
   `CREDIT_WALLET_NOT_FOUND`, `INVALID_COUNTERPARTY`, `ACCOUNT_LOCKED`, `ACCOUNT_BLOCKED`,
   `CREDIT_ACCOUNT_BLOCKED`, `SAME_WALLET`, `MW-AUTH-046` (assertion), `INVALID_AMOUNT`,
-  `LIMIT_EXCEEDED_PER_TXN`, `LIMIT_EXCEEDED_DAILY`, `INSUFFICIENT_BALANCE`, plus the hold and
+  `LIMIT_EXCEEDED_PER_TXN`, `LIMIT_EXCEEDED_DAILY`, `INSUFFICIENT_BALANCE`, and since ticket 94
+  `ACCOUNT_DORMANT`, `ACCOUNT_CLOSED`, `LIMIT_BELOW_MIN_PER_TXN`, `LIMIT_EXCEEDED_DAILY_COUNT`,
+  `LIMIT_EXCEEDED_MONTHLY`, `LIMIT_EXCEEDED_MONTHLY_COUNT`, `SETTLEMENT_WALLET_NOT_FOUND`, `HOLD_EXPIRED`, plus the hold and
   reversal reasons above, `WALLET_NOT_LOCKED` (unlock), `FACTORS_MISMATCH` and `WALLET_NOT_ACTIVE`
   (VerifyCustomerFactors, BalanceInquiry). Check order: wallets, wallet types, status, assertion, amount, limits, funds.
 - Transaction assertion (spec 18.7, D22, ticket 71; `service/AssertionCheck`, `security/AssertionKeys`,
@@ -228,8 +278,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 
 - `events/mw-core-mock/core.event.v1.schema.json` and its per-event payload schemas (topics
   `core.wallet.event.v1`, `core.payment.event.v1`). Tests validate every emitted event against it.
-- Machine-readable list: `contracts.yml` (produces 22 `core.event.v1` types (ticket 67: `WalletStateChanged`; D26: `BalanceReported`,
-  `BalanceInquiryRejected`), consumes the 11 handled
+- Machine-readable list: `contracts.yml` (produces 23 `core.event.v1` types (ticket 67: `WalletStateChanged`; D26: `BalanceReported`,
+  `BalanceInquiryRejected`; ticket 94: `HoldExpired`, no consumer in the repo until ticket 95), consumes the 11 handled
   `core.command.v1` types; `ApplyComplianceAction` is ignored, so neither it nor `ComplianceAction*` is
   listed), checked by `./gradlew :contractsLint`, tested by `contracts/ProducedContractsTest` /
   `ConsumedContractsTest` (no Spring, no Docker). The fault and balance admin API is not a product

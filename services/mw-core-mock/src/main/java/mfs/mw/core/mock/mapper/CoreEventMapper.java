@@ -7,6 +7,7 @@ import java.util.UUID;
 import mfs.mw.core.mock.dto.Amount;
 import mfs.mw.core.mock.dto.CoreCommand;
 import mfs.mw.core.mock.dto.CoreEvent;
+import mfs.mw.core.mock.entity.Hold;
 import mfs.mw.core.mock.entity.WalletState;
 import mfs.mw.core.mock.util.UuidV7;
 import org.springframework.stereotype.Component;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Component;
 public class CoreEventMapper {
 
   public static final String WALLET_STATE_CHANGED = "WalletStateChanged";
+  public static final String HOLD_EXPIRED = "HoldExpired";
 
   private final Clock clock;
 
@@ -23,11 +25,15 @@ public class CoreEventMapper {
     this.clock = clock;
   }
 
-  /** TransactionValidated: fee, charges and limits left. */
-  public CoreEvent validated(CoreCommand cmd, String coreRef, long feeMinor, Map<String, Amount> limitsLeft) {
+  /**
+   * TransactionValidated: fee (what the payer pays on top of the amount, VAT included), charges (the
+   * fee as {@code SERVICE_FEE} net of VAT plus {@code VAT}, ticket 94) and limits left.
+   */
+  public CoreEvent validated(CoreCommand cmd, String coreRef, long feeMinor, long vatMinor, Map<String, Amount> limitsLeft) {
     Map<String, Object> payload = new java.util.LinkedHashMap<>();
     payload.put("fee", Amount.bdt(feeMinor));
-    payload.put("charges", List.of(Map.of("code", "FLAT_FEE", "amount", Amount.bdt(feeMinor))));
+    payload.put("charges", List.of(Map.of("code", "SERVICE_FEE", "amount", Amount.bdt(feeMinor - vatMinor)),
+        Map.of("code", "VAT", "amount", Amount.bdt(vatMinor))));
     payload.put("limitsLeft", limitsLeft);
     return event(cmd, "TransactionValidated", coreRef, CoreEvent.Outcome.SUCCESS, null, null, null, payload);
   }
@@ -78,6 +84,7 @@ public class CoreEventMapper {
     payload.put("msisdn", w.msisdn());
     payload.put("walletType", w.type());
     payload.put("status", w.status());
+    payload.put("kycLevel", w.kycLevel());
     // the core holds no PIN since ticket 72: mw-auth decides "has a PIN" from its auth.credential
     payload.put("hasPin", false);
     payload.put("version", w.version());
@@ -94,6 +101,33 @@ public class CoreEventMapper {
         null,
         null,
         null,
+        payload);
+  }
+
+  /**
+   * HoldExpired (ticket 94, FRS 7.3): the core released a hold that was not committed in time. It
+   * answers no command: txnId the hold's, commandId {@code hold-expiry:<holdId>}, coreRef the hold's
+   * own (its id without {@code HOLD-}), outcome SUCCESS, the payer's balance after.
+   */
+  public CoreEvent holdExpired(Hold hold, List<CoreEvent.BalanceAfter> balances) {
+    Map<String, Object> payload = new java.util.LinkedHashMap<>();
+    payload.put("holdId", hold.id());
+    payload.put("walletId", hold.walletId());
+    payload.put("amount", Amount.bdt(hold.amountMinor()));
+    payload.put("fee", Amount.bdt(hold.feeMinor()));
+    payload.put("expiresAt", hold.expiresAt().toString());
+    return new CoreEvent(
+        1,
+        HOLD_EXPIRED,
+        UUID.randomUUID().toString(),
+        "hold-expiry:" + hold.id(),
+        hold.txnId(),
+        hold.id().startsWith("HOLD-") ? hold.id().substring(5) : hold.id(),
+        clock.instant(),
+        CoreEvent.Outcome.SUCCESS,
+        null,
+        null,
+        balances,
         payload);
   }
 

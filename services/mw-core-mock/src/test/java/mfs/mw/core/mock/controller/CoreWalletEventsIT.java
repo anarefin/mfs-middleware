@@ -132,6 +132,6 @@ class CoreWalletEventsIT {
 
     List<Seen> rest = outboxOf(txn);
     assertThat(rest).extracting(Seen::eventType).containsExactly("FundsHeld", "HoldCommitted", "HoldCommitted");
-    assertThat(jdbc.queryForObject("select count(*) from entry where txn_id = ?", Integer.class, txn)).isEqualTo(4);
+    assertThat(jdbc.queryForObject("select count(*) from entry where txn_id = ?", Integer.class, txn)).as("transfer, fee, fee income, VAT").isEqualTo(5);
   }
 }

@@ -35,7 +35,10 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   afterwards (a token-key rotation needs a re-tokenise job: later). `wallet_id` is the core's id, which in
   mw-core-mock is the MSISDN itself. mw-crypto down: `MW-SYS-050` before anything is written, the
   record goes to the retry topics (fail closed). Switch: `mw.auth.consumer.enabled` (both listeners and
-  their retry consumers; tests off).
+  their retry consumers; tests off). The core's account model (ticket 94, FRS 7.1): `ORGANISATION` is stored
+  as this service's `ORG` (no app role either way), the statuses `DORMANT` and `CLOSED` are projected
+  (`V9__core_wallet_statuses.sql`) and, like every status but ACTIVE, refused at login (`MW-AUTH-043`);
+  `kycLevel` is ignored (`mapper/WalletEventMapperTest`).
 - **WalletStateChanged envelope decision (ticket 67):** the `core.event.v1` envelope is kept as it is
   (no relaxed required fields): mw-core-mock fills the command fields of this unsolicited event with a
   fresh UUIDv7 `txnId`, `commandId` `wallet-state:<txnId>`, `coreRef` `WALLET-V<version>`, outcome

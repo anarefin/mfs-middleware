@@ -62,7 +62,7 @@ export const HOW_TO: Record<PageKey, HowTo> = {
       "Pick who is signed in: a Category (customer, agent, merchant), then one of its PIN-ready seeded wallets (or Other MSISDN…); the card shows its live balance, held amount, device and session.",
       "Pick a flow (only the role's flows: an agent cashes in, a merchant only collects), then a counterparty from the list (or Custom…) and a Scenario chip for the outcome to test.",
       "Submit: the console binds a device the first time (OTP + PIN 13579), logs in at mw-auth and signs the request.",
-      "Check the result: final status, balances before / after (fee into FEE-POOL), the SMS and every step.",
+      "Check the result: final status, balances before / after (fee income into FEE_INCOME, its VAT into VAT_PAYABLE), the SMS and every step.",
       "Press Resend the last submit: same txnId, every balance change Tk 0.00.",
       "Click the txnId to open the transaction in the explorer (timeline, partner calls, audit trail).",
       "Bill pay: the biller list is the live GET /app/v1/billers once the device is signed in (else the seed catalogue, a note says so); narrow it with a category chip or the search box. KGDCL, JGTDSL, BTCL and LINK3 are paid over SOAP (badge), the rest over REST.",
@@ -74,7 +74,7 @@ export const HOW_TO: Record<PageKey, HowTo> = {
       ...PARTNER_MAGIC,
     ],
     expect: [
-      "P2P Tk 10: COMPLETED, payer -Tk 15.00, payee Tk 10.00, FEE-POOL Tk 5.00, two SMS with masked numbers.",
+      "P2P Tk 10: COMPLETED, payer -Tk 15.00, payee Tk 10.00, FEE_INCOME Tk 4.35 (Tk 0.65 of the Tk 5 fee is VAT), two SMS with masked numbers.",
       "Cash out Tk 20: customer -Tk 30.00 (Tk 10 fee); top-up Tk 20: -Tk 22.00; bill pay Tk 100: -Tk 103.00.",
       "Bill pay KGDCL (SOAP) Tk 100: COMPLETED like DESCO; its partner calls in the explorer go to the billagg SOAP endpoint.",
       "Add money Tk 500: the bank's signed callback completes it, wallet +Tk 500.00.",

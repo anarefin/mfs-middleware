@@ -1,0 +1,14 @@
+txn_type,channel,customer_type,slab_min,slab_max,fee,vat_pct,commission_split
+# Tariff sheet v1 (ticket 94, FRS 7.1): poisha; channel / customer_type '*' = any; slab bounds included.
+# The fee is what the payer pays on top of the amount, VAT included (vat = fee * pct / (100 + pct), half up);
+# commission_split party:percent|... of the fee net of VAT (rounded down), the rest is fee income.
+# A txnType without a row is free: CASH_IN, MERCHANT_PAY (merchant discount rate out of scope), BULK_DISBURSE,
+# ADD_MONEY_BANK and the credits.
+P2P,*,*,100,500000,500,15,
+P2P,*,*,500001,2500000,1000,15,
+CASH_OUT,*,CUSTOMER,100,500000,1000,15,AGENT:40|DISTRIBUTOR:10
+CASH_OUT,*,CUSTOMER,500001,2500000,4625,15,AGENT:40|DISTRIBUTOR:10
+TOPUP,*,*,100,500000,200,15,
+TOPUP,*,*,500001,2500000,500,15,
+BILL_PAY,*,*,100,500000,300,15,
+BILL_PAY,*,*,500001,2500000,1000,15,

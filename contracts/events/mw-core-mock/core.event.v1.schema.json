@@ -2,13 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.bits.mw/events/mw-core-mock/core.event.v1.schema.json",
   "title": "core.event.v1",
-  "description": "Result event from the core (mw-core-mock in the MVP) for a core command (spec 6.3), on core.wallet.event.v1 and core.payment.event.v1. Key: txnId (walletId for WalletStateChanged, so one wallet's states stay in order on one partition). A repeated commandId yields the same event. WalletStateChanged (ticket 67, spec 18.7, D5) answers no command: the core publishes it on core.wallet.event.v1 on its own when a wallet is created or its status changes (and as a snapshot), with a fresh UUIDv7 txnId, commandId wallet-state:<txnId> and outcome SUCCESS; mw-orchestrator finds no transaction for it and drops it (txn.unknown), mw-auth keeps its wallet projection from it. The payload is picked by eventType; success events carry outcome SUCCESS, failure events outcome FAILURE and a reasonCode.",
+  "description": "Result event from the core (mw-core-mock in the MVP) for a core command (spec 6.3), on core.wallet.event.v1 and core.payment.event.v1. Key: txnId (walletId for WalletStateChanged, so one wallet's states stay in order on one partition). A repeated commandId yields the same event. WalletStateChanged (ticket 67, spec 18.7, D5) answers no command: the core publishes it on core.wallet.event.v1 on its own when a wallet is created or its status changes (and as a snapshot), with a fresh UUIDv7 txnId, commandId wallet-state:<txnId> and outcome SUCCESS; mw-orchestrator finds no transaction for it and drops it (txn.unknown), mw-auth keeps its wallet projection from it. HoldExpired (ticket 94, FRS 7.3) answers no command either: the core released a hold that was not committed within its expiry (default 30 min), on core.payment.event.v1 under the hold's txnId, commandId hold-expiry:<holdId>, outcome SUCCESS; the middleware must treat the hold as released. The payload is picked by eventType; success events carry outcome SUCCESS, failure events outcome FAILURE and a reasonCode.",
   "type": "object",
   "required": ["schemaVersion", "eventType", "eventId", "commandId", "txnId", "coreRef", "occurredAt", "outcome", "payload"],
   "properties": {
     "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
     "eventType": {
-      "enum": ["TransactionValidated", "TransactionRejected", "FundsHeld", "HoldRejected", "HoldCommitted", "CommitFailed", "HoldReleased", "ReleaseFailed", "TransferPosted", "TransferRejected", "WalletCredited", "CreditRejected", "TransactionReversed", "ReversalRejected", "TransactionStatus", "ComplianceActionApplied", "ComplianceActionRejected", "WalletUnlocked", "UnlockRejected", "WalletStateChanged", "CustomerFactorsVerified", "CustomerFactorsRejected", "BalanceReported", "BalanceInquiryRejected"]
+      "enum": ["TransactionValidated", "TransactionRejected", "FundsHeld", "HoldRejected", "HoldCommitted", "CommitFailed", "HoldReleased", "ReleaseFailed", "TransferPosted", "TransferRejected", "WalletCredited", "CreditRejected", "TransactionReversed", "ReversalRejected", "TransactionStatus", "ComplianceActionApplied", "ComplianceActionRejected", "WalletUnlocked", "UnlockRejected", "WalletStateChanged", "CustomerFactorsVerified", "CustomerFactorsRejected", "BalanceReported", "BalanceInquiryRejected", "HoldExpired"]
     },
     "eventId": { "type": "string", "format": "uuid", "description": "Unique per event; consumers dedupe on it (inbox)." },
     "commandId": { "$ref": "../../common/defs.v1.schema.json#/$defs/CommandId" },
@@ -205,6 +205,14 @@
         "eventType": { "const": "BalanceReported" },
         "payload": { "$ref": "core.event.v1/BalanceReported.payload.schema.json" },
         "outcome": { "const": "SUCCESS" }
+      }
+    },
+    {
+      "properties": {
+        "eventType": { "const": "HoldExpired" },
+        "payload": { "$ref": "core.event.v1/HoldExpired.payload.schema.json" },
+        "outcome": { "const": "SUCCESS" },
+        "commandId": { "type": "string", "pattern": "^hold-expiry:" }
       }
     },
     {

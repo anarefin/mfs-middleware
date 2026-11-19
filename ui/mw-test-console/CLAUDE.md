@@ -43,7 +43,7 @@ D9 amendment), can unlock and reset accounts, and has no sign-in.
   process memory (`globalThis`): a restart forgets it and the next submit binds again. Binding here
   replaces the API suite's device for that user (one active device per wallet).
 - Pages: `/` (stack checks, seeded balances, reset), `/app` (bind, the seven app flows, resend with
-  the same Idempotency-Key, billers / fetch bill / status / merchant collections; `FEE-POOL` shown as
+  the same Idempotency-Key, billers / fetch bill / status / merchant collections; `FEE_INCOME` (core-mock fee income since ticket 94) shown as
   the fee; who is signed in = Category -> Wallet: `lib/app-users.ts` (pure) lists the PIN-ready wallets
   (manifest `appPins.walletIds`; personas, `seed-*` mw-auth personas, run customers last; the personas
   only without a manifest), loaded by the server page, plus "Other MSISDN…"; the signed-in card

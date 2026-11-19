@@ -4,11 +4,11 @@ export default [
   {
     name: '[merchant] a customer pays a merchant and the merchant sees the collection',
     run: async (MW, S) => {
-      await S.note(['01711000001', '01911000001', 'FEE-POOL']);
+      await S.note(['01711000001', '01911000001', 'FEE_INCOME']);
       await S.txn('customer01', 'MERCHANT_PAY', '01911000001', 2500, MW.pin);
       S.status(200);
       S.txnStatus('COMPLETED');
-      await S.changedBy({ '01711000001': -2500, '01911000001': 2500, 'FEE-POOL': 0 });
+      await S.changedBy({ '01711000001': -2500, '01911000001': 2500, 'FEE_INCOME': 0 });
       await S.appShows('COMPLETED');
       const id = S.txnId();
       const entry = r => r.status === 200 ? ((r.body || {}).collections || []).find(c => c.txnId === id) : undefined;
@@ -24,7 +24,7 @@ export default [
   {
     name: "[merchant] a payment the customer's balance cannot cover is rejected and moves no money",
     run: async (MW, S) => {
-      await S.note(['01711000001', '01911000001', 'FEE-POOL']);
+      await S.note(['01711000001', '01911000001', 'FEE_INCOME']);
       await S.reject('ValidateTransaction', 'INSUFFICIENT_BALANCE');
       await S.txn('customer01', 'MERCHANT_PAY', '01911000001', 2500, MW.pin);
       S.status(422);
@@ -41,7 +41,7 @@ export default [
   {
     name: '[merchant] a merchant payment to a wallet that is not a merchant is refused by the core',
     run: async (MW, S) => {
-      await S.note(['01711000001', '01911000001', 'FEE-POOL']);
+      await S.note(['01711000001', '01911000001', 'FEE_INCOME']);
       await S.txn('customer01', 'MERCHANT_PAY', '01711000002', 2500, MW.pin);
       S.status(422);
       S.code('MW-CORE-INVALID_COUNTERPARTY');
@@ -52,7 +52,7 @@ export default [
     name: `[merchant] ${user} may not initiate ${type}`,
     args: { user, type, counterparty },
     run: async (MW, S, a) => {
-      await S.note(['01711000001', '01911000001', 'FEE-POOL']);
+      await S.note(['01711000001', '01911000001', 'FEE_INCOME']);
       await S.txn(a.user, a.type, a.counterparty, 2500, MW.pin);
       S.status(403);
       S.code('MW-AUTH-002');
@@ -71,24 +71,24 @@ export default [
   {
     name: '[merchant] a merchant payment sent twice with the same idempotency key pays the merchant once',
     run: async (MW, S) => {
-      await S.note(['01711000001', '01911000001', 'FEE-POOL']);
+      await S.note(['01711000001', '01911000001', 'FEE_INCOME']);
       await S.txn('customer01', 'MERCHANT_PAY', '01911000001', 2500, MW.pin);
       await S.repeat();
       S.status(200);
       S.sameTxnId();
       S.txnStatus('COMPLETED');
-      await S.changedBy({ '01711000001': -2500, '01911000001': 2500, 'FEE-POOL': 0 });
+      await S.changedBy({ '01711000001': -2500, '01911000001': 2500, 'FEE_INCOME': 0 });
     },
   },
   {
     name: '[merchant tsq] a merchant payment whose core reply is lost is found by QueryTransaction and completes',
     run: async (MW, S) => {
-      await S.note(['01711000001', '01911000001', 'FEE-POOL']);
+      await S.note(['01711000001', '01911000001', 'FEE_INCOME']);
       await S.dropReply('PostTransfer');
       await S.txn('customer01', 'MERCHANT_PAY', '01911000001', 2500, MW.pin);
       S.status(202);
       await S.appShows('COMPLETED', 90);
-      await S.changedBy({ '01711000001': -2500, '01911000001': 2500, 'FEE-POOL': 0 });
+      await S.changedBy({ '01711000001': -2500, '01911000001': 2500, 'FEE_INCOME': 0 });
       const id = S.txnId();
       const r = await MW.poll(() => MW.app.collections('merchant01'), x => ((x.body || {}).collections || []).some(c => c.txnId === id), 20000, 700);
       const c = ((r.body || {}).collections || []).find(x => x.txnId === id);
@@ -98,7 +98,7 @@ export default [
   {
     name: '[merchant tsq] a merchant payment whose core refusal is lost is found by QueryTransaction and fails',
     run: async (MW, S) => {
-      await S.note(['01711000001', '01911000001', 'FEE-POOL']);
+      await S.note(['01711000001', '01911000001', 'FEE_INCOME']);
       await S.refusalLost('PostTransfer');
       await S.txn('customer01', 'MERCHANT_PAY', '01911000001', 2500, MW.pin);
       S.status(202);

@@ -120,14 +120,18 @@ export const CHECKOUT_MERCHANTS: readonly CheckoutMerchant[] = [
 export const checkoutMerchant = (id: string | undefined | null): CheckoutMerchant =>
   CHECKOUT_MERCHANTS.find((m) => m.id === id) ?? DEFAULT_CHECKOUT_MERCHANT;
 
-export type WalletType = "CUSTOMER" | "AGENT" | "MERCHANT" | "ORG";
+export type WalletType = "CUSTOMER" | "AGENT" | "MERCHANT" | "DISTRIBUTOR" | "ORG";
 
-/** mw-core-mock WalletSeeder: the ranges it inserts on start (prefix + 4 digits from 0001). */
+/**
+ * mw-core-mock WalletSeeder (seed/v1/wallets.csv, ticket 94): the ranges it inserts on start (prefix + 4 digits
+ * from 0001). Core-mock stores ORG as ORGANISATION; the seed API takes either.
+ */
 export const GENERATED_RANGES: readonly { type: WalletType; prefix: string; count: number }[] = [
   { type: "CUSTOMER", prefix: "0171100", count: 1000 },
   { type: "AGENT", prefix: "0181100", count: 50 },
+  { type: "DISTRIBUTOR", prefix: "0161100", count: 10 },
   { type: "MERCHANT", prefix: "0191100", count: 20 },
-  { type: "ORG", prefix: "0131100", count: 2 },
+  { type: "ORG", prefix: "0131100", count: 3 },
 ];
 
 export const rangeLabel = (r: { prefix: string; count: number }): string => `${r.prefix}0001 .. ${r.prefix}${String(r.count).padStart(4, "0")}`;

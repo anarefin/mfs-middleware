@@ -85,7 +85,9 @@ class StatusOperations {
     }
     Optional<Hold> hold = holds.latestForTxn(txnId);
     if (hold.isPresent()) {
-      return new TxnStatus(hold.get().status().equals(Hold.HELD) ? "HELD" : hold.get().status(), hold.get().id());
+      // an expired hold was released by the core (ticket 94): the money is back, as after ReleaseHold
+      String st = hold.get().status();
+      return new TxnStatus(Hold.EXPIRED.equals(st) ? Hold.RELEASED : st, hold.get().id());
     }
     return commandLog.latestEventOfTxn(txnId)
         .map(e -> new TxnStatus(statusOf(json.readTree(e).path("eventType").asString()), null))

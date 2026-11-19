@@ -64,10 +64,10 @@ class WalletControllerIT {
 
   @Test
   void readsASystemWalletById() {
-    assertThat(mvc.get().uri(URI + "FEE-POOL"))
+    assertThat(mvc.get().uri(URI + "FEE_INCOME"))
         .hasStatusOk()
         .bodyJson()
-        .isLenientlyEqualTo("{\"walletId\":\"FEE-POOL\",\"type\":\"SYSTEM\"}");
+        .isLenientlyEqualTo("{\"walletId\":\"FEE_INCOME\",\"type\":\"SYSTEM\"}");
   }
 
   @Test
