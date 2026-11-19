@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
 
 /**
  * Login, refresh, logout, the first PIN and the PIN change (ticket 70) (spec 18.7, D21; contract {@code auth.v1.openapi.yaml},
@@ -33,11 +35,19 @@ public class LoginController {
   }
 
   @PostMapping("/auth/v1/sessions")
+  @Parameter(in = ParameterIn.HEADER, name = "X-Device-Id", required = true)
+  @Parameter(in = ParameterIn.HEADER, name = "X-Timestamp", required = true)
+  @Parameter(in = ParameterIn.HEADER, name = "X-Nonce", required = true)
+  @Parameter(in = ParameterIn.HEADER, name = "X-Signature", required = true)
   public TokenPair login(@Valid @RequestBody LoginRequest body, HttpServletRequest request) {
     return logins.login(body.msisdn(), body.encryptedPin(), body.otp(), SignedRequests.from(request));
   }
 
   @PostMapping("/auth/v1/tokens/refresh")
+  @Parameter(in = ParameterIn.HEADER, name = "X-Device-Id", required = true)
+  @Parameter(in = ParameterIn.HEADER, name = "X-Timestamp", required = true)
+  @Parameter(in = ParameterIn.HEADER, name = "X-Nonce", required = true)
+  @Parameter(in = ParameterIn.HEADER, name = "X-Signature", required = true)
   public TokenPair refresh(@Valid @RequestBody RefreshRequest body, HttpServletRequest request) {
     return logins.refresh(body.refreshToken(), SignedRequests.from(request));
   }

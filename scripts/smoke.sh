@@ -10,7 +10,8 @@
 # partner-sim by private_key_jwt (its key from Vault) and refused without an assertion; a Vault KV read; the Vault PKI
 # roles of mTLS phase 1 and, when mw-crypto runs, its certificate metric, a refused handshake without
 # a client certificate and a 200 with one plus the JWT; the APISIX /healthz route over HTTPS on the
-# published port; no rate-limiter degradation logged.
+# published port; the test-only /docs/ page lists every service's Swagger UI (when MW_E2E_ROUTES=1
+# applied it, ticket 101); no rate-limiter degradation logged.
 set -uo pipefail
 . "$(dirname "$0")/lib/common.sh"
 
@@ -265,6 +266,20 @@ check "keycloak realms stored in PostgreSQL (keycloak database, keycloak role)" 
 https_port="$(dc port apisix 9443 | head -1 | sed 's/.*://')"
 check "apisix https://localhost:$https_port/healthz -> 200" \
   curl -skf --max-time 10 "https://localhost:$https_port/healthz"
+
+# ---- API docs page (ticket 101): test-only route /docs/, applied with MW_E2E_ROUTES=1 ----
+# Lists every service's Swagger UI; without the test-only routes (plain `up`) the page is absent (404).
+DOC_SERVICES="mw-app-gateway mw-checkout mw-portal-api mw-ussd mw-orchestrator mw-audit-dw mw-admin-api mw-auth mw-core-mock mw-simulators"
+docs_listing() {
+  local page code svc
+  code="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 10 "https://localhost:$https_port/docs/")"
+  [ "$code" = 404 ] && { echo "no /docs/ route (test-only routes not applied)"; return 0; }
+  page="$(curl -skf --max-time 10 "https://localhost:$https_port/docs/")" || return 1
+  for svc in $DOC_SERVICES; do
+    grep -q "/docs/$svc/swagger-ui/index.html" <<<"$page" || { echo "/docs/ does not list $svc"; return 1; }
+  done
+}
+check "apisix /docs/ lists the Swagger UI of every service (when the test-only routes are applied)" docs_listing
 
 # ---- rate-limiter degradation alert (ticket 50) ----
 # limit-count fails open when Valkey is down; deploy/apisix/lua/edge-limit-degraded.lua logs

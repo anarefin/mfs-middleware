@@ -1,0 +1,41 @@
+{
+  "name": "test-docs-mw-app-gateway",
+  "desc": "TEST ONLY (MW_E2E_ROUTES=1): mw-app-gateway OpenAPI document and Swagger UI (profile dev, ticket 101) under /docs/mw-app-gateway/, GET only, nothing else of the service; private networks, no sign-in",
+  "uris": [
+    "/docs/mw-app-gateway/v3/api-docs",
+    "/docs/mw-app-gateway/v3/api-docs/*",
+    "/docs/mw-app-gateway/swagger-ui/*"
+  ],
+  "methods": [
+    "GET"
+  ],
+  "plugins": {
+    "ip-restriction": {
+      "whitelist": [
+        "127.0.0.0/8",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "::1/128"
+      ]
+    },
+    "proxy-rewrite": {
+      "regex_uri": [
+        "^/docs/mw-app-gateway(/.*)$",
+        "$1"
+      ]
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": {
+      "connect": 5,
+      "send": 10,
+      "read": 30
+    },
+    "nodes": {
+      "mw-app-gateway:8080": 1
+    }
+  }
+}

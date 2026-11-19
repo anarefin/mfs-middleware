@@ -3951,6 +3951,75 @@
       ]
     },
     {
+      "name": "38 API docs (generated OpenAPI and Swagger UI, dev stack only)",
+      "description": "Ticket 101, PLT-050..052: the test-only APISIX page /docs/ lists every service's Swagger UI and OpenAPI document; each one is the springdoc document of profile dev (OpenAPI 3.1), reached under /docs/<service>/. contracts/ stays the source of truth (ContractDriftTest per module).",
+      "item": [
+        {
+          "name": "[docs] /docs/ lists the Swagger UI and the OpenAPI document of every service",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[docs] /docs/ lists the Swagger UI and the OpenAPI document of every service\", eval(MW.forRun(\"function docServices() {\\n    return ['mw-app-gateway', 'mw-checkout', 'mw-portal-api', 'mw-ussd', 'mw-orchestrator', 'mw-audit-dw',\\n      'mw-admin-api', 'mw-auth', 'mw-core-mock', 'mw-simulators'];\\n  }\\n;(async (MW, S) => {\\n      const r = await MW.http('GET', '/docs/');\\n      S.status(200, r);\\n      S.check('/docs/ is an HTML page', /text\\\\/html/.test(r.header('Content-Type') || ''));\\n      for (const svc of docServices()) {\\n        S.check('/docs/ links ' + svc + \\\"'s Swagger UI\\\", r.raw.includes('/docs/' + svc + '/swagger-ui/index.html'));\\n        S.check('/docs/ links ' + svc + \\\"'s OpenAPI document\\\", r.raw.includes('/docs/' + svc + '/v3/api-docs'));\\n      }\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[docs] every listed service serves its OpenAPI 3.1 document and its Swagger UI under /docs/<service>/",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[docs] every listed service serves its OpenAPI 3.1 document and its Swagger UI under /docs/<service>/\", eval(MW.forRun(\"function docServices() {\\n    return ['mw-app-gateway', 'mw-checkout', 'mw-portal-api', 'mw-ussd', 'mw-orchestrator', 'mw-audit-dw',\\n      'mw-admin-api', 'mw-auth', 'mw-core-mock', 'mw-simulators'];\\n  }\\n;(async (MW, S) => {\\n      for (const svc of docServices()) {\\n        const doc = await MW.http('GET', '/docs/' + svc + '/v3/api-docs');\\n        S.status(200, doc);\\n        S.check(svc + ' document is OpenAPI 3.1', !!doc.body && String(doc.body.openapi).startsWith('3.1'));\\n        S.check(svc + ' document has paths', !!doc.body && Object.keys(doc.body.paths || {}).length > 0);\\n        const ui = await MW.http('GET', '/docs/' + svc + '/swagger-ui/index.html');\\n        S.status(200, ui);\\n        S.check(svc + ' Swagger UI may load its own scripts', /default-src 'self'/.test(ui.header('Content-Security-Policy') || ''));\\n        const cfg = await MW.http('GET', '/docs/' + svc + '/v3/api-docs/swagger-config');\\n        S.status(200, cfg);\\n        S.eq(svc + ' Swagger UI reads the document relative to its prefix', cfg.body && cfg.body.url, '../v3/api-docs', String(cfg));\\n      }\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[docs] /docs/<service>/ reaches nothing of the service but its document and UI",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[docs] /docs/<service>/ reaches nothing of the service but its document and UI\", eval(MW.forRun(\"function docServices() {\\n    return ['mw-app-gateway', 'mw-checkout', 'mw-portal-api', 'mw-ussd', 'mw-orchestrator', 'mw-audit-dw',\\n      'mw-admin-api', 'mw-auth', 'mw-core-mock', 'mw-simulators'];\\n  }\\n;(async (MW, S) => {\\n      S.status(404, await MW.http('GET', '/docs/mw-audit-dw/test/v1/audit/events?limit=1'));\\n      S.status(404, await MW.http('GET', '/docs/mw-orchestrator/actuator/health'));\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
       "name": "90 Slow",
       "description": "What stays slow (the 10,000-row payout; the full retry-to-DLQ path, slow with production retry delays; the PIN lockout escalation and the assertion expiry, ticket 76); run with ALL=1.",
       "item": [

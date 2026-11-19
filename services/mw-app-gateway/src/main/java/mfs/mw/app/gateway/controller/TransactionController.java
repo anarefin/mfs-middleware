@@ -25,6 +25,8 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
 
 /** App transactions API v1 (spec 9.1; contract {@code api/mw-app-gateway/app.v1.openapi.yaml}). */
 @RestController
@@ -49,6 +51,10 @@ public class TransactionController {
    */
   @PostMapping
   @DeviceGate(DeviceGate.Level.SIGNED)
+  @Parameter(in = ParameterIn.HEADER, name = "X-Device-Id", required = true)
+  @Parameter(in = ParameterIn.HEADER, name = "X-Timestamp", required = true)
+  @Parameter(in = ParameterIn.HEADER, name = "X-Nonce", required = true)
+  @Parameter(in = ParameterIn.HEADER, name = "X-Signature", required = true)
   public ResponseEntity<TransactionView> submit(
       @AuthenticationPrincipal Jwt jwt,
       @RequestHeader(IDEMPOTENCY_KEY)
@@ -69,6 +75,7 @@ public class TransactionController {
    * signature: nothing moves); any app role; the wallet is never a parameter.
    */
   @GetMapping
+  @Parameter(in = ParameterIn.HEADER, name = "X-Device-Id", required = true)
   public TransactionHistory history(
       @AuthenticationPrincipal Jwt jwt,
       @RequestParam(defaultValue = "" + TransactionHistoryService.DEFAULT_LIMIT)
@@ -82,6 +89,7 @@ public class TransactionController {
   }
 
   @GetMapping("/{txnId}")
+  @Parameter(in = ParameterIn.HEADER, name = "X-Device-Id", required = true)
   public TransactionView get(@AuthenticationPrincipal Jwt jwt, @PathVariable String txnId) {
     return service.find(users.resolve(jwt), txnId);
   }

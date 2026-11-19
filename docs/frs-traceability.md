@@ -190,9 +190,9 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-041 | ticket 98 | rules in the database, maker-checker, 30 s cache refresh |
 | PLT-042 | ticket 98 | prefix to MNO with MNP override |
 | PLT-043 | ticket 98 | partner disable built (admin console); maintenance message in 98, biller disable 113 |
-| PLT-050 | ticket 101 | `/v1` URI versions and OpenAPI files in `contracts/api` built; generated-spec check and WSDL in 101 |
-| PLT-051 | ticket 101 | versioning policy |
-| PLT-052 | ticket 101 | Swagger UI and WSDL listing in non-production |
+| PLT-050 | ticket 108 | `/v1` URI versions; `contracts/api` OpenAPI 3.1 files stay the source of truth, springdoc generates the document from code and `ContractDriftTest` in every REST module fails on drift (ticket 101); no SOAP service is served yet, the app SOAP facade of 108 publishes the first WSDL |
+| PLT-051 | done | versioning policy in `contracts/README.md` ("Versioning", ticket 101): breaking change = new `/v2` file and path, `/v1` kept for one release |
+| PLT-052 | done | Swagger UI and `/v3/api-docs` only in profiles `dev`/`test` (off in production, `ApiDocsProductionTest`); test-only APISIX page `/docs/` lists them and the WSDLs (none until ticket 108) (ticket 101) |
 
 ## 4. Channels (FRS 4)
 

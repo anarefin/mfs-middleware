@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 
 /**
  * Test-only API (ticket 58, {@code contracts/api/mw-orchestrator/orchestrator-test.v1.openapi.yaml}):
@@ -47,11 +48,13 @@ public class TestApiController {
   }
 
   @PostMapping("/reversals")
+  @ApiResponse(responseCode = "202", description = "Reversal accepted")
   ResponseEntity<TestReversalAccepted> reverse(@Valid @RequestBody TestReversalRequest body) {
     return ResponseEntity.status(HttpStatus.ACCEPTED).body(service.reverse(body.originalTxnId(), body.reason()));
   }
 
   @PostMapping("/poison-requests")
+  @ApiResponse(responseCode = "202", description = "Poison request published")
   ResponseEntity<PoisonAccepted> poison() {
     return ResponseEntity.status(HttpStatus.ACCEPTED).body(service.poison());
   }

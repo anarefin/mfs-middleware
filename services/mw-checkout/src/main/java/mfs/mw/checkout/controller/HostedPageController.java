@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 
 /**
  * Hosted page API {@code /checkout/pay/v1/{token}} (spec 9.3 step 2), behind the APISIX route
@@ -38,6 +39,7 @@ public class HostedPageController {
   }
 
   @PostMapping("/otp")
+  @ApiResponse(responseCode = "202", description = "OTP sent")
   public ResponseEntity<OtpSent> otp(@PathVariable String token, @Valid @RequestBody OtpRequest body) {
     return ResponseEntity.accepted().body(pay.sendOtp(token, body.wallet()));
   }
@@ -55,6 +57,7 @@ public class HostedPageController {
 
   /** The browser's way back: 303 to the merchant URL with the signed result. */
   @GetMapping("/return")
+  @ApiResponse(responseCode = "303", description = "Redirect to the merchant return URL")
   public ResponseEntity<Void> back(@PathVariable String token) {
     return ResponseEntity.status(HttpStatus.SEE_OTHER).location(URI.create(pay.returnUrl(token))).build();
   }

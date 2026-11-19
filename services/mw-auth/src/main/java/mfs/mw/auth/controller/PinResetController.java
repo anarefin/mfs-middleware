@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
 
 /** The PIN reset of the app (spec 18.7, ticket 70; contract {@code auth.v1.openapi.yaml}). */
 @RestController
@@ -30,17 +32,20 @@ public class PinResetController {
 
   @PostMapping("/auth/v1/pin-resets")
   @ResponseStatus(HttpStatus.ACCEPTED)
+  @Parameter(in = ParameterIn.HEADER, name = "X-Device-Id", required = true)
   public PinResetView start(@Valid @RequestBody PinResetRequest body, HttpServletRequest request) {
     return resets.start(body, SignedRequests.from(request));
   }
 
   @GetMapping("/auth/v1/pin-resets/{resetId}")
+  @Parameter(in = ParameterIn.HEADER, name = "X-Device-Id", required = true)
   public PinResetView get(
       @PathVariable UUID resetId, @RequestHeader(name = SignedRequests.DEVICE_ID, required = false) String deviceId) {
     return resets.get(resetId, deviceId);
   }
 
   @PutMapping("/auth/v1/pin-resets/{resetId}/pin")
+  @Parameter(in = ParameterIn.HEADER, name = "X-Device-Id", required = true)
   public PinResetView setPin(
       @PathVariable UUID resetId,
       @RequestHeader(name = SignedRequests.DEVICE_ID, required = false) String deviceId,
