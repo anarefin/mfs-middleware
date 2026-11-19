@@ -10,6 +10,10 @@ mw:
       # for the request topic. BillpayRequestRouteIT switches it on.
       enabled: false
   partners:
+    health:
+      # Off in tests: a scheduled health run would add route status rows other tests count.
+      # PartnerRouteHealthTest drives PartnerHealthMonitor directly.
+      enabled: false
     config-consumer:
       # Off in tests: every context would replay mw.config.changed.v1 in a group of its own.
       # PartnerConfigReloadIT switches it on.

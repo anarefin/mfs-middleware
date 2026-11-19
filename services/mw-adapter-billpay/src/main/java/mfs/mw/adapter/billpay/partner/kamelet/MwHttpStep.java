@@ -157,7 +157,8 @@ public class MwHttpStep {
   /**
    * The breaker's fallback: the outcome of a call that got no usable answer. An INQUIRY or
    * STATUS_QUERY is tried again ({@link PartnerExchange#ATTEMPT_AGAIN}) while the record's {@code
-   * inquiryRetries} allow; a PAY never.
+   * inquiryRetries} allow; a PAY or a REVERSE never (ticket 97: nor any other operation that may
+   * move money, {@link PartnerExchange#sentOnce}).
    */
   public void fallback(Exchange exchange) {
     Throwable failure = exchange.getProperty(Exchange.EXCEPTION_CAUGHT, Throwable.class);
@@ -182,7 +183,7 @@ public class MwHttpStep {
     int attempts = exchange.getProperty(PartnerExchange.ATTEMPTS, 1, Integer.class);
     String operation = PartnerExchange.operation(exchange);
     boolean again =
-        !"PAY".equals(operation)
+        !PartnerExchange.sentOnce(operation)
             && attempts <= runtime.config().inquiryRetries()
             && againAfter(result);
     exchange.setProperty(PartnerExchange.ATTEMPT_AGAIN, again);

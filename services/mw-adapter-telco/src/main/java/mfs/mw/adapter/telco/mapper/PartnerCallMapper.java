@@ -31,7 +31,8 @@ public class PartnerCallMapper {
     if (p == null) {
       return Optional.of("payload is required");
     }
-    if (!"PAY".equals(p.operation()) && !"STATUS_QUERY".equals(p.operation())) {
+    if (!"PAY".equals(p.operation()) && !"STATUS_QUERY".equals(p.operation())
+        && !"REVERSE".equals(p.operation())) {
       return Optional.of("unsupported operation");
     }
     if (p.partner() == null || p.partner().partnerId() == null || p.partner().partnerId().isBlank()) {
@@ -39,6 +40,13 @@ public class PartnerCallMapper {
     }
     if ("STATUS_QUERY".equals(p.operation())) {
       return Optional.empty(); // the partner is asked by our stable reference only
+    }
+    if ("REVERSE".equals(p.operation())) {
+      // ticket 97: undoes the applied call of the same txnId (our stable reference) for its amount;
+      // the engine adds the reversal reference reverse:<txnId>
+      return p.amount() == null || p.amount().valueMinor() == null || p.amount().valueMinor() <= 0
+          ? Optional.of("amount must be positive")
+          : Optional.empty();
     }
     if (p.amount() == null || p.amount().valueMinor() == null || p.amount().valueMinor() <= 0) {
       return Optional.of("amount must be positive");

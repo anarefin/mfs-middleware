@@ -6,7 +6,7 @@ import org.apache.camel.Exchange;
  * The partner route contract on a Camel exchange (ADR D28, ticket 82).
  *
  * <p>In: the body is the {@code PartnerCall} JSON; the headers {@link #OPERATION} ({@code PAY},
- * {@code INQUIRY}, {@code STATUS_QUERY}), {@link #REFERENCE}, {@link #CORRELATION_ID}, {@link
+ * {@code INQUIRY}, {@code STATUS_QUERY}, {@code REVERSE}, {@code HEALTH_CHECK}; ticket 97), {@link #REFERENCE}, {@link #CORRELATION_ID}, {@link
  * #PARTNER_ID} (as the caller named it), {@link #TXN_ID}, {@link #PARTNER_CODE}. The {@code mw*} headers never leave
  * the service ({@code mwPartnerHeaderFilter} drops them from the HTTP request and keeps a partner's
  * response from setting them). The Kamelets read what they rely on from exchange properties set by
@@ -19,6 +19,18 @@ import org.apache.camel.Exchange;
 public final class PartnerExchange {
 
   public static final String OPERATION = "mwOperation";
+
+  /**
+   * Ticket 97: undoes an applied call. {@link #REFERENCE} stays our reference of the original call
+   * (the {@code {reference}} of a path); the mapping input and the header {@link
+   * #REVERSAL_REFERENCE} carry the idempotent reversal reference {@code reverse:<txnId>}. Sent once,
+   * as a PAY: never again by the engine (only the saga resends, ticket 96).
+   */
+  public static final String REVERSE = "REVERSE";
+  /** Ticket 97: the optional health probe of a record with {@code healthCheck: true}. */
+  public static final String HEALTH_CHECK = "HEALTH_CHECK";
+  /** The reversal reference {@code reverse:<txnId>} of a REVERSE (absent otherwise). */
+  public static final String REVERSAL_REFERENCE = "mwReversalReference";
   public static final String REFERENCE = "mwReference";
   public static final String CORRELATION_ID = "mwCorrelationId";
   public static final String PARTNER_ID = "mwPartnerId";
@@ -70,6 +82,16 @@ public final class PartnerExchange {
 
   public static String operation(Exchange exchange) {
     return exchange.getProperty(OPERATION_PROPERTY, String.class);
+  }
+
+  /** The reversal reference of a REVERSE of transaction {@code txnId}: {@code reverse:<txnId>}. */
+  public static String reversalReference(String txnId) {
+    return "reverse:" + txnId;
+  }
+
+  /** True for an operation that may have moved money and is never sent again by the engine (PAY, REVERSE). */
+  public static boolean sentOnce(String operation) {
+    return !"INQUIRY".equals(operation) && !"STATUS_QUERY".equals(operation) && !HEALTH_CHECK.equals(operation);
   }
 
   public static boolean flag(Exchange exchange, String property) {
