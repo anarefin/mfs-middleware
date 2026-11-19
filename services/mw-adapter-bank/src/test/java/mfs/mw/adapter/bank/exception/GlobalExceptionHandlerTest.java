@@ -103,6 +103,23 @@ class GlobalExceptionHandlerTest {
   }
 
   @Test
+  void everyEnvelopeCarriesItsUtcTimestamp() {
+    // FRS 3.7 (ticket 92): when the error was built, UTC ISO-8601, on handled and unhandled errors
+    java.time.Instant before = java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
+    MvcTestResult handled = get("/test/core");
+    MvcTestResult unhandled = get("/test/bug");
+    java.time.Instant after = java.time.Instant.now();
+    for (MvcTestResult r : List.of(handled, unhandled)) {
+      assertThat(r)
+          .bodyJson()
+          .extractingPath("$.timestamp")
+          .asString()
+          .endsWith("Z")
+          .satisfies(ts -> assertThat(java.time.Instant.parse(ts)).isBetween(before, after));
+    }
+  }
+
+  @Test
   void authAndTimeoutNamespaces() {
     assertThat(get("/test/auth")).hasStatus(401);
     MvcTestResult tmo = get("/test/timeout");
@@ -132,12 +149,19 @@ class GlobalExceptionHandlerTest {
     assertThat(r).bodyJson().extractingPath("$.details[*].issue").asArray().doesNotContainNull();
   }
 
+  /** The body with its timestamp (the last field, UTC ISO-8601, ticket 92) checked and cut off. */
+  static String stamped(String body) {
+    assertThat(body)
+        .containsPattern(",\"timestamp\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?Z\"}$");
+    return body.replaceFirst(",\"timestamp\":\"[^\"]+\"}$", "}");
+  }
+
   /** The exact bytes on the wire: field order, omitted optionals, UTF-8 (spec 5.3). */
   @Test
   void envelopeBytesAreStable() throws Exception {
     MvcTestResult full = get("/test/full");
     assertThat(full).hasStatus(502);
-    assertThat(full.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8))
+    assertThat(stamped(full.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8)))
         .isEqualTo(
             "{\"code\":\"MW-PTR-GP-17\",\"message\":\"Partner rejected\","
                 + "\"messageBn\":\"অংশীদার প্রত্যাখ্যান করেছে\","
@@ -145,13 +169,13 @@ class GlobalExceptionHandlerTest {
                 + "\"retryable\":true,\"details\":[{\"field\":\"partnerCode\",\"issue\":\"17\"}]}");
 
     MvcTestResult notFound = get("/test/nope");
-    assertThat(notFound.getResponse().getContentAsString())
+    assertThat(stamped(notFound.getResponse().getContentAsString()))
         .isEqualTo(
             "{\"code\":\"MW-VAL-003\",\"message\":\"Not found\",\"correlationId\":\"corr-1\","
                 + "\"retryable\":false,\"details\":[]}");
 
     MvcTestResult bug = get("/test/bug");
-    assertThat(bug.getResponse().getContentAsString())
+    assertThat(stamped(bug.getResponse().getContentAsString()))
         .isEqualTo(
             "{\"code\":\"MW-SYS-001\",\"message\":\"Internal error\",\"correlationId\":\"corr-1\","
                 + "\"retryable\":true,\"details\":[]}");

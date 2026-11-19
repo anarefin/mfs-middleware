@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a93",
+  "correlationId": "corr-0001",
+  "channel": "MERCHANT_APP",
+  "txnType": "B2B_TRANSFER",
+  "status": "RECEIVED",
+  "initiator": {
+    "type": "MERCHANT",
+    "id": "M-000001"
+  },
+  "debitParty": {
+    "type": "WALLET",
+    "id": "01711000003",
+    "walletType": "MERCHANT"
+  },
+  "creditParty": {
+    "type": "WALLET",
+    "id": "01811000004",
+    "walletType": "MERCHANT"
+  },
+  "amount": {
+    "valueMinor": 50000,
+    "currency": "BDT"
+  },
+  "requestedAt": "2026-11-03T08:15:30Z",
+  "updatedAt": "2026-11-03T08:15:31Z",
+  "locale": "bn"
+}

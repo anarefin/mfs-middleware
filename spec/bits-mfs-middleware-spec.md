@@ -558,7 +558,7 @@ Every channel request and every partner response is mapped to one canonical mode
 
 ### 5.3 Error model
 
-One error envelope for every API: `{ code, message, messageBn?, txnId?, correlationId, retryable, details[] }`. Codes are namespaced: `MW-VAL-*` (validation), `MW-AUTH-*`, `MW-IDEM-*`, `MW-CORE-*` (core rejection, carries the core reason), `MW-PTR-<partner>-*` (mapped partner error), `MW-TMO-*` (timeout / unknown), `MW-SYS-*`. Each adapter keeps a partner-code → canonical-code mapping table in config, editable from the admin console.
+One error envelope for every API: `{ code, message, messageBn?, txnId?, correlationId, retryable, details[], timestamp }` (`timestamp`: when it was built, UTC ISO-8601; FRS 3.7, ticket 92). Codes are namespaced: `MW-VAL-*` (validation), `MW-AUTH-*`, `MW-IDEM-*`, `MW-CORE-*` (core rejection, carries the core reason), `MW-PTR-<partner>-*` (mapped partner error), `MW-TMO-*` (timeout / unknown), `MW-SYS-*`. Each adapter keeps a partner-code → canonical-code mapping table in config, editable from the admin console.
 
 Codes in use (as built, source: each module's `exception/ErrorCodes` and `CLAUDE.md`; a code's number is unique within its namespace, and services that refuse the same thing share its code):
 
