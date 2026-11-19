@@ -205,7 +205,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `mw.partner-routes.status-consumer.enabled`, off in tests) consumes `mw.partner.route.status.v1`
   (mw-adapter-billpay's contract, own type `dto/PartnerRouteStatusMessage`) into
   `service/PartnerRouteStatusService` (update by key, latest report wins, a version not approved here is
-  skipped). Rollback (ticket 84, ADR D28 amendment; the restart gap of ticket 83: an adapter replays
+  skipped; ticket 97: the adapters' health reports, LIVE with `health`, are applied the same way, a seed's version 0 is skipped). Rollback (ticket 84, ADR D28 amendment; the restart gap of ticket 83: an adapter replays
   only the latest record per partner): a REJECTED report for the partner's current version republishes
   the newest version reported LIVE before it as the next version, without `dryRun`, in the same
   transaction (review of 84, `PartnerRouteStatusService.rolledBack`): the set its dry-run proved

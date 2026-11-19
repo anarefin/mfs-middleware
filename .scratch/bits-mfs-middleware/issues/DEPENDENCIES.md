@@ -68,7 +68,7 @@
 93-core-mock-rest-api                       92                open
 94-core-mock-model                          93                open
 95-orchestrator-core-rest-client            93                open
-97-adapter-reverse-health                   89                open
+97-adapter-reverse-health                   89                done     110m     99 files +3635 −156    8921933e
 96-orchestrator-saga-frs                    95,97             open
 98-routing-module                           96,97             open
 99-idempotency-duplicates-replay            89                open

@@ -252,11 +252,11 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
-| CON-01 | ticket 97 | `PartnerAdapter` SPI with PAY, INQUIRY, STATUS built (D28); REVERSE and health check in 97 |
+| CON-01 | done | partner engine (D28) with PAY, INQUIRY, STATUS_QUERY, REVERSE (`reverse:<txnId>`, sent once) and the optional `HEALTH_CHECK` probe (ticket 97; `PartnerReverseRouteIT`, `PartnerRouteHealthTest`) |
 | CON-02 | tickets 114, 131, 136 | partner routes as config with maker-checker built (D28); proven per family in 114, by console alone in 131, 136 |
 | CON-03 | done | JSONata and XSLT mappings in versioned partner records with maker-checker (D28, mw-admin-api) |
-| CON-04 | tickets 97, 130 | partner audit event built; raw masked payloads 97, audit side 130 |
-| CON-05 | ticket 97 | UP, DEGRADED, DOWN, MAINTENANCE |
+| CON-04 | ticket 130 | partner audit event and raw masked payload store `partner_payload` with latency and `payloadRef` built (ticket 97, `PartnerPayloadIT`); audit side 130 |
+| CON-05 | done | `PartnerRouteHealth`: UP, DEGRADED, DOWN, MAINTENANCE (+ DISABLED, DELETED), changes on `mw.partner.route.status.v1` `health` (ticket 97) |
 | CON-06 | ticket 136 | developer guide and sample connector |
 | EXT-01 | ticket 109 | USSD gateway simulator (GP, SMPP) built; four MNOs in 109 |
 | EXT-02 | done | SMSC simulator in mw-simulators with inbox and delivery receipts |
@@ -277,7 +277,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-17 | tickets 123, 128 | DW Kafka and SFTP drop |
 | EXT-18 | tickets 93, 95 | core over REST (D31) |
 | MCK-01 | done | the simulators speak the real protocols (SMPP binds, SOAP, HMAC, mTLS); each new mock keeps the rule in its ticket |
-| MCK-02 | tickets 97, 112, 114 | stateful paid bills, reverse once |
+| MCK-02 | tickets 112, 114 | reverse once built in mw-simulators (ocs, billagg, c2wbank; ticket 97, `ReversalServiceTest`); stateful paid bills per aggregator 112, 114 |
 | MCK-03 | tickets 102, 136 | magic values built (spec 22.2); documented per mock in 136 |
 | MCK-04 | tickets 102, 103 | the mock control API (D33) |
 | MCK-05 | ticket 102 | latency per operation |

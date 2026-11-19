@@ -53,8 +53,26 @@ mw:
                           steps:
                             - to: "kamelet:mw-http-call?url=${mw.partners.instances.ocs.base-url}&method=GET&path=/ocs/v1/topup/{reference}&auth=none"
                             - to: "kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200,404"
+                        - simple: "${header.mwOperation} == 'REVERSE'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=REVERSE.request"
+                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.ocs.base-url}&method=POST&path=/ocs/v1/topup/{reference}/reverse&auth=none"
+                            - to: "kamelet:mw-classify?mapping=REVERSE.response&definiteStatuses=404,422"
                   - to: "kamelet:mw-audit"
         mappings:
+          # REVERSE (ticket 97): undo the applied call of our reference, idempotent on the
+          # reversal reference reverse:<txnId> (mw-simulators reverses once and answers the
+          # first result again); 404 / 422 with a code are refusals, anything else UNKNOWN.
+          "[REVERSE.request]": |
+            {"reversalId": reversalReference, "amount": amount.major}
+          "[REVERSE.response]": |
+            status = 200
+              ? (body.status = "REVERSED" and $type(body.reversalRef) = "string" and body.reversalRef != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.reversalRef, "code": body.code}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : (status = 404 or status = 422) and $type(body.code) = "string" and body.code != ""
+              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
           "[PAY.request]": |
             {"transactionId": reference, "msisdn": creditParty.id, "amount": amount.major}
           "[PAY.response]": |

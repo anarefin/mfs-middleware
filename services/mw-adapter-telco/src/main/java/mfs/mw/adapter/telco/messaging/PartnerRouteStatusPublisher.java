@@ -16,7 +16,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * The partner framework's route status sink (ticket 83): every LIVE / REJECTED outcome of a record
  * version becomes a {@code mw.partner.route.status.v1} record (key partnerId) through the outbox,
  * in a transaction of its own. The 6.1 txn header is a name UUID of {@code partner/<id>@<version>}
- * (a config change has no transaction), the idempotency key {@code partner/<id>@<version>:<status>}.
+ * (a config change has no transaction), the idempotency key {@code partner/<id>@<version>:<status>};
+ * a health report (ticket 97) {@code partner/<id>@<version>:health:<health>:<epoch ms>}, each change
+ * its own record.
  */
 @Component
 public class PartnerRouteStatusPublisher implements PartnerRouteStatus.Sink {
@@ -46,12 +48,18 @@ public class PartnerRouteStatusPublisher implements PartnerRouteStatus.Sink {
     String version = "partner/" + status.partnerId() + "@" + status.version();
     String id = UUID.nameUUIDFromBytes(version.getBytes(StandardCharsets.UTF_8)).toString();
     tx.executeWithoutResult(
-        s -> outbox.append(TOPIC, status.partnerId(), new EventMetadata(id, id, version + ":" + status.status(), 1), event));
+        s -> outbox.append(TOPIC, status.partnerId(), new EventMetadata(id, id, key(version, status), 1), event));
+  }
+
+  private String key(String version, PartnerRouteStatus status) {
+    return status.health() == null
+        ? version + ":" + status.status()
+        : version + ":health:" + status.health() + ":" + clock.millis();
   }
 
   PartnerRouteStatusEvent toEvent(PartnerRouteStatus s) {
     return new PartnerRouteStatusEvent(
-        1, s.partnerId(), s.version(), partners.family(), s.status().name(), s.problems(), s.kamelets(), service.name(),
+        1, s.partnerId(), s.version(), partners.family(), s.status().name(), s.problems(), s.kamelets(), s.health(), service.name(),
         clock.instant());
   }
 }

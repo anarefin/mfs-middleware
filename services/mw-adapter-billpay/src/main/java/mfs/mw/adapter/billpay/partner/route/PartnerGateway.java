@@ -112,8 +112,9 @@ public class PartnerGateway {
     return send(candidate, call, System.nanoTime());
   }
 
-  private PartnerResponse send(PartnerRuntime runtime, PartnerCall call, long start) {
+  private PartnerResponse send(PartnerRuntime runtime, PartnerCall original, long start) {
     registerCircuitGauge(runtime.id());
+    PartnerCall call = withReversalReference(original);
     String body = json.writeValueAsString(call);
     Exchange done =
         producer.send(
@@ -134,6 +135,9 @@ public class PartnerGateway {
               if (call.txnId() != null) {
                 m.setHeader(PartnerExchange.TXN_ID, call.txnId());
               }
+              if (call.input().get("reversalReference") instanceof String reversal) {
+                m.setHeader(PartnerExchange.REVERSAL_REFERENCE, reversal);
+              }
               String code = partnerCode(call);
               if (code != null) {
                 m.setHeader(PartnerExchange.PARTNER_CODE, code);
@@ -152,6 +156,21 @@ public class PartnerGateway {
           : new PartnerResponse.NotSent(NotSentReason.DISABLED);
     }
     return results.response(done, done.getMessage().getBody(String.class));
+  }
+
+  /**
+   * A REVERSE carries the idempotent reversal reference {@code reverse:<txnId>} (ticket 97) as
+   * {@code input.reversalReference}, whatever the caller put there; the call's own {@code
+   * reference} stays the original one. Any other call is returned as it is.
+   */
+  static PartnerCall withReversalReference(PartnerCall call) {
+    if (!PartnerExchange.REVERSE.equals(call.operation()) || call.txnId() == null) {
+      return call;
+    }
+    Map<String, Object> input = new LinkedHashMap<>(call.input());
+    input.put("reversalReference", PartnerExchange.reversalReference(call.txnId()));
+    return new PartnerCall(
+        call.partnerId(), call.operation(), call.txnType(), call.txnId(), call.correlationId(), call.reference(), input);
   }
 
   /** {@code input.partner.billerCode}, else {@code productCode}; null when neither is a non-blank string. */

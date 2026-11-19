@@ -6,7 +6,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.billpay`. Fol
 ## Responsibilities
 
 - Bill pay adapter (spec WP15 part, 7.3 rule 5, 7.4, 11): consumes `mw.partner.request.billpay.v1`
-  (`messaging/BillpayRequestHandler`, a Spring Kafka `@KafkaListener` with retry topics + DLQ), checks a `PAY` / `STATUS_QUERY` request
+  (`messaging/BillpayRequestHandler`, a Spring Kafka `@KafkaListener` with retry topics + DLQ), checks a `PAY` / `STATUS_QUERY` / `REVERSE` (ticket 97) request
   (`mapper/PartnerCallMapper`: family `billpay`, `partner.billerCode` and a `BILLER_ACCOUNT` credit
   party with a bill number for PAY), claims the request in the inbox (consumer
   `mw-adapter-billpay.partner-call`, committed before the call: a request Kafka delivers again is
@@ -73,8 +73,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.billpay`. Fol
   (REQUIRES_NEW): action `partner.call.completed`, actor `system`/<service>, resource
   `partner/<partnerId>/<operation>`, outcome SUCCESS (partner SUCCESS/PENDING) else FAILURE,
   `after` = `partnerInstance`, `httpMethod`, `path`, `httpStatus`, `partnerOutcome`, `durationMs`
-  and the `request`/`response` bodies as the framework masked them (`sensitive-fields`, scrub, 4 KB);
-  raw bodies never, no `payloadRef`. Key txnId (else partnerId: a bill fetch has no txnId and is audited under the biller's aggregator). A failing publisher is logged
+  and the `request`/`response` bodies as the framework masked them (`sensitive-fields`, scrub, 4 KB
+  excerpt); `payloadRef` (`partner-payload/<uuid>`) names the full masked bodies in this adapter's
+  `partner_payload` table (ticket 97, below). Key txnId (else partnerId: a bill fetch has no txnId and is
+  audited under the biller's aggregator; its 6.1 txn header is the audit id, ticket 97: such calls used
+  to be dropped). A failing publisher is logged
   `partner.call.audit_failed` and never fails the call. Identical in telco, billpay and bank.
 - Dev provisioning (`provision_mw_adapter_billpay` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `adapter_billpay_rw` and schema `billpay_ref`, `secret/mw-adapter-billpay` (DB password, never
@@ -306,8 +309,31 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   The channels and seeds send the catalogue's `partnerId` (`billagg`) itself, so the map is empty; any
   other id is refused `MW-PTR-UNKNOWN-PARTNER` (502 on the bill fetch). The reply contract's partner
   codes have two segments, hence not `MW-PTR-UNKNOWN`.
-- **Health and metrics**: `partners` on `/actuator/health` (`PartnerRouteHealth`: per partner UP, DOWN,
-  DISABLED, DELETED; the indicator stays UP and is not in the readiness group), Camel's own checks skip
+- **REVERSE, health, payload store** (ticket 97, FRS CON-01/04/05): see the section "REVERSE, health and
+  the payload store" of `docs/concepts/camel-partner-routes.md`. REVERSE: a route branch on
+  `mwOperation == 'REVERSE'` (`mw-map` -> `mw-http-call`/`mw-soap-call` -> `mw-classify`); `{reference}` is
+  our original reference, `PartnerGateway.withReversalReference` puts `reversalReference` =
+  `reverse:<txnId>` into the mapping input (header `mwReversalReference`); `PartnerExchange.sentOnce`: a
+  PAY, a REVERSE (anything but INQUIRY / STATUS_QUERY / HEALTH_CHECK) is never sent again by
+  `mwHttp.fallback`, and the HTTP client has automatic retries off (`PartnerReverseRouteIT`: a 503 is one
+  request, UNKNOWN `HTTP_5XX`). The request topic accepts `REVERSE` (`mapper/PartnerCallMapper`: partner
+  and a positive amount; never refused for `deadlineAt`, the saga resends it, ticket 96). Health:
+  `PartnerRouteHealth.State` UP / DEGRADED (breaker half-open or failure rate >=
+  `mw.partners.health.degraded-failure-rate`, 25) / DOWN (route stopped, breaker open, probe failing) /
+  MAINTENANCE (record `maintenance: true`) / DISABLED / DELETED; record `healthCheck: true` = a
+  `HEALTH_CHECK` branch probed by `partner/route/PartnerHealthMonitor` from `scheduler/PartnerHealthJob`
+  (ShedLock `partner-health`, `mw.partners.health.interval` 30 s, `mw.partners.health.enabled`, off in
+  tests), which publishes every change once through `PartnerRouteStatusPublisher` (LIVE + `health`, seed
+  version 0, idempotency key `partner/<id>@<v>:health:<state>:<ms>`; `PartnerRouteHealthTest`). Payload
+  store: `PartnerAudit` with `PayloadStore` = `repository/PartnerPayloadRepository`, table
+  `partner_payload(payload_ref, txn_id, partner_id, op, direction, body, latency_ms, at)` (Flyway V6), full
+  masked bodies, purged after `mw.retention.partner-payload` (30 d, `service/PartnerPayloadRetentionService`,
+  `scheduler/PartnerPayloadPurgeJob` on `mw.retention.cron`; `PartnerPayloadIT`). The dev seeds (here and
+  in mw-admin-api `partner-seeds/dev`) reverse at `POST <path>/{reference}/reverse` of mw-simulators.
+  `scripts/test/test_partner_engine_copies.sh` (in `:scriptTests`) fails when the three `partner/` trees,
+  Kamelets or `partner/` resources differ apart from the package.
+- **Health and metrics**: `partners` on `/actuator/health` (`PartnerRouteHealth`: per partner version, route,
+  `circuit` and status UP, DEGRADED, DOWN, MAINTENANCE, DISABLED, DELETED (ticket 97); the indicator stays UP and is not in the readiness group), Camel's own checks skip
   `partner-*` and `mw-*` routes (`camel.health.exclude-pattern`; Camel's readiness would otherwise turn the
   whole service not ready). Camel route metrics get a `partnerId` tag (`PartnerFrameworkConfiguration`
   `MeterFilter`), `camel.metrics.uri-tag-enabled` off; the §21.2 metrics (`mw.partner.call`,
@@ -447,7 +473,7 @@ fresh UUID per send). Identical in the three adapters (telco has no callback end
 - `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (internal API; clients mw-app-gateway and mw-ussd;
   `GET /internal/v1/partners/kamelet-usage`, ticket 83).
 - `events/mw-adapter-billpay/mw.partner.route.status.v1` (ticket 83): LIVE / REJECTED per partner record
-  version, key partnerId; consumer mw-admin-api; telco and bank produce it too since ticket 84 (topic 6
+  version, key partnerId; since ticket 97 also health reports (`health`, version 0 for a seed); consumer mw-admin-api; telco and bank produce it too since ticket 84 (topic 6
   partitions, 7 d, retry group mw-admin-api).
 - `events/mw-adapter-billpay/mw.partner.recon.v1` (ticket 86): one line of a partner's SFTP
   reconciliation file (`messaging/PartnerReconPublisher`, `dto/PartnerReconEvent`), key partnerId; telco

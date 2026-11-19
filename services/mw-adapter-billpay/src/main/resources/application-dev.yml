@@ -88,8 +88,26 @@ mw:
                             - to: "kamelet:mw-map?mapping=INQUIRY.request"
                             - to: "kamelet:mw-http-call?url=${mw.partners.instances.billagg.base-url}&method=POST&path=/billagg/v1/bills/fetch&auth=hmac-sha256&secretField=hmac-secret"
                             - to: "kamelet:mw-classify?mapping=INQUIRY.response&definiteStatuses=400,422"
+                        - simple: "${header.mwOperation} == 'REVERSE'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=REVERSE.request"
+                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.billagg.base-url}&method=POST&path=/billagg/v1/payments/{reference}/reverse&auth=hmac-sha256&secretField=hmac-secret"
+                            - to: "kamelet:mw-classify?mapping=REVERSE.response&definiteStatuses=404,422"
                   - to: "kamelet:mw-audit"
         mappings:
+          # REVERSE (ticket 97): undo the applied call of our reference, idempotent on the
+          # reversal reference reverse:<txnId> (mw-simulators reverses once and answers the
+          # first result again); 404 / 422 with a code are refusals, anything else UNKNOWN.
+          "[REVERSE.request]": |
+            {"reversalId": reversalReference, "amount": amount.major}
+          "[REVERSE.response]": |
+            status = 200
+              ? (body.status = "REVERSED" and $type(body.reversalRef) = "string" and body.reversalRef != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.reversalRef, "code": body.code}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : (status = 404 or status = 422) and $type(body.code) = "string" and body.code != ""
+              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
           "[PAY.request]": |
             {"transactionId": reference, "billerCode": partner.billerCode,
              "billNumber": creditParty.id, "amount": amount.major}

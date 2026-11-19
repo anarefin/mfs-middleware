@@ -13,7 +13,7 @@ First implemented in mw-adapter-billpay (ticket 82); its `CLAUDE.md` holds the d
 
 - In: `from: direct:partner-<id>`. The body is the canonical partner call (JSON: `partnerId`,
   `operation`, `txnId`, `reference`, `input`); the headers `mwOperation` (`PAY`, `INQUIRY`,
-  `STATUS_QUERY`), `mwReference`, `mwCorrelationId`, `mwPartnerId`, `mwTxnId`, `mwPartnerCode` (the call's `billerCode`,
+  `STATUS_QUERY`, `REVERSE`, `HEALTH_CHECK`), `mwReference`, `mwCorrelationId`, `mwPartnerId`, `mwTxnId`, `mwPartnerCode` (the call's `billerCode`,
   else its `productCode`). No `mw*` header ever leaves the service.
 - Branch per biller: a `when` on `${header.mwPartnerCode} in 'KGDCL,JGTDSL,BTCL,LINK3'` before the REST
   ones sends those billers of the dev `billagg` over SOAP; the others stay on REST.
@@ -22,6 +22,30 @@ First implemented in mw-adapter-billpay (ticket 82); its `CLAUDE.md` holds the d
   (fail closed).
 - The route ends with `mw-classify` (directly, or at the end of every branch of a final `choice`)
   and then `mw-audit`.
+
+## REVERSE, health and the payload store (ticket 97)
+
+- **REVERSE** undoes an applied call: a route branch on `${header.mwOperation} == 'REVERSE'` maps
+  (`mw-map`), calls (`mw-http-call` / `mw-soap-call`) and classifies (`mw-classify`) like a PAY. The
+  path's `{reference}` stays our reference of the original call; the mapping input carries the
+  idempotent reversal reference `reversalReference` = `reverse:<txnId>` (also header
+  `mwReversalReference`), which the partner deduplicates on. A REVERSE is sent once, like a PAY: never
+  again by the engine or the HTTP client (a 503 ends UNKNOWN `HTTP_5XX`); only the saga resends it
+  (ticket 96). The dev seeds reverse at `POST <path>/{reference}/reverse`; mw-simulators reverses
+  once and answers every later reverse with the first result.
+- **Health** per partner (`PartnerRouteHealth`, `/actuator/health` `partners`): `UP`; `DEGRADED`
+  (breaker half-open, or its failure rate at or over `mw.partners.health.degraded-failure-rate`,
+  25 %); `DOWN` (route not running, breaker open, or a failing probe); `MAINTENANCE` (record flag
+  `maintenance: true`; the console window comes with ticket 131); `DISABLED`; `DELETED`. A record with
+  `healthCheck: true` has a `HEALTH_CHECK` branch, probed by the ShedLock job
+  `scheduler/PartnerHealthJob` every `mw.partners.health.interval` (30 s). Every change goes out once
+  on `mw.partner.route.status.v1` with `health` (a seed reports version 0), for routing (98) and the
+  console.
+- **Payload store**: `mw-audit` writes the full masked request and response (the record's
+  `sensitiveFields`, then scrubbing) to the adapter's own table `partner_payload` (Flyway V6) with the
+  latency; the `mw.audit.event.v1` event keeps the 4 KB excerpt plus `payloadRef`
+  (`partner-payload/<uuid>`); rows older than `mw.retention.partner-payload` (30 d) are purged. A call
+  without a txnId (bill fetch, dry-run, probe) is audited too.
 
 ## The Kamelet library
 

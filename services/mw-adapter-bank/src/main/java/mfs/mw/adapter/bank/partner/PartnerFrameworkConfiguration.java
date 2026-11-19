@@ -22,7 +22,8 @@ import org.springframework.vault.core.VaultTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Spring wiring of the partner engine (ADR D28; package {@code partner}): the audit sink, the
+ * Spring wiring of the partner engine (ADR D28; package {@code partner}): the audit sink (and,
+ * ticket 97, the raw payload store {@code repository/PartnerPayloadRepository}), the
  * header filter of partner HTTP calls, the vault properties function for partner secrets, the
  * {@code partnerId} tag on Camel's route metrics, and the start of the partner routes once Camel
  * runs.
@@ -33,8 +34,10 @@ public class PartnerFrameworkConfiguration {
   private static final Pattern PARTNER_ROUTE = Pattern.compile("^partner-([a-z0-9][a-z0-9-]*)-v\\d+$");
 
   @Bean
-  PartnerAudit partnerAudit(JsonMapper json, PartnerAuditPublisher publisher) {
-    return PartnerAudit.publishing(json, publisher);
+  PartnerAudit partnerAudit(
+      JsonMapper json, PartnerAuditPublisher publisher,
+      mfs.mw.adapter.bank.repository.PartnerPayloadRepository payloads) {
+    return PartnerAudit.publishing(json, publisher, payloads);
   }
 
   /**

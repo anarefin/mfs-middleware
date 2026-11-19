@@ -6,7 +6,8 @@ import java.util.List;
 
 /**
  * {@code mw.partner.route.status.v1} (own contract, ticket 83): what became of one partner record
- * version in this adapter, LIVE or REJECTED with its problems, for mw-admin-api's console. Key:
+ * version in this adapter, LIVE or REJECTED with its problems, for mw-admin-api's console; since
+ * ticket 97 also a health report (LIVE with {@code health}, a seed's version 0) on every change. Key:
  * partnerId. Carries no secret and no personal data: problems name fields and rules only.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -18,6 +19,7 @@ public record PartnerRouteStatusEvent(
     String status,
     List<String> problems,
     List<String> kamelets,
+    String health,
     String reportedBy,
     Instant reportedAt) {
 
