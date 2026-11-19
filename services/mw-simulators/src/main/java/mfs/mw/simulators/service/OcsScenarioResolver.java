@@ -1,21 +1,17 @@
 package mfs.mw.simulators.service;
 
 import mfs.mw.simulators.dto.OcsTopupRequest;
-import mfs.mw.simulators.dto.Scenario;
 import mfs.mw.simulators.dto.SimMode;
 import org.springframework.stereotype.Service;
 
 /**
- * Picks the outcome. A forced mode wins; then magic values: MSISDN ending 999 is a business
- * failure; then the amount ({@link MagicAmounts}).
+ * The OCS magic values (MCK-03), the default trigger when no mock-control scenario decides: MSISDN
+ * ending 999 is a business failure; then the amount ({@link MagicAmounts}).
  */
 @Service
 public class OcsScenarioResolver {
 
-  public SimMode resolve(OcsTopupRequest req, Scenario scenario) {
-    if (scenario.forceMode() != null) {
-      return scenario.forceMode();
-    }
+  public SimMode magic(OcsTopupRequest req) {
     if (req.msisdn().endsWith("999")) {
       return SimMode.BUSINESS_FAILURE;
     }

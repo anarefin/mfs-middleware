@@ -5,7 +5,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import mfs.mw.simulators.dto.SimMode;
 import mfs.mw.simulators.dto.SimReply;
+import mfs.mw.simulators.service.mockcontrol.Decision;
+import mfs.mw.simulators.service.mockcontrol.MockCalls;
+import mfs.mw.simulators.service.mockcontrol.MockControl;
+import mfs.mw.simulators.service.mockcontrol.PartyState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -15,23 +20,25 @@ import org.springframework.stereotype.Service;
  * stateful: a transaction the partner applied ({@code SUCCESS} in its ledger) is reversed once, and
  * every later reverse of it answers that first result again (same {@code reversalRef} and {@code
  * reversalId}), so the saga can resend safely. Unknown transaction 404 {@code NOT_FOUND} ({@code
- * 4040}); one that did not succeed 422 {@code FAILED} {@code 4091}; the partner's scenario {@code
- * outage} 503 (nothing applied). Mock control beyond the outage comes with ticket 102.
+ * 4040}); one that did not succeed 422 {@code FAILED} {@code 4091}. Mock control: operation {@code
+ * reverse} of each party (key {@code txnRef}); MAINTENANCE 503 {@code UNAVAILABLE} {@code 5030}, a
+ * BUSINESS_ERROR 422 {@code FAILED} (default {@code 4091}), both with nothing applied; the other outcomes
+ * as {@link MockCalls#answer}.
  */
 @Service
-public class ReversalService {
+public class ReversalService implements PartyState {
 
   private static final Logger log = LoggerFactory.getLogger(ReversalService.class);
 
-  private final ScenarioStore scenarios;
+  private final MockControl control;
   private final OcsLedger ocs;
   private final BillPaymentLedger billagg;
   private final BankDebitLedger bank;
   private final Map<String, Map<String, Object>> reversed = new ConcurrentHashMap<>();
   private final AtomicLong refs = new AtomicLong();
 
-  public ReversalService(ScenarioStore scenarios, OcsLedger ocs, BillPaymentLedger billagg, BankDebitLedger bank) {
-    this.scenarios = scenarios;
+  public ReversalService(MockControl control, OcsLedger ocs, BillPaymentLedger billagg, BankDebitLedger bank) {
+    this.control = control;
     this.ocs = ocs;
     this.billagg = billagg;
     this.bank = bank;
@@ -39,9 +46,18 @@ public class ReversalService {
 
   /** Reverses {@code transactionId} of {@code partner} ({@code ocs}, {@code billagg} or {@code c2wbank}). */
   public SimReply reverse(String partner, String transactionId, String reversalId) {
-    if (scenarios.get(partner).outage()) {
-      return new SimReply(503, answer(transactionId, "UNAVAILABLE", "5030", "partner unavailable", null, null));
-    }
+    Decision d = control.decide(partner, "reverse", Map.of("txnRef", transactionId), SimMode.SUCCESS);
+    return MockCalls.answer(
+        d,
+        partner,
+        () -> apply(partner, transactionId, reversalId),
+        () -> new SimReply(503, answer(transactionId, "UNAVAILABLE", "5030", "partner unavailable", null, null)),
+        () -> new SimReply(500, answer(transactionId, "ERROR", "5000", "internal error", null, null)),
+        code -> new SimReply(
+            422, answer(transactionId, "FAILED", code == null ? "4091" : code, "transaction cannot be reversed", null, null)));
+  }
+
+  private SimReply apply(String partner, String transactionId, String reversalId) {
     Optional<String> status = status(partner, transactionId);
     if (status.isEmpty()) {
       return new SimReply(404, answer(transactionId, "NOT_FOUND", "4040", "no such transaction", null, null));
@@ -60,6 +76,11 @@ public class ReversalService {
               return answer(transactionId, "REVERSED", "0000", "reversed", "REV-" + refs.incrementAndGet(), reversalId);
             });
     return new SimReply(200, result);
+  }
+
+  @Override
+  public void reset(String party) {
+    reversed.keySet().removeIf(k -> k.startsWith(party + "/"));
   }
 
   /** How many transactions were reversed (tests). */

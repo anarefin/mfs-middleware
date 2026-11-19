@@ -5,7 +5,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.Duration;
+import java.util.SplittableRandom;
+import mfs.mw.simulators.config.SimulatorProperties;
+import mfs.mw.simulators.service.CallbackService;
 import mfs.mw.simulators.service.MerchantIpnService;
+import mfs.mw.simulators.service.mockcontrol.Journal;
+import mfs.mw.simulators.service.mockcontrol.LegacyScenarios;
+import mfs.mw.simulators.service.mockcontrol.PartySwitch;
+import mfs.mw.simulators.service.mockcontrol.ScenarioEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,21 +22,46 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
 /** The merchant IPN receiver's HTTP surface (ticket 32): the IPN endpoint and its control API. */
-@WebMvcTest(MerchantIpnController.class)
+@WebMvcTest({MerchantIpnController.class, ControlController.class})
 @Import(MerchantIpnControllerTest.Fixtures.class)
 class MerchantIpnControllerTest {
 
   @TestConfiguration(proxyBeanMethods = false)
   static class Fixtures {
+    static final SimulatorProperties PROPS = new SimulatorProperties(Duration.ofMillis(10), 50);
+
     @Bean
-    MerchantIpnService merchantIpnService() {
-      return new MerchantIpnService(Clock.fixed(Instant.parse("2026-11-05T10:00:00Z"), ZoneOffset.UTC), 50);
+    PartySwitch partySwitch() {
+      return new PartySwitch();
+    }
+
+    @Bean
+    ScenarioEngine scenarioEngine(PartySwitch switches) {
+      return new ScenarioEngine(switches, PROPS, new SplittableRandom(1));
+    }
+
+    @Bean
+    LegacyScenarios legacyScenarios(ScenarioEngine engine, PartySwitch switches) {
+      return new LegacyScenarios(engine, switches);
+    }
+
+    @Bean
+    Journal journal() {
+      return new Journal(PROPS);
+    }
+
+    @Bean
+    MerchantIpnService merchantIpnService(ScenarioEngine engine) {
+      return new MerchantIpnService(engine, Clock.fixed(Instant.parse("2026-11-05T10:00:00Z"), ZoneOffset.UTC), 50);
     }
   }
+
+  @MockitoBean CallbackService callbacks;
 
   private final MockMvcTester mvc;
   private final MerchantIpnService merchant;
@@ -41,7 +74,7 @@ class MerchantIpnControllerTest {
 
   @BeforeEach
   void reset() {
-    merchant.reset();
+    mvc.delete().uri("/sim/merchant/ipn/received").exchange();
   }
 
   private MvcTestResult ipn(String id) {

@@ -17,8 +17,9 @@ import mfs.mw.simulators.service.BankC2wService;
 import mfs.mw.simulators.service.BillAggregatorService;
 import mfs.mw.simulators.service.CallbackService;
 import mfs.mw.simulators.service.OcsService;
-import mfs.mw.simulators.service.RequestRecorder;
-import mfs.mw.simulators.service.ScenarioStore;
+import mfs.mw.simulators.service.MerchantIpnService;
+import mfs.mw.simulators.service.mockcontrol.Journal;
+import mfs.mw.simulators.service.mockcontrol.LegacyScenarios;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -40,8 +41,9 @@ class SimulatorControllersTest {
   @MockitoBean OcsService ocs;
   @MockitoBean BillAggregatorService billagg;
   @MockitoBean BankC2wService bank;
-  @MockitoBean ScenarioStore scenarios;
-  @MockitoBean RequestRecorder recorder;
+  @MockitoBean LegacyScenarios scenarios;
+  @MockitoBean Journal recorder;
+  @MockitoBean MerchantIpnService merchant;
   @MockitoBean CallbackService callbacks;
 
   @Autowired
@@ -89,7 +91,7 @@ class SimulatorControllersTest {
 
   @Test
   void theAggregatorListsBillersAndPassesPaymentAndStatusReplies() {
-    when(billagg.billers()).thenReturn(List.of(new Biller("DESCO", "Dhaka Electric", "ELECTRICITY")));
+    when(billagg.billers()).thenReturn(new SimReply(200, List.of(new Biller("DESCO", "Dhaka Electric", "ELECTRICITY"))));
     when(billagg.pay(any())).thenReturn(new SimReply(200, Map.of("status", "SUCCESS", "paymentRef", "AGG-1")));
     when(billagg.status("BITS3")).thenReturn(new SimReply(200, Map.of("status", "SUCCESS")));
 

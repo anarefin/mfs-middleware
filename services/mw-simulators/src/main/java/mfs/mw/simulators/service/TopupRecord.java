@@ -13,4 +13,10 @@ public record TopupRecord(
     String code,
     String message,
     String ocsRef,
-    SimMode mode) {}
+    SimMode mode) {
+
+  /** This record with {@code newCode} (a mock-control BUSINESS_ERROR code); itself when null. */
+  public TopupRecord withCode(String newCode) {
+    return newCode == null ? this : new TopupRecord(transactionId, msisdn, amount, status, newCode, message, ocsRef, mode);
+  }
+}

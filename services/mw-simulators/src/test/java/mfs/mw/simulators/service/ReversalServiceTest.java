@@ -3,12 +3,16 @@ package mfs.mw.simulators.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
-import java.util.List;
+import java.util.SplittableRandom;
 import java.util.Map;
 import mfs.mw.simulators.config.SimulatorProperties;
-import mfs.mw.simulators.dto.Scenario;
+import mfs.mw.simulators.dto.MockBehaviour;
+import mfs.mw.simulators.dto.MockScenario;
+import mfs.mw.simulators.dto.MockSwitch;
 import mfs.mw.simulators.dto.SimMode;
 import mfs.mw.simulators.dto.SimReply;
+import mfs.mw.simulators.service.mockcontrol.PartySwitch;
+import mfs.mw.simulators.service.mockcontrol.ScenarioEngine;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -18,13 +22,13 @@ import org.junit.jupiter.api.Test;
  */
 class ReversalServiceTest {
 
-  private final SimulatorProperties props =
-      new SimulatorProperties(Duration.ofMillis(30), 100, List.of("ocs", "billagg", "c2wbank"));
-  private final ScenarioStore scenarios = new ScenarioStore(props);
+  private final SimulatorProperties props = new SimulatorProperties(Duration.ofMillis(30), 100);
+  private final PartySwitch switches = new PartySwitch();
+  private final ScenarioEngine engine = new ScenarioEngine(switches, props, new SplittableRandom(1));
   private final OcsLedger ocs = new OcsLedger();
   private final BillPaymentLedger billagg = new BillPaymentLedger();
   private final BankDebitLedger bank = new BankDebitLedger();
-  private final ReversalService service = new ReversalService(scenarios, ocs, billagg, bank);
+  private final ReversalService service = new ReversalService(engine, ocs, billagg, bank);
 
   @SuppressWarnings("unchecked")
   private static Map<String, Object> body(SimReply reply) {
@@ -72,9 +76,26 @@ class ReversalServiceTest {
   }
 
   @Test
+  void aBusinessErrorScenarioRefusesWithItsCodeAndAResetPartyForgetsItsReversals() {
+    ocs.put(new TopupRecord("BITS06", "01711000001", "20.00", "SUCCESS", "0000", "ok", "OCS-6", SimMode.SUCCESS));
+    MockScenario s = engine.add("ocs", MockScenario.of("reverse", MockBehaviour.BUSINESS_ERROR).withCode("4099").withNextN(1));
+
+    SimReply refused = service.reverse("ocs", "BITS06", "reverse:f");
+    assertThat(refused.httpStatus()).isEqualTo(422);
+    assertThat(body(refused)).containsEntry("code", "4099");
+    assertThat(engine.list("ocs")).extracting(MockScenario::id).doesNotContain(s.id());
+    assertThat(service.reverse("ocs", "BITS06", "reverse:f").httpStatus()).isEqualTo(200);
+    assertThat(service.reversals()).isEqualTo(1);
+    service.reset("billagg");
+    assertThat(service.reversals()).isEqualTo(1);
+    service.reset("ocs");
+    assertThat(service.reversals()).isZero();
+  }
+
+  @Test
   void anOutageAnswers503AndAppliesNothing() {
     ocs.put(new TopupRecord("BITS05", "01711000001", "20.00", "SUCCESS", "0000", "ok", "OCS-5", SimMode.SUCCESS));
-    scenarios.set("ocs", new Scenario(null, null, null, true, null, null, null, null, null));
+    switches.set("ocs", new MockSwitch(MockSwitch.State.MAINTENANCE, null, null, null));
 
     assertThat(service.reverse("ocs", "BITS05", "reverse:e").httpStatus()).isEqualTo(503);
     assertThat(service.reversals()).isZero();

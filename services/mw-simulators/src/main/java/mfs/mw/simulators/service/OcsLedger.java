@@ -4,11 +4,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import mfs.mw.simulators.service.mockcontrol.PartyState;
 import org.springframework.stereotype.Service;
 
 /** What the OCS really did with each transaction id; the answer to a status inquiry. */
 @Service
-public class OcsLedger {
+public class OcsLedger implements PartyState {
 
   private final Map<String, TopupRecord> records = new ConcurrentHashMap<>();
   private final AtomicLong refs = new AtomicLong();
@@ -27,5 +28,12 @@ public class OcsLedger {
 
   public String nextRef() {
     return "OCS-" + refs.incrementAndGet();
+  }
+
+  @Override
+  public void reset(String party) {
+    if ("ocs".equals(party)) {
+      records.clear();
+    }
   }
 }

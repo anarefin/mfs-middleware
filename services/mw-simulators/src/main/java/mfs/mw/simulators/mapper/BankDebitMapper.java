@@ -14,12 +14,15 @@ public class BankDebitMapper {
   public static final String ACCEPTED = "100";
   public static final String DEBIT_REFUSED = "4002";
   public static final String UNMAPPED = "9876";
+  /** The status of a partly debited account (mock control PARTIAL_SUCCESS). */
+  public static final String PARTIAL = "PARTIAL";
 
   /** Only business failure and unknown code refuse the debit; every other mode applies it. */
   public BankDebitRecord toRecord(BankDebitRequest req, SimMode mode, String ref) {
     return switch (mode) {
       case BUSINESS_FAILURE -> record(req, "FAILED", DEBIT_REFUSED, "Debit refused by the bank", ref, mode);
       case UNKNOWN_CODE -> record(req, "FAILED", UNMAPPED, "Unmapped bank error", ref, mode);
+      case PARTIAL_SUCCESS -> record(req, PARTIAL, "010", "Account partly debited", ref, mode);
       default -> record(req, "SUCCESS", DEBITED, "Account debited", ref, mode);
     };
   }
@@ -37,6 +40,11 @@ public class BankDebitMapper {
 
   public BankDebitResponse toResponse(BankDebitRecord r) {
     return new BankDebitResponse(r.transactionId(), r.status(), r.code(), r.message(), r.debitRef());
+  }
+
+  /** A refusal of a call that applies nothing (mock control BUSINESS_ERROR on an inquiry); default {@code 4002}. */
+  public BankDebitResponse refused(String transactionId, String code) {
+    return new BankDebitResponse(transactionId, "FAILED", code == null ? DEBIT_REFUSED : code, "Refused", null);
   }
 
   public BankDebitResponse notFound(String transactionId) {

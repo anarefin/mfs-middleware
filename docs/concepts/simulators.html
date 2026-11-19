@@ -86,7 +86,8 @@
     <li><strong>Who calls the simulators.</strong> The adapters (<code>mw-adapter-telco</code> to the OCS, <code>-billpay</code> to <code>billagg</code>, <code>-bank</code> to <code>c2wbank</code>),
       mw-notify (SMPP to the SMSC), mw-ussd (bound to the USSD SMPP port), mw-checkout (IPNs) and mw-crypto (payShield).</li>
     <li><strong>Who controls them.</strong> Tests and testers, through the test-only edge route <code>/test/sim/*</code> (<code>deploy/apisix/routes-test/test-simulators.json</code>,
-      test API key from <code>scripts/creds.sh</code>), which reaches only the <code>/sim/...</code> control API. On the laptop the direct port 8085 works too.</li>
+      test API key from <code>scripts/creds.sh</code>), which reaches only the <code>/sim/...</code> control API, and <code>/test/mock-control/*</code>
+      (<code>deploy/apisix/routes-test/test-mock-control.json</code>) for the mock-control API. On the laptop the direct port 8085 works too.</li>
     <li><strong>Callback secrets.</strong> The bill aggregator and bank sign their callbacks with HMAC-SHA256, using secrets the <code>provision</code> one-shot writes to OpenBao.</li>
     <li><strong>One timer knob.</strong> How long a simulated timeout holds its reply: <code>MW_SIM_TIMEOUT_DELAY</code> (30 s by default, shorter in <code>deploy/dev.env.defaults</code>).</li>
   </ul>
@@ -104,13 +105,33 @@
   </table></div>
   <p>The bill aggregator also invents bills: the amount due is Tk 100 plus the last three digits of the bill number, a number ending <code>404</code> is "not found"
     and one ending <code>000</code> is "already paid". So no bill ever needs to be set up.</p>
-  <p>The control API, per partner (<code>ocs</code>, <code>billagg</code>, <code>c2wbank</code>):</p>
+  <p>Those magic values are the <em>default</em> triggers (FRS MCK-03). Every mock party also runs on <strong>one mock-control engine</strong>
+    (ADR D33, ticket 102; contract <code>contracts/api/mw-simulators/mock-control.v1.openapi.yaml</code>), which overrides them on demand.
+    It exists only in the Spring profile <code>mock-control</code> (the dev stack sets it); the test route is <code>/test/mock-control/*</code>.</p>
   <ul>
-    <li><code>POST /sim/{partner}/scenario</code>: <code>forceMode</code>, <code>latencyMs</code>, <code>errorRate</code>, <code>outage</code>, <code>callbackMode</code>
-      (NONE, ONCE, DUPLICATE, LATE, OUT_OF_ORDER) and more. <code>DELETE</code> resets.</li>
-    <li><code>GET /sim/{partner}/requests</code>: what the adapter really sent, raw (Authorization and Cookie headers dropped).</li>
-    <li><code>POST /sim/{partner}/callbacks/{reference}/replay</code>: send a callback again, to prove the adapter ignores duplicates.</li>
+    <li><code>GET /mock-control/parties</code>: the parties (<code>ocs</code>, <code>billagg</code>, <code>c2wbank</code>, <code>merchant</code>), their operations and scope keys.</li>
+    <li><code>POST /mock-control/{party}/scenarios {operation?, behaviour, code?, delayMs?, httpStatus?, key?, nextN?}</code>: SUCCESS, BUSINESS_ERROR, TIMEOUT, DELAY,
+      HTTP_5XX, MALFORMED_RESPONSE, CONNECTION_RESET, PARTIAL_SUCCESS, and the callback behaviours DUPLICATE_CALLBACK, LATE_CALLBACK, OUT_OF_ORDER_CALLBACK, NO_CALLBACK.
+      Scoped to one key (an MSISDN, account, biller, bill number or transaction id), to the next N calls, or global. <code>GET</code> lists, <code>DELETE</code> clears.</li>
+    <li><code>PUT /mock-control/{party}/switch {state: UP|DOWN|MAINTENANCE|SLOW, latencyMinMs, latencyMaxMs, ratio}</code>: DOWN closes the connection unanswered,
+      MAINTENANCE answers 503 <code>5030</code>, SLOW draws a latency in the range.</li>
+    <li><code>PUT /mock-control/{party}/settings {callbackUrl, callbackOnly, timeoutDelayMs}</code>: where callbacks go.</li>
+    <li><code>GET /mock-control/{party}/journal[?path=&amp;contains=&amp;afterSeq=]</code>: what the adapter really sent, raw (Authorization and Cookie headers dropped);
+      <code>DELETE</code> clears it and resets the party (scenarios, switch, settings, ledgers).</li>
+    <li><code>POST /mock-control/{party}/callbacks/{reference}/replay</code>: send a callback again, to prove the adapter ignores duplicates.</li>
   </ul>
+  <p>Per call the engine picks, for the outcome, the delay and the callback each, the most specific matching scenario: next-N first, then per key, then per operation,
+    then party-wide; with none, the magic value decides, and with no magic value it is SUCCESS. The old <code>/sim/{partner}/scenario</code> and
+    <code>/sim/{partner}/requests</code> still work for one release as aliases of the engine (one deprecation line in the log).</p>
+  <p>The trigger table per mock (what each data trigger or scenario does):</p>
+  <div class="table-wrap"><table>
+    <tr><th>Mock party</th><th>Operations</th><th>Scope keys</th><th>Magic values (default)</th><th>PARTIAL_SUCCESS</th></tr>
+    <tr><td><code>ocs</code></td><td>topup, status, reverse</td><td>msisdn, txnRef</td><td>MSISDN <code>999</code> 422 <code>2001</code>; amounts <code>.13 .77 .99 .55</code></td><td>200 PARTIAL <code>0002</code></td></tr>
+    <tr><td><code>billagg</code></td><td>billers, fetch, pay, status, reverse</td><td>biller, billNumber, txnRef</td><td>bill <code>404</code> 3001, <code>000</code> 3002 (fetch), <code>999</code> 3003 (pay); amounts</td><td>200 PARTIAL <code>010</code></td></tr>
+    <tr><td><code>c2wbank</code></td><td>debit, status, reverse</td><td>account, txnRef</td><td>account <code>999</code> FAILED <code>4002</code>; amounts</td><td>callback PARTIAL <code>010</code></td></tr>
+    <tr><td><code>merchant</code></td><td>ipn</td><td>ipnId, path</td><td>none (200)</td><td>200</td></tr>
+  </table></div>
+  <p>The SMSC, the USSD gateway and the payShield simulator still have their own switches (below); they move onto the engine in a follow-up of ticket 102.</p>
   <p>Every partner simulator also answers a status inquiry (<code>GET /ocs/v1/topup/{transactionId}</code> and the like) with the <em>real</em> outcome. That is what lets the
     orchestrator settle a timed-out transaction correctly.</p>
 
@@ -194,14 +215,14 @@ Tester -> mw-simulators : GET /test/sim/smsc/messages?msisdn=01711000001
   <div class="box where" id="where"><div class="tag">Where it lives</div><ul>
     <li><a href="../../services/mw-simulators/CLAUDE.md">services/mw-simulators/CLAUDE.md</a>: every wire format, magic value and control endpoint. Read this next.</li>
     <li>Partners: <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/service/MagicAmounts.java">service/MagicAmounts</a>,
-      <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/service/ScenarioStore.java">service/ScenarioStore</a>,
-      <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/service/RequestRecorder.java">service/RequestRecorder</a>,
+      <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/service/mockcontrol/ScenarioEngine.java">service/mockcontrol/ScenarioEngine</a>,
+      <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/service/mockcontrol/Journal.java">service/mockcontrol/Journal</a>,
       <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/service/CallbackService.java">service/CallbackService</a>,
       <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/controller/OcsController.java">controller/OcsController</a>.</li>
     <li>SMPP and USSD: <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/client/SmscServer.java">client/SmscServer</a>,
       <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/client/UssdSmppGateway.java">client/UssdSmppGateway</a>,
       <a href="../../services/mw-simulators/src/main/java/mfs/mw/simulators/client/UssdGatewayClient.java">client/UssdGatewayClient</a>.</li>
-    <li>Settings (ports, partners, magic suffixes): <a href="../../services/mw-simulators/src/main/resources/application.yml">application.yml</a> under <code>sim</code>.</li>
+    <li>Settings (ports, magic suffixes): <a href="../../services/mw-simulators/src/main/resources/application.yml">application.yml</a> under <code>sim</code>.</li>
     <li>mw-seeder: <a href="../../services/mw-seeder/CLAUDE.md">services/mw-seeder/CLAUDE.md</a> (every step and the manifest format),
       <a href="../../services/mw-seeder/src/main/java/mfs/mw/seeder/scheduler/SeedRunner.java">scheduler/SeedRunner</a>, the steps in
       <code>services/mw-seeder/src/main/java/mfs/mw/seeder/service</code>.</li>

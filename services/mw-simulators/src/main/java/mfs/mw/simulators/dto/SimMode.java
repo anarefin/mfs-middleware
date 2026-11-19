@@ -11,5 +11,9 @@ public enum SimMode {
   /** Failure with a code no error map knows. */
   UNKNOWN_CODE,
   /** Top-up applied, reply body truncated (not valid JSON). */
-  MALFORMED
+  MALFORMED,
+  /** Applied, the connection closed without an answer (mock control CONNECTION_RESET, ticket 102). */
+  CONNECTION_RESET,
+  /** Partly applied: the party's partial reply, status PARTIAL (mock control PARTIAL_SUCCESS). */
+  PARTIAL_SUCCESS
 }

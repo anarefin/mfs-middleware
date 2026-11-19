@@ -4,11 +4,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import mfs.mw.simulators.service.mockcontrol.PartyState;
 import org.springframework.stereotype.Service;
 
 /** What the aggregator really did with each transaction id; the answer to a status inquiry. */
 @Service
-public class BillPaymentLedger {
+public class BillPaymentLedger implements PartyState {
 
   private final Map<String, BillPaymentRecord> records = new ConcurrentHashMap<>();
   private final AtomicLong refs = new AtomicLong();
@@ -25,5 +26,12 @@ public class BillPaymentLedger {
 
   public String nextRef() {
     return "AGG-" + refs.incrementAndGet();
+  }
+
+  @Override
+  public void reset(String party) {
+    if (BillAggregatorService.PARTNER.equals(party)) {
+      records.clear();
+    }
   }
 }

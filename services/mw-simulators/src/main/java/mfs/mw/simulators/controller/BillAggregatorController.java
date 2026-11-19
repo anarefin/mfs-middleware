@@ -1,10 +1,8 @@
 package mfs.mw.simulators.controller;
 
 import jakarta.validation.Valid;
-import java.util.List;
 import mfs.mw.simulators.dto.BillFetchRequest;
 import mfs.mw.simulators.dto.BillPaymentRequest;
-import mfs.mw.simulators.dto.Biller;
 import mfs.mw.simulators.dto.SimReply;
 import mfs.mw.simulators.service.BillAggregatorService;
 import org.springframework.http.MediaType;
@@ -26,8 +24,8 @@ public class BillAggregatorController {
   }
 
   @GetMapping("/billagg/v1/billers")
-  List<Biller> billers() {
-    return service.billers();
+  ResponseEntity<Object> billers() {
+    return toResponse(service.billers());
   }
 
   @PostMapping("/billagg/v1/bills/fetch")

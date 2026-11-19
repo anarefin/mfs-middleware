@@ -1,4 +1,9 @@
 # Test-only overrides, merged over src/main/resources/application.yml.
+spring:
+  profiles:
+    # The mock-control engine and its API (ADR D33, ticket 102) exist only in this profile; the stack
+    # sets it through SPRING_PROFILES_ACTIVE (deploy/docker-compose.yml).
+    active: mock-control
 mw:
   kafka:
     listener:

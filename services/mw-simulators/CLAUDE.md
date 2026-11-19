@@ -10,32 +10,74 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   `c2wbank` (ticket 23). State is in
   memory (a restart resets it); never deployed to production projects. Outcomes are
   `dto/SimMode` (SUCCESS, BUSINESS_FAILURE, TIMEOUT, SERVER_ERROR_AFTER_SEND, UNKNOWN_CODE,
-  MALFORMED; the control API's `forceMode`), amount magic values in `service/MagicAmounts`.
-- Shared scenario mechanics (`service/ScenarioStore`, `RequestRecorder`, `CallbackService`):
-  - Magic values (OCS): MSISDN ending `999` -> business failure; amount fraction `.13` ->
-    timeout (top-up applied, reply held `sim.timeout-delay`, default 30 s), `.77` -> 500 after
-    send (applied), `.99` -> unknown code `9876`, `.55` -> malformed body (applied).
-  - Control API per partner (`sim.partners`): `POST|GET|DELETE /sim/{partner}/scenario`
-    (`forceMode`, `latencyMs`, `errorRate`, `outage`, `timeoutDelayMs`, `callbackMode`
-    NONE|ONCE|DUPLICATE|LATE|OUT_OF_ORDER (outcome, then a stale PENDING; billagg),
-    `callbackUrl`, `callbackDelayMs`, `callbackOnly` (billagg: payments answered 202 PENDING,
-    outcome by callback only)), `GET|DELETE /sim/{partner}/requests[?path=]`, `POST
-    /sim/{partner}/callbacks/{reference}/replay` (optional body `{callbackUrl}`; OCS ledger or
-    billagg payments; answers `{reference, targetStatus}`).
-  - Callbacks (`service/CallbackService`, `client/CallbackClient`, `client/CallbackSigner`): the
-    partner's own reply body for the reference, posted to `callbackUrl` off the request thread,
-    signed hmac-sha256 at send time when `sim.callback-secrets.<partner>` is set (string to sign:
+  MALFORMED, CONNECTION_RESET, PARTIAL_SUCCESS), decided by mock control (below) with the amount magic
+  values of `service/MagicAmounts` as the default.
+- Mock control (ticket 102, ADR D33, FRS MCK-03..07, MCT-01..03, MCT-06; `service/mockcontrol/`,
+  `controller/MockControlController`, contract `api/mw-simulators/mock-control.v1.openapi.yaml`): one engine
+  for every mock party, only in the Spring profile `mock-control` (`MockControl.PROFILE`; the compose block
+  sets `SPRING_PROFILES_ACTIVE: mock-control`, the test config too). Without the profile `MagicValuesOnly`
+  answers every call by its magic value and no control path, journal or alias exists (MCT-08 hardening:
+  ticket 103).
+  - Parties (`MockParties`, `GET /mock-control/parties`): `ocs` (topup, status, reverse; keys msisdn,
+    txnRef), `billagg` (billers, fetch, pay, status, reverse; biller, billNumber, txnRef; REST and SOAP
+    front ends), `c2wbank` (debit, status, reverse; account, txnRef), `merchant` (ipn; ipnId, path). A
+    party's name is the first segment of its wire paths (the journal's key). A new mock adds a line there
+    and calls `MockControl.decide(party, operation, keys, magic)` per operation, then carries the
+    `Decision` out (`MockCalls.admit` / `MockCalls.answer`).
+  - `ScenarioEngine`: `POST|GET|DELETE /mock-control/{party}/scenarios[/{id}]` `{operation?, behaviour,
+    code?, delayMs?, httpStatus?, key?, nextN?}` (201 with `id`, `remaining`; an operation the party lacks
+    400 MW-VAL-001, unknown party 404 MW-VAL-003). Behaviours (`dto/MockBehaviour`), three dimensions decided
+    separately per call: outcome SUCCESS, BUSINESS_ERROR (`code` replaces the party's refusal code; merchant
+    `httpStatus`, default 400), TIMEOUT (applied, reply held `delayMs`, default the settings'
+    `timeoutDelayMs`, else `sim.timeout-delay`), HTTP_5XX (applied, `httpStatus` default 500),
+    MALFORMED_RESPONSE (applied, body cut short), CONNECTION_RESET (applied, connection closed unanswered),
+    PARTIAL_SUCCESS (the party's partial reply: status `PARTIAL`, ocs `0002`, billagg / c2wbank `010`);
+    delay DELAY (`delayMs`, outcome as without it); callback DUPLICATE_CALLBACK, LATE_CALLBACK (`delayMs`),
+    OUT_OF_ORDER_CALLBACK (outcome then a stale PENDING), NO_CALLBACK. Lookup per dimension: next-N scoped,
+    per key (any key value of the call), per operation, party-wide (latest wins ties); none -> the magic
+    value (MCK-03); none -> SUCCESS. A next-N scenario counts down only on calls it decided. On read
+    operations (status, billers, fetch, reverse) BUSINESS_ERROR refuses without applying, the others as above.
+  - `PartySwitch`: `PUT|GET /mock-control/{party}/switch {state UP|DOWN|MAINTENANCE|SLOW, latencyMinMs,
+    latencyMaxMs, ratio}`: DOWN closes the connection unanswered (`exception/MockAbortException` ->
+    `GlobalExceptionHandler` marks the request -> `filter/MockAbortValve`, a Tomcat valve registered in
+    `config/SimulatorConfig`, drops the buffered answer and closes the socket), MAINTENANCE 503
+    `UNAVAILABLE` `5030`, nothing applied in either, checked before any scenario (none is used); the
+    latency range applies in every state; `ratio` = share of calls DOWN/MAINTENANCE hits. `PUT|GET
+    /mock-control/{party}/settings {callbackUrl, callbackOnly, timeoutDelayMs}`.
+  - `Journal` (MCK-07): `filter/RecordingFilter` (registered by `config/MockControlConfig`) records every
+    request to `/<party>/**` (raw bodies, test data; Authorization and Cookie headers dropped; the text of a
+    WS-Security `Password` element recorded as `***`, `util/SoapXml.redactPasswords`), last
+    `sim.record-limit` per party. `GET /mock-control/{party}/journal[?path=&contains=&afterSeq=]`; `DELETE`
+    clears it and resets the party (`PartyReset`: scenarios, switch, settings and every `PartyState`: the
+    ledgers, reversals, received IPNs; reference counters keep counting).
+  - Callbacks (`service/CallbackService`, `client/CallbackClient`, `client/CallbackSigner`): after an
+    applied call, the partner's own reply body for the reference, posted to the settings' `callbackUrl`
+    (none = no callbacks) off the request thread as the decision says (once, twice, late, out of order,
+    none), signed hmac-sha256 at send time when `sim.callback-secrets.<partner>` is set (string to sign:
     method, path+query, epoch seconds, hex SHA-256 of the body; `X-Signature`, `X-Timestamp`; the
     middleware's `hmac-sha256` scheme). In the stack the billagg secret is the generated
     `BILLAGG_HMAC_SECRET`, written to OpenBao `secret/mw-simulators` by `deploy/provision/services.sh`; the e2e
-    suite points `callbackUrl` at `http://apisix:9080/partner/billagg/callback/payments`.
-  - `filter/RecordingFilter` records every request to `/{partner}/**` (raw bodies, test data;
-    Authorization and Cookie headers dropped; the text of a WS-Security `Password` element is recorded
-    as `***`, `util/SoapXml.redactPasswords`), last `sim.record-limit` per partner.
+    suite points `callbackUrl` at `http://apisix:9080/partner/billagg/callback/payments`. `POST
+    /mock-control/{party}/callbacks/{reference}/replay` (optional body `{callbackUrl}`; answers
+    `{reference, targetStatus}`).
+  - Deprecated aliases for one release (`controller/ControlController`, `LegacyScenarios`; one
+    `sim.control.deprecated` log line): `POST|GET|DELETE /sim/{partner}/scenario` (ocs, billagg, c2wbank;
+    `dto/Scenario`: `forceMode` = a party-wide scenario on topup / pay / debit, UNKNOWN_CODE = BUSINESS_ERROR
+    `9876`, SERVER_ERROR_AFTER_SEND = HTTP_5XX; `outage` = MAINTENANCE, `errorRate` = MAINTENANCE with that
+    ratio, `latencyMs` = SLOW fixed; `callbackMode` DUPLICATE / LATE / OUT_OF_ORDER / NONE = the callback
+    scenarios; `callbackUrl`, `callbackOnly`, `timeoutDelayMs` = settings; each POST replaces the party's
+    control state), `GET|DELETE /sim/{partner}/requests[?path=]` (the journal), `POST
+    /sim/{partner}/callbacks/{reference}/replay`, `POST /sim/merchant/ipn/scenario {failNext, failStatus?,
+    ipnId?}` (a next-N scenario on `merchant`/ipn) and `DELETE /sim/merchant/ipn/received`.
+  - Magic values (OCS): MSISDN ending `999` -> business failure; amount fraction `.13` -> timeout (top-up
+    applied, reply held `sim.timeout-delay`, default 30 s), `.77` -> 500 after send (applied), `.99` ->
+    unknown code `9876`, `.55` -> malformed body (applied). `dto/SimMode` is the resolved outcome.
+  - Not on the engine yet (follow-up of ticket 102): the SMSC, the USSD gateway (HTTP and SMPP) and the
+    payShield simulator keep their own switches below; the SOAP stub biller and the partner stubs too.
 - OCS wire format: `POST /ocs/v1/topup {transactionId, msisdn, amount:"100.00"}`; `GET
   /ocs/v1/topup/{transactionId}` returns the real outcome (200, or 404 NOT_FOUND). Replies:
   `{transactionId, status SUCCESS|FAILED|NOT_FOUND|UNAVAILABLE|ERROR, code, message, ocsRef}`;
-  success 200 code `0000`, failure 422 (`2001` business, `9876` unknown), outage / error rate 503
+  success 200 code `0000`, failure 422 (`2001` business, `9876` unknown), MAINTENANCE 503
   (not applied). A repeated `transactionId` returns the original outcome.
 - Bill aggregator wire format (`billagg`, `controller/BillAggregatorController`,
   `service/BillAggregatorService`, `BillPaymentLedger`): `GET /billagg/v1/billers` -> `[{code,
@@ -50,10 +92,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   `000` (`paymentRef` `AGG-n`), bill number ending `999` -> 422 `3003` refused by the biller,
   amount fractions as the OCS (`.13` timeout applied, `.77` 500 applied, `.99` 422 `9876`, `.55`
   malformed applied); `GET /billagg/v1/payments/{transactionId}` the real outcome or 404
-  NOT_FOUND. Outage / error rate 503 on all three (not applied); `forceMode` applies to payments
-  only. A repeated `transactionId` returns the original outcome. Callback-only mode (ticket 22,
-  scenario `callbackOnly`): a payment is applied as usual but answered 202 `{status: PENDING,
-  code: "001", paymentRef}` (every repeat too), the outcome goes by callback (`callbackMode`) as
+  NOT_FOUND. MAINTENANCE 503 on all three (not applied). A repeated `transactionId` returns the original outcome. Callback-only mode (ticket 22,
+  setting `callbackOnly`): a payment is applied as usual but answered 202 `{status: PENDING,
+  code: "001", paymentRef}` (every repeat too), the outcome goes by callback as
   `{transactionId, status SUCCESS|FAILED, code, message, paymentRef}`, the status inquiry reports
   the real outcome; the TIMEOUT hold is skipped in this mode. Protocol guard (proves the adapter's
   route picked the right protocol): a SOAP biller on the REST fetch or payment endpoint is refused
@@ -75,7 +116,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   /billagg/v1/payments/{reference}` finds it). Faults (HTTP 500, `<detail><b:error><b:code/><b:message/>`):
   `soap:Client` `3001` / `3002` / `3003` / `9876` as the REST codes, `3004` for a REST or unknown biller,
   `1000` unreadable request, DOCTYPE, unknown operation or invalid field, `1002` authentication; `soap:Server`
-  `5030` outage / error rate, `5000` the 500-after-send mode; the malformed mode answers a cut-short
+  `5030` MAINTENANCE, `5000` the 500-after-send mode; the malformed mode answers a cut-short
   envelope (200). Recorded under `billagg` like the REST calls. Tests: `BillAggregatorSoapIT`.
 - SOAP stub biller (`soapbill`, ticket 85, `controller/SoapBillerController`, `service/SoapBillerService`;
   parser, envelope and fault helpers shared with the billagg SOAP front end in `util/SoapXml`):
@@ -87,28 +128,28 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   `soap:Client`, the code in `<detail><s:error><s:code>`): bill number ending `404` -> `3001`, ending `999`
   on a payment -> `3003`, unknown reference `3404`, unknown operation or a request with a DOCTYPE `1000`.
   Configurable fault: `POST /sim/soapbill/fault {faultCode: Client|Server, code, reason}` answers every call
-  with it until `DELETE /sim/soapbill/fault`. Not in `sim.partners` (no scenario or recording API).
+  with it until `DELETE /sim/soapbill/fault`. Not a mock-control party (no scenario or journal).
 - C2W bank wire format (`c2wbank`, ticket 23, `controller/BankC2wController`,
   `service/BankC2wService`, `BankDebitLedger`, `mapper/BankDebitMapper`): `POST /c2wbank/v1/debits
   {transactionId, accountNumber ([0-9]{6,20}, else 400), amount}` -> always 202 `{transactionId,
   status: PENDING, code: "100", message, debitRef: "C2W-n"}` (every repeat too, one debit per
-  `transactionId`); the outcome goes by callback (`callbackMode`; ONCE, DUPLICATE, LATE,
-  OUT_OF_ORDER) as `{transactionId, status SUCCESS|FAILED, code, message, debitRef}`: success
+  `transactionId`); the outcome goes by callback (mock control; once, duplicate, late, out of order) as `{transactionId, status SUCCESS|FAILED, code, message, debitRef}`: success
   `000`; account ending `999` -> FAILED `4002` debit refused; amount fractions `.13` timeout (debit
   applied, 202 held `sim.timeout-delay`, NO callback: only the status inquiry learns it), `.77`
   500 (applied, callback sent), `.99` FAILED `9876` (ambiguous), `.55` malformed 202 body
   (applied, callback sent). `GET /c2wbank/v1/debits/{transactionId}` the real outcome or 404
-  NOT_FOUND. Outage / error rate 503 (not applied). Callbacks signed with
+  NOT_FOUND. MAINTENANCE 503 (not applied). Callbacks signed with
   `sim.callback-secrets.c2wbank` (stack: `C2WBANK_HMAC_SECRET`, written by `deploy/provision/services.sh`); the
   e2e suite points `callbackUrl` at `http://apisix:9080/partner/c2wbank/callback/debits`; replay
-  through the shared `POST /sim/c2wbank/callbacks/{reference}/replay`.
+  through `POST /mock-control/c2wbank/callbacks/{reference}/replay`.
 - Partner reverse (ticket 97, FRS MCK-02; `controller/ReversalController`, `service/ReversalService`):
   `POST /ocs/v1/topup/{transactionId}/reverse`, `/billagg/v1/payments/{transactionId}/reverse`,
   `/c2wbank/v1/debits/{transactionId}/reverse`, optional body `{reversalId}` (the adapters send
   `reverse:<txnId>`): a transaction its ledger holds as `SUCCESS` is reversed once, 200 `{transactionId,
   status: REVERSED, code: "0000", message, reversalRef: REV-n, reversalId}`, and every later reverse of
   it answers that first result again; unknown 404 `NOT_FOUND` `4040`; not successful 422 `FAILED` `4091`;
-  the partner's scenario `outage` 503 (nothing applied). In memory; full mock control comes in 102.
+  operation `reverse` of each party's mock control (MAINTENANCE 503, BUSINESS_ERROR 422 `FAILED` with its
+  code, nothing applied). In memory; the party reset forgets its reversals.
 - SMSC (ticket 24, `client/SmscServer` on jSMPP, `service/SmscService`,
   `controller/SmscController`): SMPP 3.4 server on `sim.smsc.port` (2775, internal network only;
   `sim.smsc.enabled`, off in tests except `SmscSimulatorIT`). Accepts any bind (no credential
@@ -130,8 +171,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   and stops when mw-ussd answers the end flag (`sim.ussd-gateway.end-flag`, END); answers
   `{sessionId, screens: [{status, message, flag}], ended}`. `resume: true` with a `sessionId` and
   inputs (HTTP mode only, ticket 39) continues a session an earlier call left open: no BEGIN, one
-  CONTINUE per input (the e2e suite plays a session that is running when a menu version goes live). Not a partner in `sim.partners` (no
-  recording: inputs carry PINs).
+  CONTINUE per input (the e2e suite plays a session that is running when a menu version goes live). Not a mock-control party (no
+  journal: inputs carry PINs).
 - USSD gateway simulator, SMPP mode (ticket 27, `client/UssdSmppGateway`): SMPP 3.4 server on
   `sim.ussd-gateway.smpp.port` (2776, internal network; `sim.ussd-gateway.smpp.enabled`, off in
   tests except `UssdSmppGatewayIT`) that mw-ussd binds to as transceiver (any bind accepted).
@@ -148,10 +189,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   plays a checkout merchant's server. `POST /merchant/ipn/**` (stack: mw-checkout sessions' `ipnUrl`
   `http://mw-simulators:8080/merchant/ipn/...`, allowed by mw-checkout's dev-hosts) answers 200 and
   records `{seq, receivedAt, path, ipnId (X-Bits-Ipn-Id), headers (lower-case, no Authorization/
-  Cookie), body, answeredStatus}`; no secret here (the e2e suite verifies the signature). Control:
-  `POST /sim/merchant/ipn/scenario {failNext, failStatus? (default 500), ipnId? (only that IPN)}`,
-  `GET /sim/merchant/ipn/received[?ipnId=]`, `DELETE /sim/merchant/ipn/received` (resets all). Not in
-  `sim.partners`.
+  Cookie), body, answeredStatus (-1 = no answer)}`; no secret here (the e2e suite verifies the
+  signature). Mock party `merchant` (operation `ipn`, keys ipnId, path): HTTP_5XX / BUSINESS_ERROR answer
+  their `httpStatus`, CONNECTION_RESET and DOWN close the connection. `GET
+  /sim/merchant/ipn/received[?ipnId=]`; the old `POST /sim/merchant/ipn/scenario` and `DELETE
+  /sim/merchant/ipn/received` are aliases (above).
 - payShield 10K simulator (ticket 64, spec 18.8, D23; `client/PayShieldServer`, `service/PayShieldService`,
   `service/PayShieldKeys`, `util/PinBlocks`, `util/PayShieldCrypto`, `controller/PayShieldController`;
   `sim.payshield.*`): TCP on `sim.payshield.port` (1500, internal network only; off in host tests).
@@ -192,7 +234,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   - Control: `POST|GET|DELETE /sim/payshield/scenario {latencyMs, errorCode, outage, commands[]}`
     (`errorCode` for the listed commands, or all; `outage` closes every connection unanswered). Test
     helper `POST /sim/payshield/pinblock {keyType TPK|ZPK, key (blob), format ISO0|ISO1|ISO3|ISO4, pin,
-    pan}` -> `{block}`: what the ATM or switch sharing the key sends. Not in `sim.partners` (no
+    pan}` -> `{block}`: what the ATM or switch sharing the key sends. Not a mock-control party (no
     recording).
   - Image: Alpine JRE (as mw-crypto) with `p11-kit=0.26.2-r0` (must match softhsm's), `socat`, `bash`;
     the only p11-kit module is `remote: |socat - TCP:softhsm:5658,...`. Compose waits for a healthy
@@ -211,9 +253,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   body, headers?, delayMs?}` (same method + path replaces), `GET` the stubs, `DELETE` stubs and requests,
   `GET /sim/stubs/{partnerId}/requests` (last 200; Authorization / Cookie dropped). Traffic: any method on
   `/sim/partners/{partnerId}/**` gets the matching stub's answer, else 404 `{error: NO_STUB, method, path}`.
-  Any partner id works (not in `sim.partners`); in memory.
-- Adding a simulator: add its name to `sim.partners`, a controller under `/<partner>/...`, reuse
-  the store, recorder, `SimMode`/`MagicAmounts` and callback service.
+  Any partner id works (not a mock-control party); in memory.
+- Adding a simulator: add a `MockParty` to `service/mockcontrol/MockParties`, a controller under
+  `/<party>/...`, call `MockControl.decide` per operation with its magic value (`MagicAmounts`), carry the
+  `Decision` out with `MockCalls`, implement `PartyState` for what it keeps, reuse the callback service.
 - Dev provisioning (`provision_mw_simulators` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `simulators_rw` and schema `simulators` (the chassis still migrates one on start-up),
   `secret/mw-simulators` (DB password, never overwritten) and the AppRole `mw-simulators`
@@ -221,7 +264,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 
 ## Contracts owned
 
-- None. The control API and partner wire formats are simulator-owned and not in `contracts/`.
+- `api/mw-simulators/mock-control.v1.openapi.yaml` (ticket 102, test-only): the mock-control API;
+  `contracts/MockControlContractTest` validates the served bodies and the behaviour list against it. The
+  partner wire formats stay simulator-owned and not in `contracts/`.
 
 ## Contracts used
 

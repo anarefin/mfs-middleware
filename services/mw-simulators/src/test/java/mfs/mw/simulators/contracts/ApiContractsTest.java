@@ -26,9 +26,10 @@ import tools.jackson.databind.json.JsonMapper;
  * with the Boot-built JsonMapper ({@code findAndAddModules()} on the Jackson 3 defaults).
  *
  * <p>mw-simulators publishes and consumes no events (the Kafka chassis is copied but unused: no
- * outbox writes, no consumed topic) and serves no contract API (its partner wire formats and control
- * API are simulator-owned, not in {@code contracts/}); {@link #manifestListsOnlyTheUssdApi} keeps the
- * manifest honest.
+ * outbox writes, no consumed topic) and its partner wire formats are simulator-owned, not in {@code
+ * contracts/}; {@link #manifestListsTheUssdApiAndTheMockControlApi} keeps
+ * the manifest honest; the one API it serves, the mock-control API, is checked by {@link
+ * MockControlContractTest}.
  */
 class ApiContractsTest {
 
@@ -94,11 +95,11 @@ class ApiContractsTest {
   }
 
   @Test
-  void manifestListsOnlyTheUssdApi() {
+  void manifestListsTheUssdApiAndTheMockControlApi() {
     ContractManifest m = ContractManifest.load();
     assertThat(m.producedEvents()).as("a produced event needs a ProducedContractsTest").isEmpty();
     assertThat(m.consumedEvents()).as("a consumed event needs a ConsumedContractsTest").isEmpty();
-    assertThat(m.producedApis()).isEmpty();
+    assertThat(m.producedApis()).containsExactly(MockControlContractTest.API);
     assertThat(m.consumedApis()).containsExactly(USSD);
   }
 }

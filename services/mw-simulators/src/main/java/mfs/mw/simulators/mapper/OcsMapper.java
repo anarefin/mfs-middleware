@@ -9,6 +9,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class OcsMapper {
 
+  /** The status of a partly applied top-up (mock control PARTIAL_SUCCESS). */
+  public static final String PARTIAL = "PARTIAL";
+
   /** Only business failure and unknown code fail the top-up; every other mode applies it. */
   public TopupRecord toRecord(OcsTopupRequest req, SimMode mode, String ocsRef) {
     return switch (mode) {
@@ -18,6 +21,9 @@ public class OcsMapper {
       case UNKNOWN_CODE ->
           new TopupRecord(req.transactionId(), req.msisdn(), req.amount(), "FAILED", "9876",
               "Unmapped OCS error", ocsRef, mode);
+      case PARTIAL_SUCCESS ->
+          new TopupRecord(req.transactionId(), req.msisdn(), req.amount(), PARTIAL, "0002",
+              "Recharge partially applied", ocsRef, mode);
       default ->
           new TopupRecord(req.transactionId(), req.msisdn(), req.amount(), "SUCCESS", "0000",
               "Recharge successful", ocsRef, mode);
@@ -26,6 +32,11 @@ public class OcsMapper {
 
   public OcsResponse toResponse(TopupRecord r) {
     return new OcsResponse(r.transactionId(), r.status(), r.code(), r.message(), r.ocsRef());
+  }
+
+  /** A refusal of a call that applies nothing (mock control BUSINESS_ERROR on an inquiry); default {@code 2001}. */
+  public OcsResponse refused(String transactionId, String code) {
+    return new OcsResponse(transactionId, "FAILED", code == null ? "2001" : code, "Refused", null);
   }
 
   public OcsResponse notFound(String transactionId) {
