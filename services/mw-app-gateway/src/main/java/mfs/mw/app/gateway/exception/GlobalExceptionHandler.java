@@ -154,7 +154,7 @@ public class GlobalExceptionHandler {
     ErrorEnvelope body =
         new ErrorEnvelope(
             code, error.getMessage(), error.messageBn(), error.txnId(), correlationId(req),
-            error.retryable(), error.details());
+            error.retryable(), error.details(), ErrorEnvelope.now());
     return ResponseEntity.status(status).body(body);
   }
 
