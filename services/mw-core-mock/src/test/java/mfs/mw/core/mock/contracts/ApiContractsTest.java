@@ -17,9 +17,32 @@ class ApiContractsTest {
   static final JsonMapper JSON = JsonMapper.builder().build();
   static final String SEED = "api/mw-core-mock/core-mock-seed.v1.openapi.yaml";
 
+  static final String WALLET = "api/mw-core-mock/core-wallet.v1.openapi.yaml";
+
   @Test
-  void theContractIsListedAsProduced() {
-    assertThat(ContractManifest.producedApis()).containsExactly(SEED);
+  void theContractsAreListedAsProduced() {
+    assertThat(ContractManifest.producedApis()).containsExactly(SEED, WALLET);
+  }
+
+  /**
+   * The core wallet API's request bodies (ticket 93) refuse what the controller's Bean Validation
+   * refuses (CoreWalletControllerTest); its served bodies are checked by CoreWalletRestIT.
+   */
+  @Test
+  void theCoreWalletContractRefusesWhatTheControllerRefuses() {
+    var transfer = OpenApiSchemas.component(WALLET, "TransferRequest");
+    String ok = """
+        {"txnId":"0190a7c4-0000-7000-8000-000000000001","txnType":"P2P","debitParty":{"type":"WALLET","id":"01711000001"},
+         "creditParty":{"type":"WALLET","id":"01711000002"},"amount":{"valueMinor":100,"currency":"BDT"},"idempotencyKey":"k"}""";
+    assertThat(transfer.validate(JSON.readTree(ok))).isEmpty();
+    assertThat(transfer.validate(JSON.readTree(ok.replace("0190a7c4-0000-7000", "0190a7c4-0000-4000")))).as("not a UUIDv7").isNotEmpty();
+    assertThat(transfer.validate(JSON.readTree(ok.replace("\"valueMinor\":100", "\"valueMinor\":-1")))).isNotEmpty();
+    assertThat(transfer.validate(JSON.readTree(ok.replace("BDT", "USD")))).isNotEmpty();
+    var reversal = OpenApiSchemas.component(WALLET, "ReversalRequest");
+    assertThat(reversal.validate(JSON.readTree(
+        "{\"txnId\":\"0190a7c4-0000-7000-8000-000000000001\",\"originalTxnId\":\"0190a7c4-0000-7000-8000-000000000002\"}")))
+        .as("amount optional").isEmpty();
+    assertThat(reversal.validate(JSON.readTree("{\"txnId\":\"0190a7c4-0000-7000-8000-000000000001\"}"))).isNotEmpty();
   }
 
   @Test

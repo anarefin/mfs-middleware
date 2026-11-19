@@ -42,6 +42,8 @@ dependencies {
     implementation("io.micrometer:micrometer-tracing-bridge-brave")
     implementation("io.micrometer:micrometer-registry-prometheus")
     implementation("org.springframework.cloud:spring-cloud-starter-vault-config")
+    // Client-credentials JWT on the core wallet API (/core/v1/**, spec 18.2, ADR D31, ticket 93).
+    implementation("org.springframework.boot:spring-boot-starter-security-oauth2-resource-server")
 
     // Kafka through Spring Kafka (spec 6.1, 19.2, ADR D27): KafkaTemplate (idempotent producer),
     // @KafkaListener with per-record manual ack, non-blocking retry topics, DLQ. In Boot 4 the

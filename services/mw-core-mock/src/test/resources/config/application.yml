@@ -1,5 +1,8 @@
 # Test-only overrides, merged over src/main/resources/application.yml.
 mw:
+  internal-auth:
+    # Test-only issuer of security/InternalTokens (TestInfrastructure registers its JWKS).
+    issuer: http://keycloak.test/realms/services
   kafka:
     listener:
       # A closing test context does not wait the default 10 s per listener container for a consumer

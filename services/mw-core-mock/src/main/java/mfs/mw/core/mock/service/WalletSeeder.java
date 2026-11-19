@@ -67,10 +67,10 @@ public class WalletSeeder {
         SETTLEMENT_SEED_MINOR);
   }
 
-  /** Wipes the ledger (wallets, entries, holds, command log) and seeds it again. */
+  /** Wipes the ledger (wallets, entries, holds, command log, REST request hashes) and seeds it again. */
   @Transactional
   public void reset() {
-    jdbc.execute("truncate entry, hold, command_log, reversal, wallet");
+    jdbc.execute("truncate entry, hold, command_log, rest_request, reversal, wallet");
     seed();
     log.atInfo().addKeyValue("event", "coremock.seed.reset").log("ledger reset to the seed");
   }
