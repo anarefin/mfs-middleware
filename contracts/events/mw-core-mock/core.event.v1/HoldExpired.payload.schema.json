@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bits.mw/events/mw-core-mock/core.event.v1/HoldExpired.payload.schema.json",
+  "title": "core.event.v1 HoldExpired payload",
+  "description": "The core released a hold whose time ran out before it was committed or released (ticket 94, FRS 7.3; mw.coremock.hold-ttl, default 30 min): amount + fee are available again, a later CommitHold fails HOLD_EXPIRED and a ReleaseHold succeeds without effect. Published once per hold.",
+  "type": "object",
+  "required": [
+    "holdId",
+    "walletId",
+    "amount",
+    "fee",
+    "expiresAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "holdId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "walletId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "The payer whose funds were held"
+    },
+    "amount": {
+      "$ref": "../../../common/defs.v1.schema.json#/$defs/Amount"
+    },
+    "fee": {
+      "$ref": "../../../common/defs.v1.schema.json#/$defs/Amount",
+      "description": "The fee that was held with the amount (VAT included)"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the hold ran out"
+    }
+  }
+}

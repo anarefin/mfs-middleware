@@ -182,30 +182,17 @@ mw:
     # Ticket 67: on start, publish every wallet as WalletStateChanged SNAPSHOT (mw-auth's projection
     # catches up; idempotent by version). Dev stack only (MW_COREMOCK_WALLET_SNAPSHOT=true in compose).
     wallet-snapshot-on-start: ${MW_COREMOCK_WALLET_SNAPSHOT:false}
-    # Rules kept simple and configurable (spec "Core mock"); amounts in minor units (poisha).
-    fees:
-      P2P: 500
-      CASH_IN: 0
-      CASH_OUT: 1000
-      TOPUP: 200
-      BILL_PAY: 300
-      # The customer pays no fee on a merchant payment (merchant discount rate is out of the MVP).
-      MERCHANT_PAY: 0
-      # The org pays no fee per bulk payout row (ticket 34).
-      BULK_DISBURSE: 0
-    limits:
-      per-txn-minor: 500000
-      daily-minor: 1500000
-      # Per wallet type daily debit limit (ticket 34): an org pays a whole bulk batch out in a day
-      # (10,000 rows of up to 5,000 taka each).
-      wallet-types:
-        ORG: { daily-minor: 5000000000 }
+    # Fees and limits are the tariff and limit sheets (ticket 94, FRS 7.1): seed/<version>/tariff.csv and
+    # limits.csv, loaded with the wallets (seed/<version>/wallets.csv, system-wallets.csv) on every start.
     seed:
       enabled: true
-      customer-balance-minor: 1000000
-      agent-balance-minor: 10000000
-      merchant-balance-minor: 0
-      org-balance-minor: 100000000
+      version: v1
+    # Holds live this long, then the core releases them and publishes HoldExpired (FRS 7.3;
+    # scheduler/HoldExpiryJob, ShedLock hold-expiry).
+    hold-ttl: 30m
+    hold-expiry:
+      cron: "*/15 * * * * *"
+      batch-size: 500
     # Wallet types per txnType (debit -> credit); others unrestricted. INVALID_COUNTERPARTY.
     wallet-types:
       CASH_IN: { debit: AGENT, credit: CUSTOMER }
@@ -213,7 +200,7 @@ mw:
       MERCHANT_PAY: { debit: CUSTOMER, credit: MERCHANT }
       # Org bulk payout child (ticket 34): no assertion (maker-checker in the org portal), so only an org
       # wallet may pay and only a customer may receive.
-      BULK_DISBURSE: { debit: ORG, credit: CUSTOMER }
+      BULK_DISBURSE: { debit: ORGANISATION, credit: CUSTOMER }
     # mw-auth's transaction assertions (spec 18.7, D22, ticket 71; config/AssertionProperties): a
     # transfer or hold is authorised by its `assertion` (the core holds no PIN since ticket 72; no
     # lockout). The key set is a config call, not on the money path: fetched at start and every

@@ -255,7 +255,9 @@ class CoreCommandsIT {
     assertThat(balance(A)).isEqualTo(1_000_000 - 100_000 - TOPUP_FEE);
     assertThat(held(A)).isZero();
     assertThat(balance(WalletSeeder.SETTLEMENT_WALLET)).isEqualTo(settlementSeed() + 100_000);
-    assertThat(balance(WalletSeeder.FEE_WALLET)).isEqualTo(TOPUP_FEE);
+    // the 2 Tk top-up fee: 0.26 Tk VAT, the rest fee income (ticket 94)
+    assertThat(balance(WalletSeeder.FEE_INCOME)).isEqualTo(174);
+    assertThat(balance(WalletSeeder.VAT_PAYABLE)).isEqualTo(26);
     assertThat(jdbc.queryForObject("select status from hold where id = ?", String.class, hold)).isEqualTo("COMMITTED");
     assertThat(total()).isEqualTo(before);
     assertInvariants();
@@ -403,7 +405,8 @@ class CoreCommandsIT {
     assertThat(e.eventType()).isEqualTo("TransactionReversed");
     assertThat(balance(A)).isEqualTo(1_000_000);
     assertThat(balance(B)).isEqualTo(1_000_000);
-    assertThat(balance(WalletSeeder.FEE_WALLET)).isZero();
+    assertThat(balance(WalletSeeder.FEE_INCOME)).isZero();
+    assertThat(balance(WalletSeeder.VAT_PAYABLE)).isZero();
     assertThat(total()).isEqualTo(before);
     assertInvariants();
   }

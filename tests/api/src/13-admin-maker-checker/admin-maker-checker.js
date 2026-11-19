@@ -4,7 +4,7 @@ export default [
   {
     name: '[admin topup] a top-up in MANUAL_REVIEW is force-committed after a second operator approves',
     run: async (MW, S) => {
-      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.reject('CommitHold', 'INJECTED_REJECT');
       await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);
       await S.appShows('MANUAL_REVIEW', 30);
@@ -15,7 +15,7 @@ export default [
       await MW.admin.approve('ops-e2e-checker01', S.crId);
       await S.crIs('APPROVED');
       await S.appShows('COMPLETED', 30);
-      await S.changedBy({ '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE-POOL': 200 });
+      await S.changedBy({ '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174 });
       await S.noHold('01711000001');
       await S.auditDecision('APPROVED');
     },
@@ -23,7 +23,7 @@ export default [
   {
     name: '[admin reversal] a completed P2P is reversed after a second operator approves',
     run: async (MW, S) => {
-      await S.note(['01711000001', '01711000002', 'FEE-POOL']);
+      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);
       await S.p2p('customer01', '01711000002', 1000, MW.pin);
       S.status(200);
       S.crFrom(await MW.admin.ask('ops-e2e-maker01', S.txnId(), 'REVERSE', 'customer complaint, wrong number'));

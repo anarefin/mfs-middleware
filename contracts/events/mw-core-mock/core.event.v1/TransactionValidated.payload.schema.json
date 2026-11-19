@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.bits.mw/events/mw-core-mock/core.event.v1/TransactionValidated.payload.schema.json",
   "title": "core.event.v1 TransactionValidated payload",
-  "description": "Success of ValidateTransaction: fee, charges and limits left.",
+  "description": "Success of ValidateTransaction: fee (what the payer pays on top of the amount, VAT included), charges (since ticket 94 the fee split into SERVICE_FEE and VAT, which add up to fee) and limits left (PER_TXN, DAILY, MONTHLY after this amount, when the payer's limit rule sets them).",
   "type": "object",
   "properties": {
     "fee": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Amount" },

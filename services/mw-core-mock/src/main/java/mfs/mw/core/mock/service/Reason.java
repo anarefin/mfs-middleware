@@ -12,9 +12,21 @@ enum Reason {
   INVALID_AMOUNT("Amount must be positive BDT"),
   LIMIT_EXCEEDED_PER_TXN("Per-transaction limit exceeded"),
   LIMIT_EXCEEDED_DAILY("Daily limit exceeded"),
+  // the limit sheet (ticket 94, FRS 7.1)
+  LIMIT_BELOW_MIN_PER_TXN("Amount is below the per-transaction minimum"),
+  LIMIT_EXCEEDED_DAILY_COUNT("Daily transaction count exceeded"),
+  LIMIT_EXCEEDED_MONTHLY("Monthly limit exceeded"),
+  LIMIT_EXCEEDED_MONTHLY_COUNT("Monthly transaction count exceeded"),
+  // account statuses (ticket 94, FRS 7.1)
+  ACCOUNT_DORMANT("Debit wallet is dormant"),
+  ACCOUNT_CLOSED("Debit wallet is closed"),
   INSUFFICIENT_BALANCE("Balance does not cover amount and fee"),
+  // a hold or credit naming a settlement wallet the core does not have (ticket 94)
+  SETTLEMENT_WALLET_NOT_FOUND("Settlement wallet not found"),
   HOLD_NOT_FOUND("Hold not found"),
   HOLD_RELEASED("Hold was already released"),
+  // the hold ran out before it was committed and was released by the core (ticket 94, FRS 7.3)
+  HOLD_EXPIRED("Hold expired and was released"),
   HOLD_ALREADY_COMMITTED("Hold was already committed"),
   ORIGINAL_NOT_FOUND("No posted transaction with that id"),
   ORIGINAL_NOT_REVERSIBLE("A reversal cannot be reversed"),

@@ -2,13 +2,11 @@ package mfs.mw.core.mock.service;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import mfs.mw.core.mock.config.CoreMockProperties;
 import mfs.mw.core.mock.dto.Amount;
 import mfs.mw.core.mock.dto.CoreCommand;
 import mfs.mw.core.mock.dto.CoreEvent;
@@ -61,7 +59,6 @@ public class CoreCommandService {
 
   private static final Logger log = LoggerFactory.getLogger(CoreCommandService.class);
 
-  private final CoreMockProperties props;
   private final WalletRepository wallets;
   private final LedgerRepository ledger;
   private final CommandLogRepository commandLog;
@@ -80,7 +77,6 @@ public class CoreCommandService {
 
   @SuppressWarnings("java:S107")
   public CoreCommandService(
-      CoreMockProperties props,
       WalletRepository wallets,
       LedgerRepository ledger,
       CommandLogRepository commandLog,
@@ -96,7 +92,6 @@ public class CoreCommandService {
       AssertionCheck assertions,
       JsonMapper json,
       Clock clock) {
-    this.props = props;
     this.wallets = wallets;
     this.ledger = ledger;
     this.commandLog = commandLog;
@@ -338,31 +333,18 @@ public class CoreCommandService {
     }
 
     long amount = p.amount().valueMinor();
-    long fee = rules.fee(p.txnType());
-    Instant dayStart = clock.instant().truncatedTo(ChronoUnit.DAYS);
-    long usedToday = wallets.debitedSince(debit.id(), dayStart);
+    Charges charges = rules.charges(p.txnType(), null, debit.type(), amount);
 
-    Optional<Reason> refusal = rules.check(cmd.txnId(), p, debit, credit, amount, fee, usedToday);
+    Optional<Reason> refusal = rules.check(cmd.txnId(), p, debit, credit, amount, charges.fee());
     if (refusal.isPresent()) {
       return reject(cmd, failureType, coreRef, refusal.get());
     }
     if (!post) {
-      Map<String, Amount> left = new LinkedHashMap<>();
-      left.put("PER_TXN", Amount.bdt(props.limits().perTxnMinor()));
-      left.put("DAILY", Amount.bdt(props.limits().dailyMinor(debit.type()) - usedToday - amount));
-      return events.validated(cmd, coreRef, fee, left);
+      return events.validated(cmd, coreRef, charges.fee(), charges.vat(), TransferRules.left(rules.limits(p.txnType(), debit, amount), amount));
     }
 
-    Instant now = clock.instant();
-    ledger.append(cmd.commandId(), cmd.txnId(), debit.id(), "DEBIT", "TRANSFER", amount, now);
-    ledger.append(cmd.commandId(), cmd.txnId(), credit.id(), "CREDIT", "TRANSFER", amount, now);
-    wallets.adjustBalance(debit.id(), -amount - fee);
-    wallets.adjustBalance(credit.id(), amount);
-    if (fee > 0) {
-      ledger.append(cmd.commandId(), cmd.txnId(), debit.id(), "DEBIT", "FEE", fee, now);
-      ledger.append(cmd.commandId(), cmd.txnId(), WalletSeeder.FEE_WALLET, "CREDIT", "FEE", fee, now);
-      wallets.adjustBalance(WalletSeeder.FEE_WALLET, fee);
-    }
+    ledger.post(cmd.commandId(), cmd.txnId(), p.txnType(), Legs.payment(debit.id(), credit.id(), amount, charges),
+        clock.instant());
     return events.posted(
         cmd,
         coreRef,
@@ -372,16 +354,12 @@ public class CoreCommandService {
   private CoreEvent validateDebitOnly(CoreCommand cmd, TransferPayload p, String debitId, String coreRef) {
     Wallet debit = wallets.lock(debitId);
     long amount = p.amount().valueMinor();
-    long fee = rules.fee(p.txnType());
-    long usedToday = wallets.debitedSince(debit.id(), clock.instant().truncatedTo(ChronoUnit.DAYS));
-    Optional<Reason> refusal = rules.check(cmd.txnId(), p, debit, null, amount, fee, usedToday);
+    Charges charges = rules.charges(p.txnType(), null, debit.type(), amount);
+    Optional<Reason> refusal = rules.check(cmd.txnId(), p, debit, null, amount, charges.fee());
     if (refusal.isPresent()) {
       return reject(cmd, "TransactionRejected", coreRef, refusal.get());
     }
-    Map<String, Amount> left = new LinkedHashMap<>();
-    left.put("PER_TXN", Amount.bdt(props.limits().perTxnMinor()));
-    left.put("DAILY", Amount.bdt(props.limits().dailyMinor(debit.type()) - usedToday - amount));
-    return events.validated(cmd, coreRef, fee, left);
+    return events.validated(cmd, coreRef, charges.fee(), charges.vat(), TransferRules.left(rules.limits(p.txnType(), debit, amount), amount));
   }
 
   private CoreEvent validateCreditOnly(CoreCommand cmd, TransferPayload p, String coreRef) {
@@ -390,13 +368,18 @@ public class CoreCommandService {
       return reject(cmd, "TransactionRejected", coreRef, Reason.CREDIT_WALLET_NOT_FOUND);
     }
     Wallet credit = wallets.lock(creditId.get());
-    Optional<Reason> refusal = rules.checkPayee(cmd.txnId(), p, credit, p.amount().valueMinor());
+    long amount = p.amount().valueMinor();
+    Optional<Reason> refusal = rules.checkPayee(cmd.txnId(), p, credit, amount);
     if (refusal.isPresent()) {
       return reject(cmd, "TransactionRejected", coreRef, refusal.get());
     }
     Map<String, Amount> left = new LinkedHashMap<>();
-    left.put("PER_TXN", Amount.bdt(props.limits().perTxnMinor()));
-    return events.validated(cmd, coreRef, rules.fee(p.txnType()), left);
+    Long perTxn = rules.rule(p.txnType(), credit).perTxnMax();
+    if (perTxn != null) {
+      left.put("PER_TXN", Amount.bdt(perTxn));
+    }
+    Charges charges = rules.charges(p.txnType(), null, credit.type(), amount);
+    return events.validated(cmd, coreRef, charges.fee(), charges.vat(), left);
   }
 
   private CoreEvent reject(CoreCommand cmd, String failureType, String coreRef, Reason reason) {

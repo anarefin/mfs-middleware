@@ -45,7 +45,7 @@ export default [
     run: async (MW, S) => {
       // pays 01712000001, not customer02: the 10,000-row payout of this folder credits 01711000001..01711001000, and
       // the folder's requests may run in parallel
-      await S.note(['01711000001', '01712000001', 'FEE-POOL']);
+      await S.note(['01711000001', '01712000001', 'FEE_INCOME']);
       await S.p2p('customer01', '01712000001', 1000, MW.pin);
       S.status(200);
       const idem = S.idem;
@@ -57,7 +57,7 @@ export default [
       await S.submit('customer01', await MW.app.request('P2P', '01712000001', 1000, MW.pin), idem);
       S.status(200);
       S.sameTxnId();
-      await S.changedBy({ '01711000001': -1500, '01712000001': 1000, 'FEE-POOL': 500 });
+      await S.changedBy({ '01711000001': -1500, '01712000001': 1000, 'FEE_INCOME': 435 });
     },
   },
 ];

@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
 /**
  * seed-app-pins (ticket 69): the app wallets log in at mw-auth with MSISDN + PIN, so each gets the
  * dev app PIN ({@code mw.seeder.app-pins.pin}, {@code MW_SEED_APP_PIN}, a fixed fake value): the
- * seeded CUSTOMER, AGENT and MERCHANT wallets plus {@code extra-wallet-ids} (the realm imports' app
+ * seeded CUSTOMER, AGENT, MERCHANT and DISTRIBUTOR (ticket 94) wallets plus {@code extra-wallet-ids} (the realm imports' app
  * users the Newman suite logs in as). The PIN is encrypted as an app does, under mw-auth's PIN
  * transport key, and set through mw-auth's dev-only seed API, which leaves a wallet that has a PIN
  * alone. mw-auth learns about a wallet from the core's wallet events, asynchronously: a wallet it has
@@ -31,7 +31,7 @@ import org.springframework.stereotype.Service;
 public class SeedAppPinsStep implements SeedStep {
 
   private static final Logger log = LoggerFactory.getLogger(SeedAppPinsStep.class);
-  private static final Set<String> APP_TYPES = Set.of("CUSTOMER", "AGENT", "MERCHANT");
+  private static final Set<String> APP_TYPES = Set.of("CUSTOMER", "AGENT", "MERCHANT", "DISTRIBUTOR");
 
   private final AuthSeeds auth;
   private final SeederProperties props;

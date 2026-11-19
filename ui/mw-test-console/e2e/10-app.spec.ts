@@ -23,7 +23,8 @@ test.describe("@app app flows", () => {
     const r = await submit(page, "P2P", "01711000002", "10");
     await expect(r.getByTestId("txn-status")).toHaveText("COMPLETED");
     await expect(r.getByTestId("delta-01711000001")).toHaveText("-Tk 15.00");
-    await expect(r.getByTestId("delta-FEE-POOL")).toHaveText("Tk 5.00");
+    // the Tk 5 fee less its 15 % VAT (Tk 0.65, VAT_PAYABLE; core-mock tariff, ticket 94)
+    await expect(r.getByTestId("delta-FEE_INCOME")).toHaveText("Tk 4.35");
     await expect(r.getByTestId("delta-01711000002")).toHaveText("Tk 10.00");
     const txnId = await r.getByTestId("txn-id").textContent();
 

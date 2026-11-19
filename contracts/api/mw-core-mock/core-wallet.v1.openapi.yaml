@@ -31,12 +31,16 @@ info:
     `LIMIT_EXCEEDED_PER_TXN`, `LIMIT_EXCEEDED_DAILY`, `WALLET_NOT_FOUND`, `CREDIT_WALLET_NOT_FOUND`,
     `ACCOUNT_LOCKED`, `ACCOUNT_BLOCKED`, `CREDIT_ACCOUNT_BLOCKED`, `INVALID_COUNTERPARTY`,
     `SAME_WALLET`, `INVALID_AMOUNT`, `HOLD_NOT_FOUND`, `HOLD_RELEASED`, `HOLD_ALREADY_COMMITTED`,
+    `HOLD_EXPIRED`, `ACCOUNT_DORMANT`, `ACCOUNT_CLOSED`, `SETTLEMENT_WALLET_NOT_FOUND`,
+    `LIMIT_BELOW_MIN_PER_TXN`, `LIMIT_EXCEEDED_DAILY_COUNT`, `LIMIT_EXCEEDED_MONTHLY`,
+    `LIMIT_EXCEEDED_MONTHLY_COUNT`,
     `ORIGINAL_NOT_FOUND`, `ORIGINAL_NOT_REVERSIBLE`, `ALREADY_REVERSED`, `AMOUNT_MISMATCH`, or an
     injected fault's reason).
 
     Events stay on Kafka (D31): every money operation still writes its `core.event.v1` result
     (`FundsHeld`, `HoldCommitted`, `TransferPosted`, ...) through the outbox in the transaction of
-    the ledger change, holds on `core.payment.event.v1`, the rest on `core.wallet.event.v1`.
+    the ledger change, holds on `core.payment.event.v1`, the rest on `core.wallet.event.v1`. A hold
+    the core releases on expiry (default 30 min) is announced as `HoldExpired` on `core.payment.event.v1`.
 servers:
   - url: http://mw-core-mock:8080
 security:
@@ -48,7 +52,7 @@ paths:
       - $ref: "#/components/parameters/CorrelationId"
     get:
       operationId: getAccount
-      summary: "WAL-01: account info, type, status and holder name (wallet id or MSISDN)"
+      summary: "WAL-01: account info, type, status, KYC level and holder name (wallet id or MSISDN)"
       responses:
         "200":
           description: The account
@@ -80,7 +84,11 @@ paths:
     post:
       operationId: calculateCharges
       summary: "WAL-04: fee, VAT and commission of a transaction type and amount"
-      description: The fee is flat per txnType today; VAT and commission are 0 until the tariff sheet (ticket 94).
+      description: >-
+        From the tariff sheet (ticket 94): the row of the txnType whose slab holds the amount, for the
+        channel and the payer's wallet type (`customerType`, default CUSTOMER; a row may say any). The
+        fee is VAT-inclusive (`vat = fee * pct / (100 + pct)`, half up); the commission shares are
+        percentages of the fee net of VAT, rounded down; fee income keeps the rest. No row: all 0.
       requestBody:
         required: true
         content:
@@ -101,7 +109,10 @@ paths:
     post:
       operationId: checkLimits
       summary: "WAL-05: whether the wallet may pay the amount, with what is left"
-      description: Per transaction and per UTC day today; monthly amounts and counts come with ticket 94.
+      description: >-
+        The payer's rule of the limit sheet (ticket 94): the most specific of txnType, wallet type and
+        KYC level. Per transaction minimum and maximum, daily and monthly (UTC) amount and count; a
+        txnType rule counts only that type's debits. `remaining` is what is left before this amount.
       requestBody:
         required: true
         content:
@@ -146,7 +157,11 @@ paths:
       - $ref: "#/components/parameters/CorrelationId"
     post:
       operationId: commitHold
-      summary: "WAL-07: debit the held amount to the settlement wallet and the fee to the fee wallet (double entries)"
+      summary: "WAL-07: debit the held amount to the hold's settlement wallet and the fee to FEE_INCOME, VAT_PAYABLE and COMMISSION_PAYABLE (double entries)"
+      description: >-
+        The settlement wallet is the hold's `settlementWallet` (default SETTLEMENT), the fee split the
+        one decided when it was placed. A hold not committed within its expiry (default 30 min) is
+        released by the core with the event HoldExpired; committing it then is 422 MW-CORE-HOLD_EXPIRED.
       requestBody:
         required: false
         content:
@@ -214,7 +229,7 @@ paths:
       - $ref: "#/components/parameters/CorrelationId"
     post:
       operationId: credit
-      summary: "WAL-10: credit a wallet from the settlement wallet (add money, remittance, NPSB in, ATM cash-in)"
+      summary: "WAL-10: credit a wallet from a partner settlement wallet (add money, remittance, NPSB in, ATM cash-in)"
       requestBody:
         required: true
         content:
@@ -259,12 +274,15 @@ paths:
     get:
       operationId: getStatement
       summary: "WAL-12: ledger entries of a wallet in a time range, oldest first"
-      description: At most `limit` entries (default 100, at most 500). The balance after each entry comes with ticket 94.
+      description: >-
+        One page of at most `limit` entries (default 100, at most 500), page `page` from 0; `hasMore`
+        when the next page has entries. Each entry carries the wallet's balance after it (ticket 94).
       parameters:
         - { name: walletId, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
         - { name: from, in: query, required: true, schema: { type: string, format: date-time } }
         - { name: to, in: query, required: true, schema: { type: string, format: date-time } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 0, maximum: 100000, default: 0 } }
       responses:
         "200":
           description: The entries
@@ -349,8 +367,9 @@ components:
       properties:
         walletId: { type: string }
         msisdn: { type: [string, "null"], description: null for system wallets }
-        type: { type: string, enum: [CUSTOMER, AGENT, MERCHANT, ORG, SYSTEM] }
-        status: { type: string, enum: [ACTIVE, BLOCKED, HOLD, LOCKED] }
+        type: { type: string, enum: [CUSTOMER, AGENT, MERCHANT, DISTRIBUTOR, ORGANISATION, SYSTEM] }
+        status: { type: string, enum: [ACTIVE, LOCKED, DORMANT, CLOSED, BLOCKED, HOLD], description: "DORMANT cannot pay but can receive; CLOSED neither" }
+        kycLevel: { type: string, enum: [BASIC, FULL] }
         holderName: { type: [string, "null"], maxLength: 120, description: "Holder's display name; personal data" }
     Balance:
       type: object
@@ -367,16 +386,21 @@ components:
         txnType: { $ref: "#/components/schemas/TxnType" }
         amount: { $ref: "#/components/schemas/Amount" }
         channel: { type: string, maxLength: 32 }
+        customerType: { type: string, enum: [CUSTOMER, AGENT, MERCHANT, DISTRIBUTOR, ORGANISATION], description: "The payer's wallet type; default CUSTOMER" }
     Charges:
       type: object
       required: [txnType, amount, fee, vat, commission, total]
       properties:
         txnType: { type: string }
         amount: { $ref: "#/components/schemas/Amount" }
-        fee: { $ref: "#/components/schemas/Amount" }
-        vat: { $ref: "#/components/schemas/Amount" }
-        commission: { $ref: "#/components/schemas/Amount" }
-        total: { $ref: "#/components/schemas/Amount", description: amount + fee + vat (what the payer is debited) }
+        fee: { $ref: "#/components/schemas/Amount", description: "What the payer pays on top of the amount, VAT included" }
+        vat: { $ref: "#/components/schemas/Amount", description: The VAT inside the fee (to VAT_PAYABLE) }
+        commission: { $ref: "#/components/schemas/Amount", description: The commission shares of the fee (to COMMISSION_PAYABLE) }
+        commissionSplit:
+          type: object
+          description: Each party's share (AGENT, DISTRIBUTOR)
+          additionalProperties: { $ref: "#/components/schemas/Amount" }
+        total: { $ref: "#/components/schemas/Amount", description: amount + fee (what the payer is debited) }
     LimitsRequest:
       type: object
       required: [walletId, txnType, amount]
@@ -390,13 +414,19 @@ components:
       properties:
         walletId: { type: string }
         allowed: { type: boolean }
-        reasonCode: { type: string, enum: [LIMIT_EXCEEDED_PER_TXN, LIMIT_EXCEEDED_DAILY], description: Only when not allowed }
+        reasonCode:
+          type: string
+          enum: [LIMIT_BELOW_MIN_PER_TXN, LIMIT_EXCEEDED_PER_TXN, LIMIT_EXCEEDED_DAILY, LIMIT_EXCEEDED_DAILY_COUNT, LIMIT_EXCEEDED_MONTHLY, LIMIT_EXCEEDED_MONTHLY_COUNT]
+          description: Only when not allowed
         remaining:
           type: object
-          required: [perTxn, daily]
+          description: A limit the wallet's rule does not set is left out
           properties:
-            perTxn: { $ref: "#/components/schemas/Amount" }
+            perTxn: { $ref: "#/components/schemas/Amount", description: The per-transaction maximum }
             daily: { $ref: "#/components/schemas/Amount", description: What the wallet may still pay today (UTC) before this amount }
+            monthly: { $ref: "#/components/schemas/Amount", description: What the wallet may still pay this month (UTC) before this amount }
+            dailyCount: { type: integer, minimum: 0, description: Transactions left today before this one }
+            monthlyCount: { type: integer, minimum: 0, description: Transactions left this month before this one }
     TransferRequest:
       type: object
       required: [txnId, txnType, debitParty, creditParty, amount]
@@ -407,6 +437,15 @@ components:
         creditParty: { $ref: "#/components/schemas/Party" }
         amount: { $ref: "#/components/schemas/Amount" }
         idempotencyKey: { type: string, minLength: 1, maxLength: 64, description: "The channel's key; required with X-Txn-Assertion (part of its txnHash)" }
+        settlementWallet: { $ref: "#/components/schemas/SettlementWallet" }
+    SettlementWallet:
+      type: string
+      pattern: "^SETTLEMENT(_[A-Z0-9_]+)?$"
+      maxLength: 64
+      description: >-
+        A partner settlement wallet (ticket 94: SETTLEMENT_OCS_GP, SETTLEMENT_BILLER_DESCO, SETTLEMENT_NPSB,
+        SETTLEMENT_UCB_IMT, ...): the one a hold's commit credits or a credit draws on; absent = SETTLEMENT.
+        Ignored on a transfer. An unknown one is 422 MW-CORE-SETTLEMENT_WALLET_NOT_FOUND.
     HoldActionRequest:
       type: object
       properties:
@@ -419,6 +458,7 @@ components:
         txnType: { $ref: "#/components/schemas/TxnType" }
         creditParty: { $ref: "#/components/schemas/Party" }
         amount: { $ref: "#/components/schemas/Amount" }
+        settlementWallet: { $ref: "#/components/schemas/SettlementWallet" }
     ReversalRequest:
       type: object
       required: [txnId, originalTxnId]
@@ -442,7 +482,7 @@ components:
         txnId: { $ref: "#/components/schemas/TxnId" }
         status: { enum: [HELD, COMMITTED, RELEASED, POSTED, CREDITED, REVERSED] }
         coreRef: { type: string }
-        holdId: { type: string, description: Holds, commits and releases }
+        holdId: { type: string, description: "Holds, commits and releases" }
         originalTxnId: { $ref: "#/components/schemas/TxnId", description: Reversals }
         balancesAfter:
           type: array
@@ -454,16 +494,19 @@ components:
         txnId: { type: string }
         walletId: { type: string }
         direction: { enum: [DEBIT, CREDIT] }
-        kind: { enum: [TRANSFER, FEE, REVERSAL, ADJUSTMENT] }
+        kind: { enum: [TRANSFER, FEE, VAT, COMMISSION, REVERSAL, ADJUSTMENT] }
         amount: { $ref: "#/components/schemas/Amount" }
+        balanceAfter: { $ref: "#/components/schemas/Amount", description: "The wallet's balance right after this entry (absent on entries older than ticket 94)" }
         at: { type: string, format: date-time }
     Statement:
       type: object
-      required: [walletId, from, to, entries]
+      required: [walletId, from, to, page, hasMore, entries]
       properties:
         walletId: { type: string }
         from: { type: string, format: date-time }
         to: { type: string, format: date-time }
+        page: { type: integer, minimum: 0 }
+        hasMore: { type: boolean }
         entries:
           type: array
           items: { $ref: "#/components/schemas/Entry" }

@@ -112,12 +112,13 @@ class WalletStateEventsIT {
     assertThat(p.path("msisdn").asString()).isEqualTo(CUSTOMER_A);
     assertThat(p.path("walletType").asString()).isEqualTo("CUSTOMER");
     assertThat(p.path("status").asString()).isEqualTo("ACTIVE");
+    assertThat(p.path("kycLevel").asString()).isEqualTo("FULL");
     assertThat(p.path("hasPin").asBoolean()).as("the core holds no PIN (ticket 72)").isFalse();
     assertThat(a.getFirst().path("outcome").asString()).isEqualTo("SUCCESS");
 
     assertThat(jdbc.queryForObject(
             "select count(*) from outbox where payload->>'eventType' = 'WalletStateChanged'", Long.class))
-        .isEqualTo(1072);
+        .isEqualTo(1083);
     assertThat(stateEvents(WalletSeeder.SETTLEMENT_WALLET)).isEmpty();
   }
 
@@ -164,7 +165,7 @@ class WalletStateEventsIT {
   @Test
   void aSnapshotRepublishesEveryWalletAtItsCurrentVersion() {
     long created = version(stateEvents(CUSTOMER_A).getFirst());
-    assertThat(events.snapshot()).isEqualTo(1072);
+    assertThat(events.snapshot()).isEqualTo(1083);
     List<JsonNode> e = stateEvents(CUSTOMER_A);
     assertThat(e).hasSize(2);
     assertThat(e.get(1).path("payload").path("change").asString()).isEqualTo("SNAPSHOT");

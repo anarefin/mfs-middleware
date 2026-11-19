@@ -1,0 +1,12 @@
+txn_type,customer_type,kyc_level,per_txn_min,per_txn_max,daily_count,daily_amount,monthly_count,monthly_amount
+# Limit sheet v1 (ticket 94, FRS 7.1): poisha and transactions; '*' = any; empty = no limit. The payer's
+# rule: the most specific of txnType, customer (wallet) type, KYC level. A '*' txnType rule counts the
+# debits of every type, a typed one only its own; days and months are UTC.
+*,*,*,100,500000,1000,1500000,20000,20000000
+# BASIC KYC customers (01711000901..01711001000): lower limits
+*,CUSTOMER,BASIC,100,100000,20,300000,100,2000000
+# Customer P2P and cash out, full KYC: count limits (generous: the API suite reruns on one stack in a day)
+P2P,CUSTOMER,FULL,100,500000,500,1500000,10000,20000000
+CASH_OUT,CUSTOMER,FULL,100,500000,300,1500000,5000,20000000
+# An organisation pays a whole bulk batch out in a day (ticket 34: 10,000 rows of up to 5,000 Tk)
+*,ORGANISATION,*,100,500000,,5000000000,,

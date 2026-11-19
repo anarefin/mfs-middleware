@@ -9,12 +9,13 @@
   "properties": {
     "walletId": { "type": "string", "minLength": 1, "maxLength": 64 },
     "msisdn": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Msisdn" },
-    "walletType": { "enum": ["CUSTOMER", "AGENT", "MERCHANT", "ORG", "DISTRIBUTOR", "DSO"] },
+    "walletType": { "enum": ["CUSTOMER", "AGENT", "MERCHANT", "ORG", "ORGANISATION", "DISTRIBUTOR", "DSO"], "description": "ORGANISATION is the core's name of an organisation wallet since ticket 94 (FRS 7.1); ORG is the same type as earlier producers named it." },
     "status": {
-      "enum": ["ACTIVE", "BLOCKED", "HOLD", "LOCKED"],
-      "description": "LOCKED = the core's PIN lockout; BLOCKED and HOLD = compliance states."
+      "enum": ["ACTIVE", "BLOCKED", "HOLD", "LOCKED", "DORMANT", "CLOSED"],
+      "description": "LOCKED = a core-side lock; BLOCKED and HOLD = compliance states; DORMANT = unused for long (cannot pay, can receive) and CLOSED = closed for good (FRS 7.1, ticket 94)."
     },
     "hasPin": { "type": "boolean", "description": "Whether the core holds a PIN for the wallet. Since ticket 72 (D20, D22) PINs live in mw-auth only and mw-core-mock always sends false; consumers decide a first PIN from their own records (mw-auth auth.credential), not from this field." },
+    "kycLevel": { "enum": ["BASIC", "FULL"], "description": "The wallet's KYC level (FRS 7.1, ticket 94); optional for older producers." },
     "birthYear": { "type": "integer", "minimum": 1900, "maximum": 2100, "description": "When the core has it (weak-PIN rule)." },
     "version": { "type": "integer", "minimum": 1 },
     "change": { "enum": ["CREATED", "STATUS_CHANGED", "SNAPSHOT"] }

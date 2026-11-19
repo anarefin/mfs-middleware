@@ -108,8 +108,9 @@ public class CoreWalletController {
       @RequestParam @Size(min = 1, max = 64) String walletId,
       @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
       @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
-      @RequestParam(defaultValue = "100") @Min(1) @Max(500) int limit) {
-    return wallet.statement(walletId, from, to, limit);
+      @RequestParam(defaultValue = "100") @Min(1) @Max(500) int limit,
+      @RequestParam(defaultValue = "0") @Min(0) @Max(100_000) int page) {
+    return wallet.statement(walletId, from, to, limit, page);
   }
 
   @GetMapping("/transactions/{txnId}")

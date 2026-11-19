@@ -5,11 +5,11 @@ export default [
   {
     name: '[topup] a successful top-up debits the payer once and leaves nothing held',
     run: async (MW, S) => {
-      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);
       S.status(200);
       S.txnStatus('COMPLETED');
-      await S.changedBy({ '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE-POOL': 200 });
+      await S.changedBy({ '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174 });
       await S.noHold('01711000001');
       await S.appShows('COMPLETED');
     },
@@ -17,7 +17,7 @@ export default [
   {
     name: '[topup] an operator refusal releases the hold and moves no money',
     run: async (MW, S) => {
-      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.topup('customer01', 'gp', 'PREPAID', '01711000999', 2000, MW.pin);
       S.status(502);
       S.code('MW-PTR-GP-TOPUP_REJECTED');
@@ -30,7 +30,7 @@ export default [
   {
     name: '[topup] a wrong PIN is refused by mw-auth before anything is published or held',
     run: async (MW, S) => {
-      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.WRONG_PIN);
       S.status(401);
       S.code('MW-AUTH-040');
@@ -40,7 +40,7 @@ export default [
   {
     name: '[topup] a hold whose reply is lost is found by a status query and released',
     run: async (MW, S) => {
-      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.dropReply('HoldFunds');
       await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);
       S.status(504);
@@ -53,20 +53,20 @@ export default [
   {
     name: '[topup] the same idempotency key sent twice tops up once and returns the same txnId',
     run: async (MW, S) => {
-      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);
       await S.repeat();
       S.status(200);
       S.sameTxnId();
       S.txnStatus('COMPLETED');
-      await S.changedBy({ '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE-POOL': 200 });
+      await S.changedBy({ '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174 });
       await S.noHold('01711000001');
     },
   },
   {
     name: '[topup] a top-up without operator is refused by the app API',
     run: async (MW, S) => {
-      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.topup('customer01', null, null, '01711000002', 2000, MW.pin);
       S.status(400);
       S.code('MW-VAL-001');
@@ -76,19 +76,19 @@ export default [
   {
     name: '[topup tsq] an OCS timeout is resolved by status inquiry and the hold is committed',
     run: async (MW, S) => {
-      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2013, MW.pin);
       S.status(202);
       S.txnStatus('PROCESSING');
       await S.appShows('COMPLETED', 120);
-      await S.changedBy({ '01711000001': -2213, 'SETTLEMENT': 2013, 'FEE-POOL': 200 });
+      await S.changedBy({ '01711000001': -2213, 'SETTLEMENT': 2013, 'FEE_INCOME': 174 });
       await S.noHold('01711000001');
     },
   },
   {
     name: '[topup tsq] an OCS timeout the top-up did not survive is resolved by status inquiry and released',
     run: async (MW, S) => {
-      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.lateUnapplied('ocs');
       await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);
       S.status(202);

@@ -87,7 +87,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[p2p] a P2P completes and moves the money once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE-POOL': 500 });\\n      await S.appShows('COMPLETED');\\n    })\")), null);"
+                  "MW.run(\"[p2p] a P2P completes and moves the money once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });\\n      await S.appShows('COMPLETED');\\n    })\")), null);"
                 ]
               }
             }
@@ -108,7 +108,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[p2p] a wrong PIN is refused by mw-auth at once, nothing published, no money moves\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.WRONG_PIN);\\n      S.status(401);\\n      S.code('MW-AUTH-040');\\n      S.eq('mw-auth says how many tries are left', (S.last().body.details || []).map(d => d.field), ['triesLeft']);\\n      await S.noChange();\\n      // the right PIN resets the count, so later scenarios start from no failures\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n    })\")), null);"
+                  "MW.run(\"[p2p] a wrong PIN is refused by mw-auth at once, nothing published, no money moves\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.WRONG_PIN);\\n      S.status(401);\\n      S.code('MW-AUTH-040');\\n      S.eq('mw-auth says how many tries are left', (S.last().body.details || []).map(d => d.field), ['triesLeft']);\\n      await S.noChange();\\n      // the right PIN resets the count, so later scenarios start from no failures\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n    })\")), null);"
                 ]
               }
             }
@@ -129,7 +129,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[p2p] a core rejection (over per-txn limit) moves no money\", eval(MW.forRun(\";(async (MW, S, a) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.p2p('customer01', '01711000002', a.amount, MW.pin);\\n      S.status(422);\\n      S.code(a.code);\\n      S.carriesTxnId();\\n      await S.noChange();\\n      await S.appShows('REJECTED');\\n    })\")), {\"amount\":600000,\"code\":\"MW-CORE-LIMIT_EXCEEDED_PER_TXN\"});"
+                  "MW.run(\"[p2p] a core rejection (over per-txn limit) moves no money\", eval(MW.forRun(\";(async (MW, S, a) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.p2p('customer01', '01711000002', a.amount, MW.pin);\\n      S.status(422);\\n      S.code(a.code);\\n      S.carriesTxnId();\\n      await S.noChange();\\n      await S.appShows('REJECTED');\\n    })\")), {\"amount\":600000,\"code\":\"MW-CORE-LIMIT_EXCEEDED_PER_TXN\"});"
                 ]
               }
             }
@@ -150,7 +150,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[p2p] the same idempotency key sent twice debits once and returns the same txnId\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      await S.repeat();\\n      S.status(200);\\n      S.sameTxnId();\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE-POOL': 500 });\\n    })\")), null);"
+                  "MW.run(\"[p2p] the same idempotency key sent twice debits once and returns the same txnId\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      await S.repeat();\\n      S.status(200);\\n      S.sameTxnId();\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });\\n    })\")), null);"
                 ]
               }
             }
@@ -171,7 +171,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[p2p] the same idempotency key with a different body is refused\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      const idem = S.idem;\\n      await S.submit('customer01', await MW.app.request('P2P', '01711000002', 2000, MW.pin), idem);\\n      S.status(409);\\n      S.code('MW-IDEM-001');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE-POOL': 500 });\\n    })\")), null);"
+                  "MW.run(\"[p2p] the same idempotency key with a different body is refused\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      const idem = S.idem;\\n      await S.submit('customer01', await MW.app.request('P2P', '01711000002', 2000, MW.pin), idem);\\n      S.status(409);\\n      S.code('MW-IDEM-001');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });\\n    })\")), null);"
                 ]
               }
             }
@@ -213,7 +213,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[p2p tsq] a transfer whose core reply is lost is found by QueryTransaction and completes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.dropReply('PostTransfer');\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(202);\\n      S.txnStatus('PROCESSING');\\n      await S.appShows('COMPLETED', 90);\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE-POOL': 500 });\\n    })\")), null);"
+                  "MW.run(\"[p2p tsq] a transfer whose core reply is lost is found by QueryTransaction and completes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.dropReply('PostTransfer');\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(202);\\n      S.txnStatus('PROCESSING');\\n      await S.appShows('COMPLETED', 90);\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });\\n    })\")), null);"
                 ]
               }
             }
@@ -234,7 +234,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[p2p tsq] a transfer whose core refusal is lost is found by QueryTransaction and fails\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.refusalLost('PostTransfer');\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(202);\\n      S.txnStatus('PROCESSING');\\n      await S.appShows('FAILED', 90, 'MW-TMO-003');\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[p2p tsq] a transfer whose core refusal is lost is found by QueryTransaction and fails\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.refusalLost('PostTransfer');\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(202);\\n      S.txnStatus('PROCESSING');\\n      await S.appShows('FAILED', 90, 'MW-TMO-003');\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -261,7 +261,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[device p2p] a P2P with a valid signature passes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE-POOL': 500 });\\n    })\")), null);"
+                  "MW.run(\"[device p2p] a P2P with a valid signature passes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });\\n    })\")), null);"
                 ]
               }
             }
@@ -282,7 +282,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[device p2p] a replayed signed request is rejected and moves no money again\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.record(await MW.app.send(S.lastSubmit));\\n      S.status(401);\\n      S.code('MW-AUTH-006');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE-POOL': 500 });\\n    })\")), null);"
+                  "MW.run(\"[device p2p] a replayed signed request is rejected and moves no money again\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.record(await MW.app.send(S.lastSubmit));\\n      S.status(401);\\n      S.code('MW-AUTH-006');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });\\n    })\")), null);"
                 ]
               }
             }
@@ -303,7 +303,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[device p2p] a body changed after signing is rejected\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      const signed = await MW.app.prepare('customer01', 'api-' + MW.uuid(), await MW.app.request('P2P', '01711000002', 1000, MW.pin));\\n      const tampered = signed.body.replace('\\\"valueMinor\\\":1000', '\\\"valueMinor\\\":1001');\\n      S.check('the body was changed', tampered !== signed.body);\\n      S.record(await MW.app.send({ body: tampered, headers: signed.headers }));\\n      S.status(401);\\n      S.code('MW-AUTH-004');\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[device p2p] a body changed after signing is rejected\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      const signed = await MW.app.prepare('customer01', 'api-' + MW.uuid(), await MW.app.request('P2P', '01711000002', 1000, MW.pin));\\n      const tampered = signed.body.replace('\\\"valueMinor\\\":1000', '\\\"valueMinor\\\":1001');\\n      S.check('the body was changed', tampered !== signed.body);\\n      S.record(await MW.app.send({ body: tampered, headers: signed.headers }));\\n      S.status(401);\\n      S.code('MW-AUTH-004');\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -414,7 +414,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[cash] an agent cash-in moves the amount from the agent's float to the customer\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE-POOL']);\\n      await S.txn('agent01', 'CASH_IN', '01711000001', 2000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01811000001': -2000, '01711000001': 2000, 'FEE-POOL': 0 });\\n      await S.appShows('COMPLETED');\\n    })\")), null);"
+                  "MW.run(\"[cash] an agent cash-in moves the amount from the agent's float to the customer\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE_INCOME']);\\n      await S.txn('agent01', 'CASH_IN', '01711000001', 2000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01811000001': -2000, '01711000001': 2000, 'FEE_INCOME': 0 });\\n      await S.appShows('COMPLETED');\\n    })\")), null);"
                 ]
               }
             }
@@ -435,7 +435,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[cash] a customer cash-out pays the agent, the fee goes to the pool\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE-POOL']);\\n      await S.txn('customer01', 'CASH_OUT', '8801811000001', 2000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01811000001': 2000, '01711000001': -3000, 'FEE-POOL': 1000 });\\n      await S.appShows('COMPLETED');\\n    })\")), null);"
+                  "MW.run(\"[cash] a customer cash-out pays the agent, the fee goes to the pool\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE_INCOME']);\\n      await S.txn('customer01', 'CASH_OUT', '8801811000001', 2000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01811000001': 2000, '01711000001': -3000, 'FEE_INCOME': 435 });\\n      await S.appShows('COMPLETED');\\n    })\")), null);"
                 ]
               }
             }
@@ -456,7 +456,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[cash] a cash-in the agent's float cannot cover is rejected and moves no money\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE-POOL']);\\n      await S.reject('ValidateTransaction', 'INSUFFICIENT_BALANCE');\\n      await S.txn('agent01', 'CASH_IN', '01711000001', 2000, MW.pin);\\n      S.status(422);\\n      S.code('MW-CORE-INSUFFICIENT_BALANCE');\\n      S.carriesTxnId();\\n      await S.noChange();\\n      await S.appShows('REJECTED');\\n    })\")), null);"
+                  "MW.run(\"[cash] a cash-in the agent's float cannot cover is rejected and moves no money\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE_INCOME']);\\n      await S.reject('ValidateTransaction', 'INSUFFICIENT_BALANCE');\\n      await S.txn('agent01', 'CASH_IN', '01711000001', 2000, MW.pin);\\n      S.status(422);\\n      S.code('MW-CORE-INSUFFICIENT_BALANCE');\\n      S.carriesTxnId();\\n      await S.noChange();\\n      await S.appShows('REJECTED');\\n    })\")), null);"
                 ]
               }
             }
@@ -477,7 +477,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[cash] a cash-out to a wallet that is not an agent is refused by the core\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE-POOL']);\\n      await S.txn('customer01', 'CASH_OUT', '01711000002', 2000, MW.pin);\\n      S.status(422);\\n      S.code('MW-CORE-INVALID_COUNTERPARTY');\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[cash] a cash-out to a wallet that is not an agent is refused by the core\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE_INCOME']);\\n      await S.txn('customer01', 'CASH_OUT', '01711000002', 2000, MW.pin);\\n      S.status(422);\\n      S.code('MW-CORE-INVALID_COUNTERPARTY');\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -498,7 +498,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[cash] the agent's own wallet is never a counterparty\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE-POOL']);\\n      await S.txn('agent01', 'CASH_IN', '01811000001', 2000, MW.pin);\\n      S.status(400);\\n      S.code('MW-VAL-012');\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[cash] the agent's own wallet is never a counterparty\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE_INCOME']);\\n      await S.txn('agent01', 'CASH_IN', '01811000001', 2000, MW.pin);\\n      S.status(400);\\n      S.code('MW-VAL-012');\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -519,7 +519,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[cash] customer01 may not initiate CASH_IN\", eval(MW.forRun(\";(async (MW, S, a) => {\\n      await S.note(['01811000001', '01711000001', 'FEE-POOL']);\\n      await S.txn(a.user, a.type, a.counterparty, 2000, MW.pin);\\n      S.status(403);\\n      S.code('MW-AUTH-002');\\n      await S.noChange();\\n    })\")), {\"user\":\"customer01\",\"type\":\"CASH_IN\",\"counterparty\":\"01711000002\"});"
+                  "MW.run(\"[cash] customer01 may not initiate CASH_IN\", eval(MW.forRun(\";(async (MW, S, a) => {\\n      await S.note(['01811000001', '01711000001', 'FEE_INCOME']);\\n      await S.txn(a.user, a.type, a.counterparty, 2000, MW.pin);\\n      S.status(403);\\n      S.code('MW-AUTH-002');\\n      await S.noChange();\\n    })\")), {\"user\":\"customer01\",\"type\":\"CASH_IN\",\"counterparty\":\"01711000002\"});"
                 ]
               }
             }
@@ -540,7 +540,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[cash] agent01 may not initiate CASH_OUT\", eval(MW.forRun(\";(async (MW, S, a) => {\\n      await S.note(['01811000001', '01711000001', 'FEE-POOL']);\\n      await S.txn(a.user, a.type, a.counterparty, 2000, MW.pin);\\n      S.status(403);\\n      S.code('MW-AUTH-002');\\n      await S.noChange();\\n    })\")), {\"user\":\"agent01\",\"type\":\"CASH_OUT\",\"counterparty\":\"01711000001\"});"
+                  "MW.run(\"[cash] agent01 may not initiate CASH_OUT\", eval(MW.forRun(\";(async (MW, S, a) => {\\n      await S.note(['01811000001', '01711000001', 'FEE_INCOME']);\\n      await S.txn(a.user, a.type, a.counterparty, 2000, MW.pin);\\n      S.status(403);\\n      S.code('MW-AUTH-002');\\n      await S.noChange();\\n    })\")), {\"user\":\"agent01\",\"type\":\"CASH_OUT\",\"counterparty\":\"01711000001\"});"
                 ]
               }
             }
@@ -561,7 +561,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[cash] an agent cash-in sent twice with the same idempotency key moves the money once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE-POOL']);\\n      await S.txn('agent01', 'CASH_IN', '01711000001', 2000, MW.pin);\\n      await S.repeat();\\n      S.status(200);\\n      S.sameTxnId();\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01811000001': -2000, '01711000001': 2000, 'FEE-POOL': 0 });\\n    })\")), null);"
+                  "MW.run(\"[cash] an agent cash-in sent twice with the same idempotency key moves the money once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE_INCOME']);\\n      await S.txn('agent01', 'CASH_IN', '01711000001', 2000, MW.pin);\\n      await S.repeat();\\n      S.status(200);\\n      S.sameTxnId();\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01811000001': -2000, '01711000001': 2000, 'FEE_INCOME': 0 });\\n    })\")), null);"
                 ]
               }
             }
@@ -582,7 +582,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[cash] a customer cash-out sent twice with the same idempotency key moves the money once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE-POOL']);\\n      await S.txn('customer01', 'CASH_OUT', '8801811000001', 2000, MW.pin);\\n      await S.repeat();\\n      S.status(200);\\n      S.sameTxnId();\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01811000001': 2000, '01711000001': -3000, 'FEE-POOL': 1000 });\\n    })\")), null);"
+                  "MW.run(\"[cash] a customer cash-out sent twice with the same idempotency key moves the money once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE_INCOME']);\\n      await S.txn('customer01', 'CASH_OUT', '8801811000001', 2000, MW.pin);\\n      await S.repeat();\\n      S.status(200);\\n      S.sameTxnId();\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01811000001': 2000, '01711000001': -3000, 'FEE_INCOME': 435 });\\n    })\")), null);"
                 ]
               }
             }
@@ -603,7 +603,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[cash tsq] a cash-in whose core reply is lost is found by QueryTransaction and completes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE-POOL']);\\n      await S.dropReply('PostTransfer');\\n      await S.txn('agent01', 'CASH_IN', '01711000001', 2000, MW.pin);\\n      S.status(202);\\n      await S.appShows('COMPLETED', 90);\\n      await S.changedBy({ '01811000001': -2000, '01711000001': 2000, 'FEE-POOL': 0 });\\n    })\")), null);"
+                  "MW.run(\"[cash tsq] a cash-in whose core reply is lost is found by QueryTransaction and completes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE_INCOME']);\\n      await S.dropReply('PostTransfer');\\n      await S.txn('agent01', 'CASH_IN', '01711000001', 2000, MW.pin);\\n      S.status(202);\\n      await S.appShows('COMPLETED', 90);\\n      await S.changedBy({ '01811000001': -2000, '01711000001': 2000, 'FEE_INCOME': 0 });\\n    })\")), null);"
                 ]
               }
             }
@@ -624,7 +624,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[cash tsq] a cash-in whose core refusal is lost is found by QueryTransaction and fails\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE-POOL']);\\n      await S.refusalLost('PostTransfer');\\n      await S.txn('agent01', 'CASH_IN', '01711000001', 2000, MW.pin);\\n      S.status(202);\\n      await S.appShows('FAILED', 90, 'MW-TMO-003');\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[cash tsq] a cash-in whose core refusal is lost is found by QueryTransaction and fails\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE_INCOME']);\\n      await S.refusalLost('PostTransfer');\\n      await S.txn('agent01', 'CASH_IN', '01711000001', 2000, MW.pin);\\n      S.status(202);\\n      await S.appShows('FAILED', 90, 'MW-TMO-003');\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -645,7 +645,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[cash tsq] a cash-out whose core reply is lost is found by QueryTransaction and completes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE-POOL']);\\n      await S.dropReply('PostTransfer');\\n      await S.txn('customer01', 'CASH_OUT', '8801811000001', 2000, MW.pin);\\n      S.status(202);\\n      await S.appShows('COMPLETED', 90);\\n      await S.changedBy({ '01811000001': 2000, '01711000001': -3000, 'FEE-POOL': 1000 });\\n    })\")), null);"
+                  "MW.run(\"[cash tsq] a cash-out whose core reply is lost is found by QueryTransaction and completes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE_INCOME']);\\n      await S.dropReply('PostTransfer');\\n      await S.txn('customer01', 'CASH_OUT', '8801811000001', 2000, MW.pin);\\n      S.status(202);\\n      await S.appShows('COMPLETED', 90);\\n      await S.changedBy({ '01811000001': 2000, '01711000001': -3000, 'FEE_INCOME': 435 });\\n    })\")), null);"
                 ]
               }
             }
@@ -666,7 +666,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[cash tsq] a cash-out whose core refusal is lost is found by QueryTransaction and fails\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE-POOL']);\\n      await S.refusalLost('PostTransfer');\\n      await S.txn('customer01', 'CASH_OUT', '8801811000001', 2000, MW.pin);\\n      S.status(202);\\n      await S.appShows('FAILED', 90, 'MW-TMO-003');\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[cash tsq] a cash-out whose core refusal is lost is found by QueryTransaction and fails\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01811000001', '01711000001', 'FEE_INCOME']);\\n      await S.refusalLost('PostTransfer');\\n      await S.txn('customer01', 'CASH_OUT', '8801811000001', 2000, MW.pin);\\n      S.status(202);\\n      await S.appShows('FAILED', 90, 'MW-TMO-003');\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -693,7 +693,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[merchant] a customer pays a merchant and the merchant sees the collection\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01911000001', 'FEE-POOL']);\\n      await S.txn('customer01', 'MERCHANT_PAY', '01911000001', 2500, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -2500, '01911000001': 2500, 'FEE-POOL': 0 });\\n      await S.appShows('COMPLETED');\\n      const id = S.txnId();\\n      const entry = r => r.status === 200 ? ((r.body || {}).collections || []).find(c => c.txnId === id) : undefined;\\n      const r = await MW.poll(() => MW.app.collections('merchant01'), x => !!entry(x), 20000, 700);\\n      const c = entry(r);\\n      S.check('merchant01 sees the transaction in its collections', !!c, String(r));\\n      S.eq('COMPLETED, payer masked as 0171****001, amount 2500', [c.status, c.payer, c.amount.valueMinor], ['COMPLETED', '0171****001', 2500]);\\n      const other = await MW.app.collections('merchant02');\\n      S.status(200, other);\\n      S.check('merchant02 does not see the transaction', !entry(other), String(other));\\n    })\")), null);"
+                  "MW.run(\"[merchant] a customer pays a merchant and the merchant sees the collection\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01911000001', 'FEE_INCOME']);\\n      await S.txn('customer01', 'MERCHANT_PAY', '01911000001', 2500, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -2500, '01911000001': 2500, 'FEE_INCOME': 0 });\\n      await S.appShows('COMPLETED');\\n      const id = S.txnId();\\n      const entry = r => r.status === 200 ? ((r.body || {}).collections || []).find(c => c.txnId === id) : undefined;\\n      const r = await MW.poll(() => MW.app.collections('merchant01'), x => !!entry(x), 20000, 700);\\n      const c = entry(r);\\n      S.check('merchant01 sees the transaction in its collections', !!c, String(r));\\n      S.eq('COMPLETED, payer masked as 0171****001, amount 2500', [c.status, c.payer, c.amount.valueMinor], ['COMPLETED', '0171****001', 2500]);\\n      const other = await MW.app.collections('merchant02');\\n      S.status(200, other);\\n      S.check('merchant02 does not see the transaction', !entry(other), String(other));\\n    })\")), null);"
                 ]
               }
             }
@@ -714,7 +714,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[merchant] a payment the customer's balance cannot cover is rejected and moves no money\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01911000001', 'FEE-POOL']);\\n      await S.reject('ValidateTransaction', 'INSUFFICIENT_BALANCE');\\n      await S.txn('customer01', 'MERCHANT_PAY', '01911000001', 2500, MW.pin);\\n      S.status(422);\\n      S.code('MW-CORE-INSUFFICIENT_BALANCE');\\n      S.carriesTxnId();\\n      await S.noChange();\\n      await S.appShows('REJECTED');\\n      const id = S.txnId();\\n      const r = await MW.app.collections('merchant01');\\n      S.status(200, r);\\n      S.check('merchant01 does not see the transaction', !((r.body || {}).collections || []).some(c => c.txnId === id), String(r));\\n    })\")), null);"
+                  "MW.run(\"[merchant] a payment the customer's balance cannot cover is rejected and moves no money\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01911000001', 'FEE_INCOME']);\\n      await S.reject('ValidateTransaction', 'INSUFFICIENT_BALANCE');\\n      await S.txn('customer01', 'MERCHANT_PAY', '01911000001', 2500, MW.pin);\\n      S.status(422);\\n      S.code('MW-CORE-INSUFFICIENT_BALANCE');\\n      S.carriesTxnId();\\n      await S.noChange();\\n      await S.appShows('REJECTED');\\n      const id = S.txnId();\\n      const r = await MW.app.collections('merchant01');\\n      S.status(200, r);\\n      S.check('merchant01 does not see the transaction', !((r.body || {}).collections || []).some(c => c.txnId === id), String(r));\\n    })\")), null);"
                 ]
               }
             }
@@ -735,7 +735,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[merchant] a merchant payment to a wallet that is not a merchant is refused by the core\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01911000001', 'FEE-POOL']);\\n      await S.txn('customer01', 'MERCHANT_PAY', '01711000002', 2500, MW.pin);\\n      S.status(422);\\n      S.code('MW-CORE-INVALID_COUNTERPARTY');\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[merchant] a merchant payment to a wallet that is not a merchant is refused by the core\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01911000001', 'FEE_INCOME']);\\n      await S.txn('customer01', 'MERCHANT_PAY', '01711000002', 2500, MW.pin);\\n      S.status(422);\\n      S.code('MW-CORE-INVALID_COUNTERPARTY');\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -756,7 +756,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[merchant] agent01 may not initiate MERCHANT_PAY\", eval(MW.forRun(\";(async (MW, S, a) => {\\n      await S.note(['01711000001', '01911000001', 'FEE-POOL']);\\n      await S.txn(a.user, a.type, a.counterparty, 2500, MW.pin);\\n      S.status(403);\\n      S.code('MW-AUTH-002');\\n      await S.noChange();\\n    })\")), {\"user\":\"agent01\",\"type\":\"MERCHANT_PAY\",\"counterparty\":\"01911000001\"});"
+                  "MW.run(\"[merchant] agent01 may not initiate MERCHANT_PAY\", eval(MW.forRun(\";(async (MW, S, a) => {\\n      await S.note(['01711000001', '01911000001', 'FEE_INCOME']);\\n      await S.txn(a.user, a.type, a.counterparty, 2500, MW.pin);\\n      S.status(403);\\n      S.code('MW-AUTH-002');\\n      await S.noChange();\\n    })\")), {\"user\":\"agent01\",\"type\":\"MERCHANT_PAY\",\"counterparty\":\"01911000001\"});"
                 ]
               }
             }
@@ -777,7 +777,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[merchant] merchant01 may not initiate MERCHANT_PAY\", eval(MW.forRun(\";(async (MW, S, a) => {\\n      await S.note(['01711000001', '01911000001', 'FEE-POOL']);\\n      await S.txn(a.user, a.type, a.counterparty, 2500, MW.pin);\\n      S.status(403);\\n      S.code('MW-AUTH-002');\\n      await S.noChange();\\n    })\")), {\"user\":\"merchant01\",\"type\":\"MERCHANT_PAY\",\"counterparty\":\"01911000002\"});"
+                  "MW.run(\"[merchant] merchant01 may not initiate MERCHANT_PAY\", eval(MW.forRun(\";(async (MW, S, a) => {\\n      await S.note(['01711000001', '01911000001', 'FEE_INCOME']);\\n      await S.txn(a.user, a.type, a.counterparty, 2500, MW.pin);\\n      S.status(403);\\n      S.code('MW-AUTH-002');\\n      await S.noChange();\\n    })\")), {\"user\":\"merchant01\",\"type\":\"MERCHANT_PAY\",\"counterparty\":\"01911000002\"});"
                 ]
               }
             }
@@ -798,7 +798,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[merchant] merchant01 may not initiate P2P\", eval(MW.forRun(\";(async (MW, S, a) => {\\n      await S.note(['01711000001', '01911000001', 'FEE-POOL']);\\n      await S.txn(a.user, a.type, a.counterparty, 2500, MW.pin);\\n      S.status(403);\\n      S.code('MW-AUTH-002');\\n      await S.noChange();\\n    })\")), {\"user\":\"merchant01\",\"type\":\"P2P\",\"counterparty\":\"01711000001\"});"
+                  "MW.run(\"[merchant] merchant01 may not initiate P2P\", eval(MW.forRun(\";(async (MW, S, a) => {\\n      await S.note(['01711000001', '01911000001', 'FEE_INCOME']);\\n      await S.txn(a.user, a.type, a.counterparty, 2500, MW.pin);\\n      S.status(403);\\n      S.code('MW-AUTH-002');\\n      await S.noChange();\\n    })\")), {\"user\":\"merchant01\",\"type\":\"P2P\",\"counterparty\":\"01711000001\"});"
                 ]
               }
             }
@@ -861,7 +861,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[merchant] a merchant payment sent twice with the same idempotency key pays the merchant once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01911000001', 'FEE-POOL']);\\n      await S.txn('customer01', 'MERCHANT_PAY', '01911000001', 2500, MW.pin);\\n      await S.repeat();\\n      S.status(200);\\n      S.sameTxnId();\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -2500, '01911000001': 2500, 'FEE-POOL': 0 });\\n    })\")), null);"
+                  "MW.run(\"[merchant] a merchant payment sent twice with the same idempotency key pays the merchant once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01911000001', 'FEE_INCOME']);\\n      await S.txn('customer01', 'MERCHANT_PAY', '01911000001', 2500, MW.pin);\\n      await S.repeat();\\n      S.status(200);\\n      S.sameTxnId();\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -2500, '01911000001': 2500, 'FEE_INCOME': 0 });\\n    })\")), null);"
                 ]
               }
             }
@@ -882,7 +882,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[merchant tsq] a merchant payment whose core reply is lost is found by QueryTransaction and completes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01911000001', 'FEE-POOL']);\\n      await S.dropReply('PostTransfer');\\n      await S.txn('customer01', 'MERCHANT_PAY', '01911000001', 2500, MW.pin);\\n      S.status(202);\\n      await S.appShows('COMPLETED', 90);\\n      await S.changedBy({ '01711000001': -2500, '01911000001': 2500, 'FEE-POOL': 0 });\\n      const id = S.txnId();\\n      const r = await MW.poll(() => MW.app.collections('merchant01'), x => ((x.body || {}).collections || []).some(c => c.txnId === id), 20000, 700);\\n      const c = ((r.body || {}).collections || []).find(x => x.txnId === id);\\n      S.check('merchant01 sees the transaction, payer 0171****001', !!c && c.payer === '0171****001', String(r));\\n    })\")), null);"
+                  "MW.run(\"[merchant tsq] a merchant payment whose core reply is lost is found by QueryTransaction and completes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01911000001', 'FEE_INCOME']);\\n      await S.dropReply('PostTransfer');\\n      await S.txn('customer01', 'MERCHANT_PAY', '01911000001', 2500, MW.pin);\\n      S.status(202);\\n      await S.appShows('COMPLETED', 90);\\n      await S.changedBy({ '01711000001': -2500, '01911000001': 2500, 'FEE_INCOME': 0 });\\n      const id = S.txnId();\\n      const r = await MW.poll(() => MW.app.collections('merchant01'), x => ((x.body || {}).collections || []).some(c => c.txnId === id), 20000, 700);\\n      const c = ((r.body || {}).collections || []).find(x => x.txnId === id);\\n      S.check('merchant01 sees the transaction, payer 0171****001', !!c && c.payer === '0171****001', String(r));\\n    })\")), null);"
                 ]
               }
             }
@@ -903,7 +903,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[merchant tsq] a merchant payment whose core refusal is lost is found by QueryTransaction and fails\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01911000001', 'FEE-POOL']);\\n      await S.refusalLost('PostTransfer');\\n      await S.txn('customer01', 'MERCHANT_PAY', '01911000001', 2500, MW.pin);\\n      S.status(202);\\n      await S.appShows('FAILED', 90, 'MW-TMO-003');\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[merchant tsq] a merchant payment whose core refusal is lost is found by QueryTransaction and fails\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01911000001', 'FEE_INCOME']);\\n      await S.refusalLost('PostTransfer');\\n      await S.txn('customer01', 'MERCHANT_PAY', '01911000001', 2500, MW.pin);\\n      S.status(202);\\n      await S.appShows('FAILED', 90, 'MW-TMO-003');\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -930,7 +930,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[topup] a successful top-up debits the payer once and leaves nothing held\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE-POOL': 200 });\\n      await S.noHold('01711000001');\\n      await S.appShows('COMPLETED');\\n    })\")), null);"
+                  "MW.run(\"[topup] a successful top-up debits the payer once and leaves nothing held\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174 });\\n      await S.noHold('01711000001');\\n      await S.appShows('COMPLETED');\\n    })\")), null);"
                 ]
               }
             }
@@ -951,7 +951,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[topup] an operator refusal releases the hold and moves no money\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000999', 2000, MW.pin);\\n      S.status(502);\\n      S.code('MW-PTR-GP-TOPUP_REJECTED');\\n      S.carriesTxnId();\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n      await S.appShows('FAILED');\\n    })\")), null);"
+                  "MW.run(\"[topup] an operator refusal releases the hold and moves no money\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000999', 2000, MW.pin);\\n      S.status(502);\\n      S.code('MW-PTR-GP-TOPUP_REJECTED');\\n      S.carriesTxnId();\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n      await S.appShows('FAILED');\\n    })\")), null);"
                 ]
               }
             }
@@ -972,7 +972,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[topup] a wrong PIN is refused by mw-auth before anything is published or held\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.WRONG_PIN);\\n      S.status(401);\\n      S.code('MW-AUTH-040');\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[topup] a wrong PIN is refused by mw-auth before anything is published or held\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.WRONG_PIN);\\n      S.status(401);\\n      S.code('MW-AUTH-040');\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -993,7 +993,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[topup] a hold whose reply is lost is found by a status query and released\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.dropReply('HoldFunds');\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);\\n      S.status(504);\\n      S.code('MW-TMO-002');\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n      await S.appShows('FAILED');\\n    })\")), null);"
+                  "MW.run(\"[topup] a hold whose reply is lost is found by a status query and released\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.dropReply('HoldFunds');\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);\\n      S.status(504);\\n      S.code('MW-TMO-002');\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n      await S.appShows('FAILED');\\n    })\")), null);"
                 ]
               }
             }
@@ -1014,7 +1014,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[topup] the same idempotency key sent twice tops up once and returns the same txnId\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);\\n      await S.repeat();\\n      S.status(200);\\n      S.sameTxnId();\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE-POOL': 200 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                  "MW.run(\"[topup] the same idempotency key sent twice tops up once and returns the same txnId\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);\\n      await S.repeat();\\n      S.status(200);\\n      S.sameTxnId();\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
                 ]
               }
             }
@@ -1035,7 +1035,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[topup] a top-up without operator is refused by the app API\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.topup('customer01', null, null, '01711000002', 2000, MW.pin);\\n      S.status(400);\\n      S.code('MW-VAL-001');\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[topup] a top-up without operator is refused by the app API\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.topup('customer01', null, null, '01711000002', 2000, MW.pin);\\n      S.status(400);\\n      S.code('MW-VAL-001');\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -1056,7 +1056,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[topup tsq] an OCS timeout is resolved by status inquiry and the hold is committed\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2013, MW.pin);\\n      S.status(202);\\n      S.txnStatus('PROCESSING');\\n      await S.appShows('COMPLETED', 120);\\n      await S.changedBy({ '01711000001': -2213, 'SETTLEMENT': 2013, 'FEE-POOL': 200 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                  "MW.run(\"[topup tsq] an OCS timeout is resolved by status inquiry and the hold is committed\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2013, MW.pin);\\n      S.status(202);\\n      S.txnStatus('PROCESSING');\\n      await S.appShows('COMPLETED', 120);\\n      await S.changedBy({ '01711000001': -2213, 'SETTLEMENT': 2013, 'FEE_INCOME': 174 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
                 ]
               }
             }
@@ -1077,7 +1077,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[topup tsq] an OCS timeout the top-up did not survive is resolved by status inquiry and released\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.lateUnapplied('ocs');\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);\\n      S.status(202);\\n      S.txnStatus('PROCESSING');\\n      await S.normalOnceAnswered('ocs', '/ocs/v1/topup');\\n      await S.appShows('FAILED', 180, 'MW-TMO-003');\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                  "MW.run(\"[topup tsq] an OCS timeout the top-up did not survive is resolved by status inquiry and released\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.lateUnapplied('ocs');\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);\\n      S.status(202);\\n      S.txnStatus('PROCESSING');\\n      await S.normalOnceAnswered('ocs', '/ocs/v1/topup');\\n      await S.appShows('FAILED', 180, 'MW-TMO-003');\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n    })\")), null);"
                 ]
               }
             }
@@ -1146,7 +1146,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[billpay] the customer sees the billers and fetches the amount due on a bill\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      const b = S.record(await MW.app.billers('customer01'));\\n      S.status(200);\\n      const billers = (b.body || {}).billers || [];\\n      S.eq('the catalogue has 10 billers', billers.length, 10, String(b));\\n      S.check('the billers include DESCO', billers.some(x => x.code === 'DESCO'), String(b));\\n      S.check('KGDCL is a GAS biller', billers.some(x => x.code === 'KGDCL' && x.category === 'GAS'), String(b));\\n      const f = S.record(await MW.app.fetchBill('customer01', 'DESCO', '1234567'));\\n      S.status(200);\\n      S.eq('the amount due is 66700 poisha', f.body.amount && f.body.amount.valueMinor, 66700, String(f));\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[billpay] the customer sees the billers and fetches the amount due on a bill\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      const b = S.record(await MW.app.billers('customer01'));\\n      S.status(200);\\n      const billers = (b.body || {}).billers || [];\\n      S.eq('the catalogue has 10 billers', billers.length, 10, String(b));\\n      S.check('the billers include DESCO', billers.some(x => x.code === 'DESCO'), String(b));\\n      S.check('KGDCL is a GAS biller', billers.some(x => x.code === 'KGDCL' && x.category === 'GAS'), String(b));\\n      const f = S.record(await MW.app.fetchBill('customer01', 'DESCO', '1234567'));\\n      S.status(200);\\n      S.eq('the amount due is 66700 poisha', f.body.amount && f.body.amount.valueMinor, 66700, String(f));\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -1167,7 +1167,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[billpay] a bill of a SOAP biller (KGDCL) is fetched and paid through the aggregator to COMPLETED\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      // KGDCL is one of billagg's SOAP billers (KGDCL, JGTDSL, BTCL, LINK3): fetch and pay go over\\n      // POST /billagg/v1/soap; the simulator refuses a SOAP biller on the REST paths (3004).\\n      const f = S.record(await MW.app.fetchBill('customer01', 'KGDCL', '7654321'));\\n      S.status(200);\\n      S.eq('the amount due is 42100 poisha', f.body.amount && f.body.amount.valueMinor, 42100, String(f));\\n      await S.billPay('customer01', 'KGDCL', '7654321', 42100, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -42400, 'SETTLEMENT': 42100, 'FEE-POOL': 300 });\\n      await S.noHold('01711000001');\\n      await S.appShows('COMPLETED');\\n    })\")), null);"
+                  "MW.run(\"[billpay] a bill of a SOAP biller (KGDCL) is fetched and paid through the aggregator to COMPLETED\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      // KGDCL is one of billagg's SOAP billers (KGDCL, JGTDSL, BTCL, LINK3): fetch and pay go over\\n      // POST /billagg/v1/soap; the simulator refuses a SOAP biller on the REST paths (3004).\\n      const f = S.record(await MW.app.fetchBill('customer01', 'KGDCL', '7654321'));\\n      S.status(200);\\n      S.eq('the amount due is 42100 poisha', f.body.amount && f.body.amount.valueMinor, 42100, String(f));\\n      await S.billPay('customer01', 'KGDCL', '7654321', 42100, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -42400, 'SETTLEMENT': 42100, 'FEE_INCOME': 261 });\\n      await S.noHold('01711000001');\\n      await S.appShows('COMPLETED');\\n    })\")), null);"
                 ]
               }
             }
@@ -1230,7 +1230,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[billpay] a paid bill debits the payer once and leaves nothing held\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.billPay('customer01', 'DESCO', '1234567', 66700, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -67000, 'SETTLEMENT': 66700, 'FEE-POOL': 300 });\\n      await S.noHold('01711000001');\\n      await S.appShows('COMPLETED');\\n    })\")), null);"
+                  "MW.run(\"[billpay] a paid bill debits the payer once and leaves nothing held\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.billPay('customer01', 'DESCO', '1234567', 66700, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -67000, 'SETTLEMENT': 66700, 'FEE_INCOME': 261 });\\n      await S.noHold('01711000001');\\n      await S.appShows('COMPLETED');\\n    })\")), null);"
                 ]
               }
             }
@@ -1251,7 +1251,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[billpay] a biller refusal releases the hold and moves no money\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.billPay('customer01', 'DESCO', '1234999', 10000, MW.pin);\\n      S.status(502);\\n      S.code('MW-PTR-BILLAGG-PAYMENT_REFUSED');\\n      S.carriesTxnId();\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n      await S.appShows('FAILED');\\n    })\")), null);"
+                  "MW.run(\"[billpay] a biller refusal releases the hold and moves no money\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.billPay('customer01', 'DESCO', '1234999', 10000, MW.pin);\\n      S.status(502);\\n      S.code('MW-PTR-BILLAGG-PAYMENT_REFUSED');\\n      S.carriesTxnId();\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n      await S.appShows('FAILED');\\n    })\")), null);"
                 ]
               }
             }
@@ -1272,7 +1272,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[billpay] a bill payment without a biller is refused by the app API\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.billPay('customer01', null, '1234567', 10000, MW.pin);\\n      S.status(400);\\n      S.code('MW-VAL-001');\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[billpay] a bill payment without a biller is refused by the app API\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.billPay('customer01', null, '1234567', 10000, MW.pin);\\n      S.status(400);\\n      S.code('MW-VAL-001');\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -1293,7 +1293,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[billpay tsq] an aggregator timeout is resolved by status inquiry and the hold is committed\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.billPay('customer01', 'DESCO', '1234567', 10013, MW.pin);\\n      S.status(202);\\n      S.txnStatus('PROCESSING');\\n      await S.appShows('COMPLETED', 120);\\n      await S.changedBy({ '01711000001': -10313, 'SETTLEMENT': 10013, 'FEE-POOL': 300 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                  "MW.run(\"[billpay tsq] an aggregator timeout is resolved by status inquiry and the hold is committed\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.billPay('customer01', 'DESCO', '1234567', 10013, MW.pin);\\n      S.status(202);\\n      S.txnStatus('PROCESSING');\\n      await S.appShows('COMPLETED', 120);\\n      await S.changedBy({ '01711000001': -10313, 'SETTLEMENT': 10013, 'FEE_INCOME': 261 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
                 ]
               }
             }
@@ -1335,7 +1335,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[billpay] a bill payment sent twice with the same idempotency key pays the bill once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.billPay('customer01', 'DESCO', '1234567', 10000, MW.pin);\\n      await S.repeat();\\n      S.status(200);\\n      S.sameTxnId();\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -10300, 'SETTLEMENT': 10000, 'FEE-POOL': 300 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                  "MW.run(\"[billpay] a bill payment sent twice with the same idempotency key pays the bill once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.billPay('customer01', 'DESCO', '1234567', 10000, MW.pin);\\n      await S.repeat();\\n      S.status(200);\\n      S.sameTxnId();\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -10300, 'SETTLEMENT': 10000, 'FEE_INCOME': 261 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
                 ]
               }
             }
@@ -1356,7 +1356,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[billpay tsq] an aggregator timeout the payment did not survive is resolved by status inquiry and released\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.lateUnapplied('billagg');\\n      await S.billPay('customer01', 'DESCO', '1234567', 10000, MW.pin);\\n      S.status(202);\\n      S.txnStatus('PROCESSING');\\n      await S.normalOnceAnswered('billagg', '/billagg/v1/payments');\\n      await S.appShows('FAILED', 180, 'MW-TMO-003');\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                  "MW.run(\"[billpay tsq] an aggregator timeout the payment did not survive is resolved by status inquiry and released\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.lateUnapplied('billagg');\\n      await S.billPay('customer01', 'DESCO', '1234567', 10000, MW.pin);\\n      S.status(202);\\n      S.txnStatus('PROCESSING');\\n      await S.normalOnceAnswered('billagg', '/billagg/v1/payments');\\n      await S.appShows('FAILED', 180, 'MW-TMO-003');\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n    })\")), null);"
                 ]
               }
             }
@@ -1383,7 +1383,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[billpay callback] a callback-only payment is completed by the aggregator's callback\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      S.after(() => MW.sim.reset('billagg'));\\n      await MW.callbacks.billaggCallbacks('ONCE');\\n      await S.billPay('customer01', 'DESCO', '1234567', 66700, MW.pin);\\n      await S.appShows('COMPLETED', 25);\\n      await S.changedBy({ '01711000001': -67000, 'SETTLEMENT': 66700, 'FEE-POOL': 300 });\\n      await S.noHold('01711000001');\\n      await S.auditStates('RECEIVED, VALIDATING, HOLDING, PARTNER_PENDING, COMMITTING, COMPLETED', true);\\n      await S.noLateCallback();\\n    })\")), null);"
+                  "MW.run(\"[billpay callback] a callback-only payment is completed by the aggregator's callback\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      S.after(() => MW.sim.reset('billagg'));\\n      await MW.callbacks.billaggCallbacks('ONCE');\\n      await S.billPay('customer01', 'DESCO', '1234567', 66700, MW.pin);\\n      await S.appShows('COMPLETED', 25);\\n      await S.changedBy({ '01711000001': -67000, 'SETTLEMENT': 66700, 'FEE_INCOME': 261 });\\n      await S.noHold('01711000001');\\n      await S.auditStates('RECEIVED, VALIDATING, HOLDING, PARTNER_PENDING, COMMITTING, COMPLETED', true);\\n      await S.noLateCallback();\\n    })\")), null);"
                 ]
               }
             }
@@ -1404,7 +1404,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[billpay callback] a refusal reported by callback releases the hold\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      S.after(() => MW.sim.reset('billagg'));\\n      await MW.callbacks.billaggCallbacks('ONCE');\\n      await S.billPay('customer01', 'DESCO', '1234999', 10000, MW.pin);\\n      await S.appShows('FAILED', 25, 'MW-PTR-BILLAGG-PAYMENT_REFUSED');\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                  "MW.run(\"[billpay callback] a refusal reported by callback releases the hold\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      S.after(() => MW.sim.reset('billagg'));\\n      await MW.callbacks.billaggCallbacks('ONCE');\\n      await S.billPay('customer01', 'DESCO', '1234999', 10000, MW.pin);\\n      await S.appShows('FAILED', 25, 'MW-PTR-BILLAGG-PAYMENT_REFUSED');\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n    })\")), null);"
                 ]
               }
             }
@@ -1425,7 +1425,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[billpay callback] a duplicate callback has no second effect\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      S.after(() => MW.sim.reset('billagg'));\\n      await MW.callbacks.billaggCallbacks('DUPLICATE');\\n      await S.billPay('customer01', 'DESCO', '1234567', 5100, MW.pin);\\n      await S.appShows('COMPLETED', 25);\\n      const target = await MW.sim.replay('billagg', MW.callbacks.reference(S.txnId()));\\n      S.eq('the replayed callback was acknowledged', target, 200);\\n      await S.appShows('COMPLETED');\\n      await S.changedBy({ '01711000001': -5400, 'SETTLEMENT': 5100, 'FEE-POOL': 300 });\\n      await S.auditStates('RECEIVED, VALIDATING, HOLDING, PARTNER_PENDING, COMMITTING, COMPLETED', true);\\n      await S.noLateCallback();\\n    })\")), null);"
+                  "MW.run(\"[billpay callback] a duplicate callback has no second effect\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      S.after(() => MW.sim.reset('billagg'));\\n      await MW.callbacks.billaggCallbacks('DUPLICATE');\\n      await S.billPay('customer01', 'DESCO', '1234567', 5100, MW.pin);\\n      await S.appShows('COMPLETED', 25);\\n      const target = await MW.sim.replay('billagg', MW.callbacks.reference(S.txnId()));\\n      S.eq('the replayed callback was acknowledged', target, 200);\\n      await S.appShows('COMPLETED');\\n      await S.changedBy({ '01711000001': -5400, 'SETTLEMENT': 5100, 'FEE_INCOME': 261 });\\n      await S.auditStates('RECEIVED, VALIDATING, HOLDING, PARTNER_PENDING, COMMITTING, COMPLETED', true);\\n      await S.noLateCallback();\\n    })\")), null);"
                 ]
               }
             }
@@ -1446,7 +1446,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[billpay callback] a stale PENDING callback after the outcome changes nothing\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      S.after(() => MW.sim.reset('billagg'));\\n      await MW.callbacks.billaggCallbacks('OUT_OF_ORDER');\\n      await S.billPay('customer01', 'DESCO', '1234567', 5200, MW.pin);\\n      await S.appShows('COMPLETED', 25);\\n      await S.auditCallback('partner.callback.late', 'SUCCESS', 'PENDING', 30);\\n      await S.appShows('COMPLETED');\\n      await S.changedBy({ '01711000001': -5500, 'SETTLEMENT': 5200, 'FEE-POOL': 300 });\\n    })\")), null);"
+                  "MW.run(\"[billpay callback] a stale PENDING callback after the outcome changes nothing\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      S.after(() => MW.sim.reset('billagg'));\\n      await MW.callbacks.billaggCallbacks('OUT_OF_ORDER');\\n      await S.billPay('customer01', 'DESCO', '1234567', 5200, MW.pin);\\n      await S.appShows('COMPLETED', 25);\\n      await S.auditCallback('partner.callback.late', 'SUCCESS', 'PENDING', 30);\\n      await S.appShows('COMPLETED');\\n      await S.changedBy({ '01711000001': -5500, 'SETTLEMENT': 5200, 'FEE_INCOME': 261 });\\n    })\")), null);"
                 ]
               }
             }
@@ -1467,7 +1467,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[billpay callback tsq] a late callback after the status inquiry resolved the payment is recorded and changes nothing\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      S.after(() => MW.sim.reset('billagg'));\\n      await MW.callbacks.billaggCallbacks('LATE', MW.ocsLimit() <= 5000 ? 20000 : 90000);\\n      await S.billPay('customer01', 'DESCO', '1234567', 5300, MW.pin);\\n      await S.appShows('COMPLETED', 120);\\n      await S.auditCallback('partner.callback.late', 'SUCCESS', 'SUCCESS', 100);\\n      await S.appShows('COMPLETED');\\n      await S.changedBy({ '01711000001': -5600, 'SETTLEMENT': 5300, 'FEE-POOL': 300 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                  "MW.run(\"[billpay callback tsq] a late callback after the status inquiry resolved the payment is recorded and changes nothing\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      S.after(() => MW.sim.reset('billagg'));\\n      await MW.callbacks.billaggCallbacks('LATE', MW.ocsLimit() <= 5000 ? 20000 : 90000);\\n      await S.billPay('customer01', 'DESCO', '1234567', 5300, MW.pin);\\n      await S.appShows('COMPLETED', 120);\\n      await S.auditCallback('partner.callback.late', 'SUCCESS', 'SUCCESS', 100);\\n      await S.appShows('COMPLETED');\\n      await S.changedBy({ '01711000001': -5600, 'SETTLEMENT': 5300, 'FEE_INCOME': 261 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
                 ]
               }
             }
@@ -1488,7 +1488,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[billpay callback] a late callback contradicting the resolution is recorded as a conflict and changes nothing\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      S.after(() => MW.sim.reset('billagg'));\\n      await MW.callbacks.billaggCallbacks('ONCE');\\n      await S.billPay('customer01', 'DESCO', '1234567', 5400, MW.pin);\\n      await S.appShows('COMPLETED', 25);\\n      const cb = await MW.callbacks.send(MW.callbacks.body(MW.callbacks.reference(S.txnId()), 'FAILED', '3003'), MW.v('billaggSecret'));\\n      S.status(200, cb);\\n      await S.auditCallback('txn.outcome.conflict', 'FAILURE', 'FAILED', 30);\\n      await S.appShows('COMPLETED');\\n      await S.changedBy({ '01711000001': -5700, 'SETTLEMENT': 5400, 'FEE-POOL': 300 });\\n    })\")), null);"
+                  "MW.run(\"[billpay callback] a late callback contradicting the resolution is recorded as a conflict and changes nothing\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      S.after(() => MW.sim.reset('billagg'));\\n      await MW.callbacks.billaggCallbacks('ONCE');\\n      await S.billPay('customer01', 'DESCO', '1234567', 5400, MW.pin);\\n      await S.appShows('COMPLETED', 25);\\n      const cb = await MW.callbacks.send(MW.callbacks.body(MW.callbacks.reference(S.txnId()), 'FAILED', '3003'), MW.v('billaggSecret'));\\n      S.status(200, cb);\\n      await S.auditCallback('txn.outcome.conflict', 'FAILURE', 'FAILED', 30);\\n      await S.appShows('COMPLETED');\\n      await S.changedBy({ '01711000001': -5700, 'SETTLEMENT': 5400, 'FEE_INCOME': 261 });\\n    })\")), null);"
                 ]
               }
             }
@@ -1509,7 +1509,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[billpay callback] a callback with a bad signature is rejected and changes nothing\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      S.after(() => MW.sim.reset('billagg'));\\n      await MW.callbacks.billaggCallbacks('ONCE');\\n      await S.billPay('customer01', 'DESCO', '1234567', 5500, MW.pin);\\n      await S.appShows('COMPLETED', 25);\\n      const cb = await MW.callbacks.send(MW.callbacks.body(MW.callbacks.reference(S.txnId()), 'FAILED', '3003'), 'not-the-partner-secret');\\n      S.status(401, cb);\\n      S.code('MW-AUTH-001', cb);\\n      await S.noLateCallback();\\n      await S.appShows('COMPLETED');\\n    })\")), null);"
+                  "MW.run(\"[billpay callback] a callback with a bad signature is rejected and changes nothing\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      S.after(() => MW.sim.reset('billagg'));\\n      await MW.callbacks.billaggCallbacks('ONCE');\\n      await S.billPay('customer01', 'DESCO', '1234567', 5500, MW.pin);\\n      await S.appShows('COMPLETED', 25);\\n      const cb = await MW.callbacks.send(MW.callbacks.body(MW.callbacks.reference(S.txnId()), 'FAILED', '3003'), 'not-the-partner-secret');\\n      S.status(401, cb);\\n      S.code('MW-AUTH-001', cb);\\n      await S.noLateCallback();\\n      await S.appShows('COMPLETED');\\n    })\")), null);"
                 ]
               }
             }
@@ -1536,7 +1536,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[addmoney c2w] a confirmed debit credits the wallet once and holds nothing\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.sim.reset('c2wbank'));\\n      await MW.callbacks.bankCallbacks('ONCE');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.addMoney('customer01', 'c2wbank', '1234567890123', 50000, MW.pin);\\n      await S.appShows('COMPLETED', 25);\\n      await S.changedBy({ '01711000001': 50000, 'SETTLEMENT': -50000, 'FEE-POOL': 0 });\\n      await S.noHold('01711000001');\\n      await S.auditStates('RECEIVED, VALIDATING, PARTNER_PENDING, COMMITTING, COMPLETED', true);\\n      await S.auditPartnerCall('mw-adapter-bank');\\n    })\")), null);"
+                  "MW.run(\"[addmoney c2w] a confirmed debit credits the wallet once and holds nothing\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.sim.reset('c2wbank'));\\n      await MW.callbacks.bankCallbacks('ONCE');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.addMoney('customer01', 'c2wbank', '1234567890123', 50000, MW.pin);\\n      await S.appShows('COMPLETED', 25);\\n      await S.changedBy({ '01711000001': 50000, 'SETTLEMENT': -50000, 'FEE_INCOME': 0 });\\n      await S.noHold('01711000001');\\n      await S.auditStates('RECEIVED, VALIDATING, PARTNER_PENDING, COMMITTING, COMPLETED', true);\\n      await S.auditPartnerCall('mw-adapter-bank');\\n    })\")), null);"
                 ]
               }
             }
@@ -1557,7 +1557,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[addmoney c2w callback] a replayed bank callback has no second effect\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.sim.reset('c2wbank'));\\n      await MW.callbacks.bankCallbacks('ONCE');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.addMoney('customer01', 'c2wbank', '1234567890123', 51000, MW.pin);\\n      await S.appShows('COMPLETED', 25);\\n      S.eq('the replayed callback was acknowledged', await MW.sim.replay('c2wbank', MW.callbacks.reference(S.txnId())), 200);\\n      await S.appShows('COMPLETED');\\n      await S.changedBy({ '01711000001': 51000, 'SETTLEMENT': -51000, 'FEE-POOL': 0 });\\n      await S.noLateCallback();\\n      await S.auditStates('RECEIVED, VALIDATING, PARTNER_PENDING, COMMITTING, COMPLETED', true);\\n    })\")), null);"
+                  "MW.run(\"[addmoney c2w callback] a replayed bank callback has no second effect\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.sim.reset('c2wbank'));\\n      await MW.callbacks.bankCallbacks('ONCE');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.addMoney('customer01', 'c2wbank', '1234567890123', 51000, MW.pin);\\n      await S.appShows('COMPLETED', 25);\\n      S.eq('the replayed callback was acknowledged', await MW.sim.replay('c2wbank', MW.callbacks.reference(S.txnId())), 200);\\n      await S.appShows('COMPLETED');\\n      await S.changedBy({ '01711000001': 51000, 'SETTLEMENT': -51000, 'FEE_INCOME': 0 });\\n      await S.noLateCallback();\\n      await S.auditStates('RECEIVED, VALIDATING, PARTNER_PENDING, COMMITTING, COMPLETED', true);\\n    })\")), null);"
                 ]
               }
             }
@@ -1578,7 +1578,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[addmoney c2w callback] a callback the bank sends twice credits the wallet once\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.sim.reset('c2wbank'));\\n      await MW.callbacks.bankCallbacks('DUPLICATE');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.addMoney('customer01', 'c2wbank', '1234567890123', 52000, MW.pin);\\n      await S.appShows('COMPLETED', 25);\\n      await S.changedBy({ '01711000001': 52000, 'SETTLEMENT': -52000, 'FEE-POOL': 0 });\\n      await S.noLateCallback();\\n    })\")), null);"
+                  "MW.run(\"[addmoney c2w callback] a callback the bank sends twice credits the wallet once\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.sim.reset('c2wbank'));\\n      await MW.callbacks.bankCallbacks('DUPLICATE');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.addMoney('customer01', 'c2wbank', '1234567890123', 52000, MW.pin);\\n      await S.appShows('COMPLETED', 25);\\n      await S.changedBy({ '01711000001': 52000, 'SETTLEMENT': -52000, 'FEE_INCOME': 0 });\\n      await S.noLateCallback();\\n    })\")), null);"
                 ]
               }
             }
@@ -1599,7 +1599,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[addmoney c2w] a debit the bank refuses fails and moves nothing\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.sim.reset('c2wbank'));\\n      await MW.callbacks.bankCallbacks('ONCE');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.addMoney('customer01', 'c2wbank', '1234567890999', 50000, MW.pin);\\n      await S.appShows('FAILED', 25, 'MW-PTR-C2WBANK-DEBIT_REFUSED');\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                  "MW.run(\"[addmoney c2w] a debit the bank refuses fails and moves nothing\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.sim.reset('c2wbank'));\\n      await MW.callbacks.bankCallbacks('ONCE');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.addMoney('customer01', 'c2wbank', '1234567890999', 50000, MW.pin);\\n      await S.appShows('FAILED', 25, 'MW-PTR-C2WBANK-DEBIT_REFUSED');\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n    })\")), null);"
                 ]
               }
             }
@@ -1620,7 +1620,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[addmoney c2w] a wrong PIN is refused by mw-auth and the bank is never asked\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.sim.reset('c2wbank'));\\n      await MW.callbacks.bankCallbacks('ONCE');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.addMoney('customer01', 'c2wbank', '1234567890123', 50000, MW.WRONG_PIN);\\n      S.status(401);\\n      S.code('MW-AUTH-040');\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[addmoney c2w] a wrong PIN is refused by mw-auth and the bank is never asked\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.sim.reset('c2wbank'));\\n      await MW.callbacks.bankCallbacks('ONCE');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.addMoney('customer01', 'c2wbank', '1234567890123', 50000, MW.WRONG_PIN);\\n      S.status(401);\\n      S.code('MW-AUTH-040');\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -1641,7 +1641,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[addmoney c2w tsq] a bank timeout is resolved by status inquiry and the wallet is credited\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.sim.reset('c2wbank'));\\n      await MW.callbacks.bankCallbacks('ONCE');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.addMoney('customer01', 'c2wbank', '1234567890123', 50013, MW.pin);\\n      await S.appShows('COMPLETED', 120);\\n      await S.changedBy({ '01711000001': 50013, 'SETTLEMENT': -50013, 'FEE-POOL': 0 });\\n      await S.noHold('01711000001');\\n      await S.auditStates('RECEIVED, VALIDATING, PARTNER_PENDING, UNKNOWN, COMMITTING, COMPLETED', true);\\n    })\")), null);"
+                  "MW.run(\"[addmoney c2w tsq] a bank timeout is resolved by status inquiry and the wallet is credited\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.sim.reset('c2wbank'));\\n      await MW.callbacks.bankCallbacks('ONCE');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.addMoney('customer01', 'c2wbank', '1234567890123', 50013, MW.pin);\\n      await S.appShows('COMPLETED', 120);\\n      await S.changedBy({ '01711000001': 50013, 'SETTLEMENT': -50013, 'FEE_INCOME': 0 });\\n      await S.noHold('01711000001');\\n      await S.auditStates('RECEIVED, VALIDATING, PARTNER_PENDING, UNKNOWN, COMMITTING, COMPLETED', true);\\n    })\")), null);"
                 ]
               }
             }
@@ -1662,7 +1662,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[addmoney c2w] an add-money request sent twice with the same idempotency key credits the wallet once\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.sim.reset('c2wbank'));\\n      await MW.callbacks.bankCallbacks('ONCE');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.addMoney('customer01', 'c2wbank', '1234567890123', 53000, MW.pin);\\n      await S.repeat();\\n      S.sameTxnId();\\n      await S.appShows('COMPLETED', 25);\\n      await S.changedBy({ '01711000001': 53000, 'SETTLEMENT': -53000, 'FEE-POOL': 0 });\\n    })\")), null);"
+                  "MW.run(\"[addmoney c2w] an add-money request sent twice with the same idempotency key credits the wallet once\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.sim.reset('c2wbank'));\\n      await MW.callbacks.bankCallbacks('ONCE');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.addMoney('customer01', 'c2wbank', '1234567890123', 53000, MW.pin);\\n      await S.repeat();\\n      S.sameTxnId();\\n      await S.appShows('COMPLETED', 25);\\n      await S.changedBy({ '01711000001': 53000, 'SETTLEMENT': -53000, 'FEE_INCOME': 0 });\\n    })\")), null);"
                 ]
               }
             }
@@ -1683,7 +1683,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[addmoney c2w tsq] a bank timeout the debit did not survive is resolved by status inquiry and fails\", eval(MW.forRun(\";(async (MW, S) => {\\n      await MW.callbacks.bankCallbacks('ONCE');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.lateUnapplied('c2wbank');\\n      await S.addMoney('customer01', 'c2wbank', '1234567890123', 50000, MW.pin);\\n      await S.normalOnceAnswered('c2wbank', '/c2wbank/v1/debits');\\n      await S.appShows('FAILED', 180);\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                  "MW.run(\"[addmoney c2w tsq] a bank timeout the debit did not survive is resolved by status inquiry and fails\", eval(MW.forRun(\";(async (MW, S) => {\\n      await MW.callbacks.bankCallbacks('ONCE');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.lateUnapplied('c2wbank');\\n      await S.addMoney('customer01', 'c2wbank', '1234567890123', 50000, MW.pin);\\n      await S.normalOnceAnswered('c2wbank', '/c2wbank/v1/debits');\\n      await S.appShows('FAILED', 180);\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n    })\")), null);"
                 ]
               }
             }
@@ -2232,7 +2232,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[reversal] a completed P2P is reversed and every balance is restored\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await MW.testApi.reverse(S.txnId());\\n      await S.appShows('REVERSED');\\n      await S.noChange();\\n      await S.auditStates('RECEIVED, VALIDATING, POSTING, COMPLETED, REVERSING, REVERSED');\\n      await S.chainVerifies();\\n    })\")), null);"
+                  "MW.run(\"[reversal] a completed P2P is reversed and every balance is restored\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await MW.testApi.reverse(S.txnId());\\n      await S.appShows('REVERSED');\\n      await S.noChange();\\n      await S.auditStates('RECEIVED, VALIDATING, POSTING, COMPLETED, REVERSING, REVERSED');\\n      await S.chainVerifies();\\n    })\")), null);"
                 ]
               }
             }
@@ -2253,7 +2253,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[reversal] a second reversal of the same transaction moves no money again\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      await MW.testApi.reverse(S.txnId());\\n      await S.appShows('REVERSED');\\n      const second = (await MW.testApi.reverse(S.txnId())).body;\\n      const handled = await MW.poll(() => MW.testApi.handled(second.idempotencyKey), r => r.status === 200, 30000, 500);\\n      S.eq('the orchestrator has handled the second reversal request', [handled.status, handled.body && handled.body.handled], [200, true], String(handled));\\n      await S.appShows('REVERSED');\\n      await S.noChange();\\n      await S.auditStates('RECEIVED, VALIDATING, POSTING, COMPLETED, REVERSING, REVERSED');\\n    })\")), null);"
+                  "MW.run(\"[reversal] a second reversal of the same transaction moves no money again\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      await MW.testApi.reverse(S.txnId());\\n      await S.appShows('REVERSED');\\n      const second = (await MW.testApi.reverse(S.txnId())).body;\\n      const handled = await MW.poll(() => MW.testApi.handled(second.idempotencyKey), r => r.status === 200, 30000, 500);\\n      S.eq('the orchestrator has handled the second reversal request', [handled.status, handled.body && handled.body.handled], [200, true], String(handled));\\n      await S.appShows('REVERSED');\\n      await S.noChange();\\n      await S.auditStates('RECEIVED, VALIDATING, POSTING, COMPLETED, REVERSING, REVERSED');\\n    })\")), null);"
                 ]
               }
             }
@@ -2274,7 +2274,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[reversal] a reversal the core refuses goes to manual review with an audit entry\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.reject('ReverseTransaction', 'INSUFFICIENT_BALANCE');\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      await MW.testApi.reverse(S.txnId());\\n      await S.appShows('MANUAL_REVIEW');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE-POOL': 500 });\\n      const rows = await S.auditStates('RECEIVED, VALIDATING, POSTING, COMPLETED, REVERSING, MANUAL_REVIEW');\\n      const mr = rows.find(e => e.after && e.after.status === 'MANUAL_REVIEW');\\n      S.eq('MANUAL_REVIEW carries MW-CORE-INSUFFICIENT_BALANCE', mr.after.errorCode, 'MW-CORE-INSUFFICIENT_BALANCE', mr);\\n    })\")), null);"
+                  "MW.run(\"[reversal] a reversal the core refuses goes to manual review with an audit entry\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.reject('ReverseTransaction', 'INSUFFICIENT_BALANCE');\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      await MW.testApi.reverse(S.txnId());\\n      await S.appShows('MANUAL_REVIEW');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });\\n      const rows = await S.auditStates('RECEIVED, VALIDATING, POSTING, COMPLETED, REVERSING, MANUAL_REVIEW');\\n      const mr = rows.find(e => e.after && e.after.status === 'MANUAL_REVIEW');\\n      S.eq('MANUAL_REVIEW carries MW-CORE-INSUFFICIENT_BALANCE', mr.after.errorCode, 'MW-CORE-INSUFFICIENT_BALANCE', mr);\\n    })\")), null);"
                 ]
               }
             }
@@ -2301,7 +2301,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[admin topup] a top-up in MANUAL_REVIEW is force-committed after a second operator approves\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.reject('CommitHold', 'INJECTED_REJECT');\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);\\n      await S.appShows('MANUAL_REVIEW', 30);\\n      S.crFrom(await MW.admin.ask('ops-e2e-maker01', S.txnId(), 'FORCE_COMMIT', 'OCS confirmed the top-up'));\\n      await S.crIs('PENDING');\\n      S.adminAnswers(await MW.admin.approve('ops-e2e-maker01', S.crId), 403, 'MW-AUTH-002');\\n      await S.adminShows('MANUAL_REVIEW', 5);\\n      await MW.admin.approve('ops-e2e-checker01', S.crId);\\n      await S.crIs('APPROVED');\\n      await S.appShows('COMPLETED', 30);\\n      await S.changedBy({ '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE-POOL': 200 });\\n      await S.noHold('01711000001');\\n      await S.auditDecision('APPROVED');\\n    })\")), null);"
+                  "MW.run(\"[admin topup] a top-up in MANUAL_REVIEW is force-committed after a second operator approves\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.reject('CommitHold', 'INJECTED_REJECT');\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);\\n      await S.appShows('MANUAL_REVIEW', 30);\\n      S.crFrom(await MW.admin.ask('ops-e2e-maker01', S.txnId(), 'FORCE_COMMIT', 'OCS confirmed the top-up'));\\n      await S.crIs('PENDING');\\n      S.adminAnswers(await MW.admin.approve('ops-e2e-maker01', S.crId), 403, 'MW-AUTH-002');\\n      await S.adminShows('MANUAL_REVIEW', 5);\\n      await MW.admin.approve('ops-e2e-checker01', S.crId);\\n      await S.crIs('APPROVED');\\n      await S.appShows('COMPLETED', 30);\\n      await S.changedBy({ '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174 });\\n      await S.noHold('01711000001');\\n      await S.auditDecision('APPROVED');\\n    })\")), null);"
                 ]
               }
             }
@@ -2322,7 +2322,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[admin reversal] a completed P2P is reversed after a second operator approves\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      S.crFrom(await MW.admin.ask('ops-e2e-maker01', S.txnId(), 'REVERSE', 'customer complaint, wrong number'));\\n      await MW.admin.approve('ops-e2e-checker01', S.crId);\\n      await S.crIs('APPROVED');\\n      await S.appShows('REVERSED', 30);\\n      await S.noChange();\\n      await S.auditDecision('APPROVED');\\n    })\")), null);"
+                  "MW.run(\"[admin reversal] a completed P2P is reversed after a second operator approves\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      S.crFrom(await MW.admin.ask('ops-e2e-maker01', S.txnId(), 'REVERSE', 'customer complaint, wrong number'));\\n      await MW.admin.approve('ops-e2e-checker01', S.crId);\\n      await S.crIs('APPROVED');\\n      await S.appShows('REVERSED', 30);\\n      await S.noChange();\\n      await S.auditDecision('APPROVED');\\n    })\")), null);"
                 ]
               }
             }
@@ -2370,7 +2370,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[admin operator p2p] an operator finds a P2P by txnId and by MSISDN and sees its timeline and audit trail\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      const id = S.txnId();\\n      const mine = r => ((r.body || {}).items || []).filter(t => t.txnId === id);\\n      const byId = await MW.admin.search('ops-e2e-checker01', 'txnId', id);\\n      S.eq('the search by txnId lists only the transaction', ((byId.body || {}).items || []).map(t => t.txnId), [id], String(byId));\\n      S.eq('found COMPLETED, initiator masked 0171****001', mine(byId).map(t => [t.status, t.initiator.id]), [['COMPLETED', '0171****001']]);\\n      const byMsisdn = await MW.poll(() => MW.admin.search('ops-e2e-checker01', 'msisdn', '+8801711000001', 'P2P'), r => r.status === 200 && mine(r).length > 0, 10000, 700);\\n      S.eq('the search by MSISDN +8801711000001 finds it COMPLETED, masked', mine(byMsisdn).map(t => [t.status, t.initiator.id]), [['COMPLETED', '0171****001']], String(byMsisdn));\\n      const d = await MW.admin.txn('ops-e2e-checker01', id);\\n      S.status(200, d);\\n      const states = d.body.timeline.filter(e => e.kind === 'STATE').map(e => e.to);\\n      const want = ['VALIDATING', 'POSTING', 'COMPLETED'];\\n      let i = 0;\\n      states.forEach(s => { if (s === want[i]) i++; });\\n      S.check('the admin timeline shows the states VALIDATING, POSTING, COMPLETED (in order, last COMPLETED)', i === want.length && states[states.length - 1] === 'COMPLETED', states);\\n      S.check('the admin timeline shows the core command PostTransfer', d.body.timeline.some(e => e.kind === 'CORE' && e.command === 'PostTransfer'), d.body.timeline);\\n      await S.auditStates('RECEIVED, VALIDATING, POSTING, COMPLETED');\\n    })\")), null);"
+                  "MW.run(\"[admin operator p2p] an operator finds a P2P by txnId and by MSISDN and sees its timeline and audit trail\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      const id = S.txnId();\\n      const mine = r => ((r.body || {}).items || []).filter(t => t.txnId === id);\\n      const byId = await MW.admin.search('ops-e2e-checker01', 'txnId', id);\\n      S.eq('the search by txnId lists only the transaction', ((byId.body || {}).items || []).map(t => t.txnId), [id], String(byId));\\n      S.eq('found COMPLETED, initiator masked 0171****001', mine(byId).map(t => [t.status, t.initiator.id]), [['COMPLETED', '0171****001']]);\\n      const byMsisdn = await MW.poll(() => MW.admin.search('ops-e2e-checker01', 'msisdn', '+8801711000001', 'P2P'), r => r.status === 200 && mine(r).length > 0, 10000, 700);\\n      S.eq('the search by MSISDN +8801711000001 finds it COMPLETED, masked', mine(byMsisdn).map(t => [t.status, t.initiator.id]), [['COMPLETED', '0171****001']], String(byMsisdn));\\n      const d = await MW.admin.txn('ops-e2e-checker01', id);\\n      S.status(200, d);\\n      const states = d.body.timeline.filter(e => e.kind === 'STATE').map(e => e.to);\\n      const want = ['VALIDATING', 'POSTING', 'COMPLETED'];\\n      let i = 0;\\n      states.forEach(s => { if (s === want[i]) i++; });\\n      S.check('the admin timeline shows the states VALIDATING, POSTING, COMPLETED (in order, last COMPLETED)', i === want.length && states[states.length - 1] === 'COMPLETED', states);\\n      S.check('the admin timeline shows the core command PostTransfer', d.body.timeline.some(e => e.kind === 'CORE' && e.command === 'PostTransfer'), d.body.timeline);\\n      await S.auditStates('RECEIVED, VALIDATING, POSTING, COMPLETED');\\n    })\")), null);"
                 ]
               }
             }
@@ -2391,7 +2391,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[admin operator reversal] an operator finds a P2P by MSISDN and reverses it once a second operator approves\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      const id = S.txnId();\\n      const mine = r => ((r.body || {}).items || []).filter(t => t.txnId === id);\\n      const byMsisdn = await MW.poll(() => MW.admin.search('ops-e2e-maker01', 'msisdn', '01711000001', 'P2P'), r => r.status === 200 && mine(r).length > 0, 10000, 700);\\n      S.eq('the search by MSISDN 01711000001 finds it COMPLETED, masked', mine(byMsisdn).map(t => [t.status, t.initiator.id]), [['COMPLETED', '0171****001']], String(byMsisdn));\\n      S.crFrom(await MW.admin.ask('ops-e2e-maker01', id, 'REVERSE', 'customer reported a wrong number'));\\n      await S.crIs('PENDING');\\n      await S.adminShows('COMPLETED', 5);\\n      await MW.admin.approve('ops-e2e-checker01', S.crId);\\n      await S.crIs('APPROVED');\\n      await S.adminShows('REVERSED', 30);\\n      await S.noChange();\\n      const byId = await MW.admin.search('ops-e2e-checker01', 'txnId', id);\\n      S.eq('the search by txnId finds it REVERSED, masked', mine(byId).map(t => [t.status, t.initiator.id]), [['REVERSED', '0171****001']], String(byId));\\n      await S.auditDecision('APPROVED');\\n      await S.auditStates('RECEIVED, VALIDATING, POSTING, COMPLETED, REVERSING, REVERSED');\\n    })\")), null);"
+                  "MW.run(\"[admin operator reversal] an operator finds a P2P by MSISDN and reverses it once a second operator approves\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      const id = S.txnId();\\n      const mine = r => ((r.body || {}).items || []).filter(t => t.txnId === id);\\n      const byMsisdn = await MW.poll(() => MW.admin.search('ops-e2e-maker01', 'msisdn', '01711000001', 'P2P'), r => r.status === 200 && mine(r).length > 0, 10000, 700);\\n      S.eq('the search by MSISDN 01711000001 finds it COMPLETED, masked', mine(byMsisdn).map(t => [t.status, t.initiator.id]), [['COMPLETED', '0171****001']], String(byMsisdn));\\n      S.crFrom(await MW.admin.ask('ops-e2e-maker01', id, 'REVERSE', 'customer reported a wrong number'));\\n      await S.crIs('PENDING');\\n      await S.adminShows('COMPLETED', 5);\\n      await MW.admin.approve('ops-e2e-checker01', S.crId);\\n      await S.crIs('APPROVED');\\n      await S.adminShows('REVERSED', 30);\\n      await S.noChange();\\n      const byId = await MW.admin.search('ops-e2e-checker01', 'txnId', id);\\n      S.eq('the search by txnId finds it REVERSED, masked', mine(byId).map(t => [t.status, t.initiator.id]), [['REVERSED', '0171****001']], String(byId));\\n      await S.auditDecision('APPROVED');\\n      await S.auditStates('RECEIVED, VALIDATING, POSTING, COMPLETED, REVERSING, REVERSED');\\n    })\")), null);"
                 ]
               }
             }
@@ -2418,7 +2418,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[admin partner-config topup] a disabled telco partner refuses top-ups, and works again once enabled\", eval(MW.forRun(\"async function change(MW, S, partnerId, body) {\\n  const asked = await MW.admin.askPartner('ops-e2e-maker01', partnerId, body);\\n  S.eq('partner change request created (201)', asked.status, 201, String(asked));\\n  const own = await MW.admin.approve('ops-e2e-maker01', asked.body.id);\\n  S.eq('the maker cannot approve it (403)', own.status, 403, String(own));\\n  const approved = await MW.admin.approve('ops-e2e-checker01', asked.body.id);\\n  S.eq('the checker approves it', [approved.status, approved.body && approved.body.status], [200, 'APPROVED'], String(approved));\\n  const version = approved.body.payload.version;\\n  S.check('the published version goes up', version > (S.partnerVersion || 0), version);\\n  S.partnerVersion = version;\\n  const view = await MW.admin.partner('ops-e2e-checker01', partnerId);\\n  S.eq('the partner shows the published version', view.body && view.body.version, version);\\n}\\nfunction restoreAfter(MW, S, partnerId) {\\n  S.after(async () => {\\n    for (const b of [{ action: 'ENABLE', reason: 'api: restore' }, { action: 'SET_TIMEOUTS', reason: 'api: restore', timeouts: { timeoutMs: MW.ocsLimit() } }]) {\\n      const asked = await MW.admin.askPartner('ops-e2e-maker01', partnerId, b);\\n      if (asked.status === 201) await MW.admin.approve('ops-e2e-checker01', asked.body.id); // 409: nothing to change\\n    }\\n  });\\n}\\n;(async (MW, S) => {\\n      restoreAfter(MW, S, 'ocs');\\n      await change(MW, S, 'ocs', { action: 'DISABLE', reason: 'api: partner incident' });\\n      // retried until the adapter took the change: a top-up that still went through is not checked\\n      await MW.poll(async () => {\\n        S.responses = [];\\n        await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);\\n        return S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);\\n      }, x => !!x.body && x.body.code === 'MW-SYS-PARTNER_DISABLED', 30000, 1000);\\n      S.code('MW-SYS-PARTNER_DISABLED');\\n      await S.appShows('FAILED');\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n      await change(MW, S, 'ocs', { action: 'ENABLE', reason: 'api: partner back' });\\n      const ok = await MW.poll(async () => { S.responses = []; return S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin); },\\n        x => x.status === 200, 30000, 1000);\\n      S.status(200, ok);\\n      S.txnStatus('COMPLETED');\\n    })\")), null);"
+                  "MW.run(\"[admin partner-config topup] a disabled telco partner refuses top-ups, and works again once enabled\", eval(MW.forRun(\"async function change(MW, S, partnerId, body) {\\n  const asked = await MW.admin.askPartner('ops-e2e-maker01', partnerId, body);\\n  S.eq('partner change request created (201)', asked.status, 201, String(asked));\\n  const own = await MW.admin.approve('ops-e2e-maker01', asked.body.id);\\n  S.eq('the maker cannot approve it (403)', own.status, 403, String(own));\\n  const approved = await MW.admin.approve('ops-e2e-checker01', asked.body.id);\\n  S.eq('the checker approves it', [approved.status, approved.body && approved.body.status], [200, 'APPROVED'], String(approved));\\n  const version = approved.body.payload.version;\\n  S.check('the published version goes up', version > (S.partnerVersion || 0), version);\\n  S.partnerVersion = version;\\n  const view = await MW.admin.partner('ops-e2e-checker01', partnerId);\\n  S.eq('the partner shows the published version', view.body && view.body.version, version);\\n}\\nfunction restoreAfter(MW, S, partnerId) {\\n  S.after(async () => {\\n    for (const b of [{ action: 'ENABLE', reason: 'api: restore' }, { action: 'SET_TIMEOUTS', reason: 'api: restore', timeouts: { timeoutMs: MW.ocsLimit() } }]) {\\n      const asked = await MW.admin.askPartner('ops-e2e-maker01', partnerId, b);\\n      if (asked.status === 201) await MW.admin.approve('ops-e2e-checker01', asked.body.id); // 409: nothing to change\\n    }\\n  });\\n}\\n;(async (MW, S) => {\\n      restoreAfter(MW, S, 'ocs');\\n      await change(MW, S, 'ocs', { action: 'DISABLE', reason: 'api: partner incident' });\\n      // retried until the adapter took the change: a top-up that still went through is not checked\\n      await MW.poll(async () => {\\n        S.responses = [];\\n        await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n        return S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);\\n      }, x => !!x.body && x.body.code === 'MW-SYS-PARTNER_DISABLED', 30000, 1000);\\n      S.code('MW-SYS-PARTNER_DISABLED');\\n      await S.appShows('FAILED');\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n      await change(MW, S, 'ocs', { action: 'ENABLE', reason: 'api: partner back' });\\n      const ok = await MW.poll(async () => { S.responses = []; return S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin); },\\n        x => x.status === 200, 30000, 1000);\\n      S.status(200, ok);\\n      S.txnStatus('COMPLETED');\\n    })\")), null);"
                 ]
               }
             }
@@ -2541,7 +2541,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[ussd p2p] a P2P over USSD in English completes and moves the money once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 1, 01711000002, 10, 1, ' + MW.pin);\\n      S.ussdScreens([\\n        'Bits\\\\n1 সেন্ড মানি\\\\n2 ক্যাশ আউট\\\\n3 রিচার্জ\\\\n4 বিল পে\\\\n5 ব্যালেন্স\\\\n9 English',\\n        'Bits\\\\n1 Send Money\\\\n2 Cash Out\\\\n3 Recharge\\\\n4 Pay Bill\\\\n5 Balance\\\\n9 বাংলা',\\n        'Enter recipient Bits number',\\n        'Enter amount (Tk)',\\n        'Send Tk 10.00 to 01711000002?\\\\n1 Confirm\\\\n2 Cancel',\\n        'Enter your PIN',\\n      ]);\\n      S.ussdEnds('Tk 10.00 sent to 01711000002. TxnID ');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE-POOL': 500 });\\n    })\")), null);"
+                  "MW.run(\"[ussd p2p] a P2P over USSD in English completes and moves the money once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 1, 01711000002, 10, 1, ' + MW.pin);\\n      S.ussdScreens([\\n        'Bits\\\\n1 সেন্ড মানি\\\\n2 ক্যাশ আউট\\\\n3 রিচার্জ\\\\n4 বিল পে\\\\n5 ব্যালেন্স\\\\n9 English',\\n        'Bits\\\\n1 Send Money\\\\n2 Cash Out\\\\n3 Recharge\\\\n4 Pay Bill\\\\n5 Balance\\\\n9 বাংলা',\\n        'Enter recipient Bits number',\\n        'Enter amount (Tk)',\\n        'Send Tk 10.00 to 01711000002?\\\\n1 Confirm\\\\n2 Cancel',\\n        'Enter your PIN',\\n      ]);\\n      S.ussdEnds('Tk 10.00 sent to 01711000002. TxnID ');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });\\n    })\")), null);"
                 ]
               }
             }
@@ -2562,7 +2562,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[ussd p2p] a P2P over USSD in Bangla completes and moves the money once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.dial('robi', '01711000001', '*269#', '1, 01711000002, 10, 1, ' + MW.pin);\\n      S.ussdEnds('01711000002 নম্বরে 10.00 টাকা পাঠানো হয়েছে।');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE-POOL': 500 });\\n    })\")), null);"
+                  "MW.run(\"[ussd p2p] a P2P over USSD in Bangla completes and moves the money once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '1, 01711000002, 10, 1, ' + MW.pin);\\n      S.ussdEnds('01711000002 নম্বরে 10.00 টাকা পাঠানো হয়েছে।');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });\\n    })\")), null);"
                 ]
               }
             }
@@ -2583,7 +2583,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[ussd] a bad number is refused and asked again, and no money moves\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 1, 12345');\\n      S.ussdOpenOn('Enter a valid mobile number.\\\\nEnter recipient Bits number');\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[ussd] a bad number is refused and asked again, and no money moves\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 1, 12345');\\n      S.ussdOpenOn('Enter a valid mobile number.\\\\nEnter recipient Bits number');\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -2604,7 +2604,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[ussd] a wrong PIN is refused by mw-auth and asked again, the right one then pays once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 1, 01711000002, 10, 1, ' + MW.WRONG_PIN);\\n      S.check('mw-auth refused the PIN and the PIN is asked again (2 tries left)',\\n        S.session.ended === false && (S.session.screens[S.session.screens.length - 1].message || '').startsWith('Wrong PIN. 2 tries left.'),\\n        S.session.screens);\\n      await S.noChange();\\n      await S.dial('robi', '01711000001', '*269#', '9, 1, 01711000002, 10, 1, ' + MW.WRONG_PIN + ', ' + MW.pin);\\n      S.ussdEnds('Tk 10.00 sent to 01711000002. TxnID ');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE-POOL': 500 });\\n    })\")), null);"
+                  "MW.run(\"[ussd] a wrong PIN is refused by mw-auth and asked again, the right one then pays once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 1, 01711000002, 10, 1, ' + MW.WRONG_PIN);\\n      S.check('mw-auth refused the PIN and the PIN is asked again (2 tries left)',\\n        S.session.ended === false && (S.session.screens[S.session.screens.length - 1].message || '').startsWith('Wrong PIN. 2 tries left.'),\\n        S.session.screens);\\n      await S.noChange();\\n      await S.dial('robi', '01711000001', '*269#', '9, 1, 01711000002, 10, 1, ' + MW.WRONG_PIN + ', ' + MW.pin);\\n      S.ussdEnds('Tk 10.00 sent to 01711000002. TxnID ');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });\\n    })\")), null);"
                 ]
               }
             }
@@ -2625,7 +2625,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[ussd] a dial with another MNO's code ends at once with the wrong-code screen, and no money moves\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.dial('robi', '01711000001', '*268#', '1, 01711000002, 10, 1, ' + MW.pin);\\n      S.check('only the dial was answered', S.session.screens.length === 1, S.session.screens);\\n      S.ussdEnds('এই কোডটি এই নেটওয়ার্কে নেই। ডায়াল করুন *269#');\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[ussd] a dial with another MNO's code ends at once with the wrong-code screen, and no money moves\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*268#', '1, 01711000002, 10, 1, ' + MW.pin);\\n      S.check('only the dial was answered', S.session.screens.length === 1, S.session.screens);\\n      S.ussdEnds('এই কোডটি এই নেটওয়ার্কে নেই। ডায়াল করুন *269#');\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -2652,7 +2652,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[ussd topup] a top-up of the own number over USSD in English completes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 3, 1, 20, 1, ' + MW.pin);\\n      S.ussdScreens([\\n        'Bits\\\\n1 সেন্ড মানি\\\\n2 ক্যাশ আউট\\\\n3 রিচার্জ\\\\n4 বিল পে\\\\n5 ব্যালেন্স\\\\n9 English',\\n        'Bits\\\\n1 Send Money\\\\n2 Cash Out\\\\n3 Recharge\\\\n4 Pay Bill\\\\n5 Balance\\\\n9 বাংলা',\\n        'Mobile Recharge\\\\n1 Own number\\\\n2 Other number',\\n        'Enter recharge amount (Tk)',\\n        'Recharge Tk 20.00 to 01711000001?\\\\n1 Confirm\\\\n2 Cancel',\\n        'Enter your PIN',\\n      ]);\\n      S.ussdEnds('Tk 20.00 recharged to 01711000001. TxnID ');\\n      await S.changedBy({ '01711000001': -2200, '01811000001': 0, 'SETTLEMENT': 2000, 'FEE-POOL': 200 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                  "MW.run(\"[ussd topup] a top-up of the own number over USSD in English completes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 3, 1, 20, 1, ' + MW.pin);\\n      S.ussdScreens([\\n        'Bits\\\\n1 সেন্ড মানি\\\\n2 ক্যাশ আউট\\\\n3 রিচার্জ\\\\n4 বিল পে\\\\n5 ব্যালেন্স\\\\n9 English',\\n        'Bits\\\\n1 Send Money\\\\n2 Cash Out\\\\n3 Recharge\\\\n4 Pay Bill\\\\n5 Balance\\\\n9 বাংলা',\\n        'Mobile Recharge\\\\n1 Own number\\\\n2 Other number',\\n        'Enter recharge amount (Tk)',\\n        'Recharge Tk 20.00 to 01711000001?\\\\n1 Confirm\\\\n2 Cancel',\\n        'Enter your PIN',\\n      ]);\\n      S.ussdEnds('Tk 20.00 recharged to 01711000001. TxnID ');\\n      await S.changedBy({ '01711000001': -2200, '01811000001': 0, 'SETTLEMENT': 2000, 'FEE_INCOME': 174 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
                 ]
               }
             }
@@ -2673,7 +2673,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[ussd topup] a top-up of another number over USSD in Bangla completes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.dial('robi', '01711000001', '*269#', '3, 2, 01711000002, 1, 20, 1, ' + MW.pin);\\n      S.ussdEnds('01711000002 নম্বরে 20.00 টাকা রিচার্জ হয়েছে।');\\n      await S.changedBy({ '01711000001': -2200, '01811000001': 0, 'SETTLEMENT': 2000, 'FEE-POOL': 200 });\\n    })\")), null);"
+                  "MW.run(\"[ussd topup] a top-up of another number over USSD in Bangla completes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '3, 2, 01711000002, 1, 20, 1, ' + MW.pin);\\n      S.ussdEnds('01711000002 নম্বরে 20.00 টাকা রিচার্জ হয়েছে।');\\n      await S.changedBy({ '01711000001': -2200, '01811000001': 0, 'SETTLEMENT': 2000, 'FEE_INCOME': 174 });\\n    })\")), null);"
                 ]
               }
             }
@@ -2694,7 +2694,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[ussd topup] an operator refusal over USSD moves no money\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 3, 2, 01711000999, 1, 20, 1, ' + MW.pin);\\n      S.ussdEnds('Recharge failed: ');\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                  "MW.run(\"[ussd topup] an operator refusal over USSD moves no money\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 3, 2, 01711000999, 1, 20, 1, ' + MW.pin);\\n      S.ussdEnds('Recharge failed: ');\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n    })\")), null);"
                 ]
               }
             }
@@ -2715,7 +2715,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[ussd billpay] a bill pay over USSD in English fetches the bill and pays it\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 4, 1, 2, 1234567, 1, ' + MW.pin);\\n      S.ussdScreens([\\n        'Bits\\\\n1 সেন্ড মানি\\\\n2 ক্যাশ আউট\\\\n3 রিচার্জ\\\\n4 বিল পে\\\\n5 ব্যালেন্স\\\\n9 English',\\n        'Bits\\\\n1 Send Money\\\\n2 Cash Out\\\\n3 Recharge\\\\n4 Pay Bill\\\\n5 Balance\\\\n9 বাংলা',\\n        'Select category\\\\n1 Electricity\\\\n2 Water\\\\n3 Gas\\\\n4 Telecom\\\\n5 Internet',\\n        'Select biller\\\\n1 BREB\\\\n2 DESCO\\\\n3 DPDC',\\n        'Enter DESCO bill number',\\n        'Pay Tk 667.00 for DESCO bill 1234567?\\\\n1 Confirm\\\\n2 Cancel',\\n        'Enter your PIN',\\n      ]);\\n      S.ussdEnds('Tk 667.00 paid for DESCO bill 1234567. TxnID ');\\n      await S.changedBy({ '01711000001': -67000, '01811000001': 0, 'SETTLEMENT': 66700, 'FEE-POOL': 300 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                  "MW.run(\"[ussd billpay] a bill pay over USSD in English fetches the bill and pays it\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 4, 1, 2, 1234567, 1, ' + MW.pin);\\n      S.ussdScreens([\\n        'Bits\\\\n1 সেন্ড মানি\\\\n2 ক্যাশ আউট\\\\n3 রিচার্জ\\\\n4 বিল পে\\\\n5 ব্যালেন্স\\\\n9 English',\\n        'Bits\\\\n1 Send Money\\\\n2 Cash Out\\\\n3 Recharge\\\\n4 Pay Bill\\\\n5 Balance\\\\n9 বাংলা',\\n        'Select category\\\\n1 Electricity\\\\n2 Water\\\\n3 Gas\\\\n4 Telecom\\\\n5 Internet',\\n        'Select biller\\\\n1 BREB\\\\n2 DESCO\\\\n3 DPDC',\\n        'Enter DESCO bill number',\\n        'Pay Tk 667.00 for DESCO bill 1234567?\\\\n1 Confirm\\\\n2 Cancel',\\n        'Enter your PIN',\\n      ]);\\n      S.ussdEnds('Tk 667.00 paid for DESCO bill 1234567. TxnID ');\\n      await S.changedBy({ '01711000001': -67000, '01811000001': 0, 'SETTLEMENT': 66700, 'FEE_INCOME': 261 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
                 ]
               }
             }
@@ -2736,7 +2736,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[ussd billpay] a bill pay over USSD in Bangla completes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.dial('robi', '01711000001', '*269#', '4, 1, 2, 1234567, 1, ' + MW.pin);\\n      S.ussdEnds('DESCO বিল 1234567: 667.00 টাকা দেওয়া হয়েছে।');\\n      await S.changedBy({ '01711000001': -67000, '01811000001': 0, 'SETTLEMENT': 66700, 'FEE-POOL': 300 });\\n    })\")), null);"
+                  "MW.run(\"[ussd billpay] a bill pay over USSD in Bangla completes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '4, 1, 2, 1234567, 1, ' + MW.pin);\\n      S.ussdEnds('DESCO বিল 1234567: 667.00 টাকা দেওয়া হয়েছে।');\\n      await S.changedBy({ '01711000001': -67000, '01811000001': 0, 'SETTLEMENT': 66700, 'FEE_INCOME': 261 });\\n    })\")), null);"
                 ]
               }
             }
@@ -2757,7 +2757,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[ussd billpay] an unknown bill number is refused and asked again, and no money moves\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 4, 1, 2, 1234404');\\n      S.ussdOpenEndingWith('\\\\nEnter DESCO bill number');\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[ussd billpay] an unknown bill number is refused and asked again, and no money moves\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 4, 1, 2, 1234404');\\n      S.ussdOpenEndingWith('\\\\nEnter DESCO bill number');\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -2778,7 +2778,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[ussd cash] a customer cash-out to an agent over USSD completes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE-POOL']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 2, 01811000001, 50, 1, ' + MW.pin);\\n      S.ussdEnds('Tk 50.00 cashed out at agent 01811000001. TxnID ');\\n      await S.changedBy({ '01711000001': -6000, '01811000001': 5000, 'SETTLEMENT': 0, 'FEE-POOL': 1000 });\\n    })\")), null);"
+                  "MW.run(\"[ussd cash] a customer cash-out to an agent over USSD completes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 2, 01811000001, 50, 1, ' + MW.pin);\\n      S.ussdEnds('Tk 50.00 cashed out at agent 01811000001. TxnID ');\\n      await S.changedBy({ '01711000001': -6000, '01811000001': 5000, 'SETTLEMENT': 0, 'FEE_INCOME': 435 });\\n    })\")), null);"
                 ]
               }
             }
@@ -2805,7 +2805,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[ussd smpp p2p] a P2P over SMPP USSD walks the same menu and moves the money once\", eval(MW.forRun(\"async function bound(MW, S) {\\n  const b = await MW.poll(() => MW.sim.smppBinds(), x => x.bound >= 1, 90000, 1000);\\n  S.check('mw-ussd is bound to the SMPP USSD gateway', b.bound >= 1, b);\\n  S.bindsBefore = b.binds;\\n  S.refusedBefore = b.refused;\\n}\\n;(async (MW, S) => {\\n      await bound(MW, S);\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.dial('gp', '01711000001', '*268#', '9, 1, 01711000002, 10, 1, ' + MW.pin);\\n      S.ussdScreens([\\n        'Bits\\\\n1 সেন্ড মানি\\\\n2 ক্যাশ আউট\\\\n3 রিচার্জ\\\\n4 বিল পে\\\\n5 ব্যালেন্স\\\\n9 English',\\n        'Bits\\\\n1 Send Money\\\\n2 Cash Out\\\\n3 Recharge\\\\n4 Pay Bill\\\\n5 Balance\\\\n9 বাংলা',\\n        'Enter recipient Bits number',\\n        'Enter amount (Tk)',\\n        'Send Tk 10.00 to 01711000002?\\\\n1 Confirm\\\\n2 Cancel',\\n        'Enter your PIN',\\n      ]);\\n      S.ussdEnds('Tk 10.00 sent to 01711000002. TxnID ');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE-POOL': 500 });\\n    })\")), null);"
+                  "MW.run(\"[ussd smpp p2p] a P2P over SMPP USSD walks the same menu and moves the money once\", eval(MW.forRun(\"async function bound(MW, S) {\\n  const b = await MW.poll(() => MW.sim.smppBinds(), x => x.bound >= 1, 90000, 1000);\\n  S.check('mw-ussd is bound to the SMPP USSD gateway', b.bound >= 1, b);\\n  S.bindsBefore = b.binds;\\n  S.refusedBefore = b.refused;\\n}\\n;(async (MW, S) => {\\n      await bound(MW, S);\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.dial('gp', '01711000001', '*268#', '9, 1, 01711000002, 10, 1, ' + MW.pin);\\n      S.ussdScreens([\\n        'Bits\\\\n1 সেন্ড মানি\\\\n2 ক্যাশ আউট\\\\n3 রিচার্জ\\\\n4 বিল পে\\\\n5 ব্যালেন্স\\\\n9 English',\\n        'Bits\\\\n1 Send Money\\\\n2 Cash Out\\\\n3 Recharge\\\\n4 Pay Bill\\\\n5 Balance\\\\n9 বাংলা',\\n        'Enter recipient Bits number',\\n        'Enter amount (Tk)',\\n        'Send Tk 10.00 to 01711000002?\\\\n1 Confirm\\\\n2 Cancel',\\n        'Enter your PIN',\\n      ]);\\n      S.ussdEnds('Tk 10.00 sent to 01711000002. TxnID ');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });\\n    })\")), null);"
                 ]
               }
             }
@@ -2826,7 +2826,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[ussd smpp] a bad number is asked again over SMPP and no money moves\", eval(MW.forRun(\"async function bound(MW, S) {\\n  const b = await MW.poll(() => MW.sim.smppBinds(), x => x.bound >= 1, 90000, 1000);\\n  S.check('mw-ussd is bound to the SMPP USSD gateway', b.bound >= 1, b);\\n  S.bindsBefore = b.binds;\\n  S.refusedBefore = b.refused;\\n}\\n;(async (MW, S) => {\\n      await bound(MW, S);\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.dial('gp', '01711000001', '*268#', '9, 1, 12345');\\n      S.ussdOpenOn('Enter a valid mobile number.\\\\nEnter recipient Bits number');\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[ussd smpp] a bad number is asked again over SMPP and no money moves\", eval(MW.forRun(\"async function bound(MW, S) {\\n  const b = await MW.poll(() => MW.sim.smppBinds(), x => x.bound >= 1, 90000, 1000);\\n  S.check('mw-ussd is bound to the SMPP USSD gateway', b.bound >= 1, b);\\n  S.bindsBefore = b.binds;\\n  S.refusedBefore = b.refused;\\n}\\n;(async (MW, S) => {\\n      await bound(MW, S);\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.dial('gp', '01711000001', '*268#', '9, 1, 12345');\\n      S.ussdOpenOn('Enter a valid mobile number.\\\\nEnter recipient Bits number');\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -3450,7 +3450,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[assertion p2p] a wrong PIN is refused by mw-auth before the saga: the orchestrator never sees the request\", eval(MW.forRun(\"async function checkoutSession(MW, S, amount) {\\n  const orderId = 'API-' + MW.uuid();\\n  const secret = MW.v('checkoutSecret');\\n  const r = S.record(await MW.checkout.create(MW.checkout.sessionBody(orderId, amount), secret));\\n  S.eq('session created OPEN (201)', [r.status, r.body && r.body.status], [201, 'OPEN'], String(r));\\n  const co = { orderId, amount, sessionId: r.body.sessionId, token: r.body.checkoutUrl.slice(r.body.checkoutUrl.lastIndexOf('/') + 1) };\\n  const taka = (Math.floor(amount / 100)) + '.' + String(amount % 100).padStart(2, '0');\\n  const re = /Your Bits code is ([0-9]{6}) to pay Tk ([0-9.]+) to Karim Traders/;\\n  const codes = async w => (await MW.sim.sms(w)).map(m => re.exec(m.text || '')).filter(m => m && m[2] === taka).map(m => m[1]);\\n  co.otp = async wallet => {\\n    const before = await codes(wallet);\\n    const o = S.record(await MW.checkout.otp(co.token, wallet));\\n    S.status(202, o);\\n    const fresh = await MW.poll(async () => (await codes(wallet)).filter(c => !before.includes(c)), l => l.length > 0, 30000, 700);\\n    S.eq('one new OTP SMS to ' + wallet, fresh.length, 1, fresh);\\n    co.code = fresh[0];\\n  };\\n  return co;\\n}\\n;(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.WRONG_PIN);\\n      S.status(401);\\n      S.code('MW-AUTH-040');\\n      const handled = await MW.testApi.handled(S.idem);\\n      S.eq('no request with that idempotency key reached mw-orchestrator', handled.status, 404, String(handled));\\n      await S.noChange();\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n    })\")), null);"
+                  "MW.run(\"[assertion p2p] a wrong PIN is refused by mw-auth before the saga: the orchestrator never sees the request\", eval(MW.forRun(\"async function checkoutSession(MW, S, amount) {\\n  const orderId = 'API-' + MW.uuid();\\n  const secret = MW.v('checkoutSecret');\\n  const r = S.record(await MW.checkout.create(MW.checkout.sessionBody(orderId, amount), secret));\\n  S.eq('session created OPEN (201)', [r.status, r.body && r.body.status], [201, 'OPEN'], String(r));\\n  const co = { orderId, amount, sessionId: r.body.sessionId, token: r.body.checkoutUrl.slice(r.body.checkoutUrl.lastIndexOf('/') + 1) };\\n  const taka = (Math.floor(amount / 100)) + '.' + String(amount % 100).padStart(2, '0');\\n  const re = /Your Bits code is ([0-9]{6}) to pay Tk ([0-9.]+) to Karim Traders/;\\n  const codes = async w => (await MW.sim.sms(w)).map(m => re.exec(m.text || '')).filter(m => m && m[2] === taka).map(m => m[1]);\\n  co.otp = async wallet => {\\n    const before = await codes(wallet);\\n    const o = S.record(await MW.checkout.otp(co.token, wallet));\\n    S.status(202, o);\\n    const fresh = await MW.poll(async () => (await codes(wallet)).filter(c => !before.includes(c)), l => l.length > 0, 30000, 700);\\n    S.eq('one new OTP SMS to ' + wallet, fresh.length, 1, fresh);\\n    co.code = fresh[0];\\n  };\\n  return co;\\n}\\n;(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.WRONG_PIN);\\n      S.status(401);\\n      S.code('MW-AUTH-040');\\n      const handled = await MW.testApi.handled(S.idem);\\n      S.eq('no request with that idempotency key reached mw-orchestrator', handled.status, 404, String(handled));\\n      await S.noChange();\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n    })\")), null);"
                 ]
               }
             }
@@ -3471,7 +3471,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[assertion p2p] a resend with the same idempotency key inside the assertion life reuses it: same txnId, money moves once\", eval(MW.forRun(\"async function checkoutSession(MW, S, amount) {\\n  const orderId = 'API-' + MW.uuid();\\n  const secret = MW.v('checkoutSecret');\\n  const r = S.record(await MW.checkout.create(MW.checkout.sessionBody(orderId, amount), secret));\\n  S.eq('session created OPEN (201)', [r.status, r.body && r.body.status], [201, 'OPEN'], String(r));\\n  const co = { orderId, amount, sessionId: r.body.sessionId, token: r.body.checkoutUrl.slice(r.body.checkoutUrl.lastIndexOf('/') + 1) };\\n  const taka = (Math.floor(amount / 100)) + '.' + String(amount % 100).padStart(2, '0');\\n  const re = /Your Bits code is ([0-9]{6}) to pay Tk ([0-9.]+) to Karim Traders/;\\n  const codes = async w => (await MW.sim.sms(w)).map(m => re.exec(m.text || '')).filter(m => m && m[2] === taka).map(m => m[1]);\\n  co.otp = async wallet => {\\n    const before = await codes(wallet);\\n    const o = S.record(await MW.checkout.otp(co.token, wallet));\\n    S.status(202, o);\\n    const fresh = await MW.poll(async () => (await codes(wallet)).filter(c => !before.includes(c)), l => l.length > 0, 30000, 700);\\n    S.eq('one new OTP SMS to ' + wallet, fresh.length, 1, fresh);\\n    co.code = fresh[0];\\n  };\\n  return co;\\n}\\n;(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE-POOL']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.submit('customer01', await MW.app.request('P2P', '01711000002', 1000, MW.WRONG_PIN), S.idem);\\n      S.status(200);\\n      S.sameTxnId();\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE-POOL': 500 });\\n      // another transaction under the live key: mw-auth refuses to sign it\\n      await S.submit('customer01', await MW.app.request('P2P', '01711000002', 2000, MW.pin), S.idem);\\n      S.status(409);\\n      S.code('MW-IDEM-001');\\n    })\")), null);"
+                  "MW.run(\"[assertion p2p] a resend with the same idempotency key inside the assertion life reuses it: same txnId, money moves once\", eval(MW.forRun(\"async function checkoutSession(MW, S, amount) {\\n  const orderId = 'API-' + MW.uuid();\\n  const secret = MW.v('checkoutSecret');\\n  const r = S.record(await MW.checkout.create(MW.checkout.sessionBody(orderId, amount), secret));\\n  S.eq('session created OPEN (201)', [r.status, r.body && r.body.status], [201, 'OPEN'], String(r));\\n  const co = { orderId, amount, sessionId: r.body.sessionId, token: r.body.checkoutUrl.slice(r.body.checkoutUrl.lastIndexOf('/') + 1) };\\n  const taka = (Math.floor(amount / 100)) + '.' + String(amount % 100).padStart(2, '0');\\n  const re = /Your Bits code is ([0-9]{6}) to pay Tk ([0-9.]+) to Karim Traders/;\\n  const codes = async w => (await MW.sim.sms(w)).map(m => re.exec(m.text || '')).filter(m => m && m[2] === taka).map(m => m[1]);\\n  co.otp = async wallet => {\\n    const before = await codes(wallet);\\n    const o = S.record(await MW.checkout.otp(co.token, wallet));\\n    S.status(202, o);\\n    const fresh = await MW.poll(async () => (await codes(wallet)).filter(c => !before.includes(c)), l => l.length > 0, 30000, 700);\\n    S.eq('one new OTP SMS to ' + wallet, fresh.length, 1, fresh);\\n    co.code = fresh[0];\\n  };\\n  return co;\\n}\\n;(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.submit('customer01', await MW.app.request('P2P', '01711000002', 1000, MW.WRONG_PIN), S.idem);\\n      S.status(200);\\n      S.sameTxnId();\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });\\n      // another transaction under the live key: mw-auth refuses to sign it\\n      await S.submit('customer01', await MW.app.request('P2P', '01711000002', 2000, MW.pin), S.idem);\\n      S.status(409);\\n      S.code('MW-IDEM-001');\\n    })\")), null);"
                 ]
               }
             }
@@ -3852,7 +3852,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[assertion p2p] after the assertion life (60 s) a resend with the same key checks the PIN again; the right PIN gets the same txnId\", eval(MW.forRun(\";(async (MW, S) => {\\n      // pays 01712000001, not customer02: the 10,000-row payout of this folder credits 01711000001..01711001000, and\\n      // the folder's requests may run in parallel\\n      await S.note(['01711000001', '01712000001', 'FEE-POOL']);\\n      await S.p2p('customer01', '01712000001', 1000, MW.pin);\\n      S.status(200);\\n      const idem = S.idem;\\n      await MW.sleep(62000);\\n      await S.submit('customer01', await MW.app.request('P2P', '01712000001', 1000, MW.WRONG_PIN), idem);\\n      S.status(401);\\n      S.code('MW-AUTH-040');\\n      S.responses = S.responses.filter(x => x.status !== 401);\\n      await S.submit('customer01', await MW.app.request('P2P', '01712000001', 1000, MW.pin), idem);\\n      S.status(200);\\n      S.sameTxnId();\\n      await S.changedBy({ '01711000001': -1500, '01712000001': 1000, 'FEE-POOL': 500 });\\n    })\")), null);"
+                  "MW.run(\"[assertion p2p] after the assertion life (60 s) a resend with the same key checks the PIN again; the right PIN gets the same txnId\", eval(MW.forRun(\";(async (MW, S) => {\\n      // pays 01712000001, not customer02: the 10,000-row payout of this folder credits 01711000001..01711001000, and\\n      // the folder's requests may run in parallel\\n      await S.note(['01711000001', '01712000001', 'FEE_INCOME']);\\n      await S.p2p('customer01', '01712000001', 1000, MW.pin);\\n      S.status(200);\\n      const idem = S.idem;\\n      await MW.sleep(62000);\\n      await S.submit('customer01', await MW.app.request('P2P', '01712000001', 1000, MW.WRONG_PIN), idem);\\n      S.status(401);\\n      S.code('MW-AUTH-040');\\n      S.responses = S.responses.filter(x => x.status !== 401);\\n      await S.submit('customer01', await MW.app.request('P2P', '01712000001', 1000, MW.pin), idem);\\n      S.status(200);\\n      S.sameTxnId();\\n      await S.changedBy({ '01711000001': -1500, '01712000001': 1000, 'FEE_INCOME': 435 });\\n    })\")), null);"
                 ]
               }
             }

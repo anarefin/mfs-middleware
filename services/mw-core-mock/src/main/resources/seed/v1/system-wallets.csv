@@ -1,0 +1,26 @@
+id,opening_balance_minor,purpose
+# System wallets v1 (ticket 94, FRS 7.1): no MSISDN, type SYSTEM, never published as WalletStateChanged.
+# Charges: the fee net of VAT and commission, the VAT, the agent/distributor commission shares.
+FEE_INCOME,0,fee income
+VAT_PAYABLE,0,VAT collected inside the fees
+COMMISSION_PAYABLE,0,agent and distributor commission shares
+# The outside world when nobody names a partner (commits of holds, credits, test balance adjustments).
+SETTLEMENT,1000000000000,generic settlement
+# One settlement wallet per partner: a hold's or credit's settlementWallet names it (WAL-07, WAL-10).
+SETTLEMENT_OCS_GP,100000000000,telco OCS Grameenphone
+SETTLEMENT_OCS_ROBI,100000000000,telco OCS Robi
+SETTLEMENT_OCS_AIRTEL,100000000000,telco OCS Airtel
+SETTLEMENT_OCS_TELETALK,100000000000,telco OCS Teletalk
+SETTLEMENT_OCS_BL,100000000000,telco OCS Banglalink
+SETTLEMENT_BILLER_DESCO,100000000000,biller DESCO
+SETTLEMENT_BILLER_DPDC,100000000000,biller DPDC
+SETTLEMENT_BILLER_WASA,100000000000,biller Dhaka WASA
+SETTLEMENT_BILLER_TITAS,100000000000,biller Titas Gas
+SETTLEMENT_AGG_BILLAGG,100000000000,bill aggregator
+SETTLEMENT_BANK_UCB,100000000000,bank UCB
+SETTLEMENT_BANK_BRAC,100000000000,bank BRAC
+SETTLEMENT_BANK_DBBL,100000000000,bank DBBL
+SETTLEMENT_NPSB,100000000000,NPSB
+SETTLEMENT_CYBERSOURCE,100000000000,CyberSource card acquiring
+SETTLEMENT_UCB_IMT,100000000000,UCB international money transfer
+SETTLEMENT_UCB_ATM,100000000000,UCB ATM cash-in

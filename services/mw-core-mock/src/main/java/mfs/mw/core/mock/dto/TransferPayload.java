@@ -1,6 +1,7 @@
 package mfs.mw.core.mock.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import java.util.Map;
 import mfs.mw.core.mock.util.Sensitive;
 import mfs.mw.core.mock.util.SensitiveType;
 
@@ -18,7 +19,19 @@ public record TransferPayload(
     Party creditParty,
     Amount amount,
     @Sensitive(SensitiveType.SECRET) String assertion,
-    String idempotencyKey) {
+    String idempotencyKey,
+    Map<String, String> attributes) {
+
+  /**
+   * The {@code attributes} key naming the settlement wallet a hold's commit credits (ticket 94,
+   * WAL-07: {@code SETTLEMENT_OCS_GP}, ...); absent = {@code SETTLEMENT}.
+   */
+  public static final String SETTLEMENT_WALLET = "settlementWallet";
+
+  /** The settlement wallet named in {@code attributes}, or null. */
+  public String settlementWallet() {
+    return attributes == null ? null : attributes.get(SETTLEMENT_WALLET);
+  }
 
   /**
    * The org bulk payout child (ticket 34): the org authorised the batch by maker-checker in the

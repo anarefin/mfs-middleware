@@ -8,7 +8,7 @@ export default [
   {
     name: '[assertion p2p] a wrong PIN is refused by mw-auth before the saga: the orchestrator never sees the request',
     run: async (MW, S) => {
-      await S.note(['01711000001', '01711000002', 'FEE-POOL']);
+      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);
       await S.p2p('customer01', '01711000002', 1000, MW.WRONG_PIN);
       S.status(401);
       S.code('MW-AUTH-040');
@@ -26,14 +26,14 @@ export default [
     // stored transaction (the assertion is not part of its request hash)
     name: '[assertion p2p] a resend with the same idempotency key inside the assertion life reuses it: same txnId, money moves once',
     run: async (MW, S) => {
-      await S.note(['01711000001', '01711000002', 'FEE-POOL']);
+      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);
       await S.p2p('customer01', '01711000002', 1000, MW.pin);
       S.status(200);
       S.txnStatus('COMPLETED');
       await S.submit('customer01', await MW.app.request('P2P', '01711000002', 1000, MW.WRONG_PIN), S.idem);
       S.status(200);
       S.sameTxnId();
-      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE-POOL': 500 });
+      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });
       // another transaction under the live key: mw-auth refuses to sign it
       await S.submit('customer01', await MW.app.request('P2P', '01711000002', 2000, MW.pin), S.idem);
       S.status(409);

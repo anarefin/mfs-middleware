@@ -144,8 +144,9 @@ class CoreRepositoriesIT {
   @Test
   void aHoldIsStoredLockedAndMovedAndTheLatestOfATxnIsFound() {
     String txn = txnId();
-    holds.insert("HOLD-A-" + txn, walletId, txn, 2_000, 100);
-    holds.insert("HOLD-B-" + txn, walletId, txn, 3_000, 0);
+    java.time.Instant expires = java.time.Instant.now().plusSeconds(1800);
+    holds.insert(new Hold("HOLD-A-" + txn, walletId, txn, "TOPUP", 2_000, 100, 13, 0, "SETTLEMENT", "HELD", expires));
+    holds.insert(new Hold("HOLD-B-" + txn, walletId, txn, "TOPUP", 3_000, 0, 0, 0, "SETTLEMENT", "HELD", expires));
 
     Optional<Hold> a = tx.execute(s -> holds.lock("HOLD-A-" + txn));
     assertThat(a).hasValueSatisfying(h -> {

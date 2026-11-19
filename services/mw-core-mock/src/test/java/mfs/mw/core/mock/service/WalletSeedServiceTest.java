@@ -41,7 +41,7 @@ class WalletSeedServiceTest {
   @Test
   void aNewWalletIsLoggedWithItsIdMasked() {
     when(wallets.resolveId(WALLET)).thenReturn(Optional.empty());
-    when(wallets.insertIfAbsent(WALLET, "CUSTOMER", 1000, "Rahim Uddin")).thenReturn(true);
+    when(wallets.insertIfAbsent(WALLET, "CUSTOMER", "FULL", 1000, "Rahim Uddin")).thenReturn(true);
     when(balances.find(WALLET))
         .thenReturn(Optional.of(new WalletBalance(WALLET, "CUSTOMER", "ACTIVE", 1000, 0, 1000, "Rahim Uddin")));
 
@@ -63,6 +63,6 @@ class WalletSeedServiceTest {
     org.mockito.Mockito.verify(wallets).fillHolderName(WALLET, "Rahim Uddin");
     org.mockito.Mockito.verify(wallets, org.mockito.Mockito.never())
         .insertIfAbsent(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
-            org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
+            org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
   }
 }

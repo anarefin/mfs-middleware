@@ -253,10 +253,13 @@ scripts/creds.sh</pre></div>
   <p>Every app user signs in at mw-auth with its MSISDN, the app PIN <code>13579</code> and a bound device (ticket 69);
   the test console does it for you. The same PIN is the transaction PIN: mw-auth checks it (the core never sees PIN
   material) and gives the request a signed transaction assertion that the core verifies (ticket 72).</p>
-  <p><b>Fees and limits.</b> The core charges the payer the amount <b>plus a fee</b> into the
-  <code>FEE-POOL</code> account (P2P Tk 5, top-up Tk 2, …). A Tk 10 P2P therefore shows <code>-Tk 15.00</code>
-  on the payer, <code>Tk 10.00</code> on the payee and <code>Tk 5.00</code> on FEE-POOL (a gain has no + sign). Other fees: cash out Tk 10, top-up Tk 2, bill payment Tk 3, merchant payment and add money none. Limits: Tk 5,000
-  per transaction, Tk 15,000 debited per wallet per UTC day. Three wrong PINs in a row lock the PIN at mw-auth, on every channel
+  <p><b>Fees and limits.</b> The core charges the payer the amount <b>plus a fee</b> from its tariff sheet
+  (P2P Tk 5, top-up Tk 2, … up to Tk 5,000; ticket 94). The 15 % VAT is inside the fee and goes to <code>VAT_PAYABLE</code>,
+  a cash out's agent (40 %) and distributor (10 %) shares of the rest to <code>COMMISSION_PAYABLE</code>, the remainder to
+  <code>FEE_INCOME</code>. A Tk 10 P2P therefore shows <code>-Tk 15.00</code> on the payer, <code>Tk 10.00</code> on the payee and
+  <code>Tk 4.35</code> on FEE_INCOME (a gain has no + sign). Other fees: cash out Tk 10, top-up Tk 2, bill payment Tk 3, merchant payment and add money none.
+  Limits (limit sheet): Tk 5,000 per transaction, Tk 15,000 debited per wallet per UTC day, Tk 2,00,000 per month; the BASIC KYC
+  customers <code>01711000901..01711001000</code> Tk 1,000 per transaction and Tk 3,000 a day. Three wrong PINs in a row lock the PIN at mw-auth, on every channel
   (dev timers: 1 min, then 3 min, then until a reset; <a href="#c3-11">3.11</a>, <a href="#c9-8">9.8</a>).</p>
 
   <h3 id="magic">Magic values</h3>
@@ -617,7 +620,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     <ol>
       <li>Type <span class="ui">Send money (P2P)</span> (user <code>customer01</code>, counterparty <code>01711000002</code>, amount <code>10</code>, PIN <code>13579</code>), press <span class="ui">Submit</span>.</li>
       <li>Expect <code>COMPLETED</code>; balances payer <code>-Tk 15.00</code>, payee <code>Tk 10.00</code>,
-        FEE-POOL <code>Tk 5.00</code>; two SMS (Bangla by default) with masked numbers (<code>0171****002</code>).</li>
+        FEE_INCOME <code>Tk 4.35</code> (the Tk 5 fee less its Tk 0.65 VAT); two SMS (Bangla by default) with masked numbers (<code>0171****002</code>).</li>
     </ol>
     <h4>Variants</h4>
     <div class="table-wrap"><table>

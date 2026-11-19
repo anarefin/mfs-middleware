@@ -81,9 +81,14 @@
     <li><code>MW_COREMOCK_SEED_API_ENABLED</code>: turns on <code>PUT /core-mock/v1/wallets/{walletId}</code>, the create-if-absent call mw-seeder uses. Off by default (then a PUT is 405).</li>
     <li><code>MW_COREMOCK_WALLET_SNAPSHOT</code>: on every start, publish a <code>WalletStateChanged</code> SNAPSHOT for every wallet, so mw-auth's copy of the wallets catches up.</li>
   </ul>
-  <p>On its first start it seeds itself (<code>service/WalletSeeder</code>, idempotent): 1,000 customers from <code>01711000001</code>, 50 agents from <code>01811000001</code>,
-    20 merchants from <code>01911000001</code>, 2 orgs from <code>01311000001</code> (the wallet id is the MSISDN), and two system wallets: <code>FEE-POOL</code> for fees and
-    <code>SETTLEMENT</code> for money going to or coming from outside. A customer starts with Tk 10,000. There is no PIN here: mw-auth holds PINs, and the core only
+  <p>On every start it seeds itself from versioned files (<code>service/WalletSeeder</code>, <code>src/main/resources/seed/v1/</code>, idempotent; ticket 94):
+    1,000 customers from <code>01711000001</code> (the last 100 with BASIC KYC), 50 agents from <code>01811000001</code>, 10 distributors from <code>01611000001</code>,
+    20 merchants from <code>01911000001</code>, 3 organisations from <code>01311000001</code> (the wallet id is the MSISDN), the system wallets
+    <code>FEE_INCOME</code>, <code>VAT_PAYABLE</code>, <code>COMMISSION_PAYABLE</code>, <code>SETTLEMENT</code> (money going to or coming from outside when no partner
+    is named) and one settlement wallet per partner (<code>SETTLEMENT_OCS_GP</code>, <code>SETTLEMENT_NPSB</code>, <code>SETTLEMENT_UCB_IMT</code>, ...), plus the
+    tariff sheet (fee per txnType and amount slab, VAT 15 % inside the fee, agent and distributor commission) and the limit sheet (per txnType, wallet type and
+    KYC level: per transaction, daily and monthly amounts and counts). A hold not committed within 30 minutes is released by the core with the event
+    <code>HoldExpired</code>. A customer starts with Tk 10,000. There is no PIN here: mw-auth holds PINs, and the core only
     checks the signed approval (see <a href="hsm.html#example">HSM</a>).</p>
 
   <h2 id="ledger">Commands and the ledger</h2>
@@ -92,7 +97,7 @@
   <div class="table-wrap"><table>
     <tr><th>Command</th><th>What it does</th></tr>
     <tr><td><code>ValidateTransaction</code></td><td>Runs every check, works out the fee, moves nothing.</td></tr>
-    <tr><td><code>PostTransfer</code></td><td>Debit the payer, credit the payee, debit the fee to <code>FEE-POOL</code>: one transaction, all or nothing.</td></tr>
+    <tr><td><code>PostTransfer</code></td><td>Debit the payer, credit the payee, debit the fee, split into <code>FEE_INCOME</code>, <code>VAT_PAYABLE</code> and <code>COMMISSION_PAYABLE</code>: one transaction, all or nothing.</td></tr>
     <tr><td><code>HoldFunds</code>, <code>CommitHold</code>, <code>ReleaseHold</code></td><td>Reserve amount + fee; later move it to <code>SETTLEMENT</code>, or free it.</td></tr>
     <tr><td><code>CreditWallet</code></td><td>Money in from <code>SETTLEMENT</code> (add money from a bank), once per transaction.</td></tr>
     <tr><td><code>ReverseTransaction</code></td><td>Undo every entry of an earlier transaction, fee included.</td></tr>
@@ -185,7 +190,7 @@ mw-orchestrator -> mw-orchestrator : COMPLETED, money moved once
     <li><strong>Balances are not what the seed said.</strong> The seed only creates missing wallets and never resets a balance, so earlier tests leave their traces.
       <code>deploy/reset.sh</code> gives a clean ledger.</li>
     <li><strong>A REJECT fault seems ignored on a retry.</strong> A repeated command is answered from <code>command_log</code>; REJECT does not re-decide it. Arm the fault before the first send.</li>
-    <li><strong>Do not build business rules on the mock.</strong> It approximates a core (flat fees, simple limits). Real fees, limits and KYC belong to the real core vendor.</li>
+    <li><strong>Do not build business rules on the mock.</strong> It approximates a core (a small tariff and limit sheet). Real fees, limits and KYC belong to the real core vendor.</li>
   </ul></div>
 
   <h2 id="next">Read next</h2>

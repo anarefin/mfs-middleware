@@ -5,7 +5,7 @@ export default [
     name: '[ussd smpp p2p] a P2P over SMPP USSD walks the same menu and moves the money once',
     run: async (MW, S) => {
       await bound(MW, S);
-      await S.note(['01711000001', '01711000002', 'FEE-POOL']);
+      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);
       await S.dial('gp', '01711000001', '*268#', '9, 1, 01711000002, 10, 1, ' + MW.pin);
       S.ussdScreens([
         'Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n5 ব্যালেন্স\n9 English',
@@ -16,14 +16,14 @@ export default [
         'Enter your PIN',
       ]);
       S.ussdEnds('Tk 10.00 sent to 01711000002. TxnID ');
-      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE-POOL': 500 });
+      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });
     },
   },
   {
     name: '[ussd smpp] a bad number is asked again over SMPP and no money moves',
     run: async (MW, S) => {
       await bound(MW, S);
-      await S.note(['01711000001', '01711000002', 'FEE-POOL']);
+      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);
       await S.dial('gp', '01711000001', '*268#', '9, 1, 12345');
       S.ussdOpenOn('Enter a valid mobile number.\nEnter recipient Bits number');
       await S.noChange();

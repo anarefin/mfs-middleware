@@ -6,7 +6,7 @@ import java.util.List;
  * Display names of the wallets {@code WalletSeeder} generates: realistic Bangladeshi names, fixed
  * per type and index (1-based, the last four digits of the MSISDN), so every run shows the same
  * holder for the same number. Customers are people (odd index a man, even a woman), agents shops,
- * merchants businesses, orgs companies. Unique for the first 300 customers and for every agent,
+ * merchants businesses, orgs companies, distributors trading houses (ticket 94). Unique for the first 300 customers and for every agent,
  * merchant and org.
  */
 public final class HolderNames {
@@ -31,7 +31,11 @@ public final class HolderNames {
       "Bogura Doi Ghar", "Old Dhaka Biryani House", "Farmgate Mobile Centre", "Mohammadpur Hardware",
       "Bashundhara Books", "Narayanganj Textiles", "Comilla Rasmalai Bhandar", "Barishal Rice Agency",
       "Gazipur Furniture Mart", "Tejgaon Auto Parts");
-  private static final List<String> ORGS = List.of("Meghna Garments Ltd", "Padma Foods Ltd");
+  private static final List<String> ORGS = List.of("Meghna Garments Ltd", "Padma Foods Ltd", "Karnaphuli Shipping Ltd");
+  private static final List<String> DISTRIBUTORS = List.of(
+      "Dhaka Distribution House", "Chattogram Trade Link", "Sylhet Mobile Distribution", "Rajshahi Agro Distributors",
+      "Khulna Distribution Point", "Barishal Supply Chain", "Rangpur Trade House", "Mymensingh Distributors",
+      "Comilla Distribution Centre", "Gazipur Wholesale Link");
 
   private HolderNames() {}
 
@@ -45,7 +49,8 @@ public final class HolderNames {
       case "CUSTOMER" -> i % 2 == 0 ? pick(MALE_FIRST, MALE_LAST, i / 2) : pick(FEMALE_FIRST, FEMALE_LAST, i / 2);
       case "AGENT" -> pick(SHOP_OWNER, SHOP_KIND, i);
       case "MERCHANT" -> i < MERCHANTS.size() ? MERCHANTS.get(i) : MERCHANTS.get(i % MERCHANTS.size()) + " " + (i / MERCHANTS.size() + 1);
-      case "ORG" -> i < ORGS.size() ? ORGS.get(i) : "Org " + n + " Ltd";
+      case "ORG", "ORGANISATION" -> i < ORGS.size() ? ORGS.get(i) : "Org " + n + " Ltd";
+      case "DISTRIBUTOR" -> i < DISTRIBUTORS.size() ? DISTRIBUTORS.get(i) : "Distributor " + n;
       default -> null;
     };
   }

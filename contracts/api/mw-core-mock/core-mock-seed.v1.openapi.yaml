@@ -61,7 +61,7 @@ paths:
               required: [type, openingBalanceMinor]
               additionalProperties: false
               properties:
-                type: { type: string, enum: [CUSTOMER, AGENT, MERCHANT, ORG] }
+                type: { type: string, enum: [CUSTOMER, AGENT, MERCHANT, DISTRIBUTOR, ORG, ORGANISATION], description: "ORG is stored as ORGANISATION (ticket 94)" }
                 openingBalanceMinor: { type: integer, minimum: 0, maximum: 100000000000, description: Poisha }
                 holderName:
                   type: string
@@ -99,7 +99,7 @@ components:
       required: [walletId, type, status, balanceMinor, heldMinor, availableMinor]
       properties:
         walletId: { type: string }
-        type: { type: string, enum: [CUSTOMER, AGENT, MERCHANT, ORG, SYSTEM] }
+        type: { type: string, enum: [CUSTOMER, AGENT, MERCHANT, DISTRIBUTOR, ORGANISATION, SYSTEM] }
         status: { type: string }
         balanceMinor: { type: integer }
         heldMinor: { type: integer }

@@ -1,7 +1,6 @@
 package mfs.mw.core.mock.service;
 
 import java.time.Clock;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +20,8 @@ import mfs.mw.core.mock.repository.WalletRepository;
 import org.springframework.stereotype.Component;
 
 /**
- * CreditWallet (inbound money drawn from the settlement wallet, no PIN, no fee) and
+ * CreditWallet (inbound money drawn from a settlement wallet, the one its attributes name or
+ * SETTLEMENT; no PIN, no fee) and
  * ReverseTransaction (undo every entry of an earlier transaction, fee included, once). Called
  * inside the command transaction of {@link CoreCommandService}.
  */
@@ -32,10 +32,12 @@ class PostingOperations {
   private final LedgerRepository ledger;
   private final CoreCommandMapper commands;
   private final CoreEventMapper events;
+  private final TransferRules rules;
   private final Clock clock;
 
-  PostingOperations(
-      WalletRepository wallets, LedgerRepository ledger, CoreCommandMapper commands, CoreEventMapper events, Clock clock) {
+  PostingOperations(WalletRepository wallets, LedgerRepository ledger, CoreCommandMapper commands, CoreEventMapper events,
+      TransferRules rules, Clock clock) {
+    this.rules = rules;
     this.wallets = wallets;
     this.ledger = ledger;
     this.commands = commands;
@@ -59,6 +61,10 @@ class PostingOperations {
     if (creditId.isEmpty()) {
       return rejected(cmd, "CreditRejected", coreRef, Reason.CREDIT_WALLET_NOT_FOUND);
     }
+    Optional<String> settlement = rules.settlementWallet(p.settlementWallet());
+    if (settlement.isEmpty()) {
+      return rejected(cmd, "CreditRejected", coreRef, Reason.SETTLEMENT_WALLET_NOT_FOUND);
+    }
     Wallet credit = wallets.lock(creditId.get());
     if (!credit.canReceive()) {
       return rejected(cmd, "CreditRejected", coreRef, Reason.CREDIT_ACCOUNT_BLOCKED);
@@ -67,11 +73,9 @@ class PostingOperations {
     if (amount <= 0 || !Amount.BDT.equals(p.amount().currency())) {
       return rejected(cmd, "CreditRejected", coreRef, Reason.INVALID_AMOUNT);
     }
-    Instant now = clock.instant();
-    ledger.append(cmd.commandId(), cmd.txnId(), WalletSeeder.SETTLEMENT_WALLET, "DEBIT", "TRANSFER", amount, now);
-    ledger.append(cmd.commandId(), cmd.txnId(), credit.id(), "CREDIT", "TRANSFER", amount, now);
-    wallets.adjustBalance(credit.id(), amount);
-    wallets.adjustBalance(WalletSeeder.SETTLEMENT_WALLET, -amount);
+    ledger.post(cmd.commandId(), cmd.txnId(), p.txnType(), List.of(
+        new LedgerEntry(settlement.get(), "DEBIT", "TRANSFER", amount),
+        new LedgerEntry(credit.id(), "CREDIT", "TRANSFER", amount)), clock.instant());
     return events.succeeded(
         cmd, "WalletCredited", coreRef, List.of(balanceOf(credit.id())), Map.of());
   }
@@ -106,13 +110,11 @@ class PostingOperations {
         return rejected(cmd, "ReversalRejected", coreRef, Reason.INSUFFICIENT_BALANCE);
       }
     }
-    Instant now = clock.instant();
-    for (LedgerEntry e : original) {
-      ledger.append(cmd.commandId(), cmd.txnId(), e.walletId(), e.debit() ? "CREDIT" : "DEBIT", "REVERSAL", e.amountMinor(), now);
-    }
+    ledger.post(cmd.commandId(), cmd.txnId(), "REVERSAL", original.stream()
+        .map(e -> new LedgerEntry(e.walletId(), e.debit() ? "CREDIT" : "DEBIT", "REVERSAL", e.amountMinor())).toList(),
+        clock.instant());
     List<CoreEvent.BalanceAfter> balances = new ArrayList<>();
     for (Map.Entry<String, Long> d : delta.entrySet()) {
-      wallets.adjustBalance(d.getKey(), d.getValue());
       if (!"SYSTEM".equals(locked.get(d.getKey()).type())) {
         balances.add(balanceOf(d.getKey()));
       }

@@ -290,18 +290,18 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
-| WAL-01 | done | `GET /core/v1/accounts/{msisdn}` (ticket 93; KYC level with the core model, ticket 94) |
+| WAL-01 | done | `GET /core/v1/accounts/{msisdn}` (ticket 93): type, status and KYC level of FRS 7.1 (ticket 94) |
 | WAL-02 | deviation | not built: the middleware owns the PIN (D20); mw-auth checks it and the core verifies the mw-auth assertion header instead (D22, D31) |
 | WAL-03 | done | `GET /core/v1/balance/{walletId}`: available, held, total (ticket 93) |
-| WAL-04 | ticket 94 | `POST /core/v1/charges/calculate` built (ticket 93, flat fee); VAT and commission in 94 |
-| WAL-05 | ticket 94 | `POST /core/v1/limits/check` built (ticket 93, per txn and daily); monthly in 94 |
+| WAL-04 | done | `POST /core/v1/charges/calculate` (tickets 93, 94): the tariff sheet `seed/v1/tariff.csv` (slab, channel, customer type), VAT inside the fee, commission split (`service/Tariff`, `TariffTest`) |
+| WAL-05 | done | `POST /core/v1/limits/check` (tickets 93, 94): the limit sheet `seed/v1/limits.csv` by txnType, customer type and KYC level; per txn min/max, daily and monthly amount and count (`service/Limits`, `LimitsTest`) |
 | WAL-06 | done | `POST /core/v1/holds` (ticket 93): the `HoldFunds` rules, `X-Txn-Assertion` |
-| WAL-07 | ticket 94 | `POST /core/v1/holds/{id}/commit` built (ticket 93, settlement and fee wallets); VAT and commission wallets in 94 |
+| WAL-07 | done | `POST /core/v1/holds/{id}/commit` (tickets 93, 94): the hold's settlement wallet, FEE_INCOME, VAT_PAYABLE, COMMISSION_PAYABLE in double entries (`LedgerInvariantIT`) |
 | WAL-08 | done | `POST /core/v1/holds/{id}/release` (ticket 93) |
 | WAL-09 | done | `POST /core/v1/transfers` (ticket 93): the `PostTransfer` rules |
-| WAL-10 | ticket 94 | `POST /core/v1/credits` built (ticket 93, from `SETTLEMENT`); a settlement wallet per partner in 94 |
+| WAL-10 | done | `POST /core/v1/credits` (tickets 93, 94): from the partner settlement wallet `settlementWallet` names (`SETTLEMENT_NPSB`, `SETTLEMENT_UCB_IMT`, ...), else `SETTLEMENT` |
 | WAL-11 | ticket 116 | `POST /core/v1/reversals` built (ticket 93, full, idempotent, once); partial reversal for refunds in 116 |
-| WAL-12 | tickets 94, 107 | `GET /core/v1/statements` built (ticket 93: entries by wallet and range); balance after each entry in 94 |
+| WAL-12 | ticket 107 | `GET /core/v1/statements` (tickets 93, 94): entries by wallet and range, paged, with the balance after each entry; the customer statement in 107 |
 | WAL-13 | ticket 95 | `GET /core/v1/transactions/{txnId}` built (ticket 93: status and entries); the orchestrator's inquiry uses it in 95 |
 
 ## 8. Supporting services (FRS 8)

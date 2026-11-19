@@ -145,7 +145,7 @@ class CoreWalletRestIT {
 
     JsonNode after = status(txn);
     assertThat(after.path("status").asString()).isEqualTo("COMMITTED");
-    assertThat(after.path("entries")).hasSize(4);
+    assertThat(after.path("entries")).hasSize(5);
     assertThat(sum(after.path("entries"), "DEBIT")).as("debits equal credits (FRS 7.3)")
         .isEqualTo(sum(after.path("entries"), "CREDIT")).isEqualTo(5200);
   }
@@ -188,7 +188,7 @@ class CoreWalletRestIT {
     assertThat(again).isEqualTo(first);
     assertThat(total(PAYER)).as("10000 + P2P fee 500, once").isEqualTo(SEED - 10500);
     assertThat(total(PAYEE)).isEqualTo(SEED + 10000);
-    assertThat(status(txn).path("entries")).hasSize(4);
+    assertThat(status(txn).path("entries")).hasSize(5);
 
     Signed other = signed(txn, "P2P", PAYER, "WALLET", PAYEE, 20000);
     JsonNode conflict = served(post("/core/v1/transfers", other.body(), other.assertion()), "/core/v1/transfers", "post", 409);
@@ -262,6 +262,23 @@ class CoreWalletRestIT {
     assertThat(total(WalletSeeder.SETTLEMENT_WALLET)).isEqualTo(settlement - 7000);
   }
 
+  @Test
+  void aCreditDrawsOnThePartnerSettlementWalletItNames() {
+    String txn = CoreCommandsTestSupport.txnId();
+    String body = "{\"txnId\":\"" + txn + "\",\"txnType\":\"ADD_MONEY_BANK\",\"creditParty\":{\"type\":\"WALLET\",\"id\":\"" + PAYEE
+        + "\"},\"amount\":{\"valueMinor\":7000,\"currency\":\"BDT\"},\"settlementWallet\":\"SETTLEMENT_UCB_IMT\"}";
+    long imt = total("SETTLEMENT_UCB_IMT");
+    long settlement = total(WalletSeeder.SETTLEMENT_WALLET);
+
+    served(post("/core/v1/credits", body, null), "/core/v1/credits", "post", 200);
+
+    assertThat(total("SETTLEMENT_UCB_IMT")).isEqualTo(imt - 7000);
+    assertThat(total(WalletSeeder.SETTLEMENT_WALLET)).isEqualTo(settlement);
+    String unknown = body.replace(txn, CoreCommandsTestSupport.txnId()).replace("SETTLEMENT_UCB_IMT", "SETTLEMENT_NOWHERE");
+    assertThat(served(post("/core/v1/credits", unknown, null), "/core/v1/credits", "post", 422).path("code").asString())
+        .isEqualTo("MW-CORE-SETTLEMENT_WALLET_NOT_FOUND");
+  }
+
   // --- WAL-01, 03, 04, 05, 12, 13 reads ---
 
   @Test
@@ -275,13 +292,30 @@ class CoreWalletRestIT {
     JsonNode charges = served(post("/core/v1/charges/calculate", "{\"txnType\":\"P2P\",\"amount\":{\"valueMinor\":10000,\"currency\":\"BDT\"}}", null),
         "/core/v1/charges/calculate", "post", 200);
     assertThat(charges.path("fee").path("valueMinor").asLong()).isEqualTo(500);
+    assertThat(charges.path("vat").path("valueMinor").asLong()).as("15 %% inside the fee").isEqualTo(65);
     assertThat(charges.path("total").path("valueMinor").asLong()).isEqualTo(10500);
+    JsonNode cashOut = served(post("/core/v1/charges/calculate",
+        "{\"txnType\":\"CASH_OUT\",\"amount\":{\"valueMinor\":600000,\"currency\":\"BDT\"}}", null),
+        "/core/v1/charges/calculate", "post", 200);
+    // the second slab: 46.25 Tk, VAT 6.03 Tk, agent 40 % and distributor 10 % of the 40.22 Tk net
+    assertThat(cashOut.path("fee").path("valueMinor").asLong()).isEqualTo(4625);
+    assertThat(cashOut.path("vat").path("valueMinor").asLong()).isEqualTo(603);
+    assertThat(cashOut.path("commissionSplit").path("AGENT").path("valueMinor").asLong()).isEqualTo(1608);
+    assertThat(cashOut.path("commissionSplit").path("DISTRIBUTOR").path("valueMinor").asLong()).isEqualTo(402);
+    assertThat(cashOut.path("commission").path("valueMinor").asLong()).isEqualTo(2010);
 
     JsonNode ok = served(post("/core/v1/limits/check",
         "{\"walletId\":\"" + PAYER + "\",\"txnType\":\"P2P\",\"amount\":{\"valueMinor\":10000,\"currency\":\"BDT\"}}", null),
         "/core/v1/limits/check", "post", 200);
     assertThat(ok.path("allowed").asBoolean()).isTrue();
     assertThat(ok.path("remaining").path("daily").path("valueMinor").asLong()).isEqualTo(1_500_000);
+    assertThat(ok.path("remaining").path("monthly").path("valueMinor").asLong()).isEqualTo(20_000_000);
+    assertThat(ok.path("remaining").path("dailyCount").asLong()).isEqualTo(500);
+    JsonNode basic = served(post("/core/v1/limits/check",
+        "{\"walletId\":\"01711000950\",\"txnType\":\"P2P\",\"amount\":{\"valueMinor\":150000,\"currency\":\"BDT\"}}", null),
+        "/core/v1/limits/check", "post", 200);
+    assertThat(basic.path("allowed").asBoolean()).as("a BASIC KYC customer pays at most 1,000 Tk").isFalse();
+    assertThat(basic.path("reasonCode").asString()).isEqualTo("LIMIT_EXCEEDED_PER_TXN");
     JsonNode tooBig = served(post("/core/v1/limits/check",
         "{\"walletId\":\"" + PAYER + "\",\"txnType\":\"P2P\",\"amount\":{\"valueMinor\":500001,\"currency\":\"BDT\"}}", null),
         "/core/v1/limits/check", "post", 200);
@@ -303,6 +337,19 @@ class CoreWalletRestIT {
     assertThat(statement.path("entries")).hasSize(2);
     assertThat(List.of(statement.path("entries").get(0).path("kind").asString(), statement.path("entries").get(1).path("kind").asString()))
         .containsExactly("TRANSFER", "FEE");
+    // the balance after each entry (ticket 94): 10,000 - 100 Tk, then the 5 Tk fee
+    assertThat(statement.path("entries").get(0).path("balanceAfter").path("valueMinor").asLong()).isEqualTo(SEED - 10000);
+    assertThat(statement.path("entries").get(1).path("balanceAfter").path("valueMinor").asLong()).isEqualTo(SEED - 10500);
+    assertThat(statement.path("hasMore").asBoolean()).isFalse();
+    JsonNode second = served(get("/core/v1/statements?walletId=" + PAYER
+        + "&from=2000-01-01T00:00:00Z&to=2100-01-01T00:00:00Z&limit=1&page=1"), "/core/v1/statements", "get", 200);
+    assertThat(second.path("page").asInt()).isEqualTo(1);
+    assertThat(second.path("hasMore").asBoolean()).isFalse();
+    assertThat(second.path("entries")).hasSize(1);
+    assertThat(second.path("entries").get(0).path("kind").asString()).isEqualTo("FEE");
+    assertThat(served(get("/core/v1/statements?walletId=" + PAYER
+        + "&from=2000-01-01T00:00:00Z&to=2100-01-01T00:00:00Z&limit=1"), "/core/v1/statements", "get", 200)
+        .path("hasMore").asBoolean()).isTrue();
     assertThat(served(get("/core/v1/statements?walletId=" + PAYER + "&from=2000-01-01T00:00:00Z&to=2000-01-02T00:00:00Z"),
         "/core/v1/statements", "get", 200).path("entries")).isEmpty();
   }

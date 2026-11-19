@@ -25,7 +25,10 @@ public class WalletEventMapper {
 
   private static final Pattern MSISDN = Pattern.compile("^(?:\\+?880)?(01[3-9]\\d{8})$");
   private static final Set<String> TYPES = Set.of("CUSTOMER", "AGENT", "MERCHANT", "ORG", "DISTRIBUTOR", "DSO");
-  private static final Set<String> STATUSES = Set.of("ACTIVE", "BLOCKED", "HOLD", "LOCKED");
+  // ticket 94 (FRS 7.1): the core's DORMANT and CLOSED; only ACTIVE logs in (WalletAccess)
+  private static final Set<String> STATUSES = Set.of("ACTIVE", "BLOCKED", "HOLD", "LOCKED", "DORMANT", "CLOSED");
+  /** The core's ORGANISATION (ticket 94) is this service's ORG (no app role either way). */
+  private static final String ORGANISATION = "ORGANISATION";
 
   private final JsonMapper json;
 
@@ -51,6 +54,11 @@ public class WalletEventMapper {
       throw malformed("WalletStateChanged unreadable");
     }
     WalletStateChanged.State s = e.payload();
+    if (s != null && ORGANISATION.equals(s.walletType())) {
+      s = new WalletStateChanged.State(s.walletId(), s.msisdn(), "ORG", s.status(), s.hasPin(), s.birthYear(), s.version(),
+          s.change());
+      e = new WalletStateChanged(e.eventType(), e.eventId(), e.txnId(), s);
+    }
     if (e.eventId() == null || e.eventId().isBlank() || s == null || s.walletId() == null || s.walletId().isBlank()
         || s.version() == null || s.version() < 1 || s.hasPin() == null
         || !TYPES.contains(s.walletType()) || !STATUSES.contains(s.status())

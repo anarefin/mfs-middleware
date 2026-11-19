@@ -5,13 +5,12 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
-import mfs.mw.core.mock.config.CoreMockProperties;
 import mfs.mw.core.mock.dto.AccountView;
 import mfs.mw.core.mock.dto.Amount;
 import mfs.mw.core.mock.dto.BalanceView;
@@ -27,6 +26,7 @@ import mfs.mw.core.mock.dto.OperationResult;
 import mfs.mw.core.mock.dto.ReversalRequest;
 import mfs.mw.core.mock.dto.StatementView;
 import mfs.mw.core.mock.dto.TransactionStatusView;
+import mfs.mw.core.mock.dto.TransferPayload;
 import mfs.mw.core.mock.dto.WalletCreditRequest;
 import mfs.mw.core.mock.dto.WalletTransferRequest;
 import mfs.mw.core.mock.entity.Hold;
@@ -68,7 +68,6 @@ public class CoreWalletService {
   private final CoreCommandService core;
   private final StatusOperations status;
   private final TransferRules rules;
-  private final CoreMockProperties props;
   private final WalletRepository wallets;
   private final HoldRepository holds;
   private final LedgerRepository ledger;
@@ -82,7 +81,6 @@ public class CoreWalletService {
       CoreCommandService core,
       StatusOperations status,
       TransferRules rules,
-      CoreMockProperties props,
       WalletRepository wallets,
       HoldRepository holds,
       LedgerRepository ledger,
@@ -93,7 +91,6 @@ public class CoreWalletService {
     this.core = core;
     this.status = status;
     this.rules = rules;
-    this.props = props;
     this.wallets = wallets;
     this.holds = holds;
     this.ledger = ledger;
@@ -109,7 +106,7 @@ public class CoreWalletService {
   @Transactional(readOnly = true)
   public AccountView account(String msisdn) {
     Wallet w = wallet(msisdn);
-    return new AccountView(w.id(), w.msisdn(), w.type(), w.status(), w.holderName());
+    return new AccountView(w.id(), w.msisdn(), w.type(), w.status(), w.kycLevel(), w.holderName());
   }
 
   /** WAL-03: available (total minus held), held and total. */
@@ -119,17 +116,25 @@ public class CoreWalletService {
     return new BalanceView(w.id(), Amount.bdt(w.availableMinor()), Amount.bdt(w.heldMinor()), Amount.bdt(w.balanceMinor()));
   }
 
-  /** WAL-04: the flat fee of the txnType; VAT and commission 0 until the tariff sheet (ticket 94). */
+  /**
+   * WAL-04: the tariff sheet's charges of the txnType, amount, channel and payer type (default
+   * CUSTOMER; ticket 94): fee (VAT included), the VAT in it, the commission shares, total = amount + fee.
+   */
+  @Transactional(readOnly = true)
   public ChargesView charges(ChargesRequest req) {
-    long fee = rules.fee(req.txnType());
-    return new ChargesView(req.txnType(), req.amount(), Amount.bdt(fee), Amount.bdt(0), Amount.bdt(0),
-        Amount.bdt(req.amount().valueMinor() + fee));
+    long amount = req.amount().valueMinor();
+    Charges c = rules.charges(req.txnType(), req.channel(), req.customerType() == null ? "CUSTOMER" : req.customerType(),
+        amount);
+    Map<String, Amount> split = new LinkedHashMap<>();
+    c.commissionSplit().forEach((party, share) -> split.put(party, Amount.bdt(share)));
+    return new ChargesView(req.txnType(), req.amount(), Amount.bdt(c.fee()), Amount.bdt(c.vat()), Amount.bdt(c.commission()),
+        split, Amount.bdt(amount + c.fee()));
   }
 
   /**
-   * WAL-05: the per-transaction and the daily (UTC, the wallet type's) debit limit, as {@link
-   * TransferRules} applies them; {@code remaining.daily} is what is left before this amount. An
-   * unknown wallet is 422 {@code MW-CORE-WALLET_NOT_FOUND}.
+   * WAL-05: the payer's limit rule (wallet type, KYC level, txnType; ticket 94) as {@link TransferRules}
+   * applies it: per transaction min/max, daily and monthly amount and count (UTC); {@code remaining} is
+   * what is left before this amount. An unknown wallet is 422 {@code MW-CORE-WALLET_NOT_FOUND}.
    */
   @Transactional(readOnly = true)
   public LimitsView limits(LimitsRequest req) {
@@ -138,21 +143,27 @@ public class CoreWalletService {
       throw refusal(Reason.WALLET_NOT_FOUND.code(), Reason.WALLET_NOT_FOUND.message, null);
     }
     Wallet w = wallets.get(id.get());
-    long amount = req.amount().valueMinor();
-    long perTxn = props.limits().perTxnMinor();
-    long used = wallets.debitedSince(w.id(), clock.instant().truncatedTo(ChronoUnit.DAYS));
-    long daily = props.limits().dailyMinor(w.type());
-    String reason = amount > perTxn ? Reason.LIMIT_EXCEEDED_PER_TXN.code()
-        : used + amount > daily ? Reason.LIMIT_EXCEEDED_DAILY.code() : null;
-    return new LimitsView(w.id(), reason == null, reason,
-        new LimitsView.Remaining(Amount.bdt(perTxn), Amount.bdt(Math.max(0, daily - used))));
+    Limits.Result r = rules.limits(req.txnType(), w, req.amount().valueMinor());
+    return new LimitsView(w.id(), r.reason().isEmpty(), r.reason().map(Reason::code).orElse(null),
+        new LimitsView.Remaining(bdt(r.perTxnMax()), bdt(r.dailyLeft()), bdt(r.monthlyLeft()), r.dailyCountLeft(),
+            r.monthlyCountLeft()));
   }
 
-  /** WAL-12: the wallet's ledger entries in [from, to), oldest first, at most {@code limit}. */
+  private static Amount bdt(Long minor) {
+    return minor == null ? null : Amount.bdt(minor);
+  }
+
+  /**
+   * WAL-12: the wallet's ledger entries in [from, to), oldest first, page {@code page} (from 0) of
+   * {@code limit}, each with the wallet's balance after it (ticket 94).
+   */
   @Transactional(readOnly = true)
-  public StatementView statement(String walletId, Instant from, Instant to, int limit) {
+  public StatementView statement(String walletId, Instant from, Instant to, int limit, int page) {
     Wallet w = wallet(walletId);
-    return new StatementView(w.id(), from, to, ledger.postedOfWallet(w.id(), from, to, limit).stream().map(CoreWalletService::view).toList());
+    List<PostedEntry> rows = ledger.postedOfWallet(w.id(), from, to, limit + 1, (long) page * limit);
+    boolean more = rows.size() > limit;
+    return new StatementView(w.id(), from, to, page, more,
+        rows.stream().limit(limit).map(CoreWalletService::view).toList());
   }
 
   /** WAL-13: the core's true status (as QueryTransaction tells it) and every entry of the txn. */
@@ -167,7 +178,11 @@ public class CoreWalletService {
   /** WAL-06: HoldFunds. */
   @Transactional(noRollbackFor = MwException.class)
   public OperationResult hold(WalletTransferRequest req, String assertion) {
-    return run(req.txnId(), "hold", "HoldFunds", CoreCommandService.PAYMENT_EVENT_TOPIC, req, transferPayload(req, assertion),
+    Map<String, Object> payload = transferPayload(req, assertion);
+    if (req.settlementWallet() != null) {
+      payload.put("attributes", Map.of(TransferPayload.SETTLEMENT_WALLET, req.settlementWallet()));
+    }
+    return run(req.txnId(), "hold", "HoldFunds", CoreCommandService.PAYMENT_EVENT_TOPIC, req, payload,
         e -> result(e, "HELD", null));
   }
 
@@ -194,13 +209,16 @@ public class CoreWalletService {
         e -> result(e, "POSTED", null));
   }
 
-  /** WAL-10: CreditWallet from the settlement wallet (no assertion, no fee). */
+  /** WAL-10: CreditWallet from the named settlement wallet, else SETTLEMENT (no assertion, no fee). */
   @Transactional(noRollbackFor = MwException.class)
   public OperationResult credit(WalletCreditRequest req) {
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("txnType", req.txnType());
     p.put("creditParty", req.creditParty());
     p.put("amount", req.amount());
+    if (req.settlementWallet() != null) {
+      p.put("attributes", Map.of(TransferPayload.SETTLEMENT_WALLET, req.settlementWallet()));
+    }
     return run(req.txnId(), "credit", "CreditWallet", CoreCommandService.EVENT_TOPIC, req, p, e -> result(e, "CREDITED", null));
   }
 
@@ -306,6 +324,7 @@ public class CoreWalletService {
   }
 
   private static EntryView view(PostedEntry e) {
-    return new EntryView(e.txnId(), e.walletId(), e.direction(), e.kind(), Amount.bdt(e.amountMinor()), e.at());
+    return new EntryView(e.txnId(), e.walletId(), e.direction(), e.kind(), Amount.bdt(e.amountMinor()),
+        e.balanceAfterMinor() == null ? null : Amount.bdt(e.balanceAfterMinor()), e.at());
   }
 }

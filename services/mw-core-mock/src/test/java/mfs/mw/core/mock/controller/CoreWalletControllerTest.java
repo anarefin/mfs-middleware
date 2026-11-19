@@ -113,7 +113,7 @@ class CoreWalletControllerTest {
   @Test
   void anAccountIsServed() {
     given(service.account("01711000001"))
-        .willReturn(new AccountView("01711000001", "01711000001", "CUSTOMER", "ACTIVE", "Rahim Uddin"));
+        .willReturn(new AccountView("01711000001", "01711000001", "CUSTOMER", "ACTIVE", "FULL", "Rahim Uddin"));
 
     assertThat(get("/core/v1/accounts/01711000001")).hasStatusOk().bodyJson().isLenientlyEqualTo(
         "{\"walletId\":\"01711000001\",\"type\":\"CUSTOMER\",\"status\":\"ACTIVE\",\"holderName\":\"Rahim Uddin\"}");
@@ -142,7 +142,7 @@ class CoreWalletControllerTest {
   @Test
   void chargesAreCalculated() {
     given(service.charges(any())).willReturn(
-        new ChargesView("P2P", Amount.bdt(10000), Amount.bdt(500), Amount.bdt(0), Amount.bdt(0), Amount.bdt(10500)));
+        new ChargesView("P2P", Amount.bdt(10000), Amount.bdt(500), Amount.bdt(65), Amount.bdt(0), java.util.Map.of(), Amount.bdt(10500)));
 
     assertThat(post("/core/v1/charges/calculate", "{\"txnType\":\"P2P\",\"amount\":{\"valueMinor\":10000,\"currency\":\"BDT\"}}"))
         .hasStatusOk().bodyJson().extractingPath("$.fee.valueMinor").isEqualTo(500);
@@ -163,7 +163,7 @@ class CoreWalletControllerTest {
   @Test
   void limitsAreChecked() {
     given(service.limits(any())).willReturn(new LimitsView("01711000001", false, "LIMIT_EXCEEDED_PER_TXN",
-        new LimitsView.Remaining(Amount.bdt(500000), Amount.bdt(1500000))));
+        new LimitsView.Remaining(Amount.bdt(500000), Amount.bdt(1500000), Amount.bdt(20000000), 1000L, 20000L)));
 
     assertThat(post("/core/v1/limits/check",
         "{\"walletId\":\"01711000001\",\"txnType\":\"P2P\",\"amount\":{\"valueMinor\":600000,\"currency\":\"BDT\"}}"))
@@ -241,7 +241,7 @@ class CoreWalletControllerTest {
     assertThat(post("/core/v1/transfers", HOLD_BODY.replace("TOPUP", "P2P")).header("X-Txn-Assertion", "jws")).hasStatusOk();
     verify(service).transfer(eq(new WalletTransferRequest(TXN, "P2P",
         new mfs.mw.core.mock.dto.Party("WALLET", "01711000001", null, null),
-        new mfs.mw.core.mock.dto.Party("MSISDN", "01711000001", null, null), Amount.bdt(5000), "k-1")), eq("jws"));
+        new mfs.mw.core.mock.dto.Party("MSISDN", "01711000001", null, null), Amount.bdt(5000), "k-1", null)), eq("jws"));
   }
 
   @Test
@@ -277,7 +277,8 @@ class CoreWalletControllerTest {
   void aStatementNeedsTheWalletAndTheRange() {
     Instant from = Instant.parse("2026-11-01T00:00:00Z");
     Instant to = Instant.parse("2026-11-19T00:00:00Z");
-    given(service.statement(eq("01711000001"), eq(from), eq(to), anyInt())).willReturn(new StatementView("01711000001", from, to, List.of()));
+    given(service.statement(eq("01711000001"), eq(from), eq(to), anyInt(), anyInt()))
+        .willReturn(new StatementView("01711000001", from, to, 0, false, List.of()));
 
     assertThat(get("/core/v1/statements?walletId=01711000001&from=2026-11-01T00:00:00Z&to=2026-11-19T00:00:00Z"))
         .hasStatusOk().bodyJson().extractingPath("$.entries").asArray().isEmpty();

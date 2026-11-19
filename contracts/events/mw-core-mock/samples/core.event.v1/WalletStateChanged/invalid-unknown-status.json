@@ -11,7 +11,7 @@
     "walletId": "01711000001",
     "msisdn": "01711000001",
     "walletType": "CUSTOMER",
-    "status": "CLOSED",
+    "status": "FROZEN",
     "hasPin": true,
     "version": 17,
     "change": "CREATED"
