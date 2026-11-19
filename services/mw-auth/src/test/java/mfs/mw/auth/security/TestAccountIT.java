@@ -20,7 +20,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Map;
 import mfs.mw.auth.TestInfrastructure;
-import mfs.mw.auth.ValkeyInfrastructure;
+import mfs.mw.auth.RedisInfrastructure;
 import mfs.mw.auth.client.CryptoClient;
 import mfs.mw.auth.dto.CryptoJwsSigned;
 import mfs.mw.auth.dto.CryptoPinDerived;
@@ -44,14 +44,14 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
 /**
  * The dev-only account test API ({@code auth-test.v1}, {@code mw.auth.seed-api.enabled=true}) against
- * PostgreSQL and Valkey: the state it shows, and that unlock, unbind and set-PIN change what the app's
+ * PostgreSQL and Redis: the state it shows, and that unlock, unbind and set-PIN change what the app's
  * login then sees. mw-crypto is the same behaving mock as in {@link LoginIT} (a PIN "ciphertext" is the
  * base64 of the PIN, its HMAC {@code hmac(<walletId>:<pin>)}).
  */
 @SpringBootTest(properties = {"mw.outbox.relay.enabled=false", "spring.data.redis.timeout=3s",
     "mw.auth.seed-api.enabled=true"})
 @AutoConfigureMockMvc
-@Import({TestInfrastructure.class, ValkeyInfrastructure.class})
+@Import({TestInfrastructure.class, RedisInfrastructure.class})
 class TestAccountIT {
 
   static final String PIN = "13579";
@@ -59,7 +59,7 @@ class TestAccountIT {
 
   private final MockMvcTester mvc;
   private final JdbcTemplate jdbc;
-  private final StringRedisTemplate valkey;
+  private final StringRedisTemplate redis;
 
   @MockitoBean EventPublisher publisher;
   @MockitoBean CryptoClient crypto;
@@ -68,10 +68,10 @@ class TestAccountIT {
   Device device;
 
   @Autowired
-  TestAccountIT(MockMvcTester mvc, JdbcTemplate jdbc, StringRedisTemplate valkey) {
+  TestAccountIT(MockMvcTester mvc, JdbcTemplate jdbc, StringRedisTemplate redis) {
     this.mvc = mvc;
     this.jdbc = jdbc;
-    this.valkey = valkey;
+    this.redis = redis;
   }
 
   @BeforeAll
@@ -185,14 +185,14 @@ class TestAccountIT {
   @Test
   void unbindEndsTheSessionAndTheRefreshTokens() throws Exception {
     assertThat(login(PIN)).hasStatus(200);
-    assertThat(valkey.hasKey("sess:" + msisdn + ":" + device.id())).isTrue();
+    assertThat(redis.hasKey("sess:" + msisdn + ":" + device.id())).isTrue();
 
     var r = post("unbind");
 
     assertThat(r).hasStatus(200);
     assertThat(r).bodyJson().extractingPath("$.devices[0].status").isEqualTo("UNBOUND");
     assertThat(r).bodyJson().hasPathSatisfying("$.devices[0].unboundAt", v -> assertThat(v).isNotNull());
-    assertThat(valkey.hasKey("sess:" + msisdn + ":" + device.id())).isFalse();
+    assertThat(redis.hasKey("sess:" + msisdn + ":" + device.id())).isFalse();
     assertThat(jdbc.queryForObject("select count(*) from refresh_token where wallet_id = ? and not revoked",
         Integer.class, msisdn)).isZero();
     assertCode(login(PIN), 401, "MW-AUTH-047");

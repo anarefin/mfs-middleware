@@ -2,7 +2,7 @@
 -- access phase, after basic-auth and consumer-restriction admitted the MNO. Reads the msisdn of
 -- the JSON step (contract api/mw-ussd/ussd-http.v1), canonicalises 8801X... / +8801X... to
 -- 01X..., and sets ctx.var.mw_ussd_msisdn = "<mno>:<sha256 hex of the canonical number>", which
--- limit-count (key_type var, key mw_ussd_msisdn) reads: the Valkey counter key never holds the
+-- limit-count (key_type var, key mw_ussd_msisdn) reads: the Redis counter key never holds the
 -- MSISDN. Without a readable msisdn the key stays unset and limit-count counts per source
 -- address; mw-ussd refuses such a step with 400 anyway. The body is read, never changed.
 local core = require("apisix.core")

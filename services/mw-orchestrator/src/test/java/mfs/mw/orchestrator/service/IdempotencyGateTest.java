@@ -12,7 +12,7 @@ import mfs.mw.orchestrator.service.IdempotencyGate.Decision;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** The 60 s Valkey lock in front of the PostgreSQL claim (spec 7.3 rule 4, ticket 50). */
+/** The 60 s Redis lock in front of the PostgreSQL claim (spec 7.3 rule 4, ticket 50). */
 class IdempotencyGateTest {
 
   private static final UUID FIRST = UUID.fromString("0190a7c4-1b2e-7c3d-8e4f-5a6b7c8d9e01");
@@ -20,7 +20,7 @@ class IdempotencyGateTest {
   private static final byte[] HASH = {1, 2, 3};
   private static final byte[] OTHER_HASH = {9, 9, 9};
 
-  /** In-memory stand-in for Valkey's SET NX PX; can be switched off like an unreachable server. */
+  /** In-memory stand-in for Redis's SET NX PX; can be switched off like an unreachable server. */
   static final class FakeLock implements IdempotencyLock {
     final Map<String, String> values = new HashMap<>();
     final Map<String, Duration> ttls = new HashMap<>();
@@ -102,7 +102,7 @@ class IdempotencyGateTest {
   }
 
   @Test
-  void whenValkeyIsUnreachableTheRequestFallsBackToThePrimaryKeyAndTheFallbackIsCounted() {
+  void whenRedisIsUnreachableTheRequestFallsBackToThePrimaryKeyAndTheFallbackIsCounted() {
     lock.down = true;
     assertThat(enter(FIRST, HASH)).isEqualTo(new Decision.Proceed());
     assertThat(enter(SECOND, HASH)).isEqualTo(new Decision.Proceed());

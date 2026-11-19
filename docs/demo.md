@@ -41,7 +41,7 @@ What it proves: repo skeleton and quality gate (WP01), platform stack (WP02), se
 | 2 | `./gradlew :checkIsolation` | every module passes |
 | 3 | `./gradlew :contractsLint` | every schema and its valid/invalid samples pass (needs Node.js 22+) |
 | 4 | `scripts/new-service.sh mw-name && ./gradlew :mw-name:build` | a scaffolded copy with package `mfs.mw.name` and no reference back to the template, picked up by the root build; its copied tests pass (masking, error mapping, retry/DLQ routes, the conformance suite) |
-| 5 | `scripts/smoke.sh` | every platform container healthy, topics with RF 1, Kafka produce/consume, PostgreSQL, Valkey, Keycloak tokens per test user, Vault read, APISIX `/healthz` over HTTPS |
+| 5 | `scripts/smoke.sh` | every platform container healthy, topics with RF 1, Kafka produce/consume, PostgreSQL, Redis, Keycloak tokens per test user, Vault read, APISIX `/healthz` over HTTPS |
 | 6 | `scripts/check-isolation.sh mw-name` | the copy passes the isolation rules; remove it afterwards with `rm -rf services/mw-name` |
 
 ## M1 Core loop

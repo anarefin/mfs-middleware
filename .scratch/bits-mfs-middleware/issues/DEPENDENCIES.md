@@ -62,7 +62,7 @@
 # --- Run 89-138 (planned 2026-11-19): FRS gap closure, spec/FRS-Upay-Middleware.md (plan we-have-to-implement-harmonic-puzzle). Mocks only. Decisions: Redis, HashiCorp Vault, mw-auth keeps app tokens, repo names + FRS map, core wallet over REST (+assertion, events on Kafka), one service per party (12 GB budget), unified /mock-control. Row order = run order. Tickets written only; no implementation started (user).
 # --- M7 Foundation (FRS phase 1)
 89-frs-decisions-adr-spec                   —                 done     11m      16 files +812 −26      48641b1c
-90-redis-swap                               89                open
+90-redis-swap                               89                done     40m      132 files +575 −531    3fb5ffca
 91-vault-swap                               89                done     80m      350 files +1206 −3347  8e5cfb4f
 92-contracts-canonical-additions            89                done     50m      103 files +1336 −133   a27c953a
 93-core-mock-rest-api                       92                done     31m      43 files +2354 −36     cbfb273a
@@ -75,7 +75,10 @@
 96-orchestrator-saga-frs                    95,97             open
 98-routing-module                           96,97             open
 99-idempotency-duplicates-replay            89                done     110m     95 files +2601 −110    e3d9c7c6,45ffe6a3
-100-edge-client-registry                    90,91,99          open
+100-edge-client-registry                    90,91,99          split (100-split-decisions.md, 2026-11-20)
+100a-client-registry-apisix-sync            90,91,99          open
+100b-oauth2-cc-clients                      100a              open   (run before 118-121)
+100c-inbound-mtls-edge-tests                100a              open   (run by M13)
 101-openapi-swagger-wsdl                    89                done     75m      143 files +6928 −31    09fb498a
 102-mock-control-engine                     89                102a done 25m  73 files +2656 −660  b8f2d843; 102b (SMPP parties, test console + tests/api to /test/mock-control, folder 39) open
 103-mock-control-core-and-reset             102,94            open
@@ -113,7 +116,7 @@
 130-audit-frs                               97                open
 # --- M12 gate: UC-01, UC-20..22
 131-admin-partner-credentials               91,97             open
-132-admin-routing-billers-clients-ui        98,100,113        open
+132-admin-routing-billers-clients-ui        98,100a,113        open
 133-admin-ussd-editor-templates             109,111           open
 134-admin-actions-compliance-recon-ui       125,127,111       open
 135-admin-monitoring-users-audit-mock       103,130           open

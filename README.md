@@ -15,10 +15,9 @@ one Gradle build, the admin console, and one hand-written compose file.
 - Why it is built this way: [docs/adr/README.md](docs/adr/README.md), one record per decision.
 - The Upay FRS build (tickets 89–138, ADRs D29–D33): [docs/frs-traceability.md](docs/frs-traceability.md)
   maps every FRS requirement id and name to the repo name, its status and the ticket. Decided there and
-  not built yet: Redis replaces Valkey (D29, ticket 90),
-  the core over REST (D31), new services `mw-adapter-card`, `-remit`, `-atm`, `-interop`, `-merchant`,
+  not built yet: the core over REST (D31), new services `mw-adapter-card`, `-remit`, `-atm`, `-interop`, `-merchant`,
   `mw-compliance`, `mw-recon`, `mw-data-export` (D32) and one mock control API (D33). Until each ticket
-  lands, this README describes the stack as it runs (Valkey). HashiCorp Vault (D30, ticket 91) is built.
+  lands, this README describes the stack as it runs. HashiCorp Vault (D30, ticket 91) and Redis (D29, ticket 90) are built.
 - Running the MVP host: [docs/runbook.md](docs/runbook.md).
 - Milestone demos M0–M6: [docs/demo.md](docs/demo.md).
 - Testing every feature by hand from a browser (app flows, USSD, bank, failures, checkout, bulk,
@@ -42,7 +41,7 @@ one Gradle build, the admin console, and one hand-written compose file.
 ## Prerequisites
 
 The quick start needs nothing but this repo and the tools below. Everything else (Kafka,
-PostgreSQL, Valkey, Keycloak, Vault, APISIX, GreenMail, every service and the admin console)
+PostgreSQL, Redis, Keycloak, Vault, APISIX, GreenMail, every service and the admin console)
 runs in Docker.
 
 | What | Why | Check |
@@ -124,7 +123,7 @@ path, unseeded.
 
 ```sh
 cd ..
-scripts/smoke.sh          # containers, topics, Kafka, PG, Valkey, Keycloak tokens, Vault, APISIX
+scripts/smoke.sh          # containers, topics, Kafka, PG, Redis, Keycloak tokens, Vault, APISIX
 ```
 
 Seeded on start, no extra step: `mw-core-mock` creates 1,000 customer wallets `01711000001..`,
@@ -215,7 +214,7 @@ docker compose --profile core --profile seed down    # remove containers, keep v
 ./reset.sh                                           # wipe ALL state: every container and volume of every profile
 ```
 
-Never reset a single store. PostgreSQL, Kafka, Valkey, Vault, Keycloak and the core-mock ledger
+Never reset a single store. PostgreSQL, Kafka, Redis, Vault, Keycloak and the core-mock ledger
 describe the same books, so `deploy/reset.sh` always resets them together. After a reset, repeat
 step 3.
 
@@ -305,7 +304,7 @@ Every script prints its usage in its header comment. They read the running stack
 
 | Script | What it does |
 | --- | --- |
-| `scripts/smoke.sh` | live checks: every platform container healthy and the one-shots exited 0, topics, Kafka produce/consume, PostgreSQL, Valkey, Keycloak tokens for every test user, Vault, APISIX `/healthz` |
+| `scripts/smoke.sh` | live checks: every platform container healthy and the one-shots exited 0, topics, Kafka produce/consume, PostgreSQL, Redis, Keycloak tokens for every test user, Vault, APISIX `/healthz` |
 | `scripts/edge-test.sh` | APISIX edge policies on the running stack: 401/400/413/429 envelopes, header stripping, correlation ID, quotas, mw-auth's `/auth/v1` and its tokens on `app-v1` (app logins by `scripts/lib/mw-auth-token.mjs`), partner and checkout callbacks, USSD credentials, idempotent apply |
 | `scripts/api-test.sh [FOLDER] [ALL]` | Newman API suite in `tests/api` against the running, seeded stack (with the test timers of `deploy/.env`): every folder but `90 Slow`, or the given ones (numbers or names, comma-separated, e.g. `scripts/api-test.sh "01, 03"`); `1` as the second argument adds `90 Slow`. Re-applies the test-only gateway routes first; JUnit report `tests/api/build/newman-report.xml` |
 | `scripts/ui-e2e.sh [GREP]` | admin console Playwright suite (`ui/mw-admin-ui/e2e`) on the running, seeded stack: real Keycloak logins as the seeded personas, the real mw-admin-api behind APISIX; tags `@smoke`, `@console`, `@approvals`, `@partners`, `@ussd`, `@templates`, `@keys`; installs pnpm packages and Chromium when needed |
@@ -347,7 +346,7 @@ peaks, is the header of `deploy/docker-compose.yml`.
 | `APISIX_MEM` (384M) | `apisix` |
 | `POSTGRES_MEM` (320M) | `postgres` |
 | `GREENMAIL_MEM` (160M) | `greenmail` |
-| `VAULT_MEM` (128M), `ETCD_MEM` (64M), `VALKEY_MEM` (64M) | `vault`, `etcd`, `valkey` |
+| `VAULT_MEM` (128M), `ETCD_MEM` (64M), `REDIS_MEM_LIMIT` (64M) | `vault`, `etcd`, `redis` |
 | `SOFTHSM_MEM` (48M) | `softhsm` (profiles `minimal` and `core`) |
 | `ADMIN_UI_MEM` (64M) | `mw-admin-ui` (was 160M; trimmed in ticket 62 to free memory for `mw-crypto`: measured peak 46 MiB x 1.3, rounded up to 32 MiB) |
 
@@ -391,7 +390,7 @@ https://localhost on 443. Production stays edge-only (ADR D3 amendment).
 | 3000 | `mw-admin-ui`, path `/console` (`MW_PORT_ADMIN_UI`) |
 | 3001 | `mw-test-console`, profile `tester` (`MW_PORT_TEST_CONSOLE`) |
 | 5432 | `postgres` (`MW_PORT_POSTGRES`) |
-| 6379 | `valkey` (`MW_PORT_VALKEY`) |
+| 6379 | `redis` (`MW_PORT_REDIS`) |
 | 9094 | `kafka`, host listener `localhost:9094` (`MW_PORT_KAFKA`) |
 | 8180 | `keycloak` (`MW_PORT_KEYCLOAK`) |
 | 8200 | `vault` (`MW_PORT_VAULT`) |
@@ -435,7 +434,7 @@ Recovery and operations in depth: [docs/runbook.md](docs/runbook.md).
 | Partners | `mw-adapter-telco`, `mw-adapter-billpay`, `mw-adapter-bank` |
 | Security | `mw-auth` (wallet authentication: OTP, device binding, login and RS256 tokens, PIN custody and lockout, resets, the ES256 transaction assertion; public `/auth/v1`, mTLS internal API), `mw-crypto` (the HSM gateway: the only process that talks to an HSM, SoftHSM over PKCS#11 and the payShield simulator in dev; mTLS internal API only), `softhsm` |
 | Support | `mw-notify` (SMS over SMPP, email), `mw-audit-dw` (hash-chained audit trail, signed daily anchor), `mw-admin-api` (also key management and the key ceremony), `mw-admin-ui` (console at `/console`) |
-| Platform | `kafka` (KRaft), `postgres` (18), `valkey`, `keycloak`, `vault`, one-shots `kafka-init` and `provision` (every service's secret, database role and AppRole, `deploy/provision`), `softhsm` (dev/test PKCS#11 tokens, profiles `minimal` and `core`, `deploy/softhsm`) |
+| Platform | `kafka` (KRaft), `postgres` (18), `redis`, `keycloak`, `vault`, one-shots `kafka-init` and `provision` (every service's secret, database role and AppRole, `deploy/provision`), `softhsm` (dev/test PKCS#11 tokens, profiles `minimal` and `core`, `deploy/softhsm`) |
 | Test | `mw-simulators` (OCS, bill aggregator, C2W bank, SMSC, USSD gateway), `greenmail`, `mw-seeder` (profile `seed`), `mw-test-console` (profile `tester`) |
 
 The compose profiles: no profile = the platform (always starts), `minimal` = the P2P and cash path,

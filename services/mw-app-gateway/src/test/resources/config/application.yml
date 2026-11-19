@@ -6,10 +6,10 @@ mw:
     consumers:
       enabled: false
     # Off by default in tests that are not about it (they send no device headers);
-    # DeviceBindingIT switches it on with real Valkey.
+    # DeviceBindingIT switches it on with real Redis.
     device-binding:
       enabled: false
-    # Off by default in tests that are not about it (no Valkey); IdempotentReplayIT switches it on.
+    # Off by default in tests that are not about it (no Redis); IdempotentReplayIT switches it on.
     idempotent-replay:
       enabled: false
   outbox:

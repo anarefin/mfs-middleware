@@ -141,24 +141,24 @@
     <li><strong>Security headers</strong> (HSTS, <code>nosniff</code>) and a <strong>masked access log</strong> (<code>config.yaml</code> masks MSISDNs and drops query strings).</li>
   </ul>
 
-  <h3>Rate limits live in Valkey</h3>
-  <p>The <code>limit-count</code> plugin keeps its counters in Valkey (our Redis), so the count is shared if there is ever more than one APISIX.
-    The password is read as <code>$env://VALKEY_PASSWORD</code>, so it is never stored in etcd. Every limiter has
-    <code>allow_degradation: true</code>: if Valkey is down, requests pass <em>uncounted</em> rather than all failing, and APISIX logs
+  <h3>Rate limits live in Redis</h3>
+  <p>The <code>limit-count</code> plugin keeps its counters in Redis (the <code>redis</code> container), so the count is shared if there is ever more than one APISIX.
+    The password is read as <code>$env://REDIS_PASSWORD</code>, so it is never stored in etcd. Every limiter has
+    <code>allow_degradation: true</code>: if Redis is down, requests pass <em>uncounted</em> rather than all failing, and APISIX logs
     <code>mw.edge.rate_limit_degraded</code> so someone notices.</p>
 
   <h2 id="example">Worked example: an app payment</h2>
   <p>A customer taps <strong>Send money</strong>. The app sends <code>POST https://localhost/app/v1/transactions</code> with a bearer token and a
     device-signed body. Here is what <code>deploy/apisix/routes/app-v1.json</code> does with it, in plugin order:</p>
   <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
-actors: App | APISIX | mw-auth | Valkey | mw-app-gateway
+actors: App | APISIX | mw-auth | Redis | mw-app-gateway
 App -> APISIX : POST /app/v1/transactions  (Bearer token)
 APISIX -> APISIX : edge rule: drop X-Mw-*, set X-Correlation-Id
 APISIX -> APISIX : client-control: body ≤ 64 KiB?
 APISIX -> mw-auth : openid-connect: discovery + JWKS (cached)
 APISIX -> APISIX : verify RS256 signature, iss, aud mw-app, exp
 APISIX -> APISIX : consumer-from-jwt.lua: key = sub:<sub>
-APISIX -> Valkey : limit-count: +1 for sub:<sub>, under 120/60 s?
+APISIX -> Redis : limit-count: +1 for sub:<sub>, under 120/60 s?
 APISIX -> mw-app-gateway : forward (read timeout 35 s)
 mw-app-gateway -> mw-app-gateway : verify token again, check body schema, device signature
 mw-app-gateway --> APISIX : 202 / 200 with the service's JSON
@@ -172,7 +172,7 @@ APISIX --> App : same answer + X-Correlation-Id
       signature, issuer, audience <code>mw-app</code> and expiry (with only 10 s of clock slack). No token, a forged one or an expired one gives 401 <code>MW-AUTH-001</code>.
       If mw-auth rotates its signing key, the unknown key id makes APISIX fetch the JWKS again, so new tokens work at once.</li>
     <li><strong><code>consumer-from-jwt.lua</code></strong> reads the now-trusted <code>sub</code> claim and sets the variable <code>mw_consumer = sub:&lt;sub&gt;</code>.</li>
-    <li><strong><code>limit-count</code></strong> adds one to that consumer's counter in Valkey. Request 121 within a minute gets 429 <code>MW-SYS-RATE_LIMITED</code> (retryable).</li>
+    <li><strong><code>limit-count</code></strong> adds one to that consumer's counter in Redis. Request 121 within a minute gets 429 <code>MW-SYS-RATE_LIMITED</code> (retryable).</li>
     <li>The request goes to <code>mw-app-gateway:8080</code> unchanged, byte for byte, so the device signature still verifies there.</li>
   </ol>
   <p>A USSD request takes a different path through the same idea: <code>ip-restriction</code> (is this the MNO's address?), <code>basic-auth</code>

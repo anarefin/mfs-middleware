@@ -21,7 +21,7 @@ export default [
     },
   },
   {
-    // the assertion of an idempotency key lives 60 s in mw-auth (Valkey assert:{wallet}:{key}): a resend
+    // the assertion of an idempotency key lives 60 s in mw-auth (Redis assert:{wallet}:{key}): a resend
     // of the same transaction gets it back without a second PIN check, the orchestrator answers the
     // stored transaction (the assertion is not part of its request hash)
     name: '[assertion p2p] a resend with the same idempotency key inside the assertion life reuses it: same txnId, money moves once',

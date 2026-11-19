@@ -148,10 +148,10 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   closed), `POST .../pin {encryptedPin}` (HMAC derived as for a seeded PIN, replaces the current one, history
   forgotten); each answers the account afterwards; unknown wallet 404 `MW-VAL-003`. No token (chain 0, with
   the seed path); off, nothing answers `/test/**` (404).
-- Valkey (`repository/DeviceSessionStore`, `config/DeviceBindingConfig` fail-fast): sessions
+- Redis (`repository/DeviceSessionStore`, `config/DeviceBindingConfig` fail-fast): sessions
   `sess:{walletId}:{deviceId}` (value = the idle timeout in seconds, TTL sliding: `idle-timeout` 5 min, per channel
   `idle-timeout-by-channel`) and nonces `nonce:{deviceId}:{nonce}` (SET NX, 2x skew + 30 s; mw-app-gateway uses the
-  same key for its signed submits, so a nonce is used once across both). Valkey down `503 MW-SYS-012`; not in the
+  same key for its signed submits, so a nonce is used once across both). Redis down `503 MW-SYS-012`; not in the
   health groups. Password `spring.data.redis.password` from `secret/mw-auth`.
 - Internal device lookups for mw-app-gateway's device gate (contract `api/mw-auth/auth-internal.v1.openapi.yaml`,
   `controller/InternalDeviceController`, internal mTLS port): `GET /internal/v1/devices/{deviceId}` -> `{deviceId,
@@ -227,7 +227,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
     count) removed (mw-admin-api's approved ops unlock, ticket 52; it also sends core `UnlockWallet`, which since
     ticket 72 lifts only a core-side account lock: the core has no PIN lockout, mw-auth's is the only one); `REVOKE_SESSIONS` = revoke and close
     only; `PIN_RESET` (with `changeRequestId`, `makerId`) = the approved care reset above (its own
-    idempotency, no inbox row). The Valkey session close runs on every delivery (idempotent). Unknown wallet: skipped
+    idempotency, no inbox row). The Redis session close runs on every delivery (idempotent). Unknown wallet: skipped
     (logged); malformed: `MW-VAL-002` (retry topics, DLQ). Audited `auth.wallet.locked|unlocked|sessions_revoked`.
   - Audit (`service/AuditTrail`, `mapper/AuditEventMapper`, `dto/AuditEvent`): `mw.audit.event.v1`
     through the outbox in the change's transaction, resource `wallet/<masked id>`, key the resource,
@@ -243,7 +243,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   at least 1, except txnType `BALANCE` (balance inquiry): 0 with payee = payer (type and id), else 400 `MW-VAL-001`
   before any wallet lookup or PIN check. Order: wallet known (else 403 `MW-AUTH-002`),
   `WalletAccess.check` (043/041/042), a sent `deviceId` must be the wallet's bound device (401 `MW-AUTH-047`),
-  then Valkey `assert:{walletId}:{idempotencyKey}` (value `<exp ms>|<txnHash>|<newDevice>|<jws>`, TTL = life,
+  then Redis `assert:{walletId}:{idempotencyKey}` (value `<exp ms>|<txnHash>|<newDevice>|<jws>`, TTL = life,
   `SET NX`; the life is also checked against the service clock): a live entry for the same `txnHash` is
   returned again **without a PIN check**, for another hash 409 `MW-IDEM-001`; then the PIN through
   `PinVerification` (lockout: wrong 401 `MW-AUTH-040`, counted, the tries-th locks 423; none 403 `MW-AUTH-045`) and the JWS by mw-crypto
@@ -337,36 +337,36 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   with matching certificates, cert/token mismatch, a client off the list, bad tokens, no client
   certificate (handshake), the public port refuses `/internal/**`, health on the management port.
 - `contracts/ConsumedContractsTest`, `ProducedContractsTest`, `ApiContractsTest` (no Spring, no Docker).
-- Ticket 68 (moved from mw-app-gateway): `security/DeviceBindingIT` (PostgreSQL + Valkey: binding, OTP rules,
+- Ticket 68 (moved from mw-app-gateway): `security/DeviceBindingIT` (PostgreSQL + Redis: binding, OTP rules,
   replay, tamper, stale timestamp, replacement, a device moving wallets, expired session, the internal lookups with
   a services token), `controller/DeviceControllerTest` (body schemas), `repository/DeviceOtpRepositoryIT`,
-  `repository/DeviceSessionStoreTest` (Valkey down 503), `service/RequestSignaturesTest`,
-  `mapper/DeviceNotificationMapperTest`, `config/DeviceBindingPropertiesTest`, `util/MsisdnTest`; `ValkeyInfrastructure`.
+  `repository/DeviceSessionStoreTest` (Redis down 503), `service/RequestSignaturesTest`,
+  `mapper/DeviceNotificationMapperTest`, `config/DeviceBindingPropertiesTest`, `util/MsisdnTest`; `RedisInfrastructure`.
   Since ticket 69 `DeviceBindingIT` names the wallet by MSISDN (mw-crypto mocked), opens sessions with the
   first-PIN OTP login and checks the session's key fingerprint after a rebinding.
 - Ticket 69: `service/TokenServiceTest` (claims, lifetimes, RS256 by an in-test key, refresh token shape and
   hash, rotation, reuse and wrong device revoke the family), `security/OwnTokenDecoderTest`, `security/LoginIT`
-  (PostgreSQL + Valkey, mw-crypto a behaving mock: the PIN login and every refusal (unknown MSISDN, status,
+  (PostgreSQL + Redis, mw-crypto a behaving mock: the PIN login and every refusal (unknown MSISDN, status,
   locks 041/042/043, device of another wallet, bad signature, replay, OTP vs PIN, mw-crypto down), refresh
   rotation and reuse, another device, logout, a foreign token, the first PIN flow, the JWK Set and discovery,
   the PIN key, the seed API), `controller/DeviceControllerTest` (body schemas of OTP, binding, login, refresh;
   no token needed, a stale bearer ignored, logout and first PIN need one).
 - Ticket 71: `util/TxnHashTest` (canonical JSON and hash against literals worked out outside Java; the same
-  txn in another field order gives the same JSON), `security/TxnAuthorisationIT` (PostgreSQL + Valkey,
+  txn in another field order gives the same JSON), `security/TxnAuthorisationIT` (PostgreSQL + Redis,
   mw-crypto a behaving mock signing ES256 with an in-test P-256 key; the clock a `@TestBean MutableClock`):
   claims verified against the served assertion JWK Set, USSD by MSISDN, newDevice, wrong PIN counted, PIN
   lock (no PIN check), blocked wallet, no PIN, reuse inside the life (one PIN check), same key other txn 409,
   a new assertion after the life, device of another wallet, callers, walletId xor msisdn, mw-crypto down, a
   BALANCE assertion and its refusals); `service/TxnAmountRuleTest` (ADR D26).
 
-- Ticket 70: `security/PinLifecycleIT` (PostgreSQL + Valkey, mw-crypto a behaving mock): the lockout
+- Ticket 70: `security/PinLifecycleIT` (PostgreSQL + Redis, mw-crypto a behaving mock): the lockout
   levels through login (041 with retryAfter, 24 h, 042 permanent; no mw-crypto call while locked), the
   decay, device binding counting and refusing while locked, parallel wrong PINs never skipping a level,
   PIN change (step-up, policy inputs, LAST_PIN, family revoked), the self-service reset with the core's
   answer (command validated against core.command.v1, factors never in clear, wrong device 404, not ready
   409, weak 044, lock cleared, tokens revoked), the rejection and a duplicate answer, the reset's
   device/signature/OTP rules, the care reset (only mw-admin-api, idempotent, a new device);
-  `messaging/WalletLockKafkaIT` (Kafka + Valkey: LOCK, UNLOCK, duplicate, REVOKE_SESSIONS, unknown
+  `messaging/WalletLockKafkaIT` (Kafka + Redis: LOCK, UNLOCK, duplicate, REVOKE_SESSIONS, unknown
   wallet, malformed, the core's answer on core.wallet.event.v1); `service/PinServiceTest` (policy inputs,
   every rule mw-crypto names, LAST_PIN on the history, the history kept).
 
@@ -411,7 +411,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   measurement on a running stack was taken in the ticket (deferred to the final integration test, when
   `docker stats` shows whether 320M still holds). `deploy/provision/services.sh`
   `provision_mw_auth`: role `auth_rw`, schema `auth`, `secret/mw-auth` (`spring.datasource.password`,
-  `mw.auth.crypto.client-secret` from `KC_MW_AUTH_SECRET`, `spring.data.redis.password` from `VALKEY_PASSWORD`),
+  `mw.auth.crypto.client-secret` from `KC_MW_AUTH_SECRET`, `spring.data.redis.password` from `REDIS_PASSWORD`),
   AppRole volume `auth-approle`; PKI role
   `mw-auth` from `PKI_SERVICES`. Keycloak realm `services` client `mw-auth` (audience `mw-crypto`): a
   running stack needs `deploy/reset.sh` to import it.

@@ -101,7 +101,7 @@ D3 amendment 2026-11-13).
 | 3000 | `mw-admin-ui` (path `/console`) | `MW_PORT_ADMIN_UI` |
 | 3001 | `mw-test-console` (profile `tester`) | `MW_PORT_TEST_CONSOLE` |
 | 5432 | `postgres` | `MW_PORT_POSTGRES` |
-| 6379 | `valkey` | `MW_PORT_VALKEY` |
+| 6379 | `redis` | `MW_PORT_REDIS` |
 | 9094 | `kafka` (host listener `localhost:9094`) | `MW_PORT_KAFKA` |
 | 8180 | `keycloak` | `MW_PORT_KEYCLOAK` |
 | 8200 | `vault` | `MW_PORT_VAULT` |
@@ -131,7 +131,7 @@ machine, browse on the host itself or forward the port (`sudo ssh -L 443:localho
 
 ## Credentials
 
-- Every dev credential (PostgreSQL, Valkey, Keycloak admin and test users, client secrets, partner
+- Every dev credential (PostgreSQL, Redis, Keycloak admin and test users, client secrets, partner
   simulator HMAC secrets, USSD gateway passwords, the console's session key) is a fixed, obviously
   fake value in the committed `deploy/dev.env.defaults` (ADR D9 amendment; the tester logins are in
   `docs/testing-guide.html` section 1). `cd deploy && cp dev.env.defaults .env` before the first
@@ -195,7 +195,7 @@ Log events that need a person:
 | `tls.certificate.expiring` | mw-crypto (any service with `mw.tls.enabled`) | its Vault service certificate has less than a third of its 72 h life left: renewal at two thirds failed (WARN `tls.certificate.renew_failed`, retried every minute; gauge `tls_certificate_expiry_seconds`). Check `vault` health and the service's AppRole policy (`pki_int/issue/<service>`, `dc logs provision`); once the certificate expires callers fail the handshake |
 | `smpp.bind.down` | mw-ussd, mw-notify | the SMPP bind to the USSD gateway or SMSC is lost; it reconnects by itself, check the peer |
 | `partner.call.failed`, `partner.route.failed` | adapters | partner errors or a route that failed to start after a config change |
-| `mw.edge.rate_limit_degraded` | apisix | Valkey is unreachable and the rate limiter fails open: check `valkey` |
+| `mw.edge.rate_limit_degraded` | apisix | Redis is unreachable and the rate limiter fails open: check `redis` |
 
 Read a DLQ (topic names in `deploy/kafka/topics.txt`):
 
@@ -304,8 +304,8 @@ dc exec -T postgres sh -c 'pg_dumpall -U "$POSTGRES_USER"' > mw-backup.sql
 ```
 
 Restoring means a fresh stack (`deploy/reset.sh`, then start again) and feeding that file to
-`psql`. Kafka, Valkey and Vault are not backed up: Kafka holds only in-flight messages (each
-service's outbox is in PostgreSQL), Valkey only sessions and locks, Vault only the generated dev
+`psql`. Kafka, Redis and Vault are not backed up: Kafka holds only in-flight messages (each
+service's outbox is in PostgreSQL), Redis only sessions and locks, Vault only the generated dev
 secrets that `provision` writes again on every `up`.
 
 ## Onboard a biller

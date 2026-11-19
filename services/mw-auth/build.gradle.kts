@@ -65,7 +65,7 @@ dependencies {
     implementation("net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.10.1")
     // /internal/v1/** needs a Keycloak realm services client-credentials JWT (spec 18.2, D24).
     implementation("org.springframework.boot:spring-boot-starter-security-oauth2-resource-server")
-    // Valkey (Lettuce): device sessions and the signed-request nonce cache (spec 9.1, 18.7, ticket 68).
+    // Redis (Lettuce): device sessions and the signed-request nonce cache (spec 9.1, 18.7, ticket 68).
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
     // Request body schema checks of /auth/v1 (service/BodySchema, M3 gate decision A6; ticket 68). The
     // validator is built on a newer Jackson 3 than Boot manages; keep Boot's, so this library does not

@@ -64,7 +64,7 @@ dependencies {
     // Scheduled jobs run on one instance only (ShedLock on this service's schema, 4.4).
     implementation("net.javacrumbs.shedlock:shedlock-spring:7.10.1")
     implementation("net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.10.1")
-    // Valkey (Lettuce): the 60 s idempotency lock in front of the PostgreSQL claim (spec 7.3 rule 4).
+    // Redis (Lettuce): the 60 s idempotency lock in front of the PostgreSQL claim (spec 7.3 rule 4).
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")

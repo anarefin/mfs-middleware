@@ -56,13 +56,13 @@ class UssdSmppMenuWalkIT extends UssdMenuWalkSuite {
   }
 
   private final MockMvcTester http;
-  private final StringRedisTemplate valkey;
+  private final StringRedisTemplate redis;
   private final MeterRegistry meters;
 
   @Autowired
-  UssdSmppMenuWalkIT(MockMvcTester http, StringRedisTemplate valkey, MeterRegistry meters) {
+  UssdSmppMenuWalkIT(MockMvcTester http, StringRedisTemplate redis, MeterRegistry meters) {
     this.http = http;
-    this.valkey = valkey;
+    this.redis = redis;
     this.meters = meters;
   }
 
@@ -120,11 +120,11 @@ class UssdSmppMenuWalkIT extends UssdMenuWalkSuite {
   void aReleaseByTheSubscriberDropsTheSession() {
     List<UssdGatewayStub.Screen> screens = GATEWAY.dial(0, CUSTOMER, "*269#", List.of("9"));
     int number = screens.getLast().sessionNumber();
-    assertThat(valkey.keys("ussd:robi:smpp-" + number + "-*")).hasSize(1);
+    assertThat(redis.keys("ussd:robi:smpp-" + number + "-*")).hasSize(1);
 
     GATEWAY.release(0, CUSTOMER, "*269#", number);
 
-    await().atMost(Duration.ofSeconds(5)).until(() -> valkey.keys("ussd:robi:smpp-" + number + "-*").isEmpty());
+    await().atMost(Duration.ofSeconds(5)).until(() -> redis.keys("ussd:robi:smpp-" + number + "-*").isEmpty());
   }
 
   @Test

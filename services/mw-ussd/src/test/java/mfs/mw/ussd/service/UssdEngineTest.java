@@ -38,7 +38,7 @@ class UssdEngineTest {
   static final BillDirectory BILLS = new UssdMenuWalkTest.FakeBills();
   static final Menu MENU = MenuParser.parseResource(JSON, "menus/main-v3.json");
 
-  /** Sessions as Valkey would hold them: serialised JSON, so a test can look inside. */
+  /** Sessions as Redis would hold them: serialised JSON, so a test can look inside. */
   static final class InMemorySessions implements UssdSessionStore {
     final Map<String, String> values = new HashMap<>();
     final Map<String, Duration> ttls = new HashMap<>();

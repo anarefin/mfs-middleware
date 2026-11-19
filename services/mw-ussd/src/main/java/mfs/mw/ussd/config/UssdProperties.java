@@ -19,7 +19,7 @@ import org.springframework.validation.annotation.Validated;
  *     group; blank means a random id per start
  * @param syncBudget how long an ACTION waits for the final status before the menu ends with
  *     "being processed" (8 s, spec 9.2)
- * @param sessionGrace added to the MNO session timeout for the Valkey TTL (30 s, spec 9.2)
+ * @param sessionGrace added to the MNO session timeout for the Redis TTL (30 s, spec 9.2)
  * @param defaultLanguage {@code bn} or {@code en} at dial-in (no customer profile lookup yet)
  * @param maxInvalidAttempts invalid inputs in a row on one screen before the session ends
  * @param mno per MNO ({@code gp}, {@code robi}, {@code bl}, {@code teletalk})

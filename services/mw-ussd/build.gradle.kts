@@ -62,7 +62,7 @@ dependencies {
     // Scheduled jobs run on one instance only (ShedLock on this service's schema, 4.4).
     implementation("net.javacrumbs.shedlock:shedlock-spring:7.10.1")
     implementation("net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.10.1")
-    // Valkey (Lettuce): USSD session state ussd:{mno}:{sessionId} (spec 9.2).
+    // Redis (Lettuce): USSD session state ussd:{mno}:{sessionId} (spec 9.2).
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
     // SMPP USSD transport (spec 9.2, 9.2.1): deliver_sm in, submit_sm out, ussd_service_op and
     // its_session_info TLVs; jSMPP direct (as mw-notify) for TLV and enquire_link control.
@@ -150,7 +150,7 @@ tasks.test {
         .withPropertyName("mwContracts")
     systemProperty("mwContractsDir", contractsDir.asFile.absolutePath)
     // One test task runs everything: unit, slice, contract, Testcontainers `*IT` and the @Conformance
-    // suite, in one JVM sharing one PostgreSQL, one Kafka and one Valkey (TestInfrastructure). Without
+    // suite, in one JVM sharing one PostgreSQL, one Kafka and one Redis (TestInfrastructure). Without
     // Docker the `*IT` classes are skipped (DockerAvailableCondition). Classes run one at a time; a
     // method may opt in to running beside its class-mates (@Execution(CONCURRENT)).
     systemProperty("junit.jupiter.execution.parallel.enabled", "true")

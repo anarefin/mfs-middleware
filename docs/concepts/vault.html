@@ -149,7 +149,7 @@
       The keys in the secret are plain Spring property names, such as <code>spring.datasource.password</code>, so they simply fill in the config.</li>
     <li>Both are <code>optional:</code> and <code>VAULT_ENABLED</code> defaults to false, so unit tests and <code>*IT</code> tests run without Vault.</li>
   </ul>
-  <p>For example, <code>secret/mw-app-gateway</code> holds <code>spring.datasource.password</code>, <code>spring.data.redis.password</code> (Valkey) and
+  <p>For example, <code>secret/mw-app-gateway</code> holds <code>spring.datasource.password</code>, <code>spring.data.redis.password</code> (Redis) and
     <code>mw.app-gateway.auth.client-secret</code> (its Keycloak client secret, synced from <code>KC_MW_APP_GATEWAY_SECRET</code>).</p>
   <h3>Certificates that renew themselves</h3>
   <p>A service with <code>mw.tls.enabled</code> has a <code>ServiceCertificateManager</code> in its <code>config</code> package. At start it asks
@@ -184,7 +184,7 @@ mw-auth -> mw-auth : cert from pki_int? azp = cert CN?
       two files under <code>/run/mw/approle</code> into properties.</li>
     <li><strong>It logs in.</strong> Spring Cloud Vault sends the role-id and secret-id to <code>http://vault:8200</code> and gets back a token whose policy is
       <code>mw-app-gateway</code>. That token can read one secret and issue one kind of certificate. Nothing else.</li>
-    <li><strong>It reads its secrets.</strong> The fields of <code>secret/mw-app-gateway</code> become properties: the datasource connects, Valkey connects, and the
+    <li><strong>It reads its secrets.</strong> The fields of <code>secret/mw-app-gateway</code> become properties: the datasource connects, Redis connects, and the
       Keycloak client secret is ready.</li>
     <li><strong>It gets its certificate.</strong> <code>ServiceCertificateManager</code> issues a 72-hour certificate from <code>pki_int/issue/mw-app-gateway</code>, with
       CN and DNS name <code>mw-app-gateway</code>.</li>

@@ -4,7 +4,7 @@ import io.lettuce.core.ClientOptions;
 import io.lettuce.core.SocketOptions;
 import java.time.Duration;
 import mfs.mw.orchestrator.client.IdempotencyLock;
-import mfs.mw.orchestrator.client.ValkeyIdempotencyLock;
+import mfs.mw.orchestrator.client.RedisIdempotencyLock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.data.redis.autoconfigure.LettuceClientOptionsBuilderCustomizer;
 import org.springframework.context.annotation.Bean;
@@ -12,15 +12,15 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 /**
- * Valkey for the idempotency lock (spec 7.3 rule 4, ticket 50). Connection settings are
+ * Redis for the idempotency lock (spec 7.3 rule 4, ticket 50). Connection settings are
  * {@code spring.data.redis.*} (password from Vault); short timeouts and rejecting commands while
- * disconnected keep a Valkey outage from slowing intake down: the lock is then unavailable and the
- * PostgreSQL primary key decides alone. Valkey is not part of the health groups
+ * disconnected keep a Redis outage from slowing intake down: the lock is then unavailable and the
+ * PostgreSQL primary key decides alone. Redis is not part of the health groups
  * ({@code management.health.redis.enabled: false}), so an outage never takes the service out of
  * readiness.
  */
 @Configuration(proxyBeanMethods = false)
-public class ValkeyConfig {
+public class RedisConfig {
 
   /** Fail at once while disconnected instead of queueing commands until they time out. */
   public static ClientOptions.Builder failFast(ClientOptions.Builder builder) {
@@ -33,14 +33,14 @@ public class ValkeyConfig {
   }
 
   @Bean
-  LettuceClientOptionsBuilderCustomizer valkeyFailFast() {
-    return ValkeyConfig::failFast;
+  LettuceClientOptionsBuilderCustomizer redisFailFast() {
+    return RedisConfig::failFast;
   }
 
   @Bean
   @ConditionalOnProperty(name = "mw.orchestrator.idempotency-lock.enabled", havingValue = "true", matchIfMissing = true)
-  IdempotencyLock valkeyIdempotencyLock(StringRedisTemplate valkey) {
-    return new ValkeyIdempotencyLock(valkey);
+  IdempotencyLock redisIdempotencyLock(StringRedisTemplate redis) {
+    return new RedisIdempotencyLock(redis);
   }
 
   @Bean

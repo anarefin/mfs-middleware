@@ -39,7 +39,7 @@ import org.junit.jupiter.api.Test;
  * session answer carries the current key's fingerprint, so once the session confirmation is asked
  * again (at most {@code session-cache-ttl} later) a cached key of a replaced binding is dropped and
  * the device fetched again: the old key no longer signs anything, and a device moved to another
- * wallet no longer serves this one. mw-auth and Valkey are in-memory fakes; a fresh confirmation is
+ * wallet no longer serves this one. mw-auth and Redis are in-memory fakes; a fresh confirmation is
  * what the 10 s cache expiring gives.
  */
 class DeviceVerifierTest {
@@ -50,7 +50,7 @@ class DeviceVerifierTest {
   /** mw-auth: bound devices and live sessions. */
   final Map<String, BoundDevice> bound = new HashMap<>();
   final Set<String> live = new HashSet<>();
-  /** Valkey: the gate's cached keys and session confirmations (no TTL: tests expire them by hand). */
+  /** Redis: the gate's cached keys and session confirmations (no TTL: tests expire them by hand). */
   final Map<String, DeviceGateStore.CachedKey> keys = new HashMap<>();
   final Map<String, String> confirmed = new HashMap<>();
   int deviceLookups;

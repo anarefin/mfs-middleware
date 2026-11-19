@@ -70,7 +70,7 @@ class StatusMapperTest {
     assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(msg))).isEmpty();
   }
 
-  /** Ticket 50: a repeat answered from the Valkey lock before the first request committed. */
+  /** Ticket 50: a repeat answered from the Redis lock before the first request committed. */
   @Test
   void anInFlightDuplicateIsReceivedUnderTheFirstRequestsTxnId() {
     String first = TestData.txnId();

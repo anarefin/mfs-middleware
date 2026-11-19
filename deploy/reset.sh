@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Wipes ALL state of the stack together, every profile (BitsPay's deploy/reset.sh). PostgreSQL, Kafka,
-# Valkey, Vault, Keycloak and the core-mock ledger describe the same books, so never reset one
+# Redis, Vault, Keycloak and the core-mock ledger describe the same books, so never reset one
 # store alone. Runnable from any directory. Compose needs deploy/.env even to tear down, so it is
 # copied from deploy/dev.env.defaults first if missing (ADR D9). The next `up` starts fresh (the
 # seeder re-seeds).

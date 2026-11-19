@@ -4,7 +4,7 @@
 #
 # Checks: every platform container healthy and the one-shots exited 0; only APISIX
 # publishes a port beyond 127.0.0.1; every topic in deploy/kafka/topics.txt exists with RF 1 and the
-# planned partition count; Kafka produce/consume; a PostgreSQL connection; a Valkey ping;
+# planned partition count; Kafka produce/consume; a PostgreSQL connection; a Redis ping;
 # Keycloak in production mode with its realms in PostgreSQL; a Keycloak token for every test user and service client (ops and
 # portals users: refused until TOTP is enrolled or without the code, and the ops and portals browser flows require OTP),
 # partner-sim by private_key_jwt (its key from Vault) and refused without an assertion; a Vault KV read; the Vault PKI
@@ -21,7 +21,7 @@ ensure_env
 stack_compose
 
 CURL_IMAGE="curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93"
-LONG_RUNNING="kafka postgres valkey keycloak vault etcd apisix greenmail"
+LONG_RUNNING="kafka postgres redis keycloak vault etcd apisix greenmail"
 ONE_SHOT="kafka-init etcd-init apisix-init"
 
 # Generated credentials (gitignored deploy/.env, a copy of deploy/dev.env.defaults)
@@ -102,11 +102,11 @@ kafka_roundtrip() {
 }
 check "kafka produce/consume round trip" kafka_roundtrip
 
-# ---- PostgreSQL, Valkey, Vault ----
+# ---- PostgreSQL, Redis, Vault ----
 check "postgres connection (TCP, password auth, PG 18)" \
   dc exec -T postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "show server_version" | grep -q "^18\."'
-check "valkey ping (auth required)" \
-  dc exec -T valkey sh -c 'valkey-cli ping | grep -qx PONG && env -u REDISCLI_AUTH valkey-cli ping 2>&1 | grep -q NOAUTH'
+check "redis ping (auth required)" \
+  dc exec -T redis sh -c 'redis-cli ping | grep -qx PONG && env -u REDISCLI_AUTH redis-cli ping 2>&1 | grep -q NOAUTH'
 check "vault KV read secret/mw/smoke" \
   dc exec -T vault sh -c 'VAULT_TOKEN="$(sed -n "s/.*\"root_token\": *\"\([^\"]*\)\".*/\1/p" /vault/file/dev-init.json)" vault kv get -field=value secret/mw/smoke | grep -qx ok'
 
@@ -282,13 +282,13 @@ docs_listing() {
 check "apisix /docs/ lists the Swagger UI of every service (when the test-only routes are applied)" docs_listing
 
 # ---- rate-limiter degradation alert (ticket 50) ----
-# limit-count fails open when Valkey is down; deploy/apisix/lua/edge-limit-degraded.lua logs
+# limit-count fails open when Redis is down; deploy/apisix/lua/edge-limit-degraded.lua logs
 # every request it let through unlimited as "mw.edge.rate_limit_degraded" (deploy/apisix/README.md).
 # Last SMOKE_LIMITER_WINDOW (default 5m), so the brief outage scripts/edge-test.sh causes ages out.
 limiter_not_degraded() {
   local lines
   lines="$(dc logs --no-log-prefix --since "${SMOKE_LIMITER_WINDOW:-5m}" apisix 2>&1 | grep 'mw.edge.rate_limit_degraded')"
-  [ -z "$lines" ] || { echo "$(printf '%s\n' "$lines" | wc -l | tr -d ' ') request(s) passed without rate limiting (Valkey unreachable?); last:"; printf '%s\n' "$lines" | tail -3; return 1; }
+  [ -z "$lines" ] || { echo "$(printf '%s\n' "$lines" | wc -l | tr -d ' ') request(s) passed without rate limiting (Redis unreachable?); last:"; printf '%s\n' "$lines" | tail -3; return 1; }
 }
 check "apisix rate limiter not degraded (no mw.edge.rate_limit_degraded in the APISIX log, last ${SMOKE_LIMITER_WINDOW:-5m})" limiter_not_degraded
 

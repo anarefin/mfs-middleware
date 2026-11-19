@@ -26,7 +26,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import mfs.mw.auth.TestInfrastructure;
-import mfs.mw.auth.ValkeyInfrastructure;
+import mfs.mw.auth.RedisInfrastructure;
 import mfs.mw.auth.client.CryptoClient;
 import mfs.mw.auth.dto.CryptoJwsSigned;
 import mfs.mw.auth.dto.CryptoPinDerived;
@@ -54,7 +54,7 @@ import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
 /**
- * Login, tokens and the key documents against real PostgreSQL and Valkey (spec 18.7, D21; ticket
+ * Login, tokens and the key documents against real PostgreSQL and Redis (spec 18.7, D21; ticket
  * 69). mw-crypto is a mock that behaves like it: a PIN "ciphertext" is the base64 of the PIN, its
  * HMAC {@code hmac(<walletId>:<pin>)}; JWS are signed RS256 by an in-test RSA key whose public JWK is
  * mw-crypto's JWT_SIGN set, so the tokens are verified here exactly as APISIX and mw-app-gateway
@@ -64,7 +64,7 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
 @SpringBootTest(properties = {"mw.outbox.relay.enabled=false", "spring.data.redis.timeout=3s",
     "mw.auth.seed-api.enabled=true"})
 @AutoConfigureMockMvc
-@Import({TestInfrastructure.class, ValkeyInfrastructure.class})
+@Import({TestInfrastructure.class, RedisInfrastructure.class})
 class LoginIT {
 
   static final String PIN = "13579";
@@ -74,7 +74,7 @@ class LoginIT {
 
   private final MockMvcTester mvc;
   private final JdbcTemplate jdbc;
-  private final StringRedisTemplate valkey;
+  private final StringRedisTemplate redis;
 
   @MockitoBean EventPublisher publisher;
   @MockitoBean CryptoClient crypto;
@@ -83,10 +83,10 @@ class LoginIT {
   Device device;
 
   @Autowired
-  LoginIT(MockMvcTester mvc, JdbcTemplate jdbc, StringRedisTemplate valkey) {
+  LoginIT(MockMvcTester mvc, JdbcTemplate jdbc, StringRedisTemplate redis) {
     this.mvc = mvc;
     this.jdbc = jdbc;
-    this.valkey = valkey;
+    this.redis = redis;
   }
 
   static RSAKey rsa(String kid, KeyUse use) throws Exception {
@@ -219,7 +219,7 @@ class LoginIT {
     assertThat(c.getStringListClaim("amr")).containsExactly("pin", "device");
     assertThat(c.getStringClaim("sid")).isEqualTo(field(r, "$.sessionId"));
 
-    assertThat(valkey.getExpire("sess:" + msisdn + ":" + device.id())).isPositive();
+    assertThat(redis.getExpire("sess:" + msisdn + ":" + device.id())).isPositive();
     String refreshToken = field(r, "$.refreshToken");
     assertThat(jdbc.queryForObject("select count(*) from refresh_token where wallet_id = ? and token_hash = ?",
         Integer.class, msisdn, mfs.mw.auth.service.TokenService.hash(refreshToken))).isEqualTo(1);
@@ -318,7 +318,7 @@ class LoginIT {
     MvcTestResult r = login(device, PIN);
     assertCode(r, 503, "MW-SYS-050");
     assertThat(r).bodyJson().extractingPath("$.retryable").isEqualTo(true);
-    assertThat(valkey.hasKey("sess:" + msisdn + ":" + device.id())).isFalse();
+    assertThat(redis.hasKey("sess:" + msisdn + ":" + device.id())).isFalse();
   }
 
   // --- refresh, rotation, reuse, logout ---
@@ -380,7 +380,7 @@ class LoginIT {
     String access = field(first, "$.accessToken");
     var out = mvc.post().uri("/auth/v1/sessions/logout").header("Authorization", "Bearer " + access).exchange();
     assertThat(out).hasStatus(204);
-    assertThat(valkey.hasKey("sess:" + msisdn + ":" + device.id())).isFalse();
+    assertThat(redis.hasKey("sess:" + msisdn + ":" + device.id())).isFalse();
     assertCode(refresh(device, field(first, "$.refreshToken")), 401, "MW-AUTH-048");
   }
 

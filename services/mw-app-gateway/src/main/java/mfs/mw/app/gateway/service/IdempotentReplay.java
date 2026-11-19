@@ -27,7 +27,7 @@ import tools.jackson.databind.json.JsonMapper;
  * orchestrator is asked (the live transaction may have changed since, e.g. reversed); other content
  * is 409 {@code MW-IDEM-001}. The content is what the orchestrator hashes: type, parties, amount,
  * partner, attributes; not the PIN ciphertext (fresh every time), the locale or
- * {@code confirmDuplicate}. Valkey/Redis trouble never fails a request: it is logged
+ * {@code confirmDuplicate}. Redis trouble never fails a request: it is logged
  * {@code txn.idempotent.store_unavailable} and the orchestrator answers as before. A key whose first
  * answer was not 200 (202, FAILED, REJECTED) has nothing stored: the orchestrator answers a repeat
  * from the transaction, which for a terminal FAILED cannot change any more.
