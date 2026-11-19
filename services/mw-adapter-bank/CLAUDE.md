@@ -7,7 +7,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.bank`. Follow
 
 - Bank adapter (spec 4.1, 11.1 "Partner banks", WP16, ticket 23). Today it serves C2W /
   ADD_MONEY_BANK only: consumes `mw.partner.request.bank.v1` (`messaging/BankRequestHandler`, a Spring Kafka listener,
-  retry topics + DLQ), checks a `PAY` / `STATUS_QUERY` request (`mapper/PartnerCallMapper`: family
+  retry topics + DLQ), checks a `PAY` / `STATUS_QUERY` / `REVERSE` (ticket 97: partner and a positive amount, never refused for `deadlineAt`; engine rules in mw-adapter-billpay CLAUDE.md "REVERSE, health, payload store") request (`mapper/PartnerCallMapper`: family
   `bank`; PAY only for txnType `ADD_MONEY_BANK` / `C2W`, amount > 0, debit party `{type:
   BANK_ACCOUNT, id: [0-9]{6,20}}`, credit party `{type: WALLET}`), asks the bank once through the
   adapter framework (`partner` package, below) to debit the account with our stable reference,
@@ -53,8 +53,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.bank`. Follow
   (REQUIRES_NEW): action `partner.call.completed`, actor `system`/<service>, resource
   `partner/<partnerId>/<operation>`, outcome SUCCESS (partner SUCCESS/PENDING) else FAILURE,
   `after` = `partnerInstance`, `httpMethod`, `path`, `httpStatus`, `partnerOutcome`, `durationMs`
-  and the `request`/`response` bodies as the framework masked them (`sensitive-fields`, scrub, 4 KB);
-  raw bodies never, no `payloadRef`. Key txnId (else partnerId). A failing publisher is logged
+  and the `request`/`response` bodies as the framework masked them (`sensitive-fields`, scrub, 4 KB
+  excerpts), `payloadRef` the full masked bodies in `partner_payload` (ticket 97). Key txnId (else partnerId; a call without a txnId is audited too, ticket 97). A failing publisher is logged
   `partner.call.audit_failed` and never fails the call. Identical in telco, billpay and bank.
 - Dev provisioning (`provision_mw_adapter_bank` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `adapter_bank_rw` and schema `bank_ref`, `secret/mw-adapter-bank` (DB password, never

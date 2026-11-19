@@ -2,13 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.bits.mw/events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json",
   "title": "mw.partner.route.status.v1",
-  "description": "What became of one approved partner record version (mw.config.changed.v1 PARTNER, ADR D28, ticket 83) in the adapter that owns the partner's family: LIVE (loaded, its dry-run passed where it has one, it now serves calls) or REJECTED (refused by the route loader, or its dry-run failed; the previous version keeps serving). Produced by the partner adapters (mw-adapter-billpay first; telco and bank with ticket 84), consumed by mw-admin-api, which shows it as the route status in the ops console. An adapter that replays the compacted config topic on start reports the versions it loads again: the latest report per partner and version wins. Key: partnerId. Problems name fields and rules only, never a secret value or personal data. Consumers ignore unknown fields; only additive changes within v1.",
+  "description": "What became of one approved partner record version (mw.config.changed.v1 PARTNER, ADR D28, ticket 83) in the adapter that owns the partner's family: LIVE (loaded, its dry-run passed where it has one, it now serves calls) or REJECTED (refused by the route loader, or its dry-run failed; the previous version keeps serving). Produced by the partner adapters (mw-adapter-billpay first; telco and bank with ticket 84), consumed by mw-admin-api, which shows it as the route status in the ops console. An adapter that replays the compacted config topic on start reports the versions it loads again: the latest report per partner and version wins. Key: partnerId. Problems name fields and rules only, never a secret value or personal data. Ticket 97: the adapters also report partner health on every change (PartnerHealthMonitor): status LIVE for the live version (0 for the adapter's own seed, which no console approved) with a health field; a load report has no health. Consumers ignore unknown fields; only additive changes within v1.",
   "type": "object",
   "required": ["schemaVersion", "partnerId", "version", "family", "status", "problems", "reportedBy", "reportedAt"],
   "properties": {
     "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
     "partnerId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$", "description": "The partner id of the config key partner/<id>." },
-    "version": { "type": "integer", "minimum": 1, "description": "The mw.config.changed.v1 version this status is about." },
+    "version": { "type": "integer", "minimum": 0, "description": "The mw.config.changed.v1 version this status is about; 0 only in a health report of the adapter's seed." },
     "family": { "enum": ["telco", "billpay", "bank"], "description": "The family of the reporting adapter." },
     "status": { "enum": ["LIVE", "REJECTED"] },
     "problems": {
@@ -22,6 +22,10 @@
       "items": { "type": "string", "pattern": "^mw-[a-z0-9-]+$" },
       "description": "The mw-* Kamelets a LIVE version's route uses (Kamelet usage before a -v2 replaces one); empty when REJECTED."
     },
+    "health": {
+      "enum": ["UP", "DEGRADED", "DOWN", "MAINTENANCE", "DISABLED", "DELETED"],
+      "description": "Health report only (ticket 97): UP; DEGRADED (circuit breaker half-open, or its failure rate over the threshold); DOWN (route not running, breaker open, or the health probe failing); MAINTENANCE (the record's maintenance flag); DISABLED; DELETED. Routing (ticket 98) sends nothing to a DOWN or MAINTENANCE partner."
+    },
     "reportedBy": { "type": "string", "minLength": 1, "description": "The reporting service, e.g. mw-adapter-billpay." },
     "reportedAt": { "type": "string", "format": "date-time" }
   },
@@ -29,6 +33,10 @@
     {
       "if": { "properties": { "status": { "const": "REJECTED" } }, "required": ["status"] },
       "then": { "properties": { "problems": { "type": "array", "minItems": 1 } } }
+    },
+    {
+      "if": { "properties": { "version": { "const": 0 } }, "required": ["version"] },
+      "then": { "required": ["health"] }
     }
   ]
 }

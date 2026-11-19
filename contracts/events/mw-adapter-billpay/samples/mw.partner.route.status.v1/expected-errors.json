@@ -1,4 +1,11 @@
 {
-  "invalid-rejected-without-problems.json": ["/problems must NOT have fewer than 1 items"],
-  "invalid-unknown-status.json": ["/status must be equal to one of the allowed values"]
+  "invalid-rejected-without-problems.json": [
+    "/problems must NOT have fewer than 1 items"
+  ],
+  "invalid-unknown-status.json": [
+    "/status must be equal to one of the allowed values"
+  ],
+  "invalid-seed-without-health.json": [
+    "/ must have required property 'health'"
+  ]
 }

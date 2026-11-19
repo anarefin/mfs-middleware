@@ -34,6 +34,8 @@ import tools.jackson.databind.json.JsonMapper;
  * and Kamelets. The latest report wins (an adapter that replays the config topic reports again);
  * applying is an update by key, so a redelivered record changes nothing and needs no inbox row. A
  * report for a version not approved here (a seed of the adapter's own config) is logged and skipped.
+ * Ticket 97: the adapters also send health reports (LIVE of the live version with a {@code health}
+ * field, version 0 for their seed); they are applied as any LIVE report (the seed's is skipped).
  *
  * <p>Rollback (ticket 84, ADR D28 amendment): an adapter that restarts replays only the latest
  * record per partner from the compacted {@code mw.config.changed.v1}, so a REJECTED latest version
@@ -80,7 +82,7 @@ public class PartnerRouteStatusService {
   /** @throws IllegalArgumentException for a report that does not fit the contract (to the DLQ) */
   @Transactional
   public void apply(PartnerRouteStatusMessage m) {
-    if (m.partnerId() == null || m.version() < 1 || !STATUSES.contains(m.status())) {
+    if (m.partnerId() == null || m.version() < 0 || !STATUSES.contains(m.status())) {
       throw new IllegalArgumentException("not a partner route status");
     }
     boolean known = partners.updateRouteStatus(

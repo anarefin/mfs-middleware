@@ -20,7 +20,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * partner.call.completed}, actor {@code system}/<this service>, resource {@code
  * partner/<partnerId>/<operation>}, outcome SUCCESS when the partner answered SUCCESS or PENDING,
  * else FAILURE; {@code after} holds the call's facts and the request and response bodies exactly
- * as {@link PartnerAudit} masked them. Key: txnId, else the partner id.
+ * as {@link PartnerAudit} masked them (4 KB excerpts), {@code payloadRef} the full masked bodies
+ * (ticket 97). Key: txnId, else the partner id. A call without a txnId (bill fetch, dry-run, health
+ * probe) is audited too: its 6.1 txn header is the audit id (ticket 97; it used to be dropped).
  */
 @Component
 public class PartnerAuditPublisher implements Consumer<PartnerAudit.Entry> {
@@ -47,7 +49,10 @@ public class PartnerAuditPublisher implements Consumer<PartnerAudit.Entry> {
     AuditEvent event = toEvent(entry);
     String key = event.txnId() != null ? event.txnId() : entry.partnerId();
     tx.executeWithoutResult(
-        s -> outbox.append(AUDIT_TOPIC, key, new EventMetadata(event.correlationId(), event.txnId(), event.auditId(), 1), event));
+        s -> outbox.append(
+            AUDIT_TOPIC, key,
+            new EventMetadata(event.correlationId(), event.txnId() != null ? event.txnId() : event.auditId(), event.auditId(), 1),
+            event));
   }
 
   AuditEvent toEvent(PartnerAudit.Entry e) {
@@ -74,6 +79,7 @@ public class PartnerAuditPublisher implements Consumer<PartnerAudit.Entry> {
         "partner/" + e.partnerId() + "/" + e.operation(),
         null,
         after,
+        e.payloadRef(),
         "SUCCESS".equals(e.outcome()) || "PENDING".equals(e.outcome()) ? "SUCCESS" : "FAILURE",
         clock.instant(),
         service.name());

@@ -42,10 +42,10 @@ class ConsumedContractsTest {
             assertThat(request.requestId()).isNotBlank();
             assertThat(request.txnId()).isNotBlank();
             assertThat(request.correlationId()).isNotBlank();
-            // the adapter sends PAY and STATUS_QUERY only; any other operation of its family is a
-            // valid contract message it answers FAILED MW-VAL-INVALID_PARTNER_REQUEST, here
-            // REVERSE (valid-w2b-reverse.json, W2B)
-            if (List.of("PAY", "STATUS_QUERY").contains(request.payload().operation())) {
+            // the adapter sends PAY, STATUS_QUERY and (ticket 97) REVERSE, e.g. valid-w2b-reverse.json;
+            // any other operation of its family is a valid contract message it answers FAILED
+            // MW-VAL-INVALID_PARTNER_REQUEST
+            if (List.of("PAY", "STATUS_QUERY", "REVERSE").contains(request.payload().operation())) {
               assertThat(new PartnerCallMapper().problem(request)).isEmpty();
             } else {
               assertThat(new PartnerCallMapper().problem(request)).contains("unsupported operation");
