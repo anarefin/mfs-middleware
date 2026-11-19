@@ -16,14 +16,27 @@ import mfs.mw.simulators.dto.OcsResponse;
 import mfs.mw.simulators.dto.OcsTopupRequest;
 import mfs.mw.simulators.dto.Scenario;
 import mfs.mw.simulators.mapper.OcsMapper;
+import mfs.mw.simulators.service.mockcontrol.LegacyScenarios;
+import mfs.mw.simulators.service.mockcontrol.PartySwitch;
+import mfs.mw.simulators.service.mockcontrol.ScenarioEngine;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 class OcsServiceTest {
 
-  private final SimulatorProperties props =
-      new SimulatorProperties(Duration.ofMillis(30), 100, List.of("ocs"));
-  private final ScenarioStore scenarios = new ScenarioStore(props);
+  private final SimulatorProperties props = new SimulatorProperties(Duration.ofMillis(30), 100);
+  private double nextRandom = 0.99;
+  private final RandomGenerator random =
+      new Random() {
+        @Override
+        public double nextDouble() {
+          return nextRandom;
+        }
+      };
+  private final PartySwitch switches = new PartySwitch();
+  private final ScenarioEngine engine = new ScenarioEngine(switches, props, random);
+  /** The old scenario bodies, through the alias that maps them onto the engine. */
+  private final LegacyScenarios scenarios = new LegacyScenarios(engine, switches);
   private final OcsLedger ledger = new OcsLedger();
   private final List<String> callbacks = new ArrayList<>();
   private final CallbackClient client =
@@ -42,21 +55,12 @@ class OcsServiceTest {
   private final OcsMapper mapper = new OcsMapper();
   private final CallbackService callbackService =
       new CallbackService(
-          ledger, new BillPaymentLedger(), scenarios, client,
+          ledger, new BillPaymentLedger(), engine, client,
           new mfs.mw.simulators.client.CallbackSigner(new org.springframework.mock.env.MockEnvironment(), java.time.Clock.systemUTC()),
           mapper, new mfs.mw.simulators.mapper.BillAggregatorMapper(java.time.Clock.systemUTC()),
           new BankDebitLedger(), new mfs.mw.simulators.mapper.BankDebitMapper(),
           JsonMapper.builder().build(), Runnable::run);
-  private double nextRandom = 0.99;
-  private final RandomGenerator random =
-      new Random() {
-        @Override
-        public double nextDouble() {
-          return nextRandom;
-        }
-      };
-  private final OcsService service =
-      new OcsService(scenarios, ledger, mapper, callbackService, props, random);
+  private final OcsService service = new OcsService(engine, ledger, mapper, callbackService);
 
   private OcsTopupRequest req(String id, String msisdn, String amount) {
     return new OcsTopupRequest(id, msisdn, amount);

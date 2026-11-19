@@ -16,4 +16,12 @@ public record BillPaymentRecord(
     String message,
     String paymentRef,
     SimMode mode,
-    boolean callbackOnly) {}
+    boolean callbackOnly) {
+
+  /** This record with {@code newCode} (a mock-control BUSINESS_ERROR code); itself when null. */
+  public BillPaymentRecord withCode(String newCode) {
+    return newCode == null
+        ? this
+        : new BillPaymentRecord(transactionId, billerCode, billNumber, amount, status, newCode, message, paymentRef, mode, callbackOnly);
+  }
+}

@@ -1,0 +1,308 @@
+openapi: 3.1.0
+info:
+  title: Bits mock-control API v1 (mw-simulators, test-only)
+  version: 1.0.0
+  description: |
+    The one control API of every mock party in mw-simulators (ADR D33, FRS 10.1 MCT-01..03, MCT-06;
+    ticket 102), never part of the product. Served only when mw-simulators runs with the Spring
+    profile `mock-control` (the dev stack sets it); without it the paths do not exist and every
+    mock follows its magic values alone. No auth: the mocks are dev/test only; the test console and
+    the API suite reach it through a test-only APISIX route.
+
+    A party (`GET /mock-control/parties`) has operations and scope keys. A scenario sets one of three
+    dimensions of a call: the outcome (SUCCESS, BUSINESS_ERROR, TIMEOUT, HTTP_5XX, MALFORMED_RESPONSE,
+    CONNECTION_RESET, PARTIAL_SUCCESS), an extra delay (DELAY) or the callback (DUPLICATE_CALLBACK,
+    LATE_CALLBACK, OUT_OF_ORDER_CALLBACK, NO_CALLBACK). Per dimension the most specific matching
+    scenario wins: next-N scoped, then per key, then per operation, then party-wide; among equals the
+    latest. Without one the outcome is the call's magic value (amount ending .13 = timeout and the rest
+    of spec 22.2, MCK-03), and SUCCESS when it has none. A next-N scenario counts down only on the calls
+    it decided and disappears at zero. A DOWN or MAINTENANCE switch is checked first and uses no
+    scenario.
+
+    The old `/sim/{partner}/scenario`, `/sim/{partner}/requests` and `/sim/merchant/ipn/scenario`
+    paths remain as deprecated aliases of this engine for one release.
+servers:
+  - url: http://mw-simulators:8080
+paths:
+  /mock-control/parties:
+    get:
+      operationId: listParties
+      summary: The mock parties with their operations and scope keys
+      responses:
+        "200":
+          description: Every party
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Party" } }
+  /mock-control/{party}/scenarios:
+    parameters:
+      - $ref: "#/components/parameters/Party"
+    post:
+      operationId: addScenario
+      summary: Add a scenario (MCT-01, MCT-02)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScenarioRequest" }
+      responses:
+        "201":
+          description: The stored scenario with its id
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Scenario" }
+        "400":
+          description: Invalid scenario, or an operation the party does not have (MW-VAL-001)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "404":
+          description: Unknown party (MW-VAL-003)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    get:
+      operationId: listScenarios
+      summary: The party's active scenarios, oldest first
+      responses:
+        "200":
+          description: The scenarios
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Scenario" } }
+        "404":
+          description: Unknown party (MW-VAL-003)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    delete:
+      operationId: clearScenarios
+      summary: Remove every scenario of the party
+      responses:
+        "204": { description: Removed }
+  /mock-control/{party}/scenarios/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Party"
+      - { name: id, in: path, required: true, schema: { type: string } }
+    delete:
+      operationId: removeScenario
+      summary: Remove one scenario
+      responses:
+        "204": { description: Removed }
+        "404":
+          description: No such scenario (MW-VAL-003)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  /mock-control/{party}/switch:
+    parameters:
+      - $ref: "#/components/parameters/Party"
+    put:
+      operationId: setSwitch
+      summary: Set the party switch (MCT-03)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Switch" }
+      responses:
+        "200":
+          description: The switch now in force
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Switch" }
+        "400":
+          description: Invalid switch (MW-VAL-001)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    get:
+      operationId: getSwitch
+      summary: The party switch (UP by default)
+      responses:
+        "200":
+          description: The switch
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Switch" }
+  /mock-control/{party}/settings:
+    parameters:
+      - $ref: "#/components/parameters/Party"
+    put:
+      operationId: setSettings
+      summary: Set the party's callback target, callback-only mode and timeout hold
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Settings" }
+      responses:
+        "200":
+          description: The settings now in force
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Settings" }
+    get:
+      operationId: getSettings
+      summary: The party's settings
+      responses:
+        "200":
+          description: The settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Settings" }
+  /mock-control/{party}/journal:
+    parameters:
+      - $ref: "#/components/parameters/Party"
+    get:
+      operationId: getJournal
+      summary: The requests the party received, oldest first (MCK-07, MCT-06)
+      parameters:
+        - { name: path, in: query, required: false, schema: { type: string }, description: part of the request path }
+        - { name: contains, in: query, required: false, schema: { type: string }, description: part of the request body }
+        - { name: afterSeq, in: query, required: false, schema: { type: integer, format: int64 }, description: only requests after this sequence number }
+      responses:
+        "200":
+          description: The journal (the last sim.record-limit requests of the party)
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/JournalEntry" } }
+    delete:
+      operationId: resetParty
+      summary: Clear the journal and reset the party's state (scenarios, switch, settings, ledgers; MCT-06)
+      responses:
+        "204": { description: Reset }
+  /mock-control/{party}/callbacks/{reference}/replay:
+    parameters:
+      - $ref: "#/components/parameters/Party"
+      - { name: reference, in: path, required: true, schema: { type: string } }
+    post:
+      operationId: replayCallback
+      summary: Send the callback for a reference now (to the body's or the settings' callbackUrl)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                callbackUrl: { type: string }
+      responses:
+        "200":
+          description: What the callback target answered (-1 unreachable)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [reference, targetStatus]
+                properties:
+                  reference: { type: string }
+                  targetStatus: { type: integer }
+        "404":
+          description: Unknown reference (MW-VAL-003)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+components:
+  parameters:
+    Party:
+      name: party
+      in: path
+      required: true
+      schema: { type: string, examples: [ocs, billagg, c2wbank, merchant] }
+  schemas:
+    Behaviour:
+      type: string
+      enum:
+        - SUCCESS
+        - BUSINESS_ERROR
+        - TIMEOUT
+        - DELAY
+        - HTTP_5XX
+        - MALFORMED_RESPONSE
+        - CONNECTION_RESET
+        - DUPLICATE_CALLBACK
+        - LATE_CALLBACK
+        - OUT_OF_ORDER_CALLBACK
+        - NO_CALLBACK
+        - PARTIAL_SUCCESS
+      description: |
+        SUCCESS answers success whatever the magic value. BUSINESS_ERROR is the party's refusal, `code`
+        replacing its default code (merchant: `httpStatus`, default 400). TIMEOUT applies the call and
+        holds the reply `delayMs` (default the settings' `timeoutDelayMs`, else `sim.timeout-delay`).
+        DELAY waits `delayMs` first, the outcome decided as without it. HTTP_5XX applies the call, then
+        answers `httpStatus` (default 500). MALFORMED_RESPONSE applies it and cuts the body short.
+        CONNECTION_RESET applies it and closes the connection without an answer. PARTIAL_SUCCESS is the
+        party's partial reply (status PARTIAL). The callback behaviours change the callback of an
+        applied call (sent twice, after `delayMs`, followed by a stale PENDING, or not at all); a callback
+        goes only when the settings have a `callbackUrl`.
+    ScenarioRequest:
+      type: object
+      required: [behaviour]
+      properties:
+        operation: { type: [string, "null"], maxLength: 64, description: "one of the party's operations; absent = all" }
+        behaviour: { $ref: "#/components/schemas/Behaviour" }
+        code: { type: [string, "null"], maxLength: 16 }
+        delayMs: { type: [integer, "null"], minimum: 0, maximum: 600000 }
+        httpStatus: { type: [integer, "null"], minimum: 400, maximum: 599 }
+        key: { type: [string, "null"], maxLength: 64, description: "an MSISDN, account number, biller code, bill number, IPN id or transaction id the call carries" }
+        nextN: { type: [integer, "null"], minimum: 1, description: "only the next N matching calls" }
+    Scenario:
+      allOf:
+        - $ref: "#/components/schemas/ScenarioRequest"
+        - type: object
+          required: [id]
+          properties:
+            id: { type: string }
+            remaining: { type: [integer, "null"], description: "calls left of a nextN scenario" }
+    Switch:
+      type: object
+      required: [state]
+      properties:
+        state: { type: string, enum: [UP, DOWN, MAINTENANCE, SLOW], description: "DOWN closes the connection unanswered; MAINTENANCE answers 503 UNAVAILABLE 5030; nothing applied in either" }
+        latencyMinMs: { type: [integer, "null"], minimum: 0, maximum: 600000 }
+        latencyMaxMs: { type: [integer, "null"], minimum: 0, maximum: 600000, description: "a latency drawn in [min, max] before every call, in every state" }
+        ratio: { type: [number, "null"], minimum: 0, maximum: 1, description: "share of calls DOWN or MAINTENANCE hits; default 1" }
+    Settings:
+      type: object
+      properties:
+        callbackUrl: { type: [string, "null"], maxLength: 2048 }
+        callbackOnly: { type: [boolean, "null"], description: "billagg: payments answered 202 PENDING, outcome by callback only" }
+        timeoutDelayMs: { type: [integer, "null"], minimum: 0, maximum: 600000 }
+    Party:
+      type: object
+      required: [name, operations, keys]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        operations: { type: array, items: { type: string } }
+        keys: { type: array, items: { type: string } }
+    JournalEntry:
+      type: object
+      required: [seq, at, method, path, headers]
+      properties:
+        seq: { type: integer, format: int64 }
+        at: { type: string, format: date-time }
+        method: { type: string }
+        path: { type: string }
+        query: { type: [string, "null"] }
+        headers: { type: object, additionalProperties: { type: string }, description: "lower-case; no Authorization or Cookie" }
+        body: { type: [string, "null"], description: "raw (test data); a WS-Security password is ***" }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        timestamp: { type: string, format: date-time }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

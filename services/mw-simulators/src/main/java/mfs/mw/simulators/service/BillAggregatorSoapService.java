@@ -91,6 +91,10 @@ public class BillAggregatorSoapService {
       return fault("Client", BillAggregatorMapper.UNKNOWN_BILLER, "Unknown biller");
     }
     SimReply reply = aggregator.fetch(req, Protocol.SOAP);
+    if (reply.body() instanceof String) {
+      // mock control MALFORMED_RESPONSE: the answer is cut short
+      return new SoapReply(200, "<soap:Envelope xmlns:soap=\"" + SoapXml.ENVELOPE + "\"><soap:Body><b:FetchBillRes");
+    }
     if (reply.httpStatus() == 200 && reply.body() instanceof BillResponse bill) {
       return SoapXml.ok("<b:FetchBillResponse xmlns:b=\"" + NS + "\">" + el("billerCode", bill.billerCode())
           + el("billNumber", bill.billNumber()) + el("amountDue", bill.amount()) + el("dueDate", bill.dueDate())

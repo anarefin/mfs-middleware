@@ -1,16 +1,19 @@
 package mfs.mw.simulators.service;
 
 import java.util.List;
-import java.util.random.RandomGenerator;
-import mfs.mw.simulators.config.SimulatorProperties;
+import java.util.Map;
+import java.util.Optional;
 import mfs.mw.simulators.dto.BillFetchRequest;
 import mfs.mw.simulators.dto.BillPaymentRequest;
 import mfs.mw.simulators.dto.Biller;
 import mfs.mw.simulators.dto.Biller.Protocol;
-import mfs.mw.simulators.dto.SimReply;
-import mfs.mw.simulators.dto.Scenario;
 import mfs.mw.simulators.dto.SimMode;
+import mfs.mw.simulators.dto.SimReply;
+import mfs.mw.simulators.exception.MockAbortException;
 import mfs.mw.simulators.mapper.BillAggregatorMapper;
+import mfs.mw.simulators.service.mockcontrol.Decision;
+import mfs.mw.simulators.service.mockcontrol.MockCalls;
+import mfs.mw.simulators.service.mockcontrol.MockControl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -20,19 +23,20 @@ import org.springframework.stereotype.Service;
  *
  * <p>Magic values: bill number ending {@code 404} -> fetch refused "bill not found" (3001), ending
  * {@code 000} -> "already paid" (3002), ending {@code 999} -> payment refused by the biller
- * (3003); unknown biller code (3004). Payment amounts follow {@link MagicAmounts}. A forced mode
- * applies to payments only.
+ * (3003); unknown biller code (3004). Payment amounts follow {@link MagicAmounts}. These are the
+ * defaults; mock control (party {@code billagg}, operations {@code billers}, {@code fetch}, {@code pay},
+ * {@code status}; keys {@code biller}, {@code billNumber}, {@code txnRef}) overrides them per scope.
  *
  * <p>Protocol guard: each biller is served on one front end ({@link Biller#protocol()}); a biller
  * called on the other one's endpoint is an unknown biller (3004), on fetch and payment alike (a
  * payment for a code that is not in the list at all is still taken, as before). The SOAP front end
  * ({@link BillAggregatorSoapService}) calls {@link #fetch(BillFetchRequest, Protocol)} and {@link
- * #pay(BillPaymentRequest, Protocol)}, so both share the bills, magic values, scenarios, callbacks and
- * the payment store.
+ * #pay(BillPaymentRequest, Protocol)}, so both share the bills, magic values, mock control, callbacks
+ * and the payment store.
  *
- * <p>Callback-only mode (scenario {@code callbackOnly}, ticket 22): a payment is applied as usual
+ * <p>Callback-only mode (party setting {@code callbackOnly}, ticket 22): a payment is applied as usual
  * but answered 202 PENDING (so is every repeat); the outcome goes by callback ({@link
- * CallbackService}, scenario {@code callbackMode}), and the status inquiry reports the real one.
+ * CallbackService}), and the status inquiry reports the real one.
  */
 @Service
 public class BillAggregatorService {
@@ -54,31 +58,28 @@ public class BillAggregatorService {
 
   private static final Logger log = LoggerFactory.getLogger(BillAggregatorService.class);
 
-  private final ScenarioStore scenarios;
+  private final MockControl control;
   private final BillPaymentLedger ledger;
   private final BillAggregatorMapper mapper;
-  private final SimulatorProperties props;
-  private final RandomGenerator random;
   private final CallbackService callbacks;
 
   public BillAggregatorService(
-      ScenarioStore scenarios,
-      BillPaymentLedger ledger,
-      BillAggregatorMapper mapper,
-      SimulatorProperties props,
-      RandomGenerator random,
-      CallbackService callbacks) {
-    this.scenarios = scenarios;
+      MockControl control, BillPaymentLedger ledger, BillAggregatorMapper mapper, CallbackService callbacks) {
+    this.control = control;
     this.ledger = ledger;
     this.mapper = mapper;
-    this.props = props;
-    this.random = random;
     this.callbacks = callbacks;
   }
 
-  public List<Biller> billers() {
-    sleep(scenarios.get(PARTNER).latencyMs());
-    return BILLERS;
+  public SimReply billers() {
+    Decision d = control.decide(PARTNER, "billers", Map.of(), SimMode.SUCCESS);
+    return MockCalls.answer(
+        d,
+        PARTNER,
+        () -> new SimReply(200, BILLERS),
+        () -> new SimReply(503, mapper.unavailable("billers")),
+        () -> new SimReply(500, mapper.internalError("billers")),
+        code -> new SimReply(422, mapper.refused("billers", code)));
   }
 
   /** The REST bill fetch. */
@@ -88,24 +89,31 @@ public class BillAggregatorService {
 
   /** A bill fetch over {@code protocol}'s front end: a biller of the other protocol is unknown (3004). */
   public SimReply fetch(BillFetchRequest req, Protocol protocol) {
-    Scenario scenario = scenarios.get(PARTNER);
-    sleep(scenario.latencyMs());
-    if (unavailable(scenario)) {
-      return new SimReply(503, mapper.unavailable(req));
-    }
-    if (BILLERS.stream().noneMatch(b -> b.code().equals(req.billerCode()) && b.protocol() == protocol)) {
-      return new SimReply(
-          422, mapper.refused(req, BillAggregatorMapper.UNKNOWN_BILLER, "Unknown biller"));
-    }
-    if (req.billNumber().endsWith("404")) {
-      return new SimReply(
-          422, mapper.refused(req, BillAggregatorMapper.BILL_NOT_FOUND, "Bill not found"));
-    }
-    if (req.billNumber().endsWith("000")) {
-      return new SimReply(
-          422, mapper.refused(req, BillAggregatorMapper.BILL_ALREADY_PAID, "Bill already paid"));
-    }
-    return new SimReply(200, mapper.due(req));
+    String magicCode = req.billNumber().endsWith("404")
+        ? BillAggregatorMapper.BILL_NOT_FOUND
+        : req.billNumber().endsWith("000") ? BillAggregatorMapper.BILL_ALREADY_PAID : null;
+    Decision d = control.decide(
+        PARTNER,
+        "fetch",
+        Map.of("biller", req.billerCode(), "billNumber", req.billNumber()),
+        magicCode == null ? SimMode.SUCCESS : SimMode.BUSINESS_FAILURE);
+    boolean unknownBiller =
+        BILLERS.stream().noneMatch(b -> b.code().equals(req.billerCode()) && b.protocol() == protocol);
+    return MockCalls.answer(
+        d,
+        PARTNER,
+        () -> unknownBiller
+            ? new SimReply(422, mapper.refused(req, BillAggregatorMapper.UNKNOWN_BILLER, "Unknown biller"))
+            : new SimReply(200, mapper.due(req)),
+        () -> new SimReply(503, mapper.unavailable(req)),
+        () -> new SimReply(500, mapper.refused(req, "5000", "Internal error")),
+        code -> {
+          if (unknownBiller) {
+            return new SimReply(422, mapper.refused(req, BillAggregatorMapper.UNKNOWN_BILLER, "Unknown biller"));
+          }
+          String c = code != null ? code : magicCode != null ? magicCode : BillAggregatorMapper.BILL_NOT_FOUND;
+          return new SimReply(422, mapper.refused(req, c, message(c)));
+        });
   }
 
   /** The REST payment. */
@@ -118,87 +126,83 @@ public class BillAggregatorService {
    * biller of the other protocol is refused 3004 (not applied).
    */
   public SimReply pay(BillPaymentRequest req, Protocol protocol) {
-    Scenario scenario = scenarios.get(PARTNER);
-    sleep(scenario.latencyMs());
-    if (unavailable(scenario)) {
-      return new SimReply(503, mapper.unavailable(req.transactionId()));
+    Decision d = control.decide(
+        PARTNER,
+        "pay",
+        Map.of("biller", req.billerCode(), "billNumber", req.billNumber(), "txnRef", req.transactionId()),
+        magic(req));
+    Optional<SimReply> closed =
+        MockCalls.admit(d, PARTNER, () -> new SimReply(503, mapper.unavailable(req.transactionId())));
+    if (closed.isPresent()) {
+      return closed.get();
     }
     if (BILLERS.stream().anyMatch(b -> b.code().equals(req.billerCode()) && b.protocol() != protocol)) {
       return new SimReply(422, mapper.unknownBiller(req.transactionId()));
     }
     var existing = ledger.find(req.transactionId());
     if (existing.isPresent()) {
-      return reply(existing.get());
+      return reply(existing.get(), d);
     }
-    SimMode mode = resolve(req, scenario);
-    BillPaymentRecord candidate = mapper.toRecord(req, mode, ledger.nextRef(), scenario.callbackOnly());
+    boolean callbackOnly = control.settings(PARTNER).callbackOnly();
+    BillPaymentRecord candidate =
+        mapper.toRecord(req, d.mode(), ledger.nextRef(), callbackOnly).withCode(d.code());
     BillPaymentRecord record = ledger.putIfAbsent(candidate);
     if (record != candidate) {
-      return reply(record); // a concurrent first payment won
+      return reply(record, d); // a concurrent first payment won
     }
     log.atInfo()
         .addKeyValue("event", "sim.billagg.payment.applied")
         .addKeyValue("partnerId", PARTNER)
-        .log("payment {} mode {} status {}", record.transactionId(), record.mode(), record.status());
-    callbacks.afterPayment(record);
+        .log("payment {} mode {} status {} ({})", record.transactionId(), record.mode(), record.status(), d.source());
+    callbacks.afterPayment(record, d);
     if (record.mode() == SimMode.TIMEOUT && !record.callbackOnly()) {
-      sleep(
-          scenario.timeoutDelayMs() != null
-              ? scenario.timeoutDelayMs()
-              : props.timeoutDelay().toMillis());
+      MockCalls.pause(d.holdMs());
     }
-    return reply(record);
+    if (record.mode() == SimMode.CONNECTION_RESET) {
+      throw new MockAbortException(PARTNER);
+    }
+    return reply(record, d);
   }
 
   /** Status inquiry: the real outcome of an earlier payment, whatever the caller saw. */
   public SimReply status(String transactionId) {
-    Scenario scenario = scenarios.get(PARTNER);
-    sleep(scenario.latencyMs());
-    if (scenario.outage()) {
-      return new SimReply(503, mapper.unavailable(transactionId));
-    }
-    return ledger
-        .find(transactionId)
-        .map(r -> new SimReply(200, mapper.toResponse(r)))
-        .orElseGet(() -> new SimReply(404, mapper.notFound(transactionId)));
+    Decision d = control.decide(PARTNER, "status", Map.of("txnRef", transactionId), SimMode.SUCCESS);
+    return MockCalls.answer(
+        d,
+        PARTNER,
+        () -> ledger.find(transactionId)
+            .map(r -> new SimReply(200, mapper.toResponse(r)))
+            .orElseGet(() -> new SimReply(404, mapper.notFound(transactionId))),
+        () -> new SimReply(503, mapper.unavailable(transactionId)),
+        () -> new SimReply(500, mapper.internalError(transactionId)),
+        code -> new SimReply(422, mapper.refused(transactionId, code)));
   }
 
-  private boolean unavailable(Scenario scenario) {
-    return scenario.outage()
-        || (scenario.errorRate() > 0 && random.nextDouble() < scenario.errorRate());
+  private static String message(String code) {
+    return switch (code) {
+      case BillAggregatorMapper.BILL_NOT_FOUND -> "Bill not found";
+      case BillAggregatorMapper.BILL_ALREADY_PAID -> "Bill already paid";
+      default -> "Refused";
+    };
   }
 
-  private static SimMode resolve(BillPaymentRequest req, Scenario scenario) {
-    if (scenario.forceMode() != null) {
-      return scenario.forceMode();
-    }
+  private static SimMode magic(BillPaymentRequest req) {
     if (req.billNumber().endsWith("999")) {
       return SimMode.BUSINESS_FAILURE;
     }
     return MagicAmounts.mode(req.amount());
   }
 
-  private SimReply reply(BillPaymentRecord r) {
+  private SimReply reply(BillPaymentRecord r, Decision d) {
     if (r.callbackOnly()) {
       return new SimReply(202, mapper.pending(r));
     }
     return switch (r.mode()) {
       case BUSINESS_FAILURE, UNKNOWN_CODE -> new SimReply(422, mapper.toResponse(r));
-      case SERVER_ERROR_AFTER_SEND -> new SimReply(500, mapper.internalError(r.transactionId()));
+      case SERVER_ERROR_AFTER_SEND -> new SimReply(d.statusOr(500), mapper.internalError(r.transactionId()));
       case MALFORMED ->
           new SimReply(200, "{\"transactionId\":\"" + r.transactionId() + "\",\"status\":\"SUC");
-      case SUCCESS, TIMEOUT -> new SimReply(200, mapper.toResponse(r));
+      case SUCCESS, TIMEOUT, PARTIAL_SUCCESS, CONNECTION_RESET -> new SimReply(200, mapper.toResponse(r));
     };
-  }
-
-  private static void sleep(long ms) {
-    if (ms <= 0) {
-      return;
-    }
-    try {
-      Thread.sleep(ms);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-    }
   }
 }

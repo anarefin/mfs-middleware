@@ -62,5 +62,7 @@ files:
   api/mw-auth/auth-test.v1.openapi.yaml: mw-auth
   # test-only wallet seed API of the core test double (ticket 57); not a product contract
   api/mw-core-mock/core-mock-seed.v1.openapi.yaml: mw-core-mock
+  # test-only mock-control API of every mock party (ADR D33, ticket 102); not a product contract
+  api/mw-simulators/mock-control.v1.openapi.yaml: mw-simulators
   # the core wallet over REST (FRS 7.2, ADR D31, ticket 93); consumed by mw-orchestrator from ticket 95
   api/mw-core-mock/core-wallet.v1.openapi.yaml: mw-core-mock

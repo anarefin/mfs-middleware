@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.SplittableRandom;
 import mfs.mw.simulators.client.CallbackClient;
 import mfs.mw.simulators.config.SimulatorProperties;
 import mfs.mw.simulators.dto.CallbackMode;
@@ -14,13 +16,19 @@ import mfs.mw.simulators.dto.OcsTopupRequest;
 import mfs.mw.simulators.dto.Scenario;
 import mfs.mw.simulators.exception.MwException;
 import mfs.mw.simulators.mapper.OcsMapper;
+import mfs.mw.simulators.service.mockcontrol.Decision;
+import mfs.mw.simulators.service.mockcontrol.LegacyScenarios;
+import mfs.mw.simulators.service.mockcontrol.PartySwitch;
+import mfs.mw.simulators.service.mockcontrol.ScenarioEngine;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 class CallbackServiceTest {
 
-  private final ScenarioStore scenarios =
-      new ScenarioStore(new SimulatorProperties(Duration.ofMillis(10), 100, List.of("ocs")));
+  private final PartySwitch switches = new PartySwitch();
+  private final ScenarioEngine engine =
+      new ScenarioEngine(switches, new SimulatorProperties(Duration.ofMillis(10), 100), new SplittableRandom(1));
+  private final LegacyScenarios scenarios = new LegacyScenarios(engine, switches);
   private final OcsLedger ledger = new OcsLedger();
   private final List<String> sent = new ArrayList<>();
   private final CallbackClient client =
@@ -39,7 +47,7 @@ class CallbackServiceTest {
   private final OcsMapper mapper = new OcsMapper();
   private final CallbackService service =
       new CallbackService(
-          ledger, new BillPaymentLedger(), scenarios, client,
+          ledger, new BillPaymentLedger(), engine, client,
           new mfs.mw.simulators.client.CallbackSigner(new org.springframework.mock.env.MockEnvironment(), java.time.Clock.systemUTC()),
           mapper, new mfs.mw.simulators.mapper.BillAggregatorMapper(java.time.Clock.systemUTC()),
           new BankDebitLedger(), new mfs.mw.simulators.mapper.BankDebitMapper(),
@@ -50,6 +58,10 @@ class CallbackServiceTest {
         mapper.toRecord(new OcsTopupRequest("T-1", "01712345678", "10.00"), SimMode.SUCCESS, "R-1");
     ledger.put(r);
     return r;
+  }
+
+  private Decision decide() {
+    return engine.decide("ocs", "topup", Map.of("txnRef", "T-1"), SimMode.SUCCESS);
   }
 
   @Test
@@ -84,7 +96,7 @@ class CallbackServiceTest {
     TopupRecord r = record();
     scenarios.set("ocs", Scenario.DEFAULT.withCallback(CallbackMode.LATE, "http://cb.test/c", 30));
     long t0 = System.nanoTime();
-    service.afterTopup(r);
+    service.afterTopup(r, decide());
     assertThat(Duration.ofNanos(System.nanoTime() - t0)).isGreaterThanOrEqualTo(Duration.ofMillis(25));
     assertThat(sent).hasSize(1);
   }
@@ -93,7 +105,7 @@ class CallbackServiceTest {
   void onceSendsOneCallback() {
     TopupRecord r = record();
     scenarios.set("ocs", Scenario.DEFAULT.withCallback(CallbackMode.ONCE, "http://cb.test/d", 0));
-    service.afterTopup(r);
+    service.afterTopup(r, decide());
     assertThat(sent).hasSize(1);
   }
 }

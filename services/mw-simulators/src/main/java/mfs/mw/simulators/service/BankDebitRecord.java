@@ -13,4 +13,10 @@ public record BankDebitRecord(
     String code,
     String message,
     String debitRef,
-    SimMode mode) {}
+    SimMode mode) {
+
+  /** This record with {@code newCode} (a mock-control BUSINESS_ERROR code); itself when null. */
+  public BankDebitRecord withCode(String newCode) {
+    return newCode == null ? this : new BankDebitRecord(transactionId, accountNumber, amount, status, newCode, message, debitRef, mode);
+  }
+}

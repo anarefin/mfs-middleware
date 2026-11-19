@@ -12,27 +12,26 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import mfs.mw.simulators.service.RequestRecorder;
-import mfs.mw.simulators.service.ScenarioStore;
+import mfs.mw.simulators.service.mockcontrol.Journal;
+import mfs.mw.simulators.service.mockcontrol.MockParties;
 import mfs.mw.simulators.util.SoapXml;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.ContentCachingRequestWrapper;
 
 /**
- * Records every request to a simulator's own endpoints ({@code /<partner>/...}), whatever the reply. The
+ * Records every request to a mock party's own endpoints ({@code /<party>/...}, {@link MockParties}) in the
+ * mock-control {@link Journal}, whatever the reply. The
  * text of a WS-Security {@code Password} element (the billagg SOAP front end) is recorded as {@code ***}.
  */
 public class RecordingFilter extends OncePerRequestFilter {
 
   private static final Set<String> SKIPPED_HEADERS = Set.of("authorization", "cookie");
 
-  private final ScenarioStore scenarios;
-  private final RequestRecorder recorder;
+  private final Journal journal;
   private final Clock clock;
 
-  public RecordingFilter(ScenarioStore scenarios, RequestRecorder recorder, Clock clock) {
-    this.scenarios = scenarios;
-    this.recorder = recorder;
+  public RecordingFilter(Journal journal, Clock clock) {
+    this.journal = journal;
     this.clock = clock;
   }
 
@@ -43,7 +42,7 @@ public class RecordingFilter extends OncePerRequestFilter {
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest request) {
-    return !scenarios.isPartner(partnerOf(request.getRequestURI()));
+    return !MockParties.isParty(partnerOf(request.getRequestURI()));
   }
 
   @Override
@@ -61,7 +60,7 @@ public class RecordingFilter extends OncePerRequestFilter {
           headers.put(lower, request.getHeader(name));
         }
       }
-      recorder.record(
+      journal.record(
           partnerOf(request.getRequestURI()),
           request.getMethod(),
           request.getRequestURI(),

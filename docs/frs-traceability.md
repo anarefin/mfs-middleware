@@ -278,11 +278,11 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-18 | ticket 95 | core over REST (D31): the mock serves it, `/core/v1` (`api/mw-core-mock/core-wallet.v1.openapi.yaml`, ticket 93); the orchestrator's client in 95 |
 | MCK-01 | done | the simulators speak the real protocols (SMPP binds, SOAP, HMAC, mTLS); each new mock keeps the rule in its ticket |
 | MCK-02 | tickets 112, 114 | reverse once built in mw-simulators (ocs, billagg, c2wbank; ticket 97, `ReversalServiceTest`); stateful paid bills per aggregator 112, 114 |
-| MCK-03 | tickets 102, 136 | magic values built (spec 22.2); documented per mock in 136 |
-| MCK-04 | tickets 102, 103 | the mock control API (D33) |
-| MCK-05 | ticket 102 | latency per operation |
-| MCK-06 | ticket 102 | callback replay built (`/sim/{partner}/callbacks/{reference}/replay`); delay, duplicate, out-of-order in 102 |
-| MCK-07 | ticket 102 | per-simulator request logs built; one journal API in 102 |
+| MCK-03 | ticket 136 | magic values are the default trigger of the mock-control engine, an explicit scenario wins (ticket 102, `service/mockcontrol/ScenarioEngine`); trigger table per mock in `docs/concepts/simulators.html`; every new mock in 136 |
+| MCK-04 | ticket 103 | mw-simulators: `/mock-control/{party}` (D33, ticket 102, `contracts/api/mw-simulators/mock-control.v1.openapi.yaml`); mw-core-mock in 103 |
+| MCK-05 | done | DELAY(ms) per operation and scope, SLOW switch with a random range (ticket 102, `MockControlControllerIT`) |
+| MCK-06 | done | LATE_CALLBACK(ms), DUPLICATE_CALLBACK, OUT_OF_ORDER_CALLBACK, NO_CALLBACK and replay `/mock-control/{party}/callbacks/{reference}/replay` (ticket 102) |
+| MCK-07 | ticket 135 | queryable: `GET /mock-control/{party}/journal` (ticket 102, `service/mockcontrol/Journal`); the UI view in 135 |
 | MCK-08 | ticket 103 | versioned seeds and one reset |
 | MCK-09 | done | every mock is a container in `deploy/docker-compose.yml` |
 
@@ -365,12 +365,12 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
-| MCT-01 | ticket 102 | scenarios per operation (D33) |
-| MCT-02 | ticket 102 | scoping |
-| MCT-03 | ticket 102 | DOWN, MAINTENANCE, SLOW |
-| MCT-04 | tickets 102, 109 | SMPP faults (bind refusal, dropped enquire_link built in the USSD gateway simulator) |
+| MCT-01 | done | `POST /mock-control/{party}/scenarios`, every behaviour (ticket 102, `MockControlControllerIT`) |
+| MCT-02 | done | global, per key (MSISDN, account, biller, bill number, txn id), next N (ticket 102, `ScenarioEngineTest`) |
+| MCT-03 | done | `PUT /mock-control/{party}/switch` DOWN (connection closed), MAINTENANCE (503 5030), SLOW (ticket 102) |
+| MCT-04 | tickets 102, 109 | SMPP faults (bind refusal, dropped enquire_link built in the USSD gateway simulator); SMSC and USSD gateway onto the mock-control engine in the 102 follow-up (102b) |
 | MCT-05 | ticket 123 | file faults |
-| MCT-06 | ticket 102 | journal and its reset |
+| MCT-06 | done | `GET` and `DELETE /mock-control/{party}/journal`, DELETE resets the party's state (ticket 102) |
 | MCT-07 | ticket 103 | global reset |
 | MCT-08 | tickets 103, 135 | absent from production profiles |
 | T1 | tickets 104, 137 | happy path: P2P in 104, every financial use case in 137 |

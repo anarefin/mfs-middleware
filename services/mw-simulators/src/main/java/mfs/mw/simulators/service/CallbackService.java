@@ -4,12 +4,14 @@ import java.util.concurrent.Executor;
 import mfs.mw.simulators.client.CallbackClient;
 import mfs.mw.simulators.client.CallbackSigner;
 import mfs.mw.simulators.dto.CallbackMode;
-import mfs.mw.simulators.dto.Scenario;
 import mfs.mw.simulators.exception.ErrorCodes;
 import mfs.mw.simulators.exception.MwException;
 import mfs.mw.simulators.mapper.BankDebitMapper;
 import mfs.mw.simulators.mapper.BillAggregatorMapper;
 import mfs.mw.simulators.mapper.OcsMapper;
+import mfs.mw.simulators.service.mockcontrol.Decision;
+import mfs.mw.simulators.service.mockcontrol.MockControl;
+import mfs.mw.simulators.service.mockcontrol.MockParties;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.json.JsonMapper;
@@ -17,8 +19,9 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Duplicate, late, out-of-order and on-demand callbacks (spec 22.2) for the OCS and the bill
  * aggregator. The callback body is the partner's own reply for the reference (billagg: {@code
- * {transactionId, status, code, message, paymentRef}}), posted to the scenario's {@code
- * callbackUrl} and signed when the partner has a secret ({@link CallbackSigner}; signed at send
+ * {transactionId, status, code, message, paymentRef}}), posted to the party's mock-control
+ * {@code callbackUrl} as the call's {@link Decision} says (once, twice, late, or followed by a stale
+ * PENDING) and signed when the partner has a secret ({@link CallbackSigner}; signed at send
  * time, so a late callback carries a fresh timestamp). Sent off the request thread.
  */
 @Service
@@ -28,7 +31,7 @@ public class CallbackService {
 
   private final OcsLedger ledger;
   private final BillPaymentLedger payments;
-  private final ScenarioStore scenarios;
+  private final MockControl control;
   private final CallbackClient client;
   private final CallbackSigner signer;
   private final OcsMapper mapper;
@@ -42,7 +45,7 @@ public class CallbackService {
   public CallbackService(
       OcsLedger ledger,
       BillPaymentLedger payments,
-      ScenarioStore scenarios,
+      MockControl control,
       CallbackClient client,
       CallbackSigner signer,
       OcsMapper mapper,
@@ -53,7 +56,7 @@ public class CallbackService {
       Executor callbackExecutor) {
     this.ledger = ledger;
     this.payments = payments;
-    this.scenarios = scenarios;
+    this.control = control;
     this.client = client;
     this.signer = signer;
     this.mapper = mapper;
@@ -68,38 +71,39 @@ public class CallbackService {
    * Sends what the current c2wbank scenario asks for after a debit was applied (ticket 23);
    * OUT_OF_ORDER follows the outcome with a stale PENDING.
    */
-  public void afterDebit(BankDebitRecord record) {
+  public void afterDebit(BankDebitRecord record, Decision d) {
     send(
         BankC2wService.PARTNER,
+        d,
         json.writeValueAsString(bankMapper.toResponse(record)),
         json.writeValueAsString(bankMapper.pending(record)));
   }
 
   /** Sends what the current scenario asks for after a top-up was applied. */
-  public void afterTopup(TopupRecord record) {
-    send(OCS, json.writeValueAsString(mapper.toResponse(record)), null);
+  public void afterTopup(TopupRecord record, Decision d) {
+    send(OCS, d, json.writeValueAsString(mapper.toResponse(record)), null);
   }
 
   /**
    * Sends what the current billagg scenario asks for after a payment was applied; OUT_OF_ORDER
    * follows the outcome with a stale PENDING.
    */
-  public void afterPayment(BillPaymentRecord record) {
+  public void afterPayment(BillPaymentRecord record, Decision d) {
     send(
         BillAggregatorService.PARTNER,
+        d,
         json.writeValueAsString(billMapper.toResponse(record)),
         json.writeValueAsString(billMapper.pending(record)));
   }
 
-  private void send(String partner, String body, String staleBody) {
-    Scenario s = scenarios.get(partner);
-    if (s.callbackMode() == CallbackMode.NONE || s.callbackUrl() == null || s.callbackUrl().isBlank()) {
+  private void send(String partner, Decision d, String body, String staleBody) {
+    String url = control.settings(partner).callbackUrl();
+    if (d.callback() == CallbackMode.NONE || url == null || url.isBlank()) {
       return;
     }
-    int copies = s.callbackMode() == CallbackMode.DUPLICATE ? 2 : 1;
-    long delay = s.callbackMode() == CallbackMode.LATE ? s.callbackDelayMs() : 0;
-    boolean stale = s.callbackMode() == CallbackMode.OUT_OF_ORDER && staleBody != null;
-    String url = s.callbackUrl();
+    int copies = d.callback() == CallbackMode.DUPLICATE ? 2 : 1;
+    long delay = d.callback() == CallbackMode.LATE ? d.callbackDelayMs() : 0;
+    boolean stale = d.callback() == CallbackMode.OUT_OF_ORDER && staleBody != null;
     executor.execute(
         () -> {
           sleep(delay);
@@ -114,7 +118,7 @@ public class CallbackService {
 
   /** Sends the callback for a reference now; returns the target's HTTP status, -1 if unreachable. */
   public int replay(String partner, String reference, String urlOverride) {
-    scenarios.require(partner);
+    MockParties.require(partner);
     String body =
         switch (partner) {
           case BillAggregatorService.PARTNER ->
@@ -130,9 +134,9 @@ public class CallbackService {
     String url =
         urlOverride != null && !urlOverride.isBlank()
             ? urlOverride
-            : scenarios.get(partner).callbackUrl();
+            : control.settings(partner).callbackUrl();
     if (url == null || url.isBlank()) {
-      throw new MwException(ErrorCodes.VAL_INVALID, "No callbackUrl in the request or the scenario");
+      throw new MwException(ErrorCodes.VAL_INVALID, "No callbackUrl in the request or the party settings");
     }
     return client.post(url, body, signer.headers(partner, url, body));
   }

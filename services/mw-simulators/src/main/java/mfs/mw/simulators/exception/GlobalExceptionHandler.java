@@ -5,6 +5,7 @@ import java.util.List;
 import mfs.mw.simulators.dto.ErrorDetail;
 import mfs.mw.simulators.dto.ErrorEnvelope;
 import mfs.mw.simulators.filter.CorrelationIdFilter;
+import mfs.mw.simulators.filter.MockAbortValve;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -37,6 +38,20 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(MwException.class)
   ResponseEntity<ErrorEnvelope> mw(MwException e, HttpServletRequest req) {
     return respond(e, req, e);
+  }
+
+  /**
+   * Mock control closes the connection unanswered (switch DOWN, CONNECTION_RESET): the request is
+   * marked for {@code filter/MockAbortValve}, which drops the socket before this empty 500 is written.
+   */
+  @ExceptionHandler(MockAbortException.class)
+  ResponseEntity<Void> abort(MockAbortException e, HttpServletRequest req) {
+    req.setAttribute(MockAbortValve.ABORT_ATTRIBUTE, e.party());
+    log.atInfo()
+        .addKeyValue("event", "sim.mock.connection.closed")
+        .addKeyValue("partnerId", e.party())
+        .log("{} {} closed without an answer", req.getMethod(), route(req));
+    return ResponseEntity.internalServerError().build();
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)

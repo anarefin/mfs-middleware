@@ -22,6 +22,8 @@ public class BillAggregatorMapper {
   public static final String UNKNOWN_BILLER = "3004";
   /** Callback-only payment accepted (202 PENDING). */
   public static final String ACCEPTED = "001";
+  /** The status of a partly paid bill (mock control PARTIAL_SUCCESS). */
+  public static final String PARTIAL = "PARTIAL";
 
   private static final DateTimeFormatter PERIOD = DateTimeFormatter.ofPattern("yyyy-MM");
 
@@ -69,6 +71,7 @@ public class BillAggregatorMapper {
       case BUSINESS_FAILURE ->
           record(req, "FAILED", PAYMENT_REFUSED, "Payment refused by biller", ref, mode, callbackOnly);
       case UNKNOWN_CODE -> record(req, "FAILED", "9876", "Unmapped aggregator error", ref, mode, callbackOnly);
+      case PARTIAL_SUCCESS -> record(req, PARTIAL, "010", "Bill partly paid", ref, mode, callbackOnly);
       default -> record(req, "SUCCESS", "000", "Bill paid", ref, mode, callbackOnly);
     };
   }
@@ -101,6 +104,11 @@ public class BillAggregatorMapper {
   /** A payment refused because the biller is not served on this front end (3004, not applied). */
   public BillPaymentResponse unknownBiller(String transactionId) {
     return new BillPaymentResponse(transactionId, "FAILED", UNKNOWN_BILLER, "Unknown biller", null);
+  }
+
+  /** A refusal of a call that applies nothing (mock control BUSINESS_ERROR on an inquiry); default {@code 3003}. */
+  public BillPaymentResponse refused(String transactionId, String code) {
+    return new BillPaymentResponse(transactionId, "FAILED", code == null ? PAYMENT_REFUSED : code, "Refused", null);
   }
 
   public BillPaymentResponse notFound(String transactionId) {
