@@ -136,6 +136,7 @@ Every login is printed where a step needs it; <a href="#c1-0">1.0 Logins at a gl
       <tr><td class="tick"></td><td>MANUAL_REVIEW creation</td><td><a href="#c5-6">5.6</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Custom partner and core faults</td><td><a href="#c5-7">5.7</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>A fault on every core command</td><td><a href="#c5-8">5.8</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Reset every mock in one call</td><td><a href="#c5-9">5.9</a></td><td>curl</td></tr>
       <tr><td class="tick"></td><td>SMS content, language, masking, delivery reports; email receipts</td><td><a href="#c6-1">6.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Web checkout: pay, signed redirect, IPN</td><td><a href="#c7-1">7.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Web checkout variants: wrong OTP, pay twice, IPN retries, core refusal</td><td><a href="#c7-2">7.2</a></td><td>Test console</td></tr>
@@ -948,6 +949,10 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <tr><td>Bank (C2W): the callback comes 20 s late</td><td>add money</td><td>completes when the callback (or the inquiry) arrives</td></tr>
       <tr><td>Merchant IPN endpoint fails the next 2 IPNs (503)</td><td>checkout</td><td>7.2</td></tr>
       <tr><td>USSD SMPP gateway: drop every bind</td><td>USSD on gp</td><td>works again after a few seconds</td></tr>
+      <tr><td>USSD SMPP gateway: the next 2 screens refused with ESME_RTHROTTLED (0x58)</td><td>USSD on gp</td><td>the menu still comes, a little later</td></tr>
+      <tr><td>SMSC: no delivery receipt for any SMS</td><td>a P2P, then SMS &amp; email</td><td>the SMS are there without a DLR status</td></tr>
+      <tr><td>SMSC: the next 2 submits refused with ESME_RTHROTTLED (0x58)</td><td>a P2P, then SMS &amp; email</td><td>each SMS once, delivered</td></tr>
+      <tr><td>payShield HSM down (connections closed unanswered)</td><td>mw-crypto's payShield provider</td><td>fails closed; Reset everything afterwards</td></tr>
     </table></div>
   </div>
 
@@ -975,8 +980,8 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <li>Apply <i>OCS: answers too late and refuses (not applied)</i>.</li>
       <li>App: top-up. It answers <code>PROCESSING</code>.</li>
       <li>Open a second tab on <span class="ui">Simulators &amp; faults</span>. About 25 s after Submit, once
-        <i>OCS (prepaid top-up, every MNO)</i> → <span class="ui">Show scenario and last 10 requests</span> shows the request answered,
-        press <span class="ui">Reset ocs</span> there (the first tab keeps waiting for the result).</li>
+        <i>State, journal and reset</i> with party <code>ocs</code> → <span class="ui">Show scenarios, switch, settings, last 10 calls</span> shows the request answered,
+        press <span class="ui">Normal</span> there (the first tab keeps waiting for the result).</li>
       <li>Expect: the status inquiry finds nothing, the hold is released, <code>FAILED</code>.</li>
     </ol>
   </div>
@@ -984,10 +989,10 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
   <div class="case" id="c5-5">
     <h3><span class="id">5.5</span>Replay a partner callback by hand</h3>
     <ol>
-      <li>After a bill payment (callback-only preset) or an add money: billagg or c2wbank form → <span class="ui">Show scenario and last 10 requests</span>.</li>
-      <li>Click the step <i>requests billagg received (newest last)</i>; in a request's <code>body</code> copy the <code>transactionId</code> (it starts with <code>BITS</code>) into <span class="ui">Partner reference</span> under <i>Replay a callback</i>, press <span class="ui">Replay</span>: "callback replayed".</li>
+      <li>After a bill payment (callback-only preset) or an add money: <i>State, journal and reset</i> with party billagg or c2wbank → <span class="ui">Show scenarios, switch, settings, last 10 calls</span>.</li>
+      <li>Click the step <i>billagg's journal (newest last)</i>; in a request's <code>body</code> copy the <code>transactionId</code> (it starts with <code>BITS</code>) into <span class="ui">Partner reference</span> under <i>Replay a callback</i>, press <span class="ui">Replay</span>: "callback replayed".</li>
       <li>Expect no second balance change (check <span class="ui">Home</span> or <i>A wallet in core-mock</i>).</li>
-      <li>The same on the <i>C2W bank (add money from bank)</i> card after an add money (3.8): credited once.</li>
+      <li>The same with party c2wbank under <i>Replay a callback</i> after an add money (3.8): credited once.</li>
       <li>Negative: <span class="ui">Replay</span> with an empty or malformed reference: red ✖ "choose a partner and enter the partner reference…".</li>
     </ol>
   </div>
@@ -1002,29 +1007,36 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
 
   <div class="case" id="c5-7">
     <h3><span class="id">5.7</span>Custom faults</h3>
-    <p>Three partner cards: <i>OCS (prepaid top-up, every MNO)</i>, <i>Bill aggregator (10 billers, REST + SOAP)</i>,
-    <i>C2W bank (add money from bank)</i>. On a card set the fields, press <span class="ui">Set ocs</span> (or
-    <span class="ui">Set billagg</span> / <span class="ui">Set c2wbank</span>): two steps (<i>set the … scenario</i>, <i>read back the …
-    scenario</i>) and "&lt;partner&gt; scenario set". Run the flow, then <span class="ui">Reset ocs</span> (…): "&lt;partner&gt; reset".</p>
+    <p>The <b>Mock control</b> group drives every mock party of mw-simulators through one API (<code>/test/mock-control/*</code>, ADR D33):
+    <code>ocs</code>, <code>billagg</code>, <code>c2wbank</code>, <code>merchant</code>, <code>smsc</code>, <code>ussdgw</code>, <code>payshield</code>.
+    A scenario wins over the magic values while it lasts; the most specific one decides (next N calls, then a key, then an operation, then party-wide).</p>
+    <ul>
+      <li><i>Add a scenario</i>: <span class="ui">Mock party</span>, <span class="ui">Operation</span> (empty = every operation; e.g. <code>topup</code>, <code>pay</code>,
+        <code>debit</code>, <code>ipn</code>, <code>submit</code>, <code>command</code>), <span class="ui">Behaviour</span>, the optional <span class="ui">Code</span>,
+        <span class="ui">Delay ms</span>, <span class="ui">HTTP status</span>, <span class="ui">Key</span> and <span class="ui">Next N calls only</span>,
+        <span class="ui">Add scenario</span>: "&lt;party&gt;: scenario added" and the party's scenarios. A behaviour the party cannot carry out (e.g. HTTP_5XX on payshield)
+        or a code in the wrong form: red ✖ "scenario refused" with the 400 answer.</li>
+    </ul>
     <div class="table-wrap"><table>
-      <tr><th><span class="ui">Outcome (forceMode)</span></th><th>Then a top-up (ocs) / bill pay (billagg) / add money (c2wbank)</th></tr>
-      <tr><td>normal (magic values decide)</td><td>as in 3.6-3.8: the magic values of section 0 decide</td></tr>
+      <tr><th><span class="ui">Behaviour</span> (party ocs / billagg / c2wbank, operation topup / pay / debit)</th><th>Then a top-up / bill pay / add money</th></tr>
+      <tr><td>no scenario</td><td>as in 3.6-3.8: the magic values of section 0 decide</td></tr>
       <tr><td>SUCCESS</td><td><code>COMPLETED</code>, even for a magic value</td></tr>
-      <tr><td>BUSINESS_FAILURE</td><td>red ✖ <code>REJECTED MW-PTR-…</code>, nothing moved, nothing held</td></tr>
-      <tr><td>TIMEOUT (applied, reply held)</td><td><code>PROCESSING</code>, then <code>COMPLETED</code> after the status inquiry</td></tr>
-      <tr><td>500 after send (applied)</td><td><code>COMPLETED</code> after the status inquiry, charged once</td></tr>
-      <tr><td>unknown code 9876</td><td><code>UNKNOWN</code>, the amount stays held (as amount <code>.99</code>)</td></tr>
-      <tr><td>malformed body (applied)</td><td><code>COMPLETED</code> (as amount <code>.55</code>)</td></tr>
+      <tr><td>BUSINESS_ERROR</td><td>red ✖ <code>REJECTED MW-PTR-…</code>, nothing moved, nothing held; with <span class="ui">Code</span> <code>9876</code>: <code>UNKNOWN</code>, the amount stays held (as amount <code>.99</code>)</td></tr>
+      <tr><td>TIMEOUT</td><td><code>PROCESSING</code>, then <code>COMPLETED</code> after the status inquiry</td></tr>
+      <tr><td>HTTP_5XX</td><td><code>COMPLETED</code> after the status inquiry, charged once</td></tr>
+      <tr><td>MALFORMED_RESPONSE</td><td><code>COMPLETED</code> (as amount <code>.55</code>)</td></tr>
+      <tr><td>smsc, submit, NO_CALLBACK (key a number)</td><td>the SMS to that number arrives without a DLR status (SMS &amp; email page)</td></tr>
+      <tr><td>smsc, submit, BUSINESS_ERROR <code>0x58</code>, next 2</td><td>mw-notify retries the throttled SMS; it arrives once, delivered</td></tr>
+      <tr><td>ussdgw, submit, BUSINESS_ERROR <code>0x58</code>, next 1</td><td>a gp dial still answers, a little later (mw-ussd retries the screen)</td></tr>
     </table></div>
     <ul>
-      <li><span class="ui">Latency ms</span> (e.g. <code>3000</code>): every answer 3 s later; the flow still completes, slower.
-        <span class="ui">Error rate 0..1 (503 unapplied)</span> (e.g. <code>0.5</code>): about half the calls answered 503 without applying.
-        <span class="ui">Timeout hold ms</span>: how long a TIMEOUT answer is held back.
-        Checkbox "outage (every request 503, not applied)": as the preset <i>OCS (top-up) outage</i>.</li>
-      <li>billagg and c2wbank also have <span class="ui">Callback</span>: "none", "once", "twice (duplicate)", "late (after the delay)",
-        "outcome then stale PENDING" (c2wbank starts on once, billagg on none) and <span class="ui">Callback delay ms</span>;
-        billagg also the checkbox "callback-only (payments answered 202 PENDING)". Expected results: as the matching presets in 5.1.</li>
-      <li><i>What &lt;partner&gt; received</i> → <span class="ui">Show scenario and last 10 requests</span>: "&lt;partner&gt;: N recorded request(s), last 10 shown".</li>
+      <li><i>Switch and settings</i>: <span class="ui">State</span> UP / DOWN (connection closed, nothing applied) / MAINTENANCE (the party's maintenance answer, nothing
+        applied) / SLOW, <span class="ui">Latency min ms</span> / <span class="ui">Latency max ms</span> (e.g. <code>3000</code>: every answer 3 s later; the flow
+        still completes, slower), <span class="ui">Share of calls DOWN / MAINTENANCE hits</span> (e.g. <code>0.5</code>), <span class="ui">Timeout hold ms</span>
+        (how long a TIMEOUT answer is held; ussdgw: how long a played screen is waited for), the checkbox "callbacks to the middleware (billagg, c2wbank)" and
+        "billagg callback-only (payments answered 202 PENDING)". Expected results: as the matching presets in 5.1.</li>
+      <li><i>State, journal and reset</i>: <span class="ui">Show scenarios, switch, settings, last 10 calls</span>: "&lt;party&gt;: N journal entries, last 10 shown";
+        <span class="ui">Normal</span>: "&lt;party&gt; back to normal (journal and ledgers kept)"; <span class="ui">Reset (journal and ledgers too)</span>: "&lt;party&gt; reset".</li>
       <li><b>Core fault</b> (card <i>Inject a core-mock fault</i>): <span class="ui">Mode</span> DROP_REPLY (applied, reply lost) / REJECT /
         DELAY (reply held back) / DUPLICATE_REPLY (reply twice), a <span class="ui">Command</span> (5.8), <span class="ui">Times</span> (default 1),
         <span class="ui">Reason (REJECT)</span> (e.g. <code>INSUFFICIENT_BALANCE</code>), <span class="ui">Delay ms (DELAY)</span>, <span class="ui">Inject</span>:
@@ -1054,6 +1066,22 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <tr><td>UnlockWallet</td><td>REJECT</td><td>wallet unlock approval (9.8)</td><td>the approval is recorded but the wallet stays LOCKED (check <i>A wallet in core-mock</i>)</td></tr>
       <tr><td>any command</td><td>DELAY, <code>2000</code> ms</td><td>any flow</td><td>the next core call of any kind is 2 s slower</td></tr>
     </table></div>
+  </div>
+
+  <div class="case" id="c5-9">
+    <h3><span class="id">5.9</span>Reset every mock in one call</h3>
+    <p>Before a run, or when a scenario was left behind: one call (FRS MCT-07) resets every mock party of the
+    simulators (journal, scenarios, switch, settings, partner ledgers) and the core mock (ledger back to its
+    seed files, its scenarios, faults and journal cleared). Transactions in the middleware and PIN state stay.</p>
+    <div class="cmd"><pre>curl -sk -X POST https://localhost/test/mock-control/reset -H 'apikey: e2e-test-apikey'</pre></div>
+    <ol>
+      <li>Expect HTTP 200 and one line per party, every <code>"status":"RESET"</code>, the last one
+        <code>{"party":"core","status":"RESET","seedVersion":"v1"}</code>.</li>
+      <li><i>A wallet in core-mock</i> for <code>01711000001</code>: balance Tk 10,000.00 again, nothing held; a
+        persona wallet (e.g. <code>01712000001</code>) is back at its opening balance.</li>
+      <li>The core's mock control directly: <code>GET http://localhost:8084/mock-control/core/journal</code>
+        (dev port of mw-core-mock) is <code>[]</code> until the next money call.</li>
+    </ol>
   </div>
 </section>
 

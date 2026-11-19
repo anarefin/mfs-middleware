@@ -150,7 +150,7 @@ operator_scripts() {
 
 # Gradle tasks the docs may name: the root project's (base lifecycle, the repo checks, help tasks)
 # and a service module's (java + Spring Boot); tests/perf's own build adds the Gatling tasks.
-ROOT_TASKS=" clean build check assemble checkIsolation checkFieldInjection contractsLint composeCheck scriptTests help tasks projects properties dependencies buildEnvironment "
+ROOT_TASKS=" clean build check assemble checkIsolation checkFieldInjection contractsLint composeCheck mockControlProdCheck scriptTests help tasks projects properties dependencies buildEnvironment "
 MODULE_TASKS=" clean build check assemble test bootJar bootRun bootBuildImage compileJava compileTestJava classes testClasses processResources jar javadoc dependencies dependencyInsight help tasks properties "
 PERF_TASKS=" gatlingRun perfOverhead compileGatlingJava "
 

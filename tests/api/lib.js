@@ -162,14 +162,58 @@
     async resetFaults() { await must('DELETE', '/test/core-mock/v1/faults', { apikey: true }, [204]); },
   };
 
-  // ---------- simulators (/test/sim/*), mail (/test/mail/*) ----------
+  // ---------- mock control (/test/mock-control/*, ADR D33, tickets 102a/b): every mock party of mw-simulators ----------
+  const MC = '/test/mock-control/';
+  const mock = {
+    async parties() { return (await must('GET', MC + 'parties', { apikey: true })).body || []; },
+    /** Adds a scenario {operation?, behaviour, code?, delayMs?, httpStatus?, key?, nextN?}; answers it with its id. */
+    async scenario(party, s) { return (await must('POST', MC + party + '/scenarios', { apikey: true, json: s }, [201])).body; },
+    async scenarios(party) { return (await must('GET', MC + party + '/scenarios', { apikey: true })).body || []; },
+    async clear(party) { await must('DELETE', MC + party + '/scenarios', { apikey: true }, [204]); },
+    async switchTo(party, sw) { return (await must('PUT', MC + party + '/switch', { apikey: true, json: sw })).body; },
+    async settings(party, st) { return (await must('PUT', MC + party + '/settings', { apikey: true, json: st })).body; },
+    async journal(party, q) {
+      const qs = Object.entries(q || {}).filter(([, v]) => v !== undefined && v !== null).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&');
+      return (await must('GET', MC + party + '/journal' + (qs ? '?' + qs : ''), { apikey: true })).body || [];
+    },
+    /** Clears the party's journal and resets its state: scenarios, switch, settings, ledgers (MCT-06). */
+    async reset(party) { await must('DELETE', MC + party + '/journal', { apikey: true }, [204]); },
+    /** Scenarios, switch and settings back to the defaults; journal and ledgers kept. */
+    async normal(party) {
+      await mock.clear(party);
+      await mock.switchTo(party, { state: 'UP' });
+      await mock.settings(party, {});
+    },
+  };
+  // the old control body {forceMode, latencyMs, errorRate, outage, callbackMode, callbackDelayMs, callbackUrl,
+  // callbackOnly, timeoutDelayMs} on mock control, as mw-simulators' LegacyScenarios translates it
+  const PAYING = { ocs: 'topup', billagg: 'pay', c2wbank: 'debit' };
+  const FORCED = {
+    SUCCESS: { behaviour: 'SUCCESS' }, BUSINESS_FAILURE: { behaviour: 'BUSINESS_ERROR' },
+    UNKNOWN_CODE: { behaviour: 'BUSINESS_ERROR', code: '9876' }, TIMEOUT: { behaviour: 'TIMEOUT' },
+    SERVER_ERROR_AFTER_SEND: { behaviour: 'HTTP_5XX' }, MALFORMED: { behaviour: 'MALFORMED_RESPONSE' },
+    CONNECTION_RESET: { behaviour: 'CONNECTION_RESET' }, PARTIAL_SUCCESS: { behaviour: 'PARTIAL_SUCCESS' },
+  };
+  const CALLBACKS = { DUPLICATE: 'DUPLICATE_CALLBACK', LATE: 'LATE_CALLBACK', OUT_OF_ORDER: 'OUT_OF_ORDER_CALLBACK', NONE: 'NO_CALLBACK' };
+
+  // ---------- simulators (/test/sim/* observations, control on /test/mock-control/*), mail (/test/mail/*) ----------
   const sim = {
-    async scenario(partner, s) { await must('POST', '/test/sim/' + partner + '/scenario', { apikey: true, json: s }, [200, 201, 202, 204]); },
-    async reset(partner) { await must('DELETE', '/test/sim/' + partner + '/scenario', { apikey: true }, [204]); },
-    async requests(partner) { return (await must('GET', '/test/sim/' + partner + '/requests', { apikey: true })).body || []; },
+    async scenario(partner, s) {
+      await mock.normal(partner);
+      if (s.forceMode) await mock.scenario(partner, Object.assign({ operation: PAYING[partner] }, FORCED[s.forceMode]));
+      if (CALLBACKS[s.callbackMode]) {
+        await mock.scenario(partner, Object.assign({ behaviour: CALLBACKS[s.callbackMode] }, s.callbackMode === 'LATE' ? { delayMs: s.callbackDelayMs || 0 } : {}));
+      }
+      const latency = s.latencyMs || 0;
+      const state = s.outage || (s.errorRate || 0) > 0 ? 'MAINTENANCE' : latency > 0 ? 'SLOW' : 'UP';
+      await mock.switchTo(partner, { state, latencyMinMs: latency, latencyMaxMs: latency, ratio: s.outage ? 1.0 : (s.errorRate || 1.0) });
+      await mock.settings(partner, { callbackUrl: s.callbackUrl || null, callbackOnly: !!s.callbackOnly, timeoutDelayMs: s.timeoutDelayMs || null });
+    },
+    reset: partner => mock.normal(partner),
+    requests: partner => mock.journal(partner),
     async lastSeq(partner) { return (await sim.requests(partner)).reduce((m, r) => Math.max(m, r.seq || 0), 0); },
     async replay(partner, ref) {
-      return (await must('POST', '/test/sim/' + partner + '/callbacks/' + ref + '/replay', { apikey: true, json: {} })).body.targetStatus;
+      return (await must('POST', MC + partner + '/callbacks/' + ref + '/replay', { apikey: true, json: {} })).body.targetStatus;
     },
     async sms(msisdn) { return (await must('GET', '/test/sim/smsc/messages?msisdn=' + msisdn, { apikey: true })).body || []; },
     async mail(email) {
@@ -185,10 +229,22 @@
       return r.body;
     },
     async smppBinds() { return (await must('GET', '/test/sim/ussdgw/smpp/binds', { apikey: true })).body; },
-    async smppScenario(s) { await must('POST', '/test/sim/ussdgw/smpp/scenario', { apikey: true, json: s }, [204]); },
+    /** The old SMPP gateway body {throttleNext, queueFullNext, genericNackNext, silentEnquireLink, screenTimeoutMs} on mock control. */
+    async smppScenario(s) {
+      await mock.normal('ussdgw');
+      const next = (n, sc) => (n > 0 ? mock.scenario('ussdgw', Object.assign({ operation: 'submit', nextN: n }, sc)) : null);
+      await next(s.queueFullNext, { behaviour: 'BUSINESS_ERROR', code: '0x14' });
+      await next(s.throttleNext, { behaviour: 'BUSINESS_ERROR', code: '0x58' });
+      await next(s.genericNackNext, { behaviour: 'MALFORMED_RESPONSE' });
+      if (s.silentEnquireLink) await mock.scenario('ussdgw', { operation: 'enquire_link', behaviour: 'TIMEOUT' });
+      if (s.screenTimeoutMs) await mock.settings('ussdgw', { timeoutDelayMs: s.screenTimeoutMs });
+    },
     async smppDrop() { await must('POST', '/test/sim/ussdgw/smpp/drop', { apikey: true, json: {} }, [204]); },
-    async ipnFail(ipnId, n, status) { await must('POST', '/test/sim/merchant/ipn/scenario', { apikey: true, json: { failNext: n, failStatus: status, ipnId } }); },
-    async ipnAcceptAll() { await http('POST', '/test/sim/merchant/ipn/scenario', { apikey: true, json: { failNext: 0 } }); },
+    async ipnFail(ipnId, n, status) {
+      const st = status || 500;
+      await mock.scenario('merchant', { operation: 'ipn', behaviour: st >= 500 ? 'HTTP_5XX' : 'BUSINESS_ERROR', httpStatus: st, key: ipnId, nextN: n });
+    },
+    async ipnAcceptAll() { await http('DELETE', MC + 'merchant/scenarios', { apikey: true }); },
     async ipnReceived(ipnId) { return (await must('GET', '/test/sim/merchant/ipn/received?ipnId=' + ipnId, { apikey: true })).body || []; },
   };
 
@@ -900,7 +956,7 @@
 
   const MW = {
     http, must, poll, sleep, uuid, unique, short, totp, claims, hmacHex, hmacB64, sha256Hex, encryptPin, encryptAppPin, token, bearer,
-    core, sim, app, auth, admin, portal, checkout, callbacks, testApi, run, FINAL, IPN_URL, v, CV,
+    core, sim, mock, app, auth, admin, portal, checkout, callbacks, testApi, run, FINAL, IPN_URL, v, CV,
     fixture: n => JSON.parse(CV.get('fixtures'))[n],
     /** The seeded PIN of every app wallet (MW_SEED_APP_PIN); mw-auth checks it for every channel (ticket 72). */
     get pin() { return v('appPin'); },

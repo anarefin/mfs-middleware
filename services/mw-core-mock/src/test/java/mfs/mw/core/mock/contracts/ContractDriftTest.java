@@ -25,7 +25,7 @@ import tools.jackson.databind.json.JsonMapper;
 @WebMvcTest(
     properties = {"spring.test.mockmvc.print=none", "mw.coremock.seed-api.enabled=true"})
 @AutoConfigureMockMvc(addFilters = false)
-@ActiveProfiles("test")
+@ActiveProfiles({"test", "mock-control"})
 @Import(MockedWebSlice.class)
 class ContractDriftTest {
 

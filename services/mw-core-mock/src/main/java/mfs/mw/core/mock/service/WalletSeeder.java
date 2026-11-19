@@ -3,6 +3,8 @@ package mfs.mw.core.mock.service;
 import java.util.ArrayList;
 import java.util.List;
 import mfs.mw.core.mock.config.CoreMockProperties;
+import mfs.mw.core.mock.exception.ErrorCodes;
+import mfs.mw.core.mock.exception.MwException;
 import mfs.mw.core.mock.repository.SheetRepository;
 import mfs.mw.core.mock.util.HolderNames;
 import org.slf4j.Logger;
@@ -47,7 +49,7 @@ public class WalletSeeder {
   private final JdbcTemplate jdbc;
   private final SheetRepository sheets;
   private final WalletStateEvents stateEvents;
-  private final SeedFiles files;
+  private volatile SeedFiles files;
 
   public WalletSeeder(JdbcTemplate jdbc, SheetRepository sheets, CoreMockProperties props, WalletStateEvents stateEvents) {
     this.jdbc = jdbc;
@@ -87,6 +89,49 @@ public class WalletSeeder {
     jdbc.execute("truncate entry, hold, command_log, rest_request, reversal, wallet");
     seed();
     log.atInfo().addKeyValue("event", "coremock.seed.reset").log("ledger reset to the seed");
+  }
+
+  /** The seed version in force: {@code mw.coremock.seed.version} on start, then the last {@link #restore}'s. */
+  public String version() {
+    return files.version();
+  }
+
+  /**
+   * The mock-control global reset (FRS MCT-07, ticket 103): the ledger back to the seed of {@code
+   * version} (a changed version loads that folder's files, and stays in force). Every wallet outside the
+   * seed (made by the seed API: mw-seeder's personas, the test console) is kept at its opening balance
+   * (its entries undone: every change of a balance is an entry, FRS 7.3) with nothing held; then holds,
+   * entries, the command log, the REST request hashes, the reversals and the used assertion ids go; the
+   * seed's own wallets are re-created from the files and the sheets replaced. Unknown version: 400
+   * MW-VAL-001, nothing changed.
+   */
+  @Transactional
+  public void restore(String version) {
+    SeedFiles next = new SeedFiles(version);
+    List<SeedFiles.WalletRange> ranges;
+    List<SeedFiles.SystemWallet> systems;
+    try {
+      ranges = next.wallets();
+      systems = next.systemWallets();
+      next.tariff();
+      next.limits();
+    } catch (IllegalStateException e) {
+      throw new MwException(ErrorCodes.VAL_INVALID, "No seed files for version " + version);
+    }
+    jdbc.update("update wallet w set held_minor = 0, balance_minor = w.balance_minor - coalesce((select sum(case when "
+        + "e.direction = 'CREDIT' then e.amount_minor else -e.amount_minor end) from entry e where e.wallet_id = w.id), 0)");
+    jdbc.execute("truncate entry, hold, command_log, rest_request, reversal, used_assertion");
+    for (SeedFiles.WalletRange r : ranges) {
+      jdbc.update("delete from wallet where id in (select ? || lpad(n::text, 4, '0') from generate_series(?, ?) n)",
+          r.prefix(), r.first(), r.last());
+    }
+    for (SeedFiles.SystemWallet w : systems) {
+      jdbc.update("delete from wallet where id = ?", w.id());
+    }
+    files = next;
+    seed();
+    log.atInfo().addKeyValue("event", "coremock.seed.restored").addKeyValue("seedVersion", version)
+        .log("ledger restored to the seed");
   }
 
   /** Gives every wallet of a range that has no holder name yet its fixed one. */

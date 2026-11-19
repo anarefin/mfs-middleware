@@ -19,9 +19,26 @@ class ApiContractsTest {
 
   static final String WALLET = "api/mw-core-mock/core-wallet.v1.openapi.yaml";
 
+  static final String CONTROL = "api/mw-core-mock/core-mock-control.v1.openapi.yaml";
+
   @Test
   void theContractsAreListedAsProduced() {
-    assertThat(ContractManifest.producedApis()).containsExactly(SEED, WALLET);
+    assertThat(ContractManifest.producedApis()).containsExactly(SEED, WALLET, CONTROL);
+  }
+
+  /** Ticket 103: what the core's mock-control API serves is what its contract says. */
+  @Test
+  void theMockControlBodiesAreTheContracts() {
+    JsonNode reset = JSON.readTree(JSON.writeValueAsString(new mfs.mw.core.mock.dto.ResetResult(
+        java.util.List.of(mfs.mw.core.mock.dto.ResetResult.PartyResult.reset("core", "v1")))));
+    assertThat(OpenApiSchemas.response(CONTROL, "/mock-control/reset", "post", "200").validate(reset)).isEmpty();
+    JsonNode scenario = JSON.readTree(JSON.writeValueAsString(
+        mfs.mw.core.mock.dto.MockScenario.of("transfer", mfs.mw.core.mock.dto.MockBehaviour.BUSINESS_ERROR)
+            .withCode("INSUFFICIENT_BALANCE").withKey("01711000001").withNextN(1).withIdAndRemaining("S-1", 1)));
+    assertThat(OpenApiSchemas.response(CONTROL, "/mock-control/{party}/scenarios", "post", "201").validate(scenario))
+        .isEmpty();
+    JsonNode parties = JSON.readTree(JSON.writeValueAsString(mfs.mw.core.mock.service.mockcontrol.MockParties.ALL));
+    assertThat(OpenApiSchemas.response(CONTROL, "/mock-control/parties", "get", "200").validate(parties)).isEmpty();
   }
 
   /**

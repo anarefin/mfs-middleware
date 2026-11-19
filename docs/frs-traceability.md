@@ -279,11 +279,11 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | MCK-01 | done | the simulators speak the real protocols (SMPP binds, SOAP, HMAC, mTLS); each new mock keeps the rule in its ticket |
 | MCK-02 | tickets 112, 114 | reverse once built in mw-simulators (ocs, billagg, c2wbank; ticket 97, `ReversalServiceTest`); stateful paid bills per aggregator 112, 114 |
 | MCK-03 | ticket 136 | magic values are the default trigger of the mock-control engine, an explicit scenario wins (ticket 102, `service/mockcontrol/ScenarioEngine`); trigger table per mock in `docs/concepts/simulators.html`; every new mock in 136 |
-| MCK-04 | ticket 103 | mw-simulators: `/mock-control/{party}` (D33, ticket 102, `contracts/api/mw-simulators/mock-control.v1.openapi.yaml`); mw-core-mock in 103 |
+| MCK-04 | done | mw-simulators: `/mock-control/{party}` (D33, tickets 102a/b: every mw-simulators party incl. SMSC, USSD gateway, payShield; `contracts/api/mw-simulators/mock-control.v1.openapi.yaml`); mw-core-mock party `core` on the copied engine, Kafka and `/core/v1` (ticket 103, `contracts/api/mw-core-mock/core-mock-control.v1.openapi.yaml`, `CoreMockScenarioIT`) |
 | MCK-05 | done | DELAY(ms) per operation and scope, SLOW switch with a random range (ticket 102, `MockControlControllerIT`) |
 | MCK-06 | done | LATE_CALLBACK(ms), DUPLICATE_CALLBACK, OUT_OF_ORDER_CALLBACK, NO_CALLBACK and replay `/mock-control/{party}/callbacks/{reference}/replay` (ticket 102) |
 | MCK-07 | ticket 135 | queryable: `GET /mock-control/{party}/journal` (ticket 102, `service/mockcontrol/Journal`); the UI view in 135 |
-| MCK-08 | ticket 103 | versioned seeds and one reset |
+| MCK-08 | done | versioned seed files `seed/v1/` in mw-core-mock (wallets, system wallets, tariff, limits; ticket 94) and mw-simulators (billers), reloaded by the global reset with an optional `seedVersion` (ticket 103, `SeedLoaderTest`, `MockControlResetIT`, `SeedFilesTest`) |
 | MCK-09 | done | every mock is a container in `deploy/docker-compose.yml` |
 
 ## 7. Mock core wallet (FRS 7.2)
@@ -368,11 +368,11 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | MCT-01 | done | `POST /mock-control/{party}/scenarios`, every behaviour (ticket 102, `MockControlControllerIT`) |
 | MCT-02 | done | global, per key (MSISDN, account, biller, bill number, txn id), next N (ticket 102, `ScenarioEngineTest`) |
 | MCT-03 | done | `PUT /mock-control/{party}/switch` DOWN (connection closed), MAINTENANCE (503 5030), SLOW (ticket 102) |
-| MCT-04 | tickets 102, 109 | SMPP faults (bind refusal, dropped enquire_link built in the USSD gateway simulator); SMSC and USSD gateway onto the mock-control engine in the 102 follow-up (102b) |
+| MCT-04 | done | SMPP faults on the mock-control engine (ticket 102b): parties `smsc` (bind refusal, ESME_RTHROTTLED and any command_status, missing / late / duplicate / out-of-order DLR, DOWN closes the connection) and `ussdgw` (bind refusal, ESME_RTHROTTLED, generic_nack, dropped enquire_link, dial), `payshield` (error codes per command, cut-short answer, reset); `SmppMockControlIT`, API folder 39 |
 | MCT-05 | ticket 123 | file faults |
 | MCT-06 | done | `GET` and `DELETE /mock-control/{party}/journal`, DELETE resets the party's state (ticket 102) |
-| MCT-07 | ticket 103 | global reset |
-| MCT-08 | tickets 103, 135 | absent from production profiles |
+| MCT-07 | done | `POST /mock-control/reset` on mw-simulators: every local party plus mw-core-mock's ledger back to the seed, one line per party; test route `/test/mock-control/*` (ticket 103, `GlobalResetIT`, `MockControlResetIT`) |
+| MCT-08 | ticket 135 | profile `mock-control` only on the test doubles: start guard with `MW_ENV=prod` (`ProdGuardTest`), `scripts/check-mock-control-prod.sh` under the root `check` (ticket 103); the UI part in 135 |
 | T1 | tickets 104, 137 | happy path: P2P in 104, every financial use case in 137 |
 | T2 | tickets 104, 137 | partner business rejection |
 | T3 | tickets 104, 137 | timeout, success on inquiry |

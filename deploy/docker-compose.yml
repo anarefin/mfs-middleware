@@ -771,6 +771,9 @@ services:
       # Dev stack only: every wallet as WalletStateChanged SNAPSHOT on start (ticket 67), so mw-auth's
       # wallet projection catches up with a ledger it missed (idempotent by version).
       MW_COREMOCK_WALLET_SNAPSHOT: "true"
+      # The core party's mock control /mock-control and the global reset's core part (ADR D33, ticket 103):
+      # test-only, never production (scripts/check-mock-control-prod.sh; a start with MW_ENV=prod fails).
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev},mock-control
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }

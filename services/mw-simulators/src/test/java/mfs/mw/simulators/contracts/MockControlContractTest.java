@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import mfs.mw.simulators.dto.MockBehaviour;
 import mfs.mw.simulators.dto.MockScenario;
@@ -44,6 +45,22 @@ class MockControlContractTest {
     RecordedRequest r = new RecordedRequest(1, Instant.parse("2026-11-19T10:00:00Z"), "POST", "/ocs/v1/topup", null,
         Map.of("content-type", "application/json"), "{}");
     assertThat(OpenApiSchemas.component(API, "JournalEntry").validate(tree(r))).isEmpty();
+  }
+
+  /** Ticket 103: the global reset's answer, and the core's answer it passes on, are what both contracts say. */
+  @Test
+  void theGlobalResetAnswersAreTheContracts() {
+    var result = new mfs.mw.simulators.dto.ResetResult(List.of(
+        mfs.mw.simulators.dto.ResetResult.PartyResult.reset("ocs"),
+        new mfs.mw.simulators.dto.ResetResult.PartyResult("core", "RESET", "v1", null),
+        mfs.mw.simulators.dto.ResetResult.PartyResult.failed("core", "mw-core-mock answered 503")));
+    assertThat(OpenApiSchemas.response(API, "/mock-control/reset", "post", "200").validate(tree(result))).isEmpty();
+    String core = "api/mw-core-mock/core-mock-control.v1.openapi.yaml";
+    JsonNode coreAnswer = JSON.readTree("{\"parties\":[{\"party\":\"core\",\"status\":\"RESET\",\"seedVersion\":\"v1\"}]}");
+    assertThat(OpenApiSchemas.response(core, "/mock-control/reset", "post", "200").validate(coreAnswer))
+        .as("the core answer GlobalResetIT's stub plays").isEmpty();
+    assertThat(JSON.readValue(coreAnswer.toString(), mfs.mw.simulators.dto.ResetResult.class).parties())
+        .singleElement().extracting(mfs.mw.simulators.dto.ResetResult.PartyResult::seedVersion).isEqualTo("v1");
   }
 
   @Test

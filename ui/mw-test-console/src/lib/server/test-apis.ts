@@ -1,9 +1,10 @@
 import "server-only";
 // The test-only APIs behind APISIX key-auth (deploy/apisix/routes-test, MW_E2E_ROUTES=1):
-// core-mock (/test/core-mock/v1: wallets, faults), the simulators (/test/sim: partner
-// scenarios, recorded requests, callback replay, SMSC, USSD gateway, merchant IPN) and GreenMail.
+// core-mock (/test/core-mock/v1: wallets, faults), the simulators (/test/sim: SMSC inbox, USSD
+// gateway, merchant IPNs; /test/mock-control: scenarios, switches, journal of every mock party) and GreenMail.
 
 import { encryptPin, type EncryptedPin } from "@/lib/crypto";
+import type { MockPartyName } from "@/lib/mock-parties";
 import type { SmsRow } from "@/lib/types";
 import { EdgeError, edge } from "./edge";
 
@@ -35,8 +36,6 @@ export const pins = {
   },
 };
 
-export type SimPartner = "ocs" | "billagg" | "c2wbank";
-export const PARTNERS: readonly SimPartner[] = ["ocs", "billagg", "c2wbank"];
 
 export const sim = {
   async sms(msisdn: string): Promise<SmsRow[]> {
@@ -47,8 +46,9 @@ export const sim = {
     const r = await edge("GET", `/test/mail/user/${encodeURIComponent(email)}/messages/`, { apikey: true });
     return r.status === 200 && Array.isArray(r.body) ? (r.body as Record<string, unknown>[]) : [];
   },
-  async requests(partner: SimPartner): Promise<Record<string, unknown>[]> {
-    const r = await edge("GET", `/test/sim/${partner}/requests`, { apikey: true });
+  /** The mock party's journal (mock-control API, ADR D33). */
+  async requests(party: MockPartyName): Promise<Record<string, unknown>[]> {
+    const r = await edge("GET", `/test/mock-control/${party}/journal`, { apikey: true });
     return r.status === 200 && Array.isArray(r.body) ? (r.body as Record<string, unknown>[]) : [];
   },
 };

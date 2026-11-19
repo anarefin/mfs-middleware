@@ -1,0 +1,4 @@
+{
+  "name": "39 Mock control (one API for every mock party, ADR D33)",
+  "description": "Tickets 102a/102b, FRS MCT-01..04, MCT-06, MCK-03..07: the mock-control API of mw-simulators through the test-only route /test/mock-control/*: the parties, scoped scenarios that win over the magic values, the journal, and the SMPP parties (SMSC DLR, USSD gateway ESME_RTHROTTLED)."
+}

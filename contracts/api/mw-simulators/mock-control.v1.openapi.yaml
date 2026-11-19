@@ -19,8 +19,18 @@ info:
     it decided and disappears at zero. A DOWN or MAINTENANCE switch is checked first and uses no
     scenario.
 
-    The old `/sim/{partner}/scenario`, `/sim/{partner}/requests` and `/sim/merchant/ipn/scenario`
-    paths remain as deprecated aliases of this engine for one release.
+    The SMPP and TCP parties (ticket 102b, MCT-04) carry out a subset of the behaviours (`behaviours`
+    of the party): `smsc` (operations bind, submit; BUSINESS_ERROR refuses with `code`, an SMPP
+    command_status such as `0x58` ESME_RTHROTTLED, the default on submit, or `0x0D` ESME_RBINDFAIL, the
+    default on bind; the DLR is its callback: NO_CALLBACK = missing DLR, LATE_CALLBACK = late DLR,
+    DUPLICATE_CALLBACK = two DLRs, OUT_OF_ORDER_CALLBACK = a stale ENROUTE after the final one; DOWN
+    closes the connection), `ussdgw` (bind, submit, enquire_link, dial; MALFORMED_RESPONSE answers a
+    generic_nack; enquire_link with anything but SUCCESS goes unanswered) and `payshield` (command,
+    keyed by the command code; `code` a two-character payShield error code, default `15`).
+
+    The old `/sim/{partner}/scenario`, `/sim/{partner}/requests`, `/sim/merchant/ipn/scenario`,
+    `/sim/payshield/scenario` and `/sim/ussdgw/smpp/scenario` paths remain as deprecated aliases of
+    this engine for one release.
 servers:
   - url: http://mw-simulators:8080
 paths:
@@ -34,6 +44,48 @@ paths:
           content:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/Party" } }
+  /mock-control/reset:
+    post:
+      operationId: resetAll
+      summary: Reset every mock in one call (MCT-07, ticket 103)
+      description: |
+        Every party of `GET /mock-control/parties` is reset as `DELETE /mock-control/{party}/journal`
+        resets it (journal, scenarios, switch, settings, kept state), then mw-core-mock's own `POST
+        /mock-control/reset` (contract `api/mw-core-mock/core-mock-control.v1`: ledger back to the seed,
+        its scenarios and journal cleared), with `seedVersion` passed on. One line per party, the local
+        ones first; a party that could not be reset is `FAILED` with the reason and the others still go.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                seedVersion: { type: [string, "null"], pattern: "^[a-z0-9][a-z0-9-]{0,31}$", description: "mw-core-mock's seed files; absent = the version in force there" }
+      responses:
+        "200":
+          description: What each party reported
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [parties]
+                properties:
+                  parties:
+                    type: array
+                    items:
+                      type: object
+                      required: [party, status]
+                      properties:
+                        party: { type: string }
+                        status: { type: string, enum: [RESET, FAILED] }
+                        seedVersion: { type: string }
+                        detail: { type: string }
+        "400":
+          description: A bad body (MW-VAL-001)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
   /mock-control/{party}/scenarios:
     parameters:
       - $ref: "#/components/parameters/Party"
@@ -209,7 +261,7 @@ components:
       name: party
       in: path
       required: true
-      schema: { type: string, examples: [ocs, billagg, c2wbank, merchant] }
+      schema: { type: string, examples: [ocs, billagg, c2wbank, merchant, smsc, ussdgw, payshield] }
   schemas:
     Behaviour:
       type: string
@@ -242,7 +294,7 @@ components:
       properties:
         operation: { type: [string, "null"], maxLength: 64, description: "one of the party's operations; absent = all" }
         behaviour: { $ref: "#/components/schemas/Behaviour" }
-        code: { type: [string, "null"], maxLength: 16 }
+        code: { type: [string, "null"], maxLength: 16, description: "the refusal code; smsc / ussdgw: an SMPP command_status (0x58 or 88), payshield: a two-character error code" }
         delayMs: { type: [integer, "null"], minimum: 0, maximum: 600000 }
         httpStatus: { type: [integer, "null"], minimum: 400, maximum: 599 }
         key: { type: [string, "null"], maxLength: 64, description: "an MSISDN, account number, biller code, bill number, IPN id or transaction id the call carries" }
@@ -268,7 +320,7 @@ components:
       properties:
         callbackUrl: { type: [string, "null"], maxLength: 2048 }
         callbackOnly: { type: [boolean, "null"], description: "billagg: payments answered 202 PENDING, outcome by callback only" }
-        timeoutDelayMs: { type: [integer, "null"], minimum: 0, maximum: 600000 }
+        timeoutDelayMs: { type: [integer, "null"], minimum: 0, maximum: 600000, description: "hold of a TIMEOUT; ussdgw: also how long a played step waits for its screen" }
     Party:
       type: object
       required: [name, operations, keys]
@@ -277,6 +329,7 @@ components:
         description: { type: string }
         operations: { type: array, items: { type: string } }
         keys: { type: array, items: { type: string } }
+        behaviours: { type: array, items: { $ref: "#/components/schemas/Behaviour" }, description: "what the party carries out; a scenario with another behaviour is refused (400)" }
     JournalEntry:
       type: object
       required: [seq, at, method, path, headers]

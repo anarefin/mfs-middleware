@@ -12,6 +12,7 @@ import mfs.mw.core.mock.dto.CoreEvent;
 import mfs.mw.core.mock.dto.FaultRequest;
 import mfs.mw.core.mock.dto.Fault.FaultMode;
 import mfs.mw.core.mock.dto.Party;
+import mfs.mw.core.mock.service.mockcontrol.LegacyFaults;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,7 +37,7 @@ class BalanceInquiryIT {
   static final String B = "01711000002";
 
   private final CoreCommandService service;
-  private final FaultRegistry faults;
+  private final LegacyFaults faults;
   private final WalletSeeder seeder;
   private final JdbcTemplate jdbc;
   private final JsonMapper json;
@@ -44,7 +45,7 @@ class BalanceInquiryIT {
 
   @Autowired
   BalanceInquiryIT(
-      CoreCommandService service, FaultRegistry faults, WalletSeeder seeder, JdbcTemplate jdbc, JsonMapper json) {
+      CoreCommandService service, LegacyFaults faults, WalletSeeder seeder, JdbcTemplate jdbc, JsonMapper json) {
     this.service = service;
     this.faults = faults;
     this.seeder = seeder;

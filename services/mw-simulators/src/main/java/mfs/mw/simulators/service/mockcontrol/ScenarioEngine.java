@@ -11,9 +11,6 @@ import mfs.mw.simulators.config.SimulatorProperties;
 import mfs.mw.simulators.dto.CallbackMode;
 import mfs.mw.simulators.dto.MockBehaviour;
 import mfs.mw.simulators.dto.MockBehaviour.Dimension;
-import mfs.mw.simulators.dto.MockParty;
-import mfs.mw.simulators.exception.ErrorCodes;
-import mfs.mw.simulators.exception.MwException;
 import mfs.mw.simulators.dto.MockScenario;
 import mfs.mw.simulators.dto.MockSettings;
 import mfs.mw.simulators.dto.MockSwitch;
@@ -48,11 +45,7 @@ public class ScenarioEngine implements MockControl {
 
   /** Adds a scenario; answers it with its id and, for next-N, the calls left. */
   public synchronized MockScenario add(String party, MockScenario s) {
-    MockParty p = MockParties.require(party);
-    if (s.operation() != null && !p.operations().contains(s.operation())) {
-      throw new MwException(ErrorCodes.VAL_INVALID, "Party " + party + " has no operation " + s.operation()
-          + "; it has " + p.operations());
-    }
+    MockParties.check(party, s);
     MockScenario stored = s.withIdAndRemaining("S-" + ids.incrementAndGet(), s.nextN());
     scenarios.computeIfAbsent(party, k -> new ArrayList<>()).add(stored);
     return stored;
@@ -106,7 +99,7 @@ public class ScenarioEngine implements MockControl {
 
     CallbackMode cb = CallbackMode.NONE;
     long cbDelay = 0;
-    if (settings.callbackUrl() != null && !settings.callbackUrl().isBlank()) {
+    if (MockParties.callsBackInBand(party) || (settings.callbackUrl() != null && !settings.callbackUrl().isBlank())) {
       cb = callback.map(s -> switch (s.behaviour()) {
         case DUPLICATE_CALLBACK -> CallbackMode.DUPLICATE;
         case LATE_CALLBACK -> CallbackMode.LATE;

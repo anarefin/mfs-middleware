@@ -1,14 +1,15 @@
 "use client";
-// The simulator, core-mock and SMPP control forms, each showing what its calls did.
+// The mock-control (every mock party of mw-simulators), core-mock and SMPP forms, each showing what its calls did.
 
 import { Building2, Gauge, Radio, Wallet } from "lucide-react";
 import { useActionState, type ReactNode } from "react";
-import { Busy, Panel, Row, SubHeading } from "@/components/section";
+import { Busy, Hint, Panel, Row } from "@/components/section";
 import { Button } from "@/components/ui/button";
 import { Field, InlineField } from "@/components/ui/field";
 import { Input, NativeSelect } from "@/components/ui/input";
 import type { Outcome } from "@/lib/types";
-import { coreFault, readPartner, replayCallback, setScenario, smpp, walletLookup } from "../actions/sim";
+import { BEHAVIOURS, MOCK_PARTIES, SWITCH_STATES } from "@/lib/mock-parties";
+import { addScenario, coreFault, partyState, replayCallback, setSwitch, smpp, walletLookup } from "../actions/sim";
 import { Result } from "../components/result";
 
 type Act = (prev: Outcome | null, f: FormData) => Promise<Outcome | null>;
@@ -24,81 +25,94 @@ export function ActForm({ action, children, testid }: { action: Act; children: R
   );
 }
 
-const PARTNER_INFO: Record<string, string> = {
-  ocs: "OCS (prepaid top-up, every MNO)",
-  billagg: "Bill aggregator (10 billers, REST + SOAP)",
-  c2wbank: "C2W bank (add money from bank)",
-};
-
 const checkboxClass = "size-4 accent-primary";
 
+function PartySelect({ only }: { only?: (p: (typeof MOCK_PARTIES)[number]) => boolean }) {
+  const list = only ? MOCK_PARTIES.filter(only) : MOCK_PARTIES;
+  return (
+    <Field label="Mock party">
+      <NativeSelect name="party" defaultValue={list[0]?.name}>
+        {list.map((p) => <option key={p.name} value={p.name}>{p.name}: {p.title}</option>)}
+      </NativeSelect>
+    </Field>
+  );
+}
+
+/** The mock-control API of mw-simulators (ADR D33): a scenario, the switch and settings, the state and journal, callback replay. */
 export function PartnerForms() {
   return (
-    <div className="grid items-start gap-4 xl:grid-cols-3">
-      {Object.entries(PARTNER_INFO).map(([p, title]) => (
-        <Panel key={p} title={title} icon={Building2} contentClassName="gap-4">
-          <ActForm action={setScenario} testid={`scenario-${p}`}>
-            <input type="hidden" name="partner" value={p} />
-            <Row>
-              <Field label="Outcome (forceMode)">
-                <NativeSelect name="forceMode" defaultValue="">
-                  <option value="">normal (magic values decide)</option>
-                  <option value="SUCCESS">SUCCESS</option>
-                  <option value="BUSINESS_FAILURE">BUSINESS_FAILURE</option>
-                  <option value="TIMEOUT">TIMEOUT (applied, reply held)</option>
-                  <option value="SERVER_ERROR_AFTER_SEND">500 after send (applied)</option>
-                  <option value="UNKNOWN_CODE">unknown code 9876</option>
-                  <option value="MALFORMED">malformed body (applied)</option>
-                </NativeSelect>
-              </Field>
-              <Field label="Latency ms"><Input name="latencyMs" inputMode="numeric" placeholder="0" /></Field>
-            </Row>
-            <Row>
-              <Field label="Error rate 0..1 (503 unapplied)"><Input name="errorRate" placeholder="0" /></Field>
-              <Field label="Timeout hold ms"><Input name="timeoutDelayMs" inputMode="numeric" placeholder="default" /></Field>
-            </Row>
-            <InlineField><input type="checkbox" name="outage" className={checkboxClass} /> outage (every request 503, not applied)</InlineField>
-            {p !== "ocs" ? (
-              <>
-                <Row>
-                  <Field label="Callback">
-                    <NativeSelect name="callbackMode" defaultValue={p === "c2wbank" ? "ONCE" : "NONE"}>
-                      <option value="NONE">none</option>
-                      <option value="ONCE">once</option>
-                      <option value="DUPLICATE">twice (duplicate)</option>
-                      <option value="LATE">late (after the delay)</option>
-                      <option value="OUT_OF_ORDER">outcome then stale PENDING</option>
-                    </NativeSelect>
-                  </Field>
-                  <Field label="Callback delay ms"><Input name="callbackDelayMs" inputMode="numeric" placeholder="0" /></Field>
-                </Row>
-                {p === "billagg" ? <InlineField><input type="checkbox" name="callbackOnly" className={checkboxClass} /> callback-only (payments answered 202 PENDING)</InlineField> : null}
-              </>
-            ) : null}
-            <Row>
-              <Button type="submit" name="op" value="set">Set {p}</Button>
-              <Button type="submit" name="op" value="reset" variant="outline">Reset {p}</Button>
-            </Row>
-          </ActForm>
-          <div className="flex flex-col gap-3 border-t pt-4">
-            <SubHeading>What {p} received</SubHeading>
-            <ActForm action={readPartner}>
-              <input type="hidden" name="partner" value={p} />
-              <Button type="submit" variant="outline" className="self-start">Show scenario and last 10 requests</Button>
-            </ActForm>
-          </div>
-          {p !== "ocs" ? (
-            <div className="flex flex-col gap-3 border-t pt-4">
-              <SubHeading>Replay a callback</SubHeading>
-              <ActForm action={replayCallback}>
-                <input type="hidden" name="partner" value={p} />
-                <Field label={`Partner reference (the transactionId ${p} received, see the requests)`}><Input name="reference" className="font-mono" /></Field>
-                <Button type="submit" variant="outline" className="self-start">Replay</Button>
-              </ActForm>
-            </div>
-          ) : null}
-        </Panel>
-      ))}
+    <div className="grid items-start gap-4 xl:grid-cols-2">
+      <Panel title="Add a scenario" icon={Building2} contentClassName="gap-4">
+        <ActForm action={addScenario} testid="mock-scenario">
+          <PartySelect />
+          <Row>
+            <Field label="Operation (empty = every operation)">
+              <Input name="operation" list="mock-operations" placeholder="topup, pay, debit, ipn, bind, submit, command…" />
+            </Field>
+            <Field label="Behaviour">
+              <NativeSelect name="behaviour" defaultValue="BUSINESS_ERROR">
+                {BEHAVIOURS.map((b) => <option key={b} value={b}>{b}</option>)}
+              </NativeSelect>
+            </Field>
+          </Row>
+          <datalist id="mock-operations">
+            {[...new Set(MOCK_PARTIES.flatMap((p) => p.operations))].map((o) => <option key={o} value={o} />)}
+          </datalist>
+          <Row>
+            <Field label="Code (BUSINESS_ERROR)"><Input name="code" placeholder="e.g. 9876, 0x58, 68" /></Field>
+            <Field label="Delay ms (TIMEOUT, DELAY, LATE_CALLBACK)"><Input name="delayMs" inputMode="numeric" /></Field>
+            <Field label="HTTP status (HTTP_5XX, merchant)"><Input name="httpStatus" inputMode="numeric" /></Field>
+          </Row>
+          <Row>
+            <Field label="Key (MSISDN, account, biller, command…; empty = global)"><Input name="key" className="font-mono" /></Field>
+            <Field label="Next N calls only"><Input name="nextN" inputMode="numeric" /></Field>
+          </Row>
+          <Hint>
+            Codes: {MOCK_PARTIES.map((p) => `${p.name} ${p.codeHint}`).join("; ")}. A scenario wins over the magic values while it lasts;
+            the most specific one decides (next N, then key, then operation, then party-wide).
+          </Hint>
+          <Button type="submit" className="self-start">Add scenario</Button>
+        </ActForm>
+      </Panel>
+      <Panel title="Switch and settings" icon={Gauge} contentClassName="gap-4">
+        <ActForm action={setSwitch} testid="mock-switch">
+          <PartySelect />
+          <Row>
+            <Field label="State">
+              <NativeSelect name="state" defaultValue="UP">
+                {SWITCH_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </NativeSelect>
+            </Field>
+            <Field label="Latency min ms"><Input name="latencyMinMs" inputMode="numeric" placeholder="0" /></Field>
+            <Field label="Latency max ms"><Input name="latencyMaxMs" inputMode="numeric" placeholder="= min" /></Field>
+          </Row>
+          <Row>
+            <Field label="Share of calls DOWN / MAINTENANCE hits (0..1)"><Input name="ratio" placeholder="1" /></Field>
+            <Field label="Timeout hold ms (ussdgw: screen wait)"><Input name="timeoutDelayMs" inputMode="numeric" placeholder="default" /></Field>
+          </Row>
+          <InlineField><input type="checkbox" name="callbacks" className={checkboxClass} /> callbacks to the middleware (billagg, c2wbank)</InlineField>
+          <InlineField><input type="checkbox" name="callbackOnly" className={checkboxClass} /> billagg callback-only (payments answered 202 PENDING)</InlineField>
+          <Hint>DOWN closes the connection unanswered; MAINTENANCE is the party&apos;s maintenance answer (503, SMPP 0x08, payShield 68); nothing is applied in either.</Hint>
+          <Button type="submit" className="self-start">Set switch and settings</Button>
+        </ActForm>
+      </Panel>
+      <Panel title="State, journal and reset" icon={Radio} contentClassName="gap-4">
+        <ActForm action={partyState} testid="mock-state">
+          <PartySelect />
+          <Row>
+            <Button type="submit" name="op" value="show" variant="outline">Show scenarios, switch, settings, last 10 calls</Button>
+            <Button type="submit" name="op" value="normal" variant="outline">Normal</Button>
+            <Button type="submit" name="op" value="reset" variant="outline-destructive">Reset (journal and ledgers too)</Button>
+          </Row>
+        </ActForm>
+      </Panel>
+      <Panel title="Replay a callback" icon={Building2} contentClassName="gap-4">
+        <ActForm action={replayCallback} testid="mock-replay">
+          <PartySelect only={(p) => !!p.callbacks} />
+          <Field label="Partner reference (the transactionId the partner received, see the journal)"><Input name="reference" className="font-mono" /></Field>
+          <Button type="submit" variant="outline" className="self-start">Replay</Button>
+        </ActForm>
+      </Panel>
     </div>
   );
 }

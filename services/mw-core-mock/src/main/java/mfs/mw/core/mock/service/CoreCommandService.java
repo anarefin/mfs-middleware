@@ -11,7 +11,6 @@ import mfs.mw.core.mock.dto.Amount;
 import mfs.mw.core.mock.dto.CoreCommand;
 import mfs.mw.core.mock.dto.CoreEvent;
 import mfs.mw.core.mock.dto.FactorsPayload;
-import mfs.mw.core.mock.dto.Fault;
 import mfs.mw.core.mock.dto.TransferPayload;
 import mfs.mw.core.mock.dto.UnlockPayload;
 import mfs.mw.core.mock.entity.Wallet;
@@ -22,19 +21,24 @@ import mfs.mw.core.mock.messaging.OutboxWriter;
 import mfs.mw.core.mock.repository.CommandLogRepository;
 import mfs.mw.core.mock.repository.LedgerRepository;
 import mfs.mw.core.mock.repository.WalletRepository;
+import mfs.mw.core.mock.service.mockcontrol.Decision;
+import mfs.mw.core.mock.service.mockcontrol.MockControl;
+import mfs.mw.core.mock.service.mockcontrol.MockParties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The core (spec 6.3): validate, post, hold, commit, release, credit, reverse and query. Every
  * command is idempotent on {@code commandId}: the first result event is stored verbatim in {@code
  * command_log}, in the same transaction as the ledger change and the outbox row, and a repeated
- * command is answered with that same event again. Injected faults ({@link FaultRegistry}) change
- * how the reply travels (delayed, dropped, duplicated) or refuse the command; the ledger and the
- * command log stay the truth, so QueryTransaction can tell what really happened.
+ * command is answered with that same event again. The mock-control engine ({@link MockControl}, ADR
+ * D33, ticket 103; party {@code core}) may refuse the command (BUSINESS_ERROR) or change how its result
+ * event travels (delayed, held, dropped, duplicated); the ledger and the command log stay the truth, so
+ * QueryTransaction can tell what really happened.
  */
 @Service
 public class CoreCommandService {
@@ -68,7 +72,7 @@ public class CoreCommandService {
   private final HoldOperations holdOps;
   private final PostingOperations postingOps;
   private final StatusOperations statusOps;
-  private final FaultRegistry faults;
+  private final MockControl control;
   private final OutboxWriter outbox;
   private final WalletStateEvents stateEvents;
   private final AssertionCheck assertions;
@@ -86,7 +90,7 @@ public class CoreCommandService {
       HoldOperations holdOps,
       PostingOperations postingOps,
       StatusOperations statusOps,
-      FaultRegistry faults,
+      MockControl control,
       OutboxWriter outbox,
       WalletStateEvents stateEvents,
       AssertionCheck assertions,
@@ -101,7 +105,7 @@ public class CoreCommandService {
     this.holdOps = holdOps;
     this.postingOps = postingOps;
     this.statusOps = statusOps;
-    this.faults = faults;
+    this.control = control;
     this.outbox = outbox;
     this.stateEvents = stateEvents;
     this.assertions = assertions;
@@ -146,20 +150,24 @@ public class CoreCommandService {
           .log("command expired before it was handled, dropped");
       return Optional.empty();
     }
-    List<Fault> hit = faults.consume(cmd.commandType(), cmd.txnId());
+    String operation = MockParties.operationOf(cmd.commandType());
+    Map<String, String> keys = keys(cmd);
+    control.record(operation, cmd.commandType(), cmd.txnId(), keys);
+    Decision decision = control.decide(operation, keys);
+    String failureType = CoreEventMapper.failureType(cmd.commandType());
+    if (decision.gate() != Decision.Gate.OPEN) {
+      return closed(cmd, eventTopic, decision, failureType);
+    }
     CoreEvent event;
     if (prior.isPresent()) {
       event = json.readValue(prior.get(), CoreEvent.class);
     } else {
-      Optional<Fault> reject =
-          hit.stream().filter(f -> f.mode() == Fault.FaultMode.REJECT).findFirst();
-      String failureType = CoreEventMapper.failureType(cmd.commandType());
       CoreEvent decided;
-      if (reject.isPresent() && VERIFY_FACTORS.equals(cmd.commandType())) {
-        decided = events.factorsRejected(cmd, coreRef(), reject.get().reasonCode(), "Injected rejection",
+      if (decision.refuses() && VERIFY_FACTORS.equals(cmd.commandType())) {
+        decided = events.factorsRejected(cmd, coreRef(), decision.reason(), "Injected rejection",
             commands.factors(cmd).resetId());
-      } else if (reject.isPresent() && failureType != null) {
-        decided = events.rejected(cmd, failureType, coreRef(), reject.get().reasonCode(), "Injected rejection");
+      } else if (decision.refuses() && failureType != null) {
+        decided = events.rejected(cmd, failureType, coreRef(), decision.reason(), "Injected rejection");
       } else {
         decided = execute(cmd);
       }
@@ -167,7 +175,7 @@ public class CoreCommandService {
       commandLog.save(cmd.commandId(), cmd.commandType(), cmd.txnId(), stored);
       event = json.readValue(stored, CoreEvent.class);
     }
-    publish(cmd, event, eventTopic, hit);
+    publish(cmd, event, eventTopic, decision);
     log.atInfo()
         .addKeyValue("event", "core.command.handled")
         .addKeyValue("txnId", cmd.txnId())
@@ -176,27 +184,66 @@ public class CoreCommandService {
         .addKeyValue("outcome", event.outcome().name())
         .addKeyValue("errorCode", event.reasonCode())
         .addKeyValue("replay", prior.isPresent())
-        .addKeyValue("faults", hit.stream().map(f -> f.mode().name()).toList().toString())
+        .addKeyValue("mockSource", decision.source())
         .log("core command handled");
     return Optional.of(event);
   }
 
-  /** Queues the reply, shaped by the faults that hit the command. */
-  private void publish(CoreCommand cmd, CoreEvent event, String eventTopic, List<Fault> hit) {
-    if (hit.stream().anyMatch(f -> f.mode() == Fault.FaultMode.DROP_REPLY)) {
+  /** Queues the reply, shaped by the mock-control decision (lost, delayed or held, duplicated). */
+  private void publish(CoreCommand cmd, CoreEvent event, String eventTopic, Decision decision) {
+    if (decision.replyLost()) {
       return;
     }
-    Instant availableAt =
-        hit.stream()
-            .filter(f -> f.mode() == Fault.FaultMode.DELAY)
-            .map(f -> clock.instant().plusMillis(f.delayMs()))
-            .max(Instant::compareTo)
-            .orElse(null);
+    long after = decision.replyAfterMs();
+    Instant availableAt = after > 0 ? clock.instant().plusMillis(after) : null;
     String correlation = cmd.correlationId() == null || cmd.correlationId().isBlank() ? cmd.txnId() : cmd.correlationId();
     EventMetadata meta = new EventMetadata(correlation, cmd.txnId(), cmd.commandId(), 1);
     outbox.append(eventTopic, cmd.txnId(), meta, event, availableAt);
-    if (hit.stream().anyMatch(f -> f.mode() == Fault.FaultMode.DUPLICATE_REPLY)) {
+    if (decision.reply() == mfs.mw.core.mock.dto.ReplyMode.DUPLICATE) {
       outbox.append(eventTopic, cmd.txnId(), meta, event, availableAt);
+    }
+  }
+
+  /**
+   * A Kafka command while the core's switch is closed (ticket 103): DOWN = not handled at all (no
+   * effect, no answer: the core is gone); MAINTENANCE = the command's failure event with reason {@code
+   * CORE_UNAVAILABLE}, not kept in the command log (a redelivery is decided anew), nothing applied.
+   */
+  private Optional<CoreEvent> closed(CoreCommand cmd, String eventTopic, Decision decision, String failureType) {
+    log.atWarn()
+        .addKeyValue("event", "core.command.switch_closed")
+        .addKeyValue("txnId", cmd.txnId())
+        .addKeyValue("commandType", cmd.commandType())
+        .addKeyValue("gate", decision.gate().name())
+        .log("core switch closed, command not handled");
+    if (decision.gate() == Decision.Gate.DOWN || failureType == null) {
+      return Optional.empty();
+    }
+    CoreEvent refused = events.rejected(cmd, failureType, coreRef(), Decision.MAINTENANCE_REASON, "Core in maintenance");
+    publish(cmd, refused, eventTopic, Decision.PASS);
+    return Optional.of(refused);
+  }
+
+  /** The command's scope keys for the mock-control engine: its parties' ids, txnId, holdId, original txnId. */
+  private static Map<String, String> keys(CoreCommand cmd) {
+    Map<String, String> keys = new LinkedHashMap<>();
+    if (cmd.txnId() != null) {
+      keys.put("txnId", cmd.txnId());
+    }
+    JsonNode p = cmd.payload();
+    if (p != null) {
+      put(keys, "debit", p.path("debitParty").path("id"));
+      put(keys, "credit", p.path("creditParty").path("id"));
+      put(keys, "wallet", p.path("subject").path("id"));
+      put(keys, "holdId", p.path("holdId"));
+      put(keys, "originalTxnId", p.path("originalTxnId"));
+    }
+    return keys;
+  }
+
+  private static void put(Map<String, String> keys, String name, JsonNode n) {
+    if (n.isString() && !n.asString().isBlank()) {
+      keys.put(name, n.asString());
     }
   }
 

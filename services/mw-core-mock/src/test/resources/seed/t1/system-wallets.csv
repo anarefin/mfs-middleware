@@ -1,0 +1,5 @@
+id,opening_balance_minor,purpose
+FEE_INCOME,0,fee income
+VAT_PAYABLE,0,VAT
+COMMISSION_PAYABLE,0,commission
+SETTLEMENT,1000000000000,generic settlement

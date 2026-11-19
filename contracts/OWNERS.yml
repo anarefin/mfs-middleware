@@ -66,3 +66,5 @@ files:
   api/mw-simulators/mock-control.v1.openapi.yaml: mw-simulators
   # the core wallet over REST (FRS 7.2, ADR D31, ticket 93); consumed by mw-orchestrator from ticket 95
   api/mw-core-mock/core-wallet.v1.openapi.yaml: mw-core-mock
+  # test-only mock-control API of the core party and the core's global reset (ADR D33, ticket 103)
+  api/mw-core-mock/core-mock-control.v1.openapi.yaml: mw-core-mock

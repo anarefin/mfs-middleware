@@ -3,7 +3,6 @@ package mfs.mw.simulators.contracts;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -12,7 +11,9 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
+import mfs.mw.simulators.service.mockcontrol.MockControl;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -20,12 +21,13 @@ import tools.jackson.databind.json.JsonMapper;
  * slice with every controller builds the springdoc document ({@code /v3/api-docs}, OpenAPI 3.1,
  * profile {@code test}), which {@link ContractDrift} compares with the {@code produces.apis} files of
  * {@code contracts.yml} under {@code mwContractsDir}. An endpoint in code but not in a contract (or
- * the reverse), a required parameter or a response code on one side only fails. Conditional
+ * the reverse), a required parameter or a response code on one side only fails; only the {@code
+ * /mock-control/} paths are compared (ticket 102b), and the profile {@code mock-control} is on. Conditional
  * controllers (test-only APIs) are switched on in {@code properties} so the whole surface is compared.
  */
 @WebMvcTest(properties = {"spring.test.mockmvc.print=none"})
 @AutoConfigureMockMvc(addFilters = false)
-@ActiveProfiles("test")
+@ActiveProfiles({"test", MockControl.PROFILE})
 @Import(MockedWebSlice.class)
 class ContractDriftTest {
 
@@ -49,13 +51,24 @@ class ContractDriftTest {
     assertThat(generated().path("openapi").asString()).startsWith("3.1");
   }
 
-  // mw-simulators owns no OpenAPI file yet: ticket 102 adds contracts/api/mw-simulators/mock-control.v1
-  // (and with it produces.apis); until then every simulator endpoint would count as drift.
-  @Disabled("ticket 102: mock-control.v1 is the first contract mw-simulators owns")
+  // The partner wire formats (/ocs, /billagg, /c2wbank, ...) and the deprecated /sim/* aliases stay
+  // simulator-owned, not in contracts/ (CLAUDE.md); the owned surface is the mock-control API.
   @Test
   void theCodeMatchesTheOwnedContracts() {
     List<JsonNode> contracts = ContractDrift.ownedApis().stream().map(ContractDrift::contract).toList();
-    assertThat(ContractDrift.differences(generated(), contracts)).isEmpty();
+    assertThat(ContractDrift.differences(mockControlOnly(generated()), contracts)).isEmpty();
+  }
+
+  @Test
+  void theMockControlApiIsInTheGeneratedDocument() {
+    assertThat(mockControlOnly(generated()).path("paths").propertyNames()).contains("/mock-control/parties");
+  }
+
+  static JsonNode mockControlOnly(JsonNode doc) {
+    ObjectNode copy = (ObjectNode) doc.deepCopy();
+    ObjectNode paths = (ObjectNode) copy.path("paths");
+    paths.propertyNames().stream().filter(p -> !p.startsWith("/mock-control/")).toList().forEach(paths::remove);
+    return copy;
   }
 
   @Test

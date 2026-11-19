@@ -91,6 +91,8 @@ class PayShieldProviderIT {
         .withEnv("DB_PASSWORD", postgres.getPassword())
         .withEnv("KAFKA_BOOTSTRAP_SERVERS", "kafka.invalid:9092")
         .withEnv("MW_OUTBOX_RELAY_ENABLED", "false")
+        // the mock-control API of the simulator (ADR D33, ticket 102b), test-only
+        .withEnv("SPRING_PROFILES_ACTIVE", "mock-control")
         .withEnv("SIM_SMSC_ENABLED", "false")
         .withEnv("SIM_USSDGATEWAY_SMPP_ENABLED", "false")
         .withEnv("SIM_PAYSHIELD_PKCS11_USERPIN", PAYSIM_PIN)
@@ -167,15 +169,16 @@ class PayShieldProviderIT {
   @Test
   void scenarioErrorsAndAnOutageFailClosed() throws Exception {
     try {
-      control("POST", "/sim/payshield/scenario", "{\"errorCode\":\"68\",\"commands\":[\"A0\"]}");
+      control("POST", "/mock-control/payshield/scenarios",
+          "{\"operation\":\"command\",\"key\":\"A0\",\"behaviour\":\"BUSINESS_ERROR\",\"code\":\"68\"}");
       assertThatThrownBy(() -> provider.createKey("x.v1", KeyAlgorithm.TDES_2KEY, "ZPK"))
           .satisfies(e -> assertThat(((MwException) e).code()).isEqualTo("MW-SYS-010"));
-      control("POST", "/sim/payshield/scenario", "{\"outage\":true}");
+      control("PUT", "/mock-control/payshield/switch", "{\"state\":\"DOWN\"}");
       assertThat(provider.probe()).isFalse();
-      control("DELETE", "/sim/payshield/scenario", null);
+      control("DELETE", "/mock-control/payshield/journal", null);
       assertThat(provider.probe()).isTrue();
     } finally {
-      control("DELETE", "/sim/payshield/scenario", null);
+      control("DELETE", "/mock-control/payshield/journal", null);
     }
   }
 }

@@ -13,9 +13,15 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import mfs.mw.simulators.config.PayShieldProperties;
-import mfs.mw.simulators.dto.PayShieldScenario;
-import mfs.mw.simulators.service.PayShieldScenarioStore;
+import java.time.Clock;
+import java.util.Map;
+import mfs.mw.simulators.dto.SimMode;
 import mfs.mw.simulators.service.PayShieldService;
+import mfs.mw.simulators.service.mockcontrol.Decision;
+import mfs.mw.simulators.service.mockcontrol.Journal;
+import mfs.mw.simulators.service.mockcontrol.MockCalls;
+import mfs.mw.simulators.service.mockcontrol.MockControl;
+import org.springframework.beans.factory.ObjectProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -26,9 +32,13 @@ import org.springframework.stereotype.Component;
  * TCP front of the payShield 10K simulator (ticket 64, spec 18.8): each message is a 2-byte
  * big-endian length, then the header ({@code sim.payshield.header-length} characters, echoed in the
  * answer: the host correlates by it), then the command code and fields in payShield ASCII; any
- * number of commands per connection, one virtual thread per connection. The scenario's latency
- * holds each answer; an outage closes the connection unanswered. An LMK store that fails (the
- * SoftHSM token unreachable) also closes it. Message content is never logged (PIN blocks, keys).
+ * number of commands per connection, one virtual thread per connection. Each command is operation
+ * {@code command} (key {@code command}, the code) of the mock party {@code payshield} (ticket 102b, ADR
+ * D33): DELAY and the SLOW range hold the answer; BUSINESS_ERROR answers its error code (default
+ * {@code 15}) without running the command; TIMEOUT runs it and holds the answer; MALFORMED_RESPONSE
+ * answers the response code alone; CONNECTION_RESET runs it and closes the connection unanswered; a DOWN
+ * switch closes it unanswered, MAINTENANCE answers {@code 68}. An LMK store that fails (the SoftHSM token
+ * unreachable) also closes it. Message content is never logged (PIN blocks, keys).
  */
 @Component
 @ConditionalOnProperty(name = "sim.payshield.enabled", havingValue = "true", matchIfMissing = true)
@@ -37,16 +47,24 @@ public class PayShieldServer implements SmartLifecycle {
   private static final Logger log = LoggerFactory.getLogger(PayShieldServer.class);
 
   private final PayShieldService service;
-  private final PayShieldScenarioStore scenario;
+  /** The mock party. */
+  public static final String PARTY = "payshield";
+
+  private final MockControl control;
+  private final ObjectProvider<Journal> journal;
+  private final Clock clock;
   private final PayShieldProperties props;
   private final Set<Socket> open = ConcurrentHashMap.newKeySet();
   private ExecutorService threads;
   private ServerSocket listener;
   private volatile boolean running;
 
-  public PayShieldServer(PayShieldService service, PayShieldScenarioStore scenario, PayShieldProperties props) {
+  public PayShieldServer(PayShieldService service, MockControl control, ObjectProvider<Journal> journal, Clock clock,
+      PayShieldProperties props) {
     this.service = service;
-    this.scenario = scenario;
+    this.control = control;
+    this.journal = journal;
+    this.clock = clock;
     this.props = props;
   }
 
@@ -98,15 +116,28 @@ public class PayShieldServer implements SmartLifecycle {
         }
         byte[] message = new byte[length];
         in.readFully(message);
-        PayShieldScenario now = scenario.get();
-        if (now.isOutage()) {
-          return;
-        }
         String text = new String(message, StandardCharsets.ISO_8859_1);
         int h = Math.min(props.headerLength(), text.length());
-        String answer = text.substring(0, h) + service.handle(text.substring(h));
-        if (now.latency() > 0) {
-          Thread.sleep(now.latency());
+        String body = text.substring(h);
+        String command = body.length() >= 2 ? body.substring(0, 2) : body;
+        Decision d = control.decide(PARTY, "command", Map.of("command", command), SimMode.SUCCESS);
+        journal.ifAvailable(j -> j.record(PARTY, "TCP", command, null, Map.of("command", command), null,
+            clock.instant()));
+        MockCalls.pause(d.delayMs());
+        if (d.gate() == Decision.Gate.DOWN) {
+          return;
+        }
+        String answer = text.substring(0, h) + switch (d.gate() == Decision.Gate.MAINTENANCE ? null : d.mode()) {
+          case null -> service.refuse(body, "68");
+          case BUSINESS_FAILURE -> service.refuse(body, d.codeOr("15"));
+          case MALFORMED -> service.cutShort(body);
+          default -> service.handle(body);
+        };
+        if (d.gate() == Decision.Gate.OPEN && d.mode() == SimMode.CONNECTION_RESET) {
+          return;
+        }
+        if (d.gate() == Decision.Gate.OPEN && d.mode() == SimMode.TIMEOUT) {
+          MockCalls.pause(d.holdMs());
         }
         byte[] bytes = answer.getBytes(StandardCharsets.ISO_8859_1);
         out.writeShort(bytes.length);
@@ -118,8 +149,6 @@ public class PayShieldServer implements SmartLifecycle {
     } catch (IllegalStateException e) {
       log.atWarn().addKeyValue("event", "payshield.lmk_unavailable")
           .log("LMK store unavailable: connection closed unanswered");
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
     } finally {
       open.remove(s);
     }

@@ -1,0 +1,2 @@
+txn_type,customer_type,kyc_level,per_txn_min,per_txn_max,daily_count,daily_amount,monthly_count,monthly_amount
+*,*,*,100,500000,1000,1500000,20000,20000000

@@ -1,4 +1,9 @@
 # Test-only overrides, merged over src/main/resources/application.yml.
+spring:
+  profiles:
+    # The mock-control engine, its API and the /core-mock/v1/faults alias (ADR D33, ticket 103) exist only
+    # in this profile; the dev stack sets it too.
+    active: mock-control
 mw:
   internal-auth:
     # Test-only issuer of security/InternalTokens (TestInfrastructure registers its JWKS).

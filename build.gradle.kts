@@ -87,6 +87,17 @@ composeCheck.configure {
     knobs.forEach { inputs.property("env.$it", providers.environmentVariable(it).orElse("")) }
 }
 
+val mockControlProdCheck = repoCheck(
+    "mockControlProdCheck",
+    "Only the test doubles enable the mock-control profile (FRS MCT-08): scripts/check-mock-control-prod.sh.",
+    "check-mock-control-prod.sh",
+) {
+    include(
+        "scripts/check-mock-control-prod.sh", "scripts/lib/**", "deploy/docker-compose.yml", "deploy/.env",
+        "deploy/dev.env.defaults", "services/*/src/main/resources/application*",
+    )
+}
+
 val scriptTests = repoCheck(
     "scriptTests",
     "Shell tests of scripts/ and the repo layout and docs: scripts/test/run.sh.",
@@ -97,5 +108,5 @@ val scriptTests = repoCheck(
 }
 
 tasks.named("check") {
-    dependsOn(checkIsolation, checkFieldInjection, contractsLint, composeCheck, scriptTests)
+    dependsOn(checkIsolation, checkFieldInjection, contractsLint, composeCheck, mockControlProdCheck, scriptTests)
 }

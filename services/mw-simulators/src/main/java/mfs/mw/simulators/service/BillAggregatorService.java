@@ -43,18 +43,8 @@ public class BillAggregatorService {
 
   public static final String PARTNER = "billagg";
 
-  public static final List<Biller> BILLERS =
-      List.of(
-          new Biller("BREB", "Bangladesh Rural Electrification Board (Palli Bidyut)", "ELECTRICITY", Protocol.REST),
-          new Biller("BTCL", "Bangladesh Telecommunications Company", "TELECOM", Protocol.SOAP),
-          new Biller("CWASA", "Chattogram WASA", "WATER", Protocol.REST),
-          new Biller("DESCO", "Dhaka Electric Supply Company", "ELECTRICITY", Protocol.REST),
-          new Biller("DPDC", "Dhaka Power Distribution Company", "ELECTRICITY", Protocol.REST),
-          new Biller("JGTDSL", "Jalalabad Gas Transmission and Distribution System", "GAS", Protocol.SOAP),
-          new Biller("KGDCL", "Karnaphuli Gas Distribution Company", "GAS", Protocol.SOAP),
-          new Biller("LINK3", "Link3 Technologies", "INTERNET", Protocol.SOAP),
-          new Biller("TITAS", "Titas Gas", "GAS", Protocol.REST),
-          new Biller("WASA", "Dhaka WASA", "WATER", Protocol.REST));
+  /** The billers, from the seed file {@code seed/v1/billers.csv} ({@link SeedFiles}, ticket 103). */
+  public static final List<Biller> BILLERS = SeedFiles.billers(SeedFiles.VERSION);
 
   private static final Logger log = LoggerFactory.getLogger(BillAggregatorService.class);
 

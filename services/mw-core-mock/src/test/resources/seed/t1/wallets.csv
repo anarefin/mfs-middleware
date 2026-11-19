@@ -1,0 +1,3 @@
+type,msisdn_prefix,first,last,kyc_level,opening_balance_minor
+# Test-only seed version t1 (ticket 103, SeedLoaderTest / MockControlResetIT): another version is another folder.
+CUSTOMER,0171900,1,3,FULL,5000
