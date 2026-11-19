@@ -75,7 +75,10 @@
 96-orchestrator-saga-frs                    95,97             open
 98-routing-module                           96,97             open
 99-idempotency-duplicates-replay            89                done     110m     95 files +2601 −110    e3d9c7c6,45ffe6a3
-100-edge-client-registry                    90,91,99          open
+100-edge-client-registry                    90,91,99          split (100-split-decisions.md, 2026-11-20)
+100a-client-registry-apisix-sync            90,91,99          open
+100b-oauth2-cc-clients                      100a              open   (run before 118-121)
+100c-inbound-mtls-edge-tests                100a              open   (run by M13)
 101-openapi-swagger-wsdl                    89                done     75m      143 files +6928 −31    09fb498a
 102-mock-control-engine                     89                102a done 25m  73 files +2656 −660  b8f2d843; 102b (SMPP parties, test console + tests/api to /test/mock-control, folder 39) open
 103-mock-control-core-and-reset             102,94            open
@@ -113,7 +116,7 @@
 130-audit-frs                               97                open
 # --- M12 gate: UC-01, UC-20..22
 131-admin-partner-credentials               91,97             open
-132-admin-routing-billers-clients-ui        98,100,113        open
+132-admin-routing-billers-clients-ui        98,100a,113        open
 133-admin-ussd-editor-templates             109,111           open
 134-admin-actions-compliance-recon-ui       125,127,111       open
 135-admin-monitoring-users-audit-mock       103,130           open
